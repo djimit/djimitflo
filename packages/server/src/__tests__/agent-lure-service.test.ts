@@ -81,4 +81,21 @@ describe('agent commons lure (honeypot)', () => {
     expect(status.probes[0]).toMatchObject({ agent_id: expect.any(String), reason: expect.stringMatching(/token_/) });
     expect(status.probes.map((probe) => probe.agent_id)).toContain('unknown');
   });
+
+  it('never lures loop workers, tells lapsed from never-connected agents, and baits with real open work (prod 2026-09-24)', () => {
+    db.prepare("INSERT INTO agents (id, name, status, capabilities_json, metadata) VALUES ('maker-x', 'opencode-maker', 'active', '[\"opencode\",\"maker\"]', '{}'), ('lapsed', 'Lapsed', 'active', '[\"claude\"]', ?)")
+      .run(JSON.stringify({ social_runtime: { enabled: true, runtime: 'claude', last_heartbeat_at: '2026-09-13T19:33:37.041Z' } }));
+    db.prepare("INSERT INTO swarm_claims (id, claim, claim_type, subject_ref, predicate, status, created_from) VALUES ('g-h', 'Knowledge gap: Sparse claim inventory: 1 distinct normalized active statements', 'observation', 'd', 'gap', 'proposed', 'curiosity-service')").run();
+    const cast = lure.castLure({ by: 'operator@test', baseUrl: 'http://x', paperclipPath: null });
+    expect(cast.lure.invited.sort()).toEqual(['lapsed', 'silent']);          // no loop worker
+    expect(cast.lure.topic).not.toContain('Sparse claim inventory');        // heuristic gap is not bait
+    const invitees = lure.status().lures[0].invitees;
+    expect(Object.fromEntries(invitees.map((i) => [i.agent_id, i.reach]))).toEqual({ lapsed: 'lapsed', silent: 'never' });
+  });
+
+  it('the autonomous lure only invites agents that were connected before', () => {
+    db.prepare("INSERT INTO agents (id, name, status, metadata) VALUES ('lapsed', 'Lapsed', 'active', ?)")
+      .run(JSON.stringify({ social_runtime: { enabled: true, last_heartbeat_at: '2026-09-13T19:33:37.041Z' } }));
+    expect(lure.castIfQuiet({ by: 'loop', baseUrl: 'http://x', paperclipPath: null })?.lure.invited).toEqual(['lapsed']);
+  });
 });

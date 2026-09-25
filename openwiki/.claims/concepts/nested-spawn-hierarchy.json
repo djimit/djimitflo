@@ -1,0 +1,366 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:8876738c1e23a40c3105cef97325a2ade1dc5904ba408bf365683a86864656d0",
+  "claims": [
+    {
+      "id": "claim_4814f19743814e92a38aaa0783302339",
+      "statement": "NestedSpawnService is the gated entrypoint for nested multi-agent spawning: an operator-armed root is created via createRoot, and the root or any depth-permitted descendant spawns sub-agents via requestSpawn, called same-process (internal) or over HTTP by a runtime child shelling out with its scoped token.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/spawns.ts#L1-L16",
+          "version": "repo-lines-v1:sha256:603393ab966c60c65ce436a0ee10e2333c73644a7055d104a31dd9c7671dca77:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3MmE0MjkzODJiMmUxNDcxOGUwZTM3YjA1NzBhOGExNzAyOTkxZmNkODQ5OGNkODQwNjBhOGJmNGYwNTAxN2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ2MDM1NTE2MzgyZGI2M2M3ZWU2NDBlNWNmYzI1OGI2ODM3ZTIzZDE1ZGUxZGZkOGZmZmRjNDgyNTdjNmY4MjkifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L1-L28",
+          "version": "repo-lines-v1:sha256:ac83b769c4cee8121ca53e79fee2746e27c589c6723707ca8a6c4e25e56c615c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3MmE0MjkzODJiMmUxNDcxOGUwZTM3YjA1NzBhOGExNzAyOTkxZmNkODQ5OGNkODQwNjBhOGJmNGYwNTAxN2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwNDMwMDE1ZTY0MzgyNGVhODY3NDc4YTM0ZGIxNWE2OWE2MDUxYjdmMDM0ZDdiZTVmOWY2Y2I2N2MwMTZiM2MifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4140fc6b14b5492483f971f1c13560f6",
+      "statement": "Actual worktree and lease materialization is delegated to LoopService.prepareNestedLease, which reuses createWorktree/writeWorkAssignment/writeAssignmentPacket/insertWorkerLease unchanged, so a nested child is a real worker_leases row carrying parent_lease_id/spawn_tree_id/depth lineage rather than a parallel structure.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L1628-L1724",
+          "version": "repo-lines-v1:sha256:fae6730c8bc7799c09a1ef42f1e37ddb7b778d43dcf38b75875e2460ced30648:eyJzZWxlY3RlZExpbmVDb3VudCI6OTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZhM2NmNTE5MjM1NGY3MTYxNWFjNTEwMzRiM2U5N2MyMGVkYTk5NjQzZmNhZjViYmU2ZDQxYWQ1OWJkMTIxNjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUyNjcyNDYzODVhNTE1NmUxYTRmM2Y1YWYzOTBmOWFiMTBkZjBmNWMxOTdkZDFjNmNmMjI2YWRmNjlmNjA2NmYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L19-L22",
+          "version": "repo-lines-v1:sha256:a8929532ef8dc9a2628500d259fe61a4d9fee0915f4ffe84bbd39a087eeb5dd8:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmRkNzJhZTg4ZThlNzVlNjY3YmE5OTM5OTUxZTEzYjMxODVlZGM0ZTE3N2E5MWRiMzVjMDk5MjU2NTVmOGY2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDRhYmMzM2I3N2VlZjc0Zjc2ZDQ0N2MyNjMyYWVlNzBiOGE0YjkxZGNjNTk4NjhiMjkxYTEyNTI5Yzk0MzIzMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjU2OWJiMzFmMzMyZmRmYzA4M2FjZWMwNzUyYmE4NGZmZDE1MjkyYmUwYjQ3ZjI1ODI1MzgyNmEzM2Y0YzQzMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMGUzYjIxYTdhMjczMGNhNjIyODZmZDdkMWYxYTA1N2EwNTQ2NGUzZjI5NDA4ZGU2OGY5NjFmZWZlZGJlMjgwNyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_61649ab1b8924a3b8216d5a1de578b9c",
+      "statement": "The spawn-tree id is the root lease id (spawn_trees.id == root worker_leases.id), so the root's own spawn token scoped to (rootLeaseId, treeId) validates when the root later calls requestSpawn with requested_by_lease_id = rootLeaseId.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L692-L706",
+          "version": "repo-lines-v1:sha256:0caf3c7f34d4400c1b9b778f42a6b7ce207ba2e5a25e538bffa79d9139d7b8d6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJjYmUwYTMxYzc2ZmUyY2VkNjNlYWU5Yjc4MjZhYTVjZGU1ZmQ4YTA1MDJiZjllMzE3MTE1ZTgxNzRmN2ZkNjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0ZTQyMDhjZDZmZmI4YzRhMzU0N2IyZjU0YWRhMTk5NzhjM2YzNjVlNzhmOTUwMmVmNTE0NWNkZDJhYTg1NDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI2ZDhjNmE4NjJjMDVmNDM4OGUwNzk0NjBhNjg2MzI1YjgxNDY3YWU5OTQwYjVlYmFiMzcyZjU0MzI3ZjFkMTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ3NDJmZjM2MTc3YWYyZmVlODI3YjE4MjZkMjc2MjdmOTJhZWY0NDIxYTA0NDdiNDE5ZTI5N2NhMTFkOTZiMDkifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L177-L198",
+          "version": "repo-lines-v1:sha256:6d5c4b3fc9895030cdc94c6b098941c68612106b2eeff3fe88ca064b6ca7b382:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2MzU0NGNjY2IyY2Q5YmYwMzcwMTc2NmNiZWYzMDM0ZmI2ZTQ2MzRhN2JlZjdkMDFhYWE4ZjNhN2E4MDk2MTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyZDExY2FmNDNlOTdlZjM2OWU2YmVlZDFhMjY4YmQwNTgzOGYyOWI5ZGQyNTRiZjY5YmE2NDg4NDE0NzIzNGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxMjU3OWFjZjZjZjBmM2VjZjQzMTg4YzExZTM5MThjNGMzZWQzNzI2MjJiNzQ1NDY1NWMwOWUwZjcyYTA5ZjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjNDRhYzA0ZTZmZDczMjE5ZmU5ZjZmNWEyMjAwMzAyMGFlZjgxOWJkOWQ1ZmZjMzE4NzNmNDUyZWZlZmY3MTkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_022ac35276cc4c95b9e9601b1413aea0",
+      "statement": "The sub_agent_spawns table is a durable audit and budget ledger whose prompt_digest (sha256 of role|prompt|capability_ids) and parent/child/requester lineage make the cycle guard durable, and whose status CHECK includes requested/gated_out/prepared/running/completed/failed/cancelled with child_lease_id nullable because a gated_out spawn created no child.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L661-L690",
+          "version": "repo-lines-v1:sha256:5bbdc572912feac48e1843f8255a909c0e26c6086d8b92bd93c799fdd22ae7ed:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1NDQ1YmQ3YzM5YTU2ZWRlOWE3NjY2OGIwY2Y4YjFjMjRjODBjMmM1N2YzZDM2MjcyODNlNjk4MDEwZTU2M2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4ZDk4YzRkNWY2ODdjNjBlY2UyMzEyZmM2N2I5ODcyOWQwZThhMDdjNGYyODg3YWExMTVlOWU3NGY5NzY0MzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg3ZjZiNjkwOWIxNjEyZGQwZWVlYzRmYTlmNTYyNGIwNGY4ZDk1ZjJlOWIzZjgyZTljYzQ4MWZjMDU5MzI0NDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0NWJiMzgxMWIxMjY4MmIxY2RkNmYyZDFhOGZkNWI5YTlmZjFjZTFkNTBjM2I0Mzg1ZWJiM2VlZmMwZjBjMzgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L624-L626",
+          "version": "repo-lines-v1:sha256:3836a3fe03eab010fb55399a634f9e06469830f6dae163f3c780d7d52b309848:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjNiYjIxZDdkNTJhZDViYjM0M2FiYmE5ZWE1ZDRmYTVmZTI0YmQ1MzU3MmZkYzVhOTRhMGVmNzEzOTM2OGI2OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmM5ZjZmNDAyNTNlOTA0N2I0NWMyNWUxMDFhMDBhNWRlMTI0MWI3Mzg5NjNmNTBjZTkwY2M4ZTRiOWYyOTNjZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzg2OGY5MjZhMzQ2YTBlNjZjODdmYTczYTNlMTRhMmNkYzc2ZTgyMDEzNzBiM2Q1ZmMxNjM3YmU0Mjk0N2IyNCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_635cbaaac9b6408e8aff1a16901e6586",
+      "statement": "The depth budget is default-deny: SPAWN_DEPTH_BUDGET env defaults to 0 (off), mirroring RUNTIME_ALLOW_SKIP_PERMISSIONS, so depth > tree.depth_budget gates out with depth_budget_exceeded.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L10-L12",
+          "version": "repo-lines-v1:sha256:69a43c4a0f6ba3b3bfd0c1c258e3409f5ec10c452baeac0035cf43f028537aea:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmVlOGFkMDkwZTdjNmM5ZjczYWRmMzZmYTZiMWNiMWJmNjVjYjk0M2Q0MDQyOWJmZGEwMWQ2MDFiODEwMDNiOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGFjNWFkODZjZGM2ODViYjZiNzRiNDUwMWZlNmRhNmFjZTVmYjRjMzYzNmZmYTYzNjE1NTNmNDdjODZkOTg0YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNWNhYmJlMjcyNzRkMjgzYjVlMzZhNDIyOWYwNjg5OWQ5NjFjNTEyZjc2YmQ5ODdkZGFlNGQ2ZThkMjc0MmRkMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2JhY2FlYjk2NDUyNzFlMTE4YjNhZmQzZWIzMDU5ZTJhNDA3NTFhMzM2ZGMwMzU4YjQxYjI3MTU1OTU2MzJmYiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L137-L140",
+          "version": "repo-lines-v1:sha256:b68bbc30bb9c73fdebf748cb33347f18b5966e0fe933d4cef9037187d506177b:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjg4YjI2NGEyNWUzOTk2NTYwOTEzZjNlODNmMjZkNzUzODU1YWEyZWRhMzJhZTVkMmJjNTQyNTI2OGIxNmNjMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGYzZjQ2YjQ4YjRiZDk0M2QxYTI4YTBmNmI4NmIyNzViMjY2MDVjOWY5NGU1Yjg2ODk5MmE3YWMwMjgwMTBiZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGVhOThlNTc4YWRmNjU1ZTgwMGNmMTI1M2Y5ZGI2YjljODE3OTYyMmNlZjdhMmM5ODkxYmU5ZTU1ZTkwOGM2OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTQ3OTRkZGI4MjQzZWEzYWNjYmVjYjFmZTg3OWMzNWNlMGE1ODkyY2I5ZTdlNWNlMzIwODM5YmE5Y2U3NWNkYSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L300-L303",
+          "version": "repo-lines-v1:sha256:9dfc46afdac6eb844d4a4a3fde5b6601659f71509406a49208278da74f1e6694:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDUwNWJmZTVmNTgzNTc4NTFhZTk2N2U4YzMzZDU0ZmY2OTdkMWJlZTMzZGMzOTljMjQzNGM3NjU3NDI3YjU3OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg5M2Y0MGUzNzgxZWI4OTZjODJkMDQ2YTA4MDY3YTExZTM1Y2RmMmYxZGZhZjI2ZmVhOTBiOGRiNjY3NjQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDUxMGEyMzM5NGRlNzY3OWE3NzAzZTM2ZjQ2ZDBhNDhjZjMwNmNlZDdmOWNkMWQwODU5ZmMxZmFlMjFkNGU5MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjMzZDJhZThiYTU5NTg4NzY0NGQ5ODFmNTIyNzdiMjY4MTk1YTVmMDU1MThlY2IzNWJkZmVlMTdiYmY3OTY1OCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_e4252d369b3d4066a5111bacbbf08d70",
+      "statement": "requestSpawn applies an ordered gate chain — token/scope, operator pause, depth budget, cycle guard, cumulative token/wall budget, capability routing, then concurrency cap — and the first failure short-circuits into gateOut, writing an audited gated_out row with a reject_reason and emitting SWARM_SPAWN_GATED_OUT without materializing a lease.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L260-L340",
+          "version": "repo-lines-v1:sha256:9331e622c218f0d1fda3d97ff2c09db9cf6fc7dd35c248c3c14aa351a6ccde1c:eyJzZWxlY3RlZExpbmVDb3VudCI6ODEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmZWMxNDI3ODZlZTRmMmJlYjEyMWE2ZmEwMTA4MTAxOTUyZjUwZjM4YmI2OWQwZTY5YzA3NzM1ZTZhNmFkY2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWVmZGQ1MTEzZDk5MDU2ZjFlMTlkZTFiN2Q1YmVkZTZlMGEzMDFmOWU4ZjdiZTRlYWQzZjhmOGRhODY2YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMzNjFhNGFkYzgzMjE5ZWEyNjBlZmY2YWYzODQ3YTZmOTcwYmQxMmJiNTY5ZjRjOTAzYjY2YTQ4NThjYTFkZmQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L481-L525",
+          "version": "repo-lines-v1:sha256:78bc2d2f6ac822cdabd68613c1474e3301bd2aba1a9931c3f89162543a48d555:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5YTY2OWRlMWZhMGNiOTE5YTg4YzM1N2Y4MTRmNTJmZGY5YzdjYjNmMDIzYThmMmRkODk4YjQzNTQ1M2MxYmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEyNDU3NzJkYzI3OTJjMWU1NGNmYzQ5NDE2NjI0YWQxMzliNTkyNTBlNzAzYzc1MmRlMTM5MmVmNGE0NzUxZDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEyZDAwYWRjNjQ2MmU3NjI2ZDg2YzAxOTYwNzVlODI5ODRkMjA3YTdiMTRjOTcxNTU4MTZiMGIwNTljM2M2OWQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6225cf8e45774a6b9321e6aea8fc4850",
+      "statement": "The cumulative per-tree token/wall budgets are the hard bound while the per-depth grant is a configurable ceiling (SPAWN_PER_DEPTH_TOKEN_CAP default 50000, SPAWN_PER_DEPTH_WALL_CAP_MS default 120000) rather than total/(depth_budget+1), so one child cannot grab the whole tree.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/nested-spawn.test.ts#L171-L206",
+          "version": "repo-lines-v1:sha256:5b412b5d45a12cbdaca8438d57ef3cabbf88f629e808091c82aa4a05ef53c3ad:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1ZGJkNDI5ZjljMGFjNDEwM2Y5OGJjMWZiMTUzZDU5OWNkNGMzNTQ5MTM4MDZjYTM0YTU4YWNlM2ZkZDA1OTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyMGZjOWU2N2RiMDdlZDIzOWJiM2FkMjMxMmVhYWI5YTcwZTFmNmZiYTAxMjg4YjBiYTZlNjFkN2Y4ZWU3ODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZjMjJkNTBjNTlmZTc0Y2E4NjkwYjYzMjEyZjk2MTgxNjNkZWQ5NGNlMjhjNjkyZWZiMTJiY2Y2NTg4Y2FmNDcifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L311-L327",
+          "version": "repo-lines-v1:sha256:04245121c3b1ffe2ffd449776484b470a73aa80e95cde194a4ea2d6c54c19a60:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4MWViMzkxYTY2MmIyODlhMGFjYjdmMzZhYzFiNmY4YWQ1YTEzMWJkZTU0YzQyMGViY2ZmMjZhMTk4MTM5MDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1ZWU5ZjFjYWQ3ODQyNGZmNGZmZDA0Zjc0YzRlNzYzMjQ0MjE4ZGMxZWRiZmUzNjE5NzQ0OTExN2VjM2NjOGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFiYWQ5NGYxNTUzZDNlYjg2ZDFmMzZjNGZiY2I1OTVhNTc5MGEwNzI0MzBkMzIzYTJmYzUxOWRmMzk4ODI4MDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVhZGZlODI1NzQ2OGUxMDc0YjAyOWNkMDk0NWRhYzJkMDZkMjYyN2FhYmJjMTNiOGE2NzAxMzBmODYxZWU1YTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a1a2d38573c94dfa9a3f4738bdcd8f8b",
+      "statement": "Capability routing requires each bound capability to exist, be live (not disabled/deprecated and live_route_allowed), not list the ${role}:${runtime} action in forbidden_actions, and have a risk_ceiling at or above the tree risk_class.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L545-L566",
+          "version": "repo-lines-v1:sha256:559ca6344a374e111749e053bb4572baab6126ddae607262ec6d06e9fa81d73c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ0NjllNTQxMjMxOTRjMmE0ZGI2ZDMwY2RiYmNlMDdjODg1NGJiZTAyMWY0MzJjY2RkM2RkNzMwMzk5ZmMxNGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM2MDcxNWY2NWVhOTM3MTAxMTc1MGM4ODg0NDM2MjliYWViMzZjNzY5ZTQwNGQ0OWM0MjNmZDViZjNjNTc3NjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI5MDg3MWI5M2NkYWI0ZGZhMjFlMDQ1ZGQ5NTNmMGY1YzI1MTAyM2I5ZWQ0NzkzMGY3ODFiMDQxMDM4ZmRjMzEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9129c371244f4272a511cba852c4f2d4",
+      "statement": "The per-tree concurrency cap counts only real in-flight child spawns (depth > 0 in prepared/running status) and excludes the depth-0 root so max_concurrent_children=1 does not block the first child.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/nested-spawn.test.ts#L245-L257",
+          "version": "repo-lines-v1:sha256:df2f238693b542c724c53c65f05adbba1604dcb936ca9989c6460b76a2fc6ff2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhZWI4ZTgwOGE3YTFiZjU4N2I4OGU2MzAzMTU2ODQ4NzlmZWUzNGE0OTRjYTJjZmE2MTg2YWE2ZTkzMmVhMDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyMGZjOWU2N2RiMDdlZDIzOWJiM2FkMjMxMmVhYWI5YTcwZTFmNmZiYTAxMjg4YjBiYTZlNjFkN2Y4ZWU3ODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFlMTU1OGM3NDAzMTk3YjhjNDA2NGE3M2Q1ZjM4NWFjOTQxNzQ2MDRhNWI0YWVmZjJlYjFhNjgxYWFkOGM3NWQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L568-L577",
+          "version": "repo-lines-v1:sha256:b8028110195de2a5ee86c5ea4e71ebcd76c34cfa29affbea2c44a587f8607a2a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5NzRkOTVlZTI0NTdiM2E4ZGYwODgzNmU4NGVjOTNkNjZiMzVmN2RmNzFlYWU1ODJlODJlZDg2ZGZhMzY4ODgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkMDIxNGZlZjM5YmM0ZTM5NmM3OTk3ZjJkOTgxMjA1YTY5NTFjYzI3ZGFhZWYyZWM0NTI0OTJkMTI3MWZmZGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU1MmFhYjBlODE3YmYzOTgyOWVkYzZhZDU0MWU5M2Y4YWUxMjIxMGQ5MzkxYmM2ODhmZWQ2OWViY2NkMjNlZTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_abbd6a7dc58d4fdba707515ed0eaca3a",
+      "statement": "A child may spawn its own children only while above the depth floor (allowNestedSpawn = depth < depth_budget), and only then is a real child-scoped spawn token minted and returned to the caller.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L342-L371",
+          "version": "repo-lines-v1:sha256:67bd0b59e1715b5ab48e9b801a08c81ff67b135873c500ee88753279d313e158:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIwZDRjMDZiZTljNTI1OTRmNGIyNGQ5Y2VmYmMwYWNkNmY5M2YwN2E3ODJjOGQ3NDUyMWVmYjY4ODQ2MmNlOWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkZTc4NWFmYTM3N2VkM2ViYTgyZmQxYmRhOTQxZTc1MzRhYTI1ZDIyMTI4ODFjMGIwYWY1MTI0MDg4NzlkOWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk5YTQxZTkzYzNjZjlhMzFjOWYxMjczM2U4NjU3ODNmZThlY2UzNTRiOTgwMjZmN2MzM2Y0MmZhMWFmMjRmOTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwY2Q5N2IyZGNlZmZhZDM4NGZiYzJmZjBhMzdlZWM3ZTJkZWY1MGUyOTVlM2FlNjg3YWUwODc5MTUzMmE3ZTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_aff418da1d904cc3954d900cecfdaaba",
+      "statement": "An operator pause is a soft denial for nested spawns: assertOperatorNotPaused mapping LOOP_OPERATOR_PAUSED produces a gated_out row with reason operator_paused and no lease, worktree, or budget mutation.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/loop-routing-continuation.test.ts#L189-L207",
+          "version": "repo-lines-v1:sha256:559eaadc1c0139a1f4b3dd4adbe842f2738cc9e35237e8980cbaf62b4bdf152e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzNDFkMDQ2YmQyZTE5ODI5Y2VhZDAzY2IyOTc3ZDY3MzM1MDExODdhNTY5ODkwZDk0MzE4NjZjNjI4YjNkNjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM2ZWRiNzVjMDkwY2IzYWJlMDFhYjQzNTRkZWRiOGZiMDBkYjQzNjEyYTgxNzE1MWU5ZWQ2MDZhOGViODgwMGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L293-L298",
+          "version": "repo-lines-v1:sha256:f28364683d82d5a69da5b0194718c75bc6596acba094e695bf49ca6d0d660042:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTFkZjg3YTQ3MzE2YzcwOGM1NTAyMDk4ZTlhZjZjNDQ1MzRlYjgwYmVhZGNmNjA2MzAyOGVmY2E4NTkzN2FiZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg5M2Y0MGUzNzgxZWI4OTZjODJkMDQ2YTA4MDY3YTExZTM1Y2RmMmYxZGZhZjI2ZmVhOTBiOGRiNjY3NjQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzViYmY0MTZlYmVhZWQyZWVlMzljZGMwY2UxYjZkMmY4MzIwMjQ4MmNhZTc5NGE3NTkwYzcxY2NjNzgyMDY0YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGRhNTUzMzNkYzMxMTE1ZGU5NzVkMDAwYWQ3ZDM4MWYwOGFjODcxMzQxY2M5N2FmNTI2OWJlMDdhMDM5NDcyYiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_f7d22959cca1427ba62d07df160342a3",
+      "statement": "Spawn tokens are HMAC-scoped credentials of shape base64url(\"leaseId|spawnTreeId|expiresAt\").sig with a 30-minute TTL; validation is constant-time on the signature and never throws, returning false for malformed/expired/wrong-scope tokens which surfaces as SPAWN_TOKEN_INVALID (HTTP 401).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L475-L477",
+          "version": "repo-lines-v1:sha256:b592e86ec8d6005ab4085a0573334a90d912f0ecaec6a892da5ae1fd0af11258:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTNmMjg1M2I3YjQ1OTk3MDgwMDhkMTU0ZjI3OGJhMjBlZmE0MmU3ODQwNWFhZmRhZTZlMmNmOGQwZWI5NTdhYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWI4MDI2MTI2MGQ3MGVmNDMzMDk0MDcwMjBlYTQyM2YxYWUxODQ4ZmMzYWE3YThiZDYyZWU4NzY5OWZmNWMwNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTI0NTc3MmRjMjc5MmMxZTU0Y2ZjNDk0MTY2MjRhZDEzOWI1OTI1MGU3MDNjNzUyZGUxMzkyZWY0YTQ3NTFkMiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/spawn-token.ts#L11-L19",
+          "version": "repo-lines-v1:sha256:6df0c182486a4b9e16f2169af995a452e8760e6d654f7b11f1227123f510230f:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWE5ZmQ2NTBlODMyZDYyODU4M2Y1MTRlODA4NWNlNDA2MjM4MGFmZjMwYjc3NDk4YjY2YWEwYzlhNjIyZGJiMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDFhNDc3NjI5N2Q3MTVmY2ZmMjMyNTYwNDk2ZTgxOTA1ZWUyYWYwMjg1Mjk3Y2NiZTIxMDVhZDQzMWM1MzQwYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjQ0MDFkMTVjOGE5ZGI5OTQyN2M1NTYyMDQ2NmQ1NTEzYWI4MjRlZjFiMjA3MGJiY2U3NDAzZDBiY2Y3MzAzMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDllYTM2OTAzYjdjOGU4OGFkNDk3ZGUzZjUwNjA3YmZlNjYxNjY1NmI2ZTA1OTRlN2VjNzY0Njk1NWUyMTJiYSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/spawn-token.ts#L43-L82",
+          "version": "repo-lines-v1:sha256:bccfe7f3c45c5e5e2c5a114169b7cea485db5d613ee252f2b17ce0b2956fbc49:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5MDI5NTQwODExMzM4OTM2MWEyNDUwYThjNTIxZWI3OGY0NzU1ZDI0M2I5NjQxZGQ2N2Y2ODkxNDllNTAwNTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjliZDA5OTI4MzExZDA5NzgxNTA0YjNjNTc1OGU3YzYwOTBiZmUzOTFlM2I0NjA4ZGZlNTM1NmIzMGMxZWYzNjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ed7f88d22f3149aea11d5b3e7c09b67f",
+      "statement": "The spawn-token secret resolves through DJIMITFLO_SPAWN_TOKEN_SECRET then JWT_SECRET, fails closed with SPAWN_TOKEN_SECRET_REQUIRED in production when neither is set, and uses a per-process ephemeral secret in local/test.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/nested-spawn.test.ts#L302-L307",
+          "version": "repo-lines-v1:sha256:8be58101466273273c6c35fa02d23789a8b193e892c83cd3e5896800f7b1357e:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjk3MzdhYWIwMGM5N2RkYzE1MWUwMzM5Y2ZiN2M2MDhjZjIzZWNiNzk2NzZiMjA2YzQ1YjM2YmNmMzViZTA2NyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2EzZTQ2Zjk0Mjc2YjZmNmY0ZWQxZjAyYWY3OGJlZjZhMmVlMWM0MzlkZDU1ODRiOTczOTQ4MzEzMjE0ZDJiNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzIwZmM5ZTY3ZGIwN2VkMjM5YmIzYWQyMzEyZWFhYjlhNzBlMWY2ZmJhMDEyODhiMGJhNmU2MWQ3ZjhlZTc4OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2M4OTlhNmNlZWI2ODhlZDEyZTVhZDRlY2E5ZDY3YTA1OWU4YmI5MzM1NTAwYTNkYWU2N2MyN2FiN2JkNjExMiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/spawn-token.ts#L23-L41",
+          "version": "repo-lines-v1:sha256:300b052e0ba2e98d459bd10442db5b969ba6dbf306b16501edf020c6c686f228:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA5ZWEzNjkwM2I3YzhlODhhZDQ5N2RlM2Y1MDYwN2JmZTY2MTY2NTZiNmUwNTk0ZTdlYzc2NDY5NTVlMjEyYmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQzZTUwMzIwMjllMDNjYjRkODRmYjk2ZDFmNDc1OWUxZmVmYjIyNmY0MjlhMTY4MTg4MWE4ZTFkMmY1YTQ2NmMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d029f17f2c5f46e8b4d7e757e918ef65",
+      "statement": "Token flow is asymmetric to break a LoopService→NestedSpawnService cycle: token logic lives in the leaf module spawn-token.ts, LoopService only mints (buildNestedSpawnEnv injects DJIMITFLO_SPAWN_TOKEN/DJIMITFLO_CONTROL_URL/DJIMITFLO_LEASE_ID/DJIMITFLO_SPAWN_TREE_ID for an armed lease), and NestedSpawnService only validates at requestSpawn.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L1823-L1867",
+          "version": "repo-lines-v1:sha256:f7e53ccca18d9f0fdfff6feb417e3a72743fc77789ecc6c051f8395054698d40:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIxNzA0MWQ2NDRlN2MwYWVhNTQyMGZiYTBkMjNkNjM0ODdmYWEwNTE4MDhlNmIzNDAxNjhlZWI3Y2Y2ODVkMjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg0OThkYzZkYzJjMWNiNzRiM2E2M2NhOGFlZjcwZjNmZTM5OTFkNThjMTk1YWQ3NzNjYzRjZGFiNTMzYTQ0ODIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L36-L40",
+          "version": "repo-lines-v1:sha256:0cbcc01737dbd0c7e69c7042de96d12e327d7f3e8dd0a6b89f38f80a9ae86ee0:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTgyMDA5NjRhOTc4NjM1NTIyYjJhYjA5MGM2NTA2NWQ4ZWY4ZTg1YzQ3MzBiYjJlYjA0NjBkMzRjNjc3ZGRiYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODk2MTgyMTBlMTIyMTdhNzU4Mjc3ZTFkMDdjMTdkODQ1YWVlODdmYzBjMGNiODRiYjZkNGFkNWQzMmY2ZmYxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2QxM2I5ZjhlN2FlMWYxMDE3ZTAzNTdiNWQ1OTIxZmI3YzZjZmI0MmE1YjYxZTQ0MWY5MTM4YzI2ZGE3NDAwNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNmRmOTE2MWY1ZDc2NGM4YmE4MWNhODBjZTEyNzk3MGI2NDUyYzU5M2ZjMmE5MWI2ZDI1MDY2ZTJiNmY0NGJkOCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/spawn-token.ts#L1-L15",
+          "version": "repo-lines-v1:sha256:43f7acfbebd4b02345d8df44796f95211435ff2b8a953473f9faca70b0c41887:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3MmE0MjkzODJiMmUxNDcxOGUwZTM3YjA1NzBhOGExNzAyOTkxZmNkODQ5OGNkODQwNjBhOGJmNGYwNTAxN2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ5NzQ2NmY0NzA1MjlmZjBhNWNkOGYyNzU1YWM2YzUzYTM3OWJhNzFmMzdkOWQ4OWIzNjJkZjEzYWY1MTMxMjMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9cad094a0be84f91b23d8060ecea6494",
+      "statement": "The raw spawn token is never persisted or written into the assignment file: the Nested Spawn Control block rendered in the assignment shows <redacted> and instructs the runtime to read the token from its env.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L1732-L1758",
+          "version": "repo-lines-v1:sha256:a45b09fe51454fd40eaabec3809042d64888eb152731f4a6de9294406a40ea75:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4MTBiYTUwNzhlYzE0M2YyODczNWRmOGVjNGQyM2YyM2RhY2JkYTgyYTg1NDNhNDRiZmJkZjZlYzcwZmJkNTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVlODYxZjVmMmRjNDllYmY1ZGEzM2Y0ODVlMzA3MzZhODUwZjdjNGNiODA1Njc0ODRhZTI3OGQwY2FhYWIwNTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQwODFmZmQ0NGVkYWM4NWM2YmE0ZTQ3MGFiMzc4NTE5ZjgzMzU1OWY4ZTRiMDcwZTdhZTg2MzJmYWQzMjcyNWEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L342-L348",
+          "version": "repo-lines-v1:sha256:e9ce5d6662ad7081cc5bab36de9867864601fee5abe3befa4e5b5723a9ce25c7:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjBkNGMwNmJlOWM1MjU5NGY0YjI0ZDljZWZiYzBhY2Q2ZjkzZjA3YTc4MmM4ZDc0NTIxZWZiNjg4NDYyY2U5ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDdhYjIyOGQ2MWVmZWI3YzI4YTc5ZDMxYTljZDc4ODBmOTFhYjc0ZGFiNTM5OTYwZWFjMGMwMTc5YmY0OTFmNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTlhNDFlOTNjM2NmOWEzMWM5ZjEyNzMzZTg2NTc4M2ZlOGVjZTM1NGI5ODAyNmY3YzMzZjQyZmExYWYyNGY5MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDhkZjc4YzM0Yzk4MzNlM2I1ZTZiNDZjYjc4OTdlMjMxZWE0ZGE5MTdkZGIyYWI3ZTU2YWEwZDFiMDNmODI0NCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_d1e3ad6def0f43b0b5bb39af4a71a642",
+      "statement": "spawn_trees gains optional additive context_budget/context_consumed columns (SPAWN_CONTEXT_BUDGET default 0 = no isolation); createRoot detects them via PRAGMA table_info and includes them only when present to keep the insert backward-compatible.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L201-L219",
+          "version": "repo-lines-v1:sha256:aa619cff10b49f36c3a7da3c5039d28961f7a4d98d2ca23da9c4657f1111ca84:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmMWViYjI3YmRiZmY5NTI1Njc4Mzg0YWQ3NTk0ZTM3MzE5YmY4Njg1NzBhYzM4YTQzNzIzZjc0Y2Q3NDdhNGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBhYzE1ZmFmMzUxMDg2MzdhMzI5ZmNhOGUxZjAyMDZmYTQ0YmUxMjYzODQxOGNkMTg4NGI2MTY2MmZmZWU3MmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIyODlmMjhkM2QzZjRjNTcyNzk0NWMyODlkMmM5NDZkMDk4NTBjZWU1MGMzMGQ5YmMzZjc1MjMzY2EwMjk1N2YifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4697c6baab5044f4820e37b586da9d67",
+      "statement": "The /api/swarms/spawns router mounts BEFORE the generic /swarms requireAuth mount in the route table so the specific path wins, and both are guarded by requireAuthOrSpawnToken which admits EITHER a Bearer JWT (setting req.user) OR an X-Spawn-Token header (leaving req.user unset).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/middleware/auth.ts#L107-L139",
+          "version": "repo-lines-v1:sha256:5604cbdf011d8d476531857af85590603c319759fdfc9ca2fdc85a121494ce99:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzNmFjMDUxODFhM2Q2Y2IxNDM0NzFjNjZmNTgwZjkwNWQ4ZWI5MzQ2MDBkMzVjMTEwYmU2YWZlYWRkOWIxMDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiNTNkNzY0ZTViMDAwYWQ4MGMxODI2MDZlNjU4ZDFhOTlkMjZhNDRhYTZkM2M5NzczNDI4ZDkyNmFmZmQ4NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ5MGVmZGM2OWEwYzc5ODA1YWJkNzdiNDZlNjNlM2VlODFkMTNiMmVmZjZkMzk2MzliMGRlMzY2YWY0ZmZmZjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkYjRjMjZjOThkNWM5ZDkzNjVlNzBhMTEwMDgyNGM4MTIyNzI3YTVhNjI4Y2MwZjJhNDY3YjJlYmMzNzI0MjUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L116-L123",
+          "version": "repo-lines-v1:sha256:f451b9f667048be5cc51f7f20d043b4a361ccb1af3f4a8df8d83029b1a458fcd:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGJlMDIxZjJhZTg2MzQ3MGQ3MTgzY2FmZTA0MWY5YzQwYmVmMmQ4NTM4YmYzYTQ0NGNjMzYxZGY3ZmNkZjdiZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTc0MzlhNWM4N2QwMzYzMTVmNTBhYzkyM2ZjNDY1MzAzNjUxN2IzZTQyY2VjNmY1NWZhNjYzM2IwMzY1ZjhjMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjJlYmQ1NzI0OWI0OWU2ZGI2NjE2MjFiN2QyNTVlNzgzMDhlN2RiZmFiNGI3MjlkMjhiNTU3Y2RhMzE3YTc2MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTdjYzViZDEyNTYzMTlmMzc4YjUwNzA3Y2VmZDZkNDEyOWJmYzRiZTlhZGY3ZGQ3ZjNkMDY0NDU2MjRkNzAwYSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L185-L191",
+          "version": "repo-lines-v1:sha256:6f89b722353883bba15609206ba6065b3413d5aedea4d10c672217bd0c256378:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzIxNTQ0N2FjMzc2NTk3NDUzOThiNjY1NjAyOTQ2YTM2NDkxOWMzMDI1ZjUzNjE2MDJkMjgxNWIwNGU5NzY0ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2FlMTU1MzJmMjRiZjkwYTA5MDAwZjY2NmY4OTRmM2Y5ZmQ1MjFjNmUwOTA3YWJjOWU0YWI1N2Y1Yzk2NDEyOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmRjMGI5ZTNlNzk0Mjc4OWVlZTdjYzRkM2QwOWY2ZjY0OGUwYzRjZTM0NjA1NTAwZGNjY2Q0ZDAwZjE1ODNmMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODE3YWE3ZThhNGYzZDBmYTgwNTM2NjRkYzdkZjY0ODFlZDcwMGMzMzlhNjM4ZjdhNjY0YjVjMjNiMjc2MmE5ZiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_4aff555381084397902f7a82b8066fb5",
+      "statement": "A malformed/expired Bearer token returns 401 AUTH_INVALID and never falls through to the spawn-token path, while an X-Spawn-Token header passes through with real scope/expiry validation deferred to requestSpawn downstream.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/nested-spawn-loop.test.ts#L347-L354",
+          "version": "repo-lines-v1:sha256:9d18195a81cb386cdae03ee1a76665a3bd580e9f06624be2884e383f94f391ed:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmQ2MDlhMjcxYWMxNjA0OGU4MGZhZGFhZjYyZWY0OTZhNTM4ZDUyNWYwZmNkNTI0MjMwOTA5MzA5YmYyOTI1YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjY1YjhmMWY4YTg3MDE3MmYxMDA5MGE0ZmViNmVlMzQ3NmIxMjlhN2Y3MTkyY2JhZWZmZWE5ZjM5MDk1Y2Y4OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWM3ZWZjYTA5ZmY2YzY1ZmYyZGRlOWEyN2ViNjExNmNiNTU4MDVjZjI4NzI3NTgwZjEyY2QyMTUxODdkMTA4MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjdjZmM3YjA2MDZjNjgzMDg3YjJlYjEwMTJhMTM0ZGVjZWM1YzgwMTVmODA5MWY4MTM5ZGQzYzcyMjM2ZmMzOSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/middleware/auth.ts#L89-L105",
+          "version": "repo-lines-v1:sha256:5446c06f2b42604596ec2f0853080bf99c45436cc7d6fa51f1ce46f9d4934dd1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA0ZGJlM2EyNGM3Y2I0MDMzNWUyMGVmMWY5M2Y1MGE1YmFkMWMyYzNmZjZkMDdlMGE0YjIyMDJhODlkMWNkMjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIyZGViYzczOTVkZDYxZmY5MzlkMTViM2FmOGNkNGQwYmYzZWE4Mjk1OGJhZWY4NWVhZTUxYjJlZmY4ZmE4NTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkODY4MjY5NzhjNDcxODQ3MmMzOWZiYWM1OWEwNGJiN2MzNmFlM2E5ZDNiYTQ1ODcwMzM1NDE0YjNlMGM0YzEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_be33285b1cc24efba8184df686a44773",
+      "statement": "Because POST /spawns/root sits behind requirePermission('write:swarm_action') which 401s when req.user is unset, a token-only runtime child can POST /spawns but can never create roots — only operators arm trees.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/nested-spawn-loop.test.ts#L385-L392",
+          "version": "repo-lines-v1:sha256:aa89f87c6292977a17e022e59df84f602592a2bd70b258d26fc1f14a29f80ff8:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2FmNDZmOTQzYzg1N2ZiNzcyNjllMmE3NGE0ZDkxYjYzYmY5YTI4NzVhOWM1MzIwOTQ2Y2FmMDIzMjRhMGI4NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYmY1YTI2MDJjN2I4ZjMwNmM1NjBkNTIxNjQyMjk3ODFlNzM4MWQxYWZkMzQ2NGQwMzM1ZjBkYzAwZGRhYTljMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTJiZWUwYzA3OGFjMWI1MzlkMjgxYTBjY2YzYzhmM2JhMzY1MmNmNTc5YTg4MzY2Mjg0ZDQ0OGU1MjE2MTAxYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMGZiZDEwMWZiZDFjZGQ1ODA4MDdlMDE4YmJmYjU1ODFmYjNkZGZmOTViN2M3MmExMmE0ZmQ1N2ZmNWQ4ZDdiOCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/middleware/auth.ts#L103-L105",
+          "version": "repo-lines-v1:sha256:76796d3480cc754c8a12d2c414088fc022963a7412c33758d0c8588420f8b382:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzE5OGVhMTExZWEwYTViYWY1MmYzMjRiYTUxYmE0ODJmYThiNjUwZDM1YzU3OGFkYjRhZGU2NzcxYjUyZTA2NyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDRkYmUzYTI0YzdjYjQwMzM1ZTIwZWYxZjkzZjUwYTViYWQxYzJjM2ZmNmQwN2UwYTRiMjIwMmE4OWQxY2QyOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTI0YTQzYjM4YTgwNTkxMTE4MGY2NjAyOTgwMTc5Yzk2MzY3ZWYyNWIxZWZhZTlhZGY0ODU2N2QzY2FlZmFlYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2Q4NjgyNjk3OGM0NzE4NDcyYzM5ZmJhYzU5YTA0YmI3YzM2YWUzYTlkM2JhNDU4NzAzMzU0MTRiM2UwYzRjMSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/spawns.ts#L50-L75",
+          "version": "repo-lines-v1:sha256:6bbbb2bf261c096acda1c811a1045a8ad8603ed6bbdb9f4d4b2d43579e178a72:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU3YTUxNmRhZDU1YTYwY2ViOWU0MTRiNGIyOWZkYzZjOGM1NDhjOGRjZGM3NzZmMmM5MDU5ZmI2MjQ3YWQyZGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNjNjMxNGE1YjVlZTMwMmQyZTA2MGM5YmRlMmYxMmJjY2I1ZTBmNzkyNTAzOWY2ZGM5YWQ5NWZjMmY1NWExMzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIxYjQxOGUxNjM3NjA5NjlkMzYyNzQyMWE2YzQ2YzA0ZDgxOWZiM2ZlNDFlOTJiNjlmYTYwYWJlZWM5NDA1NTkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2488dcaa69994445a949522a9587f0cc",
+      "statement": "The HTTP spawn route never trusts a request-body internal flag; it always calls requestSpawn with internal:false so same-process orchestrators using internal:true cannot be impersonated over HTTP.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/nested-spawn-loop.test.ts#L356-L372",
+          "version": "repo-lines-v1:sha256:f21b2fd40f15530801bfc6042bcc4dc85b351e5596c90f8a63c0d6c03c95f293:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4MTZiN2Y3NmY1ZGM3ZDlmMjUyZTBhZTdiN2VmMGYwZTVlNDgwNDMyNDU0NzFlMDE4YjJhZDg4MDJhZmIyNDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRjOTgyZWI0ZDE1OGJmYTlkMTRmZDY2YmI3MTE4N2QwYWU5ZDUyNGI5OGI1YmUzOTgzY2QxYzYzNzYxZWU4YzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFlNmFmN2ZiY2JkOTliNzAwMTg3MDRkZDA3MTRmYWRiYjllYWM1ZDcxMmNkZmQyYTc0NzE5MGY1ODQ5ZTMwODQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYwYmI2YWNjYjc4OTkzN2U2NmQ4M2FhMGM0NWYxM2E2MjU5ZWMzYjFkYjdkOTkwYmYzZGMxZjAzNGI4MWFlYzIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/spawns.ts#L77-L101",
+          "version": "repo-lines-v1:sha256:9ef17bda8356073db6587964a3aabc6401ad6fe2aa121d008d1aa3135716b45e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJjZDhmZDkzN2FjMjhhYmIzYTAxMWMyOWU5OTM3OGRjZjM3MmJkZjg3MzNjNjgxZjA3ZjgwOTUyNmU0ZmEwNjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlZjY5MDA3YTdlNzVjY2RiMmMxOWVmYTlkOTVjNDNiZjc4N2YzM2EyYjljODI2NWM0YTVjZTY0MmZlNmRiZWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyMGZjOWU2N2RiMDdlZDIzOWJiM2FkMjMxMmVhYWI5YTcwZTFmNmZiYTAxMjg4YjBiYTZlNjFkN2Y4ZWU3ODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg1Y2FlM2RkYWVkY2NkZTY3YTIxZmFkZWU5MTE0NjI1MGYyYjlmMmYyZjA0OTRhNGVhNzExZmUwNWZlNWRlMDcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_45a5e853c6fc48e5b2fb255d0313bb32",
+      "statement": "Spawn outcomes are observable end-to-end: SWARM_SPAWN_PREPARED and SWARM_SPAWN_GATED_OUT events broadcast the spawn id, tree, lineage, depth, runtime, role, status, and reject reason, and getSpawnStatus/listSpawnTree read back from sub_agent_spawns.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L396-L405",
+          "version": "repo-lines-v1:sha256:315dbb098b02356afdbd7e3558dfeb0a712f09e861d0416c24aabbdf22eddb11:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2Njg5ODdhYmYyOWE4NWM2YjFmNDU1MGYyMmRlNWNiNGI4ZTgyYjA3YmIyNDM4YTcwOGVmMzZkNWJjYmVlZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyZDExY2FmNDNlOTdlZjM2OWU2YmVlZDFhMjY4YmQwNTgzOGYyOWI5ZGQyNTRiZjY5YmE2NDg4NDE0NzIzNGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY0MDMyZTZkZWUxNGY1ZGVmMzY1MGY3OTdmOTgyOGQ4N2QxZDY1YTg2ZDQzZGU0MjgzZDU4M2MxMzYxNGZhNTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEyNTc2ZDk5ZTJjNTViNDQyZGRkNTYyMTM0YTFiYTMxODU1Njg5ZWI4NDU5NTVjZmRkMzRjNzAzMjk2ZWI3OWUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L505-L515",
+          "version": "repo-lines-v1:sha256:0f7ee447d5d98a50934cb3734addab3559756029ab1d99566baf51572d291a03:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZkYzJjNzQ0NjU5MTkwNjY4YjRhNDk5ZDNlZGI5YjU4ZTMyMjZmZWI2ODIwNTg4YjQwYTc5NWNjYTI4ZjA2YzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyZDExY2FmNDNlOTdlZjM2OWU2YmVlZDFhMjY4YmQwNTgzOGYyOWI5ZGQyNTRiZjY5YmE2NDg4NDE0NzIzNGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhMjI2NzkyNjg3Y2QzZDMwYjI1YWRmM2Y3Y2U2NzFjMTlmNzMwMDNmZjMxZmViZmVhOGZiOWZmMTc0OGYyOGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFiYTNmYjE3ZDhmYzJhNDA0ZGU0MDFiZTQ0ZDAxNDZhOGMzZjA4MTBhZmFjNDhjYjg3MWI2OTRjNTRmZDFlY2QifQ"
+        },
+        {
+          "resource": "repo://packages/shared/src/types/websocket.ts#L182-L194",
+          "version": "repo-lines-v1:sha256:adedb49b18cc4daacd11f38f86be77153e30feec1a0e53a989a163b02c3e9150:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyY2U1NDhhOGZhMTczZjdlODIxNTM3NTYyMWU1NDQ3ZGRmNzI1ZTQ1MTllYmIzN2Q0MTQyMWQxNGViNWRjM2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkOTc3ZWNiYzBhN2M4ZjcyYTZkZjA4MjllZGI0MmFkMDE2MjgwOWQ4MmJhMzBlY2Y2NmExM2M2OWUzMmNmZmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/shared/src/types/websocket.ts#L89-L93",
+          "version": "repo-lines-v1:sha256:d776b55c2802690a7e4b6144544bfaea03035872ab75903453ad450fcc5b4f71:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWY4NmUwMzI0ODdiZTE1ZGJjZGQxY2UxZjIxY2M4YTRiNjRmMjVlZDRmNzYwY2VlZmMyNjRmMmE0ODdjNjczOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiY2U3OWRjMDE3ODU0M2Y4ZjNkMzhiOTdmM2M0OGY3ZmE5NjVmNmNjYjczODFiMjhmN2JmN2MzYmU0MmIwMjVkYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjVmYTQ2MzA3NDI1OTAyNTU5MzBlNGVlNzE4NTcwOTllNWY0NGJiOGMzNmFkODllN2MyODhlMjAzOGRjZGYxOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjA0YTVhNTAwYzBlZDBlZjM5YWUwNWMyMjQxZGM2ZWI0NmFmZTlhMzdhNjY1NGZkZTc0MGUxMjJhYTRkMjc4MiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_266d6fcb026c434fad98c3732aa8adc1",
+      "statement": "The control URL is derived at server startup (127.0.0.1 when binding 0.0.0.0/localhost) so a same-host runtime child can call back without operator config, and operators override DJIMITFLO_CONTROL_URL for Docker or remote children.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/bootstrap/constants.ts#L12-L15",
+          "version": "repo-lines-v1:sha256:82756846d17726037e83da0470aa1f4e0fd89998e04bd07e8398f3caaee2529b:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTZlNjM1MzUzMjgyOTY3YTg3MGRmMGVkNTJmZTVkY2NlNTQyZTg2MmM1MTljZjhmNGIyMzg4ZmY1ZWNlMDMzZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjIwNThmZDllM2MyYWE2Y2U1Nzk4ZmJmYzM2OGFiOWIxZTcwNjBkMDk2MmZiMzVhNTdlOWFmN2JkMjNkNjhjNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjI1ZmU4ODA0MGZmNjM3OGYwYTc2ZjRlNDg3Y2UxZGQxMjA4MTljNzUwYThmY2FjNTA0MmNjNmRmNjNmNjZmNiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L65-L73",
+          "version": "repo-lines-v1:sha256:6f7614b08f336bbf65fe2f0a896a988cf1e99c6034770b50b8643cd2cd7115ba:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjU2NzlmMzg3ZjRhZDYzMmYzNjcwNGI2MzdhMWY5ZWRjOGMzZGIzODgwMWU4ZjgxYTY2MWFmM2IxZTQ3ZTBiNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDZkOTIwMGQxY2M4MDdiMTA0YTdmMjIzMWNiYzI3NWIyM2EwNDI3NTlhOWYyYTQ1NzUxODI1MzcyMjE4ZDA2MiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODdjMzZjNTFiZjM2ZWMzMmVjYmY4MjJhYzBmNzA0ZDkxOTE2MGJhMzk0NGRiOTVlYzU0YWJmN2EwOGRjM2Y2MSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_9cdf206c0ff64aa89ef62cd36e596b9a",
+      "statement": "buildNestedSpawnEnv returns the MERGED runtime env (PATH/HOME/model keys) plus the DJIMITFLO_* control channel because executeRuntimeCommand replaces rather than merges env, and returns undefined for non-armed leases so ordinary loops fall back to buildRuntimeEnv unchanged.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L1840-L1867",
+          "version": "repo-lines-v1:sha256:8097f09ef9659fd49c02bf2081d6ff38607a04c1b28d9d46f5830c8da5ae818c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQyY2JhY2M3NjI2NGU3YWVhZTcyMTAyZDMwMmE1YzdjNWNiMTY5ZjM0NDkzNTBiZmVmNmZhMzBjYjIxOThjOTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg0OThkYzZkYzJjMWNiNzRiM2E2M2NhOGFlZjcwZjNmZTM5OTFkNThjMTk1YWQ3NzNjYzRjZGFiNTMzYTQ0ODIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L358-L371",
+          "version": "repo-lines-v1:sha256:0d2185297a7c44a9eb15a081a339ea1acb5302078527db75c2c0578945e7cd18:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxZGYxYzM4ZGM2MjZlOGM0YTZiODM2ODkzZGYwODQ2YTExMzM3ODEyN2FiNzAyY2FkZGRjZDA5YmZhNTFjNjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxZGYxYzM4ZGM2MjZlOGM0YTZiODM2ODkzZGYwODQ2YTExMzM3ODEyN2FiNzAyY2FkZGRjZDA5YmZhNTFjNjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4MTJlMmFhY2EwZjlkNWMwZTcwNjZjMzQwOTVjY2Q5NGU5NWVjNWExNzVmMDgyMWI5MDU5NzFlZTdiNTU5Y2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVlMTJiNjExODk0M2UzMGMwMDY4MzNlNzgxNjMwYTUzYjMyZjQxN2VmNWY5Nzk1YzNmMTJmMzMwODAyNGM1ZDkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_fe07583448e84b63bbf50f576045c4b0",
+      "statement": "No-theater caveat: the service makes spawning and audit real, but whether the child process actually runs and self-spawns depends on the runtime — mock echoes with no self-spawn while codex/claude shell out to the control endpoint, and the gates are exercised identically either way.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/nested-spawn-loop.test.ts#L20-L39",
+          "version": "repo-lines-v1:sha256:353553c879d715bf7d8770e5a0194efc4d1f5e52d3fabea9ffafa67643ec8e95:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3MmE0MjkzODJiMmUxNDcxOGUwZTM3YjA1NzBhOGExNzAyOTkxZmNkODQ5OGNkODQwNjBhOGJmNGYwNTAxN2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVlMjhhMTNhM2RmMzIyYWY4ZTVmZjNiYTkwOWM3YmUzOWM4NTc0OGY4YjE0MGVlYzJhODYzMWY3ZWRlZGNlYjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM4OWU0MmE3Yzg3MTUwN2E3MWZmZTI2NDVjMTBmN2E5NzRjYmZlNGRiOTMzN2I3NzVjMjBhYzM1YjEyYjZlYmIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L1637-L1640",
+          "version": "repo-lines-v1:sha256:172e7611c4a40a9a59ddfeaa95154970084bdcbb15f14d10d03d0f578635e434:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmVjMjg2ZmNlMGZlOWVkNGY5YmFkNzA5ODZiMjM2MmRmZGE5YWQyNDRmY2EzMGM4ZGRjZGUyZTE4Y2E3MzA5NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTdmNWM1N2YwMDk5Y2E4NzZjMWE3ZGU0YWJiMGQ3NWRjZDAxMzQwYmE1MGJmMTUzN2JhODJiNDA4MWI0ZDUxMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjFhZmFkMjA3ZTQ3NzE5OGVmZWNkYjMwYjIyZmM0MDA2NzlmZmFlOTRmNGYwZjg3OWRkYjc1NTI1MzQ5YTFiNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjQwODhkZDMyZjc0NGMzOGFhZGI5YzI4MWFjOGQwNWU4ZGFmNmRjZDc3ZjY4NjI1OGFiMzljNTU5MzQ5MWVhNSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L24-L27",
+          "version": "repo-lines-v1:sha256:5ecd6cbb467112e5f4cd1309ad915006f075e6683964aa7884cf25c26fefa457:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWM3MWYxODlhODk1OGVmYWY5ZTkzOWIwOWJmMzA0ZmMyYjg1NGM2YWJhMDZiNjU4MWE3MzA0NjMyYmQ5OGYxZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWJiMjFhNTQ3ZWJhODI1MTI2MTYwOTUzNTljYjdhODkxOTYyMDRiMWVhNmFkYjhjZDNlNjgwOTFmNWZhMWMwMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWIxYzIyMmViMTQyMmFkMzY1M2VmMzdhMTlmOGUzNjExMTFhZDA0MmZlYTI4MDU5YWJmMGU0YmNkZmU2ZDVjOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTc1ZjIxYTY0Mzc1ZDdhY2MwYTFiZTg3NjVhMTQyYjgyYWVhZmM2NDAxNzIyMWE0NmZjODZmMjAyNGRkZWUyMyJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.2",
+    "at": "2026-09-24T19:59:50.419Z"
+  }
+}

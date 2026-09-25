@@ -1,0 +1,208 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:ebc1ad3879678d9ab193256d8b3bf46f22a222d179536e6cd81560aa9a20fd1a",
+  "claims": [
+    {
+      "id": "claim_17defd1293ac4151b7b92a058063261b",
+      "statement": "createGitHubWebhookRoutes is mounted at /github/webhook before express.json() in packages/server/src/index.ts because the X-Hub-Signature-256 HMAC authenticates exact wire bytes; the router applies a 60 req/min rate limiter then express.raw with a 256kb cap so req.body stays a Buffer, and the handler rejects non-Buffer bodies with 400 GITHUB_WEBHOOK_RAW_BODY_REQUIRED and returns 503 GITHUB_WEBHOOK_UNCONFIGURED when GITHUB_WEBHOOK_SECRET is unset.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/index.ts#L134-L137",
+          "version": "repo-lines-v1:sha256:13d76c5ed0e4ca635625eb69f1c744c9f3af9ed7e44d730b01450e657aedbc8e:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTRiMjJkYjUwNjI3Y2ExODRmZDYzNTI2ODkzMmQ2OGVlMzU1NjBkNjg2YjllOTlmMDk2YjUyZjZkMGY5YjE5ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjYxNjQzMTJiNWUxNzgwOGM3NDM1MTVhODkyZGJmZWRiZjk0ZjhkM2IzNmQ2ZDFkMWI4ZjlkMTYxYjllZGJkNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzg4NjY3Zjc1ZTg2MTU1OGIwMDNiNjk1MjI1ODVjZjU5NmQyYjVmZmQ2ZDkxYTA4NDFjMmU2NWJmMzIxYWFjNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmFlNTE0ZDE1YzMxOWNmNGY5ZjNkMzRmMTY4MDc5ZDg4ZmU3ZTJjMTFiNWUxYjYzNWUxZTkyMzI4MzAyOTljMyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/github-webhooks.ts#L62-L82",
+          "version": "repo-lines-v1:sha256:13abc618b65108cd32ab001e0dfc6e3a2a51c62d008ae5e49a05fb649695daec:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiNjQyZjE3ZDNiZDU2N2IzNDNlOTY3OWQ0Y2QyNTc2ZWIzNTAyNzNiYTdmZjFlYzU5MGU4MDVhNmU5NWU4OWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5ZDE4NzY4YTYxYTg3ZjQ2MDg0MWFiN2NmMjZkYmNiM2I0ZWNjNjc5YWFiOGJhZGRmMzM0OWUyMjBhOTlhMzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdiNTRjYTc3ZDI4OWNiYmFiN2ZiNjNmOTZmY2JhMjM2OWE5ZDU5YzVmOThjNmNiYmVmYzgyNjZhMzljMTk5MGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2NjJkM2ZkNTNjY2IwYTM0YzZiNGFkN2IxOWFjZTYyMTQzMDI4ZWI4OWE1ZDk3NWVhYjVkMTQ1OWQzMzJhNTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1bb28160faae4bc38543ad3167a3616e",
+      "statement": "Signature verification requires the X-Hub-Signature-256 header to match ^sha256=[a-f0-9]{64}$ and compares the HMAC-sha256 of the raw body against it with crypto.timingSafeEqual (constant-time), rejecting with 401 GITHUB_WEBHOOK_SIGNATURE_INVALID.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/github-webhooks.ts#L56-L60",
+          "version": "repo-lines-v1:sha256:7f1b2616999ecfae75583f68bd5cd9ef951cd252e4848d11b3b088efc849e9fb:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDMwYzkzZjRmM2U5NjZhZjcwYmQ1Mzg0YTk5MzQyNTRlNjA2NDI5MWQ0ZmE4ZDE2NTdiNWYyYmIyNWNkMjJjZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNWJkODFjODE0NzBjNTgzOGNhNWIzZDc1MTc0MzRiNDQ1ZGNjNDJjYjljYjE4OGU2ZjZlMjljMWU1YWNhYWJjNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDMwZDNlN2JjZmQxZjU5OGYzYjc4ZjJlY2U5ZjRhMTRhYTRkNzY3OTVlNTk1MGVmM2M4NDA1MjdlOGEyZTZlNiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/github-webhooks.ts#L82-L82",
+          "version": "repo-lines-v1:sha256:e9d18768a61a87f460841ab7cf26dbcb3b4ecc679aab8baddf3349e220a99a39:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTlkMTg3NjhhNjFhODdmNDYwODQxYWI3Y2YyNmRiY2IzYjRlY2M2NzlhYWI4YmFkZGYzMzQ5ZTIyMGE5OWEzOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTlkMTg3NjhhNjFhODdmNDYwODQxYWI3Y2YyNmRiY2IzYjRlY2M2NzlhYWI4YmFkZGYzMzQ5ZTIyMGE5OWEzOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTBiYmNjNzM5NzQyZTA4YWRlMTIwYmUyZjRlNTUyNTE0MzJjMDQ2ZTRhYjQxOTczMzEwYjY3MjRlY2RlZDM2YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjY2MmQzZmQ1M2NjYjBhMzRjNmI0YWQ3YjE5YWNlNjIxNDMwMjhlYjg5YTVkOTc1ZWFiNWQxNDU5ZDMzMmE1NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_df7705f79ae44bbbaf60412910c268ee",
+      "statement": "Repository allowlist: configuredRepository() parses GITHUB_REPOSITORY_PATHS as JSON mapping repository full_name to local paths, accepting only absolute, existing directories and returning the realpathSync-resolved path; any failure yields 422 GITHUB_WEBHOOK_REPOSITORY_UNCONFIGURED.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/github-webhooks.ts#L46-L54",
+          "version": "repo-lines-v1:sha256:e53cac401df4de46e6f1f79c188bdc67ffa765d250029dff081f949cb3d28f9a:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2NlMGYzZWJkMjc0NDExZjNjOTRiY2RiMDA2NWFjOWRhNDViYzQ2MzAxYjlmZjQ1ZjZmNWY5NmIzZTZiMjU3MSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTIxNzMyMDM3NjlhNDczODY2NjFkNmEyODAwMTRlZGQyYWM3N2M4M2EyYzk0OTcyYTJiYzZmMzY1N2NlMjAzMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWZkYzE5NWZiMmYxYTBjZGRhNDg0OGNkMGMwYzQ5NzYwZTNhMjU0MGY1YzQzYWFiN2ZhYzhhOTYyNjJlOWJkYSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/github-webhooks.ts#L93-L94",
+          "version": "repo-lines-v1:sha256:160c81d87cb2abd86cdf35d9492116895be26fa6757f9f114bc319dbf92f788b:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGEyNzZhYmFkNjRjMDIxOWI1NTI0ZGEwZDVmNzFhMThjNjRlNDkyYWYzZTdhMDhhODgzOGQwMDI1ZmRkNWU0ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNWRjYzM0N2RkODgxYTg4MzBlYmRlMTczOTNkMWU1ZTgxZTJjYjRkMzA4Zjk4NmYxZjQ0YzlmMmFhZTMxODE4YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjY2ZDU5MmM4NTI5NzViNTM1NDY0ZDg0ZjYzNWE3ZmY0NTlmMWM4MDBkZDJjYWNiYWU5NDg4MDNkZDA4YTk2ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWY3MjUxYWQzYTc0NTU5MTM4NWI2ZjQ3MjQ1ZTQyOTAzYjI2ZTZmYjg3ZWZmOTM2YzUzNmJkZThhNDgxOGQ2MCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_b98527f071e9448daed7a0b3fd896bd0",
+      "statement": "The issues branch only accepts actions opened and labeled (zod issuePayload); a labeled event is ignored with 202 label_not_selected unless the label equals GITHUB_LOOP_LABEL (default djimitflo), and unsupported X-GitHub-Event types get 202 ignored/unsupported_event.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/github-webhooks.ts#L14-L23",
+          "version": "repo-lines-v1:sha256:2b9321897e4e24b13d8e3d6bcb0142b38868882f49067bb121e6bc8671bc1110:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhZDcyYTdhODlhMWRjMmI3NzY2MzUxNjdiMDk3YjliYTc1YzFlYjEzNTlhMWJkZjQ3NDQ5NmI1N2FmZGIyNjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyNDZjZDdmNTAzMjExNTdjN2Y2NDdkMjk0MmUxYmRiZmE0MGRmZDdhN2RhYzcyODNkOTBlNzE0Yjc3OWQ0MWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU5OGQzNjhkOGJhZGMxNGU5ODAyNjZkYjVhNjYxYTQ1ZTkwZGY3NjFiMGFmNzIzYjk4YmEzN2Q3ZTU1MGQ1YzQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/github-webhooks.ts#L85-L92",
+          "version": "repo-lines-v1:sha256:8cc4ac57c16770f180bb419932e66a5256a4620ed1577037a6389654010ba400:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGNmZDgwMzgwMmMxODAzMDVmYTYwYjM5MDliMjg5NGMzZmQ1YjQ4M2Y0MjI1MmU2YTEwOWE1YTAwYzU0ZWM4NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTNjNTkwMjdjZmY5Y2FkMDA0NTk4NjEyNGRmOWE2ZDI0YzM2YmYyYzgzMDBlMDVkMDBiYzNiMGIwZTRjYWY5MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNWU0NGIwNjExYzBiMDQ1ZThiYTM0YWU4ZmFkYWViYjBlZGQ5NzEyZjM0ZGM4OTI1Mjk4ODA4NDYxNGY2MTI4YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2Y0ZGNkMDliZTFlMjE3NzU5YTczNWQwNjFkZDU0OWQzMzQyOTY1N2ZhZDA1Y2M0M2ExYjQ3NjhjOGM1N2FiMSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_d447c7c81baf4814a3b8df0cbfe08509",
+      "statement": "Issue intake imports exactly one triaged work item via IntegrationInboxService.importEvent (source github_issue, recommended_loop repo-maintenance-loop, value_score default 85 for github_issue), wraps issue content in a BEGIN_EXTERNAL_CONTENT trust=untrusted fence as a prompt-injection defense, derives risk_class from labels (critical/sev1/p0→critical, high/sev2/p1→high, medium/p2→medium, else low), and responds execution_started: false with operator_review_required: true — the connector never starts goals, loops, or workers for issues.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/github-webhooks.test.ts#L23-L47",
+          "version": "repo-lines-v1:sha256:0fbd3a38b546c24f172e949d660370ddacb2b04c09e0613e6eb96f64f8dd1be0:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjMzI5YTIwMmFmNDU5OGY4YzVhMWNmYmFjOWYzZThlNzQ4NjY1ZjU0ZTU3ZTVjY2FhNjM4MjYxOTY2ZmJiZjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkNDU4ZWRiMGI1NDYxZGM1OWU5MTNhOGZjNTdhZTFhYzJkN2ZlN2ZiNmM3NzNkZTMyMDhiMzM2MWFhMWYzY2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRhZTUxMWIwYjM3ODdkMDVjN2Q4MGNiNGI1OTIyYTJmOGVhZWVkMjY4NWQwNjY0NjIxNDJhNzRkYTVjZWY1YzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlYjQ0ZmU0N2NiNTI4NjZlYzA0OGMyOTYwZjU0MzI0OThlNmUxYWEwMmNjZjdjMzNkZDllNzMyYWNmNGExZjUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/github-webhooks.ts#L103-L122",
+          "version": "repo-lines-v1:sha256:50b2ed55f00c589c3fcea4fb23bec4dc39b7ae8ef1b24397756efb6e854cb92b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjZWIzYTRmYjY2NGM5NjJkNmIyNWQ3NDI1OGY5MGFjMzQ4M2Q5ZDQ4MTViZjcyMjcyY2VkNzEzMTM5NTFkZmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5YzEzNTkwNjY1NjMyM2QxYzVlYTQxNjU0ZWU2NmFmYjU4NWFjZGNmYWVhY2ExMjFkNWUzMGJmMTkzZWVkZDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg0YmUwZjRlY2UwYjAzNGMyNDAwNzExNGVmZTVlMTJjMjA0MTRjNzI1MzVjNzhmNmI0NTQ2NWNjZTlkMzkyNWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg0NWEzNTI5Y2U2MGUzZGYzZGE1NmRiYjVhMjAxMzcyYTQ0M2UyMTNjOTJhYmU4OWZmZmFlYWNjYjY0YWMwOGMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/integration-inbox-service.ts#L100-L121",
+          "version": "repo-lines-v1:sha256:c96035185c426f3c76b7ac0e38a5d0f9b6e9b403e11bb3d0d39ee954cd7c1a53:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MjA1ZDE1ZjE4Yzc5Yjc4MTQ4Njk1NDYwYWY1YjVmYjMzYmI4MjMxZTk1ZDA4YzhiMzZiNDY5MjUxZGMxMWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU0OWY0NTdiZjFlNGQwNjdkNjllMDA2NDM4MDQ3ZjQ0ZDZiMDI2NGM1YjVkYmJhZmQ3YzIxNTJjMWViMTg2MzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQxZmEyNDQ4Mjk4YTg0OGZmYmI1M2Q4ODg5MWRjODE0YzcwNzVlOWY2YmQ0Y2NjMmZlN2Y5NWZhYmQzZTQ4NGIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/integration-inbox-service.ts#L163-L167",
+          "version": "repo-lines-v1:sha256:366a62dca751a689711463cceae6c277538dc284f0e49d62b72c540e38676d45:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzQ3MTQzMzVhNDQ1ZDdhMjhmMWVkMWQ4YzQzZjY4ZmU1MTRkZDI1NmJlYTlmYzYwOTFmOTUzYzdlMzEwM2MwYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTEwNWI1YzEzMDZlNDE2YjE5OTVkYWFjMjAyODZjZTE3MTEyZGQ2MDQ1N2UyNWM4ZmY1MTI5OGUxZDM5YjY5NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjgxYzI0ZDY2Nzc2YTAxYzA0YjI1NDczZjQxMmFhNDEzNGIyYWFjNmNhZDU5ZmNmMGNmMWNhNGI2OTg1MGVmYiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_fba564f7d6634bd2972ed19b9344cb8e",
+      "statement": "Re-delivery of the same issue under a new delivery ID goes through WorkItemService.upsertBySourceRef, which refreshes title/description/metadata and only raises risk_class while preserving operator-owned state (status, assigned_runtime, assigned_agent_id, parent_goal_id, recommended_loop).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/github-webhooks.test.ts#L48-L53",
+          "version": "repo-lines-v1:sha256:44b2f9f694d0916ae81d43762fe5e27a0c3c2dccd0e94902e8904a0015a813a6:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2UzNWUxNzI5YmUwNjFiMDBlOTdiOTdkMzFiYzBmYTdkYWFhMmRjYTU4YzM1YzQ5ZDNlMzMyMjM0MzVmYjE1NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTViNDdlODJhYzMxNWNmMGFkM2UyZWMwNDE3MzBiZGQ0ZTNmMzkyNTZmNTE0MjM2Zjk0NGRkM2UwMjgzOGY0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjBiOTcyNWRiZTRiNWI3MjJhYTZlNDczNGZlNWM5MWQ2Nzk3ZGUwZmMyZTI3NGQ1Yjg3ZmI5YTQzMGQ3MGZkMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmE1ZjhkYWRiNWE4YjY2MmQwZWU4MWFiOTAzMGJkZmY2MTBkM2FiYThiNzAyZjIzYWVlYWZiZmY3ZDMwNTZjOCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/work-item-service.ts#L213-L259",
+          "version": "repo-lines-v1:sha256:6b1a9b78999462b656b41efd87cac52e113175bc43d551b2576340435a60ac62:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUyNzhhZDNhMTliNGEyNTVhZWJkMWVmMzk3ZGYzYjM4NGI3ZjJjOGE5YmExYTY2MGU1NTFkZjg3Yzk1NTg4NjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkOWUxMjU0NjQyNTU3NmQzZGVhZThjOWI5ZGJmMTI4ZDVkNmRkYWY1ZDdmZTg1NzkzNDkyN2RlZmZhM2I5ZGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk2NDY3YzA5NGRiYTgyZmY2YzY0NTkzMDQzZTQ0M2I2ZWQ5MjVhZTAxYjY3M2Y5NGU0NzBhNDc4NjRiZDBhYjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIyNWIxYTUwMGI2ZGY3ODE2NjFiM2I0NzdlOWJlNTYyMmJkYzgwMzliOGQzOTI5NmVlYjFlYjc4YTEyYTBhMTMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e6b80f4a43744c2db11d425f895613e3",
+      "statement": "The pull_request branch (actions opened/synchronize/reopened) runs a single immediate SQLite transaction that creates a goal with the untrusted-content-wrapped objective, starts a repo-maintenance-loop run whose target_finding file_path is a stable anchor file (first present of package.json/README.md/AGENTS.md, else 422 GITHUB_WEBHOOK_NO_ANCHOR_FILE), and records the delivery; GithubPrReviewService.startReview is called only after the transaction commits because shelling to gh must never happen inside it.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/github-webhooks.ts#L154-L189",
+          "version": "repo-lines-v1:sha256:c6b67125b0f822f7f1e426b23a04344020ca58016a9d133ab7ce8272452ca550:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViYmU1ZjRlNjIxYmJhZWU5MTgxMzY2MWI1ZDRhNzQ4MzhhMzJkZTViNWY1MTQ3NmIxNjMyZTFkMjBjZjgyMDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJlNjA0ZTliOWZlYWFhMjNkODYwZTlhZWM4ZDZlYWEyMjI0ZTNlMTdjZjI2MDIxZDg1ODQ3NjBmNzk5Y2U2MmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhlMDkwYzY4M2E1NThmMTE2ZmE0NTJiMmViY2FkN2M1MDU2NTlkZDUyNWJhZTU0YmYxOGU1MTMyNTE1ODlmNTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYxOTFjMzlhYTA5NTljOWMxZGQ5NTBmYWZhZjRiYzA5MTcwZjU4OTMyNmYwY2ZlMTZjN2Y4MTdmYTUzYzIwODcifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/github-webhooks.ts#L37-L44",
+          "version": "repo-lines-v1:sha256:aef90a7d7c45cb347cdc9b46d0d286089cbae00dc8972c407775487c043f374a:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTJlN2RhNzFiOTI0NjUwMjVjYTZiZjYwZGI5YTZlM2ZiMjg4ZGMwNzUxYzc3YTIwZDdhOWVlZTNhNzhiZDU3NiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmQxOTE5YjE1YTljN2FlZGM3NmE0ZDM1NjNiMTk0ZDNhOWMxZjg2NGNiNjE5ODNiOTkzNTQ4M2ZmNjY4ZjQ1NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTRlZDI4NTQ3ZDM0ODMzYzNiODg0ZDg4OTQzZGJkYmIxZjExZmM0MDBhYjM2ZjJmYzgyNWZhMDVmYzRlYjI1YyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_0251a0d373094859a1541a9c3a5565cd",
+      "statement": "Every processed delivery is persisted in github_webhook_deliveries (id, event, source_ref, result_json, payload_sha256) keyed by the X-GitHub-Delivery header; an identical redelivery replays the stored response with 200 status duplicate, while a delivery ID rebound to different event/source_ref/payload hash or missing result yields 409 GITHUB_WEBHOOK_DELIVERY_CONFLICT.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/github-pr-review-webhook.test.ts#L144-L155",
+          "version": "repo-lines-v1:sha256:7f10839539931cdc246dca60f89b19594c2a69d289ff9ad4017ae037d0267623:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2ZjQzZGIzMjY4NjlkNjdjYzg0YjM2ZTRjNzhiMDIxMzliMDMzYjM4MDExNTBkOTc4YTliYjM4OWM2ODFlNDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUyZTNkNTAxMTg4ZjIzNDdhZjA1MjE0YzcxNDU4YjE0NWE1OTkyZWE4MmQ1MzM1OWVjODcwNzg2YTFmYWIyZjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUzNzdjMTljMzY4ZTgzZjQ0YWVlM2RlNTA3Y2FlMjc3MDJhMTUyZTBlMDc2NjhiOGY4YmZkZGFjNTkyMjAyNzkifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/github-webhooks.ts#L71-L74",
+          "version": "repo-lines-v1:sha256:1c87f8150b185d70a4a25fecb02944b660bbf8be343a698f555dc2a53a4865af:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjk2YzRjYmQzN2YwZjkwNTdmOGMyMzUwMzJlYmZmMjNjMjlhN2I4YTBhMDVkN2M4MDgyNjEzMDE0ZDI4Mzc3ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjUyOTUyMGI4NmQ3NGYxODkxMDhhZmY4ODczZjA0OWQyZjZlM2I5NzIyZDZhNTMzYzBjYzM2MDE1ZWFhMDZiNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYmZmZGQ2Y2E5YzI3OGExZmNlMjkwZDk1OTk3NDJhZTQ1YWU3ZGVhNTRhNzdiYTdhMTJkNTRiM2NhYWZiNWExZSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/github-webhooks.ts#L97-L126",
+          "version": "repo-lines-v1:sha256:bdfd19635c784a373392e4a4e8bd203a5465d238af40f7399f0426578150ed28:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2NDI5YmFkNGViOGNiZjUwYTZkOTJlMzRkOWI3MjJhY2FlM2UwODdhYWI5ODM3NGIzODcwN2ViZWEyODc2NTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxYjNkNTA3MWFkZmQwNjAxZjViMmRhMTFhOTY1ZGYxN2M3OTdjN2I2YmU2ZTJlNjZhY2JmYzExOTI3ZGE5ZTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYyMzA0MDRiODUxMmQzMGYzMzcxNDAzNzEwZmZlZTFlZmI3YzRmYWM3MmE3N2ZlMjRiYTNkM2U0NDVkYjk1NTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU5NGUzMzY1OTFhOThkNzVhZDdhNTgwOWFjODJjOGVjMTg4NjJhYmI2MGQ1NjkzMzMzNzgyMDFmNmM1N2FiNGUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3999bd6e98ac4b48afab1dad800233a3",
+      "statement": "GithubPrReviewService maintains github_pull_request_reviews with a unique index on (owner, repo, pr_number, head_sha) and status pending/commented/completed/failed; startReview never throws — gh or GitHub failures are recorded as status failed with a github_pr_review_failed audit entry and the webhook still answers 202, keeping the local DB authoritative.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/github-pr-review-service.ts#L65-L83",
+          "version": "repo-lines-v1:sha256:86a01d86dc7e9f15af06ecab589edf811825b4afe896829f4fd7874b443e7ff0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE4OGY0OTM1ODgzM2E4MzIwYWI3OWY0MDE5NjExNjI5MGJiNTczMDE3OTc2NDE1NGI2MTMzODQ2NzYxMTM4ZDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEwYWYzN2Y1NjZiZmQ5YTY5MmMwNWZiYWRmZTQ4MzYwZGFkMTg3ZDhkYjFjZTk1NDQ1MTZiM2Q3NWI2NjJhOTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImExNWZhNWM1ODc2OGMwODRmZGRhNThhYzk3NWE1ZmE3MzY4YmU0OTE5YTUxN2FjZDY5NzY3YWM2YzJjN2IyYzMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/github-pr-review-service.ts#L92-L133",
+          "version": "repo-lines-v1:sha256:10b30c1bfef7b1c81ae1d1e7d5097af22026c664f376d0a2022c6ca2bb8bcc64:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzMWJlYjAyYjUzM2EyYWQyYWU1NDAwMGY0Mzg2NDYyYmMwYjhlMWZhOWJmODgzODA1OWM3MWU3NzFhMjI0NTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU2NzJkNTlkYWE5MjNlYzYxYjFjNzEzNjNiMDkxMDZlMTBmM2JjMmQzM2ZkYzBmNGIxOWIxOWY4NWQ0ZGI1NDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU5YzU4MjFjNDg3Yzk0NjMzMjYyNTVkNTlhOTg4ZDBiOWU1ODQ2ZDgwYjAyODg5YjZkNWYwZTJmOGU2OWVlNWEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_02bcd559157141839dbec98c27bad74f",
+      "statement": "Phase 1 (default, no LLM) synthesizes an already-completed manual maker lease (the PR's commits are the patch, no worktree) and a manual checker lease driving the real LoopService.submitCheckerVerdict with a manual_attestation; the verdict is a rule-based stub over gh pr view stats — >40 files or >1500 changed lines or paths matching /.env|secret|credential/i yield needs_revision, otherwise accepted — and the worktree-less loop_run settling as blocked is expected since the GitHub-posted verdict is computed independently.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/github-pr-review-webhook.test.ts#L88-L129",
+          "version": "repo-lines-v1:sha256:089fa4f4b47871fc6d9055ba6d577035d7dac997f27341994126754e705512b0:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwMDkxZWQ1OTdkYWJmZjM2ZTU5YjQxNzk4NTE4ZThjZTgwN2Q2M2E3YTNkYzhkNjQzNjQyMDkyYjg5OTAzZmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZjMjA1ODljYzZhODZmNmMxMWNkZTJhZDc0NDFiZDFhMTNjMjI4NmI4ODQ2OWEyZTY0Y2YwMjlmOTk2MmFjNDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcxYTZlZDBhY2MzZmM1OGI0OGZlNDhkMDRkMDNmMjIzYzdhZTU0NDM2YWNjNzM5ZGM1ZWVmZmJhNjViYWI2NTYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/github-pr-review-service.ts#L135-L176",
+          "version": "repo-lines-v1:sha256:536e5f39f541f015c24ee36da668da3b7c5aede88b62cd17012738dd2b9073d5:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3ZDg2MzJlNTRlOTI5OGFiYjk1ODcyN2UyZDUxNDA4YWJhZjEzNjYwMzUzNzkxMDE0MGFiZjY1YjMwYWI2MTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkNTM4MDk3MzZhZDVkNWU4MTI5M2Q2YTgxZTIzMDgyMDU3YjdiMjlkNWEzOTViYWI4YmJjODY2ZmZjMTNlNGIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/github-pr-review-service.ts#L266-L292",
+          "version": "repo-lines-v1:sha256:9bc2cccea3d9aec5201cd9547d2e3a0c93dca634581faee2315672af80552829:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVhMjEwMmE5MTkzMGJiMDg1NmM0NTFjNmFiZjg1Njk1NWEyMDI3OWI2Zjc0YTVlMzI3MGY1NmQ0MzQzM2ZjYjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3ZDg2MzJlNTRlOTI5OGFiYjk1ODcyN2UyZDUxNDA4YWJhZjEzNjYwMzUzNzkxMDE0MGFiZjY1YjMwYWI2MTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE0ZmU4NDYyOWYzNzMyNDg5ZmRkYWI1YjVjYTUwMjQzNDQ3OWZkYmZmZmU4OGU2ZTdmMjEyMzJiNzMxNDBjZmUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_378c6bcbcf0947558e9a97ccffc4b478",
+      "statement": "Phase 2 (opt-in via GITHUB_PR_REVIEW_RUNTIME set to codex/opencode/claude/gemini/editor/mock) returns pending immediately and asynchronously fetches pull/<n>/head, materializes a real worktree on a djimitflo/pr-review branch reset to the head SHA, writes gh pr diff into .djimitflo/PR_REVIEW_PACKET.md wrapped as untrusted external content, and drives a real checker through LoopService.executeChecker with a 480s timeout; it is off by default to avoid auto-spawning paid LLM calls on every PR push.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/github-pr-review-llm.test.ts#L49-L141",
+          "version": "repo-lines-v1:sha256:ea3d2f318a0cd7b84cc16cef282b424667985df87714b1d7483d89a7e417e7fd:eyJzZWxlY3RlZExpbmVDb3VudCI6OTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzYWFjOGY1MGFmN2M3NjNhZGNkOGY3ODZlMzM2Y2JhYmQzNmYzMzkwYTZlYmYxMGQ1ODAzYjZhMTQ1NTE1NmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhMTY1NTgyZTIwMmQxZTYzMmYwZDdlNDNhMWRjNTliMWMyNWZkMGNkNTc5ODNjMGViNGE3MDI1MjdiNjEzNmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjljZDkyYjIxNjc5YmMyODMxYzU4NjYwMmU2NDI3ZWNmNDU3ODBjNzRmMDU2NDczOTdmNDU0ZmI2NzQ5NDllMWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxYzc2YjJjMmY4MzU3YTgzNTNjYzIzMWM5OGRhZmZkODcyZTQ3NDkyNzNkODBjYzNiMzMxNTIzOGFhOTUzZDkifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/github-pr-review-service.ts#L178-L181",
+          "version": "repo-lines-v1:sha256:ef8e5bdd3132c0eff99056e5f7bcbd8721d5c2390ad9992ac3175a35cac7a794:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjYxYWQ3NjAxZjZlYTYzNWJiNDkyZjQ5MWMyYzE1ZGY3YTJhMTdiMjhjOGM0ZmQ2YTdjZTMxYWM3OTUxZDI3ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjFmMzQwZTE2ZmI4NTdmZTUzZTY0YjcxMWFlNzBiMzExOTFjMGRkMDE2NWFhMTNkYzNjOGIxNGE3MjM2Yjk5ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzBjZmZkZmU1MzgxODc0ZTY0ZGQxNDBiYTkzNjJkZDA0NWM0ODU5NDA1ZDAzMDRiMTIwODRkNmFiMzIxNDVjYiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/github-pr-review-service.ts#L189-L264",
+          "version": "repo-lines-v1:sha256:c3c869ec653b5dd3802508d4f87fb76c7cbbfdcc78b1b0201fc06359ead002fa:eyJzZWxlY3RlZExpbmVDb3VudCI6NzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2ZWUzMGUzYzY3M2M2ZDQxYWYxOTJmOTBmMzFjMGM4Y2RiNmJjNzVlZmI5NWMyYzgzYmIzNzJjNjM5ZWU3YmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmNjM0ODFjYjNkMjkzYzA1MTA4NDAzMWM0MWE4MGEwNjc5NzcxODRjYmRkZTRmYmZhMTQ1MmNhNzc4N2Y5NjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM2NGZmMTk2OGI2ZjBlYTZiODNiYWMxZTg5YjcwYzg3ZDFjNGE1Y2M2YzE2NzQ5NmE2YjY3OWYwYjQ4MmIyMTIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b09fb6363a024c058475fffdca0ae1c4",
+      "statement": "postToGithub writes the markdown comment (verdict line, diff stats, loop run ID, optional roborev static-findings section matched on owner/repo at head SHA) to a temp file posted via gh pr comment --body-file, then sets a Commit Status via gh api repos/{owner}/{repo}/statuses/{head_sha} with context djimitflo-review because the Checks API rejects personal-access-token auth with a hard 403; all gh calls use a 15s timeout.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/github-pr-review-service.ts#L294-L355",
+          "version": "repo-lines-v1:sha256:08e011215a27da09bf5295ec4ae1a281fe7995353b6ea5d3e66a1b3d2c0d690e:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyOTU2MmNiNTIwZTUyMTYxZDA4YTA2YjEwNjcwMjcxOWM4MWU1YjE3YWIyNjczMzU0ODgyZWZmMjJlYjE5YTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU0MWNlNDIxYzBiYWJhNGU4OTllYjM5NGY0NzY4YjY0YmZmM2I4YWE1MmQ4ZGZlYTE3NGMwZDllYzZlMzMxM2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/github-pr-review-service.ts#L35-L35",
+          "version": "repo-lines-v1:sha256:17e2542e8f3e15434715f476316406bc37f05c98b8f761fdf74b9e6cf26f041f:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTdlMjU0MmU4ZjNlMTU0MzQ3MTVmNDc2MzE2NDA2YmMzN2YwNWM5OGI4Zjc2MWZkZjc0YjllNmNmMjZmMDQxZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTdlMjU0MmU4ZjNlMTU0MzQ3MTVmNDc2MzE2NDA2YmMzN2YwNWM5OGI4Zjc2MWZkZjc0YjllNmNmMjZmMDQxZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYThhZmE3ODA0OThjNzA3NjFlOWMzZGQ3ZmZlMzE4ZWQxZjBmNDdkODM5OTE2YWQyZDE0OWUxNjVkMzg0ODcwZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTk0M2VhOTExMjJlZDMyNDYwMGM5MThhYjZmMWU2NTlhMWEwMDJkODQzOWEzYTc1YmVhYjQ1M2ExMDg2YzliOSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_de1d47a840ba43eab40f255c6eec9498",
+      "statement": "Because the PR review service shells out to gh, the production Dockerfile runner stage installs the GitHub CLI from a pinned .deb (GH_CLI_VERSION=2.100.0 fetched from github.com/cli/cli/releases, verified with gh --version at build time) alongside git and ca-certificates.",
+      "evidence": [
+        {
+          "resource": "repo://Dockerfile#L61-L74",
+          "version": "repo-lines-v1:sha256:17eba1af7deb7ea4e481027a9c3763de20ef60bac41f36b61aa2b3bfa7caabd6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5NWIxZDNjYzc2N2Q3ZmEwOTUxMTQ0MjJjMDBiYzk5Mjk1MjJiMDJiZjJhZWMyYjlmM2JhYzIxYmI5ODUzZWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2YzlmNDVlYThiNWNiNTJiMjE3NjlkMjZjNWY2MTJiMGU3NzcwMDllMjZlNjI5YTRjOWRkNzExYmZkMGJlZjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM1YjdjMjk0YmZhYzljODg4YzIzZGI5MTUwMmRiODBmZGExNDIxNzYzYzNlMmZmNDc2MjVmZDU3MDZmYTlkMDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRhMDQ0YTIxN2IyOTY4N2YwMmI3YTA1MGFmYjc3YzAwNWU4MmFjYzg1MDU4MGM5Y2MzNTIyNWJmNzE1ZWJmZTcifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.2",
+    "at": "2026-09-24T19:59:50.419Z"
+  }
+}

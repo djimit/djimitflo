@@ -20,6 +20,9 @@ export const SECRET_PATTERNS: Array<{ name: string; pattern: RegExp }> = [
   { name: 'env_export', pattern: /^export\s+[A-Z_]+=[^\s]+$/gm },
 ];
 
+/** Lowercase path segments separated by slashes, e.g. packages/server/src/services/configuration — low entropy by shape. */
+const REPO_PATH_SHAPE = /^["']?(?:[a-z0-9_-]+\/){2,}[a-z0-9_-]*["']?$/;
+
 /**
  * Redact secrets from text. Returns redacted text and count of redactions.
  */
@@ -27,11 +30,13 @@ export function redactSecrets(text: string): { redacted: string; count: number }
   let count = 0;
   let result = text;
   for (const { name, pattern } of SECRET_PATTERNS) {
-    const matches = result.match(pattern);
-    if (matches) {
-      count += matches.length;
-      result = result.replace(pattern, `[REDACTED:${name}]`);
-    }
+    result = result.replace(pattern, (match) => {
+      // A repo path (lowercase segments joined by slashes) is not a secret. Prod 2026-09-25: Commons residents received
+      // "packages/server/src/services/<name>" as [REDACTED:High Entropy String] and could not ground anything.
+      if (name === 'High Entropy String' && REPO_PATH_SHAPE.test(match)) return match;
+      count += 1;
+      return `[REDACTED:${name}]`;
+    });
   }
   return { redacted: result, count };
 }

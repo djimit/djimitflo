@@ -1,0 +1,302 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:9067b0c8299c7396c93fc4bae9e2e55dcad022033e99f273b60013a12400fee3",
+  "claims": [
+    {
+      "id": "claim_77d3e5f4da4a41efa85bb0b3740b7126",
+      "statement": "ApprovalService (packages/server/src/services/approval-service.ts) owns the `approvals` table and its full lifecycle: rows move pending -> approved | denied | expired, and every operator surface (REST routes, dashboard, Telegram) ultimately acts through this service via ExecutionEngine.handleApprovalDecision.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L838-L910",
+          "version": "repo-lines-v1:sha256:58c716d70dffc5dcc4c5683df58d5e0ed6f7102c2525b2366d1cdd38dfc68294:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAzZWYxMDJlMTcyYzU3MjkyOTZjZDEwNmVmMTczNzdlMTNkZjJhMTFlMzA2MDU2MWFmZjQwZTk5NzgxOGQ5MTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiZTA5Y2YyNmU5ZTAzMjE3Zjg4ZGY0NWZiYTZkZDdiNTc1ZGY0YTkxODgxOGRkNDBlZWM0YzU2YTNmYTMwNmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVlMTJiNjExODk0M2UzMGMwMDY4MzNlNzgxNjMwYTUzYjMyZjQxN2VmNWY5Nzk1YzNmMTJmMzMwODAyNGM1ZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImViMGZkNjk2OTE4NmEwMjIwMTgwYTMwYzA4MWRkM2YyOGJjZjBlOGRjNGFhMDhlM2I3ZTk2OTBiZTA2NGIzMjMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L23-L40",
+          "version": "repo-lines-v1:sha256:f0c25ccac822efab85eb3ccb903f687d380b6cb2b815dd81768087d913417e9a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAzODMzNmQ3MGFlNmUzNTZkMDNjYzI3M2FkNjM0NjAxODkwN2MwM2IwOTMxMTM1YjE1MDRiNTkyZTBiYzlmOGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNlODVkNTUxMTRkOTljZDFmYTk4Yzk4MDg4NTFhNzIzMGFjZDJhMDIyMTVhOTg4NTM3NzQ3Nzk1YWMwNDBkOWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMwNmUwM2ZjZjFhNmY1ODM5MjA5ZDNjMDc4NDdlMjMxZTMyYTIwMmFkNjlmYWMxMmM5N2NhYjE4ZjUwN2E4MWQifQ"
+        },
+        {
+          "resource": "repo://packages/shared/src/types/common.ts#L80-L86",
+          "version": "repo-lines-v1:sha256:bd451962a46829ac2cc3d5d92ece3623b9777df1cdcd530687d4e53faf430443:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjhmYTNjYjY0NWNlZmRhN2ExYjViM2M3ZTc4YzVhNTVhN2U4ZTE1ZjMwMWI2Y2E3NzFmYjFjYjNhNTc4NDg5MSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMGZmMDkxZGZiYmEzMjhmZTNjYzI4OWY2MDNiOGVjODM5M2Y2NzlkMjBkNWFmMmZmMDMyMDU3ODEzN2RlYzU3NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGU0ZjRhMmYwM2E0NGQzNjlhOTkxMGViYzFmOGQ4ZDY0Zjk0MWVjM2MxOGNlODJjNDAyYjZiYTg3MGY3YjJlZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_386c65b1a77d468fad62f737daa4542e",
+      "statement": "createApproval() inserts the approval row and its canonical APPROVAL_REQUESTED audit record in a single db.transaction().immediate(); a failing audit insert rolls the approval insert back, and only after the commit does it broadcast APPROVAL_REQUESTED over the WebSocket and record a HOLD decision to the authority ledger and event outbox.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/approval-atomicity.test.ts#L38-L44",
+          "version": "repo-lines-v1:sha256:827f1b7ed85e0ed4427221aed6031ffc693147a04757443e08848020679e8a46:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNThiZmU0MmUxM2E3MjQyMmQ1NzdiOWEyNTgwNjQxZGE3NTI4ODQyY2FmYWNmMDJmMjIxZDNlYmJhZmY1ZTAwOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzNiZGZjZmNmYWFmMGYxNzcyYjdmNDFlOTU1YjY5MzZhYWViZjgwMjAzYzYxYThkZTI0ZTI3MjMzNjY3NjNhOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDQ5YTI3MjAwMTE2NmFlODEyMTE5ZTA5YmU3MGM2YzQyNTNmM2MxNjZlZWI1ZDIxOTIxYzJmZDIwMWQ4NDY3YSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L61-L122",
+          "version": "repo-lines-v1:sha256:8c5f8c2e2f4b8840d0d5f1309402417124e157e0a22fa5bf537f4a31eb8fb282:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4ODIxZTI3ZTM5NWJlZjdmMmI5OTBiMGJlOTUxN2Q4NjExMjZjNTNkODVhOTZjODE1ODE5ZTE1NWNlNDY0ODIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhkNDZjODRkOTBjNzI4MzMzODMyMGY2YTNmYTY5ZGNlNmI5MWJhNzE5NzE1YTBlM2FiMDdlYjAxMGQzNTNhZjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdmMDI1NTkxZjIxMzJmMDYwNzFiZTE1MWU2NWUxOTIxNTE2YjNhZDcyN2I3Y2ZmNmI2ZmI3NDg3M2Y4ZmM3OTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c8d0baaf2de844d1b9103aa122117dc5",
+      "statement": "Approval requests are created with a hard-coded 1-hour expires_at (now + 60 minutes, no configuration knob) and a requested_by maker taken from the dispatcher id or, for manual reviews, the JWT subject.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/approvals.ts#L47-L56",
+          "version": "repo-lines-v1:sha256:85833976f08657385d6ec74401f823052eca94532f8b5270f90b97bff753d4fa:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4NzI4ZjgzNDQ3MjEzZDQ2ODIxZWQ0NTIxMDYyNGVjOThkODE3NjM5NTNjYTZiNjI2OGNjY2M3NjVmMWVmZTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxN2FmMTEwMWM5N2I3YzJmNTI1NDA3ODJlNjM0Y2M0NDQwZjBlOTcwMzQxZTUyZjk3NTIzMTFkNzhiN2Q3ZDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzMjBmZTdkMGYzZTM3MTE3MDBiMGFlNTlkZjkxODFiNDAxNTg1NGFlMmQ2NTA5Mjc5YWJhMjUwYzg4MTc4ZDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBlN2RiYTM4NDVjN2U5YzQ2ZjQ0MTc1NjgyN2FjNmU5YTEzMDUwMGFhYzc5NTI0YWYxZGZkNDQwMGUxNzJiNmUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L61-L64",
+          "version": "repo-lines-v1:sha256:8d3adc7c826484622aeb3133a7ad393613d783a4061513f84863277b76525c0c:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzg4MjFlMjdlMzk1YmVmN2YyYjk5MGIwYmU5NTE3ZDg2MTEyNmM1M2Q4NWE5NmM4MTU4MTllMTU1Y2U0NjQ4MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2Y4NGNhZWM0ZjY4NTY2NTk1Mzg1Y2MyM2Y0NjJjNGMxZDYzMzQxOWYzZWI4MzYxMmYyYWZkMTEwYjg3MjAyNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGQ0NmM4NGQ5MGM3MjgzMzM4MzIwZjZhM2ZhNjlkY2U2YjkxYmE3MTk3MTVhMGUzYWIwN2ViMDEwZDM1M2FmMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDkzMWY5ODE3ZGI4ODVhY2U2NjI5OTU0YzAzZGQxZTUxZTg3ZDhjZDk4ZmVkOTVjNGNjYmJiOTMzYjYxNjhkZiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L94-L94",
+          "version": "repo-lines-v1:sha256:cb4ddd2e07526e320019227d1201f34bbf1892909bb35c3e3b4236b8fe5eb9d4:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2I0ZGRkMmUwNzUyNmUzMjAwMTkyMjdkMTIwMWYzNGJiZjE4OTI5MDliYjM1YzNlM2I0MjM2YjhmZTVlYjlkNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiY2I0ZGRkMmUwNzUyNmUzMjAwMTkyMjdkMTIwMWYzNGJiZjE4OTI5MDliYjM1YzNlM2I0MjM2YjhmZTVlYjlkNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGIwY2IxZWIyNzRjNjlhN2ZjYzJiNWQzMmUzYjcwZDMzNTY3M2Q1NDU2MDYwYWNjYjg1MTM4MWE3OGZkYTcxZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2ZhODVhZWY2MDhhZjU4YjVjZDFlOTllODZjNDM2OTBjNDRmNzQ0NjMyMGJkMTlhODFmOWI0OWY3NDljY2E1ZiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_7552e91e2f1544059c5c7927a437bbc2",
+      "statement": "decideApproval() wraps its status transition in an immediate transaction with a compare-and-swap UPDATE ... WHERE id = ? AND status = 'pending', rejects non-boolean decisions with INVALID_APPROVAL_DECISION, throws 'Approval already processed' for a non-pending row, and persists decided_by, decided_at, and decision_reason alongside the legacy approved_by/denied_at fields with the granted/denied audit record in the same transaction.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/approval-atomicity.test.ts#L125-L133",
+          "version": "repo-lines-v1:sha256:533253d2dd18ed4fddcda3f029e6080585a4f0ad4a06019eecc2e15266aa3ad8:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmFiYmZjMjVlNTRiYmMwNzFlNzljZTNlNGFhM2YxYjMwNmFiZDc0NDg2OTNiYWE0MjZmMGIzZDY2OTJiN2E3OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWIxZWExNWEwZjdiMWQ3NzQxYzA5MmRlODAyZDM5ZmRhNDQzNGVjZjA1Zjk0MzU4YzZmMzY5Y2E5MTE2ZTIyZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWVhYTU5OWI2M2YwMDJmNDFmODk1MzJiMGU0ODI4MWYyMjgxZDI1NzEyYWMxYmJlM2MzM2RjM2JjOTRkZDcxZCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L134-L198",
+          "version": "repo-lines-v1:sha256:d17250ce19b913c4447ac3b19123dbc2a5e8c2ef8a6d2eb62f5b7df9e56cae2d:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyNGI3MmIxYmY1NDNmMjUwODM0N2MzYmI4YjY1MWQ2MDAzOGQ3OTM3MGJhNjA2NDJjZmJmZTBmM2RlMmQ2ZDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwOWYwODkzNGExMGE3ODBlYzM1NzU5NWZjOTcwYzJkZjJlNWE1NTYzMTNmYTczY2FlODRhZWJkNDcyOTZiM2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI2NTdlODE5OTY2NWIwN2YxMDA3MzBkZTFmNTJhNmUzMGVjY2Q4Mzg4MzZmZTUxYmZmNThmNTA1YWYzMWM1NmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY2NjI4OWQ1ZGYxMmU5MjFjMDgxNDU0NTgwMzdkMTQ1YWU2YjNiMzUyMjA5MjZhYjIzZmIxNTQxNDU2MDdjMDUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a390d9cc2c64406da837a72273a9cd95",
+      "statement": "decideApproval enforces self-approval prevention at the data layer: when decidedBy equals approval.requested_by it throws SELF_APPROVAL_FORBIDDEN regardless of any route-level permission check, closing the maker/admin gap left open by the role table.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/approvals.ts#L76-L81",
+          "version": "repo-lines-v1:sha256:0635324cb4ece00c03cf1f86a3abd84e6d3442f317d28306f1260630291946ad:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTJjODU1NzA4Nzk0OTFlMWRjMDMxOTM3YTRkY2MxZTQxNzU1Y2Y2OGRkMGY4MDRlODVmMDIyZjE1ZjA2M2JmYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGZhYzRlNDM2MzBhYmY2OGMzYTRhNzU3M2ZkNGM0MzAwOGJhNzk4ZGQ3NmMzNzU5ZWVlZjUzZTZjZmY4ZDJlNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMGQwNzk4NjI4MTY0MWEzZTZmMjBjMTljMTJiYmRiNTQwNjEzNmY1YjcwMjEwMThhZDBiOGQ4OTM1MWUzODRlZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmNhNDdmNzgzNjBhMzE3NjdkODllMTEyNWJiMzMzZGUxNzIxMGU2ZWY1OTUwNzE0MDFlNWNjZDYyOGVkYTY0YSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L153-L158",
+          "version": "repo-lines-v1:sha256:aefe605cd4640e5abd55ba9d4c82592c8cac5aa39d73fa1c1f87fe59a726e0b3:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2I1NDlmOGNiYzc2NDdlY2IyNDYyNzNmY2EyMDFmZWVhZTYyNDIzYjNkMTZiMjFiYzZlMmZkOGIwOGQ0N2M4OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWI2MmY2MGQ4NTkwYTU3OWNmNDZmOGQ2NzM3OGM0YzU3MmI5NjJjZWNjZGI5MGM3YTVmN2I0MmI5NjA3ODJhNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTExYzc2N2NkMmY1NTM0MzRiNjNjZTQ0Y2VlMDljZmJmNGM1NWNlYmNkOWZiOWYxYTY4MWYxOTIxZWIyYjE4ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzMyMjcxZjAxOGY5MTJjOGQyYzlmYjQyOTcxZWIwOTBkZGY5Y2ZhODVhMTNlZjY3ZThiYTkzMzQ0ZDk3ZDE0OCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_77fc45482b934e688e1db1a90c07ff6e",
+      "statement": "Expiry is lazy: getLatestPendingForTask() expires every stale pending row for a task before answering (each through expireApproval with broadcast and ledger DENY record), while decideApproval() persists the expired record and its audit inside the throwing decision transaction and raises APPROVAL_EXPIRED only after that commit.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/approval-atomicity.test.ts#L56-L75",
+          "version": "repo-lines-v1:sha256:2c103069bb6b0ed69802d657f8b4e2db0df44584cbbe612652e132441bd643e7:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmYzc5NWRlMDBkYmJhMjkyMjQ4ZGZlNzNiMzY3Nzg1Nzg0NDhkYzEyYThiOGI3OTFjYmY2OWUxMzIzMmFjM2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJkOTRiNDBjMGRiYzQzZDJjNDhmN2VmZmY2NGUzYTE3ZTYzZGU3MDFkZjhhMmIzNmQ2YWQwMjc4OTRmMDJjNzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM1Yzc0NDAzMzg5NmYyMDVkM2RkZTI5NGMzOGFkYjMwMjY5ZmQyOGU3YmQwZmNiZjAxMzM4MTM0OTcwOGRmNzYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L149-L152",
+          "version": "repo-lines-v1:sha256:f30ba40b290a425acb6bc99482125f762d178ad8903639c761f5a003298238bd:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzVmZmI2ZjBiZWRlMTE0ZjliOGIyY2E2YWU4M2E2ZjNlZWM3NDZkZTQzMWNmNWZlMDhlN2IxM2U2ZjBhZDg1YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWI2MmY2MGQ4NTkwYTU3OWNmNDZmOGQ2NzM3OGM0YzU3MmI5NjJjZWNjZGI5MGM3YTVmN2I0MmI5NjA3ODJhNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmI5N2RhMGNmM2Q1MGE5NjUzMTliZDYyNjM2NGE1MjZlZjc3ZjdlY2MzOWFkZDBmNmY2NjZjMTE1NjBhMDJmYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjAxNGUxMjQ5NWNiNDBiYjI1MWUwY2Q4NThjNzIzODIyYjc2M2JiOTZhY2JhNjEwZjJkYTY1YzMzZTIzM2FlNiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L199-L208",
+          "version": "repo-lines-v1:sha256:47d35ba1491b1948cc4d52af70f5c6cad3d59c1f203dd87fe2d5fb41c2c6603d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4YjEyZWFlZDI2ZWMyNTMyODdmZTYzYzI1MmY2ZTg0NDVjODBmZTUwMWZmNzI4N2M3ZjU3MWQ3ZDU0ZjExNWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBkNWE5MjRmYTEyYTNkM2RkMzkwN2M5ZTY4YzE1NDU2YTk3ODNmYTE0NjZlNTc2MTQzNGNmZDZkNWI5ZDkyNTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUyYmZhOTgxNTJiNTY4YzdhOTkwMzYwZGM5MmUwZmQ3ZGIwYzFmODAyNjQwNGM0NTBhMWM1Yzg1NTliYmQxNDgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L42-L59",
+          "version": "repo-lines-v1:sha256:7cc47e5a0d62d63821dc4d01038481d6bc4099d7e5072b09878ba6258371c288:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwNWY1OWI1ZmFiZjUwMDBiYmU2NzJmNTFmMDQ2OTYyOGY4NzBjOTdkZGQzYjg1NjlmM2NmZDdlOTNlYzE1M2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhkNDZjODRkOTBjNzI4MzMzODMyMGY2YTNmYTY5ZGNlNmI5MWJhNzE5NzE1YTBlM2FiMDdlYjAxMGQzNTNhZjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkNDUxOThiMjBjYmI1ZGYwYWFkNDlmODEzNGIxNjk3MGEzNTlkMjczNDBmN2YwMjkwZmE1MmY5YzViOWQxZjIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1663ef88c8f246dbb3a56e2781cab488",
+      "statement": "expireApprovalRecord() cancels a task still in awaiting_approval when its approval expires, writes a task_cancelled_after_approval_expiry audit row, and is guarded so a task that already moved to another status is untouched.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/approval-atomicity.test.ts#L77-L96",
+          "version": "repo-lines-v1:sha256:c164e937f2e7f52c4147a1919f5bdb7016c50ed507e2f765e6040ff6158370d3:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM3NjFhMWQ1OGNkZmM4ZGEyMTc4ZTM0NDU3MGFiZTQzZmE2YTQwZDM2NWE1M2M3NTlmZWZkYzcxZjVjODQyYTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFhNDE0ZjYzMGZlZWZiYTk1YzYwZmE5MjM2MzU4ZTA5ZWM3NGYxYTQ0ZWFkYWIxNzAxZTRkMGRkOWM4OTE1ODAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlM2I1ZDBlZGNiNDc1N2NlYWJlYjU4OGI2NmY0MjVhYjZjODQ1ZWIyOTE1Y2IzOTE2YjNjNjRlYzVlYWRmMzUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L240-L262",
+          "version": "repo-lines-v1:sha256:c3b00ef9eaaa670c49a4a8b230258bda996842f10e2738afd0c0026afaa241df:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkM2M4MmNlZjEwZjQ3OWU1Y2IwMGJjNDQ2YTU1OWZkYWY4YmQ4YTM2OTFlZjU5NDMxMWY3OTZlODI2NzYzZWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwZjYxMGM4NWIzOGI1MjhiNzdhMDRlNTZjYjQxNWUyODkzMmY5MDQxYTkyMWVjNjFlNDFhMGQ5ZTljNzYxNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzNTg1ODlmOTY3YTBkMTFmNzM4NDhiNTQ0MDEzMGFkODM1ZjRlMzBkZTc2MTRkYjVjZTk0NTFhN2QwNTgwM2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI5YjYyNjgwM2U0ZjU5N2M0ODNiMDRiYzA0YjEzNzk4OWUwOTc5YjY1NTk3YzYzZjlmYTk4MmNiMWIzMzBjMjAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0601b4b47acd4156bddb4f5eea044108",
+      "statement": "Manual action reviews created via POST /api/approvals carry metadata.manual_action: true and never gate execution: getLatestPendingForTask with executionOnly: true excludes them via a json_type predicate applied before LIMIT, and ExecutionEngine.handleApprovalDecision records their decision as evidence and returns without dispatching.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/manual-approvals.test.ts#L11-L55",
+          "version": "repo-lines-v1:sha256:e9bfea7c50114e5f306d83fc96cddfa0a43b155e4e0c5d5cf16ceb3062c43fbf:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMwNmY1NDgyMTQwNTljZjI3MWUyNGZmYjIyZGVhNDQyODkwZTI4NjE1NzQ4NjUyNTVkZjRmNjQwMDkzZDVhZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg3MzFjOWRjY2IyNmRmZDVhOGFmMzQ2ODAzOGQ1NzM3Y2FkYWFjMmE1N2MwNWYwMmMxNzI0ODhhNWFjNWFhNTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L840-L849",
+          "version": "repo-lines-v1:sha256:4b9028fb5bf20a311fcae35e205d41ffad332acc24360ec7b2c71384722c561f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM4OWQzZGNhM2JkZTRhMThiMjdlMTM1MWRhMDc3ZjU5MmZhNDFmNjc3ZTcxY2E0OTg1MTgyMTI3MjEzYjVmNTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjllNjZlNzg4MDU0NmU3YzQwMjI2YzUzY2U0MzQ3MDRiMjk2NDQyMzE2ZGNiNGQ3OTEzYWUxYWExMGE5M2E5NjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY1Y2I2NDY2YTI5MjY5NGE3OTU3ZDNiNjMyMmIzZTc3MjNiODg0YWMxODMxN2QyZTg0ZTQ4ZDBkZmM0NDE1MGQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/approvals.ts#L31-L58",
+          "version": "repo-lines-v1:sha256:88ed24f09ce14253596d82086005a4d68c475574bc4dcf46b2092471d4147208:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjMDg1NWY5MTkwZGNiZmM1ODY4MThiMGY4MTI4MWM4ZDc2Y2Y1MjMwNjhkOWE3NDVlYWU0Njk3ZjUwMjRmNTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2NmJjYjdlZDVmMWQxNjI0ODI5M2E3M2Q5NTdjYmQwOTY1NDA2ODk1ZGVhMWRkMmQ0ZGI2MWRkZDM5MGEzMDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAxM2M1NGI1NmYwMmJkNWFmNzU5YzhkZTMzMjhmNDc4OTNhZmFhYzI2NzQ0MDM1N2JhNzUyZTg2MmU3MjJmZDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzNWNhYTZlNjEwZGMzZTM3NThmZGY4Y2MxYWVkODU0ZDUxZTM3NmM1NGQxODU1ZmQxYmRmOTVhNDJmNTBiNzEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L50-L57",
+          "version": "repo-lines-v1:sha256:23514a01a354803b010daa5612aee86baa38e9bdd91eb68bbc677e4a317aec88:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTU4ZjI0ZTA3YjAxNGM4ODc1YTJkOTNkNzg4ZmM3ZjMxMjUyNmRmZTgzOTJmMTY0MjhjYzYyZWRjN2E1MzYwYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGM4NTk2ODM4YzE1MzNmY2JhNjBhNzViMTAyYWY4OGZhZTg4MWJmN2Y1NTEzNWE0NGY4ZTNjMGFiNzVkMzA1OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTYwMzJiOTVjNzNiMWIzNWY5ZDIwM2FhMzllNTI1NDMyMjgxM2VmMTRhMDkxODM3YzFiZTkzODM1MDU3ZTYxMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGQ0NmM4NGQ5MGM3MjgzMzM4MzIwZjZhM2ZhNjlkY2U2YjkxYmE3MTk3MTVhMGUzYWIwN2ViMDEwZDM1M2FmMSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_6ff15a743e4446478b2477a5cd6b71a1",
+      "statement": "recordDecision() appends every lifecycle step to the append-only authority_events ledger via recordAuthorityEvent (sequenced per correlation_id = task id, sha-256 payload digest, actor classified human/agent/service by the 'system' sentinel and 'agent:' prefix rule) with HOLD on request, ALLOW/DENY on decision, and DENY with EXECUTION_APPROVAL_EXPIRED on expiry; recording is best-effort and returns null instead of throwing if the authority_events table is absent.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/authority-ledger-and-outbox.test.ts#L31-L49",
+          "version": "repo-lines-v1:sha256:80b139ea86312be5812f85b8ebc40f2252a77c345bfede3d82eaf614d6d65fa4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2NTI4NTc3ZjlmOWM2NDFiYzE3YTZjNTUwNmE3MGQ4NzMxZTAzMDAyZGJmYjQwOTBiYzgzODMzYmM5MWFjZjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzYTk4ZjVjMWY0ZmM0ZWYzNjg5OTJlM2Y5OWUxZDI2NGUwMTA4MzNlNGJlMDc1NGE4ZjVhODg5OWQ3MTJkYjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc4OGMxNjI2ZjNkNTIwZTBlZGU3MTI2MmY2ZGE2Nzc5N2M3ZWQzOWU4NWExN2U4ZGVkMzU4N2EwZmMxYjM1NjUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L124-L132",
+          "version": "repo-lines-v1:sha256:9e49b2cb1dbad1afd4843c07fcc49e75d75796a3ad99ac0a99266005fa08036c:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQxYzJjZWFmNzYzOTBiNDVhOGQzZWEwMmM1ZDUyNTk3MzFmNzViOTZmODBlZTBlZmViNzAzZjI0ODAwNWU1NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMGUxZmVhODJlOGM2YzdmMGUxNzhhMjU0ZTM3MTgzNTJlYzIxYzJiNjI4MmI4MTE4MmFiNDM1MzY2NjA0MTRmMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGU1YzI4YmFmZjg5NTJhMThhYjMyODMxZWUyYTk1NDBjNzZmYWFkMzIyZGMyNzA2NTc1ZmEyZmY2ODc5NzljMiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/authority-ledger-service.ts#L24-L41",
+          "version": "repo-lines-v1:sha256:c88da17c17ebeb998e0232004340bff5bbd671755d98566c019a4a0e2f76ee28:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzMzkyZDQyNGRmMGYxNjI3OWJkOTQ2NjY1NDMwNTg2M2ZhZjk4MGY1ZjNiMmE1N2Y1NGRkMTM2ODllNDQyNmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYwYjhjOTI2YzI3MmQ4ZGFlYzg4NzM5NjgxY2M4YzAxZGZlYzNjZWMwMjhiYWRhOWM5MTA4OWEyMGM5MDk4ZDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcwZjk5ZmJhOTMzOTQ0YjY5MDU5MjA0M2YzYzI4ZDEzY2IwYzQxM2Q2NGZmNGE2YjFmNTUyOTRhMmExMDExZjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_628a4c07fa6f405a95aee2467a302be6",
+      "statement": "recordDecision() also enqueues a djimitflo.approval.* (requested/approved/denied/expired) domain event in event_outbox; enqueueEvent is a no-op unless EVENT_PUBLISH_ENABLED=true, and EventOutboxService drains pending/failed rows (up to 10 attempts, 60s default interval) to DJIMIT_EVENT_BUS_URL with an optional bearer token so a bus outage delays but never loses or blocks the action.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L131-L131",
+          "version": "repo-lines-v1:sha256:fc4b4f08fe5807e2f409530711334fd665458df1f8b97e5d5e956a657842686c:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmM0YjRmMDhmZTU4MDdlMmY0MDk1MzA3MTEzMzRmZDY2NTQ1OGRmMWY4Yjk3ZTVkNWU5NTZhNjU3ODQyNjg2YyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmM0YjRmMDhmZTU4MDdlMmY0MDk1MzA3MTEzMzRmZDY2NTQ1OGRmMWY4Yjk3ZTVkNWU5NTZhNjU3ODQyNjg2YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzRmMzNlYzIyNjg4NDU4ZGNiNjI1YzlkYWUxMjkzZjgyNWMwNWY5OTQzOTA1ODBmODA1YWZmNDhiNWJhZjRiMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTE0YjJjODFjZDM0NjRjNGNkMDE3OGRkMmY5YzY2ZmIwNDk5ZTFkYTMzMmJiMTE0NzYxZDY2YjY0MjM1MzQyNyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/event-outbox-service.ts#L12-L68",
+          "version": "repo-lines-v1:sha256:b0494917fba826109ad980825d704a960c5e0c2d4e31fe6af9923652c34cc054:eyJzZWxlY3RlZExpbmVDb3VudCI6NTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2NjY0MzRmYThiNWE1MmEyNzdiZjMzNGJhNzU4MjZlNDNiNDNjMzdkYjA5NzRhYWJjYjg2MzU0NmU4NTc1YjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZlMzk2OTg1N2FiZjc3OTZjNmVkYzgyYTY0ZmMxMzNkN2E3ZTUwNjVmNmZmYTVkMjkyZmE1OTVjMmRiYjQ1NzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM2ZDUzYTM1YmQwNGNjOTFjZTU3NDQ5ZTM2YjIyMWE2YjljMzVhNmYwNjc4NjM0OWJjNTg5Njc1ZjJkYmRmZTcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_bb7c6281d43941dda44eb96faddd403c",
+      "statement": "All ApprovalService WebSocket publishes happen strictly after their commit, are filtered per-client through AuthorizationService.canReadTask by broadcastTaskEventById, and a broadcast failure is caught and logged without affecting the committed decision.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/approval-atomicity.test.ts#L98-L123",
+          "version": "repo-lines-v1:sha256:43ff19e5321e22b02c1a36ccb1595f0e9d8bd6c4aa7583d4ebca87bdd3e974bb:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzMjZmYTBiOTA2YjJkZGU4MzgzZmQyYTdkYzVkOWY2ZTY1YTE4NzFkYjIyMTRmOTVhZThkNjk0NDhhZDllNzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMxOGY3YjhiZThlYzBlMzBiOGExZTRiOTIzNjE1ZGE2MzRkMTI5YTQzNTRjZDlmMzg5NGJmYTAyNjI1OGJiZDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk4YmRlNzBiNWQwNWJmZmViZDYxYzIwZTJjMzVhYzlhMzgyODU3M2U1MzAyMTViNTc4YjVhMGQ3NDRjZWY3MWMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L265-L273",
+          "version": "repo-lines-v1:sha256:3c36d7f92ad2b4f7dd1eb97ee3bf0bdde2c79a344e034e7c29617a24f4d85330:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzgzYTAxYTczNWEyMmY2OTg3ZDJiNDMwMDVhZTI2ZDc2ZGU1ZjllY2FlYjA2YzNjMDQyZWFkYTc2Njg2ZTZkNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDA3NDNhMjk2MjA4Mjk5OTkwZWRmNGI3OTVkNzY4OGE3MzgyMzI2Y2I2ODAxNDAwYmFhMjQ4YzI0OTk0ZTg3OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTFhZWQ3N2JmZjM3NmMzMTBkZjEzZmEwNDIyOTkzMmIwZGFlNjViNmNiNGY0MWJlMTg4N2M4MThmNDE5MjI3MyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/websocket-service.ts#L148-L166",
+          "version": "repo-lines-v1:sha256:7e44f6a827db21385b6b578a998382c82a50587534283c684982d2e776a4e06b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2MzI0YzRkMGY3ZjQwYTcxY2I5N2ExNTJiMTFkNmU1MTEwZDc0NzliOTFlOGQwY2RhMDA0NzJiYTU2YmEyNGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVlMTJiNjExODk0M2UzMGMwMDY4MzNlNzgxNjMwYTUzYjMyZjQxN2VmNWY5Nzk1YzNmMTJmMzMwODAyNGM1ZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNjZGEzZTY1M2QzNTVhYTI3ODNiZjc2NjY2MzE2OGI0OWM0OTdiYTA3MmQwZjM0Y2UyNTgyMTA1MGIxMzAwZmQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_15b4eb866eee4db5a9e6436b7aeb4baf",
+      "statement": "The approvals router mounts GET list/detail with AuthorizationService task-visibility filtering (unreadable rows return 404), decision endpoints PATCH /:id and POST /:id/approve|deny behind requirePermission('approve:task') that forward to ExecutionEngine.handleApprovalDecision with decidedBy from the JWT subject and map INVALID_APPROVAL_DECISION/SELF_APPROVAL_FORBIDDEN/APPROVAL_EXPIRED to 400/409/410, and POST /:id/cancel which writes pending -> expired directly returning 409 when already processed.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/approvals-http.test.ts#L68-L100",
+          "version": "repo-lines-v1:sha256:143e569b2832ae3a12604852279b17f49448779836195fabe11b3ac384d198dd:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4MWYwM2M2M2YyZTU3MmVmM2M3MDQxMzI0YmM5YzQ2ZDI5ZmI3ODM1NmMzN2YwODVhZmNjNGQyYWNiOGYyNGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgzYTRhYTM5NGRlMDE3NzI1NThmZGY3ZTA1MDhiZjVjODdmYjk2YTc3ZWMxMWUyZWEzOWJkYTA2NzFkYTEyYzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1Yjg3NWYxN2YxYTkzM2E3OGJhZDcwYjYxZDU0ZTk5NTY3OGI0NWZmYTBhY2RiMWFjNDI4YmE1NDZjMDg1NTkifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/approvals.ts#L61-L277",
+          "version": "repo-lines-v1:sha256:b7eee13f1cb97ee8ec08bd2d5120d5467fc43716b161d7e4f19c68388c14b771:eyJzZWxlY3RlZExpbmVDb3VudCI6MjE3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2NjkwZDQwYjU5ZmE1YTJhNGMyMmI4OTI2ZGRhM2Y0ZGY0NmI4ODg3MzJhYmM5MGMyYTliZjAzMzVkOTU1OTI2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzYTNlNDZmOTQyNzZiNmY2ZjRlZDFmMDJhZjc4YmVmNmEyZWUxYzQzOWRkNTU4NGI5NzM5NDgzMTMyMTRkMmI3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlOTRlMzM2NTkxYTk4ZDc1YWQ3YTU4MDlhYzgyYzhlYzE4ODYyYWJiNjBkNTY5MzMzMzc4MjAxZjZjNTdhYjRlIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiMGVjZTc3ZDY1NDk0ZjE1MWQ4NWY0MDc4MTFmNDdiYjA2MzdlNzRmNTA5NWM1YTIxYzViZDAyY2U4NzRjMDMwIn0"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L150-L150",
+          "version": "repo-lines-v1:sha256:4da176db0156f6284d259d27fd70da2d54e57eac4917ce534094a30ad36f3ef9:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGRhMTc2ZGIwMTU2ZjYyODRkMjU5ZDI3ZmQ3MGRhMmQ1NGU1N2VhYzQ5MTdjZTUzNDA5NGEzMGFkMzZmM2VmOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGRhMTc2ZGIwMTU2ZjYyODRkMjU5ZDI3ZmQ3MGRhMmQ1NGU1N2VhYzQ5MTdjZTUzNDA5NGEzMGFkMzZmM2VmOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2Y2NzNlZmRmYjEyYTdlNDYwM2U3MGNhZGYwMjE4YmY5NmZjMDBlYjg3MzExMWM3NmZlZGY2Zjk1MDlkMjhiOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzdmYTc2M2VmMTEyMTYwZjZmNjA2YzdjZjc0YjdlOTM1ZGMwYTkwYjRiYmM3MDFkYTM0MGQ4MTYzZTk2ODNmNyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_9aeef17ad4f5497d97ee0b1d82d70cba",
+      "statement": "Approval API responses are enriched by approvalContext() with goal objective, proposal title, loop run id, worker role/runtime, working directory, and a prompt preview when the task belongs to an autonomous loop run, so a worker-execution approval is distinguishable from an ordinary task review; context failures are swallowed as null.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/approvals.ts#L14-L21",
+          "version": "repo-lines-v1:sha256:c4622843b6f54082336c42d74af68ef38d6079b2d47c152e349c4a351845a602:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjNmNWNmYzY3ZWI0ZTcwNmVkMjJjNDgxODFhMTZmNTRkODgwYmY4ZGNhZjVlZjk1ZWU2MDIwNDllMmFkN2M2NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWFlZTlhZjVlZDc5NjIzMTIzZjI5MjU1NTFkNmJjODM1Y2E2N2VlYjZiOGU5OWJjMTk4NmQ2NGZjMzg2YjYzYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjMxOTE2YzgxOTUxYTBiNWI0MjAwOWUwOGJkNWM5NGY0YzE2NmNmNDA3NmNlNzRlYmQ3Yjk0NDExMzdjM2ViMiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-context.ts#L20-L43",
+          "version": "repo-lines-v1:sha256:a219aa3ae46d099f167f9bb42a7d43a259f37be3faead943401248d42f76a03e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU4YWM5MzliOTdjY2NkYTUwNDM5YmYzZWI4ZmZiMjAzN2QyMTBlODIyZmFhMDg5ZDBjZDY2ZjFmMGVkMzI1ODgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEyMWJmN2UwZGQ1N2EzMDgyN2U2OWMwMzViNTAzMzE1MmQzMGNjNDJlMTYxZDkzNDM2YTMxNjZhYTZkZjUxM2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4f908dd9ccaf4e2eb8973685733fc162",
+      "statement": "The dashboard app shell uses usePendingApprovals to poll getAllApprovals('pending') every 30 seconds, filter past-expiry rows client-side, and refresh immediately on the APPROVALS_CHANGED window event; Layout renders PendingApprovalsBanner (urgent at <=15 minutes to expiry) on every page except /approvals.",
+      "evidence": [
+        {
+          "resource": "repo://packages/dashboard/src/components/Layout.tsx#L171-L171",
+          "version": "repo-lines-v1:sha256:4cb78bfc7a401182651244038e29e18fb718a206c321dff5ffa88345686a71f9:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGNiNzhiZmM3YTQwMTE4MjY1MTI0NDAzOGUyOWUxOGZiNzE4YTIwNmMzMjFkZmY1ZmZhODgzNDU2ODZhNzFmOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGNiNzhiZmM3YTQwMTE4MjY1MTI0NDAzOGUyOWUxOGZiNzE4YTIwNmMzMjFkZmY1ZmZhODgzNDU2ODZhNzFmOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMmY4NzQyOTg4YWYzODc0N2QxZjNmZjhjMGU5NWU0MTQxZWYyZTA5M2YxZTk5YmI0ZDUwMDUwYzZhMmE1MmRlMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNmU3ZTc1Mzk1M2M4N2Y5NTAyMzgxMTExMjMwOTAzM2UzNzk5MWUzN2MwN2U3NTAyNTI4YWRiMzU2ODgyYTdmMyJ9"
+        },
+        {
+          "resource": "repo://packages/dashboard/src/components/Layout.tsx#L67-L72",
+          "version": "repo-lines-v1:sha256:95e9acf12a42f6f173c26cf1d94fd79a7b87293f2a10c4daca50827b25a8b2c0:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2Y2ODkwMjJmZTFhMWRiNTJiZDZkN2MyN2E1NjZiOTY4MzNlMGY0NGY1YWMyOGM2Mjc5YmFlZTQ2NzQ2NmRkYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTgxOGMxZjA2ZGIyMjIyOTRmZDUxN2VhMjIzZDc3MmY0ZmIyMWJhOGJjZmU5NzZjMjFjOTA0YWE5YTc4ZDlhNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjdmNzMzODZiYmExYTY1M2ExM2Q4YTkzZjZmMWFmNzVmMTMxNzNhM2I0MzRjZjgxNjAyYmJkNmI1MTk3NDc3NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWFmYTM4ZjI1ODQ2MjE5MTA1MThlOWQ5ZjE0OTY5MWU0NmNlN2E3OGQ1MTdiMjFhNDgzZTU3MDAwYzUwMzc4OCJ9"
+        },
+        {
+          "resource": "repo://packages/dashboard/src/components/PendingApprovalsBanner.tsx#L5-L18",
+          "version": "repo-lines-v1:sha256:1ccca654dbb487157f3baf71fb1768d16abfe377a474b96193eb99d2b34f4dad:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZlYTQ5YWU5ZWU1M2I4OWI5ODQ2ZTk2NTA1NjUwMzc1NDA2NmJiNTcyYmExYjU4NDkzNWJjMTVkYTJhNzFkODgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1ZWYwMWJjMDhkYmMzYjYzZTRlNzVlYTNkMjZhNWI5NDE4OTE4NzdlMjdhZDg5MTMyOWM4NDExZDdkOGRjNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNlNDk0YWUzNzMxNTczMTM1ODE0NDA2Njk3MDliZmFkZjE2YTNjM2Q1NWYwODhkOTEzNGRhNDBjMTM2ODA4YTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://packages/dashboard/src/hooks/usePendingApprovals.ts#L4-L33",
+          "version": "repo-lines-v1:sha256:de3fca182b0d82eda95819d14174905050b8ee93406184263b5d1e9a42166df9:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1ODQ2ODhlMWE5ZTk5NWI5MjRkZmNjYThjZDBkNzJkYjZmMGMwNjcyNTgxNTIyN2QyZTBkNjM5N2RhZDJmNzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBkYmQ5OTVkODQ0ZmRjYTg5MmQyZmVkNzcwYmQ4MTcyMDliM2I3ZDY1ZTY4YWM0NGJjZGZmY2U0MTFjNWEzNjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM5ODVmNzhmYmE4YWI2ODVhNmYwODk1NWZmODgyMTZlNDk4Y2MzNGQ0ZjNlMWEzMDRiYjA0MjQ0ZjE4ZDI2NTMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c5e9ed5d7b4b432ba2758fdc7e8a30ff",
+      "statement": "ApprovalQueuePage renders status tabs (pending/approved/denied/all) fed by api.getAllApprovals, guards against stale tab responses with a request-id ref, subscribes to APPROVAL_REQUESTED/GRANTED/DENIED/EXPIRED WebSocket events to refresh, and renders ApprovalCard rows whose Approve/Deny buttons appear only for pending rows, require a denial reason, and dispatch APPROVALS_CHANGED after a decision.",
+      "evidence": [
+        {
+          "resource": "repo://packages/dashboard/src/components/ApprovalCard.tsx#L19-L51",
+          "version": "repo-lines-v1:sha256:2ffc5d1b5bcbf1e04df43ba7b9cbd568954936bcfeb7dc4b457ef65d81e2311d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjOGE4ZDZjNWY0MDU4NTJjZjU1ZDg3YjAyZDliN2ZhNDIzYWVmOTM5NzQ2NThkYjM2MzFjOGMwODBmOWFjZTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQyYTJjYjI1YTEyMmI0NDIyMWE2MjM0ZWM2NjBhN2I1ZmI3ZjliZGU3YjNiOWUyYjNjNTU5YTBkOTZmYWM3MzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZmOTU0NTJmMmUyNjJhYjczZDE0MjdmMWMzMmIwMzJhNzcyN2YzNjBjNGYxYTM0NDBmODBlZDdiYmNhNTQ5M2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJjZmU2MzQ4Mjg0ODEwZDg5OGIwNmZiNDhkMWE1Y2Y1YzY2OWNiZTczNTk5NjQ3ODc2MTBmMzNjNGZiMmU4OWIifQ"
+        },
+        {
+          "resource": "repo://packages/dashboard/src/pages/ApprovalQueuePage.tsx#L18-L120",
+          "version": "repo-lines-v1:sha256:4e9a3de62585fa0c5f463c756809889d8fb93ed7a5b9715c0df571fa9ad94175:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmZDk2MjM0ZDEyZTMwZjkyOWEwNTViZDc2N2NlMjU0NjY4ZTZkM2RkZmJmZDVhZjAzNjQwZTI3MjcxZjgwYmJmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI5NWVmMDFiYzA4ZGJjM2I2M2U0ZTc1ZWEzZDI2YTViOTQxODkxODc3ZTI3YWQ4OTEzMjljODQxMWQ3ZDhkYzRkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlMTdmMjdkZDFjNjUwY2I2NDQ4ZDgzMzNiMDBkYjI2MzhkMWM3NDRjYmU4NDIyYjRiY2U5ZjZmNWY2YzVlNDhiIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MSwiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_e7a78b2e289a46bfb364dcd23f88f289",
+      "statement": "Telegram acts on approvals only as an authenticated API client: TelegramApiService.request mints a JWT for the mapped user and calls a loopback-only internal API (constructor throws TELEGRAM_API_MUST_BE_LOCAL for remote URLs), and TelegramBotService maps /approve and /reject to POST /approvals/:id/approve and /deny through that service, rendering SELF_APPROVAL_FORBIDDEN as a you-cannot-approve-your-own-request reply.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/telegram-api-service.ts#L4-L30",
+          "version": "repo-lines-v1:sha256:634a69f0064924dff80ac243193239e0f9cb0c025ace1ae0d4a958f7bcaf60f5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM1ZGQ4ZWYwNjI0N2FmN2ZjZjRhN2E3OTE4MGYwNzJiMjg4NGM4OGRjYjcwZjJmNWQzZDM1ZWQ4ZmQxNWJmMGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE0MTNhOTRkMmVhN2UzOGE2MWQ3YzBiYTE3NTZmYjQwMjFiOWI2ZWE1MDYzYzY3MjQ1OGNmYmRmODE3N2NmNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE1ODI5NmY4N2NjNTA0MmI0NzFlMzIyYjBiYWQ5YjkzNTkwNDEzMDFjYTA2ZWEzZjBhYjY1OWViYTZlNzhkZWQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/telegram-bot-service.ts#L354-L387",
+          "version": "repo-lines-v1:sha256:1b55c00c1a33214de7a91b62296e285c28bc16662d44b62883b4f807c136c9be:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1MDQ0YTE0ZmU0NWFjNjMxNjBhNDFkNjBkZTk2YzJiYjU5MDdkZTEzZjQ5ODM0ZWY1ZjcxMjlhMTllZTE2ZDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc4NWU3NGExYWM3MjMyMGJiOGFiNzhmYmY0YjkyOGNlOGY4MjFiZTNlMzc1M2Q0ZDk1ZDI0MDcxZDhmMGEzMTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRlODVhMzZiNDlmNzE2NTAxYzBiOWI3NTMzNjg2OGE2NmNlOGY1MDQyMTI1YTE3NGI0YjYyY2M1OGQwMGJmY2EifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_20bb86e269bc4e5fb6f5b5f0e5a37392",
+      "statement": "The Telegram webhook endpoint validates the X-Telegram-Bot-Api-Secret-Token header before processing, and the telegram-api-chain test drives the whole path end-to-end: webhook -> authenticated local API -> task creation -> executeTask awaiting_approval -> a mapped approver's /approve persists decided_by and runs the task to completion while a maker self-approve and a viewer approve are refused.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/telegram-api-chain.test.ts#L20-L123",
+          "version": "repo-lines-v1:sha256:c7e8c5a4c7a110b6909255f5c6b5915b35b8b72acfb7a4c1ddccc1b6f76a636a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0MjM5NjRkOTdkNTFhZWQ3NDdhYWJiNzIwYmVmYjM2MTNkY2ViMDA4NDY5MWFkNTM0NTI0YWRmNWE5YWE4YmE4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI1Y2JmZGU2OGUyMDQxNTExMGMxMGFlMGI1ZjIzNDZkOGE3NWM5OWIxOGFhY2U1MjNiZjgzNWRkNzRiMjg1N2VhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIwM2Y0MjlkODhhOGQ1ZjM5ZGY0ZjAzYmQwZmFhMGEwMzI0NDM0YzgzYTZhMTQ2ODEzOThkOGQzM2QzNzhhMzdiIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5ZThhNDVkZGM4NWFkNDc3Njg3ZmU0NzczYjM1MjJmNDMyMmIzNGQ3N2MwMmM0MGRkYTQ0NTliYmJiYjliNmI3In0"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/telegram.ts#L62-L83",
+          "version": "repo-lines-v1:sha256:daa61a15cbf030c9ebb2aa2fe2116b15b7fbc59cc3e1c9ced71ac8bfb67511ba:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdmZTVmYTAxZDYzNDgyNmFmMDYxY2Y5YzgxYjUxNjlkZTg0ZDQzNGYwYjY5ZjhkYTUzZmZhZjFkZmQ5NmNlMWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEyNDAzNGEyZmY3OTU0ZWQwZmY5NWQ2ZDcyZDVkYTg1OWVkNWVkYzUxODdkZDg0NGZjYjczZmU5MmE4MWVhNDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ4YTU4ZWViZDhjZTA4MTY3ZTVmMGFhOTRjNDVmMGMwMDZlNDI3NTQ4MTBjN2MwYjVkMWMzZTI4YjZmZDdlZDIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2cc795e88e2b4df7af10328d941bad1e",
+      "statement": "The decideApproval decision-guard block (approval-service.ts lines 122-145) and ToolBroker validateCapabilityToken/reevaluateOnParameterChange (tool-broker.ts 243-274) are explicit Stryker mutation-test targets in stryker.config.js with thresholds high 85, low 75, break 70.",
+      "evidence": [
+        {
+          "resource": "repo://stryker.config.js#L4-L23",
+          "version": "repo-lines-v1:sha256:b1c63a099dd5c94a0f5155b14d284c249e5a9ecdf6a8d703488f7ff698631a29:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4ZTYxZmRmMjAyOGEzOTQxMGYwNTFmOTdiZTBkYjU4MGMzZWZiYWJmNWE3ZjI3Yjc2ZDQ4N2U1ZDA5OWZiMzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkNWNkMmZiNGYzZGY4ODQ1MTUyNTViMzk1MjNmMmY4YjU0NzJiZWVhOWY1NjZmZmNhMjA0ZGI4MDI1NjEwNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhYzIxZmY0MmZjZTdhYjI3NjUzMzg3ZDRiYTBjNTAzYzc2OTczYzJiMTg2NjQ0ZWRjNjJiNWVlYjAwYjBlY2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE4MTAzMjA1YzlhYTM2MmI4MTliZWI3MmI3YzExYWNhMzVmOTE3NjcxYjgxNzM2MTk4MzgyYTdmYzI1OTdiOTcifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.2",
+    "at": "2026-09-24T19:59:50.419Z"
+  }
+}
