@@ -1,5 +1,5 @@
 import type { Database } from 'better-sqlite3';
-import { recordAutoApproveShadow } from './autonomy-shadow-service';
+import { recordAutoApproveShadow, testGapAutoApproveScope } from './autonomy-shadow-service';
 import { LoopService } from './loop-service';
 import { swarmEventBus } from './swarm-event-bus';
 import { GoalDecomposer } from './goal-decomposer';
@@ -257,7 +257,15 @@ export class LoopDaemon {
     try {
       new LoopEventService(this.db).recordEvent(runId, 'goal_awaiting_approval', 'warning', `Waiting for human approval ${approvalId}`, { goal_id: goal.id, approval_id: approvalId });
     } catch { /* best-effort */ }
-    recordAutoApproveShadow(this.db, goal.id, runId, approvalId); // plan E3: shadow only, never approves
+    const shadow = recordAutoApproveShadow(this.db, goal.id, runId, approvalId); // plan E3: the rule; approves only via J5 below
+    const scope = role === 'maker' && shadow?.decision === 'yes' ? testGapAutoApproveScope(this.db, goal.id) : null;
+    if (scope) {
+      // Record the scope before approving: the maker resumes right after, and verification needs it to hold the diff to one file.
+      this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.auto_approved_scope', ?) WHERE id = ?").run(scope, lease.id);
+      try { new LoopEventService(this.db).recordEvent(runId, 'goal_auto_approved', 'info', `Auto-approved ${approvalId} (test-gap lane, scope ${scope})`, { goal_id: goal.id, approval_id: approvalId, reason: shadow!.reason }); } catch { /* best-effort */ }
+      this.loops.decideWorkerApproval(approvalId, true, 'autonomy:test-gap-rule-v1', shadow!.reason)
+        .catch((err: unknown) => console.warn(`[loop-daemon] auto-approve ${approvalId} failed:`, err instanceof Error ? err.message : String(err)));
+    }
     console.warn(`[loop-daemon] goal ${goal.id} waits for approval ${approvalId} (run ${runId})`);
     swarmEventBus.emit('convergence', { daemon: 'goal_awaiting_approval', goal_id: goal.id, run_id: runId, approval_id: approvalId });
     return true;

@@ -123,3 +123,11 @@ it('returns an HTTP conflict rather than a server error for cancelled completion
     expect(loops.getLoopRun('run').status).toBe('cancelled');
   } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
 });
+
+it('J5: an auto-approved maker fails verification when it touched more than its approved test file', () => {
+  const scope = 'packages/server/src/__tests__/a.test.ts';
+  loops.patchWorkerLeaseMetadata('maker-1', { auto_approved_scope: scope, changed_files: [scope, 'packages/server/src/services/a.ts'] });
+  expect(loops.verifyLoopRun('run').gates.find((g) => g.name === 'auto_approved_scope')?.status).toBe('fail');
+  loops.patchWorkerLeaseMetadata('maker-1', { changed_files: [scope] });
+  expect(loops.verifyLoopRun('run').gates.find((g) => g.name === 'auto_approved_scope')?.status).toBe('pass');
+});

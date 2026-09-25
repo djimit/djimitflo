@@ -729,6 +729,11 @@ export class LoopService {
   retryLoopRun(id: string, input: RetryLoopInput = {}): { run: LoopRunRecord; leases: WorkerLeaseRecord[]; retry_maker: WorkerLeaseRecord; retry_checker: WorkerLeaseRecord } {
     return this.lifecycle.retryLoopRun(id, input);
   }
+  /** Decide a worker's approval through the engine that paused it (a human decision uses the approvals route). */
+  decideWorkerApproval(approvalId: string, approved: boolean, decidedBy: string, reason?: string): Promise<unknown> {
+    return this.workerExecutor.decideApproval(approvalId, approved, decidedBy, reason);
+  }
+
   verifyLoopRun(id: string): { run: LoopRunRecord; gates: LoopGate[]; leases: WorkerLeaseRecord[] } {
     return this.verification.verifyLoopRun(id);
   }
