@@ -75,8 +75,8 @@ RUN ARCH="$(dpkg --print-architecture)" && \
 
 # Keep the production worker surface equal to the runtimes accepted by
 # /swarms/runtime-readiness. Versions are pinned for reproducible probes.
-RUN npm install --global @openai/codex@0.146.0 opencode-ai@1.18.10 && \
-    git --version && codex --version && opencode --version
+RUN npm install --global @openai/codex@0.146.0 opencode-ai@1.18.10 @anthropic-ai/claude-code@2.1.282 && \
+    git --version && codex --version && opencode --version && claude --version
 
 # Create non-root user
 RUN groupadd -g 1001 djimitflo && \
