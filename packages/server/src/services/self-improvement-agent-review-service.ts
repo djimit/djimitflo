@@ -85,6 +85,8 @@ export function readTargetExcerpt(target: unknown, repoRoot = process.env.REVIEW
 }
 const CONNECTIVITY_ERROR = /fetch failed|ECONN|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|EAI_AGAIN|aborted|timed? ?out|socket hang up/i;
 
+const UNPARSEABLE = 'model response could not be parsed as a structured review';
+
 export class SelfImprovementAgentReviewService {
   private readonly panels: SpecialistPanelService;
   private readonly callModel: ModelCaller;
@@ -126,7 +128,7 @@ export class SelfImprovementAgentReviewService {
           continue;
         }
       }
-      const parsed = 'error' in outcome ? this.failureReview(outcome.error) : outcome;
+      const parsed = !('error' in outcome) ? outcome : outcome.error === UNPARSEABLE ? this.needsEvidenceFallback() : this.failureReview(outcome.error);
       panel = this.panels.submitReview(
         panel.id,
         { specialist_id: profile.id, ...parsed },
@@ -139,7 +141,9 @@ export class SelfImprovementAgentReviewService {
   private async reviewOne(panel: SpecialistPanelRecord, profile: SpecialistProfile, lessons?: string): Promise<ParsedReview | { error: string }> {
     try {
       const raw = await this.callModel(this.buildPrompt(panel, profile, lessons));
-      return this.parseResponse(raw);
+      // An unreadable answer is no judgement either (prod 2026-09-25: one garbled reply parked two test-gap proposals
+      // of a 6/6 lane); retry it like a failed call.
+      return this.parseResponse(raw) ?? { error: UNPARSEABLE };
     } catch (err) {
       return { error: err instanceof Error ? err.message : String(err) };
     }
@@ -187,7 +191,7 @@ export class SelfImprovementAgentReviewService {
     return readTargetExcerpt(grounding?.target);
   }
 
-  private parseResponse(raw: string): ParsedReview {
+  private parseResponse(raw: string): ParsedReview | null {
     const jsonText = this.extractJson(raw);
     let candidate: Partial<ParsedReview> | null = null;
     try {
@@ -196,7 +200,7 @@ export class SelfImprovementAgentReviewService {
       candidate = null;
     }
 
-    if (!candidate || typeof candidate !== 'object') return this.needsEvidenceFallback();
+    if (!candidate || typeof candidate !== 'object') return null;
 
     const stance = typeof candidate.stance === 'string' && VALID_STANCES.has(candidate.stance)
       ? (candidate.stance as ParsedReview['stance'])
