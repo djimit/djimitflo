@@ -342,7 +342,7 @@ function LurePanel({ lures, cast }: { lures: LureStatus | null; cast: LureCast |
       {cast && cast.invitations.length > 0 && (
         <div className="mt-4 rounded-lg border p-3" style={{ borderColor: LURE_COLOR }}>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold text-foreground">Uitnodigingen van zojuist ({cast.invitations.length}) · tokens verlopen {time(cast.lure.expires_at)}{cast.lure.paperclip_exported ? ' · Paperclip-taak geëxporteerd' : ''}</h3>
+            <h3 className="text-sm font-semibold text-foreground">Uitnodigingen van zojuist ({cast.invitations.length}) · tokens verlopen {time(cast.lure.expires_at)}</h3>
             <button type="button" onClick={() => setReveal((current) => !current)} className="inline-flex items-center gap-1 text-xs text-accent hover:underline">{reveal ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} {reveal ? 'verberg tokens' : 'toon tokens'}</button>
           </div>
           <ul className="mt-3 space-y-2">

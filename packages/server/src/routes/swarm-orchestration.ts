@@ -203,7 +203,7 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
       const ttlMs = Number(req.body?.ttl_ms);
       const cast = lure.castLure({
         by: String(req.user?.email || req.user?.id || 'operator'), baseUrl: `${req.protocol}://${req.get('host')}`,
-        ttlMs: Number.isFinite(ttlMs) && ttlMs > 0 ? ttlMs : undefined, paperclipPath: req.body?.paperclip === false ? null : undefined,
+        ttlMs: Number.isFinite(ttlMs) && ttlMs > 0 ? ttlMs : undefined,
       });
       for (const invitation of cast.invitations) audit.record({ event_type: AuditEventType.CONFIG_CHANGED, action: 'social_runtime_token_issued', resource_type: 'agent', resource_id: invitation.agent_id, user_id: req.user.sub, metadata: { scope: 'social-runtime', expires_at: invitation.expires_at, lure_id: cast.lure.id } });
       res.set('Cache-Control', 'no-store').status(201).json(cast);
