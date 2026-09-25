@@ -21,6 +21,9 @@ beforeEach(() => {
   write('packages/server/src/services/huge.ts', body(400));                                          // too large
   write('packages/server/src/services/noexports.ts', body(60, 'const hidden = 1;'));                 // nothing to test
   write('packages/server/src/__tests__/gamma.test.ts', "import { gamma } from '../services/gamma';\n");
+  write('packages/server/src/services/orphan.ts', body(40, 'export function orphan() {}'));          // untested, but dead code
+  // N12a: production code imports every service above except orphan
+  write('packages/server/src/index.ts', ['alpha', 'beta', 'gamma', 'tiny', 'huge', 'noexports'].map((n) => `import * as ${n} from './services/${n}';`).join('\n'));
   process.env.LOOP_DAEMON_REPOSITORY_PATH = repo; process.env.PROPOSAL_GROUNDING_REQUIRED = 'true';
 });
 afterEach(() => { delete process.env.LOOP_DAEMON_REPOSITORY_PATH; delete process.env.PROPOSAL_GROUNDING_REQUIRED; delete process.env.TEST_GAP_MAX_PER_DAY; delete process.env.MUTATION_GAP_ENABLED; db.close(); fs.rmSync(repo, { recursive: true, force: true }); });
@@ -75,4 +78,10 @@ it('M2: mutation gaps are tested, mid-sized, non-sensitive services; one grounde
   db.prepare("INSERT INTO goals (id, objective, risk_class, status, metadata, improvement_id, created_at, updated_at) VALUES ('g', 'o', 'low', 'running', '{}', ?, datetime('now'), datetime('now'))").run(row.id);
   expect(mutationCheckEnv(db, 'g')).toEqual({ MUTATE_FILE: 'packages/server/src/services/gamma.ts', MUTATE_TEST: 'packages/server/src/__tests__/gamma.test.ts' });
   expect(mutationCheckEnv(db, null)).toEqual({});
+});
+
+it('N12a: a service no production file imports is dead code: no test lane proposes work on it', () => {
+  expect(discoverTestGaps(repo).map((g) => g.service)).not.toContain('orphan');
+  write('packages/server/src/routes/x.ts', "import { orphan } from '../services/orphan';");
+  expect(discoverTestGaps(repo).map((g) => g.service)).toContain('orphan');
 });

@@ -18,9 +18,33 @@ const SERVICES_DIR = 'packages/server/src/services';
 const TESTS_DIR = 'packages/server/src/__tests__';
 const MIN_LOC = 30; const MAX_LOC = 250;
 
+/**
+ * N12a: services some production file imports. Prod 2026-09-25: 27 services (~6,000 lines) were imported by no
+ * production code, and the test-gap lane had spent runs on three of them (hypothesis, safety, root-cause-analysis):
+ * a test of dead code guards nothing. All test lanes now skip services outside this set.
+ */
+export function importedServices(repoPath: string): Set<string> {
+  const root = path.join(repoPath, 'packages/server/src');
+  const used = new Set<string>();
+  const walk = (dir: string) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.isDirectory()) { if (e.name !== '__tests__' && e.name !== 'node_modules') walk(path.join(dir, e.name)); continue; }
+      if (!/\.tsx?$/.test(e.name)) continue;
+      const self = e.name.replace(/\.tsx?$/, '');
+      for (const m of fs.readFileSync(path.join(dir, e.name), 'utf8').matchAll(/(?:from|import)\s*\(?\s*['"][^'"]*\/([A-Za-z0-9_-]+)(?:\.js)?['"]/g)) {
+        const name = m[1];
+        if (name !== self) used.add(name);
+      }
+    }
+  };
+  if (fs.existsSync(root)) walk(root);
+  return used;
+}
+
 export function discoverTestGaps(repoPath: string): TestGap[] {
   const servicesDir = path.join(repoPath, SERVICES_DIR); const testsDir = path.join(repoPath, TESTS_DIR);
   if (!fs.existsSync(servicesDir) || !fs.existsSync(testsDir)) return [];
+  const live = importedServices(repoPath);
   const tested = new Set<string>();
   for (const file of fs.readdirSync(testsDir).filter((f) => /\.test\.tsx?$/.test(f))) {
     const text = fs.readFileSync(path.join(testsDir, file), 'utf8');
@@ -30,7 +54,7 @@ export function discoverTestGaps(repoPath: string): TestGap[] {
   const gaps: TestGap[] = [];
   for (const file of fs.readdirSync(servicesDir).filter((f) => /\.ts$/.test(f) && !/\.d\.ts$/.test(f))) {
     const service = file.replace(/\.ts$/, '');
-    if (tested.has(service) || service === 'index') continue;
+    if (tested.has(service) || service === 'index' || !live.has(service)) continue;
     const text = fs.readFileSync(path.join(servicesDir, file), 'utf8');
     const loc = text.split('\n').length;
     const exports = [...text.matchAll(/export\s+(?:async\s+)?(?:class|function|const)\s+(\w+)/g)].map((m) => m[1]).slice(0, 6);
@@ -49,13 +73,14 @@ const MAX_EXPORT_GAP_LOC = 600;
 export function discoverExportGaps(repoPath: string): TestGap[] {
   const servicesDir = path.join(repoPath, SERVICES_DIR); const testsDir = path.join(repoPath, TESTS_DIR);
   if (!fs.existsSync(servicesDir) || !fs.existsSync(testsDir)) return [];
+  const live = importedServices(repoPath);
   const tests = fs.readdirSync(testsDir).filter((f) => /\.test\.tsx?$/.test(f)).map((f) => fs.readFileSync(path.join(testsDir, f), 'utf8'));
   const tested = new Set(tests.flatMap((t) => [...t.matchAll(/\/services\/([A-Za-z0-9_-]+)(?:['"/])/g)].map((m) => m[1])));
   const allTests = tests.join('\n');
   const gaps: TestGap[] = [];
   for (const file of fs.readdirSync(servicesDir).filter((f) => /\.ts$/.test(f) && !/\.d\.ts$/.test(f))) {
     const service = file.replace(/\.ts$/, '');
-    if (!tested.has(service)) continue; // untested services are discoverTestGaps' job
+    if (!tested.has(service) || !live.has(service)) continue; // untested services are discoverTestGaps' job
     const text = fs.readFileSync(path.join(servicesDir, file), 'utf8');
     const loc = text.split('\n').length;
     if (loc > MAX_EXPORT_GAP_LOC) continue;
@@ -81,10 +106,11 @@ const SENSITIVE = /(^|[-_])(auth|secrets?|deploy|token|credential|spawn)([-_]|$)
 export function discoverMutationGaps(repoPath: string): MutationGap[] {
   const servicesDir = path.join(repoPath, SERVICES_DIR); const testsDir = path.join(repoPath, TESTS_DIR);
   if (!fs.existsSync(servicesDir) || !fs.existsSync(testsDir)) return [];
+  const live = importedServices(repoPath);
   const gaps: MutationGap[] = [];
   for (const file of fs.readdirSync(servicesDir).filter((f) => /\.ts$/.test(f) && !/\.d\.ts$/.test(f))) {
     const service = file.replace(/\.ts$/, '');
-    if (SENSITIVE.test(service) || !fs.existsSync(path.join(testsDir, `${service}.test.ts`))) continue;
+    if (SENSITIVE.test(service) || !live.has(service) || !fs.existsSync(path.join(testsDir, `${service}.test.ts`))) continue;
     const loc = fs.readFileSync(path.join(servicesDir, file), 'utf8').split('\n').length;
     if (loc < MIN_LOC || loc > MAX_MUTATION_LOC) continue;
     gaps.push({ service, sourcePath: `${SERVICES_DIR}/${file}`, testPath: `${TESTS_DIR}/${service}.test.ts`, loc });
