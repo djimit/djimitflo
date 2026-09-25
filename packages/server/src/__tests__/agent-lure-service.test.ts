@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync } from 'fs';
+import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type Database from 'better-sqlite3';
@@ -33,8 +33,7 @@ describe('agent commons lure (honeypot)', () => {
 
   it('invites only absent eligible agents, issues scoped tokens once and no longer exports to Paperclip (retired)', () => {
     db.prepare(`UPDATE agents SET metadata = '{"social_runtime":{"last_heartbeat_at":"2026-09-01T00:00:00.000Z"}}' WHERE id = 'silent'`).run(); // lapsed: its poller can come back
-    const pending = join(dir, 'pending.jsonl');
-    const cast = lure.castLure({ by: 'operator@test', baseUrl: 'http://127.0.0.1:3001', paperclipPath: pending });
+    const cast = lure.castLure({ by: 'operator@test', baseUrl: 'http://127.0.0.1:3001' });
     expect(cast.lure.invited).toEqual(['silent']);
     expect(cast.invitations).toHaveLength(1);
     const [invitation] = cast.invitations;
@@ -48,8 +47,6 @@ describe('agent commons lure (honeypot)', () => {
     expect(JSON.stringify(invite)).not.toContain(invitation.token);
     expect(comms.receiveSocial('silent')).toHaveLength(0);
 
-    expect(cast.lure.paperclip_exported).toBe(false);
-    expect(() => readFileSync(pending, 'utf8')).toThrow(); // nothing written
 
     let status = lure.status();
     expect(status.lures[0].invitees).toEqual([expect.objectContaining({ agent_id: 'silent', state: 'seen' })]);
@@ -61,16 +58,16 @@ describe('agent commons lure (honeypot)', () => {
 
   it('shell-quotes untrusted ids in the poller command and persists nothing when nobody is absent', () => {
     db.prepare("INSERT INTO agents (id, name, status) VALUES ('evil;rm -rf /', 'Evil', 'active')").run();
-    const cast = lure.castLure({ by: 'op', baseUrl: 'http://127.0.0.1:3001', paperclipPath: null });
+    const cast = lure.castLure({ by: 'op', baseUrl: 'http://127.0.0.1:3001' });
     const evil = cast.invitations.find((invitation) => invitation.agent_id === 'evil;rm -rf /')!;
     expect(evil.poller_env).toContain("DJIMITFLO_AGENT_ID='evil;rm -rf /'");
     expect(evil.poller_env).toContain(`DJIMITFLO_SOCIAL_TOKEN='${evil.token}'`);
     comms.heartbeat('silent', 'codex', 'test-model');
     comms.heartbeat('evil;rm -rf /', 'codex', 'test-model');
-    const empty = lure.castLure({ by: 'op', baseUrl: 'http://127.0.0.1:3001', paperclipPath: null });
+    const empty = lure.castLure({ by: 'op', baseUrl: 'http://127.0.0.1:3001' });
     expect(empty.lure.invited).toEqual([]);
     expect((db.prepare('SELECT COUNT(*) AS n FROM social_lures').get() as { n: number }).n).toBe(1);
-    expect(lure.castIfQuiet({ by: 'loop', baseUrl: 'http://127.0.0.1:3001', paperclipPath: null })).toBeNull();
+    expect(lure.castIfQuiet({ by: 'loop', baseUrl: 'http://127.0.0.1:3001' })).toBeNull();
   });
 
   it('logs probes with a bounded history', () => {
@@ -86,7 +83,7 @@ describe('agent commons lure (honeypot)', () => {
     db.prepare("INSERT INTO agents (id, name, status, capabilities_json, metadata) VALUES ('maker-x', 'opencode-maker', 'active', '[\"opencode\",\"maker\"]', '{}'), ('lapsed', 'Lapsed', 'active', '[\"claude\"]', ?)")
       .run(JSON.stringify({ social_runtime: { enabled: true, runtime: 'claude', last_heartbeat_at: '2026-09-13T19:33:37.041Z' } }));
     db.prepare("INSERT INTO swarm_claims (id, claim, claim_type, subject_ref, predicate, status, created_from) VALUES ('g-h', 'Knowledge gap: Sparse claim inventory: 1 distinct normalized active statements', 'observation', 'd', 'gap', 'proposed', 'curiosity-service')").run();
-    const cast = lure.castLure({ by: 'operator@test', baseUrl: 'http://x', paperclipPath: null });
+    const cast = lure.castLure({ by: 'operator@test', baseUrl: 'http://x' });
     expect(cast.lure.invited.sort()).toEqual(['lapsed', 'silent']);          // no loop worker
     expect(cast.lure.topic).not.toContain('Sparse claim inventory');        // heuristic gap is not bait
     const invitees = lure.status().lures[0].invitees;
@@ -96,7 +93,7 @@ describe('agent commons lure (honeypot)', () => {
   it('the autonomous lure only invites agents that were connected before', () => {
     db.prepare("INSERT INTO agents (id, name, status, metadata) VALUES ('lapsed', 'Lapsed', 'active', ?)")
       .run(JSON.stringify({ social_runtime: { enabled: true, last_heartbeat_at: '2026-09-13T19:33:37.041Z' } }));
-    expect(lure.castIfQuiet({ by: 'loop', baseUrl: 'http://x', paperclipPath: null })?.lure.invited).toEqual(['lapsed']);
+    expect(lure.castIfQuiet({ by: 'loop', baseUrl: 'http://x' })?.lure.invited).toEqual(['lapsed']);
   });
 
   it('F1: a never-connected agent gets a token (to install an adapter) but no bus invitation; the same bait is not recast', () => {

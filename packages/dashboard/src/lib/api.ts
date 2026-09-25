@@ -781,7 +781,7 @@ export type LureStatus = {
   probe_count: number;
 };
 export type LureCast = {
-  lure: { id: string; topic: string; topic_ref: string; created_at: string; expires_at: string; invited: string[]; paperclip_exported: boolean };
+  lure: { id: string; topic: string; topic_ref: string; created_at: string; expires_at: string; invited: string[] };
   invitations: Array<{ agent_id: string; name: string; token: string; expires_at: string; poller_env: string }>;
 };
 export type JoinInvite = { code: string; label: string; expires_at: string; max_uses: number; join_url: string };
