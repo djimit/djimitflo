@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { FrontierExpertRegistryService } from '../services/frontier-expert-registry-service';
-import { ExpertCouncilService, type PerspectiveRunner } from '../services/expert-council-service';
+import { ExpertCouncilService, firstJsonObject, type PerspectiveRunner } from '../services/expert-council-service';
 import { ExpertSwarmOrchestrator } from '../services/expert-swarm-orchestrator';
 
 describe('expert council: independent perspectives, claim graph, disagreement, adversary (§16 §17 §18 §19 §57)', () => {
@@ -152,5 +152,16 @@ describe('expert council: independent perspectives, claim graph, disagreement, a
     expect(result.promotion_decision).toBe('CONTRADICTED');
     expect(result.knowledge_updated).toBe(false);
     expect(result.verdict.contradictions.some((item) => item.startsWith('Council disagreement'))).toBe(true);
+  });
+});
+
+describe('firstJsonObject (prod 2026-09-26: 43 of 50 reviews failed on model output shape)', () => {
+  it('skips a think block, an echoed schema example and trailing prose', () => {
+    const answer = '<think>plan: {"draft": true}</think>Schema: {"checks":[...]}\nHere you go:\n{"checks":[{"capability_id":"a","rationale":"uses } and { in text"}]}\nHope this helps {x}.';
+    expect(firstJsonObject(answer)).toEqual({ checks: [{ capability_id: 'a', rationale: 'uses } and { in text' }] });
+  });
+  it('returns null when no object parses', () => {
+    expect(firstJsonObject('no json {here')).toBeNull();
+    expect(firstJsonObject('[1,2]')).toBeNull();
   });
 });
