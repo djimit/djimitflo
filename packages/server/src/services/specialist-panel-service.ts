@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { recordPanelShadow } from './panel-calibration-shadow';
 import type { Database } from 'better-sqlite3';
 import { WorkItemService, type WorkItemRecord } from './work-item-service';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
@@ -438,6 +439,8 @@ export class SpecialistPanelService {
       panel.id
     );
 
+    // C3: weighted-vote shadow judgment next to the actual decision (default off; never changes the decision)
+    if (nextStatus === 'consensus_ready') recordPanelShadow(this.db, panel.id, reviews, consensus.decision);
     return this.getPanel(panel.id);
   }
 
