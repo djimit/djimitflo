@@ -71,11 +71,18 @@ export class DreamStateService {
 
   start(intervalMs = 6 * 3600_000): void {
     if (this.timer || !dreamStateEnabled()) return;
-    const run = () => { this.replay().then((r) => { if (r.classified) console.log(`🌙 dream state: classified ${r.classified}/${r.candidates} failed runs`); }).catch((err) => console.warn('Dream state replay failed:', err instanceof Error ? err.message : String(err))); };
+    // One pass per interval, however often the container restarts (prod 2026-09-25: every auto-deploy added a ledger row).
+    const run = () => { if (!this.due(intervalMs)) return; this.replay().then((r) => { if (r.classified) console.log(`🌙 dream state: classified ${r.classified}/${r.candidates} failed runs`); }).catch((err) => console.warn('Dream state replay failed:', err instanceof Error ? err.message : String(err))); };
     this.timer = setInterval(run, intervalMs); this.timer.unref?.();
     setTimeout(run, 120_000).unref?.();
   }
   stop(): void { if (this.timer) { clearInterval(this.timer); this.timer = null; } }
+
+  /** True when the last ledger row is older than `intervalMs` (or there is none). */
+  due(intervalMs: number, now = Date.now()): boolean {
+    const last = (this.db.prepare('SELECT created_at FROM dream_ledger ORDER BY id DESC LIMIT 1').get() as { created_at: string } | undefined)?.created_at;
+    return !last || now - Date.parse(last) >= intervalMs * 0.9;
+  }
 
   /** Failed/blocked runs of the last `days` without a failure_cause judgment yet, with their evidence. */
   pendingFailures(days = 7, limit = MAX_PER_REPLAY): Array<{ id: string; state: Record<string, unknown> }> {
