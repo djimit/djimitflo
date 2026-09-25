@@ -178,13 +178,13 @@ export class LoopLifecycleService {
     if (!maker) throw new Error('MAKER_LEASE_NOT_FOUND');
     if (maker.role !== 'maker') throw new Error('LEASE_NOT_MAKER');
     if (!maker.finding_id) throw new Error('LOOP_FINDING_NOT_FOUND');
-    if (!this.loopService.isRetryableMakerLease(maker, checkerLeases)) throw new Error('LOOP_RETRY_NOT_ALLOWED');
+    if (!input.sibling && !this.loopService.isRetryableMakerLease(maker, checkerLeases)) throw new Error('LOOP_RETRY_NOT_ALLOWED');
     const finding = run.findings.find((c) => c.id === maker.finding_id);
     if (!finding) throw new Error('LOOP_FINDING_NOT_FOUND');
     const retryRootMakerLeaseId = this.loopService.retryRootFor(maker);
     const retryBudget = this.loopService.getRetryBudget(run, maker, input);
     const usedRetries = leases.filter((l) => l.role === 'maker' && l.metadata.retry_root_maker_lease_id === retryRootMakerLeaseId).length;
-    if (usedRetries >= retryBudget.maxRetries) throw new Error('LOOP_RETRY_BUDGET_EXHAUSTED');
+    if (!input.sibling && usedRetries >= retryBudget.maxRetries) throw new Error('LOOP_RETRY_BUDGET_EXHAUSTED');
     const runtime = input.runtime || (maker.runtime as RetryLoopInput['runtime']) || 'manual';
     const model = input.model ?? (typeof maker.metadata.model === 'string' ? maker.metadata.model : undefined);
     const reasoningEffort = input.reasoningEffort ?? (maker.metadata.reasoningEffort as RetryLoopInput['reasoningEffort'] | undefined);
@@ -208,7 +208,8 @@ export class LoopLifecycleService {
       id: retryMakerLeaseId, loopRunId: run.id, role: 'maker', runtime, findingId: finding.id, worktreePath, branchName,
       metadata: { assignment_file: assignmentFile, assignment_packet_file: assignmentPacketFile,
         ...(model ? { model } : {}), ...(reasoningEffort ? { reasoningEffort } : {}),
-        retry_of_maker_lease_id: maker.id, retry_root_maker_lease_id: retryRootMakerLeaseId, retry_attempt: retryAttempt }, now,
+        retry_of_maker_lease_id: maker.id, retry_root_maker_lease_id: retryRootMakerLeaseId, retry_attempt: retryAttempt,
+        ...(input.sibling ? { evolve_sibling_of: maker.id } : {}) }, now,
     });
     const retryCheckerLeaseId = randomUUID();
     this.loopService.insertWorkerLease({

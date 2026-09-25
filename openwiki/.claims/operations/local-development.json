@@ -1,0 +1,270 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:b78c8d959a2d4c10361826573ec8c071d0959d8b43ab17e0c156e4a27d9378cc",
+  "claims": [
+    {
+      "id": "claim_662ff36ed9c94fe291ee7fea898f9dda",
+      "statement": "The repository requires Node.js >=22.0.0 and <25.0.0 with npm >=9.0.0, enforced via the root package.json engines field; the Docker image is built on node:22-bookworm-slim.",
+      "evidence": [
+        {
+          "resource": "repo://Dockerfile#L9-L9",
+          "version": "repo-lines-v1:sha256:ee0159cd971ac46953f7244f525825010c12e5bbfc5fd051b177553dd97d5a2c:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWUwMTU5Y2Q5NzFhYzQ2OTUzZjcyNDRmNTI1ODI1MDEwYzEyZTViYmZjNWZkMDUxYjE3NzU1M2RkOTdkNWEyYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWUwMTU5Y2Q5NzFhYzQ2OTUzZjcyNDRmNTI1ODI1MDEwYzEyZTViYmZjNWZkMDUxYjE3NzU1M2RkOTdkNWEyYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzA0OWY1MzAxYzY1NzRlOGVkMTZkZjM0YjJmOGVkNmZhZGQ3MDgxN2NjYmVjNDhmZGQyNjA5MDQ0YjkyN2JjNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWY3ZmU0ZWVlOTA0NmU0YWQ0NjgyNDY2YmVmYzA3MzQzMTI4OTlhNGQ2MzIxNTA2Nzk1YTYzYTA4YTlkMTQ4ZSJ9"
+        },
+        {
+          "resource": "repo://package.json#L54-L57",
+          "version": "repo-lines-v1:sha256:cdb3a415781fc3239d4f935e2840223cd3fa98010704e01ce8d00140f75d1e07:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWY2MDE1NTQxMjJlZmU4NTVkNTZlMTBjYzliYWYyMDMxY2EzZjRhYjExY2RiYTIyZjFlYmM1ZDM5YTc1NTgyNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjA1YWQyM2U3NTNiMzU4ODdhNTBkZjMyMTk2ZjY3MGQzZmFlODI3OTU2MjJjMGVjYzNkYzA2ZTBlNDMzMTRhNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDk1MzhkNWFlOTIwM2ExZmI5Y2Y3MjYxODc4MDczMzE4MzY2NDQwODcwYWM2YTU5ZTE2ZTE0ZTkxNjQxM2I2NCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_684bf66aa72d495dbbbc17a4febfc850",
+      "statement": "npm install at the repository root installs all npm workspaces (packages/*) in a single pass; better-sqlite3 compiles a native addon during install, requiring python3/make/g++ when no prebuilt binary is available (the Dockerfile installs this toolchain and later purges it).",
+      "evidence": [
+        {
+          "resource": "repo://Dockerfile#L13-L16",
+          "version": "repo-lines-v1:sha256:209af78116c6a8ab5a14a328c33726bd2897684ed91839a5a639adb56a74634a:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODczODRjMjA4MTVlZDY5N2VmYTBmMjdlZWY0MDQ5MThlOTZhZDI4MDkzZWE0MjQ2YThlOWIwMTFkYTAwMzI5NyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTI0OWJhNTM4MGExMDM2ZTE3MTVlMTc0MjI5ZWI4MzMwNGU4OTNkZGNiM2VlZmFhZjQxYmNlNzA4YTdkZmQ0ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWY3ZmU0ZWVlOTA0NmU0YWQ0NjgyNDY2YmVmYzA3MzQzMTI4OTlhNGQ2MzIxNTA2Nzk1YTYzYTA4YTlkMTQ4ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmY1ZDI0Y2M1NTZhN2I3NWI2NmNlNjRkMzlhZTEwMWNhZWNhNmI1YjQwZDQ1ZDUzMzhjYWIyNmYxOTM3YTJlZSJ9"
+        },
+        {
+          "resource": "repo://Dockerfile#L96-L102",
+          "version": "repo-lines-v1:sha256:e919314373e3f9e0f25131e2c4d10a3b93f487edf8656999083aca5a8c557b13:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzY5Njk3NzhmZDE2NmY0MDU0MjhkMzA1NjhhMGYwZGY3YTZlZDUwNjkyNjMxZGYwOWNlNTk5MmNjNjQxNjA4YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTI0OWJhNTM4MGExMDM2ZTE3MTVlMTc0MjI5ZWI4MzMwNGU4OTNkZGNiM2VlZmFhZjQxYmNlNzA4YTdkZmQ0ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWJhNjExYjU0MzJkYmU1ODc5Yzc4YTBjMGY0NTAxNTFmNDkwYmI3MTM0ODUzYmJjYTg4OTU3ZWU4NTM2MTkwYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDdmNzA0NGMzOTZlYzk4ZDk1NmRlZDYxZGZmOWFlOGMwMGQ5OTJmMGQ3NzA3ZWU4NGIyNTFjNjhmMzgwZTkzYiJ9"
+        },
+        {
+          "resource": "repo://package.json#L58-L62",
+          "version": "repo-lines-v1:sha256:5cdb195b687265d49d1789c35e3f1bdb4cd5c0e16cf4ed983a86a4f14814573d:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmEzYjQ2OWQ5ZTA5NzU3MjI0NjY2NzM0YzllZjdiMjU0ZDg4NTM0ZjVkNWJiNzA5ODk2MDgwNWM1NTNkYzMwNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWNiOWUxZmEzM2QyNTgzYjkxYTIyZjY2MzUyNWVjNmQ3MzMzNjUzOGVhNDFlOGE4MjEzMTRkZWI0NzJmOGZjNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTViZmM2NzQzMmI5NDNhZWNiYWFjY2ZhOTI2ZTY0YThlMDNiODRiNzFlMjdhMzE1M2VkYjUxMDRjYzk1NTgxYiJ9"
+        },
+        {
+          "resource": "repo://package.json#L8-L10",
+          "version": "repo-lines-v1:sha256:e02ca5b5882ed95021efef55f8740e171211894d210589ec4089527fff48fda1:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWRhZWViY2I3ZGEwOWIzYTdjOTU4YzE0OWMxNmJiYmY5MTYxMmVjNjFkNDQyN2IzZWUxZTYzMjJhOGYyYmEwMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTY0ZDhjMDczNDI5ODkzMTAxNTc2ZDg4ZDk5MTI3ZTg5ZDY4OTFkM2IxN2U4OWRmMDJlYzlhZTcwNzA1ZDhiZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmEyYmEyZjkzYmMxMGEyMDUwMjBhZjY1MDczYWFmOWFlNDczMjEyYWI5Mjg3MjczN2I2YWI3MzZmN2U3MWU2MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjUwMDBmYmEwOWM5ZDQ0MzFkZTgyZDY5MThiMjdjZmZiMzFhOTY0ZmQ5MDU3YTU2ZWNmOWU4MTYyYTk3ZmI2YyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_4ae40baa06054b60aca280c178a20595",
+      "statement": "npm run dev uses npm-run-all --parallel to start dev:server (tsx watch src/index.ts in @djimitflo/server) and dev:dashboard (vite) concurrently; the Vite dev server runs on port 5173 and proxies /api and /ws to the backend at localhost:3001.",
+      "evidence": [
+        {
+          "resource": "repo://package.json#L12-L14",
+          "version": "repo-lines-v1:sha256:ceff2df9efd7cf39112c0ce0ef34052b98cf79262ae926d3346d8bc25a921611:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmRjMGI2MzAwNTg0N2IwM2FiZjc1N2JiZmNhODM2NjcyMTRjYjIwOTJlZTBkYjJjYWY4NTk4MDk5YjFhMjhhOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjdiZWUxYzZhMzMzZjFjNjI0MjM2NmY3ZWIzZDg2MGQwYTU5M2VhNTllNGVkZjUzMzRjOWUxNzRhYjI3ZjFjYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjI2OGExZmNlOTQzNGUxNGZlOGUxODE2Mzk3NGJiNTlhMTA4YzQ1MzA1ZjI5YWZiNzkxNmMxZTkzNjNiZjk2NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDQ4MmQyOGE3ZTNlMmZjNjgxZmZlM2NlNTJmZTcwODg1YjI1MTUwYzQ1Y2VmMmMyMjc4OTg4ZmMwNzU4YTQ4NCJ9"
+        },
+        {
+          "resource": "repo://packages/dashboard/package.json#L7-L8",
+          "version": "repo-lines-v1:sha256:aa3ee38f8862d6847ecefdda3e1232422656ae4b8c250502e1777e302b93fec8:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzQ4MzNkNTk0OWMwM2E0MGNhOTUyNDkxNjEwYTY2NTk2NDRiM2FhNDY2MzYyZjc5OTAyMGRiZjE5ODE1NDdkYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2JhNDM0ODUzMDIyZTBkZWRlMDhjYzRkYTVmNjZlNzNlZTJlNjg2NjM3ZmY0MzJlZGYyZjAyOGNmOWNkNDkyMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWQxMWNlNDk2MGY1YzE4ZjBiM2E1ZDNmMzFhM2ZjMjkwYWZlOGZiYTRiNjk2YWNhZWJiZjIyZWM2NjZjZGIwNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDdkMDkxNzZmYzZjZDU5N2Q2ZjFmODZjZTE1MGMyNGVlZjllMGE2YzY1MjEyNjZiNTdhNTFmNTM1NjZjMzBlYSJ9"
+        },
+        {
+          "resource": "repo://packages/dashboard/vite.config.ts#L19-L31",
+          "version": "repo-lines-v1:sha256:78ec84c9ab2b6722715b528b5a2f9126b83bb7f3a4454a5b345b281b4a8ff785:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwZTY2YWZlMzEwMjMxZDJlNjA5MWE1ZDg5YTYzZTc0OTg1ZmM3YzAyMzY0YTg5OWI0Y2FjZjdmNTI3Mjk2NTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkNWNkMmZiNGYzZGY4ODQ1MTUyNTViMzk1MjNmMmY4YjU0NzJiZWVhOWY1NjZmZmNhMjA0ZGI4MDI1NjEwNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRhODQ5NWFhMmI4MGViMDY0YmE5Y2M3YWM5YmU2ZmE2YzhmNzBkZjJhNjFhN2UxNDdlZjRjMjQyNjJlZmIyNmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ2MjZhMjhiZmJkYzVhMjdiMmJiYWIyYWFlZjBkOTJmMGI1NjU1OGVhNThkYWNlNTM1N2JjZWU3MGFjNDY1YzAifQ"
+        },
+        {
+          "resource": "repo://packages/server/package.json#L7-L8",
+          "version": "repo-lines-v1:sha256:675a18000afaf423fc5e8d650685c4d9a52f54cb0596a2b4569636259165dcc2:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzQ4MzNkNTk0OWMwM2E0MGNhOTUyNDkxNjEwYTY2NTk2NDRiM2FhNDY2MzYyZjc5OTAyMGRiZjE5ODE1NDdkYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODliODQzMzEzMjFjOGZhMmI3Y2E2NTViZTZkMTkxZGM2OTUwNGE1NTIyZDJkMTJhNWFjYWU0ZTc2ZjQ3MDM2ZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTk4YTBmNDYwOTA2YjQxMWUzZmFhNWMwNjc0ODRmZDliMWZiOTk4ZmJmZTE2Nzc3ODZlYzk1MGI5YWRlYmM4OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjVlMGY0YWIyNDM2MzYwMjQzNmQxM2RiMDkxOGEyZDZiZTkyNzY5Njc5ZGYxN2Y1ZTk2NzYxOTMyY2EyNjk5OCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_f486e45869e14885b0754babd7cf74f7",
+      "statement": "The root build script is an explicit chained workspace order: shared, telegram, agent-catalog, mcp-server, ransomware-module, server, dashboard. Downstream packages consume workspace dependencies through their built dist outputs (e.g. @djimitflo/shared exports dist/index.js and dist/index.d.ts), so the order matters; the dashboard's Vite config is the exception, aliasing @djimitflo/shared directly to shared/src.",
+      "evidence": [
+        {
+          "resource": "repo://package.json#L15-L15",
+          "version": "repo-lines-v1:sha256:435d8887c8cd14bf4641be5effa8e238b01a2b8ed4f7bd0e606f905aaefbe2aa:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM1ZDg4ODdjOGNkMTRiZjQ2NDFiZTVlZmZhOGUyMzhiMDFhMmI4ZWQ0ZjdiZDBlNjA2ZjkwNWFhZWZiZTJhYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM1ZDg4ODdjOGNkMTRiZjQ2NDFiZTVlZmZhOGUyMzhiMDFhMmI4ZWQ0ZjdiZDBlNjA2ZjkwNWFhZWZiZTJhYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2VmZjJkZjllZmQ3Y2YzOTExMmMwY2UwZWYzNDA1MmI5OGNmNzkyNjJhZTkyNmQzMzQ2ZDhiYzI1YTkyMTYxMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjkxNzIyMjEzMjFmZDcwZjlkZmNiODg4N2FmZDYxOTljYzJhMjgxYzE0ZTVlYjM0NzZmYTM0Y2FmMTc4YTgzOCJ9"
+        },
+        {
+          "resource": "repo://packages/dashboard/vite.config.ts#L12-L18",
+          "version": "repo-lines-v1:sha256:c5eb5fb91ca04d3d95086a5dad04e78338fe852f4a85a4b188953e786e9d37c9:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODkyN2EzODFhOTMzOGI0MjA4OGRiNWJlYTAwNjk3YjUzNzc1M2FlMmM5YTYwY2QwNTg0N2RmY2M5NTAzNzk0OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGU0ODJlMWM0NzUzNDk1MmI1MWQxZGM5MTVjMDVjMzVlNjhiY2JjNTY0ZDM3ZWNjZmUxZGQ2YjI1ZjIzZWM1MiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjAzZjUyYTg2NTI0MjBhNGNjMjY3NmU0MzlkYmM5M2YxZDJhMmNiNzI4NDZlNTU1ODRhODg0NzM0ZWMxYjVkMyJ9"
+        },
+        {
+          "resource": "repo://packages/shared/package.json#L15-L24",
+          "version": "repo-lines-v1:sha256:41f51ef4fd214f36f4d83e7034a6b6792dff1325330e2365358e010f42b03059:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNjMDViYjlmNGE4Yjk4NDUxMGY4MTVhNWZjNDA3OGQ3N2M1YTIwZTkzZjMzNzNkYzVkZGU0YTM0MWQxYjQwYzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkNWNkMmZiNGYzZGY4ODQ1MTUyNTViMzk1MjNmMmY4YjU0NzJiZWVhOWY1NjZmZmNhMjA0ZGI4MDI1NjEwNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNhMmViZmNkMzEwNmQ1NWQ5ZjVlZjg2NzBlZjk5MWY5OWEyYTkwYTEyZjg3ZjE2YTk0MDYxZGI1MDRjM2FmOTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNhZjVlMTVlODBhZDk5MTQzMzQyMDY5ZmNiZjEwNGM5OWU5ODgwOWUzNmY0OTUzZjQyYzczMjg2MTNiZTUxOTkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_39a6623cc6964dda8d7b50f3463c6772",
+      "statement": "The server package runs tsx watch src/index.ts in dev and node dist/index.js (compiled by tsc) via start; in production the server serves the built dashboard from DASHBOARD_PATH instead of the Vite dev server.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/.env.example#L131-L134",
+          "version": "repo-lines-v1:sha256:e881be4c1f0dc57c29ad4336aff44cb123b30de4030562182429206b15706ff1:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDk5N2JkNTBjNjIxZjY1YjQ4MjA4MTc0YzRkMDJhYzJmOWMwMmQ4ZTEwODZmZjNjN2Y1NGYxNjA2ODk4YzBkNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiY2U5Njc3Mjk0Y2RlZDMwYTcwYzZmYTFlMDBkYWRiNmE1NGM5NDViYTVjN2I4MjhlZjUwZWRlMzFlNzNjMjIwZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDM3NDNlZTg2MmQyOGNkYTY4OWQ1ZGVlODlkNWYyYzdmNjdmMWY4NTk1NmU3MGYwNTg5YWUyNjAzZGEwNzFmNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDAxNzAwZTM3ZTM5Mjg1M2FjMDQyYzFiZDdjZTZhYmNlNjkzZmQ0ZGQxZjE5YTBhYTRiZjNhZjRlNTBkMzEyMSJ9"
+        },
+        {
+          "resource": "repo://packages/server/package.json#L7-L10",
+          "version": "repo-lines-v1:sha256:43b94772da088e149a52550233a4a03e60d7539732be88b5aac5c6116832a5dd:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzQ4MzNkNTk0OWMwM2E0MGNhOTUyNDkxNjEwYTY2NTk2NDRiM2FhNDY2MzYyZjc5OTAyMGRiZjE5ODE1NDdkYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTg4NDIwZjc1MTBhODIzZmQ3ODE2YzcwNjMyY2JiODQxZjM4Y2Y3ZGI3ZmIwYTRmMDJlOTY1ODNiYWJjMTYzMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTk4YTBmNDYwOTA2YjQxMWUzZmFhNWMwNjc0ODRmZDliMWZiOTk4ZmJmZTE2Nzc3ODZlYzk1MGI5YWRlYmM4OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTQ2OTE0MWRmZTk4ZjE1NTAyZWE4OTQzMzA3MjI3NjQ3Zjg5OTc2NTA4MmFhNGYwZmI3YzljY2M1Y2Q2OGJhYyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_8b32ce44ee9542d0b9ea82009d7ad064",
+      "statement": "The root npm run test pipeline runs five script selftests BEFORE any workspace test: deploy-vps.selftest.sh, wiki-delta-emitter.selftest.sh, paperclip-archive-export.py --selftest, paperclip-readonly-monitor.py --selftest, live-identity-evidence.test.mjs, and integration-probes.test.mjs; it then builds shared and agent-catalog and only afterwards runs npm run test --workspaces --if-present.",
+      "evidence": [
+        {
+          "resource": "repo://package.json#L18-L18",
+          "version": "repo-lines-v1:sha256:fc5157e4fa43b3ef911b2d0ef5c413035ff969f0f38b4564360e65996cb0af73:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmM1MTU3ZTRmYTQzYjNlZjkxMWIyZDBlZjVjNDEzMDM1ZmY5NjlmMGYzOGI0NTY0MzYwZTY1OTk2Y2IwYWY3MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmM1MTU3ZTRmYTQzYjNlZjkxMWIyZDBlZjVjNDEzMDM1ZmY5NjlmMGYzOGI0NTY0MzYwZTY1OTk2Y2IwYWY3MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDQ4MmQyOGE3ZTNlMmZjNjgxZmZlM2NlNTJmZTcwODg1YjI1MTUwYzQ1Y2VmMmMyMjc4OTg4ZmMwNzU4YTQ4NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzhlMGQ0ZGEzYmI3MjQwNGRlYjA4MjJkMzYwNTE3Nzc0ZmVhMDE5NzMwODZlYWE0YzlmMWI2NjUyZWNjM2U0YyJ9"
+        },
+        {
+          "resource": "repo://scripts/deploy-vps.selftest.sh#L1-L9",
+          "version": "repo-lines-v1:sha256:6cb2f35da21dbc98fbcda11cf0fd72abdebfebe03307c815b080b8f3456adfd2:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWQ5NWZjMDRhODBjOTUyZjQ5Y2U0MTg4NjI3YzUzYjBmYmU4YzQ0MDQxYjk1MmQ1OTJhY2QxZGU5OTg2MTQ2NiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODJjZTM5OTM1M2Q0MjlhNTVmZThkMzIwNzUwNjVhMmJlZGE0MmM3Y2NhNDUzNGE2YjFmYTdkZTNkYTA1YmY1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDc5NmQ3NjViMmMyYmMxZmI3Y2EwNjFmMmI3ZjhmZTZmNjMwMTY5M2QyNzMxODE3NDBmMjg2MjdmZGY4ZTU1ZSJ9"
+        },
+        {
+          "resource": "repo://scripts/integration-probes.test.mjs#L1-L10",
+          "version": "repo-lines-v1:sha256:4d63223d8bd11aaa1e9a9a80f8efb6dcb8c1109dd574ff279702d5ea0660389d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwNjYyZmJjYzBkNGQ4YzExOTY4M2RhMTk0N2IxMjA0NjgwM2Q0OGI0NDc5ODgxOTdlYzMwOTJmZmU1YThiNGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3MWIyMDc2OWJlYjA1MWM2YWE3ZDFiZWViZDExNjM1ZjVkNmE0M2FlM2YzYjAzMjZiMjg2YjQ2OTcyNjY0NTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0ZTZkZmNmNjM5ZDMxOTIwZjBhNTUwOWI4NWIyZTAyZTgzNjMzODY2ZDgwZTRkYzBkM2NmODZlYmVhZTkwOWMifQ"
+        },
+        {
+          "resource": "repo://scripts/live-identity-evidence.test.mjs#L1-L12",
+          "version": "repo-lines-v1:sha256:1bd12926f09b255a813808895e697919205c954072f48405c9fbb76ee330cad8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwNjYyZmJjYzBkNGQ4YzExOTY4M2RhMTk0N2IxMjA0NjgwM2Q0OGI0NDc5ODgxOTdlYzMwOTJmZmU1YThiNGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhOTIyMzZhOTA4ZDU4YzNmMDJhOTAzOTMxYjUyYzAzMjI0YmQyZjI3MDhkNWE4MjkyODY1ZDEzOGU3ZjlmNGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc3NTJlMzE5OTAzMGU0YmExMTBhNzU3MmYzMGI3MWQ0ZGQwNzgzYTQ5NzA1OTU2OWZiMzk3YTQwNzIyY2IzNzIifQ"
+        },
+        {
+          "resource": "repo://scripts/paperclip-archive-export.py#L1-L11",
+          "version": "repo-lines-v1:sha256:6d89d8a26049e36defc03a60d642382fbb5f1c5d4b71e16d5560e7c85ede5153:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2ODJjYmRiNGM4YjA3NTE4YmY0ODZjNTg5OTBmYzM5MTc4M2FhMjBhOTE2YmZiMjdhZDIxMWViMWQ1YzM2NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2MmY2ZDgyMzljYzU1MmJjMTNhYzg2OGNiNDQ1YTc0ZDA1NGQ3ZmFlMDM0ZWM3MDUxZjdiNDEyZGRhYmQ2MTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE2ODYwNjAwZTY3ZmRiY2RhYjQ5NDk1NWQ1NTFjNDQ3NmY1YTZhNDIwODQxMGZhODM3OWJjZTY4MWIxNzljNWEifQ"
+        },
+        {
+          "resource": "repo://scripts/wiki-delta-emitter.selftest.sh#L1-L5",
+          "version": "repo-lines-v1:sha256:79726edf4846b542d36214fddd8ab153b73b418138b08ddf0d7170c9371fe136:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWQ5NWZjMDRhODBjOTUyZjQ5Y2U0MTg4NjI3YzUzYjBmYmU4YzQ0MDQxYjk1MmQ1OTJhY2QxZGU5OTg2MTQ2NiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTY3YTc0ZWIzMWVmOWZhYjIyZTkwYzA5YzY1OThjNGFjNTEzOGYxZmU2OWVkZGYyM2JiODFhNWE2NGZiYTBmYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2IyMjQ2ZDU2OWRhZTcwODJiNThhMDA3YmFmNzg4NmQwNzk0MmFlZTBhOWY3YmU3YmYyYTgwYTgyMDM0ZGZlZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_f764bc2744664788b09ebd61c8d9d297",
+      "statement": "test:changed runs vitest --changed in the server workspace; the root vitest.config.mts selects the jsdom environment with no setup files, and the dashboard configures jsdom with globals.",
+      "evidence": [
+        {
+          "resource": "repo://package.json#L19-L19",
+          "version": "repo-lines-v1:sha256:dc8c9ead37f5f51cf195c91a3858d053f35f5ab25a61338798e23a247208d41b:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGM4YzllYWQzN2Y1ZjUxY2YxOTVjOTFhMzg1OGQwNTNmMzVmNWFiMjVhNjEzMzg3OThlMjNhMjQ3MjA4ZDQxYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGM4YzllYWQzN2Y1ZjUxY2YxOTVjOTFhMzg1OGQwNTNmMzVmNWFiMjVhNjEzMzg3OThlMjNhMjQ3MjA4ZDQxYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjkxNzIyMjEzMjFmZDcwZjlkZmNiODg4N2FmZDYxOTljYzJhMjgxYzE0ZTVlYjM0NzZmYTM0Y2FmMTc4YTgzOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzdiNjRlODdmM2NhYWVjYmExZmFiOTJhZGE4MzhiMTBiNWE3OWRmNDVlOWE4OTIzZjAyYTEwYWZlOGE0MWUwNCJ9"
+        },
+        {
+          "resource": "repo://packages/dashboard/vite.config.ts#L39-L42",
+          "version": "repo-lines-v1:sha256:112abb2922f51ac1d05cc05e45a79707e57b221943f2d5398603f022d6c40a30:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTkzNmRmN2E1YTNhYWYxODBjZmZkMWQ2NWM2NDZlZjZhZWEzNTJjYzI3Nzc0Njg2MTk5Y2Q4ZmIzZTg5OWM3YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjZiNWM5MzJlNWY2NDM5N2QwODBiZDZhNjJhYmY3MTYyNDEwNTA4MDFlMjYyODMxMmM4NjMyMDNkMGIwM2U4NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiJ9"
+        },
+        {
+          "resource": "repo://vitest.config.mts#L6-L10",
+          "version": "repo-lines-v1:sha256:15ec3f2221fa6d377cad041c0177108b4e94621012fcec5c98cc67476db0078a:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjJjZWNiMTQ0YTQ2ZjVkY2YxMmE2MTY5ZmNlZWQ3Njk1ZTgyOTRiMDkwZGU3NmYzNjYxY2RkMDI0OTMwMDE0NyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjA2YjhlMzhkODczOGY4YjU1NmE3MDgwOGI1MjBiMWJiZDNjZDRmZDVhNmE5Y2Y3NzM4MzBiM2E1NDlkNWUzMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_2713e2b7b9664199bdecad19b32b6242",
+      "statement": "The root type-check script first builds shared, agent-catalog, mcp-server, and ransomware-module (whose dist declarations are type-resolution targets for downstream workspaces) and then runs type-check across all workspaces with --if-present; lint runs eslint per workspace with --if-present.",
+      "evidence": [
+        {
+          "resource": "repo://package.json#L29-L30",
+          "version": "repo-lines-v1:sha256:65b7f2808d90be8ba5e466e5c06dbde6fa60428da56708e1f5061559bbe113ec:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDYwYTYwY2Q1NjNlOGYyOTQxYTJjYWY5MjA2YmFhNWVkNTQ3ZWJhZjQwZjYzZWZmOTU3N2FjOGZkZjA2NjUxMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzljNWZiYTY1MWFhNTJkYzIxZjY0YTEyMTAxOWQwZTE4MGQwN2Y2M2JjMWJhODc1MGZmYWMwNDBiMTVlZGIwYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDRhZTc4YjA3MzRmZTU4MmQzMTQ0MTVmMTcxMTY4NTNhYWQyMjdhOTU1NWE4M2E5ODQ1OGU3NzNhMzcyODVjMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjc3YjJkYTExNGUyMjkwYWJiYzJjODJhMjFiMDY3YTY5NTU5MTYxYjhkMWE3NzVhZjQ5YzI1YTUxYjQ2YjMyYyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_e44b42a377504b4bb6d194d0c202ae5f",
+      "statement": "db:migrate and db:seed run via tsx (no build of server required): migrate executes runMigrations directly against resolveDbPath(), which resolves DB_PATH, else DJIMITFLO_DB, else <repo>/.data/djimitflo.sqlite; seed populates mock agents via initializeDatabase(). Normal server startup applies the same schema through initializeDatabase(), so these scripts exist to provision a database without booting the API.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/package.json#L15-L16",
+          "version": "repo-lines-v1:sha256:013e67da8ed6902894225aac20e922eb825b95515fb300496699e5565196d685:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTEyZDg3YzFjMTM3OGMwYjMzYWMzMjMzZjE3YzVkMzY5YzE2MjlkZWMxNDI3OTQwOGJiNGFiNjMwODBjNjIyNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTliMGQzNjRjZDFiZDI2MDcyMjBhNzFlOTM5Y2M4YjIzZTJhNTNkODEwNzY2ZjU1ZjcyNjFkMTdjYzU4NzIzZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDQyMDBhMTA5ZDhkYWUyZDE2MjBiYTI4ZDcyNGViZmY0YjM4NGI3YjJkMjVhYjVhOWIyZTY3NzU1OWRlMmI1NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjVkZjY5MzZmYzYxMmZiOGE3ZWU5MjBlZGUzMGQwZmQ1YjdmYjE1OTBkOWIwNDkwN2I4OWU2Mjg2YTg5ZTdlMiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L2205-L2211",
+          "version": "repo-lines-v1:sha256:de8503082b08fdcbd3c83b17cbd5724fd7234ddce786135420fed47fee89be5f:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjc3M2MzYTgwMTNjYTNjOGQ2MzQ0NjEwMmViNmNlZGNmYWUxZGM2ZTY3YWU4NDVhYmFkZDNiOGMyMWRlNzVhNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjU5MzI0NzMwMGEyMjQwNjY4MzQ5YWY5ZWU2NmJkZWFjZmQwMGU3ZTNlOTRiOGE5Y2UzZDg4ZDFiOGQxOTVkNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/database/path.ts#L7-L13",
+          "version": "repo-lines-v1:sha256:ac253456dd77c4fd9cfb3ae352ab4edee48c2f682f80d96ca46970770f94c24f:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTZkNzJhYTFkNDA1YzQ0YjViMGEyMTk2MzRiYjllNjE3MjkwZDE0MGZkYTZlZWFlZWE3NGVlNTU0YjYzNzQxNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjkwZWQ5YjdmZDM5YmJiMTExMDkyZWEzNTEyNDFkNjgxYzUwZmQ5NDY2MDFkNDIyZDYwNzRhMmI4YjJlYjI1MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDNiNGUwMWMxN2ZmMjcwZjI2ODUwMDMwMmM1NzAxYzc5NTA4MDUwNjk3YzA3NzVmOGRjNzdjNjEyMjc1MzI1NyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/database/seed.ts#L20-L23",
+          "version": "repo-lines-v1:sha256:8ae79c48a49eda43cdfcc73297eb739e0f6be07f551db3a1376598f5ddf7a790:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzE1MTBkMzJmNjU3ODQ3NTA2MDM5Y2Q4MzA0ODMzYjk0OWQ5MmJhMzhjMWE3ZTZiMjhjOWYxYjU3MTVlYWZhMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzBhNTQ3MzQwZmJmYTg2ODEyZTJmMmJlNzdiZWIyZTljYTcxNjczZWUzM2U3ZjdmZGRkZmFkYTM4MjBkODc4NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTA3OWQ0NjM1YWE4ZTY0N2FhM2RiMGE5ZTRkNTJhYWE5Yjc1MzVlYTgwNGJkMmYxM2UwMDhiZWMzNTMxOTM3NyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L82-L84",
+          "version": "repo-lines-v1:sha256:4fab397765e5e9248d2afea5ab71ec8f1623c187af2b17fd283efe655fba8b6b:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWQ1MTY3YTVkYmNjN2FhYWFmMWNkODk2ZTQ4YWVmODY3MDA5M2Y5OTUxYTI4NjUwNTYxZGZkZGViNjFmMTQ3ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzg3NDYwZjQxNDJjYzIwYTBkYjk3YjYwZjRlMTE4YTUzZmUxNThkNWNkYjI3YzQxYWQxZTY3YTQwNjY2ZWM1YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTJlZjZmZTAzY2ZhNGE5ZWMwNDFjZDk1NGU5NDBhYmQ4Y2JkZGQ3YTQ3YWJhYzc0YzkwOWYyZTY0YThhZmEzYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjAxYTc3NWQ1MWFkOGE3MGRhNTMzMTQwMTNmZjgxNTczZjY1NmI1MGU4MTU0NmEyNjMxY2Q5N2NjYWVlZmYwZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_d18d042244fe45ddaa508fc07e6e013e",
+      "statement": "Server development config comes from packages/server/.env.example: dev uses a default JWT secret with a warning while production refuses to start without JWT_SECRET; AUTH_BOOTSTRAP_ADMIN_EMAIL/PASSWORD create a bootstrap admin only when no users exist; DJIMITFLO_RUNTIME_PROFILE (api/operator/autonomous) gates operator integrations, maintenance loops, the loop daemon, and autonomous services.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/.env.example#L18-L22",
+          "version": "repo-lines-v1:sha256:0b7a0edad96774a8c6589259e2e58ad1018a45f19d59dd4d7ab351c2b1125c1d:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWI5OWJiNDBlNTdjMGJhZTI3NzU5Njk2ODMxYWUyNWQzNDUyMzc3NTgyMTk0ZTU3NTM2Zjc0ZTBmNGIzZGM1OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMmVhNDg4ZTQzMTE0OTVmNzNhOTlhOGI1MDhmY2JjNGM4MmM4YTcwYzU2N2E0YzAyZjYyM2VkZTgxNGJhMmVjYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTZmMTI2NDFjZjNkNjE2NmYzNTA5NjY5ZGFjNzhjYmYyNjI0YjU4Y2U0YjE5ODkwY2RhMDhmOGNhYmFlNTdhYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzUwYmY3M2M3MzJkNTc5NjdiYzdkYTIwNmMxYWRlNjE5YjUyYjc0ZmRjODQ1YjlmYzIyODVlMmJhMzQ2M2ZkNSJ9"
+        },
+        {
+          "resource": "repo://packages/server/.env.example#L34-L50",
+          "version": "repo-lines-v1:sha256:ceb9b5c71dbf0cbc3f88240782a2173164e616d2085be13df4390e9cdf435ec4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNmYzljMTBkNjlhY2RkNzc0ODAyMDY0MDY4NjVjNmI5MjEwYzQ4MzQxYWU1ZjM4YzU1NDc4Y2JmYmViOTBmY2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViNGExNDQyMDIwNjZmNjdhZTlmMzdiNmI4ZmI0NTUxM2ZkOGM1OGQxMzUwMDdlMGZlMjNmZDFjMjc5MjIxMTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJiYmM0NGI3Y2M0ZGQ2ZTE5YjdiY2ZjNDgxODEzM2YzNzYwZWQ3YTY0NDg4N2RlNjVhYzBkOTcwNDUyMGUwYjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRkY2FkZWZhOWNlYzY2OTVkOGNjMjEyZmJmNjk5M2E4NDlmODUzZDY4MmI0OTg2MjJkOGRkNjNmZjBjYzliMzgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L75-L118",
+          "version": "repo-lines-v1:sha256:f469333a6d8068c7ebc459cd46997b7a0b7042bacc1d3891ce644ec8ff857aec:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlODIwMGViZDE3MDliNmE2NzViZWNiM2JlOWYzOWU1M2JiYWMwMmNjOTI3MjM0NjJjMDU0NjhlYjBkYTZhMTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA0N2Y1NjJmNmFhOGJiNzFhOTYzOTE1YjM4YTdmY2JhMDZhODJjMzdhYTNlY2YwMjUzYzhkZjE2MGU1MDQ1ZGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3YTQwZjE0ZTI0OGVmYmU1NzVkYmQwZDJlNjExYzczYzFiNDQ1NjMzYzZkNDI0ZGU4YTM5OGE1Yzg4NTJmOTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwYjA3NTFlNDIzNmU4OTIzNDU3Nzc0NWZjMjkzNGM1MGEyZjBkNmY4ZmE5NWE0M2RjOTk1YjMzNzI3NDJlODEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_26b2b2a5dfbb466d9dedddb79bd13799",
+      "statement": "The Dockerfile is a two-stage build: a builder stage installs all dependencies and runs the same npm run build workspace chain, and a runner stage installs production dependencies only, smoke-tests better-sqlite3 with an in-memory open, pins global agent CLIs (@openai/codex, opencode-ai) and the gh CLI, bakes build provenance env vars (DJIMITFLO_BUILD_COMMIT/TIME/SOURCE) from VCS_REF/BUILD_TIME/BUILD_SOURCE build args, and runs as the non-root djimitflo user with ENTRYPOINT docker-entrypoint.sh and CMD node packages/server/dist/index.js.",
+      "evidence": [
+        {
+          "resource": "repo://Dockerfile#L137-L154",
+          "version": "repo-lines-v1:sha256:aa6b71387bda3532d17fdc3dd4150a40a74fe965881b5d442bc1ff428854d140:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyYjEzOWYxMDk5NGFiYzYyYmVlMDJlYzQ0OTliZWM0MWQ0MTY4MWQzMDZhNDQ2ZWJmZDMwMjYwYTJmNWRiZDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2YTZmNWFlMDQxZjJjMzQ5ZTY0NDNjYjFlZjJiZjc2NGE4OTZkMmE4MmZlZjI2YWMxYmRmOWFkZDNlOTFlOWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJhNjVlNmYxNjVmMjM4NWRhMzRhNDBlM2MwZTVjYTU4ZGUyYTg0YWQ0ZWUyYjNlOWM0M2IyNDVlZmE2MDIyZTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://Dockerfile#L49-L53",
+          "version": "repo-lines-v1:sha256:b633a93efe223fe77dbe6beae30ce76fc7359bf4dbfdeeecc254e1b3bb128c2f:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzI1YmQzMGI2NmJmNjAyN2IxMzJiZDBjZTMyZjYwNzk4MGU5Y2YxYWRhOTIzMThjZTQxYmQxNWNjYzJlZjhhMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTBiMTg5YzkzMzgzNTBhMzg2ODRiNTYzOWYxMDYxNDc5ZThjM2NiMTJiZjZmMjg0YTIzYzUxMDEzMTlkNDQ1YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDNmMjFkMjEwMDI2OWJjOWIzMmUxZTk1ZTUyMTU2ZGM2NWUxMTU3ZTBmNDUwMjk4ODgwMzkzZjExOTQ1ZTE5MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2E4MmY5ZGM3ZTE3NGYyMDQ0MzZjM2RmYWM1ZGVmYjg1MDI2YzcxNjg1YWYzNzY5NTZlY2VkYWVmOTI4ODgwMSJ9"
+        },
+        {
+          "resource": "repo://Dockerfile#L66-L83",
+          "version": "repo-lines-v1:sha256:4a66422a6514155449476d17b49df6429f9a3766278795d7ee7d36b3fd33c42c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZmFkY2RjOGE0YmViNDMxOGNhMTJlNjEwOWU5YmJkNGU3YWQyNWY5NWUzNmY1ZDMwYzJlNGEwMDBlMDNlZDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1YWY5MWMwMzE2MDMyN2YyMjI0OWY5MDdkMGQ4MDcyZjE2NzNhNjU0OGJiNDY2MGEyYmEwOTBmNGEwZDliM2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU1MGQ4NDRiNTc5Njk2MWZhOWM4ZDUzYTA5NjAwZmFkOGIyOTNhN2E0YzFkMTNkYmVkYTlhOWZjYjM3MjVjOTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJkNDI5MGVhZjNhMzk4MmNkZmZiMmU1MjMxYjA2MDk3MzFhYTI0MTdjNzAyZmY5NmJmNmUwN2MxYmFhYmE5NDEifQ"
+        },
+        {
+          "resource": "repo://Dockerfile#L96-L100",
+          "version": "repo-lines-v1:sha256:f8af2f7f0b0ff03ddca66ae41d70c5537d6e3bcafba5268d51bdba286fd427e5:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzY5Njk3NzhmZDE2NmY0MDU0MjhkMzA1NjhhMGYwZGY3YTZlZDUwNjkyNjMxZGYwOWNlNTk5MmNjNjQxNjA4YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTNmM2I4ZjJhYmFhMmY4MmE2NmZiOWRjYzUzYjRkZTVmYzkyZTE1MjViMDI5OGI1OGQwMzM4YWQzYjM3YzAxNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWJhNjExYjU0MzJkYmU1ODc5Yzc4YTBjMGY0NTAxNTFmNDkwYmI3MTM0ODUzYmJjYTg4OTU3ZWU4NTM2MTkwYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTJlZjQ4YTU1NWVjNzAxNzJhM2FkMmJlMjU2YmYwN2MwZjU0YzE3ZWQwNzU3MmZiYjEwNWI5Y2U0ZmY2YzI1ZSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_68d9c414ec164386b11ff2178811d93e",
+      "statement": "docker-entrypoint.sh creates /data and BACKUP_DIR (default /data/backups) if missing, prints startup info, hard-fails with exit 1 when NODE_ENV=production and JWT_SECRET is unset, and finally execs the container CMD so the node process replaces the shell.",
+      "evidence": [
+        {
+          "resource": "repo://docker-entrypoint.sh#L10-L37",
+          "version": "repo-lines-v1:sha256:5b5ab991eafdb6e7b0f3e1f2c05d92f1f5724f9d97b25c6e9201cbc5f360133e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5NmY2YWViODZhYjM3Mjc4YjNjMzgwN2I2ODg4Mjc1YzdkYmVmODAxNzEyNzA1M2UzNTkyOGM4ZTkzZmFiZmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJlMjJmZjMzZGNmNDE1YzlmMzllZDgzZjRjNzI4YzYzOWJmZjFkZDI2ODQxMjZhZjUxNjE2ODUxYWE1ZjdmOWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM5ODc2MWViNTFkZmZjMTgyNDNkNmM3YzI4ZDM5Y2JlMTI3ZjBiZWNmZjUxYzU5YTE1MTE2NjRkYzBiN2Y2YWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_dd3dc41b42ae4c73814fd33019f120ad",
+      "statement": "docker-compose.yml declares a single djimitflo service that builds from the Dockerfile, publishes ${DJIMITFLO_HOST_PORT:-3001}:3001, loads env from .env.docker, mounts the named volume djimitflo-data at /data, restarts unless stopped, and healthchecks http://localhost:3001/health every 30s; /data holds the SQLite database (/data/djimitflo.sqlite) and backups (/data/backups), making the volume the persistence contract across container replacement.",
+      "evidence": [
+        {
+          "resource": "repo://.env.docker.example#L18-L28",
+          "version": "repo-lines-v1:sha256:82bdced5c2a757cadb4118dc78e7d66e0b9e888fd8120aeb4c1bf9d4bdac3291:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ2ZDdiOWE2YzE2Y2JlMjIxOTI3NThlNzIxYzg4NDNlNTNhZmY1NzYyZTI4Y2I3NjVjMDk3Zjg5MzQ4YTJmZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0MjFlNTIwZTEwNTBkNWIyZjBmZWFlZDAzMTRlNmIxNTFmNTBlMDY1MTBlN2QyNWQxOWRiNWVmMTYyOGNkNGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhmN2RjODExZjA5M2U0YjZhNmYwNzA5ZGYyNTZmMDdjMzJkOGQ2MWMwNzNhOGE3MWE5MjBhOGIxNDg5NTkzYjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUxZjJjMmFlOTQ4YmYwMTI2MGYyNTRmNWNkNDMxNjAyOGYxOTYxYzQ3YmZlMzc1MWZkNDZjYzlkODA2N2EwNzUifQ"
+        },
+        {
+          "resource": "repo://Dockerfile#L151-L151",
+          "version": "repo-lines-v1:sha256:912759f1edc3e8b204ede32f9262cca43745835c59fffc7d2f1a40fb1345a970:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTEyNzU5ZjFlZGMzZThiMjA0ZWRlMzJmOTI2MmNjYTQzNzQ1ODM1YzU5ZmZmYzdkMmYxYTQwZmIxMzQ1YTk3MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTEyNzU5ZjFlZGMzZThiMjA0ZWRlMzJmOTI2MmNjYTQzNzQ1ODM1YzU5ZmZmYzdkMmYxYTQwZmIxMzQ1YTk3MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2ZkZDI1MmYzYjkzNzk5NjBkMTBlZmQxNTdlY2ZjNDE0ZGFkNWU2M2RiMTRhZTBkNzI1MmIwNzFiMmI0MDhmMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzEyOWUwNDRkZmIyOTg0YzhjMjVlZGJjM2RhNzM2MTBjMWRmOGRhMDgxYzQ0YTA4ZTQ1ODViMTA4NTUzZDFjNCJ9"
+        },
+        {
+          "resource": "repo://docker-compose.yml",
+          "version": "repo-file-v1:sha256:7ec4360b0867242a683a702fda6de04cdd874fe2eee224fa762e0db135048bb6"
+        }
+      ]
+    },
+    {
+      "id": "claim_dfa13a92900c4747973e6f57ab066fb9",
+      "statement": ".env.docker.example is the container configuration template (copied to .env.docker before docker compose up -d): it sets production paths under /data and /app, requires a strong JWT_SECRET, documents EventBus ingest variables, and states OpenCode is not installed in the image by default — the binary must be mounted or a custom image derived.",
+      "evidence": [
+        {
+          "resource": "repo://.env.docker.example#L1-L16",
+          "version": "repo-lines-v1:sha256:3eb0ab73583da88e05b5b710d5f83001dd3f0a207170f8b6a68cc36588ce468c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2OTNiZjc3MGM0MDFhNWMzYmU3MzRlMWUxOTg4Mjg4MmIzMjRhNjlhNGQxMzdmMTljYTljMjliNTZiODRkN2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlZDkzMTkzMGM2NjMxNmM1YWE5YWQ3NzU4YjYyMDkwY2Y2MDE5YTRlNjBlNjZjMjVmODlkMWU1ZjljNWIzZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJkNmJlOWY2YjQxODU3ZTJiNTM3MWJiMmFhMDdlOWZiZDBiNTU5NWQwY2MyMWQxNTJhNzg1YWNkMjFkZTNmYWIifQ"
+        },
+        {
+          "resource": "repo://.env.docker.example#L40-L42",
+          "version": "repo-lines-v1:sha256:56a98c758619d7115a8fc4a40a34622c0d45dd867be7271282691ee5850b8955:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzcxNjhmM2U3NWU1MzkwM2Q1MDdjNTM2OWZkNDgyYzU2ZGNmN2Q1ZTE0YzMxMjdiZTcxMWNmYzZjMDQ3ODQzNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTk5OWY5NTZjNTM0ZjJhMjkzZjcxNDQ4OWQzMmU3OWZkYjQ3MjJhZDQzODk4NWE1YWI0ZWMxZjM4ZjJmOGM0MiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTI5MWQwYzcyNzU1OTBjZjE4ZjE4NzVjOTBhNjMyMGY0MWI2YTU5ZjRmZWQ0ZDNkNmUwYmNkNTRhOGYwMmNiZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmFkYTNkMzBkN2UzYjhiODJjNzBjYWVhMjU1MTVmYjcwNTIzODAxMDc1ODZjZjM0YWNhYzQxMzM1ZDA3ZGY3NiJ9"
+        },
+        {
+          "resource": "repo://.env.docker.example#L55-L63",
+          "version": "repo-lines-v1:sha256:93e854493b6359645863dbcd3be956375374ca1f900354b7e74d9f89ef865f7d:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjY5M2JmNzcwYzQwMWE1YzNiZTczNGUxZTE5ODgyODgyYjMyNGE2OWE0ZDEzN2YxOWNhOWMyOWI1NmI4NGQ3YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzIyODIxODVlMmY2NTk4MDI5YmFhNGJiMDM5NWJjMTk4N2NlNGMyYjU3ZDQ5ZjI4NWQxNzI5ZWZjYTEzYzc5YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTlkNmEzMTRlNDU0MzY4NjJhOGQwNDUwYzliNzI3YWMwNTg1ZDE4NTM0OGU0NWFkODE1YWZhMzA4OWRhYzA5YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2VhMmFlYTJhMDgzOGFiYjZhZjBmYmQ4ZGMwMTU1MzRiNzJjZjJhOGU3ZWVlZWE3YWNiN2MyMWY2MmVhZTI1MSJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.2",
+    "at": "2026-09-24T19:59:50.419Z"
+  }
+}

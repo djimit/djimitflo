@@ -2,6 +2,8 @@ import { assessGrounding, groundingRequired, GROUNDING_REQUIRED_SOURCES, type Gr
 import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { SpecialistPanelService } from './specialist-panel-service';
+import { judgmentMode, runJudgment } from './judgment-service';
+import { reflectionTriage } from './judgments/reflection-triage';
 
 export type ImprovementStatus = 'proposed' | 'scheduled' | 'executing' | 'verified' | 'evaluating' | 'applied' | 'rejected' | 'no_change' | 'regressed' | 'needs_more_evidence' | 'needs_grounding' | 'archived';
 
@@ -11,7 +13,7 @@ export interface ImprovementProposal {
   title: string;
   description: string;
   rationale: string;
-  source: 'reflection' | 'invention' | 'gap_analysis' | 'feedback' | 'refinement';
+  source: 'reflection' | 'invention' | 'gap_analysis' | 'feedback' | 'refinement' | 'dream_state';
   status: ImprovementStatus;
   priority: number;
   evidenceRefs: string[];
@@ -58,7 +60,13 @@ export class SelfImprovementService {
       reflection.loopRunId && `loop:${reflection.loopRunId}`,
       reflection.reflectionId && `reflection:${reflection.reflectionId}`,
     ].filter((ref): ref is string => Boolean(ref));
+    // J4: a daily cap on reflection proposals (REFLECTION_PROPOSALS_MAX_PER_DAY, unset = no cap). Prod 2026-09-24: 139 a day,
+    // almost all parked in needs_grounding, 0 ever verified; the grounding guild (G10) can only drain a bounded inflow.
+    const cap = Number(process.env.REFLECTION_PROPOSALS_MAX_PER_DAY);
+    const createdToday = () => (this.db.prepare("SELECT COUNT(*) AS n FROM self_improvements WHERE source = 'reflection' AND created_at >= ?")
+      .get(new Date(Date.now() - 86_400_000).toISOString()) as { n: number }).n;
     return reflection.proposedImprovements.flatMap((description) => {
+      if (Number.isFinite(cap) && cap >= 0 && createdToday() >= cap) return [];
       const type = this.classifyImprovement(description);
       const proposal = this.createProposal({
         type,
@@ -93,6 +101,14 @@ export class SelfImprovementService {
     return this.createProposal({
       type: 'feature', title: gap.title, description: gap.description, rationale: gap.rationale,
       source: 'gap_analysis', priority: 0.6, evidenceRefs: [gap.evidenceRef], grounding: gap.grounding,
+    });
+  }
+
+  /** Grounded fix proposal for a recurring loop-failure cause found by the dream state (plan E11 step 4). */
+  generateFromDreamCause(input: { title: string; description: string; rationale: string; evidenceRef: string; grounding: Partial<Grounding> }): ImprovementProposal | null {
+    return this.createProposal({
+      type: 'bug_fix', title: input.title, description: input.description, rationale: input.rationale,
+      source: 'dream_state', priority: 0.7, evidenceRefs: [input.evidenceRef], grounding: input.grounding,
     });
   }
 
@@ -272,6 +288,9 @@ export class SelfImprovementService {
           fingerprint, evidence_refs_json, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, 'needs_grounding', ?, ?, ?, ?, ?)
       `).run(id, input.type, input.title, input.description, input.rationale, input.source, input.priority, fingerprint, JSON.stringify(evidenceRefs), now, now);
+      // shadow: record what this parked proposal is, to calibrate a ground-or-archive rule (fire-and-forget, fail-open)
+      if (judgmentMode(reflectionTriage.id) !== 'off') void runJudgment(this.db, reflectionTriage, { type: 'self_improvement', id },
+        { proposal: { title: input.title, description: input.description, rationale: input.rationale } }).catch(() => null);
       return this.getImprovement(id);
     }
     const riskClass = input.type === 'security' ? 'high' : 'low';
@@ -331,6 +350,22 @@ export class SelfImprovementService {
     });
   }
 
+  /**
+   * G10: a Commons thread named the file and the test for a parked (needs_grounding) proposal, checked in code
+   * (commons-grounding.ts). One grounded refinement per original, which goes to the specialist panel like any proposal.
+   */
+  groundFromCommons(parkedId: string, grounding: { target: string; acceptanceTest: string }, evidenceRef: string): ImprovementProposal | null {
+    const parked = this.getImprovement(parkedId);
+    if (parked.status !== 'needs_grounding' || parked.refinedAt || parked.refinedFromId) return null;
+    return this.createProposal({
+      type: parked.type, title: parked.title.slice(0, 80), description: parked.description,
+      rationale: `${parked.rationale}\n\nGrounded by Agent Commons: target ${grounding.target}, test ${grounding.acceptanceTest}.`,
+      source: 'refinement', priority: parked.priority,
+      evidenceRefs: [...parked.evidenceRefs, `refinement-of:${parkedId}`, evidenceRef],
+      refinedFromId: parkedId, grounding,
+    });
+  }
+
   /** Parked proposals eligible for exactly one refinement attempt, oldest first. */
   getRefinementEligible(limit: number): ImprovementProposal[] {
     const normalizedLimit = Math.max(1, Math.min(Number(limit) || 10, 50));
@@ -376,9 +411,14 @@ export class SelfImprovementService {
     return Math.min(1, Math.max(0.1, basePriority * (0.5 + theta)));
   }
 
-  /** Records what a goal's run actually achieved for its proposal (only from an in-flight state). */
+  /**
+   * Records what a goal's run actually achieved for its proposal (only from an in-flight state).
+   * 'verified' also overrides a 'regressed': a later passing verification of the same work is the truer outcome
+   * (2026-09-24: a verify racing a still-running security checker recorded 'regressed' for two verified runs).
+   */
   recordOutcome(id: string, outcome: 'verified' | 'regressed' | 'no_change'): boolean {
-    const result = this.db.prepare("UPDATE self_improvements SET status = ?, updated_at = ? WHERE id = ? AND status IN ('scheduled', 'executing')")
+    const from = outcome === 'verified' ? "('scheduled', 'executing', 'regressed')" : "('scheduled', 'executing')";
+    const result = this.db.prepare(`UPDATE self_improvements SET status = ?, updated_at = ? WHERE id = ? AND status IN ${from}`)
       .run(outcome, new Date().toISOString(), id);
     return result.changes === 1;
   }
