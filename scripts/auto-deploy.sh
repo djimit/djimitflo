@@ -18,9 +18,11 @@ main_sha()       { probe MAIN_SHA git ls-remote "https://github.com/$REPO_SLUG.g
 current_sha()    { probe CURRENT_SHA sed -n 's/^ *DJIMITFLO_COMMIT_SHA: \([0-9a-f]*\).*/\1/p' "$ROOT/compose.yml" | head -n 1; }
 check_runs()     { probe CHECKS curl -fsS "https://api.github.com/repos/$REPO_SLUG/commits/$1/check-runs?per_page=100"; }
 commit_json()    { probe COMMIT curl -fsS "https://api.github.com/repos/$REPO_SLUG/commits/$1"; }
+# an approved maker resumes inside the execution engine while its lease still says 'prepared' (prod 2026-09-25),
+# so running loop-worker tasks count as busy too
 running_leases() {
   probe LEASES docker exec -e NODE_PATH=/app/node_modules djimitflo-live node -e \
-    "const D=require('better-sqlite3');console.log(new D('/data/djimitflo.sqlite',{readonly:true}).prepare(\"SELECT COUNT(*) n FROM worker_leases WHERE status='running'\").get().n)"
+    "const D=require('better-sqlite3');console.log(new D('/data/djimitflo.sqlite',{readonly:true}).prepare(\"SELECT (SELECT COUNT(*) FROM worker_leases WHERE status='running') + (SELECT COUNT(*) FROM tasks WHERE status='running' AND id LIKE 'loop-worker-%') AS n\").get().n)"
 }
 deploy() { probe DEPLOY deploy_commit "$1"; }
 deploy_commit() {
