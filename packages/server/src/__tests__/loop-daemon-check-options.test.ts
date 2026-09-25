@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { daemonCheckOptions, daemonReviewerTimeoutMs } from '../services/loop-daemon';
+import { daemonCheckOptions, daemonMakerTimeoutMs, daemonReviewerTimeoutMs } from '../services/loop-daemon';
 
 it('defaults to the standard scripts and 120 s', () => {
   expect(daemonCheckOptions({})).toEqual({ timeout_ms: 120_000 });
@@ -14,4 +14,11 @@ it('gives reviewers 300 s by default, configurable and clamped to 900 s (prod 20
   expect(daemonReviewerTimeoutMs({ LOOP_REVIEWER_TIMEOUT_MS: '240000' })).toBe(240_000);
   expect(daemonReviewerTimeoutMs({ LOOP_REVIEWER_TIMEOUT_MS: '5000000' })).toBe(900_000);
   expect(daemonReviewerTimeoutMs({ LOOP_REVIEWER_TIMEOUT_MS: 'x' })).toBe(300_000);
+});
+
+it('maker timeout: 600 s for the mutation lane, else LOOP_MAKER_TIMEOUT_MS (default 300 s, capped at 600 s)', () => {
+  expect(daemonMakerTimeoutMs(true, {})).toBe(600_000);
+  expect(daemonMakerTimeoutMs(false, {})).toBe(300_000);
+  expect(daemonMakerTimeoutMs(false, { LOOP_MAKER_TIMEOUT_MS: '450000' })).toBe(450_000);
+  expect(daemonMakerTimeoutMs(false, { LOOP_MAKER_TIMEOUT_MS: '9999999' })).toBe(600_000);
 });
