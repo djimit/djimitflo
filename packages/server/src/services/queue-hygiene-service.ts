@@ -16,13 +16,18 @@ export const WORK_ITEM_TTL_DAYS: Record<string, number> = {
 const CLAIM_TTL_DAYS = 14;
 const DRAFT_CAPABILITY_TTL_DAYS = 30;
 
-export interface HygieneResult { workItemsExpired: number; claimsExpired: number; draftsDeprecated: number; goalsReaped: number; runsReaped: number }
+export interface HygieneResult { workItemsExpired: number; claimsExpired: number; draftsDeprecated: number; goalsReaped: number; runsReaped: number; proposalsArchived: number }
+
+// N13 (operator-approved 2026-09-25): a proposal parked for grounding or evidence that nobody grounded in 14 days is
+// archived (reason appended to its evidence refs), so the parked stock stays drainable instead of growing forever.
+export const PARKED_PROPOSAL_TTL_DAYS = 14;
 
 // Zombie thresholds (prod 2026-09-22: 12 goals `running` for 9-14 days, 20 `blocked` without a wait reason, 204 `interrupted` runs).
 const RUNNING_GOAL_STALE_HOURS = 24;
 const BLOCKED_GOAL_STALE_DAYS = 7;
 const INTERRUPTED_RUN_STALE_HOURS = 48;
 const PLANNING_RUN_STALE_HOURS = 24;
+const ORPHAN_RUNNING_RUN_HOURS = 6;
 
 export function queueHygieneEnabled(): boolean {
   return process.env.QUEUE_HYGIENE_ENABLED === 'true';
@@ -38,7 +43,7 @@ export class QueueHygieneService {
     const run = () => {
       try {
         const r = this.sweep();
-        if (r.workItemsExpired || r.claimsExpired || r.draftsDeprecated || r.goalsReaped || r.runsReaped) console.log(`🧹 queue hygiene: work_items=${r.workItemsExpired} claims=${r.claimsExpired} drafts=${r.draftsDeprecated} goals=${r.goalsReaped} runs=${r.runsReaped}`);
+        if (r.workItemsExpired || r.claimsExpired || r.draftsDeprecated || r.goalsReaped || r.runsReaped || r.proposalsArchived) console.log(`🧹 queue hygiene: work_items=${r.workItemsExpired} claims=${r.claimsExpired} drafts=${r.draftsDeprecated} goals=${r.goalsReaped} runs=${r.runsReaped} parked_proposals=${r.proposalsArchived}`);
       } catch (err) { console.warn('Queue hygiene sweep failed:', err instanceof Error ? err.message : String(err)); }
     };
     this.timer = setInterval(run, intervalMs);
@@ -69,8 +74,13 @@ export class QueueHygieneService {
       UPDATE swarm_capabilities SET status = 'deprecated', updated_at = ?
       WHERE status = 'draft' AND owner = 'meta-evolution' AND created_at < ?
     `).run(iso, cutoff(DRAFT_CAPABILITY_TTL_DAYS)).changes;
+    const proposalsArchived = this.db.prepare(`
+      UPDATE self_improvements SET status = 'archived', updated_at = ?,
+        evidence_refs_json = json_insert(COALESCE(NULLIF(evidence_refs_json, ''), '[]'), '$[#]', 'hygiene:parked_${PARKED_PROPOSAL_TTL_DAYS}d')
+      WHERE status IN ('needs_grounding', 'needs_more_evidence') AND created_at < ?
+    `).run(iso, cutoff(PARKED_PROPOSAL_TTL_DAYS)).changes;
     const zombies = this.sweepZombies(now);
-    return { workItemsExpired, claimsExpired: claims, draftsDeprecated: drafts, ...zombies };
+    return { workItemsExpired, claimsExpired: claims, draftsDeprecated: drafts, ...zombies, proposalsArchived };
   }
 
   /**
@@ -105,6 +115,21 @@ export class QueueHygieneService {
       UPDATE loop_runs SET status = 'failed', metadata = ${tag('stale_planning')}, updated_at = ?
       WHERE status = 'planning' AND updated_at < ?
     `).run(iso, iso, ago(PLANNING_RUN_STALE_HOURS * H)).changes;
-    return { goalsReaped: goalsRunning + goalsBlocked, runsReaped: runsInterrupted + runsPlanning };
+    // A 'running' run whose workers are all finished (none prepared/running) is orphaned — e.g. its leases were cancelled
+    // (prod 2026-09-24: 3978a793 stayed 'running' 10 h after both leases were cancelled). A run waiting for an approval
+    // still has a prepared lease, so it is never touched.
+    const runsOrphaned = this.db.prepare(`
+      UPDATE loop_runs SET status = 'cancelled', metadata = ${tag('orphan_running')}, updated_at = ?
+      WHERE status = 'running' AND updated_at < ?
+        AND NOT EXISTS (SELECT 1 FROM worker_leases l WHERE l.loop_run_id = loop_runs.id AND l.status IN ('prepared', 'running'))
+    `).run(iso, iso, ago(ORPHAN_RUNNING_RUN_HOURS * H)).changes;
+    // A run whose goal already ended (e.g. its approval expired: the daemon fails the goal and re-schedules the proposal)
+    // keeps its prepared leases, so the orphan rule above never sees it. Prod 2026-09-25: 84bc044b/4c11f3f5 stayed 'running'.
+    const goalEnded = `status = 'running' AND updated_at < ? AND goal_id IN (SELECT id FROM goals WHERE status IN ('failed', 'cancelled', 'completed'))`;
+    this.db.prepare(`UPDATE worker_leases SET status = 'cancelled', updated_at = ? WHERE status = 'prepared' AND loop_run_id IN (SELECT id FROM loop_runs WHERE ${goalEnded})`)
+      .run(iso, ago(H));
+    const runsOfEndedGoals = this.db.prepare(`UPDATE loop_runs SET status = 'cancelled', metadata = ${tag('goal_ended')}, updated_at = ? WHERE ${goalEnded}`)
+      .run(iso, iso, ago(H)).changes;
+    return { goalsReaped: goalsRunning + goalsBlocked, runsReaped: runsInterrupted + runsPlanning + runsOrphaned + runsOfEndedGoals };
   }
 }

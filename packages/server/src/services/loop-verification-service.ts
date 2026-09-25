@@ -117,6 +117,12 @@ export class LoopVerificationService {
           : `${securityCheckerLeases.length} active security checker lease(s); high-risk completion requires accepted security verdict for every completed maker.`,
       },
       {
+        // J5: an auto-approved maker may only have written the one test file its approval covered.
+        name: 'auto_approved_scope',
+        status: completedMakerLeases.every((lease) => !lease.metadata?.auto_approved_scope || this.leaseWithinScope(lease)) ? 'pass' : 'fail',
+        evidence: 'An auto-approved maker lease may change only its approved test file (human-approved makers pass).',
+      },
+      {
         name: 'no_automatic_merge',
         status: 'pass',
         evidence: 'Loop only prepared worktrees and did not merge, push, or deploy.',
@@ -182,6 +188,11 @@ export class LoopVerificationService {
   }
 
   // ─── Gate Helpers ────────────────────────────────────────────────────
+
+  private leaseWithinScope(lease: WorkerLeaseRecord): boolean {
+    const files = lease.metadata?.changed_files;
+    return Array.isArray(files) && files.length === 1 && files[0] === lease.metadata.auto_approved_scope;
+  }
 
   private leaseDiffWithinThreshold(lease: WorkerLeaseRecord): boolean {
     const diffLines = Number(lease.metadata?.diff_lines ?? 0);

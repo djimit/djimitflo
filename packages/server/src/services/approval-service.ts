@@ -20,6 +20,16 @@ export interface CreateApprovalInput {
   requestedBy?: string;
 }
 
+/**
+ * How long a pending approval stays valid. It was a fixed hour: prod 2026-09-25, two loop-run approvals requested at
+ * 04:23Z expired at 05:23Z while the operator slept, and the work went back to the queue. APPROVAL_TTL_MS configures it
+ * (default 1 h, clamped to 5 min .. 7 days); an expired approval still never executes anything.
+ */
+export function approvalTtlMs(env: NodeJS.ProcessEnv = process.env): number {
+  const ms = Number(env.APPROVAL_TTL_MS);
+  return Number.isFinite(ms) && ms > 0 ? Math.min(7 * 86_400_000, Math.max(300_000, ms)) : 3_600_000;
+}
+
 export class ApprovalService {
   constructor(
     private db: Database,
@@ -61,7 +71,7 @@ export class ApprovalService {
   createApproval(input: CreateApprovalInput): ApprovalRequest {
     const id = randomUUID();
     const now = new Date().toISOString();
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const expiresAt = new Date(Date.now() + approvalTtlMs()).toISOString();
 
     const approval = this.db.transaction(() => {
       this.db.prepare(`

@@ -126,6 +126,8 @@ export interface RetryLoopInput {
   /** Explicit model choice; advisory routing never supplies this implicitly. */
   model?: string;
   reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  /** Evolve (E13): an extra maker next to a successful one, not a retry after failure; selection decides later. */
+  sibling?: boolean;
 }
 
 export interface SplitLoopInput {

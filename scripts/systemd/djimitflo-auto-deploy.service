@@ -1,0 +1,9 @@
+[Unit]
+Description=Djimitflo auto-deploy of main (scripts/auto-deploy.sh)
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+Environment=DEPLOY_ROOT=/srv/djimitflo
+Environment=HOME=/root
+ExecStart=/usr/bin/flock -n /run/djimitflo-auto-deploy.lock /srv/djimitflo/auto-deploy.sh
