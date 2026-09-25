@@ -1,0 +1,34 @@
+name: Dependabot Keep Fresh
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch: {}
+
+# Companion to dependabot-auto-merge.yml: that workflow only fires on
+# pull_request events, so a dependabot PR whose checks fail solely because
+# main moved on (not because of the bump itself) never gets a second chance
+# to re-run and auto-merge. This keeps those branches in sync with main so
+# CI re-runs and the existing auto-merge can complete.
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-behind-branches:
+    if: github.repository == 'djimit/djimitflo'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update dependabot PR branches that fell behind main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh pr list --repo "$REPO" --author "dependabot[bot]" --state open \
+            --json number,mergeStateStatus \
+            --jq '.[] | select(.mergeStateStatus == "BEHIND") | .number' \
+          | while read -r pr; do
+              echo "Updating PR #$pr (behind base)"
+              gh api "repos/$REPO/pulls/$pr/update-branch" -X PUT || \
+                echo "Update for #$pr did not apply (may already be current or have conflicts); skipping."
+            done

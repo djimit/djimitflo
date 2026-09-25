@@ -63,6 +63,9 @@ export class ContinuousLearningLoop {
   start(): void {
     if (this.timer) return;
     this.timer = setInterval((): void => { this.runCycle().catch((): void => {}); }, this.intervalMs);
+    // Prod 2026-09-23: 408/408 SEGML cycles failed within 1 ms (no OpenMythos eval run; missing column category_scores).
+    // Off until it is re-based on loop outcomes (plan E12); SEGML_ENABLED=true restores the old behaviour.
+    if (process.env.SEGML_ENABLED !== 'true') return;
     this.segml = new SelfEvolvingGovernanceLoop(this.db);
     this.segmlTimer = setInterval((): void => {
       this.segml?.runCycle('auto').catch((): void => {});
@@ -94,8 +97,11 @@ export class ContinuousLearningLoop {
     }
     const patternReport = this.reflections.analyzeReflectionPatterns(50);
     const goalsGenerated = this.goals.generateFromSelfImprovements();
-    const dreamOpportunitiesGenerated = this.dreams.runCycle().length;
-    const dreamTasksPlanned = this.dreamTasks.exportPending();
+    // Legacy dream ranking produced only "Evaluate capability X" at score < 0.25 (232 proposals, none acted on); replaced by
+    // the outcome-driven dream state (plan E11). DREAM_CYCLE_LEGACY_ENABLED=true restores it.
+    const legacyDream = process.env.DREAM_CYCLE_LEGACY_ENABLED === 'true';
+    const dreamOpportunitiesGenerated = legacyDream ? this.dreams.runCycle().length : 0;
+    const dreamTasksPlanned = legacyDream ? this.dreamTasks.exportPending() : 0;
     const socialization = this.communication.socialize();
     // Empty commons: cast an autonomous lure (invites + Paperclip task, no tokens) at most once per lure lifetime.
     const lureCast = socialization.reason === 'insufficient_agents'

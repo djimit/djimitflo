@@ -13,6 +13,8 @@ import { ExecutionEngine } from '../execution/execution-engine';
 import { createError } from '../middleware/error-handler';
 import type { ExecutionResult, ExecutorKind } from '../execution/types';
 import type { LoopService } from './loop-service';
+import { judgmentMode, runJudgment } from './judgment-service';
+import { checkerSecondOpinion, checkerSecondOpinionState } from './judgments/checker-second-opinion';
 import type {
   LoopRunRecord,
   WorkerLeaseRecord,
@@ -131,7 +133,17 @@ export class LoopWorkerExecutorService {
         this.riskAssessmentText(makerLease, prompt));
 
     const { stdoutPath, stderrPath } = this.writeOutput(run.id, makerLease.id, 'worker-output', result.stdout || '', result.stderr || '');
-    const diff = this.loopService.git(makerLease.worktree_path!, ['diff', '--', '.']);
+    // A lockfile rewrite without a dependency change is install noise (prod 2026-09-23: npm install flipped hasInstallScript),
+    // never the intended change; restore it so a test-only diff stays test-only, and record that we did.
+    const changed = this.loopService.git(makerLease.worktree_path!, ['diff', '--name-only', '--', '.']).split('\n').filter(Boolean);
+    if (changed.includes('package-lock.json') && !changed.includes('package.json')) {
+      this.loopService.git(makerLease.worktree_path!, ['checkout', '--', 'package-lock.json']);
+      this.loopService.recordLoopEvent(run.id, 'maker_lockfile_restored', 'warning', 'package-lock.json changed without a package.json change; restored before review.', { maker_lease_id: makerLease.id });
+    }
+    const diff = this.loopService.workingTreeDiff(makerLease.worktree_path!);
+    // new files are untracked, so name-only diff alone misses them; LOOP_WORK.md lives under .djimitflo/
+    const changedFiles = [...changed, ...this.loopService.git(makerLease.worktree_path!, ['ls-files', '--others', '--exclude-standard']).split('\n')]
+      .filter((f) => f && f !== 'package-lock.json' && !f.startsWith('.djimitflo/'));
     const diffLines = diff ? diff.split(/\r?\n/).filter(Boolean).length : 0;
     const diffMaxLines = Math.max(1, Math.min(input.diff_max_lines || 200, 2_000));
     const exitStatus = result.exitCode;
@@ -155,7 +167,7 @@ export class LoopWorkerExecutorService {
 
     const metadataPatch: Record<string, unknown> = {
       completed_at: new Date().toISOString(), stdout_path: stdoutPath, stderr_path: stderrPath,
-      diff_lines: diffLines, diff_max_lines: diffMaxLines, exit_status: exitStatus, timed_out: timedOut,
+      diff_lines: diffLines, diff_max_lines: diffMaxLines, changed_files: changedFiles, exit_status: exitStatus, timed_out: timedOut,
       runtime_adapter: makerLease.runtime, runtime_contract: runtimeContract, runtime_pid: result.runtimePid,
       runtime_signal: result.signal, runtime_timed_out: result.timedOut, runtime_timed_out_at: result.timedOutAt,
       runtime_warnings: runtimeWarnings, token_efficiency: efficiency,
@@ -278,6 +290,12 @@ export class LoopWorkerExecutorService {
     const runtimeUsage = this.loopService.extractRuntimeUsage(result.stdout || '');
     const runtimeWarnings = this.loopService.extractRuntimeWarnings(result.stdout || '', result.stderr || '');
     const verdict = exitStatus === 0 && !timedOut ? this.loopService.extractCheckerVerdict(result.stdout || '') : 'insufficient_evidence';
+    if (runtime !== 'mock' && judgmentMode(checkerSecondOpinion.id) !== 'off') void this.recordSecondOpinion(run, maker, checker, verdict);
+    const checkerChanged = this.loopService.git(checkerWorktree, ['diff', '--name-only', '--', '.']).split('\n').filter(Boolean);
+    if (checkerChanged.includes('package-lock.json') && !checkerChanged.includes('package.json')) {
+      this.loopService.git(checkerWorktree, ['checkout', '--', 'package-lock.json']);
+      this.loopService.recordLoopEvent(run.id, 'checker_lockfile_restored', 'warning', `${reviewRole} rewrote package-lock.json (install noise); restored before the read-only check.`, { checker_lease_id: checker.id });
+    }
     const checkerStatus = this.loopService.git(checkerWorktree, ['status', '--porcelain=v1', '--untracked-files=all']);
     const checkerDiffStat = this.loopService.git(checkerWorktree, ['diff', '--stat', 'HEAD', '--', '.']);
     const checkerReadOnly = checkerStatus.length === 0;
@@ -355,6 +373,11 @@ export class LoopWorkerExecutorService {
       cwd, timeoutMs, maxBuffer: 5 * 1024 * 1024,
       env: this.loopService.buildNestedSpawnEnv(lease) ?? undefined,
     });
+  }
+
+
+  decideApproval(approvalId: string, approved: boolean, decidedBy: string, reason?: string): Promise<unknown> {
+    return (this.executionEngine ||= new ExecutionEngine(this.db)).handleApprovalDecision(approvalId, approved, decidedBy, reason);
   }
 
   private async executeViaEngine(
@@ -514,6 +537,18 @@ export class LoopWorkerExecutorService {
       gateRefs: gates.map((g) => g.name), blockedReasons: gates.filter((g) => g.status === 'fail').map((g) => `${g.name}: ${g.evidence}`),
       metadata: { worker_role: makerLease.role, worker_runtime: makerLease.runtime, exit_status: result.exitCode, timed_out: result.timedOut, runtime_pid: result.runtimePid, runtime_signal: result.signal, runtime_usage: runtimeUsage || { usage_source: 'unknown' }, runtime_warnings: runtimeWarnings, token_efficiency: efficiency, started_from: 'executeMaker', run_canceled: wasCancelled },
     });
+  }
+
+  /** TypeSafe second opinion in shadow mode (fail-open, never awaited by the gate logic). */
+  private async recordSecondOpinion(run: LoopRunRecord, maker: WorkerLeaseRecord, checker: WorkerLeaseRecord, checkerVerdict: string): Promise<void> {
+    try {
+      const packetFile = typeof maker.metadata.assignment_packet_file === 'string' ? maker.metadata.assignment_packet_file : '';
+      let task = packetFile && fs.existsSync(packetFile) ? fs.readFileSync(packetFile, 'utf8') : '';
+      try { const f = JSON.parse(task)?.finding; if (f?.message) task = [f.message, f.suggested_fix].filter(Boolean).join('\n'); } catch { /* raw packet text */ }
+      const diff = maker.worktree_path ? this.loopService.workingTreeDiff(maker.worktree_path) : '';
+      const state = checkerSecondOpinionState(task, diff, maker.metadata.deterministic_checks || []);
+      await runJudgment(this.db, checkerSecondOpinion, { type: 'worker_lease', id: checker.id }, state, undefined, { checkerVerdict, loopRunId: run.id });
+    } catch { /* shadow judgment must never affect the loop */ }
   }
 
   private writeOutput(runId: string, leaseId: string, subDir: string, stdout: string, stderr: string): { stdoutPath: string; stderrPath: string } {

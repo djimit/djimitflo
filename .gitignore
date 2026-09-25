@@ -100,3 +100,7 @@ benchmarks/live-test-e2e/*/
 djimitflo-knowledge/
 djimitflo-knowledge-skill-intelligence/
 djimitflo-ruvnet-evolution/
+
+# Stryker (mutation lane)
+.stryker-tmp/
+reports/mutation/
