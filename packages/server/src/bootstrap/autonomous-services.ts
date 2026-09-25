@@ -242,6 +242,14 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
       const generated = autonomousGoals.generateAll();
       if (generated.total > 0) console.log(`🎯 Autonomous goals generated: ${generated.total} (${generated.improvements} improvements, ${generated.security} security)`);
     });
+    // Panel-authorised (scheduled) proposals used to become goals only at boot: a requeued or late-scheduled proposal
+    // waited for the next restart (prod 2026-09-25: dc1143b8 sat 'scheduled' for 40+ min). Only this generator, hourly.
+    const scheduledTimer = setInterval(() => {
+      try { const n = autonomousGoals.generateFromSelfImprovements(); if (n) console.log(`🎯 ${n} goal(s) from scheduled proposals`); }
+      catch (err) { console.warn('Scheduled-proposal goals failed:', err instanceof Error ? err.message : String(err)); }
+    }, Number(process.env.SCHEDULED_PROPOSAL_GOALS_INTERVAL_MS) || 3_600_000);
+    scheduledTimer.unref?.();
+    lifecycleManager.register({ serviceName: 'ScheduledProposalGoals', stop: () => clearInterval(scheduledTimer) });
   } catch (error) {
     console.warn('⚠️  Autonomous goal generation failed (non-fatal):', error instanceof Error ? error.message : String(error));
   }
