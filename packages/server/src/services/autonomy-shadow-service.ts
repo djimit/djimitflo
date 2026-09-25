@@ -40,3 +40,17 @@ export function recordAutoApproveShadow(db: Database, goalId: string, runId: str
     return { decision, reason };
   } catch { return null; } // shadow bookkeeping must never affect the loop
 }
+
+/**
+ * J5 (plan WS-L): the first real auto-approve, for one lane only. LOOP_AUTO_APPROVE_TEST_GAP=true (default off; enabling it
+ * is the operator's decision) lets a maker approval be decided by the rule above when the goal comes from the test-gap
+ * source and its artifact is a single new test file. Returns that file (the only path the maker may touch; the
+ * `auto_approved_scope` verification gate enforces it) or null. Checker, deterministic checks and a human merge stay.
+ */
+export function testGapAutoApproveScope(db: Database, goalId: string): string | null {
+  if (process.env.LOOP_AUTO_APPROVE_TEST_GAP !== 'true') return null;
+  const imp = db.prepare(`SELECT s.evidence_refs_json AS refs, json_extract(s.grounding_json, '$.artifactPath') AS artifact
+    FROM goals g JOIN self_improvements s ON s.id = g.improvement_id WHERE g.id = ?`).get(goalId) as { refs: string | null; artifact: string | null } | undefined;
+  if (!imp?.artifact || !/"test-gap:/.test(imp.refs || '')) return null;
+  return /^packages\/server\/src\/__tests__\/[\w.-]+\.test\.ts$/.test(imp.artifact) ? imp.artifact : null;
+}

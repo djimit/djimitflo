@@ -141,6 +141,9 @@ export class LoopWorkerExecutorService {
       this.loopService.recordLoopEvent(run.id, 'maker_lockfile_restored', 'warning', 'package-lock.json changed without a package.json change; restored before review.', { maker_lease_id: makerLease.id });
     }
     const diff = this.loopService.workingTreeDiff(makerLease.worktree_path!);
+    // new files are untracked, so name-only diff alone misses them; LOOP_WORK.md lives under .djimitflo/
+    const changedFiles = [...changed, ...this.loopService.git(makerLease.worktree_path!, ['ls-files', '--others', '--exclude-standard']).split('\n')]
+      .filter((f) => f && f !== 'package-lock.json' && !f.startsWith('.djimitflo/'));
     const diffLines = diff ? diff.split(/\r?\n/).filter(Boolean).length : 0;
     const diffMaxLines = Math.max(1, Math.min(input.diff_max_lines || 200, 2_000));
     const exitStatus = result.exitCode;
@@ -164,7 +167,7 @@ export class LoopWorkerExecutorService {
 
     const metadataPatch: Record<string, unknown> = {
       completed_at: new Date().toISOString(), stdout_path: stdoutPath, stderr_path: stderrPath,
-      diff_lines: diffLines, diff_max_lines: diffMaxLines, exit_status: exitStatus, timed_out: timedOut,
+      diff_lines: diffLines, diff_max_lines: diffMaxLines, changed_files: changedFiles, exit_status: exitStatus, timed_out: timedOut,
       runtime_adapter: makerLease.runtime, runtime_contract: runtimeContract, runtime_pid: result.runtimePid,
       runtime_signal: result.signal, runtime_timed_out: result.timedOut, runtime_timed_out_at: result.timedOutAt,
       runtime_warnings: runtimeWarnings, token_efficiency: efficiency,
@@ -370,6 +373,11 @@ export class LoopWorkerExecutorService {
       cwd, timeoutMs, maxBuffer: 5 * 1024 * 1024,
       env: this.loopService.buildNestedSpawnEnv(lease) ?? undefined,
     });
+  }
+
+
+  decideApproval(approvalId: string, approved: boolean, decidedBy: string, reason?: string): Promise<unknown> {
+    return (this.executionEngine ||= new ExecutionEngine(this.db)).handleApprovalDecision(approvalId, approved, decidedBy, reason);
   }
 
   private async executeViaEngine(
