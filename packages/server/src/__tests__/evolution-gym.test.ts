@@ -50,6 +50,7 @@ function service(o: { green?: boolean[]; changed?: string[]; install?: boolean }
     }),
     executeWorker: vi.fn(async () => ({})),
     decideWorkerApproval: vi.fn(async () => null),
+    awaitWorkerExecution: vi.fn(async () => 'completed'),
   };
   const oracle = vi.fn(); for (const g of o.green ?? []) oracle.mockReturnValueOnce(g);
   const svc = new EvolutionGymService(db, loops as unknown as LoopService, {
@@ -84,6 +85,7 @@ it('an approval-gated maker is approved by the gym rule and then read back', asy
   });
   expect((await svc.attempt('/repo', TASK, { runtime: 'opencode' })).status).toBe('success');
   expect(loops.decideWorkerApproval).toHaveBeenCalledWith('appr-g', true, 'autonomy:gym-rule-v1', expect.any(String));
+  expect(loops.awaitWorkerExecution).toHaveBeenCalledWith('m-run-1');
   expect(loops.executeWorker).toHaveBeenCalledTimes(2);
 });
 
