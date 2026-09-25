@@ -28,6 +28,7 @@ import { LoopRecoveryService, RuntimeLeaseRegistry } from './loop-recovery-servi
 import { LoopPersistenceService } from './loop-persistence-service';
 import { ExperienceRetrievalService } from './experience-retrieval-service';
 import { SelfImprovementService } from './self-improvement-service';
+import { assignmentContext, assignmentContextMarkdown } from './assignment-context';
 import type {
   LoopName,
   WorkerRole,
@@ -125,9 +126,17 @@ const MONOREPO_ROOT = process.cwd().includes('/packages/server')
   ? path.resolve(process.cwd(), '../..')
   : process.cwd();
 
-const DEFAULT_EVIDENCE_ROOT = process.env.LOOP_EVIDENCE_ROOT
-  ? path.resolve(process.env.LOOP_EVIDENCE_ROOT)
-  : path.join(MONOREPO_ROOT, '.data', 'agent-evidence', 'agentic-control-loop-fleet');
+/**
+ * Where worker stdout/stderr evidence lives. Verification checks it exists, so it must outlive the container: prod
+ * 2026-09-24 wrote it to the image's /app/.data and lost it on every deploy. Default = next to the database (DB_PATH is on
+ * the persistent volume in prod); LOOP_EVIDENCE_ROOT overrides; the repo's .data only when neither is set (local dev).
+ */
+export function resolveEvidenceRoot(env: NodeJS.ProcessEnv = process.env): string {
+  if (env.LOOP_EVIDENCE_ROOT) return path.resolve(env.LOOP_EVIDENCE_ROOT);
+  if (env.DB_PATH && path.isAbsolute(env.DB_PATH)) return path.join(path.dirname(env.DB_PATH), 'agent-evidence', 'agentic-control-loop-fleet');
+  return path.join(MONOREPO_ROOT, '.data', 'agent-evidence', 'agentic-control-loop-fleet');
+}
+const DEFAULT_EVIDENCE_ROOT = resolveEvidenceRoot();
 
 const CONTROL_DIR = '.djimitflo';
 const LOOP_WORK_FILE = 'LOOP_WORK.md';
@@ -2164,6 +2173,11 @@ export class LoopService {
   ): void {
     this.ensureControlDir(worktreePath);
     const advisoryContext = this.advisoryAssignmentContext(worktreePath, run, finding);
+    const extra = assignmentContext(this.db, run, worktreePath, `loop-maker:${run.id}`);
+    if (extra.examples.length || extra.rules.length) {
+      this.recordLoopEvent(run.id, 'assignment_context', 'info', `Maker assignment includes ${extra.examples.length} proven example(s) and ${extra.rules.length} rule(s).`,
+        { examples: extra.examples, rule_ids: extra.rules.map((r) => r.id) });
+    }
     const content = [
       `# ${run.loop_name} Assignment`,
       '',
@@ -2188,6 +2202,7 @@ export class LoopService {
       '',
       advisoryContext.text || 'No matching observed episodes were retrieved.',
       '',
+      ...assignmentContextMarkdown(extra),
       '## Rules',
       '',
       '- Keep the diff small and local to the finding.',

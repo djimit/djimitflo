@@ -1,0 +1,5 @@
+# Files
+
+- [HTTP/WebSocket API Surface & Route Inventory](exposed-surface.md) - The server's public network surface — the declarative /api route mount table with per-prefix auth, the derived /api/openapi.json, METRICS_TOKEN-armed /metrics, build-attributable /health endpoints, public /explore pages, global rate/body limits, and the WebSocket `/ws` event protocol to the dashboard.
+- [GitHub Integration: Webhooks & PR Review](github-webhooks.md) - The GitHub connector surface — the raw-body HMAC-verified webhook at /github/webhook handling issues and pull_request events, deduped integration-inbox intake keyed by delivery ID and payload sha256, the GITHUB_REPOSITORY_PATHS allowlist, and the GithubPrReviewService loop runs that post comments and commit statuses through the gh CLI.
+- [MCP Server Package](mcp-server.md) - The @djimitflo/mcp-server package exposes Djimitflo state and control actions to MCP clients (Claude Code, Cursor, VS Code) over stdio or an authenticated HTTP/SSE transport, reading and writing the SQLite database directly with a snapshot-vs-live safety boundary and per-principal role context.

@@ -1,0 +1,214 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:3cbd81150f11940c3650cfc6966e94761d1b5282361eaad3cf7da7b006fea5e7",
+  "claims": [
+    {
+      "id": "claim_7f4916f472fc45d886af493824967638",
+      "statement": "BackupService creates backup archives named backup-<YYYYMMDD>-<HHmmss>.tar.gz (enforced by the regex /^backup-\\d{8}-\\d{6}\\.tar\\.gz$/) containing exactly three entries — manifest.json, a consistent SQLite snapshot djimitflo.sqlite produced via better-sqlite3's online backup API, and checksums.sha256 — and additionally writes a plaintext sidecar <filename>.manifest.json next to the archive for listing without untarring.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/backup-service.ts#L12-L14",
+          "version": "repo-lines-v1:sha256:b5dca0e22392dd4a38015f9bb6367e6bde95f27724440d31c359504b0b9937a0:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2E1ODdhMDk3MGY4MGM1YjRhZDdhNmNkMDJkNmE5ZWY1NTRmMjE1NDU2ZGQxNjFlODY5YjIyOTU0NTUwNmFlYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzU2MmJlZjc1NDgzNGFiYmM2N2JlMjNiMmM1MTNlMDgzMTlmNzk2ZDZmOGZlNmE3MjQwMjBlNzQ0MjA4ODdjOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmQ2NGM0MTczMjJiYzc3ZDI2ZGMzMTdjZjVlZWU0MjViY2UzMDI3ZjA0Yzc2YzgxNTQyNDIxZTVhOWQxMDFhYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGRkZTM0ZjE4MjEwYmVjNDYzZDM4ZDI0ZTExZDcxOGEyMTI2MTk2OTllN2I3MDQ1ZGQ1MzU4ZGEwMDk2OWQwNSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/backup-service.ts#L148-L185",
+          "version": "repo-lines-v1:sha256:b4b293b67a44004dbcd10d3ab0ee5a1b2efe85dbb6cd6a5d65d991de86f38891:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0MTViOWEzZTE5NTJjNGRhMTY0YjA2NGNlZmE1ZWNmMzNhMjE2MDEzNDBjZDcwY2EyYzA0Zjc0MTJjYTk5MjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3ZDg2MzJlNTRlOTI5OGFiYjk1ODcyN2UyZDUxNDA4YWJhZjEzNjYwMzUzNzkxMDE0MGFiZjY1YjMwYWI2MTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk5MWRjOTJkYzhhY2NjNDIxOTYwN2M3YWQzZDlhNjk0NzRjMDZkZDgzZDg1MGRmNDY4YjgxZjlhMzBkY2M0M2IifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/backup-service.ts#L420-L422",
+          "version": "repo-lines-v1:sha256:271d2e382168c4003cdf3ea7af9b7cfeb82329325f1750144002ba6f584d3c45:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmU2NDY5NzUzMTk5ZjVmNjFjMTdiMzM0M2RlMDZlMGQ4YTk2YmEwYjk2MDc5ZTg4ZWU5OGEyZmFhMzI1ZTk4YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODcyM2RiYzhiN2UwOWViZDZhMmUxNGY5YTQ2OTM1N2Y3ODA2MjVjZTMyZjZlMmFmNDRkYTEzMjAwYmU1YmE2ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2QyM2ZkYmU4NGNhOTcxZDhmOGU1YjY4MzY5NTdhOWI0N2EyZjFjMGZhODI5ZjViODcwYmFmNzAzOTAxZmQ3MCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/backup-service.ts#L80-L146",
+          "version": "repo-lines-v1:sha256:565df598dbe5d0dd87e03b009c4bafc9e63fca15dfaf93827300b5329c4437b8:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzMmJlNWJjMGYwNDZiMDY1Mjg5NWQ1MWFkMzMyMDA5YjljNzI4NmM1ZjI1NjRmYWVhY2ZjYmMwYmNhMjE4NjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3ZDg2MzJlNTRlOTI5OGFiYjk1ODcyN2UyZDUxNDA4YWJhZjEzNjYwMzUzNzkxMDE0MGFiZjY1YjMwYWI2MTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI2YmNmN2Q0YWUxZmEwMDdmNjc4Y2UxOGM3MGJhYmM1MTM5ZmYyYjkwOTdlOTBkNjBjZWIyMWYxMzVkNjY0ZDkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b26e715c857e486ca6a0e7069e56eb66",
+      "statement": "Every backup manifest carries backupVersion '1.0', appVersion, createdAt, databasePath, per-table row counts excluding sqlite_ internal tables, databaseSizeBytes, databaseSha256, createdBy, hostname, notes, and a fixed warnings array stating that the backup contains password hashes and governance evidence (confidential), that environment secrets such as JWT_SECRET are NOT included, and that repository working trees are NOT included.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/backup-service.ts#L103-L116",
+          "version": "repo-lines-v1:sha256:574215f3f44e84a721793ea0aba31d3c6946c2895bf987fe22fec026875cc516:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwNDI4NzU3OWMyMjNkMWFiYWJmOGFiZTY1YmE3OTNkMWMwYWVjNmQ5ODJjNGIzYWY2NmZhZDY1NWI3YWZiZGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlMzNkYzczMWU3ZDA3YjFmMGMwNWNmZWJkN2UxOTIyMDIzZTYwNzdiYzBhZTdiYTMwMTQ4ZjUwODMzYTI1YTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM2YTU1MGQ2MDJlYTQ1YTBlZWZlM2E2NmUzMTg1OTMyMWE5MmExYjMxOWE3MzU5MjdhNTQ1OWZjMDIyNjJiMmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVjMTY1MzhjNmUyMDBlNDk4MjQ3NTdhNDlhM2U4OWRkMmE1NjI4NWZkYWM3NWY2NzVmYWU0MTQxZDZmMWNjM2EifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/backup-service.ts#L16-L29",
+          "version": "repo-lines-v1:sha256:6e444bffe3bbb2fba9b47704842d5680d9abed441f79a939616096573cecd7ff:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU4MGY4ZDYzZGJiZjU0ODEwOTkxZmZiODg1ZGY5NjFhYjVjM2YwNmM2YjFhOTY1ODJhNTE4NDMxNGIwYTJjYWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg1ZDE1MTY0ZTBlMjc3YjcyYjRjNjQwMjQyMzgxMzI3MWM0YjI3OTFmN2FiMmZiMmUzYWY5ZjU1NTYyYjNhZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkzNjA2YzJjNzMzOTVkMTA1OTQzYzhmZjQzYWU5YzU1ZDY2NGI1MzAyOWQ3ZmJhNTJkNzdlN2E0MTZjNjNkNDIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/backup-service.ts#L440-L451",
+          "version": "repo-lines-v1:sha256:01b6f887ce82b7c96c8cdd9b62e83faf6a5093edabe3d8ff92bba244333893b8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2NzI0ZmM3NjZmMDI1YzQ1ODA1OGRmMGZiZmM5Mjg5OGVmOTM3NTc2YjA3ZmQ0M2Y4YjJiZWY3MTQwZWE3MWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhMGVjMjdlMTlmZjA2OTgwODQ4OWY3YTg5ODk5N2Y5Nzk1ZmQ4NjU5NmJiOTgyNjBkM2QzOThlOWRhZGU3Y2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ5MTA1ZjNkYWU5ZWNhOWU1NzA2NzkwZjBhZjRmYjAxMTAyNDEzZWFkOWE1YjcwMDQwNGQyZTc4MWE4NGY1ZmEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/backup-service.ts#L58-L62",
+          "version": "repo-lines-v1:sha256:60a4d400a6ea27ccf1e0d27ec9aae48081e1a2bdfd58f720f7f873152ca34b22:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTcxNGQ2NGViMTQxZTdjMDBhMTU1ZTY4NzRlYzhkMjNjYjliNzM3NDRmZGZiZGQ1YWYzNzdiZmNmOWNiMmM1OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjAyZDJjMGQ2ZGM1ZTc0ZDkyZmExNGI5MWRiZWEyNjQwOTBiZWIzNWZkYjkxODhkOWIzNDExODFkY2U5ZjRjZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjY0MGY2NzRhNTgwNWIzNzQxZGIzZmZlYmE4OWY0MWQ0NWVmM2E0ZjRmOTk0MTE4M2MzY2E4ODY5YjMyZDVmZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWM4NzEwNGU4YjNhODgzYTEzNzc2NDZlOGRkZGM4OGNkNWYyNDJlNDk0OGM1ZWVmYWE5MTlkMDJiN2ZjZDJhNyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_2c10c44837204bd8b4faee9eb6251405",
+      "statement": "validateBackup extracts archives through a hardened extractor that skips symlink/hardlink entries, absolute/traversal/backslash entry names, duplicates, and any entry outside the three expected names, writing only to join(targetDir, basename(name)); it then verifies checksums.sha256 against freshly computed SHA-256 hashes, requires manifest.json to be parseable and at most 64 KiB (MAX_MANIFEST_SIZE), cross-checks the manifest's embedded databaseSha256, rejects backups whose appVersion major digit differs from the running app's, and opens the extracted database read-only to require PRAGMA integrity_check to return exactly 'ok'.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/backup-service.ts#L187-L301",
+          "version": "repo-lines-v1:sha256:078478b30ca15f9d3f5d26165a4320cf1c285f91432dcbe31a818597e193dd4d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0YzRiY2QwNzgyZDgyNDYwMjY1NTgzNzczNjI2MzljMWNkOTBiNDgzMDUzNDVhMGZhNDljZWZjYzM5MjVmNzE1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI5N2Q4NjMyZTU0ZTkyOThhYmI5NTg3MjdlMmQ1MTQwOGFiYWYxMzY2MDM1Mzc5MTAxNDBhYmY2NWIzMGFiNjEzIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiYTRmNTM3ZDNlODcyZjRhY2FiZTZlNWRhZmE3ZDM1ODRhZTQ1NTQ3YzhlNzBjNzQ5MDRjNTc5ZDQ2ZDVmMGM3In0"
+        },
+        {
+          "resource": "repo://packages/server/src/services/backup-service.ts#L473-L532",
+          "version": "repo-lines-v1:sha256:a3111eccad9f92e2637d91abffbe3c397d5520750627d6dd9efde667e9f786c9:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4MzZlNzkxMGMyZjJlMjdjNzM5ODlmMThmODAzYTIyMjI3YzU1YmM4NmJiZDIzNGI5ZmNiODFlZTVhMGYxODQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVlMTJiNjExODk0M2UzMGMwMDY4MzNlNzgxNjMwYTUzYjMyZjQxN2VmNWY5Nzk1YzNmMTJmMzMwODAyNGM1ZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI5Yzc2NmU3OTZjMDE3NjZkNmZkNmMzYjdlNDI3MDA5ODdiMDUxODA4YmM2N2M1NjkxODI5YTViYWVlYzM5MzgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_fd51d89590e24ad68e25523a75e62d3c",
+      "statement": "Restore is a two-phase flow: stageRestore requires the literal body confirm='RESTORE', re-runs full validation, first creates a safety backup of the current database (audited backup.pre_restore_created at HIGH risk), copies the extracted djimitflo.sqlite to <dbPath>.restore-pending, and writes a restore-pending.json marker into the backup directory recording stagedDbPath, targetDbPath, safetyBackupFilename, timestamp, actor identity, and restoreFrom; it returns restartRequired: true without touching the active database.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/backup.test.ts#L158-L222",
+          "version": "repo-lines-v1:sha256:355314201e98350ebb2660f519bc7bcbfd1153e36e32cd315c16f5339600a728:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ0YzA2Zjg0ODE0YzRkNTI5ZmFjOGQ4YjA1OTU0ZDZmMzRmNDdjMmFlNmFlY2IwYTQwNTZmNGI1NGUyNmNiZjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyZDExY2FmNDNlOTdlZjM2OWU2YmVlZDFhMjY4YmQwNTgzOGYyOWI5ZGQyNTRiZjY5YmE2NDg4NDE0NzIzNGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIxNjQ4YmMyYWEyODlkNmM2YzcwZmQ2ZjIxMmY1OGQwMDU5YmYzMjUzMWU0YTQ1M2RlNzc2NjMyOTZmZDE1MzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwZTdjNGQ1ZWE0N2I1MjdhMTkxODBkNjdhNTQ5M2Y5OWMxOWUyNjhkMTAyMzIwODRkNzM1YTBhMTg1YzZmYjAifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/backup-service.ts#L327-L411",
+          "version": "repo-lines-v1:sha256:111dc045093f8f149ccc4936b46af66f295f4999adadcfca21c0f5a4bb6ca2ca:eyJzZWxlY3RlZExpbmVDb3VudCI6ODUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNlZTA0MmZiODIyZjMxYWIwZTcyNTMyOWVlYTkzNTNlNjk2ZDIyMmU4ZDc3ZGNiMjQxZTdiZDczYzMwMGJlYmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWVmZGQ1MTEzZDk5MDU2ZjFlMTlkZTFiN2Q1YmVkZTZlMGEzMDFmOWU4ZjdiZTRlYWQzZjhmOGRhODY2YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlZWIzZTcwODM1YzA0YzA0NzM1YjE2MzhhMWMxMjBjOWQwZjk2MzNiN2MzMjMwMDAyNGUwNzM0OTAyZjJmMmYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f2e5faa6146c4b61b9f672b1e124bf9d",
+      "statement": "At startup, applyStagedRestore runs as the first step of initializeDatabase (before the database handle is opened): it validates the restore-pending.json marker (rejecting missing paths, NUL bytes, and any staged or target path containing '..' or backslash), verifies the staged file exists, atomically renameSyncs it over the target DB, deletes the marker, and after schema/migrations records a backup.restore_completed audit event; on any failure the marker is renamed to restore-pending.json.failed and the current database is kept, leaving the server bootable.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/index.ts#L39-L141",
+          "version": "repo-lines-v1:sha256:b3a3233b8945b27a138f9b3ba068657fc88fbbd55fbf17d5208daa7b1666a52b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0Zjg1MDUwZTQzMzc0Mzc0NDNlMTg0MTY0NTA4YzE3ZGM2OWNmNDY2YWVmZjMzMjBlNDEwZjM4ZGM3MjVmZjE1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI1OTc3MzAwM2IxMTlkZWEyMDkwM2E3NGRlM2FiNGE1ODAyZTYzOTdhOTA2YmY3OGJjODEzZTMyZTMyZjNlNGJhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4YzVkYTY4NmFmNWIzYjU1MDA4NzVkOGZkMGI0Y2FiODI1NmMyNzY0NmQ5ODhlYjEyODdhNzczMzY1MmY0MDE3IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJkODQyMTE0YWZkZGRkMTZiNjllNmJjMDFmYzMxMmIyNzM3YzNkNjdmNWU1OWEyMWU4MmFmOTI2YzkxYmM4Y2EzIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_cb89a6e2931747ebac127e0d72271b1c",
+      "statement": "All backup lifecycle operations record audit events via AuditService — backup.created, backup.validated, backup.downloaded, backup.pre_restore_created (HIGH risk), backup.restore_started (HIGH risk), and startup-side backup.restore_completed — with the shared AuditEventType enum defining these event types.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/index.ts#L116-L139",
+          "version": "repo-lines-v1:sha256:5dd427967ffdd82d00c2c4ffc00f54d1450159c152034e5e0ce2dfe72675b6dc:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkOWJkOTkyM2I0NTMxYzdhYWMxMDk1ZDNmZGRiYzRjYmM1MDc2NzgyYzlhNzkxYjExOGUyYjUxYWFiZjVmMGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJhZTNhNjRmYTY0NDM4NzRiNzJlNTU0ODY4ZGMwYmNjYjYwMzRjN2M2ZDJhZjRjMjdiMjM2ODVkYzYyNGE0ODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNhMmUzNTM1OWZkMmJhMjE4YmU5M2E3ZTQxNDA5MDg0ZTQyNzM4M2U3MTVlMmM4YTc3ZmZjYThlYjIyYWIzYmUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/backup-service.ts#L132-L140",
+          "version": "repo-lines-v1:sha256:7b7e8cc417e414b5dc49a950e4a12a5c0056305fb77047c43d29193106a7f37d:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjg2NDA2ZDA5ZDhmNjNlZTY2NzIzMDc0MGE4ODU5YWFjNTY0NTU4NDlkNjk4ZDU5ZjhhMzdlNjMzYzEyNjEwYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzE3YWYxMTAxYzk3YjdjMmY1MjU0MDc4MmU2MzRjYzQ0NDBmMGU5NzAzNDFlNTJmOTc1MjMxMWQ3OGI3ZDdkMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjhjYjczNDgyM2JiY2FlZWI2ZjVjMWQ1NzkzOTYyNzM2MTQ2ZTM4ZjY0ZTU2YjNmZjJiNzI1Y2NlMTk1ZDgyNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjNkZDFmZjU5Y2ZhNTRhNjY4N2MxMzgyYjY1ZmJjZjQwOWUxOGVlMTMyOTNjOWI1OTkwOWUyNDIyY2RlNzdmZCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/backup-service.ts#L280-L287",
+          "version": "repo-lines-v1:sha256:28fda43de0049852fe4d4828c1b7c558cda076282ee7e0570df8e9a757e915be:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjg2NDA2ZDA5ZDhmNjNlZTY2NzIzMDc0MGE4ODU5YWFjNTY0NTU4NDlkNjk4ZDU5ZjhhMzdlNjMzYzEyNjEwYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzE3YWYxMTAxYzk3YjdjMmY1MjU0MDc4MmU2MzRjYzQ0NDBmMGU5NzAzNDFlNTJmOTc1MjMxMWQ3OGI3ZDdkMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDEzNDFkMGM1ODgyZTkxYTY2YzYwY2I4NjAyMGIyNDdmMGFmYzMzNmNkZjc2YzBhZTE4YmNkMjBhYzhmZTFkNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODZjYjQ0MTU3NjgzNDMwYzgxNTU0YjVmZDYxODNjNDQ0YTY1ZTA3NjdiZDYyMjI3N2QyNmE4OGMwZjhiMjA2OCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/backup-service.ts#L352-L400",
+          "version": "repo-lines-v1:sha256:2a608125a9f46ecfb15a6cd03b35984ef68957a97d4dbe702ad4d438a9722e5f:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjMzZhNzM5Yjg3YjMwYTAzMmZmMzJhOWZmZWNiMmE0MDg2N2RkY2I5YmM5ODRkNzI0NjlkN2E0OTI5N2FkMDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxN2FmMTEwMWM5N2I3YzJmNTI1NDA3ODJlNjM0Y2M0NDQwZjBlOTcwMzQxZTUyZjk3NTIzMTFkNzhiN2Q3ZDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNlNzJjZTI3ZDM5YzBhNWZiMDYwN2EzNjk5N2NhNzE2NzkyNjlhOGZhYzEwNGEwN2VjMTQyZGYzNjAyZWEyMWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZmNmIxMWMwMTMxYzUyYjQ5MTM4MTMyYWM0MzYxN2E3MGQxMjBmNzkxODU3M2NkNDQ3YjQ4MTUwZjNhYjNlNmUifQ"
+        },
+        {
+          "resource": "repo://packages/shared/src/types/common.ts#L147-L153",
+          "version": "repo-lines-v1:sha256:f130b92c57021fb0d65e535a1a59042a3d4ebf59df183c29ce0b3908d186fa59:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDMxMWUwOGQ1ODRlYzMyMmRkOGQyNjc5MThmYzQyZDljOTkzZWRiZTY2MjdhNDAwZmExNGZiMTQwZTllMDQ1OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDk0MjEyMWRhZTQ5ZGYzZjI0OTFlMTE0MWFkYWNhNDViZGFhNDYzOGI5M2E5YjZlMDhjNDFkNjhlNTg1NGNmZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWQwYjAzM2RiNjRlZjJmYWViNzczNjE2ZTc5YWM4OWU2ZmQ0MzM5ZmEzN2Q3MGZmYmFhMWE0N2Y3NGIxMTkyMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzI5MTNmN2ExZGNlYzZiYTFkN2NiY2ZiYWI3MjVjMWVmODQ1ZGI0ODI4YjU2ODQ0OGU1OGJjZDVmYjkwZTNjMyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_2c4e69825f4e41fd8045f728af00e8c6",
+      "statement": "The backup HTTP surface (createBackupRoutes) is mounted under /api/backups behind requireAuth plus the manage:backups permission, exposing POST / (create, 201), GET / (list newest-first), GET /:filename (metadata, 404), GET /:filename/download (streams application/gzip), POST /:filename/validate, and POST /:filename/restore (maps confirmation/validation/invalid-name errors to 400, not-found to 404).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/backup.ts#L7-L93",
+          "version": "repo-lines-v1:sha256:a05ee3f4c171209589198299964451af9093764c70de5fac618491f89228533d:eyJzZWxlY3RlZExpbmVDb3VudCI6ODcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2ZWI2NmExY2Q0YWYzODkxM2JlZGU4OTY3OWZkNTBlODQyMDBiYTg3MDY2OGZkZTk5OWJmZGYwYzg3MjA0ZDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4OWZlZjE2ZWRkY2YxY2E3NTlhOWEzOTc0NTc4NzkyMzUwZTE0Zjg3NjQxYzI1NDI2MDgxMzU4NDQwMzRiNTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRkNzAxZGY3MTRkODUwYWQ3MGY1ODY2NWVjYjA5NTYzZjJmMjZkOTBjYmIwZjkwODM1MTE1NTU3Y2NiYTZkOWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQxMGIzNmFhNzRhNTliY2Y0YTg4MTg1ODM3ZjY1OGFmYWYzNjQ2ZWZmMmJiMTZjMzkyOGQwZTkzMzVlOTQ1ZDIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L201-L201",
+          "version": "repo-lines-v1:sha256:03286ef4c7d229a2ce2654e4cb80bd25f8533ffa9d290248fc870a23db364e9d:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDMyODZlZjRjN2QyMjlhMmNlMjY1NGU0Y2I4MGJkMjVmODUzM2ZmYTlkMjkwMjQ4ZmM4NzBhMjNkYjM2NGU5ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDMyODZlZjRjN2QyMjlhMmNlMjY1NGU0Y2I4MGJkMjVmODUzM2ZmYTlkMjkwMjQ4ZmM4NzBhMjNkYjM2NGU5ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGQyMjNjODE5ZGZkOTg3MmE1ZTEyYzlkMTkyZWUwZTNjMjhjZjQ5NzBlN2ZkZTgwNWYyMzMwM2FjM2JjNWFiZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGM1ZjA5MDM4ZWQzZTk0MGQ3ZGE3Zjk0MjM3YTNmMTY1ZGJiOWRiMmE5OWY3NTY1NzJiZjFkOTk2NmZhZTY3NyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_cc6cd160b2f0446088f148fdb1780a39",
+      "statement": "The backup directory resolves via resolveBackupDir(): BACKUP_DIR when set (relative values anchored at INIT_CWD), otherwise <monorepo-root>/.data/backups; the routes file independently derives the same default from DB_PATH's parent when BACKUP_DIR is unset, and both database/index.ts and the BackupService constructor create the directory if missing.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/index.ts#L31-L34",
+          "version": "repo-lines-v1:sha256:949b5297faa170e6b2974782a705a4ee401e0242bb520e33274e6f8f0e64a69d:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWE1MGJiNDUyMDIzMDQzNDM4NDE4Y2U4OGFhYWU4OTZlMzQ1OGEwYjgzNDE0ZmM3ZjQ5NGYyNjQ5NzBjNjY0OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmI1ODBlOTY0ZjgzYTQ3M2Y0M2Q0NDM4NDYyOTQ5ZDY4YjU2MDBmZGE3ODdmMTYzNzQ1ZDAwZGU4OWNiZjM2YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMzJhNDM4ZGQwNGJlNTlmNmEyODNkNWE5ZDg3ZjMxMDFkOGVhMDAxMTBiOGJiODE2NmJmZWEyYzBhZDUwZiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/database/path.ts#L15-L20",
+          "version": "repo-lines-v1:sha256:392688d65aed8e6f52e1d1cea183bda2680f941de14b88e4ec25c0582c22ed7a:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTZiYWYzOGVjMDI5YWNlZTQyNDJjZjBlNjU4NzZjZjQyODgwY2ZiMDNmNDUyNmM4YjQwODBjNGJjNmNkY2JmZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTg4YjRmZjJhZWUzMDQ5YWMxODZiODRjZTI5NDUxMDRmYTQxNjc5NWFlMzcwYjkxOWQ1ODcwNWU5ZThmNGY4OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/backup.ts#L10-L14",
+          "version": "repo-lines-v1:sha256:b30253aadb554c8c9ec68a561c919e67c5c6e01ab8aacc135b691dc6be1cc795:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTQwMjRkZDhiMGVhYzg4ODVmOWRiN2M3YWJhYzhlY2M0ZmM0NmMxNjc3YTY3ZjNmZmYzY2FmMzBlM2FhZmQ4MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWYwYjI3YWYwMWYwMDQzOTY1NTM4NzcwZmI3YTViMzBiYmEyNmUzZjNiMzExMDZlYzhlODFhMGM5MWJlZmNkMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTRhNTc4YTQ4NjE2Y2FmYmNjMzE2MTc4OTA3YTY3MjdmZWUyMGM3YzkxMjAwMjFkODQxMmZmYTY4MGYzM2U2NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDAwZTM2NmQ0NjQxMzI0NDc0OGM1MjI3MTRmNzZjNWY3YzIwMTVmMGE1Y2NkZjcyYWRlMzk2MjY4MGU0Yjc2OSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/backup-service.ts#L75-L77",
+          "version": "repo-lines-v1:sha256:7dbc8d3911fb9146a0eb7debfe0e5f60f1f8c6bbe491e845b5a50189b0037fd7:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTNkYmYyN2FlYzEzZjY3ZDk5NDY4OTFiMDQ3ZGViMDZmODhiNjA1NDg4MTM1MmVlNWIwZTcwYWUyODM1ZWZkYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg5M2Y0MGUzNzgxZWI4OTZjODJkMDQ2YTA4MDY3YTExZTM1Y2RmMmYxZGZhZjI2ZmVhOTBiOGRiNjY3NjQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiN2MxNjUzNzJkZmQ2MzM1OTRmN2NhODc3MTY4MzRmYTUwNDU4YjA5Y2M1YTU5NWZjMzFjYWVmMThhNWI3NWViOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjU0NGQ4ZmQzOTcwZGQyNzg2NDk5ZGQwMzIyNzZkYzAzZTE4ODQ2YjAyMjk0ZjdjZmE1M2Y4NGI5ODMyZmM3MyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_aa1f762ad84440cea9c6e447ddc8f86e",
+      "statement": "RetentionService is the scheduled purge counterpart to backups: gated by RETENTION_ENABLED (default true), it purges rows older than RETENTION_DAYS (default 90) from experience_embeddings, trajectory_steps, vector_memories (only rows with ttl IS NULL), cognitive_episodes, and cognitive_patterns, while llm_provider_metrics, model_routing_decisions, and model_execution_outcomes use a fixed 30-day cutoff; it runs at startup when RETENTION_RUN_ON_STARTUP is not 'false' and recurs every RETENTION_INTERVAL_HOURS (default 24), treating missing tables as zero deletions.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/retention-service.ts#L179-L190",
+          "version": "repo-lines-v1:sha256:b5cf921347a1fb870fbf0c674c2f7f9cd276bea8e9d6f4d28932a7791569e0b5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlNmRkOTNlNDlkYjBjZmFmZjBiNWZmYzM4MGNlM2EyOWQyZGJmMDc3MWU5MGVhYzFhZDk2OTI4NmE0MGIzMjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM5NDBhMTQ1ZGVmMjkyMGNmYzg0M2Q0MDdjMDAzZTM0MTI4N2YwMTlmMWIzNjdmMGI1MjhjNmI2NDUwMmUwM2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/retention-service.ts#L34-L152",
+          "version": "repo-lines-v1:sha256:a15b839a12e8d3e1552507ef2f52410222b6f2a97cb725e6faa3dea81456bb7c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2ZWZhMTgyZWQwODU3YTE3NjcwOWI5OTg1OTRmYmRiYTg0ZDVmYTQ3NjBhNWY2ZDY2MjAyZTU2ZjgwMGRmODc4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIwMTI2MzZhZThiMTQ2YmIwNDhkMjI4Y2UwYzE1NTA3NDM0ZDVjZDRjZWQzMTY4YTlhZmFjMTQ3MjIwNjNhZmFjIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxYTM2YzJmMjZjMDU0Yjc2ZTJlYTUxMTc1MjAxYmNmOTkwMTM1NTk5ZDRiYmFjZDA4MmRhYTUxYTRmOWQ1Y2ZmIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_e35569b5e073484b87a6f1766ad12940",
+      "statement": "RetentionService is started only in operator/autonomous runtime profiles (the operatorRuntime branch of index.ts main), and DiskGuardService is started only from initAutonomousServices, which index.ts invokes only in the autonomous profile — so disk alerting requires the autonomous runtime profile and DISK_GUARD_ENABLED=true.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/bootstrap/autonomous-services.ts#L155-L165",
+          "version": "repo-lines-v1:sha256:de9d84ded848dd1e7348135f69412bf3f75ca6e7d4e0e80a092b50a0860afd9d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk5MTA0YzliMmQxNGE2ZWE2ZmNhNmM1MjRjZjZiZmZlOTM2MDIxNWY4MWJjOGUzMjI5YThhYjY4YjJmOTQ5YWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwZTJlYTFmMTY0ZmUyZTZkNmFkMDQ3MTNjZDU5NDFiNWYzNWU5ZDYzMmIyNDAxNGQ4YzgyNDJkOGE1MjcyNzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUxYWFjMTM5ZGRjOWJmYmFjZGZlYjk1OTY5OTJiZDY3ZDY2YTUzYWY5ZjMwMzkzYWNhNTY2ZmI2ZDM3Nzg3MGMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L104-L106",
+          "version": "repo-lines-v1:sha256:c94c19ea30ad181ef04743863d31ecc826f1b43179b6d2c0f11af3ba21c3d6c4:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWVmYjEzZjFkYmU1NTU5NTkwODUwNWY0ZWVkNGRhNGNjNmQ4ZTc3YTQ3YTI0MmM0NzRmOWEzYjBkZTA4ZThmNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjJlOWY0NWZjOWUyNmNhNDkyN2RmMTA2Yjc5Zjk1MDk0YTk1ZDQ3NzgxMjViNTYwNTQxNWM5MDQwMDRmOTE4YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMmYyMmE0MjBlNTEyMDYwNjA3NWVlMDU5ZDE4OGRiNjEwMzE4NWNmZTZlZTliNmIyNWM0MTkxMmY5ODgyMjdmZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTk4YTEzZDJhMjhhYzE3NzRiM2E5ZjZjN2IzODA2YzM1ZWQ1MDc3Njg0MjliMzQ0NzIyN2JiZjA4M2I5NDUyZiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L227-L233",
+          "version": "repo-lines-v1:sha256:801604ab23554733db67ac9f7bd825ec7f6bf6d55a06d7c568c38ec8781ca1ac:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjEyNGU1ZDZkNDk2ZjQ2ODUyYTA1MDVjMTRkODI4Zjk2Mzk3MDUyZTQzM2U0NWZmNjFmNDk1YjkxYzE4NmM1ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiN2U4OTM2NjZmMDE0NmJkZTlkMmJmMjQzZDViZDVjM2Y5ODg2ODU2OTEzZmM4MmFjYjkzODc1OTFlZjdhZTQ3OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzNiNGEyZjQxMTUwN2NhZjk5MGU1Mzg5MzViZjk0ZjJjZjUxZjFmYzVmMmJiNDAwZDk0ZWY3OWZkNzBmNmU0YyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_c56e8433ad0148aea8babc705c957d55",
+      "statement": "DiskGuardService is read-only capacity alerting created after a 2026-09-21 incident where a full disk crashed SQLite with SQLITE_IOERR_SHMSIZE: default off (DISK_GUARD_ENABLED=true to enable), it statfs's DISK_GUARD_PATH (default /data) every 10 minutes (first check 30s after start, unref'd timer), classifies levels at DISK_GUARD_WARN_PCT (default 80) and DISK_GUARD_CRITICAL_PCT (default 90), and on warn/critical upserts one work item per day and level (source disk_guard, source_ref '<day>:<level>') plus one djimitflo.alert.disk outbox event per new item, never deleting anything.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/disk-guard.test.ts#L14-L26",
+          "version": "repo-lines-v1:sha256:4b201ebd969e70c22dba214dac4d6eb468386076181e6f7554e6cf43945196e0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5NWU4N2U2NmFiZTkwM2YyNDg0MzIzNWFjNTU2MTE0YzI4MjFhMzIyYjgwMTdlOGViNDM3MmJmYjllNjQ0NDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAyM2Q0OTdlNWZhMWNlOTA2YWMyODliY2Y5YWEzYTc1NGQ0ZDJkNGZmM2M3NTczNzNhZmE0NTRmZjIxNmYyZDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ2MGExNjg5ZDMwMWIyZmIzZjY0Mjc5Y2RiOGNjMDc0MDQ2YzljYTY3NDE5ZWNiODg0YjM3MjdhMzMxZjdlYWIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/disk-guard-service.ts#L6-L48",
+          "version": "repo-lines-v1:sha256:fa1c8322ed113dc93f274598f723556128301e582c56a89805dc9763c16e09f4:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI2ZTFjMTFkNzhjOTE1NzIyNThjNDM0NWRhYjBhOTU1YTU4MzA0Y2MwODAzMWM2OThiNWI4OGMyYzgzODVlZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_19bb0e66c2b6473d803942a115af40c1",
+      "statement": "Focused tests pin the backup contract: backup.test.ts verifies the filename regex and manifest shape (including the confidentiality warning), table counts excluding sqlite_ internals, audit events, traversal rejection in filenames and downloads, the confirm='RESTORE' gate, safety-backup and restore-pending.json marker creation, restartRequired, and that staging never overwrites the active database; loop-services.test.ts verifies retention purge cutoff semantics and the RETENTION_ENABLED=false no-op.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/backup.test.ts#L39-L236",
+          "version": "repo-lines-v1:sha256:6b75257454f3c960e32c719fd65b89eb5208984df25d7df2180dfea3a125a65d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTk4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJlNGJmODQ3MzgzZDg3N2VlMmQ4YTNjOWMxZTQ5YzMzZTNmNmY5NjE4N2I4YTMxZjhhZDA3MGU5NWE3ZThlNzI0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyOTU3NmI1NGUyNTVlM2M5NDhlZWE1YjU5MDRmYTM4YjgxNjgyZmRkM2NiZDlhZTg0MWZmMGU3YmQ4MGQzOTRjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIwZGEzNTU0YjEyOGNjMWY0MTI3MWQ2Zjg4NmNjMDhiZDk1NjVkODMzODkwYjU4YmY1YWJhNGU0OTAzOTA0MmE5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+        },
+        {
+          "resource": "repo://packages/server/src/__tests__/loop-services.test.ts#L333-L394",
+          "version": "repo-lines-v1:sha256:c4fe9978d03e77fbc685f919e5824c7bf86f8788656f9fcd018763291a2c542c:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZlOWQ3NjllZjA3YjEwZmUzMDkyZTE4MGZmYjI2MDVmY2M5ZmE1NmQwYTQ0ZDZkZTI1NDdkMDBiOGY4YWJmY2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3NzlkMTE4ZDZlM2NiZjQ1MDUzOTc0OGRlZTdhNDMwN2FjYmU2NDQ2Y2JhMjk3ZjI3NjBmYTVkMGJiYTFiYzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVlZThkMjExMDExMTI2ZTBjY2I0MjkyZjVjMTA2MDQ3MzMyZDBiODAzMGQxOWMxZmQzZjYwZWFjMWI5ZWY4MTkifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.2",
+    "at": "2026-09-24T19:59:50.419Z"
+  }
+}

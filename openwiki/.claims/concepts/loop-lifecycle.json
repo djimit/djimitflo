@@ -1,0 +1,330 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:25387b3106550e44d91546ae082d34cece1835a7d6d1b511cc2b5ce4a72b979f",
+  "claims": [
+    {
+      "id": "claim_d4f5a64d5a624ae49ba14e028bb7d2cb",
+      "statement": "LoopService is a facade that keeps the loop subsystem's external method surface stable while delegating substantive work to focused sub-services constructed in its constructor: LoopLifecycleService (continue/retry/split), LoopWorkerExecutorService (maker/checker execution), LoopVerificationService (completion gates), LoopDiscoveryService (finding scanners), LoopBudgetService (budgets/escalation/cost), WorktreeManager (git worktrees), WorkerLeaseRepo (worker_leases persistence and lineage), LoopEventService (loop_events), LoopRunQueryService/LoopRunMutationService (loop_runs read/write), LoopRecoveryService (crash recovery), RuntimeCommandService (runtime contracts/process spawning), and LoopPersistenceService (LOOP_STATE.md, diffs, evidence dirs).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L2386-L2499",
+          "version": "repo-lines-v1:sha256:4909967c6cb8b0c5793299afeb865a364858d5c545121a55bee72d6eb3cf7872:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0NWI5MGZlNjU4ODEyMDk5YTNmOTExNmVhZGRhYTU1MDdmMDM4YTA0ZTU3NmQwYjhlOTc1ZGYwMjQzNTk2MDBiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMTcyNjMyMmRkNTY3MTZmMTdkOTJiNTEwYjIxZjIzNjgzZjM0Mzk2MzA4ZjNlMjU3MWNhNTIxMjZmNDk1NmQ4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4MGFjMDA0ZGU4ODc3MDg4NzY1ODdjZjg5ZDY1N2NhN2IwNTBhOWQxOGVlOGM2MDExMTJjMDY1Y2NiZjU1OWY1In0"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L283-L337",
+          "version": "repo-lines-v1:sha256:b0ed80c615ebdc9a751ad703ad4dfd4bd39ffed76f05b578cd9256210d0a8a31:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1NTkyZWZkMWZlZmRmYjhmNmRhNDMwMTFlMTlmOWU4MmM0ZmI1ZGRlMzY4MDVlNjExY2E4MGM3MTcwMzI0YWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFmZDIyMDhkZDRjOWI0NGM2OGE5MDUyZjQ1ZjA0ZjUzZDQ3MDQ5Yjg2MTllOWYyNmRkOTE2YzFiOThjNTk4YzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhmNGY2ODJkYmRjZTA0ODVmZTIwMGMyYjM4MGExZmYyOTkwYWFhNDIzYmViMTYzMzU0MDZmMWFiNzhlYmNlM2IifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L714-L729",
+          "version": "repo-lines-v1:sha256:1e560ad1351abb006be6d166cc42d4270637223f2ad417dcf9ce556e368a14f3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMxN2U0MjNmY2I1YzQwNjA2OTIzYTNlZWExNjhiMjE3NWRjMDQ3NWY4ZjU1YTkzMTZkYWIyOTk1NTQ4YTFiM2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWVmZGQ1MTEzZDk5MDU2ZjFlMTlkZTFiN2Q1YmVkZTZlMGEzMDFmOWU4ZjdiZTRlYWQzZjhmOGRhODY2YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhlMjJiNDg1Y2NkMjMzNjFlZmJhYTYyN2VlYmJhYWMyMGM2NzI0MmQwZGViZGRlYTQxZDNiM2FkM2ViYTIxYmMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_22d3b93f334941e19ea6cfc49551d24f",
+      "statement": "The canonical loop catalog (LOOP_CATALOG in packages/shared/src/loop-catalog.ts) defines seven loops, all in mode 'closed'; each is expanded into a full LoopContract in loop-service.ts with risk_class, trigger, context_sources, actions_allowed, actions_forbidden, verification, state, escalation, and stop_conditions fields, and an unknown loop_name fails closed with LOOP_NAME_UNSUPPORTED.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L1228-L1234",
+          "version": "repo-lines-v1:sha256:27bbef4117da4c4cbb8896f992c5661f5ea7aefbf51f507daa9dea2c8bb243cb:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDUzOWNlOWFiZGU2MWYxZmY5MmUwYWM0Njc0OTkyMjQ4NGZkZjRlMWMyYjYxOGM0OTQ4MDExZjRkOGM4NTRmZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmVlZWZkZDUxMTNkOTkwNTZmMWUxOWRlMWI3ZDViZWRlNmUwYTMwMWY5ZThmN2JlNGVhZDNmOGY4ZGE4NjZjOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmEzYTFlOTI0MTlkNDNkOGE2NzYxNjE2MzM4Y2JiZGY0MzRlMzkxMjk3YTJjYWEyMDdkYTdhZWU3MjBlNGY4YyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L137-L243",
+          "version": "repo-lines-v1:sha256:aae0c259e9bf50eae57e4993330bb3e262816b3d56e37a75244a9f9e69985d47:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjNGZlZjljYTkxNGI4MTUyNDBlYWQ3MGUwZjRlZjExY2JhNzNmNmYzMGQxNGZmNTg2Yjc0Yzc2Y2ZmZmQ3OTk3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMDJkMmMwZDZkYzVlNzRkOTJmYTE0YjkxZGJlYTI2NDA5MGJlYjM1ZmRiOTE4OGQ5YjM0MTE4MWRjZTlmNGNlIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzYzM1MThlYjk4NzdjNTc4ZmZkZWRjMzE4NmQ3NmM1ZGQ5YTU1ZTFlYThmNTk3MmMwNDZkNzA1OTdkNTUzMjZkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4NjM5Mzk5YmMzZTkxMWY5YmYwMjA2MTFhYWVjZDcwYTZiMTA3ZjY1M2QwYTE5YjU0YTEwNTNiZDkwMTdjYTYxIn0"
+        },
+        {
+          "resource": "repo://packages/shared/src/loop-catalog.ts#L1-L54",
+          "version": "repo-lines-v1:sha256:96311f95039b3a55c91ef82812c6555f7c29d11895334c6d10144e196ad5a407:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkMDE2YzljZmY2NzhmODI3YWEyOTUxYmE1OGIzZjU4YjdkZDdlZWUxODcwNDQ3YWIzZDYxODViNmM0YjJhNmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b9db355d33264ebf9c030c0363d6ff57",
+      "statement": "LoopService.startLoop persists the resolved contract into loop_runs.metadata.contract so the run's rules survive restarts, initializes gates (read_only_discovery pass, no_automatic_merge pass, maker_checker_separation/tests skipped, security_checker_verdict skipped for high/critical contracts), and lands the run at 'planning' when findings exist or 'completed' with outcome no_change_required when none exist.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L421-L530",
+          "version": "repo-lines-v1:sha256:e6a93a5922b1ce14624a39cb281a35c39f97ba7d57cd929d3f3fa1d599a5ef54:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4ODM4NzA5MTJmZTQ4ZDg5M2U1NGQ5OGE3OTI0NjIyN2VmMGM4MWY5MWFmYjY4NjJiMTk1YTliNjQ2ZjA0NzVhIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlZWNmN2FlY2NmZDVhODg5MTQwMTMzNWE5ZDkxMjlmMWMwOGQzNjAwYzEzNmI2YTk4ZTRhYjdiMWI5M2QzNDcyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI1ZjE2ZTc2MmE2NDI1YzhkMTQzMzliODhlYjhhZDg4NDY4YjQ2NTMxNWU0ZTQxOGJkOWUzOGQwYmNkNmYzYWE2In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_2972f115fd804c25bcfa089fb1d6a752",
+      "statement": "continueLoopRun prepares, per assigned finding, one maker lease (with a worktree and branch) plus a linked manual checker lease (metadata.maker_lease_id), and additionally a security_checker lease when isHighRiskRun holds (run or goal risk_class high/critical, security-category finding, or auth/secret/policy-sounding finding content); it enforces operator pause, escalation, wall/token budgets, failed-gate and split-parent guards, and the per-run maker worker budget (default 5, cap 100).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-lifecycle-service.ts#L27-L127",
+          "version": "repo-lines-v1:sha256:de419b2df2fedce38703ab525a9b924910201b58daa31b43160d498ed8477e94:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0YTZkYjcyYjE0OTI3MzA0ZmQ2ZGI2MmZmMTVlZjYxMDRhNDJkY2UwYmJhMWE4ZWMyZTkzMTdhYWRhYjRhODlkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI0MjA2YjRlNmQyZWExOGYzYmEyMTU5ZTI0MWFkYmY5NzUwNDVkYzE0M2VlMDZkNjhhNjUzZjQwMWM4YmZjZGM2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiY2UwY2Y3NmI2N2JhZDVlYTkxZTJmYjRiOTE4ZjNhZjYyY2UyMjk1ZTIxNWZhZDQzNWFhZWE4OGM1Nzg5MmUwIn0"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L1552-L1585",
+          "version": "repo-lines-v1:sha256:e5a837f60e8948fc131b1ea81b97004dddab0c4cc502d1dce3540db377994c65:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2Y2Y4NWI4MjJiOGNkMTljNDJjMTE0ZmI3NjJhNThmZmQ4YWQ3Y2FkYmQ5YWEwZWU3MTYzMWMzYjVjMWIzOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3ZDg2MzJlNTRlOTI5OGFiYjk1ODcyN2UyZDUxNDA4YWJhZjEzNjYwMzUzNzkxMDE0MGFiZjY1YjMwYWI2MTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI4OGQ0ZmJjMzZmYTgzYzY0ZjNiNjczYTJjNzU2MWVkMjI3YTAwZmI1MzE2NDBhNzQ2ZDhlMmZjOTBkMjU5NWYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_43ed7474475f40c988c133add3e53055",
+      "statement": "retryLoopRun counts used retries against a max_retries budget (goal > request > lease > default 1, hard cap 10) by following retry_root_maker_lease_id, prepares a fresh maker/checker pair on a -r<attempt> branch and worktree, and marks the prior maker lease with superseded_by_maker_lease_id rather than rewriting it.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-budget-service.ts#L153-L170",
+          "version": "repo-lines-v1:sha256:f1b9a407be70f192f437e2f2d6908d0d8d325fb16bbef933128c4512e081d3ad:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4NTQ1OGQzMWJmMjVlYWQ4ZWFlMTZjNDcyZjNmYjQ0Mzk2ZjBkODMxNjkxYmEwNjY4Mzc3ZmE2Nzk3ZDgzMDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhZWY0ZjNkOTlmMzFmMzI3YWE2YmEyODBmOGE3NmU5MjRlY2MzN2VkOTFhYzdiMzJlMjQ0YWU2ZDIwMzgzNzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1ZDI4YjJkNjhjYTEzMjBjMmI3N2M4YTk1Y2FiMjcxODVkYTJjMmU5MjE0ZWQ1ZTc5NjdlODgxNjE1NjBhNGIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-lifecycle-service.ts#L166-L235",
+          "version": "repo-lines-v1:sha256:e9515dacfa008d4c070ce795491912b31ba8a36826c312ae800ff67b14284e3e:eyJzZWxlY3RlZExpbmVDb3VudCI6NzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5YzU0MGRhMmUzNDExYWMxMGQxMDkxMzRmYjVjNDFkZWUyNzQ4ZTNlZDJjNzRhZTMzZDU5OWU5NGYyYzRmMGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdkNGZiNzVhOWViMzZjYjdmYjdkNmJiZjFlNDQ0OTlhZmQzNTQ4NDMwNmJkOTE3MWMzZGYwYWY1NjQxNTcxOGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2ce9c93b98bf47fba68faf5a5893b914",
+      "statement": "The worker_leases table has a CHECK constraint admitting six roles (planner, maker, checker, security_checker, memory_curator, governance_guard) and five statuses (prepared, running, completed, failed, cancelled), and a later migration adds nested-spawn lineage columns parent_lease_id, spawn_tree_id, depth, spawned_by_agent_id, and capability_id so spawn-tree ancestry stays durable and queryable.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L637-L663",
+          "version": "repo-lines-v1:sha256:7f172f273219056417fef45e9704acb12f38c50001f5c4f63306783ff57486ec:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmNDQ5NDEzMGRhNmQxN2E3NTdlOTIzMGE0MmI0OTMwMzJlNDA3YzJkMjUzNGFhMGQwZDljM2Y5NDhmNTBjMmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzNzU3ZjQ1OTc0NTIzNTJhZjk3YWNjM2I2ODAwNzQ2YTM3Y2ZmYTgyODkxZWRkNmMxZWRkYzBkYTRmOWQyMDQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY1OTMyNDczMDBhMjI0MDY2ODM0OWFmOWVlNjZiZGVhY2ZkMDBlN2UzZTk0YjhhOWNlM2Q4OGQxYjhkMTk1ZDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ4MGY3ZmVkNWQ3MWMzYjAwN2FmYTI0NjBkYzJlNDliNmFkM2Y4MjNkNTJmNmZkZmJmMjIwNWRkNTE2NDIxMWEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L783-L802",
+          "version": "repo-lines-v1:sha256:f0708d7ef36cd773207b3949335e9cf71dbd3c039ea53fdf69c447e8923a26aa:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjNDhjNmE3MzU0NmEwMDczM2JmOGU0YTU5YzU4MWMyMzg0OTY4NzgzZmNhZTY3MTE3MmI4NWQzMjg2ZmQyMTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMzMzFmOTBiZDBkY2RhZTA0NGU5NWMwNDBiZTU3MjBhMzQ4YWJkNjM1M2NjYjk3MGU5NGMzM2Y5YWM2Mzg3OGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5MGJmZWQ0ZWJiYzc4NTU1MTRiY2NhZjUxOWE4NTgwZDBkZmVjMGFmOTVlMGUyMmQyMDRkYzkyNGQ3ZWJiZDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA0NjljMzIxNDY4ZGJkY2QwMDI1MWJlZjZkOGZlNjExZWY0NWNmOGI3NWE2Y2M2NmNhZmIzMjBkNDZmZDg5MDkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b186b2dc8ac944e49194d1af4cb1a541",
+      "statement": "WorkerLeaseRepo.updateStatus refuses to persist a 'failed' lease without a failure reason, deriving failure_reason from execution_denied_reason, runtime contract failure, timeout, or exit status before defaulting to 'unspecified: caller supplied no reason'.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-worker-lease-repo.ts#L77-L93",
+          "version": "repo-lines-v1:sha256:34a091f9de796c9eaeeea7a46a10ca2e73cbbf4e6062b60a848b31bcf3fa76f8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNkM2Q2ZjcxZWI2MDljYTYzM2NkZTQ5NTc1MjgxYTg2MmQ5NWE2MzE3ZDI5Mjk4MmUwYTI0YzZkOWZkMGZjMGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcxMGI1Mzg3YjZiNGQ1ZTgyNmY5MTQwZmFlZjAwYzZjZDVhNzgzNWQzMzk2NjJlNmFmNTZlYzFmNjYxZGM3NjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZkYjBmMGJhMjVkYjk4NDFjODA3NmEzNWEwOTY2ZDAwY2Y0MzlhYTBhNmQ4MDE2ZDE4YTI5OWNhNjU3NzNkZmMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3b1ac82da2a94051b89d52596853ef8b",
+      "statement": "WorktreeManager.createWorktree creates worker worktrees on agent/loop/<runId>-<findingId> branches under LOOP_WORKTREE_ROOT (default .djimitflo-loop-worktrees beside the repo), retries up to 3 times on git lock contention (failing as WORKTREE_CREATE_FAILED), and symlinks the root and per-workspace node_modules directories into the worktree unless linkDependencies is disabled.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/worktree-manager.ts#L20-L75",
+          "version": "repo-lines-v1:sha256:57e11795be2777d37a38bcac1dbc414e0f85968261dfa9e279641f44279c9621:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExNWY3OWZiZDA1YzMxODJmNjdlNTE3MmQxOWNkMzZhOGY3ODljOTE1MTFhMjllZDY2MmJlYWY2MzVmNWRiYzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFlZmJhNTFmY2Q2ODQ5NzUzYjAyMDY4MDIwMGYwMzE1ZWM2M2MxMWEyNWRjNzE3MWY2NDU5YTFhODhmNzFhMTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE1OWRjNThiYTEzY2JmOTI0OWVmOTJjODI2MDBhMTliNTBmMDk1MDI2YzQ3NmFhMjAwYTAxY2Y1OTBlOGQ5ZGMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3ba688ced6d84261a9b2952fda66d0bd",
+      "statement": "applySourceWorkingTreeDiff snapshots the source working tree into the worker worktree by applying the tracked binary diff and copying untracked files, excluding .git and node_modules, skipping any path containing '..', and verifying that resolved source and target paths stay inside the repository and worktree roots respectively (path-traversal guards); the snapshot is committed in-worktree with an explicit djimitflo git identity.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/worktree-manager.ts#L81-L128",
+          "version": "repo-lines-v1:sha256:41c1812bd637ba357f5b85469258e82d7d2a206c3e8aff354f7f57eb0a52d1d6:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZkZjU4ZWM2MWYwOGQzNDViMDk3M2YxM2E3NzlmNzhmMzQ0OTY0MWNhNWI2ZGE4YzdjMTA0MzhjOTJlOTY4NmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4MTlmMzQ1YzM2MzU2MjFiM2IyYzA0MTM5Mzc3YWU2YmMyZDMzM2I0Y2YwZWQyMGEzMzZmMjVjZTA1YmNmYzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJjZjNhMjMzZTFhOGM2NWVlZDc4YzBiZTc3MmUzZTVjYzdkYzljYzQwNzNkM2ZlMTg4NzFmOWU0YWRmNjBlOTkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_182d196a965a4159bc53aad0ace9595a",
+      "statement": "pruneOrphanedWorktrees removes worktree directories older than LOOP_WORKTREE_MAX_AGE_HOURS (default 24h) unless their worker lease is still prepared or running.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/worktree-manager.ts#L133-L199",
+          "version": "repo-lines-v1:sha256:f7645889d5d3bcbcd7ba96f7ab679e79d57fd0991eba7408a1c25027bde776ec:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1ZTcyNmQxOGE0ZjhiNWY3NTA4YTliMWRjNTgwN2JiYzUwZWFlMjY4OWU4NmFhNjYxNDQzYzAxYjcwZDM5NjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgyMWU2ZGVlOTEzNTYzZjViNzYyYjQzZjJlNDVjNWZlMmE1YmFkMzdkZjdjMjYxMzQ3N2IzYTFmY2MzMjUyMzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkxNTQ2YzdkMjY2MmVhMDBiZjE4NzM2ODUzYWMyYTZlODFmMWJlYzVkY2EyYTI0NDZlYzFhY2JjNzQyMTBlYTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6790b67f9b9144d394b0be023f25a3a5",
+      "statement": "Input-side path safety complements worktree guards: resolveRepositoryPath allowlists repository roots via OKF_ALLOWED_ROOTS, createTargetFinding rejects absolute or escaping target file paths via realpath prefix checks, and assertWithinWorktreeRoot refuses to spawn a runtime whose cwd is outside the configured worktree roots (RUNTIME_CWD_OUTSIDE_WORKTREE).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L1236-L1285",
+          "version": "repo-lines-v1:sha256:15282de48995f966122ba474094729eed0ace64fa604c5930e8314c4ec2d89ff:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxNzE1Yzg5OTE3NmZkMjBhMTExZmRmNzQ4MDU4MWI2ZjUwMDQ3YTg2OWMzODUzMmM0ODM0NTEzNjllZmMyZGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEwYzBmY2I4M2Q3YWU1YWQ4NDU0ZmY2ZjkwNDU5NDY2OTM5OTU3YThiNjU4OWI4ZjQ5YTVkZDJhNzY2NTMxMWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI0MDUxMmMxZDhmZGVhNDE5MThlMTA2YTFlOTEwYWIyOTc5NDEyMDRiOTk0MzllZDlmZWUxMTJkYmQ4NWI5MjYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L1906-L1920",
+          "version": "repo-lines-v1:sha256:d46562039e7ae4c8fa7ae32a57d285d76a0d48d80032182ff36018cac438e647:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjllMGUyNmEwN2M2OTQ1MjViOTU4MmQ2MzQ4NmNiMzU2MTc2ZmFlYWUyMzExY2Y0NzBmZjkxMGM4YTViN2QyMTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVmMGYxMzUzM2E0M2IyNTVkMDJiODQ5YWMzZTQyOTc3NDRjYThiYjkzNmQxZDUyMjEzY2VjMTE2NGU3MjUyZTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJiNGFjOTZiNGQ2ZmRkYzkyMWYyNzAyZTEwMGY4YmM2ZDllNDM5ZDM1ODgyMTc1Yzk0MWU1ODhmNGRlODIzOTkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_78e692274cb8465a89ff923d8dcdb013",
+      "statement": "executeMaker marks a prepared maker lease running, fails it as RUNTIME_CONTRACT_DRIFTED when the runtime contract is unavailable or drifted, evaluates per-execution gates (maker_runtime_exit_zero, diff_under_threshold, token_budget, runtime_warning_gate, no_automatic_merge), restores package-lock.json when it changed without a package.json change, and moves the run to 'verifying' or 'blocked' with gates recorded.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L59-L200",
+          "version": "repo-lines-v1:sha256:bee296f347a155b3e080381e61340ca2e20eea34316dc63e0032a6a880e71a40:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhZDc4YTI3OWE5YTA3MTYzZWMxN2ZlZmQ4OTg2Mzg4ZTI0MTMxYjNhZjdkODVkZThlM2NhN2QxMDU3ODJiODM5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkZjNjNTZmM2QzYTBmMThmNDczZGVjNWQ2MDgwZWQ4ZTg2MWUwNmIyNmQ3NjI4YjE2NjQ3MDRmZTI4ZjRhNzQ5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlNDhkNmMxZTAzZjA0NzUwMTNhYWM4ZGU4ZDA3ZDE5NzBhMTYwNDA5YWEyNGJjMzQxNmRiMWFiMDY1YzU3MmVmIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_6faef3359e2c4230af3dfeb1969b97cf",
+      "statement": "executeChecker requires a completed maker linked by metadata.maker_lease_id, cuts the checker worktree from the maker's worktree with dependency linking disabled, rejects any checker worktree whose realpath equals another lease's worktree (CHECKER_WORKTREE_NOT_INDEPENDENT), and fails the <role>_read_only_contract gate if the checker worktree is dirty after execution.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L202-L345",
+          "version": "repo-lines-v1:sha256:129b2545e6b7857a4db9581189559d796df98bfaf3610a73a03bff6c661406d1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyYjIxMDkxY2ViNDQ1OWEwNzcyMzVhNTI4OWY1N2M0NTlhMzVhNTg4OGQyMTcyYTk2ZGZkMmY3OTRmZGJhNGI1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJiZTc3NzQ2NDlmNjYzOGJmNWU4YWI2YzZhNDQ1ZWM2M2E3NzljMGU3MjJjYTUwMmQ5YjljMDE3OTA1ZTU3NGIyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzOTQwYTE0NWRlZjI5MjBjZmM4NDNkNDA3YzAwM2UzNDEyODdmMDE5ZjFiMzY3ZjBiNTI4YzZiNjQ1MDJlMDNjIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_5939ad4cd2224c55861bd4ead0166156",
+      "statement": "Real (non-mock) runtimes dispatch through ExecutionEngine: executeViaEngine inserts a tasks row tagged loop-worker with a stable auto-registered agent identity per runtime+role name, reuses prior execution results, and surfaces governance outcomes as LOOP_WORKER_APPROVAL_REQUIRED or LOOP_WORKER_EXECUTION_DENIED while resetting the lease to prepared/failed.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L375-L463",
+          "version": "repo-lines-v1:sha256:bf99fc935477995814d1ffdb80b438455f5a78c91edee04049e65fcd4c19e38a:eyJzZWxlY3RlZExpbmVDb3VudCI6ODksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI4ODhkZjU3ZjMzMWM5OGY5MGQzYTNjZWYwMzZlOTFhNjg2NGZlZWY2Yzg3YWU3ZmRkY2Q0OGJiMTU0MTU3MzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVlMTJiNjExODk0M2UzMGMwMDY4MzNlNzgxNjMwYTUzYjMyZjQxN2VmNWY5Nzk1YzNmMTJmMzMwODAyNGM1ZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFjZGEwYTY0NWM3MzE4YjI4ZmFlMjY3M2NiNzYyMTYxNmQwNDcyMGMyMDE5NTc4ZDNiZGY4MjcyMGEzYjU4YTMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3ed06fb84f4c43cebbf1d1342cb0a878",
+      "statement": "verifyLoopRun evaluates ten gates (run_not_cancelled, maker_completion, maker_checker_separation, worktree_isolation, assignment_file_present, diff_threshold_all_makers, checker_verdict, tests_lint_typecheck, security_checker_verdict, no_automatic_merge) over non-superseded makers and their linked reviewers, deriving run status ready_for_human_merge/blocked/verifying and recording block_reason=gate_failed with failed-gate evidence on run metadata.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-verification-service.ts#L37-L166",
+          "version": "repo-lines-v1:sha256:fd01a556209607beddf9f7b7b11ddb667c8ee3ecfc93ddcd2a226efc8ec31f7a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4YjNmMTMxNDQ2ZmM4ZWFmYzQ2MWIzODBkNmM0NDYxZDdmZTNlODk1NzI0YjViYThiNDNmYTk2NzAyNGM4ZDNkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI2OTAzODc1NjllNWQwYjMwZDBmMjhiYTlkM2QxNWViYjhlMGI4NjhjZTZkZmZmN2E4ZDljYzFlOWU2NjFlYzI3IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI1NmY2NGY4OTQxY2I2ODljOTViODBjMmZiYWIyODM1NjQ4NTk3MGVjM2Y5NjI2MDljZmMwOGQwOWMwNjg3YmFiIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_770a5d67b00f4292804ac8e5f958a5d1",
+      "statement": "hasAcceptedReviewEvidence treats 'accepted' as strict proof: manual-runtime checkers need a manual_review_attestation with reviewer and reason, while runtime checkers need exit_status 0, no timeout or cancellation, runtime_verdict accepted, read_only_contract_passed true, runtime_adapter matching the lease runtime, an available ok runtime contract, and an existing stdout log.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-verification-service.ts#L192-L223",
+          "version": "repo-lines-v1:sha256:8fae56f9cc03588567e05df8e7faa87e5129d522269e74c7ce23eb8327257922:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzY2UxMjk2MDI5MDA4MzlkYmE5OGNmOTc1MWZlZjFmNDdkYmY4Yjg5OGViNDcwOTEwM2QxYTU4ODUwOGE3NzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY3YTc3ZWJhMzdiZmYxYWU1MTExNjExMWYwODcxNTZiYzZkYTRlOThkNjRlYWVkYjQyYzhiYjkzMzhjYzVmMzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI4MjA2MDU3MTliZTQzZWEwNWE5NTEwOGVlMjk2MmU2NGM2NWI1MTY1NjkxYjc5MTFmZGI2YjAyZjhkNzUzMTkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_77a0140d97db42e08c46a7f23ae75833",
+      "statement": "completeLoopRun re-runs verification and refuses completion with HIGH_RISK_SECURITY_CHECK_REQUIRED, LOOP_COMPLETION_BLOCKED:<gate>, LOOP_COMPLETION_LEASES_INCOMPLETE, or LOOP_HUMAN_APPROVAL_REQUIRED; the /runs/:id/complete route requires the approve:task permission and only passes a human_approval_ref of the form operator:<actor> when both an authenticated actor and a requested ref exist, settling the linked goal and self_improvement record on success.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L183-L183",
+          "version": "repo-lines-v1:sha256:c8cf356f58521129448874c3ae8a102973cf2958eab2a13f373af7fdfe80ab13:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzhjZjM1NmY1ODUyMTEyOTQ0ODg3NGMzYWU4YTEwMjk3M2NmMjk1OGVhYjJhMTNmMzczYWY3ZmRmZTgwYWIxMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzhjZjM1NmY1ODUyMTEyOTQ0ODg3NGMzYWU4YTEwMjk3M2NmMjk1OGVhYjJhMTNmMzczYWY3ZmRmZTgwYWIxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTYyMTBkNGE4Y2YxNzRhMzUxOWVhNTQ0YWIzNzkxNDM3OGFmYzM1OThkNmZlZDE0MjRkOTVmZWE1N2NjYjgzMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDVhN2M5NTUwYTJkMGNhYzVmNjkxNGJhNmRlYzc3OWNkOGRlZDExYmRmY2MyYzY3OTM0MjQzZDE4YzBlYjkwYiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/loops.ts#L280-L294",
+          "version": "repo-lines-v1:sha256:cf3d5fd323d1b6063a87d8d168625432da07d66e0980ecf3d41a04780b632a28:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4ZWNkOTY4NWJlNzRkN2VhZWQ5NGYwNzdlMzZkODkwZTE3ZGM0ZTI3N2ViNmZiM2VjNzFmNzIyZmNkYTU2ODYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyMGZjOWU2N2RiMDdlZDIzOWJiM2FkMjMxMmVhYWI5YTcwZTFmNmZiYTAxMjg4YjBiYTZlNjFkN2Y4ZWU3ODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg0ZGViOGQ3ODdkY2RkNzM0ZmUzYWViOTJlMDAzY2RlMDAzZWNiM2JmZDBkMzI1OTk0ZGIxM2Q1OTliZGI5NjUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L731-L832",
+          "version": "repo-lines-v1:sha256:d9299e3e288de794c6aeb6a852279afcacded30445ed512bea3d74dfc5fc882d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjMDE5MGY3N2Y4MmNjNjgwN2Q4ZmMxOTBjMDkyOTRiMmU1ZDdhZjEzMWY0MzE2YzhlOGMwMzdmOTI4N2I3ZjczIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhOWUyOTRhNDEwNTIwN2VmMTQyMzQ3MzI2YThhNjY3ZWNlODc1MzMyODVjNTEzNDI1YzcyYWU0NTlkNmEyMjg5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIwZDZmYjA4MWVlOTBhM2ExMjY4ZjM1OGYwZjkwODVkZmRlYWFkZDY5MTk2MzAxNzY0YmI2YTUwMGVmYjQxY2QxIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_c13197fcd774474a8f419d28fb8c070d",
+      "statement": "LoopBudgetService derives limits from the run's goal budget with defaults and hard caps: max_maker_workers default 5 cap 100, max_retries default 1 cap 10, max_failure_count default 3 cap 20; exceeding the failure threshold (failed makers plus checker/security verdicts of needs_revision, rejected, or insufficient_evidence) escalates the run and emits a loop_escalated event, while assertWallClockBudgetAvailable blocks the run and emits loop_budget_exhausted on wall-clock exhaustion.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-budget-service.ts#L138-L205",
+          "version": "repo-lines-v1:sha256:9a6a43f585f79ead8d4a0ce2f50351bf99baedd6dc1a6ed867aa7dc758bc3585:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4MDgwYWNjMzQ4OTg3ZDRjYjAwNTE4NDg1NjRlNWYwZWE1Y2U0NDZmNzdkOWE3MzVkMjkyYzZmMGY0YjM4MWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk1YmYwM2FiYzMxNDZhYTIyYTU4ODZjZWQyOTFhZTJkYTIzODA0NTIxYjAxMzQwNThjMTMzMmZlMWFkNjI1MzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZjYjgyMmVjYzAzMGE2MjM0ZWQxM2IzNGQ3ODEzMDIzZGY2ODM4NDNjMGVlYTgzMTA4MGJiMTE1YjY2ZWI2MDkifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-budget-service.ts#L268-L304",
+          "version": "repo-lines-v1:sha256:ecfc953ad4874f597e9b980d437a80fe99908fc3050ed4893d2dc5f86918c198:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxNjFkMjc0NTQ4ZGIzMTRiNjUwNjFhZWQ2YzBjOTBjYzI0OTg0ODNkMjFjY2E1ZTI5MTE5Mjk4ZTQyYzNiMjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY4ZDcwYTJmZmJiNDIwYzI5Y2Q4YzlkMzFiNTZjNmM4MDM1MjdmN2UyYjI0ZTNiNjBiZTAwYmI0NDE4OGYyZGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L1365-L1394",
+          "version": "repo-lines-v1:sha256:cf8a697287254f90a44a0b93cc852eef2b94752ea20bf692a6c835a94b364601:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3Y2QwOGEwMzY4ODM0ZDkzNDQxMWE2YzU2MGIzOTNkNWMzZGMzNjFmNjcxOGI2Nzg0NThjZmNmOGY5YWMyNGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3ZDg2MzJlNTRlOTI5OGFiYjk1ODcyN2UyZDUxNDA4YWJhZjEzNjYwMzUzNzkxMDE0MGFiZjY1YjMwYWI2MTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIxZWNiMzBlMjJkZTQyZjEyMTU2NmFlNzcxZTQ2NDE2YmNlNTI5MGU4MjFiN2VjZmE0NjYyMjMyNmViZDAyMGYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_772456924183495796612108716e8359",
+      "statement": "evaluateTokenBudget skips the token_budget gate when no budget is configured or the runtime reported no usage (usage is parsed only from runtime stdout JSON, never estimated); otherwise it fails the gate when per-worker tokens exceed max_tokens_per_worker or run totals exceed max_tokens, and flags efficiencyExceeded when tokens per diff line exceed max_tokens_per_diff_line.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-budget-service.ts#L207-L258",
+          "version": "repo-lines-v1:sha256:26816e3decad8c9b4f2a1fa7055e0f3b4f16f716aa978f7af4e9c09ba38accb2:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1M2EzOTdmMTE0MmU3YTAzODg4MGQyNmE0NjY2M2FmZmY0YzMzMjY2NWJjZGNkOTBkMzZjNGNmOGYwMDM5MWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWVmZGQ1MTEzZDk5MDU2ZjFlMTlkZTFiN2Q1YmVkZTZlMGEzMDFmOWU4ZjdiZTRlYWQzZjhmOGRhODY2YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU4ZDBmYmU4MjVjMTZkZTcxMzMxMWMzNjc1MTE3YzY2YWZmMTAyZjUxOWRmYjlkZWM0NjMxMzBkODUzYWZkNDMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L1444-L1467",
+          "version": "repo-lines-v1:sha256:245fc2a0f1c5c414375c29e57cd44f2ee1b62bbee42351231fefafc019ba3f79:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc0NjNiYjhkMmQ3MThjZDJkNWRiMWI1ZGVhZmQ1ODA5Mjk3MDU2MTI5MmViMDg1Yzk0N2Y3NWVjMTliNjgyZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY4ZDcwYTJmZmJiNDIwYzI5Y2Q4YzlkMzFiNTZjNmM4MDM1MjdmN2UyYjI0ZTNiNjBiZTAwYmI0NDE4OGYyZGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAxMDQ2ZmQ0NTZlZGJlYmFiZTUwZGJmYjQzMThlMWZkMThhNmNmZGI3YTVjNTFlNjAyZDc1N2E1Njc4ZGNmZTYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_56c237d5f85d4674a7c9fb54bf821900",
+      "statement": "Dollar cost is priced per runtime via a PRICE_PER_MTOK table (codex $2/Mtok, opencode $0.5, claude $3, gemini $1, pi/editor/mock $0); computeEfficiencyMetric reports verified artifacts per dollar from completed maker leases and recorded runtime usage, and allocateDollarBudget ranks findings by competence-per-p50-dollar before greedily allocating a budget.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-budget-service.ts#L64-L120",
+          "version": "repo-lines-v1:sha256:f9c92f53e93fb6a61d2fe87665a2ef3e3b1f37640a7d1f141ca231c5729430fd:eyJzZWxlY3RlZExpbmVDb3VudCI6NTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmNDkxMjBmMDI0MDRhNGU2MjBlZDc1NTY3N2E0MDYwZDBmMzMzMDAzMzcwZmVjMjcyOWJhNmY1NzdhYzUzMTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE2ZDg2MjNlZGRiYjIzZTJlZTIwZGVjNWExMmVjNDdjMjVmM2EyNzVmYTg3MWQzZDQ1NTViM2ZjYWYxMzBlMDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQwYjNhMmNhZmYyY2U4MzY3ODA5N2FjMmEyYWFmYWZlMDBkNzE5NDZjNjBiZDI5NGVhYzYxOWVmYzgyNDFlYzQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9a93341225fe475a8b75cdb33310de16",
+      "statement": "Process-level concurrency is bounded by the global runtimeConcurrencySemaphore (RUNTIME_MAX_CONCURRENCY, default 4, read fresh on each acquire), while LoopBudgetService.adjustConcurrency computes an additive-increase/decrease-to-floor-of-1 dynamic limit over RUNTIME_MAX_CONCURRENCY and publishes aimd_state on the swarm event bus for the loop daemon's goal scheduling.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/concurrency-semaphore.ts#L1-L48",
+          "version": "repo-lines-v1:sha256:bcae74fde21e92b47aed0e0609dae063d029e6b6e0ebe81d224acbe7250fbb23:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlODYzM2IyM2U3ZmQxZGE2MTVlZWIzYTM4ZWFlYWNmNDNiYzQ5YWE1MjdmNjg4ODhhMTFhY2JhMzUyODBhNzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMxNmYwMGEyYzlhODMwMzY2NTJjNjc0NjI1ZjJjMjgyNjkzNTk1YWRhOTQwNTRhYTUxN2IzODI0MGU3MTdjOGQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-budget-service.ts#L122-L136",
+          "version": "repo-lines-v1:sha256:d4f48a72592786465ba893aa0539b32ccbfbf5605e4e76a164ebd6d04825bfb5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1ZmM4M2FhN2I5NWU0MmQ1MGI0ZTMzZmM4N2U5MjhmNTM1YjQ5NzczZGFiMzlkYjQyODk0MjAyOWU4YjhlMWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWVmZGQ1MTEzZDk5MDU2ZjFlMTlkZTFiN2Q1YmVkZTZlMGEzMDFmOWU4ZjdiZTRlYWQzZjhmOGRhODY2YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNjYWJkMjM4YmIyZjhmOTYxZTYzMmZkNjY1MGYzNTExZmYwMzNjOTc3NWM4Yzc4MzhiZmJlYTllYzY3NGQ1MzAifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L31-L46",
+          "version": "repo-lines-v1:sha256:081c40de94190f5a5ee9a63ab52a2e8c60de58132f5633e4d6c3cda18f4b8135:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiMzhjY2Q0MThlYmU1NTNjMWJlNGQzOTlhNzJjODRiMzQwMDQwNzI4NjJkMGVjOWVlNWNmYzZiYTdkYmVhMzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3MmE0MjkzODJiMmUxNDcxOGUwZTM3YjA1NzBhOGExNzAyOTkxZmNkODQ5OGNkODQwNjBhOGJmNGYwNTAxN2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM4Y2Q4ZTBiMGI2MDRjNTE1M2EyNmY5ZTFiMWQ3ZDQ2YTg4MDlmMjQxMTRjYTZhOTIzMTJiMjA0ZDc5YjdlZWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY1YjgwNjg5MjRhYjlhMjFmZTkyMTlkY2YyMWRkMWQ5ZmEwMWU0YzNkNDQ1ZWU4ZWZmZmM0YmYxMWMxNjgzMjMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ff0355a0012044b6b8a2ab0ab0d49699",
+      "statement": "On server bootstrap, LoopRecoveryService.recoverInterruptedRuns idempotently fails 'running' leases absent from the in-memory RuntimeLeaseRegistry (failed_reason=server_restart) and marks active runs interrupted unless they are planning or awaiting human approval; LoopService.recoverInterruptedRuns additionally prunes orphaned worktrees, and resumeInterruptedRun requeues unfinished findings up to maxResumeAttempts (default 3) before terminally failing the run (boundedFail).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/bootstrap/recovery.ts#L23-L41",
+          "version": "repo-lines-v1:sha256:4405d1eb70322cd16dbd8ac6ec3c0be18637c34df2e980e35b7b19c3529e7dcc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIwMmFiOGY2YzUzMWY4MDk4MzJjOTdlNWZlODI2ZWMwYjcyZDU3MmQxNGEwZWY3MDNiZjFhOTcxZGRlNDE4N2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4ZmQwZmVkYTBiMDAwMGRmNmQ2MDE5OTU3ZGEwOTc4ZjViYzBlNzQ1MDRjNjhiOTkxM2Y2NTkwNDY0NjgxNmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjliYjMwYTlhMDE5MTA2ZTE3MjBjYzEyN2JmOTllMzg5NTQzM2EwZmVkM2MwODI4Mzg4M2FhYTYwZWQ5MzU4NDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-recovery-service.ts#L100-L183",
+          "version": "repo-lines-v1:sha256:4f807b8adf881fd0b3aaeb3d990dedf552afcbdca79c86f09673ae99dc0bdaed:eyJzZWxlY3RlZExpbmVDb3VudCI6ODQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkNzQ1MTUzYTdjMGRmMDlhMzUxNmRhZWJiMDlhZDU1OWI4OTJmZTJhZDkyNWM0MjkwZDQ0MmEwNjBiYzM2NjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFmMDI1NzhiYzYyODJhM2NiMGQzNGVkY2ZkZjliZDljZGY3YWFjZDkwOGU2YThhYmY0NWUyNGY1YjE3OTRmN2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVmYmIzY2VjY2IwYmQxYjU4ZGNlNjc4MjM0ZTY4ZmZmMmQ1ZmZiYmY5NzBjZjhkMjI0MjZhZjkzY2I1ZjVmZmMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-recovery-service.ts#L38-L73",
+          "version": "repo-lines-v1:sha256:31961c2106753cc6777ae9cfee6755cb8c688a5f8c3a8fb015a3b39cb481f841:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwZGJiODFmZGFmMzYxZjNmZTllNjBmMTNmZWJmMjFiMzg2OWE2MDcyZjRhNGI0OGU2MDBhMzQ4ZDcyOGE3ZTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ2Nzk0NzgyNjc2MjFiYzgxZGIwYTg2YmNjMzRiZDE2OTY3OTU2ZTkzN2I5NGU0NTlmNzY1NTAzM2MyODBhZTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZiN2U5NGNjZTgwNTM0OTMxNWE4OTIzOWVmMzQwZjAyYWUwODJkZGMyZTYyMGRkM2I0MmNiMDc2NDhhMjgxYTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d3faf580da844f4381e99c4ea28e4d92",
+      "statement": "prepareNestedLease materializes a nested-spawn child lease on an agent/nested/<tree>/d<depth>-<id> branch, writes a Nested Spawn Control block with scoped-token curl instructions when the child may self-spawn, records parent_lease_id/spawn_tree_id/depth lineage in worker_leases, and mints the spawn token scoped to (lease.id, spawn_tree_id) that lives only in the child's process env, while the spawned child env merges the static runtime env allowlist so PATH/HOME are preserved.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L1628-L1724",
+          "version": "repo-lines-v1:sha256:fae6730c8bc7799c09a1ef42f1e37ddb7b778d43dcf38b75875e2460ced30648:eyJzZWxlY3RlZExpbmVDb3VudCI6OTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZhM2NmNTE5MjM1NGY3MTYxNWFjNTEwMzRiM2U5N2MyMGVkYTk5NjQzZmNhZjViYmU2ZDQxYWQ1OWJkMTIxNjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUyNjcyNDYzODVhNTE1NmUxYTRmM2Y1YWYzOTBmOWFiMTBkZjBmNWMxOTdkZDFjNmNmMjI2YWRmNjlmNjA2NmYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L1791-L1821",
+          "version": "repo-lines-v1:sha256:b2c5919ebb039dfe15e06d4f5f5d1a2a52c22fa7227541ca2cba4c93c130ab49:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2ZjU4M2RhNzFjMGVmYTc5OTE3NGE4Y2EzZTdkOWQ0Y2Y5YzIzYjQzMDBjNDU0YTFlOTkwYzk5YWM0ZGVkYWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJmNWMxOTFjMTNkYjY1ZTg4OTAxNjdkMTA2NjRiOTIzZWY2M2Q2NTVmNDU2OTBkNGRmMDczMWQyMzIyYjYxMzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZmNzg0OTVlYzc2MzA0ZTE2OTc4MTYwNWEzNmY0NDNlZTJjZGQzZjQ4NDIzZWM2Y2EzNDg3NWQ3YjE3NDAyMWYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L1832-L1867",
+          "version": "repo-lines-v1:sha256:e2c71bd8b79ee6c7d4d4ae8c0fac88b74f290b576ee4e29aa466f8e18011b25d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiNDVkODc2MjUzYzBiN2UzNjExNTZmMDI0NDE5NDMwN2QwMDlhMWNhODZlZTJmMjdlN2M5N2Q5Mzc0NDNkM2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg4OTJmNjZhNDEyODAzMWUwNjU2OGFlMmQ4ZTM1YTRkMjkzMjQ4NDUyOTFjNGRkNWRiYzllYTY2YjcyMTYzYjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg0OThkYzZkYzJjMWNiNzRiM2E2M2NhOGFlZjcwZjNmZTM5OTFkNThjMTk1YWQ3NzNjYzRjZGFiNTMzYTQ0ODIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_128add54f3e7451299b2f432a4c93628",
+      "statement": "LoopEventService appends every run transition to the loop_events table and transparently compresses event metadata larger than 500 characters via ContextCompressionService when the compression ratio is beneficial.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L768-L781",
+          "version": "repo-lines-v1:sha256:297ca6fa5af6e883ae595e1da2ecfcd0c9f0d4b1fe6a2b2b82be457e4f12e456:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiMDA4NGQ0Nzc5MzFlYTVlMWFjOWNkYTkzNDk5OTQyYjllOGNjNjcwODA0YmNkNzQyZjc3MWEwMjgzMDM0MTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2OWEyYjA5YTdhOWJmZDg1ZTAxMjRlZjRhNjQ1YjNjOWUyMTQzMjU4ZDEzZGNhOGJmZTI4NWVkOTEzZTJmN2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImViNzQ1NzdkNTA2N2E2M2Q5NjEyNDAzYzkyYzBhMzE2NDBmMDU4ODE3ZTVlNTllOGMzNzg3Y2M1MmQxOGZjNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZiNDE1NmRiNmZhMmYzYTc2MWZjMzAwNWVlZmIzYWE1NDAxYzI2Yjg1YTAxYTRhODMxYjBhZmZhZjk1ZjFmODEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-event-service.ts#L36-L62",
+          "version": "repo-lines-v1:sha256:32f2db25cbe3b5d160e326ff1213763c5cfa6a4e10a51373c96c7f3b8c726fe5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg5MWFkZTRhYTA0NTc0ODJhOGY1Yjg1YTZhN2ViMWE5ZmY4NGEwMWU2YTVmMTM5M2ViZGFhNWI0MTFlMGQzMmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVhNDJmYzkyMWM1M2M0MDRkMmY3ZWQwZGRjM2FkMWM4YzYyMTNkMWVhYmUxYTNhZTY2MmYyNzFlNDI4YjZmMjMifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.2",
+    "at": "2026-09-24T19:59:50.419Z"
+  }
+}
