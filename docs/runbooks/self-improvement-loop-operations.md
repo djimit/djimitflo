@@ -43,8 +43,17 @@ Back up before editing (`cp -p runtime.env runtime.env.bak-<date>`), then `docke
 | `COMMONS_EVIDENCE_PACK_ENABLED`, `COMMONS_AGENDA_FROM_FAILURES` | Commons rounds carry platform facts; undiscussed dream-state failures come first |
 | `COMMONS_AGENDA_GROUNDING` | after failures, the newest `needs_grounding` proposal becomes the topic, with candidate files from `git grep`; residents answer `TARGET:` / `TEST:`, checked in code and recorded as a `commons_grounding` judgment |
 | `COMMONS_GROUNDING_APPLY` | **operator decision**: a valid Commons grounding becomes one grounded refinement that goes to the specialist panel |
-| `SOCIAL_AUTOPILOT_RESIDENTS` | per-resident model, e.g. `commons-oracle=openai-compatible:kimi-k2.6,…` (no `:` in model names) |
+| `SOCIAL_AUTOPILOT_RESIDENTS` | per-resident model, e.g. `commons-oracle=openai-compatible:kimi-k2.6,commons-engineer=openai-compatible:gpt-oss:120b` (only the first `:` separates runtime and model, so model tags with `:` work). Residents: scout, muse, archivist, oracle, engineer, skeptic, methodologist (F6) |
 | `AUTONOMY_SHADOW_ENABLED` | record "would auto-approve" per loop approval; approves nothing |
+| `LOOP_AUTO_APPROVE_MUTATION_GAP` | **operator decision**: same one-file scope for the mutation lane, only after that lane has ≥ 1 verified human-approved run |
+| `LOOP_MAKER_TIMEOUT_MS` | maker timeout (default 300 000, max 600 000); mutation-gap makers always get 600 000 and 400 diff lines |
+| `OPENCODE_MAX_RUN_TOKENS` | runaway brake: an opencode run stops once its summed step tokens pass the cap (prod 1 000 000) |
+| `EVOLUTION_GYM_ENABLED`, `EVOLUTION_GYM_MAX_PER_DAY`, `EVOLUTION_GYM_FIRST_DELAY_MS` | C2 gym: sandbox replay of our own fix commits (parent source restored, commit tests = oracle), one species per attempt, outcomes in `skill_outcomes` domain `gym`; yields to production workers; nothing is pushed or merged |
+| `SCHEDULED_PROPOSAL_GOALS_INTERVAL_MS` | how often panel-authorised (`scheduled`) proposals become goals (default hourly; before #428 only at boot) |
+| `FRONTIER_EXPERTS_RETRY_DAYS` | unmatched DISCOVERED names are retried after this many days (default 30); every scheduler tick is logged |
+| `FRONTIER_EXPERT_SOURCE_UNITS_ENABLED` | E2: stored papers and the repositories they link become expertise units (kind paper / repository), stopping at CAPABILITY_INFERRED |
+| `FRONTIER_TECHNIQUE_CARDS_ENABLED` | E3: up to three claims per paper unit from its own abstract, CONTRADICTS across sources (council runtime) |
+| `PANEL_WEIGHTED_SHADOW_ENABLED` | C3: `panel_weighted` (track-record-weighted vote) and `panel_unweighted` shadow judgments per panel; changes no decision |
 | `LOOP_AUTO_APPROVE_TEST_GAP` | **operator decision** (J5): when the shadow rule says yes, a test-gap maker approval whose artifact is one new `__tests__/*.test.ts` is approved by `autonomy:test-gap-rule-v1`; the `auto_approved_scope` gate fails the run if the maker touched any other file. Checker and human merge stay |
 | `SEGML_ENABLED`, `DREAM_CYCLE_LEGACY_ENABLED` | restore the gated-off legacy loops (off since 2026-09-24) |
 | **Operator decisions** `NEEDS_GROUNDING_TRIAGE_ENABLED`, `DREAM_STATE_PROPOSALS_ENABLED`, any `…_MODE=enforce` | act on shadow judgments; switch on only after the funnel agreement numbers justify it |
@@ -63,6 +72,13 @@ Back up before editing (`cp -p runtime.env runtime.env.bak-<date>`), then `docke
 | Auto draft PR (G4) | off | needs `GITHUB_TOKEN` with contents + PR write |
 | TypeSafe judgments | 7 × shadow | enforce is an operator decision |
 | Auto-deploy (J2) | on | systemd timer, several unattended deploys |
+
+## Requeue a proposal safely
+
+Set the proposal to `scheduled` **and** unlink its failed/cancelled goal (`improvement_id = NULL`, keep the link in
+`metadata.requeued_improvement_id`). Since #429 the goal generator does the unlink itself; before that a requeue without it
+crash-looped the server (UNIQUE `goals.improvement_id`, 2026-09-25). A container that restarts in a loop cannot be
+reached with `docker exec`; fix data with a one-off `docker run --rm -v /srv/djimitflo/data:/data --entrypoint node <image>`.
 
 ## Read-only probes
 
