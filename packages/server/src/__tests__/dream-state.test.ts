@@ -120,3 +120,11 @@ it('every pass ends in exactly one verdict and one ledger row (G13a, after dream
   expect((await svc.replay()).verdict).toBe('INCONCLUSIVE'); // nothing new to examine
   expect(svc.ledger().map((r) => [r.verdict, r.candidates, r.confident])).toEqual([['INCONCLUSIVE', 0, 0], ['REJECT', 1, 1]]);
 });
+
+it('N9: at most one pass per interval, however often the service restarts', async () => {
+  const svc = new DreamStateService(db);
+  expect(svc.due(6 * 3600_000)).toBe(true);
+  db.prepare("INSERT INTO dream_ledger (created_at, verdict, reason, candidates, classified, confident, consolidated) VALUES (?, 'INCONCLUSIVE', 'x', 0, 0, 0, 0)").run(new Date(Date.now() - 3600_000).toISOString());
+  expect(svc.due(6 * 3600_000)).toBe(false);
+  expect(svc.due(6 * 3600_000, Date.now() + 6 * 3600_000)).toBe(true);
+});
