@@ -1644,6 +1644,10 @@ export class LoopService {
     return this.worktree.branchNameFor(runId, findingId, retryAttempt);
   }
 
+  public repairWorktree(repositoryPath: string, worktreePath: string, branchName: string): boolean {
+    return this.worktree.repairWorktree(repositoryPath, worktreePath, branchName);
+  }
+
   public createWorktree(repositoryPath: string, runId: string, findingId: string, branchName: string, linkDependencies = true): string {
     return this.worktree.createWorktree(repositoryPath, runId, findingId, branchName, linkDependencies);
   }
