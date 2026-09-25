@@ -28,6 +28,7 @@ import { LoopRecoveryService, RuntimeLeaseRegistry } from './loop-recovery-servi
 import { LoopPersistenceService } from './loop-persistence-service';
 import { ExperienceRetrievalService } from './experience-retrieval-service';
 import { SelfImprovementService } from './self-improvement-service';
+import { assignmentContext, assignmentContextMarkdown } from './assignment-context';
 import type {
   LoopName,
   WorkerRole,
@@ -2172,6 +2173,11 @@ export class LoopService {
   ): void {
     this.ensureControlDir(worktreePath);
     const advisoryContext = this.advisoryAssignmentContext(worktreePath, run, finding);
+    const extra = assignmentContext(this.db, run, worktreePath, `loop-maker:${run.id}`);
+    if (extra.examples.length || extra.rules.length) {
+      this.recordLoopEvent(run.id, 'assignment_context', 'info', `Maker assignment includes ${extra.examples.length} proven example(s) and ${extra.rules.length} rule(s).`,
+        { examples: extra.examples, rule_ids: extra.rules.map((r) => r.id) });
+    }
     const content = [
       `# ${run.loop_name} Assignment`,
       '',
@@ -2196,6 +2202,7 @@ export class LoopService {
       '',
       advisoryContext.text || 'No matching observed episodes were retrieved.',
       '',
+      ...assignmentContextMarkdown(extra),
       '## Rules',
       '',
       '- Keep the diff small and local to the finding.',
