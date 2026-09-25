@@ -1,5 +1,7 @@
+import { recordAuthorityEvent } from './authority-ledger-service';
+import { enqueueEvent } from './event-outbox-service';
 import type { Database } from 'better-sqlite3';
-import { ApprovalRequest, ApprovalRequestType, ApprovalStatus, AuditEventType, RiskAssessment, Task, WebSocketEventType } from '@djimitflo/shared';
+import { ApprovalRequest, ApprovalRequestType, ApprovalStatus, AuditEventType, RiskAssessment, Task, TaskStatus, WebSocketEventType } from '@djimitflo/shared';
 import { randomUUID } from 'crypto';
 import { WebSocketService } from './websocket-service';
 import { AuditService } from './audit-service';
@@ -16,6 +18,16 @@ export interface CreateApprovalInput {
   policyId?: string;
   metadata?: Record<string, unknown>;
   requestedBy?: string;
+}
+
+/**
+ * How long a pending approval stays valid. It was a fixed hour: prod 2026-09-25, two loop-run approvals requested at
+ * 04:23Z expired at 05:23Z while the operator slept, and the work went back to the queue. APPROVAL_TTL_MS configures it
+ * (default 1 h, clamped to 5 min .. 7 days); an expired approval still never executes anything.
+ */
+export function approvalTtlMs(env: NodeJS.ProcessEnv = process.env): number {
+  const ms = Number(env.APPROVAL_TTL_MS);
+  return Number.isFinite(ms) && ms > 0 ? Math.min(7 * 86_400_000, Math.max(300_000, ms)) : 3_600_000;
 }
 
 export class ApprovalService {
@@ -59,7 +71,7 @@ export class ApprovalService {
   createApproval(input: CreateApprovalInput): ApprovalRequest {
     const id = randomUUID();
     const now = new Date().toISOString();
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const expiresAt = new Date(Date.now() + approvalTtlMs()).toISOString();
 
     const approval = this.db.transaction(() => {
       this.db.prepare(`
@@ -114,8 +126,19 @@ export class ApprovalService {
       payload: { approval },
       timestamp: now,
     });
+    this.recordDecision(approval, 'EXECUTION_APPROVAL_REQUESTED', 'HOLD', input.requestedBy || 'system', 'djimitflo.approval.requested');
 
     return approval;
+  }
+
+  /** Ledger + bus record of an approval lifecycle step; best-effort, never blocks the approval itself. */
+  private recordDecision(approval: ApprovalRequest, state: string, decision: 'ALLOW' | 'DENY' | 'HOLD', actor: string, eventType: string): void {
+    const human = actor !== 'system' && !actor.startsWith('agent:');
+    recordAuthorityEvent(this.db, {
+      correlationId: approval.task_id, artifactId: approval.id, actorSubject: actor, actorType: human ? 'human' : actor.startsWith('agent:') ? 'agent' : 'service',
+      requestedState: state, decision, payload: { approval_id: approval.id, risk_level: approval.risk_level, policy_id: approval.policy_id, status: approval.status },
+    });
+    enqueueEvent(this.db, { type: eventType, aggregateId: approval.id, correlationId: approval.task_id, payload: { approval_id: approval.id, task_id: approval.task_id, risk_level: approval.risk_level, status: approval.status, decided_by: approval.decided_by ?? null } });
   }
 
   decideApproval(id: string, approved: boolean, decidedBy: string, reason?: string): ApprovalRequest {
@@ -189,7 +212,11 @@ export class ApprovalService {
       payload: { approval: updated },
       timestamp: updated.updated_at,
     });
-    if (expired) throw new Error('APPROVAL_EXPIRED: Expired approvals cannot authorize execution.');
+    if (expired) {
+      this.recordDecision(updated, 'EXECUTION_APPROVAL_EXPIRED', 'DENY', 'system', 'djimitflo.approval.expired');
+      throw new Error('APPROVAL_EXPIRED: Expired approvals cannot authorize execution.');
+    }
+    this.recordDecision(updated, approved ? 'EXECUTION_APPROVED' : 'EXECUTION_DENIED', approved ? 'ALLOW' : 'DENY', decidedBy, approved ? 'djimitflo.approval.approved' : 'djimitflo.approval.denied');
 
     return updated;
   }
@@ -202,6 +229,7 @@ export class ApprovalService {
       payload: { approval: expired },
       timestamp: expired.updated_at,
     });
+    this.recordDecision(expired, 'EXECUTION_APPROVAL_EXPIRED', 'DENY', 'system', 'djimitflo.approval.expired');
   }
 
   private expireApprovalRecord(approval: ApprovalRequest): ApprovalRequest | null {
@@ -218,6 +246,29 @@ export class ApprovalService {
       task_id: expired.task_id,
       risk_level: expired.risk_level,
     });
+
+    // Bug fix: an expired approval used to leave its task stuck in
+    // 'awaiting_approval' forever — nothing else transitions the task once
+    // the one approval it was waiting on can no longer be acted on (the
+    // ApprovalCard UI only renders Approve/Deny buttons for status
+    // 'pending'). Mirror what a denial already does to the task (see
+    // ExecutionEngine.handleApprovalDecision's !approved branch): treat an
+    // unanswered approval the same as a denied one. Guarded on the task
+    // still being in 'awaiting_approval' so this can't clobber a task that
+    // moved on for an unrelated reason.
+    const taskUpdate = this.db.prepare(
+      "UPDATE tasks SET status = ?, updated_at = ? WHERE id = ? AND status = 'awaiting_approval'",
+    ).run(TaskStatus.CANCELLED, now, expired.task_id);
+    if (taskUpdate.changes) {
+      this.auditService.record({
+        event_type: AuditEventType.APPROVAL_EXPIRED,
+        action: 'task_cancelled_after_approval_expiry',
+        resource_type: 'task',
+        resource_id: expired.task_id,
+        task_id: expired.task_id,
+        risk_level: expired.risk_level,
+      });
+    }
     return expired;
   }
 

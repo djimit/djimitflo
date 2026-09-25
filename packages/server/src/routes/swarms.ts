@@ -25,6 +25,12 @@ import { LoopService } from '../services/loop-service';
 import { OpenCodeHealthService } from '../services/opencode-health-service';
 import { SwarmStatusService } from '../services/swarm-status-service';
 import { ExpertSwarmOrchestrator } from '../services/expert-swarm-orchestrator';
+import { FrontierExpertRegistryService, frontierExpertsEnabled, type ExpertLifecycleState } from '../services/frontier-expert-registry-service';
+import { ExpertCouncilService } from '../services/expert-council-service';
+import { ExpertResolverService } from '../services/expert-resolver-service';
+import { PacingFrontierIngestionService } from '../services/pacing-frontier-ingestion-service';
+import { ExpertEvidenceEnrichmentService } from '../services/expert-evidence-enrichment-service';
+import { DataCiteAdapter } from '../services/knowledge-adapters/datacite-adapter';
 import { OkfKnowledgeUpdater } from '../services/okf-knowledge-updater';
 import { ServiceRefactoringAnalyzer } from '../services/service-refactoring-analyzer';
 import { EmergentSpecializationService } from '../services/emergent-specialization-service';
@@ -223,6 +229,87 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   router.get('/expert/sources', requirePermission('read:evidence'), route((_req, res) => { res.json({ sources: new ExpertSwarmOrchestrator(db).getAvailableSources() }); }));
   router.get('/expert/updates', requirePermission('read:evidence'), route((_req, res) => { res.json(new OkfKnowledgeUpdater(db).getUpdateHistory(20)); }));
 
+  // Frontier Expert Intelligence (§35): read-only retrieval is broad, mutation stays governed.
+  // Taxonomy seeding is lazy and idempotent: it runs on the first expert request, not at route creation, so
+  // route inventories and minimal test databases without the expert tables are unaffected.
+  let taxonomySeeded = false;
+  const registry = () => { const instance = new FrontierExpertRegistryService(db); if (!taxonomySeeded) { instance.seedTaxonomy(); taxonomySeeded = true; } return instance; };
+  const operatorActor = (req: any): string => {
+    if (!req.user?.sub || req.user.agent_id) throw createError(403, 'Operator authentication required', 'EXPERT_OPERATOR_REQUIRED');
+    return String(req.user.email || req.user.sub);
+  };
+  router.get('/expert/experts', requirePermission('read:evidence'), route((req, res) => {
+    const limit = req.query.limit === undefined ? undefined : Number(req.query.limit);
+    if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) throw createError(400, 'limit must be a positive integer', 'VALIDATION_ERROR');
+    res.json({ experts: registry().list({ state: req.query.state as string | undefined, capability: req.query.capability as string | undefined, name: req.query.name as string | undefined, limit }) });
+  }));
+  router.get('/expert/experts/:id', requirePermission('read:evidence'), route((req, res) => {
+    const reg = registry();
+    const expert = reg.get(req.params.id);
+    if (!expert) throw createError(404, 'Expert not found', 'EXPERT_NOT_FOUND');
+    const asOf = typeof req.query.as_of === 'string' ? req.query.as_of : null;
+    res.json({
+      expert, provenance: reg.provenance(expert.id), affiliations: reg.affiliationsAsOf(expert.id, asOf ?? new Date().toISOString()), versions: reg.versions(expert.id),
+      snapshot: asOf ? reg.asOf(expert.id, asOf) : null,
+      claims: db.prepare('SELECT * FROM expert_claims WHERE expert_id = ? ORDER BY created_at DESC LIMIT 100').all(expert.id),
+      lifecycle: db.prepare('SELECT from_state, to_state, actor, reason, created_at FROM expert_lifecycle_events WHERE expert_id = ? ORDER BY created_at ASC').all(expert.id),
+      peer_reviews: (db.prepare("SELECT id, metadata FROM audit_events WHERE resource_id = ? AND action = 'frontier_expert_peer_review' ORDER BY timestamp DESC LIMIT 20").all(expert.id) as Array<{ id: string; metadata: string }>).map((row) => ({ ...JSON.parse(row.metadata), audit_id: row.id })),
+    });
+  }));
+  router.post('/expert/resolve', requirePermission('read:evidence'), route((req, res) => {
+    const question = typeof req.body?.question === 'string' ? req.body.question.trim() : '';
+    if (!question) throw createError(400, 'question is required', 'VALIDATION_ERROR');
+    res.json(new ExpertResolverService(db).resolve(question, { maxExperts: boundedParallel(req.body.max_experts), asOf: typeof req.body.as_of === 'string' ? req.body.as_of : undefined, capabilities: Array.isArray(req.body.capabilities) ? req.body.capabilities.map(String) : undefined }));
+  }));
+  router.post('/expert/experts/:id/transition', requirePermission('write:swarm_action'), route((req, res) => {
+    const actor = operatorActor(req);
+    const to = String(req.body?.to || '') as ExpertLifecycleState;
+    try { res.json(registry().transition(req.params.id, to, { actor, reason: typeof req.body?.reason === 'string' ? req.body.reason : undefined })); }
+    catch (error) { const message = error instanceof Error ? error.message : 'EXPERT_TRANSITION_FAILED'; const code = message.split(':')[0]; throw createError(code === 'EXPERT_NOT_FOUND' ? 404 : 409, message, code); }
+  }));
+  const registryError = (error: unknown): never => { const message = error instanceof Error ? error.message : 'EXPERT_GOVERNANCE_FAILED'; const code = message.split(':')[0]; throw createError(code.endsWith('NOT_FOUND') ? 404 : 409, message, code); };
+  router.post('/expert/experts/:id/capabilities/:capability/review', requirePermission('write:swarm_action'), route((req, res) => {
+    const actor = operatorActor(req);
+    const decision = String(req.body?.decision || '');
+    if (!['checked', 'approved', 'revoked'].includes(decision)) throw createError(400, 'decision must be checked, approved or revoked', 'VALIDATION_ERROR');
+    try { res.json(registry().reviewCapability(req.params.id, req.params.capability, decision as 'checked' | 'approved' | 'revoked', { actor, reason: typeof req.body?.reason === 'string' ? req.body.reason : undefined })); } catch (error) { registryError(error); }
+  }));
+  router.post('/expert/experts/:id/deprecate', requirePermission('write:swarm_action'), route((req, res) => {
+    const actor = operatorActor(req);
+    const reason = String(req.body?.reason || '');
+    if (!['stale', 'unsupported', 'superseded', 'misattributed'].includes(reason)) throw createError(400, 'reason must be stale, unsupported, superseded or misattributed', 'VALIDATION_ERROR');
+    try { res.json(registry().deprecate(req.params.id, { reason: reason as 'stale' | 'unsupported' | 'superseded' | 'misattributed', actor, note: typeof req.body?.note === 'string' ? req.body.note : undefined })); } catch (error) { registryError(error); }
+  }));
+  // Operator triggers for ingestion and enrichment (§33, §51): bounded, idempotent, never advancing past CAPABILITY_INFERRED.
+  router.post('/expert/ingest/pacing', requirePermission('write:swarm_action'), route(async (req, res) => {
+    const actor = operatorActor(req);
+    res.json(await new PacingFrontierIngestionService(db).ingest({ actor: `ingestion:pacing:${actor}`, force: req.body?.force === true }));
+  }));
+  router.post('/expert/enrich', requirePermission('write:swarm_action'), route(async (req, res) => {
+    const actor = operatorActor(req);
+    const limit = req.body?.limit === undefined ? 3 : Number(req.body.limit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 5) throw createError(400, 'limit must be an integer between 1 and 5 (one arXiv request per expert, rate-limited)', 'VALIDATION_ERROR');
+    const service = new ExpertEvidenceEnrichmentService(db, { source: new DataCiteAdapter() });
+    const results = await service.enrichBatch({ actor: `ingestion:arxiv:${actor}`, limit, retryBefore: typeof req.body?.retry_before === 'string' ? req.body.retry_before : undefined });
+    res.json({ results, pending: service.pending() });
+  }));
+  router.post('/expert/experts/:id/peer-review', requirePermission('write:swarm_action'), route(async (req, res) => {
+    const actor = operatorActor(req);
+    if (!frontierExpertsEnabled()) throw createError(409, 'Frontier experts are disabled', 'FRONTIER_EXPERTS_DISABLED');
+    const reviewerId = typeof req.body?.reviewer_id === 'string' ? req.body.reviewer_id.trim() : '';
+    if (!reviewerId) throw createError(400, 'reviewer_id is required', 'VALIDATION_ERROR');
+    try { res.json(await new ExpertCouncilService(db).reviewExpert(req.params.id, reviewerId, actor)); }
+    catch (error) { registryError(error); }
+  }));
+  router.post('/expert/council', requirePermission('write:swarm_action'), route(async (req, res) => {
+    operatorActor(req);
+    if (!frontierExpertsEnabled()) throw createError(409, 'Frontier experts are disabled (DJIMITFLO_FRONTIER_EXPERTS_ENABLED)', 'FRONTIER_EXPERTS_DISABLED');
+    const topic = typeof req.body?.topic === 'string' ? req.body.topic.trim() : '';
+    if (!topic) throw createError(400, 'topic is required', 'VALIDATION_ERROR');
+    const result = await new ExpertSwarmOrchestrator(db).dispatch({ topic, domains: [], maxParallel: boundedParallel(req.body.max_parallel), expertSelection: { maxExperts: boundedParallel(req.body.max_experts), adversarial: req.body.adversarial !== false, language: req.body.language === 'nl' ? 'nl' : 'en' } });
+    res.json(result);
+  }));
+
   // RSI Engine
   router.post('/rsi/analyze', requirePermission('write:swarm_action'), route((_req, res) => {
     const analyzer = new ServiceRefactoringAnalyzer(db);
@@ -269,29 +356,31 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     });
   }));
 
+  const computeCapabilityEconomy = () => intelligence.listCapabilities(500)
+    .filter((capability) => capability.status === 'validated' || capability.status === 'candidate')
+    .map((capability) => {
+      const competence = intelligence.measureCompetence(capability.id);
+      const p50Dollars = Number(capability.cost_model.p50_dollars) || 0;
+      const p95Dollars = Number(capability.cost_model.p95_dollars) || 0;
+      return {
+        capability_id: capability.id,
+        capability_kind: capability.kind,
+        status: capability.status,
+        n_runs: competence.n_runs,
+        n_completed: competence.n_completed,
+        success_rate: competence.success_rate,
+        p50_tokens: competence.p50_cost,
+        p95_tokens: competence.p95_cost,
+        p50_dollars: p50Dollars,
+        p95_dollars: p95Dollars,
+        verified_artifacts_per_dollar: competence.n_completed > 0 && p50Dollars > 0
+          ? competence.n_completed / p50Dollars
+          : null,
+      };
+    });
+
   router.get('/economy', requirePermission('read:evidence'), route((_req, res) => {
-    const capabilities = intelligence.listCapabilities(500)
-      .filter((capability) => capability.status === 'validated' || capability.status === 'candidate')
-      .map((capability) => {
-        const competence = intelligence.measureCompetence(capability.id);
-        const p50Dollars = Number(capability.cost_model.p50_dollars) || 0;
-        const p95Dollars = Number(capability.cost_model.p95_dollars) || 0;
-        return {
-          capability_id: capability.id,
-          capability_kind: capability.kind,
-          status: capability.status,
-          n_runs: competence.n_runs,
-          n_completed: competence.n_completed,
-          success_rate: competence.success_rate,
-          p50_tokens: competence.p50_cost,
-          p95_tokens: competence.p95_cost,
-          p50_dollars: p50Dollars,
-          p95_dollars: p95Dollars,
-          verified_artifacts_per_dollar: competence.n_completed > 0 && p50Dollars > 0
-            ? competence.n_completed / p50Dollars
-            : null,
-        };
-      });
+    const capabilities = computeCapabilityEconomy();
     const loops = new LoopService(db);
     const recentRuns = loops.listLoopRuns().slice(0, 10).map((run) => {
       const metric = loops.computeEfficiencyMetric(run.id);
@@ -312,6 +401,36 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
         total_verified_artifacts: recentRuns.reduce((sum, run) => sum + run.verified_artifacts, 0),
         total_dollars_spent: recentRuns.reduce((sum, run) => sum + run.dollars_spent, 0),
       },
+    });
+  }));
+
+  // LoopBudgetService.allocateDollarBudget() already existed (used internally
+  // while a loop run is choosing which findings to fund) but was never
+  // surfaced anywhere for an operator to ask "given $X right now, which
+  // validated capabilities are worth funding?" — reuses the same capability
+  // cost/competence data already computed for GET /economy above.
+  router.get('/economy/allocate', requirePermission('read:evidence'), route((req, res) => {
+    const budget = Number(req.query.budget);
+    if (!Number.isFinite(budget) || budget < 0) {
+      throw createError(400, 'budget query param must be a non-negative number', 'ECONOMY_ALLOCATE_BUDGET_INVALID');
+    }
+    const capabilities = computeCapabilityEconomy().filter((capability) => capability.p50_dollars > 0);
+    const loops = new LoopService(db);
+    const result = loops.allocateDollarBudget(
+      capabilities.map((capability) => ({
+        finding_id: capability.capability_id,
+        capability_id: capability.capability_id,
+        p50_dollars: capability.p50_dollars,
+        competence: capability.success_rate,
+      })),
+      budget
+    );
+    const byId = new Map(capabilities.map((capability) => [capability.capability_id, capability]));
+    res.json({
+      budget,
+      budget_insufficient: result.budgetInsufficient,
+      allocated: result.allocated.map((id) => byId.get(id)),
+      deferred: result.deferred.map((id) => byId.get(id)),
     });
   }));
 

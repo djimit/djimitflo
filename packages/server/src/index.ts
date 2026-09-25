@@ -30,6 +30,12 @@ import { MetaOrchestrationService } from './services/meta-orchestration-service'
 import { SelfModificationPipeline } from './services/self-modification-pipeline';
 import { ProactiveMemoryService } from './services/proactive-memory-service';
 import { ComplianceAuditService } from './services/compliance-audit-service';
+import { ComplianceReportScheduler } from './services/compliance-report-scheduler';
+import { SelfHealingScheduler } from './services/self-healing-scheduler';
+import { SelfImprovementAutoReviewScheduler } from './services/self-improvement-auto-review-scheduler';
+import { FrontierExpertScheduler } from './services/frontier-expert-scheduler';
+import { SpecialistPanelBacklogScheduler } from './services/specialist-panel-backlog-scheduler';
+import { MemoryCandidateReviewScheduler } from './services/memory-candidate-review-scheduler';
 import { OpenMythosNightlyService } from './services/openmythos-nightly-service';
 import { CognitiveLoopClosureService } from './services/cognitive-loop-closure-service';
 import { MultiModelIntelligence } from './services/multi-model-intelligence';
@@ -133,9 +139,22 @@ async function main() {
   
   // Health check (public)
   app.get('/health', (_req, res) => {
+    const runtimeCommit = process.env.DJIMITFLO_COMMIT_SHA || null;
+    const builtCommit = process.env.DJIMITFLO_BUILD_COMMIT && process.env.DJIMITFLO_BUILD_COMMIT !== 'unknown'
+      ? process.env.DJIMITFLO_BUILD_COMMIT
+      : null;
     res.json({
       status: 'healthy',
-      commit: process.env.DJIMITFLO_COMMIT_SHA || null,
+      commit: runtimeCommit,
+      // Same build identity as /api/health so both liveness endpoints are attributable.
+      build: {
+        commit: runtimeCommit,
+        built_commit: builtCommit,
+        build_source: process.env.DJIMITFLO_BUILD_SOURCE || null,
+        build_time: process.env.DJIMITFLO_BUILD_TIME || null,
+        instance_id: process.env.DJIMITFLO_INSTANCE_ID || null,
+        commit_matches_build: !!(runtimeCommit && builtCommit && runtimeCommit === builtCommit),
+      },
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
     });
@@ -228,7 +247,9 @@ async function main() {
     metaOrchestration.start();
     executionEngine.setMetaOrchestration(metaOrchestration);
     recoverySvc.setMetaOrchestration(metaOrchestration);
-    new SelfModificationPipeline(db).analyze();
+    const selfModification = new SelfModificationPipeline(db);
+    selfModification.analyze();
+    selfModification.autoPlan();
   }
 
   // Proactive memory — relevance-scored, self-maintaining memory substrate (Vector 4)
@@ -242,11 +263,49 @@ async function main() {
     console.log('🌙 OpenMythos nightly eval scheduler armed');
   }
 
+  // Compliance report scheduler — periodic reporting, in-process (default-off, see service header)
+  if (new ComplianceReportScheduler(db).start()) {
+    console.log('📋 Compliance report scheduler armed');
+  }
+
+  // Self-healing scheduler — periodic detect-and-fix (stale leases, etc.), in-process (default-off, see service header)
+  if (new SelfHealingScheduler(db).start()) {
+    console.log('🩺 Self-healing scheduler armed');
+  }
+
+  // Self-improvement auto-review scheduler — LLM-generated specialist reviews
+  // + autonomous goal-authorization, in-process (default-off, see service header)
+  if (new SelfImprovementAutoReviewScheduler(db).start()) {
+    console.log('🧭 Self-improvement auto-review scheduler armed');
+  }
+
+  // Frontier expert scheduler — automates discovery/enrichment/peer-review only;
+  // stops below the registry's hard approval/activation governance wall,
+  // in-process (default-off, gated on DJIMITFLO_FRONTIER_EXPERTS_ENABLED too, see service header)
+  if (new FrontierExpertScheduler(db).start()) {
+    console.log('🔭 Frontier expert scheduler armed');
+  }
+
+  // Specialist panel backlog scheduler — projects consensus_ready general
+  // panels into real work items, in-process (default-off, see service header)
+  if (new SpecialistPanelBacklogScheduler(db).start()) {
+    console.log('🗂️  Specialist panel backlog scheduler armed');
+  }
+
+  // Memory candidate review scheduler — real specialist-panel analysis for
+  // auto-promotion + a self-improvement evolution loop on the criteria,
+  // in-process (default-off, see service header)
+  if (new MemoryCandidateReviewScheduler(db).start()) {
+    console.log('🧬 Memory candidate review scheduler armed');
+  }
+
   // API routes
   app.use('/api', createRoutes(db, executionEngine, authService, auth, wsService, metaOrchestration, operatorRuntime, runtimeGovernance));
 
   // Public explore pages (unauthenticated, rate-limited)
   app.use('/explore', createExplorePublicRoutes(db));
+
+  let fleetWorker: ExplainerFleetWorker | undefined;
 
   // Explainer fleet worker — runs in EVERY runtime profile (Codex P1 fix: the
   // earlier bootstrap-only mount made explainer jobs idle in api/operator mode).
@@ -255,7 +314,7 @@ async function main() {
     if (process.env.DJIMITFLO_EXPLAINER_AUTONOMY === 'false') {
       console.log('ℹ️  Explainer fleet worker disabled via DJIMITFLO_EXPLAINER_AUTONOMY=false');
     } else {
-      const fleetWorker = ExplainerFleetWorker.create(db);
+      fleetWorker = ExplainerFleetWorker.create(db);
       fleetWorker.start();
       console.log('📖 Explainer fleet worker started (production entry point, honors kill-switch).');
     }
@@ -332,6 +391,7 @@ async function main() {
   // Graceful shutdown
   process.on('SIGTERM', () => {
     console.log('⚠️  SIGTERM received, shutting down gracefully...');
+    fleetWorker?.stop();
     // Upgraded sockets otherwise keep httpServer.close() waiting indefinitely.
     for (const socket of wss.clients) socket.close(1001, 'Server shutting down');
     const socketDeadline = setTimeout(() => {

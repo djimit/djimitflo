@@ -7,6 +7,7 @@ type BetterSqlite3Database = Database.Database;
 import { createPhase56Tables } from './migrate-phase56';
 import { seedMCPServers } from './seed-mcp-servers';
 import { resolveDbPath } from './path';
+import { FrontierExpertRegistryService } from '../services/frontier-expert-registry-service';
 
 type ColumnSpec = {
   name: string;
@@ -60,6 +61,19 @@ const selfImprovementColumns: ColumnSpec[] = [
   { name: 'panel_id', definition: 'TEXT' },
   { name: 'approved_by', definition: 'TEXT' },
   { name: 'updated_at', definition: "TEXT NOT NULL DEFAULT ''" },
+];
+
+// Refinement loop: refined_at marks a parent once a refinement child exists for it;
+// refined_from_id marks a child as a refinement of that parent. Both nullable, both
+// checked before a refinement is attempted so a proposal is refined at most once.
+// Grounding gate (proposal-grounding.ts): the explicit or derived target/test/metric a proposal is anchored to.
+const selfImprovementGroundingColumns: ColumnSpec[] = [
+  { name: 'grounding_json', definition: 'TEXT' },
+];
+
+const selfImprovementRefinementColumns: ColumnSpec[] = [
+  { name: 'refined_at', definition: 'TEXT' },
+  { name: 'refined_from_id', definition: 'TEXT' },
 ];
 
 const specialistReviewActorColumns: ColumnSpec[] = [
@@ -1185,8 +1199,36 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
       evidence_refs_json TEXT NOT NULL DEFAULT '[]',
       panel_id TEXT,
       approved_by TEXT,
+      refined_at TEXT,
+      refined_from_id TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT ''
+    );
+    CREATE TABLE IF NOT EXISTS commons_proposal_reviews (
+      improvement_id TEXT PRIMARY KEY,
+      thread_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      summary TEXT NOT NULL DEFAULT '',
+      reply_count INTEGER NOT NULL DEFAULT 0,
+      posted_at TEXT NOT NULL,
+      completed_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS knowledge_maintenance_runs (
+      job TEXT NOT NULL,
+      period TEXT NOT NULL,
+      status TEXT NOT NULL,
+      findings INTEGER NOT NULL DEFAULT 0,
+      detail_json TEXT NOT NULL DEFAULT '{}',
+      ran_at TEXT NOT NULL,
+      PRIMARY KEY (job, period)
+    );
+    CREATE TABLE IF NOT EXISTS proposal_clusters (
+      improvement_id TEXT PRIMARY KEY,
+      cluster_id TEXT NOT NULL,
+      representative_id TEXT NOT NULL,
+      original_status TEXT NOT NULL,
+      original_fingerprint TEXT,
+      archived_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS loop_learning_closures (
       loop_run_id TEXT PRIMARY KEY,
@@ -1197,15 +1239,83 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
       score_delta REAL,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS authority_events (
+      id TEXT PRIMARY KEY,
+      api_version TEXT NOT NULL DEFAULT 'djimit.io/v1alpha1',
+      kind TEXT NOT NULL DEFAULT 'LifecycleEvent',
+      event_id TEXT NOT NULL UNIQUE,
+      correlation_id TEXT NOT NULL,
+      causation_id TEXT,
+      sequence INTEGER NOT NULL,
+      occurred_at TEXT NOT NULL,
+      actor_subject TEXT NOT NULL,
+      actor_type TEXT NOT NULL CHECK(actor_type IN ('human','agent','service','ci')),
+      actor_issuer TEXT NOT NULL DEFAULT 'djimitflo',
+      artifact_id TEXT NOT NULL,
+      artifact_version INTEGER NOT NULL DEFAULT 1,
+      artifact_digest TEXT,
+      previous_state TEXT,
+      requested_state TEXT NOT NULL,
+      policy_decision TEXT NOT NULL CHECK(policy_decision IN ('ALLOW','DENY','HOLD')),
+      payload_digest TEXT NOT NULL,
+      payload_json TEXT,
+      evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+      source_system TEXT NOT NULL DEFAULT 'djimitflo',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(correlation_id, sequence)
+    );
+    CREATE INDEX IF NOT EXISTS idx_authority_events_correlation ON authority_events(correlation_id, sequence);
+    CREATE TABLE IF NOT EXISTS event_outbox (
+      event_id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      aggregate_id TEXT NOT NULL,
+      correlation_id TEXT NOT NULL,
+      payload_json TEXT NOT NULL DEFAULT '{}',
+      status TEXT NOT NULL DEFAULT 'pending',
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      created_at TEXT NOT NULL,
+      published_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_event_outbox_status ON event_outbox(status, created_at);
+    CREATE TABLE IF NOT EXISTS judgments (
+      id TEXT PRIMARY KEY, judgment TEXT NOT NULL, subject_type TEXT NOT NULL, subject_id TEXT NOT NULL, state_hash TEXT NOT NULL,
+      mode TEXT NOT NULL, decision TEXT NOT NULL, reason TEXT, answers_json TEXT, error TEXT,
+      input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0, latency_ms INTEGER NOT NULL DEFAULT 0, model TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_judgments_subject ON judgments(judgment, subject_id, created_at);
+    CREATE TABLE IF NOT EXISTS registry_agents (
+      name TEXT PRIMARY KEY, host TEXT NOT NULL DEFAULT '', runtime TEXT NOT NULL DEFAULT '', framework TEXT NOT NULL DEFAULT '',
+      version TEXT NOT NULL DEFAULT '', capabilities_json TEXT NOT NULL DEFAULT '[]', api_endpoint TEXT NOT NULL DEFAULT '',
+      raw_json TEXT NOT NULL DEFAULT '{}', synced_at TEXT NOT NULL
+    );
   `);
   // Add missing columns BEFORE creating indexes that reference them — a stale
   // pre-existing self_improvements table (no fingerprint) otherwise breaks
   // CREATE INDEX idx_self_improve_fingerprint with "no such column".
   addMissingColumns(db, 'self_improvements', selfImprovementColumns);
+  addMissingColumns(db, 'self_improvements', selfImprovementRefinementColumns);
+  addMissingColumns(db, 'self_improvements', selfImprovementGroundingColumns);
+  // P1c: collapse duplicate fingerprints among LIVE rows (keep the newest) so the partial UNIQUE index never aborts.
+  // Only live statuses can collide with that index. This used to delete every older row sharing a fingerprint
+  // regardless of status, on every boot: parked/finished proposals vanished when a later one with the same text
+  // was created (303 panels orphaned in production, goals pointing at missing proposals, 2026-09-21).
   db.exec(`
+    DELETE FROM self_improvements
+    WHERE fingerprint IS NOT NULL
+      AND status IN ('proposed', 'scheduled', 'executing', 'verified', 'evaluating')
+      AND ROWID NOT IN (
+        SELECT MAX(ROWID) FROM self_improvements
+        WHERE fingerprint IS NOT NULL AND status IN ('proposed', 'scheduled', 'executing', 'verified', 'evaluating')
+        GROUP BY fingerprint
+      );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_self_improve_fingerprint_unique
+      ON self_improvements(fingerprint)
+      WHERE fingerprint IS NOT NULL
+        AND status IN ('proposed', 'scheduled', 'executing', 'verified', 'evaluating');
     CREATE INDEX IF NOT EXISTS idx_self_improve_status ON self_improvements(status);
     CREATE INDEX IF NOT EXISTS idx_self_improve_priority ON self_improvements(priority DESC);
-    CREATE INDEX IF NOT EXISTS idx_self_improve_fingerprint ON self_improvements(fingerprint);
   `);
   addMissingColumns(db, 'specialist_reviews', specialistReviewActorColumns);
   addMissingColumns(db, 'goals', goalImprovementColumns);
@@ -1712,7 +1822,153 @@ export function runMigrations(db: BetterSqlite3Database) {
   createExplainRepoTables(db);
   createCalibrationTables(db);
   createOutcomeLearningTables(db);
+  createFrontierExpertTables(db);
+  new FrontierExpertRegistryService(db).seedTaxonomy();
   createPerformanceIndexes(db);
+}
+
+/**
+ * Frontier Expert Intelligence (reports/frontier-experts/DATA_MODEL.md).
+ * Identity, temporal affiliations, immutable evidence, evidence-derived capabilities,
+ * structured claims with relations, versions and an auditable lifecycle. Separate from
+ * swarm_capabilities (executable capabilities) and knowledge_claims (agent votes) on purpose.
+ */
+export function createFrontierExpertTables(db: BetterSqlite3Database) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS expert_capability_taxonomy (
+      id TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      parent_id TEXT REFERENCES expert_capability_taxonomy(id),
+      aliases_json TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS expert_identities (
+      id TEXT PRIMARY KEY,
+      canonical_name TEXT NOT NULL,
+      aliases_json TEXT NOT NULL DEFAULT '[]',
+      lifecycle_state TEXT NOT NULL DEFAULT 'DISCOVERED' CHECK(lifecycle_state IN (
+        'DISCOVERED', 'IDENTITY_RESOLVED', 'EVIDENCE_COLLECTED', 'CAPABILITY_INFERRED', 'CHECKED', 'APPROVED', 'ACTIVE',
+        'AMBIGUOUS', 'INSUFFICIENT_EVIDENCE', 'CONTRADICTED', 'STALE', 'REJECTED', 'REVOKED')),
+      identity_confidence REAL NOT NULL DEFAULT 0 CHECK(identity_confidence >= 0 AND identity_confidence <= 1),
+      provenance_json TEXT NOT NULL DEFAULT '{}',
+      version INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_expert_identities_state ON expert_identities(lifecycle_state);
+    CREATE INDEX IF NOT EXISTS idx_expert_identities_name ON expert_identities(canonical_name);
+
+    CREATE TABLE IF NOT EXISTS expert_affiliations (
+      id TEXT PRIMARY KEY,
+      expert_id TEXT NOT NULL REFERENCES expert_identities(id),
+      organization TEXT NOT NULL,
+      role TEXT,
+      valid_from TEXT,
+      valid_to TEXT,
+      source_ref TEXT NOT NULL,
+      retrieved_at TEXT NOT NULL,
+      confidence REAL NOT NULL DEFAULT 0.5 CHECK(confidence >= 0 AND confidence <= 1),
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_expert_affiliations_expert ON expert_affiliations(expert_id);
+
+    CREATE TABLE IF NOT EXISTS expert_evidence (
+      id TEXT PRIMARY KEY,
+      expert_id TEXT REFERENCES expert_identities(id),
+      kind TEXT NOT NULL CHECK(kind IN ('paper', 'institutional_page', 'technical_report', 'repository', 'presentation', 'profile', 'scholarly_metadata', 'secondary', 'signature', 'other')),
+      tier INTEGER NOT NULL CHECK(tier IN (1, 2, 3, 4)),
+      title TEXT NOT NULL,
+      url TEXT,
+      source_ref TEXT NOT NULL,
+      source_family TEXT NOT NULL,
+      canonical_origin TEXT NOT NULL,
+      retrieved_at TEXT NOT NULL,
+      content_hash TEXT,
+      lifecycle TEXT NOT NULL DEFAULT 'active' CHECK(lifecycle IN ('active', 'superseded', 'retracted', 'challenged')),
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_expert_evidence_expert ON expert_evidence(expert_id);
+    CREATE INDEX IF NOT EXISTS idx_expert_evidence_family ON expert_evidence(source_family);
+
+    CREATE TABLE IF NOT EXISTS expert_capabilities (
+      id TEXT PRIMARY KEY,
+      expert_id TEXT NOT NULL REFERENCES expert_identities(id),
+      capability_id TEXT NOT NULL REFERENCES expert_capability_taxonomy(id),
+      confidence REAL NOT NULL CHECK(confidence >= 0 AND confidence <= 1),
+      evidence_refs_json TEXT NOT NULL CHECK(json_array_length(evidence_refs_json) > 0),
+      derived_by TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'inferred' CHECK(status IN ('inferred', 'checked', 'approved', 'revoked')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(expert_id, capability_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS expert_claims (
+      id TEXT PRIMARY KEY,
+      expert_id TEXT REFERENCES expert_identities(id),
+      subject TEXT NOT NULL,
+      relation TEXT NOT NULL,
+      object TEXT NOT NULL,
+      conditions TEXT NOT NULL DEFAULT '',
+      scope TEXT NOT NULL DEFAULT '',
+      polarity TEXT NOT NULL DEFAULT 'asserts' CHECK(polarity IN ('asserts', 'denies', 'qualifies')),
+      temporal_scope TEXT,
+      evidence_refs_json TEXT NOT NULL CHECK(json_array_length(evidence_refs_json) > 0),
+      confidence REAL NOT NULL CHECK(confidence >= 0 AND confidence <= 1),
+      source_independence INTEGER NOT NULL DEFAULT 1,
+      support_status TEXT NOT NULL DEFAULT 'undetermined' CHECK(support_status IN ('supported', 'contradicted', 'qualified', 'undetermined')),
+      criticality TEXT NOT NULL DEFAULT 'normal' CHECK(criticality IN ('normal', 'critical')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_expert_claims_expert ON expert_claims(expert_id);
+
+    CREATE TABLE IF NOT EXISTS expert_claim_relations (
+      id TEXT PRIMARY KEY,
+      from_claim_id TEXT NOT NULL REFERENCES expert_claims(id),
+      to_claim_id TEXT NOT NULL REFERENCES expert_claims(id),
+      relation TEXT NOT NULL CHECK(relation IN ('SUPPORTS', 'CONTRADICTS', 'QUALIFIES', 'ORTHOGONAL', 'UNDETERMINED')),
+      rationale TEXT NOT NULL DEFAULT '',
+      resolved_at TEXT,
+      resolved_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS expert_versions (
+      id TEXT PRIMARY KEY,
+      expert_id TEXT NOT NULL REFERENCES expert_identities(id),
+      version INTEGER NOT NULL,
+      snapshot_json TEXT NOT NULL,
+      change_summary TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(expert_id, version)
+    );
+
+    CREATE TABLE IF NOT EXISTS expert_lifecycle_events (
+      id TEXT PRIMARY KEY,
+      expert_id TEXT NOT NULL REFERENCES expert_identities(id),
+      from_state TEXT,
+      to_state TEXT NOT NULL,
+      actor TEXT NOT NULL,
+      reason TEXT NOT NULL DEFAULT '',
+      evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_expert_lifecycle_expert ON expert_lifecycle_events(expert_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS expert_source_snapshots (
+      id TEXT PRIMARY KEY,
+      source TEXT NOT NULL,
+      url TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      entry_count INTEGER NOT NULL DEFAULT 0,
+      retrieved_at TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}'
+    );
+    CREATE INDEX IF NOT EXISTS idx_expert_source_snapshots_source ON expert_source_snapshots(source, retrieved_at);
+  `);
 }
 
 /**

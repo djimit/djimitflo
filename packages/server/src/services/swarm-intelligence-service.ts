@@ -31,22 +31,21 @@ const CLAIM_TYPES: ClaimType[] = ['observation', 'hypothesis', 'decision', 'memo
 const ECOSYSTEM_COMPONENTS = [
   { id: 'worldlab', label: 'WorldLab', kind: 'experimentation', responsibility: 'Longitudinal scenarios, trajectories and counterfactual evidence.', boundary: 'Simulation authority only; no production mutation or ground-truth authority.', tradeoff: 'More behavioral coverage costs replication time and compute.', tokens: ['worldlab'] },
   { id: 'openmythos', label: 'OpenMythos', kind: 'evaluation', responsibility: 'Governance semantics, oracles, calibration, falsification and promotion evidence.', boundary: 'Defines and evaluates correctness; does not execute changes.', tradeoff: 'Fail-closed evidence gates slow promotion but prevent false-green evolution.', tokens: ['openmythos'] },
-  { id: 'paperclip', label: 'Paperclip', kind: 'work_control', responsibility: 'Durable work intake, coordination and human approval state.', boundary: 'No parallel execution, evidence or promotion authority.', tradeoff: 'One work ledger reduces coordination drift while preserving approval latency.', tokens: ['paperclip'] },
-  { id: 'djimitflo', label: 'DjimitFlo', kind: 'execution', responsibility: 'Governed orchestration, ToolBroker enforcement, execution, audit and learning closure.', boundary: 'Mediates operational mutation; does not redefine external norms or observations.', tradeoff: 'Central mediation improves containment at the cost of routing overhead.', tokens: ['djimitflo', 'execution-engine'] },
+  { id: 'paperclip', label: 'Paperclip (retiring)', kind: 'legacy_work_control', responsibility: 'Historical work ledger (851 issues, mostly 2026-08-21..09-14). Read-only during retirement; no new intake.', boundary: 'Not a source of truth any more; Djimitflo owns work intake, approvals and execution.', tradeoff: 'Keeping it read-only preserves history at the cost of a second system until the exit criteria are met.', tokens: ['paperclip'] },
+  { id: 'djimitflo', label: 'DjimitFlo', kind: 'execution', responsibility: 'The core of the ecosystem: work intake and control, approvals and policies, governed orchestration, ToolBroker enforcement, execution, audit and learning closure.', boundary: 'Mediates operational mutation; does not redefine external norms or observations.', tradeoff: 'Central mediation improves containment at the cost of routing overhead.', tokens: ['djimitflo', 'execution-engine'] },
   { id: 'daps', label: 'DAPS', kind: 'evidence', responsibility: 'Deterministic evidence and outcome-contract validation.', boundary: 'Validates evidence; does not approve, execute or promote changes.', tradeoff: 'Strict contracts reject ambiguous observations instead of guessing.', tokens: ['daps'] },
   { id: 'eve-v', label: 'EVE-V', kind: 'adversarial_review', responsibility: 'Challenges claims, causal reasoning and false-green evidence.', boundary: 'Advisory evaluator; never the sole oracle or final approver.', tradeoff: 'Independent challenge adds latency but reduces correlated blind spots.', tokens: ['eve-v', 'eve_v', 'evev'] },
   { id: 'juraregel', label: 'JuraRegel', kind: 'advisory_assurance', responsibility: 'Legal, temporal, citation and confidentiality assurance findings.', boundary: 'Advisory assurance only; no legal-decision or execution authority.', tradeoff: 'Conservative legal checks prefer escalation over unsupported certainty.', tokens: ['juraregel', 'jura-regel'] },
   { id: 'federation', label: 'DJIMIT Federation', kind: 'operational_system', responsibility: 'Operational agents, skills, models, tools, memory and capability registry.', boundary: 'Production capabilities are exercised only through DjimitFlo mediation.', tradeoff: 'Federation breadth improves resilience but increases provenance pressure.', tokens: ['federation', 'djimit-registry', 'djimit-router'] },
-  { id: 'roborev', label: 'Roborev', kind: 'review_events', responsibility: 'Commit-native review events for governed work intake.', boundary: 'Emits review evidence and tasks; owns no task state or approval.', tradeoff: 'Event-only integration avoids duplicate state but depends on downstream pickup.', tokens: ['roborev'] },
+  { id: 'roborev', label: 'Roborev', kind: 'review_events', responsibility: 'Commit-native review events; Djimitflo turns them into governed work items.', boundary: 'Emits review evidence and tasks; owns no task state or approval.', tradeoff: 'Event-only integration avoids duplicate state but depends on Djimitflo picking the events up.', tokens: ['roborev'] },
   { id: 'knowledge', label: 'Knowledge / UAMS', kind: 'memory_projection', responsibility: 'Derived retrieval, operational experiences and causal knowledge projections.', boundary: 'Memory and retrieval are evidence inputs, never promotion authority.', tradeoff: 'Shared recall increases reuse while provenance gates contain poisoning risk.', tokens: ['qdrant', 'graphstore', 'uams', 'djimitkbwiki'] },
 ] as const;
 
 const ECOSYSTEM_CONTRACTS = [
-  { from: 'roborev', to: 'paperclip', exchange: 'review events -> governed work', boundary: 'Paperclip remains the task source of truth.' },
+  { from: 'roborev', to: 'djimitflo', exchange: 'review events -> governed work items', boundary: 'Djimitflo is the task source of truth; roborev owns no task state.' },
   { from: 'juraregel', to: 'daps', exchange: 'assurance findings -> deterministic validation', boundary: 'Advisory findings cannot assert operational truth.' },
   { from: 'daps', to: 'djimitflo', exchange: 'validated outcome events -> learning intake', boundary: 'Ambiguous evidence remains UNDETERMINED.' },
-  { from: 'paperclip', to: 'djimitflo', exchange: 'approved work -> controlled execution', boundary: 'Approval never bypasses ToolBroker policy.' },
-  { from: 'openmythos', to: 'worldlab', exchange: 'norms and cases -> longitudinal scenarios', boundary: 'WorldLab does not duplicate oracles.' },
+    { from: 'openmythos', to: 'worldlab', exchange: 'norms and cases -> longitudinal scenarios', boundary: 'WorldLab does not duplicate oracles.' },
   { from: 'worldlab', to: 'openmythos', exchange: 'trajectories -> assurance and falsification', boundary: 'A trajectory is evidence, not ground truth.' },
   { from: 'openmythos', to: 'djimitflo', exchange: 'typed goals -> active evolution', boundary: 'No executable shell command crosses this boundary.' },
   { from: 'worldlab', to: 'djimitflo', exchange: 'evidence artifacts -> validated finding intake', boundary: 'Intake validation cannot execute or promote the proposed change.' },
@@ -1748,6 +1747,7 @@ export class SwarmIntelligenceService {
     if (!capability.forbidden_actions.length) blocked.push('forbidden_actions_missing');
     if (!capability.required_evidence.length) blocked.push('required_evidence_missing');
     if (!capability.removal_strategy?.trim()) blocked.push('removal_strategy_missing');
+    if (capability.metadata.outcome_hold) blocked.push('outcome_evidence_hold');
     return blocked;
   }
 

@@ -1,3 +1,4 @@
+import { mutationCheckEnv } from './test-gap-source-service';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -27,6 +28,8 @@ import { WorkerLeaseRepo } from './loop-worker-lease-repo';
 import { LoopRecoveryService, RuntimeLeaseRegistry } from './loop-recovery-service';
 import { LoopPersistenceService } from './loop-persistence-service';
 import { ExperienceRetrievalService } from './experience-retrieval-service';
+import { SelfImprovementService } from './self-improvement-service';
+import { assignmentContext, assignmentContextMarkdown } from './assignment-context';
 import type {
   LoopName,
   WorkerRole,
@@ -43,6 +46,7 @@ import type {
   RuntimeProcessHandle,
   RuntimeManifestAction,
   StartDocDriftLoopInput,
+  CheckerVerdictInput,
 } from './loop-types';
 import type { LoopFinding } from './loop-discovery-service';
 import type { GoalRecord, GoalCreateInput, GoalUpdateInput, DecomposedLoopCandidate } from './goal-service';
@@ -109,13 +113,6 @@ interface ExecuteCheckerInput extends ExecuteMakerInput {
   runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'pi' | 'mock';
 }
 
-interface CheckerVerdictInput {
-  lease_id?: string;
-  maker_lease_id?: string;
-  verdict: 'accepted' | 'needs_revision' | 'rejected' | 'insufficient_evidence';
-  notes?: string;
-}
-
 interface RunChecksInput {
   lease_id?: string;
   timeout_ms?: number;
@@ -130,9 +127,17 @@ const MONOREPO_ROOT = process.cwd().includes('/packages/server')
   ? path.resolve(process.cwd(), '../..')
   : process.cwd();
 
-const DEFAULT_EVIDENCE_ROOT = process.env.LOOP_EVIDENCE_ROOT
-  ? path.resolve(process.env.LOOP_EVIDENCE_ROOT)
-  : path.join(MONOREPO_ROOT, '.data', 'agent-evidence', 'agentic-control-loop-fleet');
+/**
+ * Where worker stdout/stderr evidence lives. Verification checks it exists, so it must outlive the container: prod
+ * 2026-09-24 wrote it to the image's /app/.data and lost it on every deploy. Default = next to the database (DB_PATH is on
+ * the persistent volume in prod); LOOP_EVIDENCE_ROOT overrides; the repo's .data only when neither is set (local dev).
+ */
+export function resolveEvidenceRoot(env: NodeJS.ProcessEnv = process.env): string {
+  if (env.LOOP_EVIDENCE_ROOT) return path.resolve(env.LOOP_EVIDENCE_ROOT);
+  if (env.DB_PATH && path.isAbsolute(env.DB_PATH)) return path.join(path.dirname(env.DB_PATH), 'agent-evidence', 'agentic-control-loop-fleet');
+  return path.join(MONOREPO_ROOT, '.data', 'agent-evidence', 'agentic-control-loop-fleet');
+}
+const DEFAULT_EVIDENCE_ROOT = resolveEvidenceRoot();
 
 const CONTROL_DIR = '.djimitflo';
 const LOOP_WORK_FILE = 'LOOP_WORK.md';
@@ -411,9 +416,24 @@ export class LoopService {
     return this.startLoop({ ...input, loop_name: LOOP_NAME });
   }
 
+  /**
+   * Dispatches to a real maker/checker cycle driven by a goal's own
+   * objective, instead of a fixed scanner. Built after production evidence
+   * showed 10/10 self-improvement goals dispatched via
+   * startDocDriftAndSmallFixLoop() produced the byte-identical canned
+   * "no findings" result regardless of their actual objective — the
+   * scanner never looked at goal content at all. See createObjectiveFinding().
+   */
+  startObjectiveLoop(input: StartDocDriftLoopInput = {}): LoopRunRecord {
+    return this.startLoop({ ...input, loop_name: LOOP_NAME, objective_mode: true });
+  }
+
   startLoop(input: StartDocDriftLoopInput = {}): LoopRunRecord {
     const contract = this.getLoopContract(input.loop_name || LOOP_NAME);
     const goal = input.goal_id ? this.getGoal(input.goal_id) : null;
+    if (input.objective_mode && !goal) {
+      throw createError(400, 'objective_mode requires a valid goal_id', 'OBJECTIVE_MODE_REQUIRES_GOAL');
+    }
     if (goal?.metadata.operator_paused === true) throw createError(409, 'LOOP_OPERATOR_PAUSED', 'LOOP_OPERATOR_PAUSED');
     if (goal) this.goals.assertDependenciesSatisfied(goal.id, goal.metadata);
     const repositoryPath = this.resolveRepositoryPath(input.repository_path || process.cwd());
@@ -426,7 +446,9 @@ export class LoopService {
 
     const findings = input.target_finding
       ? [this.createTargetFinding(repositoryPath, input.target_finding)]
-      : this.discoverLoopFindings(contract.name, repositoryPath, maxFindings);
+      : input.objective_mode
+        ? [this.createObjectiveFinding(goal!)]
+        : this.discoverLoopFindings(contract.name, repositoryPath, maxFindings);
     const plan = this.createPlan(contract.name, findings);
     const gates: LoopGate[] = [
       { name: 'read_only_discovery', status: 'pass', evidence: 'Loop scanned files without editing repository content.' },
@@ -483,6 +505,11 @@ export class LoopService {
         risk_class: runRiskClass,
         contract,
         sovereign: input.sovereign === true,
+        // Durable record of which finding path produced this run — added
+        // after 10/10 self-improvement goals produced identical doc-drift
+        // no-ops with no way to distinguish "really nothing to fix" from
+        // "was never asked to look at anything real."
+        objective_mode: input.objective_mode === true,
       }),
       now,
       now,
@@ -703,6 +730,11 @@ export class LoopService {
   retryLoopRun(id: string, input: RetryLoopInput = {}): { run: LoopRunRecord; leases: WorkerLeaseRecord[]; retry_maker: WorkerLeaseRecord; retry_checker: WorkerLeaseRecord } {
     return this.lifecycle.retryLoopRun(id, input);
   }
+  /** Decide a worker's approval through the engine that paused it (a human decision uses the approvals route). */
+  decideWorkerApproval(approvalId: string, approved: boolean, decidedBy: string, reason?: string): Promise<unknown> {
+    return this.workerExecutor.decideApproval(approvalId, approved, decidedBy, reason);
+  }
+
   verifyLoopRun(id: string): { run: LoopRunRecord; gates: LoopGate[]; leases: WorkerLeaseRecord[] } {
     return this.verification.verifyLoopRun(id);
   }
@@ -872,11 +904,16 @@ export class LoopService {
       throw new Error('CHECKER_MAKER_NOT_COMPLETED');
     }
 
+    if (checker.runtime === 'manual' && (!input.manual_attestation?.reviewer || !input.manual_attestation?.reason)) {
+      throw new Error('MANUAL_VERDICT_ATTESTATION_REQUIRED');
+    }
+
     this.updateWorkerLeaseStatus(checker.id, 'completed', {
       verdict: input.verdict,
       notes: input.notes || '',
       maker_lease_id: makerLeaseId,
       completed_at: new Date().toISOString(),
+      ...(input.manual_attestation ? { manual_review_attestation: input.manual_attestation } : {}),
     });
 
     this.recordLoopEvent(run.id, 'checker_verdict_submitted', input.verdict === 'accepted' ? 'info' : 'warning', `Checker verdict submitted: ${input.verdict}.`, {
@@ -925,11 +962,16 @@ export class LoopService {
       throw new Error('CHECKER_MAKER_NOT_COMPLETED');
     }
 
+    if (securityChecker.runtime === 'manual' && (!input.manual_attestation?.reviewer || !input.manual_attestation?.reason)) {
+      throw new Error('MANUAL_VERDICT_ATTESTATION_REQUIRED');
+    }
+
     this.updateWorkerLeaseStatus(securityChecker.id, 'completed', {
       verdict: input.verdict,
       notes: input.notes || '',
       maker_lease_id: makerLeaseId,
       completed_at: new Date().toISOString(),
+      ...(input.manual_attestation ? { manual_review_attestation: input.manual_attestation } : {}),
     });
 
     this.recordLoopEvent(run.id, 'security_checker_verdict_submitted', input.verdict === 'accepted' ? 'info' : 'warning', `Security checker verdict submitted: ${input.verdict}.`, {
@@ -993,7 +1035,7 @@ export class LoopService {
         cwd: makerLease.worktree_path!,
         encoding: 'utf8',
         timeout: timeoutMs,
-        env: this.buildRuntimeEnv(),
+        env: { ...this.buildRuntimeEnv(), ...mutationCheckEnv(this.db, run.goal_id) },
         maxBuffer: 5 * 1024 * 1024,
       });
       const exitStatus = typeof result.status === 'number' ? result.status : null;
@@ -1015,6 +1057,29 @@ export class LoopService {
       deterministic_checks: checks,
       checks_completed_at: new Date().toISOString(),
     });
+
+    // Feed real build/test failures into the self-improvement pipeline.
+    // generateFromBuildErrors() existed but was never called anywhere in
+    // production — found 2026-09-20 alongside the discovery that every one
+    // of 357 self-improvement proposals came from vague reflection text.
+    // A real compiler/test error is exactly the concrete, quotable evidence
+    // that pipeline's reviewer gate rewards; this is a side effect of a
+    // check failure, not the method's purpose, so it's never allowed to
+    // affect the actual deterministic-checks result.
+    if (failed) {
+      try {
+        const summaries = checks
+          .filter((check) => check.status === 'fail')
+          .map((check) => {
+            const stderrPath = check.stderr_path as string;
+            const stderrTail = fs.existsSync(stderrPath) ? fs.readFileSync(stderrPath, 'utf8').slice(-1000) : '';
+            return `${check.name} failed (exit ${check.exit_status}) for run ${run.id}:\n${stderrTail}`.trim();
+          });
+        new SelfImprovementService(this.db).generateFromBuildErrors(summaries);
+      } catch {
+        // Never let self-improvement bookkeeping break the actual checks flow.
+      }
+    }
 
     this.db.prepare(`
       UPDATE loop_runs
@@ -1234,6 +1299,61 @@ export class LoopService {
     };
   }
 
+  /**
+   * Synthesizes a LoopFinding from a goal's own free-text objective, instead
+   * of running a fixed scanner — the real gap behind 10/10 self-improvement
+   * goals ending at identical doc-drift no-ops. No real file_path is
+   * required: nothing downstream (writeWorkAssignment, LoopWorkerExecutorService)
+   * validates or scopes a diff to finding.file, so a descriptive sentinel is safe.
+   */
+  private createObjectiveFinding(goal: GoalRecord): LoopFinding {
+    const objective = goal.objective.trim();
+    if (!objective) throw createError(400, 'goal objective is required for objective-mode findings', 'OBJECTIVE_FINDING_EMPTY');
+
+    // Self-improvement goals only carry a short title as `objective` — the
+    // rich description/rationale lives in self_improvements, keyed by
+    // metadata.improvement_id (see autonomous-goal-generator.ts).
+    const improvementId = typeof goal.metadata.improvement_id === 'string' ? goal.metadata.improvement_id : null;
+    const improvement = improvementId
+      ? this.db.prepare('SELECT description, rationale, type FROM self_improvements WHERE id = ?').get(improvementId) as
+          { description?: string; rationale?: string; type?: string } | undefined
+      : undefined;
+
+    const severity: LoopFinding['severity'] =
+      goal.risk_class === 'high' || goal.risk_class === 'critical' ? 'error'
+      : goal.risk_class === 'medium' ? 'warning' : 'info';
+
+    const evidence = [
+      `Self-improvement goal ${goal.id} (source=${String(goal.metadata.source ?? 'unknown')}, risk_class=${goal.risk_class}).`,
+      improvement?.description ? `Original proposal: ${improvement.description}` : null,
+      improvement?.rationale ? `Rationale: ${improvement.rationale}` : null,
+      goal.constraints.length ? `Constraints: ${goal.constraints.join('; ')}` : null,
+    ].filter(Boolean).join('\n');
+
+    return {
+      id: randomUUID(),
+      type: 'self_improvement_objective',
+      severity,
+      file: '(repository-wide objective; no single target file)',
+      message: objective,
+      evidence: evidence || 'No additional evidence beyond the goal objective was available.',
+      suggested_fix: goal.acceptance_criteria.length
+        ? `Satisfy: ${goal.acceptance_criteria.join('; ')}`
+        : objective,
+      metadata: {
+        objective_mode: true,
+        goal_id: goal.id,
+        source: goal.metadata.source ?? null,
+        improvement_id: improvementId,
+        // Force the existing high-risk gate (isHighRiskRun/highRiskReason) for
+        // security-typed proposals as defense-in-depth, even though such
+        // goals are already excluded from objective-mode dispatch by
+        // risk_class in objective-loop-gate.ts.
+        category: improvement?.type === 'security' ? 'security' : undefined,
+      },
+    };
+  }
+
   public assertNoFailedGates(run: LoopRunRecord): void {
     if (run.gates.some((gate) => gate.status === 'fail')) {
       throw new Error('LOOP_FAILED_GATES_BLOCK_CONTINUE');
@@ -1337,6 +1457,18 @@ export class LoopService {
   }
 
   public extractRuntimeUsage(stdout: string): RuntimeUsage | null {
+    // opencode reports tokens per step (`step_finish` events, `part.tokens`), never as one usage object; the first-match
+    // loop below therefore always returned null for opencode (prod 2026-09-25: every skill_outcome had tokens_used 0).
+    let steps = 0; let input = 0; let output = 0; let total = 0;
+    for (const line of stdout.split(/\r?\n/)) {
+      if (!line.includes('"step_finish"')) continue;
+      try {
+        const tokens = JSON.parse(line.trim())?.part?.tokens as { total?: unknown; input?: unknown; output?: unknown } | undefined;
+        if (!tokens) continue;
+        steps += 1; input += Number(tokens.input) || 0; output += Number(tokens.output) || 0; total += Number(tokens.total) || 0;
+      } catch { /* not a JSON event line */ }
+    }
+    if (steps > 0 && total > 0) return { prompt_tokens: input, completion_tokens: output, total_tokens: total, usage_source: 'runtime_stdout' };
     for (const line of stdout.split(/\r?\n/)) {
       const trimmed = line.trim();
       if (!trimmed.startsWith('{')) {
@@ -1510,6 +1642,10 @@ export class LoopService {
 
   public branchNameFor(runId: string, findingId: string, retryAttempt?: number): string {
     return this.worktree.branchNameFor(runId, findingId, retryAttempt);
+  }
+
+  public repairWorktree(repositoryPath: string, worktreePath: string, branchName: string): boolean {
+    return this.worktree.repairWorktree(repositoryPath, worktreePath, branchName);
   }
 
   public createWorktree(repositoryPath: string, runId: string, findingId: string, branchName: string, linkDependencies = true): string {
@@ -2059,6 +2195,11 @@ export class LoopService {
   ): void {
     this.ensureControlDir(worktreePath);
     const advisoryContext = this.advisoryAssignmentContext(worktreePath, run, finding);
+    const extra = assignmentContext(this.db, run, worktreePath, `loop-maker:${run.id}`);
+    if (extra.examples.length || extra.rules.length) {
+      this.recordLoopEvent(run.id, 'assignment_context', 'info', `Maker assignment includes ${extra.examples.length} proven example(s) and ${extra.rules.length} rule(s).`,
+        { examples: extra.examples, rule_ids: extra.rules.map((r) => r.id) });
+    }
     const content = [
       `# ${run.loop_name} Assignment`,
       '',
@@ -2083,10 +2224,12 @@ export class LoopService {
       '',
       advisoryContext.text || 'No matching observed episodes were retrieved.',
       '',
+      ...assignmentContextMarkdown(extra),
       '## Rules',
       '',
       '- Keep the diff small and local to the finding.',
       '- Do not merge, push, deploy, edit secrets, or change policy.',
+      '- Install dependencies with `npm ci --legacy-peer-deps` if node_modules is missing; never edit package.json. Lockfile changes are reverted automatically before review.',
       '- Run relevant deterministic checks before handing off to checker.',
       '- Checker approval is required before completion.',
       '',
@@ -2168,7 +2311,7 @@ export class LoopService {
 
   public buildCheckerPrompt(run: LoopRunRecord, maker: WorkerLeaseRecord, checker: WorkerLeaseRecord): string {
     const worktreePath = maker.worktree_path || '';
-    const diff = worktreePath ? this.git(worktreePath, ['diff', '--', '.']) : '';
+    const diff = worktreePath ? this.workingTreeDiff(worktreePath) : '';
     const assignmentPacket = typeof maker.metadata.assignment_packet_file === 'string' && fs.existsSync(maker.metadata.assignment_packet_file)
       ? fs.readFileSync(maker.metadata.assignment_packet_file, 'utf8').slice(0, 20_000)
       : '';
@@ -2183,6 +2326,7 @@ export class LoopService {
       `Maker lease: ${maker.id}`,
       '',
       'You are an independent checker. Do not edit files, merge, push, deploy, modify secrets or change policy.',
+      'Work only inside your own worktree (the maker\'s changes are already in it); do not read the maker\'s worktree. To run tests, install dependencies here with `npm ci --legacy-peer-deps` first; lockfile rewrites are reverted automatically.',
       checker.role === 'security_checker'
         ? 'You are the separate security checker. Review high-risk paths, related sibling paths, the original failure or exploit, and preserved governance invariants. Do not relax gates. Your verdict is not human approval or permission to merge.'
         : 'Your technical verdict is not human approval or permission to merge.',
@@ -2246,8 +2390,14 @@ export class LoopService {
         const candidates = [parsed, typeof part === 'object' && part ? part as Record<string, unknown> : undefined,
           item?.type === 'agent_message' ? item : undefined];
         const text = candidates.flatMap((candidate) => [candidate?.text, candidate?.result, candidate?.response]).find((value) => typeof value === 'string');
-        if (typeof text === 'string' && text.trim().startsWith('{')) {
-          candidates.push(JSON.parse(text) as Record<string, unknown>);
+        if (typeof text === 'string') {
+          // Models often put a prose paragraph before the requested one-line JSON verdict inside the same text part.
+          // Models also drop the final brace of the verdict line (prod 2026-09-23: an 'accepted' security verdict was lost and
+          // counted as insufficient_evidence): try every '{' line from last to first, with one repaired closing brace.
+          const lines = text.trim().startsWith('{') ? [text.trim()] : text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.startsWith('{')).reverse();
+          const verdictLine = lines.map((l) => [l, `${l}}`].map((c) => { try { return JSON.parse(c) as Record<string, unknown>; } catch { return undefined; } }).find(Boolean))
+            .find((p) => p && (typeof p.verdict === 'string' || typeof p.checker_verdict === 'string'));
+          if (verdictLine) candidates.push(verdictLine);
         }
         const payload = candidates.find((candidate) => candidate && (
           typeof candidate.verdict === 'string'
@@ -2339,6 +2489,10 @@ export class LoopService {
 
   public git(repositoryPath: string, args: string[]): string {
     return this.persistence.git(repositoryPath, args);
+  }
+
+  public workingTreeDiff(repositoryPath: string): string {
+    return this.persistence.workingTreeDiff(repositoryPath);
   }
 
   public titleForFinding(finding: LoopFinding): string {

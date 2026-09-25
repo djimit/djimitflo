@@ -9,13 +9,15 @@ export function requestLogger(req: Request, res: Response, next: NextFunction) {
   
   res.on('finish', () => {
     const duration = Date.now() - start;
-    const { method, originalUrl, ip } = req;
+    const { method, ip } = req;
     const { statusCode } = res;
+    const isJoinStatus = /^\/api\/swarm-v2\/social-runtime\/join\/[^/]+\/status\/?$/i.test(req.path);
+    const loggedUrl = isJoinStatus ? req.path : req.originalUrl;
     
     const level = statusCode >= 500 ? 'ERROR' : statusCode >= 400 ? 'WARN' : 'INFO';
     
     console.log(
-      `[${level}] ${method} ${originalUrl} ${statusCode} ${duration}ms - ${ip}`
+      `[${level}] ${method} ${loggedUrl} ${statusCode} ${duration}ms - ${ip}`
     );
   });
   

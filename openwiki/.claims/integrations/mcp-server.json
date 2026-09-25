@@ -1,0 +1,446 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:bf12b4c98656e69f36855e00e01b80d9c83846405c24ec908b45fcd6c69bd55b",
+  "claims": [
+    {
+      "id": "claim_5d10f5f2a9444a9992e8342fef2d49fd",
+      "statement": "@djimitflo/mcp-server (packages/mcp-server) ships a `djimitflo-mcp` binary that starts an McpServer named 'djimitflo' and registers twelve tool families, exposing Djimitflo loop, goal, agent, mission-control, orchestration, governance, and knowledge capabilities to MCP clients over stdio or an authenticated HTTP/SSE transport.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/package.json#L1-L11",
+          "version": "repo-lines-v1:sha256:8fcdc3a2bd13ae3694b69c671250656357f019638fdf007ff9035a7a788f6381:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2ZmIwOGZkYTFhY2I5NTdiNjExNmJkMzc4MTFhMWZlNDFhMDE2MTFjMDYzMWVkYmY3ODZkNjg4OWEyN2E1NWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkNWNkMmZiNGYzZGY4ODQ1MTUyNTViMzk1MjNmMmY4YjU0NzJiZWVhOWY1NjZmZmNhMjA0ZGI4MDI1NjEwNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxOGI3ODkwZjMzMTM5MjVhYmJiOGI2MWJlMDU2MGU3MDM5ZTZkOTM1MjhkMWVmZDI5ZDJmYjQ0NDk2MDlmZjQifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/index.ts#L41-L79",
+          "version": "repo-lines-v1:sha256:b7c2a34fae1ebd7b36918d7274a8a2f6a4edd3ef4c4dc6ce56090d6049420fa1:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjllNDgxNzhhYzNlYTQwYWFlY2MxNjZkOWQ3OGU1Y2Q1NDg3ZjllMGM3NjQ2NDliZjk5MDA3YjY5MTc5Y2U1MDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdmNDVmNjRkMWJjNTkwMTE3NjEwN2U1YmNhNTE4OTk3NTE0YWMyZjYzNGE4M2EzZWYwNmNlNDFjNjlkZTE4MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEwMzY5MTJlYzdlODhkMGUxYjJjNDI1OGEyOWYyNGJhYTdlODBmMDBmNGI0ZDcxZTc1MDFkZTAzNzk4NjJkZDMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f033f06efdda4c8599c17fc73a31caab",
+      "statement": "Most MCP tools query Djimitflo's SQLite database directly via better-sqlite3 rather than through the REST API; only the council, approval, export, and explainer-run tools deliberately call the authenticated API.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/db.ts#L1-L16",
+          "version": "repo-lines-v1:sha256:007e55c848ca786362c269e58b2316e1b2feec94c22c525cb52b44079446f619:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFkOWI5ZGQ4OWNjZjk0YWUxMDRkYmIyYzA5ZmJiZGQzY2JjZjJmMDBmODhjN2Q2OTZjOWFjMWNkOTEyMGJhNmIifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/loops.ts#L23-L38",
+          "version": "repo-lines-v1:sha256:110d9c8828ae32575b6871d34a6e0638ce63aac38bdc2c93a8e3f0977849fb2b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkN2VlOGQ0NmUzYjU0YTMwN2UzMTM4YTU1ZDBlYWExNWVjNTM5OWRmMGU0Yzc1ZjFiMGQ3MGRkOWYxNTIzZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4MWM5Zjk3OWRmNDVhMWE1N2YxNWI4NjAwZjMyYTZkZGExMmMxOTAwMjE2NzJhNTU0MzM1MGIxNDRjOTkxYzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEwMjhhYzJhNzJjYzczZmI2NzM4ODg2OWI0MzliYjIxZWRiY2Q4ZTg3Zjc2NjFiOGQyYmZhNTIyNDdlNDQyYjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYzYzEyMGUyZDUxY2RmN2JhZjdkYjE1NDAyN2E0MGIwYzYyZGIyZmQyNzg1M2U5MTM5YjI2NjliYWY1NDE4Y2QifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/orchestration.ts#L141-L147",
+          "version": "repo-lines-v1:sha256:7295ffcef7979b3fa5506769fe2f3df1293cdbdcd6d7e3f5b0d12d01b24f3b45:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGFiYTdhOGY2MmY4YjUzOGEzMzliOWE2ZWQ2YzNjOGYxOGJiYWQ0ZDllZjQ5Nzc5ZmY5MjlkNmM1YzhjNGYzOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2E3Y2Q1Mzk1YjI1YzZkODg2OTRhOGVjMGFiYTQzMjRlZTE5Y2JkYTA3NThkNmY3MTI4OTdmMDZmNTJjNWZiMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODM3OTQ0YTdjZTRjYWY4MmI3MTc3ZDA5MDhmNjk1OGE4NTlhNmNkYjhjZDdkYmFiNGZjOWUwMmVmZmNjYjVjMSJ9"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/platform.ts#L6-L19",
+          "version": "repo-lines-v1:sha256:012a412e56de1845a3692aa35b9aa2c948def16d7a4fc56feb12f95fa783431f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkN2NkYjUxN2ZjMjQ3MDk5NGQyMWI5NWUwY2I5MDI2MWFkMzNiNDRjNzdjMDlmMWFkMjY4MWMxNWM5OGI1OTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ2ODEzMDU2MzE2MWYwMzczOWM0ZjI5OGRmYTBlMTE1MDM2NjkzZWIzNjFkZWM4Y2FkMmQ3NmU0MzMyYmU0NmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdkMzUzOGIxMzUyZDc1Y2JhMWVkMjc3MzE0ZjAwZTJjNWY3NTY3NzJjZTM2MDIwYjVkNWNjNWU4ZmMwZGFjM2YifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5bde346a941441f5887f387d98770cff",
+      "statement": "The entrypoint parses `--transport` (default stdio), `--port` (default 3002), and `--db` (fallback DJIMITFLO_DB), opens the database once with createDatabase, and builds fresh McpServer instances per connection via a createServer factory.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/index.ts#L41-L58",
+          "version": "repo-lines-v1:sha256:2e31d8f5e4b5e467033023a1a9203853ac63534f9d0348e77545d0de7bb1c1d9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjllNDgxNzhhYzNlYTQwYWFlY2MxNjZkOWQ3OGU1Y2Q1NDg3ZjllMGM3NjQ2NDliZjk5MDA3YjY5MTc5Y2U1MDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQyYTJjYjI1YTEyMmI0NDIyMWE2MjM0ZWM2NjBhN2I1ZmI3ZjliZGU3YjNiOWUyYjNjNTU5YTBkOTZmYWM3MzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdmNDVmNjRkMWJjNTkwMTE3NjEwN2U1YmNhNTE4OTk3NTE0YWMyZjYzNGE4M2EzZWYwNmNlNDFjNjlkZTE4MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM1ZmRhNjU0ZmY2MjA0YzZmMDNlYmE2MjI3YWQyMDExM2FkODFlZmVhY2Q1YzdhN2E5ZjgyODE2NmViZjdhYTMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b7c4bc59a8794e7486b4f6247561aafa",
+      "statement": "The stdio transport wraps the server connect in runWithMcpAuth with a synthetic principal: sub from DJIMITFLO_MCP_STDIO_PRINCIPAL or `stdio:<uid>`, token from DJIMITFLO_MCP_TOKEN, role hardwired to UserRole.VIEWER with a 24-hour expiry, so permission-guarded mutating and audit tools throw MCP_PERMISSION_DENIED for default stdio sessions.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/index.ts#L60-L73",
+          "version": "repo-lines-v1:sha256:818a7ffd5fca782406588d91561ab863b55258a1f0cb3456fb7d96af49cd6615:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkZmQwZDA3ZTljOGQwNGYwNWU5NTQ3ZDdkMDA2OTYyYTA4NzZhOWFhZTI2M2Q5MWJjNDFjMGEzYWMyZmJmNjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1YWUzZDdlYWRmNmE0NjFmNzVkM2NlMTkxMGEwNjA3ODQxNTdhYzJkOTIwZTY2NWZlOWJhNTk2YjgzMmExMGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1NzczMWMxZjY3ZjZlMTRjYmQ5MjFhMDNhZGNmNmIzNjk2ZWE3MDlmYmEyNDUwN2UxYTFlZTI4NmEyZGE1NzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc3NGQ1Zjg3NmM0OGNiNDJkMGVmYzYxNTQ3OTMzNTkwYWMxMmZhZmFkN2YxMGQxZDllZDI0ZjIzMjJkYjFmZDgifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/orchestration.ts#L18-L22",
+          "version": "repo-lines-v1:sha256:75b3f2c4e1663e61166e6bf6a5ea12441e233be7749cbae7bd6c17d147384156:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTE4NDI3NWYwZmZkNTYzZTkxOGVhZTVlZWRjNjY3MzRmYzRiNzUxZWMyYTBlMTdiZWNmNWY1NWRmZDMxMzM1ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDcxZjA5NzExNzJiYzg0N2ZjMzMwYWQxMmRkYWEwYWRmZTFkNDgyZmE1ZDllZDQwOGNhOTc1NzBlNjcwMzRiNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNmZjZmNjNzkwYTFkMjU4NjJjNDljOGFhN2VhNzAwY2Y1OGQxMTcwMTY3ZjE4NGJiYzEyNGM3MjE4ODY1ZjA2YyJ9"
+        },
+        {
+          "resource": "repo://packages/shared/src/types/auth.ts#L79-L83",
+          "version": "repo-lines-v1:sha256:44dacbb8444c755cd59873a3b4b9be73f9c5305032e5b8178c6282385e63cdb2:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2MwODBhMDQ4YmNmNTcwOTc2ZmMxMGM2OWFiZmRlNTdkODBmZjMzZjIwZDdmMDMwYmQxNzczN2VlYzY4MzZiOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWExZDFhNjMzOTAyMjljNzk4MzQ3ZTgzYTA0MDU0NDFjOTQwMDAzNTI4NGFkMTY4YzFiZjZjZGYxZDcwYTM3MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMGJhNmYyY2VlZTU2MDJmM2EzZjJjNWM2ZDA0NDZiMWMxNzEwMzhiMDkyMjM4ZDNiODRiY2Y0ZWQ0YTgyMTdlYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTEwODk1ZmM1YzRkZGMzODVmZWJhOTZlZjRlMjMyYzVlZWVmNjMxNGYxMmY2YWY1NWQ2NGUwOGY1YTM5MWY2NCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_b9ffc532f0fc4657a696b22d8eb5ffff",
+      "statement": "The HTTP transport (transports/http.ts) refuses to start without JWT_SECRET and serves the legacy SSE protocol at /mcp (GET opens a session stream, POST delivers messages to the per-session transport), with an unauthenticated /health probe.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/transports/http.ts#L14-L17",
+          "version": "repo-lines-v1:sha256:ce24929514efc8d9f2526a1a7a9d6955e5e75e1a633a26b9033ba03abf58c4a0:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTg3OTU0MWY3ZjIxODdlMWUxNTcwYTQxY2I3YjUzM2M0YzBiMDc4ZjdkMTNkOWZkNjc5MzIxNzkzODkxMTFhNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjY3MDk4ODhlMWVjNzdkMGYwZGNlNDE4MjNkOTk3Yzg4NzQ2NTU4ZjgzYWU5ODY0OTA0OTVjNzYwODZiYzM1NSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTc3YjRkMTA2YzU1MDgyNTY1ZGEwNzAyMmUzMWRhYTkwMWY3ZWIwMDIwY2M1MTBjM2ZhNGIxNjk1NWVkNmFhYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzFjMGNhNTY5MjM0ZTIwMjQwYzM0OWUxZDgyMmFjMDhjNzc5MjhjMDJhOTIwOGIwYWMzMTFiMDg4ZjE1NGQ5MCJ9"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/transports/http.ts#L51-L55",
+          "version": "repo-lines-v1:sha256:a4cc3a474f7bf6aa9adda5fcff83d4220598aff5d4d201bd4a7ebf6dc48e7ac8:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDAwZGEzNTc3NjZkYmJmMDBjMjg4N2ZjMDg5MmU0MzVkMTE2OGU3MDhhNWE5MTQ0ZTZjZDhmMWQzMDQ2ZWJjYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg5M2Y0MGUzNzgxZWI4OTZjODJkMDQ2YTA4MDY3YTExZTM1Y2RmMmYxZGZhZjI2ZmVhOTBiOGRiNjY3NjQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTAxMDFlYzE0ZmZiNjZkNGZiYjZhZTZkYzA3MjdkYjUwZTY5ZjhkM2RlY2RjZjQwYjEzZjY0NTZkZWZkZTI2MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjA3YjdiMjc0OGI1MmQxNDE1NjNlNWJhNGNlZDEyNWJmMWY2ZWJlMDc5MTMwYzljOGZjYTEwYmRkMmI4MzExMiJ9"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/transports/http.ts#L72-L102",
+          "version": "repo-lines-v1:sha256:0f4278430e9dfc8ddb67d0b599272c9142353d1071d0060ead152face77903ff:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmOGRiODhhMDlkYzFiODQ1ZDU4N2NkNmQ1MDg1NTFhNTVkOGFkMmEzZGIxOWNhOWRlYjdkZDQ2MzVhNTZlZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZhNDFkNzNjNDUyMmJlYTM5ZmY4MTVlMjRiY2YxMzExODUzMWQ2NzFlYjNjZjUzMTIxODg1ZTExYTFjNDcyNGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE3ZDRmZGI1ODgwNmMzOTMyMThkOTlkZjVlZTU4YTI5YzkxZjBmNmIwOGFhZjFlYWY2MTI1M2Y3NWYxY2MyMjQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_caa02915cdf84c5b83860615454af172",
+      "statement": "Every HTTP request requires a Bearer token verified by verifyHs256Jwt from @djimitflo/shared/jwt, which rejects non-HS256 algorithms, bad signatures (timing-safe compare), unknown roles, missing sub, and expired or not-yet-valid tokens.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/transports/http.ts#L57-L70",
+          "version": "repo-lines-v1:sha256:a8ac632a4b588061bf182d88b3794be323286ed3b3c71981ec4fdd0c59a3c6ef:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExZmIxZTcxODIxNmFkODNkN2RkNmU1YWU3YmU0ZGFlZWI3OTZjMzk1MTA3MWFjZDQzMGNjYjA1ZTQwNWFmYWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZhNDFkNzNjNDUyMmJlYTM5ZmY4MTVlMjRiY2YxMzExODUzMWQ2NzFlYjNjZjUzMTIxODg1ZTExYTFjNDcyNGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE3ODYwYWI2NzdjODBmYWI4MDdiYjI0ZjMyYTQ3MjAwMTQ5OTVkZmJkNzZiNzEzYjNjMDJiMTE1NjNiOGM2OTYifQ"
+        },
+        {
+          "resource": "repo://packages/shared/src/jwt.ts#L6-L21",
+          "version": "repo-lines-v1:sha256:e4f3fb53414bc8aba35ebeedc47cec71a630ed8c9aa3ce2a5600c67a5a1f0247:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwYjY1MGU5NTY1ZTliNzc1Njg5MDRhZjRhNGEzMDJlMDI0NzY3ZmVjODdiZGVlYWEzMTQwNjI3YmNlMzg3NjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxMjgwZmEzYjkyY2VkMDA2NWUwYzYyM2U5NzE3YzMwYjA2NDhlNDBmNThlNzdhMmFiNDk0M2ZmNDRmZWNlNzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9ab96548be554cf8a384d43f523ed66e",
+      "statement": "On the HTTP transport, currentPrincipal revalidates signed claims against a live authority database: the user must be active with a known role, organization_id must match the stored assignment, and tokens carrying an sid must have a non-revoked, unexpired refresh_tokens row; on success role and email are rebound from the database so revocation and demotion take effect immediately.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/__tests__/http-auth.test.ts#L59-L82",
+          "version": "repo-lines-v1:sha256:2401a61b26a22c93c2042b43e98d4269614dc3f3434c9be0bb1c2d5b33955bee:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1NDIxY2FhNjgyNGJmODg4MWEyZDM1MTRkMjM4ZTA1NWNiNzYxM2M1NTZiODhlYzA1ZGQzZDI3MmY2NWRiNjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMxZWZkNjk3YmExMjQ2ZDczMmQ4N2I4ODcyNmUzZTFhNjk5Nzk0M2M5ZmZmNWYyNjdlNjkzM2Y5OWFlZTEyZjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUyMGU3MTI4NzFjYzI5NTE5NDk1YmU3MGYwNWM2M2MwNjE0YWE2NmE2ODI4Yjg1MDFjOWJjYTg1ZWY2NzI4YWEifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/transports/http.ts#L19-L42",
+          "version": "repo-lines-v1:sha256:c958f571d17b6f82937d90fcb79d0d8e92f5cb72306d846ec4d797214e55d4ef:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3MDUwMTMyZGNkNDAxYTE3NDUwOWY5NzY0ZDk2NWRmNTRjM2U3NDdmYzRlMDQ3ZWMyZWMxMzBkNWJhZDk0NjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhMDc0YzFkYmUxNDkyMTA4ZTljMWViZmY5MTNlYWY1OTFmYTc0OTZhMGRiYjQ4N2U1NDBlOTEwZDk2MDk2OTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM0ZGIwMDU0ZWUxMzViNzA1ZDQzMGI1YjhhNmRiMmQyZjI5N2VlZmQ0ZDQxOWFlYTVhNDczNDVkNmE1ODcxYmUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_afd15748479647a7a0217cdf17dd799c",
+      "statement": "With a snapshot or missing authority database the HTTP verifier rejects sid-bearing tokens (a static signature check cannot prove a session family is alive) while sid-less tokens pass on signature; a failing live lookup returns null (refusal) and never falls back to signature-only trust.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/__tests__/http-auth.test.ts#L42-L57",
+          "version": "repo-lines-v1:sha256:49a9a8d96927e8371f6ebc22c8b8c0ea49b360ed5b2c1e65aa52a757d272bf2d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwNTIyYzEyOTBiMGQ2NDM1ZjNmNzRlMzBhYjMwODhmZWI2ZTNiZmMyODQzZGE1ZTUzMjBjNmQ3MTM0NzNmMjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyZDExY2FmNDNlOTdlZjM2OWU2YmVlZDFhMjY4YmQwNTgzOGYyOWI5ZGQyNTRiZjY5YmE2NDg4NDE0NzIzNGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIxMmQwYjJlYjBjMjU1YTkzN2QwYTYxNDhkYzRhZDk4NTg0MGRjMjE2YTJjZDBlMmJjMWU2OGM2Y2FhMWI1ZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlhZmI4MzA2NmExOGY0ZjE0MDhjMWZlNjBjYjk4NDg0NGI0N2I4NzkyN2NiOWIyYjAxMDNhYmI4NDg0NjBhMDYifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/transports/http.ts#L19-L42",
+          "version": "repo-lines-v1:sha256:c958f571d17b6f82937d90fcb79d0d8e92f5cb72306d846ec4d797214e55d4ef:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3MDUwMTMyZGNkNDAxYTE3NDUwOWY5NzY0ZDk2NWRmNTRjM2U3NDdmYzRlMDQ3ZWMyZWMxMzBkNWJhZDk0NjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhMDc0YzFkYmUxNDkyMTA4ZTljMWViZmY5MTNlYWY1OTFmYTc0OTZhMGRiYjQ4N2U1NDBlOTEwZDk2MDk2OTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM0ZGIwMDU0ZWUxMzViNzA1ZDQzMGI1YjhhNmRiMmQyZjI5N2VlZmQ0ZDQxOWFlYTVhNDczNDVkNmE1ODcxYmUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6bdc7cce8d754d83a082c7bbeb81101b",
+      "statement": "Each HTTP MCP session records a principal key of (sub, role, organization_id, sid) at stream setup, and every POST's verified token must produce the same key, returning 403 on mismatch to prevent session reuse by a different or modified principal.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/__tests__/http-auth.test.ts#L84-L101",
+          "version": "repo-lines-v1:sha256:932ffe7e4fe0b44cd3f1645460dbc730db90cae98b802015ce54cf2e88509a06:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFlZTAyZTAzZDdhZmM1MzI1MzMyNzE3N2Y5Yzc5YzYyZGNjN2EwMThjMjQ4YjhkMGRjYTQyM2Q1OTY3YTI4YmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjczZTU1NGJjYjkzMzU0N2JlMzViYmY5NTBmZmExOGYzMTUxYWUyZTgzYTkwYzEzZmVlY2IzOTZiYzYwOGYwYWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU2ZWUxOGJjNmExZTc3MTVhMjg2ZWQwOTg4YmJmZmFiMDk0ZDQ5MDVhN2E1ODFlNTI3NjQ4ZGNmZDdkOTU3ZWIifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/transports/http.ts#L44-L46",
+          "version": "repo-lines-v1:sha256:6c1b4f7a2a98b053e9a1d0fbab6939e9f66a36b129d29a1c610792ee8042e283:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzNjNDk5YTBkZWI4MzlhNTFjMjUxN2MwODE5MzQyYzA5ZTI1NTIxZTY2MGY2OTUyMDJjYzFiOTlhMWI0YjRjNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWY5ZGJjN2YyZjI0YjUyODQzNTdmOTg2MzA2ZmVmMDQxN2NjNmY4MWE4M2EwMmJmODE1MGY3MTEyZjg4M2IwOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTdkODYzMmU1NGU5Mjk4YWJiOTU4NzI3ZTJkNTE0MDhhYmFmMTM2NjAzNTM3OTEwMTQwYWJmNjViMzBhYjYxMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjNmOTIyMzA3MDlkMzI2ZThmNDdiYjc1NmJkMTQ3NTQ2Zjc2N2E4YWQ3YzgyM2RkM2E1NDQzNmY3ZTI0OGVhYSJ9"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/transports/http.ts#L89-L101",
+          "version": "repo-lines-v1:sha256:8f1b6ffe8f96a720d838ece8237cca3e7b4007979d2ac648ed73408139887594:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVkYzZjMWMyNGRhNzFjYjJkMGEyMGFmOTQ3MmRjZDEzNTczN2QxNjhhYTc1ODEyZjhkNDk1MjVmNjRmYWJjN2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3OTJmODQ3YmIyMWNiMjkyZGQwOWY3ZmE2ZTdjYWM0YThjMTRkOTdkMzg5NjMzYjNkMTUyMGVhMTRiNWIxZGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZhNDFkNzNjNDUyMmJlYTM5ZmY4MTVlMjRiY2YxMzExODUzMWQ2NzFlYjNjZjUzMTIxODg1ZTExYTFjNDcyNGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAxZTNiNTM4ZTA0NGE3YTU3MTIyNTUwNTZlYjUyM2M5ZjMwZWZmZmFjNzk3OWYxYmI1ZWU5NzQxNzFiNTI5ZGYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0e548cbc9ae14c9782eaf8d21c7d06e0",
+      "statement": "resolveDatabasePath picks the database from --db or DJIMITFLO_DB/DB_PATH (relative paths resolved against INIT_CWD, then cwd), otherwise the first existing candidate among <monorepo>/.data/djimitflo.sqlite, <cwd>/.data/djimitflo.sqlite, and <cwd>/djimitflo.sqlite; startup throws when nothing resolves or the file is missing, and the handle opens with foreign_keys=ON.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/__tests__/db.test.ts#L15-L52",
+          "version": "repo-lines-v1:sha256:358608837e48c3d79d46e107ade78b078b314f3ec8505b809c749f574ef6ed98:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmZDg0YTYyODYyMGMzMzhhN2VmMjQzMDYzNjYyYWRmMDY4OWU4ODI5MzgyMjhhNGU4MWIwOTBiMWEwMDcxMzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc0ZWI1NWVjOWEzZThhYmY2ZmVlYzUxMmJiODRiZWE0YTQxYTNmMjU5YzA1YThmMDBmNGM1NGQxMDUyN2YwNGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZiODBlMWQxZmIzNTViZDk5OWY3MmYwNzIxNDVhOTM1N2FiYTAzNzRlNmY2NjQzNWUwNTRhMjY2ZTFjZGExODkifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/db.ts#L49-L91",
+          "version": "repo-lines-v1:sha256:048aba7c52f81ccb89dd2fda5344e683f9e3a333313afa443267fd8337d38573:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3MDI3NTMxYmQ1OTlkOTE1OWM3MGMzNGE0NGU0YjgxNTMxZDgwYzkyMDNhZjU4MzhiOTVmMTc4MGNlNDU1OWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkyMDQwZTA5NWE5NGUyYWRhNzRlNDIxZjM3MTg3NTFhOTFhODEwYmZkNjZmNDhmNGU5MzljN2I3NDgwZWI2NzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_69c60e290e0a4322a05c098d9f5fa84f",
+      "statement": "The DbHandle mode is 'live' only when DJIMITFLO_DATA_MODE is exactly 'live'; any other value or absence yields the default 'snapshot', and mutating tools call requireLiveMode which throws DJIMITFLO_LIVE_DATA_REQUIRED on snapshot handles.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/__tests__/mcp-server.test.ts#L237-L250",
+          "version": "repo-lines-v1:sha256:24216237008839ade79bd8eecaf2b695df11b750e282588af8f27be3bd99a696:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmY2E0MTk2NzMyMDhmNTc2ZTYxYmQ3Yjg5M2ZkNjMxOTNkYmNmNzJhYWY2ZGZhNTc2ZjcyYzllZTQ0ZjZkMTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyMGZjOWU2N2RiMDdlZDIzOWJiM2FkMjMxMmVhYWI5YTcwZTFmNmZiYTAxMjg4YjBiYTZlNjFkN2Y4ZWU3ODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ5MzViYzRhY2M1ZjNkNmM3YmI1OThjMGQ3NjQ1MGRiMzI0ZjBiY2Y5NzdhMDBhZTc5Y2YyMDUwOWE2MWI3ODkifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/db.ts#L18-L21",
+          "version": "repo-lines-v1:sha256:8fb37a4c93a2b0daac7faae36c27a878a0da597415153d0f49cda0e53fdb43a0:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzUxZWQ1Mjk4OWQ1YzY5ZjVjNDkwY2UxZDJlMTZhMjczOWViZWUyZWFhNTQ5ZGYwNmNiN2RmMWRlNmZjOWMwOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTk1MzVhZmE5MjFhOGEyOTU3MmNjMjBlMjAwY2Y2OTBhMjA1MmRlOGQ2ZjU2OWZkYzQxNjhlMTIzZmNiNjk5ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYmNhZGVhMGE0Y2M1MTMzYWZmMTVhOWQ2ZjdjOWMxZjI5OWVhYTM2NzEwZTc5YzNkNGRlN2RkOGFkZjNjYzM5NCJ9"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/db.ts#L85-L90",
+          "version": "repo-lines-v1:sha256:91e5544562afc0687bd75afdb304d6ada0ecbd3388cf31d8005f7bd49c66f86a:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDk1ZmEwZjExMTdiNWVhNDA0MzQxNDBkZGUxYTM0MGM3MjBkZGJmMzI2MjEyZTE5MTgzOGQ0YjE1NmQzMTZiYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDJhMmNiMjVhMTIyYjQ0MjIxYTYyMzRlYzY2MGE3YjVmYjdmOWJkZTdiM2I5ZTJiM2M1NTlhMGQ5NmZhYzczOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDk2OGE5MzAyN2Y0MDMzNTRkZjJhNTg4ZDI0YjNhYmI4Nzg3NDI2ZDQ2MTM4ZmRmZTRkZGY5ZGZkOTkyZWZkZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_885842883bfb4604aaf1ab7cdb2e7bb6",
+      "statement": "requireLiveMode additionally requires the database's system_state row database_instance_id (throwing DJIMITFLO_DATABASE_ID_REQUIRED when absent) and throws DJIMITFLO_DATABASE_ID_MISMATCH when DJIMITFLO_EXPECTED_INSTANCE_ID is set and differs, preventing silent mutation of the wrong database.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/__tests__/db.test.ts#L54-L65",
+          "version": "repo-lines-v1:sha256:f693ad228c275b877baac1ca90eda0b94962c7e814b67014b9ac73619eeeccdb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNhYmY5M2RkZGUyOGI2ZGEwZGQwMWZlNGNhMjVjNDU2NThiMDIzYzhmNDQxNmEzMzgxYmUwYzFmM2Q3MjA1NDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyMGZjOWU2N2RiMDdlZDIzOWJiM2FkMjMxMmVhYWI5YTcwZTFmNmZiYTAxMjg4YjBiYTZlNjFkN2Y4ZWU3ODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/db.ts#L18-L28",
+          "version": "repo-lines-v1:sha256:be240d3c02ef97744adb41ec3614cd239d01793541f69e8cf40f4787a40ea1a1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1MWVkNTI5ODlkNWM2OWY1YzQ5MGNlMWQyZTE2YTI3MzllYmVlMmVhYTU0OWRmMDZjYjdkZjFkZTZmYzljMDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE5NTM1YWZhOTIxYThhMjk1NzJjYzIwZTIwMGNmNjkwYTIwNTJkZThkNmY1NjlmZGM0MTY4ZTEyM2ZjYjY5OWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNkYmI3MmNhMTQxZGQ4YTc5M2IyY2MzNjEyNWU2NGQ5Y2UzZDY3NmUwYTUxMDNkZmU3YzM2ZTBhNTZhNjI4MjQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_021ee50516b94351b669fb4a2a48ec39",
+      "statement": "databaseProvenance reports instance_id (from system_state), node_id (DJIMITFLO_NODE_ID or hostname), resolved path, mode (defaulting to snapshot), and DJIMITFLO_COMMIT_SHA, and is surfaced by mission-control and governance provenance tools.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/db.ts#L39-L47",
+          "version": "repo-lines-v1:sha256:1fb7402655ffbd21e864d0cfb70c78e1d4955b3321bb80a7642e3aea0a88072e:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2Y2OWJiNzQ5OWU1Y2I4MDU2MDk5Y2IwMmY5M2M5NzBlOGM3MTcwMzExMjQ4MWY0MjNlYzg4YWZkOGViZWJlNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmI1ODBlOTY0ZjgzYTQ3M2Y0M2Q0NDM4NDYyOTQ5ZDY4YjU2MDBmZGE3ODdmMTYzNzQ1ZDAwZGU4OWNiZjM2YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODQxYjA4MjVhNjEzM2IzYTExMDU3ZTUyMWE3NGE1M2MzMDcwOWU0MjZiMGJjZWM5M2E0MWY1ZTMzZTFlZjRiNCJ9"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/governance.ts#L56-L78",
+          "version": "repo-lines-v1:sha256:9a36cd6f59dca86389c32b10661f0913f37cb5c7df344323270a0c8a3cf8c4ce:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVkNmIxMzNjOWYzMGI0Y2Y5MjgzMWFjOTVmNDIxYjE2YWY2MzMyZTI0NGE3YjZkZDE2ZDBiZTg2MjM5OTQwMjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU4ZTQxMWUzZGU0NTA2N2JjZDljNzY5Njc0MWU2ODc0ZjhmYWM4MTAzZmQyNzJmODE0NmNkNDc3NGJiNzc2NTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZiOTM0YTZkOTM4YWY5N2Q4ZjI5YjJhNGE1N2VjNTlhNTI2Zjk3NWJlNjhjZGJlOGI4YmI4MWVmMDJlOThmODEifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/mission-control.ts#L26-L41",
+          "version": "repo-lines-v1:sha256:bb4e18807d7eef00d068cfcfb5a4ab2d6e48f2d260ff6f77f2af9e03ab167e74:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM0MGVkYmQ0ZDc3ZTY1NzVkNDZiYTQzZGM1MjUyNWIwYTExZDY0NDY1MGE1MTY5N2I3NWFjMTM2YzQ1NGY4OWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM4YjNhMzhjNTYwNmE5Y2E4YTU2ZWZhZmVlMDQxOThlMGZlY2IyY2YxYWU5OGRhOGRlYzg3MzA3M2RiYmRiZjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0MDc0ZGFjNmE0ZmY2OWM0OTUwMTE0MzJiZjYyODc0YmY2Njg2ZDc0MDE4ZThiY2MwZDI2YWY4MjdlYTlmZmEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ca00e1d8a1bf4b5bb5e653200356d385",
+      "statement": "MCP auth context is stored in AsyncLocalStorage via runWithMcpAuth/currentMcpAuth; currentMcpAuth throws MCP_AUTH_CONTEXT_REQUIRED outside a context, so anonymous tool invocation is impossible regardless of transport.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/__tests__/orchestration-registration.test.ts#L58-L63",
+          "version": "repo-lines-v1:sha256:32b7677079317ef1bfb5f566f0eb0d939edf371cb5d5dfd8e032b2a7afb18819:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2UwMDM4NzE2OGM4OWRhZGRmYmNiZDY1ZjlkNWI3NDE5ZWFjZWUxM2NiNzUyMGM4M2FiMTU5MWUyYmUyZGEwMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODg0NDY5NTNmM2JiNTI1ZTcxNTc4ZjkyMTAxYThmODQxMDZhMzFlMjdlNzc1MjIxZjYwZWU5ZWVjZDRmNGIzNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDI0YzU3NTYyNTY4ZTNkZmI1ZjdjNmY2MzlhYmM5NTZkOWFiNzYxMDVhMDVjNjk0YmFlZTlhMjBhMjgzM2UwMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjIsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDgxN2ZiYjczYzkyYjM2ZDVlNDg5NmZmNTFjMWI1OGVlYzMzMGJiZTk2MWJhMDVmYzYyMDVmODY3ZWExYmNmNiJ9"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/auth-context.ts#L1-L19",
+          "version": "repo-lines-v1:sha256:e0b22b203e92290b919cce53cb5ecf6279a874c398d2c93a32d5fa7f5edacd05:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlYWQ3ZTY5NWI1MmI0N2M0NGJmNjgyNzRkNzA4YzAzYTYwNWNlZjMxNzI5YWUyNjFiMzYyNmU2YTY3Mjc1MGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_adb78ef149fd40bd8373a9ec3d49f004",
+      "statement": "Orchestration and authority tools enforce per-tool permissions by checking the principal's role against ROLE_PERMISSIONS from @djimitflo/shared and throwing MCP_PERMISSION_DENIED; spawn_agent and handoff_agent require write:swarm_action, approve_action requires create:task, authority_emit requires write:evidence, and authority_trace/authority_stats require read:audit.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/tools/authority.ts#L185-L187",
+          "version": "repo-lines-v1:sha256:7ae5f12f851320dc68a96767abadf3180cc415b7ef40e3d5082d25e172e1ebd7:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjg5MTI5OTdhYmQ0MzQ3ZjJhNzZhY2FkMjIxZTk4Zjk2NmM2NDdhYzdjZDY0OGExNmY5ODQ3ODU5NmVkNGI2NiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiY2Q0ODRjMmI3NThhNGM5MmYyYjU3OWZiNzE0ZjFhZGI1OTgyODA5OGNiZGJjZjkyNmI2NWY0MWNkZjRjNTdiMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDYzNjBmMmFhOTE2NTg4NjU0YTVkYmQwODEwMzg0NDNjOTcwZmY0MzQwMzI2NjU4MWEzMDk0MjZiMTc1OGNhNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWViZmRjM2E4M2I3ZDMzYjlkNDU1NTFhMjdjN2IzMjUxNzczOWQ0OTBlNjQ1Nzg3ZjI4MjEyYjcyZWJlNDk2YyJ9"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/authority.ts#L22-L26",
+          "version": "repo-lines-v1:sha256:75b3f2c4e1663e61166e6bf6a5ea12441e233be7749cbae7bd6c17d147384156:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTE4NDI3NWYwZmZkNTYzZTkxOGVhZTVlZWRjNjY3MzRmYzRiNzUxZWMyYTBlMTdiZWNmNWY1NWRmZDMxMzM1ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODBiZjVkOWRkZjRhYzdmMjMyMGM0YWI1NTI2NWNiMTc2YjBmYzk4ZWFmNWExMDA4OWNkZDJiNmFlYjVlOWM0NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTAyZjI1ZDcwOGRiYTY1NDYwNGJiMGE0ODJkYTg3OTFhNTQ3ZTE0ZTFkNzczNDIzYTI0YzgxODg3ZGM1OGEzOSJ9"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/orchestration.ts#L18-L22",
+          "version": "repo-lines-v1:sha256:75b3f2c4e1663e61166e6bf6a5ea12441e233be7749cbae7bd6c17d147384156:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTE4NDI3NWYwZmZkNTYzZTkxOGVhZTVlZWRjNjY3MzRmYzRiNzUxZWMyYTBlMTdiZWNmNWY1NWRmZDMxMzM1ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDcxZjA5NzExNzJiYzg0N2ZjMzMwYWQxMmRkYWEwYWRmZTFkNDgyZmE1ZDllZDQwOGNhOTc1NzBlNjcwMzRiNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNmZjZmNjNzkwYTFkMjU4NjJjNDljOGFhN2VhNzAwY2Y1OGQxMTcwMTY3ZjE4NGJiYzEyNGM3MjE4ODY1ZjA2YyJ9"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/orchestration.ts#L40-L43",
+          "version": "repo-lines-v1:sha256:d8418e0ab6b694e84d51b07032a2d751ada916f556292d4e58cbe6820e040754:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWY3NTY2ZTA3NDgzMDU5ZjkzNjRhYzE0ZjhjODY3MzExYTc0OWZlYWYzZDZiMzQ1ZDQ3YjliY2U5OGE2YmE4ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGU2ZTZlNThhMzRkNDY3ZmYwZmY1MWY2YmI2ZjU1YjQ4MGMzMGY4YzRkYWYxZTE5YmVjMzUxMDllYmQyMmY2YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGM2ZGUzZWY5ODM3ODJhNTgyYWY3MzM1ZDY1ZDk2OGFmOGJmNWNiMTI4Y2E1NGI1MTUyOTdkNzIyMzBjNTZhYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDQ5ODY4ZWU3NThjYTc2MTRjYjVhZTEyOGM5OWMxZWNjYmQzN2MzNDMxODllMTE1MGE2Y2Y5ZDI1NmE0NGE4MSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_f6019159fb484e1caf24584f71900180",
+      "statement": "Platform tools (djimitflo_council_ask, djimitflo_generate_export) and orchestration approve_action forward currentMcpAuth().token as a Bearer header to DJIMITFLO_API_URL (default http://127.0.0.1:3001/api), so the REST API re-applies its own authorization to those calls.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/__tests__/mcp-server.test.ts#L296-L322",
+          "version": "repo-lines-v1:sha256:03fe20e2e744b15c37c3c67ba8fa1c252736defbe1f5f9d74788a47b9866bd18:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM3MzUyZjFiZmQ2OGU4M2UxMTI1OWU4YWRkNDA1N2YyNDMwMTljNmQ3MmU1NjYxMDQyYWViY2E5YzNmNDJlZWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyMGZjOWU2N2RiMDdlZDIzOWJiM2FkMjMxMmVhYWI5YTcwZTFmNmZiYTAxMjg4YjBiYTZlNjFkN2Y4ZWU3ODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/platform.ts#L6-L19",
+          "version": "repo-lines-v1:sha256:012a412e56de1845a3692aa35b9aa2c948def16d7a4fc56feb12f95fa783431f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkN2NkYjUxN2ZjMjQ3MDk5NGQyMWI5NWUwY2I5MDI2MWFkMzNiNDRjNzdjMDlmMWFkMjY4MWMxNWM5OGI1OTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ2ODEzMDU2MzE2MWYwMzczOWM0ZjI5OGRmYTBlMTE1MDM2NjkzZWIzNjFkZWM4Y2FkMmQ3NmU0MzMyYmU0NmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdkMzUzOGIxMzUyZDc1Y2JhMWVkMjc3MzE0ZjAwZTJjNWY3NTY3NzJjZTM2MDIwYjVkNWNjNWU4ZmMwZGFjM2YifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6bd635e962024cb1b7e7be8557db66fd",
+      "statement": "The loops, goals, agents, and mission-control families are read-only SQL views over loop_runs, worker_leases, loop_events, goals, and agents tables; mission-control and system-health responses always include databaseProvenance.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/tools/agents.ts#L10-L62",
+          "version": "repo-lines-v1:sha256:6b14e72bebd6b9f8f2b69a77dbe07fad4a4fb187637bea06ee1434d2f11dfa8f:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1YjU0YzVhYWI1NzY3YzJiNWM3YWFmOGJmMzRmZTg0MTNlNTY1YmRlOTExYWY1ZDMyZTUwYzc3MmFlZWU5Y2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBjYzcyNGVkNmZhMTFmZDAzZTY3OThhOWUzODdhZjUwY2UzMGNiYTdmMDVlMzJkMzgyZWVhNTg5OTNlNTYzYjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/goals.ts#L10-L61",
+          "version": "repo-lines-v1:sha256:ea945bdc0191cb7853a76dba5f2fb731e790c7a0a0ff4d860c0fde836e09fdc1:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ2MzI4MTlkNzMyMDExNDM5MDQwMWYxZTY0ZTc3MWJlMDE1ZjNiY2IyZTU2YTQxOGI1MDc1ODVkNzdhYTE2ODciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBjYzcyNGVkNmZhMTFmZDAzZTY3OThhOWUzODdhZjUwY2UzMGNiYTdmMDVlMzJkMzgyZWVhNTg5OTNlNTYzYjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/loops.ts#L11-L87",
+          "version": "repo-lines-v1:sha256:49cf7a565551d9e2a8d51ff6c882e89410413dadc9c5feefc959921e1e27588f:eyJzZWxlY3RlZExpbmVDb3VudCI6NzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzYzdkNzVmZmUzMzc5Yzc0MDA3NGU2OTAyMGQ1ZmJiOGI1OWYyMzNmNDZlNmU2ODY5MDg1ZDczN2NkMzBkZDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk0ZjU3NjllNTdiNWE0ZGY0OTRhMjg1YzNiNWJjZGQzNzRkZTcwMTk1Njk3NjA2NDcxNTQ4N2M2MDg4OGQ1MmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/mission-control.ts#L10-L70",
+          "version": "repo-lines-v1:sha256:58af21a17d266018ecee0bae213b0ba9cd746715f7eb1f00b0019e580d8f7410:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1NWE4MmY0ZDQ5YWY5NWVkY2VlMDcyN2VhMmNlNzkxODE2ZmE0NjcxNjdlMjMxMTc5NTQ1YjliNDAxMjU4MWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY2YzU1ZDJiZGI4ZTFlN2FkMjJmNGJhNDg1YTA0YzM0YzhiODdkODQ1MWI2ZDMwODZjNDg1MTlkNGI2MDA1OTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a18743e4df054f80aea75a328ed16b20",
+      "statement": "djimitflo_spawn_agent is registration-only: it inserts an idle agents row with metadata flags registration_only:true and context_budget_enforced:false and never creates tasks, worker leases, context allocations, or executions; handoff_agent writes a pending fleet_handoffs control-plane row; approve_action creates a pending approval via the API without executing the action.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/__tests__/orchestration-registration.test.ts#L37-L49",
+          "version": "repo-lines-v1:sha256:171af964e238498cb4d3fbd1e0f069d194120f5396c8d5c48ce93eb7e769cb03:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkNGUzMDdkOWU3OTM1ZjMxOGFmMGJlOGFhOWNjMzIxMzA1MTM3YWZlMWRhZmM5ZDljZWUyMGU4NGI5OWYyMzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYyNGY1ZWNkNDQzZTk1YTk1MDBlMjUxNTM3NzBhZTlkYWMxMWMxNDNiNDZmYjVmYjhmMzIwMTljYWM5YzE4MDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImViMzRjZjdiNTg5MjE2MDA5ZGVlM2U1NmMxMmI4NDVjZDY3MWIxMjc5ZWVlMDZjZDM1OTIwNGMzNjRlZGNkYTEifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/orchestration.ts#L28-L75",
+          "version": "repo-lines-v1:sha256:c21f92f8413625d6e661b4424fdc6499feaa0584c0e936a67ac1cdb01cd3e425:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4OTRmOTIyMTEyMzNlMjExOGQ5OGJmMmNlMWFiY2IzMTI1YmQ1MTAwM2UzOGIxMjRjOGQ2YTcxZDZiZWI1MzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1ZWYwMWJjMDhkYmMzYjYzZTRlNzVlYTNkMjZhNWI5NDE4OTE4NzdlMjdhZDg5MTMyOWM4NDExZDdkOGRjNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYxYzc4NzJjYTRhZDI2Y2QwNGI2MTU2YTFiN2I2ZTNlMGE2ZjM2MjZjODE0NzkyMWMyMjc0YzJlYjZhOWRkZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAxM2Q5YTgzNGM1MzQ5ZjA2NTMyZjU3NzVmZDNmNGY2ZDA5YjVhYmM4ZjNlYzllOGNkYWEzZGMyMzgwYWFkMzAifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/orchestration.ts#L77-L126",
+          "version": "repo-lines-v1:sha256:3b8ab420f2f04bd76c6a79752db5d58f803b57d36fc47916323425d7d2962cf4:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzM2I4MmJkYWE1ZjRhYzU0MjY4ZTIwM2QzZGU4ODg5MDE4MGZmZDE0YWVkNzI0NThmYzc1YjM1MjgwZDQ0OTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1ZWYwMWJjMDhkYmMzYjYzZTRlNzVlYTNkMjZhNWI5NDE4OTE4NzdlMjdhZDg5MTMyOWM4NDExZDdkOGRjNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYzYzEyMGUyZDUxY2RmN2JhZjdkYjE1NDAyN2E0MGIwYzYyZGIyZmQyNzg1M2U5MTM5YjI2NjliYWY1NDE4Y2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk1YjUwNmU0NTEwZjJiOTBhYWU2MDg2MGUzNDdkNmQ1YjE4ZjQ0MzY0OTQ0M2E3NGUxM2JiNTM4MDEyNjM0OTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c2ce024c8a244a5e9ceb4586efffc672",
+      "statement": "The governance family mixes read-only inspection tools (provenance, doctor, server/tool/permission listings, cost summary, evidence chain, openmythos runs, skill outcomes) with three mutating sync/probe tools (djimitflo_sync_mcp_catalog, djimitflo_sync_http_sidecar_catalog, djimitflo_probe_mcp_sidecars) that default to apply=false dry-run previews and gate writes behind requireLiveMode.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/__tests__/mcp-server.test.ts#L213-L250",
+          "version": "repo-lines-v1:sha256:b222685248473851782f91f03690a2185d4558d0c2a4aa3b5aaacf07530ea7d3:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJkNWQ4ZDBiZDhlNDUwZjQ5ZmYyNTA3YjQ1YjBlYzI0MDQxMGIyZTJhYmU0OGZlMGNmM2JhMWIwZTUzZTg4YzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYxMTU4OTA1ZDRjMTY5MTBmNDZhYzJjNWE0YTNlZWU0ZDE4MjI4Nzk0ODVmZDI0ZWMwNmJlNDAyYWQ3YjllMzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ5MzViYzRhY2M1ZjNkNmM3YmI1OThjMGQ3NjQ1MGRiMzI0ZjBiY2Y5NzdhMDBhZTc5Y2YyMDUwOWE2MWI3ODkifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/governance.ts#L290-L316",
+          "version": "repo-lines-v1:sha256:9e94e6450d2c32f12888d8e39e996a78490518143231568e5e8035b75d2791bc:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4OTRmOTIyMTEyMzNlMjExOGQ5OGJmMmNlMWFiY2IzMTI1YmQ1MTAwM2UzOGIxMjRjOGQ2YTcxZDZiZWI1MzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0YmM3NDYzNmU4MjU3OTllOWQ4MWI1MDIwOTFmZDI1OTg1OTI2NmVlY2NlODJkYzAzNTQ3MjJhNDgxMDhjYTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYzYzEyMGUyZDUxY2RmN2JhZjdkYjE1NDAyN2E0MGIwYzYyZGIyZmQyNzg1M2U5MTM5YjI2NjliYWY1NDE4Y2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYwNGMxMWJmMmFlZjAyZDcyOGQwN2QyNWY0ODU4YTVhOGQyMTQwODMzYTJmZmZhNjBiMWRiNGMyYzAyNDM5N2IifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/governance.ts#L454-L470",
+          "version": "repo-lines-v1:sha256:308c984cd1607177057690b0c1d37a42e6d56eb3990f33bebfa0c9a00704b162:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmN2Q1OWMzZjMwNzQxMzYyOTkzZmUwNGY0NzA5NTQ5Zjk5ZmM1ODE3OGY0ZTI1ZmQ4MzMyMGJmYjZmZjRlMzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM4YmQzYTZjMGVkNDRhZTJhYzAzZjYzMzQ2NWUyNjBhOGVjNzFiZTZlNWI3ZDg5MGQ5ZjJhODI1ZTFhZGRjMWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgzZjFhZDQ3MDE1Yjg4ZmExOWE2ZjJjYWI3ZTEyOWM3M2YxNTRhZDcxOGNkNzQxOWMwY2Q2YjdjNGJiNjFmMjEifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/governance.ts#L549-L565",
+          "version": "repo-lines-v1:sha256:44ee35739da19e1d055b18f6d4ecf80546d420d2a725572afbde115b5d502d5b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmN2Q1OWMzZjMwNzQxMzYyOTkzZmUwNGY0NzA5NTQ5Zjk5ZmM1ODE3OGY0ZTI1ZmQ4MzMyMGJmYjZmZjRlMzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU5MGZhMDg3OTQ0ZmZjMDFkZDY2N2Q2NzcwYjY1YmI5NGI4OTQ3MThiZjM1NzYwMmYzM2RmYTdmMWM5ZjE3NTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQwM2Q0NjM0MWM2NmE4NmVlNzk0ZjRkZmVmMGU4NTcyZjg0MWRkMTU1M2Y3Zjg5YTNmZjk5YmI4MGI3MjQwZDIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e2fa469bff3742d1bf6f6821f55c0d38",
+      "statement": "Tool-name classification for synced permissions assigns requires_approval/high risk to names matching approve|spawn|handoff and classifies OpenAPI GET/HEAD/OPTIONS operations as allowed/low while other HTTP methods become requires_approval/medium, so freshly synced permissions start conservative.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/tools/governance.ts#L122-L126",
+          "version": "repo-lines-v1:sha256:132738174dd7610bd4727c15b50f3fc0e9493c53d969cba4a247c29c87a00e9a:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTliZjhlYzFjZTQzNjRkMTAxZWFlNjNiMGM0YmE3ODM1NDE1MTgzMTAxOTBiZDliZWIwMWE5YzUyMjA3NTkzZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjQ1OWU5NGU1MzA4ZjNlYjU2OGU1ODAzNWY4OTdlNmU1OTk4ZDhjMzQ4MjBiNTFhMTA5OTM4MDU1N2JjZGU5NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGNjYzhlNzUzNDZiYmEwOWYyMjk4YzJlNTI3MzI5MTM4MWNlYjg0NTNiZDBhMDYwYjlmMjBiYzA4MzY3OTUzYSJ9"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/governance.ts#L160-L168",
+          "version": "repo-lines-v1:sha256:9c6bbcaac9368a2f8948a9e0e9e6d5b52b4266872e3c954289613955b00b444b:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWExMzY1NTViMzI1ZGE5YmYwMmQ5ODM2ZTkzOTM3NjdkMDRmYmMzNzVmZWJjZTcwNTU4NjI3MTA5NjFkZGU1OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmQwZjJkM2EzYWFkYTI3NTg2NDU3OGQwYTQzOTE1NjM4ZDU0M2ZlY2EyYzk0ODU4ZGI5NDEyMTFlODZjZWYyYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTdlNTlkZjZlMTM2MmZiZWU5YWQ1MjIzYzQ1ODcwNzA3MWNkZWFjYjE4YTllYzRhYmJhMTZkMWZmZWU0YzllMyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_1811ce737aa74b0889fb7d48b4e3e807",
+      "statement": "djimitflo_authority_emit appends only observational HOLD/DENY events to the authority ledger — policyDecision ALLOW is rejected with AUTHORITY_EMISSION_UNSUPPORTED because actionable authority requires the external producer — and records the authenticated principal as actor_subject with actor_type 'service' and issuer 'djimitflo-mcp', assigning per-correlation sequence numbers and sha256 payload digests.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/__tests__/authority-tools.test.ts#L103-L165",
+          "version": "repo-lines-v1:sha256:5076ba5cae7bc6d489d2292f0ac341fa306773e5b202992b5f31156c42640844:eyJzZWxlY3RlZExpbmVDb3VudCI6NjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmNmMyMjdmZmFjNzE1YjE3YjYwOTFjOTQxNzdhNmNiYWUwM2Y4ZmQyNTE2N2I0ZmU3NTJlN2UxMTEzZmRiOGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRjOGIxMmU5NzIyZmFlNmY1NWZmODY0NGYzM2QyYmQ5NGMwZDJkNjg1NDAyMDU4NzAwYzJlYWJkNWI3MzQ4ZDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcyM2E4MDczNzAxMDc5OWQyNTVjMDA0YzllOTE3ZjQyZWZlNzUxMTdmZmJiOTQyMTAxZDZmMDE0M2FlODhhZTIifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/authority.ts#L159-L254",
+          "version": "repo-lines-v1:sha256:29aa3e8e3f685963578d74b6a7e78f6fd185233e78786371a1e6e2b73e6a3281:eyJzZWxlY3RlZExpbmVDb3VudCI6OTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyYjgzMmY1NzUyMThiZjEwZGE3YmFhMTRkZGM3MmI1NzE1ZmY1NjNhZTY3Mjk1NTYyMmE5NWFhNGU4YTIxOTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1ZWYwMWJjMDhkYmMzYjYzZTRlNzVlYTNkMjZhNWI5NDE4OTE4NzdlMjdhZDg5MTMyOWM4NDExZDdkOGRjNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEzMGM1OGE5MTcwNWFhODYzZTdmZDIzOTJkZGE0ZGNhYzM0YjQwODQ0ZjQ2NzgxZGNjOWI2M2VlYTM3ZmRjMmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyMTI2MDA2ODNjOWYxMTZhMDdkNWQ2OWM1Nzg4ZjFjYjNiZjQ3M2FiMDQwOGRiNDI0ODFhZWY4OGY4ODJjNDUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f57fafadebf447e5ad61c3ab2e7d6029",
+      "statement": "The notebooks family never touches the Djimitflo database; it shells out via execFile to NOTEBOOKLM_PYTHON running NOTEBOOKLM_BRIDGE_PATH (default ~/workspace/notebooklm-mcp/bridge.py) with a 120s timeout and 10MB buffer, returning isError results with recovery hints on bridge failure.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/__tests__/mcp-server.test.ts#L278-L293",
+          "version": "repo-lines-v1:sha256:ece5c1b4cc19000dbbe5b18dbca9f23f4c2a78de577fa1a7ae36bd94c761cd4d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxOTJjNjc3ZGRmYmIzZmI5NGIwNTA0YzJiZjg3MmM2M2U1ZTdkZWEwMmZjNDk0Njg4ZDJlN2RmOGU5OTg5ZjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUwOGZkZjM4Y2U1ZTNiODA1NzY5OTM1ZDgwM2U0ZjFiZTkwNzJjZmY0ZTUwYTYxMGU5MThlZGM4MWIwN2Y1ZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg3MGYwNjJiZmQ2MDMxYzcyZDBmZjljZDIzMTY5OGE4YTJhNGU3YzNlYmZmZjgwZmU1ODY5YzQ5YzZiNjliMDYifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/notebooks.ts#L17-L37",
+          "version": "repo-lines-v1:sha256:7f772f6318d1499ba8f2aea56e416bdc09498b7427b944af47b2abd05113a932:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMwZjNmMjViNzkxMzc5ZGIwMTIzY2E0YTcwY2JhZDk0NzBlMzI4YjE4NmI2ODdhZThmNWQ1MTE5YzVlNDk1NzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQwOGFiMThlNWIxYzdlNDFlODk3ZGU0MzI5ZGI5MzE4ZDQ1NTk4ZmUyMjgwOWM1YTUzNDM3YjZkMDM3MTM2YzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNiZGVhOTU0MzA5N2UyNDg1ZDRkMTJlMzA1MTljNjZiMjFjZWVhMGVhOTI4ZjUyYzA3MWUxN2IyODBlYTNlOTkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_58a959e2f44e44659865804225356ea7",
+      "statement": "The okf_* tools are read-only over a file-based OKF markdown bundle resolved from OKF_BASE or djimitflo-knowledge/okf probe candidates, building an in-memory graph of frontmatter and [[links]] per call; okf_validate enforces required frontmatter fields (type, title, description, timestamp, tags) and reports broken links.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/__tests__/knowledge-tools.test.ts#L50-L60",
+          "version": "repo-lines-v1:sha256:b9afb4cc47ef5295752c2507d94864650a2c10366cd7addd44a84556f6f87008:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwMzU5ZjJmNjQwZDBiZTI2NDVlOGVkMWQzYTFkODU3ZDNhMTc3OGFmODg0ODAxYmU3ZTUxODQ0ODAyNDMyM2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlNmQ3OTRkNzRjZWQwNWZkYmUyNmUzYzhiODQ5NWIyZWY1MmFjM2M4NTI3YzBhYmUwMjUxODNjZDgwNDk2YjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyMGZjOWU2N2RiMDdlZDIzOWJiM2FkMjMxMmVhYWI5YTcwZTFmNmZiYTAxMjg4YjBiYTZlNjFkN2Y4ZWU3ODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiMTBlYTkyMTMxNzYyMDY0MmM5YTNjYjljMzkxNzdmNjg1YzJkOTI2ODZkYzc3ZTJmMDhhMTQ1MDA4ZWY4NGEifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/okf.ts#L15-L31",
+          "version": "repo-lines-v1:sha256:0e72cb553e02c927ccb4dc582f7b245c8cdbb843ec622427739ffd28b482168f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3MzVlNGYwYTNmNzQxNjFlZDE3YjVmNWQ5MWM1NWE0YjgxNWVjODAwNGM0ZTdiMGIwMmE0YTcyYzJiYmY0YzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkzNzlmMDBjMTVkNzJkNGY5OThlODQyZGMwNTdiMDg1YWVjZjAyMmFhZjQyMGUwYzk0YWFkZDUzNWNiMGUzM2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjViNzRhYjJhYTJhM2IyNDc0MmQ3OTViZGY0Zjc3YTA2NzNlOTE4NmEyYzUwZWMwOTY2ZjIyNzI2NDVjYWViYjAifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/okf.ts#L254-L313",
+          "version": "repo-lines-v1:sha256:f8c1c2d98d05fc64237e2940ab282ffd98f1daf136e2a5c5b13e43c92bf59cc9:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4OTRmOTIyMTEyMzNlMjExOGQ5OGJmMmNlMWFiY2IzMTI1YmQ1MTAwM2UzOGIxMjRjOGQ2YTcxZDZiZWI1MzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1ZWYwMWJjMDhkYmMzYjYzZTRlNzVlYTNkMjZhNWI5NDE4OTE4NzdlMjdhZDg5MTMyOWM4NDExZDdkOGRjNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYzYzEyMGUyZDUxY2RmN2JhZjdkYjE1NDAyN2E0MGIwYzYyZGIyZmQyNzg1M2U5MTM5YjI2NjliYWY1NDE4Y2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyZGFiZTBiYjIxZjUwYjI5YzQ2YjQ1YWE3ODFlMDMwMmE5ZTA2ODczNmIxYzQ0Y2ViOThhYzE0MjRkNzk3NjcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_bc9253236d12408787074dfb6028cb82",
+      "statement": "The openmythos family exposes only a leaderboard and per-agent score/trend views over openmythos_eval_runs; evaluations themselves are started via the REST API (POST /api/openmythos/eval/:agentId), not from MCP.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/__tests__/mcp-server.test.ts#L169-L211",
+          "version": "repo-lines-v1:sha256:fe2855796e8cbcd4df3ab5fcfb24ca7372b9bf576c2771cfd010f6a9ecc38a6a:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1ZDllMDYwNjI5NDc3ODg1ODgxMDM4NDE4NTUzNDAwM2E0OTI0YjgzNzE4ZmVhZjgyN2I2MjliNmY0NTQxMmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ1M2M0OWVkYTk4ZGZiOGIzZTIwOTQ0ZjM5YmFjMTU5ODZlNDVlZDU4NjljOTgyOTEzMjdjMTc1ZDI3ODUyMTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM3M2YyZjkyODlmNmNjYTIzNTE5OTdlZDUyMjAwMzQzMjY4YzM4ZDk0ZmFiMTVmYWFmMzQyMjlhNmUzYTJmOWEifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/openmythos.ts#L1-L11",
+          "version": "repo-lines-v1:sha256:1d777f3f065eb66fabe7f30ee5e56a3c43ae5a780db9947b7085c099f312cd35:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNmOWNlOThiZDc0ZGY3YjM0ZTNmYzJmNjdhNDUwOWMyYzBhZWY4OTgzMzZhMGZkYmYzYWExNGU0NDlmNWZkMTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYxYzM0NzAxM2E2MjRhM2NjOWYwZDMxYmFjNmNjY2E1ZjA2ZDliMzY4NjliYTdmN2Q0ZGYxNDIyZmFiMTcwMTgifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/openmythos.ts#L29-L99",
+          "version": "repo-lines-v1:sha256:c7fbc6ef639eab5f468e1ac79fe234f95031f7ea7a872ca19d78eddd2750c9aa:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxYzI1ZTIzNmE3MzQxNTIxZDc3YzUwODlmMThkYTM2YTNhZGI4ZDBiYWFlNGIzMDZmZDE5ODVjZDQxNzIyYzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdjM2FmZmFkZDNkNzExYmRhZGQ4MDAzMTE4ZTg1NGRjYTYyODEyNDYzM2ZmN2VmNjZmNWViMGZkYzk5YTQ5NTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_83b682cc0c104a6fb2c455c444c59a5a",
+      "statement": "Explainer tools are not gated by requireLiveMode: explainer_create_task inserts a task plus a guaranteed pending explainer_jobs row so the server-side ExplainerFleetWorker picks it up, and without EXPLAINER_SERVER_URL explainer_ask falls back to extractive chunk citations or a NOT_ENOUGH_EVIDENCE refusal instead of fabricating answers.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/__tests__/explainer-tools.test.ts#L43-L55",
+          "version": "repo-lines-v1:sha256:299bbc650ed245eccc8351eda3e058962b1ef39c65c8fce322ea1c4ccaece555:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2YmE0Yjk2Zjc4NTMwNjdkYmVlNGIxYTUyMDg2ODViNDg3MTI1MTBiOTMzYTA5YWY2NGI1MDFlZWJjZjA5MWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkyNjlkMzM1MjQ0N2Q2MmUzNTRkOTIwZGE3NTFlZjdmNmI5NjllZjZkYWNhMjZhOTdjODIxZmFhZTFhYzllOTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/explainer.ts#L11-L68",
+          "version": "repo-lines-v1:sha256:5d0c87866755c48d76b86e3b252b7142b4a86baa0ca7848b98be4e3a22fe20b2:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2YmFlODU5Y2ZjM2YwODY1MDg1YzgzMDNmZmZjZTEzZWUyMzE3OGQ3YmUyZGJjMDQyNTcyMmVjMzY3Mzc1ZDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFkMTYzOGVjMmM3ZDIyYjhhYTg5Njg3ZGM5MDNhYjMwZjczODMxZTc4M2E4MmE1OTg1NzhhMTI4NDRhY2Y0NDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE3MGI0MTg5ZWQyYjgzODVjYWE2YTVhYzYyMWVlYjc5MzBlYWVjNDY0N2NiMGIwOTcwZjJjYzRmMDlhYWJiMDMifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/explainer.ts#L257-L311",
+          "version": "repo-lines-v1:sha256:847c27ff8335b15570b48bf6d9b67923835eeaa58736f4720b6539b9e54f8e0e:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4OTRmOTIyMTEyMzNlMjExOGQ5OGJmMmNlMWFiY2IzMTI1YmQ1MTAwM2UzOGIxMjRjOGQ2YTcxZDZiZWI1MzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1ZWYwMWJjMDhkYmMzYjYzZTRlNzVlYTNkMjZhNWI5NDE4OTE4NzdlMjdhZDg5MTMyOWM4NDExZDdkOGRjNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYzYzEyMGUyZDUxY2RmN2JhZjdkYjE1NDAyN2E0MGIwYzYyZGIyZmQyNzg1M2U5MTM5YjI2NjliYWY1NDE4Y2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI3YTU2MTY3N2Q1MzVkZjMwNDIzNzlmY2ZmNTc4YTIwMjI0ZjQzYmUzOTdiNmNmZWI3MzhhODVmZWU4MzM4YzQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_81150def55ec4310a9c86ea80a438465",
+      "statement": "registerTools exported from index.ts mounts the twelve families used by the binary and tests, while a second registrar in register-tools.ts additionally mounts the experts family (djimitflo_expert_search/get/capabilities/claims, read-only views over expert_* tables) but is not imported by the binary's main.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/__tests__/mcp-server.test.ts#L5-L6",
+          "version": "repo-lines-v1:sha256:797d78a00de79bc4bd0af5e90899cceb5145f4b5f56de868fa7c8620647fc8df:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzQ2Yzk2YTlkNjYzNDM1MGJjMjEyZGU3YWI4N2ViYTkzMDFjYTJlNmU3ZjY0NDA0MWM3NTViMjEyM2VkNDYzYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTg0Yjg2NDBiOTUxZjFlZTU5NTY5NTFiMzAxZDJkMTk0ZWIzMzg4MDlmMDY3NGYyOTNhZjFiNmFkNWJlNjhjYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjgxNmY5NjJiMGIxOGE1ZWYwNWRjZGI4MGVhZWIyNjMyZTcyZjExYjE3NDIxZTVmYzIwMGM1YTVlNDE2ZDMxZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGI5N2ZkMTM5OThkOTgzMTJmOWM4MTdhMDdlYWJlOTdmOGY1MDUzYzc4ODcwNzBjYTc4YzVlZjMwYzc4YjdkNiJ9"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/index.ts#L81-L94",
+          "version": "repo-lines-v1:sha256:f43e9e404754bedd1a4b253f0265df5931d859a4bb76f2061e3431e2c594b5d0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2YjJjYTk2MTJmYzBjYzdmNzMyNGJiNGY2NGQwNzJiYTcyMWVlZmFmNDc5MTU3NmQ3ZWU2YzgxNzMxZTA4ZjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiNTgwZTk2NGY4M2E0NzNmNDNkNDQzODQ2Mjk0OWQ2OGI1NjAwZmRhNzg3ZjE2Mzc0NWQwMGRlODljYmYzNmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZkNjNiZWY1Y2UxNmRjMjE1ZjBiYjE4MWQyODFlMzBkMWU0Y2E0OGJhYmQzMjZhNzMxZTRiNjlhYTEzYjZjMGIifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/register-tools.ts#L16-L29",
+          "version": "repo-lines-v1:sha256:1740339fabe23ea4dacef4a42ab346c857eb1f196cdafb3f0086e86a5b46ee40:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2YjJjYTk2MTJmYzBjYzdmNzMyNGJiNGY2NGQwNzJiYTcyMWVlZmFmNDc5MTU3NmQ3ZWU2YzgxNzMxZTA4ZjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5NTMwZjc2ODBlNGIwY2ZjNzJlZTIxZjAzNDllNTVkYjI0ZjZmZDJhMDVlYTZmM2QyNmMyZjJkZmJiYzI3Y2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/experts.ts#L22-L97",
+          "version": "repo-lines-v1:sha256:d77d831747d3bc17be14948651758a513812b95c9e444776b4500fe5bf9ec026:eyJzZWxlY3RlZExpbmVDb3VudCI6NzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJiOTg0MWU1ZWY1YTRmMDg4MTYxNjg1NWQ5OTk3MDY5N2JmYjk5ZmViN2FmMWZjNmYxNTAzYjQ0MTIxMjhkNjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlYTg0Nzk5ODgwN2M2MTI5MDQ2NjM3ZjczNTQzZjZiNGYzMjM4ZjFhNDJjMTJmMTkxOWQ4Zjg0NmJkMmQxZTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.2",
+    "at": "2026-09-24T19:59:50.419Z"
+  }
+}

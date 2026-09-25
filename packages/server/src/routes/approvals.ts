@@ -1,3 +1,4 @@
+import { approvalContext } from '../services/approval-context';
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import { createError } from '../middleware/error-handler';
@@ -10,11 +11,12 @@ import type { WebSocketService } from '../services/websocket-service';
 import type { ExecutionEngine } from '../execution/execution-engine';
 import type { AuthMiddleware } from '../middleware/auth';
 
-function parseApproval(approval: any) {
+function parseApproval(approval: any, db?: Database) {
   return {
     ...approval,
     request_data: JSON.parse(approval.request_data || '{}'),
     metadata: JSON.parse(approval.metadata || '{}'),
+    ...(db ? { context: approvalContext(db, approval.task_id) } : {}),
   };
 }
 
@@ -107,7 +109,7 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
         }
         query += ' ORDER BY created_at DESC';
         const approvals = db.prepare(query).all(...params);
-        res.json({ approvals: (approvals as any[]).map(parseApproval) });
+        res.json({ approvals: (approvals as any[]).map((approval) => parseApproval(approval, db)) });
       } else {
         let query = 'SELECT a.* FROM approvals a INNER JOIN tasks ON a.task_id = tasks.id';
         const params: any[] = [];
@@ -124,7 +126,7 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
         query += ' ORDER BY a.created_at DESC';
 
         const approvals = db.prepare(query).all(...params);
-        res.json({ approvals: (approvals as any[]).map(parseApproval) });
+        res.json({ approvals: (approvals as any[]).map((approval) => parseApproval(approval, db)) });
       }
     } catch (error) {
       next(error);
@@ -143,7 +145,7 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
         return;
       }
 
-      res.json(parseApproval(approval));
+      res.json(parseApproval(approval, db));
     } catch (error) {
       next(error);
     }

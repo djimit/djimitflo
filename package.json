@@ -15,8 +15,10 @@
     "build": "npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/telegram && npm run build --workspace=@djimitflo/agent-catalog && npm run build --workspace=@djimitflo/mcp-server && npm run build --workspace=@djimitflo/ransomware-module && npm run build --workspace=@djimitflo/server && npm run build --workspace=@djimitflo/dashboard",
     "build:server": "npm run build --workspace=@djimitflo/server",
     "build:dashboard": "npm run build --workspace=@djimitflo/dashboard",
-    "test": "node scripts/live-identity-evidence.test.mjs && npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog && npm run test --workspaces --if-present",
+    "test": "bash scripts/deploy-vps.selftest.sh && bash scripts/wiki-delta-emitter.selftest.sh && python3 scripts/paperclip-archive-export.py --selftest && python3 scripts/paperclip-readonly-monitor.py --selftest && node scripts/live-identity-evidence.test.mjs && node scripts/integration-probes.test.mjs && npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog && npm run test --workspaces --if-present",
+    "test:changed": "npm run test --workspace=@djimitflo/server -- --changed",
     "test:mutation": "stryker run",
+    "test:mutation:grounded": "node scripts/mutation-gain.mjs",
     "audit:ci": "node scripts/ci-audit.mjs",
     "assurance:truth": "node scripts/assurance-truth.mjs",
     "assurance:contracts": "node scripts/contract-inventory.mjs",
@@ -41,14 +43,14 @@
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
     "@types/express-serve-static-core": "5.0.7",
-    "eslint": "^10.9.1",
+    "eslint": "^10.10.0",
     "jsdom": "^29.1.1",
     "npm-run-all": "^4.1.5",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "vitest": "^4.1.11",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.69.0"
+    "typescript-eslint": "8.70.0"
   },
   "engines": {
     "node": ">=22.0.0 <25.0.0",

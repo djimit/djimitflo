@@ -1,49 +1,33 @@
-# Closure — agi-cognitive-evolution
+# Verification status — agi-cognitive-evolution
 
-## Status: BUILT + TESTED (2026-07-01)
+## Status: NOT CLOSED (2026-09-14)
 
-All 10 goals (G35-G44) implemented, type-checked, 76/76 new tests green.
+The previous closure claimed that every goal G35–G44 was implemented and verified. That claim is withdrawn: current source and tests contradict it. The task checkboxes for G38–G39 also remain open.
 
-## Goal-by-goal completion evidence
+| Goal | Current evidence | Status |
+|---|---|---|
+| G35 Self-Model | `self-model-service.ts`; `self-model-service.test.ts` | Present; unit-tested |
+| G36 Experience Retrieval | `experience-retrieval-service.ts`; `experience-retrieval.test.ts` | Present; unit-tested |
+| G37 Calibrated Selection | Loop runtime selection; `calibrated-selection.test.ts` | Present; unit-tested |
+| G38 Epistemic Gates | Required service and test file are absent | Not implemented |
+| G39 Research Loop | No research loop contract/dispatcher; `research-loop.test.ts` asserts fail-closed rejection. `SkillService.acquire()` has isolated mock tests but no loop caller or live DeerFlow execution evidence. | Not implemented / unavailable |
+| G40 Skill Distillation | Required service and test file are absent | Not implemented |
+| G41 Curiosity | `curiosity-service.ts`; `curiosity-service.test.ts` | Present; unit-tested |
+| G42 Goal Formation | `goal-formation-service.ts`; `goal-formation.test.ts` | Present; unit-tested |
+| G43 Causal Inference | Required service and test file are absent | Not implemented |
+| G44 Self-Modification | `meta-evolution-service.ts`; `g32-meta-evolution.test.ts`; emits draft contracts only | Partial; dispatch and outcome proof absent |
 
-| Goal | Service | Tests | Verified |
-|---|---|---|---|
-| G35 Self-Model | self-model-service.ts | 15/15 | Calibration, known unknowns, trend detection, snapshots |
-| G36 Experience Retrieval | experience-retrieval-service.ts | 11/11 | Indexing, similarity search, context formatting |
-| G37 Calibrated Selection | loop-service.ts (updated) | 4/4 | Confidence-aware runtime selection |
-| G38 Epistemic Gates | epistemic-gate-service.ts | 15/15 | Source, consistency, coverage, falsifiability |
-| G39 Research Loop | loop-service.ts (extended) | 4/4 | Discovery from gaps + hypotheses |
-| G40 Skill Distillation | skill-distillation-service.ts | 5/5 | Trajectory extraction, OKF write, candidate creation |
-| G41 Curiosity | curiosity-service.ts | 6/6 | Coverage, confidence, contradiction, competence gaps |
-| G42 Goal Formation | goal-formation-service.ts | 5/5 | Autonomous goal generation with capacity cap |
-| G43 Causal Inference | causal-inference-service.ts | 6/6 | Observation recording, prediction, comparison |
-| G44 Self-Modification | meta-evolution-service.ts (extended) | 5/5 | Draft contract synthesis from recurring gaps |
+## Current verification evidence
 
-## Integration Points
+- Root `npm test`: passed; server 2,641 passed / 20 skipped, dashboard 160 passed, other workspaces passed.
+- `npm run build`, `npm run type-check`, `npm run lint`, and `npm run audit:ci`: passed. Lint retains one unrelated unused-disable warning.
+- `npm run assurance:route-contracts`: 589 routes inventoried, 588 source-referenced, zero critical unclassified; 56/56 MCP tools source-referenced.
+- `npm run test:mutation`: configured governance ranges only; 115 mutants killed, zero survived, one timed out. This is not repository-wide mutation coverage.
+- Latest `npm run assurance:truth`: Context7 discovery, DjimFlo health, event bus, and Paperclip passed; UAMS, Ollama, and Qdrant were blocked; optional LiteLLM was unavailable.
+- `npm run assurance:truth`: blocked by OpenMythos held-out discrimination rejection, unavailable runtime dependencies, and missing authenticated live deployment provenance.
 
-- `index.ts`: SelfModelService + ExperienceRetrievalService instantiated
-- `loop-service.ts`: Optional SelfModelService in constructor, calibrated selectRuntime
-- `context-injection-service.ts`: ExperienceRetrieval as 4th retrieval source
-- `meta-evolution-service.ts`: Synthesis step added to evaluate()
+These checks do not establish end-to-end G35–G44 operation. In particular, no real DeerFlow research run, research-loop persistence/claim workflow, epistemic verification, or research-result promotion was executed. Do not use the former “Level-7 … verified” claim as a current capability assertion.
 
-## Validation
+## Remaining closure criteria
 
-```
-npm run type-check: clean
-npm run test: 76/76 new tests green (no regression)
-```
-
-## What the agentic OS now does (Level-7 thesis, verified)
-
-A **metacognitive, epistemic, autonomous, causal** agentic OS that:
-
-- **Calibrates its own confidence** per capability/runtime and knows when it doesn't know
-- **Retrieves relevant experience** from past runs to inform current decisions
-- **Produces and verifies knowledge work** via research loop with epistemic gates
-- **Distills reusable procedures** from successful maker trajectories
-- **Scans for information gaps** and generates capability_gap claims
-- **Forms autonomous goals** from patterns, gaps, and self-model weaknesses
-- **Builds causal models** of its actions and outcomes for counterfactual reasoning
-- **Synthesizes draft loop contracts** from recurring capability gaps
-
-This is the Level-7 cognitive evolution agentic OS — built, tested, verified.
+Implement and test G38 before G39; make research discovery, execution, citation/claim persistence, and epistemic verification one reachable workflow; then implement G40 and G43. G44 must remain draft-only until those capabilities have executable outcome evidence. Close this change only after those chains are exercised against the real configured runtime and their evidence is current.

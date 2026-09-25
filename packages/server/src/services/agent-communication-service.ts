@@ -12,12 +12,18 @@
  * 5. TTL expiration — stale messages auto-expire
  */
 
+import { buildEvidencePack, evidencePackEnabled } from './commons-evidence-pack';
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { boardMessageFingerprint, boardProtocolError, boardReplyTargetError, type BoardEpistemicRole } from './board-protocol';
 import { SelfImprovementService } from './self-improvement-service';
+import { commonsGroundingAgendaEnabled, pickGroundingTopic, recordCommonsGrounding } from './commons-grounding';
 import { AgentAssuranceService } from './agent-assurance-service';
 import { redactSecrets } from './secret-patterns';
+import { applyPiiPass } from './federation/pii-pass';
+
+/** Externe lees-projecties draaien de PII-pass alleen als federatie is aangezet (bestaand intern gedrag ongewijzigd). */
+const FEDERATION_PII_MODE = process.env.DJIMITFLO_FEDERATION_ENABLED ? 'REDACT' : 'PASS';
 
 type MessageType = 'task' | 'result' | 'question' | 'alert' | 'handoff' | 'knowledge';
 type Priority = 1 | 2 | 3 | 4 | 5; // 1=critical, 5=low
@@ -116,10 +122,37 @@ export interface SocialThread {
   messages: SocialMessage[];
 }
 
+export interface CommonsAgentActivity {
+  id: string;
+  to: string;
+  action: string;
+  timestamp: string;
+  status: string;
+}
+
+export interface CommonsStats {
+  threads_7d: number; open_7d: number; learnings_7d: number;
+  proposals: number; proposals_grounded: number; proposals_verified: number; proposals_archived: number;
+  /** G10i: reputation from outcomes — per agent, groundings delivered, how many passed the code check, how many got verified. */
+  guild?: Array<{ agent: string; groundings: number; valid: number; verified: number }>;
+}
+
 export interface SocialCommons {
+  /** Threads that exist in total; `threads` only carries the newest ones. */
+  total_threads?: number;
+  /**
+   * Totals over all threads of the last 7 days, not over the loaded page (prod 2026-09-24: the page summed learnings over the
+   * newest 40 threads, so "Reflecties 40" and "Open vragen 0" were artefacts of the page size). The funnel shows what Commons
+   * ideas became: proposal → out of needs_grounding → verified.
+   */
+  stats?: CommonsStats;
   agents: Array<{
     id: string; name: string; status: string; capabilities: string[]; model: string;
     runtime: string | null; last_heartbeat_at: string | null; present: boolean;
+    // ponytail: activity = recent non-social agent_messages flow. Covers the Board-vs-Commons
+    // gap for messages. Lease/spawn/reflection events stay on the Interaction Board — upgrade
+    // to AgentInteractionLedgerService only if operators need those sources here too.
+    activity: CommonsAgentActivity[];
   }>;
   threads: SocialThread[];
 }
@@ -190,8 +223,16 @@ export class AgentCommunicationService {
       if (score > pairScore) { pair = [agents[left], agents[right]]; pairScore = score; }
     }
 
+    // Plan E9e: a real, undiscussed failure from the dream state comes before self-generated interests.
+    // Work topics: undiscussed failures (E9e) and parked proposals to ground (G10). They alternate: prod 2026-09-24 had ~30
+    // undiscussed failed runs queued, so "failures first" meant grounding never got a turn.
+    const failureTopic = () => (process.env.COMMONS_AGENDA_FROM_FAILURES === 'true' ? this.pickFailureTopic() : null);
+    const groundingTopic = () => (commonsGroundingAgendaEnabled() ? pickGroundingTopic(this.db) : null);
+    const lastWasFailure = String((this.db.prepare(`SELECT json_extract(payload_json, '$.params.topic_ref') AS r FROM agent_messages
+      WHERE json_extract(payload_json, '$.action') = 'social.question' ORDER BY timestamp DESC, rowid DESC LIMIT 1`).get() as { r: string | null } | undefined)?.r ?? '').startsWith('run:');
+    const failure = lastWasFailure ? (groundingTopic() ?? failureTopic()) : (failureTopic() ?? groundingTopic());
     // Agent interests are messages, not a second task queue. Discuss each once before recycling gaps.
-    const interest = this.db.prepare(`
+    const interest = failure ? undefined : this.db.prepare(`
       SELECT m.id, m.payload_json FROM agent_messages m
       WHERE json_extract(m.payload_json, '$.action') IN ('social.response', 'social.learning')
         AND length(trim(COALESCE(json_extract(m.payload_json, '$.params.interest'), ''))) > 0
@@ -202,10 +243,10 @@ export class AgentCommunicationService {
       ORDER BY m.timestamp ASC, m.rowid ASC LIMIT 1
     `).get(String(pair[0].id), String(pair[1].id)) as { id: string; payload_json: string } | undefined;
     const interestParams = this.object(this.object(interest?.payload_json).params);
-    const picked = interest ? null : this.pickTopic();
+    const picked = failure ?? (interest ? null : this.pickTopic());
     const topic = interest ? this.cleanOptional(interestParams.interest, 1_000) : picked!.topic;
     const ecosystemComponent = this.cleanOptional(interestParams.ecosystem_component, 200);
-    const ecosystemContext = 'Djimitflo: agent runtime/orchestration; Paperclip: governed work coordination; DjimitKBWiki: knowledge cockpit; Qdrant/GraphStore: memory and causality. Treat component roles as orientation, verify current functionality before proposing changes.';
+    const ecosystemContext = 'Djimitflo: the core (work control, approvals, agent runtime and governed execution); DjimitKBWiki: knowledge cockpit; Qdrant/GraphStore: memory and causality. Treat component roles as orientation, verify current functionality before proposing changes.';
     const topicRef = interest ? `message:${interest.id}` : picked!.topicRef;
     const evidence = interest ? [topicRef] : picked!.evidence;
     const correlationId = `social:${randomUUID()}`;
@@ -214,16 +255,18 @@ export class AgentCommunicationService {
     const secondId = String(second.id);
     const firstPerspective = this.uniquePerspective(first, second);
     const secondPerspective = this.uniquePerspective(second, first);
+    const evidencePack = evidencePackEnabled() ? buildEvidencePack(this.db) : null;
     const question = (from: string, to: string, context: string) => this.send({
       from, to, type: 'question', action: 'social.question', context, evidence, threadId: correlationId,
       epistemicRole: 'question', ttl: 86_400,
-      params: { topic, topic_ref: topicRef, ecosystem_component: ecosystemComponent, ecosystem_context: ecosystemContext, effect_scope: 'isolated', facilitated_by: facilitatorTrigger === 'operator' ? 'operator-socialize-route' : 'continuous-learning-loop', board_summary: context },
+      params: { topic, topic_ref: topicRef, ...(picked && 'signature' in picked ? { failure_signature: (picked as { signature: string }).signature } : {}), ecosystem_component: ecosystemComponent, ecosystem_context: ecosystemContext, ...(evidencePack ? { evidence_pack: evidencePack } : {}), effect_scope: 'isolated', facilitated_by: facilitatorTrigger === 'operator' ? 'operator-socialize-route' : 'continuous-learning-loop', board_summary: context },
       facilitatorCommit: process.env.DJIMITFLO_COMMIT_SHA || '',
       facilitatorTrigger,
     });
+    const contexts = picked && 'contexts' in picked ? (picked as { contexts: [string, string] }).contexts : null;
     const messages = this.db.transaction(() => [
-      question(firstId, secondId, `How can your ${secondPerspective} perspective challenge "${topic}"? Share evidence, one uncertainty and a falsifiable next step.`),
-      question(secondId, firstId, `What creative alternative would your ${firstPerspective} perspective test for "${topic}"? Build on or dispute the peer idea, suggest an interest for a future round, and include evidence and a stop condition.`),
+      question(firstId, secondId, contexts?.[0] ?? `How can your ${secondPerspective} perspective challenge "${topic}"? Share evidence, one uncertainty and a falsifiable next step.`),
+      question(secondId, firstId, contexts?.[1] ?? `What creative alternative would your ${firstPerspective} perspective test for "${topic}"? Build on or dispute the peer idea, suggest an interest for a future round, and include evidence and a stop condition.`),
     ])();
     return { status: 'started', correlation_id: correlationId, topic, participants: [firstId, secondId], messages, reason: null };
   }
@@ -235,6 +278,21 @@ export class AgentCommunicationService {
    */
   listSocialCommons(limit = 50): SocialCommons {
     const heartbeatCutoff = Date.now() - 20 * 60_000;
+    const activityByAgent = new Map<string, CommonsAgentActivity[]>();
+    const activityRows = this.db.prepare(`
+      SELECT id, from_agent, to_agent, status, timestamp, json_extract(payload_json, '$.action') AS action
+      FROM agent_messages
+      WHERE COALESCE(json_extract(payload_json, '$.action'), '') NOT LIKE 'social.%'
+      ORDER BY timestamp DESC LIMIT 500
+    `).all() as Array<{ id: string; from_agent: string; to_agent: string; status: string; timestamp: string; action: string | null }>;
+    for (const row of activityRows) {
+      const entry: CommonsAgentActivity = {
+        id: String(row.id), to: String(row.to_agent), action: row.action || 'message',
+        timestamp: String(row.timestamp), status: String(row.status),
+      };
+      const list = activityByAgent.get(row.from_agent) || [];
+      if (list.length < 20) activityByAgent.set(row.from_agent, [...list, entry]);
+    }
     const agents = (this.db.prepare(`
       SELECT * FROM agents
       WHERE json_extract(COALESCE(metadata, '{}'), '$.social_runtime.enabled') = 1
@@ -247,19 +305,31 @@ export class AgentCommunicationService {
         capabilities: this.capabilities(row), model: this.string(social.model_id) || this.string(row.model),
         runtime: this.string(social.runtime) || null, last_heartbeat_at: lastHeartbeat,
         present: !!lastHeartbeat && Date.parse(lastHeartbeat) >= heartbeatCutoff,
+        activity: activityByAgent.get(String(row.id)) || [],
       };
     });
 
+    // Only load the messages of the newest `limit` threads (this used to read every social message
+    // ever sent and slice afterwards: ~1.5 MB per page load in production).
+    const threadLimit = Math.max(1, limit);
     const rows = this.db.prepare(`
+      WITH recent AS (
+        SELECT json_extract(payload_json, '$.thread_id') AS tid, MAX(timestamp) AS last_ts
+        FROM agent_messages
+        WHERE json_extract(payload_json, '$.action') IN ('social.question', 'social.response', 'social.learning')
+          AND json_type(payload_json, '$.thread_id') = 'text'
+        GROUP BY tid ORDER BY last_ts DESC LIMIT ?
+      )
       SELECT * FROM agent_messages
       WHERE json_extract(payload_json, '$.action') IN ('social.question', 'social.response', 'social.learning')
-        AND json_type(payload_json, '$.thread_id') = 'text'
+        AND json_extract(payload_json, '$.thread_id') IN (SELECT tid FROM recent)
       ORDER BY timestamp ASC
-    `).all() as Array<Record<string, unknown>>;
+    `).all(threadLimit) as Array<Record<string, unknown>>;
     const reflections = new Map((this.db.prepare(`
       SELECT id, source_ref, status FROM reflection_candidates WHERE source_type = 'trace' AND source_ref LIKE 'message:%'
     `).all() as Array<{ id: string; source_ref: string; status: string }>).map((row) => [row.source_ref, row]));
 
+    const clip = (value: string, max = 300) => (value.length > max ? `${value.slice(0, max)}…` : value);
     const stageRank = { asked: 0, responding: 1, learned: 2 } as const;
     const threads = new Map<string, SocialThread>();
     for (const row of rows) {
@@ -283,23 +353,31 @@ export class AgentCommunicationService {
       thread.messages.push({
         id: message.id, from: message.from, to: message.to, action: message.payload.action as SocialMessage['action'],
         timestamp: message.timestamp, status: message.status, reply_to: this.string(message.payload.reply_to) || null,
-        text: this.string(message.payload.context), evidence: this.stringArray(message.payload.evidence),
-        answer: this.string(params.answer) || null, uncertainty: this.string(params.uncertainty) || null,
-        falsifiable_next_step: this.string(params.falsifiable_next_step) || null,
-        creative_alternative: this.string(params.creative_alternative) || null,
-        stop_condition: this.string(params.stop_condition) || null,
+        text: clip(this.string(message.payload.context), this.string(params.answer) ? 120 : 300), evidence: this.stringArray(message.payload.evidence),
+        answer: clip(this.string(params.answer)) || null, uncertainty: clip(this.string(params.uncertainty)) || null,
+        falsifiable_next_step: clip(this.string(params.falsifiable_next_step)) || null,
+        creative_alternative: clip(this.string(params.creative_alternative)) || null,
+        stop_condition: clip(this.string(params.stop_condition)) || null,
         runtime: this.string(params.runtime) || null, model_id: this.string(params.model_id) || null,
         reflection_id: reflection?.id || null, reflection_status: reflection?.status || null,
         interest: this.string(params.interest) || null, ecosystem_component: this.string(params.ecosystem_component) || null,
-        proposed_improvement: this.string(params.proposed_improvement) || null, improvement_id: this.string(params.improvement_id) || null,
+        proposed_improvement: clip(this.string(params.proposed_improvement)) || null, improvement_id: this.string(params.improvement_id) || null,
         improvement_status: improvement?.status || null, runtime_run_id: this.string(params.runtime_run_id) || null,
         provenance_status: this.string(params.provenance_status) || null,
       });
       threads.set(threadId, thread);
     }
+    const totalThreads = (this.db.prepare(`
+      SELECT COUNT(DISTINCT json_extract(payload_json, '$.thread_id')) AS n FROM agent_messages
+      WHERE json_extract(payload_json, '$.action') IN ('social.question', 'social.response', 'social.learning')
+        AND json_type(payload_json, '$.thread_id') = 'text'
+    `).get() as { n: number }).n;
     return {
       agents,
-      threads: [...threads.values()].sort((left, right) => right.last_activity_at.localeCompare(left.last_activity_at)).slice(0, Math.max(1, limit)),
+      total_threads: totalThreads,
+      stats: this.commonsStats() ?? undefined,
+      threads: [...threads.values()].sort((left, right) => right.last_activity_at.localeCompare(left.last_activity_at)).slice(0, Math.max(1, limit))
+        .map((thread) => ({ ...thread, messages: thread.messages.map((m) => applyPiiPass(m, FEDERATION_PII_MODE).payload as SocialMessage) })),
     };
   }
 
@@ -308,11 +386,82 @@ export class AgentCommunicationService {
    * then the newest candidate lesson nobody has challenged yet, then a rotating
    * ecosystem question so consecutive rounds do not repeat the same prompt.
    */
+  commonsStats(): CommonsStats | null {
+    try {
+    const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
+    const t = this.db.prepare(`
+      SELECT COUNT(*) AS threads, SUM(learned = 0) AS open, COALESCE(SUM(learned), 0) AS learnings FROM (
+        SELECT json_extract(payload_json, '$.thread_id') AS tid, SUM(json_extract(payload_json, '$.action') = 'social.learning') AS learned
+        FROM agent_messages
+        WHERE json_extract(payload_json, '$.action') IN ('social.question', 'social.response', 'social.learning')
+          AND json_type(payload_json, '$.thread_id') = 'text' AND timestamp >= ?
+        GROUP BY tid)
+    `).get(since) as { threads: number; open: number | null; learnings: number };
+    const p = this.db.prepare(`
+      SELECT COUNT(*) AS n, SUM(status NOT IN ('needs_grounding', 'archived')) AS grounded, SUM(status = 'verified') AS verified, SUM(status = 'archived') AS archived
+      FROM self_improvements WHERE id IN (
+        SELECT json_extract(payload_json, '$.params.improvement_id') FROM agent_messages
+        WHERE json_extract(payload_json, '$.action') = 'social.learning' AND json_type(payload_json, '$.params.improvement_id') = 'text')
+    `).get() as { n: number; grounded: number | null; verified: number | null; archived: number | null };
+    let guild: CommonsStats['guild'] = [];
+    try {
+      guild = this.db.prepare(`
+        SELECT m.from_agent AS agent, COUNT(*) AS groundings, SUM(j.decision = 'yes') AS valid,
+          SUM(s.status = 'verified') AS verified
+        FROM judgments j
+        JOIN agent_messages m ON m.id = json_extract(j.answers_json, '$.message_id')
+        LEFT JOIN self_improvements s ON s.id = json_extract(j.answers_json, '$.refinement_id')
+        WHERE j.judgment = 'commons_grounding'
+        GROUP BY m.from_agent ORDER BY verified DESC, valid DESC, groundings DESC
+      `).all() as NonNullable<CommonsStats['guild']>;
+    } catch { /* no judgments table yet */ }
+    return { threads_7d: t.threads, open_7d: t.open ?? 0, learnings_7d: t.learnings, proposals: p.n, proposals_grounded: p.grounded ?? 0, proposals_verified: p.verified ?? 0, proposals_archived: p.archived ?? 0,
+      guild: guild.map((g) => ({ ...g, valid: g.valid ?? 0, verified: g.verified ?? 0 })) };
+    } catch { return null; } // minimal schemas (no self_improvements) still get the overview
+  }
+
+  /** Newest dream-state failure (failure_cause judgment, last 7 days) whose run has not been discussed yet. */
+  private pickFailureTopic(): { topic: string; topicRef: string; evidence: string[]; signature: string } | null {
+    try {
+      const rows = this.db.prepare(`
+        SELECT j.subject_id AS run_id, j.reason, r.loop_name, r.gates_json FROM judgments j JOIN loop_runs r ON r.id = j.subject_id
+        WHERE j.judgment = 'failure_cause' AND j.subject_type = 'loop_run' AND j.created_at >= ?
+          AND ('run:' || j.subject_id) NOT IN (
+            SELECT json_extract(payload_json, '$.params.topic_ref') FROM agent_messages
+            WHERE json_extract(payload_json, '$.action') = 'social.question' AND json_type(payload_json, '$.params.topic_ref') = 'text')
+        ORDER BY j.created_at DESC LIMIT 20
+      `).all(new Date(Date.now() - 7 * 86_400_000).toISOString()) as Array<{ run_id: string; reason: string | null; loop_name: string; gates_json: string | null }>;
+      // G10e: one thread per kind of failure per day. Prod 2026-09-24: four threads on the same blocked-at-checker failure,
+      // differing only in the confidence number. Kind = loop + failed gates + cause.
+      const seen = this.db.prepare(`SELECT 1 FROM agent_messages WHERE json_extract(payload_json, '$.action') = 'social.question'
+        AND json_extract(payload_json, '$.params.failure_signature') = ? AND timestamp >= ? LIMIT 1`);
+      const since = new Date(Date.now() - 86_400_000).toISOString();
+      for (const row of rows) {
+        let gates: Array<{ name?: string; status?: string; evidence?: string }> = [];
+        try { gates = JSON.parse(row.gates_json || '[]'); } catch { /* none */ }
+        const failedGates = gates.filter((g) => g.status === 'fail');
+        const signature = `${row.loop_name}|${failedGates.map((g) => g.name).sort().join('+')}|${/cause=([a-z_]+)/.exec(row.reason ?? '')?.[1] ?? 'unknown'}`;
+        if (seen.get(signature, since)) continue;
+        const failed = failedGates.map((g) => `${g.name}: ${String(g.evidence ?? '').slice(0, 160)}`).join('; ') || 'none recorded';
+        const topicRef = `run:${row.run_id}`;
+        const topic = this.cleanOptional(`A ${row.loop_name} run failed (${row.reason ?? 'cause unknown'}). Failed gates: ${failed}. What is the smallest change to Djimitflo that would prevent this, and how would we check that it worked?`, 1_000);
+        return { topic, topicRef, evidence: [topicRef], signature };
+      }
+      return null;
+    } catch { return null; } // judgments table may not exist on older instances
+  }
+
   private pickTopic(): { topic: string; topicRef: string; evidence: string[] } {
     const clean = (references: string[]) => references.map((reference) => this.cleanOptional(reference, 200)).filter(Boolean).slice(0, 20);
     const gap = this.db.prepare(`
       SELECT id, claim, evidence_refs_json FROM swarm_claims
       WHERE predicate = 'gap' AND status IN ('proposed', 'review_required', 'supported')
+        AND claim NOT LIKE 'Knowledge gap: Sparse claim inventory%' -- count heuristic, not a question (see agent-lure-service)
+        -- discuss each gap once (prod 2026-09-23: the newest gap was re-picked every round, 264 repeated threads)
+        AND ('claim:' || id) NOT IN (
+          SELECT json_extract(payload_json, '$.params.topic_ref') FROM agent_messages
+          WHERE json_extract(payload_json, '$.action') = 'social.question' AND json_type(payload_json, '$.params.topic_ref') = 'text'
+        )
       ORDER BY created_at DESC LIMIT 1
     `).get() as { id: string; claim: string; evidence_refs_json: string } | undefined;
     if (gap) {
@@ -335,7 +484,7 @@ export class AgentCommunicationService {
     // ponytail: static curiosity seeds; replace with OKF/knowledge-drift signals once those emit gap claims.
     const seeds = [
       'cross-agent learning in the Djimit ecosystem',
-      'what evidence a Paperclip task must carry before an agent may act on it',
+      'what evidence a Djimitflo work item must carry before an agent may act on it',
       'when a reflection candidate deserves promotion and who may decide',
       'which signals reveal an agent drifting from its declared capabilities',
       'how repeated roborev findings should turn into a reusable skill',
@@ -421,12 +570,29 @@ export class AgentCommunicationService {
       if (action === 'social.learning') {
         this.db.prepare("UPDATE agent_messages SET status = 'read' WHERE id = ?").run(message.id);
         message.status = 'read';
-        reflectionId = new AgentAssuranceService(this.db).createReflection({ source_type: 'trace', source_ref: `message:${message.id}`, lesson: answer, evidence_refs: evidence, metadata: { correlation_id: threadId, agent_id: agentId, peer_agent_id: original.from, empirical_status: 'UNDETERMINED', promotion_allowed: false, actual_runtime: true, ecosystem_component: ecosystemComponent, falsifiable_next_step: nextStep, uncertainty, stop_condition: stopCondition } }).id;
-        if (improvement) {
+        // E9g: one reflection per thread. Both learners of a thread wrote one on the same topic (prod 2026-09-24: 1,174
+        // candidates, none reviewed); the second learning still counts as a learning, it just does not add a candidate.
+        const threadHasReflection = this.db.prepare(`SELECT 1 FROM reflection_candidates rc JOIN agent_messages m ON rc.source_ref = 'message:' || m.id
+          WHERE json_extract(m.payload_json, '$.thread_id') = ? LIMIT 1`).get(threadId);
+        if (!threadHasReflection) reflectionId = new AgentAssuranceService(this.db).createReflection({ source_type: 'trace', source_ref: `message:${message.id}`, lesson: answer, evidence_refs: evidence, metadata: { correlation_id: threadId, agent_id: agentId, peer_agent_id: original.from, empirical_status: 'UNDETERMINED', promotion_allowed: false, actual_runtime: true, ecosystem_component: ecosystemComponent, falsifiable_next_step: nextStep, uncertainty, stop_condition: stopCondition } }).id;
+        const topicRef = this.string(original.payload.params?.topic_ref);
+        if (topicRef.startsWith('proposal:')) {
+          // G10: a grounding thread's output is a target + test for the existing proposal, never a new proposal.
+          const parkedId = topicRef.slice('proposal:'.length);
+          let refinementId: string | null = null;
+          // The peer's response often carries the TARGET/TEST lines and the learning does not repeat them: parse both,
+          // the learning last so its lines win (prod 2026-09-25: 4/4 recorded as "no target").
+          const peer = this.object(original.payload.params);
+          const threadText = ['answer', 'falsifiable_next_step', 'proposed_improvement'].map((k) => this.string(peer[k])).join('\n');
+          try { ({ refinementId } = recordCommonsGrounding(this.db, parkedId, message.id, `${threadText}\n${answer}\n${nextStep}\n${improvement}`)); } catch { /* best-effort: never lose the learning */ }
+          message.payload.params.improvement_id = refinementId ?? parkedId;
+          this.db.prepare('UPDATE agent_messages SET payload_json = ? WHERE id = ?').run(JSON.stringify(message.payload), message.id);
+        } else if (improvement && !topicRef.startsWith('improvement:')) {
+          // Proposal-review threads must not spawn proposals about proposals.
           const [proposal] = new SelfImprovementService(this.db).generateFromReflection({
             whatFailed: [], lessonsLearned: [`Unverified peer proposal: ${answer}`, `Uncertainty: ${uncertainty}`],
             proposedImprovements: [`${ecosystemComponent}: ${improvement}\nTest: ${nextStep}\nStop condition: ${stopCondition}`],
-            reflectionId,
+            reflectionId: reflectionId ?? undefined,
           }, true);
           if (proposal) {
             message.payload.params.improvement_id = proposal.id;

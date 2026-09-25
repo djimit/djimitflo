@@ -120,6 +120,49 @@ export class MemoryCandidateService {
     return this.parse(row);
   }
 
+  /**
+   * Candidates eligible for unattended promotion: classify() only assigns
+   * status='candidate'/promotion_status='proposed' to non-sensitive
+   * operational_memory — engineering_rule/policy_rule/security-sensitive
+   * content is classified straight into 'review_required'/
+   * 'blocked_pending_human' and never appears here, so this list is already
+   * safe for an automated caller to attempt promote() on without a human.
+   */
+  listPendingPromotion(limit = 200): MemoryCandidateRecord[] {
+    const capped = Math.max(1, Math.min(limit, 500));
+    return (this.db.prepare(
+      "SELECT * FROM memory_candidates WHERE status = 'candidate' AND promotion_status = 'proposed' ORDER BY created_at ASC LIMIT ?"
+    ).all(capped) as any[]).map((row) => this.parse(row));
+  }
+
+  /** Persists which specialist panel is reviewing this candidate, so a scheduler can reuse it across ticks instead of creating a new one each time. */
+  setReviewPanel(id: string, panelId: string): MemoryCandidateRecord {
+    const candidate = this.get(id);
+    const now = new Date().toISOString();
+    this.db.prepare('UPDATE memory_candidates SET metadata = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify({ ...candidate.metadata, review_panel_id: panelId }), now, id);
+    return this.get(id);
+  }
+
+  /**
+   * The panel reviewed this candidate and did not reach 'goal' consensus.
+   * Moves promotion_status off 'proposed' so it stops looking like it's
+   * still awaiting its first review — mirrors the self-improvement pipeline's
+   * identical gap (SelfImprovementService.agentApproveIfReady), found in
+   * production with 104 proposals silently parked at 'proposed' for up to
+   * 6 days after review. Reuses the existing 'blocked_pending_review' value
+   * (same one classify() already assigns to engineering_rule candidates)
+   * rather than adding a new promotion_status — the column has a CHECK
+   * constraint, and this candidate's situation is exactly that: reviewed,
+   * blocked, not a hard rejection.
+   */
+  markNeedsMoreEvidence(id: string): MemoryCandidateRecord {
+    const now = new Date().toISOString();
+    this.db.prepare("UPDATE memory_candidates SET promotion_status = 'blocked_pending_review', updated_at = ? WHERE id = ?")
+      .run(now, id);
+    return this.get(id);
+  }
+
   promote(id: string, input: MemoryPromotionInput = {}): { candidate: MemoryCandidateRecord; sinks: Array<Record<string, unknown>> } {
     const candidate = this.get(id);
     if (candidate.promotion_status === 'promoted') {
@@ -138,7 +181,7 @@ export class MemoryCandidateService {
     const sinks = input.sinks && input.sinks.length > 0 ? input.sinks : ['okf' as const];
     const results = sinks.map((sink) => this.writeSink(sink, candidate, input));
     const now = new Date().toISOString();
-    const ok = results.every((result) => result.status === 'pass' || result.status === 'skipped');
+    const ok = results.every((result) => result.status === 'pass' || result.status === 'skipped' || result.status === 'pending_async');
     if (!ok) {
       throw new Error('MEMORY_PROMOTION_SINK_FAILED');
     }
@@ -224,11 +267,11 @@ export class MemoryCandidateService {
    * skips — never fails the proof. Ensures the collection is 768d Cosine; recreates it ONLY if it
    * exists at a different dimension AND is empty (never destroys populated data).
    */
-  async upsertToSwarmMemory(candidateId: string): Promise<void> {
-    if (process.env.PROOF_RUN_MEMORY_FLYWHEEL === 'false') return; // tests disable the network write-back
+  async upsertToSwarmMemory(candidateId: string): Promise<{ ok: boolean; reason?: string }> {
+    if (process.env.PROOF_RUN_MEMORY_FLYWHEEL === 'false') return { ok: false, reason: 'flywheel_disabled_by_env' };
     try {
       const candidate = this.get(candidateId);
-      if (!candidate || candidate.promotion_status !== 'promoted') return;
+      if (!candidate || candidate.promotion_status !== 'promoted') return { ok: false, reason: 'candidate_not_found_or_not_promoted' };
       const QDRANT_URL = (process.env.QDRANT_URL || 'http://192.168.1.28:6333').replace(/\/$/, '');
       const OLLAMA_URL = (process.env.OLLAMA_URL || 'http://192.168.1.28:11434').replace(/\/$/, '');
       const qdrantApiKey = process.env.QDRANT_API_KEY ?? '';
@@ -253,9 +296,9 @@ export class MemoryCandidateService {
         headers: json,
         body: JSON.stringify({ model: 'nomic-embed-text:latest', prompt: `${candidate.title}. ${candidate.content}` }),
       });
-      if (!embedRes.ok) return;
+      if (!embedRes.ok) return { ok: false, reason: `ollama_embed_failed:${embedRes.status}` };
       const vector = (await embedRes.json() as { embedding?: number[] }).embedding;
-      if (!vector || vector.length !== DIM) return; // model/collection dimension mismatch -> abort safely
+      if (!vector || vector.length !== DIM) return { ok: false, reason: 'ollama_dimension_mismatch' };
 
       const infoRes = await fetchTO(`${QDRANT_URL}/collections/${COLLECTION}`, { headers: auth });
       if (infoRes.status === 404) {
@@ -268,11 +311,13 @@ export class MemoryCandidateService {
           await fetchTO(`${QDRANT_URL}/collections/${COLLECTION}`, { method: 'DELETE', headers: auth });
           await fetchTO(`${QDRANT_URL}/collections/${COLLECTION}`, { method: 'PUT', headers: { ...json, ...auth }, body: JSON.stringify({ vectors: { size: DIM, distance: 'Cosine' } }) });
         } else if (typeof size === 'number' && size !== DIM) {
-          return; // populated mismatched collection — do not destroy
+          return { ok: false, reason: 'qdrant_dimension_mismatch_populated' };
         }
+      } else if (!infoRes.ok) {
+        return { ok: false, reason: `qdrant_info_failed:${infoRes.status}` };
       }
 
-      await fetchTO(`${QDRANT_URL}/collections/${COLLECTION}/points`, {
+      const upsertRes = await fetchTO(`${QDRANT_URL}/collections/${COLLECTION}/points`, {
         method: 'PUT',
         headers: { ...json, ...auth },
         body: JSON.stringify({
@@ -303,8 +348,12 @@ export class MemoryCandidateService {
           }],
         }),
       });
-    } catch {
-      // best-effort: never fail the proof on the learning write-back
+      if (!upsertRes.ok) return { ok: false, reason: `qdrant_upsert_failed:${upsertRes.status}` };
+      return { ok: true };
+    } catch (e) {
+      // best-effort: fail-closed — surface the reason so callers can flag degraded state
+      const reason = e instanceof Error ? e.message : String(e);
+      return { ok: false, reason: `exception:${reason.slice(0, 100)}` };
     }
   }
 
@@ -335,10 +384,21 @@ export class MemoryCandidateService {
         return { sink, status: 'skipped', reason: `okf_write_failed: ${(e as Error).message}` };
       }
     }
+    if (sink === 'qdrant') {
+      // ponytail: qdrant write is async (embed + upsert); promote() is sync. The real write lives in
+      // upsertToSwarmMemory — callers invoke it immediately after promote(). Mark as pending_async
+      // so promoted_sinks metadata is honest about the deferred path. Ceiling: if promote() ever
+      // becomes async, move the upsert here and flip status to pass/fail.
+      return { sink, status: 'pending_async', reason: 'async write deferred to upsertToSwarmMemory' };
+    }
+    if (sink === 'uams') {
+      // uams bridge not wired here; surface as a real skip, not a fake success.
+      return { sink, status: 'skipped', reason: 'uams sink not wired in local auto-propose mode' };
+    }
     return {
       sink,
       status: 'skipped',
-      reason: 'external sink promotion is declared but not executed in local auto-propose mode',
+      reason: `unknown sink: ${sink}`,
     };
   }
 

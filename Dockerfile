@@ -55,10 +55,12 @@ FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 
 ARG VCS_REF=unknown
+ARG BUILD_TIME=unknown
+ARG BUILD_SOURCE=unknown
 
 RUN apt-get update && \
     apt-get upgrade -y && \
-    apt-get install -y --no-install-recommends ca-certificates git python3-minimal curl && \
+    apt-get install -y --no-install-recommends ca-certificates git python3-minimal curl procps && \
     rm -rf /var/lib/apt/lists/*
 
 # gh CLI: djimitflo's own PR review service shells out to it for PR
@@ -73,8 +75,8 @@ RUN ARCH="$(dpkg --print-architecture)" && \
 
 # Keep the production worker surface equal to the runtimes accepted by
 # /swarms/runtime-readiness. Versions are pinned for reproducible probes.
-RUN npm install --global @openai/codex@0.146.0 opencode-ai@1.18.10 && \
-    git --version && codex --version && opencode --version
+RUN npm install --global @openai/codex@0.146.0 opencode-ai@1.18.10 @anthropic-ai/claude-code@2.1.282 && \
+    git --version && codex --version && opencode --version && claude --version
 
 # Create non-root user
 RUN groupadd -g 1001 djimitflo && \
@@ -133,6 +135,11 @@ ENV DB_PATH=/data/djimitflo.sqlite
 ENV DASHBOARD_PATH=/app/packages/dashboard/dist
 ENV BACKUP_DIR=/data/backups
 ENV DJIMITFLO_COMMIT_SHA=$VCS_REF
+# Baked-at-build provenance so /health can distinguish the running revision from
+# the built artifact instead of trusting a runtime env that may be stale.
+ENV DJIMITFLO_BUILD_COMMIT=$VCS_REF
+ENV DJIMITFLO_BUILD_TIME=$BUILD_TIME
+ENV DJIMITFLO_BUILD_SOURCE=$BUILD_SOURCE
 
 EXPOSE 3001
 

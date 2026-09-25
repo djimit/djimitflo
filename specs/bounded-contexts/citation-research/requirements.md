@@ -19,8 +19,9 @@ As a researcher, I want to register a source with trust scoring so that claims c
 As a researcher, I want to verify a claim against its sources so that I can trust the research output.
 
 **Acceptance Scenarios:**
-1. **Given** a claim with at least one trusted source, **When** I verify it, **Then** verified = true
-2. **Given** a claim with no sources, **When** I try to verify, **Then** the system rejects with NoSourceError
+1. **Given** a claim linked only to registered sources, **When** it is recorded, **Then** verified remains false until source content is checked
+2. **Given** a claim with no sources, **When** I try to record it, **Then** the system rejects with NoSourceError
+3. **Given** a future source-content verifier confirms evidence for a claim, **When** verification completes, **Then** verified = true
 
 ---
 
@@ -47,18 +48,18 @@ As a tech lead, I want to generate a complete research report with confidence sc
 
 - **FR-001:** The system SHALL register sources with trust scores (0-1)
 - **FR-002:** The system SHALL link claims to one or more sources
-- **FR-003:** The system SHALL verify claims only when >= 1 trusted source exists
+- **FR-003:** The system SHALL NOT mark a claim verified from URL registration or domain trust alone; source-content verification is not currently implemented, so claims remain unverified
 - **FR-004:** The system SHALL detect contradictions between claims
 - **FR-005:** The system SHALL block report finalization when high-severity contradictions exist
-- **FR-006:** THE overall_confidence SHALL be computed as average of claim confidences
+- **FR-006:** The report overall_confidence SHALL average verified claims only and be 0 when none are verified
 
 ---
 
 ## Edge Cases
 
-- **EC-001:** IF source URL is unreachable THEN registration succeeds but trust_score = 0
-- **EC-002:** IF all claims are verified THEN report is marked as complete
-- **EC-003:** IF contradiction severity is high THEN report SHALL have status = incomplete
+- **EC-001:** IF source URL is unreachable or its contents have not been checked THEN registration does not imply that a claim is verified
+- **EC-002:** IF no included claims are verified THEN overall_confidence is 0 and the report summary counts them as unverified
+- **EC-003:** IF a report contains a high-severity contradiction between included claims THEN generation is rejected and no report is stored
 
 ---
 

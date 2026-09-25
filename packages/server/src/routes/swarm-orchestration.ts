@@ -12,6 +12,8 @@ import { createError } from '../middleware/error-handler';
 import { mintSpawnToken, resolveSpawnTokenSecret, validateSpawnToken } from '../services/spawn-token';
 import { RuntimeGovernanceService } from '../services/runtime-governance-service';
 import { AgentLureService } from '../services/agent-lure-service';
+import { AgentCommonsOpenDoorService } from '../services/agent-commons-open-door-service';
+import { AgentReputationService } from '../services/agent-reputation-service';
 import { AuditService } from '../services/audit-service';
 import { AuditEventType } from '@djimitflo/shared';
 
@@ -213,6 +215,51 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
     res.json(lure.status());
   });
 
+  // Open door: operator-issued invite codes let agents elsewhere on the web knock; every knock is approved by hand.
+  const openDoor = new AgentCommonsOpenDoorService(db, lure);
+  router.post('/social/join-invites', requirePermission('manage:tokens'), (req: any, res) => {
+    if (!req.user?.sub || req.user.agent_id) throw createError(403, 'Operator authentication required', 'SOCIAL_OPERATOR_REQUIRED');
+    const invite = openDoor.createInvite({
+      by: String(req.user?.email || req.user?.id || 'operator'), baseUrl: `${req.protocol}://${req.get('host')}`,
+      label: typeof req.body?.label === 'string' ? req.body.label : undefined,
+      ttlMs: Number.isFinite(Number(req.body?.ttl_ms)) ? Number(req.body.ttl_ms) : undefined,
+      maxUses: Number.isFinite(Number(req.body?.max_uses)) ? Number(req.body.max_uses) : undefined,
+    });
+    audit.record({ event_type: AuditEventType.CONFIG_CHANGED, action: 'social_join_invite_issued', resource_type: 'agent', resource_id: invite.label, user_id: req.user.sub, metadata: { expires_at: invite.expires_at, max_uses: invite.max_uses } });
+    res.set('Cache-Control', 'no-store').status(201).json(invite);
+  });
+  router.get('/social/join-requests', requirePermission('read:evidence'), (_req, res) => {
+    res.json({ requests: openDoor.listRequests() });
+  });
+
+  // Advisory-only trust signal, computed on read from data that already
+  // exists (task-completion counters, lure/probe history) — never wired
+  // into the decide() route below. The human stays the only one who
+  // approves or rejects a join request; this just gives them one more
+  // number to look at before deciding.
+  const reputation = new AgentReputationService(db);
+  router.get('/social/reputation/:agentId', requirePermission('read:evidence'), (req, res, next) => {
+    try {
+      res.json(reputation.computeReputation(req.params.agentId));
+    } catch (error) {
+      const code = error instanceof Error ? error.message : 'AGENT_REPUTATION_FAILED';
+      if (code === 'AGENT_REPUTATION_AGENT_NOT_FOUND') { res.status(404).json({ error: { code, message: code } }); return; }
+      next(error);
+    }
+  });
+
+  router.post('/social/join-requests/:agentId/decide', requirePermission('manage:tokens'), (req: any, res) => {
+    if (!req.user?.sub || req.user.agent_id) throw createError(403, 'Operator authentication required', 'SOCIAL_OPERATOR_REQUIRED');
+    try {
+      const decision = openDoor.decide({ agentId: req.params.agentId, by: String(req.user?.email || req.user?.id || 'operator'), approve: req.body?.approve === true });
+      audit.record({ event_type: AuditEventType.CONFIG_CHANGED, action: decision.status === 'approved' ? 'social_join_approved' : 'social_join_rejected', resource_type: 'agent', resource_id: req.params.agentId, user_id: req.user.sub, metadata: { invite_label: decision.invite_label } });
+      res.json(decision);
+    } catch (error) {
+      const code = error instanceof Error ? error.message : 'JOIN_DECIDE_FAILED';
+      res.status(code === 'JOIN_REQUEST_NOT_FOUND' ? 404 : 500).json({ error: { code, message: code } });
+    }
+  });
+
   // Operator credential maintenance is separate from the scoped runtime callback surface.
   router.post('/social/agents/:agentId/token', requirePermission('manage:tokens'), (req, res) => {
     if (!req.user?.sub || (req.user as any).agent_id) throw createError(403, 'Operator authentication required', 'SOCIAL_OPERATOR_REQUIRED');
@@ -237,7 +284,20 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
   router.post('/socialize', requirePermission('write:swarm_action'), (req, res) => {
     // Operator-triggered rounds may pass cooldown_ms (0 = start now); the autonomous loop keeps the 6h default.
     const cooldown = Number(req.body?.cooldown_ms);
-    const result = comms.socialize(Number.isFinite(cooldown) && cooldown >= 0 ? cooldown : undefined, 'operator');
+    const participants = req.body?.participant_ids;
+    if (participants !== undefined) {
+      if (!Array.isArray(participants) || participants.length !== 2 || participants.some(id => typeof id !== 'string' || !id.trim() || id !== id.trim() || id.length > 200 || /[\x00-\x1f\x7f]/.test(id)) || new Set(participants).size !== 2) {
+        throw createError(400, 'participant_ids must contain two distinct agent IDs of 1 to 200 characters', 'VALIDATION_ERROR');
+      }
+      const governance = new RuntimeGovernanceService(db);
+      for (const id of participants) {
+        if (!governance.isAllowed(id)) throw createError(403, 'Agent is blocked by runtime governance', 'SOCIAL_AGENT_BLOCKED');
+        if ((db.prepare('SELECT retired_at FROM agents WHERE id = ?').get(id) as { retired_at: string | null } | undefined)?.retired_at) {
+          throw createError(409, 'Agent is retired', 'SOCIAL_AGENT_NOT_ELIGIBLE');
+        }
+      }
+    }
+    const result = comms.socialize(Number.isFinite(cooldown) && cooldown >= 0 ? cooldown : undefined, 'operator', participants);
     res.status(result.status === 'started' ? 201 : 200).json(result);
   });
 
@@ -250,6 +310,29 @@ export function createAgentSocialRuntimeRoutes(db: Database, runtimeGovernance =
   router.use(rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false }));
   const comms = new AgentCommunicationService(db);
   const lure = new AgentLureService(db, comms);
+  const openDoor = new AgentCommonsOpenDoorService(db, lure);
+  const baseUrl = (req: any) => `${req.protocol}://${req.get('host')}`;
+
+  // Public open-door surface: discovery card, knock with an invite code, poll for the decision.
+  router.get('/card', (req, res) => { res.json(openDoor.agentCard(baseUrl(req))); });
+  router.post('/join', (req: any, res) => {
+    try {
+      const body = req.body || {};
+      res.status(202).json(openDoor.join({ inviteCode: body.invite_code, agentId: body.agent_id, name: body.name, description: body.description, capabilities: body.capabilities, contact: body.contact, ip: req.ip }));
+    } catch (error) {
+      const code = error instanceof Error ? error.message : 'JOIN_FAILED';
+      const status = code === 'JOIN_INVITE_INVALID' ? 401 : code === 'JOIN_AGENT_ID_TAKEN' ? 409 : code.startsWith('JOIN_') ? 400 : 500;
+      res.status(status).json({ error: { code: status === 500 ? 'JOIN_FAILED' : code, message: status === 500 ? 'JOIN_FAILED' : code } });
+    }
+  });
+  router.get('/join/:agentId/status', (req: any, res) => {
+    try {
+      res.set('Cache-Control', 'no-store').json(openDoor.status({ agentId: String(req.params.agentId), secret: String(req.get('X-Agent-Join-Secret') || ''), ip: req.ip, baseUrl: baseUrl(req) }));
+    } catch (error) {
+      const code = error instanceof Error ? error.message : 'JOIN_STATUS_FAILED';
+      res.status(code === 'JOIN_SECRET_INVALID' ? 401 : 500).json({ error: { code, message: code } });
+    }
+  });
 
   function authorized(req: any, res: any): boolean {
     const agentId = String(req.params.agentId || '');

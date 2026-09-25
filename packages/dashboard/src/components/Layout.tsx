@@ -1,8 +1,61 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Activity, ListTodo, Users, Shield, ShieldCheck, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit, Gauge, BookUser, Brain, Menu, X, ClipboardCheck, MessageSquare, Sparkles } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { Activity, GraduationCap, ListTodo, Users, Shield, ShieldCheck, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit, Gauge, BookUser, Brain, Menu, X, MessageSquare, Sparkles } from 'lucide-react';
 import { useAuthStore } from '../lib/auth-store';
 import { OrganizationSelector } from './OrganizationSelector';
+import { PendingApprovalsBanner } from './PendingApprovalsBanner';
+import { usePendingApprovals } from '../hooks/usePendingApprovals';
+import { api } from '../lib/api';
+
+
+const NAV_SECTIONS: Array<{ title: string; items: Array<{ to: string; label: string; icon: LucideIcon }> }> = [
+  { title: 'Work', items: [
+    { to: '/', label: 'Dashboard', icon: Activity },
+    { to: '/tasks', label: 'Tasks', icon: ListTodo },
+    { to: '/goals-loops', label: 'Goals & Loops', icon: Workflow },
+    { to: '/approvals', label: 'Approvals', icon: CheckSquare },
+  ] },
+  { title: 'Agents', items: [
+    { to: '/agents', label: 'Agents', icon: Users },
+    { to: '/catalog', label: 'Agent Catalog', icon: BookUser },
+    { to: '/agent-commons', label: 'Agent Commons', icon: Sparkles },
+    { to: '/frontier-experts', label: 'Frontier Experts', icon: GraduationCap },
+    { to: '/interaction-board', label: 'Interaction Board', icon: MessageSquare },
+  ] },
+  { title: 'Operations', items: [
+    { to: '/swarm', label: 'Swarm', icon: Cpu },
+    { to: '/fleet-cockpit', label: 'Fleet Cockpit', icon: Gauge },
+    { to: '/swarm-resources', label: 'Swarm Resources', icon: Network },
+    { to: '/swarm-mission-control', label: 'Swarm Mission Control', icon: BrainCircuit },
+    { to: '/repositories', label: 'Repositories', icon: FolderGit },
+    { to: '/explainers', label: 'Repository explainers', icon: BookUser },
+    { to: '/pipeline-builder', label: 'Pipeline drafts', icon: Workflow },
+  ] },
+  { title: 'Improvement', items: [
+    { to: '/improvement-funnel', label: 'Improvement funnel', icon: Gauge },
+    { to: '/self-driving', label: 'Self-Driving', icon: Activity },
+    { to: '/cognitive', label: 'Cognitive', icon: Brain },
+    { to: '/consensus-debates', label: 'Consensus debates', icon: MessageSquare },
+    { to: '/agi-reasoning', label: 'Goal reasoning', icon: Brain },
+    { to: '/predictive-analytics', label: 'Predictive analytics', icon: BarChart3 },
+  ] },
+  { title: 'Governance', items: [
+    { to: '/policies', label: 'Policies', icon: Shield },
+    { to: '/governance', label: 'Governance & Assurance', icon: ShieldCheck },
+    { to: '/mcp-permissions', label: 'MCP Permissions', icon: PlugZap },
+    { to: '/audit', label: 'Audit', icon: ScrollText },
+    { to: '/authority', label: 'Authority ledger', icon: ShieldCheck },
+  ] },
+  { title: 'System', items: [
+    { to: '/observability', label: 'Observability', icon: BarChart3 },
+    { to: '/self-healing', label: 'Health checks', icon: Activity },
+    { to: '/usage', label: 'Usage', icon: DollarSign },
+    { to: '/economy', label: 'Economy', icon: DollarSign },
+    { to: '/federation', label: 'Federation', icon: Network },
+    { to: '/workstation-urls', label: 'Runtime URLs', icon: Network },
+  ] },
+];
 
 export function Layout() {
   const location = useLocation();
@@ -10,6 +63,23 @@ export function Layout() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => setMobileNavOpen(false), [location.pathname]);
+
+  const pending = usePendingApprovals();
+  useEffect(() => {
+    const base = document.title.replace(/^\(\d+\) /, '');
+    document.title = pending.count > 0 ? `(${pending.count}) ${base}` : base;
+    return () => { document.title = base; };
+  }, [pending.count]);
+
+  // The authority ledger is provisioned outside this repo; hide its nav entry where the server says it is absent.
+  const [authorityAvailable, setAuthorityAvailable] = useState(true);
+  useEffect(() => {
+    let active = true;
+    api.getAuthorityStats().catch((error: unknown) => {
+      if (active && error instanceof Error && /not been provisioned|AUTHORITY_LEDGER_UNAVAILABLE/.test(error.message)) setAuthorityAvailable(false);
+    });
+    return () => { active = false; };
+  }, []);
   
   const isActive = (path: string) => {
     return location.pathname === path || location.pathname.startsWith(path + '/');
@@ -49,170 +119,26 @@ export function Layout() {
         </div>
         
         {/* Navigation */}
-        <nav className="flex-1 space-y-1 overflow-y-auto p-4">
-          <NavLink
-            to="/"
-            icon={<Activity className="w-5 h-5" />}
-            label="Dashboard"
-            active={location.pathname === '/'}
-          />
-          <NavLink
-            to="/tasks"
-            icon={<ListTodo className="w-5 h-5" />}
-            label="Tasks"
-            active={isActive('/tasks')}
-          />
-          <NavLink
-            to="/agents"
-            icon={<Users className="w-5 h-5" />}
-            label="Agents"
-            active={isActive('/agents')}
-          />
-          <NavLink
-            to="/catalog"
-            icon={<BookUser className="w-5 h-5" />}
-            label="Agent Catalog"
-            active={isActive('/catalog')}
-          />
-          <NavLink
-            to="/swarm"
-            icon={<Cpu className="w-5 h-5" />}
-            label="Swarm"
-            active={isActive('/swarm')}
-          />
-          <NavLink
-            to="/approvals"
-            icon={<CheckSquare className="w-5 h-5" />}
-            label="Approvals"
-            active={isActive('/approvals')}
-          />
-          <NavLink
-            to="/policies"
-            icon={<Shield className="w-5 h-5" />}
-            label="Policies"
-            active={isActive('/policies')}
-          />
-          <NavLink
-            to="/governance"
-            icon={<ShieldCheck className="w-5 h-5" />}
-            label="Governance"
-            active={isActive('/governance')}
-          />
-          <NavLink
-            to="/compliance"
-            icon={<ClipboardCheck className="w-5 h-5" />}
-            label="Assurance & SDD"
-            active={isActive('/compliance')}
-          />
-          <NavLink
-            to="/mcp-permissions"
-            icon={<PlugZap className="w-5 h-5" />}
-            label="MCP Permissions"
-            active={isActive('/mcp-permissions')}
-          />
-          <NavLink
-            to="/observability"
-            icon={<BarChart3 className="w-5 h-5" />}
-            label="Observability"
-            active={isActive('/observability')}
-          />
-          <NavLink
-            to="/audit"
-            icon={<ScrollText className="w-5 h-5" />}
-            label="Audit Trail"
-            active={isActive('/audit')}
-          />
-          <NavLink
-            to="/repositories"
-            icon={<FolderGit className="w-5 h-5" />}
-            label="Repositories"
-            active={isActive('/repositories')}
-          />
-          <NavLink
-            to="/goals-loops"
-            icon={<Workflow className="w-5 h-5" />}
-            label="Goals & Loops"
-            active={isActive('/goals-loops')}
-          />
-          <NavLink
-            to="/fleet-cockpit"
-            icon={<Gauge className="w-5 h-5" />}
-            label="Fleet Cockpit"
-            active={isActive('/fleet-cockpit')}
-          />
-          <NavLink
-            to="/usage"
-            icon={<DollarSign className="w-5 h-5" />}
-            label="Usage"
-            active={isActive('/usage')}
-          />
-          <NavLink
-            to="/workstation-urls"
-            icon={<Network className="w-5 h-5" />}
-            label="Runtime URLs"
-            active={isActive('/workstation-urls')}
-          />
-          <NavLink
-            to="/economy"
-            icon={<DollarSign className="w-5 h-5" />}
-            label="Economy"
-            active={isActive('/economy')}
-          />
-          <NavLink
-            to="/federation"
-            icon={<Network className="w-5 h-5" />}
-            label="Federation"
-            active={isActive('/federation')}
-          />
-          <NavLink
-            to="/swarm-resources"
-            icon={<Network className="w-5 h-5" />}
-            label="Swarm Resources"
-            active={isActive('/swarm-resources')}
-          />
-          <NavLink
-            to="/swarm-mission-control"
-            icon={<BrainCircuit className="w-5 h-5" />}
-            label="Mission Control"
-            active={isActive('/swarm-mission-control')}
-          />
-          <NavLink
-            to="/interaction-board"
-            icon={<MessageSquare className="w-5 h-5" />}
-            label="Interaction Board"
-            active={isActive('/interaction-board')}
-          />
-          <NavLink
-            to="/agent-commons"
-            icon={<Sparkles className="w-5 h-5" />}
-            label="Agent Commons"
-            active={isActive('/agent-commons')}
-          />
-          <NavLink
-            to="/cognitive"
-            icon={<Brain className="w-5 h-5" />}
-            label="Cognitive"
-            active={isActive('/cognitive')}
-          />
-          <NavLink
-            to="/self-driving"
-            icon={<Activity className="w-5 h-5" />}
-            label="Self-Driving"
-            active={isActive('/self-driving')}
-          />
-          <details className="pt-2">
-            <summary className="cursor-pointer px-3 py-2 text-sm text-foreground-secondary">Research &amp; evidence</summary>
-            <NavLink to="/authority" icon={<ShieldCheck className="w-5 h-5" />} label="Authority ledger" active={isActive('/authority')} />
-            <NavLink to="/audit/logs" icon={<ScrollText className="w-5 h-5" />} label="Audit logs" active={isActive('/audit/logs')} />
-            <NavLink to="/pipeline-builder" icon={<Workflow className="w-5 h-5" />} label="Pipeline drafts" active={isActive('/pipeline-builder')} />
-            <NavLink to="/agi-reasoning" icon={<Brain className="w-5 h-5" />} label="Goal reasoning" active={isActive('/agi-reasoning')} />
-            <NavLink to="/consensus-debates" icon={<MessageSquare className="w-5 h-5" />} label="Consensus debates" active={isActive('/consensus-debates')} />
-            <NavLink to="/predictive-analytics" icon={<BarChart3 className="w-5 h-5" />} label="Predictive analytics" active={isActive('/predictive-analytics')} />
-            <NavLink to="/self-healing" icon={<Activity className="w-5 h-5" />} label="Health checks" active={isActive('/self-healing')} />
-            <NavLink to="/explainers" icon={<BookUser className="w-5 h-5" />} label="Repository explainers" active={isActive('/explainers')} />
-          </details>
+        <nav className="flex-1 overflow-y-auto p-4" aria-label="Main">
+          {NAV_SECTIONS.map((section) => (
+            <div key={section.title} className="mb-4">
+              <div className="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-foreground-muted">{section.title}</div>
+              <div className="space-y-1">
+                {section.items.filter((item) => item.to !== '/authority' || authorityAvailable).map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    icon={<item.icon className="w-5 h-5" />}
+                    label={item.label}
+                    active={item.to === '/' ? location.pathname === '/' : isActive(item.to)}
+                    badge={item.to === '/approvals' ? pending.count : undefined}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
         </nav>
-        
+
         {/* Footer */}
         <div className="p-4 border-t border-border">
           {user && (
@@ -242,6 +168,7 @@ export function Layout() {
           </button>
           <span className="ml-2 font-semibold text-foreground">Djimitflo</span>
         </header>
+        {location.pathname !== '/approvals' && <PendingApprovalsBanner {...pending} />}
         <main className="min-w-0 flex-1 overflow-auto">
           <Outlet />
         </main>
@@ -255,9 +182,10 @@ interface NavLinkProps {
   icon: ReactNode;
   label: string;
   active: boolean;
+  badge?: number;
 }
 
-function NavLink({ to, icon, label, active }: NavLinkProps) {
+function NavLink({ to, icon, label, active, badge }: NavLinkProps) {
   return (
     <Link
       to={to}
@@ -271,6 +199,7 @@ function NavLink({ to, icon, label, active }: NavLinkProps) {
     >
       {icon}
       <span className="font-medium">{label}</span>
+      {badge ? <span aria-label={`${badge} pending`} className="ml-auto rounded-full bg-status-error px-2 py-0.5 text-xs font-semibold text-white">{badge}</span> : null}
     </Link>
   );
 }

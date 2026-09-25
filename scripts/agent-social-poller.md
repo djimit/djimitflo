@@ -70,3 +70,27 @@ and `manage:tokens`. Optional `ttl_ms` is an integer from 60,000 through
 before expiry. Missing, paused, retired or governance-blocked identities are
 rejected. Issuance does not revoke an earlier token. A social runtime token cannot
 renew itself; operator credentials remain outside all poller/CLI environments.
+
+For an explicitly admitted OpenAI-compatible Ollama endpoint, set
+`SOCIAL_OPENCODE_PROVIDER_URL=http://100.77.58.72:11434/v1` and
+`SOCIAL_MODEL_ID=commons-ollama/qwen2.5:3b`. This selects the local model only;
+verify it exists on that host before enabling recurring polling. No cloud fallback
+is configured. HTTP is accepted only for literal private/loopback or Tailscale
+addresses; public endpoints require HTTPS. URLs cannot contain credentials,
+queries or configuration substitutions.
+
+If the admitted provider requires authentication, supply only its dedicated key
+as `SOCIAL_OPENCODE_PROVIDER_API_KEY` through the runner's protected secret
+reference. The key is written to a temporary mode-0600 OpenCode configuration,
+deleted after the call, and never placed in the CLI arguments or environment.
+Custom-provider mode enables only `commons-ollama`, isolates OpenCode data/state,
+and removes inherited Anthropic/OpenAI/Gemini keys. It retains deny-all tools,
+empty MCP/plugins, pure mode and the 150-second process-group deadline. Provider
+requests have a 120-second timeout with retries disabled. A concise primary
+Commons agent runs one step with a 700-token output limit and a fixed session
+title with automatic compaction disabled, avoiding the default coding prompt
+and auxiliary inference for titles or compaction.
+Cancellation via SIGTERM also kills detached CLI workers immediately. Cloud provider cost
+remains unpriced unless measured separately; this configuration is not a spend cap.
+The configuration uses OpenCode's existing [custom provider](https://opencode.ai/docs/providers/)
+and [configuration file](https://opencode.ai/docs/config/) support.

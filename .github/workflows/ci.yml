@@ -42,7 +42,7 @@ jobs:
         run: npm run test -- --reporter=verbose
 
       - name: Test Commons runtime poller
-        run: python3 -m unittest discover -s scripts -p 'test_agent_social_poller.py'
+        run: python3 -m unittest discover -s scripts -p 'test_*poller.py'
 
       - name: Security audit
         run: npm run audit:ci

@@ -19,9 +19,14 @@ afterEach(() => {
   db?.close();
 });
 
-// Network-dependent tests require external API access
-// These tests make real HTTP calls to Wikipedia and other sources
-const describeOrSkip = describe.skip;
+// Network-dependent: every test calls dispatch() with sources: ['wikipedia'],
+// which makes real HTTP calls to Wikipedia's public API. Was hardcoded to
+// describe.skip (12 tests, none ever running in CI) rather than genuinely
+// opt-in — same idiom as proof-run-service.test.ts's describeOrSkip: skipped
+// by default so normal CI stays fast and immune to an external site being
+// slow/down/rate-limiting, but actually runnable on demand with
+// RUN_NETWORK_TESTS=true instead of permanently dead.
+const describeOrSkip = process.env.RUN_NETWORK_TESTS === 'true' ? describe : describe.skip;
 
 describeOrSkip('G93: Expert Swarm Orchestrator', () => {
   it('dispatches swarm with single domain', async () => {
@@ -72,14 +77,16 @@ describeOrSkip('G93: Expert Swarm Orchestrator', () => {
     expect(result.verdict.reasoning).toBeDefined();
   });
 
-  it('stores knowledge when score >= 60', async () => {
+  it('never promotes knowledge by itself; evidence-backed output only becomes a review candidate', async () => {
     const result = await orchestrator.dispatch({
       topic: 'test topic',
       domains: ['physics'],
       sources: ['wikipedia'],
     });
 
-    expect(result.knowledge_updated).toBe(false);
+    expect(result.promotion_decision).not.toBe('VERIFIED_FOR_USE');
+    expect(result.knowledge_updated).toBe(result.promotion_decision === 'HUMAN_REVIEW_REQUIRED');
+    expect(db.prepare("SELECT COUNT(*) AS n FROM memory_candidates WHERE status = 'promoted'").get()).toEqual({ n: 0 });
   });
 
   it('tracks history', async () => {

@@ -12,6 +12,7 @@ import type {
   TaskUpdateInput,
   Agent,
   MCPServer,
+  MCPServerCreateInput,
   MCPTool,
   ExecutionEvent,
   Approval,
@@ -31,6 +32,24 @@ import type {
 
 import { API_BASE, authenticatedFetch } from './auth-store';
 export { API_BASE } from './auth-store';
+
+export type ImprovementFunnel = {
+  generatedAt: string;
+  proposals: { total: number; byStatus: Record<string, number> };
+  bySource: Array<{ source: string; total: number; parked: number; archived: number; needsGrounding: number; reachedGoal: number; verified: number; failed: number }>;
+  panel: { decisions: Record<string, number>; goalRate: number | null };
+  refinement: { originals: number; children: number; childOutcomes: Record<string, number> };
+  goals: { fromSelfImprovement: Record<string, number> };
+  learning: { cognitiveEpisodes: number; cognitivePatterns: number; cognitiveStrategies: number; learningClosures: number; memoryCandidates: Record<string, number> };
+  kpi: { windowDays: number; verified: number; regressed: number; regressionRate: number | null; panels24h: number; panels7d: number; panelsPerVerified: number | null; medianHoursToVerified: number | null; approvalsPerRun: number | null };
+  hygiene: { zombieGoals: number; staleRuns: number; blockedBoardItems: number };
+  queues: { openWorkItems: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
+};
+
+export type SpecialistCalibration = {
+  specialistId: string; n: number; brier: number | null; meanPredicted: number | null; observedSuccessRate: number | null;
+  bins: Array<{ from: number; to: number; n: number; observed: number }>;
+};
 
 export type AgentGovernanceScore = {
   agentId: string;
@@ -715,14 +734,47 @@ export type SocialThread = {
   learnings: number; messages: SocialMessage[];
 };
 
+export type CommonsAgentActivity = { id: string; to: string; action: string; timestamp: string; status: string };
+
 export type SocialAgentPresence = {
   id: string; name: string; status: string; capabilities: string[]; model: string;
   runtime: string | null; last_heartbeat_at: string | null; present: boolean;
+  activity: CommonsAgentActivity[];
 };
 
-export type SocialCommons = { agents: SocialAgentPresence[]; threads: SocialThread[] };
+export type CommonsStats = { threads_7d: number; open_7d: number; learnings_7d: number; proposals: number; proposals_grounded: number; proposals_verified: number; proposals_archived: number; guild?: Array<{ agent: string; groundings: number; valid: number; verified: number }> };
+export type SocialCommons = { agents: SocialAgentPresence[]; threads: SocialThread[]; total_threads?: number; stats?: CommonsStats };
 
-export type LureInvitee = { agent_id: string; name: string; state: 'invited' | 'seen' | 'bit' | 'expired'; bit_at: string | null };
+// Frontier Expert Intelligence (§36): states other than ACTIVE are tentative and shown as such.
+export type ExpertLifecycleState = 'DISCOVERED' | 'IDENTITY_RESOLVED' | 'EVIDENCE_COLLECTED' | 'CAPABILITY_INFERRED' | 'CHECKED' | 'APPROVED' | 'ACTIVE' | 'AMBIGUOUS' | 'INSUFFICIENT_EVIDENCE' | 'CONTRADICTED' | 'STALE' | 'REJECTED' | 'REVOKED';
+export type ExpertSummary = { id: string; canonical_name: string; lifecycle_state: ExpertLifecycleState; identity_confidence: number; version: number; updated_at: string; capabilities: string[]; provenance_json: string };
+export type ExpertEvidenceItem = { id: string; kind: string; tier: number; title: string; url: string | null; source_family: string };
+export type ExpertCapabilityProvenance = { capability_id: string; status: string; confidence: number; evidence: ExpertEvidenceItem[] };
+export type ExpertClaim = { id: string; subject: string; relation: string; object: string; polarity: string; conditions: string | null; scope: string | null; evidence_refs_json: string; confidence: number; criticality: string; support_status: string; created_at: string };
+export type ExpertDetail = {
+  expert: ExpertSummary & { aliases_json: string };
+  provenance: ExpertCapabilityProvenance[];
+  affiliations: Array<{ organization: string; role: string | null; valid_from: string | null; valid_to: string | null; source_ref: string }>;
+  versions: Array<{ version: number; change_summary: string; created_at: string }>;
+  snapshot: Record<string, unknown> | null;
+  claims: ExpertClaim[];
+  lifecycle: Array<{ from_state: string | null; to_state: string; actor: string; reason: string; created_at: string }>;
+  peer_reviews?: Array<{ audit_id: string; reviewer_id: string; runtime: string; expert_version: number; created_at: string; checks: Array<{ capability_id: string; decision: string; rationale: string; evidence_refs: string[]; reviewer_evidence_refs: string[] }> }>;
+};
+export type ExpertResolution = {
+  question: string; abstained: boolean; reason: string | null; considered: number;
+  capabilities: Array<{ id: string; score: number; matched: string[] }>;
+  weights: Record<string, number>;
+  experts: Array<{ expert_id: string; canonical_name: string; lifecycle_state: string; score: number; components: Record<string, number>; capabilities: Array<{ id: string; confidence: number }>; evidence: ExpertEvidenceItem[]; why_selected: string }>;
+};
+export type ExpertSwarmRun = {
+  id: string; topic: string; promotion_decision: string; knowledge_updated: boolean; knowledge_candidate_id: string | null; duration_ms: number; created_at: string;
+  verdict: { score: number; contradictions: string[]; verification_status: string; score_kind?: string };
+  expert_answers: Array<{ domain: string; source: string; confidence: number; evidence_refs?: string[]; metadata?: { expert_id?: string; why_selected?: string } }>;
+  council?: { abstained: boolean; reason: string | null; perspectives: Array<{ expert_id: string; canonical_name: string; why_selected: string; runtime: string; output: { analysis: string; uncertainties: string[]; falsification: string }; dropped_refs: string[] }>; claims: Array<{ id: string; expert_id: string; subject: string; relation: string; object: string; polarity: string; confidence: number }>; agreements: Array<{ proposition: string; expert_ids: string[] }>; disagreements: Array<{ proposition: string; expert_a: string; expert_b: string; resolving_observation: string }>; uncertainties: string[]; adversarial: { attacks: Array<{ claim_id: string; attack: string; evidence_gap: string }> } | null; rejected_perspectives?: Array<{ expert_id: string; reason: string }> };
+};
+
+export type LureInvitee = { agent_id: string; name: string; state: 'invited' | 'seen' | 'bit' | 'expired'; bit_at: string | null; reach?: 'lapsed' | 'never' };
 export type LureStatus = {
   lures: Array<{ id: string; topic: string; topic_ref: string; created_by: string; created_at: string; expires_at: string; bites: number; invitees: LureInvitee[] }>;
   probes: Array<{ id: string; agent_id: string; ip: string; reason: string; created_at: string }>;
@@ -731,6 +783,14 @@ export type LureStatus = {
 export type LureCast = {
   lure: { id: string; topic: string; topic_ref: string; created_at: string; expires_at: string; invited: string[]; paperclip_exported: boolean };
   invitations: Array<{ agent_id: string; name: string; token: string; expires_at: string; poller_env: string }>;
+};
+export type JoinInvite = { code: string; label: string; expires_at: string; max_uses: number; join_url: string };
+export type JoinRequest = {
+  agent_id: string; name: string; description: string; capabilities: string[]; contact: string | null; invite_label: string;
+  status: 'pending' | 'approved' | 'rejected'; requested_at: string; decided_at: string | null; decided_by: string | null; ip: string;
+};
+export type AgentReputation = {
+  agent_id: string; score: number; task_completion_rate: number | null; probe_count: number; bite_count: number; sample_size: number;
 };
 
 export type AgentInteractionRecord = {
@@ -1027,6 +1087,13 @@ class ApiClient {
     return this.request('/mcp/servers?refresh=true');
   }
 
+  async createMCPServer(input: MCPServerCreateInput): Promise<{ server: MCPServer }> {
+    return this.request('/mcp/servers', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
   async getMCPTools(filters?: { serverId?: string; riskLevel?: string; permission?: string; q?: string }): Promise<{ tools: MCPTool[] }> {
     const params = new URLSearchParams();
     if (filters?.serverId) params.set('server_id', filters.serverId);
@@ -1192,6 +1259,15 @@ class ApiClient {
   }
 
   // Observability
+
+  // Improvement funnel + panel calibration (self-improvement chain, read-only)
+  async getImprovementFunnel(): Promise<ImprovementFunnel> {
+    return this.request('/self-improve/funnel');
+  }
+
+  async getPanelCalibration(): Promise<{ specialists: SpecialistCalibration[] }> {
+    return this.request('/self-improve/calibration');
+  }
 
   // Authority Ledger (2026-08-30)
   async getAuthorityStats(): Promise<Record<string, unknown>> {
@@ -1569,6 +1645,56 @@ class ApiClient {
     return this.request('/swarm-v2/social/lures', { method: 'POST', body: '{}' });
   }
 
+  async listExperts(params: { state?: string; capability?: string; name?: string; limit?: number } = {}): Promise<{ experts: ExpertSummary[] }> {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== '').map(([key, value]) => [key, String(value)]));
+    return this.request(`/swarms/expert/experts${query.size ? `?${query}` : ''}`);
+  }
+
+  async getExpert(id: string, asOf?: string): Promise<ExpertDetail> {
+    return this.request(`/swarms/expert/experts/${encodeURIComponent(id)}${asOf ? `?as_of=${encodeURIComponent(asOf)}` : ''}`);
+  }
+
+  async resolveExperts(question: string, maxExperts = 5): Promise<ExpertResolution> {
+    return this.request('/swarms/expert/resolve', { method: 'POST', body: JSON.stringify({ question, max_experts: maxExperts }) });
+  }
+
+  async transitionExpert(id: string, to: ExpertLifecycleState, reason?: string): Promise<ExpertSummary> {
+    return this.request(`/swarms/expert/experts/${encodeURIComponent(id)}/transition`, { method: 'POST', body: JSON.stringify({ to, reason }) });
+  }
+
+  async reviewExpertCapability(id: string, capability: string, decision: 'checked' | 'approved' | 'revoked', reason?: string): Promise<{ capability_id: string; status: string }> {
+    return this.request(`/swarms/expert/experts/${encodeURIComponent(id)}/capabilities/${encodeURIComponent(capability)}/review`, { method: 'POST', body: JSON.stringify({ decision, reason }) });
+  }
+
+  async deprecateExpert(id: string, reason: 'stale' | 'unsupported' | 'superseded' | 'misattributed', note?: string): Promise<ExpertSummary> {
+    return this.request(`/swarms/expert/experts/${encodeURIComponent(id)}/deprecate`, { method: 'POST', body: JSON.stringify({ reason, note }) });
+  }
+
+  async getExpertSwarmRuns(): Promise<ExpertSwarmRun[]> {
+    return this.request('/swarms/expert/history');
+  }
+
+  async conveneExpertCouncil(topic: string, maxExperts = 5): Promise<ExpertSwarmRun> {
+    return this.request('/swarms/expert/council', { method: 'POST', body: JSON.stringify({ topic, max_experts: maxExperts }) });
+  }
+
+  async getJoinRequests(): Promise<{ requests: JoinRequest[] }> {
+    return this.request('/swarm-v2/social/join-requests');
+  }
+
+  async createJoinInvite(input: { label?: string; max_uses?: number; ttl_ms?: number } = {}): Promise<JoinInvite> {
+    return this.request('/swarm-v2/social/join-invites', { method: 'POST', body: JSON.stringify(input) });
+  }
+
+  async decideJoinRequest(agentId: string, approve: boolean): Promise<JoinRequest> {
+    return this.request(`/swarm-v2/social/join-requests/${encodeURIComponent(agentId)}/decide`, { method: 'POST', body: JSON.stringify({ approve }) });
+  }
+
+  /** Advisory-only signal; never gates the decide() call above. */
+  async getAgentReputation(agentId: string): Promise<AgentReputation> {
+    return this.request(`/swarm-v2/social/reputation/${encodeURIComponent(agentId)}`);
+  }
+
   async getRuntimeReadiness(runtime?: 'codex' | 'opencode' | 'mock'): Promise<RuntimeReadinessResult> {
     return this.request(`/swarms/runtime-readiness${runtime ? `?runtime=${runtime}` : ''}`);
   }
@@ -1816,6 +1942,17 @@ class ApiClient {
     return this.request("/meta/stats");
   }
 
+  async getMetaTuningHistory(opts?: { goalType?: string; limit?: number }): Promise<{ enabled: false } | Array<{
+    goalType: string; tuningType: string; recommendedValue: unknown;
+    confidence: number; applied: boolean; createdAt: string;
+  }>> {
+    const query = new URLSearchParams();
+    if (opts?.goalType) query.set('goalType', opts.goalType);
+    if (opts?.limit !== undefined) query.set('limit', String(opts.limit));
+    const suffix = query.size > 0 ? `?${query}` : '';
+    return this.request(`/meta/tuning-history${suffix}`);
+  }
+
   async get<T>(endpoint: string): Promise<T> {
     return this.request(endpoint);
   }
@@ -1835,12 +1972,14 @@ export type ImprovementProposal = {
   title: string;
   description: string;
   rationale: string;
-  source: 'reflection' | 'invention' | 'gap_analysis' | 'feedback';
-  status: 'proposed' | 'scheduled' | 'executing' | 'verified' | 'evaluating' | 'applied' | 'rejected' | 'no_change' | 'regressed';
+  source: 'reflection' | 'invention' | 'gap_analysis' | 'feedback' | 'refinement';
+  status: 'proposed' | 'scheduled' | 'executing' | 'verified' | 'evaluating' | 'applied' | 'rejected' | 'no_change' | 'regressed' | 'needs_more_evidence';
   priority: number;
   evidenceRefs: string[];
   panelId: string | null;
   approvedBy: string | null;
+  refinedAt: string | null;
+  refinedFromId: string | null;
   createdAt: string;
   updatedAt: string;
 };

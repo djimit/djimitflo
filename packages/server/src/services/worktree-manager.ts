@@ -7,7 +7,7 @@
  */
 
 import { execFileSync } from 'child_process';
-import { existsSync, mkdirSync, statSync, readdirSync, rmSync, symlinkSync, lstatSync, copyFileSync, type Stats } from 'fs';
+import { cpSync, existsSync, mkdirSync, renameSync, statSync, readdirSync, rmSync, symlinkSync, lstatSync, copyFileSync, type Stats } from 'fs';
 import path from 'path';
 import type { Database } from 'better-sqlite3';
 
@@ -75,6 +75,28 @@ export class WorktreeManager {
   }
 
   /**
+   * Each deploy mounts a fresh clone as the runtime repository, so a worktree prepared before a deploy (a maker that
+   * waited hours for its approval) points at git metadata that no longer exists (prod 2026-09-25: "the repo exists but
+   * doesn't have the worktrees directory"). Re-register it in the current repository on the same branch and put its
+   * files back (assignment, any earlier work). Returns true when a repair was needed.
+   */
+  repairWorktree(repositoryPath: string, worktreePath: string, branchName: string): boolean {
+    if (!existsSync(worktreePath)) return false;
+    try { this.git(worktreePath, ['rev-parse', '--git-dir']); return false; } catch { /* broken link: repair below */ }
+    const repositoryRoot = this.git(repositoryPath, ['rev-parse', '--show-toplevel']).trim();
+    const aside = `${worktreePath}.broken-${Date.now()}`;
+    renameSync(worktreePath, aside);
+    try {
+      this.git(repositoryRoot, ['worktree', 'prune']);
+      this.git(repositoryRoot, ['worktree', 'add', '-B', branchName, worktreePath, 'HEAD']);
+      cpSync(aside, worktreePath, { recursive: true, force: true, verbatimSymlinks: true, filter: (src) => path.basename(src) !== '.git' });
+    } finally {
+      rmSync(aside, { recursive: true, force: true });
+    }
+    return true;
+  }
+
+  /**
    * Snapshot untracked source files into a worker worktree.
    * Includes path traversal guards to prevent writes outside the worktree.
    */
@@ -122,7 +144,9 @@ export class WorktreeManager {
 
     if (trackedDiff.length === 0 && copied === 0) return;
     this.git(worktreePath, ['add', '.']);
-    this.git(worktreePath, ['commit', '-m', 'Snapshot source working tree into worker worktree', '--no-verify']);
+    // Explicit identity: production containers have no global git identity, and the checker worktree (cut from the
+    // maker's dirty worktree) died here with "Author identity unknown" (2026-09-21 loop proof).
+    this.git(worktreePath, ['-c', 'user.name=djimitflo', '-c', 'user.email=djimitflo@localhost', 'commit', '-m', 'Snapshot source working tree into worker worktree', '--no-verify']);
   }
 
   /**

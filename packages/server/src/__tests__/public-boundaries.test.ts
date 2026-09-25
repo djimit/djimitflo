@@ -49,6 +49,29 @@ describe('public HTTP boundaries', () => {
     db.close();
   });
 
+  it('reports build provenance and flags running/built drift on public health', async () => {
+    const db = createTestDb();
+    process.env.DJIMITFLO_COMMIT_SHA = 'runtime-commit';
+    process.env.DJIMITFLO_BUILD_COMMIT = 'built-commit';
+    const app = express().use('/api/health', createHealthRoutes(db));
+    const { baseUrl, server } = await listen(app);
+
+    const drifted = await (await fetch(`${baseUrl}/api/health`)).json() as any;
+    expect(drifted.build).toMatchObject({
+      commit: 'runtime-commit',
+      built_commit: 'built-commit',
+      commit_matches_build: false,
+    });
+
+    process.env.DJIMITFLO_BUILD_COMMIT = 'runtime-commit';
+    const matched = await (await fetch(`${baseUrl}/api/health`)).json() as any;
+    expect(matched.build.commit_matches_build).toBe(true);
+
+    delete process.env.DJIMITFLO_BUILD_COMMIT;
+    server.close();
+    db.close();
+  });
+
   it('fails closed when Telegram webhook secret is absent', async () => {
     const db = createTestDb();
     process.env.TELEGRAM_BOT_TOKEN = 'test-token';

@@ -1,8 +1,22 @@
 import { Router } from 'express';
+import { randomUUID } from 'crypto';
+import rateLimit from 'express-rate-limit';
 import type { Database } from 'better-sqlite3';
 import { AuthTokenPayload } from '@djimitflo/shared';
 import { AuthorizationService } from '../services/authorization-service';
 import type { AuthMiddleware } from '../middleware/auth';
+import { openApiUrl, syncOpenApiCatalog } from '../services/mcp-openapi-catalog';
+
+// express-rate-limit (rather than the in-repo RateLimiter) so CodeQL's
+// js/missing-rate-limiting recognizes it, same reasoning as metricsRateLimiter
+// in routes/metrics.ts. This is an admin-gated write, so a tighter budget
+// than a public read endpoint is appropriate.
+const createServerRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: false,
+  legacyHeaders: false,
+});
 
 function sanitizeMCPServer(server: any, isAdmin: boolean): any {
   if (isAdmin) return server;
@@ -71,12 +85,29 @@ export function createMCPRoutes(db: Database, auth?: AuthMiddleware): Router {
         await Promise.all(servers.map(async (server) => {
           if (!server.url) return;
           const now = new Date().toISOString();
+          const meta = metadata(server);
+          // Some servers are known-unreachable from this deployment (e.g. a port
+          // that's firewalled even over the network path that otherwise works) —
+          // probing them every page load just repaints the same alarming 'error'
+          // state forever. Skip the probe and surface the documented reason as a
+          // calmer 'stopped' status instead.
+          if (meta.known_unreachable) {
+            db.prepare('UPDATE mcp_servers SET status = ?, error_message = ?, updated_at = ? WHERE id = ?')
+              .run('stopped', String(meta.known_unreachable_reason || 'Known unreachable from this deployment.'), now, server.id);
+            return;
+          }
           const probe = probeSpec(server);
           try {
             const response = await fetch(probe.url, { signal: AbortSignal.timeout(1_500) });
             const running = probe.accepts(response.status);
             db.prepare('UPDATE mcp_servers SET status = ?, last_ping_at = ?, error_message = ?, updated_at = ? WHERE id = ?')
               .run(running ? 'running' : 'error', now, running ? null : `HTTP ${response.status} from ${probe.url}`, now, server.id);
+            // First import of a reachable sidecar's OpenAPI operations. Only while it has no tools, so an operator's
+            // permission changes are never overwritten by a later refresh.
+            if (running && openApiUrl(server.url, meta) && !db.prepare('SELECT 1 FROM mcp_tools WHERE server_id = ? LIMIT 1').get(server.id)) {
+              const synced = await syncOpenApiCatalog(db, { id: server.id, url: server.url, metadata: meta });
+              if (typeof synced === 'string') db.prepare('UPDATE mcp_servers SET error_message = ? WHERE id = ?').run(`tool catalog not synced: ${synced}`, server.id);
+            }
           } catch (error) {
             db.prepare('UPDATE mcp_servers SET status = ?, last_ping_at = ?, error_message = ?, updated_at = ? WHERE id = ?')
               .run('error', now, error instanceof Error ? error.message : 'Health probe failed', now, server.id);
@@ -96,6 +127,59 @@ export function createMCPRoutes(db: Database, auth?: AuthMiddleware): Router {
       });
 
       res.json({ servers: parsed });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // POST /api/mcp/servers - Register a new MCP server. Previously there was no
+  // way to add one at all outside hardcoding database/seed-mcp-servers.ts and
+  // redeploying (MCPServerCreateInput existed in @djimitflo/shared but nothing
+  // ever used it).
+  router.post('/servers', createServerRateLimiter, requirePermission('manage:config'), (req, res, next) => {
+    try {
+      const { name, description, command, args, env, version, author, url, metadata: inputMetadata } = req.body || {};
+      if (typeof name !== 'string' || !name.trim()) {
+        res.status(400).json({ message: 'name is required' });
+        return;
+      }
+      if (typeof description !== 'string' || !description.trim()) {
+        res.status(400).json({ message: 'description is required' });
+        return;
+      }
+      const existing = db.prepare('SELECT id FROM mcp_servers WHERE name = ?').get(name.trim());
+      if (existing) {
+        res.status(409).json({ message: `An MCP server named "${name.trim()}" already exists` });
+        return;
+      }
+      const id = randomUUID();
+      const now = new Date().toISOString();
+      db.prepare(`
+        INSERT INTO mcp_servers (id, name, description, status, command, args, env, version, author, url, metadata, created_at, updated_at)
+        VALUES (?, ?, ?, 'unknown', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        id,
+        name.trim(),
+        description.trim(),
+        typeof command === 'string' ? command : '',
+        JSON.stringify(Array.isArray(args) ? args : []),
+        JSON.stringify(env && typeof env === 'object' ? env : {}),
+        typeof version === 'string' ? version : null,
+        typeof author === 'string' ? author : null,
+        typeof url === 'string' ? url : null,
+        JSON.stringify(inputMetadata && typeof inputMetadata === 'object' ? inputMetadata : {}),
+        now,
+        now
+      );
+      const row = db.prepare('SELECT * FROM mcp_servers WHERE id = ?').get(id) as any;
+      res.status(201).json({
+        server: {
+          ...row,
+          args: JSON.parse(row.args || '[]'),
+          env: JSON.parse(row.env || '{}'),
+          metadata: JSON.parse(row.metadata || '{}'),
+        },
+      });
     } catch (error) {
       next(error);
     }

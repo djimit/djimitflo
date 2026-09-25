@@ -13,18 +13,34 @@ function isTestEnv(): boolean {
   return process.env.NODE_ENV === "test";
 }
 
+/** POST a memory atom to UAMS using its real contract (/memory/entry + bearer auth). */
+function uamsEntryHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const key = process.env.UAMS_API_KEY;
+  if (key) headers.Authorization = `Bearer ${key}`;
+  return headers;
+}
+
+function uamsEntryBody(content: string, topic: string, metadata: Record<string, unknown>): string {
+  return JSON.stringify({
+    memory_type: "active",
+    scope: "system",
+    agent_id: "djimitflo-explainer",
+    topic,
+    content: content.slice(0, 2000),
+    metadata,
+  });
+}
+
 /** Publish a drift alert to UAMS so the agent fleet can react (non-blocking). */
 async function publishDriftAlert(drift: string[]): Promise<void> {
   if (isTestEnv()) return;
   const content = `Djimit fleet drift alert (${drift.length} items): ${drift.slice(0, 10).join("; ")}`;
   try {
-    await fetch(`${UAMS_URL}/memory`, {
+    await fetch(`${UAMS_URL}/memory/entry`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        content: content.slice(0, 2000),
-        tags: ["explainer_drift_alert", "djimitflo-explainer", `count:${drift.length}`],
-      }),
+      headers: uamsEntryHeaders(),
+      body: uamsEntryBody(content, "explainer:drift-alert", { source: "djimitflo-explainer", count: drift.length }),
     });
   } catch {
     // non-fatal by design
@@ -39,12 +55,15 @@ async function publishExplainerMemory(bundleId: string, repoFullName: string, sc
   if (isTestEnv()) return;
   const content = `Explainer published for ${repoFullName}: OpenMythos score ${score ?? "n/a"}, bundle ${bundleId}. Auto-generated repo knowledge available via Djimit Explore.`;
   try {
-    const res = await fetch(`${UAMS_URL}/memory`, {
+    const res = await fetch(`${UAMS_URL}/memory/entry`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        content: content.slice(0, 2000),
-        tags: [`repo:${repoFullName}`, "explainer_published", `bundle:${bundleId}`, "djimitflo-explainer"],
+      headers: uamsEntryHeaders(),
+      body: uamsEntryBody(content, `repo:${repoFullName}`, {
+        repo: repoFullName,
+        bundle: bundleId,
+        score,
+        source: "djimitflo-explainer",
+        kind: "explainer_published",
       }),
     });
     if (res.ok) {

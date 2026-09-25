@@ -21,6 +21,54 @@ interface PeerRecord {
   metadata: Record<string, unknown>;
 }
 
+/**
+ * Live fleet discovery source of truth: the agent-registry service
+ * (control plane, `GET /agents`). Consumed read-only — DjimFlo never writes to
+ * it. `federation_peers` remains an outbound work-dispatch peer list; it is not
+ * a discovery cache and must not be treated as one.
+ */
+const DEFAULT_AGENT_REGISTRY_URL = 'http://100.86.47.122:8088';
+
+export function resolveAgentRegistryUrl(): string {
+  return (process.env.AGENT_REGISTRY_URL || DEFAULT_AGENT_REGISTRY_URL).replace(/\/$/, '');
+}
+
+export interface FleetAgent {
+  name: string;
+  host?: string;
+  runtime?: string;
+  framework?: string;
+  version?: string;
+  capabilities?: string[];
+  status?: string;
+  last_heartbeat?: string;
+  api_endpoint?: string;
+  [key: string]: unknown;
+}
+
+export type FleetAgentsResult =
+  | { ok: true; registry_url: string; fetched_at: string; agents: FleetAgent[] }
+  | { ok: false; registry_url: string; reason: string; agents: [] };
+
+/**
+ * Read the live fleet registry. Fail-closed: an unreachable or malformed registry
+ * is reported as an explicit failure, never as an empty (but "successful") list.
+ */
+export async function fetchFleetAgents(registryUrl = resolveAgentRegistryUrl()): Promise<FleetAgentsResult> {
+  try {
+    const response = await fetch(`${registryUrl}/agents`, {
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) return { ok: false, registry_url: registryUrl, reason: `registry_http_${response.status}`, agents: [] };
+    const body = await response.json();
+    if (!Array.isArray(body)) return { ok: false, registry_url: registryUrl, reason: 'registry_malformed_response', agents: [] };
+    return { ok: true, registry_url: registryUrl, fetched_at: new Date().toISOString(), agents: body as FleetAgent[] };
+  } catch (error) {
+    return { ok: false, registry_url: registryUrl, reason: `registry_unreachable: ${error instanceof Error ? error.message : String(error)}`, agents: [] };
+  }
+}
+
 export function createFederationRoutes(db: Database, auth: AuthMiddleware): Router {
   const router = Router();
   // CodeQL js/missing-rate-limiting: every handler performs DB access.
@@ -50,6 +98,12 @@ export function createFederationRoutes(db: Database, auth: AuthMiddleware): Rout
       next(error);
       return;
     }
+  });
+
+  // GET /api/federation/fleet — live fleet discovery from the agent-registry (read-only).
+  router.get('/fleet', requireAuth, async (_req: Request, res: Response) => {
+    const fleet = await fetchFleetAgents();
+    res.status(fleet.ok ? 200 : 503).json(fleet);
   });
 
   // POST /api/federation/register — register a peer.

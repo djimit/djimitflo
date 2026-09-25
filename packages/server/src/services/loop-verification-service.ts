@@ -117,6 +117,12 @@ export class LoopVerificationService {
           : `${securityCheckerLeases.length} active security checker lease(s); high-risk completion requires accepted security verdict for every completed maker.`,
       },
       {
+        // J5: an auto-approved maker may only have written the one test file its approval covered.
+        name: 'auto_approved_scope',
+        status: completedMakerLeases.every((lease) => !lease.metadata?.auto_approved_scope || this.leaseWithinScope(lease)) ? 'pass' : 'fail',
+        evidence: 'An auto-approved maker lease may change only its approved test file (human-approved makers pass).',
+      },
+      {
         name: 'no_automatic_merge',
         status: 'pass',
         evidence: 'Loop only prepared worktrees and did not merge, push, or deploy.',
@@ -183,6 +189,11 @@ export class LoopVerificationService {
 
   // ─── Gate Helpers ────────────────────────────────────────────────────
 
+  private leaseWithinScope(lease: WorkerLeaseRecord): boolean {
+    const files = lease.metadata?.changed_files;
+    return Array.isArray(files) && files.length === 1 && files[0] === lease.metadata.auto_approved_scope;
+  }
+
   private leaseDiffWithinThreshold(lease: WorkerLeaseRecord): boolean {
     const diffLines = Number(lease.metadata?.diff_lines ?? 0);
     const diffMaxLines = Number(lease.metadata?.diff_max_lines ?? 0);
@@ -204,7 +215,13 @@ export class LoopVerificationService {
   public hasAcceptedReviewEvidence(lease: WorkerLeaseRecord): boolean {
     if (lease.status !== 'completed' || lease.metadata.verdict !== 'accepted') return false;
     // Manual review is an explicit, supported decision path, not runtime proof.
-    if (lease.runtime === 'manual') return true;
+    // P1a: require attestation — a named reviewer + a recorded reason. Without it, the
+    // manual bypass would silently skip all runtime evidence checks (G-audit P3.3).
+    if (lease.runtime === 'manual') {
+      const att = lease.metadata.manual_review_attestation as { reviewer?: unknown; reason?: unknown } | undefined;
+      return typeof att?.reviewer === 'string' && att.reviewer.length > 0
+        && typeof att?.reason === 'string' && att.reason.length > 0;
+    }
     const proof = lease.metadata;
     const contract = proof.runtime_contract as { available?: unknown; status?: unknown } | undefined;
     // Historical runtime verdicts lacking these observations remain blocked; an
