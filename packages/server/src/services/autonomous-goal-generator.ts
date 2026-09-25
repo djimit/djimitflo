@@ -47,6 +47,12 @@ export class AutonomousGoalGenerator {
       return 0;
     }
 
+    // A retry after a failed/cancelled goal: that goal still holds improvement_id (UNIQUE), so the insert below would throw.
+    // Prod 2026-09-25: a requeued proposal crash-looped the server at boot. Keep the old goal, record the link in metadata.
+    this.db.prepare(`UPDATE goals SET improvement_id = NULL,
+        metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.requeued_improvement_id', improvement_id), updated_at = datetime('now')
+      WHERE improvement_id = ? AND status IN ('failed', 'cancelled')`).run(id);
+
     const goalId = randomUUID();
     this.db.prepare(`
       INSERT INTO goals (id, objective, status, risk_class, acceptance_criteria_json, budget_json, improvement_id, metadata, created_at, updated_at)
