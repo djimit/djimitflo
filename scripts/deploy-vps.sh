@@ -21,7 +21,7 @@ set -euo pipefail
 
 DEPLOY_HOST="${DEPLOY_HOST:-root@100.86.47.122}"
 DEPLOY_PORT="${DEPLOY_PORT:-22122}"
-DEPLOY_KEY="${DEPLOY_KEY:-$HOME/.ssh/id_ed25519_vps}"
+DEPLOY_KEY="${DEPLOY_KEY:-${HOME:-/root}/.ssh/id_ed25519_vps}"  # systemd units have no HOME (set -u)
 DEPLOY_ROOT="${DEPLOY_ROOT:-/srv/djimitflo}"
 DEPLOY_REPO_URL="${DEPLOY_REPO_URL:-https://github.com/djimit/djimitflo.git}"
 
