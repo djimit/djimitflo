@@ -135,6 +135,16 @@ describe('SelfImprovementAgentReviewService', () => {
     warn.mockRestore();
   });
 
+  it('an empty model answer is transient: no attempt spent, no vote recorded, a later answer fills the seat', async () => {
+    const { db, panel } = setup();
+    let answer = '';
+    const reviewer = new SelfImprovementAgentReviewService(db, async () => answer);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    for (let i = 0; i < 5; i++) expect((await reviewer.reviewMissingSpecialists(panel.id, `run-${i}`)).reviews ?? []).toHaveLength(0);
+    answer = JSON.stringify({ stance: 'support', confidence: 0.9, findings: ['ok'], evidence_refs: ['context:rationale'] });
+    expect((await reviewer.reviewMissingSpecialists(panel.id, 'run-9')).consensus.support_count).toBe(2);
+  });
+
   it('a later successful call fills the open seat with a real review', async () => {
     const { db, panel } = setup();
     let ok = false;
