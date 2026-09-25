@@ -1451,6 +1451,18 @@ export class LoopService {
   }
 
   public extractRuntimeUsage(stdout: string): RuntimeUsage | null {
+    // opencode reports tokens per step (`step_finish` events, `part.tokens`), never as one usage object; the first-match
+    // loop below therefore always returned null for opencode (prod 2026-09-25: every skill_outcome had tokens_used 0).
+    let steps = 0; let input = 0; let output = 0; let total = 0;
+    for (const line of stdout.split(/\r?\n/)) {
+      if (!line.includes('"step_finish"')) continue;
+      try {
+        const tokens = JSON.parse(line.trim())?.part?.tokens as { total?: unknown; input?: unknown; output?: unknown } | undefined;
+        if (!tokens) continue;
+        steps += 1; input += Number(tokens.input) || 0; output += Number(tokens.output) || 0; total += Number(tokens.total) || 0;
+      } catch { /* not a JSON event line */ }
+    }
+    if (steps > 0 && total > 0) return { prompt_tokens: input, completion_tokens: output, total_tokens: total, usage_source: 'runtime_stdout' };
     for (const line of stdout.split(/\r?\n/)) {
       const trimmed = line.trim();
       if (!trimmed.startsWith('{')) {
