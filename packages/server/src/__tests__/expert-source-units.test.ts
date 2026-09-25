@@ -40,3 +40,21 @@ it('the governed promotion still refuses an automated actor on a unit (two human
   expect(() => registry.transition(unit.id, 'APPROVED', { actor: 'ingestion:source-units' })).toThrow();
   expect(() => registry.transition(unit.id, 'APPROVED', { actor: 'human:checker' })).toThrow('EXPERT_APPROVER_MUST_DIFFER_FROM_CHECKER');
 });
+
+it('G1: a fleet agent discovery becomes a unit only when it is identifiable and on-topic, once', () => {
+  const { db } = setup();
+  const svc = new ExpertSourceUnitsService(db);
+  const paper = { event_type: 'discovery.paper', ref: 'https://arxiv.org/abs/2609.12345v2', title: 'Scalable oversight for coding agents', note: 'debate protocol', agent: 'hermes-macmini' };
+  expect(svc.ingestDiscovery(paper)).toBe('unit');
+  expect(svc.ingestDiscovery(paper)).toBe('known');
+  expect(svc.ingestDiscovery({ event_type: 'discovery.paper', ref: 'arxiv:2609.99999', title: 'Qubit error rates in trapped ions', agent: 'hermes-macmini' })).toBe('irrelevant');
+  expect(svc.ingestDiscovery({ event_type: 'discovery.paper', ref: 'not-an-id', title: 'Scalable oversight' })).toBe('invalid');
+  expect(svc.ingestDiscovery({ event_type: 'discovery.repository', ref: 'github:Org/Oversight-Kit.git', title: 'Scalable oversight toolkit', agent: 'eve-v' })).toBe('unit');
+  const units = db.prepare("SELECT kind, canonical_name AS name, lifecycle_state AS state, aliases_json AS aliases FROM expert_identities WHERE kind != 'person' ORDER BY kind").all();
+  expect(units).toEqual([
+    { kind: 'paper', name: 'Scalable oversight for coding agents', state: 'CAPABILITY_INFERRED', aliases: '["arxiv:2609.12345"]' },
+    { kind: 'repository', name: 'org/oversight-kit', state: 'CAPABILITY_INFERRED', aliases: '["github:org/oversight-kit"]' },
+  ]);
+  expect(db.prepare("SELECT source_family FROM expert_evidence WHERE source_ref = 'arxiv:2609.12345'").get()).toEqual({ source_family: 'agent:hermes-macmini' });
+  expect(svc.materialize(20)).toEqual({ papers: 0, repositories: 0 }); // stored fleet evidence is not re-materialised
+});

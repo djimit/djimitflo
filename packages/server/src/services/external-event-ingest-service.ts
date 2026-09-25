@@ -2,6 +2,7 @@ import { WorkItemService } from './work-item-service';
 import type { Database } from 'better-sqlite3';
 import { z } from 'zod';
 import { OutcomeLearningService } from './outcome-learning-service';
+import { ExpertSourceUnitsService, sourceUnitsEnabled } from './expert-source-units-service';
 
 const nonBlank = z.string().trim().min(1);
 const decodeField = (value: unknown): unknown => {
@@ -126,6 +127,8 @@ export class ExternalEventIngestService {
         if (!id || (!eventType.startsWith('paperclip.')
           && eventType !== 'outcome.observed'
           && eventType !== 'roborev.finding'
+          && eventType !== 'discovery.paper'
+          && eventType !== 'discovery.repository'
           && eventType !== 'wiki.page.changed'
           && eventType !== 'agent.board.handoff.created'
           && eventType !== 'eve-v.board.handoff.received')) continue;
@@ -138,6 +141,9 @@ export class ExternalEventIngestService {
         }
         const aggregateVersion = Number(normalizedEvent.aggregate_version);
         if (eventType === 'roborev.finding') this.materializeRoborevFinding(normalizedEvent);
+        if (eventType.startsWith('discovery.') && sourceUnitsEnabled()) {
+          try { new ExpertSourceUnitsService(this.db).ingestDiscovery(normalizedEvent); } catch { /* never let one discovery break ingestion */ }
+        }
         inserted += insert.run(
           id,
           eventType,
