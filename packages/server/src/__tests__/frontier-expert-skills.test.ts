@@ -15,11 +15,11 @@ describe('frontier analysis skills (§34) through SkillService/OKF', () => {
   let tmp: string;
   afterEach(() => { if (originalBase === undefined) delete process.env.OKF_BASE; else process.env.OKF_BASE = originalBase; fs.rmSync(tmp, { recursive: true, force: true }); });
 
-  it('installs the fourteen §34 skills idempotently, all validate, and every taxonomy capability has a skill', () => {
+  it('installs the §34 skills (fourteen + software engineering, E4) idempotently, all validate, and every taxonomy capability has a skill', () => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'okf-skills-'));
     process.env.OKF_BASE = tmp;
     const skillsDir = path.join(tmp, 'skills');
-    expect(FRONTIER_SKILLS).toHaveLength(14);
+    expect(FRONTIER_SKILLS).toHaveLength(15);
     const written = installFrontierSkills(skillsDir);
     expect(written.every((item) => item.action === 'written')).toBe(true);
     expect(installFrontierSkills(skillsDir).every((item) => item.action === 'kept')).toBe(true);
