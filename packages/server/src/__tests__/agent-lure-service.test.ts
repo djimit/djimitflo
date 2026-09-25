@@ -31,7 +31,8 @@ describe('agent commons lure (honeypot)', () => {
     delete process.env.JWT_SECRET;
   });
 
-  it('invites only absent eligible agents, issues scoped tokens once and exports to Paperclip', () => {
+  it('invites only absent eligible agents, issues scoped tokens once and no longer exports to Paperclip (retired)', () => {
+    db.prepare(`UPDATE agents SET metadata = '{"social_runtime":{"last_heartbeat_at":"2026-09-01T00:00:00.000Z"}}' WHERE id = 'silent'`).run(); // lapsed: its poller can come back
     const pending = join(dir, 'pending.jsonl');
     const cast = lure.castLure({ by: 'operator@test', baseUrl: 'http://127.0.0.1:3001', paperclipPath: pending });
     expect(cast.lure.invited).toEqual(['silent']);
@@ -47,9 +48,8 @@ describe('agent commons lure (honeypot)', () => {
     expect(JSON.stringify(invite)).not.toContain(invitation.token);
     expect(comms.receiveSocial('silent')).toHaveLength(0);
 
-    const exported = JSON.parse(readFileSync(pending, 'utf8').trim());
-    expect(exported).toMatchObject({ event: 'social.invite', task_type: 'skill_candidate', dedupe_key: `agent-commons:${cast.lure.id}` });
-    expect(JSON.stringify(exported)).not.toContain(invitation.token);
+    expect(cast.lure.paperclip_exported).toBe(false);
+    expect(() => readFileSync(pending, 'utf8')).toThrow(); // nothing written
 
     let status = lure.status();
     expect(status.lures[0].invitees).toEqual([expect.objectContaining({ agent_id: 'silent', state: 'seen' })]);
@@ -98,4 +98,29 @@ describe('agent commons lure (honeypot)', () => {
       .run(JSON.stringify({ social_runtime: { enabled: true, last_heartbeat_at: '2026-09-13T19:33:37.041Z' } }));
     expect(lure.castIfQuiet({ by: 'loop', baseUrl: 'http://x', paperclipPath: null })?.lure.invited).toEqual(['lapsed']);
   });
+
+  it('F1: a never-connected agent gets a token (to install an adapter) but no bus invitation; the same bait is not recast', () => {
+    db.prepare(`UPDATE agents SET metadata = '{"social_runtime":{"last_heartbeat_at":"2026-09-01T00:00:00.000Z"}}' WHERE id = 'silent'`).run(); // lapsed: its poller can come back
+    db.prepare("INSERT INTO agents (id, name, status) VALUES ('newbie', 'Newbie', 'active')").run();
+    db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, priority, created_at, updated_at)
+      VALUES ('p1', 'feature', 'Parked one', 'd', 'r', 'reflection', 'needs_grounding', 0.5, datetime('now'), datetime('now'))`).run();
+    const first = lure.castLure({ by: 'operator@test', baseUrl: 'http://x' });
+    expect(first.lure.topic_ref).toBe('proposal:p1');
+    expect(first.invitations.map((i) => i.agent_id).sort()).toEqual(['newbie', 'silent']);
+    expect(comms.receive('newbie')).toHaveLength(0);
+    expect(comms.receive('silent')).toHaveLength(1);
+    const second = lure.castLure({ by: 'operator@test', baseUrl: 'http://x' });
+    expect(second.lure.topic_ref).not.toBe('proposal:p1'); // rotated, not recast
+  });
+
+  it('F1: an agent that left 3 lures unanswered is dormant: no more bus invitations, and autonomous casts skip it', () => {
+    db.prepare(`UPDATE agents SET metadata = '{"social_runtime":{"last_heartbeat_at":"2026-09-01T00:00:00.000Z"}}' WHERE id = 'silent'`).run(); // lapsed: its poller can come back
+    for (let i = 0; i < 3; i++) db.prepare("INSERT INTO social_lures (id, topic, topic_ref, created_by, created_at, expires_at, invited_json) VALUES (?, 't', ?, 'op', ?, ?, ?)")
+      .run(`old-${i}`, `claim:${i}`, new Date(Date.now() - (i + 2) * 86_400_000).toISOString(), new Date(Date.now() - 86_400_000).toISOString(), JSON.stringify(['silent']));
+    expect(lure.dormantAgents().has('silent')).toBe(true);
+    expect(lure.castIfQuiet({ by: 'loop', baseUrl: 'http://x' })).toBeNull(); // nobody left who could bite
+    lure.castLure({ by: 'operator@test', baseUrl: 'http://x' });
+    expect(comms.receive('silent')).toHaveLength(0);
+  });
 });
+
