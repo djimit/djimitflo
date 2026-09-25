@@ -19,6 +19,8 @@ export type ExpertLifecycleState =
   | 'DISCOVERED' | 'IDENTITY_RESOLVED' | 'EVIDENCE_COLLECTED' | 'CAPABILITY_INFERRED' | 'CHECKED' | 'APPROVED' | 'ACTIVE'
   | 'AMBIGUOUS' | 'INSUFFICIENT_EVIDENCE' | 'CONTRADICTED' | 'STALE' | 'REJECTED' | 'REVOKED';
 export type EvidenceKind = 'paper' | 'institutional_page' | 'technical_report' | 'repository' | 'presentation' | 'profile' | 'scholarly_metadata' | 'secondary' | 'signature' | 'other';
+/** E2: who or what carries the expertise. Only people come from signatures; papers and repositories come from evidence. */
+export type ExpertKind = 'person' | 'paper' | 'repository';
 export type ClaimRelation = 'SUPPORTS' | 'CONTRADICTS' | 'QUALIFIES' | 'ORTHOGONAL' | 'UNDETERMINED';
 
 export const IDENTITY_CONFIDENCE_THRESHOLD = 0.8;
@@ -74,7 +76,7 @@ const TRANSITIONS: Record<ExpertLifecycleState, ExpertLifecycleState[]> = {
 };
 
 export interface ExpertIdentityRow {
-  id: string; canonical_name: string; aliases_json: string; lifecycle_state: ExpertLifecycleState; identity_confidence: number;
+  id: string; canonical_name: string; aliases_json: string; lifecycle_state: ExpertLifecycleState; identity_confidence: number; kind?: ExpertKind;
   provenance_json: string; version: number; created_at: string; updated_at: string;
 }
 export interface ExpertEvidenceInput {
@@ -114,10 +116,10 @@ export class FrontierExpertRegistryService {
     return null;
   }
 
-  discover(input: { canonicalName: string; aliases?: string[]; provenance: Record<string, unknown>; actor: string }): ExpertIdentityRow {
+  discover(input: { canonicalName: string; aliases?: string[]; provenance: Record<string, unknown>; actor: string; kind?: ExpertKind }): ExpertIdentityRow {
     const id = `expert:${randomUUID()}`;
-    this.db.prepare('INSERT INTO expert_identities (id, canonical_name, aliases_json, lifecycle_state, identity_confidence, provenance_json, version) VALUES (?, ?, ?, ?, 0, ?, 1)')
-      .run(id, input.canonicalName.trim(), JSON.stringify(input.aliases ?? []), 'DISCOVERED', JSON.stringify(input.provenance));
+    this.db.prepare('INSERT INTO expert_identities (id, canonical_name, aliases_json, lifecycle_state, identity_confidence, provenance_json, version, kind) VALUES (?, ?, ?, ?, 0, ?, 1, ?)')
+      .run(id, input.canonicalName.trim(), JSON.stringify(input.aliases ?? []), 'DISCOVERED', JSON.stringify(input.provenance), input.kind ?? 'person');
     this.event(id, null, 'DISCOVERED', input.actor, 'discovered', []);
     this.snapshot(id, 'discovered');
     return this.get(id)!;

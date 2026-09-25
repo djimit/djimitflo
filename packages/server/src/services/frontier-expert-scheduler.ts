@@ -30,6 +30,7 @@ import type { Database } from 'better-sqlite3';
 import { FrontierExpertRegistryService, frontierExpertsEnabled } from './frontier-expert-registry-service';
 import { PacingFrontierIngestionService } from './pacing-frontier-ingestion-service';
 import { ExpertEvidenceEnrichmentService } from './expert-evidence-enrichment-service';
+import { ExpertSourceUnitsService, sourceUnitsEnabled } from './expert-source-units-service';
 import { ExpertCouncilService } from './expert-council-service';
 
 const MINUTE_MS = 60 * 1000;
@@ -116,6 +117,15 @@ export class FrontierExpertScheduler {
       result.failed.push({ stage: 'enrich', error: err instanceof Error ? err.message : String(err) });
     }
 
+    // E2: papers and repositories from stored evidence become their own expertise units (no network, default off)
+    if (sourceUnitsEnabled()) {
+      try {
+        const units = new ExpertSourceUnitsService(this.db).materialize(20);
+        if (units.papers || units.repositories) console.log(`🔭 frontier expert units: +${units.papers} paper(s), +${units.repositories} repositor(ies)`);
+      } catch (err) {
+        result.failed.push({ stage: 'enrich', error: `source units: ${err instanceof Error ? err.message : String(err)}` });
+      }
+    }
     await this.reviewCapabilityInferred(result);
     this.report(result);
     return result;
