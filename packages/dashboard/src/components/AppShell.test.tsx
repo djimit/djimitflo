@@ -25,7 +25,7 @@ describe('app shell approvals visibility', () => {
     render(<MemoryRouter initialEntries={['/tasks']}><Layout /></MemoryRouter>);
     await waitFor(() => expect(screen.getByLabelText('1 pending')).toBeTruthy());
     expect(screen.getByRole('status').textContent).toMatch(/1 approval is waiting — the first expires in (9|10) min/);
-    expect(document.title).toBe('(1) Djimitflo');
+    await waitFor(() => expect(document.title).toBe('(1) Djimitflo')); // title is set in an effect after the badge renders
   });
 
   it('shows nothing when no approval is open, and no banner on the approvals page itself', async () => {

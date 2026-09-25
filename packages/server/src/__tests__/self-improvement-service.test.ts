@@ -118,6 +118,16 @@ describe('G71: Self Improvement', () => {
     });
   });
 
+  it('caps reflection proposals per day when REFLECTION_PROPOSALS_MAX_PER_DAY is set (J4)', () => {
+    process.env.REFLECTION_PROPOSALS_MAX_PER_DAY = '2';
+    try {
+      const made = improvement.generateFromReflection({ whatFailed: [], lessonsLearned: [], proposedImprovements: ['Fix A in x', 'Fix B in y', 'Fix C in z'] });
+      expect(made).toHaveLength(2);
+      expect(improvement.generateFromReflection({ whatFailed: [], lessonsLearned: [], proposedImprovements: ['Fix D in w'] })).toHaveLength(0);
+    } finally { delete process.env.REFLECTION_PROPOSALS_MAX_PER_DAY; }
+    expect(improvement.generateFromReflection({ whatFailed: [], lessonsLearned: [], proposedImprovements: ['Fix E in v'] })).toHaveLength(1); // unset = no cap
+  });
+
   describe('recordOutcome', () => {
     const seed = (id: string, status: string) => db.prepare(`
       INSERT INTO self_improvements (id, type, title, description, rationale, source, status, priority, created_at, updated_at)
@@ -130,6 +140,14 @@ describe('G71: Self Improvement', () => {
       expect(improvement.recordOutcome('c', 'regressed')).toBe(false);
       expect(improvement.getImprovement('a').status).toBe('verified');
       expect(improvement.getImprovement('c').status).toBe('applied');
+    });
+
+    it('lets a later verified outcome override a premature regressed, not the reverse', () => {
+      seed('r', 'regressed'); seed('v', 'verified');
+      expect(improvement.recordOutcome('r', 'verified')).toBe(true);
+      expect(improvement.recordOutcome('v', 'regressed')).toBe(false);
+      expect(improvement.getImprovement('r').status).toBe('verified');
+      expect(improvement.getImprovement('v').status).toBe('verified');
     });
   });
 

@@ -113,7 +113,7 @@ describe('LoopDaemon checker dispatch', () => {
     process.env.LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED = 'true';
     const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
     await runOneTick(daemon);
-    expect(stubLoops.executeChecker).toHaveBeenCalledWith('run-1', { runtime: 'codex', timeout_ms: 120_000 });
+    expect(stubLoops.executeChecker).toHaveBeenCalledWith('run-1', { runtime: 'codex', timeout_ms: 300_000 });
     expect(stubLoops.retryLoopRun).not.toHaveBeenCalled();
   });
 
@@ -124,7 +124,7 @@ describe('LoopDaemon checker dispatch', () => {
     const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
     await runOneTick(daemon);
     expect(stubLoops.retryLoopRun).toHaveBeenCalled();
-    expect(stubLoops.executeChecker).toHaveBeenCalledWith('run-1', { runtime: 'opencode', timeout_ms: 120_000 });
+    expect(stubLoops.executeChecker).toHaveBeenCalledWith('run-1', { runtime: 'opencode', timeout_ms: 300_000 });
   });
 
   it('does not crash the daemon when the checker throws (best-effort)', async () => {
@@ -146,6 +146,56 @@ describe('LoopDaemon checker dispatch', () => {
     await runOneTick(daemon);
     expect(callOrder).toEqual(['executeChecker', 'verifyLoopRun']);
   });
+
+  it('records one skill outcome per run for its maker skill (loop × runtime), E10', async () => {
+    seedQualifyingGoal();
+    const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+    await runOneTick(daemon);
+    const rows = db.prepare('SELECT skill_id, success, task_id, agent_id, domain FROM skill_outcomes').all();
+    expect(rows).toEqual([{ skill_id: 'loop-maker:doc-drift-and-small-fix-loop:codex', success: 0, task_id: 'run-1', agent_id: 'maker-1', domain: 'doc-drift-and-small-fix-loop' }]);
+  });
+
+  it('evolve (E13): with LOOP_EVOLVE_ENABLED an eligible goal gets a sibling maker per species before the checker', async () => {
+    const goal = seedQualifyingGoal();
+    db.prepare("UPDATE goals SET metadata = '{\"evolve\":true}' WHERE id = ?").run(goal.id);
+    process.env.LOOP_EVOLVE_ENABLED = 'true'; process.env.LOOP_EVOLVE_SPECIES = 'opencode@ollama/kimi-k2.6:cloud';
+    try {
+      const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+      await runOneTick(daemon);
+      expect(stubLoops.retryLoopRun).toHaveBeenCalledWith('run-1', { maker_lease_id: 'maker-1', sibling: true, runtime: 'opencode', model: 'ollama/kimi-k2.6:cloud' });
+      expect(stubLoops.executeWorker).toHaveBeenCalledTimes(2);
+      expect(stubLoops.runDeterministicChecks).toHaveBeenCalledWith('run-1', expect.objectContaining({ lease_id: 'maker-2' }));
+    } finally { delete process.env.LOOP_EVOLVE_ENABLED; delete process.env.LOOP_EVOLVE_SPECIES; }
+  });
+
+  it('E12: with LOOP_BANDIT_ENABLED the chosen maker species is written onto the prepared maker lease', async () => {
+    seedQualifyingGoal();
+    db.pragma('foreign_keys = OFF');
+    db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata) VALUES ('maker-1', 'run-1', 'maker', 'codex', 'prepared', '{}')").run();
+    const skills = new (await import('../services/skill-evolution-engine')).SkillEvolutionEngine(db);
+    for (let i = 0; i < 25; i++) skills.recordOutcome('loop-maker:doc-drift-and-small-fix-loop:opencode', { success: true, tokensUsed: 0, durationMs: 1, domain: 'd', model: 'm2' });
+    for (let i = 0; i < 25; i++) skills.recordOutcome('loop-maker:doc-drift-and-small-fix-loop:codex', { success: false, tokensUsed: 0, durationMs: 1, domain: 'd' });
+    (stubLoops as unknown as { assertRuntimeAvailable: () => void }).assertRuntimeAvailable = () => undefined;
+    process.env.LOOP_BANDIT_ENABLED = 'true'; process.env.LOOP_BANDIT_SPECIES = 'codex,opencode@m2';
+    try {
+      const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+      await runOneTick(daemon);
+      const lease = db.prepare("SELECT runtime, json_extract(metadata, '$.model') AS model FROM worker_leases WHERE id = 'maker-1'").get();
+      expect(lease).toEqual({ runtime: 'opencode', model: 'm2' });
+      expect(db.prepare("SELECT event_type FROM loop_events WHERE event_type = 'bandit_selected'").get()).toEqual({ event_type: 'bandit_selected' });
+    } finally { delete process.env.LOOP_BANDIT_ENABLED; delete process.env.LOOP_BANDIT_SPECIES; }
+  });
+
+  it('defers verification while another pass still runs a reviewer (prod 2026-09-24: false regressed)', async () => {
+    const goal = seedQualifyingGoal();
+    process.env.LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED = 'true';
+    db.pragma('foreign_keys = OFF'); // the stubbed run has no loop_runs row
+    db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status) VALUES ('sec-1', 'run-1', 'security_checker', 'opencode', 'running')").run();
+    const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+    await runOneTick(daemon);
+    expect(stubLoops.verifyLoopRun).not.toHaveBeenCalled();
+    expect((db.prepare('SELECT status FROM goals WHERE id = ?').get(goal.id) as { status: string }).status).not.toBe('failed');
+  });
 });
 
 describe('checker verdict extraction from an opencode event stream', () => {
@@ -156,5 +206,16 @@ describe('checker verdict extraction from an opencode event stream', () => {
     const stdout = [JSON.stringify({ type: 'step_start' }), JSON.stringify({ type: 'text', part: { type: 'text', text } })].join('\n');
     expect(svc.extractCheckerVerdict(stdout)).toBe('accepted');
     expect(svc.extractCheckerNotes(stdout)).toBe('ok');
+  });
+
+  it('recovers a verdict whose final brace the model dropped, and prefers the last verdict line (prod 2026-09-23)', () => {
+    const db0 = new Database(':memory:'); db0.exec(schema); runMigrations(db0);
+    const svc = new LoopService(db0);
+    const text = 'Checked the source.\n\n{"verdict":"needs_revision","notes":"draft"}\n\n{"verdict":"accepted","notes":"final","usage":{"total_tokens":2}';
+    const stdout = [JSON.stringify({ type: 'step_start' }), JSON.stringify({ type: 'text', part: { type: 'text', text } })].join('\n');
+    expect(svc.extractCheckerVerdict(stdout)).toBe('accepted');
+    expect(svc.extractCheckerNotes(stdout)).toBe('final');
+    const garbage = [JSON.stringify({ type: 'text', part: { type: 'text', text: 'no verdict here {not json' } })].join('\n');
+    expect(svc.extractCheckerVerdict(garbage)).toBe('insufficient_evidence');
   });
 });

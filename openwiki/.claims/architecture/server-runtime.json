@@ -1,0 +1,280 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:effe69082ebdc88133d174c97874375b11f8c385c32af96f777cc14087105466",
+  "claims": [
+    {
+      "id": "claim_987399b25a5c413cbde2118a8749b2e6",
+      "statement": "packages/server/src/index.ts is the single server entrypoint: main() wires boot in a fixed order (initializeDatabase → LoopService.recoverInterruptedRuns → profile-gated bootstrap → AuthService/bootstrapAdmin → middleware chain → WebSocketService → RuntimeGovernanceService + ExecutionEngine task recovery → learning services → schedulers → /api router → /explore public routes → dashboard static serving → errorHandler → listen → SIGTERM handler), and any uncaught failure from main() exits the process with code 1.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/package.json",
+          "version": "repo-file-v1:sha256:00cf892a62e5cbd6f3a787e20c79a4057abe2684d9bb8cdb371ed1b39e0c43dd"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L75-L418",
+          "version": "repo-lines-v1:sha256:3aa63a789046e9dbcac9e8f2196f93f6d9cb15517693e11a849a5dec4a882837:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQ0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjZTgyMDBlYmQxNzA5YjZhNjc1YmVjYjNiZTlmMzllNTNiYmFjMDJjYzkyNzIzNDYyYzA1NDY4ZWIwZGE2YTE2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJmNmY1YjQwYjE1ODQ1N2QxNzg2NGYyMTc5MDc4NmRkNWEyZWNkYjY0YjY2YTY1MWY3ODhkNGUyNWNkMzMwM2QyIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkN2E0MGYxNGUyNDhlZmJlNTc1ZGJkMGQyZTYxMWM3M2MxYjQ0NTYzM2M2ZDQyNGRlOGEzOThhNWM4ODUyZjk2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_e8026e42ab7b40afbb935582e1c40b42",
+      "statement": "DJIMITFLO_RUNTIME_PROFILE resolves to 'api' (default, also for invalid values), 'operator', or 'autonomous'; operator-capable profiles (operator and autonomous) get initOperatorServices, the Dennis governed-queue timer, retention/cognitive-closure services and the Telegram gateway, while only 'autonomous' gets initAutonomousServices, the LoopDaemon, MetaOrchestrationService, and the OpenMythos nightly scheduler.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/config/runtime-profile.ts#L1-L19",
+          "version": "repo-lines-v1:sha256:e71eb8e61830385d2fb28df231ed44a5358d945d665729c99ed665688bab1036:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3ODYxYjMyZGI5MWEwYjJhYmQ4MDE3NmVlNDAwZDRhZTNmZWYzY2E3Y2Q1ODJmMDc4YWE2NTQ1ZDFiMmI3MTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L245-L264",
+          "version": "repo-lines-v1:sha256:9081424c0a0238070494393e82e36791f5e5db2a8d72b11e19e6e5afdaac7f37:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkYTkyY2M1YTllMWM1ZjY1YTI4MDI3YzliYmY0ZDliMzhjZTkxMzAwNWE4NDM0NzdlNjllNWU1MmJkNzFkOGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE0ZDVlMjNiN2RkZDY3ODc3NDMwMGRkYTZjOWU1MjdiNmI1ZGQwM2M0Nzc1ZDVmMTZkYTFlMWNiNGRmNzgzMTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYzMjE0MWE4MGFlMDQ2ZjFkMDE3MDI2NGMxN2Q1Yzc0NmM5YzMxMWRmNWVlNDI0NWFlMmQwYWNhYmRkODhkNDUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L325-L343",
+          "version": "repo-lines-v1:sha256:4ece4e37b89355a677652de8a0703267c9be277b38ab43ee81c447b694b43b22:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwMzgxM2MzNTRkOTgxYjkwMmNlZDQzMDJmNDNlNmRmNDY4OTg4YzI1MTY4YWZiNGRiOGJmNDYwMDFiOWIyYWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4YmUyMTMwNWY2OGNlYzQ2NjkwNGE1MWUyMGQzN2RlZjMxOGQ5ZmIwMmU1MjRmNzQ2NWQ0NmVjMDM3ZmQxZjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyYzYyOTVkMTBiZGE5OGNlY2Y2MGVhMTM1Mjc2ZmFhYzU4YTVmMmNkYjUyNDIyNzBmM2UwODYwYjYyMGFkNDEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L77-L115",
+          "version": "repo-lines-v1:sha256:53901719a3777b331e912c585d360dcc45386eaf8b52a94bef341864bb8ee25a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1YjI5OGYzMjRjYWU5YWQ4ZDY4OGM3MzAwN2JmMGEyZGMyMjg5YzY1YmE0ZGU4MDg3M2QxMmU2NTMwMTM0YWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg3YzM2YzUxYmYzNmVjMzJlY2JmODIyYWMwZjcwNGQ5MTkxNjBiYTM5NDRkYjk1ZWM1NGFiZjdhMDhkYzNmNjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkNjFlNmRhZTk1NTRhMzgwYTZiMmY2N2Q3M2JiZGM2MzYyZGYwNjYyMzMwOWNjNzEwNDUyNTc3NmUzMGMzNTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_eda78a0e867f4349b7cb7140c2112be6",
+      "statement": "initializeDatabase() applies a staged backup restore (restore-pending.json marker atomically renames a staged DB over the target and records a restore_completed audit event), opens better-sqlite3 at DB_PATH/DJIMITFLO_DB (default <monorepo>/.data/djimitflo.sqlite), sets foreign_keys=ON and journal_mode=WAL, then runs pre-schema migrations, both schemas, post-schema migrations, and ensureDatabaseInstanceId before any service is constructed.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/index.ts#L39-L142",
+          "version": "repo-lines-v1:sha256:31ec93dc770557fcd025a16ec997514a3fbe43e9f9f888fe7437881980f3d1c9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0Zjg1MDUwZTQzMzc0Mzc0NDNlMTg0MTY0NTA4YzE3ZGM2OWNmNDY2YWVmZjMzMjBlNDEwZjM4ZGM3MjVmZjE1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4YzVkYTY4NmFmNWIzYjU1MDA4NzVkOGZkMGI0Y2FiODI1NmMyNzY0NmQ5ODhlYjEyODdhNzczMzY1MmY0MDE3IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MiwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJkNGVhNzI5ZjhmMjJmMmQ4ZGQxYjE3YWZjNjgxMWVkY2ViMDk3YzgxNzFmYTA0YWZhYzRlOTVjNTkwMmQ5MjlhIn0"
+        },
+        {
+          "resource": "repo://packages/server/src/database/path.ts#L7-L13",
+          "version": "repo-lines-v1:sha256:ac253456dd77c4fd9cfb3ae352ab4edee48c2f682f80d96ca46970770f94c24f:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTZkNzJhYTFkNDA1YzQ0YjViMGEyMTk2MzRiYjllNjE3MjkwZDE0MGZkYTZlZWFlZWE3NGVlNTU0YjYzNzQxNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjkwZWQ5YjdmZDM5YmJiMTExMDkyZWEzNTEyNDFkNjgxYzUwZmQ5NDY2MDFkNDIyZDYwNzRhMmI4YjJlYjI1MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDNiNGUwMWMxN2ZmMjcwZjI2ODUwMDMwMmM1NzAxYzc5NTA4MDUwNjk3YzA3NzVmOGRjNzdjNjEyMjc1MzI1NyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_366286a5d3b747d6a4f0ab8a8931cfbf",
+      "statement": "At boot the in-memory lease registry (RuntimeLeaseRegistry) is empty, so recoverInterruptedRuns marks every DB-'running' worker lease 'failed' with reason server_restart and every active loop run without a live lease 'interrupted' with reason server_restart; runs in 'planning' and runs whose goal is blocked awaiting a human approval are deliberately left alone, and orphaned worktrees older than the grace period are pruned in the same call. The operation is idempotent and never dispatches work.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/loop-recovery-awaiting-approval.test.ts#L15-L20",
+          "version": "repo-lines-v1:sha256:7260e5cc2477f9cd392f88f023936912b0df4d018be7130c75f33c940156a5aa:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODc4OWE2MGY4Y2QyNDAyNjkzY2ViMjE4Y2QxOTMyNDFkMTIyYjQ2MTE1YmZhYzliZGIzOWU2MDlmMzc5MzdlMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWQzZjFkYTZhMjZiMWU4ODFiNDhmZDU1MWQ1MTkyMzdhZjE2ODM3NDI2MGFmYTJlZTM5ZTQ0NmJjOWRlNmJmMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L86-L101",
+          "version": "repo-lines-v1:sha256:c60e01b77fffafe4f7484fee507605b79b12cf49ab8376b28656db7271bbc23d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjNTI2YTIwYTQ2ZjdkMTIwMDdiNmQwMDI4MDU0YTk1MGY2N2VhMjNiNjBhNGZiY2M3NzA5YWMyYmNlMDc2ZjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBjOTkxNjQ0YTE2OWY0ODEyYTA2NDU3ZDM3NmE4MzM2ZDhlZjExOTc5MWY4MGEyMDZmMjc2NjRmM2ZlMmYyNGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI5YjlkM2M4NmM4YzFhZTEwNWU2MmM2ZmM5N2ZmNjg0ODgxMTVhNGYwODIwY2QyYTVmNmRlZmVjOWMzMDQzZTAifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-recovery-service.ts#L96-L135",
+          "version": "repo-lines-v1:sha256:2d1b7fda17e7dd0ce7ac23305c5f3b6913d08a25218b2d5cfb4ec0df845f10f3:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc3ZTNiYmNhMjczNDBjNzIzODkzMTY5NWI2OGExYjY0NjA4ZDYyODVhNzE2MDdmZTUwNjBkYzNiZmM4ZWJmNzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQwYjYxYzEwZjQ4NjgwOTMwNDlkMjU5YzAxNmE1YTA4MjIzMWEyYzMwYzUyNDcwMzJjMGI5Y2E3ZDI5ZTU3NzYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L343-L357",
+          "version": "repo-lines-v1:sha256:44325b8e81c304e73935289c788fca43bfd0f4341b1a53ff4cda95570d453453:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM1OGNkMzFmNGI3MzMyZDYzYTBmOTljZTBmODA5MjJlOTBhNWIzZjJjYjU0MGExMjI5YTU5ZTYyZTc5MzZkZjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIwZjIzODhlMzIzOTA3ZjczMWFkMTQ0ODZkYjMzNTQ0NmMxYTgyMGIwMDAyZGE4ODE3ZTM3MWQ0MjExMmI0MWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_851e8d4871ac4b7eba317b0f2d06fcb6",
+      "statement": "ExecutionEngine.recoverInterruptedTasks() is startup-only reconciliation that never replays work, kills unknown PIDs, or clears recovery holds automatically: it fails only confirmed in-process mock executions (metadata execution_recovery_attempt stamp correlated with the latest engine-authored 'admitted' execution_event, executorKind mock, inProcess true, sandboxed false) and pauses everything else with execution_recovery_hold: true and outcome 'unknown', requiring operator reconciliation before redispatch (executeTask rejects held tasks with EXECUTION_RECOVERY_REQUIRED and reserved provenance keys are stripped from user metadata writes so the hold cannot be forged).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/task-recovery.test.ts#L37-L120",
+          "version": "repo-lines-v1:sha256:fe8ef85809e6b05b586ec35e53aada4740671b2ab6864c6d618bd8c201873e93:eyJzZWxlY3RlZExpbmVDb3VudCI6ODQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiNTUyNWNhMTNjODM0MTQ4NTg5YzNhOWFjMjQxNzQwMzI5YzJkNTQwYzE3YTA0MGIzN2QwMWZmZTBmMzFlNGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4YTFjYTdjMWNmMzBhZTVkZjhlOTJjZmI1NTk2MjAyNjNjOTc4MmEyYTg1N2E0YzBhMDAyNzMxNGU3ZDE3OTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJhMmMzNzVhZWFmY2QyNDg2MTJjNjk0YWJjYmQwOGVhMjhlMmEzMzA5NWQyYmY1MmE3ZGIwMTUwZGVlYTljMWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiYTE5ZjFmNGRjMWJlMzg3ODllMDY4Mjc2ZTRkZGUwYjFmNTRhNmUzNTFhNWQzNjk2ZjM1ZjdjMzk2ZTM1ODEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L185-L238",
+          "version": "repo-lines-v1:sha256:ec1909e04f0ba4c5bd85f552ad334c329e6c4bc65d00e35a054f539326f553b1:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNiZGIwM2ZkZGJmNzYyMGM2MTNjMzAzYTMxMzg0ZWYyNDQ4ZWE0NjMwNmE1NWMxYjMwMDJjNzI0Y2ZhMDAxMTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ4OTA2MzQ3YjFkZTE3NWJkM2UzNWRjZWIyODVlZmEwODI3NWRkNTQzZWY5NmZjNzFhYTAxOWY3ODNjOGI4YmMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L269-L272",
+          "version": "repo-lines-v1:sha256:0f211015e9da405c049eabc51ed770e49e45d6084d806c150aeeab51670e51ec:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg5M2Y0MGUzNzgxZWI4OTZjODJkMDQ2YTA4MDY3YTExZTM1Y2RmMmYxZGZhZjI2ZmVhOTBiOGRiNjY3NjQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTRiZmQ0ZjNmYzhiY2MzYjE3OGYwNDliOThhYjkwM2NlOTljMGQwMGZlOWRhYmJlZDEwNzdhODJhZjVkN2U0NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMGQwYWY3ODZjMzcwODZiMjAxMjljMTBkYjhhZTRiYmYxZTRkYWU0MjAxYzJkZjdhNjEzMGE5NmUxMjUzNWEwOSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_8746e78040074b78bc63ade6eb7bfc65",
+      "statement": "The Express middleware chain is security-order-sensitive: trust proxy=1 (required for express-rate-limit behind one nginx hop), securityHeaders, cors, then the GitHub webhook router at /github/webhook mounted BEFORE express.json() because its HMAC signature check needs the exact raw wire bytes (express.raw), then express.json() and requestLogger; the public /health endpoint reports build identity including commit_matches_build.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/index.ts#L122-L161",
+          "version": "repo-lines-v1:sha256:2c6cc40f7e4d42d6022e1f8484055834f8d0a5f2d77f6ef95ee7a2b8e4801b73:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0NGZhMjEzYzlmODc4Y2ZjNzU1OTA5OTk0MTZkMDU4NzM5ZDU0NWEwMGVhZTkxMTNiYTNhYzZlYTg1MjAwZWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIwYjA3NTFlNDIzNmU4OTIzNDU3Nzc0NWZjMjkzNGM1MGEyZjBkNmY4ZmE5NWE0M2RjOTk1YjMzNzI3NDJlODEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNmNzQ1ZjFmODIwZGIwMGNjOWRmZmM3MDViN2Y5ZGY4ZTc4NTEwNTAyOGM2YjMwYWFjNmNhNTIzMzAwMDAzOGYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/github-webhooks.ts#L56-L82",
+          "version": "repo-lines-v1:sha256:59ffb1e7abf2a20ba70180c888e25d69c7b611ff30759796bb62d678c8dd3507:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzMGM5M2Y0ZjNlOTY2YWY3MGJkNTM4NGE5OTM0MjU0ZTYwNjQyOTFkNGZhOGQxNjU3YjVmMmJiMjVjZDIyY2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5ZDE4NzY4YTYxYTg3ZjQ2MDg0MWFiN2NmMjZkYmNiM2I0ZWNjNjc5YWFiOGJhZGRmMzM0OWUyMjBhOTlhMzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjViZDgxYzgxNDcwYzU4MzhjYTViM2Q3NTE3NDM0YjQ0NWRjYzQyY2I5Y2IxODhlNmY2ZTI5YzFlNWFjYWFiYzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2NjJkM2ZkNTNjY2IwYTM0YzZiNGFkN2IxOWFjZTYyMTQzMDI4ZWI4OWE1ZDk3NWVhYjVkMTQ1OWQzMzJhNTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d5535b13a3fd4966935b8842aa81accf",
+      "statement": "The WebSocket server is created on the shared HTTP server at path /ws with handleProtocols echoing the client's 'bearer.<token>' subprotocol per RFC 6455 §4.2.2, and WebSocketService authenticates every connection by verifying the JWT via AuthService, rejecting unauthenticated/expired/inactive-user connections with WS_CLOSE_CODES.AUTH_* close codes.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/index.ts#L163-L182",
+          "version": "repo-lines-v1:sha256:60a0566deff73b7c08a85749b6f8f8491eef16802fe5c8400d036a9b1345cecc:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0MTdkN2U0ZDI5MmRlYThmYWRlNWU3NDRkMThhODY1MDUwMzQwMTc4M2JjZTgzOWY3ZTgxOGJlMDU5Y2NmMjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjczZjAzNDg2YWUwZGNhYTI0Y2M1YzJkNTU0ZjljNzU0MTk3OWVlYzc2OWY2YjQyYWU0MGEwMzFmNzNjMTg5ZGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE1YzA1MDYzZTZhNWZjNjk4Y2E5YjlmODhkYTA3ZmQyODFjNDEzMTI3ODM3ZTUyZGE5MDg4YzYyN2MwMjM1NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYwNzgyYjRkNTAwZGFkYWVkOGM4ZTEwMjc4MzE2NGRlOGM2N2IyNTY1MjdkOTMxZTk0ZTdkODY3ZjUzMmY4YTIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/websocket-service.ts#L62-L121",
+          "version": "repo-lines-v1:sha256:72b94d995a6c728bdbd24ab47ceec37c9fd809be3b7726fc428b26b27c34a9d9:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxYjY4NWRiYjE0NGNmZTk4ZjQ0YjBiZjFiZTdmNDJmNjU0YjFhZmU2NmUzYWU1ZDNkMzE4OTIwMjhjNTM0NjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVlMTJiNjExODk0M2UzMGMwMDY4MzNlNzgxNjMwYTUzYjMyZjQxN2VmNWY5Nzk1YzNmMTJmMzMwODAyNGM1ZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE4OGMzOWRlNjQzNmVhMDBhZmRkNDFmNjFhZGZkZjdlZWE0NmMxNzA4ZDIwZDU0ZjU5ZThmYjhlNWRkMmY1MjkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_54237d465a07494183d9dadb3e960529",
+      "statement": "A single persistent RuntimeGovernanceService is constructed and started (subscribing to swarmEventBus for behavioral monitoring) before the ExecutionEngine, and the same instance is shared by the engine, task dispatch, and the runtime-governance routes; learning services (MemorySyncService, ReasoningBankService with VectorMemoryService, TrajectoryStore, and MetaOrchestrationService in autonomous profiles) attach to the engine via post-construction setter calls.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/index.ts#L203-L225",
+          "version": "repo-lines-v1:sha256:144d2bc5ab58f941fd9189ec3f24689ab5c861a3ffbb6756b7cb6c0241422755:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQzYjhlOGYyZTMyMTIwMGMxYWJlODllMWU0NDQxMGJjMGJkZjRjMDZlOWQzM2RiNzE2MjdkNTdmMjI5ZDk3NWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZlMzhlMjJjNzIwZjE2ZTJlNDNkOTVhMzlmZjRhYWUxYzk4MTMyNDUzYjQ1YWI2ZmU5MmEwYTBjMjg4NmVjOGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE1MjBlOWFhMDViYTZjYjVkMzllODgyZGIzYzFlMDZhZmNmM2I0ZTYzN2NlNGQ5OTMyMTcxMjk4NzI3ODQ2NWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMyOGNkZGNhOWQwNmJlNTg4ODgyMjI0MDY4ZDQ5NTFjOTk1NmE4NWQyNDQ0OTcwYjE5MDAzOTc0YWM4N2RjOWQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L243-L253",
+          "version": "repo-lines-v1:sha256:5597cbffc845e230861deaf267315bd9eadc22d12f0450244117f09a9951d011:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmM2QzZWVjZGJmNzlkZThlOTFhMTg4ZTQzMTg1MjIwOTA0YTFhOTIxMjcyYWUwZWFhNzkxNDhkYmMwM2VhNDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiNDU2NmVhNmIzNmZlNDZjOTUxNzk4YjNkM2IwNTc4OWJhYTlhNjRjZDEyNWY5YWQxNWQ4NWY3MWMxMGI0ZGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjczNWRlZDQ3NTA3MTNhZjE5YTE4ODA3ZjdlNzE0YWNhZDY0YTljNDBhYjcyZGU4YWE2MmFkNzQ0ZjQ3YjM5ZTgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/runtime-governance-service.ts#L85-L104",
+          "version": "repo-lines-v1:sha256:0ea61203bf782bdc76c4d1f9e0f9c563696ff7aeaac8ddaff86dd9bcbb52845f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIzM2VhYjg2ZDBkNWIyZDM3YzM2YWI3YmJjNTRlMGEwMzQ4MjUxODNiOGIzYTQ1MmJmZTY1YzU5MzdhMjA4ZGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBiMjgwMDNjZDZlNTliNzQxYTFjMjgwYTk0NzY5Y2VkMmRiOTNjNGZiYTM2ODA4ZmUzNjU5ZGZmODFiMDExNWYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_fd9346f3a2dd44f18d65536ed602d2aa",
+      "statement": "createRoutes builds the /api router from a declarative mount table where registration order matters: it requires auth service and middleware (throws AUTH_MIDDLEWARE_REQUIRED otherwise), limits bodies to 1 MB with a 300 req/min rate limit, mounts /swarms/spawns (accepting scoped X-Spawn-Token for runtime children) before the generic /swarms requireAuth mount, mounts self-authenticating diff routes at '/' without a mount-level guard so they don't intercept the Telegram webhook, and generates a cached authenticated openapi.json from the same table.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L179-L253",
+          "version": "repo-lines-v1:sha256:f2f09d9bf374186bd5ba1a335827f11b9239408aab3e92136c1f3de507db4c04:eyJzZWxlY3RlZExpbmVDb3VudCI6NzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3NDk4MjlkOGI1ZTVhMjhiNjc3OTBlOWVjYTU0NjNhMGZjMjhhMWY1ZmVlMTY0YjhlYzY3NWU2NzE4YTE3ODYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4OWZlZjE2ZWRkY2YxY2E3NTlhOWEzOTc0NTc4NzkyMzUwZTE0Zjg3NjQxYzI1NDI2MDgxMzU4NDQwMzRiNTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyMGZjOWU2N2RiMDdlZDIzOWJiM2FkMjMxMmVhYWI5YTcwZTFmNmZiYTAxMjg4YjBiYTZlNjFkN2Y4ZWU3ODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNjZTM0MWE4ZDNmNGU4ZWU3YzE4Njg1ZjBlNWRmYTA4NzgxMWZlY2VhZjVmMmQ4YzIwNWZkOTQ5NTdhMmZmMjQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L97-L168",
+          "version": "repo-lines-v1:sha256:2b251171233ac57224dd1ab00f8d07413010366986191f88149487578a8a59c5:eyJzZWxlY3RlZExpbmVDb3VudCI6NzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVmYjYyYjFlZDVmYTlkZTBhMzdkMmNhZmE4N2NkYTEyMzliNzcxNzkyNDZiZmY4MjQ3Mjk3NzFhZGMyN2M0ZGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJjZWQ4MDIwMDA1YmE1YjYwNzJkYWJmN2EyNzlhNzdlODJjNjcwZjg2YTdhYzFhOGUyNjkwMDgxMTM1OWU5N2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdkZmYwODBjZjg4ODdmYzhlOWRmZjExOTNlODMxOTQ1MDU3MDgzNzM2NWVlMGE4NzliZTA1MjYyNjA3ZTM1NWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f21ccb1b9d704a9abc06ab9d9e2fccd2",
+      "statement": "In operator-capable profiles the TelegramGatewayService is dynamically imported from @djimitflo/telegram and startAll()ed only when TELEGRAM_BOTS_CONFIG is set, and the instance is retained so SIGTERM can call stopAll() to release bot file leases — otherwise a restart sees EEXIST and skips polling forever; in-memory default-off schedulers (compliance reports, self-healing, self-improvement auto-review, frontier experts, specialist-panel backlog, memory candidate review) are armed via start() methods that no-op unless their enable env var is set.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/index.ts#L266-L300",
+          "version": "repo-lines-v1:sha256:48f5de7f174e5814366400caab44d1ef957d73aec204ce81cc2392f39f20932b:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUyOTQ1ZjhmOGVlNTAzMGFmOTg4MmE2N2I5ZDhlNmY0Zjg1MDlmMjA0YWQ1ZmI3Nzc1NmVlOGVmZGU4OWY5NTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE5MjU1OTJmZTdhNjJjYzIyYzBlZDUwODE1ZWRhMWQ0NjU0ZDRjN2EzMmJhMmQ1NTQzZGY2ZTdiNzJiMTRmNmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVmYzhmNTlhYjliNWE4ZTI0ZjBiMjUxMWQ0OWE2MDUzYTFmMDcwYzYyZWM3NjIxMTA0NTNlZmIzZjUyOWZkMzYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L325-L343",
+          "version": "repo-lines-v1:sha256:4ece4e37b89355a677652de8a0703267c9be277b38ab43ee81c447b694b43b22:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwMzgxM2MzNTRkOTgxYjkwMmNlZDQzMDJmNDNlNmRmNDY4OTg4YzI1MTY4YWZiNGRiOGJmNDYwMDFiOWIyYWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4YmUyMTMwNWY2OGNlYzQ2NjkwNGE1MWUyMGQzN2RlZjMxOGQ5ZmIwMmU1MjRmNzQ2NWQ0NmVjMDM3ZmQxZjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyYzYyOTVkMTBiZGE5OGNlY2Y2MGVhMTM1Mjc2ZmFhYzU4YTVmMmNkYjUyNDIyNzBmM2UwODYwYjYyMGFkNDEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L403-L405",
+          "version": "repo-lines-v1:sha256:97e20a168d5887ef1739878192e50efb66076fefb247097c2b50faee8bf080b8:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzE1ZDNmZmM1YTNiZDNkZjQ5NzRhOWVhZmVjZDE3YTdmNjI3Zjg4MjQ5NTk2MmIwZmZhNWUwZjU5NWQ5Y2E2MSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg5M2Y0MGUzNzgxZWI4OTZjODJkMDQ2YTA4MDY3YTExZTM1Y2RmMmYxZGZhZjI2ZmVhOTBiOGRiNjY3NjQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDg1NGY1NWE0ODUxMDFkZTVmZjVlMjQ5MzU1MzBhMmZmMzI1YTcxNTMwZjgwYzViMTlhZGRhM2ViNDcwMDk0MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGFmZWVjZDllOWI4ZTZkMjRmMGRiNDc1Njc0NjE4ZmZkMGQxYmRmNWUzNTRmODcyZjc3YjZkMWJhYTExZWZhMyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/self-healing-scheduler.ts#L48-L56",
+          "version": "repo-lines-v1:sha256:75f472de670f1121f7a154284369ddabdb43f8a4491a16dd2c2a321c2a930ade:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzFmMzMxYjI0MWUxNzFmYmVlYjIxNTRhMGZmMDRjZTgyN2ZmZTI3MDg0MzQ0OTMyY2RhMzNkYTcyYzRlOThhZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNThiZTliOGM4ZDczMjI2Y2NhNWYwMDVmNTBjMjhiODk3ZjdhMDkzNjc4MmY5ZDkyYWIwOTk0MmRiZDRhNjk1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2JhNTMyOWU4M2M4YTUzNjQyNWVmZjFjYWIxZTM4YTUzMzg1NGI3NmZmNTY3MDJmYWU5MTlhMzFiYjJhYTUyYyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_36ef57a08eef48b7a8d77216284a9ddb",
+      "statement": "Before main() runs, module-level code derives a default DJIMITFLO_CONTROL_URL of http://<dialHost>:<PORT>/api/swarms/spawns (rewriting the 0.0.0.0/localhost bind address to loopback 127.0.0.1 because a bind address is not a dial address) so same-host runtime children can call back to the nested-spawn endpoint without operator configuration, and logs the anti-agentic ransomware module mode (RANSOMWARE_MODULE_ENABLED default on, RANSOMWARE_MODULE_MODE default 'detect').",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/index.ts#L54-L73",
+          "version": "repo-lines-v1:sha256:ec9839ca8c1d364355ae62fc704ac96f56b5a95ecb25cdc77a7f88eb4eecb838:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjZjRlN2Y0YzEwMjljZTM2Mzk1ZTBmYWUxZjFkMWViYjliMTZkNWY1NWMzMTg5Y2U2MzkyYjk4MjE3ZmM1MzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU2NWRiODFlZmVlODQ1ZWVhYTdhOGZmMmQ1ZDIxOGI0NzA3N2E1Mzc0OGEyYjNhNmY1MTEzNjMzODQ3N2U2MDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg3YzM2YzUxYmYzNmVjMzJlY2JmODIyYWMwZjcwNGQ5MTkxNjBiYTM5NDRkYjk1ZWM1NGFiZjdhMDhkYzNmNjEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2ff87ab6f17a49a3a9f0248ee7623941",
+      "statement": "bootstrapAdmin() creates the bootstrap admin from AUTH_BOOTSTRAP_ADMIN_EMAIL/PASSWORD if not already present; when no users exist and no bootstrap credentials are configured it calls process.exit(1) in production but only warns in other environments.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/auth-service.ts#L291-L316",
+          "version": "repo-lines-v1:sha256:0ea40cdf4ab47d2ab79b4b081d54daafe806060553f40c222a3ebeef28b2a7bb:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU3OTVlMjI3MTBmNDEzZDY2NDcyYTQxNTQ5MDkyZTBlZTYxMjk3ZDcyNzJmNThlY2RkYWZmMzczZTBjZmNiZjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIzM2VhYjg2ZDBkNWIyZDM3YzM2YWI3YmJjNTRlMGEwMzQ4MjUxODNiOGIzYTQ1MmJmZTY1YzU5MzdhMjA4ZGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e8a79c1d53ff4d1ab77b2770c80ec46a",
+      "statement": "The production dashboard is served from DASHBOARD_PATH (default packages/dashboard/dist) via express.static plus an SPA fallback answering index.html only for GET requests with Accept: text/html that are not under /api, /ws, or /health; DASHBOARD_SERVE_ENABLED=false or a missing dist directory puts the server into API-only mode. The errorHandler is registered last and maps error codes to HTTP statuses via pattern inference.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/index.ts#L352-L380",
+          "version": "repo-lines-v1:sha256:9ad6c77b061299f7988dbb18573b5f6a65ecc230ccdaffc34b94d78939085c05:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlMjk3NzQ3MDM1ZTJjZjg5Mjk1NTA1YTU0ZjgxNTJiZjU3OWJhNTlkOGRmMjllMzFkYzE4ZDc4YzQ3MjQ2ZTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYwZTNmYzI4YzlmY2VlYmNjNmJhNTAxNTM4NjNhODgzYzg3YjQ5NjBmYWU1YzhmMGY5NzA2ZTY0NmZjNzg3YmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMzNTI1OGE2NGM5NTJhYzZkMWRhYzI4NzFhNDI0ZWI4MzViOGI0MGU0ZjA4MGExNjMzNzY4MjU4YTA2Mjc5MWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQwNmY1ODQzYmZjNDQ1ZjJiYmViNWUxZDBkNjNhNzc4MmZhYjJiNTcyYmNhNDBmZDkxZWNhYThkMGM5NzZiOGIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/middleware/error-handler.ts#L12-L44",
+          "version": "repo-lines-v1:sha256:e671576dfdc4e4cff278d05400436b96ea5ffde30651ae245adc7010443b39f1:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0MDIwYjQ5NDg0YzliNDg4ZDNmNWQyMzAzN2YyNDE3NDFjM2VjNGI1ODhjMDRjYzZlYWU4NmU4YWNhOTQxZmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4ZTFiNzZiYzdkYzg3ZTNiNjc1MzMxYWIwOWY3YzBhN2Y5YTdjNWMwYWI1MTZhZDQ5ZDA4ZmM0ZDdlMjEyNmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUyZTQ2NDdmNDBiOGI1MjVmODkzMTQyMWIzNDZjZjdhOGFkNWI2ZGJmNWM4YWY3MjFlYjNiMmU3NjM4ZTE0YjUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c9e61527b575480a93d449c51368b7bc",
+      "statement": "On SIGTERM the entrypoint stops the ExplainerFleetWorker, gracefully closes every upgraded WebSocket client with code 1001 ('Server shutting down') so httpServer.close() is not blocked, terminates surviving sockets after a 5-second unref'd deadline, closes the WebSocket server, clears the Dennis queue timer, calls telegramGateway.stopAll() to release leases, and then closes the HTTP server, clears the deadline, closes the database, and exits 0. This entrypoint installs no SIGINT handler and does not use the standalone LifecycleManager's signal wiring.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/index.ts#L391-L412",
+          "version": "repo-lines-v1:sha256:e3521d7d64975d3fbe8ebb3d54b1ee5ea1bd8af1aef24ea80a3278fff4373b3e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdmOWJlZmE5OWM1YzExMGJiYjQ5MTM2OTgxNDM4Mzc0YTY0OTRiMGE3NmY1MWE5MGNmNmQ5YTM5MGRiNjg4YzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVlOGQ5MjE2ZWVhMWY3OGY3YzBlZjIwZWQzYTE3MmM0MTQ0ZDAzZWU2N2QxM2FmNGMzZTY5MDc2NzU3ZDZhNjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU0YzEzZTIzMDZjZTNjZGE4OWZiMGNhZDE2ZGNmYWVjNzRjOWI4ZjFlZTQ4ZjhiOTc4OWRkZGExZTRiMzc0NDcifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/lifecycle-manager.ts#L33-L59",
+          "version": "repo-lines-v1:sha256:93b4b98eac0500bbe59c9c8b582b1ae5a4b847848ad601a7bcef666d203e51bd:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwOTZkNGFlOTQwNmI3NTcyMWE3OTllNWNkMWJhNDllOGFmMDhhODM3NTNmMGZlZDg2NWE2NjNmMGE3NmE5NDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM5MzJhODMxODFkOTI2MmFjMzBlMGEwODY4OWFiNDQ3Y2M5MThlZjc5NzM3MDAxZDFjN2Q1NzA1NDI0ZGU4MzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBjZjk4M2E5NmU1MTkyNjI3NTJlMDNlM2FmYTQwNzZmMTAyMmNiZGYxMmNhZmU4OGZlNWQ4MzZmZDAxM2NjN2MifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9c544e03b7a346a1aac52d198df37577",
+      "statement": "Boot is tolerant of secondary failures — loop recovery, LoopDaemon start, ExplainerFleetWorker start, Telegram init, and autonomous-service initialization each log a warning and continue — while database initialization, production admin bootstrap, and an uncaught main() error are hard failures that exit the process with code 1.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/index.ts#L321-L343",
+          "version": "repo-lines-v1:sha256:94844fc6b22c1d360dfdc39f12778edbbf9c43be0a5e2f5a65891d5f5d5f8886:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhlZGJmODM4NzUzNjg5NjZmMzEzYWU2Mzk1MzljNDAzNzAwNDViYTUzZTJlMmNlZTkzYmI2N2Q1ZGExN2I5ODAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA3OWNkMjI2ZTZiYzczZTdmZTNhYzNlOTVhYTc3OWE3M2I5ZTA1NTgyYWMzODdlNzVlYTcxZWE3ZWE4ZDlhYzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyYzYyOTVkMTBiZGE5OGNlY2Y2MGVhMTM1Mjc2ZmFhYzU4YTVmMmNkYjUyNDIyNzBmM2UwODYwYjYyMGFkNDEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L415-L418",
+          "version": "repo-lines-v1:sha256:c5378cff8ed9f33d226faff04b95a7dc90b4c5411e100f7ee32d4267a312ff2e:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGQyMDNiNjM0ZDhkMTNjZTk3NzNhYWM0ZGY2MzBlMmNiOTEyODE5OWZmOGVmN2JiOTI2OWE3MDk2MDZkMzczYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmQwZjJkM2EzYWFkYTI3NTg2NDU3OGQwYTQzOTE1NjM4ZDU0M2ZlY2EyYzk0ODU4ZGI5NDEyMTFlODZjZWYyYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L99-L114",
+          "version": "repo-lines-v1:sha256:9acfaa3d4741e24ebbb77ae7936dfd25d57f308b8595a15725dc2496d244cfa0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhlZGJmODM4NzUzNjg5NjZmMzEzYWU2Mzk1MzljNDAzNzAwNDViYTUzZTJlMmNlZTkzYmI2N2Q1ZGExN2I5ODAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFlMTI3MmI0MWIyYjBjMTk5ZDc3YjEzNTA3NjJiZDI1ZTBlNTkzNmNhMWZlYWFkMWUyOGZkNmQxMTk2MzJhNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBjMjhkMTE3MTBiMGRhMTYwOTdjODg3ODcwYzE4NjY0Y2M3NmZlNTZmZmE0OTEwODRlN2JmODM3MzExMTI3N2UifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2f7eedb481cb4fa38a5e0b68c173dc0b",
+      "statement": "The ExplainerFleetWorker runs in every runtime profile (moved out of the autonomous-only branch so explainer jobs do not idle in api/operator mode), can be opted out with DJIMITFLO_EXPLAINER_AUTONOMY=false, and honors the kill-switch.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/index.ts#L308-L323",
+          "version": "repo-lines-v1:sha256:228ac473ca843f3ca019ff8c8f059ad916146d9c932ce5dc0dd16df05726c1af:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjNDI3ZjgyNzI4NDg4YjNmMmQ2OTkzNDhkNzQzYWIyYTQxZjJmYzllNjEwYTBiMzgyNzVhNmY1MDc3NDllMjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY3MGRmN2JkMDQxZThjOTJhZTRmNGE0MzVmNWRjNjliMmM3ZWQ3YTk3MDVlZDRkYmQ4MzhkZDQyZjFiNDIxZjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMxYTAwNGY2MTI0MzhkMDIzY2MyN2VmMjU5ZmU3MzJmMTFiNWJmZTY3ZTc5ZTExYzllZmRkMTMwMDE0ZGY4OTkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_064ede36273c46f1ad6cb2ba68fa9f41",
+      "statement": "Focused tests pin the startup contract: server-startup.test.ts constructs the DB, core services, auth middleware, full route tree and bootstrapAdmin in-process; e2e-smoke.test.ts spawns the real src/index.ts on a temp database and drives login, WebSocket handshake, task creation, mock-executor execution and completion over the wire; task-recovery.test.ts and loop-recovery-service.test.ts / loop-recovery-awaiting-approval.test.ts verify the recovery invariants.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/e2e-smoke.test.ts#L41-L60",
+          "version": "repo-lines-v1:sha256:dd1e81708453d9aabde960307beaeb2a9feb7da8db002cc068972fc096bf9df2:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1N2EwNjUxNjg0YTk1MDkwMTNlNjUwMzYyYjI0NTkzYmM4NjMzNDk1MTAyNWQ0MGE1NGE0ZDczYmZkZmZjMDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2YTliNDk3MGQ2NzBlZGI5NjI4YjM4YTNlMGIzZDU4MmVjMTdkNjE0ODMzNDNmNmRlNjBlNDE4MDRkN2U3ZDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcxOGQ4ODc3Zjc3ZDFhMGI5NGNkNjA3MWYxMDBlNzZmYTc3ODQ1NDRmM2JlODkxOWE4ZjJkOTc0MjcyYjI2YjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQzZmFhZWNiODRiMzU0ZGFiYTExNjYwOGNhZDI2MzRlNGVkZDYyODFhYTZjNzNhZjlmYTU2ZjM4NzQwNzk4NTIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/__tests__/loop-recovery-awaiting-approval.test.ts#L15-L20",
+          "version": "repo-lines-v1:sha256:7260e5cc2477f9cd392f88f023936912b0df4d018be7130c75f33c940156a5aa:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODc4OWE2MGY4Y2QyNDAyNjkzY2ViMjE4Y2QxOTMyNDFkMTIyYjQ2MTE1YmZhYzliZGIzOWU2MDlmMzc5MzdlMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWQzZjFkYTZhMjZiMWU4ODFiNDhmZDU1MWQ1MTkyMzdhZjE2ODM3NDI2MGFmYTJlZTM5ZTQ0NmJjOWRlNmJmMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/__tests__/server-startup.test.ts#L11-L52",
+          "version": "repo-lines-v1:sha256:ab1f51b5747df4db31e1a26272d5c2e521865f21edc6ffd6185ba0112d70074a:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmMTY1MGEyNjlkNTEzMzliYTE0OTAxZjYwNTAwNDZmOTBjYzE3MjdiM2M3N2EyM2EzNmZlM2NjNWNiM2VmYjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRlNDk2MGE5NGVmNTBlZjBmZWIzM2YwZjBjNWMyMDY4NzNiMWVlZWI2ZTRjYzkzZTJmOGFkODgwZGVhNmZkYTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/__tests__/task-recovery.test.ts#L37-L50",
+          "version": "repo-lines-v1:sha256:77f20e343d9c5cd5100f45a4a2b97f4c2b233e52f44f2541847f7df11165116e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiNTUyNWNhMTNjODM0MTQ4NTg5YzNhOWFjMjQxNzQwMzI5YzJkNTQwYzE3YTA0MGIzN2QwMWZmZTBmMzFlNGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJhMmMzNzVhZWFmY2QyNDg2MTJjNjk0YWJjYmQwOGVhMjhlMmEzMzA5NWQyYmY1MmE3ZGIwMTUwZGVlYTljMWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUwOTQ3ZTRlNWM0OGNjZWQwNzUwMmQ1ODU0MzM0MzNjNGFmNzg2YTU4OWIwYWE2OTViMWI0ZTZjZjljMTk4ZGEifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.2",
+    "at": "2026-09-24T19:59:50.419Z"
+  }
+}

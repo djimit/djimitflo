@@ -40,7 +40,9 @@ describe('G127: Continuous Learning Loop', () => {
     const pending = `${process.env.TMPDIR || '/tmp'}/lure-loop-${Date.now()}.jsonl`;
     process.env.DENNIS_AGENT_PAPERCLIP_PENDING = pending;
     try {
-      db.prepare("INSERT INTO agents (id, name, description, status) VALUES ('quiet-a', 'Quiet A', '', 'active'), ('quiet-b', 'Quiet B', '', 'idle')").run();
+      // lapsed Commons members (had a social runtime); never-connected agents are not lured autonomously
+      const lapsed = JSON.stringify({ social_runtime: { enabled: true, last_heartbeat_at: '2026-09-13T19:33:37.041Z' } });
+      db.prepare("INSERT INTO agents (id, name, description, status, metadata) VALUES ('quiet-a', 'Quiet A', '', 'active', ?), ('quiet-b', 'Quiet B', '', 'idle', ?)").run(lapsed, lapsed);
       const first = await loop.runCycle();
       expect(first.socialExchangesStarted).toBe(0);
       expect(first.luresCast).toBe(1);
@@ -145,6 +147,19 @@ describe('G127: Continuous Learning Loop', () => {
     const second = await loop.runCycle();
     expect(second.proposalsGenerated).toBe(0);
     expect((db.prepare('SELECT COUNT(*) AS count FROM self_improvements').get() as { count: number }).count).toBe(1);
+  });
+
+  it('legacy dream ranking and SEGML are off unless explicitly enabled (plan E14)', async () => {
+    const spy = { runCycle: () => { throw new Error('legacy dream must not run'); }, exportPending: () => { throw new Error('no export'); } };
+    Object.assign(loop as unknown as { dreams: unknown; dreamTasks: unknown }, { dreams: spy, dreamTasks: spy });
+    const result = await loop.runCycle();
+    expect(result.dreamOpportunitiesGenerated).toBe(0);
+    expect(result.dreamTasksPlanned).toBe(0);
+    loop.start();
+    expect((loop as unknown as { segmlTimer: unknown }).segmlTimer).toBeNull();
+    loop.stop();
+    process.env.SEGML_ENABLED = 'true';
+    try { loop.start(); expect((loop as unknown as { segmlTimer: unknown }).segmlTimer).not.toBeNull(); } finally { loop.stop(); delete process.env.SEGML_ENABLED; }
   });
 
   it('start/stop timer', () => {

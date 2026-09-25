@@ -1,0 +1,286 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:1c973a3ba21047a51b6a140dbd77aaa538e51f9f1ea8a9f036d248e05ba629f3",
+  "claims": [
+    {
+      "id": "claim_7b3dee56ce994d138769a05bf42919bf",
+      "statement": "KnowledgeRuntimeService.resolveCanonicalOkfBase() resolves the OKF base from the OKF_BASE env var when set, defaulting to the repo-root 'knowledge' directory (CANONICAL_OKF_PATH), and throws KNOWLEDGE_RUNTIME_PACKAGES_KNOWLEDGE_NOT_CANONICAL when the resolved candidate realpaths to the legacy packages/knowledge directory, and KNOWLEDGE_RUNTIME_OKF_BASE_MISSING when the candidate does not exist (unless allowMissing).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/knowledge-runtime-service.ts#L15-L18",
+          "version": "repo-lines-v1:sha256:75704f0b26b77504eeb8c921625240acfa5d1354de1015dffeb59a824502764a:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTkxYjYyNGQ3NGE4MTU0NGExNmIwNjBkNjBlYjg3ZmRjYjZiNzQ5NjJiYWY4MDliZDVlNzM4ZGI0NWVlOGFmYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGZmMzNkYjk2ZGU5MWM5ZGE0NDVjYTNlOWIyYzFjY2U0MTEyODExMTBlMDViNGZmNzMzOWFjNDA3YWQ5Mjg0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGUzMzUzODg0ZTk1MmQxYTgzZDgwNzA3MDMzMWFmMjA5YWMzMGU5NjE5MTViZTliZDQ5NWE0NDdhOTFhNjRiNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWRjOGQ5OTIwYTg4ZmYwNzFmZTgyNmE4NWVhNDc0OTEwYmU0ODRmYTBlZGVjMDBmOWEwMjNjMWE0Nzg1MDBkNSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/knowledge-runtime-service.ts#L91-L103",
+          "version": "repo-lines-v1:sha256:9f7eddd8cf7106a80ec728439948ff4d323dfd76f43e722ec394d65bacc84b2c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJjNmQ3YzJjNWJmMjQ0YjI3OTg0OTQ3YzE3YmI1NTA1NWRhNmZkOGZhYThhZDk1ODdjYjAyNDlkMzFkODc5OTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNiNzYyNzgzNTI3Zjg0MzNhZjNjYmE4MGExNDE5MWYwZWYyNmQzNmQ5NWQ4MjNiNGFiNjQ3MGY1MmI3NmE4MDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI3MzEzMWZjMTIwOTdkMzgxOThmZDlkNTY4M2VkZDFiZWYwYzM2MTEyZmZkNWMzZDZmMzZkOTU4ZWVlMTc1NTIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c4d7e9ae8ed8460882ada8ac05019fd2",
+      "statement": "The OKF bundle consists of six fixed folders — skills, agents, memory, services, repos, models — each containing markdown files parsed for frontmatter; every file's SHA-256 raw-content hash prefix (first 12 hex chars) serves as the projected capability version so edits are detected as drift.",
+      "evidence": [
+        {
+          "resource": "repo://packages/knowledge/skills/python-fix.md",
+          "version": "repo-file-v1:sha256:65d78a125958220cc497b1b7326a05cb02fffa2b4d7a1872809d2cdf26c3375a"
+        },
+        {
+          "resource": "repo://packages/server/src/services/knowledge-runtime-service.ts#L18-L18",
+          "version": "repo-lines-v1:sha256:dff33db96de91c9da445ca3e9b2c1cce411281110e05b4ff7339ac407ad92841:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGZmMzNkYjk2ZGU5MWM5ZGE0NDVjYTNlOWIyYzFjY2U0MTEyODExMTBlMDViNGZmNzMzOWFjNDA3YWQ5Mjg0MSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGZmMzNkYjk2ZGU5MWM5ZGE0NDVjYTNlOWIyYzFjY2U0MTEyODExMTBlMDViNGZmNzMzOWFjNDA3YWQ5Mjg0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2RhZjRkNGMzZWIwYjkyYTViYzNiNjcwN2UzMjk5YjNmNmRiMzgwYjhmNmJmOTVlY2NlZmMwZjVhODg0YWE2MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWRjOGQ5OTIwYTg4ZmYwNzFmZTgyNmE4NWVhNDc0OTEwYmU0ODRmYTBlZGVjMDBmOWEwMjNjMWE0Nzg1MDBkNSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/knowledge-runtime-service.ts#L427-L447",
+          "version": "repo-lines-v1:sha256:54094e0d77b04e7b0ebb87e109ae1a2db12da1a9fb12d79ca1aecac167b48b87:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM4ZDBlYTQwMWMxZTEzYTVjMTQzNjEyZGRmMmU2ZDFjMGNkNzlmYjg4NDQzYmEwNDY0NzQwMjliZWQwZmVhMmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWVmZGQ1MTEzZDk5MDU2ZjFlMTlkZTFiN2Q1YmVkZTZlMGEzMDFmOWU4ZjdiZTRlYWQzZjhmOGRhODY2YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEzZjhjYjcxMWUzMjRhODQ1MThhODliOWE2ZWFjOTJjMzJmZDNkZDNkZjI5NGEwMTBiM2VjMDFhYzllYmNmYjkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e99a68fe688f4eb8b51b58fcbb7735c8",
+      "statement": "Capability sync apply is gated by an operator-managed trusted Python validator: OKF_VALIDATOR_PATH must be an absolute path (relative values are rejected with fail status), defaulting to tools/validate_okf.py beside the bundle; a missing script or non-zero exit yields status fail, and syncCapabilities throws KNOWLEDGE_RUNTIME_OKF_VALIDATION_FAILED on apply unless validation status is exactly 'pass' — dry-run previews remain available.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/knowledge-capability-sync.test.ts#L131-L143",
+          "version": "repo-lines-v1:sha256:bbcecb0c08302723067221ed0adab552720a59bee5887464bff14ea991038c94:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1OTI4NDRhZjE4NTEzNjM1YTIzNGI5ZDM0ZTFjN2RhZWUzNjJiZGI5YmEzZmYzNDQxMTE1YmI0MzI1MGVlMzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyMGZjOWU2N2RiMDdlZDIzOWJiM2FkMjMxMmVhYWI5YTcwZTFmNmZiYTAxMjg4YjBiYTZlNjFkN2Y4ZWU3ODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/__tests__/knowledge-runtime-service.test.ts#L94-L122",
+          "version": "repo-lines-v1:sha256:74a9970fd2b2919291ef87db1aba56a92844cd97da7d02ce6e2800bbc4cf1f0d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ2NGFmMjNiZDFjNzY2YjkyZTY3ZDVmMmE2ODc0NzZlNGEyMjc2Yjk3OTc4MWJiMjFhOTExNGJmMzMwMDk0NTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZhMDI5NDAxYTFjZGMyOWZkNTczMzZmMzBlMWZiMDk0NGJhZjZjNjY2N2NmZDI3NTU5YTE4YjI1NTMxNGMyZTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFlYjYwY2U5Y2I4ZWYyNDcwZjIxNDc1NWYzMmU2ZWNiZmYxZjdmM2I0MmFiNGVjY2I0MjcxOTM5NDM1NDBlZjgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/knowledge-runtime-service.ts#L152-L156",
+          "version": "repo-lines-v1:sha256:02e44970183f3288a70dab64f9773bfc1c26ba36b40938d279be9a2f0278b868:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDVhZjNiMDE0OGJhZDY3MGU2ZjBiMDgxMGRlZjAwMTcwYzc5ODg1ZmJlMjdkZmUxN2M0MDBiY2ZiOTk4YWY5NyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzU3YzNmNmRiNTgwZWQ1NjU1ODYwM2Q1NjlkZTA3ZmFiODQxNGNlNTE1YTRhZWExMDkzZTgzNzNkNjcxODllMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmVlZWZkZDUxMTNkOTkwNTZmMWUxOWRlMWI3ZDViZWRlNmUwYTMwMWY5ZThmN2JlNGVhZDNmOGY4ZGE4NjZjOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYmEwYWViZTJkZTUwZGQwOGQzNTA0YzhmOTFiNWJlMzE2M2MwZTRmY2ViODhmYTkzNWMwOWIwOWE2ZjhhNTY2YSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/knowledge-runtime-service.ts#L361-L390",
+          "version": "repo-lines-v1:sha256:4631bd9ca0e2b0be2ab674fb0bf3aa9b528cc916f495842cebe5595f1164a6e3:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwMjU2N2VlOGU2YjExN2IyZjY4Mzk2MzNmNWFhOGMwZWRiOTViOTc2YWQ5ZDAzOWQ4YWQ2ZWM5YTdkMWUxOGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIwMTJmMzFlYjZmZjZhNjI1ZDllZGMxMTdhYzJiZmM5MTRhMjg5MzJmMWNlOTUwMjU2YTQ4Y2VhYWQ3YjgxMTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRiYmVhYTFlNTViZGZjMzA4MGEwMjczMzM1YjJkZWUyYzVmODBmNWQ5MmUyMjg5MjNlYTc1Y2U5M2I3NzMwYTcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ee4a6927ba8f47c99278310d514c359c",
+      "statement": "The validator executes via execFileSync (no shell) as python3 -B with OKF_BASE set to the realpath of the actual data bundle, PYTHONDONTWRITEBYTECODE=1, a 10-second timeout and SIGKILL; request-supplied commands are never accepted and misconfiguration never silently falls back.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/knowledge-runtime-service.test.ts#L54-L76",
+          "version": "repo-lines-v1:sha256:dccfa879b8a5e786b464a36d51bb54ea3bf6c7b4731b103bafd12cd1ef106952:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkMmQ2NjQxYTE1YzA4ZTIxZTZhZjlhYWE2NWRkZmI4ZGZiMjVhMzRhNzgyOGI4YjQ5YTc0MTE1Mzc4ZDQ4YjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhkZmUzYTk5MjlmM2MxODBkNzM3YzIzMWFlYmQ0NWJmNDJlZjZiM2E4NmE1ZDRmOWMwMzY0YjJhNjM5ODM3MjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkNTY1ZTEyZmRkN2M2ZTYwZjRkZjk1YmFjNTA1NjgwMjMxYTU0ZDQwZmE1Y2YwY2JhMjBlOGFhZTg0ZDU5NmMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/knowledge-runtime-service.ts#L363-L380",
+          "version": "repo-lines-v1:sha256:d5f08348cafce47b900bebaad581dab5edab951c433cb7c8e11776ecf7c0dcca:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3ODAzYjc4NzZhZTkxODA0YzczYzczMzM4NzdmMGEwNjc2YzI2MmMxNjhhN2U0YTkxN2M4NzdiZDA0YmI2NTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxN2FmMTEwMWM5N2I3YzJmNTI1NDA3ODJlNjM0Y2M0NDQwZjBlOTcwMzQxZTUyZjk3NTIzMTFkNzhiN2Q3ZDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFjNTQ0MTA3YmRhZTU0ZGEyNjYxMGEwMGIwNWQ0ZmQ5MDEyMDY0NGRiMDFkNDc1Y2NjMzA2Nzc5ZDg0YjcxMWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAyZjZmMTMwYTE0YTJjNDdiZmEzNzc5YWFlZmVmOWI1MGI2ZmE0YjFjZmYyMGVkYzc0YzY1NzRmYjgzZTViZDIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_de98f43380784aa1a61eb9387a80e4aa",
+      "statement": "syncCapabilities projects skills/, agents/, and services/ markdown into swarm_capabilities rows keyed as skill:<slug>/specialist:<slug>/service:<slug> with kind skill/specialist_agent/memory_source, upserting ON CONFLICT(id) with all columns replaced; dry runs (the default) write nothing to the database.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/knowledge-capability-sync.test.ts#L100-L129",
+          "version": "repo-lines-v1:sha256:df91946ce19c1db59cde7a28d2602bf140c86ef27d6b30705955c4f6e8dc94d7:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc0MmM5MzYwMzVjODg3NmRjMzRmNzE4YTVlZDQyMDlhZWUyOWQ3ZTkzZGIxZTAwYzk4OTFhZmFhNTUzZTA5YmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc5NzNhOTBmNTk0ZTQ3NGQ5YWIwNmViODE4ODhkMzhjOTNmMGEzZjA5NmFjMzk5YjlhOGI4YzQ2ZDU4OWUzNTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFjYmEzZDc3MWYyNTgzNWJkMDNmZjFjMzQ0ZWM5ZjM4OWJlN2E2YTk4MDhiMjQzZTAxNGRiMmU2NTE1ZDc1MzMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/knowledge-runtime-service.ts#L152-L192",
+          "version": "repo-lines-v1:sha256:c3af0f7a3b54a72ade5d93147581a61086285dc480f516eb1a75d03658339c70:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1YWYzYjAxNDhiYWQ2NzBlNmYwYjA4MTBkZWYwMDE3MGM3OTg4NWZiZTI3ZGZlMTdjNDAwYmNmYjk5OGFmOTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWVmZGQ1MTEzZDk5MDU2ZjFlMTlkZTFiN2Q1YmVkZTZlMGEzMDFmOWU4ZjdiZTRlYWQzZjhmOGRhODY2YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJhOTgzZjJmNjg5ZWQ5Njk4ZWUxY2FkMjEyZDZhMTY2ZGVkZWMzYmJiNzBmZTdjMjI4M2UwY2E4YmRkZTk5NGEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/knowledge-runtime-service.ts#L472-L476",
+          "version": "repo-lines-v1:sha256:fc9278ed1283bbe3624a908b4976cb28b7c901027a9a62e0e3135ed285a08500:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjYyYTM0OTdkYzVmMTU3YjIyZjlhMjU0YjFlZmIxYzVkYmUwNmU3NjdiOWU5MTNjODIyOWY3NmVlYmNjOWY1NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNWIyMjEzN2FlNDE3NGEyMjJlMTA5NjY1ODlhZTM0YzQ1YmQzODVkZTk5NzhlODQzMzhkYzIyZmU1MzU0OTgzNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjVkY2RmNDkwZDkyZGEyOThiMDc1OGZkMjczMmZiMzQ3NWMzNTNhNzFlOWQzNWRlYTNkZjJlNTliNzJhOGMyMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTI0NTE4YWI2NDg5Y2FiMjhkY2EyNWVlY2QwY2QyMTU1MWEyMThjY2E3OWU5Mjk0NWM0NjFhZDgyZjg1ZDQ5ZiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/knowledge-runtime-service.ts#L527-L575",
+          "version": "repo-lines-v1:sha256:673c14c10dfb7c0f979cc39676805c26307d1430aaad0d48ad8716e7476115af:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzMTQxNDc3ZDYyNTU5NzAyNmQ5MjYxMzhhYjJhNDZhYmE0Yzc1MGNiYjJhNjMwOTE1OWRkOGU3YWQ5MDcwNmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWVmZGQ1MTEzZDk5MDU2ZjFlMTlkZTFiN2Q1YmVkZTZlMGEzMDFmOWU4ZjdiZTRlYWQzZjhmOGRhODY2YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFlMTA3NzgzYTk3NDE3MjAxYzgxMGI3YmEzMGUyMzQ2NmY5MDRkMjI2NDU4YWE5YWI4YzgwOTFjY2M1ZmIyYWQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9e393154fcd547d5a3321c73b003630a",
+      "statement": "Each OKF capability file must carry six contract keys (allowed_actions, forbidden_actions, required_evidence, risk_ceiling, eval_threshold, removal_strategy); each missing key adds a missing_<key> blocked_reason, and complete files sync as status 'validated' with eval_score 0.8 while incomplete files sync as 'candidate' with eval_score 0.2 and conservative fallbacks (advisory_only, route_live_workers forbidden, contract_completion_required evidence, 'Disable capability until OKF contract is completed.' removal strategy).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/knowledge-capability-sync.test.ts#L116-L125",
+          "version": "repo-lines-v1:sha256:6971706f8b57c9b9e7a3570d75a2b7f7863b901009318780c0c3cc5a066cbcf9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyYmYyYjFiOTI3Y2NhOGQ2ZDVkYWY0Zjg5NGEyYjFkZjkwMzZjYWY2MTJiMzYzZjMzMGZmZjQ5MjQwODUxZGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM3M2I0ZjczNmQ3MTZkYzEwZmZkNmEzZDgyYjUzMTFhODJiYWIzMWVjODhkOTA1ZTQ5YmZmZWU4MzI5MGJmZGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJjMWJlMDI2ZDRlNWI4NTEzMzY3NmM1M2FkZGQ4NDkzMzkyMzdlMmJlN2YwMTQ5MWY1M2QzYjE2MDBjZGFiMTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU3NzdiOGUxYzE4OGJhYWVkNDNiM2JmYmVlMGI3NjdhM2VmZmViMjdhNWQ0ZWUxNTVkMzEyMzE5NjMyZTdjNzIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/knowledge-runtime-service.ts#L19-L19",
+          "version": "repo-lines-v1:sha256:f7a53afb5c3a129d77cd91eb5c6a94ac4ad94823396ebda8fa2b929a55ee1b54:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjdhNTNhZmI1YzNhMTI5ZDc3Y2Q5MWViNWM2YTk0YWM0YWQ5NDgyMzM5NmViZGE4ZmEyYjkyOWE1NWVlMWI1NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjdhNTNhZmI1YzNhMTI5ZDc3Y2Q5MWViNWM2YTk0YWM0YWQ5NDgyMzM5NmViZGE4ZmEyYjkyOWE1NWVlMWI1NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWU1ZTQ3YzFlMjRlYjUzNDIzZmI2MmUxMTA0YjBhZWU3NWZmYjg3ZDA3Yjc5ZDFkMjYzNDJiNTU0Y2VmNzU2MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWJhN2JkNmNiMjdiMWQ4ZmNhZGYyZDk1ODIxNWQyNjM4YzE3NDQzZWRhNGI4YmIwNmY0MTg0YWU1NWZiOGQzNSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/knowledge-runtime-service.ts#L482-L508",
+          "version": "repo-lines-v1:sha256:823a326f5784d445d16b9f9fb81cc13c634e863c5cf12db7d77b433ba147997e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiNmE0MDczYjY2ZDljMjIzMDQ5NTU2MmM1N2ZkYWU4YmJiODU5YzFiYzNiM2E0NmRjNzI3MjhhYzg5ZDIxOTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNkNWQ2NWVhNmE0OWZhNGU3ZDIzMzE0YTY2YTY2ODU2NDY4ZTVjYzU4YTQ2ZTgxNzgxNzY2YjJkZDVjNGUxYjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiNzQ1ZTNjMjA2NDRkYTc0ODE4NDk5MGM4OTg2M2I5NjQxOWEwOTg2NmU3YjcyNGFhNjIyMTIzMDcyZjEzMTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3MDBkYzEyNGE3NjMxNjFmMDBiM2RlYjA2YTcxNDcxZDZmZjM4MDk5YjI0ZGQ5MzQ3YzU3MzdjZmEyOGFhN2YifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a00717c4414b43d0b476df6b603313ae",
+      "statement": "Synced capability metadata records okf_path, full okf_hash, okf_folder, source 'okf', a 240-char body_excerpt, and optional agent_skill_id/agent_skill_version/agent_skill_content_hash/agent_skill_manifest_hash linking the registry entry to an installed runtime skill; latest_validation_report points back at the bundle-relative file path.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/knowledge-capability-sync.test.ts#L42-L57",
+          "version": "repo-lines-v1:sha256:9d5583836ba4b9b2b4b31db1bc93384da25b96a7630ef0142b585b0cf4d0f1e8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwZjRiMDkzZTQwMzI5YjM2NjdkMzZhYjE3NTcxZDlkM2NmODEwNWNjMzhlOGFhNTVjNmViMTk1ODZhNGM1NjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1NzFkZmQyOGMzMDE2MGJlNjBmNGRlMDI5ZDVmNGJiMTQ4Y2UyOTViMDFmMzU3YmMxZTUyMzJlMDkzNWVkN2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEzNTFlYTc2ZjhlZjhkYzc1YTg0ZmE4ZjhiZmY1YmI0ZWU4YTE4OWE5ODhjZjNiYjlhZjgxN2QyYTEwYjk5ZGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMxYTFiMDA0YjFkOTA1NmNkNWIyZDNmMzZlZGRlNzY4YWRkNGRmMzk2NDczNWUwZTM1Y2E4MGIzNWQxNTU2MGQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/knowledge-runtime-service.ts#L509-L522",
+          "version": "repo-lines-v1:sha256:65c3b95632842ee83cbb58a27ead3c3685975eba2d4f88fb014b78053cee9ef9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVjNTM1MzViMDBjOTA3YWM5NjBmY2M2MDgyZmIwMDk2YzVkY2JkNDE4ZjcwMWUzMzkyYjRkOGVjMmY2ODQ0ZDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5NzhlMjUwM2I4Y2YzN2EwNmY3ZDZmMGEzYTZiNmZlMzU2OTFmYmNhYjUwYjg3NzVjYWI2ZmFiYzcxYzU5MmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ3ZGM1MTNjZDZjNTNlOWNlYTMyYTM4NmE2MjI2ODZjNDZlNGNhY2Y2N2Y4MzdmMzk5N2E5NjE5NGY3OWY2YzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE2MGUyNmVkZDEwOGJiM2FjM2U4MmY4MzU3OTVmMzkxODA1ODJhNTQ3YjllZjRmZmU3ZmUyNTczNjQ3OTI3MzgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e709fde22152490ab24c4a73397ddca0",
+      "statement": "The health() report folds path resolution, validate_okf status/command/stdout/stderr, per-folder counts, and a drift section (okf_skill_count vs registered kind='skill' capability count, missing_registry_entries, stale_registry_entries by hash version mismatch, packages_knowledge_is_canonical, projection_status currently 'unknown') into blocked_reasons and next_safe_actions; valid requires exists && validate pass && no blocked reasons.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/knowledge-runtime-service.ts#L109-L150",
+          "version": "repo-lines-v1:sha256:2e89e9a171138deb199a6cab8363d0823eef67b8d5a2de6d1c9d13fc7ddf5b4b:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjOWI3MTBmYTZiMWQwNGU0ZDJhMGRiY2IzZjU2M2NkMDAzZDA5MzhjOTg0ZjdlZDdlOTNhM2NmNDdmMGQ2MjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRhZDc2OWYwNjY3YTZmYzMzMzA3YmQzNzE3MzFmYjliZDlmMTFiMzM2MzhlYWQzOTJiM2Q4N2VkNWQ4MjcyOGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRmMzY1MTg4MWRhNGYxNzJlYWMyYjgwMTJmMzI0MDUwZmE5ZDJjMjFkNGJiYzRjZDA2NzUzOTYxODA2NDUwYTAifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/knowledge-runtime-service.ts#L21-L44",
+          "version": "repo-lines-v1:sha256:499865230e2ffa78a53593441c7e7c44cb143a273272aa90a743bc990f339ba3:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjMmFhMTFjM2RjYzJkNjVlZDczOGU1M2E2MTkzMjEwM2VkMWFiYzI0MmRhMWEwNWM5YmEzOTA1NWE5YmU1MmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNjMzEzMTZkMDU1YjAzN2Y1Y2YyZTJlYmJhNzA4ZGI5NDg1N2UyYjNmNGFmNzQxNmEwOGVlNjQyMDlhMmI1MjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlkMTkzNDBkYTEwODEyMWQzZmYyNzQyMTU3MzNiZDljNjdiODA4NTE0MDNiYzczM2MyYWZjMGM3MmM4NjU4ZTYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/knowledge-runtime-service.ts#L403-L425",
+          "version": "repo-lines-v1:sha256:fc968ba9194d29945e191e674ecb32604554010b8946f9b98248fa9bc0192ddc:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyMjQwZjY5NzcwMjRlNDJmOWIzNmFjOTljYTU1N2JjODA0NTBlNTkyYmJlNjg0NzNiOWRjYjVkMGY0ODUxNWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI4OWIyYTlkMjhhMzQzY2JhMTMwMmIxMjhiZWE5NTI4NWI4Y2I2NGQ1YThjNzYyNTgyNTI2MzYwZjljMjA3MTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlhYjZkZTdhMDI5OGY4MWMxMmZmNDM4ZjZmZDI3ZDQ1MmVlYTE5ZWU1YWZjYjU5MjE2NGMwMDFmYTllMjdhNWYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/knowledge-runtime-service.ts#L631-L636",
+          "version": "repo-lines-v1:sha256:b26839426ffcea59a5bbae1633121fcfd5ec3e65927fb870d2cdbf1c3576046b:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWM2MWQ3OTJlZTIzOTRiM2QzMGU5ZGNjY2I5ODViY2ZhZTEwYTc2ZTkzODBkODkyM2IzZjkzMTRlZmM2NjRiZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGYwMTQ0YzMxNWUyYjFlMzVhYjhlYWY5MzhiMDRmOWI2NDAxZDQ0MGMxMDI3MGYwNmI0YmNjNzY2OTIyMzE5NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjk0ODA3MDYxMTM4NzAxMDk3MmQ2NGQ4OTJmMDEwMTFlZmJiMGQ2OTU4MzQ4MDNjZmU1MWUzZDFiZmE5Y2JmZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_f847beb197ba457289cbf8347a2d5c1b",
+      "statement": "Drift detection maps registered skill capabilities to OKF slugs via metadata okf_path basename or the skill: id prefix; missing registry entries add blocked_reason KNOWLEDGE_RUNTIME_CAPABILITY_SYNC_REQUIRED, and a base that realpaths to packages/knowledge adds KNOWLEDGE_RUNTIME_PACKAGES_KNOWLEDGE_NOT_CANONICAL.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/knowledge-runtime-service.ts#L135-L136",
+          "version": "repo-lines-v1:sha256:5b05c63025d94648e7ac8583479120197d87906ddccf4a050290b0ed2a03fcaa:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTE0YWFhYzljNmYzOWU5ZjI5YzZjNjEzOWExOWMzMjM5MjAyMzBmYTMyZjdiZjJlYzFhZGUxOGI3M2Q2NzU4MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg5NmNmOGU0NzA5YjZkNWExMjI0NjVmZTRhZTdlYjk0YzI1YTJmYjg0ZGQ5MzQzNjRmNTk3NWE0YmYyOGEzZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDkxZWE0ZTI3NDdjZjBmNTRkYzg0MDUxMWI2YmRlM2YwNjc4NjMwNzU5MGI0ZWVmNTAyYzg1MWY3ZjM2ZTljNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmQzMjZkYzA0ZWUxZTY1MGQ1NTlkYmNjMzZlNjczNWZjZmJjMzI3OWVmYzdhY2M1MzdmOWU5NmRhZmU5MDUxYiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/knowledge-runtime-service.ts#L406-L425",
+          "version": "repo-lines-v1:sha256:013c4da450350fa1b6f5ceb5616f5814f8be48885ad0daf4d3d5d94f6f4a0c15:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmOGI5NWIyYTFkMGYyNDc1OWIyZWQxOGIyYmYyMzM5ODY0ZTFlYzUwMTZhZTRlNzU1OGQ0ZTdjZDAzZjZiZTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc0ZmYzZTBmM2E4OWExYWZlODdkNDBjOWE0YjdhMzRiNmYwODM4ZDY2NjE5NmZkOTY4YzY2ZGUzYzcyYWUxMGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlhYjZkZTdhMDI5OGY4MWMxMmZmNDM4ZjZmZDI3ZDQ1MmVlYTE5ZWU1YWZjYjU5MjE2NGMwMDFmYTllMjdhNWYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a2842f4311234aed804e5531ca923dfb",
+      "statement": "Knowledge routes in packages/server/src/routes/swarm-knowledge.ts mount inside the swarm router and expose GET /knowledge/runtime (read:evidence, health payload), POST /knowledge/sync (write:swarm_action, syncCapabilities, dry-run by default), and GET /runtime-readiness; service errors map to HTTP 404 (OKF base missing), 409 (packages/knowledge canonical), and 422 (validation failed).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/swarm-knowledge.ts#L16-L24",
+          "version": "repo-lines-v1:sha256:bc894dd359f8c36a159cff2f9124056e6c0c677607a80b996c27ea077c2c317e:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmZjZmQyMThlYmViMGE3M2ZiMmZjMTgwNDJlMDM1MzQzZmNkYTg2YjBiNThkODc2ZDk1MTlkOTRlYWY1YWYyYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODhkMGNhMGJhZWI1NzBjYmEwMDM0N2MxMDYwNTU0ZTNkYjdjNjM3MDU0NjNlZWY1ZDY0MThjYmUyYmI5MDU3MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWI4YThhOGE0YTkxNmM5N2RkZTJhNjdhNjRmNzNlNmJlMGY1OTA3MGZmMTkxMDE3ZTM1ZmMzZGJiOTZhNzc4ZSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/swarm-knowledge.ts#L53-L70",
+          "version": "repo-lines-v1:sha256:de59c8f73f6faffdbbf3cc3f427deb073c2145d40863934015ed44105866f0c6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4Yzg2MzQ4M2ZmMmViYWU3MmI1NDYxYjQyY2IzOWE4Y2E5NjY0NjdhYzFhYzhkOWI0NzZmY2Y0MmY3MGY5ZDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4OWZlZjE2ZWRkY2YxY2E3NTlhOWEzOTc0NTc4NzkyMzUwZTE0Zjg3NjQxYzI1NDI2MDgxMzU4NDQwMzRiNTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc3NGUzOTdiYTVlZTE5N2Y3M2MyOTg0MDJiZGM4MTg4MGJhYjAyN2MyYjIwNjQ3NmIyMjZhMWU4ZjgwNjVhOWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/swarms.ts#L140-L140",
+          "version": "repo-lines-v1:sha256:cf326e00012d769002bfcbd4d9e62d5fca2135477888a88a0f9f6fbae309553d:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2YzMjZlMDAwMTJkNzY5MDAyYmZjYmQ0ZDllNjJkNWZjYTIxMzU0Nzc4ODhhODhhMGY5ZjZmYmFlMzA5NTUzZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiY2YzMjZlMDAwMTJkNzY5MDAyYmZjYmQ0ZDllNjJkNWZjYTIxMzU0Nzc4ODhhODhhMGY5ZjZmYmFlMzA5NTUzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGZjZjkyNjM1MTdlZmU4YTBjOGVlY2NmZmFjMGJmNTQ5YmMxOTY5NTIzMTQyY2U1NWMzNzNjNGNjZjIzMTBiZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWRjMjZmY2EyNDk2MzA4NTE1NmUxMDQ4NTg0NjJlOGU5ZDI0NjNmMjdmMjQwMWUxNTU2YjNlNjY3NTlkYjdjNCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_5e94a0f3f5c645078deca3dccb0dc36e",
+      "statement": "The platform readiness endpoint (routes/health.ts) runs KnowledgeRuntimeService.health() and marks the knowledgeRuntime check 'error' (503 response) when the base is missing or validate_okf status is not pass, otherwise 'ok' with blocked_reasons surfaced as the message.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/health.ts#L109-L110",
+          "version": "repo-lines-v1:sha256:d3088ba166d3103c90d0f68397e753e324790f22dc10aff8277e105678403263:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmViYmZiNTE3MzgzZDJiNGI3NjdlMWJmMzQ5OTY3Y2ExODEzYjc2Y2JkODc2OTFiOTM1OTY2YjFlZjcwMDMxYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWNjNTRkNjY0MTM1NzE2ZDIxYmEzN2I2Nzk3MDk4N2YxMDIxODk1NjJmOGI5Mzg4NmM4NWZjYzBhYWU5YTMwNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDM4M2YzNTk3NTIzNDcyNDM0NDQxYjQ4NmI1NDk2NjQ1YzU4NmU2MGQ2MWI0ZmM5MjI3OTU3NWRiZjFhNTEyZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjA1NjNhNWM2NTIxZDBkM2E0MTI3ZmNmMDY3ZjFiZDc5NzY0ZjBkYjFhMzk1YzA1NWViNGZjYWZiMTM2NWU1OSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/health.ts#L80-L87",
+          "version": "repo-lines-v1:sha256:3dd60a807fc3e7c6acfd645cb76b84006fc2e662812bb8fbe1fa52deabde6c9b:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWFhNzQwMDg4NDhlYzAzZWRlNzk2NmE2NTcyY2JiNzI4YjUwYzM4MjM4ZGY5MWVmNTQ3NzdhMmM3MDg0MDExOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzVjZGVmODA4NWFlNzRhYjYzNmQ2NDU5ZjVjNmQ1ZmJmYjBkYjI2NGYxYjBkNzViYWM1MTljOWIzZjY3MTdhYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjdhMTQ1Y2NmYmZkMGNhZTIxYzM0ZWM1NDk0ZGQ0ZjA3NGU2NWYyYmM2MjNkZmRhOGRhNTM4MDhlNThjYjUyYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzY4ZTEwZDhhYjY0YTc3YmRjMmMwZjZjM2VjNDY5ZjZjNjQ2Mzk3Yzc5NzRlMWE3YjUyOTZkYzcwMTliZTJhMiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_3a489e18fddc487fad0b18ab39a91cff",
+      "statement": "KnowledgeMaintenanceService, enabled by KNOWLEDGE_MAINTENANCE_ENABLED='true' (interval KNOWLEDGE_MAINTENANCE_INTERVAL_MS, default 15 min, ledger keyed on UTC day/ISO week), runs a daily okf_sync_drift dry-run syncCapabilities that turns created+updated>0 into a labelled work item and a weekly okf_lint that flags empty or frontmatter-less OKF markdown under the resolved base.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/knowledge-maintenance-service.ts#L104-L111",
+          "version": "repo-lines-v1:sha256:d5cbe0099e2a4a17384c3703ba0bf43c96905b4eb6b53e06ad81626f800d9540:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNThiMGYyMjZjYTZlMGY2MWExNWUwZjM2ZjNmMDNiZDA3YzYwMDY3Njc5Y2RlNmZiZmNlYmExNTc1Mzg0YThhNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2MwODY1MjI2YzkyYmZmMDQyNTcxNjg0NWM5ODY4MjZjYWE5Yjg3N2NjMjI5MDhmMDMwNzJiZWJhYzMyOWE3ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjg0YmNkZThkZDY3YjViMmM3NDg5MDM0MDU0YmUyZTdkZjdjODNkODFmZmMyYWU4YjRkN2UzOWQ2YmI1NWYzYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjAzMGJjNmI1YzlhY2YzM2U3Y2ZmY2Y1YzZkMWFjMGM3YjY0MmI1NWVjZGI2N2NmZjU5N2YxZjQ1ZmQ4YTQxZCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/knowledge-maintenance-service.ts#L26-L26",
+          "version": "repo-lines-v1:sha256:06499c31d280c97545dc41b83801c6e83837c6976eabad5dba797cf97e4bba0d:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDY0OTljMzFkMjgwYzk3NTQ1ZGM0MWI4MzgwMWM2ZTgzODM3YzY5NzZlYWJhZDVkYmE3OTdjZjk3ZTRiYmEwZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDY0OTljMzFkMjgwYzk3NTQ1ZGM0MWI4MzgwMWM2ZTgzODM3YzY5NzZlYWJhZDVkYmE3OTdjZjk3ZTRiYmEwZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTJiOWZiYmVhODY4OGQxY2FjZTFlMmM3YTJhNWIyNDk0MGE0MTVlYzE1ZGEwY2Y0NWRmZjE5MGVkNzUzYzk3MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjQyMDc0OWI4ZDY2ZDVlNjE0Mzc5YzAwMTNjZmYwZWUzMTFkOWE0NTg4MDRhODE5YmJmNDYwYTU1YjNhYjcwNyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/knowledge-maintenance-service.ts#L39-L95",
+          "version": "repo-lines-v1:sha256:11ee08d97ce5049eede372730f04fdb5cf1bbae024a62cb7ced9c9fa88968f3b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5ZTdmNmJkZTg4YTY4YmYwNjNhMGJiZjFhZjlkYjE1ZmY4ZjI0ZjM3MzlmMzA3NjYxMmJkNzMwZTlkMjBlZDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkNWNkMmZiNGYzZGY4ODQ1MTUyNTViMzk1MjNmMmY4YjU0NzJiZWVhOWY1NjZmZmNhMjA0ZGI4MDI1NjEwNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3YmRjNzFlNTkzYTgzYTc5Y2I0ODZmMjUwNGRkYzNiMjllYzA2NTQxNTk3OTliOGM4ZmQxMDQ2MmZlNzhkMzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhjM2U3YTU5YmZmZGMzZmViYTk4NWJiMTk4NzUxOTk4MGQyZTcxMWNjYTJhN2I4MWM5Y2Q3ZDdjNjBjNTYwZmQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ac7176a237064d7f9f60fdfbfc2240a5",
+      "statement": "The MCP server registers five read-only okf_* tools (okf_search, okf_get, okf_related, okf_validate, okf_status) that resolve OKF_BASE or search for a sibling djimitflo-knowledge/okf/ directory — with no packages/knowledge legacy guard and no Python validation — and traverse the whole bundle tree including [[wiki-style]] links up to depth 3.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/index.ts#L23-L87",
+          "version": "repo-lines-v1:sha256:dc19313e85ebb6e6cb9ad858f9e109583a816efa96fae1a2e76be476652784fa:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJkZmQzZGVhYTY3ZTVkNGY1OGIzNmVjZDNlYzMwYzUyNTMwYzVjODM0ZTI0Nzc2NTY5Yzg4ZjkwZDE3OWRkOWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVmOTU2ZDNkOGNiOWY4MGEyZGNkZmM2NjU3OGQ4ZjZiYWQ5MzI2MDhmN2Y4MmExZWYwYmM2NzdlNmJlNGRkNWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNjZTZiYjAwMzNiZGRkMWY0NDM5YzgzZDc1NjRhZjNkODcxODVkYjg5MDFiZWI1ZWY4NTg0OTkxMmRjMTBkNGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVmY2JlYmE0NTAyMjhhNmM2OWY0MzI4NDJjZjg2NzI5OTgyZDNmZjdiZGU4NjhlY2I5OWFlNjZiZmI5NTBhZDUifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/okf.ts#L1-L31",
+          "version": "repo-lines-v1:sha256:ac98384b9416c1c54a2a481ac13d2eb75d1f01da6833f6bfaf1aba5fdf11fed5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjViNzRhYjJhYTJhM2IyNDc0MmQ3OTViZGY0Zjc3YTA2NzNlOTE4NmEyYzUwZWMwOTY2ZjIyNzI2NDVjYWViYjAifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/okf.ts#L194-L252",
+          "version": "repo-lines-v1:sha256:fa988730d98d499788a87886f2543950acde60a0b43afbcd18c44786f885f6ae:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4OTRmOTIyMTEyMzNlMjExOGQ5OGJmMmNlMWFiY2IzMTI1YmQ1MTAwM2UzOGIxMjRjOGQ2YTcxZDZiZWI1MzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1ZWYwMWJjMDhkYmMzYjYzZTRlNzVlYTNkMjZhNWI5NDE4OTE4NzdlMjdhZDg5MTMyOWM4NDExZDdkOGRjNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYzYzEyMGUyZDUxY2RmN2JhZjdkYjE1NDAyN2E0MGIwYzYyZGIyZmQyNzg1M2U5MTM5YjI2NjliYWY1NDE4Y2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgxODUyOGI1Y2UxMjRhNjdmZDU2YjhmNDRmMmE1NDVjOGRjNWJjZmVjODNjMWVjNjY0YjM4MWE5MmNmZTRlODMifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/okf.ts#L254-L357",
+          "version": "repo-lines-v1:sha256:f9e158858a66cba892eb28525fb17d3dcd873da799f95a5a039388d86584ac3c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIwODk0ZjkyMjExMjMzZTIxMThkOThiZjJjZTFhYmNiMzEyNWJkNTEwMDNlMzhiMTI0YzhkNmE3MWQ2YmViNTM3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI2M2MxMjBlMmQ1MWNkZjdiYWY3ZGIxNTQwMjdhNDBiMGM2MmRiMmZkMjc4NTNlOTEzOWIyNjY5YmFmNTQxOGNkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/okf.ts#L99-L148",
+          "version": "repo-lines-v1:sha256:e3c8bde84652085cb6c50fe4b92b38a191cb67d897ca4ee8037d27059d9cd8f5:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1ZDkzYThiN2M4YTRhYTE4NDM3Yzk2OTE3OWFiOGQ1ZDQ0YzFjYTgwNmUwZGMzZWIzOWM5MzUzOTJmNDc5NTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1ZWYwMWJjMDhkYmMzYjYzZTRlNzVlYTNkMjZhNWI5NDE4OTE4NzdlMjdhZDg5MTMyOWM4NDExZDdkOGRjNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI5MjAyNzA3ZTRmZjBmZTdjYmEzMzNmOWIyYjJhNjE1ZDUyMGQ3NTMwNmQ1Y2U1ZjBmZjgzOTNlMGVjMDAwZGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNjOGM2YTIwY2ExNTA2MWVhZGRjYmJkOWZiMzQyZThlYTE0YzJhZGYxYWIyNzg3ODNhNTBkNzQ0ZDE2NzQ4N2IifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_94bfc1f74ffb4a7391e5e3990442d896",
+      "statement": "OkfKnowledgeUpdater is a best-effort write path that, after a judge verdict that is neither contradicted nor unverifiable, creates or appends to concepts/<slug>.md under the canonical base and logs actions in the okf_knowledge_updates ledger table, returning false silently on any failure.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/okf-knowledge-updater.ts#L14-L57",
+          "version": "repo-lines-v1:sha256:ea24d8a4a24783c327a3736c44dd0c2aef83b3d2548d147852b81cda0c49242b:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzZjVlY2Y3NDk0ODRhYTRkYmJlOTI0NWZjMDljZGQwMjQwYTRmN2Y1NjQ4YmVmNmE3MzI3MmJlZTQ3NjQ1OGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJlNjUxMjY3ZTg4YWJlYTg1NWM0MjM2ODMzNWRjZTBlOGQ0OGFiNGVlMzRlYTQ2NzA5NmI0NDE3ZTA4NjM2YjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYzMWU5NTViZTY0NWYwMzdjMjU0ZTdjYTM1MmVkYzA2NTcxZDEwMTU5YjcwMmNhNTE2OThjYmFhZjhmMGE5NGMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/okf-knowledge-updater.ts#L77-L89",
+          "version": "repo-lines-v1:sha256:eda76f941d9866541e294b50f0ddae987958ba8e41a1b2d8fc786f2e9ec4171c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM1ZWZkNGQ4NjQ0NjZmZjRjODRkMWY3NjdmZDQyYTEyZTk1NjE0MGRiYWIwZTkxNGYzYWRmMjZjNmNlOGY0MzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkMDIxNGZlZjM5YmM0ZTM5NmM3OTk3ZjJkOTgxMjA1YTY5NTFjYzI3ZGFhZWYyZWM0NTI0OTJkMTI3MWZmZGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQwYmI3YzQwZjBlNDUyNDZkNWE5MTVhYzdjZTQyZmEwMTYzNTZhMjUwMGI4NDIxMDQ0MDAzNzQxZTk4NDgzNTIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5e898df2e3164f83b718d563ecb02695",
+      "statement": "isWithinOkfRoot()/validateOkfPath() enforce a G15.1 path allowlist: any path must realpath to at or under the canonical repo knowledge root, otherwise validateOkfPath throws KNOWLEDGE_RUNTIME_OKF_PATH_ESCAPE; resolveEvidenceRef verifies kind/existence of typed evidence references (goal, loop, capability, memory, trace, etc.) against their database tables.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/knowledge-runtime-service.ts#L670-L683",
+          "version": "repo-lines-v1:sha256:c62f559797678556a36cc2b95e9d9769cdc1145c6560bb49fa599510094fb0cd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1MWViZmEzYzBhMGIwOTJiNWY4NDMwMTg3ZTY5NzUxOTE3ZTI5NGNiYTk5MDQ5NmQ5NWRkZDQ3Mzg1NTI2ZWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3ZDg2MzJlNTRlOTI5OGFiYjk1ODcyN2UyZDUxNDA4YWJhZjEzNjYwMzUzNzkxMDE0MGFiZjY1YjMwYWI2MTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI2ZTZmMzM5ZDYzNzVhZWViZTExMzRlN2RiNmJiNTc2YTBkMzc1MDExODI1Yjc2ODk4OGM1NGU2MDc0YmRlMmMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/knowledge-runtime-service.ts#L686-L713",
+          "version": "repo-lines-v1:sha256:3a7338c439d6ec3297b71e3ebaab1c95863e0238bac02c8df6fc8d881313037d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiNTZmNTNkNzI4YjRjOWQzNjYzMjM0NmZmZDJiNzM5NmU5Y2EzZjFjMDBiZjhhMzBhNjg4NTAzYjQ4ZWQ0MTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ1ZmMwZjY2MWQyZGU0YjA4NTgwM2YyNzMzNmI4ZGY2YmMwZDU2MGRhYTdiY2VkYzU3NTcwNmI5ZTVjNmFiYTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_acfcb97eba2f4e5f9d78cb168448a449",
+      "statement": "Validator pass means structural acceptance only, not certification: the README documents OKF_VALIDATOR_PATH as a trusted operator-managed validator whose absence or failure blocks sync apply while noting structural acceptance is not certification, and the service comments state structural evaluation never implies applied outcomes or promotion/merge authority.",
+      "evidence": [
+        {
+          "resource": "repo://README.md#L236-L237",
+          "version": "repo-lines-v1:sha256:10c38a04b102c26c5691574964a78bf323f5bd63ae7dcc8cc05579225c7e045e:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGViNWFiNGRkNTRiNTE0YWQ2OGRhMzAwMGQ4MTVjNjViZjdmM2JmNGM3MzA3NWMxMzVmODg0ZjU4NjM3YjcyZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDhlZGQ1ZmRjZjk1NWQ0NzRmMTRhMzRhOGQyMWJlNjZjMjIwMzI0ZDU1ZGZjZDdkMWIwNjczYzY3NzQwYjUwMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjEzYmE4ZDE2NTczNWVkMmQyNWE3ZGU0NTE4NDE5YzE1NDVkYzQ4NWEzZWQ5OGUzZDVjZTYxMzdmYTExYzk2NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWIyYjEyMDgxYWY4ZDRlZmYwMGEyNTRiZWEwYmY4YmZkNmNhMjVkYWZkMzJmZDcxMWNkNzg4ZDg0MDVkMWM3MSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/knowledge-runtime-service.ts#L350-L352",
+          "version": "repo-lines-v1:sha256:d0ab177f7fb80ec45fc409f21620d460bb1ae9c89a3b1c954c35eb7e0163ad89:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTc5NWYwNWQ4MjMxODRhMGNlNmNlMzBlZjM2NTFkMDEwNTg3MzA0YjM2MTQ0YTY3Nzk0NWU2MTI2NjVmZTA4MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjhkN2RmMWY5NWZjYWI2ZWQ0ZjIxNjllZjdkYWVjZWUyM2Y0N2ZjYWFjMTNmOWYzOWI1ZmMxNDkyYTA3ODhjYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmI5ODkyOGJmMTYzNGRjMWU1ODMxYmU0NjQzMzA3NTlkYzAyY2ZkZmQ3OThmMGVhNTBlZmU4YmQxYWI1MjA2YiJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.2",
+    "at": "2026-09-24T19:59:50.419Z"
+  }
+}
