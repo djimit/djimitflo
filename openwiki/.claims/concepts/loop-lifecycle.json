@@ -1,22 +1,26 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f26ac9d8c6a8aaf152e843575384248c046e332f82b227b4196ee6c3f5ae1f93",
+  "pageVersion": "sha256:6efea2c14445cd0b757320eef05938d1bb14e46d562a87497e7c06afe4b077b2",
   "claims": [
     {
       "id": "claim_d4f5a64d5a624ae49ba14e028bb7d2cb",
-      "statement": "LoopService is a facade that keeps the loop subsystem's external method surface stable while delegating substantive work to focused sub-services constructed in its constructor: LoopLifecycleService (continue/retry/split), LoopWorkerExecutorService (maker/checker execution and worker-approval decisions), LoopVerificationService (completion gates), LoopDiscoveryService (finding scanners), LoopBudgetService (budgets/escalation/cost), WorktreeManager (git worktrees), WorkerLeaseRepo (worker_leases persistence and lineage), LoopEventService (loop_events), LoopRunQueryService/LoopRunMutationService (loop_runs read/write), LoopRecoveryService (crash recovery), RuntimeCommandService (runtime contracts/process spawning), and LoopPersistenceService (LOOP_STATE.md, diffs, evidence dirs). The stop/continue/split/retry/delegate/verify/certify entrypoints delegate to lifecycle/verification/workerExecutor.",
+      "statement": "LoopService is a facade that keeps the loop subsystem's external method surface stable while delegating substantive work to focused sub-services constructed in its constructor: LoopLifecycleService (continue/retry/split), LoopWorkerExecutorService (maker/checker execution and worker-approval decisions), LoopVerificationService (completion gates), LoopDiscoveryService (finding scanners), LoopBudgetService (budgets/escalation/cost), WorktreeManager (git worktrees), WorkerLeaseRepo (worker_leases persistence and lineage), LoopEventService (loop_events), LoopRunQueryService/LoopRunMutationService (loop_runs read/write), LoopRecoveryService (crash recovery), RuntimeCommandService (runtime contracts/process spawning), and LoopPersistenceService (LOOP_STATE.md, diffs, evidence dirs). The continueLoopRun/splitLoopFinding/retryLoopRun entrypoints delegate to this.lifecycle (loop-service.ts L724-732), verifyLoopRun/certifyLoopRun to this.verification, decideWorkerApproval to this.workerExecutor, and awaitWorkerExecution polls the lease's engine task until terminal.",
       "evidence": [
         {
           "resource": "repo://packages/server/src/services/loop-service.ts#L2386-L2539",
-          "version": "repo-lines-v1:sha256:3f66516fdcac97068892f778e67ec04c097a5bc641af2262ed0be6aea0aa8a09:eyJzZWxlY3RlZExpbmVDb3VudCI6MTU0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmOWE3ZTY1MDQ3NGFlZjRlOWY4NTAyNDBmOTM4MzM5MDczYjFkYzk0MTU4NjkyNDZjOWFjOTZkNzg3ZGQ2NGQxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkZmU5MDI3NWQzMGNjOGFiOGY5ZTQzNmNhYmQ1NjZlZGNiODg4M2IzNzhjZDNjNTc2Y2EwNmQ5NWU1M2M2YmVlIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "version": "repo-lines-v1:sha256:984c2ec24c1e1043092d46ff101191f43fb45c7bdf35ea8d93466ab73d8641f1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTU0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5YjYyZjYwZDg1OTBhNTc5Y2Y0NmY4ZDY3Mzc4YzRjNTcyYjk2MmNlY2NkYjkwYzdhNWY3YjQyYjk2MDc4MmE0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMzQ0OTlmZDdkMzM0ZGYxOTNiYThiNTJkMmY1YWJmODUwZDExMWI1NmE0NmQyNTA4MmIzYmIxZTgwMjUyMTVhIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5NWI4OGE3NzkxYjM3NWVhNjYzNzQzOGFjYWExM2M2YmViZDdlYWNkZGUyNDE1NDAyMmVmM2JiMjI3ODJhYjQ2In0"
         },
         {
-          "resource": "repo://packages/server/src/services/loop-service.ts#L283-L347",
-          "version": "repo-lines-v1:sha256:13d7bcb3c14867cba54a3c82f21ad11879ac617329fa39270a0425e25d39091b:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhNTFjZTZlNjNjNTQ3OWFkODdjNGExMGIwMzc4NTEyMjNkNjcwZjZhMzU2MDk0Y2JjZjVjODk5MDk1N2Y4NWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBhMzIzNTA1NGJhNTliYjhjOGEyM2IyODE5Y2MxYzVlYjY5NzNlYjZlMGY1ZDNiYWIyYzlkNGFiM2Q2MTI2YWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhmNGY2ODJkYmRjZTA0ODVmZTIwMGMyYjM4MGExZmYyOTkwYWFhNDIzYmViMTYzMzU0MDZmMWFiNzhlYmNlM2IifQ"
+          "resource": "repo://packages/server/src/services/loop-service.ts#L2439-L2473",
+          "version": "repo-lines-v1:sha256:668aa216aa7656cacbfa740ee7853f277691ddde49ad86a8d0baffb125de5a1f:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1YjkwZmU2NTg4MTIwOTlhM2Y5MTE2ZWFkZGFhNTUwN2YwMzhhMDRlNTc2ZDBiOGU5NzVkZjAyNDM1OTYwMGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYxNzI2MzIyZGQ1NjcxNmYxN2Q5MmI1MTBiMjFmMjM2ODNmMzQzOTYzMDhmM2UyNTcxY2E1MjEyNmY0OTU2ZDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZhM2NmNTE5MjM1NGY3MTYxNWFjNTEwMzRiM2U5N2MyMGVkYTk5NjQzZmNhZjViYmU2ZDQxYWQ1OWJkMTIxNjcifQ"
         },
         {
-          "resource": "repo://packages/server/src/services/loop-service.ts#L724-L744",
-          "version": "repo-lines-v1:sha256:e4d525da7186a9f1776f01ab3927bcbe3af1b25b0f2afd48ad68c815e315aa71:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMxN2U0MjNmY2I1YzQwNjA2OTIzYTNlZWExNjhiMjE3NWRjMDQ3NWY4ZjU1YTkzMTZkYWIyOTk1NTQ4YTFiM2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWVmZGQ1MTEzZDk5MDU2ZjFlMTlkZTFiN2Q1YmVkZTZlMGEzMDFmOWU4ZjdiZTRlYWQzZjhmOGRhODY2YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhlMjJiNDg1Y2NkMjMzNjFlZmJhYTYyN2VlYmJhYWMyMGM2NzI0MmQwZGViZGRlYTQxZDNiM2FkM2ViYTIxYmMifQ"
+          "resource": "repo://packages/server/src/services/loop-service.ts#L321-L347",
+          "version": "repo-lines-v1:sha256:a52b000366f706565b2c77e76981741992213e09dbbe53da774ca7f647826007:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzMzY5Y2ExNmY4MDdlYzkwNjFjOTRmZmQ3NWEwNGU3MzY4NTc1NmUyZDdmYjhiZjE0NWY4ZjQxNjBhZmE0OTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVkNjc1NjM4Yjk5NWI3NTQwNjJhMTg3MjMxYjY2ODBkNjllN2RlZjdhZDNmNGUxYWM2MzZkNTFhMmI4OTA1MWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhmNGY2ODJkYmRjZTA0ODVmZTIwMGMyYjM4MGExZmYyOTkwYWFhNDIzYmViMTYzMzU0MDZmMWFiNzhlYmNlM2IifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L724-L760",
+          "version": "repo-lines-v1:sha256:afa00a35b3cdd47c6cda0809f856361e89c0d3915be7d4d5ddc4de9f0080c22e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMxN2U0MjNmY2I1YzQwNjA2OTIzYTNlZWExNjhiMjE3NWRjMDQ3NWY4ZjU1YTkzMTZkYWIyOTk1NTQ4YTFiM2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWVmZGQ1MTEzZDk5MDU2ZjFlMTlkZTFiN2Q1YmVkZTZlMGEzMDFmOWU4ZjdiZTRlYWQzZjhmOGRhODY2YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhlMjJiNDg1Y2NkMjMzNjFlZmJhYTYyN2VlYmJhYWMyMGM2NzI0MmQwZGViZGRlYTQxZDNiM2FkM2ViYTIxYmMifQ"
         }
       ]
     },
@@ -321,10 +325,64 @@
           "version": "repo-lines-v1:sha256:32f2db25cbe3b5d160e326ff1213763c5cfa6a4e10a51373c96c7f3b8c726fe5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg5MWFkZTRhYTA0NTc0ODJhOGY1Yjg1YTZhN2ViMWE5ZmY4NGEwMWU2YTVmMTM5M2ViZGFhNWI0MTFlMGQzMmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVhNDJmYzkyMWM1M2M0MDRkMmY3ZWQwZGRjM2FkMWM4YzYyMTNkMWVhYmUxYTNhZTY2MmYyNzFlNDI4YjZmMjMifQ"
         }
       ]
+    },
+    {
+      "id": "claim_e56670fabb734f50b742027ec2d1ea5e",
+      "statement": "LoopService.awaitWorkerExecution(leaseId) bridges the asynchronous gap after a worker approval: it polls the lease's metadata.execution_task_id -> tasks.status every pollMs (default 5000) until the status leaves the non-terminal set (running/queued/awaiting_approval/pending) or a 660 s deadline (default timeoutMs 660_000) passes, returning the terminal status or null when the lease/task is absent. This fixes a 2026-09-25 prod race in which an auto-approved evolve sibling was read back and scored as a loss while still running.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L516-L535",
+          "version": "repo-lines-v1:sha256:2ff111a28ca3b27701a826288985980f7d6c8d288c67c71e1cad386aeefb5e66:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVkMmMxODQ2YTRmYjAyMjMyZGM0MjI5NGUzN2IxNWI5NDQ5YjNhMTRjNWQxODQ3MjRkYjUzYTNmMjlkNDFlMmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MjJjNDJjZDE5YzZkMDNkODA4YzQ1MjcyMDU1MjgyNWI3ZWExYzViNDkxYjIxODUxMWNhYzc0MTVjZjlkOWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxMWQyNzc2YTcwODBhN2VkNGU2MDAwYjg0NGFlZDkxMTQ0MTdjODA3NDY4M2I4MWRmMDBlNDk5OWJiMGJhNjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ1Y2U4MzYwZjdlZTVkNDFlMTBkOTFiMjc5ZWIzMDk1MjM3YzUwZDQ4ODkyYzM2ZjgyNmIyY2E0ZDBiMjUxMzkifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L733-L747",
+          "version": "repo-lines-v1:sha256:1fea986cac0a29189e1c93470b91340458716351956787e43e4a92b9907796f7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY3YmNlYTc1NzU0MTU0Y2MzMDgzMDczZDJjM2Y0OTE2Y2Y3YzMxODY2OGRjZTdmZDM4YzA1NzcyNTA1NjRkYzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk4N2ZjYWJiOWMyMDNmYjMwZWE2YzI4YTRjMzc3MGFmOWYwOWQ4NDRlYWZiYjAzODhkZDYyM2Q4OGFlMGM5OWQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_aecfbaca450141e2a5c327bdcc9d217f",
+      "statement": "When executeViaEngine finds an existing engine task on the lease's metadata.execution_task_id, it refuses to re-run: a running/queued task resets the lease to prepared and throws LOOP_WORKER_EXECUTION_IN_PROGRESS (mapped to HTTP 409), and an awaiting_approval task throws LOOP_WORKER_APPROVAL_REQUIRED, so the caller must wait for an approval decision before awaiting completion with awaitWorkerExecution and re-executing to read the stored result.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/loops.ts#L42-L42",
+          "version": "repo-lines-v1:sha256:49506c2425c5effd6172815850a8d22b8074bf37df76cd86cd35c6e6d567f75c:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDk1MDZjMjQyNWM1ZWZmZDYxNzI4MTU4NTBhOGQyMmI4MDc0YmYzN2RmNzZjZDg2Y2QzNWM2ZTZkNTY3Zjc1YyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDk1MDZjMjQyNWM1ZWZmZDYxNzI4MTU4NTBhOGQyMmI4MDc0YmYzN2RmNzZjZDg2Y2QzNWM2ZTZkNTY3Zjc1YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWFiMzE2M2IyMmZjOTM4OGFlMzliZGIzNmM1MGVmMjhmZmI5MGJlYmNiNTNkYzg0Njc3M2M5NjE2ODk4MGNmNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzJmOTlhYzI2Mjg2MDk0NzU4YjM2ODI4YzY0YTVjMmM0NDcyMzFhMDY3N2QwYTQ2MTRkMzgwYTdhZWIxYmMyZiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L738-L747",
+          "version": "repo-lines-v1:sha256:88f3deb11428492e3bc59c57f666857a64bb49eed2e71a332c412eb929bc11ef:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjODRjMmIxMmM0ZTcxODUwZTNkZGYwNzg4ODdmMzc5Zjg1Y2MzOTUzMDE4OGEyM2FlMWFjMTBjMjE2OWFmZTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzY2FkNjg2NWNlOTFiYWUyODdkNTY3YjZlZTM0ODllNmY0Zjk3Y2RhYmJkNGI1MmU4YzIzOGIwNTNlOGZhMmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk4N2ZjYWJiOWMyMDNmYjMwZWE2YzI4YTRjMzc3MGFmOWYwOWQ4NDRlYWZiYjAzODhkZDYyM2Q4OGFlMGM5OWQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L398-L415",
+          "version": "repo-lines-v1:sha256:9940966d1183cada198383908e5b8b86f867e0e0f5975f3bd743631bfbaa8935:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0NWU4OGQ2NzAyMGVkZjY1OGU5ZWZhY2Q1YmY2ZGRiNjRlMDlkNzFhMzgyMzQyMGUwM2VhZTVhMTMwMjhmYmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlMWI4YTZlNmU4YzkwM2M2YTk5YmQyMTBhYjVmMTAyNDQ4NzM4ZDE0YTlhMDc3OTQ1Y2UxYWNhYzQxOWFkOGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ2MWY3Y2I3Y2ZlMjU3OTdmN2Y2MGZhY2U3NjgyZTIyMmFkMjg2N2E3YWMzZTA1ZDQwODFkODc1ZjY2MWZiYzQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4516895a33b94a1681f719406efb13c5",
+      "statement": "decideWorkerApproval is the facade entrypoint that submits a worker approval decision to the ExecutionEngine via workerExecutor.decideApproval, which delegates to ExecutionEngine.handleApprovalDecision; both the loop-daemon auto-approve-sibling path and the evolution-gym maker path call awaitWorkerExecution after the decision to wait for the approved execution before reading the outcome.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/evolution-gym-service.ts#L146-L148",
+          "version": "repo-lines-v1:sha256:bfb3abfbd0d41d15801d15f6dafc9b111fa96e2d74101c4a6853f13a877f1b31:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODIwNWQ1OTE0NTQ5MmYyMWZhZDc3Y2RhZjMxYTE1YzRhNGIxNDhiY2I2Nzc3YTRiOWM4ZmMwYWVjNDg3YjY5NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzNmNDI0NjJmN2FjODAyYWE3ZjIwNjQyMzdhNGM2ZjEyZmE5YzhkN2NiNjAxNjI1M2U5NjJlYzdiOTE0YTRhMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjJjNTdkMGI0NmY5MjRhYWRiNmM1YjZiYTY1OGQ5ZTIwODU3MjFmOGZkMjA3ZjdmY2YwMTFlYTljNzBhN2U0YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzViYzMxZmJiZjhjNTg0YmRiZmNiNGUyOTczZTQ5NDYwYzcyOTJlMjY4NDM1ZWYwMTEwNWExZWRmMTg2NmRmOCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L533-L534",
+          "version": "repo-lines-v1:sha256:78e98ec2c2cab6bcdb8f8efe6e4e7aa1f975882a81040924cd7daf7a7b35e319:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDQ5MzYxMmYzNjdmMjA5Y2U4OTBlMmViNzc1MDEzOWE5MTEyNWZkYzQyYjVhZDcyZDljYzllNmRmMDFmYmRjYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzkwYWM2Mzk4MDU0N2RmYTAzNTc1NmZhYmExYWM3YWIxYjdmMDRhODAyZTk5M2FlZjNlODE0YzgxYWE3ZjM5YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTVmODFlNGYxOTRkYzI0MDZhMzk5NDIzMmYwNmQ5NDI3OGNmZTRlYzg2MDdkNTZiZDAwZjk2M2EwYzQ3ZmFmZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTY0OTQ2Y2JjODhlOTFmNWNjODQ1Y2E5OTIxNzkzOGEzMzdiYThjYzI1OTlkNjMwNTI5YjdmYmJkZWE3YTA1ZCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L749-L752",
+          "version": "repo-lines-v1:sha256:aa46e6856e80ec4630751a316a8aae4397fd2c8ac1e13be8ed5d7bf34a879c0c:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTg3YTM4MWI5MzhjM2JiZTA3NjMwNTY5YTJlMjk3MjI2ZmQ0Y2NlMmM1YzM1ZDBhYTQ3ODE0N2EwN2RlNGM3NyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTdkODYzMmU1NGU5Mjk4YWJiOTU4NzI3ZTJkNTE0MDhhYmFmMTM2NjAzNTM3OTEwMTQwYWJmNjViMzBhYjYxMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTEzYmZkM2NjMjY4NGJiYWUyMWZkNjc2ODU0YzIwMjUyMTE3ZmUyZjY5OTVkOTNjNzQ0ODYzZmE3YWE0MTFiNyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L384-L386",
+          "version": "repo-lines-v1:sha256:76e2f7e0f1e4343037b25dfcf6b86f6d482a31efa1c590fcea4fe0be64e0e015:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWUxYzQ1MGI5ZmI1ZWI1MDViMGYwMDVhYmU3MTFkZDAyZWRjNmJkNDMzOWQ2ZjBlYTVjZDEzMTcxMDcxYjYzOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmE5YjYzMTRkNjJhYjM4YzY3NmU4NWE4NTllMjgzNDBjNDFmYmM5NDc1MDA2YWM1OGVhYWQyMDUzZWNiZGM4NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjAxZWEyMTJkZjUwYWViNzQ0MmQwNzkzODk2ODg2NmM0NjI4YjBjMDJkZTc3NTZiMDYyMWNhN2EyMTNlOWMyYSJ9"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-25T13:29:02.244Z"
+    "at": "2026-09-26T12:51:29.895Z"
   }
 }

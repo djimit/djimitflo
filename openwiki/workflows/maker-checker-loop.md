@@ -51,9 +51,6 @@ sources:
   - id: openwiki-source-23775c3de52f3ab95a13cb8b
     resource: repo://README.md
 generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
 ---
 
 # Maker–Checker Loop Execution (Doc Drift / Self-Improvement / Issue Loops)

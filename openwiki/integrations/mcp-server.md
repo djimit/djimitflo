@@ -61,6 +61,9 @@ sources:
   - id: openwiki-source-f873c20d1298723efcbc88e6
     resource: repo://packages/shared/src/types/auth.ts
 generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-09-24T19:59:50.419Z
 ---
 
 # MCP Server Package

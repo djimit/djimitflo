@@ -1,0 +1,260 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:3f6ef0484eacb72a23cf73dbef21d19f0644a3cbb158f4f8334b34119615141f",
+  "claims": [
+    {
+      "id": "claim_ed575091d74245b7b8cb14a6d80f64d2",
+      "statement": "Djimitflo is an npm-workspaces monorepo whose root package.json declares `\"workspaces\": [\"packages/*\"]`, making every directory under packages/ a workspace; the repo ships seven @djimitflo/* code packages plus packages/knowledge, a runtime-generated data directory that has no package.json and is not built or published.",
+      "evidence": [
+        {
+          "resource": "repo://Dockerfile#L127-L127",
+          "version": "repo-lines-v1:sha256:8cf0d094c1878cd1b24c8a272e0f5e0f9634a6304599220051af913c4f8c57f1:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGNmMGQwOTRjMTg3OGNkMWIyNGM4YTI3MmUwZjVlMGY5NjM0YTYzMDQ1OTkyMjAwNTFhZjkxM2M0ZjhjNTdmMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGNmMGQwOTRjMTg3OGNkMWIyNGM4YTI3MmUwZjVlMGY5NjM0YTYzMDQ1OTkyMjAwNTFhZjkxM2M0ZjhjNTdmMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZThjODViYjFhNWY2OGU3MGY5MWI0N2FmMTNkYTBjMTk3Y2E3YTc4NTZmYTM3MWRmMzM4OTE3MjdlNDBmODg5NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmJhZDUyZTdmMDFjMTJlN2YxMDZjMTA4ZmFiMjZjN2QxOGE2NWFiOTJmOGM3OGEwYzMwZjYyYjEwOTdhNWU1ZSJ9"
+        },
+        {
+          "resource": "repo://README.md#L39-L39",
+          "version": "repo-lines-v1:sha256:7bf6fae7372c307e98792c0299d12962187f761123ec4ffa44e97146f1ccc37d:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2JmNmZhZTczNzJjMzA3ZTk4NzkyYzAyOTlkMTI5NjIxODdmNzYxMTIzZWM0ZmZhNDRlOTcxNDZmMWNjYzM3ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2JmNmZhZTczNzJjMzA3ZTk4NzkyYzAyOTlkMTI5NjIxODdmNzYxMTIzZWM0ZmZhNDRlOTcxNDZmMWNjYzM3ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzE5ZDUwZTQ3ZTY1NmUyNDM1NmU2OWE4YjFlNThiOWFmOGE5YmI3MzA4OWNmZmRmZjIwMDEyYmIwYzczOTc3NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNmQ4NjRkYWYwZGFhNTAxNTFjODgxNzU5NzkwNmRhYjEyYWYxMGNiYzVkNjY2NTdlMzdhMGNlNTIwMTQwOGU5NyJ9"
+        },
+        {
+          "resource": "repo://package.json#L8-L10",
+          "version": "repo-lines-v1:sha256:e02ca5b5882ed95021efef55f8740e171211894d210589ec4089527fff48fda1:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWRhZWViY2I3ZGEwOWIzYTdjOTU4YzE0OWMxNmJiYmY5MTYxMmVjNjFkNDQyN2IzZWUxZTYzMjJhOGYyYmEwMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTY0ZDhjMDczNDI5ODkzMTAxNTc2ZDg4ZDk5MTI3ZTg5ZDY4OTFkM2IxN2U4OWRmMDJlYzlhZTcwNzA1ZDhiZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmEyYmEyZjkzYmMxMGEyMDUwMjBhZjY1MDczYWFmOWFlNDczMjEyYWI5Mjg3MjczN2I2YWI3MzZmN2U3MWU2MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjUwMDBmYmEwOWM5ZDQ0MzFkZTgyZDY5MThiMjdjZmZiMzFhOTY0ZmQ5MDU3YTU2ZWNmOWU4MTYyYTk3ZmI2YyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_0cf1c0d20a0e49e4a038f0ea4b0afc6e",
+      "statement": "The root build script compiles workspaces in a fixed hand-ordered chain — shared → telegram → agent-catalog → mcp-server → ransomware-module → server → dashboard — so that typed dist/ artifacts of each dependency exist before its consumers compile (server depends on shared, telegram, and agent-catalog; mcp-server and dashboard each depend only on shared).",
+      "evidence": [
+        {
+          "resource": "repo://package.json#L15-L15",
+          "version": "repo-lines-v1:sha256:435d8887c8cd14bf4641be5effa8e238b01a2b8ed4f7bd0e606f905aaefbe2aa:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM1ZDg4ODdjOGNkMTRiZjQ2NDFiZTVlZmZhOGUyMzhiMDFhMmI4ZWQ0ZjdiZDBlNjA2ZjkwNWFhZWZiZTJhYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM1ZDg4ODdjOGNkMTRiZjQ2NDFiZTVlZmZhOGUyMzhiMDFhMmI4ZWQ0ZjdiZDBlNjA2ZjkwNWFhZWZiZTJhYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2VmZjJkZjllZmQ3Y2YzOTExMmMwY2UwZWYzNDA1MmI5OGNmNzkyNjJhZTkyNmQzMzQ2ZDhiYzI1YTkyMTYxMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzA0YjQ1YWFhMDA1MWNlZGQ4NTE5M2NkMDQ0MjQzNzdkZTFlOTlmNDgxNDJhMTZlNDA2MjE2MjliOWMwOTY4NiJ9"
+        },
+        {
+          "resource": "repo://packages/dashboard/package.json#L17-L17",
+          "version": "repo-lines-v1:sha256:e5429555c4a3bdbfc80bf1cc9aa2c9bc30aba2037ec459d72e3e441b0227ba22:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTU0Mjk1NTVjNGEzYmRiZmM4MGJmMWNjOWFhMmM5YmMzMGFiYTIwMzdlYzQ1OWQ3MmUzZTQ0MWIwMjI3YmEyMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTU0Mjk1NTVjNGEzYmRiZmM4MGJmMWNjOWFhMmM5YmMzMGFiYTIwMzdlYzQ1OWQ3MmUzZTQ0MWIwMjI3YmEyMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODYwOWM3MmIxZWExOWE3ODdmMjg2OWQyYzRiMzY3ZjM0YzFhYTQzMGU5YjcxOTNkMmMyZGVkODg5M2UxOWMzZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODEwZDM3OTFiOGU5NzhiZDU0MzBjZjFiNzA1ZDZmMjA3OTZhMjQ2MGQ1YTE0YmQyZDVmZjMzNzgzOTg3YzM2MyJ9"
+        },
+        {
+          "resource": "repo://packages/mcp-server/package.json#L22-L22",
+          "version": "repo-lines-v1:sha256:e5429555c4a3bdbfc80bf1cc9aa2c9bc30aba2037ec459d72e3e441b0227ba22:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTU0Mjk1NTVjNGEzYmRiZmM4MGJmMWNjOWFhMmM5YmMzMGFiYTIwMzdlYzQ1OWQ3MmUzZTQ0MWIwMjI3YmEyMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTU0Mjk1NTVjNGEzYmRiZmM4MGJmMWNjOWFhMmM5YmMzMGFiYTIwMzdlYzQ1OWQ3MmUzZTQ0MWIwMjI3YmEyMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODYwOWM3MmIxZWExOWE3ODdmMjg2OWQyYzRiMzY3ZjM0YzFhYTQzMGU5YjcxOTNkMmMyZGVkODg5M2UxOWMzZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjkzYWIyMmFiMzlkNWMzMDc0MzYxMWFjMjk3Mzg4NGY4NjZhOWM2MTFjMjNhODYyMTJiN2QzZWI4ZjY0YjBiOSJ9"
+        },
+        {
+          "resource": "repo://packages/server/package.json#L24-L26",
+          "version": "repo-lines-v1:sha256:e18277d7345152197e6d1986168849264b03165a7656ac68957bcb83efb5330e:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTI0MmY4NTUxODc2ZWQwMDNmODJlY2ZiNWIwNDk3M2Y1MGUxMjdkZjZhMzVmNzZmNGMzZTI0NDE4M2QwYzAyOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2Q0YzU1N2FmMjVkMzg0MWFmYzYzNTc2ZmFmM2NkY2FhZjM0OWVmYjE2MGRhMGExNzAwOWY4Nzc0ZGExNWFhMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODE2MDg3MjU1ZTIwZGM5YjQ2MWE4N2Q3MjYwYTM1Y2IzNDNiMDk3ODcwM2JiNDBlNzFmNjdkNDQxOTZjMmNlMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWI5ZjAwN2RhZTk2MTQyOGE5MGQyZjE2YWM3MmY2Y2U4NTYzNTFiNDFjZTQ5Y2IzNmRkMWY2MjIxNDUwN2Q5ZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_edcfc0606d134cfea43a0c6ad8b2e130",
+      "statement": "@djimitflo/shared is the root of the dependency graph: it holds the shared types, role/permission constants, zod schemas, JWT helpers, and loop catalog, is depended on by server, mcp-server, and dashboard (and provides the contracts used across the repo), and itself depends on no other workspace.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/package.json#L22-L22",
+          "version": "repo-lines-v1:sha256:e5429555c4a3bdbfc80bf1cc9aa2c9bc30aba2037ec459d72e3e441b0227ba22:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTU0Mjk1NTVjNGEzYmRiZmM4MGJmMWNjOWFhMmM5YmMzMGFiYTIwMzdlYzQ1OWQ3MmUzZTQ0MWIwMjI3YmEyMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTU0Mjk1NTVjNGEzYmRiZmM4MGJmMWNjOWFhMmM5YmMzMGFiYTIwMzdlYzQ1OWQ3MmUzZTQ0MWIwMjI3YmEyMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODYwOWM3MmIxZWExOWE3ODdmMjg2OWQyYzRiMzY3ZjM0YzFhYTQzMGU5YjcxOTNkMmMyZGVkODg5M2UxOWMzZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjkzYWIyMmFiMzlkNWMzMDc0MzYxMWFjMjk3Mzg4NGY4NjZhOWM2MTFjMjNhODYyMTJiN2QzZWI4ZjY0YjBiOSJ9"
+        },
+        {
+          "resource": "repo://packages/server/package.json#L25-L25",
+          "version": "repo-lines-v1:sha256:e5429555c4a3bdbfc80bf1cc9aa2c9bc30aba2037ec459d72e3e441b0227ba22:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTU0Mjk1NTVjNGEzYmRiZmM4MGJmMWNjOWFhMmM5YmMzMGFiYTIwMzdlYzQ1OWQ3MmUzZTQ0MWIwMjI3YmEyMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTU0Mjk1NTVjNGEzYmRiZmM4MGJmMWNjOWFhMmM5YmMzMGFiYTIwMzdlYzQ1OWQ3MmUzZTQ0MWIwMjI3YmEyMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzQzZTc3NWFmNWIzMDkxZjA4N2Y0ZDQ4Mzc0NDQ4YmVkOWJiMDNhZWFhMjk3ODMwMDgwYjU1ODcwMmI1NWJhMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjlmOTgzMTIxMDUwYzhiODFlOGQwOGJjZDQ5YmJkMTVhNDFmODY1NDlhMGMwZTM5MDc2ZDg2MjI0MGZjZTJiNSJ9"
+        },
+        {
+          "resource": "repo://packages/shared/package.json",
+          "version": "repo-file-v1:sha256:1c9656e3f887b75bfcfd37b07f1dcf5f85c2c9f7e4f66073d9e754c54edd5893"
+        },
+        {
+          "resource": "repo://packages/shared/src/index.ts",
+          "version": "repo-file-v1:sha256:e6e209f71e65f125980368e4e5b54380e95449b1b5061a6dc7793f7c9ae5c0e1"
+        }
+      ]
+    },
+    {
+      "id": "claim_e7203f2fbdb64785b1dc5c7ea4f3a12d",
+      "statement": "@djimitflo/server is the central hub: the Express 5 + better-sqlite3 backend that exposes the REST API (default port 3001), the WebSocket gateway at /ws, serves the built dashboard from DASHBOARD_PATH, and is the only package that depends on @djimitflo/telegram and @djimitflo/agent-catalog.",
+      "evidence": [
+        {
+          "resource": "repo://Dockerfile#L133-L135",
+          "version": "repo-lines-v1:sha256:2cc0ae8f3bae573f57e0212ba97f4f1100a424228f092056f24a73f6312e5d4f:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjM0OThiZDMyMDBmNWI4YTA1N2RjN2FhMGJjZDc0YzliMDVkNmRlMjAxZGMzYjllZTRiZDAxM2RlNTE0OGU3YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzAyZjQwN2Q4Y2E5YTgyNzUwMmNhZjE5NGI2NWJkOTg2MmQzODQyN2JiY2ZjMTM3YzE1Y2Y0M2FjNjdkY2IxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMGU0ODNjZmY4M2YyNmZkOGM0YmI1NTRkYTJjM2Q3N2E4NDZhNjczOWQzZTQ5NjUwMmFhYzIwZTk1NTMzMDU1YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODkyMWI2ZmYyNWI5MzIxZmM1MTJjOTg0MGFhYzhiZTQyZTUxNTBlZGFjMDgxZjQxOWUxODE4NzgzYzEwOWViMCJ9"
+        },
+        {
+          "resource": "repo://packages/server/package.json#L10-L10",
+          "version": "repo-lines-v1:sha256:588420f7510a823fd7816c70632cbb841f38cf7db7fb0a4f02e96583babc1632:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTg4NDIwZjc1MTBhODIzZmQ3ODE2YzcwNjMyY2JiODQxZjM4Y2Y3ZGI3ZmIwYTRmMDJlOTY1ODNiYWJjMTYzMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTg4NDIwZjc1MTBhODIzZmQ3ODE2YzcwNjMyY2JiODQxZjM4Y2Y3ZGI3ZmIwYTRmMDJlOTY1ODNiYWJjMTYzMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDE4Yjc4OTBmMzMxMzkyNWFiYmI4YjYxYmUwNTYwZTcwMzllNmQ5MzUyOGQxZWZkMjlkMmZiNDQ0OTYwOWZmNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTQ2OTE0MWRmZTk4ZjE1NTAyZWE4OTQzMzA3MjI3NjQ3Zjg5OTc2NTA4MmFhNGYwZmI3YzljY2M1Y2Q2OGJhYyJ9"
+        },
+        {
+          "resource": "repo://packages/server/package.json#L24-L26",
+          "version": "repo-lines-v1:sha256:e18277d7345152197e6d1986168849264b03165a7656ac68957bcb83efb5330e:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTI0MmY4NTUxODc2ZWQwMDNmODJlY2ZiNWIwNDk3M2Y1MGUxMjdkZjZhMzVmNzZmNGMzZTI0NDE4M2QwYzAyOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2Q0YzU1N2FmMjVkMzg0MWFmYzYzNTc2ZmFmM2NkY2FhZjM0OWVmYjE2MGRhMGExNzAwOWY4Nzc0ZGExNWFhMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODE2MDg3MjU1ZTIwZGM5YjQ2MWE4N2Q3MjYwYTM1Y2IzNDNiMDk3ODcwM2JiNDBlNzFmNjdkNDQxOTZjMmNlMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWI5ZjAwN2RhZTk2MTQyOGE5MGQyZjE2YWM3MmY2Y2U4NTYzNTFiNDFjZTQ5Y2IzNmRkMWY2MjIxNDUwN2Q5ZCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L1-L60",
+          "version": "repo-lines-v1:sha256:2026b0118393f7df24838492b8c314ad3ffaa022d33e386666aaaea1b8490ced:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjljYjI3ZTA3MDU4OWEwNjgxZGViYmMyNDJmYjQzZTVkYTRhYWRiOWZhYTdkNWQzYmI4NmZmMDY1ODE3NTFiYzIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4b8c7ed8fe1545deb8b997f48f5d0aec",
+      "statement": "@djimitflo/mcp-server is a standalone CLI package exposing DjimFlo capabilities as MCP tools over stdio (default) or HTTP transport; it is the only package with a published bin entry (djimitflo-mcp) and it depends only on @djimitflo/shared within the repo.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/package.json#L9-L11",
+          "version": "repo-lines-v1:sha256:c4dbac8a1e8440a1c18bc0a0b202d40380a62e27130a1ea012cd850c44c8931a:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZjMTQ3NTdiOGUxZTlkNmE3ZGVlOTkwMmU5MDQwN2FkOGNmNjczYjNlOGQ3NjNlMjc5NTBkMTlkMDY3OGQ2OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjIyMzI2YjY0OWQ0OTEyY2I5NTU5MTkxYTdkYTBmZjVhODVhYzlmZTU4NjEwYWM0ZTRhMmViNTQ1NmVkMDc4MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDE4Yjc4OTBmMzMxMzkyNWFiYmI4YjYxYmUwNTYwZTcwMzllNmQ5MzUyOGQxZWZkMjlkMmZiNDQ0OTYwOWZmNCJ9"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/index.ts#L41-L78",
+          "version": "repo-lines-v1:sha256:12412e43b95257c35b3aae0fb2ad455899d7aaa902a1b56f4c068bc8571746e0:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjllNDgxNzhhYzNlYTQwYWFlY2MxNjZkOWQ3OGU1Y2Q1NDg3ZjllMGM3NjQ2NDliZjk5MDA3YjY5MTc5Y2U1MDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdmNDVmNjRkMWJjNTkwMTE3NjEwN2U1YmNhNTE4OTk3NTE0YWMyZjYzNGE4M2EzZWYwNmNlNDFjNjlkZTE4MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJiZDkxM2VmNmEyOWEyMGM0N2U4M2U5NDA2ZDJmMWQzODZjMjAyMmQ1NTAxZTdhMzZjYjMxNzgzY2Y4Njk4M2QifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/index.ts#L9-L13",
+          "version": "repo-lines-v1:sha256:35ff7af5bc0facdb8e5d461655964749f203871a4f5a84c1cf58efea571f1091:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjljZWMwYTcyZmZjNmYxZjBjOGY5OWE0NWUyZjU2M2ZjZDMwYjhjMDlkODM5NzIxNjc2ZDNmNDFhZTRhMzg1YyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTcyYTQyOTM4MmIyZTE0NzE4ZTBlMzdiMDU3MGE4YTE3MDI5OTFmY2Q4NDk4Y2Q4NDA2MGE4YmY0ZjA1MDE3YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmRkNGM3ZDMzNjE3NzBhYWQ5NmNhMTM0Mzc3NDgzNjUzMjQ2MTZiNWE0YWJlZGU5MTVlZTUyNTY2NjBlYzhhNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYmNmM2ExYTc3ZWM2NzliYmE3MTQyYWNlNWM0OWY1MjA1ZWU0YmJiOTA2YjViN2YwMDYzZTQyNjNlYzAzZjI5MiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_537a49fe62714f15a88815b6ed50663d",
+      "statement": "@djimitflo/telegram is an embeddable library (not a standalone process): the server dynamically imports its TelegramGatewayService and injects task/status/cancel ops; the gateway long-polls the Telegram Bot API per configured bot and uses a host-qualified file lease plus heartbeat so only one running instance polls a given bot token.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/index.ts#L332-L332",
+          "version": "repo-lines-v1:sha256:6b362e425e8e223946d167c05864903d0306daeb6387b47a54d9fd36f2a1900c:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmIzNjJlNDI1ZThlMjIzOTQ2ZDE2N2MwNTg2NDkwM2QwMzA2ZGFlYjYzODdiNDdhNTRkOWZkMzZmMmExOTAwYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNmIzNjJlNDI1ZThlMjIzOTQ2ZDE2N2MwNTg2NDkwM2QwMzA2ZGFlYjYzODdiNDdhNTRkOWZkMzZmMmExOTAwYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTE3YjM2YTQzNDdkMTM3NDYxODZlZjNlZjE2Zjc0ZmMxMjliZGYxNzU3MmFlOTk5ZTJlNzE0NTRiYjQ0MDk0YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWQxNzZkMTMyY2VjMWUxNTc2NGM1YzIyMzlmMWQyMDBhNjczNTczNDUyMjkyZGNkYTZhY2VkZDYzMzg5OWQyMyJ9"
+        },
+        {
+          "resource": "repo://packages/telegram/src/index.ts#L119-L218",
+          "version": "repo-lines-v1:sha256:8863c47908f892d69b6086b6b7b7aae9250ff493541dcdf697f3085e0759a151:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJlYzViMjk4MjczZDcxZjU5MDI5MDJiY2Q1Yjg3Mjk5MTY2OWIyNDEyZGE0NDNkOGRlZTMyYTQ0Zjc3YTJhYTBlIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI5N2Q4NjMyZTU0ZTkyOThhYmI5NTg3MjdlMmQ1MTQwOGFiYWYxMzY2MDM1Mzc5MTAxNDBhYmY2NWIzMGFiNjEzIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjM2NjMThlY2ExZjg3Nzk2ZTAzMmUwMmU4MzhiYWU1ZGM4NzJhZDdlZjdmZWQ5N2YwMThmMTY4NGJjNWZlYzBiIn0"
+        },
+        {
+          "resource": "repo://packages/telegram/src/index.ts#L18-L45",
+          "version": "repo-lines-v1:sha256:2db127375ecac617b3d98e95e681a14ae56576321633e3548f025077ecd32b33:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2MjBhMmE4YjllOGQyZjBjZjJlODk2YzA0M2E2ZGYxMGNkMDFmNzAwYmVhODI2ZjRmZmFiYWIwZWYzYTVkZWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE4ODljMGE3YWFkN2IzMzhhMmMxYjljZmQ5Y2QxOWE0YmQxMzc2ZjAzMzZiMTQxZTIyYjRkNmU5MzUwYzFmNWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM3ODM5OWFkZmYwNjU1ZjVkMDFjN2FmM2MyMTczYmQwNzRkOGViYmE0YWM5ODI4ODg2ZWVkNTY0ZjA5YjFkZWUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_82b4ea4c9cd74cd69b3200a260eb1150",
+      "statement": "@djimitflo/dashboard is a React 19 + Vite 8 frontend with no npm `main`, built to static dist/ and served by the server; in development it aliases @djimitflo/shared to ../shared/src and proxies /api and /ws to the server, making it a standalone leaf that no other workspace imports.",
+      "evidence": [
+        {
+          "resource": "repo://Dockerfile#L113-L113",
+          "version": "repo-lines-v1:sha256:3419bfcdb0affd5f154f848cc29e705fdaf59a2507f24cfbb9ac5547e31f7610:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzQxOWJmY2RiMGFmZmQ1ZjE1NGY4NDhjYzI5ZTcwNWZkYWY1OWEyNTA3ZjI0Y2ZiYjlhYzU1NDdlMzFmNzYxMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzQxOWJmY2RiMGFmZmQ1ZjE1NGY4NDhjYzI5ZTcwNWZkYWY1OWEyNTA3ZjI0Y2ZiYjlhYzU1NDdlMzFmNzYxMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzNjZTczYmUwNDk0ZmY3YTY5OThmMDhlZWQ2YWQ4ZWNhYTVkZWZlMzFmZDdhMTE1MmU3OGNiYTZmZDAzZDI2ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjc2ODUyMzM2NTJlOGQ0MWU0M2Y4OTlkOTIyYWY5ZmFhNTFlYzJjYzIyODM0MWZkOTQzMDcwMGY3ZjFkNjU4NSJ9"
+        },
+        {
+          "resource": "repo://packages/dashboard/package.json",
+          "version": "repo-file-v1:sha256:7c0e5ef640179343cf8698195ac6ce30ef543edaaeaf99e9916ce9ab3e1bcb0d"
+        },
+        {
+          "resource": "repo://packages/dashboard/vite.config.ts#L12-L31",
+          "version": "repo-lines-v1:sha256:d05d7228ec693c55efb741494884b6e2cae963ed7c21ab6ba718492f6ef3b4a5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5MjdhMzgxYTkzMzhiNDIwODhkYjViZWEwMDY5N2I1Mzc3NTNhZTJjOWE2MGNkMDU4NDdkZmNjOTUwMzc5NDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkNWNkMmZiNGYzZGY4ODQ1MTUyNTViMzk1MjNmMmY4YjU0NzJiZWVhOWY1NjZmZmNhMjA0ZGI4MDI1NjEwNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRlNDgyZTFjNDc1MzQ5NTJiNTFkMWRjOTE1YzA1YzM1ZTY4YmNiYzU2NGQzN2VjY2ZlMWRkNmIyNWYyM2VjNTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ2MjZhMjhiZmJkYzVhMjdiMmJiYWIyYWFlZjBkOTJmMGI1NjU1OGVhNThkYWNlNTM1N2JjZWU3MGFjNDY1YzAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_24495c75152849d28f1b3bb38cf18beb",
+      "statement": "@djimitflo/agent-catalog is a build-time library consumed only by the server: it imports, parses, normalizes, statically gates, evaluates, compiles, and activates agency-agents catalog profiles into runtime agents, and the production image copies its schema directory into dist/schema alongside the compiled output.",
+      "evidence": [
+        {
+          "resource": "repo://Dockerfile#L116-L116",
+          "version": "repo-lines-v1:sha256:3cbbdb1660488db6af9a3cfbc7a342e53ca06ea78a573a26b974ef0f88a1d85b:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2NiYmRiMTY2MDQ4OGRiNmFmOWEzY2ZiYzdhMzQyZTUzY2EwNmVhNzhhNTczYTI2Yjk3NGVmMGY4OGExZDg1YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2NiYmRiMTY2MDQ4OGRiNmFmOWEzY2ZiYzdhMzQyZTUzY2EwNmVhNzhhNTczYTI2Yjk3NGVmMGY4OGExZDg1YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDlkMTJkODJkODJjNDMxNDNhYzEwYzljMTcwYjRhZGE5NjI0OTQ2ZGY5NzIxNDI3Mjc5OTA1YzViZTI1NTI0ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWIzM2VlMjdjN2U3NTk5YTBjMzNmOTdlNWRlM2NmYTI4NWFlMWQ1Mzc5NzE5M2IyMWI5MWMyNGMxNzcxZGYyZCJ9"
+        },
+        {
+          "resource": "repo://packages/agent-catalog/package.json#L5-L5",
+          "version": "repo-lines-v1:sha256:9c3ef9c20b44d138f14775c26bea5a52180d392844dddf222640111e40c4db89:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWMzZWY5YzIwYjQ0ZDEzOGYxNDc3NWMyNmJlYTVhNTIxODBkMzkyODQ0ZGRkZjIyMjY0MDExMWU0MGM0ZGI4OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWMzZWY5YzIwYjQ0ZDEzOGYxNDc3NWMyNmJlYTVhNTIxODBkMzkyODQ0ZGRkZjIyMjY0MDExMWU0MGM0ZGI4OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTEzODdkZGRiMzE2YmEzNmRhNjlkYWNlYTllNzQ3YTdkNTYxYmQxMWMzYTY5YjA2ZWFiNTNkY2E4OTZhZWU3YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTQ1YThmMTc2NDI5YjlhMWNhOWY0YmE4YjExYzhjZWNmZjBiYTdkN2I4NGFiNGFjNmFhYWJmMTJjNDZmZGNhNSJ9"
+        },
+        {
+          "resource": "repo://packages/agent-catalog/src/index.ts",
+          "version": "repo-file-v1:sha256:7219d77ae205aebc2f30d4fce1eed674619eddfd463d410a26600afae293b108"
+        },
+        {
+          "resource": "repo://packages/server/tsconfig.json#L24-L28",
+          "version": "repo-lines-v1:sha256:6e5b5ee9ebde5d1e8443e15c55deef7a718e8fdd83eda97718a879026c7c7901:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWYwY2RiOTcyYTdiZmI3ZWQyNDZmOWZmNjcyMzg1ZTU1ZjQ5NjhmYzExMDQzZGM1YjY4NGQ1MWRmYTMxZGJjYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzA2NDhmNzdmZDVhOWM2M2IzY2RkMGFmNDlkYWExMjk5MjIwYjc1NDFlODhjYTE3ZWZlMWE2YTExNGI5ZmYyYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTY5ODgyZTllYWI5OGUzYTRkOTliMzU5Mzk0ODI0NWE4YzdmOGRkZjIzYzQ5MjdhNDlkOGE3NGZlMmVkMDllNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDEwYjM2YWE3NGE1OWJjZjRhODgxODU4MzdmNjU4YWZhZjM2NDZlZmYyYmIxNmMzOTI4ZDBlOTMzNWU5NDVkMiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_bc72b6e4f09c484189a3914c07a2dc59",
+      "statement": "@djimitflo/ransomware-module is marked private and loosely coupled: it carries no workspace dependency edge in either direction (server/src never imports @djimitflo/ransomware-module); it integrates at runtime through DjimitfloRansomwareAdapter, which subscribes to a swarm event bus and is gated by RANSOMWARE_MODULE_ENABLED / RANSOMWARE_MODULE_MODE.",
+      "evidence": [
+        {
+          "resource": "repo://packages/ransomware-module/package.json#L4-L4",
+          "version": "repo-lines-v1:sha256:00fa6b7c7adc11ce098a4a9cf752ebd85dd3e58ac0f8e804d9329caf9b4abfe5:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDBmYTZiN2M3YWRjMTFjZTA5OGE0YTljZjc1MmViZDg1ZGQzZTU4YWMwZjhlODA0ZDkzMjljYWY5YjRhYmZlNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDBmYTZiN2M3YWRjMTFjZTA5OGE0YTljZjc1MmViZDg1ZGQzZTU4YWMwZjhlODA0ZDkzMjljYWY5YjRhYmZlNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDljZGU0MzJmZDQ1YjY4MzYwZTE0ZWQ0ZTA1ZGY2OWJkNDg4ZWQzNmEyMzEzZWMzMmYzMmYyNjdkMjUxNTQ5NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMThiNDI4ZDE5ZTA4NDJlMGJjYjA3NDBmMTU2YjQzNWU3MWQ5NGE4NzM0NWI4NWY4ZmUxZGVkYzJkOTMyMDM5NyJ9"
+        },
+        {
+          "resource": "repo://packages/ransomware-module/src/adapters/djimitflo-adapter.ts#L23-L57",
+          "version": "repo-lines-v1:sha256:c9dc128139e8eb91d2f63354bf51906c2698d36c158e1333d3ad083a614c5469:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmYmU2YTFjM2ZmZGFkMWM5NWU2NTcwNmNlNzgxZjFlYjcwZWYxYWIxNmZmNzdhNDkwNjQ2MzcwOGMwMTcyMzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkwNjA4ZGE1M2YwYjk2NWYxMGE3YjhmZjgxYTk0YmM4YWE3ODllZmFkYTRjZWI4MWVkZjg4NzgxZjgwZWJhNWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc2ZmFmZmFhODZmZDA5NWFjNTgyOTg5YThmM2UxMmNiMmY0ZTdjYzdiODJjZmViNjc1OTlmMzY5ODI4MmE2MjkifQ"
+        },
+        {
+          "resource": "repo://packages/ransomware-module/src/index.ts",
+          "version": "repo-file-v1:sha256:866ececbda9c3d51a75528d3c324d12740cf6eea35e91e066726b367cc17800c"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L58-L63",
+          "version": "repo-lines-v1:sha256:352945dd2466eaef542bfe17b9b3c2f0f545a5a98e27ec69fb771663c93d2bbd:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDgwYTkxYzEwNmJjMDg4YzkyOWFjNDk3Njk3Nzk2NjQyMTg4NjYwODMyNmY0ZmZhNDVhOWQ0MDgxODZkMWQyNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2E1YTE2YjAwMmRiOWU3YTc5ZjgyNTcyNmU5MTI5NjAzNjBlNDRlZDljNmIzYmM1YmE3ODU5NzRhZjIxNzAyNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZThkYjQ3NzkyYTQyODhjMTlmN2Y1MDM3NTkxNWFmMjMyYmRjYmJhZWQ4OTdhYWJmNDBjOGFjZGQ1MTNhNmRjMSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_b1f7de4ce20e4aaaa2760d0712a5693a",
+      "statement": "packages/knowledge is runtime-generated data rather than source: it contains only skills/*.md knowledge bundles, is created as writable directories by the Dockerfile, and server code treats it as the legacy OKF location — the canonical runtime base is OKF_BASE, and the knowledge gate rejects packages/knowledge with KNOWLEDGE_RUNTIME_PACKAGES_KNOWLEDGE_NOT_CANONICAL when it is supplied as the canonical base.",
+      "evidence": [
+        {
+          "resource": "repo://Dockerfile#L127-L127",
+          "version": "repo-lines-v1:sha256:8cf0d094c1878cd1b24c8a272e0f5e0f9634a6304599220051af913c4f8c57f1:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGNmMGQwOTRjMTg3OGNkMWIyNGM4YTI3MmUwZjVlMGY5NjM0YTYzMDQ1OTkyMjAwNTFhZjkxM2M0ZjhjNTdmMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGNmMGQwOTRjMTg3OGNkMWIyNGM4YTI3MmUwZjVlMGY5NjM0YTYzMDQ1OTkyMjAwNTFhZjkxM2M0ZjhjNTdmMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZThjODViYjFhNWY2OGU3MGY5MWI0N2FmMTNkYTBjMTk3Y2E3YTc4NTZmYTM3MWRmMzM4OTE3MjdlNDBmODg5NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmJhZDUyZTdmMDFjMTJlN2YxMDZjMTA4ZmFiMjZjN2QxOGE2NWFiOTJmOGM3OGEwYzMwZjYyYjEwOTdhNWU1ZSJ9"
+        },
+        {
+          "resource": "repo://README.md#L124-L124",
+          "version": "repo-lines-v1:sha256:7c461932381afe6b75899d0d6f0f2400d4b4b6684dffd5506f8ba0c3fb4c7b59:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2M0NjE5MzIzODFhZmU2Yjc1ODk5ZDBkNmYwZjI0MDBkNGI0YjY2ODRkZmZkNTUwNmY4YmEwYzNmYjRjN2I1OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2M0NjE5MzIzODFhZmU2Yjc1ODk5ZDBkNmYwZjI0MDBkNGI0YjY2ODRkZmZkNTUwNmY4YmEwYzNmYjRjN2I1OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODc5YWRhNTI0MDRkYWEwZjJkYjAyMTNkNDM3ZGI3MDBjN2Q2N2UxMDM4ODhkYmFkOTg5YjkzNmNiZWI1MTRlMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGEwNGQ1MjU4ZDcwMWJhNTUwNDM4OWQ0ZWUzMjhhM2Y0YjAzZGExZjJmOGFjODI0NDA4ZjFiNTZjMzg3OTA4NiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/swarm-knowledge.ts#L19-L19",
+          "version": "repo-lines-v1:sha256:c77ade31d026272a5bfcb929a77e2949c85577f7523479835b7ccb6eee162b1e:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzc3YWRlMzFkMDI2MjcyYTViZmNiOTI5YTc3ZTI5NDljODU1NzdmNzUyMzQ3OTgzNWI3Y2NiNmVlZTE2MmIxZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzc3YWRlMzFkMDI2MjcyYTViZmNiOTI5YTc3ZTI5NDljODU1NzdmNzUyMzQ3OTgzNWI3Y2NiNmVlZTE2MmIxZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWM0NGM3ODdhMzg4ZTE4Mjk5MTZhOGVlZWVlYTExNmJkZDhjM2Y4Y2M2OTQ2ZmU0Y2UyZWYxZmY0YTg3OWMxMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTBiYmNiMTMyM2ZjNjY3NzgwZTBhNjZjNmQ1NDkwZDUwOWE1NmY1OWI3ZTJhZjQxOWUwZGNlODljNWEwNzA0ZSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-discovery-service.ts#L225-L225",
+          "version": "repo-lines-v1:sha256:e5530751a05a8851cf06a3c8c61fa9f02c6f64cbd043990190f0ce19829f5477:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTU1MzA3NTFhMDVhODg1MWNmMDZhM2M4YzYxZmE5ZjAyYzZmNjRjYmQwNDM5OTAxOTBmMGNlMTk4MjlmNTQ3NyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTU1MzA3NTFhMDVhODg1MWNmMDZhM2M4YzYxZmE5ZjAyYzZmNjRjYmQwNDM5OTAxOTBmMGNlMTk4MjlmNTQ3NyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTQ4Mzg5ODQ1OTdkNGMyMGFkMWYyYzFlNmMxMTZiYWU5N2U1ODliOThhZTJkNjkwODBiNzAwODk1MzZkMTg2MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWU3YmMzMWQ4MzJhY2VlMmFiMWEyYTYzMDI4OTRkNjQ5OGJmMmNkNmJlYWUwZmFhNTRlYmM0Y2M5YzcwNzZiMyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_7a38da8c5bc9470ca3f20a3450e173c3",
+      "statement": "All seven @djimitflo/* packages share version 0.5.8, are private:true (none is published), and are linked to each other via the workspace protocol (\"@djimitflo/shared\": \"*\"); the root requires Node >= 22 < 25 and npm >= 9.",
+      "evidence": [
+        {
+          "resource": "repo://package.json#L55-L58",
+          "version": "repo-lines-v1:sha256:cdb3a415781fc3239d4f935e2840223cd3fa98010704e01ce8d00140f75d1e07:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWY2MDE1NTQxMjJlZmU4NTVkNTZlMTBjYzliYWYyMDMxY2EzZjRhYjExY2RiYTIyZjFlYmM1ZDM5YTc1NTgyNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDhmZWYzNDM2YzVmYjZjODkxYzc0MTU4Y2Y4M2JlOTY5OGU0MGRjODZmMTk1MzdmZTFhZTc5MmQ2NDZhMzUwMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDk1MzhkNWFlOTIwM2ExZmI5Y2Y3MjYxODc4MDczMzE4MzY2NDQwODcwYWM2YTU5ZTE2ZTE0ZTkxNjQxM2I2NCJ9"
+        },
+        {
+          "resource": "repo://packages/mcp-server/package.json#L3-L4",
+          "version": "repo-lines-v1:sha256:6f8859c579ac5eab9e1c778a18219d43da81b5d879b477fe99dcbb7d04c2f32a:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmUzNWQzMjY1NTVmMDg0NjI3YTBlMTgyN2MzNmRmZDhhNjU0YzI2MDE2M2Y5MGMxMTJmYjA0YThlZDMxYjNkYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDBmYTZiN2M3YWRjMTFjZTA5OGE0YTljZjc1MmViZDg1ZGQzZTU4YWMwZjhlODA0ZDkzMjljYWY5YjRhYmZlNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjIsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjkzYzVhMzhkODU4YjI4Njk1ZTFjZWRiNGFhZGYxMzJkOGUzNTAyZjgyNDE1ZDYwYmViMmI2ODNhODk5NTk1YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2Y3ODQyMjgzODE5NTRmZTBmZGMwZDY4Mjg3NmZhMTQxYTA5OWE3OTdhODI0NTE3ZjAzNzliMzVkMTE3YzE3MyJ9"
+        },
+        {
+          "resource": "repo://packages/server/package.json#L25-L25",
+          "version": "repo-lines-v1:sha256:e5429555c4a3bdbfc80bf1cc9aa2c9bc30aba2037ec459d72e3e441b0227ba22:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTU0Mjk1NTVjNGEzYmRiZmM4MGJmMWNjOWFhMmM5YmMzMGFiYTIwMzdlYzQ1OWQ3MmUzZTQ0MWIwMjI3YmEyMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTU0Mjk1NTVjNGEzYmRiZmM4MGJmMWNjOWFhMmM5YmMzMGFiYTIwMzdlYzQ1OWQ3MmUzZTQ0MWIwMjI3YmEyMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzQzZTc3NWFmNWIzMDkxZjA4N2Y0ZDQ4Mzc0NDQ4YmVkOWJiMDNhZWFhMjk3ODMwMDgwYjU1ODcwMmI1NWJhMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjlmOTgzMTIxMDUwYzhiODFlOGQwOGJjZDQ5YmJkMTVhNDFmODY1NDlhMGMwZTM5MDc2ZDg2MjI0MGZjZTJiNSJ9"
+        },
+        {
+          "resource": "repo://packages/server/package.json#L3-L4",
+          "version": "repo-lines-v1:sha256:6f8859c579ac5eab9e1c778a18219d43da81b5d879b477fe99dcbb7d04c2f32a:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmUzNWQzMjY1NTVmMDg0NjI3YTBlMTgyN2MzNmRmZDhhNjU0YzI2MDE2M2Y5MGMxMTJmYjA0YThlZDMxYjNkYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDBmYTZiN2M3YWRjMTFjZTA5OGE0YTljZjc1MmViZDg1ZGQzZTU4YWMwZjhlODA0ZDkzMjljYWY5YjRhYmZlNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjIsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjI3MzU1MzhmMTRjOWEyNzllM2M3NDc1ZWQ4NTAzN2YyNTUwZDc0NjhkZWIzN2IzZDljZTRjNjM5MzQ5MmRiMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYmNhNzNlMmM4M2Q5NTBiNTg0OTdkMTJiNjUyYmNiZThiMDk4MDFhYjU5ZDYwNmVmYTVmN2MwZjkwMGRjMmMxZiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_78cb26d4c9b54d1faea628bb4354dc82",
+      "statement": "The single root package-lock.json plus the root `overrides` block (esbuild, postcss, fast-uri, ip-address, nanoid, brace-expansion@1, qs) is the only place dependency resolution is controlled across all workspaces — per-package lockfiles are git-ignored — so these pins shape every workspace's resolved tree (not the build order) before the chained builds run.",
+      "evidence": [
+        {
+          "resource": "repo://.gitignore#L5-L6",
+          "version": "repo-lines-v1:sha256:80afa72656840109ed79c8990a59b228a0554de8a951f35a65de89eeb484e34f:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDAyNTFmMTEwOWE2MzAwYmZlYmJlZGE5MjM4YjYwNGZmNzkyZTdjZGExZDdmNjhhNzNlNGQ4YWRhZTdmYmJmNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmEwMzg5ZTNjNDdkNjIzYzMwNzE5ZTY4N2VjNDU0OGEyYTg0ODZmMDJhODJmY2Q2M2JhZjUwYmI1NWZjYjJjNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTYyNTNmZTZhOTI3MDJiMWY2NTczZDgzOGZmNDA5YmJmMmQwZDM1MjBmZDMxYzAxNDFhMTJhMWVhZjc5Y2M3NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDFlNmJlOTYyYjM0Y2E3MzFlYzBmZWMyZTA1N2U4ZmY0MTBiYTM4NzAxYjcyMjMzODMzZTk3NGY0ZTE1NjJiOSJ9"
+        },
+        {
+          "resource": "repo://package.json#L64-L72",
+          "version": "repo-lines-v1:sha256:8bb7922dae7abb0fde37a54aaa0a4acf50560ba96582ab7e76433eedaff54b56:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTY4MzJiMjFmNjFiYzNjYTBiZTQxNTE2OTgzZjI4ZTJlMWIwNGNiOWE3NTEyNjk4MGIyZGJlNTA3YzA5NzY4OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjA2ZmU2NDUwMDdlNTk2ZDE5ZGVmZDM4YjljZDNhZjhhZDZmNDdkNDgyMWI0YzMxYTA3ZWIxZTgxZWJiYTZlZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_182ce2f426354b3ea9760a69cb342885",
+      "statement": "The root test script pre-builds only shared and agent-catalog before running the workspace test suites, because those are the two packages whose dist artifacts other packages' tests import; test:changed delegates to the server's vitest with --changed.",
+      "evidence": [
+        {
+          "resource": "repo://package.json#L18-L19",
+          "version": "repo-lines-v1:sha256:4b88f09ea5948c8c7d7fd9eda0ca9b7bb7687e4d8136f871c8d02080de4dd31c:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTdjYjIzNzNhNjBiZWE5NzczMzdhZDc1YWU3NzZhYmE1MjY4YjQyZjRhNWFkMDNiNGU2NWQ1NGQ4YzhmNTJlNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGM4YzllYWQzN2Y1ZjUxY2YxOTVjOTFhMzg1OGQwNTNmMzVmNWFiMjVhNjEzMzg3OThlMjNhMjQ3MjA4ZDQxYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDQ4MmQyOGE3ZTNlMmZjNjgxZmZlM2NlNTJmZTcwODg1YjI1MTUwYzQ1Y2VmMmMyMjc4OTg4ZmMwNzU4YTQ4NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzU1M2NjMjVkNTMxODE3ZjYzMTA3ODNjNjk1YzFlZGMwYjc1MDEyZWFmZjBhZWRkZjNjZDJmYzZjNzNlYjg4NiJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.2",
+    "at": "2026-09-26T12:51:29.895Z"
+  }
+}

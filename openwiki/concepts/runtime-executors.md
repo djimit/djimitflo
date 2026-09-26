@@ -10,6 +10,10 @@ sources:
     resource: repo://packages/server/src/__tests__/docker-sandbox-executor.test.ts
   - id: openwiki-source-d62b61b355627cf10af6de72
     resource: repo://packages/server/src/__tests__/execution-engine.test.ts
+  - id: openwiki-source-a4696b41bfb641c655d4b023
+    resource: repo://packages/server/src/__tests__/opencode-token-brake.test.ts
+  - id: openwiki-source-33bba052bf03cfdb77903e6a
+    resource: repo://packages/server/src/__tests__/opencode-token-usage.test.ts
   - id: openwiki-source-d77928939568025601f76bb2
     resource: repo://packages/server/src/execution/execution-engine.ts
   - id: openwiki-source-99861e0d575ab3b523c675ce
@@ -48,10 +52,12 @@ sources:
     resource: repo://packages/server/src/services/loop-worker-executor-service.ts
   - id: openwiki-source-4420159e8c2bcabac04f85cb
     resource: repo://packages/server/src/services/runtime-command-service.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+  - id: openwiki-source-23775c3de52f3ab95a13cb8b
+    resource: repo://README.md
+generated: { by: "openwiki/0.5.2", at: "2026-09-26T12:51:29.895Z" }
 verified:
   - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
+    at: 2026-09-26T12:51:29.895Z
 ---
 
 # Agent Runtimes & Executor Adapters
@@ -78,6 +84,10 @@ The `ExecutionEngine` constructor always registers eight default executors — `
 `opencode`, `codex`, `claude`, `hermes`, `gemini`, `editor`, `pi` — and registers
 `deep-agent` only when the operator sets `DJIMIT_DEEP_ENABLED=true`, also creating the
 `DeepAgentContractIssuer` at that point (execution-engine.ts, constructor).
+Registration is an adapter-surface statement, not a production-readiness
+certification: as covered under "Production worker surface and readiness", only
+`codex` and `opencode` pass the readiness gate, so "default adapter" means "registered
+and dispatchable", not "certified for production loops".
 `docker` is never registered standalone: it appears only as the `kind` reported by a
 `DockerSandboxExecutor` that wraps another executor at dispatch time. `custom` is the
 extension slot for out-of-tree implementations registered via
@@ -141,7 +151,7 @@ provides it). They differ in binary, argument surface, and parsing strategy:
 | Kind | Binary (env override) | Skip-permissions flag | Notes on CLI contract |
 |---|---|---|---|
 | `mock` | — (in-process) | — | Deterministic fake event stream for tests and `docker`-free development. |
-| `opencode` | `opencode` (`OPENCODE_BIN_PATH`) | `--auto` | `run [--format json] [--dir] [--model] [--agent]`; NDJSON `step_start`/`tool_use`/`text`/`step_finish` with nested `part`; collects tokens/cost per `step_finish` and reports them as `tokenUsage`/`costDollars` metrics on the `ExecutionResult`. A run that exits 0 but contains a failed verification tool step resolves `failed` with code `VERIFICATION_FAILED` (`retryable: false`, `sideEffectsPossible: true`). |
+| `opencode` | `opencode` (`OPENCODE_BIN_PATH`) | `--auto` | `run [--format json] [--dir] [--model] [--agent]`; NDJSON `step_start`/`tool_use`/`text`/`step_finish` with nested `part`; collects tokens/cost per `step_finish` and reports them as `tokenUsage`/`costDollars` metrics on the `ExecutionResult`. A run that exits 0 but contains a failed verification tool step resolves `failed` with code `VERIFICATION_FAILED` (`retryable: false`, `sideEffectsPossible: true`). See "OpenCode structured-event parsing and metrics" below. |
 | `codex` | `codex` (`CODEX_BIN_PATH`) | `--dangerously-bypass-approvals-and-sandbox` | `exec [--json] [--cd] [--model] [-c model_reasoning_effort=…] [--sandbox]`; accepts `thread/turn/item.*` NDJSON plus legacy `step-*`/`tool`/`text`; sums `turn.completed` `usage.input_tokens + output_tokens` into the result `tokenUsage` metric. |
 | `claude` | `claude` (`CLAUDE_BIN_PATH`) | `--dangerously-skip-permissions` | `-p <prompt> --output-format json`; line-JSON then heuristic fallback. Worktree comes from spawn `cwd` (no `--cd`). |
 | `hermes` | `hermes` (`HERMES_BIN_PATH`) | `--yolo` | Uses the programmatic `chat -q <prompt> --oneshot --quiet` surface instead of `hermes -z`, because `-z` bypasses approvals entirely — Djimitflo stays the approval boundary. |
@@ -170,6 +180,58 @@ Per-executor env vars (`<RUNTIME>_EXECUTION_TIMEOUT_MS`, `<RUNTIME>_SKIP_PERMISS
 `<RUNTIME>_OUTPUT_FORMAT`, model vars such as `DJIMITFLO_CODEX_MODEL` /
 `DJIMITFLO_CLAUDE_MODEL`) configure the adapter at construction; per-call
 `ExecutorOptions` override them.
+
+## OpenCode structured-event parsing and metrics
+
+The `opencode` adapter is the reference implementation for structured-JSON ingestion,
+so its parsing and accounting rules are worth stating precisely
+(`opencode-executor.ts`):
+
+- `parseJsonEvent(line)` accepts any line that parses to a JSON object with a string
+  `type`; malformed lines, or objects without a string `type`, return `null`.
+  `collectMetricsFromText` buffers partial lines across chunks and only evaluates
+  newline-terminated input, so `collectMetricsFromLine` never sees a truncated JSON
+  fragment; any remainder is flushed on `close`. Metrics are fed from **both** stdout
+  and stderr, so a CLI build that interleaves NDJSON on stderr still contributes
+  tokens/cost.
+- Metrics are taken from `step_finish` parts (payloads are nested under `part`, with a
+  fallback to the flattened envelope for version-drifted events). Per step finish,
+  `metrics.tokenUsage` takes the **running max** of `part.tokens.total`, while
+  `metrics.tokenSum` **accumulates** the totals — each OpenCode step re-sends its
+  context, so the max approximates the live context size and the sum captures what the
+  run actually consumed. `metrics.costDollars` tracks the running max of `part.cost`.
+  The final `ExecutionResult` reports `tokenUsage` (the max) and `costDollars` in its
+  `metrics`; the accumulated `tokenSum` exists to power the runaway brake:
+  `OPENCODE_MAX_RUN_TOKENS` (default off) stops the process as soon as `tokenSum`
+  passes the cap, resolving the run as `failed` with a "token budget exceeded"
+  message — `opencode-token-brake.test.ts` proves the stop fires well before the
+  wall-clock timeout.
+- `getVerificationFailure(event)` inspects `tool_use` events: a tool named
+  `build_check`/`lint`/`test`/`typecheck`/`type-check`, or a `bash` tool whose
+  `state.input.command` matches `type-?check|tsc|eslint|vitest|jest|pytest|cargo
+  test|go test|npm (run )?test`, qualifies as a verification step. It reports failure
+  when `state.status` is `error`/`failed`/`rejected`/`cancelled`, or when
+  `state.output` parses as JSON with `success === false`, a non-zero numeric
+  `exitCode`, `verdict === 'fail'`, or `summary.failed_count > 0` (non-JSON tool
+  output has no reliable machine-readable failure contract and is ignored). Detected
+  failures are deduplicated by `(tool, reason)` into `outcome.verificationFailures`.
+- If a run exits `0` while `verificationFailures` is non-empty, the result resolves
+  `status: 'failed'` with code `VERIFICATION_FAILED`, `retryable: false`,
+  `sideEffectsPossible: true`, `failureDomain: 'opencode'` — a green exit code cannot
+  launder a red verification step, and the failure is intentionally non-retryable.
+  Independently, any failed verification `tool_use` is surfaced inline as an `ERROR`
+  event carrying `tool_error` and `metadata.verification_failed: true`.
+- When the stream yields a non-JSON line, the event mapper degrades permanently for
+  that run into heuristic parsing, emitting one `EVIDENCE WARNING` event and tagging
+  subsequent events with `parsing_mode: 'heuristic'` metadata; metrics collection in
+  the spawn loop is unaffected and keeps feeding `tokenUsage` / `costDollars` from any
+  NDJSON lines, since `collectMetricsFromText` never switches modes.
+
+Loop-level token accounting for opencode runs is covered separately by
+`opencode-token-usage.test.ts`, which pins `LoopService.extractRuntimeUsage` summing
+opencode `step_finish` token fields into `prompt_tokens` / `completion_tokens` /
+`total_tokens` (usage_source `runtime_stdout`) — the production regression where
+loop-reported `tokens_used` was always 0.
 
 ## DockerSandboxExecutor: a wrapping isolation layer
 
@@ -350,9 +412,15 @@ on `PATH`.
 
 - [Governance Pipeline](./governance-pipeline.md) — the policy/approval spine every
   executor start passes through.
+- [Loop Lifecycle](./loop-lifecycle.md) — where runtime-contract probes and maker/checker
+  dispatch sit in the run state machine.
 - Security model — operator-armed skip-permissions, env allowlists, and runtime
   container isolation (see `/openwiki/concepts/security-model.md`).
 - Configuration reference — the `*_BIN_PATH`, `*_EXECUTION_TIMEOUT_MS`, `DOCKER_*`,
   and `RUNTIME_*` env vars enumerated here.
-- Test strategy — the executor contract tests under `packages/server/src/__tests__/`.
-- Task execution lifecycle — how `executeTask()` reaches `startExecutionAttempt()`.
+- Test strategy — the executor contract tests under `packages/server/src/__tests__/`
+  (per-executor `*-executor.test.ts` suites, plus `opencode-token-brake.test.ts` and
+  `opencode-token-usage.test.ts` for token brake and usage extraction).
+<!-- openwiki: broken internal link [../workflows/task-execution-lifecycle.md] file "../workflows/task-execution-lifecycle.md" does not exist. Fix the href or restore the target, then delete this comment. -->
+- [Task Execution Lifecycle](../workflows/task-execution-lifecycle.md) — how
+  `executeTask()` reaches `startExecutionAttempt()`.

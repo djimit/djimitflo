@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d9ee83f2ba7bb607b5236b62b1bb784545e0bfe06943a98bd93f648796c41eb8",
+  "pageVersion": "sha256:4b7abb0f57f8f394aa7cfd8eda7e4066bc4f5e6c7f37e3d95d92c13ae799cbe5",
   "claims": [
     {
       "id": "claim_77d3e5f4da4a41efa85bb0b3740b7126",
@@ -22,33 +22,45 @@
     },
     {
       "id": "claim_386c65b1a77d468fad62f737daa4542e",
-      "statement": "createApproval() inserts the approval row and its canonical APPROVAL_REQUESTED audit record in a single db.transaction().immediate(); a failing audit insert rolls the approval insert back, and only after the commit does it broadcast APPROVAL_REQUESTED over the WebSocket and record a HOLD decision to the authority ledger and event outbox.",
+      "statement": "createApproval() inserts the approval row and its canonical APPROVAL_REQUESTED audit record in a single db.transaction().immediate(); a failing audit insert rolls the approval insert back, and only after the commit does it broadcast approval.requested over the WebSocket and record a HOLD authority-ledger decision plus a djimitflo.approval.requested outbox event via recordDecision().",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/__tests__/approval-atomicity.test.ts#L38-L44",
-          "version": "repo-lines-v1:sha256:827f1b7ed85e0ed4427221aed6031ffc693147a04757443e08848020679e8a46:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNThiZmU0MmUxM2E3MjQyMmQ1NzdiOWEyNTgwNjQxZGE3NTI4ODQyY2FmYWNmMDJmMjIxZDNlYmJhZmY1ZTAwOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzNiZGZjZmNmYWFmMGYxNzcyYjdmNDFlOTU1YjY5MzZhYWViZjgwMjAzYzYxYThkZTI0ZTI3MjMzNjY3NjNhOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDQ5YTI3MjAwMTE2NmFlODEyMTE5ZTA5YmU3MGM2YzQyNTNmM2MxNjZlZWI1ZDIxOTIxYzJmZDIwMWQ4NDY3YSJ9"
+          "resource": "repo://packages/server/src/__tests__/approval-atomicity.test.ts#L33-L54",
+          "version": "repo-lines-v1:sha256:c284e8c6b4251b135e08d6f7291568edd14238ad6ae1841d148cfbabb043f587:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzYzljNGFlMWZjMjI4M2M0NWIwYjA4MjQ5NTEyYzJlN2JkOTJkZTlmNWQ0Y2FmYzcyNjQ3ZWE2MDNiZWU5ZjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2NDc5YjdjZDNmNGE1N2YyMzdjOWVlODFlMjIxM2E0MDVlOTE3OTAxM2Q4N2UwNDc0NGY2N2NiMjNmMjViZjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxOTllMzg5M2NiMjE2ZWI5ZjdiNmIyZmMxYjNjZGM2MGEzODY3NzAwYTdlMDEyMzA1ZGY1NTMzYzJlMjUxOWQifQ"
         },
         {
-          "resource": "repo://packages/server/src/services/approval-service.ts#L61-L122",
-          "version": "repo-lines-v1:sha256:8c5f8c2e2f4b8840d0d5f1309402417124e157e0a22fa5bf537f4a31eb8fb282:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4ODIxZTI3ZTM5NWJlZjdmMmI5OTBiMGJlOTUxN2Q4NjExMjZjNTNkODVhOTZjODE1ODE5ZTE1NWNlNDY0ODIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhkNDZjODRkOTBjNzI4MzMzODMyMGY2YTNmYTY5ZGNlNmI5MWJhNzE5NzE1YTBlM2FiMDdlYjAxMGQzNTNhZjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdmMDI1NTkxZjIxMzJmMDYwNzFiZTE1MWU2NWUxOTIxNTE2YjNhZDcyN2I3Y2ZmNmI2ZmI3NDg3M2Y4ZmM3OTQifQ"
+          "resource": "repo://packages/server/src/__tests__/approval-atomicity.test.ts#L98-L110",
+          "version": "repo-lines-v1:sha256:72957786a90fdb71512ae5a2d7b76ec755c775a69f44ac1658467751046ad3ca:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzMjZmYTBiOTA2YjJkZGU4MzgzZmQyYTdkYzVkOWY2ZTY1YTE4NzFkYjIyMTRmOTVhZThkNjk0NDhhZDllNzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMxOGY3YjhiZThlYzBlMzBiOGExZTRiOTIzNjE1ZGE2MzRkMTI5YTQzNTRjZDlmMzg5NGJmYTAyNjI1OGJiZDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBhNDMxNWFlYTJiNTQ1ZjRiMTQ5NTliYWY5NzU2ZjU1YjdlYjMzOTFiY2EyNTI3ZGEwNjg3ZDcyNGU0NjcxZGEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L71-L142",
+          "version": "repo-lines-v1:sha256:7bfa08889d8ea21059de1ff97dfe51c623e6bfdf9fa0bc03155b9887cc4cb486:eyJzZWxlY3RlZExpbmVDb3VudCI6NzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4ODIxZTI3ZTM5NWJlZjdmMmI5OTBiMGJlOTUxN2Q4NjExMjZjNTNkODVhOTZjODE1ODE5ZTE1NWNlNDY0ODIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhkNDZjODRkOTBjNzI4MzMzODMyMGY2YTNmYTY5ZGNlNmI5MWJhNzE5NzE1YTBlM2FiMDdlYjAxMGQzNTNhZjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhlNWMyOGJhZmY4OTUyYTE4YWIzMjgzMWVlMmE5NTQwYzc2ZmFhZDMyMmRjMjcwNjU3NWZhMmZmNjg3OTc5YzIifQ"
         }
       ]
     },
     {
       "id": "claim_c8d0baaf2de844d1b9103aa122117dc5",
-      "statement": "Approval requests are created with a hard-coded 1-hour expires_at (now + 60 minutes, no configuration knob) and a requested_by maker taken from the dispatcher id or, for manual reviews, the JWT subject.",
+      "statement": "Approval requests are created with expires_at = now + approvalTtlMs(): the TTL is read from the APPROVAL_TTL_MS environment variable, defaults to 1 hour when unset or invalid, and is clamped to 5 minutes..7 days; requested_by (the maker) comes from the dispatcher id for execution gates or, for manual reviews, the JWT subject.",
       "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/approval-ttl.test.ts#L4-L9",
+          "version": "repo-lines-v1:sha256:fd68b0584b17995596fc63facbfc2e5e0a582e1931795bc71742c0d7dad78d6e:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjc1YjEwOTZmZmIwMjhkN2MyZTQ3NDk5MDc2YjUyMDhkM2E1MjYyOTBlZmU2MjQ5NDI1M2ZkOGZmMDRlOGJiZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWE5MTRlODBlMTkwODRhZmJjOWYwNjgwY2U3OWNiYzA0Zjk1MmFkMDliOWIwYjk1OGUzY2JkNmFmYTk0YWNjNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjQzYjYzZWU5OTY3ZGQwNzg1YTQ1YjYzMGYzMWNhOTA0OTkxZDMxYTFhYzkwMWUzNjY5NjA0MmFkZjM0MDk0MiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiJ9"
+        },
         {
           "resource": "repo://packages/server/src/routes/approvals.ts#L47-L56",
           "version": "repo-lines-v1:sha256:85833976f08657385d6ec74401f823052eca94532f8b5270f90b97bff753d4fa:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4NzI4ZjgzNDQ3MjEzZDQ2ODIxZWQ0NTIxMDYyNGVjOThkODE3NjM5NTNjYTZiNjI2OGNjY2M3NjVmMWVmZTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxN2FmMTEwMWM5N2I3YzJmNTI1NDA3ODJlNjM0Y2M0NDQwZjBlOTcwMzQxZTUyZjk3NTIzMTFkNzhiN2Q3ZDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzMjBmZTdkMGYzZTM3MTE3MDBiMGFlNTlkZjkxODFiNDAxNTg1NGFlMmQ2NTA5Mjc5YWJhMjUwYzg4MTc4ZDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBlN2RiYTM4NDVjN2U5YzQ2ZjQ0MTc1NjgyN2FjNmU5YTEzMDUwMGFhYzc5NTI0YWYxZGZkNDQwMGUxNzJiNmUifQ"
         },
         {
-          "resource": "repo://packages/server/src/services/approval-service.ts#L61-L64",
-          "version": "repo-lines-v1:sha256:8d3adc7c826484622aeb3133a7ad393613d783a4061513f84863277b76525c0c:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzg4MjFlMjdlMzk1YmVmN2YyYjk5MGIwYmU5NTE3ZDg2MTEyNmM1M2Q4NWE5NmM4MTU4MTllMTU1Y2U0NjQ4MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2Y4NGNhZWM0ZjY4NTY2NTk1Mzg1Y2MyM2Y0NjJjNGMxZDYzMzQxOWYzZWI4MzYxMmYyYWZkMTEwYjg3MjAyNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGQ0NmM4NGQ5MGM3MjgzMzM4MzIwZjZhM2ZhNjlkY2U2YjkxYmE3MTk3MTVhMGUzYWIwN2ViMDEwZDM1M2FmMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDkzMWY5ODE3ZGI4ODVhY2U2NjI5OTU0YzAzZGQxZTUxZTg3ZDhjZDk4ZmVkOTVjNGNjYmJiOTMzYjYxNjhkZiJ9"
+          "resource": "repo://packages/server/src/services/approval-service.ts#L104-L104",
+          "version": "repo-lines-v1:sha256:cb4ddd2e07526e320019227d1201f34bbf1892909bb35c3e3b4236b8fe5eb9d4:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2I0ZGRkMmUwNzUyNmUzMjAwMTkyMjdkMTIwMWYzNGJiZjE4OTI5MDliYjM1YzNlM2I0MjM2YjhmZTVlYjlkNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiY2I0ZGRkMmUwNzUyNmUzMjAwMTkyMjdkMTIwMWYzNGJiZjE4OTI5MDliYjM1YzNlM2I0MjM2YjhmZTVlYjlkNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGIwY2IxZWIyNzRjNjlhN2ZjYzJiNWQzMmUzYjcwZDMzNTY3M2Q1NDU2MDYwYWNjYjg1MTM4MWE3OGZkYTcxZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2ZhODVhZWY2MDhhZjU4YjVjZDFlOTllODZjNDM2OTBjNDRmNzQ0NjMyMGJkMTlhODFmOWI0OWY3NDljY2E1ZiJ9"
         },
         {
-          "resource": "repo://packages/server/src/services/approval-service.ts#L94-L94",
-          "version": "repo-lines-v1:sha256:cb4ddd2e07526e320019227d1201f34bbf1892909bb35c3e3b4236b8fe5eb9d4:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2I0ZGRkMmUwNzUyNmUzMjAwMTkyMjdkMTIwMWYzNGJiZjE4OTI5MDliYjM1YzNlM2I0MjM2YjhmZTVlYjlkNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiY2I0ZGRkMmUwNzUyNmUzMjAwMTkyMjdkMTIwMWYzNGJiZjE4OTI5MDliYjM1YzNlM2I0MjM2YjhmZTVlYjlkNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGIwY2IxZWIyNzRjNjlhN2ZjYzJiNWQzMmUzYjcwZDMzNTY3M2Q1NDU2MDYwYWNjYjg1MTM4MWE3OGZkYTcxZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2ZhODVhZWY2MDhhZjU4YjVjZDFlOTllODZjNDM2OTBjNDRmNzQ0NjMyMGJkMTlhODFmOWI0OWY3NDljY2E1ZiJ9"
+          "resource": "repo://packages/server/src/services/approval-service.ts#L23-L31",
+          "version": "repo-lines-v1:sha256:02f5d967751004ddb5189d6e7541938085a690e1116504f49474d86c431165db:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWFmMjJjZjA3MzI1OTJjMjQ3MTQxY2JlNjFlZmExMTAxMjYxMmY1YTMxMjJiOWFmOWJiYWY1MmY1NzI0ZDE5NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2U4NWQ1NTExNGQ5OWNkMWZhOThjOTgwODg1MWE3MjMwYWNkMmEwMjIxNWE5ODg1Mzc3NDc3OTVhYzA0MGQ5ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjA1OTY3MDYyZDNmM2IzZDViNzAzZjFmODlhYzEzMGRmZjA1OTNmNzc0N2IxMTBhYjZlMDg1ZGJhMDQ5MmY1ZiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L71-L74",
+          "version": "repo-lines-v1:sha256:dea9576d1b9f777795e6c7127582478cdb13afd4ec513441c6beddb13d820e56:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzg4MjFlMjdlMzk1YmVmN2YyYjk5MGIwYmU5NTE3ZDg2MTEyNmM1M2Q4NWE5NmM4MTU4MTllMTU1Y2U0NjQ4MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTk5MjU3YWFiYjgwMDZhNmQzOWNhNjdmMWQ2NzQ1Y2RiNmExM2YzMTM0ZGUyMzk3NTcwNmIxMzdiZmRlMTUwMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGQ0NmM4NGQ5MGM3MjgzMzM4MzIwZjZhM2ZhNjlkY2U2YjkxYmE3MTk3MTVhMGUzYWIwN2ViMDEwZDM1M2FmMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDkzMWY5ODE3ZGI4ODVhY2U2NjI5OTU0YzAzZGQxZTUxZTg3ZDhjZDk4ZmVkOTVjNGNjYmJiOTMzYjYxNjhkZiJ9"
         }
       ]
     },
@@ -293,10 +305,38 @@
           "version": "repo-lines-v1:sha256:b1c63a099dd5c94a0f5155b14d284c249e5a9ecdf6a8d703488f7ff698631a29:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4ZTYxZmRmMjAyOGEzOTQxMGYwNTFmOTdiZTBkYjU4MGMzZWZiYWJmNWE3ZjI3Yjc2ZDQ4N2U1ZDA5OWZiMzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkNWNkMmZiNGYzZGY4ODQ1MTUyNTViMzk1MjNmMmY4YjU0NzJiZWVhOWY1NjZmZmNhMjA0ZGI4MDI1NjEwNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhYzIxZmY0MmZjZTdhYjI3NjUzMzg3ZDRiYTBjNTAzYzc2OTczYzJiMTg2NjQ0ZWRjNjJiNWVlYjAwYjBlY2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE4MTAzMjA1YzlhYTM2MmI4MTliZWI3MmI3YzExYWNhMzVmOTE3NjcxYjgxNzM2MTk4MzgyYTdmYzI1OTdiOTcifQ"
         }
       ]
+    },
+    {
+      "id": "claim_b4b561a633904fa9b266c862dc116eeb",
+      "statement": "getLatestPendingForTask() realizes expiry lazily: it first selects all stale pending rows for the task SQL-side (julianday(expires_at) IS NULL OR <= julianday(now), so unparseable expires_at counts as expired) and expires each via expireApproval() before answering, and with executionOnly: true it filters out manual_action reviews using a json_type(metadata, '$.manual_action') predicate before LIMIT 1 so a newer manual review cannot hide an older execution gate; the execution engine passes executionOnly: true when resuming a task.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L278-L278",
+          "version": "repo-lines-v1:sha256:5a09c8d054384ccf7fbb0630bcede925431694cacc3976f8607b532cd8f59504:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWEwOWM4ZDA1NDM4NGNjZjdmYmIwNjMwYmNlZGU5MjU0MzE2OTRjYWNjMzk3NmY4NjA3YjUzMmNkOGY1OTUwNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNWEwOWM4ZDA1NDM4NGNjZjdmYmIwNjMwYmNlZGU5MjU0MzE2OTRjYWNjMzk3NmY4NjA3YjUzMmNkOGY1OTUwNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjA1ZDQwMDYxN2IzNmFjOTc3MTYyNzIxMDcxMmVkM2JhM2JiMWJmYzgxMjdiZTliMDBmMzI2Y2Q5MWFkMmNlMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTcwNDIwNzdlZjFlY2NhNzdhMzVjYzRlM2NjYzZmMjliMDk0YmE0MzYwMTY1MmMxMDllZDYxNzI4NDY5Y2YzZiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L52-L69",
+          "version": "repo-lines-v1:sha256:7cc47e5a0d62d63821dc4d01038481d6bc4099d7e5072b09878ba6258371c288:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwNWY1OWI1ZmFiZjUwMDBiYmU2NzJmNTFmMDQ2OTYyOGY4NzBjOTdkZGQzYjg1NjlmM2NmZDdlOTNlYzE1M2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhkNDZjODRkOTBjNzI4MzMzODMyMGY2YTNmYTY5ZGNlNmI5MWJhNzE5NzE1YTBlM2FiMDdlYjAxMGQzNTNhZjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkNDUxOThiMjBjYmI1ZGYwYWFkNDlmODEzNGIxNjk3MGEzNTlkMjczNDBmN2YwMjkwZmE1MmY5YzViOWQxZjIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e6dfacd26a704f15ad132dd466a93014",
+      "statement": "Approval expiry is realized with no sweeper cron: expireApprovalRecord() atomically marks the row expired, writes the APPROVAL_EXPIRED audit, and in the same transaction moves a task still in awaiting_approval to cancelled with a task_cancelled_after_approval_expiry audit row, guarded so a task that moved on is untouched; only after commit does expireApproval() broadcast approval.expired and record a DENY/EXECUTION_APPROVAL_EXPIRED ledger entry.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/approval-atomicity.test.ts#L56-L96",
+          "version": "repo-lines-v1:sha256:197ef2aafc11b10cf79ecb912f8123dcb3b25f76a9207753868ef627f90c4d38:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmYzc5NWRlMDBkYmJhMjkyMjQ4ZGZlNzNiMzY3Nzg1Nzg0NDhkYzEyYThiOGI3OTFjYmY2OWUxMzIzMmFjM2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJkOTRiNDBjMGRiYzQzZDJjNDhmN2VmZmY2NGUzYTE3ZTYzZGU3MDFkZjhhMmIzNmQ2YWQwMjc4OTRmMDJjNzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlM2I1ZDBlZGNiNDc1N2NlYWJlYjU4OGI2NmY0MjVhYjZjODQ1ZWIyOTE1Y2IzOTE2YjNjNjRlYzVlYWRmMzUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L224-L273",
+          "version": "repo-lines-v1:sha256:3b26638133a6b3833d10c64cb662b205df351b402d8d1c4f9bf03f62f4a3ca15:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlOTBiMTVjNWFmMThiNjQ0OTBkZjVjMWVhZDcwOWM3OTJmNmE4MTQzZThjMTRlNThmMzdiYWJmOTBjYTRjZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlODczNDZhZjVjYWRiN2VmNjQyNjY3MjE0OTA5M2NhN2EwZjdjZmE2MGJlYzBkMDM3MDRmNzVkMDJhZDMwZjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJkMjAxNjIyNjVmYWYzMmRiMGJjOGY4Yzg1M2M2NTEwNDYxMzk3ZGM3MWY2MWRiYmE4NmE5MGViZDczYzIyMWQifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-24T19:59:50.419Z"
+    "at": "2026-09-26T12:51:29.895Z"
   }
 }

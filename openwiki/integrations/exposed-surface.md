@@ -41,6 +41,9 @@ sources:
   - id: openwiki-source-1d9734c69d8b750a412da9f0
     resource: repo://scripts/route-source-inventory.mjs
 generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-09-24T19:59:50.419Z
 ---
 
 # HTTP/WebSocket API Surface & Route Inventory

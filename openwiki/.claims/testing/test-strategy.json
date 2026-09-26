@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7d0f0cb3610078ab228af4426b85dfcbb155f963b1a2aa67e9f29a36bc1dc097",
+  "pageVersion": "sha256:e05006c1481dfb2288b072268ca6c535f139fe9a18ed7aafbe11a1664e6d261e",
   "claims": [
     {
       "id": "claim_012e9d5c7b1e48d9abe7878e562dc189",
-      "statement": "The root npm test script runs shell/Python/Node selftests (deploy-vps, wiki-delta-emitter, paperclip-archive-export, paperclip-readonly-monitor, live-identity-evidence, integration-probes) before building the shared and agent-catalog workspaces and running workspace vitest suites, so harness breakage fails the gate before any vitest assertion executes.",
+      "statement": "The root npm test script is a single && chain that runs shell and Node selftests (deploy-vps, wiki-delta-emitter, live-identity-evidence, integration-probes) before building the shared and agent-catalog workspaces and running workspace vitest suites, so harness breakage fails the gate before any vitest assertion executes; the earlier paperclip-archive-export/paperclip-readonly-monitor Python selftest steps have been removed along with their scripts.",
       "evidence": [
         {
           "resource": "repo://package.json#L18-L18",
-          "version": "repo-lines-v1:sha256:fc5157e4fa43b3ef911b2d0ef5c413035ff969f0f38b4564360e65996cb0af73:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmM1MTU3ZTRmYTQzYjNlZjkxMWIyZDBlZjVjNDEzMDM1ZmY5NjlmMGYzOGI0NTY0MzYwZTY1OTk2Y2IwYWY3MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmM1MTU3ZTRmYTQzYjNlZjkxMWIyZDBlZjVjNDEzMDM1ZmY5NjlmMGYzOGI0NTY0MzYwZTY1OTk2Y2IwYWY3MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDQ4MmQyOGE3ZTNlMmZjNjgxZmZlM2NlNTJmZTcwODg1YjI1MTUwYzQ1Y2VmMmMyMjc4OTg4ZmMwNzU4YTQ4NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzhlMGQ0ZGEzYmI3MjQwNGRlYjA4MjJkMzYwNTE3Nzc0ZmVhMDE5NzMwODZlYWE0YzlmMWI2NjUyZWNjM2U0YyJ9"
+          "version": "repo-lines-v1:sha256:a7cb2373a60bea977337ad75ae776aba5268b42f4a5ad03b4e65d54d8c8f52e6:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTdjYjIzNzNhNjBiZWE5NzczMzdhZDc1YWU3NzZhYmE1MjY4YjQyZjRhNWFkMDNiNGU2NWQ1NGQ4YzhmNTJlNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTdjYjIzNzNhNjBiZWE5NzczMzdhZDc1YWU3NzZhYmE1MjY4YjQyZjRhNWFkMDNiNGU2NWQ1NGQ4YzhmNTJlNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDQ4MmQyOGE3ZTNlMmZjNjgxZmZlM2NlNTJmZTcwODg1YjI1MTUwYzQ1Y2VmMmMyMjc4OTg4ZmMwNzU4YTQ4NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTFhYjA4NDE4OTBiYWQxMjBiMWNjNDAwMWJlMTA5YmYyYmRmNTNkODAwMDk0YzQyZjM4ZWRkMmZhOWI5YmJmMCJ9"
         },
         {
           "resource": "repo://scripts/deploy-vps.selftest.sh#L1-L39",
@@ -21,10 +21,6 @@
         {
           "resource": "repo://scripts/live-identity-evidence.test.mjs#L1-L40",
           "version": "repo-lines-v1:sha256:ccf8388b94d289bee37f0e8e1ab93ebdcb0b041851ed04ac8b402d1a0eb47860:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwNjYyZmJjYzBkNGQ4YzExOTY4M2RhMTk0N2IxMjA0NjgwM2Q0OGI0NDc5ODgxOTdlYzMwOTJmZmU1YThiNGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiNWNmMTZiMmE4YjZkZWNiOTI4MmM0M2IxOWQ2NTA0MmY2ZTA0OTM4ODM1YzdmMmYxYzIxZDU4MzFmNzU3OTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
-        },
-        {
-          "resource": "repo://scripts/paperclip-archive-export.py#L44-L54",
-          "version": "repo-lines-v1:sha256:a345740b993b2657c66c250ee0b2691a6c366386ecfbb15a75b76852a4570a7b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1OGM3MzJjN2Y3MTQ3OTM0OGQ4NTE0NGYyMjEzZjY3YjdlMGRhZDIxODFhZTEwYTNhY2VkMTNkNjg0MGEwZmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5MDlhZTVmZTk2NmQyOGQ5YmIyODcxY2QzOTNiN2JkNTNiY2M0NzFkYjM2Yzk0MTJiZmJiYTVjNWZjYjBiZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZjNGU0ZmU2NDI5NWE0MTY3NzVhMWRmZjNiNDU1NjI2YzJhNmQ4NzFkODE1ZGVhMWQ2ODRiNDZjOThiODM3MzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxNDE3YjQyOGFiNmQxZTRhNzdmY2YxYjUwNzhjZTU2YTE0MjhkNTAwNzg4ZDRjZWMzMmM2ODJjNzUyNzQ0MDYifQ"
         },
         {
           "resource": "repo://scripts/wiki-delta-emitter.selftest.sh#L1-L35",
@@ -301,10 +297,38 @@
           "version": "repo-lines-v1:sha256:82a85193c4582e318327d94307129feb1ee0cc90f7d5cb6e54e0cb30e412a809:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkM2YxYTQ1ZTRkMDRjOTMwMGMyMzkzYWEzMWEwMDJhYjQzMmJkNmNlMjk1NjU1MzYyODk0MDQ2MDg5MjIzNDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVkYTVjMjQ4YWY4MDA1OTFhZTAzYTJiYmVmNTQzMzdkNmZkZGRlZmJiNWRjYTFkNzQyYjc5MDk1NzE2OGNkNzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNjOWMxOGM1Mjc1NmYxY2RhMmY0MTc2MTVmZTJkM2M5NTAwOWMwZjM1MDNlNDVjODQ1NjkzYzUyODcyMzhiNWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIifQ"
         }
       ]
+    },
+    {
+      "id": "claim_b6ff3c578ae84a7ca716b6ffaeb250aa",
+      "statement": "proof-run-service.test.ts drives the swarm proof-run endpoints against an ephemeral listening server with an in-memory schema-plus-migrations database, a throwaway git repository, and fake codex/opencode runtime binaries, self-skipping when not in a git repo or inside a Stryker worker (where process.chdir is unsupported); the root proof:test alias runs exactly this suite.",
+      "evidence": [
+        {
+          "resource": "repo://package.json#L32-L32",
+          "version": "repo-lines-v1:sha256:653da59842f909dd15652488d6e409a6ecbdec63b30b055856000d399c2ec3a4:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjUzZGE1OTg0MmY5MDlkZDE1NjUyNDg4ZDZlNDA5YTZlY2JkZWM2M2IzMGIwNTU4NTYwMDBkMzk5YzJlYzNhNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjUzZGE1OTg0MmY5MDlkZDE1NjUyNDg4ZDZlNDA5YTZlY2JkZWM2M2IzMGIwNTU4NTYwMDBkMzk5YzJlYzNhNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWY2MGY2ZGJmM2MyODk4Zjg3ZjQ0YzIwOTJmYzNhYzRmZTdmMTVlMTRiNTVmNDAxYWZjZjNiMzI2MDAwZTYyNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmZmYWM3YTkxNDE5OWE5NGQ3ZGM3ODk4MDNiOWI3ODAzNmU1OTEwNjIyN2ZkYzY4MzczMzVhNGNiMmU3ZjU4YyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/__tests__/proof-run-service.test.ts#L101-L120",
+          "version": "repo-lines-v1:sha256:df90b9673812b07a888f14f1152c70909072c6e4c973f295104071986141ffe5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1MDcwNTE0ODYxMDk5MmQzMDUwZmI0NDdhMjU1ZGY2ZmE4MjEzMjJjMzg3YzY3MjA2NWUwMjhlYjRmNzgxOTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxOWZmMWViYTM0MmE0ZTBhMzczZWE4MzA0ZGVjNjE3Y2U2NzNkZDMxNGFiN2UxM2ZmZjQwOWY3Y2UyYTcxMjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc1NTUxNmM1NDk2MjJhYmYwNDE2Yjk5ZTE5MzJkMDNmYzhmYTAwOGE0YzcxYWY3YzMyZDZlOGViYjhkM2E0ZDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMzOWNhNGM3MjhlZmY3YmZjYmQzZWY1ZjllNTUzZWNjZTUyZTFkZGIzZTkwZmM2MTU0ZjFlZTM2OGY1ODNlMjUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/__tests__/proof-run-service.test.ts#L14-L19",
+          "version": "repo-lines-v1:sha256:d27059cc747357560e04c76c0824a2e4fd489d293d5f383cda63f812ea69a31b:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWQwZjYwOTliNjdlNTg1NmRmZTJhZjIzYjc1YWU0NjczM2Q2YTQyZjMxYjIyMDEzYTM3YjQ5MmJmODFiMjQyMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTU2NGU2MGFlYTk2MGUwYTYwNzA4ZWU3OTA1MDBjODdiZjVmODM2Y2ZkMTFmODRhOTMxZjk1NGUxY2FjZjdkNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2UyZDhiYjNkNzhlZGMzMmYxM2I1NjkwZTg3NWEzNjRjMTM2MGJiOGI1M2Q5YzdmYThhNzMzN2MwMjgyNDI5MyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_0ce2f18358be4b82bfb4cb6368c17dda",
+      "statement": "wiki-delta-emitter.selftest.sh runs wiki-delta-emitter.sh against a throwaway git repo with a fake curl and proves the baseline run records state without posting, unchanged and non-markdown commits never post, a real change posts wiki.page.changed for exactly the changed markdown pages with a wiki: dedupe key, and the state advances after a successful post.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/wiki-delta-emitter.selftest.sh#L1-L35",
+          "version": "repo-lines-v1:sha256:06daa66e62cbf56f5fc58273bfc5b36f5084fc9dda7c636a3419ef57e50caa49:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkOTVmYzA0YTgwYzk1MmY0OWNlNDE4ODYyN2M1M2IwZmJlOGM0NDA0MWI5NTJkNTkyYWNkMWRlOTk4NjE0NjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM3ODA1YWIwNDA2YTE5ZDAyMGI0ZGYyZWI1OGU0MzU5MDU2NTBmMzNiMzQ4ZjczMTQyOGZmZTJjMTZlZTE3MDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-25T13:29:02.244Z"
+    "at": "2026-09-26T12:51:29.895Z"
   }
 }

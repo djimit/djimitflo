@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7782fbdc9e0ebb4cf37e955fca376cf52dd02a403eedbc62f21c20f23c666864",
+  "pageVersion": "sha256:1c7725577a7b2503461c2197621fb6cd8e3db5ecf255e6e79df51d048dabd794",
   "claims": [
     {
       "id": "claim_87dd0ef408de474698e13c5c108f7e24",
@@ -100,19 +100,19 @@
     },
     {
       "id": "claim_6daf349396b7485a9bb001612fdaf767",
-      "statement": "initAutonomousServices constructs the autonomy core by default (BoardHandoffService with its own DJIMITFLO_BOARD_HANDOFF_AUTONOMY=false opt-out, ContinuousLearningLoop with TrajectoryStore, SwarmIntelligenceService, NestedSpawnService, NegotiationCoordinator, CapabilityAcquisitionService, MetaEvolutionService, CuriosityService + AutonomousGoalGenerator, the RSI trio RsiSafetyGuard/ServiceRefactoringAnalyzer/EmergentSpecializationService, and ExpertSwarmOrchestrator + WorkerPool + OkfKnowledgeUpdater), while peripheral services (CommonsProposalReview, AgentRegistrySync, EventOutbox, TestGapSource, DreamState, NeedsGroundingTriage, DiskGuard, QueueHygiene, KnowledgeMaintenance) are each default-off behind their own env-gated helper functions.",
+      "statement": "initAutonomousServices constructs the autonomy core by default in the autonomous profile (BoardHandoffService with its own DJIMITFLO_BOARD_HANDOFF_AUTONOMY=false opt-out, ContinuousLearningLoop with TrajectoryStore, SwarmIntelligenceService, NestedSpawnService, NegotiationCoordinator, CapabilityAcquisitionService, MetaEvolutionService, CuriosityService + AutonomousGoalGenerator plus an hourly scheduled-proposal goal timer on SCHEDULED_PROPOSAL_GOALS_INTERVAL_MS registered as ScheduledProposalGoals, the RSI trio RsiSafetyGuard/ServiceRefactoringAnalyzer/EmergentSpecializationService, and ExpertSwarmOrchestrator + WorkerPool + OkfKnowledgeUpdater), while peripheral services (AgentSocialAutopilot behind SOCIAL_AUTOPILOT_RUNTIME, CommonsProposalReview, AgentRegistrySync behind AGENT_REGISTRY_URL, EventOutbox, TestGapSource, EvolutionGym, DreamState, NeedsGroundingTriage, DiskGuard, QueueHygiene, KnowledgeMaintenance) are each default-off behind their own env-gated helper functions.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/bootstrap/autonomous-services.ts#L191-L257",
-          "version": "repo-lines-v1:sha256:c2fa31ea50a1bbf1405665f29f19f1d18e9bf890f4b46f52eeda2cb8fb1beaae:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNhMGU2NGMzOTBhNDMxZGMwZmExYzViOTYxY2JiNTVkMTMxODY2YjA0MDUwMjU3OWE4YTgzOTFkMmJjYmVlOWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdkMTQ2NjQzOWM4MGM4YWM4MmYwMTE3MTNiNGQxM2VkM2I3ZTM0MmRkY2FmMjIxOGJkYTE3YjkyOTY1MDNiOTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwNGY4OWZjMGVjOThjOTgyNDE4M2U3OTVkM2VkZDE5ZTkzMGY3YmM0NzFmOTAxMmFhM2Q1MDNiZTJmODk3NGIifQ"
+          "resource": "repo://packages/server/src/bootstrap/autonomous-services.ts#L204-L281",
+          "version": "repo-lines-v1:sha256:67b4770ef384d90f489674eefe7c36457427841fca799ea8dcdd733d6cfc7c88:eyJzZWxlY3RlZExpbmVDb3VudCI6NzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNhMGU2NGMzOTBhNDMxZGMwZmExYzViOTYxY2JiNTVkMTMxODY2YjA0MDUwMjU3OWE4YTgzOTFkMmJjYmVlOWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdkMTQ2NjQzOWM4MGM4YWM4MmYwMTE3MTNiNGQxM2VkM2I3ZTM0MmRkY2FmMjIxOGJkYTE3YjkyOTY1MDNiOTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwNGY4OWZjMGVjOThjOTgyNDE4M2U3OTVkM2VkZDE5ZTkzMGY3YmM0NzFmOTAxMmFhM2Q1MDNiZTJmODk3NGIifQ"
         },
         {
-          "resource": "repo://packages/server/src/bootstrap/autonomous-services.ts#L35-L64",
-          "version": "repo-lines-v1:sha256:477401b24133fced697689e6854195cbb1a135bb965a02db14307974c170d792:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNhMTYxYmE2NTE3MjEzNzRlY2Q4ZTY2ODBiM2VmMTE2OTM5ZDE0MWRjYWQ5Njg4MTRkYmE4M2Y5OTIzYzk0NjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExMGU1OTUxMGUyM2E3ZmQxZjRmMmJhNTQwNDNiNTg2ZmI4ZTE4NmZhMmI1Njg3ZDkxNDM4N2FhZDg3NTUzMTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwNDAxNmZhY2E1MWE1MGE5NTgxN2ZjYmI4N2VkYWEwNjQ1NDBjMjIwYjkzODg4NDI4ODBjYTBjMGQ4NzdiZmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk3YWQzZmRmYTNlYTZjMGEwNjQ1OTYzMGY5YjYyMTk3YWY4ZmYwZTRhNWY0ZTY3MGI2ZmE5NTY0MjFlMzc5ZWMifQ"
+          "resource": "repo://packages/server/src/bootstrap/autonomous-services.ts#L36-L64",
+          "version": "repo-lines-v1:sha256:27b391aa44722af53d7850fff71d549e64e687d6ea7ed06d47bc1e4182639b3d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNhMTYxYmE2NTE3MjEzNzRlY2Q4ZTY2ODBiM2VmMTE2OTM5ZDE0MWRjYWQ5Njg4MTRkYmE4M2Y5OTIzYzk0NjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmOWU3ODJmMjg5OWY0YmZjOTdiNjQzMjQ3MTFjNDhiNmNkY2VjMzc3ZGMxMDU5YjNiYTMyMzE0NzBhN2NmODciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwNDAxNmZhY2E1MWE1MGE5NTgxN2ZjYmI4N2VkYWEwNjQ1NDBjMjIwYjkzODg4NDI4ODBjYTBjMGQ4NzdiZmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY5ZTNmMmI0YWExNTJhMTU0NDRkNTNjZmVhOTc0MjhhYjhkYzVkNTkzOTk3NDUzNzcxNmNjMWI2NTk1ZmU5NTYifQ"
         },
         {
-          "resource": "repo://packages/server/src/bootstrap/autonomous-services.ts#L83-L189",
-          "version": "repo-lines-v1:sha256:fdfc82365d5b0ba3cdb9dfab91b005d8e785c3fb46dcada64fbc42e1d00c6282:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJkZGE4MGNkYTkyZWU1YWEyNDM4YzgyNDkxZDVlNzYwYmQ4YzExYTQ2YTU5Nzk0ODI2ZTg0NGQ1NWY5NWM4YzkwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMGRjNzhlNDk1ZGRhOTdkYmIwYWZkODcwMDhlZmY3NjNiMThlNDZkMjRlZDYzOTdiZjFmZTdkMzVmYjI2OTdmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIyNTZjMTUwODIyNjU5NGRiYWM3ZDgzZGE2ZjY3OWRhZmMzNTExNWYzNjMzYTRkY2VkNWEzNzI0YTdkNjg1YzU1In0"
+          "resource": "repo://packages/server/src/bootstrap/autonomous-services.ts#L71-L202",
+          "version": "repo-lines-v1:sha256:c5265fe5eddd3e1f1591bd58444cc49ee257ca1a0e17abf5deebaaafab19c3f7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyMDVmYjczYzIzYTA5NWQxZjk3YzgwMTc2ZGZmZWUyZDdlMzIwZDJiODY4YzAzY2FhODgzM2EwMTk0ODE1ZDkzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyNWQxODEyZjJiZTczYThjMjZmYTYyZjdkY2E0ZjJmZjc1NGI5N2RjNTg3NTM2OTVjM2FjMTUxMjkxMDdjZDcyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIyNTZjMTUwODIyNjU5NGRiYWM3ZDgzZGE2ZjY3OWRhZmMzNTExNWYzNjMzYTRkY2VkNWEzNzI0YTdkNjg1YzU1In0"
         }
       ]
     },
@@ -217,10 +217,74 @@
           "version": "repo-lines-v1:sha256:6f8fe818398643b79a87ae9d4d87d32fcc91f85e8f9a3ebea2de48bebca1042d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5ZmRlZDg1N2FiMzk5ZjQ0ZWRiOTc3MDJiNjcwODUyYTA3NDI0N2UyNTk5OGE4NmM5MTBiNDA5MTNlODhlZmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0ZDY3Njk4ZjkyYjVlYTIzOTAwZDBjYTc4MGE2MmZkYjA4ZjIzMzNiNmUyMDQyNGUxZGQ0ZDhmMWRmYmVmYmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU0YzEzZTIzMDZjZTNjZGE4OWZiMGNhZDE2ZGNmYWVjNzRjOWI4ZjFlZTQ4ZjhiOTc4OWRkZGExZTRiMzc0NDcifQ"
         }
       ]
+    },
+    {
+      "id": "claim_5aaf3027da62433189160ab7118048c0",
+      "statement": "Every default-off peripheral service in initAutonomousServices is armed by a dedicated env flag through an exported helper requiring the literal value 'true': COMMONS_PROPOSAL_REVIEW_ENABLED (commonsReviewEnabled), EVENT_PUBLISH_ENABLED (eventPublishEnabled), TEST_GAP_SOURCE_ENABLED (testGapSourceEnabled), EVOLUTION_GYM_ENABLED (gymEnabled), DREAM_STATE_ENABLED (dreamStateEnabled), NEEDS_GROUNDING_TRIAGE_ENABLED (needsGroundingTriageEnabled), DISK_GUARD_ENABLED (diskGuardEnabled), QUEUE_HYGIENE_ENABLED (queueHygieneEnabled), and KNOWLEDGE_MAINTENANCE_ENABLED (maintenanceEnabled); AgentRegistrySyncService is the exception, gated on AGENT_REGISTRY_URL resolving via registryUrl().",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/agent-registry-sync-service.ts#L8-L8",
+          "version": "repo-lines-v1:sha256:16b5f640e4b00e8655e87ced6240061c12e37d9260c3201a7812c9656306631c:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTZiNWY2NDBlNGIwMGU4NjU1ZTg3Y2VkNjI0MDA2MWMxMmUzN2Q5MjYwYzMyMDFhNzgxMmM5NjU2MzA2NjMxYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTZiNWY2NDBlNGIwMGU4NjU1ZTg3Y2VkNjI0MDA2MWMxMmUzN2Q5MjYwYzMyMDFhNzgxMmM5NjU2MzA2NjMxYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMGI2ZjgwNzZkZGFkZTE4NzU1MTJkNDk0NWE5ZDFjNjQyMTJhOTJkNmY1Yzk4OGQxMDA1YTYyN2NiNTY0YTM3NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWFiYjBjMzNhZGExMGY1Y2YwZDNhYjg4ZGE3M2ZhZGVlZjQ5MzhhYmI3MDM3OTk0YWFhNWE3NTdlYmVmNTU1ZSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/commons-proposal-review-service.ts#L19-L21",
+          "version": "repo-lines-v1:sha256:e768ecb826f587cd61c46e5dca942c9031d18a37657ecf0922e87a676291a3c2:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTgxYzgwYWQyNjFkMWQ0ZDNiNjU1MmRhNWYwODFhZGI1NmViNTIyODA3YjM4NjE5OTVmYWI1ZTA5ODRiMWRlZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiN2MxNjBmZGYwYjFjNWI3ZjE2NTk3YWE1MjYzNjZkNmIwMDM3NmY1ODNkOGQ2MzU5YjYzMThjNjhkMDU2ZWQ4ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTZhOGQ5NDZmMTQ0YWFjMGUxODM3MmU0YTUzZDVkYWJlZDE3YzE4ZjM3ZDUzYWE1OWRjNDliODBiZDY3MTFhZiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/disk-guard-service.ts#L11-L11",
+          "version": "repo-lines-v1:sha256:3d39cd64c1a178abfca83c10e01c8b8d3c23507a49564c214f2cba67cb8963f0:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2QzOWNkNjRjMWExNzhhYmZjYTgzYzEwZTAxYzhiOGQzYzIzNTA3YTQ5NTY0YzIxNGYyY2JhNjdjYjg5NjNmMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2QzOWNkNjRjMWExNzhhYmZjYTgzYzEwZTAxYzhiOGQzYzIzNTA3YTQ5NTY0YzIxNGYyY2JhNjdjYjg5NjNmMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODA3NTExZGY4MGZkNDNhOTcyZGIwYTE4ZTM5YzBjOGI1MTYwMzFiYjg3NjYyYmJkNTgwM2U1NGI5ZWMxZmJlMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTI1M2Q3MGQyMTY4MWI2NmM5NGM4NDIzYjM4OGJmMmRiOTAzZWFjOTdlZWZhYjg0Y2UyMDNlMzEyZmE5MGM3ZCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/dream-state-service.ts#L41-L41",
+          "version": "repo-lines-v1:sha256:09429d880e13b49cec089d1da5572b55d820c2c30280e751a50d4196b92cf706:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDk0MjlkODgwZTEzYjQ5Y2VjMDg5ZDFkYTU1NzJiNTVkODIwYzJjMzAyODBlNzUxYTUwZDQxOTZiOTJjZjcwNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDk0MjlkODgwZTEzYjQ5Y2VjMDg5ZDFkYTU1NzJiNTVkODIwYzJjMzAyODBlNzUxYTUwZDQxOTZiOTJjZjcwNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWNhYTdjMmY4MDIxNTNiNjg3OTlhYmU2MTNlYjhhYTg4N2ZkMzRmMGEwMTVjZDA1NTI4YzUyNDhkMjY3NjgwYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjFhOTc5OTdiZGU1N2U0NGM3MGI3MTg5MWVkZGUyY2MzNmQ1MWMwNjY3ZjFmMjc2MzljZmI2ZjIyZDAzMGIzNCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/event-outbox-service.ts#L12-L12",
+          "version": "repo-lines-v1:sha256:a666434fa8b5a52a277bf334ba75826e43b43c37db0974aabcb863546e8575b1:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTY2NjQzNGZhOGI1YTUyYTI3N2JmMzM0YmE3NTgyNmU0M2I0M2MzN2RiMDk3NGFhYmNiODYzNTQ2ZTg1NzViMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTY2NjQzNGZhOGI1YTUyYTI3N2JmMzM0YmE3NTgyNmU0M2I0M2MzN2RiMDk3NGFhYmNiODYzNTQ2ZTg1NzViMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmUzOTY5ODU3YWJmNzc5NmM2ZWRjODJhNjRmYzEzM2Q3YTdlNTA2NWY2ZmZhNWQyOTJmYTU5NWMyZGJiNDU3OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDI1OTQzNjQ0ZTMzMmFjNGMyN2RiZGJjYjk1OWI0YTkwYTAzZWIwMzNjZTA5MDE5Y2U3YzlhMjYwYjllOGM2ZSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/evolution-gym-service.ts#L17-L17",
+          "version": "repo-lines-v1:sha256:7e38f3dacdec9020b0d7ebb9ccbb4dc3a6f9aaba879f294d94e66d1e5eb55250:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2UzOGYzZGFjZGVjOTAyMGIwZDdlYmI5Y2NiYjRkYzNhNmY5YWFiYTg3OWYyOTRkOTRlNjZkMWU1ZWI1NTI1MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2UzOGYzZGFjZGVjOTAyMGIwZDdlYmI5Y2NiYjRkYzNhNmY5YWFiYTg3OWYyOTRkOTRlNjZkMWU1ZWI1NTI1MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjIxZjU3OWE5ZjU0YWIwN2QzMmI0NTE1YzJlOWQxMDQ1YjU5MWI2MDJlODAwMzlmOTFkZDBkYzJhY2VmYjU0OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDdjZjg4NmJmOThjMmU1ZGQzYzgzOTY3ZDQ4ODIzMmZmZDM3NTRlNzBkNjg5ODlhZmI4ZjI5NTc5ZjI4OGY2YSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/knowledge-maintenance-service.ts#L26-L26",
+          "version": "repo-lines-v1:sha256:06499c31d280c97545dc41b83801c6e83837c6976eabad5dba797cf97e4bba0d:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDY0OTljMzFkMjgwYzk3NTQ1ZGM0MWI4MzgwMWM2ZTgzODM3YzY5NzZlYWJhZDVkYmE3OTdjZjk3ZTRiYmEwZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDY0OTljMzFkMjgwYzk3NTQ1ZGM0MWI4MzgwMWM2ZTgzODM3YzY5NzZlYWJhZDVkYmE3OTdjZjk3ZTRiYmEwZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTJiOWZiYmVhODY4OGQxY2FjZTFlMmM3YTJhNWIyNDk0MGE0MTVlYzE1ZGEwY2Y0NWRmZjE5MGVkNzUzYzk3MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjQyMDc0OWI4ZDY2ZDVlNjE0Mzc5YzAwMTNjZmYwZWUzMTFkOWE0NTg4MDRhODE5YmJmNDYwYTU1YjNhYjcwNyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/needs-grounding-triage-service.ts#L11-L11",
+          "version": "repo-lines-v1:sha256:d9d8310bdbe9fcd0479307693a23825b200860420a9b18b2f5f11b35a532b757:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDlkODMxMGJkYmU5ZmNkMDQ3OTMwNzY5M2EyMzgyNWIyMDA4NjA0MjBhOWIxOGIyZjVmMTFiMzVhNTMyYjc1NyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDlkODMxMGJkYmU5ZmNkMDQ3OTMwNzY5M2EyMzgyNWIyMDA4NjA0MjBhOWIxOGIyZjVmMTFiMzVhNTMyYjc1NyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDAxNGRmOGZiNmM3MzI3YTk5M2RmMmI3MDZjMzA0Y2I4ZDRiM2I2MGU1MDZhMzdjZGQ2OTY1ZDM4MzljOGI2MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTk3NGZiZGY5MmI4YmVlYjFjNjZkNmI3ZmM3ZDhjOWM4MzllNWQ3NTQzODE5N2RhODAyNjMzNzA5N2RjNjdlYyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/queue-hygiene-service.ts#L32-L34",
+          "version": "repo-lines-v1:sha256:5092a69d76741d00f3d6468240151505abdf9ea5e5398f125646c6041ea5a413:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDBjMjdiMDkwZTBhMzE5NDFhNzc2ZGYzMzgwMTEyN2YyODc0YjIyMjU3M2U2NDg0NGE2NDBiNGU0NDcwZDgxMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2RiNGM2Njc3YmE5Yzg2N2M5ODk5MjVkNjU5MmMxYmJjOWI0Y2EwOTc4Mzg1N2NmYWZjMTE2YzdmNGRhYTk4MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODQ4M2Y3YTFhYzZjNmFhZTg1OTM1NDA2NGUyYmEwZWE2MGUyNjZlYTIxY2I4Y2YzZjY3YzM5YmYzMDY5ZjUwYiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/test-gap-source-service.ts#L13-L13",
+          "version": "repo-lines-v1:sha256:0ca1b0682952d6e55b80560f14aa99748e3cb7c968b1fb2cd97926779302b880:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGNhMWIwNjgyOTUyZDZlNTViODA1NjBmMTRhYTk5NzQ4ZTNjYjdjOTY4YjFmYjJjZDk3OTI2Nzc5MzAyYjg4MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGNhMWIwNjgyOTUyZDZlNTViODA1NjBmMTRhYTk5NzQ4ZTNjYjdjOTY4YjFmYjJjZDk3OTI2Nzc5MzAyYjg4MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2I1ZWE3MzM0ZTA5YTlmYTAwMjI4ZmM2MzAxZDMyNDhmZjdjMDYyYjQ2NjE2MjI0MzQ1YjNlZTJkMDMxOTc2OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTMyZjg4ZTQxOTcyMzQ0NDcwYTI2OWIwYTlkZWJkMmQwZmRiNjBiNTQwM2EwNTFiMjlkOWQyOWM2Zjk5NTM4NiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_6db9c2b82d824ea3ad828f9f471eb07b",
+      "statement": "Background workers only run in the operator/autonomous profiles: the README lists this as a tested security invariant, and the profile gate enforces it structurally because an api-profile process never reaches the operatorRuntime/autonomousRuntime construction blocks in main(), so workers like the Dennis queue, retention enforcement, continuous learning loop, and autonomous janitors cannot start even if their individual env flags are set.",
+      "evidence": [
+        {
+          "resource": "repo://README.md#L142-L148",
+          "version": "repo-lines-v1:sha256:6269d9770440f5bfa470fcc3300f698c666443574c7ab9f64ed682304565f8f5:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjFkYjRkYTlmYjdmNGNiNTJhMDgyZjI5MzY4MzlmMjNlMDUyODRkYjI2OTRhMTUwNWRkZjZjZjFmYmRjZWE4MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmJjYzQ3M2ZiNGVhMWEyN2U1YzIyMTZmNDNkZjIyMTNhZmU1NTcwNDQ2OGE2ZWI3YjliMDZiYzRiMzFiOWVhOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzg2MGIzNzVjOGUxMTkwMjExYjdmMjc5ZWM1Mzg3NmYzNTFmY2YyNWI4ZGVhZTAzZGQxNDgxMWM5YmNhNzE2ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjU0N2UwN2ZjOTc3ZTgxNjQ5MTA2ZmYwMDVjMTRiNDNlMjkzMGQ4ZTA5MzAxNjUyYmExYjM5ZmJmMTlkNWFjYiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L104-L115",
+          "version": "repo-lines-v1:sha256:1a4fe0477b0ea782e621987e4ae34d64e2058cac9478408c9e0d1efc6cb2bd1e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlZmIxM2YxZGJlNTU1OTU5MDg1MDVmNGVlZDRkYTRjYzZkOGU3N2E0N2EyNDJjNDc0ZjlhM2IwZGUwOGU4ZjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJmMjJhNDIwZTUxMjA2MDYwNzVlZTA1OWQxODhkYjYxMDMxODVjZmU2ZWU5YjZiMjVjNDE5MTJmOTg4MjI3ZmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkNjFlNmRhZTk1NTRhMzgwYTZiMmY2N2Q3M2JiZGM2MzYyZGYwNjYyMzMwOWNjNzEwNDUyNTc3NmUzMGMzNTEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L186-L198",
+          "version": "repo-lines-v1:sha256:cb93cab3235eb4f28a6eebb8eed8c17aea5e54fba85e7afd46481ac62c8d3c95:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1YTU1NTgwMGZmMGU5ZjI0YzhiMmU4NzZiMjA2YjNhMmQ3ZGQxZWYwN2Y1NDg0OTg3MmU1OTlhMTE0ZjQzYTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYwNzgyYjRkNTAwZGFkYWVkOGM4ZTEwMjc4MzE2NGRlOGM2N2IyNTY1MjdkOTMxZTk0ZTdkODY3ZjUzMmY4YTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI5YzI1MTg0MzZhY2Q0NjA0ZmRkY2E2NWMyZDU3ZmQzZWExMjA5YWIxZDM5Y2E0NGM5MTBmNzk2ODdhMDYzNDAifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-25T13:29:02.244Z"
+    "at": "2026-09-26T12:51:29.895Z"
   }
 }

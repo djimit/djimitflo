@@ -3,9 +3,6 @@ type: workflow
 title: "Autonomous Goal → Daemon → Earned-Autonomy Pipeline"
 description: The flagship autonomy pipeline of the baseline window — the ParallelLoopDaemon's always-on goal queue (risk-sorted, concurrency-capped), objective-mode gating, bandit/evolve maker selection, test-gap auto-approval (J5/M2), approval parking/resume, verification and draft-PR handoff, and the CI-gated systemd auto-deploy loop that ships merged improvements to the VPS.
 tags: [loop-daemon, autonomous-improvement, goal-queue, objective-mode, runtime-bandit, evolve-mutation, test-gap, auto-approve, approval-wait, draft-pr, auto-deploy, earned-autonomy]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
 sources:
   - id: openwiki-source-a3dbc9f5e2ba428a00a1f6a5
     resource: repo://packages/server/src/__tests__/auto-deploy.test.ts
@@ -47,7 +44,10 @@ sources:
     resource: repo://scripts/systemd/djimitflo-auto-deploy.service
   - id: openwiki-source-5d2ca5c9e64a0fc242dd2f2d
     resource: repo://scripts/systemd/djimitflo-auto-deploy.timer
-generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-09-26T12:51:29.895Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-09-26T12:51:29.895Z
 ---
 
 # Autonomous Goal → Daemon → Earned-Autonomy Pipeline
@@ -248,8 +248,11 @@ created with `runtime: 'manual'` — code review is human by design. With
 `LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED=true`, the daemon dispatches the prepared checker with
 the *same runtime the maker attempt used* (self-review, not an independent reviewer), and with
 `LOOP_DAEMON_AUTOMATED_SECURITY_CHECKER_ENABLED=true` the security checker likewise; both use
-`daemonReviewerTimeoutMs` (default 300 s, cap 900 s), and a dispatch error is recorded as
-`checker_dispatch_failed` rather than swallowed (loop-daemon.ts#L563-L589).
+`daemonReviewerTimeoutMs` (default 300 s, cap 900 s). A reviewer is a worker too, so a dispatch that
+hits `LOOP_WORKER_APPROVAL_REQUIRED` parks the goal via `blockForApproval` — the wait, not a failure
+(it used to be swallowed here, so the run was verified without a verdict and failed). Any other
+dispatch error is recorded as a `checker_dispatch_failed` event rather than swallowed
+(loop-daemon.ts#L563-L589).
 
 Every executed run then feeds the learning layer, success or fail (loop-daemon.ts#L601-L736):
 

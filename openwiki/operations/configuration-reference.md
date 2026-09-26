@@ -105,9 +105,6 @@ sources:
   - id: openwiki-source-468f882d40bb8c52d27a2b9f
     resource: repo://scripts/mutation-gain.mjs
 generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
 ---
 
 # Configuration & Environment Variable Reference

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:419c98b7227095ed6d54b29cb1eef1a3026fac0d2812884f4a9474d0d28d9530",
+  "pageVersion": "sha256:4458eab25a5994d99e7ef05faf0406a99593a63733d0f61a2d4e795a388c313b",
   "claims": [
     {
       "id": "claim_77753370713d46bba7fe80a450d64abe",
@@ -72,11 +72,11 @@
         },
         {
           "resource": "repo://packages/server/src/services/evolve-selection.ts#L15-L102",
-          "version": "repo-lines-v1:sha256:1db5f933c2b5c9619d3b139b4d158ea8b020d24020aa68e74a0d121b48e85745:eyJzZWxlY3RlZExpbmVDb3VudCI6ODgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxZGIwMTZhMzFkODE4MWE2N2VhYTM2MTU0Mjc0ZjU4Y2M5ZjkyZGNkZTRjZTE0YmE2ZjlmYTZlNTZlYmVhOWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJhM2IxNWVjNjcwNjg0NzllZTQ4NjllM2NiOTZhMmEyNjZmZjI1NTA0ZDI5YmFhYzI4MjBmOWY0ZDNjM2QzMDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "version": "repo-lines-v1:sha256:a21b26261af705097b6803cbaccbf0c133e3d4875e60e49cca10f2eb51d74e8d:eyJzZWxlY3RlZExpbmVDb3VudCI6OTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxZGIwMTZhMzFkODE4MWE2N2VhYTM2MTU0Mjc0ZjU4Y2M5ZjkyZGNkZTRjZTE0YmE2ZjlmYTZlNTZlYmVhOWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJhM2IxNWVjNjcwNjg0NzllZTQ4NjllM2NiOTZhMmEyNjZmZjI1NTA0ZDI5YmFhYzI4MjBmOWY0ZDNjM2QzMDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         },
         {
           "resource": "repo://packages/server/src/services/loop-daemon.ts#L516-L543",
-          "version": "repo-lines-v1:sha256:308405fdc401cc2681a0cb91bd3f4cc6c78111248f1ef7c57997afa22476b554:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVkMmMxODQ2YTRmYjAyMjMyZGM0MjI5NGUzN2IxNWI5NDQ5YjNhMTRjNWQxODQ3MjRkYjUzYTNmMjlkNDFlMmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNjJmNjBkODU5MGE1NzljZjQ2ZjhkNjczNzhjNGM1NzJiOTYyY2VjY2RiOTBjN2E1ZjdiNDJiOTYwNzgyYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxMWQyNzc2YTcwODBhN2VkNGU2MDAwYjg0NGFlZDkxMTQ0MTdjODA3NDY4M2I4MWRmMDBlNDk5OWJiMGJhNjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM3MGQzNWUwN2M3MWM3ZWMyMTk2M2IwNGJkYWNjODNlMjEyZTk2NGE4YzhkOGRhYzYyMWRhNGY0ZTc2Yjg0MDkifQ"
+          "version": "repo-lines-v1:sha256:908860538517f9fc3a58ba5a29687bd68d3508acace6e91a5da2f510b27f9990:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVkMmMxODQ2YTRmYjAyMjMyZGM0MjI5NGUzN2IxNWI5NDQ5YjNhMTRjNWQxODQ3MjRkYjUzYTNmMjlkNDFlMmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNjJmNjBkODU5MGE1NzljZjQ2ZjhkNjczNzhjNGM1NzJiOTYyY2VjY2RiOTBjN2E1ZjdiNDJiOTYwNzgyYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxMWQyNzc2YTcwODBhN2VkNGU2MDAwYjg0NGFlZDkxMTQ0MTdjODA3NDY4M2I4MWRmMDBlNDk5OWJiMGJhNjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM3MGQzNWUwN2M3MWM3ZWMyMTk2M2IwNGJkYWNjODNlMjEyZTk2NGE4YzhkOGRhYzYyMWRhNGY0ZTc2Yjg0MDkifQ"
         }
       ]
     },
@@ -140,7 +140,7 @@
         },
         {
           "resource": "repo://packages/server/src/services/loop-daemon.ts#L527-L534",
-          "version": "repo-lines-v1:sha256:a40dc7103afa1b9ccfee9abfebc681d740056cc5f9424fdc12fd3594ce0d9cf8:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzEyNTM3YmQzOTJkMDE3OTMxZGU5ZDUyNGFiNGQxZDViNzhhNzVhZTY4YzBkOWU5NGQ1ODY0MDZmOGM1ODYwMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTUyMmM0MmNkMTljNmQwM2Q4MDhjNDUyNzIwNTUyODI1YjdlYTFjNWI0OTFiMjE4NTExY2FjNzQxNWNmOWQ5YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmIzNmM2ZTk0YTI3YjY0MGM4NTc1NzkzMTAwY2EyZmY3ODk5Y2E5NzAzYmRkNmY0MzdjNWI1NDlhZmFmMTljNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDVjZTgzNjBmN2VlNWQ0MWUxMGQ5MWIyNzllYjMwOTUyMzdjNTBkNDg4OTJjMzZmODI2YjJjYTRkMGIyNTEzOSJ9"
+          "version": "repo-lines-v1:sha256:337441bb835a3cb0a66ebb2b923fa18a96f2a39fbb6cdc1750f1847a58671873:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzEyNTM3YmQzOTJkMDE3OTMxZGU5ZDUyNGFiNGQxZDViNzhhNzVhZTY4YzBkOWU5NGQ1ODY0MDZmOGM1ODYwMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTUyMmM0MmNkMTljNmQwM2Q4MDhjNDUyNzIwNTUyODI1YjdlYTFjNWI0OTFiMjE4NTExY2FjNzQxNWNmOWQ5YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmIzNmM2ZTk0YTI3YjY0MGM4NTc1NzkzMTAwY2EyZmY3ODk5Y2E5NzAzYmRkNmY0MzdjNWI1NDlhZmFmMTljNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDVjZTgzNjBmN2VlNWQ0MWUxMGQ5MWIyNzllYjMwOTUyMzdjNTBkNDg4OTJjMzZmODI2YjJjYTRkMGIyNTEzOSJ9"
         }
       ]
     },
@@ -204,11 +204,11 @@
       "evidence": [
         {
           "resource": "repo://packages/server/src/services/autonomous-goal-generator.ts#L34-L69",
-          "version": "repo-lines-v1:sha256:593e86718b8f20c87bdbb816a1303c005b32e1eb50d5b8e62d4ecea37476315a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4ZDg5ZTNhYmZhMzRiNWI0MDAwNjliNzg1M2VkYmY2MzZhOWIwZjQwMTQ0ZjM3ZmViOGE4MDdhNTAxODA5MTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc0NzM3Y2Q3NjI1YjYwNjE5YmZlYTcwMDVmOGQyYjI1ZjBiODE0ODcwNGY0MWY2Y2UzYmRjMDQ0Y2Y2MTFmNjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2NmJlMDkyYmQ2ZTM2Mzc2YmRmM2U2MDE5MDhiMDEzNTg0OTY3Y2Q3MzQ4NGVmODJjYjc1MzI2MzY3NmZmZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVhOTI5M2ZkODA1NGI2ZTQ3MjQ4MzczZjM5ZjRkZDc3ODAwMTA1ZWI3NTgzNDg2ODcyNTQyODVjZDEyODJiNzgifQ"
+          "version": "repo-lines-v1:sha256:1c61883818713f7f5c1dc4aa5f386f8ce05e441b74fd2b0503a714e5bb5c2744:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4ZDg5ZTNhYmZhMzRiNWI0MDAwNjliNzg1M2VkYmY2MzZhOWIwZjQwMTQ0ZjM3ZmViOGE4MDdhNTAxODA5MTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc0NzM3Y2Q3NjI1YjYwNjE5YmZlYTcwMDVmOGQyYjI1ZjBiODE0ODcwNGY0MWY2Y2UzYmRjMDQ0Y2Y2MTFmNjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2NmJlMDkyYmQ2ZTM2Mzc2YmRmM2U2MDE5MDhiMDEzNTg0OTY3Y2Q3MzQ4NGVmODJjYjc1MzI2MzY3NmZmZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVhOTI5M2ZkODA1NGI2ZTQ3MjQ4MzczZjM5ZjRkZDc3ODAwMTA1ZWI3NTgzNDg2ODcyNTQyODVjZDEyODJiNzgifQ"
         },
         {
           "resource": "repo://packages/server/src/services/improvement-funnel-service.ts#L4-L44",
-          "version": "repo-lines-v1:sha256:1e6780dc0408b3cbd0c18304346c666bf444e8b82c08863b6f1c410765e41a19:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3MjEzMWFjYjdlNzk5YjU0ZWMwM2EwODUyOTllZDU5YWE1OGNjMmQ0ODA2YTkwZTQwZDhlMDQ3ODVjZjIyMzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4ZTkyODZkZjQ4YThlOTY5ZGIwNDMwNTk1ZWQ5YTE5MWYzYWMwNzdjNzkyMjE4MTJkY2E0MjIyMThlZmNkNzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMwOGMxMWM2MjZmZDNiMjkzOGUxOWViMzBiYWRjNjRhMDY1MjFjMzJlZmY5MDVjMDhjYWNjNTlmNWNiODI2OTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU0ZDYzZGY4M2YwMGIxMGE3NGRlYzM0MjMyNzQ0MWVkZDBmMTI2MDkzMTdhOGViNWUwZDBlYTIxNWZjZjA5YzYifQ"
+          "version": "repo-lines-v1:sha256:1ebb0bee94777ba26c1c0a5f678a8d4861fb7f22a0598a5696ca1696f3160657:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3MjEzMWFjYjdlNzk5YjU0ZWMwM2EwODUyOTllZDU5YWE1OGNjMmQ0ODA2YTkwZTQwZDhlMDQ3ODVjZjIyMzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4ZTkyODZkZjQ4YThlOTY5ZGIwNDMwNTk1ZWQ5YTE5MWYzYWMwNzdjNzkyMjE4MTJkY2E0MjIyMThlZmNkNzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMwOGMxMWM2MjZmZDNiMjkzOGUxOWViMzBiYWRjNjRhMDY1MjFjMzJlZmY5MDVjMDhjYWNjNTlmNWNiODI2OTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU0ZDYzZGY4M2YwMGIxMGE3NGRlYzM0MjMyNzQ0MWVkZDBmMTI2MDkzMTdhOGViNWUwZDBlYTIxNWZjZjA5YzYifQ"
         },
         {
           "resource": "repo://packages/server/src/services/self-improvement-auto-review-scheduler.ts#L153-L168",
@@ -251,10 +251,44 @@
           "version": "repo-lines-v1:sha256:4a94e4db732777e051714950c0ecd60a5c2b9d356c67c3929bb4be8b7e2416de:eyJzZWxlY3RlZExpbmVDb3VudCI6NjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFjMjhhMmE4ZWQxMjJjZjhhMjUwZTBkMzhmNGVmODNlNDVjZWRhOWEwNTBiOTAyZWRmMjczZTBmZDJhYTYxNTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiYjg2YWU5NTJlMDg0YWJlOTNhMWQ1NTc0NjQ0Zjc0ZDZlODk1ZTRmMzhhMzE5M2MxYjFjN2VkM2UyM2RiOGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg4Yzc1OWE4MjBhYzI0M2M1NGRhOWU5MTAxOTdiNjA0YmUyNmU0Y2Q4NzVkMTJmZjJlNTM1N2NiODY4YTA1NWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
+    },
+    {
+      "id": "claim_b6e839605c1d4127a624590ecf0d42d9",
+      "statement": "A failed or cancelled goal does not block a proposal retry: AutonomousGoalGenerator.generateImprovement clears improvement_id on failed/cancelled goal rows (recording the link as metadata.requeued_improvement_id) before inserting the new goal, so an infrastructure-failure requeue inserts cleanly instead of crash-looping the server at boot on the UNIQUE improvement_id (prod 2026-09-25 fix); an existing non-terminal goal for the same improvement is back-linked and the proposal marked executing instead of duplicated.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/autonomous-goal-generator.ts#L40-L54",
+          "version": "repo-lines-v1:sha256:648e75500a8eaf9933da0d2c48b3c7669517e6837b5da19458ef80c7796ae687:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkNTM1NzZjZTUzZmMxYjQyZjMwMzA5NTQ1NGVkNWVkMmM3YjA3OWM4ZDg4NzE4Nzg4NDcyZmUxMTYxYzJiMjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNkYTE4ZTY3NzY2NzQxOTM4NTAzZmFlOWE0ZTRjMmM1ZDk1MDQzNGZiOGYwZTY2ZTM1ZTIyYjdiMTE4OTZhZWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk2NGJlYjZlYjNkNmFhMjNiM2JjNzRhNmMzODM4NjhiYWI1NTlhN2RlYzYzNmQ1YzJhOWIwYmM1YzY2YTJhN2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE0NzFlOTFlMGEyMjVjMjUzODJmNmMxOGQ2ODk2ZmNmNmFiYmU2OTNmNTE3NWEyODk5OGI1MzBkYmUxY2UzZDEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_69bd1169de1c4ec9982abdbf402a964f",
+      "statement": "Automated checker/security_checker dispatch treats LOOP_WORKER_APPROVAL_REQUIRED as a wait, not a failure: the dispatch helper parks the goal via blockForApproval for that role and the daemon returns (previously the error was swallowed, so the run was verified without a verdict and failed); a run resumed after a reviewer's approval is not dispatched twice because leaseDone recognizes the earlier completed verdict, and any non-approval dispatch error is recorded as a checker_dispatch_failed loop event.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L564-L589",
+          "version": "repo-lines-v1:sha256:46ed1637de22c72ddc1da15005cdd8a1cb32b3290ca73731a03cc0bdd43499dd:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjllMDA3OTcxMWYyZGU1ZGE5NDA1Mzk4YWY3YTM3NzNlZjBhY2JmMmM1MmIzOGZkMDg1ZGU5MDg4Njg3YWRjZGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2YjA0NDkxNDY5NzIyZTgzNjNhOTRlNDA0NDUzOGUwMTNhMmEyMTdlMzZiMWU1NjhiYTYwYWNiN2I0YzhmMmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFmYmE4MWY2MGYxODdhZjAwNDU5NjYzYjY2OTJhZTYyYzIxMDU4YmUxMGVkMDljYjAwNjY5Mzc0OTc0MmYyMzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY3Yzc1MWFiZGI5ZWY2NWIxMjVjYTZjNGUyYTUxYjJkNGI3ODgxODViNDQ2ZDQ1YjNhMjg2MjQ5MzNlYmE0ODkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4362325595d04fb5864706f8732438b5",
+      "statement": "ImprovementFunnelService.compute() is a read-only SQL aggregation of the whole proposal-to-verified chain into ImprovementFunnel: per-source conversion counts a proposal as reachedGoal only for statuses in the REACHED_GOAL set (scheduled, executing, verified, evaluating, applied, no_change, regressed, infra_failed); judgment agreement resolves each judgment's subject to a final outcome through the OUTCOME_SQL map (proposal_prescreen, reflection_triage, checker_second_opinion, auto_approve_shadow, panel_weighted, panel_unweighted); and it adds KPIs (including run cost per verified change from skill_outcomes), hygiene, queues, panel calibration per specialist and the dream ledger — with every query tolerant of missing optional tables.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/improvement-funnel-service.ts#L106-L180",
+          "version": "repo-lines-v1:sha256:708ca34edec92fa63e047dbc945619b253bcf566b6e4d8812a5911a7f0de5459:eyJzZWxlY3RlZExpbmVDb3VudCI6NzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4NDkxMDI0MmFhMjE2NDA5YWY5MTk3YmIyNjVhMGMyYmJiYTgzZWUyNGFhNjJmYWUwMjQzMjg5MGQ5Nzc3ZTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVlMTJiNjExODk0M2UzMGMwMDY4MzNlNzgxNjMwYTUzYjMyZjQxN2VmNWY5Nzk1YzNmMTJmMzMwODAyNGM1ZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/improvement-funnel-service.ts#L34-L66",
+          "version": "repo-lines-v1:sha256:d42167932c038cdb5e206d3a623c9f81e5d394293a982a53b7991166cc8efcf1:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRhNzA5Y2UzN2ZiN2Q3ODRiNmNiMTBmNWNiNTIzYzg3MjcyNzBmY2VlNjNkMGM5NTZmYWZmOTMyMDdjZmU2N2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdjMmE1Y2YyYTY2OGFhYTdmZDU2MDFiYjg3MjY0OTVlYTdmNjBjZjdlYzE2MTEwYmIxMDliMTJiZDI3YjkyM2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkwYzEyNzkyYzhmOTU5YTY4N2E2YWQ5NmE4ZGEwOGIyODJiZTRhN2YwMjU3Mjg0OTc1ODIzMTRiMTUzN2RhYzIifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-25T13:29:02.244Z"
+    "at": "2026-09-26T12:51:29.895Z"
   }
 }
