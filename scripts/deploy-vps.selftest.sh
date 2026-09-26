@@ -35,5 +35,6 @@ chown_line="$(echo "$remote" | grep -n 'chown -R 1001:1001' | head -n 1 | cut -d
 up_line="$(echo "$remote" | grep -n 'docker compose up' | head -n 1 | cut -d: -f1)"
 [ -n "$chown_line" ] && [ -n "$up_line" ] && [ "$chown_line" -lt "$up_line" ] || fail "chown must precede the first recreate"
 echo "$remote" | grep -q 'rolling back' || fail "rollback missing"
+echo "$remote" | grep -q 'timeout "${DEPLOY_BUILD_TIMEOUT_S:-1200}" docker build' || fail "docker build is not time-bounded"
 if ( main not-a-sha ) >/dev/null 2>&1; then fail "invalid sha accepted"; fi
 echo "deploy-vps selftest OK"
