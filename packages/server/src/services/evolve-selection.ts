@@ -12,12 +12,17 @@ import { SkillEvolutionEngine } from './skill-evolution-engine';
  */
 export interface Species { runtime: string; model?: string }
 
-export function evolveSpecies(env: NodeJS.ProcessEnv = process.env): Species[] {
-  if (env.LOOP_EVOLVE_ENABLED !== 'true') return [];
-  return (env.LOOP_EVOLVE_SPECIES || '').split(',').map((s) => s.trim()).filter(Boolean).slice(0, 2).map((s) => {
+/** 'runtime' or 'runtime@model', comma separated. */
+export function parseSpecies(list: string | undefined, max = 2): Species[] {
+  return (list || '').split(',').map((s) => s.trim()).filter(Boolean).slice(0, max).map((s) => {
     const at = s.indexOf('@');
     return at < 0 ? { runtime: s } : { runtime: s.slice(0, at), model: s.slice(at + 1) };
   });
+}
+
+export function evolveSpecies(env: NodeJS.ProcessEnv = process.env): Species[] {
+  if (env.LOOP_EVOLVE_ENABLED !== 'true') return [];
+  return parseSpecies(env.LOOP_EVOLVE_SPECIES);
 }
 
 export function evolveEligible(db: Database, goalId: string): boolean {

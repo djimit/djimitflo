@@ -5,7 +5,7 @@ import type { Database } from 'better-sqlite3';
 import type { LoopService } from './loop-service';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { mineGymTasks, type GymTask } from './gym-task-miner';
-import { evolveSpecies, type Species } from './evolve-selection';
+import { evolveSpecies, parseSpecies, type Species } from './evolve-selection';
 
 /**
  * C2b evolution gym runner (docs/design/evolution-gym.md). One attempt = one species on one replay task in a sandbox
@@ -57,7 +57,8 @@ export class EvolutionGymService {
 
   /** Incumbent maker runtime plus the evolve challengers: every species gets the same tasks. */
   species(env: NodeJS.ProcessEnv = process.env): Species[] {
-    return [{ runtime: env.LOOP_DAEMON_MAKER_RUNTIME || 'opencode' }, ...evolveSpecies({ ...env, LOOP_EVOLVE_ENABLED: 'true' })];
+    // EVOLUTION_GYM_EXTRA_SPECIES: challengers that compete in the gym only, never on production goals (e.g. 'atomic', plan C5)
+    return [{ runtime: env.LOOP_DAEMON_MAKER_RUNTIME || 'opencode' }, ...evolveSpecies({ ...env, LOOP_EVOLVE_ENABLED: 'true' }), ...parseSpecies(env.EVOLUTION_GYM_EXTRA_SPECIES)];
   }
 
   async runOne(now = new Date()): Promise<GymResult> {
