@@ -148,10 +148,17 @@ export class FrontierExpertScheduler {
    * file-based JSONL log — no file I/O in an in-process scheduler.
    */
   private async reviewCapabilityInferred(result: FrontierExpertTickResult): Promise<void> {
-    const experts = this.registry.list({ state: 'CAPABILITY_INFERRED', limit: 50 });
+    // People only: paper/repository units (E2) also sit at CAPABILITY_INFERRED, and newest-first they filled the whole
+    // window (prod 2026-09-26: 48 papers + 2 repos, 0 people) with a prompt written for authors. Random sample so every
+    // candidate gets a turn; reviewed-but-unpromoted experts no longer pin the window. ponytail: sample of 200, peers
+    // are chosen within the sample — a full scan when the backlog outgrows it.
+    const experts = this.registry.list({ state: 'CAPABILITY_INFERRED', kind: 'person', random: true, limit: 200 });
     if (experts.length < 2) return;
+    const maxAttempts = Number(process.env.FRONTIER_EXPERTS_REVIEWS_PER_TICK) || 10;
+    let attempts = 0;
 
     for (const target of experts) {
+      if (attempts >= maxAttempts) break;
       const peers = experts
         .filter((peer) => peer.id !== target.id)
         .sort((a, b) => this.sharedCapabilities(b, target) - this.sharedCapabilities(a, target));
@@ -159,6 +166,7 @@ export class FrontierExpertScheduler {
       if (!peer) continue;
       try {
         if (this.alreadyReviewed(target.id, target.version, peer.id, peer.version)) continue;
+        attempts += 1;
         await this.council.reviewExpert(target.id, peer.id, SCHEDULER_ACTOR);
         result.reviewed.push(target.id);
       } catch (err) {
