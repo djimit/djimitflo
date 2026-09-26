@@ -7,6 +7,9 @@
 
 # Stage 1: Build all workspaces from source
 FROM node:22-bookworm-slim AS builder
+# apt downloads from the Debian mirror stalled forever three times (2026-09-25/26, apt http method at 0% CPU):
+# bound every request and retry instead of hanging the whole deploy
+RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' > /etc/apt/apt.conf.d/80-djimitflo-retries
 
 WORKDIR /build
 
@@ -51,6 +54,9 @@ RUN npm run build
 
 # Stage 2: Production runtime
 FROM node:22-bookworm-slim AS runner
+# apt downloads from the Debian mirror stalled forever three times (2026-09-25/26, apt http method at 0% CPU):
+# bound every request and retry instead of hanging the whole deploy
+RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' > /etc/apt/apt.conf.d/80-djimitflo-retries
 
 WORKDIR /app
 
