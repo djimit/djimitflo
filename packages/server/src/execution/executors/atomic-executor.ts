@@ -76,6 +76,8 @@ export class AtomicExecutor implements TaskExecutor {
       const proc = spawn(this.bin, args, { cwd: options?.workingDirectory || process.cwd(), env, stdio: ['pipe', 'pipe', 'pipe'] });
       child = proc;
       void runtimeProcessClosed(proc).then(resolveClosed);
+      // a child that exits before reading stdin makes the write fail with EPIPE; unhandled that would crash the server
+      proc.stdin?.on('error', () => { /* the exit code reports the failure */ });
       proc.stdin?.end(`${task.description}\n`);
       const timeout = setTimeout(() => { stopRuntimeProcess(proc); emitter.emit('error', new Error(`Atomic execution timed out after ${options?.timeout ?? this.timeoutMs}ms`)); }, options?.timeout ?? this.timeoutMs);
       timeout.unref();
