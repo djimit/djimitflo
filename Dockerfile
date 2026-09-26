@@ -60,7 +60,7 @@ ARG BUILD_SOURCE=unknown
 
 RUN apt-get update && \
     apt-get upgrade -y && \
-    apt-get install -y --no-install-recommends ca-certificates git python3-minimal curl procps && \
+    apt-get install -y --no-install-recommends ca-certificates git python3-minimal curl procps libatomic1 && \
     rm -rf /var/lib/apt/lists/*
 
 # gh CLI: djimitflo's own PR review service shells out to it for PR
