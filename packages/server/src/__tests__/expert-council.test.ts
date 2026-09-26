@@ -30,12 +30,15 @@ describe('expert council: independent perspectives, claim graph, disagreement, a
     const peer = activate('Grace Example', 'ai_security', ['https://example.org/grace']);
     let badReference = false;
     let uncertain = false;
-    const council = new ExpertCouncilService(db, { runner: async () => ({ checks: [{ capability_id: 'alignment', decision: uncertain ? 'uncertain' : 'supported', rationale: 'Assessment within the cited experimental scope.', evidence_refs: [badReference ? 'invented' : evidenceByExpert[target][0]], reviewer_evidence_refs: uncertain ? [] : evidenceByExpert[peer] }] }) });
+    let lastSystem = '';
+    const council = new ExpertCouncilService(db, { runner: async (_role, system) => { lastSystem = system; return { checks: [{ capability_id: 'alignment', decision: uncertain ? 'uncertain' : 'supported', rationale: 'Assessment within the cited experimental scope.', evidence_refs: [badReference ? 'invented' : evidenceByExpert[target][0]], reviewer_evidence_refs: uncertain ? [] : evidenceByExpert[peer] }] }; } });
     await expect(council.reviewExpert(target, target, 'operator')).rejects.toThrow('EXPERT_SELF_REVIEW_FORBIDDEN');
     const versions = [registry.get(target)!.version, registry.get(peer)!.version];
     const report = await council.reviewExpert(target, peer, 'operator');
     expect(report).toMatchObject({ expert_id: target, reviewer_id: peer, approval_granted: false, runtime: 'injected' });
     expect(report.audit_id).toBeTruthy();
+    // reasoning models narrate until the token cap unless told otherwise (prod 2026-09-26: 10 of 10 people)
+    expect(lastSystem).toContain('Output ONLY the JSON object');
     expect([registry.get(target)!.version, registry.get(peer)!.version]).toEqual(versions);
     badReference = true;
     await expect(council.reviewExpert(target, peer, 'operator')).rejects.toThrow('EXPERT_REVIEW_EVIDENCE_INVALID');
