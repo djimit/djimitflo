@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c4fd57524965028758757f850fe48ac0db58ebedc0eccf0fd812207731749be2",
+  "pageVersion": "sha256:f905a4c2498a2f0ca275ec666cb015eae1d39449370bdb8c96a9307430ec9ee7",
   "claims": [
     {
       "id": "claim_ba0e430361374ce6868f5cd080fb4a7f",
@@ -292,14 +292,22 @@
     },
     {
       "id": "claim_8b99865c75f24d84bbf26cb6ed688f23",
-      "statement": "OpenCodeExecutor reports token usage and cost collected from NDJSON step_finish parts as tokenUsage/costDollars metrics on the ExecutionResult, and resolves an exit-0 run as failed with code VERIFICATION_FAILED (retryable: false, sideEffectsPossible: true) when a verification tool step (build_check/lint/test/typecheck or a bash command matching tsc/eslint/vitest/jest/pytest/…) reports failure.",
+      "statement": "OpenCodeExecutor reports token usage and cost collected from NDJSON step_finish parts as tokenUsage (running max of part.tokens.total) and costDollars (running max of part.cost) metrics on the ExecutionResult; it also accumulates the step totals into a separate tokenSum used to enforce the OPENCODE_MAX_RUN_TOKENS runaway brake, and resolves an exit-0 run as failed with code VERIFICATION_FAILED (retryable: false, sideEffectsPossible: true, failureDomain: 'opencode') when a deduplicated verification tool step failure was detected.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/execution/executors/opencode-executor.ts#L282-L346",
-          "version": "repo-lines-v1:sha256:b50b49355002fc2b8d704fb9f7677155e93c40aae264282229cbe6081ee68bce:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjZWMwZDkzMDcyZGMzMjMxNmUwNzc3Mjk0MzFkMTE2MGMyZDU2ZTM3N2RkNjYwNzM4NzQxNTU3NjliZTkyN2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZhYjE3ODUyYTIzOTk1ZGYwODUzY2MwMTNkMzkzMTM5MDkzZGIyOGVhYzYzZDJiMjQwN2Y3MDRhYjQzNDJjYmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRjNWMzOTJhYTAzNzM0OTcyMzZjZDk1ZWZiYzgxYjk1MWE2MDZlMGUwMzg4NzUwMTE4ZDkyYWM5ZWQ3NGU4MTcifQ"
+          "resource": "repo://packages/server/src/__tests__/opencode-token-brake.test.ts#L11-L25",
+          "version": "repo-lines-v1:sha256:dc933d62048ab3618fff7e23bf256a61eaa24c526b2be8ad00f5c40eb2861015:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNhYmY5ZDQyNDM3NDk4ZjJjZmJlNTYwNzIyZDJjZDQzOGI1NzBlNTYxNzFjN2NkMzkxMWMxOTk3ZDFjNDUzYTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFlOTc3YTFlNGVmZWEzNzkwOTdlMWFkZDQzYjhmOTlkMDBmMjJkMGVlMDNhMGVhMzhlNzgwOWY4YTBiMzY0MDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         },
         {
-          "resource": "repo://packages/server/src/execution/executors/opencode-executor.ts#L633-L658",
+          "resource": "repo://packages/server/src/execution/executors/opencode-executor.ts#L183-L194",
+          "version": "repo-lines-v1:sha256:28b34c0df4f46e83b50c083d3018d3a49759427566ca0a64def75434c245adab:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlYTEwM2I5NDllMTQ0MGZlZWFjN2UwMzVkN2JiNzk1NmYxMzUxNjU2YmExMmNkOTc3MDAzMzIzYjkwMWIyZGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxN2FmMTEwMWM5N2I3YzJmNTI1NDA3ODJlNjM0Y2M0NDQwZjBlOTcwMzQxZTUyZjk3NTIzMTFkNzhiN2Q3ZDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZiMGIzMDVlYzc4NzBhNTFjNmI5NmQwZGExZTkxZWY2NmE3OWExOTUyOWRjNzViYzM0YjRlMjY5ZWI5NmQyMDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU5Y2VhZDkyYTk4OGU0YTU3Y2MyNmM2MTIxZmI5Njk1NzUyNTczOWZhMDk5ZDE3NTk1MTM1OWQ1MjczYWYyNjgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/executors/opencode-executor.ts#L287-L327",
+          "version": "repo-lines-v1:sha256:b90f399038f83da36bf3a5324df7ee8a9f6f1eafc206d17e06c5980c308de24f:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5NTMzNjI0NzgzYzJkMzljNTMyOTU4YzEzZTE0NGE1OGJjNmJhNzU3NmRkODMzYjZkNGZiOTAzMThiYTU3NDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3ZDg2MzJlNTRlOTI5OGFiYjk1ODcyN2UyZDUxNDA4YWJhZjEzNjYwMzUzNzkxMDE0MGFiZjY1YjMwYWI2MTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdjZDg4NDQ5M2Y3NWI5YmIzMjMyOTQ0NzYzYTY2ZTUzZGJiZmQ5ZjgxZGJjZGZlM2VhZmI1M2U1ZWEzNGVmMTgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/executors/opencode-executor.ts#L653-L678",
           "version": "repo-lines-v1:sha256:ef07d8ea535a3b99a483a766ab04d55f5dc86d0ce4486d023e5868a71caba351:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNjYjRhYzg5NzJjYmYwN2FiMTI5YzcyZWMwZTZlM2U1YzUwNzU3ZWE0ZmI1NjMyMzY2ZDQ5NTViZDA2NjZjMTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhMzdlM2MwOTQxZDE1NzdjMDM5OGUzYjY3ODRlZjNiM2YwMTI4OGJjZGVjOWE0YmJhMWFiZmFhNzQwYWI2ZjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwNjdkMDM2NTc5MGY1Y2EzZDlmMmRkMWY1NjYwMTY2OTQxMjQ1OTNiZjYxYWMxZWVkYmQ5Mzc5YTNiMzZmNzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIzNjI0NmJhMDBkN2ZiMjUzNzcwMmM5NDA4NmNmMTUwYThmOTcyYzNiZjA1NTdiNTJjYWExN2NkNGUzMDU0ZGQifQ"
         }
       ]
@@ -313,10 +321,70 @@
           "version": "repo-lines-v1:sha256:b2ff7dcbba9aeb75be73d08b7eb64ea38b4587eeec86e5d4d47152ed0d48de7b:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjQ3MDMzZGMzZWQ1ODhmMjdjZDQ4MGI2OTgyNjZlYjg3MGQ4MDZiZGQ4MjFmMzZhMmRlNjQwMDIwYzExMTE2MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjI0MjYzMDIyZjZjODhkZDBjZTk0NjJlNjY0NTEwYzIzMTFiZDg3NjM2OTJlZWFhNDM2MmE3NGMxYTdlMDNjZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2E5N2FmY2MxNDEzMjA5Njk2YzAzNDdhOTgzMjdmYjg0MjFhMjU0NzYyNTlkZWUzODRkNDFjN2YyZmQwNTdlOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjViZTc2MDIyNzlkNjVmN2QzZDgxOWE3ZDg2YjBjNjQ2YjY1YWY5NTY0N2M2ZjIxMWNlMDAzZWIzZmJmMjdmNCJ9"
         }
       ]
+    },
+    {
+      "id": "claim_ac9ff8a8a5004bc488aa3989dc137c3e",
+      "statement": "OpenCodeExecutor.getVerificationFailure treats a tool_use event as a verification step when the tool is named build_check/lint/test/typecheck/type-check or is a bash tool whose state.input.command matches type-?check/tsc/eslint/vitest/jest/pytest/cargo test/go test/npm (run )?test, and reports failure when state.status is error/failed/rejected/cancelled or state.output parses as JSON with success === false, a non-zero numeric exitCode, verdict === 'fail', or summary.failed_count > 0 (non-JSON output is ignored).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/executors/opencode-executor.ts#L329-L366",
+          "version": "repo-lines-v1:sha256:b787933a0cd6ca467ee5b393dbe2cffa0f9f8794d4ae29b03e81bf61a0ddf25e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkYjI4YTZmMDNjNDU5NjljZGU1N2ExOTBlOTgyMTdjZjc3MGIzYTA1OWJhZjVkMjJiYWM4ZmJmMzU4OGQ1ZjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3ZDg2MzJlNTRlOTI5OGFiYjk1ODcyN2UyZDUxNDA4YWJhZjEzNjYwMzUzNzkxMDE0MGFiZjY1YjMwYWI2MTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRjNWMzOTJhYTAzNzM0OTcyMzZjZDk1ZWZiYzgxYjk1MWE2MDZlMGUwMzg4NzUwMTE4ZDkyYWM5ZWQ3NGU4MTcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9eb35cfe10154699812591815f35cc1d",
+      "statement": "OpenCodeExecutor.parseJsonEvent accepts any line that parses to a JSON object with a string type and returns null otherwise; collectMetricsFromText buffers partial lines across chunks so only newline-terminated input is evaluated (remainder flushed on close), and metrics are fed from both stdout and stderr, while payload reads fall back from the nested part envelope to the flattened event for version-drifted output.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/executors/opencode-executor.ts#L202-L209",
+          "version": "repo-lines-v1:sha256:ff84b7872d95851376e55db0337146bc0482445369d68eb98bcd88bc6b3b88c3:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTdiMGIxMTY1YjUwYmMyNzExODU4MjUwNWJkOTNjYzQ0NTJiODQ1MWU4ZTk5YzNlMTY2ZDk2MDYwOTcxYzI0YyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzE3YWYxMTAxYzk3YjdjMmY1MjU0MDc4MmU2MzRjYzQ0NDBmMGU5NzAzNDFlNTJmOTc1MjMxMWQ3OGI3ZDdkMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZThkMzM0YmU3YTE3MzRmYzAzODA3MWYxOTE2NzczZjNlM2I4N2U3ZGFiNjFkNWE0YWU3ZWJmY2I0ZjRiZWNhNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2E0ZmI3ZmZhNjYxMjNlODhkYmYxMzViNDkzZDMwYWNiYzNjZTg1YjY4MjI2ZWJhMjcxZjA2ZThlZDczNDM3MiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/executors/opencode-executor.ts#L273-L327",
+          "version": "repo-lines-v1:sha256:179610c5c79302aa9d628ccf6d3099b73964223c31668f865781335130299251:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2ZTI0MjUxZjVlZmY3NjkzNmU5NGI2MzgzZTc1MDllZmZiZmMxNDEyMjQzOGEzNzcyYjA5MjdkMTA4Mjg5YzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyMjQzMTZmY2JiNGQyYzkwNjcxYThhZDdjYWM1MDFmNGM3MmE0YTNiZGFiY2M2Yjc5YmQ0NDMzMzQ0NzM4OTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdjZDg4NDQ5M2Y3NWI5YmIzMjMyOTQ0NzYzYTY2ZTUzZGJiZmQ5ZjgxZGJjZGZlM2VhZmI1M2U1ZWEzNGVmMTgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/executors/opencode-executor.ts#L368-L373",
+          "version": "repo-lines-v1:sha256:693708149e3228a81bb78eacd54f60a053a3441653366007de2ad40d5c919717:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzRiYTc3NTc3Zjk3OWUyOTVmNTE2MDk5MTcxODg5ZmFkYzcxZDY2NDk4MTMzMjVlMjQ5YWY2NzllMDE1Y2EwMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmQwMjE0ZmVmMzliYzRlMzk2Yzc5OTdmMmQ5ODEyMDVhNjk1MWNjMjdkYWFlZjJlYzQ1MjQ5MmQxMjcxZmZkYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDhiMjE1NTcwMzU4NzBhZTE1MWM3YzdiNWEyNTA4YmYwNmQ4ZGFlNzNiNzRmMTVlZmE0M2ViZDA2NzhiZjdlNyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_eb3a649ac7394695bc121db9f667beeb",
+      "statement": "OpenCode step token accounting is tested at two levels: opencode-token-brake.test.ts proves the OPENCODE_MAX_RUN_TOKENS brake stops a run whose summed step tokens pass the cap well before the wall-clock timeout, and opencode-token-usage.test.ts pins LoopService.extractRuntimeUsage summing opencode step_finish token fields into prompt_tokens/completion_tokens/total_tokens (usage_source 'runtime_stdout') — the regression fix for loop-reported tokens_used always being 0.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/opencode-token-brake.test.ts#L11-L25",
+          "version": "repo-lines-v1:sha256:dc933d62048ab3618fff7e23bf256a61eaa24c526b2be8ad00f5c40eb2861015:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNhYmY5ZDQyNDM3NDk4ZjJjZmJlNTYwNzIyZDJjZDQzOGI1NzBlNTYxNzFjN2NkMzkxMWMxOTk3ZDFjNDUzYTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFlOTc3YTFlNGVmZWEzNzkwOTdlMWFkZDQzYjhmOTlkMDBmMjJkMGVlMDNhMGVhMzhlNzgwOWY4YTBiMzY0MDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/__tests__/opencode-token-usage.test.ts#L7-L15",
+          "version": "repo-lines-v1:sha256:11bbe512529431967ffda01a8ec5a0c88bfcf3a145a2f3f95864b84fc465410e:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWIxZDRlZmY2NTBiYjY4ZmUzY2RiZWE3NTBlNTc0ZmUyOGE2YTZkOWQ2NGVkMWMyY2M4Yzk3MGE3MTM5OWNlYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWRhNWMyNDhhZjgwMDU5MWFlMDNhMmJiZWY1NDMzN2Q2ZmRkZGVmYmI1ZGNhMWQ3NDJiNzkwOTU3MTY4Y2Q3NyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzViZWVmNTE0OWVkYzJiNmI5YmZiMjk2MjgzYTE1ZTNiZGY4NjVhOGFlN2I1NmI2NDhhZWNjZDhiNzJkMjZlYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_29c53e1fa19f46479c4fa4c920a047b9",
+      "statement": "Adapter registration in the ExecutionEngine constructor does not establish production readiness: the README lists 8 default adapters (OpenCode, Codex, Claude, Hermes, Gemini, Pi, Editor, Mock) with Deep Agents opt-in, while the /swarms/runtime-readiness gate treats only codex and opencode as production runtimes and blocks anything else with non_mock_supported_runtime_required.",
+      "evidence": [
+        {
+          "resource": "repo://README.md#L38-L38",
+          "version": "repo-lines-v1:sha256:d593e7b980e687694c275653c336fa75faf40064267cf4f51dd413bde5cd8894:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDU5M2U3Yjk4MGU2ODc2OTRjMjc1NjUzYzMzNmZhNzVmYWY0MDA2NDI2N2NmNGY1MWRkNDEzYmRlNWNkODg5NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDU5M2U3Yjk4MGU2ODc2OTRjMjc1NjUzYzMzNmZhNzVmYWY0MDA2NDI2N2NmNGY1MWRkNDEzYmRlNWNkODg5NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTZmYzk1MDU1YzEwMDliZmZmYWQwYzE3ZjgzYTQ2MzM2MWVhZWNmMGFiYmM5NTA3MmNlYWE2ZDFiMjU1YzhiMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYmI2ODA3MDdmZTIyNDY2OWYxYTRkMGIwMWM3MDVlOTk4ZWUxYTcxOThmMzAzYTJlYzBiOTE2ZTY3MDBkMzRlZiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L156-L166",
+          "version": "repo-lines-v1:sha256:43b53bc5ff757b8cf067dc9c485c2828ee921819542ec76a498fb76cc6fd8e64:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmOWE0MGZiNTJlYWNmNTQyZjJlZWVlNjM0NGFiMmZiZDU4NGEyY2YzYjM2ZDU3ZTE0NmRlZmUwNzk4YmNiMWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiZWVkZjcwYzZjYzI2YjY4MzhmYTdmZjZkY2NlODBjY2RiMmU5ZDM1ZTkyN2JkMWFhMDMzYjlmODg0NWQ2NGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhhNDI0NzAwZDA2YjdiZWVmYmM1YWI0MDU3Yzc0ZDBjZjRlN2NmY2QxYzkyYzQyMWZmMGZkMTM3OWM5NmQ3M2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI2YmFiNWNmMTVjMzYzM2M3MDBiZTE3ZWIzODM0OGQ1YzlkYTJiZmE4Mjc1Njc2YzU3NWQwNWUxNWQxYzg2ODkifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/swarm-knowledge.ts",
+          "version": "repo-file-v1:sha256:389734913ec6f5cea2c4fb912a0e8403cd70d379239319384dd70be4331be1a0"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-25T13:29:02.244Z"
+    "at": "2026-09-26T12:51:29.895Z"
   }
 }

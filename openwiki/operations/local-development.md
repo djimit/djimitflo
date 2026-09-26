@@ -12,6 +12,8 @@ sources:
     resource: repo://docker-entrypoint.sh
   - id: openwiki-source-bb1ebe868e35e9e500714501
     resource: repo://Dockerfile
+  - id: openwiki-source-caa3d30952fbec0c6dae3808
+    resource: repo://docs/adr/0001-djimitflo-core-retire-paperclip.md
   - id: openwiki-source-5b54a58d1b51cd490b0e7162
     resource: repo://package.json
   - id: openwiki-source-30d3c41149038dfbadfcda67
@@ -42,8 +44,6 @@ sources:
     resource: repo://scripts/live-identity-evidence.test.mjs
   - id: openwiki-source-468f882d40bb8c52d27a2b9f
     resource: repo://scripts/mutation-gain.mjs
-  - id: openwiki-source-29c2506c65adc0de528f9094
-    resource: repo://scripts/paperclip-archive-export.py
   - id: openwiki-source-411dd1fcf68de6a41850c6fc
     resource: repo://scripts/wiki-delta-emitter.selftest.sh
   - id: openwiki-source-78f33dbc13edb0630c5e1cd3
@@ -56,10 +56,10 @@ sources:
     resource: repo://vitest.mutation.config.ts
   - id: openwiki-source-ecc4c6c168f7ce5ad8ec280e
     resource: repo://vitest.service-mutation.config.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-09-26T12:51:29.895Z" }
 verified:
   - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
+    at: 2026-09-26T12:51:29.895Z
 ---
 
 # Local Development, Build & Test Commands
@@ -68,7 +68,9 @@ DjimFlo is an npm-workspaces TypeScript monorepo (`packages/*`) with an
 Express + SQLite backend, a React + Vite dashboard, and satellite packages
 (MCP server, Telegram gateway, agent catalog, ransomware module). This page is
 the runbook for getting a working local checkout, running and testing it, and
-operating the container build.
+operating the container build. Gate semantics (what CI enforces, what "green"
+means) are covered in [Test Strategy](../testing/test-strategy.md); this page
+covers how to run things.
 
 ## Prerequisites
 
@@ -77,11 +79,15 @@ operating the container build.
 | Node.js | `>=22.0.0 <25.0.0` | Enforced via root `engines`; the Dockerfile uses `node:22-bookworm-slim` |
 | npm | `>=9.0.0` | Enforced via root `engines` |
 | Python 3 + `make` + `g++` | any recent | Required when `better-sqlite3` has no prebuilt binary and must compile its native addon during `npm install` |
-| bash + Python 3 | any recent | Required to run the root `npm test` pipeline (script selftests) even for Node-only changes |
+| bash | any recent | Required to run the root `npm test` pipeline (two script selftests run before any vitest suite) |
 | Docker | any recent | Only needed for sandboxed execution and the container workflow |
 
 `.npmrc` sets `legacy-peer-deps=true`, so installs already account for legacy
-peer-dependency behavior.
+peer-dependency behavior. The root `package.json` also pins seven packages via
+`overrides` (`esbuild`, `postcss`, `fast-uri`, `ip-address`, `nanoid`,
+`brace-expansion@1`, `qs`) — these resolve transitively from Vite/postcss and
+other dev tooling; you do not need to do anything special, but if you are
+debugging a dependency version mismatch with CI, check these pins first.
 
 ```bash
 git clone <repo>
@@ -182,22 +188,26 @@ pipeline is:
    that the wiki delta emitter baselines on first run, stays silent when
    unchanged, honors `--dry-run`, and publishes one `wiki.page.changed` event
    listing only changed `.md` pages.
-3. `python3 scripts/paperclip-archive-export.py --selftest` and
-   `python3 scripts/paperclip-readonly-monitor.py --selftest` — the Paperclip
-   exporter parses pg_dump `COPY` blocks for an allowlist of work-history
-   tables (never secrets/credentials tables) into JSONL with a sha256
-   `MANIFEST.json`.
-4. `node scripts/live-identity-evidence.test.mjs` — identity/provenance
+3. `node scripts/live-identity-evidence.test.mjs` — identity/provenance
    verification logic used by `assurance:live` (commit, instance ID, loopback
    vs configured database identity).
-5. `node scripts/integration-probes.test.mjs` — stubbed-`fetch` tests of the
+4. `node scripts/integration-probes.test.mjs` — stubbed-`fetch` tests of the
    external integration probes (e.g. Context7 MCP discovery
    contract/version checks).
-6. `npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog`
+5. `npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog`
    — prerequisites compiled before workspace tests run.
    `tsx`-executed server code is type-stripped at runtime, so these built
    `dist/` outputs are what the test imports actually resolve.
-7. `npm run test --workspaces --if-present` — vitest per workspace.
+6. `npm run test --workspaces --if-present` — vitest per workspace.
+
+> **Historical note.** Until Paperclip was retired (2026-09-21, see
+> [ADR 0001](../../docs/adr/0001-djimitflo-core-retire-paperclip.md)), steps 3–4
+> were preceded by two Python selftests (`paperclip-archive-export.py
+> --selftest` and `paperclip-readonly-monitor.py --selftest`) that validated a
+> pg_dump `COPY`-block parser exporting an allowlist of Paperclip work-history
+> tables to JSONL with a sha256 `MANIFEST.json`. Both scripts were deleted along
+> with the Paperclip service; archive export is now governed by the ADR's
+> phase-2/phase-4 plan, not by any runnable code in this repository.
 
 Vitest configuration: the root `vitest.config.mts` selects the `jsdom`
 environment with no setup files (tests stub `localStorage`/`fetch`
@@ -360,9 +370,11 @@ configuration.
   prerequisite packages themselves for this reason.
 - **Production container without `JWT_SECRET`** — `docker-entrypoint.sh`
   exits 1 before node starts.
-- **Root `npm run test` requires Python 3 and bash** even for pure Node work,
-  because the Paperclip selftests and the bash script selftests run before any
-  vitest suite.
+- **Root `npm run test` requires bash** even for pure Node work,
+  because the two shell script selftests run before any vitest suite. (Python 3
+  is still needed at `npm install` time for `better-sqlite3` native compilation,
+  but no Python scripts run in the test pipeline since the Paperclip selftests
+  were removed.)
 - **`test:mutation:grounded` without env vars is a silent no-op** — it must be
   invoked with both `MUTATE_FILE` and `MUTATE_TEST` set (or via a loop-daemon
   check harness that sets them), otherwise it skips and exits 0.

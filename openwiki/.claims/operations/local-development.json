@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:6898dc53d4bdba79786c4fc576e00a55334e9b1f6c49fd1a5c14828a67454235",
+  "pageVersion": "sha256:5db17534cec3cd39235b0ad4dc4dccb6992e76c8e45d53d3988c0a0b9472aa2c",
   "claims": [
     {
       "id": "claim_662ff36ed9c94fe291ee7fea898f9dda",
@@ -94,11 +94,15 @@
     },
     {
       "id": "claim_8b32ce44ee9542d0b9ea82009d7ad064",
-      "statement": "The root npm run test pipeline runs five script selftests BEFORE any workspace test: deploy-vps.selftest.sh, wiki-delta-emitter.selftest.sh, paperclip-archive-export.py --selftest, paperclip-readonly-monitor.py --selftest, live-identity-evidence.test.mjs, and integration-probes.test.mjs; it then builds shared and agent-catalog and only afterwards runs npm run test --workspaces --if-present.",
+      "statement": "The root npm run test pipeline runs four script-level checks BEFORE any workspace test: bash scripts/deploy-vps.selftest.sh, bash scripts/wiki-delta-emitter.selftest.sh, node scripts/live-identity-evidence.test.mjs, and node scripts/integration-probes.test.mjs; it then builds @djimitflo/shared and @djimitflo/agent-catalog and only afterwards runs npm run test --workspaces --if-present. The two Paperclip Python selftests (paperclip-archive-export.py, paperclip-readonly-monitor.py) that previously ran as steps 3-4 were deleted when Paperclip was retired on 2026-09-21.",
       "evidence": [
         {
+          "resource": "repo://docs/adr/0001-djimitflo-core-retire-paperclip.md#L1-L33",
+          "version": "repo-lines-v1:sha256:75c44ed3acbe7fb0e5aa450216e773362aa54bdddb77c19178c4eb736790ad08:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxYWFhNzRmNTI2ZjI4MjFmNjUzZGU4NzRkYTZkZjE1ODQ4MzY0NDBmZmE0OTY2ODk4ZDk4MTQwZjEwZTZmMTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM4NWYyOGQ4MmNhMzJjMjI3MjlkZDZiOTc3MTA0ZGQyMzRmMDFlNTRiM2NhNjNkM2M3YjQ4NWRiNWFkZjJjYzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZjN2EyYjZlMmIxZDM4NWNlNDJhMThkNjM3ODJjM2ZmNmRiZWI0NGQ0MTcwODBhZGUzMGU1MTg5NmQxZWQyMGIifQ"
+        },
+        {
           "resource": "repo://package.json#L18-L18",
-          "version": "repo-lines-v1:sha256:fc5157e4fa43b3ef911b2d0ef5c413035ff969f0f38b4564360e65996cb0af73:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmM1MTU3ZTRmYTQzYjNlZjkxMWIyZDBlZjVjNDEzMDM1ZmY5NjlmMGYzOGI0NTY0MzYwZTY1OTk2Y2IwYWY3MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmM1MTU3ZTRmYTQzYjNlZjkxMWIyZDBlZjVjNDEzMDM1ZmY5NjlmMGYzOGI0NTY0MzYwZTY1OTk2Y2IwYWY3MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDQ4MmQyOGE3ZTNlMmZjNjgxZmZlM2NlNTJmZTcwODg1YjI1MTUwYzQ1Y2VmMmMyMjc4OTg4ZmMwNzU4YTQ4NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzhlMGQ0ZGEzYmI3MjQwNGRlYjA4MjJkMzYwNTE3Nzc0ZmVhMDE5NzMwODZlYWE0YzlmMWI2NjUyZWNjM2U0YyJ9"
+          "version": "repo-lines-v1:sha256:a7cb2373a60bea977337ad75ae776aba5268b42f4a5ad03b4e65d54d8c8f52e6:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTdjYjIzNzNhNjBiZWE5NzczMzdhZDc1YWU3NzZhYmE1MjY4YjQyZjRhNWFkMDNiNGU2NWQ1NGQ4YzhmNTJlNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTdjYjIzNzNhNjBiZWE5NzczMzdhZDc1YWU3NzZhYmE1MjY4YjQyZjRhNWFkMDNiNGU2NWQ1NGQ4YzhmNTJlNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDQ4MmQyOGE3ZTNlMmZjNjgxZmZlM2NlNTJmZTcwODg1YjI1MTUwYzQ1Y2VmMmMyMjc4OTg4ZmMwNzU4YTQ4NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTFhYjA4NDE4OTBiYWQxMjBiMWNjNDAwMWJlMTA5YmYyYmRmNTNkODAwMDk0YzQyZjM4ZWRkMmZhOWI5YmJmMCJ9"
         },
         {
           "resource": "repo://scripts/deploy-vps.selftest.sh#L1-L9",
@@ -113,12 +117,8 @@
           "version": "repo-lines-v1:sha256:1bd12926f09b255a813808895e697919205c954072f48405c9fbb76ee330cad8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwNjYyZmJjYzBkNGQ4YzExOTY4M2RhMTk0N2IxMjA0NjgwM2Q0OGI0NDc5ODgxOTdlYzMwOTJmZmU1YThiNGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhOTIyMzZhOTA4ZDU4YzNmMDJhOTAzOTMxYjUyYzAzMjI0YmQyZjI3MDhkNWE4MjkyODY1ZDEzOGU3ZjlmNGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc3NTJlMzE5OTAzMGU0YmExMTBhNzU3MmYzMGI3MWQ0ZGQwNzgzYTQ5NzA1OTU2OWZiMzk3YTQwNzIyY2IzNzIifQ"
         },
         {
-          "resource": "repo://scripts/paperclip-archive-export.py#L1-L11",
-          "version": "repo-lines-v1:sha256:6d89d8a26049e36defc03a60d642382fbb5f1c5d4b71e16d5560e7c85ede5153:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2ODJjYmRiNGM4YjA3NTE4YmY0ODZjNTg5OTBmYzM5MTc4M2FhMjBhOTE2YmZiMjdhZDIxMWViMWQ1YzM2NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2MmY2ZDgyMzljYzU1MmJjMTNhYzg2OGNiNDQ1YTc0ZDA1NGQ3ZmFlMDM0ZWM3MDUxZjdiNDEyZGRhYmQ2MTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE2ODYwNjAwZTY3ZmRiY2RhYjQ5NDk1NWQ1NTFjNDQ3NmY1YTZhNDIwODQxMGZhODM3OWJjZTY4MWIxNzljNWEifQ"
-        },
-        {
-          "resource": "repo://scripts/wiki-delta-emitter.selftest.sh#L1-L5",
-          "version": "repo-lines-v1:sha256:79726edf4846b542d36214fddd8ab153b73b418138b08ddf0d7170c9371fe136:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWQ5NWZjMDRhODBjOTUyZjQ5Y2U0MTg4NjI3YzUzYjBmYmU4YzQ0MDQxYjk1MmQ1OTJhY2QxZGU5OTg2MTQ2NiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTY3YTc0ZWIzMWVmOWZhYjIyZTkwYzA5YzY1OThjNGFjNTEzOGYxZmU2OWVkZGYyM2JiODFhNWE2NGZiYTBmYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2IyMjQ2ZDU2OWRhZTcwODJiNThhMDA3YmFmNzg4NmQwNzk0MmFlZTBhOWY3YmU3YmYyYTgwYTgyMDM0ZGZlZCJ9"
+          "resource": "repo://scripts/wiki-delta-emitter.selftest.sh#L1-L2",
+          "version": "repo-lines-v1:sha256:8c78b8eefed079f609fa11adb27c31e450d5d3f046fb5117bc7a908f5546dd7f:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWQ5NWZjMDRhODBjOTUyZjQ5Y2U0MTg4NjI3YzUzYjBmYmU4YzQ0MDQxYjk1MmQ1OTJhY2QxZGU5OTg2MTQ2NiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGY1NTIxMzlhNTIwNTMyNWNmYThlOTNlNzQyZWQ0YzhhMTQ5YzVkNDhjNjExYmM2MzE4MGE2YTM5MjZlMjMwZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWM4ODBkYTVmZDBhYjAxZGVjMzhlZjI0MGU3YTBhNDU3ZDI2NTIzMGRkNTY0Yzg0YWE2OGExYTcxYzUwZTA3MyJ9"
         }
       ]
     },
@@ -254,11 +254,11 @@
     },
     {
       "id": "claim_efaf592d4f854c8c82996e77d8f89fa9",
-      "statement": "The root npm run test pipeline is a chained script that runs script-level selftests before any workspace test: bash scripts/deploy-vps.selftest.sh (fixture-compose checks of the VPS deployer scripts/deploy-vps.sh, including image/commit/mount rewrite and rollback), bash scripts/wiki-delta-emitter.selftest.sh, python3 scripts/paperclip-archive-export.py --selftest and python3 scripts/paperclip-readonly-monitor.py --selftest (pg_dump COPY allowlist parsing into JSONL plus sha256 MANIFEST.json), node scripts/live-identity-evidence.test.mjs and node scripts/integration-probes.test.mjs; it then builds @djimitflo/shared and @djimitflo/agent-catalog (their dist outputs are what test imports resolve under tsx type-stripping) and only afterwards runs npm run test --workspaces --if-present.",
+      "statement": "The root npm run test pipeline is a chained script that runs script-level selftests before any workspace test: bash scripts/deploy-vps.selftest.sh (fixture-compose checks of the VPS deployer scripts/deploy-vps.sh, including image/commit/mount rewrite and rollback), bash scripts/wiki-delta-emitter.selftest.sh (throwaway-git-repo baseline/dry-run/changed-pages check for the wiki delta emitter), node scripts/live-identity-evidence.test.mjs (identity/provenance verification used by assurance:live) and node scripts/integration-probes.test.mjs (stubbed-fetch tests of external integration probes, e.g. Context7 MCP discovery contract); it then builds @djimitflo/shared and @djimitflo/agent-catalog (their dist outputs are what test imports resolve under tsx type-stripping) and only afterwards runs npm run test --workspaces --if-present.",
       "evidence": [
         {
           "resource": "repo://package.json#L18-L18",
-          "version": "repo-lines-v1:sha256:fc5157e4fa43b3ef911b2d0ef5c413035ff969f0f38b4564360e65996cb0af73:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmM1MTU3ZTRmYTQzYjNlZjkxMWIyZDBlZjVjNDEzMDM1ZmY5NjlmMGYzOGI0NTY0MzYwZTY1OTk2Y2IwYWY3MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmM1MTU3ZTRmYTQzYjNlZjkxMWIyZDBlZjVjNDEzMDM1ZmY5NjlmMGYzOGI0NTY0MzYwZTY1OTk2Y2IwYWY3MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDQ4MmQyOGE3ZTNlMmZjNjgxZmZlM2NlNTJmZTcwODg1YjI1MTUwYzQ1Y2VmMmMyMjc4OTg4ZmMwNzU4YTQ4NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTFhYjA4NDE4OTBiYWQxMjBiMWNjNDAwMWJlMTA5YmYyYmRmNTNkODAwMDk0YzQyZjM4ZWRkMmZhOWI5YmJmMCJ9"
+          "version": "repo-lines-v1:sha256:a7cb2373a60bea977337ad75ae776aba5268b42f4a5ad03b4e65d54d8c8f52e6:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTdjYjIzNzNhNjBiZWE5NzczMzdhZDc1YWU3NzZhYmE1MjY4YjQyZjRhNWFkMDNiNGU2NWQ1NGQ4YzhmNTJlNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTdjYjIzNzNhNjBiZWE5NzczMzdhZDc1YWU3NzZhYmE1MjY4YjQyZjRhNWFkMDNiNGU2NWQ1NGQ4YzhmNTJlNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDQ4MmQyOGE3ZTNlMmZjNjgxZmZlM2NlNTJmZTcwODg1YjI1MTUwYzQ1Y2VmMmMyMjc4OTg4ZmMwNzU4YTQ4NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTFhYjA4NDE4OTBiYWQxMjBiMWNjNDAwMWJlMTA5YmYyYmRmNTNkODAwMDk0YzQyZjM4ZWRkMmZhOWI5YmJmMCJ9"
         },
         {
           "resource": "repo://scripts/deploy-vps.selftest.sh#L1-L9",
@@ -275,10 +275,6 @@
         {
           "resource": "repo://scripts/live-identity-evidence.test.mjs#L1-L12",
           "version": "repo-lines-v1:sha256:1bd12926f09b255a813808895e697919205c954072f48405c9fbb76ee330cad8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwNjYyZmJjYzBkNGQ4YzExOTY4M2RhMTk0N2IxMjA0NjgwM2Q0OGI0NDc5ODgxOTdlYzMwOTJmZmU1YThiNGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhOTIyMzZhOTA4ZDU4YzNmMDJhOTAzOTMxYjUyYzAzMjI0YmQyZjI3MDhkNWE4MjkyODY1ZDEzOGU3ZjlmNGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc3NTJlMzE5OTAzMGU0YmExMTBhNzU3MmYzMGI3MWQ0ZGQwNzgzYTQ5NzA1OTU2OWZiMzk3YTQwNzIyY2IzNzIifQ"
-        },
-        {
-          "resource": "repo://scripts/paperclip-archive-export.py#L1-L11",
-          "version": "repo-lines-v1:sha256:6d89d8a26049e36defc03a60d642382fbb5f1c5d4b71e16d5560e7c85ede5153:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2ODJjYmRiNGM4YjA3NTE4YmY0ODZjNTg5OTBmYzM5MTc4M2FhMjBhOTE2YmZiMjdhZDIxMWViMWQ1YzM2NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2MmY2ZDgyMzljYzU1MmJjMTNhYzg2OGNiNDQ1YTc0ZDA1NGQ3ZmFlMDM0ZWM3MDUxZjdiNDEyZGRhYmQ2MTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE2ODYwNjAwZTY3ZmRiY2RhYjQ5NDk1NWQ1NTFjNDQ3NmY1YTZhNDIwODQxMGZhODM3OWJjZTY4MWIxNzljNWEifQ"
         },
         {
           "resource": "repo://scripts/wiki-delta-emitter.selftest.sh#L1-L5",
@@ -341,6 +337,6 @@
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-25T13:29:02.244Z"
+    "at": "2026-09-26T12:51:29.895Z"
   }
 }

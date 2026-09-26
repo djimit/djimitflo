@@ -14,6 +14,8 @@ sources:
     resource: repo://packages/server/src/routes/loops.ts
   - id: openwiki-source-321744d0862fe1b7a0899d80
     resource: repo://packages/server/src/services/concurrency-semaphore.ts
+  - id: openwiki-source-e0487d0a34bd948026c6085c
+    resource: repo://packages/server/src/services/evolution-gym-service.ts
   - id: openwiki-source-b295613626420e96d1e8a951
     resource: repo://packages/server/src/services/loop-budget-service.ts
   - id: openwiki-source-6996102cb8a12952e08c5888
@@ -36,10 +38,10 @@ sources:
     resource: repo://packages/server/src/services/worktree-manager.ts
   - id: openwiki-source-cc57a9eb4496f91fdc73afb9
     resource: repo://packages/shared/src/loop-catalog.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-09-26T12:51:29.895Z" }
 verified:
   - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
+    at: 2026-09-26T12:51:29.895Z
 ---
 
 # Loop Domain Model: Runs, Leases, Worktrees & Recovery
@@ -98,6 +100,7 @@ map when choosing which file to edit:
 | Maker/checker process execution, per-execution gates, ExecutionEngine dispatch | `LoopWorkerExecutorService` (loop-worker-executor-service.ts) | `executeMaker`, `executeChecker`, `executeWorker` via `this.workerExecutor` |
 | Completion + certification gates | `LoopVerificationService` (loop-verification-service.ts) | `verifyLoopRun`, `certifyLoopRun` via `this.verification` |
 | Finding scanners per loop | `LoopDiscoveryService` (loop-discovery-service.ts) | `discoverLoopFindings` via `this.discovery` |
+| Worker approval decisions via the execution engine | `LoopWorkerExecutorService.decideApproval` → `ExecutionEngine.handleApprovalDecision` | `decideWorkerApproval` |
 | Token/wall/worker/retry budgets, failure-threshold escalation, cost | `LoopBudgetService` (loop-budget-service.ts) | `getTokenBudget`, `evaluateTokenBudget`, `getMakerLeaseBudget`, `adjustConcurrency`, `computeDollarCost` via `this.budget` |
 | Git worktree create/snapshot/prune, branch naming, path safety | `WorktreeManager` (worktree-manager.ts) | `createWorktree`, `branchNameFor`, `pruneOrphanedWorktrees` via `this.worktree` |
 | `worker_leases` persistence and lineage reads | `WorkerLeaseRepo` (loop-worker-lease-repo.ts) | `insertWorkerLease`, `updateWorkerLeaseStatus`, `getWorkerLease`, `listWorkerLeases` via `this.workerLeases` |
@@ -115,11 +118,16 @@ reuses: run start (`startLoop`, `startObjectiveLoop`,
 (`completeLoopRun`), verdict submission (`submitCheckerVerdict`,
 `submitSecurityVerdict`), deterministic checks (`runDeterministicChecks`),
 assignment files (`writeWorkAssignment`, `writeAssignmentPacket`,
-`buildCheckerPrompt`), runtime-env allowlists (`buildRuntimeEnv`), and the
-nested-spawn bridge (`prepareNestedLease`). Because the executors and lifecycle
-service call back into these facade methods, LoopService is genuinely a hub:
-it holds the `db` handle and passes itself to `LoopLifecycleService`,
-`LoopWorkerExecutorService`, and `LoopVerificationService`.
+`buildCheckerPrompt`), runtime-env allowlists (`buildRuntimeEnv`), the
+nested-spawn bridge (`prepareNestedLease`), and the operator stop path
+(`stopLoopRun`, which flips the run to `cancelled`, cancels every `prepared`/
+`running` lease, and stops each lease's runtime child through
+`RuntimeLeaseRegistry.stop`, falling back to
+`runtimeCommand.stopWorkerLeaseRuntime` when no live stop hook is registered).
+Because the executors and lifecycle service call back into these facade
+methods, LoopService is genuinely a hub: it holds the `db` handle and passes
+itself to `LoopLifecycleService`, `LoopWorkerExecutorService`, and
+`LoopVerificationService`.
 
 ## Loop run and worker lease lifecycle
 
@@ -206,6 +214,34 @@ exceeding the budget throws `LOOP_RETRY_BUDGET_EXHAUSTED`. Passing
 `input.sibling` (Evolve E13) bypasses the retryability check and retry budget
 and tags the new maker `evolve_sibling_of`, so the daemon can run sibling
 makers of other species on the same objective and later select a winner.
+
+### Approval-gated execution and `awaitWorkerExecution`
+
+Worker execution is brokered by the `ExecutionEngine`, which may pause a
+worker for approval before it runs. When
+`LoopWorkerExecutorService.executeViaEngine` finds a live engine task on the
+lease's `metadata.execution_task_id`, it never re-runs that task: a
+`running`/`queued` task throws `LOOP_WORKER_EXECUTION_IN_PROGRESS` (mapped to
+HTTP 409 by the routes layer) and an `awaiting_approval` task throws
+`LOOP_WORKER_APPROVAL_REQUIRED`, so the caller must wait for the human (or an
+auto-approval rule) to decide. Once the decision lands, the engine runs the
+worker **asynchronously**, so a lease that was just approved is not yet
+terminal when the decision returns.
+
+`LoopService.awaitWorkerExecution(leaseId, timeoutMs = 660_000,
+pollMs = 5_000)` is the bridge across that gap: it polls the lease's
+`metadata.execution_task_id` → `tasks.status` every `pollMs` until the status
+leaves the non-terminal set (`running`/`queued`/`awaiting_approval`/
+`pending`) or a 660 s deadline passes, returning the terminal status (or
+`null` when the lease or task is absent). This fixes a real prod race
+(2026-09-25): an auto-approved **evolve sibling** was read back immediately
+after its approval was granted and scored as a loss while it was still
+running. Both the daemon's auto-approve-sibling path
+(`loop-daemon.ts`: decide → `awaitWorkerExecution` → re-`executeWorker`, which
+now returns the approved execution's stored result) and the evolution gym's
+maker path (`evolution-gym-service.ts`) await the task before reading the
+outcome. `decideWorkerApproval` is the facade entrypoint that submits the
+approval decision to the engine via `workerExecutor.decideApproval`.
 
 ### Worker roles and nested-spawn lineage
 
@@ -382,5 +418,6 @@ The behavior above is anchored by a set of focused suites under
 security-checker and independence rules, `loop-maker-lockfile.test.ts` and
 `loop-working-tree-diff.test.ts` for worktree evidence handling,
 `loop-runtime-stop.test.ts` for cancellation, `loop-service-facade.test.ts` for
-delegation stability, and `integration-full-loop.test.ts` /
+delegation stability, `await-worker-execution.test.ts` for the
+approval-then-terminal polling bridge, and `integration-full-loop.test.ts` /
 `loop-services.test.ts` for end-to-end behavior.

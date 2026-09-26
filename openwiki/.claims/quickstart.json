@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:9f4bd263626fc4c42f4db69335159a09d209e3fe33fba467a356fda8681eef2e",
+  "pageVersion": "sha256:ffa48e13e292268c02a974bd6166e2380bd88db8dc65b4b779af8887e041b35a",
   "claims": [
     {
       "id": "claim_15b3bc080b674f18a4a995e40843858d",
       "statement": "DjimFlo is a research-grade agentic governance laboratory: a TypeScript npm-workspaces monorepo with a Node.js/Express + SQLite backend and a React dashboard for orchestrating AI coding agents, managing tasks across multiple runtimes, and governing agent behavior with approval workflows, policy enforcement, and audit trails.",
       "evidence": [
         {
-          "resource": "repo://README.md#L1-L13",
-          "version": "repo-lines-v1:sha256:6f87210dc2337c34a2173f846f9653904fb5612591ac13e36ca7ae7a738f4bcd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4NzkzMDgzNDA0Yjk3N2JhMzNiMDBjNGU3N2NiNTMzM2NkYzdmYmNlMzA5ZjU3MjY5N2I5NmUwZWE5ODMxNDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzMjk3NzdjOTJjYThjNmMyZDg4MmFmODk2MDFkNmFjNWVjNTk0YzA5OWJjZDI2YjI1NjRjNGM3NmU3NWY0MmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+          "resource": "repo://README.md",
+          "version": "repo-file-v1:sha256:37a6098f1f710e9101c8cf8b8819de20142af48a255c4fcede298738c4361cbe"
         },
         {
           "resource": "repo://package.json#L1-L10",
@@ -21,12 +21,8 @@
       "statement": "DjimFlo is explicitly labeled a research prototype and is not production-ready for sensitive data; the README states that adapter registration, rendered screens, and passing unit tests do not establish production readiness.",
       "evidence": [
         {
-          "resource": "repo://README.md#L13-L13",
-          "version": "repo-lines-v1:sha256:8329777c92ca8c6c2d882af89601d6ac5ec594c099bcd26b2564c4c76e75f42a:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODMyOTc3N2M5MmNhOGM2YzJkODgyYWY4OTYwMWQ2YWM1ZWM1OTRjMDk5YmNkMjZiMjU2NGM0Yzc2ZTc1ZjQyYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODMyOTc3N2M5MmNhOGM2YzJkODgyYWY4OTYwMWQ2YWM1ZWM1OTRjMDk5YmNkMjZiMjU2NGM0Yzc2ZTc1ZjQyYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjNlMWE0OGFiYTVkZDU1ZDExMDU1NzhhYWVlNzM5ZTBjMTc3MjBlZWZjOTgwMmQxYzIxNWUwOThhNzIxZTNiMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDAxZjJlYzE3NTkzYzEwNTRlYjQ2MzY3ZDg0NTNlZjI0YTE3M2NlOTZiNzExN2Q5MWY5YTY4ZDQ0ZmVmOGIwMSJ9"
-        },
-        {
-          "resource": "repo://README.md#L43-L47",
-          "version": "repo-lines-v1:sha256:7345542983a28bb9e3c3f7675fa683e7c354acd6cf975c8e8ef59ac516015a6d:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDg2NGNkZDkyNGJkYWVjOTFmMTBhY2U3ZjUwYmY1NDQ0NTE2YjRkMmQ2OWE2MzU0YjNmNjMyNTRkM2IwNDUzOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjFiYmY5YzA4OTFhOTNhMmM4MTRhYWMwNjBjYWZkYTVlNTJjNDAyZjYxMDBiODBlMjliNzZlZjgzODliMDRlZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGVhNDhlOWFiZDY3NWRlNzg2MTY0M2RiMjNlMDZjYWVjM2MyY2MzMDRiZGIzODRhYTZmNGUwYjgwZWFhZTRkYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDAxZjJlYzE3NTkzYzEwNTRlYjQ2MzY3ZDg0NTNlZjI0YTE3M2NlOTZiNzExN2Q5MWY5YTY4ZDQ0ZmVmOGIwMSJ9"
+          "resource": "repo://README.md",
+          "version": "repo-file-v1:sha256:37a6098f1f710e9101c8cf8b8819de20142af48a255c4fcede298738c4361cbe"
         }
       ]
     },
@@ -71,8 +67,8 @@
       "statement": "The monorepo contains 7 npm workspaces under packages/* (shared, server, dashboard, mcp-server, telegram, agent-catalog, ransomware-module) plus a runtime-generated knowledge directory; the server satellite surfaces include the React dashboard, MCP server, Telegram bot, and agent catalog.",
       "evidence": [
         {
-          "resource": "repo://README.md#L87-L103",
-          "version": "repo-lines-v1:sha256:1a7b4cd89190d487b61c2d7a1753f3778fbf1a393993d1096298fff906cf6aa6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyMTA2ZDlhYmM3YzRmOTE2Mjk4N2EzNzA1NTE0MzhlYjk0OTU3YzcyNDgxNTI2ODA0ZjQ0OTFjYTU3NzRjNzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3YzA2YzU2MWQ1YzMyNzM0MzY4NTI2OGE0NmIzMzkxZjM5OThlZWU4OTBkMmJlNTFmMGQyMWNjNGE1M2FlNmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE3YTc1Nzk5NzNmYjA2ZGRhM2Y3MGMyMjM4YzQyMWExZTAwZGYxNjIxMGRlMzI2N2RiYWE4MmQ0YWU2ZjYyZGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ3ODZhNzI0MzRiZDkxN2RiODNmZjk4Y2VkYTMwMDMzN2FhN2I0ODZhNzM3YTE0OTE2OTlmMmViNmVjN2MyOGMifQ"
+          "resource": "repo://README.md",
+          "version": "repo-file-v1:sha256:37a6098f1f710e9101c8cf8b8819de20142af48a255c4fcede298738c4361cbe"
         },
         {
           "resource": "repo://package.json#L8-L10",
@@ -113,10 +109,60 @@
           "version": "repo-file-v1:sha256:1c9656e3f887b75bfcfd37b07f1dcf5f85c2c9f7e4f66073d9e754c54edd5893"
         }
       ]
+    },
+    {
+      "id": "claim_551da69082e1463b925b6f3cf66857e8",
+      "statement": "DjimFlo is at version 0.5.8 (all packages), requires Node >= 22 and < 25 (npm >= 9), runs 8 default agent runtime adapters (OpenCode, Codex, Claude, Hermes, Gemini, Pi, Editor, Mock) with Deep Agents opt-in, and is organized as 7 npm workspaces under packages/* plus a runtime-generated knowledge directory.",
+      "evidence": [
+        {
+          "resource": "repo://README.md",
+          "version": "repo-file-v1:sha256:37a6098f1f710e9101c8cf8b8819de20142af48a255c4fcede298738c4361cbe"
+        },
+        {
+          "resource": "repo://package.json#L55-L58",
+          "version": "repo-lines-v1:sha256:cdb3a415781fc3239d4f935e2840223cd3fa98010704e01ce8d00140f75d1e07:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWY2MDE1NTQxMjJlZmU4NTVkNTZlMTBjYzliYWYyMDMxY2EzZjRhYjExY2RiYTIyZjFlYmM1ZDM5YTc1NTgyNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDhmZWYzNDM2YzVmYjZjODkxYzc0MTU4Y2Y4M2JlOTY5OGU0MGRjODZmMTk1MzdmZTFhZTc5MmQ2NDZhMzUwMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDk1MzhkNWFlOTIwM2ExZmI5Y2Y3MjYxODc4MDczMzE4MzY2NDQwODcwYWM2YTU5ZTE2ZTE0ZTkxNjQxM2I2NCJ9"
+        },
+        {
+          "resource": "repo://packages/shared/package.json#L1-L4",
+          "version": "repo-lines-v1:sha256:9b2537692e3644f412329e70acd530c618ae9232eaa0c270826c6333315117d5:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTZmYjA4ZmRhMWFjYjk1N2I2MTE2YmQzNzgxMWExZmU0MWEwMTYxMWMwNjMxZWRiZjc4NmQ2ODg5YTI3YTU1YyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDBmYTZiN2M3YWRjMTFjZTA5OGE0YTljZjc1MmViZDg1ZGQzZTU4YWMwZjhlODA0ZDkzMjljYWY5YjRhYmZlNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODkyZDdjMjdjODYzOGMxN2YxM2MyMzZjMWE0NzE1NmY1Yjc1ODM5MDE2OTY1OGI2YzVkZDE0Yzk4MWRjYjRjZSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_3fa314c01f374943a9a87f005add53f5",
+      "statement": "The server is the single authoritative spine (packages/server, published as @djimitflo/server). It boots from packages/server/src/index.ts, which initializes the SQLite database, runs loop and task crash recovery, wires services, mounts the API, and attaches the WebSocket server. Behavior varies by runtime profile (api, operator, autonomous) resolved from DJIMITFLO_RUNTIME_PROFILE.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/package.json#L1-L6",
+          "version": "repo-lines-v1:sha256:e55584b88431ed1141a3287ee8cd7c079958eb1dd227425a9a98103466dbd958:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTZmYjA4ZmRhMWFjYjk1N2I2MTE2YmQzNzgxMWExZmU0MWEwMTYxMWMwNjMxZWRiZjc4NmQ2ODg5YTI3YTU1YyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWZkMDQzZGRlN2UyMWIyNDE1YTFiMDc0YjFkNDUzMTQwMWI2ODJlNDdkNDI1NjAzMzI2ZTNhNzJjZTEzOWI0YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDE4Yjc4OTBmMzMxMzkyNWFiYmI4YjYxYmUwNTYwZTcwMzllNmQ5MzUyOGQxZWZkMjlkMmZiNDQ0OTYwOWZmNCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/config/runtime-profile.ts#L1-L19",
+          "version": "repo-lines-v1:sha256:e71eb8e61830385d2fb28df231ed44a5358d945d665729c99ed665688bab1036:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3ODYxYjMyZGI5MWEwYjJhYmQ4MDE3NmVlNDAwZDRhZTNmZWYzY2E3Y2Q1ODJmMDc4YWE2NTQ1ZDFiMmI3MTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L1-L80",
+          "version": "repo-lines-v1:sha256:fdd298365a4fbbe5546a267e252158eee58ea52a7e0c92abf460c5594fa36c37:eyJzZWxlY3RlZExpbmVDb3VudCI6ODAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwYjE5YTUyODI3ZTYwMWFmMjk5NjJkYWZmNzM4YzE1MzYwMzAyNzIwOGQ0N2JmZDNkNTlmMjU3MzQ3ZGQyMGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc3ZjA4YzZjZTNjODQ1ODFiY2JiYTMwODVmM2E2OTgzZjk5Nzc0MTk5YTdkM2ZlMGUxOTU2Mzc4NDk0MGZmMTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_abe63b16bb594d9a99948f78f346737f",
+      "statement": "Paperclip was retired on 2026-09-21 with Djimitflo as the work control plane of the Djimit ecosystem (ADR 0001); the archive-export script (scripts/paperclip-archive-export.py) no longer exists in the repository.",
+      "evidence": [
+        {
+          "resource": "repo://README.md",
+          "version": "repo-file-v1:sha256:37a6098f1f710e9101c8cf8b8819de20142af48a255c4fcede298738c4361cbe"
+        },
+        {
+          "resource": "repo://docs/adr/0001-djimitflo-core-retire-paperclip.md#L1-L25",
+          "version": "repo-lines-v1:sha256:1b9bd08020bc29c8b7a779454956ab4d7e37fda440e42f676f9b6c13d0e656fd:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxYWFhNzRmNTI2ZjI4MjFmNjUzZGU4NzRkYTZkZjE1ODQ4MzY0NDBmZmE0OTY2ODk4ZDk4MTQwZjEwZTZmMTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3M2Y2YzE5NDM1ZTU4MTA1ZThlMmFhN2QyMDdlN2M5YjI2MzI3ZjU2Yzk1OTMwOWQyYmFkOGRiNzM3NGYxNDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBjNmJhODMxZDRiMjNjZWVjZWNiODdmYzNiM2ExNjkzYTI0NWFjYTNlNjMyNzFmNjE0YWJhNGI5ZjA1ZGZmOGUifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-25T13:29:02.244Z"
+    "at": "2026-09-26T12:51:29.895Z"
   }
 }

@@ -3,12 +3,13 @@ type: guide
 title: DjimFlo Wiki Quickstart
 description: Entry point to the DjimFlo wiki. Explains what DjimFlo is (a research-grade agent orchestration control plane with governance guardrails), how the wiki is organized, and routes you to the right page for your task.
 tags: [quickstart, orientation, governance, agent-orchestration, wiki]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
 sources:
+  - id: openwiki-source-caa3d30952fbec0c6dae3808
+    resource: repo://docs/adr/0001-djimitflo-core-retire-paperclip.md
   - id: openwiki-source-5b54a58d1b51cd490b0e7162
     resource: repo://package.json
+  - id: openwiki-source-be80b8bb0c3f3a4106e1484a
+    resource: repo://packages/server/package.json
   - id: openwiki-source-e57612dc55cb1fe7d7373bd5
     resource: repo://packages/server/src/config/runtime-profile.ts
   - id: openwiki-source-922486a2b03bd894d1e9f283
@@ -19,7 +20,10 @@ sources:
     resource: repo://packages/shared/package.json
   - id: openwiki-source-23775c3de52f3ab95a13cb8b
     resource: repo://README.md
-generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-09-26T12:51:29.895Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-09-26T12:51:29.895Z
 ---
 
 # DjimFlo Wiki Quickstart
@@ -39,6 +43,14 @@ enforcement, and audit trails. The root `package.json` describes it as a
 > **Status: research prototype.** DjimFlo is not production-ready for sensitive
 > data. Adapter registration, rendered screens, and passing unit tests do not
 > establish production readiness.
+
+Key facts (README status table, version 0.5.8):
+
+- **8 default runtime adapters** (OpenCode, Codex, Claude, Hermes, Gemini, Pi,
+  Editor, Mock); Deep Agents opt-in.
+- **7 npm workspaces** under `packages/*` plus a runtime-generated `knowledge`
+  directory.
+- **Node >= 22 and < 25**, TypeScript 6.x strict mode.
 
 The spine of the system is a **single authoritative server**
 (`packages/server`, published as `@djimitflo/server`). It boots from
@@ -99,7 +111,6 @@ The wiki mirrors the system's architecture. Pages are grouped into domains:
 
 | You want to… | Go to |
 |---|---|
-<!-- openwiki: broken internal link [architecture/monorepo-layout.md] file "architecture/monorepo-layout.md" does not exist. Fix the href or restore the target, then delete this comment. -->
 | Understand the repo structure and which package owns what | [Monorepo Layout & Package Boundaries](architecture/monorepo-layout.md) |
 | Understand the `api` / `operator` / `autonomous` runtime profiles | [Runtime Profiles](architecture/runtime-profiles.md) |
 | See how the server boots, wires services, and shuts down | [Server Runtime & Startup Composition](architecture/server-runtime.md) |
@@ -112,7 +123,7 @@ The wiki mirrors the system's architecture. Pages are grouped into domains:
 | Understand nested spawning, swarm trees, and spawn budgets | [Nested Spawn & Swarm Trees](concepts/nested-spawn-hierarchy.md) |
 | Understand memory sync, learning, and evolution subsystems | [Knowledge Runtime & OKF Bundle Operations](operations/knowledge-runtime.md) |
 <!-- openwiki: broken internal link [workflows/task-execution-lifecycle.md] file "workflows/task-execution-lifecycle.md" does not exist. Fix the href or restore the target, then delete this comment. -->
-| Trace a task from API call through execution to audit | [Task Execution Lifecycle](workflows/task-execution-lifecycle.md) |
+| Trace a task from REST creation through risk classification, approval gating, executor dispatch, streaming, and audit | [Task Execution Lifecycle](workflows/task-execution-lifecycle.md) |
 | Understand the approval lifecycle across REST / WS / dashboard / Telegram | [Approval Request & Decision Flow](workflows/approval-decision-flow.md) |
 | Understand doc-drift / self-improvement / issue loops end to end | [Maker–Checker Loop Execution](workflows/maker-checker-loop.md) |
 | Understand autonomous goal → daemon → earned-autonomy operation (bandit selection, evolve lanes, J5 auto-approve, auto-deploy) | [Autonomous Goal → Daemon → Earned-Autonomy Pipeline](workflows/autonomous-improvement-pipeline.md) |
@@ -130,7 +141,6 @@ The wiki mirrors the system's architecture. Pages are grouped into domains:
 ## Where to start
 
 - **New to the codebase?** Start with
-<!-- openwiki: broken internal link [architecture/monorepo-layout.md] file "architecture/monorepo-layout.md" does not exist. Fix the href or restore the target, then delete this comment. -->
   [Monorepo Layout & Package Boundaries](architecture/monorepo-layout.md), then
   [Server Runtime & Startup Composition](architecture/server-runtime.md), then
   [Local Development](operations/local-development.md).

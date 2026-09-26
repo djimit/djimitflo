@@ -45,6 +45,9 @@ sources:
   - id: openwiki-source-fa568b0862f0b0b901ecfc19
     resource: repo://packages/server/src/services/websocket-service.ts
 generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-09-24T19:59:50.419Z
 ---
 
 # Server Runtime & Startup Composition

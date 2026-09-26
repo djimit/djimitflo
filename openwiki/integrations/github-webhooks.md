@@ -27,9 +27,6 @@ sources:
   - id: openwiki-source-6c7f10ad81b9df82a04d3c57
     resource: repo://packages/server/src/services/work-item-service.ts
 generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
 ---
 
 # GitHub Integration: Webhooks & PR Review

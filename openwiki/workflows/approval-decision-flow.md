@@ -1,7 +1,7 @@
 ---
 type: operator-workflow
 title: "Approval Request & Decision Flow"
-description: The operator-facing approval lifecycle — how the server creates requests transactionally, realizes their 1-hour expiry, and applies decisions atomically with a data-layer self-approval ban — plus the authority-ledger/event-outbox records and the REST, dashboard, WebSocket, and Telegram surfaces operators use to act on them.
+description: The operator-facing approval lifecycle — how the server creates requests transactionally, realizes their APPROVAL_TTL_MS-configurable expiry (1 hour by default), and applies decisions atomically with a data-layer self-approval ban — plus the authority-ledger/event-outbox records and the REST, dashboard, WebSocket, and Telegram surfaces operators use to act on them.
 tags: [approvals, decision-flow, expiry, separation-of-duties, atomicity, authority-ledger, event-outbox, telegram, dashboard, websocket]
 sources:
   - id: openwiki-source-d92c9d196f1885a52b397aba
@@ -16,6 +16,8 @@ sources:
     resource: repo://packages/dashboard/src/pages/ApprovalQueuePage.tsx
   - id: openwiki-source-cd524ffa0394e6f0b9d7b1d5
     resource: repo://packages/server/src/__tests__/approval-atomicity.test.ts
+  - id: openwiki-source-9287baaf5ea380972e0a1e6e
+    resource: repo://packages/server/src/__tests__/approval-ttl.test.ts
   - id: openwiki-source-f8a431d32ba737885bdd6d38
     resource: repo://packages/server/src/__tests__/approvals-http.test.ts
   - id: openwiki-source-99d295c6f9e6e124e5b4056a
@@ -50,7 +52,10 @@ sources:
     resource: repo://packages/shared/src/types/common.ts
   - id: openwiki-source-78f33dbc13edb0630c5e1cd3
     resource: repo://stryker.config.js
-generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-09-26T12:51:29.895Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-09-26T12:51:29.895Z
 ---
 
 # Approval Request & Decision Flow
@@ -98,7 +103,7 @@ broadcast `approval.requested` over the WebSocket and call `recordDecision()`
 with a `HOLD` verdict (L114-L121).
 
 `decideApproval(id, approved, decidedBy, reason)` enforces the non-negotiables
-(L134-L212), wrapped in the same kind of immediate transaction:
+(L144-L222), wrapped in the same kind of immediate transaction:
 
 - **Validation & status guard** — `approved` must be a boolean
   (`INVALID_APPROVAL_DECISION`); a missing row throws `Approval not found`; a
@@ -150,14 +155,15 @@ for `pending` rows.
 
 ## Every step lands in the authority ledger and the outbox
 
-`recordDecision()` (L124-L132) is best-effort — it never blocks the approval
+`recordDecision()` (L134-L142) is best-effort — it never blocks the approval
 it is describing — and writes two records per lifecycle step:
 
 1. **`authority_events`** via `recordAuthorityEvent()` — an append-only ledger
    of "who authorised what". Rows are sequenced per `correlation_id` (the task
-   id), carry a sha-256 payload digest, and classify the actor as `human`,
-   `agent`, or `service` using `actor !== 'system'` and the `agent:` prefix
-   rule (approval-service.ts L126-131, authority-ledger-service.ts L24-L41).
+   id), carry a sha-256 payload digest, and classify the actor as `human`
+   (`actor !== 'system'` and no `agent:` prefix), `agent` (`agent:` prefix), or
+   `service` otherwise (approval-service.ts L136-L138,
+   authority-ledger-service.ts L24-L41).
    The service emits `HOLD` on request, `ALLOW`/`DENY` on decision, and `DENY`
    with state `EXECUTION_APPROVAL_EXPIRED` on expiry. Recording silently
    returns `null` if the `authority_events` table has not been provisioned.
@@ -314,6 +320,17 @@ ops interface; it never writes approvals directly.
 - [Governance Pipeline](/openwiki/concepts/governance-pipeline.md) — how
   risk/policy/gate evaluation decides *that* an approval is required and how a
   granted start is rebound to the input hash.
+- [Roles & Permissions](/openwiki/concepts/roles-and-permissions.md) — the
+  `approve:task` gate and task-visibility filters every surface above relies on.
+- [Test Strategy](/openwiki/testing/test-strategy.md) — where the atomicity,
+  HTTP contract, and mutation-gate suites fit in `npm test`.
+ start is rebound to the input hash.
+- [Roles & Permissions](/openwiki/concepts/roles-and-permissions.md) — the
+  `approve:task` gate and task-visibility filters every surface above relies on.
+- [Test Strategy](/openwiki/testing/test-strategy.md) — where the atomicity,
+  HTTP contract, and mutation-gate suites fit in `npm test`.
+tion-gate suites fit in `npm test`.
+ start is rebound to the input hash.
 - [Roles & Permissions](/openwiki/concepts/roles-and-permissions.md) — the
   `approve:task` gate and task-visibility filters every surface above relies on.
 - [Test Strategy](/openwiki/testing/test-strategy.md) — where the atomicity,

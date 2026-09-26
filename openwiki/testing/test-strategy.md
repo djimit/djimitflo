@@ -1,11 +1,8 @@
 ---
 type: testing-strategy
 title: Test Strategy, Assurance Scripts & Mutation Gate
-description: How DjimFlo verifies correctness — layered vitest workspace suites, supertest HTTP contract tests, route-inventory and permission contract tests that keep the mount table honest, integration spine suites, root-level selftest scripts gating npm test, the targeted Stryker mutation gate plus the M2 mutation-gain lane that scores one service against one test, and the assurance:* audit scripts — plus the README discipline that green tests are necessary but not sufficient for production assurance.
+description: How DjimFlo verifies correctness — layered vitest workspace suites, supertest HTTP contract tests, route-inventory and permission contract tests that keep the mount table honest, integration spine and proof-run suites, root-level selftest scripts gating npm test, the targeted Stryker mutation gate plus the M2 mutation-gain lane that scores one service against one test, and the assurance:* audit scripts — plus the README discipline that green tests are necessary but not sufficient for production assurance.
 tags: [testing, vitest, supertest, http-contract, route-inventory, integration-spine, stryker, mutation-testing, assurance, ci, selftest]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
 sources:
   - id: openwiki-source-164e2da859b5277df81c7d94
     resource: repo://.github/workflows/ci.yml
@@ -27,6 +24,8 @@ sources:
     resource: repo://packages/server/src/__tests__/loop-daemon-check-options.test.ts
   - id: openwiki-source-f5435020aa95ebec27e5276f
     resource: repo://packages/server/src/__tests__/manual-approvals.test.ts
+  - id: openwiki-source-458c63c09f0d40d2a0f03703
+    resource: repo://packages/server/src/__tests__/proof-run-service.test.ts
   - id: openwiki-source-9fcec281def24087a485e4b6
     resource: repo://packages/server/src/__tests__/route-inventory.test.ts
   - id: openwiki-source-61277ed32feccd161c392600
@@ -69,8 +68,6 @@ sources:
     resource: repo://scripts/mutation-gain.mjs
   - id: openwiki-source-bf9b550be82c7efe11f6cfbf
     resource: repo://scripts/openmythos-evidence.mjs
-  - id: openwiki-source-29c2506c65adc0de528f9094
-    resource: repo://scripts/paperclip-archive-export.py
   - id: openwiki-source-1d9734c69d8b750a412da9f0
     resource: repo://scripts/route-source-inventory.mjs
   - id: openwiki-source-72399d1b73a116b4fb388363
@@ -87,7 +84,10 @@ sources:
     resource: repo://vitest.mutation.config.ts
   - id: openwiki-source-ecc4c6c168f7ce5ad8ec280e
     resource: repo://vitest.service-mutation.config.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-09-26T12:51:29.895Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-09-26T12:51:29.895Z
 ---
 
 # Test Strategy, Assurance Scripts & Mutation Gate
@@ -108,7 +108,7 @@ while honestly declaring its own limits.
 
 ```mermaid
 flowchart TD
-    DEV["operator runs npm test"] --> ST["shell python node selftests<br>deploy-vps wiki-delta paperclip<br>live-identity integration-probes"]
+    DEV["operator runs npm test"] --> ST["shell and node selftests<br>deploy-vps wiki-delta<br>live-identity integration-probes"]
     ST --> BUILD["build shared and agent-catalog workspaces"]
     BUILD --> WS["npm run test --workspaces<br>vitest run per package"]
     WS --> U["unit and service suites<br>packages/server/src/__tests__"]
@@ -159,6 +159,17 @@ default. The suite directory holds hundreds of files categorized by concern:
 - **Fail-closed mutation-route suites** — `mutation-validation.test.ts`
   proves mutating endpoints return structured 400/404 errors instead of
   leaking SQLite 500s, and that rejected writes leave zero rows behind.
+- **Proof-run and frontier-expert suites** — `proof-run-service.test.ts`
+  stands up a listening server, an in-memory schema-plus-migrations database,
+  and a throwaway git repository with fake `codex`/`opencode` runtime binaries
+  to drive real swarm proof-run endpoints end to end (it self-skips when not
+  in a git repo or inside a Stryker worker, where `process.chdir()` is
+  unsupported); the root `proof:test` alias runs exactly this suite. Suites
+  like `loop-daemon-check-options.test.ts`, `gym-routes.test.ts`,
+  `gym-governance-curriculum.test.ts`, and the
+  `frontier-expert-{invariants,scheduler,skills}` triple pin the loop daemon's
+  deterministic-check knobs and the gym/frontier-expert machinery's HTTP
+  contracts and intelligence invariants.
 
 Two families deserve special mention because they guard the harness rather
 than a feature:
@@ -301,15 +312,13 @@ variant instead, so the certification claim is never silently substituted.
 
 ## Layer 3 — Root `npm test` Selftests First
 
-The root `test` script runs shell/Python/Node selftests **before** any
-workspace test, so harness breakage fails the gate before a single vitest
-assertion runs:
+The root `test` script is a single `&&` chain (package.json `scripts.test`)
+that runs shell and Node selftests **before** any workspace build or test, so
+harness breakage fails the gate before a single vitest assertion runs:
 
 ```bash
 bash scripts/deploy-vps.selftest.sh            # compose rewrite + chown-before-up + rollback shape
 bash scripts/wiki-delta-emitter.selftest.sh    # throwaway git repo + fake curl: baseline, dedupe, advance
-python3 scripts/paperclip-archive-export.py --selftest   # allowlist export, manifest hashing, secret table excluded
-python3 scripts/paperclip-readonly-monitor.py --selftest # log-scan quiet-window arithmetic
 node scripts/live-identity-evidence.test.mjs   # verifyIdentity rejects dirty/mismatched provenance
 node scripts/integration-probes.test.mjs       # Context7 MCP discovery contract validation
 npm run build --workspace=@djimitflo/shared    # workspace dependency order
@@ -319,13 +328,23 @@ npm run test --workspaces --if-present         # finally, the vitest suites
 
 Two operational rules follow. First, **any edit to those operational scripts
 must keep the corresponding selftest meaningful** — they are the only proof
-that the deploy rewrite, the wiki emitter, the exporters, and the evidence
-collectors still behave. Second, the selftests test *control flow and
-purity*, not live infrastructure: `deploy-vps.selftest.sh` sources
-`deploy-vps.sh` and verifies `rewrite_compose` against a fixture compose file
-(including that a no-op rewrite reports failure), and inspects the generated
-remote script to assert `chown -R 1001:1001` precedes the first
-`docker compose up` and that a rollback path exists.
+that the deploy rewrite, the wiki emitter, and the evidence collectors still
+behave. Second, the selftests test *control flow and purity*, not live
+infrastructure: `deploy-vps.selftest.sh` sources `deploy-vps.sh` and verifies
+`rewrite_compose` against a fixture compose file (including that a no-op
+rewrite reports failure), and inspects the generated remote script to assert
+`chown -R 1001:1001` precedes the first `docker compose up` and that a
+rollback path exists; `wiki-delta-emitter.selftest.sh` runs the emitter
+against a throwaway git repo with a fake curl, proving the baseline run
+records state without posting, unchanged or non-markdown commits never post,
+a real change posts `wiki.page.changed` for exactly the changed markdown
+pages with a `wiki:` dedupe key, and the state advances after a successful
+post.
+
+(The chain once also ran `python3 scripts/paperclip-archive-export.py
+--selftest` and `python3 scripts/paperclip-readonly-monitor.py --selftest`;
+both scripts and their selftest steps have been removed from the repository,
+so no Python selftest currently blocks `npm test`.)
 
 ### The agent-social-poller selftest discipline
 
@@ -423,8 +442,8 @@ committed version of that test did. It is wired from three small pieces:
   `before`, 0 for a brand-new test) and once against the working-tree test
   (`after`), then passes when `after >= before + MUTATE_MIN_GAIN`
   (default **10 points**) **or `after >= 90`**. It prints a single
-  `{"mutation_gain":{before,after,gain,min_gain,pass}}` JSON line and exits
-  non-zero on a failed working-tree run.
+  `{"mutation_gain":{file,test,before,after,gain,min_gain,pass}}` JSON line
+  and exits non-zero on a failed working-tree run.
 
 The mutation score counts `Killed`+`Timeout` mutants as detected over the
 valid set (`+ Survived + NoCoverage`). `evolve-selection.ts:mutationScoreOf`
