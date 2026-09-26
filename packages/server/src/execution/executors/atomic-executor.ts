@@ -17,6 +17,12 @@ import type { ExecutionResult, ExecutionSession, ExecutorKind, ExecutorOptions, 
 import { buildExecutorEnv } from './executor-env';
 import { runtimeProcessClosed, stopRuntimeProcess } from './runtime-process';
 
+/**
+ * Which env var holds the provider key (prod 2026-09-26: OLLAMA_API_KEY was not set in the container, so atomic sent an
+ * empty key and got 401; the working Ollama Cloud key is SOCIAL_COMPAT_API_KEY, which the Commons residents use).
+ */
+export const atomicKeyEnv = (env: NodeJS.ProcessEnv): string => env.ATOMIC_AGENT_API_KEY_ENV || 'OLLAMA_API_KEY';
+
 /** The provider block atomic-agent needs; `local-llama` must stay listed because it is the default embedding provider. */
 export function atomicConfig(env: NodeJS.ProcessEnv, model?: string): string {
   return JSON.stringify({
@@ -25,7 +31,7 @@ export function atomicConfig(env: NodeJS.ProcessEnv, model?: string): string {
       activeTextProvider: 'djimitflo-cloud', activeEmbeddingProvider: 'local-llama', toolTransport: 'auto',
       providers: [
         { id: 'local-llama', kind: 'llama-server', url: 'http://127.0.0.1:8084' },
-        { id: 'djimitflo-cloud', kind: 'openai-compatible', baseUrl: env.ATOMIC_AGENT_BASE_URL || 'https://ollama.com/v1', apiKeyEnvVar: 'OLLAMA_API_KEY', defaultChatModel: model || env.ATOMIC_AGENT_MODEL || 'kimi-k3' },
+        { id: 'djimitflo-cloud', kind: 'openai-compatible', baseUrl: env.ATOMIC_AGENT_BASE_URL || 'https://ollama.com/v1', apiKeyEnvVar: atomicKeyEnv(env), defaultChatModel: model || env.ATOMIC_AGENT_MODEL || 'kimi-k3' },
       ],
     },
   });
@@ -56,7 +62,9 @@ export class AtomicExecutor implements TaskExecutor {
     let child: ChildProcess | null = null;
     let resolveClosed!: () => void;
     const closed = new Promise<void>(resolve => { resolveClosed = resolve; });
-    const env = buildExecutorEnv({ ...(options?.environment || {}), ATOMIC_AGENT_STATE_DIR: this.stateDir });
+    // the key var may sit outside the executor allowlist (e.g. SOCIAL_COMPAT_API_KEY): pass exactly that one through
+    const keyVar = atomicKeyEnv(process.env);
+    const env = buildExecutorEnv({ ...(options?.environment || {}), ATOMIC_AGENT_STATE_DIR: this.stateDir, ...(process.env[keyVar] ? { [keyVar]: process.env[keyVar]! } : {}) });
     const { args } = this.buildCommand(task, options);
 
     const spawnProcess = () => {
