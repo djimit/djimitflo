@@ -2,6 +2,9 @@ import type { Database } from 'better-sqlite3';
 import { FrontierExpertRegistryService } from './frontier-expert-registry-service';
 import { ExpertEvidenceEnrichmentService } from './expert-evidence-enrichment-service';
 import type { ArxivPaper } from './knowledge-adapters/arxiv-adapter';
+import { judgmentMode, runJudgment } from './judgment-service';
+import { discoveryRelevance } from './judgments/discovery-relevance';
+import { buildEvidencePack } from './commons-evidence-pack';
 
 /**
  * E2 (Frontier Experts 2.0): expertise units beyond people. Prod 2026-09-25: 1 365 distinct arXiv papers were stored only
@@ -53,7 +56,12 @@ export class ExpertSourceUnitsService {
     if (!capabilities.length) return 'irrelevant';
     const agent = str(event.agent ?? event.source, 80) || 'unknown-agent';
     const url = kind === 'paper' ? `https://arxiv.org/abs/${id}` : `https://github.com/${id}`;
-    this.unit(kind, kind === 'paper' ? title : id, ref, { kind, title, url, sourceRef: ref, sourceFamily: `agent:${agent}`, metadata: { derived: 'fleet-discovery', agent, note, categories } }, capabilities, { source: 'fleet-discovery', agent });
+    const expertId = this.unit(kind, kind === 'paper' ? title : id, ref, { kind, title, url, sourceRef: ref, sourceFamily: `agent:${agent}`, metadata: { derived: 'fleet-discovery', agent, note, categories } }, capabilities, { source: 'fleet-discovery', agent });
+    // G3 (shadow): is this discovery relevant beyond its topic? Fire-and-forget; never blocks ingestion.
+    if (judgmentMode(discoveryRelevance.id) !== 'off') {
+      const pack = buildEvidencePack(this.db, 14);
+      void runJudgment(this.db, discoveryRelevance, { type: 'expert_unit', id: expertId }, { title, note, capabilities, open_problems: { failing_gates: pack.top_failing_gates, failure_causes: pack.failure_causes } }).catch(() => undefined);
+    }
     return 'unit';
   }
 
@@ -83,7 +91,7 @@ export class ExpertSourceUnitsService {
     return { papers, repositories };
   }
 
-  private unit(kind: 'paper' | 'repository', name: string, ref: string, evidence: Parameters<FrontierExpertRegistryService['addEvidence']>[1], capabilities: string[], provenance: Record<string, unknown>): void {
+  private unit(kind: 'paper' | 'repository', name: string, ref: string, evidence: Parameters<FrontierExpertRegistryService['addEvidence']>[1], capabilities: string[], provenance: Record<string, unknown>): string {
     const expert = this.registry.discover({ canonicalName: name, aliases: [ref], kind, provenance: { source: 'stored-evidence', ref, ...provenance }, actor: ACTOR });
     // an arXiv id or a repository path identifies the unit exactly: no namesake problem as with people
     this.registry.resolveIdentity(expert.id, { confidence: 1, actor: ACTOR, reason: `${kind} identified by ${ref}` });
@@ -92,5 +100,6 @@ export class ExpertSourceUnitsService {
     // one piece of evidence per unit: modest confidence; a repository inherits its paper's topics at lower confidence
     for (const capability of capabilities) this.registry.inferCapability(expert.id, { capability, confidence: kind === 'paper' ? 0.6 : 0.5, evidenceRefs: [evidenceId], derivedBy: `source-units:${kind}` });
     this.registry.transition(expert.id, 'CAPABILITY_INFERRED', { actor: ACTOR, reason: `${capabilities.length} capability(ies) from ${kind} evidence` });
+    return expert.id;
   }
 }
