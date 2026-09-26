@@ -26,6 +26,7 @@ import { OpenCodeExecutor } from './executors/opencode-executor';
 import { CodexExecutor } from './executors/codex-executor';
 import { ClaudeExecutor } from './executors/claude-executor';
 import { HermesExecutor } from './executors/hermes-executor';
+import { AtomicExecutor } from './executors/atomic-executor';
 import { GeminiExecutor } from './executors/gemini-executor';
 import { EditorExecutor } from './executors/editor-executor';
 import { PiExecutor } from './executors/pi-executor';
@@ -161,6 +162,7 @@ export class ExecutionEngine {
     this.registerExecutor(new GeminiExecutor());
     this.registerExecutor(new EditorExecutor());
     this.registerExecutor(new PiExecutor());
+    this.registerExecutor(new AtomicExecutor());
     if (process.env.DJIMIT_DEEP_ENABLED === 'true') {
       this.deepAgentIssuer = new DeepAgentContractIssuer();
       this.registerExecutor(new DeepAgentExecutor());

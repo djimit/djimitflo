@@ -60,7 +60,7 @@ ARG BUILD_SOURCE=unknown
 
 RUN apt-get update && \
     apt-get upgrade -y && \
-    apt-get install -y --no-install-recommends ca-certificates git python3-minimal curl procps && \
+    apt-get install -y --no-install-recommends ca-certificates git python3-minimal curl procps libatomic1 && \
     rm -rf /var/lib/apt/lists/*
 
 # gh CLI: djimitflo's own PR review service shells out to it for PR
@@ -72,6 +72,18 @@ RUN ARCH="$(dpkg --print-architecture)" && \
     dpkg -i /tmp/gh.deb && \
     rm -f /tmp/gh.deb && \
     gh --version
+
+# Atomic Agent (plan C5): gym-only maker species via AtomicExecutor. Release tarball pinned by version + sha256.
+ARG ATOMIC_AGENT_VERSION=0.6.5
+ARG ATOMIC_AGENT_SHA256_X64=313ac01e1d40f3a6b39780c55af176bab231d2f03dea1d9b7e7bc93188a99f87
+ARG ATOMIC_AGENT_SHA256_ARM64=be231b650c0293cfa4427aef32285403a72809ce882b09345b22400067409f18
+RUN ARCH="$(dpkg --print-architecture)" && \
+    case "$ARCH" in amd64) A=x64; SUM="$ATOMIC_AGENT_SHA256_X64";; arm64) A=arm64; SUM="$ATOMIC_AGENT_SHA256_ARM64";; *) echo "unsupported arch $ARCH"; exit 1;; esac && \
+    curl -fsSL -o /tmp/atomic.tgz "https://github.com/AtomicBot-ai/atomic-agent/releases/download/v${ATOMIC_AGENT_VERSION}/atomic-agent-linux-${A}.tar.gz" && \
+    echo "${SUM}  /tmp/atomic.tgz" | sha256sum -c - && \
+    mkdir -p /opt/atomic-agent && tar -xzf /tmp/atomic.tgz -C /opt/atomic-agent --strip-components=1 && rm -f /tmp/atomic.tgz && \
+    ln -s /opt/atomic-agent/atomic-agent /usr/local/bin/atomic-agent && \
+    atomic-agent --version
 
 # Keep the production worker surface equal to the runtimes accepted by
 # /swarms/runtime-readiness. Versions are pinned for reproducible probes.

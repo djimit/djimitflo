@@ -159,6 +159,8 @@ export class RuntimeCommandService {
       gemini: { binEnv: 'GEMINI_BIN_PATH', defaultBin: 'gemini', helpArgs: ['--help'], jsonFlag: '-o', jsonFlagHelp: '-o', cwdFlag: null, headlessFlag: '-p' },
       editor: { binEnv: 'CLINE_BIN_PATH', defaultBin: 'cline', helpArgs: ['--help'], jsonFlag: '--json', jsonFlagHelp: '--json', cwdFlag: '-c', headlessFlag: '--json' },
       pi: { binEnv: 'PI_BIN_PATH', defaultBin: 'pi', helpArgs: ['--help'], jsonFlag: '--mode', jsonFlagHelp: '--mode', cwdFlag: null, headlessFlag: '-p' },
+      // atomic: plain text on stdout, goal on stdin (AtomicExecutor); ponytail: no structured events, the diff is the evidence
+      atomic: { binEnv: 'ATOMIC_AGENT_BIN_PATH', defaultBin: 'atomic-agent', helpArgs: ['run', '--help'], jsonFlag: '', jsonFlagHelp: '', cwdFlag: '--cwd', headlessFlag: '--no-approval' },
     };
     const probe = PROBES[runtime];
     if (!probe) {
