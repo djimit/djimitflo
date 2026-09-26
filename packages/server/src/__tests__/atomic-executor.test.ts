@@ -34,6 +34,20 @@ it('provider config keeps local-llama (default embedding provider) and reads the
   expect(JSON.stringify(cfg)).not.toMatch(/apiKey"\s*:/); // the key itself is never written
 });
 
+it('the key env var is configurable and passed through to atomic even outside the executor allowlist', async () => {
+  expect(JSON.parse(atomicConfig({ ATOMIC_AGENT_API_KEY_ENV: 'SOCIAL_COMPAT_API_KEY' })).llm.providers[1].apiKeyEnvVar).toBe('SOCIAL_COMPAT_API_KEY');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-atomic-key-')); tempDirs.push(dir);
+  const bin = path.join(dir, 'atomic-agent');
+  fs.writeFileSync(bin, '#!/bin/sh\nif [ "$1" = "config" ]; then exit 0; fi\nprintf "key=%s" "$SOCIAL_COMPAT_API_KEY"\n');
+  fs.chmodSync(bin, 0o755);
+  vi.stubEnv('DJIMITFLO_ATOMIC_STATE_DIR', path.join(dir, 'state'));
+  vi.stubEnv('ATOMIC_AGENT_API_KEY_ENV', 'SOCIAL_COMPAT_API_KEY');
+  vi.stubEnv('SOCIAL_COMPAT_API_KEY', 'test-key');
+  const session = await new AtomicExecutor(bin).start(task(), { workingDirectory: dir, timeout: 5_000 });
+  for await (const _ of session.events) { /* drain */ }
+  expect((await session.result).stdout).toContain('key=test-key');
+});
+
 it('writes its config into its own state dir, sends the goal on stdin and runs in the worktree', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-atomic-')); tempDirs.push(dir);
   const bin = path.join(dir, 'atomic-agent');
