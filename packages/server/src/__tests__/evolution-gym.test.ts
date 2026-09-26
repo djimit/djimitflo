@@ -76,6 +76,19 @@ it('a task already green before the attempt is discarded (no outcome), an out-of
     .toMatchObject({ status: 'failure', reason: expect.stringContaining('out of scope') });
 });
 
+it('a maker that produced nothing with 0 tokens (provider error) is an infra discard: no species loss, task stays open', async () => {
+  const { svc, loops } = service({ green: [false], changed: [] });
+  loops.continueLoopRun.mockImplementationOnce((runId: string) => {
+    db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata) VALUES (?, ?, 'maker', 'opencode', 'prepared', '{}')").run(`m-${runId}`, runId);
+    return { leases: [{ id: `m-${runId}`, role: 'maker', worktree_path: '/tmp/none' }] };
+  });
+  expect(await svc.attempt('/repo', TASK, { runtime: 'opencode' })).toMatchObject({ status: 'discarded', reason: expect.stringContaining('infra:') });
+  expect(outcomes()).toEqual([]);
+  expect(run('run-1')).toMatchObject({ status: 'completed', r: 'discarded' });
+  const tried = db.prepare("SELECT COUNT(*) n FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = 'opencode' AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%'").get();
+  expect(tried).toEqual({ n: 0 }); // runOne may offer the same task again
+});
+
 it('an approval-gated maker is approved by the gym rule and then read back', async () => {
   const { svc, loops } = service({ green: [false, true] });
   loops.executeWorker.mockRejectedValueOnce(new Error('LOOP_WORKER_APPROVAL_REQUIRED'));

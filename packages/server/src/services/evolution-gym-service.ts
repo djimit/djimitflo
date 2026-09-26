@@ -76,7 +76,8 @@ export class EvolutionGymService {
     const species = this.species().map((s) => ({ s, n: (count.get(`loop-maker:gym:${s.runtime}`, s.model ?? '') as { n: number }).n })).sort((a, b) => a.n - b.n)[0].s;
     // every attempt (success, failure or discarded) is a gym loop_run for that species: never repeat one
     const key = species.model ? `${species.runtime}@${species.model}` : species.runtime;
-    const tried = new Set((this.db.prepare("SELECT json_extract(metadata, '$.gym.commit') AS c FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ?")
+    // an infra discard (provider error before the maker did anything) says nothing about the species: the task stays open
+    const tried = new Set((this.db.prepare("SELECT json_extract(metadata, '$.gym.commit') AS c FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%'")
       .all(key) as Array<{ c: string | null }>).map((r) => r.c));
     const task = this.deps.mine(repo).find((t) => !tried.has(t.commit));
     if (!task) return { status: 'skipped', reason: 'no untried task' };
@@ -103,6 +104,12 @@ export class EvolutionGymService {
       } else {
         await this.executeMaker(run.id, maker.id);
         const changed = this.deps.changed(maker.worktree_path);
+        // prod 2026-09-25: an opencode provider error ('Unexpected server error', exit 1, 0 tokens) was scored as a species loss
+        if (!changed.length && this.makerTokens(maker.id) === 0) {
+          result = { status: 'discarded', reason: 'infra: maker produced nothing (0 tokens, no change)', task, species: key, runId: run.id };
+          this.settle(run.id, result, maker.worktree_path, repo);
+          return result;
+        }
         const inScope = changed.length > 0 && changed.every((f) => f === task.source);
         const green = inScope && this.deps.oracle(maker.worktree_path, task);
         result = { status: green ? 'success' : 'failure', reason: green ? 'tests green, source only' : inScope ? 'tests still red' : `out of scope: ${changed.join(', ') || 'no change'}`, task, species: key, runId: run.id };
@@ -111,7 +118,7 @@ export class EvolutionGymService {
       result = { status: 'failure', reason: err instanceof Error ? err.message.slice(0, 200) : String(err), task, species: key, runId: run.id };
     }
     if (result.status !== 'discarded') {
-      const tokens = maker ? Number((JSON.parse((this.db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(maker.id) as { metadata: string } | undefined)?.metadata || '{}') as { runtime_usage?: { total_tokens?: unknown } }).runtime_usage?.total_tokens) || 0 : 0;
+      const tokens = maker ? this.makerTokens(maker.id) : 0;
       new SkillEvolutionEngine(this.db).recordOutcome(`loop-maker:gym:${species.runtime}`, {
         success: result.status === 'success', tokensUsed: tokens, durationMs: Date.now() - started, domain: 'gym', taskId: run.id,
         ...(species.model ? { model: species.model } : {}), evidenceRefs: [`gym:${task.commit}`, `loop_run:${run.id}`, `gym_result:${result.reason}`],
@@ -119,6 +126,10 @@ export class EvolutionGymService {
     }
     this.settle(run.id, result, maker?.worktree_path ?? null, repo);
     return result;
+  }
+
+  private makerTokens(leaseId: string): number {
+    return Number((JSON.parse((this.db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(leaseId) as { metadata: string } | undefined)?.metadata || '{}') as { runtime_usage?: { total_tokens?: unknown } }).runtime_usage?.total_tokens) || 0;
   }
 
   /** The maker needs an approval like any maker; in the gym nothing leaves the sandbox, so the gym rule decides it. */
