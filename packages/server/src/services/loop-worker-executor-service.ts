@@ -56,7 +56,25 @@ export class LoopWorkerExecutorService {
     private executionEngine?: ExecutionEngine,
   ) {}
 
+  /**
+   * A throw between marking the maker lease 'running' and settling it left the lease 'running' forever (prod 2026-09-26:
+   * lease 29de65a9 ran 'running' for 3 h after its task had failed, and every auto-deploy and gym attempt counted it as
+   * busy). Leases this call started and that are still 'running' are failed with the error; the approval/in-progress
+   * paths put the lease back to 'prepared' before throwing, so they are untouched.
+   */
   async executeMaker(id: string, input: ExecuteMakerInput = {}): Promise<ExecuteWorkerResult> {
+    const since = new Date().toISOString();
+    try {
+      return await this.runMaker(id, input);
+    } catch (err) {
+      const stuck = this.db.prepare("SELECT id FROM worker_leases WHERE loop_run_id = ? AND role = 'maker' AND status = 'running' AND json_extract(metadata, '$.started_at') >= ?")
+        .all(id, since) as Array<{ id: string }>;
+      for (const lease of stuck) this.loopService.updateWorkerLeaseStatus(lease.id, 'failed', { failure_reason: `maker_execution_error: ${(err instanceof Error ? err.message : String(err)).slice(0, 200)}`, failed_at: new Date().toISOString() });
+      throw err;
+    }
+  }
+
+  private async runMaker(id: string, input: ExecuteMakerInput = {}): Promise<ExecuteWorkerResult> {
     const run = this.loopService.getLoopRun(id);
     this.loopService.assertOperatorNotPaused(run);
     this.loopService.assertWallClockBudgetAvailable(run);
