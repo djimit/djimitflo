@@ -31,6 +31,11 @@ export class RemoteGymService {
     if (!SAFE.test(host)) throw new Error('GYM_HOST_INVALID');
     const species = parseSpecies(offered.filter((s) => typeof s === 'string' && SAFE.test(s)).join(','), 8);
     if (!species.length) throw new Error('GYM_SPECIES_REQUIRED');
+    // A host runs one attempt at a time (systemd oneshot), so its runs still 'running' at a new claim lost their report
+    // (prod 2026-09-27: 'fetch failed' left f2df0beb running for good). Settle them as an infra discard — the task stays untried.
+    this.db.prepare(`UPDATE loop_runs SET status = 'completed', updated_at = ?,
+      metadata = json_set(metadata, '$.gym_result', json_object('status', 'discarded', 'reason', 'infra: worker lost the result (no report before its next claim)'))
+      WHERE loop_name = 'evolution-gym' AND status = 'running' AND json_extract(metadata, '$.gym.remote_host') = ?`).run(now.toISOString(), host);
     const since = new Date(now.getTime() - 86_400_000).toISOString();
     const today = (this.db.prepare("SELECT COUNT(*) AS n FROM loop_runs WHERE json_extract(metadata, '$.gym.remote_host') IS NOT NULL AND created_at >= ?").get(since) as { n: number }).n;
     if (today >= (Number(process.env.EVOLUTION_GYM_REMOTE_MAX_PER_DAY) || 24)) return { skipped: 'daily cap reached' };
