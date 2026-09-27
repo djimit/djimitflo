@@ -26,3 +26,13 @@ it('records a near-duplicate as a shadow judgment only; off by default; fail-ope
   expect(db.prepare('SELECT judgment, subject_id, mode, decision FROM judgments').all()).toEqual([{ judgment: 'proposal_near_duplicate', subject_id: 'c', mode: 'shadow', decision: 'yes' }]);
   expect(await checkProposalDuplicate(db, { id: 'd', title: 'x', description: 'y' }, vi.fn().mockRejectedValue(new Error('down')) as unknown as typeof fetch)).toBeNull();
 });
+
+it('does not flag a refinement as a duplicate of its parent (lineage, not duplication)', async () => {
+  vi.stubEnv('PROPOSAL_DEDUPE_MODE', 'shadow'); vi.stubEnv('NVIDIA_API_KEY', 'k');
+  db.pragma('foreign_keys = OFF');
+  const ins = db.prepare("INSERT INTO self_improvements (id, type, title, description, rationale, source, status, evidence_refs_json, created_at, updated_at) VALUES (?, 'code', 't', 'd', 'r', ?, 'needs_grounding', ?, datetime('now'), datetime('now'))");
+  ins.run('parent', 'reflection', '[]'); ins.run('child', 'refinement', '["refinement-of:parent"]');
+  await checkProposalDuplicate(db, { id: 'parent', title: 't', description: 'd' }, vec([1, 0]));
+  expect(await checkProposalDuplicate(db, { id: 'child', title: 't', description: 'd' }, vec([1, 0]))).toBeNull();
+  expect(db.prepare("SELECT COUNT(*) n FROM judgments WHERE judgment = 'proposal_near_duplicate'").get()).toEqual({ n: 0 });
+});
