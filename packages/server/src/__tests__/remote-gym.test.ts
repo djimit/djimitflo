@@ -5,6 +5,7 @@ import request from 'supertest';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { RemoteGymService, REMOTE_GYM_SCOPE } from '../services/remote-gym-service';
+import { infraFailing } from '../services/evolution-gym-service';
 import { createRemoteGymRoutes } from '../routes/remote-gym';
 import { mintSpawnToken, resolveSpawnTokenSecret } from '../services/spawn-token';
 
@@ -61,4 +62,15 @@ it('remote claim skips an infra-failing species and says so when none is healthy
   vi.stubEnv('EVOLUTION_GYM_REMOTE_MAX_PER_DAY', '100');
   expect(svc.claim('workstation', ['atomic@broken'])).toEqual({ skipped: 'every species is infra-failing' });
   expect(svc.claim('workstation', ['atomic@broken', 'atomic@llama-router'])).toMatchObject({ species: 'atomic@llama-router' });
+});
+
+it('the circuit breaker only counts infra discards after the species last succeeded', () => {
+  const ins = (id: string, at: string, status: string, reason: string) => db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, metadata, created_at) VALUES (?, 'evolution-gym', 'closed', 'completed', ?, ?)")
+    .run(id, JSON.stringify({ gym: { commit: id, species: 'atomic@llama-router', remote_host: 'workstation' }, gym_result: { status, reason } }), at);
+  const t = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
+  ins('a', t(150), 'discarded', 'infra: crash'); ins('b', t(140), 'success', 'tests green'); ins('c', t(120), 'discarded', 'infra: git'); ins('d', t(100), 'discarded', 'infra: git');
+  const since = t(24 * 60);
+  expect(infraFailing(db, 'atomic@llama-router', since)).toBe(false); // 2 after the success
+  ins('e', t(80), 'discarded', 'infra: git');
+  expect(infraFailing(db, 'atomic@llama-router', since)).toBe(true);
 });
