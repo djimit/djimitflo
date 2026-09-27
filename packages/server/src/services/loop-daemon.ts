@@ -15,6 +15,7 @@ import { evolveEligible, evolveSpecies, selectEvolveWinner } from './evolve-sele
 import { banditSpecies, chooseSpecies, speciesKey } from './runtime-bandit';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { authorityGateForGoal } from './authority-gate';
+import { remoteMakerTimeoutMs } from '../execution/executors/remote-maker-executor';
 /** Deterministic checks for daemon runs. The repo-wide `test` script cannot finish in 120 s, so hosts can scope it
  *  (LOOP_DAEMON_CHECK_SCRIPTS=test:changed,lint,type-check) and raise the per-script timeout (LOOP_DAEMON_CHECK_TIMEOUT_MS, max 600000). */
 export function daemonCheckOptions(env: NodeJS.ProcessEnv = process.env): { scripts?: string[]; timeout_ms: number } {
@@ -530,7 +531,9 @@ export class LoopDaemon {
               // N6: a sibling is a maker, so it needs its own approval and used to fail here every time. In an auto-approved
               // lane (J5) it gets the same one-file scope and the same rule decision; anywhere else it still fails.
               if (!/APPROVAL_REQUIRED/.test(error instanceof Error ? error.message : String(error)) || !(await this.autoApproveSibling(run.id, makerLease.id, sibling.id))) throw error;
-              await this.loops.awaitWorkerExecution(sibling.id);
+              // a remote host may take up to REMOTE_MAKER_TIMEOUT_MS; the 11-min default gave up on both first workstation
+              // makers (prod 2026-09-27: patches arrived at +13 and +26 min, after the run was already blocked)
+              await this.loops.awaitWorkerExecution(sibling.id, sp.runtime === 'remote' ? remoteMakerTimeoutMs() + 60_000 : undefined);
               await this.loops.executeWorker(run.id, siblingInput); // returns the result of the approved execution
             }
             this.loops.runDeterministicChecks(run.id, { lease_id: sibling.id, ...daemonCheckOptions() });
