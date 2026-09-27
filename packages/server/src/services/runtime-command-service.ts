@@ -6,6 +6,7 @@
  * 170 LOC + executeRuntimeCommand 120 LOC + semaphore management).
  */
 
+import { remoteMakerEnabled } from './remote-maker-queue';
 import { spawn, spawnSync } from 'child_process';
 import { createHash } from 'crypto';
 import type { ChildProcess } from 'child_process';
@@ -148,6 +149,11 @@ export class RuntimeCommandService {
   getRuntimeContract(runtime: string): RuntimeContract {
     if (runtime === 'manual') {
       return this.withConformance({ runtime: 'manual', available: true, command: null, version: 'manual', status: 'ok', supports_json_events: false, supports_usage_parsing: false, supports_timeout_kill: false, evidence: ['manual runtime requires human execution'] });
+    }
+    if (runtime === 'remote') {
+      // plan I3: the maker runs on a compute host that pulls the job; there is no local binary to probe
+      const on = remoteMakerEnabled();
+      return this.withConformance({ runtime: 'remote', available: on, command: null, version: 'remote-maker', status: on ? 'ok' : 'unavailable', supports_json_events: false, supports_usage_parsing: false, supports_timeout_kill: true, evidence: [on ? 'REMOTE_MAKER_ENABLED' : 'remote maker disabled'], ...(on ? {} : { reason: 'REMOTE_MAKER_ENABLED is not true' }) });
     }
     if (runtime === 'mock') {
       return this.withConformance({ runtime: 'mock', available: true, command: process.execPath, version: 'mock-runtime', status: 'ok', cwd_flag: 'argv', json_flag: 'stdout-json', supports_json_events: true, supports_usage_parsing: true, supports_timeout_kill: true, evidence: ['deterministic in-process mock runtime'] });
