@@ -126,3 +126,10 @@ it('a species with 3 infra discards in 24 h sits out, so it cannot starve the ot
   const r = await svc.runOne();
   expect(r.species).toBe('opencode'); // the broken challenger has 0 outcomes but sits out; the incumbent gets the slot
 });
+
+it('an error before the maker runs (git, npm ci) is an infra discard, not a species failure', async () => {
+  const { svc } = service({ green: [false] });
+  (svc as unknown as { deps: { prepare: () => void } }).deps.prepare = () => { throw new Error("Command failed: git show c1^:packages/server/src/services/x.ts"); };
+  expect(await svc.attempt('/repo', TASK, { runtime: 'opencode' })).toMatchObject({ status: 'discarded', reason: expect.stringMatching(/^infra: Command failed/) });
+  expect(outcomes()).toEqual([]);
+});

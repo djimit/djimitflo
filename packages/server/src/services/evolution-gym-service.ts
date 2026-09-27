@@ -107,6 +107,7 @@ export class EvolutionGymService {
     const started = Date.now();
     let result: GymResult;
     let maker: { id: string; worktree_path: string | null } | undefined;
+    let makerRan = false;
     try {
       const { leases } = this.loops.continueLoopRun(run.id, { runtime: species.runtime as never, ...(species.model ? { model: species.model } : {}), max_maker_workers: 1 });
       maker = leases.find((l) => l.role === 'maker');
@@ -117,6 +118,7 @@ export class EvolutionGymService {
       if (discard) {
         result = { status: 'discarded', reason: discard, task, species: key, runId: run.id };
       } else {
+        makerRan = true;
         await this.executeMaker(run.id, maker.id);
         const changed = this.deps.changed(maker.worktree_path);
         // prod 2026-09-25: an opencode provider error ('Unexpected server error', exit 1, 0 tokens) was scored as a species loss
@@ -130,7 +132,10 @@ export class EvolutionGymService {
         result = { status: green ? 'success' : 'failure', reason: green ? 'tests green, source only' : inScope ? 'tests still red' : `out of scope: ${changed.join(', ') || 'no change'}`, task, species: key, runId: run.id };
       }
     } catch (err) {
-      result = { status: 'failure', reason: err instanceof Error ? err.message.slice(0, 200) : String(err), task, species: key, runId: run.id };
+      // an error before the maker ran (git, npm ci, worktree) says nothing about the species (prod 2026-09-27: 'git show
+      // <commit>^:<file>' on a task whose source was new scored kimi-k3 and atomic as failures)
+      const message = err instanceof Error ? err.message.slice(0, 190) : String(err);
+      result = makerRan ? { status: 'failure', reason: message, task, species: key, runId: run.id } : { status: 'discarded', reason: `infra: ${message}`, task, species: key, runId: run.id };
     }
     if (result.status !== 'discarded') {
       const tokens = maker ? this.makerTokens(maker.id) : 0;
