@@ -10,12 +10,12 @@ import type { Database } from 'better-sqlite3';
  */
 export const proposalDedupeEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.PROPOSAL_DEDUPE_MODE === 'shadow' && Boolean(env.NVIDIA_API_KEY);
 
-export async function embed(text: string, fetchFn: typeof fetch = fetch): Promise<Float32Array | null> {
+export async function embed(text: string, fetchFn: typeof fetch = fetch, inputType: 'passage' | 'query' = 'passage'): Promise<Float32Array | null> {
   try {
     const res = await fetchFn(`${(process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1').replace(/\/$/, '')}/embeddings`, {
       method: 'POST', signal: AbortSignal.timeout(10_000),
       headers: { Authorization: `Bearer ${process.env.NVIDIA_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: process.env.EMBEDDING_MODEL || 'nvidia/nemotron-3-embed-1b', input: [text.slice(0, 8_000)], input_type: 'passage', encoding_format: 'float' }),
+      body: JSON.stringify({ model: process.env.EMBEDDING_MODEL || 'nvidia/nemotron-3-embed-1b', input: [text.slice(0, 8_000)], input_type: inputType, encoding_format: 'float' }),
     });
     if (!res.ok) return null;
     const v = ((await res.json()) as { data?: Array<{ embedding?: number[] }> }).data?.[0]?.embedding;

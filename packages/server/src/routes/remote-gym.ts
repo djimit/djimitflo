@@ -4,6 +4,7 @@ import type { AuthMiddleware } from '../middleware/auth';
 import { RemoteGymService, REMOTE_GYM_SCOPE } from '../services/remote-gym-service';
 import { mintSpawnToken, resolveSpawnTokenSecret, validateSpawnToken } from '../services/spawn-token';
 import { RemoteMakerQueue } from '../services/remote-maker-queue';
+import { ingestKbPages } from '../services/kb-corpus';
 
 /**
  * Plan I1: a compute host pulls evolution-gym work. claim/result authenticate with a host-scoped token
@@ -47,6 +48,12 @@ export function createRemoteGymRoutes(db: Database, auth: AuthMiddleware): Route
   router.post('/maker/:jobId/result', (req, res) => {
     const h = host(req, res); if (!h) return;
     try { makers.record(String(req.params.jobId), h, req.body || {}); res.json({ recorded: true }); } catch (error) { fail(res, error); }
+  });
+
+  // plan L2: the workstation pushes changed DjimitKBWiki pages; stored only after a safety check and an embedding
+  router.post('/kb', async (req, res) => {
+    const h = host(req, res); if (!h) return;
+    try { res.json(await ingestKbPages(db, h, req.body?.pages)); } catch (error) { const code = error instanceof Error ? error.message : 'KB_ERROR'; res.status(code.startsWith('KB_PAGES_INVALID') ? 400 : 500).json({ error: { code, message: code } }); }
   });
 
   router.post('/tokens', auth.requireAuth, auth.requirePermission('manage:tokens'), (req, res) => {

@@ -23,6 +23,7 @@ import path from 'node:path';
 import { generateText, llmEndpoints } from './llm-fallback';
 import { prepareState } from './typesafe-client';
 import { buildDecisionContext } from './decision-context-service';
+import { kbContext } from './kb-corpus';
 import type { Database } from 'better-sqlite3';
 import { SpecialistPanelService, type SpecialistPanelRecord, type SpecialistProfile } from './specialist-panel-service';
 
@@ -106,9 +107,12 @@ export class SelfImprovementAgentReviewService {
     const lessons = missing.length
       ? (await buildDecisionContext(this.db, { type: 'specialist_panel', id: panel.id }, { topic: panel.topic, context: panel.context }).catch(() => null))?.text
       : undefined;
+    // L2: the operator's KB as quoted reference, once per panel
+    const kb = missing.length ? await kbContext(this.db, { type: 'specialist_panel', id: panel.id }, `${panel.topic}\n${JSON.stringify(panel.context).slice(0, 2_000)}`) : null;
+    const advisory = [lessons, kb].filter(Boolean).join('\n\n') || undefined;
 
     for (const profile of missing) {
-      const outcome = await this.reviewOne(panel, profile, lessons);
+      const outcome = await this.reviewOne(panel, profile, advisory);
       if ('error' in outcome) {
         // A failed model call is not a judgement. It used to be stored as a confidence-0 needs_evidence review
         // (208 of 2309 production reviews: 404 on a missing model, 'fetch failed'), which parked the proposal
