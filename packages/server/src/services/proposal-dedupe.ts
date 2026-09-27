@@ -37,8 +37,14 @@ export async function checkProposalDuplicate(db: Database, proposal: { id: strin
   const v = await embed(`${proposal.title}\n${proposal.description}`, fetchFn);
   if (!v) return null;
   const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
+  // a refinement / grounded child repeats its parent's text on purpose (prod 2026-09-27: commons grounding adds target +
+  // test to an identical proposal → cosine 1.000); lineage is not duplication
+  const refsOf = (id: string) => (db.prepare('SELECT evidence_refs_json AS r FROM self_improvements WHERE id = ?').get(id) as { r: string | null } | undefined)?.r ?? '';
+  const mine = refsOf(proposal.id);
+  const related = (other: string) => mine.includes(`refinement-of:${other}`) || refsOf(other).includes(`refinement-of:${proposal.id}`);
   let best: { id: string; score: number } | null = null;
   for (const row of db.prepare('SELECT proposal_id, vector FROM proposal_embeddings WHERE created_at >= ? AND proposal_id != ?').all(since, proposal.id) as Array<{ proposal_id: string; vector: Buffer }>) {
+    if (related(row.proposal_id)) continue;
     const other = new Float32Array(row.vector.buffer, row.vector.byteOffset, row.vector.byteLength / 4);
     const score = cosine(v, other);
     if (!best || score > best.score) best = { id: row.proposal_id, score };
