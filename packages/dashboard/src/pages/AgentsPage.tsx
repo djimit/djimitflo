@@ -48,7 +48,8 @@ export function AgentsPage() {
                 showGovernance={Boolean(agentId)}
                 name={agent.name}
                 description={agent.description}
-                status={agent.status}
+                status={agent.status === 'active' && agent.liveness && agent.liveness !== 'live' ? agent.liveness : agent.status}
+                lastSeenAt={agent.last_seen_at ?? null}
                 currentTask={currentTask?.title || null}
                 totalTasks={agent.total_tasks}
                 completedTasks={agent.completed_tasks}
@@ -71,6 +72,7 @@ interface AgentCardProps {
   name: string;
   description: string;
   status: string;
+  lastSeenAt?: string | null;
   retiredAt?: string | null;
   retirementReason?: string | null;
   currentTask: string | null;
@@ -93,6 +95,7 @@ function AgentCard({
   capabilities,
   retiredAt,
   retirementReason,
+  lastSeenAt,
 }: AgentCardProps) {
   const statusConfig: Record<string, { color: string; icon: React.ReactNode }> = {
     pending_approval: {
@@ -119,6 +122,15 @@ function AgentCard({
       color: 'bg-foreground-muted/10 text-foreground-muted border-foreground-muted/20',
       icon: <XCircle className="w-4 h-4" />,
     },
+    // plan I0: registered as active but no activity or ONLINE registry node in the last 24 h
+    stale: {
+      color: 'bg-status-paused/10 text-status-paused border-status-paused/20',
+      icon: <Clock className="w-4 h-4" />,
+    },
+    unknown: {
+      color: 'bg-foreground-muted/10 text-foreground-muted border-foreground-muted/20',
+      icon: <Clock className="w-4 h-4" />,
+    },
   };
   const appearance = statusConfig[status] ?? statusConfig.offline;
   
@@ -137,7 +149,7 @@ function AgentCard({
             <p className="text-sm text-foreground-secondary mt-1">{description}</p>
           </div>
         </div>
-        <span className={`px-3 py-1 rounded-full text-xs font-medium border flex items-center gap-2 ${appearance.color}`}>
+        <span title={lastSeenAt ? `last seen ${lastSeenAt}` : 'never seen'} className={`px-3 py-1 rounded-full text-xs font-medium border flex items-center gap-2 ${appearance.color}`}>
           {appearance.icon}
           {status}
         </span>
