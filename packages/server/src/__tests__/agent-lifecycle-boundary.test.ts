@@ -189,3 +189,15 @@ it('does not grant retirement authority to an evidence-writing checker', async (
   expect(db.prepare("SELECT status FROM agents WHERE id='a'").get()).toEqual({ status: 'idle' });
   expect(db.prepare('SELECT COUNT(*) AS n FROM agent_archives').get()).toEqual({ n: 0 });
 });
+
+it('sets and clears a public Telegram bot handle (manage:config only, validated)', async () => {
+  expect((await request(app).patch('/agents/a/telegram').auth(checker, { type: 'bearer' }).send({ bot_name: '@Djimit3_bot' })).status).toBe(403);
+  expect((await request(app).patch('/agents/a/telegram').auth(admin, { type: 'bearer' }).send({ bot_name: '123456:ABC-token' })).status).toBe(400);
+  expect((await request(app).patch('/agents/missing/telegram').auth(admin, { type: 'bearer' }).send({ bot_name: 'Djimit3_bot' })).status).toBe(404);
+  const ok = await request(app).patch('/agents/a/telegram').auth(admin, { type: 'bearer' }).send({ bot_name: '@Djimit3_bot' });
+  expect(ok.body).toEqual({ id: 'a', telegram_bot_name: 'Djimit3_bot' });
+  const list = await request(app).get('/agents').auth(admin, { type: 'bearer' });
+  expect(list.body.agents.find((x: { id: string }) => x.id === 'a').telegram_bot_name).toBe('Djimit3_bot');
+  await request(app).patch('/agents/a/telegram').auth(admin, { type: 'bearer' }).send({ bot_name: null });
+  expect(db.prepare('SELECT telegram_bot_name FROM agents WHERE id = ?').get('a')).toEqual({ telegram_bot_name: null });
+});

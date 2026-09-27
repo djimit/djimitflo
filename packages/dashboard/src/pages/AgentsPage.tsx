@@ -50,6 +50,7 @@ export function AgentsPage() {
                 description={agent.description}
                 status={agent.status === 'active' && agent.liveness && agent.liveness !== 'live' ? agent.liveness : agent.status}
                 lastSeenAt={agent.last_seen_at ?? null}
+                telegramBot={agent.telegram_bot_name ?? null}
                 currentTask={currentTask?.title || null}
                 totalTasks={agent.total_tasks}
                 completedTasks={agent.completed_tasks}
@@ -73,6 +74,7 @@ interface AgentCardProps {
   description: string;
   status: string;
   lastSeenAt?: string | null;
+  telegramBot?: string | null;
   retiredAt?: string | null;
   retirementReason?: string | null;
   currentTask: string | null;
@@ -96,6 +98,7 @@ function AgentCard({
   retiredAt,
   retirementReason,
   lastSeenAt,
+  telegramBot,
 }: AgentCardProps) {
   const statusConfig: Record<string, { color: string; icon: React.ReactNode }> = {
     pending_approval: {
@@ -147,6 +150,7 @@ function AgentCard({
           <div>
             <h3 className="text-lg font-semibold text-foreground">{name}</h3>
             <p className="text-sm text-foreground-secondary mt-1">{description}</p>
+            {telegramBot && <p className="text-xs text-foreground-secondary mt-1">Telegram <a className="underline" href={`https://t.me/${telegramBot.replace(/^@/, '')}`} target="_blank" rel="noreferrer">@{telegramBot.replace(/^@/, '')}</a></p>}
           </div>
         </div>
         <span title={lastSeenAt ? `last seen ${lastSeenAt}` : 'never seen'} className={`px-3 py-1 rounded-full text-xs font-medium border flex items-center gap-2 ${appearance.color}`}>
