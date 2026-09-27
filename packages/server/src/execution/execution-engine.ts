@@ -27,6 +27,7 @@ import { CodexExecutor } from './executors/codex-executor';
 import { ClaudeExecutor } from './executors/claude-executor';
 import { HermesExecutor } from './executors/hermes-executor';
 import { AtomicExecutor } from './executors/atomic-executor';
+import { RemoteMakerExecutor } from './executors/remote-maker-executor';
 import { GeminiExecutor } from './executors/gemini-executor';
 import { EditorExecutor } from './executors/editor-executor';
 import { PiExecutor } from './executors/pi-executor';
@@ -163,6 +164,7 @@ export class ExecutionEngine {
     this.registerExecutor(new EditorExecutor());
     this.registerExecutor(new PiExecutor());
     this.registerExecutor(new AtomicExecutor());
+    this.registerExecutor(new RemoteMakerExecutor(this.db));
     if (process.env.DJIMIT_DEEP_ENABLED === 'true') {
       this.deepAgentIssuer = new DeepAgentContractIssuer();
       this.registerExecutor(new DeepAgentExecutor());
