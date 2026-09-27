@@ -58,8 +58,40 @@ async function api(pathName, body) {
   return json;
 }
 
+/** Plan I3b: a real maker job (queued by the VPS runtime 'remote'); only the patch goes back. */
+async function runMakerJob(job) {
+  const done = (r) => api(`/gym-worker/maker/${job.id}/result`, r);
+  fs.mkdirSync(WORK, { recursive: true });
+  const repo = path.join(WORK, 'repo');
+  if (!fs.existsSync(repo)) sh('git', ['clone', '-q', env.GYM_REPO || 'https://github.com/djimit/djimitflo.git', repo]);
+  git(repo, ['fetch', '-q', 'origin']);
+  const wt = fs.mkdtempSync(path.join(WORK, 'mk-'));
+  try {
+    git(repo, ['worktree', 'add', '-q', '--detach', wt, job.base_commit]);
+    if (inRunner(wt, 'npm ci --legacy-peer-deps --no-audit --no-fund >/dev/null 2>&1').status !== 0) return done({ status: 'failed', reason: 'infra: npm ci failed' });
+    const [runtime] = job.species.split('@');
+    if (runtime !== 'atomic') return done({ status: 'failed', reason: `infra: species ${job.species} not supported by this worker` });
+    const state = path.join(WORK, 'atomic-state'); fs.mkdirSync(state, { recursive: true });
+    if (inRunner(wt, `atomic-agent config set '${ATOMIC_LOCAL_CONFIG}' >/dev/null`, { extra: ['-v', `${state}:/state`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'], timeoutMs: 60_000 }).status !== 0) return done({ status: 'failed', reason: 'infra: atomic config failed' });
+    inRunner(wt, 'atomic-agent run --cwd /w --max-steps 60 --no-approval', { input: `${job.prompt}\n`, extra: ['-v', `${state}:/state`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'], timeoutMs: Number(env.GYM_MAKER_TIMEOUT_MS) || 900_000 });
+    git(wt, ['add', '-A', '-N', '.']);
+    const patch = git(wt, ['diff', '--binary', 'HEAD', '--', '.', ':(exclude)package-lock.json', ':(exclude).atomic*']);
+    await done({ status: 'done', patch, reason: patch ? `patch ${patch.split('\n').length} lines` : 'no change' });
+    console.log(`maker ${job.id.slice(0, 8)} ${job.species} ${patch ? 'patch' : 'no change'}`);
+  } catch (err) {
+    await done({ status: 'failed', reason: `infra: ${(err instanceof Error ? err.message : String(err)).slice(0, 150)}` });
+  } finally {
+    try { git(repo, ['worktree', 'remove', '--force', wt]); } catch { try { fs.rmSync(wt, { recursive: true, force: true }); } catch { /* next run */ } }
+    try { git(repo, ['worktree', 'prune']); } catch { /* ignore */ }
+  }
+}
+
 async function main() {
-  const claim = await api('/gym-worker/claim', { species: (env.GYM_SPECIES || 'atomic@llama-router').split(',').map((s) => s.trim()).filter(Boolean) });
+  const offered = (env.GYM_SPECIES || 'atomic@llama-router').split(',').map((s) => s.trim()).filter(Boolean);
+  // real work first: a queued maker job beats a gym replay
+  const maker = await api('/gym-worker/maker/claim', { species: offered }).catch(() => ({ job: null }));
+  if (maker.job) return runMakerJob(maker.job);
+  const claim = await api('/gym-worker/claim', { species: offered });
   if (claim.skipped) { console.log(`skipped: ${claim.skipped}`); return; }
   const { runId, species, task } = claim;
   const started = Date.now();
