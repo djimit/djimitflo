@@ -111,6 +111,20 @@ describe('GitHub pull_request review webhook', () => {
     db.close();
   });
 
+  it('settling a review also completes the goals of already-settled review runs (prod 2026-09-27: 42 stayed running)', async () => {
+    const db = await setup();
+    mockGh({ additions: 5, deletions: 2, changedFiles: 1, files: ['src/index.ts'] });
+    db.pragma('foreign_keys = OFF');
+    db.prepare("INSERT INTO goals (id, objective, status, created_at, updated_at) VALUES ('g-old', 'old review', 'running', '2026-09-26', '2026-09-26')").run();
+    db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, goal_id, metadata) VALUES ('r-old', 'repo-maintenance-loop', 'closed', 'completed', 'g-old', '{\"settled_by\":\"github-pr-review\"}')").run();
+    db.prepare("INSERT INTO goals (id, objective, status, created_at, updated_at) VALUES ('g-real', 'real work', 'running', '2026-09-26', '2026-09-26')").run();
+    db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, goal_id, metadata) VALUES ('r-real', 'doc-drift-and-small-fix-loop', 'closed', 'completed', 'g-real', '{}')").run();
+    expect((await post(prBody(), 'delivery-pr-goal')).status).toBe(202);
+    expect(db.prepare("SELECT id, status FROM goals WHERE id IN ('g-old', 'g-real') ORDER BY id").all())
+      .toEqual([{ id: 'g-old', status: 'completed' }, { id: 'g-real', status: 'running' }]);
+    db.close();
+  });
+
   it('flags a large PR as needs_revision', async () => {
     const db = await setup();
     mockGh({ additions: 900, deletions: 700, changedFiles: 50, files: Array.from({ length: 50 }, (_, i) => `src/file${i}.ts`) });
