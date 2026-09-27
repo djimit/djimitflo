@@ -86,16 +86,16 @@ async function main() {
     const cfg = inRunner(wt, `atomic-agent config set '${ATOMIC_LOCAL_CONFIG}' >/dev/null`, { extra: ['-v', `${state}:/state`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'], timeoutMs: 60_000 });
     if (cfg.status !== 0) return report({ status: 'discarded', reason: 'infra: atomic config failed' });
     inRunner(wt, 'atomic-agent run --cwd /w --max-steps 40 --no-approval', { input: `${goal}\n`, extra: ['-v', `${state}:/state`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'], timeoutMs: Number(env.GYM_MAKER_TIMEOUT_MS) || 900_000 });
-    // the runner writes as root; hand the tree back before git reads it
-    inRunner(wt, `chown -R ${process.getuid()}:${process.getgid()} /w`, { timeoutMs: 120_000 });
     const changed = changedFrom(git(wt, ['diff', '--name-only', 'HEAD']), git(wt, ['ls-files', '--others', '--exclude-standard']));
     const green = changed.length > 0 && changed.every((f) => f === task.source) && oracle(wt, task);
     return report(verdict(task, changed, green));
   } catch (err) {
     return report({ status: 'discarded', reason: `infra: ${(err instanceof Error ? err.message : String(err)).slice(0, 150)}` });
   } finally {
-    inRunner(wt, `chown -R ${process.getuid()}:${process.getgid()} /w`, { timeoutMs: 120_000 });
-    try { git(repo, ['worktree', 'remove', '--force', wt]); } catch { fs.rmSync(wt, { recursive: true, force: true }); }
+    // rootless docker: container root writes as this user, so no chown (a chown to our uid inside the container maps to
+    // subuid 100999 and locks us out — the first workstation run crashed on exactly that). Cleanup never throws.
+    try { git(repo, ['worktree', 'remove', '--force', wt]); } catch { try { fs.rmSync(wt, { recursive: true, force: true }); } catch { /* left for the next run */ } }
+    try { git(repo, ['worktree', 'prune']); } catch { /* ignore */ }
   }
 }
 
