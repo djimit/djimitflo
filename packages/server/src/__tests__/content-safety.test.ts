@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { checkContentSafety, parseSafety } from '../services/content-safety';
+import { checkContentSafety, nvidiaFetch, parseSafety } from '../services/content-safety';
 
 let db: Database.Database;
 beforeEach(() => { db = new Database(':memory:'); db.exec(schema); runMigrations(db); });
@@ -30,4 +30,15 @@ it('records an unsafe verdict as a shadow judgment; off by default; fail-open on
     { subject_id: '2', decision: 'error', reason: expect.stringMatching(/^http_|^unparsed/) },
     { subject_id: '3', decision: 'error', reason: 'socket hang up' },
   ]);
+});
+
+it('retries NVIDIA 429s with backoff (Retry-After first), then gives up after 3 retries', async () => {
+  const r429 = { status: 429, headers: { get: (h: string) => (h === 'retry-after' ? '1' : null) } };
+  const f = vi.fn().mockResolvedValueOnce(r429).mockResolvedValueOnce(r429).mockResolvedValueOnce({ status: 200, ok: true });
+  const waits: number[] = [];
+  expect((await nvidiaFetch('u', {}, f as unknown as typeof fetch, async (ms) => { waits.push(ms); })).status).toBe(200);
+  expect(waits).toEqual([1_000, 1_000]);
+  const always = vi.fn().mockResolvedValue({ status: 429, headers: { get: () => null } });
+  expect((await nvidiaFetch('u', {}, always as unknown as typeof fetch, async () => undefined)).status).toBe(429);
+  expect(always).toHaveBeenCalledTimes(4);
 });

@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { nvidiaFetch } from './content-safety';
 
 /**
  * Plan K2a: the same improvement idea keeps arriving in other words (the fingerprint only catches exact repeats), which
@@ -12,11 +13,11 @@ export const proposalDedupeEnabled = (env: NodeJS.ProcessEnv = process.env): boo
 
 export async function embed(text: string, fetchFn: typeof fetch = fetch, inputType: 'passage' | 'query' = 'passage'): Promise<Float32Array | null> {
   try {
-    const res = await fetchFn(`${(process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1').replace(/\/$/, '')}/embeddings`, {
-      method: 'POST', signal: AbortSignal.timeout(10_000),
+    const res = await nvidiaFetch(`${(process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1').replace(/\/$/, '')}/embeddings`, {
+      method: 'POST', signal: AbortSignal.timeout(60_000),
       headers: { Authorization: `Bearer ${process.env.NVIDIA_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: process.env.EMBEDDING_MODEL || 'nvidia/nemotron-3-embed-1b', input: [text.slice(0, 8_000)], input_type: inputType, encoding_format: 'float' }),
-    });
+    }, fetchFn);
     if (!res.ok) return null;
     const v = ((await res.json()) as { data?: Array<{ embedding?: number[] }> }).data?.[0]?.embedding;
     return Array.isArray(v) && v.length ? Float32Array.from(v) : null;

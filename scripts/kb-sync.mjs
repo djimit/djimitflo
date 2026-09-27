@@ -42,7 +42,7 @@ for (let i = 0; i < Math.min(pending.length, max) && failedBatches < 3; i += 10)
   const batch = pending.slice(i, Math.min(i + 10, max));
   try {
     const res = await fetch(`${url}/api/gym-worker/kb`, {
-      method: 'POST', signal: AbortSignal.timeout(180_000),
+      method: 'POST', signal: AbortSignal.timeout(600_000), // server-side 429 backoff can take minutes per batch
       headers: { 'Content-Type': 'application/json', 'X-Gym-Host': host, 'X-Gym-Worker-Token': token },
       body: JSON.stringify({ pages: batch.map(({ path, title, body }) => ({ path, title, body })) }),
     });
