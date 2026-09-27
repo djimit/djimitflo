@@ -72,7 +72,8 @@ def hf_daily_discoveries(papers, interests=INTERESTS):
         yield 'discovery.paper', f'arxiv:{pid}', title, note, []
         m = GITHUB.search(repo or '')
         if m:
-            slug = f"{m.group(1)}/{re.sub(r'(\.git|[.)]+)$', '', m.group(2))}".lower()
+            name = re.sub(r'(\.git|[.)]+)$', '', m.group(2))  # no backslash inside f-strings: python < 3.12 on the Mac mini
+            slug = f'{m.group(1)}/{name}'.lower()
             yield 'discovery.repository', f'github:{slug}', slug, f'code for arxiv:{pid} ({title[:80]})', []
 
 
