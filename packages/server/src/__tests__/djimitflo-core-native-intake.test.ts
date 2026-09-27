@@ -93,3 +93,18 @@ describe('every external agent signal is recorded, not only allow-listed types',
       .toEqual([{ event_type: 'work.action.required', source: 'eve-action-processor' }]);
   });
 });
+
+describe('N2: agent.outcome becomes a fleet skill outcome', () => {
+  it('records agent:<agent>:<task_kind> once per event; malformed outcomes are stored but not scored', async () => {
+    const events = [
+      { _id: '5-0', event_id: 'agent-outcome:1', event_type: 'agent.outcome', source: 'hermes-eve-v', agent: 'hermes-eve-v', task_kind: 'briefing', success: true, model: 'kimi-k3', tokens: 1200, occurred_at: '2026-09-27T10:00:00Z' },
+      { _id: '4-0', event_id: 'agent-outcome:2', event_type: 'agent.outcome', source: 'eve', agent: 'bad agent name!', task_kind: 'x', success: 'yes', occurred_at: '2026-09-27T10:00:00Z' },
+    ];
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({ events }), { status: 200 })));
+    const service = new ExternalEventIngestService(db, 'http://event-bus', 'djimit.events');
+    await service.pollOnce();
+    await service.pollOnce(); // replay: the same event is not scored twice
+    expect(db.prepare("SELECT skill_id, success, model, agent_id, domain FROM skill_outcomes").all())
+      .toEqual([{ skill_id: 'agent:hermes-eve-v:briefing', success: 1, model: 'kimi-k3', agent_id: 'hermes-eve-v', domain: 'fleet' }]);
+  });
+});

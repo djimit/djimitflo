@@ -1,3 +1,4 @@
+import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { WorkItemService } from './work-item-service';
 import type { Database } from 'better-sqlite3';
 import { z } from 'zod';
@@ -11,6 +12,21 @@ const decodeField = (value: unknown): unknown => {
   try { return JSON.parse(value); } catch { return value; }
 };
 const SIGNAL_PREFIXES = ['paperclip.', 'outcome.', 'roborev.', 'discovery.', 'wiki.', 'agent.', 'eve-v.', 'work.', 'content.', 'authority.'];
+
+/**
+ * Plan N2: one light outcome contract for every agent in the fleet (Hermes, Eve-V, maintainer, DeerFlow, Scallop, workers).
+ * Stored as a skill outcome `agent:<agent>:<task_kind>` so the same fitness/bandit machinery ranks agents and models
+ * across the fleet. Emit with scripts/emit-agent-outcome.py.
+ */
+const agentOutcomeSchema = z.object({
+  agent: z.string().regex(/^[\w.-]{1,64}$/),
+  task_kind: z.string().regex(/^[\w.:-]{1,64}$/),
+  success: z.boolean(),
+  model: z.string().max(120).optional(),
+  tokens: z.number().int().nonnegative().optional(),
+  duration_ms: z.number().int().nonnegative().optional(),
+  ref: z.string().max(300).optional(),
+});
 
 const outcomeObservedSchema = z.object({
   outcome_id: nonBlank,
@@ -147,7 +163,7 @@ export class ExternalEventIngestService {
         if (eventType.startsWith('discovery.') && sourceUnitsEnabled()) {
           try { new ExpertSourceUnitsService(this.db).ingestDiscovery(normalizedEvent); } catch { /* never let one discovery break ingestion */ }
         }
-        inserted += insert.run(
+        const added = insert.run(
           id,
           eventType,
           String(normalizedEvent.source || (eventType.startsWith('paperclip.') ? 'paperclip' : 'external')),
@@ -161,6 +177,14 @@ export class ExternalEventIngestService {
             : String(normalizedEvent.occurred_at || normalizedEvent.timestamp || new Date().toISOString()),
           JSON.stringify(normalizedEvent),
         ).changes;
+        inserted += added;
+        if (added && eventType === 'agent.outcome') {
+          const o = agentOutcomeSchema.safeParse(normalizedEvent);
+          if (o.success) new SkillEvolutionEngine(this.db).recordOutcome(`agent:${o.data.agent}:${o.data.task_kind}`, {
+            success: o.data.success, tokensUsed: o.data.tokens ?? 0, durationMs: o.data.duration_ms ?? 0, domain: 'fleet',
+            agentId: o.data.agent, taskId: id, ...(o.data.model ? { model: o.data.model } : {}), ...(o.data.ref ? { evidenceRefs: [o.data.ref] } : {}),
+          });
+        }
       }
       // Close the existing ingestion seam before advancing its cursor. Replay
       // also materializes historical observations left by older deployments.
