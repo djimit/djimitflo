@@ -2,6 +2,7 @@
  * Agent routes — with POST /api/agents for swarm registration
  */
 
+import { agentLiveness, type RegistryNode } from '../services/agent-liveness';
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import { createError } from '../middleware/error-handler';
@@ -20,11 +21,14 @@ export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
   router.get('/', requireAuth, requirePermission('read:evidence'), (_req, res, next) => {
     try {
       const agents = db.prepare('SELECT * FROM agents ORDER BY created_at DESC').all();
+      let registry = new Map<string, RegistryNode>();
+      try { registry = new Map((db.prepare('SELECT name, raw_json, synced_at FROM registry_agents').all() as RegistryNode[]).map((n) => [n.name, n])); } catch { /* no registry mirror */ }
 
       const parsed = agents.map((agent: any) => ({
         ...agent,
         capabilities: JSON.parse(agent.capabilities || '[]'),
         metadata: JSON.parse(agent.metadata || '{}'),
+        ...agentLiveness(agent, registry),
       }));
 
       res.json({ agents: parsed });

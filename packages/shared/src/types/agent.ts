@@ -29,6 +29,9 @@ export interface Agent extends Timestamps {
   last_active_at: string | null;
   retired_at?: string | null;
   retirement_reason?: string | null;
+  /** Derived by GET /api/agents (plan I0): recent activity or an ONLINE registry node; `status` itself never decays. */
+  liveness?: 'live' | 'stale' | 'unknown';
+  last_seen_at?: string | null;
   
   // Metadata
   metadata: Record<string, unknown>;
