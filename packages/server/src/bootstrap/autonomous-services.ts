@@ -31,6 +31,7 @@ import { DreamStateService, dreamStateEnabled } from '../services/dream-state-se
 import { NeedsGroundingTriageService, needsGroundingTriageEnabled } from '../services/needs-grounding-triage-service';
 import { DiskGuardService, diskGuardEnabled } from '../services/disk-guard-service';
 import { QueueHygieneService, queueHygieneEnabled } from '../services/queue-hygiene-service';
+import { startStallWatch } from '../services/stall-watch';
 import { KnowledgeMaintenanceService, maintenanceEnabled } from '../services/knowledge-maintenance-service';
 
 export function initAutonomousServices(db: any, recoverySvc: LoopService): void {
@@ -175,6 +176,14 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     }
   } catch (error) {
     console.warn('⚠️  Disk guard failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // Stall watch (M10): hourly log line per silent stall. STALL_WATCH_ENABLED=true (default off).
+  try {
+    const stopStallWatch = startStallWatch(db);
+    if (stopStallWatch) { lifecycleManager.register({ serviceName: 'StallWatch', stop: stopStallWatch }); console.log('🚨 Stall watch on (hourly).'); }
+  } catch (error) {
+    console.warn('⚠️  Stall watch failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // Queue hygiene: expires consumer-less work items, stale curiosity claims and unvalidated drafts. Default off.
