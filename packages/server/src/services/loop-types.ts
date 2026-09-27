@@ -142,7 +142,7 @@ export interface SplitLoopInput {
 }
 
 export interface RuntimeContract {
-  runtime: 'manual' | 'mock' | 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'pi' | 'atomic';
+  runtime: 'manual' | 'mock' | 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'pi' | 'atomic' | 'remote';
   available: boolean;
   command: string | null;
   version?: string;
