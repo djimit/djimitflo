@@ -6,6 +6,8 @@
  *   primary        OLLAMA_URL                       (caller supplies it)
  *   2nd Ollama     OLLAMA_FALLBACK_URL              (+ OLLAMA_FALLBACK_MODEL if the model name differs)
  *   OpenAI-compat  LLM_FALLBACK_OPENAI_URL          (+ LLM_FALLBACK_OPENAI_KEY, LLM_FALLBACK_MODEL)
+ *   2nd compat     LLM_FALLBACK2_OPENAI_URL         (same suffixes) — a non-Ollama provider (plan K3: NVIDIA kimi-k3), so an
+ *                                                   Ollama-wide outage or model retirement no longer stops every tier
  *
  * A host that fails at the connection level is marked down for a minute: healthy endpoints are tried first, down ones
  * last (never skipped, so a total outage still surfaces the primary's own error message).
@@ -25,8 +27,10 @@ export function llmEndpoints(primaryOllamaUrl: string, env: NodeJS.ProcessEnv = 
   const endpoints: LlmEndpoint[] = [{ id: `ollama:${primaryOllamaUrl}`, kind: 'ollama', baseUrl: primaryOllamaUrl }];
   const second = env.OLLAMA_FALLBACK_URL?.trim();
   if (second && second !== primaryOllamaUrl) endpoints.push({ id: `ollama:${second}`, kind: 'ollama', baseUrl: second, model: env.OLLAMA_FALLBACK_MODEL?.trim() || undefined });
-  const compat = env.LLM_FALLBACK_OPENAI_URL?.trim();
-  if (compat) endpoints.push({ id: `openai:${compat}`, kind: 'openai', baseUrl: compat.replace(/\/$/, ''), apiKey: env.LLM_FALLBACK_OPENAI_KEY?.trim() || undefined, model: env.LLM_FALLBACK_MODEL?.trim() || undefined });
+  for (const n of ['', '2']) {
+    const compat = env[`LLM_FALLBACK${n}_OPENAI_URL`]?.trim();
+    if (compat) endpoints.push({ id: `openai:${compat}`, kind: 'openai', baseUrl: compat.replace(/\/$/, ''), apiKey: env[`LLM_FALLBACK${n}_OPENAI_KEY`]?.trim() || undefined, model: env[`LLM_FALLBACK${n}_MODEL`]?.trim() || undefined });
+  }
   return endpoints;
 }
 
