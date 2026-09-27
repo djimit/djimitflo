@@ -6,7 +6,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { EvolutionGymService, prepareGymWorktree } from '../services/evolution-gym-service';
+import { EvolutionGymService, prepareGymWorktree, infraFailing } from '../services/evolution-gym-service';
 import type { GymTask } from '../services/gym-task-miner';
 import type { LoopService } from '../services/loop-service';
 
@@ -111,4 +111,18 @@ it('runOne: off by default, never repeats a task for a species, and skips while 
   expect((await svc.runOne()).reason).toBe('no untried task');
   db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata) VALUES ('busy', 'x', 'maker', 'opencode', 'running', '{}')").run();
   expect((await svc.runOne()).reason).toBe('production workers running');
+});
+
+it('a species with 3 infra discards in 24 h sits out, so it cannot starve the others (prod 2026-09-27: 7x kimi-k2.6)', async () => {
+  process.env.EVOLUTION_GYM_ENABLED = 'true'; process.env.LOOP_DAEMON_REPOSITORY_PATH = '/repo';
+  process.env.LOOP_EVOLVE_SPECIES = 'opencode@ollama/broken:cloud';
+  const now = new Date().toISOString();
+  for (let i = 0; i < 3; i++) {
+    db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, metadata, created_at) VALUES (?, 'evolution-gym', 'closed', 'completed', ?, ?)")
+      .run(`infra-${i}`, JSON.stringify({ gym: { commit: `x${i}`, species: 'opencode@ollama/broken:cloud' }, gym_result: { status: 'discarded', reason: 'infra: maker produced nothing (0 tokens, no change)' } }), now);
+  }
+  expect(infraFailing(db, 'opencode@ollama/broken:cloud', new Date(Date.now() - 86_400_000).toISOString())).toBe(true);
+  const { svc } = service({ green: [false, true] });
+  const r = await svc.runOne();
+  expect(r.species).toBe('opencode'); // the broken challenger has 0 outcomes but sits out; the incumbent gets the slot
 });

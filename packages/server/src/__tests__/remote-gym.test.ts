@@ -52,3 +52,13 @@ it('the worker routes require a host-scoped token', async () => {
   const res = await request(app).post('/gym-worker/claim').set('X-Gym-Host', 'workstation').set('X-Gym-Worker-Token', minted.body.token).send({ species: ['atomic'] }).expect(200);
   expect(res.body).toEqual({ skipped: 'no repository path' }); // auth passed, the service answered
 });
+
+it('remote claim skips an infra-failing species and says so when none is healthy', () => {
+  const svc = new RemoteGymService(db, () => [TASK('c1')]);
+  const now = new Date().toISOString();
+  for (let i = 0; i < 3; i++) db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, metadata, created_at) VALUES (?, 'evolution-gym', 'closed', 'completed', ?, ?)")
+    .run(`r-infra-${i}`, JSON.stringify({ gym: { commit: `x${i}`, species: 'atomic@broken', remote_host: 'workstation' }, gym_result: { status: 'discarded', reason: 'infra: npm ci failed' } }), now);
+  vi.stubEnv('EVOLUTION_GYM_REMOTE_MAX_PER_DAY', '100');
+  expect(svc.claim('workstation', ['atomic@broken'])).toEqual({ skipped: 'every species is infra-failing' });
+  expect(svc.claim('workstation', ['atomic@broken', 'atomic@llama-router'])).toMatchObject({ species: 'atomic@llama-router' });
+});

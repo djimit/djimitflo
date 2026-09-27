@@ -3,6 +3,7 @@ import type { Database } from 'better-sqlite3';
 import { mineGymTasks, type GymTask } from './gym-task-miner';
 import { parseSpecies } from './evolve-selection';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
+import { infraFailing } from './evolution-gym-service';
 
 /**
  * Plan I1: the evolution gym on a remote compute host (the workstation: 48 threads, 125 GB, R9700) instead of the
@@ -35,7 +36,9 @@ export class RemoteGymService {
     if (today >= (Number(process.env.EVOLUTION_GYM_REMOTE_MAX_PER_DAY) || 24)) return { skipped: 'daily cap reached' };
     // the offered species with the fewest gym outcomes goes next
     const count = this.db.prepare("SELECT COUNT(*) AS n FROM skill_outcomes WHERE domain = 'gym' AND skill_id = ? AND COALESCE(model, '') = ?");
-    const pick = species.map((s) => ({ s, n: (count.get(`loop-maker:gym:${s.runtime}`, s.model ?? '') as { n: number }).n })).sort((a, b) => a.n - b.n)[0].s;
+    const healthy = species.filter((s) => !infraFailing(this.db, s.model ? `${s.runtime}@${s.model}` : s.runtime, since));
+    if (!healthy.length) return { skipped: 'every species is infra-failing' };
+    const pick = healthy.map((s) => ({ s, n: (count.get(`loop-maker:gym:${s.runtime}`, s.model ?? '') as { n: number }).n })).sort((a, b) => a.n - b.n)[0].s;
     const key = pick.model ? `${pick.runtime}@${pick.model}` : pick.runtime;
     const tried = new Set((this.db.prepare("SELECT json_extract(metadata, '$.gym.commit') AS c FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%'")
       .all(key) as Array<{ c: string | null }>).map((r) => r.c));
