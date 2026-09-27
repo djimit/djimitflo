@@ -14,6 +14,16 @@ import { evolveSpecies, parseSpecies, type Species } from './evolve-selection';
  * changed. The outcome goes to skill_outcomes (domain 'gym'); nothing is pushed, reviewed or merged, so the maker's
  * approval is decided by the gym rule. EVOLUTION_GYM_ENABLED=true (default off), EVOLUTION_GYM_MAX_PER_DAY (default 12).
  */
+/**
+ * A species whose maker keeps failing at the provider (prod 2026-09-26/27: opencode + kimi-k2.6 hit 'Unexpected server
+ * error' seven times in a row) never earns an outcome, so 'fewest outcomes goes next' kept picking it and starved every
+ * other species. After 3 infra discards in 24 h a species sits out until the window passes.
+ */
+export function infraFailing(db: Database, speciesKey: string, since: string): boolean {
+  return (db.prepare("SELECT COUNT(*) AS n FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym_result.reason') LIKE 'infra:%' AND created_at >= ?")
+    .get(speciesKey, since) as { n: number }).n >= (Number(process.env.EVOLUTION_GYM_INFRA_TRIP) || 3);
+}
+
 export const gymEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.EVOLUTION_GYM_ENABLED === 'true';
 
 export type GymResult = { status: 'success' | 'failure' | 'discarded' | 'skipped'; reason: string; task?: GymTask; species?: string; runId?: string };
@@ -75,7 +85,10 @@ export class EvolutionGymService {
 
     // the species with the fewest gym outcomes goes next, on the task it has attempted least recently
     const count = this.db.prepare("SELECT COUNT(*) AS n FROM skill_outcomes WHERE domain = 'gym' AND skill_id = ? AND COALESCE(model, '') = ?");
-    const species = this.species().map((s) => ({ s, n: (count.get(`loop-maker:gym:${s.runtime}`, s.model ?? '') as { n: number }).n })).sort((a, b) => a.n - b.n)[0].s;
+    const keyOf = (s: Species) => (s.model ? `${s.runtime}@${s.model}` : s.runtime);
+    const healthy = this.species().filter((s) => !infraFailing(this.db, keyOf(s), day));
+    if (!healthy.length) return { status: 'skipped', reason: 'every species is infra-failing' };
+    const species = healthy.map((s) => ({ s, n: (count.get(`loop-maker:gym:${s.runtime}`, s.model ?? '') as { n: number }).n })).sort((a, b) => a.n - b.n)[0].s;
     // every attempt (success, failure or discarded) is a gym loop_run for that species: never repeat one
     const key = species.model ? `${species.runtime}@${species.model}` : species.runtime;
     // an infra discard (provider error before the maker did anything) says nothing about the species: the task stays open
