@@ -74,3 +74,18 @@ it('the circuit breaker only counts infra discards after the species last succee
   ins('e', t(80), 'discarded', 'infra: git');
   expect(infraFailing(db, 'atomic@llama-router', since)).toBe(true);
 });
+
+it('maker routes: a host-scoped token claims its own queued job and returns a patch', async () => {
+  const pass = (_req: any, _res: any, next: any) => next();
+  const app = express(); app.use(express.json());
+  app.use('/gym-worker', createRemoteGymRoutes(db, { requireAuth: pass, requirePermission: () => pass } as never));
+  const { RemoteMakerQueue } = await import('../services/remote-maker-queue');
+  const q = new RemoteMakerQueue(db);
+  const id = q.enqueue('workstation', 'atomic@llama-router', 'abc', 'fix it');
+  const token = mintSpawnToken(resolveSpawnTokenSecret(), 'workstation', REMOTE_GYM_SCOPE, 60_000);
+  await request(app).post('/gym-worker/maker/claim').set('X-Gym-Host', 'workstation').send({ species: ['atomic@llama-router'] }).expect(401);
+  const claimed = await request(app).post('/gym-worker/maker/claim').set('X-Gym-Host', 'workstation').set('X-Gym-Worker-Token', token).send({ species: ['atomic@llama-router'] }).expect(200);
+  expect(claimed.body.job).toMatchObject({ id, base_commit: 'abc' });
+  await request(app).post(`/gym-worker/maker/${id}/result`).set('X-Gym-Host', 'workstation').set('X-Gym-Worker-Token', token).send({ status: 'done', patch: 'diff', reason: 'ok' }).expect(200);
+  expect(q.get(id)).toMatchObject({ status: 'done', patch: 'diff' });
+});

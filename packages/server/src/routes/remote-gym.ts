@@ -3,6 +3,7 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { RemoteGymService, REMOTE_GYM_SCOPE } from '../services/remote-gym-service';
 import { mintSpawnToken, resolveSpawnTokenSecret, validateSpawnToken } from '../services/spawn-token';
+import { RemoteMakerQueue } from '../services/remote-maker-queue';
 
 /**
  * Plan I1: a compute host pulls evolution-gym work. claim/result authenticate with a host-scoped token
@@ -12,6 +13,7 @@ import { mintSpawnToken, resolveSpawnTokenSecret, validateSpawnToken } from '../
 export function createRemoteGymRoutes(db: Database, auth: AuthMiddleware): Router {
   const router = Router();
   const gym = new RemoteGymService(db);
+  const makers = new RemoteMakerQueue(db);
 
   function host(req: any, res: any): string | null {
     const h = String(req.get('X-Gym-Host') || '');
@@ -23,7 +25,7 @@ export function createRemoteGymRoutes(db: Database, auth: AuthMiddleware): Route
   }
   const fail = (res: any, error: unknown) => {
     const code = error instanceof Error ? error.message : 'GYM_WORKER_ERROR';
-    res.status(/^GYM_(HOST|SPECIES|RESULT)_/.test(code) ? 400 : code === 'GYM_RUN_NOT_FOUND' ? 404 : code === 'GYM_RUN_ALREADY_SETTLED' ? 409 : 500).json({ error: { code, message: code } });
+    res.status(/^GYM_(HOST|SPECIES|RESULT)_|^MAKER_(RESULT|PATCH)_/.test(code) ? 400 : /_NOT_FOUND$/.test(code) ? 404 : code === 'GYM_RUN_ALREADY_SETTLED' || code === 'MAKER_JOB_NOT_CLAIMED' ? 409 : 500).json({ error: { code, message: code } });
   };
 
   router.post('/claim', (req, res) => {
@@ -34,6 +36,17 @@ export function createRemoteGymRoutes(db: Database, auth: AuthMiddleware): Route
   router.post('/runs/:runId/result', (req, res) => {
     const h = host(req, res); if (!h) return;
     try { gym.record(String(req.params.runId), h, req.body || {}); res.json({ recorded: true }); } catch (error) { fail(res, error); }
+  });
+
+  // plan I3: maker jobs for real goals; only a patch comes back, the VPS applies it and runs every gate
+  router.post('/maker/claim', (req, res) => {
+    const h = host(req, res); if (!h) return;
+    try { res.json({ job: makers.claim(h, Array.isArray(req.body?.species) ? req.body.species.map(String) : []) }); } catch (error) { fail(res, error); }
+  });
+
+  router.post('/maker/:jobId/result', (req, res) => {
+    const h = host(req, res); if (!h) return;
+    try { makers.record(String(req.params.jobId), h, req.body || {}); res.json({ recorded: true }); } catch (error) { fail(res, error); }
   });
 
   router.post('/tokens', auth.requireAuth, auth.requirePermission('manage:tokens'), (req, res) => {
