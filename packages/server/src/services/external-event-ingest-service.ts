@@ -125,14 +125,10 @@ export class ExternalEventIngestService {
           .map(value => typeof value === 'string' ? value.trim() : '')
           .find(Boolean) || '';
         const eventType = String(event.event_type || '');
-        if (!id || (!eventType.startsWith('paperclip.')
-          && eventType !== 'outcome.observed'
-          && eventType !== 'roborev.finding'
-          && eventType !== 'discovery.paper'
-          && eventType !== 'discovery.repository'
-          && eventType !== 'wiki.page.changed'
-          && eventType !== 'agent.board.handoff.created'
-          && eventType !== 'eve-v.board.handoff.received')) continue;
+        // Every external signal is recorded (observe-only unless a type is routed below). An allow-list silently dropped
+        // whole agent signals (prod 2026-09-27: Eve-V's work.action.required / content.revenue.candidate never arrived).
+        // Djimitflo's own djimitflo.* events are its echo on the bus and stay out.
+        if (!id || !eventType || eventType.startsWith('djimitflo.')) continue;
         let normalizedEvent = event;
         if (eventType === 'outcome.observed') {
           const candidate = Object.fromEntries(Object.entries(event).map(([key, value]) => [key, decodeField(value)]));
