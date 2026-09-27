@@ -198,6 +198,26 @@ describe('LoopDaemon checker dispatch', () => {
     } finally { delete process.env.LOOP_EVOLVE_ENABLED; delete process.env.LOOP_EVOLVE_SPECIES; }
   });
 
+  it('I3: an approved remote sibling is awaited for the host timeout, not the 11-min default (prod 2026-09-27)', async () => {
+    const goal = seedQualifyingGoal();
+    db.prepare("UPDATE goals SET metadata = '{\"evolve\":true}' WHERE id = ?").run(goal.id);
+    db.pragma('foreign_keys = OFF');
+    db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata) VALUES ('maker-1', 'run-1', 'maker', 'codex', 'completed', ?)").run(JSON.stringify({ auto_approved_scope: 'a.test.ts' }));
+    db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata) VALUES ('maker-2', 'run-1', 'maker', 'remote', 'prepared', '{\"approval_id\":\"appr-sib\"}')").run();
+    let siblingCalls = 0;
+    stubLoops.executeWorker.mockImplementation(async (_run: string, input: { lease_id: string }) => {
+      if (input.lease_id === 'maker-2' && siblingCalls++ === 0) throw new Error('LOOP_WORKER_APPROVAL_REQUIRED');
+      return {};
+    });
+    const wait = vi.fn(async () => 'completed');
+    Object.assign(stubLoops, { decideWorkerApproval: vi.fn(async () => null), awaitWorkerExecution: wait });
+    process.env.LOOP_EVOLVE_ENABLED = 'true'; process.env.LOOP_EVOLVE_SPECIES = 'remote@workstation/atomic@llama-router';
+    try {
+      await runOneTick(new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 }));
+      expect(wait).toHaveBeenCalledWith('maker-2', 1_860_000);
+    } finally { delete process.env.LOOP_EVOLVE_ENABLED; delete process.env.LOOP_EVOLVE_SPECIES; }
+  });
+
   it('E12: with LOOP_BANDIT_ENABLED the chosen maker species is written onto the prepared maker lease', async () => {
     seedQualifyingGoal();
     db.pragma('foreign_keys = OFF');

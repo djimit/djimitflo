@@ -12,6 +12,9 @@ import { Task, ExecutionEventType, LogLevel, type ExecutionEventCreateInput } fr
 import type { ExecutionResult, ExecutionSession, ExecutorKind, ExecutorOptions, TaskExecutor } from '../types';
 import { RemoteMakerQueue } from '../../services/remote-maker-queue';
 
+/** How long a host may take for one maker job (the daemon waits this long for a remote sibling too). */
+export const remoteMakerTimeoutMs = (): number => Number(process.env.REMOTE_MAKER_TIMEOUT_MS) || 1_800_000;
+
 export function parseRemoteTarget(model: string | undefined): { host: string; species: string } | null {
   const m = /^([A-Za-z0-9._-]{1,40})\/([A-Za-z0-9._:@/-]{1,80})$/.exec(model || '');
   return m ? { host: m[1], species: m[2] } : null;
@@ -35,7 +38,7 @@ export class RemoteMakerExecutor implements TaskExecutor {
     const cwd = options?.workingDirectory || process.cwd();
     // waiting costs no CPU here; the host's worker polls every few minutes and a maker there takes ~5 min, so a loop
     // maker timeout of 300-600 s would expire before the host even looked. REMOTE_MAKER_TIMEOUT_MS (default 30 min).
-    const timeoutMs = Math.max(options?.timeout ?? 0, Number(process.env.REMOTE_MAKER_TIMEOUT_MS) || 1_800_000);
+    const timeoutMs = Math.max(options?.timeout ?? 0, remoteMakerTimeoutMs());
 
     const run = () => {
       const target = parseRemoteTarget(options?.model);
