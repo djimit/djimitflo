@@ -75,6 +75,16 @@ it('the circuit breaker only counts infra discards after the species last succee
   expect(infraFailing(db, 'atomic@llama-router', since)).toBe(true);
 });
 
+it('half-open: after a 2 h quiet cool-down one probe is let through; a new infra discard re-opens the breaker', () => {
+  const ins = (id: string, minsAgo: number) => db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, metadata, created_at) VALUES (?, 'evolution-gym', 'closed', 'completed', ?, ?)")
+    .run(id, JSON.stringify({ gym: { commit: id, species: 'atomic@llama-router' }, gym_result: { status: 'discarded', reason: 'infra: maker produced nothing (no change)' } }), new Date(Date.now() - minsAgo * 60_000).toISOString());
+  const since = new Date(Date.now() - 86_400_000).toISOString();
+  ins('p1', 600); ins('p2', 580); ins('p3', 560); // tripped 9 h ago (prod 2026-09-27)
+  expect(infraFailing(db, 'atomic@llama-router', since)).toBe(false); // cool-down passed: probe allowed
+  ins('p4', 5); // the probe failed on infra again
+  expect(infraFailing(db, 'atomic@llama-router', since)).toBe(true);
+});
+
 it('maker routes: a host-scoped token claims its own queued job and returns a patch', async () => {
   const pass = (_req: any, _res: any, next: any) => next();
   const app = express(); app.use(express.json());

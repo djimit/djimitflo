@@ -25,8 +25,13 @@ export function infraFailing(db: Database, speciesKey: string, since: string): b
   const lastSuccess = (db.prepare("SELECT MAX(created_at) AS t FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym_result.status') = 'success'")
     .get(speciesKey) as { t: string | null }).t;
   const from = lastSuccess && lastSuccess > since ? lastSuccess : since;
-  return (db.prepare("SELECT COUNT(*) AS n FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym_result.reason') LIKE 'infra:%' AND created_at > ?")
-    .get(speciesKey, from) as { n: number }).n >= (Number(process.env.EVOLUTION_GYM_INFRA_TRIP) || 3);
+  const trips = db.prepare("SELECT COUNT(*) AS n, MAX(created_at) AS last FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym_result.reason') LIKE 'infra:%' AND created_at > ?")
+    .get(speciesKey, from) as { n: number; last: string | null };
+  if (trips.n < (Number(process.env.EVOLUTION_GYM_INFRA_TRIP) || 3)) return false;
+  // half-open: after a quiet cool-down one probe attempt is let through (prod 2026-09-27: a fixed worker stayed benched for
+  // the rest of the 24 h window); a new infra discard re-opens the breaker for another cool-down
+  const coolDownMs = Number(process.env.EVOLUTION_GYM_BREAKER_RETRY_MS) || 2 * 3_600_000;
+  return !trips.last || Date.now() - new Date(trips.last.replace(' ', 'T') + (/Z|[+-]\d\d:?\d\d$/.test(trips.last) ? '' : 'Z')).getTime() < coolDownMs;
 }
 
 export const gymEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.EVOLUTION_GYM_ENABLED === 'true';
