@@ -1,3 +1,4 @@
+import { rateLimit } from 'express-rate-limit';
 import { Router, Request, Response, NextFunction } from 'express';
 import type { Database } from 'better-sqlite3';
 import { EvidenceService } from '../services/evidence-service';
@@ -11,6 +12,7 @@ function parseWindow(value: unknown, fallback: number, maximum: number): number 
 
 export function createObservabilityRoutes(db: Database, auth: AuthMiddleware): Router {
   const router = Router();
+  router.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false })); // per-router limiter CodeQL can see; /api also caps 300/min
   const evidenceService = new EvidenceService(db);
   const requireAuth = auth.requireAuth;
   const requireAdmin = auth.requirePermission('manage:config');
