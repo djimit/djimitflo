@@ -21,20 +21,24 @@ export async function checkContentSafety(db: Database, subject: { type: string; 
   if (!contentSafetyEnabled() || !text.trim()) return null;
   const model = process.env.CONTENT_SAFETY_MODEL || 'nvidia/nemotron-3.5-content-safety';
   const started = Date.now();
+  // prod 2026-09-27: 1 241 of 1 312 KB pages got no verdict and nothing said why; failures are recorded as 'error' now
+  const record = (decision: string, reason: string) => db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, latency_ms, model, created_at)
+      VALUES (?, 'content_safety', ?, ?, ?, 'shadow', ?, ?, ?, ?, ?)`).run(randomUUID(), subject.type, subject.id,
+      createHash('sha256').update(text).digest('hex').slice(0, 16), decision, reason, Date.now() - started, model, new Date().toISOString());
   try {
     const res = await fetchFn(`${(process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1').replace(/\/$/, '')}/chat/completions`, {
       method: 'POST', signal: AbortSignal.timeout(10_000),
       headers: { Authorization: `Bearer ${process.env.NVIDIA_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model, messages: [{ role: 'user', content: text.slice(0, 4_000) }], max_tokens: 60 }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) { record('error', `http_${res.status}`); return null; }
     const body = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
     const { verdict, categories } = parseSafety(body.choices?.[0]?.message?.content ?? '');
-    if (!verdict) return null;
-    db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, latency_ms, model, created_at)
-      VALUES (?, 'content_safety', ?, ?, ?, 'shadow', ?, ?, ?, ?, ?)`).run(randomUUID(), subject.type, subject.id,
-      createHash('sha256').update(text).digest('hex').slice(0, 16), verdict === 'safe' ? 'yes' : 'no',
-      `verdict=${verdict}${categories ? ` categories=${categories}` : ''}`, Date.now() - started, model, new Date().toISOString());
+    if (!verdict) { record('error', `unparsed:${JSON.stringify((body.choices?.[0]?.message?.content ?? '').slice(0, 80))}`); return null; }
+    record(verdict === 'safe' ? 'yes' : 'no', `verdict=${verdict}${categories ? ` categories=${categories}` : ''}`);
     return verdict;
-  } catch { return null; }
+  } catch (error) {
+    try { record('error', (error instanceof Error ? error.name === 'TimeoutError' ? 'timeout' : error.message : String(error)).slice(0, 120)); } catch { /* never break the caller */ }
+    return null;
+  }
 }
