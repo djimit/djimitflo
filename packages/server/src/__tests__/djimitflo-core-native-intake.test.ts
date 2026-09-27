@@ -80,3 +80,16 @@ describe('ecosystem map: Djimitflo is the core', () => {
     expect(view.declared_contracts.some((c) => c.from === 'paperclip' && c.to === 'djimitflo')).toBe(false);
   });
 });
+
+describe('every external agent signal is recorded, not only allow-listed types', () => {
+  it('keeps an Eve-V action event (observe-only) and skips Djimitflo\'s own echo', async () => {
+    const events = [
+      { _id: '3-0', event_id: 'eve:1', event_type: 'work.action.required', source: 'eve-action-processor', occurred_at: '2026-09-27T10:00:00Z', title: 'Patch VPN firmware' },
+      { _id: '2-0', event_id: 'own:1', event_type: 'djimitflo.goal.started', source: 'djimitflo', occurred_at: '2026-09-27T10:00:00Z' },
+    ];
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({ events }), { status: 200 })));
+    await new ExternalEventIngestService(db, 'http://event-bus', 'djimit.events').pollOnce();
+    expect(db.prepare('SELECT event_type, source FROM external_events ORDER BY event_type').all())
+      .toEqual([{ event_type: 'work.action.required', source: 'eve-action-processor' }]);
+  });
+});

@@ -10,6 +10,8 @@ const decodeField = (value: unknown): unknown => {
   if (typeof value !== 'string') return value;
   try { return JSON.parse(value); } catch { return value; }
 };
+const SIGNAL_PREFIXES = ['paperclip.', 'outcome.', 'roborev.', 'discovery.', 'wiki.', 'agent.', 'eve-v.', 'work.', 'content.', 'authority.'];
+
 const outcomeObservedSchema = z.object({
   outcome_id: nonBlank,
   subject_type: nonBlank,
@@ -125,14 +127,10 @@ export class ExternalEventIngestService {
           .map(value => typeof value === 'string' ? value.trim() : '')
           .find(Boolean) || '';
         const eventType = String(event.event_type || '');
-        if (!id || (!eventType.startsWith('paperclip.')
-          && eventType !== 'outcome.observed'
-          && eventType !== 'roborev.finding'
-          && eventType !== 'discovery.paper'
-          && eventType !== 'discovery.repository'
-          && eventType !== 'wiki.page.changed'
-          && eventType !== 'agent.board.handoff.created'
-          && eventType !== 'eve-v.board.handoff.received')) continue;
+        // Every agent *work or learning* signal is recorded (observe-only unless routed below). An exact allow-list silently
+        // dropped whole agent signals (prod 2026-09-27: Eve-V's work.action.required / content.revenue.candidate never
+        // arrived). Status churn (fleet.status.changed — the registry's job) and Djimitflo's own djimitflo.* echo stay out.
+        if (!id || !SIGNAL_PREFIXES.some((prefix) => eventType.startsWith(prefix))) continue;
         let normalizedEvent = event;
         if (eventType === 'outcome.observed') {
           const candidate = Object.fromEntries(Object.entries(event).map(([key, value]) => [key, decodeField(value)]));
