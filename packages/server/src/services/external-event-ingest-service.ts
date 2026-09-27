@@ -3,6 +3,7 @@ import type { Database } from 'better-sqlite3';
 import { z } from 'zod';
 import { OutcomeLearningService } from './outcome-learning-service';
 import { ExpertSourceUnitsService, sourceUnitsEnabled } from './expert-source-units-service';
+import { checkContentSafety, contentSafetyEnabled } from './content-safety';
 
 const nonBlank = z.string().trim().min(1);
 const decodeField = (value: unknown): unknown => {
@@ -141,6 +142,10 @@ export class ExternalEventIngestService {
         }
         const aggregateVersion = Number(normalizedEvent.aggregate_version);
         if (eventType === 'roborev.finding') this.materializeRoborevFinding(normalizedEvent);
+        // K1 (shadow): untrusted text from fleet agents is checked before it can reach any prompt
+        if (eventType.startsWith('discovery.') && contentSafetyEnabled()) {
+          void checkContentSafety(this.db, { type: 'external_event', id }, [normalizedEvent.title, normalizedEvent.note].filter((v) => typeof v === 'string').join('\n')).catch(() => undefined);
+        }
         if (eventType.startsWith('discovery.') && sourceUnitsEnabled()) {
           try { new ExpertSourceUnitsService(this.db).ingestDiscovery(normalizedEvent); } catch { /* never let one discovery break ingestion */ }
         }
