@@ -27,4 +27,6 @@ it.skipIf(shallow)('mines real replay tasks from this repository', () => {
   const tasks = mineGymTasks(repo, { sinceDays: 3650 });
   expect(tasks.length).toBeGreaterThan(20); // prod 2026-09-25: 151 candidates since June before the live/sensitive filters
   for (const t of tasks) expect(t.source).toMatch(/^packages\/server\/src\/services\//);
+  // the parent must have the source to restore (prod 2026-09-27: 584cbadb added agent-liveness.ts; every attempt failed)
+  for (const t of tasks) expect(() => execFileSync('git', ['-C', repo, 'cat-file', '-e', `${t.commit}^:${t.source}`], { stdio: 'ignore' })).not.toThrow();
 });

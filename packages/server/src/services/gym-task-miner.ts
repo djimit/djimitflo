@@ -44,5 +44,12 @@ export function mineGymTasks(repoPath: string, opts: { sinceDays?: number; maxSo
   const since = `${opts.sinceDays ?? 120}.days.ago`;
   const log = execFileSync('git', ['-C', repoPath, 'log', '--no-merges', `--since=${since}`, '--numstat', '--format=@%H', 'HEAD'],
     { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] });
-  return selectGymTasks(parseNumstat(log), importedServices(repoPath), opts.maxSourceLines);
+  // a commit that ADDED its source file has no parent version to restore (prod 2026-09-27: agent-liveness.ts in
+  // 584cbadb failed 'git show <commit>^:<file>' on every attempt, and infra discards never mark a task tried)
+  return selectGymTasks(parseNumstat(log), importedServices(repoPath), opts.maxSourceLines)
+    .filter((t) => existsInParent(repoPath, t.commit, t.source));
+}
+
+function existsInParent(repoPath: string, commit: string, file: string): boolean {
+  try { execFileSync('git', ['-C', repoPath, 'cat-file', '-e', `${commit}^:${file}`], { stdio: 'ignore' }); return true; } catch { return false; }
 }
