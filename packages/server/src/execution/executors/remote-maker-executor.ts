@@ -33,7 +33,9 @@ export class RemoteMakerExecutor implements TaskExecutor {
     const closed = new Promise<void>((resolve) => { resolveClosed = resolve; });
     const finish = (code: number, stdout: string, stderr = '') => { if (finished) return; finished = true; emitter.emit('done', { code, stdout, stderr }); resolveClosed(); };
     const cwd = options?.workingDirectory || process.cwd();
-    const timeoutMs = options?.timeout ?? 900_000;
+    // waiting costs no CPU here; the host's worker polls every few minutes and a maker there takes ~5 min, so a loop
+    // maker timeout of 300-600 s would expire before the host even looked. REMOTE_MAKER_TIMEOUT_MS (default 30 min).
+    const timeoutMs = Math.max(options?.timeout ?? 0, Number(process.env.REMOTE_MAKER_TIMEOUT_MS) || 1_800_000);
 
     const run = () => {
       const target = parseRemoteTarget(options?.model);

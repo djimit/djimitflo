@@ -63,6 +63,7 @@ it('executor: refuses a base the host cannot fetch, and an invalid target', asyn
 
 it('executor: times out and cancels the job when nobody claims it', async () => {
   repo();
+  vi.stubEnv('REMOTE_MAKER_TIMEOUT_MS', '150');
   const r = await drain(await new RemoteMakerExecutor(db, 20).start(task(), { workingDirectory: dir, model: 'workstation/atomic', timeout: 150 }));
   expect(r.status).toBe('failed');
   expect(db.prepare('SELECT status FROM remote_maker_jobs').get()).toEqual({ status: 'cancelled' });
