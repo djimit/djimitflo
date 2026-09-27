@@ -9,6 +9,7 @@ import type { AuthMiddleware } from '../middleware/auth';
 import { MetricsService } from '../services/metrics-service';
 import { KnowledgeRuntimeService } from '../services/knowledge-runtime-service';
 import { getAppVersion } from '../utils/version';
+import { detectStalls } from '../services/stall-watch';
 import { getDatabaseProvenance } from '../database/provenance';
 
 export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router {
@@ -118,6 +119,11 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   });
 
   // GET /api/metrics — Prometheus-format metrics
+  // plan M10: silent stalls per subsystem (read-only)
+  router.get('/stalls', requireAuth, requirePermission('read:evidence'), (_req, res) => {
+    res.json({ stalls: detectStalls(db) });
+  });
+
   router.get('/metrics', requireAuth, requirePermission('read:evidence'), (_req, res) => {
     const service = new MetricsService(db);
     res.setHeader('Content-Type', 'text/plain');
