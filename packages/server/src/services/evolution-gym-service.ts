@@ -20,8 +20,13 @@ import { evolveSpecies, parseSpecies, type Species } from './evolve-selection';
  * other species. After 3 infra discards in 24 h a species sits out until the window passes.
  */
 export function infraFailing(db: Database, speciesKey: string, since: string): boolean {
-  return (db.prepare("SELECT COUNT(*) AS n FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym_result.reason') LIKE 'infra:%' AND created_at >= ?")
-    .get(speciesKey, since) as { n: number }).n >= (Number(process.env.EVOLUTION_GYM_INFRA_TRIP) || 3);
+  // a success proves the species works: only discards after its latest success count (prod 2026-09-27: atomic@llama-router
+  // was benched by three discards from since-fixed bugs, two of them before and after two successes)
+  const lastSuccess = (db.prepare("SELECT MAX(created_at) AS t FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym_result.status') = 'success'")
+    .get(speciesKey) as { t: string | null }).t;
+  const from = lastSuccess && lastSuccess > since ? lastSuccess : since;
+  return (db.prepare("SELECT COUNT(*) AS n FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym_result.reason') LIKE 'infra:%' AND created_at > ?")
+    .get(speciesKey, from) as { n: number }).n >= (Number(process.env.EVOLUTION_GYM_INFRA_TRIP) || 3);
 }
 
 export const gymEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.EVOLUTION_GYM_ENABLED === 'true';
