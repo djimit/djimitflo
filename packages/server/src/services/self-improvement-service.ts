@@ -1,4 +1,5 @@
 import { assessGrounding, groundingRequired, GROUNDING_REQUIRED_SOURCES, type Grounding } from './proposal-grounding';
+import { checkProposalDuplicate, proposalDedupeEnabled } from './proposal-dedupe';
 import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { SpecialistPanelService } from './specialist-panel-service';
@@ -291,6 +292,7 @@ export class SelfImprovementService {
       // shadow: record what this parked proposal is, to calibrate a ground-or-archive rule (fire-and-forget, fail-open)
       if (judgmentMode(reflectionTriage.id) !== 'off') void runJudgment(this.db, reflectionTriage, { type: 'self_improvement', id },
         { proposal: { title: input.title, description: input.description, rationale: input.rationale } }).catch(() => null);
+      if (proposalDedupeEnabled()) void checkProposalDuplicate(this.db, { id, title: input.title, description: input.description }).catch(() => null);
       return this.getImprovement(id);
     }
     const riskClass = input.type === 'security' ? 'high' : 'low';
@@ -321,6 +323,8 @@ export class SelfImprovementService {
       }
     });
     create();
+    // K2a (shadow): the same idea in other words — recorded, never acted on
+    if (proposalDedupeEnabled()) void checkProposalDuplicate(this.db, { id, title: input.title, description: input.description }).catch(() => null);
     return this.getImprovement(id);
   }
 
