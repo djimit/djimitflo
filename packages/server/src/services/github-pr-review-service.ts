@@ -185,6 +185,11 @@ export class GithubPrReviewService {
     this.db.prepare(`UPDATE loop_runs SET status = 'completed', updated_at = ?,
       metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.settled_by', 'github-pr-review') WHERE id = ? AND status IN ('running', 'blocked')`)
       .run(new Date().toISOString(), loopRunId);
+    // its goal too (prod 2026-09-27: 42 review goals stayed 'running' after their run was settled); idempotently catches
+    // earlier settled reviews as well
+    this.db.prepare(`UPDATE goals SET status = 'completed', updated_at = ? WHERE status = 'running' AND id IN
+      (SELECT goal_id FROM loop_runs WHERE goal_id IS NOT NULL AND status = 'completed' AND json_extract(metadata, '$.settled_by') = 'github-pr-review')`)
+      .run(new Date().toISOString());
   }
 
   private resolveLlmRuntime(): LlmRuntime | null {
