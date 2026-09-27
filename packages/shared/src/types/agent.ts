@@ -32,6 +32,8 @@ export interface Agent extends Timestamps {
   /** Derived by GET /api/agents (plan I0): recent activity or an ONLINE registry node; `status` itself never decays. */
   liveness?: 'live' | 'stale' | 'unknown';
   last_seen_at?: string | null;
+  /** Public Telegram handle of the agent's bot (no token), set via PATCH /api/agents/:id/telegram. */
+  telegram_bot_name?: string | null;
   
   // Metadata
   metadata: Record<string, unknown>;
