@@ -10,6 +10,18 @@ import type { Database } from 'better-sqlite3';
  */
 export const contentSafetyEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.CONTENT_SAFETY_MODE === 'shadow' && Boolean(env.NVIDIA_API_KEY);
 
+/**
+ * NVIDIA's free tier answers 429 after ~4 calls in a burst (measured 2026-09-27: 4×200 then 429s within 3 s), which left
+ * 1 241 of 1 312 KB pages without a safety verdict. Retry 429s with backoff (Retry-After when given), at most 3 times.
+ */
+export async function nvidiaFetch(url: string, init: RequestInit, fetchFn: typeof fetch = fetch, waitMs = (ms: number) => new Promise((r) => setTimeout(r, ms))): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetchFn(url, init);
+    if (res.status !== 429 || attempt >= 3) return res;
+    await waitMs(Math.min((Number(res.headers?.get?.('retry-after')) || 2 ** attempt * 2) * 1_000, 30_000));
+  }
+}
+
 export function parseSafety(content: string): { verdict: 'safe' | 'unsafe' | null; categories: string } {
   const text = content || '';
   const m = /user safety"?\s*:\s*"?(safe|unsafe)/i.exec(text);
@@ -26,11 +38,11 @@ export async function checkContentSafety(db: Database, subject: { type: string; 
       VALUES (?, 'content_safety', ?, ?, ?, 'shadow', ?, ?, ?, ?, ?)`).run(randomUUID(), subject.type, subject.id,
       createHash('sha256').update(text).digest('hex').slice(0, 16), decision, reason, Date.now() - started, model, new Date().toISOString());
   try {
-    const res = await fetchFn(`${(process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1').replace(/\/$/, '')}/chat/completions`, {
-      method: 'POST', signal: AbortSignal.timeout(10_000),
+    const res = await nvidiaFetch(`${(process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1').replace(/\/$/, '')}/chat/completions`, {
+      method: 'POST', signal: AbortSignal.timeout(60_000),
       headers: { Authorization: `Bearer ${process.env.NVIDIA_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model, messages: [{ role: 'user', content: text.slice(0, 4_000) }], max_tokens: 60 }),
-    });
+    }, fetchFn);
     if (!res.ok) { record('error', `http_${res.status}`); return null; }
     const body = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
     const { verdict, categories } = parseSafety(body.choices?.[0]?.message?.content ?? '');

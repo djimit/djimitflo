@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { cosine, embed } from './proposal-dedupe';
-import { checkContentSafety } from './content-safety';
+import { checkContentSafety, contentSafetyEnabled } from './content-safety';
 
 /**
  * Plan L2: the operator's DjimitKBWiki (252 concepts, 47 entities, 1 014 source summaries on the workstation, 27-09) never
@@ -26,8 +26,15 @@ export async function ingestKbPages(db: Database, host: string, pages: unknown, 
     const body = raw.body.slice(0, MAX_BODY);
     const title = String(raw.title || path).slice(0, 200);
     const sha = createHash('sha256').update(body).digest('hex');
-    if ((db.prepare('SELECT sha FROM kb_pages WHERE path = ?').get(path) as { sha: string } | undefined)?.sha === sha) { out.accepted.push(path); continue; }
-    if (await checkContentSafety(db, { type: 'kb_page', id: path }, `${title}\n${body}`.slice(0, 4_000), fetchFn) === 'unsafe') { out.unsafe.push(path); continue; }
+    const unchanged = (db.prepare('SELECT sha FROM kb_pages WHERE path = ?').get(path) as { sha: string } | undefined)?.sha === sha;
+    // an unchanged page is free unless it never got a safety verdict (prod 2026-09-27: 429s left 1 241 pages unchecked)
+    const verdicted = () => Boolean(db.prepare("SELECT 1 FROM judgments WHERE judgment = 'content_safety' AND subject_type = 'kb_page' AND subject_id = ? AND decision IN ('yes', 'no') LIMIT 1").get(path));
+    if (unchanged && (!contentSafetyEnabled() || verdicted())) { out.accepted.push(path); continue; }
+    if (await checkContentSafety(db, { type: 'kb_page', id: path }, `${title}\n${body}`.slice(0, 4_000), fetchFn) === 'unsafe') {
+      db.prepare('DELETE FROM kb_pages WHERE path = ?').run(path);
+      out.unsafe.push(path); continue;
+    }
+    if (unchanged) { out.accepted.push(path); continue; }
     const v = await embed(`${title}\n${body}`, fetchFn);
     if (!v) { out.failed.push(path); continue; }
     db.prepare('INSERT OR REPLACE INTO kb_pages (path, host, title, body, sha, vector, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
