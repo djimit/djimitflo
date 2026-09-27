@@ -66,7 +66,8 @@ export class EvolutionGymService {
     const repo = process.env.LOOP_DAEMON_REPOSITORY_PATH;
     if (!repo) return { status: 'skipped', reason: 'no repository path' };
     const day = new Date(now.getTime() - 86_400_000).toISOString();
-    const today = (this.db.prepare("SELECT COUNT(*) AS n FROM skill_outcomes WHERE domain = 'gym' AND created_at >= ?").get(day) as { n: number }).n;
+    // remote hosts (plan I1) have their own cap; only attempts on this VPS count here
+    const today = (this.db.prepare("SELECT COUNT(*) AS n FROM skill_outcomes WHERE domain = 'gym' AND created_at >= ? AND COALESCE(evidence_refs_json, '') NOT LIKE '%\"remote:%'").get(day) as { n: number }).n;
     if (today >= (Number(process.env.EVOLUTION_GYM_MAX_PER_DAY) || 12)) return { status: 'skipped', reason: 'daily cap reached' };
     // production first: never compete with a running maker/reviewer
     const busy = (this.db.prepare("SELECT (SELECT COUNT(*) FROM worker_leases WHERE status = 'running') + (SELECT COUNT(*) FROM tasks WHERE status = 'running' AND id LIKE 'loop-worker-%') AS n").get() as { n: number }).n;

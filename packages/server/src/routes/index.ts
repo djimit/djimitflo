@@ -46,6 +46,7 @@ import { createSwarmRoutes } from './swarms';
 import { createSpawnRoutes } from './spawns';
 import { createOpenMythosRoutes } from './openmythos';
 import { createGymRoutes } from './gym';
+import { createRemoteGymRoutes } from './remote-gym';
 import { createRuntimeGovernanceRoutes } from './runtime-governance';
 import { createCognitiveRoutes } from './cognitive';
 import { createMemoryRoutes } from './memory';
@@ -206,6 +207,7 @@ export function createRoutes(
     { prefix: '/skills', middleware: [requireAuth], router: createSkillRoutes(db, auth) },
     { prefix: '/openmythos', middleware: [requireAuth], router: createOpenMythosRoutes(db, auth) },
     { prefix: '/gym', middleware: [requireAuth], router: createGymRoutes(db, auth) },
+    { prefix: '/gym-worker', middleware: [], router: createRemoteGymRoutes(db, auth) },
     { prefix: '/runtime-governance', middleware: [requireAuth], router: createRuntimeGovernanceRoutes(db, auth, runtimeGovernance) },
     { prefix: '/cognitive', middleware: [requireAuth], router: createCognitiveRoutes(db, auth, cognitiveLoop) },
     { prefix: '/self-modification', middleware: [requireAuth], router: createSelfModificationRoutes(db, auth) },
