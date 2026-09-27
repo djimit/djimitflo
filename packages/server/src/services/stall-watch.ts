@@ -21,6 +21,15 @@ export function detectStalls(db: Database, now = Date.now(), env: NodeJS.Process
       out.push({ subsystem: 'gym', since: last, detail: `no gym outcome for > 6 h; ${infra} infra discard(s) in 24 h (circuit breaker benches a species at 3)` });
     }
   }
+  // 1b. per species: its last three gym attempts were all infra discards → the circuit breaker is benching it (prod 2026-09-27:
+  // the workstation's only species sat out 9 h while VPS gym outcomes kept the global check quiet)
+  if (env.EVOLUTION_GYM_ENABLED === 'true' || env.EVOLUTION_GYM_REMOTE_ENABLED === 'true') {
+    const species = all<{ sp: string }>(db, "SELECT DISTINCT json_extract(metadata, '$.gym.species') AS sp FROM loop_runs WHERE loop_name = 'evolution-gym' AND created_at >= ? AND json_extract(metadata, '$.gym.species') IS NOT NULL", ago(now, 48));
+    for (const { sp } of species) {
+      const last = all<{ reason: string | null; created_at: string }>(db, "SELECT json_extract(metadata, '$.gym_result.reason') AS reason, created_at FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ? ORDER BY created_at DESC LIMIT 3", sp);
+      if (last.length === 3 && last.every((r) => (r.reason ?? '').startsWith('infra:'))) out.push({ subsystem: `gym:${sp}`, since: last[2].created_at, detail: `last 3 attempts were infra discards (${(last[0].reason ?? '').slice(0, 80)}); the breaker benches this species` });
+    }
+  }
   // 2. a judgment failing more than 30 % of the time in the last 6 h (e.g. provider 429s)
   for (const j of all<{ judgment: string; errors: number; n: number }>(db, "SELECT judgment, SUM(decision = 'error') AS errors, COUNT(*) AS n FROM judgments WHERE created_at >= ? GROUP BY judgment HAVING n >= 10", ago(now, 6))) {
     if (j.errors / j.n > 0.3) out.push({ subsystem: `judgment:${j.judgment}`, since: ago(now, 6), detail: `${j.errors}/${j.n} verdicts were errors in 6 h` });

@@ -30,3 +30,11 @@ it('fires on the three silent failures of 2026-09-27', () => {
   expect(detectStalls(db, NOW, { EVOLUTION_GYM_ENABLED: 'true' }).find((s) => s.subsystem === 'gym')?.detail).toContain('3 infra discard');
   expect(subsystems()).not.toContain('gym'); // gym disabled: not a stall
 });
+
+it('names a benched species even while other species keep producing outcomes', () => {
+  db.prepare("INSERT INTO skill_outcomes (id, skill_id, success, tokens_used, duration_ms, domain, created_at) VALUES ('o1', 'loop-maker:gym:opencode', 1, 0, 1, 'gym', ?)").run(at(1));
+  const run = (id: string, sp: string, reason: string, h: number) => db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, metadata, created_at) VALUES (?, 'evolution-gym', 'closed', 'completed', ?, ?)").run(id, JSON.stringify({ gym: { species: sp }, gym_result: { reason } }), at(h));
+  run('a1', 'atomic@llama-router', 'infra: maker produced nothing (no change)', 9); run('a2', 'atomic@llama-router', 'infra: maker produced nothing (no change)', 8); run('a3', 'atomic@llama-router', 'infra: maker produced nothing (no change)', 7);
+  run('o1', 'opencode@kimi-k3', 'tests green, source only', 1);
+  expect(subsystems({ EVOLUTION_GYM_ENABLED: 'true' })).toEqual(['gym:atomic@llama-router']);
+});
