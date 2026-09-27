@@ -32,9 +32,11 @@ const git = (cwd, args) => sh('git', ['-C', cwd, ...args]);
 export function changedFrom(diffNames, untracked) {
   return [...diffNames.split('\n'), ...untracked.split('\n')].filter((f) => f && !f.startsWith('.djimitflo/') && f !== 'package-lock.json' && !f.startsWith('.atomic'));
 }
-/** The verdict, identical to the VPS gym. */
-export function verdict(task, changed, green) {
-  if (!changed.length) return { status: 'discarded', reason: 'infra: maker produced nothing (no change)' };
+/** The verdict, identical to the VPS gym. A maker that ran cleanly and changed nothing gave up: that is a scored failure
+ * (prod 2026-09-27: one unsolvable task re-offered as 'infra' benched atomic@llama-router for a day). Only a crash or timeout
+ * (makerOk = false) is infra, like the VPS gym's 0-token rule (#454). */
+export function verdict(task, changed, green, makerOk = true) {
+  if (!changed.length) return makerOk ? { status: 'failure', reason: 'no change (maker gave up)' } : { status: 'discarded', reason: 'infra: maker crashed or timed out without a change' };
   const inScope = changed.every((f) => f === task.source);
   if (!inScope) return { status: 'failure', reason: `out of scope: ${changed.join(', ')}` };
   return green ? { status: 'success', reason: 'tests green, source only' } : { status: 'failure', reason: 'tests still red' };
@@ -117,10 +119,11 @@ async function main() {
     const state = path.join(WORK, 'atomic-state'); fs.mkdirSync(state, { recursive: true });
     const cfg = inRunner(wt, `atomic-agent config set '${ATOMIC_LOCAL_CONFIG}' >/dev/null`, { extra: ['-v', `${state}:/state`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'], timeoutMs: 60_000 });
     if (cfg.status !== 0) return report({ status: 'discarded', reason: 'infra: atomic config failed' });
-    inRunner(wt, 'atomic-agent run --cwd /w --max-steps 40 --no-approval', { input: `${goal}\n`, extra: ['-v', `${state}:/state`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'], timeoutMs: Number(env.GYM_MAKER_TIMEOUT_MS) || 900_000 });
+    const run = inRunner(wt, 'atomic-agent run --cwd /w --max-steps 40 --no-approval', { input: `${goal}\n`, extra: ['-v', `${state}:/state`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'], timeoutMs: Number(env.GYM_MAKER_TIMEOUT_MS) || 900_000 });
+    const makerOk = run.status === 0 && !run.error;
     const changed = changedFrom(git(wt, ['diff', '--name-only', 'HEAD']), git(wt, ['ls-files', '--others', '--exclude-standard']));
     const green = changed.length > 0 && changed.every((f) => f === task.source) && oracle(wt, task);
-    return report(verdict(task, changed, green));
+    return report(verdict(task, changed, green, makerOk));
   } catch (err) {
     return report({ status: 'discarded', reason: `infra: ${(err instanceof Error ? err.message : String(err)).slice(0, 150)}` });
   } finally {
@@ -135,7 +138,8 @@ function selfcheck() {
   const task = { source: 'packages/server/src/a.ts' };
   const assert = (c, m) => { if (!c) throw new Error(`selfcheck: ${m}`); };
   assert(JSON.stringify(changedFrom('packages/server/src/a.ts\npackage-lock.json\n', '.djimitflo/x\n')) === '["packages/server/src/a.ts"]', 'changedFrom');
-  assert(verdict(task, [], false).status === 'discarded', 'no change = infra discard');
+  assert(verdict(task, [], false).status === 'failure', 'clean run, no change = scored failure');
+  assert(verdict(task, [], false, false).status === 'discarded', 'crash/timeout without change = infra discard');
   assert(verdict(task, ['packages/server/src/a.ts', 'packages/server/src/__tests__/a.test.ts'], true).status === 'failure', 'out of scope');
   assert(verdict(task, ['packages/server/src/a.ts'], true).status === 'success', 'success');
   assert(verdict(task, ['packages/server/src/a.ts'], false).reason === 'tests still red', 'red');
