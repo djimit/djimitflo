@@ -52,9 +52,19 @@ const oracle = (wt, task) => inRunner(wt, `cd packages/server && npx vitest run 
 
 async function api(pathName, body) {
   const token = fs.readFileSync((env.GYM_WORKER_TOKEN_FILE || '~/.djimit/gym-worker.token').replace(/^~/, os.homedir()), 'utf8').trim();
-  const res = await fetch(`${(env.DJIMITFLO_API || 'http://100.86.47.122:3001/api').replace(/\/$/, '')}${pathName}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Gym-Host': env.GYM_HOST || 'workstation', 'X-Gym-Worker-Token': token }, body: JSON.stringify(body), signal: AbortSignal.timeout(30_000),
-  });
+  // a network blip used to throw away a finished attempt (prod 2026-09-27 22:51 'fetch failed'): retry network errors only
+  let res;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      res = await fetch(`${(env.DJIMITFLO_API || 'http://100.86.47.122:3001/api').replace(/\/$/, '')}${pathName}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Gym-Host': env.GYM_HOST || 'workstation', 'X-Gym-Worker-Token': token }, body: JSON.stringify(body), signal: AbortSignal.timeout(30_000),
+      });
+      break;
+    } catch (err) {
+      if (attempt >= 3) throw err;
+      await new Promise((resolve) => setTimeout(resolve, [5_000, 15_000, 45_000][attempt]));
+    }
+  }
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`${pathName} ${res.status} ${JSON.stringify(json).slice(0, 200)}`);
   return json;
