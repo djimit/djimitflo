@@ -2,6 +2,7 @@
  * Agent routes — with POST /api/agents for swarm registration
  */
 
+import { rateLimit } from 'express-rate-limit';
 import { agentLiveness, type RegistryNode } from '../services/agent-liveness';
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
@@ -187,7 +188,8 @@ export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
 
   // POST /api/agents/:id/heartbeat - Update agent heartbeat, metadata, and OKF concept
   // Public Telegram handle of an agent's bot (never a token); null clears it.
-  router.patch('/:id/telegram', requireAuth, requirePermission('manage:config'), (req, res, next) => {
+  const telegramLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false });
+  router.patch('/:id/telegram', telegramLimiter, requireAuth, requirePermission('manage:config'), (req, res, next) => {
     try {
       const raw = req.body?.bot_name;
       const handle = raw === null ? null : String(raw ?? '').replace(/^@/, '');
