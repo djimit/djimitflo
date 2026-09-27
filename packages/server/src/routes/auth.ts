@@ -2,6 +2,7 @@
  * Authentication routes — login, current user, logout
  */
 
+import { rateLimit } from 'express-rate-limit';
 import { Router, Request, Response, type CookieOptions } from 'express';
 import { AuthService } from '../services/auth-service';
 import { AuditService } from '../services/audit-service';
@@ -32,6 +33,7 @@ function refreshCookie(req: Request): string | null {
 
 export function createAuthRoutes(authService: AuthService, auth: AuthMiddleware, auditService: AuditService): Router {
   const router = Router();
+  router.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false })); // per-router limiter CodeQL can see; /api also caps 300/min
   router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 
   function setRefreshCookie(res: Response, token: string) {

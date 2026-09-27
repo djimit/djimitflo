@@ -1,3 +1,4 @@
+import { rateLimit } from 'express-rate-limit';
 import { Router, Request, Response, NextFunction } from 'express';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
@@ -15,6 +16,7 @@ function boundedLimit(value: unknown, fallback = 50): number {
 
 export function createKnowledgeRoutes(auth: AuthMiddleware, db?: Database): Router {
   const router = Router();
+  router.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false })); // per-router limiter CodeQL can see; /api also caps 300/min
   const requireAuth = auth.requireAuth;
 
   // G15: POST /api/knowledge/publish — publish a claim to the knowledge bus.

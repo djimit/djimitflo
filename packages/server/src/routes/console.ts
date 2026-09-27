@@ -10,6 +10,7 @@
  * - Self-improvement status (open proposals, completed improvements)
  */
 
+import { rateLimit } from 'express-rate-limit';
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
@@ -19,6 +20,7 @@ import { AuditAnchoringService } from '../services/audit-anchoring';
 
 export function createConsoleRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
+  router.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false })); // per-router limiter CodeQL can see; /api also caps 300/min
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
   const feedback = new GovernanceFeedbackLoopService(db);
   const audit = new AuditAnchoringService(db);

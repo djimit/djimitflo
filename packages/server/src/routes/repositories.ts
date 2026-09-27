@@ -1,3 +1,4 @@
+import { rateLimit } from 'express-rate-limit';
 import { Router, Request, Response, NextFunction } from 'express';
 import type { Database } from 'better-sqlite3';
 import { RepositoryScanner } from '../services/repository-scanner';
@@ -19,6 +20,7 @@ function sanitizeRepository(repo: any, isAdmin: boolean): any {
 
 export function createRepositoryRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
+  router.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false })); // per-router limiter CodeQL can see; /api also caps 300/min
   const scanner = new RepositoryScanner(db);
   const agentsMdValidator = new AgentsMdValidator();
   const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
@@ -141,6 +143,7 @@ export function createRepositoryRoutes(db: Database, auth?: AuthMiddleware): Rou
 
 export function createDiffRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
+  router.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false })); // per-router limiter CodeQL can see; /api also caps 300/min
   const diffCapture = new DiffCaptureService(db);
   const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
 
