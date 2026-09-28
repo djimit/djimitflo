@@ -60,9 +60,6 @@ RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https:
 
 WORKDIR /app
 
-ARG VCS_REF=unknown
-ARG BUILD_TIME=unknown
-ARG BUILD_SOURCE=unknown
 
 RUN apt-get update && \
     apt-get upgrade -y && \
@@ -152,6 +149,11 @@ ENV PORT=3001
 ENV DB_PATH=/data/djimitflo.sqlite
 ENV DASHBOARD_PATH=/app/packages/dashboard/dist
 ENV BACKUP_DIR=/data/backups
+# Declared here, not at the top of the stage: a build arg that changes every build (commit, time) invalidates the cache of
+# every later RUN, so apt/gh/atomic/global CLIs were reinstalled on each deploy and builds hit the 20 min timeout (28-09).
+ARG VCS_REF=unknown
+ARG BUILD_TIME=unknown
+ARG BUILD_SOURCE=unknown
 ENV DJIMITFLO_COMMIT_SHA=$VCS_REF
 # Baked-at-build provenance so /health can distinguish the running revision from
 # the built artifact instead of trusting a runtime env that may be stale.
