@@ -52,10 +52,13 @@ post_deploy_check() {
 }
 deploy() { probe DEPLOY deploy_commit "$1"; }
 deploy_commit() {
-  local tmp; tmp="$(mktemp)"; trap 'rm -f "$tmp"' RETURN
+  # no RETURN trap: bash keeps it after this function returns, and under `set -u` the next function return fired it with
+  # $tmp out of scope ('tmp: unbound variable', exit 1 after every healthy deploy — prod 2026-09-28 10:12)
+  local tmp rc=0; tmp="$(mktemp)"
   # the deploy script of the commit being deployed, not whatever sits on the host
-  curl -fsS "https://raw.githubusercontent.com/$REPO_SLUG/$1/scripts/deploy-vps.sh" -o "$tmp"
-  DEPLOY_ROOT="$ROOT" bash "$tmp" "$1" --apply --local
+  curl -fsS "https://raw.githubusercontent.com/$REPO_SLUG/$1/scripts/deploy-vps.sh" -o "$tmp" || { rm -f "$tmp"; return 1; }
+  DEPLOY_ROOT="$ROOT" bash "$tmp" "$1" --apply --local || rc=$?
+  rm -f "$tmp"; return "$rc"
 }
 
 [ -e "$ROOT/AUTO_DEPLOY_DISABLED" ] && { log "disabled by kill switch"; exit 0; }

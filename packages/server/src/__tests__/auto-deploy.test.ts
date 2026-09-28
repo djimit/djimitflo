@@ -73,3 +73,16 @@ it('P2: a failed deploy says so and records no baseline', () => {
   expect(out).toContain('deploy of'); expect(out).toContain('failed');
   expect(fs.existsSync(path.join(root, '.last-deploy'))).toBe(false);
 });
+
+it('the real deploy path leaves no RETURN trap behind (bash 5: "tmp: unbound variable" after every deploy)', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
+  // a fake deploy-vps.sh behind a file:// URL; curl fetches it exactly like the real path
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-bin-'));
+  fs.writeFileSync(path.join(bin, 'curl'), '#!/usr/bin/env bash\nout=""; while [ $# -gt 0 ]; do [ "$1" = "-o" ] && out="$2"; shift; done; echo "echo deployed-fake" > "$out"\n', { mode: 0o755 });
+  const env = { PATH: `${bin}:${process.env.PATH}` };
+  const out = run({ AD_DEPLOY: '', AD_STALLS: 'echo', AD_RESTARTS: 'echo 0', ...env }, root);
+  expect(out).toContain('deployed-fake');
+  expect(out).not.toContain('unbound');
+  expect(out).toContain(`done ${NEW}`);
+  expect(fs.existsSync(path.join(root, '.last-deploy'))).toBe(true);
+});
