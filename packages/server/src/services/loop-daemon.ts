@@ -8,6 +8,7 @@ import { ResourceScheduler } from './resource-scheduler';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import { LoopEventService } from './loop-event-service';
+import { inheritableApproval } from './approval-inheritance';
 import { CommonsProposalReviewService } from './commons-proposal-review-service';
 import { SelfImprovementService } from './self-improvement-service';
 import { LoopDraftPrService } from './loop-draft-pr-service';
@@ -308,6 +309,19 @@ export class LoopDaemon {
     return true;
   }
 
+  /** D4: approve a retry/sibling maker's pending approval only when approval-inheritance's strict rule holds; recorded as an event. */
+  private async inheritApproval(runId: string, leaseId: string): Promise<boolean> {
+    const meta = JSON.parse((this.db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(leaseId) as { metadata: string } | undefined)?.metadata || '{}') as { approval_id?: string; execution_task_id?: string };
+    const approvalId = meta.approval_id ?? (meta.execution_task_id
+      ? (this.db.prepare("SELECT id FROM approvals WHERE task_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1").get(meta.execution_task_id) as { id: string } | undefined)?.id
+      : undefined);
+    const inherit = approvalId ? inheritableApproval(this.db, approvalId, runId) : null;
+    if (!approvalId || !inherit) return false;
+    try { new LoopEventService(this.db).recordEvent(runId, 'approval_inherited', 'info', inherit.reason, { approval_id: approvalId, inherited_from: inherit.originalId, lease_id: leaseId }); } catch { /* logging */ }
+    await this.loops.decideWorkerApproval(approvalId, true, `inherit:${inherit.originalId}`, inherit.reason);
+    return true;
+  }
+
   /** approved + task finished -> requeue the goal on its existing run; denied/expired -> fail it. Otherwise keep waiting. */
   private resumeApprovalBlockedGoals(): void {
     const rows = this.db.prepare("SELECT id, metadata FROM goals WHERE status = 'blocked' AND json_extract(metadata, '$.awaiting_approval') IS NOT NULL").all() as Array<{ id: string; metadata: string }>;
@@ -499,12 +513,15 @@ export class LoopDaemon {
           try {
             const retry = this.loops.retryLoopRun(run.id, { maker_lease_id: makerLease.id });
             const retryMaker = retry.retry_maker;
-            await this.loops.executeWorker(run.id, {
-              lease_id: retryMaker.id,
-              timeout_ms: makerTimeout,
-              diff_max_lines: makerDiffMax,
-              skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS),
-            });
+            const retryInput = { lease_id: retryMaker.id, timeout_ms: makerTimeout, diff_max_lines: makerDiffMax, skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS) };
+            try {
+              await this.loops.executeWorker(run.id, retryInput);
+            } catch (error) {
+              // a retry needs its own approval; it used to be dropped here silently. D4: inherit only under the strict rule.
+              if (!/APPROVAL_REQUIRED/.test(error instanceof Error ? error.message : String(error)) || !(await this.inheritApproval(run.id, retryMaker.id))) throw error;
+              await this.loops.awaitWorkerExecution(retryMaker.id);
+              await this.loops.executeWorker(run.id, retryInput);
+            }
             this.loops.runDeterministicChecks(run.id, {
               lease_id: retryMaker.id,
               ...daemonCheckOptions(),
@@ -530,7 +547,8 @@ export class LoopDaemon {
             } catch (error) {
               // N6: a sibling is a maker, so it needs its own approval and used to fail here every time. In an auto-approved
               // lane (J5) it gets the same one-file scope and the same rule decision; anywhere else it still fails.
-              if (!/APPROVAL_REQUIRED/.test(error instanceof Error ? error.message : String(error)) || !(await this.autoApproveSibling(run.id, makerLease.id, sibling.id))) throw error;
+              if (!/APPROVAL_REQUIRED/.test(error instanceof Error ? error.message : String(error))
+                || !((await this.autoApproveSibling(run.id, makerLease.id, sibling.id)) || (await this.inheritApproval(run.id, sibling.id)))) throw error;
               // a remote host may take up to REMOTE_MAKER_TIMEOUT_MS; the 11-min default gave up on both first workstation
               // makers (prod 2026-09-27: patches arrived at +13 and +26 min, after the run was already blocked)
               await this.loops.awaitWorkerExecution(sibling.id, sp.runtime === 'remote' ? remoteMakerTimeoutMs() + 60_000 : undefined);
