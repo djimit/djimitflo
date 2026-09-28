@@ -28,3 +28,7 @@ it('publishes the profile from retrieved KB pages once per day', () => {
   expect(rows).toHaveLength(1);
   expect(JSON.parse(rows[0].payload_json).terms).toEqual(['agents', 'coding', 'injection', 'prompt']);
 });
+
+it('leaves out generic engineering words that would match every paper', () => {
+  expect(interestTerms(['Raise mutation score of services', 'Raise mutation score of tests in services'])).toEqual(['mutation']);
+});
