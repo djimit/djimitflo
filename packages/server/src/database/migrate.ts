@@ -1292,6 +1292,13 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
       started_at TEXT, finished_at TEXT, exit_code INTEGER, output TEXT, created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_fleet_commands_host_status ON fleet_commands(host, status);
+    -- T1 (pull): judgments queued for the workstation's local System One; the workstation claims them (never pushed to)
+    CREATE TABLE IF NOT EXISTS local_shadow_jobs (
+      id TEXT PRIMARY KEY, judgment TEXT NOT NULL, subject_type TEXT NOT NULL, subject_id TEXT NOT NULL, state_hash TEXT NOT NULL,
+      state_json TEXT NOT NULL, questions_json TEXT NOT NULL, facts_json TEXT, status TEXT NOT NULL DEFAULT 'queued',
+      host TEXT, claimed_at TEXT, created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_local_shadow_jobs_status ON local_shadow_jobs(status, created_at);
     -- D3: explicit Telegram user id -> Djimitflo user allowlist (the user's RBAC role decides what they may do). Filled by
     -- the operator only; chat or group membership grants nothing.
     CREATE TABLE IF NOT EXISTS telegram_identities (
