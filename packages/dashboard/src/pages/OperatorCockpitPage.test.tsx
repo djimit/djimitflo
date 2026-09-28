@@ -13,12 +13,14 @@ it('shows breached guardrails, stalls and gym species from the cockpit endpoint'
     stalls: [{ subsystem: 'gym:atomic@llama-router', since: null, detail: 'no outcome for 9 h' }],
     gym: [{ species: 'atomic', outcomes: 27, successes: 24, success_pct: 89, avg_seconds: 588, avg_tokens: 0, last: '2026-09-28T08:53:00Z' }],
     remote_workers: [], maker_usage_7d: [], judgments_7d: [],
+    deploys: [{ at: '2026-09-28T18:43:09Z', event: 'verdict_ok', sha: 'f9f481ad3eb5', detail: '' }],
   });
   render(<OperatorCockpitPage />);
   expect(await screen.findByText('breached · limit <= verified/5 (2.2)')).toBeTruthy();
   expect(screen.getByText('gym:atomic@llama-router')).toBeTruthy();
   expect(screen.getByText('89%')).toBeTruthy();
   expect(screen.getByText('No remote host has claimed work.')).toBeTruthy();
+  expect(screen.getByText('verdict ok')).toBeTruthy();
 });
 
 it('shows the error when the endpoint fails', async () => {

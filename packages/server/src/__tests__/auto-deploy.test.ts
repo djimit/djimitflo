@@ -101,3 +101,14 @@ it('deploy-vps keeps a week of build cache after a healthy deploy; only a low-di
   expect(prune('')).toEqual(['image prune -f --filter until=168h']);
   expect(prune('all')).toEqual(['image prune -f']);
 });
+
+it('S1: writes deploy events as JSON lines into the data dir the container mounts, when it exists', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
+  run({}, root); // no data dir: nothing written, nothing breaks
+  expect(fs.existsSync(path.join(root, 'data', 'deploy-log.jsonl'))).toBe(false);
+  fs.mkdirSync(path.join(root, 'data'));
+  run({}, root);
+  const events = fs.readFileSync(path.join(root, 'data', 'deploy-log.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  expect(events.map((e) => e.event)).toEqual(['deploying', 'done']);
+  expect(events[0]).toMatchObject({ sha: NEW, detail: `was ${OLD}` });
+});

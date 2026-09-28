@@ -11,6 +11,12 @@ ROOT="${DEPLOY_ROOT:-/srv/djimitflo}"
 REPO_SLUG="${AUTO_DEPLOY_REPO:-djimit/djimitflo}"
 SETTLE_MIN="${AUTO_DEPLOY_SETTLE_MIN:-20}"
 log() { echo "$(date -u +%FT%TZ) auto-deploy: $*"; }
+# S1: deploy events for the operator cockpit, in the data dir the container mounts as /data (bounded to 500 lines)
+event() {
+  local f="$ROOT/data/deploy-log.jsonl"; [ -d "$ROOT/data" ] || return 0
+  printf '{"at":"%s","event":"%s","sha":"%s","detail":"%s"}\n' "$(date -u +%FT%TZ)" "$1" "${2:-}" "$(printf '%s' "${3:-}" | tr -d '"\\' | head -c 300)" >> "$f" 2>/dev/null || return 0
+  [ "$(wc -l < "$f")" -le 1000 ] || { tail -n 500 "$f" > "$f.tmp" && mv "$f.tmp" "$f"; } 2>/dev/null || true
+}
 
 # Each probe runs $AD_<NAME> (eval) when set, the real command otherwise.
 probe() { local name="$1"; shift; local override="AD_$name"; if [ -n "${!override:-}" ]; then eval "${!override}"; else "$@"; fi; }
@@ -46,9 +52,9 @@ post_deploy_check() {
   if [ -n "$blocking" ] || [ "${r:-0}" != "0" ]; then
     printf 'post-deploy regression after %s: stalls [%s] restarts=%s\n' "$dsha" "$(echo $blocking)" "$r" > "$ROOT/AUTO_DEPLOY_DISABLED"
     echo regressed > "$ROOT/.deploy-verdict-$dsha"
-    log "post-deploy regression after ${dsha:0:8} (stalls: $(echo $blocking); restarts: $r) — auto-deploy paused"; exit 0
+    log "post-deploy regression after ${dsha:0:8} (stalls: $(echo $blocking); restarts: $r) — auto-deploy paused"; event paused "$dsha" "stalls: $(echo $blocking); restarts: $r"; exit 0
   fi
-  echo ok > "$ROOT/.deploy-verdict-$dsha"; log "post-deploy check ok for ${dsha:0:8}"
+  echo ok > "$ROOT/.deploy-verdict-$dsha"; log "post-deploy check ok for ${dsha:0:8}"; event verdict_ok "$dsha"
 }
 deploy() { probe DEPLOY deploy_commit "$1"; }
 deploy_commit() {
@@ -79,7 +85,7 @@ AGE_MIN="$(commit_json "$SHA" | node -e 'const c=JSON.parse(require("fs").readFi
 RUNNING="$(running_leases)"
 [ "$RUNNING" = "0" ] || { log "$RUNNING loop worker(s) running; not deploying mid-run"; exit 0; }
 
-log "deploying $SHA (was $CUR)"
-deploy "$SHA" || { log "deploy of $SHA failed (deploy-vps.sh exited non-zero; it rolls back an unhealthy start)"; exit 1; }
+log "deploying $SHA (was $CUR)"; event deploying "$SHA" "was $CUR"
+deploy "$SHA" || { log "deploy of $SHA failed (deploy-vps.sh exited non-zero; it rolls back an unhealthy start)"; event failed "$SHA" "deploy-vps.sh exited non-zero"; exit 1; }
 stalls | sed '/^$/d' > "$ROOT/.deploy-baseline"; echo "$SHA $(date +%s)" > "$ROOT/.last-deploy"
-log "done $SHA"
+log "done $SHA"; event done "$SHA"
