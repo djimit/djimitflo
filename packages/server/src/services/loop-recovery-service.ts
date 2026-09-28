@@ -123,6 +123,10 @@ export class LoopRecoveryService {
       // A run whose goal deliberately waits for a human approval is idle, not orphaned: a restart must not flip it to
       // 'interrupted' (it lost its place in the approval flow and later got cancelled by the zombie reaper).
       if (this.isAwaitingApproval(run.id)) continue;
+      // A remote gym run executes on its host, not here: a VPS restart does not touch it (prod 2026-09-27 23:46: a deploy 9 s
+      // after the claim marked it interrupted and the host's report 15 min later was refused). If the host really lost
+      // it, its next claim settles it (RemoteGymService).
+      if ((run.metadata as { gym?: { remote_host?: unknown } } | undefined)?.gym?.remote_host) continue;
       this.mutations.updateStatus(run.id, 'interrupted', {
         interrupted_reason: 'server_restart',
         interrupted_at: now,
