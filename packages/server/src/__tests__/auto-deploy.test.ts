@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { spawnSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
 import { expect, it } from 'vitest';
 
 // scripts/auto-deploy.sh (plan J2) with every probe simulated: which conditions let main deploy on its own.
@@ -85,4 +85,19 @@ it('the real deploy path leaves no RETURN trap behind (bash 5: "tmp: unbound var
   expect(out).not.toContain('unbound');
   expect(out).toContain(`done ${NEW}`);
   expect(fs.existsSync(path.join(root, '.last-deploy'))).toBe(true);
+});
+
+it('deploy-vps keeps a week of build cache after a healthy deploy; only a low-disk prune clears it', () => {
+  const script = fs.readFileSync(path.resolve(__dirname, '../../../../scripts/deploy-vps.sh'), 'utf8');
+  const fn = script.slice(script.indexOf('prune_old_builds() {'), script.indexOf('\n}\n', script.indexOf('prune_old_builds() {')) + 3);
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'dv-'));
+  const log = path.join(bin, 'docker.log');
+  fs.writeFileSync(path.join(bin, 'docker'), `#!/bin/sh\necho "$*" >> ${log}\n`, { mode: 0o755 });
+  const prune = (arg: string) => {
+    fs.rmSync(log, { force: true });
+    execFileSync('bash', ['-euo', 'pipefail', '-c', `${fn}\nSHORT=a PREV_SHORT=b; prune_old_builds ${arg}`], { cwd: bin, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
+    return fs.readFileSync(log, 'utf8').split('\n').filter((l) => l.startsWith('image prune'));
+  };
+  expect(prune('')).toEqual(['image prune -f --filter until=168h']);
+  expect(prune('all')).toEqual(['image prune -f']);
 });
