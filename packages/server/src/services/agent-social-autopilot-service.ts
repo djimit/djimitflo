@@ -43,6 +43,8 @@ export interface AutopilotConfig {
 
 export interface AutopilotTick {
   heartbeats: number;
+  /** Q2: messages acknowledged without inference because their thread went stale (jev contribution gate). */
+  gated?: number;
   replies: number;
   attempts: number;
   failures: number;
@@ -246,6 +248,13 @@ export class AgentSocialAutopilotService {
         let message: AgentMessage | undefined;
         try { [message] = this.comms.receiveSocial(agent.id, 1); } catch { result.failures += 1; continue; }
         if (!message) continue;
+        // Q2 (operator 2026-09-28, cut Ollama Cloud use): jev already judges every reply's contribution; once the last two
+        // judged replies in a thread were restatement/off-topic ('no'), the thread is done — acknowledge without inference.
+        if (threadGated(this.db, message)) {
+          try { this.comms.acknowledge(message.id, agent.id, message.deliveryLeaseToken); } catch { /* lease expired: redelivered and gated again */ }
+          result.gated = (result.gated ?? 0) + 1;
+          continue;
+        }
         result.attempts += 1;
         try {
           const spec = this.runtimeFor(agent.id);
@@ -333,4 +342,17 @@ export class AgentSocialAutopilotService {
       return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
     } catch { return []; }
   }
+}
+
+/** Q2: true when COMMONS_THREAD_GATE_ENABLED and the thread's two most recent contribution verdicts are both 'no'. */
+export function threadGated(db: Database, message: AgentMessage, env: NodeJS.ProcessEnv = process.env): boolean {
+  if (env.COMMONS_THREAD_GATE_ENABLED !== 'true') return false;
+  const threadId = String(message.payload?.thread_id || '');
+  if (!threadId) return false;
+  try {
+    const last = db.prepare(`SELECT j.decision FROM judgments j JOIN agent_messages m ON m.id = j.subject_id
+      WHERE j.judgment = 'commons_contribution' AND json_extract(m.payload_json, '$.thread_id') = ?
+      ORDER BY j.created_at DESC LIMIT 2`).all(threadId) as Array<{ decision: string }>;
+    return last.length === 2 && last.every((r) => r.decision === 'no');
+  } catch { return false; }
 }

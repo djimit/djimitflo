@@ -1281,6 +1281,15 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
       published_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_event_outbox_status ON event_outbox(status, created_at);
+    -- D3: explicit Telegram user id -> Djimitflo user allowlist (the user's RBAC role decides what they may do). Filled by
+    -- the operator only; chat or group membership grants nothing.
+    CREATE TABLE IF NOT EXISTS telegram_identities (
+      telegram_user_id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      added_by TEXT NOT NULL,
+      note TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
     CREATE TABLE IF NOT EXISTS judgments (
       id TEXT PRIMARY KEY, judgment TEXT NOT NULL, subject_type TEXT NOT NULL, subject_id TEXT NOT NULL, state_hash TEXT NOT NULL,
       mode TEXT NOT NULL, decision TEXT NOT NULL, reason TEXT, answers_json TEXT, error TEXT,
