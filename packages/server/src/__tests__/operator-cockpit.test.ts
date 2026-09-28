@@ -37,3 +37,12 @@ it('never throws on a schema without optional tables', () => {
   expect(c.scorecard.verified_7d).toBeNull(); expect(c.gym).toEqual([]);
   bare.close();
 });
+
+it('reads the newest deploy events from the mounted deploy log and ignores broken lines', async () => {
+  const { recentDeploys } = await import('../services/operator-cockpit');
+  const fsm = await import('fs'); const osm = await import('os'); const pm = await import('path');
+  const f = pm.join(fsm.mkdtempSync(pm.join(osm.tmpdir(), 'dl-')), 'deploy-log.jsonl');
+  fsm.writeFileSync(f, '{"at":"1","event":"deploying","sha":"a","detail":""}\nnot json\n{"at":"2","event":"done","sha":"a","detail":""}\n');
+  expect(recentDeploys(f).map((e) => e.event)).toEqual(['done', 'deploying']);
+  expect(recentDeploys('/nonexistent/file')).toEqual([]);
+});

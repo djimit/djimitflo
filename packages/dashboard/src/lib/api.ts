@@ -43,6 +43,7 @@ export type OperatorCockpit = {
   remote_workers: Array<{ host: string; claims_24h: number; last_claim: string | null; interrupted_24h: number }>;
   maker_usage_7d: Array<{ role: string; runtime: string; model: string | null; leases: number; tokens: number }>;
   judgments_7d: Array<{ judgment: string; calls: number; errors: number; input_tokens: number }>;
+  deploys: Array<{ at: string; event: string; sha: string; detail: string }>;
 };
 
 export type DecisionsInbox = {

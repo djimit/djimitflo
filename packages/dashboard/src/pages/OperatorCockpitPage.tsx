@@ -58,6 +58,20 @@ export function OperatorCockpitPage() {
             </div>
           </section>
 
+          <section aria-labelledby="deploys">
+            <h2 id="deploys" className="text-lg font-semibold mb-2">Deploys</h2>
+            {data.deploys.length === 0 ? <p className="text-sm text-foreground-secondary">No deploy events recorded yet (auto-deploy writes them to the data dir).</p> : (
+              <table className="w-full text-sm">
+                <thead><tr className="text-left text-foreground-tertiary"><th>When</th><th>Event</th><th>Commit</th><th>Detail</th></tr></thead>
+                <tbody>{data.deploys.map((d) => (
+                  <tr key={`${d.at}-${d.event}`} className={`border-t border-border ${d.event === 'failed' || d.event === 'paused' ? 'text-status-error' : ''}`}>
+                    <td>{since(d.at)}</td><td>{d.event.replace('_', ' ')}</td><td><code>{d.sha.slice(0, 8)}</code></td><td>{d.detail}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            )}
+          </section>
+
           <section aria-labelledby="stalls">
             <h2 id="stalls" className="text-lg font-semibold mb-2">Silent stalls</h2>
             {data.stalls.length === 0 ? <p className="text-sm text-foreground-secondary">None — every watched subsystem produced output recently.</p> : (

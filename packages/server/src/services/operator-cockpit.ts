@@ -1,3 +1,4 @@
+import fs from 'fs';
 import type { Database } from 'better-sqlite3';
 import { detectStalls, type Stall } from './stall-watch';
 
@@ -17,6 +18,7 @@ export interface CockpitSnapshot {
   remote_workers: Array<{ host: string; claims_24h: number; last_claim: string | null; interrupted_24h: number }>;
   maker_usage_7d: Array<{ role: string; runtime: string; model: string | null; leases: number; tokens: number }>;
   judgments_7d: Array<{ judgment: string; calls: number; errors: number; input_tokens: number }>;
+  deploys: Array<{ at: string; event: string; sha: string; detail: string }>;
 }
 
 export function operatorCockpit(db: Database, now = Date.now()): CockpitSnapshot {
@@ -65,6 +67,15 @@ export function operatorCockpit(db: Database, now = Date.now()): CockpitSnapshot
   return {
     at: new Date(now).toISOString(),
     build: { commit: process.env.DJIMITFLO_BUILD_COMMIT ?? null, build_time: process.env.DJIMITFLO_BUILD_TIME ?? null },
-    scorecard, guardrails, stalls, gym, remote_workers, maker_usage_7d, judgments_7d,
+    scorecard, guardrails, stalls, gym, remote_workers, maker_usage_7d, judgments_7d, deploys: recentDeploys(),
   };
+}
+
+/** Last deploy events written by the host's auto-deploy.sh into the mounted data dir (newest first). */
+export function recentDeploys(file = process.env.DEPLOY_LOG_PATH || '/data/deploy-log.jsonl', limit = 12): CockpitSnapshot['deploys'] {
+  try {
+    return fs.readFileSync(file, 'utf8').trim().split('\n').slice(-limit).reverse()
+      .map((line) => { try { return JSON.parse(line) as CockpitSnapshot['deploys'][number]; } catch { return null; } })
+      .filter((e): e is CockpitSnapshot['deploys'][number] => Boolean(e?.event));
+  } catch { return []; }
 }
