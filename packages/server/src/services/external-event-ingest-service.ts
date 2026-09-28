@@ -21,12 +21,32 @@ const SIGNAL_PREFIXES = ['paperclip.', 'outcome.', 'roborev.', 'discovery.', 'wi
 const agentOutcomeSchema = z.object({
   agent: z.string().regex(/^[\w.-]{1,64}$/),
   task_kind: z.string().regex(/^[\w.:-]{1,64}$/),
-  success: z.boolean(),
+  // the Redis-backed bus hands every field back as a string (prod 2026-09-28: success "true" matched no event)
+  success: z.preprocess((v) => (v === 'true' ? true : v === 'false' ? false : v), z.boolean()),
   model: z.string().max(120).optional(),
-  tokens: z.number().int().nonnegative().optional(),
-  duration_ms: z.number().int().nonnegative().optional(),
+  tokens: z.coerce.number().int().nonnegative().optional(),
+  duration_ms: z.coerce.number().int().nonnegative().optional(),
   ref: z.string().max(300).optional(),
 });
+
+/** N2: score every stored agent.outcome that has no fleet skill outcome yet (idempotent; also catches up earlier events). */
+export function scoreAgentOutcomes(db: Database): number {
+  const engine = new SkillEvolutionEngine(db); let n = 0;
+  let rows: Array<{ id: string; payload: string }> = [];
+  try {
+    rows = db.prepare(`SELECT e.id, e.payload FROM external_events e WHERE e.event_type = 'agent.outcome'
+      AND NOT EXISTS (SELECT 1 FROM skill_outcomes s WHERE s.domain = 'fleet' AND s.task_id = e.id) LIMIT 500`).all() as typeof rows;
+  } catch { return 0; } // skill_outcomes not created yet
+  for (const row of rows) {
+    const o = agentOutcomeSchema.safeParse(JSON.parse(row.payload));
+    if (!o.success) continue;
+    engine.recordOutcome(`agent:${o.data.agent}:${o.data.task_kind}`, {
+      success: o.data.success, tokensUsed: o.data.tokens ?? 0, durationMs: o.data.duration_ms ?? 0, domain: 'fleet',
+      agentId: o.data.agent, taskId: row.id, ...(o.data.model ? { model: o.data.model } : {}), ...(o.data.ref ? { evidenceRefs: [o.data.ref] } : {}),
+    }); n += 1;
+  }
+  return n;
+}
 
 const outcomeObservedSchema = z.object({
   outcome_id: nonBlank,
@@ -178,14 +198,9 @@ export class ExternalEventIngestService {
           JSON.stringify(normalizedEvent),
         ).changes;
         inserted += added;
-        if (added && eventType === 'agent.outcome') {
-          const o = agentOutcomeSchema.safeParse(normalizedEvent);
-          if (o.success) new SkillEvolutionEngine(this.db).recordOutcome(`agent:${o.data.agent}:${o.data.task_kind}`, {
-            success: o.data.success, tokensUsed: o.data.tokens ?? 0, durationMs: o.data.duration_ms ?? 0, domain: 'fleet',
-            agentId: o.data.agent, taskId: id, ...(o.data.model ? { model: o.data.model } : {}), ...(o.data.ref ? { evidenceRefs: [o.data.ref] } : {}),
-          });
-        }
+
       }
+      scoreAgentOutcomes(this.db);
       // Close the existing ingestion seam before advancing its cursor. Replay
       // also materializes historical observations left by older deployments.
       // ponytail: full-history derivation; add a projection cursor if measured
