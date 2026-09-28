@@ -53,7 +53,18 @@ export class ExpertSourceUnitsService {
     const note = str(event.note ?? event.summary, 1000);
     const categories = Array.isArray(event.categories) ? event.categories.filter((c): c is string => typeof c === 'string').slice(0, 10) : [];
     const capabilities = this.enrichment.capabilitiesFor({ arxiv_id: id, url: '', title, summary: note, authors: [], categories, primary_category: categories[0] ?? null, published: null });
-    if (!capabilities.length) return 'irrelevant';
+    if (!capabilities.length) {
+      // R3 (shadow): the keyword gate's rejections were never measured. jev judges a capped share of them too, so its
+      // relevance can be compared with the gate (yes-rate on rejected vs accepted) before it replaces the gate.
+      const cap = Number(process.env.DISCOVERY_GATE_SHADOW_MAX_PER_DAY) || 100;
+      const today = (this.db.prepare("SELECT COUNT(*) n FROM judgments WHERE judgment = 'discovery_relevance' AND subject_type = 'discovery_rejected' AND created_at >= ?")
+        .get(new Date(Date.now() - 86_400_000).toISOString()) as { n: number }).n;
+      if (judgmentMode(discoveryRelevance.id) !== 'off' && today < cap) {
+        const pack = buildEvidencePack(this.db, 14);
+        void runJudgment(this.db, discoveryRelevance, { type: 'discovery_rejected', id: ref }, { title, note, capabilities: [], open_problems: { failing_gates: pack.top_failing_gates, failure_causes: pack.failure_causes } }).catch(() => undefined);
+      }
+      return 'irrelevant';
+    }
     const agent = str(event.agent ?? event.source, 80) || 'unknown-agent';
     const url = kind === 'paper' ? `https://arxiv.org/abs/${id}` : `https://github.com/${id}`;
     const expertId = this.unit(kind, kind === 'paper' ? title : id, ref, { kind, title, url, sourceRef: ref, sourceFamily: `agent:${agent}`, metadata: { derived: 'fleet-discovery', agent, note, categories } }, capabilities, { source: 'fleet-discovery', agent });

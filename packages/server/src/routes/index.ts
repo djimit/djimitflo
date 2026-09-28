@@ -90,6 +90,7 @@ import { createSegmlProductionRoutes } from './segml-production';
 import { createOrganizationRoutes } from './organizations';
 import { createAuditLogRoutes } from './audit-logs';
 import { limitBodySize } from '../middleware/input-validation';
+import { UsageTelemetry } from '../services/usage-telemetry';
 import { buildOpenApiSpec, collectRoutes, mountRoutes, type RouteMount } from '../utils/route-inventory';
 import type { WebSocketService } from '../services/websocket-service';
 import { CognitiveLoopClosureService } from '../services/cognitive-loop-closure-service';
@@ -128,6 +129,20 @@ export function createRoutes(
   // Security headers
   router.use(securityHeaders);
   router.use(rateLimit({ windowMs: 60_000, limit: 300, standardHeaders: 'draft-8', legacyHeaders: false }));
+
+  // S4: local usage counts (route pattern + page views only) so dormant surface can be measured before consolidation
+  const telemetry = new UsageTelemetry(db);
+  router.use(telemetry.middleware());
+  router.get('/telemetry/usage', requireAuth, (req, res) => {
+    const days = Math.min(90, Math.max(1, Number(req.query.days) || 14));
+    res.json({ days, rows: telemetry.summary(days) });
+  });
+  router.post('/telemetry/pageview', requireAuth, (req, res) => {
+    const page = typeof req.body?.path === 'string' ? req.body.path.replace(/\/[0-9a-f-]{8,}(?=\/|$)/gi, '/:id').slice(0, 120) : '';
+    if (!/^\/[\w\-/:]*$/.test(page)) { res.status(400).json({ error: { message: 'path required', code: 'VALIDATION_ERROR' } }); return; }
+    telemetry.count('page', page);
+    res.status(204).end();
+  });
 
   // API version (public)
   router.get('/version', (_req, res) => {
