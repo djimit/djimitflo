@@ -3,15 +3,17 @@ import { enqueueEvent } from './event-outbox-service';
 
 /**
  * Plan N4 (feedback to the agents, step 1): Djimitflo tells its scouts what turned out to matter. Once a day it derives an
- * interest profile — frequent terms from discoveries judged relevant (G3 'yes'), KB pages panels actually retrieved and
- * proposals verified in the last 30 days — and publishes `djimitflo.feedback.interests` on the event bus (outbox). The
+ * interest profile — frequent terms from discoveries judged relevant (G3 'yes') and KB pages panels actually retrieved in the
+ * last 30 days (proposal titles are code tasks, not research topics) — and publishes `djimitflo.feedback.interests` on the event bus (outbox). The
  * scout (scripts/fleet-discovery-publisher.py --interests-from-bus) adds these terms to its static list.
  *   FEEDBACK_INTERESTS_ENABLED=true (default off)
  */
 const STOP = new Set(('about above after again against among around based because before being between beyond both build could during each every '
   + 'first from further have into large language learning model models more most other over paper papers same should since some such than that '
   + 'their them then there these they this those through towards under using very what when where which while with within without would your '
-  + 'approach approaches method methods results study system systems based toward towards summaries summary proposal djimitflo').split(' '));
+  + 'approach approaches method methods results study system systems based toward towards summaries summary proposal djimitflo '
+  // generic engineering words match nearly every paper as a substring (first prod profile 2026-09-28)
+  + 'service services tests testing implementation evidence raise score enforced intelligence improve improving general new').split(' '));
 
 export function interestTerms(texts: string[], max = 20): string[] {
   const counts = new Map<string, number>();
@@ -30,8 +32,7 @@ export function interestProfile(db: Database, now = Date.now()): { terms: string
   const kb = all<{ reason: string }>("SELECT reason FROM judgments WHERE judgment = 'kb_retrieval' AND created_at >= ?", since)
     .flatMap((r) => (r.reason || '').split(' ').map((hit) => hit.split('@')[0]))
     .map((p) => (all<{ title: string }>('SELECT title FROM kb_pages WHERE path = ?', p)[0]?.title ?? ''));
-  const verified = all<{ t: string }>("SELECT title AS t FROM self_improvements WHERE status = 'verified' AND updated_at >= ?", since).map((r) => r.t);
-  return { terms: interestTerms([...relevant, ...kb, ...verified]), sources: { relevant: relevant.length, kb_hits: kb.length, verified: verified.length } };
+  return { terms: interestTerms([...relevant, ...kb]), sources: { relevant: relevant.length, kb_hits: kb.length } };
 }
 
 /** Enqueue today's profile once (the date is the aggregate id). */
