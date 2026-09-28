@@ -77,6 +77,6 @@ RUNNING="$(running_leases)"
 [ "$RUNNING" = "0" ] || { log "$RUNNING loop worker(s) running; not deploying mid-run"; exit 0; }
 
 log "deploying $SHA (was $CUR)"
-deploy "$SHA"
+deploy "$SHA" || { log "deploy of $SHA failed (deploy-vps.sh exited non-zero; it rolls back an unhealthy start)"; exit 1; }
 stalls | sed '/^$/d' > "$ROOT/.deploy-baseline"; echo "$SHA $(date +%s)" > "$ROOT/.last-deploy"
 log "done $SHA"

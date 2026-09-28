@@ -66,3 +66,10 @@ it('P2: a new structural stall or a restart pauses auto-deploy; provider noise i
   const early = pausedBy({ AD_STALLS: `printf 'panel\\n'` }, 'gym:atomic\n', 5);
   expect(early.paused).toBe(false); expect(early.out).not.toContain('post-deploy');
 });
+
+it('P2: a failed deploy says so and records no baseline', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
+  const out = run({ AD_DEPLOY: 'false', AD_STALLS: 'true' }, root);
+  expect(out).toContain('deploy of'); expect(out).toContain('failed');
+  expect(fs.existsSync(path.join(root, '.last-deploy'))).toBe(false);
+});
