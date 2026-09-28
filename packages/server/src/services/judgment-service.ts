@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
-import { TypeSafeClient, prepareState, typesafeConfigured, type TsAnswer, type TsQuestion, type TsResponse } from './typesafe-client';
+import { TypeSafeClient, prepareState, typesafeConfigured, type TsAnswer, type TsQuestion } from './typesafe-client';
 
 /**
  * Every System One judgment is written to `judgments` (state hash, typed answers, decision, cost, latency, model) so it can
@@ -36,7 +36,7 @@ export async function runJudgment(db: Database, def: JudgmentDef, subject: { typ
   try {
     const response = await client.systemOne(state, def.questions);
     const { decision, reason } = def.decide(response.answers, facts);
-    void localShadow(db, def, subject, stateHash, state, def.questions, facts);
+    localShadow(db, def, subject, stateHash, state, def.questions, facts);
     db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, input_tokens, output_tokens, latency_ms, model, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, def.id, subject.type, subject.id, stateHash, mode, decision, reason, JSON.stringify(response.answers),
       response.usage?.input_tokens ?? 0, response.usage?.output_tokens ?? 0, Date.now() - started, response.model, new Date().toISOString());
@@ -72,7 +72,7 @@ export async function runJudgments(db: Database, defs: JudgmentDef[], subject: {
       const prefix = `${d.id}__`;
       const answers = Object.fromEntries(Object.entries(response.answers).filter(([k]) => k.startsWith(prefix)).map(([k, a]) => [k.slice(prefix.length), a]));
       const { decision, reason } = d.decide(answers);
-      void localShadow(db, d, subject, stateHash, state, d.questions);
+      localShadow(db, d, subject, stateHash, state, d.questions);
       const id = randomUUID(); const mode = judgmentMode(d.id);
       insertOk.run(id, d.id, subject.type, subject.id, stateHash, mode, decision, reason, JSON.stringify(answers), share(response.usage?.input_tokens), share(response.usage?.output_tokens), Date.now() - started, response.model, new Date().toISOString());
       out.set(d, { id, decision, reason, answers, mode });
@@ -90,33 +90,20 @@ export async function runJudgments(db: Database, defs: JudgmentDef[], subject: {
 }
 
 /**
- * T1 (plan Phase T): shadow A/B against the local, Jev-compatible System One on the workstation (scripts/local-systemone.mjs).
- * A sample (TYPESAFE_LOCAL_SHADOW_SAMPLE, default 0.2) of successful jev judgments is re-asked locally with the same state
- * and questions and recorded as `<judgment>@local` (mode 'shadow'), so the two can be compared per subject. No decision reads
- * these rows (every consumer matches exact judgment names) and stall watch skips them; the funnel's agreement table and the
- * cockpit list them as their own judgment. Fire-and-forget; off unless TYPESAFE_LOCAL_SHADOW_URL.
+ * T1 (plan Phase T), pull variant (operator rule 2026-09-29: the VPS never calls the workstation): a sample
+ * (TYPESAFE_LOCAL_SHADOW_SAMPLE, default 0.2) of successful jev judgments is queued in local_shadow_jobs with the same scrubbed
+ * state and questions; the workstation claims them (/api/host-agent/shadow/claim), answers with its local System One and posts
+ * the answers back, and local-shadow-queue records them as `<judgment>@local`. No decision reads those rows; stall watch skips
+ * them. Off unless TYPESAFE_LOCAL_SHADOW_ENABLED=true; at most 500 jobs wait (older judgments are not worth a backlog).
  */
-export async function localShadow(db: Database, def: JudgmentDef, subject: { type: string; id: string }, stateHash: string, state: unknown,
-  questions: Record<string, TsQuestion>, facts?: Record<string, unknown>, env: NodeJS.ProcessEnv = process.env, fetchFn: typeof fetch = fetch, random = Math.random): Promise<void> {
-  const url = env.TYPESAFE_LOCAL_SHADOW_URL?.trim();
-  if (!url || random() >= (Number(env.TYPESAFE_LOCAL_SHADOW_SAMPLE) || 0.2)) return;
-  const started = Date.now();
+export function localShadow(db: Database, def: JudgmentDef, subject: { type: string; id: string }, stateHash: string, state: unknown,
+  questions: Record<string, TsQuestion>, facts?: Record<string, unknown>, env: NodeJS.ProcessEnv = process.env, random = Math.random): void {
+  if (env.TYPESAFE_LOCAL_SHADOW_ENABLED !== 'true' || random() >= (Number(env.TYPESAFE_LOCAL_SHADOW_SAMPLE) || 0.2)) return;
   try {
-    const res = await fetchFn(`${url.replace(/\/$/, '')}/v1/systemone`, {
-      method: 'POST', signal: AbortSignal.timeout(180_000),
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.TYPESAFE_LOCAL_SHADOW_TOKEN ?? ''}` },
-      body: JSON.stringify({ state: prepareState(state), questions }),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const response = (await res.json()) as TsResponse;
-    const { decision, reason } = def.decide(response.answers, facts);
-    db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, input_tokens, output_tokens, latency_ms, model, created_at)
-      VALUES (?, ?, ?, ?, ?, 'shadow', ?, ?, ?, ?, 0, ?, ?, ?)`).run(randomUUID(), `${def.id}@local`, subject.type, subject.id, stateHash, decision, reason,
-      JSON.stringify(response.answers), response.usage?.input_tokens ?? 0, Date.now() - started, response.model, new Date().toISOString());
-  } catch (err) {
-    try {
-      db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, error, latency_ms, created_at) VALUES (?, ?, ?, ?, ?, 'shadow', 'error', ?, ?, ?)`)
-        .run(randomUUID(), `${def.id}@local`, subject.type, subject.id, stateHash, (err instanceof Error ? err.message : String(err)).slice(0, 200), Date.now() - started, new Date().toISOString());
-    } catch { /* recording must never break the caller */ }
-  }
+    const waiting = (db.prepare("SELECT COUNT(*) n FROM local_shadow_jobs WHERE status = 'queued'").get() as { n: number }).n;
+    if (waiting >= 500) return;
+    db.prepare(`INSERT INTO local_shadow_jobs (id, judgment, subject_type, subject_id, state_hash, state_json, questions_json, facts_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(randomUUID(), def.id, subject.type, subject.id, stateHash, JSON.stringify(prepareState(state)),
+      JSON.stringify(questions), facts ? JSON.stringify(facts) : null, new Date().toISOString());
+  } catch { /* the shadow must never break the judgment */ }
 }

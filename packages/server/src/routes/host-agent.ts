@@ -3,6 +3,7 @@ import { rateLimit } from 'express-rate-limit';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { FleetCommands } from '../services/fleet-commands';
+import { LocalShadowQueue } from '../services/local-shadow-queue';
 import { mintSpawnToken, resolveSpawnTokenSecret, validateSpawnToken } from '../services/spawn-token';
 
 export const HOST_AGENT_SCOPE = 'host-agent';
@@ -34,6 +35,21 @@ export function createHostAgentRoutes(db: Database, auth: AuthMiddleware): Route
   router.post('/commands/:id/result', (req, res) => {
     const h = host(req, res); if (!h) return;
     try { fleet.result(String(req.params.id), h, req.body?.exit_code ?? null, String(req.body?.output ?? '')); res.json({ recorded: true }); } catch (e) { fail(res, e); }
+  });
+  // T1 pull: the host's local System One claims queued shadow judgments and posts its answers
+  const shadow = new LocalShadowQueue(db);
+  router.post('/shadow/claim', (req, res) => {
+    const h = host(req, res); if (!h) return;
+    try { res.json({ jobs: shadow.claim(h, Number(req.body?.limit) || 4) }); } catch (e) { fail(res, e); }
+  });
+  router.post('/shadow/:id/result', (req, res) => {
+    const h = host(req, res); if (!h) return;
+    try { shadow.record(String(req.params.id), h, req.body || {}); res.json({ recorded: true }); } catch (e) {
+      const code = e instanceof Error ? e.message : '';
+      if (code === 'SHADOW_JOB_NOT_FOUND') { res.status(404).json({ error: { code, message: code } }); return; }
+      if (code === 'SHADOW_JOB_NOT_CLAIMED') { res.status(409).json({ error: { code, message: code } }); return; }
+      fail(res, e);
+    }
   });
   router.post('/tokens', auth.requireAuth, auth.requirePermission('manage:tokens'), (req, res) => {
     const h = String(req.body?.host || '');

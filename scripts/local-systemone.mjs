@@ -4,7 +4,10 @@
 // one token per question, the answer distribution read from the model's top logprobs over single-token labels.
 // Backend: an OpenAI-compatible llama.cpp server (LOCAL_SYSTEMONE_UPSTREAM, default http://127.0.0.1:8096) with
 // Qwen3.6-35B-A3B on the idle RTX 2060 (Vulkan, experts in RAM). Supports noul + choice; score answers 422 (unused here).
-// Auth: Bearer token from LOCAL_SYSTEMONE_TOKEN_FILE. Zero dependencies (Node >= 20).
+// Two modes. --pull (default in production; operator rule 2026-09-29: the VPS never calls the workstation): claim queued shadow
+// judgments from Djimitflo (DJIMIT_API, DJIMIT_HOST, DJIMIT_HOST_TOKEN_FILE = the host-agent token), answer locally, post back.
+// Without --pull: a local HTTP endpoint (127.0.0.1 only by default; Bearer token from LOCAL_SYSTEMONE_TOKEN_FILE) for
+// on-host use. Zero dependencies (Node >= 20).
 import http from 'node:http';
 import fs from 'node:fs';
 
@@ -101,5 +104,35 @@ function selfcheck() {
   console.log('selfcheck ok');
 }
 
+/** T1 pull loop: claim → answer locally → post; never listens on a port. */
+export async function pullOnce(api, host, token, fetchFn = fetch) {
+  const headers = { 'Content-Type': 'application/json', 'X-Host': host, 'X-Host-Token': token };
+  const claim = await fetchFn(`${api.replace(/\/$/, '')}/host-agent/shadow/claim`, { method: 'POST', headers, body: JSON.stringify({ limit: 2 }), signal: AbortSignal.timeout(30_000) });
+  if (!claim.ok) throw new Error(`claim HTTP ${claim.status}`);
+  const { jobs = [] } = await claim.json();
+  for (const job of jobs) {
+    const started = Date.now();
+    let body;
+    try { const r = await systemOne({ state: job.state, questions: job.questions }, fetchFn); body = { answers: r.answers, model: r.model, input_tokens: r.usage.input_tokens, latency_ms: Date.now() - started }; }
+    catch (e) { body = { error: String(e.message || e).slice(0, 200), latency_ms: Date.now() - started }; }
+    await fetchFn(`${api.replace(/\/$/, '')}/host-agent/shadow/${job.id}/result`, { method: 'POST', headers, body: JSON.stringify(body), signal: AbortSignal.timeout(30_000) });
+  }
+  return jobs.length;
+}
+
+async function pull() {
+  const api = process.env.DJIMIT_API || 'http://100.86.47.122:3001/api';
+  const host = process.env.DJIMIT_HOST || 'workstation';
+  const token = fs.readFileSync(process.env.DJIMIT_HOST_TOKEN_FILE || `${process.env.HOME}/.djimit/host-agent.token`, 'utf8').trim();
+  const idle = Number(process.env.LOCAL_SYSTEMONE_PULL_INTERVAL_MS || 20_000);
+  let wait = idle;
+  for (;;) {
+    try { const n = await pullOnce(api, host, token); wait = n ? 1_000 : idle; if (n) console.log(`${new Date().toISOString()} answered ${n}`); }
+    catch (e) { console.error(`pull failed: ${e.message}`); wait = Math.min(wait * 2, 600_000); }
+    await new Promise((r) => setTimeout(r, wait));
+  }
+}
+
 if (process.argv[2] === '--selfcheck') selfcheck();
+else if (process.argv[2] === '--pull') void pull();
 else if (import.meta.url === `file://${process.argv[1]}`) serve();
