@@ -46,11 +46,11 @@ export class RsiSafetyGuard {
     };
   }
 
-  setEnabled(enabled: boolean): void {
+  setEnabled(enabled: boolean, actor = 'system'): void {
     this.db.transaction(() => {
       this.db.prepare("UPDATE system_state SET value = ?, updated_at = datetime('now') WHERE key = 'rsi_safety_enabled'")
         .run(String(enabled));
-      this.logAction('kill_switch', 'rsi-safety-guard', { enabled });
+      this.logAction('kill_switch', 'rsi-safety-guard', { enabled }, actor);
     })();
   }
 

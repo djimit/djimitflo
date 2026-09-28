@@ -163,6 +163,18 @@ export class MemoryCandidateService {
     return this.get(id);
   }
 
+  /** Operator memory review (S2/U4): a human rejects a candidate; who and why are kept in its metadata. */
+  reject(id: string, actor: string, reason = ''): MemoryCandidateRecord {
+    const candidate = this.get(id);
+    if (candidate.status === 'promoted' || candidate.promotion_status === 'promoted') throw new Error('MEMORY_REJECT_ALREADY_PROMOTED');
+    if (!actor.trim()) throw new Error('MEMORY_REJECT_ACTOR_REQUIRED');
+    const now = new Date().toISOString();
+    const metadata = { ...candidate.metadata, rejected_at: now, rejected_by: actor, rejected_reason: reason.slice(0, 300) };
+    this.db.prepare(`UPDATE memory_candidates SET status = 'rejected', promotion_status = 'rejected', metadata = ?, updated_at = ? WHERE id = ?`)
+      .run(JSON.stringify(metadata), now, id);
+    return this.get(id);
+  }
+
   promote(id: string, input: MemoryPromotionInput = {}): { candidate: MemoryCandidateRecord; sinks: Array<Record<string, unknown>> } {
     const candidate = this.get(id);
     if (candidate.promotion_status === 'promoted') {

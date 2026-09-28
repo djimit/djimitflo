@@ -51,6 +51,26 @@ export function DecisionsInboxPage() {
 
       {data && (
         <>
+          <section aria-labelledby="memory">
+            <h2 id="memory" className="text-lg font-semibold mb-1">Memory review</h2>
+            <p className="text-xs text-foreground-tertiary mb-2">Rules and memories waiting for a human. Promoted engineering rules reach maker assignments and are then kept or dropped by their measured fitness.</p>
+            {data.memory.length === 0 ? <p className="text-sm text-foreground-secondary">Nothing waiting for review.</p> : (
+              <table className="w-full text-sm">
+                <thead><tr className="text-left text-foreground-tertiary"><th>Memory</th><th>Type</th><th>Status</th><th /></tr></thead>
+                <tbody>{data.memory.map((m) => (
+                  <tr key={m.id} className="border-t border-border align-top">
+                    <td><div className="font-medium">{m.title}</div><div className="text-xs text-foreground-secondary whitespace-pre-wrap">{m.content}</div></td>
+                    <td>{m.memory_type}</td><td>{m.status.replace('_', ' ')}</td>
+                    <td className="whitespace-nowrap space-x-1">
+                      <button type="button" className={button} disabled={busy !== null} onClick={() => void act(`p-${m.id}`, () => api.promoteMemoryCandidate(m.id), `Promoted '${m.title}'`)}>Promote</button>
+                      <button type="button" className={button} disabled={busy !== null} onClick={() => void act(`r-${m.id}`, () => api.rejectMemoryCandidate(m.id), `Rejected '${m.title}'`)}>Reject</button>
+                    </td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            )}
+          </section>
+
           <section aria-labelledby="requeue">
             <h2 id="requeue" className="text-lg font-semibold mb-1">Requeue failed proposals</h2>
             <p className="text-xs text-foreground-tertiary mb-2">A requeue creates a new, linked attempt; the original and its outcome stay untouched. Counts against the lane budget.</p>

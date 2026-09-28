@@ -14,6 +14,7 @@ export interface DecisionsInbox {
   requeue: InboxRequeue[];
   prescreen: { items: InboxLabel[]; labelled: number; wrong: number; false_rejection_pct: number | null; enforce_threshold: string };
   telegram: Array<{ telegram_user_id: string; user_id: string; email: string | null; role: string | null; added_by: string; created_at: string }>;
+  memory: Array<{ id: string; title: string; content: string; memory_type: string; status: string; created_at: string }>;
 }
 
 export function decisionsInbox(db: Database, now = Date.now()): DecisionsInbox {
@@ -32,7 +33,11 @@ export function decisionsInbox(db: Database, now = Date.now()): DecisionsInbox {
   const labelled = items.filter((i) => i.label).length; const wrong = items.filter((i) => i.label === 'wrong').length;
   const telegram = all<DecisionsInbox['telegram'][number]>(`SELECT t.telegram_user_id, t.user_id, u.email, u.role, t.added_by, t.created_at
     FROM telegram_identities t LEFT JOIN users u ON u.id = t.user_id ORDER BY t.created_at`);
+  // memory review (U4): candidates waiting for a human; promote/reject via /swarms/memory/candidates/:id/{promote,reject}
+  const memory = all<DecisionsInbox['memory'][number]>(`SELECT id, title, substr(content, 1, 600) AS content, memory_type, status, created_at FROM memory_candidates
+    WHERE status IN ('review_required', 'candidate') ORDER BY CASE status WHEN 'review_required' THEN 0 ELSE 1 END, created_at DESC LIMIT 50`);
   return {
+    memory,
     requeue,
     prescreen: { items, labelled, wrong, false_rejection_pct: labelled ? Math.round((1000 * wrong) / labelled) / 10 : null, enforce_threshold: '>= 30 labelled and <= 5 % wrong (D5)' },
     telegram,
