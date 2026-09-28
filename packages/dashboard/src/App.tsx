@@ -43,7 +43,6 @@ const FrontierExpertsPage = lazy(() => import('./pages/FrontierExpertsPage').the
 const InteractionBoardPage = lazy(() => import('./pages/InteractionBoardPage').then((module) => ({ default: module.InteractionBoardPage })));
 const ProofRunDetailPage = lazy(() => import('./pages/ProofRunDetailPage').then((module) => ({ default: module.ProofRunDetailPage })));
 const UsagePage = lazy(() => import('./pages/UsagePage').then((module) => ({ default: module.UsagePage })));
-const WorkstationUrlsPage = lazy(() => import('./pages/WorkstationUrlsPage').then((module) => ({ default: module.WorkstationUrlsPage })));
 const EconomyPage = lazy(() => import('./pages/EconomyPage').then((module) => ({ default: module.EconomyPage })));
 const PipelineBuilderPage = lazy(() => import('./pages/PipelineBuilderPage').then((module) => ({ default: module.PipelineBuilderPage })));
 const FederationPage = lazy(() => import('./pages/FederationPage').then((module) => ({ default: module.FederationPage })));
@@ -127,7 +126,6 @@ export function App() {
           <Route path="frontier-experts" element={<FrontierExpertsPage />} />
           <Route path="frontier-experts/:expertId" element={<FrontierExpertsPage />} />
           <Route path="swarm-mission-control/proof-runs/:proofRunId" element={<ProofRunDetailPage />} />
-          <Route path="workstation-urls" element={<WorkstationUrlsPage />} />
           <Route path="economy" element={<EconomyPage />} />
           <Route path="pipeline-builder" element={<PipelineBuilderPage />} />
           <Route path="federation" element={<FederationPage />} />

@@ -56,7 +56,6 @@ const NAV_SECTIONS: Array<{ title: string; items: Array<{ to: string; label: str
     { to: '/usage', label: 'Usage', icon: DollarSign },
     { to: '/economy', label: 'Economy', icon: DollarSign },
     { to: '/federation', label: 'Federation', icon: Network },
-    { to: '/workstation-urls', label: 'Runtime URLs', icon: Network },
   ] },
 ];
 

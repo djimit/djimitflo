@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Activity, RefreshCw } from 'lucide-react';
-import { api, type OperatorCockpit } from '../lib/api';
+import { api, type OperatorCockpit, type ServiceStatus } from '../lib/api';
 
 const LABELS: Record<string, string> = {
   verified_7d: 'Verified (7 d)', regressed_7d: 'Regressed (7 d)', infra_failed_7d: 'Infra failed (7 d)', approvals_pending: 'Approvals pending',
@@ -19,10 +19,12 @@ export function OperatorCockpitPage() {
   const [data, setData] = useState<OperatorCockpit | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [services, setServices] = useState<ServiceStatus[] | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    api.getServiceMap().then((r) => setServices(r.services)).catch(() => setServices([]));
     try { setData(await api.getOperatorCockpit()); } catch (err) { setError(err instanceof Error ? err.message : 'Failed to load the cockpit'); } finally { setLoading(false); }
   }, []);
   useEffect(() => { void load(); }, [load]);
@@ -56,6 +58,22 @@ export function OperatorCockpitPage() {
                 </div>
               ))}
             </div>
+          </section>
+
+          <section aria-labelledby="services">
+            <h2 id="services" className="text-lg font-semibold mb-2">Services</h2>
+            {services === null ? <p className="text-sm text-foreground-secondary">Probing…</p> : services.length === 0 ? <p className="text-sm text-foreground-secondary">No service endpoints configured or the probe failed.</p> : (
+              <table className="w-full text-sm">
+                <thead><tr className="text-left text-foreground-tertiary"><th>Service</th><th>Endpoint</th><th>Status</th><th>HTTP</th><th>Latency</th></tr></thead>
+                <tbody>{services.map((s) => (
+                  <tr key={s.endpoint} className="border-t border-border">
+                    <td>{s.names.join(' · ')}</td><td className="font-mono text-xs">{s.endpoint}</td>
+                    <td className={s.status === 'up' ? 'text-status-completed' : s.status === 'degraded' ? 'text-status-warning' : 'text-status-error'}>{s.status}{s.error ? ` (${s.error})` : ''}</td>
+                    <td>{s.http ?? '—'}</td><td>{s.ms === null ? '—' : `${s.ms} ms`}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            )}
           </section>
 
           <section aria-labelledby="deploys">

@@ -33,6 +33,8 @@ import type {
 import { API_BASE, authenticatedFetch } from './auth-store';
 export { API_BASE } from './auth-store';
 
+export type ServiceStatus = { names: string[]; endpoint: string; status: 'up' | 'degraded' | 'down'; http: number | null; ms: number | null; error: string | null };
+
 export type OperatorCockpit = {
   at: string;
   build: { commit: string | null; build_time: string | null };
@@ -1312,6 +1314,11 @@ class ApiClient {
   // S3 runtime configuration (read-only, manage:config)
   async getRuntimeConfig(): Promise<{ entries: Array<{ name: string; value: string; masked: boolean; group: string }>; masked: number }> {
     return this.request('/health/config');
+  }
+
+  // Service map: reachability of the endpoints the server is configured to use
+  async getServiceMap(): Promise<{ services: ServiceStatus[] }> {
+    return this.request('/health/services');
   }
 
   // Improvement funnel + panel calibration (self-improvement chain, read-only)

@@ -10,6 +10,7 @@ import { MetricsService } from '../services/metrics-service';
 import { KnowledgeRuntimeService } from '../services/knowledge-runtime-service';
 import { getAppVersion } from '../utils/version';
 import { detectStalls } from '../services/stall-watch';
+import { serviceMap } from '../services/service-map';
 import { operatorCockpit } from '../services/operator-cockpit';
 import { runtimeConfigView } from '../services/runtime-config-view';
 import { getDatabaseProvenance } from '../database/provenance';
@@ -134,6 +135,11 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   // plan S3: the running configuration, read-only; secrets masked by name and value; admins only
   router.get('/config', requireAuth, requirePermission('manage:config'), (_req, res) => {
     res.json(runtimeConfigView());
+  });
+
+  // service map: reachability of the endpoints this server is configured to use (env only, no credentials sent)
+  router.get('/services', requireAuth, requirePermission('read:evidence'), async (_req, res, next) => {
+    try { res.json({ services: await serviceMap() }); } catch (error) { next(error); }
   });
 
   router.get('/metrics', requireAuth, requirePermission('read:evidence'), (_req, res) => {
