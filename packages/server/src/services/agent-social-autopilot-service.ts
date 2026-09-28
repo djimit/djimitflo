@@ -10,7 +10,7 @@
  */
 
 import type { Database } from 'better-sqlite3';
-import { judgmentMode, runJudgment } from './judgment-service';
+import { judgmentMode, runJudgment, runJudgments } from './judgment-service';
 import { commonsContribution } from './judgments/commons-contribution';
 import { commonsIdea } from './judgments/commons-idea';
 import { AgentCommunicationService, type AgentMessage, type SocialRuntimeReply } from './agent-communication-service';
@@ -271,10 +271,8 @@ export class AgentSocialAutopilotService {
           if (isEcho(reply.answer, (message.payload?.params as Record<string, unknown> | undefined)?.answer)) { result.failures += 1; continue; }
           const sent = this.comms.respondSocial(agent.id, message.id, { ...reply, runtime: spec.runtime, model_id: spec.model, runtime_run_id: run_id, usage, delivery_lease_token: message.deliveryLeaseToken });
           result.replies += 1;
-          if (!sent.duplicate && judgmentMode(commonsContribution.id) !== 'off') void this.judgeContribution(sent.message.id, message).catch(() => null);
           const idea = typeof reply.proposed_improvement === 'string' ? reply.proposed_improvement.trim() : '';
-          if (!sent.duplicate && idea && judgmentMode(commonsIdea.id) !== 'off')
-            void runJudgment(this.db, commonsIdea, { type: 'agent_message', id: sent.message.id }, { idea: idea.slice(0, 1_500) }).catch(() => null);
+          if (!sent.duplicate) void this.judgeContribution(sent.message.id, message, idea).catch(() => null);
         } catch {
           if (controller.signal.aborted) break;
           result.failures += 1;
@@ -295,8 +293,12 @@ export class AgentSocialAutopilotService {
     }
   }
 
-  /** Shadow guardrail: what does this reply add to its thread? Fire-and-forget, never affects the round. */
-  private async judgeContribution(replyId: string, original: AgentMessage): Promise<void> {
+  /** Shadow guardrail: what does this reply add to its thread (and is its idea a Djimitflo change)? One jev call (R1). */
+  private async judgeContribution(replyId: string, original: AgentMessage, idea = ''): Promise<void> {
+    const contributionOn = judgmentMode(commonsContribution.id) !== 'off';
+    const ideaOn = Boolean(idea) && judgmentMode(commonsIdea.id) !== 'off';
+    if (!contributionOn && !ideaOn) return;
+    if (!contributionOn) { await runJudgment(this.db, commonsIdea, { type: 'agent_message', id: replyId }, { idea: idea.slice(0, 1_500) }); return; }
     const threadId = String(original.payload?.thread_id || '');
     const rows = this.db.prepare(`SELECT id, json_extract(payload_json, '$.params.answer') AS answer FROM agent_messages
       WHERE json_extract(payload_json, '$.thread_id') = ? AND json_extract(payload_json, '$.action') IN ('social.response', 'social.learning')
@@ -305,7 +307,8 @@ export class AgentSocialAutopilotService {
     if (!reply?.answer) return;
     const earlier = rows.filter((r) => r.id !== replyId && r.answer).slice(-6).map((r) => String(r.answer).slice(0, 400));
     const topic = String((original.payload?.params as Record<string, unknown> | undefined)?.topic || '').slice(0, 500);
-    await runJudgment(this.db, commonsContribution, { type: 'agent_message', id: replyId }, { topic, earlier, message: String(reply.answer).slice(0, 1_500) });
+    const state = { topic, earlier, message: String(reply.answer).slice(0, 1_500), ...(ideaOn ? { idea: idea.slice(0, 1_500) } : {}) };
+    await runJudgments(this.db, ideaOn ? [commonsContribution, commonsIdea] : [commonsContribution], { type: 'agent_message', id: replyId }, state);
   }
 
   private inFlight(agentIds: string[]): boolean {
