@@ -7,7 +7,8 @@ import { schema } from '../database/schema';
 import { runMigrations, runPreSchemaMigrations } from '../database/migrate';
 import { DreamTaskPlannerService } from '../services/dream-task-planner-service';
 import { AgentLureService } from '../services/agent-lure-service';
-import { ExternalEventIngestService } from '../services/external-event-ingest-service';
+import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
+import { ExternalEventIngestService, scoreAgentOutcomes } from '../services/external-event-ingest-service';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
 import { DreamCycleService } from '../services/dream-cycle-service';
 
@@ -97,7 +98,7 @@ describe('every external agent signal is recorded, not only allow-listed types',
 describe('N2: agent.outcome becomes a fleet skill outcome', () => {
   it('records agent:<agent>:<task_kind> once per event; malformed outcomes are stored but not scored', async () => {
     const events = [
-      { _id: '5-0', event_id: 'agent-outcome:1', event_type: 'agent.outcome', source: 'hermes-eve-v', agent: 'hermes-eve-v', task_kind: 'briefing', success: true, model: 'kimi-k3', tokens: 1200, occurred_at: '2026-09-27T10:00:00Z' },
+      { _id: '5-0', event_id: 'agent-outcome:1', event_type: 'agent.outcome', source: 'hermes-eve-v', agent: 'hermes-eve-v', task_kind: 'briefing', success: 'true', model: 'kimi-k3', tokens: '1200', occurred_at: '2026-09-27T10:00:00Z' }, // the bus returns strings
       { _id: '4-0', event_id: 'agent-outcome:2', event_type: 'agent.outcome', source: 'eve', agent: 'bad agent name!', task_kind: 'x', success: 'yes', occurred_at: '2026-09-27T10:00:00Z' },
     ];
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({ events }), { status: 200 })));
@@ -107,4 +108,13 @@ describe('N2: agent.outcome becomes a fleet skill outcome', () => {
     expect(db.prepare("SELECT skill_id, success, model, agent_id, domain FROM skill_outcomes").all())
       .toEqual([{ skill_id: 'agent:hermes-eve-v:briefing', success: 1, model: 'kimi-k3', agent_id: 'hermes-eve-v', domain: 'fleet' }]);
   });
+});
+
+it('N2: an agent.outcome stored before scoring worked is scored by the catch-up pass, once', () => {
+  new SkillEvolutionEngine(db);
+  db.prepare("INSERT INTO external_events (id, event_type, source, occurred_at, payload) VALUES ('agent-outcome:old', 'agent.outcome', 'eve-maintainer', '2026-09-28T08:15:00Z', ?)")
+    .run(JSON.stringify({ agent: 'eve-maintainer', task_kind: 'repo-maintenance', success: 'false' }));
+  expect(scoreAgentOutcomes(db)).toBe(1);
+  expect(scoreAgentOutcomes(db)).toBe(0);
+  expect(db.prepare("SELECT skill_id, success FROM skill_outcomes WHERE domain = 'fleet'").all()).toEqual([{ skill_id: 'agent:eve-maintainer:repo-maintenance', success: 0 }]);
 });
