@@ -12,6 +12,7 @@ import { AutonomousGoalGenerator } from '../services/autonomous-goal-generator';
 import { PanelCalibrationService } from '../services/panel-calibration-service';
 import { ImprovementFunnelService } from '../services/improvement-funnel-service';
 import { createError } from '../middleware/error-handler';
+import { requeueImprovement } from '../services/improvement-requeue';
 
 function boundedLimit(value: unknown, fallback = 100): number {
   if (value === undefined) return fallback;
@@ -67,6 +68,26 @@ export function createSelfImprovementRoutes(db: Database, auth?: AuthMiddleware)
       })();
       res.json(result);
     } catch (error) { next(mapImprovementError(error)); }
+  });
+
+  // D2: a new attempt linked to the original (which stays untouched). Body: { reason, approve_escalation? }
+  router.post('/proposals/:id/requeue', requirePermission('write:governance'), (req, res, next) => {
+    try {
+      const actor = req.user?.sub || req.user?.email;
+      if (!actor) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
+      const body = (req.body ?? {}) as { reason?: unknown; approve_escalation?: unknown };
+      const result = db.transaction(() => {
+        const requeued = requeueImprovement(db, req.params.id, { actor, reason: String(body.reason ?? ''), approveEscalation: body.approve_escalation === true });
+        return { ...requeued, goalCreated: requeued.created && goals.generateImprovement(requeued.id) === 1 };
+      })();
+      res.status(result.created ? 201 : 200).json(result);
+    } catch (error) {
+      const code = error instanceof Error ? error.message : '';
+      if (code === 'REQUEUE_NOT_FOUND') return next(createError(404, 'Proposal not found', code));
+      if (code === 'REQUEUE_ESCALATED_NEEDS_APPROVAL') return next(createError(409, 'A run of this proposal is escalated; pass approve_escalation: true to requeue anyway', code));
+      if (code.startsWith('REQUEUE_')) return next(createError(code === 'REQUEUE_BUDGET_EXHAUSTED' ? 429 : 400, code, code));
+      next(mapImprovementError(error));
+    }
   });
 
   router.post('/proposals/:id/reject', requirePermission('write:governance'), (req, res, next) => {
