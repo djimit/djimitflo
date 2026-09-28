@@ -1032,7 +1032,12 @@ export class LoopService {
     const outputDir = path.join(this.evidenceRoot, run.id, 'checks', makerLease.id);
     fs.mkdirSync(outputDir, { recursive: true });
 
-    const checks = scripts.map((scriptName) => {
+    // Each deploy mounts a fresh clone without node_modules, so the worktree manager has nothing to link: checks ran without
+    // vitest/eslint (exit 127) unless the maker happened to run `npm ci` itself (prod 2026-09-28: 3 test-gap runs regressed).
+    // Install like the gym does when the worktree has a lockfile but no dependencies.
+    const installFailure = this.installWorktreeDependencies(makerLease.worktree_path, outputDir, timeoutMs);
+
+    const checks: Array<Record<string, unknown>> = scripts.map((scriptName) => {
       const stdoutPath = path.join(outputDir, `${scriptName}.stdout.log`);
       const stderrPath = path.join(outputDir, `${scriptName}.stderr.log`);
       if (!packageScripts.has(scriptName)) {
@@ -1068,6 +1073,7 @@ export class LoopService {
       };
     });
 
+    if (installFailure) checks.unshift(installFailure);
     const failed = checks.some((check) => check.status === 'fail');
     this.updateWorkerLeaseStatus(makerLease.id, failed ? 'failed' : 'completed', {
       deterministic_checks: checks,
@@ -1849,6 +1855,20 @@ export class LoopService {
     'OPENCODE_OLLAMA_API_KEY', 'OPENCODE_OPENAI_API_KEY', 'OPENCODE_ANTHROPIC_API_KEY', 'OPENCODE_DEEPSEEK_API_KEY',
     'OPENCODE_GEMINI_API_KEY', 'OPENCODE_MOONSHOT_API_KEY', 'OPENCODE_NVIDIA_API_KEY', 'OPENCODE_OPENROUTER_API_KEY', 'OPENCODE_REQUESTY_API_KEY',
   ];
+
+  /** `npm ci` in a worktree that has a lockfile but no node_modules; returns a failed 'install' check, or null. */
+  private installWorktreeDependencies(worktree: string, outputDir: string, timeoutMs: number): Record<string, unknown> | null {
+    if (!fs.existsSync(path.join(worktree, 'package-lock.json')) || fs.existsSync(path.join(worktree, 'node_modules'))) return null;
+    const result = spawnSync('npm', ['ci', '--legacy-peer-deps', '--no-audit', '--no-fund'], {
+      cwd: worktree, encoding: 'utf8', timeout: Math.max(timeoutMs, 600_000), env: this.buildRuntimeEnv(), maxBuffer: 5 * 1024 * 1024,
+    });
+    if (result.status === 0) return null;
+    const stdoutPath = path.join(outputDir, 'install.stdout.log');
+    const stderrPath = path.join(outputDir, 'install.stderr.log');
+    fs.writeFileSync(stdoutPath, result.stdout || '', 'utf8');
+    fs.writeFileSync(stderrPath, result.stderr || result.error?.message || '', 'utf8');
+    return { name: 'install', status: 'fail', exit_status: result.status ?? null, timed_out: Boolean(result.error?.message.includes('ETIMEDOUT')), stdout_path: stdoutPath, stderr_path: stderrPath };
+  }
 
   public buildRuntimeEnv(): NodeJS.ProcessEnv {
     const env: NodeJS.ProcessEnv = {
