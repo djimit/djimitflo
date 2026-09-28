@@ -25,6 +25,7 @@ const NAV_SECTIONS: Array<{ title: string; items: Array<{ to: string; label: str
   ] },
   { title: 'Operations', items: [
     { to: '/swarm', label: 'Swarm', icon: Cpu },
+    { to: '/fleet', label: 'Fleet hosts', icon: Network },
     { to: '/fleet-cockpit', label: 'Fleet Cockpit', icon: Gauge },
     { to: '/swarm-resources', label: 'Swarm Resources', icon: Network },
     { to: '/swarm-mission-control', label: 'Swarm Mission Control', icon: BrainCircuit },

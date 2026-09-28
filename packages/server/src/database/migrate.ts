@@ -1281,6 +1281,17 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
       published_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_event_outbox_status ON event_outbox(status, created_at);
+    -- Fleet host agent (operator 2026-09-29): hosts pull; heartbeat + commands (diagnostics free, shell = root after a human
+    -- approval bound to the command's sha256, 15-minute window). The full record (who asked, who approved, output) is the audit.
+    CREATE TABLE IF NOT EXISTS fleet_hosts (
+      host TEXT PRIMARY KEY, last_seen TEXT NOT NULL, agent_version TEXT, info_json TEXT NOT NULL DEFAULT '{}'
+    );
+    CREATE TABLE IF NOT EXISTS fleet_commands (
+      id TEXT PRIMARY KEY, host TEXT NOT NULL, kind TEXT NOT NULL, command TEXT NOT NULL, command_sha256 TEXT NOT NULL,
+      status TEXT NOT NULL, requested_by TEXT NOT NULL, approved_by TEXT, approved_at TEXT, expires_at TEXT, decided_reason TEXT,
+      started_at TEXT, finished_at TEXT, exit_code INTEGER, output TEXT, created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_fleet_commands_host_status ON fleet_commands(host, status);
     -- D3: explicit Telegram user id -> Djimitflo user allowlist (the user's RBAC role decides what they may do). Filled by
     -- the operator only; chat or group membership grants nothing.
     CREATE TABLE IF NOT EXISTS telegram_identities (
