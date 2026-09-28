@@ -49,7 +49,17 @@ export async function kbContext(db: Database, subject: { type: string; id: strin
   if (!kbContextEnabled()) return null;
   try {
     ensure(db);
-    const rows = db.prepare('SELECT path, title, body, vector FROM kb_pages').all() as Array<{ path: string; title: string; body: string; vector: Buffer }>;
+    const all = db.prepare('SELECT path, title, body, sha, vector FROM kb_pages').all() as Array<{ path: string; title: string; body: string; sha: string; vector: Buffer }>;
+    // P1: a page whose body no longer matches the sha recorded at ingest (after its safety check) is not shown to a panel
+    const rows = all.filter((r) => {
+      if (createHash('sha256').update(r.body).digest('hex') === r.sha) return true;
+      try {
+        db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at)
+          VALUES (lower(hex(randomblob(16))), 'artifact_integrity', 'kb_page', ?, ?, 'enforce', 'no', 'body changed since ingest; not shown', ?)`)
+          .run(r.path, r.sha.slice(0, 16), new Date().toISOString());
+      } catch { /* recording must not break retrieval */ }
+      return false;
+    });
     if (!rows.length) return null;
     const q = await embed(text.slice(0, 4_000), fetchFn, 'query');
     if (!q) return null;
