@@ -63,6 +63,10 @@ export function Layout() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => setMobileNavOpen(false), [location.pathname]);
+  // S4: count page views locally (route path only, ids masked server-side) — which pages are used at all
+  useEffect(() => {
+    void api.request('/telemetry/pageview', { method: 'POST', body: JSON.stringify({ path: location.pathname }) }).catch(() => undefined);
+  }, [location.pathname]);
 
   const pending = usePendingApprovals();
   useEffect(() => {
