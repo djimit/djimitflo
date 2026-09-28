@@ -319,10 +319,11 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   router.get('/rsi/proposals', requirePermission('read:evidence'), route((req, res) => { res.json(new ServiceRefactoringAnalyzer(db).getProposals(req.query.status as string | undefined)); }));
   router.get('/rsi/specializations', requirePermission('read:evidence'), route((_req, res) => { res.json(new EmergentSpecializationService(db).getSpecializations()); }));
   router.get('/rsi/safety', requirePermission('read:evidence'), route((_req, res) => { res.json(new RsiSafetyGuard(db).getStatus()); }));
-  router.post('/rsi/safety/toggle', requirePermission('write:swarm_action'), route((req, res) => {
+  // a safety gate: admins only (manage:config), and the audit row names who switched it
+  router.post('/rsi/safety/toggle', requirePermission('manage:config'), route((req, res) => {
     if (typeof req.body?.enabled !== 'boolean') throw createError(400, 'enabled must be a boolean', 'VALIDATION_ERROR');
     const guard = new RsiSafetyGuard(db);
-    guard.setEnabled(req.body.enabled);
+    guard.setEnabled(req.body.enabled, String(req.user?.sub || req.user?.email || 'unknown'));
     res.json(guard.getStatus());
   }));
 

@@ -70,6 +70,7 @@ function mapMemoryCandidateError(error: unknown): unknown {
   if (message === 'MEMORY_PROMOTION_REVIEW_REQUIRED') return createError(409, 'review is required before memory promotion', 'MEMORY_PROMOTION_REVIEW_REQUIRED');
   if (message === 'MEMORY_PROMOTION_REJECTED_CANDIDATE') return createError(409, 'rejected memory candidate cannot be promoted', 'MEMORY_PROMOTION_REJECTED_CANDIDATE');
   if (message === 'MEMORY_PROMOTION_SINK_FAILED') return createError(502, 'memory promotion sink failed', 'MEMORY_PROMOTION_SINK_FAILED');
+  if (message === 'MEMORY_REJECT_ALREADY_PROMOTED') return createError(409, 'a promoted memory cannot be rejected here', 'MEMORY_REJECT_ALREADY_PROMOTED');
   return error;
 }
 
@@ -177,6 +178,14 @@ export function createGovernanceRoutes(db: Database, auth?: AuthMiddleware, wsSe
 
   router.post('/memory/candidates', requirePermission('write:claim'), (req, res, next) => {
     try { res.status(201).json(memoryCandidates.create(req.body || {})); } catch (error) { next(mapMemoryCandidateError(error)); }
+  });
+
+  router.post('/memory/candidates/:id/reject', requirePermission('approve:task'), (req, res, next) => {
+    try {
+      const actor = req.user?.sub || req.user?.email;
+      if (!actor) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
+      res.json(memoryCandidates.reject(req.params.id, actor, String(req.body?.reason ?? '')));
+    } catch (error) { next(mapMemoryCandidateError(error)); }
   });
 
   router.post('/memory/candidates/:id/promote', requirePermission('approve:task'), (req, res, next) => {

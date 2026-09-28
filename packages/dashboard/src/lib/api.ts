@@ -60,6 +60,7 @@ export type DecisionsInbox = {
     labelled: number; wrong: number; false_rejection_pct: number | null; enforce_threshold: string;
   };
   telegram: Array<{ telegram_user_id: string; user_id: string; email: string | null; role: string | null; added_by: string; created_at: string }>;
+  memory: Array<{ id: string; title: string; content: string; memory_type: string; status: string; created_at: string }>;
 };
 
 export type ImprovementFunnel = {
@@ -1640,10 +1641,16 @@ class ApiClient {
     return this.request(`/swarms/memory/candidates${query}`);
   }
 
+  async rejectMemoryCandidate(id: string, reason = ''): Promise<unknown> {
+    return this.request(`/swarms/memory/candidates/${encodeURIComponent(id)}/reject`, { method: 'POST', body: JSON.stringify({ reason }) });
+  }
+
   async promoteMemoryCandidate(id: string): Promise<{ candidate: MemoryCandidateRecord; sinks: Array<Record<string, unknown>> }> {
     return this.request(`/swarms/memory/candidates/${id}/promote`, {
       method: 'POST',
-      body: JSON.stringify({ sinks: ['okf'], approved_by: 'dashboard' }),
+      // a human clicking Promote is the human approval; the server records the signed-in user as approver
+      // (the old body sent approved_by: 'dashboard', which the route ignores → review_required candidates got 409)
+      body: JSON.stringify({ sinks: ['okf'], human_approved: true }),
     });
   }
 

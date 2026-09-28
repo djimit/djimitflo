@@ -9,6 +9,7 @@ const inbox = {
   requeue: [{ id: 'aaaaaaaa-1', title: 'Add unit tests for foo', status: 'regressed', updated_at: '2026-09-28T12:00:00Z', requeued_as: null }],
   prescreen: { items: [{ id: 'bbbbbbbb-1', title: 'Vague idea', status: 'needs_more_evidence', reason: 'names no concrete file', verdict_at: '2026-09-27T00:00:00Z', label: null }], labelled: 0, wrong: 0, false_rejection_pct: null, enforce_threshold: '>= 30 labelled and <= 5 % wrong (D5)' },
   telegram: [],
+  memory: [{ id: 'm1', title: 'djimit-unguarded-json-extract', content: 'Never JSON.parse model output without a guard', memory_type: 'engineering_rule', status: 'review_required', created_at: '' }],
 };
 beforeEach(() => { vi.restoreAllMocks(); vi.spyOn(api, 'getDecisionsInbox').mockResolvedValue(inbox as never); });
 const renderPage = () => render(<MemoryRouter><DecisionsInboxPage /></MemoryRouter>);
@@ -36,4 +37,14 @@ it('rejects a non-numeric Telegram id before calling the API', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Add' }));
   expect((await screen.findByRole('alert')).textContent).toContain('digits');
   expect(set).not.toHaveBeenCalled();
+});
+
+it('promotes or rejects a memory waiting for review', async () => {
+  const promote = vi.spyOn(api, 'promoteMemoryCandidate').mockResolvedValue({ candidate: {} as never, sinks: [] });
+  const reject = vi.spyOn(api, 'rejectMemoryCandidate').mockResolvedValue({});
+  renderPage();
+  fireEvent.click(await screen.findByRole('button', { name: 'Promote' }));
+  await waitFor(() => expect(promote).toHaveBeenCalledWith('m1'));
+  fireEvent.click(await screen.findByRole('button', { name: 'Reject' }));
+  await waitFor(() => expect(reject).toHaveBeenCalledWith('m1'));
 });
