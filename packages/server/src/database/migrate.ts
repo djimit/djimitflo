@@ -655,6 +655,8 @@ const nestedWorkerLeaseColumns: ColumnSpec[] = [
 // provenance graph; the store label is the type discriminator.
 const memoryCandidatesColumns: ColumnSpec[] = [
   { name: 'store', definition: "TEXT NOT NULL DEFAULT 'episodic' CHECK(store IN ('episodic', 'procedural', 'semantic', 'working'))" },
+  // P1 artifact trust: sha256 of the reviewed content, sealed on first use (prod already had the column ad hoc)
+  { name: 'content_hash', definition: 'TEXT' },
 ];
 
 
@@ -839,6 +841,7 @@ function createAgenticLoopTables(db: BetterSqlite3Database) {
       human_required INTEGER NOT NULL DEFAULT 0,
       sensitivity TEXT NOT NULL CHECK(sensitivity IN ('normal', 'security_sensitive', 'secret_detected')),
       metadata TEXT NOT NULL DEFAULT '{}',
+      content_hash TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );

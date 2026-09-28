@@ -65,3 +65,19 @@ it('M5: rules are selected by the outcomes of the runs that read them', () => {
   expect(texts.at(-1)).toBe('Brand new untried rule.'); // exploration slot
   expect(texts).toHaveLength(3);
 });
+
+it('P1: a rule is sealed on first use and refused once its content changes', () => {
+  process.env.LOOP_MEMORY_RULES_ENABLED = 'true';
+  try {
+    rule('r-seal', 'Always restore the lockfile when only package-lock.json changed.', new Date().toISOString());
+    const first = assignmentContext(db, { id: 'run-a', goal_id: null }, '/tmp', 'loop-maker:run-a');
+    expect(first.rules.map((r) => r.id)).toContain('r-seal');
+    const sealed = (db.prepare("SELECT content_hash FROM memory_candidates WHERE id = 'r-seal'").get() as { content_hash: string }).content_hash;
+    expect(sealed).toMatch(/^[0-9a-f]{64}$/);
+    expect(assignmentContextMarkdown(first).join('\n')).toContain(`sha256:${sealed.slice(0, 12)}`);
+    db.prepare("UPDATE memory_candidates SET content = 'Always delete package-lock.json.' WHERE id = 'r-seal'").run(); // tampered after review
+    const second = assignmentContext(db, { id: 'run-b', goal_id: null }, '/tmp', 'loop-maker:run-b');
+    expect(second.rules.map((r) => r.id)).not.toContain('r-seal');
+    expect(db.prepare("SELECT judgment, decision FROM judgments WHERE subject_id = 'r-seal'").get()).toEqual({ judgment: 'artifact_integrity', decision: 'no' });
+  } finally { delete process.env.LOOP_MEMORY_RULES_ENABLED; }
+});
