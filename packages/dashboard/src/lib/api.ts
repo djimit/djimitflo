@@ -46,6 +46,15 @@ export type OperatorCockpit = {
   deploys: Array<{ at: string; event: string; sha: string; detail: string }>;
 };
 
+export type DecisionsInbox = {
+  requeue: Array<{ id: string; title: string; status: string; updated_at: string; requeued_as: string | null }>;
+  prescreen: {
+    items: Array<{ id: string; title: string; status: string; reason: string; verdict_at: string; label: 'ok' | 'wrong' | null }>;
+    labelled: number; wrong: number; false_rejection_pct: number | null; enforce_threshold: string;
+  };
+  telegram: Array<{ telegram_user_id: string; user_id: string; email: string | null; role: string | null; added_by: string; created_at: string }>;
+};
+
 export type ImprovementFunnel = {
   generatedAt: string;
   proposals: { total: number; byStatus: Record<string, number> };
@@ -1029,6 +1038,7 @@ class ApiClient {
       throw new Error(error.message || error.error?.message || `API error: ${response.status}`);
     }
 
+    if (response.status === 204) return undefined as T;
     return response.json();
   }
 
@@ -1276,6 +1286,32 @@ class ApiClient {
   // S1 operator cockpit: scorecard, guardrails, stalls, gym species, remote workers, usage (read-only)
   async getOperatorCockpit(): Promise<OperatorCockpit> {
     return this.request('/health/cockpit');
+  }
+
+  // S2 decisions inbox: requeue (D2), pre-screen labels (D5), Telegram allowlist (D3)
+  async getDecisionsInbox(): Promise<DecisionsInbox> {
+    return this.request('/self-improve/decisions');
+  }
+
+  async requeueProposal(id: string, reason: string): Promise<{ id: string; created: boolean; goalCreated: boolean }> {
+    return this.request(`/self-improve/proposals/${encodeURIComponent(id)}/requeue`, { method: 'POST', body: JSON.stringify({ reason }) });
+  }
+
+  async labelPrescreen(id: string, label: 'ok' | 'wrong'): Promise<void> {
+    await this.request<void>(`/self-improve/proposals/${encodeURIComponent(id)}/prescreen-label`, { method: 'POST', body: JSON.stringify({ label }) });
+  }
+
+  async setTelegramIdentity(telegramId: string, userId: string, note?: string): Promise<void> {
+    await this.request<void>(`/self-improve/telegram-identities/${encodeURIComponent(telegramId)}`, { method: 'PUT', body: JSON.stringify({ user_id: userId, note }) });
+  }
+
+  async removeTelegramIdentity(telegramId: string): Promise<void> {
+    await this.request<void>(`/self-improve/telegram-identities/${encodeURIComponent(telegramId)}`, { method: 'DELETE' });
+  }
+
+  // S3 runtime configuration (read-only, manage:config)
+  async getRuntimeConfig(): Promise<{ entries: Array<{ name: string; value: string; masked: boolean; group: string }>; masked: number }> {
+    return this.request('/health/config');
   }
 
   // Improvement funnel + panel calibration (self-improvement chain, read-only)

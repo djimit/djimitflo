@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
-import { Activity, GraduationCap, ListTodo, Users, Shield, ShieldCheck, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit, Gauge, BookUser, Brain, Menu, X, MessageSquare, Sparkles } from 'lucide-react';
+import { Activity, GraduationCap, ListTodo, Users, Shield, ShieldCheck, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit, Gauge, BookUser, Brain, Menu, X, MessageSquare, Sparkles, SlidersHorizontal } from 'lucide-react';
 import { useAuthStore } from '../lib/auth-store';
 import { OrganizationSelector } from './OrganizationSelector';
 import { PendingApprovalsBanner } from './PendingApprovalsBanner';
@@ -34,6 +34,7 @@ const NAV_SECTIONS: Array<{ title: string; items: Array<{ to: string; label: str
   ] },
   { title: 'Improvement', items: [
     { to: '/cockpit', label: 'Operator cockpit', icon: Activity },
+    { to: '/decisions', label: 'Decisions inbox', icon: CheckSquare },
     { to: '/improvement-funnel', label: 'Improvement funnel', icon: Gauge },
     { to: '/self-driving', label: 'Self-Driving', icon: Activity },
     { to: '/cognitive', label: 'Cognitive', icon: Brain },
@@ -50,6 +51,7 @@ const NAV_SECTIONS: Array<{ title: string; items: Array<{ to: string; label: str
   ] },
   { title: 'System', items: [
     { to: '/observability', label: 'Observability', icon: BarChart3 },
+    { to: '/configuration', label: 'Configuration', icon: SlidersHorizontal },
     { to: '/self-healing', label: 'Health checks', icon: Activity },
     { to: '/usage', label: 'Usage', icon: DollarSign },
     { to: '/economy', label: 'Economy', icon: DollarSign },
