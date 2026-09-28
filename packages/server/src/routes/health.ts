@@ -10,6 +10,7 @@ import { MetricsService } from '../services/metrics-service';
 import { KnowledgeRuntimeService } from '../services/knowledge-runtime-service';
 import { getAppVersion } from '../utils/version';
 import { detectStalls } from '../services/stall-watch';
+import { operatorCockpit } from '../services/operator-cockpit';
 import { getDatabaseProvenance } from '../database/provenance';
 
 export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router {
@@ -122,6 +123,11 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   // plan M10: silent stalls per subsystem (read-only)
   router.get('/stalls', requireAuth, requirePermission('read:evidence'), (_req, res) => {
     res.json({ stalls: detectStalls(db) });
+  });
+
+  // plan S1: operator cockpit — scorecard, guardrails, stalls, gym species, remote workers, model/judgment usage (read-only)
+  router.get('/cockpit', requireAuth, requirePermission('read:evidence'), (_req, res) => {
+    res.json(operatorCockpit(db));
   });
 
   router.get('/metrics', requireAuth, requirePermission('read:evidence'), (_req, res) => {

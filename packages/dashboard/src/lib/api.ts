@@ -33,6 +33,18 @@ import type {
 import { API_BASE, authenticatedFetch } from './auth-store';
 export { API_BASE } from './auth-store';
 
+export type OperatorCockpit = {
+  at: string;
+  build: { commit: string | null; build_time: string | null };
+  scorecard: Record<string, number | null>;
+  guardrails: Array<{ name: string; ok: boolean; value: number | null; limit: string }>;
+  stalls: Array<{ subsystem: string; since: string | null; detail: string }>;
+  gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string }>;
+  remote_workers: Array<{ host: string; claims_24h: number; last_claim: string | null; interrupted_24h: number }>;
+  maker_usage_7d: Array<{ role: string; runtime: string; model: string | null; leases: number; tokens: number }>;
+  judgments_7d: Array<{ judgment: string; calls: number; errors: number; input_tokens: number }>;
+};
+
 export type ImprovementFunnel = {
   generatedAt: string;
   proposals: { total: number; byStatus: Record<string, number> };
@@ -1259,6 +1271,11 @@ class ApiClient {
   }
 
   // Observability
+
+  // S1 operator cockpit: scorecard, guardrails, stalls, gym species, remote workers, usage (read-only)
+  async getOperatorCockpit(): Promise<OperatorCockpit> {
+    return this.request('/health/cockpit');
+  }
 
   // Improvement funnel + panel calibration (self-improvement chain, read-only)
   async getImprovementFunnel(): Promise<ImprovementFunnel> {

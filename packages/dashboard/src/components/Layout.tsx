@@ -33,6 +33,7 @@ const NAV_SECTIONS: Array<{ title: string; items: Array<{ to: string; label: str
     { to: '/pipeline-builder', label: 'Pipeline drafts', icon: Workflow },
   ] },
   { title: 'Improvement', items: [
+    { to: '/cockpit', label: 'Operator cockpit', icon: Activity },
     { to: '/improvement-funnel', label: 'Improvement funnel', icon: Gauge },
     { to: '/self-driving', label: 'Self-Driving', icon: Activity },
     { to: '/cognitive', label: 'Cognitive', icon: Brain },
