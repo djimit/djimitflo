@@ -3,7 +3,10 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { OperatorCockpitPage } from './OperatorCockpitPage';
 import { api } from '../lib/api';
 
-beforeEach(() => vi.restoreAllMocks());
+beforeEach(() => { vi.restoreAllMocks(); vi.spyOn(api, 'getServiceMap').mockResolvedValue({ services: [
+  { names: ['event bus'], endpoint: 'http://100.86.47.122:8083', status: 'up', http: 404, ms: 12, error: null },
+  { names: ['LiteLLM'], endpoint: 'http://192.168.1.28:4000', status: 'down', http: null, ms: null, error: 'timeout' },
+] }); });
 
 it('shows breached guardrails, stalls and gym species from the cockpit endpoint', async () => {
   vi.spyOn(api, 'getOperatorCockpit').mockResolvedValue({
@@ -21,6 +24,7 @@ it('shows breached guardrails, stalls and gym species from the cockpit endpoint'
   expect(screen.getByText('89%')).toBeTruthy();
   expect(screen.getByText('No remote host has claimed work.')).toBeTruthy();
   expect(screen.getByText('verdict ok')).toBeTruthy();
+  expect(await screen.findByText('down (timeout)')).toBeTruthy();
 });
 
 it('shows the error when the endpoint fails', async () => {

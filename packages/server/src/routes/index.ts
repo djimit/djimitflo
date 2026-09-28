@@ -5,11 +5,6 @@
 import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import type { Database } from 'better-sqlite3';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
-import { hostname } from 'os';
-import { createError } from '../middleware/error-handler';
-const execFileAsync = promisify(execFile);
 import { createTaskRoutes } from './tasks';
 import { createAgentRoutes } from './agents';
 import { createCatalogRoutes } from './catalog';
@@ -183,15 +178,6 @@ export function createRoutes(
     res.json(openApiSpec);
   });
 
-  // D2: runtime URLs — use the host OS' native listener inventory.
-  router.get('/workstation/urls', requireAuth, async (_req: any, res: any, next: any) => {
-    try {
-      res.json({ host: hostname(), platform: process.platform, ports: await scanListeningPorts() });
-    } catch (error) {
-      next(createError(503, error instanceof Error ? error.message : 'Failed to scan listening ports', 'WORKSTATION_PORT_SCAN_FAILED'));
-    }
-  });
-
   // G22: operator intervention (pause/resume/inject/override)
   mounts.push(
     { prefix: '/intervention', middleware: [requireAuth], router: createInterventionRoutes(db, auth!) },
@@ -268,51 +254,4 @@ export function createRoutes(
   mountRoutes(router, mounts);
 
   return router;
-}
-
-export async function scanListeningPorts(): Promise<Array<{ address: string; port: number; pid: number | null; process: string; bind: string }>> {
-  try {
-    return await scanListeningPortsUnsafe();
-  } catch {
-    // Best-effort local introspection: a slim container image without
-    // netstat/ss, or an unsupported platform, should show an empty list
-    // rather than fail the whole page.
-    return [];
-  }
-}
-
-async function scanListeningPortsUnsafe(): Promise<Array<{ address: string; port: number; pid: number | null; process: string; bind: string }>> {
-  if (process.platform === 'darwin') {
-    // Native socket inventory avoids lsof's potentially uninterruptible device inspection.
-    const { stdout: output } = await execFileAsync('/usr/sbin/netstat', ['-anv', '-p', 'tcp'], { encoding: 'utf8', timeout: 5_000, killSignal: 'SIGKILL', signal: AbortSignal.timeout(5_000) });
-    return output.trim().split('\n').flatMap((line) => {
-      const match = line.match(/^tcp[46]\s+\d+\s+\d+\s+(.+)\.(\d+)\s+\S+\s+LISTEN\s+\d+\s+\d+\s+\d+\s+\d+\s+(.+?):(\d+)\s/);
-      if (!match) return [];
-      const address = match[1];
-      return [{
-        address,
-        port: Number(match[2]),
-        pid: Number(match[4]) || null,
-        process: match[3],
-        bind: address === '::1' || address.startsWith('127.') ? 'Localhost' : 'LAN',
-      }];
-    });
-  }
-  if (process.platform === 'linux') {
-    const { stdout: output } = await execFileAsync('ss', ['-H', '-tlnp'], { encoding: 'utf8', timeout: 5_000, killSignal: 'SIGKILL', signal: AbortSignal.timeout(5_000) });
-    return output.trim().split('\n').flatMap((line) => {
-      const match = line.match(/\s(\S+):(\d+)\s+/);
-      if (!match) return [];
-      const processName = line.match(/users:\(\("([^"]+)"/)?.[1] || 'unknown';
-      const address = match[1];
-      return [{
-        address,
-        port: Number(match[2]),
-        pid: Number(line.match(/pid=(\d+)/)?.[1]) || null,
-        process: processName,
-        bind: address === '[::1]' || address === '::1' || address.startsWith('127.') ? 'Localhost' : 'LAN',
-      }];
-    });
-  }
-  throw new Error(`Listening-port discovery is unsupported on ${process.platform}`);
 }
