@@ -11,6 +11,7 @@ import { KnowledgeRuntimeService } from '../services/knowledge-runtime-service';
 import { getAppVersion } from '../utils/version';
 import { detectStalls } from '../services/stall-watch';
 import { operatorCockpit } from '../services/operator-cockpit';
+import { runtimeConfigView } from '../services/runtime-config-view';
 import { getDatabaseProvenance } from '../database/provenance';
 
 export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router {
@@ -128,6 +129,11 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   // plan S1: operator cockpit — scorecard, guardrails, stalls, gym species, remote workers, model/judgment usage (read-only)
   router.get('/cockpit', requireAuth, requirePermission('read:evidence'), (_req, res) => {
     res.json(operatorCockpit(db));
+  });
+
+  // plan S3: the running configuration, read-only; secrets masked by name and value; admins only
+  router.get('/config', requireAuth, requirePermission('manage:config'), (_req, res) => {
+    res.json(runtimeConfigView());
   });
 
   router.get('/metrics', requireAuth, requirePermission('read:evidence'), (_req, res) => {

@@ -1308,6 +1308,11 @@ class ApiClient {
     await this.request<void>(`/self-improve/telegram-identities/${encodeURIComponent(telegramId)}`, { method: 'DELETE' });
   }
 
+  // S3 runtime configuration (read-only, manage:config)
+  async getRuntimeConfig(): Promise<{ entries: Array<{ name: string; value: string; masked: boolean; group: string }>; masked: number }> {
+    return this.request('/health/config');
+  }
+
   // Improvement funnel + panel calibration (self-improvement chain, read-only)
   async getImprovementFunnel(): Promise<ImprovementFunnel> {
     return this.request('/self-improve/funnel');

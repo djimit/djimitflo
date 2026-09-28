@@ -29,6 +29,7 @@ const ReviewPage = lazy(() => import('./pages/ReviewPage').then((module) => ({ d
 const AuditHubPage = lazy(() => import('./pages/AuditHubPage').then((module) => ({ default: module.AuditHubPage })));
 const OperatorCockpitPage = lazy(() => import('./pages/OperatorCockpitPage').then((module) => ({ default: module.OperatorCockpitPage })));
 const DecisionsInboxPage = lazy(() => import('./pages/DecisionsInboxPage').then((module) => ({ default: module.DecisionsInboxPage })));
+const ConfigurationPage = lazy(() => import('./pages/ConfigurationPage').then((module) => ({ default: module.ConfigurationPage })));
 const ImprovementFunnelPage = lazy(() => import('./pages/ImprovementFunnelPage').then((module) => ({ default: module.ImprovementFunnelPage })));
 const AuthorityTracePage = lazy(() => import('./pages/AuthorityTracePage').then((module) => ({ default: module.AuthorityTracePage })));
 const RepositoriesPage = lazy(() => import('./pages/RepositoriesPage').then((module) => ({ default: module.RepositoriesPage })));
@@ -111,6 +112,7 @@ export function App() {
           <Route path="audit/logs" element={<Navigate to="/audit?tab=logs" replace />} />
           <Route path="cockpit" element={<OperatorCockpitPage />} />
           <Route path="decisions" element={<DecisionsInboxPage />} />
+          <Route path="configuration" element={<ConfigurationPage />} />
           <Route path="improvement-funnel" element={<ImprovementFunnelPage />} />
           <Route path="authority" element={<AuthorityTracePage />} />
           <Route path="usage" element={<UsagePage />} />
