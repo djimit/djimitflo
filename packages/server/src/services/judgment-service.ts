@@ -48,3 +48,41 @@ export async function runJudgment(db: Database, def: JudgmentDef, subject: { typ
     return null;
   }
 }
+
+/**
+ * R1 (parallel questions cookbook: one request, many typed questions): several judgments about the same subject and state in
+ * ONE System One call. Question keys are namespaced `<judgment>__<key>`; each judgment is still decided and recorded on its own
+ * row (tokens split evenly), so audits and calibration are unchanged. Judgments in mode 'off' are left out.
+ */
+export async function runJudgments(db: Database, defs: JudgmentDef[], subject: { type: string; id: string }, state: unknown, client = new TypeSafeClient()): Promise<Array<JudgmentRecord | null>> {
+  const active = defs.filter((d) => judgmentMode(d.id) !== 'off');
+  if (active.length <= 1 || !typesafeConfigured()) return Promise.all(defs.map((d) => (active.includes(d) ? runJudgment(db, d, subject, state, client) : Promise.resolve(null))));
+  const started = Date.now();
+  const stateHash = createHash('sha256').update(JSON.stringify(state)).digest('hex').slice(0, 16);
+  const questions: Record<string, TsQuestion> = {};
+  for (const d of active) for (const [k, q] of Object.entries(d.questions)) questions[`${d.id}__${k}`] = q;
+  const insertOk = db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, input_tokens, output_tokens, latency_ms, model, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  try {
+    const response = await client.systemOne(state, questions);
+    const share = (n: number | undefined) => Math.round((n ?? 0) / active.length);
+    const out = new Map<JudgmentDef, JudgmentRecord>();
+    for (const d of active) {
+      const prefix = `${d.id}__`;
+      const answers = Object.fromEntries(Object.entries(response.answers).filter(([k]) => k.startsWith(prefix)).map(([k, a]) => [k.slice(prefix.length), a]));
+      const { decision, reason } = d.decide(answers);
+      const id = randomUUID(); const mode = judgmentMode(d.id);
+      insertOk.run(id, d.id, subject.type, subject.id, stateHash, mode, decision, reason, JSON.stringify(answers), share(response.usage?.input_tokens), share(response.usage?.output_tokens), Date.now() - started, response.model, new Date().toISOString());
+      out.set(d, { id, decision, reason, answers, mode });
+    }
+    return defs.map((d) => out.get(d) ?? null);
+  } catch (err) {
+    for (const d of active) {
+      try {
+        db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, error, latency_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, 'error', ?, ?, ?)`)
+          .run(randomUUID(), d.id, subject.type, subject.id, stateHash, judgmentMode(d.id), (err instanceof Error ? err.message : String(err)).slice(0, 200), Date.now() - started, new Date().toISOString());
+      } catch { /* recording must never break the caller */ }
+    }
+    return defs.map(() => null);
+  }
+}
