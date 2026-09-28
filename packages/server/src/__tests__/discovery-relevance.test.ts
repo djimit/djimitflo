@@ -53,3 +53,23 @@ it('R3: a discovery the keyword gate rejects is judged too (shadow, capped per d
   await new Promise((r) => setTimeout(r, 20));
   expect((db.prepare("SELECT COUNT(*) n FROM judgments WHERE judgment = 'discovery_relevance'").get() as { n: number }).n).toBe(1); // cap
 });
+
+it('FE2: with FRONTIER_UNITS_REQUIRE_RELEVANCE a unit is created only for a relevant discovery, and a ref is judged once', async () => {
+  vi.stubEnv('TYPESAFE_API_KEY', 'k');
+  vi.stubEnv('TYPESAFE_DISCOVERY_RELEVANCE_MODE', 'shadow');
+  vi.stubEnv('FRONTIER_UNITS_REQUIRE_RELEVANCE', 'true');
+  const verdicts = [ans('lane_technique', 0.9, 0.7), ans('adjacent', 0.9, 0.2)];
+  const fetchMock = vi.fn().mockImplementation(async () => ({ ok: true, status: 200, json: async () => ({ model: 'jev-test', answers: verdicts.shift() }) }));
+  vi.stubGlobal('fetch', fetchMock);
+  const svc = new ExpertSourceUnitsService(db);
+  const units = () => db.prepare("SELECT COUNT(*) n FROM expert_identities WHERE kind = 'paper'").get() as { n: number };
+  expect(svc.ingestDiscovery({ event_type: 'discovery.paper', ref: 'arxiv:2609.10001', title: 'Mutation-guided test generation for coding agents', agent: 'djimitflo-scout' })).toBe('pending');
+  await vi.waitFor(() => expect(units().n).toBe(1));
+  expect(db.prepare("SELECT subject_type FROM judgments WHERE judgment = 'discovery_relevance'").get()).toEqual({ subject_type: 'expert_unit' });
+  expect(svc.ingestDiscovery({ event_type: 'discovery.paper', ref: 'arxiv:2609.10002', title: 'Scalable oversight for coding agents in general', agent: 'x' })).toBe('pending');
+  await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  await new Promise((r) => setTimeout(r, 20));
+  expect(units().n).toBe(1); // adjacent → no unit
+  expect(svc.ingestDiscovery({ event_type: 'discovery.paper', ref: 'arxiv:2609.10002', title: 'Scalable oversight for coding agents in general', agent: 'x' })).toBe('known');
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});
