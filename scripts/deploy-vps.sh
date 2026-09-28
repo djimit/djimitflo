@@ -58,10 +58,13 @@ prune_old_builds() {
     | while read -r img; do echo "$(docker image inspect -f '{{.Created}}' "$img") $img"; done | sort -r | tail -n +5 | cut -d' ' -f2- \
     | while read -r img; do docker rmi "$img" >/dev/null 2>&1 || true; done || true
   { ls -dt runtime-source-* 2>/dev/null | grep -Ev "runtime-source-($SHORT|$PREV_SHORT)$" | tail -n +5 | xargs -r rm -rf; } || true
-  docker image prune -f >/dev/null 2>&1 || true
+  # The legacy builder's builder-stage layers are untagged ('dangling'): pruning them after every healthy deploy made the
+  # next build cold (builder apt-get 11.5 min on a slow mirror) and every first attempt hit the build timeout on 2026-09-28.
+  # Keep a week of build cache; a low-disk prune ('all') still clears it.
+  if [ "${1:-}" = all ]; then docker image prune -f >/dev/null 2>&1 || true; else docker image prune -f --filter until=168h >/dev/null 2>&1 || true; fi
 }
 AVAIL_KB="$(df --output=avail -k "$ROOT" | tail -n 1 | tr -d ' ')"
-if [ "$AVAIL_KB" -lt 8000000 ]; then prune_old_builds; AVAIL_KB="$(df --output=avail -k "$ROOT" | tail -n 1 | tr -d ' ')"; fi
+if [ "$AVAIL_KB" -lt 8000000 ]; then prune_old_builds all; AVAIL_KB="$(df --output=avail -k "$ROOT" | tail -n 1 | tr -d ' ')"; fi
 [ "$AVAIL_KB" -ge 6000000 ] || { echo "not enough free disk to build (${AVAIL_KB} KB free); free space first" >&2; exit 1; }
 if [ ! -d "runtime-source-$SHORT" ]; then git clone -q "$REPO" "runtime-source-$SHORT"; fi
 (cd "runtime-source-$SHORT" && git checkout -q "$SHA" && git log -1 --oneline)
