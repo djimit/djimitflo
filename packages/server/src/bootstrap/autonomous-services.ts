@@ -32,6 +32,7 @@ import { NeedsGroundingTriageService, needsGroundingTriageEnabled } from '../ser
 import { DiskGuardService, diskGuardEnabled } from '../services/disk-guard-service';
 import { QueueHygieneService, queueHygieneEnabled } from '../services/queue-hygiene-service';
 import { startStallWatch } from '../services/stall-watch';
+import { startInterestFeedback } from '../services/interest-feedback';
 import { KnowledgeMaintenanceService, maintenanceEnabled } from '../services/knowledge-maintenance-service';
 
 export function initAutonomousServices(db: any, recoverySvc: LoopService): void {
@@ -176,6 +177,14 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     }
   } catch (error) {
     console.warn('⚠️  Disk guard failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // N4: daily interest profile for the fleet scouts (djimitflo.feedback.interests). FEEDBACK_INTERESTS_ENABLED=true.
+  try {
+    const stopFeedback = startInterestFeedback(db);
+    if (stopFeedback) { lifecycleManager.register({ serviceName: 'InterestFeedback', stop: stopFeedback }); console.log('📣 Interest feedback on (daily).'); }
+  } catch (error) {
+    console.warn('⚠️  Interest feedback failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // Stall watch (M10): hourly log line per silent stall. STALL_WATCH_ENABLED=true (default off).
