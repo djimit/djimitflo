@@ -50,12 +50,14 @@ PREV_FULL="$(sed -n 's/^ *DJIMITFLO_COMMIT_SHA: \([0-9a-f]*\).*/\1/p' compose.ym
 [ "$PREV_SHORT" != "$SHORT" ] || { echo "already deployed: $SHORT" >&2; exit 1; }
 # Old builds (3 GB image + a clone each) filled the disk on 2026-09-21: SQLite hit disk I/O errors and the rollback target
 # crash-looped too. Keep the newest 4 images/clones (plus the running and previous ones) and refuse to build without headroom.
+# Nothing to prune is normal: under `set -euo pipefail` an empty grep -v returned 1 and turned every healthy deploy into
+# exit 1 after the container was already up (prod 2026-09-28: auto-deploy never logged 'done', P2 never got its baseline).
 prune_old_builds() {
   local keep_re="djimitflo:main-($SHORT|$PREV_SHORT)$"
   docker images --format '{{.Repository}}:{{.Tag}}' | grep '^djimitflo:main-' | grep -Ev "$keep_re" \
     | while read -r img; do echo "$(docker image inspect -f '{{.Created}}' "$img") $img"; done | sort -r | tail -n +5 | cut -d' ' -f2- \
-    | while read -r img; do docker rmi "$img" >/dev/null 2>&1 || true; done
-  ls -dt runtime-source-* 2>/dev/null | grep -Ev "runtime-source-($SHORT|$PREV_SHORT)$" | tail -n +5 | xargs -r rm -rf
+    | while read -r img; do docker rmi "$img" >/dev/null 2>&1 || true; done || true
+  { ls -dt runtime-source-* 2>/dev/null | grep -Ev "runtime-source-($SHORT|$PREV_SHORT)$" | tail -n +5 | xargs -r rm -rf; } || true
   docker image prune -f >/dev/null 2>&1 || true
 }
 AVAIL_KB="$(df --output=avail -k "$ROOT" | tail -n 1 | tr -d ' ')"
