@@ -92,8 +92,9 @@ export async function runJudgments(db: Database, defs: JudgmentDef[], subject: {
 /**
  * T1 (plan Phase T): shadow A/B against the local, Jev-compatible System One on the workstation (scripts/local-systemone.mjs).
  * A sample (TYPESAFE_LOCAL_SHADOW_SAMPLE, default 0.2) of successful jev judgments is re-asked locally with the same state
- * and questions and recorded as `<judgment>@local` (mode 'shadow'), so the two can be compared per subject without the
- * local answers ever feeding calibration, stall watch or any decision. Fire-and-forget; off unless TYPESAFE_LOCAL_SHADOW_URL.
+ * and questions and recorded as `<judgment>@local` (mode 'shadow'), so the two can be compared per subject. No decision reads
+ * these rows (every consumer matches exact judgment names) and stall watch skips them; the funnel's agreement table and the
+ * cockpit list them as their own judgment. Fire-and-forget; off unless TYPESAFE_LOCAL_SHADOW_URL.
  */
 export async function localShadow(db: Database, def: JudgmentDef, subject: { type: string; id: string }, stateHash: string, state: unknown,
   questions: Record<string, TsQuestion>, facts?: Record<string, unknown>, env: NodeJS.ProcessEnv = process.env, fetchFn: typeof fetch = fetch, random = Math.random): Promise<void> {

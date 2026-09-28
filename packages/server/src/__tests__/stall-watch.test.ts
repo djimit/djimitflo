@@ -38,3 +38,9 @@ it('names a benched species even while other species keep producing outcomes', (
   run('o1', 'opencode@kimi-k3', 'tests green, source only', 1);
   expect(subsystems({ EVOLUTION_GYM_ENABLED: 'true' })).toEqual(['gym:atomic@llama-router']);
 });
+
+it('T1: errors of the local shadow (<judgment>@local) are not production stalls', () => {
+  const ins = db.prepare("INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, created_at) VALUES (?, 'discovery_relevance@local', 's', 'x', 'h', 'shadow', 'error', ?)");
+  for (let i = 0; i < 12; i++) ins.run(`l${i}`, at(1));
+  expect(subsystems().filter((s) => s.startsWith('judgment:'))).toEqual([]);
+});
