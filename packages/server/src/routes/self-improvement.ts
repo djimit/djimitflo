@@ -13,6 +13,7 @@ import { PanelCalibrationService } from '../services/panel-calibration-service';
 import { ImprovementFunnelService } from '../services/improvement-funnel-service';
 import { createError } from '../middleware/error-handler';
 import { requeueImprovement } from '../services/improvement-requeue';
+import { decisionsInbox, labelPrescreen, setTelegramIdentity } from '../services/decisions-inbox';
 
 function boundedLimit(value: unknown, fallback = 100): number {
   if (value === undefined) return fallback;
@@ -87,6 +88,45 @@ export function createSelfImprovementRoutes(db: Database, auth?: AuthMiddleware)
       if (code === 'REQUEUE_ESCALATED_NEEDS_APPROVAL') return next(createError(409, 'A run of this proposal is escalated; pass approve_escalation: true to requeue anyway', code));
       if (code.startsWith('REQUEUE_')) return next(createError(code === 'REQUEUE_BUDGET_EXHAUSTED' ? 429 : 400, code, code));
       next(mapImprovementError(error));
+    }
+  });
+
+  // S2: the operator's open decisions (requeue candidates, D5 pre-screen labelling, Telegram allowlist)
+  router.get('/decisions', requirePermission('read:evidence'), (_req, res) => { res.json(decisionsInbox(db)); });
+  router.post('/proposals/:id/prescreen-label', requirePermission('write:governance'), (req, res, next) => {
+    try {
+      const actor = req.user?.sub || req.user?.email;
+      if (!actor) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
+      const label = (req.body ?? {}).label;
+      if (label !== 'ok' && label !== 'wrong') throw createError(400, "label must be 'ok' or 'wrong'", 'VALIDATION_ERROR');
+      labelPrescreen(db, req.params.id, label, actor);
+      res.status(204).end();
+    } catch (error) {
+      next(error instanceof Error && error.message === 'LABEL_NO_PRESCREEN_REJECTION' ? createError(404, 'No pre-screen rejection for this proposal', error.message) : error);
+    }
+  });
+  router.put('/telegram-identities/:telegramId', requirePermission('manage:config'), (req, res, next) => {
+    try {
+      const actor = req.user?.sub || req.user?.email;
+      if (!actor) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
+      const body = (req.body ?? {}) as { user_id?: unknown; note?: unknown };
+      if (typeof body.user_id !== 'string' || !body.user_id.trim()) throw createError(400, 'user_id required', 'VALIDATION_ERROR');
+      setTelegramIdentity(db, req.params.telegramId, body.user_id.trim(), actor, typeof body.note === 'string' ? body.note : undefined);
+      res.status(204).end();
+    } catch (error) {
+      const code = error instanceof Error ? error.message : '';
+      next(code.startsWith('TELEGRAM_') ? createError(code === 'TELEGRAM_USER_NOT_FOUND' ? 404 : 400, code, code) : error);
+    }
+  });
+  router.delete('/telegram-identities/:telegramId', requirePermission('manage:config'), (req, res, next) => {
+    try {
+      const actor = req.user?.sub || req.user?.email;
+      if (!actor) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
+      setTelegramIdentity(db, req.params.telegramId, null, actor);
+      res.status(204).end();
+    } catch (error) {
+      const code = error instanceof Error ? error.message : '';
+      next(code.startsWith('TELEGRAM_') ? createError(400, code, code) : error);
     }
   });
 
