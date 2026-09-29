@@ -12,20 +12,23 @@ function parseMetadata(value: unknown): Record<string, unknown> {
 export function seedMCPServers(db: Database) {
   const now = new Date().toISOString();
 
-  // Production runs on a VPS with no direct LAN route to the workstation's 192.168.1.28 address — only its Tailscale IP
-  // (100.81.133.48) is reachable from there (verified 2026-09-12). Port 8000 (research-agent/uams) used to be firewalled
-  // even over Tailscale; on 2026-09-24 /health answered 200 over Tailscale, so the known_unreachable marker is cleared
-  // explicitly (metadata is merged with the stored row, so omitting the key would keep the stale `true`).
-  const reachableAgain = { known_unreachable: false, known_unreachable_reason: null };
+  // Operator rule 2026-09-29: the control plane never calls the workstation (it only pulls; OUTBOUND_DENY_HOSTS enforces it).
+  // Sidecars that also run on agenticservices (100.77.58.72) point there — Knowledge MCP 2.0-hybrid and UAMS verified
+  // identical, Qdrant there holds a superset of every collection. Workstation-only sidecars are marked known_unreachable
+  // with the reason, so the page shows 'stopped' instead of repainting a refusal as an error. (Metadata is merged with the
+  // stored row, so the marker is set/cleared explicitly.)
+  const AGENTIC = 'http://100.77.58.72';
+  const reachable = { known_unreachable: false, known_unreachable_reason: null };
+  const workstationOnly = { known_unreachable: true, known_unreachable_reason: 'Workstation-local service: the control plane never calls the workstation (operator rule 2026-09-29). Use it from the workstation\'s own agents, or run it on agenticservices.' };
   const servers = [
-    { name: 'research-agent', url: 'http://100.81.133.48:8000', description: 'Research pipeline access — deep research, graph, history, status, steer', metadata: { probe_path: '/health', ...reachableAgain } },
-    { name: 'deerflow', url: 'http://100.81.133.48:2026', description: 'DeerFlow consulting API — research sessions, status', metadata: { probe_path: '/health', openapi_path: '/openapi.json' } },
+    { name: 'research-agent', url: `${AGENTIC}:8000`, description: 'Research pipeline access — deep research, graph, history, status, steer', metadata: { probe_path: '/health', ...reachable } },
+    { name: 'deerflow', url: 'http://100.81.133.48:2026', description: 'DeerFlow consulting API — research sessions, status', metadata: { probe_path: '/health', openapi_path: '/openapi.json', ...workstationOnly } },
     { name: 'context7', url: 'https://context7.com', description: 'Library documentation — resolve library IDs, query docs', metadata: { api_url: 'https://context7.com/api' } },
-    { name: 'qdrant', url: 'http://100.81.133.48:6333', description: 'Semantic search — collections and vector search', metadata: { probe_path: '/healthz' } },
-    { name: 'searxng', url: 'http://100.81.133.48:8080', description: 'Private web search — no tracking, no API keys' },
-    { name: 'litellm-mgmt', url: 'http://100.81.133.48:4000', description: 'LiteLLM management — model health, spend, status', metadata: { probe_path: '/health/readiness' } },
-    { name: 'uams-read', url: 'http://100.81.133.48:8000/memory', description: 'Agent memory search — read-only', metadata: { probe_url: 'http://100.81.133.48:8000/health', ...reachableAgain } },
-    { name: 'knowledge-mcp-bridge', url: 'http://100.81.133.48:8007', description: 'Knowledge MCP bridge — domain context, recent, search', metadata: { probe_path: '/openapi.json', openapi_path: '/openapi.json' } },
+    { name: 'qdrant', url: `${AGENTIC}:6333`, description: 'Semantic search — collections and vector search', metadata: { probe_path: '/healthz', ...reachable } },
+    { name: 'searxng', url: 'http://100.81.133.48:8080', description: 'Private web search — no tracking, no API keys', metadata: { ...workstationOnly } },
+    { name: 'litellm-mgmt', url: 'http://100.81.133.48:4000', description: 'LiteLLM management — model health, spend, status', metadata: { probe_path: '/health/readiness', ...workstationOnly } },
+    { name: 'uams-read', url: `${AGENTIC}:8000/memory`, description: 'Agent memory search — read-only', metadata: { probe_url: `${AGENTIC}:8000/health`, ...reachable } },
+    { name: 'knowledge-mcp-bridge', url: `${AGENTIC}:8007`, description: 'Knowledge MCP bridge — domain context, recent, search', metadata: { probe_path: '/openapi.json', openapi_path: '/openapi.json', ...reachable } },
   ];
 
   const upsert = db.prepare(`

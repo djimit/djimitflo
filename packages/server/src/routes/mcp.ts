@@ -110,8 +110,12 @@ export function createMCPRoutes(db: Database, auth?: AuthMiddleware): Router {
               if (typeof synced === 'string') db.prepare('UPDATE mcp_servers SET error_message = ? WHERE id = ?').run(`tool catalog not synced: ${synced}`, server.id);
             }
           } catch (error) {
+            // the outbound guard refused the host (e.g. a sidecar registered on the workstation): policy, not an outage
+            const denied = (error as { cause?: { code?: string } })?.cause?.code === 'OUTBOUND_DENIED';
             db.prepare('UPDATE mcp_servers SET status = ?, last_ping_at = ?, error_message = ?, updated_at = ? WHERE id = ?')
-              .run('error', now, error instanceof Error ? error.message : 'Health probe failed', now, server.id);
+              .run(denied ? 'stopped' : 'error', now, denied
+                ? 'Blocked by policy: the control plane never calls this host (OUTBOUND_DENY_HOSTS). Point it at a reachable host or use it from that host.'
+                : error instanceof Error ? error.message : 'Health probe failed', now, server.id);
           }
         }));
         servers = db.prepare('SELECT * FROM mcp_servers ORDER BY created_at DESC').all() as any[];
