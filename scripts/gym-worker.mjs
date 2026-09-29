@@ -45,8 +45,23 @@ export function verdict(task, changed, green, makerOk = true) {
 function docker(args, input, timeoutMs) {
   return spawnSync('docker', args, { input, encoding: 'utf8', timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 });
 }
+// Runner containers carry the host label and a name: a timeout kills only the docker CLI, so the container kept running
+// and kept calling the model server (prod 2026-09-30: five orphans, the oldest 17 h, slowed both workers into more timeouts).
+export const hostLabel = (host = env.GYM_HOST || 'workstation') => `djimitflo-gym-host=${host}`;
+let runnerSeq = 0;
+export function runnerArgs(wt, cmd, extra = [], name = `gym-${(env.GYM_HOST || 'workstation').replace(/[^A-Za-z0-9_.-]/g, '_')}-${process.pid}-${runnerSeq++}`) {
+  return ['run', '--rm', '-i', '--name', name, '--label', hostLabel(), '--network', 'host', '-v', `${wt}:/w`, '-v', 'djimitflo-gym-npm:/root/.npm', '-w', '/w', ...extra, IMAGE, 'sh', '-c', cmd];
+}
 function inRunner(wt, cmd, { input, timeoutMs = 900_000, extra = [] } = {}) {
-  return docker(['run', '--rm', '-i', '--network', 'host', '-v', `${wt}:/w`, '-v', 'djimitflo-gym-npm:/root/.npm', '-w', '/w', ...extra, IMAGE, 'sh', '-c', cmd], input, timeoutMs);
+  const args = runnerArgs(wt, cmd, extra);
+  const result = docker(args, input, timeoutMs);
+  if (result.error || result.signal) docker(['rm', '-f', args[args.indexOf('--name') + 1]], undefined, 60_000);
+  return result;
+}
+/** One attempt per host at a time (systemd oneshot): any runner still carrying this host's label at start is an orphan. */
+function sweepOrphans() {
+  const ids = docker(['ps', '-q', '--filter', `label=${hostLabel()}`], undefined, 30_000).stdout?.trim().split(/\s+/).filter(Boolean) ?? [];
+  if (ids.length) { docker(['rm', '-f', ...ids], undefined, 60_000); console.log(`removed ${ids.length} orphaned runner container(s)`); }
 }
 const oracle = (wt, task) => inRunner(wt, `cd packages/server && npx vitest run ${task.tests.map((t) => t.replace(/^packages\/server\//, '')).map((t) => `'${t}'`).join(' ')}`, { timeoutMs: 300_000 }).status === 0;
 
@@ -100,6 +115,7 @@ async function runMakerJob(job) {
 
 async function main() {
   const offered = (env.GYM_SPECIES || 'atomic@llama-router').split(',').map((s) => s.trim()).filter(Boolean);
+  sweepOrphans();
   // real work first: a queued maker job beats a gym replay
   const maker = await api('/gym-worker/maker/claim', { species: offered }).catch(() => ({ job: null }));
   if (maker.job) return runMakerJob(maker.job);
@@ -153,6 +169,10 @@ function selfcheck() {
   assert(verdict(task, ['packages/server/src/a.ts', 'packages/server/src/__tests__/a.test.ts'], true).status === 'failure', 'out of scope');
   assert(verdict(task, ['packages/server/src/a.ts'], true).status === 'success', 'success');
   assert(verdict(task, ['packages/server/src/a.ts'], false).reason === 'tests still red', 'red');
+  const args = runnerArgs('/tmp/w', 'true', [], 'gym-x-1-0');
+  assert(args.includes('--name') && args[args.indexOf('--name') + 1] === 'gym-x-1-0', 'runner is named (timeout can remove it)');
+  assert(args[args.indexOf('--label') + 1] === hostLabel(), 'runner carries the host label (orphan sweep)');
+  assert(hostLabel('workstation-2060') === 'djimitflo-gym-host=workstation-2060', 'label per host: workers never sweep each other');
   console.log('selfcheck ok');
 }
 
