@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ExpertSummary, ExpertSwarmRun } from '../lib/api';
-import { groupDisagreements, NEXT_STATES, STATE_TONE, stateCounts, summarizeRun, tierLabel } from './FrontierExpertsPage';
+import { funnelCounts, groupDisagreements, NEXT_STATES, STATE_TONE, stateCounts, summarizeRun, tierLabel } from './FrontierExpertsPage';
 
 const expert = (id: string, state: ExpertSummary['lifecycle_state']): ExpertSummary => ({ id, canonical_name: id, lifecycle_state: state, identity_confidence: 0.9, version: 1, updated_at: '', capabilities: [], provenance_json: '{}' });
 
@@ -8,13 +8,13 @@ describe('frontier experts page helpers (§36: tentative never shown as verified
   it('marks only ACTIVE as verified and every other state as tentative, blocked or closed', () => {
     const verified = Object.entries(STATE_TONE).filter(([, tone]) => tone.tone === 'verified').map(([state]) => state);
     expect(verified).toEqual(['ACTIVE']);
-    expect(STATE_TONE.DISCOVERED.label).toContain('handtekening');
+    expect(STATE_TONE.DISCOVERED.label).toContain('signature');
     // Buttons never offer a jump into ACTIVE from a pre-governance state; the server guards the rest.
     expect(NEXT_STATES.DISCOVERED).toEqual(['REJECTED']);
     expect(NEXT_STATES.CAPABILITY_INFERRED).not.toContain('ACTIVE');
     expect(NEXT_STATES.APPROVED).toContain('ACTIVE');
-    expect(tierLabel(1)).toBe('T1 primair');
-    expect(tierLabel(4)).toBe('T4 handtekening');
+    expect(tierLabel(1)).toBe('T1 primary');
+    expect(tierLabel(4)).toBe('T4 signature');
   });
 
   it('counts states in lifecycle order and summarises runs with contradictions, attacks and abstentions visible', () => {
@@ -25,5 +25,11 @@ describe('frontier experts page helpers (§36: tentative never shown as verified
     expect(summarizeRun({ ...run, council: { ...run.council!, abstained: true, reason: 'FRONTIER_EXPERTS_RUNTIME_NOT_CONFIGURED', perspectives: [] } }).abstained).toBe('FRONTIER_EXPERTS_RUNTIME_NOT_CONFIGURED');
     expect(summarizeRun({ ...run, council: undefined }).perspectives).toBe(0);
     expect(groupDisagreements([{ proposition: 'p', expert_a: 'a', expert_b: 'b', resolving_observation: 'o' }, { proposition: 'p', expert_a: 'c', expert_b: 'b', resolving_observation: 'o2' }, { proposition: 'q', expert_a: 'a', expert_b: 'd', resolving_observation: 'o3' }])).toEqual([{ proposition: 'p', pairs: 2, resolving_observation: 'o' }, { proposition: 'q', pairs: 1, resolving_observation: 'o3' }]);
+  });
+
+  it('funnel counts the whole registry per kind, not the capped list', () => {
+    const funnel = [{ kind: 'person', state: 'ACTIVE' as const, count: 8 }, { kind: 'paper', state: 'CAPABILITY_INFERRED' as const, count: 900 }, { kind: 'person', state: 'CAPABILITY_INFERRED' as const, count: 311 }];
+    expect(funnelCounts(funnel, '')).toEqual([{ state: 'CAPABILITY_INFERRED', count: 1211 }, { state: 'ACTIVE', count: 8 }]);
+    expect(funnelCounts(funnel, 'paper')).toEqual([{ state: 'CAPABILITY_INFERRED', count: 900 }]);
   });
 });
