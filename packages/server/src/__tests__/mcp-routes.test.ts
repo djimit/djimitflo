@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import express from 'express';
 import { createMCPRoutes } from '../routes/mcp';
+import { installOutboundGuard } from '../utils/outbound-guard';
 
 describe('MCP routes', () => {
   let db: Database.Database;
@@ -138,5 +139,17 @@ describe('MCP routes', () => {
     const body = await response.json() as { servers: Array<Record<string, unknown>> };
     const offline = body.servers.find((s) => s.name === 'offline-tool');
     expect(offline).toMatchObject({ status: 'stopped', error_message: 'Firewalled from this deployment.' });
+  });
+
+  it('reports a host refused by the outbound guard as stopped by policy, not as an error', async () => {
+    const original = globalThis.fetch;
+    installOutboundGuard({ OUTBOUND_DENY_HOSTS: 'blocked.invalid' }, () => undefined);
+    try {
+      db.prepare("INSERT INTO mcp_servers VALUES ('s4', 'workstation-tool', '', 'unknown', '', '[]', '{}', null, null, 'http://blocked.invalid:9', null, null, '{}', 'now', 'now')").run();
+      const body = await (await fetch(`${baseUrl}/servers?refresh=true`)).json() as { servers: Array<Record<string, unknown>> };
+      const ws = body.servers.find((s) => s.name === 'workstation-tool');
+      expect(ws?.status).toBe('stopped');
+      expect(String(ws?.error_message)).toContain('Blocked by policy');
+    } finally { globalThis.fetch = original; }
   });
 });

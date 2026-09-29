@@ -56,4 +56,16 @@ describe('seedMCPServers', () => {
 
     db.close();
   });
+
+  it('never lets a probed sidecar point at the workstation (operator rule 2026-09-29)', () => {
+    const db = new Database(':memory:');
+    db.exec(`CREATE TABLE mcp_servers (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, description TEXT NOT NULL, status TEXT NOT NULL, command TEXT NOT NULL,
+      args TEXT NOT NULL, env TEXT NOT NULL, version TEXT, author TEXT, url TEXT, last_ping_at TEXT, error_message TEXT, metadata TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`);
+    seedMCPServers(db);
+    const rows = db.prepare('SELECT name, url, metadata FROM mcp_servers').all() as Array<{ name: string; url: string; metadata: string }>;
+    const probedOnWorkstation = rows.filter((r) => /100\.81\.133\.48|192\.168\.1\.28/.test(r.url) && !JSON.parse(r.metadata || '{}').known_unreachable);
+    expect(probedOnWorkstation).toEqual([]);
+    expect(rows.find((r) => r.name === 'qdrant')?.url).toBe('http://100.77.58.72:6333');
+    db.close();
+  });
 });
