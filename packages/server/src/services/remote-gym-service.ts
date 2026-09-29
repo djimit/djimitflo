@@ -3,7 +3,7 @@ import type { Database } from 'better-sqlite3';
 import { mineGymTasks, type GymTask } from './gym-task-miner';
 import { parseSpecies } from './evolve-selection';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
-import { infraFailing } from './evolution-gym-service';
+import { infraFailing, triedTasks } from './evolution-gym-service';
 
 /**
  * Plan I1: the evolution gym on a remote compute host (the workstation: 48 threads, 125 GB, R9700) instead of the
@@ -45,8 +45,7 @@ export class RemoteGymService {
     if (!healthy.length) return { skipped: 'every species is infra-failing' };
     const pick = healthy.map((s) => ({ s, n: (count.get(`loop-maker:gym:${s.runtime}`, s.model ?? '') as { n: number }).n })).sort((a, b) => a.n - b.n)[0].s;
     const key = pick.model ? `${pick.runtime}@${pick.model}` : pick.runtime;
-    const tried = new Set((this.db.prepare("SELECT json_extract(metadata, '$.gym.commit') AS c FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%'")
-      .all(key) as Array<{ c: string | null }>).map((r) => r.c));
+    const tried = triedTasks(this.db, key);
     const task = this.mine(repo).find((t) => !tried.has(t.commit));
     if (!task) return { skipped: 'no untried task' };
     const runId = randomUUID();
