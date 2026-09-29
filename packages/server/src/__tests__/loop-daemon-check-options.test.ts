@@ -33,6 +33,11 @@ it('A3: a run whose maker timed out or exited non-zero is infra_failed, not regr
   lease('timeout', { timed_out: true, failure_reason: 'maker_gate_failed:maker_runtime_exit_zero,diff_under_threshold' });
   lease('contract', { failure_reason: 'runtime_contract_unavailable_or_drifted' });
   lease('evaluated', { exit_status: 0 }); // ran, produced a change, checks/reviewers rejected it
-  expect(['timeout', 'contract', 'evaluated'].map((id) => runOutcomeOnFailure(db, id))).toEqual(['infra_failed', 'infra_failed', 'regressed']);
+  lease('never-ran', {}); // prod fbbe8eb6: no exit status, no completion, no checks
+  lease('exit127', { exit_status: 0, changed_files: ['a.test.ts'], deterministic_checks: [{ exit_status: 127 }, { exit_status: 0 }] }); // prod 5e75951a
+  lease('no-diff', { exit_status: 0, changed_files: [], deterministic_checks: [{ exit_status: 0 }] }); // prod f502ad83
+  lease('real-failure', { exit_status: 0, changed_files: ['a.ts'], deterministic_checks: [{ exit_status: 1 }] });
+  expect(['timeout', 'contract', 'evaluated', 'never-ran', 'exit127', 'no-diff', 'real-failure'].map((id) => runOutcomeOnFailure(db, id)))
+    .toEqual(['infra_failed', 'infra_failed', 'regressed', 'infra_failed', 'infra_failed', 'no_change', 'regressed']);
   db.close();
 });
