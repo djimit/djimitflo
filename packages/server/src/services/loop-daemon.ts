@@ -39,10 +39,20 @@ export function daemonMakerTimeoutMs(mutationLane: boolean, env: NodeJS.ProcessE
  * A3: a failed run is a regression only when the change was evaluated. Prod 2026-09-25: the first mutation-lane maker hit the
  * timeout in an image without `ps` and its proposal was recorded `regressed`, which the guardrail then counted.
  */
-export function runOutcomeOnFailure(db: Database, makerLeaseId: string): 'regressed' | 'infra_failed' {
+/**
+ * U1 follow-up (29-09): of the doc-drift maker's 'regressions' in 30 days most were not about the change — the maker never ran,
+ * a check could not find its tool (exit 127: no node_modules, fixed by #514), or the maker changed nothing. Those are now
+ * infra_failed / no_change, so the per-class track record (earned autonomy) and the regression guardrail count real failures only.
+ */
+export function runOutcomeOnFailure(db: Database, makerLeaseId: string): 'regressed' | 'infra_failed' | 'no_change' {
   const lease = db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(makerLeaseId) as { metadata: string } | undefined;
-  const meta = JSON.parse(lease?.metadata || '{}') as { failure_reason?: string; timed_out?: boolean; runtime_timed_out?: boolean };
-  return meta.timed_out || meta.runtime_timed_out || /maker_runtime_exit_zero|runtime_contract/.test(meta.failure_reason ?? '') ? 'infra_failed' : 'regressed';
+  const meta = JSON.parse(lease?.metadata || '{}') as { failure_reason?: string; timed_out?: boolean; runtime_timed_out?: boolean;
+    exit_status?: number | null; completed_at?: string; changed_files?: unknown; deterministic_checks?: Array<{ exit_status?: number | null }> };
+  if (meta.timed_out || meta.runtime_timed_out || /maker_runtime_exit_zero|runtime_contract/.test(meta.failure_reason ?? '')) return 'infra_failed';
+  if (meta.exit_status === undefined && !meta.completed_at) return 'infra_failed'; // the maker never ran
+  if ((meta.deterministic_checks ?? []).some((c) => c?.exit_status === 127)) return 'infra_failed'; // a check's tool was missing
+  if (Array.isArray(meta.changed_files) && meta.changed_files.length === 0) return 'no_change';
+  return 'regressed';
 }
 
 /** Reviewer (checker/security) timeout. Prod 2026-09-24: accepted reviews took 45–119 s; 2/7 reviews hit the old fixed 120 s. */
