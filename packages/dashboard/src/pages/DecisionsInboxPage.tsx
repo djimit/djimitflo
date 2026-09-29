@@ -51,6 +51,23 @@ export function DecisionsInboxPage() {
 
       {data && (
         <>
+          <section aria-labelledby="autonomy">
+            <h2 id="autonomy" className="text-lg font-semibold mb-1">Earned autonomy (U1, read-only)</h2>
+            <p className="text-xs text-foreground-tertiary mb-2">Per action class over 30 days. A class earns autonomy after ≥ 20 human approvals, none denied or expired, and at most one regression. Nothing is auto-approved from this table yet.</p>
+            {data.autonomy.length === 0 ? <p className="text-sm text-foreground-secondary">No approvals in the last 30 days.</p> : (
+              <table className="w-full text-sm">
+                <thead><tr className="text-left text-foreground-tertiary"><th>Class</th><th>Human</th><th>Auto</th><th>Denied / expired</th><th>Verified</th><th>Regressed</th><th>Status</th></tr></thead>
+                <tbody>{data.autonomy.map((c) => (
+                  <tr key={c.cls} className="border-t border-border">
+                    <td className="font-mono text-xs">{c.cls}</td><td>{c.human_approved}</td><td>{c.auto_approved}</td><td>{c.denied} / {c.expired}</td>
+                    <td>{c.verified}</td><td className={c.regressed > 1 ? 'text-status-error' : ''}>{c.regressed}</td>
+                    <td className={c.earned ? 'text-status-completed' : 'text-foreground-secondary'}>{c.why}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            )}
+          </section>
+
           <section aria-labelledby="memory">
             <h2 id="memory" className="text-lg font-semibold mb-1">Memory review</h2>
             <p className="text-xs text-foreground-tertiary mb-2">Rules and memories waiting for a human. Promoted engineering rules reach maker assignments and are then kept or dropped by their measured fitness.</p>

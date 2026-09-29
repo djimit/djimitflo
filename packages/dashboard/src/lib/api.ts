@@ -61,6 +61,7 @@ export type DecisionsInbox = {
   };
   telegram: Array<{ telegram_user_id: string; user_id: string; email: string | null; role: string | null; added_by: string; created_at: string }>;
   memory: Array<{ id: string; title: string; content: string; memory_type: string; status: string; created_at: string }>;
+  autonomy: Array<{ cls: string; human_approved: number; auto_approved: number; denied: number; expired: number; verified: number; regressed: number; infra: number; pending: number; earned: boolean; why: string }>;
 };
 
 export type ImprovementFunnel = {
