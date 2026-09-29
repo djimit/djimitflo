@@ -46,3 +46,9 @@ it('records local errors, re-offers claims older than 30 minutes and caps the qu
   enqueue('u9');
   expect((db.prepare("SELECT COUNT(*) n FROM local_shadow_jobs WHERE subject_id = 'u9'").get() as { n: number }).n).toBe(0);
 });
+
+it('does not queue judgments the local shadow cannot decide (prod 29-09: kb_passage_relevance → unknown judgment)', () => {
+  const dynamic = { id: 'kb_passage_relevance', questions: { p0: { type: 'noul' as const, instructions: 'x' } }, decide: () => ({ decision: 'yes' as const, reason: '' }) };
+  localShadow(db, dynamic, { type: 'specialist_panel', id: 'p' }, 'h', {}, dynamic.questions, undefined, ON, () => 0);
+  expect(q.claim('workstation')).toEqual([]);
+});
