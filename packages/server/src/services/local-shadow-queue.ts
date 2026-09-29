@@ -11,7 +11,10 @@ import { proposalPrescreen } from './judgments/proposal-prescreen';
 import { reflectionTriage } from './judgments/reflection-triage';
 
 /** T1 pull: the workstation claims queued shadow judgments and posts local answers; the server decides with the same rules. */
-const DEFS = new Map<string, JudgmentDef>([checkerSecondOpinion, commonsContribution, commonsIdea, discoveryRelevance, failureCause, proposalPrescreen, reflectionTriage].map((d) => [d.id, d]));
+export const DEFS = new Map<string, JudgmentDef>([checkerSecondOpinion, commonsContribution, commonsIdea, discoveryRelevance, failureCause, proposalPrescreen, reflectionTriage].map((d) => [d.id, d]));
+
+/** Judgments the local shadow can decide; others (e.g. R2's per-panel kb_passage_relevance) are not queued. */
+export const isLocalShadowJudgment = (id: string): boolean => DEFS.has(id);
 
 interface Job { id: string; judgment: string; subject_type: string; subject_id: string; state_hash: string; state_json: string; questions_json: string; facts_json: string | null; host: string | null; status: string; created_at: string }
 
