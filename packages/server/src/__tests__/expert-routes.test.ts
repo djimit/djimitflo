@@ -31,6 +31,9 @@ describe('frontier expert routes (§35: broad reads, governed mutation)', () => 
     expect(active.body.experts).toHaveLength(2);
     expect(active.body.experts[0].capabilities).toEqual(['ai_security']);
     expect((await request(app).get('/swarms/expert/experts?limit=0')).body.error.code).toBe('VALIDATION_ERROR');
+    expect((await request(app).get('/swarms/expert/experts?kind=robot')).body.error.code).toBe('VALIDATION_ERROR');
+    const funnel = (await request(app).get('/swarms/expert/experts?kind=person&limit=1')).body.funnel as Array<{ kind: string; count: number }>;
+    expect(funnel.reduce((sum, row) => sum + row.count, 0)).toBeGreaterThan(1);
 
     const resolved = await request(app).post('/swarms/expert/resolve').send({ question: 'Which prompt injection defences survive adaptive attackers?', max_experts: 2 });
     expect(resolved.status).toBe(200);
