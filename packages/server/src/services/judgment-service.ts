@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { TypeSafeClient, prepareState, typesafeConfigured, type TsAnswer, type TsQuestion } from './typesafe-client';
+import { isLocalShadowJudgment } from './local-shadow-queue';
 
 /**
  * Every System One judgment is written to `judgments` (state hash, typed answers, decision, cost, latency, model) so it can
@@ -98,7 +99,7 @@ export async function runJudgments(db: Database, defs: JudgmentDef[], subject: {
  */
 export function localShadow(db: Database, def: JudgmentDef, subject: { type: string; id: string }, stateHash: string, state: unknown,
   questions: Record<string, TsQuestion>, facts?: Record<string, unknown>, env: NodeJS.ProcessEnv = process.env, random = Math.random): void {
-  if (env.TYPESAFE_LOCAL_SHADOW_ENABLED !== 'true' || random() >= (Number(env.TYPESAFE_LOCAL_SHADOW_SAMPLE) || 0.2)) return;
+  if (env.TYPESAFE_LOCAL_SHADOW_ENABLED !== 'true' || !isLocalShadowJudgment(def.id) || random() >= (Number(env.TYPESAFE_LOCAL_SHADOW_SAMPLE) || 0.2)) return;
   try {
     const waiting = (db.prepare("SELECT COUNT(*) n FROM local_shadow_jobs WHERE status = 'queued'").get() as { n: number }).n;
     if (waiting >= 500) return;
