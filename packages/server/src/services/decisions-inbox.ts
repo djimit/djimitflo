@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { earnedAutonomy, type ClassRecord } from './earned-autonomy';
 
 /**
  * S2 (operator 2026-09-28): the operator's open decisions in one place instead of in chat.
@@ -15,6 +16,7 @@ export interface DecisionsInbox {
   prescreen: { items: InboxLabel[]; labelled: number; wrong: number; false_rejection_pct: number | null; enforce_threshold: string };
   telegram: Array<{ telegram_user_id: string; user_id: string; email: string | null; role: string | null; added_by: string; created_at: string }>;
   memory: Array<{ id: string; title: string; content: string; memory_type: string; status: string; created_at: string }>;
+  autonomy: ClassRecord[];
 }
 
 export function decisionsInbox(db: Database, now = Date.now()): DecisionsInbox {
@@ -37,6 +39,7 @@ export function decisionsInbox(db: Database, now = Date.now()): DecisionsInbox {
   const memory = all<DecisionsInbox['memory'][number]>(`SELECT id, title, substr(content, 1, 600) AS content, memory_type, status, created_at FROM memory_candidates
     WHERE status IN ('review_required', 'candidate') ORDER BY CASE status WHEN 'review_required' THEN 0 ELSE 1 END, created_at DESC LIMIT 50`);
   return {
+    autonomy: earnedAutonomy(db, now),
     memory,
     requeue,
     prescreen: { items, labelled, wrong, false_rejection_pct: labelled ? Math.round((1000 * wrong) / labelled) / 10 : null, enforce_threshold: '>= 30 labelled and <= 5 % wrong (D5)' },
