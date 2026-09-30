@@ -487,8 +487,9 @@ export class LoopDaemon {
       }
 
       // 5b. E12 (LOOP_BANDIT_ENABLED): the maker species is chosen by outcome — Thompson over skill_outcomes, challengers
-      // capped until they have enough runs. Never overrides the operator's LOOP_DAEMON_MAKER_RUNTIME.
-      if (!makerAlreadyDone && !makerRuntime) {
+      // capped until they have enough runs. Y1 (operator 2026-10-01): with the bandit on it also chooses over
+      // LOOP_DAEMON_MAKER_RUNTIME, which stays on the lease as the fallback when the bandit makes no choice.
+      if (!makerAlreadyDone && (!makerRuntime || process.env.LOOP_BANDIT_ENABLED === 'true')) {
         const choice = chooseSpecies(this.db, loopName, banditSpecies());
         if (choice) {
           try {
@@ -549,7 +550,10 @@ export class LoopDaemon {
 
       // 8a. Evolve (E13, LOOP_EVOLVE_ENABLED, test-gap goals only): sibling makers of other species on the same objective;
       // the fittest (computed in code) stays the only non-superseded maker and goes on to the reviewers.
-      const species = !makerAlreadyDone && !pendingSibling && evolveEligible(this.db, goal.id) ? evolveSpecies() : [];
+      // Y1: never a sibling of the species the bandit already chose as the first maker (it would run the same work twice)
+      const primary = this.db.prepare("SELECT runtime, json_extract(metadata, '$.model') AS model FROM worker_leases WHERE id = ?").get(makerLease.id) as { runtime: string; model: string | null } | undefined;
+      const species = (!makerAlreadyDone && !pendingSibling && evolveEligible(this.db, goal.id) ? evolveSpecies() : [])
+        .filter((sp) => !(primary && sp.runtime === primary.runtime && (sp.model ?? null) === (primary.model ?? null)));
       if (species.length) {
         const contenders = [activeMakerLease.id];
         for (const sp of species) {
