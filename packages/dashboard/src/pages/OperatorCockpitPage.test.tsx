@@ -1,6 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
-import { OperatorCockpitPage } from './OperatorCockpitPage';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { MemoryRouter } from 'react-router-dom';
+import { NeedsYou, OperatorCockpitPage } from './OperatorCockpitPage';
 import { api } from '../lib/api';
 
 beforeEach(() => { vi.restoreAllMocks(); vi.spyOn(api, 'getServiceMap').mockResolvedValue({ services: [
@@ -31,4 +33,13 @@ it('shows the error when the endpoint fails', async () => {
   vi.spyOn(api, 'getOperatorCockpit').mockRejectedValue(new Error('Access denied'));
   render(<OperatorCockpitPage />);
   expect((await screen.findByRole('alert')).textContent).toBe('Access denied');
+});
+
+it('W3: shows what needs the operator with links into /decisions, and a calm line when nothing does', () => {
+  const html = renderToStaticMarkup(<MemoryRouter><NeedsYou n={{ approvals: 2, requeue: 0, labels: 22, memory_review: 1 }} /></MemoryRouter>);
+  expect(html).toContain('Needs you (25)');
+  expect(html).toContain('href="/decisions#approvals"');
+  expect(html).toContain('22 pre-screen labels');
+  expect(html).not.toContain('requeue candidates');
+  expect(renderToStaticMarkup(<MemoryRouter><NeedsYou n={{ approvals: 0, requeue: 0, labels: 0, memory_review: 0 }} /></MemoryRouter>)).toContain('Nothing needs you right now');
 });

@@ -11,7 +11,7 @@ import { api } from '../lib/api';
 
 const NAV_SECTIONS: Array<{ title: string; items: Array<{ to: string; label: string; icon: LucideIcon }> }> = [
   { title: 'Work', items: [
-    { to: '/', label: 'Dashboard', icon: Activity },
+    { to: '/', label: 'Cockpit', icon: Activity },
     { to: '/tasks', label: 'Tasks', icon: ListTodo },
     { to: '/goals-loops', label: 'Goals & Loops', icon: Workflow },
     { to: '/decisions', label: 'Decisions', icon: CheckSquare },
@@ -34,7 +34,7 @@ const NAV_SECTIONS: Array<{ title: string; items: Array<{ to: string; label: str
     { to: '/pipeline-builder', label: 'Pipeline drafts', icon: Workflow },
   ] },
   { title: 'Improvement', items: [
-    { to: '/cockpit', label: 'Operator cockpit', icon: Activity },
+    { to: '/dashboard', label: 'Activity overview', icon: Activity },
     { to: '/improvement-funnel', label: 'Improvement funnel', icon: Gauge },
     { to: '/self-driving', label: 'Self-Driving', icon: Activity },
     { to: '/cognitive', label: 'Cognitive', icon: Brain },
