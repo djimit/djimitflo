@@ -32,3 +32,9 @@ it('publishes the profile from retrieved KB pages once per day', () => {
 it('leaves out generic engineering words that would match every paper', () => {
   expect(interestTerms(['Raise mutation score of services', 'Raise mutation score of tests in services'])).toEqual(['mutation']);
 });
+
+it('N4: drops ids, title verbs and plural duplicates (prod profile 30-09 carried added, proposal-61847269, agent + agents)', () => {
+  expect(interestTerms([
+    'Added agent benchmarks for proposal-61847269', 'Agents added a benchmark', 'agent benchmark v2 proposal-61847269',
+  ])).toEqual(['agent', 'benchmark']);
+});
