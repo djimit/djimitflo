@@ -19,6 +19,8 @@ export interface CockpitSnapshot {
   gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string; benched: boolean }>;
   /** W3: what waits for the operator right now (the /decisions sections). */
   needs_you: { approvals: number; requeue: number; labels: number; memory_review: number };
+  /** Y2: real-maker outcomes per strategy genome and maker skill (30 d) — what Y3's dreaming mutates and the bandit selects. */
+  genomes: Array<{ genome: string; skill_id: string; outcomes: number; wins: number; win_pct: number }>;
   remote_workers: Array<{ host: string; claims_24h: number; last_claim: string | null; interrupted_24h: number }>;
   maker_usage_7d: Array<{ role: string; runtime: string; model: string | null; leases: number; tokens: number }>;
   judgments_7d: Array<{ judgment: string; calls: number; errors: number; input_tokens: number }>;
@@ -73,6 +75,12 @@ export function operatorCockpit(db: Database, now = Date.now()): CockpitSnapshot
        FROM worker_leases WHERE created_at >= ? AND runtime != 'manual' GROUP BY role, runtime, model ORDER BY tokens DESC`, d7);
   const judgments_7d = all<{ judgment: string; calls: number; errors: number; input_tokens: number }>(
     `SELECT judgment, COUNT(*) AS calls, SUM(decision = 'error') AS errors, COALESCE(SUM(input_tokens), 0) AS input_tokens FROM judgments WHERE created_at >= ? GROUP BY judgment ORDER BY calls DESC`, d7);
+  const d30 = new Date(now - 30 * 86_400_000).toISOString();
+  const genomes = all<{ genome: string; skill_id: string; outcomes: number; wins: number }>(
+    `SELECT substr(r.value, 8) AS genome, s.skill_id, COUNT(*) AS outcomes, SUM(s.success) AS wins
+       FROM skill_outcomes s, json_each(s.evidence_refs_json) r
+      WHERE r.value LIKE 'genome:%' AND s.created_at >= ? GROUP BY 1, 2 ORDER BY outcomes DESC LIMIT 20`, d30)
+    .map((g) => ({ ...g, win_pct: g.outcomes ? Math.round((100 * g.wins) / g.outcomes) : 0 }));
   let needs_you = { approvals: scorecard.approvals_pending ?? 0, requeue: 0, labels: 0, memory_review: 0 };
   try {
     const inbox = decisionsInbox(db, now);
@@ -83,7 +91,7 @@ export function operatorCockpit(db: Database, now = Date.now()): CockpitSnapshot
   return {
     at: new Date(now).toISOString(),
     build: { commit: process.env.DJIMITFLO_BUILD_COMMIT ?? null, build_time: process.env.DJIMITFLO_BUILD_TIME ?? null },
-    scorecard, guardrails, stalls, gym, remote_workers, maker_usage_7d, judgments_7d, needs_you, deploys: recentDeploys(),
+    scorecard, guardrails, stalls, gym, remote_workers, maker_usage_7d, judgments_7d, needs_you, genomes, deploys: recentDeploys(),
   };
 }
 
