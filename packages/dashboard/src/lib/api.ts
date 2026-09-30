@@ -46,7 +46,8 @@ export type OperatorCockpit = {
   scorecard: Record<string, number | null>;
   guardrails: Array<{ name: string; ok: boolean; value: number | null; limit: string }>;
   stalls: Array<{ subsystem: string; since: string | null; detail: string }>;
-  gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string }>;
+  gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string; benched?: boolean }>;
+  needs_you?: { approvals: number; requeue: number; labels: number; memory_review: number };
   remote_workers: Array<{ host: string; claims_24h: number; last_claim: string | null; interrupted_24h: number }>;
   maker_usage_7d: Array<{ role: string; runtime: string; model: string | null; leases: number; tokens: number }>;
   judgments_7d: Array<{ judgment: string; calls: number; errors: number; input_tokens: number }>;

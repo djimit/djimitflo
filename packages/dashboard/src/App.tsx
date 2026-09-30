@@ -93,7 +93,8 @@ export function App() {
             </WebSocketProvider>
           </ProtectedRoute>
         }>
-          <Route index element={<DashboardPage />} />
+          <Route index element={<OperatorCockpitPage />} />
+          <Route path="dashboard" element={<DashboardPage />} />
           <Route path="tasks" element={<TasksPage />} />
           <Route path="tasks/:taskId" element={<TaskDetailPage />} />
           <Route path="agents" element={<AgentsPage />} />
@@ -109,7 +110,7 @@ export function App() {
           <Route path="tasks/:taskId/review" element={<ReviewPage />} />
           <Route path="audit" element={<AuditHubPage />} />
           <Route path="audit/logs" element={<Navigate to="/audit?tab=logs" replace />} />
-          <Route path="cockpit" element={<OperatorCockpitPage />} />
+          <Route path="cockpit" element={<Navigate to="/" replace />} />
           <Route path="decisions" element={<DecisionsInboxPage />} />
           <Route path="configuration" element={<ConfigurationPage />} />
           <Route path="fleet" element={<FleetHostsPage />} />
