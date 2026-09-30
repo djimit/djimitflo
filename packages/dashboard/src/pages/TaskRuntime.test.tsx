@@ -121,10 +121,11 @@ it('shows the selected existing agent through the Swarm detail-link route', () =
 it('keeps every page reachable from the grouped navigation, once each', () => {
   render(<MemoryRouter><Layout /></MemoryRouter>);
   const hrefs = [...document.querySelectorAll('nav a')].map((a) => a.getAttribute('href'));
-  for (const path of ['/authority', '/audit', '/governance', '/pipeline-builder', '/agi-reasoning', '/consensus-debates', '/predictive-analytics', '/self-healing', '/explainers', '/improvement-funnel', '/approvals']) {
+  for (const path of ['/authority', '/audit', '/governance', '/pipeline-builder', '/agi-reasoning', '/consensus-debates', '/predictive-analytics', '/self-healing', '/explainers', '/improvement-funnel', '/decisions']) {
     expect(hrefs).toContain(path);
   }
   expect(new Set(hrefs).size).toBe(hrefs.length); // no duplicate menu targets
   expect(hrefs).not.toContain('/audit/logs'); // merged into /audit (tab)
   expect(hrefs).not.toContain('/compliance'); // merged into /governance (tab)
+  expect(hrefs).not.toContain('/approvals'); // merged into /decisions (W2: one inbox)
 });

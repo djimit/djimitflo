@@ -14,7 +14,7 @@ const NAV_SECTIONS: Array<{ title: string; items: Array<{ to: string; label: str
     { to: '/', label: 'Dashboard', icon: Activity },
     { to: '/tasks', label: 'Tasks', icon: ListTodo },
     { to: '/goals-loops', label: 'Goals & Loops', icon: Workflow },
-    { to: '/approvals', label: 'Approvals', icon: CheckSquare },
+    { to: '/decisions', label: 'Decisions', icon: CheckSquare },
   ] },
   { title: 'Agents', items: [
     { to: '/agents', label: 'Agents', icon: Users },
@@ -35,7 +35,6 @@ const NAV_SECTIONS: Array<{ title: string; items: Array<{ to: string; label: str
   ] },
   { title: 'Improvement', items: [
     { to: '/cockpit', label: 'Operator cockpit', icon: Activity },
-    { to: '/decisions', label: 'Decisions inbox', icon: CheckSquare },
     { to: '/improvement-funnel', label: 'Improvement funnel', icon: Gauge },
     { to: '/self-driving', label: 'Self-Driving', icon: Activity },
     { to: '/cognitive', label: 'Cognitive', icon: Brain },
@@ -138,7 +137,7 @@ export function Layout() {
                     icon={<item.icon className="w-5 h-5" />}
                     label={item.label}
                     active={item.to === '/' ? location.pathname === '/' : isActive(item.to)}
-                    badge={item.to === '/approvals' ? pending.count : undefined}
+                    badge={item.to === '/decisions' ? pending.count : undefined}
                   />
                 ))}
               </div>
@@ -175,7 +174,7 @@ export function Layout() {
           </button>
           <span className="ml-2 font-semibold text-foreground">Djimitflo</span>
         </header>
-        {location.pathname !== '/approvals' && <PendingApprovalsBanner {...pending} />}
+        {location.pathname !== '/decisions' && <PendingApprovalsBanner {...pending} />}
         <main className="min-w-0 flex-1 overflow-auto">
           <Outlet />
         </main>
