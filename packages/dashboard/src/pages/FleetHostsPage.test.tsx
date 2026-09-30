@@ -8,7 +8,7 @@ const cmd = (over: Record<string, unknown>) => ({ id: 'c1', host: 'workstation',
 beforeEach(() => {
   vi.restoreAllMocks();
   vi.spyOn(api, 'getFleetHosts').mockResolvedValue({
-    hosts: [{ host: 'workstation', last_seen: '', seconds_ago: 12, live: true, agent_version: '1', info: { os: 'linux', load: [1.2, 1.1, 1], disk_root_pct: 49 } }],
+    hosts: [{ host: 'workstation', last_seen: '', seconds_ago: 12, live: true, agent_version: '1', info: { os: 'linux', load: [1.2, 1.1, 1], disk_root_pct: 49, components: ['docker:deer-flow-gateway', 'user:hermes-gateway'] } }],
     commands: [cmd({}) as never, cmd({ id: 'c2', kind: 'diagnostic', command: 'uptime', status: 'done', exit_code: 0, output: 'up 3 days' }) as never],
   });
 });
@@ -18,6 +18,8 @@ it('shows live hosts, approves the exact command hash and requests diagnostics',
   const request = vi.spyOn(api, 'requestFleetCommand').mockResolvedValue(cmd({}) as never);
   render(<FleetHostsPage />);
   expect(await screen.findByText('live')).toBeTruthy();
+  expect(screen.getByText('2 components')).toBeTruthy();
+  expect(screen.getByText('deer-flow-gateway')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
   await waitFor(() => expect(approve).toHaveBeenCalledWith('c1', 'a'.repeat(64)));
   fireEvent.click(screen.getByRole('button', { name: 'disk' }));
