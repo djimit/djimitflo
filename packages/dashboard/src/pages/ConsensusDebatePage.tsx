@@ -24,9 +24,11 @@ export function ConsensusDebatePage() {
   const [topic, setTopic] = useState('');
   const [independentJudge, setIndependentJudge] = useState(false);
   const [judgeModel, setJudgeModel] = useState('');
+  const [loadError, setLoadError] = useState<string | null>(null);
 
+  // W7: the session list call had no error handling (unhandled rejection when the API is down)
   const refresh = useCallback(async () => {
-    setSessions(await api.get<CouncilSession[]>('/council/sessions'));
+    try { setSessions(await api.get<CouncilSession[]>('/council/sessions')); setLoadError(null); } catch (err) { setLoadError(err instanceof Error ? err.message : String(err)); }
   }, []);
 
   useEffect(() => { void refresh(); }, [refresh]);
@@ -56,6 +58,7 @@ export function ConsensusDebatePage() {
         icon={<MessageSquare className="h-7 w-7 text-accent" />}
         description="Several models answer the same question, review each other and a synthesis is produced. A failed debate shows the phase and the reason."
       />
+      {loadError && <p role="alert" className="text-sm text-status-error">Could not load debates: {loadError}</p>}
 
       <div className="flex gap-2">
         <input

@@ -74,7 +74,8 @@ export function EconomyPage() {
   }
 
   if (loading) return <div className="p-8 text-foreground-tertiary">Loading economy data...</div>;
-  if (!data) return <div className="p-8 text-foreground-tertiary">No economy data available.</div>;
+  // W7: a failed call used to show only this line; the page keeps its title and names the failure
+  if (!data) return <div className="p-8 space-y-4"><h1 className="text-3xl font-bold text-foreground">Economy</h1><LoadErrorNotice failed={loadErrors} /><p className="text-foreground-tertiary">No economy data available.</p></div>;
 
   return (
     <div className="p-8 space-y-8">

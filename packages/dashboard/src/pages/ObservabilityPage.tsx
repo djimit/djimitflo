@@ -70,7 +70,8 @@ export function ObservabilityPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (metricsError) return <div role="alert" className="p-8 text-status-error">{metricsError}</div>;
+  // W7: keep the page title when the metrics call fails (the route smoke found a bare error line)
+  if (metricsError) return <div className="p-8 space-y-4"><h1 className="text-3xl font-bold text-foreground">Observability</h1><div role="alert" className="text-status-error">{metricsError}</div></div>;
 
   if (loading || !metrics) {
     return (
