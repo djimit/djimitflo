@@ -13,6 +13,7 @@ import { CommonsProposalReviewService } from './commons-proposal-review-service'
 import { SelfImprovementService } from './self-improvement-service';
 import { LoopDraftPrService } from './loop-draft-pr-service';
 import { evolveEligible, evolveSpecies, selectEvolveWinner } from './evolve-selection';
+import { runGenome } from './maker-genome';
 import { banditSpecies, chooseSpecies, speciesKey } from './runtime-bandit';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { authorityGateForGoal } from './authority-gate';
@@ -677,6 +678,9 @@ export class LoopDaemon {
         const meta = maker ? JSON.parse(maker.metadata || '{}') as { model?: unknown; runtime_usage?: { total_tokens?: unknown } } : {};
         const skills = new SkillEvolutionEngine(this.db); // ensures skill_outcomes exists
         const skillId = `loop-maker:${loopName}:${activeMakerLease.runtime}`;
+        // Y2: the strategy genome this maker ran with (template + examples + sealed rules), on the lease and the outcome
+        const genome = runGenome(this.db, run.id);
+        this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.genome', json(?)) WHERE id = ?").run(JSON.stringify(genome), activeMakerLease.id);
         // One outcome per run: two daemon passes can finish the same run.
         if (!this.db.prepare('SELECT 1 FROM skill_outcomes WHERE skill_id = ? AND task_id = ? AND agent_id = ? LIMIT 1').get(skillId, run.id, activeMakerLease.id)) skills.recordOutcome(skillId, {
           success: allGatesPass,
@@ -686,7 +690,7 @@ export class LoopDaemon {
           taskId: run.id,
           agentId: activeMakerLease.id,
           ...(typeof meta.model === 'string' ? { model: meta.model } : {}),
-          evidenceRefs: [`loop_run:${run.id}`, ...verification.gates.filter(g => g.status !== 'pass').map(g => `gate:${g.name}:${g.status}`)],
+          evidenceRefs: [`loop_run:${run.id}`, `genome:${genome.id}`, ...verification.gates.filter(g => g.status !== 'pass').map(g => `gate:${g.name}:${g.status}`)],
         });
       } catch { /* best-effort learning */ }
 
