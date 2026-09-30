@@ -62,6 +62,22 @@ export function FleetHostsPage() {
         )}
       </section>
 
+      <section aria-labelledby="components">
+        <h2 id="components" className="text-lg font-semibold mb-2">Components per host</h2>
+        <p className="text-xs text-foreground-tertiary mb-2">Reported by each host agent every 5 minutes: running containers and Djimit-related services (agent version 2 or later).</p>
+        {hosts.length === 0 ? null : (
+          <ul className="space-y-3">{hosts.map((h) => {
+            const list = Array.isArray(h.info.components) ? (h.info.components as string[]) : null;
+            return (
+              <li key={h.host}>
+                <div className="text-sm font-medium">{h.host} <span className="text-xs text-foreground-tertiary">{list ? `${list.length} components` : 'agent too old to report components'}</span></div>
+                {list && <ul className="mt-1 flex flex-wrap gap-1">{list.map((c) => <li key={c} className="rounded bg-background-tertiary px-2 py-0.5 text-xs" title={c}>{c.replace(/^(docker|systemd|user|launchd):/, '')}<span className="ml-1 text-foreground-muted">{c.split(':')[0]}</span></li>)}</ul>}
+              </li>
+            );
+          })}</ul>
+        )}
+      </section>
+
       <section aria-labelledby="run" className="space-y-2">
         <h2 id="run" className="text-lg font-semibold">Run</h2>
         <label className="text-sm">Host{' '}
