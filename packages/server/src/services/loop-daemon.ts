@@ -474,8 +474,13 @@ export class LoopDaemon {
 
       // 5. Find the prepared maker lease and execute it.
       // A run resumed after the checker's approval already has a completed maker: don't run it twice.
-      const makerAlreadyDone = resumeRunId ? prepared.leases.find(l => l.role === 'maker' && l.status === 'completed') : undefined;
-      const makerLease = makerAlreadyDone ?? prepared.leases.find(l => l.role === 'maker' && l.status === 'prepared');
+      // Y0b: a run resumed after an evolve sibling's approval runs that sibling (and ranks it below), even when the first
+      // maker already completed — before, a completed first maker hid the approved sibling, or the sibling was dropped
+      const pendingSibling = resumeRunId
+        ? prepared.leases.find(l => l.role === 'maker' && l.status === 'prepared' && typeof l.metadata?.evolve_sibling_of === 'string')
+        : undefined;
+      const makerAlreadyDone = resumeRunId && !pendingSibling ? prepared.leases.find(l => l.role === 'maker' && l.status === 'completed') : undefined;
+      const makerLease = makerAlreadyDone ?? pendingSibling ?? prepared.leases.find(l => l.role === 'maker' && l.status === 'prepared');
       if (!makerLease) {
         throw new Error('No prepared maker lease found after continueLoopRun');
       }
@@ -543,7 +548,7 @@ export class LoopDaemon {
 
       // 8a. Evolve (E13, LOOP_EVOLVE_ENABLED, test-gap goals only): sibling makers of other species on the same objective;
       // the fittest (computed in code) stays the only non-superseded maker and goes on to the reviewers.
-      const species = !makerAlreadyDone && evolveEligible(this.db, goal.id) ? evolveSpecies() : [];
+      const species = !makerAlreadyDone && !pendingSibling && evolveEligible(this.db, goal.id) ? evolveSpecies() : [];
       if (species.length) {
         const contenders = [activeMakerLease.id];
         for (const sp of species) {
@@ -566,9 +571,19 @@ export class LoopDaemon {
             }
             this.loops.runDeterministicChecks(run.id, { lease_id: sibling.id, ...daemonCheckOptions() });
           } catch (error) {
+            // Y0b (prod 2026-09-30 16:17/18:29): a sibling that still needs a human approval is not a failed sibling — the
+            // run used to conclude 'no winner' at once and the approval arrived after the proposal was labelled regressed.
+            // Propagate it: executeGoal parks the goal on that approval, and the resumed run ranks the sibling.
+            if (/APPROVAL_REQUIRED/.test(error instanceof Error ? error.message : String(error))) throw error;
             try { new LoopEventService(this.db).recordEvent(run.id, 'evolve_sibling_failed', 'warning', `Evolve sibling ${sp.runtime}${sp.model ? `@${sp.model}` : ''} failed: ${error instanceof Error ? error.message : String(error)}`, { goal_id: goal.id }); } catch { /* logging */ }
           }
         }
+        const winnerId = contenders.length > 1 ? selectEvolveWinner(this.db, run.id, contenders) : null;
+        const winner = winnerId ? this.db.prepare('SELECT * FROM worker_leases WHERE id = ?').get(winnerId) as typeof activeMakerLease | undefined : undefined;
+        if (winner) activeMakerLease = { ...activeMakerLease, id: winner.id, runtime: winner.runtime };
+      } else if (pendingSibling) {
+        // Y0b: the approved sibling just ran; rank it against the makers of the first pass instead of spawning new siblings
+        const contenders = prepared.leases.filter(l => l.role === 'maker').map(l => l.id);
         const winnerId = contenders.length > 1 ? selectEvolveWinner(this.db, run.id, contenders) : null;
         const winner = winnerId ? this.db.prepare('SELECT * FROM worker_leases WHERE id = ?').get(winnerId) as typeof activeMakerLease | undefined : undefined;
         if (winner) activeMakerLease = { ...activeMakerLease, id: winner.id, runtime: winner.runtime };
