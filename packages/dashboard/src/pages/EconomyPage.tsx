@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { DollarSign } from 'lucide-react';
 import { api } from '../lib/api';
+import { LoadErrorNotice, softFail } from '../components/LoadErrorNotice';
 
 interface CapabilityEconomy {
   capability_id: string;
@@ -45,13 +46,16 @@ type AllocationResponse = {
 export function EconomyPage() {
   const [data, setData] = useState<EconomyResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadErrors, setLoadErrors] = useState<string[]>([]);
   const [budgetInput, setBudgetInput] = useState('1.00');
   const [allocation, setAllocation] = useState<AllocationResponse | null>(null);
   const [allocating, setAllocating] = useState(false);
   const [allocateError, setAllocateError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.request<EconomyResponse>('/swarms/economy').then(setData).catch(() => {}).finally(() => setLoading(false));
+    const failed: string[] = [];
+    api.request<EconomyResponse>('/swarms/economy').then(setData).catch(softFail(failed, 'economy', undefined))
+      .finally(() => { setLoadErrors(failed); setLoading(false); });
   }, []);
 
   function handleAllocate(event: FormEvent) {
@@ -74,6 +78,7 @@ export function EconomyPage() {
 
   return (
     <div className="p-8 space-y-8">
+      <LoadErrorNotice failed={loadErrors} />
       <div>
         <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
           <DollarSign className="w-8 h-8 text-accent" /> Economy

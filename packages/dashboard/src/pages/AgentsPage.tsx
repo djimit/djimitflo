@@ -5,22 +5,26 @@ import { api } from '../lib/api';
 import type { RuntimeGovernanceAgentStatus } from '../lib/api';
 import { useAuthStore } from '../lib/auth-store';
 import { Link, useParams } from 'react-router-dom';
+import { LoadErrorNotice, softFail } from '../components/LoadErrorNotice';
 
 export function AgentsPage() {
   const { agentId } = useParams();
   const agents = useStore((state) => state.agents);
   const tasks = useStore((state) => state.tasks);
   const visibleAgents = agentId ? agents.filter(agent => agent.id === agentId) : agents;
+  const [loadErrors, setLoadErrors] = useState<string[]>([]);
 
   // D4: REST fallback — load agents via API when WebSocket store is empty.
   useEffect(() => {
     if (agents.length === 0) {
-      api.getAgents().then((res) => useStore.setState({ agents: res.agents })).catch(() => {});
+      const failed: string[] = [];
+      api.getAgents().then((res) => useStore.setState({ agents: res.agents })).catch(softFail(failed, 'agents', undefined)).finally(() => setLoadErrors(failed));
     }
   }, []);
 
   return (
     <div className="p-8 space-y-6">
+      <LoadErrorNotice failed={loadErrors} />
       {/* Header */}
       <div>
         {agentId && <Link to="/agents" className="text-accent">All agents</Link>}

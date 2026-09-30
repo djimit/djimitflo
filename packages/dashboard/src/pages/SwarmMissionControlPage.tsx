@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, BrainCircuit, CheckCircle2, ChevronDown, Database, Gauge, GitBranch, Network, PlayCircle, RefreshCw, RotateCcw, Route, ShieldCheck, Workflow } from 'lucide-react';
 import { api, type CapacityPlanV2Result, type ClaimLedgerRecord, type GoalBatchPreviewResult, type IntegrationSpineChain, type KnowledgeRuntimeHealth, type KnowledgeSyncResult, type ProofRunSummary, type SwarmCapabilityRecord, type SwarmMissionControl, type WorkerPoolPlanResult } from '../lib/api';
+import { LoadErrorNotice } from '../components/LoadErrorNotice';
 
 const FLYWHEEL_BATCH_PATH = 'openspec/changes/prove-learning-flywheel-operator-loop/goals.batch.json';
 
@@ -72,19 +73,20 @@ export function SwarmMissionControlPage() {
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [proofRuntime, setProofRuntime] = useState<'mock' | 'codex' | 'opencode'>('mock');
+  const [proofRuntime, setProofRuntime] = useState<'mock' | 'codex' | 'opencode'>('opencode'); // a proof run on 'mock' proves nothing (W1)
   const [expandedCapability, setExpandedCapability] = useState<string | null>(null);
   const [learningCurve, setLearningCurve] = useState<any>(null);
+  const [loadErrors, setLoadErrors] = useState<string[]>([]);
 
   // D12: Knowledge bus events
   const [knowledgeEvents, setKnowledgeEvents] = useState<any[]>([]);
   useEffect(() => {
-    api.request('/knowledge/events?limit=20').then((res: any) => setKnowledgeEvents(Array.isArray(res.events) ? res.events : [])).catch(() => {});
+    api.request('/knowledge/events?limit=20').then((res: any) => setKnowledgeEvents(Array.isArray(res.events) ? res.events : [])).catch((err) => setLoadErrors((prev) => [...prev, `knowledge events: ${err instanceof Error ? err.message : String(err)}`]));
   }, []);
 
   // D11: Learning curve
   useEffect(() => {
-    api.request('/swarms/learning-curve').then((res: any) => setLearningCurve(res && typeof res === 'object' ? res : null)).catch(() => {});
+    api.request('/swarms/learning-curve').then((res: any) => setLearningCurve(res && typeof res === 'object' ? res : null)).catch((err) => setLoadErrors((prev) => [...prev, `learning curve: ${err instanceof Error ? err.message : String(err)}`]));
   }, []);
   const [expandedClaim, setExpandedClaim] = useState<string | null>(null);
 
@@ -235,6 +237,7 @@ export function SwarmMissionControlPage() {
 
   return (
     <div className="p-8 space-y-6">
+      <LoadErrorNotice failed={loadErrors} />
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Swarm Mission Control</h1>
@@ -922,9 +925,9 @@ function ProofRunPanel({
             onChange={(event) => onRuntimeChange(event.target.value as 'mock' | 'codex' | 'opencode')}
             className="rounded-lg border border-border bg-background px-2 py-2 text-sm text-foreground"
           >
-            <option value="mock">mock</option>
-            <option value="codex">codex</option>
             <option value="opencode">opencode</option>
+            <option value="codex">codex</option>
+            <option value="mock">mock (demo, no real work)</option>
           </select>
           <button
             onClick={onRun}

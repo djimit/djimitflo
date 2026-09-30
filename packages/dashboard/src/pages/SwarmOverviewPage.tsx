@@ -6,6 +6,7 @@ import { WebSocketEventType } from "@djimitflo/shared";
 import { api } from "../lib/api";
 import { Users, Activity, Zap, Clock, AlertCircle, Brain, Server, TrendingUp, MessageSquare, Lightbulb } from "lucide-react";
 import type { Agent, Task } from "@djimitflo/shared";
+import { LoadErrorNotice, softFail } from '../components/LoadErrorNotice';
 
 interface Discussion {
   id: string;
@@ -72,12 +73,15 @@ function getLearningCategoryColor(category: string) {
 export function SwarmOverviewPage() {
   const [swarmStatus, setSwarmStatus] = useState<any>(null);
   const [capabilities, setCapabilities] = useState<any[]>([]);
+  const [loadErrors, setLoadErrors] = useState<string[]>([]);
 
   useEffect(() => {
+    const failed: string[] = [];
     Promise.all([
-      api.getSwarmStatus().catch(() => null),
-      api.getSwarmCapabilities().catch(() => ({ capabilities: [] })),
+      api.getSwarmStatus().catch(softFail(failed, 'swarm status', null)),
+      api.getSwarmCapabilities().catch(softFail(failed, 'capabilities', { capabilities: [] })),
     ]).then(([status, caps]: any) => {
+      setLoadErrors(failed);
       setSwarmStatus(status);
       setCapabilities(pickList(caps, ["capabilities"]));
     });
@@ -241,6 +245,7 @@ export function SwarmOverviewPage() {
 
   return (
     <div className="p-6 max-w-[1400px] mx-auto">
+      <LoadErrorNotice failed={loadErrors} />
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">

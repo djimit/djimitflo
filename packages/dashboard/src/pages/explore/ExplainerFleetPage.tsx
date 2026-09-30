@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BookOpen, RefreshCw, Play, Pause, RotateCcw, Globe, ShieldCheck, MessageCircleQuestion, Check, X } from 'lucide-react';
 import { api } from '../../lib/api';
+import { LoadErrorNotice, softFail } from '../../components/LoadErrorNotice';
 
 export interface FleetRepository {
   id: string;
@@ -92,17 +93,19 @@ export function ExplainerFleetPage() {
   const [askBusy, setAskBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadErrors, setLoadErrors] = useState<string[]>([]);
 
   async function load() {
     setLoading(true);
     setError(null);
+    const failed: string[] = [];
     try {
       const [fleetStatus, overviewRes, driftRes, reviewRes, calibRes] = await Promise.all([
         api.get<FleetStatus>('/explainer/fleet/status'),
         api.get<{ repositories: FleetRepository[] }>('/explainer/fleet/overview'),
         api.get<{ drift_count: number; drift: Array<{ drift_type: string }> }>('/explainer/fleet/health-drift'),
         api.get<{ count: number; items: ReviewQueueItem[] }>('/explainer/review-queue'),
-        api.get<CalibrationStats>('/explainer/fleet/calibration-stats').catch(() => null),
+        api.get<CalibrationStats>('/explainer/fleet/calibration-stats').catch(softFail(failed, 'calibration stats', null)),
       ]);
       setStatus(fleetStatus);
       setRepos(overviewRes.repositories ?? []);
@@ -113,6 +116,7 @@ export function ExplainerFleetPage() {
       setReviewCount(reviewRes.count ?? 0);
       setReviewItems(reviewRes.items ?? []);
       setCalibration(calibRes);
+      setLoadErrors(failed);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -187,6 +191,7 @@ export function ExplainerFleetPage() {
 
   return (
     <div className="space-y-6 p-6">
+      <LoadErrorNotice failed={loadErrors} />
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
