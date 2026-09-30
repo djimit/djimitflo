@@ -1,17 +1,14 @@
-import { useEffect, useState } from 'react';
 import { Library } from 'lucide-react';
 import { api, type KnowledgeOverview } from '../lib/api';
+import { useResource } from '../hooks/useResource';
+
+const fetchKnowledge = () => api.getKnowledgeOverview();
 
 const day = (value: string | null) => (value ? new Date(value).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '—');
 
 /** W5: what the knowledge pipeline brought in, per source, and whether jev judged it relevant (30 days). */
 export function KnowledgePage() {
-  const [data, setData] = useState<KnowledgeOverview | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    api.getKnowledgeOverview().then(setData).catch((err) => setError(err instanceof Error ? err.message : 'Failed to load the knowledge overview'));
-  }, []);
+  const { data, error } = useResource(fetchKnowledge);
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
