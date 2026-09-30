@@ -21,7 +21,6 @@ const CognitiveRuntimePage = lazy(() => import('./pages/CognitiveRuntimePage').t
 const SelfDrivingDashboard = lazy(() => import('./pages/SelfDrivingDashboard').then((module) => ({ default: module.SelfDrivingDashboard })));
 const TaskDetailPage = lazy(() => import('./pages/TaskDetailPage').then((module) => ({ default: module.TaskDetailPage })));
 const SwarmOverviewPage = lazy(() => import('./pages/SwarmOverviewPage').then((module) => ({ default: module.SwarmOverviewPage })));
-const ApprovalQueuePage = lazy(() => import('./pages/ApprovalQueuePage').then((module) => ({ default: module.ApprovalQueuePage })));
 const PolicyCenterPage = lazy(() => import('./pages/PolicyCenterPage').then((module) => ({ default: module.PolicyCenterPage })));
 const MCPPermissionsPage = lazy(() => import('./pages/MCPPermissionsPage').then((module) => ({ default: module.MCPPermissionsPage })));
 const ObservabilityPage = lazy(() => import('./pages/ObservabilityPage').then((module) => ({ default: module.ObservabilityPage })));
@@ -101,7 +100,7 @@ export function App() {
           <Route path="agents/:agentId" element={<AgentsPage />} />
           <Route path="catalog" element={<AgentCatalogPage />} />
           <Route path="swarm" element={<SwarmOverviewPage />} />
-          <Route path="approvals" element={<ApprovalQueuePage />} />
+          <Route path="approvals" element={<Navigate to="/decisions#approvals" replace />} />
           <Route path="policies" element={<PolicyCenterPage />} />
           <Route path="governance" element={<GovernanceHubPage />} />
           <Route path="compliance" element={<Navigate to="/governance?tab=assurance" replace />} />
