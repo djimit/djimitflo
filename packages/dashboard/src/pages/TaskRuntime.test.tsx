@@ -129,3 +129,18 @@ it('keeps every page reachable from the grouped navigation, once each', () => {
   expect(hrefs).not.toContain('/compliance'); // merged into /governance (tab)
   expect(hrefs).not.toContain('/approvals'); // merged into /decisions (W2: one inbox)
 });
+
+it('W4: at most 20 top-level menu items; experimental pages sit in a collapsed Lab', () => {
+  render(<MemoryRouter initialEntries={['/tasks']}><Layout /></MemoryRouter>);
+  const lab = document.querySelector('nav details');
+  expect(lab).toBeTruthy();
+  expect(lab!.hasAttribute('open')).toBe(false);
+  const topLevel = [...document.querySelectorAll('nav a')].filter((a) => !a.closest('details'));
+  expect(topLevel.length).toBeLessThanOrEqual(20);
+  expect([...lab!.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toContain('/self-driving');
+});
+
+it('W4: the Lab opens when the current page lives in it', () => {
+  render(<MemoryRouter initialEntries={['/self-driving']}><Layout /></MemoryRouter>);
+  expect(document.querySelector('nav details')!.hasAttribute('open')).toBe(true);
+});
