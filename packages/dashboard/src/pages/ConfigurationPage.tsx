@@ -1,17 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { SlidersHorizontal } from 'lucide-react';
 import { api } from '../lib/api';
+import { useResource } from '../hooks/useResource';
 
 type Entry = { name: string; value: string; masked: boolean; group: string };
 
-export function ConfigurationPage() {
-  const [entries, setEntries] = useState<Entry[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState('');
+const fetchConfig = () => api.getRuntimeConfig();
 
-  useEffect(() => {
-    api.getRuntimeConfig().then((r) => setEntries(r.entries)).catch((err) => setError(err instanceof Error ? err.message : 'Failed to load configuration'));
-  }, []);
+export function ConfigurationPage() {
+  const { data, error } = useResource(fetchConfig);
+  const entries: Entry[] | null = data?.entries ?? null;
+  const [query, setQuery] = useState('');
 
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();

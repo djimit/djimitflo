@@ -1,6 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
 import { Gauge, RefreshCw } from 'lucide-react';
-import { api, type ImprovementFunnel, type SpecialistCalibration } from '../lib/api';
+import { api } from '../lib/api';
+import { useResource } from '../hooks/useResource';
+
+const fetchFunnel = async () => {
+  const [funnel, calibration] = await Promise.all([api.getImprovementFunnel(), api.getPanelCalibration()]);
+  return { funnel, calibration: calibration.specialists };
+};
 
 const pct = (n: number, d: number) => (d > 0 ? `${Math.round((n / d) * 100)}%` : '—');
 
@@ -15,26 +20,9 @@ function Stat({ label, value, hint }: { label: string; value: string | number; h
 }
 
 export function ImprovementFunnelPage() {
-  const [funnel, setFunnel] = useState<ImprovementFunnel | null>(null);
-  const [calibration, setCalibration] = useState<SpecialistCalibration[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [f, c] = await Promise.all([api.getImprovementFunnel(), api.getPanelCalibration()]);
-      setFunnel(f);
-      setCalibration(c.specialists);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load the improvement funnel');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { void load(); }, [load]);
+  const { data, error, loading, refresh: load } = useResource(fetchFunnel);
+  const funnel = data?.funnel ?? null;
+  const calibration = data?.calibration ?? [];
 
   const decisions = funnel?.panel.decisions ?? {};
   const decided = Object.values(decisions).reduce((a, b) => a + b, 0);

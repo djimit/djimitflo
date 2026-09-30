@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { RefreshCw, Server } from 'lucide-react';
-import { api, type FleetCommand, type FleetHost } from '../lib/api';
+import { api } from '../lib/api';
+import { useResource } from '../hooks/useResource';
+
+const fetchFleet = () => api.getFleetHosts();
 
 const DIAGNOSTICS = ['ping', 'uptime', 'disk', 'failed-services', 'top'];
 const button = 'rounded border border-border px-2 py-0.5 text-sm hover:bg-background-tertiary disabled:opacity-50';
@@ -8,18 +11,17 @@ const ago = (s: number) => (s < 90 ? `${s} s ago` : s < 5400 ? `${Math.round(s /
 const tone: Record<string, string> = { done: 'text-status-completed', failed: 'text-status-error', denied: 'text-status-error', expired: 'text-foreground-muted', pending_approval: 'text-status-warning', running: 'text-status-active', queued: 'text-status-active' };
 
 export function FleetHostsPage() {
-  const [hosts, setHosts] = useState<FleetHost[]>([]);
-  const [commands, setCommands] = useState<FleetCommand[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const fleet = useResource(fetchFleet, { pollMs: 15_000 });
+  const hosts = fleet.data?.hosts ?? [];
+  const commands = fleet.data?.commands ?? [];
+  const load = fleet.refresh;
+  const [actionError, setError] = useState<string | null>(null);
+  const error = actionError ?? fleet.error;
   const [busy, setBusy] = useState<string | null>(null);
   const [host, setHost] = useState('');
   const [shell, setShell] = useState('');
   const [open, setOpen] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    try { const r = await api.getFleetHosts(); setHosts(r.hosts); setCommands(r.commands); setError(null); } catch (err) { setError(err instanceof Error ? err.message : 'Failed to load fleet'); }
-  }, []);
-  useEffect(() => { void load(); const t = setInterval(() => void load(), 15_000); return () => clearInterval(t); }, [load]);
   useEffect(() => { if (!host && hosts[0]) setHost(hosts[0].host); }, [hosts, host]);
 
   const act = async (key: string, action: () => Promise<unknown>) => {
