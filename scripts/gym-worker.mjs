@@ -137,7 +137,8 @@ async function main() {
     git(repo, ['worktree', 'add', '-q', '--detach', wt, task.commit]);
     fs.writeFileSync(path.join(wt, task.source), git(wt, ['show', `${task.commit}^:${task.source}`]));
     git(wt, ['-c', 'user.email=gym@djimitflo', '-c', 'user.name=djimitflo-gym', 'commit', '-qam', `gym: restore parent of ${task.source}`]);
-    if (inRunner(wt, 'npm ci --legacy-peer-deps --no-audit --no-fund >/dev/null 2>&1').status !== 0) return report({ status: 'discarded', reason: 'infra: npm ci failed' });
+    const ci = inRunner(wt, 'npm ci --legacy-peer-deps --no-audit --no-fund > /tmp/ci.log 2>&1; rc=$?; tail -40 /tmp/ci.log; exit $rc');
+    if (ci.status !== 0) return report(npmCiFailure(ci.stdout));
     if (oracle(wt, task)) return report({ status: 'discarded', reason: 'tests already green on the parent' });
     const goal = `Evolution gym: make ${task.tests.join(', ')} pass. Change only ${task.source}. The tests describe the intended behaviour; do not edit them.`;
     const [runtime] = species.split('@');
@@ -160,6 +161,17 @@ async function main() {
   }
 }
 
+/**
+ * A lock file out of sync with package.json at the task's commit can never install: that is a defect of the mined task, not
+ * of the host or the species (prod 2026-09-30: commits from 21-08 failed `npm ci` with EUSAGE every time and tripped the
+ * breaker for atomic@llama-router). A non-infra discard earns no outcome, marks the task tried and does not count as a trip.
+ */
+export function npmCiFailure(out = '') {
+  return /EUSAGE|in sync|does not satisfy|Missing: .* from lock file/.test(out)
+    ? { status: 'discarded', reason: 'task: lock file out of sync at this commit (npm ci EUSAGE)' }
+    : { status: 'discarded', reason: 'infra: npm ci failed' };
+}
+
 function selfcheck() {
   const task = { source: 'packages/server/src/a.ts' };
   const assert = (c, m) => { if (!c) throw new Error(`selfcheck: ${m}`); };
@@ -169,6 +181,8 @@ function selfcheck() {
   assert(verdict(task, ['packages/server/src/a.ts', 'packages/server/src/__tests__/a.test.ts'], true).status === 'failure', 'out of scope');
   assert(verdict(task, ['packages/server/src/a.ts'], true).status === 'success', 'success');
   assert(verdict(task, ['packages/server/src/a.ts'], false).reason === 'tests still red', 'red');
+  assert(npmCiFailure("npm error code EUSAGE\nnpm error Invalid: lock file's ws@8.21.0 does not satisfy ws@8.22.0").reason.startsWith('task:'), 'lock drift = task defect');
+  assert(npmCiFailure('npm error network ETIMEDOUT').reason.startsWith('infra:'), 'network = infra');
   const args = runnerArgs('/tmp/w', 'true', [], 'gym-x-1-0');
   assert(args.includes('--name') && args[args.indexOf('--name') + 1] === 'gym-x-1-0', 'runner is named (timeout can remove it)');
   assert(args[args.indexOf('--label') + 1] === hostLabel(), 'runner carries the host label (orphan sweep)');
