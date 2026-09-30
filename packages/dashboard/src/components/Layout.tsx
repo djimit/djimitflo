@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
-import { Activity, GraduationCap, ListTodo, Users, Shield, ShieldCheck, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit, Gauge, BookUser, Brain, Menu, X, MessageSquare, Sparkles, SlidersHorizontal } from 'lucide-react';
+import { Activity, GraduationCap, ListTodo, Users, Shield, ShieldCheck, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit, Gauge, BookUser, Brain, Menu, X, MessageSquare, Sparkles, SlidersHorizontal, Library } from 'lucide-react';
 import { useAuthStore } from '../lib/auth-store';
 import { OrganizationSelector } from './OrganizationSelector';
 import { PendingApprovalsBanner } from './PendingApprovalsBanner';
@@ -25,9 +25,9 @@ const NAV_SECTIONS: Array<{ title: string; lab?: boolean; items: Array<{ to: str
     { to: '/usage', label: 'Usage', icon: DollarSign },
   ] },
   { title: 'Knowledge', items: [
+    { to: '/knowledge', label: 'Knowledge', icon: Library },
     { to: '/frontier-experts', label: 'Frontier Experts', icon: GraduationCap },
     { to: '/agent-commons', label: 'Agent Commons', icon: Sparkles },
-    { to: '/interaction-board', label: 'Interaction Board', icon: MessageSquare },
   ] },
   { title: 'Fleet', items: [
     { to: '/fleet', label: 'Fleet hosts', icon: Network },
@@ -50,6 +50,7 @@ const NAV_SECTIONS: Array<{ title: string; lab?: boolean; items: Array<{ to: str
     { to: '/explainers', label: 'Repository explainers', icon: BookUser },
     { to: '/pipeline-builder', label: 'Pipeline drafts', icon: Workflow },
     { to: '/catalog', label: 'Agent Catalog', icon: BookUser },
+    { to: '/interaction-board', label: 'Interaction Board', icon: MessageSquare },
     { to: '/self-driving', label: 'Self-Driving', icon: Activity },
     { to: '/cognitive', label: 'Cognitive', icon: Brain },
     { to: '/consensus-debates', label: 'Consensus debates', icon: MessageSquare },

@@ -12,6 +12,7 @@ import { getAppVersion } from '../utils/version';
 import { detectStalls } from '../services/stall-watch';
 import { serviceMap } from '../services/service-map';
 import { operatorCockpit } from '../services/operator-cockpit';
+import { knowledgeOverview } from '../services/knowledge-overview';
 import { runtimeConfigView } from '../services/runtime-config-view';
 import { getDatabaseProvenance } from '../database/provenance';
 
@@ -130,6 +131,11 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   // plan S1: operator cockpit — scorecard, guardrails, stalls, gym species, remote workers, model/judgment usage (read-only)
   router.get('/cockpit', requireAuth, requirePermission('read:evidence'), (_req, res) => {
     res.json(operatorCockpit(db));
+  });
+
+  // plan W5: knowledge pipeline per source — discoveries, jev relevance, units, KB retrieval, interest profile (read-only)
+  router.get('/knowledge', requireAuth, requirePermission('read:evidence'), (_req, res) => {
+    res.json(knowledgeOverview(db));
   });
 
   // plan S3: the running configuration, read-only; secrets masked by name and value; admins only
