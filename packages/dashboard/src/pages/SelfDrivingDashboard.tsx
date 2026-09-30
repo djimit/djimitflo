@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { Brain, Zap, Shield, Database, TrendingUp, Activity, CheckCircle } from "lucide-react";
+import { LoadErrorNotice, softFail } from '../components/LoadErrorNotice';
 
 type DashboardStats = {
   cognitive: Awaited<ReturnType<typeof api.getCognitiveStats>> | null;
@@ -21,20 +22,24 @@ export function SelfDrivingDashboard() {
   const [tuningResult, setTuningResult] = useState<string>('');
   const [tuning, setTuning] = useState(false);
   const [tuningError, setTuningError] = useState<string | null>(null);
+  const [loadErrors, setLoadErrors] = useState<string[]>([]);
 
   useEffect(() => {
+    const failed: string[] = [];
     Promise.all([
-      api.getCognitiveStats().catch(() => null),
-      api.getMemoryStats().catch(() => null),
-      api.getMetaStats().catch(() => null),
-      api.getComplianceStatus().catch(() => null),
+      api.getCognitiveStats().catch(softFail(failed, 'cognitive stats', null)),
+      api.getMemoryStats().catch(softFail(failed, 'memory stats', null)),
+      api.getMetaStats().catch(softFail(failed, 'meta stats', null)),
+      api.getComplianceStatus().catch(softFail(failed, 'compliance status', null)),
     ]).then(([cognitive, memory, meta, compliance]) => {
       setStats({ cognitive, memory, meta, compliance });
+      setLoadErrors(failed);
       setLoading(false);
       // Only fetch tuning-history when meta is enabled; otherwise show the disabled state.
       if (meta?.enabled) {
-        api.getMetaTuningHistory({ limit: 20 }).catch(() => null)
-          .then((result) => setTuningHistory(result && !('enabled' in result) ? result : []));
+        const tuningFailed: string[] = [];
+        api.getMetaTuningHistory({ limit: 20 }).catch(softFail(tuningFailed, 'tuning history', null))
+          .then((result) => { setTuningHistory(result && !('enabled' in result) ? result : []); if (tuningFailed.length) setLoadErrors((prev) => [...prev, ...tuningFailed]); });
       } else {
         setTuningHistory(null);
       }
@@ -55,6 +60,7 @@ export function SelfDrivingDashboard() {
         <Activity className="w-7 h-7 text-blue-600" />
         <h1 className="text-2xl font-bold text-foreground">Self-Driving Control Plane</h1>
       </div>
+      <LoadErrorNotice failed={loadErrors} />
 
       {stats && (
         <>
