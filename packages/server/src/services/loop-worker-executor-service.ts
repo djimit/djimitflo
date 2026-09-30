@@ -49,6 +49,13 @@ export interface ExecuteWorkerResult {
   trace?: any;
 }
 
+
+const TEST_ONLY_DIFF_MAX = 400;
+/** Every changed file is a test (``__tests__/``, ``*.test.*`` or ``*.spec.*``); no changes is not test-only. */
+export function testOnlyChange(files: string[]): boolean {
+  return files.length > 0 && files.every((f) => /(^|\/)__tests__\/|\.(test|spec)\.[cm]?[jt]sx?$/.test(f));
+}
+
 export class LoopWorkerExecutorService {
   constructor(
     private db: any,
@@ -168,7 +175,9 @@ export class LoopWorkerExecutorService {
     const changedFiles = [...changed, ...this.loopService.git(makerLease.worktree_path!, ['ls-files', '--others', '--exclude-standard']).split('\n')]
       .filter((f) => f && f !== 'package-lock.json' && !f.startsWith('.djimitflo/'));
     const diffLines = diff ? diff.split(/\r?\n/).filter(Boolean).length : 0;
-    const diffMaxLines = Math.max(1, Math.min(input.diff_max_lines || 200, 2_000));
+    // Y0a (operator 2026-10-01): a test-only change may use the mutation lane's 400 lines — 9 of 104 makers in 14 days wrote a
+    // complete new test file of 207–412 lines and were rejected at 200 (completed ones peaked at 192)
+    const diffMaxLines = Math.max(1, Math.min(testOnlyChange(changedFiles) ? Math.max(input.diff_max_lines || 200, TEST_ONLY_DIFF_MAX) : (input.diff_max_lines || 200), 2_000));
     const exitStatus = result.exitCode;
     const timedOut = result.timedOut;
     const runtimeUsage = this.loopService.extractRuntimeUsage(result.stdout || '');
