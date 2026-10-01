@@ -44,7 +44,7 @@ describe('seedMCPServers', () => {
     expect(row.status).toBe('error');
     expect(row.error_message).toBe('old error');
     expect(row.url).toBe('https://context7.com');
-    expect(JSON.parse(row.metadata)).toEqual({ api_url: 'https://context7.com/api' });
+    expect(JSON.parse(row.metadata)).toMatchObject({ api_url: 'https://context7.com/api', catalog_only: true, integration_kind: 'dependency' });
     const deerflow = db.prepare('SELECT status, error_message, metadata FROM mcp_servers WHERE name = ?').get('deerflow') as { status: string; error_message: string; metadata: string };
     const knowledge = db.prepare('SELECT metadata FROM mcp_servers WHERE name = ?').get('knowledge-mcp-bridge') as { metadata: string };
     expect(deerflow.status).toBe('stopped');
@@ -52,6 +52,7 @@ describe('seedMCPServers', () => {
     expect(JSON.parse(deerflow.metadata)).toMatchObject({ probe_path: '/health', openapi_path: '/openapi.json' });
     expect(JSON.parse(deerflow.metadata)).toMatchObject({ owner: 'ops' });
     expect(JSON.parse(knowledge.metadata)).toMatchObject({ probe_path: '/openapi.json', openapi_path: '/openapi.json' });
+    expect((db.prepare("SELECT COUNT(*) AS c FROM mcp_servers WHERE json_extract(metadata, '$.catalog_only') = 1").get() as { c: number }).c).toBe(6);
     expect((db.prepare('SELECT COUNT(*) AS c FROM mcp_servers').get() as { c: number }).c).toBe(8);
 
     db.close();

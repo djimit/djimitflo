@@ -234,6 +234,17 @@ describe('MCP Server Tools', () => {
     }
   });
 
+  it('does not report policy-isolated MCP endpoints as errors', async () => {
+    dbHandle.db.prepare(`INSERT INTO mcp_servers
+      (id, name, status, command, args, url, error_message, metadata, updated_at)
+      VALUES ('isolated', 'workstation', 'stopped', '', '[]', 'http://workstation:8000',
+        'Blocked by policy: host is in OUTBOUND_DENY_HOSTS.', '{}', datetime('now'))`).run();
+
+    const result = await (server as any)._registeredTools.djimitflo_mcp_doctor.handler({});
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.drift.servers_with_errors).toEqual([]);
+  });
+
   it('keeps critical mutating MCP contracts fail-closed on snapshot data', async () => {
     const tools = (server as any)._registeredTools;
     const calls: Array<[string, Record<string, unknown>]> = [

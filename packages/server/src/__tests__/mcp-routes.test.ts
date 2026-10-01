@@ -94,7 +94,13 @@ describe('MCP routes', () => {
   it('reports stale running servers without rewriting persisted history', async () => {
     const response = await fetch(`${baseUrl}/servers`);
     const body = await response.json() as { servers: Array<Record<string, unknown>> };
-    expect(body.servers[0]).toMatchObject({ status: 'running', effective_status: 'stale', status_stale: true });
+    expect(body.servers[0]).toMatchObject({
+      status: 'running',
+      effective_status: 'stale',
+      status_stale: true,
+      tool_count: 1,
+      approval_gate_count: 1,
+    });
     expect((db.prepare("SELECT status FROM mcp_servers WHERE id = 's1'").get() as { status: string }).status).toBe('running');
   });
 
@@ -151,5 +157,22 @@ describe('MCP routes', () => {
       expect(ws?.status).toBe('stopped');
       expect(String(ws?.error_message)).toContain('Blocked by policy');
     } finally { globalThis.fetch = original; }
+  });
+
+  it('reports policy-isolated servers separately from stopped services', async () => {
+    db.prepare("UPDATE mcp_servers SET status = 'stopped', metadata = ? WHERE id = 's1'")
+      .run(JSON.stringify({ known_unreachable: true }));
+
+    const response = await fetch(`${baseUrl}/servers`);
+    const body = await response.json() as { servers: Array<Record<string, unknown>> };
+    expect(body.servers[0]).toMatchObject({ status: 'stopped', effective_status: 'policy_blocked' });
+  });
+
+  it('preserves policy-isolated status for manually registered servers', async () => {
+    db.prepare("UPDATE mcp_servers SET status = 'stopped', error_message = ? WHERE id = 's1'")
+      .run('Blocked by policy: host is in OUTBOUND_DENY_HOSTS.');
+
+    const body = await (await fetch(`${baseUrl}/servers`)).json() as { servers: Array<Record<string, unknown>> };
+    expect(body.servers[0]).toMatchObject({ status: 'stopped', effective_status: 'policy_blocked' });
   });
 });

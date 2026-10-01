@@ -211,7 +211,9 @@ export function registerGovernanceTools(server: McpServer, dbHandle: DbHandle) {
       });
       const catalogOnlyIds = new Set(catalogOnlyServers.map((row) => row.id));
       const probeableServers = servers.filter((row) => row.url);
-      const serversWithErrors = probeableServers.filter((row) => row.error_message);
+      const serversWithErrors = probeableServers.filter((row) => row.error_message
+        && metadata(row).known_unreachable !== true
+        && !/OUTBOUND_DENY_HOSTS|Blocked by policy|never calls the workstation/i.test(String(row.error_message)));
       const serversWithoutPing = probeableServers.filter((row) => !row.last_ping_at);
       const serversWithoutProbeUrl = servers.filter((row) => row.id !== 'djimitflo-runtime' && !row.url && !catalogOnlyIds.has(row.id));
       const serversWithOpenApiWithoutTools = servers
