@@ -19,15 +19,16 @@ export function seedMCPServers(db: Database) {
   // stored row, so the marker is set/cleared explicitly.)
   const AGENTIC = 'http://100.77.58.72';
   const reachable = { known_unreachable: false, known_unreachable_reason: null };
+  const dependency = { catalog_only: true, integration_kind: 'dependency' };
   const workstationOnly = { known_unreachable: true, known_unreachable_reason: 'Workstation-local service: the control plane never calls the workstation (operator rule 2026-09-29). Use it from the workstation\'s own agents, or run it on agenticservices.' };
   const servers = [
-    { name: 'research-agent', url: `${AGENTIC}:8000`, description: 'Research pipeline access — deep research, graph, history, status, steer', metadata: { probe_path: '/health', ...reachable } },
+    { name: 'research-agent', url: `${AGENTIC}:8000`, description: 'Research pipeline access — deep research, graph, history, status, steer', metadata: { probe_path: '/health', ...dependency, ...reachable } },
     { name: 'deerflow', url: 'http://100.81.133.48:2026', description: 'DeerFlow consulting API — research sessions, status', metadata: { probe_path: '/health', openapi_path: '/openapi.json', ...workstationOnly } },
-    { name: 'context7', url: 'https://context7.com', description: 'Library documentation — resolve library IDs, query docs', metadata: { api_url: 'https://context7.com/api' } },
-    { name: 'qdrant', url: `${AGENTIC}:6333`, description: 'Semantic search — collections and vector search', metadata: { probe_path: '/healthz', ...reachable } },
-    { name: 'searxng', url: 'http://100.81.133.48:8080', description: 'Private web search — no tracking, no API keys', metadata: { ...workstationOnly } },
-    { name: 'litellm-mgmt', url: 'http://100.81.133.48:4000', description: 'LiteLLM management — model health, spend, status', metadata: { probe_path: '/health/readiness', ...workstationOnly } },
-    { name: 'uams-read', url: `${AGENTIC}:8000/memory`, description: 'Agent memory search — read-only', metadata: { probe_url: `${AGENTIC}:8000/health`, ...reachable } },
+    { name: 'context7', url: 'https://context7.com', description: 'Library documentation — resolve library IDs, query docs', metadata: { api_url: 'https://context7.com/api', ...dependency } },
+    { name: 'qdrant', url: `${AGENTIC}:6333`, description: 'Semantic search — collections and vector search', metadata: { probe_path: '/healthz', ...dependency, ...reachable } },
+    { name: 'searxng', url: 'http://100.81.133.48:8080', description: 'Private web search — no tracking, no API keys', metadata: { ...dependency, ...workstationOnly } },
+    { name: 'litellm-mgmt', url: 'http://100.81.133.48:4000', description: 'LiteLLM management — model health, spend, status', metadata: { probe_path: '/health/readiness', ...dependency, ...workstationOnly } },
+    { name: 'uams-read', url: `${AGENTIC}:8000/memory`, description: 'Agent memory search — read-only', metadata: { probe_url: `${AGENTIC}:8000/health`, ...dependency, ...reachable } },
     { name: 'knowledge-mcp-bridge', url: `${AGENTIC}:8007`, description: 'Knowledge MCP bridge — domain context, recent, search', metadata: { probe_path: '/openapi.json', openapi_path: '/openapi.json', ...reachable } },
   ];
 

@@ -167,4 +167,12 @@ describe('MCP routes', () => {
     const body = await response.json() as { servers: Array<Record<string, unknown>> };
     expect(body.servers[0]).toMatchObject({ status: 'stopped', effective_status: 'policy_blocked' });
   });
+
+  it('preserves policy-isolated status for manually registered servers', async () => {
+    db.prepare("UPDATE mcp_servers SET status = 'stopped', error_message = ? WHERE id = 's1'")
+      .run('Blocked by policy: host is in OUTBOUND_DENY_HOSTS.');
+
+    const body = await (await fetch(`${baseUrl}/servers`)).json() as { servers: Array<Record<string, unknown>> };
+    expect(body.servers[0]).toMatchObject({ status: 'stopped', effective_status: 'policy_blocked' });
+  });
 });

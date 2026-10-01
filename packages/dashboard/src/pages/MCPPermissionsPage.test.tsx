@@ -26,7 +26,7 @@ it('shows effective status and unfiltered server tool counts', async () => {
     url: null,
     last_ping_at: '2026-08-01T10:07:56Z',
     error_message: null,
-    metadata: {},
+    metadata: { catalog_only: true },
     created_at: '2026-08-01T10:07:56Z',
     updated_at: '2026-08-01T10:07:56Z',
   }] as never });
@@ -37,4 +37,5 @@ it('shows effective status and unfiltered server tool counts', async () => {
   expect(await screen.findByText('Stale')).toBeTruthy();
   expect(screen.getByText(/Registered tools: 44/)).toBeTruthy();
   expect(screen.getByText(/Approval gates: 3/)).toBeTruthy();
+  expect(screen.getByText('Dependency endpoint — no MCP tools expected')).toBeTruthy();
 });
