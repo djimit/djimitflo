@@ -261,6 +261,29 @@ describe('LoopDaemon checker dispatch', () => {
     } finally { delete process.env.LOOP_EVOLVE_ENABLED; delete process.env.LOOP_EVOLVE_SPECIES; }
   });
 
+  it('the bandit never rewrites a resumed evolve sibling\'s species (prod 2026-10-01: remote siblings ran as opencode)', async () => {
+    const goal = seedQualifyingGoal();
+    db.prepare("UPDATE goals SET metadata = ? WHERE id = ?").run(JSON.stringify({ evolve: true, resume_run_id: 'run-1' }), goal.id);
+    db.pragma('foreign_keys = OFF');
+    db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata) VALUES ('maker-2', 'run-1', 'maker', 'remote', 'prepared', ?)")
+      .run(JSON.stringify({ evolve_sibling_of: 'maker-1', model: 'workstation/atomic@llama-router' }));
+    const leases = [
+      { id: 'maker-1', role: 'maker', status: 'completed', runtime: 'opencode', metadata: {} },
+      { id: 'maker-2', role: 'maker', status: 'prepared', runtime: 'remote', metadata: { evolve_sibling_of: 'maker-1' } },
+      { id: 'checker-1', role: 'checker', status: 'prepared', runtime: 'manual', metadata: {} },
+    ];
+    const skills = new (await import('../services/skill-evolution-engine')).SkillEvolutionEngine(db); // the bandit only chooses with outcome history
+    for (let i = 0; i < 25; i++) skills.recordOutcome('loop-maker:doc-drift-and-small-fix-loop:opencode', { success: true, tokensUsed: 0, durationMs: 1, domain: 'd' });
+    Object.assign(stubLoops, { getLoopRun: vi.fn(() => ({ id: 'run-1', findings: [{ id: 'finding-1' }] })), listWorkerLeases: vi.fn(() => leases), assertRuntimeAvailable: vi.fn() });
+    Object.assign(process.env, { LOOP_EVOLVE_ENABLED: 'true', LOOP_EVOLVE_SPECIES: 'remote@workstation/atomic@llama-router', LOOP_BANDIT_ENABLED: 'true', LOOP_BANDIT_SPECIES: 'opencode,remote@workstation/atomic@llama-router' });
+    try {
+      await runOneTick(new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 }));
+      expect(stubLoops.executeWorker).toHaveBeenCalledWith('run-1', expect.objectContaining({ lease_id: 'maker-2' }));
+      expect(db.prepare("SELECT runtime, json_extract(metadata, '$.model') AS model FROM worker_leases WHERE id = 'maker-2'").get())
+        .toEqual({ runtime: 'remote', model: 'workstation/atomic@llama-router' });
+    } finally { for (const k of ['LOOP_EVOLVE_ENABLED', 'LOOP_EVOLVE_SPECIES', 'LOOP_BANDIT_ENABLED', 'LOOP_BANDIT_SPECIES']) delete process.env[k]; }
+  });
+
   it('I3: an approved remote sibling is awaited for the host timeout, not the 11-min default (prod 2026-09-27)', async () => {
     const goal = seedQualifyingGoal();
     db.prepare("UPDATE goals SET metadata = '{\"evolve\":true}' WHERE id = ?").run(goal.id);
