@@ -33,6 +33,7 @@ import { DiskGuardService, diskGuardEnabled } from '../services/disk-guard-servi
 import { QueueHygieneService, queueHygieneEnabled } from '../services/queue-hygiene-service';
 import { startStallWatch } from '../services/stall-watch';
 import { startInterestFeedback } from '../services/interest-feedback';
+import { startDreamEvolution } from '../services/dream-evolution';
 import { KnowledgeMaintenanceService, maintenanceEnabled } from '../services/knowledge-maintenance-service';
 
 export function initAutonomousServices(db: any, recoverySvc: LoopService): void {
@@ -185,6 +186,14 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     if (stopFeedback) { lifecycleManager.register({ serviceName: 'InterestFeedback', stop: stopFeedback }); console.log('📣 Interest feedback on (daily).'); }
   } catch (error) {
     console.warn('⚠️  Interest feedback failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // Y3: dreaming as mutation — daily mutants of the maker genome, judged on the frozen gym holdout. DREAM_EVOLUTION_ENABLED=true.
+  try {
+    const stopDream = startDreamEvolution(db);
+    if (stopDream) { lifecycleManager.register({ serviceName: 'DreamEvolution', stop: stopDream }); console.log('🧬 Dream evolution on (hourly tick, one dream a day).'); }
+  } catch (error) {
+    console.warn('⚠️  Dream evolution failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // Stall watch (M10): hourly log line per silent stall. STALL_WATCH_ENABLED=true (default off).

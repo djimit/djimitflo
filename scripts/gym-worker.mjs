@@ -140,7 +140,9 @@ async function main() {
     const ci = inRunner(wt, 'npm ci --legacy-peer-deps --no-audit --no-fund > /tmp/ci.log 2>&1; rc=$?; tail -40 /tmp/ci.log; exit $rc');
     if (ci.status !== 0) return report(npmCiFailure(ci.stdout));
     if (oracle(wt, task)) return report({ status: 'discarded', reason: 'tests already green on the parent' });
-    const goal = `Evolution gym: make ${task.tests.join(', ')} pass. Change only ${task.source}. The tests describe the intended behaviour; do not edit them.`;
+    // Y3: a trial genome adds its strategy lines to the task (the only thing a genome may change)
+    const strategy = Array.isArray(claim.genome?.lines) && claim.genome.lines.length ? `\n\nStrategy:\n${claim.genome.lines.map((l) => `- ${String(l).slice(0, 300)}`).join('\n')}` : '';
+    const goal = `Evolution gym: make ${task.tests.join(', ')} pass. Change only ${task.source}. The tests describe the intended behaviour; do not edit them.${strategy}`;
     const [runtime] = species.split('@');
     if (runtime !== 'atomic') return report({ status: 'discarded', reason: `infra: species ${species} not supported by this worker` });
     const state = path.join(WORK, 'atomic-state'); fs.mkdirSync(state, { recursive: true });

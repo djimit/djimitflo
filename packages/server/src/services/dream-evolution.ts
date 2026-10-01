@@ -1,0 +1,134 @@
+import { randomUUID } from 'crypto';
+import type { Database } from 'better-sqlite3';
+import { generateText, llmEndpoints } from './llm-fallback';
+import { firstJsonObject } from './expert-council-service';
+import { BASELINE_GENOME, dreamEvolutionEnabled, ensureBaseline, genome } from './genome-registry';
+
+/**
+ * Y3b/Y3c (plan Phase Y, Darwin loop). Dreaming is the mutation operator: once a day the day's failed makers (real and
+ * gym) and a little relevant knowledge go to one model call that proposes at most 3 mutants of the active genome, each
+ * changing exactly one gene (extra strategy lines or an anti-pattern line). A guard drops any line that touches gates,
+ * checks, scope, secrets, deploy or the tests themselves. Mutants run as 'trial' on the frozen holdout next to their parent
+ * (genome-registry + remote gym); evaluateTrials() promotes one that wins ≥ 2 more holdout tasks without more out-of-scope
+ * changes (≤ 1 promotion a day) and retires the rest. Behind DREAM_EVOLUTION_ENABLED (default off). Memory-rule ideas are
+ * not genes: rules only change through memory review.
+ */
+export type DreamCaller = (prompt: string) => Promise<string>;
+export const MAX_MUTANTS = 3;
+export const PROMOTION_MARGIN = 2;
+const MAX_LINES = 5;
+const MAX_LINE_CHARS = 200;
+// what a genome may never steer: gates, checks, scope, secrets, deploy, approvals — or the tests that judge it
+const FORBIDDEN = /\b(gates?|checks?|checker|scope|secrets?|tokens?|passwords?|credentials?|deploy\w*|push\w*|merge\w*|approv\w*|skip\w*|disable\w*|no-verify|package\.json|lock ?files?|\.github|polic(y|ies)|auth\w*)\b|\b(edit|change|modify|delete|remove|rewrite|weaken)\s+(the\s+|a\s+|any\s+)?tests?\b/i;
+
+/** Lines a mutant may add: strings, ≤ 5, ≤ 200 chars, none touching what the guard forbids. null when anything is off. */
+export function guardLines(lines: unknown): string[] | null {
+  if (!Array.isArray(lines) || !lines.length || lines.length > MAX_LINES) return null;
+  const clean = lines.map((l) => (typeof l === 'string' ? l.replace(/\s+/g, ' ').trim() : ''));
+  return clean.every((l) => l.length > 0 && l.length <= MAX_LINE_CHARS && !FORBIDDEN.test(l)) ? clean : null;
+}
+
+export function dreamInputs(db: Database, now = Date.now()): { failures: string[]; knowledge: string[] } {
+  const all = <T>(sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } };
+  const d1 = new Date(now - 86_400_000).toISOString(); const d30 = new Date(now - 30 * 86_400_000).toISOString();
+  const gym = all<{ source: string; reason: string }>(`SELECT json_extract(metadata, '$.gym.source') AS source, json_extract(metadata, '$.gym_result.reason') AS reason
+    FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym_result.status') = 'failure' AND created_at >= ? LIMIT 20`, d1)
+    .map((r) => `gym: ${r.source} — ${r.reason}`);
+  const real = all<{ reason: string; files: string }>(`SELECT json_extract(metadata, '$.failure_reason') AS reason, json_extract(metadata, '$.changed_files') AS files
+    FROM worker_leases WHERE role = 'maker' AND status = 'failed' AND created_at >= ? LIMIT 20`, d1)
+    .map((r) => `maker: ${r.reason || 'failed'} — changed ${r.files || '[]'}`);
+  const knowledge = all<{ t: string }>(`SELECT i.canonical_name AS t FROM judgments j JOIN expert_identities i ON i.id = j.subject_id
+    WHERE j.judgment = 'discovery_relevance' AND j.decision = 'yes' AND j.created_at >= ? ORDER BY j.created_at DESC LIMIT 3`, d30).map((r) => r.t);
+  return { failures: [...gym, ...real].map((f) => f.slice(0, 300)), knowledge };
+}
+
+function activeParent(db: Database): string {
+  const row = db.prepare("SELECT id FROM maker_genomes WHERE status = 'active' AND id <> ? ORDER BY updated_at DESC LIMIT 1").get(BASELINE_GENOME) as { id: string } | undefined;
+  return row?.id ?? BASELINE_GENOME;
+}
+
+const defaultCaller: DreamCaller = (prompt) => generateText(
+  { prompt, model: process.env.DREAM_EVOLUTION_MODEL || process.env.SELF_IMPROVEMENT_REVIEW_MODEL || 'kimi-k3:cloud', temperature: 0.7, maxTokens: 1200, timeoutMs: 120_000 },
+  { endpoints: llmEndpoints(process.env.OLLAMA_URL || 'https://ollama.com') },
+);
+
+export async function dreamOnce(db: Database, now = Date.now(), call: DreamCaller = defaultCaller): Promise<{ created: string[]; skipped?: string }> {
+  if (!dreamEvolutionEnabled()) return { created: [], skipped: 'disabled' };
+  const iso = new Date(now).toISOString();
+  ensureBaseline(db, iso);
+  if (db.prepare("SELECT 1 FROM maker_genomes WHERE origin = 'dream' AND created_at >= ? LIMIT 1").get(iso.slice(0, 10))) return { created: [], skipped: 'already dreamt today' };
+  if (db.prepare("SELECT 1 FROM maker_genomes WHERE status = 'trial' LIMIT 1").get()) return { created: [], skipped: 'a trial is still running' };
+  const { failures, knowledge } = dreamInputs(db, now);
+  if (!failures.length) return { created: [], skipped: 'no failures to learn from' };
+  const parent = genome(db, activeParent(db))!;
+  const prompt = [
+    'You improve the instructions given to an autonomous coding agent ("maker") that fixes code so that given tests pass.',
+    `Its current extra strategy lines: ${parent.lines.length ? parent.lines.map((l) => `"${l}"`).join('; ') : '(none)'}.`,
+    'Today it failed on:', ...failures.map((f) => `- ${f}`),
+    ...(knowledge.length ? ['Recent relevant research titles:', ...knowledge.map((k) => `- ${k}`)] : []),
+    `Propose at most ${MAX_MUTANTS} alternative strategies. Each changes ONE thing: either new "strategy_lines" (how to approach the work)`,
+    'or an "anti_pattern" line (a mistake to avoid that today\'s failures show). At most 5 short lines each. Never mention tests to edit,',
+    'gates, checks, scope, approvals, secrets, deploy or merging. Return JSON only:',
+    '{"mutants":[{"gene":"strategy_lines|anti_pattern","lines":["..."],"rationale":"which failure this addresses"}]}',
+  ].join('\n');
+  const parsed = firstJsonObject(await call(prompt));
+  const mutants = Array.isArray(parsed?.mutants) ? parsed!.mutants as Array<Record<string, unknown>> : [];
+  const insert = db.prepare(`INSERT INTO maker_genomes (id, parent_id, gene, lines_json, origin, status, note, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'dream', 'trial', ?, ?, ?)`);
+  const created: string[] = [];
+  for (const m of mutants.slice(0, MAX_MUTANTS)) {
+    const gene = m.gene === 'anti_pattern' ? 'anti_pattern' : m.gene === 'strategy_lines' ? 'strategy_lines' : null;
+    const lines = guardLines(m.lines);
+    if (!gene || !lines) continue;
+    const added = gene === 'anti_pattern' ? lines.map((l) => (l.toLowerCase().startsWith('avoid') ? l : `Avoid: ${l}`)) : lines;
+    const id = `g-${randomUUID().slice(0, 8)}`;
+    insert.run(id, parent.id, gene, JSON.stringify([...parent.lines, ...added]), String(m.rationale ?? '').slice(0, 300), iso, iso);
+    created.push(id);
+  }
+  return { created, ...(created.length ? {} : { skipped: 'no mutant passed the guard' }) };
+}
+
+/** Settles finished trials: paired holdout results decide; at most one promotion a day; everything else retires. */
+export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits: string[], now = Date.now()): Array<{ id: string; status: 'active' | 'retired'; wins: number; parentWins: number }> {
+  if (!holdoutCommits.length) return [];
+  const iso = new Date(now).toISOString();
+  const results = db.prepare(`SELECT json_extract(metadata, '$.gym.commit') AS commit_sha, json_extract(metadata, '$.gym_result.status') AS status,
+      COALESCE(json_extract(metadata, '$.gym_result.reason'), '') AS reason
+    FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.genome') = ?
+      AND status = 'completed' AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%'`);
+  const score = (genomeId: string) => {
+    const rows = (results.all(speciesKey, genomeId) as Array<{ commit_sha: string; status: string; reason: string }>).filter((r) => holdoutCommits.includes(r.commit_sha));
+    const byCommit = new Map(rows.map((r) => [r.commit_sha, r]));
+    return { complete: holdoutCommits.every((c) => byCommit.has(c)), wins: [...byCommit.values()].filter((r) => r.status === 'success').length,
+      outOfScope: [...byCommit.values()].filter((r) => r.reason.startsWith('out of scope')).length };
+  };
+  const settled: Array<{ id: string; status: 'active' | 'retired'; wins: number; parentWins: number }> = [];
+  const promotedToday = () => Boolean(db.prepare("SELECT 1 FROM maker_genomes WHERE origin = 'dream' AND status = 'active' AND updated_at >= ? LIMIT 1").get(iso.slice(0, 10)));
+  const trials = db.prepare("SELECT id, COALESCE(parent_id, ?) AS parent FROM maker_genomes WHERE status = 'trial' ORDER BY created_at").all(BASELINE_GENOME) as Array<{ id: string; parent: string }>;
+  for (const trial of trials) {
+    const mine = score(trial.id); const theirs = score(trial.parent);
+    if (!mine.complete || !theirs.complete) continue;
+    const wins = mine.wins - theirs.wins >= PROMOTION_MARGIN && mine.outOfScope <= theirs.outOfScope && !promotedToday();
+    const status = wins ? 'active' : 'retired';
+    db.prepare('UPDATE maker_genomes SET status = ?, note = ?, updated_at = ? WHERE id = ?')
+      .run(status, `holdout ${mine.wins}/${holdoutCommits.length} vs parent ${theirs.wins}/${holdoutCommits.length}; out of scope ${mine.outOfScope} vs ${theirs.outOfScope}`, iso, trial.id);
+    settled.push({ id: trial.id, status, wins: mine.wins, parentWins: theirs.wins });
+  }
+  return settled;
+}
+
+/** Hourly: dream (at most once a day) and settle finished trials for the gym species that runs them. */
+export function startDreamEvolution(db: Database, intervalMs = 3_600_000): (() => void) | null {
+  if (!dreamEvolutionEnabled()) return null;
+  const species = process.env.DREAM_EVOLUTION_SPECIES || 'atomic@llama-router';
+  const tick = () => {
+    try {
+      const commits = (db.prepare('SELECT commit_sha FROM gym_holdout ORDER BY commit_sha').all() as Array<{ commit_sha: string }>).map((r) => r.commit_sha);
+      for (const s of evaluateTrials(db, species, commits)) console.log(`🧬 genome ${s.id} ${s.status} (holdout ${s.wins} vs parent ${s.parentWins})`);
+    } catch (e) { console.warn('dream evolution: evaluate failed:', e instanceof Error ? e.message : String(e)); }
+    dreamOnce(db).then((r) => { if (r.created.length) console.log(`🧬 dreamt ${r.created.length} mutant(s): ${r.created.join(', ')}`); })
+      .catch((e) => console.warn('dream evolution: dream failed:', e instanceof Error ? e.message : String(e)));
+  };
+  tick(); const timer = setInterval(tick, intervalMs); timer.unref?.();
+  return () => clearInterval(timer);
+}
