@@ -59,6 +59,10 @@ import { canonicalJson, DeepAgentContractIssuer } from '../services/deep-agent-c
 import { DennisAgentService } from '../services/dennis-agent-service';
 import { EvidenceType, EvidenceSeverity, RiskLevel } from '@djimitflo/shared';
 import { createError } from '../middleware/error-handler';
+import { checkAdmission, type AdmissionCheck } from './runtime-admission';
+
+// Probe rows written before this process started may describe a binary from the previous image.
+const ENGINE_BOOT_ISO = new Date().toISOString();
 
 export interface ExecuteTaskResult {
   status: 'started' | 'awaiting_approval' | 'denied';
@@ -310,6 +314,10 @@ export class ExecutionEngine {
     if (!executor) {
       throw new Error(`Executor not found: ${executorKind}`);
     }
+
+    // Registered is not admitted: the runtime@version needs an admission record before any policy work is spent on it.
+    const admission = this.admitRuntime(taskId, executorKind);
+    if (!admission.allowed) return { status: 'denied', reason: `RUNTIME_NOT_ADMITTED: ${admission.reasons[0]}` };
 
     if (executorKind !== 'deep-agent' && !executor.canExecute(parsedTask)) {
       throw new Error(`Executor ${executorKind} cannot execute this task`);
@@ -612,6 +620,9 @@ export class ExecutionEngine {
     if (attempt > 0 && !this.fallbackAdmitted(task, executorKind, riskAssessmentText)) {
       throw new Error(`Fallback executor ${executorKind} was not admitted by policy`);
     }
+    // every attempt, including fallbacks, passes runtime admission (a fallback chain is not a bypass)
+    const admission = this.admitRuntime(task.id, executorKind);
+    if (!admission.allowed) throw new Error(`RUNTIME_NOT_ADMITTED: ${executorKind}: ${admission.reasons[0]}`);
 
     const sandboxMeta = (task.metadata?.sandbox ?? {}) as Record<string, unknown>;
     if (executorKind === 'deep-agent' && sandboxMeta.enabled === true) {
@@ -810,6 +821,30 @@ export class ExecutionEngine {
       sideEffectsPossible,
       failureDomain,
     };
+  }
+
+  /**
+   * Runtime admission (execution/runtime-admission.ts). The observed version comes from Djimitflo's own contract probe of
+   * the binary, never from the task or the runtime's output. Every decision is recorded on the task. RUNTIME_ADMISSION_MODE
+   * =shadow is the operator's rollback: it records the denial and lets the run proceed.
+   */
+  private admitRuntime(taskId: string, executorKind: ExecutorKind): AdmissionCheck {
+    let observed: string | null = null;
+    try {
+      const row = this.db.prepare("SELECT json_extract(contract_json, '$.version') AS v FROM runtime_contract_probes WHERE runtime = ? AND probed_at >= ?")
+        .get(executorKind, ENGINE_BOOT_ISO) as { v: string | null } | undefined;
+      observed = row?.v ?? null;
+    } catch { /* no probe table: version not observed */ }
+    const check = checkAdmission(executorKind, observed);
+    const shadow = process.env.RUNTIME_ADMISSION_MODE === 'shadow';
+    this.persistEvent({
+      task_id: taskId,
+      event_type: check.allowed ? ExecutionEventType.LOG : ExecutionEventType.ERROR,
+      message: `runtime admission ${check.allowed ? 'passed' : shadow ? 'failed (shadow, not enforced)' : 'denied'}: ${executorKind} ${check.decision}${check.reasons[0] ? ` — ${check.reasons[0]}` : ''}`,
+      level: check.allowed ? LogLevel.INFO : shadow ? LogLevel.WARNING : LogLevel.ERROR,
+      metadata: { source: 'runtime-admission', runtime: executorKind, observed_version: observed, ...check },
+    });
+    return shadow ? { ...check, allowed: true } : check;
   }
 
   private fallbackAdmitted(task: Task, executorKind: ExecutorKind, riskAssessmentText?: string): boolean {
