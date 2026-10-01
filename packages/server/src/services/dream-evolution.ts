@@ -9,13 +9,25 @@ import { BASELINE_GENOME, dreamEvolutionEnabled, ensureBaseline, genome } from '
  * gym) and a little relevant knowledge go to one model call that proposes at most 3 mutants of the active genome, each
  * changing exactly one gene (extra strategy lines or an anti-pattern line). A guard drops any line that touches gates,
  * checks, scope, secrets, deploy or the tests themselves. Mutants run as 'trial' on the frozen holdout next to their parent
- * (genome-registry + remote gym); evaluateTrials() promotes one that wins ≥ 2 more holdout tasks without more out-of-scope
+ * (genome-registry + remote gym); evaluateTrials() promotes one that wins significantly more paired holdout tasks (Z5) without more out-of-scope
  * changes (≤ 1 promotion a day) and retires the rest. Behind DREAM_EVOLUTION_ENABLED (default off). Memory-rule ideas are
  * not genes: rules only change through memory review.
  */
 export type DreamCaller = (prompt: string) => Promise<string>;
 export const MAX_MUTANTS = 3;
-export const PROMOTION_MARGIN = 2;
+/**
+ * Z5: promotion needs a significant paired win, not a margin. On a 20-task holdout at an ~80 % base rate, '+2 wins' was
+ * typically 3 vs 1 discordant pairs — exact one-sided McNemar p ≈ 0.31, i.e. noise. Only discordant pairs (one genome
+ * green, the other not) carry information: P(X ≥ b | n = b + c, ½) < DREAM_PROMOTION_ALPHA (default 0.05) promotes.
+ */
+export function mcnemarOneSided(b: number, c: number): number {
+  const n = b + c;
+  if (n === 0) return 1;
+  let p = 0; let coef = 1; // C(n, 0)
+  for (let k = 0; k <= n; k++) { if (k >= b) p += coef; coef = coef * (n - k) / (k + 1); }
+  return p / 2 ** n;
+}
+const promotionAlpha = () => Number(process.env.DREAM_PROMOTION_ALPHA) || 0.05;
 const MAX_LINES = 5;
 const MAX_LINE_CHARS = 200;
 // what a genome may never steer: gates, checks, scope, secrets, deploy, approvals, git history (a gym `git commit` empties the
@@ -101,6 +113,7 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
     const rows = (results.all(speciesKey, genomeId) as Array<{ commit_sha: string; status: string; reason: string }>).filter((r) => holdoutCommits.includes(r.commit_sha));
     const byCommit = new Map(rows.map((r) => [r.commit_sha, r]));
     return { complete: holdoutCommits.every((c) => byCommit.has(c)), wins: [...byCommit.values()].filter((r) => r.status === 'success').length,
+      won: new Set([...byCommit.values()].filter((r) => r.status === 'success').map((r) => r.commit_sha)),
       outOfScope: [...byCommit.values()].filter((r) => r.reason.startsWith('out of scope')).length };
   };
   const settled: Array<{ id: string; status: 'active' | 'retired'; wins: number; parentWins: number }> = [];
@@ -109,10 +122,13 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
   for (const trial of trials) {
     const mine = score(trial.id); const theirs = score(trial.parent);
     if (!mine.complete || !theirs.complete) continue;
-    const wins = mine.wins - theirs.wins >= PROMOTION_MARGIN && mine.outOfScope <= theirs.outOfScope && !promotedToday();
+    const b = holdoutCommits.filter((h) => mine.won.has(h) && !theirs.won.has(h)).length;
+    const c = holdoutCommits.filter((h) => theirs.won.has(h) && !mine.won.has(h)).length;
+    const p = mcnemarOneSided(b, c);
+    const wins = b > c && p < promotionAlpha() && mine.outOfScope <= theirs.outOfScope && !promotedToday();
     const status = wins ? 'active' : 'retired';
     db.prepare('UPDATE maker_genomes SET status = ?, note = ?, updated_at = ? WHERE id = ?')
-      .run(status, `holdout ${mine.wins}/${holdoutCommits.length} vs parent ${theirs.wins}/${holdoutCommits.length}; out of scope ${mine.outOfScope} vs ${theirs.outOfScope}`, iso, trial.id);
+      .run(status, `holdout ${mine.wins}/${holdoutCommits.length} vs parent ${theirs.wins}/${holdoutCommits.length}; discordant ${b} vs ${c}, McNemar p=${p.toFixed(3)}; out of scope ${mine.outOfScope} vs ${theirs.outOfScope}`, iso, trial.id);
     settled.push({ id: trial.id, status, wins: mine.wins, parentWins: theirs.wins });
   }
   return settled;
