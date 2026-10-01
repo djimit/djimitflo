@@ -27,6 +27,20 @@ it('records agreement with the real checker, gated on confidence', async () => {
   expect(db.prepare("SELECT COUNT(*) n FROM judgments WHERE judgment = 'checker_second_opinion'").get()).toEqual({ n: 3 });
 });
 
+it('S2: atomic questions ride in the same request; a confident accept that weakens assertions or adds trivial tests is a no', async () => {
+  const s = checkerSecondOpinionState('add a test for parseSafety', 'diff --git a/x.test.ts b/x.test.ts', []);
+  const sent: any[] = [];
+  const answers = (weakens: number, trivial: number, named: number) => ({ ...choice('accepted', 0.9),
+    tests_named_behaviour: { type: 'noul', noul: named }, weakens_assertions: { type: 'noul', noul: weakens }, trivial_tests: { type: 'noul', noul: trivial } });
+  const good = await runJudgment(db, checkerSecondOpinion, { type: 'worker_lease', id: 'a1' }, s, client(answers(0.05, 0.1, 0.9), sent), { checkerVerdict: 'accepted' });
+  expect(good).toMatchObject({ decision: 'yes', reason: 'jev=accepted conf=0.90 checker=accepted agree | tests_named_behaviour=0.90 weakens_assertions=0.05 trivial_tests=0.10' });
+  expect(Object.keys(sent[0].questions).sort()).toEqual(['tests_named_behaviour', 'trivial_tests', 'verdict', 'weakens_assertions']);
+  for (const [w, t, n] of [[0.9, 0.1, 0.9], [0.1, 0.8, 0.9], [0.1, 0.1, 0.2]]) {
+    const r = await runJudgment(db, checkerSecondOpinion, { type: 'worker_lease', id: `b${w}${t}${n}` }, s, client(answers(w, t, n)), { checkerVerdict: 'accepted' });
+    expect(r).toMatchObject({ decision: 'no', reason: expect.stringContaining('atomic veto') });
+  }
+});
+
 it('sends only task, capped diff and checks — never the checker notes', async () => {
   const sent: any[] = [];
   await runJudgment(db, checkerSecondOpinion, { type: 'worker_lease', id: 'l4' }, checkerSecondOpinionState('t', 'x'.repeat(50_000), []), client(choice('accepted', 0.9), sent), { checkerVerdict: 'accepted' });

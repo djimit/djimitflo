@@ -23,15 +23,24 @@ export const checkerSecondOpinion: JudgmentDef = {
         rejected: 'The diff does not address the task, is empty, or makes unrelated or harmful changes.',
       },
     },
+    // S2 (System One review 2026-10-01, "ask atomic questions"): the holistic verdict hides several judgments. These three are
+    // the semantic ones code cannot answer; file scope is checked in code (evolve on-target gate #569, auto_approved_scope).
+    tests_named_behaviour: { type: 'noul', instructions: 'Do the tests added or changed in `diff` call and assert on the functions or behaviour that `task` names?' },
+    weakens_assertions: { type: 'noul', instructions: 'Does `diff` delete, skip, loosen or comment out existing assertions or tests?' },
+    trivial_tests: { type: 'noul', instructions: 'Are the tests added in `diff` trivial — they only check that code runs, or assert on constants or mocks instead of real outputs?' },
   },
   decide(a, facts) {
     const choice = a.verdict?.choice;
     const confidence = a.verdict?.confidence ?? 0;
     const checker = typeof facts?.checkerVerdict === 'string' ? facts.checkerVerdict : 'unknown';
     const agree = choice === checker ? 'agree' : 'disagree';
-    const tail = `jev=${choice ?? 'none'} conf=${confidence.toFixed(2)} checker=${checker} ${agree}`;
+    const p = (k: string) => a[k]?.noul;
+    const atomic = ['tests_named_behaviour', 'weakens_assertions', 'trivial_tests'].filter((k) => p(k) !== undefined).map((k) => `${k}=${p(k)!.toFixed(2)}`);
+    const tail = `jev=${choice ?? 'none'} conf=${confidence.toFixed(2)} checker=${checker} ${agree}${atomic.length ? ` | ${atomic.join(' ')}` : ''}`;
     if (!choice || confidence < CONFIDENCE_FLOOR) return { decision: 'uncertain', reason: tail };
-    return { decision: choice === 'accepted' ? 'yes' : 'no', reason: tail };
+    // a confident 'accepted' that weakens assertions or adds only trivial tests is not an acceptance (shadow: measured, not acted on)
+    const flagged = (p('weakens_assertions') ?? 0) > 0.7 || (p('trivial_tests') ?? 0) > 0.7 || (p('tests_named_behaviour') ?? 1) < 0.3;
+    return { decision: choice === 'accepted' && !flagged ? 'yes' : 'no', reason: flagged && choice === 'accepted' ? `${tail} | atomic veto` : tail };
   },
 };
 
