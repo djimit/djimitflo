@@ -30,6 +30,7 @@ function sanitizeMCPServer(server: any, isAdmin: boolean): any {
 }
 
 function metadata(server: any): Record<string, any> {
+  if (server.metadata && typeof server.metadata === 'object') return server.metadata;
   try {
     return JSON.parse(server.metadata || '{}');
   } catch {
@@ -55,12 +56,13 @@ function queryString(value: unknown): string {
 }
 
 function withEffectiveStatus(server: any, now = Date.now()): any {
+  const meta = metadata(server);
   const ttlMs = Math.max(1_000, Number(process.env.MCP_STATUS_TTL_MS || 300_000));
   const verifiedAt = server.last_ping_at ? Date.parse(server.last_ping_at) : Number.NaN;
   const stale = server.status === 'running' && (!Number.isFinite(verifiedAt) || now - verifiedAt > ttlMs);
   return {
     ...server,
-    effective_status: stale ? 'stale' : server.status,
+    effective_status: meta.known_unreachable ? 'policy_blocked' : stale ? 'stale' : server.status,
     status_stale: stale,
     last_verified_at: server.last_ping_at || null,
   };
@@ -81,7 +83,16 @@ export function createMCPRoutes(db: Database, auth?: AuthMiddleware): Router {
     try {
       const user = getUser(req);
       const isAdmin = AuthorizationService.isAdmin(user);
-      let servers = db.prepare('SELECT * FROM mcp_servers ORDER BY created_at DESC').all() as any[];
+      const selectServers = () => db.prepare(`
+        SELECT s.*,
+          (SELECT COUNT(*) FROM mcp_tools t WHERE t.server_id = s.id) AS tool_count,
+          (SELECT COUNT(*) FROM mcp_tools t
+            JOIN mcp_tool_permissions p ON p.tool_id = t.id
+            WHERE t.server_id = s.id AND p.decision = 'requires_approval') AS approval_gate_count
+        FROM mcp_servers s
+        ORDER BY s.created_at DESC
+      `).all() as any[];
+      let servers = selectServers();
       if (req.query.refresh === 'true') {
         await Promise.all(servers.map(async (server) => {
           if (!server.url) return;
@@ -118,7 +129,7 @@ export function createMCPRoutes(db: Database, auth?: AuthMiddleware): Router {
                 : error instanceof Error ? error.message : 'Health probe failed', now, server.id);
           }
         }));
-        servers = db.prepare('SELECT * FROM mcp_servers ORDER BY created_at DESC').all() as any[];
+        servers = selectServers();
       }
 
       const parsed = servers.map((server: any) => {
