@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { BASELINE_GENOME, genome } from '../services/genome-registry';
-import { dreamOnce, evaluateTrials, guardLines } from '../services/dream-evolution';
+import { dreamOnce, evaluateTrials, guardLines, mcnemarOneSided } from '../services/dream-evolution';
 
 let db: Database.Database;
 beforeEach(() => { db = new Database(':memory:'); db.pragma('foreign_keys = OFF'); db.exec(schema); runMigrations(db); vi.stubEnv('DREAM_EVOLUTION_ENABLED', 'true'); });
@@ -41,15 +41,29 @@ it('Y3b: one dream a day turns the day\'s failures into ≤ 3 guarded one-gene t
   expect((await dreamOnce(db, NOW + 86_400_000, call)).skipped).toBe('disabled');
 });
 
-it('Y3c: a trial is promoted only with ≥ 2 more paired holdout wins and no more out-of-scope changes; otherwise retired', async () => {
+it('Y3c/Z5: a trial is promoted only on a significant paired win (5 vs 0 discordant, p = 0.031) and ≤ 1 a day', async () => {
   gymRun('f1', 'c1', BASELINE_GENOME, 'failure', 'tests still red');
   const [good, bad] = (await dreamOnce(db, NOW, async () => '{"mutants":[{"gene":"strategy_lines","lines":["A"]},{"gene":"strategy_lines","lines":["B"]}]}')).created;
-  const holdout = ['h1', 'h2', 'h3', 'h4'];
+  const holdout = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
   holdout.forEach((c, i) => gymRun(`p${i}`, c, BASELINE_GENOME, i === 0 ? 'success' : 'failure', i === 0 ? 'tests green, source only' : 'tests still red'));
-  holdout.forEach((c, i) => gymRun(`g${i}`, c, good, i < 3 ? 'success' : 'failure', i < 3 ? 'tests green, source only' : 'tests still red'));
-  holdout.slice(0, 3).forEach((c, i) => gymRun(`b${i}`, c, bad, 'success', 'tests green, source only'));
-  expect(evaluateTrials(db, 'atomic@llama-router', holdout, NOW)).toEqual([{ id: good, status: 'active', wins: 3, parentWins: 1 }]); // bad not complete yet
-  gymRun('b3', 'h4', bad, 'failure', 'out of scope: packages/server/src/services/y.ts');
-  expect(evaluateTrials(db, 'atomic@llama-router', holdout, NOW)).toEqual([{ id: bad, status: 'retired', wins: 3, parentWins: 1 }]); // ≤ 1 promotion a day
+  holdout.forEach((c, i) => gymRun(`g${i}`, c, good, 'success', 'tests green, source only'));
+  holdout.slice(0, 5).forEach((c, i) => gymRun(`b${i}`, c, bad, 'success', 'tests green, source only'));
+  expect(evaluateTrials(db, 'atomic@llama-router', holdout, NOW)).toEqual([{ id: good, status: 'active', wins: 6, parentWins: 1 }]); // bad not complete yet
+  gymRun('b5', 'h6', bad, 'success', 'tests green, source only');
+  expect(evaluateTrials(db, 'atomic@llama-router', holdout, NOW)).toEqual([{ id: bad, status: 'retired', wins: 6, parentWins: 1 }]); // ≤ 1 promotion a day
   expect(genome(db, good)!.status).toBe('active');
+  expect((db.prepare('SELECT note FROM maker_genomes WHERE id = ?').get(good) as { note: string }).note).toContain('discordant 5 vs 0, McNemar p=0.031');
+});
+
+it('Z5: "+2 wins" on a 20-task holdout at an 80 % base rate (3 vs 1 discordant) is noise and retires', async () => {
+  gymRun('f1', 'c1', BASELINE_GENOME, 'failure', 'tests still red');
+  const [mutant] = (await dreamOnce(db, NOW, async () => '{"mutants":[{"gene":"strategy_lines","lines":["A"]}]}')).created;
+  const holdout = Array.from({ length: 20 }, (_, i) => `h${i}`);
+  // parent 17/20 (red on h0..h2), mutant 19/20 (red on h3): +2 wins = 3 vs 1 discordant pairs
+  holdout.forEach((c, i) => gymRun(`p${i}`, c, BASELINE_GENOME, i >= 3 ? 'success' : 'failure', 'r'));
+  holdout.forEach((c, i) => gymRun(`m${i}`, c, mutant, i !== 3 ? 'success' : 'failure', 'r'));
+  expect(evaluateTrials(db, 'atomic@llama-router', holdout, NOW)).toEqual([{ id: mutant, status: 'retired', wins: 19, parentWins: 17 }]);
+  expect(mcnemarOneSided(3, 1)).toBeCloseTo(0.3125);
+  expect(mcnemarOneSided(5, 0)).toBeCloseTo(0.03125);
+  expect(mcnemarOneSided(0, 0)).toBe(1);
 });
