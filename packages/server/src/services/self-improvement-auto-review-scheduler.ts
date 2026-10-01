@@ -37,7 +37,7 @@
 
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
-import { SelfImprovementService, type ImprovementProposal } from './self-improvement-service';
+import { SelfImprovementService, oracleLaneSkipsPanel, type ImprovementProposal } from './self-improvement-service';
 import { SelfImprovementAgentReviewService } from './self-improvement-agent-review-service';
 import { SelfImprovementRefinementService } from './self-improvement-refinement-service';
 import { SpecialistPanelService } from './specialist-panel-service';
@@ -144,7 +144,7 @@ export class SelfImprovementAutoReviewScheduler {
           if (judgmentMode(proposalPrescreen.id) !== 'off') await runJudgment(this.db, proposalPrescreen, { type: 'self_improvement', id: proposal.id },
             { proposal: { type: proposal.type, title: proposal.title, description: proposal.description, rationale: proposal.rationale } }, undefined,
             process.env.LOOP_REPOSITORY_PATH ? { pathExists: namedPathsExist(`${proposal.description ?? ''} ${proposal.rationale ?? ''}`, process.env.LOOP_REPOSITORY_PATH) } : undefined).catch(() => null);
-          await this.reviewIfNeeded(proposal, runId, result);
+          if (!oracleLaneSkipsPanel(proposal)) await this.reviewIfNeeded(proposal, runId, result); // Z1: no panel tokens for oracle lanes
         } catch (err) {
           result.failed.push({ id: proposal.id, error: err instanceof Error ? err.message : String(err) });
         }

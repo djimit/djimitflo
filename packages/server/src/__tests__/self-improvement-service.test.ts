@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
-import { SelfImprovementService } from '../services/self-improvement-service';
+import { SelfImprovementService, oracleLaneSkipsPanel } from '../services/self-improvement-service';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { SpecialistPanelService } from '../services/specialist-panel-service';
@@ -303,6 +303,38 @@ describe('G71: Self Improvement', () => {
 
       // Parked, not re-attempted: a later tick is a no-op, not a repeated transition.
       expect(improvement.agentApproveIfReady(proposal.id, 'run-2')).toBeNull();
+    });
+
+    describe('Z1: oracle lanes skip the panel', () => {
+      const grounded = (ref: string) => improvement.generateFromGroundedGap({
+        title: `Raise the mutation score of services/${ref.replace(/\W/g, '-')}.ts`, description: 'Edit only the test. RUNTIME COMMAND: npm run test:mutation:grounded', rationale: 'measured by one command',
+        evidenceRef: ref, grounding: { target: 'packages/server/src/__tests__/x.test.ts', acceptanceTest: 'npm run test:mutation:grounded', runtimeCommand: 'npm run test:mutation:grounded', artifactPath: 'x.test.ts', budget: 'one maker lease' },
+      })!;
+      afterEach(() => { delete process.env.ORACLE_LANES_SKIP_PANEL; });
+
+      it('flag off (default): an oracle-lane proposal still waits for its panel', () => {
+        const p = grounded('mutation-gap:x');
+        expect(improvement.agentApproveIfReady(p.id, 'run-1')).toBeNull();
+      });
+
+      it('flag on: a test-gap / mutation-gap proposal is scheduled without panel reviews, with an oracle-lane approver', () => {
+        process.env.ORACLE_LANES_SKIP_PANEL = 'true';
+        const p = grounded('mutation-gap:x');
+        expect(improvement.agentApproveIfReady(p.id, 'run-1')).toMatchObject({ status: 'scheduled', approvedBy: 'agent:oracle-lane:run-1' });
+        expect(oracleLaneSkipsPanel({ source: 'gap_analysis', evidenceRefs: ['test-gap:y'] })).toBe(true);
+      });
+
+      it('flag on: other sources and a panel that already said blocked are unaffected', () => {
+        process.env.ORACLE_LANES_SKIP_PANEL = 'true';
+        expect(oracleLaneSkipsPanel({ source: 'reflection', evidenceRefs: ['test-gap:y'] })).toBe(false);
+        expect(oracleLaneSkipsPanel({ source: 'gap_analysis', evidenceRefs: ['knowledge-gap:y'] })).toBe(false);
+        const p = grounded('test-gap:blocked');
+        const panels = new SpecialistPanelService(db);
+        const panel = panels.getPanel(p.panelId!);
+        for (const s of panel.panel) panels.submitReview(panel.id, { specialist_id: s.id, stance: 'oppose', confidence: 0.9, evidence_refs: ['test:evidence'] }, `agent:${s.id}:run-1`);
+        expect(panels.getPanel(panel.id).consensus.decision).toBe('blocked');
+        expect(() => improvement.agentApproveIfReady(p.id, 'run-1')).toThrow('SELF_IMPROVEMENT_CONSENSUS_REQUIRED');
+      });
     });
   });
 
