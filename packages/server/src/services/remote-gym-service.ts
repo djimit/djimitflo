@@ -4,6 +4,7 @@ import { mineGymTasks, type GymTask } from './gym-task-miner';
 import { parseSpecies } from './evolve-selection';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { infraFailing, triedTasks } from './evolution-gym-service';
+import { mutantTask, type MutantTask } from './gym-mutants';
 import { dreamEvolutionEnabled, ensureBaseline, genome, holdout, nextTrialAttempt, type Genome } from './genome-registry';
 
 /**
@@ -57,11 +58,13 @@ export class RemoteGymService {
     }
     if (!task) {
       const tried = triedTasks(this.db, key);
-      task = tasks.find((t) => !tried.has(t.commit));
+      // Y4: the mined fix commits run out (prod 2026-10-01) — then a seeded mutant-repair task keeps the gym supplied
+      task = tasks.find((t) => !tried.has(t.commit)) ?? mutantTask(this.db, repo, key, tried) ?? undefined;
     }
     if (!task) return { skipped: 'no untried task' };
     const runId = randomUUID();
-    const gymMeta = { ...task, species: key, remote_host: host, ...(trialGenome ? { genome: trialGenome.id } : {}) };
+    const { mutant: _mutantContent, ...stored } = task as MutantTask; // the mutant goes to the worker, not into every row
+    const gymMeta = { ...stored, species: key, remote_host: host, ...(trialGenome ? { genome: trialGenome.id } : {}) };
     this.db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, repository_path, metadata, created_at, updated_at) VALUES (?, 'evolution-gym', 'closed', 'running', ?, ?, ?, ?)")
       .run(runId, repo, JSON.stringify({ gym: gymMeta }), now.toISOString(), now.toISOString());
     return { runId, species: key, task, ...(trialGenome ? { genome: { id: trialGenome.id, lines: trialGenome.lines } } : {}) };
