@@ -104,6 +104,13 @@ describe('MCP routes', () => {
     expect((db.prepare("SELECT status FROM mcp_servers WHERE id = 's1'").get() as { status: string }).status).toBe('running');
   });
 
+  it('reports the local runtime row as a synced catalog, not a stale network service', async () => {
+    db.prepare("UPDATE mcp_servers SET id = 'djimitflo-runtime' WHERE id = 's1'").run();
+
+    const body = await (await fetch(`${baseUrl}/servers`)).json() as { servers: Array<Record<string, unknown>> };
+    expect(body.servers[0]).toMatchObject({ effective_status: 'catalog', status_stale: false });
+  });
+
   it('registers a new MCP server via POST /servers', async () => {
     const response = await fetch(`${baseUrl}/servers`, {
       method: 'POST',

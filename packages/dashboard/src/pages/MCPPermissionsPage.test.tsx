@@ -10,12 +10,12 @@ afterEach(() => {
 
 it('shows effective status and unfiltered server tool counts', async () => {
   vi.spyOn(api, 'getMCPServers').mockResolvedValue({ servers: [{
-    id: 'runtime',
+    id: 'djimitflo-runtime',
     name: 'Runtime MCP',
     description: '',
     status: 'running',
-    effective_status: 'stale',
-    status_stale: true,
+    effective_status: 'catalog',
+    status_stale: false,
     tool_count: 44,
     approval_gate_count: 3,
     command: '',
@@ -26,7 +26,7 @@ it('shows effective status and unfiltered server tool counts', async () => {
     url: null,
     last_ping_at: '2026-08-01T10:07:56Z',
     error_message: null,
-    metadata: { catalog_only: true },
+    metadata: { synced_from: 'djimitflo_sync_mcp_catalog' },
     created_at: '2026-08-01T10:07:56Z',
     updated_at: '2026-08-01T10:07:56Z',
   }] as never });
@@ -34,8 +34,8 @@ it('shows effective status and unfiltered server tool counts', async () => {
 
   render(<MCPPermissionsPage />);
 
-  expect(await screen.findByText('Stale')).toBeTruthy();
+  expect(await screen.findByText('Catalog synced')).toBeTruthy();
+  expect(screen.getByText(/Catalog synced: /)).toBeTruthy();
   expect(screen.getByText(/Registered tools: 44/)).toBeTruthy();
   expect(screen.getByText(/Approval gates: 3/)).toBeTruthy();
-  expect(screen.getByText('Dependency endpoint — no MCP tools expected')).toBeTruthy();
 });

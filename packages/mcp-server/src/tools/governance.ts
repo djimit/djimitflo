@@ -78,12 +78,13 @@ function metadata(row: Record<string, unknown>) {
 }
 
 function withEffectiveMcpStatus(row: Record<string, unknown>, now = Date.now()) {
+  const catalog = row.id === 'djimitflo-runtime';
   const ttlMs = Math.max(1_000, Number(process.env.MCP_STATUS_TTL_MS || 300_000));
   const verifiedAt = row.last_ping_at ? Date.parse(String(row.last_ping_at)) : Number.NaN;
-  const stale = row.status === 'running' && (!Number.isFinite(verifiedAt) || now - verifiedAt > ttlMs);
+  const stale = !catalog && row.status === 'running' && (!Number.isFinite(verifiedAt) || now - verifiedAt > ttlMs);
   return {
     ...row,
-    effective_status: stale ? 'stale' : row.status,
+    effective_status: catalog ? 'catalog' : stale ? 'stale' : row.status,
     status_stale: stale,
     last_verified_at: row.last_ping_at || null,
   };
