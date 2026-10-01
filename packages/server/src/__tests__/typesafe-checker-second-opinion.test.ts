@@ -5,6 +5,7 @@ import { runMigrations } from '../database/migrate';
 import { TypeSafeClient, resetTypesafeBreaker } from '../services/typesafe-client';
 import { runJudgment } from '../services/judgment-service';
 import { checkerSecondOpinion, checkerSecondOpinionState } from '../services/judgments/checker-second-opinion';
+import { shouldRecordSecondOpinion } from '../services/loop-worker-executor-service';
 
 let db: Database.Database;
 const choice = (c: string, confidence: number) => ({ verdict: { type: 'choice', choice: c, confidence, probabilities: {} } });
@@ -39,6 +40,13 @@ it('S2: atomic questions ride in the same request; a confident accept that weake
     const r = await runJudgment(db, checkerSecondOpinion, { type: 'worker_lease', id: `b${w}${t}${n}` }, s, client(answers(w, t, n)), { checkerVerdict: 'accepted' });
     expect(r).toMatchObject({ decision: 'no', reason: expect.stringContaining('atomic veto') });
   }
+});
+
+it('runs once per maker: for the checker, never again for the security checker, never on mock or when off', () => {
+  expect(shouldRecordSecondOpinion('opencode', 'checker', 'shadow')).toBe(true);
+  expect(shouldRecordSecondOpinion('opencode', 'security_checker', 'shadow')).toBe(false);
+  expect(shouldRecordSecondOpinion('mock', 'checker', 'shadow')).toBe(false);
+  expect(shouldRecordSecondOpinion('opencode', 'checker', 'off')).toBe(false);
 });
 
 it('sends only task, capped diff and checks — never the checker notes', async () => {

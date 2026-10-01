@@ -57,6 +57,14 @@ export function testOnlyChange(files: string[]): boolean {
   return files.length > 0 && files.every((f) => /(^|\/)__tests__\/|\.(test|spec)\.[cm]?[jt]sx?$/.test(f));
 }
 
+/**
+ * The jev second opinion runs once per maker: the security checker sees the same task and diff, so recording it for both
+ * reviewers produced two identical rows per maker (prod 2026-10-02) and double-counted every maker in calibration.
+ */
+export function shouldRecordSecondOpinion(runtime: string, reviewRole: string, mode: string): boolean {
+  return runtime !== 'mock' && reviewRole === 'checker' && mode !== 'off';
+}
+
 export class LoopWorkerExecutorService {
   constructor(
     private db: any,
@@ -323,7 +331,7 @@ export class LoopWorkerExecutorService {
     const runtimeUsage = this.loopService.extractRuntimeUsage(result.stdout || '');
     const runtimeWarnings = this.loopService.extractRuntimeWarnings(result.stdout || '', result.stderr || '');
     const verdict = exitStatus === 0 && !timedOut ? this.loopService.extractCheckerVerdict(result.stdout || '') : 'insufficient_evidence';
-    if (runtime !== 'mock' && judgmentMode(checkerSecondOpinion.id) !== 'off') void this.recordSecondOpinion(run, maker, checker, verdict);
+    if (shouldRecordSecondOpinion(runtime, reviewRole, judgmentMode(checkerSecondOpinion.id))) void this.recordSecondOpinion(run, maker, checker, verdict);
     const checkerChanged = this.loopService.git(checkerWorktree, ['diff', '--name-only', '--', '.']).split('\n').filter(Boolean);
     if (checkerChanged.includes('package-lock.json') && !checkerChanged.includes('package.json')) {
       this.loopService.git(checkerWorktree, ['checkout', '--', 'package-lock.json']);
