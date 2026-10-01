@@ -18,8 +18,9 @@ export const MAX_MUTANTS = 3;
 export const PROMOTION_MARGIN = 2;
 const MAX_LINES = 5;
 const MAX_LINE_CHARS = 200;
-// what a genome may never steer: gates, checks, scope, secrets, deploy, approvals — or the tests that judge it
-const FORBIDDEN = /\b(gates?|checks?|checker|scope|secrets?|tokens?|passwords?|credentials?|deploy\w*|push\w*|merge\w*|approv\w*|skip\w*|disable\w*|no-verify|package\.json|lock ?files?|\.github|polic(y|ies)|auth\w*)\b|\b(edit|change|modify|delete|remove|rewrite|weaken)\s+(the\s+|a\s+|any\s+)?tests?\b/i;
+// what a genome may never steer: gates, checks, scope, secrets, deploy, approvals, git history (a gym `git commit` empties the
+// diff the verdict reads — first dream 2026-10-01 proposed 'commit the smallest confirmed improvement') — or the tests
+const FORBIDDEN = /\b(gates?|checks?|checker|scope|secrets?|tokens?|passwords?|credentials?|deploy\w*|push\w*|merge\w*|commit\w*|stash\w*|reset|revert\w*|approv\w*|skip\w*|disable\w*|no-verify|package\.json|lock ?files?|\.github|polic(y|ies)|auth\w*)\b|\b(edit|change|modify|delete|remove|rewrite|weaken)\s+(the\s+|a\s+|any\s+)?tests?\b/i;
 
 /** Lines a mutant may add: strings, ≤ 5, ≤ 200 chars, none touching what the guard forbids. null when anything is off. */
 export function guardLines(lines: unknown): string[] | null {
