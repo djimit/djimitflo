@@ -41,7 +41,8 @@ interface LeaseIdentity {
 export function leaseIdentity(runtime: string, model: string | undefined, prompt: string, env: NodeJS.ProcessEnv = process.env): Record<string, string> {
   const effective = model || env[`DJIMITFLO_${runtime.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_MODEL`] || `${runtime}:default`;
   const provider = effective.includes('/') ? effective.split('/')[0] : runtime;
-  const base = (effective.includes('@') ? effective.slice(effective.lastIndexOf('@') + 1) : effective.slice(effective.lastIndexOf('/') + 1)).replace(/:.*$/, '');
+  const named = effective.includes('@') ? effective.slice(effective.lastIndexOf('@') + 1) : effective.slice(effective.lastIndexOf('/') + 1);
+  const base = named.includes(':') ? named.slice(0, named.indexOf(':')) : named; // no regex on lease input (CodeQL js/polynomial-redos)
   const family = (base.toLowerCase().match(/[a-z]+/) ?? [base.toLowerCase()])[0];
   // model_id, not model: lease.metadata.model is what the executor passes as --model on a resume, and must stay untouched
   return { model_id: effective, provider, model_family: family, prompt_hash: createHash('sha256').update(prompt).digest('hex').slice(0, 16) };
