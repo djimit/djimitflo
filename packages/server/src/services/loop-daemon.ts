@@ -495,7 +495,9 @@ export class LoopDaemon {
       // 5b. E12 (LOOP_BANDIT_ENABLED): the maker species is chosen by outcome — Thompson over skill_outcomes, challengers
       // capped until they have enough runs. Y1 (operator 2026-10-01): with the bandit on it also chooses over
       // LOOP_DAEMON_MAKER_RUNTIME, which stays on the lease as the fallback when the bandit makes no choice.
-      if (!makerAlreadyDone && (!makerRuntime || process.env.LOOP_BANDIT_ENABLED === 'true')) {
+      // Never on a resumed evolve sibling: its species is the point of the sibling (prod 2026-10-01: the bandit rewrote
+      // remote@workstation siblings to opencode, which then ran the task twice and drifted into README/CONTRIBUTING edits).
+      if (!makerAlreadyDone && !pendingSibling && (!makerRuntime || process.env.LOOP_BANDIT_ENABLED === 'true')) {
         const choice = chooseSpecies(this.db, loopName, banditSpecies());
         if (choice) {
           try {
