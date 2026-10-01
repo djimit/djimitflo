@@ -57,12 +57,14 @@ function queryString(value: unknown): string {
 
 function withEffectiveStatus(server: any, now = Date.now()): any {
   const meta = metadata(server);
+  const policyBlocked = meta.known_unreachable === true
+    || /OUTBOUND_DENY_HOSTS|Blocked by policy|never calls the workstation/i.test(String(server.error_message || ''));
   const ttlMs = Math.max(1_000, Number(process.env.MCP_STATUS_TTL_MS || 300_000));
   const verifiedAt = server.last_ping_at ? Date.parse(server.last_ping_at) : Number.NaN;
   const stale = server.status === 'running' && (!Number.isFinite(verifiedAt) || now - verifiedAt > ttlMs);
   return {
     ...server,
-    effective_status: meta.known_unreachable ? 'policy_blocked' : stale ? 'stale' : server.status,
+    effective_status: policyBlocked ? 'policy_blocked' : stale ? 'stale' : server.status,
     status_stale: stale,
     last_verified_at: server.last_ping_at || null,
   };

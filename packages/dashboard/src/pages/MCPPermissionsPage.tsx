@@ -206,6 +206,9 @@ export function MCPPermissionsPage() {
                     <span className="mx-1">·</span>
                     Approval gates: {server.approval_gate_count || 0}
                   </div>
+                  {server.metadata?.catalog_only === true && (
+                    <div className="text-xs text-foreground-tertiary mt-1">Dependency endpoint — no MCP tools expected</div>
+                  )}
                   {server.error_message && (
                     <div className="mt-2 text-xs text-red-400 truncate">{server.error_message}</div>
                   )}
