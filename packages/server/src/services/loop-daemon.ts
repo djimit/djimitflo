@@ -292,12 +292,18 @@ export class LoopDaemon {
       new LoopEventService(this.db).recordEvent(runId, 'goal_awaiting_approval', 'warning', `Waiting for human approval ${approvalId}`, { goal_id: goal.id, approval_id: approvalId });
     } catch { /* best-effort */ }
     const shadow = recordAutoApproveShadow(this.db, goal.id, runId, approvalId); // plan E3: the rule; approves only via J5 below
-    const scope = role === 'maker' && shadow?.decision === 'yes' ? testGapAutoApproveScope(this.db, goal.id) : null;
+    // Z4 (plan Phase Z, operator decision 01-10): rule-v1 says 'no' to the whole class after any regression and to keyword
+    // 'high risk' (prod 01-10: 8/8 oracle-lane makers went to the human). With ORACLE_LANES_AUTO_APPROVE=true an oracle-lane
+    // maker is approved on its deterministic one-test-file scope; the scope gate, checks, oracle and human merge stay, and
+    // the rule's verdict is still recorded.
+    const oracleLane = process.env.ORACLE_LANES_AUTO_APPROVE === 'true' && shadow?.decision !== 'yes';
+    const scope = role === 'maker' && (shadow?.decision === 'yes' || oracleLane) ? testGapAutoApproveScope(this.db, goal.id) : null;
     if (scope) {
+      const why = oracleLane ? `Z4 oracle lane, scope ${scope}${shadow ? `; rule-v1: ${shadow.reason}` : ''}` : shadow!.reason;
       // Record the scope before approving: the maker resumes right after, and verification needs it to hold the diff to one file.
       this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.auto_approved_scope', ?) WHERE id = ?").run(scope, lease.id);
-      try { new LoopEventService(this.db).recordEvent(runId, 'goal_auto_approved', 'info', `Auto-approved ${approvalId} (test-gap lane, scope ${scope})`, { goal_id: goal.id, approval_id: approvalId, reason: shadow!.reason }); } catch { /* best-effort */ }
-      this.loops.decideWorkerApproval(approvalId, true, 'autonomy:test-gap-rule-v1', shadow!.reason)
+      try { new LoopEventService(this.db).recordEvent(runId, 'goal_auto_approved', 'info', `Auto-approved ${approvalId} (${oracleLane ? 'oracle lane' : 'test-gap lane'}, scope ${scope})`, { goal_id: goal.id, approval_id: approvalId, reason: why }); } catch { /* best-effort */ }
+      this.loops.decideWorkerApproval(approvalId, true, oracleLane ? 'autonomy:oracle-lane-v1' : 'autonomy:test-gap-rule-v1', why)
         .catch((err: unknown) => console.warn(`[loop-daemon] auto-approve ${approvalId} failed:`, err instanceof Error ? err.message : String(err)));
     }
     console.warn(`[loop-daemon] goal ${goal.id} waits for approval ${approvalId} (run ${runId})`);
