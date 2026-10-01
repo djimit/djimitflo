@@ -14,6 +14,7 @@ import { createError } from '../middleware/error-handler';
 import type { ExecutionResult, ExecutorKind } from '../execution/types';
 import type { LoopService } from './loop-service';
 import { judgmentMode, runJudgment } from './judgment-service';
+import { leaseIdentity } from './reviewer-independence-service';
 import { checkerSecondOpinion, checkerSecondOpinionState } from './judgments/checker-second-opinion';
 import type {
   LoopRunRecord,
@@ -465,7 +466,8 @@ export class LoopWorkerExecutorService {
       now,
       now,
     );
-    this.loopService.patchWorkerLeaseMetadata(lease.id, { execution_task_id: taskId });
+    this.loopService.patchWorkerLeaseMetadata(lease.id, { execution_task_id: taskId,
+      ...leaseIdentity(runtime, typeof lease.metadata.model === 'string' ? lease.metadata.model : undefined, prompt) });
 
     const execution = await (this.executionEngine ||= new ExecutionEngine(this.db)).executeTask(
       taskId, runtime as ExecutorKind, undefined, { riskAssessmentText },

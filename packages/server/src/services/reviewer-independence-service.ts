@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import type { Database } from 'better-sqlite3';
 
 export type IndependenceState = 'PASS' | 'FAIL' | 'UNDETERMINED';
@@ -28,6 +29,22 @@ interface LeaseIdentity {
   role?: string;
   runtime?: string;
   metadata?: Record<string, unknown> | string;
+}
+
+/**
+ * The identity fields `assess` compares, stamped on a worker lease when it starts (Claude Octopus G1 / narrative E-C2, operator-
+ * approved 2026-10-01). Prod 30 d before this: 21 of 960 maker/checker leases carried them, so the other 939 assessments were
+ * UNDETERMINED. The model is what the lease asked for, else the runtime's configured default; never what the model claims.
+ * ponytail: family = first alphabetic token of the model name (glm-5.2:cloud → glm, kimi-k3 → kimi); a family registry when
+ * two vendors share a prefix.
+ */
+export function leaseIdentity(runtime: string, model: string | undefined, prompt: string, env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const effective = model || env[`DJIMITFLO_${runtime.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_MODEL`] || `${runtime}:default`;
+  const provider = effective.includes('/') ? effective.split('/')[0] : runtime;
+  const base = (effective.includes('@') ? effective.slice(effective.lastIndexOf('@') + 1) : effective.slice(effective.lastIndexOf('/') + 1)).replace(/:.*$/, '');
+  const family = (base.toLowerCase().match(/[a-z]+/) ?? [base.toLowerCase()])[0];
+  // model_id, not model: lease.metadata.model is what the executor passes as --model on a resume, and must stay untouched
+  return { model_id: effective, provider, model_family: family, prompt_hash: createHash('sha256').update(prompt).digest('hex').slice(0, 16) };
 }
 
 export class ReviewerIndependenceService {
