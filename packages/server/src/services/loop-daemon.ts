@@ -577,8 +577,16 @@ export class LoopDaemon {
                 || !((await this.autoApproveSibling(run.id, makerLease.id, sibling.id)) || (await this.inheritApproval(run.id, sibling.id)))) throw error;
               // a remote host may take up to REMOTE_MAKER_TIMEOUT_MS; the 11-min default gave up on both first workstation
               // makers (prod 2026-09-27: patches arrived at +13 and +26 min, after the run was already blocked)
-              await this.loops.awaitWorkerExecution(sibling.id, sp.runtime === 'remote' ? remoteMakerTimeoutMs() + 60_000 : undefined);
-              await this.loops.executeWorker(run.id, siblingInput); // returns the result of the approved execution
+              // prod 2026-10-01: right after an automatic approval the engine had not yet marked the sibling's task running,
+              // so the wait returned at once and the read-back hit LOOP_WORKER_EXECUTION_IN_PROGRESS — 4/4 goals failed while
+              // their runs went on. An execution in progress is waited for (bounded), not a failure.
+              for (let attempt = 0; ; attempt++) {
+                await this.loops.awaitWorkerExecution(sibling.id, sp.runtime === 'remote' ? remoteMakerTimeoutMs() + 60_000 : undefined);
+                try { await this.loops.executeWorker(run.id, siblingInput); break; } // returns the result of the approved execution
+                catch (waitError) {
+                  if (attempt >= 3 || !/LOOP_WORKER_EXECUTION_IN_PROGRESS/.test(waitError instanceof Error ? waitError.message : String(waitError))) throw waitError;
+                }
+              }
             }
             this.loops.runDeterministicChecks(run.id, { lease_id: sibling.id, ...daemonCheckOptions() });
           } catch (error) {
