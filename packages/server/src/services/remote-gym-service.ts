@@ -4,6 +4,8 @@ import { mineGymTasks, type GymTask } from './gym-task-miner';
 import { parseSpecies } from './evolve-selection';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { infraFailing, triedTasks } from './evolution-gym-service';
+import { mutantTask, type MutantTask } from './gym-mutants';
+import { dreamEvolutionEnabled, ensureBaseline, genome, holdout, nextTrialAttempt, type Genome } from './genome-registry';
 
 /**
  * Plan I1: the evolution gym on a remote compute host (the workstation: 48 threads, 125 GB, R9700) instead of the
@@ -15,7 +17,7 @@ export const remoteGymEnabled = (env: NodeJS.ProcessEnv = process.env): boolean 
 export const REMOTE_GYM_SCOPE = 'gym-worker';
 const SAFE = /^[A-Za-z0-9._:/@-]{1,80}$/;
 
-export type RemoteGymClaim = { runId: string; species: string; task: GymTask } | { skipped: string };
+export type RemoteGymClaim = { runId: string; species: string; task: GymTask; genome?: { id: string; lines: string[] } } | { skipped: string };
 export interface RemoteGymResult { status: 'success' | 'failure' | 'discarded'; reason: string; tokens?: number; durationMs?: number }
 
 export class RemoteGymService {
@@ -45,18 +47,32 @@ export class RemoteGymService {
     if (!healthy.length) return { skipped: 'every species is infra-failing' };
     const pick = healthy.map((s) => ({ s, n: (count.get(`loop-maker:gym:${s.runtime}`, s.model ?? '') as { n: number }).n })).sort((a, b) => a.n - b.n)[0].s;
     const key = pick.model ? `${pick.runtime}@${pick.model}` : pick.runtime;
-    const tried = triedTasks(this.db, key);
-    const task = this.mine(repo).find((t) => !tried.has(t.commit));
+    const tasks = this.mine(repo);
+    // Y3: with dream evolution on, paired trial attempts on the frozen holdout come before normal replays
+    let task: GymTask | undefined; let trialGenome: Genome | null = null;
+    if (dreamEvolutionEnabled()) {
+      ensureBaseline(this.db, now.toISOString());
+      const next = nextTrialAttempt(this.db, key, holdout(this.db, tasks, now.toISOString()));
+      if (next) { task = tasks.find((t) => t.commit === next.commit); trialGenome = task ? genome(this.db, next.genomeId) : null; }
+      if (!trialGenome) task = undefined;
+    }
+    if (!task) {
+      const tried = triedTasks(this.db, key);
+      // Y4: the mined fix commits run out (prod 2026-10-01) — then a seeded mutant-repair task keeps the gym supplied
+      task = tasks.find((t) => !tried.has(t.commit)) ?? mutantTask(this.db, repo, key, tried) ?? undefined;
+    }
     if (!task) return { skipped: 'no untried task' };
     const runId = randomUUID();
+    const { mutant: _mutantContent, ...stored } = task as MutantTask; // the mutant goes to the worker, not into every row
+    const gymMeta = { ...stored, species: key, remote_host: host, ...(trialGenome ? { genome: trialGenome.id } : {}) };
     this.db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, repository_path, metadata, created_at, updated_at) VALUES (?, 'evolution-gym', 'closed', 'running', ?, ?, ?, ?)")
-      .run(runId, repo, JSON.stringify({ gym: { ...task, species: key, remote_host: host } }), now.toISOString(), now.toISOString());
-    return { runId, species: key, task };
+      .run(runId, repo, JSON.stringify({ gym: gymMeta }), now.toISOString(), now.toISOString());
+    return { runId, species: key, task, ...(trialGenome ? { genome: { id: trialGenome.id, lines: trialGenome.lines } } : {}) };
   }
 
   record(runId: string, host: string, result: RemoteGymResult): void {
     const row = this.db.prepare("SELECT status, json_extract(metadata, '$.gym') AS gym FROM loop_runs WHERE id = ?").get(runId) as { status: string; gym: string | null } | undefined;
-    const gym = row?.gym ? JSON.parse(row.gym) as GymTask & { species: string; remote_host?: string } : null;
+    const gym = row?.gym ? JSON.parse(row.gym) as GymTask & { species: string; remote_host?: string; genome?: string } : null;
     if (!row || !gym || gym.remote_host !== host) throw new Error('GYM_RUN_NOT_FOUND');
     if (row.status !== 'running') throw new Error('GYM_RUN_ALREADY_SETTLED');
     if (!['success', 'failure', 'discarded'].includes(result.status)) throw new Error('GYM_RESULT_INVALID');
@@ -65,7 +81,7 @@ export class RemoteGymService {
       const [species] = parseSpecies(gym.species, 1);
       this.outcomes.recordOutcome(`loop-maker:gym:${species.runtime}`, {
         success: result.status === 'success', tokensUsed: Math.max(0, Number(result.tokens) || 0), durationMs: Math.max(0, Number(result.durationMs) || 0), domain: 'gym', taskId: runId,
-        ...(species.model ? { model: species.model } : {}), evidenceRefs: [`gym:${gym.commit}`, `loop_run:${runId}`, `gym_result:${reason}`, `remote:${host}`],
+        ...(species.model ? { model: species.model } : {}), evidenceRefs: [`gym:${gym.commit}`, `loop_run:${runId}`, `gym_result:${reason}`, `remote:${host}`, ...(gym.genome ? [`genome:${gym.genome}`] : [])],
       });
     }
     const now = new Date().toISOString();

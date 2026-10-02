@@ -1292,6 +1292,13 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
       started_at TEXT, finished_at TEXT, exit_code INTEGER, output TEXT, created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_fleet_commands_host_status ON fleet_commands(host, status);
+    -- Y3 (Darwin loop): maker strategy genomes (baseline + dream mutants, one gene changed per mutant) and the frozen gym
+    -- holdout they are judged on (picked once, never shown to the mutation step)
+    CREATE TABLE IF NOT EXISTS maker_genomes (
+      id TEXT PRIMARY KEY, parent_id TEXT, gene TEXT NOT NULL DEFAULT 'baseline', lines_json TEXT NOT NULL DEFAULT '[]',
+      origin TEXT NOT NULL, status TEXT NOT NULL, note TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS gym_holdout (commit_sha TEXT PRIMARY KEY, created_at TEXT NOT NULL);
     -- T1 (pull): judgments queued for the workstation's local System One; the workstation claims them (never pushed to)
     CREATE TABLE IF NOT EXISTS local_shadow_jobs (
       id TEXT PRIMARY KEY, judgment TEXT NOT NULL, subject_type TEXT NOT NULL, subject_id TEXT NOT NULL, state_hash TEXT NOT NULL,

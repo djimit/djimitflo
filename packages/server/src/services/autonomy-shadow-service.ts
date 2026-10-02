@@ -1,5 +1,7 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { judgmentMode, runJudgment } from './judgment-service';
+import { riskAtomic, riskAtomicState } from './judgments/risk-atomic';
 
 /**
  * Earned autonomy, shadow only (plan E3). Every human approval a loop run waits for gets a recorded "would have
@@ -21,10 +23,16 @@ export function recordAutoApproveShadow(db: Database, goalId: string, runId: str
     const goal = db.prepare('SELECT risk_class, improvement_id FROM goals WHERE id = ?').get(goalId) as { risk_class: string; improvement_id: string | null } | undefined;
     const run = db.prepare('SELECT loop_name FROM loop_runs WHERE id = ?').get(runId) as { loop_name: string } | undefined;
     const imp = goal?.improvement_id
-      ? db.prepare('SELECT type, source, grounding_json, description FROM self_improvements WHERE id = ?').get(goal.improvement_id) as { type: string; source: string; grounding_json: string | null; description: string } | undefined
+      ? db.prepare('SELECT type, source, grounding_json, description, title FROM self_improvements WHERE id = ?').get(goal.improvement_id) as { type: string; source: string; grounding_json: string | null; description: string; title: string } | undefined
       : undefined;
     const testOnly = Boolean(imp && (/__tests__\//.test(imp.grounding_json || '') || /test-only/i.test(imp.description)));
     const risk = goal?.risk_class ?? 'unknown';
+    // S1: jev's atomic risk answers next to the keyword class, per approval wait (shadow, fire-and-forget, fail-open)
+    if (imp && judgmentMode(riskAtomic.id) !== 'off') {
+      let target: string | null = null; try { target = (JSON.parse(imp.grounding_json || '{}') as { target?: string }).target ?? null; } catch { /* no grounding */ }
+      void runJudgment(db, riskAtomic, { type: 'approval', id: approvalId }, riskAtomicState({ title: imp.title, description: imp.description, target }), undefined,
+        { testOnly, keywordRisk: risk }).catch(() => null);
+    }
     const history = imp ? db.prepare(`SELECT
         SUM(status IN ('verified','evaluating','applied')) AS verified, SUM(status = 'regressed') AS regressed
       FROM self_improvements WHERE source = ? AND type = ?`).get(imp.source, imp.type) as { verified: number | null; regressed: number | null } : { verified: 0, regressed: 0 };

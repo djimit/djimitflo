@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { DollarSign } from 'lucide-react';
 import { api } from '../lib/api';
+import { LoadErrorNotice, softFail } from '../components/LoadErrorNotice';
 
 interface CapabilityEconomy {
   capability_id: string;
@@ -45,13 +46,16 @@ type AllocationResponse = {
 export function EconomyPage() {
   const [data, setData] = useState<EconomyResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadErrors, setLoadErrors] = useState<string[]>([]);
   const [budgetInput, setBudgetInput] = useState('1.00');
   const [allocation, setAllocation] = useState<AllocationResponse | null>(null);
   const [allocating, setAllocating] = useState(false);
   const [allocateError, setAllocateError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.request<EconomyResponse>('/swarms/economy').then(setData).catch(() => {}).finally(() => setLoading(false));
+    const failed: string[] = [];
+    api.request<EconomyResponse>('/swarms/economy').then(setData).catch(softFail(failed, 'economy', undefined))
+      .finally(() => { setLoadErrors(failed); setLoading(false); });
   }, []);
 
   function handleAllocate(event: FormEvent) {
@@ -70,10 +74,12 @@ export function EconomyPage() {
   }
 
   if (loading) return <div className="p-8 text-foreground-tertiary">Loading economy data...</div>;
-  if (!data) return <div className="p-8 text-foreground-tertiary">No economy data available.</div>;
+  // W7: a failed call used to show only this line; the page keeps its title and names the failure
+  if (!data) return <div className="p-8 space-y-4"><h1 className="text-3xl font-bold text-foreground">Economy</h1><LoadErrorNotice failed={loadErrors} /><p className="text-foreground-tertiary">No economy data available.</p></div>;
 
   return (
     <div className="p-8 space-y-8">
+      <LoadErrorNotice failed={loadErrors} />
       <div>
         <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
           <DollarSign className="w-8 h-8 text-accent" /> Economy

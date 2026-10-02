@@ -87,10 +87,12 @@ export function FleetCockpitPage() {
   const [plan, setPlan] = useState<WorkerPoolPlanResult | null>(null);
   const [contracts, setContracts] = useState<Record<string, RuntimeContract>>({});
   const [schedulerResult, setSchedulerResult] = useState<SchedulerTickResult | null>(null);
-  const [runtime, setRuntime] = useState<RuntimeChoice>('mock');
-  const [checkerRuntime, setCheckerRuntime] = useState<CheckerRuntimeChoice>('mock');
+  // Real work by default: 'mock' starts workers that do nothing (W1, 2026-09-30); it stays available as a labelled demo.
+  const [runtime, setRuntime] = useState<RuntimeChoice>('opencode');
+  const [checkerRuntime, setCheckerRuntime] = useState<CheckerRuntimeChoice>('opencode');
   const [maxWorkers, setMaxWorkers] = useState(2);
-  const [repositoryPath, setRepositoryPath] = useState('/Users/dlandman/djimitflo');
+  // Empty = the server's configured repository (a MacBook path used to be hard-coded here).
+  const [repositoryPath, setRepositoryPath] = useState('');
   const [workItemIds, setWorkItemIds] = useState('');
   const [ignoreCapacity, setIgnoreCapacity] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -211,7 +213,7 @@ export function FleetCockpitPage() {
             <option value="claude">claude</option>
             <option value="gemini">gemini</option>
             <option value="editor">editor</option>
-            <option value="mock">mock</option>
+            <option value="mock">mock (demo, no real work)</option>
             <option value="manual">manual</option>
           </select>
           <select
@@ -220,7 +222,7 @@ export function FleetCockpitPage() {
             className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
             title="Checker runtime"
           >
-            <option value="mock">checker mock</option>
+            <option value="mock">checker mock (demo)</option>
             <option value="codex">checker codex</option>
             <option value="opencode">checker opencode</option>
             <option value="claude">checker claude</option>
@@ -387,7 +389,7 @@ export function FleetCockpitPage() {
               value={repositoryPath}
               onChange={(event) => setRepositoryPath(event.target.value)}
               className="w-72 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-              placeholder="repository path"
+              placeholder="repository path (empty = server default)"
             />
             <input
               type="text"

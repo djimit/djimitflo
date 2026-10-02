@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { checkContentSafety, nvidiaFetch, parseSafety } from '../services/content-safety';
+import { checkContentSafety, nvidiaFetch, parseSafety, resetContentSafetyPause } from '../services/content-safety';
 
 let db: Database.Database;
 beforeEach(() => { db = new Database(':memory:'); db.exec(schema); runMigrations(db); });
@@ -30,6 +30,29 @@ it('records an unsafe verdict as a shadow judgment; off by default; fail-open on
     { subject_id: '2', decision: 'error', reason: expect.stringMatching(/^http_|^unparsed/) },
     { subject_id: '3', decision: 'error', reason: 'socket hang up' },
   ]);
+});
+
+it('Z0: after a 429 that outlives the retries, checks pause (no calls, no error rows) until the pause ends', async () => {
+  vi.stubEnv('CONTENT_SAFETY_MODE', 'shadow'); vi.stubEnv('NVIDIA_API_KEY', 'k');
+  resetContentSafetyPause();
+  const limited = vi.fn().mockResolvedValue({ status: 429, ok: false, headers: { get: () => '0.001' } }) as unknown as typeof fetch;
+  expect(await checkContentSafety(db, { type: 'external_event', id: 'e1' }, 'event text', limited)).toBeNull();
+  expect(limited).toHaveBeenCalledTimes(4);
+  const f = reply('User Safety: safe');
+  for (const id of ['e2', 'e3', 'e4']) expect(await checkContentSafety(db, { type: 'external_event', id }, 'event text', f)).toBeNull();
+  expect(f).not.toHaveBeenCalled();
+  expect(db.prepare("SELECT subject_id, reason FROM judgments").all()).toEqual([{ subject_id: 'e1', reason: 'http_429 (pausing checks)' }]);
+  resetContentSafetyPause();
+  expect(await checkContentSafety(db, { type: 'external_event', id: 'e5' }, 'event text', f)).toBe('safe');
+});
+
+it('Z0: a concurrent burst that all hits 429 writes one error row, not one per in-flight check (prod 02-10)', async () => {
+  vi.stubEnv('CONTENT_SAFETY_MODE', 'shadow'); vi.stubEnv('NVIDIA_API_KEY', 'k');
+  resetContentSafetyPause();
+  const limited = vi.fn().mockResolvedValue({ status: 429, ok: false, headers: { get: () => '0.001' } }) as unknown as typeof fetch;
+  await Promise.all(['b1', 'b2', 'b3', 'b4'].map((id) => checkContentSafety(db, { type: 'external_event', id }, 'event text', limited)));
+  expect(db.prepare("SELECT COUNT(*) AS n FROM judgments WHERE decision = 'error'").get()).toEqual({ n: 1 });
+  resetContentSafetyPause();
 });
 
 it('retries NVIDIA 429s with backoff (Retry-After first), then gives up after 3 retries', async () => {

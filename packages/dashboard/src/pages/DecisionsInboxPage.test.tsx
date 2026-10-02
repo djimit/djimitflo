@@ -12,7 +12,11 @@ const inbox = {
   autonomy: [{ cls: 'maker:test-gap:opencode', human_approved: 14, auto_approved: 8, denied: 0, expired: 1, verified: 10, regressed: 7, infra: 0, pending: 5, earned: false, why: '6 more human approvals' }],
   memory: [{ id: 'm1', title: 'djimit-unguarded-json-extract', content: 'Never JSON.parse model output without a guard', memory_type: 'engineering_rule', status: 'review_required', created_at: '' }],
 };
-beforeEach(() => { vi.restoreAllMocks(); vi.spyOn(api, 'getDecisionsInbox').mockResolvedValue(inbox as never); });
+beforeEach(() => {
+  vi.restoreAllMocks();
+  vi.spyOn(api, 'getDecisionsInbox').mockResolvedValue(inbox as never);
+  vi.spyOn(api, 'getAllApprovals').mockResolvedValue({ approvals: [] }); // the approval queue is embedded (W2)
+});
 const renderPage = () => render(<MemoryRouter><DecisionsInboxPage /></MemoryRouter>);
 
 it('requeues only with a reason, and labels a pre-screen rejection', async () => {

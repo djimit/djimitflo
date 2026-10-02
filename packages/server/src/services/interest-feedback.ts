@@ -13,13 +13,21 @@ const STOP = new Set(('about above after again against among around based becaus
   + 'their them then there these they this those through towards under using very what when where which while with within without would your '
   + 'approach approaches method methods results study system systems based toward towards summaries summary proposal djimitflo '
   // generic engineering words match nearly every paper as a substring (first prod profile 2026-09-28)
-  + 'service services tests testing implementation evidence raise score enforced intelligence improve improving general new').split(' '));
+  + 'service services tests testing implementation evidence raise score enforced intelligence improve improving general new '
+  // verbs from proposal/page titles (prod profile 2026-09-30 carried 'added')
+  + 'added adding update updated updates create created remove removed using').split(' '));
 
 export function interestTerms(texts: string[], max = 20): string[] {
   const counts = new Map<string, number>();
   for (const text of texts) {
-    const words = text.toLowerCase().replace(/[^a-z0-9\s-]/g, ' ').split(/\s+/).filter((w) => w.length >= 5 && !STOP.has(w) && !/^\d+$/.test(w));
+    // any digit = an id or version, never an interest (prod 2026-09-30: 'proposal-61847269')
+    const words = text.toLowerCase().replace(/[^a-z0-9\s-]/g, ' ').split(/\s+/).filter((w) => w.length >= 5 && !STOP.has(w) && !/\d/.test(w));
     for (const w of new Set(words)) counts.set(w, (counts.get(w) ?? 0) + 1);
+  }
+  // a plural and its singular are one interest ('agents'/'agent', 'benchmarks'/'benchmark'): keep the singular
+  for (const [w, n] of [...counts]) {
+    const singular = w.endsWith('s') ? w.slice(0, -1) : null;
+    if (singular && counts.has(singular)) { counts.set(singular, counts.get(singular)! + n); counts.delete(w); }
   }
   return [...counts.entries()].filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, max).map(([w]) => w);
 }

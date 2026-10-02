@@ -134,13 +134,17 @@ async function main() {
   git(repo, ['fetch', '-q', 'origin']);
   const wt = fs.mkdtempSync(path.join(WORK, 'wt-'));
   try {
-    git(repo, ['worktree', 'add', '-q', '--detach', wt, task.commit]);
-    fs.writeFileSync(path.join(wt, task.source), git(wt, ['show', `${task.commit}^:${task.source}`]));
-    git(wt, ['-c', 'user.email=gym@djimitflo', '-c', 'user.name=djimitflo-gym', 'commit', '-qam', `gym: restore parent of ${task.source}`]);
+    // Y4: a mutant-repair task starts from its base commit with the server's mutated file; a mined task from the fix
+    // commit with the parent version of the source restored
+    git(repo, ['worktree', 'add', '-q', '--detach', wt, task.mutant ? task.base : task.commit]);
+    fs.writeFileSync(path.join(wt, task.source), task.mutant ?? git(wt, ['show', `${task.commit}^:${task.source}`]));
+    git(wt, ['-c', 'user.email=gym@djimitflo', '-c', 'user.name=djimitflo-gym', 'commit', '-qam', task.mutant ? `gym: mutate ${task.source}` : `gym: restore parent of ${task.source}`]);
     const ci = inRunner(wt, 'npm ci --legacy-peer-deps --no-audit --no-fund > /tmp/ci.log 2>&1; rc=$?; tail -40 /tmp/ci.log; exit $rc');
     if (ci.status !== 0) return report(npmCiFailure(ci.stdout));
-    if (oracle(wt, task)) return report({ status: 'discarded', reason: 'tests already green on the parent' });
-    const goal = `Evolution gym: make ${task.tests.join(', ')} pass. Change only ${task.source}. The tests describe the intended behaviour; do not edit them.`;
+    if (oracle(wt, task)) return report({ status: 'discarded', reason: task.mutant ? 'task: mutant survives (tests stay green)' : 'tests already green on the parent' });
+    // Y3: a trial genome adds its strategy lines to the task (the only thing a genome may change)
+    const strategy = Array.isArray(claim.genome?.lines) && claim.genome.lines.length ? `\n\nStrategy:\n${claim.genome.lines.map((l) => `- ${String(l).slice(0, 300)}`).join('\n')}` : '';
+    const goal = `Evolution gym: make ${task.tests.join(', ')} pass. Change only ${task.source}. The tests describe the intended behaviour; do not edit them.${strategy}`;
     const [runtime] = species.split('@');
     if (runtime !== 'atomic') return report({ status: 'discarded', reason: `infra: species ${species} not supported by this worker` });
     const state = path.join(WORK, 'atomic-state'); fs.mkdirSync(state, { recursive: true });

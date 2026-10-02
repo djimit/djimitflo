@@ -40,13 +40,23 @@ export type FleetCommand = { id: string; host: string; kind: 'diagnostic' | 'she
   approved_by: string | null; approved_at: string | null; expires_at: string | null; decided_reason: string | null; started_at: string | null;
   finished_at: string | null; exit_code: number | null; output: string | null; created_at: string };
 
+export type KnowledgeOverview = {
+  at: string;
+  sources: Array<{ source: string; events: number; events_7d: number; last: string | null; yes: number; uncertain: number; no: number; units: number; relevant_pct: number | null }>;
+  relevance: { yes: number; uncertain: number; no: number };
+  recent_relevant: Array<{ ref: string; title: string; source: string; at: string }>;
+  kb_retrieval: { hits_30d: number; panels_30d: number; last: string | null };
+  interest_profile: { at: string; terms: string[] } | null;
+};
+
 export type OperatorCockpit = {
   at: string;
   build: { commit: string | null; build_time: string | null };
   scorecard: Record<string, number | null>;
   guardrails: Array<{ name: string; ok: boolean; value: number | null; limit: string }>;
   stalls: Array<{ subsystem: string; since: string | null; detail: string }>;
-  gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string }>;
+  gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string; benched?: boolean }>;
+  needs_you?: { approvals: number; requeue: number; labels: number; memory_review: number };
   remote_workers: Array<{ host: string; claims_24h: number; last_claim: string | null; interrupted_24h: number }>;
   maker_usage_7d: Array<{ role: string; runtime: string; model: string | null; leases: number; tokens: number }>;
   judgments_7d: Array<{ judgment: string; calls: number; errors: number; input_tokens: number }>;
@@ -1293,6 +1303,11 @@ class ApiClient {
   // Observability
 
   // S1 operator cockpit: scorecard, guardrails, stalls, gym species, remote workers, usage (read-only)
+  // W5 knowledge view: discoveries, jev relevance and units per source, KB retrieval, interest profile (read-only)
+  async getKnowledgeOverview(): Promise<KnowledgeOverview> {
+    return this.request('/health/knowledge');
+  }
+
   async getOperatorCockpit(): Promise<OperatorCockpit> {
     return this.request('/health/cockpit');
   }

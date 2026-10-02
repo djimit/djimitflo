@@ -37,7 +37,7 @@
 
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
-import { SelfImprovementService, type ImprovementProposal } from './self-improvement-service';
+import { SelfImprovementService, oracleLaneSkipsPanel, type ImprovementProposal } from './self-improvement-service';
 import { SelfImprovementAgentReviewService } from './self-improvement-agent-review-service';
 import { SelfImprovementRefinementService } from './self-improvement-refinement-service';
 import { SpecialistPanelService } from './specialist-panel-service';
@@ -45,6 +45,7 @@ import { CommonsProposalReviewService } from './commons-proposal-review-service'
 import { judgmentMode, runJudgment } from './judgment-service';
 import { AutonomousGoalGenerator } from './autonomous-goal-generator';
 import { namedPathsExist, proposalPrescreen } from './judgments/proposal-prescreen';
+import { recordForecasts } from './forecasters';
 
 const MINUTE_MS = 60 * 1000;
 const REFINEMENT_MAX_PER_TICK_CEILING = 10;
@@ -141,10 +142,12 @@ export class SelfImprovementAutoReviewScheduler {
       for (const proposal of proposed) {
         try {
           // System One pre-screen: shadow mode records what it WOULD decide next to the panel's real outcome (fail-open, never blocks).
-          if (judgmentMode(proposalPrescreen.id) !== 'off') await runJudgment(this.db, proposalPrescreen, { type: 'self_improvement', id: proposal.id },
+          const prescreen = judgmentMode(proposalPrescreen.id) !== 'off' ? await runJudgment(this.db, proposalPrescreen, { type: 'self_improvement', id: proposal.id },
             { proposal: { type: proposal.type, title: proposal.title, description: proposal.description, rationale: proposal.rationale } }, undefined,
-            process.env.LOOP_REPOSITORY_PATH ? { pathExists: namedPathsExist(`${proposal.description ?? ''} ${proposal.rationale ?? ''}`, process.env.LOOP_REPOSITORY_PATH) } : undefined).catch(() => null);
-          await this.reviewIfNeeded(proposal, runId, result);
+            process.env.LOOP_REPOSITORY_PATH ? { pathExists: namedPathsExist(`${proposal.description ?? ''} ${proposal.rationale ?? ''}`, process.env.LOOP_REPOSITORY_PATH) } : undefined).catch(() => null) : null;
+          // AR2: code forecasters, recorded before any gate decides (scored by forecast-scoring, AR1)
+          if (process.env.ARENA_FORECASTS_ENABLED === 'true') recordForecasts(this.db, proposal, (prescreen?.answers as Record<string, unknown> | undefined) ?? null);
+          if (!oracleLaneSkipsPanel(proposal)) await this.reviewIfNeeded(proposal, runId, result); // Z1: no panel tokens for oracle lanes
         } catch (err) {
           result.failed.push({ id: proposal.id, error: err instanceof Error ? err.message : String(err) });
         }

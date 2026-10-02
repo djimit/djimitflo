@@ -276,6 +276,18 @@ const LOOP_CONTRACTS: LoopContract[] = [
  * Public API: 60 methods → target < 20.
  * Line count: ~2445 → target < 500 (facade only).
  */
+
+/** Y2: the fixed part of every maker assignment; its hash is the 'template' gene of a run's genome (maker-genome.ts). */
+export const MAKER_TEMPLATE_RULES = [
+  '## Rules',
+  '',
+  '- Keep the diff small and local to the finding.',
+  '- Do not merge, push, deploy, edit secrets, or change policy.',
+  '- Install dependencies with `npm ci --legacy-peer-deps` if node_modules is missing; never edit package.json. Lockfile changes are reverted automatically before review.',
+  '- Run relevant deterministic checks before handing off to checker.',
+  '- Checker approval is required before completion.',
+];
+
 export class LoopService {
 
   /**
@@ -2261,13 +2273,7 @@ export class LoopService {
       advisoryContext.text || 'No matching observed episodes were retrieved.',
       '',
       ...assignmentContextMarkdown(extra),
-      '## Rules',
-      '',
-      '- Keep the diff small and local to the finding.',
-      '- Do not merge, push, deploy, edit secrets, or change policy.',
-      '- Install dependencies with `npm ci --legacy-peer-deps` if node_modules is missing; never edit package.json. Lockfile changes are reverted automatically before review.',
-      '- Run relevant deterministic checks before handing off to checker.',
-      '- Checker approval is required before completion.',
+      ...MAKER_TEMPLATE_RULES,
       '',
       // Nested-spawn control block (P1). Only injected when this lease is itself
       // permitted to spawn sub-agents (operator-armed, depth within budget). This
