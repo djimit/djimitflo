@@ -95,6 +95,8 @@ export class LoopDaemon {
   private pollMs: number;
   // G19: track active goals for parallel scheduling.
   private activeGoals = new Set<string>();
+  /** Goals with an executeGoal() in flight in this process (activeGoals is persisted and restored, so it can't say that). */
+  private executing = new Set<string>();
   // G19: max concurrent goals (separate from AIMD runtime leases — a goal may have
   // multiple leases). Default: min(4, dynamicLimit). Operator-tunable via GOAL_MAX_CONCURRENT.
   private maxConcurrentGoals: number;
@@ -175,7 +177,9 @@ export class LoopDaemon {
 
       // G19: start as many goals as fit in the available slots.
       const slots = this.getAvailableSlots();
-      const toStart = queue.slice(0, slots);
+      // prod 2026-10-01: a goal resumed after an approval is 'decomposed' while it runs, so every tick dispatched it again;
+      // the second pass found the running evolve sibling and failed the goal with LOOP_WORKER_EXECUTION_IN_PROGRESS
+      const toStart = queue.filter((g) => !this.executing.has(g.id)).slice(0, slots);
       let objectiveModeDispatchedThisTick = 0;
 
       for (const goal of toStart) {
@@ -251,9 +255,10 @@ export class LoopDaemon {
         }
 
         // Non-blocking: start the goal and don't wait for it to finish.
+        this.executing.add(goal.id);
         this.executeGoal(goal, { allowObjectiveMode }).catch((err) => {
           console.error('[LoopDaemon] goal execution error:', err instanceof Error ? err.message : String(err));
-        });
+        }).finally(() => this.executing.delete(goal.id));
       }
 
       if (toStart.length > 0) {
