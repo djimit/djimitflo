@@ -51,7 +51,11 @@ export async function checkContentSafety(db: Database, subject: { type: string; 
       headers: { Authorization: `Bearer ${process.env.NVIDIA_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model, messages: [{ role: 'user', content: text.slice(0, 4_000) }], max_tokens: 60 }),
     }, fetchFn);
-    if (res.status === 429) pausedUntil = Date.now() + (Number(process.env.CONTENT_SAFETY_429_PAUSE_MS) || 600_000);
+    if (res.status === 429) {
+      // prod 02-10 07:21Z: a bus burst fired 600+ checks at once; 531 came back 429 after the first one paused → one row, not 531
+      if (Date.now() < pausedUntil) return null;
+      pausedUntil = Date.now() + (Number(process.env.CONTENT_SAFETY_429_PAUSE_MS) || 600_000);
+    }
     if (!res.ok) { record('error', `http_${res.status}${res.status === 429 ? ' (pausing checks)' : ''}`); return null; }
     const body = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
     const { verdict, categories } = parseSafety(body.choices?.[0]?.message?.content ?? '');

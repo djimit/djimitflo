@@ -46,6 +46,15 @@ it('Z0: after a 429 that outlives the retries, checks pause (no calls, no error 
   expect(await checkContentSafety(db, { type: 'external_event', id: 'e5' }, 'event text', f)).toBe('safe');
 });
 
+it('Z0: a concurrent burst that all hits 429 writes one error row, not one per in-flight check (prod 02-10)', async () => {
+  vi.stubEnv('CONTENT_SAFETY_MODE', 'shadow'); vi.stubEnv('NVIDIA_API_KEY', 'k');
+  resetContentSafetyPause();
+  const limited = vi.fn().mockResolvedValue({ status: 429, ok: false, headers: { get: () => '0.001' } }) as unknown as typeof fetch;
+  await Promise.all(['b1', 'b2', 'b3', 'b4'].map((id) => checkContentSafety(db, { type: 'external_event', id }, 'event text', limited)));
+  expect(db.prepare("SELECT COUNT(*) AS n FROM judgments WHERE decision = 'error'").get()).toEqual({ n: 1 });
+  resetContentSafetyPause();
+});
+
 it('retries NVIDIA 429s with backoff (Retry-After first), then gives up after 3 retries', async () => {
   const r429 = { status: 429, headers: { get: (h: string) => (h === 'retry-after' ? '1' : null) } };
   const f = vi.fn().mockResolvedValueOnce(r429).mockResolvedValueOnce(r429).mockResolvedValueOnce({ status: 200, ok: true });
