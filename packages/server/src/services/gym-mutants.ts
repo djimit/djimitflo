@@ -60,7 +60,7 @@ export function mutantTier(db: Database, speciesKey: string): number {
 }
 
 /** A fresh mutant-repair task for the species, or null when the checkout has no testable service left to mutate. */
-export function mutantTask(db: Database, repo: string, speciesKey: string, tried: Set<string | null>): MutantTask | null {
+export function mutantTask(db: Database, repo: string, speciesKey: string, tried: Set<string | null>, fixedTier?: number): MutantTask | null {
   let base = '';
   try { base = execFileSync('git', ['-C', repo, 'rev-parse', 'HEAD'], { encoding: 'utf8', timeout: 5_000 }).trim(); } catch { return null; }
   const servicesDir = path.join(repo, 'packages/server/src/services');
@@ -69,7 +69,7 @@ export function mutantTask(db: Database, repo: string, speciesKey: string, tried
   const candidates = files.map((f) => ({ source: `packages/server/src/services/${f}`, test: `packages/server/src/__tests__/${f.replace(/\.ts$/, '.test.ts')}` }))
     .filter((c) => fs.existsSync(path.join(repo, c.test)));
   if (!candidates.length) return null;
-  const tier = mutantTier(db, speciesKey);
+  const tier = fixedTier ?? mutantTier(db, speciesKey);
   for (let seed = 1; seed <= 500; seed++) {
     const random = rng(seed * 7919 + base.charCodeAt(0));
     const pick = candidates[Math.floor(random() * candidates.length)];

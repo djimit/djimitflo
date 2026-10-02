@@ -1,5 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import type { GymTask } from './gym-task-miner';
+import type { MutantTask } from './gym-mutants';
 
 /**
  * Y3 (plan Phase Y, Darwin loop): the population of maker strategy genomes and the frozen gym holdout they are judged on.
@@ -35,6 +36,27 @@ export function holdout(db: Database, tasks: GymTask[], now = new Date().toISOSt
   const insert = db.prepare('INSERT OR IGNORE INTO gym_holdout (commit_sha, created_at) VALUES (?, ?)');
   for (let i = 0; i < HOLDOUT_SIZE; i++) insert.run(sorted[Math.floor(i * step)].commit, now);
   return holdout(db, [], now);
+}
+
+/**
+ * Z5 (operator go 02-10): on the mined holdout every genome solved the same 15 of 20 tasks (4/4 mutants tied or lost) — it
+ * measured task difficulty, not strategy. With DREAM_TRIAL_MUTANTS trials are judged on 20 seeded mutant-repair tasks at
+ * tier 2–3 instead, frozen once with their base and mutant (a deploy changes the checkout); the mined holdout stays as a
+ * no-regression check.
+ */
+export const mutantTrialsEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.DREAM_TRIAL_MUTANTS === 'true';
+export function mutantHoldout(db: Database, make: (tier: number, tried: Set<string | null>) => MutantTask | null, now = new Date().toISOString()): MutantTask[] {
+  const read = () => (db.prepare('SELECT task_json FROM gym_mutant_holdout ORDER BY key').all() as Array<{ task_json: string }>).map((r) => JSON.parse(r.task_json) as MutantTask);
+  const frozen = read();
+  if (frozen.length) return frozen;
+  const tried = new Set<string | null>();
+  const insert = db.prepare('INSERT OR IGNORE INTO gym_mutant_holdout (key, task_json, created_at) VALUES (?, ?, ?)');
+  for (let i = 0; i < HOLDOUT_SIZE; i++) {
+    const task = make(2 + (i % 2), tried);
+    if (!task) break;
+    tried.add(task.commit); insert.run(task.commit, JSON.stringify(task), now);
+  }
+  return read();
 }
 
 /**

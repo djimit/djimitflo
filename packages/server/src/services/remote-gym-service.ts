@@ -5,7 +5,7 @@ import { parseSpecies } from './evolve-selection';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { infraFailing, triedTasks } from './evolution-gym-service';
 import { mutantTask, type MutantTask } from './gym-mutants';
-import { dreamEvolutionEnabled, ensureBaseline, genome, holdout, nextTrialAttempt, type Genome } from './genome-registry';
+import { dreamEvolutionEnabled, ensureBaseline, genome, holdout, mutantHoldout, mutantTrialsEnabled, nextTrialAttempt, type Genome } from './genome-registry';
 
 /**
  * Plan I1: the evolution gym on a remote compute host (the workstation: 48 threads, 125 GB, R9700) instead of the
@@ -52,8 +52,9 @@ export class RemoteGymService {
     let task: GymTask | undefined; let trialGenome: Genome | null = null;
     if (dreamEvolutionEnabled()) {
       ensureBaseline(this.db, now.toISOString());
-      const next = nextTrialAttempt(this.db, key, holdout(this.db, tasks, now.toISOString()));
-      if (next) { task = tasks.find((t) => t.commit === next.commit); trialGenome = task ? genome(this.db, next.genomeId) : null; }
+      const mutants = mutantTrialsEnabled() ? mutantHoldout(this.db, (tier, tried) => mutantTask(this.db, repo, key, tried, tier), now.toISOString()) : [];
+      const next = nextTrialAttempt(this.db, key, [...holdout(this.db, tasks, now.toISOString()), ...mutants.map((m) => m.commit)]);
+      if (next) { task = tasks.find((t) => t.commit === next.commit) ?? mutants.find((m) => m.commit === next.commit); trialGenome = task ? genome(this.db, next.genomeId) : null; }
       if (!trialGenome) task = undefined;
     }
     if (!task) {

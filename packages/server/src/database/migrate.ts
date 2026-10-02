@@ -1299,6 +1299,8 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
       origin TEXT NOT NULL, status TEXT NOT NULL, note TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS gym_holdout (commit_sha TEXT PRIMARY KEY, created_at TEXT NOT NULL);
+    -- Z5: frozen seeded mutant-repair tasks (tier 2–3) that genome trials are judged on; the task (base + mutant) is stored
+    CREATE TABLE IF NOT EXISTS gym_mutant_holdout (key TEXT PRIMARY KEY, task_json TEXT NOT NULL, created_at TEXT NOT NULL);
     -- T1 (pull): judgments queued for the workstation's local System One; the workstation claims them (never pushed to)
     CREATE TABLE IF NOT EXISTS local_shadow_jobs (
       id TEXT PRIMARY KEY, judgment TEXT NOT NULL, subject_type TEXT NOT NULL, subject_id TEXT NOT NULL, state_hash TEXT NOT NULL,
