@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { generateText, llmEndpoints } from './llm-fallback';
 import { firstJsonObject } from './expert-council-service';
-import { BASELINE_GENOME, dreamEvolutionEnabled, ensureBaseline, genome } from './genome-registry';
+import { BASELINE_GENOME, dreamEvolutionEnabled, ensureBaseline, genome, unscorable } from './genome-registry';
 
 /**
  * Y3b/Y3c (plan Phase Y, Darwin loop). Dreaming is the mutation operator: once a day the day's failed makers (real and
@@ -112,7 +112,7 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
   const score = (genomeId: string) => {
     const rows = (results.all(speciesKey, genomeId) as Array<{ commit_sha: string; status: string; reason: string }>).filter((r) => holdoutCommits.includes(r.commit_sha));
     const byCommit = new Map(rows.map((r) => [r.commit_sha, r]));
-    return { complete: holdoutCommits.every((c) => byCommit.has(c)), wins: [...byCommit.values()].filter((r) => r.status === 'success').length,
+    return { complete: holdoutCommits.every((c) => byCommit.has(c) || unscorable(db, speciesKey, genomeId, c)), wins: [...byCommit.values()].filter((r) => r.status === 'success').length,
       won: new Set([...byCommit.values()].filter((r) => r.status === 'success').map((r) => r.commit_sha)),
       outOfScope: [...byCommit.values()].filter((r) => r.reason.startsWith('out of scope')).length };
   };
@@ -122,8 +122,10 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
   for (const trial of trials) {
     const mine = score(trial.id); const theirs = score(trial.parent);
     if (!mine.complete || !theirs.complete) continue;
-    const b = holdoutCommits.filter((h) => mine.won.has(h) && !theirs.won.has(h)).length;
-    const c = holdoutCommits.filter((h) => theirs.won.has(h) && !mine.won.has(h)).length;
+    // paired comparison only on tasks both genomes could be scored on (a timed-out pair is unscorable, not lost)
+    const scored = holdoutCommits.filter((h) => !unscorable(db, speciesKey, trial.id, h) && !unscorable(db, speciesKey, trial.parent, h));
+    const b = scored.filter((h) => mine.won.has(h) && !theirs.won.has(h)).length;
+    const c = scored.filter((h) => theirs.won.has(h) && !mine.won.has(h)).length;
     const p = mcnemarOneSided(b, c);
     const wins = b > c && p < promotionAlpha() && mine.outOfScope <= theirs.outOfScope && !promotedToday();
     const status = wins ? 'active' : 'retired';

@@ -49,8 +49,20 @@ export function nextTrialAttempt(db: Database, speciesKey: string, holdoutCommit
     AND (status = 'running' OR COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%') LIMIT 1`);
   for (const trial of trials) {
     for (const commit of holdoutCommits) {
-      for (const genomeId of [trial.parent, trial.id]) if (!done.get(speciesKey, genomeId, commit)) return { genomeId, commit };
+      for (const genomeId of [trial.parent, trial.id]) if (!done.get(speciesKey, genomeId, commit) && !unscorable(db, speciesKey, genomeId, commit)) return { genomeId, commit };
     }
   }
   return null;
+}
+
+/**
+ * A holdout task that keeps timing out for a genome is unscorable, not pending (prod 2026-10-01/02: 9b2fa2bf timed out 6 of
+ * 10 times; served again after every bench, it benched the only gym species for 2 h at a time and no trial could complete).
+ * After INFRA_GIVE_UP infra discards the pair is skipped and left out of the paired comparison on both sides.
+ */
+export const INFRA_GIVE_UP = 3;
+export function unscorable(db: Database, speciesKey: string, genomeId: string, commit: string): boolean {
+  return (db.prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ?
+    AND json_extract(metadata, '$.gym.genome') = ? AND json_extract(metadata, '$.gym.commit') = ?
+    AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') LIKE 'infra:%'`).get(speciesKey, genomeId, commit) as { n: number }).n >= INFRA_GIVE_UP;
 }

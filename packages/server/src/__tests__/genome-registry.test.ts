@@ -39,6 +39,19 @@ it('Y3: trial attempts are paired — the parent first on each holdout task, the
   expect(nextTrialAttempt(db, 'atomic@llama-router', ['c00', 'c02'])).toEqual({ genomeId: BASELINE_GENOME, commit: 'c02' });
 });
 
+it('a holdout task that keeps timing out for a genome becomes unscorable: skipped, and the trial can still settle (prod 02-10)', async () => {
+  const { evaluateTrials } = await import('../services/dream-evolution');
+  ensureBaseline(db); mutant('g1', ['A']);
+  const run = (id: string, genome: string, commit: string, status: string, reason: string) => db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
+    VALUES (?, 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, datetime('now'), datetime('now'))`).run(id, JSON.stringify({ gym: { commit, species: 'atomic@llama-router', genome }, gym_result: { status, reason } }));
+  run('b0', BASELINE_GENOME, 'c00', 'failure', 'tests still red'); run('b1', BASELINE_GENOME, 'c02', 'success', 'tests green, source only');
+  run('g1', 'g1', 'c02', 'success', 'tests green, source only');
+  for (let i = 0; i < 3; i++) run(`t${i}`, 'g1', 'c00', 'discarded', `infra: maker crashed or timed out (${i})`);
+  expect(nextTrialAttempt(db, 'atomic@llama-router', ['c00', 'c02'])).toBeNull(); // c00 given up for g1, c02 done for both
+  const settled = evaluateTrials(db, 'atomic@llama-router', ['c00', 'c02']);
+  expect(settled).toEqual([{ id: 'g1', status: 'retired', wins: 1, parentWins: 1 }]); // compared on c02 only: 0 vs 0 discordant
+});
+
 it('Y3: with dream evolution on, the remote gym serves trial work with the genome lines and records genome evidence', () => {
   vi.stubEnv('DREAM_EVOLUTION_ENABLED', 'true');
   const svc = new RemoteGymService(db, () => TASKS);
