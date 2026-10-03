@@ -29,6 +29,7 @@ const ATOMIC_LOCAL_CONFIG = JSON.stringify({ version: 72, localModels: { url: en
 // run: re-applied the README count fix", so every real maker job (30/38) returned that README patch, and paired genome
 // trials shared the parent's remembered fixes. Each attempt now starts from an empty state that is deleted afterwards;
 // what an agent may remember is Djimitflo's decision (verified outcomes only), not the agent's.
+export const oneLine = (text) => String(text).replace(/\s*\n+\s*/g, ' ').replace(/[ \t]{2,}/g, ' ').trim();
 const freshState = () => fs.mkdtempSync(path.join(WORK, 'state-'));
 const sh = (cmd, args, opts = {}) => execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts });
 const git = (cwd, args) => sh('git', ['-C', cwd, ...args]);
@@ -105,7 +106,9 @@ async function runMakerJob(job) {
     if (runtime !== 'atomic') return done({ status: 'failed', reason: `infra: species ${job.species} not supported by this worker` });
     const state = freshState(); states.push(state);
     if (inRunner(wt, `atomic-agent config set '${ATOMIC_LOCAL_CONFIG}' >/dev/null`, { extra: ['-v', `${state}:/state`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'], timeoutMs: 60_000 }).status !== 0) return done({ status: 'failed', reason: 'infra: atomic config failed' });
-    inRunner(wt, 'atomic-agent run --cwd /w --max-steps 60 --no-approval', { input: `${job.prompt}\n`, extra: ['-v', `${state}:/state`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'], timeoutMs: Number(env.GYM_MAKER_TIMEOUT_MS) || 900_000 });
+    // atomic-agent run reads one message per stdin line: a multi-line assignment became "# Objective Assignment" as the whole
+    // task (atomic replied "Ready. What would you like me to do?" and exited; prod 03-10: 4/4 jobs 'no change' in ~15 s)
+    inRunner(wt, 'atomic-agent run --cwd /w --max-steps 60 --no-approval', { input: `${oneLine(job.prompt)}\n`, extra: ['-v', `${state}:/state`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'], timeoutMs: Number(env.GYM_MAKER_TIMEOUT_MS) || 900_000 });
     git(wt, ['add', '-A', '-N', '.']);
     const patch = git(wt, ['diff', '--binary', 'HEAD', '--', '.', ':(exclude)package-lock.json', ':(exclude).atomic*']);
     await done({ status: 'done', patch, reason: patch ? `patch ${patch.split('\n').length} lines` : 'no change' });
@@ -198,6 +201,8 @@ function selfcheck() {
   assert(args.includes('--name') && args[args.indexOf('--name') + 1] === 'gym-x-1-0', 'runner is named (timeout can remove it)');
   assert(args[args.indexOf('--label') + 1] === hostLabel(), 'runner carries the host label (orphan sweep)');
   assert(hostLabel('workstation-2060') === 'djimitflo-gym-host=workstation-2060', 'label per host: workers never sweep each other');
+  assert(oneLine('# Objective Assignment\n\nFile: a.ts\n  Change only this file.') === '# Objective Assignment File: a.ts Change only this file.', 'oneLine collapses an assignment');
+  assert(!oneLine('a\nb\n\nc').includes('\n'), 'oneLine has no newline');
   console.log('selfcheck ok');
 }
 
