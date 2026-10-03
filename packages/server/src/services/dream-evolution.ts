@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { generateText, llmEndpoints } from './llm-fallback';
 import { firstJsonObject } from './expert-council-service';
-import { BASELINE_GENOME, dreamEvolutionEnabled, ensureBaseline, genome, mutantTrialsEnabled, unscorable } from './genome-registry';
+import { BASELINE_GENOME, dreamEvolutionEnabled, ensureBaseline, genome, mutantHoldoutKeys, mutantTrialsEnabled, unscorable } from './genome-registry';
 
 /**
  * Y3b/Y3c (plan Phase Y, Darwin loop). Dreaming is the mutation operator: once a day the day's failed makers (real and
@@ -148,7 +148,7 @@ export function startDreamEvolution(db: Database, intervalMs = 3_600_000): (() =
   const tick = () => {
     try {
       const commits = (db.prepare('SELECT commit_sha FROM gym_holdout ORDER BY commit_sha').all() as Array<{ commit_sha: string }>).map((r) => r.commit_sha);
-      const mutants = mutantTrialsEnabled() ? (db.prepare('SELECT key FROM gym_mutant_holdout ORDER BY key').all() as Array<{ key: string }>).map((r) => r.key) : [];
+      const mutants = mutantTrialsEnabled() ? mutantHoldoutKeys(db) : [];
       // Z5 on but the mutant holdout not frozen yet (no claim since): don't settle a trial on the mined holdout alone
       for (const s of mutantTrialsEnabled() && !mutants.length ? [] : evaluateTrials(db, species, commits, Date.now(), mutants)) console.log(`🧬 genome ${s.id} ${s.status} (holdout ${s.wins} vs parent ${s.parentWins})`);
     } catch (e) { console.warn('dream evolution: evaluate failed:', e instanceof Error ? e.message : String(e)); }

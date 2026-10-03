@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { BASELINE_GENOME, HOLDOUT_SIZE, ensureBaseline, holdout, mutantHoldout, nextTrialAttempt } from '../services/genome-registry';
+import { BASELINE_GENOME, HOLDOUT_SIZE, ensureBaseline, holdout, mutantHoldout, mutantHoldoutKeys, nextTrialAttempt } from '../services/genome-registry';
 import { RemoteGymService } from '../services/remote-gym-service';
 
 const TASK = (commit: string) => ({ commit, source: 'packages/server/src/services/x.ts', tests: ['packages/server/src/__tests__/x.test.ts'], sourceLines: 5 });
@@ -73,6 +73,19 @@ it('Z5: the mutant holdout is frozen once (tier 2 and 3, task stored); trials ar
   db.prepare("UPDATE maker_genomes SET status = 'trial', updated_at = '2000-01-01' WHERE id = 'g1'").run();
   db.prepare("UPDATE loop_runs SET metadata = json_set(metadata, '$.gym_result.status', 'failure') WHERE id = 'g1-c02'").run();
   expect(evaluateTrials(db, 'atomic@llama-router', mined, Date.now(), mutants)[0].status).toBe('retired');
+});
+
+it('Z5: a new tier set freezes its own mutant holdout next to the old one (nothing deleted); keys follow the configured tiers', () => {
+  let n = 0;
+  const make = (tier: number) => ({ commit: `mut:b:${n}:${tier}:${n++}`, base: 'b', source: 's.ts', tests: ['s.test.ts'], sourceLines: 9, mutant: 'x', tier });
+  const easy = mutantHoldout(db, make, undefined, [2, 3]);
+  const hard = mutantHoldout(db, make, undefined, [4, 5]);
+  expect(hard).toHaveLength(HOLDOUT_SIZE);
+  expect(new Set(hard.map((t) => t.tier))).toEqual(new Set([4, 5]));
+  expect(mutantHoldoutKeys(db, [2, 3])).toEqual(easy.map((t) => t.commit).sort());
+  expect(mutantHoldoutKeys(db, [4, 5])).toEqual(hard.map((t) => t.commit).sort());
+  expect(mutantHoldout(db, make, undefined, [4, 5]).map((t) => t.commit)).toEqual(hard.map((t) => t.commit)); // frozen
+  expect(db.prepare('SELECT COUNT(*) AS n FROM gym_mutant_holdout').get()).toEqual({ n: 2 * HOLDOUT_SIZE });
 });
 
 it('Y3: with dream evolution on, the remote gym serves trial work with the genome lines and records genome evidence', () => {
