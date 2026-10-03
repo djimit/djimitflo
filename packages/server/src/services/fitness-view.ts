@@ -15,6 +15,12 @@ export type FitnessSource = 'production' | 'gym' | 'merge';
 const num = (v: string | undefined, d: number) => (v !== undefined && Number.isFinite(Number(v)) && Number(v) >= 0 ? Number(v) : d);
 export const fitnessWeights = (env: NodeJS.ProcessEnv = process.env): Record<FitnessSource, number> =>
   ({ production: 1, gym: num(env.FITNESS_W_GYM, 0.25), merge: num(env.FITNESS_W_MERGE, 3) });
+/**
+ * Prod 03-10 (first 10 shadow decisions, all "workstation"): ~300 gym outcomes × 0.25 outweighed 9 real ones (0/9) — a
+ * per-outcome weight cannot stop volume from dominating. The gym is a PRIOR: its total weight is capped at
+ * FITNESS_GYM_MAX_WEIGHT pseudo-observations (default 5), keeping its success rate but not its count.
+ */
+export const gymMaxWeight = (env: NodeJS.ProcessEnv = process.env): number => num(env.FITNESS_GYM_MAX_WEIGHT, 5);
 export const fitnessShadowEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.FITNESS_SHADOW_ENABLED === 'true';
 
 /** The skill_outcomes keys of one species per source. A remote species `remote@<host>/<rt>@<model>` trains in the gym as `<rt>@<model>`. */
@@ -40,12 +46,15 @@ export function fitnessPosterior(db: Database, lane: string, species: Species[],
     let alpha = 1; let beta = 1;
     const sources = { production: { n: 0, ok: 0 }, gym: { n: 0, ok: 0 }, merge: { n: 0, ok: 0 } };
     for (const k of fitnessKeys(lane, s)) {
+      let a = 0; let b = 0;
       for (const r of rows(k.skillId, k.model)) {
         const age = Math.max(0, now - Date.parse(r.created_at));
         const weight = w[k.source] * (halfLifeMs > 0 ? 0.5 ** (age / halfLifeMs) : 1);
-        if (r.success) alpha += weight; else beta += weight;
+        if (r.success) a += weight; else b += weight;
         sources[k.source].n++; sources[k.source].ok += r.success ? 1 : 0;
       }
+      const scale = k.source === 'gym' && a + b > gymMaxWeight(env) ? gymMaxWeight(env) / (a + b) : 1;
+      alpha += a * scale; beta += b * scale;
     }
     return { species: speciesKey(s), sources, alpha: +alpha.toFixed(3), beta: +beta.toFixed(3), mean: +(alpha / (alpha + beta)).toFixed(3) };
   });
