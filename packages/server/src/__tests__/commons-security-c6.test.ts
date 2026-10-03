@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
+import { randomBytes } from 'node:crypto';
 import express from 'express';
 import request from 'supertest';
 import { createAgentSocialRuntimeRoutes, createSwarmOrchestrationRoutes, publicBaseUrl } from '../routes/swarm-orchestration';
@@ -25,7 +26,7 @@ it('C6: lure status and join requests need manage:tokens (viewers hold read:evid
 
 it('C6: the public agent card uses DJIMITFLO_PUBLIC_URL, not a spoofed Host header', async () => {
   const db = createTestDb();
-  vi.stubEnv('JWT_SECRET', 'c6-test-secret-with-enough-entropy-000');
+  vi.stubEnv('JWT_SECRET', randomBytes(24).toString('hex')); // generated: no literal secret in the repo
   vi.stubEnv('DJIMITFLO_PUBLIC_URL', 'https://djimitflo.agentical.nl/');
   const app = express().use(express.json()).use('/api/swarm-v2/social-runtime', createAgentSocialRuntimeRoutes(db));
   const card = await request(app).get('/api/swarm-v2/social-runtime/card').set('Host', 'evil.example');
