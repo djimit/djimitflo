@@ -15,6 +15,7 @@ import { LoopDraftPrService } from './loop-draft-pr-service';
 import { evolveEligible, evolveSpecies, selectEvolveWinner } from './evolve-selection';
 import { runGenome } from './maker-genome';
 import { banditSpecies, chooseSpecies, speciesKey } from './runtime-bandit';
+import { recordFitnessShadow } from './fitness-view';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { authorityGateForGoal } from './authority-gate';
 import { remoteMakerTimeoutMs } from '../execution/executors/remote-maker-executor';
@@ -507,6 +508,8 @@ export class LoopDaemon {
       // remote@workstation siblings to opencode, which then ran the task twice and drifted into README/CONTRIBUTING edits).
       if (!makerAlreadyDone && !pendingSibling && (!makerRuntime || process.env.LOOP_BANDIT_ENABLED === 'true')) {
         const choice = chooseSpecies(this.db, loopName, banditSpecies());
+        // D0 shadow: what a source-weighted, decaying fitness view (production + gym + merge survival) would have picked
+        try { recordFitnessShadow(this.db, run.id, loopName, banditSpecies(), choice ? speciesKey(choice.species) : null); } catch { /* telemetry only */ }
         if (choice) {
           try {
             this.loops.assertRuntimeAvailable(choice.species.runtime);
