@@ -25,6 +25,11 @@ RUN curl -fsSL -o /tmp/a.tgz https://github.com/AtomicBot-ai/atomic-agent/releas
 // llama-server providers read localModels.url, not the provider url (without it atomic hit :8080 and got a 404 page)
 const ATOMIC_LOCAL_CONFIG = JSON.stringify({ version: 72, localModels: { url: env.GYM_LLAMA_URL || 'http://127.0.0.1:8084', mode: 'external' }, llm: { activeTextProvider: 'local-llama', activeEmbeddingProvider: 'local-llama', toolTransport: 'auto', providers: [{ id: 'local-llama', kind: 'llama-server', url: env.GYM_LLAMA_URL || 'http://127.0.0.1:8084' }] } });
 
+// EV1 (prod 2026-10-03): one shared atomic state dir let the agent's own memory steer it — 11 memories in a row "doc-drift
+// run: re-applied the README count fix", so every real maker job (30/38) returned that README patch, and paired genome
+// trials shared the parent's remembered fixes. Each attempt now starts from an empty state that is deleted afterwards;
+// what an agent may remember is Djimitflo's decision (verified outcomes only), not the agent's.
+const freshState = () => fs.mkdtempSync(path.join(WORK, 'state-'));
 const sh = (cmd, args, opts = {}) => execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts });
 const git = (cwd, args) => sh('git', ['-C', cwd, ...args]);
 
@@ -92,13 +97,13 @@ async function runMakerJob(job) {
   const repo = path.join(WORK, 'repo');
   if (!fs.existsSync(repo)) sh('git', ['clone', '-q', env.GYM_REPO || 'https://github.com/djimit/djimitflo.git', repo]);
   git(repo, ['fetch', '-q', 'origin']);
-  const wt = fs.mkdtempSync(path.join(WORK, 'mk-'));
+  const wt = fs.mkdtempSync(path.join(WORK, 'mk-')); const states = [];
   try {
     git(repo, ['worktree', 'add', '-q', '--detach', wt, job.base_commit]);
     if (inRunner(wt, 'npm ci --legacy-peer-deps --no-audit --no-fund >/dev/null 2>&1').status !== 0) return done({ status: 'failed', reason: 'infra: npm ci failed' });
     const [runtime] = job.species.split('@');
     if (runtime !== 'atomic') return done({ status: 'failed', reason: `infra: species ${job.species} not supported by this worker` });
-    const state = path.join(WORK, 'atomic-state'); fs.mkdirSync(state, { recursive: true });
+    const state = freshState(); states.push(state);
     if (inRunner(wt, `atomic-agent config set '${ATOMIC_LOCAL_CONFIG}' >/dev/null`, { extra: ['-v', `${state}:/state`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'], timeoutMs: 60_000 }).status !== 0) return done({ status: 'failed', reason: 'infra: atomic config failed' });
     inRunner(wt, 'atomic-agent run --cwd /w --max-steps 60 --no-approval', { input: `${job.prompt}\n`, extra: ['-v', `${state}:/state`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'], timeoutMs: Number(env.GYM_MAKER_TIMEOUT_MS) || 900_000 });
     git(wt, ['add', '-A', '-N', '.']);
@@ -108,6 +113,7 @@ async function runMakerJob(job) {
   } catch (err) {
     await done({ status: 'failed', reason: `infra: ${(err instanceof Error ? err.message : String(err)).slice(0, 150)}` });
   } finally {
+    for (const st of states) try { fs.rmSync(st, { recursive: true, force: true }); } catch { /* next run */ }
     try { git(repo, ['worktree', 'remove', '--force', wt]); } catch { try { fs.rmSync(wt, { recursive: true, force: true }); } catch { /* next run */ } }
     try { git(repo, ['worktree', 'prune']); } catch { /* ignore */ }
   }
@@ -132,7 +138,7 @@ async function main() {
   const repo = path.join(WORK, 'repo');
   if (!fs.existsSync(repo)) sh('git', ['clone', '-q', env.GYM_REPO || 'https://github.com/djimit/djimitflo.git', repo]);
   git(repo, ['fetch', '-q', 'origin']);
-  const wt = fs.mkdtempSync(path.join(WORK, 'wt-'));
+  const wt = fs.mkdtempSync(path.join(WORK, 'wt-')); const states = [];
   try {
     // Y4: a mutant-repair task starts from its base commit with the server's mutated file; a mined task from the fix
     // commit with the parent version of the source restored
@@ -147,7 +153,7 @@ async function main() {
     const goal = `Evolution gym: make ${task.tests.join(', ')} pass. Change only ${task.source}. The tests describe the intended behaviour; do not edit them.${strategy}`;
     const [runtime] = species.split('@');
     if (runtime !== 'atomic') return report({ status: 'discarded', reason: `infra: species ${species} not supported by this worker` });
-    const state = path.join(WORK, 'atomic-state'); fs.mkdirSync(state, { recursive: true });
+    const state = freshState(); states.push(state);
     const cfg = inRunner(wt, `atomic-agent config set '${ATOMIC_LOCAL_CONFIG}' >/dev/null`, { extra: ['-v', `${state}:/state`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'], timeoutMs: 60_000 });
     if (cfg.status !== 0) return report({ status: 'discarded', reason: 'infra: atomic config failed' });
     const run = inRunner(wt, 'atomic-agent run --cwd /w --max-steps 40 --no-approval', { input: `${goal}\n`, extra: ['-v', `${state}:/state`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'], timeoutMs: Number(env.GYM_MAKER_TIMEOUT_MS) || 900_000 });
@@ -158,6 +164,7 @@ async function main() {
   } catch (err) {
     return report({ status: 'discarded', reason: `infra: ${(err instanceof Error ? err.message : String(err)).slice(0, 150)}` });
   } finally {
+    for (const st of states) try { fs.rmSync(st, { recursive: true, force: true }); } catch { /* next run */ }
     // rootless docker: container root writes as this user, so no chown (a chown to our uid inside the container maps to
     // subuid 100999 and locks us out — the first workstation run crashed on exactly that). Cleanup never throws.
     try { git(repo, ['worktree', 'remove', '--force', wt]); } catch { try { fs.rmSync(wt, { recursive: true, force: true }); } catch { /* left for the next run */ } }
