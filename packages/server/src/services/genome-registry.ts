@@ -45,14 +45,25 @@ export function holdout(db: Database, tasks: GymTask[], now = new Date().toISOSt
  * no-regression check.
  */
 export const mutantTrialsEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.DREAM_TRIAL_MUTANTS === 'true';
-export function mutantHoldout(db: Database, make: (tier: number, tried: Set<string | null>) => MutantTask | null, now = new Date().toISOString()): MutantTask[] {
-  const read = () => (db.prepare('SELECT task_json FROM gym_mutant_holdout ORDER BY key').all() as Array<{ task_json: string }>).map((r) => JSON.parse(r.task_json) as MutantTask);
+// prod 2026-10-03: tier 2–3 mutants still ≈ 90 % for atomic (target 30–70 %) → DREAM_TRIAL_MUTANT_TIERS picks the tier set; a new
+// set freezes its own 20 tasks next to the old ones (nothing deleted). Change it only between trials.
+export const mutantHoldoutTiers = (env: NodeJS.ProcessEnv = process.env): number[] => {
+  const tiers = (env.DREAM_TRIAL_MUTANT_TIERS || '2,3').split(',').map(Number).filter((t) => Number.isInteger(t) && t >= 1 && t <= 8);
+  return tiers.length ? tiers : [2, 3];
+};
+export function mutantHoldoutKeys(db: Database, tiers = mutantHoldoutTiers()): string[] {
+  return (db.prepare('SELECT key, task_json FROM gym_mutant_holdout ORDER BY key').all() as Array<{ key: string; task_json: string }>)
+    .filter((r) => tiers.includes(Number((JSON.parse(r.task_json) as MutantTask).tier))).map((r) => r.key);
+}
+export function mutantHoldout(db: Database, make: (tier: number, tried: Set<string | null>) => MutantTask | null, now = new Date().toISOString(), tiers = mutantHoldoutTiers()): MutantTask[] {
+  const read = () => (db.prepare('SELECT task_json FROM gym_mutant_holdout ORDER BY key').all() as Array<{ task_json: string }>)
+    .map((r) => JSON.parse(r.task_json) as MutantTask).filter((t) => tiers.includes(Number(t.tier)));
   const frozen = read();
   if (frozen.length) return frozen;
   const tried = new Set<string | null>();
   const insert = db.prepare('INSERT OR IGNORE INTO gym_mutant_holdout (key, task_json, created_at) VALUES (?, ?, ?)');
   for (let i = 0; i < HOLDOUT_SIZE; i++) {
-    const task = make(2 + (i % 2), tried);
+    const task = make(tiers[i % tiers.length], tried);
     if (!task) break;
     tried.add(task.commit); insert.run(task.commit, JSON.stringify(task), now);
   }
