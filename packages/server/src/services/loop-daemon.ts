@@ -49,7 +49,10 @@ export function runOutcomeOnFailure(db: Database, makerLeaseId: string): 'regres
   const lease = db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(makerLeaseId) as { metadata: string } | undefined;
   const meta = JSON.parse(lease?.metadata || '{}') as { failure_reason?: string; timed_out?: boolean; runtime_timed_out?: boolean;
     exit_status?: number | null; completed_at?: string; changed_files?: unknown; deterministic_checks?: Array<{ exit_status?: number | null }> };
-  if (meta.timed_out || meta.runtime_timed_out || /maker_runtime_exit_zero|runtime_contract/.test(meta.failure_reason ?? '')) return 'infra_failed';
+  if (meta.timed_out || meta.runtime_timed_out || /runtime_contract/.test(meta.failure_reason ?? '')) return 'infra_failed';
+  // EV3 (prod 2026-10-03): a maker that exited non-zero AFTER changing files did the wrong work (30/38 workstation jobs
+  // returned README patches) — that is maker quality, not infra; only a non-zero exit without any change is a crash
+  if (/maker_runtime_exit_zero/.test(meta.failure_reason ?? '')) return Array.isArray(meta.changed_files) && meta.changed_files.length ? 'regressed' : 'infra_failed';
   if (meta.exit_status === undefined && !meta.completed_at) return 'infra_failed'; // the maker never ran
   if ((meta.deterministic_checks ?? []).some((c) => c?.exit_status === 127)) return 'infra_failed'; // a check's tool was missing
   if (Array.isArray(meta.changed_files) && meta.changed_files.length === 0) return 'no_change';
