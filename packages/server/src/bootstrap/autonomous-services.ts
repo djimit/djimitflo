@@ -34,6 +34,7 @@ import { QueueHygieneService, queueHygieneEnabled } from '../services/queue-hygi
 import { startStallWatch } from '../services/stall-watch';
 import { startInterestFeedback } from '../services/interest-feedback';
 import { startDreamEvolution } from '../services/dream-evolution';
+import { startMergeSurvival } from '../services/merge-survival';
 import { KnowledgeMaintenanceService, maintenanceEnabled } from '../services/knowledge-maintenance-service';
 
 export function initAutonomousServices(db: any, recoverySvc: LoopService): void {
@@ -194,6 +195,14 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     if (stopDream) { lifecycleManager.register({ serviceName: 'DreamEvolution', stop: stopDream }); console.log('🧬 Dream evolution on (hourly tick, one dream a day).'); }
   } catch (error) {
     console.warn('⚠️  Dream evolution failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // EV4: loop draft PRs settled by merge + 14 days in main → skill outcomes (domain 'merge'). MERGE_SURVIVAL_ENABLED=true.
+  try {
+    const stopMerge = startMergeSurvival(db);
+    if (stopMerge) { lifecycleManager.register({ serviceName: 'MergeSurvival', stop: stopMerge }); console.log('🧾 Merge survival on (every 6 h).'); }
+  } catch (error) {
+    console.warn('⚠️  Merge survival failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // Stall watch (M10): hourly log line per silent stall. STALL_WATCH_ENABLED=true (default off).
