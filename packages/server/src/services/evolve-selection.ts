@@ -36,7 +36,8 @@ export function evolveEligible(db: Database, goalId: string): boolean {
 /** M2: the `after` score from the mutation-gain check's JSON line (scripts/mutation-gain.mjs), or null when not measured. */
 export function mutationScoreOf(checks: Array<{ name?: string; stdout_path?: string }>): number | null {
   const path = checks.find((c) => c.name === 'test:mutation:grounded')?.stdout_path;
-  try { return path ? Number(/"after":(\d+(?:\.\d+)?)/.exec(fs.readFileSync(path, 'utf8'))?.[1] ?? NaN) || null : null; } catch { return null; }
+  // D0: `|| null` turned a measured score of 0 into "not measured"
+  try { const n = path ? Number(/"after":(\d+(?:\.\d+)?)/.exec(fs.readFileSync(path, 'utf8'))?.[1] ?? NaN) : NaN; return Number.isFinite(n) ? n : null; } catch { return null; }
 }
 
 interface LeaseRow { id: string; runtime: string; status: string; metadata: string; updated_at: string }
