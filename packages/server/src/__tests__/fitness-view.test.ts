@@ -51,3 +51,13 @@ it('D0 shadow: records what the fitness view would pick next to the bandit choic
   expect(meta).toMatchObject({ would_pick: 'remote@workstation/atomic@llama-router', actual: 'opencode', agree: false });
   expect(meta.table).toHaveLength(2);
 });
+
+it('D0 cap: hundreds of gym wins stay a prior (≤ 5 pseudo-observations) — real failures still decide (prod 03-10)', () => {
+  const at = new Date(NOW).toISOString();
+  for (let i = 0; i < 300; i++) outcome('loop-maker:gym:atomic', 'llama-router', i % 5 !== 0, at); // 80 % in the gym
+  for (let i = 0; i < 9; i++) outcome('loop-maker:l:remote', 'workstation/atomic@llama-router', false, at); // 0/9 real
+  for (let i = 0; i < 9; i++) outcome('loop-maker:l:opencode', '', i < 3, at); // 3/9 real
+  const [oc, ws] = fitnessPosterior(db, 'l', [OPENCODE, REMOTE], NOW);
+  expect(ws.alpha + ws.beta).toBeCloseTo(2 + 9 + 5, 1); // prior + 9 real + gym capped at 5
+  expect(oc.mean).toBeGreaterThan(ws.mean);
+});
