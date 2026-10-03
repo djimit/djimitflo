@@ -192,7 +192,8 @@ export function AgentCommonsPage() {
   const present = commons.agents.filter((agent) => agent.present).length;
   // Server totals over 7 days; the loaded page only holds the newest threads.
   const stats = commons.stats;
-  const learnings = stats?.learnings_7d ?? commons.threads.reduce((sum, thread) => sum + thread.learnings, 0);
+  // C0: lessons = threads that ended with a lesson (learnings_7d counts lesson messages, about two per thread)
+  const learnings = stats?.lessons_7d ?? stats?.learnings_7d ?? commons.threads.reduce((sum, thread) => sum + thread.learnings, 0);
   const open = stats?.open_7d ?? commons.threads.filter((thread) => thread.stage !== 'learned').length;
   const bites = (lures?.lures || []).reduce((sum, lure) => sum + lure.bites, 0);
 
@@ -218,21 +219,31 @@ export function AgentCommonsPage() {
         <Metric label="Agents present" value={present} hint={`${commons.agents.length} aangemeld`} color={STAGE.learned.color} />
         <Metric label="Conversations" value={commons.total_threads ?? commons.threads.length} hint="alle social threads" color={STAGE.asked.color} />
         <Metric label="Open questions" value={open} hint={stats ? `of ${stats.threads_7d} conversations, 7 days` : 'waiting for an answer or lesson'} color={STAGE.responding.color} />
-        <Metric label="Reflections" value={learnings} hint={stats ? 'lessons, last 7 days' : 'effect not yet shown'} color={STAGE.learned.color} />
+        <Metric label="Lessons" value={learnings} hint={stats ? 'threads that ended with a lesson, 7 days' : 'effect not yet shown'} color={STAGE.learned.color} />
         <Metric label="Hooked" value={lured.size} hint={`${bites} bite${bites === 1 ? '' : 's'} so far`} color={LURE_COLOR} />
         <Metric label="Probes" value={lures?.probe_count || 0} hint="rejected access attempts" color="rgb(239 68 68)" />
       </section>
 
+      {stats?.autopilot_idle && (
+        <div role="status" className="flex items-center gap-2 rounded-lg border border-status-warning/30 bg-status-warning/10 p-3 text-sm text-foreground">
+          <AlertTriangle className="h-4 w-4" /> Residents idle: no resident has written in 24 h (autopilot off). Last activity {stats.residents?.[0]?.last?.slice(0, 16).replace('T', ' ') ?? 'unknown'}.
+        </div>
+      )}
+
       {stats && (
         <section className="rounded-xl border border-border bg-background-secondary p-4" aria-label="Yield for Djimitflo">
           <h2 className="text-sm font-semibold text-foreground">Yield for Djimitflo</h2>
-          <p className="mt-1 text-xs text-foreground-secondary">What the Commons ideas became: proposal → grounded (from needs_grounding) → verified by the loop.</p>
+          <p className="mt-1 text-xs text-foreground-secondary">What the Commons ideas became: proposals → with a valid grounding (target file + test) → verified by the loop.</p>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-            <span className="rounded bg-background px-2 py-1"><strong>{stats.proposals}</strong> voorstellen</span><span aria-hidden>→</span>
-            <span className="rounded bg-background px-2 py-1"><strong>{stats.proposals_grounded}</strong> grounded</span><span aria-hidden>→</span>
+            <span className="rounded bg-background px-2 py-1"><strong>{stats.proposals}</strong> proposals</span><span aria-hidden>→</span>
+            <span className="rounded bg-background px-2 py-1"><strong>{stats.proposals_grounded}</strong> validly grounded</span><span aria-hidden>→</span>
             <span className="rounded bg-background px-2 py-1"><strong>{stats.proposals_verified}</strong> verified</span>
-            <span className="text-xs text-foreground-tertiary">({stats.proposals_archived} gearchiveerd)</span>
           </div>
+          {stats.proposals_by_status && (
+            <div className="mt-2 flex flex-wrap gap-2 text-xs text-foreground-secondary" aria-label="Proposals by status">
+              {Object.entries(stats.proposals_by_status).sort((a, b) => b[1] - a[1]).map(([status, n]) => <span key={status} className="rounded border border-border px-2 py-0.5">{status.replace(/_/g, ' ')} <strong>{n}</strong></span>)}
+            </div>
+          )}
           {!!stats.guild?.length && (
             <table className="mt-3 w-full text-xs" aria-label="Groundings per agent">
               <thead><tr className="text-left text-foreground-tertiary"><th className="py-1">Agent</th><th>Groundings</th><th>Valid</th><th>Verified</th></tr></thead>
