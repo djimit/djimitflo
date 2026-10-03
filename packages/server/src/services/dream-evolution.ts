@@ -45,7 +45,12 @@ export function dreamInputs(db: Database, now = Date.now()): { failures: string[
   const all = <T>(sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } };
   const d1 = new Date(now - 86_400_000).toISOString(); const d30 = new Date(now - 30 * 86_400_000).toISOString();
   const gym = all<{ source: string; reason: string }>(`SELECT json_extract(metadata, '$.gym.source') AS source, json_extract(metadata, '$.gym_result.reason') AS reason
-    FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym_result.status') = 'failure' AND created_at >= ? LIMIT 20`, d1)
+    FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym_result.status') = 'failure' AND created_at >= ?
+      -- D3 (03-10): trial runs and holdout tasks never reach the mutation step — they did, so mutants were written from the
+      -- holdout's own failures (g-e4170670: "repeated 'tests still red' … on service files")
+      AND json_extract(metadata, '$.gym.genome') IS NULL
+      AND json_extract(metadata, '$.gym.commit') NOT IN (SELECT commit_sha FROM gym_holdout)
+      AND json_extract(metadata, '$.gym.commit') NOT IN (SELECT key FROM gym_mutant_holdout) LIMIT 20`, d1)
     .map((r) => `gym: ${r.source} — ${r.reason}`);
   const real = all<{ reason: string; files: string }>(`SELECT json_extract(metadata, '$.failure_reason') AS reason, json_extract(metadata, '$.changed_files') AS files
     FROM worker_leases WHERE role = 'maker' AND status = 'failed' AND created_at >= ? LIMIT 20`, d1)
