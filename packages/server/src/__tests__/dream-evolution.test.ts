@@ -3,16 +3,26 @@ import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { BASELINE_GENOME, genome } from '../services/genome-registry';
-import { dreamOnce, evaluateTrials, guardLines, mcnemarOneSided } from '../services/dream-evolution';
+import { dreamInputs, dreamOnce, evaluateTrials, guardLines, mcnemarOneSided } from '../services/dream-evolution';
 
 let db: Database.Database;
 beforeEach(() => { db = new Database(':memory:'); db.pragma('foreign_keys = OFF'); db.exec(schema); runMigrations(db); vi.stubEnv('DREAM_EVOLUTION_ENABLED', 'true'); });
 afterEach(() => { vi.unstubAllEnvs(); db.close(); });
 
 const NOW = Date.parse('2026-10-01T02:00:00Z');
-const gymRun = (id: string, commit: string, genomeId: string, status: string, reason: string, created = '2026-10-01T01:00:00Z') => db.prepare(`INSERT INTO loop_runs
+const gymRun = (id: string, commit: string, genomeId: string | undefined, status: string, reason: string, created = '2026-10-01T01:00:00Z') => db.prepare(`INSERT INTO loop_runs
   (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
   VALUES (?, 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`).run(id, JSON.stringify({ gym: { commit, source: 'packages/server/src/services/x.ts', species: 'atomic@llama-router', genome: genomeId }, gym_result: { status, reason } }), created, created);
+
+it('D3: trial runs and holdout tasks never reach the mutation step (prod 03-10: mutants were written from holdout failures)', () => {
+  db.prepare("INSERT INTO gym_holdout (commit_sha, created_at) VALUES ('h1', ?)").run('2026-10-01T00:00:00Z');
+  db.prepare("INSERT INTO gym_mutant_holdout (key, task_json, created_at) VALUES ('mut:m1', '{}', ?)").run('2026-10-01T00:00:00Z');
+  gymRun('t1', 'c9', BASELINE_GENOME, 'failure', 'trial red');        // a trial attempt
+  gymRun('h', 'h1', undefined, 'failure', 'holdout red');             // a mined holdout task outside a trial
+  gymRun('m', 'mut:m1', undefined, 'failure', 'mutant holdout red');  // a mutant holdout task
+  gymRun('ok', 'c2', undefined, 'failure', 'normal replay red');
+  expect(dreamInputs(db, NOW).failures).toEqual(['gym: packages/server/src/services/x.ts — normal replay red']);
+});
 
 it('Y3b: the guard keeps strategy lines and drops anything that steers gates, checks, scope, secrets, deploy or the tests', () => {
   expect(guardLines(['Read the failing assertion before changing code.', 'Keep the fix inside the named source file.'])).toHaveLength(2);
@@ -25,7 +35,7 @@ it('Y3b: the guard keeps strategy lines and drops anything that steers gates, ch
 });
 
 it('Y3b: one dream a day turns the day\'s failures into ≤ 3 guarded one-gene trial mutants of the active genome', async () => {
-  gymRun('f1', 'c1', BASELINE_GENOME, 'failure', 'tests still red');
+  gymRun('f1', 'c1', undefined, 'failure', 'tests still red');
   const call = vi.fn(async () => 'Here you go:\n{"mutants":[' +
     '{"gene":"strategy_lines","lines":["Run the named test first and read its assertion."],"rationale":"red tests"},' +
     '{"gene":"anti_pattern","lines":["changing files other than the named source"],"rationale":"scope"},' +
@@ -42,7 +52,7 @@ it('Y3b: one dream a day turns the day\'s failures into ≤ 3 guarded one-gene t
 });
 
 it('Y3c/Z5: a trial is promoted only on a significant paired win (5 vs 0 discordant, p = 0.031) and ≤ 1 a day', async () => {
-  gymRun('f1', 'c1', BASELINE_GENOME, 'failure', 'tests still red');
+  gymRun('f1', 'c1', undefined, 'failure', 'tests still red');
   const [good, bad] = (await dreamOnce(db, NOW, async () => '{"mutants":[{"gene":"strategy_lines","lines":["A"]},{"gene":"strategy_lines","lines":["B"]}]}')).created;
   const holdout = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
   holdout.forEach((c, i) => gymRun(`p${i}`, c, BASELINE_GENOME, i === 0 ? 'success' : 'failure', i === 0 ? 'tests green, source only' : 'tests still red'));
@@ -56,7 +66,7 @@ it('Y3c/Z5: a trial is promoted only on a significant paired win (5 vs 0 discord
 });
 
 it('Z5: "+2 wins" on a 20-task holdout at an 80 % base rate (3 vs 1 discordant) is noise and retires', async () => {
-  gymRun('f1', 'c1', BASELINE_GENOME, 'failure', 'tests still red');
+  gymRun('f1', 'c1', undefined, 'failure', 'tests still red');
   const [mutant] = (await dreamOnce(db, NOW, async () => '{"mutants":[{"gene":"strategy_lines","lines":["A"]}]}')).created;
   const holdout = Array.from({ length: 20 }, (_, i) => `h${i}`);
   // parent 17/20 (red on h0..h2), mutant 19/20 (red on h3): +2 wins = 3 vs 1 discordant pairs
