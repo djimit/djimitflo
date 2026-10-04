@@ -73,3 +73,35 @@ it('Y4: once no mined task is left, the remote gym hands out a mutant task (cont
   expect(stored.gym.mutant).toBeUndefined();
   expect(stored.gym).toMatchObject({ commit: claim.task.commit, base: claim.task.base, tier: 1 });
 });
+
+it('RX-5: the tier probe is off by default — claims are unchanged', () => {
+  vi.stubEnv('EVOLUTION_GYM_REMOTE_ENABLED', 'true'); vi.stubEnv('LOOP_DAEMON_REPOSITORY_PATH', repo);
+  const svc = new RemoteGymService(db, () => []);
+  for (let i = 0; i < 4; i++) {
+    const c = svc.claim('workstation', ['atomic']) as { task: { commit: string; tier: number }; runId: string };
+    expect(c.task.commit).toMatch(/^mut:/);
+    expect(db.prepare("SELECT json_extract(metadata, '$.gym.probe') AS p FROM loop_runs WHERE id = ?").get(c.runId)).toEqual({ p: null });
+    svc.record(c.runId, 'workstation', { status: 'failure', reason: 'tests still red' });
+  }
+});
+
+it('RX-5: every 2nd claim probes a fixed tier from the configured set, rotating, never a holdout key, tagged and excluded from the adaptive tier', () => {
+  vi.stubEnv('EVOLUTION_GYM_REMOTE_ENABLED', 'true'); vi.stubEnv('LOOP_DAEMON_REPOSITORY_PATH', repo);
+  vi.stubEnv('GYM_TIER_PROBE_ENABLED', 'true'); vi.stubEnv('GYM_TIER_PROBE_TIERS', '2,3,99'); vi.stubEnv('GYM_TIER_PROBE_EVERY', '2');
+  const svc = new RemoteGymService(db, () => []);
+  const base = execFileSync('git', ['-C', repo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  // freeze a holdout key the probe would otherwise draw first
+  const firstProbe = mutantTask(db, repo, 'atomic', new Set(), 2)!;
+  db.prepare('INSERT INTO gym_mutant_holdout (key, task_json, created_at) VALUES (?, ?, ?)').run(firstProbe.commit, '{}', new Date().toISOString());
+  const claims = Array.from({ length: 4 }, () => {
+    const c = svc.claim('workstation', ['atomic']) as { task: { commit: string; tier: number }; runId: string };
+    svc.record(c.runId, 'workstation', { status: 'failure', reason: 'tests still red' }); // a host settles before its next claim
+    return c;
+  });
+  const probes = claims.filter((c) => (db.prepare("SELECT json_extract(metadata, '$.gym.probe') AS p FROM loop_runs WHERE id = ?").get(c.runId) as { p: number | null }).p === 1);
+  expect(probes.map((c) => c.task.tier)).toEqual([2, 3]); // claims 2 and 4; tier 99 is not a valid tier
+  expect(probes.every((c) => c.task.commit !== firstProbe.commit && c.task.commit.startsWith(`mut:${base.slice(0, 12)}`))).toBe(true);
+  expect((db.prepare("SELECT evidence_refs_json AS e FROM skill_outcomes WHERE task_id = ?").get(probes[0].runId) as { e: string }).e).toContain('gym:probe');
+  // probe outcomes do not move the species' adaptive tier: the ordinary claims stayed at tier 1
+  expect(claims.filter((c) => !probes.includes(c)).map((c) => c.task.tier)).toEqual([1, 1]);
+});
