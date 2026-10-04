@@ -150,9 +150,11 @@ async function runCommitteeJob(job) {
     ].join('\n');
     try {
       const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(180_000),
-        body: JSON.stringify({ messages: [{ role: 'user', content: prompt }], max_tokens: 600, temperature: 0.2 }) });
+        // prod 04-10: the reasoning model spent 600 tokens thinking and returned an empty answer (finish 'length') — 3/7 members
+        body: JSON.stringify({ messages: [{ role: 'user', content: prompt }], max_tokens: 2000, temperature: 0.2 }) });
       const body = await res.json();
-      const f = parseForecast(body?.choices?.[0]?.message?.content);
+      const msg = body?.choices?.[0]?.message ?? {};
+      const f = parseForecast(msg.content) ?? parseForecast(msg.reasoning_content);
       if (f) answers.push({ member: m.id, ...f, model: String(body?.model ?? 'local') });
     } catch { /* a member that times out simply does not vote */ }
   }
