@@ -5,7 +5,7 @@ import { runMigrations } from '../database/migrate';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { evolveEligible, evolveSpecies, selectEvolveWinner } from '../services/evolve-selection';
+import { evolveEligible, evolveSpecies, mutationScoreOf, selectEvolveWinner } from '../services/evolve-selection';
 
 let db: Database.Database;
 const now = new Date().toISOString();
@@ -86,4 +86,12 @@ it('a loser that never finished (still prepared) is not recorded as a lost outco
   db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES ('m-pending', 'run-1', 'maker', 'opencode', 'prepared', '{"model":"kimi"}', ?, ?)`).run(now, now);
   expect(selectEvolveWinner(db, 'run-1', ['m-done', 'm-pending'])).toBe('m-done');
   expect(db.prepare('SELECT COUNT(*) AS n FROM skill_outcomes').get()).toEqual({ n: 0 });
+});
+
+it('D0: a measured mutation score of 0 stays 0 (it used to become null = not measured)', () => {
+  const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mut-')), 'out.json');
+  fs.writeFileSync(f, '{"before":0,"after":0}');
+  expect(mutationScoreOf([{ name: 'test:mutation:grounded', stdout_path: f }])).toBe(0);
+  fs.writeFileSync(f, 'no json line');
+  expect(mutationScoreOf([{ name: 'test:mutation:grounded', stdout_path: f }])).toBeNull();
 });

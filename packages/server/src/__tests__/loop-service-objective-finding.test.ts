@@ -126,4 +126,16 @@ describe('LoopService objective-mode findings', () => {
     const verified = loops.verifyLoopRun(run.id);
     expect(verified.gates.length).toBeGreaterThan(0);
   });
+  it('EV2: an oracle goal names its target file and the maker is told to change only that file (prod 2026-10-03)', () => {
+    const improvementId = seedImprovement({ description: 'Strengthen x.test.ts so it kills more mutants.' });
+    db.prepare("UPDATE self_improvements SET grounding_json = ? WHERE id = ?").run(JSON.stringify({ artifactPath: 'packages/server/src/__tests__/x.test.ts' }), improvementId);
+    const goal = seedGoal({ metadata: { source: 'self-improvement', improvement_id: improvementId } });
+    const run = loops.startObjectiveLoop({ goal_id: goal.id, repository_path: tempDir });
+    expect(run.findings[0].file).toBe('packages/server/src/__tests__/x.test.ts');
+    const maker = loops.continueLoopRun(run.id, { runtime: 'mock' }).leases.find((l) => l.role === 'maker')!;
+    const assignment = fs.readFileSync(String(maker.metadata.assignment_file), 'utf8');
+    expect(assignment).toMatch(/^# Objective Assignment/);
+    expect(assignment).toContain('Change only this file: packages/server/src/__tests__/x.test.ts');
+    expect(assignment).not.toContain('doc-drift-and-small-fix-loop Assignment');
+  });
 });

@@ -133,6 +133,13 @@ export interface CommonsAgentActivity {
 export interface CommonsStats {
   threads_7d: number; open_7d: number; learnings_7d: number;
   proposals: number; proposals_grounded: number; proposals_verified: number; proposals_archived: number;
+  /** C0 (03-10): the honest funnel — every status of Commons-originated proposals; `proposals_grounded` = distinct proposals with a valid grounding. */
+  proposals_by_status?: Record<string, number>;
+  /** threads that ended with at least one lesson (learnings_7d counts lesson messages, about two per thread) */
+  lessons_7d?: number;
+  residents?: Array<{ agent: string; last: string }>;
+  /** no resident wrote anything in the last 24 h (SOCIAL_AUTOPILOT off or broken) */
+  autopilot_idle?: boolean;
   /** G10i: reputation from outcomes — per agent, groundings delivered, how many passed the code check, how many got verified. */
   guild?: Array<{ agent: string; groundings: number; valid: number; verified: number }>;
 }
@@ -390,19 +397,31 @@ export class AgentCommunicationService {
     try {
     const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
     const t = this.db.prepare(`
-      SELECT COUNT(*) AS threads, SUM(learned = 0) AS open, COALESCE(SUM(learned), 0) AS learnings FROM (
+      SELECT COUNT(*) AS threads, SUM(learned = 0) AS open, COALESCE(SUM(learned), 0) AS learnings, SUM(learned > 0) AS lessons FROM (
         SELECT json_extract(payload_json, '$.thread_id') AS tid, SUM(json_extract(payload_json, '$.action') = 'social.learning') AS learned
         FROM agent_messages
         WHERE json_extract(payload_json, '$.action') IN ('social.question', 'social.response', 'social.learning')
           AND json_type(payload_json, '$.thread_id') = 'text' AND timestamp >= ?
         GROUP BY tid)
-    `).get(since) as { threads: number; open: number | null; learnings: number };
+    `).get(since) as { threads: number; open: number | null; learnings: number; lessons: number | null };
     const p = this.db.prepare(`
       SELECT COUNT(*) AS n, SUM(status NOT IN ('needs_grounding', 'archived')) AS grounded, SUM(status = 'verified') AS verified, SUM(status = 'archived') AS archived
       FROM self_improvements WHERE id IN (
         SELECT json_extract(payload_json, '$.params.improvement_id') FROM agent_messages
         WHERE json_extract(payload_json, '$.action') = 'social.learning' AND json_type(payload_json, '$.params.improvement_id') = 'text')
     `).get() as { n: number; grounded: number | null; verified: number | null; archived: number | null };
+    const commonsIds = `SELECT json_extract(payload_json, '$.params.improvement_id') FROM agent_messages
+        WHERE json_extract(payload_json, '$.action') = 'social.learning' AND json_type(payload_json, '$.params.improvement_id') = 'text'`;
+    const byStatus = Object.fromEntries((this.db.prepare(`SELECT status, COUNT(*) AS n FROM self_improvements WHERE id IN (${commonsIds}) GROUP BY status`)
+      .all() as Array<{ status: string; n: number }>).map((r) => [r.status, r.n]));
+    // C0: "grounded" used to mean "any status but needs_grounding/archived" (parked needs_more_evidence counted as grounded)
+    let grounded = 0;
+    try {
+      grounded = (this.db.prepare(`SELECT COUNT(DISTINCT subject_id) AS n FROM judgments WHERE judgment = 'commons_grounding' AND decision = 'yes' AND subject_id IN (${commonsIds})`).get() as { n: number }).n;
+    } catch { /* no judgments table yet */ }
+    const residents = this.db.prepare(`SELECT from_agent AS agent, MAX(timestamp) AS last FROM agent_messages WHERE from_agent LIKE 'commons-%' GROUP BY from_agent ORDER BY last DESC`)
+      .all() as Array<{ agent: string; last: string }>;
+    const dayAgo = new Date(Date.now() - 86_400_000).toISOString();
     let guild: CommonsStats['guild'] = [];
     try {
       guild = this.db.prepare(`
@@ -415,7 +434,8 @@ export class AgentCommunicationService {
         GROUP BY m.from_agent ORDER BY verified DESC, valid DESC, groundings DESC
       `).all() as NonNullable<CommonsStats['guild']>;
     } catch { /* no judgments table yet */ }
-    return { threads_7d: t.threads, open_7d: t.open ?? 0, learnings_7d: t.learnings, proposals: p.n, proposals_grounded: p.grounded ?? 0, proposals_verified: p.verified ?? 0, proposals_archived: p.archived ?? 0,
+    return { threads_7d: t.threads, open_7d: t.open ?? 0, learnings_7d: t.learnings, lessons_7d: t.lessons ?? 0, proposals: p.n, proposals_grounded: grounded, proposals_verified: p.verified ?? 0, proposals_archived: p.archived ?? 0,
+      proposals_by_status: byStatus, residents, autopilot_idle: residents.length > 0 && residents.every((r) => r.last < dayAgo),
       guild: guild.map((g) => ({ ...g, valid: g.valid ?? 0, verified: g.verified ?? 0 })) };
     } catch { return null; } // minimal schemas (no self_improvements) still get the overview
   }
@@ -457,6 +477,8 @@ export class AgentCommunicationService {
       SELECT id, claim, evidence_refs_json FROM swarm_claims
       WHERE predicate = 'gap' AND status IN ('proposed', 'review_required', 'supported')
         AND claim NOT LIKE 'Knowledge gap: Sparse claim inventory%' -- count heuristic, not a question (see agent-lure-service)
+        -- C1 (03-10): proof:* gaps are test-fixture gaps from proof runs (234 rows = 78 subjects ×3), not questions for peers
+        AND COALESCE(subject_ref, '') NOT LIKE 'proof:%'
         -- discuss each gap once (prod 2026-09-23: the newest gap was re-picked every round, 264 repeated threads)
         AND ('claim:' || id) NOT IN (
           SELECT json_extract(payload_json, '$.params.topic_ref') FROM agent_messages
