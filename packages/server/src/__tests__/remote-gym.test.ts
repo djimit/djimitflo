@@ -74,3 +74,50 @@ it('the circuit breaker only counts infra discards after the species last succee
   ins('e', t(80), 'discarded', 'infra: git');
   expect(infraFailing(db, 'atomic@llama-router', since)).toBe(true);
 });
+
+it('a new claim settles the host\'s own run that never reported (infra discard, task stays untried)', () => {
+  const svc = new RemoteGymService(db, () => [TASK('c1')]);
+  vi.stubEnv('EVOLUTION_GYM_REMOTE_MAX_PER_DAY', '100');
+  const first = svc.claim('workstation', ['atomic@llama-router']) as { runId: string };
+  db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, metadata, created_at) VALUES ('other-host', 'evolution-gym', 'closed', 'running', ?, datetime('now'))").run(JSON.stringify({ gym: { commit: 'x', species: 'atomic@llama-router', remote_host: 'nas' } }));
+  expect(svc.claim('workstation', ['atomic@llama-router'])).toMatchObject({ species: 'atomic@llama-router', task: { commit: 'c1' } }); // same task again: untried
+  expect(db.prepare("SELECT status, json_extract(metadata, '$.gym_result.reason') AS r FROM loop_runs WHERE id = ?").get(first.runId))
+    .toEqual({ status: 'completed', r: 'infra: worker lost the result (no report before its next claim)' });
+  expect(db.prepare("SELECT status FROM loop_runs WHERE id = 'other-host'").get()).toEqual({ status: 'running' }); // another host untouched
+});
+
+it('half-open: after a 2 h quiet cool-down one probe is let through; a new infra discard re-opens the breaker', () => {
+  const ins = (id: string, minsAgo: number) => db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, metadata, created_at) VALUES (?, 'evolution-gym', 'closed', 'completed', ?, ?)")
+    .run(id, JSON.stringify({ gym: { commit: id, species: 'atomic@llama-router' }, gym_result: { status: 'discarded', reason: 'infra: maker produced nothing (no change)' } }), new Date(Date.now() - minsAgo * 60_000).toISOString());
+  const since = new Date(Date.now() - 86_400_000).toISOString();
+  ins('p1', 600); ins('p2', 580); ins('p3', 560); // tripped 9 h ago (prod 2026-09-27)
+  expect(infraFailing(db, 'atomic@llama-router', since)).toBe(false); // cool-down passed: probe allowed
+  ins('p4', 5); // the probe failed on infra again
+  expect(infraFailing(db, 'atomic@llama-router', since)).toBe(true);
+});
+
+it('maker routes: a host-scoped token claims its own queued job and returns a patch', async () => {
+  const pass = (_req: any, _res: any, next: any) => next();
+  const app = express(); app.use(express.json());
+  app.use('/gym-worker', createRemoteGymRoutes(db, { requireAuth: pass, requirePermission: () => pass } as never));
+  const { RemoteMakerQueue } = await import('../services/remote-maker-queue');
+  const q = new RemoteMakerQueue(db);
+  const id = q.enqueue('workstation', 'atomic@llama-router', 'abc', 'fix it');
+  const token = mintSpawnToken(resolveSpawnTokenSecret(), 'workstation', REMOTE_GYM_SCOPE, 60_000);
+  await request(app).post('/gym-worker/maker/claim').set('X-Gym-Host', 'workstation').send({ species: ['atomic@llama-router'] }).expect(401);
+  const claimed = await request(app).post('/gym-worker/maker/claim').set('X-Gym-Host', 'workstation').set('X-Gym-Worker-Token', token).send({ species: ['atomic@llama-router'] }).expect(200);
+  expect(claimed.body.job).toMatchObject({ id, base_commit: 'abc' });
+  await request(app).post(`/gym-worker/maker/${id}/result`).set('X-Gym-Host', 'workstation').set('X-Gym-Worker-Token', token).send({ status: 'done', patch: 'diff', reason: 'ok' }).expect(200);
+  expect(q.get(id)).toMatchObject({ status: 'done', patch: 'diff' });
+});
+
+it('a task that was infra-discarded twice for a species is not offered to it again (prod 29-09: 9b2fa2bf benched the species)', () => {
+  const svc = new RemoteGymService(db, () => [TASK('stuck'), TASK('next')]);
+  for (const i of [1, 2]) {
+    const claim = svc.claim('workstation', ['atomic@llama-router']);
+    expect(claim).toMatchObject({ task: { commit: 'stuck' } }); // the first infra discard keeps the task open once
+    svc.record((claim as { runId: string }).runId, 'workstation', { status: 'discarded', reason: `infra: maker crashed or timed out without a change ${i}` });
+  }
+  expect(svc.claim('workstation', ['atomic@llama-router'])).toMatchObject({ task: { commit: 'next' } });
+  expect(svc.claim('workstation-2060', ['atomic@qwen36-2060'])).toMatchObject({ task: { commit: 'stuck' } }); // per species
+});

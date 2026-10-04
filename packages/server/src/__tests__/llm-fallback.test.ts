@@ -21,6 +21,10 @@ describe('llmEndpoints', () => {
     expect(all.map((e) => [e.kind, e.baseUrl, e.model])).toEqual([['ollama', 'http://a:11434', undefined], ['ollama', 'http://b:11434', 'small'], ['openai', 'https://c/v1', 'cloud']]);
     expect(llmEndpoints('http://a', { OLLAMA_FALLBACK_URL: 'http://a' })).toHaveLength(1); // same host is not a fallback
   });
+  it('adds a second, non-Ollama compat tier after the first (plan K3)', () => {
+    const all = llmEndpoints('http://a', { LLM_FALLBACK_OPENAI_URL: 'https://ollama.com/v1', LLM_FALLBACK_MODEL: 'glm', LLM_FALLBACK2_OPENAI_URL: 'https://nv/v1', LLM_FALLBACK2_OPENAI_KEY: 'k2', LLM_FALLBACK2_MODEL: 'moonshotai/kimi-k3' });
+    expect(all.map((e) => [e.baseUrl, e.apiKey, e.model])).toEqual([['http://a', undefined, undefined], ['https://ollama.com/v1', undefined, 'glm'], ['https://nv/v1', 'k2', 'moonshotai/kimi-k3']]);
+  });
 });
 
 describe('generateText', () => {

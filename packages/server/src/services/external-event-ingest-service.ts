@@ -1,14 +1,53 @@
+import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { WorkItemService } from './work-item-service';
 import type { Database } from 'better-sqlite3';
 import { z } from 'zod';
 import { OutcomeLearningService } from './outcome-learning-service';
 import { ExpertSourceUnitsService, sourceUnitsEnabled } from './expert-source-units-service';
+import { checkContentSafety, contentSafetyEnabled } from './content-safety';
 
 const nonBlank = z.string().trim().min(1);
 const decodeField = (value: unknown): unknown => {
   if (typeof value !== 'string') return value;
   try { return JSON.parse(value); } catch { return value; }
 };
+const SIGNAL_PREFIXES = ['paperclip.', 'outcome.', 'roborev.', 'discovery.', 'wiki.', 'agent.', 'eve-v.', 'work.', 'content.', 'authority.'];
+
+/**
+ * Plan N2: one light outcome contract for every agent in the fleet (Hermes, Eve-V, maintainer, DeerFlow, Scallop, workers).
+ * Stored as a skill outcome `agent:<agent>:<task_kind>` so the same fitness/bandit machinery ranks agents and models
+ * across the fleet. Emit with scripts/emit-agent-outcome.py.
+ */
+const agentOutcomeSchema = z.object({
+  agent: z.string().regex(/^[\w.-]{1,64}$/),
+  task_kind: z.string().regex(/^[\w.:-]{1,64}$/),
+  // the Redis-backed bus hands every field back as a string (prod 2026-09-28: success "true" matched no event)
+  success: z.preprocess((v) => (v === 'true' ? true : v === 'false' ? false : v), z.boolean()),
+  model: z.string().max(120).optional(),
+  tokens: z.coerce.number().int().nonnegative().optional(),
+  duration_ms: z.coerce.number().int().nonnegative().optional(),
+  ref: z.string().max(300).optional(),
+});
+
+/** N2: score every stored agent.outcome that has no fleet skill outcome yet (idempotent; also catches up earlier events). */
+export function scoreAgentOutcomes(db: Database): number {
+  const engine = new SkillEvolutionEngine(db); let n = 0;
+  let rows: Array<{ id: string; payload: string }> = [];
+  try {
+    rows = db.prepare(`SELECT e.id, e.payload FROM external_events e WHERE e.event_type = 'agent.outcome'
+      AND NOT EXISTS (SELECT 1 FROM skill_outcomes s WHERE s.domain = 'fleet' AND s.task_id = e.id) LIMIT 500`).all() as typeof rows;
+  } catch { return 0; } // skill_outcomes not created yet
+  for (const row of rows) {
+    const o = agentOutcomeSchema.safeParse(JSON.parse(row.payload));
+    if (!o.success) continue;
+    engine.recordOutcome(`agent:${o.data.agent}:${o.data.task_kind}`, {
+      success: o.data.success, tokensUsed: o.data.tokens ?? 0, durationMs: o.data.duration_ms ?? 0, domain: 'fleet',
+      agentId: o.data.agent, taskId: row.id, ...(o.data.model ? { model: o.data.model } : {}), ...(o.data.ref ? { evidenceRefs: [o.data.ref] } : {}),
+    }); n += 1;
+  }
+  return n;
+}
+
 const outcomeObservedSchema = z.object({
   outcome_id: nonBlank,
   subject_type: nonBlank,
@@ -124,14 +163,10 @@ export class ExternalEventIngestService {
           .map(value => typeof value === 'string' ? value.trim() : '')
           .find(Boolean) || '';
         const eventType = String(event.event_type || '');
-        if (!id || (!eventType.startsWith('paperclip.')
-          && eventType !== 'outcome.observed'
-          && eventType !== 'roborev.finding'
-          && eventType !== 'discovery.paper'
-          && eventType !== 'discovery.repository'
-          && eventType !== 'wiki.page.changed'
-          && eventType !== 'agent.board.handoff.created'
-          && eventType !== 'eve-v.board.handoff.received')) continue;
+        // Every agent *work or learning* signal is recorded (observe-only unless routed below). An exact allow-list silently
+        // dropped whole agent signals (prod 2026-09-27: Eve-V's work.action.required / content.revenue.candidate never
+        // arrived). Status churn (fleet.status.changed — the registry's job) and Djimitflo's own djimitflo.* echo stay out.
+        if (!id || !SIGNAL_PREFIXES.some((prefix) => eventType.startsWith(prefix))) continue;
         let normalizedEvent = event;
         if (eventType === 'outcome.observed') {
           const candidate = Object.fromEntries(Object.entries(event).map(([key, value]) => [key, decodeField(value)]));
@@ -141,10 +176,14 @@ export class ExternalEventIngestService {
         }
         const aggregateVersion = Number(normalizedEvent.aggregate_version);
         if (eventType === 'roborev.finding') this.materializeRoborevFinding(normalizedEvent);
+        // K1 (shadow): untrusted text from fleet agents is checked before it can reach any prompt
+        if (eventType.startsWith('discovery.') && contentSafetyEnabled()) {
+          void checkContentSafety(this.db, { type: 'external_event', id }, [normalizedEvent.title, normalizedEvent.note].filter((v) => typeof v === 'string').join('\n')).catch(() => undefined);
+        }
         if (eventType.startsWith('discovery.') && sourceUnitsEnabled()) {
           try { new ExpertSourceUnitsService(this.db).ingestDiscovery(normalizedEvent); } catch { /* never let one discovery break ingestion */ }
         }
-        inserted += insert.run(
+        const added = insert.run(
           id,
           eventType,
           String(normalizedEvent.source || (eventType.startsWith('paperclip.') ? 'paperclip' : 'external')),
@@ -158,7 +197,10 @@ export class ExternalEventIngestService {
             : String(normalizedEvent.occurred_at || normalizedEvent.timestamp || new Date().toISOString()),
           JSON.stringify(normalizedEvent),
         ).changes;
+        inserted += added;
+
       }
+      scoreAgentOutcomes(this.db);
       // Close the existing ingestion seam before advancing its cursor. Replay
       // also materializes historical observations left by older deployments.
       // ponytail: full-history derivation; add a projection cursor if measured

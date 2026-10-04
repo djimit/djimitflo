@@ -40,11 +40,25 @@ def discoveries(text):
             yield 'discovery.repository', f'github:{slug}', slug, note, []
 
 
-# G5 scout: Djimitflo's interests (plan G3 measured 17% relevance from general briefings). ponytail: static list; replace
-# with the weekly interest profile (topics whose cards won in the gym) once G5 feedback exists.
+# G5 scout: Djimitflo's interests (plan G3 measured 17% relevance from general briefings). --interests-from-bus adds the
+# terms of Djimitflo's latest `djimitflo.feedback.interests` profile (N4) to this static list.
 INTERESTS = ['test generation', 'unit test', 'mutation', 'program repair', 'bug fix', 'code review', 'coding agent',
              'software engineering agent', 'swe-bench', 'agent evaluation', 'llm-as-a-judge', 'tool use', 'context compression',
              'self-improv', 'fault localization', 'regression', 'flaky test', 'static analysis', 'prompt injection']
+
+
+def feedback_terms(events):
+    """N4: terms of the newest djimitflo.feedback.interests event (bus is newest-first; Redis returns fields as strings)."""
+    for event in events:
+        if isinstance(event, dict) and event.get('event_type') == 'djimitflo.feedback.interests':
+            terms = event.get('terms') or []
+            if isinstance(terms, str):
+                try:
+                    terms = json.loads(terms)
+                except ValueError:
+                    terms = terms.split(',')
+            return [str(t).strip().lower() for t in terms if str(t).strip()]
+    return []
 
 
 def rss_discoveries(xml_text, category, interests=INTERESTS):
@@ -58,17 +72,47 @@ def rss_discoveries(xml_text, category, interests=INTERESTS):
             yield 'discovery.paper', f'arxiv:{m.group(1)}', title, f"scout match: {', '.join(hits)}", [category]
 
 
+def hf_daily_discoveries(papers, interests=INTERESTS):
+    """J1: Hugging Face Daily Papers (curated, community upvotes, linked code). Yields discoveries naming an interest."""
+    for item in papers:
+        p = item.get('paper') or {}
+        pid, title = str(p.get('id') or ''), str(p.get('title') or item.get('title') or '').strip()
+        text = f"{title} {p.get('summary') or item.get('summary') or ''}".lower()
+        hits = [k for k in interests if k in text]
+        if not re.fullmatch(r'\d{4}\.\d{4,5}', pid) or not hits:
+            continue
+        repo = p.get('githubRepo') or item.get('githubRepo')
+        note = f"hf daily: {p.get('upvotes', 0)} upvotes; match: {', '.join(hits)}" + (f"; code: {repo}" if repo else '')
+        yield 'discovery.paper', f'arxiv:{pid}', title, note, []
+        m = GITHUB.search(repo or '')
+        if m:
+            name = re.sub(r'(\.git|[.)]+)$', '', m.group(2))  # no backslash inside f-strings: python < 3.12 on the Mac mini
+            slug = f'{m.group(1)}/{name}'.lower()
+            yield 'discovery.repository', f'github:{slug}', slug, f'code for arxiv:{pid} ({title[:80]})', []
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--agent', required=True)
     ap.add_argument('--dir', action='append', default=[])
     ap.add_argument('--arxiv-rss', action='append', default=[], help='arXiv category to scout, e.g. cs.SE (G5)')
+    ap.add_argument('--hf-daily', action='store_true', help='scout Hugging Face Daily Papers (J1)')
+    ap.add_argument('--interests-from-bus', action='store_true', help="add Djimitflo's interest profile to the scout terms (N4)")
     ap.add_argument('--bus', default=os.environ.get('DJIMIT_EVENT_BUS_URL', 'http://100.86.47.122:8083'))
     ap.add_argument('--stream', default='djimit.events')
     ap.add_argument('--state', default=str(Path.home() / '.djimit' / 'fleet-discoveries.sent.json'))
     ap.add_argument('--dry-run', action='store_true')
     args = ap.parse_args()
 
+    interests = list(INTERESTS)
+    if args.interests_from_bus:
+        try:
+            body = json.loads(urllib.request.urlopen(f"{args.bus.rstrip('/')}/events/{args.stream}?count=5000", timeout=20).read())
+            extra = [t for t in feedback_terms(body.get('events') or []) if t not in interests]
+            interests += extra
+            print(f'interest profile: +{len(extra)} terms {extra}', file=sys.stderr)
+        except Exception as exc:
+            print(f'interest profile unavailable: {exc}', file=sys.stderr)
     state = Path(args.state)
     sent = set(json.loads(state.read_text())) if state.exists() else set()
     new = {}
@@ -84,10 +128,20 @@ def main():
             xml_text = urllib.request.urlopen(f'https://rss.arxiv.org/rss/{cat}', timeout=20).read().decode('utf-8', 'replace')
         except Exception as exc:
             print(f'rss {cat} failed: {exc}', file=sys.stderr); continue
-        for event_type, ref, title, note, categories in rss_discoveries(xml_text, cat):
+        for event_type, ref, title, note, categories in rss_discoveries(xml_text, cat, interests):
             if ref not in sent and ref not in new:
                 new[ref] = {'event_id': f'discovery:{ref}', 'event_type': event_type, 'source': args.agent, 'agent': args.agent,
                             'ref': ref, 'title': title, 'note': note, 'categories': categories, 'origin_file': f'rss:{cat}',
+                            'dedupe_key': f'discovery:{ref}'}
+    if args.hf_daily:
+        try:
+            papers = json.loads(urllib.request.urlopen('https://huggingface.co/api/daily_papers?limit=100', timeout=20).read())
+        except Exception as exc:
+            papers = []; print(f'hf daily failed: {exc}', file=sys.stderr)
+        for event_type, ref, title, note, categories in hf_daily_discoveries(papers, interests):
+            if ref not in sent and ref not in new:
+                new[ref] = {'event_id': f'discovery:{ref}', 'event_type': event_type, 'source': args.agent, 'agent': args.agent,
+                            'ref': ref, 'title': title, 'note': note, 'categories': categories, 'origin_file': 'hf:daily_papers',
                             'dedupe_key': f'discovery:{ref}'}
     posted = 0
     for ref, event in new.items():
@@ -116,6 +170,13 @@ def selfcheck():
           '<item><title>Quantum dots</title><link>https://arxiv.org/abs/2609.44444</link><description>Physics.</description></item></channel></rss>'
     r = list(rss_discoveries(rss, 'cs.SE'))
     assert [x[1] for x in r] == ['arxiv:2609.33333'] and 'program repair' in r[0][3] and r[0][4] == ['cs.SE'], r
+    hf = [{'paper': {'id': '2609.30233', 'title': 'Coding agents for planning', 'summary': 'A coding agent that writes unit test code.', 'upvotes': 9, 'githubRepo': 'https://github.com/tomsilver/robocode'}},
+          {'paper': {'id': '2609.11111', 'title': 'World models for video', 'summary': 'frames', 'upvotes': 200}}]
+    h = list(hf_daily_discoveries(hf))
+    assert [x[1] for x in h] == ['arxiv:2609.30233', 'github:tomsilver/robocode'] and '9 upvotes' in h[0][3], h
+    bus = [{'event_type': 'x'}, {'event_type': 'djimitflo.feedback.interests', 'terms': '["Agents","coding"]'},
+           {'event_type': 'djimitflo.feedback.interests', 'terms': 'old'}]
+    assert feedback_terms(bus) == ['agents', 'coding'] and feedback_terms([{'event_type': 'djimitflo.feedback.interests', 'terms': 'a,b'}]) == ['a', 'b']
     print('selfcheck ok')
 
 

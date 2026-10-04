@@ -655,6 +655,8 @@ const nestedWorkerLeaseColumns: ColumnSpec[] = [
 // provenance graph; the store label is the type discriminator.
 const memoryCandidatesColumns: ColumnSpec[] = [
   { name: 'store', definition: "TEXT NOT NULL DEFAULT 'episodic' CHECK(store IN ('episodic', 'procedural', 'semantic', 'working'))" },
+  // P1 artifact trust: sha256 of the reviewed content, sealed on first use (prod already had the column ad hoc)
+  { name: 'content_hash', definition: 'TEXT' },
 ];
 
 
@@ -839,6 +841,7 @@ function createAgenticLoopTables(db: BetterSqlite3Database) {
       human_required INTEGER NOT NULL DEFAULT 0,
       sensitivity TEXT NOT NULL CHECK(sensitivity IN ('normal', 'security_sensitive', 'secret_detected')),
       metadata TEXT NOT NULL DEFAULT '{}',
+      content_hash TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -1278,6 +1281,48 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
       published_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_event_outbox_status ON event_outbox(status, created_at);
+    -- Fleet host agent (operator 2026-09-29): hosts pull; heartbeat + commands (diagnostics free, shell = root after a human
+    -- approval bound to the command's sha256, 15-minute window). The full record (who asked, who approved, output) is the audit.
+    CREATE TABLE IF NOT EXISTS fleet_hosts (
+      host TEXT PRIMARY KEY, last_seen TEXT NOT NULL, agent_version TEXT, info_json TEXT NOT NULL DEFAULT '{}'
+    );
+    CREATE TABLE IF NOT EXISTS fleet_commands (
+      id TEXT PRIMARY KEY, host TEXT NOT NULL, kind TEXT NOT NULL, command TEXT NOT NULL, command_sha256 TEXT NOT NULL,
+      status TEXT NOT NULL, requested_by TEXT NOT NULL, approved_by TEXT, approved_at TEXT, expires_at TEXT, decided_reason TEXT,
+      started_at TEXT, finished_at TEXT, exit_code INTEGER, output TEXT, created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_fleet_commands_host_status ON fleet_commands(host, status);
+    -- Y3 (Darwin loop): maker strategy genomes (baseline + dream mutants, one gene changed per mutant) and the frozen gym
+    -- holdout they are judged on (picked once, never shown to the mutation step)
+    CREATE TABLE IF NOT EXISTS maker_genomes (
+      id TEXT PRIMARY KEY, parent_id TEXT, gene TEXT NOT NULL DEFAULT 'baseline', lines_json TEXT NOT NULL DEFAULT '[]',
+      origin TEXT NOT NULL, status TEXT NOT NULL, note TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS gym_holdout (commit_sha TEXT PRIMARY KEY, created_at TEXT NOT NULL);
+    -- Z5: frozen seeded mutant-repair tasks (tier 2–3) that genome trials are judged on; the task (base + mutant) is stored
+    CREATE TABLE IF NOT EXISTS gym_mutant_holdout (key TEXT PRIMARY KEY, task_json TEXT NOT NULL, created_at TEXT NOT NULL);
+    -- AR-W: committee member genomes (persona + knowledge recipe + strategy lines) and the per-proposal jobs the workstation pulls
+    CREATE TABLE IF NOT EXISTS committee_genomes (id TEXT PRIMARY KEY, parent_id TEXT, persona TEXT NOT NULL, knowledge TEXT NOT NULL, lines_json TEXT NOT NULL DEFAULT '[]',
+      status TEXT NOT NULL, origin TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS committee_jobs (id TEXT PRIMARY KEY, subject_id TEXT NOT NULL, question_json TEXT NOT NULL, as_of TEXT NOT NULL, status TEXT NOT NULL,
+      host TEXT, claimed_at TEXT, finished_at TEXT, created_at TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS idx_committee_jobs_status ON committee_jobs(status, created_at);
+    -- T1 (pull): judgments queued for the workstation's local System One; the workstation claims them (never pushed to)
+    CREATE TABLE IF NOT EXISTS local_shadow_jobs (
+      id TEXT PRIMARY KEY, judgment TEXT NOT NULL, subject_type TEXT NOT NULL, subject_id TEXT NOT NULL, state_hash TEXT NOT NULL,
+      state_json TEXT NOT NULL, questions_json TEXT NOT NULL, facts_json TEXT, status TEXT NOT NULL DEFAULT 'queued',
+      host TEXT, claimed_at TEXT, created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_local_shadow_jobs_status ON local_shadow_jobs(status, created_at);
+    -- D3: explicit Telegram user id -> Djimitflo user allowlist (the user's RBAC role decides what they may do). Filled by
+    -- the operator only; chat or group membership grants nothing.
+    CREATE TABLE IF NOT EXISTS telegram_identities (
+      telegram_user_id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      added_by TEXT NOT NULL,
+      note TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
     CREATE TABLE IF NOT EXISTS judgments (
       id TEXT PRIMARY KEY, judgment TEXT NOT NULL, subject_type TEXT NOT NULL, subject_id TEXT NOT NULL, state_hash TEXT NOT NULL,
       mode TEXT NOT NULL, decision TEXT NOT NULL, reason TEXT, answers_json TEXT, error TEXT,

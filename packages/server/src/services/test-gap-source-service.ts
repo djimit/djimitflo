@@ -12,7 +12,7 @@ import { SelfImprovementService } from './self-improvement-service';
  */
 export const testGapSourceEnabled = (): boolean => process.env.TEST_GAP_SOURCE_ENABLED === 'true';
 
-export interface TestGap { service: string; sourcePath: string; testPath: string; exports: string[]; loc: number; kind?: 'untested' | 'exports' }
+export interface TestGap { service: string; sourcePath: string; testPath: string; exports: string[]; loc: number; kind?: 'untested' | 'exports'; pkg?: string }
 
 const SERVICES_DIR = 'packages/server/src/services';
 const TESTS_DIR = 'packages/server/src/__tests__';
@@ -62,6 +62,42 @@ export function discoverTestGaps(repoPath: string): TestGap[] {
     gaps.push({ service, sourcePath: `${SERVICES_DIR}/${file}`, testPath: `packages/server/src/__tests__/${service}.test.ts`, exports, loc });
   }
   return gaps.sort((a, b) => a.loc - b.loc || a.service.localeCompare(b.service)); // smallest, most self-contained first
+}
+
+/**
+ * M1 (27-09): the server's untested services run out in about a week (10 + 17 left at 4/day). The other Node workspaces
+ * have the same contract — one new test file, one command run from that package — and ~30 untested modules
+ * (shared 21 src / 2 tests, agent-catalog 8 / 2, mcp-server 19 / 9). TEST_GAP_PACKAGES_ENABLED=true (default off).
+ * The deterministic gate's test:changed covers these workspaces too.
+ */
+const PACKAGE_LANES: Array<{ pkg: string; testDir: (rel: string) => string }> = [
+  { pkg: 'shared', testDir: (rel) => `packages/shared/src/${path.dirname(rel) === '.' ? '' : `${path.dirname(rel)}/`}` }, // colocated
+  { pkg: 'agent-catalog', testDir: () => 'packages/agent-catalog/test/' },
+  { pkg: 'mcp-server', testDir: () => 'packages/mcp-server/src/__tests__/' },
+];
+export function discoverPackageGaps(repoPath: string): TestGap[] {
+  const gaps: TestGap[] = [];
+  for (const lane of PACKAGE_LANES) {
+    const pkgRoot = path.join(repoPath, 'packages', lane.pkg); const src = path.join(pkgRoot, 'src');
+    if (!fs.existsSync(src)) continue;
+    const walk = (dir: string): string[] => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory()
+      ? (e.name === 'node_modules' || e.name === 'dist' ? [] : walk(path.join(dir, e.name))) : [path.join(dir, e.name)]);
+    const files = walk(pkgRoot);
+    const tested = new Set<string>();
+    for (const t of files.filter((f) => /\.test\.tsx?$/.test(f))) {
+      tested.add(path.basename(t).replace(/\.test\.tsx?$/, ''));
+      for (const m of fs.readFileSync(t, 'utf8').matchAll(/from\s+['"](\.{1,2}\/[^'"]+)['"]/g)) tested.add(path.basename(m[1]).replace(/\.(js|ts)$/, ''));
+    }
+    for (const f of files.filter((x) => x.startsWith(src + path.sep) && /\.ts$/.test(x) && !/\.(d|test)\.ts$/.test(x) && !x.includes(`${path.sep}__tests__${path.sep}`))) {
+      const name = path.basename(f, '.ts'); const rel = path.relative(src, f);
+      if (name === 'index' || tested.has(name)) continue;
+      const text = fs.readFileSync(f, 'utf8'); const loc = text.split('\n').length;
+      const exports = [...text.matchAll(/export\s+(?:async\s+)?(?:class|function|const)\s+(\w+)/g)].map((m) => m[1]).slice(0, 6);
+      if (loc < MIN_LOC || loc > MAX_LOC || !exports.length) continue;
+      gaps.push({ service: `${lane.pkg}/${name}`, pkg: lane.pkg, sourcePath: `packages/${lane.pkg}/src/${rel}`, testPath: `${lane.testDir(rel)}${name}.test.ts`, exports, loc });
+    }
+  }
+  return gaps.sort((a, b) => a.loc - b.loc || a.service.localeCompare(b.service));
 }
 
 /**
@@ -154,21 +190,22 @@ export class TestGapSourceService {
     const improvements = new SelfImprovementService(this.db);
     let created = 0;
     // Untested services first, then untested exports of tested services (J3: TEST_GAP_EXPORTS_ENABLED).
-    const gaps = [...discoverTestGaps(repo), ...(process.env.TEST_GAP_EXPORTS_ENABLED === 'true' ? discoverExportGaps(repo) : [])];
+    const gaps = [...discoverTestGaps(repo), ...(process.env.TEST_GAP_EXPORTS_ENABLED === 'true' ? discoverExportGaps(repo) : []), ...(process.env.TEST_GAP_PACKAGES_ENABLED === 'true' ? discoverPackageGaps(repo) : [])];
     for (const gap of gaps) {
       if (createdToday + created >= maxPerDay || inFlight + created >= maxInFlight) break;
       const ref = gap.kind === 'exports' ? `test-gap:${gap.service}#exports` : `test-gap:${gap.service}`;
       // a file that ever had a test-gap proposal of this kind (any outcome) is never proposed again automatically
       if (this.db.prepare("SELECT 1 FROM self_improvements WHERE evidence_refs_json LIKE ? LIMIT 1").get(`%${ref}"%`)) continue;
       const testFile = path.basename(gap.testPath);
-      const command = `npx vitest run src/__tests__/${testFile}`;
+      const pkgDir = `packages/${gap.pkg ?? 'server'}`;
+      const command = gap.pkg ? `npx vitest run ${path.relative(pkgDir, gap.testPath)}` : `npx vitest run src/__tests__/${testFile}`;
       const budget = 'one maker lease, <= 10 minutes wall clock, <= 30k tokens, one checker lease; abort if any file other than the new test file changes';
       const covering = gap.kind === 'exports' ? `the untested exported functions ${gap.exports.join(', ')} of ${gap.sourcePath} (no existing test names them)` : `the public behaviour of ${gap.sourcePath} (exports: ${gap.exports.join(', ')})`;
       const description = `Add ${gap.testPath} covering ${covering}. Test-only; no production code edits. `
-        + `RUNTIME COMMAND: from packages/server run \`${command}\` (exit 0 = pass, Node 22, no network, no env flags needed). `
+        + `RUNTIME COMMAND: from ${pkgDir} run \`${command}\` (exit 0 = pass, Node 22, no network, no env flags needed). `
         + `ARTIFACT: the vitest stdout captured by the worker, plus the git diff of the single new test file (expected < 150 lines added). BUDGET: ${budget}.`;
       const proposal = improvements.generateFromGroundedGap({
-        title: gap.kind === 'exports' ? `Test untested exports of services/${gap.service}.ts` : `Add unit tests for services/${gap.service}.ts`, description,
+        title: gap.kind === 'exports' ? `Test untested exports of services/${gap.service}.ts` : `Add unit tests for ${gap.pkg ? gap.sourcePath.replace(/^packages\//, '') : `services/${gap.service}.ts`}`, description,
         rationale: gap.kind === 'exports'
           ? `${gap.exports.join(', ')} in ${gap.sourcePath} are exported but no test names them; a test-only change is verifiable by one command`
           : `${gap.sourcePath} (${gap.loc} lines) is not imported by any test; a test-only change is verifiable by one command`,

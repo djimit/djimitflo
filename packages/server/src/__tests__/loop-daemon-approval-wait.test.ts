@@ -115,4 +115,21 @@ describe('LoopDaemon waits for worker approval', () => {
     const ev = db.prepare("SELECT message FROM loop_events WHERE event_type = 'goal_failed'").get() as { message: string };
     expect(ev.message).toBe('approval expired');
   });
+  it('never dispatches a goal again while its first execution is still running (prod 2026-10-01: resumed goal failed IN_PROGRESS)', async () => {
+    seedRunWithApprovalLease();
+    let release: () => void = () => {};
+    const executeWorker = vi.fn(() => new Promise<never>((_, reject) => { release = () => reject(new Error('stop')); }));
+    const loops = {
+      startObjectiveLoop: vi.fn(() => ({ id: 'run-a', findings: [{ id: 'f1' }] })),
+      continueLoopRun: vi.fn(() => ({ run: { id: 'run-a' }, leases: [{ id: 'lease-a', role: 'maker', status: 'prepared', runtime: 'opencode' }] })),
+      executeWorker,
+    };
+    const d = daemonWith(loops);
+    await d.tick();
+    await new Promise((r) => setTimeout(r, 0));
+    await d.tick(); // goal is still 'decomposed' and its maker still running
+    await new Promise((r) => setTimeout(r, 0));
+    d.stop(); release();
+    expect(executeWorker).toHaveBeenCalledTimes(1);
+  });
 });

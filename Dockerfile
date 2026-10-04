@@ -60,9 +60,6 @@ RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https:
 
 WORKDIR /app
 
-ARG VCS_REF=unknown
-ARG BUILD_TIME=unknown
-ARG BUILD_SOURCE=unknown
 
 RUN apt-get update && \
     apt-get upgrade -y && \
@@ -74,7 +71,7 @@ RUN apt-get update && \
 # third-party apt repo needed; pinned like the other global installs below.
 ARG GH_CLI_VERSION=2.100.0
 RUN ARCH="$(dpkg --print-architecture)" && \
-    curl -fsSL -o /tmp/gh.deb "https://github.com/cli/cli/releases/download/v${GH_CLI_VERSION}/gh_${GH_CLI_VERSION}_linux_${ARCH}.deb" && \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 -o /tmp/gh.deb "https://github.com/cli/cli/releases/download/v${GH_CLI_VERSION}/gh_${GH_CLI_VERSION}_linux_${ARCH}.deb" && \
     dpkg -i /tmp/gh.deb && \
     rm -f /tmp/gh.deb && \
     gh --version
@@ -85,7 +82,7 @@ ARG ATOMIC_AGENT_SHA256_X64=313ac01e1d40f3a6b39780c55af176bab231d2f03dea1d9b7e7b
 ARG ATOMIC_AGENT_SHA256_ARM64=be231b650c0293cfa4427aef32285403a72809ce882b09345b22400067409f18
 RUN ARCH="$(dpkg --print-architecture)" && \
     case "$ARCH" in amd64) A=x64; SUM="$ATOMIC_AGENT_SHA256_X64";; arm64) A=arm64; SUM="$ATOMIC_AGENT_SHA256_ARM64";; *) echo "unsupported arch $ARCH"; exit 1;; esac && \
-    curl -fsSL -o /tmp/atomic.tgz "https://github.com/AtomicBot-ai/atomic-agent/releases/download/v${ATOMIC_AGENT_VERSION}/atomic-agent-linux-${A}.tar.gz" && \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 -o /tmp/atomic.tgz "https://github.com/AtomicBot-ai/atomic-agent/releases/download/v${ATOMIC_AGENT_VERSION}/atomic-agent-linux-${A}.tar.gz" && \
     echo "${SUM}  /tmp/atomic.tgz" | sha256sum -c - && \
     mkdir -p /opt/atomic-agent && tar -xzf /tmp/atomic.tgz -C /opt/atomic-agent --strip-components=1 && rm -f /tmp/atomic.tgz && \
     ln -s /opt/atomic-agent/atomic-agent /usr/local/bin/atomic-agent && \
@@ -121,7 +118,7 @@ RUN apt-get update && \
 
 RUN npm install --global npm@12.0.2 && \
     npm install --global --prefix /tmp/npm-patches \
-      brace-expansion@5.0.9 ip-address@10.3.1 tar@7.5.21 undici@7.29.0 && \
+      brace-expansion@5.0.11 ip-address@10.3.1 tar@7.5.21 undici@7.29.1 && \
     cp -a /tmp/npm-patches/lib/node_modules/. /usr/local/lib/node_modules/npm/node_modules/ && \
     rm -rf /tmp/npm-patches
 
@@ -152,6 +149,11 @@ ENV PORT=3001
 ENV DB_PATH=/data/djimitflo.sqlite
 ENV DASHBOARD_PATH=/app/packages/dashboard/dist
 ENV BACKUP_DIR=/data/backups
+# Declared here, not at the top of the stage: a build arg that changes every build (commit, time) invalidates the cache of
+# every later RUN, so apt/gh/atomic/global CLIs were reinstalled on each deploy and builds hit the 20 min timeout (28-09).
+ARG VCS_REF=unknown
+ARG BUILD_TIME=unknown
+ARG BUILD_SOURCE=unknown
 ENV DJIMITFLO_COMMIT_SHA=$VCS_REF
 # Baked-at-build provenance so /health can distinguish the running revision from
 # the built artifact instead of trusting a runtime env that may be stale.

@@ -16,7 +16,7 @@ type ReviewDraft = {
 
 export function SwarmResourcesPage() {
   const canApprove = useAuthStore((state) => state.hasPermission('approve:task'));
-  const canManageRsiSafety = useAuthStore((state) => state.hasPermission('write:swarm_action'));
+  const canManageRsiSafety = useAuthStore((state) => state.hasPermission('manage:config'));
   const [status, setStatus] = useState<SwarmRealityStatus | null>(null);
   const [rsiSafety, setRsiSafety] = useState<RsiSafetyStatus | null>(null);
   const [workItems, setWorkItems] = useState<WorkItemRecord[]>([]);
@@ -24,9 +24,6 @@ export function SwarmResourcesPage() {
   const [specialists, setSpecialists] = useState<SpecialistProfile[]>([]);
   const [specialistPanels, setSpecialistPanels] = useState<SpecialistPanelRecord[]>([]);
   const [assuranceSummary, setAssuranceSummary] = useState<AgentAssuranceSummary | null>(null);
-  const [panelTopic, setPanelTopic] = useState('Skill and swarm capability review');
-  const [panelQuestion, setPanelQuestion] = useState('Which bounded improvement should become backlog before workers are leased?');
-  const [panelRisk, setPanelRisk] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, ReviewDraft>>({});
   const [tickResult, setTickResult] = useState<SchedulerTickResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -80,14 +77,6 @@ export function SwarmResourcesPage() {
   async function runScheduler() {
     const result = await api.runSchedulerTick({ max_items: 10, plan_triaged: true });
     setTickResult(result);
-  }
-
-  async function createPanel() {
-    await api.createSpecialistPanel({
-      topic: panelTopic,
-      question: panelQuestion,
-      risk_class: panelRisk,
-    });
   }
 
   async function runMemoryEval() {
@@ -220,54 +209,10 @@ export function SwarmResourcesPage() {
         <Metric icon={<ServerCog className="h-5 w-5" />} label="Active Execution" value={status?.active_execution_count ?? 0} />
       </div>
 
-      <section className="bg-background-secondary border border-border rounded-lg p-5 space-y-4">
-        <div>
-          <h2 className="text-lg font-semibold text-foreground">Fleet Cockpit</h2>
-          <p className="mt-1 text-sm text-foreground-secondary">Runtime pools, queue pressure, recommended concurrency, throughput and blocked capacity reasons.</p>
-        </div>
-        <div className="grid grid-cols-1 xl:grid-cols-4 gap-3">
-          {status?.fleet_pools?.length ? status.fleet_pools.map((pool) => (
-            <div key={pool.runtime} className="rounded border border-border bg-background p-4">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-semibold text-foreground">{pool.runtime}</div>
-                <StatusBadge status={pool.available ? 'available' : 'blocked'} />
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <SmallStat label="Prepared" value={pool.prepared_leases} />
-                <SmallStat label="Running" value={pool.running_leases} />
-                <SmallStat label="Done 24h" value={pool.completed_24h} />
-                <SmallStat label="Failed 24h" value={pool.failed_24h} />
-                <SmallStat label="Rec. Conc." value={pool.recommended_concurrency} />
-                <SmallStat label="Tokens 24h" value={pool.tokens_used_24h} />
-              </div>
-              <div className="mt-3 text-xs text-foreground-tertiary">
-                Tokens/success: {pool.tokens_per_successful_worker == null ? 'n/a' : pool.tokens_per_successful_worker.toFixed(0)}
-              </div>
-              <div className="mt-2 text-xs text-foreground-tertiary">
-                Queue risk: {Object.entries(pool.queue_depth_by_risk || {}).map(([risk, count]) => `${risk}:${count}`).join(', ') || 'none'}
-              </div>
-              {pool.blocked_capacity_reasons.length > 0 && (
-                <div className="mt-3 rounded border border-status-error/20 bg-status-error/10 p-2 text-xs text-status-error">
-                  {pool.blocked_capacity_reasons.join(', ')}
-                </div>
-              )}
-            </div>
-          )) : (
-            <p className="text-sm text-foreground-secondary">No fleet pool data available.</p>
-          )}
-        </div>
-      </section>
-
-      <section className="bg-background-secondary border border-border rounded-lg p-5 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-foreground">Worker pool</h2>
-          <p className="mt-1 text-sm text-foreground-secondary">Plan, start-next and drain live in one place: Fleet Cockpit.</p>
-        </div>
-        <Link to="/fleet-cockpit" className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-accent/30 text-sm text-accent hover:bg-accent/10">
-          <Workflow className="h-4 w-4" />
-          Open Fleet Cockpit
-        </Link>
-      </section>
+      <p className="text-sm text-foreground-secondary">
+        Worker pools and concurrency: <Link to="/fleet-cockpit" className="underline">Fleet Cockpit</Link> · hosts, diagnostics and admin commands:{' '}
+        <Link to="/fleet" className="underline">Fleet hosts</Link> · loop health: <Link to="/cockpit" className="underline">Operator cockpit</Link>.
+      </p>
 
       <section className="bg-background-secondary border border-border rounded-lg p-5 space-y-4">
         <div className="flex items-center justify-between gap-4">
@@ -321,7 +266,8 @@ export function SwarmResourcesPage() {
 
       <div className="grid grid-cols-1 xl:grid-cols-[0.85fr_1.15fr] gap-6">
         <section className="bg-background-secondary border border-border rounded-lg p-5 space-y-4">
-          <h2 className="text-lg font-semibold text-foreground">Workstation Capacity</h2>
+          <h2 className="text-lg font-semibold text-foreground">Control plane (VPS container)</h2>
+          <p className="text-xs text-foreground-tertiary">CPU and memory of the container this server runs in — not the workstation (see Fleet hosts).</p>
           <div className="grid grid-cols-2 gap-3">
             <SmallStat label="CPU Threads" value={status?.resource_snapshot.cpu_threads ?? 0} />
             <SmallStat label="Free Memory" value={availableMemory} />
@@ -360,7 +306,7 @@ export function SwarmResourcesPage() {
             </div>
           </div>
           <div className="space-y-3">
-            {workItems.length ? workItems.map((item) => (
+            {workItems.filter((item) => !['discarded', 'done'].includes(item.status)).length ? workItems.filter((item) => !['discarded', 'done'].includes(item.status)).map((item) => (
               <WorkItemRow
                 key={item.id}
                 item={item}
@@ -370,7 +316,7 @@ export function SwarmResourcesPage() {
                 onDiscard={() => void runAction(`discard-${item.id}`, () => api.updateWorkItem(item.id, { status: 'discarded' }))}
               />
             )) : (
-              <p className="text-sm text-foreground-secondary">No work items yet.</p>
+              <p className="text-sm text-foreground-secondary">No actionable work items (discarded and done items are hidden).</p>
             )}
           </div>
         </section>
@@ -424,47 +370,6 @@ export function SwarmResourcesPage() {
           <div className="flex items-center gap-2 text-xs text-foreground-tertiary">
             <BrainCircuit className="h-4 w-4" />
             {specialists.length} specialist profiles
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 xl:grid-cols-[1fr_auto] gap-3">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <label className="block">
-              <span className="text-xs text-foreground-tertiary">Topic</span>
-              <input
-                value={panelTopic}
-                onChange={(event) => setPanelTopic(event.target.value)}
-                className="mt-1 w-full rounded border border-border bg-background px-3 py-2 text-sm text-foreground"
-              />
-            </label>
-            <label className="block">
-              <span className="text-xs text-foreground-tertiary">Question</span>
-              <input
-                value={panelQuestion}
-                onChange={(event) => setPanelQuestion(event.target.value)}
-                className="mt-1 w-full rounded border border-border bg-background px-3 py-2 text-sm text-foreground"
-              />
-            </label>
-          </div>
-          <div className="flex items-end gap-2">
-            <select
-              value={panelRisk}
-              onChange={(event) => setPanelRisk(event.target.value as typeof panelRisk)}
-              className="rounded border border-border bg-background px-3 py-2 text-sm text-foreground"
-            >
-              <option value="low">low</option>
-              <option value="medium">medium</option>
-              <option value="high">high</option>
-              <option value="critical">critical</option>
-            </select>
-            <button
-              onClick={() => void runAction('create-panel', createPanel)}
-              disabled={actionId !== null || !panelTopic.trim() || !panelQuestion.trim()}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-accent/30 text-sm text-accent hover:bg-accent/10 disabled:opacity-50"
-            >
-              <BrainCircuit className="h-4 w-4" />
-              Create Panel
-            </button>
           </div>
         </div>
 

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
@@ -61,6 +61,30 @@ it('the daemon auto-approves a test-gap maker and pins its scope when the flag i
   expect(decide).toHaveBeenCalledWith('appr-1', true, 'autonomy:test-gap-rule-v1', expect.stringContaining('test-only'));
   expect(leaseScope()).toBe(ARTIFACT);
   expect(db.prepare("SELECT COUNT(*) n FROM loop_events WHERE event_type = 'goal_auto_approved'").get()).toEqual({ n: 1 });
+});
+
+describe('Z4 ORACLE_LANES_AUTO_APPROVE', () => {
+  afterEach(() => { delete process.env.ORACLE_LANES_AUTO_APPROVE; });
+  const ruleSaysNo = () => si('old-regression', 'regressed'); // one regression ever in the class: rule-v1 says no
+
+  it('without the flag, rule-v1 "no" (a regression in the class) leaves the oracle-lane maker to the human', async () => {
+    ruleSaysNo();
+    expect(await tick(true)).not.toHaveBeenCalled();
+  });
+
+  it('with the flag, the oracle-lane maker is approved on its one-test-file scope; rule-v1 verdict kept in the reason', async () => {
+    ruleSaysNo(); process.env.ORACLE_LANES_AUTO_APPROVE = 'true';
+    const decide = await tick(true);
+    expect(decide).toHaveBeenCalledWith('appr-1', true, 'autonomy:oracle-lane-v1', expect.stringContaining('rule-v1: class='));
+    expect(leaseScope()).toBe(ARTIFACT);
+    expect(db.prepare("SELECT decision FROM judgments WHERE judgment = 'auto_approve_shadow'").get()).toEqual({ decision: 'no' });
+  });
+
+  it('the flag never approves outside the oracle lanes or beyond a single test file', async () => {
+    process.env.ORACLE_LANES_AUTO_APPROVE = 'true';
+    db.prepare("UPDATE self_improvements SET evidence_refs_json = '[\"reflection:x\"]' WHERE id = 'cur'").run();
+    expect(await tick(true)).not.toHaveBeenCalled();
+  });
 });
 
 it('the daemon only waits for the human when the flag is off', async () => {

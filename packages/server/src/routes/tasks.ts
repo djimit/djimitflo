@@ -2,6 +2,7 @@
  * Task routes
  */
 
+import { rateLimit } from 'express-rate-limit';
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import { createError } from '../middleware/error-handler';
@@ -59,6 +60,7 @@ function parseTask(task: any): any {
 
 export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine, auth?: AuthMiddleware, wsService?: WebSocketService): Router {
   const router = Router();
+  router.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false })); // per-router limiter CodeQL can see; /api also caps 300/min
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
   const contextInjector = new ContextInjectionService(db);
   const audit = new AuditService(db);

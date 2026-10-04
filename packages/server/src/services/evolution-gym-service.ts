@@ -19,14 +19,30 @@ import { evolveSpecies, parseSpecies, type Species } from './evolve-selection';
  * error' seven times in a row) never earns an outcome, so 'fewest outcomes goes next' kept picking it and starved every
  * other species. After 3 infra discards in 24 h a species sits out until the window passes.
  */
+/**
+ * Tasks a species should not be offered again: any non-infra attempt (success, failure or still running) or two infra
+ * discards (prod 2026-09-29: task 9b2fa2bf crashed/timed out three times in a row on atomic@llama-router and, being
+ * re-offered after each infra discard, tripped the breaker for the whole species).
+ */
+export function triedTasks(db: Database, speciesKey: string): Set<string | null> {
+  return new Set((db.prepare(`SELECT c FROM (SELECT json_extract(metadata, '$.gym.commit') AS c,
+      SUM(COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%') AS real, SUM(json_extract(metadata, '$.gym_result.reason') LIKE 'infra:%') AS infra
+    FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? GROUP BY c) WHERE real > 0 OR infra >= 2`).all(speciesKey) as Array<{ c: string | null }>).map((r) => r.c));
+}
+
 export function infraFailing(db: Database, speciesKey: string, since: string): boolean {
   // a success proves the species works: only discards after its latest success count (prod 2026-09-27: atomic@llama-router
   // was benched by three discards from since-fixed bugs, two of them before and after two successes)
   const lastSuccess = (db.prepare("SELECT MAX(created_at) AS t FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym_result.status') = 'success'")
     .get(speciesKey) as { t: string | null }).t;
   const from = lastSuccess && lastSuccess > since ? lastSuccess : since;
-  return (db.prepare("SELECT COUNT(*) AS n FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym_result.reason') LIKE 'infra:%' AND created_at > ?")
-    .get(speciesKey, from) as { n: number }).n >= (Number(process.env.EVOLUTION_GYM_INFRA_TRIP) || 3);
+  const trips = db.prepare("SELECT COUNT(*) AS n, MAX(created_at) AS last FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym_result.reason') LIKE 'infra:%' AND created_at > ?")
+    .get(speciesKey, from) as { n: number; last: string | null };
+  if (trips.n < (Number(process.env.EVOLUTION_GYM_INFRA_TRIP) || 3)) return false;
+  // half-open: after a quiet cool-down one probe attempt is let through (prod 2026-09-27: a fixed worker stayed benched for
+  // the rest of the 24 h window); a new infra discard re-opens the breaker for another cool-down
+  const coolDownMs = Number(process.env.EVOLUTION_GYM_BREAKER_RETRY_MS) || 2 * 3_600_000;
+  return !trips.last || Date.now() - new Date(trips.last.replace(' ', 'T') + (/Z|[+-]\d\d:?\d\d$/.test(trips.last) ? '' : 'Z')).getTime() < coolDownMs;
 }
 
 export const gymEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.EVOLUTION_GYM_ENABLED === 'true';
@@ -96,9 +112,8 @@ export class EvolutionGymService {
     const species = healthy.map((s) => ({ s, n: (count.get(`loop-maker:gym:${s.runtime}`, s.model ?? '') as { n: number }).n })).sort((a, b) => a.n - b.n)[0].s;
     // every attempt (success, failure or discarded) is a gym loop_run for that species: never repeat one
     const key = species.model ? `${species.runtime}@${species.model}` : species.runtime;
-    // an infra discard (provider error before the maker did anything) says nothing about the species: the task stays open
-    const tried = new Set((this.db.prepare("SELECT json_extract(metadata, '$.gym.commit') AS c FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%'")
-      .all(key) as Array<{ c: string | null }>).map((r) => r.c));
+    // an infra discard (provider error before the maker did anything) says nothing about the species: the task stays open (once)
+    const tried = triedTasks(this.db, key);
     const task = this.deps.mine(repo).find((t) => !tried.has(t.commit));
     if (!task) return { status: 'skipped', reason: 'no untried task' };
     return this.attempt(repo, task, species);

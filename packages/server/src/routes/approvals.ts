@@ -1,3 +1,4 @@
+import { rateLimit } from 'express-rate-limit';
 import { approvalContext } from '../services/approval-context';
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
@@ -22,6 +23,7 @@ function parseApproval(approval: any, db?: Database) {
 
 export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEngine, auth?: AuthMiddleware, wsService?: WebSocketService): Router {
   const router = Router();
+  router.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false })); // per-router limiter CodeQL can see; /api also caps 300/min
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
 
   function getUser(req: any): AuthTokenPayload {

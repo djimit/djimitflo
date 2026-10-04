@@ -2,6 +2,7 @@
  * Swarm orchestration routes — parallel multi-agent coding.
  */
 
+import { checkContentSafety, contentSafetyEnabled } from '../services/content-safety';
 import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import type { Database } from 'better-sqlite3';
@@ -191,7 +192,8 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
 
   // GET /api/swarm-v2/social/commons — operator read-model for the Agent Commons UI
   router.get('/social/commons', requirePermission('read:evidence'), (req, res) => {
-    res.json(comms.listSocialCommons(Number(req.query.limit) || 50));
+    // C6: bounded — an unbounded ?limit= let any viewer pull the whole message table
+    res.json(comms.listSocialCommons(Math.min(200, Math.max(1, Math.trunc(Number(req.query.limit)) || 50))));
   });
 
   // Agent Commons honeypot: cast a lure (invite absent agents, issue runtime tokens once) and read bites/probes.
@@ -202,7 +204,7 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
     try {
       const ttlMs = Number(req.body?.ttl_ms);
       const cast = lure.castLure({
-        by: String(req.user?.email || req.user?.id || 'operator'), baseUrl: `${req.protocol}://${req.get('host')}`,
+        by: String(req.user?.email || req.user?.id || 'operator'), baseUrl: publicBaseUrl(req),
         ttlMs: Number.isFinite(ttlMs) && ttlMs > 0 ? ttlMs : undefined,
       });
       for (const invitation of cast.invitations) audit.record({ event_type: AuditEventType.CONFIG_CHANGED, action: 'social_runtime_token_issued', resource_type: 'agent', resource_id: invitation.agent_id, user_id: req.user.sub, metadata: { scope: 'social-runtime', expires_at: invitation.expires_at, lure_id: cast.lure.id } });
@@ -211,7 +213,8 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
       res.status(500).json({ error: { code: 'LURE_FAILED', message: error instanceof Error ? error.message : 'LURE_FAILED' } });
     }
   });
-  router.get('/social/lures', requirePermission('read:evidence'), (_req, res) => {
+  // C6: lure status and join requests (contact, IP, description) are operator data, not viewer evidence
+  router.get('/social/lures', requirePermission('manage:tokens'), (_req, res) => {
     res.json(lure.status());
   });
 
@@ -220,7 +223,7 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
   router.post('/social/join-invites', requirePermission('manage:tokens'), (req: any, res) => {
     if (!req.user?.sub || req.user.agent_id) throw createError(403, 'Operator authentication required', 'SOCIAL_OPERATOR_REQUIRED');
     const invite = openDoor.createInvite({
-      by: String(req.user?.email || req.user?.id || 'operator'), baseUrl: `${req.protocol}://${req.get('host')}`,
+      by: String(req.user?.email || req.user?.id || 'operator'), baseUrl: publicBaseUrl(req),
       label: typeof req.body?.label === 'string' ? req.body.label : undefined,
       ttlMs: Number.isFinite(Number(req.body?.ttl_ms)) ? Number(req.body.ttl_ms) : undefined,
       maxUses: Number.isFinite(Number(req.body?.max_uses)) ? Number(req.body.max_uses) : undefined,
@@ -228,7 +231,7 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
     audit.record({ event_type: AuditEventType.CONFIG_CHANGED, action: 'social_join_invite_issued', resource_type: 'agent', resource_id: invite.label, user_id: req.user.sub, metadata: { expires_at: invite.expires_at, max_uses: invite.max_uses } });
     res.set('Cache-Control', 'no-store').status(201).json(invite);
   });
-  router.get('/social/join-requests', requirePermission('read:evidence'), (_req, res) => {
+  router.get('/social/join-requests', requirePermission('manage:tokens'), (_req, res) => {
     res.json({ requests: openDoor.listRequests() });
   });
 
@@ -304,6 +307,17 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
   return router;
 }
 
+/**
+ * C6: the URL handed to external agents (agent card, join status, lure invitations). It came from the request's Host header,
+ * so a spoofed Host on the public card pointed agents at another server. DJIMITFLO_PUBLIC_URL (http(s) origin) wins; the
+ * header remains the fallback only where it is not configured.
+ */
+export function publicBaseUrl(req: { protocol: string; get(name: string): string | undefined }, env: NodeJS.ProcessEnv = process.env): string {
+  const configured = (env.DJIMITFLO_PUBLIC_URL || '').trim().replace(/\/+$/, '');
+  if (/^https?:\/\/[A-Za-z0-9.-]+(:\d+)?$/.test(configured)) return configured;
+  return `${req.protocol}://${req.get('host')}`;
+}
+
 /** Least-privilege callback surface for signed agent-runtime pollers. */
 export function createAgentSocialRuntimeRoutes(db: Database, runtimeGovernance = new RuntimeGovernanceService(db)): Router {
   const router = Router();
@@ -311,7 +325,7 @@ export function createAgentSocialRuntimeRoutes(db: Database, runtimeGovernance =
   const comms = new AgentCommunicationService(db);
   const lure = new AgentLureService(db, comms);
   const openDoor = new AgentCommonsOpenDoorService(db, lure);
-  const baseUrl = (req: any) => `${req.protocol}://${req.get('host')}`;
+  const baseUrl = publicBaseUrl;
 
   // Public open-door surface: discovery card, knock with an invite code, poll for the decision.
   router.get('/card', (req, res) => { res.json(openDoor.agentCard(baseUrl(req))); });
@@ -373,6 +387,8 @@ export function createAgentSocialRuntimeRoutes(db: Database, runtimeGovernance =
     if (!authorized(req, res)) return;
     try {
       const result = comms.respondSocial(req.params.agentId, req.params.messageId, req.body || {});
+      // K1 (shadow): a reply from an external agent is untrusted text that later feeds prompts
+      if (!result.duplicate && contentSafetyEnabled()) void checkContentSafety(db, { type: 'social_reply', id: String(req.params.messageId) }, JSON.stringify(req.body || {})).catch(() => undefined);
       res.status(result.duplicate ? 200 : 201).json(result);
     } catch (error) { fail(res, error); }
   });
