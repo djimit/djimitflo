@@ -23,7 +23,7 @@ it('maker timeout: 600 s for the mutation lane, else LOOP_MAKER_TIMEOUT_MS (defa
   expect(daemonMakerTimeoutMs(false, { LOOP_MAKER_TIMEOUT_MS: '9999999' })).toBe(600_000);
 });
 
-it('A3: a run whose maker timed out or exited non-zero is infra_failed, not regressed', async () => {
+it('A3+EV3: a maker that timed out or crashed without a change is infra_failed; one that exited non-zero after changing files regressed', async () => {
   const Database = (await import('better-sqlite3')).default;
   const { schema } = await import('../database/schema');
   const { runMigrations } = await import('../database/migrate');
@@ -37,7 +37,10 @@ it('A3: a run whose maker timed out or exited non-zero is infra_failed, not regr
   lease('exit127', { exit_status: 0, changed_files: ['a.test.ts'], deterministic_checks: [{ exit_status: 127 }, { exit_status: 0 }] }); // prod 5e75951a
   lease('no-diff', { exit_status: 0, changed_files: [], deterministic_checks: [{ exit_status: 0 }] }); // prod f502ad83
   lease('real-failure', { exit_status: 0, changed_files: ['a.ts'], deterministic_checks: [{ exit_status: 1 }] });
-  expect(['timeout', 'contract', 'evaluated', 'never-ran', 'exit127', 'no-diff', 'real-failure'].map((id) => runOutcomeOnFailure(db, id)))
-    .toEqual(['infra_failed', 'infra_failed', 'regressed', 'infra_failed', 'infra_failed', 'no_change', 'regressed']);
+  // EV3 prod 03-10: exit 1 after editing README/CONTRIBUTING is the maker's fault; exit 1 without a change is a crash
+  lease('wrong-change', { exit_status: 1, failure_reason: 'maker_gate_failed:maker_runtime_exit_zero', changed_files: ['README.md', 'CONTRIBUTING.md'] });
+  lease('crash', { exit_status: 1, failure_reason: 'maker_gate_failed:maker_runtime_exit_zero', changed_files: [] });
+  expect(['timeout', 'contract', 'evaluated', 'never-ran', 'exit127', 'no-diff', 'real-failure', 'wrong-change', 'crash'].map((id) => runOutcomeOnFailure(db, id)))
+    .toEqual(['infra_failed', 'infra_failed', 'regressed', 'infra_failed', 'infra_failed', 'no_change', 'regressed', 'regressed', 'infra_failed']);
   db.close();
 });
