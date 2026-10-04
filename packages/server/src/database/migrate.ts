@@ -1299,6 +1299,14 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
       origin TEXT NOT NULL, status TEXT NOT NULL, note TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS gym_holdout (commit_sha TEXT PRIMARY KEY, created_at TEXT NOT NULL);
+    -- Z5: frozen seeded mutant-repair tasks (tier 2–3) that genome trials are judged on; the task (base + mutant) is stored
+    CREATE TABLE IF NOT EXISTS gym_mutant_holdout (key TEXT PRIMARY KEY, task_json TEXT NOT NULL, created_at TEXT NOT NULL);
+    -- AR-W: committee member genomes (persona + knowledge recipe + strategy lines) and the per-proposal jobs the workstation pulls
+    CREATE TABLE IF NOT EXISTS committee_genomes (id TEXT PRIMARY KEY, parent_id TEXT, persona TEXT NOT NULL, knowledge TEXT NOT NULL, lines_json TEXT NOT NULL DEFAULT '[]',
+      status TEXT NOT NULL, origin TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS committee_jobs (id TEXT PRIMARY KEY, subject_id TEXT NOT NULL, question_json TEXT NOT NULL, as_of TEXT NOT NULL, status TEXT NOT NULL,
+      host TEXT, claimed_at TEXT, finished_at TEXT, created_at TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS idx_committee_jobs_status ON committee_jobs(status, created_at);
     -- T1 (pull): judgments queued for the workstation's local System One; the workstation claims them (never pushed to)
     CREATE TABLE IF NOT EXISTS local_shadow_jobs (
       id TEXT PRIMARY KEY, judgment TEXT NOT NULL, subject_type TEXT NOT NULL, subject_id TEXT NOT NULL, state_hash TEXT NOT NULL,

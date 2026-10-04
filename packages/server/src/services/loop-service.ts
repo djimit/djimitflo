@@ -1349,8 +1349,8 @@ export class LoopService {
     // metadata.improvement_id (see autonomous-goal-generator.ts).
     const improvementId = typeof goal.metadata.improvement_id === 'string' ? goal.metadata.improvement_id : null;
     const improvement = improvementId
-      ? this.db.prepare('SELECT description, rationale, type FROM self_improvements WHERE id = ?').get(improvementId) as
-          { description?: string; rationale?: string; type?: string } | undefined
+      ? this.db.prepare("SELECT description, rationale, type, json_extract(grounding_json, '$.artifactPath') AS artifact FROM self_improvements WHERE id = ?").get(improvementId) as
+          { description?: string; rationale?: string; type?: string; artifact?: string | null } | undefined
       : undefined;
 
     const severity: LoopFinding['severity'] =
@@ -1368,7 +1368,9 @@ export class LoopService {
       id: randomUUID(),
       type: 'self_improvement_objective',
       severity,
-      file: '(repository-wide objective; no single target file)',
+      // EV2 (prod 2026-10-03): every oracle goal said 'repository-wide objective' although its proposal names the file;
+      // with a 'doc-drift' header that was enough for makers to edit README/CONTRIBUTING instead of the test
+      file: improvement?.artifact || '(repository-wide objective; no single target file)',
       message: objective,
       evidence: evidence || 'No additional evidence beyond the goal objective was available.',
       suggested_fix: goal.acceptance_criteria.length
@@ -2249,12 +2251,13 @@ export class LoopService {
         { examples: extra.examples, rule_ids: extra.rules.map((r) => r.id) });
     }
     const content = [
-      `# ${run.loop_name} Assignment`,
+      `# ${finding.metadata?.objective_mode ? 'Objective' : run.loop_name} Assignment`,
       '',
       `Loop run: ${run.id}`,
       `Runtime target: ${runtime}`,
       `Finding: ${finding.id}`,
       `File: ${finding.file}${finding.line ? `:${finding.line}` : ''}`,
+      ...(finding.metadata?.objective_mode && !finding.file.startsWith('(') ? [`Change only this file: ${finding.file}. Do not edit README.md, CONTRIBUTING.md or any other file.`] : []),
       '',
       '## Finding',
       '',
