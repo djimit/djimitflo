@@ -14,7 +14,9 @@ import { SelfImprovementService } from './self-improvement-service';
 import { LoopDraftPrService } from './loop-draft-pr-service';
 import { evolveEligible, evolveSpecies, selectEvolveWinner } from './evolve-selection';
 import { runGenome } from './maker-genome';
+import { strategyGenomeFor } from './genome-registry';
 import { banditSpecies, chooseSpecies, speciesKey } from './runtime-bandit';
+import { recordFitnessShadow } from './fitness-view';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { authorityGateForGoal } from './authority-gate';
 import { remoteMakerTimeoutMs } from '../execution/executors/remote-maker-executor';
@@ -49,7 +51,10 @@ export function runOutcomeOnFailure(db: Database, makerLeaseId: string): 'regres
   const lease = db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(makerLeaseId) as { metadata: string } | undefined;
   const meta = JSON.parse(lease?.metadata || '{}') as { failure_reason?: string; timed_out?: boolean; runtime_timed_out?: boolean;
     exit_status?: number | null; completed_at?: string; changed_files?: unknown; deterministic_checks?: Array<{ exit_status?: number | null }> };
-  if (meta.timed_out || meta.runtime_timed_out || /maker_runtime_exit_zero|runtime_contract/.test(meta.failure_reason ?? '')) return 'infra_failed';
+  if (meta.timed_out || meta.runtime_timed_out || /runtime_contract/.test(meta.failure_reason ?? '')) return 'infra_failed';
+  // EV3 (prod 2026-10-03): a maker that exited non-zero AFTER changing files did the wrong work (30/38 workstation jobs
+  // returned README patches) — that is maker quality, not infra; only a non-zero exit without any change is a crash
+  if (/maker_runtime_exit_zero/.test(meta.failure_reason ?? '')) return Array.isArray(meta.changed_files) && meta.changed_files.length ? 'regressed' : 'infra_failed';
   if (meta.exit_status === undefined && !meta.completed_at) return 'infra_failed'; // the maker never ran
   if ((meta.deterministic_checks ?? []).some((c) => c?.exit_status === 127)) return 'infra_failed'; // a check's tool was missing
   if (Array.isArray(meta.changed_files) && meta.changed_files.length === 0) return 'no_change';
@@ -95,6 +100,8 @@ export class LoopDaemon {
   private pollMs: number;
   // G19: track active goals for parallel scheduling.
   private activeGoals = new Set<string>();
+  /** Goals with an executeGoal() in flight in this process (activeGoals is persisted and restored, so it can't say that). */
+  private executing = new Set<string>();
   // G19: max concurrent goals (separate from AIMD runtime leases — a goal may have
   // multiple leases). Default: min(4, dynamicLimit). Operator-tunable via GOAL_MAX_CONCURRENT.
   private maxConcurrentGoals: number;
@@ -175,7 +182,9 @@ export class LoopDaemon {
 
       // G19: start as many goals as fit in the available slots.
       const slots = this.getAvailableSlots();
-      const toStart = queue.slice(0, slots);
+      // prod 2026-10-01: a goal resumed after an approval is 'decomposed' while it runs, so every tick dispatched it again;
+      // the second pass found the running evolve sibling and failed the goal with LOOP_WORKER_EXECUTION_IN_PROGRESS
+      const toStart = queue.filter((g) => !this.executing.has(g.id)).slice(0, slots);
       let objectiveModeDispatchedThisTick = 0;
 
       for (const goal of toStart) {
@@ -251,9 +260,10 @@ export class LoopDaemon {
         }
 
         // Non-blocking: start the goal and don't wait for it to finish.
+        this.executing.add(goal.id);
         this.executeGoal(goal, { allowObjectiveMode }).catch((err) => {
           console.error('[LoopDaemon] goal execution error:', err instanceof Error ? err.message : String(err));
-        });
+        }).finally(() => this.executing.delete(goal.id));
       }
 
       if (toStart.length > 0) {
@@ -495,8 +505,12 @@ export class LoopDaemon {
       // 5b. E12 (LOOP_BANDIT_ENABLED): the maker species is chosen by outcome — Thompson over skill_outcomes, challengers
       // capped until they have enough runs. Y1 (operator 2026-10-01): with the bandit on it also chooses over
       // LOOP_DAEMON_MAKER_RUNTIME, which stays on the lease as the fallback when the bandit makes no choice.
-      if (!makerAlreadyDone && (!makerRuntime || process.env.LOOP_BANDIT_ENABLED === 'true')) {
+      // Never on a resumed evolve sibling: its species is the point of the sibling (prod 2026-10-01: the bandit rewrote
+      // remote@workstation siblings to opencode, which then ran the task twice and drifted into README/CONTRIBUTING edits).
+      if (!makerAlreadyDone && !pendingSibling && (!makerRuntime || process.env.LOOP_BANDIT_ENABLED === 'true')) {
         const choice = chooseSpecies(this.db, loopName, banditSpecies());
+        // D0 shadow: what a source-weighted, decaying fitness view (production + gym + merge survival) would have picked
+        try { recordFitnessShadow(this.db, run.id, loopName, banditSpecies(), choice ? speciesKey(choice.species) : null); } catch { /* telemetry only */ }
         if (choice) {
           try {
             this.loops.assertRuntimeAvailable(choice.species.runtime);
@@ -510,6 +524,18 @@ export class LoopDaemon {
           }
         }
       }
+
+      // D2: attribute the maker to its strategy genome (lease stamp → outcomes, merge survival); GENOME_APPLY_MODE=shadow logs
+      // what an active genome would inject. Injecting is a separate, operator-owned flag (not built here).
+      if (!makerAlreadyDone) try {
+        const lease = this.db.prepare('SELECT runtime, json_extract(metadata, \'$.model\') AS model FROM worker_leases WHERE id = ?').get(makerLease.id) as { runtime: string; model: string | null } | undefined;
+        const strategy = lease ? strategyGenomeFor(this.db, lease.runtime, lease.model) : null;
+        if (strategy) {
+          this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.genome_id', ?) WHERE id = ?").run(strategy.id, makerLease.id);
+          if (process.env.GENOME_APPLY_MODE === 'shadow' && strategy.lines.length) new LoopEventService(this.db).recordEvent(run.id, 'genome_apply_shadow', 'info',
+            `Genome ${strategy.id} would add ${strategy.lines.length} strategy line(s) to this maker`, { genome_id: strategy.id, lines: strategy.lines, maker_lease_id: makerLease.id });
+        }
+      } catch { /* attribution is best-effort */ }
 
       // 6. Execute the maker (runs the runtime — codex/opencode/pi).
       const mutationLane = Object.keys(mutationCheckEnv(this.db, goal.id)).length > 0;
@@ -577,8 +603,16 @@ export class LoopDaemon {
                 || !((await this.autoApproveSibling(run.id, makerLease.id, sibling.id)) || (await this.inheritApproval(run.id, sibling.id)))) throw error;
               // a remote host may take up to REMOTE_MAKER_TIMEOUT_MS; the 11-min default gave up on both first workstation
               // makers (prod 2026-09-27: patches arrived at +13 and +26 min, after the run was already blocked)
-              await this.loops.awaitWorkerExecution(sibling.id, sp.runtime === 'remote' ? remoteMakerTimeoutMs() + 60_000 : undefined);
-              await this.loops.executeWorker(run.id, siblingInput); // returns the result of the approved execution
+              // prod 2026-10-01: right after an automatic approval the engine had not yet marked the sibling's task running,
+              // so the wait returned at once and the read-back hit LOOP_WORKER_EXECUTION_IN_PROGRESS — 4/4 goals failed while
+              // their runs went on. An execution in progress is waited for (bounded), not a failure.
+              for (let attempt = 0; ; attempt++) {
+                await this.loops.awaitWorkerExecution(sibling.id, sp.runtime === 'remote' ? remoteMakerTimeoutMs() + 60_000 : undefined);
+                try { await this.loops.executeWorker(run.id, siblingInput); break; } // returns the result of the approved execution
+                catch (waitError) {
+                  if (attempt >= 3 || !/LOOP_WORKER_EXECUTION_IN_PROGRESS/.test(waitError instanceof Error ? waitError.message : String(waitError))) throw waitError;
+                }
+              }
             }
             this.loops.runDeterministicChecks(run.id, { lease_id: sibling.id, ...daemonCheckOptions() });
           } catch (error) {
@@ -685,7 +719,7 @@ export class LoopDaemon {
       // skill-evolution engine and a later runtime bandit select on. Before this, skill_outcomes only got manual API writes.
       try {
         const maker = this.db.prepare('SELECT id, runtime, metadata FROM worker_leases WHERE id = ?').get(activeMakerLease.id) as { id: string; runtime: string; metadata: string } | undefined;
-        const meta = maker ? JSON.parse(maker.metadata || '{}') as { model?: unknown; runtime_usage?: { total_tokens?: unknown } } : {};
+        const meta = maker ? JSON.parse(maker.metadata || '{}') as { model?: unknown; genome_id?: unknown; runtime_usage?: { total_tokens?: unknown } } : {};
         const skills = new SkillEvolutionEngine(this.db); // ensures skill_outcomes exists
         const skillId = `loop-maker:${loopName}:${activeMakerLease.runtime}`;
         // Y2: the strategy genome this maker ran with (template + examples + sealed rules), on the lease and the outcome
@@ -700,7 +734,7 @@ export class LoopDaemon {
           taskId: run.id,
           agentId: activeMakerLease.id,
           ...(typeof meta.model === 'string' ? { model: meta.model } : {}),
-          evidenceRefs: [`loop_run:${run.id}`, `genome:${genome.id}`, ...verification.gates.filter(g => g.status !== 'pass').map(g => `gate:${g.name}:${g.status}`)],
+          evidenceRefs: [`loop_run:${run.id}`, `genome:${genome.id}`, ...(typeof meta.genome_id === 'string' ? [`strategy_genome:${meta.genome_id}`] : []), ...verification.gates.filter(g => g.status !== 'pass').map(g => `gate:${g.name}:${g.status}`)],
         });
       } catch { /* best-effort learning */ }
 

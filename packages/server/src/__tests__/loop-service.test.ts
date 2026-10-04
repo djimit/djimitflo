@@ -1547,6 +1547,8 @@ describe('doc-drift-and-small-fix-loop', () => {
       total_tokens: 25,
       usage_source: 'runtime_stdout',
     });
+    // reviewer-independence identity is stamped at dispatch, without touching metadata.model (2026-10-01)
+    expect(executed.lease.metadata).toMatchObject({ provider: expect.any(String), model_family: expect.any(String), prompt_hash: expect.stringMatching(/^[0-9a-f]{16}$/) });
   });
 
   it('blocks new worker leasing when the wall-clock loop budget is exhausted', async () => {

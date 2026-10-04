@@ -4,7 +4,7 @@ import type { MCPServer } from '@djimitflo/shared';
 import { api } from '../lib/api';
 
 type MCPServerView = MCPServer & {
-  effective_status?: MCPServer['status'] | 'stale' | 'policy_blocked';
+  effective_status?: MCPServer['status'] | 'catalog' | 'stale' | 'policy_blocked';
   tool_count?: number;
   approval_gate_count?: number;
 };
@@ -16,6 +16,7 @@ const STATUS_DOT: Record<string, string> = {
   unknown: 'bg-yellow-500',
   stale: 'bg-yellow-500',
   policy_blocked: 'bg-blue-500',
+  catalog: 'bg-green-500',
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -25,11 +26,13 @@ const STATUS_LABEL: Record<string, string> = {
   unknown: 'text-yellow-400',
   stale: 'text-yellow-400',
   policy_blocked: 'text-blue-400',
+  catalog: 'text-green-400',
 };
 
 const STATUS_TEXT: Record<string, string> = {
   policy_blocked: 'Policy isolated',
   stale: 'Stale',
+  catalog: 'Catalog synced',
 };
 
 export function MCPPermissionsPage() {
@@ -196,9 +199,9 @@ export function MCPPermissionsPage() {
                   {server.url && (
                     <div className="text-xs text-foreground-tertiary truncate">{server.url}</div>
                   )}
-                  {server.last_ping_at && (
+                  {server.last_ping_at && status !== 'policy_blocked' && (
                     <div className="text-xs text-foreground-tertiary mt-1">
-                      Last ping: {new Date(server.last_ping_at).toLocaleTimeString()}
+                      {status === 'catalog' ? 'Catalog synced' : 'Last probe'}: {new Date(server.last_ping_at).toLocaleTimeString()}
                     </div>
                   )}
                   <div className="text-xs text-foreground-tertiary mt-2">
@@ -207,10 +210,10 @@ export function MCPPermissionsPage() {
                     Approval gates: {server.approval_gate_count || 0}
                   </div>
                   {server.metadata?.catalog_only === true && (
-                    <div className="text-xs text-foreground-tertiary mt-1">Dependency endpoint — no MCP tools expected</div>
+                    <div className="text-xs text-foreground-tertiary mt-1">Service dependency — no direct MCP tools</div>
                   )}
                   {server.error_message && (
-                    <div className="mt-2 text-xs text-red-400 truncate">{server.error_message}</div>
+                    <div className={`mt-2 text-xs truncate ${status === 'policy_blocked' ? 'text-blue-400' : 'text-red-400'}`}>{server.error_message}</div>
                   )}
                 </div>
               );
