@@ -122,12 +122,51 @@ async function runMakerJob(job) {
   }
 }
 
+/** AR-W2: the probability a member answered, from the first JSON object in its reply; null when unusable. */
+export function parseForecast(text) {
+  const m = /\{[^{}]*"p"\s*:\s*(-?\d+(?:\.\d+)?)[^{}]*\}/.exec(String(text ?? ''));
+  if (!m) return null;
+  const p = Number(m[1]);
+  if (!Number.isFinite(p) || p < 0 || p > 1) return null;
+  let rationale = '';
+  try { rationale = String(JSON.parse(m[0]).rationale ?? '').slice(0, 500); } catch { /* p is enough */ }
+  return { p, rationale };
+}
+
+/** AR-W2: one committee question — each member answers on the host's local model; probabilities go back, nothing else. */
+async function runCommitteeJob(job) {
+  const url = `${(env.GYM_LLAMA_URL || 'http://127.0.0.1:8084').replace(/\/$/, '')}/v1/chat/completions`;
+  const answers = [];
+  for (const m of job.members) {
+    const prompt = [
+      `You are ${m.persona}, a member of a forecasting committee for an automated code-improvement loop.`,
+      `Your lens: ${m.knowledge}. ${m.lines.join(' ')}`,
+      'Question: what is the probability that this proposal ends VERIFIED (a maker changes the code, all checks and reviewers pass)?',
+      'Be calibrated: most proposals in most lanes do not end verified; the lane record below shows the recent rate.',
+      `Context (JSON): ${JSON.stringify(job.question).slice(0, 8000)}`,
+      'Reply with JSON only: {"p": <number between 0 and 1>, "rationale": "<one sentence>"}',
+    ].join('\n');
+    try {
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(180_000),
+        body: JSON.stringify({ messages: [{ role: 'user', content: prompt }], max_tokens: 600, temperature: 0.2 }) });
+      const body = await res.json();
+      const f = parseForecast(body?.choices?.[0]?.message?.content);
+      if (f) answers.push({ member: m.id, ...f, model: String(body?.model ?? 'local') });
+    } catch { /* a member that times out simply does not vote */ }
+  }
+  await api(`/gym-worker/committee/${job.jobId}/result`, { answers });
+  console.log(`committee ${job.jobId.slice(0, 8)}: ${answers.length}/${job.members.length} members answered`);
+}
+
 async function main() {
   const offered = (env.GYM_SPECIES || 'atomic@llama-router').split(',').map((s) => s.trim()).filter(Boolean);
   sweepOrphans();
   // real work first: a queued maker job beats a gym replay
   const maker = await api('/gym-worker/maker/claim', { species: offered }).catch(() => ({ job: null }));
   if (maker.job) return runMakerJob(maker.job);
+  // AR-W2: then a committee question (short local-model calls), then a gym replay
+  const committee = await api('/gym-worker/committee/claim', {}).catch(() => ({ job: null }));
+  if (committee?.job) return runCommitteeJob(committee.job);
   const claim = await api('/gym-worker/claim', { species: offered });
   if (claim.skipped) { console.log(`skipped: ${claim.skipped}`); return; }
   const { runId, species, task } = claim;
@@ -203,6 +242,8 @@ function selfcheck() {
   assert(hostLabel('workstation-2060') === 'djimitflo-gym-host=workstation-2060', 'label per host: workers never sweep each other');
   assert(oneLine('# Objective Assignment\n\nFile: a.ts\n  Change only this file.') === '# Objective Assignment File: a.ts Change only this file.', 'oneLine collapses an assignment');
   assert(!oneLine('a\nb\n\nc').includes('\n'), 'oneLine has no newline');
+  assert(parseForecast('thinking... {"p": 0.35, "rationale": "lane rate is low"} done')?.p === 0.35, 'parseForecast reads p');
+  assert(parseForecast('{"p": 1.7}') === null && parseForecast('no json') === null, 'parseForecast rejects bad output');
   console.log('selfcheck ok');
 }
 
