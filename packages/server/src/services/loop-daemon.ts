@@ -14,7 +14,9 @@ import { SelfImprovementService } from './self-improvement-service';
 import { LoopDraftPrService } from './loop-draft-pr-service';
 import { evolveEligible, evolveSpecies, selectEvolveWinner } from './evolve-selection';
 import { runGenome } from './maker-genome';
+import { strategyGenomeFor } from './genome-registry';
 import { banditSpecies, chooseSpecies, speciesKey } from './runtime-bandit';
+import { recordFitnessShadow } from './fitness-view';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { authorityGateForGoal } from './authority-gate';
 import { remoteMakerTimeoutMs } from '../execution/executors/remote-maker-executor';
@@ -49,7 +51,10 @@ export function runOutcomeOnFailure(db: Database, makerLeaseId: string): 'regres
   const lease = db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(makerLeaseId) as { metadata: string } | undefined;
   const meta = JSON.parse(lease?.metadata || '{}') as { failure_reason?: string; timed_out?: boolean; runtime_timed_out?: boolean;
     exit_status?: number | null; completed_at?: string; changed_files?: unknown; deterministic_checks?: Array<{ exit_status?: number | null }> };
-  if (meta.timed_out || meta.runtime_timed_out || /maker_runtime_exit_zero|runtime_contract/.test(meta.failure_reason ?? '')) return 'infra_failed';
+  if (meta.timed_out || meta.runtime_timed_out || /runtime_contract/.test(meta.failure_reason ?? '')) return 'infra_failed';
+  // EV3 (prod 2026-10-03): a maker that exited non-zero AFTER changing files did the wrong work (30/38 workstation jobs
+  // returned README patches) — that is maker quality, not infra; only a non-zero exit without any change is a crash
+  if (/maker_runtime_exit_zero/.test(meta.failure_reason ?? '')) return Array.isArray(meta.changed_files) && meta.changed_files.length ? 'regressed' : 'infra_failed';
   if (meta.exit_status === undefined && !meta.completed_at) return 'infra_failed'; // the maker never ran
   if ((meta.deterministic_checks ?? []).some((c) => c?.exit_status === 127)) return 'infra_failed'; // a check's tool was missing
   if (Array.isArray(meta.changed_files) && meta.changed_files.length === 0) return 'no_change';
@@ -504,6 +509,8 @@ export class LoopDaemon {
       // remote@workstation siblings to opencode, which then ran the task twice and drifted into README/CONTRIBUTING edits).
       if (!makerAlreadyDone && !pendingSibling && (!makerRuntime || process.env.LOOP_BANDIT_ENABLED === 'true')) {
         const choice = chooseSpecies(this.db, loopName, banditSpecies());
+        // D0 shadow: what a source-weighted, decaying fitness view (production + gym + merge survival) would have picked
+        try { recordFitnessShadow(this.db, run.id, loopName, banditSpecies(), choice ? speciesKey(choice.species) : null); } catch { /* telemetry only */ }
         if (choice) {
           try {
             this.loops.assertRuntimeAvailable(choice.species.runtime);
@@ -517,6 +524,18 @@ export class LoopDaemon {
           }
         }
       }
+
+      // D2: attribute the maker to its strategy genome (lease stamp → outcomes, merge survival); GENOME_APPLY_MODE=shadow logs
+      // what an active genome would inject. Injecting is a separate, operator-owned flag (not built here).
+      if (!makerAlreadyDone) try {
+        const lease = this.db.prepare('SELECT runtime, json_extract(metadata, \'$.model\') AS model FROM worker_leases WHERE id = ?').get(makerLease.id) as { runtime: string; model: string | null } | undefined;
+        const strategy = lease ? strategyGenomeFor(this.db, lease.runtime, lease.model) : null;
+        if (strategy) {
+          this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.genome_id', ?) WHERE id = ?").run(strategy.id, makerLease.id);
+          if (process.env.GENOME_APPLY_MODE === 'shadow' && strategy.lines.length) new LoopEventService(this.db).recordEvent(run.id, 'genome_apply_shadow', 'info',
+            `Genome ${strategy.id} would add ${strategy.lines.length} strategy line(s) to this maker`, { genome_id: strategy.id, lines: strategy.lines, maker_lease_id: makerLease.id });
+        }
+      } catch { /* attribution is best-effort */ }
 
       // 6. Execute the maker (runs the runtime — codex/opencode/pi).
       const mutationLane = Object.keys(mutationCheckEnv(this.db, goal.id)).length > 0;
@@ -700,7 +719,7 @@ export class LoopDaemon {
       // skill-evolution engine and a later runtime bandit select on. Before this, skill_outcomes only got manual API writes.
       try {
         const maker = this.db.prepare('SELECT id, runtime, metadata FROM worker_leases WHERE id = ?').get(activeMakerLease.id) as { id: string; runtime: string; metadata: string } | undefined;
-        const meta = maker ? JSON.parse(maker.metadata || '{}') as { model?: unknown; runtime_usage?: { total_tokens?: unknown } } : {};
+        const meta = maker ? JSON.parse(maker.metadata || '{}') as { model?: unknown; genome_id?: unknown; runtime_usage?: { total_tokens?: unknown } } : {};
         const skills = new SkillEvolutionEngine(this.db); // ensures skill_outcomes exists
         const skillId = `loop-maker:${loopName}:${activeMakerLease.runtime}`;
         // Y2: the strategy genome this maker ran with (template + examples + sealed rules), on the lease and the outcome
@@ -715,7 +734,7 @@ export class LoopDaemon {
           taskId: run.id,
           agentId: activeMakerLease.id,
           ...(typeof meta.model === 'string' ? { model: meta.model } : {}),
-          evidenceRefs: [`loop_run:${run.id}`, `genome:${genome.id}`, ...verification.gates.filter(g => g.status !== 'pass').map(g => `gate:${g.name}:${g.status}`)],
+          evidenceRefs: [`loop_run:${run.id}`, `genome:${genome.id}`, ...(typeof meta.genome_id === 'string' ? [`strategy_genome:${meta.genome_id}`] : []), ...verification.gates.filter(g => g.status !== 'pass').map(g => `gate:${g.name}:${g.status}`)],
         });
       } catch { /* best-effort learning */ }
 
