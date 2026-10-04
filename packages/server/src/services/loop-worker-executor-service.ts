@@ -14,6 +14,7 @@ import { createError } from '../middleware/error-handler';
 import type { ExecutionResult, ExecutorKind } from '../execution/types';
 import type { LoopService } from './loop-service';
 import { judgmentMode, runJudgment } from './judgment-service';
+import { leaseIdentity } from './reviewer-independence-service';
 import { checkerSecondOpinion, checkerSecondOpinionState } from './judgments/checker-second-opinion';
 import type {
   LoopRunRecord,
@@ -54,6 +55,14 @@ const TEST_ONLY_DIFF_MAX = 400;
 /** Every changed file is a test (``__tests__/``, ``*.test.*`` or ``*.spec.*``); no changes is not test-only. */
 export function testOnlyChange(files: string[]): boolean {
   return files.length > 0 && files.every((f) => /(^|\/)__tests__\/|\.(test|spec)\.[cm]?[jt]sx?$/.test(f));
+}
+
+/**
+ * The jev second opinion runs once per maker: the security checker sees the same task and diff, so recording it for both
+ * reviewers produced two identical rows per maker (prod 2026-10-02) and double-counted every maker in calibration.
+ */
+export function shouldRecordSecondOpinion(runtime: string, reviewRole: string, mode: string): boolean {
+  return runtime !== 'mock' && reviewRole === 'checker' && mode !== 'off';
 }
 
 export class LoopWorkerExecutorService {
@@ -322,7 +331,7 @@ export class LoopWorkerExecutorService {
     const runtimeUsage = this.loopService.extractRuntimeUsage(result.stdout || '');
     const runtimeWarnings = this.loopService.extractRuntimeWarnings(result.stdout || '', result.stderr || '');
     const verdict = exitStatus === 0 && !timedOut ? this.loopService.extractCheckerVerdict(result.stdout || '') : 'insufficient_evidence';
-    if (runtime !== 'mock' && judgmentMode(checkerSecondOpinion.id) !== 'off') void this.recordSecondOpinion(run, maker, checker, verdict);
+    if (shouldRecordSecondOpinion(runtime, reviewRole, judgmentMode(checkerSecondOpinion.id))) void this.recordSecondOpinion(run, maker, checker, verdict);
     const checkerChanged = this.loopService.git(checkerWorktree, ['diff', '--name-only', '--', '.']).split('\n').filter(Boolean);
     if (checkerChanged.includes('package-lock.json') && !checkerChanged.includes('package.json')) {
       this.loopService.git(checkerWorktree, ['checkout', '--', 'package-lock.json']);
@@ -465,7 +474,8 @@ export class LoopWorkerExecutorService {
       now,
       now,
     );
-    this.loopService.patchWorkerLeaseMetadata(lease.id, { execution_task_id: taskId });
+    this.loopService.patchWorkerLeaseMetadata(lease.id, { execution_task_id: taskId,
+      ...leaseIdentity(runtime, typeof lease.metadata.model === 'string' ? lease.metadata.model : undefined, prompt) });
 
     const execution = await (this.executionEngine ||= new ExecutionEngine(this.db)).executeTask(
       taskId, runtime as ExecutorKind, undefined, { riskAssessmentText },

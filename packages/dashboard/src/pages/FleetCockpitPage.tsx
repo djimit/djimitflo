@@ -160,10 +160,8 @@ export function FleetCockpitPage() {
   }, [refresh]);
 
   useEffect(() => {
-    const unsubLoop = subscribe('LOOP_RUN_UPDATED' as any, () => void refresh());
     const unsubProof = subscribe(WebSocketEventType.PROOF_RUN_UPDATED, () => void refresh());
     return () => {
-      unsubLoop();
       unsubProof();
     };
   }, [refresh, subscribe]);

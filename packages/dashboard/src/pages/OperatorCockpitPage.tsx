@@ -138,6 +138,18 @@ export function OperatorCockpitPage() {
             </div>
           </section>
 
+          <section aria-labelledby="genomes">
+            <h2 id="genomes" className="text-lg font-semibold mb-2">Strategy genomes on real makers (30 d)</h2>
+            {!data.genomes?.length ? <p className="text-sm text-foreground-secondary">No real-maker outcome carries a genome yet.</p> : (
+              <table className="w-full text-sm">
+                <thead><tr className="text-left text-foreground-tertiary"><th>Genome</th><th>Maker skill</th><th>Outcomes (n)</th><th>Wins</th><th>Win rate</th></tr></thead>
+                <tbody>{data.genomes.map((g) => (
+                  <tr key={`${g.genome}:${g.skill_id}`} className="border-t border-border"><td>{g.genome}</td><td>{g.skill_id}</td><td>{g.outcomes}</td><td>{g.wins}</td><td>{g.win_pct}%</td></tr>
+                ))}</tbody>
+              </table>
+            )}
+          </section>
+
           <section aria-labelledby="usage" className="grid md:grid-cols-2 gap-6">
             <div>
               <h2 id="usage" className="text-lg font-semibold mb-2">Agent runtimes (7 d)</h2>
