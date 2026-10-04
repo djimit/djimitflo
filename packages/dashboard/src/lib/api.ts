@@ -58,6 +58,8 @@ export type OperatorCockpit = {
   gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string; benched?: boolean }>;
   needs_you?: { approvals: number; requeue: number; labels: number; memory_review: number };
   remote_workers: Array<{ host: string; claims_24h: number; last_claim: string | null; interrupted_24h: number }>;
+  /** UX-2: real-maker outcomes per strategy genome and maker skill (30 d); the server sent this, the type dropped it. */
+  genomes?: Array<{ genome: string; skill_id: string; outcomes: number; wins: number; win_pct: number }>;
   maker_usage_7d: Array<{ role: string; runtime: string; model: string | null; leases: number; tokens: number }>;
   judgments_7d: Array<{ judgment: string; calls: number; errors: number; input_tokens: number }>;
   deploys: Array<{ at: string; event: string; sha: string; detail: string }>;
@@ -783,7 +785,8 @@ export type SocialAgentPresence = {
   activity: CommonsAgentActivity[];
 };
 
-export type CommonsStats = { threads_7d: number; open_7d: number; learnings_7d: number; proposals: number; proposals_grounded: number; proposals_verified: number; proposals_archived: number; guild?: Array<{ agent: string; groundings: number; valid: number; verified: number }> };
+export type CommonsStats = { threads_7d: number; open_7d: number; learnings_7d: number; lessons_7d?: number; proposals: number; proposals_grounded: number; proposals_verified: number; proposals_archived: number;
+  proposals_by_status?: Record<string, number>; residents?: Array<{ agent: string; last: string }>; autopilot_idle?: boolean; guild?: Array<{ agent: string; groundings: number; valid: number; verified: number }> };
 export type SocialCommons = { agents: SocialAgentPresence[]; threads: SocialThread[]; total_threads?: number; stats?: CommonsStats };
 
 // Frontier Expert Intelligence (§36): states other than ACTIVE are tentative and shown as such.

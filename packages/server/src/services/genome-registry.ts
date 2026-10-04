@@ -1,5 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import type { GymTask } from './gym-task-miner';
+import type { MutantTask } from './gym-mutants';
 
 /**
  * Y3 (plan Phase Y, Darwin loop): the population of maker strategy genomes and the frozen gym holdout they are judged on.
@@ -38,6 +39,38 @@ export function holdout(db: Database, tasks: GymTask[], now = new Date().toISOSt
 }
 
 /**
+ * Z5 (operator go 02-10): on the mined holdout every genome solved the same 15 of 20 tasks (4/4 mutants tied or lost) — it
+ * measured task difficulty, not strategy. With DREAM_TRIAL_MUTANTS trials are judged on 20 seeded mutant-repair tasks at
+ * tier 2–3 instead, frozen once with their base and mutant (a deploy changes the checkout); the mined holdout stays as a
+ * no-regression check.
+ */
+export const mutantTrialsEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.DREAM_TRIAL_MUTANTS === 'true';
+// prod 2026-10-03: tier 2–3 mutants still ≈ 90 % for atomic (target 30–70 %) → DREAM_TRIAL_MUTANT_TIERS picks the tier set; a new
+// set freezes its own 20 tasks next to the old ones (nothing deleted). Change it only between trials.
+export const mutantHoldoutTiers = (env: NodeJS.ProcessEnv = process.env): number[] => {
+  const tiers = (env.DREAM_TRIAL_MUTANT_TIERS || '2,3').split(',').map(Number).filter((t) => Number.isInteger(t) && t >= 1 && t <= 8);
+  return tiers.length ? tiers : [2, 3];
+};
+export function mutantHoldoutKeys(db: Database, tiers = mutantHoldoutTiers()): string[] {
+  return (db.prepare('SELECT key, task_json FROM gym_mutant_holdout ORDER BY key').all() as Array<{ key: string; task_json: string }>)
+    .filter((r) => tiers.includes(Number((JSON.parse(r.task_json) as MutantTask).tier))).map((r) => r.key);
+}
+export function mutantHoldout(db: Database, make: (tier: number, tried: Set<string | null>) => MutantTask | null, now = new Date().toISOString(), tiers = mutantHoldoutTiers()): MutantTask[] {
+  const read = () => (db.prepare('SELECT task_json FROM gym_mutant_holdout ORDER BY key').all() as Array<{ task_json: string }>)
+    .map((r) => JSON.parse(r.task_json) as MutantTask).filter((t) => tiers.includes(Number(t.tier)));
+  const frozen = read();
+  if (frozen.length) return frozen;
+  const tried = new Set<string | null>();
+  const insert = db.prepare('INSERT OR IGNORE INTO gym_mutant_holdout (key, task_json, created_at) VALUES (?, ?, ?)');
+  for (let i = 0; i < HOLDOUT_SIZE; i++) {
+    const task = make(tiers[i % tiers.length], tried);
+    if (!task) break;
+    tried.add(task.commit); insert.run(task.commit, JSON.stringify(task), now);
+  }
+  return read();
+}
+
+/**
  * The next paired trial attempt for a species: each trial genome and its parent need one non-infra attempt on every
  * holdout task. Parents first per task, so a comparison is never waiting on the parent.
  */
@@ -65,4 +98,19 @@ export function unscorable(db: Database, speciesKey: string, genomeId: string, c
   return (db.prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ?
     AND json_extract(metadata, '$.gym.genome') = ? AND json_extract(metadata, '$.gym.commit') = ?
     AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') LIKE 'infra:%'`).get(speciesKey, genomeId, commit) as { n: number }).n >= INFRA_GIVE_UP;
+}
+
+/**
+ * D2 (Darwin engine): which strategy genome a production maker runs with. Genomes evolve for one gym species
+ * (DREAM_EVOLUTION_SPECIES, default atomic@llama-router); a real maker of that species — directly or as
+ * `remote@<host>/<rt>@<model>` — is attributed to the newest active non-baseline genome, else to the baseline. Other
+ * species have no strategy genome (null). Attribution only: injecting the lines is a separate, operator-owned step.
+ */
+export function strategyGenomeFor(db: Database, runtime: string, model: string | null | undefined, env: NodeJS.ProcessEnv = process.env): Genome | null {
+  const species = env.DREAM_EVOLUTION_SPECIES || 'atomic@llama-router';
+  const remote = runtime === 'remote' ? /^[^/]+\/(.+)$/.exec(model ?? '') : null;
+  const key = remote ? remote[1] : model ? `${runtime}@${model}` : runtime;
+  if (key !== species) return null;
+  const row = db.prepare("SELECT id FROM maker_genomes WHERE status = 'active' AND id <> ? ORDER BY updated_at DESC LIMIT 1").get(BASELINE_GENOME) as { id: string } | undefined;
+  return genome(db, row?.id ?? BASELINE_GENOME);
 }

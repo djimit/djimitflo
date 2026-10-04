@@ -5,7 +5,7 @@ import { parseSpecies } from './evolve-selection';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { infraFailing, triedTasks } from './evolution-gym-service';
 import { mutantTask, type MutantTask } from './gym-mutants';
-import { dreamEvolutionEnabled, ensureBaseline, genome, holdout, nextTrialAttempt, type Genome } from './genome-registry';
+import { dreamEvolutionEnabled, ensureBaseline, genome, holdout, mutantHoldout, mutantTrialsEnabled, nextTrialAttempt, type Genome } from './genome-registry';
 
 /**
  * Plan I1: the evolution gym on a remote compute host (the workstation: 48 threads, 125 GB, R9700) instead of the
@@ -15,6 +15,24 @@ import { dreamEvolutionEnabled, ensureBaseline, genome, holdout, nextTrialAttemp
  */
 export const remoteGymEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.EVOLUTION_GYM_REMOTE_ENABLED === 'true';
 export const REMOTE_GYM_SCOPE = 'gym-worker';
+/**
+ * RX-5 (Phase F): difficulty probe. Every GYM_TIER_PROBE_EVERY-th ordinary claim (default 4 = 25 %) is a mutant-repair task
+ * at a fixed tier from GYM_TIER_PROBE_TIERS (rotating), never a holdout key, tagged gym.probe so the adaptive tier and
+ * readers can tell it apart. It measures pass rate per tier before anyone changes DREAM_TRIAL_MUTANT_TIERS.
+ * GYM_TIER_PROBE_ENABLED=true (default off); trials keep priority and the daily cap counts probe claims.
+ */
+export function tierProbe(db: Database, env: NodeJS.ProcessEnv = process.env): number | null {
+  if (env.GYM_TIER_PROBE_ENABLED !== 'true') return null;
+  const tiers = String(env.GYM_TIER_PROBE_TIERS || '4,5,6').split(',').map(Number).filter((t) => Number.isInteger(t) && t >= 1 && t <= 8);
+  const every = Math.max(1, Number(env.GYM_TIER_PROBE_EVERY) || 4);
+  if (!tiers.length) return null;
+  const n = (k: string) => { try { return (db.prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE loop_name = 'evolution-gym' ${k}`).get() as { n: number }).n; } catch { return 0; } };
+  if ((n("AND json_extract(metadata, '$.gym.remote_host') IS NOT NULL") + 1) % every !== 0) return null;
+  return tiers[n("AND json_extract(metadata, '$.gym.probe') = 1") % tiers.length];
+}
+const holdoutKeys = (db: Database): string[] => {
+  try { return (db.prepare('SELECT commit_sha AS k FROM gym_holdout UNION SELECT key AS k FROM gym_mutant_holdout').all() as Array<{ k: string }>).map((r) => r.k); } catch { return []; }
+};
 const SAFE = /^[A-Za-z0-9._:/@-]{1,80}$/;
 
 export type RemoteGymClaim = { runId: string; species: string; task: GymTask; genome?: { id: string; lines: string[] } } | { skipped: string };
@@ -52,9 +70,19 @@ export class RemoteGymService {
     let task: GymTask | undefined; let trialGenome: Genome | null = null;
     if (dreamEvolutionEnabled()) {
       ensureBaseline(this.db, now.toISOString());
-      const next = nextTrialAttempt(this.db, key, holdout(this.db, tasks, now.toISOString()));
-      if (next) { task = tasks.find((t) => t.commit === next.commit); trialGenome = task ? genome(this.db, next.genomeId) : null; }
+      const mutants = mutantTrialsEnabled() ? mutantHoldout(this.db, (tier, tried) => mutantTask(this.db, repo, key, tried, tier), now.toISOString()) : [];
+      const next = nextTrialAttempt(this.db, key, [...holdout(this.db, tasks, now.toISOString()), ...mutants.map((m) => m.commit)]);
+      if (next) { task = tasks.find((t) => t.commit === next.commit) ?? mutants.find((m) => m.commit === next.commit); trialGenome = task ? genome(this.db, next.genomeId) : null; }
       if (!trialGenome) task = undefined;
+    }
+    let probe = false;
+    if (!task) {
+      const tried = triedTasks(this.db, key);
+      const probeTier = tierProbe(this.db);
+      if (probeTier !== null) {
+        const p = mutantTask(this.db, repo, key, new Set([...tried, ...holdoutKeys(this.db)]), probeTier);
+        if (p) { task = p; probe = true; }
+      }
     }
     if (!task) {
       const tried = triedTasks(this.db, key);
@@ -64,7 +92,7 @@ export class RemoteGymService {
     if (!task) return { skipped: 'no untried task' };
     const runId = randomUUID();
     const { mutant: _mutantContent, ...stored } = task as MutantTask; // the mutant goes to the worker, not into every row
-    const gymMeta = { ...stored, species: key, remote_host: host, ...(trialGenome ? { genome: trialGenome.id } : {}) };
+    const gymMeta = { ...stored, species: key, remote_host: host, ...(trialGenome ? { genome: trialGenome.id } : {}), ...(probe ? { probe: 1 } : {}) };
     this.db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, repository_path, metadata, created_at, updated_at) VALUES (?, 'evolution-gym', 'closed', 'running', ?, ?, ?, ?)")
       .run(runId, repo, JSON.stringify({ gym: gymMeta }), now.toISOString(), now.toISOString());
     return { runId, species: key, task, ...(trialGenome ? { genome: { id: trialGenome.id, lines: trialGenome.lines } } : {}) };
@@ -72,7 +100,7 @@ export class RemoteGymService {
 
   record(runId: string, host: string, result: RemoteGymResult): void {
     const row = this.db.prepare("SELECT status, json_extract(metadata, '$.gym') AS gym FROM loop_runs WHERE id = ?").get(runId) as { status: string; gym: string | null } | undefined;
-    const gym = row?.gym ? JSON.parse(row.gym) as GymTask & { species: string; remote_host?: string; genome?: string } : null;
+    const gym = row?.gym ? JSON.parse(row.gym) as GymTask & { species: string; remote_host?: string; genome?: string; probe?: number } : null;
     if (!row || !gym || gym.remote_host !== host) throw new Error('GYM_RUN_NOT_FOUND');
     if (row.status !== 'running') throw new Error('GYM_RUN_ALREADY_SETTLED');
     if (!['success', 'failure', 'discarded'].includes(result.status)) throw new Error('GYM_RESULT_INVALID');
@@ -81,7 +109,7 @@ export class RemoteGymService {
       const [species] = parseSpecies(gym.species, 1);
       this.outcomes.recordOutcome(`loop-maker:gym:${species.runtime}`, {
         success: result.status === 'success', tokensUsed: Math.max(0, Number(result.tokens) || 0), durationMs: Math.max(0, Number(result.durationMs) || 0), domain: 'gym', taskId: runId,
-        ...(species.model ? { model: species.model } : {}), evidenceRefs: [`gym:${gym.commit}`, `loop_run:${runId}`, `gym_result:${reason}`, `remote:${host}`, ...(gym.genome ? [`genome:${gym.genome}`] : [])],
+        ...(species.model ? { model: species.model } : {}), evidenceRefs: [`gym:${gym.commit}`, `loop_run:${runId}`, `gym_result:${reason}`, `remote:${host}`, ...(gym.genome ? [`genome:${gym.genome}`] : []), ...(gym.probe ? ['gym:probe'] : [])],
       });
     }
     const now = new Date().toISOString();
