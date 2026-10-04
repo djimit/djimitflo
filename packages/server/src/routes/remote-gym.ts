@@ -54,7 +54,7 @@ export function createRemoteGymRoutes(db: Database, auth: AuthMiddleware): Route
   // AR-W: committee swarms — the workstation pulls a proposal question with the active members and returns their forecasts
   router.post('/committee/claim', (req, res) => {
     const h = host(req, res); if (!h) return;
-    try { res.json({ job: claimCommittee(db, h) }); } catch (error) { fail(res, error); }
+    claimCommittee(db, h).then((job) => res.json({ job })).catch((error) => fail(res, error));
   });
   router.post('/committee/:jobId/result', (req, res) => {
     const h = host(req, res); if (!h) return;
