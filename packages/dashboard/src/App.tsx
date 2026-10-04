@@ -21,12 +21,16 @@ const CognitiveRuntimePage = lazy(() => import('./pages/CognitiveRuntimePage').t
 const SelfDrivingDashboard = lazy(() => import('./pages/SelfDrivingDashboard').then((module) => ({ default: module.SelfDrivingDashboard })));
 const TaskDetailPage = lazy(() => import('./pages/TaskDetailPage').then((module) => ({ default: module.TaskDetailPage })));
 const SwarmOverviewPage = lazy(() => import('./pages/SwarmOverviewPage').then((module) => ({ default: module.SwarmOverviewPage })));
-const ApprovalQueuePage = lazy(() => import('./pages/ApprovalQueuePage').then((module) => ({ default: module.ApprovalQueuePage })));
 const PolicyCenterPage = lazy(() => import('./pages/PolicyCenterPage').then((module) => ({ default: module.PolicyCenterPage })));
 const MCPPermissionsPage = lazy(() => import('./pages/MCPPermissionsPage').then((module) => ({ default: module.MCPPermissionsPage })));
 const ObservabilityPage = lazy(() => import('./pages/ObservabilityPage').then((module) => ({ default: module.ObservabilityPage })));
 const ReviewPage = lazy(() => import('./pages/ReviewPage').then((module) => ({ default: module.ReviewPage })));
 const AuditHubPage = lazy(() => import('./pages/AuditHubPage').then((module) => ({ default: module.AuditHubPage })));
+const KnowledgePage = lazy(() => import('./pages/KnowledgePage').then((module) => ({ default: module.KnowledgePage })));
+const OperatorCockpitPage = lazy(() => import('./pages/OperatorCockpitPage').then((module) => ({ default: module.OperatorCockpitPage })));
+const DecisionsInboxPage = lazy(() => import('./pages/DecisionsInboxPage').then((module) => ({ default: module.DecisionsInboxPage })));
+const ConfigurationPage = lazy(() => import('./pages/ConfigurationPage').then((module) => ({ default: module.ConfigurationPage })));
+const FleetHostsPage = lazy(() => import('./pages/FleetHostsPage').then((module) => ({ default: module.FleetHostsPage })));
 const ImprovementFunnelPage = lazy(() => import('./pages/ImprovementFunnelPage').then((module) => ({ default: module.ImprovementFunnelPage })));
 const AuthorityTracePage = lazy(() => import('./pages/AuthorityTracePage').then((module) => ({ default: module.AuthorityTracePage })));
 const RepositoriesPage = lazy(() => import('./pages/RepositoriesPage').then((module) => ({ default: module.RepositoriesPage })));
@@ -40,7 +44,6 @@ const FrontierExpertsPage = lazy(() => import('./pages/FrontierExpertsPage').the
 const InteractionBoardPage = lazy(() => import('./pages/InteractionBoardPage').then((module) => ({ default: module.InteractionBoardPage })));
 const ProofRunDetailPage = lazy(() => import('./pages/ProofRunDetailPage').then((module) => ({ default: module.ProofRunDetailPage })));
 const UsagePage = lazy(() => import('./pages/UsagePage').then((module) => ({ default: module.UsagePage })));
-const WorkstationUrlsPage = lazy(() => import('./pages/WorkstationUrlsPage').then((module) => ({ default: module.WorkstationUrlsPage })));
 const EconomyPage = lazy(() => import('./pages/EconomyPage').then((module) => ({ default: module.EconomyPage })));
 const PipelineBuilderPage = lazy(() => import('./pages/PipelineBuilderPage').then((module) => ({ default: module.PipelineBuilderPage })));
 const FederationPage = lazy(() => import('./pages/FederationPage').then((module) => ({ default: module.FederationPage })));
@@ -91,14 +94,15 @@ export function App() {
             </WebSocketProvider>
           </ProtectedRoute>
         }>
-          <Route index element={<DashboardPage />} />
+          <Route index element={<OperatorCockpitPage />} />
+          <Route path="dashboard" element={<DashboardPage />} />
           <Route path="tasks" element={<TasksPage />} />
           <Route path="tasks/:taskId" element={<TaskDetailPage />} />
           <Route path="agents" element={<AgentsPage />} />
           <Route path="agents/:agentId" element={<AgentsPage />} />
           <Route path="catalog" element={<AgentCatalogPage />} />
           <Route path="swarm" element={<SwarmOverviewPage />} />
-          <Route path="approvals" element={<ApprovalQueuePage />} />
+          <Route path="approvals" element={<Navigate to="/decisions#approvals" replace />} />
           <Route path="policies" element={<PolicyCenterPage />} />
           <Route path="governance" element={<GovernanceHubPage />} />
           <Route path="compliance" element={<Navigate to="/governance?tab=assurance" replace />} />
@@ -107,6 +111,10 @@ export function App() {
           <Route path="tasks/:taskId/review" element={<ReviewPage />} />
           <Route path="audit" element={<AuditHubPage />} />
           <Route path="audit/logs" element={<Navigate to="/audit?tab=logs" replace />} />
+          <Route path="cockpit" element={<Navigate to="/" replace />} />
+          <Route path="decisions" element={<DecisionsInboxPage />} />
+          <Route path="configuration" element={<ConfigurationPage />} />
+          <Route path="fleet" element={<FleetHostsPage />} />
           <Route path="improvement-funnel" element={<ImprovementFunnelPage />} />
           <Route path="authority" element={<AuthorityTracePage />} />
           <Route path="usage" element={<UsagePage />} />
@@ -118,10 +126,10 @@ export function App() {
           <Route path="swarm-mission-control" element={<SwarmMissionControlPage />} />
           <Route path="interaction-board" element={<InteractionBoardPage />} />
           <Route path="agent-commons" element={<AgentCommonsPage />} />
+          <Route path="knowledge" element={<KnowledgePage />} />
           <Route path="frontier-experts" element={<FrontierExpertsPage />} />
           <Route path="frontier-experts/:expertId" element={<FrontierExpertsPage />} />
           <Route path="swarm-mission-control/proof-runs/:proofRunId" element={<ProofRunDetailPage />} />
-          <Route path="workstation-urls" element={<WorkstationUrlsPage />} />
           <Route path="economy" element={<EconomyPage />} />
           <Route path="pipeline-builder" element={<PipelineBuilderPage />} />
           <Route path="federation" element={<FederationPage />} />

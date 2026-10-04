@@ -1,4 +1,5 @@
 import { assessGrounding, groundingRequired, GROUNDING_REQUIRED_SOURCES, type Grounding } from './proposal-grounding';
+import { checkProposalDuplicate, proposalDedupeEnabled } from './proposal-dedupe';
 import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { SpecialistPanelService } from './specialist-panel-service';
@@ -41,6 +42,15 @@ type ProposalInput = Pick<ImprovementProposal, 'type' | 'title' | 'description' 
   /** Explicit anchor (target/test/metric); see proposal-grounding.ts. */
   grounding?: Partial<Grounding>;
 };
+
+/**
+ * Z1 (plan Phase Z): test-gap and mutation-gap proposals come from a machine source with a one-command oracle; prod 30-09 →
+ * 01-10 the specialist panel parked 6/6 mutation proposals the pre-screen had passed. With ORACLE_LANES_SKIP_PANEL=true they
+ * become goals without a panel round; the maker approval, the deterministic checks and the human merge stay.
+ */
+export function oracleLaneSkipsPanel(p: Pick<ImprovementProposal, 'source' | 'evidenceRefs'>, env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.ORACLE_LANES_SKIP_PANEL === 'true' && p.source === 'gap_analysis' && p.evidenceRefs.some((r) => /^(test-gap|mutation-gap):/.test(r));
+}
 
 export class SelfImprovementService {
   private panels: SpecialistPanelService;
@@ -200,6 +210,7 @@ export class SelfImprovementService {
   agentApproveIfReady(id: string, runId: string): ImprovementProposal | null {
     const proposal = this.getImprovement(id);
     if (proposal.status !== 'proposed' || !proposal.panelId) return null;
+    if (oracleLaneSkipsPanel(proposal)) return this.authorizeGoal(id, `agent:oracle-lane:${runId}`, true);
     const panel = this.panels.getPanel(proposal.panelId);
     if (panel.status !== 'consensus_ready') return null;
     if (panel.consensus.decision === 'goal') return this.authorizeGoal(id, `agent:approver:${runId}`);
@@ -207,14 +218,17 @@ export class SelfImprovementService {
     return this.getImprovement(id);
   }
 
-  private authorizeGoal(id: string, approvedBy: string): ImprovementProposal {
+  private authorizeGoal(id: string, approvedBy: string, oracleLane = false): ImprovementProposal {
     const proposal = this.getImprovement(id);
     if (proposal.status !== 'proposed') throw new Error('SELF_IMPROVEMENT_NOT_PROPOSED');
     if (!proposal.panelId) throw new Error('SELF_IMPROVEMENT_PANEL_REQUIRED');
     const panel = this.panels.getPanel(proposal.panelId);
-    if (panel.status !== 'consensus_ready' || panel.consensus.decision !== 'goal') {
-      throw new Error('SELF_IMPROVEMENT_CONSENSUS_REQUIRED');
-    }
+    // Z1: an oracle lane's review is its one-command oracle + the deterministic checks + the human merge; a panel that
+    // already reached 'blocked' still stops it
+    const consensusOk = oracleLane
+      ? !(panel.status === 'consensus_ready' && panel.consensus.decision === 'blocked')
+      : panel.status === 'consensus_ready' && panel.consensus.decision === 'goal';
+    if (!consensusOk) throw new Error('SELF_IMPROVEMENT_CONSENSUS_REQUIRED');
     const reviewerActors = (this.db.prepare('SELECT reviewer_actor FROM specialist_reviews WHERE panel_id = ?').all(panel.id) as Array<{ reviewer_actor?: string }>)
       .map((review) => review.reviewer_actor)
       .filter(Boolean);
@@ -291,6 +305,7 @@ export class SelfImprovementService {
       // shadow: record what this parked proposal is, to calibrate a ground-or-archive rule (fire-and-forget, fail-open)
       if (judgmentMode(reflectionTriage.id) !== 'off') void runJudgment(this.db, reflectionTriage, { type: 'self_improvement', id },
         { proposal: { title: input.title, description: input.description, rationale: input.rationale } }).catch(() => null);
+      if (proposalDedupeEnabled()) void checkProposalDuplicate(this.db, { id, title: input.title, description: input.description }).catch(() => null);
       return this.getImprovement(id);
     }
     const riskClass = input.type === 'security' ? 'high' : 'low';
@@ -321,6 +336,8 @@ export class SelfImprovementService {
       }
     });
     create();
+    // K2a (shadow): the same idea in other words — recorded, never acted on
+    if (proposalDedupeEnabled()) void checkProposalDuplicate(this.db, { id, title: input.title, description: input.description }).catch(() => null);
     return this.getImprovement(id);
   }
 

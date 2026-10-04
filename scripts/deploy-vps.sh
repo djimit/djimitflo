@@ -50,16 +50,21 @@ PREV_FULL="$(sed -n 's/^ *DJIMITFLO_COMMIT_SHA: \([0-9a-f]*\).*/\1/p' compose.ym
 [ "$PREV_SHORT" != "$SHORT" ] || { echo "already deployed: $SHORT" >&2; exit 1; }
 # Old builds (3 GB image + a clone each) filled the disk on 2026-09-21: SQLite hit disk I/O errors and the rollback target
 # crash-looped too. Keep the newest 4 images/clones (plus the running and previous ones) and refuse to build without headroom.
+# Nothing to prune is normal: under `set -euo pipefail` an empty grep -v returned 1 and turned every healthy deploy into
+# exit 1 after the container was already up (prod 2026-09-28: auto-deploy never logged 'done', P2 never got its baseline).
 prune_old_builds() {
   local keep_re="djimitflo:main-($SHORT|$PREV_SHORT)$"
   docker images --format '{{.Repository}}:{{.Tag}}' | grep '^djimitflo:main-' | grep -Ev "$keep_re" \
     | while read -r img; do echo "$(docker image inspect -f '{{.Created}}' "$img") $img"; done | sort -r | tail -n +5 | cut -d' ' -f2- \
-    | while read -r img; do docker rmi "$img" >/dev/null 2>&1 || true; done
-  ls -dt runtime-source-* 2>/dev/null | grep -Ev "runtime-source-($SHORT|$PREV_SHORT)$" | tail -n +5 | xargs -r rm -rf
-  docker image prune -f >/dev/null 2>&1 || true
+    | while read -r img; do docker rmi "$img" >/dev/null 2>&1 || true; done || true
+  { ls -dt runtime-source-* 2>/dev/null | grep -Ev "runtime-source-($SHORT|$PREV_SHORT)$" | tail -n +5 | xargs -r rm -rf; } || true
+  # The legacy builder's builder-stage layers are untagged ('dangling'): pruning them after every healthy deploy made the
+  # next build cold (builder apt-get 11.5 min on a slow mirror) and every first attempt hit the build timeout on 2026-09-28.
+  # Keep a week of build cache; a low-disk prune ('all') still clears it.
+  if [ "${1:-}" = all ]; then docker image prune -f >/dev/null 2>&1 || true; else docker image prune -f --filter until=168h >/dev/null 2>&1 || true; fi
 }
 AVAIL_KB="$(df --output=avail -k "$ROOT" | tail -n 1 | tr -d ' ')"
-if [ "$AVAIL_KB" -lt 8000000 ]; then prune_old_builds; AVAIL_KB="$(df --output=avail -k "$ROOT" | tail -n 1 | tr -d ' ')"; fi
+if [ "$AVAIL_KB" -lt 8000000 ]; then prune_old_builds all; AVAIL_KB="$(df --output=avail -k "$ROOT" | tail -n 1 | tr -d ' ')"; fi
 [ "$AVAIL_KB" -ge 6000000 ] || { echo "not enough free disk to build (${AVAIL_KB} KB free); free space first" >&2; exit 1; }
 if [ ! -d "runtime-source-$SHORT" ]; then git clone -q "$REPO" "runtime-source-$SHORT"; fi
 (cd "runtime-source-$SHORT" && git checkout -q "$SHA" && git log -1 --oneline)

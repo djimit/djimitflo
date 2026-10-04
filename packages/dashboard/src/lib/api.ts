@@ -33,6 +33,49 @@ import type {
 import { API_BASE, authenticatedFetch } from './auth-store';
 export { API_BASE } from './auth-store';
 
+export type ServiceStatus = { names: string[]; endpoint: string; status: 'up' | 'degraded' | 'down'; http: number | null; ms: number | null; error: string | null };
+
+export type FleetHost = { host: string; last_seen: string; seconds_ago: number; live: boolean; agent_version: string | null; info: Record<string, unknown> };
+export type FleetCommand = { id: string; host: string; kind: 'diagnostic' | 'shell'; command: string; command_sha256: string; status: string; requested_by: string;
+  approved_by: string | null; approved_at: string | null; expires_at: string | null; decided_reason: string | null; started_at: string | null;
+  finished_at: string | null; exit_code: number | null; output: string | null; created_at: string };
+
+export type KnowledgeOverview = {
+  at: string;
+  sources: Array<{ source: string; events: number; events_7d: number; last: string | null; yes: number; uncertain: number; no: number; units: number; relevant_pct: number | null }>;
+  relevance: { yes: number; uncertain: number; no: number };
+  recent_relevant: Array<{ ref: string; title: string; source: string; at: string }>;
+  kb_retrieval: { hits_30d: number; panels_30d: number; last: string | null };
+  interest_profile: { at: string; terms: string[] } | null;
+};
+
+export type OperatorCockpit = {
+  at: string;
+  build: { commit: string | null; build_time: string | null };
+  scorecard: Record<string, number | null>;
+  guardrails: Array<{ name: string; ok: boolean; value: number | null; limit: string }>;
+  stalls: Array<{ subsystem: string; since: string | null; detail: string }>;
+  gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string; benched?: boolean }>;
+  needs_you?: { approvals: number; requeue: number; labels: number; memory_review: number };
+  remote_workers: Array<{ host: string; claims_24h: number; last_claim: string | null; interrupted_24h: number }>;
+  /** UX-2: real-maker outcomes per strategy genome and maker skill (30 d); the server sent this, the type dropped it. */
+  genomes?: Array<{ genome: string; skill_id: string; outcomes: number; wins: number; win_pct: number }>;
+  maker_usage_7d: Array<{ role: string; runtime: string; model: string | null; leases: number; tokens: number }>;
+  judgments_7d: Array<{ judgment: string; calls: number; errors: number; input_tokens: number }>;
+  deploys: Array<{ at: string; event: string; sha: string; detail: string }>;
+};
+
+export type DecisionsInbox = {
+  requeue: Array<{ id: string; title: string; status: string; updated_at: string; requeued_as: string | null }>;
+  prescreen: {
+    items: Array<{ id: string; title: string; status: string; reason: string; verdict_at: string; label: 'ok' | 'wrong' | null }>;
+    labelled: number; wrong: number; false_rejection_pct: number | null; enforce_threshold: string;
+  };
+  telegram: Array<{ telegram_user_id: string; user_id: string; email: string | null; role: string | null; added_by: string; created_at: string }>;
+  memory: Array<{ id: string; title: string; content: string; memory_type: string; status: string; created_at: string }>;
+  autonomy: Array<{ cls: string; human_approved: number; auto_approved: number; denied: number; expired: number; verified: number; regressed: number; infra: number; pending: number; earned: boolean; why: string }>;
+};
+
 export type ImprovementFunnel = {
   generatedAt: string;
   proposals: { total: number; byStatus: Record<string, number> };
@@ -742,12 +785,13 @@ export type SocialAgentPresence = {
   activity: CommonsAgentActivity[];
 };
 
-export type CommonsStats = { threads_7d: number; open_7d: number; learnings_7d: number; proposals: number; proposals_grounded: number; proposals_verified: number; proposals_archived: number; guild?: Array<{ agent: string; groundings: number; valid: number; verified: number }> };
+export type CommonsStats = { threads_7d: number; open_7d: number; learnings_7d: number; lessons_7d?: number; proposals: number; proposals_grounded: number; proposals_verified: number; proposals_archived: number;
+  proposals_by_status?: Record<string, number>; residents?: Array<{ agent: string; last: string }>; autopilot_idle?: boolean; guild?: Array<{ agent: string; groundings: number; valid: number; verified: number }> };
 export type SocialCommons = { agents: SocialAgentPresence[]; threads: SocialThread[]; total_threads?: number; stats?: CommonsStats };
 
 // Frontier Expert Intelligence (§36): states other than ACTIVE are tentative and shown as such.
 export type ExpertLifecycleState = 'DISCOVERED' | 'IDENTITY_RESOLVED' | 'EVIDENCE_COLLECTED' | 'CAPABILITY_INFERRED' | 'CHECKED' | 'APPROVED' | 'ACTIVE' | 'AMBIGUOUS' | 'INSUFFICIENT_EVIDENCE' | 'CONTRADICTED' | 'STALE' | 'REJECTED' | 'REVOKED';
-export type ExpertSummary = { id: string; canonical_name: string; lifecycle_state: ExpertLifecycleState; identity_confidence: number; version: number; updated_at: string; capabilities: string[]; provenance_json: string };
+export type ExpertSummary = { id: string; canonical_name: string; lifecycle_state: ExpertLifecycleState; identity_confidence: number; version: number; updated_at: string; capabilities: string[]; provenance_json: string; kind?: 'person' | 'paper' | 'repository' };
 export type ExpertEvidenceItem = { id: string; kind: string; tier: number; title: string; url: string | null; source_family: string };
 export type ExpertCapabilityProvenance = { capability_id: string; status: string; confidence: number; evidence: ExpertEvidenceItem[] };
 export type ExpertClaim = { id: string; subject: string; relation: string; object: string; polarity: string; conditions: string | null; scope: string | null; evidence_refs_json: string; confidence: number; criticality: string; support_status: string; created_at: string };
@@ -1016,6 +1060,7 @@ class ApiClient {
       throw new Error(error.message || error.error?.message || `API error: ${response.status}`);
     }
 
+    if (response.status === 204) return undefined as T;
     return response.json();
   }
 
@@ -1259,6 +1304,64 @@ class ApiClient {
   }
 
   // Observability
+
+  // S1 operator cockpit: scorecard, guardrails, stalls, gym species, remote workers, usage (read-only)
+  // W5 knowledge view: discoveries, jev relevance and units per source, KB retrieval, interest profile (read-only)
+  async getKnowledgeOverview(): Promise<KnowledgeOverview> {
+    return this.request('/health/knowledge');
+  }
+
+  async getOperatorCockpit(): Promise<OperatorCockpit> {
+    return this.request('/health/cockpit');
+  }
+
+  // S2 decisions inbox: requeue (D2), pre-screen labels (D5), Telegram allowlist (D3)
+  async getDecisionsInbox(): Promise<DecisionsInbox> {
+    return this.request('/self-improve/decisions');
+  }
+
+  async requeueProposal(id: string, reason: string): Promise<{ id: string; created: boolean; goalCreated: boolean }> {
+    return this.request(`/self-improve/proposals/${encodeURIComponent(id)}/requeue`, { method: 'POST', body: JSON.stringify({ reason }) });
+  }
+
+  async labelPrescreen(id: string, label: 'ok' | 'wrong'): Promise<void> {
+    await this.request<void>(`/self-improve/proposals/${encodeURIComponent(id)}/prescreen-label`, { method: 'POST', body: JSON.stringify({ label }) });
+  }
+
+  async setTelegramIdentity(telegramId: string, userId: string, note?: string): Promise<void> {
+    await this.request<void>(`/self-improve/telegram-identities/${encodeURIComponent(telegramId)}`, { method: 'PUT', body: JSON.stringify({ user_id: userId, note }) });
+  }
+
+  async removeTelegramIdentity(telegramId: string): Promise<void> {
+    await this.request<void>(`/self-improve/telegram-identities/${encodeURIComponent(telegramId)}`, { method: 'DELETE' });
+  }
+
+  // S3 runtime configuration (read-only, manage:config)
+  async getRuntimeConfig(): Promise<{ entries: Array<{ name: string; value: string; masked: boolean; group: string }>; masked: number }> {
+    return this.request('/health/config');
+  }
+
+  // Service map: reachability of the endpoints the server is configured to use
+  async getServiceMap(): Promise<{ services: ServiceStatus[] }> {
+    return this.request('/health/services');
+  }
+
+  // Fleet host agent: hosts pull; diagnostics free, shell commands need a hash-bound approval
+  async getFleetHosts(): Promise<{ hosts: FleetHost[]; commands: FleetCommand[] }> {
+    return this.request('/fleet-hosts');
+  }
+
+  async requestFleetCommand(host: string, command: string): Promise<FleetCommand> {
+    return this.request('/fleet-hosts/commands', { method: 'POST', body: JSON.stringify({ host, command }) });
+  }
+
+  async approveFleetCommand(id: string, sha256: string): Promise<FleetCommand> {
+    return this.request(`/fleet-hosts/commands/${encodeURIComponent(id)}/approve`, { method: 'POST', body: JSON.stringify({ sha256 }) });
+  }
+
+  async denyFleetCommand(id: string, reason = ''): Promise<FleetCommand> {
+    return this.request(`/fleet-hosts/commands/${encodeURIComponent(id)}/deny`, { method: 'POST', body: JSON.stringify({ reason }) });
+  }
 
   // Improvement funnel + panel calibration (self-improvement chain, read-only)
   async getImprovementFunnel(): Promise<ImprovementFunnel> {
@@ -1557,10 +1660,16 @@ class ApiClient {
     return this.request(`/swarms/memory/candidates${query}`);
   }
 
+  async rejectMemoryCandidate(id: string, reason = ''): Promise<unknown> {
+    return this.request(`/swarms/memory/candidates/${encodeURIComponent(id)}/reject`, { method: 'POST', body: JSON.stringify({ reason }) });
+  }
+
   async promoteMemoryCandidate(id: string): Promise<{ candidate: MemoryCandidateRecord; sinks: Array<Record<string, unknown>> }> {
     return this.request(`/swarms/memory/candidates/${id}/promote`, {
       method: 'POST',
-      body: JSON.stringify({ sinks: ['okf'], approved_by: 'dashboard' }),
+      // a human clicking Promote is the human approval; the server records the signed-in user as approver
+      // (the old body sent approved_by: 'dashboard', which the route ignores → review_required candidates got 409)
+      body: JSON.stringify({ sinks: ['okf'], human_approved: true }),
     });
   }
 
@@ -1645,7 +1754,7 @@ class ApiClient {
     return this.request('/swarm-v2/social/lures', { method: 'POST', body: '{}' });
   }
 
-  async listExperts(params: { state?: string; capability?: string; name?: string; limit?: number } = {}): Promise<{ experts: ExpertSummary[] }> {
+  async listExperts(params: { state?: string; capability?: string; name?: string; kind?: string; limit?: number } = {}): Promise<{ experts: ExpertSummary[]; funnel?: Array<{ kind: string; state: ExpertLifecycleState; count: number }> }> {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== '').map(([key, value]) => [key, String(value)]));
     return this.request(`/swarms/expert/experts${query.size ? `?${query}` : ''}`);
   }

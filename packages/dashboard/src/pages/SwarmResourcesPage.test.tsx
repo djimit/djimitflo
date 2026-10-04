@@ -57,7 +57,15 @@ it.each(['planned', 'leased'] as const)('does not reconvert linked %s work and s
   expect(convert).not.toHaveBeenCalled();
 });
 
-it.each(['blocked', 'planned', 'leased', 'done', 'discarded'] as const)('does not offer a new goal for %s work', async (status) => {
+it.each(['done', 'discarded'] as const)('hides %s work from the actionable backlog (and so never offers a goal)', async (status) => {
+  vi.spyOn(api, 'getWorkItems').mockResolvedValue({ work_items: [item({ status })] });
+  render(<MemoryRouter><SwarmResourcesPage /></MemoryRouter>);
+  await screen.findByText('No actionable work items (discarded and done items are hidden).');
+  expect(screen.queryByText('Disposable backlog item')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Goal' })).toBeNull();
+});
+
+it.each(['blocked', 'planned', 'leased'] as const)('does not offer a new goal for %s work', async (status) => {
   vi.spyOn(api, 'getWorkItems').mockResolvedValue({ work_items: [item({ status })] });
   render(<MemoryRouter><SwarmResourcesPage /></MemoryRouter>);
   await screen.findByText('Disposable backlog item');

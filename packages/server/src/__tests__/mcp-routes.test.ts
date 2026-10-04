@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import express from 'express';
 import { createMCPRoutes } from '../routes/mcp';
+import { installOutboundGuard } from '../utils/outbound-guard';
 
 describe('MCP routes', () => {
   let db: Database.Database;
@@ -93,8 +94,21 @@ describe('MCP routes', () => {
   it('reports stale running servers without rewriting persisted history', async () => {
     const response = await fetch(`${baseUrl}/servers`);
     const body = await response.json() as { servers: Array<Record<string, unknown>> };
-    expect(body.servers[0]).toMatchObject({ status: 'running', effective_status: 'stale', status_stale: true });
+    expect(body.servers[0]).toMatchObject({
+      status: 'running',
+      effective_status: 'stale',
+      status_stale: true,
+      tool_count: 1,
+      approval_gate_count: 1,
+    });
     expect((db.prepare("SELECT status FROM mcp_servers WHERE id = 's1'").get() as { status: string }).status).toBe('running');
+  });
+
+  it('reports the local runtime row as a synced catalog, not a stale network service', async () => {
+    db.prepare("UPDATE mcp_servers SET id = 'djimitflo-runtime' WHERE id = 's1'").run();
+
+    const body = await (await fetch(`${baseUrl}/servers`)).json() as { servers: Array<Record<string, unknown>> };
+    expect(body.servers[0]).toMatchObject({ effective_status: 'catalog', status_stale: false });
   });
 
   it('registers a new MCP server via POST /servers', async () => {
@@ -138,5 +152,34 @@ describe('MCP routes', () => {
     const body = await response.json() as { servers: Array<Record<string, unknown>> };
     const offline = body.servers.find((s) => s.name === 'offline-tool');
     expect(offline).toMatchObject({ status: 'stopped', error_message: 'Firewalled from this deployment.' });
+  });
+
+  it('reports a host refused by the outbound guard as stopped by policy, not as an error', async () => {
+    const original = globalThis.fetch;
+    installOutboundGuard({ OUTBOUND_DENY_HOSTS: 'blocked.invalid' }, () => undefined);
+    try {
+      db.prepare("INSERT INTO mcp_servers VALUES ('s4', 'workstation-tool', '', 'unknown', '', '[]', '{}', null, null, 'http://blocked.invalid:9', null, null, '{}', 'now', 'now')").run();
+      const body = await (await fetch(`${baseUrl}/servers?refresh=true`)).json() as { servers: Array<Record<string, unknown>> };
+      const ws = body.servers.find((s) => s.name === 'workstation-tool');
+      expect(ws?.status).toBe('stopped');
+      expect(String(ws?.error_message)).toContain('Blocked by policy');
+    } finally { globalThis.fetch = original; }
+  });
+
+  it('reports policy-isolated servers separately from stopped services', async () => {
+    db.prepare("UPDATE mcp_servers SET status = 'stopped', metadata = ? WHERE id = 's1'")
+      .run(JSON.stringify({ known_unreachable: true }));
+
+    const response = await fetch(`${baseUrl}/servers`);
+    const body = await response.json() as { servers: Array<Record<string, unknown>> };
+    expect(body.servers[0]).toMatchObject({ status: 'stopped', effective_status: 'policy_blocked' });
+  });
+
+  it('preserves policy-isolated status for manually registered servers', async () => {
+    db.prepare("UPDATE mcp_servers SET status = 'stopped', error_message = ? WHERE id = 's1'")
+      .run('Blocked by policy: host is in OUTBOUND_DENY_HOSTS.');
+
+    const body = await (await fetch(`${baseUrl}/servers`)).json() as { servers: Array<Record<string, unknown>> };
+    expect(body.servers[0]).toMatchObject({ status: 'stopped', effective_status: 'policy_blocked' });
   });
 });

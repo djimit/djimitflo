@@ -16,7 +16,7 @@
     "build:server": "npm run build --workspace=@djimitflo/server",
     "build:dashboard": "npm run build --workspace=@djimitflo/dashboard",
     "test": "bash scripts/deploy-vps.selftest.sh && bash scripts/wiki-delta-emitter.selftest.sh && node scripts/live-identity-evidence.test.mjs && node scripts/integration-probes.test.mjs && npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog && npm run test --workspaces --if-present",
-    "test:changed": "npm run test --workspace=@djimitflo/server -- --changed",
+    "test:changed": "npm run test -w @djimitflo/server -w @djimitflo/shared -w @djimitflo/agent-catalog -w @djimitflo/mcp-server -- --changed",
     "test:mutation": "stryker run",
     "test:mutation:grounded": "node scripts/mutation-gain.mjs",
     "audit:ci": "node scripts/ci-audit.mjs",

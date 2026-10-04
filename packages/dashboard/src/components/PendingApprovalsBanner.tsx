@@ -13,7 +13,7 @@ export function PendingApprovalsBanner({ count, soonestExpiresAt }: PendingAppro
         {count === 1 ? '1 approval is waiting' : `${count} approvals are waiting`}
         {minutes !== null && ` — the first expires in ${minutes} min`}
       </span>
-      <Link to="/approvals" className="ml-auto font-medium underline">Review approvals</Link>
+      <Link to="/decisions#approvals" className="ml-auto font-medium underline">Review approvals</Link>
     </div>
   );
 }

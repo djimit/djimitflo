@@ -1,4 +1,5 @@
 import type { Database } from 'better-sqlite3';
+import { arenaGateEnabled, fleetSourceGate } from './committee-swarm';
 import { FrontierExpertRegistryService } from './frontier-expert-registry-service';
 import { ExpertEvidenceEnrichmentService } from './expert-evidence-enrichment-service';
 import type { ArxivPaper } from './knowledge-adapters/arxiv-adapter';
@@ -41,7 +42,7 @@ export class ExpertSourceUnitsService {
    * untrusted and clipped, and only discoveries that match the capability taxonomy become units — most briefing papers
    * (quantum, clinical) are noise for Djimitflo and stay in external_events only.
    */
-  ingestDiscovery(event: Record<string, unknown>): 'unit' | 'known' | 'irrelevant' | 'invalid' {
+  ingestDiscovery(event: Record<string, unknown>): 'unit' | 'pending' | 'known' | 'irrelevant' | 'invalid' {
     const str = (value: unknown, max: number) => (typeof value === 'string' ? value.trim().slice(0, max) : '');
     const kind = event.event_type === 'discovery.repository' ? 'repository' : 'paper';
     const raw = str(event.ref ?? event.arxiv_id ?? event.repo, 200).replace(/^(arxiv:|github:|https?:\/\/(arxiv\.org\/abs\/|github\.com\/))/i, '').replace(/\/$/, '');
@@ -50,13 +51,43 @@ export class ExpertSourceUnitsService {
     if (!id || !title) return 'invalid';
     const ref = kind === 'paper' ? `arxiv:${id}` : `github:${id}`;
     if (this.knownRefs().has(ref)) return 'known';
+    // AR-W6: survival of the fittest for fleet sources — a source whose discoveries are never relevant is not processed further
+    const source = str(event.agent, 80);
+    if (arenaGateEnabled() && source && !fleetSourceGate(this.db, source).allowed) return 'irrelevant';
     const note = str(event.note ?? event.summary, 1000);
     const categories = Array.isArray(event.categories) ? event.categories.filter((c): c is string => typeof c === 'string').slice(0, 10) : [];
     const capabilities = this.enrichment.capabilitiesFor({ arxiv_id: id, url: '', title, summary: note, authors: [], categories, primary_category: categories[0] ?? null, published: null });
-    if (!capabilities.length) return 'irrelevant';
+    if (!capabilities.length) {
+      // R3 (shadow): the keyword gate's rejections were never measured. jev judges a capped share of them too, so its
+      // relevance can be compared with the gate (yes-rate on rejected vs accepted) before it replaces the gate.
+      const cap = Number(process.env.DISCOVERY_GATE_SHADOW_MAX_PER_DAY) || 100;
+      const today = (this.db.prepare("SELECT COUNT(*) n FROM judgments WHERE judgment = 'discovery_relevance' AND subject_type = 'discovery_rejected' AND created_at >= ?")
+        .get(new Date(Date.now() - 86_400_000).toISOString()) as { n: number }).n;
+      if (judgmentMode(discoveryRelevance.id) !== 'off' && today < cap) {
+        const pack = buildEvidencePack(this.db, 14);
+        void runJudgment(this.db, discoveryRelevance, { type: 'discovery_rejected', id: ref }, { title, note, capabilities: [], open_problems: { failing_gates: pack.top_failing_gates, failure_causes: pack.failure_causes } }).catch(() => undefined);
+      }
+      return 'irrelevant';
+    }
     const agent = str(event.agent ?? event.source, 80) || 'unknown-agent';
     const url = kind === 'paper' ? `https://arxiv.org/abs/${id}` : `https://github.com/${id}`;
-    const expertId = this.unit(kind, kind === 'paper' ? title : id, ref, { kind, title, url, sourceRef: ref, sourceFamily: `agent:${agent}`, metadata: { derived: 'fleet-discovery', agent, note, categories } }, capabilities, { source: 'fleet-discovery', agent });
+    const createUnit = () => this.unit(kind, kind === 'paper' ? title : id, ref, { kind, title, url, sourceRef: ref, sourceFamily: `agent:${agent}`, metadata: { derived: 'fleet-discovery', agent, note, categories } }, capabilities, { source: 'fleet-discovery', agent });
+    // FE2 (plan, 29-09): ~1 000 units/week were created for every taxonomy match and nothing used them. With
+    // FRONTIER_UNITS_REQUIRE_RELEVANCE the unit is created only after jev classifies the discovery as an open problem or a lane
+    // technique; the verdict is then re-pointed at the new unit. Fail-closed: no verdict, no unit. A ref is judged once.
+    if (process.env.FRONTIER_UNITS_REQUIRE_RELEVANCE === 'true' && judgmentMode(discoveryRelevance.id) !== 'off') {
+      if (this.db.prepare("SELECT 1 FROM judgments WHERE judgment = 'discovery_relevance' AND subject_id = ? LIMIT 1").get(ref)) return 'known';
+      const pack = buildEvidencePack(this.db, 14);
+      void runJudgment(this.db, discoveryRelevance, { type: 'discovery_pending', id: ref }, { title, note, capabilities, open_problems: { failing_gates: pack.top_failing_gates, failure_causes: pack.failure_causes } })
+        .then((verdict) => {
+          const cls = verdict?.answers?.relevance?.choice;
+          if (!verdict || (cls !== 'open_problem' && cls !== 'lane_technique') || this.knownRefs().has(ref)) return;
+          const unitId = createUnit();
+          this.db.prepare("UPDATE judgments SET subject_type = 'expert_unit', subject_id = ? WHERE id = ?").run(unitId, verdict.id);
+        }).catch(() => undefined);
+      return 'pending';
+    }
+    const expertId = createUnit();
     // G3 (shadow): is this discovery relevant beyond its topic? Fire-and-forget; never blocks ingestion.
     if (judgmentMode(discoveryRelevance.id) !== 'off') {
       const pack = buildEvidencePack(this.db, 14);

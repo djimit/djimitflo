@@ -36,21 +36,34 @@ export function evolveEligible(db: Database, goalId: string): boolean {
 /** M2: the `after` score from the mutation-gain check's JSON line (scripts/mutation-gain.mjs), or null when not measured. */
 export function mutationScoreOf(checks: Array<{ name?: string; stdout_path?: string }>): number | null {
   const path = checks.find((c) => c.name === 'test:mutation:grounded')?.stdout_path;
-  try { return path ? Number(/"after":(\d+(?:\.\d+)?)/.exec(fs.readFileSync(path, 'utf8'))?.[1] ?? NaN) || null : null; } catch { return null; }
+  // D0: `|| null` turned a measured score of 0 into "not measured"
+  try { const n = path ? Number(/"after":(\d+(?:\.\d+)?)/.exec(fs.readFileSync(path, 'utf8'))?.[1] ?? NaN) : NaN; return Number.isFinite(n) ? n : null; } catch { return null; }
 }
 
 interface LeaseRow { id: string; runtime: string; status: string; metadata: string; updated_at: string }
 
-function candidate(l: LeaseRow): EvolveCandidate {
+/** The file the goal asks for (grounding artifactPath of its proposal), or null when the goal names none. */
+function goalArtifact(db: Database, runId: string): string | null {
+  const row = db.prepare(`SELECT json_extract(s.grounding_json, '$.artifactPath') AS artifact FROM loop_runs r JOIN goals g ON g.id = r.goal_id
+    JOIN self_improvements s ON s.id = g.improvement_id WHERE r.id = ?`).get(runId) as { artifact: string | null } | undefined;
+  return row?.artifact || null;
+}
+
+function candidate(l: LeaseRow, artifact: string | null): EvolveCandidate {
   const m = JSON.parse(l.metadata || '{}') as Record<string, unknown>;
   const checks = Array.isArray(m.deterministic_checks) ? m.deterministic_checks as Array<{ name?: string; status?: string; stdout_path?: string }> : [];
   const diffLines = Number(m.diff_lines ?? 0); const maxLines = Number(m.diff_max_lines ?? 0);
+  // prod 2026-10-01: a sibling that edited README.md/CONTRIBUTING.md (26 lines) beat the maker that wrote the requested test
+  // (32 lines); the losing maker's reviewers were cancelled and the run regressed. A maker that did not touch the goal's
+  // artifact did not do the work.
+  const changed = Array.isArray(m.changed_files) ? m.changed_files as string[] : [];
+  const onTarget = !artifact || changed.includes(artifact);
   return {
     makerLeaseId: l.id,
     species: typeof m.model === 'string' ? `${l.runtime}@${m.model}` : l.runtime,
     exitZero: l.status === 'completed' && Number(m.exit_status ?? 1) === 0,
     checksPassed: checks.length > 0 && checks.every((c) => c.status === 'pass' || c.status === 'skipped'),
-    withinBudget: maxLines > 0 && diffLines > 0 && diffLines <= maxLines,
+    withinBudget: maxLines > 0 && diffLines > 0 && diffLines <= maxLines && onTarget,
     mutationScore: mutationScoreOf(checks),
     diffLines,
     tokens: Number((m.runtime_usage as { total_tokens?: unknown } | undefined)?.total_tokens) || null,
@@ -66,7 +79,8 @@ function candidate(l: LeaseRow): EvolveCandidate {
 export function selectEvolveWinner(db: Database, runId: string, makerLeaseIds: string[]): string | null {
   const leases = makerLeaseIds.map((id) => db.prepare('SELECT id, runtime, status, metadata, updated_at FROM worker_leases WHERE id = ?').get(id) as LeaseRow | undefined)
     .filter((l): l is LeaseRow => Boolean(l));
-  const ranked = rankEvolveCandidates(leases.map(candidate));
+  const artifact = goalArtifact(db, runId);
+  const ranked = rankEvolveCandidates(leases.map((l) => candidate(l, artifact)));
   const winner = evolveWinner(ranked);
   const events = new LoopEventService(db);
   const table = ranked.map(({ makerLeaseId, species, rank, eligible, reason, diffLines, tokens }) => ({ makerLeaseId, species, rank, eligible, reason, diffLines, tokens }));

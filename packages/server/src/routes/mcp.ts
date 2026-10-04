@@ -30,6 +30,7 @@ function sanitizeMCPServer(server: any, isAdmin: boolean): any {
 }
 
 function metadata(server: any): Record<string, any> {
+  if (server.metadata && typeof server.metadata === 'object') return server.metadata;
   try {
     return JSON.parse(server.metadata || '{}');
   } catch {
@@ -55,12 +56,16 @@ function queryString(value: unknown): string {
 }
 
 function withEffectiveStatus(server: any, now = Date.now()): any {
+  const meta = metadata(server);
+  const catalog = server.id === 'djimitflo-runtime';
+  const policyBlocked = meta.known_unreachable === true
+    || /OUTBOUND_DENY_HOSTS|Blocked by policy|never calls the workstation/i.test(String(server.error_message || ''));
   const ttlMs = Math.max(1_000, Number(process.env.MCP_STATUS_TTL_MS || 300_000));
   const verifiedAt = server.last_ping_at ? Date.parse(server.last_ping_at) : Number.NaN;
-  const stale = server.status === 'running' && (!Number.isFinite(verifiedAt) || now - verifiedAt > ttlMs);
+  const stale = !catalog && server.status === 'running' && (!Number.isFinite(verifiedAt) || now - verifiedAt > ttlMs);
   return {
     ...server,
-    effective_status: stale ? 'stale' : server.status,
+    effective_status: catalog ? 'catalog' : policyBlocked ? 'policy_blocked' : stale ? 'stale' : server.status,
     status_stale: stale,
     last_verified_at: server.last_ping_at || null,
   };
@@ -68,6 +73,7 @@ function withEffectiveStatus(server: any, now = Date.now()): any {
 
 export function createMCPRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
+  router.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false })); // per-router limiter CodeQL can see; /api also caps 300/min
   const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
 
@@ -80,7 +86,16 @@ export function createMCPRoutes(db: Database, auth?: AuthMiddleware): Router {
     try {
       const user = getUser(req);
       const isAdmin = AuthorizationService.isAdmin(user);
-      let servers = db.prepare('SELECT * FROM mcp_servers ORDER BY created_at DESC').all() as any[];
+      const selectServers = () => db.prepare(`
+        SELECT s.*,
+          (SELECT COUNT(*) FROM mcp_tools t WHERE t.server_id = s.id) AS tool_count,
+          (SELECT COUNT(*) FROM mcp_tools t
+            JOIN mcp_tool_permissions p ON p.tool_id = t.id
+            WHERE t.server_id = s.id AND p.decision = 'requires_approval') AS approval_gate_count
+        FROM mcp_servers s
+        ORDER BY s.created_at DESC
+      `).all() as any[];
+      let servers = selectServers();
       if (req.query.refresh === 'true') {
         await Promise.all(servers.map(async (server) => {
           if (!server.url) return;
@@ -109,11 +124,15 @@ export function createMCPRoutes(db: Database, auth?: AuthMiddleware): Router {
               if (typeof synced === 'string') db.prepare('UPDATE mcp_servers SET error_message = ? WHERE id = ?').run(`tool catalog not synced: ${synced}`, server.id);
             }
           } catch (error) {
+            // the outbound guard refused the host (e.g. a sidecar registered on the workstation): policy, not an outage
+            const denied = (error as { cause?: { code?: string } })?.cause?.code === 'OUTBOUND_DENIED';
             db.prepare('UPDATE mcp_servers SET status = ?, last_ping_at = ?, error_message = ?, updated_at = ? WHERE id = ?')
-              .run('error', now, error instanceof Error ? error.message : 'Health probe failed', now, server.id);
+              .run(denied ? 'stopped' : 'error', now, denied
+                ? 'Blocked by policy: the control plane never calls this host (OUTBOUND_DENY_HOSTS). Point it at a reachable host or use it from that host.'
+                : error instanceof Error ? error.message : 'Health probe failed', now, server.id);
           }
         }));
-        servers = db.prepare('SELECT * FROM mcp_servers ORDER BY created_at DESC').all() as any[];
+        servers = selectServers();
       }
 
       const parsed = servers.map((server: any) => {

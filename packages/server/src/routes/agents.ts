@@ -2,6 +2,7 @@
  * Agent routes — with POST /api/agents for swarm registration
  */
 
+import { rateLimit } from 'express-rate-limit';
 import { agentLiveness, type RegistryNode } from '../services/agent-liveness';
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
@@ -13,6 +14,7 @@ import { randomUUID } from 'crypto';
 
 export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
+  router.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false })); // per-router limiter CodeQL can see; /api also caps 300/min
   const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
   const agentRegistry = new AgentRegistryService();
@@ -186,6 +188,24 @@ export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
   });
 
   // POST /api/agents/:id/heartbeat - Update agent heartbeat, metadata, and OKF concept
+  // Public Telegram handle of an agent's bot (never a token); null clears it.
+  const telegramLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false });
+  router.patch('/:id/telegram', telegramLimiter, requireAuth, requirePermission('manage:config'), (req, res, next) => {
+    try {
+      const raw = req.body?.bot_name;
+      const handle = raw === null ? null : String(raw ?? '').replace(/^@/, '');
+      if (handle !== null && !/^[A-Za-z][A-Za-z0-9_]{3,30}bot$/i.test(handle)) {
+        res.status(400).json({ error: { message: 'bot_name must be a Telegram bot handle (ends in "bot") or null', code: 'VALIDATION_ERROR' } });
+        return;
+      }
+      const changed = db.prepare('UPDATE agents SET telegram_bot_name = ?, updated_at = ? WHERE id = ?').run(handle, new Date().toISOString(), req.params.id).changes;
+      if (!changed) { res.status(404).json({ error: { message: 'Agent not found', code: 'NOT_FOUND' } }); return; }
+      res.json({ id: req.params.id, telegram_bot_name: handle });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.post('/:id/heartbeat', requireAuth, requirePermission('write:evidence'), (req, res, next) => {
     try {
       const { id } = req.params;

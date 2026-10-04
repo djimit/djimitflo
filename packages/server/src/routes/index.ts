@@ -5,11 +5,6 @@
 import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import type { Database } from 'better-sqlite3';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
-import { hostname } from 'os';
-import { createError } from '../middleware/error-handler';
-const execFileAsync = promisify(execFile);
 import { createTaskRoutes } from './tasks';
 import { createAgentRoutes } from './agents';
 import { createCatalogRoutes } from './catalog';
@@ -46,6 +41,7 @@ import { createSwarmRoutes } from './swarms';
 import { createSpawnRoutes } from './spawns';
 import { createOpenMythosRoutes } from './openmythos';
 import { createGymRoutes } from './gym';
+import { createFleetHostRoutes, createHostAgentRoutes } from './host-agent';
 import { createRemoteGymRoutes } from './remote-gym';
 import { createRuntimeGovernanceRoutes } from './runtime-governance';
 import { createCognitiveRoutes } from './cognitive';
@@ -90,6 +86,7 @@ import { createSegmlProductionRoutes } from './segml-production';
 import { createOrganizationRoutes } from './organizations';
 import { createAuditLogRoutes } from './audit-logs';
 import { limitBodySize } from '../middleware/input-validation';
+import { UsageTelemetry } from '../services/usage-telemetry';
 import { buildOpenApiSpec, collectRoutes, mountRoutes, type RouteMount } from '../utils/route-inventory';
 import type { WebSocketService } from '../services/websocket-service';
 import { CognitiveLoopClosureService } from '../services/cognitive-loop-closure-service';
@@ -128,6 +125,20 @@ export function createRoutes(
   // Security headers
   router.use(securityHeaders);
   router.use(rateLimit({ windowMs: 60_000, limit: 300, standardHeaders: 'draft-8', legacyHeaders: false }));
+
+  // S4: local usage counts (route pattern + page views only) so dormant surface can be measured before consolidation
+  const telemetry = new UsageTelemetry(db);
+  router.use(telemetry.middleware());
+  router.get('/telemetry/usage', requireAuth, (req, res) => {
+    const days = Math.min(90, Math.max(1, Number(req.query.days) || 14));
+    res.json({ days, rows: telemetry.summary(days) });
+  });
+  router.post('/telemetry/pageview', requireAuth, (req, res) => {
+    const page = typeof req.body?.path === 'string' ? req.body.path.replace(/\/[0-9a-f-]{8,}(?=\/|$)/gi, '/:id').slice(0, 120) : '';
+    if (!/^\/[\w\-/:]*$/.test(page)) { res.status(400).json({ error: { message: 'path required', code: 'VALIDATION_ERROR' } }); return; }
+    telemetry.count('page', page);
+    res.status(204).end();
+  });
 
   // API version (public)
   router.get('/version', (_req, res) => {
@@ -168,15 +179,6 @@ export function createRoutes(
     res.json(openApiSpec);
   });
 
-  // D2: runtime URLs — use the host OS' native listener inventory.
-  router.get('/workstation/urls', requireAuth, async (_req: any, res: any, next: any) => {
-    try {
-      res.json({ host: hostname(), platform: process.platform, ports: await scanListeningPorts() });
-    } catch (error) {
-      next(createError(503, error instanceof Error ? error.message : 'Failed to scan listening ports', 'WORKSTATION_PORT_SCAN_FAILED'));
-    }
-  });
-
   // G22: operator intervention (pause/resume/inject/override)
   mounts.push(
     { prefix: '/intervention', middleware: [requireAuth], router: createInterventionRoutes(db, auth!) },
@@ -208,6 +210,8 @@ export function createRoutes(
     { prefix: '/openmythos', middleware: [requireAuth], router: createOpenMythosRoutes(db, auth) },
     { prefix: '/gym', middleware: [requireAuth], router: createGymRoutes(db, auth) },
     { prefix: '/gym-worker', middleware: [], router: createRemoteGymRoutes(db, auth) },
+    { prefix: '/host-agent', middleware: [], router: createHostAgentRoutes(db, auth!) },
+    { prefix: '/fleet-hosts', middleware: [requireAuth], router: createFleetHostRoutes(db, auth!) },
     { prefix: '/runtime-governance', middleware: [requireAuth], router: createRuntimeGovernanceRoutes(db, auth, runtimeGovernance) },
     { prefix: '/cognitive', middleware: [requireAuth], router: createCognitiveRoutes(db, auth, cognitiveLoop) },
     { prefix: '/self-modification', middleware: [requireAuth], router: createSelfModificationRoutes(db, auth) },
@@ -253,51 +257,4 @@ export function createRoutes(
   mountRoutes(router, mounts);
 
   return router;
-}
-
-export async function scanListeningPorts(): Promise<Array<{ address: string; port: number; pid: number | null; process: string; bind: string }>> {
-  try {
-    return await scanListeningPortsUnsafe();
-  } catch {
-    // Best-effort local introspection: a slim container image without
-    // netstat/ss, or an unsupported platform, should show an empty list
-    // rather than fail the whole page.
-    return [];
-  }
-}
-
-async function scanListeningPortsUnsafe(): Promise<Array<{ address: string; port: number; pid: number | null; process: string; bind: string }>> {
-  if (process.platform === 'darwin') {
-    // Native socket inventory avoids lsof's potentially uninterruptible device inspection.
-    const { stdout: output } = await execFileAsync('/usr/sbin/netstat', ['-anv', '-p', 'tcp'], { encoding: 'utf8', timeout: 5_000, killSignal: 'SIGKILL', signal: AbortSignal.timeout(5_000) });
-    return output.trim().split('\n').flatMap((line) => {
-      const match = line.match(/^tcp[46]\s+\d+\s+\d+\s+(.+)\.(\d+)\s+\S+\s+LISTEN\s+\d+\s+\d+\s+\d+\s+\d+\s+(.+?):(\d+)\s/);
-      if (!match) return [];
-      const address = match[1];
-      return [{
-        address,
-        port: Number(match[2]),
-        pid: Number(match[4]) || null,
-        process: match[3],
-        bind: address === '::1' || address.startsWith('127.') ? 'Localhost' : 'LAN',
-      }];
-    });
-  }
-  if (process.platform === 'linux') {
-    const { stdout: output } = await execFileAsync('ss', ['-H', '-tlnp'], { encoding: 'utf8', timeout: 5_000, killSignal: 'SIGKILL', signal: AbortSignal.timeout(5_000) });
-    return output.trim().split('\n').flatMap((line) => {
-      const match = line.match(/\s(\S+):(\d+)\s+/);
-      if (!match) return [];
-      const processName = line.match(/users:\(\("([^"]+)"/)?.[1] || 'unknown';
-      const address = match[1];
-      return [{
-        address,
-        port: Number(match[2]),
-        pid: Number(line.match(/pid=(\d+)/)?.[1]) || null,
-        process: processName,
-        bind: address === '[::1]' || address === '::1' || address.startsWith('127.') ? 'Localhost' : 'LAN',
-      }];
-    });
-  }
-  throw new Error(`Listening-port discovery is unsupported on ${process.platform}`);
 }

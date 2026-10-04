@@ -241,7 +241,11 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   router.get('/expert/experts', requirePermission('read:evidence'), route((req, res) => {
     const limit = req.query.limit === undefined ? undefined : Number(req.query.limit);
     if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) throw createError(400, 'limit must be a positive integer', 'VALIDATION_ERROR');
-    res.json({ experts: registry().list({ state: req.query.state as string | undefined, capability: req.query.capability as string | undefined, name: req.query.name as string | undefined, limit }) });
+    const kind = req.query.kind as string | undefined;
+    if (kind !== undefined && !['person', 'paper', 'repository'].includes(kind)) throw createError(400, 'kind must be person, paper or repository', 'VALIDATION_ERROR');
+    // The funnel counts the whole registry (the list is capped), per kind and lifecycle state.
+    const funnel = db.prepare("SELECT COALESCE(kind, 'person') AS kind, lifecycle_state AS state, COUNT(*) AS count FROM expert_identities GROUP BY 1, 2").all();
+    res.json({ experts: registry().list({ state: req.query.state as string | undefined, capability: req.query.capability as string | undefined, name: req.query.name as string | undefined, kind: kind as 'person' | 'paper' | 'repository' | undefined, limit }), funnel });
   }));
   router.get('/expert/experts/:id', requirePermission('read:evidence'), route((req, res) => {
     const reg = registry();
@@ -319,10 +323,11 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   router.get('/rsi/proposals', requirePermission('read:evidence'), route((req, res) => { res.json(new ServiceRefactoringAnalyzer(db).getProposals(req.query.status as string | undefined)); }));
   router.get('/rsi/specializations', requirePermission('read:evidence'), route((_req, res) => { res.json(new EmergentSpecializationService(db).getSpecializations()); }));
   router.get('/rsi/safety', requirePermission('read:evidence'), route((_req, res) => { res.json(new RsiSafetyGuard(db).getStatus()); }));
-  router.post('/rsi/safety/toggle', requirePermission('write:swarm_action'), route((req, res) => {
+  // a safety gate: admins only (manage:config), and the audit row names who switched it
+  router.post('/rsi/safety/toggle', requirePermission('manage:config'), route((req, res) => {
     if (typeof req.body?.enabled !== 'boolean') throw createError(400, 'enabled must be a boolean', 'VALIDATION_ERROR');
     const guard = new RsiSafetyGuard(db);
-    guard.setEnabled(req.body.enabled);
+    guard.setEnabled(req.body.enabled, String(req.user?.sub || req.user?.email || 'unknown'));
     res.json(guard.getStatus());
   }));
 

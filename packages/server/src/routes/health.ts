@@ -2,16 +2,25 @@
  * Health check routes — production monitoring endpoints.
  */
 
+import { rateLimit } from 'express-rate-limit';
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { MetricsService } from '../services/metrics-service';
 import { KnowledgeRuntimeService } from '../services/knowledge-runtime-service';
 import { getAppVersion } from '../utils/version';
+import { detectStalls } from '../services/stall-watch';
+import { serviceMap } from '../services/service-map';
+import { operatorCockpit } from '../services/operator-cockpit';
+import { knowledgeOverview } from '../services/knowledge-overview';
+import { forecastScores } from '../services/forecast-scoring';
+import { buildEvolutionEvidence } from '../services/evolution-evidence';
+import { runtimeConfigView } from '../services/runtime-config-view';
 import { getDatabaseProvenance } from '../database/provenance';
 
 export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
+  router.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false })); // per-router limiter CodeQL can see; /api also caps 300/min
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
   const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
 
@@ -116,6 +125,41 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   });
 
   // GET /api/metrics — Prometheus-format metrics
+  // plan M10: silent stalls per subsystem (read-only)
+  router.get('/stalls', requireAuth, requirePermission('read:evidence'), (_req, res) => {
+    res.json({ stalls: detectStalls(db) });
+  });
+
+  // plan S1: operator cockpit — scorecard, guardrails, stalls, gym species, remote workers, model/judgment usage (read-only)
+  router.get('/cockpit', requireAuth, requirePermission('read:evidence'), (_req, res) => {
+    res.json(operatorCockpit(db));
+  });
+
+  // plan W5: knowledge pipeline per source — discoveries, jev relevance, units, KB retrieval, interest profile (read-only)
+  router.get('/knowledge', requireAuth, requirePermission('read:evidence'), (_req, res) => {
+    res.json(knowledgeOverview(db));
+  });
+
+  // plan AR1: forecasters of "this proposal ends verified", scored before the gate decided, against the per-source base rate
+  router.get('/forecasts', requireAuth, requirePermission('read:evidence'), (_req, res) => {
+    res.json({ forecasters: forecastScores(db) });
+  });
+
+  // RX-1 (Phase F): evolution evidence — flags, outcomes per source, loop PRs, genomes/holdouts, gym per tier, Realm Gates (read-only)
+  router.get('/evolution-evidence', requireAuth, requirePermission('manage:config'), (req, res) => {
+    res.json(buildEvolutionEvidence(db, process.env, Date.now(), Number(req.query.days) || 30));
+  });
+
+  // plan S3: the running configuration, read-only; secrets masked by name and value; admins only
+  router.get('/config', requireAuth, requirePermission('manage:config'), (_req, res) => {
+    res.json(runtimeConfigView());
+  });
+
+  // service map: reachability of the endpoints this server is configured to use (env only, no credentials sent)
+  router.get('/services', requireAuth, requirePermission('read:evidence'), async (_req, res, next) => {
+    try { res.json({ services: await serviceMap() }); } catch (error) { next(error); }
+  });
+
   router.get('/metrics', requireAuth, requirePermission('read:evidence'), (_req, res) => {
     const service = new MetricsService(db);
     res.setHeader('Content-Type', 'text/plain');

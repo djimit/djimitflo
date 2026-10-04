@@ -56,7 +56,7 @@ runtime inference, not deployed Commons enrollment or improvement acceptance.
 Operator enrollment uses the existing APIs with a normal authenticated operator
 Bearer JWT: `POST /api/agents` (`manage:config`, required name and description),
 then `POST /api/swarm-v2/social/lures` (`manage:tokens`, body
-`{"paperclip":false,"ttl_ms":86400000}`). Lures issue tokens once for registered
+`{"ttl_ms":86400000}`). Lures issue tokens once for registered
 active/idle agents absent from Commons for more than 20 minutes. Store only the
 matching agent's returned token in the protected poller environment. Never give
 an operator JWT or server signing secret to a poller/runtime. The read models

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { TestGapSourceService, discoverExportGaps, discoverMutationGaps, discoverTestGaps, mutationCheckEnv } from '../services/test-gap-source-service';
+import { TestGapSourceService, discoverExportGaps, discoverMutationGaps, discoverPackageGaps, discoverTestGaps, mutationCheckEnv } from '../services/test-gap-source-service';
 
 let db: Database.Database; let repo: string;
 const body = (n: number, exp = 'export class X {}') => `${exp}\n${'// filler\n'.repeat(n)}`;
@@ -84,4 +84,26 @@ it('N12a: a service no production file imports is dead code: no test lane propos
   expect(discoverTestGaps(repo).map((g) => g.service)).not.toContain('orphan');
   write('packages/server/src/routes/x.ts', "import { orphan } from '../services/orphan';");
   expect(discoverTestGaps(repo).map((g) => g.service)).toContain('orphan');
+});
+
+it('M1: finds untested modules in the other Node workspaces, each with its own test path and package-relative command', () => {
+  write('packages/shared/src/types/codes.ts', body(40, 'export const CODES = {};'));           // colocated layout
+  write('packages/shared/src/index.ts', body(40, 'export const x = 1;'));                     // index: skipped
+  write('packages/agent-catalog/src/parser.ts', body(60, 'export function parse() {}'));      // test/ layout
+  write('packages/agent-catalog/src/db.ts', body(60, 'export class CatalogDB {}'));           // tested below
+  write('packages/agent-catalog/test/db.test.ts', "import { CatalogDB } from '../src/db.js';\n");
+  write('packages/mcp-server/src/goals.ts', body(50, 'export function registerGoalTools() {}')); // src/__tests__ layout
+  const gaps = discoverPackageGaps(repo).map((g) => [g.service, g.testPath]);
+  expect(gaps).toEqual([
+    ['shared/codes', 'packages/shared/src/types/codes.test.ts'],
+    ['mcp-server/goals', 'packages/mcp-server/src/__tests__/goals.test.ts'],
+    ['agent-catalog/parser', 'packages/agent-catalog/test/parser.test.ts'],
+  ]);
+  process.env.TEST_GAP_PACKAGES_ENABLED = 'true'; process.env.TEST_GAP_MAX_PER_DAY = '20'; process.env.TEST_GAP_MAX_IN_FLIGHT = '20';
+  try {
+    new TestGapSourceService(db).run();
+    const d = db.prepare("SELECT title, description FROM self_improvements WHERE evidence_refs_json LIKE '%test-gap:agent-catalog/parser%'").get() as { title: string; description: string };
+    expect(d.title).toBe('Add unit tests for agent-catalog/src/parser.ts');
+    expect(d.description).toContain('from packages/agent-catalog run `npx vitest run test/parser.test.ts`');
+  } finally { delete process.env.TEST_GAP_PACKAGES_ENABLED; delete process.env.TEST_GAP_MAX_PER_DAY; delete process.env.TEST_GAP_MAX_IN_FLIGHT; }
 });

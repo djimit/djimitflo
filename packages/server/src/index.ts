@@ -4,6 +4,7 @@
  */
 
 import express from 'express';
+import { installOutboundGuard } from './utils/outbound-guard';
 import cors from 'cors';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
@@ -50,6 +51,9 @@ import { initAutonomousServices } from './bootstrap/autonomous-services';
 import { DennisAgentService } from './services/dennis-agent-service';
 import { TelegramApiService } from './services/telegram-api-service';
 import { parseTelegramAllowedUsers, parseTelegramUserMap } from './routes/telegram';
+
+// Operator rule (2026-09-29): this server never calls the hosts in OUTBOUND_DENY_HOSTS (the workstation only pulls).
+installOutboundGuard();
 
 type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string; allowedUsers?: number[]; userMap?: Record<string, string> };
 

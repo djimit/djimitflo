@@ -276,6 +276,18 @@ const LOOP_CONTRACTS: LoopContract[] = [
  * Public API: 60 methods → target < 20.
  * Line count: ~2445 → target < 500 (facade only).
  */
+
+/** Y2: the fixed part of every maker assignment; its hash is the 'template' gene of a run's genome (maker-genome.ts). */
+export const MAKER_TEMPLATE_RULES = [
+  '## Rules',
+  '',
+  '- Keep the diff small and local to the finding.',
+  '- Do not merge, push, deploy, edit secrets, or change policy.',
+  '- Install dependencies with `npm ci --legacy-peer-deps` if node_modules is missing; never edit package.json. Lockfile changes are reverted automatically before review.',
+  '- Run relevant deterministic checks before handing off to checker.',
+  '- Checker approval is required before completion.',
+];
+
 export class LoopService {
 
   /**
@@ -1032,7 +1044,12 @@ export class LoopService {
     const outputDir = path.join(this.evidenceRoot, run.id, 'checks', makerLease.id);
     fs.mkdirSync(outputDir, { recursive: true });
 
-    const checks = scripts.map((scriptName) => {
+    // Each deploy mounts a fresh clone without node_modules, so the worktree manager has nothing to link: checks ran without
+    // vitest/eslint (exit 127) unless the maker happened to run `npm ci` itself (prod 2026-09-28: 3 test-gap runs regressed).
+    // Install like the gym does when the worktree has a lockfile but no dependencies.
+    const installFailure = this.installWorktreeDependencies(makerLease.worktree_path, outputDir, timeoutMs);
+
+    const checks: Array<Record<string, unknown>> = scripts.map((scriptName) => {
       const stdoutPath = path.join(outputDir, `${scriptName}.stdout.log`);
       const stderrPath = path.join(outputDir, `${scriptName}.stderr.log`);
       if (!packageScripts.has(scriptName)) {
@@ -1068,6 +1085,7 @@ export class LoopService {
       };
     });
 
+    if (installFailure) checks.unshift(installFailure);
     const failed = checks.some((check) => check.status === 'fail');
     this.updateWorkerLeaseStatus(makerLease.id, failed ? 'failed' : 'completed', {
       deterministic_checks: checks,
@@ -1331,8 +1349,8 @@ export class LoopService {
     // metadata.improvement_id (see autonomous-goal-generator.ts).
     const improvementId = typeof goal.metadata.improvement_id === 'string' ? goal.metadata.improvement_id : null;
     const improvement = improvementId
-      ? this.db.prepare('SELECT description, rationale, type FROM self_improvements WHERE id = ?').get(improvementId) as
-          { description?: string; rationale?: string; type?: string } | undefined
+      ? this.db.prepare("SELECT description, rationale, type, json_extract(grounding_json, '$.artifactPath') AS artifact FROM self_improvements WHERE id = ?").get(improvementId) as
+          { description?: string; rationale?: string; type?: string; artifact?: string | null } | undefined
       : undefined;
 
     const severity: LoopFinding['severity'] =
@@ -1350,7 +1368,9 @@ export class LoopService {
       id: randomUUID(),
       type: 'self_improvement_objective',
       severity,
-      file: '(repository-wide objective; no single target file)',
+      // EV2 (prod 2026-10-03): every oracle goal said 'repository-wide objective' although its proposal names the file;
+      // with a 'doc-drift' header that was enough for makers to edit README/CONTRIBUTING instead of the test
+      file: improvement?.artifact || '(repository-wide objective; no single target file)',
       message: objective,
       evidence: evidence || 'No additional evidence beyond the goal objective was available.',
       suggested_fix: goal.acceptance_criteria.length
@@ -1850,6 +1870,20 @@ export class LoopService {
     'OPENCODE_GEMINI_API_KEY', 'OPENCODE_MOONSHOT_API_KEY', 'OPENCODE_NVIDIA_API_KEY', 'OPENCODE_OPENROUTER_API_KEY', 'OPENCODE_REQUESTY_API_KEY',
   ];
 
+  /** `npm ci` in a worktree that has a lockfile but no node_modules; returns a failed 'install' check, or null. */
+  private installWorktreeDependencies(worktree: string, outputDir: string, timeoutMs: number): Record<string, unknown> | null {
+    if (!fs.existsSync(path.join(worktree, 'package-lock.json')) || fs.existsSync(path.join(worktree, 'node_modules'))) return null;
+    const result = spawnSync('npm', ['ci', '--legacy-peer-deps', '--no-audit', '--no-fund'], {
+      cwd: worktree, encoding: 'utf8', timeout: Math.max(timeoutMs, 600_000), env: this.buildRuntimeEnv(), maxBuffer: 5 * 1024 * 1024,
+    });
+    if (result.status === 0) return null;
+    const stdoutPath = path.join(outputDir, 'install.stdout.log');
+    const stderrPath = path.join(outputDir, 'install.stderr.log');
+    fs.writeFileSync(stdoutPath, result.stdout || '', 'utf8');
+    fs.writeFileSync(stderrPath, result.stderr || result.error?.message || '', 'utf8');
+    return { name: 'install', status: 'fail', exit_status: result.status ?? null, timed_out: Boolean(result.error?.message.includes('ETIMEDOUT')), stdout_path: stdoutPath, stderr_path: stderrPath };
+  }
+
   public buildRuntimeEnv(): NodeJS.ProcessEnv {
     const env: NodeJS.ProcessEnv = {
       RUNTIME_SANDBOX: '1',
@@ -2217,12 +2251,13 @@ export class LoopService {
         { examples: extra.examples, rule_ids: extra.rules.map((r) => r.id) });
     }
     const content = [
-      `# ${run.loop_name} Assignment`,
+      `# ${finding.metadata?.objective_mode ? 'Objective' : run.loop_name} Assignment`,
       '',
       `Loop run: ${run.id}`,
       `Runtime target: ${runtime}`,
       `Finding: ${finding.id}`,
       `File: ${finding.file}${finding.line ? `:${finding.line}` : ''}`,
+      ...(finding.metadata?.objective_mode && !finding.file.startsWith('(') ? [`Change only this file: ${finding.file}. Do not edit README.md, CONTRIBUTING.md or any other file.`] : []),
       '',
       '## Finding',
       '',
@@ -2241,13 +2276,7 @@ export class LoopService {
       advisoryContext.text || 'No matching observed episodes were retrieved.',
       '',
       ...assignmentContextMarkdown(extra),
-      '## Rules',
-      '',
-      '- Keep the diff small and local to the finding.',
-      '- Do not merge, push, deploy, edit secrets, or change policy.',
-      '- Install dependencies with `npm ci --legacy-peer-deps` if node_modules is missing; never edit package.json. Lockfile changes are reverted automatically before review.',
-      '- Run relevant deterministic checks before handing off to checker.',
-      '- Checker approval is required before completion.',
+      ...MAKER_TEMPLATE_RULES,
       '',
       // Nested-spawn control block (P1). Only injected when this lease is itself
       // permitted to spawn sub-agents (operator-armed, depth within budget). This

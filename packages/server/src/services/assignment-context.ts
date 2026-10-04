@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 
 /**
@@ -14,7 +14,7 @@ import type { Database } from 'better-sqlite3';
  *    (reads are logged as `loop-maker:<run id>`). Fit rules (> 0) survive past the 14-day trial and come first; a rule
  *    with fitness <= -2 is never shown again; the last slot always goes to the newest untried rule (exploration).
  */
-export interface AssignmentContext { examples: string[]; rules: Array<{ id: string; text: string }> }
+export interface AssignmentContext { examples: string[]; rules: Array<{ id: string; text: string; hash: string }> }
 
 const RULE_MAX_AGE_DAYS = 14;
 
@@ -35,7 +35,7 @@ export function assignmentContext(db: Database, run: { id: string; goal_id: stri
     }
     if (env.LOOP_MEMORY_RULES_ENABLED === 'true') {
       const since = new Date(Date.now() - RULE_MAX_AGE_DAYS * 86_400_000).toISOString();
-      const rows = db.prepare(`SELECT m.id, m.content, m.created_at,
+      const rows = db.prepare(`SELECT m.id, m.content, m.content_hash, m.created_at,
           COALESCE(SUM(CASE s.status WHEN 'verified' THEN 1 WHEN 'regressed' THEN -1 ELSE 0 END), 0) AS fitness, COUNT(a.id) AS reads
         FROM memory_candidates m
         LEFT JOIN memory_access_log a ON a.candidate_id = m.id
@@ -45,12 +45,15 @@ export function assignmentContext(db: Database, run: { id: string; goal_id: stri
         WHERE m.status = 'promoted' AND m.memory_type = 'engineering_rule'
         GROUP BY m.id
         HAVING fitness > 0 OR (m.created_at >= ? AND fitness > -2)
-        ORDER BY fitness DESC, m.created_at DESC LIMIT 40`).all(since) as Array<{ id: string; content: string; created_at: string; fitness: number; reads: number }>;
+        ORDER BY fitness DESC, m.created_at DESC LIMIT 40`).all(since) as Array<{ id: string; content: string; content_hash: string | null; created_at: string; fitness: number; reads: number }>;
+      // P1 (artifact trust): a rule is sealed with the sha256 of its content on first use (99 of 99 prod rules had no hash,
+      // 28-09) and refused afterwards if the content no longer matches — a changed rule needs a new, reviewed row
+      const sealed = rows.filter((r) => ruleIntact(db, r, run.id));
       const seen = new Set<string>();
-      const distinct = rows.filter((r) => { const t = r.content.replace(/\s+/g, ' ').trim(); return seen.has(t) ? false : (seen.add(t), true); });
+      const distinct = sealed.filter((r) => { const t = r.content.replace(/\s+/g, ' ').trim(); return seen.has(t) ? false : (seen.add(t), true); });
       const untried = distinct.filter((r) => r.reads === 0).sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
       const picked = distinct.filter((r) => r !== untried).slice(0, untried ? 2 : 3).concat(untried ? [untried] : []);
-      out.rules = picked.map((r) => ({ id: r.id, text: r.content.replace(/\s+/g, ' ').trim().slice(0, 300) }));
+      out.rules = picked.map((r) => ({ id: r.id, text: r.content.replace(/\s+/g, ' ').trim().slice(0, 300), hash: sha256(r.content) }));
       const log = db.prepare('INSERT INTO memory_access_log (id, candidate_id, agent_id, accessed_at) VALUES (?, ?, ?, ?)');
       for (const r of out.rules) log.run(randomUUID(), r.id, agentId, new Date().toISOString());
     }
@@ -58,9 +61,27 @@ export function assignmentContext(db: Database, run: { id: string; goal_id: stri
   return out;
 }
 
+const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
+
+/** P1: seal an unsealed rule (trust on first use); refuse and record a rule whose content no longer matches its seal. */
+export function ruleIntact(db: Database, rule: { id: string; content: string; content_hash: string | null }, runId: string): boolean {
+  const actual = sha256(rule.content);
+  if (!rule.content_hash) {
+    db.prepare('UPDATE memory_candidates SET content_hash = ? WHERE id = ? AND content_hash IS NULL').run(actual, rule.id);
+    return true;
+  }
+  if (rule.content_hash === actual) return true;
+  try {
+    db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at)
+      VALUES (?, 'artifact_integrity', 'memory_candidate', ?, ?, 'enforce', 'no', ?, ?)`)
+      .run(randomUUID(), rule.id, actual.slice(0, 16), `content changed since sealed (sealed ${rule.content_hash.slice(0, 12)}, now ${actual.slice(0, 12)}); refused for run ${runId}`, new Date().toISOString());
+  } catch { /* recording must not break an assignment */ }
+  return false;
+}
+
 export function assignmentContextMarkdown(ctx: AssignmentContext): string[] {
   return [
     ...(ctx.examples.length ? ['## Proven Examples', '', 'Accepted, loop-written tests from this lane. Follow their structure and style:', '', ...ctx.examples.map((e) => `- ${e}`), ''] : []),
-    ...(ctx.rules.length ? ['## Engineering Rules (recent, from reviewed memory)', '', ...ctx.rules.map((r) => `- ${r.text}`), ''] : []),
+    ...(ctx.rules.length ? ['## Engineering Rules (recent, from reviewed memory)', '', ...ctx.rules.map((r) => `- ${r.text} (rule ${r.id.slice(0, 8)}, sha256:${r.hash.slice(0, 12)})`), ''] : []),
   ];
 }
