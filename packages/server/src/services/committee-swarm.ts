@@ -1,5 +1,7 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { kbContext } from './kb-corpus';
+import { forecastScores } from './forecast-scoring';
 
 /**
  * AR-W (operator 04-10): committee swarms on the workstation. For every new proposal a committee of member genomes
@@ -15,13 +17,21 @@ import type { Database } from 'better-sqlite3';
 export const committeeEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.COMMITTEE_SWARM_ENABLED === 'true';
 const maxPerDay = (env: NodeJS.ProcessEnv = process.env) => Number(env.COMMITTEE_MAX_PER_DAY) || 40;
 
-/** First generation: the Commons personas, each with its own lens on "will this be verified?". */
+/**
+ * First generation: the Commons personas. `knowledge` is the member's knowledge RECIPE — which of Djimitflo's resources it
+ * reads before forecasting (AR-W3): history (the lane's record), skills (proven verified examples), memory (promoted
+ * engineering rules), experts (Frontier Experts technique-card claims), kb (DjimitKBWiki pages, embedding retrieval),
+ * discoveries (fleet discoveries judged relevant), none (the question only). Recipes are genes: evolution swaps them.
+ */
+export const RECIPES = ['history', 'skills', 'memory', 'experts', 'kb', 'discoveries', 'none'] as const;
 export const SEED_MEMBERS: Array<{ id: string; persona: string; knowledge: string; lines: string[] }> = [
   { id: 'cm-archivist', persona: 'Archivist', knowledge: 'history', lines: ['Weigh what recent outcomes of the same lane say before anything else.'] },
-  { id: 'cm-engineer', persona: 'Engineer', knowledge: 'code', lines: ['Judge whether the change is small, concrete and confined to one file in this repository.'] },
-  { id: 'cm-methodologist', persona: 'Methodologist', knowledge: 'evidence', lines: ['Ask whether one command can prove success; vague verification means a low probability.'] },
-  { id: 'cm-oracle', persona: 'Oracle', knowledge: 'base_rate', lines: ['Start from the lane base rate and move away from it only on concrete evidence.'] },
-  { id: 'cm-skeptic', persona: 'Skeptic', knowledge: 'failures', lines: ['Look for the most likely way this fails: wrong target, flaky test, scope creep.'] },
+  { id: 'cm-engineer', persona: 'Engineer', knowledge: 'skills', lines: ['Judge whether the change is small, concrete and confined to one file in this repository.'] },
+  { id: 'cm-methodologist', persona: 'Methodologist', knowledge: 'memory', lines: ['Ask whether one command can prove success; vague verification means a low probability.'] },
+  { id: 'cm-oracle', persona: 'Oracle', knowledge: 'none', lines: ['Start from the lane base rate and move away from it only on concrete evidence.'] },
+  { id: 'cm-skeptic', persona: 'Skeptic', knowledge: 'experts', lines: ['Look for the most likely way this fails: wrong target, flaky test, scope creep.'] },
+  { id: 'cm-scholar', persona: 'Scholar', knowledge: 'kb', lines: ['Use what the knowledge base says about this area; ignore it when it is off-topic.'] },
+  { id: 'cm-scout', persona: 'Scout', knowledge: 'discoveries', lines: ['Check whether recent research or tools change how hard this is.'] },
 ];
 
 export function seedCommittee(db: Database, now = new Date().toISOString()): void {
@@ -59,16 +69,44 @@ export function enqueueCommittee(db: Database, p: ProposalLike, now = new Date()
   return id;
 }
 
-/** Workstation pull: the oldest open job (a claim older than 1 h is offered again) with the active members. */
-export function claimCommittee(db: Database, host: string, now = new Date()): { jobId: string; question: unknown; members: CommitteeMember[] } | null {
+const words = (text: string): string[] => [...new Set((text.toLowerCase().match(/[a-z][a-z-]{4,}/g) ?? []).filter((w) => !['tests', 'should', 'which', 'their', 'there', 'about', 'services', 'packages', 'server'].includes(w)))].slice(0, 8);
+
+/** The context a member's recipe gives it (no outcome information: KB, cards, rules, examples and discoveries only). */
+export async function memberContext(db: Database, recipe: string, question: { proposal?: { title?: string; description?: string | null; source?: string | null } }, subjectId: string): Promise<string> {
+  const p = question.proposal ?? {}; const text = `${p.title ?? ''}\n${p.description ?? ''}`;
+  const all = <T>(sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } };
+  const cap = (lines: string[]) => lines.join('\n').slice(0, 1500);
+  switch (recipe) {
+    case 'kb': return (await kbContext(db, { type: 'committee', id: subjectId }, text, 3).catch(() => null)) ?? '';
+    case 'experts': {
+      const ws = words(text); if (!ws.length) return '';
+      const rows = all<{ subject: string; relation: string; object: string; confidence: number }>(`SELECT subject, relation, object, confidence FROM expert_claims
+        WHERE ${ws.map(() => '(lower(subject) LIKE ? OR lower(object) LIKE ?)').join(' OR ')} ORDER BY confidence DESC LIMIT 5`, ...ws.flatMap((w) => [`%${w}%`, `%${w}%`]));
+      return cap(rows.map((r) => `- claim: ${r.subject} ${r.relation} ${r.object} (confidence ${Number(r.confidence).toFixed(2)})`));
+    }
+    case 'memory': return cap(all<{ title: string; content: string }>(`SELECT title, content FROM memory_candidates WHERE status = 'promoted' AND memory_type = 'engineering_rule'
+      ORDER BY updated_at DESC LIMIT 3`).map((r) => `- rule: ${r.title}: ${r.content.replace(/\s+/g, ' ').slice(0, 300)}`));
+    case 'skills': return cap(all<{ title: string }>(`SELECT title FROM self_improvements WHERE source = ? AND status IN ('verified','applied') AND id <> ?
+      ORDER BY updated_at DESC LIMIT 5`, p.source ?? '', subjectId).map((r) => `- verified example: ${r.title}`));
+    case 'discoveries': return cap(all<{ t: string }>(`SELECT i.canonical_name AS t FROM judgments j JOIN expert_identities i ON i.id = j.subject_id
+      WHERE j.judgment = 'discovery_relevance' AND j.decision = 'yes' ORDER BY j.created_at DESC LIMIT 5`).map((r) => `- relevant discovery: ${r.t}`));
+    default: return ''; // history (already in the frozen question) and none
+  }
+}
+
+/** Workstation pull: the oldest open job (a claim older than 1 h is offered again) with the active members and their context. */
+export async function claimCommittee(db: Database, host: string, now = new Date()): Promise<{ jobId: string; question: unknown; members: Array<CommitteeMember & { context: string }> } | null> {
   if (!committeeEnabled()) return null;
   const stale = new Date(now.getTime() - 3_600_000).toISOString();
   const week = new Date(now.getTime() - 7 * 86_400_000).toISOString();
-  const job = db.prepare(`SELECT id, question_json FROM committee_jobs WHERE created_at >= ? AND (status = 'queued' OR (status = 'claimed' AND claimed_at < ?))
-    ORDER BY created_at LIMIT 1`).get(week, stale) as { id: string; question_json: string } | undefined;
+  const job = db.prepare(`SELECT id, subject_id, question_json FROM committee_jobs WHERE created_at >= ? AND (status = 'queued' OR (status = 'claimed' AND claimed_at < ?))
+    ORDER BY created_at LIMIT 1`).get(week, stale) as { id: string; subject_id: string; question_json: string } | undefined;
   if (!job) return null;
   db.prepare("UPDATE committee_jobs SET status = 'claimed', host = ?, claimed_at = ? WHERE id = ?").run(host, now.toISOString(), job.id);
-  return { jobId: job.id, question: JSON.parse(job.question_json), members: activeMembers(db) };
+  const question = JSON.parse(job.question_json);
+  const members = [];
+  for (const m of activeMembers(db)) members.push({ ...m, context: await memberContext(db, m.knowledge, question, job.subject_id) });
+  return { jobId: job.id, question, members };
 }
 
 /** One forecast per member as a `forecast:committee:<member>` judgment, stamped with the job's as_of. */
@@ -89,6 +127,81 @@ export function recordCommittee(db: Database, jobId: string, host: string, answe
       JSON.stringify({ p, as_of: job.as_of }), typeof a.model === 'string' ? a.model.slice(0, 80) : `remote:${host}`, now.toISOString());
     n++;
   }
+  // AR-W3: the committee's own forecast — members weighted by their measured skill, so the committee learns whom to trust
+  const votes = db.prepare("SELECT judgment, answers_json FROM judgments WHERE state_hash = ? AND judgment LIKE 'forecast:committee:%'").all(jobId) as Array<{ judgment: string; answers_json: string }>;
+  if (votes.length) {
+    const w = memberWeights(db);
+    let num = 0; let den = 0;
+    for (const v of votes) { const m = v.judgment.slice('forecast:committee:'.length); const wt = w.get(m) ?? 1; num += wt * Number(JSON.parse(v.answers_json).p); den += wt; }
+    if (den > 0) ins.run(randomUUID(), 'forecast:committee', job.subject_id, jobId, num / den >= 0.5 ? 'yes' : 'no', `weighted mean of ${votes.length} members`,
+      JSON.stringify({ p: +(num / den).toFixed(4), as_of: job.as_of }), 'committee', now.toISOString());
+  }
   db.prepare("UPDATE committee_jobs SET status = 'done', finished_at = ? WHERE id = ?").run(now.toISOString(), jobId);
   return n;
+}
+
+/** Skill per member from real outcomes (Brier skill vs the base rate). Below 10 resolved forecasts a member weighs 1. */
+export function memberWeights(db: Database): Map<string, number> {
+  const w = new Map<string, number>();
+  for (const s of forecastScores(db)) {
+    if (!s.forecaster.startsWith('forecast:committee:')) continue;
+    w.set(s.forecaster.slice('forecast:committee:'.length), s.n < 10 ? 1 : Math.max(0.05, 1 + 2 * s.skill));
+  }
+  return w;
+}
+
+/**
+ * AR-W3 — survival of the fittest, gated by statistics. Once a day:
+ *  - extinction: a member with >= EXTINCT_MIN_N resolved forecasts whose skill is below 0 (worse than the base rate) and
+ *    below the best member's is retired (reversible: status only);
+ *  - reproduction: while the committee has fewer than COMMITTEE_MAX_MEMBERS, the best member with >= 5 resolved forecasts
+ *    gets one child with exactly one gene changed — its knowledge recipe (to the least-used one, for diversity) or one
+ *    calibration line. Children forecast from the next question on and are scored like everyone else.
+ */
+export const EXTINCT_MIN_N = 30;
+const LINE_POOL = [
+  'Before answering, name the single most likely failure and lower p if it applies.',
+  'If the proposal names one file and one command, move toward the lane rate of verified examples.',
+  'Distrust proposals that touch several files or need a human to judge success.',
+  'Prefer the lane record over your intuition when they disagree.',
+];
+export function evolveCommittee(db: Database, now = new Date(), env: NodeJS.ProcessEnv = process.env): { retired: string[]; born: string | null } {
+  const out = { retired: [] as string[], born: null as string | null };
+  if (!committeeEnabled(env)) return out;
+  const today = now.toISOString().slice(0, 10);
+  if (db.prepare("SELECT 1 FROM committee_genomes WHERE origin = 'mutation' AND created_at >= ? LIMIT 1").get(today)) return out; // once a day
+  const scores = forecastScores(db).filter((s) => s.forecaster.startsWith('forecast:committee:'))
+    .map((s) => ({ id: s.forecaster.slice('forecast:committee:'.length), n: s.n, skill: s.skill }));
+  const active = activeMembers(db);
+  const scored = scores.filter((s) => active.some((m) => m.id === s.id));
+  const best = scored.filter((s) => s.n >= 5).sort((a, b) => b.skill - a.skill)[0];
+  for (const s of scored) {
+    if (s.n >= EXTINCT_MIN_N && s.skill < 0 && best && s.id !== best.id && s.skill < best.skill && active.length - out.retired.length > 3) {
+      db.prepare("UPDATE committee_genomes SET status = 'retired', updated_at = ? WHERE id = ?").run(now.toISOString(), s.id);
+      out.retired.push(s.id);
+    }
+  }
+  const max = Number(env.COMMITTEE_MAX_MEMBERS) || 9;
+  if (best && active.length - out.retired.length < max) {
+    const parent = active.find((m) => m.id === best.id)!;
+    const used = new Map<string, number>(RECIPES.map((r) => [r, 0]));
+    for (const m of activeMembers(db)) used.set(m.knowledge, (used.get(m.knowledge) ?? 0) + 1);
+    const swapRecipe = Number(today.slice(-2)) % 2 === 0;
+    const recipe = swapRecipe ? [...used.entries()].filter(([r]) => r !== parent.knowledge).sort((a, b) => a[1] - b[1])[0][0] : parent.knowledge;
+    const extra = LINE_POOL.find((l) => !parent.lines.includes(l));
+    const lines = swapRecipe || !extra ? parent.lines : [...parent.lines, extra];
+    const id = `cm-${parent.persona.toLowerCase()}-${randomUUID().slice(0, 6)}`;
+    db.prepare(`INSERT INTO committee_genomes (id, parent_id, persona, knowledge, lines_json, status, origin, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'active', 'mutation', ?, ?)`).run(id, parent.id, parent.persona, recipe, JSON.stringify(lines), now.toISOString(), now.toISOString());
+    out.born = id;
+  }
+  return out;
+}
+
+/** Hourly check; evolution itself runs at most once a day. */
+export function startCommitteeEvolution(db: Database, intervalMs = 3_600_000): (() => void) | null {
+  if (!committeeEnabled()) return null;
+  const tick = () => { try { const r = evolveCommittee(db); if (r.born || r.retired.length) console.log(`🧠 committee: born ${r.born ?? '-'}, retired ${r.retired.join(',') || '-'}`); } catch (e) { console.warn('committee evolution failed:', e instanceof Error ? e.message : String(e)); } };
+  const t = setInterval(tick, intervalMs); t.unref?.();
+  return () => clearInterval(t);
 }
