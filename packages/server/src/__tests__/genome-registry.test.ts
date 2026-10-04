@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { BASELINE_GENOME, HOLDOUT_SIZE, ensureBaseline, holdout, mutantHoldout, mutantHoldoutKeys, nextTrialAttempt } from '../services/genome-registry';
+import { BASELINE_GENOME, HOLDOUT_SIZE, ensureBaseline, holdout, mutantHoldout, mutantHoldoutKeys, nextTrialAttempt, strategyGenomeFor } from '../services/genome-registry';
 import { RemoteGymService } from '../services/remote-gym-service';
 
 const TASK = (commit: string) => ({ commit, source: 'packages/server/src/services/x.ts', tests: ['packages/server/src/__tests__/x.test.ts'], sourceLines: 5 });
@@ -103,4 +103,14 @@ it('Y3: with dream evolution on, the remote gym serves trial work with the genom
   vi.stubEnv('DREAM_EVOLUTION_ENABLED', 'false'); // off: normal replays, no genome
   const normal = svc.claim('workstation', ['atomic@llama-router']) as { genome?: unknown };
   expect(normal.genome).toBeUndefined();
+});
+
+it('D2: a production maker of the evolving species is attributed to the active genome (else baseline); other species have none', () => {
+  ensureBaseline(db);
+  expect(strategyGenomeFor(db, 'remote', 'workstation/atomic@llama-router')?.id).toBe(BASELINE_GENOME);
+  expect(strategyGenomeFor(db, 'atomic', 'llama-router')?.id).toBe(BASELINE_GENOME);
+  expect(strategyGenomeFor(db, 'opencode', null)).toBeNull();
+  mutant('g1', ['Run the target test first.']);
+  db.prepare("UPDATE maker_genomes SET status = 'active', updated_at = datetime('now') WHERE id = 'g1'").run();
+  expect(strategyGenomeFor(db, 'remote', 'workstation/atomic@llama-router')).toMatchObject({ id: 'g1', lines: ['Run the target test first.'] });
 });

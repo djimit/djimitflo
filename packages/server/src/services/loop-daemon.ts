@@ -14,6 +14,7 @@ import { SelfImprovementService } from './self-improvement-service';
 import { LoopDraftPrService } from './loop-draft-pr-service';
 import { evolveEligible, evolveSpecies, selectEvolveWinner } from './evolve-selection';
 import { runGenome } from './maker-genome';
+import { strategyGenomeFor } from './genome-registry';
 import { banditSpecies, chooseSpecies, speciesKey } from './runtime-bandit';
 import { recordFitnessShadow } from './fitness-view';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
@@ -524,6 +525,18 @@ export class LoopDaemon {
         }
       }
 
+      // D2: attribute the maker to its strategy genome (lease stamp → outcomes, merge survival); GENOME_APPLY_MODE=shadow logs
+      // what an active genome would inject. Injecting is a separate, operator-owned flag (not built here).
+      if (!makerAlreadyDone) try {
+        const lease = this.db.prepare('SELECT runtime, json_extract(metadata, \'$.model\') AS model FROM worker_leases WHERE id = ?').get(makerLease.id) as { runtime: string; model: string | null } | undefined;
+        const strategy = lease ? strategyGenomeFor(this.db, lease.runtime, lease.model) : null;
+        if (strategy) {
+          this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.genome_id', ?) WHERE id = ?").run(strategy.id, makerLease.id);
+          if (process.env.GENOME_APPLY_MODE === 'shadow' && strategy.lines.length) new LoopEventService(this.db).recordEvent(run.id, 'genome_apply_shadow', 'info',
+            `Genome ${strategy.id} would add ${strategy.lines.length} strategy line(s) to this maker`, { genome_id: strategy.id, lines: strategy.lines, maker_lease_id: makerLease.id });
+        }
+      } catch { /* attribution is best-effort */ }
+
       // 6. Execute the maker (runs the runtime — codex/opencode/pi).
       const mutationLane = Object.keys(mutationCheckEnv(this.db, goal.id)).length > 0;
       const makerTimeout = daemonMakerTimeoutMs(mutationLane);
@@ -706,7 +719,7 @@ export class LoopDaemon {
       // skill-evolution engine and a later runtime bandit select on. Before this, skill_outcomes only got manual API writes.
       try {
         const maker = this.db.prepare('SELECT id, runtime, metadata FROM worker_leases WHERE id = ?').get(activeMakerLease.id) as { id: string; runtime: string; metadata: string } | undefined;
-        const meta = maker ? JSON.parse(maker.metadata || '{}') as { model?: unknown; runtime_usage?: { total_tokens?: unknown } } : {};
+        const meta = maker ? JSON.parse(maker.metadata || '{}') as { model?: unknown; genome_id?: unknown; runtime_usage?: { total_tokens?: unknown } } : {};
         const skills = new SkillEvolutionEngine(this.db); // ensures skill_outcomes exists
         const skillId = `loop-maker:${loopName}:${activeMakerLease.runtime}`;
         // Y2: the strategy genome this maker ran with (template + examples + sealed rules), on the lease and the outcome
@@ -721,7 +734,7 @@ export class LoopDaemon {
           taskId: run.id,
           agentId: activeMakerLease.id,
           ...(typeof meta.model === 'string' ? { model: meta.model } : {}),
-          evidenceRefs: [`loop_run:${run.id}`, `genome:${genome.id}`, ...verification.gates.filter(g => g.status !== 'pass').map(g => `gate:${g.name}:${g.status}`)],
+          evidenceRefs: [`loop_run:${run.id}`, `genome:${genome.id}`, ...(typeof meta.genome_id === 'string' ? [`strategy_genome:${meta.genome_id}`] : []), ...verification.gates.filter(g => g.status !== 'pass').map(g => `gate:${g.name}:${g.status}`)],
         });
       } catch { /* best-effort learning */ }
 
