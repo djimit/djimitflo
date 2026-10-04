@@ -7,6 +7,7 @@
  */
 
 import { Router } from 'express';
+import { WebSocketEventType } from '@djimitflo/shared';
 import type { Database } from 'better-sqlite3';
 import { createError } from '../middleware/error-handler';
 import type { AuthMiddleware } from '../middleware/auth';
@@ -80,10 +81,11 @@ function mapCsSkillSwarmHarnessError(error: unknown): unknown {
   return error;
 }
 
-function emitProofRunUpdated(wsService: WebSocketService | undefined, summary: ProofRunSummary) {
+/** UX-1: the enum value ('proof_run.updated') — the literal 'PROOF_RUN_UPDATED' never matched a dashboard subscription. */
+export function emitProofRunUpdated(wsService: WebSocketService | undefined, summary: ProofRunSummary) {
   if (!wsService) return;
   wsService.broadcastToAuthenticated({
-    type: 'PROOF_RUN_UPDATED' as any,
+    type: WebSocketEventType.PROOF_RUN_UPDATED,
     payload: { id: summary.id, status: summary.status, passed: summary.passed, rollback_safe: summary.rollback_safe, runtime: summary.runtime },
     timestamp: new Date().toISOString(),
   } as any);
