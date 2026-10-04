@@ -1,4 +1,5 @@
 import type { Database } from 'better-sqlite3';
+import { arenaGateEnabled, fleetSourceGate } from './committee-swarm';
 import { FrontierExpertRegistryService } from './frontier-expert-registry-service';
 import { ExpertEvidenceEnrichmentService } from './expert-evidence-enrichment-service';
 import type { ArxivPaper } from './knowledge-adapters/arxiv-adapter';
@@ -50,6 +51,9 @@ export class ExpertSourceUnitsService {
     if (!id || !title) return 'invalid';
     const ref = kind === 'paper' ? `arxiv:${id}` : `github:${id}`;
     if (this.knownRefs().has(ref)) return 'known';
+    // AR-W6: survival of the fittest for fleet sources — a source whose discoveries are never relevant is not processed further
+    const source = str(event.agent, 80);
+    if (arenaGateEnabled() && source && !fleetSourceGate(this.db, source).allowed) return 'irrelevant';
     const note = str(event.note ?? event.summary, 1000);
     const categories = Array.isArray(event.categories) ? event.categories.filter((c): c is string => typeof c === 'string').slice(0, 10) : [];
     const capabilities = this.enrichment.capabilitiesFor({ arxiv_id: id, url: '', title, summary: note, authors: [], categories, primary_category: categories[0] ?? null, published: null });
