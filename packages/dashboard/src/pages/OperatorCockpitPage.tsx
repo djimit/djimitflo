@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Activity, RefreshCw } from 'lucide-react';
 import { api, type OperatorCockpit, type ServiceStatus } from '../lib/api';
 
@@ -47,6 +48,7 @@ export function OperatorCockpitPage() {
 
       {data && (
         <>
+          {data.needs_you && <NeedsYou n={data.needs_you} />}
           <section aria-labelledby="guardrails">
             <h2 id="guardrails" className="text-lg font-semibold mb-2">Guardrails</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -116,9 +118,9 @@ export function OperatorCockpitPage() {
               <h2 id="gym" className="text-lg font-semibold mb-2">Gym species</h2>
               {data.gym.length === 0 ? <p className="text-sm text-foreground-secondary">No gym outcomes yet.</p> : (
                 <table className="w-full text-sm">
-                  <thead><tr className="text-left text-foreground-tertiary"><th>Species</th><th>Outcomes</th><th>Success</th><th>Avg s</th><th>Avg tokens</th><th>Last</th></tr></thead>
+                  <thead><tr className="text-left text-foreground-tertiary"><th>Species</th><th>State</th><th>Outcomes</th><th>Success</th><th>Avg s</th><th>Avg tokens</th><th>Last</th></tr></thead>
                   <tbody>{data.gym.map((g) => (
-                    <tr key={g.species} className="border-t border-border"><td>{g.species}</td><td>{g.outcomes}</td><td>{g.success_pct}%</td><td>{fmt(g.avg_seconds)}</td><td>{fmt(g.avg_tokens)}</td><td>{since(g.last)}</td></tr>
+                    <tr key={g.species} className="border-t border-border"><td>{g.species}</td><td>{g.benched ? <span className="text-status-error" title="Circuit breaker: 3+ infra discards; the species takes no gym work until the cool-down probe succeeds">benched</span> : <span className="text-status-completed">active</span>}</td><td>{g.outcomes}</td><td>{g.success_pct}%</td><td>{fmt(g.avg_seconds)}</td><td>{fmt(g.avg_tokens)}</td><td>{since(g.last)}</td></tr>
                   ))}</tbody>
                 </table>
               )}
@@ -134,6 +136,18 @@ export function OperatorCockpitPage() {
                 </table>
               )}
             </div>
+          </section>
+
+          <section aria-labelledby="genomes">
+            <h2 id="genomes" className="text-lg font-semibold mb-2">Strategy genomes on real makers (30 d)</h2>
+            {!data.genomes?.length ? <p className="text-sm text-foreground-secondary">No real-maker outcome carries a genome yet.</p> : (
+              <table className="w-full text-sm">
+                <thead><tr className="text-left text-foreground-tertiary"><th>Genome</th><th>Maker skill</th><th>Outcomes (n)</th><th>Wins</th><th>Win rate</th></tr></thead>
+                <tbody>{data.genomes.map((g) => (
+                  <tr key={`${g.genome}:${g.skill_id}`} className="border-t border-border"><td>{g.genome}</td><td>{g.skill_id}</td><td>{g.outcomes}</td><td>{g.wins}</td><td>{g.win_pct}%</td></tr>
+                ))}</tbody>
+              </table>
+            )}
           </section>
 
           <section aria-labelledby="usage" className="grid md:grid-cols-2 gap-6">
@@ -159,5 +173,24 @@ export function OperatorCockpitPage() {
         </>
       )}
     </div>
+  );
+}
+
+/** W3: what waits for the operator, each count linking to its /decisions section. */
+export function NeedsYou({ n }: { n: NonNullable<OperatorCockpit['needs_you']> }) {
+  const items = [
+    { label: 'approvals', count: n.approvals, href: '/decisions#approvals' },
+    { label: 'requeue candidates', count: n.requeue, href: '/decisions' },
+    { label: 'pre-screen labels', count: n.labels, href: '/decisions' },
+    { label: 'memory reviews', count: n.memory_review, href: '/decisions' },
+  ];
+  const total = items.reduce((sum, item) => sum + item.count, 0);
+  return (
+    <section aria-labelledby="needs-you" className={`rounded-lg border p-4 ${total ? 'border-status-paused/40 bg-status-paused/10' : 'border-border'}`}>
+      <h2 id="needs-you" className="text-lg font-semibold mb-2">{total ? `Needs you (${total})` : 'Nothing needs you right now'}</h2>
+      {total > 0 && <ul className="flex flex-wrap gap-4 text-sm">{items.filter((item) => item.count).map((item) => (
+        <li key={item.label}><Link to={item.href} className="underline">{item.count} {item.label}</Link></li>
+      ))}</ul>}
+    </section>
   );
 }

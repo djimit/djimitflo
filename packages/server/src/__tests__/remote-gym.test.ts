@@ -110,3 +110,14 @@ it('maker routes: a host-scoped token claims its own queued job and returns a pa
   await request(app).post(`/gym-worker/maker/${id}/result`).set('X-Gym-Host', 'workstation').set('X-Gym-Worker-Token', token).send({ status: 'done', patch: 'diff', reason: 'ok' }).expect(200);
   expect(q.get(id)).toMatchObject({ status: 'done', patch: 'diff' });
 });
+
+it('a task that was infra-discarded twice for a species is not offered to it again (prod 29-09: 9b2fa2bf benched the species)', () => {
+  const svc = new RemoteGymService(db, () => [TASK('stuck'), TASK('next')]);
+  for (const i of [1, 2]) {
+    const claim = svc.claim('workstation', ['atomic@llama-router']);
+    expect(claim).toMatchObject({ task: { commit: 'stuck' } }); // the first infra discard keeps the task open once
+    svc.record((claim as { runId: string }).runId, 'workstation', { status: 'discarded', reason: `infra: maker crashed or timed out without a change ${i}` });
+  }
+  expect(svc.claim('workstation', ['atomic@llama-router'])).toMatchObject({ task: { commit: 'next' } });
+  expect(svc.claim('workstation-2060', ['atomic@qwen36-2060'])).toMatchObject({ task: { commit: 'stuck' } }); // per species
+});

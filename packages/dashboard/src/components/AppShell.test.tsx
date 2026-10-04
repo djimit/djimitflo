@@ -18,7 +18,7 @@ const approval = (patch: Partial<ApprovalRequest> = {}): ApprovalRequest => ({
 } as ApprovalRequest);
 
 describe('app shell approvals visibility', () => {
-  it('shows a badge on Approvals, a banner with the time left and the count in the tab title', async () => {
+  it('shows a badge on Decisions, a banner with the time left and the count in the tab title', async () => {
     vi.spyOn(api, 'getAllApprovals').mockResolvedValue({ approvals: [approval()] });
     vi.spyOn(api, 'getAuthorityStats').mockRejectedValue(new Error('x'));
     document.title = 'Djimitflo';
@@ -28,7 +28,7 @@ describe('app shell approvals visibility', () => {
     await waitFor(() => expect(document.title).toBe('(1) Djimitflo')); // title is set in an effect after the badge renders
   });
 
-  it('shows nothing when no approval is open, and no banner on the approvals page itself', async () => {
+  it('shows nothing when no approval is open, and no banner on the decisions inbox itself', async () => {
     const spy = vi.spyOn(api, 'getAllApprovals').mockResolvedValue({ approvals: [] });
     vi.spyOn(api, 'getAuthorityStats').mockRejectedValue(new Error('x'));
     render(<MemoryRouter><Layout /></MemoryRouter>);
@@ -36,7 +36,7 @@ describe('app shell approvals visibility', () => {
     expect(screen.queryByRole('status')).toBeNull();
     cleanup();
     vi.spyOn(api, 'getAllApprovals').mockResolvedValue({ approvals: [approval()] });
-    render(<MemoryRouter initialEntries={['/approvals']}><Layout /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/decisions']}><Layout /></MemoryRouter>);
     await waitFor(() => expect(screen.getByLabelText('1 pending')).toBeTruthy());
     expect(screen.queryByRole('status')).toBeNull();
   });

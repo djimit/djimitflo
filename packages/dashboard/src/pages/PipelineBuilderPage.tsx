@@ -161,6 +161,7 @@ export function PipelineBuilderPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+      <h1 className="sr-only">Pipeline drafts</h1>
       {/* Header */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', background: '#0f172a', borderBottom: '1px solid #334155' }}>
         <div style={{ display: 'flex', minWidth: 0, maxWidth: '100%', alignItems: 'center', gap: '12px' }}>

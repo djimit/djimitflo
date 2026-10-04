@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
 import { Inbox, RefreshCw } from 'lucide-react';
 import { api, type DecisionsInbox } from '../lib/api';
 import { usePendingApprovals } from '../hooks/usePendingApprovals';
+import { ApprovalQueuePage } from './ApprovalQueuePage';
 
 const button = 'rounded border border-border px-2 py-0.5 text-sm hover:bg-background-tertiary disabled:opacity-50';
 
@@ -42,9 +42,10 @@ export function DecisionsInboxPage() {
         <button onClick={() => void load()} className="ml-auto flex items-center gap-2 px-3 py-2 rounded-md border border-border"><RefreshCw className="w-4 h-4" /> Refresh</button>
       </div>
       <p className="text-sm text-foreground-secondary">
-        Everything that waits for an operator decision.{' '}
-        <Link to="/approvals" className="underline">{pending.count} approval{pending.count === 1 ? '' : 's'} pending</Link> in the approval queue.
+        Everything that waits for an operator decision, starting with{' '}
+        <a href="#approvals" className="underline">{pending.count} approval{pending.count === 1 ? '' : 's'} pending</a>.
       </p>
+      <section className="rounded-lg border border-border p-4"><ApprovalQueuePage embedded /></section>
       {error && <p role="alert" className="text-status-error">{error}</p>}
       {notice && <p role="status" className="text-status-completed">{notice}</p>}
       {!data && !error && <p className="text-sm text-foreground-secondary">Loading…</p>}

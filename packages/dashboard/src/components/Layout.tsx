@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
-import { Activity, GraduationCap, ListTodo, Users, Shield, ShieldCheck, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit, Gauge, BookUser, Brain, Menu, X, MessageSquare, Sparkles, SlidersHorizontal } from 'lucide-react';
+import { Activity, GraduationCap, ListTodo, Users, Shield, ShieldCheck, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit, Gauge, BookUser, Brain, Menu, X, MessageSquare, Sparkles, SlidersHorizontal, Library } from 'lucide-react';
 import { useAuthStore } from '../lib/auth-store';
 import { OrganizationSelector } from './OrganizationSelector';
 import { PendingApprovalsBanner } from './PendingApprovalsBanner';
@@ -9,52 +9,54 @@ import { usePendingApprovals } from '../hooks/usePendingApprovals';
 import { api } from '../lib/api';
 
 
-const NAV_SECTIONS: Array<{ title: string; items: Array<{ to: string; label: string; icon: LucideIcon }> }> = [
-  { title: 'Work', items: [
-    { to: '/', label: 'Dashboard', icon: Activity },
-    { to: '/tasks', label: 'Tasks', icon: ListTodo },
+// W4 (2026-09-30): one operator's jobs, ≤ 20 top-level items; experimental or dormant pages live in a collapsed Lab.
+// Page-view telemetry (S4, 28-30 Sep) decided what is top-level; Lab pages stay reachable, once each.
+const NAV_SECTIONS: Array<{ title: string; lab?: boolean; items: Array<{ to: string; label: string; icon: LucideIcon }> }> = [
+  { title: 'Operate', items: [
+    { to: '/', label: 'Cockpit', icon: Activity },
+    { to: '/decisions', label: 'Decisions', icon: CheckSquare },
     { to: '/goals-loops', label: 'Goals & Loops', icon: Workflow },
-    { to: '/approvals', label: 'Approvals', icon: CheckSquare },
-  ] },
-  { title: 'Agents', items: [
-    { to: '/agents', label: 'Agents', icon: Users },
-    { to: '/catalog', label: 'Agent Catalog', icon: BookUser },
-    { to: '/agent-commons', label: 'Agent Commons', icon: Sparkles },
-    { to: '/frontier-experts', label: 'Frontier Experts', icon: GraduationCap },
-    { to: '/interaction-board', label: 'Interaction Board', icon: MessageSquare },
-  ] },
-  { title: 'Operations', items: [
-    { to: '/swarm', label: 'Swarm', icon: Cpu },
-    { to: '/fleet', label: 'Fleet hosts', icon: Network },
-    { to: '/fleet-cockpit', label: 'Fleet Cockpit', icon: Gauge },
-    { to: '/swarm-resources', label: 'Swarm Resources', icon: Network },
-    { to: '/swarm-mission-control', label: 'Swarm Mission Control', icon: BrainCircuit },
+    { to: '/tasks', label: 'Tasks', icon: ListTodo },
     { to: '/repositories', label: 'Repositories', icon: FolderGit },
-    { to: '/explainers', label: 'Repository explainers', icon: BookUser },
-    { to: '/pipeline-builder', label: 'Pipeline drafts', icon: Workflow },
   ] },
-  { title: 'Improvement', items: [
-    { to: '/cockpit', label: 'Operator cockpit', icon: Activity },
-    { to: '/decisions', label: 'Decisions inbox', icon: CheckSquare },
+  { title: 'Improve', items: [
     { to: '/improvement-funnel', label: 'Improvement funnel', icon: Gauge },
-    { to: '/self-driving', label: 'Self-Driving', icon: Activity },
-    { to: '/cognitive', label: 'Cognitive', icon: Brain },
-    { to: '/consensus-debates', label: 'Consensus debates', icon: MessageSquare },
-    { to: '/agi-reasoning', label: 'Goal reasoning', icon: Brain },
-    { to: '/predictive-analytics', label: 'Predictive analytics', icon: BarChart3 },
+    { to: '/observability', label: 'Observability', icon: BarChart3 },
+    { to: '/usage', label: 'Usage', icon: DollarSign },
   ] },
-  { title: 'Governance', items: [
+  { title: 'Knowledge', items: [
+    { to: '/knowledge', label: 'Knowledge', icon: Library },
+    { to: '/frontier-experts', label: 'Frontier Experts', icon: GraduationCap },
+    { to: '/agent-commons', label: 'Agent Commons', icon: Sparkles },
+  ] },
+  { title: 'Fleet', items: [
+    { to: '/fleet', label: 'Fleet hosts', icon: Network },
+    { to: '/agents', label: 'Agents', icon: Users },
+    { to: '/swarm-resources', label: 'Swarm Resources', icon: Network },
+  ] },
+  { title: 'Govern', items: [
     { to: '/policies', label: 'Policies', icon: Shield },
     { to: '/governance', label: 'Governance & Assurance', icon: ShieldCheck },
     { to: '/mcp-permissions', label: 'MCP Permissions', icon: PlugZap },
     { to: '/audit', label: 'Audit', icon: ScrollText },
     { to: '/authority', label: 'Authority ledger', icon: ShieldCheck },
-  ] },
-  { title: 'System', items: [
-    { to: '/observability', label: 'Observability', icon: BarChart3 },
     { to: '/configuration', label: 'Configuration', icon: SlidersHorizontal },
+  ] },
+  { title: 'Lab', lab: true, items: [
+    { to: '/dashboard', label: 'Activity overview', icon: Activity },
+    { to: '/swarm', label: 'Swarm', icon: Cpu },
+    { to: '/fleet-cockpit', label: 'Fleet Cockpit', icon: Gauge },
+    { to: '/swarm-mission-control', label: 'Swarm Mission Control', icon: BrainCircuit },
+    { to: '/explainers', label: 'Repository explainers', icon: BookUser },
+    { to: '/pipeline-builder', label: 'Pipeline drafts', icon: Workflow },
+    { to: '/catalog', label: 'Agent Catalog', icon: BookUser },
+    { to: '/interaction-board', label: 'Interaction Board', icon: MessageSquare },
+    { to: '/self-driving', label: 'Self-Driving', icon: Activity },
+    { to: '/cognitive', label: 'Cognitive', icon: Brain },
+    { to: '/consensus-debates', label: 'Consensus debates', icon: MessageSquare },
+    { to: '/agi-reasoning', label: 'Goal reasoning', icon: Brain },
+    { to: '/predictive-analytics', label: 'Predictive analytics', icon: BarChart3 },
     { to: '/self-healing', label: 'Health checks', icon: Activity },
-    { to: '/usage', label: 'Usage', icon: DollarSign },
     { to: '/economy', label: 'Economy', icon: DollarSign },
     { to: '/federation', label: 'Federation', icon: Network },
   ] },
@@ -127,9 +129,8 @@ export function Layout() {
         
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto p-4" aria-label="Main">
-          {NAV_SECTIONS.map((section) => (
-            <div key={section.title} className="mb-4">
-              <div className="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-foreground-muted">{section.title}</div>
+          {NAV_SECTIONS.map((section) => {
+            const links = (
               <div className="space-y-1">
                 {section.items.filter((item) => item.to !== '/authority' || authorityAvailable).map((item) => (
                   <NavLink
@@ -138,12 +139,24 @@ export function Layout() {
                     icon={<item.icon className="w-5 h-5" />}
                     label={item.label}
                     active={item.to === '/' ? location.pathname === '/' : isActive(item.to)}
-                    badge={item.to === '/approvals' ? pending.count : undefined}
+                    badge={item.to === '/decisions' ? pending.count : undefined}
                   />
                 ))}
               </div>
-            </div>
-          ))}
+            );
+            // Lab: native <details>, collapsed unless the current page lives in it (no state, no storage)
+            return section.lab ? (
+              <details key={section.title} className="mb-4" open={section.items.some((item) => isActive(item.to))}>
+                <summary className="cursor-pointer px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-foreground-muted">{section.title} · experimental</summary>
+                {links}
+              </details>
+            ) : (
+              <div key={section.title} className="mb-4">
+                <div className="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-foreground-muted">{section.title}</div>
+                {links}
+              </div>
+            );
+          })}
         </nav>
 
         {/* Footer */}
@@ -175,7 +188,7 @@ export function Layout() {
           </button>
           <span className="ml-2 font-semibold text-foreground">Djimitflo</span>
         </header>
-        {location.pathname !== '/approvals' && <PendingApprovalsBanner {...pending} />}
+        {location.pathname !== '/decisions' && <PendingApprovalsBanner {...pending} />}
         <main className="min-w-0 flex-1 overflow-auto">
           <Outlet />
         </main>

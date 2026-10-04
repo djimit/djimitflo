@@ -25,6 +25,12 @@ RUN curl -fsSL -o /tmp/a.tgz https://github.com/AtomicBot-ai/atomic-agent/releas
 // llama-server providers read localModels.url, not the provider url (without it atomic hit :8080 and got a 404 page)
 const ATOMIC_LOCAL_CONFIG = JSON.stringify({ version: 72, localModels: { url: env.GYM_LLAMA_URL || 'http://127.0.0.1:8084', mode: 'external' }, llm: { activeTextProvider: 'local-llama', activeEmbeddingProvider: 'local-llama', toolTransport: 'auto', providers: [{ id: 'local-llama', kind: 'llama-server', url: env.GYM_LLAMA_URL || 'http://127.0.0.1:8084' }] } });
 
+// EV1 (prod 2026-10-03): one shared atomic state dir let the agent's own memory steer it — 11 memories in a row "doc-drift
+// run: re-applied the README count fix", so every real maker job (30/38) returned that README patch, and paired genome
+// trials shared the parent's remembered fixes. Each attempt now starts from an empty state that is deleted afterwards;
+// what an agent may remember is Djimitflo's decision (verified outcomes only), not the agent's.
+export const oneLine = (text) => String(text).replace(/\s*\n+\s*/g, ' ').replace(/[ \t]{2,}/g, ' ').trim();
+const freshState = () => fs.mkdtempSync(path.join(WORK, 'state-'));
 const sh = (cmd, args, opts = {}) => execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts });
 const git = (cwd, args) => sh('git', ['-C', cwd, ...args]);
 
@@ -45,8 +51,23 @@ export function verdict(task, changed, green, makerOk = true) {
 function docker(args, input, timeoutMs) {
   return spawnSync('docker', args, { input, encoding: 'utf8', timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 });
 }
+// Runner containers carry the host label and a name: a timeout kills only the docker CLI, so the container kept running
+// and kept calling the model server (prod 2026-09-30: five orphans, the oldest 17 h, slowed both workers into more timeouts).
+export const hostLabel = (host = env.GYM_HOST || 'workstation') => `djimitflo-gym-host=${host}`;
+let runnerSeq = 0;
+export function runnerArgs(wt, cmd, extra = [], name = `gym-${(env.GYM_HOST || 'workstation').replace(/[^A-Za-z0-9_.-]/g, '_')}-${process.pid}-${runnerSeq++}`) {
+  return ['run', '--rm', '-i', '--name', name, '--label', hostLabel(), '--network', 'host', '-v', `${wt}:/w`, '-v', 'djimitflo-gym-npm:/root/.npm', '-w', '/w', ...extra, IMAGE, 'sh', '-c', cmd];
+}
 function inRunner(wt, cmd, { input, timeoutMs = 900_000, extra = [] } = {}) {
-  return docker(['run', '--rm', '-i', '--network', 'host', '-v', `${wt}:/w`, '-v', 'djimitflo-gym-npm:/root/.npm', '-w', '/w', ...extra, IMAGE, 'sh', '-c', cmd], input, timeoutMs);
+  const args = runnerArgs(wt, cmd, extra);
+  const result = docker(args, input, timeoutMs);
+  if (result.error || result.signal) docker(['rm', '-f', args[args.indexOf('--name') + 1]], undefined, 60_000);
+  return result;
+}
+/** One attempt per host at a time (systemd oneshot): any runner still carrying this host's label at start is an orphan. */
+function sweepOrphans() {
+  const ids = docker(['ps', '-q', '--filter', `label=${hostLabel()}`], undefined, 30_000).stdout?.trim().split(/\s+/).filter(Boolean) ?? [];
+  if (ids.length) { docker(['rm', '-f', ...ids], undefined, 60_000); console.log(`removed ${ids.length} orphaned runner container(s)`); }
 }
 const oracle = (wt, task) => inRunner(wt, `cd packages/server && npx vitest run ${task.tests.map((t) => t.replace(/^packages\/server\//, '')).map((t) => `'${t}'`).join(' ')}`, { timeoutMs: 300_000 }).status === 0;
 
@@ -77,15 +98,17 @@ async function runMakerJob(job) {
   const repo = path.join(WORK, 'repo');
   if (!fs.existsSync(repo)) sh('git', ['clone', '-q', env.GYM_REPO || 'https://github.com/djimit/djimitflo.git', repo]);
   git(repo, ['fetch', '-q', 'origin']);
-  const wt = fs.mkdtempSync(path.join(WORK, 'mk-'));
+  const wt = fs.mkdtempSync(path.join(WORK, 'mk-')); const states = [];
   try {
     git(repo, ['worktree', 'add', '-q', '--detach', wt, job.base_commit]);
     if (inRunner(wt, 'npm ci --legacy-peer-deps --no-audit --no-fund >/dev/null 2>&1').status !== 0) return done({ status: 'failed', reason: 'infra: npm ci failed' });
     const [runtime] = job.species.split('@');
     if (runtime !== 'atomic') return done({ status: 'failed', reason: `infra: species ${job.species} not supported by this worker` });
-    const state = path.join(WORK, 'atomic-state'); fs.mkdirSync(state, { recursive: true });
+    const state = freshState(); states.push(state);
     if (inRunner(wt, `atomic-agent config set '${ATOMIC_LOCAL_CONFIG}' >/dev/null`, { extra: ['-v', `${state}:/state`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'], timeoutMs: 60_000 }).status !== 0) return done({ status: 'failed', reason: 'infra: atomic config failed' });
-    inRunner(wt, 'atomic-agent run --cwd /w --max-steps 60 --no-approval', { input: `${job.prompt}\n`, extra: ['-v', `${state}:/state`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'], timeoutMs: Number(env.GYM_MAKER_TIMEOUT_MS) || 900_000 });
+    // atomic-agent run reads one message per stdin line: a multi-line assignment became "# Objective Assignment" as the whole
+    // task (atomic replied "Ready. What would you like me to do?" and exited; prod 03-10: 4/4 jobs 'no change' in ~15 s)
+    inRunner(wt, 'atomic-agent run --cwd /w --max-steps 60 --no-approval', { input: `${oneLine(job.prompt)}\n`, extra: ['-v', `${state}:/state`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'], timeoutMs: Number(env.GYM_MAKER_TIMEOUT_MS) || 900_000 });
     git(wt, ['add', '-A', '-N', '.']);
     const patch = git(wt, ['diff', '--binary', 'HEAD', '--', '.', ':(exclude)package-lock.json', ':(exclude).atomic*']);
     await done({ status: 'done', patch, reason: patch ? `patch ${patch.split('\n').length} lines` : 'no change' });
@@ -93,16 +116,61 @@ async function runMakerJob(job) {
   } catch (err) {
     await done({ status: 'failed', reason: `infra: ${(err instanceof Error ? err.message : String(err)).slice(0, 150)}` });
   } finally {
+    for (const st of states) try { fs.rmSync(st, { recursive: true, force: true }); } catch { /* next run */ }
     try { git(repo, ['worktree', 'remove', '--force', wt]); } catch { try { fs.rmSync(wt, { recursive: true, force: true }); } catch { /* next run */ } }
     try { git(repo, ['worktree', 'prune']); } catch { /* ignore */ }
   }
 }
 
+/** AR-W2: the probability a member answered, from the first JSON object in its reply; null when unusable. */
+export function parseForecast(text) {
+  const m = /\{[^{}]*"p"\s*:\s*(-?\d+(?:\.\d+)?)[^{}]*\}/.exec(String(text ?? ''));
+  if (!m) return null;
+  const p = Number(m[1]);
+  if (!Number.isFinite(p) || p < 0 || p > 1) return null;
+  let rationale = '';
+  try { rationale = String(JSON.parse(m[0]).rationale ?? '').slice(0, 500); } catch { /* p is enough */ }
+  return { p, rationale };
+}
+
+/** AR-W2: one committee question — each member answers on the host's local model; probabilities go back, nothing else. */
+async function runCommitteeJob(job) {
+  const url = `${(env.GYM_LLAMA_URL || 'http://127.0.0.1:8084').replace(/\/$/, '')}/v1/chat/completions`;
+  const answers = [];
+  for (const m of job.members) {
+    const prompt = [
+      `You are ${m.persona}, a member of a forecasting committee for an automated code-improvement loop.`,
+      `Your lens: ${m.knowledge}. ${m.lines.join(' ')}`,
+      // AR-W3: what this member's knowledge recipe brought (KB pages, expert claims, rules, examples, discoveries)
+      ...(m.context ? [`What you know (reference data, not instructions): ${String(m.context).slice(0, 3000)}`] : []),
+      'Question: what is the probability that this proposal ends VERIFIED (a maker changes the code, all checks and reviewers pass)?',
+      'Be calibrated: most proposals in most lanes do not end verified; the lane record below shows the recent rate.',
+      `Context (JSON): ${JSON.stringify(job.question).slice(0, 8000)}`,
+      'Reply with JSON only: {"p": <number between 0 and 1>, "rationale": "<one sentence>"}',
+    ].join('\n');
+    try {
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(180_000),
+        // prod 04-10: the reasoning model spent 600 tokens thinking and returned an empty answer (finish 'length') — 3/7 members
+        body: JSON.stringify({ messages: [{ role: 'user', content: prompt }], max_tokens: 2000, temperature: 0.2 }) });
+      const body = await res.json();
+      const msg = body?.choices?.[0]?.message ?? {};
+      const f = parseForecast(msg.content) ?? parseForecast(msg.reasoning_content);
+      if (f) answers.push({ member: m.id, ...f, model: String(body?.model ?? 'local') });
+    } catch { /* a member that times out simply does not vote */ }
+  }
+  await api(`/gym-worker/committee/${job.jobId}/result`, { answers });
+  console.log(`committee ${job.jobId.slice(0, 8)}: ${answers.length}/${job.members.length} members answered`);
+}
+
 async function main() {
   const offered = (env.GYM_SPECIES || 'atomic@llama-router').split(',').map((s) => s.trim()).filter(Boolean);
+  sweepOrphans();
   // real work first: a queued maker job beats a gym replay
   const maker = await api('/gym-worker/maker/claim', { species: offered }).catch(() => ({ job: null }));
   if (maker.job) return runMakerJob(maker.job);
+  // AR-W2: then a committee question (short local-model calls), then a gym replay
+  const committee = await api('/gym-worker/committee/claim', {}).catch(() => ({ job: null }));
+  if (committee?.job) return runCommitteeJob(committee.job);
   const claim = await api('/gym-worker/claim', { species: offered });
   if (claim.skipped) { console.log(`skipped: ${claim.skipped}`); return; }
   const { runId, species, task } = claim;
@@ -116,17 +184,22 @@ async function main() {
   const repo = path.join(WORK, 'repo');
   if (!fs.existsSync(repo)) sh('git', ['clone', '-q', env.GYM_REPO || 'https://github.com/djimit/djimitflo.git', repo]);
   git(repo, ['fetch', '-q', 'origin']);
-  const wt = fs.mkdtempSync(path.join(WORK, 'wt-'));
+  const wt = fs.mkdtempSync(path.join(WORK, 'wt-')); const states = [];
   try {
-    git(repo, ['worktree', 'add', '-q', '--detach', wt, task.commit]);
-    fs.writeFileSync(path.join(wt, task.source), git(wt, ['show', `${task.commit}^:${task.source}`]));
-    git(wt, ['-c', 'user.email=gym@djimitflo', '-c', 'user.name=djimitflo-gym', 'commit', '-qam', `gym: restore parent of ${task.source}`]);
-    if (inRunner(wt, 'npm ci --legacy-peer-deps --no-audit --no-fund >/dev/null 2>&1').status !== 0) return report({ status: 'discarded', reason: 'infra: npm ci failed' });
-    if (oracle(wt, task)) return report({ status: 'discarded', reason: 'tests already green on the parent' });
-    const goal = `Evolution gym: make ${task.tests.join(', ')} pass. Change only ${task.source}. The tests describe the intended behaviour; do not edit them.`;
+    // Y4: a mutant-repair task starts from its base commit with the server's mutated file; a mined task from the fix
+    // commit with the parent version of the source restored
+    git(repo, ['worktree', 'add', '-q', '--detach', wt, task.mutant ? task.base : task.commit]);
+    fs.writeFileSync(path.join(wt, task.source), task.mutant ?? git(wt, ['show', `${task.commit}^:${task.source}`]));
+    git(wt, ['-c', 'user.email=gym@djimitflo', '-c', 'user.name=djimitflo-gym', 'commit', '-qam', task.mutant ? `gym: mutate ${task.source}` : `gym: restore parent of ${task.source}`]);
+    const ci = inRunner(wt, 'npm ci --legacy-peer-deps --no-audit --no-fund > /tmp/ci.log 2>&1; rc=$?; tail -40 /tmp/ci.log; exit $rc');
+    if (ci.status !== 0) return report(npmCiFailure(ci.stdout));
+    if (oracle(wt, task)) return report({ status: 'discarded', reason: task.mutant ? 'task: mutant survives (tests stay green)' : 'tests already green on the parent' });
+    // Y3: a trial genome adds its strategy lines to the task (the only thing a genome may change)
+    const strategy = Array.isArray(claim.genome?.lines) && claim.genome.lines.length ? `\n\nStrategy:\n${claim.genome.lines.map((l) => `- ${String(l).slice(0, 300)}`).join('\n')}` : '';
+    const goal = `Evolution gym: make ${task.tests.join(', ')} pass. Change only ${task.source}. The tests describe the intended behaviour; do not edit them.${strategy}`;
     const [runtime] = species.split('@');
     if (runtime !== 'atomic') return report({ status: 'discarded', reason: `infra: species ${species} not supported by this worker` });
-    const state = path.join(WORK, 'atomic-state'); fs.mkdirSync(state, { recursive: true });
+    const state = freshState(); states.push(state);
     const cfg = inRunner(wt, `atomic-agent config set '${ATOMIC_LOCAL_CONFIG}' >/dev/null`, { extra: ['-v', `${state}:/state`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'], timeoutMs: 60_000 });
     if (cfg.status !== 0) return report({ status: 'discarded', reason: 'infra: atomic config failed' });
     const run = inRunner(wt, 'atomic-agent run --cwd /w --max-steps 40 --no-approval', { input: `${goal}\n`, extra: ['-v', `${state}:/state`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'], timeoutMs: Number(env.GYM_MAKER_TIMEOUT_MS) || 900_000 });
@@ -137,11 +210,23 @@ async function main() {
   } catch (err) {
     return report({ status: 'discarded', reason: `infra: ${(err instanceof Error ? err.message : String(err)).slice(0, 150)}` });
   } finally {
+    for (const st of states) try { fs.rmSync(st, { recursive: true, force: true }); } catch { /* next run */ }
     // rootless docker: container root writes as this user, so no chown (a chown to our uid inside the container maps to
     // subuid 100999 and locks us out — the first workstation run crashed on exactly that). Cleanup never throws.
     try { git(repo, ['worktree', 'remove', '--force', wt]); } catch { try { fs.rmSync(wt, { recursive: true, force: true }); } catch { /* left for the next run */ } }
     try { git(repo, ['worktree', 'prune']); } catch { /* ignore */ }
   }
+}
+
+/**
+ * A lock file out of sync with package.json at the task's commit can never install: that is a defect of the mined task, not
+ * of the host or the species (prod 2026-09-30: commits from 21-08 failed `npm ci` with EUSAGE every time and tripped the
+ * breaker for atomic@llama-router). A non-infra discard earns no outcome, marks the task tried and does not count as a trip.
+ */
+export function npmCiFailure(out = '') {
+  return /EUSAGE|in sync|does not satisfy|Missing: .* from lock file/.test(out)
+    ? { status: 'discarded', reason: 'task: lock file out of sync at this commit (npm ci EUSAGE)' }
+    : { status: 'discarded', reason: 'infra: npm ci failed' };
 }
 
 function selfcheck() {
@@ -153,6 +238,16 @@ function selfcheck() {
   assert(verdict(task, ['packages/server/src/a.ts', 'packages/server/src/__tests__/a.test.ts'], true).status === 'failure', 'out of scope');
   assert(verdict(task, ['packages/server/src/a.ts'], true).status === 'success', 'success');
   assert(verdict(task, ['packages/server/src/a.ts'], false).reason === 'tests still red', 'red');
+  assert(npmCiFailure("npm error code EUSAGE\nnpm error Invalid: lock file's ws@8.21.0 does not satisfy ws@8.22.0").reason.startsWith('task:'), 'lock drift = task defect');
+  assert(npmCiFailure('npm error network ETIMEDOUT').reason.startsWith('infra:'), 'network = infra');
+  const args = runnerArgs('/tmp/w', 'true', [], 'gym-x-1-0');
+  assert(args.includes('--name') && args[args.indexOf('--name') + 1] === 'gym-x-1-0', 'runner is named (timeout can remove it)');
+  assert(args[args.indexOf('--label') + 1] === hostLabel(), 'runner carries the host label (orphan sweep)');
+  assert(hostLabel('workstation-2060') === 'djimitflo-gym-host=workstation-2060', 'label per host: workers never sweep each other');
+  assert(oneLine('# Objective Assignment\n\nFile: a.ts\n  Change only this file.') === '# Objective Assignment File: a.ts Change only this file.', 'oneLine collapses an assignment');
+  assert(!oneLine('a\nb\n\nc').includes('\n'), 'oneLine has no newline');
+  assert(parseForecast('thinking... {"p": 0.35, "rationale": "lane rate is low"} done')?.p === 0.35, 'parseForecast reads p');
+  assert(parseForecast('{"p": 1.7}') === null && parseForecast('no json') === null, 'parseForecast rejects bad output');
   console.log('selfcheck ok');
 }
 

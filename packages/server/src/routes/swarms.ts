@@ -241,7 +241,11 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   router.get('/expert/experts', requirePermission('read:evidence'), route((req, res) => {
     const limit = req.query.limit === undefined ? undefined : Number(req.query.limit);
     if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) throw createError(400, 'limit must be a positive integer', 'VALIDATION_ERROR');
-    res.json({ experts: registry().list({ state: req.query.state as string | undefined, capability: req.query.capability as string | undefined, name: req.query.name as string | undefined, limit }) });
+    const kind = req.query.kind as string | undefined;
+    if (kind !== undefined && !['person', 'paper', 'repository'].includes(kind)) throw createError(400, 'kind must be person, paper or repository', 'VALIDATION_ERROR');
+    // The funnel counts the whole registry (the list is capped), per kind and lifecycle state.
+    const funnel = db.prepare("SELECT COALESCE(kind, 'person') AS kind, lifecycle_state AS state, COUNT(*) AS count FROM expert_identities GROUP BY 1, 2").all();
+    res.json({ experts: registry().list({ state: req.query.state as string | undefined, capability: req.query.capability as string | undefined, name: req.query.name as string | undefined, kind: kind as 'person' | 'paper' | 'repository' | undefined, limit }), funnel });
   }));
   router.get('/expert/experts/:id', requirePermission('read:evidence'), route((req, res) => {
     const reg = registry();

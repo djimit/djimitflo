@@ -1,5 +1,8 @@
 import express from 'express';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+// Fixture CLIs here report fake versions (fake-codex 1.0.0 …), not the admitted artifacts; admission itself is
+// covered by runtime-admission.test.ts. Shadow mode still records every admission decision.
+process.env.RUNTIME_ADMISSION_MODE = 'shadow';
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import os from 'os';
@@ -1544,6 +1547,8 @@ describe('doc-drift-and-small-fix-loop', () => {
       total_tokens: 25,
       usage_source: 'runtime_stdout',
     });
+    // reviewer-independence identity is stamped at dispatch, without touching metadata.model (2026-10-01)
+    expect(executed.lease.metadata).toMatchObject({ provider: expect.any(String), model_family: expect.any(String), prompt_hash: expect.stringMatching(/^[0-9a-f]{16}$/) });
   });
 
   it('blocks new worker leasing when the wall-clock loop budget is exhausted', async () => {

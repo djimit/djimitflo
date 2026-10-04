@@ -1,5 +1,8 @@
 import express from 'express';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+// Fixture CLIs here report fake versions (fake-codex 1.0.0 …), not the admitted artifacts; admission itself is
+// covered by runtime-admission.test.ts. Shadow mode still records every admission decision.
+process.env.RUNTIME_ADMISSION_MODE = 'shadow';
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import os from 'os';
