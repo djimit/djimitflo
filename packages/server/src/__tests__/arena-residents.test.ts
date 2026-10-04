@@ -54,3 +54,24 @@ it('AR-W5 gate: a resident that talks without measurable calls, or forecasts wor
   expect(eligible).not.toContain(talker); expect(eligible).not.toContain(loser); expect(eligible).toContain(fine);
   db.close();
 });
+
+it('AR-W6: a fleet source with 50+ judged discoveries and none relevant is not processed further; productive sources are', async () => {
+  const { fleetSourceGate } = await import('../services/committee-swarm');
+  const { ExpertSourceUnitsService } = await import('../services/expert-source-units-service');
+  const db = new Database(':memory:'); db.pragma('foreign_keys = OFF'); db.exec(schema); runMigrations(db);
+  const now = new Date().toISOString();
+  const ev = (i: number, agent: string, decision: string) => {
+    const ref = `arxiv:2601.${String(10000 + i)}`;
+    db.prepare("INSERT INTO external_events (id, event_type, source, occurred_at, payload) VALUES (?, 'discovery.paper', 'bus', ?, ?)").run(`${agent}-${i}`, now, JSON.stringify({ agent, ref }));
+    db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, created_at) VALUES (?, 'discovery_relevance', 'discovery_pending', ?, 'h', 'shadow', ?, ?)`).run(`j-${agent}-${i}`, ref, decision, now);
+  };
+  for (let i = 0; i < 55; i++) ev(i, 'hermes-noise', i % 2 ? 'no' : 'uncertain');
+  for (let i = 100; i < 160; i++) ev(i, 'scout', i % 10 ? 'uncertain' : 'yes');
+  expect(fleetSourceGate(db, 'hermes-noise')).toMatchObject({ allowed: false });
+  expect(fleetSourceGate(db, 'scout').allowed).toBe(true);
+  expect(fleetSourceGate(db, 'newcomer').allowed).toBe(true);
+  vi.stubEnv('ARENA_GATE_ENABLED', 'true');
+  const units = new ExpertSourceUnitsService(db);
+  expect(units.ingestDiscovery({ event_type: 'discovery.paper', ref: 'arxiv:2610.00001', title: 'Agent evaluation with mutation testing', agent: 'hermes-noise' })).toBe('irrelevant');
+  db.close();
+});
