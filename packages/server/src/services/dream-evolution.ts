@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { generateText, llmEndpoints } from './llm-fallback';
 import { firstJsonObject } from './expert-council-service';
-import { BASELINE_GENOME, dreamEvolutionEnabled, ensureBaseline, genome, mutantTrialsEnabled, unscorable } from './genome-registry';
+import { BASELINE_GENOME, dreamEvolutionEnabled, ensureBaseline, genome, mutantHoldoutKeys, mutantTrialsEnabled, unscorable } from './genome-registry';
 
 /**
  * Y3b/Y3c (plan Phase Y, Darwin loop). Dreaming is the mutation operator: once a day the day's failed makers (real and
@@ -45,7 +45,12 @@ export function dreamInputs(db: Database, now = Date.now()): { failures: string[
   const all = <T>(sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } };
   const d1 = new Date(now - 86_400_000).toISOString(); const d30 = new Date(now - 30 * 86_400_000).toISOString();
   const gym = all<{ source: string; reason: string }>(`SELECT json_extract(metadata, '$.gym.source') AS source, json_extract(metadata, '$.gym_result.reason') AS reason
-    FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym_result.status') = 'failure' AND created_at >= ? LIMIT 20`, d1)
+    FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym_result.status') = 'failure' AND created_at >= ?
+      -- D3 (03-10): trial runs and holdout tasks never reach the mutation step — they did, so mutants were written from the
+      -- holdout's own failures (g-e4170670: "repeated 'tests still red' … on service files")
+      AND json_extract(metadata, '$.gym.genome') IS NULL
+      AND json_extract(metadata, '$.gym.commit') NOT IN (SELECT commit_sha FROM gym_holdout)
+      AND json_extract(metadata, '$.gym.commit') NOT IN (SELECT key FROM gym_mutant_holdout) LIMIT 20`, d1)
     .map((r) => `gym: ${r.source} — ${r.reason}`);
   const real = all<{ reason: string; files: string }>(`SELECT json_extract(metadata, '$.failure_reason') AS reason, json_extract(metadata, '$.changed_files') AS files
     FROM worker_leases WHERE role = 'maker' AND status = 'failed' AND created_at >= ? LIMIT 20`, d1)
@@ -148,7 +153,7 @@ export function startDreamEvolution(db: Database, intervalMs = 3_600_000): (() =
   const tick = () => {
     try {
       const commits = (db.prepare('SELECT commit_sha FROM gym_holdout ORDER BY commit_sha').all() as Array<{ commit_sha: string }>).map((r) => r.commit_sha);
-      const mutants = mutantTrialsEnabled() ? (db.prepare('SELECT key FROM gym_mutant_holdout ORDER BY key').all() as Array<{ key: string }>).map((r) => r.key) : [];
+      const mutants = mutantTrialsEnabled() ? mutantHoldoutKeys(db) : [];
       // Z5 on but the mutant holdout not frozen yet (no claim since): don't settle a trial on the mined holdout alone
       for (const s of mutantTrialsEnabled() && !mutants.length ? [] : evaluateTrials(db, species, commits, Date.now(), mutants)) console.log(`🧬 genome ${s.id} ${s.status} (holdout ${s.wins} vs parent ${s.parentWins})`);
     } catch (e) { console.warn('dream evolution: evaluate failed:', e instanceof Error ? e.message : String(e)); }
