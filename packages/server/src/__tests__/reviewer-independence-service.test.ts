@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type Database from 'better-sqlite3';
-import { ReviewerIndependenceService } from '../services/reviewer-independence-service';
+import { ReviewerIndependenceService, leaseIdentity } from '../services/reviewer-independence-service';
 import { createTestDb } from './helpers/test-db';
 
 let db: Database.Database;
@@ -11,6 +11,24 @@ const independent = {
   model_family: 'family-a', provider: 'provider-a', system_prompt_hash: 'prompt-a', context_hash: 'context-a',
   memory_hash: 'memory-a', retrieval_hash: 'retrieval-a', oracle_hash: 'oracle-a',
 };
+
+describe('leaseIdentity (stamped at dispatch)', () => {
+  it('derives provider and family from the requested model, else the runtime default; never rewrites model', () => {
+    expect(leaseIdentity('opencode', 'ollama/glm-5.2:cloud', 'p')).toMatchObject({ model_id: 'ollama/glm-5.2:cloud', provider: 'ollama', model_family: 'glm' });
+    expect(leaseIdentity('remote', 'workstation/atomic@llama-router', 'p')).toMatchObject({ provider: 'workstation', model_family: 'llama' });
+    expect(leaseIdentity('opencode', undefined, 'p', { DJIMITFLO_OPENCODE_MODEL: 'ollama/kimi-k3:cloud' })).toMatchObject({ provider: 'ollama', model_family: 'kimi' });
+    expect(leaseIdentity('codex', undefined, 'p', {})).toMatchObject({ model_id: 'codex:default', provider: 'codex', model_family: 'codex' });
+    expect(leaseIdentity('opencode', 'm', 'p')).not.toHaveProperty('model');
+    expect(leaseIdentity('opencode', 'm', 'a').prompt_hash).not.toBe(leaseIdentity('opencode', 'm', 'b').prompt_hash);
+  });
+
+  it('a same-model maker and checker stamped this way are flagged as correlated (was UNDETERMINED without the fields)', () => {
+    const svc = new ReviewerIndependenceService(db);
+    const maker = { id: 'm', runtime: 'opencode', metadata: leaseIdentity('opencode', 'ollama/glm-5.2:cloud', 'make') };
+    const checker = { id: 'c', runtime: 'opencode', metadata: leaseIdentity('opencode', 'ollama/glm-5.2:cloud', 'check') };
+    expect(svc.assess(maker, checker, 'r')).toMatchObject({ state: 'FAIL', correlated_fields: ['model_family_independence', 'provider_independence'] });
+  });
+});
 
 describe('ReviewerIndependenceService', () => {
   it('flags nominally separate reviewers that share model, prompt, context and memory', () => {

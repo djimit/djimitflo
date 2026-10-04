@@ -69,12 +69,12 @@ it('counts submitted runtime replies separately from questions and keeps model p
 it('renders agent interests and live proposal status without claiming proven learning', () => {
   const discussion = { ...thread('1', 'learned', ['a', 'b']), topic_ref: 'message:prior-reply', messages: [reply] };
   const html = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(Conversation, { thread: discussion, agents })));
-  for (const text of ['Onderwerp aangedragen door een agent', 'Explore retrieval', 'Djimitflo', 'proposal-1', 'proposed', 'reflectie-kandidaat', 'run-1']) expect(html).toContain(text);
-  expect(html).not.toContain('Geleerd');
+  for (const text of ['Topic raised by an agent', 'Explore retrieval', 'Djimitflo', 'proposal-1', 'proposed', 'reflection candidate', 'run-1']) expect(html).toContain(text);
+  expect(html).not.toContain('Learned');
   expect(html).toContain('href="/compliance#improvement-inbox-title"');
   expect(html).toContain('Open review-inbox');
   const suggestion = renderToStaticMarkup(createElement(Conversation, { thread: { ...discussion, messages: [{ ...reply, improvement_id: null }] }, agents }));
-  expect(suggestion).toContain('nog geen geregistreerd verbeteringsvoorstel');
+  expect(suggestion).toContain('no registered improvement proposal yet');
   expect(suggestion).not.toContain('Open review-inbox');
   const approved = renderToStaticMarkup(createElement(Conversation, { thread: { ...discussion, messages: [{ ...reply, improvement_status: 'approved' }] }, agents }));
   expect(approved).not.toContain('Open review-inbox');

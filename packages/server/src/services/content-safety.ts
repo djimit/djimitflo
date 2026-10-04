@@ -29,8 +29,16 @@ export function parseSafety(content: string): { verdict: 'safe' | 'unsafe' | nul
   return { verdict: m ? (m[1].toLowerCase() as 'safe' | 'unsafe') : null, categories: cats ? cats[1].trim().slice(0, 200) : '' };
 }
 
+/**
+ * Z0: prod 7 d to 2026-10-01: 3 230 of 4 695 verdicts were http_429 (2 769 from bus-event bursts). After a 429 that
+ * outlived the retries, stop calling for CONTENT_SAFETY_429_PAUSE_MS (default 10 min): skipped subjects get no row, so the
+ * daily KB sync re-checks them; nothing was ever blocked by this shadow check.
+ */
+let pausedUntil = 0;
+export const resetContentSafetyPause = (): void => { pausedUntil = 0; };
+
 export async function checkContentSafety(db: Database, subject: { type: string; id: string }, text: string, fetchFn: typeof fetch = fetch): Promise<'safe' | 'unsafe' | null> {
-  if (!contentSafetyEnabled() || !text.trim()) return null;
+  if (!contentSafetyEnabled() || !text.trim() || Date.now() < pausedUntil) return null;
   const model = process.env.CONTENT_SAFETY_MODEL || 'nvidia/nemotron-3.5-content-safety';
   const started = Date.now();
   // prod 2026-09-27: 1 241 of 1 312 KB pages got no verdict and nothing said why; failures are recorded as 'error' now
@@ -43,7 +51,12 @@ export async function checkContentSafety(db: Database, subject: { type: string; 
       headers: { Authorization: `Bearer ${process.env.NVIDIA_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model, messages: [{ role: 'user', content: text.slice(0, 4_000) }], max_tokens: 60 }),
     }, fetchFn);
-    if (!res.ok) { record('error', `http_${res.status}`); return null; }
+    if (res.status === 429) {
+      // prod 02-10 07:21Z: a bus burst fired 600+ checks at once; 531 came back 429 after the first one paused → one row, not 531
+      if (Date.now() < pausedUntil) return null;
+      pausedUntil = Date.now() + (Number(process.env.CONTENT_SAFETY_429_PAUSE_MS) || 600_000);
+    }
+    if (!res.ok) { record('error', `http_${res.status}${res.status === 429 ? ' (pausing checks)' : ''}`); return null; }
     const body = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
     const { verdict, categories } = parseSafety(body.choices?.[0]?.message?.content ?? '');
     if (!verdict) { record('error', `unparsed:${JSON.stringify((body.choices?.[0]?.message?.content ?? '').slice(0, 80))}`); return null; }

@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { RefreshCw, Server } from 'lucide-react';
-import { api, type FleetCommand, type FleetHost } from '../lib/api';
+import { api } from '../lib/api';
+import { useResource } from '../hooks/useResource';
+
+const fetchFleet = () => api.getFleetHosts();
 
 const DIAGNOSTICS = ['ping', 'uptime', 'disk', 'failed-services', 'top'];
 const button = 'rounded border border-border px-2 py-0.5 text-sm hover:bg-background-tertiary disabled:opacity-50';
@@ -8,18 +11,17 @@ const ago = (s: number) => (s < 90 ? `${s} s ago` : s < 5400 ? `${Math.round(s /
 const tone: Record<string, string> = { done: 'text-status-completed', failed: 'text-status-error', denied: 'text-status-error', expired: 'text-foreground-muted', pending_approval: 'text-status-warning', running: 'text-status-active', queued: 'text-status-active' };
 
 export function FleetHostsPage() {
-  const [hosts, setHosts] = useState<FleetHost[]>([]);
-  const [commands, setCommands] = useState<FleetCommand[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const fleet = useResource(fetchFleet, { pollMs: 15_000 });
+  const hosts = fleet.data?.hosts ?? [];
+  const commands = fleet.data?.commands ?? [];
+  const load = fleet.refresh;
+  const [actionError, setError] = useState<string | null>(null);
+  const error = actionError ?? fleet.error;
   const [busy, setBusy] = useState<string | null>(null);
   const [host, setHost] = useState('');
   const [shell, setShell] = useState('');
   const [open, setOpen] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    try { const r = await api.getFleetHosts(); setHosts(r.hosts); setCommands(r.commands); setError(null); } catch (err) { setError(err instanceof Error ? err.message : 'Failed to load fleet'); }
-  }, []);
-  useEffect(() => { void load(); const t = setInterval(() => void load(), 15_000); return () => clearInterval(t); }, [load]);
   useEffect(() => { if (!host && hosts[0]) setHost(hosts[0].host); }, [hosts, host]);
 
   const act = async (key: string, action: () => Promise<unknown>) => {
@@ -57,6 +59,22 @@ export function FleetHostsPage() {
               </tr>
             ))}</tbody>
           </table>
+        )}
+      </section>
+
+      <section aria-labelledby="components">
+        <h2 id="components" className="text-lg font-semibold mb-2">Components per host</h2>
+        <p className="text-xs text-foreground-tertiary mb-2">Reported by each host agent every 5 minutes: running containers and Djimit-related services (agent version 2 or later).</p>
+        {hosts.length === 0 ? null : (
+          <ul className="space-y-3">{hosts.map((h) => {
+            const list = Array.isArray(h.info.components) ? (h.info.components as string[]) : null;
+            return (
+              <li key={h.host}>
+                <div className="text-sm font-medium">{h.host} <span className="text-xs text-foreground-tertiary">{list ? `${list.length} components` : 'agent too old to report components'}</span></div>
+                {list && <ul className="mt-1 flex flex-wrap gap-1">{list.map((c) => <li key={c} className="rounded bg-background-tertiary px-2 py-0.5 text-xs" title={c}>{c.replace(/^(docker|systemd|user|launchd):/, '')}<span className="ml-1 text-foreground-muted">{c.split(':')[0]}</span></li>)}</ul>}
+              </li>
+            );
+          })}</ul>
         )}
       </section>
 

@@ -15,7 +15,8 @@ const TABS: { value: StatusFilter; label: string }[] = [
   { value: 'all', label: 'All' },
 ];
 
-export function ApprovalQueuePage() {
+/** `embedded`: rendered as the first section of the Decisions inbox (W2: one inbox instead of two). */
+export function ApprovalQueuePage({ embedded = false }: { embedded?: boolean } = {}) {
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<StatusFilter>('pending');
@@ -60,9 +61,11 @@ export function ApprovalQueuePage() {
   const isPendingTab = tab === 'pending';
 
   return (
-    <div className="p-8 space-y-6">
+    <div className={embedded ? 'space-y-4' : 'p-8 space-y-6'}>
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Approval Queue</h1>
+        {embedded
+          ? <h2 id="approvals" className="text-lg font-semibold text-foreground">Approvals</h2>
+          : <h1 className="text-3xl font-bold text-foreground">Approval Queue</h1>}
         <p className="text-foreground-secondary mt-2">
           Review requested actions and their recorded decisions.
         </p>

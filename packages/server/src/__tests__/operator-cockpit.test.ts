@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
@@ -27,7 +27,7 @@ it('reports gym species with success rate and remote worker activity', () => {
   db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
     VALUES ('g1', 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', '{"gym":{"remote_host":"workstation"}}', ?, ?)`).run(ago(2), ago(2));
   const c = operatorCockpit(db, NOW);
-  expect(c.gym[0]).toMatchObject({ species: 'atomic', outcomes: 2, successes: 1, success_pct: 50, avg_seconds: 60 });
+  expect(c.gym[0]).toMatchObject({ species: 'atomic', outcomes: 2, successes: 1, success_pct: 50, avg_seconds: 60, benched: false });
   expect(c.remote_workers).toEqual([{ host: 'workstation', claims_24h: 1, last_claim: ago(2), interrupted_24h: 0 }]);
 });
 
@@ -45,4 +45,19 @@ it('reads the newest deploy events from the mounted deploy log and ignores broke
   fsm.writeFileSync(f, '{"at":"1","event":"deploying","sha":"a","detail":""}\nnot json\n{"at":"2","event":"done","sha":"a","detail":""}\n');
   expect(recentDeploys(f).map((e) => e.event)).toEqual(['done', 'deploying']);
   expect(recentDeploys('/nonexistent/file')).toEqual([]);
+});
+
+it('W3: splits gym species per model, flags a benched species and counts what needs the operator', () => {
+  const out = db.prepare("INSERT INTO skill_outcomes (id, skill_id, model, success, tokens_used, duration_ms, domain, created_at) VALUES (?, 'loop-maker:gym:atomic', ?, 1, 0, 1000, 'gym', ?)");
+  out.run('r1', 'llama-router', ago(1)); out.run('q1', 'qwen36-2060', ago(1));
+  const run = db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
+    VALUES (?, 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`);
+  for (const i of [1, 2, 3]) run.run(`d${i}`, JSON.stringify({ gym: { species: 'atomic@qwen36-2060', commit: `c${i}` }, gym_result: { status: 'discarded', reason: 'infra: npm ci failed' } }), ago(1), ago(1));
+  vi.useFakeTimers(); vi.setSystemTime(NOW); // the breaker's cool-down reads the clock
+  const c = operatorCockpit(db, NOW);
+  vi.useRealTimers();
+  expect(c.gym.map((g) => g.species).sort()).toEqual(['atomic@llama-router', 'atomic@qwen36-2060']);
+  expect(c.gym.find((g) => g.species === 'atomic@qwen36-2060')?.benched).toBe(true);
+  expect(c.gym.find((g) => g.species === 'atomic@llama-router')?.benched).toBe(false);
+  expect(c.needs_you).toEqual(expect.objectContaining({ requeue: expect.any(Number), labels: expect.any(Number), memory_review: expect.any(Number) }));
 });

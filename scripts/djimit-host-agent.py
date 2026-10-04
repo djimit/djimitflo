@@ -18,6 +18,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import socket
 import subprocess
@@ -25,7 +26,7 @@ import sys
 import time
 import urllib.request
 
-VERSION = "1"
+VERSION = "2"
 MAX_OUTPUT = 64 * 1024
 
 DIAGNOSTICS = {
@@ -46,8 +47,39 @@ DIAGNOSTICS = {
 }
 
 
+# Ecosystem components worth showing on /fleet (not every OS service): matched on unit / launchd label names.
+COMPONENT_PATTERN = re.compile(
+    r"djimit|hermes|openclaw|overwatch|scallop|ollama|llama|litellm|deer-?flow|qdrant|uams|knowledge|research|registry|"
+    r"event-bus|agent-router|kbwiki|roborev|gym|kb-sync|systemone|nginx|pm2|postgres|redis|mariadb|next", re.I)
+_components = {"at": 0.0, "list": []}
+
+
+def _lines(argv):
+    try:
+        return subprocess.run(argv, capture_output=True, text=True, timeout=15).stdout.splitlines()
+    except (OSError, subprocess.SubprocessError):
+        return []
+
+
+def components(max_age=300):
+    """Running Docker containers plus Djimit-relevant services, refreshed every 5 min (the heartbeat stays cheap)."""
+    if time.time() - _components["at"] < max_age:
+        return _components["list"]
+    found = ["docker:" + n for n in _lines(["docker", "ps", "--format", "{{.Names}}"]) if n.strip()]
+    if sys.platform == "darwin":
+        labels = [line.split("\t")[-1] for line in _lines(["launchctl", "list"])[1:]]
+        # Apple's own agents and per-launch app labels are not ecosystem components
+        found += ["launchd:" + label for label in labels if COMPONENT_PATTERN.search(label) and not label.startswith(("com.apple.", "application."))]
+    else:
+        for scope, argv in (("systemd", ["systemctl"]), ("user", ["systemctl", "--user"])):
+            units = [line.split()[0] for line in _lines(argv + ["list-units", "--type=service", "--state=running", "--no-legend", "--plain"]) if line.strip()]
+            found += ["%s:%s" % (scope, u[:-8] if u.endswith(".service") else u) for u in units if COMPONENT_PATTERN.search(u)]
+    _components.update(at=time.time(), list=sorted(set(found))[:80])
+    return _components["list"]
+
+
 def host_info():
-    info = {"os": sys.platform, "hostname": socket.gethostname(), "python": platform.python_version()}
+    info = {"os": sys.platform, "hostname": socket.gethostname(), "python": platform.python_version(), "components": components()}
     try:
         info["load"] = [round(x, 2) for x in os.getloadavg()]
     except OSError:
@@ -138,6 +170,8 @@ def selfcheck():
     assert code == 0 and out.strip() == "hello", (code, out)
     assert execute({"kind": "shell", "command": "sleep 5", "sha256": hashlib.sha256(b"sleep 5").hexdigest()}, root=False, timeout=1)[0] == 124
     assert "os" in host_info()
+    assert isinstance(host_info()["components"], list)
+    assert COMPONENT_PATTERN.search("hermes-gateway") and not COMPONENT_PATTERN.search("cups")
     print("selfcheck ok")
 
 

@@ -3,11 +3,20 @@ import { PlugZap, Circle } from 'lucide-react';
 import type { MCPServer } from '@djimitflo/shared';
 import { api } from '../lib/api';
 
+type MCPServerView = MCPServer & {
+  effective_status?: MCPServer['status'] | 'catalog' | 'stale' | 'policy_blocked';
+  tool_count?: number;
+  approval_gate_count?: number;
+};
+
 const STATUS_DOT: Record<string, string> = {
   running: 'bg-green-500',
   stopped: 'bg-gray-500',
   error: 'bg-red-500',
   unknown: 'bg-yellow-500',
+  stale: 'bg-yellow-500',
+  policy_blocked: 'bg-blue-500',
+  catalog: 'bg-green-500',
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -15,10 +24,19 @@ const STATUS_LABEL: Record<string, string> = {
   stopped: 'text-gray-400',
   error: 'text-red-400',
   unknown: 'text-yellow-400',
+  stale: 'text-yellow-400',
+  policy_blocked: 'text-blue-400',
+  catalog: 'text-green-400',
+};
+
+const STATUS_TEXT: Record<string, string> = {
+  policy_blocked: 'Policy isolated',
+  stale: 'Stale',
+  catalog: 'Catalog synced',
 };
 
 export function MCPPermissionsPage() {
-  const [servers, setServers] = useState<MCPServer[]>([]);
+  const [servers, setServers] = useState<MCPServerView[]>([]);
   const [permissions, setPermissions] = useState<Array<Record<string, unknown>>>([]);
   const [serverId, setServerId] = useState('');
   const [decision, setDecision] = useState('');
@@ -32,15 +50,6 @@ export function MCPPermissionsPage() {
   const [newServerDescription, setNewServerDescription] = useState('');
   const [addServerError, setAddServerError] = useState<string | null>(null);
   const [addingServer, setAddingServer] = useState(false);
-  const serverStats = permissions.reduce<Record<string, { tools: number; approvals: number }>>((stats, permission) => {
-    const id = String(permission.server_id || '');
-    if (!id) return stats;
-    stats[id] ||= { tools: 0, approvals: 0 };
-    stats[id].tools += 1;
-    if (permission.decision === 'requires_approval') stats[id].approvals += 1;
-    return stats;
-  }, {});
-
   useEffect(() => {
     refreshServers();
   }, []);
@@ -160,8 +169,9 @@ export function MCPPermissionsPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {servers.map((server) => {
-              const dot = STATUS_DOT[server.status] ?? 'bg-gray-500';
-              const label = STATUS_LABEL[server.status] ?? 'text-gray-400';
+              const status = server.effective_status || server.status;
+              const dot = STATUS_DOT[status] ?? 'bg-gray-500';
+              const label = STATUS_LABEL[status] ?? 'text-gray-400';
               return (
                 <div
                   key={server.id}
@@ -177,7 +187,7 @@ export function MCPPermissionsPage() {
                     <div className="flex items-center gap-1.5 shrink-0">
                       <span className={`w-2 h-2 rounded-full ${dot}`} />
                       <span className={`text-xs font-medium capitalize ${label}`}>
-                        {server.status}
+                        {STATUS_TEXT[status] || status}
                       </span>
                     </div>
                   </div>
@@ -189,18 +199,21 @@ export function MCPPermissionsPage() {
                   {server.url && (
                     <div className="text-xs text-foreground-tertiary truncate">{server.url}</div>
                   )}
-                  {server.last_ping_at && (
+                  {server.last_ping_at && status !== 'policy_blocked' && (
                     <div className="text-xs text-foreground-tertiary mt-1">
-                      Last ping: {new Date(server.last_ping_at).toLocaleTimeString()}
+                      {status === 'catalog' ? 'Catalog synced' : 'Last probe'}: {new Date(server.last_ping_at).toLocaleTimeString()}
                     </div>
                   )}
                   <div className="text-xs text-foreground-tertiary mt-2">
-                    Visible tools: {serverStats[server.id]?.tools || 0}
+                    Registered tools: {server.tool_count || 0}
                     <span className="mx-1">·</span>
-                    Approval gates: {serverStats[server.id]?.approvals || 0}
+                    Approval gates: {server.approval_gate_count || 0}
                   </div>
+                  {server.metadata?.catalog_only === true && (
+                    <div className="text-xs text-foreground-tertiary mt-1">Service dependency — no direct MCP tools</div>
+                  )}
                   {server.error_message && (
-                    <div className="mt-2 text-xs text-red-400 truncate">{server.error_message}</div>
+                    <div className={`mt-2 text-xs truncate ${status === 'policy_blocked' ? 'text-blue-400' : 'text-red-400'}`}>{server.error_message}</div>
                   )}
                 </div>
               );

@@ -1,6 +1,8 @@
 import fs from 'fs';
 import type { Database } from 'better-sqlite3';
 import { detectStalls, type Stall } from './stall-watch';
+import { infraFailing } from './evolution-gym-service';
+import { decisionsInbox } from './decisions-inbox';
 
 /**
  * S1 (operator 2026-09-28): one read-only snapshot of what the operator otherwise measures by hand over SSH —
@@ -14,7 +16,11 @@ export interface CockpitSnapshot {
   scorecard: Record<string, number | null>;
   guardrails: Guardrail[];
   stalls: Stall[];
-  gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string }>;
+  gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string; benched: boolean }>;
+  /** W3: what waits for the operator right now (the /decisions sections). */
+  needs_you: { approvals: number; requeue: number; labels: number; memory_review: number };
+  /** Y2: real-maker outcomes per strategy genome and maker skill (30 d) — what Y3's dreaming mutates and the bandit selects. */
+  genomes: Array<{ genome: string; skill_id: string; outcomes: number; wins: number; win_pct: number }>;
   remote_workers: Array<{ host: string; claims_24h: number; last_claim: string | null; interrupted_24h: number }>;
   maker_usage_7d: Array<{ role: string; runtime: string; model: string | null; leases: number; tokens: number }>;
   judgments_7d: Array<{ judgment: string; calls: number; errors: number; input_tokens: number }>;
@@ -51,9 +57,16 @@ export function operatorCockpit(db: Database, now = Date.now()): CockpitSnapshot
     { name: 'approvals expired (7 d)', value: scorecard.approvals_expired_7d, limit: 'not rising', ok: (scorecard.approvals_expired_7d ?? 0) <= (scorecard.approvals_decided_7d ?? 0) / 5 },
   ];
   const gym = all<{ species: string; outcomes: number; successes: number; avg_seconds: number; avg_tokens: number; last: string }>(
-    `SELECT replace(skill_id, 'loop-maker:gym:', '') AS species, COUNT(*) AS outcomes, SUM(success) AS successes, ROUND(AVG(duration_ms) / 1000) AS avg_seconds,
-       ROUND(AVG(tokens_used)) AS avg_tokens, MAX(created_at) AS last FROM skill_outcomes WHERE domain = 'gym' GROUP BY skill_id ORDER BY outcomes DESC`)
-    .map((g) => ({ ...g, success_pct: g.outcomes ? Math.round((100 * g.successes) / g.outcomes) : 0 }));
+    // per runtime@model (prod 2026-09-30: atomic@llama-router and atomic@qwen36-2060 were merged into one 'atomic' row)
+    `SELECT replace(skill_id, 'loop-maker:gym:', '') || COALESCE('@' || model, '') AS species, COUNT(*) AS outcomes, SUM(success) AS successes,
+       ROUND(AVG(duration_ms) / 1000) AS avg_seconds, ROUND(AVG(tokens_used)) AS avg_tokens, MAX(created_at) AS last
+       FROM skill_outcomes WHERE domain = 'gym' GROUP BY skill_id, model ORDER BY outcomes DESC`)
+    .map((g) => {
+      // the circuit breaker's own verdict: a benched species takes no gym work (prod 2026-09-30: benched for hours, unseen)
+      let benched = false;
+      try { benched = infraFailing(db, g.species, d1); } catch { /* loop_runs absent */ }
+      return { ...g, success_pct: g.outcomes ? Math.round((100 * g.successes) / g.outcomes) : 0, benched };
+    });
   const remote_workers = all<{ host: string; claims_24h: number; last_claim: string | null; interrupted_24h: number }>(
     `SELECT json_extract(metadata, '$.gym.remote_host') AS host, SUM(created_at >= ?) AS claims_24h, MAX(created_at) AS last_claim,
        SUM(created_at >= ? AND status = 'interrupted') AS interrupted_24h FROM loop_runs WHERE json_extract(metadata, '$.gym.remote_host') IS NOT NULL GROUP BY host`, d1, d1);
@@ -62,12 +75,23 @@ export function operatorCockpit(db: Database, now = Date.now()): CockpitSnapshot
        FROM worker_leases WHERE created_at >= ? AND runtime != 'manual' GROUP BY role, runtime, model ORDER BY tokens DESC`, d7);
   const judgments_7d = all<{ judgment: string; calls: number; errors: number; input_tokens: number }>(
     `SELECT judgment, COUNT(*) AS calls, SUM(decision = 'error') AS errors, COALESCE(SUM(input_tokens), 0) AS input_tokens FROM judgments WHERE created_at >= ? GROUP BY judgment ORDER BY calls DESC`, d7);
+  const d30 = new Date(now - 30 * 86_400_000).toISOString();
+  const genomes = all<{ genome: string; skill_id: string; outcomes: number; wins: number }>(
+    `SELECT substr(r.value, 8) AS genome, s.skill_id, COUNT(*) AS outcomes, SUM(s.success) AS wins
+       FROM skill_outcomes s, json_each(s.evidence_refs_json) r
+      WHERE r.value LIKE 'genome:%' AND s.created_at >= ? GROUP BY 1, 2 ORDER BY outcomes DESC LIMIT 20`, d30)
+    .map((g) => ({ ...g, win_pct: g.outcomes ? Math.round((100 * g.wins) / g.outcomes) : 0 }));
+  let needs_you = { approvals: scorecard.approvals_pending ?? 0, requeue: 0, labels: 0, memory_review: 0 };
+  try {
+    const inbox = decisionsInbox(db, now);
+    needs_you = { ...needs_you, requeue: inbox.requeue.filter((r) => !r.requeued_as).length, labels: inbox.prescreen.items.filter((i) => !i.label).length, memory_review: inbox.memory.length };
+  } catch { /* inbox tables absent */ }
   let stalls: Stall[] = [];
   try { stalls = detectStalls(db, now); } catch { /* stall watch is advisory */ }
   return {
     at: new Date(now).toISOString(),
     build: { commit: process.env.DJIMITFLO_BUILD_COMMIT ?? null, build_time: process.env.DJIMITFLO_BUILD_TIME ?? null },
-    scorecard, guardrails, stalls, gym, remote_workers, maker_usage_7d, judgments_7d, deploys: recentDeploys(),
+    scorecard, guardrails, stalls, gym, remote_workers, maker_usage_7d, judgments_7d, needs_you, genomes, deploys: recentDeploys(),
   };
 }
 

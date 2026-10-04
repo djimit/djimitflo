@@ -1,6 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
-import { OperatorCockpitPage } from './OperatorCockpitPage';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { MemoryRouter } from 'react-router-dom';
+import { NeedsYou, OperatorCockpitPage } from './OperatorCockpitPage';
 import { api } from '../lib/api';
 
 beforeEach(() => { vi.restoreAllMocks(); vi.spyOn(api, 'getServiceMap').mockResolvedValue({ services: [
@@ -27,8 +29,29 @@ it('shows breached guardrails, stalls and gym species from the cockpit endpoint'
   expect(await screen.findByText('down (timeout)')).toBeTruthy();
 });
 
+it('UX-2: shows real-maker outcomes per strategy genome with n, and an honest empty state', async () => {
+  const base = { at: '2026-10-04T20:00:00Z', build: { commit: null, build_time: null }, scorecard: {}, guardrails: [], stalls: [], gym: [], remote_workers: [], maker_usage_7d: [], judgments_7d: [], deploys: [] };
+  vi.spyOn(api, 'getOperatorCockpit').mockResolvedValueOnce({ ...base, genomes: [{ genome: 'g-abc123', skill_id: 'loop-maker:test-gap:opencode', outcomes: 12, wins: 7, win_pct: 58 }] });
+  const { unmount } = render(<OperatorCockpitPage />);
+  expect(await screen.findByText('g-abc123')).toBeTruthy();
+  expect(screen.getByText('58%')).toBeTruthy(); expect(screen.getByText('12')).toBeTruthy();
+  unmount();
+  vi.spyOn(api, 'getOperatorCockpit').mockResolvedValueOnce(base);
+  render(<OperatorCockpitPage />);
+  expect(await screen.findByText('No real-maker outcome carries a genome yet.')).toBeTruthy();
+});
+
 it('shows the error when the endpoint fails', async () => {
   vi.spyOn(api, 'getOperatorCockpit').mockRejectedValue(new Error('Access denied'));
   render(<OperatorCockpitPage />);
   expect((await screen.findByRole('alert')).textContent).toBe('Access denied');
+});
+
+it('W3: shows what needs the operator with links into /decisions, and a calm line when nothing does', () => {
+  const html = renderToStaticMarkup(<MemoryRouter><NeedsYou n={{ approvals: 2, requeue: 0, labels: 22, memory_review: 1 }} /></MemoryRouter>);
+  expect(html).toContain('Needs you (25)');
+  expect(html).toContain('href="/decisions#approvals"');
+  expect(html).toContain('22 pre-screen labels');
+  expect(html).not.toContain('requeue candidates');
+  expect(renderToStaticMarkup(<MemoryRouter><NeedsYou n={{ approvals: 0, requeue: 0, labels: 0, memory_review: 0 }} /></MemoryRouter>)).toContain('Nothing needs you right now');
 });

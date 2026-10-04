@@ -1,4 +1,5 @@
 import type { Database } from 'better-sqlite3';
+import { decide, expiringAdmissions } from '../execution/runtime-admission';
 
 /**
  * Plan M10: Djimitflo noticed none of its own silent failures on 2026-09-27 — the workstation gym benched for 9 h, NVIDIA
@@ -49,6 +50,8 @@ export function detectStalls(db: Database, now = Date.now(), env: NodeJS.Process
     const last = one<{ t: string | null }>(db, "SELECT MAX(created_at) AS t FROM judgments WHERE judgment = 'discovery_relevance'")?.t ?? null;
     if (last && last < ago(now, 36)) out.push({ subsystem: 'discoveries', since: last, detail: 'no fleet discovery judged for > 36 h (publishers on Mac mini / Eve-V / workstation)' });
   }
+  // 6. a runtime admission expires within 30 days: at expiry the engine stops dispatching to that runtime
+  for (const a of expiringAdmissions(now)) out.push({ subsystem: `runtime_admission:${a.runtime_id}`, since: a.expires_at, detail: `admission ${decide(a).decision} expires ${a.expires_at}; reassess (execution/runtime-admission.ts) before then` });
   return out;
 }
 

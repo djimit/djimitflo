@@ -5,7 +5,7 @@ import { runMigrations } from '../database/migrate';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { evolveEligible, evolveSpecies, selectEvolveWinner } from '../services/evolve-selection';
+import { evolveEligible, evolveSpecies, mutationScoreOf, selectEvolveWinner } from '../services/evolve-selection';
 
 let db: Database.Database;
 const now = new Date().toISOString();
@@ -51,6 +51,19 @@ it('the fittest maker stays the only non-superseded one; losers are superseded a
   expect(db.prepare("SELECT event_type FROM loop_events WHERE loop_run_id = 'run-1'").all()).toEqual([{ event_type: 'evolve_selected' }]);
 });
 
+it('a maker that did not touch the goal\'s artifact cannot win, however small its diff (prod 2026-10-01: README edit beat the test)', () => {
+  const test = 'packages/server/src/__tests__/runtime-bandit.exports.test.ts';
+  db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, priority, evidence_refs_json, grounding_json, created_at, updated_at)
+    VALUES ('p-1', 'feature', 't', 'd', 'r', 'gap_analysis', 'executing', 0.5, '["test-gap:runtime-bandit#exports"]', ?, ?, ?)`).run(JSON.stringify({ artifactPath: test }), now, now);
+  db.prepare(`INSERT INTO goals (id, objective, risk_class, status, metadata, improvement_id, created_at, updated_at) VALUES ('g-1', 'o', 'low', 'running', '{}', 'p-1', ?, ?)`).run(now, now);
+  db.prepare("UPDATE loop_runs SET goal_id = 'g-1' WHERE id = 'run-1'").run();
+  maker('m-test', 'opencode', ok(32, { changed_files: [test] })); reviewer('c-test', 'checker', 'm-test');
+  maker('m-docs', 'opencode', ok(26, { changed_files: ['CONTRIBUTING.md', 'README.md'] })); reviewer('c-docs', 'checker', 'm-docs');
+  expect(selectEvolveWinner(db, 'run-1', ['m-test', 'm-docs'])).toBe('m-test');
+  expect(meta('m-docs').evolve.reason).toBe('over budget or disallowed paths');
+  expect([status('c-test'), status('c-docs')]).toEqual(['prepared', 'cancelled']);
+});
+
 it('no eligible maker: nothing changes and the run fails like a single-maker run', () => {
   maker('m-a', 'opencode', { exit_status: 1 }); reviewer('c-a', 'checker', 'm-a');
   expect(selectEvolveWinner(db, 'run-1', ['m-a'])).toBeNull();
@@ -73,4 +86,12 @@ it('a loser that never finished (still prepared) is not recorded as a lost outco
   db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES ('m-pending', 'run-1', 'maker', 'opencode', 'prepared', '{"model":"kimi"}', ?, ?)`).run(now, now);
   expect(selectEvolveWinner(db, 'run-1', ['m-done', 'm-pending'])).toBe('m-done');
   expect(db.prepare('SELECT COUNT(*) AS n FROM skill_outcomes').get()).toEqual({ n: 0 });
+});
+
+it('D0: a measured mutation score of 0 stays 0 (it used to become null = not measured)', () => {
+  const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mut-')), 'out.json');
+  fs.writeFileSync(f, '{"before":0,"after":0}');
+  expect(mutationScoreOf([{ name: 'test:mutation:grounded', stdout_path: f }])).toBe(0);
+  fs.writeFileSync(f, 'no json line');
+  expect(mutationScoreOf([{ name: 'test:mutation:grounded', stdout_path: f }])).toBeNull();
 });
