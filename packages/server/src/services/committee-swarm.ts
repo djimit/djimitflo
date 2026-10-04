@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { kbContext } from './kb-corpus';
 import { forecastScores } from './forecast-scoring';
+import { knowledgeOverview } from './knowledge-overview';
 
 /**
  * AR-W (operator 04-10): committee swarms on the workstation. For every new proposal a committee of member genomes
@@ -254,4 +255,19 @@ export function arenaGate(db: Database, agentId: string, now = new Date()): { al
   const calls = all<{ n: number }>('SELECT COUNT(*) AS n FROM judgments WHERE judgment = ? AND created_at >= ?', `forecast:resident:${agentId}`, week)?.n ?? 0;
   if (questions >= 5 && talk >= 30 && calls === 0) return { allowed: false, reason: `${talk} messages but no measurable call in 7 days` };
   return { allowed: true, reason: score ? `skill ${score.skill.toFixed(2)} on ${score.n}` : 'not scored yet' };
+}
+
+/**
+ * AR-W6 (operator 04-10, the same rule for the fleet): a fleet agent's measurable call is a discovery judged relevant. A source
+ * with >= FLEET_MIN_JUDGED judged discoveries (30 days) and none relevant stops being ingested — its events are still
+ * recorded (N1), but no more units, judgments or jev calls are spent on them. Prod 04-10: hermes-macmini 601 events, 90
+ * judged, 0 relevant; the scout 129 relevant, the operator's reading list 7, the KB sync 2.
+ */
+export const FLEET_MIN_JUDGED = 50;
+export function fleetSourceGate(db: Database, agent: string, now = Date.now()): { allowed: boolean; reason: string } {
+  const s = knowledgeOverview(db, now).sources.find((r) => r.source === agent);
+  if (!s) return { allowed: true, reason: 'no record yet' };
+  const judged = s.yes + s.uncertain + s.no;
+  if (judged >= FLEET_MIN_JUDGED && s.yes === 0) return { allowed: false, reason: `${judged} discoveries judged, none relevant` };
+  return { allowed: true, reason: `${s.yes}/${judged} relevant` };
 }
