@@ -58,7 +58,43 @@ Back up before editing (`cp -p runtime.env runtime.env.bak-<date>`), then `docke
 | `SEGML_ENABLED`, `DREAM_CYCLE_LEGACY_ENABLED` | restore the gated-off legacy loops (off since 2026-09-24) |
 | **Operator decisions** `NEEDS_GROUNDING_TRIAGE_ENABLED`, `DREAM_STATE_PROPOSALS_ENABLED`, any `…_MODE=enforce` | act on shadow judgments; switch on only after the funnel agreement numbers justify it |
 
-## Prod status (2026-09-25, E4)
+## Evolution flags (Phase F, RX-2)
+
+The running values come from `GET /api/health/evolution-evidence` (manage:config), not from this table; the table is the
+code default and who may change it. A test fails when a flag in `EVOLUTION_FLAGS` (services/evolution-evidence.ts) is
+missing here. **Acting** = changes what the loop does; acting flags are switched by the operator only.
+
+| Flag | Code default | Acting | Stage | Decides |
+|---|---|---|---|---|
+| `LOOP_BANDIT_ENABLED` | off | yes | act | operator |
+| `LOOP_BANDIT_SPECIES` | unset | yes | act | operator |
+| `LOOP_BANDIT_MAX_SHARE` | 0.1 | yes | act | operator |
+| `LOOP_EVOLVE_ENABLED` | off | yes | act | operator |
+| `LOOP_EVOLVE_SPECIES` | unset | yes | act | operator |
+| `FITNESS_SHADOW_ENABLED` | off | no | shadow | loop (shadow) |
+| `MERGE_SURVIVAL_ENABLED` | off | no | measure | loop (read-only GitHub GETs) |
+| `DREAM_EVOLUTION_ENABLED` | off | yes | act | operator |
+| `DREAM_TRIAL_MUTANTS` | off | yes | act | operator |
+| `DREAM_TRIAL_MUTANT_TIERS` | `2,3` | yes | act (freezes a new holdout) | operator, after the RX-5 tier probe |
+| `DREAM_PROMOTION_ALPHA` | 0.05 | yes | act | operator |
+| `GENOME_APPLY_MODE` | unset (only `shadow` exists) | no | shadow | loop (shadow) |
+| `ARENA_GATE_ENABLED` | off | yes | act | operator |
+| `COMMITTEE_SWARM_ENABLED` | off | yes | act | operator |
+| `COMMONS_GROUNDING_APPLY` | off | yes | act | operator |
+| `LOOP_AUTO_DRAFT_PR_ENABLED` | off | yes | act | operator |
+| `LOOP_AUTO_APPROVE_TEST_GAP` | off | yes | act | operator |
+| `ORACLE_LANES_AUTO_APPROVE` | off | yes | act | operator |
+| `LOOP_MEMORY_RULES_ENABLED` | off | yes | act | operator |
+| `EVOLUTION_GYM_REMOTE_MAX_PER_DAY` | 24 | yes | act (budget) | operator |
+| `DJIMITFLO_PUBLIC_URL` | unset (Host header) | no | config | operator |
+| `GYM_TIER_PROBE_ENABLED` | off | no | measure | operator (workstation budget) |
+| `GYM_TIER_PROBE_TIERS` | `4,5,6` | no | measure | operator |
+| `GYM_TIER_PROBE_EVERY` | 4 (every 4th remote claim) | no | measure | operator |
+
+## Prod status (2026-09-25, E4) — STALE
+
+> Stale since 2026-10-04: read the live flag values, outcomes, holdouts and Realm Gates from
+> `GET /api/health/evolution-evidence?days=30` instead. Kept for history.
 
 | Area | State | Measured |
 |---|---|---|
