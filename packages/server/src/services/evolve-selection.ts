@@ -114,7 +114,7 @@ export function selectEvolveWinner(db: Database, runId: string, makerLeaseIds: s
       const model = (JSON.parse(lease.metadata || '{}') as { model?: unknown }).model;
       skills.recordOutcome(`loop-maker:${loop}:${lease.runtime}`, {
         success: false, tokensUsed: r.tokens ?? 0, durationMs: 0, domain: loop, taskId: runId, agentId: r.makerLeaseId,
-        ...(typeof model === 'string' ? { model } : {}), evidenceRefs: [`loop_run:${runId}`, `evolve:lost_to:${winner.species}`, `evolve:reason:${r.reason}`],
+        ...(typeof model === 'string' ? { model } : {}), evidenceRefs: [`loop_run:${runId}`, `evolve:lost_to:${winner.species}`, `evolve:reason:${r.reason}`, `evolve:lost_${r.eligible ? 'eligible' : 'ineligible'}`],
       });
     }
   } catch { /* lineage bookkeeping must never change the selection */ }

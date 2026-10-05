@@ -34,29 +34,34 @@ export function fitnessKeys(lane: string, s: Species): Array<{ source: FitnessSo
   ];
 }
 
-export interface FitnessRow { species: string; sources: Record<FitnessSource, { n: number; ok: number }>; alpha: number; beta: number; mean: number }
+/** RX-3: production zeros that are not the species' fault (infra, no change, or an eligible maker that lost evolve on rank). */
+export const UNFAIR_ZERO = /"(outcome_class:(infra_failed|no_change)|evolve:lost_eligible)"/;
+export interface FitnessRow { species: string; sources: Record<FitnessSource, { n: number; ok: number }>; alpha: number; beta: number; mean: number; tagged: number; mean_clean: number }
 
 export function fitnessPosterior(db: Database, lane: string, species: Species[], now = Date.now(), env: NodeJS.ProcessEnv = process.env): FitnessRow[] {
   const w = fitnessWeights(env); const halfLifeMs = num(env.FITNESS_HALF_LIFE_DAYS, 30) * 86_400_000;
-  const rows = (skillId: string, model: string): Array<{ success: number; created_at: string }> => {
-    try { return db.prepare('SELECT success, created_at FROM skill_outcomes WHERE skill_id = ? AND COALESCE(model, \'\') = ?').all(skillId, model) as Array<{ success: number; created_at: string }>; }
+  const rows = (skillId: string, model: string): Array<{ success: number; created_at: string; refs: string | null }> => {
+    try { return db.prepare('SELECT success, created_at, evidence_refs_json AS refs FROM skill_outcomes WHERE skill_id = ? AND COALESCE(model, \'\') = ?').all(skillId, model) as Array<{ success: number; created_at: string; refs: string | null }>; }
     catch { return []; } // skill_outcomes is created lazily
   };
   return species.map((s) => {
-    let alpha = 1; let beta = 1;
+    let alpha = 1; let beta = 1; let cleanAlpha = 1; let cleanBeta = 1; let tagged = 0;
     const sources = { production: { n: 0, ok: 0 }, gym: { n: 0, ok: 0 }, merge: { n: 0, ok: 0 } };
     for (const k of fitnessKeys(lane, s)) {
-      let a = 0; let b = 0;
+      let a = 0; let b = 0; let unfair = 0;
       for (const r of rows(k.skillId, k.model)) {
         const age = Math.max(0, now - Date.parse(r.created_at));
         const weight = w[k.source] * (halfLifeMs > 0 ? 0.5 ** (age / halfLifeMs) : 1);
         if (r.success) a += weight; else b += weight;
+        if (k.source === 'production' && !r.success && UNFAIR_ZERO.test(r.refs ?? '')) { unfair += weight; tagged++; }
         sources[k.source].n++; sources[k.source].ok += r.success ? 1 : 0;
       }
       const scale = k.source === 'gym' && a + b > gymMaxWeight(env) ? gymMaxWeight(env) / (a + b) : 1;
       alpha += a * scale; beta += b * scale;
+      cleanAlpha += a * scale; cleanBeta += (b - unfair) * scale;
     }
-    return { species: speciesKey(s), sources, alpha: +alpha.toFixed(3), beta: +beta.toFixed(3), mean: +(alpha / (alpha + beta)).toFixed(3) };
+    return { species: speciesKey(s), sources, alpha: +alpha.toFixed(3), beta: +beta.toFixed(3), mean: +(alpha / (alpha + beta)).toFixed(3),
+      tagged, mean_clean: +(cleanAlpha / (cleanAlpha + cleanBeta)).toFixed(3) };
   });
 }
 

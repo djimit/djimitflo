@@ -155,6 +155,15 @@ describe('LoopDaemon checker dispatch', () => {
     expect(rows).toEqual([{ skill_id: 'loop-maker:doc-drift-and-small-fix-loop:codex', success: 0, task_id: 'run-1', agent_id: 'maker-1', domain: 'doc-drift-and-small-fix-loop' }]);
   });
 
+  it('RX-3: a failed run tags its maker outcome with why it failed (here: the maker never ran → infra), success unchanged', async () => {
+    seedQualifyingGoal();
+    const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+    await runOneTick(daemon);
+    const row = db.prepare('SELECT success, evidence_refs_json AS refs FROM skill_outcomes').get() as { success: number; refs: string };
+    expect(row.success).toBe(0);
+    expect(JSON.parse(row.refs)).toContain('outcome_class:infra_failed');
+  });
+
   it('evolve (E13): with LOOP_EVOLVE_ENABLED an eligible goal gets a sibling maker per species before the checker', async () => {
     const goal = seedQualifyingGoal();
     db.prepare("UPDATE goals SET metadata = '{\"evolve\":true}' WHERE id = ?").run(goal.id);

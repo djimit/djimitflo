@@ -95,3 +95,13 @@ it('D0: a measured mutation score of 0 stays 0 (it used to become null = not mea
   fs.writeFileSync(f, 'no json line');
   expect(mutationScoreOf([{ name: 'test:mutation:grounded', stdout_path: f }])).toBeNull();
 });
+
+it('RX-3: an evolve loser that was eligible (lost on rank) is tagged, an ineligible one too, so the reward can tell them apart', () => {
+  maker('m-a', 'opencode', ok(80)); reviewer('c-a', 'checker', 'm-a');
+  maker('m-b', 'codex', ok(40)); reviewer('c-b', 'checker', 'm-b');
+  maker('m-c', 'pi', { ...ok(10), exit_status: 1 }); reviewer('c-c', 'checker', 'm-c');
+  expect(selectEvolveWinner(db, 'run-1', ['m-a', 'm-b', 'm-c'])).toBe('m-b');
+  const refs = (agent: string) => JSON.parse((db.prepare('SELECT evidence_refs_json AS r FROM skill_outcomes WHERE agent_id = ?').get(agent) as { r: string }).r) as string[];
+  expect(refs('m-a')).toContain('evolve:lost_eligible');
+  expect(refs('m-c')).toContain('evolve:lost_ineligible');
+});

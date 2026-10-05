@@ -36,6 +36,13 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
       THEN instr(skill_id, ':') + instr(substr(skill_id, instr(skill_id, ':') + 1), ':') - 1 ELSE length(skill_id) END) AS skill,
     COUNT(*) AS n, SUM(success) AS ok FROM skill_outcomes WHERE created_at >= ? GROUP BY 1, 2 ORDER BY n DESC LIMIT 60`, since);
 
+  // RX-3: production maker outcomes whose zero is not the species' fault (infra, no change, eligible evolve loser)
+  const outcomes_tagged = all<{ skill: string; total: number; failures: number; tagged: number }>(`SELECT skill_id AS skill, COUNT(*) AS total,
+    SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS failures,
+    SUM(CASE WHEN success = 0 AND (evidence_refs_json LIKE '%"outcome_class:infra_failed"%' OR evidence_refs_json LIKE '%"outcome_class:no_change"%'
+      OR evidence_refs_json LIKE '%"evolve:lost_eligible"%') THEN 1 ELSE 0 END) AS tagged
+    FROM skill_outcomes WHERE skill_id LIKE 'loop-maker:%' AND domain NOT IN ('gym', 'merge') AND created_at >= ? GROUP BY 1 ORDER BY total DESC LIMIT 30`, since)
+    .map((r) => ({ ...r, share: r.total ? +(r.tagged / r.total).toFixed(3) : 0 }));
   const settled = all<{ state: string; survived: number | null; n: number }>(`SELECT json_extract(metadata, '$.pr_outcome.state') AS state,
     json_extract(metadata, '$.pr_outcome.survived') AS survived, COUNT(*) AS n FROM loop_runs
     WHERE json_extract(metadata, '$.pr_outcome.settled_at') IS NOT NULL GROUP BY 1, 2`);
@@ -82,5 +89,5 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
       return { state: eligible.length ? 'unknown' : 'red', reason: eligible.length ? `${eligible.length} forecaster(s) with ≥ 10 positives and n ≥ 100; skill CI needs V2 (RX-7)` : `no forecaster has ≥ 10 positives and n ≥ 100 (${fs.length} scored)` } as Gate;
     })(),
   };
-  return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, merge, drafts, genomes, gym, trials, gates };
+  return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, trials, gates };
 }
