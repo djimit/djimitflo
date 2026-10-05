@@ -1,5 +1,5 @@
 import type { Database } from 'better-sqlite3';
-import { forecastScores } from './forecast-scoring';
+import { forecastScoresV2 } from './forecast-scoring';
 import { parseRuntimeSpec } from './social-runtime-providers';
 import { modelEvidence } from './model-selector';
 import { commonsYield, oracleAgreement } from './honest-numbers';
@@ -77,6 +77,14 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
       'SELECT trial_id, parent_id, tier_set, deciding_n, f_parent_failures, b, c, p, power_q8_l05, state, recorded_at FROM genome_trial_results ORDER BY recorded_at DESC LIMIT 10'),
   };
   const latestTrial = trials.recent[0];
+  // RX-7: forecast scoring V2 summary (shadow): counts per state; details at GET /api/health/forecasts-v2
+  const forecasts_v2 = (() => {
+    try {
+      const f = forecastScoresV2(db, { boot: 500 }).forecasters;
+      const grade = f.filter((x) => x.state === 'decision_grade');
+      return { scored: f.length, decision_grade: grade.length, decision_grade_skilled: grade.filter((x) => x.skill_ci[0] > 0).length, insufficient: f.length - grade.length };
+    } catch { return { scored: 0, decision_grade: 0, decision_grade_skilled: 0, insufficient: 0 }; }
+  })();
   const gates: Record<'A' | 'B' | 'C' | 'D', Gate> = {
     A: (() => {
       if (!latestTrial) return { state: 'unknown', reason: 'no settled trial with diagnostics yet (TRIAL_DIAGNOSTICS_ENABLED)' } as Gate;
@@ -91,9 +99,10 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     })(),
     C: { state: openDrafts.length <= 5 ? 'unknown' : 'red', reason: `${openDrafts.length} loop PRs open or merged < 14 d ago (an upper bound on open drafts; target ≤ 5 open on 14 consecutive days)` },
     D: (() => {
-      const fs = (() => { try { return forecastScores(db); } catch { return []; } })();
-      const eligible = fs.filter((f) => f.positives >= 10 && f.n >= 100);
-      return { state: eligible.length ? 'unknown' : 'red', reason: eligible.length ? `${eligible.length} forecaster(s) with ≥ 10 positives and n ≥ 100; skill CI needs V2 (RX-7)` : `no forecaster has ≥ 10 positives and n ≥ 100 (${fs.length} scored)` } as Gate;
+      // RX-7: decision-grade needs >= 10 positives, n >= 100 and a bootstrap skill CI that excludes 0
+      if (!forecasts_v2.scored) return { state: 'unknown', reason: 'no forecaster scored yet' } as Gate;
+      const skilled = forecasts_v2.decision_grade_skilled;
+      return { state: skilled ? 'green' : 'red', reason: `${forecasts_v2.decision_grade} of ${forecasts_v2.scored} forecaster(s) decision-grade (${skilled} with skill CI > 0); ${forecasts_v2.insufficient} insufficient` } as Gate;
     })(),
   };
   // MS-1: model calls per consumer (14-day selector window) and what the cost-aware selector would pick
@@ -102,5 +111,5 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   // RX-9 / RX-8: honest agreement and yield numbers (one row per maker; attempted Commons children vs source base rate)
   const oracle = oracleAgreement(db);
   const commons = commonsYield(db);
-  return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, trials, models, oracle, commons, gates };
+  return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, trials, models, oracle, commons, forecasts_v2, gates };
 }
