@@ -1304,6 +1304,10 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
     -- RX-4: per settled trial, what it could have shown (parent failures on the deciding set, power, blind/underpowered/powered)
     CREATE TABLE IF NOT EXISTS genome_trial_results (trial_id TEXT PRIMARY KEY, parent_id TEXT, tier_set TEXT, deciding_n INTEGER, f_parent_failures INTEGER,
       b INTEGER, c INTEGER, p REAL, mined_b INTEGER, mined_c INTEGER, power_q8_l05 REAL, state TEXT NOT NULL, recorded_at TEXT NOT NULL);
+    -- MS-1: every model call of a consumer (incumbent and shadow candidates): did it parse, did it agree, how long, how long the answer
+    CREATE TABLE IF NOT EXISTS llm_model_calls (id INTEGER PRIMARY KEY AUTOINCREMENT, consumer TEXT NOT NULL, model TEXT NOT NULL, ok INTEGER NOT NULL,
+      latency_ms INTEGER, out_chars INTEGER, shadow INTEGER NOT NULL DEFAULT 0, agree INTEGER, created_at TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS idx_llm_model_calls ON llm_model_calls(consumer, model, created_at);
     -- AR-W: committee member genomes (persona + knowledge recipe + strategy lines) and the per-proposal jobs the workstation pulls
     CREATE TABLE IF NOT EXISTS committee_genomes (id TEXT PRIMARY KEY, parent_id TEXT, persona TEXT NOT NULL, knowledge TEXT NOT NULL, lines_json TEXT NOT NULL DEFAULT '[]',
       status TEXT NOT NULL, origin TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);

@@ -1,0 +1,90 @@
+import type { Database } from 'better-sqlite3';
+
+/**
+ * MS-1 (operator 2026-10-05: "model choice by cost should be Djimitflo's own behaviour"). Ollama Cloud usage was dominated
+ * by kimi-k3 (an extra-high usage model) while an A/B on 5 real panel prompts gave identical, valid JSON verdicts from
+ * kimi-k3, glm-5.3 and glm-5.3-flash. Instead of hand-swapping models, every call of a consumer is recorded in
+ * llm_model_calls; in shadow mode a sample also asks one cheaper candidate and records whether it parsed and agreed;
+ * chooseModel picks the cheapest candidate that has earned it. MODEL_SELECTOR_MODE=off|shadow|enforce (default off).
+ */
+export type SelectorMode = 'off' | 'shadow' | 'enforce';
+export const modelSelectorMode = (env: NodeJS.ProcessEnv = process.env): SelectorMode =>
+  env.MODEL_SELECTOR_MODE === 'shadow' || env.MODEL_SELECTOR_MODE === 'enforce' ? env.MODEL_SELECTOR_MODE : 'off';
+export const shadowRate = (env: NodeJS.ProcessEnv = process.env): number => {
+  const v = Number(env.MODEL_SELECTOR_SHADOW_RATE); return Number.isFinite(v) && v >= 0 && v <= 1 && env.MODEL_SELECTOR_SHADOW_RATE !== undefined ? v : 0.1;
+};
+
+const WINDOW_MS = 14 * 86_400_000;
+const MIN_CALLS = 20; const MIN_OK = 0.95; const MIN_WILSON = 0.9; const MIN_AGREE = 0.8;
+const DEFAULT_WEIGHTS = 'kimi-k3=4,glm-5.3=2,glm-5.3-flash=1';
+
+const baseName = (model: string): string => model.replace(/^ollama:/, '').replace(/:cloud$/, '');
+/** Relative usage cost of a model (MODEL_COST_WEIGHTS name=weight; unknown = 2). */
+export function costWeight(model: string, env: NodeJS.ProcessEnv = process.env): number {
+  const weights = new Map((env.MODEL_COST_WEIGHTS || DEFAULT_WEIGHTS).split(',').map((p) => p.split('=').map((s) => s.trim()) as [string, string]));
+  const w = Number(weights.get(baseName(model)));
+  return Number.isFinite(w) && w > 0 ? w : 2;
+}
+export const candidates = (consumer: string, env: NodeJS.ProcessEnv = process.env): string[] =>
+  String(env[`MODEL_CANDIDATES_${consumer.toUpperCase()}`] || '').split(',').map((s) => s.trim()).filter(Boolean);
+
+export interface ModelCall { consumer: string; model: string; ok: boolean; latencyMs: number; outChars: number; shadow: 0 | 1; agree: boolean | null }
+export function recordModelCall(db: Database, c: ModelCall, at = new Date()): void {
+  try {
+    db.prepare('INSERT INTO llm_model_calls (consumer, model, ok, latency_ms, out_chars, shadow, agree, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(c.consumer, c.model, c.ok ? 1 : 0, Math.round(c.latencyMs), c.outChars, c.shadow, c.agree === null ? null : c.agree ? 1 : 0, at.toISOString());
+  } catch { /* the ledger never breaks the call it measures */ }
+}
+
+const wilsonLower = (ok: number, n: number, z = 1.96): number => {
+  if (!n) return 0; const p = ok / n; const z2 = z * z;
+  return (p + z2 / (2 * n) - z * Math.sqrt((p * (1 - p) + z2 / (4 * n)) / n)) / (1 + z2 / n);
+};
+
+interface Stats { n: number; ok: number; compared: number; agreed: number }
+function stats(db: Database, consumer: string, model: string, now: number): Stats {
+  try {
+    return db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(ok), 0) AS ok, COALESCE(SUM(CASE WHEN shadow = 1 AND agree IS NOT NULL THEN 1 ELSE 0 END), 0) AS compared,
+      COALESCE(SUM(CASE WHEN shadow = 1 AND agree = 1 THEN 1 ELSE 0 END), 0) AS agreed FROM llm_model_calls WHERE consumer = ? AND model = ? AND created_at >= ?`)
+      .get(consumer, model, new Date(now - WINDOW_MS).toISOString()) as Stats;
+  } catch { return { n: 0, ok: 0, compared: 0, agreed: 0 }; }
+}
+/** A candidate has earned traffic: ≥ 20 calls, ok ≥ 95 % with Wilson lower bound ≥ 0.9, and ≥ 20 shadow comparisons agreeing ≥ 80 %. */
+export function qualifies(s: Stats): boolean {
+  return s.n >= MIN_CALLS && s.ok / s.n >= MIN_OK && wilsonLower(s.ok, s.n) >= MIN_WILSON && s.compared >= MIN_CALLS && s.agreed / s.compared >= MIN_AGREE;
+}
+
+/** The cheapest candidate (cheaper than the incumbent) that qualified in the last 14 days; otherwise the incumbent. */
+export function chooseModel(db: Database, consumer: string, incumbent: string, env: NodeJS.ProcessEnv = process.env, now = Date.now()): string {
+  const own = costWeight(incumbent, env);
+  const best = candidates(consumer, env).filter((m) => m !== incumbent && costWeight(m, env) < own && qualifies(stats(db, consumer, m, now)))
+    .sort((a, b) => costWeight(a, env) - costWeight(b, env))[0];
+  return best ?? incumbent;
+}
+
+/** Shadow round-robin: the candidate with the fewest shadow calls so far, cheapest first on ties. */
+export function shadowCandidate(db: Database, consumer: string, incumbent: string, env: NodeJS.ProcessEnv = process.env, now = Date.now()): string | null {
+  const shadowCount = (m: string): number => {
+    try { return (db.prepare('SELECT COUNT(*) AS n FROM llm_model_calls WHERE consumer = ? AND model = ? AND shadow = 1 AND created_at >= ?').get(consumer, m, new Date(now - WINDOW_MS).toISOString()) as { n: number }).n; } catch { return 0; }
+  };
+  return candidates(consumer, env).filter((m) => m !== incumbent)
+    .map((m) => ({ m, n: shadowCount(m), w: costWeight(m, env) })).sort((a, b) => a.n - b.n || a.w - b.w)[0]?.m ?? null;
+}
+
+/** Evidence: per consumer × model in the selector window, plus what chooseModel would pick per known consumer. */
+export function modelEvidence(db: Database, incumbents: Record<string, string | undefined>, env: NodeJS.ProcessEnv = process.env, now = Date.now()) {
+  let rows: Array<{ consumer: string; model: string; n: number; ok_rate: number; agree_rate: number | null; median_latency_ms: number | null; cost_weight: number }> = [];
+  try {
+    const since = new Date(now - WINDOW_MS).toISOString();
+    const groups = db.prepare(`SELECT consumer, model, COUNT(*) AS n, AVG(ok) AS ok_rate, AVG(agree) AS agree_rate FROM llm_model_calls
+      WHERE created_at >= ? GROUP BY 1, 2 ORDER BY 1, n DESC`).all(since) as Array<{ consumer: string; model: string; n: number; ok_rate: number; agree_rate: number | null }>;
+    const lat = db.prepare('SELECT latency_ms AS l FROM llm_model_calls WHERE consumer = ? AND model = ? AND created_at >= ? ORDER BY latency_ms');
+    rows = groups.map((g) => {
+      const ls = (lat.all(g.consumer, g.model, since) as Array<{ l: number }>).map((r) => r.l);
+      return { ...g, ok_rate: +g.ok_rate.toFixed(3), agree_rate: g.agree_rate === null ? null : +g.agree_rate.toFixed(3),
+        median_latency_ms: ls.length ? ls[Math.floor(ls.length / 2)] : null, cost_weight: costWeight(g.model, env) };
+    });
+  } catch { /* table absent on an old schema */ }
+  const would_pick = Object.fromEntries(Object.entries(incumbents).map(([c, inc]) => [c, inc ? chooseModel(db, c, inc, env, now) : null]));
+  return { mode: modelSelectorMode(env), rows, would_pick };
+}

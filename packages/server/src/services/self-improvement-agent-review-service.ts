@@ -26,8 +26,11 @@ import { buildDecisionContext } from './decision-context-service';
 import { kbContext } from './kb-corpus';
 import type { Database } from 'better-sqlite3';
 import { SpecialistPanelService, type SpecialistPanelRecord, type SpecialistProfile } from './specialist-panel-service';
+import { chooseModel, modelSelectorMode, recordModelCall, shadowCandidate, shadowRate } from './model-selector';
 
-export type ModelCaller = (prompt: string) => Promise<string>;
+/** The model argument is only passed when MODEL_SELECTOR_MODE is on; undefined = the caller's own default (unchanged). */
+export type ModelCaller = (prompt: string, model?: string) => Promise<string>;
+const CONSUMER = 'panel_review';
 
 interface ParsedReview {
   stance: 'support' | 'oppose' | 'uncertain' | 'needs_evidence';
@@ -53,9 +56,9 @@ function reviewTimeoutMs(): number {
   return Number(process.env.SELF_IMPROVEMENT_REVIEW_TIMEOUT_MS) || 120_000;
 }
 
-async function callOllama(prompt: string): Promise<string> {
+async function callOllama(prompt: string, model = defaultModel()): Promise<string> {
   return generateText(
-    { prompt, model: defaultModel(), temperature: 0.2, maxTokens: 1024, timeoutMs: reviewTimeoutMs() },
+    { prompt, model, temperature: 0.2, maxTokens: 1024, timeoutMs: reviewTimeoutMs() },
     { endpoints: llmEndpoints(defaultOllamaUrl()) },
   );
 }
@@ -92,10 +95,12 @@ export class SelfImprovementAgentReviewService {
   private readonly panels: SpecialistPanelService;
   private readonly callModel: ModelCaller;
   private readonly generationFailures = new Map<string, number>();
+  private readonly random: () => number;
 
-  constructor(private readonly db: Database, callModel: ModelCaller = callOllama) {
+  constructor(private readonly db: Database, callModel: ModelCaller = callOllama, opts: { random?: () => number } = {}) {
     this.panels = new SpecialistPanelService(db);
     this.callModel = callModel;
+    this.random = opts.random ?? Math.random;
   }
 
   /** Generate and submit reviews for every specialist role that hasn't reviewed this panel yet. */
@@ -143,18 +148,43 @@ export class SelfImprovementAgentReviewService {
   }
 
   private async reviewOne(panel: SpecialistPanelRecord, profile: SpecialistProfile, lessons?: string): Promise<ParsedReview | { error: string }> {
+    const prompt = this.buildPrompt(panel, profile, lessons);
+    const mode = modelSelectorMode();
+    if (mode === 'off') return this.ask(prompt, profile.id);
+    // MS-1: enforce uses the cheapest model that earned it (incumbent as fallback); shadow samples one candidate and discards it
+    const incumbent = defaultModel();
+    const pick = mode === 'enforce' ? chooseModel(this.db, CONSUMER, incumbent) : incumbent;
+    let outcome = await this.ask(prompt, profile.id, pick);
+    if (pick !== incumbent && 'error' in outcome) outcome = await this.ask(prompt, profile.id, incumbent);
+    if (mode === 'shadow' && this.random() < shadowRate()) {
+      const candidate = shadowCandidate(this.db, CONSUMER, incumbent);
+      if (candidate) await this.ask(prompt, profile.id, candidate, 'error' in outcome ? null : outcome.stance);
+    }
+    return outcome;
+  }
+
+  /** One model call; with a model given it is recorded in the MS-1 ledger (a shadow call when incumbentStance is passed). */
+  private async ask(prompt: string, who: string, model?: string, incumbentStance?: ParsedReview['stance'] | null): Promise<ParsedReview | { error: string }> {
+    const started = Date.now();
+    const shadow = incumbentStance !== undefined;
+    const record = (ok: boolean, chars: number, stance?: string) => {
+      if (model) recordModelCall(this.db, { consumer: CONSUMER, model, ok, latencyMs: Date.now() - started, outChars: chars, shadow: shadow ? 1 : 0,
+        agree: shadow && incumbentStance && stance ? stance === incumbentStance : null });
+    };
     try {
-      const raw = await this.callModel(this.buildPrompt(panel, profile, lessons));
+      const raw = await this.callModel(prompt, model);
       // prod 2026-09-25 (sample logged since #416): the "unreadable" answers were empty responses — a transient model
       // failure, treated like an unreachable host (no attempt spent, never recorded as a vote)
-      if (!raw.trim()) return { error: 'empty model response (timed out)' };
+      if (!raw.trim()) { record(false, 0); return { error: 'empty model response (timed out)' }; }
       // An unreadable answer is no judgement either (prod 2026-09-25: one garbled reply parked two test-gap proposals
       // of a 6/6 lane); retry it like a failed call.
       const parsed = this.parseResponse(raw);
       // keep a short sample so the next unreadable answer can be diagnosed (prod 2026-09-25: 16 in 7 days, in pairs per panel)
-      if (!parsed) console.warn(`self-improvement review for ${profile.id}: unreadable answer (${raw.length} chars): ${JSON.stringify(raw.slice(0, 160))} … ${JSON.stringify(raw.slice(-160))}`);
+      record(!!parsed, raw.length, parsed?.stance);
+      if (!parsed) console.warn(`self-improvement review for ${who}${shadow ? ' (shadow)' : ''}: unreadable answer (${raw.length} chars): ${JSON.stringify(raw.slice(0, 160))} … ${JSON.stringify(raw.slice(-160))}`);
       return parsed ?? { error: UNPARSEABLE };
     } catch (err) {
+      record(false, 0);
       return { error: err instanceof Error ? err.message : String(err) };
     }
   }

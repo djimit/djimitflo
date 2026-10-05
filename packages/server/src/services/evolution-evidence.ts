@@ -1,5 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import { forecastScores } from './forecast-scoring';
+import { modelEvidence } from './model-selector';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -17,6 +18,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'LOOP_AUTO_DRAFT_PR_ENABLED', acting: true }, { name: 'LOOP_AUTO_APPROVE_TEST_GAP', acting: true }, { name: 'ORACLE_LANES_AUTO_APPROVE', acting: true },
   { name: 'LOOP_MEMORY_RULES_ENABLED', acting: true }, { name: 'EVOLUTION_GYM_REMOTE_MAX_PER_DAY', acting: true }, { name: 'DJIMITFLO_PUBLIC_URL', acting: false },
   { name: 'GYM_TIER_PROBE_ENABLED', acting: false }, { name: 'GYM_TIER_PROBE_TIERS', acting: false }, { name: 'GYM_TIER_PROBE_EVERY', acting: false },
+  { name: 'MODEL_SELECTOR_MODE', acting: true },
 ];
 
 export type GateState = 'green' | 'red' | 'unknown';
@@ -89,5 +91,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
       return { state: eligible.length ? 'unknown' : 'red', reason: eligible.length ? `${eligible.length} forecaster(s) with ≥ 10 positives and n ≥ 100; skill CI needs V2 (RX-7)` : `no forecaster has ≥ 10 positives and n ≥ 100 (${fs.length} scored)` } as Gate;
     })(),
   };
-  return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, trials, gates };
+  // MS-1: model calls per consumer (14-day selector window) and what the cost-aware selector would pick
+  const models = modelEvidence(db, { panel_review: env.SELF_IMPROVEMENT_REVIEW_MODEL }, env, now);
+  return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, trials, models, gates };
 }
