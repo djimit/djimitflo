@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { kbContext } from './kb-corpus';
 import { forecastScores } from './forecast-scoring';
+import { knowledgeOverview } from './knowledge-overview';
 
 /**
  * AR-W (operator 04-10): committee swarms on the workstation. For every new proposal a committee of member genomes
@@ -204,4 +205,69 @@ export function startCommitteeEvolution(db: Database, intervalMs = 3_600_000): (
   const tick = () => { try { const r = evolveCommittee(db); if (r.born || r.retired.length) console.log(`🧠 committee: born ${r.born ?? '-'}, retired ${r.retired.join(',') || '-'}`); } catch (e) { console.warn('committee evolution failed:', e instanceof Error ? e.message : String(e)); } };
   const t = setInterval(tick, intervalMs); t.unref?.();
   return () => clearInterval(t);
+}
+
+/**
+ * AR-W5 (operator 04-10: "every agent must produce action insights — if not, don't proceed"). Residents talk in the Commons
+ * but never made a measurable call (≈ 5 000 messages, 0 verified). Each resident now also answers every committee question
+ * with its own model (in-process, on the VPS) as `forecast:resident:<agent>`, scored like everyone else on real outcomes.
+ * ARENA_GATE_ENABLED: a resident that is worse than the base rate on >= EXTINCT_MIN_N scored forecasts, or that keeps
+ * talking without making calls, stops being scheduled.
+ */
+export function parseForecastText(text: unknown): { p: number; rationale: string } | null {
+  const m = /\{[^{}]*"p"\s*:\s*(-?\d+(?:\.\d+)?)[^{}]*\}/.exec(String(text ?? ''));
+  if (!m) return null;
+  const p = Number(m[1]);
+  if (!Number.isFinite(p) || p < 0 || p > 1) return null;
+  let rationale = '';
+  try { rationale = String((JSON.parse(m[0]) as { rationale?: unknown }).rationale ?? '').slice(0, 500); } catch { /* p is enough */ }
+  return { p, rationale };
+}
+
+/** The oldest open committee question (last 7 days) this resident has not answered yet. */
+export function pendingResidentQuestion(db: Database, agentId: string, now = new Date()): { jobId: string; subjectId: string; asOf: string; question: unknown } | null {
+  const week = new Date(now.getTime() - 7 * 86_400_000).toISOString();
+  let row: { id: string; subject_id: string; as_of: string; question_json: string } | undefined;
+  try {
+    row = db.prepare(`SELECT j.id, j.subject_id, j.as_of, j.question_json FROM committee_jobs j WHERE j.created_at >= ?
+      AND NOT EXISTS (SELECT 1 FROM judgments f WHERE f.judgment = ? AND f.subject_id = j.subject_id) ORDER BY j.created_at LIMIT 1`)
+      .get(week, `forecast:resident:${agentId}`) as typeof row;
+  } catch { return null; } // minimal schemas without the arena tables
+  return row ? { jobId: row.id, subjectId: row.subject_id, asOf: row.as_of, question: JSON.parse(row.question_json) } : null;
+}
+
+export function recordResidentForecast(db: Database, q: { jobId: string; subjectId: string; asOf: string }, agentId: string, f: { p: number; rationale: string }, model: string, now = new Date()): void {
+  db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, model, created_at)
+    VALUES (?, ?, 'self_improvement', ?, ?, 'shadow', ?, ?, ?, ?, ?)`)
+    .run(randomUUID(), `forecast:resident:${agentId}`, q.subjectId, q.jobId, f.p >= 0.5 ? 'yes' : 'no', f.rationale, JSON.stringify({ p: f.p, as_of: q.asOf }), model.slice(0, 80), now.toISOString());
+}
+
+export const arenaGateEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.ARENA_GATE_ENABLED === 'true';
+/** Survival gate for a resident: no measurable call, or worse than the base rate on enough calls → stop scheduling it. */
+export function arenaGate(db: Database, agentId: string, now = new Date()): { allowed: boolean; reason: string } {
+  let score: ReturnType<typeof forecastScores>[number] | undefined;
+  try { score = forecastScores(db).find((s) => s.forecaster === `forecast:resident:${agentId}`); } catch { /* no outcome tables */ }
+  if (score && score.n >= EXTINCT_MIN_N && score.skill < 0) return { allowed: false, reason: `worse than the base rate on ${score.n} scored forecasts (skill ${score.skill.toFixed(2)})` };
+  const week = new Date(now.getTime() - 7 * 86_400_000).toISOString();
+  const all = <T>(sql: string, ...a: unknown[]) => { try { return db.prepare(sql).get(...a) as T; } catch { return undefined; } };
+  const questions = all<{ n: number }>('SELECT COUNT(*) AS n FROM committee_jobs WHERE created_at >= ?', week)?.n ?? 0;
+  const talk = all<{ n: number }>('SELECT COUNT(*) AS n FROM agent_messages WHERE from_agent = ? AND timestamp >= ?', agentId, week)?.n ?? 0;
+  const calls = all<{ n: number }>('SELECT COUNT(*) AS n FROM judgments WHERE judgment = ? AND created_at >= ?', `forecast:resident:${agentId}`, week)?.n ?? 0;
+  if (questions >= 5 && talk >= 30 && calls === 0) return { allowed: false, reason: `${talk} messages but no measurable call in 7 days` };
+  return { allowed: true, reason: score ? `skill ${score.skill.toFixed(2)} on ${score.n}` : 'not scored yet' };
+}
+
+/**
+ * AR-W6 (operator 04-10, the same rule for the fleet): a fleet agent's measurable call is a discovery judged relevant. A source
+ * with >= FLEET_MIN_JUDGED judged discoveries (30 days) and none relevant stops being ingested — its events are still
+ * recorded (N1), but no more units, judgments or jev calls are spent on them. Prod 04-10: hermes-macmini 601 events, 90
+ * judged, 0 relevant; the scout 129 relevant, the operator's reading list 7, the KB sync 2.
+ */
+export const FLEET_MIN_JUDGED = 50;
+export function fleetSourceGate(db: Database, agent: string, now = Date.now()): { allowed: boolean; reason: string } {
+  const s = knowledgeOverview(db, now).sources.find((r) => r.source === agent);
+  if (!s) return { allowed: true, reason: 'no record yet' };
+  const judged = s.yes + s.uncertain + s.no;
+  if (judged >= FLEET_MIN_JUDGED && s.yes === 0) return { allowed: false, reason: `${judged} discoveries judged, none relevant` };
+  return { allowed: true, reason: `${s.yes}/${judged} relevant` };
 }
