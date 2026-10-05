@@ -4,6 +4,7 @@
  * Extracted from index.ts for separation of concerns.
  */
 import { lifecycleManager } from '../services/lifecycle-manager';
+import { noteScheduler } from '../services/scheduler-registry';
 import { LoopService } from '../services/loop-service';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
 import { NestedSpawnService } from '../services/nested-spawn-service';
@@ -124,7 +125,7 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
 
   // Test-gap source: deterministic, fully grounded test-only proposals for untested services. Default off.
   try {
-    if (testGapSourceEnabled()) {
+    if (noteScheduler('test_gap_source', 'TEST_GAP_SOURCE_ENABLED', testGapSourceEnabled(), 6 * 3_600_000)) {
       const testGaps = new TestGapSourceService(db);
       testGaps.start();
       lifecycleManager.register({ serviceName: 'TestGapSource', stop: () => testGaps.stop() });
@@ -136,7 +137,7 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
 
   // C2 evolution gym: sandbox replay tasks from our own history; outcomes feed species selection. Default off.
   try {
-    if (gymEnabled()) {
+    if (noteScheduler('evolution_gym', 'EVOLUTION_GYM_ENABLED', gymEnabled())) {
       const gym = new EvolutionGymService(db, recoverySvc);
       gym.start();
       lifecycleManager.register({ serviceName: 'EvolutionGym', stop: () => gym.stop() });
@@ -148,7 +149,7 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
 
   // Outcome-driven dream state (plan E11): replay failed runs and classify their causes (shadow). Default off.
   try {
-    if (dreamStateEnabled()) {
+    if (noteScheduler('dream_state', 'DREAM_STATE_ENABLED', dreamStateEnabled(), 6 * 3_600_000)) {
       const dreamState = new DreamStateService(db);
       dreamState.start();
       lifecycleManager.register({ serviceName: 'DreamState', stop: () => dreamState.stop() });
@@ -193,6 +194,7 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
   // Y3: dreaming as mutation — daily mutants of the maker genome, judged on the frozen gym holdout. DREAM_EVOLUTION_ENABLED=true.
   try {
     const stopDream = startDreamEvolution(db);
+    noteScheduler('dream_evolution', 'DREAM_EVOLUTION_ENABLED', !!stopDream, 3_600_000);
     if (stopDream) { lifecycleManager.register({ serviceName: 'DreamEvolution', stop: stopDream }); console.log('🧬 Dream evolution on (hourly tick, one dream a day).'); }
   } catch (error) {
     console.warn('⚠️  Dream evolution failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
@@ -201,6 +203,7 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
   // AR-W3: committee members evolve on real-outcome skill (extinction n >= 30, one child a day). COMMITTEE_SWARM_ENABLED=true.
   try {
     const stopCommittee = startCommitteeEvolution(db);
+    noteScheduler('committee_evolution', 'COMMITTEE_SWARM_ENABLED', !!stopCommittee, 3_600_000);
     if (stopCommittee) { lifecycleManager.register({ serviceName: 'CommitteeEvolution', stop: stopCommittee }); console.log('🧠 Committee evolution on (daily).'); }
   } catch (error) {
     console.warn('⚠️  Committee evolution failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
@@ -209,6 +212,7 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
   // EV4: loop draft PRs settled by merge + 14 days in main → skill outcomes (domain 'merge'). MERGE_SURVIVAL_ENABLED=true.
   try {
     const stopMerge = startMergeSurvival(db);
+    noteScheduler('merge_survival', 'MERGE_SURVIVAL_ENABLED', !!stopMerge, 6 * 3_600_000);
     if (stopMerge) { lifecycleManager.register({ serviceName: 'MergeSurvival', stop: stopMerge }); console.log('🧾 Merge survival on (every 6 h).'); }
   } catch (error) {
     console.warn('⚠️  Merge survival failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
@@ -217,6 +221,7 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
   // Stall watch (M10): hourly log line per silent stall. STALL_WATCH_ENABLED=true (default off).
   try {
     const stopStallWatch = startStallWatch(db);
+    noteScheduler('stall_watch', 'STALL_WATCH_ENABLED', !!stopStallWatch, 3_600_000);
     if (stopStallWatch) { lifecycleManager.register({ serviceName: 'StallWatch', stop: stopStallWatch }); console.log('🚨 Stall watch on (hourly).'); }
   } catch (error) {
     console.warn('⚠️  Stall watch failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
@@ -297,6 +302,7 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
       catch (err) { console.warn('Scheduled-proposal goals failed:', err instanceof Error ? err.message : String(err)); }
     }, Number(process.env.SCHEDULED_PROPOSAL_GOALS_INTERVAL_MS) || 3_600_000);
     scheduledTimer.unref?.();
+    noteScheduler('scheduled_proposal_goals', '(always on with autonomy)', true, Number(process.env.SCHEDULED_PROPOSAL_GOALS_INTERVAL_MS) || 3_600_000);
     lifecycleManager.register({ serviceName: 'ScheduledProposalGoals', stop: () => clearInterval(scheduledTimer) });
   } catch (error) {
     console.warn('⚠️  Autonomous goal generation failed (non-fatal):', error instanceof Error ? error.message : String(error));

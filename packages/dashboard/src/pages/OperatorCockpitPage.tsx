@@ -63,6 +63,7 @@ export function OperatorCockpitPage() {
       {data && (
         <>
           {data.needs_you && <NeedsYou n={data.needs_you} />}
+          {data.schedulers && <p className="text-sm text-foreground-secondary">Schedulers: {data.schedulers.armed} armed, {data.schedulers.off} off</p>}
           <section aria-labelledby="guardrails">
             <h2 id="guardrails" className="text-lg font-semibold mb-2">Guardrails</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -194,15 +195,23 @@ export function OperatorCockpitPage() {
 export function NeedsYou({ n }: { n: NonNullable<OperatorCockpit['needs_you']> }) {
   const items = [
     { label: 'approvals', count: n.approvals, href: '/decisions#approvals' },
-    { label: 'requeue candidates', count: n.requeue, href: '/decisions' },
-    { label: 'pre-screen labels', count: n.labels, href: '/decisions' },
-    { label: 'memory reviews', count: n.memory_review, href: '/decisions' },
+    { label: 'approvals expiring within 1 h', count: n.approvals_expiring ?? 0, href: '/decisions#approvals' },
+    { label: 'requeue candidates', count: n.requeue, href: '/decisions#requeue' },
+    { label: 'pre-screen labels', count: n.labels, href: '/decisions#prescreen' },
+    { label: 'memory reviews', count: n.memory_review, href: '/decisions#memory' },
+    { label: 'loop PRs unsettled', count: n.draft_prs ?? 0, href: '/decisions#draft-prs' },
+    { label: 'proposals awaiting approval', count: n.proposals ?? 0, href: '/governance?tab=assurance' },
+    { label: 'silent stalls', count: n.stalls ?? 0, href: '/#stalls' },
+    { label: 'Commons join requests', count: n.join_requests ?? 0, href: '/agent-commons' },
+    { label: 'fleet shell requests', count: n.shell_requests ?? 0, href: '/fleet' },
   ];
-  const total = items.reduce((sum, item) => sum + item.count, 0);
+  // UX-6: 'approvals expiring' is a subset of 'approvals' and unsettled loop PRs include merged ones still settling — not double-counted
+  const blocking = items.filter((item) => item.label !== 'approvals expiring within 1 h' && item.label !== 'loop PRs unsettled');
+  const total = blocking.reduce((sum, item) => sum + item.count, 0);
   return (
     <section aria-labelledby="needs-you" className={`rounded-lg border p-4 ${total ? 'border-status-paused/40 bg-status-paused/10' : 'border-border'}`}>
       <h2 id="needs-you" className="text-lg font-semibold mb-2">{total ? `Needs you (${total})` : 'Nothing needs you right now'}</h2>
-      {total > 0 && <ul className="flex flex-wrap gap-4 text-sm">{items.filter((item) => item.count).map((item) => (
+      {items.some((item) => item.count) && <ul className="flex flex-wrap gap-4 text-sm">{items.filter((item) => item.count).map((item) => (
         <li key={item.label}><Link to={item.href} className="underline">{item.count} {item.label}</Link></li>
       ))}</ul>}
     </section>

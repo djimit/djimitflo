@@ -3,6 +3,8 @@ import type { Database } from 'better-sqlite3';
 import { detectStalls, type Stall } from './stall-watch';
 import { infraFailing } from './evolution-gym-service';
 import { decisionsInbox } from './decisions-inbox';
+import { listSchedulers } from './scheduler-registry';
+import { listDraftPrs } from './loop-draft-pr-service';
 
 /**
  * S1 (operator 2026-09-28): one read-only snapshot of what the operator otherwise measures by hand over SSH —
@@ -18,7 +20,11 @@ export interface CockpitSnapshot {
   stalls: Stall[];
   gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string; benched: boolean }>;
   /** W3: what waits for the operator right now (the /decisions sections). */
-  needs_you: { approvals: number; requeue: number; labels: number; memory_review: number };
+  needs_you: { approvals: number; requeue: number; labels: number; memory_review: number;
+    /** UX-6: every other thing that can block the loop on the operator */
+    proposals: number; draft_prs: number; stalls: number; approvals_expiring: number; join_requests: number; shell_requests: number };
+  /** UX-8: schedulers armed at boot vs off */
+  schedulers: { armed: number; off: number };
   /** Y2: real-maker outcomes per strategy genome and maker skill (30 d) — what Y3's dreaming mutates and the bandit selects. */
   genomes: Array<{ genome: string; skill_id: string; outcomes: number; wins: number; win_pct: number }>;
   remote_workers: Array<{ host: string; claims_24h: number; last_claim: string | null; interrupted_24h: number }>;
@@ -81,17 +87,26 @@ export function operatorCockpit(db: Database, now = Date.now()): CockpitSnapshot
        FROM skill_outcomes s, json_each(s.evidence_refs_json) r
       WHERE r.value LIKE 'genome:%' AND s.created_at >= ? GROUP BY 1, 2 ORDER BY outcomes DESC LIMIT 20`, d30)
     .map((g) => ({ ...g, win_pct: g.outcomes ? Math.round((100 * g.wins) / g.outcomes) : 0 }));
-  let needs_you = { approvals: scorecard.approvals_pending ?? 0, requeue: 0, labels: 0, memory_review: 0 };
+  const in60 = new Date(now + 3_600_000).toISOString();
+  let needs_you: CockpitSnapshot['needs_you'] = { approvals: scorecard.approvals_pending ?? 0, requeue: 0, labels: 0, memory_review: 0,
+    proposals: one("SELECT COUNT(*) FROM self_improvements WHERE status = 'proposed'") ?? 0,
+    draft_prs: (() => { try { return listDraftPrs(db, 100, now).unsettled; } catch { return 0; } })(),
+    stalls: 0,
+    approvals_expiring: one("SELECT COUNT(*) FROM approvals WHERE status = 'pending' AND expires_at IS NOT NULL AND expires_at <= ?", in60) ?? 0,
+    join_requests: one("SELECT COUNT(*) FROM social_join_requests WHERE status = 'pending'") ?? 0,
+    shell_requests: one("SELECT COUNT(*) FROM fleet_commands WHERE status = 'pending_approval'") ?? 0 };
   try {
     const inbox = decisionsInbox(db, now);
     needs_you = { ...needs_you, requeue: inbox.requeue.filter((r) => !r.requeued_as).length, labels: inbox.prescreen.items.filter((i) => !i.label).length, memory_review: inbox.memory.length };
   } catch { /* inbox tables absent */ }
   let stalls: Stall[] = [];
   try { stalls = detectStalls(db, now); } catch { /* stall watch is advisory */ }
+  needs_you.stalls = stalls.length;
+  const { armed, off } = listSchedulers();
   return {
     at: new Date(now).toISOString(),
     build: { commit: process.env.DJIMITFLO_BUILD_COMMIT ?? null, build_time: process.env.DJIMITFLO_BUILD_TIME ?? null },
-    scorecard, guardrails, stalls, gym, remote_workers, maker_usage_7d, judgments_7d, needs_you, genomes, deploys: recentDeploys(),
+    scorecard, guardrails, stalls, gym, remote_workers, maker_usage_7d, judgments_7d, needs_you, schedulers: { armed, off }, genomes, deploys: recentDeploys(),
   };
 }
 

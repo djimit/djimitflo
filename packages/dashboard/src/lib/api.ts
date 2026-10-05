@@ -56,7 +56,10 @@ export type OperatorCockpit = {
   guardrails: Array<{ name: string; ok: boolean; value: number | null; limit: string }>;
   stalls: Array<{ subsystem: string; since: string | null; detail: string }>;
   gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string; benched?: boolean }>;
-  needs_you?: { approvals: number; requeue: number; labels: number; memory_review: number };
+  needs_you?: { approvals: number; requeue: number; labels: number; memory_review: number;
+    proposals?: number; draft_prs?: number; stalls?: number; approvals_expiring?: number; join_requests?: number; shell_requests?: number };
+  /** UX-8: schedulers this server armed at boot vs off */
+  schedulers?: { armed: number; off: number };
   remote_workers: Array<{ host: string; claims_24h: number; last_claim: string | null; interrupted_24h: number }>;
   /** UX-2: real-maker outcomes per strategy genome and maker skill (30 d); the server sent this, the type dropped it. */
   genomes?: Array<{ genome: string; skill_id: string; outcomes: number; wins: number; win_pct: number }>;
