@@ -25,7 +25,7 @@ import {
   type WorkerPoolDecision,
   type WorkerPoolPlanResult,
 } from '../lib/api';
-import { useWebSocket } from '../hooks/useWebSocket';
+import { useWsSubscribe } from '../components/WebSocketProvider';
 import { WebSocketEventType } from '@djimitflo/shared';
 
 type RuntimeChoice = 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'mock' | 'manual';
@@ -98,7 +98,7 @@ export function FleetCockpitPage() {
   const [loading, setLoading] = useState(true);
   const [action, setAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { subscribe } = useWebSocket(true);
+  const subscribe = useWsSubscribe();
 
   const refresh = useCallback(async () => {
     setLoading(true);

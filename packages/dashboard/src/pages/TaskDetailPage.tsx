@@ -7,14 +7,14 @@ import { TaskStatus, WebSocketEventType, ExportFormat } from '@djimitflo/shared'
 import type { Task, ExecutionEvent, ApprovalRequest, ExecutionEventPayload, ApprovalEventPayload, WebSocketMessage } from '@djimitflo/shared';
 import { ExecutionTimeline } from '../components/ExecutionTimeline';
 import { ApprovalCard } from '../components/ApprovalCard';
-import { useWebSocket } from '../hooks/useWebSocket';
+import { useWsSubscribe } from '../components/WebSocketProvider';
 
 export function TaskDetailPage() {
   const { taskId } = useParams<{ taskId: string }>();
   const navigate = useNavigate();
   const tasks = useStore((state) => state.tasks);
   const agents = useStore((state) => state.agents);
-  const { subscribe } = useWebSocket(true);
+  const subscribe = useWsSubscribe();
   
   const [task, setTask] = useState<Task | null>(null);
   const [executionEvents, setExecutionEvents] = useState<ExecutionEvent[]>([]);

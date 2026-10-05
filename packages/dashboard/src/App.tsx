@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { NotFoundPage } from './pages/NotFoundPage';
 import { WebSocketProvider } from './components/WebSocketProvider';
 import { GlobalErrorBoundary } from './components/GlobalErrorBoundary';
 import { DashboardPage } from './pages/DashboardPage';
@@ -140,6 +141,7 @@ export function App() {
           <Route path="cognitive" element={<CognitiveRuntimePage />} />
           <Route path="self-driving" element={<SelfDrivingDashboard />} />
           <Route path="explainers" element={<ExplainerFleetPage />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
       </Suspense>

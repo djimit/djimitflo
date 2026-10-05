@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { ConnectionBanner } from './WebSocketProvider';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
 import { Activity, GraduationCap, ListTodo, Users, Shield, ShieldCheck, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit, Gauge, BookUser, Brain, Menu, X, MessageSquare, Sparkles, SlidersHorizontal, Library } from 'lucide-react';
@@ -190,6 +191,7 @@ export function Layout() {
         </header>
         {location.pathname !== '/decisions' && <PendingApprovalsBanner {...pending} />}
         <main className="min-w-0 flex-1 overflow-auto">
+          <ConnectionBanner />
           <Outlet />
         </main>
       </div>
