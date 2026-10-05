@@ -5,6 +5,7 @@ import { RemoteGymService, REMOTE_GYM_SCOPE } from '../services/remote-gym-servi
 import { mintSpawnToken, resolveSpawnTokenSecret, validateSpawnToken } from '../services/spawn-token';
 import { RemoteMakerQueue } from '../services/remote-maker-queue';
 import { ingestKbPages } from '../services/kb-corpus';
+import { claimCommittee, recordCommittee } from '../services/committee-swarm';
 
 /**
  * Plan I1: a compute host pulls evolution-gym work. claim/result authenticate with a host-scoped token
@@ -48,6 +49,16 @@ export function createRemoteGymRoutes(db: Database, auth: AuthMiddleware): Route
   router.post('/maker/:jobId/result', (req, res) => {
     const h = host(req, res); if (!h) return;
     try { makers.record(String(req.params.jobId), h, req.body || {}); res.json({ recorded: true }); } catch (error) { fail(res, error); }
+  });
+
+  // AR-W: committee swarms — the workstation pulls a proposal question with the active members and returns their forecasts
+  router.post('/committee/claim', (req, res) => {
+    const h = host(req, res); if (!h) return;
+    claimCommittee(db, h).then((job) => res.json({ job })).catch((error) => fail(res, error));
+  });
+  router.post('/committee/:jobId/result', (req, res) => {
+    const h = host(req, res); if (!h) return;
+    try { res.json({ recorded: recordCommittee(db, String(req.params.jobId), h, req.body?.answers) }); } catch (error) { fail(res, error); }
   });
 
   // plan L2: the workstation pushes changed DjimitKBWiki pages; stored only after a safety check and an embedding
