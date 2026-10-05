@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import express from 'express';
+import { rateLimit } from 'express-rate-limit';
 import request from 'supertest';
 import { UserRole } from '@djimitflo/shared';
 import { createTestDb } from './helpers/test-db';
@@ -36,7 +37,7 @@ it('UX-7: GET /api/loops/draft-prs requires a login and clamps the limit', async
   const authService = new AuthService(db);
   const token = authService.generateToken(authService.createUser('draft-prs@example.test', 'disposable-password', UserRole.VIEWER));
   const auth = createAuthMiddleware(authService);
-  const app = express().use(express.json()).use('/api/loops', auth.requireAuth, createLoopRoutes(db, auth)).use(errorHandler);
+  const app = express().use(express.json()).use(rateLimit({ windowMs: 60_000, limit: 600 })).use('/api/loops', auth.requireAuth, createLoopRoutes(db, auth)).use(errorHandler);
   expect((await request(app).get('/api/loops/draft-prs')).status).toBe(401);
   const res = await request(app).get('/api/loops/draft-prs?limit=0').set('Authorization', `Bearer ${token}`);
   expect(res.status).toBe(200);
