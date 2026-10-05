@@ -1,6 +1,7 @@
 import type { Database } from 'better-sqlite3';
 import { forecastScores } from './forecast-scoring';
 import { modelEvidence } from './model-selector';
+import { commonsYield, oracleAgreement } from './honest-numbers';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -93,5 +94,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   };
   // MS-1: model calls per consumer (14-day selector window) and what the cost-aware selector would pick
   const models = modelEvidence(db, { panel_review: env.SELF_IMPROVEMENT_REVIEW_MODEL }, env, now);
-  return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, trials, models, gates };
+  // RX-9 / RX-8: honest agreement and yield numbers (one row per maker; attempted Commons children vs source base rate)
+  const oracle = oracleAgreement(db);
+  const commons = commonsYield(db);
+  return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, trials, models, oracle, commons, gates };
 }
