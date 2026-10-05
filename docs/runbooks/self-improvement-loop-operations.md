@@ -77,6 +77,7 @@ missing here. **Acting** = changes what the loop does; acting flags are switched
 | `DREAM_TRIAL_MUTANTS` | off | yes | act | operator |
 | `DREAM_TRIAL_MUTANT_TIERS` | `2,3` | yes | act (freezes a new holdout) | operator, after the RX-5 tier probe |
 | `DREAM_PROMOTION_ALPHA` | 0.05 | yes | act | operator |
+| `TRIAL_DIAGNOSTICS_ENABLED` | off | no (records per-trial blindness/power; never changes promotion) | measure | operator |
 | `GENOME_APPLY_MODE` | unset (only `shadow` exists) | no | shadow | loop (shadow) |
 | `ARENA_GATE_ENABLED` | off | yes | act | operator |
 | `COMMITTEE_SWARM_ENABLED` | off | yes | act | operator |

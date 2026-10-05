@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { generateText, llmEndpoints } from './llm-fallback';
 import { firstJsonObject } from './expert-council-service';
-import { BASELINE_GENOME, dreamEvolutionEnabled, ensureBaseline, genome, mutantHoldoutKeys, mutantTrialsEnabled, unscorable } from './genome-registry';
+import { BASELINE_GENOME, dreamEvolutionEnabled, ensureBaseline, genome, mutantHoldoutKeys, mutantHoldoutTiers, mutantTrialsEnabled, unscorable } from './genome-registry';
 
 /**
  * Y3b/Y3c (plan Phase Y, Darwin loop). Dreaming is the mutation operator: once a day the day's failed makers (real and
@@ -28,6 +28,32 @@ export function mcnemarOneSided(b: number, c: number): number {
   return p / 2 ** n;
 }
 const promotionAlpha = () => Number(process.env.DREAM_PROMOTION_ALPHA) || 0.05;
+
+/**
+ * RX-4 (Phase F): how much a trial could have shown. With n discordant pairs, the fewest wins (all wins, no losses
+ * needed beyond n − b) that make the one-sided McNemar significant; null when even n vs 0 is not (n = 4 at 0.05).
+ */
+export function minDiscordantForSignificance(n: number, alpha = promotionAlpha()): number | null {
+  for (let b = 0; b <= n; b++) if (b > n - b && mcnemarOneSided(b, n - b) < alpha) return b;
+  return null;
+}
+const binom = (n: number, p: number): number[] => {
+  const out: number[] = []; let coef = 1;
+  for (let k = 0; k <= n; k++) { out.push(coef * p ** k * (1 - p) ** (n - k)); coef = coef * (n - k) / (k + 1); }
+  return out;
+};
+/**
+ * Exact power of the McNemar part of the promotion rule for a fixed parent vector: the parent fails f deciding tasks
+ * and solves nSolved; the mutant fixes each failure with probability q and loses each solved task with probability l.
+ * f ≤ 4 at alpha 0.05 gives exactly 0 — such a trial is blind, not a tie.
+ */
+export function trialPower(f: number, nSolved: number, q: number, l: number, alpha = promotionAlpha()): number {
+  const pb = binom(f, q); const pc = binom(nSolved, l);
+  let power = 0;
+  pb.forEach((wb, b) => pc.forEach((wc, c) => { if (b > c && mcnemarOneSided(b, c) < alpha) power += wb * wc; }));
+  return power;
+}
+export const trialDiagnosticsEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.TRIAL_DIAGNOSTICS_ENABLED === 'true';
 const MAX_LINES = 5;
 const MAX_LINE_CHARS = 200;
 // what a genome may never steer: gates, checks, scope, secrets, deploy, approvals, git history (a gym `git commit` empties the
@@ -134,13 +160,25 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
       return { b: scored.filter((h) => mine.won.has(h) && !theirs.won.has(h)).length, c: scored.filter((h) => theirs.won.has(h) && !mine.won.has(h)).length };
     };
     // Z5: judged on the mutant holdout when there is one; the mined holdout may then cost at most one task net
-    const { b, c } = discordant(mutantCommits.length ? mutantCommits : holdoutCommits);
+    const deciding = mutantCommits.length ? mutantCommits : holdoutCommits;
+    const { b, c } = discordant(deciding);
     const mined = mutantCommits.length ? discordant(holdoutCommits) : { b: 0, c: 0 };
     const p = mcnemarOneSided(b, c);
     const wins = b > c && p < promotionAlpha() && mined.c - mined.b <= 1 && mine.outOfScope <= theirs.outOfScope && !promotedToday();
     const status = wins ? 'active' : 'retired';
     db.prepare('UPDATE maker_genomes SET status = ?, note = ?, updated_at = ? WHERE id = ?')
       .run(status, `holdout ${mine.wins}/${all.length} vs parent ${theirs.wins}/${all.length}; ${mutantCommits.length ? 'mutant ' : ''}discordant ${b} vs ${c}, McNemar p=${p.toFixed(3)}${mutantCommits.length ? `; mined discordant ${mined.b} vs ${mined.c}` : ''}; out of scope ${mine.outOfScope} vs ${theirs.outOfScope}`, iso, trial.id);
+    if (trialDiagnosticsEnabled()) {
+      try { // RX-4: record what this trial could have shown; never changes the decision above
+        const scored = deciding.filter((h) => !unscorable(db, speciesKey, trial.id, h) && !unscorable(db, speciesKey, trial.parent, h));
+        const f = scored.filter((h) => !theirs.won.has(h)).length;
+        const power = trialPower(f, scored.length - f, 0.8, 0.05);
+        const state = mcnemarOneSided(f, 0) >= promotionAlpha() ? 'blind' : power < 0.8 ? 'underpowered' : 'powered';
+        db.prepare(`INSERT OR REPLACE INTO genome_trial_results (trial_id, parent_id, tier_set, deciding_n, f_parent_failures, b, c, p, mined_b, mined_c, power_q8_l05, state, recorded_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(trial.id, trial.parent, mutantCommits.length ? mutantHoldoutTiers().join(',') : 'mined', scored.length, f, b, c, p, mined.b, mined.c,
+          +power.toFixed(4), state, iso);
+      } catch { /* diagnostics are fail-soft */ }
+    }
     settled.push({ id: trial.id, status, wins: mine.wins, parentWins: theirs.wins });
   }
   return settled;
