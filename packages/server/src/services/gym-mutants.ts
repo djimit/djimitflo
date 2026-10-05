@@ -51,7 +51,7 @@ export function mutantTier(db: Database, speciesKey: string): number {
   try {
     rows = db.prepare(`SELECT json_extract(metadata, '$.gym_result.status') = 'success' AS ok, COALESCE(json_extract(metadata, '$.gym.tier'), 1) AS tier
       FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.commit') LIKE 'mut:%'
-        AND json_extract(metadata, '$.gym_result.status') IN ('success', 'failure') ORDER BY created_at DESC LIMIT 20`).all(speciesKey) as Array<{ ok: number; tier: number }>;
+        AND json_extract(metadata, '$.gym.probe') IS NULL AND json_extract(metadata, '$.gym_result.status') IN ('success', 'failure') ORDER BY created_at DESC LIMIT 20`).all(speciesKey) as Array<{ ok: number; tier: number }>;
   } catch { return 1; }
   const current = rows[0]?.tier ?? 1;
   if (rows.length < 10) return current;
