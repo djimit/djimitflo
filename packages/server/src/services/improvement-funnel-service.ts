@@ -31,7 +31,7 @@ export interface ImprovementFunnel {
 }
 
 /** How a judgment's subject resolves to a final outcome: true = positive, false = negative, null = still open / no outcome. */
-const OUTCOME_SQL: Record<string, string> = {
+export const OUTCOME_SQL: Record<string, string> = {
   proposal_prescreen: `SELECT CASE WHEN status IN ('verified','evaluating','applied') THEN 1 WHEN status IN ('archived','regressed','rejected','no_change') THEN 0 END AS o FROM self_improvements WHERE id = ?`,
   reflection_triage: `SELECT CASE WHEN status IN ('verified','evaluating','applied') THEN 1 WHEN status IN ('archived','regressed','rejected','no_change') THEN 0 END AS o FROM self_improvements WHERE id = ?`,
   checker_second_opinion: `SELECT CASE WHEN r.status = 'completed' THEN 1 WHEN r.status IN ('blocked','failed','cancelled') THEN 0 END AS o FROM worker_leases l JOIN loop_runs r ON r.id = l.loop_run_id WHERE l.id = ?`,

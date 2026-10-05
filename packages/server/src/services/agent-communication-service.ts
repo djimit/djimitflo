@@ -12,6 +12,7 @@
  * 5. TTL expiration — stale messages auto-expire
  */
 
+import { commonsChildren } from './honest-numbers';
 import { buildEvidencePack, evidencePackEnabled } from './commons-evidence-pack';
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
@@ -142,6 +143,9 @@ export interface CommonsStats {
   autopilot_idle?: boolean;
   /** G10i: reputation from outcomes — per agent, groundings delivered, how many passed the code check, how many got verified. */
   guild?: Array<{ agent: string; groundings: number; valid: number; verified: number }>;
+  /** RX-8: the like-for-like denominator — attempted refinement children of valid groundings, not parked parents. */
+  children_attempted?: number; children_verified?: number; parents_archived_after_refinement?: number;
+  children_by_period?: { before_2026_09_29: { attempted: number; verified: number }; from_2026_09_29: { attempted: number; verified: number } };
 }
 
 export interface SocialCommons {
@@ -436,7 +440,7 @@ export class AgentCommunicationService {
     } catch { /* no judgments table yet */ }
     return { threads_7d: t.threads, open_7d: t.open ?? 0, learnings_7d: t.learnings, lessons_7d: t.lessons ?? 0, proposals: p.n, proposals_grounded: grounded, proposals_verified: p.verified ?? 0, proposals_archived: p.archived ?? 0,
       proposals_by_status: byStatus, residents, autopilot_idle: residents.length > 0 && residents.every((r) => r.last < dayAgo),
-      guild: guild.map((g) => ({ ...g, valid: g.valid ?? 0, verified: g.verified ?? 0 })) };
+      guild: guild.map((g) => ({ ...g, valid: g.valid ?? 0, verified: g.verified ?? 0 })), ...commonsChildren(this.db) };
     } catch { return null; } // minimal schemas (no self_improvements) still get the overview
   }
 
