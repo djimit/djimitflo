@@ -32,7 +32,7 @@ export function createRemoteGymRoutes(db: Database, auth: AuthMiddleware): Route
 
   router.post('/claim', (req, res) => {
     const h = host(req, res); if (!h) return;
-    try { res.json(gym.claim(h, Array.isArray(req.body?.species) ? req.body.species : [])); } catch (error) { fail(res, error); }
+    try { res.json(gym.claim(h, Array.isArray(req.body?.species) ? req.body.species : [], new Date(), { capabilities: Array.isArray(req.body?.capabilities) ? req.body.capabilities.map(String).slice(0, 10) : [] })); } catch (error) { fail(res, error); }
   });
 
   router.post('/runs/:runId/result', (req, res) => {

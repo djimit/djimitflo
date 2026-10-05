@@ -55,3 +55,24 @@ it('W3: shows what needs the operator with links into /decisions, and a calm lin
   expect(html).not.toContain('requeue candidates');
   expect(renderToStaticMarkup(<MemoryRouter><NeedsYou n={{ approvals: 0, requeue: 0, labels: 0, memory_review: 0 }} /></MemoryRouter>)).toContain('Nothing needs you right now');
 });
+
+it('UX-6: shows every blocking category with a deep link; /decisions links point at ids that exist on the Decisions page', async () => {
+  const n = { approvals: 2, requeue: 1, labels: 0, memory_review: 1, proposals: 3, draft_prs: 4, stalls: 1, approvals_expiring: 1, join_requests: 1, shell_requests: 2 };
+  const html = renderToStaticMarkup(<MemoryRouter><NeedsYou n={n} /></MemoryRouter>);
+  expect(html).toContain('Needs you (11)'); // 2+1+1+3+1+1+2 — expiring and unsettled PRs are not double-counted
+  for (const t of ['3 proposals awaiting approval', '4 loop PRs unsettled', '1 silent stalls', '1 Commons join requests', '2 fleet shell requests', '1 approvals expiring within 1 h']) expect(html).toContain(t);
+  const anchors = [...html.matchAll(/href="\/decisions#([a-z-]+)"/g)].map((m) => m[1]);
+  expect(new Set(anchors)).toEqual(new Set(['approvals', 'requeue', 'memory', 'draft-prs']));
+  const fs = await import('node:fs'); const path = await import('node:path');
+  const src = ['DecisionsInboxPage.tsx', 'ApprovalQueuePage.tsx'].map((f) => fs.readFileSync(path.join(process.cwd(), 'src/pages', f), 'utf8')).join('\n');
+  for (const a of [...anchors, 'prescreen']) expect(src).toContain(`id="${a}"`);
+});
+
+it('UX-8: the cockpit shows how many schedulers are armed', async () => {
+  vi.spyOn(api, 'getOperatorCockpit').mockResolvedValue({
+    at: '2026-10-06T12:00:00Z', build: { commit: null, build_time: null }, scorecard: {}, guardrails: [], stalls: [], gym: [], remote_workers: [], maker_usage_7d: [], judgments_7d: [], deploys: [],
+    schedulers: { armed: 9, off: 5 },
+  });
+  render(<OperatorCockpitPage />);
+  expect(await screen.findByText('Schedulers: 9 armed, 5 off')).toBeTruthy();
+});

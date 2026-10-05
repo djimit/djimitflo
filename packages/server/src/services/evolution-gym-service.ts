@@ -5,6 +5,7 @@ import type { Database } from 'better-sqlite3';
 import type { LoopService } from './loop-service';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { mineGymTasks, type GymTask } from './gym-task-miner';
+import { classifyHack, hackDetectorShadow } from './gym-hack-classifier';
 import { evolveSpecies, parseSpecies, type Species } from './evolve-selection';
 
 /**
@@ -27,16 +28,16 @@ import { evolveSpecies, parseSpecies, type Species } from './evolve-selection';
 export function triedTasks(db: Database, speciesKey: string): Set<string | null> {
   return new Set((db.prepare(`SELECT c FROM (SELECT json_extract(metadata, '$.gym.commit') AS c,
       SUM(COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%') AS real, SUM(json_extract(metadata, '$.gym_result.reason') LIKE 'infra:%') AS infra
-    FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? GROUP BY c) WHERE real > 0 OR infra >= 2`).all(speciesKey) as Array<{ c: string | null }>).map((r) => r.c));
+    FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.canary') IS NULL GROUP BY c) WHERE real > 0 OR infra >= 2`).all(speciesKey) as Array<{ c: string | null }>).map((r) => r.c));
 }
 
 export function infraFailing(db: Database, speciesKey: string, since: string): boolean {
   // a success proves the species works: only discards after its latest success count (prod 2026-09-27: atomic@llama-router
   // was benched by three discards from since-fixed bugs, two of them before and after two successes)
-  const lastSuccess = (db.prepare("SELECT MAX(created_at) AS t FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym_result.status') = 'success'")
+  const lastSuccess = (db.prepare("SELECT MAX(created_at) AS t FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.canary') IS NULL AND json_extract(metadata, '$.gym_result.status') = 'success'")
     .get(speciesKey) as { t: string | null }).t;
   const from = lastSuccess && lastSuccess > since ? lastSuccess : since;
-  const trips = db.prepare("SELECT COUNT(*) AS n, MAX(created_at) AS last FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym_result.reason') LIKE 'infra:%' AND created_at > ?")
+  const trips = db.prepare("SELECT COUNT(*) AS n, MAX(created_at) AS last FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.canary') IS NULL AND json_extract(metadata, '$.gym_result.reason') LIKE 'infra:%' AND created_at > ?")
     .get(speciesKey, from) as { n: number; last: string | null };
   if (trips.n < (Number(process.env.EVOLUTION_GYM_INFRA_TRIP) || 3)) return false;
   // half-open: after a quiet cool-down one probe attempt is let through (prod 2026-09-27: a fixed worker stayed benched for
@@ -47,7 +48,7 @@ export function infraFailing(db: Database, speciesKey: string, since: string): b
 
 export const gymEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.EVOLUTION_GYM_ENABLED === 'true';
 
-export type GymResult = { status: 'success' | 'failure' | 'discarded' | 'skipped'; reason: string; task?: GymTask; species?: string; runId?: string };
+export type GymResult = { status: 'success' | 'failure' | 'discarded' | 'skipped'; reason: string; task?: GymTask; species?: string; runId?: string; hack_flags?: string[] };
 
 const git = (cwd: string, args: string[]) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 
@@ -63,6 +64,11 @@ export function runOracle(worktree: string, task: GymTask, timeoutMs = 300_000):
   const tests = task.tests.map((t) => t.replace(/^packages\/server\//, ''));
   const r = spawnSync('npx', ['vitest', 'run', ...tests], { cwd: path.join(worktree, 'packages/server'), timeout: timeoutMs, stdio: 'ignore' });
   return r.status === 0;
+}
+
+/** RX-11: the maker's diff for the hack classifier ('' when unavailable — the classifier then works from the file list). */
+export function diffText(worktree: string): string {
+  try { return git(worktree, ['diff', 'HEAD']).slice(0, 50_000); } catch { return ''; }
 }
 
 export function changedFiles(worktree: string): string[] {
@@ -150,6 +156,7 @@ export class EvolutionGymService {
         const inScope = changed.length > 0 && changed.every((f) => f === task.source);
         const green = inScope && this.deps.oracle(maker.worktree_path, task);
         result = { status: green ? 'success' : 'failure', reason: green ? 'tests green, source only' : inScope ? 'tests still red' : `out of scope: ${changed.join(', ') || 'no change'}`, task, species: key, runId: run.id };
+        if (hackDetectorShadow()) result.hack_flags = classifyHack({ changedFiles: changed, diffText: diffText(maker.worktree_path) });
       }
     } catch (err) {
       // an error before the maker ran (git, npm ci, worktree) says nothing about the species (prod 2026-09-27: 'git show
@@ -192,7 +199,7 @@ export class EvolutionGymService {
   private settle(runId: string, result: GymResult, worktree: string | null, repo: string): void {
     const now = new Date().toISOString();
     this.db.prepare(`UPDATE loop_runs SET status = 'completed', updated_at = ?, metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.gym_result', json(?)) WHERE id = ?`)
-      .run(now, JSON.stringify({ status: result.status, reason: result.reason }), runId);
+      .run(now, JSON.stringify({ status: result.status, reason: result.reason, ...(result.hack_flags ? { hack_flags: result.hack_flags } : {}) }), runId);
     this.db.prepare("UPDATE worker_leases SET status = 'cancelled', updated_at = ? WHERE loop_run_id = ? AND status = 'prepared'").run(now, runId);
     if (worktree) { try { git(repo, ['worktree', 'remove', '--force', worktree]); } catch { fs.rmSync(worktree, { recursive: true, force: true }); } }
   }
