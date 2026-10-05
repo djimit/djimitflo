@@ -65,6 +65,9 @@ export type OperatorCockpit = {
   deploys: Array<{ at: string; event: string; sha: string; detail: string }>;
 };
 
+/** UX-7: the loop's draft PRs from loop_runs metadata (no GitHub call); outcome = merge-survival settlement once it exists. */
+export type DraftPrs = { total: number; unsettled: number; rows: Array<{ run_id: string; lane: string; pr_url: string; pr_number: number | null; age_days: number; outcome: string | null; survived: boolean | null }> };
+
 export type DecisionsInbox = {
   requeue: Array<{ id: string; title: string; status: string; updated_at: string; requeued_as: string | null }>;
   prescreen: {
@@ -1313,6 +1316,10 @@ class ApiClient {
 
   async getOperatorCockpit(): Promise<OperatorCockpit> {
     return this.request('/health/cockpit');
+  }
+
+  async getDraftPrs(limit = 50): Promise<DraftPrs> {
+    return this.request(`/loops/draft-prs?limit=${limit}`);
   }
 
   // S2 decisions inbox: requeue (D2), pre-screen labels (D5), Telegram allowlist (D3)

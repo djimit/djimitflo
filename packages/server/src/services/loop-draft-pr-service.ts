@@ -39,6 +39,18 @@ export class LoopDraftPrService {
         && !fs.lstatSync(path.join(wt, f), { throwIfNoEntry: false })?.isSymbolicLink());
       if (files.length === 0) return fail('no changes in the maker worktree');
 
+      // RX-6: arrival throttle. A queue nobody drains censors merge survival (closed-unmerged never fires).
+      const mode = this.env.LOOP_DRAFT_PR_THROTTLE_MODE;
+      if (mode === 'shadow' || mode === 'enforce') {
+        const cap = Math.max(0, Number(this.env.LOOP_DRAFT_PR_MAX_OPEN ?? 5) || 0);
+        const open = await this.openLoopDrafts(repo, token);
+        if (open !== null && open >= cap) {
+          events.recordEvent(runId, mode === 'enforce' ? 'draft_pr_throttled' : 'draft_pr_throttle_shadow', 'info',
+            `${open} open loop drafts ≥ cap ${cap}${mode === 'enforce' ? ': draft PR not opened' : ' (shadow: opened anyway)'}`, { open, cap, mode });
+          if (mode === 'enforce') return null;
+        }
+      }
+
       const proposal = run.goal_id ? this.db.prepare('SELECT si.id, si.title FROM goals g JOIN self_improvements si ON si.id = g.improvement_id WHERE g.id = ?').get(run.goal_id) as { id: string; title: string } | undefined : undefined;
       const title = `loop: ${proposal?.title ?? `run ${runId.slice(0, 8)}`}`.slice(0, 120);
       git('add', '--', ...files);
@@ -64,4 +76,36 @@ export class LoopDraftPrService {
       return fail(error instanceof Error ? error.message.replace(/basic [A-Za-z0-9+/=]+/g, 'basic ***').slice(0, 200) : String(error));
     }
   }
+
+  /** Open PRs titled 'loop:' (one list call, first 100). null on any error: the throttle fails open. */
+  private async openLoopDrafts(repo: string, token: string): Promise<number | null> {
+    try {
+      const res = await this.fetchImpl(`https://api.github.com/repos/${repo}/pulls?state=open&per_page=100`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
+      });
+      if (!res.ok) return null;
+      const pulls = (await res.json()) as Array<{ title?: string }>;
+      return Array.isArray(pulls) ? pulls.filter((p) => String(p.title ?? '').startsWith('loop:')).length : null;
+    } catch { return null; }
+  }
+}
+
+export interface DraftPrRow { run_id: string; lane: string; pr_url: string; pr_number: number | null; age_days: number; outcome: string | null; survived: boolean | null }
+/**
+ * UX-7: the loop's draft PRs, read from loop_runs.metadata.pr_url (no GitHub call). `outcome` is the merge-survival
+ * settlement (merged / closed) once it exists; unsettled = open on GitHub or merged < 14 d ago — only GitHub knows which.
+ */
+export function listDraftPrs(db: Database, limit = 50, now = Date.now()): { total: number; unsettled: number; rows: DraftPrRow[] } {
+  const n = Math.min(100, Math.max(1, Math.floor(Number(limit)) || 50));
+  let raw: Array<{ id: string; loop_name: string; url: string; created_at: string; state: string | null; survived: number | null }> = [];
+  try {
+    raw = db.prepare(`SELECT id, loop_name, json_extract(metadata, '$.pr_url') AS url, created_at,
+        json_extract(metadata, '$.pr_outcome.state') AS state, json_extract(metadata, '$.pr_outcome.survived') AS survived
+      FROM loop_runs WHERE json_extract(metadata, '$.pr_url') IS NOT NULL ORDER BY created_at DESC`).all() as typeof raw;
+  } catch { /* fail-soft on a partial schema */ }
+  const rows = raw.slice(0, n).map((r) => ({
+    run_id: r.id, lane: r.loop_name, pr_url: r.url, pr_number: Number(/\/pull\/(\d+)/.exec(r.url)?.[1]) || null,
+    age_days: +((now - Date.parse(r.created_at)) / 86_400_000).toFixed(1), outcome: r.state ?? null, survived: r.survived === null || r.survived === undefined ? null : r.survived === 1,
+  }));
+  return { total: raw.length, unsettled: raw.filter((r) => !r.state).length, rows };
 }

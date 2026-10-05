@@ -51,8 +51,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   const ages = openDrafts.map((r) => (now - Date.parse(r.created_at)) / 86_400_000).sort((a, b) => a - b);
   const q = (p: number) => (ages.length ? +ages[Math.min(ages.length - 1, Math.floor(p * ages.length))].toFixed(1) : null);
   const merge = { settled, merge_outcomes: one("SELECT COUNT(*) FROM skill_outcomes WHERE domain = 'merge'"), first_settled: all<{ at: string }>("SELECT MIN(created_at) AS at FROM skill_outcomes WHERE domain = 'merge'")[0]?.at ?? null };
-  const drafts = { unsettled: openDrafts.length, age_days_p50: q(0.5), age_days_max: ages.length ? +ages[ages.length - 1].toFixed(1) : null,
-    note: 'unsettled = PR url without a merge-survival settlement (open, or merged < 14 d); GitHub is the ground truth for open' };
+  const drafts = { unsettled: openDrafts.length, unsettled_open_or_recent: openDrafts.length, age_days_p50: q(0.5), age_days_max: ages.length ? +ages[ages.length - 1].toFixed(1) : null,
+    note: 'unsettled_open_or_recent = PR url without a merge-survival settlement: still open, or merged < 14 d ago. Only GitHub knows which; the open count is the draft throttle\'s (RX-6, draft_pr_throttle* events)' };
 
   const genomes = {
     by_status: all<{ status: string; origin: string; n: number }>('SELECT status, origin, COUNT(*) AS n FROM maker_genomes GROUP BY 1, 2'),
@@ -82,7 +82,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
       const ok = total >= 30 && pos >= 8 && total - pos >= 8;
       return { state: ok ? 'green' : 'red', reason: `${total} settled loop PRs (${pos} survived, ${total - pos} not); needs ≥ 30 with ≥ 8 per class` } as Gate;
     })(),
-    C: { state: openDrafts.length <= 5 ? 'unknown' : 'red', reason: `${openDrafts.length} unsettled loop PRs now (target ≤ 5 on 14 consecutive days; history starts with RX-14)` },
+    C: { state: openDrafts.length <= 5 ? 'unknown' : 'red', reason: `${openDrafts.length} loop PRs open or merged < 14 d ago (an upper bound on open drafts; target ≤ 5 open on 14 consecutive days)` },
     D: (() => {
       const fs = (() => { try { return forecastScores(db); } catch { return []; } })();
       const eligible = fs.filter((f) => f.positives >= 10 && f.n >= 100);
