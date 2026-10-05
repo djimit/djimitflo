@@ -133,3 +133,14 @@ it('an error before the maker runs (git, npm ci) is an infra discard, not a spec
   expect(await svc.attempt('/repo', TASK, { runtime: 'opencode' })).toMatchObject({ status: 'discarded', reason: expect.stringMatching(/^infra: Command failed/) });
   expect(outcomes()).toEqual([]);
 });
+
+it('RX-11: with HACK_DETECTOR_MODE=shadow the VPS gym records hack flags on the result; off records none; the score is unchanged', async () => {
+  const flags = () => db.prepare("SELECT json_extract(metadata, '$.gym_result.hack_flags') AS f FROM loop_runs ORDER BY rowid DESC LIMIT 1").get();
+  expect(await service({ green: [false, true], changed: [TASK.source, TASK.tests[0]] }).svc.attempt('/repo', TASK, { runtime: 'opencode' })).toMatchObject({ status: 'failure' });
+  expect(flags()).toEqual({ f: null });
+  process.env.HACK_DETECTOR_MODE = 'shadow';
+  try {
+    expect(await service({ green: [false, true], changed: [TASK.source, TASK.tests[0]] }).svc.attempt('/repo', TASK, { runtime: 'opencode' })).toMatchObject({ status: 'failure', hack_flags: ['tests_touched'] });
+    expect(flags()).toEqual({ f: '["tests_touched"]' });
+  } finally { delete process.env.HACK_DETECTOR_MODE; }
+});

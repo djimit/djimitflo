@@ -92,6 +92,8 @@ missing here. **Acting** = changes what the loop does; acting flags are switched
 | `GYM_TIER_PROBE_ENABLED` | off | no | measure | operator (workstation budget) |
 | `GYM_TIER_PROBE_TIERS` | `4,5,6` | no | measure | operator |
 | `GYM_TIER_PROBE_EVERY` | 4 (every 4th remote claim) | no | measure | operator |
+| `HACK_DETECTOR_MODE` | off (`shadow` records gym hack flags on each result; nothing acts) | no | measure | operator |
+| `GYM_CANARY_RATE` | 0 (never; served only to a worker announcing `capabilities: ['canary']`) | no | measure | operator |
 | `MODEL_SELECTOR_MODE` | off (`shadow` samples a cheaper candidate per panel review and discards it; `enforce` uses the cheapest qualified model) | yes in enforce | shadow → act | operator; candidates `MODEL_CANDIDATES_PANEL_REVIEW` and (MS-2, Frontier Experts reviews / technique cards / council) `MODEL_CANDIDATES_FRONTIER_EXPERTS`, weights `MODEL_COST_WEIGHTS`, sample `MODEL_SELECTOR_SHADOW_RATE` (0.1) |
 
 ## Prod status (2026-09-25, E4) — STALE
