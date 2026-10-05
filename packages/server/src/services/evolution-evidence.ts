@@ -20,6 +20,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'LOOP_AUTO_DRAFT_PR_ENABLED', acting: true }, { name: 'LOOP_AUTO_APPROVE_TEST_GAP', acting: true }, { name: 'ORACLE_LANES_AUTO_APPROVE', acting: true },
   { name: 'LOOP_MEMORY_RULES_ENABLED', acting: true }, { name: 'EVOLUTION_GYM_REMOTE_MAX_PER_DAY', acting: true }, { name: 'DJIMITFLO_PUBLIC_URL', acting: false },
   { name: 'GYM_TIER_PROBE_ENABLED', acting: false }, { name: 'GYM_TIER_PROBE_TIERS', acting: false }, { name: 'GYM_TIER_PROBE_EVERY', acting: false },
+  { name: 'HACK_DETECTOR_MODE', acting: false }, { name: 'GYM_CANARY_RATE', acting: false },
   { name: 'MODEL_SELECTOR_MODE', acting: true },
 ];
 
@@ -68,7 +69,16 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   };
   const gym = all<{ kind: string; tier: number | null; status: string | null; n: number }>(`SELECT CASE WHEN json_extract(metadata, '$.gym.commit') LIKE 'mut:%' THEN 'mutant' ELSE 'mined' END AS kind,
     json_extract(metadata, '$.gym.tier') AS tier, json_extract(metadata, '$.gym_result.status') AS status, COUNT(*) AS n
-    FROM loop_runs WHERE loop_name = 'evolution-gym' AND created_at >= ? GROUP BY 1, 2, 3 ORDER BY 1, 2, 3`, since);
+    FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.canary') IS NULL AND created_at >= ? GROUP BY 1, 2, 3 ORDER BY 1, 2, 3`, since);
+  // RX-11: shadow hack flags per species (from gym_result.hack_flags) and canary outcomes (a solved canary = compromised oracle)
+  const hacks = {
+    flags: all<{ species: string; flag: string; n: number }>(`SELECT json_extract(r.metadata, '$.gym.species') AS species, f.value AS flag, COUNT(*) AS n
+      FROM loop_runs r, json_each(json_extract(r.metadata, '$.gym_result.hack_flags')) f
+      WHERE r.loop_name = 'evolution-gym' AND r.created_at >= ? GROUP BY 1, 2 ORDER BY n DESC LIMIT 50`, since),
+    flagged_runs: one(`SELECT COUNT(*) FROM loop_runs WHERE loop_name = 'evolution-gym' AND created_at >= ? AND json_array_length(json_extract(metadata, '$.gym_result.hack_flags')) > 0`, since),
+    canaries: all<{ status: string | null; n: number }>(`SELECT json_extract(metadata, '$.gym_result.status') AS status, COUNT(*) AS n FROM loop_runs
+      WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.canary') = 1 AND created_at >= ? GROUP BY 1`, since),
+  };
 
   // RX-4: settled trials and how much each could have shown
   const trials = {
@@ -111,5 +121,5 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   // RX-9 / RX-8: honest agreement and yield numbers (one row per maker; attempted Commons children vs source base rate)
   const oracle = oracleAgreement(db);
   const commons = commonsYield(db);
-  return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, trials, models, oracle, commons, forecasts_v2, gates };
+  return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, trials, models, oracle, commons, forecasts_v2, hacks, gates };
 }

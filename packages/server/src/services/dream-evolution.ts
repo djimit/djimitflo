@@ -74,7 +74,7 @@ export function dreamInputs(db: Database, now = Date.now()): { failures: string[
     FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym_result.status') = 'failure' AND created_at >= ?
       -- D3 (03-10): trial runs and holdout tasks never reach the mutation step — they did, so mutants were written from the
       -- holdout's own failures (g-e4170670: "repeated 'tests still red' … on service files")
-      AND json_extract(metadata, '$.gym.genome') IS NULL
+      AND json_extract(metadata, '$.gym.genome') IS NULL AND json_extract(metadata, '$.gym.canary') IS NULL
       AND json_extract(metadata, '$.gym.commit') NOT IN (SELECT commit_sha FROM gym_holdout)
       AND json_extract(metadata, '$.gym.commit') NOT IN (SELECT key FROM gym_mutant_holdout) LIMIT 20`, d1)
     .map((r) => `gym: ${r.source} — ${r.reason}`);
