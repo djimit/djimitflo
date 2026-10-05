@@ -13,7 +13,7 @@ afterEach(() => db?.close());
 it('RX-1: an empty or partial schema returns every section and never throws', () => {
   db = new Database(':memory:');
   const e = buildEvolutionEvidence(db, {}, NOW);
-  expect(Object.keys(e)).toEqual(['at', 'window_days', 'flags', 'outcomes', 'merge', 'drafts', 'genomes', 'gym', 'trials', 'gates']);
+  expect(Object.keys(e)).toEqual(['at', 'window_days', 'flags', 'outcomes', 'outcomes_tagged', 'merge', 'drafts', 'genomes', 'gym', 'trials', 'gates']);
   expect(e.outcomes).toEqual([]); expect(e.genomes.holdout).toEqual({ mined: null, mutant: null });
   expect(e.gates.B.state).toBe('red'); expect(e.gates.A.state).toBe('unknown');
   expect(e.flags.every((f) => f.value === null)).toBe(true);
@@ -51,4 +51,14 @@ it('RX-1: the window is clamped to 1–90 days', () => {
   db = new Database(':memory:');
   expect(buildEvolutionEvidence(db, {}, NOW, 999).window_days).toBe(90);
   expect(buildEvolutionEvidence(db, {}, NOW, -5).window_days).toBe(1);
+});
+
+it('RX-3: the share of production maker zeros that are infra / no change / eligible evolve losses, per skill', () => {
+  db = new Database(':memory:'); db.exec(schema); runMigrations(db); new SkillEvolutionEngine(db);
+  const out = db.prepare("INSERT INTO skill_outcomes (id, skill_id, success, domain, evidence_refs_json, created_at) VALUES (?, ?, ?, ?, ?, ?)");
+  const skill = 'loop-maker:test-gap:opencode';
+  out.run('a', skill, 0, 'test-gap', '["outcome_class:infra_failed"]', ago(1)); out.run('b', skill, 0, 'test-gap', '["evolve:lost_eligible"]', ago(1));
+  out.run('c', skill, 0, 'test-gap', '["outcome_class:regressed"]', ago(1)); out.run('d', skill, 1, 'test-gap', '[]', ago(1));
+  out.run('g', 'loop-maker:gym:atomic', 0, 'gym', '["outcome_class:infra_failed"]', ago(1));
+  expect(buildEvolutionEvidence(db, {}, NOW).outcomes_tagged).toEqual([{ skill, total: 4, failures: 3, tagged: 2, share: 0.5 }]);
 });

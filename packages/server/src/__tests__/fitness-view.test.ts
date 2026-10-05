@@ -61,3 +61,13 @@ it('D0 cap: hundreds of gym wins stay a prior (≤ 5 pseudo-observations) — re
   expect(ws.alpha + ws.beta).toBeCloseTo(2 + 9 + 5, 1); // prior + 9 real + gym capped at 5
   expect(oc.mean).toBeGreaterThan(ws.mean);
 });
+
+it('RX-3: mean_clean leaves out production zeros that were infra, no change or an eligible evolve loss; mean is unchanged', () => {
+  const lane = 'doc-drift-and-small-fix-loop';
+  const tagged = (refs: string[], success: boolean) => db.prepare(`INSERT INTO skill_outcomes (id, skill_id, success, tokens_used, duration_ms, domain, model, evidence_refs_json, created_at)
+    VALUES (?, ?, ?, 0, 0, 'x', '', ?, ?)`).run(`${Math.random()}`, `loop-maker:${lane}:opencode`, success ? 1 : 0, JSON.stringify(refs), new Date(NOW).toISOString());
+  tagged(['outcome_class:infra_failed'], false); tagged(['evolve:lost_eligible'], false); tagged(['outcome_class:no_change'], false);
+  tagged(['outcome_class:regressed'], false); tagged([], true);
+  const [row] = fitnessPosterior(db, lane, [OPENCODE], NOW, { FITNESS_HALF_LIFE_DAYS: '0' } as NodeJS.ProcessEnv);
+  expect(row).toMatchObject({ alpha: 2, beta: 5, mean: 0.286, tagged: 3, mean_clean: 0.5 });
+});
