@@ -48,9 +48,11 @@ export function forecastScores(db: Database, sinceDays = 60): ForecasterScore[] 
   const seen = new Set<string>();
   for (const r of rows) {
     const prop = byId.get(r.subject_id); if (!prop) continue;
-    if (prop.goal_at && r.created_at >= prop.goal_at) continue; // after the gate decided: leakage
+    let answers: { as_of?: unknown } = {}; try { answers = JSON.parse(r.answers_json || '{}'); } catch { /* unparsable: skip */ }
+    // AR-W: an async forecast counts from the moment its input was frozen (as_of, before the goal), not when it was written
+    const madeAt = typeof answers.as_of === 'string' ? answers.as_of : r.created_at;
+    if (prop.goal_at && madeAt >= prop.goal_at) continue; // after the gate decided: leakage
     const key = `${r.judgment}|${r.subject_id}`; if (seen.has(key)) continue; seen.add(key); // first forecast per subject only
-    let answers = {}; try { answers = JSON.parse(r.answers_json || '{}'); } catch { /* unparsable: skip */ }
     const p = forecastOf(r.judgment, answers as never); if (p === null) continue;
     const list = pairs.get(r.judgment) ?? []; list.push([p, outcome(prop.status), prop.source]); pairs.set(r.judgment, list);
   }
