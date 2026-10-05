@@ -43,7 +43,7 @@ export class TechniqueCardService {
   }
 
   async extractBatch(limit = 5): Promise<{ cards: number; claims: number; contradictions: number }> {
-    if (!this.runner) { const model = await createModelPerspectiveRunner(); if (!model) return { cards: 0, claims: 0, contradictions: 0 }; this.runner = (_role, system, user) => model.runner('perspective', system, user); }
+    if (!this.runner) { const model = await createModelPerspectiveRunner(process.env, this.db); if (!model) return { cards: 0, claims: 0, contradictions: 0 }; this.runner = (_role, system, user) => model.runner('perspective', system, user); }
     let cards = 0; let claims = 0; let contradictions = 0;
     for (const unit of this.pending(limit)) {
       const raw = unit.abstract.length > 80

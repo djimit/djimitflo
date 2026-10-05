@@ -88,3 +88,41 @@ export function modelEvidence(db: Database, incumbents: Record<string, string | 
   const would_pick = Object.fromEntries(Object.entries(incumbents).map(([c, inc]) => [c, inc ? chooseModel(db, c, inc, env, now) : null]));
   return { mode: modelSelectorMode(env), rows, would_pick };
 }
+
+/**
+ * MS-2: the same selection for a consumer whose calls go through one ask(model, system, user) function (Frontier Experts:
+ * expert reviews, technique cards, council perspectives share one runner). usable() says whether an answer has the
+ * expected shape; agree() compares a shadow answer with the incumbent's (null = not comparable). Off: one incumbent call,
+ * nothing recorded. Shadow: the incumbent answers; a sample also asks one cheaper candidate, recorded and discarded.
+ * Enforce: the cheapest qualified model answers; an unusable answer falls back to the incumbent.
+ */
+export type AskModel = (model: string, system: string, user: string) => Promise<{ json: unknown; chars: number }>;
+export function selectingRunner(db: Database, consumer: string, incumbent: string, ask: AskModel, usable: (json: unknown) => boolean,
+  agree: (a: unknown, b: unknown) => boolean | null, env: NodeJS.ProcessEnv = process.env, random: () => number = Math.random, now?: number) {
+  return async (system: string, user: string): Promise<unknown> => {
+    const mode = modelSelectorMode(env);
+    if (mode === 'off') return (await ask(incumbent, system, user)).json;
+    const call = async (model: string, shadow: 0 | 1, reference?: unknown): Promise<{ json: unknown; ok: boolean }> => {
+      const started = Date.now();
+      try {
+        const { json, chars } = await ask(model, system, user);
+        const ok = usable(json);
+        recordModelCall(db, { consumer, model, ok, latencyMs: Date.now() - started, outChars: chars, shadow, agree: shadow && ok && usable(reference) ? agree(reference, json) : null });
+        return { json, ok };
+      } catch (error) {
+        recordModelCall(db, { consumer, model, ok: false, latencyMs: Date.now() - started, outChars: 0, shadow, agree: null });
+        if (shadow) return { json: null, ok: false };
+        throw error;
+      }
+    };
+    const pick = mode === 'enforce' ? chooseModel(db, consumer, incumbent, env, now) : incumbent;
+    let answer = await call(pick, 0);
+    // the incumbent's raw answer is what callers always got (they validate it themselves); a cheaper pick must be usable
+    if (!answer.ok && pick !== incumbent) answer = await call(incumbent, 0);
+    if (mode === 'shadow' && random() < shadowRate(env)) {
+      const candidate = shadowCandidate(db, consumer, incumbent, env, now);
+      if (candidate) await call(candidate, 1, answer.json);
+    }
+    return answer.json;
+  };
+}
