@@ -13,7 +13,7 @@ import { detectStalls } from '../services/stall-watch';
 import { serviceMap } from '../services/service-map';
 import { operatorCockpit } from '../services/operator-cockpit';
 import { knowledgeOverview } from '../services/knowledge-overview';
-import { forecastScores } from '../services/forecast-scoring';
+import { forecastScores, forecastScoresV2 } from '../services/forecast-scoring';
 import { buildEvolutionEvidence } from '../services/evolution-evidence';
 import { runtimeConfigView } from '../services/runtime-config-view';
 import { getDatabaseProvenance } from '../database/provenance';
@@ -148,6 +148,11 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   // RX-1 (Phase F): evolution evidence — flags, outcomes per source, loop PRs, genomes/holdouts, gym per tier, Realm Gates (read-only)
   router.get('/evolution-evidence', requireAuth, requirePermission('manage:config'), (req, res) => {
     res.json(buildEvolutionEvidence(db, process.env, Date.now(), Number(req.query.days) || 30));
+  });
+
+  // RX-7 (Phase F, shadow): forecast scoring V2 — trailing out-of-sample base rate, bootstrap CIs, decision_grade, and what V1 vs V2 would stop
+  router.get('/forecasts-v2', requireAuth, requirePermission('read:evidence'), (_req, res) => {
+    res.json(forecastScoresV2(db));
   });
 
   // plan S3: the running configuration, read-only; secrets masked by name and value; admins only

@@ -45,3 +45,41 @@ it('only the first forecast per subject counts; jev prescreen is read as the pro
   expect(forecastScores(db).find((x) => x.forecaster === 'forecast:flip')).toMatchObject({ n: 1, brier: expect.closeTo(0.81, 5) });
   expect(auc([[0.9, 1], [0.1, 0]])).toBe(1);
 });
+
+// --- RX-7: forecast scoring V2 (shadow, read-only) ---
+import { forecastScoresV2 } from '../services/forecast-scoring';
+const resolve = (id: string, atMin: number) => db.prepare('UPDATE self_improvements SET updated_at = ? WHERE id = ?').run(t(atMin), id);
+
+it('RX-7: a zero-positive subset gets a negative V1 skill but is insufficient in V2', () => {
+  // history: the source has verified before, so the trailing base rate is > 0; the scored forecaster only saw failures
+  for (let i = 0; i < 4; i++) { proposal(`old${i}`, 'gap_analysis', i < 2 ? 'verified' : 'regressed', 600); resolve(`old${i}`, 5); }
+  for (let i = 0; i < 12; i++) { proposal(`z${i}`, 'gap_analysis', 'needs_more_evidence', null); resolve(`z${i}`, 300); forecast('forecast:resident:zero', `z${i}`, { p: 0.4, as_of: t(100) }, 100); }
+  const v1 = forecastScores(db).find((x) => x.forecaster === 'forecast:resident:zero')!;
+  expect(v1.positives).toBe(0); expect(v1.skill).toBeLessThan(0);
+  const v2 = forecastScoresV2(db).forecasters.find((x) => x.forecaster === 'forecast:resident:zero')!;
+  expect(v2).toMatchObject({ n: 12, positives: 0, state: 'insufficient' });
+  expect(v2.null_goal_n).toBe(12);
+  const stop = forecastScoresV2(db).would_have_stopped.find((x) => x.forecaster === 'forecast:resident:zero');
+  expect(stop).toMatchObject({ v2_stop: false });
+});
+
+it('RX-7: an outcome resolved after the forecast was made does not change its V2 base rate', () => {
+  proposal('h1', 'gap_analysis', 'verified', 600); resolve('h1', 5);
+  proposal('h2', 'gap_analysis', 'regressed', 600); resolve('h2', 6);
+  proposal('s1', 'gap_analysis', 'regressed', 600); resolve('s1', 400);
+  forecast('forecast:x', 's1', { p: 0.2 }, 100);
+  const before = forecastScoresV2(db).forecasters.find((x) => x.forecaster === 'forecast:x')!.baselineBrier;
+  proposal('late', 'gap_analysis', 'verified', 900); resolve('late', 500); // resolved after the forecast (min 100)
+  const after = forecastScoresV2(db).forecasters.find((x) => x.forecaster === 'forecast:x')!.baselineBrier;
+  expect(after).toBe(before);
+});
+
+it('RX-7: V1 output is unchanged and the V2 bootstrap CI is deterministic for a fixed seed', () => {
+  for (let i = 0; i < 20; i++) { proposal(`d${i}`, 'gap_analysis', i % 4 === 0 ? 'verified' : 'regressed', 600); resolve(`d${i}`, 200 + i); forecast('forecast:det', `d${i}`, { p: i % 4 === 0 ? 0.7 : 0.2 }, 150); }
+  const v1a = JSON.stringify(forecastScores(db)); const v1b = JSON.stringify(forecastScores(db));
+  expect(v1a).toBe(v1b);
+  const a = forecastScoresV2(db, { seed: 7 }).forecasters.find((x) => x.forecaster === 'forecast:det')!;
+  const b = forecastScoresV2(db, { seed: 7 }).forecasters.find((x) => x.forecaster === 'forecast:det')!;
+  expect(a.skill_ci).toEqual(b.skill_ci); expect(a.skill_ci[0]).toBeLessThanOrEqual(a.skill); expect(a.skill_ci[1]).toBeGreaterThanOrEqual(a.skill);
+  expect(a.state).toBe('insufficient'); // n 20 < 100
+});
