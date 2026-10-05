@@ -66,23 +66,21 @@ export class RemoteGymService {
     const pick = healthy.map((s) => ({ s, n: (count.get(`loop-maker:gym:${s.runtime}`, s.model ?? '') as { n: number }).n })).sort((a, b) => a.n - b.n)[0].s;
     const key = pick.model ? `${pick.runtime}@${pick.model}` : pick.runtime;
     const tasks = this.mine(repo);
+    // RX-5: the probe takes its share even while trials run (prod 05-10: trials take every claim for days, so a probe
+    // behind them never ran); trials and ordinary replays share the rest
+    let task: GymTask | undefined; let trialGenome: Genome | null = null; let probe = false;
+    const probeTier = tierProbe(this.db);
+    if (probeTier !== null) {
+      const p = mutantTask(this.db, repo, key, new Set([...triedTasks(this.db, key), ...holdoutKeys(this.db)]), probeTier);
+      if (p) { task = p; probe = true; }
+    }
     // Y3: with dream evolution on, paired trial attempts on the frozen holdout come before normal replays
-    let task: GymTask | undefined; let trialGenome: Genome | null = null;
-    if (dreamEvolutionEnabled()) {
+    if (!task && dreamEvolutionEnabled()) {
       ensureBaseline(this.db, now.toISOString());
       const mutants = mutantTrialsEnabled() ? mutantHoldout(this.db, (tier, tried) => mutantTask(this.db, repo, key, tried, tier), now.toISOString()) : [];
       const next = nextTrialAttempt(this.db, key, [...holdout(this.db, tasks, now.toISOString()), ...mutants.map((m) => m.commit)]);
       if (next) { task = tasks.find((t) => t.commit === next.commit) ?? mutants.find((m) => m.commit === next.commit); trialGenome = task ? genome(this.db, next.genomeId) : null; }
       if (!trialGenome) task = undefined;
-    }
-    let probe = false;
-    if (!task) {
-      const tried = triedTasks(this.db, key);
-      const probeTier = tierProbe(this.db);
-      if (probeTier !== null) {
-        const p = mutantTask(this.db, repo, key, new Set([...tried, ...holdoutKeys(this.db)]), probeTier);
-        if (p) { task = p; probe = true; }
-      }
     }
     if (!task) {
       const tried = triedTasks(this.db, key);
