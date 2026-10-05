@@ -2,12 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Database, RotateCcw, AlertTriangle } from 'lucide-react';
 import { WebSocketEventType, type WebSocketMessage, type ProofRunEventPayload } from '@djimitflo/shared';
-import { useWebSocket } from '../hooks/useWebSocket';
+import { useWsSubscribe } from '../components/WebSocketProvider';
 import { api, type ProofRunSummary } from '../lib/api';
 
 export function ProofRunDetailPage() {
   const { proofRunId } = useParams<{ proofRunId: string }>();
-  const { subscribe } = useWebSocket(true);
+  const subscribe = useWsSubscribe();
   const [proofRun, setProofRun] = useState<ProofRunSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [rollingBack, setRollingBack] = useState(false);

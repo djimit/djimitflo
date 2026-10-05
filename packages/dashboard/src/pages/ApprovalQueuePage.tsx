@@ -4,7 +4,7 @@ import type { ApprovalRequest } from '@djimitflo/shared';
 import { WebSocketEventType } from '@djimitflo/shared';
 import { ApprovalCard } from '../components/ApprovalCard';
 import { api } from '../lib/api';
-import { useWebSocket } from '../hooks/useWebSocket';
+import { useWsSubscribe } from '../components/WebSocketProvider';
 
 type StatusFilter = 'pending' | 'approved' | 'denied' | 'all';
 
@@ -24,7 +24,7 @@ export function ApprovalQueuePage({ embedded = false }: { embedded?: boolean } =
   const requestId = useRef(0);
   const currentTab = useRef<StatusFilter>(tab);
   currentTab.current = tab;
-  const { subscribe } = useWebSocket(true);
+  const subscribe = useWsSubscribe();
 
   const load = useCallback(async (status: StatusFilter) => {
     const currentRequest = ++requestId.current;

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useStore } from "../lib/store";
-import { useWebSocket } from "../hooks/useWebSocket";
+import { useWsSubscribe } from '../components/WebSocketProvider';
 import { WebSocketEventType } from "@djimitflo/shared";
 import { api } from "../lib/api";
 import { Users, Activity, Zap, Clock, AlertCircle, Brain, Server, TrendingUp, MessageSquare, Lightbulb } from "lucide-react";
@@ -93,7 +93,7 @@ export function SwarmOverviewPage() {
   const [discussions, setDiscussions] = useState<Discussion[]>([]);
   const [learnings, setLearnings] = useState<Learning[]>([]);
   const [loading, setLoading] = useState(true);
-  const { subscribe } = useWebSocket(true);
+  const subscribe = useWsSubscribe();
 
   const fetchData = useCallback(async () => {
     try {

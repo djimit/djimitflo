@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { WebSocketEventType } from '@djimitflo/shared';
+import { useWsSubscribe } from '../components/WebSocketProvider';
 import { Inbox, RefreshCw } from 'lucide-react';
 import { api, type DecisionsInbox, type DraftPrs } from '../lib/api';
 import { usePendingApprovals } from '../hooks/usePendingApprovals';
@@ -48,7 +50,15 @@ export function DecisionsInboxPage() {
     setError(null);
     try { setData(await api.getDecisionsInbox()); } catch (err) { setError(err instanceof Error ? err.message : 'Failed to load decisions'); }
   }, []);
-  useEffect(() => { void load(); }, [load]);
+  // UX-3: live — poll every 30 s and refetch when an approval changes
+  const subscribe = useWsSubscribe();
+  useEffect(() => {
+    void load();
+    const poll = setInterval(() => void load(), 30_000);
+    const offs = [WebSocketEventType.APPROVAL_REQUESTED, WebSocketEventType.APPROVAL_GRANTED, WebSocketEventType.APPROVAL_DENIED, WebSocketEventType.APPROVAL_EXPIRED]
+      .map((t) => subscribe(t, () => void load()));
+    return () => { clearInterval(poll); offs.forEach((off) => off()); };
+  }, [load, subscribe]);
 
   const act = async (key: string, action: () => Promise<unknown>, done: string) => {
     setBusy(key); setError(null); setNotice(null);

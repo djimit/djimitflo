@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
+import { WebSocketEventType } from '@djimitflo/shared';
+import { useWsSubscribe } from '../components/WebSocketProvider';
 import { Link } from 'react-router-dom';
 import { Activity, RefreshCw } from 'lucide-react';
 import { api, type OperatorCockpit, type ServiceStatus } from '../lib/api';
@@ -21,14 +23,25 @@ export function OperatorCockpitPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [services, setServices] = useState<ServiceStatus[] | null>(null);
+  const [loadedAt, setLoadedAt] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     api.getServiceMap().then((r) => setServices(r.services)).catch(() => setServices([]));
-    try { setData(await api.getOperatorCockpit()); } catch (err) { setError(err instanceof Error ? err.message : 'Failed to load the cockpit'); } finally { setLoading(false); }
+    try { setData(await api.getOperatorCockpit()); setLoadedAt(Date.now()); } catch (err) { setError(err instanceof Error ? err.message : 'Failed to load the cockpit'); } finally { setLoading(false); }
   }, []);
-  useEffect(() => { void load(); }, [load]);
+  // UX-3: live — poll every 30 s and refetch when an approval or proof run changes; say how fresh the numbers are
+  const [, tick] = useState(0);
+  const subscribe = useWsSubscribe();
+  useEffect(() => {
+    void load();
+    const poll = setInterval(() => void load(), 30_000);
+    const clock = setInterval(() => tick((n) => n + 1), 5_000);
+    const offs = [WebSocketEventType.APPROVAL_REQUESTED, WebSocketEventType.APPROVAL_GRANTED, WebSocketEventType.APPROVAL_DENIED, WebSocketEventType.APPROVAL_EXPIRED, WebSocketEventType.PROOF_RUN_UPDATED]
+      .map((t) => subscribe(t, () => void load()));
+    return () => { clearInterval(poll); clearInterval(clock); offs.forEach((off) => off()); };
+  }, [load, subscribe]);
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
@@ -38,6 +51,7 @@ export function OperatorCockpitPage() {
         <button onClick={() => void load()} disabled={loading} className="ml-auto flex items-center gap-2 px-3 py-2 rounded-md border border-border">
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
         </button>
+        {loadedAt && <span className="text-xs text-foreground-secondary">updated {Math.round((Date.now() - loadedAt) / 1000)} s ago</span>}
       </div>
       <p className="text-sm text-foreground-secondary">
         Is the self-improvement loop healthy? Guardrails, silent stalls, gym species and model usage, straight from the database.
