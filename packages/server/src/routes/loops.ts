@@ -4,6 +4,7 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { createError } from '../middleware/error-handler';
 import { LoopService } from '../services/loop-service';
+import { listDraftPrs } from '../services/loop-draft-pr-service';
 import type { ExecutionEngine } from '../execution/execution-engine';
 
 function mapLoopServiceError(error: unknown): never {
@@ -83,6 +84,15 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
   router.get('/runtime-contracts', requirePermission('read:evidence'), (_req, res, next) => {
     try {
       res.json(loopService.getRuntimeContracts());
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // UX-7: the loop's draft PRs (read-only, from loop_runs metadata; no GitHub call)
+  router.get('/draft-prs', requirePermission('read:evidence'), (req, res, next) => {
+    try {
+      res.json(listDraftPrs(db, Number(req.query.limit) || 50));
     } catch (error) {
       next(error);
     }
