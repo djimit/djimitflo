@@ -12,6 +12,7 @@ import { getAppVersion } from '../utils/version';
 import { detectStalls } from '../services/stall-watch';
 import { serviceMap } from '../services/service-map';
 import { operatorCockpit } from '../services/operator-cockpit';
+import { listSchedulers } from '../services/scheduler-registry';
 import { knowledgeOverview } from '../services/knowledge-overview';
 import { forecastScores, forecastScoresV2 } from '../services/forecast-scoring';
 import { buildEvolutionEvidence } from '../services/evolution-evidence';
@@ -133,6 +134,11 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   // plan S1: operator cockpit — scorecard, guardrails, stalls, gym species, remote workers, model/judgment usage (read-only)
   router.get('/cockpit', requireAuth, requirePermission('read:evidence'), (_req, res) => {
     res.json(operatorCockpit(db));
+  });
+
+  // UX-8: which background schedulers this process armed at boot (name, arming flag, interval, last tick) — admins only
+  router.get('/schedulers', requireAuth, requirePermission('manage:config'), (_req, res) => {
+    res.json(listSchedulers());
   });
 
   // plan W5: knowledge pipeline per source — discoveries, jev relevance, units, KB retrieval, interest profile (read-only)
