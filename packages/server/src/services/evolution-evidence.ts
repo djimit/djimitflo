@@ -1,5 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import { forecastScores } from './forecast-scoring';
+import { parseRuntimeSpec } from './social-runtime-providers';
 import { modelEvidence } from './model-selector';
 import { commonsYield, oracleAgreement } from './honest-numbers';
 
@@ -24,6 +25,9 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
 
 export type GateState = 'green' | 'red' | 'unknown';
 export interface Gate { state: GateState; reason: string }
+
+/** MS-2: the expert runner's model from FRONTIER_EXPERTS_RUNTIME ('ollama:kimi-k3:cloud' → 'kimi-k3:cloud'), parsed like the runner does. */
+const frontierIncumbent = (runtime?: string): string | undefined => (runtime || '').trim() ? parseRuntimeSpec(runtime, { runtime: 'ollama', model: '' }).model : undefined;
 
 export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = process.env, now = Date.now(), days = 30) {
   const window = Math.min(90, Math.max(1, Math.floor(days) || 30));
@@ -93,7 +97,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     })(),
   };
   // MS-1: model calls per consumer (14-day selector window) and what the cost-aware selector would pick
-  const models = modelEvidence(db, { panel_review: env.SELF_IMPROVEMENT_REVIEW_MODEL }, env, now);
+  const frontier = frontierIncumbent(env.FRONTIER_EXPERTS_RUNTIME);
+  const models = modelEvidence(db, { panel_review: env.SELF_IMPROVEMENT_REVIEW_MODEL, ...(frontier ? { frontier_experts: frontier } : {}) }, env, now);
   // RX-9 / RX-8: honest agreement and yield numbers (one row per maker; attempted Commons children vs source base rate)
   const oracle = oracleAgreement(db);
   const commons = commonsYield(db);
