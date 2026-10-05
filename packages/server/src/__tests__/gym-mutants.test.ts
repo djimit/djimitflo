@@ -105,3 +105,19 @@ it('RX-5: every 2nd claim probes a fixed tier from the configured set, rotating,
   // probe outcomes do not move the species' adaptive tier: the ordinary claims stayed at tier 1
   expect(claims.filter((c) => !probes.includes(c)).map((c) => c.task.tier)).toEqual([1, 1]);
 });
+
+it('RX-5: the probe takes its share while a genome trial is running (trials no longer starve it)', () => {
+  vi.stubEnv('EVOLUTION_GYM_REMOTE_ENABLED', 'true'); vi.stubEnv('LOOP_DAEMON_REPOSITORY_PATH', repo);
+  vi.stubEnv('DREAM_EVOLUTION_ENABLED', 'true'); vi.stubEnv('DREAM_TRIAL_MUTANTS', 'true'); vi.stubEnv('DREAM_TRIAL_MUTANT_TIERS', '1');
+  vi.stubEnv('GYM_TIER_PROBE_ENABLED', 'true'); vi.stubEnv('GYM_TIER_PROBE_TIERS', '2'); vi.stubEnv('GYM_TIER_PROBE_EVERY', '2');
+  const now = new Date().toISOString();
+  db.prepare("INSERT INTO maker_genomes (id, parent_id, gene, lines_json, origin, status, created_at, updated_at) VALUES ('g-t', 'baseline', 'strategy', '[\"x\"]', 'dream', 'trial', ?, ?)").run(now, now);
+  const svc = new RemoteGymService(db, () => []);
+  const claims = Array.from({ length: 2 }, () => {
+    const c = svc.claim('workstation', ['atomic']) as { runId: string; genome?: { id: string } };
+    svc.record(c.runId, 'workstation', { status: 'failure', reason: 'tests still red' });
+    return { ...c, probe: (db.prepare("SELECT json_extract(metadata, '$.gym.probe') AS p FROM loop_runs WHERE id = ?").get(c.runId) as { p: number | null }).p };
+  });
+  expect(claims[0].genome).toBeDefined(); expect(claims[0].probe).toBeNull(); // trial pair
+  expect(claims[1].probe).toBe(1); expect(claims[1].genome).toBeUndefined(); // probe despite the open trial
+});
