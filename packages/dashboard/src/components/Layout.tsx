@@ -8,6 +8,7 @@ import { OrganizationSelector } from './OrganizationSelector';
 import { PendingApprovalsBanner } from './PendingApprovalsBanner';
 import { usePendingApprovals } from '../hooks/usePendingApprovals';
 import { api } from '../lib/api';
+import { NAV_PERMISSIONS } from '../lib/permissions';
 
 
 // W4 (2026-09-30): one operator's jobs, ≤ 20 top-level items; experimental or dormant pages live in a collapsed Lab.
@@ -65,7 +66,7 @@ const NAV_SECTIONS: Array<{ title: string; lab?: boolean; items: Array<{ to: str
 
 export function Layout() {
   const location = useLocation();
-  const { user, logout } = useAuthStore();
+  const { user, logout, hasPermission } = useAuthStore();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => setMobileNavOpen(false), [location.pathname]);
@@ -133,7 +134,7 @@ export function Layout() {
           {NAV_SECTIONS.map((section) => {
             const links = (
               <div className="space-y-1">
-                {section.items.filter((item) => item.to !== '/authority' || authorityAvailable).map((item) => (
+                {section.items.filter((item) => (item.to !== '/authority' || authorityAvailable) && (!NAV_PERMISSIONS[item.to] || hasPermission(NAV_PERMISSIONS[item.to]))).map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}

@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { PlugZap, Circle } from 'lucide-react';
 import type { MCPServer } from '@djimitflo/shared';
 import { api } from '../lib/api';
+import { ACTION_PERMISSIONS as P, needsText, useCan } from '../lib/permissions';
 
 type MCPServerView = MCPServer & {
   effective_status?: MCPServer['status'] | 'catalog' | 'stale' | 'policy_blocked';
@@ -36,6 +37,7 @@ const STATUS_TEXT: Record<string, string> = {
 };
 
 export function MCPPermissionsPage() {
+  const canAdd = useCan(P.mcpCreateServer);
   const [servers, setServers] = useState<MCPServerView[]>([]);
   const [permissions, setPermissions] = useState<Array<Record<string, unknown>>>([]);
   const [serverId, setServerId] = useState('');
@@ -117,6 +119,8 @@ export function MCPPermissionsPage() {
           <button
             type="button"
             onClick={() => setShowAddServer((value) => !value)}
+            disabled={!canAdd}
+            title={canAdd ? undefined : needsText(P.mcpCreateServer)}
             className="text-sm px-3 py-1.5 rounded-md border border-border text-foreground-secondary hover:text-foreground hover:border-accent"
           >
             {showAddServer ? 'Cancel' : 'Add server'}

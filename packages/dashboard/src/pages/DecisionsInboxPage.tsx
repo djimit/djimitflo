@@ -5,6 +5,7 @@ import { Inbox, RefreshCw } from 'lucide-react';
 import { api, type DecisionsInbox, type DraftPrs } from '../lib/api';
 import { usePendingApprovals } from '../hooks/usePendingApprovals';
 import { ApprovalQueuePage } from './ApprovalQueuePage';
+import { ACTION_PERMISSIONS as P, needsText, useCan } from '../lib/permissions';
 
 /** UX-7: the last step of the loop — its draft PRs, how old they are, and whether merge survival has settled them. */
 export function DraftPrsSection() {
@@ -41,6 +42,7 @@ export function DecisionsInboxPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const canMemory = useCan(P.memoryReview); const canRequeue = useCan(P.requeueProposal); const canLabel = useCan(P.labelPrescreen); const canTelegram = useCan(P.telegramIdentity);
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [tgId, setTgId] = useState('');
   const [tgUser, setTgUser] = useState('');
@@ -119,8 +121,8 @@ export function DecisionsInboxPage() {
                     <td><div className="font-medium">{m.title}</div><div className="text-xs text-foreground-secondary whitespace-pre-wrap">{m.content}</div></td>
                     <td>{m.memory_type}</td><td>{m.status.replace('_', ' ')}</td>
                     <td className="whitespace-nowrap space-x-1">
-                      <button type="button" className={button} disabled={busy !== null} onClick={() => void act(`p-${m.id}`, () => api.promoteMemoryCandidate(m.id), `Promoted '${m.title}'`)}>Promote</button>
-                      <button type="button" className={button} disabled={busy !== null} onClick={() => void act(`r-${m.id}`, () => api.rejectMemoryCandidate(m.id), `Rejected '${m.title}'`)}>Reject</button>
+                      <button title={canMemory ? undefined : needsText(P.memoryReview)} type="button" className={button} disabled={busy !== null || !canMemory} onClick={() => void act(`p-${m.id}`, () => api.promoteMemoryCandidate(m.id), `Promoted '${m.title}'`)}>Promote</button>
+                      <button title={canMemory ? undefined : needsText(P.memoryReview)} type="button" className={button} disabled={busy !== null || !canMemory} onClick={() => void act(`r-${m.id}`, () => api.rejectMemoryCandidate(m.id), `Rejected '${m.title}'`)}>Reject</button>
                     </td>
                   </tr>
                 ))}</tbody>
@@ -143,7 +145,7 @@ export function DecisionsInboxPage() {
                         placeholder="why (required)" className="w-full rounded border border-border bg-background px-2 py-0.5" />
                     )}</td>
                     <td>{!r.requeued_as && (
-                      <button type="button" className={button} disabled={busy !== null || (reasons[r.id] ?? '').trim().length < 5}
+                      <button title={canRequeue ? undefined : needsText(P.requeueProposal)} type="button" className={button} disabled={busy !== null || !canRequeue || (reasons[r.id] ?? '').trim().length < 5}
                         onClick={() => void act(r.id, () => api.requeueProposal(r.id, reasons[r.id].trim()), `Requeued ${r.id.slice(0, 8)}`)}>Requeue</button>
                     )}</td>
                   </tr>
@@ -168,7 +170,7 @@ export function DecisionsInboxPage() {
                     <td>{i.title}</td><td>{i.status}</td><td className="text-foreground-secondary">{i.reason}</td>
                     <td className="whitespace-nowrap space-x-1">
                       {(['ok', 'wrong'] as const).map((label) => (
-                        <button key={label} type="button" aria-pressed={i.label === label} disabled={busy !== null}
+                        <button title={canLabel ? undefined : needsText(P.labelPrescreen)} key={label} type="button" aria-pressed={i.label === label} disabled={busy !== null || !canLabel}
                           className={`${button} ${i.label === label ? 'bg-background-tertiary font-semibold' : ''}`}
                           onClick={() => void act(`${i.id}-${label}`, () => api.labelPrescreen(i.id, label), `Labelled '${label}'`)}>{label}</button>
                       ))}
@@ -188,7 +190,7 @@ export function DecisionsInboxPage() {
                 <tbody>{data.telegram.map((t) => (
                   <tr key={t.telegram_user_id} className="border-t border-border">
                     <td>{t.telegram_user_id}</td><td>{t.email ?? t.user_id}</td><td>{t.role ?? 'missing user'}</td><td>{t.added_by}</td>
-                    <td><button type="button" className={button} disabled={busy !== null} onClick={() => void act(`tg-${t.telegram_user_id}`, () => api.removeTelegramIdentity(t.telegram_user_id), `Removed ${t.telegram_user_id}`)}>Remove</button></td>
+                    <td><button title={canTelegram ? undefined : needsText(P.telegramIdentity)} type="button" className={button} disabled={busy !== null || !canTelegram} onClick={() => void act(`tg-${t.telegram_user_id}`, () => api.removeTelegramIdentity(t.telegram_user_id), `Removed ${t.telegram_user_id}`)}>Remove</button></td>
                   </tr>
                 ))}</tbody>
               </table>
@@ -196,7 +198,7 @@ export function DecisionsInboxPage() {
             <form onSubmit={addIdentity} className="flex flex-wrap gap-2 items-end">
               <label className="text-sm">Telegram user id<input value={tgId} onChange={(e) => setTgId(e.target.value)} inputMode="numeric" className="block rounded border border-border bg-background px-2 py-1" /></label>
               <label className="text-sm">Djimitflo user id<input value={tgUser} onChange={(e) => setTgUser(e.target.value)} className="block rounded border border-border bg-background px-2 py-1" /></label>
-              <button type="submit" className={button} disabled={busy !== null}>Add</button>
+              <button type="submit" className={button} disabled={busy !== null || !canTelegram} title={canTelegram ? undefined : needsText(P.telegramIdentity)}>Add</button>
             </form>
           </section>
         </>

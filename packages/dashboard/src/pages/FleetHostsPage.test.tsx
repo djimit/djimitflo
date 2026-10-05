@@ -2,6 +2,10 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { FleetHostsPage } from './FleetHostsPage';
 import { api } from '../lib/api';
+import { useAuthStore } from '../lib/auth-store';
+
+// UX-4: actions are gated by role; these cases exercise them as an admin
+beforeEach(() => { useAuthStore.setState({ user: { id: 'admin-fixture', email: 'admin@example.test', role: 'admin' } as never }); });
 
 const cmd = (over: Record<string, unknown>) => ({ id: 'c1', host: 'workstation', kind: 'shell', command: 'systemctl restart foo', command_sha256: 'a'.repeat(64), status: 'pending_approval',
   requested_by: 'op', approved_by: null, approved_at: null, expires_at: null, decided_reason: null, started_at: null, finished_at: null, exit_code: null, output: null, created_at: '', ...over });
