@@ -65,3 +65,15 @@ it('retries NVIDIA 429s with backoff (Retry-After first), then gives up after 3 
   expect((await nvidiaFetch('u', {}, always as unknown as typeof fetch, async () => undefined)).status).toBe(429);
   expect(always).toHaveBeenCalledTimes(4);
 });
+
+it('a concurrent burst that all times out writes one error row and pauses checks (prod 05-10: 224 timeouts in 16 s)', async () => {
+  vi.stubEnv('CONTENT_SAFETY_MODE', 'shadow'); vi.stubEnv('NVIDIA_API_KEY', 'k');
+  resetContentSafetyPause();
+  const slow = vi.fn().mockRejectedValue(Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' })) as unknown as typeof fetch;
+  await Promise.all(['t1', 't2', 't3', 't4'].map((id) => checkContentSafety(db, { type: 'external_event', id }, 'event text', slow)));
+  expect(db.prepare("SELECT reason FROM judgments").all()).toEqual([{ reason: 'timeout (pausing checks)' }]);
+  const calls = (slow as unknown as { mock: { calls: unknown[] } }).mock.calls.length;
+  await checkContentSafety(db, { type: 'external_event', id: 't5' }, 'event text', slow); // paused: no call, no row
+  expect((slow as unknown as { mock: { calls: unknown[] } }).mock.calls.length).toBe(calls);
+  resetContentSafetyPause();
+});

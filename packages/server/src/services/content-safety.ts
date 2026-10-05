@@ -63,6 +63,13 @@ export async function checkContentSafety(db: Database, subject: { type: string; 
     record(verdict === 'safe' ? 'yes' : 'no', `verdict=${verdict}${categories ? ` categories=${categories}` : ''}`);
     return verdict;
   } catch (error) {
+    // prod 05-10 07:23Z: a burst of 300 checks ended in 224 timeouts within 16 s — a timeout pauses like a 429, one row per burst
+    if (error instanceof Error && error.name === 'TimeoutError') {
+      if (Date.now() < pausedUntil) return null;
+      pausedUntil = Date.now() + (Number(process.env.CONTENT_SAFETY_429_PAUSE_MS) || 600_000);
+      try { record('error', 'timeout (pausing checks)'); } catch { /* never break the caller */ }
+      return null;
+    }
     try { record('error', (error instanceof Error ? error.name === 'TimeoutError' ? 'timeout' : error.message : String(error)).slice(0, 120)); } catch { /* never break the caller */ }
     return null;
   }
