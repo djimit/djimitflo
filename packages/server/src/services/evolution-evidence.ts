@@ -12,7 +12,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'LOOP_EVOLVE_ENABLED', acting: true }, { name: 'LOOP_EVOLVE_SPECIES', acting: true },
   { name: 'FITNESS_SHADOW_ENABLED', acting: false }, { name: 'MERGE_SURVIVAL_ENABLED', acting: false },
   { name: 'DREAM_EVOLUTION_ENABLED', acting: true }, { name: 'DREAM_TRIAL_MUTANTS', acting: true }, { name: 'DREAM_TRIAL_MUTANT_TIERS', acting: true },
-  { name: 'DREAM_PROMOTION_ALPHA', acting: true }, { name: 'GENOME_APPLY_MODE', acting: false },
+  { name: 'DREAM_PROMOTION_ALPHA', acting: true }, { name: 'TRIAL_DIAGNOSTICS_ENABLED', acting: false }, { name: 'GENOME_APPLY_MODE', acting: false },
   { name: 'ARENA_GATE_ENABLED', acting: true }, { name: 'COMMITTEE_SWARM_ENABLED', acting: true }, { name: 'COMMONS_GROUNDING_APPLY', acting: true },
   { name: 'LOOP_AUTO_DRAFT_PR_ENABLED', acting: true }, { name: 'LOOP_AUTO_APPROVE_TEST_GAP', acting: true }, { name: 'ORACLE_LANES_AUTO_APPROVE', acting: true },
   { name: 'LOOP_MEMORY_RULES_ENABLED', acting: true }, { name: 'EVOLUTION_GYM_REMOTE_MAX_PER_DAY', acting: true }, { name: 'DJIMITFLO_PUBLIC_URL', acting: false },
@@ -55,8 +55,20 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     json_extract(metadata, '$.gym.tier') AS tier, json_extract(metadata, '$.gym_result.status') AS status, COUNT(*) AS n
     FROM loop_runs WHERE loop_name = 'evolution-gym' AND created_at >= ? GROUP BY 1, 2, 3 ORDER BY 1, 2, 3`, since);
 
+  // RX-4: settled trials and how much each could have shown
+  const trials = {
+    by_state: all<{ state: string; n: number }>('SELECT state, COUNT(*) AS n FROM genome_trial_results GROUP BY 1 ORDER BY 1'),
+    recent: all<{ trial_id: string; parent_id: string; tier_set: string; deciding_n: number; f_parent_failures: number; b: number; c: number; p: number; power_q8_l05: number; state: string; recorded_at: string }>(
+      'SELECT trial_id, parent_id, tier_set, deciding_n, f_parent_failures, b, c, p, power_q8_l05, state, recorded_at FROM genome_trial_results ORDER BY recorded_at DESC LIMIT 10'),
+  };
+  const latestTrial = trials.recent[0];
   const gates: Record<'A' | 'B' | 'C' | 'D', Gate> = {
-    A: { state: 'unknown', reason: 'needs per-trial parent failures on the deciding set (RX-4)' },
+    A: (() => {
+      if (!latestTrial) return { state: 'unknown', reason: 'no settled trial with diagnostics yet (TRIAL_DIAGNOSTICS_ENABLED)' } as Gate;
+      const pass = latestTrial.deciding_n ? (latestTrial.deciding_n - latestTrial.f_parent_failures) / latestTrial.deciding_n : null;
+      const ok = pass !== null && pass >= 0.30 && pass <= 0.55;
+      return { state: ok ? 'green' : 'red', reason: `latest trial ${latestTrial.trial_id}: parent passed ${latestTrial.deciding_n - latestTrial.f_parent_failures}/${latestTrial.deciding_n} deciding tasks (${latestTrial.state}); needs a pass rate in [0.30, 0.55]` } as Gate;
+    })(),
     B: (() => {
       const pos = settled.filter((s) => s.survived === 1).reduce((a, s) => a + s.n, 0); const total = settled.reduce((a, s) => a + s.n, 0);
       const ok = total >= 30 && pos >= 8 && total - pos >= 8;
@@ -69,5 +81,5 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
       return { state: eligible.length ? 'unknown' : 'red', reason: eligible.length ? `${eligible.length} forecaster(s) with ≥ 10 positives and n ≥ 100; skill CI needs V2 (RX-7)` : `no forecaster has ≥ 10 positives and n ≥ 100 (${fs.length} scored)` } as Gate;
     })(),
   };
-  return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, merge, drafts, genomes, gym, gates };
+  return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, merge, drafts, genomes, gym, trials, gates };
 }

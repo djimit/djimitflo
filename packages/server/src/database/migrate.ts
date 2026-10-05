@@ -1301,6 +1301,9 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
     CREATE TABLE IF NOT EXISTS gym_holdout (commit_sha TEXT PRIMARY KEY, created_at TEXT NOT NULL);
     -- Z5: frozen seeded mutant-repair tasks (tier 2–3) that genome trials are judged on; the task (base + mutant) is stored
     CREATE TABLE IF NOT EXISTS gym_mutant_holdout (key TEXT PRIMARY KEY, task_json TEXT NOT NULL, created_at TEXT NOT NULL);
+    -- RX-4: per settled trial, what it could have shown (parent failures on the deciding set, power, blind/underpowered/powered)
+    CREATE TABLE IF NOT EXISTS genome_trial_results (trial_id TEXT PRIMARY KEY, parent_id TEXT, tier_set TEXT, deciding_n INTEGER, f_parent_failures INTEGER,
+      b INTEGER, c INTEGER, p REAL, mined_b INTEGER, mined_c INTEGER, power_q8_l05 REAL, state TEXT NOT NULL, recorded_at TEXT NOT NULL);
     -- AR-W: committee member genomes (persona + knowledge recipe + strategy lines) and the per-proposal jobs the workstation pulls
     CREATE TABLE IF NOT EXISTS committee_genomes (id TEXT PRIMARY KEY, parent_id TEXT, persona TEXT NOT NULL, knowledge TEXT NOT NULL, lines_json TEXT NOT NULL DEFAULT '[]',
       status TEXT NOT NULL, origin TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
