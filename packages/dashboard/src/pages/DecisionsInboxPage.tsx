@@ -1,8 +1,36 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Inbox, RefreshCw } from 'lucide-react';
-import { api, type DecisionsInbox } from '../lib/api';
+import { api, type DecisionsInbox, type DraftPrs } from '../lib/api';
 import { usePendingApprovals } from '../hooks/usePendingApprovals';
 import { ApprovalQueuePage } from './ApprovalQueuePage';
+
+/** UX-7: the last step of the loop — its draft PRs, how old they are, and whether merge survival has settled them. */
+export function DraftPrsSection() {
+  const [data, setData] = useState<DraftPrs | null>(null); const [error, setError] = useState<string | null>(null);
+  useEffect(() => { api.getDraftPrs().then(setData, (err: unknown) => setError(err instanceof Error ? err.message : 'Failed to load draft PRs')); }, []);
+  return (
+    <section aria-labelledby="draft-prs">
+      <h2 id="draft-prs" className="text-lg font-semibold mb-1">Loop draft PRs</h2>
+      {error && <p role="alert" className="text-status-error text-sm">{error}</p>}
+      {!data && !error && <p className="text-sm text-foreground-secondary">Loading…</p>}
+      {data && (data.rows.length === 0 ? <p className="text-sm text-foreground-secondary">The loop has opened no draft PR yet.</p> : (
+        <>
+          <p className="text-sm text-foreground-secondary mb-2">{data.total} PRs (n), {data.unsettled} not settled yet — still open, or merged less than 14 days ago; merge survival settles them after 14 days.</p>
+          <table className="w-full text-sm">
+            <thead><tr className="text-left text-foreground-tertiary"><th>PR</th><th>Lane</th><th>Age (days)</th><th>Settlement</th></tr></thead>
+            <tbody>{data.rows.map((r) => (
+              <tr key={r.run_id} className="border-t border-border">
+                <td><a className="underline" href={r.pr_url} target="_blank" rel="noreferrer">#{r.pr_number ?? '?'}</a></td>
+                <td>{r.lane}</td><td>{r.age_days}</td>
+                <td>{r.outcome ? `${r.outcome}${r.survived === null ? '' : r.survived ? ' · survived' : ' · removed'}` : 'not settled'}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </>
+      ))}
+    </section>
+  );
+}
 
 const button = 'rounded border border-border px-2 py-0.5 text-sm hover:bg-background-tertiary disabled:opacity-50';
 
@@ -46,6 +74,7 @@ export function DecisionsInboxPage() {
         <a href="#approvals" className="underline">{pending.count} approval{pending.count === 1 ? '' : 's'} pending</a>.
       </p>
       <section className="rounded-lg border border-border p-4"><ApprovalQueuePage embedded /></section>
+      <DraftPrsSection />
       {error && <p role="alert" className="text-status-error">{error}</p>}
       {notice && <p role="status" className="text-status-completed">{notice}</p>}
       {!data && !error && <p className="text-sm text-foreground-secondary">Loading…</p>}

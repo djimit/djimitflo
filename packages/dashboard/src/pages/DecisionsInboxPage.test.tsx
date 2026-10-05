@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, expect, it, vi } from 'vitest';
-import { DecisionsInboxPage } from './DecisionsInboxPage';
+import { DecisionsInboxPage, DraftPrsSection } from './DecisionsInboxPage';
 import { api } from '../lib/api';
 
 vi.mock('../hooks/usePendingApprovals', () => ({ usePendingApprovals: () => ({ count: 2 }) }));
@@ -16,6 +16,7 @@ beforeEach(() => {
   vi.restoreAllMocks();
   vi.spyOn(api, 'getDecisionsInbox').mockResolvedValue(inbox as never);
   vi.spyOn(api, 'getAllApprovals').mockResolvedValue({ approvals: [] }); // the approval queue is embedded (W2)
+  vi.spyOn(api, 'getDraftPrs').mockResolvedValue({ total: 0, unsettled: 0, rows: [] });
 });
 const renderPage = () => render(<MemoryRouter><DecisionsInboxPage /></MemoryRouter>);
 
@@ -54,4 +55,19 @@ it('promotes or rejects a memory waiting for review', async () => {
   await waitFor(() => expect(promote).toHaveBeenCalledWith('m1'));
   fireEvent.click(await screen.findByRole('button', { name: 'Reject' }));
   await waitFor(() => expect(reject).toHaveBeenCalledWith('m1'));
+});
+
+it('UX-7: lists loop draft PRs with n, age and settlement, and says so honestly when there are none', async () => {
+  vi.spyOn(api, 'getDraftPrs').mockResolvedValueOnce({ total: 2, unsettled: 1, rows: [
+    { run_id: 'r2', lane: 'mutation-gap', pr_url: 'https://github.com/o/r/pull/616', pr_number: 616, age_days: 1, outcome: 'merged', survived: true },
+    { run_id: 'r1', lane: 'test-gap', pr_url: 'https://github.com/o/r/pull/474', pr_number: 474, age_days: 8, outcome: null, survived: null },
+  ] });
+  const { unmount } = render(<DraftPrsSection />);
+  expect(await screen.findByText('#616')).toBeTruthy();
+  expect(screen.getByText('merged · survived')).toBeTruthy();
+  expect(screen.getByText('not settled')).toBeTruthy();
+  expect(screen.getByText(/2 PRs \(n\), 1 not settled yet/)).toBeTruthy();
+  unmount();
+  render(<DraftPrsSection />);
+  expect(await screen.findByText('The loop has opened no draft PR yet.')).toBeTruthy();
 });
