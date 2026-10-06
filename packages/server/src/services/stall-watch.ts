@@ -27,7 +27,7 @@ export function detectStalls(db: Database, now = Date.now(), env: NodeJS.Process
   if (env.EVOLUTION_GYM_ENABLED === 'true' || env.EVOLUTION_GYM_REMOTE_ENABLED === 'true') {
     const species = all<{ sp: string }>(db, "SELECT DISTINCT json_extract(metadata, '$.gym.species') AS sp FROM loop_runs WHERE loop_name = 'evolution-gym' AND created_at >= ? AND json_extract(metadata, '$.gym.species') IS NOT NULL", ago(now, 48));
     for (const { sp } of species) {
-      const last = all<{ reason: string | null; created_at: string }>(db, "SELECT json_extract(metadata, '$.gym_result.reason') AS reason, created_at FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ? ORDER BY created_at DESC LIMIT 3", sp);
+      const last = all<{ reason: string | null; created_at: string }>(db, "SELECT json_extract(metadata, '$.gym_result.reason') AS reason, created_at FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.canary') IS NULL ORDER BY created_at DESC LIMIT 3", sp);
       if (last.length === 3 && last.every((r) => (r.reason ?? '').startsWith('infra:'))) out.push({ subsystem: `gym:${sp}`, since: last[2].created_at, detail: `last 3 attempts were infra discards (${(last[0].reason ?? '').slice(0, 80)}); the breaker benches this species` });
     }
   }
@@ -50,6 +50,9 @@ export function detectStalls(db: Database, now = Date.now(), env: NodeJS.Process
     const last = one<{ t: string | null }>(db, "SELECT MAX(created_at) AS t FROM judgments WHERE judgment = 'discovery_relevance'")?.t ?? null;
     if (last && last < ago(now, 36)) out.push({ subsystem: 'discoveries', since: last, detail: 'no fleet discovery judged for > 36 h (publishers on Mac mini / Eve-V / workstation)' });
   }
+  // 7. RX-11: a solved gym canary (a run carrying an unsolvable test) means the oracle or the sandbox is compromised
+  const solved = one<{ n: number; first: string | null }>(db, "SELECT COUNT(*) AS n, MIN(created_at) AS first FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.canary') = 1 AND json_extract(metadata, '$.gym_result.status') = 'success' AND created_at >= ?", ago(now, 24 * 30));
+  if (solved && solved.n > 0) out.push({ subsystem: 'gym:canary', since: solved.first, detail: `${solved.n} gym canary run(s) reported success — a canary cannot be solved from the source file: check the oracle and the worker sandbox` });
   // 6. a runtime admission expires within 30 days: at expiry the engine stops dispatching to that runtime
   for (const a of expiringAdmissions(now)) out.push({ subsystem: `runtime_admission:${a.runtime_id}`, since: a.expires_at, detail: `admission ${decide(a).decision} expires ${a.expires_at}; reassess (execution/runtime-admission.ts) before then` });
   return out;

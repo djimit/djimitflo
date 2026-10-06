@@ -51,6 +51,7 @@ import { initAutonomousServices } from './bootstrap/autonomous-services';
 import { DennisAgentService } from './services/dennis-agent-service';
 import { TelegramApiService } from './services/telegram-api-service';
 import { parseTelegramAllowedUsers, parseTelegramUserMap } from './routes/telegram';
+import { noteScheduler } from './services/scheduler-registry';
 
 // Operator rule (2026-09-29): this server never calls the hosts in OUTBOUND_DENY_HOSTS (the workstation only pulls).
 installOutboundGuard();
@@ -268,38 +269,38 @@ async function main() {
   }
 
   // Compliance report scheduler — periodic reporting, in-process (default-off, see service header)
-  if (new ComplianceReportScheduler(db).start()) {
+  if (noteScheduler('compliance_report', 'COMPLIANCE_REPORT_SCHEDULER_ENABLED', new ComplianceReportScheduler(db).start())) {
     console.log('📋 Compliance report scheduler armed');
   }
 
   // Self-healing scheduler — periodic detect-and-fix (stale leases, etc.), in-process (default-off, see service header)
-  if (new SelfHealingScheduler(db).start()) {
+  if (noteScheduler('self_healing', 'SELF_HEALING_SCHEDULER_ENABLED', new SelfHealingScheduler(db).start())) {
     console.log('🩺 Self-healing scheduler armed');
   }
 
   // Self-improvement auto-review scheduler — LLM-generated specialist reviews
   // + autonomous goal-authorization, in-process (default-off, see service header)
-  if (new SelfImprovementAutoReviewScheduler(db).start()) {
+  if (noteScheduler('self_improvement_auto_review', 'SELF_IMPROVEMENT_AUTO_REVIEW_ENABLED', new SelfImprovementAutoReviewScheduler(db).start())) {
     console.log('🧭 Self-improvement auto-review scheduler armed');
   }
 
   // Frontier expert scheduler — automates discovery/enrichment/peer-review only;
   // stops below the registry's hard approval/activation governance wall,
   // in-process (default-off, gated on DJIMITFLO_FRONTIER_EXPERTS_ENABLED too, see service header)
-  if (new FrontierExpertScheduler(db).start()) {
+  if (noteScheduler('frontier_experts', 'FRONTIER_EXPERTS_SCHEDULER_ENABLED', new FrontierExpertScheduler(db).start())) {
     console.log('🔭 Frontier expert scheduler armed');
   }
 
   // Specialist panel backlog scheduler — projects consensus_ready general
   // panels into real work items, in-process (default-off, see service header)
-  if (new SpecialistPanelBacklogScheduler(db).start()) {
+  if (noteScheduler('specialist_panel_backlog', 'SPECIALIST_PANEL_BACKLOG_ENABLED', new SpecialistPanelBacklogScheduler(db).start())) {
     console.log('🗂️  Specialist panel backlog scheduler armed');
   }
 
   // Memory candidate review scheduler — real specialist-panel analysis for
   // auto-promotion + a self-improvement evolution loop on the criteria,
   // in-process (default-off, see service header)
-  if (new MemoryCandidateReviewScheduler(db).start()) {
+  if (noteScheduler('memory_candidate_review', 'MEMORY_CANDIDATE_REVIEW_ENABLED', new MemoryCandidateReviewScheduler(db).start())) {
     console.log('🧬 Memory candidate review scheduler armed');
   }
 

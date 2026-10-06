@@ -49,6 +49,25 @@ export type KnowledgeOverview = {
   interest_profile: { at: string; terms: string[] } | null;
 };
 
+/** UX-9: GET /api/health/evolution-evidence (manage:config) — read-only evidence of the evolution loop. */
+export type GateState = 'green' | 'red' | 'unknown';
+export interface EvolutionEvidence {
+  at: string; window_days: number;
+  flags: Array<{ name: string; acting: boolean; value: string | null }>;
+  outcomes: Array<{ domain: string; skill: string; n: number; ok: number }>;
+  outcomes_tagged: Array<{ skill: string; total: number; failures: number; tagged: number; share: number }>;
+  merge: { settled: Array<{ state: string; survived: number | null; n: number }>; merge_outcomes: number | null; first_settled: string | null };
+  drafts: { unsettled: number; unsettled_open_or_recent: number; age_days_p50: number | null; age_days_max: number | null; note: string };
+  genomes: { by_status: Array<{ status: string; origin: string; n: number }>; recent: Array<{ id: string; status: string; note: string | null; updated_at: string }>; holdout: { mined: number | null; mutant: number | null } };
+  gym: Array<{ kind: string; tier: number | null; status: string | null; n: number }>;
+  trials: { by_state: Array<{ state: string; n: number }>; recent: Array<{ trial_id: string; parent_id: string; tier_set: string; deciding_n: number; f_parent_failures: number; b: number; c: number; p: number; power_q8_l05: number; state: string; recorded_at: string }> };
+  models: { mode: string; rows: Array<{ consumer: string; model: string; n: number; ok_rate: number; agree_rate: number | null; median_latency_ms: number | null; cost_weight: number }>; would_pick: Record<string, string | null> };
+  oracle: { n: number; kappa: number | null; kappa_ci: [number, number] | null; agreement: { all: number | null; conf_ge_06: number | null; conf_lt_06: number | null }; accuracy: { n: number; jev: number | null; checker: number | null }; kappa_jev_outcome: number | null; kappa_jev_outcome_ci: [number, number] | null; kappa_checker_outcome: number | null; enforce_eligible: boolean; note: string };
+  commons: { k: number; n: number; rate: number | null; ci: [number, number]; base_rate: number | null; base_ci: [number, number]; base_n: number; verdict: string; note: string };
+  forecasts_v2: { scored: number; decision_grade: number; decision_grade_skilled: number; insufficient: number };
+  gates: Record<'A' | 'B' | 'C' | 'D', { state: GateState; reason: string }>;
+}
+
 export type OperatorCockpit = {
   at: string;
   build: { commit: string | null; build_time: string | null };
@@ -56,7 +75,10 @@ export type OperatorCockpit = {
   guardrails: Array<{ name: string; ok: boolean; value: number | null; limit: string }>;
   stalls: Array<{ subsystem: string; since: string | null; detail: string }>;
   gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string; benched?: boolean }>;
-  needs_you?: { approvals: number; requeue: number; labels: number; memory_review: number };
+  needs_you?: { approvals: number; requeue: number; labels: number; memory_review: number;
+    proposals?: number; draft_prs?: number; stalls?: number; approvals_expiring?: number; join_requests?: number; shell_requests?: number };
+  /** UX-8: schedulers this server armed at boot vs off */
+  schedulers?: { armed: number; off: number };
   remote_workers: Array<{ host: string; claims_24h: number; last_claim: string | null; interrupted_24h: number }>;
   /** UX-2: real-maker outcomes per strategy genome and maker skill (30 d); the server sent this, the type dropped it. */
   genomes?: Array<{ genome: string; skill_id: string; outcomes: number; wins: number; win_pct: number }>;
@@ -1310,6 +1332,10 @@ class ApiClient {
 
   // S1 operator cockpit: scorecard, guardrails, stalls, gym species, remote workers, usage (read-only)
   // W5 knowledge view: discoveries, jev relevance and units per source, KB retrieval, interest profile (read-only)
+  async getEvolutionEvidence(days = 30): Promise<EvolutionEvidence> {
+    return this.request(`/health/evolution-evidence?days=${days}`);
+  }
+
   async getKnowledgeOverview(): Promise<KnowledgeOverview> {
     return this.request('/health/knowledge');
   }
