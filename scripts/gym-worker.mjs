@@ -52,7 +52,7 @@ export function verdict(task, changed, green, makerOk = true) {
  * RX-11 (server #642): this worker can run canaries — a task whose extra test no source-only change can turn green; a solved
  * canary means the oracle or the sandbox is compromised. The server serves them only to workers that announce it.
  */
-export const CAPABILITIES = ['canary'];
+export const CAPABILITIES = ['canary', 'write_test'];
 export const claimBody = (offered) => ({ species: offered, capabilities: CAPABILITIES });
 /** The canary test to write before the oracle runs, or null. Only a test file under packages/ (never outside the worktree). */
 export function canaryFile(task) {
@@ -60,6 +60,24 @@ export function canaryFile(task) {
   if (!c || typeof c.test_path !== 'string' || typeof c.test_content !== 'string') return null;
   if (!/^packages\/[\w./-]+\.test\.ts$/.test(c.test_path) || c.test_path.split('/').includes('..')) return null;
   return { path: c.test_path, content: c.test_content };
+}
+/**
+ * B8 (server #677): a 'write_test' task comes from a real failed test-gap proposal — at <base>, write the test file <source>
+ * covering <target>; the oracle is the lane's own one command (vitest on that file). The target must stay unchanged (scope),
+ * and a green test that does not import the target, mocks it, has no expect or skips a case covers nothing.
+ */
+export const isWriteTest = (task) => task?.kind === 'write_test';
+export const writeTestValid = (task) => /^[0-9a-f]{7,40}$/.test(String(task.base)) && /^packages\/server\/src\/__tests__\/[\w.-]+\.test\.ts$/.test(String(task.source))
+  && /^packages\/server\/src\/services\/[\w-]+\.ts$/.test(String(task.target)) && Array.isArray(task.tests) && task.tests.length === 1 && task.tests[0] === task.source;
+export function writeTestGap(task, content) {
+  const target = task.target.replace(/\.ts$/, '');
+  const resolve = (re) => [...String(content).matchAll(re)].map((m) => m[1]).filter((s) => s.startsWith('.'))
+    .map((s) => path.posix.normalize(path.posix.join(path.posix.dirname(task.source), s)).replace(/\.[jt]s$/, ''));
+  if (!resolve(/(?:from|import)\s*\(?\s*['"]([^'"]+)['"]/g).includes(target)) return `test does not import ${task.target}`;
+  if (resolve(/vi\.(?:do)?[mM]ock\(\s*['"]([^'"]+)['"]/g).includes(target)) return `test mocks ${task.target}`;
+  if (!/\bexpect\s*\(/.test(content)) return 'test has no expect';
+  if (/\b(?:it|test|describe)\.(?:skip|todo)\b/.test(content)) return 'test skips a case';
+  return null;
 }
 export const DIFF_MAX = 50_000;
 /** What the hack classifier needs: the files the maker changed and its diff (capped, the server caps it too). */
@@ -202,22 +220,28 @@ async function main() {
   if (!fs.existsSync(repo)) sh('git', ['clone', '-q', env.GYM_REPO || 'https://github.com/djimit/djimitflo.git', repo]);
   git(repo, ['fetch', '-q', 'origin']);
   const wt = fs.mkdtempSync(path.join(WORK, 'wt-')); const states = [];
+  const writeTest = isWriteTest(task);
   try {
+    if (writeTest && !writeTestValid(task)) return report({ status: 'discarded', reason: 'task: malformed write_test task' });
     // Y4: a mutant-repair task starts from its base commit with the server's mutated file; a mined task from the fix
-    // commit with the parent version of the source restored
-    git(repo, ['worktree', 'add', '-q', '--detach', wt, task.mutant ? task.base : task.commit]);
-    fs.writeFileSync(path.join(wt, task.source), task.mutant ?? git(wt, ['show', `${task.commit}^:${task.source}`]));
-    // RX-11: the canary test belongs to the oracle — committed with the task, so it is never the maker's change (and a
-    // maker that edits it shows up as out of scope)
-    const canary = canaryFile(task);
-    if (canary) { fs.mkdirSync(path.dirname(path.join(wt, canary.path)), { recursive: true }); fs.writeFileSync(path.join(wt, canary.path), canary.content); git(wt, ['add', '--', canary.path]); }
-    git(wt, ['-c', 'user.email=gym@djimitflo', '-c', 'user.name=djimitflo-gym', 'commit', '-qam', task.mutant ? `gym: mutate ${task.source}` : `gym: restore parent of ${task.source}`]);
+    // commit with the parent version of the source restored; a write_test task from its base as is (the test is the change)
+    git(repo, ['worktree', 'add', '-q', '--detach', wt, task.mutant || writeTest ? task.base : task.commit]);
+    if (!writeTest) {
+      fs.writeFileSync(path.join(wt, task.source), task.mutant ?? git(wt, ['show', `${task.commit}^:${task.source}`]));
+      // RX-11: the canary test belongs to the oracle — committed with the task, so it is never the maker's change (and a
+      // maker that edits it shows up as out of scope)
+      const canary = canaryFile(task);
+      if (canary) { fs.mkdirSync(path.dirname(path.join(wt, canary.path)), { recursive: true }); fs.writeFileSync(path.join(wt, canary.path), canary.content); git(wt, ['add', '--', canary.path]); }
+      git(wt, ['-c', 'user.email=gym@djimitflo', '-c', 'user.name=djimitflo-gym', 'commit', '-qam', task.mutant ? `gym: mutate ${task.source}` : `gym: restore parent of ${task.source}`]);
+    }
     const ci = inRunner(wt, 'npm ci --legacy-peer-deps --no-audit --no-fund > /tmp/ci.log 2>&1; rc=$?; tail -40 /tmp/ci.log; exit $rc');
     if (ci.status !== 0) return report(npmCiFailure(ci.stdout));
-    if (oracle(wt, task)) return report({ status: 'discarded', reason: task.mutant ? 'task: mutant survives (tests stay green)' : 'tests already green on the parent' });
+    if (oracle(wt, task)) return report({ status: 'discarded', reason: writeTest ? 'task: test already green at base (gap closed)' : task.mutant ? 'task: mutant survives (tests stay green)' : 'tests already green on the parent' });
     // Y3: a trial genome adds its strategy lines to the task (the only thing a genome may change)
     const strategy = Array.isArray(claim.genome?.lines) && claim.genome.lines.length ? `\n\nStrategy:\n${claim.genome.lines.map((l) => `- ${String(l).slice(0, 300)}`).join('\n')}` : '';
-    const goal = `Evolution gym: make ${task.tests.join(', ')} pass. Change only ${task.source}. The tests describe the intended behaviour; do not edit them.${strategy}`;
+    const goal = oneLine(writeTest
+      ? `Evolution gym: write the vitest test file ${task.source} that covers ${task.target}. Import ${task.target} with a relative import, do not mock it, assert its real behaviour with expect, skip nothing, and make it pass with: cd packages/server && npx vitest run ${task.source.replace(/^packages\/server\//, '')}. Change only ${task.source}; do not edit ${task.target} or any other file.${strategy}`
+      : `Evolution gym: make ${task.tests.join(', ')} pass. Change only ${task.source}. The tests describe the intended behaviour; do not edit them.${strategy}`);
     const [runtime] = species.split('@');
     if (runtime !== 'atomic') return report({ status: 'discarded', reason: `infra: species ${species} not supported by this worker` });
     const state = freshState(); states.push(state);
@@ -226,10 +250,12 @@ async function main() {
     const run = inRunner(wt, 'atomic-agent run --cwd /w --max-steps 40 --no-approval', { input: `${goal}\n`, extra: ['-v', `${state}:/state`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'], timeoutMs: Number(env.GYM_MAKER_TIMEOUT_MS) || 900_000 });
     const makerOk = run.status === 0 && !run.error;
     const changed = changedFrom(git(wt, ['diff', '--name-only', 'HEAD']), git(wt, ['ls-files', '--others', '--exclude-standard']));
-    const green = changed.length > 0 && changed.every((f) => f === task.source) && oracle(wt, task);
+    const scoped = changed.length > 0 && changed.every((f) => f === task.source);
+    const gap = writeTest && scoped ? writeTestGap(task, fs.readFileSync(path.join(wt, task.source), 'utf8')) : null;
+    const green = scoped && !gap && oracle(wt, task);
     let diffText = '';
     try { git(wt, ['add', '-A', '-N', '.']); diffText = git(wt, ['diff', 'HEAD', '--', '.', ':(exclude)package-lock.json', ':(exclude).atomic*', ':(exclude).djimitflo']); } catch { /* the verdict does not need it */ }
-    return report({ ...verdict(task, changed, green, makerOk), ...resultExtras(changed, diffText) });
+    return report({ ...(gap ? { status: 'failure', reason: gap } : verdict(task, changed, green, makerOk)), ...resultExtras(changed, diffText) });
   } catch (err) {
     return report({ status: 'discarded', reason: `infra: ${(err instanceof Error ? err.message : String(err)).slice(0, 150)}` });
   } finally {
@@ -274,6 +300,24 @@ function canaryScopeCheck() {
   } finally { fs.rmSync(wt, { recursive: true, force: true }); }
 }
 
+/** A write_test maker's new (untracked) test file is its change; editing the target too is out of scope (real git, no docker). */
+function writeTestScopeCheck() {
+  const assert = (c, m) => { if (!c) throw new Error(`selfcheck: ${m}`); };
+  const wt = fs.mkdtempSync(path.join(os.tmpdir(), 'gym-write-test-'));
+  try {
+    const task = { kind: 'write_test', source: 'packages/server/src/__tests__/widget.test.ts', target: 'packages/server/src/services/widget.ts' };
+    git(wt, ['init', '-q']); fs.mkdirSync(path.join(wt, 'packages/server/src/services'), { recursive: true }); fs.mkdirSync(path.join(wt, 'packages/server/src/__tests__'));
+    fs.writeFileSync(path.join(wt, task.target), 'export const widget = () => 1;\n');
+    git(wt, ['add', '-A']); git(wt, ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'base']);
+    fs.writeFileSync(path.join(wt, task.source), "import { widget } from '../services/widget';\n");
+    const changed = changedFrom(git(wt, ['diff', '--name-only', 'HEAD']), git(wt, ['ls-files', '--others', '--exclude-standard']));
+    assert(JSON.stringify(changed) === JSON.stringify([task.source]), 'write_test: the new test file is the maker change');
+    fs.writeFileSync(path.join(wt, task.target), 'export const widget = () => 2;\n');
+    const cheated = changedFrom(git(wt, ['diff', '--name-only', 'HEAD']), git(wt, ['ls-files', '--others', '--exclude-standard']));
+    assert(verdict(task, cheated, true).reason.startsWith('out of scope'), 'write_test: a maker that edits the target is out of scope');
+  } finally { fs.rmSync(wt, { recursive: true, force: true }); }
+}
+
 function selfcheck() {
   const task = { source: 'packages/server/src/a.ts' };
   const assert = (c, m) => { if (!c) throw new Error(`selfcheck: ${m}`); };
@@ -293,7 +337,16 @@ function selfcheck() {
   assert(!oneLine('a\nb\n\nc').includes('\n'), 'oneLine has no newline');
   assert(parseForecast('thinking... {"p": 0.35, "rationale": "lane rate is low"} done')?.p === 0.35, 'parseForecast reads p');
   assert(parseForecast('{"p": 1.7}') === null && parseForecast('no json') === null, 'parseForecast rejects bad output');
-  assert(JSON.stringify(claimBody(['atomic@llama-router'])) === '{"species":["atomic@llama-router"],"capabilities":["canary"]}', 'claim announces the canary capability');
+  assert(JSON.stringify(claimBody(['atomic@llama-router'])) === '{"species":["atomic@llama-router"],"capabilities":["canary","write_test"]}', 'claim announces the canary and write_test capabilities');
+  const wTask = { commit: 'fail:r1', kind: 'write_test', base: 'a'.repeat(40), source: 'packages/server/src/__tests__/widget.test.ts', tests: ['packages/server/src/__tests__/widget.test.ts'], target: 'packages/server/src/services/widget.ts' };
+  assert(isWriteTest(wTask) && !isWriteTest(task) && writeTestValid(wTask), 'write_test task recognised and valid');
+  assert(!writeTestValid({ ...wTask, base: 'HEAD;rm' }) && !writeTestValid({ ...wTask, source: '../x.test.ts', tests: ['../x.test.ts'] }) && !writeTestValid({ ...wTask, tests: [] }), 'malformed write_test task rejected');
+  const good = "import { expect, it } from 'vitest';\nimport { widget } from '../services/widget';\nit('w', () => { expect(widget()).toBe(1); });\n";
+  assert(writeTestGap(wTask, good) === null && writeTestGap(wTask, good.replace("'../services/widget'", "'../services/widget.js'")) === null, 'a real test of the target passes the gap check');
+  assert(writeTestGap(wTask, "import { expect, it } from 'vitest';\nit('w', () => { expect(1).toBe(1); });\n")?.startsWith('test does not import'), 'a test without the target import covers nothing');
+  assert(writeTestGap(wTask, `${good}vi.mock('../services/widget');\n`)?.startsWith('test mocks'), 'a test that mocks the target covers nothing');
+  assert(writeTestGap(wTask, "import { widget } from '../services/widget';\nit('w', () => { widget(); });\n") === 'test has no expect' && writeTestGap(wTask, good.replace("it('w'", "it.skip('w'")) === 'test skips a case', 'no expect / skipped case covers nothing');
+  assert(verdict(wTask, [wTask.source], true).status === 'success' && verdict(wTask, [wTask.source, wTask.target], true).reason.startsWith('out of scope'), 'write_test: only the test file may change, never the target');
   const cTask = { source: 'packages/server/src/services/a.ts', canary: { test_path: 'packages/server/src/__tests__/gym-canary.test.ts', test_content: 'x' } };
   assert(canaryFile(cTask)?.path === 'packages/server/src/__tests__/gym-canary.test.ts', 'canary test path accepted');
   assert(canaryFile({ canary: { test_path: '../etc/x.test.ts', test_content: 'x' } }) === null && canaryFile({ canary: { test_path: 'packages/../../x.test.ts', test_content: 'x' } }) === null, 'canary path cannot leave the worktree');
@@ -302,6 +355,7 @@ function selfcheck() {
   assert(extras.diff.length === DIFF_MAX && JSON.stringify(extras.changed_files) === '["packages/server/src/a.ts"]', 'result carries changed_files and a diff capped at 50 KB');
   assert(resultExtras([], undefined).diff === '', 'no diff = empty string');
   canaryScopeCheck();
+  writeTestScopeCheck();
   console.log('selfcheck ok');
 }
 
