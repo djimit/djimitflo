@@ -13,7 +13,7 @@ import { checkContentSafety, resetContentSafetyPause } from '../services/content
 import { CouncilOrchestrator } from '../services/council-orchestrator';
 import { modelPrice } from '../services/loop-budget-service';
 
-const SECRET_PROMPT = 'UX18-PROMPT-MARKER do not store me';
+const PROMPT_MARKER = 'UX18-PROMPT-MARKER do not store me';
 let db: Database.Database;
 beforeEach(() => { db = new Database(':memory:'); db.exec(schema); runMigrations(db); db.pragma('foreign_keys = ON'); setLlmLedger(db); });
 afterEach(() => { setLlmLedger(null); vi.unstubAllEnvs(); vi.unstubAllGlobals(); db.close(); });
@@ -24,7 +24,7 @@ it('UX-18: llm-fallback records one row per endpoint attempt (failed primary + h
   const f = vi.fn()
     .mockResolvedValueOnce(json({}, false, 503))
     .mockResolvedValueOnce(json({ choices: [{ message: { content: '{"ok":true}' } }] }));
-  const text = await generateText({ prompt: SECRET_PROMPT, model: 'kimi-k3:cloud', timeoutMs: 5_000 }, {
+  const text = await generateText({ prompt: PROMPT_MARKER, model: 'kimi-k3:cloud', timeoutMs: 5_000 }, {
     endpoints: [{ id: 'primary', kind: 'ollama', baseUrl: 'http://a' }, { id: 'nvidia', kind: 'openai', baseUrl: 'http://b', model: 'moonshotai/kimi-k3' }], fetchFn: f as unknown as typeof fetch,
   });
   expect(text).toBe('{"ok":true}');
@@ -37,16 +37,16 @@ it('UX-18: llm-fallback records one row per endpoint attempt (failed primary + h
 it('UX-18: jev (TypeSafe) calls are recorded per attempt', async () => {
   vi.stubEnv('TYPESAFE_API_KEY', 'k'); resetTypesafeBreaker();
   const f = vi.fn().mockResolvedValue(json({ answers: {} }));
-  await new TypeSafeClient(f as unknown as typeof fetch).systemOne({ text: SECRET_PROMPT }, { q: { type: 'noul', question: 'x?' } } as never, { retries: 0 });
+  await new TypeSafeClient(f as unknown as typeof fetch).systemOne({ text: PROMPT_MARKER }, { q: { type: 'noul', question: 'x?' } } as never, { retries: 0 });
   expect(rows()).toEqual([expect.objectContaining({ consumer: 'jev', ok: 1, provider: 'typesafe', task_kind: 'systemone' })]);
 });
 
 it('UX-18: both embedding paths are recorded (NVIDIA dedupe embed + embedding provider)', async () => {
   vi.stubEnv('NVIDIA_API_KEY', 'k');
   const f = vi.fn().mockResolvedValue(json({ data: [{ embedding: [0.1, 0.2] }] }));
-  expect(await embed(SECRET_PROMPT, f as unknown as typeof fetch)).not.toBeNull();
+  expect(await embed(PROMPT_MARKER, f as unknown as typeof fetch)).not.toBeNull();
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ embedding: [0.3, 0.4] })));
-  expect(await new OllamaEmbeddingProvider('http://o', 'nomic-embed-text').embed(SECRET_PROMPT)).toEqual([0.3, 0.4]);
+  expect(await new OllamaEmbeddingProvider('http://o', 'nomic-embed-text').embed(PROMPT_MARKER)).toEqual([0.3, 0.4]);
   expect(rows()).toEqual([
     expect.objectContaining({ consumer: 'embeddings', model: 'nvidia/nemotron-3-embed-1b', ok: 1, provider: 'nvidia', task_kind: 'passage' }),
     expect.objectContaining({ consumer: 'embeddings', model: 'nomic-embed-text', ok: 1, task_kind: 'embed' }),
@@ -57,14 +57,14 @@ it('UX-18: content safety records one ledger row per verdict, with the db it alr
   vi.stubEnv('CONTENT_SAFETY_MODE', 'shadow'); vi.stubEnv('NVIDIA_API_KEY', 'k'); resetContentSafetyPause();
   setLlmLedger(null); // content safety does not depend on the process-wide ledger
   const f = vi.fn().mockResolvedValue(json({ choices: [{ message: { content: 'User Safety: safe' } }] }));
-  expect(await checkContentSafety(db, { type: 'external_event', id: 'e1' }, SECRET_PROMPT, f as unknown as typeof fetch)).toBe('safe');
+  expect(await checkContentSafety(db, { type: 'external_event', id: 'e1' }, PROMPT_MARKER, f as unknown as typeof fetch)).toBe('safe');
   expect(rows()).toEqual([expect.objectContaining({ consumer: 'content_safety', ok: 1, provider: 'nvidia', task_kind: 'safety', status: 'verdict=safe' })]);
 });
 
 it('UX-18: council model calls and resident calls are recorded with their consumer and tokens', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ response: 'perspective', eval_count: 42 })));
   const council = new CouncilOrchestrator(db) as unknown as { callModel: (m: unknown, p: string) => Promise<{ content: string }> };
-  expect((await council.callModel({ provider: 'ollama', model_name: 'glm-5.3:cloud' }, SECRET_PROMPT)).content).toBe('perspective');
+  expect((await council.callModel({ provider: 'ollama', model_name: 'glm-5.3:cloud' }, PROMPT_MARKER)).content).toBe('perspective');
   const { AgentSocialAutopilotService } = await import('../services/agent-social-autopilot-service');
   const svc = new AgentSocialAutopilotService(db, { enabled: false } as never, { chat: async () => ({ content: 'hi', run_id: 'r', usage: {} }) }) as unknown as {
     residentCall: (a: string, k: string, s: { runtime: string; model: string }, c: () => Promise<{ content: string; usage: Record<string, unknown> }>) => Promise<unknown>;
@@ -79,9 +79,9 @@ it('UX-18: council model calls and resident calls are recorded with their consum
 it('UX-18: a broken ledger never fails the call; prompt text is never stored', async () => {
   const f = vi.fn().mockResolvedValue(json({ response: '{"x":1}' }));
   const broken = new Database(':memory:'); broken.close(); setLlmLedger(broken);
-  expect(await generateText({ prompt: SECRET_PROMPT, model: 'm', timeoutMs: 5_000 }, { endpoints: [{ id: 'p', kind: 'ollama', baseUrl: 'http://a' }], fetchFn: f as unknown as typeof fetch })).toBe('{"x":1}');
+  expect(await generateText({ prompt: PROMPT_MARKER, model: 'm', timeoutMs: 5_000 }, { endpoints: [{ id: 'p', kind: 'ollama', baseUrl: 'http://a' }], fetchFn: f as unknown as typeof fetch })).toBe('{"x":1}');
   setLlmLedger(db);
-  await generateText({ prompt: SECRET_PROMPT, model: 'm', timeoutMs: 5_000 }, { endpoints: [{ id: 'p', kind: 'ollama', baseUrl: 'http://a' }], fetchFn: f as unknown as typeof fetch });
+  await generateText({ prompt: PROMPT_MARKER, model: 'm', timeoutMs: 5_000 }, { endpoints: [{ id: 'p', kind: 'ollama', baseUrl: 'http://a' }], fetchFn: f as unknown as typeof fetch });
   const dump = JSON.stringify(db.prepare('SELECT * FROM llm_model_calls').all());
   expect(dump).not.toContain('UX18-PROMPT-MARKER');
   expect(rows()).toHaveLength(1);
