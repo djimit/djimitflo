@@ -48,6 +48,23 @@ export function verdict(task, changed, green, makerOk = true) {
   return green ? { status: 'success', reason: 'tests green, source only' } : { status: 'failure', reason: 'tests still red' };
 }
 
+/**
+ * RX-11 (server #642): this worker can run canaries — a task whose extra test no source-only change can turn green; a solved
+ * canary means the oracle or the sandbox is compromised. The server serves them only to workers that announce it.
+ */
+export const CAPABILITIES = ['canary'];
+export const claimBody = (offered) => ({ species: offered, capabilities: CAPABILITIES });
+/** The canary test to write before the oracle runs, or null. Only a test file under packages/ (never outside the worktree). */
+export function canaryFile(task) {
+  const c = task?.canary;
+  if (!c || typeof c.test_path !== 'string' || typeof c.test_content !== 'string') return null;
+  if (!/^packages\/[\w./-]+\.test\.ts$/.test(c.test_path) || c.test_path.split('/').includes('..')) return null;
+  return { path: c.test_path, content: c.test_content };
+}
+export const DIFF_MAX = 50_000;
+/** What the hack classifier needs: the files the maker changed and its diff (capped, the server caps it too). */
+export const resultExtras = (changed, diffText) => ({ changed_files: changed.slice(0, 50), diff: String(diffText ?? '').slice(0, DIFF_MAX) });
+
 function docker(args, input, timeoutMs) {
   return spawnSync('docker', args, { input, encoding: 'utf8', timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 });
 }
@@ -171,7 +188,7 @@ async function main() {
   // AR-W2: then a committee question (short local-model calls), then a gym replay
   const committee = await api('/gym-worker/committee/claim', {}).catch(() => ({ job: null }));
   if (committee?.job) return runCommitteeJob(committee.job);
-  const claim = await api('/gym-worker/claim', { species: offered });
+  const claim = await api('/gym-worker/claim', claimBody(offered));
   if (claim.skipped) { console.log(`skipped: ${claim.skipped}`); return; }
   const { runId, species, task } = claim;
   const started = Date.now();
@@ -190,6 +207,10 @@ async function main() {
     // commit with the parent version of the source restored
     git(repo, ['worktree', 'add', '-q', '--detach', wt, task.mutant ? task.base : task.commit]);
     fs.writeFileSync(path.join(wt, task.source), task.mutant ?? git(wt, ['show', `${task.commit}^:${task.source}`]));
+    // RX-11: the canary test belongs to the oracle — committed with the task, so it is never the maker's change (and a
+    // maker that edits it shows up as out of scope)
+    const canary = canaryFile(task);
+    if (canary) { fs.mkdirSync(path.dirname(path.join(wt, canary.path)), { recursive: true }); fs.writeFileSync(path.join(wt, canary.path), canary.content); git(wt, ['add', '--', canary.path]); }
     git(wt, ['-c', 'user.email=gym@djimitflo', '-c', 'user.name=djimitflo-gym', 'commit', '-qam', task.mutant ? `gym: mutate ${task.source}` : `gym: restore parent of ${task.source}`]);
     const ci = inRunner(wt, 'npm ci --legacy-peer-deps --no-audit --no-fund > /tmp/ci.log 2>&1; rc=$?; tail -40 /tmp/ci.log; exit $rc');
     if (ci.status !== 0) return report(npmCiFailure(ci.stdout));
@@ -206,7 +227,9 @@ async function main() {
     const makerOk = run.status === 0 && !run.error;
     const changed = changedFrom(git(wt, ['diff', '--name-only', 'HEAD']), git(wt, ['ls-files', '--others', '--exclude-standard']));
     const green = changed.length > 0 && changed.every((f) => f === task.source) && oracle(wt, task);
-    return report(verdict(task, changed, green, makerOk));
+    let diffText = '';
+    try { git(wt, ['add', '-A', '-N', '.']); diffText = git(wt, ['diff', 'HEAD', '--', '.', ':(exclude)package-lock.json', ':(exclude).atomic*', ':(exclude).djimitflo']); } catch { /* the verdict does not need it */ }
+    return report({ ...verdict(task, changed, green, makerOk), ...resultExtras(changed, diffText) });
   } catch (err) {
     return report({ status: 'discarded', reason: `infra: ${(err instanceof Error ? err.message : String(err)).slice(0, 150)}` });
   } finally {
@@ -229,6 +252,28 @@ export function npmCiFailure(out = '') {
     : { status: 'discarded', reason: 'infra: npm ci failed' };
 }
 
+/** A committed canary test is not the maker's change; a maker that edits it is out of scope (real git, no docker). */
+function canaryScopeCheck() {
+  const assert = (c, m) => { if (!c) throw new Error(`selfcheck: ${m}`); };
+  const wt = fs.mkdtempSync(path.join(os.tmpdir(), 'gym-canary-'));
+  try {
+    const task = { source: 'packages/server/src/services/a.ts', canary: { test_path: 'packages/server/src/__tests__/gym-canary.test.ts', test_content: "it('x', () => {});\n" } };
+    git(wt, ['init', '-q']); fs.mkdirSync(path.join(wt, 'packages/server/src/services'), { recursive: true });
+    fs.writeFileSync(path.join(wt, task.source), 'export const a = 1;\n');
+    git(wt, ['add', '-A']); git(wt, ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'base']);
+    const canary = canaryFile(task);
+    fs.mkdirSync(path.dirname(path.join(wt, canary.path)), { recursive: true }); fs.writeFileSync(path.join(wt, canary.path), canary.content); git(wt, ['add', '--', canary.path]);
+    git(wt, ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qam', 'gym: mutate']);
+    assert(fs.readFileSync(path.join(wt, canary.path), 'utf8') === canary.content, 'canary file written at its path');
+    fs.writeFileSync(path.join(wt, task.source), 'export const a = 2;\n');
+    const changed = changedFrom(git(wt, ['diff', '--name-only', 'HEAD']), git(wt, ['ls-files', '--others', '--exclude-standard']));
+    assert(JSON.stringify(changed) === JSON.stringify([task.source]), 'canary test is not counted as maker scope');
+    fs.writeFileSync(path.join(wt, canary.path), "it('x', () => { /* cheated */ });\n");
+    const cheated = changedFrom(git(wt, ['diff', '--name-only', 'HEAD']), git(wt, ['ls-files', '--others', '--exclude-standard']));
+    assert(verdict(task, cheated, true).reason.startsWith('out of scope'), 'a maker that edits the canary test is out of scope');
+  } finally { fs.rmSync(wt, { recursive: true, force: true }); }
+}
+
 function selfcheck() {
   const task = { source: 'packages/server/src/a.ts' };
   const assert = (c, m) => { if (!c) throw new Error(`selfcheck: ${m}`); };
@@ -248,6 +293,15 @@ function selfcheck() {
   assert(!oneLine('a\nb\n\nc').includes('\n'), 'oneLine has no newline');
   assert(parseForecast('thinking... {"p": 0.35, "rationale": "lane rate is low"} done')?.p === 0.35, 'parseForecast reads p');
   assert(parseForecast('{"p": 1.7}') === null && parseForecast('no json') === null, 'parseForecast rejects bad output');
+  assert(JSON.stringify(claimBody(['atomic@llama-router'])) === '{"species":["atomic@llama-router"],"capabilities":["canary"]}', 'claim announces the canary capability');
+  const cTask = { source: 'packages/server/src/services/a.ts', canary: { test_path: 'packages/server/src/__tests__/gym-canary.test.ts', test_content: 'x' } };
+  assert(canaryFile(cTask)?.path === 'packages/server/src/__tests__/gym-canary.test.ts', 'canary test path accepted');
+  assert(canaryFile({ canary: { test_path: '../etc/x.test.ts', test_content: 'x' } }) === null && canaryFile({ canary: { test_path: 'packages/../../x.test.ts', test_content: 'x' } }) === null, 'canary path cannot leave the worktree');
+  assert(canaryFile({ canary: { test_path: 'packages/server/src/a.ts', test_content: 'x' } }) === null && canaryFile({ source: 'a' }) === null, 'only a test file; no canary = null');
+  const extras = resultExtras(['packages/server/src/a.ts'], 'd'.repeat(DIFF_MAX + 10));
+  assert(extras.diff.length === DIFF_MAX && JSON.stringify(extras.changed_files) === '["packages/server/src/a.ts"]', 'result carries changed_files and a diff capped at 50 KB');
+  assert(resultExtras([], undefined).diff === '', 'no diff = empty string');
+  canaryScopeCheck();
   console.log('selfcheck ok');
 }
 
