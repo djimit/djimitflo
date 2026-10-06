@@ -289,7 +289,7 @@ export function AgentCommonsPage() {
                   {!!agent.capabilities?.length && (
                     <span className="flex flex-wrap gap-1 pl-4">
                       {agent.capabilities.map((capability) => (
-                        <span key={capability} className="rounded-full border border-border px-1.5 py-0.5 text-[10px] text-foreground-tertiary">{capability}</span>
+                        <span key={capability} className="rounded-full border border-border px-1.5 py-0.5 text-xs text-foreground-tertiary">{capability}</span>
                       ))}
                     </span>
                   )}
@@ -375,7 +375,7 @@ function LurePanel({ lures, cast }: { lures: LureStatus | null; cast: LureCast |
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {lure.invitees.map((invitee) => <span key={invitee.agent_id} title={invitee.bit_at ? `bitten ${time(invitee.bit_at)}` : INVITEE_LABEL[invitee.state]} className={`rounded-full border px-2 py-0.5 text-[10px] ${INVITEE_TONE[invitee.state]}`}>{invitee.name} · {INVITEE_LABEL[invitee.state]}{invitee.reach === 'never' ? ' · never connected' : ''}</span>)}
               </div>
-              <p className="mt-2 text-[10px] text-foreground-tertiary">by {lure.created_by} · {time(lure.created_at)} · expires {time(lure.expires_at)} · <code>{lure.topic_ref}</code></p>
+              <p className="mt-2 text-xs text-foreground-tertiary">by {lure.created_by} · {time(lure.created_at)} · expires {time(lure.expires_at)} · <code>{lure.topic_ref}</code></p>
             </article>
           ))}
           {!lures?.lures.length && <p className="rounded-lg border border-dashed border-border p-6 text-center text-xs text-foreground-tertiary">No lure cast yet.</p>}
@@ -438,7 +438,7 @@ function OpenDoorPanel({ requests, invite, onInvite, onDecide, busy }: { request
         {requests.map((request) => (
           <article key={request.agent_id} className="rounded-lg border border-border bg-background p-3">
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2 text-sm"><span className="font-semibold text-foreground">{request.name}</span><span className="font-mono text-xs text-foreground-tertiary">{request.agent_id}</span><span className={`rounded-full border px-2 py-0.5 text-[10px] ${JOIN_TONE[request.status]}`}>{JOIN_LABEL[request.status]}</span>{request.status === 'pending' && <ReputationBadge reputation={reputations[request.agent_id]} />}</div>{request.description && <p className="mt-1 text-xs text-foreground-secondary">{request.description}</p>}<p className="mt-1 text-[10px] text-foreground-tertiary">{request.capabilities.join(', ') || 'no capabilities given'} · via "{request.invite_label}" · {request.ip} · {time(request.requested_at)}{request.contact && <> · {request.contact}</>}{request.decided_by && <> · decided by {request.decided_by}</>}</p></div>
+              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2 text-sm"><span className="font-semibold text-foreground">{request.name}</span><span className="font-mono text-xs text-foreground-tertiary">{request.agent_id}</span><span className={`rounded-full border px-2 py-0.5 text-xs ${JOIN_TONE[request.status]}`}>{JOIN_LABEL[request.status]}</span>{request.status === 'pending' && <ReputationBadge reputation={reputations[request.agent_id]} />}</div>{request.description && <p className="mt-1 text-xs text-foreground-secondary">{request.description}</p>}<p className="mt-1 text-xs text-foreground-tertiary">{request.capabilities.join(', ') || 'no capabilities given'} · via "{request.invite_label}" · {request.ip} · {time(request.requested_at)}{request.contact && <> · {request.contact}</>}{request.decided_by && <> · decided by {request.decided_by}</>}</p></div>
               {request.status === 'pending' && <div className="flex shrink-0 gap-2"><button type="button" onClick={() => onDecide(request.agent_id, true)} disabled={busy} className="rounded-lg border border-status-success/40 px-3 py-1.5 text-xs text-status-success hover:bg-status-success/10 disabled:opacity-40">Admit</button><button type="button" onClick={() => onDecide(request.agent_id, false)} disabled={busy} className="rounded-lg border border-status-error/40 px-3 py-1.5 text-xs text-status-error hover:bg-status-error/10 disabled:opacity-40">Reject</button></div>}
             </div>
           </article>
@@ -455,7 +455,7 @@ function OpenDoorPanel({ requests, invite, onInvite, onDecide, busy }: { request
  * decides; this is purely one more number to look at first.
  */
 function ReputationBadge({ reputation }: { reputation: AgentReputation | 'error' | undefined }) {
-  if (reputation === undefined) return <span className="text-[10px] text-foreground-tertiary">reputatie laden...</span>;
+  if (reputation === undefined) return <span className="text-xs text-foreground-tertiary">reputatie laden...</span>;
   if (reputation === 'error') return null;
   const lowConfidence = reputation.sample_size < 3;
   const color = reputation.score >= 0.65 ? 'text-status-success border-status-success/40' : reputation.score <= 0.35 ? 'text-status-error border-status-error/40' : 'text-foreground-tertiary border-border';
@@ -467,7 +467,7 @@ function ReputationBadge({ reputation }: { reputation: AgentReputation | 'error'
 }
 
 function Metric({ label, value, hint, color }: { label: string; value: number; hint: string; color: string }) {
-  return <div className="rounded-xl border border-border bg-background-secondary p-4" style={{ borderTopColor: color, borderTopWidth: 2 }}><div className="text-2xl font-bold text-foreground">{value}</div><div className="text-xs text-foreground-secondary">{label}</div><div className="text-[10px] text-foreground-tertiary">{hint}</div></div>;
+  return <div className="rounded-xl border border-border bg-background-secondary p-4" style={{ borderTopColor: color, borderTopWidth: 2 }}><div className="text-2xl font-bold text-foreground">{value}</div><div className="text-xs text-foreground-secondary">{label}</div><div className="text-xs text-foreground-tertiary">{hint}</div></div>;
 }
 
 function Constellation({ nodes, edges, focus, highlight, onSelect }: { nodes: ConstellationNode[]; edges: ConstellationEdge[]; focus: string | null; highlight: string[]; onSelect: (id: string) => void }) {
@@ -504,7 +504,7 @@ function ThreadButton({ thread, active, onClick }: { thread: SocialThread; activ
   return (
     <button type="button" onClick={onClick} className={`w-full rounded-lg border p-2 text-left ${active ? 'border-accent/40 bg-accent/10' : 'border-transparent hover:bg-background-elevated'}`}>
       <div className="flex items-start gap-2"><Icon className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: stage.color }} /><span className="line-clamp-2 text-xs font-medium text-foreground">{thread.topic}</span></div>
-      <div className="mt-1 flex items-center justify-between text-[10px] text-foreground-tertiary"><span className="truncate">{thread.participants.join(' + ')}</span><span style={{ color: stage.color }}>{stage.label}</span></div>
+      <div className="mt-1 flex items-center justify-between text-xs text-foreground-tertiary"><span className="truncate">{thread.participants.join(' + ')}</span><span style={{ color: stage.color }}>{stage.label}</span></div>
     </button>
   );
 }
@@ -560,7 +560,7 @@ function Bubble({ message, name }: { message: SocialMessage; name: (id: string) 
           {message.proposed_improvement && <p className="mt-3 text-xs text-foreground-secondary">{message.improvement_id ? <>Registered proposal <code>{message.improvement_id}</code> · {message.improvement_status || 'status unknown'}{message.improvement_status === 'proposed' && <> · <Link to="/compliance#improvement-inbox-title" className="text-accent underline">Open review-inbox</Link></>}</> : 'Idea under discussion · no registered improvement proposal yet'}</p>}
           {message.action === 'social.learning' && <div className="mt-3 rounded-lg border border-status-success/30 bg-status-success/10 p-3 text-xs text-foreground"><Lightbulb className="mr-1 inline h-3.5 w-3.5 text-status-success" /> Recorded as a reflection candidate{message.reflection_id && <> <code className="text-foreground-secondary">{message.reflection_id}</code></>}{message.reflection_status && <> · {message.reflection_status}</>} · not promoted without review</div>}
         </>}
-      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-foreground-tertiary"><span>{time(message.timestamp)}</span>{message.runtime && <span>{message.runtime}{message.model_id ? ` · ${message.model_id}` : ''}</span>}{message.runtime_run_id && <span className="break-all">run {message.runtime_run_id}</span>}{message.evidence.length > 0 && <details><summary className="cursor-pointer text-accent">bewijs ({message.evidence.length})</summary><div className="mt-1 space-y-0.5 font-mono">{message.evidence.map((reference) => <div key={reference} className="break-all">{reference}</div>)}</div></details>}</div>
+      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-foreground-tertiary"><span>{time(message.timestamp)}</span>{message.runtime && <span>{message.runtime}{message.model_id ? ` · ${message.model_id}` : ''}</span>}{message.runtime_run_id && <span className="break-all">run {message.runtime_run_id}</span>}{message.evidence.length > 0 && <details><summary className="cursor-pointer text-accent">bewijs ({message.evidence.length})</summary><div className="mt-1 space-y-0.5 font-mono">{message.evidence.map((reference) => <div key={reference} className="break-all">{reference}</div>)}</div></details>}</div>
     </article>
   );
 }

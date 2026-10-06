@@ -46,7 +46,7 @@
     --djimit-text-primary: 250 250 252;
     --djimit-text-secondary: 200 200 205;
     --djimit-text-tertiary: 150 150 160;
-    --djimit-text-muted: 100 100 115;
+    --djimit-text-muted: 140 140 152; /* UX-25b: was 100 100 115 (3.4:1 on bg, 2.8:1 on elevated); now >= 4.5:1 on every bg token */
     
     --djimit-accent-primary: 60 120 255;
     --djimit-accent-secondary: 80 200 255;
@@ -96,4 +96,10 @@
 /* UX-25: honour the operator's reduced-motion setting everywhere, not only on the Commons animations */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+
+/* UX-25b: one visible keyboard focus ring everywhere (mouse clicks keep no ring: :focus-visible only) */
+:focus-visible {
+  outline: 2px solid rgb(var(--djimit-border-accent));
+  outline-offset: 2px;
 }
