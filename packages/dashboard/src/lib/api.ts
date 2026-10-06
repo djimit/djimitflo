@@ -49,6 +49,19 @@ export type KnowledgeOverview = {
   interest_profile: { at: string; terms: string[] } | null;
 };
 
+/** UX-16: GET /api/health/runtimes (read:evidence) — one row per runtime; mirrors services/runtime-health.ts. */
+export interface RuntimeHealthRow {
+  runtime: string;
+  admission: { decision: string; expires_at: string | null; days_to_expiry: number | null; allowed_now: boolean };
+  version: { admitted: string | null; observed: string | null; drift: boolean };
+  probe: { status: string; probed_at: string | null; age_h: number | null };
+  leases_30d: { n: number; completed: number; failed: number; cancelled: number; success_rate: number | null };
+  leases_90d: number;
+  last_success_at: string | null;
+  gym: { species: string[]; benched: boolean };
+  readiness: 'ok' | 'reassess' | 'retire_unused' | 'keep_test_only' | 'hold' | 'rejected' | 'unknown_runtime';
+}
+
 /** UX-9: GET /api/health/evolution-evidence (manage:config) — read-only evidence of the evolution loop. */
 export type GateState = 'green' | 'red' | 'unknown';
 export interface EvolutionEvidence {
@@ -1334,6 +1347,11 @@ class ApiClient {
   // W5 knowledge view: discoveries, jev relevance and units per source, KB retrieval, interest profile (read-only)
   async getEvolutionEvidence(days = 30): Promise<EvolutionEvidence> {
     return this.request(`/health/evolution-evidence?days=${days}`);
+  }
+
+  /** UX-16: one read-only row per runtime (admission, versions, probe, 30-d leases, gym breaker, readiness). */
+  async getRuntimeHealth(): Promise<{ runtimes: RuntimeHealthRow[] }> {
+    return this.request('/health/runtimes');
   }
 
   async getKnowledgeOverview(): Promise<KnowledgeOverview> {
