@@ -9,6 +9,7 @@
  * thread, reflection candidates and proposed improvements that retain review gates.
  */
 
+import { measured } from './model-selector';
 import type { Database } from 'better-sqlite3';
 import { judgmentMode, runJudgment, runJudgments } from './judgment-service';
 import { commonsContribution } from './judgments/commons-contribution';
@@ -152,6 +153,13 @@ export class AgentSocialAutopilotService {
   private readonly warnedUnconfigured = new Set<string>();
   private readonly config: AutopilotConfig & Required<Pick<AutopilotConfig, 'residents' | 'language' | 'providers'>>;
 
+  /** UX-18: every resident model call is a ledger row (consumer resident:<agent>); content and prompts are never stored. */
+  private residentCall<T extends { content: string; usage?: Record<string, unknown> }>(agentId: string, taskKind: string, spec: { runtime: string; model: string }, call: () => Promise<T>): Promise<T> {
+    const n = (u: Record<string, unknown> | undefined, ...keys: string[]): number | null => { for (const k of keys) { const v = u?.[k]; if (typeof v === 'number') return v; } return null; };
+    return measured({ consumer: `resident:${agentId}`, model: spec.model, provider: spec.runtime, taskKind }, call,
+      (r) => ({ outChars: r.content.length, tokensIn: n(r.usage, 'prompt_eval_count', 'prompt_tokens', 'input_tokens', 'promptTokenCount'), tokensOut: n(r.usage, 'eval_count', 'completion_tokens', 'output_tokens', 'candidatesTokenCount') }), this.db);
+  }
+
   constructor(private readonly db: Database, config: AutopilotConfig, deps: { comms?: AgentCommunicationService; governance?: RuntimeGovernanceService; chat?: ChatFn } = {}) {
     this.config = {
       ...config,
@@ -258,7 +266,7 @@ export class AgentSocialAutopilotService {
             'Be calibrated: most proposals do not end verified; the lane record below shows the recent rate.',
             `Context (JSON): ${JSON.stringify(q.question).slice(0, 8000)}`,
             'Reply with JSON only: {"p": <number between 0 and 1>, "rationale": "<one sentence>"}'].join('\n');
-          const { content } = await this.chat(this.systemPrompt(agent), prompt, controller.signal, spec);
+          const { content } = await this.residentCall(agent.id, 'forecast', spec, () => this.chat(this.systemPrompt(agent), prompt, controller.signal, spec));
           const f = parseForecastText(content);
           if (f) recordResidentForecast(this.db, q, agent.id, f, `${spec.runtime}/${spec.model}`);
           result.forecasts = (result.forecasts ?? 0) + (f ? 1 : 0);
@@ -282,7 +290,7 @@ export class AgentSocialAutopilotService {
         result.attempts += 1;
         try {
           const spec = this.runtimeFor(agent.id);
-          const { content, run_id, usage } = await this.chat(this.systemPrompt(agent), this.userPrompt(agent.id, message), controller.signal, spec);
+          const { content, run_id, usage } = await this.residentCall(agent.id, 'reply', spec, () => this.chat(this.systemPrompt(agent), this.userPrompt(agent.id, message), controller.signal, spec));
           if (controller.signal.aborted) break;
           // An operator can pause/quarantine an agent while inference is running.
           if (!this.eligibleAgents().some(current => current.id === agent.id) || !this.governance.isAllowed(agent.id)) {

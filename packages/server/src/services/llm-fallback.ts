@@ -13,6 +13,8 @@
  * last (never skipped, so a total outage still surfaces the primary's own error message).
  */
 
+import { measured } from './model-selector';
+
 export interface LlmEndpoint { id: string; kind: 'ollama' | 'openai'; baseUrl: string; apiKey?: string; model?: string }
 
 export interface GenerateOptions { prompt: string; model: string; temperature?: number; maxTokens?: number; timeoutMs: number }
@@ -71,7 +73,9 @@ export async function generateText(
   const errors: string[] = [];
   for (const endpoint of ordered) {
     try {
-      const text = await callEndpoint(endpoint, options, fetchFn);
+      // UX-18: every attempt is a ledger row (consumer 'fallback', provider = endpoint id); the call itself is unchanged
+      const text = await measured({ consumer: 'fallback', model: endpoint.model || options.model, provider: endpoint.id, taskKind: 'generate' },
+        () => callEndpoint(endpoint, options, fetchFn), (t) => ({ outChars: t.length }));
       downUntil.delete(endpoint.id);
       return text;
     } catch (error) {

@@ -30,6 +30,8 @@ export function prepareState<T>(state: T): T {
   return scrub(state) as T;
 }
 
+import { recordLlmCall } from './model-selector';
+
 export class TypeSafeClient {
   constructor(private readonly fetchFn: typeof fetch = fetch) {}
 
@@ -42,16 +44,25 @@ export class TypeSafeClient {
     const retries = opts.retries ?? 2;
     let lastError = 'unknown';
     for (let attempt = 0; attempt <= retries; attempt += 1) {
+      const t0 = Date.now();
       try {
         const response = await this.fetchFn(`${base}/v1/systemone`, {
           method: 'POST', body, signal: AbortSignal.timeout(opts.timeoutMs ?? 10_000),
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
         });
-        if (response.ok) { failures = 0; return (await response.json()) as TsResponse; }
+        if (response.ok) {
+          failures = 0; const out = (await response.json()) as TsResponse;
+          recordLlmCall({ consumer: 'jev', model: process.env.TYPESAFE_MODEL || 'jev-1.13.0', provider: 'typesafe', ok: true, latencyMs: Date.now() - t0, outChars: 0, tokensIn: Math.ceil(body.length / 4), taskKind: 'systemone', status: 'ok' });
+          return out;
+        }
         lastError = `HTTP ${response.status}`;
+        recordLlmCall({ consumer: 'jev', model: process.env.TYPESAFE_MODEL || 'jev-1.13.0', provider: 'typesafe', ok: false, latencyMs: Date.now() - t0, outChars: 0, taskKind: 'systemone', status: lastError });
         if (response.status === 401 || response.status === 422) break; // retrying cannot help
         if (response.status !== 429 && response.status !== 529 && response.status < 500) break;
-      } catch (err) { lastError = err instanceof Error ? err.message : String(err); }
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+        recordLlmCall({ consumer: 'jev', model: process.env.TYPESAFE_MODEL || 'jev-1.13.0', provider: 'typesafe', ok: false, latencyMs: Date.now() - t0, outChars: 0, taskKind: 'systemone', status: lastError.slice(0, 80) });
+      }
       if (attempt < retries) await new Promise((r) => setTimeout(r, 400 * 2 ** attempt)); // exponential backoff (docs: 429)
     }
     failures += 1;

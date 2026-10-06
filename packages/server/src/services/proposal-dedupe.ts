@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { nvidiaFetch } from './content-safety';
+import { recordLlmCall } from './model-selector';
 
 /**
  * Plan K2a: the same improvement idea keeps arriving in other words (the fingerprint only catches exact repeats), which
@@ -12,16 +13,21 @@ import { nvidiaFetch } from './content-safety';
 export const proposalDedupeEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.PROPOSAL_DEDUPE_MODE === 'shadow' && Boolean(env.NVIDIA_API_KEY);
 
 export async function embed(text: string, fetchFn: typeof fetch = fetch, inputType: 'passage' | 'query' = 'passage'): Promise<Float32Array | null> {
+  // UX-18: one ledger row per embedding call (consumer 'embeddings'); sizes only
+  const t0 = Date.now(); const model = process.env.EMBEDDING_MODEL || 'nvidia/nemotron-3-embed-1b';
+  const ledger = (ok: boolean, status: string) => recordLlmCall({ consumer: 'embeddings', model, provider: 'nvidia', ok, latencyMs: Date.now() - t0, outChars: 0,
+    tokensIn: Math.ceil(Math.min(text.length, 8_000) / 4), taskKind: inputType, status });
   try {
     const res = await nvidiaFetch(`${(process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1').replace(/\/$/, '')}/embeddings`, {
       method: 'POST', signal: AbortSignal.timeout(60_000),
       headers: { Authorization: `Bearer ${process.env.NVIDIA_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: process.env.EMBEDDING_MODEL || 'nvidia/nemotron-3-embed-1b', input: [text.slice(0, 8_000)], input_type: inputType, encoding_format: 'float' }),
     }, fetchFn);
-    if (!res.ok) return null;
+    if (!res.ok) { ledger(false, `HTTP ${res.status}`); return null; }
     const v = ((await res.json()) as { data?: Array<{ embedding?: number[] }> }).data?.[0]?.embedding;
+    ledger(Array.isArray(v) && v.length > 0, 'ok');
     return Array.isArray(v) && v.length ? Float32Array.from(v) : null;
-  } catch { return null; }
+  } catch (e) { ledger(false, (e instanceof Error ? e.message : String(e)).slice(0, 80)); return null; }
 }
 
 export function cosine(a: Float32Array, b: Float32Array): number {
