@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { Activity, RefreshCw } from 'lucide-react';
 import { api, type OperatorCockpit, type ServiceStatus } from '../lib/api';
 import { fmt, since } from '../lib/format';
+import { DataTable, Section, StatusPill } from '../components/ui';
 
 const LABELS: Record<string, string> = {
   verified_7d: 'Verified (7 d)', regressed_7d: 'Regressed (7 d)', infra_failed_7d: 'Infra failed (7 d)', approvals_pending: 'Approvals pending',
@@ -75,8 +76,7 @@ export function OperatorCockpitPage() {
           {data.needs_you && <NeedsYou n={data.needs_you} />}
           <DigestCard />
           {data.schedulers && <p className="text-sm text-foreground-secondary">Schedulers: {data.schedulers.armed} armed, {data.schedulers.off} off</p>}
-          <section aria-labelledby="guardrails">
-            <h2 id="guardrails" className="text-lg font-semibold mb-2">Guardrails</h2>
+          <Section id="guardrails" title="Guardrails">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {data.guardrails.map((g) => (
                 <div key={g.name} className={`p-4 rounded-lg border ${g.ok ? 'border-border' : 'border-status-error/60 bg-status-error/5'}`}>
@@ -86,49 +86,42 @@ export function OperatorCockpitPage() {
                 </div>
               ))}
             </div>
-          </section>
+          </Section>
 
-          <section aria-labelledby="services">
-            <h2 id="services" className="text-lg font-semibold mb-2">Services</h2>
-            {services === null ? <p className="text-sm text-foreground-secondary">Probing…</p> : services.length === 0 ? <p className="text-sm text-foreground-secondary">No service endpoints configured or the probe failed.</p> : (
-              <table className="w-full text-sm">
-                <thead><tr className="text-left text-foreground-tertiary"><th>Service</th><th>Endpoint</th><th>Status</th><th>HTTP</th><th>Latency</th></tr></thead>
-                <tbody>{services.map((s) => (
-                  <tr key={s.endpoint} className="border-t border-border">
-                    <td>{s.names.join(' · ')}</td><td className="font-mono text-xs">{s.endpoint}</td>
-                    <td className={s.status === 'up' ? 'text-status-completed' : s.status === 'degraded' ? 'text-status-warning' : 'text-status-error'}>{s.status}{s.error ? ` (${s.error})` : ''}</td>
-                    <td>{s.http ?? '—'}</td><td>{s.ms === null ? '—' : `${s.ms} ms`}</td>
-                  </tr>
-                ))}</tbody>
-              </table>
+          <Section id="services" title="Services">
+            {services === null ? <p className="text-sm text-foreground-secondary">Probing…</p> : (
+              <DataTable caption="Service endpoints and their status" rows={services} rowKey={(s) => s.endpoint}
+                empty="No service endpoints configured or the probe failed." columns={[
+                  { key: 'service', label: 'Service', render: (s) => s.names.join(' · ') },
+                  { key: 'endpoint', label: 'Endpoint', render: (s) => s.endpoint, cellClassName: () => 'font-mono text-xs' },
+                  { key: 'status', label: 'Status', render: (s) => `${s.status}${s.error ? ` (${s.error})` : ''}`,
+                    cellClassName: (s) => (s.status === 'up' ? 'text-status-completed' : s.status === 'degraded' ? 'text-status-warning' : 'text-status-error') },
+                  { key: 'http', label: 'HTTP', render: (s) => s.http ?? '—' },
+                  { key: 'ms', label: 'Latency', render: (s) => (s.ms === null ? '—' : `${s.ms} ms`) },
+                ]} />
             )}
-          </section>
+          </Section>
 
-          <section aria-labelledby="deploys">
-            <h2 id="deploys" className="text-lg font-semibold mb-2">Deploys</h2>
-            {data.deploys.length === 0 ? <p className="text-sm text-foreground-secondary">No deploy events recorded yet (auto-deploy writes them to the data dir).</p> : (
-              <table className="w-full text-sm">
-                <thead><tr className="text-left text-foreground-tertiary"><th>When</th><th>Event</th><th>Commit</th><th>Detail</th></tr></thead>
-                <tbody>{data.deploys.map((d) => (
-                  <tr key={`${d.at}-${d.event}`} className={`border-t border-border ${d.event === 'failed' || d.event === 'paused' ? 'text-status-error' : ''}`}>
-                    <td>{since(d.at)}</td><td>{d.event.replace('_', ' ')}</td><td><code>{d.sha.slice(0, 8)}</code></td><td>{d.detail}</td>
-                  </tr>
-                ))}</tbody>
-              </table>
-            )}
-          </section>
+          <Section id="deploys" title="Deploys">
+            <DataTable caption="Recent deploy events" rows={data.deploys} rowKey={(d) => `${d.at}-${d.event}`}
+              rowClassName={(d) => (d.event === 'failed' || d.event === 'paused' ? 'text-status-error' : undefined)}
+              empty="No deploy events recorded yet (auto-deploy writes them to the data dir)." columns={[
+                { key: 'at', label: 'When', render: (d) => since(d.at) },
+                { key: 'event', label: 'Event', render: (d) => d.event.replace('_', ' ') },
+                { key: 'sha', label: 'Commit', render: (d) => <code>{d.sha.slice(0, 8)}</code> },
+                { key: 'detail', label: 'Detail', render: (d) => d.detail },
+              ]} />
+          </Section>
 
-          <section aria-labelledby="stalls">
-            <h2 id="stalls" className="text-lg font-semibold mb-2">Silent stalls</h2>
+          <Section id="stalls" title="Silent stalls">
             {data.stalls.length === 0 ? <p className="text-sm text-foreground-secondary">None — every watched subsystem produced output recently.</p> : (
               <ul className="space-y-1 text-sm">
                 {data.stalls.map((s) => <li key={s.subsystem} className="text-status-warning"><strong>{s.subsystem}</strong> — {s.detail} (since {since(s.since)})</li>)}
               </ul>
             )}
-          </section>
+          </Section>
 
-          <section aria-labelledby="scorecard">
-            <h2 id="scorecard" className="text-lg font-semibold mb-2">Scorecard</h2>
+          <Section id="scorecard" title="Scorecard">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {Object.entries(data.scorecard).map(([k, v]) => (
                 <div key={k} className="p-3 rounded-lg border border-border bg-background-elevated">
@@ -137,65 +130,63 @@ export function OperatorCockpitPage() {
                 </div>
               ))}
             </div>
-          </section>
+          </Section>
 
-          <section aria-labelledby="gym" className="grid md:grid-cols-2 gap-6">
-            <div>
-              <h2 id="gym" className="text-lg font-semibold mb-2">Gym species</h2>
-              {data.gym.length === 0 ? <p className="text-sm text-foreground-secondary">No gym outcomes yet.</p> : (
-                <table className="w-full text-sm">
-                  <thead><tr className="text-left text-foreground-tertiary"><th>Species</th><th>State</th><th>Outcomes</th><th>Success</th><th>Avg s</th><th>Avg tokens</th><th>Last</th></tr></thead>
-                  <tbody>{data.gym.map((g) => (
-                    <tr key={g.species} className="border-t border-border"><td>{g.species}</td><td>{g.benched ? <span className="text-status-error" title="Circuit breaker: 3+ infra discards; the species takes no gym work until the cool-down probe succeeds">benched</span> : <span className="text-status-completed">active</span>}</td><td>{g.outcomes}</td><td>{g.success_pct}%</td><td>{fmt(g.avg_seconds)}</td><td>{fmt(g.avg_tokens)}</td><td>{since(g.last)}</td></tr>
-                  ))}</tbody>
-                </table>
-              )}
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold mb-2">Remote workers</h2>
-              {data.remote_workers.length === 0 ? <p className="text-sm text-foreground-secondary">No remote host has claimed work.</p> : (
-                <table className="w-full text-sm">
-                  <thead><tr className="text-left text-foreground-tertiary"><th>Host</th><th>Claims 24 h</th><th>Interrupted</th><th>Last claim</th></tr></thead>
-                  <tbody>{data.remote_workers.map((w) => (
-                    <tr key={w.host} className="border-t border-border"><td>{w.host}</td><td>{w.claims_24h}</td><td>{w.interrupted_24h}</td><td>{since(w.last_claim)}</td></tr>
-                  ))}</tbody>
-                </table>
-              )}
-            </div>
-          </section>
+          <div className="grid md:grid-cols-2 gap-6">
+            <Section id="gym" title="Gym species">
+              <DataTable caption="Gym outcomes per species" rows={data.gym} rowKey={(g) => g.species} empty="No gym outcomes yet." columns={[
+                { key: 'species', label: 'Species', render: (g) => g.species },
+                { key: 'state', label: 'State', render: (g) => (g.benched
+                  ? <StatusPill tone="error" label="benched" title="Circuit breaker: 3+ infra discards; the species takes no gym work until the cool-down probe succeeds" />
+                  : <StatusPill tone="ok" label="active" />) },
+                { key: 'outcomes', label: 'Outcomes', render: (g) => g.outcomes },
+                { key: 'success', label: 'Success', render: (g) => `${g.success_pct}%` },
+                { key: 'secs', label: 'Avg s', render: (g) => fmt(g.avg_seconds) },
+                { key: 'tokens', label: 'Avg tokens', render: (g) => fmt(g.avg_tokens) },
+                { key: 'last', label: 'Last', render: (g) => since(g.last) },
+              ]} />
+            </Section>
+            <Section id="remote-workers" title="Remote workers">
+              <DataTable caption="Remote gym hosts" rows={data.remote_workers} rowKey={(w) => w.host} empty="No remote host has claimed work." columns={[
+                { key: 'host', label: 'Host', render: (w) => w.host },
+                { key: 'claims', label: 'Claims 24 h', render: (w) => w.claims_24h },
+                { key: 'interrupted', label: 'Interrupted', render: (w) => w.interrupted_24h },
+                { key: 'last', label: 'Last claim', render: (w) => since(w.last_claim) },
+              ]} />
+            </Section>
+          </div>
 
-          <section aria-labelledby="genomes">
-            <h2 id="genomes" className="text-lg font-semibold mb-2">Strategy genomes on real makers (30 d)</h2>
-            {!data.genomes?.length ? <p className="text-sm text-foreground-secondary">No real-maker outcome carries a genome yet.</p> : (
-              <table className="w-full text-sm">
-                <thead><tr className="text-left text-foreground-tertiary"><th>Genome</th><th>Maker skill</th><th>Outcomes (n)</th><th>Wins</th><th>Win rate</th></tr></thead>
-                <tbody>{data.genomes.map((g) => (
-                  <tr key={`${g.genome}:${g.skill_id}`} className="border-t border-border"><td>{g.genome}</td><td>{g.skill_id}</td><td>{g.outcomes}</td><td>{g.wins}</td><td>{g.win_pct}%</td></tr>
-                ))}</tbody>
-              </table>
-            )}
-          </section>
+          <Section id="genomes" title="Strategy genomes on real makers (30 d)">
+            <DataTable caption="Real-maker outcomes per strategy genome" rows={data.genomes ?? []} rowKey={(g) => `${g.genome}:${g.skill_id}`}
+              empty="No real-maker outcome carries a genome yet." columns={[
+                { key: 'genome', label: 'Genome', render: (g) => g.genome },
+                { key: 'skill', label: 'Maker skill', render: (g) => g.skill_id },
+                { key: 'outcomes', label: 'Outcomes (n)', render: (g) => g.outcomes },
+                { key: 'wins', label: 'Wins', render: (g) => g.wins },
+                { key: 'rate', label: 'Win rate', render: (g) => `${g.win_pct}%` },
+              ]} />
+          </Section>
 
-          <section aria-labelledby="usage" className="grid md:grid-cols-2 gap-6">
-            <div>
-              <h2 id="usage" className="text-lg font-semibold mb-2">Agent runtimes (7 d)</h2>
-              <table className="w-full text-sm">
-                <thead><tr className="text-left text-foreground-tertiary"><th>Role</th><th>Runtime / model</th><th>Leases</th><th>Tokens</th></tr></thead>
-                <tbody>{data.maker_usage_7d.map((u) => (
-                  <tr key={`${u.role}-${u.runtime}-${u.model}`} className="border-t border-border"><td>{u.role}</td><td>{u.runtime}{u.model ? ` · ${u.model}` : ''}</td><td>{u.leases}</td><td>{fmt(u.tokens)}</td></tr>
-                ))}</tbody>
-              </table>
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold mb-2">Judgments (jev, 7 d)</h2>
-              <table className="w-full text-sm">
-                <thead><tr className="text-left text-foreground-tertiary"><th>Judgment</th><th>Calls</th><th>Errors</th><th>Input tokens</th></tr></thead>
-                <tbody>{data.judgments_7d.map((j) => (
-                  <tr key={j.judgment} className="border-t border-border"><td>{j.judgment}</td><td>{j.calls}</td><td className={j.errors > j.calls * 0.3 ? 'text-status-error' : ''}>{j.errors}</td><td>{fmt(j.input_tokens)}</td></tr>
-                ))}</tbody>
-              </table>
-            </div>
-          </section>
+          <div className="grid md:grid-cols-2 gap-6">
+            <Section id="usage" title="Agent runtimes (7 d)">
+              <DataTable caption="Leases and tokens per role and runtime" rows={data.maker_usage_7d} rowKey={(u) => `${u.role}-${u.runtime}-${u.model}`}
+                empty="No leases in the last 7 days." columns={[
+                  { key: 'role', label: 'Role', render: (u) => u.role },
+                  { key: 'runtime', label: 'Runtime / model', render: (u) => `${u.runtime}${u.model ? ` · ${u.model}` : ''}` },
+                  { key: 'leases', label: 'Leases', render: (u) => u.leases },
+                  { key: 'tokens', label: 'Tokens', render: (u) => fmt(u.tokens) },
+                ]} />
+            </Section>
+            <Section id="judgments" title="Judgments (jev, 7 d)">
+              <DataTable caption="jev judgment calls and errors" rows={data.judgments_7d} rowKey={(j) => j.judgment}
+                empty="No judgment calls in the last 7 days." columns={[
+                  { key: 'judgment', label: 'Judgment', render: (j) => j.judgment },
+                  { key: 'calls', label: 'Calls', render: (j) => j.calls },
+                  { key: 'errors', label: 'Errors', render: (j) => j.errors, cellClassName: (j) => (j.errors > j.calls * 0.3 ? 'text-status-error' : undefined) },
+                  { key: 'tokens', label: 'Input tokens', render: (j) => fmt(j.input_tokens) },
+                ]} />
+            </Section>
+          </div>
         </>
       )}
     </div>
