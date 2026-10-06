@@ -62,6 +62,24 @@ export interface RuntimeHealthRow {
   readiness: 'ok' | 'reassess' | 'retire_unused' | 'keep_test_only' | 'hold' | 'rejected' | 'unknown_runtime';
 }
 
+/** UX-17: GET /api/health/scorecards (read:evidence) — mirrors services/scorecards.ts. */
+export interface RuntimeScorecard {
+  runtime: string;
+  outcomes: { n: number; ok: number; success_rate: number | null; ci: [number, number] | null };
+  duration_ms: { p50: number | null; p95: number | null };
+  tokens: number;
+  cost: { usd: number | null; reason: string | null };
+  failure_classes: Record<string, number>;
+  benched: boolean;
+}
+export interface AgentScorecard {
+  agent: string;
+  task_kinds: Array<{ task_kind: string; n: number; ok: number; success_rate: number | null }>;
+  n: number; ok: number; success_rate: number | null; ci: [number, number] | null;
+  last_outcome_at: string | null;
+  connection_state: string | null; connection_reason: string | null;
+}
+
 /** UX-9: GET /api/health/evolution-evidence (manage:config) — read-only evidence of the evolution loop. */
 export type GateState = 'green' | 'red' | 'unknown';
 export interface EvolutionEvidence {
@@ -1352,6 +1370,11 @@ class ApiClient {
   /** UX-16: one read-only row per runtime (admission, versions, probe, 30-d leases, gym breaker, readiness). */
   async getRuntimeHealth(): Promise<{ runtimes: RuntimeHealthRow[] }> {
     return this.request('/health/runtimes');
+  }
+
+  /** UX-17: per-runtime and per-agent scorecards (30 d, read-only). */
+  async getScorecards(): Promise<{ runtimes: RuntimeScorecard[]; agents: AgentScorecard[] }> {
+    return this.request('/health/scorecards');
   }
 
   async getKnowledgeOverview(): Promise<KnowledgeOverview> {
