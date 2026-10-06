@@ -262,6 +262,13 @@ export class TelegramBotService {
       return 'denied';
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      if (message === 'APPROVAL_ALREADY_PROCESSED') {
+        // TG-3: say who decided (ids/actor names only) instead of a bare error
+        const row = this.db.prepare('SELECT status, approved_by, updated_at FROM approvals WHERE id = ?').get(approvalId) as { status: string; approved_by: string | null; updated_at: string | null } | undefined;
+        const when = row?.updated_at ? ` at ${new Date(row.updated_at).toISOString().replace(/\.\d{3}Z$/, 'Z')}` : '';
+        await this.sendMessage(chatId, `✅ Already ${row?.status ?? 'decided'} by ${row?.approved_by || 'a rule'}${when}`);
+        return 'already_decided';
+      }
       await this.sendMessage(chatId, message.startsWith('SELF_APPROVAL_FORBIDDEN') ? '⛔ You cannot approve your own request.' : `Error: ${message}`);
       return message.startsWith('SELF_APPROVAL_FORBIDDEN') ? 'self_approval' : 'error';
     }
