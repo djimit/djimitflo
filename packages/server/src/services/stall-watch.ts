@@ -53,6 +53,11 @@ export function detectStalls(db: Database, now = Date.now(), env: NodeJS.Process
   // 7. RX-11: a solved gym canary (a run carrying an unsolvable test) means the oracle or the sandbox is compromised
   const solved = one<{ n: number; first: string | null }>(db, "SELECT COUNT(*) AS n, MIN(created_at) AS first FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.canary') = 1 AND json_extract(metadata, '$.gym_result.status') = 'success' AND created_at >= ?", ago(now, 24 * 30));
   if (solved && solved.n > 0) out.push({ subsystem: 'gym:canary', since: solved.first, detail: `${solved.n} gym canary run(s) reported success — a canary cannot be solved from the source file: check the oracle and the worker sandbox` });
+  // 8. RX-14: the nightly thermometer is on but wrote nothing for 36 h (trends cannot be backfilled)
+  if (env.EVOLUTION_ESTIMATORS_ENABLED === 'true') {
+    const last = one<{ t: string | null }>(db, 'SELECT MAX(computed_at) AS t FROM evolution_estimates')?.t ?? null;
+    if (!last || last < ago(now, 36)) out.push({ subsystem: 'estimates', since: last, detail: 'EVOLUTION_ESTIMATORS_ENABLED is on but no evolution estimate was written for > 36 h' });
+  }
   // 6. a runtime admission expires within 30 days: at expiry the engine stops dispatching to that runtime
   for (const a of expiringAdmissions(now)) out.push({ subsystem: `runtime_admission:${a.runtime_id}`, since: a.expires_at, detail: `admission ${decide(a).decision} expires ${a.expires_at}; reassess (execution/runtime-admission.ts) before then` });
   return out;
