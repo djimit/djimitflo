@@ -4,18 +4,13 @@ import { useWsSubscribe } from '../components/WebSocketProvider';
 import { Link } from 'react-router-dom';
 import { Activity, RefreshCw } from 'lucide-react';
 import { api, type OperatorCockpit, type ServiceStatus } from '../lib/api';
+import { fmt, since } from '../lib/format';
 
 const LABELS: Record<string, string> = {
   verified_7d: 'Verified (7 d)', regressed_7d: 'Regressed (7 d)', infra_failed_7d: 'Infra failed (7 d)', approvals_pending: 'Approvals pending',
   approvals_decided_7d: 'Approvals decided (7 d)', approvals_expired_7d: 'Approvals expired (7 d)', runs_failed_7d: 'Runs failed/interrupted (7 d)',
   panel_unparseable_7d: 'Panel unparseable (7 d)', reflection_inflow_24h: 'Reflection inflow (24 h)', needs_grounding_stock: 'Needs grounding',
   needs_more_evidence_stock: 'Needs more evidence', memory_reads_7d: 'Memory reads (7 d)', tokens_per_outcome_7d: 'Tokens per outcome (7 d)',
-};
-const fmt = (n: number | null | undefined) => (n === null || n === undefined ? '—' : n.toLocaleString('en-US'));
-const since = (iso: string | null) => {
-  if (!iso) return 'never';
-  const h = Math.round((Date.now() - Date.parse(iso)) / 3_600_000);
-  return h < 1 ? '< 1 h ago' : h < 48 ? `${h} h ago` : `${Math.round(h / 24)} d ago`;
 };
 
 /** UX-13: the daily digest, read-only (Telegram delivery is OPERATOR_DIGEST_ENABLED on the server). */

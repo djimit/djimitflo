@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Compass, Copy, DoorOpen, Eye, EyeOff, Lightbulb, Magnet, MessageCircle, RefreshCw, ShieldAlert, Sparkles, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api, type AgentReputation, type JoinInvite, type JoinRequest, type LureCast, type LureInvitee, type LureStatus, type SocialAgentPresence, type SocialCommons, type SocialMessage, type SocialThread } from '../lib/api';
+import { fmtDate } from '../lib/format';
 
 export type ConstellationNode = { id: string; name: string; x: number; y: number; present: boolean; lured: boolean; threads: number; hue: number };
 export type ConstellationEdge = { from: string; to: string; x1: number; y1: number; x2: number; y2: number; count: number; stage: SocialThread['stage'] };
@@ -81,9 +82,7 @@ export function runtimeParticipation(threads: SocialThread[]) {
   return [...participants.values()];
 }
 
-function time(value: string | null) {
-  return value ? new Date(value).toLocaleString() : 'unknown';
-}
+const time = (value: string | null) => fmtDate(value);
 
 export function AgentCommonsPage() {
   const [commons, setCommons] = useState<SocialCommons>({ agents: [], threads: [] });
@@ -260,7 +259,7 @@ export function AgentCommonsPage() {
           {participation.map((entry) => <li key={JSON.stringify([entry.agent, entry.runtime, entry.model])} className="rounded-lg border border-border p-3 text-xs">
             <p className="font-medium text-foreground">{commons.agents.find((agent) => agent.id === entry.agent)?.name || entry.agent}</p>
             <p className="mt-1 break-all text-foreground-secondary">{entry.runtime} · {entry.model}</p>
-            <p className="mt-1 text-foreground-tertiary">{entry.replies} bijdragen · laatst {time(entry.lastReply)}</p>
+            <p className="mt-1 text-foreground-tertiary">{entry.replies} replies · last {time(entry.lastReply)}</p>
           </li>)}
           {!participation.length && <li className="text-xs text-foreground-tertiary">No runtime replies received yet.</li>}
         </ul>
@@ -333,7 +332,7 @@ const INVITEE_TONE: Record<LureInvitee['state'], string> = {
   bit: 'border-status-success/40 bg-status-success/10 text-status-success',
   expired: 'border-border text-foreground-muted line-through',
 };
-const INVITEE_LABEL: Record<LureInvitee['state'], string> = { invited: 'uitgenodigd', seen: 'gezien', bit: 'gebeten', expired: 'verlopen' };
+const INVITEE_LABEL: Record<LureInvitee['state'], string> = { invited: 'invited', seen: 'seen', bit: 'bitten', expired: 'expired' };
 
 function LurePanel({ lures, cast }: { lures: LureStatus | null; cast: LureCast | null }) {
   const [reveal, setReveal] = useState(false);
@@ -359,7 +358,7 @@ function LurePanel({ lures, cast }: { lures: LureStatus | null; cast: LureCast |
           <ul className="mt-3 space-y-2">
             {cast.invitations.map((invitation) => (
               <li key={invitation.agent_id} className="rounded-lg bg-background p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs"><span className="font-semibold text-foreground">{invitation.name} <span className="font-normal text-foreground-tertiary">({invitation.agent_id})</span></span><button type="button" onClick={() => void copy(invitation.agent_id, invitation.poller_env)} className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-foreground-secondary hover:bg-background-elevated"><Copy className="h-3 w-3" /> {copied === invitation.agent_id ? 'gekopieerd' : 'kopieer poller-commando'}</button></div>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs"><span className="font-semibold text-foreground">{invitation.name} <span className="font-normal text-foreground-tertiary">({invitation.agent_id})</span></span><button type="button" onClick={() => void copy(invitation.agent_id, invitation.poller_env)} className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-foreground-secondary hover:bg-background-elevated"><Copy className="h-3 w-3" /> {copied === invitation.agent_id ? 'copied' : 'copy poller command'}</button></div>
                 <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all font-mono text-[10px] text-foreground-secondary">{reveal ? invitation.poller_env : invitation.poller_env.replace(invitation.token, '•'.repeat(24))}</pre>
               </li>
             ))}
@@ -372,9 +371,9 @@ function LurePanel({ lures, cast }: { lures: LureStatus | null; cast: LureCast |
           <h3 className="text-sm font-semibold text-foreground">Lures cast</h3>
           {(lures?.lures || []).map((lure) => (
             <article key={lure.id} className="rounded-lg border border-border bg-background p-3">
-              <div className="flex flex-wrap items-start justify-between gap-2"><p className="text-sm text-foreground">{lure.topic}</p><span className="shrink-0 text-xs" style={{ color: LURE_COLOR }}>{lure.bites}/{lure.invitees.length} gebeten</span></div>
+              <div className="flex flex-wrap items-start justify-between gap-2"><p className="text-sm text-foreground">{lure.topic}</p><span className="shrink-0 text-xs" style={{ color: LURE_COLOR }}>{lure.bites}/{lure.invitees.length} bitten</span></div>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {lure.invitees.map((invitee) => <span key={invitee.agent_id} title={invitee.bit_at ? `gebeten ${time(invitee.bit_at)}` : INVITEE_LABEL[invitee.state]} className={`rounded-full border px-2 py-0.5 text-[10px] ${INVITEE_TONE[invitee.state]}`}>{invitee.name} · {INVITEE_LABEL[invitee.state]}{invitee.reach === 'never' ? ' · nooit verbonden' : ''}</span>)}
+                {lure.invitees.map((invitee) => <span key={invitee.agent_id} title={invitee.bit_at ? `bitten ${time(invitee.bit_at)}` : INVITEE_LABEL[invitee.state]} className={`rounded-full border px-2 py-0.5 text-[10px] ${INVITEE_TONE[invitee.state]}`}>{invitee.name} · {INVITEE_LABEL[invitee.state]}{invitee.reach === 'never' ? ' · never connected' : ''}</span>)}
               </div>
               <p className="mt-2 text-[10px] text-foreground-tertiary">by {lure.created_by} · {time(lure.created_at)} · expires {time(lure.expires_at)} · <code>{lure.topic_ref}</code></p>
             </article>
@@ -430,16 +429,16 @@ function OpenDoorPanel({ requests, invite, onInvite, onDecide, busy }: { request
       </div>
       {invite && (
         <div className="mt-4 rounded-lg border p-3" style={{ borderColor: STAGE.asked.color }}>
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs"><span className="font-semibold text-foreground">Code voor "{invite.label}" · {invite.max_uses}× uses · expires {time(invite.expires_at)} · alleen nu zichtbaar</span><button type="button" onClick={() => void copy()} className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-foreground-secondary hover:bg-background-elevated"><Copy className="h-3 w-3" /> {copied ? 'gekopieerd' : 'kopieer aanklop-voorbeeld'}</button></div>
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs"><span className="font-semibold text-foreground">Code for "{invite.label}" · {invite.max_uses}× uses · expires {time(invite.expires_at)} · shown only now</span><button type="button" onClick={() => void copy()} className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-foreground-secondary hover:bg-background-elevated"><Copy className="h-3 w-3" /> {copied ? 'copied' : 'copy knock example'}</button></div>
           <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all font-mono text-[10px] text-foreground-secondary">{example}</pre>
         </div>
       )}
       <div className="mt-4 space-y-2">
-        <h3 className="text-sm font-semibold text-foreground">Aangeklopt {pending.length > 0 && <span className="ml-1 rounded-full border border-accent-warning/40 px-2 py-0.5 text-[10px] text-accent-warning">{pending.length} wachtend</span>}</h3>
+        <h3 className="text-sm font-semibold text-foreground">Knocked {pending.length > 0 && <span className="ml-1 rounded-full border border-accent-warning/40 px-2 py-0.5 text-[10px] text-accent-warning">{pending.length} waiting</span>}</h3>
         {requests.map((request) => (
           <article key={request.agent_id} className="rounded-lg border border-border bg-background p-3">
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2 text-sm"><span className="font-semibold text-foreground">{request.name}</span><span className="font-mono text-xs text-foreground-tertiary">{request.agent_id}</span><span className={`rounded-full border px-2 py-0.5 text-[10px] ${JOIN_TONE[request.status]}`}>{JOIN_LABEL[request.status]}</span>{request.status === 'pending' && <ReputationBadge reputation={reputations[request.agent_id]} />}</div>{request.description && <p className="mt-1 text-xs text-foreground-secondary">{request.description}</p>}<p className="mt-1 text-[10px] text-foreground-tertiary">{request.capabilities.join(', ') || 'geen capabilities opgegeven'} · via "{request.invite_label}" · {request.ip} · {time(request.requested_at)}{request.contact && <> · {request.contact}</>}{request.decided_by && <> · beslist door {request.decided_by}</>}</p></div>
+              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2 text-sm"><span className="font-semibold text-foreground">{request.name}</span><span className="font-mono text-xs text-foreground-tertiary">{request.agent_id}</span><span className={`rounded-full border px-2 py-0.5 text-[10px] ${JOIN_TONE[request.status]}`}>{JOIN_LABEL[request.status]}</span>{request.status === 'pending' && <ReputationBadge reputation={reputations[request.agent_id]} />}</div>{request.description && <p className="mt-1 text-xs text-foreground-secondary">{request.description}</p>}<p className="mt-1 text-[10px] text-foreground-tertiary">{request.capabilities.join(', ') || 'no capabilities given'} · via "{request.invite_label}" · {request.ip} · {time(request.requested_at)}{request.contact && <> · {request.contact}</>}{request.decided_by && <> · decided by {request.decided_by}</>}</p></div>
               {request.status === 'pending' && <div className="flex shrink-0 gap-2"><button type="button" onClick={() => onDecide(request.agent_id, true)} disabled={busy} className="rounded-lg border border-status-success/40 px-3 py-1.5 text-xs text-status-success hover:bg-status-success/10 disabled:opacity-40">Admit</button><button type="button" onClick={() => onDecide(request.agent_id, false)} disabled={busy} className="rounded-lg border border-status-error/40 px-3 py-1.5 text-xs text-status-error hover:bg-status-error/10 disabled:opacity-40">Reject</button></div>}
             </div>
           </article>
@@ -517,7 +516,7 @@ export function Conversation({ thread, agents }: { thread: SocialThread; agents:
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-3">
-        <div className="min-w-0"><h2 className="text-lg font-semibold text-foreground">{thread.topic}</h2><p className="mt-1 text-xs text-foreground-tertiary">{thread.participants.map(name).join(' + ')} · gestart {time(thread.started_at)} · laatst {time(thread.last_activity_at)}{thread.topic_ref && <> · <code className="text-accent">{thread.topic_ref}</code></>}</p></div>
+        <div className="min-w-0"><h2 className="text-lg font-semibold text-foreground">{thread.topic}</h2><p className="mt-1 text-xs text-foreground-tertiary">{thread.participants.map(name).join(' + ')} · started {time(thread.started_at)} · last {time(thread.last_activity_at)}{thread.topic_ref && <> · <code className="text-accent">{thread.topic_ref}</code></>}</p></div>
         <span className="rounded-full border px-2.5 py-1 text-xs font-medium" style={{ color: stage.color, borderColor: stage.color }}>{stage.label}</span>
       </div>
       {thread.topic_ref?.startsWith('message:') && <p className="text-xs text-accent">Topic raised by an agent · bron {thread.topic_ref}</p>}
@@ -559,7 +558,7 @@ function Bubble({ message, name }: { message: SocialMessage; name: (id: string) 
             <Facet label="Stop condition" value={message.stop_condition} color="rgb(239 68 68)" />
           </div>
           {message.proposed_improvement && <p className="mt-3 text-xs text-foreground-secondary">{message.improvement_id ? <>Registered proposal <code>{message.improvement_id}</code> · {message.improvement_status || 'status unknown'}{message.improvement_status === 'proposed' && <> · <Link to="/compliance#improvement-inbox-title" className="text-accent underline">Open review-inbox</Link></>}</> : 'Idea under discussion · no registered improvement proposal yet'}</p>}
-          {message.action === 'social.learning' && <div className="mt-3 rounded-lg border border-status-success/30 bg-status-success/10 p-3 text-xs text-foreground"><Lightbulb className="mr-1 inline h-3.5 w-3.5 text-status-success" /> Recorded as a reflection candidate{message.reflection_id && <> <code className="text-foreground-secondary">{message.reflection_id}</code></>}{message.reflection_status && <> · {message.reflection_status}</>} · niet gepromoot zonder review</div>}
+          {message.action === 'social.learning' && <div className="mt-3 rounded-lg border border-status-success/30 bg-status-success/10 p-3 text-xs text-foreground"><Lightbulb className="mr-1 inline h-3.5 w-3.5 text-status-success" /> Recorded as a reflection candidate{message.reflection_id && <> <code className="text-foreground-secondary">{message.reflection_id}</code></>}{message.reflection_status && <> · {message.reflection_status}</>} · not promoted without review</div>}
         </>}
       <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-foreground-tertiary"><span>{time(message.timestamp)}</span>{message.runtime && <span>{message.runtime}{message.model_id ? ` · ${message.model_id}` : ''}</span>}{message.runtime_run_id && <span className="break-all">run {message.runtime_run_id}</span>}{message.evidence.length > 0 && <details><summary className="cursor-pointer text-accent">bewijs ({message.evidence.length})</summary><div className="mt-1 space-y-0.5 font-mono">{message.evidence.map((reference) => <div key={reference} className="break-all">{reference}</div>)}</div></details>}</div>
     </article>

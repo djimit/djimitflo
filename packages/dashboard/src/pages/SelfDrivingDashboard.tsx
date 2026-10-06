@@ -100,7 +100,7 @@ export function SelfDrivingDashboard() {
                   {tuningHistory === null ? (
                     <p className="text-xs text-foreground-secondary">Tuning history laden…</p>
                   ) : tuningHistory.length === 0 ? (
-                    <p className="text-xs text-foreground-secondary">Nog geen tuning-aanpassingen.</p>
+                    <p className="text-xs text-foreground-secondary">No tuning adjustments yet.</p>
                   ) : (
                     <ul className="space-y-1 text-xs">
                       {tuningHistory.map((entry, index) => (

@@ -23,6 +23,8 @@
   --color-status-paused: rgb(var(--djimit-status-paused));
   --color-status-error: rgb(var(--djimit-status-error));
   --color-status-completed: rgb(var(--djimit-status-completed));
+  /* UX-25: used by pages (text-status-warning) but never defined */
+  --color-status-warning: rgb(var(--djimit-accent-warning));
   --color-risk-low: rgb(var(--djimit-risk-low));
   --color-risk-medium: rgb(var(--djimit-risk-medium));
   --color-risk-high: rgb(var(--djimit-risk-high));
@@ -90,3 +92,8 @@
 .commons-pulse { animation: commons-pulse 2.4s ease-in-out infinite; }
 .commons-flow { animation: commons-flow 1.2s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .commons-pulse, .commons-flow { animation: none; } }
+
+/* UX-25: honour the operator's reduced-motion setting everywhere, not only on the Commons animations */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}

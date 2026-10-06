@@ -4,6 +4,7 @@ import { CheckCircle, XCircle, Clock, AlertTriangle } from 'lucide-react';
 import { api } from '../lib/api';
 import { APPROVALS_CHANGED, minutesUntil } from '../hooks/usePendingApprovals';
 import { ACTION_PERMISSIONS, needsText, permissionError, useCan } from '../lib/permissions';
+import { useDialog } from './ConfirmDialog';
 
 interface ApprovalCardProps {
   approval: ApprovalRequest;
@@ -14,6 +15,7 @@ export function ApprovalCard({ approval: incomingApproval, onUpdated }: Approval
   const [approval, setApproval] = useState(incomingApproval);
   const status = approval.status;
   const [processing, setProcessing] = useState(false);
+  const dialog = useDialog();
   const [error, setError] = useState<string | null>(null);
   const canDecide = useCan(ACTION_PERMISSIONS.approveRequest);
   useEffect(() => setApproval(incomingApproval), [incomingApproval]);
@@ -34,8 +36,14 @@ export function ApprovalCard({ approval: incomingApproval, onUpdated }: Approval
   };
 
   const handleDeny = async () => {
-    const reason = prompt('Reason for denial:');
-    if (reason === null) return;
+    // UX-25: a reason picker plus optional details instead of window.prompt
+    const answer = await dialog.ask({ title: 'Deny this request', fields: [
+      { name: 'reason', label: 'Reason', options: ['Out of scope', 'Not enough evidence', 'Too risky', 'Duplicate', 'Other'], required: true },
+      { name: 'detail', label: 'Details', multiline: true },
+    ], confirmLabel: 'Deny request' });
+    if (answer === null) return;
+    // 'Other' means the details are the reason; without details there is no reason
+    const reason = answer.reason === 'Other' ? answer.detail : answer.detail ? `${answer.reason}: ${answer.detail}` : answer.reason;
     if (!reason.trim()) { setError('A denial reason is required.'); return; }
 
     setProcessing(true);
@@ -63,6 +71,7 @@ export function ApprovalCard({ approval: incomingApproval, onUpdated }: Approval
         ? 'bg-status-completed/5 border-status-completed/20'
         : 'bg-status-error/5 border-status-error/20'
     }`}>
+      {dialog.element}
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2">
