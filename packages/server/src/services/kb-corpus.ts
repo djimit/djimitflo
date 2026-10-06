@@ -1,9 +1,10 @@
 import { createHash } from 'crypto';
 import type { Database } from 'better-sqlite3';
-import { cosine, embed } from './proposal-dedupe';
+import { addDimColumn, cosine, embed } from './proposal-dedupe';
 import { checkContentSafety, contentSafetyEnabled } from './content-safety';
 import { runJudgment, type JudgmentDef } from './judgment-service';
 import type { TypeSafeClient } from './typesafe-client';
+import { dimsMatch } from './embedding-dims';
 
 /**
  * Plan L2: the operator's DjimitKBWiki (252 concepts, 47 entities, 1 014 source summaries on the workstation, 27-09) never
@@ -16,7 +17,10 @@ export interface KbPage { path: string; title: string; body: string }
 const MAX_PAGES = 20;
 const MAX_BODY = 20_000;
 
-const ensure = (db: Database) => db.exec('CREATE TABLE IF NOT EXISTS kb_pages (path TEXT PRIMARY KEY, host TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL, sha TEXT NOT NULL, vector BLOB NOT NULL, updated_at TEXT NOT NULL)');
+const ensure = (db: Database) => {
+  db.exec('CREATE TABLE IF NOT EXISTS kb_pages (path TEXT PRIMARY KEY, host TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL, sha TEXT NOT NULL, vector BLOB NOT NULL, updated_at TEXT NOT NULL)');
+  addDimColumn(db, 'kb_pages', true); // UX-21
+};
 
 export async function ingestKbPages(db: Database, host: string, pages: unknown, fetchFn: typeof fetch = fetch): Promise<{ accepted: string[]; unsafe: string[]; failed: string[] }> {
   if (!Array.isArray(pages) || pages.length > MAX_PAGES) throw new Error(`KB_PAGES_INVALID: 1..${MAX_PAGES} pages per call`);
@@ -39,8 +43,8 @@ export async function ingestKbPages(db: Database, host: string, pages: unknown, 
     if (unchanged) { out.accepted.push(path); continue; }
     const v = await embed(`${title}\n${body}`, fetchFn);
     if (!v) { out.failed.push(path); continue; }
-    db.prepare('INSERT OR REPLACE INTO kb_pages (path, host, title, body, sha, vector, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(path, host, title, body, sha, Buffer.from(v.buffer, v.byteOffset, v.byteLength), new Date().toISOString());
+    db.prepare('INSERT OR REPLACE INTO kb_pages (path, host, title, body, sha, vector, updated_at, embedding_model, embedding_dim) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(path, host, title, body, sha, Buffer.from(v.buffer, v.byteOffset, v.byteLength), new Date().toISOString(), process.env.EMBEDDING_MODEL || 'nvidia/nemotron-3-embed-1b', v.length);
     out.accepted.push(path);
   }
   return out;
@@ -66,7 +70,9 @@ export async function kbContext(db: Database, subject: { type: string; id: strin
     const q = await embed(text.slice(0, 4_000), fetchFn, 'query');
     if (!q) return null;
     // ponytail: full scan (~1.3k pages × 2048 dims per panel); move to Qdrant when the corpus passes ~20k pages
-    let hits = rows.map((r) => ({ r, score: cosine(q, new Float32Array(r.vector.buffer, r.vector.byteOffset, r.vector.byteLength / 4)) }))
+    let hits = rows.map((r) => ({ r, vec: new Float32Array(r.vector.buffer, r.vector.byteOffset, r.vector.byteLength / 4) }))
+      .filter((x) => dimsMatch('kb_pages', q.length, x.vec.length))
+      .map(({ r, vec }) => ({ r, score: cosine(q, vec) }))
       .filter((h) => h.score >= 0.3).sort((a, b) => b.score - a.score).slice(0, k);
     if (!hits.length) return null;
     const kept = await gatePassages(db, subject, text, hits.map((h) => h.r));

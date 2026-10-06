@@ -13,6 +13,7 @@ import { createHash } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import type { EmbeddingProvider } from '@djimitflo/shared';
 import { OllamaEmbeddingProvider } from './ollama-embedding-provider';
+import { dimsMatch, vectorStrictDim } from './embedding-dims';
 
 interface MemoryVector {
   id: string;
@@ -82,9 +83,9 @@ export class VectorMemoryService {
 
     this.db.prepare(`
       INSERT OR REPLACE INTO vector_memories
-        (id, content, embedding_json, embedding_provider, metadata_json, created_at, ttl, access_count, last_accessed)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
-    `).run(id, input.content, JSON.stringify(vector.embedding), this.embeddingProvider.name, JSON.stringify(vector.metadata), now, vector.ttl, now);
+        (id, content, embedding_json, embedding_provider, embedding_dim, metadata_json, created_at, ttl, access_count, last_accessed)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+    `).run(id, input.content, JSON.stringify(vector.embedding), this.embeddingProvider.name, vector.embedding.length, JSON.stringify(vector.metadata), now, vector.ttl, now);
 
     if (this.index.size > MAX_MEMORIES) {
       this.evictOldest();
@@ -112,6 +113,8 @@ export class VectorMemoryService {
         }
       }
 
+      // UX-21: a different dimension is a different vector space — counted; skipped under VECTOR_STRICT_DIM
+      if (!dimsMatch('vector_memories', dim, vector.embedding.length) && vectorStrictDim()) continue;
       const vecEmb = vector.embedding.length === dim
         ? vector.embedding
         : this.resample(vector.embedding, dim);
@@ -198,6 +201,7 @@ export class VectorMemoryService {
 
       for (const [otherId, otherVector] of this.index) {
         if (id === otherId || assigned.has(otherId)) continue;
+        if ((!dimsMatch('vector_memories', dim, vector.embedding.length) || !dimsMatch('vector_memories', dim, otherVector.embedding.length)) && vectorStrictDim()) continue;
         const vecA = this.resample(vector.embedding, dim);
         const vecB = this.resample(otherVector.embedding, dim);
         const similarity = this.cosineSimilarity(vecA, vecB);
@@ -271,8 +275,8 @@ export class VectorMemoryService {
     for (const row of rows) {
       const embedding = await this.generateEmbeddingCached(row.content);
       this.db.prepare(`
-        UPDATE vector_memories SET embedding_json = ?, embedding_provider = ? WHERE id = ?
-      `).run(JSON.stringify(embedding), this.embeddingProvider.name, row.id);
+        UPDATE vector_memories SET embedding_json = ?, embedding_provider = ?, embedding_dim = ? WHERE id = ?
+      `).run(JSON.stringify(embedding), this.embeddingProvider.name, embedding.length, row.id);
       this.index.set(row.id, {
         id: row.id,
         content: row.content,
@@ -414,6 +418,9 @@ export class VectorMemoryService {
     const columns = this.db.prepare('PRAGMA table_info(vector_memories)').all() as Array<{ name: string }>;
     if (!columns.some((column) => column.name === 'embedding_provider')) {
       this.db.exec('ALTER TABLE vector_memories ADD COLUMN embedding_provider TEXT');
+    }
+    if (!columns.some((column) => column.name === 'embedding_dim')) {
+      this.db.exec('ALTER TABLE vector_memories ADD COLUMN embedding_dim INTEGER');
     }
   }
 }
