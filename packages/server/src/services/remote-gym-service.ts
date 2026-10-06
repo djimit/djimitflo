@@ -7,6 +7,7 @@ import { infraFailing, triedTasks } from './evolution-gym-service';
 import { mutantTask, type MutantTask } from './gym-mutants';
 import { LoopEventService } from './loop-event-service';
 import { changedFromReason, classifyHack, hackDetectorShadow } from './gym-hack-classifier';
+import { settleNoHeadroom } from './dream-evolution';
 import { dreamEvolutionEnabled, ensureBaseline, genome, holdout, mutantHoldout, mutantTrialsEnabled, nextTrialAttempt, type Genome } from './genome-registry';
 
 /**
@@ -98,7 +99,9 @@ export class RemoteGymService {
     if (!task && dreamEvolutionEnabled()) {
       ensureBaseline(this.db, now.toISOString());
       const mutants = mutantTrialsEnabled() ? mutantHoldout(this.db, (tier, tried) => mutantTask(this.db, repo, key, tried, tier), now.toISOString()) : [];
-      const next = nextTrialAttempt(this.db, key, [...holdout(this.db, tasks, now.toISOString()), ...mutants.map((m) => m.commit)]);
+      const frozen = holdout(this.db, tasks, now.toISOString());
+      settleNoHeadroom(this.db, key, frozen, mutants.map((m) => m.commit), now.getTime()); // B8: no mutant attempt on a trial nothing could win
+      const next = nextTrialAttempt(this.db, key, [...frozen, ...mutants.map((m) => m.commit)]);
       if (next) { task = tasks.find((t) => t.commit === next.commit) ?? mutants.find((m) => m.commit === next.commit); trialGenome = task ? genome(this.db, next.genomeId) : null; }
       if (!trialGenome) task = undefined;
     }
