@@ -75,9 +75,11 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
       res.status(400).json({ error: { message: error.message, code: 'INVALID_APPROVAL_DECISION' } });
       return true;
     }
+    // TG-3: a second decision (e.g. a Telegram tap after a lane rule auto-approved) is a 409, not a 500
     const code = error.message.includes('SELF_APPROVAL_FORBIDDEN')
       ? 'SELF_APPROVAL_FORBIDDEN'
-      : error.message.includes('APPROVAL_EXPIRED') ? 'APPROVAL_EXPIRED' : null;
+      : error.message.includes('APPROVAL_EXPIRED') ? 'APPROVAL_EXPIRED'
+        : error.message === 'Approval already processed' ? 'APPROVAL_ALREADY_PROCESSED' : null;
     if (!code) return false;
     res.status(code === 'APPROVAL_EXPIRED' ? 410 : 409).json({ error: { message: error.message, code } });
     return true;
