@@ -17,6 +17,7 @@ import { knowledgeOverview } from '../services/knowledge-overview';
 import { forecastScores, forecastScoresV2 } from '../services/forecast-scoring';
 import { buildEvolutionEvidence } from '../services/evolution-evidence';
 import { runtimeConfigView } from '../services/runtime-config-view';
+import { buildDigest } from '../services/operator-push';
 import { getDatabaseProvenance } from '../database/provenance';
 
 export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router {
@@ -137,6 +138,11 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   });
 
   // UX-8: which background schedulers this process armed at boot (name, arming flag, interval, last tick) — admins only
+  // UX-13: the daily operator digest as it would be sent (read-only; delivery is OPERATOR_DIGEST_ENABLED)
+  router.get('/digest', requireAuth, requirePermission('read:evidence'), (_req, res) => {
+    res.json(buildDigest(db));
+  });
+
   router.get('/schedulers', requireAuth, requirePermission('manage:config'), (_req, res) => {
     res.json(listSchedulers());
   });
