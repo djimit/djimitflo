@@ -8,3 +8,4 @@
 export * from './types';
 export * from './types/explainer';
 export * from './loop-catalog';
+export * from './contracts/operator';
