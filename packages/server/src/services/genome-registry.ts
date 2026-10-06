@@ -1,6 +1,7 @@
 import type { Database } from 'better-sqlite3';
 import type { GymTask } from './gym-task-miner';
 import type { MutantTask } from './gym-mutants';
+import { fitIrt, gymObservations, irtSelectionEnabled, pickInformativeItems, respondentKey } from './gym-irt';
 
 /**
  * Y3 (plan Phase Y, Darwin loop): the population of maker strategy genomes and the frozen gym holdout they are judged on.
@@ -61,7 +62,20 @@ export function holdout(db: Database, tasks: GymTask[], now = new Date().toISOSt
   const sorted = [...fresh].sort((a, b) => a.commit.localeCompare(b.commit));
   const step = sorted.length / HOLDOUT_SIZE;
   const insert = db.prepare('INSERT OR IGNORE INTO gym_holdout (commit_sha, created_at, epoch) VALUES (?, ?, ?)');
-  for (let i = 0; i < HOLDOUT_SIZE; i++) insert.run(sorted[Math.floor(i * step)].commit, now, epoch);
+  // B8: with GYM_IRT_SELECTION the new epoch prefers the fresh tasks with the most information at the parent's ability;
+  // the rest is filled with the deterministic spread below (off: exactly the spread, as before)
+  const picked: string[] = [];
+  if (irtSelectionEnabled()) {
+    const fit = fitIrt(gymObservations(db));
+    const theta = fit.abilities[respondentKey(process.env.DREAM_EVOLUTION_SPECIES || 'atomic@llama-router')] ?? 0;
+    const freshKeys = new Set(fresh.map((t) => t.commit));
+    picked.push(...pickInformativeItems(fit.items.filter((it) => freshKeys.has(it.key)), theta, HOLDOUT_SIZE).map((it) => it.key));
+  }
+  for (let i = 0; picked.length < HOLDOUT_SIZE && i < sorted.length; i++) {
+    const c = sorted[Math.floor(i * step) % sorted.length].commit;
+    if (!picked.includes(c)) picked.push(c);
+  }
+  for (const c of picked.slice(0, HOLDOUT_SIZE)) insert.run(c, now, epoch);
   return holdout(db, [], now);
 }
 

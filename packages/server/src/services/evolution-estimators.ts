@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { buildEvolutionEvidence } from './evolution-evidence';
 import { markRun } from './scheduler-registry';
+import { irtSummary } from './gym-irt';
 
 /**
  * RX-14 (Phase F): the nightly "thermometer". Once per UTC day the loop's own measurements are persisted to
@@ -76,6 +77,14 @@ export function computeEstimates(db: Database, env: NodeJS.ProcessEnv = process.
     SUM(agree IS NOT NULL) AS compared, SUM(COALESCE(agree, 0)) AS agreed FROM llm_model_calls WHERE created_at >= ? GROUP BY 1, 2`, since(14))) {
     out.push(rate('model_ok_rate', `${m.consumer}|${m.model}`, 14, m.ok, m.n, { compared: m.compared, agreed: m.agreed, agree_rate: m.compared ? +(m.agreed / m.compared).toFixed(4) : null }));
   }
+
+  // B8: IRT calibration of the gym — share of tasks that discriminate (2PL a ≥ 0.3, mixed outcomes) and the most informative
+  // tasks at the evolving species' baseline ability (detail); per-flag counts let the trend show whether the task pool improves
+  try {
+    const irt = irtSummary(db, env);
+    out.push(rate('gym_irt_discriminating', 'gym', 0, irt.counts.ok, irt.items - irt.counts.insufficient,
+      { counts: irt.counts, parent: irt.parent, theta: irt.theta, top: irt.top }));
+  } catch { /* fail-soft */ }
 
   // Realm Gates A–D as computed today (value 1 green / 0 red / null unknown; the reason in detail)
   try {
