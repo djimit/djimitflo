@@ -3,6 +3,7 @@ import { forecastScoresV2 } from './forecast-scoring';
 import { parseRuntimeSpec } from './social-runtime-providers';
 import { modelEvidence } from './model-selector';
 import { commonsYield, oracleAgreement } from './honest-numbers';
+import { banditOpe } from './bandit-propensity';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -133,5 +134,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     if (!t || t.estimator !== r.estimator || t.scope !== r.scope) { t = { estimator: r.estimator, scope: r.scope, days: [] }; estimates.push(t); }
     t.days.push({ day: r.day, value: r.value, ci_low: r.ci_low, ci_high: r.ci_high, n: r.n, status: r.status });
   }
-  return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, trials, models, oracle, commons, forecasts_v2, hacks, estimates, gates };
+  // RX-15: report-only off-policy value of the fitness-view policy vs the logged bandit
+  const ope = (() => { try { return banditOpe(db, env); } catch { return null; } })();
+  return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, trials, models, oracle, commons, forecasts_v2, hacks, estimates, ope, gates };
 }

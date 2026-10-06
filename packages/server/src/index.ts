@@ -3,6 +3,7 @@
  * Express + TypeScript + SQLite backend for agent orchestration control plane
  */
 
+import { setLlmLedger } from './services/model-selector';
 import express from 'express';
 import { installOutboundGuard } from './utils/outbound-guard';
 import cors from 'cors';
@@ -87,6 +88,8 @@ async function main() {
   // Initialize database
   console.log('📦 Initializing database...');
   const db = initializeDatabase();
+  // UX-18: one model-call ledger for every server-side LLM call (call sites without a db handle record here)
+  setLlmLedger(db);
 
   // Recover in-flight loops orphaned by a previous crash/restart and prune stale worktrees.
   // At startup the in-memory lease map is empty, so any DB-'running' lease/run is orphaned.

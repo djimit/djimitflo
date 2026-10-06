@@ -1310,7 +1310,8 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
       UNIQUE(estimator, scope, as_of_day));
     -- MS-1: every model call of a consumer (incumbent and shadow candidates): did it parse, did it agree, how long, how long the answer
     CREATE TABLE IF NOT EXISTS llm_model_calls (id INTEGER PRIMARY KEY AUTOINCREMENT, consumer TEXT NOT NULL, model TEXT NOT NULL, ok INTEGER NOT NULL,
-      latency_ms INTEGER, out_chars INTEGER, shadow INTEGER NOT NULL DEFAULT 0, agree INTEGER, created_at TEXT NOT NULL);
+      latency_ms INTEGER, out_chars INTEGER, shadow INTEGER NOT NULL DEFAULT 0, agree INTEGER, provider TEXT, tokens_in INTEGER, tokens_out INTEGER,
+      task_kind TEXT, run_id TEXT, status TEXT, created_at TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS idx_llm_model_calls ON llm_model_calls(consumer, model, created_at);
     -- AR-W: committee member genomes (persona + knowledge recipe + strategy lines) and the per-proposal jobs the workstation pulls
     CREATE TABLE IF NOT EXISTS committee_genomes (id TEXT PRIMARY KEY, parent_id TEXT, persona TEXT NOT NULL, knowledge TEXT NOT NULL, lines_json TEXT NOT NULL DEFAULT '[]',
@@ -1355,6 +1356,9 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   addMissingColumns(db, 'self_improvements', selfImprovementGroundingColumns);
   // RX-12 / RX-13: holdout epochs; e-process shadow decision next to McNemar per settled trial
   addMissingColumns(db, 'gym_holdout', [{ name: 'epoch', definition: 'INTEGER NOT NULL DEFAULT 0' }]);
+  // UX-18: the model-call ledger now covers every server-side LLM call (provider, tokens, task kind, run, status)
+  addMissingColumns(db, 'llm_model_calls', [{ name: 'provider', definition: 'TEXT' }, { name: 'tokens_in', definition: 'INTEGER' }, { name: 'tokens_out', definition: 'INTEGER' },
+    { name: 'task_kind', definition: 'TEXT' }, { name: 'run_id', definition: 'TEXT' }, { name: 'status', definition: 'TEXT' }]);
   addMissingColumns(db, 'gym_mutant_holdout', [{ name: 'epoch', definition: 'INTEGER NOT NULL DEFAULT 0' }]);
   addMissingColumns(db, 'genome_trial_results', [
     { name: 'epoch', definition: 'INTEGER' }, { name: 'e_value', definition: 'REAL' },
