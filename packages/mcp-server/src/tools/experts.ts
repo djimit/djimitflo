@@ -12,6 +12,9 @@ type Row = Record<string, unknown>;
 const text = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] });
 const missing = (what: string) => ({ content: [{ type: 'text' as const, text: what }], isError: true });
 
+/** FE-AREAS: Frontier Experts are fields of interest; people are hidden unless FRONTIER_EXPERT_PERSONS_ENABLED=true. */
+const personsEnabled = (): boolean => process.env.FRONTIER_EXPERT_PERSONS_ENABLED === 'true';
+
 function ready(dbHandle: DbHandle): boolean {
   return Boolean(dbHandle.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'expert_identities'").get());
 }
@@ -38,7 +41,8 @@ export function registerExpertTools(server: McpServer, dbHandle: DbHandle): void
         FROM expert_identities e
         ${capability ? "JOIN expert_capabilities k ON k.expert_id = e.id AND k.status != 'revoked' AND k.capability_id = @capability" : ''}
         WHERE (@state IS NULL OR e.lifecycle_state = @state) AND (@name IS NULL OR e.canonical_name LIKE @name COLLATE NOCASE)
-        ORDER BY e.updated_at DESC LIMIT @limit`, { capability: capability ?? null, state: state ?? null, name: name ? `%${name}%` : null, limit: limit ?? 25 });
+          AND (@persons = 1 OR COALESCE(e.kind, 'person') != 'person')
+        ORDER BY e.updated_at DESC LIMIT @limit`, { capability: capability ?? null, state: state ?? null, name: name ? `%${name}%` : null, persons: personsEnabled() ? 1 : 0, limit: limit ?? 25 });
       return text({ count: rows.length, experts: rows.map((row) => ({ ...row, capabilities: JSON.parse(String(row.capabilities_json || '[]')), capabilities_json: undefined })) });
     },
   );
@@ -52,7 +56,7 @@ export function registerExpertTools(server: McpServer, dbHandle: DbHandle): void
     async ({ expertId }) => {
       if (!ready(dbHandle)) return missing(NOT_READY);
       const expert = one(dbHandle, 'SELECT * FROM expert_identities WHERE id = ?', expertId);
-      if (!expert) return missing(`Expert not found: ${expertId}`);
+      if (!expert || (!personsEnabled() && (expert.kind ?? 'person') === 'person')) return missing(`Expert not found: ${expertId}`);
       const capabilities = all(dbHandle, "SELECT capability_id, status, confidence, evidence_refs_json, derived_by, updated_at FROM expert_capabilities WHERE expert_id = ? AND status != 'revoked'", expertId)
         .map((capability) => ({ ...capability, evidence: all(dbHandle, 'SELECT id, kind, tier, title, url, source_family, lifecycle, retrieved_at FROM expert_evidence WHERE id IN (SELECT value FROM json_each(?))', String(capability.evidence_refs_json)) }));
       return text({
@@ -88,7 +92,8 @@ export function registerExpertTools(server: McpServer, dbHandle: DbHandle): void
       const like = `%${query}%`;
       const claims = all(dbHandle, `SELECT c.id, c.expert_id, e.canonical_name, c.subject, c.relation, c.object, c.polarity, c.evidence_refs_json, c.confidence, c.criticality, c.support_status
         FROM expert_claims c JOIN expert_identities e ON e.id = c.expert_id
-        WHERE c.subject LIKE ? COLLATE NOCASE OR c.relation LIKE ? COLLATE NOCASE OR c.object LIKE ? COLLATE NOCASE ORDER BY c.created_at DESC LIMIT ?`, like, like, like, limit ?? 50);
+        WHERE (c.subject LIKE ? COLLATE NOCASE OR c.relation LIKE ? COLLATE NOCASE OR c.object LIKE ? COLLATE NOCASE) AND (? = 1 OR COALESCE(e.kind, 'person') != 'person')
+        ORDER BY c.created_at DESC LIMIT ?`, like, like, like, personsEnabled() ? 1 : 0, limit ?? 50);
       const ids = JSON.stringify(claims.map((claim) => claim.id));
       const relations = all(dbHandle, 'SELECT id, from_claim_id, to_claim_id, relation, rationale, resolved_at FROM expert_claim_relations WHERE from_claim_id IN (SELECT value FROM json_each(?)) OR to_claim_id IN (SELECT value FROM json_each(?))', ids, ids);
       return text({ claims, relations, unresolved_contradictions: relations.filter((relation) => relation.relation === 'CONTRADICTS' && !relation.resolved_at).length });

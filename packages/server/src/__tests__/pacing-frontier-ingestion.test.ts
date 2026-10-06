@@ -21,6 +21,8 @@ describe('Pacing the Frontier ingestion (§8 §33 I01)', () => {
   let registry: FrontierExpertRegistryService;
 
   beforeEach(() => {
+    // FE-AREAS: this suite covers the legacy people pipeline, which only runs with FRONTIER_EXPERT_PERSONS_ENABLED=true
+    process.env.FRONTIER_EXPERT_PERSONS_ENABLED = 'true';
     db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
     db.exec(schema);
@@ -29,7 +31,7 @@ describe('Pacing the Frontier ingestion (§8 §33 I01)', () => {
     registry.seedTaxonomy();
   });
 
-  afterEach(() => db.close());
+  afterEach(() => { delete process.env.FRONTIER_EXPERT_PERSONS_ENABLED; db.close(); });
 
   it('parses signatories, quotes and the count out of the flight payload', () => {
     const html = page([

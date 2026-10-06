@@ -133,7 +133,7 @@ export function FrontierExpertsPage() {
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="flex items-center gap-3 text-3xl font-bold text-foreground"><GraduationCap className="h-8 w-8 text-accent-secondary" /> Frontier Experts</h1>
-          <p className="mt-2 max-w-3xl text-foreground-secondary">Evidence-backed expertise for the ExpertSwarm. A signature is a discovery, not expertise; only <strong>Active</strong> is recommended, and only after checking and approval by two different humans. Contradictions stay visible and block promotion. Papers and repositories stop at <em>Capability inferred</em> and are used in the sandbox only.</p>
+          <p className="mt-2 max-w-3xl text-foreground-secondary">Evidence-backed fields of interest for the ExpertSwarm. Each area is a research field from the taxonomy, backed by the papers and repositories that work in it; no individual people are profiled. Contradictions stay visible.</p>
         </div>
         <button type="button" onClick={() => void refresh()} aria-label="Refresh experts" className="rounded-lg border border-border p-2 hover:bg-background-tertiary"><RefreshCw className="h-4 w-4" /></button>
       </header>
@@ -143,7 +143,7 @@ export function FrontierExpertsPage() {
 
       <section className="flex flex-wrap items-center gap-2">
         <select aria-label="Kind" value={filter.kind} onChange={(event) => setFilter((current) => ({ ...current, kind: event.target.value }))} className="rounded-lg border border-border bg-background px-2 py-1.5 text-xs">
-          <option value="">All kinds</option><option value="person">People</option><option value="paper">Papers</option><option value="repository">Repositories</option>
+          <option value="">All kinds</option><option value="area">Areas of interest</option><option value="paper">Papers</option><option value="repository">Repositories</option>
         </select>
         {counts.map((entry) => (
           <button key={entry.state} type="button" onClick={() => setFilter((current) => ({ ...current, state: current.state === entry.state ? '' : entry.state }))} className={`rounded-lg border px-3 py-1.5 text-xs ${filter.state === entry.state ? 'ring-2 ring-accent' : ''} ${TONE_CLASS[STATE_TONE[entry.state].tone]}`}>
@@ -190,7 +190,7 @@ export function FrontierExpertsPage() {
           <ul className="mt-3 max-h-[32rem] divide-y divide-border overflow-auto">
             {experts.map((expert) => (
               <li key={expert.id} className={`flex flex-wrap items-center justify-between gap-2 py-2 text-xs ${detail?.expert.id === expert.id ? 'bg-background-tertiary/60' : ''}`}>
-                <span className="flex items-center gap-2"><span className="rounded bg-background-tertiary px-1.5 py-0.5 text-xs text-foreground-tertiary">{expert.kind ?? 'person'}</span><Link to={`/frontier-experts/${expert.id}`} className="font-medium text-foreground hover:underline">{expert.canonical_name}</Link></span>
+                <span className="flex items-center gap-2"><span className="rounded bg-background-tertiary px-1.5 py-0.5 text-xs text-foreground-tertiary">{expert.kind === 'area' ? 'area' : expert.kind}</span><Link to={`/frontier-experts/${expert.id}`} className="font-medium text-foreground hover:underline">{expert.canonical_name}</Link></span>
                 <span className="flex flex-wrap items-center gap-1"><StateBadge state={expert.lifecycle_state} />{expert.capabilities.map((capability) => <span key={capability} className="rounded bg-background-tertiary px-1.5 py-0.5 text-xs text-foreground-secondary">{capability}</span>)}</span>
               </li>
             ))}
@@ -233,7 +233,7 @@ export function FrontierExpertsPage() {
                 </ul>
               </div>
 
-              {detail.affiliations.length > 0 && <div><h3 className="font-semibold text-foreground">Affiliations (self-reported or confirmed)</h3><ul className="mt-1 text-foreground-secondary">{detail.affiliations.map((affiliation, index) => <li key={index}>{affiliation.organization}{affiliation.role ? ` · ${affiliation.role}` : ''} <span className="text-foreground-tertiary">{affiliation.valid_from || '?'} → {affiliation.valid_to || 'present'}</span></li>)}</ul></div>}
+              {/* FE-AREAS: affiliations were about people; areas have none */}
 
               <div>
                 <h3 className="flex items-center gap-1 font-semibold text-foreground"><Scale className="h-3 w-3" /> Claims ({detail.claims.length})</h3>
@@ -247,7 +247,7 @@ export function FrontierExpertsPage() {
                 <div><h3 className="flex items-center gap-1 font-semibold text-foreground"><History className="h-3 w-3" /> Lifecycle</h3><ol className="mt-1 space-y-0.5 text-foreground-secondary">{detail.lifecycle.map((event, index) => <li key={index}>{time(event.created_at)} · {event.from_state || '∅'} → {event.to_state} <span className="text-foreground-tertiary">by {event.actor}{event.reason ? ` — ${event.reason}` : ''}</span></li>)}</ol></div>
                 <div><h3 className="font-semibold text-foreground">Versions</h3><ol className="mt-1 space-y-0.5 text-foreground-secondary">{detail.versions.map((version) => <li key={version.version}>v{version.version} · {time(version.created_at)} · {version.change_summary}</li>)}</ol></div>
               </div>
-              {!!detail.peer_reviews?.length && <section className="space-y-2"><h3 className="font-semibold text-foreground">Peer source reviews</h3><p className="text-foreground-secondary">AI reviews from another research lens; no personal endorsements and no automatic approval.</p>{detail.peer_reviews.map((review) => <details key={review.audit_id} className="rounded-lg border border-border p-2"><summary className="cursor-pointer">{time(review.created_at)} · {review.runtime} · profile v{review.expert_version}</summary><Link to={`/frontier-experts/${review.reviewer_id}`} className="underline">View research lens</Link><ul className="mt-2 space-y-2">{review.checks.map((check) => <li key={check.capability_id}><strong>{check.capability_id}: {check.decision}</strong><p>{check.rationale}</p><p className="break-all text-foreground-tertiary">Sources: {[...check.evidence_refs, ...check.reviewer_evidence_refs].join(', ') || 'none'}</p></li>)}</ul></details>)}</section>}
+              {/* FE-AREAS: peer reviews compared people's research lenses; areas are not peer-reviewed */}
 
               <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
                 <ShieldCheck className="h-4 w-4 text-foreground-tertiary" />

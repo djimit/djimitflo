@@ -15,6 +15,8 @@ describe('expert evidence enrichment (§10 §11 §28 I01 I02 I03 I10)', () => {
   let registry: FrontierExpertRegistryService;
 
   beforeEach(() => {
+    // FE-AREAS: this suite covers the legacy people pipeline, which only runs with FRONTIER_EXPERT_PERSONS_ENABLED=true
+    process.env.FRONTIER_EXPERT_PERSONS_ENABLED = 'true';
     db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
     db.exec(schema);
@@ -23,7 +25,7 @@ describe('expert evidence enrichment (§10 §11 §28 I01 I02 I03 I10)', () => {
     registry.seedTaxonomy();
   });
 
-  afterEach(() => db.close());
+  afterEach(() => { delete process.env.FRONTIER_EXPERT_PERSONS_ENABLED; db.close(); });
 
   it('recovers evidence collected before the taxonomy was populated without activating the expert', () => {
     const expert = discovered('Jane Doe');

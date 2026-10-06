@@ -108,7 +108,9 @@ export class ExpertSourceUnitsService {
       const paper: ArxivPaper = { arxiv_id: meta.arxiv_id ?? row.source_ref, url: row.url ?? '', title: row.title, summary: meta.abstract ?? '', authors: meta.authors ?? [], categories: meta.categories ?? [], primary_category: meta.primary_category ?? null, published: meta.published ?? null };
       const capabilities = this.enrichment.capabilitiesFor(paper);
       if (!known.has(row.source_ref) && capabilities.length) {
-        this.unit('paper', row.title, row.source_ref, { kind: 'paper', title: row.title, url: row.url, sourceRef: row.source_ref, metadata: { ...meta, derived: 'stored-evidence' } }, capabilities, { authors: meta.authors ?? [] });
+        // FE-AREAS: units describe the work, not the people — no author names are stored, only how many there are
+        const { authors, ...work } = meta;
+        this.unit('paper', row.title, row.source_ref, { kind: 'paper', title: row.title, url: row.url, sourceRef: row.source_ref, metadata: { ...work, author_count: authors?.length ?? 0, derived: 'stored-evidence' } }, capabilities, { author_count: authors?.length ?? 0 });
         known.add(row.source_ref); papers += 1;
       }
       for (const m of (meta.abstract ?? '').matchAll(REPO)) {
