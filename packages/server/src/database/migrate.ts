@@ -1304,6 +1304,10 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
     -- RX-4: per settled trial, what it could have shown (parent failures on the deciding set, power, blind/underpowered/powered)
     CREATE TABLE IF NOT EXISTS genome_trial_results (trial_id TEXT PRIMARY KEY, parent_id TEXT, tier_set TEXT, deciding_n INTEGER, f_parent_failures INTEGER,
       b INTEGER, c INTEGER, p REAL, mined_b INTEGER, mined_c INTEGER, power_q8_l05 REAL, state TEXT NOT NULL, recorded_at TEXT NOT NULL);
+    -- RX-14: one row per (estimator, scope, UTC day) — the nightly thermometer; status ok | insufficient (n = 0 has no value)
+    CREATE TABLE IF NOT EXISTS evolution_estimates (id TEXT PRIMARY KEY, estimator TEXT NOT NULL, scope TEXT NOT NULL, as_of_day TEXT NOT NULL, window_days INTEGER,
+      value REAL, ci_low REAL, ci_high REAL, n INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, detail_json TEXT NOT NULL DEFAULT '{}', computed_at TEXT NOT NULL,
+      UNIQUE(estimator, scope, as_of_day));
     -- MS-1: every model call of a consumer (incumbent and shadow candidates): did it parse, did it agree, how long, how long the answer
     CREATE TABLE IF NOT EXISTS llm_model_calls (id INTEGER PRIMARY KEY AUTOINCREMENT, consumer TEXT NOT NULL, model TEXT NOT NULL, ok INTEGER NOT NULL,
       latency_ms INTEGER, out_chars INTEGER, shadow INTEGER NOT NULL DEFAULT 0, agree INTEGER, created_at TEXT NOT NULL);
