@@ -79,6 +79,8 @@ missing here. **Acting** = changes what the loop does; acting flags are switched
 | `DREAM_TRIAL_MUTANT_TIERS` | `2,3` | yes | act (freezes a new holdout) | operator, after the RX-5 tier probe |
 | `DREAM_PROMOTION_ALPHA` | 0.05 | yes | act | operator |
 | `TRIAL_DIAGNOSTICS_ENABLED` | off | no (records per-trial blindness/power; never changes promotion) | measure | operator |
+| `DREAM_PROMOTION_RULE` | mcnemar | no (`both` records the anytime-valid e-process decision next to McNemar; never changes promotion) | shadow | operator |
+| `GYM_HOLDOUT_EPOCH` | 0 (the holdout frozen since 01-10) | yes (a new epoch freezes 20 fresh tasks next to the old; refused while a genome is in trial) | act | operator |
 | `GENOME_APPLY_MODE` | unset (only `shadow` exists) | no | shadow | loop (shadow) |
 | `ARENA_GATE_ENABLED` | off | yes | act | operator |
 | `COMMITTEE_SWARM_ENABLED` | off | yes | act | operator |
@@ -95,6 +97,7 @@ missing here. **Acting** = changes what the loop does; acting flags are switched
 | `HACK_DETECTOR_MODE` | off (`shadow` records gym hack flags on each result; nothing acts) | no | measure | operator |
 | `GYM_CANARY_RATE` | 0 (never; served only to a worker announcing `capabilities: ['canary']`) | no | measure | operator |
 | `MODEL_SELECTOR_MODE` | off (`shadow` samples a cheaper candidate per panel review and discards it; `enforce` uses the cheapest qualified model) | yes in enforce | shadow → act | operator; candidates `MODEL_CANDIDATES_PANEL_REVIEW` and (MS-2, Frontier Experts reviews / technique cards / council) `MODEL_CANDIDATES_FRONTIER_EXPERTS`, weights `MODEL_COST_WEIGHTS`, sample `MODEL_SELECTOR_SHADOW_RATE` (0.1) |
+| `EVOLUTION_ESTIMATORS_ENABLED` | off (on: once per UTC day writes delays, discriminability, trial blindness, gym pass rate per tier, model ok rates and Gates A–D to `evolution_estimates`; stall `estimates` after 36 h without a row) | no | measure | operator |
 
 ## Prod status (2026-09-25, E4) — STALE
 

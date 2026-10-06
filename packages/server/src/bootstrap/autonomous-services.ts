@@ -35,6 +35,7 @@ import { QueueHygieneService, queueHygieneEnabled } from '../services/queue-hygi
 import { startStallWatch } from '../services/stall-watch';
 import { startInterestFeedback } from '../services/interest-feedback';
 import { startDreamEvolution } from '../services/dream-evolution';
+import { startEvolutionEstimators } from '../services/evolution-estimators';
 import { startMergeSurvival } from '../services/merge-survival';
 import { startCommitteeEvolution } from '../services/committee-swarm';
 import { KnowledgeMaintenanceService, maintenanceEnabled } from '../services/knowledge-maintenance-service';
@@ -198,6 +199,15 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     if (stopDream) { lifecycleManager.register({ serviceName: 'DreamEvolution', stop: stopDream }); console.log('🧬 Dream evolution on (hourly tick, one dream a day).'); }
   } catch (error) {
     console.warn('⚠️  Dream evolution failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // RX-14: nightly evolution estimates (thermometer) — one row per estimator, scope and UTC day. EVOLUTION_ESTIMATORS_ENABLED=true.
+  try {
+    const stopEstimates = startEvolutionEstimators(db);
+    noteScheduler('evolution_estimators', 'EVOLUTION_ESTIMATORS_ENABLED', !!stopEstimates, 3_600_000);
+    if (stopEstimates) { lifecycleManager.register({ serviceName: 'EvolutionEstimators', stop: stopEstimates }); console.log('🌡️  Evolution estimates on (daily).'); }
+  } catch (error) {
+    console.warn('⚠️  Evolution estimates failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // AR-W3: committee members evolve on real-outcome skill (extinction n >= 30, one child a day). COMMITTEE_SWARM_ENABLED=true.
