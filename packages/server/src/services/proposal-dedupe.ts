@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { nvidiaFetch } from './content-safety';
 import { recordLlmCall } from './model-selector';
+import { dimsMatch } from './embedding-dims';
 
 /**
  * Plan K2a: the same improvement idea keeps arriving in other words (the fingerprint only catches exact repeats), which
@@ -30,6 +31,13 @@ export async function embed(text: string, fetchFn: typeof fetch = fetch, inputTy
   } catch (e) { ledger(false, (e instanceof Error ? e.message : String(e)).slice(0, 80)); return null; }
 }
 
+/** UX-21: additive embedding_dim (and embedding_model where the table had no model column). */
+export function addDimColumn(db: Database, table: string, withModel = false): void {
+  const cols = (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((c) => c.name);
+  if (!cols.includes('embedding_dim')) db.exec(`ALTER TABLE ${table} ADD COLUMN embedding_dim INTEGER`);
+  if (withModel && !cols.includes('embedding_model')) db.exec(`ALTER TABLE ${table} ADD COLUMN embedding_model TEXT`);
+}
+
 export function cosine(a: Float32Array, b: Float32Array): number {
   if (a.length !== b.length) return 0;
   let dot = 0; let na = 0; let nb = 0;
@@ -40,6 +48,7 @@ export function cosine(a: Float32Array, b: Float32Array): number {
 export async function checkProposalDuplicate(db: Database, proposal: { id: string; title: string; description: string }, fetchFn: typeof fetch = fetch): Promise<{ id: string; score: number } | null> {
   if (!proposalDedupeEnabled()) return null;
   db.exec('CREATE TABLE IF NOT EXISTS proposal_embeddings (proposal_id TEXT PRIMARY KEY, model TEXT NOT NULL, vector BLOB NOT NULL, created_at TEXT NOT NULL)');
+  addDimColumn(db, 'proposal_embeddings');
   const v = await embed(`${proposal.title}\n${proposal.description}`, fetchFn);
   if (!v) return null;
   const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
@@ -52,12 +61,13 @@ export async function checkProposalDuplicate(db: Database, proposal: { id: strin
   for (const row of db.prepare('SELECT proposal_id, vector FROM proposal_embeddings WHERE created_at >= ? AND proposal_id != ?').all(since, proposal.id) as Array<{ proposal_id: string; vector: Buffer }>) {
     if (related(row.proposal_id)) continue;
     const other = new Float32Array(row.vector.buffer, row.vector.byteOffset, row.vector.byteLength / 4);
+    if (!dimsMatch('proposal_embeddings', v.length, other.length)) continue; // a different vector space never scores (cosine was 0 before too)
     const score = cosine(v, other);
     if (!best || score > best.score) best = { id: row.proposal_id, score };
   }
   const now = new Date().toISOString();
-  db.prepare('INSERT OR REPLACE INTO proposal_embeddings (proposal_id, model, vector, created_at) VALUES (?, ?, ?, ?)')
-    .run(proposal.id, process.env.EMBEDDING_MODEL || 'nvidia/nemotron-3-embed-1b', Buffer.from(v.buffer, v.byteOffset, v.byteLength), now);
+  db.prepare('INSERT OR REPLACE INTO proposal_embeddings (proposal_id, model, vector, created_at, embedding_dim) VALUES (?, ?, ?, ?, ?)')
+    .run(proposal.id, process.env.EMBEDDING_MODEL || 'nvidia/nemotron-3-embed-1b', Buffer.from(v.buffer, v.byteOffset, v.byteLength), now, v.length);
   const threshold = Number(process.env.PROPOSAL_DEDUPE_THRESHOLD) || 0.92;
   if (!best || best.score < threshold) return null;
   db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, model, created_at)

@@ -177,7 +177,7 @@ export class ExplainerKnowledgeService {
       }
       const points = chunks.map((chunk, index) => ({
         id: hashId(chunk.id),
-        payload: { ...chunk, point_index: index, embedding_model: OLLAMA_EMBED_MODEL },
+        payload: { ...chunk, point_index: index, embedding_model: OLLAMA_EMBED_MODEL, embedding_dim: vectors.vectors[index]?.length ?? null },
         vector: vectors.vectors[index],
       }));
       const res = await fetch(`${QDRANT_URL}/collections/${COLLECTION}/points`, {

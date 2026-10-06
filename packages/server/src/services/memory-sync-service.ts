@@ -183,7 +183,7 @@ export class MemorySyncService {
           {
             id: pointIdForTask(taskId),
             vector,
-            payload: { task_id: taskId, machine_id: machineId, agent_type: agentType, timestamp: new Date().toISOString(), content_excerpt: excerpt },
+            payload: { task_id: taskId, machine_id: machineId, agent_type: agentType, timestamp: new Date().toISOString(), content_excerpt: excerpt, embedding_model: EMBED_MODEL, embedding_dim: vector.length },
           },
         ],
       };
