@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, BookOpenCheck, GraduationCap, History, RefreshCw, Scale, Search, ShieldCheck, Swords, Users } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import { api, type ExpertDetail, type ExpertLifecycleState, type ExpertResolution, type ExpertSummary, type ExpertSwarmRun } from '../lib/api';
+import { fmtDate } from '../lib/format';
 
 /** Visual tone per lifecycle state: only ACTIVE is verified-for-recommendation; everything else is tentative or closed (§36). */
 export const STATE_TONE: Record<ExpertLifecycleState, { label: string; tone: 'verified' | 'tentative' | 'blocked' | 'closed' }> = {
@@ -72,7 +73,7 @@ export function funnelCounts(funnel: Array<{ kind: string; state: ExpertLifecycl
   return (Object.keys(STATE_TONE) as ExpertLifecycleState[]).map((state) => ({ state, count: funnel.filter((row) => row.state === state && (!kind || row.kind === kind)).reduce((sum, row) => sum + row.count, 0) })).filter((entry) => entry.count > 0);
 }
 
-const time = (value: string | null | undefined) => (value ? new Date(value).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+const time = (value: string | null | undefined) => fmtDate(value, { fallback: '—' });
 const DECISION_CLASS: Record<string, string> = { VERIFIED_FOR_USE: TONE_CLASS.verified, HUMAN_REVIEW_REQUIRED: TONE_CLASS.tentative, CONTRADICTED: TONE_CLASS.blocked, INSUFFICIENT_EVIDENCE: TONE_CLASS.closed, UNVERIFIABLE: TONE_CLASS.closed };
 
 function StateBadge({ state }: { state: ExpertLifecycleState }) {

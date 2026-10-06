@@ -55,9 +55,11 @@ it('shows intervention failures and serializes duplicate pause clicks', async ()
 
 it('does not manufacture a proceed decision when the operator cancels the decision prompt', async () => {
   await selectInterventionGoal();
-  vi.spyOn(window, 'prompt').mockReturnValueOnce('security_checker_verdict').mockReturnValueOnce(null);
   fireEvent.click(screen.getByRole('button', { name: /^(Override Gate|Record gate advice)$/ }));
-  await waitFor(() => expect(window.prompt).toHaveBeenCalledTimes(2));
+  await screen.findByRole('dialog');
+  fireEvent.change(screen.getByLabelText(/Gate name/), { target: { value: 'security_checker_verdict' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' })); // cancelled before choosing a decision
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   expect(posts()).toHaveLength(0);
 });
 
@@ -70,9 +72,11 @@ it('does not expose configuration intervention controls to a viewer', async () =
 
 it('shows the returned persisted knowledge claim identity instead of silent success', async () => {
   await selectInterventionGoal();
-  vi.spyOn(window,'prompt').mockReturnValue('Fixture evidence');
   requests.mockImplementationOnce(async () => response({ injected:true,claim_id:'durable-claim-id' }));
   fireEvent.click(screen.getByRole('button',{name:'Inject Knowledge'}));
+  await screen.findByRole('dialog');
+  fireEvent.change(screen.getByLabelText(/Knowledge to inject/), { target: { value: 'Fixture evidence' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Inject' }));
   expect(await screen.findByRole('status')).toHaveProperty('textContent',expect.stringContaining('durable-claim-id'));
 });
 
@@ -240,18 +244,20 @@ it('reloads persisted lease ownership after an approval-required response', asyn
 
 it('does not complete a loop when the human cancels confirmation', async () => {
   run.status = 'ready_for_human_merge';
-  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
   await ready();
   fireEvent.click(screen.getByRole('button', { name: 'Complete', exact: true }));
-  expect(confirm).toHaveBeenCalledWith(expect.stringContaining('does not merge, push, or deploy'));
+  expect((await screen.findByRole('dialog')).textContent).toContain('does not merge, push, or deploy');
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   expect(posts()).toHaveLength(0);
 });
 
 it('sends explicit human confirmation without inventing an approver identity', async () => {
   run.status = 'ready_for_human_merge';
-  vi.spyOn(window, 'confirm').mockReturnValue(true);
   await ready();
   fireEvent.click(screen.getByRole('button', { name: 'Complete', exact: true }));
+  await screen.findByRole('dialog');
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm human approval' }));
   await waitFor(() => expect(posts()).toHaveLength(1));
   expect(posts()[0][0]).toBe('/api/loops/runs/fixture-run/complete');
   expect(JSON.parse(posts()[0][1].body)).toEqual({ human_approval_ref: 'dashboard:explicit-confirmation' });

@@ -8,8 +8,10 @@ import type { Task, ExecutionEvent, ApprovalRequest, ExecutionEventPayload, Appr
 import { ExecutionTimeline } from '../components/ExecutionTimeline';
 import { ApprovalCard } from '../components/ApprovalCard';
 import { useWsSubscribe } from '../components/WebSocketProvider';
+import { useDialog } from '../components/ConfirmDialog';
 
 export function TaskDetailPage() {
+  const dialog = useDialog();
   const { taskId } = useParams<{ taskId: string }>();
   const navigate = useNavigate();
   const tasks = useStore((state) => state.tasks);
@@ -141,7 +143,7 @@ export function TaskDetailPage() {
   const handleCancel = async () => {
     if (!taskId || recoveryHold) return;
     
-    if (!confirm('Are you sure you want to cancel this task?')) {
+    if (!(await dialog.confirm('Cancel this task?', 'The running worker is stopped; this cannot be undone.', 'Cancel task'))) {
       return;
     }
     
@@ -195,6 +197,7 @@ export function TaskDetailPage() {
 
   return (
     <div className="p-4 sm:p-8 space-y-6">
+      {dialog.element}
       {/* Header */}
       <div className="flex items-center gap-4">
         <Link

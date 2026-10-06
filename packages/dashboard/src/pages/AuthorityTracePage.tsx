@@ -132,7 +132,7 @@ export function AuthorityTracePage() {
             {!loading && events.length === 0 && (
               <tr>
                 <td colSpan={6} className="p-6 text-center text-foreground-secondary text-sm">
-                  Nog geen events. De emitter draait in de EVE-V assurance-gate en djimitflo_authority_emit.
+                  No events yet. The emitter runs in the EVE-V assurance gate and djimitflo_authority_emit.
                 </td>
               </tr>
             )}

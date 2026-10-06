@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, GitBranch, Play, Plus, RefreshCw, ShieldCheck, Split, Square, Target, Timer, Workflow, XCircle } from 'lucide-react';
 import { api, type GoalRecord, type LoopCatalogItem, type LoopGate, type LoopReviewBundle, type LoopRunRecord, type WorkerLeaseRecord } from '../lib/api';
 import { useAuthStore } from '../lib/auth-store';
+import { useDialog } from '../components/ConfirmDialog';
 
 export function GoalsLoopsPage() {
+  const dialog = useDialog();
   const canApprove = useAuthStore((state) => state.hasPermission('approve:task'));
   const canIntervene = useAuthStore((state) => state.hasPermission('manage:config'));
   const [goals, setGoals] = useState<GoalRecord[]>([]);
@@ -123,7 +125,7 @@ export function GoalsLoopsPage() {
 
   async function completeLoop() {
     if (!selectedRun || selectedRun.status !== 'ready_for_human_merge' || !canApprove) return;
-    const confirmed = window.confirm(`Confirm human approval to complete loop ${selectedRun.id}? The server records your authenticated identity and rechecks all verification gates. This does not merge, push, or deploy changes.`);
+    const confirmed = await dialog.confirm(`Complete loop ${selectedRun.id}?`, 'The server records your authenticated identity and rechecks all verification gates. This does not merge, push, or deploy changes.', 'Confirm human approval');
     if (!confirmed) return;
     await api.completeLoopRun(selectedRun.id, true);
   }
@@ -161,19 +163,21 @@ export function GoalsLoopsPage() {
     setNotice('Operator pause released. Runtime dispatch still requires an explicit action.');
   }
   async function injectKnowledge(goalId: string) {
-    const evidence = window.prompt('Enter knowledge to inject:');
-    if (evidence === null) return;
+    const answer = await dialog.ask({ title: 'Inject knowledge', fields: [{ name: 'evidence', label: 'Knowledge to inject', multiline: true, required: true }], confirmLabel: 'Inject' });
+    if (answer === null) return;
+    const evidence = answer.evidence;
     if (!evidence.trim()) throw new Error('Knowledge text is required');
     const result = await api.request<{ claim_id: string }>(`/intervention/${goalId}/inject`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ predicate: 'recommends', subject_ref: `goal:${goalId}`, confidence: 0.9, evidence: evidence.trim() }) });
     setNotice(`Knowledge proposal stored: ${result.claim_id}. Operator input is not independently verified evidence.`);
   }
   async function overrideGate(goalId: string) {
-    const gate = window.prompt('Gate name for advisory decision (verification gates are not overridden):');
-    if (gate === null) return;
-    const decision = window.prompt('Advisory decision (proceed/stop); this does not execute or stop workers:');
-    if (decision === null) return;
-    const reason = window.prompt('Reason:');
-    if (reason === null) return;
+    const answer = await dialog.ask({ title: 'Advisory gate decision', message: 'Verification gates are not overridden; this does not execute or stop workers.', fields: [
+      { name: 'gate', label: 'Gate name', required: true },
+      { name: 'decision', label: 'Advisory decision', options: ['proceed', 'stop'], required: true },
+      { name: 'reason', label: 'Reason', multiline: true, required: true },
+    ], confirmLabel: 'Record advice' });
+    if (answer === null) return;
+    const { gate, decision, reason } = answer;
     if (!gate.trim() || !['proceed','stop'].includes(decision.trim()) || !reason.trim()) throw new Error('Gate, proceed/stop decision and reason are required');
     await api.request(`/intervention/${goalId}/override`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gate: gate.trim(), decision: decision.trim(), reason: reason.trim() }) });
     setNotice('Gate advice recorded. Verification evidence, approvals and worker execution are unchanged.');
@@ -181,12 +185,13 @@ export function GoalsLoopsPage() {
 
   async function splitFinding(findingId: string) {
     if (!selectedRun) return;
-    const reason = window.prompt('Split reason');
-    if (!reason) return;
-    const first = window.prompt('First child finding');
-    if (!first) return;
-    const second = window.prompt('Second child finding');
-    if (!second) return;
+    const answer = await dialog.ask({ title: 'Split finding', fields: [
+      { name: 'reason', label: 'Split reason', required: true },
+      { name: 'first', label: 'First child finding', multiline: true, required: true },
+      { name: 'second', label: 'Second child finding', multiline: true, required: true },
+    ], confirmLabel: 'Split' });
+    if (answer === null) return;
+    const { reason, first, second } = answer;
     await api.splitLoopFinding(selectedRun.id, {
       finding_id: findingId,
       reason,
@@ -204,6 +209,7 @@ export function GoalsLoopsPage() {
 
   return (
     <div className="p-8 space-y-6">
+      {dialog.element}
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Goals & Loops</h1>

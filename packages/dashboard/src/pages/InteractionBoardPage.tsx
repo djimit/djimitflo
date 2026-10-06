@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Link2, MessageSquare, Network, RefreshCw, Search } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api, type AgentInteractionRecord, type EcosystemMapSummary } from '../lib/api';
+import { fmtDate } from '../lib/format';
 
 type BoardFilters = {
   search: string;
@@ -108,9 +109,7 @@ function statusTone(value: string) {
   return 'border-border bg-background-elevated text-foreground-secondary';
 }
 
-function time(value: string | null) {
-  return value ? new Date(value).toLocaleString() : 'unknown';
-}
+const time = (value: string | null) => fmtDate(value);
 
 export function InteractionBoardPage() {
   const [interactions, setInteractions] = useState<AgentInteractionRecord[]>([]);

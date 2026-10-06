@@ -99,6 +99,8 @@ export function Layout() {
   
   return (
     <div className="flex h-screen overflow-hidden bg-background">
+      {/* UX-25: keyboard users jump past the navigation */}
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-background-elevated focus:px-3 focus:py-2 focus:text-foreground">Skip to content</a>
       {mobileNavOpen && (
         <button
           type="button"
@@ -192,7 +194,7 @@ export function Layout() {
           <span className="ml-2 font-semibold text-foreground">Djimitflo</span>
         </header>
         {location.pathname !== '/decisions' && <PendingApprovalsBanner {...pending} />}
-        <main className="min-w-0 flex-1 overflow-auto">
+        <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 overflow-auto focus:outline-none">
           <ConnectionBanner />
           <Outlet />
         </main>
@@ -213,6 +215,7 @@ function NavLink({ to, icon, label, active, badge }: NavLinkProps) {
   return (
     <Link
       to={to}
+      aria-current={active ? 'page' : undefined}
       className={`
         flex items-center gap-3 px-3 py-2 rounded-lg transition-colors
         ${active
