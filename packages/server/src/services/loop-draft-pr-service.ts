@@ -3,6 +3,7 @@ import path from 'path';
 import { execFileSync } from 'child_process';
 import type { Database } from 'better-sqlite3';
 import { LoopEventService } from './loop-event-service';
+import { redactSecrets } from './secret-patterns';
 
 /**
  * G4: a verified loop run becomes a *draft* PR. Before this, ready_for_human_merge output stayed in a VPS worktree
@@ -61,7 +62,8 @@ export class LoopDraftPrService {
 
       const verdicts = (this.db.prepare(`SELECT role, json_extract(metadata, '$.verdict') AS verdict FROM worker_leases WHERE loop_run_id = ? AND role IN ('checker', 'security_checker') AND status = 'completed'`).all(runId) as Array<{ role: string; verdict: string | null }>)
         .map((l) => `- ${l.role}: ${l.verdict ?? 'n/a'}`).join('\n');
-      const body = `Opened by the djimitflo loop for run \`${runId}\`${proposal ? ` (proposal \`${proposal.id}\`)` : ''}.\n\nReviewer verdicts:\n${verdicts || '- none recorded'}\n\nFiles: ${files.map((f) => `\`${f}\``).join(', ')}\n\nDraft: a human reviews and merges.`;
+      let body = `Opened by the djimitflo loop for run \`${runId}\`${proposal ? ` (proposal \`${proposal.id}\`)` : ''}.\n\nReviewer verdicts:\n${verdicts || '- none recorded'}\n\nFiles: ${files.map((f) => `\`${f}\``).join(', ')}\n\nDraft: a human reviews and merges.`;
+      if (this.env.LOOP_PR_BODY_V2 === 'true') { let numstat = ''; try { numstat = git('diff', '--numstat', 'HEAD~1', 'HEAD'); } catch { /* no parent: diff stat omitted */ } body = this.bodyV2(runId, maker.id, body, numstat); }
       const res = await this.fetchImpl(`https://api.github.com/repos/${repo}/pulls`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
@@ -75,6 +77,36 @@ export class LoopDraftPrService {
     } catch (error) {
       return fail(error instanceof Error ? error.message.replace(/basic [A-Za-z0-9+/=]+/g, 'basic ***').slice(0, 200) : String(error));
     }
+  }
+
+  /**
+   * UX-10: the v1 body plus lane, oracle check results, gate summary, diff stat, mutation score and (only with an https
+   * DJIMITFLO_PUBLIC_URL) a link to the run. Public repo: ids, names, statuses and numbers only — never gate evidence,
+   * check output, hosts or costs — and the whole body goes through secret redaction.
+   */
+  private bodyV2(runId: string, makerId: string, v1: string, numstat: string): string {
+    const run = this.db.prepare('SELECT loop_name, gates_json FROM loop_runs WHERE id = ?').get(runId) as { loop_name: string; gates_json: string | null } | undefined;
+    const maker = this.db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(makerId) as { metadata: string | null } | undefined;
+    const parse = <T>(text: string | null | undefined, fallback: T): T => { try { return text ? JSON.parse(text) as T : fallback; } catch { return fallback; } };
+    const name = (v: unknown) => String(v ?? '').replace(/[^\w:.-]/g, '').slice(0, 60);
+    const gates = parse<Array<{ name?: string; status?: string }>>(run?.gates_json, []);
+    const checks = parse<{ deterministic_checks?: Array<{ name?: string; status?: string; stdout_path?: string }> }>(maker?.metadata, {}).deterministic_checks ?? [];
+    const rows = numstat.split('\n').filter(Boolean).map((l) => l.split('\t'));
+    const added = rows.reduce((a, r) => a + (Number(r[0]) || 0), 0); const removed = rows.reduce((a, r) => a + (Number(r[1]) || 0), 0);
+    const lines = [`Lane: \`${name(run?.loop_name)}\``];
+    if (checks.length) lines.push(`Oracle checks: ${checks.map((c) => `${name(c.name)} ${name(c.status)}`).join(', ')}`);
+    if (gates.length) lines.push(`Gates: ${gates.map((g) => `${name(g.name)} ${name(g.status)}`).join(', ')}`);
+    lines.push(`Diff: ${rows.length} file${rows.length === 1 ? '' : 's'}, +${added} / -${removed}`);
+    const mutation = checks.find((c) => String(c.name ?? '').includes('mutation') && c.stdout_path);
+    if (mutation?.stdout_path) {
+      try { // numbers only from the mutation report: "score A -> B"
+        const m = /(\d+(?:\.\d+)?)\s*(?:->|→)\s*(\d+(?:\.\d+)?)/.exec(fs.readFileSync(mutation.stdout_path, 'utf8').slice(0, 20_000));
+        if (m) lines.push(`Mutation score: ${m[1]} → ${m[2]}`);
+      } catch { /* report absent: omit the line */ }
+    }
+    const base = this.env.DJIMITFLO_PUBLIC_URL;
+    if (base && /^https:\/\//.test(base)) lines.push(`Run: ${base.replace(/\/+$/, '')}/goals-loops?run=${encodeURIComponent(runId)}`);
+    return redactSecrets(`${v1}\n\n${lines.join('\n')}`).redacted;
   }
 
   /** Open PRs titled 'loop:' (one list call, first 100). null on any error: the throttle fails open. */
