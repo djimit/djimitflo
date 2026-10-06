@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { RefreshCw, Server } from 'lucide-react';
 import { api } from '../lib/api';
 import { useResource } from '../hooks/useResource';
+import { RuntimeHealthSection } from './RuntimeHealthPage';
 import { ACTION_PERMISSIONS as P, needsText, useCan } from '../lib/permissions';
 
 const fetchFleet = () => api.getFleetHosts();
@@ -122,6 +123,7 @@ export function FleetHostsPage() {
           </table>
         )}
       </section>
+      <RuntimeHealthSection />
     </div>
   );
 }

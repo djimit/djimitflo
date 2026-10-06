@@ -25,6 +25,7 @@ Back up before editing (`cp -p runtime.env runtime.env.bak-<date>`), then `docke
 |---|---|
 | `SELF_IMPROVEMENT_AUTO_REVIEW_ENABLED`, `_REFINEMENT_ENABLED`, `_OBJECTIVE_LOOP_ENABLED` | the proposal → panel → goal → run pipeline |
 | `LOOP_PR_BODY_V2` | UX-10, default off: loop draft-PR body adds lane, oracle check results, gate summary, diff stat, mutation score and (only with an https `DJIMITFLO_PUBLIC_URL`) a link to `/goals-loops?run=<id>`; names, statuses and numbers only, secret-redacted (public repo) |
+| `LLM_JSON_REPAIR_ENABLED` | UX-19, default off: an unusable model answer (panel review, Frontier Experts) gets ONE repair call to the same model with the required JSON shape; outcome recorded in `llm_model_calls` (`task_kind` json_repair, status `repaired` / `unparseable`). Off = no extra call, behaviour unchanged |
 | `SELF_IMPROVEMENT_GOAL_ON_APPROVE` | create the goal right after panel approval instead of the hourly cycle |
 | `TEST_GAP_SOURCE_ENABLED` | deterministic, fully grounded test-only proposals (max 2/day, 2 in flight) |
 | `REFLECTION_PROPOSALS_MAX_PER_DAY` | cap on reflection proposals per 24 h (unset = no cap); they rarely ground, so a bounded inflow keeps `needs_grounding` drainable |

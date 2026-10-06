@@ -153,7 +153,7 @@ export class ExperienceRetrievalService {
       await fetch(this.qdrantUrl + '/collections/' + this.collectionName + '/points', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ points: [{ id: runId, vector: embedding, payload: { objective, outcome } }] }),
+        body: JSON.stringify({ points: [{ id: runId, vector: embedding, payload: { objective, outcome, embedding_model: 'nomic-embed-text', embedding_dim: embedding.length } }] }),
         signal: controller.signal,
       });
       clearTimeout(timeout);

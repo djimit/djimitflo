@@ -341,6 +341,7 @@ export class MemoryCandidateService {
               content_excerpt: candidate.content.slice(0, 500),
               agent_type: 'memory_curator',
               trust_level: 'validated',
+              embedding_model: 'nomic-embed-text:latest', embedding_dim: vector.length, // UX-21
               // G8: cognitive store label — enables typed retrieval (procedural rules,
               // semantic claims, episodic logs) instead of a mixed-context bag.
               store: candidate.store,
