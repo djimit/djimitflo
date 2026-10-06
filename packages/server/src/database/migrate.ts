@@ -1353,6 +1353,13 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   addMissingColumns(db, 'self_improvements', selfImprovementColumns);
   addMissingColumns(db, 'self_improvements', selfImprovementRefinementColumns);
   addMissingColumns(db, 'self_improvements', selfImprovementGroundingColumns);
+  // RX-12 / RX-13: holdout epochs; e-process shadow decision next to McNemar per settled trial
+  addMissingColumns(db, 'gym_holdout', [{ name: 'epoch', definition: 'INTEGER NOT NULL DEFAULT 0' }]);
+  addMissingColumns(db, 'gym_mutant_holdout', [{ name: 'epoch', definition: 'INTEGER NOT NULL DEFAULT 0' }]);
+  addMissingColumns(db, 'genome_trial_results', [
+    { name: 'epoch', definition: 'INTEGER' }, { name: 'e_value', definition: 'REAL' },
+    { name: 'n_discordant', definition: 'INTEGER' }, { name: 'e_rule_decision', definition: 'TEXT' },
+  ]);
   // P1c: collapse duplicate fingerprints among LIVE rows (keep the newest) so the partial UNIQUE index never aborts.
   // Only live statuses can collide with that index. This used to delete every older row sharing a fingerprint
   // regardless of status, on every boot: parked/finished proposals vanished when a later one with the same text
