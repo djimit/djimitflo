@@ -172,6 +172,7 @@ export class ReasoningBankService {
               machine_id: task.created_by || 'unknown',
               agent_type: agent?.agent_type || 'unknown',
               embedding_model: EMBED_MODEL,
+              embedding_dim: vector.length,
               timestamp: new Date().toISOString(),
             },
           }],

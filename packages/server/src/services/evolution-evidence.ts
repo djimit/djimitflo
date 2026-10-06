@@ -4,6 +4,8 @@ import { parseRuntimeSpec } from './social-runtime-providers';
 import { modelEvidence } from './model-selector';
 import { commonsYield, oracleAgreement } from './honest-numbers';
 import { banditOpe } from './bandit-propensity';
+import { egressEvidence } from './egress-classification';
+import { embeddingDimMismatch, vectorStrictDim } from './embedding-dims';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -136,5 +138,9 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   }
   // RX-15: report-only off-policy value of the fitness-view policy vs the logged bandit
   const ope = (() => { try { return banditOpe(db, env); } catch { return null; } })();
-  return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, trials, models, oracle, commons, forecasts_v2, hacks, estimates, ope, gates };
+  return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, trials, models, oracle, commons, forecasts_v2, hacks, estimates, ope,
+    // UX-20: where model calls send data (shadow report; nothing is blocked)
+    egress: egressEvidence(db, env, now),
+    // UX-21: vectors compared across dimensions since boot, per store (resampled by default; skipped under VECTOR_STRICT_DIM)
+    embedding_dim_mismatch: { strict: vectorStrictDim(env), by_store: embeddingDimMismatch() }, gates };
 }

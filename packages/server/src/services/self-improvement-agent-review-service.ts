@@ -27,6 +27,8 @@ import { kbContext } from './kb-corpus';
 import type { Database } from 'better-sqlite3';
 import { SpecialistPanelService, type SpecialistPanelRecord, type SpecialistProfile } from './specialist-panel-service';
 import { chooseModel, modelSelectorMode, recordModelCall, shadowCandidate, shadowRate } from './model-selector';
+import { repairModelJson } from './model-json';
+import { z } from 'zod';
 
 /** The model argument is only passed when MODEL_SELECTOR_MODE is on; undefined = the caller's own default (unchanged). */
 export type ModelCaller = (prompt: string, model?: string) => Promise<string>;
@@ -42,6 +44,9 @@ interface ParsedReview {
 }
 
 const VALID_STANCES = new Set(['support', 'oppose', 'uncertain', 'needs_evidence']);
+/** UX-19: the shape a repaired panel answer must have before it is accepted. */
+const REVIEW_SCHEMA = z.object({ stance: z.string().refine((s) => VALID_STANCES.has(s)) }).passthrough();
+const REVIEW_SHAPE = '{"stance": "support|oppose|uncertain|needs_evidence", "confidence": 0.0-1.0, "findings": ["..."], "recommendations": ["..."], "evidence_refs": ["..."], "limitations": "..."}';
 const FALLBACK_EVIDENCE = 'agent-review:model-response-unparseable-or-missing-evidence';
 
 function defaultOllamaUrl(): string {
@@ -178,7 +183,13 @@ export class SelfImprovementAgentReviewService {
       if (!raw.trim()) { record(false, 0); return { error: 'empty model response (timed out)' }; }
       // An unreadable answer is no judgement either (prod 2026-09-25: one garbled reply parked two test-gap proposals
       // of a 6/6 lane); retry it like a failed call.
-      const parsed = this.parseResponse(raw);
+      let parsed = this.parseResponse(raw);
+      // UX-19: one repair call to the same model (LLM_JSON_REPAIR_ENABLED); recorded as 'repaired' / 'unparseable'
+      if (!parsed) {
+        const repaired = await repairModelJson({ db: this.db, consumer: CONSUMER, model: model ?? defaultModel(), raw, schema: REVIEW_SCHEMA, shape: REVIEW_SHAPE,
+          ask: (repairPrompt) => this.callModel(repairPrompt, model) });
+        if (repaired) parsed = this.parseResponse(repaired);
+      }
       // keep a short sample so the next unreadable answer can be diagnosed (prod 2026-09-25: 16 in 7 days, in pairs per panel)
       record(!!parsed, raw.length, parsed?.stance);
       if (!parsed) console.warn(`self-improvement review for ${who}${shadow ? ' (shadow)' : ''}: unreadable answer (${raw.length} chars): ${JSON.stringify(raw.slice(0, 160))} … ${JSON.stringify(raw.slice(-160))}`);
