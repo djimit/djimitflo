@@ -3,6 +3,10 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { DecisionsInboxPage, DraftPrsSection } from './DecisionsInboxPage';
 import { api } from '../lib/api';
+import { useAuthStore } from '../lib/auth-store';
+
+// UX-4: actions are gated by role; these cases exercise them as an admin
+beforeEach(() => { useAuthStore.setState({ user: { id: 'admin-fixture', email: 'admin@example.test', role: 'admin' } as never }); });
 
 vi.mock('../hooks/usePendingApprovals', () => ({ usePendingApprovals: () => ({ count: 2 }) }));
 const inbox = {

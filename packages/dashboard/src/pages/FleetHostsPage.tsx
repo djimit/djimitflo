@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { RefreshCw, Server } from 'lucide-react';
 import { api } from '../lib/api';
 import { useResource } from '../hooks/useResource';
+import { ACTION_PERMISSIONS as P, needsText, useCan } from '../lib/permissions';
 
 const fetchFleet = () => api.getFleetHosts();
 
@@ -18,6 +19,7 @@ export function FleetHostsPage() {
   const [actionError, setError] = useState<string | null>(null);
   const error = actionError ?? fleet.error;
   const [busy, setBusy] = useState<string | null>(null);
+  const canRequest = useCan(P.fleetCommandRequest); const canDecide = useCan(P.fleetCommandDecide);
   const [host, setHost] = useState('');
   const [shell, setShell] = useState('');
   const [open, setOpen] = useState<string | null>(null);
@@ -86,12 +88,12 @@ export function FleetHostsPage() {
           </select>
         </label>
         <div className="flex flex-wrap gap-2">
-          {DIAGNOSTICS.map((d) => <button key={d} type="button" className={button} disabled={!host || busy !== null} onClick={() => void act(d, () => api.requestFleetCommand(host, d))}>{d}</button>)}
+          {DIAGNOSTICS.map((d) => <button key={d} type="button" className={button} disabled={!host || busy !== null || !canRequest} title={canRequest ? undefined : needsText(P.fleetCommandRequest)} onClick={() => void act(d, () => api.requestFleetCommand(host, d))}>{d}</button>)}
         </div>
         <form onSubmit={submitShell} className="flex gap-2">
           <input aria-label="Shell command" value={shell} onChange={(e) => setShell(e.target.value)} placeholder="shell command (runs as root after approval)"
             className="flex-1 rounded border border-border bg-background px-2 py-1 font-mono text-sm" />
-          <button type="submit" className={button} disabled={!host || !shell.trim() || busy !== null}>Request</button>
+          <button type="submit" className={button} disabled={!host || !shell.trim() || busy !== null || !canRequest} title={canRequest ? undefined : needsText(P.fleetCommandRequest)}>Request</button>
         </form>
       </section>
 
@@ -110,8 +112,8 @@ export function FleetHostsPage() {
                 <td>{c.requested_by}{c.approved_by ? ` / ${c.approved_by}` : ''}</td>
                 <td className="whitespace-nowrap space-x-1">
                   {c.status === 'pending_approval' && <>
-                    <button type="button" className={button} disabled={busy !== null} onClick={() => void act(`a-${c.id}`, () => api.approveFleetCommand(c.id, c.command_sha256))}>Approve</button>
-                    <button type="button" className={button} disabled={busy !== null} onClick={() => void act(`d-${c.id}`, () => api.denyFleetCommand(c.id))}>Deny</button>
+                    <button type="button" className={button} disabled={busy !== null || !canDecide} title={canDecide ? undefined : needsText(P.fleetCommandDecide)} onClick={() => void act(`a-${c.id}`, () => api.approveFleetCommand(c.id, c.command_sha256))}>Approve</button>
+                    <button type="button" className={button} disabled={busy !== null || !canDecide} title={canDecide ? undefined : needsText(P.fleetCommandDecide)} onClick={() => void act(`d-${c.id}`, () => api.denyFleetCommand(c.id))}>Deny</button>
                   </>}
                   {c.output !== null && <button type="button" className={button} onClick={() => setOpen(open === c.id ? null : c.id)}>{open === c.id ? 'Hide' : 'Output'}</button>}
                 </td>

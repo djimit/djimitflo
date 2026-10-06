@@ -2,13 +2,16 @@ import { useMemo, useState } from 'react';
 import { SlidersHorizontal } from 'lucide-react';
 import { api } from '../lib/api';
 import { useResource } from '../hooks/useResource';
+import { ACTION_PERMISSIONS as P, needsText, useCan } from '../lib/permissions';
 
 type Entry = { name: string; value: string; masked: boolean; group: string };
 
 const fetchConfig = () => api.getRuntimeConfig();
+const skip = () => Promise.resolve(null);
 
 export function ConfigurationPage() {
-  const { data, error } = useResource(fetchConfig);
+  const allowed = useCan(P.runtimeConfig);
+  const { data, error } = useResource(allowed ? fetchConfig : skip);
   const entries: Entry[] | null = data?.entries ?? null;
   const [query, setQuery] = useState('');
 
@@ -31,8 +34,9 @@ export function ConfigurationPage() {
       <p className="text-sm text-foreground-secondary">
         What the running server is configured with (read-only). Secrets are masked and never shown. Changes still go through runtime.env with a backup and a restart.
       </p>
+      {!allowed && <p role="alert" className="text-sm text-foreground-secondary">{needsText(P.runtimeConfig)} to view the running configuration.</p>}
       {error && <p role="alert" className="text-status-error">{error}</p>}
-      {!entries && !error && <p className="text-sm text-foreground-secondary">Loading…</p>}
+      {allowed && !entries && !error && <p className="text-sm text-foreground-secondary">Loading…</p>}
       {entries && (
         <>
           <input aria-label="Filter settings" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by name or value…"

@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { ExecutionPolicy } from '@djimitflo/shared';
 import { api } from '../lib/api';
+import { ACTION_PERMISSIONS as P, needsText, useCan } from '../lib/permissions';
 
 export function PolicyCenterPage() {
+  const canEdit = useCan(P.policyUpdate);
   const [policies, setPolicies] = useState<ExecutionPolicy[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -46,6 +48,8 @@ export function PolicyCenterPage() {
                 </div>
                 <button
                   onClick={() => void togglePolicy(policy)}
+                  disabled={!canEdit}
+                  title={canEdit ? undefined : needsText(P.policyUpdate)}
                   className={`px-4 py-2 rounded-lg border ${policy.enabled ? 'bg-status-running/10 text-status-running border-status-running/20' : 'bg-status-error/10 text-status-error border-status-error/20'}`}
                 >
                   {policy.enabled ? 'Enabled' : 'Disabled'}

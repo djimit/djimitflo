@@ -1,8 +1,12 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import type { ApprovalRequest } from '@djimitflo/shared';
 import { ApprovalQueuePage } from './ApprovalQueuePage';
 import { ApprovalCard } from '../components/ApprovalCard';
+import { useAuthStore } from '../lib/auth-store';
+
+// UX-4: actions are gated by role; these cases exercise them as an admin
+beforeEach(() => { useAuthStore.setState({ user: { id: 'admin-fixture', email: 'admin@example.test', role: 'admin' } as never }); });
 
 const { subscribe } = vi.hoisted(() => ({ subscribe: vi.fn(() => () => {}) }));
 vi.mock('../hooks/useWebSocket', () => ({ useWebSocket: () => ({ subscribe }) }));

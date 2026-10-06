@@ -3,6 +3,7 @@ import type { ApprovalRequest } from '@djimitflo/shared';
 import { CheckCircle, XCircle, Clock, AlertTriangle } from 'lucide-react';
 import { api } from '../lib/api';
 import { APPROVALS_CHANGED, minutesUntil } from '../hooks/usePendingApprovals';
+import { ACTION_PERMISSIONS, needsText, permissionError, useCan } from '../lib/permissions';
 
 interface ApprovalCardProps {
   approval: ApprovalRequest;
@@ -14,6 +15,7 @@ export function ApprovalCard({ approval: incomingApproval, onUpdated }: Approval
   const status = approval.status;
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const canDecide = useCan(ACTION_PERMISSIONS.approveRequest);
   useEffect(() => setApproval(incomingApproval), [incomingApproval]);
 
   const handleApprove = async () => {
@@ -25,7 +27,7 @@ export function ApprovalCard({ approval: incomingApproval, onUpdated }: Approval
       onUpdated?.(updated);
       window.dispatchEvent(new Event(APPROVALS_CHANGED));
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to approve request');
+      setError(permissionError(error, ACTION_PERMISSIONS.approveRequest, 'Failed to approve request'));
     } finally {
       setProcessing(false);
     }
@@ -44,7 +46,7 @@ export function ApprovalCard({ approval: incomingApproval, onUpdated }: Approval
       onUpdated?.(updated);
       window.dispatchEvent(new Event(APPROVALS_CHANGED));
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to deny request');
+      setError(permissionError(error, ACTION_PERMISSIONS.approveRequest, 'Failed to deny request'));
     } finally {
       setProcessing(false);
     }
@@ -117,7 +119,10 @@ export function ApprovalCard({ approval: incomingApproval, onUpdated }: Approval
 
       {/* Action Buttons (only for pending) */}
       {error && <p role="alert" className="mb-3 text-sm text-status-error">{error}</p>}
-      {status === 'pending' && (
+      {status === 'pending' && !canDecide && (
+        <p className="pt-3 border-t border-border text-xs text-foreground-tertiary">{needsText(ACTION_PERMISSIONS.approveRequest)} to approve or deny.</p>
+      )}
+      {status === 'pending' && canDecide && (
         <div className="flex gap-2 pt-3 border-t border-border">
           <button
             onClick={handleApprove}

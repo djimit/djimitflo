@@ -2,6 +2,10 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { ConfigurationPage } from './ConfigurationPage';
 import { api } from '../lib/api';
+import { useAuthStore } from '../lib/auth-store';
+
+// UX-4: actions are gated by role; these cases exercise them as an admin
+beforeEach(() => { useAuthStore.setState({ user: { id: 'admin-fixture', email: 'admin@example.test', role: 'admin' } as never }); });
 
 beforeEach(() => vi.restoreAllMocks());
 
