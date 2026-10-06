@@ -16,6 +16,7 @@ import { listSchedulers } from '../services/scheduler-registry';
 import { knowledgeOverview } from '../services/knowledge-overview';
 import { forecastScores, forecastScoresV2 } from '../services/forecast-scoring';
 import { runtimeHealth } from '../services/runtime-health';
+import { agentScorecards, runtimeScorecards } from '../services/scorecards';
 import { buildEvolutionEvidence } from '../services/evolution-evidence';
 import { runtimeConfigView } from '../services/runtime-config-view';
 import { buildDigest } from '../services/operator-push';
@@ -156,6 +157,11 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   // UX-16: one row per runtime — admission + expiry, versions, probe, 30-d leases, gym breaker, readiness (read-only)
   router.get('/runtimes', requireAuth, requirePermission('read:evidence'), (_req, res) => {
     res.json({ runtimes: runtimeHealth(db) });
+  });
+
+  // UX-17: scorecards — per runtime (real-maker outcomes, CI, durations, tokens, cost when priced, failure classes) and per fleet agent
+  router.get('/scorecards', requireAuth, requirePermission('read:evidence'), (_req, res) => {
+    res.json({ runtimes: runtimeScorecards(db), agents: agentScorecards(db) });
   });
 
   // plan AR1: forecasters of "this proposal ends verified", scored before the gate decided, against the per-source base rate
