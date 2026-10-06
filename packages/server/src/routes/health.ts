@@ -15,6 +15,7 @@ import { operatorCockpit } from '../services/operator-cockpit';
 import { listSchedulers } from '../services/scheduler-registry';
 import { knowledgeOverview } from '../services/knowledge-overview';
 import { forecastScores, forecastScoresV2 } from '../services/forecast-scoring';
+import { runtimeHealth } from '../services/runtime-health';
 import { buildEvolutionEvidence } from '../services/evolution-evidence';
 import { runtimeConfigView } from '../services/runtime-config-view';
 import { buildDigest } from '../services/operator-push';
@@ -150,6 +151,11 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   // plan W5: knowledge pipeline per source — discoveries, jev relevance, units, KB retrieval, interest profile (read-only)
   router.get('/knowledge', requireAuth, requirePermission('read:evidence'), (_req, res) => {
     res.json(knowledgeOverview(db));
+  });
+
+  // UX-16: one row per runtime — admission + expiry, versions, probe, 30-d leases, gym breaker, readiness (read-only)
+  router.get('/runtimes', requireAuth, requirePermission('read:evidence'), (_req, res) => {
+    res.json({ runtimes: runtimeHealth(db) });
   });
 
   // plan AR1: forecasters of "this proposal ends verified", scored before the gate decided, against the per-source base rate
