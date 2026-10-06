@@ -83,3 +83,14 @@ it('shows and releases a real governance hold only to governance writers, with s
   expect(screen.queryByRole('button', { name: 'Release governance hold' })).toBeNull();
   expect(fetch.mock.calls.filter(([url, options]) => url.endsWith('/release') && options?.method === 'POST')).toHaveLength(releaseRequestsBeforeViewer);
 });
+
+it('UX-14: the agent card names its connection state and the evidence for it, and shows nothing when the server sent none', () => {
+  useStore.setState({ agents: [
+    { id: 'ghost', name: 'Ghost agent', status: 'active', connection_state: 'token_issued', connection_reason: 'token expired 26 h ago, never used', capabilities: [], total_tasks: 0, completed_tasks: 0, failed_tasks: 0 },
+    { id: 'old', name: 'Older payload', status: 'idle', capabilities: [], total_tasks: 0, completed_tasks: 0, failed_tasks: 0 },
+  ] as any });
+  render(<MemoryRouter><AgentsPage /></MemoryRouter>);
+  const shown = screen.getAllByTestId('connection-state');
+  expect(shown).toHaveLength(1);
+  expect(shown[0].textContent).toBe('Connection: token issued — token expired 26 h ago, never used');
+});

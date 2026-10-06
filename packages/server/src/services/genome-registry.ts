@@ -27,14 +27,41 @@ export function genome(db: Database, id: string): Genome | null {
   return { id: row.id, parent_id: row.parent_id, gene: row.gene, lines, origin: row.origin, status: row.status };
 }
 
-/** Picks the holdout once — every k-th mined task, deterministic — and never changes it afterwards. */
+/**
+ * RX-12 (Phase F): holdouts come in epochs. GYM_HOLDOUT_EPOCH (default 0 = the holdout frozen since 01-10) selects one; a new
+ * epoch freezes fresh tasks next to the old ones (never reusing a task of another epoch; nothing is deleted). A holdout is
+ * consumable — every settled trial looks at it — so rotating gives later trials untouched tasks. Rotation is refused while a
+ * genome is in trial: the epoch it started on stays until it settles.
+ */
+export const requestedHoldoutEpoch = (env: NodeJS.ProcessEnv = process.env): number => {
+  const n = Number(env.GYM_HOLDOUT_EPOCH); return Number.isInteger(n) && n >= 0 ? n : 0;
+};
+const warned = new Set<string>();
+export function holdoutEpoch(db: Database, table: 'gym_holdout' | 'gym_mutant_holdout', env: NodeJS.ProcessEnv = process.env): number {
+  const want = requestedHoldoutEpoch(env);
+  let epochs: number[] = [];
+  try { epochs = (db.prepare(`SELECT DISTINCT epoch FROM ${table}`).all() as Array<{ epoch: number }>).map((r) => r.epoch); } catch { return want; }
+  if (!epochs.length || epochs.includes(want) || !db.prepare("SELECT 1 FROM maker_genomes WHERE status = 'trial' LIMIT 1").get()) return want;
+  const current = Math.max(...epochs);
+  const key = `${table}:${want}`;
+  if (!warned.has(key)) { warned.add(key); console.warn(`🧬 ${table}: GYM_HOLDOUT_EPOCH=${want} waits — a genome is in trial on epoch ${current}`); }
+  return current;
+}
+export function frozenHoldoutCommits(db: Database): string[] {
+  return (db.prepare('SELECT commit_sha FROM gym_holdout WHERE epoch = ? ORDER BY commit_sha').all(holdoutEpoch(db, 'gym_holdout')) as Array<{ commit_sha: string }>).map((r) => r.commit_sha);
+}
+
+/** Picks the holdout of the current epoch once — every k-th mined task not used by another epoch, deterministic — and never changes it. */
 export function holdout(db: Database, tasks: GymTask[], now = new Date().toISOString()): string[] {
-  const frozen = (db.prepare('SELECT commit_sha FROM gym_holdout ORDER BY commit_sha').all() as Array<{ commit_sha: string }>).map((r) => r.commit_sha);
-  if (frozen.length || tasks.length < HOLDOUT_SIZE) return frozen;
-  const sorted = [...tasks].sort((a, b) => a.commit.localeCompare(b.commit));
+  const epoch = holdoutEpoch(db, 'gym_holdout');
+  const frozen = (db.prepare('SELECT commit_sha FROM gym_holdout WHERE epoch = ? ORDER BY commit_sha').all(epoch) as Array<{ commit_sha: string }>).map((r) => r.commit_sha);
+  const used = new Set((db.prepare('SELECT commit_sha FROM gym_holdout').all() as Array<{ commit_sha: string }>).map((r) => r.commit_sha));
+  const fresh = tasks.filter((t) => !used.has(t.commit));
+  if (frozen.length || fresh.length < HOLDOUT_SIZE) return frozen;
+  const sorted = [...fresh].sort((a, b) => a.commit.localeCompare(b.commit));
   const step = sorted.length / HOLDOUT_SIZE;
-  const insert = db.prepare('INSERT OR IGNORE INTO gym_holdout (commit_sha, created_at) VALUES (?, ?)');
-  for (let i = 0; i < HOLDOUT_SIZE; i++) insert.run(sorted[Math.floor(i * step)].commit, now);
+  const insert = db.prepare('INSERT OR IGNORE INTO gym_holdout (commit_sha, created_at, epoch) VALUES (?, ?, ?)');
+  for (let i = 0; i < HOLDOUT_SIZE; i++) insert.run(sorted[Math.floor(i * step)].commit, now, epoch);
   return holdout(db, [], now);
 }
 
@@ -52,20 +79,22 @@ export const mutantHoldoutTiers = (env: NodeJS.ProcessEnv = process.env): number
   return tiers.length ? tiers : [2, 3];
 };
 export function mutantHoldoutKeys(db: Database, tiers = mutantHoldoutTiers()): string[] {
-  return (db.prepare('SELECT key, task_json FROM gym_mutant_holdout ORDER BY key').all() as Array<{ key: string; task_json: string }>)
+  return (db.prepare('SELECT key, task_json FROM gym_mutant_holdout WHERE epoch = ? ORDER BY key').all(holdoutEpoch(db, 'gym_mutant_holdout')) as Array<{ key: string; task_json: string }>)
     .filter((r) => tiers.includes(Number((JSON.parse(r.task_json) as MutantTask).tier))).map((r) => r.key);
 }
 export function mutantHoldout(db: Database, make: (tier: number, tried: Set<string | null>) => MutantTask | null, now = new Date().toISOString(), tiers = mutantHoldoutTiers()): MutantTask[] {
-  const read = () => (db.prepare('SELECT task_json FROM gym_mutant_holdout ORDER BY key').all() as Array<{ task_json: string }>)
+  const epoch = holdoutEpoch(db, 'gym_mutant_holdout');
+  const read = () => (db.prepare('SELECT task_json FROM gym_mutant_holdout WHERE epoch = ? ORDER BY key').all(epoch) as Array<{ task_json: string }>)
     .map((r) => JSON.parse(r.task_json) as MutantTask).filter((t) => tiers.includes(Number(t.tier)));
   const frozen = read();
   if (frozen.length) return frozen;
-  const tried = new Set<string | null>();
-  const insert = db.prepare('INSERT OR IGNORE INTO gym_mutant_holdout (key, task_json, created_at) VALUES (?, ?, ?)');
+  // RX-12: a new epoch never reuses a task frozen by another one
+  const tried = new Set<string | null>((db.prepare('SELECT key FROM gym_mutant_holdout').all() as Array<{ key: string }>).map((r) => r.key));
+  const insert = db.prepare('INSERT OR IGNORE INTO gym_mutant_holdout (key, task_json, created_at, epoch) VALUES (?, ?, ?, ?)');
   for (let i = 0; i < HOLDOUT_SIZE; i++) {
     const task = make(tiers[i % tiers.length], tried);
     if (!task) break;
-    tried.add(task.commit); insert.run(task.commit, JSON.stringify(task), now);
+    tried.add(task.commit); insert.run(task.commit, JSON.stringify(task), now, epoch);
   }
   return read();
 }

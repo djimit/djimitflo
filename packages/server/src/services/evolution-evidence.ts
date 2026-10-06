@@ -15,13 +15,13 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'LOOP_EVOLVE_ENABLED', acting: true }, { name: 'LOOP_EVOLVE_SPECIES', acting: true },
   { name: 'FITNESS_SHADOW_ENABLED', acting: false }, { name: 'MERGE_SURVIVAL_ENABLED', acting: false }, { name: 'MERGE_SURVIVAL_V2', acting: false },
   { name: 'DREAM_EVOLUTION_ENABLED', acting: true }, { name: 'DREAM_TRIAL_MUTANTS', acting: true }, { name: 'DREAM_TRIAL_MUTANT_TIERS', acting: true },
-  { name: 'DREAM_PROMOTION_ALPHA', acting: true }, { name: 'TRIAL_DIAGNOSTICS_ENABLED', acting: false }, { name: 'GENOME_APPLY_MODE', acting: false },
+  { name: 'DREAM_PROMOTION_ALPHA', acting: true }, { name: 'TRIAL_DIAGNOSTICS_ENABLED', acting: false }, { name: 'DREAM_PROMOTION_RULE', acting: false }, { name: 'GYM_HOLDOUT_EPOCH', acting: true }, { name: 'GENOME_APPLY_MODE', acting: false },
   { name: 'ARENA_GATE_ENABLED', acting: true }, { name: 'COMMITTEE_SWARM_ENABLED', acting: true }, { name: 'COMMONS_GROUNDING_APPLY', acting: true },
   { name: 'LOOP_AUTO_DRAFT_PR_ENABLED', acting: true }, { name: 'LOOP_AUTO_APPROVE_TEST_GAP', acting: true }, { name: 'ORACLE_LANES_AUTO_APPROVE', acting: true },
   { name: 'LOOP_MEMORY_RULES_ENABLED', acting: true }, { name: 'EVOLUTION_GYM_REMOTE_MAX_PER_DAY', acting: true }, { name: 'DJIMITFLO_PUBLIC_URL', acting: false },
   { name: 'GYM_TIER_PROBE_ENABLED', acting: false }, { name: 'GYM_TIER_PROBE_TIERS', acting: false }, { name: 'GYM_TIER_PROBE_EVERY', acting: false },
   { name: 'HACK_DETECTOR_MODE', acting: false }, { name: 'GYM_CANARY_RATE', acting: false },
-  { name: 'MODEL_SELECTOR_MODE', acting: true },
+  { name: 'MODEL_SELECTOR_MODE', acting: true }, { name: 'EVOLUTION_ESTIMATORS_ENABLED', acting: false },
 ];
 
 export type GateState = 'green' | 'red' | 'unknown';
@@ -83,6 +83,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   // RX-4: settled trials and how much each could have shown
   const trials = {
     by_state: all<{ state: string; n: number }>('SELECT state, COUNT(*) AS n FROM genome_trial_results GROUP BY 1 ORDER BY 1'),
+    // RX-12: a holdout is consumable — settled trials per epoch (rotate after ~6); RX-13: e-process shadow decisions
+    by_epoch: all<{ epoch: number | null; n: number; e_promote: number }>("SELECT epoch, COUNT(*) AS n, SUM(e_rule_decision = 'promote') AS e_promote FROM genome_trial_results GROUP BY 1 ORDER BY 1"),
     recent: all<{ trial_id: string; parent_id: string; tier_set: string; deciding_n: number; f_parent_failures: number; b: number; c: number; p: number; power_q8_l05: number; state: string; recorded_at: string }>(
       'SELECT trial_id, parent_id, tier_set, deciding_n, f_parent_failures, b, c, p, power_q8_l05, state, recorded_at FROM genome_trial_results ORDER BY recorded_at DESC LIMIT 10'),
   };
@@ -121,5 +123,15 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   // RX-9 / RX-8: honest agreement and yield numbers (one row per maker; attempted Commons children vs source base rate)
   const oracle = oracleAgreement(db);
   const commons = commonsYield(db);
-  return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, trials, models, oracle, commons, forecasts_v2, hacks, gates };
+  // RX-14: the last 14 days of the nightly thermometer, one trend per estimator × scope
+  const estRows = all<{ estimator: string; scope: string; day: string; value: number | null; ci_low: number | null; ci_high: number | null; n: number; status: string }>(
+    `SELECT estimator, scope, as_of_day AS day, value, ci_low, ci_high, n, status FROM evolution_estimates WHERE as_of_day >= ? ORDER BY estimator, scope, as_of_day`,
+    new Date(now - 13 * 86_400_000).toISOString().slice(0, 10));
+  const estimates: Array<{ estimator: string; scope: string; days: Array<{ day: string; value: number | null; ci_low: number | null; ci_high: number | null; n: number; status: string }> }> = [];
+  for (const r of estRows) {
+    let t = estimates[estimates.length - 1];
+    if (!t || t.estimator !== r.estimator || t.scope !== r.scope) { t = { estimator: r.estimator, scope: r.scope, days: [] }; estimates.push(t); }
+    t.days.push({ day: r.day, value: r.value, ci_low: r.ci_low, ci_high: r.ci_high, n: r.n, status: r.status });
+  }
+  return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, trials, models, oracle, commons, forecasts_v2, hacks, estimates, gates };
 }

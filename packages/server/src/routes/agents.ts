@@ -4,6 +4,7 @@
 
 import { rateLimit } from 'express-rate-limit';
 import { agentLiveness, type RegistryNode } from '../services/agent-liveness';
+import { connectionStates } from '../services/agent-connection-state';
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import { createError } from '../middleware/error-handler';
@@ -32,8 +33,9 @@ export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
         metadata: JSON.parse(agent.metadata || '{}'),
         ...agentLiveness(agent, registry),
       }));
-
-      res.json({ agents: parsed });
+      // UX-14: connection state + reason per agent (additive fields)
+      const states = connectionStates(db, parsed);
+      res.json({ agents: parsed.map((a: any) => ({ ...a, connection_state: states.get(a.id)?.state ?? null, connection_reason: states.get(a.id)?.reason ?? null })) });
     } catch (error) {
       next(error);
     }

@@ -8,6 +8,7 @@ import { TelegramBotService } from '../services/telegram-bot-service';
 import type { AuthMiddleware } from '../middleware/auth';
 import type { WebSocketService } from '../services/websocket-service';
 import type { TelegramApiService } from '../services/telegram-api-service';
+import { setPushSender, startOperatorDigest } from '../services/operator-push';
 
 export function parseTelegramAllowedUsers(value = ''): number[] {
   return value.split(',').map((part) => part.trim()).filter(Boolean).map(Number).filter(Number.isFinite);
@@ -56,6 +57,9 @@ export function createTelegramRoutes(db: Database, auth?: AuthMiddleware, _wsSer
       webhookUrl: process.env.TELEGRAM_WEBHOOK_URL,
       userMap: parseTelegramUserMap(process.env.TELEGRAM_USER_MAP),
     });
+    // UX-12/13: this webhook bot is the canonical push channel; both pushes stay off until their flags are set
+    setPushSender(bot);
+    startOperatorDigest(db);
   }
 
   // POST /api/telegram/webhook — receive Telegram webhook

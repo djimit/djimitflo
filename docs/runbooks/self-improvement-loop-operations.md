@@ -79,6 +79,8 @@ missing here. **Acting** = changes what the loop does; acting flags are switched
 | `DREAM_TRIAL_MUTANT_TIERS` | `2,3` | yes | act (freezes a new holdout) | operator, after the RX-5 tier probe |
 | `DREAM_PROMOTION_ALPHA` | 0.05 | yes | act | operator |
 | `TRIAL_DIAGNOSTICS_ENABLED` | off | no (records per-trial blindness/power; never changes promotion) | measure | operator |
+| `DREAM_PROMOTION_RULE` | mcnemar | no (`both` records the anytime-valid e-process decision next to McNemar; never changes promotion) | shadow | operator |
+| `GYM_HOLDOUT_EPOCH` | 0 (the holdout frozen since 01-10) | yes (a new epoch freezes 20 fresh tasks next to the old; refused while a genome is in trial) | act | operator |
 | `GENOME_APPLY_MODE` | unset (only `shadow` exists) | no | shadow | loop (shadow) |
 | `ARENA_GATE_ENABLED` | off | yes | act | operator |
 | `COMMITTEE_SWARM_ENABLED` | off | yes | act | operator |
@@ -95,6 +97,7 @@ missing here. **Acting** = changes what the loop does; acting flags are switched
 | `HACK_DETECTOR_MODE` | off (`shadow` records gym hack flags on each result; nothing acts) | no | measure | operator |
 | `GYM_CANARY_RATE` | 0 (never; served only to a worker announcing `capabilities: ['canary']`) | no | measure | operator |
 | `MODEL_SELECTOR_MODE` | off (`shadow` samples a cheaper candidate per panel review and discards it; `enforce` uses the cheapest qualified model) | yes in enforce | shadow → act | operator; candidates `MODEL_CANDIDATES_PANEL_REVIEW` and (MS-2, Frontier Experts reviews / technique cards / council) `MODEL_CANDIDATES_FRONTIER_EXPERTS`, weights `MODEL_COST_WEIGHTS`, sample `MODEL_SELECTOR_SHADOW_RATE` (0.1) |
+| `EVOLUTION_ESTIMATORS_ENABLED` | off (on: once per UTC day writes delays, discriminability, trial blindness, gym pass rate per tier, model ok rates and Gates A–D to `evolution_estimates`; stall `estimates` after 36 h without a row) | no | measure | operator |
 
 ## Prod status (2026-09-25, E4) — STALE
 
@@ -167,3 +170,23 @@ Only for proposals that failed on infrastructure. In one transaction: set `self_
 
 - Install: `cp scripts/auto-deploy.sh /srv/djimitflo/auto-deploy.sh && cp scripts/systemd/djimitflo-auto-deploy.* /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now djimitflo-auto-deploy.timer`
 - Stop: `touch /srv/djimitflo/AUTO_DEPLOY_DISABLED` (remove the file to resume). Log: `journalctl -u djimitflo-auto-deploy`.
+
+## Operator push (Telegram) — UX-12 / UX-13
+
+Both are off by default; enabling is the operator's decision. The canonical channel is the webhook bot
+(`routes/telegram.ts` → `TelegramBotService`, env `TELEGRAM_BOT_TOKEN` / `TELEGRAM_ALLOWED_USERS` / `TELEGRAM_WEBHOOK_*`).
+The polling gateway in `packages/telegram` (`TELEGRAM_BOTS_CONFIG`) is kept as is and does not push.
+
+| Flag | Default | What it does |
+|---|---|---|
+| `TELEGRAM_PUSH_ENABLED` | off | one message per new approval with Approve / Deny / Open buttons (dedupe per approval id) |
+| `TELEGRAM_PUSH_MAX_PER_HOUR` | 6 | hourly cap on approval messages |
+| `TELEGRAM_QUIET_HOURS` | unset | UTC window `HH-HH` (e.g. `22-7`) without messages |
+| `OPERATOR_DIGEST_ENABLED` | off | daily digest via the bot |
+| `OPERATOR_DIGEST_HOUR` | 7 | UTC hour of the digest |
+
+Buttons only work for an allowlisted Telegram id mapped in `telegram_identities` (D3) to an active user whose role holds
+`approve:task`; the decision is made through the normal approval API as that user, so `SELF_APPROVAL_FORBIDDEN` applies.
+The webhook must receive `callback_query` updates (Telegram's default unless `allowed_updates` was restricted).
+Privacy: message content leaves to Telegram — titles, ids, lanes, file paths in scope and aggregates; secret patterns are
+redacted; no hosts or tokens. `GET /api/health/digest` (read:evidence) shows the digest as it would be sent.
