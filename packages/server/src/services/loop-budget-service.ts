@@ -65,6 +65,21 @@ const PRICE_PER_MTOK: Record<string, number> = {
   codex: 2.0, opencode: 0.5, claude: 3.0, gemini: 1.0, pi: 0, editor: 0, mock: 0,
 };
 
+/**
+ * UX-18: per-model input/output prices as configuration — LLM_PRICE_PER_MTOK="model=in/out,..." in USD per million tokens
+ * (e.g. "jev-1.13.0=0.042/0"). Unknown models have no price (null); a price is never invented.
+ */
+export function modelPrice(model: string, env: NodeJS.ProcessEnv = process.env): { input: number; output: number } | null {
+  const base = model.replace(/^ollama:/, '').replace(/:cloud$/, '');
+  for (const pair of String(env.LLM_PRICE_PER_MTOK || '').split(',')) {
+    const [name, prices] = pair.split('=').map((s) => s?.trim());
+    if (!name || !prices || (name !== model && name !== base)) continue;
+    const [input, output] = prices.split('/').map(Number);
+    if (Number.isFinite(input) && Number.isFinite(output ?? 0)) return { input, output: output ?? 0 };
+  }
+  return null;
+}
+
 export class LoopBudgetService {
   constructor(
     private db: Database,
