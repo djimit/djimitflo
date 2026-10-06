@@ -48,6 +48,24 @@ export interface ContextResult {
   store?: MemoryStore;
 }
 
+/**
+ * Ranking used for injected context: trust tier first, then score. UX-24 finding: the score is compared raw across sources
+ * (Qdrant cosine, OKF/KB search scores, experience retrieval), whose scales differ, and the trust tier outranks relevance
+ * entirely. RETRIEVAL_NORMALISE_SCORES=true (default off) min-max normalises the score within each source before the
+ * within-tier comparison; off keeps today's order exactly. The tier-first rule is unchanged either way.
+ */
+export function rankContextResults(results: ContextResult[], env: NodeJS.ProcessEnv = process.env): ContextResult[] {
+  const trustOrder: Record<string, number> = { approved: 0, validated: 1, agent_generated: 2 };
+  const tier = (r: ContextResult) => trustOrder[r.trust_level || 'agent_generated'] ?? 3;
+  let score = (r: ContextResult) => r.score || 0;
+  if (env.RETRIEVAL_NORMALISE_SCORES === 'true') {
+    const range = new Map<string, [number, number]>();
+    for (const r of results) { const [lo, hi] = range.get(r.source) ?? [Infinity, -Infinity]; range.set(r.source, [Math.min(lo, r.score || 0), Math.max(hi, r.score || 0)]); }
+    score = (r) => { const [lo, hi] = range.get(r.source)!; return hi > lo ? ((r.score || 0) - lo) / (hi - lo) : 1; };
+  }
+  return results.sort((a, b) => (tier(a) !== tier(b) ? tier(a) - tier(b) : score(b) - score(a)));
+}
+
 export interface ContextSnapshot {
   text: string;
   sha256: string;
@@ -274,13 +292,7 @@ export class ContextInjectionService {
   }
 
   private rankByTrust(results: ContextResult[]): ContextResult[] {
-    const trustOrder: Record<string, number> = { approved: 0, validated: 1, agent_generated: 2 };
-    return results.sort((a, b) => {
-      const aTrust = trustOrder[a.trust_level || 'agent_generated'] ?? 3;
-      const bTrust = trustOrder[b.trust_level || 'agent_generated'] ?? 3;
-      if (aTrust !== bTrust) return aTrust - bTrust;
-      return (b.score || 0) - (a.score || 0);
-    });
+    return rankContextResults(results);
   }
 
   private truncateToTokenBudget(results: ContextResult[], maxTokens: number): ContextResult[] {

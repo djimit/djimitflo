@@ -6,6 +6,7 @@ import type { RuntimeGovernanceAgentStatus } from '../lib/api';
 import { useAuthStore } from '../lib/auth-store';
 import { Link, useParams } from 'react-router-dom';
 import { LoadErrorNotice, softFail } from '../components/LoadErrorNotice';
+import { ScorecardsSection } from './ScorecardsSection';
 
 export function AgentsPage() {
   const { agentId } = useParams();
@@ -69,6 +70,9 @@ export function AgentsPage() {
           })
         )}
       </div>
+
+      {/* UX-17: runtime and fleet-agent scorecards (list view only) */}
+      {!agentId && <ScorecardsSection />}
     </div>
   );
 }
