@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { AlertTriangle, BrainCircuit, CheckCircle2, ChevronDown, Database, Gauge, GitBranch, Network, PlayCircle, RefreshCw, RotateCcw, Route, ShieldCheck, Workflow } from 'lucide-react';
 import { api, type CapacityPlanV2Result, type ClaimLedgerRecord, type GoalBatchPreviewResult, type IntegrationSpineChain, type KnowledgeRuntimeHealth, type KnowledgeSyncResult, type ProofRunSummary, type SwarmCapabilityRecord, type SwarmMissionControl, type WorkerPoolPlanResult } from '../lib/api';
 import { LoadErrorNotice } from '../components/LoadErrorNotice';
+import { useDialog } from '../components/ConfirmDialog';
 
 const FLYWHEEL_BATCH_PATH = 'openspec/changes/prove-learning-flywheel-operator-loop/goals.batch.json';
 
@@ -72,6 +73,7 @@ export function SwarmMissionControlPage() {
   const [learningClosure, setLearningClosure] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
+  const dialog = useDialog();
   const [error, setError] = useState<string | null>(null);
   const [proofRuntime, setProofRuntime] = useState<'mock' | 'codex' | 'opencode'>('opencode'); // a proof run on 'mock' proves nothing (W1)
   const [expandedCapability, setExpandedCapability] = useState<string | null>(null);
@@ -199,7 +201,9 @@ export function SwarmMissionControlPage() {
   }
 
   async function closeLearningLoop() {
-    const loopRunId = window.prompt('Loop run id to close');
+    // UX-25b: the shared dialog instead of window.prompt (labelled, focus-trapped, Escape cancels)
+    const values = await dialog.ask({ title: 'Close learning loop', fields: [{ name: 'loopRunId', label: 'Loop run id', required: true }], confirmLabel: 'Close loop' });
+    const loopRunId = values?.loopRunId;
     if (!loopRunId) return;
     setActionId('learning-close');
     setError(null);
@@ -237,6 +241,7 @@ export function SwarmMissionControlPage() {
 
   return (
     <div className="p-8 space-y-6">
+      {dialog.element}
       <LoadErrorNotice failed={loadErrors} />
       <div className="flex items-start justify-between gap-4">
         <div>

@@ -263,7 +263,7 @@ function Tab({ active, onClick, children }: { active: boolean; onClick: () => vo
 }
 
 function ThreadButton({ active, label, detail, count, onClick }: { active: boolean; label: string; detail?: string; count: number; onClick: () => void }) {
-  return <button type="button" onClick={onClick} className={`w-full rounded-lg border p-2 text-left ${active ? 'border-accent/40 bg-accent/10' : 'border-transparent hover:bg-background-elevated'}`}><div className="flex items-start justify-between gap-2"><span className="truncate text-xs font-medium text-foreground">{label}</span><span className="rounded bg-background-elevated px-1.5 py-0.5 text-[10px] text-foreground-secondary">{count}</span></div>{detail && <div className="mt-1 truncate text-[10px] text-foreground-tertiary">{detail}</div>}</button>;
+  return <button type="button" onClick={onClick} className={`w-full rounded-lg border p-2 text-left ${active ? 'border-accent/40 bg-accent/10' : 'border-transparent hover:bg-background-elevated'}`}><div className="flex items-start justify-between gap-2"><span className="truncate text-xs font-medium text-foreground">{label}</span><span className="rounded bg-background-elevated px-1.5 py-0.5 text-xs text-foreground-secondary">{count}</span></div>{detail && <div className="mt-1 truncate text-xs text-foreground-tertiary">{detail}</div>}</button>;
 }
 
 function Badge({ value }: { value: string }) {

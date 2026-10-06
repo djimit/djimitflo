@@ -170,7 +170,7 @@ export function FrontierExpertsPage() {
                   <div className="flex items-center justify-between gap-2"><Link to={`/frontier-experts/${expert.expert_id}`} className="font-medium text-foreground hover:underline">{expert.canonical_name}</Link><span className="font-mono text-foreground-secondary">score {expert.score}</span></div>
                   <p className="mt-1 text-foreground-secondary">{expert.why_selected}</p>
                   <ul className="mt-2 grid grid-cols-3 gap-1">
-                    {Object.entries(expert.components).map(([key, value]) => <li key={key} className="text-[10px] text-foreground-tertiary"><span className="block truncate">{key.replace(/_/g, ' ')}</span><span className="block h-1 rounded bg-background-tertiary"><span className="block h-1 rounded bg-accent" style={{ width: `${Math.round(Math.min(1, Math.abs(value)) * 100)}%` }} /></span></li>)}
+                    {Object.entries(expert.components).map(([key, value]) => <li key={key} className="text-xs text-foreground-tertiary"><span className="block truncate">{key.replace(/_/g, ' ')}</span><span className="block h-1 rounded bg-background-tertiary"><span className="block h-1 rounded bg-accent" style={{ width: `${Math.round(Math.min(1, Math.abs(value)) * 100)}%` }} /></span></li>)}
                   </ul>
                   <p className="mt-2 text-foreground-tertiary">{expert.evidence.map((item) => tierLabel(item.tier)).join(' · ')}</p>
                 </li>
@@ -190,8 +190,8 @@ export function FrontierExpertsPage() {
           <ul className="mt-3 max-h-[32rem] divide-y divide-border overflow-auto">
             {experts.map((expert) => (
               <li key={expert.id} className={`flex flex-wrap items-center justify-between gap-2 py-2 text-xs ${detail?.expert.id === expert.id ? 'bg-background-tertiary/60' : ''}`}>
-                <span className="flex items-center gap-2"><span className="rounded bg-background-tertiary px-1.5 py-0.5 text-[10px] text-foreground-tertiary">{expert.kind ?? 'person'}</span><Link to={`/frontier-experts/${expert.id}`} className="font-medium text-foreground hover:underline">{expert.canonical_name}</Link></span>
-                <span className="flex flex-wrap items-center gap-1"><StateBadge state={expert.lifecycle_state} />{expert.capabilities.map((capability) => <span key={capability} className="rounded bg-background-tertiary px-1.5 py-0.5 text-[10px] text-foreground-secondary">{capability}</span>)}</span>
+                <span className="flex items-center gap-2"><span className="rounded bg-background-tertiary px-1.5 py-0.5 text-xs text-foreground-tertiary">{expert.kind ?? 'person'}</span><Link to={`/frontier-experts/${expert.id}`} className="font-medium text-foreground hover:underline">{expert.canonical_name}</Link></span>
+                <span className="flex flex-wrap items-center gap-1"><StateBadge state={expert.lifecycle_state} />{expert.capabilities.map((capability) => <span key={capability} className="rounded bg-background-tertiary px-1.5 py-0.5 text-xs text-foreground-secondary">{capability}</span>)}</span>
               </li>
             ))}
             {!experts.length && <li className="py-2 text-xs text-foreground-tertiary">No experts for this filter.</li>}
@@ -225,7 +225,7 @@ export function FrontierExpertsPage() {
                         )}
                       </div>
                       <ul className="mt-1 space-y-0.5">
-                        {capability.evidence.map((item) => <li key={item.id} className="text-foreground-secondary"><span className="mr-1 rounded bg-background-tertiary px-1 text-[10px]">{tierLabel(item.tier)}</span>{item.url ? <a href={item.url} target="_blank" rel="noreferrer" className="hover:underline">{item.title}</a> : item.title} <span className="text-foreground-tertiary">· {item.source_family}</span></li>)}
+                        {capability.evidence.map((item) => <li key={item.id} className="text-foreground-secondary"><span className="mr-1 rounded bg-background-tertiary px-1 text-xs">{tierLabel(item.tier)}</span>{item.url ? <a href={item.url} target="_blank" rel="noreferrer" className="hover:underline">{item.title}</a> : item.title} <span className="text-foreground-tertiary">· {item.source_family}</span></li>)}
                       </ul>
                     </li>
                   ))}

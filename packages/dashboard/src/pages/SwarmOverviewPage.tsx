@@ -322,15 +322,15 @@ export function SwarmOverviewPage() {
                 <div className="grid grid-cols-3 gap-2 text-center">
                   <div>
                     <div className="text-lg font-bold text-slate-900">{agent.total_tasks || 0}</div>
-                    <div className="text-[10px] text-slate-500 uppercase tracking-wider">Tasks</div>
+                    <div className="text-xs text-slate-500 uppercase tracking-wider">Tasks</div>
                   </div>
                   <div>
                     <div className="text-lg font-bold text-slate-900">{formatNumber(agent.total_token_usage || 0)}</div>
-                    <div className="text-[10px] text-slate-500 uppercase tracking-wider">Tokens</div>
+                    <div className="text-xs text-slate-500 uppercase tracking-wider">Tokens</div>
                   </div>
                   <div>
                     <div className="text-lg font-bold text-slate-900">{formatDuration(agent.total_execution_time_ms || 0)}</div>
-                    <div className="text-[10px] text-slate-500 uppercase tracking-wider">Time</div>
+                    <div className="text-xs text-slate-500 uppercase tracking-wider">Time</div>
                   </div>
                 </div>
               </div>
