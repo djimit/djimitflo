@@ -122,7 +122,11 @@ export class ApprovalService {
       });
       return approval;
     }).immediate();
-    void pushApproval(this.db, approval); // UX-12: off unless TELEGRAM_PUSH_ENABLED; never throws
+    // UX-12: off unless TELEGRAM_PUSH_ENABLED; never throws. TG-2: wait TELEGRAM_PUSH_DELAY_MS (default 15 s) so an
+    // approval a lane rule auto-approves right after creation is skipped as 'decided' instead of pushed
+    const pushDelay = Math.max(0, Number(process.env.TELEGRAM_PUSH_DELAY_MS ?? 15_000) || 0);
+    if (pushDelay === 0) void pushApproval(this.db, approval);
+    else setTimeout(() => { void pushApproval(this.db, approval); }, pushDelay).unref?.();
     this.publish(input.task.id, {
       type: WebSocketEventType.APPROVAL_REQUESTED,
       payload: { approval },
