@@ -4,6 +4,7 @@ import { execFileSync } from 'child_process';
 import type { Database } from 'better-sqlite3';
 import { LoopEventService } from './loop-event-service';
 import { redactSecrets } from './secret-patterns';
+import { freshnessMode, staleAgainst, type ReadSet } from './evidence-freshness';
 
 /**
  * G4: a verified loop run becomes a *draft* PR. Before this, ready_for_human_merge output stayed in a VPS worktree
@@ -39,6 +40,31 @@ export class LoopDraftPrService {
         && !(f.endsWith('package-lock.json') && !tracked.includes(path.join(path.dirname(f), 'package.json').replace(/^\.\//, '')))
         && !fs.lstatSync(path.join(wt, f), { throwIfNoEntry: false })?.isSymbolicLink());
       if (files.length === 0) return fail('no changes in the maker worktree');
+
+      // Batch-8 evidence freshness: did anything the checks READ (not edit) change on main since the base commit?
+      const fMode = freshnessMode(this.env);
+      if (fMode !== 'off') {
+        const leaseMeta = JSON.parse((this.db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(maker.id) as { metadata: string | null } | undefined)?.metadata || '{}') as { evidence_read_set?: ReadSet };
+        const rs = leaseMeta.evidence_read_set;
+        let changed: string[] | null = null;
+        if (rs && Object.keys(rs.files).length > 0) {
+          try {
+            const fetchAuth = Buffer.from(`x-access-token:${token}`).toString('base64');
+            execFileSync('git', ['-C', wt, '-c', `http.extraheader=AUTHORIZATION: basic ${fetchAuth}`, 'fetch', '-q', this.env.LOOP_DRAFT_PR_REMOTE || 'origin', this.env.LOOP_DRAFT_PR_BASE || 'main'], { stdio: 'ignore', timeout: 60_000 });
+            changed = staleAgainst(wt, rs, 'FETCH_HEAD');
+          } catch { changed = null; } // fetch failed: unknown, fail open
+        }
+        const state = changed === null ? 'unknown' : changed.length ? 'stale' : 'fresh';
+        this.db.prepare(`UPDATE loop_runs SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.evidence_freshness', json(?)) WHERE id = ?`)
+          .run(JSON.stringify({ state, mode: fMode, changed: changed ?? [], base: rs?.base ?? null, ...(state === 'stale' && fMode === 'enforce' ? { requeue: true } : {}) }), runId);
+        if (state === 'stale') {
+          events.recordEvent(runId, fMode === 'enforce' ? 'evidence_stale' : 'evidence_stale_shadow', 'warning',
+            `${changed!.length} file(s) the checks read changed on main since ${rs!.base.slice(0, 8)}${fMode === 'enforce' ? ': draft PR not opened, re-check requested' : ' (shadow: opened anyway)'}`, { changed, mode: fMode });
+          // ponytail: enforce marks the run for a re-check (metadata requeue) instead of opening; an automatic rebase +
+          // re-run is not built — add it when evidence_stale fires more than a few times a week.
+          if (fMode === 'enforce') return null;
+        }
+      }
 
       // RX-6: arrival throttle. A queue nobody drains censors merge survival (closed-unmerged never fires).
       const mode = this.env.LOOP_DRAFT_PR_THROTTLE_MODE;
