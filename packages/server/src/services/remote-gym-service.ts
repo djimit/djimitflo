@@ -8,6 +8,7 @@ import { mutantTask, type MutantTask } from './gym-mutants';
 import { LoopEventService } from './loop-event-service';
 import { changedFromReason, classifyHack, hackDetectorShadow } from './gym-hack-classifier';
 import { settleNoHeadroom } from './dream-evolution';
+import { FAILURE_TASK_CAPABILITY, failureDerivedTasks, gitLookup, gymFailureTasksEnabled } from './gym-failure-tasks';
 import { dreamEvolutionEnabled, ensureBaseline, genome, holdout, mutantHoldout, mutantTrialsEnabled, nextTrialAttempt, type Genome } from './genome-registry';
 
 /**
@@ -105,6 +106,11 @@ export class RemoteGymService {
       if (next) { task = tasks.find((t) => t.commit === next.commit) ?? mutants.find((m) => m.commit === next.commit); trialGenome = task ? genome(this.db, next.genomeId) : null; }
       if (!trialGenome) task = undefined;
     }
+    // Batch-8: a failure-derived 'write_test' task (real production failure) — only for a worker that can run one
+    if (!task && gymFailureTasksEnabled() && (opts.capabilities ?? []).map(String).includes(FAILURE_TASK_CAPABILITY)) {
+      const tried = triedTasks(this.db, key);
+      task = this.failureTasks(repo).find((t) => !tried.has(t.commit));
+    }
     if (!task) {
       const tried = triedTasks(this.db, key);
       // Y4: the mined fix commits run out (prod 2026-10-01) — then a seeded mutant-repair task keeps the gym supplied
@@ -120,6 +126,9 @@ export class RemoteGymService {
     return { runId, species: key, task, ...(trialGenome ? { genome: { id: trialGenome.id, lines: trialGenome.lines } } : {}) };
   }
 
+  /** Injectable for tests; production reads the deploy checkout's git history. */
+  failureTasks(repo: string) { return failureDerivedTasks(this.db, gitLookup(repo)); }
+
   record(runId: string, host: string, result: RemoteGymResult): void {
     const row = this.db.prepare("SELECT status, json_extract(metadata, '$.gym') AS gym FROM loop_runs WHERE id = ?").get(runId) as { status: string; gym: string | null } | undefined;
     const gym = row?.gym ? JSON.parse(row.gym) as GymTask & { species: string; remote_host?: string; genome?: string; probe?: number; canary?: number } : null;
@@ -131,13 +140,15 @@ export class RemoteGymService {
       const [species] = parseSpecies(gym.species, 1);
       this.outcomes.recordOutcome(`loop-maker:gym:${species.runtime}`, {
         success: result.status === 'success', tokensUsed: Math.max(0, Number(result.tokens) || 0), durationMs: Math.max(0, Number(result.durationMs) || 0), domain: 'gym', taskId: runId,
-        ...(species.model ? { model: species.model } : {}), evidenceRefs: [`gym:${gym.commit}`, `loop_run:${runId}`, `gym_result:${reason}`, `remote:${host}`, ...(gym.genome ? [`genome:${gym.genome}`] : []), ...(gym.probe ? ['gym:probe'] : [])],
+        ...(species.model ? { model: species.model } : {}), evidenceRefs: [`gym:${gym.commit}`, `loop_run:${runId}`, `gym_result:${reason}`, `remote:${host}`, ...(gym.genome ? [`genome:${gym.genome}`] : []), ...(gym.probe ? ['gym:probe'] : []), ...((gym as { kind?: string }).kind === 'write_test' ? ['gym:fail'] : [])],
       });
     }
     let hack_flags: string[] | undefined;
     if (hackDetectorShadow() && result.status !== 'discarded') {
       const files = Array.isArray(result.changed_files) ? result.changed_files.map(String).slice(0, 50) : changedFromReason(reason);
       hack_flags = classifyHack({ changedFiles: files, diffText: typeof result.diff === 'string' ? result.diff.slice(0, 50_000) : '', reason });
+      // a 'write_test' task asks the maker to write the test file: touching it is the task, not a hack
+      if ((gym as { kind?: string }).kind === 'write_test') hack_flags = hack_flags.filter((f) => f !== 'tests_touched');
       if (hack_flags.length) {
         try { new LoopEventService(this.db).recordEvent(runId, 'gym_hack_shadow', 'warning', `Gym hack flags (shadow): ${hack_flags.join(', ')}`, { species: gym.species, flags: hack_flags, status: result.status }); } catch { /* never break the report */ }
       }
