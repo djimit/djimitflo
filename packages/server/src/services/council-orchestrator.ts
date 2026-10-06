@@ -1,3 +1,4 @@
+import { measured } from './model-selector';
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { swarmEventBus } from './swarm-event-bus';
@@ -278,7 +279,13 @@ export class CouncilOrchestrator {
    * through the LiteLLM proxy (OpenAI-compatible), which fronts
    * OpenAI/Anthropic/Google/OpenRouter with one code path.
    */
-  private async callModel(
+  /** UX-18: every council model call is a ledger row (consumer 'council'); the prompt is never stored. */
+  private callModel(model: CouncilModelRecord, prompt: string): Promise<{ content: string; tokens: number; latencyMs: number }> {
+    return measured({ consumer: 'council', model: model.model_name, provider: model.provider, taskKind: 'perspective', tokensIn: Math.ceil(prompt.length / 4) },
+      () => this.callModelRaw(model, prompt), (r) => ({ outChars: r.content.length, tokensOut: r.tokens }), this.db);
+  }
+
+  private async callModelRaw(
     model: CouncilModelRecord,
     prompt: string,
   ): Promise<{ content: string; tokens: number; latencyMs: number }> {
