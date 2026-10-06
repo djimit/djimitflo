@@ -33,14 +33,16 @@ export interface ModelCall {
   consumer: string; model: string; ok: boolean; latencyMs: number; outChars: number; shadow: 0 | 1; agree: boolean | null;
   /** UX-18: every server-side model call lands here too (no prompt text, ever). */
   provider?: string | null; tokensIn?: number | null; tokensOut?: number | null; taskKind?: string | null; runId?: string | null; status?: string | null;
+  /** B8: attempts behind this call (one row per call, not per attempt). */
+  attempts?: number | null;
 }
 const int = (v: number | null | undefined): number | null => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : null);
 export function recordModelCall(db: Database, c: ModelCall, at = new Date()): void {
   try {
-    db.prepare(`INSERT INTO llm_model_calls (consumer, model, ok, latency_ms, out_chars, shadow, agree, provider, tokens_in, tokens_out, task_kind, run_id, status, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    db.prepare(`INSERT INTO llm_model_calls (consumer, model, ok, latency_ms, out_chars, shadow, agree, provider, tokens_in, tokens_out, task_kind, run_id, status, attempts, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(c.consumer, c.model, c.ok ? 1 : 0, Math.round(c.latencyMs), c.outChars, c.shadow, c.agree === null ? null : c.agree ? 1 : 0,
-        c.provider ?? null, int(c.tokensIn), int(c.tokensOut), c.taskKind ?? null, c.runId ?? null, c.status ?? null, at.toISOString());
+        c.provider ?? null, int(c.tokensIn), int(c.tokensOut), c.taskKind ?? null, c.runId ?? null, c.status ?? null, int(c.attempts), at.toISOString());
   } catch { /* the ledger never breaks the call it measures */ }
 }
 

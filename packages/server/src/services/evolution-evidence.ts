@@ -18,7 +18,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'LOOP_EVOLVE_ENABLED', acting: true }, { name: 'LOOP_EVOLVE_SPECIES', acting: true },
   { name: 'FITNESS_SHADOW_ENABLED', acting: false }, { name: 'MERGE_SURVIVAL_ENABLED', acting: false }, { name: 'MERGE_SURVIVAL_V2', acting: false },
   { name: 'DREAM_EVOLUTION_ENABLED', acting: true }, { name: 'DREAM_TRIAL_MUTANTS', acting: true }, { name: 'DREAM_TRIAL_MUTANT_TIERS', acting: true },
-  { name: 'DREAM_PROMOTION_ALPHA', acting: true }, { name: 'TRIAL_DIAGNOSTICS_ENABLED', acting: false }, { name: 'DREAM_PROMOTION_RULE', acting: false }, { name: 'GYM_HOLDOUT_EPOCH', acting: true }, { name: 'GENOME_APPLY_MODE', acting: false },
+  { name: 'DREAM_PROMOTION_ALPHA', acting: true }, { name: 'TRIAL_DIAGNOSTICS_ENABLED', acting: false }, { name: 'TRIAL_HEADROOM_PRECHECK', acting: true }, { name: 'DREAM_PROMOTION_RULE', acting: false }, { name: 'DREAM_EVIDENCE_MUTATIONS', acting: true }, { name: 'GYM_HOLDOUT_EPOCH', acting: true }, { name: 'GENOME_APPLY_MODE', acting: false },
   { name: 'ARENA_GATE_ENABLED', acting: true }, { name: 'COMMITTEE_SWARM_ENABLED', acting: true }, { name: 'COMMONS_GROUNDING_APPLY', acting: true },
   { name: 'LOOP_AUTO_DRAFT_PR_ENABLED', acting: true }, { name: 'LOOP_AUTO_APPROVE_TEST_GAP', acting: true }, { name: 'ORACLE_LANES_AUTO_APPROVE', acting: true },
   { name: 'LOOP_MEMORY_RULES_ENABLED', acting: true }, { name: 'EVOLUTION_GYM_REMOTE_MAX_PER_DAY', acting: true }, { name: 'DJIMITFLO_PUBLIC_URL', acting: false },
@@ -67,7 +67,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
 
   const genomes = {
     by_status: all<{ status: string; origin: string; n: number }>('SELECT status, origin, COUNT(*) AS n FROM maker_genomes GROUP BY 1, 2'),
-    recent: all<{ id: string; status: string; note: string | null; updated_at: string }>("SELECT id, status, note, updated_at FROM maker_genomes WHERE status IN ('active', 'retired', 'trial') AND id <> 'baseline' ORDER BY updated_at DESC LIMIT 8"),
+    recent: all<{ id: string; status: string; note: string | null; updated_at: string; evidence_clusters: string | null }>("SELECT id, status, note, updated_at, evidence_clusters FROM maker_genomes WHERE status IN ('active', 'retired', 'trial') AND id <> 'baseline' ORDER BY updated_at DESC LIMIT 8"),
     holdout: { mined: one('SELECT COUNT(*) FROM gym_holdout'), mutant: one('SELECT COUNT(*) FROM gym_mutant_holdout') },
   };
   const gym = all<{ kind: string; tier: number | null; status: string | null; n: number }>(`SELECT CASE WHEN json_extract(metadata, '$.gym.commit') LIKE 'mut:%' THEN 'mutant' ELSE 'mined' END AS kind,
@@ -105,7 +105,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
       if (!latestTrial) return { state: 'unknown', reason: 'no settled trial with diagnostics yet (TRIAL_DIAGNOSTICS_ENABLED)' } as Gate;
       const pass = latestTrial.deciding_n ? (latestTrial.deciding_n - latestTrial.f_parent_failures) / latestTrial.deciding_n : null;
       const ok = pass !== null && pass >= 0.30 && pass <= 0.55;
-      return { state: ok ? 'green' : 'red', reason: `latest trial ${latestTrial.trial_id}: parent passed ${latestTrial.deciding_n - latestTrial.f_parent_failures}/${latestTrial.deciding_n} deciding tasks (${latestTrial.state}); needs a pass rate in [0.30, 0.55]` } as Gate;
+      return { state: ok ? 'green' : 'red', reason: `latest trial ${latestTrial.trial_id}: parent passed ${latestTrial.deciding_n - latestTrial.f_parent_failures}/${latestTrial.deciding_n} deciding tasks (${latestTrial.state === 'no_headroom' ? 'no headroom — trial skipped before any mutant attempt' : latestTrial.state}); needs a pass rate in [0.30, 0.55]` } as Gate;
     })(),
     B: (() => {
       const pos = settled.filter((s) => s.survived === 1).reduce((a, s) => a + s.n, 0); const total = settled.reduce((a, s) => a + s.n, 0);
