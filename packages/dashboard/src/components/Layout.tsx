@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { ConnectionBanner } from './WebSocketProvider';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
-import { Activity, GraduationCap, ListTodo, Users, Shield, ShieldCheck, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit, Gauge, BookUser, Brain, Menu, X, MessageSquare, Sparkles, SlidersHorizontal, Library } from 'lucide-react';
+import { Activity, GraduationCap, ListTodo, Users, Shield, ShieldCheck, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit, Gauge, BookUser, Brain, Menu, X, MessageSquare, Sparkles, SlidersHorizontal, Library, Dna } from 'lucide-react';
 import { useAuthStore } from '../lib/auth-store';
 import { OrganizationSelector } from './OrganizationSelector';
 import { PendingApprovalsBanner } from './PendingApprovalsBanner';
@@ -22,6 +22,7 @@ const NAV_SECTIONS: Array<{ title: string; lab?: boolean; items: Array<{ to: str
   ] },
   { title: 'Improve', items: [
     { to: '/improvement-funnel', label: 'Improvement funnel', icon: Gauge },
+    { to: '/evolution', label: 'Evolution', icon: Dna },
     { to: '/observability', label: 'Observability', icon: BarChart3 },
     { to: '/usage', label: 'Usage', icon: DollarSign },
   ] },
@@ -33,7 +34,6 @@ const NAV_SECTIONS: Array<{ title: string; lab?: boolean; items: Array<{ to: str
   { title: 'Fleet', items: [
     { to: '/fleet', label: 'Fleet hosts', icon: Network },
     { to: '/agents', label: 'Agents', icon: Users },
-    { to: '/swarm-resources', label: 'Swarm Resources', icon: Network },
   ] },
   { title: 'Govern', items: [
     { to: '/policies', label: 'Policies', icon: Shield },
@@ -45,6 +45,7 @@ const NAV_SECTIONS: Array<{ title: string; lab?: boolean; items: Array<{ to: str
   ] },
   { title: 'Lab', lab: true, items: [
     { to: '/dashboard', label: 'Activity overview', icon: Activity },
+    { to: '/swarm-resources', label: 'Swarm Resources', icon: Network },
     { to: '/swarm', label: 'Swarm', icon: Cpu },
     { to: '/fleet-cockpit', label: 'Fleet Cockpit', icon: Gauge },
     { to: '/swarm-mission-control', label: 'Swarm Mission Control', icon: BrainCircuit },
