@@ -35,7 +35,8 @@ export async function runJudgment(db: Database, def: JudgmentDef, subject: { typ
   const stateHash = createHash('sha256').update(JSON.stringify(state)).digest('hex').slice(0, 16);
   const id = randomUUID();
   try {
-    const response = await client.systemOne(state, def.questions);
+    // B8: a shadow judgment is fire-and-forget — retrying during a burst only deepens the queue; enforce keeps its retries
+    const response = await client.systemOne(state, def.questions, mode === 'shadow' ? { retries: 0 } : {});
     const { decision, reason } = def.decide(response.answers, facts);
     localShadow(db, def, subject, stateHash, state, def.questions, facts);
     db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, input_tokens, output_tokens, latency_ms, model, created_at)
@@ -66,7 +67,7 @@ export async function runJudgments(db: Database, defs: JudgmentDef[], subject: {
   const insertOk = db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, input_tokens, output_tokens, latency_ms, model, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   try {
-    const response = await client.systemOne(state, questions);
+    const response = await client.systemOne(state, questions, active.every((d) => judgmentMode(d.id) === 'shadow') ? { retries: 0 } : {});
     const share = (n: number | undefined) => Math.round((n ?? 0) / active.length);
     const out = new Map<JudgmentDef, JudgmentRecord>();
     for (const d of active) {
