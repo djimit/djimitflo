@@ -77,6 +77,7 @@ missing here. **Acting** = changes what the loop does; acting flags are switched
 | `FITNESS_SHADOW_ENABLED` | off | no | shadow | loop (shadow) |
 | `MERGE_SURVIVAL_ENABLED` | off | no | measure | loop (read-only GitHub GETs) |
 | `MERGE_SURVIVAL_V2` | off | no (paged files/commits, merged_at window, unknown > 1 MB files, not_scored for deletion/docs-only and stale_loop; rows tagged `msv:2`) | measure | loop |
+| `LOOP_EVIDENCE_FRESHNESS_MODE` | off | enforce: yes (a loop draft PR whose read set — lockfile, configs, imports — changed on main is not opened and the run is marked for a re-check); shadow: records `evidence_stale_shadow` | shadow | operator |
 | `DREAM_EVOLUTION_ENABLED` | off | yes | act | operator |
 | `DREAM_TRIAL_MUTANTS` | off | yes | act | operator |
 | `DREAM_TRIAL_MUTANT_TIERS` | `2,3` | yes | act (freezes a new holdout) | operator, after the RX-5 tier probe |

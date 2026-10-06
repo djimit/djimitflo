@@ -103,6 +103,7 @@ export interface EvolutionEvidence {
   egress: Record<string, unknown>;
   failure_tasks: { enabled: boolean; qualifying_failures: number; available: number | null; attempted: number; solved: number; note: string };
   embedding_dim_mismatch: { strict: boolean; by_store: Record<string, number> };
+  freshness: { by_state: Array<{ state: string; n: number }>; stale_events: number | null };
   gates: Record<'A' | 'B' | 'C' | 'D', { state: GateState; reason: string }>;
 }
 

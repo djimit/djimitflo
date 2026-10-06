@@ -50,6 +50,7 @@ import type {
 } from './loop-types';
 import type { LoopFinding } from './loop-discovery-service';
 import type { GoalRecord, GoalCreateInput, GoalUpdateInput, DecomposedLoopCandidate } from './goal-service';
+import { captureReadSet, freshnessMode, type ReadSet } from './evidence-freshness';
 
 export type {
   LoopName,
@@ -1087,9 +1088,21 @@ export class LoopService {
 
     if (installFailure) checks.unshift(installFailure);
     const failed = checks.some((check) => check.status === 'fail');
+    // Batch-8 evidence freshness: fingerprint what the checks READ (configs, lockfile, imports) at the base commit.
+    let evidenceReadSet: ReadSet | undefined;
+    if (freshnessMode() !== 'off') {
+      try {
+        const wt = makerLease.worktree_path!;
+        const g = (...a: string[]) => spawnSync('git', ['-C', wt, ...a], { encoding: 'utf8' }).stdout ?? '';
+        const changed = [...g('diff', '--name-only').split('\n'), ...g('ls-files', '--others', '--exclude-standard').split('\n')]
+          .filter((f) => f && !f.split('/').includes('node_modules'));
+        evidenceReadSet = captureReadSet(wt, changed);
+      } catch { /* freshness is evidence, never a reason to fail the checks */ }
+    }
     this.updateWorkerLeaseStatus(makerLease.id, failed ? 'failed' : 'completed', {
       deterministic_checks: checks,
       checks_completed_at: new Date().toISOString(),
+      ...(evidenceReadSet ? { evidence_read_set: evidenceReadSet } : {}),
     });
 
     // Feed real build/test failures into the self-improvement pipeline.
