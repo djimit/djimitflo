@@ -16,6 +16,7 @@
 import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { FrontierExpertRegistryService } from './frontier-expert-registry-service';
+import { frontierExpertPersonsEnabled } from './expert-areas';
 
 export const PACING_URL = 'https://www.pacingthefrontier.com/';
 const USER_AGENT = 'djimitflo-frontier-experts/0.1 (+https://djimitflo.agentical.nl; research indexing; contact info@djimit.nl)';
@@ -77,6 +78,8 @@ export class PacingFrontierIngestionService {
 
   /** One request per hour at most; identical content is recognised by hash and re-ingestion is a no-op by construction. */
   async ingest(input: { actor: string; html?: string; force?: boolean } = { actor: 'ingestion:pacing' }): Promise<PacingIngestResult> {
+    // FE-AREAS: this source only yields people (signatories); people are not created unless explicitly enabled
+    if (!frontierExpertPersonsEnabled()) return { fetched: false, skipped_reason: 'persons_disabled', content_hash: '', parsed: 0, quotes: 0, discovered_new: 0, already_known: 0, evidence_added: 0, affiliations_added: 0, anonymous_skipped: 0, snapshot_id: null };
     const last = this.db.prepare("SELECT retrieved_at, content_hash FROM expert_source_snapshots WHERE source = 'pacingthefrontier' ORDER BY retrieved_at DESC LIMIT 1").get() as { retrieved_at: string; content_hash: string } | undefined;
     if (!input.html && !input.force && last && Date.now() - Date.parse(last.retrieved_at) < MIN_INTERVAL_MS) {
       return { fetched: false, skipped_reason: 'rate_limited', content_hash: last.content_hash, parsed: 0, quotes: 0, discovered_new: 0, already_known: 0, evidence_added: 0, affiliations_added: 0, anonymous_skipped: 0, snapshot_id: null };

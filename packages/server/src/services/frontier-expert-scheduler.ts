@@ -33,6 +33,7 @@ import { ExpertEvidenceEnrichmentService } from './expert-evidence-enrichment-se
 import { ExpertSourceUnitsService, sourceUnitsEnabled } from './expert-source-units-service';
 import { TechniqueCardService, techniqueCardsEnabled } from './technique-card-service';
 import { ExpertCouncilService } from './expert-council-service';
+import { frontierExpertPersonsEnabled, syncAreas } from './expert-areas';
 
 const MINUTE_MS = 60 * 1000;
 const SCHEDULER_ACTOR = 'autopilot:frontier-experts';
@@ -136,7 +137,14 @@ export class FrontierExpertScheduler {
         result.failed.push({ stage: 'enrich', error: `technique cards: ${err instanceof Error ? err.message : String(err)}` });
       }
     }
-    await this.reviewCapabilityInferred(result);
+    // FE-AREAS: fields of interest are refreshed from the paper/repository units every tick (idempotent, no network)
+    try {
+      const areas = syncAreas(this.db);
+      if (areas.areas || areas.linked) console.log(`🔭 frontier expert areas: +${areas.areas} area(s), ${areas.linked} unit link(s)`);
+    } catch (err) {
+      result.failed.push({ stage: 'enrich', error: `areas: ${err instanceof Error ? err.message : String(err)}` });
+    }
+    if (frontierExpertPersonsEnabled()) await this.reviewCapabilityInferred(result);
     this.report(result);
     return result;
   }

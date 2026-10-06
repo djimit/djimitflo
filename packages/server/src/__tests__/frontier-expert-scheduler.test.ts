@@ -18,6 +18,8 @@ describe('FrontierExpertScheduler', () => {
   const prevEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
+    // FE-AREAS: this suite covers the legacy people pipeline, which only runs with FRONTIER_EXPERT_PERSONS_ENABLED=true
+    process.env.FRONTIER_EXPERT_PERSONS_ENABLED = 'true';
     db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
     db.exec(schema);
@@ -30,6 +32,7 @@ describe('FrontierExpertScheduler', () => {
   });
 
   afterEach(() => {
+    delete process.env.FRONTIER_EXPERT_PERSONS_ENABLED;
     db?.close();
     for (const [key, value] of Object.entries(prevEnv)) {
       if (value === undefined) delete process.env[key];

@@ -25,6 +25,7 @@ Back up before editing (`cp -p runtime.env runtime.env.bak-<date>`), then `docke
 |---|---|
 | `SELF_IMPROVEMENT_AUTO_REVIEW_ENABLED`, `_REFINEMENT_ENABLED`, `_OBJECTIVE_LOOP_ENABLED` | the proposal → panel → goal → run pipeline |
 | `LOOP_PR_BODY_V2` | UX-10, default off: loop draft-PR body adds lane, oracle check results, gate summary, diff stat, mutation score and (only with an https `DJIMITFLO_PUBLIC_URL`) a link to `/goals-loops?run=<id>`; names, statuses and numbers only, secret-redacted (public repo) |
+| `FRONTIER_EXPERT_PERSONS_ENABLED` | FE-AREAS, default off: Frontier Experts are fields of interest (`area:<capability>`, backed by paper/repository units); with the flag off no person identity is created (Pacing ingestion, author enrichment and person peer review skip), and API, dashboard and MCP never show one. Existing people are removed with `node scripts/fe-persons-to-areas.mjs --db <db>` (dry-run) then `--apply --backup <path>` |
 | `LLM_JSON_REPAIR_ENABLED` | UX-19, default off: an unusable model answer (panel review, Frontier Experts) gets ONE repair call to the same model with the required JSON shape; outcome recorded in `llm_model_calls` (`task_kind` json_repair, status `repaired` / `unparseable`). Off = no extra call, behaviour unchanged |
 | `SELF_IMPROVEMENT_GOAL_ON_APPROVE` | create the goal right after panel approval instead of the hourly cycle |
 | `TEST_GAP_SOURCE_ENABLED` | deterministic, fully grounded test-only proposals (max 2/day, 2 in flight) |

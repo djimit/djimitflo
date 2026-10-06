@@ -111,7 +111,8 @@ export class ExpertResolverService {
     const candidates = (this.db.prepare(`
       SELECT DISTINCT e.id, e.canonical_name, e.lifecycle_state, e.identity_confidence FROM expert_identities e
       JOIN expert_capabilities c ON c.expert_id = e.id AND c.status != 'revoked' AND NOT (e.lifecycle_state IN ('ACTIVE', 'APPROVED') AND c.status = 'inferred')
-      WHERE e.lifecycle_state IN (SELECT value FROM json_each(?)) AND c.capability_id IN (SELECT value FROM json_each(?))
+      -- FE-AREAS: fields of interest (areas) are evidence-backed by paper/repository units and take part without a human promotion
+      WHERE (e.lifecycle_state IN (SELECT value FROM json_each(?)) OR (e.kind = 'area' AND e.lifecycle_state = 'CAPABILITY_INFERRED')) AND c.capability_id IN (SELECT value FROM json_each(?))
       ${options.expertIds?.length ? 'AND e.id IN (SELECT value FROM json_each(?))' : ''}
     `).all(JSON.stringify(states), JSON.stringify([...capabilityScore.keys()]), ...(options.expertIds?.length ? [JSON.stringify(options.expertIds)] : [])) as Array<{ id: string; canonical_name: string; lifecycle_state: string; identity_confidence: number }>);
 
