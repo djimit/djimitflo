@@ -518,7 +518,8 @@ export class LoopDaemon {
               WHERE id = ? AND status = 'prepared'`).run(choice.species.runtime, JSON.stringify({ reason: choice.reason, posterior: choice.posterior }), makerLease.id);
             if (choice.species.model) this.db.prepare(`UPDATE worker_leases SET metadata = json_set(metadata, '$.model', ?) WHERE id = ?`).run(choice.species.model, makerLease.id);
             (makerLease as { runtime: string }).runtime = choice.species.runtime;
-            new LoopEventService(this.db).recordEvent(run.id, 'bandit_selected', 'info', `Maker species ${speciesKey(choice.species)}: ${choice.reason}`, { posterior: choice.posterior });
+            // RX-15: chosen + max_share make the propensity of this choice reconstructable for off-policy evaluation
+            new LoopEventService(this.db).recordEvent(run.id, 'bandit_selected', 'info', `Maker species ${speciesKey(choice.species)}: ${choice.reason}`, { posterior: choice.posterior, chosen: speciesKey(choice.species), max_share: Number(process.env.LOOP_BANDIT_MAX_SHARE) || 0.1 });
           } catch (error) {
             try { new LoopEventService(this.db).recordEvent(run.id, 'bandit_skipped', 'warning', `Bandit choice ${speciesKey(choice.species)} not applied: ${error instanceof Error ? error.message : String(error)}`, {}); } catch { /* logging */ }
           }
