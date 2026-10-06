@@ -96,6 +96,12 @@ export interface EvolutionEvidence {
   oracle: { n: number; kappa: number | null; kappa_ci: [number, number] | null; agreement: { all: number | null; conf_ge_06: number | null; conf_lt_06: number | null }; accuracy: { n: number; jev: number | null; checker: number | null }; kappa_jev_outcome: number | null; kappa_jev_outcome_ci: [number, number] | null; kappa_checker_outcome: number | null; enforce_eligible: boolean; note: string };
   commons: { k: number; n: number; rate: number | null; ci: [number, number]; base_rate: number | null; base_ci: [number, number]; base_n: number; verdict: string; note: string };
   forecasts_v2: { scored: number; decision_grade: number; decision_grade_skilled: number; insufficient: number };
+  /** UX-2b: sections the server already sent (RX-11, RX-14, RX-15, UX-20, UX-21) that this type had dropped; kept loose until a page renders them. */
+  hacks: Record<string, unknown>;
+  estimates: Record<string, unknown>;
+  ope: Record<string, unknown>;
+  egress: Record<string, unknown>;
+  embedding_dim_mismatch: { strict: boolean; by_store: Record<string, number> };
   gates: Record<'A' | 'B' | 'C' | 'D', { state: GateState; reason: string }>;
 }
 
@@ -117,6 +123,9 @@ export type OperatorCockpit = {
   judgments_7d: Array<{ judgment: string; calls: number; errors: number; input_tokens: number }>;
   deploys: Array<{ at: string; event: string; sha: string; detail: string }>;
 };
+
+/** UX-13: GET /api/health/digest — services/operator-push.ts buildDigest. */
+export type OperatorDigest = { at: string; text: string; data: Record<string, unknown> };
 
 /** UX-7: the loop's draft PRs from loop_runs metadata (no GitHub call); outcome = merge-survival settlement once it exists. */
 export type DraftPrs = { total: number; unsettled: number; rows: Array<{ run_id: string; lane: string; pr_url: string; pr_number: number | null; age_days: number; outcome: string | null; survived: boolean | null }> };
@@ -1386,7 +1395,7 @@ class ApiClient {
   }
 
   /** UX-13: the daily operator digest as it would be sent. */
-  async getOperatorDigest(): Promise<{ at: string; text: string; data: Record<string, unknown> }> {
+  async getOperatorDigest(): Promise<OperatorDigest> {
     return this.request('/health/digest');
   }
 
