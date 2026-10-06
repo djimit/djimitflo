@@ -1,5 +1,6 @@
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { redactSecrets } from './secret-patterns';
 import { generateText, llmEndpoints } from './llm-fallback';
 import { firstJsonObject } from './expert-council-service';
 import { BASELINE_GENOME, dreamEvolutionEnabled, ensureBaseline, frozenHoldoutCommits, genome, holdoutEpoch, mutantHoldoutKeys, mutantHoldoutTiers, mutantTrialsEnabled, trialHeadroomPrecheck, unscorable } from './genome-registry';
@@ -103,6 +104,88 @@ export function dreamInputs(db: Database, now = Date.now()): { failures: string[
   return { failures: [...gym, ...real].map((f) => f.slice(0, 300)), knowledge };
 }
 
+/**
+ * B8 (06-10, after the ruvnet/metaharness review): evidence-or-no-op mutations. Behind DREAM_EVIDENCE_MUTATIONS (default
+ * off). The day's failures are grouped into clusters (source × reason class × lane × file pattern × checker verdict) and
+ * the dream sees raw, redacted excerpts per cluster instead of one flat list (Meta-Harness: summaries compress the signal
+ * away). Every mutant must cite a cluster id it addresses (dream-machine ADR-0005 / metaharness RefineMutator: no cited
+ * failure → no change); one mutant per cluster. Same D3 guard as dreamInputs: no trial run or holdout task gets in.
+ */
+export const evidenceMutationsEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.DREAM_EVIDENCE_MUTATIONS === 'true';
+export interface FailureCluster { id: string; source: 'gym' | 'maker'; reasonClass: string; lane: string; filePattern: string; checkerVerdict: string | null; size: number;
+  excerpts: Array<{ reason: string; files: string[]; checker: string | null }> }
+const PROMPT_EVIDENCE_CAP = 4_000; // characters of excerpts in the prompt
+export function reasonClass(reason: string): string {
+  const r = reason.toLowerCase();
+  if (r.startsWith('out of scope')) return 'out_of_scope';
+  if (/no change|gave up|nothing changed/.test(r)) return 'no_change';
+  if (/timed? ?out|timeout|crash/.test(r)) return 'timeout';
+  if (/still red|tests? (failed|red)|assert/.test(r)) return 'tests_red';
+  if (/exit|runtime|spawn|enoent/.test(r)) return 'runtime_error';
+  if (/diff|too large|lines/.test(r)) return 'diff_size';
+  return 'other';
+}
+/** The directory + extension of the first file ('packages/server/src/services/*.ts'), or '(no files)'. */
+export function filePattern(files: string[]): string {
+  const f = files.find(Boolean);
+  if (!f) return '(no files)';
+  const slash = f.lastIndexOf('/'); const dot = f.lastIndexOf('.');
+  return `${slash >= 0 ? f.slice(0, slash) : '.'}/*${dot > slash ? f.slice(dot) : ''}`;
+}
+const redact = (text: string): string => redactSecrets(text).redacted;
+const filesOf = (raw: string | null): string[] => { try { const v = JSON.parse(raw ?? '[]'); return Array.isArray(v) ? v.map(String).slice(0, 10) : []; } catch { return []; } };
+export function failureClusters(db: Database, now = Date.now()): FailureCluster[] {
+  const all = <T>(sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } };
+  const d1 = new Date(now - 86_400_000).toISOString();
+  const rows: Array<Omit<FailureCluster, 'id' | 'size' | 'excerpts'> & { reason: string; files: string[]; checker: string | null; key: string }> = [];
+  // same D3 filters as dreamInputs: trial runs, canaries and both holdouts never reach the mutation step
+  for (const r of all<{ source: string | null; reason: string | null; created_at: string; id: string }>(`SELECT json_extract(metadata, '$.gym.source') AS source,
+      json_extract(metadata, '$.gym_result.reason') AS reason, created_at, id
+    FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym_result.status') = 'failure' AND created_at >= ?
+      AND json_extract(metadata, '$.gym.genome') IS NULL AND json_extract(metadata, '$.gym.canary') IS NULL
+      AND json_extract(metadata, '$.gym.commit') NOT IN (SELECT commit_sha FROM gym_holdout)
+      AND json_extract(metadata, '$.gym.commit') NOT IN (SELECT key FROM gym_mutant_holdout) ORDER BY created_at, id LIMIT 40`, d1)) {
+    const reason = String(r.reason ?? 'failure');
+    const scoped = /^out of scope:\s*(.+)$/i.exec(reason)?.[1]?.split(/,\s*/).filter(Boolean) ?? [];
+    const files = scoped.length ? scoped : r.source ? [r.source] : [];
+    rows.push({ source: 'gym', reasonClass: reasonClass(reason), lane: 'gym', filePattern: filePattern(files), checkerVerdict: null, reason, files, checker: null, key: '' });
+  }
+  for (const r of all<{ id: string; reason: string | null; files: string | null; lane: string | null; verdict: string | null; notes: string | null }>(`SELECT l.id,
+      json_extract(l.metadata, '$.failure_reason') AS reason, json_extract(l.metadata, '$.changed_files') AS files, r.loop_name AS lane,
+      (SELECT json_extract(c.metadata, '$.verdict') FROM worker_leases c WHERE c.role IN ('checker', 'security_checker') AND json_extract(c.metadata, '$.maker_lease_id') = l.id ORDER BY c.created_at DESC LIMIT 1) AS verdict,
+      (SELECT json_extract(c.metadata, '$.notes') FROM worker_leases c WHERE c.role IN ('checker', 'security_checker') AND json_extract(c.metadata, '$.maker_lease_id') = l.id ORDER BY c.created_at DESC LIMIT 1) AS notes
+    FROM worker_leases l LEFT JOIN loop_runs r ON r.id = l.loop_run_id WHERE l.role = 'maker' AND l.status = 'failed' AND l.created_at >= ? ORDER BY l.created_at, l.id LIMIT 40`, d1)) {
+    const reason = String(r.reason ?? 'failed'); const files = filesOf(r.files);
+    rows.push({ source: 'maker', reasonClass: reasonClass(reason), lane: r.lane ?? 'unknown', filePattern: filePattern(files), checkerVerdict: r.verdict ?? null,
+      reason, files, checker: r.notes ? String(r.notes) : null, key: '' });
+  }
+  const groups = new Map<string, FailureCluster>();
+  for (const row of rows) {
+    const key = [row.source, row.reasonClass, row.lane, row.filePattern, row.checkerVerdict ?? '-'].join('|');
+    let c = groups.get(key);
+    if (!c) {
+      c = { id: `fc-${createHash('sha1').update(key).digest('hex').slice(0, 8)}`, source: row.source, reasonClass: row.reasonClass, lane: row.lane, filePattern: row.filePattern,
+        checkerVerdict: row.checkerVerdict, size: 0, excerpts: [] };
+      groups.set(key, c);
+    }
+    c.size++;
+    if (c.excerpts.length < 3) c.excerpts.push({ reason: redact(row.reason.replace(/\s+/g, ' ').slice(0, 200)), files: row.files.map((f) => redact(f)), checker: row.checker ? redact(row.checker.replace(/\s+/g, ' ').slice(0, 200)) : null });
+  }
+  return [...groups.values()].sort((a, b) => b.size - a.size || a.id.localeCompare(b.id));
+}
+/** The evidence block of the dream prompt: per cluster id, its shape and raw excerpts, capped in size. */
+export function clusterPrompt(clusters: FailureCluster[]): string[] {
+  const out: string[] = []; let used = 0;
+  for (const c of clusters) {
+    const head = `[${c.id}] ${c.size}× ${c.source} ${c.reasonClass} · lane ${c.lane} · files ${c.filePattern}${c.checkerVerdict ? ` · checker ${c.checkerVerdict}` : ''}`;
+    const lines = [head, ...c.excerpts.map((e) => `  - ${e.reason}${e.files.length ? ` (files: ${e.files.join(', ')})` : ''}${e.checker ? ` [checker: ${e.checker}]` : ''}`)];
+    const size = lines.join('\n').length;
+    if (used + size > PROMPT_EVIDENCE_CAP && out.length) break;
+    out.push(...lines); used += size;
+  }
+  return out;
+}
+
 function activeParent(db: Database): string {
   const row = db.prepare("SELECT id FROM maker_genomes WHERE status = 'active' AND id <> ? ORDER BY updated_at DESC LIMIT 1").get(BASELINE_GENOME) as { id: string } | undefined;
   return row?.id ?? BASELINE_GENOME;
@@ -119,6 +202,7 @@ export async function dreamOnce(db: Database, now = Date.now(), call: DreamCalle
   ensureBaseline(db, iso);
   if (db.prepare("SELECT 1 FROM maker_genomes WHERE origin = 'dream' AND created_at >= ? LIMIT 1").get(iso.slice(0, 10))) return { created: [], skipped: 'already dreamt today' };
   if (db.prepare("SELECT 1 FROM maker_genomes WHERE status = 'trial' LIMIT 1").get()) return { created: [], skipped: 'a trial is still running' };
+  if (evidenceMutationsEnabled()) return dreamFromEvidence(db, now, iso, call);
   const { failures, knowledge } = dreamInputs(db, now);
   if (!failures.length) return { created: [], skipped: 'no failures to learn from' };
   const parent = genome(db, activeParent(db))!;
@@ -198,6 +282,46 @@ export function settleNoHeadroom(db: Database, speciesKey: string, holdoutCommit
     settled.push({ id: trial.id, f, n, needed: shown });
   }
   return settled;
+}
+
+/** B8: the evidence path of dreamOnce — clusters in, ≤ 1 cited mutant per cluster out; uncited mutants are rejected ('no_evidence'). */
+async function dreamFromEvidence(db: Database, now: number, iso: string, call: DreamCaller): Promise<{ created: string[]; skipped?: string; rejected: Array<{ reason: string }> }> {
+  const clusters = failureClusters(db, now);
+  if (!clusters.length) return { created: [], skipped: 'no failures to learn from', rejected: [] };
+  const { knowledge } = dreamInputs(db, now);
+  const parent = genome(db, activeParent(db))!;
+  const prompt = [
+    'You improve the instructions given to an autonomous coding agent ("maker") that fixes code so that given tests pass.',
+    `Its current extra strategy lines: ${parent.lines.length ? parent.lines.map((l) => `"${l}"`).join('; ') : '(none)'}.`,
+    'Today\'s failures, grouped into clusters (id, count, shape, raw excerpts):', ...clusterPrompt(clusters),
+    ...(knowledge.length ? ['Recent relevant research titles:', ...knowledge.map((k) => `- ${k}`)] : []),
+    `Propose at most ${MAX_MUTANTS} alternative strategies, at most one per cluster. Each changes ONE thing: either new "strategy_lines" (how to approach the work)`,
+    'or an "anti_pattern" line (a mistake to avoid that the cluster shows). At most 5 short lines each. Each MUST name the cluster id it addresses in "addresses".',
+    'A mutant without a valid cluster id is discarded. Never mention tests to edit, gates, checks, scope, approvals, secrets, deploy or merging. Return JSON only:',
+    '{"mutants":[{"gene":"strategy_lines|anti_pattern","lines":["..."],"addresses":["fc-…"],"rationale":"how this fixes that cluster"}]}',
+  ].join('\n');
+  const parsed = firstJsonObject(await call(prompt));
+  const mutants = Array.isArray(parsed?.mutants) ? parsed!.mutants as Array<Record<string, unknown>> : [];
+  const valid = new Set(clusters.map((c) => c.id)); const usedClusters = new Set<string>();
+  const insert = db.prepare(`INSERT INTO maker_genomes (id, parent_id, gene, lines_json, origin, status, note, created_at, updated_at, evidence_clusters)
+    VALUES (?, ?, ?, ?, 'dream', 'trial', ?, ?, ?, ?)`);
+  const created: string[] = []; const rejected: Array<{ reason: string }> = [];
+  for (const m of mutants) {
+    if (created.length >= MAX_MUTANTS) break;
+    const cites = (Array.isArray(m.addresses) ? m.addresses : [m.addresses]).map(String).filter((c) => valid.has(c));
+    const fresh = cites.filter((c) => !usedClusters.has(c));
+    if (!cites.length) { rejected.push({ reason: 'no_evidence' }); continue; }
+    if (!fresh.length) { rejected.push({ reason: 'cluster_taken' }); continue; }
+    const gene = m.gene === 'anti_pattern' ? 'anti_pattern' : m.gene === 'strategy_lines' ? 'strategy_lines' : null;
+    const lines = guardLines(m.lines);
+    if (!gene || !lines) { rejected.push({ reason: 'guard' }); continue; }
+    const added = gene === 'anti_pattern' ? lines.map((l) => (l.toLowerCase().startsWith('avoid') ? l : `Avoid: ${l}`)) : lines;
+    const id = `g-${randomUUID().slice(0, 8)}`;
+    usedClusters.add(fresh[0]);
+    insert.run(id, parent.id, gene, JSON.stringify([...parent.lines, ...added]), String(m.rationale ?? '').slice(0, 300), iso, iso, JSON.stringify([fresh[0]]));
+    created.push(id);
+  }
+  return { created, rejected, ...(created.length ? {} : { skipped: rejected.some((r) => r.reason === 'no_evidence') ? 'no mutant cited a failure cluster' : 'no mutant passed the guard' }) };
 }
 
 /** Settles finished trials: paired holdout results decide; at most one promotion a day; everything else retires. */
