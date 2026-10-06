@@ -31,6 +31,9 @@ it.each(['/swarm', '/fleet-cockpit', '/tasks/t1', '/swarm-mission-control/proof-
   window.history.pushState({}, '', path);
   const view = render(<App />);
   await waitFor(() => expect(view.container.querySelector('main h1, main h2, main [role="alert"]')).toBeTruthy(), { timeout: 5000 });
+  // the provider opens its socket in an effect: wait for it (CI Node 22 once counted 0), then make sure no second one follows
+  await waitFor(() => expect(sockets).toBe(1), { timeout: 5000 });
+  await new Promise((r) => setTimeout(r, 50));
   expect(sockets).toBe(1);
 });
 
