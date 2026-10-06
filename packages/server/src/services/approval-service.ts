@@ -5,6 +5,7 @@ import { ApprovalRequest, ApprovalRequestType, ApprovalStatus, AuditEventType, R
 import { randomUUID } from 'crypto';
 import { WebSocketService } from './websocket-service';
 import { AuditService } from './audit-service';
+import { pushApproval } from './operator-push';
 
 export interface CreateApprovalInput {
   task: Task;
@@ -121,6 +122,7 @@ export class ApprovalService {
       });
       return approval;
     }).immediate();
+    void pushApproval(this.db, approval); // UX-12: off unless TELEGRAM_PUSH_ENABLED; never throws
     this.publish(input.task.id, {
       type: WebSocketEventType.APPROVAL_REQUESTED,
       payload: { approval },

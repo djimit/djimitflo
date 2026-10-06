@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { generateText, llmEndpoints } from './llm-fallback';
 import { firstJsonObject } from './expert-council-service';
-import { BASELINE_GENOME, dreamEvolutionEnabled, ensureBaseline, genome, mutantHoldoutKeys, mutantHoldoutTiers, mutantTrialsEnabled, unscorable } from './genome-registry';
+import { BASELINE_GENOME, dreamEvolutionEnabled, ensureBaseline, frozenHoldoutCommits, genome, holdoutEpoch, mutantHoldoutKeys, mutantHoldoutTiers, mutantTrialsEnabled, unscorable } from './genome-registry';
 
 /**
  * Y3b/Y3c (plan Phase Y, Darwin loop). Dreaming is the mutation operator: once a day the day's failed makers (real and
@@ -42,6 +42,23 @@ const binom = (n: number, p: number): number[] => {
   for (let k = 0; k <= n; k++) { out.push(coef * p ** k * (1 - p) ** (n - k)); coef = coef * (n - k) / (k + 1); }
   return out;
 };
+/**
+ * RX-13 (Phase F): an anytime-valid alternative to McNemar on the discordant pairs, in shadow. The e-value of a one-sided
+ * uniform(½, 1) mixture over the win probability: E(n, k) = 2^(n+1) · k!(n−k)!/(n+1)! · P(Bin(n+1, ½) ≤ k), k = mutant wins
+ * among n discordant pairs. Promote iff E ≥ 1/alpha; by Ville's inequality that stays valid when looked at after every pair
+ * (McNemar does not). It is exchangeable, so the final value does not depend on the pair order.
+ */
+const logFact = (n: number): number => { let s = 0; for (let i = 2; i <= n; i++) s += Math.log(i); return s; };
+export function eValue(n: number, k: number): number {
+  if (n <= 0) return 1;
+  const terms = Array.from({ length: k + 1 }, (_, i) => logFact(n + 1) - logFact(i) - logFact(n + 1 - i));
+  const max = Math.max(...terms);
+  const logCdf = max + Math.log(terms.reduce((a, t) => a + Math.exp(t - max), 0)) - (n + 1) * Math.LN2;
+  return Math.exp((n + 1) * Math.LN2 + logFact(k) + logFact(n - k) - logFact(n + 1) + logCdf);
+}
+export const ePaired = (pairs: Array<1 | -1>): number => eValue(pairs.length, pairs.filter((p) => p === 1).length);
+export const promotionRule = (env: NodeJS.ProcessEnv = process.env): 'mcnemar' | 'both' => (env.DREAM_PROMOTION_RULE === 'both' ? 'both' : 'mcnemar');
+
 /**
  * Exact power of the McNemar part of the promotion rule for a fixed parent vector: the parent fails f deciding tasks
  * and solves nSolved; the mutant fixes each failure with probability q and loses each solved task with probability l.
@@ -174,10 +191,19 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
         const f = scored.filter((h) => !theirs.won.has(h)).length;
         const power = trialPower(f, scored.length - f, 0.8, 0.05);
         const state = mcnemarOneSided(f, 0) >= promotionAlpha() ? 'blind' : power < 0.8 ? 'underpowered' : 'powered';
-        db.prepare(`INSERT OR REPLACE INTO genome_trial_results (trial_id, parent_id, tier_set, deciding_n, f_parent_failures, b, c, p, mined_b, mined_c, power_q8_l05, state, recorded_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(trial.id, trial.parent, mutantCommits.length ? mutantHoldoutTiers().join(',') : 'mined', scored.length, f, b, c, p, mined.b, mined.c,
-          +power.toFixed(4), state, iso);
+        db.prepare(`INSERT OR REPLACE INTO genome_trial_results (trial_id, parent_id, tier_set, deciding_n, f_parent_failures, b, c, p, mined_b, mined_c, power_q8_l05, state, recorded_at, epoch)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(trial.id, trial.parent, mutantCommits.length ? mutantHoldoutTiers().join(',') : 'mined', scored.length, f, b, c, p, mined.b, mined.c,
+          +power.toFixed(4), state, iso, holdoutEpoch(db, mutantCommits.length ? 'gym_mutant_holdout' : 'gym_holdout'));
       } catch { /* diagnostics are fail-soft */ }
+    }
+    if (promotionRule() === 'both') {
+      try { // RX-13: the e-process decision next to McNemar, same side conditions; recorded only, never acted on
+        const e = eValue(b + c, b);
+        const eDecision = b > c && e >= 1 / promotionAlpha() && mined.c - mined.b <= 1 && mine.outOfScope <= theirs.outOfScope ? 'promote' : 'hold';
+        db.prepare(`INSERT INTO genome_trial_results (trial_id, parent_id, state, recorded_at, epoch, e_value, n_discordant, e_rule_decision) VALUES (?, ?, 'e_only', ?, ?, ?, ?, ?)
+          ON CONFLICT(trial_id) DO UPDATE SET e_value = excluded.e_value, n_discordant = excluded.n_discordant, e_rule_decision = excluded.e_rule_decision`)
+          .run(trial.id, trial.parent, iso, holdoutEpoch(db, mutantCommits.length ? 'gym_mutant_holdout' : 'gym_holdout'), e, b + c, eDecision);
+      } catch { /* shadow record is fail-soft */ }
     }
     settled.push({ id: trial.id, status, wins: mine.wins, parentWins: theirs.wins });
   }
@@ -190,7 +216,7 @@ export function startDreamEvolution(db: Database, intervalMs = 3_600_000): (() =
   const species = process.env.DREAM_EVOLUTION_SPECIES || 'atomic@llama-router';
   const tick = () => {
     try {
-      const commits = (db.prepare('SELECT commit_sha FROM gym_holdout ORDER BY commit_sha').all() as Array<{ commit_sha: string }>).map((r) => r.commit_sha);
+      const commits = frozenHoldoutCommits(db); // RX-12: the current epoch's mined holdout
       const mutants = mutantTrialsEnabled() ? mutantHoldoutKeys(db) : [];
       // Z5 on but the mutant holdout not frozen yet (no claim since): don't settle a trial on the mined holdout alone
       for (const s of mutantTrialsEnabled() && !mutants.length ? [] : evaluateTrials(db, species, commits, Date.now(), mutants)) console.log(`🧬 genome ${s.id} ${s.status} (holdout ${s.wins} vs parent ${s.parentWins})`);

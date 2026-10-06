@@ -18,6 +18,21 @@ const since = (iso: string | null) => {
   return h < 1 ? '< 1 h ago' : h < 48 ? `${h} h ago` : `${Math.round(h / 24)} d ago`;
 };
 
+/** UX-13: the daily digest, read-only (Telegram delivery is OPERATOR_DIGEST_ENABLED on the server). */
+export function DigestCard() {
+  const [digest, setDigest] = useState<{ at: string; text: string } | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { api.getOperatorDigest().then(setDigest).catch(() => setFailed(true)); }, []);
+  if (failed) return <p className="text-sm text-foreground-secondary">Daily digest unavailable.</p>;
+  if (!digest) return null;
+  return (
+    <section aria-labelledby="digest" className="rounded border border-border p-3">
+      <h2 id="digest" className="text-lg font-semibold mb-2">Daily digest</h2>
+      <pre className="text-sm whitespace-pre-wrap">{digest.text}</pre>
+    </section>
+  );
+}
+
 export function OperatorCockpitPage() {
   const [data, setData] = useState<OperatorCockpit | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +78,7 @@ export function OperatorCockpitPage() {
       {data && (
         <>
           {data.needs_you && <NeedsYou n={data.needs_you} />}
+          <DigestCard />
           {data.schedulers && <p className="text-sm text-foreground-secondary">Schedulers: {data.schedulers.armed} armed, {data.schedulers.off} off</p>}
           <section aria-labelledby="guardrails">
             <h2 id="guardrails" className="text-lg font-semibold mb-2">Guardrails</h2>

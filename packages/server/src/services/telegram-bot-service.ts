@@ -14,6 +14,7 @@
 import type { Database } from 'better-sqlite3';
 import { DENNIS_AGENT_ID, DennisAgentService } from './dennis-agent-service';
 import type { TelegramApiService } from './telegram-api-service';
+import { mayApproveViaTelegram } from './telegram-identity';
 
 interface TelegramConfig {
   botToken: string;
@@ -66,8 +67,11 @@ export class TelegramBotService {
       text: string;
       message_id: number;
     };
+    callback_query?: { id: string; from: { id: number }; data?: string; message?: { chat: { id: number } } };
   }): Promise<void> {
-    if (!this.config || !payload.message) return;
+    if (!this.config) return;
+    if (payload.callback_query) { await this.handleCallback(payload.callback_query); return; }
+    if (!payload.message) return;
 
     const { chat, from, text, message_id } = payload.message;
     if (!chat || !from || !Number.isSafeInteger(chat.id) || !Number.isSafeInteger(from.id) || typeof text !== 'string') return;
@@ -174,7 +178,7 @@ export class TelegramBotService {
   /**
    * Send a message to a Telegram chat.
    */
-  async sendMessage(chatId: number, text: string): Promise<void> {
+  async sendMessage(chatId: number, text: string, replyMarkup?: unknown): Promise<void> {
     if (!this.config?.botToken) return;
 
     try {
@@ -186,6 +190,7 @@ export class TelegramBotService {
           chat_id: chatId,
           text: this.escapeMarkdown(text),
           parse_mode: 'MarkdownV2',
+          ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
         }),
       });
       const result = await response.json() as { ok?: boolean };
@@ -208,15 +213,57 @@ export class TelegramBotService {
   }
 
   /**
-   * Send approval request to Telegram.
+   * UX-12: approval request with one-tap buttons. `text` is pre-built and redacted by operator-push (ids + aggregates).
+   * The buttons only carry the approval id; the decision runs through the API as the mapped user (see handleCallback).
    */
-  async requestApproval(approvalId: string, action: string, reason: string): Promise<void> {
+  async requestApproval(approvalId: string, text: string, openUrl?: string | null): Promise<void> {
     if (!this.config) return;
-
-    const text = `⚠️ *Approval Required*\n\nAction: ${action}\nReason: ${reason}\n\nReply: \`/approve ${approvalId}\` or \`/reject ${approvalId}\``;
-
+    const keyboard = { inline_keyboard: [[
+      { text: 'Approve', callback_data: `ap:${approvalId}` }, { text: 'Deny', callback_data: `dn:${approvalId}` },
+      ...(openUrl ? [{ text: 'Open', url: openUrl }] : []),
+    ]] };
     for (const userId of this.config.allowedUsers) {
-      await this.sendMessage(userId, text);
+      await this.sendMessage(userId, text, keyboard);
+    }
+  }
+
+  /** Fixed deny reasons for the one-tap picker (callback_data stays under Telegram's 64-byte limit). */
+  static readonly DENY_REASONS: Record<string, string> = { s: 'Out of scope', r: 'Too risky', w: 'Wrong change', l: 'Not now' };
+
+  /**
+   * UX-12 buttons. Only an allowlisted, active, D3-mapped user whose role holds approve:task may decide; the call goes
+   * through the normal approval API as that user, so SELF_APPROVAL_FORBIDDEN and every other server rule still apply.
+   */
+  async handleCallback(q: { id: string; from: { id: number }; data?: string; message?: { chat: { id: number } } }): Promise<string> {
+    const chatId = q.message?.chat?.id ?? q.from?.id;
+    const m = /^(ap|dn|rs):([A-Za-z0-9-]{1,64})(?::([srwl]))?$/.exec(q.data ?? '');
+    if (!m || !Number.isSafeInteger(chatId)) return 'invalid';
+    const actor = mayApproveViaTelegram(this.db, q.from?.id);
+    if (!actor || !this.config?.allowedUsers.includes(q.from.id)) {
+      await this.sendMessage(chatId, '⛔ Not allowed: this Telegram account is not mapped to a user who may approve.');
+      return 'refused';
+    }
+    const [, kind, approvalId, reasonCode] = m;
+    if (kind === 'dn') {
+      await this.sendMessage(chatId, `Deny ${approvalId}: pick a reason`, { inline_keyboard: [Object.entries(TelegramBotService.DENY_REASONS)
+        .map(([code, label]) => ({ text: label, callback_data: `rs:${approvalId}:${code}` }))] });
+      return 'reason_asked';
+    }
+    try {
+      if (!this.api) throw new Error('TELEGRAM_API_UNAVAILABLE');
+      if (kind === 'ap') {
+        await this.api.request(actor.userId, `/approvals/${encodeURIComponent(approvalId)}/approve`, 'POST');
+        await this.sendMessage(chatId, `✅ Approved: ${approvalId}`);
+        return 'approved';
+      }
+      const reason = TelegramBotService.DENY_REASONS[reasonCode ?? ''] ?? 'Denied via Telegram';
+      await this.api.request(actor.userId, `/approvals/${encodeURIComponent(approvalId)}/deny`, 'POST', { reason });
+      await this.sendMessage(chatId, `❌ Denied: ${approvalId} (${reason})`);
+      return 'denied';
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await this.sendMessage(chatId, message.startsWith('SELF_APPROVAL_FORBIDDEN') ? '⛔ You cannot approve your own request.' : `Error: ${message}`);
+      return message.startsWith('SELF_APPROVAL_FORBIDDEN') ? 'self_approval' : 'error';
     }
   }
 
