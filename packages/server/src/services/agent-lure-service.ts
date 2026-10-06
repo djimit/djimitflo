@@ -11,6 +11,7 @@
  */
 
 import { randomUUID } from 'crypto';
+import { NOT_PROOF_FIXTURE_SQL } from './proof-fixture';
 import type { Database } from 'better-sqlite3';
 import type { AgentCommunicationService } from './agent-communication-service';
 import { mintSpawnToken, resolveSpawnTokenSecret } from './spawn-token';
@@ -91,7 +92,7 @@ export class AgentLureService {
     const parked = this.db.prepare(`SELECT id, title FROM self_improvements WHERE status = 'needs_grounding'
       AND ('proposal:' || id) NOT IN (SELECT topic_ref FROM social_lures WHERE created_at >= ?) ORDER BY created_at DESC LIMIT 1`).get(recentBait) as { id: string; title: string } | undefined;
     const gap = parked ? undefined : this.db.prepare(`
-      SELECT id, claim FROM swarm_claims WHERE predicate = 'gap' AND status IN ('proposed', 'review_required', 'supported') AND claim NOT LIKE ?
+      SELECT id, claim FROM swarm_claims WHERE predicate = 'gap' AND status IN ('proposed', 'review_required', 'supported') AND claim NOT LIKE ? AND ${NOT_PROOF_FIXTURE_SQL}
       ORDER BY created_at DESC LIMIT 1
     `).get(HEURISTIC_GAP) as { id: string; claim: string } | undefined;
     const topic = (parked ? `Ground a parked Djimitflo proposal: ${parked.title}` : gap?.claim || 'cross-agent learning in the Djimit ecosystem').slice(0, 1_000);

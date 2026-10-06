@@ -119,5 +119,11 @@ describe('agent commons lure (honeypot)', () => {
     lure.castLure({ by: 'operator@test', baseUrl: 'http://x' });
     expect(comms.receive('silent')).toHaveLength(0);
   });
-});
 
+  it('RX-16b: a proof-run fixture gap (subject proof:*) is never lure bait; a real gap still is', () => {
+    db.prepare("INSERT INTO swarm_claims (id, claim, claim_type, subject_ref, predicate, status, created_from, created_at) VALUES ('g-real', 'How should the panel weigh replayed failures?', 'observation', 'loop', 'gap', 'proposed', 'curiosity-service', '2026-10-01T00:00:00Z'), ('g-proof', 'Proof fixture gap 42', 'observation', 'proof:run-42', 'gap', 'proposed', 'curiosity-service', '2026-10-02T00:00:00Z')").run();
+    const cast = lure.castLure({ by: 'operator@test', baseUrl: 'http://x' });
+    expect(cast.lure.topic).not.toContain('Proof fixture gap');
+    expect(cast.lure.topic).toContain('replayed failures');
+  });
+});
