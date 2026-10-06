@@ -54,6 +54,8 @@ export function AgentsPage() {
                 description={agent.description}
                 status={agent.status === 'active' && agent.liveness && agent.liveness !== 'live' ? agent.liveness : agent.status}
                 lastSeenAt={agent.last_seen_at ?? null}
+                connectionState={agent.connection_state ?? null}
+                connectionReason={agent.connection_reason ?? null}
                 telegramBot={agent.telegram_bot_name ?? null}
                 currentTask={currentTask?.title || null}
                 totalTasks={agent.total_tasks}
@@ -78,6 +80,8 @@ interface AgentCardProps {
   description: string;
   status: string;
   lastSeenAt?: string | null;
+  connectionState?: string | null;
+  connectionReason?: string | null;
   telegramBot?: string | null;
   retiredAt?: string | null;
   retirementReason?: string | null;
@@ -102,6 +106,8 @@ function AgentCard({
   retiredAt,
   retirementReason,
   lastSeenAt,
+  connectionState,
+  connectionReason,
   telegramBot,
 }: AgentCardProps) {
   const statusConfig: Record<string, { color: string; icon: React.ReactNode }> = {
@@ -163,6 +169,7 @@ function AgentCard({
         </span>
       </div>
 
+      {connectionState && <p className="mb-4 text-sm text-foreground-secondary" data-testid="connection-state">Connection: <span className="font-medium text-foreground">{connectionState.replace('_', ' ')}</span>{connectionReason ? ` — ${connectionReason}` : ''}</p>}
       {retiredAt && <p className="mb-4 text-sm text-foreground-secondary">Retired at {retiredAt}{retirementReason ? ` — ${retirementReason}` : ''}</p>}
       
       {/* Current Task */}
