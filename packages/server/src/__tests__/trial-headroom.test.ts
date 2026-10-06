@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { BASELINE_GENOME, holdout, nextTrialAttempt } from '../services/genome-registry';
-import { evaluateTrials, settleNoHeadroom } from '../services/dream-evolution';
+import { evaluateTrials, minWinsNeeded, settleNoHeadroom } from '../services/dream-evolution';
 import { RemoteGymService } from '../services/remote-gym-service';
 import { buildEvolutionEvidence } from '../services/evolution-evidence';
 
@@ -40,8 +40,8 @@ it('B8-HEAD: flag off — behaviour unchanged: no precheck, the mutant gets its 
 it('B8-HEAD: flag on, parent fails 3 of 20 — no mutant attempt, trial inconclusive with the reason, row written, Gate A says so', () => {
   vi.stubEnv('TRIAL_HEADROOM_PRECHECK', 'true'); vi.stubEnv('TRIAL_DIAGNOSTICS_ENABLED', 'true');
   trial('g-low'); parentScored(3);
-  expect(settleNoHeadroom(db, SPECIES, commits, [], NOW)).toEqual([{ id: 'g-low', f: 3, n: 20, needed: 15 }]);
-  expect(status('g-low')).toEqual({ status: 'inconclusive', note: 'no_headroom: parent fails 3 of 20; ≥ 15 needed' });
+  expect(settleNoHeadroom(db, SPECIES, commits, [], NOW)).toEqual([{ id: 'g-low', f: 3, n: 20, needed: 5 }]);
+  expect(status('g-low')).toEqual({ status: 'inconclusive', note: 'no_headroom: parent fails 3 of 20; ≥ 5 needed for any significant win' });
   expect(nextTrialAttempt(db, SPECIES, commits)).toBeNull(); // nothing left to claim for that trial
   expect(db.prepare('SELECT state, deciding_n, f_parent_failures FROM genome_trial_results WHERE trial_id = ?').get('g-low'))
     .toEqual({ state: 'no_headroom', deciding_n: 20, f_parent_failures: 3 });
@@ -50,26 +50,36 @@ it('B8-HEAD: flag on, parent fails 3 of 20 — no mutant attempt, trial inconclu
   expect(e.gates.A.reason).toContain('no headroom');
 });
 
-it('B8-HEAD: flag on, parent fails 10 of 20 at α 0.05 — still below the 15 needed; at 16 failures the trial proceeds', () => {
-  vi.stubEnv('TRIAL_HEADROOM_PRECHECK', 'true');
-  trial('g-mid'); parentScored(10);
-  // 10 discordant wins at most: McNemar needs ≥ 15 of 20 with zero losses → still no headroom
-  expect(settleNoHeadroom(db, SPECIES, commits, [], NOW)).toEqual([{ id: 'g-mid', f: 10, n: 20, needed: 15 }]);
-  db.prepare("UPDATE maker_genomes SET status = 'trial', note = NULL WHERE id = 'g-mid'").run();
-  db.prepare("DELETE FROM genome_trial_results").run(); db.prepare("DELETE FROM loop_runs").run();
-  parentScored(16);
-  expect(settleNoHeadroom(db, SPECIES, commits, [], NOW)).toEqual([]);
-  expect(status('g-mid').status).toBe('trial');
-  expect(nextTrialAttempt(db, SPECIES, commits)).toEqual({ genomeId: 'g-mid', commit: 'h0' });
+it('B8-HEAD: the threshold is the fewest all-win discordant pairs (best case = win exactly the f parent failures)', () => {
+  expect(minWinsNeeded(0.05, 'mcnemar')).toBe(5); // 0.5^5 = 0.031 < 0.05; 0.5^4 = 0.0625 is not
+  expect(minWinsNeeded(0.05, 'both')).toBe(5); // e-process needs 7 (E(7,7) ≈ 31.9 ≥ 20); the smaller rule counts
+  expect(minWinsNeeded(0.01, 'mcnemar')).toBe(7); // 0.5^7 = 0.0078 < 0.01
 });
 
-it('B8-HEAD: under DREAM_PROMOTION_RULE=both the e-process threshold counts too; the parent is scored first so the precheck can run before any mutant attempt', () => {
+it('B8-HEAD: flag on — parent fails 4 of 20 → no headroom; 5 of 20 and 10 of 20 → the trial proceeds', () => {
+  vi.stubEnv('TRIAL_HEADROOM_PRECHECK', 'true');
+  trial('g-mid'); parentScored(4);
+  expect(settleNoHeadroom(db, SPECIES, commits, [], NOW)).toEqual([{ id: 'g-mid', f: 4, n: 20, needed: 5 }]);
+  for (const f of [5, 10]) {
+    db.prepare("UPDATE maker_genomes SET status = 'trial', note = NULL WHERE id = 'g-mid'").run();
+    db.prepare("DELETE FROM genome_trial_results").run(); db.prepare("DELETE FROM loop_runs").run();
+    parentScored(f);
+    expect(settleNoHeadroom(db, SPECIES, commits, [], NOW)).toEqual([]);
+    expect(status('g-mid').status).toBe('trial');
+    expect(nextTrialAttempt(db, SPECIES, commits)).toEqual({ genomeId: 'g-mid', commit: 'h0' });
+  }
+});
+
+it('B8-HEAD: under DREAM_PROMOTION_RULE=both the smaller rule decides; the parent is scored before any mutant attempt', () => {
   vi.stubEnv('TRIAL_HEADROOM_PRECHECK', 'true'); vi.stubEnv('DREAM_PROMOTION_RULE', 'both');
   trial('g-e');
-  // with the flag on, the parent's deciding-set attempts come before any mutant attempt
-  expect(nextTrialAttempt(db, SPECIES, commits)).toEqual({ genomeId: BASELINE_GENOME, commit: 'h0' });
-  parentScored(6); // e ≥ 20 needs 7 straight wins (E(7,7) = 32 > 20), McNemar 15 → min(15, 7) = 7 > 6
-  expect(settleNoHeadroom(db, SPECIES, commits, [], NOW)).toEqual([{ id: 'g-e', f: 6, n: 20, needed: 7 }]);
+  expect(nextTrialAttempt(db, SPECIES, commits)).toEqual({ genomeId: BASELINE_GENOME, commit: 'h0' }); // parent first
+  parentScored(4);
+  expect(settleNoHeadroom(db, SPECIES, commits, [], NOW)).toEqual([{ id: 'g-e', f: 4, n: 20, needed: 5 }]);
+  db.prepare("UPDATE maker_genomes SET status = 'trial', note = NULL WHERE id = 'g-e'").run();
+  db.prepare("DELETE FROM genome_trial_results").run(); db.prepare("DELETE FROM loop_runs").run();
+  parentScored(6);
+  expect(settleNoHeadroom(db, SPECIES, commits, [], NOW)).toEqual([]);
 });
 
 it('B8-HEAD: a proceeding trial is decided exactly as without the precheck', () => {

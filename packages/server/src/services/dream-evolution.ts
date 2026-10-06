@@ -152,11 +152,23 @@ export async function dreamOnce(db: Database, now = Date.now(), call: DreamCalle
 /**
  * B8 (metaharness ADR-250: "scaling on a saturated domain buys accuracy, not evidence"; prod 06-10 Gate A: the parent passed
  * 17/20 deciding tasks). A mutant can only win tasks its parent fails, so with f parent failures on the deciding set no
- * mutant can reach the promotion rule when f is below the fewest discordant wins it needs (McNemar; under
- * DREAM_PROMOTION_RULE=both also the e-process, whichever needs fewer). Such a trial is settled 'inconclusive' before any
+ * mutant can reach the promotion rule when f is below minWinsNeeded() — the best case is winning exactly those f tasks
+ * with zero losses (McNemar 5 at α 0.05; under DREAM_PROMOTION_RULE=both the smaller of McNemar and the e-process). Such a trial is settled 'inconclusive' before any
  * of its deciding attempts are spent. TRIAL_HEADROOM_PRECHECK (default off).
  */
-const eNeeded = (n: number, alpha: number): number => { for (let k = 1; k <= n; k++) if (eValue(k, k) >= 1 / alpha) return k; return Infinity; };
+/**
+ * The fewest wins that make ANY trial significant: the best case for a mutant is to win exactly the tasks its parent
+ * fails, with zero losses (discordant n = b = k). McNemar: smallest k with p(k, 0) = 0.5^k < alpha (5 at 0.05);
+ * e-process: smallest k with E(k, k) ≥ 1/alpha (7 at 0.05); under 'both' the smaller of the two.
+ */
+export function minWinsNeeded(alpha = promotionAlpha(), rule: 'mcnemar' | 'both' = promotionRule(), cap = 64): number {
+  let mcnemar = Infinity; let eproc = Infinity;
+  for (let k = 1; k <= cap && (mcnemar === Infinity || eproc === Infinity); k++) {
+    if (mcnemar === Infinity && mcnemarOneSided(k, 0) < alpha) mcnemar = k;
+    if (eproc === Infinity && eValue(k, k) >= 1 / alpha) eproc = k;
+  }
+  return rule === 'both' ? Math.min(mcnemar, eproc) : mcnemar;
+}
 export function settleNoHeadroom(db: Database, speciesKey: string, holdoutCommits: string[], mutantCommits: string[] = [], now = Date.now()): Array<{ id: string; f: number; n: number; needed: number }> {
   if (!trialHeadroomPrecheck() || !holdoutCommits.length) return [];
   const deciding = mutantCommits.length ? mutantCommits : holdoutCommits;
@@ -172,19 +184,17 @@ export function settleNoHeadroom(db: Database, speciesKey: string, holdoutCommit
     if (parent.some((r) => !r)) continue; // the parent is not fully scored yet
     if (scored.every((c) => result.get(speciesKey, trial.id, c) || unscorable(db, speciesKey, trial.id, c))) continue; // already run: evaluateTrials decides
     const n = scored.length; const f = parent.filter((r) => r?.status !== 'success').length;
-    const alpha = promotionAlpha();
-    const mcnemar = minDiscordantForSignificance(n, alpha) ?? Infinity;
-    const needed = promotionRule() === 'both' ? Math.min(mcnemar, eNeeded(n, alpha)) : mcnemar;
+    const needed = minWinsNeeded();
     if (f >= needed) continue;
     const shown = Number.isFinite(needed) ? needed : n + 1;
     db.prepare("UPDATE maker_genomes SET status = 'inconclusive', note = ?, updated_at = ? WHERE id = ? AND status = 'trial'")
-      .run(`no_headroom: parent fails ${f} of ${n}; ≥ ${shown} needed`, iso, trial.id);
+      .run(`no_headroom: parent fails ${f} of ${n}; ≥ ${shown} needed for any significant win`, iso, trial.id);
     try {
       db.prepare(`INSERT OR REPLACE INTO genome_trial_results (trial_id, parent_id, tier_set, deciding_n, f_parent_failures, b, c, p, mined_b, mined_c, power_q8_l05, state, recorded_at, epoch)
         VALUES (?, ?, ?, ?, ?, 0, 0, 1, 0, 0, 0, 'no_headroom', ?, ?)`).run(trial.id, trial.parent, mutantCommits.length ? mutantHoldoutTiers().join(',') : 'mined', n, f, iso,
         holdoutEpoch(db, mutantCommits.length ? 'gym_mutant_holdout' : 'gym_holdout'));
     } catch { /* the record is fail-soft; the settlement above is what stops the attempts */ }
-    console.log(`🧬 genome ${trial.id} inconclusive (no headroom: parent fails ${f} of ${n}; ≥ ${shown} needed)`);
+    console.log(`🧬 genome ${trial.id} inconclusive (no headroom: parent fails ${f} of ${n}; ≥ ${shown} needed for any significant win)`);
     settled.push({ id: trial.id, f, n, needed: shown });
   }
   return settled;
