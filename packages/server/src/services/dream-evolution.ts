@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { generateText, llmEndpoints } from './llm-fallback';
 import { firstJsonObject } from './expert-council-service';
-import { BASELINE_GENOME, dreamEvolutionEnabled, ensureBaseline, frozenHoldoutCommits, genome, holdoutEpoch, mutantHoldoutKeys, mutantHoldoutTiers, mutantTrialsEnabled, unscorable } from './genome-registry';
+import { BASELINE_GENOME, dreamEvolutionEnabled, ensureBaseline, frozenHoldoutCommits, genome, holdoutEpoch, mutantHoldoutKeys, mutantHoldoutTiers, mutantTrialsEnabled, trialHeadroomPrecheck, unscorable } from './genome-registry';
 
 /**
  * Y3b/Y3c (plan Phase Y, Darwin loop). Dreaming is the mutation operator: once a day the day's failed makers (real and
@@ -149,6 +149,47 @@ export async function dreamOnce(db: Database, now = Date.now(), call: DreamCalle
   return { created, ...(created.length ? {} : { skipped: 'no mutant passed the guard' }) };
 }
 
+/**
+ * B8 (metaharness ADR-250: "scaling on a saturated domain buys accuracy, not evidence"; prod 06-10 Gate A: the parent passed
+ * 17/20 deciding tasks). A mutant can only win tasks its parent fails, so with f parent failures on the deciding set no
+ * mutant can reach the promotion rule when f is below the fewest discordant wins it needs (McNemar; under
+ * DREAM_PROMOTION_RULE=both also the e-process, whichever needs fewer). Such a trial is settled 'inconclusive' before any
+ * of its deciding attempts are spent. TRIAL_HEADROOM_PRECHECK (default off).
+ */
+const eNeeded = (n: number, alpha: number): number => { for (let k = 1; k <= n; k++) if (eValue(k, k) >= 1 / alpha) return k; return Infinity; };
+export function settleNoHeadroom(db: Database, speciesKey: string, holdoutCommits: string[], mutantCommits: string[] = [], now = Date.now()): Array<{ id: string; f: number; n: number; needed: number }> {
+  if (!trialHeadroomPrecheck() || !holdoutCommits.length) return [];
+  const deciding = mutantCommits.length ? mutantCommits : holdoutCommits;
+  const iso = new Date(now).toISOString();
+  const result = db.prepare(`SELECT json_extract(metadata, '$.gym_result.status') AS status FROM loop_runs WHERE loop_name = 'evolution-gym'
+    AND json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.genome') = ? AND json_extract(metadata, '$.gym.commit') = ?
+    AND status = 'completed' AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%' ORDER BY created_at DESC LIMIT 1`);
+  const trials = db.prepare("SELECT id, COALESCE(parent_id, ?) AS parent FROM maker_genomes WHERE status = 'trial' ORDER BY created_at").all(BASELINE_GENOME) as Array<{ id: string; parent: string }>;
+  const settled: Array<{ id: string; f: number; n: number; needed: number }> = [];
+  for (const trial of trials) {
+    const scored = deciding.filter((c) => !unscorable(db, speciesKey, trial.parent, c));
+    const parent = scored.map((c) => result.get(speciesKey, trial.parent, c) as { status: string } | undefined);
+    if (parent.some((r) => !r)) continue; // the parent is not fully scored yet
+    if (scored.every((c) => result.get(speciesKey, trial.id, c) || unscorable(db, speciesKey, trial.id, c))) continue; // already run: evaluateTrials decides
+    const n = scored.length; const f = parent.filter((r) => r?.status !== 'success').length;
+    const alpha = promotionAlpha();
+    const mcnemar = minDiscordantForSignificance(n, alpha) ?? Infinity;
+    const needed = promotionRule() === 'both' ? Math.min(mcnemar, eNeeded(n, alpha)) : mcnemar;
+    if (f >= needed) continue;
+    const shown = Number.isFinite(needed) ? needed : n + 1;
+    db.prepare("UPDATE maker_genomes SET status = 'inconclusive', note = ?, updated_at = ? WHERE id = ? AND status = 'trial'")
+      .run(`no_headroom: parent fails ${f} of ${n}; ≥ ${shown} needed`, iso, trial.id);
+    try {
+      db.prepare(`INSERT OR REPLACE INTO genome_trial_results (trial_id, parent_id, tier_set, deciding_n, f_parent_failures, b, c, p, mined_b, mined_c, power_q8_l05, state, recorded_at, epoch)
+        VALUES (?, ?, ?, ?, ?, 0, 0, 1, 0, 0, 0, 'no_headroom', ?, ?)`).run(trial.id, trial.parent, mutantCommits.length ? mutantHoldoutTiers().join(',') : 'mined', n, f, iso,
+        holdoutEpoch(db, mutantCommits.length ? 'gym_mutant_holdout' : 'gym_holdout'));
+    } catch { /* the record is fail-soft; the settlement above is what stops the attempts */ }
+    console.log(`🧬 genome ${trial.id} inconclusive (no headroom: parent fails ${f} of ${n}; ≥ ${shown} needed)`);
+    settled.push({ id: trial.id, f, n, needed: shown });
+  }
+  return settled;
+}
+
 /** Settles finished trials: paired holdout results decide; at most one promotion a day; everything else retires. */
 export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits: string[], now = Date.now(), mutantCommits: string[] = []): Array<{ id: string; status: 'active' | 'retired'; wins: number; parentWins: number }> {
   if (!holdoutCommits.length) return [];
@@ -219,6 +260,7 @@ export function startDreamEvolution(db: Database, intervalMs = 3_600_000): (() =
       const commits = frozenHoldoutCommits(db); // RX-12: the current epoch's mined holdout
       const mutants = mutantTrialsEnabled() ? mutantHoldoutKeys(db) : [];
       // Z5 on but the mutant holdout not frozen yet (no claim since): don't settle a trial on the mined holdout alone
+      if (!(mutantTrialsEnabled() && !mutants.length)) settleNoHeadroom(db, species, commits, mutants);
       for (const s of mutantTrialsEnabled() && !mutants.length ? [] : evaluateTrials(db, species, commits, Date.now(), mutants)) console.log(`🧬 genome ${s.id} ${s.status} (holdout ${s.wins} vs parent ${s.parentWins})`);
     } catch (e) { console.warn('dream evolution: evaluate failed:', e instanceof Error ? e.message : String(e)); }
     dreamOnce(db).then((r) => { if (r.created.length) console.log(`🧬 dreamt ${r.created.length} mutant(s): ${r.created.join(', ')}`); })

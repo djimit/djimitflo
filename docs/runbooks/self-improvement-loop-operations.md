@@ -82,6 +82,7 @@ missing here. **Acting** = changes what the loop does; acting flags are switched
 | `DREAM_TRIAL_MUTANT_TIERS` | `2,3` | yes | act (freezes a new holdout) | operator, after the RX-5 tier probe |
 | `DREAM_PROMOTION_ALPHA` | 0.05 | yes | act | operator |
 | `TRIAL_DIAGNOSTICS_ENABLED` | off | no (records per-trial blindness/power; never changes promotion) | measure | operator |
+| `TRIAL_HEADROOM_PRECHECK` | off | yes (scores the parent first; settles a trial `inconclusive` / `no_headroom` before any mutant attempt when the parent fails fewer deciding tasks than the promotion rule needs) | act | operator |
 | `DREAM_PROMOTION_RULE` | mcnemar | no (`both` records the anytime-valid e-process decision next to McNemar; never changes promotion) | shadow | operator |
 | `GYM_HOLDOUT_EPOCH` | 0 (the holdout frozen since 01-10) | yes (a new epoch freezes 20 fresh tasks next to the old; refused while a genome is in trial) | act | operator |
 | `GENOME_APPLY_MODE` | unset (only `shadow` exists) | no | shadow | loop (shadow) |

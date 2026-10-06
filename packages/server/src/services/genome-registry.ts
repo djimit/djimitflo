@@ -103,12 +103,18 @@ export function mutantHoldout(db: Database, make: (tier: number, tried: Set<stri
  * The next paired trial attempt for a species: each trial genome and its parent need one non-infra attempt on every
  * holdout task. Parents first per task, so a comparison is never waiting on the parent.
  */
+/** B8: TRIAL_HEADROOM_PRECHECK (default off) — score the parent first and skip trials no mutant could win (dream-evolution). */
+export const trialHeadroomPrecheck = (env: NodeJS.ProcessEnv = process.env): boolean => env.TRIAL_HEADROOM_PRECHECK === 'true';
 export function nextTrialAttempt(db: Database, speciesKey: string, holdoutCommits: string[]): { genomeId: string; commit: string } | null {
   const trials = db.prepare("SELECT id, COALESCE(parent_id, ?) AS parent FROM maker_genomes WHERE status = 'trial' ORDER BY created_at").all(BASELINE_GENOME) as Array<{ id: string; parent: string }>;
   if (!trials.length || !holdoutCommits.length) return null;
   const done = db.prepare(`SELECT 1 FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ?
     AND json_extract(metadata, '$.gym.genome') = ? AND json_extract(metadata, '$.gym.commit') = ?
     AND (status = 'running' OR COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%') LIMIT 1`);
+  // B8: with the precheck on, the parent's whole holdout comes first, so headroom is known before any mutant attempt is spent
+  if (trialHeadroomPrecheck()) {
+    for (const trial of trials) for (const commit of holdoutCommits) if (!done.get(speciesKey, trial.parent, commit) && !unscorable(db, speciesKey, trial.parent, commit)) return { genomeId: trial.parent, commit };
+  }
   for (const trial of trials) {
     for (const commit of holdoutCommits) {
       for (const genomeId of [trial.parent, trial.id]) if (!done.get(speciesKey, genomeId, commit) && !unscorable(db, speciesKey, genomeId, commit)) return { genomeId, commit };
