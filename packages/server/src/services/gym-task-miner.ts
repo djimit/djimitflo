@@ -13,7 +13,8 @@ export interface GymTask { commit: string; source: string; tests: string[]; sour
 const SERVICE = /^packages\/server\/src\/services\/([A-Za-z0-9_-]+)\.ts$/;
 const TEST = /^packages\/server\/src\/__tests__\/[^/]+\.test\.ts$/;
 // never replay changes to auth, secrets or deployment (same boundary as the evolve loop)
-const SENSITIVE = /(^|[-_])(auth|secrets?|deploy|token|credential|spawn|approval)([-_]|$)/i;
+export const SENSITIVE_SERVICE = /(^|[-_])(auth|secrets?|deploy|token|credential|spawn|approval)([-_]|$)/i;
+const SENSITIVE = SENSITIVE_SERVICE;
 
 /** Parses `git log --numstat --format=@%H` output into per-commit file stats. */
 export function parseNumstat(log: string): Array<{ commit: string; files: Array<{ path: string; lines: number }> }> {

@@ -101,6 +101,7 @@ export interface EvolutionEvidence {
   estimates: Record<string, unknown>;
   ope: Record<string, unknown>;
   egress: Record<string, unknown>;
+  failure_tasks: { enabled: boolean; qualifying_failures: number; available: number | null; attempted: number; solved: number; note: string };
   embedding_dim_mismatch: { strict: boolean; by_store: Record<string, number> };
   gates: Record<'A' | 'B' | 'C' | 'D', { state: GateState; reason: string }>;
 }
