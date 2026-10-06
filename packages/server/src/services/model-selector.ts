@@ -1,4 +1,5 @@
 import type { Database } from 'better-sqlite3';
+import { modelPrice } from './loop-budget-service';
 
 /**
  * MS-1 (operator 2026-10-05: "model choice by cost should be Djimitflo's own behaviour"). Ollama Cloud usage was dominated
@@ -28,12 +29,45 @@ export function costWeight(model: string, env: NodeJS.ProcessEnv = process.env):
 export const candidates = (consumer: string, env: NodeJS.ProcessEnv = process.env): string[] =>
   String(env[`MODEL_CANDIDATES_${consumer.toUpperCase()}`] || '').split(',').map((s) => s.trim()).filter(Boolean);
 
-export interface ModelCall { consumer: string; model: string; ok: boolean; latencyMs: number; outChars: number; shadow: 0 | 1; agree: boolean | null }
+export interface ModelCall {
+  consumer: string; model: string; ok: boolean; latencyMs: number; outChars: number; shadow: 0 | 1; agree: boolean | null;
+  /** UX-18: every server-side model call lands here too (no prompt text, ever). */
+  provider?: string | null; tokensIn?: number | null; tokensOut?: number | null; taskKind?: string | null; runId?: string | null; status?: string | null;
+}
+const int = (v: number | null | undefined): number | null => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : null);
 export function recordModelCall(db: Database, c: ModelCall, at = new Date()): void {
   try {
-    db.prepare('INSERT INTO llm_model_calls (consumer, model, ok, latency_ms, out_chars, shadow, agree, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(c.consumer, c.model, c.ok ? 1 : 0, Math.round(c.latencyMs), c.outChars, c.shadow, c.agree === null ? null : c.agree ? 1 : 0, at.toISOString());
+    db.prepare(`INSERT INTO llm_model_calls (consumer, model, ok, latency_ms, out_chars, shadow, agree, provider, tokens_in, tokens_out, task_kind, run_id, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(c.consumer, c.model, c.ok ? 1 : 0, Math.round(c.latencyMs), c.outChars, c.shadow, c.agree === null ? null : c.agree ? 1 : 0,
+        c.provider ?? null, int(c.tokensIn), int(c.tokensOut), c.taskKind ?? null, c.runId ?? null, c.status ?? null, at.toISOString());
   } catch { /* the ledger never breaks the call it measures */ }
+}
+
+/**
+ * UX-18: call sites without a db handle (llm-fallback, jev, embeddings) record through the ledger registered at boot.
+ * ponytail: one process-wide handle; tests register their own and reset with setLlmLedger(null).
+ */
+let ledgerDb: Database | null = null;
+export function setLlmLedger(db: Database | null): void { ledgerDb = db; }
+export type LlmCall = Omit<ModelCall, 'shadow' | 'agree'> & { shadow?: 0 | 1; agree?: boolean | null };
+export function recordLlmCall(c: LlmCall, db: Database | null = ledgerDb): void {
+  if (!db) return;
+  recordModelCall(db, { shadow: 0, agree: null, ...c });
+}
+/** Times an async model call and records it (ok = resolved); the call's own result and error pass through untouched. */
+export async function measured<T>(c: Omit<LlmCall, 'ok' | 'latencyMs' | 'outChars'>, call: () => Promise<T>, size: (r: T) => { outChars?: number; tokensIn?: number | null; tokensOut?: number | null } = () => ({}), db: Database | null = ledgerDb): Promise<T> {
+  const started = Date.now();
+  try {
+    const r = await call();
+    let extra: { outChars?: number; tokensIn?: number | null; tokensOut?: number | null } = {};
+    try { extra = size(r); } catch { /* sizing never breaks the call */ }
+    recordLlmCall({ ...c, ok: true, latencyMs: Date.now() - started, outChars: extra.outChars ?? 0, tokensIn: extra.tokensIn ?? c.tokensIn, tokensOut: extra.tokensOut ?? c.tokensOut, status: c.status ?? 'ok' }, db);
+    return r;
+  } catch (error) {
+    recordLlmCall({ ...c, ok: false, latencyMs: Date.now() - started, outChars: 0, status: (error instanceof Error ? error.message : String(error)).slice(0, 80) }, db);
+    throw error;
+  }
 }
 
 const wilsonLower = (ok: number, n: number, z = 1.96): number => {
@@ -86,7 +120,23 @@ export function modelEvidence(db: Database, incumbents: Record<string, string | 
     });
   } catch { /* table absent on an old schema */ }
   const would_pick = Object.fromEntries(Object.entries(incumbents).map(([c, inc]) => [c, inc ? chooseModel(db, c, inc, env, now) : null]));
-  return { mode: modelSelectorMode(env), rows, would_pick };
+  // UX-18: every server-side LLM call per consumer over 7 d — calls, ok, tokens, and a cost only when every model has a configured price
+  let usage_7d: Array<{ consumer: string; calls: number; ok: number; tokens_in: number; tokens_out: number; est_cost_usd: number | null }> = [];
+  try {
+    const per = db.prepare(`SELECT consumer, model, COUNT(*) AS calls, COALESCE(SUM(ok), 0) AS ok, COALESCE(SUM(tokens_in), 0) AS tin, COALESCE(SUM(tokens_out), 0) AS tout
+      FROM llm_model_calls WHERE created_at >= ? GROUP BY 1, 2`).all(new Date(now - 7 * 86_400_000).toISOString()) as Array<{ consumer: string; model: string; calls: number; ok: number; tin: number; tout: number }>;
+    const by = new Map<string, { consumer: string; calls: number; ok: number; tokens_in: number; tokens_out: number; est_cost_usd: number | null }>();
+    for (const r of per) {
+      const key = r.consumer.startsWith('resident:') ? 'resident' : r.consumer;
+      const cur = by.get(key) ?? { consumer: key, calls: 0, ok: 0, tokens_in: 0, tokens_out: 0, est_cost_usd: 0 };
+      const price = modelPrice(r.model, env);
+      cur.calls += r.calls; cur.ok += r.ok; cur.tokens_in += r.tin; cur.tokens_out += r.tout;
+      cur.est_cost_usd = price && cur.est_cost_usd !== null ? +(cur.est_cost_usd + (r.tin * price.input + r.tout * price.output) / 1_000_000).toFixed(4) : null;
+      by.set(key, cur);
+    }
+    usage_7d = [...by.values()].sort((a, b) => b.calls - a.calls);
+  } catch { /* table absent on an old schema */ }
+  return { mode: modelSelectorMode(env), rows, would_pick, usage_7d };
 }
 
 /**
