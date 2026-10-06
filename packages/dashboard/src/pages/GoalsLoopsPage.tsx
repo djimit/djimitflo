@@ -9,7 +9,8 @@ export function GoalsLoopsPage() {
   const [goals, setGoals] = useState<GoalRecord[]>([]);
   const [runs, setRuns] = useState<LoopRunRecord[]>([]);
   const [catalog, setCatalog] = useState<LoopCatalogItem[]>([]);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  // UX-10: loop draft-PR bodies link here with ?run=<id>
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('run'));
   const [bundle, setBundle] = useState<LoopReviewBundle | null>(null);
   const [repositoryPath, setRepositoryPath] = useState('');
   const [selectedLoopName, setSelectedLoopName] = useState('doc-drift-and-small-fix-loop');
