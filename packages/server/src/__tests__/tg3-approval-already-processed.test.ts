@@ -1,4 +1,5 @@
 import express from 'express';
+import { rateLimit } from 'express-rate-limit';
 import Database from 'better-sqlite3';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import type { Server } from 'node:http';
@@ -35,7 +36,7 @@ beforeAll(async () => {
   const auth = createAuthMiddleware(authService);
   const service = new ApprovalService(db, { broadcastTaskEventById: () => {} }, new AuditService(db));
   const engine = { handleApprovalDecision: async (id: string, approved: boolean, actor: string) => service.decideApproval(id, approved, actor) } as never;
-  const app = express(); app.use(express.json());
+  const app = express(); app.use(express.json()); app.use(rateLimit({ windowMs: 60_000, limit: 600 }));
   app.use('/approvals', auth.requireAuth, createApprovalRoutes(db, engine, auth)); app.use(errorHandler);
   server = await new Promise((resolve) => { const l = app.listen(0, () => resolve(l)); });
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
