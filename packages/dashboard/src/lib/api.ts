@@ -1344,6 +1344,11 @@ class ApiClient {
     return this.request('/health/cockpit');
   }
 
+  /** UX-13: the daily operator digest as it would be sent. */
+  async getOperatorDigest(): Promise<{ at: string; text: string; data: Record<string, unknown> }> {
+    return this.request('/health/digest');
+  }
+
   async getDraftPrs(limit = 50): Promise<DraftPrs> {
     return this.request(`/loops/draft-prs?limit=${limit}`);
   }
