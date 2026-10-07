@@ -66,6 +66,9 @@ describe('semver parse', () => {
     expect(testing.bump).toBe('major');
     expect(parseDependabotPr('bump the x group with 3 updates', 'Updates `a` from 1.0.0 to 1.0.1\n').bump).toBe('unknown');
     expect(parseDependabotPr('chore: something else', 'no versions here').bump).toBe('unknown');
+    // quoted upstream release notes ("bump the angular-deps group … with 10 updates") are not this PR's group (prod #502)
+    expect(parseDependabotPr('deps(deps): bump lucide-react from 1.47.0 to 1.51.0',
+      'Bumps [lucide-react](https://x) from 1.47.0 to 1.51.0.\n<li>chore(deps-dev): bump the angular-deps group across 1 directory with 10 updates by dependabot</li>').bump).toBe('minor');
   });
 });
 

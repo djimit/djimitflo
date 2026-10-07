@@ -66,8 +66,9 @@ export function parseDependabotPr(title: string, body: string | null | undefined
   const t = /\bbump (\S+) from (\S+) to (\S+)/i.exec(title);
   if (t) add(t[1], t[2], t[3]);
   const updates = [...found.values()];
-  // a group that announces more updates than were parsed hides one we cannot judge
-  const announced = Number(/with (\d+) updates?/i.exec(text)?.[1] ?? 0);
+  // a group that announces more updates than were parsed hides one we cannot judge (title or the body's own "Bumps the …"
+  // line only: quoted upstream release notes mention other groups' "with 10 updates")
+  const announced = Number((/with (\d+) updates?/i.exec(title) ?? /^Bumps the .* with (\d+) updates?/im.exec(body ?? ''))?.[1] ?? 0);
   const bump: Bump = !updates.length || updates.length < announced ? 'unknown'
     : updates.reduce<Bump>((max, u) => (RANK[u.bump] > RANK[max] ? u.bump : max), 'patch');
   return { updates, bump };
