@@ -11,6 +11,12 @@ const decodeField = (value: unknown): unknown => {
   if (typeof value !== 'string') return value;
   try { return JSON.parse(value); } catch { return value; }
 };
+/** The Redis bus delivers list fields as JSON strings ('["a.ts"]'); accept both, never throw. */
+export const listField = (value: unknown): string[] => {
+  let v = value;
+  if (typeof v === 'string' && v.trim().startsWith('[')) { try { v = JSON.parse(v); } catch { return []; } }
+  return Array.isArray(v) ? v.filter((x) => x !== null && x !== undefined).map(String) : [];
+};
 const SIGNAL_PREFIXES = ['paperclip.', 'outcome.', 'roborev.', 'discovery.', 'wiki.', 'agent.', 'eve-v.', 'work.', 'content.', 'authority.'];
 
 /**
@@ -119,7 +125,7 @@ export class ExternalEventIngestService {
         risk_class: severity === 'critical' ? 'critical' : severity === 'high' ? 'high' : severity === 'low' ? 'low' : 'medium',
         status: 'candidate',
         recommended_loop: event.task_type === 'review_fix' ? 'repo-maintenance-loop' : 'research-loop',
-        metadata: { repo: event.repo ?? null, sha: event.sha ?? null, finding_class: event.finding_class ?? null, affected_files: Array.isArray(event.affected_files) ? event.affected_files.map(String) : [], task_type: event.task_type ?? null },
+        metadata: { repo: event.repo ?? null, sha: event.sha ?? null, finding_class: event.finding_class ?? null, affected_files: listField(event.affected_files), labels: listField(event.labels), blocked_by: listField(event.blocked_by), task_type: event.task_type ?? null },
       });
     } catch { /* never let one finding break event ingestion */ }
   }

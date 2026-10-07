@@ -41,6 +41,9 @@ export interface AutopilotConfig {
   /** Language the agents are asked to converse in; 'auto' leaves it to the model. */
   language?: AutopilotLanguage;
   providers?: ProviderEnv;
+  /** SOCIAL_AUTOPILOT_FORECAST_ONLY (operator scale-back 2026-10-07): heartbeat and committee forecasts only — no chat replies,
+   *  no rounds, no thread answers (chat was most of ~940k output tokens per 1.7 days). */
+  forecastOnly?: boolean;
 }
 
 export interface AutopilotTick {
@@ -99,6 +102,7 @@ export function autopilotConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Au
     residents: parseResidentRuntimes(env.SOCIAL_AUTOPILOT_RESIDENTS, fallback),
     language: languageText === 'nl' || languageText === 'en' ? languageText : 'auto',
     providers,
+    forecastOnly: (env.SOCIAL_AUTOPILOT_FORECAST_ONLY || '').trim().toLowerCase() === 'true',
   };
 }
 
@@ -227,7 +231,7 @@ export class AgentSocialAutopilotService {
     return rows
       .filter((row) => !row.retired_at && (!wanted || wanted.has(String(row.id))))
       // AR-W5: survival of the fittest — a resident that makes no measurable calls, or forecasts worse than the base rate, stops
-      .filter((row) => !arenaGateEnabled() || arenaGate(this.db, String(row.id)).allowed)
+      .filter((row) => !arenaGateEnabled() || arenaGate(this.db, String(row.id), new Date(), { forecastOnly: this.config.forecastOnly === true }).allowed)
       .map((row) => ({ id: String(row.id), name: String(row.name || row.id), capabilities: this.stringArray(row.capabilities ?? row.capabilities_json) }));
   }
 
@@ -272,6 +276,7 @@ export class AgentSocialAutopilotService {
           result.forecasts = (result.forecasts ?? 0) + (f ? 1 : 0);
         } catch { result.failures += 1; }
       }
+      if (this.config.forecastOnly) { result.skipped = controller.signal.aborted ? 'stopped' : 'forecast_only'; return result; }
       // Claim immediately before inference so slow earlier replies cannot expire later leases.
       const maxAttempts = Math.min(16, Math.max(1, Math.floor(this.config.maxRepliesPerTick)));
       for (const agent of agents) {
