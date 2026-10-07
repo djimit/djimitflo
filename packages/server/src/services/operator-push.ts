@@ -6,6 +6,7 @@ import { dependencyLaneQueue, laneMode } from './dependency-lane';
 import { redactSecrets } from './secret-patterns';
 import { decisionsInbox, openDecisionCounts, type DecisionsInbox } from './decisions-inbox';
 import { countOpenLoopPrs } from './loop-draft-pr-service';
+import { autoMergeEvidence } from './loop-auto-merge-state';
 
 /**
  * UX-12 / UX-13 (Phase UX, operator 2026-10-04: channel = Telegram). Nothing reached the operator unless they opened
@@ -96,6 +97,15 @@ export function approvalMessage(a: ApprovalLike, ctx: ApprovalContext | null = n
     `Id: ${clean(a.id, 40)}`,
   ].filter(Boolean).join('\n');
   return text.slice(0, 1000);
+}
+
+/** Earned auto-merge: one informational line (no buttons), same TELEGRAM_PUSH_ENABLED gate as approvals. Never throws. */
+export async function pushNotice(text: string, env: NodeJS.ProcessEnv = process.env): Promise<boolean> {
+  try {
+    if (!pushEnabled(env) || !sender) return false;
+    await sender.broadcastAlert(clean(text, 400));
+    return true;
+  } catch { return false; }
 }
 
 export type PushResult = 'disabled' | 'no_sender' | 'decided' | 'duplicate' | 'quiet' | 'capped' | 'sent' | 'failed';
@@ -190,6 +200,7 @@ export function buildDigest(db: Database, now = Date.now(), env: NodeJS.ProcessE
     { key: 'open_prs', label: 'open loop PRs', anchor: 'draft-prs', count: countOpenLoopPrs(db) },
   ].map((x) => ({ ...x, link: base ? `${base}/decisions#${x.anchor}` : `/decisions#${x.anchor}` }));
   const lane = laneMode(env) === 'off' ? null : (() => { try { return dependencyLaneQueue(db, env, now); } catch { return null; } })();
+  const am = (() => { try { return autoMergeEvidence(db, env, now); } catch { return null; } })();
   const data = {
     verified_24h: one("SELECT COUNT(*) FROM self_improvements WHERE status = 'verified' AND updated_at >= ?", d1),
     regressed_24h: one("SELECT COUNT(*) FROM self_improvements WHERE status = 'regressed' AND updated_at >= ?", d1),
@@ -205,6 +216,7 @@ export function buildDigest(db: Database, now = Date.now(), env: NodeJS.ProcessE
     schedulers_off: sched.schedulers.filter((s) => !s.armed).map((s) => s.name),
     needs_you: Object.fromEntries(sections.map((x) => [x.key, { count: x.count, link: x.link }])),
     dependency_lane: lane ? { mode: lane.effective_mode, open: lane.open, merged_24h: lane.merged_24h, revoked: !!lane.revoked_at } : null,
+    auto_merge: am && am.mode !== 'off' ? { mode: am.mode, class: am.class.state, merged_24h: am.counts.merged_24h, audit_samples_open: am.counts.audit_samples_open } : null,
   };
   const gates = Object.entries(data.gates).map(([k, s]) => `${k} ${s}`).join(', ') || 'unknown';
   const text = [
@@ -218,6 +230,7 @@ export function buildDigest(db: Database, now = Date.now(), env: NodeJS.ProcessE
     data.stalls.length ? `Stalls: ${data.stalls.join(', ')}` : 'Stalls: none',
     data.schedulers_off.length ? `Schedulers off: ${data.schedulers_off.length}` : null,
     data.dependency_lane ? `Dependency lane (${data.dependency_lane.mode}${data.dependency_lane.revoked ? ', act revoked' : ''}): ${data.dependency_lane.open} Dependabot PRs open, ${data.dependency_lane.merged_24h} merged in 24 h` : null,
+    data.auto_merge ? `Test-only auto-merge (${data.auto_merge.mode}): class ${data.auto_merge.class}, ${data.auto_merge.merged_24h} merged in 24 h, ${data.auto_merge.audit_samples_open} audit sample(s) waiting for you` : null,
   ].filter(Boolean).join('\n');
   return { at: new Date(now).toISOString(), text: redactSecrets(text).redacted, data };
 }

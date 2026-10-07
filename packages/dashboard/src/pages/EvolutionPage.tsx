@@ -134,6 +134,16 @@ export function EvolutionBody({ data }: { data: EvolutionEvidence }) {
         <p className="text-sm">n = {data.drafts.unsettled_open_or_recent} open or merged under 14 days · median age {data.drafts.age_days_p50 ?? '—'} d · oldest {data.drafts.age_days_max ?? '—'} d · settled {data.merge.merge_outcomes ?? 0}</p>
       </Section>
 
+      {data.auto_merge && data.auto_merge.mode !== 'off' && (
+        <Section title={`Test-only auto-merge (mode ${data.auto_merge.mode})`} shadow={data.auto_merge.mode === 'shadow'}>
+          <p className="text-sm">
+            Class <strong className={data.auto_merge.class.state === 'revoked' ? 'text-status-error' : undefined}>{data.auto_merge.class.state}</strong>
+            {data.auto_merge.class.state === 'revoked' && <> — {data.auto_merge.class.reason ?? 'no reason recorded'}; an operator re-enables it</>}
+          </p>
+          <p className="text-sm">n = {data.auto_merge.counts.merged} merged ({data.auto_merge.counts.merged_24h} in 24 h, cap {data.auto_merge.max_per_day}) · {data.auto_merge.counts.would_merge} would merge (shadow) · {data.auto_merge.counts.audit_samples_open} audit sample(s) open · {data.auto_merge.counts.ineligible} ineligible</p>
+        </Section>
+      )}
+
       <Section title="Flags">
         {!data.flags.length ? <Empty text="No evolution flags reported." /> : (
           <Table head={['Flag', 'Value', 'Acting']} rows={data.flags.map((fl) => [fl.name, fl.value ?? 'unset', fl.acting ? 'yes' : 'no'])} />

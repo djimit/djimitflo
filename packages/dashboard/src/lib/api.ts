@@ -104,6 +104,11 @@ export interface EvolutionEvidence {
   failure_tasks: { enabled: boolean; qualifying_failures: number; available: number | null; attempted: number; solved: number; note: string };
   embedding_dim_mismatch: { strict: boolean; by_store: Record<string, number> };
   freshness: { by_state: Array<{ state: string; n: number }>; stale_events: number | null };
+  /** earned auto-merge for verified test-only loop PRs: mode, class state (revoked = stopped until an operator re-enables) and counts */
+  auto_merge: { mode: 'off' | 'shadow' | 'act'; max_per_day: number; audit_sample_pct: number;
+    class: { state: 'active' | 'revoked'; reason?: string; pr_url?: string; revoked_at?: string; re_enabled_by?: string; re_enabled_at?: string; re_enable_reason?: string };
+    counts: { merged: number; merged_24h: number; would_merge: number; audit_samples: number; audit_samples_open: number; waiting: number; ineligible: number };
+    ineligible_by_reason: Record<string, number> };
   gates: Record<'A' | 'B' | 'C' | 'D', { state: GateState; reason: string }>;
 }
 
@@ -130,7 +135,7 @@ export type OperatorCockpit = {
 export type OperatorDigest = { at: string; text: string; data: Record<string, unknown> };
 
 /** UX-7: the loop's draft PRs from loop_runs metadata (no GitHub call); outcome = merge-survival settlement once it exists. */
-export type DraftPrs = { total: number; unsettled: number; rows: Array<{ run_id: string; lane: string; pr_url: string; pr_number: number | null; age_days: number; outcome: string | null; survived: boolean | null }> };
+export type DraftPrs = { total: number; unsettled: number; rows: Array<{ run_id: string; lane: string; pr_url: string; pr_number: number | null; age_days: number; outcome: string | null; survived: boolean | null; auto_merge: string | null }> };
 export type DependencyLane = { mode: 'off' | 'shadow' | 'act'; effective_mode: 'off' | 'shadow' | 'act'; revoked_at: string | null; revoked_reason: string | null; max_per_day: number; merged_24h: number; open: number; rows: Array<{ pr_number: number; title: string; html_url: string | null; bump: string; age_days: number | null; check_state: string | null; decision: string; reason: string | null; updated_at: string }> };
 
 export type DecisionsInbox = {

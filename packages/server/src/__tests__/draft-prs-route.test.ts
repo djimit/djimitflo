@@ -25,8 +25,8 @@ it('UX-7: lists loop draft PRs newest first with number, lane, age and settlemen
   const r = listDraftPrs(seed(), 50, NOW);
   expect(r).toMatchObject({ total: 2, unsettled: 1 });
   expect(r.rows).toEqual([
-    { run_id: 'r2', lane: 'mutation-gap', pr_url: 'https://github.com/o/r/pull/616', pr_number: 616, age_days: 1, outcome: 'merged', survived: true },
-    { run_id: 'r1', lane: 'test-gap', pr_url: 'https://github.com/o/r/pull/474', pr_number: 474, age_days: 8, outcome: null, survived: null },
+    { run_id: 'r2', lane: 'mutation-gap', pr_url: 'https://github.com/o/r/pull/616', pr_number: 616, age_days: 1, outcome: 'merged', survived: true, auto_merge: null },
+    { run_id: 'r1', lane: 'test-gap', pr_url: 'https://github.com/o/r/pull/474', pr_number: 474, age_days: 8, outcome: null, survived: null, auto_merge: null },
   ]);
   expect(listDraftPrs(seed(), 1, NOW).rows).toHaveLength(1);
   expect(listDraftPrs(seed(), 999, NOW).rows).toHaveLength(2); // clamp ≤ 100

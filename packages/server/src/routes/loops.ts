@@ -6,6 +6,7 @@ import { createError } from '../middleware/error-handler';
 import { LoopService } from '../services/loop-service';
 import { listDraftPrs } from '../services/loop-draft-pr-service';
 import { dependencyLaneQueue, reenableDependencyLane } from '../services/dependency-lane';
+import { autoMergeEvidence, reEnableClass } from '../services/loop-auto-merge-state';
 import type { ExecutionEngine } from '../execution/execution-engine';
 
 function mapLoopServiceError(error: unknown): never {
@@ -112,6 +113,34 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
       if (typeof reason !== 'string' || !reason.trim()) throw createError(400, 'reason required', 'VALIDATION_ERROR');
       res.json(reenableDependencyLane(db, actor, reason.trim().slice(0, 500)));
     } catch (error) { next(error); }
+  });
+
+  // Earned auto-merge for test-only loop PRs: mode, class state and counts (read-only)
+  router.get('/auto-merge', requirePermission('read:evidence'), (_req, res, next) => {
+    try {
+      res.json(autoMergeEvidence(db));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // A revoked class stays revoked until an operator re-enables it (manage:config; audited with the reason)
+  router.post('/auto-merge/re-enable', requirePermission('manage:config'), (req, res, next) => {
+    try {
+      const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+      if (reason.length < 5 || reason.length > 500) throw createError(400, 'reason (5-500 characters) is required', 'VALIDATION_ERROR');
+      const actor = String(req.user?.sub || req.user?.email || '');
+      if (!actor) throw createError(401, 'an authenticated operator is required', 'UNAUTHORIZED');
+      try {
+        reEnableClass(db, actor, reason);
+      } catch (error) {
+        if (error instanceof Error && error.message === 'AUTO_MERGE_NOT_REVOKED') throw createError(409, 'the auto-merge class is not revoked', 'AUTO_MERGE_NOT_REVOKED');
+        throw error;
+      }
+      res.json(autoMergeEvidence(db));
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.get('/runs', requirePermission('read:evidence'), (_req, res, next) => {

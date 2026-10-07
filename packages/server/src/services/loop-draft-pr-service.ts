@@ -148,22 +148,23 @@ export class LoopDraftPrService {
   }
 }
 
-export interface DraftPrRow { run_id: string; lane: string; pr_url: string; pr_number: number | null; age_days: number; outcome: string | null; survived: boolean | null }
+export interface DraftPrRow { run_id: string; lane: string; pr_url: string; pr_number: number | null; age_days: number; outcome: string | null; survived: boolean | null; auto_merge: string | null }
 /**
  * UX-7: the loop's draft PRs, read from loop_runs.metadata.pr_url (no GitHub call). `outcome` is the merge-survival
  * settlement (merged / closed) once it exists; unsettled = open on GitHub or merged < 14 d ago — only GitHub knows which.
  */
 export function listDraftPrs(db: Database, limit = 50, now = Date.now()): { total: number; unsettled: number; rows: DraftPrRow[] } {
   const n = Math.min(100, Math.max(1, Math.floor(Number(limit)) || 50));
-  let raw: Array<{ id: string; loop_name: string; url: string; created_at: string; state: string | null; survived: number | null }> = [];
+  let raw: Array<{ id: string; loop_name: string; url: string; created_at: string; state: string | null; survived: number | null; auto_merge: string | null }> = [];
   try {
     raw = db.prepare(`SELECT id, loop_name, json_extract(metadata, '$.pr_url') AS url, created_at,
-        json_extract(metadata, '$.pr_outcome.state') AS state, json_extract(metadata, '$.pr_outcome.survived') AS survived
+        json_extract(metadata, '$.pr_outcome.state') AS state, json_extract(metadata, '$.pr_outcome.survived') AS survived, json_extract(metadata, '$.auto_merge.decision') AS auto_merge
       FROM loop_runs WHERE json_extract(metadata, '$.pr_url') IS NOT NULL ORDER BY created_at DESC`).all() as typeof raw;
   } catch { /* fail-soft on a partial schema */ }
   const rows = raw.slice(0, n).map((r) => ({
     run_id: r.id, lane: r.loop_name, pr_url: r.url, pr_number: Number(/\/pull\/(\d+)/.exec(r.url)?.[1]) || null,
     age_days: +((now - Date.parse(r.created_at)) / 86_400_000).toFixed(1), outcome: r.state ?? null, survived: r.survived === null || r.survived === undefined ? null : r.survived === 1,
+    auto_merge: r.auto_merge ?? null, // earned auto-merge decision ('audit_sample' = stays for the human)
   }));
   return { total: raw.length, unsettled: raw.filter((r) => !r.state).length, rows };
 }

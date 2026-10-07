@@ -51,7 +51,7 @@ export interface ExecuteWorkerResult {
 }
 
 
-const TEST_ONLY_DIFF_MAX = 400;
+export const TEST_ONLY_DIFF_MAX = 400;
 /** Every changed file is a test (``__tests__/``, ``*.test.*`` or ``*.spec.*``); no changes is not test-only. */
 export function testOnlyChange(files: string[]): boolean {
   return files.length > 0 && files.every((f) => /(^|\/)__tests__\/|\.(test|spec)\.[cm]?[jt]sx?$/.test(f));
