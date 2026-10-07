@@ -2,15 +2,16 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { failureDerivedTasks, failureTaskEvidence, qualifyingFailures, failureRows, type GitLookup } from '../services/gym-failure-tasks';
+import { failureDerivedTasks, failureTaskEvidence, qualifyingFailures, failureRows, targetMutants, WRITE_TEST_MUTANTS, type FailureTask, type GitLookup } from '../services/gym-failure-tasks';
 import { RemoteGymService } from '../services/remote-gym-service';
 import { holdout, mutantHoldoutKeys } from '../services/genome-registry';
 
 const BASE = 'a'.repeat(40);
+const TARGET_SRC = "export function clamp(n: number, max: number): number {\n  if (n > max) return max;\n  return n >= 0 ? n : 0;\n}\nexport const on = (x: string) => x === 'on' && true;\n";
 const lookup: GitLookup = {
   baseAt: () => BASE,
   exists: (_c, f) => f.includes('/services/'), // target exists at base, the test artifact does not
-  lines: () => 42,
+  show: () => TARGET_SRC,
 };
 let db: Database.Database;
 beforeEach(() => { db = new Database(':memory:'); db.exec(schema); runMigrations(db); db.pragma('foreign_keys = ON'); });
@@ -38,7 +39,7 @@ it('B8-FAIL: a regressed test-gap / exports proposal becomes a write_test task a
   expect(tasks).toHaveLength(2);
   expect(tasks.find((t) => t.run_id === 'r-p1')).toMatchObject({
     commit: 'fail:r-p1', kind: 'write_test', base: BASE, lane: 'test-gap', target: 'packages/server/src/services/widget.ts',
-    source: 'packages/server/src/__tests__/widget.test.ts', tests: ['packages/server/src/__tests__/widget.test.ts'], sourceLines: 42,
+    source: 'packages/server/src/__tests__/widget.test.ts', tests: ['packages/server/src/__tests__/widget.test.ts'], sourceLines: 6,
   });
   expect(tasks.find((t) => t.run_id === 'r-p2')?.lane).toBe('exports');
 });
@@ -76,4 +77,35 @@ it('B8-FAIL: flag off (or a worker without write_test) leaves the claim pool unc
   expect(outcome.e).toContain('gym:fail');
   expect([...holdout(db, mined), ...mutantHoldoutKeys(db)].some((k) => String(k).startsWith('fail:'))).toBe(false);
   expect(failureTaskEvidence(db, null)).toMatchObject({ enabled: true, qualifying_failures: 1, attempted: 1, solved: 0 });
+});
+
+it('B8 oracle: a served write_test task carries seeded, distinct, deterministic mutants of its target; only their keys are stored', () => {
+  vi.stubEnv('EVOLUTION_GYM_REMOTE_ENABLED', 'true'); vi.stubEnv('LOOP_DAEMON_REPOSITORY_PATH', '/repo'); vi.stubEnv('GYM_FAILURE_TASKS_ENABLED', 'true');
+  proposal('p1', 'regressed', 'test-gap:widget', grounding('widget'));
+  const svc = new RemoteGymService(db, () => []);
+  svc.failureTasks = () => failureDerivedTasks(db, lookup);
+  const c = svc.claim('workstation', ['atomic@llama-router'], new Date(), { capabilities: ['write_test'] }) as { runId: string; task: FailureTask };
+  expect(c.task.commit).toBe('fail:r-p1');
+  const { mutants } = c.task;
+  expect(mutants).toHaveLength(WRITE_TEST_MUTANTS);
+  expect(new Set(mutants.map((m) => m.content)).size).toBe(mutants.length);
+  for (const m of mutants) {
+    expect(m.content).not.toBe(TARGET_SRC);
+    expect(m.key).toMatch(/^mut:aaaaaaaaaaaa:packages\/server\/src\/services\/widget\.ts:1:\d+$/);
+  }
+  expect(targetMutants(TARGET_SRC, BASE, c.task.target)).toEqual(mutants); // same base + target → same mutants
+  expect(c.task.oracle).toMatch(/at least one of <mutants>/);
+  const meta = JSON.parse((db.prepare('SELECT metadata FROM loop_runs WHERE id = ?').get(c.runId) as { metadata: string }).metadata).gym;
+  expect(meta.mutant_keys).toEqual(mutants.map((m) => m.key));
+  expect(meta.mutants).toBeUndefined();
+  svc.record(c.runId, 'workstation', { status: 'success', reason: 'tests green, kills 1/3 mutants', killed_mutants: [mutants[1].key, 'mut:forged'] });
+  const result = JSON.parse((db.prepare("SELECT json_extract(metadata, '$.gym_result') AS r FROM loop_runs WHERE id = ?").get(c.runId) as { r: string }).r);
+  expect(result.killed_mutants).toEqual([mutants[1].key]); // only keys the server handed out
+});
+
+it('B8 oracle: a target without a valid mutant (or unreadable at the base) is not served', () => {
+  proposal('p1', 'regressed', 'test-gap:widget', grounding('widget'));
+  expect(failureDerivedTasks(db, { ...lookup, show: () => 'export const widget = 1;\n' })).toEqual([]);
+  expect(failureDerivedTasks(db, { ...lookup, show: () => null })).toEqual([]);
+  expect(failureDerivedTasks(db, lookup)).toHaveLength(1);
 });
