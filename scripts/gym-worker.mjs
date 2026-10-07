@@ -68,7 +68,9 @@ export function canaryFile(task) {
  */
 export const isWriteTest = (task) => task?.kind === 'write_test';
 export const writeTestValid = (task) => /^[0-9a-f]{7,40}$/.test(String(task.base)) && /^packages\/server\/src\/__tests__\/[\w.-]+\.test\.ts$/.test(String(task.source))
-  && /^packages\/server\/src\/services\/[\w-]+\.ts$/.test(String(task.target)) && Array.isArray(task.tests) && task.tests.length === 1 && task.tests[0] === task.source;
+  && /^packages\/server\/src\/services\/[\w-]+\.ts$/.test(String(task.target)) && Array.isArray(task.tests) && task.tests.length === 1 && task.tests[0] === task.source
+  && Array.isArray(task.mutants) && task.mutants.length >= 1 && task.mutants.length <= 5
+  && task.mutants.every((m) => typeof m?.key === 'string' && /^[\w.:/@-]{1,200}$/.test(m.key) && typeof m.content === 'string');
 export function writeTestGap(task, content) {
   const target = task.target.replace(/\.ts$/, '');
   const resolve = (re) => [...String(content).matchAll(re)].map((m) => m[1]).filter((s) => s.startsWith('.'))
@@ -79,6 +81,21 @@ export function writeTestGap(task, content) {
   if (/\b(?:it|test|describe)\.(?:skip|todo)\b/.test(content)) return 'test skips a case';
   return null;
 }
+/**
+ * B8 oracle (server: gym-failure-tasks WRITE_TEST_ORACLE): a green test only counts when it also notices a broken target.
+ * Each served mutant is written over <target> in turn and the test run again; red = killed. The target is always restored.
+ */
+export function killMutants(wt, task, runTest) {
+  const file = path.join(wt, task.target); const original = fs.readFileSync(file, 'utf8'); const killed = [];
+  try {
+    for (const m of task.mutants) { fs.writeFileSync(file, m.content); if (!runTest()) killed.push(m.key); }
+  } finally { fs.writeFileSync(file, original); }
+  return killed;
+}
+/** The write_test verdict after the mutant runs: success needs at least one killed mutant. */
+export const mutantVerdict = (task, killed) => killed.length
+  ? { status: 'success', reason: `tests green, source only, kills ${killed.length}/${task.mutants.length} mutants`, killed_mutants: killed }
+  : { status: 'failure', reason: 'test kills no mutant', killed_mutants: [] };
 export const DIFF_MAX = 50_000;
 /** What the hack classifier needs: the files the maker changed and its diff (capped, the server caps it too). */
 export const resultExtras = (changed, diffText) => ({ changed_files: changed.slice(0, 50), diff: String(diffText ?? '').slice(0, DIFF_MAX) });
@@ -240,7 +257,7 @@ async function main() {
     // Y3: a trial genome adds its strategy lines to the task (the only thing a genome may change)
     const strategy = Array.isArray(claim.genome?.lines) && claim.genome.lines.length ? `\n\nStrategy:\n${claim.genome.lines.map((l) => `- ${String(l).slice(0, 300)}`).join('\n')}` : '';
     const goal = oneLine(writeTest
-      ? `Evolution gym: write the vitest test file ${task.source} that covers ${task.target}. Import ${task.target} with a relative import, do not mock it, assert its real behaviour with expect, skip nothing, and make it pass with: cd packages/server && npx vitest run ${task.source.replace(/^packages\/server\//, '')}. Change only ${task.source}; do not edit ${task.target} or any other file.${strategy}`
+      ? `Evolution gym: write the vitest test file ${task.source} that covers ${task.target}. Import ${task.target} with a relative import, do not mock it, assert its real behaviour with expect precisely enough that a subtly broken ${task.target} makes the test fail, skip nothing, and make it pass with: cd packages/server && npx vitest run ${task.source.replace(/^packages\/server\//, '')}. Change only ${task.source}; do not edit ${task.target} or any other file.${strategy}`
       : `Evolution gym: make ${task.tests.join(', ')} pass. Change only ${task.source}. The tests describe the intended behaviour; do not edit them.${strategy}`);
     const [runtime] = species.split('@');
     if (runtime !== 'atomic') return report({ status: 'discarded', reason: `infra: species ${species} not supported by this worker` });
@@ -255,7 +272,10 @@ async function main() {
     const green = scoped && !gap && oracle(wt, task);
     let diffText = '';
     try { git(wt, ['add', '-A', '-N', '.']); diffText = git(wt, ['diff', 'HEAD', '--', '.', ':(exclude)package-lock.json', ':(exclude).atomic*', ':(exclude).djimitflo']); } catch { /* the verdict does not need it */ }
-    return report({ ...(gap ? { status: 'failure', reason: gap } : verdict(task, changed, green, makerOk)), ...resultExtras(changed, diffText) });
+    let result = gap ? { status: 'failure', reason: gap } : verdict(task, changed, green, makerOk);
+    // B8: green on the real target is not enough — the test must also go red on at least one seeded mutant of it
+    if (writeTest && result.status === 'success') result = mutantVerdict(task, killMutants(wt, task, () => oracle(wt, task)));
+    return report({ ...result, ...resultExtras(changed, diffText) });
   } catch (err) {
     return report({ status: 'discarded', reason: `infra: ${(err instanceof Error ? err.message : String(err)).slice(0, 150)}` });
   } finally {
@@ -318,6 +338,30 @@ function writeTestScopeCheck() {
   } finally { fs.rmSync(wt, { recursive: true, force: true }); }
 }
 
+/** B8 oracle: kills are counted per mutant with a stubbed runner, and the target is restored even when the runner throws. */
+function killMutantsCheck() {
+  const assert = (c, m) => { if (!c) throw new Error(`selfcheck: ${m}`); };
+  const wt = fs.mkdtempSync(path.join(os.tmpdir(), 'gym-kill-'));
+  try {
+    const original = 'export const widget = () => 1;\n';
+    const task = { target: 'packages/server/src/services/widget.ts', mutants: [{ key: 'm1', content: 'export const widget = () => 2;\n' }, { key: 'm2', content: 'export const widget = () => 1 ;\n' }, { key: 'm3', content: 'export const widget = () => 0;\n' }] };
+    const file = path.join(wt, task.target); fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, original);
+    const seen = [];
+    // the stub test is green exactly when widget returns 1 or the equivalent mutant m2 is in place
+    const runTest = () => { const c = fs.readFileSync(file, 'utf8'); seen.push(c); return c.includes('=> 1'); };
+    const killed = killMutants(wt, task, runTest);
+    assert(JSON.stringify(killed) === '["m1","m3"]', 'killMutants: red runs are the killed mutants');
+    assert(JSON.stringify(seen) === JSON.stringify(task.mutants.map((m) => m.content)), 'killMutants: each mutant is written over the target before its run');
+    assert(fs.readFileSync(file, 'utf8') === original, 'killMutants: target restored');
+    const v = mutantVerdict(task, killed);
+    assert(v.status === 'success' && v.reason.endsWith('kills 2/3 mutants') && JSON.stringify(v.killed_mutants) === '["m1","m3"]', 'mutantVerdict: a kill is success and reports the killed keys');
+    assert(JSON.stringify(killMutants(wt, task, () => true)) === '[]' && mutantVerdict(task, []).status === 'failure' && mutantVerdict(task, []).reason === 'test kills no mutant', 'a test that survives every mutant is a failure');
+    let threw = false;
+    try { killMutants(wt, task, () => { throw new Error('docker gone'); }); } catch { threw = true; }
+    assert(threw && fs.readFileSync(file, 'utf8') === original, 'killMutants: target restored when the runner throws');
+  } finally { fs.rmSync(wt, { recursive: true, force: true }); }
+}
+
 function selfcheck() {
   const task = { source: 'packages/server/src/a.ts' };
   const assert = (c, m) => { if (!c) throw new Error(`selfcheck: ${m}`); };
@@ -338,9 +382,11 @@ function selfcheck() {
   assert(parseForecast('thinking... {"p": 0.35, "rationale": "lane rate is low"} done')?.p === 0.35, 'parseForecast reads p');
   assert(parseForecast('{"p": 1.7}') === null && parseForecast('no json') === null, 'parseForecast rejects bad output');
   assert(JSON.stringify(claimBody(['atomic@llama-router'])) === '{"species":["atomic@llama-router"],"capabilities":["canary","write_test"]}', 'claim announces the canary and write_test capabilities');
-  const wTask = { commit: 'fail:r1', kind: 'write_test', base: 'a'.repeat(40), source: 'packages/server/src/__tests__/widget.test.ts', tests: ['packages/server/src/__tests__/widget.test.ts'], target: 'packages/server/src/services/widget.ts' };
+  const wTask = { commit: 'fail:r1', kind: 'write_test', base: 'a'.repeat(40), source: 'packages/server/src/__tests__/widget.test.ts', tests: ['packages/server/src/__tests__/widget.test.ts'], target: 'packages/server/src/services/widget.ts',
+    mutants: [{ key: 'mut:aaaaaaaaaaaa:packages/server/src/services/widget.ts:1:1', content: 'export const widget = () => 2;\n' }] };
   assert(isWriteTest(wTask) && !isWriteTest(task) && writeTestValid(wTask), 'write_test task recognised and valid');
   assert(!writeTestValid({ ...wTask, base: 'HEAD;rm' }) && !writeTestValid({ ...wTask, source: '../x.test.ts', tests: ['../x.test.ts'] }) && !writeTestValid({ ...wTask, tests: [] }), 'malformed write_test task rejected');
+  assert(!writeTestValid({ ...wTask, mutants: [] }) && !writeTestValid({ ...wTask, mutants: undefined }) && !writeTestValid({ ...wTask, mutants: [{ key: 'a b;rm', content: 'x' }] }), 'a write_test task without valid mutants is rejected');
   const good = "import { expect, it } from 'vitest';\nimport { widget } from '../services/widget';\nit('w', () => { expect(widget()).toBe(1); });\n";
   assert(writeTestGap(wTask, good) === null && writeTestGap(wTask, good.replace("'../services/widget'", "'../services/widget.js'")) === null, 'a real test of the target passes the gap check');
   assert(writeTestGap(wTask, "import { expect, it } from 'vitest';\nit('w', () => { expect(1).toBe(1); });\n")?.startsWith('test does not import'), 'a test without the target import covers nothing');
@@ -356,6 +402,7 @@ function selfcheck() {
   assert(resultExtras([], undefined).diff === '', 'no diff = empty string');
   canaryScopeCheck();
   writeTestScopeCheck();
+  killMutantsCheck();
   console.log('selfcheck ok');
 }
 

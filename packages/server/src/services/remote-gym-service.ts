@@ -8,7 +8,7 @@ import { mutantTask, type MutantTask } from './gym-mutants';
 import { LoopEventService } from './loop-event-service';
 import { changedFromReason, classifyHack, hackDetectorShadow } from './gym-hack-classifier';
 import { settleNoHeadroom } from './dream-evolution';
-import { FAILURE_TASK_CAPABILITY, failureDerivedTasks, gitLookup, gymFailureTasksEnabled } from './gym-failure-tasks';
+import { FAILURE_TASK_CAPABILITY, failureDerivedTasks, gitLookup, gymFailureTasksEnabled, type TargetMutant } from './gym-failure-tasks';
 import { dreamEvolutionEnabled, ensureBaseline, genome, holdout, mutantHoldout, mutantTrialsEnabled, nextTrialAttempt, type Genome } from './genome-registry';
 
 /**
@@ -54,7 +54,7 @@ function canaryDue(db: Database, capabilities: string[], env: NodeJS.ProcessEnv 
 const SAFE = /^[A-Za-z0-9._:/@-]{1,80}$/;
 
 export type RemoteGymClaim = { runId: string; species: string; task: GymTask; genome?: { id: string; lines: string[] } } | { skipped: string };
-export interface RemoteGymResult { status: 'success' | 'failure' | 'discarded'; reason: string; tokens?: number; durationMs?: number; changed_files?: unknown; diff?: unknown }
+export interface RemoteGymResult { status: 'success' | 'failure' | 'discarded'; reason: string; tokens?: number; durationMs?: number; changed_files?: unknown; diff?: unknown; killed_mutants?: unknown }
 
 export class RemoteGymService {
   private readonly outcomes: SkillEvolutionEngine;
@@ -119,8 +119,8 @@ export class RemoteGymService {
     if (!task) return { skipped: 'no untried task' };
     const runId = randomUUID();
     const { mutant: _mutantContent, ...stored } = task as MutantTask; // the mutant goes to the worker, not into every row
-    const { canary: _canaryTest, ...meta } = stored as typeof stored & { canary?: unknown };
-    const gymMeta = { ...meta, species: key, remote_host: host, ...(trialGenome ? { genome: trialGenome.id } : {}), ...(probe ? { probe: 1 } : {}), ...(canary ? { canary: 1 } : {}) };
+    const { canary: _canaryTest, mutants, ...meta } = stored as typeof stored & { canary?: unknown; mutants?: TargetMutant[] };
+    const gymMeta = { ...meta, ...(mutants ? { mutant_keys: mutants.map((m) => m.key) } : {}), species: key, remote_host: host, ...(trialGenome ? { genome: trialGenome.id } : {}), ...(probe ? { probe: 1 } : {}), ...(canary ? { canary: 1 } : {}) };
     this.db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, repository_path, metadata, created_at, updated_at) VALUES (?, 'evolution-gym', 'closed', 'running', ?, ?, ?, ?)")
       .run(runId, repo, JSON.stringify({ gym: gymMeta }), now.toISOString(), now.toISOString());
     return { runId, species: key, task, ...(trialGenome ? { genome: { id: trialGenome.id, lines: trialGenome.lines } } : {}) };
@@ -131,7 +131,7 @@ export class RemoteGymService {
 
   record(runId: string, host: string, result: RemoteGymResult): void {
     const row = this.db.prepare("SELECT status, json_extract(metadata, '$.gym') AS gym FROM loop_runs WHERE id = ?").get(runId) as { status: string; gym: string | null } | undefined;
-    const gym = row?.gym ? JSON.parse(row.gym) as GymTask & { species: string; remote_host?: string; genome?: string; probe?: number; canary?: number } : null;
+    const gym = row?.gym ? JSON.parse(row.gym) as GymTask & { species: string; remote_host?: string; genome?: string; probe?: number; canary?: number; mutant_keys?: string[] } : null;
     if (!row || !gym || gym.remote_host !== host) throw new Error('GYM_RUN_NOT_FOUND');
     if (row.status !== 'running') throw new Error('GYM_RUN_ALREADY_SETTLED');
     if (!['success', 'failure', 'discarded'].includes(result.status)) throw new Error('GYM_RESULT_INVALID');
@@ -153,8 +153,10 @@ export class RemoteGymService {
         try { new LoopEventService(this.db).recordEvent(runId, 'gym_hack_shadow', 'warning', `Gym hack flags (shadow): ${hack_flags.join(', ')}`, { species: gym.species, flags: hack_flags, status: result.status }); } catch { /* never break the report */ }
       }
     }
+    // B8: which of the served mutants the write_test maker's test killed (only keys the server handed out)
+    const killed_mutants = Array.isArray(gym.mutant_keys) && Array.isArray(result.killed_mutants) ? result.killed_mutants.map(String).filter((k) => gym.mutant_keys!.includes(k)) : undefined;
     const now = new Date().toISOString();
     this.db.prepare("UPDATE loop_runs SET status = 'completed', updated_at = ?, metadata = json_set(metadata, '$.gym_result', json(?)) WHERE id = ?")
-      .run(now, JSON.stringify({ status: result.status, reason, ...(hack_flags ? { hack_flags } : {}) }), runId);
+      .run(now, JSON.stringify({ status: result.status, reason, ...(hack_flags ? { hack_flags } : {}), ...(killed_mutants ? { killed_mutants } : {}) }), runId);
   }
 }
