@@ -131,6 +131,7 @@ export type OperatorDigest = { at: string; text: string; data: Record<string, un
 
 /** UX-7: the loop's draft PRs from loop_runs metadata (no GitHub call); outcome = merge-survival settlement once it exists. */
 export type DraftPrs = { total: number; unsettled: number; rows: Array<{ run_id: string; lane: string; pr_url: string; pr_number: number | null; age_days: number; outcome: string | null; survived: boolean | null }> };
+export type DependencyLane = { mode: 'off' | 'shadow' | 'act'; effective_mode: 'off' | 'shadow' | 'act'; revoked_at: string | null; revoked_reason: string | null; max_per_day: number; merged_24h: number; open: number; rows: Array<{ pr_number: number; title: string; html_url: string | null; bump: string; age_days: number | null; check_state: string | null; decision: string; reason: string | null; updated_at: string }> };
 
 export type DecisionsInbox = {
   requeue: Array<{ id: string; title: string; status: string; updated_at: string; requeued_as: string | null }>;
@@ -1403,6 +1404,10 @@ class ApiClient {
 
   async getDraftPrs(limit = 50): Promise<DraftPrs> {
     return this.request(`/loops/draft-prs?limit=${limit}`);
+  }
+
+  async getDependencyLane(): Promise<DependencyLane> {
+    return this.request('/loops/dependency-lane');
   }
 
   // S2 decisions inbox: requeue (D2), pre-screen labels (D5), Telegram allowlist (D3)

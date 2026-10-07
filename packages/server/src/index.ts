@@ -53,6 +53,7 @@ import { DennisAgentService } from './services/dennis-agent-service';
 import { TelegramApiService } from './services/telegram-api-service';
 import { parseTelegramAllowedUsers, parseTelegramUserMap } from './routes/telegram';
 import { noteScheduler } from './services/scheduler-registry';
+import { laneIntervalMs, startDependencyLane } from './services/dependency-lane';
 
 // Operator rule (2026-09-29): this server never calls the hosts in OUTBOUND_DENY_HOSTS (the workstation only pulls).
 installOutboundGuard();
@@ -305,6 +306,11 @@ async function main() {
   // in-process (default-off, see service header)
   if (noteScheduler('memory_candidate_review', 'MEMORY_CANDIDATE_REVIEW_ENABLED', new MemoryCandidateReviewScheduler(db).start())) {
     console.log('🧬 Memory candidate review scheduler armed');
+  }
+
+  // Dependency lane — verified Dependabot patch/minor merges, one per tick (DEPENDENCY_LANE_MODE=shadow|act, default off)
+  if (noteScheduler('dependency_lane', 'DEPENDENCY_LANE_MODE', !!startDependencyLane(db), laneIntervalMs())) {
+    console.log(`📦 Dependency lane armed (${process.env.DEPENDENCY_LANE_MODE})`);
   }
 
   // API routes

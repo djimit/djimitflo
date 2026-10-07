@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, expect, it, vi } from 'vitest';
-import { DecisionsInboxPage, DraftPrsSection } from './DecisionsInboxPage';
+import { DecisionsInboxPage, DependencyLaneSection, DraftPrsSection } from './DecisionsInboxPage';
 import { api } from '../lib/api';
 import { useAuthStore } from '../lib/auth-store';
 
@@ -21,6 +21,7 @@ beforeEach(() => {
   vi.spyOn(api, 'getDecisionsInbox').mockResolvedValue(inbox as never);
   vi.spyOn(api, 'getAllApprovals').mockResolvedValue({ approvals: [] }); // the approval queue is embedded (W2)
   vi.spyOn(api, 'getDraftPrs').mockResolvedValue({ total: 0, unsettled: 0, rows: [] });
+  vi.spyOn(api, 'getDependencyLane').mockResolvedValue({ mode: 'off', effective_mode: 'off', revoked_at: null, revoked_reason: null, max_per_day: 4, merged_24h: 0, open: 0, rows: [] });
 });
 const renderPage = () => render(<MemoryRouter><DecisionsInboxPage /></MemoryRouter>);
 
@@ -87,4 +88,17 @@ it('D2: dismisses a requeue candidate (with the optional reason) without requiri
   await waitFor(() => expect(dismiss).toHaveBeenLastCalledWith('aaaaaaaa-1', 'superseded by #700'));
   expect(requeue).not.toHaveBeenCalled();
   expect(await screen.findByText('Dismissed aaaaaaaa')).toBeTruthy();
+});
+
+it('dependency lane: shows the Dependabot queue read-only with bump, age, checks and decision, and a revoked act mode', async () => {
+  vi.spyOn(api, 'getDependencyLane').mockResolvedValueOnce({ mode: 'act', effective_mode: 'shadow', revoked_at: '2026-10-07T10:00:00Z', revoked_reason: 'main CI red after merging #652', max_per_day: 4, merged_24h: 1, open: 2, rows: [
+    { pr_number: 239, title: 'bump postcss from 8.5.26 to 8.5.28', html_url: 'https://github.com/o/r/pull/239', bump: 'patch', age_days: 23, check_state: 'success', decision: 'would_merge', reason: 'act revoked', updated_at: '' },
+    { pr_number: 291, title: 'bump the testing group', html_url: null, bump: 'major', age_days: 17, check_state: null, decision: 'skip_major', reason: 'vitest 4.1.11→5.0.1', updated_at: '' },
+  ] });
+  render(<DependencyLaneSection />);
+  expect(await screen.findByText('#239')).toBeTruthy();
+  expect(screen.getByText('would_merge')).toBeTruthy();
+  expect(screen.getByText('skip_major')).toBeTruthy();
+  expect(screen.getByText(/act revoked 2026-10-07T10:00: main CI red after merging #652/)).toBeTruthy();
+  expect(screen.queryByRole('button')).toBeNull(); // read-only
 });

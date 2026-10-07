@@ -5,6 +5,7 @@ import type { AuthMiddleware } from '../middleware/auth';
 import { createError } from '../middleware/error-handler';
 import { LoopService } from '../services/loop-service';
 import { listDraftPrs } from '../services/loop-draft-pr-service';
+import { dependencyLaneQueue, reenableDependencyLane } from '../services/dependency-lane';
 import type { ExecutionEngine } from '../execution/execution-engine';
 
 function mapLoopServiceError(error: unknown): never {
@@ -96,6 +97,21 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
     } catch (error) {
       next(error);
     }
+  });
+
+  // Dependency lane: the Dependabot queue and its decisions (read-only, from the lane's own table; no GitHub call)
+  router.get('/dependency-lane', requirePermission('read:evidence'), (_req, res, next) => {
+    try { res.json(dependencyLaneQueue(db)); } catch (error) { next(error); }
+  });
+  // re-enable act mode after a post-merge red main revoked it (audited)
+  router.post('/dependency-lane/re-enable', requirePermission('manage:config'), (req, res, next) => {
+    try {
+      const actor = req.user?.sub || req.user?.email;
+      if (!actor) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
+      const reason = (req.body ?? {}).reason;
+      if (typeof reason !== 'string' || !reason.trim()) throw createError(400, 'reason required', 'VALIDATION_ERROR');
+      res.json(reenableDependencyLane(db, actor, reason.trim().slice(0, 500)));
+    } catch (error) { next(error); }
   });
 
   router.get('/runs', requirePermission('read:evidence'), (_req, res, next) => {

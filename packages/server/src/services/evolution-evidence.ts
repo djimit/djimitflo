@@ -26,6 +26,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'GYM_TIER_PROBE_ENABLED', acting: false }, { name: 'GYM_TIER_PROBE_TIERS', acting: false }, { name: 'GYM_TIER_PROBE_EVERY', acting: false },
   { name: 'HACK_DETECTOR_MODE', acting: false }, { name: 'GYM_CANARY_RATE', acting: false }, { name: 'GYM_FAILURE_TASKS_ENABLED', acting: false },
   { name: 'MODEL_SELECTOR_MODE', acting: true }, { name: 'EVOLUTION_ESTIMATORS_ENABLED', acting: false }, { name: 'GYM_IRT_SELECTION', acting: true },
+  { name: 'DEPENDENCY_LANE_MODE', acting: true }, { name: 'DEPENDENCY_LANE_MAX_PER_DAY', acting: true },
 ];
 
 export type GateState = 'green' | 'red' | 'unknown';
