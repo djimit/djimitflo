@@ -2,9 +2,9 @@ import fs from 'fs';
 import type { Database } from 'better-sqlite3';
 import { detectStalls, type Stall } from './stall-watch';
 import { infraFailing } from './evolution-gym-service';
-import { decisionsInbox } from './decisions-inbox';
+import { decisionsInbox, openDecisionCounts } from './decisions-inbox';
 import { listSchedulers } from './scheduler-registry';
-import { listDraftPrs } from './loop-draft-pr-service';
+import { countOpenLoopPrs, listDraftPrs } from './loop-draft-pr-service';
 
 /**
  * S1 (operator 2026-09-28): one read-only snapshot of what the operator otherwise measures by hand over SSH —
@@ -22,7 +22,8 @@ export interface CockpitSnapshot {
   /** W3: what waits for the operator right now (the /decisions sections). */
   needs_you: { approvals: number; requeue: number; labels: number; memory_review: number;
     /** UX-6: every other thing that can block the loop on the operator */
-    proposals: number; draft_prs: number; stalls: number; approvals_expiring: number; join_requests: number; shell_requests: number };
+    /** open loop draft PRs wait for a human merge or close; draft_prs (unsettled) also holds merged PRs still settling */
+    proposals: number; draft_prs: number; open_prs: number; stalls: number; approvals_expiring: number; join_requests: number; shell_requests: number };
   /** UX-8: schedulers armed at boot vs off */
   schedulers: { armed: number; off: number };
   /** Y2: real-maker outcomes per strategy genome and maker skill (30 d) — what Y3's dreaming mutates and the bandit selects. */
@@ -91,13 +92,14 @@ export function operatorCockpit(db: Database, now = Date.now()): CockpitSnapshot
   let needs_you: CockpitSnapshot['needs_you'] = { approvals: scorecard.approvals_pending ?? 0, requeue: 0, labels: 0, memory_review: 0,
     proposals: one("SELECT COUNT(*) FROM self_improvements WHERE status = 'proposed'") ?? 0,
     draft_prs: (() => { try { return listDraftPrs(db, 100, now).unsettled; } catch { return 0; } })(),
+    open_prs: countOpenLoopPrs(db),
     stalls: 0,
     approvals_expiring: one("SELECT COUNT(*) FROM approvals WHERE status = 'pending' AND expires_at IS NOT NULL AND expires_at <= ?", in60) ?? 0,
     join_requests: one("SELECT COUNT(*) FROM social_join_requests WHERE status = 'pending'") ?? 0,
     shell_requests: one("SELECT COUNT(*) FROM fleet_commands WHERE status = 'pending_approval'") ?? 0 };
   try {
     const inbox = decisionsInbox(db, now);
-    needs_you = { ...needs_you, requeue: inbox.requeue.filter((r) => !r.requeued_as).length, labels: inbox.prescreen.items.filter((i) => !i.label).length, memory_review: inbox.memory.length };
+    needs_you = { ...needs_you, ...openDecisionCounts(inbox) };
   } catch { /* inbox tables absent */ }
   let stalls: Stall[] = [];
   try { stalls = detectStalls(db, now); } catch { /* stall watch is advisory */ }

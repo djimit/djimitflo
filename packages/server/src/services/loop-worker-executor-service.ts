@@ -348,6 +348,8 @@ export class LoopWorkerExecutorService {
       runtime_timed_out: result.timedOut, runtime_timed_out_at: result.timedOutAt, runtime_adapter: runtime,
       runtime_contract: runtimeContract, runtime_usage: runtimeUsage || { usage_source: 'unknown' }, runtime_warnings: runtimeWarnings,
       read_only_contract_passed: checkerReadOnly, runtime_verdict: verdict,
+      // without it the lease repo fell back to the reviewer's notes, so 'failed' leases carried prose (or a raw event line) as their reason
+      ...(exitStatus === 0 && !timedOut ? {} : { failure_reason: `${reviewRole}_runtime_failed:exit=${exitStatus ?? 'signal'},timed_out=${timedOut}: ${(result.stderr || '').split('\n').map((line) => line.trim()).filter((line) => line && !line.startsWith('at ')).pop()?.slice(0, 200) ?? ''}` }),
     });
 
     const gates: LoopGate[] = [

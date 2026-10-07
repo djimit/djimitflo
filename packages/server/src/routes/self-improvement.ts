@@ -13,7 +13,7 @@ import { PanelCalibrationService } from '../services/panel-calibration-service';
 import { ImprovementFunnelService } from '../services/improvement-funnel-service';
 import { createError } from '../middleware/error-handler';
 import { requeueImprovement } from '../services/improvement-requeue';
-import { decisionsInbox, labelPrescreen, setTelegramIdentity } from '../services/decisions-inbox';
+import { decisionsInbox, dismissRequeue, labelPrescreen, setTelegramIdentity } from '../services/decisions-inbox';
 
 function boundedLimit(value: unknown, fallback = 100): number {
   if (value === undefined) return fallback;
@@ -103,6 +103,19 @@ export function createSelfImprovementRoutes(db: Database, auth?: AuthMiddleware)
       res.status(204).end();
     } catch (error) {
       next(error instanceof Error && error.message === 'LABEL_NO_PRESCREEN_REJECTION' ? createError(404, 'No pre-screen rejection for this proposal', error.message) : error);
+    }
+  });
+  // D2: the operator decides a requeue candidate needs no requeue — audited (requeue_dismiss judgment), the row leaves /decisions
+  router.post('/proposals/:id/requeue-dismiss', requirePermission('write:governance'), (req, res, next) => {
+    try {
+      const actor = req.user?.sub || req.user?.email;
+      if (!actor) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
+      const reason = (req.body ?? {}).reason;
+      if (reason !== undefined && typeof reason !== 'string') throw createError(400, 'reason must be a string', 'VALIDATION_ERROR');
+      dismissRequeue(db, req.params.id, actor, reason ?? '');
+      res.status(204).end();
+    } catch (error) {
+      next(error instanceof Error && error.message === 'DISMISS_NOT_A_REQUEUE_CANDIDATE' ? createError(404, 'Not a requeue candidate', error.message) : error);
     }
   });
   router.put('/telegram-identities/:telegramId', requirePermission('manage:config'), (req, res, next) => {

@@ -167,3 +167,14 @@ export function listDraftPrs(db: Database, limit = 50, now = Date.now()): { tota
   }));
   return { total: raw.length, unsettled: raw.filter((r) => !r.state).length, rows };
 }
+
+/**
+ * Needs-you: loop draft PRs still open, as merge survival last saw them on GitHub (no outcome yet = open). Merged PRs
+ * that are still settling are not open — they no longer wait for the operator.
+ */
+export function countOpenLoopPrs(db: Database): number {
+  try {
+    return (db.prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE json_extract(metadata, '$.pr_url') IS NOT NULL
+      AND COALESCE(json_extract(metadata, '$.pr_outcome.state'), 'open') = 'open'`).get() as { n: number }).n;
+  } catch { return 0; }
+}

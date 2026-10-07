@@ -3,6 +3,8 @@ import { buildEvolutionEvidence } from './evolution-evidence';
 import { detectStalls } from './stall-watch';
 import { listSchedulers } from './scheduler-registry';
 import { redactSecrets } from './secret-patterns';
+import { decisionsInbox, openDecisionCounts, type DecisionsInbox } from './decisions-inbox';
+import { countOpenLoopPrs } from './loop-draft-pr-service';
 
 /**
  * UX-12 / UX-13 (Phase UX, operator 2026-10-04: channel = Telegram). Nothing reached the operator unless they opened
@@ -10,17 +12,32 @@ import { redactSecrets } from './secret-patterns';
  * - TELEGRAM_PUSH_ENABLED: one message per new approval (dedupe per id, TELEGRAM_PUSH_MAX_PER_HOUR, TELEGRAM_QUIET_HOURS)
  *   with Approve / Deny / Open buttons; the decision itself goes through the normal API as the mapped user (D3 identity,
  *   approve:task, SELF_APPROVAL_FORBIDDEN all enforced server-side).
- * - OPERATOR_DIGEST_ENABLED: one daily digest at OPERATOR_DIGEST_HOUR (UTC).
- * Privacy: message content leaves to Telegram — ids, titles and aggregates only, secret patterns redacted, no hosts.
+ * - OPERATOR_DIGEST_ENABLED: one daily digest at OPERATOR_DIGEST_HOUR (UTC), with counts + dashboard links per section.
+ * - TELEGRAM_TRIAGE_ENABLED (needs TELEGRAM_PUSH_ENABLED): one message per unlabelled D5 pre-screen rejection and per
+ *   memory candidate waiting for review, with one-tap buttons; at most TELEGRAM_TRIAGE_MAX_PER_PUSH per tick, same quiet
+ *   hours and hourly cap as approvals (counted separately, so triage never crowds out an approval).
+ * Privacy: message content leaves to Telegram — ids, titles, aggregates, pre-screen reasons and ≤ 400 chars of a memory
+ *   candidate's content; secret patterns redacted, no hosts.
  */
+export interface TriageButton { text: string; data: string }
 export interface PushSender {
   requestApproval(approvalId: string, text: string, openUrl?: string | null): Promise<void>;
   broadcastAlert(text: string): Promise<void>;
+  requestTriage?(text: string, buttons: TriageButton[], openUrl?: string | null): Promise<void>;
 }
 let sender: PushSender | null = null;
 export const setPushSender = (s: PushSender | null): void => { sender = s; };
 
 export const pushEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.TELEGRAM_PUSH_ENABLED === 'true';
+/** Sub-flag of TELEGRAM_PUSH_ENABLED: D5 label and memory-review one-tap messages. Default off. */
+export const triageEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => pushEnabled(env) && env.TELEGRAM_TRIAGE_ENABLED === 'true';
+/** The flags of this module; the runbook drift test requires each to be documented. */
+export const OPERATOR_PUSH_FLAGS = ['TELEGRAM_PUSH_ENABLED', 'TELEGRAM_PUSH_MAX_PER_HOUR', 'TELEGRAM_QUIET_HOURS', 'TELEGRAM_TRIAGE_ENABLED',
+  'TELEGRAM_TRIAGE_MAX_PER_PUSH', 'OPERATOR_DIGEST_ENABLED', 'OPERATOR_DIGEST_HOUR'] as const;
+/** Telegram rejects callback_data over 64 bytes. */
+export const CALLBACK_DATA_MAX_BYTES = 64;
+const TRIAGE_KEY = 'triage:';
+const publicBase = (env: NodeJS.ProcessEnv): string | null => { const b = (env.DJIMITFLO_PUBLIC_URL || '').replace(/\/+$/, ''); return /^https:\/\//.test(b) ? b : null; };
 
 /** 'HH-HH' in UTC, wrapping midnight ('22-7' = 22:00..06:59). Malformed or empty = no quiet hours. */
 export function inQuietHours(spec: string | undefined, now: Date): boolean {
@@ -94,13 +111,61 @@ export async function pushApproval(db: Database, a: ApprovalLike, env: NodeJS.Pr
     if (db.prepare('SELECT 1 FROM telegram_push_log WHERE approval_id = ?').get(a.id)) return 'duplicate';
     if (inQuietHours(env.TELEGRAM_QUIET_HOURS, now)) return 'quiet';
     const cap = Math.max(1, Number(env.TELEGRAM_PUSH_MAX_PER_HOUR) || 6);
-    const sentHour = (db.prepare('SELECT COUNT(*) AS n FROM telegram_push_log WHERE sent_at >= ?').get(new Date(now.getTime() - 3_600_000).toISOString()) as { n: number }).n;
+    const sentHour = (db.prepare(`SELECT COUNT(*) AS n FROM telegram_push_log WHERE sent_at >= ? AND approval_id NOT LIKE '${TRIAGE_KEY}%'`).get(new Date(now.getTime() - 3_600_000).toISOString()) as { n: number }).n;
     if (sentHour >= cap) return 'capped';
     db.prepare('INSERT INTO telegram_push_log (approval_id, sent_at) VALUES (?, ?)').run(a.id, now.toISOString());
-    const base = (env.DJIMITFLO_PUBLIC_URL || '').replace(/\/+$/, '');
-    await sender.requestApproval(a.id, approvalMessage(a, approvalContext(db, a)), /^https:\/\//.test(base) ? `${base}/decisions#approvals` : null);
+    const base = publicBase(env);
+    await sender.requestApproval(a.id, approvalMessage(a, approvalContext(db, a)), base ? `${base}/decisions#approvals` : null);
     return 'sent';
   } catch { return 'failed'; }
+}
+
+// ─── one-tap triage: D5 pre-screen labels and memory review ──────────────────
+
+export interface TriageMessage { key: string; text: string; buttons: TriageButton[]; open: string }
+
+/** What waits for a one-tap decision, in inbox order (newest pre-screen verdict first, then memory). Ids, titles and reasons only, redacted. */
+export function triageMessages(inbox: DecisionsInbox): TriageMessage[] {
+  const labels = inbox.prescreen.items.filter((i) => !i.label).map((i) => ({
+    key: `${TRIAGE_KEY}label:${i.id}`, open: '/decisions#prescreen',
+    text: ['Pre-screen rejection (D5) — was rejecting right?', `Proposal: ${clean(i.title)}`, `Reason: ${clean(i.reason, 300)}`, `Outcome: ${clean(i.status, 40)}`, `Id: ${clean(i.id, 40)}`].join('\n'),
+    buttons: [{ text: 'Correct rejection', data: `pl:${i.id}:o` }, { text: 'Wrong rejection', data: `pl:${i.id}:w` }],
+  }));
+  const memory = inbox.memory.map((m) => ({
+    key: `${TRIAGE_KEY}memory:${m.id}`, open: '/decisions#memory',
+    text: ['Memory review', `Title: ${clean(m.title)}`, `Type: ${clean(m.memory_type, 40)} (${clean(m.status, 30)})`, clean(m.content, 400), `Id: ${clean(m.id, 40)}`].join('\n'),
+    buttons: [{ text: 'Promote', data: `mp:${m.id}` }, { text: 'Reject', data: `mr:${m.id}` }],
+  }));
+  // an id too long for Telegram's callback_data would produce a button that cannot be answered — leave it to the dashboard
+  return [...labels, ...memory].filter((m) => m.buttons.every((b) => Buffer.byteLength(b.data, 'utf8') <= CALLBACK_DATA_MAX_BYTES));
+}
+
+export type TriageResult = { result: 'disabled' | 'no_sender' | 'quiet' | 'capped' | 'sent' | 'nothing' | 'failed'; sent: number };
+
+/** Sends up to TELEGRAM_TRIAGE_MAX_PER_PUSH (default 3) new triage messages. Each item is pushed once. Never throws. */
+export async function pushTriage(db: Database, env: NodeJS.ProcessEnv = process.env, now = new Date()): Promise<TriageResult> {
+  let sent = 0;
+  try {
+    if (!triageEnabled(env)) return { result: 'disabled', sent };
+    if (!sender?.requestTriage) return { result: 'no_sender', sent };
+    ensureLog(db);
+    if (inQuietHours(env.TELEGRAM_QUIET_HOURS, now)) return { result: 'quiet', sent };
+    const cap = Math.max(1, Number(env.TELEGRAM_PUSH_MAX_PER_HOUR) || 6);
+    const perPush = Math.min(20, Math.max(1, Number(env.TELEGRAM_TRIAGE_MAX_PER_PUSH) || 3));
+    const sentHour = (db.prepare(`SELECT COUNT(*) AS n FROM telegram_push_log WHERE sent_at >= ? AND approval_id LIKE '${TRIAGE_KEY}%'`).get(new Date(now.getTime() - 3_600_000).toISOString()) as { n: number }).n;
+    const budget = Math.min(perPush, cap - sentHour);
+    if (budget <= 0) return { result: 'capped', sent };
+    const seen = db.prepare('SELECT 1 FROM telegram_push_log WHERE approval_id = ?');
+    const fresh = triageMessages(decisionsInbox(db, now.getTime())).filter((m) => !seen.get(m.key)).slice(0, budget);
+    if (!fresh.length) return { result: 'nothing', sent };
+    const base = publicBase(env);
+    for (const m of fresh) {
+      db.prepare('INSERT INTO telegram_push_log (approval_id, sent_at) VALUES (?, ?)').run(m.key, now.toISOString());
+      await sender.requestTriage(m.text, m.buttons, base ? `${base}${m.open}` : null);
+      sent++;
+    }
+    return { result: 'sent', sent };
+  } catch { return { result: 'failed', sent }; }
 }
 
 // ─── UX-13 daily digest ──────────────────────────────────────────────────────
@@ -113,6 +178,16 @@ export function buildDigest(db: Database, now = Date.now(), env: NodeJS.ProcessE
   const evidence = (() => { try { return buildEvolutionEvidence(db, env, now, 30); } catch { return null; } })();
   const stalls = (() => { try { return detectStalls(db, now, env); } catch { return []; } })();
   const sched = listSchedulers();
+  const open = (() => { try { return openDecisionCounts(decisionsInbox(db, now)); } catch { return { requeue: 0, labels: 0, memory_review: 0 }; } })();
+  const base = publicBase(env);
+  // one count + deep link per /decisions section (links only with an https DJIMITFLO_PUBLIC_URL)
+  const sections = [
+    { key: 'approvals', label: 'approvals', anchor: 'approvals', count: one("SELECT COUNT(*) FROM approvals WHERE status = 'pending'") },
+    { key: 'labels', label: 'pre-screen labels (D5)', anchor: 'prescreen', count: open.labels },
+    { key: 'memory_review', label: 'memory reviews', anchor: 'memory', count: open.memory_review },
+    { key: 'requeue', label: 'requeue candidates', anchor: 'requeue', count: open.requeue },
+    { key: 'open_prs', label: 'open loop PRs', anchor: 'draft-prs', count: countOpenLoopPrs(db) },
+  ].map((x) => ({ ...x, link: base ? `${base}/decisions#${x.anchor}` : `/decisions#${x.anchor}` }));
   const data = {
     verified_24h: one("SELECT COUNT(*) FROM self_improvements WHERE status = 'verified' AND updated_at >= ?", d1),
     regressed_24h: one("SELECT COUNT(*) FROM self_improvements WHERE status = 'regressed' AND updated_at >= ?", d1),
@@ -126,12 +201,15 @@ export function buildDigest(db: Database, now = Date.now(), env: NodeJS.ProcessE
     gates: evidence ? Object.fromEntries(Object.entries(evidence.gates).map(([k, g]) => [k, (g as { state: string }).state])) : {},
     stalls: stalls.map((s) => s.subsystem),
     schedulers_off: sched.schedulers.filter((s) => !s.armed).map((s) => s.name),
+    needs_you: Object.fromEntries(sections.map((x) => [x.key, { count: x.count, link: x.link }])),
   };
   const gates = Object.entries(data.gates).map(([k, s]) => `${k} ${s}`).join(', ') || 'unknown';
   const text = [
     `Djimitflo daily digest (${new Date(now).toISOString().slice(0, 10)})`,
     `Last 24 h: ${data.verified_24h} verified, ${data.regressed_24h} regressed, ${data.new_proposals_24h} new proposals, ${data.approvals_expired_24h} approvals expired`,
-    `Waiting for you: ${data.approvals_pending} approvals, ${data.drafts_unsettled} loop PRs unsettled${data.drafts_age_max_days != null ? ` (oldest ${data.drafts_age_max_days} d)` : ''}`,
+    `Waiting for you: ${sections.reduce((n, x) => n + x.count, 0)}`,
+    ...sections.map((x) => `- ${x.count} ${x.label}: ${x.link}`),
+    `Loop PRs unsettled: ${data.drafts_unsettled}${data.drafts_age_max_days != null ? ` (oldest ${data.drafts_age_max_days} d)` : ''}`,
     `Loop PRs settled: ${data.loop_prs_settled} (${data.loop_prs_survived} survived)`,
     `Realm gates: ${gates}`,
     data.stalls.length ? `Stalls: ${data.stalls.join(', ')}` : 'Stalls: none',
@@ -158,7 +236,8 @@ export async function maybeSendDigest(db: Database, env: NodeJS.ProcessEnv = pro
 }
 
 let digestTimer: ReturnType<typeof setInterval> | null = null;
+/** One 15-minute tick for the daily digest and the triage push; armed only when one of them is enabled. */
 export function startOperatorDigest(db: Database): void {
-  if (digestTimer || !digestEnabled()) return;
-  digestTimer = setInterval(() => { void maybeSendDigest(db); }, 15 * 60_000); digestTimer.unref?.();
+  if (digestTimer || (!digestEnabled() && !triageEnabled())) return;
+  digestTimer = setInterval(() => { void maybeSendDigest(db).then(() => pushTriage(db)); }, 15 * 60_000); digestTimer.unref?.();
 }

@@ -105,7 +105,7 @@ missing here. **Acting** = changes what the loop does; acting flags are switched
 | `GYM_IRT_SELECTION` | off | yes (which tasks a NEW holdout epoch freezes: the most informative at the parent's ability by a 2PL fit; off = the deterministic spread) | act | operator |
 | `HACK_DETECTOR_MODE` | off (`shadow` records gym hack flags on each result; nothing acts) | no | measure | operator |
 | `GYM_CANARY_RATE` | 0 (never; served only to a worker announcing `capabilities: ['canary']`) | no | measure | operator |
-| `GYM_FAILURE_TASKS_ENABLED` | off (failure-derived `write_test` tasks from regressed oracle-lane proposals; served only to a worker announcing `capabilities: ['write_test']`; never in holdouts) | no | measure | operator |
+| `GYM_FAILURE_TASKS_ENABLED` | off (failure-derived `write_test` tasks from regressed oracle-lane proposals; served only to a worker announcing `capabilities: ['write_test']`; never in holdouts; success = test green on the target AND red on ≥1 of 3 seeded target mutants, a target without a mutant is not served) | no | measure | operator |
 | `MODEL_SELECTOR_MODE` | off (`shadow` samples a cheaper candidate per panel review and discards it; `enforce` uses the cheapest qualified model) | yes in enforce | shadow → act | operator; candidates `MODEL_CANDIDATES_PANEL_REVIEW` and (MS-2, Frontier Experts reviews / technique cards / council) `MODEL_CANDIDATES_FRONTIER_EXPERTS`, weights `MODEL_COST_WEIGHTS`, sample `MODEL_SELECTOR_SHADOW_RATE` (0.1) |
 | `EVOLUTION_ESTIMATORS_ENABLED` | off (on: once per UTC day writes delays, discriminability, trial blindness, gym pass rate per tier, model ok rates and Gates A–D to `evolution_estimates`; stall `estimates` after 36 h without a row) | no | measure | operator |
 
@@ -192,11 +192,18 @@ The polling gateway in `packages/telegram` (`TELEGRAM_BOTS_CONFIG`) is kept as i
 | `TELEGRAM_PUSH_ENABLED` | off | one message per new approval with Approve / Deny / Open buttons (dedupe per approval id) |
 | `TELEGRAM_PUSH_MAX_PER_HOUR` | 6 | hourly cap on approval messages |
 | `TELEGRAM_QUIET_HOURS` | unset | UTC window `HH-HH` (e.g. `22-7`) without messages |
-| `OPERATOR_DIGEST_ENABLED` | off | daily digest via the bot |
+| `TELEGRAM_TRIAGE_ENABLED` | off | needs `TELEGRAM_PUSH_ENABLED`: one message per unlabelled D5 pre-screen rejection (Correct / Wrong rejection) and per memory candidate waiting for review (Promote / Reject); each item once; taps are refused while off |
+| `TELEGRAM_TRIAGE_MAX_PER_PUSH` | 3 | triage messages per 15-minute tick; triage also stays under `TELEGRAM_PUSH_MAX_PER_HOUR`, counted apart from approvals |
+| `OPERATOR_DIGEST_ENABLED` | off | daily digest via the bot: counts + `/decisions` links for approvals, D5 labels, memory review, requeue candidates and open loop PRs |
 | `OPERATOR_DIGEST_HOUR` | 7 | UTC hour of the digest |
 
 Buttons only work for an allowlisted Telegram id mapped in `telegram_identities` (D3) to an active user whose role holds
 `approve:task`; the decision is made through the normal approval API as that user, so `SELF_APPROVAL_FORBIDDEN` applies.
+Triage buttons use the same D3 rule with the permission of the web route: `write:governance` for D5 labels (written as the
+same `operator_label` judgment as `/decisions`), `approve:task` for memory promote / reject (the promote records the mapped
+user as the human approver). The button carries only a kind and an id (≤ 64 bytes); the id is looked up before acting, and
+the action runs through the same API route as the dashboard, as that user. Unknown or unauthorised ids are refused and audited
+(`telegram_access` judgments). Memory messages include up to 400 characters of the candidate's content (secret patterns redacted).
 The webhook must receive `callback_query` updates (Telegram's default unless `allowed_updates` was restricted).
 Privacy: message content leaves to Telegram — titles, ids, lanes, file paths in scope and aggregates; secret patterns are
 redacted; no hosts or tokens. `GET /api/health/digest` (read:evidence) shows the digest as it would be sent.

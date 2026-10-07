@@ -61,3 +61,20 @@ it('W3: splits gym species per model, flags a benched species and counts what ne
   expect(c.gym.find((g) => g.species === 'atomic@llama-router')?.benched).toBe(false);
   expect(c.needs_you).toEqual(expect.objectContaining({ requeue: expect.any(Number), labels: expect.any(Number), memory_review: expect.any(Number) }));
 });
+
+it('honest needs-you: open loop PRs count, merged ones do not; no_change and dismissed requeue candidates do not', async () => {
+  const { dismissRequeue } = await import('../services/decisions-inbox');
+  proposal('r1', 'regressed'); proposal('i1', 'infra_failed'); proposal('n1', 'no_change');
+  const run = db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
+    VALUES (?, 'test-gap', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`);
+  run.run('o1', JSON.stringify({ pr_url: 'https://github.com/o/r/pull/1' }), ago(30), ago(30));
+  run.run('o2', JSON.stringify({ pr_url: 'https://github.com/o/r/pull/2', pr_outcome: { state: 'open' } }), ago(30), ago(30));
+  run.run('m1', JSON.stringify({ pr_url: 'https://github.com/o/r/pull/3', pr_outcome: { state: 'merged' } }), ago(30), ago(30));
+  run.run('c1', JSON.stringify({ pr_url: 'https://github.com/o/r/pull/4', pr_outcome: { state: 'closed_unmerged', settled_at: ago(1) } }), ago(30), ago(30));
+  let c = operatorCockpit(db, NOW);
+  expect(c.needs_you.open_prs).toBe(2);
+  expect(c.needs_you.requeue).toBe(2);
+  dismissRequeue(db, 'i1', 'op');
+  c = operatorCockpit(db, NOW);
+  expect(c.needs_you.requeue).toBe(1);
+});

@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import type { Database } from 'better-sqlite3';
 import { SENSITIVE_SERVICE, type GymTask } from './gym-task-miner';
+import { mutate, rng } from './gym-mutants';
 
 /**
  * Batch-8 (06-10): gym tasks derived from REAL production failures — the headroom is there (prod: real doc-drift /
@@ -17,12 +18,30 @@ import { SENSITIVE_SERVICE, type GymTask } from './gym-task-miner';
  * test must import the target): served ONLY to a worker announcing capabilities ['write_test'] — today's worker would
  * restore '<commit>^:<source>' for a 'fail:' key and fail. Mutation lanes are skipped: their oracle (mutation-gain) is
  * not runnable by the worker contract. Never part of the frozen holdouts (those only see mined + seeded mutant tasks).
+ * B8 oracle: any green test that imports the target would pass "vitest exits 0", so every task carries
+ * WRITE_TEST_MUTANTS seeded single-operator mutants of the target (gym-mutants' operators and PRNG, deterministic per
+ * base + target). Success = the test is green on the real target AND red on at least one mutant written over it; a test
+ * that kills no mutant constrains nothing. A target without a valid mutant is not served.
  * GYM_FAILURE_TASKS_ENABLED=true (default off).
  */
 export const gymFailureTasksEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.GYM_FAILURE_TASKS_ENABLED === 'true';
 export const FAILURE_TASK_CAPABILITY = 'write_test';
 
-export interface FailureTask extends GymTask { kind: 'write_test'; base: string; target: string; run_id: string; lane: 'test-gap' | 'exports' }
+export const WRITE_TEST_MUTANTS = 3;
+export const WRITE_TEST_ORACLE = 'vitest on <source> green with the real <target>, and red with at least one of <mutants> written over <target>';
+export interface TargetMutant { key: string; content: string }
+export interface FailureTask extends GymTask { kind: 'write_test'; base: string; target: string; run_id: string; lane: 'test-gap' | 'exports'; mutants: TargetMutant[]; oracle: string }
+
+/** Up to `k` distinct single-operator mutants of the target, seeded like gym-mutants: the same base + target give the same mutants. */
+export function targetMutants(original: string, base: string, target: string, k = WRITE_TEST_MUTANTS): TargetMutant[] {
+  const out: TargetMutant[] = []; const seen = new Set<string>();
+  for (let seed = 1; seed <= 50 && out.length < k; seed++) {
+    const content = mutate(original, 1, rng(seed * 7919 + base.charCodeAt(0)));
+    if (!content || content === original || seen.has(content)) continue;
+    seen.add(content); out.push({ key: `mut:${base.slice(0, 12)}:${target}:1:${seed}`, content });
+  }
+  return out;
+}
 
 const TEST_ARTIFACT = /^packages\/server\/src\/__tests__\/[A-Za-z0-9._-]+\.test\.ts$/;
 const TARGET = /^packages\/server\/src\/services\/([A-Za-z0-9_-]+)\.ts$/;
@@ -65,24 +84,27 @@ export function qualifyingFailures(rows: FailureRow[]): Array<FailureRow & { lan
   return out;
 }
 
-export interface GitLookup { baseAt(isoTime: string): string | null; exists(commit: string, file: string): boolean; lines(commit: string, file: string): number }
+export interface GitLookup { baseAt(isoTime: string): string | null; exists(commit: string, file: string): boolean; show(commit: string, file: string): string | null }
 
 export function gitLookup(repo: string): GitLookup {
   const git = (args: string[]) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 10_000 }).trim();
   return {
     baseAt: (iso) => { try { return git(['rev-list', '-1', '--first-parent', `--before=${iso}`, 'HEAD']) || null; } catch { return null; } },
     exists: (c, f) => { try { git(['cat-file', '-e', `${c}:${f}`]); return true; } catch { return false; } },
-    lines: (c, f) => { try { return git(['show', `${c}:${f}`]).split('\n').length; } catch { return 0; } },
+    show: (c, f) => { try { return execFileSync('git', ['-C', repo, 'show', `${c}:${f}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 10_000 }); } catch { return null; } },
   };
 }
 
-/** Failure-derived 'write_test' tasks: the target exists at the base and the test artifact does not yet. */
+/** Failure-derived 'write_test' tasks: the target exists at the base, the test artifact does not yet, and the target has a mutant. */
 export function failureDerivedTasks(db: Database, lookup: GitLookup): FailureTask[] {
   const tasks: FailureTask[] = [];
   for (const r of qualifyingFailures(failureRows(db))) {
     const base = lookup.baseAt(r.run_created_at!);
     if (!base || !/^[0-9a-f]{7,40}$/.test(base) || !lookup.exists(base, r.target!) || lookup.exists(base, r.artifact!)) continue;
-    tasks.push({ commit: `fail:${r.run_id}`, kind: 'write_test', base, source: r.artifact!, tests: [r.artifact!], target: r.target!, sourceLines: lookup.lines(base, r.target!), run_id: r.run_id!, lane: r.lane });
+    const original = lookup.show(base, r.target!);
+    const mutants = original ? targetMutants(original, base, r.target!) : [];
+    if (!mutants.length) continue; // nothing to kill: a green test could not be told from one that constrains nothing
+    tasks.push({ commit: `fail:${r.run_id}`, kind: 'write_test', base, source: r.artifact!, tests: [r.artifact!], target: r.target!, sourceLines: original!.split('\n').length, run_id: r.run_id!, lane: r.lane, mutants, oracle: WRITE_TEST_ORACLE });
   }
   return tasks;
 }

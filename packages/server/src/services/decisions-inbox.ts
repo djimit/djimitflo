@@ -8,6 +8,8 @@ import { earnedAutonomy, type ClassRecord } from './earned-autonomy';
  * - pre-screen labelling (D5): proposals whose latest proposal_prescreen verdict was 'no', with the operator's label if any;
  *   labels are stored as `operator_label` judgments so the false-rejection rate can be computed next to the verdicts
  * - Telegram allowlist (D3): the rows of telegram_identities (ids only, no tokens)
+ * A requeue candidate the operator dismissed (`requeue_dismiss` judgment) leaves the list; `no_change` rows stay listed
+ * but are not counted as waiting for the operator (see openDecisionCounts).
  */
 export interface InboxRequeue { id: string; title: string; status: string; updated_at: string; requeued_as: string | null }
 export interface InboxLabel { id: string; title: string; status: string; reason: string; verdict_at: string; label: 'ok' | 'wrong' | null }
@@ -24,7 +26,9 @@ export function decisionsInbox(db: Database, now = Date.now()): DecisionsInbox {
   const d30 = new Date(now - 30 * 86_400_000).toISOString();
   const requeue = all<InboxRequeue>(`SELECT s.id, s.title, s.status, s.updated_at,
       (SELECT c.id FROM self_improvements c WHERE c.evidence_refs_json LIKE '%"requeue-of:' || s.id || '"%' LIMIT 1) AS requeued_as
-    FROM self_improvements s WHERE s.status IN ('regressed', 'infra_failed', 'no_change') AND s.updated_at >= ? ORDER BY s.updated_at DESC LIMIT 50`, d30);
+    FROM self_improvements s WHERE s.status IN ('regressed', 'infra_failed', 'no_change') AND s.updated_at >= ?
+      AND NOT EXISTS (SELECT 1 FROM judgments d WHERE d.judgment = 'requeue_dismiss' AND d.subject_id = s.id)
+    ORDER BY s.updated_at DESC LIMIT 50`, d30);
   const items = all<InboxLabel>(`SELECT s.id, s.title, s.status, j.reason, j.created_at AS verdict_at,
       (SELECT CASE l.decision WHEN 'yes' THEN 'ok' WHEN 'no' THEN 'wrong' END FROM judgments l
         WHERE l.judgment = 'operator_label' AND l.subject_id = s.id ORDER BY l.created_at DESC LIMIT 1) AS label
@@ -45,6 +49,28 @@ export function decisionsInbox(db: Database, now = Date.now()): DecisionsInbox {
     prescreen: { items, labelled, wrong, false_rejection_pct: labelled ? Math.round((1000 * wrong) / labelled) / 10 : null, enforce_threshold: '>= 30 labelled and <= 5 % wrong (D5)' },
     telegram,
   };
+}
+
+/**
+ * Needs-you counts shared by the cockpit and the daily digest. Requeue counts only regressed / infra_failed rows nobody
+ * requeued yet — a `no_change` outcome changed nothing, so there is nothing for the operator to rescue.
+ */
+export function openDecisionCounts(inbox: DecisionsInbox): { requeue: number; labels: number; memory_review: number } {
+  return {
+    requeue: inbox.requeue.filter((r) => !r.requeued_as && r.status !== 'no_change').length,
+    labels: inbox.prescreen.items.filter((i) => !i.label).length,
+    memory_review: inbox.memory.length,
+  };
+}
+
+/** D2: the operator decides a requeue candidate needs no requeue; audited as a `requeue_dismiss` judgment, the row leaves the list. */
+export function dismissRequeue(db: Database, improvementId: string, actor: string, reason = ''): void {
+  const row = db.prepare(`SELECT status FROM self_improvements WHERE id = ? AND status IN ('regressed', 'infra_failed', 'no_change')`).get(improvementId) as { status: string } | undefined;
+  if (!row) throw new Error('DISMISS_NOT_A_REQUEUE_CANDIDATE');
+  const why = reason.replace(/\s+/g, ' ').trim().slice(0, 300);
+  db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at)
+    VALUES (?, 'requeue_dismiss', 'self_improvement', ?, ?, 'enforce', 'yes', ?, ?)`)
+    .run(randomUUID(), improvementId, row.status, `requeue candidate (${row.status}) dismissed by ${actor}${why ? `: ${why}` : ''}`, new Date().toISOString());
 }
 
 /** D5: the operator's verdict on a pre-screen rejection ('ok' = rejecting was right, 'wrong' = it deserved a panel). */

@@ -653,9 +653,22 @@ export class LoopDaemon {
       // the current prepared checker lease (correctly picking up a retry's
       // checker lease) and already writes the real checkpoint/trace-span/
       // manifest evidence closeLoop() requires — no new writer needed.
-      if (process.env.LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED === 'true') {
-        const runtime = activeMakerLease.runtime as 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'pi' | 'mock';
+      // prod 2026-10-01..07 (47 checker_dispatch_failed in 7 days): reviewers were dispatched after a maker that had already
+      // failed (35× CHECKER_MAKER_NOT_COMPLETED — a cascade, not a second failure), the 'checker' pick took the first prepared
+      // checker, i.e. the failed first maker's, not the evolve winner's (run 4418f34d: the winner was never reviewed), and a remote winner made
+      // the reviewer 'remote' too, a maker-only executor that needs a model (19 reviewers failed "remote maker needs model").
+      const activeMakerStatus = (this.db.prepare('SELECT status FROM worker_leases WHERE id = ?').get(activeMakerLease.id) as { status: string } | undefined)?.status;
+      const reviewerRuntime = activeMakerLease.runtime === 'remote' ? process.env.LOOP_DAEMON_MAKER_RUNTIME : activeMakerLease.runtime;
+      const reviewerSkip = activeMakerStatus === 'failed' || activeMakerStatus === 'cancelled' ? `maker ${activeMakerLease.id} is ${activeMakerStatus}`
+        : !reviewerRuntime || reviewerRuntime === 'remote' ? 'the maker ran remote and LOOP_DAEMON_MAKER_RUNTIME names no local reviewer runtime' : null;
+      if (process.env.LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED === 'true' && reviewerSkip) {
+        try { new LoopEventService(this.db).recordEvent(run.id, 'checker_dispatch_skipped', 'info', `Automated reviewers not dispatched: ${reviewerSkip}.`, { goal_id: goal.id, maker_lease_id: activeMakerLease.id }); } catch { /* logging */ }
+      } else if (process.env.LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED === 'true') {
+        const runtime = reviewerRuntime as 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'pi' | 'mock';
         const leaseDone = (role: string) => Boolean(this.db.prepare("SELECT 1 FROM worker_leases WHERE loop_run_id = ? AND role = ? AND status = 'completed' LIMIT 1").get(run.id, role));
+        // the reviewer of the maker that goes on (retry or evolve winner), newest first; none → executeChecker's own discovery
+        const reviewerFor = (role: string) => (this.db.prepare(`SELECT id FROM worker_leases WHERE loop_run_id = ? AND role = ? AND status = 'prepared'
+          ORDER BY json_extract(metadata, '$.maker_lease_id') IS ? DESC, created_at DESC LIMIT 1`).get(run.id, role, activeMakerLease.id) as { id: string } | undefined)?.id;
         const dispatch = async (role: 'checker' | 'security_checker', leaseId?: string): Promise<boolean> => {
           try {
             await this.loops.executeChecker(run.id, { ...(leaseId ? { lease_id: leaseId } : {}), runtime, timeout_ms: daemonReviewerTimeoutMs() });
@@ -673,11 +686,11 @@ export class LoopDaemon {
           return false;
         };
         // A run resumed after a reviewer's approval already has the earlier reviewer's verdict: don't dispatch it twice.
-        if (!leaseDone('checker') && await dispatch('checker')) return;
+        if (!leaseDone('checker') && await dispatch('checker', reviewerFor('checker'))) return;
         // The security reviewer is a separate, higher autonomy step (removes human security review): its own flag.
         if (process.env.LOOP_DAEMON_AUTOMATED_SECURITY_CHECKER_ENABLED === 'true' && !leaseDone('security_checker')) {
-          const security = this.db.prepare("SELECT id FROM worker_leases WHERE loop_run_id = ? AND role = 'security_checker' AND status = 'prepared' ORDER BY created_at DESC LIMIT 1").get(run.id) as { id: string } | undefined;
-          if (security && await dispatch('security_checker', security.id)) return;
+          const security = reviewerFor('security_checker');
+          if (security && await dispatch('security_checker', security)) return;
         }
       }
 
