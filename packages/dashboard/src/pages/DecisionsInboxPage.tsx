@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { WebSocketEventType } from '@djimitflo/shared';
 import { useWsSubscribe } from '../components/WebSocketProvider';
 import { Inbox, RefreshCw } from 'lucide-react';
-import { api, type DecisionsInbox, type DraftPrs } from '../lib/api';
+import { api, type DecisionsInbox, type DependencyLane, type DraftPrs } from '../lib/api';
 import { usePendingApprovals } from '../hooks/usePendingApprovals';
 import { ApprovalQueuePage } from './ApprovalQueuePage';
 import { ACTION_PERMISSIONS as P, useCan } from '../lib/permissions';
@@ -24,6 +24,33 @@ export function DraftPrsSection() {
             { key: 'lane', label: 'Lane', render: (r) => r.lane },
             { key: 'age', label: 'Age (days)', render: (r) => r.age_days },
             { key: 'settlement', label: 'Settlement', render: (r) => (r.outcome ? `${r.outcome}${r.survived === null ? '' : r.survived ? ' · survived' : ' · removed'}` : 'not settled') },
+          ]} />
+        </>
+      )}
+    </Section>
+  );
+}
+
+/** Dependency lane: the Dependabot queue and what the lane decided per PR (read-only; DEPENDENCY_LANE_MODE). */
+export function DependencyLaneSection() {
+  const [data, setData] = useState<DependencyLane | null>(null); const [error, setError] = useState<string | null>(null);
+  useEffect(() => { api.getDependencyLane().then(setData, (err: unknown) => setError(err instanceof Error ? err.message : 'Failed to load the dependency lane')); }, []);
+  return (
+    <Section id="dependency-lane" title="Dependency lane (Dependabot)" headingClassName="text-lg font-semibold mb-1">
+      {error && <p role="alert" className="text-status-error text-sm">{error}</p>}
+      {!data && !error && <p className="text-sm text-foreground-secondary">Loading…</p>}
+      {data && (
+        <>
+          <p className="text-sm text-foreground-secondary mb-2">
+            Mode {data.effective_mode}{data.revoked_at ? ` — act revoked ${data.revoked_at.slice(0, 16)}: ${data.revoked_reason ?? ''}` : ''}; {data.open} open, {data.merged_24h} merged in 24 h (cap {data.max_per_day}/day).
+          </p>
+          <DataTable caption="Dependabot PRs and the lane's decision" rows={data.rows} rowKey={(r) => String(r.pr_number)} empty={data.mode === 'off' ? 'The dependency lane is off (DEPENDENCY_LANE_MODE).' : 'No Dependabot PRs seen yet.'} columns={[
+            { key: 'pr', label: 'PR', render: (r) => (r.html_url ? <a className="underline" href={r.html_url} target="_blank" rel="noreferrer">#{r.pr_number}</a> : `#${r.pr_number}`) },
+            { key: 'title', label: 'Title', render: (r) => r.title },
+            { key: 'bump', label: 'Bump', render: (r) => r.bump },
+            { key: 'age', label: 'Age (days)', render: (r) => r.age_days ?? '—' },
+            { key: 'checks', label: 'Checks', render: (r) => r.check_state ?? '—' },
+            { key: 'decision', label: 'Decision', render: (r) => <span title={r.reason ?? undefined}>{r.decision}</span> },
           ]} />
         </>
       )}
@@ -81,6 +108,7 @@ export function DecisionsInboxPage() {
       </p>
       <section className="rounded-lg border border-border p-4"><ApprovalQueuePage embedded /></section>
       <DraftPrsSection />
+      <DependencyLaneSection />
       {error && <p role="alert" className="text-status-error">{error}</p>}
       {notice && <p role="status" className="text-status-completed">{notice}</p>}
       {!data && !error && <p className="text-sm text-foreground-secondary">Loading…</p>}
