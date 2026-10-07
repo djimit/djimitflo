@@ -31,11 +31,19 @@ export function resolveTelegramActor(db: Database, telegramUserId: string | numb
   return { telegramUserId: id, userId: row.user_id, role: row.role };
 }
 
+/**
+ * True only for an allowlisted, active user whose role holds `permission` — the same permission the web route demands.
+ * Audited either way under `action`.
+ */
+export function mayActViaTelegram(db: Database, telegramUserId: string | number, action: string, permission: string): TelegramActor | null {
+  const actor = resolveTelegramActor(db, telegramUserId, action);
+  if (!actor) return null;
+  const allowed = (ROLE_PERMISSIONS[actor.role] ?? []).includes(permission);
+  audit(db, actor.telegramUserId, action, allowed, allowed ? `user ${actor.userId} (${actor.role})` : `role ${actor.role} lacks ${permission}`);
+  return allowed ? actor : null;
+}
+
 /** True only for an allowlisted, active user whose role may approve in the web UI. Audited either way. */
 export function mayApproveViaTelegram(db: Database, telegramUserId: string | number): TelegramActor | null {
-  const actor = resolveTelegramActor(db, telegramUserId, 'approve');
-  if (!actor) return null;
-  const allowed = (ROLE_PERMISSIONS[actor.role] ?? []).includes('approve:task');
-  audit(db, actor.telegramUserId, 'approve', allowed, allowed ? `user ${actor.userId} (${actor.role})` : `role ${actor.role} lacks approve:task`);
-  return allowed ? actor : null;
+  return mayActViaTelegram(db, telegramUserId, 'approve', 'approve:task');
 }

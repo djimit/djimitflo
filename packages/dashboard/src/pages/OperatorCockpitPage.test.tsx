@@ -68,6 +68,14 @@ it('UX-6: shows every blocking category with a deep link; /decisions links point
   for (const a of [...anchors, 'prescreen']) expect(src).toContain(`id="${a}"`);
 });
 
+it('honest needs-you: open loop draft PRs wait for the operator and count; unsettled ones stay informational', () => {
+  const html = renderToStaticMarkup(<MemoryRouter><NeedsYou n={{ approvals: 1, requeue: 0, labels: 0, memory_review: 0, draft_prs: 5, open_prs: 3 }} /></MemoryRouter>);
+  expect(html).toContain('Needs you (4)');
+  expect(html).toContain('3 open loop PRs');
+  expect(html).toContain('5 loop PRs unsettled');
+  expect(renderToStaticMarkup(<MemoryRouter><NeedsYou n={{ approvals: 0, requeue: 0, labels: 0, memory_review: 0, open_prs: 2 }} /></MemoryRouter>)).toContain('Needs you (2)');
+});
+
 it('UX-8: the cockpit shows how many schedulers are armed', async () => {
   vi.spyOn(api, 'getOperatorCockpit').mockResolvedValue({
     at: '2026-10-06T12:00:00Z', build: { commit: null, build_time: null }, scorecard: {}, guardrails: [], stalls: [], gym: [], remote_workers: [], maker_usage_7d: [], judgments_7d: [], deploys: [],

@@ -201,13 +201,15 @@ export function NeedsYou({ n }: { n: NonNullable<OperatorCockpit['needs_you']> }
     { label: 'requeue candidates', count: n.requeue, href: '/decisions#requeue' },
     { label: 'pre-screen labels', count: n.labels, href: '/decisions#prescreen' },
     { label: 'memory reviews', count: n.memory_review, href: '/decisions#memory' },
+    { label: 'open loop PRs', count: n.open_prs ?? 0, href: '/decisions#draft-prs' },
     { label: 'loop PRs unsettled', count: n.draft_prs ?? 0, href: '/decisions#draft-prs' },
     { label: 'proposals awaiting approval', count: n.proposals ?? 0, href: '/governance?tab=assurance' },
     { label: 'silent stalls', count: n.stalls ?? 0, href: '/#stalls' },
     { label: 'Commons join requests', count: n.join_requests ?? 0, href: '/agent-commons' },
     { label: 'fleet shell requests', count: n.shell_requests ?? 0, href: '/fleet' },
   ];
-  // UX-6: 'approvals expiring' is a subset of 'approvals' and unsettled loop PRs include merged ones still settling — not double-counted
+  // UX-6: 'approvals expiring' is a subset of 'approvals' and unsettled loop PRs include merged ones still settling — not double-counted;
+  // open loop PRs wait for a human merge or close, so they count
   const blocking = items.filter((item) => item.label !== 'approvals expiring within 1 h' && item.label !== 'loop PRs unsettled');
   const total = blocking.reduce((sum, item) => sum + item.count, 0);
   return (
