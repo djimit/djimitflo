@@ -32,6 +32,7 @@ Back up before editing (`cp -p runtime.env runtime.env.bak-<date>`), then `docke
 | `REFLECTION_PROPOSALS_MAX_PER_DAY` | cap on reflection proposals per 24 h (unset = no cap); they rarely ground, so a bounded inflow keeps `needs_grounding` drainable |
 | `TEST_GAP_EXPORTS_ENABLED` | second test-gap lane: exported functions of tested services that no test names → a new `<service>.exports.test.ts` (same caps) |
 | `MUTATION_GAP_ENABLED`, `MUTATION_GAP_MAX_PER_DAY` | M2 mutation-gap lane: tested services (30–400 lines, non-sensitive) get "strengthen the test" proposals; add `test:mutation:grounded` to `LOOP_DAEMON_CHECK_SCRIPTS` so the gain (Stryker, committed vs working-tree test, +10 points or ≥ 90) is a deterministic check (a no-op for other lanes) |
+| `DEAD_CODE_LANE_ENABLED`, `DEAD_CODE_MAX_PER_DAY` | dead-code lane: proposals to remove a server file nothing imports or names by string, or a route group with 0 `usage_counts` hits over ≥ 14 days of telemetry and no dashboard/mcp-server/script caller (plus the services only it uses); add `test:dead-code:grounded` to `LOOP_DAEMON_CHECK_SCRIPTS` (scope = the named files, adds ≤ 10 % of removed lines, full test suite of each touched package; a no-op for other lanes, set `LOOP_DAEMON_CHECK_TIMEOUT_MS=600000`). Normal risk: keeps the panel even with `ORACLE_LANES_SKIP_PANEL`, never auto-approved, merge human |
 | `LOOP_REVIEWER_APPROVAL_INHERIT` | one human approval per run; reviewers inherit it |
 | `APPROVAL_TTL_MS` | how long a pending approval stays valid (default 1 h, 5 min .. 7 days); prod uses 12 h so night-time requests survive until the operator is back |
 | `LOOP_REVIEWER_TIMEOUT_MS` | time a daemon-dispatched checker/security checker gets (default 300 000, max 900 000) |
@@ -112,6 +113,8 @@ missing here. **Acting** = changes what the loop does; acting flags are switched
 | `EVOLUTION_ESTIMATORS_ENABLED` | off (on: once per UTC day writes delays, discriminability, trial blindness, gym pass rate per tier, model ok rates and Gates A–D to `evolution_estimates`; stall `estimates` after 36 h without a row) | no | measure | operator |
 | `DEPENDENCY_LANE_MODE` | off (`shadow`: records the Dependabot queue and `would_merge`/`would_rebase`, no GitHub writes; `act`: one `@dependabot rebase` per PR per 24 h when behind, squash-merges ONE green, mergeable, up-to-date npm patch/minor PR per tick after the previous lane merge is green on main; main red after a lane merge revokes act (persisted) until `POST /api/loops/dependency-lane/re-enable` (manage:config, audited). Majors, grouped updates touching a major and red checks stay human; never update-branch) | yes in act | shadow → act | operator |
 | `DEPENDENCY_LANE_MAX_PER_DAY` | 4 (lane merges per UTC day; tick every `DEPENDENCY_LANE_INTERVAL_MS`, default 3 h) | yes | act (budget) | operator |
+| `DEAD_CODE_LANE_ENABLED` | off | yes (proposes deletions; each one needs the panel, a human maker approval and a human merge) | act | operator |
+| `DEAD_CODE_MAX_PER_DAY` | 2 (also the in-flight cap) | yes | act (budget) | operator |
 
 ## Prod status (2026-09-25, E4) — STALE
 
