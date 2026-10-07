@@ -3,16 +3,17 @@ import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { AgentCommunicationService } from '../services/agent-communication-service';
-import { AgentSocialAutopilotService, RESIDENTS } from '../services/agent-social-autopilot-service';
+import { AgentSocialAutopilotService, autopilotConfigFromEnv, RESIDENTS, type AutopilotConfig } from '../services/agent-social-autopilot-service';
 import { arenaGate, enqueueCommittee, EXTINCT_MIN_N } from '../services/committee-swarm';
 
 afterEach(() => vi.unstubAllEnvs());
-function setup() {
+function setup(extra: Partial<AutopilotConfig> = {}) {
   const db = new Database(':memory:'); db.pragma('foreign_keys = OFF'); db.exec(schema); runMigrations(db);
   const comms = new AgentCommunicationService(db);
-  const autopilot = new AgentSocialAutopilotService(db, { runtime: 'ollama', model: 'm', ollamaUrl: 'http://ollama.invalid', agents: 'residents', intervalMs: 60_000, roundCooldownMs: 3_600_000, maxRepliesPerTick: 1, seedResidents: true },
-    { comms, chat: async (_s, prompt) => ({ content: prompt.includes('probability') ? 'Thinking… {"p": 0.25, "rationale": "lane is mostly unverified"}' : '{}', run_id: 'r', usage: {} }) });
-  return { db, autopilot };
+  const prompts: string[] = [];
+  const autopilot = new AgentSocialAutopilotService(db, { runtime: 'ollama', model: 'm', ollamaUrl: 'http://ollama.invalid', agents: 'residents', intervalMs: 60_000, roundCooldownMs: 3_600_000, maxRepliesPerTick: 1, seedResidents: true, ...extra },
+    { comms, chat: async (_s, prompt) => { prompts.push(prompt); return { content: prompt.includes('probability') ? 'Thinking… {"p": 0.25, "rationale": "lane is mostly unverified"}' : '{}', run_id: 'r', usage: {} }; } });
+  return { db, autopilot, comms, prompts };
 }
 const prop = (db: Database.Database, id: string, status = 'proposed', at = new Date().toISOString()) => db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, priority, created_at, updated_at)
   VALUES (?, 'test', ?, 'd', 'r', 'gap_analysis', ?, 0.5, ?, ?)`).run(id, `t ${id}`, status, at, at);
@@ -73,5 +74,45 @@ it('AR-W6: a fleet source with 50+ judged discoveries and none relevant is not p
   vi.stubEnv('ARENA_GATE_ENABLED', 'true');
   const units = new ExpertSourceUnitsService(db);
   expect(units.ingestDiscovery({ event_type: 'discovery.paper', ref: 'arxiv:2610.00001', title: 'Agent evaluation with mutation testing', agent: 'hermes-noise' })).toBe('irrelevant');
+  db.close();
+});
+
+it('SOCIAL_AUTOPILOT_FORECAST_ONLY: residents heartbeat and forecast, but post no chat reply, open no round and answer no thread', async () => {
+  vi.stubEnv('COMMITTEE_SWARM_ENABLED', 'true');
+  expect(autopilotConfigFromEnv({ SOCIAL_AUTOPILOT_FORECAST_ONLY: 'true' }).forecastOnly).toBe(true);
+  expect(autopilotConfigFromEnv({}).forecastOnly).toBe(false);
+  const { db, autopilot, comms, prompts } = setup({ forecastOnly: true });
+  autopilot.seedResidents();
+  prop(db, 'p1'); enqueueCommittee(db, { id: 'p1', title: 't', source: 'gap_analysis' });
+  for (const r of RESIDENTS) comms.heartbeat(r.id, 'ollama', 'm');
+  comms.socialize(0, 'operator', RESIDENTS.map((r) => r.id)); // an open thread waiting for residents
+  const pending = () => (db.prepare("SELECT COUNT(*) n FROM agent_messages WHERE json_extract(payload_json, '$.action') = 'social.question' AND status = 'pending'").get() as { n: number }).n;
+  const before = pending();
+  expect(before).toBeGreaterThan(0);
+  const tick = await autopilot.tick();
+  expect(tick).toMatchObject({ heartbeats: RESIDENTS.length, forecasts: 2, attempts: 0, replies: 0, round_started: false, skipped: 'forecast_only' });
+  expect(prompts.every((p) => p.includes('probability'))).toBe(true); // only forecast calls reached a model
+  expect(pending()).toBe(before); // the thread was not claimed or answered
+  db.close();
+});
+
+it('forecast-only keeps the arena gate: last week\'s chat without calls does not retire a resident, a worse-than-base-rate forecaster still stops', () => {
+  vi.stubEnv('COMMITTEE_SWARM_ENABLED', 'true'); vi.stubEnv('ARENA_GATE_ENABLED', 'true');
+  const { db, autopilot } = setup({ forecastOnly: true });
+  autopilot.seedResidents();
+  const [talker, loser] = RESIDENTS.map((r) => r.id);
+  const now = new Date().toISOString();
+  for (let i = 0; i < 5; i++) { prop(db, `q${i}`); enqueueCommittee(db, { id: `q${i}`, title: 't', source: 'gap_analysis' }); }
+  for (let i = 0; i < 30; i++) db.prepare("INSERT INTO agent_messages (id, from_agent, to_agent, type, priority, payload_json, timestamp, status) VALUES (?, ?, 'broadcast', 'result', 'normal', '{}', ?, 'delivered')").run(`m${i}`, talker, now);
+  const old = new Date(Date.now() - 3 * 86_400_000).toISOString();
+  for (let i = 0; i < EXTINCT_MIN_N + 2; i++) {
+    const verified = i % 4 === 0;
+    prop(db, `r${i}`, verified ? 'verified' : 'needs_more_evidence', old);
+    db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, answers_json, created_at)
+      VALUES (?, ?, 'self_improvement', ?, 'j', 'shadow', 'yes', ?, ?)`).run(`f${i}`, `forecast:resident:${loser}`, `r${i}`, JSON.stringify({ p: verified ? 0.05 : 0.95, as_of: old }), old);
+  }
+  expect(arenaGate(db, talker)).toMatchObject({ allowed: false }); // normal mode: still retired for talk without calls
+  const eligible = autopilot.eligibleAgents().map((a) => a.id);
+  expect(eligible).toContain(talker); expect(eligible).not.toContain(loser);
   db.close();
 });

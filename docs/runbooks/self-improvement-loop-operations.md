@@ -46,6 +46,7 @@ Back up before editing (`cp -p runtime.env runtime.env.bak-<date>`), then `docke
 | `COMMONS_EVIDENCE_PACK_ENABLED`, `COMMONS_AGENDA_FROM_FAILURES` | Commons rounds carry platform facts; undiscussed dream-state failures come first |
 | `COMMONS_AGENDA_GROUNDING` | after failures, the newest `needs_grounding` proposal becomes the topic, with candidate files from `git grep`; residents answer `TARGET:` / `TEST:`, checked in code and recorded as a `commons_grounding` judgment |
 | `COMMONS_GROUNDING_APPLY` | **operator decision**: a valid Commons grounding becomes one grounded refinement that goes to the specialist panel |
+| `SOCIAL_AUTOPILOT_FORECAST_ONLY` | operator scale-back 2026-10-07: residents keep heartbeating and answering committee forecast questions (`forecast:resident:<agent>`, ≤ 2 per tick) but post no chat replies, open no rounds and answer no threads |
 | `SOCIAL_AUTOPILOT_RESIDENTS` | per-resident model, e.g. `commons-oracle=openai-compatible:kimi-k2.6,commons-engineer=openai-compatible:gpt-oss:120b` (only the first `:` separates runtime and model, so model tags with `:` work). Residents: scout, muse, archivist, oracle, engineer, skeptic, methodologist (F6) |
 | `AUTONOMY_SHADOW_ENABLED` | record "would auto-approve" per loop approval; approves nothing |
 | `LOOP_AUTO_APPROVE_MUTATION_GAP` | **operator decision**: same one-file scope for the mutation lane, only after that lane has ≥ 1 verified human-approved run |
@@ -91,6 +92,7 @@ missing here. **Acting** = changes what the loop does; acting flags are switched
 | `ARENA_GATE_ENABLED` | off | yes | act | operator |
 | `COMMITTEE_SWARM_ENABLED` | off | yes | act | operator |
 | `COMMONS_GROUNDING_APPLY` | off | yes | act | operator |
+| `SOCIAL_AUTOPILOT_FORECAST_ONLY` | off | yes (residents heartbeat and answer committee forecasts only: no chat replies, rounds or thread answers; the arena gate's "talks without calls" rule is skipped, the skill rule still retires) | act (budget) | operator (scale-back 2026-10-07) |
 | `LOOP_AUTO_DRAFT_PR_ENABLED` | off | yes | act | operator |
 | `LOOP_AUTO_APPROVE_TEST_GAP` | off | yes | act | operator |
 | `ORACLE_LANES_AUTO_APPROVE` | off | yes | act | operator |

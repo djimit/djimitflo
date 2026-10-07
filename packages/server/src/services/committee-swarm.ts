@@ -244,10 +244,13 @@ export function recordResidentForecast(db: Database, q: { jobId: string; subject
 
 export const arenaGateEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.ARENA_GATE_ENABLED === 'true';
 /** Survival gate for a resident: no measurable call, or worse than the base rate on enough calls → stop scheduling it. */
-export function arenaGate(db: Database, agentId: string, now = new Date()): { allowed: boolean; reason: string } {
+export function arenaGate(db: Database, agentId: string, now = new Date(), opts: { forecastOnly?: boolean } = {}): { allowed: boolean; reason: string } {
   let score: ReturnType<typeof forecastScores>[number] | undefined;
   try { score = forecastScores(db).find((s) => s.forecaster === `forecast:resident:${agentId}`); } catch { /* no outcome tables */ }
   if (score && score.n >= EXTINCT_MIN_N && score.skill < 0) return { allowed: false, reason: `worse than the base rate on ${score.n} scored forecasts (skill ${score.skill.toFixed(2)})` };
+  // SOCIAL_AUTOPILOT_FORECAST_ONLY: residents no longer talk, so "talks without calls" cannot apply — and retiring on last week's
+  // chat would block the very forecasts that are their only remaining job. Only the skill rule above still retires.
+  if (opts.forecastOnly) return { allowed: true, reason: score ? `skill ${score.skill.toFixed(2)} on ${score.n} (forecast-only)` : 'not scored yet (forecast-only)' };
   const week = new Date(now.getTime() - 7 * 86_400_000).toISOString();
   const all = <T>(sql: string, ...a: unknown[]) => { try { return db.prepare(sql).get(...a) as T; } catch { return undefined; } };
   const questions = all<{ n: number }>('SELECT COUNT(*) AS n FROM committee_jobs WHERE created_at >= ?', week)?.n ?? 0;
