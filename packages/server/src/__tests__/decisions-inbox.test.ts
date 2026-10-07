@@ -42,3 +42,38 @@ it('manages the Telegram allowlist with validation and an audit trail', () => {
   expect(decisionsInbox(db, NOW).telegram).toEqual([]);
   expect(db.prepare("SELECT reason FROM judgments WHERE judgment = 'telegram_access' ORDER BY rowid").all()).toEqual([{ reason: 'allowlist set -> u1 by op' }, { reason: 'allowlist removed by op' }]);
 });
+
+it('counts labelled and wrong across many pre-screen rejections for the false-rejection rate', () => {
+  for (const id of ['p1', 'p2', 'p3', 'p4', 'p5']) proposal(id, 'needs_more_evidence');
+  const at = '2026-09-27T00:00:00Z';
+  for (const id of ['p1', 'p2', 'p3', 'p4', 'p5']) prescreen(id, 'no', at);
+  labelPrescreen(db, 'p1', 'ok', 'op'); labelPrescreen(db, 'p2', 'wrong', 'op'); labelPrescreen(db, 'p3', 'wrong', 'op');
+  const p = decisionsInbox(db, NOW).prescreen;
+  expect(p.items.map((i) => i.id).sort()).toEqual(['p1', 'p2', 'p3', 'p4', 'p5']);
+  expect([p.labelled, p.wrong, p.false_rejection_pct]).toEqual([3, 2, 66.7]);
+});
+
+it('trims the Telegram id before validation and storage', () => {
+  db.prepare("INSERT INTO users (id, email, password_hash, role) VALUES ('u1', 'op@x', 'h', 'approver')").run();
+  setTelegramIdentity(db, '  123  ', 'u1', 'op');
+  expect(decisionsInbox(db, NOW).telegram).toEqual([expect.objectContaining({ telegram_user_id: '123' })]);
+});
+
+it('rejects partly-numeric Telegram ids that violate the anchored regex', () => {
+  db.prepare("INSERT INTO users (id, email, password_hash, role) VALUES ('u1', 'op@x', 'h', 'approver')").run();
+  expect(() => setTelegramIdentity(db, '123abc', 'u1', 'op')).toThrow('TELEGRAM_ID_INVALID');
+  expect(() => setTelegramIdentity(db, 'abc123', 'u1', 'op')).toThrow('TELEGRAM_ID_INVALID');
+});
+
+it('stores and truncates the Telegram identity note', () => {
+  db.prepare("INSERT INTO users (id, email, password_hash, role) VALUES ('u1', 'op@x', 'h', 'approver')").run();
+  setTelegramIdentity(db, '123', 'u1', 'op', 'hello note');
+  expect(db.prepare('SELECT note FROM telegram_identities WHERE telegram_user_id = ?').get('123')).toEqual({ note: 'hello note' });
+  setTelegramIdentity(db, '456', 'u1', 'op', 'x'.repeat(250));
+  expect((db.prepare('SELECT note FROM telegram_identities WHERE telegram_user_id = ?').get('456') as { note: string }).note.length).toBe(200);
+});
+
+it('returns empty arrays when a backing table is missing (defensive catch)', () => {
+  db.exec('DROP TABLE telegram_identities');
+  expect(decisionsInbox(db, NOW).telegram).toEqual([]);
+});
