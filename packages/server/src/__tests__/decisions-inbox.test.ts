@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { decisionsInbox, labelPrescreen, setTelegramIdentity } from '../services/decisions-inbox';
+import { decisionsInbox, dismissRequeue, labelPrescreen, openDecisionCounts, setTelegramIdentity } from '../services/decisions-inbox';
 import { requeueImprovement } from '../services/improvement-requeue';
 
 let db: Database.Database;
@@ -41,4 +41,17 @@ it('manages the Telegram allowlist with validation and an audit trail', () => {
   setTelegramIdentity(db, '123', null, 'op');
   expect(decisionsInbox(db, NOW).telegram).toEqual([]);
   expect(db.prepare("SELECT reason FROM judgments WHERE judgment = 'telegram_access' ORDER BY rowid").all()).toEqual([{ reason: 'allowlist set -> u1 by op' }, { reason: 'allowlist removed by op' }]);
+});
+
+it('honest needs-you: no_change rows are listed but not counted; a dismissed candidate leaves the list with an audit row', () => {
+  proposal('r1', 'regressed'); proposal('i1', 'infra_failed'); proposal('n1', 'no_change'); proposal('v1', 'verified');
+  expect(openDecisionCounts(decisionsInbox(db, NOW)).requeue).toBe(2);
+  expect(decisionsInbox(db, NOW).requeue.map((r) => r.id).sort()).toEqual(['i1', 'n1', 'r1']);
+  dismissRequeue(db, 'i1', 'op', '  runner was down \n fixed  ');
+  expect(decisionsInbox(db, NOW).requeue.map((r) => r.id).sort()).toEqual(['n1', 'r1']);
+  expect(openDecisionCounts(decisionsInbox(db, NOW)).requeue).toBe(1);
+  expect(db.prepare("SELECT state_hash, decision, reason FROM judgments WHERE judgment = 'requeue_dismiss' AND subject_id = 'i1'").get())
+    .toEqual({ state_hash: 'infra_failed', decision: 'yes', reason: 'requeue candidate (infra_failed) dismissed by op: runner was down fixed' });
+  expect(() => dismissRequeue(db, 'v1', 'op')).toThrow('DISMISS_NOT_A_REQUEUE_CANDIDATE');
+  expect(() => dismissRequeue(db, 'nope', 'op')).toThrow('DISMISS_NOT_A_REQUEUE_CANDIDATE');
 });

@@ -94,3 +94,19 @@ it('UX-13: the digest reports a seeded day and says so honestly on an empty one;
   expect(await maybeSendDigest(db, env, new Date('2026-10-06T07:40:00Z'))).toBe(false);
   expect(alerts).toHaveLength(1);
 });
+
+it('digest: counts and a /decisions deep link per section (approvals, D5 labels, memory, requeue, open loop PRs)', () => {
+  db.pragma('foreign_keys = OFF');
+  const ins = db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, created_at, updated_at) VALUES (?, 'test', 't', 'd', 'r', 'gap_analysis', ?, ?, ?)`);
+  ins.run('l1', 'needs_more_evidence', '2026-10-06T08:00:00Z', '2026-10-06T09:00:00Z');
+  ins.run('r1', 'regressed', '2026-10-06T08:00:00Z', '2026-10-06T09:00:00Z'); ins.run('n1', 'no_change', '2026-10-06T08:00:00Z', '2026-10-06T09:00:00Z');
+  db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at)
+    VALUES ('j1', 'proposal_prescreen', 'self_improvement', 'l1', 'h', 'shadow', 'no', 'r', '2026-10-06T09:00:00Z')`).run();
+  db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
+    VALUES ('o1', 'test-gap', 'closed', 'completed', '[]', '{}', '[]', '[]', '{"pr_url":"https://github.com/o/r/pull/1"}', '2026-10-05T00:00:00Z', '2026-10-05T00:00:00Z')`).run();
+  const d = buildDigest(db, NOON.getTime(), { DJIMITFLO_PUBLIC_URL: 'https://djimitflo.example' });
+  for (const line of ['Waiting for you: 3', '- 0 approvals: https://djimitflo.example/decisions#approvals', '- 1 pre-screen labels (D5): https://djimitflo.example/decisions#prescreen',
+    '- 0 memory reviews: https://djimitflo.example/decisions#memory', '- 1 requeue candidates: https://djimitflo.example/decisions#requeue', '- 1 open loop PRs: https://djimitflo.example/decisions#draft-prs']) expect(d.text).toContain(line);
+  expect(d.data.needs_you).toMatchObject({ labels: { count: 1, link: 'https://djimitflo.example/decisions#prescreen' }, open_prs: { count: 1 } });
+  expect(buildDigest(db, NOON.getTime(), {}).text).toContain('- 1 requeue candidates: /decisions#requeue'); // no public URL: path only
+});

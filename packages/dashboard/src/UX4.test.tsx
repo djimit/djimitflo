@@ -76,6 +76,7 @@ it('UX-4: the permission map mirrors the server routes (hand list from packages/
     fleetCommandRequest: 'manage:config', // fleet.ts POST /commands
     requeueProposal: 'write:governance', // self-improvement.ts POST /proposals/:id/requeue
     labelPrescreen: 'write:governance', // self-improvement.ts POST /proposals/:id/prescreen-label
+    dismissRequeue: 'write:governance', // self-improvement.ts POST /proposals/:id/requeue-dismiss
     memoryReview: 'approve:task', // swarm-governance.ts POST /memory/candidates/:id/promote|reject
     telegramIdentity: 'manage:config', // self-improvement.ts PUT|DELETE /telegram-identities/:telegramId
     mcpCreateServer: 'manage:config', // mcp.ts POST /servers

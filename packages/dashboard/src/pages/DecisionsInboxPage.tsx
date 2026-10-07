@@ -36,7 +36,7 @@ export function DecisionsInboxPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const canMemory = useCan(P.memoryReview); const canRequeue = useCan(P.requeueProposal); const canLabel = useCan(P.labelPrescreen); const canTelegram = useCan(P.telegramIdentity);
+  const canMemory = useCan(P.memoryReview); const canRequeue = useCan(P.requeueProposal); const canDismiss = useCan(P.dismissRequeue); const canLabel = useCan(P.labelPrescreen); const canTelegram = useCan(P.telegramIdentity);
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [tgId, setTgId] = useState('');
   const [tgUser, setTgUser] = useState('');
@@ -116,7 +116,7 @@ export function DecisionsInboxPage() {
           </Section>
 
           <Section id="requeue" title="Requeue failed proposals" headingClassName="text-lg font-semibold mb-1">
-            <p className="text-xs text-foreground-tertiary mb-2">A requeue creates a new, linked attempt; the original and its outcome stay untouched. Counts against the lane budget.</p>
+            <p className="text-xs text-foreground-tertiary mb-2">A requeue creates a new, linked attempt; the original and its outcome stay untouched. Counts against the lane budget. Dismiss records that no requeue is needed (audited) and removes the row; no change outcomes are listed but not counted as waiting for you.</p>
             <DataTable caption="Regressed or infra-failed proposals (30 d)" rows={data.requeue} rowKey={(r) => r.id} rowClassName={() => 'align-top'} empty="No regressed or infra-failed proposal in the last 30 days." columns={[
               { key: 'proposal', label: 'Proposal', render: (r) => <>{r.title}<div className="text-xs text-foreground-muted">{r.id.slice(0, 8)}</div></> },
               { key: 'status', label: 'Status', render: (r) => r.status },
@@ -124,9 +124,13 @@ export function DecisionsInboxPage() {
                 <input aria-label={`Reason for requeueing ${r.id.slice(0, 8)}`} value={reasons[r.id] ?? ''} onChange={(e) => setReasons({ ...reasons, [r.id]: e.target.value })}
                   placeholder="why (required)" className="w-full rounded border border-border bg-background px-2 py-0.5" />
               )) },
-              { key: 'action', label: 'Action', render: (r) => !r.requeued_as && (
-                <Button needs={canRequeue ? undefined : P.requeueProposal} disabled={busy !== null || (reasons[r.id] ?? '').trim().length < 5}
-                  onClick={() => void act(r.id, () => api.requeueProposal(r.id, reasons[r.id].trim()), `Requeued ${r.id.slice(0, 8)}`)}>Requeue</Button>
+              { key: 'action', label: 'Action', cellClassName: () => 'whitespace-nowrap space-x-1', render: (r) => !r.requeued_as && (
+                <>
+                  <Button needs={canRequeue ? undefined : P.requeueProposal} disabled={busy !== null || (reasons[r.id] ?? '').trim().length < 5}
+                    onClick={() => void act(r.id, () => api.requeueProposal(r.id, reasons[r.id].trim()), `Requeued ${r.id.slice(0, 8)}`)}>Requeue</Button>
+                  <Button needs={canDismiss ? undefined : P.dismissRequeue} disabled={busy !== null} aria-label={`Dismiss ${r.id.slice(0, 8)}`}
+                    onClick={() => void act(`d-${r.id}`, () => api.dismissRequeue(r.id, (reasons[r.id] ?? '').trim() || undefined), `Dismissed ${r.id.slice(0, 8)}`)}>Dismiss</Button>
+                </>
               ) },
             ]} />
           </Section>

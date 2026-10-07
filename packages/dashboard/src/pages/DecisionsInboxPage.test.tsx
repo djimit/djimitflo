@@ -75,3 +75,16 @@ it('UX-7: lists loop draft PRs with n, age and settlement, and says so honestly 
   render(<DraftPrsSection />);
   expect(await screen.findByText('The loop has opened no draft PR yet.')).toBeTruthy();
 });
+
+it('D2: dismisses a requeue candidate (with the optional reason) without requiring a requeue', async () => {
+  const dismiss = vi.spyOn(api, 'dismissRequeue').mockResolvedValue(undefined);
+  const requeue = vi.spyOn(api, 'requeueProposal');
+  renderPage();
+  fireEvent.click(await screen.findByRole('button', { name: 'Dismiss aaaaaaaa' }));
+  await waitFor(() => expect(dismiss).toHaveBeenCalledWith('aaaaaaaa-1', undefined));
+  fireEvent.change(screen.getByLabelText('Reason for requeueing aaaaaaaa'), { target: { value: 'superseded by #700' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Dismiss aaaaaaaa' }));
+  await waitFor(() => expect(dismiss).toHaveBeenLastCalledWith('aaaaaaaa-1', 'superseded by #700'));
+  expect(requeue).not.toHaveBeenCalled();
+  expect(await screen.findByText('Dismissed aaaaaaaa')).toBeTruthy();
+});

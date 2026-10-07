@@ -115,7 +115,7 @@ export type OperatorCockpit = {
   stalls: Array<{ subsystem: string; since: string | null; detail: string }>;
   gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string; benched?: boolean }>;
   needs_you?: { approvals: number; requeue: number; labels: number; memory_review: number;
-    proposals?: number; draft_prs?: number; stalls?: number; approvals_expiring?: number; join_requests?: number; shell_requests?: number };
+    proposals?: number; draft_prs?: number; open_prs?: number; stalls?: number; approvals_expiring?: number; join_requests?: number; shell_requests?: number };
   /** UX-8: schedulers this server armed at boot vs off */
   schedulers?: { armed: number; off: number };
   remote_workers: Array<{ host: string; claims_24h: number; last_claim: string | null; interrupted_24h: number }>;
@@ -1412,6 +1412,11 @@ class ApiClient {
 
   async requeueProposal(id: string, reason: string): Promise<{ id: string; created: boolean; goalCreated: boolean }> {
     return this.request(`/self-improve/proposals/${encodeURIComponent(id)}/requeue`, { method: 'POST', body: JSON.stringify({ reason }) });
+  }
+
+  /** D2: no requeue needed — recorded as an audited operator decision; the row leaves the requeue list. */
+  async dismissRequeue(id: string, reason?: string): Promise<void> {
+    await this.request<void>(`/self-improve/proposals/${encodeURIComponent(id)}/requeue-dismiss`, { method: 'POST', body: JSON.stringify(reason ? { reason } : {}) });
   }
 
   async labelPrescreen(id: string, label: 'ok' | 'wrong'): Promise<void> {
