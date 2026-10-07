@@ -11,8 +11,8 @@ import { markRun } from './scheduler-registry';
  * per PR, oldest first:
  * - only npm (`dependabot/npm_and_yarn/…`), only patch/minor — a major, a 0.x minor (breaking under ^), a grouped update
  *   touching a major or any update it cannot parse stays human;
- * - failing checks are skipped, pending or absent checks wait;
- * - behind its base: one `@dependabot rebase` comment per PR per 24 h (never update-branch — that breaks Dependabot's own
+ * - pending or absent checks wait; failing checks are skipped only when the branch is up to date with its base;
+ * - behind its base (green or red — red is often just an outdated base): one `@dependabot rebase` comment per PR per 24 h (never update-branch — that breaks Dependabot's own
  *   rebase and once caused 37 spam comments);
  * - green + mergeable + up to date: shadow records `would_merge`; act squash-merges ONE PR per tick (CI and auto-deploy see
  *   one change at a time), at most DEPENDENCY_LANE_MAX_PER_DAY (default 4) per UTC day, and only once the previous merge's
@@ -199,17 +199,19 @@ export async function runDependencyLaneTick(db: Database, gh: LaneGitHub, env: N
       if (bump === 'major') return ['skip_major', updates.filter((u) => u.bump === 'major').map((u) => `${u.name} ${u.from}→${u.to}`).join(', ') || 'major bump'];
       if (bump === 'unknown') return ['skip_unknown_bump', 'bump could not be parsed from title/body'];
       checkState = await gh.checkState(pr.head_sha);
-      if (checkState === 'failure') return ['skip_checks_failing', 'checks failing'];
       if (checkState === 'pending') return ['wait_checks_pending', 'checks running'];
       if (checkState === 'none') return ['wait_no_checks', 'no checks reported yet'];
+      // red is often only an outdated base (advisory fixes landed on main since): a red PR behind main is rebased too
       if (await gh.behindBy(pr.base_ref, pr.head_sha) > 0) {
+        const why = `behind ${pr.base_ref}${checkState === 'failure' ? ', checks failing' : ''}`;
         const last = (db.prepare('SELECT last_rebase_request_at AS at FROM dependency_lane_prs WHERE pr_number = ?').get(pr.number) as { at: string | null } | undefined)?.at;
-        if (last && now.getTime() - Date.parse(last) < REBASE_EVERY_MS) return ['rebase_requested_recently', `asked at ${last}`];
-        if (effective === 'shadow') return ['would_rebase', `behind ${pr.base_ref}`];
+        if (last && now.getTime() - Date.parse(last) < REBASE_EVERY_MS) return ['rebase_requested_recently', `${why}; asked at ${last}`];
+        if (effective === 'shadow') return ['would_rebase', why];
         await gh.comment(pr.number, REBASE_COMMENT);
         result.rebased.push(pr.number);
-        return ['rebase_requested', `behind ${pr.base_ref}`];
+        return ['rebase_requested', why];
       }
+      if (checkState === 'failure') return ['skip_checks_failing', 'checks failing on an up-to-date branch'];
       const mg = await gh.getMergeability(pr.number);
       if (mg.head_sha !== pr.head_sha) return ['wait_head_moved', 'head changed during the tick'];
       if (mg.mergeable !== true || !['clean', 'has_hooks'].includes(mg.mergeable_state)) return ['not_mergeable', `mergeable=${mg.mergeable} state=${mg.mergeable_state}`];

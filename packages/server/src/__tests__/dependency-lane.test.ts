@@ -73,7 +73,7 @@ describe('semver parse', () => {
 });
 
 describe('filter', () => {
-  it('skips majors, groups touching a major, non-npm and red checks; pending waits; the green patch merges', async () => {
+  it('skips majors, groups touching a major, non-npm and red up-to-date checks; pending waits; the green patch merges', async () => {
     const db = freshDb();
     const { gh, writes } = mockGh([
       pr(302, 'ci: bump actions/setup-node from 4.4.0 to 4.5.0', { head_ref: 'dependabot/github_actions/actions/setup-node-4.5.0' }),
@@ -101,6 +101,20 @@ describe('rebase-comment rate limit', () => {
     expect((await runDependencyLaneTick(db, gh, ACT, at(23))).decisions[500]).toBe('rebase_requested_recently');
     expect((await runDependencyLaneTick(db, gh, ACT, at(25))).decisions[500]).toBe('rebase_requested');
     expect(writes.comments).toEqual([[500, REBASE_COMMENT], [500, REBASE_COMMENT]]);
+    expect(writes.merges).toEqual([]);
+  });
+});
+
+describe('red PRs', () => {
+  it('red AND behind main gets the once-per-24 h rebase request (shadow: would_rebase); red and up to date is skipped', async () => {
+    const db = freshDb();
+    const { gh, writes } = mockGh([pr(1200, 'deps: bump red-behind from 1.0.0 to 1.0.1'), pr(1201, 'deps: bump red-current from 1.0.0 to 1.0.1')],
+      { checks: { sha1200: 'failure', sha1201: 'failure' }, behind: { sha1200: 7 } });
+    expect((await runDependencyLaneTick(db, gh, { DEPENDENCY_LANE_MODE: 'shadow' } as NodeJS.ProcessEnv, T0)).decisions).toEqual({ 1200: 'would_rebase', 1201: 'skip_checks_failing' });
+    expect(writes.comments).toEqual([]);
+    expect((await runDependencyLaneTick(db, gh, ACT, T0)).decisions).toEqual({ 1200: 'rebase_requested', 1201: 'skip_checks_failing' });
+    expect((await runDependencyLaneTick(db, gh, ACT, at(3))).decisions[1200]).toBe('rebase_requested_recently');
+    expect(writes.comments).toEqual([[1200, REBASE_COMMENT]]);
     expect(writes.merges).toEqual([]);
   });
 });
