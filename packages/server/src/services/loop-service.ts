@@ -1099,9 +1099,11 @@ export class LoopService {
         evidenceReadSet = captureReadSet(wt, changed);
       } catch { /* freshness is evidence, never a reason to fail the checks */ }
     }
+    // prod 2026-10-01..07: 21 doc-drift makers failed here with no reason ('unspecified: caller supplied no reason')
     this.updateWorkerLeaseStatus(makerLease.id, failed ? 'failed' : 'completed', {
       deterministic_checks: checks,
       checks_completed_at: new Date().toISOString(),
+      ...(failed ? { failure_reason: `deterministic_checks_failed:${checks.filter((check) => check.status === 'fail').map((check) => `${check.name}${check.timed_out ? '(timed_out)' : `(exit=${check.exit_status ?? 'signal'})`}`).join(',')}` } : {}),
       ...(evidenceReadSet ? { evidence_read_set: evidenceReadSet } : {}),
     });
 
