@@ -21,6 +21,7 @@ import { buildEvolutionEvidence } from '../services/evolution-evidence';
 import { runtimeConfigView } from '../services/runtime-config-view';
 import { buildDigest } from '../services/operator-push';
 import { getDatabaseProvenance } from '../database/provenance';
+import { efficiencyView } from '../services/resource-ledger';
 
 export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -167,6 +168,11 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   // plan AR1: forecasters of "this proposal ends verified", scored before the gate decided, against the per-source base rate
   router.get('/forecasts', requireAuth, requirePermission('read:evidence'), (_req, res) => {
     res.json({ forecasters: forecastScores(db) });
+  });
+
+  // Phase E1/E3: tokens, local GPU time and measured GPU energy per consumer (7 d), value per M tokens / per kWh, north-star trend
+  router.get('/efficiency', requireAuth, requirePermission('read:evidence'), (_req, res) => {
+    res.json(efficiencyView(db));
   });
 
   // RX-1 (Phase F): evolution evidence — flags, outcomes per source, loop PRs, genomes/holdouts, gym per tier, Realm Gates (read-only)

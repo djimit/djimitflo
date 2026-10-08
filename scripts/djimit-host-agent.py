@@ -78,8 +78,54 @@ def components(max_age=300):
     return _components["list"]
 
 
+def parse_rocm_power(text):
+    """Summed GPU package power (W) from `rocm-smi --showpower --json` ({"card0": {"... Package Power (W)": "45.0"}}); None if absent."""
+    try:
+        data = json.loads(text or "")
+    except ValueError:
+        return None
+    total, found = 0.0, False
+    for card in (data.values() if isinstance(data, dict) else []):
+        for key, val in (card.items() if isinstance(card, dict) else []):
+            k = key.lower()
+            if "power" in k and "(w)" in k and "max" not in k and "cap" not in k:
+                try:
+                    total, found = total + float(val), True
+                except (TypeError, ValueError):
+                    pass
+                break
+    return round(total, 1) if found else None
+
+
+def parse_nvidia_power(text):
+    """Summed power.draw (W) from `nvidia-smi --query-gpu=power.draw --format=csv,noheader` ("45.32 W" per GPU); None if absent."""
+    vals = []
+    for line in (text or "").splitlines():
+        try:
+            vals.append(float(line.strip().split()[0]))
+        except (IndexError, ValueError):
+            pass  # "[N/A]" on GPUs without a power sensor
+    return round(sum(vals), 1) if vals else None
+
+
+def gpu_power():
+    """E1: this host's GPU package power right now, read-only; None when neither rocm-smi nor nvidia-smi exists or answers."""
+    if shutil.which("rocm-smi"):
+        w = parse_rocm_power("\n".join(_lines(["rocm-smi", "--showpower", "--json"])))
+        if w is not None:
+            return {"gpu_watts": w, "source": "rocm-smi"}
+    if shutil.which("nvidia-smi"):
+        w = parse_nvidia_power("\n".join(_lines(["nvidia-smi", "--query-gpu=power.draw", "--format=csv,noheader"])))
+        if w is not None:
+            return {"gpu_watts": w, "source": "nvidia-smi"}
+    return None
+
+
 def host_info():
     info = {"os": sys.platform, "hostname": socket.gethostname(), "python": platform.python_version(), "components": components()}
+    power = gpu_power()
+    if power:
+        info["power"] = power
     try:
         info["load"] = [round(x, 2) for x in os.getloadavg()]
     except OSError:
@@ -172,6 +218,29 @@ def selfcheck():
     assert "os" in host_info()
     assert isinstance(host_info()["components"], list)
     assert COMPONENT_PATTERN.search("hermes-gateway") and not COMPONENT_PATTERN.search("cups")
+    rocm = '{"card0": {"Current Socket Graphics Package Power (W)": "212.0"}, "card1": {"Average Graphics Package Power (W)": "17.5"}}'
+    assert parse_rocm_power(rocm) == 229.5 and parse_rocm_power("not json") is None and parse_rocm_power('{"card0": {}}') is None
+    assert parse_nvidia_power("45.32 W\n[N/A]\n120.00 W\n") == 165.3 and parse_nvidia_power("") is None
+    # fake tools on PATH: rocm-smi wins, an unparseable rocm-smi falls back to nvidia-smi, neither present -> no reading
+    import tempfile
+    old_path = os.environ.get("PATH", "")
+    with tempfile.TemporaryDirectory() as d:
+        def fake(name, out):
+            path = os.path.join(d, name)
+            with open(path, "w") as f:
+                f.write("#!/bin/sh\nprintf '%%s\\n' '%s'\n" % out)  # builtin only: PATH holds just the fakes
+            os.chmod(path, 0o755)
+        try:
+            os.environ["PATH"] = d
+            assert gpu_power() is None
+            fake("nvidia-smi", "88.10 W")
+            assert gpu_power() == {"gpu_watts": 88.1, "source": "nvidia-smi"}
+            fake("rocm-smi", "garbage")
+            assert gpu_power() == {"gpu_watts": 88.1, "source": "nvidia-smi"}
+            fake("rocm-smi", rocm)
+            assert gpu_power() == {"gpu_watts": 229.5, "source": "rocm-smi"}
+        finally:
+            os.environ["PATH"] = old_path
     print("selfcheck ok")
 
 

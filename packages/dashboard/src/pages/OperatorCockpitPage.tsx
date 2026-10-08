@@ -3,7 +3,7 @@ import { WebSocketEventType } from '@djimitflo/shared';
 import { useWsSubscribe } from '../components/WebSocketProvider';
 import { Link } from 'react-router-dom';
 import { Activity, RefreshCw } from 'lucide-react';
-import { api, type OperatorCockpit, type ServiceStatus } from '../lib/api';
+import { api, type EfficiencyConsumer, type EfficiencyView, type OperatorCockpit, type ServiceStatus, type ValueInterval } from '../lib/api';
 import { fmt, since } from '../lib/format';
 import { DataTable, Section, StatusPill } from '../components/ui';
 
@@ -26,6 +26,67 @@ export function DigestCard() {
       <h2 id="digest" className="text-lg font-semibold mb-2">Daily digest</h2>
       <pre className="text-sm whitespace-pre-wrap">{digest.text}</pre>
     </section>
+  );
+}
+
+const mtok = (n: number) => (n ? (n / 1e6).toFixed(2) : '0');
+const ratio = (v: number | null) => (v === null ? '—' : v.toFixed(2));
+const interval = (v: ValueInterval | null) => (!v ? '—' : v.low === null ? `${v.value.toFixed(2)} (n ${v.n})` : `${v.value.toFixed(2)} [${v.low.toFixed(2)}–${v.high!.toFixed(2)}]`);
+const energy = (c: EfficiencyConsumer) => (c.energy === 'not_measured' ? (c.jobs ? 'not measured' : '—')
+  : c.energy === 'partial' ? `≥ ${fmt(c.wh)} Wh (${Math.round((c.energy_coverage ?? 0) * 100)} % sampled)` : `${fmt(c.wh)} Wh`);
+
+/** Phase E1/E3: what each consumer spends (cloud tokens, local GPU time, measured GPU energy) and what it delivered. */
+export function EfficiencySection() {
+  const [view, setView] = useState<EfficiencyView | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { api.getEfficiency().then(setView).catch(() => setFailed(true)); }, []);
+  if (failed) return <p className="text-sm text-foreground-secondary">Efficiency view unavailable.</p>;
+  if (!view) return null;
+  const week = view.north_star.weeks[0];
+  return (
+    <Section id="efficiency" title={`Efficiency (${view.window_days} d)`}>
+      <div className="space-y-4">
+        <p className="text-sm text-foreground-secondary">
+          North star: verified changes per cloud M tokens and per local kWh — reported separately, never one unit.
+          {!view.ledger_enabled && <> GPU power sampling is off (<code>RESOURCE_LEDGER_ENABLED</code>); energy reads &lsquo;not measured&rsquo;.</>}
+        </p>
+        {week && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="p-3 rounded-lg border border-border"><div className="text-xs text-foreground-tertiary">Verified (last 7 d)</div><div className="text-xl font-semibold">{week.verified}</div></div>
+            <div className="p-3 rounded-lg border border-border"><div className="text-xs text-foreground-tertiary">Cloud M tokens</div><div className="text-xl font-semibold">{week.cloud_m_tokens.toFixed(1)}</div></div>
+            <div className="p-3 rounded-lg border border-border"><div className="text-xs text-foreground-tertiary">Verified per M tokens</div><div className="text-xl font-semibold">{ratio(week.per_m_tokens)}</div></div>
+            <div className="p-3 rounded-lg border border-border"><div className="text-xs text-foreground-tertiary">Verified per local kWh</div>
+              <div className="text-xl font-semibold">{week.local_kwh === null ? 'not measured' : ratio(week.per_kwh)}</div></div>
+          </div>
+        )}
+        <DataTable caption="North star per week" rows={view.north_star.weeks} rowKey={(w) => w.week_start} columns={[
+          { key: 'week', label: 'Week from', render: (w) => w.week_start },
+          { key: 'verified', label: 'Verified', render: (w) => w.verified },
+          { key: 'tokens', label: 'Cloud M tokens', render: (w) => w.cloud_m_tokens.toFixed(1) },
+          { key: 'kwh', label: 'Local kWh', render: (w) => (w.local_kwh === null ? 'not measured' : `${w.local_kwh.toFixed(2)} (${w.local_covered_h} h sampled)`) },
+          { key: 'per_tok', label: 'per M tokens', render: (w) => ratio(w.per_m_tokens) },
+          { key: 'per_kwh', label: 'per kWh', render: (w) => ratio(w.per_kwh) },
+        ]} />
+        <DataTable caption="Resources and value per consumer" rows={view.consumers} rowKey={(c) => c.consumer} empty="No tokens, GPU jobs or outcomes in the window." columns={[
+          { key: 'consumer', label: 'Consumer', render: (c) => c.consumer, cellClassName: () => 'font-mono text-xs' },
+          { key: 'cloud', label: 'Cloud M tok', render: (c) => mtok(c.cloud_tokens) },
+          { key: 'local', label: 'Local M tok', render: (c) => mtok(c.local_tokens) },
+          { key: 'gpu', label: 'GPU-h', render: (c) => (c.gpu_seconds ? (c.gpu_seconds / 3600).toFixed(1) : '—') },
+          { key: 'wh', label: 'Energy', render: energy },
+          { key: 'verified', label: 'Verified', render: (c) => (c.verified === null ? '—' : `${c.verified}/${c.attempts}${c.lanes && Object.keys(c.lanes).length ? ` (${Object.entries(c.lanes).map(([l, k]) => `${l} ${k}`).join(', ')})` : ''}`) },
+          { key: 'per_tok', label: 'per M tokens [95 %]', render: (c) => interval(c.per_m_tokens) },
+          { key: 'per_kwh', label: 'per kWh [95 %]', render: (c) => interval(c.per_kwh) },
+        ]} />
+        <DataTable caption="Measured GPU energy per host" rows={view.hosts} rowKey={(h) => h.host} empty="No host has reported GPU power yet." columns={[
+          { key: 'host', label: 'Host', render: (h) => h.host },
+          { key: 'avg', label: 'Avg W', render: (h) => fmt(h.avg_watts) },
+          { key: 'kwh', label: 'GPU kWh', render: (h) => (h.gpu_kwh === null ? 'not measured' : h.gpu_kwh.toFixed(2)) },
+          { key: 'covered', label: 'Sampled h', render: (h) => h.covered_h },
+          { key: 'last', label: 'Last sample', render: (h) => since(h.last_sample) },
+        ]} />
+        <ul className="text-xs text-foreground-secondary list-disc pl-5">{view.notes.map((n) => <li key={n}>{n}</li>)}</ul>
+      </div>
+    </Section>
   );
 }
 
@@ -75,6 +136,7 @@ export function OperatorCockpitPage() {
         <>
           {data.needs_you && <NeedsYou n={data.needs_you} />}
           <DigestCard />
+          <EfficiencySection />
           {data.schedulers && <p className="text-sm text-foreground-secondary">Schedulers: {data.schedulers.armed} armed, {data.schedulers.off} off</p>}
           <Section id="guardrails" title="Guardrails">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

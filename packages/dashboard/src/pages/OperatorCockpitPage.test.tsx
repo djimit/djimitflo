@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
-import { NeedsYou, OperatorCockpitPage } from './OperatorCockpitPage';
+import { EfficiencySection, NeedsYou, OperatorCockpitPage } from './OperatorCockpitPage';
 import { api } from '../lib/api';
 
 beforeEach(() => { vi.restoreAllMocks(); vi.spyOn(api, 'getServiceMap').mockResolvedValue({ services: [
@@ -110,4 +110,52 @@ it('honest cockpit: tokens per verified change, stale gym species, gym vs produc
   expect(gym.textContent).toContain('g-gym'); expect(gym.textContent).not.toContain('g-prod');
   expect(await screen.findByText('reachable (404)')).toBeTruthy();
   expect(screen.queryByText('up')).toBeNull();
+});
+
+it('E3: the Efficiency section shows tokens, GPU time, measured vs not-measured energy, value with intervals and the north star', async () => {
+  const consumer = { local_tokens: 0, gpu_seconds: 0, jobs: 0, wh: null, energy: 'not_measured' as const, energy_coverage: null, verified: null, attempts: null, lanes: null, per_m_tokens: null, per_kwh: null };
+  vi.spyOn(api, 'getEfficiency').mockResolvedValue({
+    at: '2026-10-08T12:00:00Z', window_days: 7, ledger_enabled: true,
+    consumers: [
+      { ...consumer, consumer: 'maker:opencode@glm-5', cloud_tokens: 39_300_000, verified: 26, attempts: 60, lanes: { 'test-gap': 20, exports: 6 },
+        per_m_tokens: { value: 0.66, low: 0.48, high: 0.86, n: 60 } },
+      { ...consumer, consumer: 'gym:atomic@llama-router', cloud_tokens: 0, gpu_seconds: 55_440, jobs: 115, wh: 4_620, energy: 'measured', energy_coverage: 0.97 },
+      { ...consumer, consumer: 'maker:remote@ws/atomic@llama-router', cloud_tokens: 0, local_tokens: 400_000, gpu_seconds: 3_600, jobs: 3, wh: 120, energy: 'partial', energy_coverage: 0.5, verified: 2, attempts: 3,
+        per_m_tokens: null },
+      { ...consumer, consumer: 'committee', cloud_tokens: 0, gpu_seconds: 4_680, jobs: 26 },
+    ],
+    ledger: [],
+    hosts: [{ host: 'workstation', samples: 20_000, last_sample: '2026-10-08T11:59:30Z', avg_watts: 180.2, gpu_kwh: 6.42, covered_h: 166.5 }],
+    north_star: { weeks: [
+      { week_start: '2026-10-01', verified: 26, cloud_m_tokens: 62.8, local_kwh: 6.42, local_covered_h: 166.5, per_m_tokens: 0.414, per_kwh: 4.05 },
+      { week_start: '2026-09-24', verified: 18, cloud_m_tokens: 70.1, local_kwh: null, local_covered_h: 0, per_m_tokens: 0.257, per_kwh: null },
+    ] },
+    notes: ['Energy is GPU package power from the host agent.'],
+  });
+  render(<EfficiencySection />);
+  expect(await screen.findByRole('heading', { name: 'Efficiency (7 d)' })).toBeTruthy();
+  const consumers = screen.getByRole('table', { name: 'Resources and value per consumer' });
+  expect(consumers.textContent).toContain('39.30'); // cloud M tokens
+  expect(consumers.textContent).toContain('26/60 (test-gap 20, exports 6)');
+  expect(consumers.textContent).toContain('0.66 [0.48–0.86]');
+  expect(consumers.textContent).toContain('15.4'); // GPU-h of the gym
+  expect(consumers.textContent).toContain('4,620 Wh');
+  expect(consumers.textContent).toContain('≥ 120 Wh (50 % sampled)');
+  expect(consumers.textContent).toContain('not measured'); // committee: jobs without power samples, never a guessed figure
+  const weeks = screen.getByRole('table', { name: 'North star per week' });
+  expect(weeks.textContent).toContain('0.41'); expect(weeks.textContent).toContain('4.05'); expect(weeks.textContent).toContain('not measured');
+  expect(screen.getByRole('table', { name: 'Measured GPU energy per host' }).textContent).toContain('6.42');
+  expect(screen.queryByText(/RESOURCE_LEDGER_ENABLED/)).toBeNull();
+});
+
+it('E3: says energy is not measured while power sampling is off, and degrades quietly when the endpoint fails', async () => {
+  vi.spyOn(api, 'getEfficiency').mockResolvedValueOnce({ at: '2026-10-08T12:00:00Z', window_days: 7, ledger_enabled: false, consumers: [], ledger: [], hosts: [],
+    north_star: { weeks: [{ week_start: '2026-10-01', verified: 0, cloud_m_tokens: 0, local_kwh: null, local_covered_h: 0, per_m_tokens: null, per_kwh: null }] }, notes: [] });
+  const { unmount } = render(<EfficiencySection />);
+  expect(await screen.findByText('RESOURCE_LEDGER_ENABLED')).toBeTruthy();
+  expect(screen.getByText('No host has reported GPU power yet.')).toBeTruthy();
+  unmount();
+  vi.spyOn(api, 'getEfficiency').mockRejectedValueOnce(new Error('Access denied'));
+  render(<EfficiencySection />);
+  expect(await screen.findByText('Efficiency view unavailable.')).toBeTruthy();
 });

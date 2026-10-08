@@ -118,6 +118,23 @@ export interface EvolutionEvidence {
   gates: Record<'A' | 'B' | 'C' | 'D', { state: GateState; reason: string }>;
 }
 
+/** Phase E1/E3: GET /api/health/efficiency — resources and value per consumer (7 d) and the north-star trend. */
+export interface ValueInterval { value: number; low: number | null; high: number | null; n: number }
+export interface EfficiencyConsumer {
+  consumer: string; cloud_tokens: number; local_tokens: number; gpu_seconds: number; jobs: number;
+  wh: number | null; energy: 'measured' | 'partial' | 'not_measured'; energy_coverage: number | null;
+  verified: number | null; attempts: number | null; lanes: Record<string, number> | null;
+  per_m_tokens: ValueInterval | null; per_kwh: ValueInterval | null;
+}
+export interface EfficiencyView {
+  at: string; window_days: number; ledger_enabled: boolean;
+  consumers: EfficiencyConsumer[];
+  ledger: Array<{ day: string; consumer: string; cloud_tokens: number; local_tokens: number; gpu_seconds: number; jobs: number; wh: number | null; covered_s: number }>;
+  hosts: Array<{ host: string; samples: number; last_sample: string | null; avg_watts: number | null; gpu_kwh: number | null; covered_h: number }>;
+  north_star: { weeks: Array<{ week_start: string; verified: number; cloud_m_tokens: number; local_kwh: number | null; local_covered_h: number; per_m_tokens: number | null; per_kwh: number | null }> };
+  notes: string[];
+}
+
 export type OperatorCockpit = {
   at: string;
   build: { commit: string | null; build_time: string | null };
@@ -1402,6 +1419,11 @@ class ApiClient {
 
   async getKnowledgeOverview(): Promise<KnowledgeOverview> {
     return this.request('/health/knowledge');
+  }
+
+  /** Phase E1/E3: tokens, GPU time, measured Wh and value per consumer (7 d), north-star trend. */
+  async getEfficiency(): Promise<EfficiencyView> {
+    return this.request('/health/efficiency');
   }
 
   async getOperatorCockpit(): Promise<OperatorCockpit> {
