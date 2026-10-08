@@ -65,6 +65,29 @@ describe('G71: Self Improvement', () => {
     expect(proposals[0].priority).toBeGreaterThan(0.9);
   });
 
+  describe('BUILD_ERROR_PROPOSALS_ENABLED', () => {
+    const prev = process.env.BUILD_ERROR_PROPOSALS_ENABLED;
+    afterEach(() => {
+      if (prev === undefined) delete process.env.BUILD_ERROR_PROPOSALS_ENABLED;
+      else process.env.BUILD_ERROR_PROPOSALS_ENABLED = prev;
+    });
+
+    it('false: build errors create no proposal, a security finding still does (with its panel)', () => {
+      process.env.BUILD_ERROR_PROPOSALS_ENABLED = 'false';
+      expect(improvement.generateFromBuildErrors(['lint failed (exit 127) for run r1:\nsh: eslint: not found'])).toEqual([]);
+      expect(improvement.listImprovements().filter((p) => p.title.startsWith('Fix:'))).toEqual([]);
+      const security = improvement.generateFromSecurityFindings(['high finding at src/auth.ts: token not validated']);
+      expect(security).toHaveLength(1);
+      expect(security[0].source).toBe('feedback');
+      expect(security[0].panelId).toBeTruthy();
+    });
+
+    it('unset (default): build errors create proposals as before', () => {
+      delete process.env.BUILD_ERROR_PROPOSALS_ENABLED;
+      expect(improvement.generateFromBuildErrors(['lint failed (exit 127) for run r2'])).toHaveLength(1);
+    });
+  });
+
   it('generates from security findings, routed through the same security review as other proposals', () => {
     const proposals = improvement.generateFromSecurityFindings(['high finding at src/auth.ts: token not validated']);
     expect(proposals.length).toBe(1);
