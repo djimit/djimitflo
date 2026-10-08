@@ -1,6 +1,7 @@
 import type { Database } from 'better-sqlite3';
 import { recordAutoApproveShadow, testGapAutoApproveScope } from './autonomy-shadow-service';
 import { mutationCheckEnv } from './test-gap-source-service';
+import { deadCodeCheckEnv } from './dead-code-source-service';
 import { LoopService } from './loop-service';
 import { swarmEventBus } from './swarm-event-bus';
 import { GoalDecomposer } from './goal-decomposer';
@@ -542,7 +543,8 @@ export class LoopDaemon {
       const mutationLane = Object.keys(mutationCheckEnv(this.db, goal.id)).length > 0;
       const makerTimeout = daemonMakerTimeoutMs(mutationLane);
       // strengthening a thin test to kill surviving mutants legitimately adds more lines (prod: 23-line test → 276 diff lines)
-      const makerDiffMax = mutationLane ? 400 : 200;
+      // a dead-code removal is mostly deleted lines (units are <= 1 500); its gate checks adds <= 10 % of removed
+      const makerDiffMax = mutationLane ? 400 : Object.keys(deadCodeCheckEnv(this.db, goal.id)).length ? 2_000 : 200;
       if (!makerAlreadyDone) await this.loops.executeWorker(run.id, {
         lease_id: makerLease.id,
         timeout_ms: makerTimeout,

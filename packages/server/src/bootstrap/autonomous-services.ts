@@ -27,6 +27,7 @@ import { CommonsProposalReviewService, commonsReviewEnabled } from '../services/
 import { EventOutboxService, bridgeGoalEvents, eventPublishEnabled } from '../services/event-outbox-service';
 import { AgentRegistrySyncService, registryUrl } from '../services/agent-registry-sync-service';
 import { TestGapSourceService, testGapSourceEnabled } from '../services/test-gap-source-service';
+import { DeadCodeSourceService, deadCodeLaneEnabled } from '../services/dead-code-source-service';
 import { EvolutionGymService, gymEnabled } from '../services/evolution-gym-service';
 import { DreamStateService, dreamStateEnabled } from '../services/dream-state-service';
 import { NeedsGroundingTriageService, needsGroundingTriageEnabled } from '../services/needs-grounding-triage-service';
@@ -135,6 +136,18 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     }
   } catch (error) {
     console.warn('⚠️  Test-gap source failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // Dead-code lane: proposals to remove unused files / dormant route groups; human approval and merge. Default off.
+  try {
+    if (noteScheduler('dead_code_lane', 'DEAD_CODE_LANE_ENABLED', deadCodeLaneEnabled(), 12 * 3_600_000)) {
+      const deadCode = new DeadCodeSourceService(db);
+      deadCode.start();
+      lifecycleManager.register({ serviceName: 'DeadCodeSource', stop: () => deadCode.stop() });
+      console.log(`🧹 Dead-code lane on (max ${Number(process.env.DEAD_CODE_MAX_PER_DAY) || 2} proposals/day).`);
+    }
+  } catch (error) {
+    console.warn('⚠️  Dead-code lane failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // C2 evolution gym: sandbox replay tasks from our own history; outcomes feed species selection. Default off.

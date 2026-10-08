@@ -47,6 +47,7 @@ type ProposalInput = Pick<ImprovementProposal, 'type' | 'title' | 'description' 
  * Z1 (plan Phase Z): test-gap and mutation-gap proposals come from a machine source with a one-command oracle; prod 30-09 →
  * 01-10 the specialist panel parked 6/6 mutation proposals the pre-screen had passed. With ORACLE_LANES_SKIP_PANEL=true they
  * become goals without a panel round; the maker approval, the deterministic checks and the human merge stay.
+ * The dead-code lane (`dead-code:` refs) deliberately keeps the panel: a deletion is the operator's call per batch.
  */
 export function oracleLaneSkipsPanel(p: Pick<ImprovementProposal, 'source' | 'evidenceRefs'>, env: NodeJS.ProcessEnv = process.env): boolean {
   return env.ORACLE_LANES_SKIP_PANEL === 'true' && p.source === 'gap_analysis' && p.evidenceRefs.some((r) => /^(test-gap|mutation-gap):/.test(r));
@@ -107,10 +108,10 @@ export class SelfImprovementService {
   }
 
   /** Deterministic, fully grounded gap proposal (target + runtime command + artifact + budget) from a machine source. */
-  generateFromGroundedGap(gap: { title: string; description: string; rationale: string; evidenceRef: string; grounding: Partial<Grounding> }): ImprovementProposal | null {
+  generateFromGroundedGap(gap: { title: string; description: string; rationale: string; evidenceRef: string; grounding: Partial<Grounding>; type?: ImprovementProposal['type']; extraEvidenceRefs?: string[] }): ImprovementProposal | null {
     return this.createProposal({
-      type: 'feature', title: gap.title, description: gap.description, rationale: gap.rationale,
-      source: 'gap_analysis', priority: 0.6, evidenceRefs: [gap.evidenceRef], grounding: gap.grounding,
+      type: gap.type ?? 'feature', title: gap.title, description: gap.description, rationale: gap.rationale,
+      source: 'gap_analysis', priority: 0.6, evidenceRefs: [gap.evidenceRef, ...(gap.extraEvidenceRefs ?? [])], grounding: gap.grounding,
     });
   }
 
