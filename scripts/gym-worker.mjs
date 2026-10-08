@@ -164,6 +164,30 @@ function runProdScript(repo, wt, name, timeoutMs) {
   if (r.error && r.error.code !== 'ETIMEDOUT') return 'infra';
   return r.status === 0 && !r.signal ? 'pass' : 'fail'; // a timeout is a failed check, as in production
 }
+/**
+ * SI-A graded fitness (server GRADED_FITNESS_MODE): how well a scored attempt did, not only whether. Per-test outcomes come
+ * from vitest's JSON reporter: { '<file>::<full name>': passed }. null when the report is missing, unreadable or empty.
+ */
+export function testOutcomes(json) {
+  try {
+    const out = {};
+    for (const f of JSON.parse(json)?.testResults ?? []) for (const a of f.assertionResults ?? []) out[`${f.name}::${a.fullName}`] = a.status === 'passed';
+    return Object.keys(out).length ? out : null;
+  } catch { return null; }
+}
+/**
+ * write_test: killed / seeded mutants (mutant_kill). Repair: share of the oracle tests red at the start that are green
+ * after (tests_green; `after` = {} when no in-scope change was made, so nothing turned green); without a per-test report
+ * 1/0 from the verdict (binary). A discard is not graded. The server recounts write_test kills from the keys it served.
+ */
+export function gradedOf(task, result, before = null, after = null) {
+  if (result.status === 'discarded') return null;
+  const round = (x) => +x.toFixed(3);
+  if (isWriteTest(task)) return { graded: round((result.killed_mutants?.length ?? 0) / task.mutants.length), graded_kind: 'mutant_kill' };
+  const red = before ? Object.keys(before).filter((k) => !before[k]) : [];
+  if (red.length && after) return { graded: round(red.filter((k) => after[k] === true).length / red.length), graded_kind: 'tests_green' };
+  return { graded: result.status === 'success' ? 1 : 0, graded_kind: 'binary' };
+}
 export const DIFF_MAX = 50_000;
 /** What the hack classifier needs: the files the maker changed and its diff (capped, the server caps it too). */
 export const resultExtras = (changed, diffText) => ({ changed_files: changed.slice(0, 50), diff: String(diffText ?? '').slice(0, DIFF_MAX) });
@@ -189,7 +213,13 @@ function sweepOrphans() {
   const ids = docker(['ps', '-q', '--filter', `label=${hostLabel()}`], undefined, 30_000).stdout?.trim().split(/\s+/).filter(Boolean) ?? [];
   if (ids.length) { docker(['rm', '-f', ...ids], undefined, 60_000); console.log(`removed ${ids.length} orphaned runner container(s)`); }
 }
-const oracle = (wt, task) => inRunner(wt, `cd packages/server && npx vitest run ${task.tests.map((t) => t.replace(/^packages\/server\//, '')).map((t) => `'${t}'`).join(' ')}`, { timeoutMs: 300_000 }).status === 0;
+// SI-A: `report` names a vitest JSON report under .djimitflo/ (outside the maker's scope) for per-test results
+const oracle = (wt, task, report) => inRunner(wt, `${report ? `rm -f /w/.djimitflo/${report}.json; mkdir -p /w/.djimitflo; ` : ''}cd packages/server && npx vitest run ${task.tests.map((t) => t.replace(/^packages\/server\//, '')).map((t) => `'${t}'`).join(' ')}${report ? ` --reporter=default --reporter=json --outputFile.json=/w/.djimitflo/${report}.json` : ''}`, { timeoutMs: 300_000 }).status === 0;
+/** The per-test outcomes of a JSON report the oracle wrote (read once, then removed), or null. */
+const readReport = (wt, report) => {
+  const file = path.join(wt, '.djimitflo', `${report}.json`);
+  try { return testOutcomes(fs.readFileSync(file, 'utf8')); } catch { return null; } finally { try { fs.rmSync(file, { force: true }); } catch { /* ignore */ } }
+};
 
 async function api(pathName, body) {
   const token = fs.readFileSync((env.GYM_WORKER_TOKEN_FILE || '~/.djimit/gym-worker.token').replace(/^~/, os.homedir()), 'utf8').trim();
@@ -322,7 +352,8 @@ async function main() {
     }
     const ci = inRunner(wt, 'npm ci --legacy-peer-deps --no-audit --no-fund > /tmp/ci.log 2>&1; rc=$?; tail -40 /tmp/ci.log; exit $rc');
     if (ci.status !== 0) return report(npmCiFailure(ci.stdout));
-    if (oracle(wt, task)) return report({ status: 'discarded', reason: writeTest ? 'task: test already green at base (gap closed)' : task.mutant ? 'task: mutant survives (tests stay green)' : 'tests already green on the parent' });
+    if (oracle(wt, task, writeTest ? undefined : 'before')) return report({ status: 'discarded', reason: writeTest ? 'task: test already green at base (gap closed)' : task.mutant ? 'task: mutant survives (tests stay green)' : 'tests already green on the parent' });
+    const before = writeTest ? null : readReport(wt, 'before'); // SI-A: read before the maker runs (it could edit the file)
     const genomeLines = Array.isArray(claim.genome?.lines) ? claim.genome.lines : [];
     const input = `${gymGoal(task, writeTest, genomeLines)}\n`;
     fire = fireCheck(input, genomeLines); // GENOME_FIRE_CHECK: proof of what the maker was actually sent
@@ -336,7 +367,8 @@ async function main() {
     const changed = changedFrom(git(wt, ['diff', '--name-only', 'HEAD']), git(wt, ['ls-files', '--others', '--exclude-standard']));
     const scoped = changed.length > 0 && changed.every((f) => f === task.source);
     const gap = writeTest && scoped ? writeTestGap(task, fs.readFileSync(path.join(wt, task.source), 'utf8')) : null;
-    const green = scoped && !gap && oracle(wt, task);
+    const green = scoped && !gap && oracle(wt, task, writeTest ? undefined : 'after');
+    const after = writeTest ? null : scoped && !gap ? readReport(wt, 'after') : {}; // no in-scope change: nothing turned green
     let diffText = '';
     try { git(wt, ['add', '-A', '-N', '.']); diffText = git(wt, ['diff', 'HEAD', '--', '.', ':(exclude)package-lock.json', ':(exclude).atomic*', ':(exclude).djimitflo']); } catch { /* the verdict does not need it */ }
     let result = gap ? { status: 'failure', reason: gap } : verdict(task, changed, green, makerOk);
@@ -344,7 +376,7 @@ async function main() {
     if (writeTest && result.status === 'success') result = mutantVerdict(task, killMutants(wt, task, () => oracle(wt, task)));
     const gates = prodGatesConfig(claim);
     result = applyProdGates(result, gates, { changed, diffText, runScript: (name) => runProdScript(repo, wt, name, gates.timeoutMs) });
-    return report({ ...result, ...resultExtras(changed, diffText) });
+    return report({ ...result, ...gradedOf(task, result, before, after), ...resultExtras(changed, diffText) });
   } catch (err) {
     return report({ status: 'discarded', reason: `infra: ${(err instanceof Error ? err.message : String(err)).slice(0, 150)}` });
   } finally {
@@ -457,6 +489,24 @@ function prodGatesCheck() {
   assert(applyProdGates(proxy, cfg, { ...src, runScript: (n) => (n === 'lint' ? 'skipped' : 'pass') }).status === 'success', 'a missing script is skipped, as in production');
 }
 
+/** SI-A graded fitness: per-test outcomes from the vitest JSON report, and the graded score per task kind (no docker). */
+function gradedCheck() {
+  const assert = (c, m) => { if (!c) throw new Error(`selfcheck: ${m}`); };
+  const report = (statuses) => JSON.stringify({ testResults: [{ name: '/w/packages/server/src/__tests__/x.test.ts', assertionResults: statuses.map(([fullName, status]) => ({ fullName, status })) }] });
+  const before = testOutcomes(report([['a', 'failed'], ['b', 'failed'], ['c', 'passed']]));
+  assert(before && Object.keys(before).length === 3 && Object.values(before).filter((v) => !v).length === 2, 'testOutcomes: per-test pass/fail from the vitest JSON report');
+  assert(testOutcomes('not json') === null && testOutcomes(report([])) === null, 'testOutcomes: unreadable or empty report = null');
+  const after = testOutcomes(report([['a', 'passed'], ['b', 'failed'], ['c', 'passed']]));
+  const repair = { source: 'packages/server/src/services/x.ts', tests: ['packages/server/src/__tests__/x.test.ts'] };
+  assert(JSON.stringify(gradedOf(repair, { status: 'failure' }, before, after)) === '{"graded":0.5,"graded_kind":"tests_green"}', 'repair: share of the red-at-start tests green after');
+  assert(JSON.stringify(gradedOf(repair, { status: 'failure' }, before, {})) === '{"graded":0,"graded_kind":"tests_green"}', 'repair: no (in-scope) change turns nothing green');
+  assert(JSON.stringify(gradedOf(repair, { status: 'success' }, null, after)) === '{"graded":1,"graded_kind":"binary"}' && JSON.stringify(gradedOf(repair, { status: 'failure' }, before, null)) === '{"graded":0,"graded_kind":"binary"}', 'repair: no per-test report = binary 1/0');
+  const wTask = { kind: 'write_test', mutants: [{ key: 'm1' }, { key: 'm2' }, { key: 'm3' }] };
+  assert(JSON.stringify(gradedOf(wTask, { status: 'success', killed_mutants: ['m1', 'm3'] })) === '{"graded":0.667,"graded_kind":"mutant_kill"}', 'write_test: killed / seeded mutants');
+  assert(JSON.stringify(gradedOf(wTask, { status: 'failure', reason: 'tests still red' })) === '{"graded":0,"graded_kind":"mutant_kill"}', 'write_test: no green test kills nothing');
+  assert(gradedOf(repair, { status: 'discarded' }, before, after) === null, 'a discard is not graded');
+}
+
 function selfcheck() {
   const task = { source: 'packages/server/src/a.ts' };
   const assert = (c, m) => { if (!c) throw new Error(`selfcheck: ${m}`); };
@@ -504,6 +554,7 @@ function selfcheck() {
   writeTestScopeCheck();
   killMutantsCheck();
   prodGatesCheck();
+  gradedCheck();
   console.log('selfcheck ok');
 }
 
