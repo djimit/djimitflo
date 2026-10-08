@@ -43,6 +43,7 @@ Back up before editing (`cp -p runtime.env runtime.env.bak-<date>`), then `docke
 | `QUEUE_HYGIENE_ENABLED` | 6-hourly sweep: work-item TTL, zombie goals/runs |
 | `DISK_GUARD_ENABLED` | warn at 80 %, critical at 90 % disk |
 | `TYPESAFE_API_KEY`, `TYPESAFE_<JUDGMENT>_MODE` | TypeSafe judgments, see ADR 0002 |
+| `TYPESAFE_PROPOSAL_PRESCREEN_MODE` | jev pre-screen before the specialist panel. `shadow`: recorded next to the panel outcome, changes nothing. `enforce` (D5, met 28-09: 52 labelled, 1.9 % wrong): a confident `no` skips the panel and parks the proposal as `needs_more_evidence` with a `prescreen_park` judgment (`prescreen: <reason>`), shown in `/decisions#prescreen` with a Requeue button (D2); `uncertain`, an error or no judgment fall through to the panel; oracle lanes (`ORACLE_LANES_SKIP_PANEL`) are never parked; parked proposals are not refined (no dissent) |
 | `DREAM_STATE_ENABLED` + `TYPESAFE_FAILURE_CAUSE_MODE` | 6-hourly replay of failed runs, cause classification, recurring causes → memory candidates (ADR 0003) |
 | `COMMONS_EVIDENCE_PACK_ENABLED`, `COMMONS_AGENDA_FROM_FAILURES` | Commons rounds carry platform facts; undiscussed dream-state failures come first |
 | `COMMONS_AGENDA_GROUNDING` | after failures, the newest `needs_grounding` proposal becomes the topic, with candidate files from `git grep`; residents answer `TARGET:` / `TEST:`, checked in code and recorded as a `commons_grounding` judgment |

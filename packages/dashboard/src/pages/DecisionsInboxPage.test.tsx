@@ -42,6 +42,16 @@ it('requeues only with a reason, and labels a pre-screen rejection', async () =>
   expect(screen.getByText('Empty — no Telegram user is recognised.')).toBeTruthy();
 });
 
+it('D5: a proposal the enforced pre-screen parked can be requeued from its row; an unparked rejection cannot', async () => {
+  const items = [{ ...inbox.prescreen.items[0], id: 'cccccccc-1', reason: 'prescreen: names no concrete file' }, inbox.prescreen.items[0]];
+  vi.spyOn(api, 'getDecisionsInbox').mockResolvedValue({ ...inbox, prescreen: { ...inbox.prescreen, items } } as never);
+  const requeue = vi.spyOn(api, 'requeueProposal').mockResolvedValue({ id: 'c', created: true, goalCreated: true });
+  renderPage();
+  fireEvent.click(await screen.findByRole('button', { name: 'Requeue cccccccc' }));
+  await waitFor(() => expect(requeue).toHaveBeenCalledWith('cccccccc-1', 'pre-screen rejection overridden by the operator'));
+  expect(screen.queryByRole('button', { name: 'Requeue bbbbbbbb' })).toBeNull();
+});
+
 it('rejects a non-numeric Telegram id before calling the API', async () => {
   const set = vi.spyOn(api, 'setTelegramIdentity').mockResolvedValue(undefined);
   renderPage();

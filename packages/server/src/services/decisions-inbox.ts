@@ -6,7 +6,8 @@ import { earnedAutonomy, type ClassRecord } from './earned-autonomy';
  * S2 (operator 2026-09-28): the operator's open decisions in one place instead of in chat.
  * - requeue candidates (D2): regressed / infra_failed / no_change proposals of the last 30 days, with any existing requeue
  * - pre-screen labelling (D5): proposals whose latest proposal_prescreen verdict was 'no', with the operator's label if any;
- *   labels are stored as `operator_label` judgments so the false-rejection rate can be computed next to the verdicts
+ *   labels are stored as `operator_label` judgments so the false-rejection rate can be computed next to the verdicts.
+ *   A proposal the enforced pre-screen parked shows the park reason (`prescreen: …`) and can be requeued (D2)
  * - Telegram allowlist (D3): the rows of telegram_identities (ids only, no tokens)
  * A requeue candidate the operator dismissed (`requeue_dismiss` judgment) leaves the list; `no_change` rows stay listed
  * but are not counted as waiting for the operator (see openDecisionCounts).
@@ -29,7 +30,9 @@ export function decisionsInbox(db: Database, now = Date.now()): DecisionsInbox {
     FROM self_improvements s WHERE s.status IN ('regressed', 'infra_failed', 'no_change') AND s.updated_at >= ?
       AND NOT EXISTS (SELECT 1 FROM judgments d WHERE d.judgment = 'requeue_dismiss' AND d.subject_id = s.id)
     ORDER BY s.updated_at DESC LIMIT 50`, d30);
-  const items = all<InboxLabel>(`SELECT s.id, s.title, s.status, j.reason, j.created_at AS verdict_at,
+  const items = all<InboxLabel>(`SELECT s.id, s.title, s.status, j.created_at AS verdict_at,
+      COALESCE((SELECT pp.reason FROM judgments pp WHERE pp.judgment = 'prescreen_park' AND pp.subject_id = s.id AND s.status = 'needs_more_evidence'
+        ORDER BY pp.created_at DESC LIMIT 1), j.reason) AS reason,
       (SELECT CASE l.decision WHEN 'yes' THEN 'ok' WHEN 'no' THEN 'wrong' END FROM judgments l
         WHERE l.judgment = 'operator_label' AND l.subject_id = s.id ORDER BY l.created_at DESC LIMIT 1) AS label
     FROM judgments j JOIN self_improvements s ON s.id = j.subject_id
