@@ -58,7 +58,71 @@ export function eValue(n: number, k: number): number {
   return Math.exp((n + 1) * Math.LN2 + logFact(k) + logFact(n - k) - logFact(n + 1) + logCdf);
 }
 export const ePaired = (pairs: Array<1 | -1>): number => eValue(pairs.length, pairs.filter((p) => p === 1).length);
-export const promotionRule = (env: NodeJS.ProcessEnv = process.env): 'mcnemar' | 'both' => (env.DREAM_PROMOTION_RULE === 'both' ? 'both' : 'mcnemar');
+export type PromotionRule = 'mcnemar' | 'both' | 'graded';
+export const promotionRule = (env: NodeJS.ProcessEnv = process.env): PromotionRule =>
+  (env.DREAM_PROMOTION_RULE === 'both' ? 'both' : env.DREAM_PROMOTION_RULE === 'graded' ? 'graded' : 'mcnemar');
+
+/**
+ * SI-C: graded genome trials. On prod the parent passes 17/20 deciding tasks, so binary paired tests (McNemar, e-process)
+ * see almost no discordant pairs and every trial is blind. The gym also reports a graded score per attempt (`graded:<0..1>`
+ * evidence ref on its skill outcome: the share of seeded mutants killed / red tests turned green), which keeps moving where
+ * pass/fail saturates. The paired test is an exact sign-flip permutation test on the per-task differences (mutant − parent):
+ * under H0 each difference is as likely positive as negative, so p = share of the 2^n sign assignments whose sum is at
+ * least the observed one. Exact for ≤ 20 non-zero pairs (Gray-code enumeration, O(1) per assignment), a seeded Monte-Carlo
+ * estimate above (deterministic, (1 + hits) / (1 + draws)). Zero differences carry no sign and drop out exactly.
+ */
+export const MIN_GRADED_DIFF = 0.05;
+/** SI-C: a parent whose mean graded score is below this still leaves a mutant room to win, whatever its binary failures. */
+export const GRADED_HEADROOM = 0.95;
+const PERM_EXACT_MAX = 20; const PERM_DRAWS = 100_000; const PERM_SEED = 0x5eed;
+export function pairedPermutationTest(diffs: number[]): { pUp: number; pDown: number; mean: number; n: number; exact: boolean } {
+  const n = diffs.length;
+  const obs = diffs.reduce((a, x) => a + x, 0); const mean = n ? obs / n : 0;
+  const d = diffs.filter((x) => x !== 0).map(Math.abs);
+  if (!d.length) return { pUp: 1, pDown: 1, mean, n, exact: true };
+  const top = d.reduce((a, x) => a + x, 0); const eps = 1e-9 * (1 + top); // float ties count as ties
+  let up = 0; let down = 0;
+  if (d.length <= PERM_EXACT_MAX) {
+    const total = 2 ** d.length; const sign = d.map(() => 1); let sum = top;
+    for (let i = 0; ;) {
+      if (sum >= obs - eps) up++;
+      if (sum <= obs + eps) down++;
+      if (++i === total) break;
+      const j = 31 - Math.clz32(i & -i); // Gray code: step i flips the sign of its lowest set bit
+      sum -= 2 * sign[j] * d[j]; sign[j] = -sign[j];
+    }
+    return { pUp: up / total, pDown: down / total, mean, n, exact: true };
+  }
+  let state = PERM_SEED; // mulberry32
+  const rand = () => { state = (state + 0x6d2b79f5) | 0; let t = Math.imul(state ^ (state >>> 15), 1 | state); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  for (let k = 0; k < PERM_DRAWS; k++) {
+    let sum = 0; for (const x of d) sum += rand() < 0.5 ? x : -x;
+    if (sum >= obs - eps) up++;
+    if (sum <= obs + eps) down++;
+  }
+  return { pUp: (1 + up) / (1 + PERM_DRAWS), pDown: (1 + down) / (1 + PERM_DRAWS), mean, n, exact: false };
+}
+/** SI-C: promote iff the one-sided test (mutant > parent) is significant AND the mean difference is ≥ MIN_GRADED_DIFF; worse iff parent > mutant is significant. */
+export function gradedDecision(diffs: number[], alpha = promotionAlpha()): 'promote' | 'worse' | 'inconclusive' {
+  const t = pairedPermutationTest(diffs);
+  if (t.pUp < alpha && t.mean >= MIN_GRADED_DIFF - 1e-12) return 'promote';
+  return t.pDown < alpha ? 'worse' : 'inconclusive';
+}
+/** SI-C: an attempt's graded score — the `graded:<0..1>` ref on the skill outcome of its loop run, else success 1/0. */
+function gradedScorer(db: Database): (runId: string, success: boolean) => { score: number; graded: boolean } {
+  let stmt: ReturnType<Database['prepare']> | null = null;
+  try { stmt = db.prepare('SELECT evidence_refs_json AS refs FROM skill_outcomes WHERE evidence_refs_json LIKE ? LIMIT 1'); } catch { /* no outcomes table yet */ }
+  return (runId, success) => {
+    try {
+      const r = stmt?.get(`%"loop_run:${runId}"%`) as { refs: string } | undefined;
+      const ref = r ? (JSON.parse(r.refs) as unknown[]).find((x): x is string => typeof x === 'string' && x.startsWith('graded:')) : undefined;
+      const v = ref ? Number(ref.slice('graded:'.length)) : NaN;
+      if (Number.isFinite(v) && v >= 0 && v <= 1) return { score: v, graded: true };
+    } catch { /* malformed refs: fall back */ }
+    return { score: success ? 1 : 0, graded: false };
+  };
+}
+const avg = (xs: number[]): number => (xs.length ? xs.reduce((a, x) => a + x, 0) / xs.length : 0);
 
 /**
  * Exact power of the McNemar part of the promotion rule for a fixed parent vector: the parent fails f deciding tasks
@@ -238,14 +302,15 @@ export async function dreamOnce(db: Database, now = Date.now(), call: DreamCalle
  * 17/20 deciding tasks). A mutant can only win tasks its parent fails, so with f parent failures on the deciding set no
  * mutant can reach the promotion rule when f is below minWinsNeeded() — the best case is winning exactly those f tasks
  * with zero losses (McNemar 5 at α 0.05; under DREAM_PROMOTION_RULE=both the smaller of McNemar and the e-process). Such a trial is settled 'inconclusive' before any
- * of its deciding attempts are spent. TRIAL_HEADROOM_PRECHECK (default off).
+ * of its deciding attempts are spent. TRIAL_HEADROOM_PRECHECK (default off). SI-C: under DREAM_PROMOTION_RULE=graded a parent
+ * whose mean graded score is below GRADED_HEADROOM still has headroom, whatever its binary failures.
  */
 /**
  * The fewest wins that make ANY trial significant: the best case for a mutant is to win exactly the tasks its parent
  * fails, with zero losses (discordant n = b = k). McNemar: smallest k with p(k, 0) = 0.5^k < alpha (5 at 0.05);
  * e-process: smallest k with E(k, k) ≥ 1/alpha (7 at 0.05); under 'both' the smaller of the two.
  */
-export function minWinsNeeded(alpha = promotionAlpha(), rule: 'mcnemar' | 'both' = promotionRule(), cap = 64): number {
+export function minWinsNeeded(alpha = promotionAlpha(), rule: PromotionRule = promotionRule(), cap = 64): number {
   let mcnemar = Infinity; let eproc = Infinity;
   for (let k = 1; k <= cap && (mcnemar === Infinity || eproc === Infinity); k++) {
     if (mcnemar === Infinity && mcnemarOneSided(k, 0) < alpha) mcnemar = k;
@@ -257,26 +322,29 @@ export function settleNoHeadroom(db: Database, speciesKey: string, holdoutCommit
   if (!trialHeadroomPrecheck() || !holdoutCommits.length) return [];
   const deciding = mutantCommits.length ? mutantCommits : holdoutCommits;
   const iso = new Date(now).toISOString();
-  const result = db.prepare(`SELECT json_extract(metadata, '$.gym_result.status') AS status FROM loop_runs WHERE loop_name = 'evolution-gym'
+  const result = db.prepare(`SELECT id, json_extract(metadata, '$.gym_result.status') AS status FROM loop_runs WHERE loop_name = 'evolution-gym'
     AND json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.genome') = ? AND json_extract(metadata, '$.gym.commit') = ?
     AND status = 'completed' AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%' AND ${NOT_VOID} ORDER BY created_at DESC LIMIT 1`);
   const trials = db.prepare("SELECT id, COALESCE(parent_id, ?) AS parent FROM maker_genomes WHERE status = 'trial' ORDER BY created_at").all(BASELINE_GENOME) as Array<{ id: string; parent: string }>;
   const settled: Array<{ id: string; f: number; n: number; needed: number }> = [];
+  const grade = gradedScorer(db);
   for (const trial of trials) {
     const scored = deciding.filter((c) => !unscorable(db, speciesKey, trial.parent, c));
-    const parent = scored.map((c) => result.get(speciesKey, trial.parent, c) as { status: string } | undefined);
+    const parent = scored.map((c) => result.get(speciesKey, trial.parent, c) as { id: string; status: string } | undefined);
     if (parent.some((r) => !r)) continue; // the parent is not fully scored yet
     if (scored.every((c) => result.get(speciesKey, trial.id, c) || unscorable(db, speciesKey, trial.id, c))) continue; // already run: evaluateTrials decides
     const n = scored.length; const f = parent.filter((r) => r?.status !== 'success').length;
     const needed = minWinsNeeded();
     if (f >= needed) continue;
+    const parentGraded = avg(parent.map((r) => grade(r!.id, r!.status === 'success').score));
+    if (promotionRule() === 'graded' && parentGraded < GRADED_HEADROOM) continue; // SI-C: graded headroom
     const shown = Number.isFinite(needed) ? needed : n + 1;
     db.prepare("UPDATE maker_genomes SET status = 'inconclusive', note = ?, updated_at = ? WHERE id = ? AND status = 'trial'")
       .run(`no_headroom: parent fails ${f} of ${n}; ≥ ${shown} needed for any significant win`, iso, trial.id);
     try {
-      db.prepare(`INSERT OR REPLACE INTO genome_trial_results (trial_id, parent_id, tier_set, deciding_n, f_parent_failures, b, c, p, mined_b, mined_c, power_q8_l05, state, recorded_at, epoch)
-        VALUES (?, ?, ?, ?, ?, 0, 0, 1, 0, 0, 0, 'no_headroom', ?, ?)`).run(trial.id, trial.parent, mutantCommits.length ? mutantHoldoutTiers().join(',') : 'mined', n, f, iso,
-        holdoutEpoch(db, mutantCommits.length ? 'gym_mutant_holdout' : 'gym_holdout'));
+      db.prepare(`INSERT OR REPLACE INTO genome_trial_results (trial_id, parent_id, tier_set, deciding_n, f_parent_failures, b, c, p, mined_b, mined_c, power_q8_l05, state, recorded_at, epoch, graded_mean_parent)
+        VALUES (?, ?, ?, ?, ?, 0, 0, 1, 0, 0, 0, 'no_headroom', ?, ?, ?)`).run(trial.id, trial.parent, mutantCommits.length ? mutantHoldoutTiers().join(',') : 'mined', n, f, iso,
+        holdoutEpoch(db, mutantCommits.length ? 'gym_mutant_holdout' : 'gym_holdout'), parentGraded);
     } catch { /* the record is fail-soft; the settlement above is what stops the attempts */ }
     console.log(`🧬 genome ${trial.id} inconclusive (no headroom: parent fails ${f} of ${n}; ≥ ${shown} needed for any significant win)`);
     settled.push({ id: trial.id, f, n, needed: shown });
@@ -329,7 +397,7 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
   if (!holdoutCommits.length) return [];
   const all = [...holdoutCommits, ...mutantCommits];
   const iso = new Date(now).toISOString();
-  const results = db.prepare(`SELECT json_extract(metadata, '$.gym.commit') AS commit_sha, json_extract(metadata, '$.gym_result.status') AS status,
+  const results = db.prepare(`SELECT id, json_extract(metadata, '$.gym.commit') AS commit_sha, json_extract(metadata, '$.gym_result.status') AS status,
       COALESCE(json_extract(metadata, '$.gym_result.reason'), '') AS reason
     FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.genome') = ?
       AND status = 'completed' AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%' AND ${NOT_VOID}`);
@@ -337,15 +405,16 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
   const voids = db.prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ?
       AND json_extract(metadata, '$.gym.genome') = ? AND NOT ${NOT_VOID}`);
   const score = (genomeId: string) => {
-    const rows = (results.all(speciesKey, genomeId) as Array<{ commit_sha: string; status: string; reason: string }>).filter((r) => all.includes(r.commit_sha));
+    const rows = (results.all(speciesKey, genomeId) as Array<{ id: string; commit_sha: string; status: string; reason: string }>).filter((r) => all.includes(r.commit_sha));
     const byCommit = new Map(rows.map((r) => [r.commit_sha, r]));
-    return { complete: all.every((c) => byCommit.has(c) || unscorable(db, speciesKey, genomeId, c)), wins: [...byCommit.values()].filter((r) => r.status === 'success').length,
+    return { byCommit, complete: all.every((c) => byCommit.has(c) || unscorable(db, speciesKey, genomeId, c)), wins: [...byCommit.values()].filter((r) => r.status === 'success').length,
       won: new Set([...byCommit.values()].filter((r) => r.status === 'success').map((r) => r.commit_sha)),
       outOfScope: [...byCommit.values()].filter((r) => r.reason.startsWith('out of scope')).length };
   };
   const settled: Array<{ id: string; status: 'active' | 'retired'; wins: number; parentWins: number }> = [];
   const promotedToday = () => Boolean(db.prepare("SELECT 1 FROM maker_genomes WHERE origin = 'dream' AND status = 'active' AND updated_at >= ? LIMIT 1").get(iso.slice(0, 10)));
   const trials = db.prepare("SELECT id, COALESCE(parent_id, ?) AS parent FROM maker_genomes WHERE status = 'trial' ORDER BY created_at").all(BASELINE_GENOME) as Array<{ id: string; parent: string }>;
+  const grade = gradedScorer(db);
   const voidNote = (id: string) => { const n = (voids.get(speciesKey, id) as { n: number }).n; return n ? `; void ${n} (fire check)` : ''; };
   for (const trial of trials) {
     const mine = score(trial.id); const theirs = score(trial.parent);
@@ -360,10 +429,19 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
     const { b, c } = discordant(deciding);
     const mined = mutantCommits.length ? discordant(holdoutCommits) : { b: 0, c: 0 };
     const p = mcnemarOneSided(b, c);
-    const wins = b > c && p < promotionAlpha() && mined.c - mined.b <= 1 && mine.outOfScope <= theirs.outOfScope && !promotedToday();
+    // SI-C: graded scores on the same paired deciding tasks; decides under DREAM_PROMOTION_RULE=graded, recorded always
+    const pairs = deciding.filter((h) => !unscorable(db, speciesKey, trial.id, h) && !unscorable(db, speciesKey, trial.parent, h))
+      .map((h) => [theirs.byCommit.get(h), mine.byCommit.get(h)]).filter((x): x is [NonNullable<typeof x[0]>, NonNullable<typeof x[1]>] => Boolean(x[0] && x[1]))
+      .map(([pr, mr]) => [grade(pr.id, pr.status === 'success'), grade(mr.id, mr.status === 'success')]);
+    const diffs = pairs.map(([pg, mg]) => mg.score - pg.score);
+    const graded = { parent: avg(pairs.map(([pg]) => pg.score)), mutant: avg(pairs.map(([, mg]) => mg.score)), p: pairedPermutationTest(diffs).pUp,
+      decision: gradedDecision(diffs), refs: pairs.reduce((a, [pg, mg]) => a + Number(pg.graded) + Number(mg.graded), 0) };
+    const significant = promotionRule() === 'graded' ? graded.decision === 'promote' : b > c && p < promotionAlpha();
+    const wins = significant && mined.c - mined.b <= 1 && mine.outOfScope <= theirs.outOfScope && !promotedToday();
     const status = wins ? 'active' : 'retired';
+    const gradedNote = promotionRule() === 'graded' ? `; graded ${graded.mutant.toFixed(3)} vs ${graded.parent.toFixed(3)}, permutation p=${graded.p.toPrecision(3)} (${graded.decision})` : '';
     db.prepare('UPDATE maker_genomes SET status = ?, note = ?, updated_at = ? WHERE id = ?')
-      .run(status, `holdout ${mine.wins}/${all.length} vs parent ${theirs.wins}/${all.length}; ${mutantCommits.length ? 'mutant ' : ''}discordant ${b} vs ${c}, McNemar p=${p.toFixed(3)}${mutantCommits.length ? `; mined discordant ${mined.b} vs ${mined.c}` : ''}; out of scope ${mine.outOfScope} vs ${theirs.outOfScope}${voidNote(trial.id)}`, iso, trial.id);
+      .run(status, `holdout ${mine.wins}/${all.length} vs parent ${theirs.wins}/${all.length}; ${mutantCommits.length ? 'mutant ' : ''}discordant ${b} vs ${c}, McNemar p=${p.toFixed(3)}${gradedNote}${mutantCommits.length ? `; mined discordant ${mined.b} vs ${mined.c}` : ''}; out of scope ${mine.outOfScope} vs ${theirs.outOfScope}${voidNote(trial.id)}`, iso, trial.id);
     if (trialDiagnosticsEnabled()) {
       try { // RX-4: record what this trial could have shown; never changes the decision above
         const scored = deciding.filter((h) => !unscorable(db, speciesKey, trial.id, h) && !unscorable(db, speciesKey, trial.parent, h));
@@ -384,6 +462,12 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
           .run(trial.id, trial.parent, iso, holdoutEpoch(db, mutantCommits.length ? 'gym_mutant_holdout' : 'gym_holdout'), e, b + c, eDecision);
       } catch { /* shadow record is fail-soft */ }
     }
+    try { // SI-C: last, so the INSERT OR REPLACE of the diagnostics row above cannot wipe it; shadow unless the rule is graded
+      db.prepare(`INSERT INTO genome_trial_results (trial_id, parent_id, state, recorded_at, epoch, graded_mean_parent, graded_mean_mutant, graded_p, graded_decision, graded_refs)
+        VALUES (?, ?, 'graded_only', ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(trial_id) DO UPDATE SET graded_mean_parent = excluded.graded_mean_parent,
+        graded_mean_mutant = excluded.graded_mean_mutant, graded_p = excluded.graded_p, graded_decision = excluded.graded_decision, graded_refs = excluded.graded_refs`)
+        .run(trial.id, trial.parent, iso, holdoutEpoch(db, mutantCommits.length ? 'gym_mutant_holdout' : 'gym_holdout'), graded.parent, graded.mutant, graded.p, graded.decision, graded.refs);
+    } catch { /* the record is fail-soft */ }
     settled.push({ id: trial.id, status, wins: mine.wins, parentWins: theirs.wins });
   }
   return settled;
