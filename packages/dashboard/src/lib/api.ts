@@ -139,7 +139,8 @@ export type OperatorCockpit = {
   at: string;
   build: { commit: string | null; build_time: string | null };
   scorecard: Record<string, number | null>;
-  guardrails: Array<{ name: string; ok: boolean; value: number | null; limit: string }>;
+  /** split (regressions): by attributed class — reviewer/environment failures are not the maker's */
+  guardrails: Array<{ name: string; ok: boolean; value: number | null; limit: string; split?: { maker: number; reviewer: number; environment: number } }>;
   stalls: Array<{ subsystem: string; since: string | null; detail: string }>;
   gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string; benched?: boolean; stale?: boolean }>;
   needs_you?: { approvals: number; requeue: number; labels: number; memory_review: number;

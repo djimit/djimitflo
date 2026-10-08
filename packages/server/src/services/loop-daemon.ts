@@ -23,6 +23,7 @@ import { recordFitnessShadow } from './fitness-view';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { authorityGateForGoal } from './authority-gate';
 import { remoteMakerWaitMs } from '../execution/executors/remote-maker-executor';
+import { makerFailureClass, recordOutcomeAttribution, type MakerMeta } from './outcome-attribution';
 /** Deterministic checks for daemon runs. The repo-wide `test` script cannot finish in 120 s, so hosts can scope it
  *  (LOOP_DAEMON_CHECK_SCRIPTS=test:changed,lint,type-check) and raise the per-script timeout (LOOP_DAEMON_CHECK_TIMEOUT_MS, max 600000). */
 export function daemonCheckOptions(env: NodeJS.ProcessEnv = process.env): { scripts?: string[]; timeout_ms: number } {
@@ -52,16 +53,7 @@ export function daemonMakerTimeoutMs(mutationLane: boolean, env: NodeJS.ProcessE
  */
 export function runOutcomeOnFailure(db: Database, makerLeaseId: string): 'regressed' | 'infra_failed' | 'no_change' {
   const lease = db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(makerLeaseId) as { metadata: string } | undefined;
-  const meta = JSON.parse(lease?.metadata || '{}') as { failure_reason?: string; timed_out?: boolean; runtime_timed_out?: boolean;
-    exit_status?: number | null; completed_at?: string; changed_files?: unknown; deterministic_checks?: Array<{ exit_status?: number | null }> };
-  if (meta.timed_out || meta.runtime_timed_out || /runtime_contract/.test(meta.failure_reason ?? '')) return 'infra_failed';
-  // EV3 (prod 2026-10-03): a maker that exited non-zero AFTER changing files did the wrong work (30/38 workstation jobs
-  // returned README patches) — that is maker quality, not infra; only a non-zero exit without any change is a crash
-  if (/maker_runtime_exit_zero/.test(meta.failure_reason ?? '')) return Array.isArray(meta.changed_files) && meta.changed_files.length ? 'regressed' : 'infra_failed';
-  if (meta.exit_status === undefined && !meta.completed_at) return 'infra_failed'; // the maker never ran
-  if ((meta.deterministic_checks ?? []).some((c) => c?.exit_status === 127)) return 'infra_failed'; // a check's tool was missing
-  if (Array.isArray(meta.changed_files) && meta.changed_files.length === 0) return 'no_change';
-  return 'regressed';
+  return makerFailureClass(JSON.parse(lease?.metadata || '{}') as MakerMeta);
 }
 
 /** Reviewer (checker/security) timeout. Prod 2026-09-24: accepted reviews took 45–119 s; 2/7 reviews hit the old fixed 120 s. */
@@ -762,6 +754,10 @@ export class LoopDaemon {
         const linked = this.db.prepare('SELECT improvement_id FROM goals WHERE id = ?').get(goal.id) as { improvement_id: string | null } | undefined;
         if (linked?.improvement_id) new SelfImprovementService(this.db).recordOutcome(linked.improvement_id, allGatesPass ? 'verified' : runOutcomeOnFailure(this.db, activeMakerLease.id));
       } catch { /* best-effort learning */ }
+
+      // 9a'+. Attributable outcome (OUTCOME_ATTRIBUTION_ENABLED): maker / reviewer / environment failure or verified, recorded
+      // once per run before the maker outcome below, so maker-side learners can leave reviewer/env failures out.
+      recordOutcomeAttribution(this.db, run.id, activeMakerLease.id, verification.gates.filter((g) => g.status === 'fail').map((g) => g.name));
 
       // 9a''. Heritability (E10): each run is one outcome of its maker "skill" (loop × runtime) — the fitness signal the
       // skill-evolution engine and a later runtime bandit select on. Before this, skill_outcomes only got manual API writes.

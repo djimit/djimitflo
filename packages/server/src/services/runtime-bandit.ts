@@ -1,6 +1,7 @@
 import type { Database } from 'better-sqlite3';
 import { betaSample } from './self-improvement-service';
 import type { Species } from './evolve-selection';
+import { nonMakerRunSql } from './outcome-attribution';
 
 /**
  * E12: which maker species (runtime[@model]) does a loop's work — chosen by outcome, not by config. Thompson sampling
@@ -28,7 +29,9 @@ export function chooseSpecies(db: Database, loopName: string, species: Species[]
   if (species.length < 2) return null;
   let stats: Array<{ runs: number; ok: number }>;
   try {
-    const q = db.prepare(`SELECT COUNT(*) AS runs, COALESCE(SUM(success), 0) AS ok FROM skill_outcomes WHERE skill_id = ? AND COALESCE(model, '') = ?`);
+    // OUTCOME_ATTRIBUTION_ENABLED: a run lost to a reviewer or the environment is neither a win nor a loss for the maker
+    const q = db.prepare(`SELECT COUNT(*) AS runs, COALESCE(SUM(success), 0) AS ok FROM skill_outcomes WHERE skill_id = ? AND COALESCE(model, '') = ?
+      AND NOT (success = 0 AND ${nonMakerRunSql('skill_outcomes.task_id')})`);
     stats = species.map((s) => q.get(`loop-maker:${loopName}:${s.runtime}`, s.model ?? '') as { runs: number; ok: number });
   } catch { return null; } // skill_outcomes is created lazily
   const posterior = species.map((s, i) => ({ species: speciesKey(s), runs: stats[i].runs, ok: stats[i].ok,

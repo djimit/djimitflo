@@ -18,6 +18,7 @@ import { forecastScores, forecastScoresV2 } from '../services/forecast-scoring';
 import { runtimeHealth } from '../services/runtime-health';
 import { agentScorecards, runtimeScorecards } from '../services/scorecards';
 import { buildEvolutionEvidence } from '../services/evolution-evidence';
+import { attributionSummary } from '../services/outcome-attribution';
 import { runtimeConfigView } from '../services/runtime-config-view';
 import { buildDigest } from '../services/operator-push';
 import { getDatabaseProvenance } from '../database/provenance';
@@ -138,6 +139,11 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   // plan S1: operator cockpit — scorecard, guardrails, stalls, gym species, remote workers, model/judgment usage (read-only)
   router.get('/cockpit', requireAuth, requirePermission('read:evidence'), (_req, res) => {
     res.json(operatorCockpit(db));
+  });
+
+  // funnel phase 3 / E2: outcome classes (maker / reviewer / environment failure, verified) and the top credited contributors (read-only)
+  router.get('/attribution', requireAuth, requirePermission('read:evidence'), (req, res) => {
+    res.json(attributionSummary(db, Date.now(), Number(req.query.days) || 30));
   });
 
   // UX-8: which background schedulers this process armed at boot (name, arming flag, interval, last tick) — admins only

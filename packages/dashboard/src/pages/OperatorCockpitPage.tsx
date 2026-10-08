@@ -145,6 +145,7 @@ export function OperatorCockpitPage() {
                   <div className="text-xs text-foreground-tertiary">{g.name}</div>
                   <div className="text-2xl font-semibold">{fmt(g.value)}</div>
                   <div className={`text-xs ${g.ok ? 'text-foreground-muted' : 'text-status-error'}`}>{g.ok ? 'ok' : 'breached'} · limit {g.limit}</div>
+                  {g.split && <div className="text-xs text-foreground-tertiary">maker {g.split.maker} · reviewer {g.split.reviewer} · environment {g.split.environment}</div>}
                 </div>
               ))}
             </div>
