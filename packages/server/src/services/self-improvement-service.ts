@@ -127,6 +127,12 @@ export class SelfImprovementService {
   }
 
   generateFromBuildErrors(errors: string[]): ImprovementProposal[] {
+    // Operator 2026-10-08: 0 of 31 build-failure proposals verified, ~26 panel reviews/week; requeue covers those runs.
+    // Security findings (generateFromSecurityFindings) share source 'feedback' and are NOT affected by this flag.
+    if (process.env.BUILD_ERROR_PROPOSALS_ENABLED === 'false') {
+      if (errors.length > 0) console.log(`[self-improvement] BUILD_ERROR_PROPOSALS_ENABLED=false: skipped ${errors.length} build-failure proposal(s)`);
+      return [];
+    }
     return errors.slice(0, 5).flatMap((error) => {
       const proposal = this.createProposal({
         type: 'bug_fix',
