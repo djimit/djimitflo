@@ -64,3 +64,12 @@ it('UX-9: a failed load shows the error instead of an empty page', async () => {
   render(<EvolutionPage />);
   expect((await screen.findByRole('alert')).textContent).toContain('Insufficient permissions');
 });
+
+it('earned auto-merge: shows the class state, why it was revoked, and the counts', () => {
+  const auto_merge: EvolutionEvidence['auto_merge'] = { mode: 'act', max_per_day: 10, audit_sample_pct: 10,
+    class: { state: 'revoked', reason: 'PR #700: reverted on main by rev1' },
+    counts: { merged: 4, merged_24h: 1, would_merge: 0, audit_samples: 1, audit_samples_open: 1, waiting: 0, ineligible: 2 }, ineligible_by_reason: {} };
+  const html = renderToStaticMarkup(<EvolutionBody data={{ ...FULL, auto_merge }} />);
+  for (const text of ['Test-only auto-merge (mode act)', 'revoked', 'PR #700: reverted on main by rev1', 'n = 4 merged', '1 audit sample(s) open']) expect(html).toContain(text);
+  expect(renderToStaticMarkup(<EvolutionBody data={{ ...FULL, auto_merge: { ...auto_merge, mode: 'off' } }} />)).not.toContain('Test-only auto-merge');
+});

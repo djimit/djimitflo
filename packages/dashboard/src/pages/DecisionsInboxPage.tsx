@@ -24,6 +24,8 @@ export function DraftPrsSection() {
             { key: 'lane', label: 'Lane', render: (r) => r.lane },
             { key: 'age', label: 'Age (days)', render: (r) => r.age_days },
             { key: 'settlement', label: 'Settlement', render: (r) => (r.outcome ? `${r.outcome}${r.survived === null ? '' : r.survived ? ' · survived' : ' · removed'}` : 'not settled') },
+            // earned auto-merge: an audit sample is a test-only PR the loop could have merged but deliberately leaves to you
+            { key: 'auto', label: 'Auto-merge', render: (r) => (r.auto_merge === 'audit_sample' ? <strong>audit sample — review it</strong> : r.auto_merge ? r.auto_merge.replace(/_/g, ' ') : '—') },
           ]} />
         </>
       )}

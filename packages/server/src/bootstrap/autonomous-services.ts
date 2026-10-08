@@ -37,6 +37,7 @@ import { startInterestFeedback } from '../services/interest-feedback';
 import { startDreamEvolution } from '../services/dream-evolution';
 import { startEvolutionEstimators } from '../services/evolution-estimators';
 import { startMergeSurvival } from '../services/merge-survival';
+import { startLoopAutoMerge } from '../services/loop-auto-merge';
 import { startCommitteeEvolution } from '../services/committee-swarm';
 import { KnowledgeMaintenanceService, maintenanceEnabled } from '../services/knowledge-maintenance-service';
 
@@ -226,6 +227,15 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     if (stopMerge) { lifecycleManager.register({ serviceName: 'MergeSurvival', stop: stopMerge }); console.log('🧾 Merge survival on (every 6 h).'); }
   } catch (error) {
     console.warn('⚠️  Merge survival failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // Earned auto-merge for verified test-only loop PRs (shadow/act, self-revoking). LOOP_AUTO_MERGE_TEST_ONLY=shadow|act.
+  try {
+    const stopAutoMerge = startLoopAutoMerge(db);
+    noteScheduler('loop_auto_merge', 'LOOP_AUTO_MERGE_TEST_ONLY', !!stopAutoMerge, 15 * 60_000);
+    if (stopAutoMerge) { lifecycleManager.register({ serviceName: 'LoopAutoMerge', stop: stopAutoMerge }); console.log('🤝 Loop auto-merge (test-only) on (every 15 min).'); }
+  } catch (error) {
+    console.warn('⚠️  Loop auto-merge failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // Stall watch (M10): hourly log line per silent stall. STALL_WATCH_ENABLED=true (default off).

@@ -9,7 +9,7 @@ export const OPERATOR_CONTRACTS = {
   cockpit: ['at', 'build', 'scorecard', 'guardrails', 'stalls', 'gym', 'remote_workers', 'maker_usage_7d', 'judgments_7d', 'needs_you', 'schedulers', 'genomes', 'deploys'],
   /** GET /api/health/evolution-evidence — services/evolution-evidence.ts */
   evolutionEvidence: ['at', 'window_days', 'flags', 'outcomes', 'outcomes_tagged', 'merge', 'drafts', 'genomes', 'gym', 'trials', 'models', 'oracle', 'commons',
-    'forecasts_v2', 'hacks', 'estimates', 'ope', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'gates'],
+    'forecasts_v2', 'hacks', 'estimates', 'ope', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'auto_merge', 'gates'],
   /** GET /api/health/forecasts-v2 — services/forecast-scoring.ts forecastScoresV2 */
   forecastsV2: ['forecasters', 'would_have_stopped'],
   /** GET /api/health/runtimes — { runtimes: RuntimeHealthRow[] } */
@@ -21,7 +21,7 @@ export const OPERATOR_CONTRACTS = {
   /** GET /api/loops/draft-prs — services/loop-draft-pr-service.ts listDraftPrs */
   draftPrs: ['total', 'unsettled', 'rows'],
   /** one row of GET /api/loops/draft-prs */
-  draftPrRow: ['run_id', 'lane', 'pr_url', 'pr_number', 'age_days', 'outcome', 'survived'],
+  draftPrRow: ['run_id', 'lane', 'pr_url', 'pr_number', 'age_days', 'outcome', 'survived', 'auto_merge'],
   /** GET /api/health/schedulers — services/scheduler-registry.ts listSchedulers */
   schedulers: ['armed', 'off', 'schedulers'],
 } as const;

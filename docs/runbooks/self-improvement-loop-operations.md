@@ -94,6 +94,8 @@ missing here. **Acting** = changes what the loop does; acting flags are switched
 | `COMMONS_GROUNDING_APPLY` | off | yes | act | operator |
 | `SOCIAL_AUTOPILOT_FORECAST_ONLY` | off | yes (residents heartbeat and answer committee forecasts only: no chat replies, rounds or thread answers; the arena gate's "talks without calls" rule is skipped, the skill rule still retires) | act (budget) | operator (scale-back 2026-10-07) |
 | `LOOP_AUTO_DRAFT_PR_ENABLED` | off | yes | act | operator |
+| `LOOP_AUTO_MERGE_TEST_ONLY` | off (`shadow` records `would_merge` per loop PR; `act` marks ready, updates a behind branch, waits for green checks and squash-merges) | yes in act (only verified loop draft PRs whose every file is a test, none deleted, within the lane diff limit, no changes-requested review; never Dependabot or non-loop PRs; a deterministic 10 % audit sample stays for the human, shown in /decisions and the digest; a revert, merge-survival removal or red checks on the merge commit within 14 d revokes the class until `POST /api/loops/auto-merge/re-enable` (manage:config, audited)) | shadow → act | operator (approved 2026-10-07); state at `GET /api/loops/auto-merge` |
+| `LOOP_AUTO_MERGE_MAX_PER_DAY` | 10 (rolling 24 h; counts `would_merge` in shadow) | yes | act (budget) | operator |
 | `LOOP_AUTO_APPROVE_TEST_GAP` | off | yes | act | operator |
 | `ORACLE_LANES_AUTO_APPROVE` | off | yes | act | operator |
 | `LOOP_MEMORY_RULES_ENABLED` | off | yes | act | operator |

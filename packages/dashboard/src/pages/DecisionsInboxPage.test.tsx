@@ -102,3 +102,13 @@ it('dependency lane: shows the Dependabot queue read-only with bump, age, checks
   expect(screen.getByText(/act revoked 2026-10-07T10:00: main CI red after merging #652/)).toBeTruthy();
   expect(screen.queryByRole('button')).toBeNull(); // read-only
 });
+
+it('earned auto-merge: an audit-sample loop PR is flagged for the human; auto-merged ones say so', async () => {
+  vi.spyOn(api, 'getDraftPrs').mockResolvedValueOnce({ total: 2, unsettled: 2, rows: [
+    { run_id: 'r5', lane: 'test-gap', pr_url: 'https://github.com/o/r/pull/705', pr_number: 705, age_days: 0, outcome: null, survived: null, auto_merge: 'audit_sample' },
+    { run_id: 'r6', lane: 'test-gap', pr_url: 'https://github.com/o/r/pull/706', pr_number: 706, age_days: 0, outcome: null, survived: null, auto_merge: 'merged' },
+  ] });
+  render(<DraftPrsSection />);
+  expect(await screen.findByText('audit sample — review it')).toBeTruthy();
+  expect(screen.getByText('merged')).toBeTruthy();
+});
