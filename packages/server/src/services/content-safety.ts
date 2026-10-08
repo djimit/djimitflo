@@ -12,6 +12,16 @@ import { recordModelCall } from './model-selector';
 export const contentSafetyEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.CONTENT_SAFETY_MODE === 'shadow' && Boolean(env.NVIDIA_API_KEY);
 
 /**
+ * CONTENT_SAFETY_SCOPE (default 'all' = every subject). 'decision' = only text that can lead to a decision: replies/messages
+ * from external agents, remote-host patches / maker results and lure probes. Prod 7 d to 2026-10-08: 1 246 calls, 760 errors
+ * (NVIDIA 429 + timeouts), mostly fleet discovery events — those and KB pages are already gated by discovery_relevance /
+ * taxonomy and never act directly, so under 'decision' they get no call and no row.
+ */
+const DECISION_SUBJECTS = new Set(['social_reply', 'remote_patch', 'maker_result', 'lure_probe']);
+export const contentSafetyApplies = (subjectType: string, env: NodeJS.ProcessEnv = process.env): boolean =>
+  contentSafetyEnabled(env) && (env.CONTENT_SAFETY_SCOPE !== 'decision' || DECISION_SUBJECTS.has(subjectType));
+
+/**
  * NVIDIA's free tier answers 429 after ~4 calls in a burst (measured 2026-09-27: 4×200 then 429s within 3 s), which left
  * 1 241 of 1 312 KB pages without a safety verdict. Retry 429s with backoff (Retry-After when given), at most 3 times.
  */
@@ -39,7 +49,7 @@ let pausedUntil = 0;
 export const resetContentSafetyPause = (): void => { pausedUntil = 0; };
 
 export async function checkContentSafety(db: Database, subject: { type: string; id: string }, text: string, fetchFn: typeof fetch = fetch): Promise<'safe' | 'unsafe' | null> {
-  if (!contentSafetyEnabled() || !text.trim() || Date.now() < pausedUntil) return null;
+  if (!contentSafetyApplies(subject.type) || !text.trim() || Date.now() < pausedUntil) return null;
   const model = process.env.CONTENT_SAFETY_MODEL || 'nvidia/nemotron-3.5-content-safety';
   const started = Date.now();
   // prod 2026-09-27: 1 241 of 1 312 KB pages got no verdict and nothing said why; failures are recorded as 'error' now

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { checkContentSafety, nvidiaFetch, parseSafety, resetContentSafetyPause } from '../services/content-safety';
+import { checkContentSafety, contentSafetyApplies, nvidiaFetch, parseSafety, resetContentSafetyPause } from '../services/content-safety';
 
 let db: Database.Database;
 beforeEach(() => { db = new Database(':memory:'); db.exec(schema); runMigrations(db); });
@@ -76,4 +76,22 @@ it('a concurrent burst that all times out writes one error row and pauses checks
   await checkContentSafety(db, { type: 'external_event', id: 't5' }, 'event text', slow); // paused: no call, no row
   expect((slow as unknown as { mock: { calls: unknown[] } }).mock.calls.length).toBe(calls);
   resetContentSafetyPause();
+});
+
+it("CONTENT_SAFETY_SCOPE=decision: a fleet discovery event / KB page gets no call and no row; an external agent reply still does (prod 7 d to 08-10: 760/1 246 errors)", async () => {
+  vi.stubEnv('CONTENT_SAFETY_MODE', 'shadow'); vi.stubEnv('NVIDIA_API_KEY', 'k'); vi.stubEnv('CONTENT_SAFETY_SCOPE', 'decision');
+  resetContentSafetyPause();
+  const f = reply('User Safety: safe');
+  expect(await checkContentSafety(db, { type: 'external_event', id: 'disc-1' }, 'discovery.paper title', f)).toBeNull();
+  expect(await checkContentSafety(db, { type: 'kb_page', id: 'wiki/a.md' }, 'kb page', f)).toBeNull();
+  expect(f).not.toHaveBeenCalled();
+  expect(db.prepare('SELECT COUNT(*) AS n FROM judgments').get()).toEqual({ n: 0 });
+  expect(await checkContentSafety(db, { type: 'social_reply', id: 'm1' }, 'reply from an external agent', f)).toBe('safe');
+  expect(f).toHaveBeenCalledTimes(1);
+  expect(db.prepare('SELECT subject_type FROM judgments').all()).toEqual([{ subject_type: 'social_reply' }]);
+  for (const type of ['remote_patch', 'maker_result', 'lure_probe']) expect(contentSafetyApplies(type)).toBe(true);
+  // default scope 'all' is unchanged: discovery events are still checked
+  vi.stubEnv('CONTENT_SAFETY_SCOPE', '');
+  expect(contentSafetyApplies('external_event')).toBe(true);
+  expect(contentSafetyApplies('kb_page')).toBe(true);
 });

@@ -2,7 +2,7 @@
  * Swarm orchestration routes — parallel multi-agent coding.
  */
 
-import { checkContentSafety, contentSafetyEnabled } from '../services/content-safety';
+import { checkContentSafety, contentSafetyApplies } from '../services/content-safety';
 import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import type { Database } from 'better-sqlite3';
@@ -388,7 +388,7 @@ export function createAgentSocialRuntimeRoutes(db: Database, runtimeGovernance =
     try {
       const result = comms.respondSocial(req.params.agentId, req.params.messageId, req.body || {});
       // K1 (shadow): a reply from an external agent is untrusted text that later feeds prompts
-      if (!result.duplicate && contentSafetyEnabled()) void checkContentSafety(db, { type: 'social_reply', id: String(req.params.messageId) }, JSON.stringify(req.body || {})).catch(() => undefined);
+      if (!result.duplicate && contentSafetyApplies('social_reply')) void checkContentSafety(db, { type: 'social_reply', id: String(req.params.messageId) }, JSON.stringify(req.body || {})).catch(() => undefined);
       res.status(result.duplicate ? 200 : 201).json(result);
     } catch (error) { fail(res, error); }
   });

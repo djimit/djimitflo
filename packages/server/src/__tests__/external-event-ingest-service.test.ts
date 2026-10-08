@@ -170,4 +170,18 @@ describe('ExternalEventIngestService', () => {
     ]);
     db.close();
   });
+  it('CONTENT_SAFETY_SCOPE=decision: a fleet discovery event gets no content_safety call and no judgment row', async () => {
+    const db = createDb();
+    vi.stubEnv('CONTENT_SAFETY_MODE', 'shadow'); vi.stubEnv('NVIDIA_API_KEY', 'k'); vi.stubEnv('CONTENT_SAFETY_SCOPE', 'decision');
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ events: [
+      { _id: 'd-9', event_id: 'discovery:arxiv:2610.00001', event_type: 'discovery.paper', source: 'hermes-macmini', title: 'A paper', dedupe_key: 'discovery:arxiv:2610.00001' },
+    ] }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      await new ExternalEventIngestService(db, 'http://event-bus', 'djimit.events').pollOnce();
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(fetchMock.mock.calls.every(([url]) => String(url).startsWith('http://event-bus'))).toBe(true);
+      expect(db.prepare("SELECT COUNT(*) AS n FROM judgments WHERE judgment = 'content_safety'").get()).toEqual({ n: 0 });
+    } finally { vi.unstubAllEnvs(); db.close(); }
+  });
 });

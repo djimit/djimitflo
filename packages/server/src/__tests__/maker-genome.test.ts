@@ -29,5 +29,5 @@ it('Y2: the cockpit shows real outcomes per genome', () => {
   for (const [i, ok] of [[1, true], [2, false], [3, true]] as const) {
     engine.recordOutcome('loop-maker:test-gap:opencode', { success: ok, tokensUsed: 0, durationMs: 1, domain: 'test-gap', taskId: `run-${i}`, agentId: `m${i}`, evidenceRefs: [`loop_run:run-${i}`, 'genome:g1'] });
   }
-  expect(operatorCockpit(db).genomes).toEqual([{ genome: 'g1', skill_id: 'loop-maker:test-gap:opencode', outcomes: 3, wins: 2, win_pct: 67 }]);
+  expect(operatorCockpit(db).genomes).toEqual([{ genome: 'g1', skill_id: 'loop-maker:test-gap:opencode', outcomes: 3, wins: 2, win_pct: 67, scope: 'production' }]);
 });

@@ -18,7 +18,8 @@ export interface CockpitSnapshot {
   scorecard: Record<string, number | null>;
   guardrails: Guardrail[];
   stalls: Stall[];
-  gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string; benched: boolean }>;
+  /** stale: no outcome for 72 h — the species is not running, whatever its success rate says (sorted after the active ones) */
+  gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string; benched: boolean; stale: boolean }>;
   /** W3: what waits for the operator right now (the /decisions sections). */
   needs_you: { approvals: number; requeue: number; labels: number; memory_review: number;
     /** UX-6: every other thing that can block the loop on the operator */
@@ -26,8 +27,9 @@ export interface CockpitSnapshot {
     proposals: number; draft_prs: number; open_prs: number; stalls: number; approvals_expiring: number; join_requests: number; shell_requests: number };
   /** UX-8: schedulers armed at boot vs off */
   schedulers: { armed: number; off: number };
-  /** Y2: real-maker outcomes per strategy genome and maker skill (30 d) — what Y3's dreaming mutates and the bandit selects. */
-  genomes: Array<{ genome: string; skill_id: string; outcomes: number; wins: number; win_pct: number }>;
+  /** Y2: maker outcomes per strategy genome and maker skill (30 d) — what Y3's dreaming mutates and the bandit selects.
+   *  scope: 'gym' for loop-maker:gym:* (benchmark makers), 'production' for makers on real goals — never mixed in one table. */
+  genomes: Array<{ genome: string; skill_id: string; scope: 'gym' | 'production'; outcomes: number; wins: number; win_pct: number }>;
   remote_workers: Array<{ host: string; claims_24h: number; last_claim: string | null; interrupted_24h: number }>;
   maker_usage_7d: Array<{ role: string; runtime: string; model: string | null; leases: number; tokens: number }>;
   judgments_7d: Array<{ judgment: string; calls: number; errors: number; input_tokens: number }>;
@@ -53,7 +55,11 @@ export function operatorCockpit(db: Database, now = Date.now()): CockpitSnapshot
     needs_grounding_stock: one("SELECT COUNT(*) FROM self_improvements WHERE status = 'needs_grounding'"),
     needs_more_evidence_stock: one("SELECT COUNT(*) FROM self_improvements WHERE status = 'needs_more_evidence'"),
     memory_reads_7d: one('SELECT COUNT(*) FROM memory_access_log WHERE accessed_at >= ?', d7),
-    tokens_per_outcome_7d: one('SELECT ROUND(AVG(tokens_used)) FROM skill_outcomes WHERE created_at >= ?', d7),
+    // was 'tokens per outcome' = AVG over every skill outcome incl. zero-token gym outcomes (prod 08-10: 64 576, ~37× too low).
+    // Now: everything the maker + reviewer leases spent in the window over the proposals verified in it (prod ≈ 62.8 M / 26).
+    tokens_per_verified_change_7d: one(`SELECT ROUND(COALESCE(SUM(json_extract(metadata, '$.runtime_usage.total_tokens')), 0) * 1.0
+        / NULLIF((SELECT COUNT(*) FROM self_improvements WHERE status = 'verified' AND updated_at >= ?), 0))
+      FROM worker_leases WHERE role IN ('maker', 'checker', 'security_checker') AND created_at >= ?`, d7, d7),
   };
   const v = scorecard.verified_7d ?? 0;
   // plan §3 guardrails
@@ -69,11 +75,13 @@ export function operatorCockpit(db: Database, now = Date.now()): CockpitSnapshot
        ROUND(AVG(duration_ms) / 1000) AS avg_seconds, ROUND(AVG(tokens_used)) AS avg_tokens, MAX(created_at) AS last
        FROM skill_outcomes WHERE domain = 'gym' GROUP BY skill_id, model ORDER BY outcomes DESC`)
     .map((g) => {
+      const stale = !(Date.parse(g.last) >= now - 72 * 3_600_000); // prod 08-10: species silent for days still read 'active'
       // the circuit breaker's own verdict: a benched species takes no gym work (prod 2026-09-30: benched for hours, unseen)
       let benched = false;
       try { benched = infraFailing(db, g.species, d1); } catch { /* loop_runs absent */ }
-      return { ...g, success_pct: g.outcomes ? Math.round((100 * g.successes) / g.outcomes) : 0, benched };
-    });
+      return { ...g, success_pct: g.outcomes ? Math.round((100 * g.successes) / g.outcomes) : 0, benched, stale };
+    })
+    .sort((a, b) => Number(a.stale) - Number(b.stale)); // stable: active first, each group still by outcomes
   const remote_workers = all<{ host: string; claims_24h: number; last_claim: string | null; interrupted_24h: number }>(
     `SELECT json_extract(metadata, '$.gym.remote_host') AS host, SUM(created_at >= ?) AS claims_24h, MAX(created_at) AS last_claim,
        SUM(created_at >= ? AND status = 'interrupted') AS interrupted_24h FROM loop_runs WHERE json_extract(metadata, '$.gym.remote_host') IS NOT NULL GROUP BY host`, d1, d1);
@@ -83,11 +91,13 @@ export function operatorCockpit(db: Database, now = Date.now()): CockpitSnapshot
   const judgments_7d = all<{ judgment: string; calls: number; errors: number; input_tokens: number }>(
     `SELECT judgment, COUNT(*) AS calls, SUM(decision = 'error') AS errors, COALESCE(SUM(input_tokens), 0) AS input_tokens FROM judgments WHERE created_at >= ? GROUP BY judgment ORDER BY calls DESC`, d7);
   const d30 = new Date(now - 30 * 86_400_000).toISOString();
-  const genomes = all<{ genome: string; skill_id: string; outcomes: number; wins: number }>(
+  // prod 08-10: the 'real makers' table was mostly gym makers (loop-maker:gym:*); each scope now gets its own top 20
+  const genomesIn = (scope: 'gym' | 'production') => all<{ genome: string; skill_id: string; outcomes: number; wins: number }>(
     `SELECT substr(r.value, 8) AS genome, s.skill_id, COUNT(*) AS outcomes, SUM(s.success) AS wins
        FROM skill_outcomes s, json_each(s.evidence_refs_json) r
-      WHERE r.value LIKE 'genome:%' AND s.created_at >= ? GROUP BY 1, 2 ORDER BY outcomes DESC LIMIT 20`, d30)
-    .map((g) => ({ ...g, win_pct: g.outcomes ? Math.round((100 * g.wins) / g.outcomes) : 0 }));
+      WHERE r.value LIKE 'genome:%' AND s.created_at >= ? AND (s.skill_id LIKE 'loop-maker:gym:%') = ? GROUP BY 1, 2 ORDER BY outcomes DESC LIMIT 20`, d30, scope === 'gym' ? 1 : 0)
+    .map((g) => ({ ...g, scope, win_pct: g.outcomes ? Math.round((100 * g.wins) / g.outcomes) : 0 }));
+  const genomes = [...genomesIn('production'), ...genomesIn('gym')];
   const in60 = new Date(now + 3_600_000).toISOString();
   let needs_you: CockpitSnapshot['needs_you'] = { approvals: scorecard.approvals_pending ?? 0, requeue: 0, labels: 0, memory_review: 0,
     proposals: one("SELECT COUNT(*) FROM self_improvements WHERE status = 'proposed'") ?? 0,

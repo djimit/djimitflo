@@ -78,3 +78,36 @@ it('honest needs-you: open loop PRs count, merged ones do not; no_change and dis
   c = operatorCockpit(db, NOW);
   expect(c.needs_you.requeue).toBe(1);
 });
+
+it('honest cockpit: tokens per verified change = maker + reviewer lease tokens / verified proposals (not an average over zero-token gym outcomes)', () => {
+  for (let i = 0; i < 2; i++) proposal(`v${i}`, 'verified');
+  const lease = db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at) VALUES (?, 'r', ?, 'opencode', 'completed', ?, ?)");
+  lease.run('m', 'maker', JSON.stringify({ runtime_usage: { total_tokens: 3_000_000 } }), ago(3));
+  lease.run('c', 'checker', JSON.stringify({ runtime_usage: { total_tokens: 600_000 } }), ago(3));
+  lease.run('s', 'security_checker', JSON.stringify({ runtime_usage: { total_tokens: 400_000 } }), ago(3));
+  lease.run('old', 'maker', JSON.stringify({ runtime_usage: { total_tokens: 9_000_000 } }), ago(24 * 8));
+  const out = db.prepare("INSERT INTO skill_outcomes (id, skill_id, success, tokens_used, duration_ms, domain, created_at) VALUES (?, 'loop-maker:gym:atomic', 1, 0, 1000, 'gym', ?)");
+  for (let i = 0; i < 50; i++) out.run(`g${i}`, ago(1));
+  const c = operatorCockpit(db, NOW);
+  expect(c.scorecard.tokens_per_verified_change_7d).toBe(2_000_000);
+  expect(c.scorecard).not.toHaveProperty('tokens_per_outcome_7d');
+});
+
+it('honest cockpit: a gym species without an outcome for 72 h is stale and sorts after the active ones', () => {
+  const out = db.prepare("INSERT INTO skill_outcomes (id, skill_id, success, tokens_used, duration_ms, domain, created_at) VALUES (?, ?, 1, 0, 1000, 'gym', ?)");
+  for (let i = 0; i < 5; i++) out.run(`old${i}`, 'loop-maker:gym:pi', ago(80));
+  out.run('new', 'loop-maker:gym:atomic', ago(2));
+  const c = operatorCockpit(db, NOW);
+  expect(c.gym.map((g) => [g.species, g.stale])).toEqual([['atomic', false], ['pi', true]]);
+});
+
+it('honest cockpit: strategy genomes of gym makers and production makers are separate scopes', () => {
+  const out = db.prepare("INSERT INTO skill_outcomes (id, skill_id, success, tokens_used, duration_ms, domain, evidence_refs_json, created_at) VALUES (?, ?, ?, 0, 1000, ?, ?, ?)");
+  for (let i = 0; i < 3; i++) out.run(`gym${i}`, 'loop-maker:gym:atomic', 1, 'gym', JSON.stringify(['genome:g-base']), ago(1));
+  out.run('prod1', 'loop-maker:test-gap:opencode', 0, 'test-gap', JSON.stringify(['genome:g-base']), ago(1));
+  const c = operatorCockpit(db, NOW);
+  expect(c.genomes.map((g) => [g.scope, g.skill_id, g.outcomes])).toEqual([
+    ['production', 'loop-maker:test-gap:opencode', 1],
+    ['gym', 'loop-maker:gym:atomic', 3],
+  ]);
+});

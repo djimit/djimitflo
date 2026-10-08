@@ -3,6 +3,8 @@ import { recordAutoApproveShadow, testGapAutoApproveScope } from './autonomy-sha
 import { mutationCheckEnv } from './test-gap-source-service';
 import { deadCodeCheckEnv } from './dead-code-source-service';
 import { LoopService } from './loop-service';
+import { randomUUID } from 'node:crypto';
+import { WorkerLeaseRepo } from './loop-worker-lease-repo';
 import { swarmEventBus } from './swarm-event-bus';
 import { GoalDecomposer } from './goal-decomposer';
 import { ResourceScheduler } from './resource-scheduler';
@@ -68,6 +70,14 @@ export function daemonReviewerTimeoutMs(env: NodeJS.ProcessEnv = process.env): n
   return Number.isFinite(timeout) && timeout >= 1000 ? Math.min(timeout, 900_000) : 300_000;
 }
 import { objectiveModeEnabled, objectiveModeMaxPerTick, goalQualifiesForObjectiveMode } from './objective-loop-gate';
+
+/** A reviewer lease whose runtime gave out (timeout or OPENCODE_MAX_RUN_TOKENS) delivered no verdict at all — retryable.
+ *  A reviewer that ran to completion and said no is a real rejection (status 'completed', never matched here).
+ *  Prod 2026-10-08: since #687 all 5 regressions were a missing reviewer verdict (2× timed_out, 2× token budget). */
+export function reviewerRetryable(role: string, status: string | undefined, failureReason: unknown): boolean {
+  if (status !== 'failed' || typeof failureReason !== 'string' || !failureReason.startsWith(`${role}_runtime_failed:`)) return false;
+  return /timed_out=true/.test(failureReason) || /token budget exceeded/i.test(failureReason);
+}
 
 /**
  * G16+G19: ParallelLoopDaemon — continuous + parallel operation mode.
@@ -671,9 +681,31 @@ export class LoopDaemon {
         // the reviewer of the maker that goes on (retry or evolve winner), newest first; none → executeChecker's own discovery
         const reviewerFor = (role: string) => (this.db.prepare(`SELECT id FROM worker_leases WHERE loop_run_id = ? AND role = ? AND status = 'prepared'
           ORDER BY json_extract(metadata, '$.maker_lease_id') IS ? DESC, created_at DESC LIMIT 1`).get(run.id, role, activeMakerLease.id) as { id: string } | undefined)?.id;
+        // LOOP_REVIEWER_RETRY_ENABLED: a reviewer whose runtime gave out gets ONE fresh lease for the same maker before the
+        // gates are evaluated; the verdict is still required (gates unchanged), this only re-attempts obtaining one.
+        const freshReviewerAfterRuntimeFailure = (role: 'checker' | 'security_checker', leaseId: string): string | undefined => {
+          if (process.env.LOOP_REVIEWER_RETRY_ENABLED !== 'true') return undefined;
+          const failed = this.db.prepare('SELECT status, finding_id, metadata FROM worker_leases WHERE id = ?').get(leaseId) as { status: string; finding_id: string | null; metadata: string } | undefined;
+          const meta = JSON.parse(failed?.metadata || '{}') as Record<string, unknown>;
+          if (!failed || !reviewerRetryable(role, failed.status, meta.failure_reason)) return undefined;
+          if (meta.retry_of) return undefined; // already the retry: a second failure fails the run as before
+          if (this.db.prepare("SELECT 1 FROM worker_leases WHERE loop_run_id = ? AND json_extract(metadata, '$.retry_of') = ? LIMIT 1").get(run.id, leaseId)) return undefined;
+          const id = randomUUID();
+          new WorkerLeaseRepo(this.db).insert({
+            id, loopRunId: run.id, role, runtime: 'manual', findingId: failed.finding_id ?? '', worktreePath: null, branchName: null, now: new Date().toISOString(),
+            metadata: {
+              maker_lease_id: meta.maker_lease_id, retry_of: leaseId, retry_reason: meta.failure_reason,
+              ...(role === 'checker' ? { requires_independent_review: true } : { requires_security_review: true, ...(meta.high_risk_reason ? { high_risk_reason: meta.high_risk_reason } : {}) }),
+            },
+          });
+          try { new LoopEventService(this.db).recordEvent(run.id, 'reviewer_retry_dispatched', 'info', `${role} lease ${leaseId} gave out (${String(meta.failure_reason).slice(0, 120)}); one fresh ${role} lease ${id}.`, { goal_id: goal.id, retry_of: leaseId, lease_id: id, maker_lease_id: meta.maker_lease_id }); } catch { /* logging */ }
+          return id;
+        };
         const dispatch = async (role: 'checker' | 'security_checker', leaseId?: string): Promise<boolean> => {
           try {
             await this.loops.executeChecker(run.id, { ...(leaseId ? { lease_id: leaseId } : {}), runtime, timeout_ms: daemonReviewerTimeoutMs() });
+            const retryLeaseId = leaseId ? freshReviewerAfterRuntimeFailure(role, leaseId) : undefined;
+            if (retryLeaseId) await this.loops.executeChecker(run.id, { lease_id: retryLeaseId, runtime, timeout_ms: daemonReviewerTimeoutMs() });
           } catch (error) {
             // A reviewer is a worker too: the execution engine asks a human before it runs. That is a wait, not a failure
             // (previously swallowed here, so the run was verified without a verdict and failed).

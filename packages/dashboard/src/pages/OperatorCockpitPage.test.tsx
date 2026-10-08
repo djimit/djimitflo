@@ -38,7 +38,7 @@ it('UX-2: shows real-maker outcomes per strategy genome with n, and an honest em
   unmount();
   vi.spyOn(api, 'getOperatorCockpit').mockResolvedValueOnce(base);
   render(<OperatorCockpitPage />);
-  expect(await screen.findByText('No real-maker outcome carries a genome yet.')).toBeTruthy();
+  expect(await screen.findByText('No production-maker outcome carries a genome yet.')).toBeTruthy();
 });
 
 it('shows the error when the endpoint fails', async () => {
@@ -83,4 +83,31 @@ it('UX-8: the cockpit shows how many schedulers are armed', async () => {
   });
   render(<OperatorCockpitPage />);
   expect(await screen.findByText('Schedulers: 9 armed, 5 off')).toBeTruthy();
+});
+
+it('honest cockpit: tokens per verified change, stale gym species, gym vs production genomes, a 404 is not "up"', async () => {
+  vi.spyOn(api, 'getOperatorCockpit').mockResolvedValue({
+    at: '2026-10-08T12:00:00Z', build: { commit: null, build_time: null },
+    scorecard: { tokens_per_verified_change_7d: 2_415_385 }, guardrails: [], stalls: [], remote_workers: [], maker_usage_7d: [], judgments_7d: [], deploys: [],
+    gym: [
+      { species: 'atomic@llama-router', outcomes: 3, successes: 3, success_pct: 100, avg_seconds: 60, avg_tokens: 0, last: '2026-10-08T10:00:00Z', benched: false, stale: false },
+      { species: 'pi@qwen', outcomes: 40, successes: 20, success_pct: 50, avg_seconds: 60, avg_tokens: 0, last: '2026-10-01T10:00:00Z', benched: false, stale: true },
+    ],
+    genomes: [
+      { genome: 'g-prod', skill_id: 'loop-maker:test-gap:opencode', scope: 'production', outcomes: 4, wins: 1, win_pct: 25 },
+      { genome: 'g-gym', skill_id: 'loop-maker:gym:atomic', scope: 'gym', outcomes: 30, wins: 27, win_pct: 90 },
+    ],
+  });
+  render(<OperatorCockpitPage />);
+  expect(await screen.findByText('Tokens per verified change (7 d, maker + reviewers)')).toBeTruthy();
+  expect(screen.queryByText('Tokens per outcome (7 d)')).toBeNull();
+  expect(screen.getByText('stale')).toBeTruthy();
+  expect(screen.getByText('active')).toBeTruthy();
+  expect(screen.queryByText('Strategy genomes on real makers (30 d)')).toBeNull();
+  const production = screen.getByRole('table', { name: 'Production-maker outcomes per strategy genome' });
+  const gym = screen.getByRole('table', { name: 'Gym-maker outcomes per strategy genome' });
+  expect(production.textContent).toContain('g-prod'); expect(production.textContent).not.toContain('g-gym');
+  expect(gym.textContent).toContain('g-gym'); expect(gym.textContent).not.toContain('g-prod');
+  expect(await screen.findByText('reachable (404)')).toBeTruthy();
+  expect(screen.queryByText('up')).toBeNull();
 });

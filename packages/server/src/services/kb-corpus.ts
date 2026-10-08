@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { addDimColumn, cosine, embed } from './proposal-dedupe';
-import { checkContentSafety, contentSafetyEnabled } from './content-safety';
+import { checkContentSafety, contentSafetyApplies } from './content-safety';
 import { runJudgment, type JudgmentDef } from './judgment-service';
 import type { TypeSafeClient } from './typesafe-client';
 import { dimsMatch } from './embedding-dims';
@@ -35,7 +35,7 @@ export async function ingestKbPages(db: Database, host: string, pages: unknown, 
     const unchanged = (db.prepare('SELECT sha FROM kb_pages WHERE path = ?').get(path) as { sha: string } | undefined)?.sha === sha;
     // an unchanged page is free unless it never got a safety verdict (prod 2026-09-27: 429s left 1 241 pages unchecked)
     const verdicted = () => Boolean(db.prepare("SELECT 1 FROM judgments WHERE judgment = 'content_safety' AND subject_type = 'kb_page' AND subject_id = ? AND decision IN ('yes', 'no') LIMIT 1").get(path));
-    if (unchanged && (!contentSafetyEnabled() || verdicted())) { out.accepted.push(path); continue; }
+    if (unchanged && (!contentSafetyApplies('kb_page') || verdicted())) { out.accepted.push(path); continue; }
     if (await checkContentSafety(db, { type: 'kb_page', id: path }, `${title}\n${body}`.slice(0, 4_000), fetchFn) === 'unsafe') {
       db.prepare('DELETE FROM kb_pages WHERE path = ?').run(path);
       out.unsafe.push(path); continue;

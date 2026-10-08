@@ -23,8 +23,18 @@ it('trims whitespace from env values before parsing', () => {
 });
 
 it('uses a bare endpoint (no trailing slash) for "/" probe paths', () => {
-  const t = serviceTargets({ DJIMIT_EVENT_BUS_URL: 'http://bus:8083' });
-  expect(t.find((x) => x.names[0] === 'event bus')?.probe).toBe('http://bus:8083');
+  const t = serviceTargets({ UAMS_URL: 'http://u:8000/' });
+  expect(t.find((x) => x.names[0] === 'UAMS')?.probe).toBe('http://u:8000');
+});
+
+it('honest status: event bus and agent registry are probed on /health; a 404 is "reachable", never "up" (prod 2026-10-08)', async () => {
+  const t = serviceTargets({ DJIMIT_EVENT_BUS_URL: 'http://bus:8083', AGENT_REGISTRY_URL: 'http://reg:8088/' });
+  expect(t.slice(0, 2).map((x) => x.probe)).toEqual(['http://bus:8083/health', 'http://reg:8088/health']);
+  const fetchFn = vi.fn(async (url: string) => new Response('', { status: url.includes('8083') ? 200 : 404 }));
+  const r = await serviceMap({ DJIMIT_EVENT_BUS_URL: 'http://bus:8083', UAMS_URL: 'http://u:8000' }, fetchFn as never, 1_000);
+  const by = Object.fromEntries(r.map((s) => [s.names[0], s]));
+  expect(by['event bus']).toMatchObject({ status: 'up', http: 200 });
+  expect(by.UAMS).toMatchObject({ status: 'reachable', http: 404 });
 });
 
 it('classifies any HTTP answer as up, 5xx as degraded, errors as down, sends no credentials and caches for a minute', async () => {
