@@ -37,6 +37,11 @@ import { recordLlmCall } from './model-selector';
  * still waiting (10–238 s recorded). One shared limiter: at most TYPESAFE_MAX_CONCURRENCY (default 6) requests in flight;
  * the rest wait and their timeout starts only when their request starts; beyond TYPESAFE_MAX_QUEUE (default 200) waiting
  * calls fail fast with TYPESAFE_QUEUE_FULL (callers are fail-open). Normal traffic (≤ 6 at once) never waits.
+ * JEV-BURST (prod 7 d to 08-10: 1 104 of 1 299 jev calls fell in the 07:xx discovery ingest, 539 usable; the other 195 calls
+ * 191 ok, avg 0.7 s): the ingest enqueues a whole batch inside one synchronous transaction, so nothing drains while it runs and
+ * a 500-discovery batch overflowed the 200 queue (288 queue_full on 08-10). A waiting call holds only a closure and its state
+ * and its timeout has not started, so the default queue is 1 000 (~1 min to drain at 6 × ~0.4 s). latency_ms is the request
+ * time from the moment it gets a slot; it used to include the wait (ok calls averaged 156 s, median of all calls 39 s).
  */
 let active = 0;
 const waiting: Array<() => void> = [];
@@ -44,7 +49,7 @@ export function resetTypesafeLimiter(): void { active = 0; waiting.length = 0; }
 const envInt = (name: string, d: number): number => { const n = Number(process.env[name]); return Number.isInteger(n) && n > 0 ? n : d; };
 async function acquire(): Promise<boolean> {
   if (active < envInt('TYPESAFE_MAX_CONCURRENCY', 6)) { active += 1; return true; }
-  if (waiting.length >= envInt('TYPESAFE_MAX_QUEUE', 200)) return false;
+  if (waiting.length >= envInt('TYPESAFE_MAX_QUEUE', 1000)) return false;
   await new Promise<void>((resolve) => waiting.push(resolve));
   active += 1;
   return true;
@@ -65,11 +70,12 @@ export class TypeSafeClient {
   async systemOne(state: unknown, questions: Record<string, TsQuestion>, opts: { timeoutMs?: number; retries?: number } = {}): Promise<TsResponse> {
     const key = process.env.TYPESAFE_API_KEY?.trim();
     if (!key) throw new Error('TYPESAFE_NOT_CONFIGURED');
-    const started = Date.now();
+    let started = Date.now();
     const record = (ok: boolean, status: string, attempts: number, tokensIn?: number) =>
       recordLlmCall({ consumer: 'jev', model: MODEL(), provider: 'typesafe', ok, latencyMs: Date.now() - started, outChars: 0, tokensIn, taskKind: 'systemone', status, attempts });
     if (Date.now() < downUntil) { record(false, 'breaker_open', 0); throw new Error('TYPESAFE_BREAKER_OPEN'); }
     if (!(await acquire())) { record(false, 'queue_full', 0); throw new Error('TYPESAFE_QUEUE_FULL'); }
+    started = Date.now(); // a slot is ours: latency is the request, not the wait
     try {
       const base = (process.env.TYPESAFE_BASE_URL || 'https://api.typesafe.ai').replace(/\/$/, '');
       const body = JSON.stringify({ state: prepareState(state), model: MODEL(), questions });
