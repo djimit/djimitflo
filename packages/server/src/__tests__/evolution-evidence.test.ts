@@ -13,7 +13,7 @@ afterEach(() => db?.close());
 it('RX-1: an empty or partial schema returns every section and never throws', () => {
   db = new Database(':memory:');
   const e = buildEvolutionEvidence(db, {}, NOW);
-  expect(Object.keys(e)).toEqual(['at', 'window_days', 'flags', 'outcomes', 'outcomes_tagged', 'merge', 'drafts', 'genomes', 'gym', 'gym_prod_gates', 'trials', 'models', 'oracle', 'commons', 'forecasts_v2', 'hacks', 'estimates', 'ope', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'auto_merge', 'memory_holdout', 'effort_x1', 'gates']);
+  expect(Object.keys(e)).toEqual(['at', 'window_days', 'flags', 'outcomes', 'outcomes_tagged', 'merge', 'drafts', 'genomes', 'gym', 'gym_prod_gates', 'trials', 'models', 'oracle', 'commons', 'forecasts_v2', 'hacks', 'estimates', 'ope', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'auto_merge', 'memory_holdout', 'effort_x1', 'graded', 'gates']);
   expect(e.outcomes).toEqual([]); expect(e.genomes.holdout).toEqual({ mined: null, mutant: null });
   expect(e.gates.B.state).toBe('red'); expect(e.gates.A.state).toBe('unknown');
   expect(e.flags.every((f) => f.value === null)).toBe(true);
@@ -116,4 +116,31 @@ it('MEMORY_HOLDOUT_RATE: verified/regressed per arm (rules vs holdout) with n an
   expect(e.memory_holdout.fisher_p).toBeCloseTo(1.0825e-5, 8);
   expect(e.trials.void).toEqual({ attempts: 1, by_genome: [{ genome: 'g-1', n: 1 }], fire_checked: 1 });
   expect(e.flags.find((f) => f.name === 'GENOME_FIRE_CHECK')).toMatchObject({ value: 'true', acting: true });
+});
+
+it('SI-A/SI-B: graded per pool (gym write_test, gym repair, prod test-gap, prod exports) with n, mean and share at 1.0, plus contest agreement', () => {
+  db = new Database(':memory:'); db.exec(schema); runMigrations(db); new SkillEvolutionEngine(db);
+  const out = db.prepare('INSERT INTO skill_outcomes (id, skill_id, success, domain, evidence_refs_json, created_at) VALUES (?, ?, ?, ?, ?, ?)');
+  const g = (score: string, kind: string, ...extra: string[]) => JSON.stringify([`graded:${score}`, `graded_kind:${kind}`, ...extra]);
+  out.run('w1', 'loop-maker:gym:atomic', 1, 'gym', g('1.000', 'mutant_kill', 'gym:fail'), ago(1));
+  out.run('w2', 'loop-maker:gym:atomic', 1, 'gym', g('0.500', 'mutant_kill', 'gym:fail'), ago(1));
+  out.run('r1', 'loop-maker:gym:atomic', 0, 'gym', g('0.500', 'tests_green'), ago(1));
+  out.run('t1', 'loop-maker:test-gap:opencode', 1, 'test-gap', g('0.667', 'mutant_kill', 'graded_lane:test-gap'), ago(1));
+  out.run('x1', 'loop-maker:test-gap:codex', 0, 'test-gap', g('1.000', 'mutant_kill', 'graded_lane:exports'), ago(1));
+  out.run('old', 'loop-maker:gym:atomic', 1, 'gym', g('1.000', 'binary'), ago(40));
+  out.run('plain', 'loop-maker:gym:atomic', 1, 'gym', '[]', ago(1));
+  db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, gates_json, created_at, updated_at) VALUES ('c', 'test-gap', 'closed', 'completed', '[]', ?, ?)").run(ago(1), ago(1));
+  const ev = db.prepare("INSERT INTO loop_events (id, loop_run_id, event_type, level, message, metadata, created_at) VALUES (?, 'c', 'contest_graded', 'info', 'm', ?, ?)");
+  ev.run('e1', JSON.stringify({ agree: true }), ago(1)); ev.run('e2', JSON.stringify({ agree: false }), ago(1)); ev.run('e3', JSON.stringify({ agree: true }), ago(1));
+  const e = buildEvolutionEvidence(db, { GRADED_FITNESS_MODE: 'shadow' }, NOW, 30);
+  expect(e.graded.pools).toEqual([
+    { pool: 'gym_write_test', n: 2, mean: 0.75, share_full: 0.5 },
+    { pool: 'gym_repair', n: 1, mean: 0.5, share_full: 0 },
+    { pool: 'prod_test_gap', n: 1, mean: 0.667, share_full: 0 },
+    { pool: 'prod_exports', n: 1, mean: 1, share_full: 1 },
+  ]);
+  expect(e.graded.contest).toEqual({ contests: 3, agree: 2, agreement_rate: 0.667 });
+  expect(e.graded.mode).toEqual({ fitness: 'shadow', contest: 'off' });
+  expect(e.flags.find((f) => f.name === 'GRADED_CONTEST_MODE')).toMatchObject({ acting: true });
+  expect(e.flags.find((f) => f.name === 'GRADED_FITNESS_MODE')).toMatchObject({ acting: false, value: 'shadow' });
 });

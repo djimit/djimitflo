@@ -118,6 +118,12 @@ export interface EvolutionEvidence {
   memory_holdout: { rate: string | null; rules: MemoryArm; holdout: MemoryArm; fisher_p: number; note: string };
   /** X1 (EFFORT_SIBLING_RANDOMISE): oracle-lane goals with evolve siblings (on) vs without (off), two-sided Fisher exact p */
   effort_x1: { enabled: string | null; on: EffortArm; off: EffortArm; fisher_p: number; note: string };
+  /** SI-A/SI-B (GRADED_FITNESS_MODE / GRADED_CONTEST_MODE): graded executed fitness per pool and graded-contest agreement */
+  graded: {
+    mode: { fitness: 'off' | 'shadow'; contest: 'off' | 'shadow' | 'act' };
+    pools: Array<{ pool: string; n: number; mean: number | null; share_full: number | null }>;
+    contest: { contests: number; agree: number; agreement_rate: number | null };
+  };
   gates: Record<'A' | 'B' | 'C' | 'D', { state: GateState; reason: string }>;
 }
 

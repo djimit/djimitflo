@@ -11,6 +11,7 @@ import { changedFromReason, classifyHack, hackDetectorShadow } from './gym-hack-
 import { settleNoHeadroom } from './dream-evolution';
 import { FAILURE_TASK_CAPABILITY, failureDerivedTasks, gitLookup, gymFailureTasksEnabled, type TargetMutant } from './gym-failure-tasks';
 import { daemonCheckOptions } from './loop-daemon';
+import { gradedFitnessMode, gradedRefs, roundGraded, type GradedKind } from './graded-fitness';
 import { dreamEvolutionEnabled, ensureBaseline, fireCheckVoid, genome, genomeFireCheck, holdout, mutantHoldout, mutantTrialsEnabled, nextTrialAttempt, parseFireCheck, type Genome } from './genome-registry';
 
 /**
@@ -81,8 +82,20 @@ export function sanitizeProdGates(value: unknown): Record<string, string> | unde
   return Object.keys(out).length ? out : undefined;
 }
 
+/**
+ * SI-A gym graded score (GRADED_FITNESS_MODE=shadow): write_test = served mutants the test killed / served mutants, counted
+ * here from the keys this server handed out; repair = the worker's per-test share (tests_green) or its 1/0 (binary); a
+ * missing or invalid worker value falls back to binary from the verdict (an older worker).
+ */
+export function gymGraded(gym: { kind?: string; mutant_keys?: string[] }, result: RemoteGymResult, killed?: string[]): { graded: number; graded_kind: GradedKind } {
+  if (gym.kind === 'write_test' && gym.mutant_keys?.length) return { graded: roundGraded((killed?.length ?? 0) / gym.mutant_keys.length), graded_kind: 'mutant_kill' };
+  const g = Number(result.graded);
+  if ((result.graded_kind === 'tests_green' || result.graded_kind === 'binary') && typeof result.graded === 'number' && g >= 0 && g <= 1) return { graded: roundGraded(g), graded_kind: result.graded_kind };
+  return { graded: result.status === 'success' ? 1 : 0, graded_kind: 'binary' };
+}
+
 export type RemoteGymClaim = { runId: string; species: string; task: GymTask; genome?: { id: string; lines: string[] }; prod_gates?: ProdGatesConfig } | { skipped: string };
-export interface RemoteGymResult { status: 'success' | 'failure' | 'discarded'; reason: string; tokens?: number; durationMs?: number; changed_files?: unknown; diff?: unknown; killed_mutants?: unknown; prod_gates?: unknown; fire_check?: unknown }
+export interface RemoteGymResult { status: 'success' | 'failure' | 'discarded'; reason: string; tokens?: number; durationMs?: number; changed_files?: unknown; diff?: unknown; killed_mutants?: unknown; prod_gates?: unknown; fire_check?: unknown; graded?: unknown; graded_kind?: unknown }
 
 export class RemoteGymService {
   private readonly outcomes: SkillEvolutionEngine;
@@ -169,11 +182,14 @@ export class RemoteGymService {
     // GENOME_FIRE_CHECK: a trial attempt without proof that the genome's lines reached the maker is VOID (genome-registry)
     const fire_check = genomeFireCheck() ? parseFireCheck(result.fire_check) : null;
     const voided = genomeFireCheck() ? fireCheckVoid(this.db, gym.genome, result.status, fire_check) : null;
+    // B8: which of the served mutants the write_test maker's test killed (only keys the server handed out)
+    const killed_mutants = Array.isArray(gym.mutant_keys) && Array.isArray(result.killed_mutants) ? result.killed_mutants.map(String).filter((k) => gym.mutant_keys!.includes(k)) : undefined;
+    const graded = result.status !== 'discarded' && gradedFitnessMode() === 'shadow' ? gymGraded(gym, result, killed_mutants) : null;
     if (result.status !== 'discarded' && !gym.canary && !voided) {
       const [species] = parseSpecies(gym.species, 1);
       this.outcomes.recordOutcome(`loop-maker:gym:${species.runtime}`, {
         success: result.status === 'success', tokensUsed: Math.max(0, Number(result.tokens) || 0), durationMs: Math.max(0, Number(result.durationMs) || 0), domain: 'gym', taskId: runId,
-        ...(species.model ? { model: species.model } : {}), evidenceRefs: [`gym:${gym.commit}`, `loop_run:${runId}`, `gym_result:${reason}`, `remote:${host}`, ...(gym.genome ? [`genome:${gym.genome}`] : []), ...(gym.probe ? ['gym:probe'] : []), ...((gym as { kind?: string }).kind === 'write_test' ? ['gym:fail'] : [])],
+        ...(species.model ? { model: species.model } : {}), evidenceRefs: [`gym:${gym.commit}`, `loop_run:${runId}`, `gym_result:${reason}`, `remote:${host}`, ...(gym.genome ? [`genome:${gym.genome}`] : []), ...(gym.probe ? ['gym:probe'] : []), ...((gym as { kind?: string }).kind === 'write_test' ? ['gym:fail'] : []), ...(graded ? gradedRefs(graded.graded, graded.graded_kind) : [])],
       });
     }
     let hack_flags: string[] | undefined;
@@ -186,14 +202,12 @@ export class RemoteGymService {
         try { new LoopEventService(this.db).recordEvent(runId, 'gym_hack_shadow', 'warning', `Gym hack flags (shadow): ${hack_flags.join(', ')}`, { species: gym.species, flags: hack_flags, status: result.status }); } catch { /* never break the report */ }
       }
     }
-    // B8: which of the served mutants the write_test maker's test killed (only keys the server handed out)
-    const killed_mutants = Array.isArray(gym.mutant_keys) && Array.isArray(result.killed_mutants) ? result.killed_mutants.map(String).filter((k) => gym.mutant_keys!.includes(k)) : undefined;
     // gym gold agreement: the per-check production gate results of a proxy success (only on a run claimed with the gates)
     const prod_gates = gym.prod_gates ? sanitizeProdGates(result.prod_gates) : undefined;
     const now = new Date().toISOString();
     this.db.prepare("UPDATE loop_runs SET status = 'completed', updated_at = ?, metadata = json_set(metadata, '$.gym_result', json(?)) WHERE id = ?")
       .run(now, JSON.stringify({ status: result.status, reason, ...(hack_flags ? { hack_flags } : {}), ...(killed_mutants ? { killed_mutants } : {}),
-        ...(prod_gates ? { prod_gates } : {}),
+        ...(prod_gates ? { prod_gates } : {}), ...(graded ?? {}),
         ...(fire_check ? { fire_check } : {}), ...(voided ? { void: voided } : {}) }), runId);
   }
 }

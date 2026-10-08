@@ -16,6 +16,7 @@ import { CommonsProposalReviewService } from './commons-proposal-review-service'
 import { SelfImprovementService } from './self-improvement-service';
 import { LoopDraftPrService } from './loop-draft-pr-service';
 import { evolveEligible, evolveSpecies, selectEvolveWinner } from './evolve-selection';
+import { leaseGradedRefs, recordMakerGraded } from './graded-fitness';
 import { assignSiblingArm, recordEffortSibling, siblingRandomiseEnabled } from './effort-controller';
 import { runGenome } from './maker-genome';
 import { strategyGenomeFor } from './genome-registry';
@@ -586,6 +587,10 @@ export class LoopDaemon {
         }
       } catch { /* best-effort: checks are not fatal for the daemon */ }
 
+      // SI-A: graded executed fitness of a maker (shadow, idempotent, never throws; off = no-op)
+      const grade = (leaseId: string) => { try { recordMakerGraded(this.db, run.id, leaseId); } catch { /* evidence only */ } };
+      grade(activeMakerLease.id); // right after its checks, while the worktree is the maker's
+
       // 8a. Evolve (E13, LOOP_EVOLVE_ENABLED, test-gap goals only): sibling makers of other species on the same objective;
       // the fittest (computed in code) stays the only non-superseded maker and goes on to the reviewers.
       // Y1: never a sibling of the species the bandit already chose as the first maker (it would run the same work twice)
@@ -633,12 +638,14 @@ export class LoopDaemon {
             try { new LoopEventService(this.db).recordEvent(run.id, 'evolve_sibling_failed', 'warning', `Evolve sibling ${sp.runtime}${sp.model ? `@${sp.model}` : ''} failed: ${error instanceof Error ? error.message : String(error)}`, { goal_id: goal.id }); } catch { /* logging */ }
           }
         }
+        for (const id of contenders) grade(id); // SI-A (GRADED_FITNESS_MODE=shadow): kill share per gate-passing maker
         const winnerId = contenders.length > 1 ? selectEvolveWinner(this.db, run.id, contenders) : null;
         const winner = winnerId ? this.db.prepare('SELECT * FROM worker_leases WHERE id = ?').get(winnerId) as typeof activeMakerLease | undefined : undefined;
         if (winner) activeMakerLease = { ...activeMakerLease, id: winner.id, runtime: winner.runtime };
       } else if (pendingSibling) {
         // Y0b: the approved sibling just ran; rank it against the makers of the first pass instead of spawning new siblings
         const contenders = prepared.leases.filter(l => l.role === 'maker').map(l => l.id);
+        for (const id of contenders) grade(id); // SI-A (GRADED_FITNESS_MODE=shadow): kill share per gate-passing maker
         const winnerId = contenders.length > 1 ? selectEvolveWinner(this.db, run.id, contenders) : null;
         const winner = winnerId ? this.db.prepare('SELECT * FROM worker_leases WHERE id = ?').get(winnerId) as typeof activeMakerLease | undefined : undefined;
         if (winner) activeMakerLease = { ...activeMakerLease, id: winner.id, runtime: winner.runtime };
@@ -768,7 +775,7 @@ export class LoopDaemon {
       // skill-evolution engine and a later runtime bandit select on. Before this, skill_outcomes only got manual API writes.
       try {
         const maker = this.db.prepare('SELECT id, runtime, metadata FROM worker_leases WHERE id = ?').get(activeMakerLease.id) as { id: string; runtime: string; metadata: string } | undefined;
-        const meta = maker ? JSON.parse(maker.metadata || '{}') as { model?: unknown; genome_id?: unknown; runtime_usage?: { total_tokens?: unknown } } : {};
+        const meta = maker ? JSON.parse(maker.metadata || '{}') as { model?: unknown; genome_id?: unknown; graded?: unknown; runtime_usage?: { total_tokens?: unknown } } : {};
         const skills = new SkillEvolutionEngine(this.db); // ensures skill_outcomes exists
         const skillId = `loop-maker:${loopName}:${activeMakerLease.runtime}`;
         // Y2: the strategy genome this maker ran with (template + examples + sealed rules), on the lease and the outcome
@@ -785,7 +792,8 @@ export class LoopDaemon {
           ...(typeof meta.model === 'string' ? { model: meta.model } : {}),
           evidenceRefs: [`loop_run:${run.id}`, `genome:${genome.id}`, ...(typeof meta.genome_id === 'string' ? [`strategy_genome:${meta.genome_id}`] : []), ...verification.gates.filter(g => g.status !== 'pass').map(g => `gate:${g.name}:${g.status}`),
             // RX-3: why a failed run failed (infra / no change / regressed) — the bandit counts all three as 0 today
-            ...(allGatesPass ? [] : [`outcome_class:${runOutcomeOnFailure(this.db, activeMakerLease.id)}`])],
+            ...(allGatesPass ? [] : [`outcome_class:${runOutcomeOnFailure(this.db, activeMakerLease.id)}`]),
+            ...leaseGradedRefs(meta)], // SI-A: graded:<score>, graded_kind, graded_lane when the maker was graded
         });
       } catch { /* best-effort learning */ }
 

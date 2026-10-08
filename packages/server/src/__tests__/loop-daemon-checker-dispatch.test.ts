@@ -155,6 +155,18 @@ describe('LoopDaemon checker dispatch', () => {
     expect(rows).toEqual([{ skill_id: 'loop-maker:doc-drift-and-small-fix-loop:codex', success: 0, task_id: 'run-1', agent_id: 'maker-1', domain: 'doc-drift-and-small-fix-loop' }]);
   });
 
+  it('SI-A: the maker outcome carries the graded refs stored on its lease (graded:<score>, graded_kind, graded_lane)', async () => {
+    seedQualifyingGoal();
+    db.pragma('foreign_keys = OFF');
+    const now = new Date().toISOString();
+    db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES ('maker-1', 'run-1', 'maker', 'codex', 'completed', ?, ?, ?)`)
+      .run(JSON.stringify({ graded: { score: 2 / 3, kind: 'mutant_kill', lane: 'test-gap', killed: 2, total: 3 } }), now, now);
+    const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+    await runOneTick(daemon);
+    const row = db.prepare('SELECT evidence_refs_json AS refs FROM skill_outcomes').get() as { refs: string };
+    expect(JSON.parse(row.refs)).toEqual(expect.arrayContaining(['graded:0.667', 'graded_kind:mutant_kill', 'graded_lane:test-gap']));
+  });
+
   it('RX-3: a failed run tags its maker outcome with why it failed (here: the maker never ran → infra), success unchanged', async () => {
     seedQualifyingGoal();
     const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
