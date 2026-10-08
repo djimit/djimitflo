@@ -162,6 +162,8 @@ export class ExternalEventIngestService {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     let inserted = 0;
+    // JEV-BURST: one service per batch, so its fleet-source gate (~0.7 s per evaluation on prod) runs once per source, not per event
+    const sourceUnits = sourceUnitsEnabled() ? new ExpertSourceUnitsService(this.db) : null;
     const transaction = this.db.transaction(() => {
       for (const event of events) {
         if (!event || typeof event !== 'object' || Array.isArray(event)) continue;
@@ -186,8 +188,8 @@ export class ExternalEventIngestService {
         if (eventType.startsWith('discovery.') && contentSafetyApplies('external_event')) {
           void checkContentSafety(this.db, { type: 'external_event', id }, [normalizedEvent.title, normalizedEvent.note].filter((v) => typeof v === 'string').join('\n')).catch(() => undefined);
         }
-        if (eventType.startsWith('discovery.') && sourceUnitsEnabled()) {
-          try { new ExpertSourceUnitsService(this.db).ingestDiscovery(normalizedEvent); } catch { /* never let one discovery break ingestion */ }
+        if (eventType.startsWith('discovery.') && sourceUnits) {
+          try { sourceUnits.ingestDiscovery(normalizedEvent); } catch { /* never let one discovery break ingestion */ }
         }
         const added = insert.run(
           id,

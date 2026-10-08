@@ -73,3 +73,59 @@ it('FE2: with FRONTIER_UNITS_REQUIRE_RELEVANCE a unit is created only for a rele
   expect(svc.ingestDiscovery({ event_type: 'discovery.paper', ref: 'arxiv:2609.10002', title: 'Scalable oversight for coding agents in general', agent: 'x' })).toBe('known');
   expect(fetchMock).toHaveBeenCalledTimes(2);
 });
+
+it('JEV-BURST: the rejected-gate shadow cap also counts judgments still in flight (a synchronous batch used to blow through it)', async () => {
+  vi.stubEnv('TYPESAFE_API_KEY', 'k');
+  vi.stubEnv('TYPESAFE_DISCOVERY_RELEVANCE_MODE', 'shadow');
+  vi.stubEnv('DISCOVERY_GATE_SHADOW_MAX_PER_DAY', '2');
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ model: 'jev-test', answers: ans('off_topic', 0.9, 0.1) }) });
+  vi.stubGlobal('fetch', fetchMock);
+  const svc = new ExpertSourceUnitsService(db);
+  for (let i = 0; i < 5; i += 1) expect(svc.ingestDiscovery({ event_type: 'discovery.paper', ref: `arxiv:2610.3000${i}`, title: `Trapped-ion qubit calibration ${i}` })).toBe('irrelevant');
+  await vi.waitFor(() => expect((db.prepare("SELECT COUNT(*) n FROM judgments WHERE judgment = 'discovery_relevance'").get() as { n: number }).n).toBe(2));
+  await new Promise((r) => setTimeout(r, 20));
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect((db.prepare("SELECT COUNT(*) n FROM judgments WHERE judgment = 'discovery_relevance'").get() as { n: number }).n).toBe(2);
+});
+
+it('JEV-BURST: FE2 — a failed judgment (queue full, timeout) is not a verdict; the ref is judged again when it is sent again', async () => {
+  vi.stubEnv('TYPESAFE_API_KEY', 'k');
+  vi.stubEnv('TYPESAFE_DISCOVERY_RELEVANCE_MODE', 'shadow');
+  vi.stubEnv('FRONTIER_UNITS_REQUIRE_RELEVANCE', 'true');
+  const fetchMock = vi.fn()
+    .mockResolvedValueOnce({ ok: false, status: 503 })
+    .mockResolvedValue({ ok: true, status: 200, json: async () => ({ model: 'jev-test', answers: ans('lane_technique', 0.9, 0.7) }) });
+  vi.stubGlobal('fetch', fetchMock);
+  const svc = new ExpertSourceUnitsService(db);
+  const event = { event_type: 'discovery.paper', ref: 'arxiv:2610.40001', title: 'Mutation-guided test generation for coding agents', agent: 'djimitflo-scout' };
+  expect(svc.ingestDiscovery(event)).toBe('pending');
+  await vi.waitFor(() => expect(db.prepare("SELECT decision FROM judgments WHERE judgment = 'discovery_relevance'").all()).toEqual([{ decision: 'error' }]));
+  expect(svc.ingestDiscovery(event)).toBe('pending');
+  await vi.waitFor(() => expect(db.prepare("SELECT COUNT(*) n FROM expert_identities WHERE kind = 'paper'").get()).toEqual({ n: 1 }));
+  expect(svc.ingestDiscovery(event)).toBe('known');
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});
+
+it('JEV-SCOPE: DISCOVERY_RELEVANCE_SOURCES limits judgments and units to the listed sources; unset keeps every source', async () => {
+  vi.stubEnv('TYPESAFE_API_KEY', 'k');
+  vi.stubEnv('TYPESAFE_DISCOVERY_RELEVANCE_MODE', 'shadow');
+  vi.stubEnv('FRONTIER_UNITS_REQUIRE_RELEVANCE', 'true');
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ model: 'jev-test', answers: ans('lane_technique', 0.9, 0.7) }) });
+  vi.stubGlobal('fetch', fetchMock);
+  const svc = new ExpertSourceUnitsService(db);
+  const ev = (n: number, agent: string, extra: Record<string, unknown> = {}) => ({ event_type: 'discovery.paper', ref: `arxiv:2610.5000${n}`, title: 'Mutation-guided test generation for coding agents', agent, ...extra });
+  expect(svc.ingestDiscovery(ev(1, 'hermes-macmini'))).toBe('pending'); // unset: unchanged
+  await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+  vi.stubEnv('DISCOVERY_RELEVANCE_SOURCES', 'djimitflo-scout, operator-chatgpt');
+  expect(svc.ingestDiscovery(ev(2, 'hermes-macmini'))).toBe('irrelevant');
+  expect(svc.ingestDiscovery({ event_type: 'discovery.paper', ref: 'arxiv:2610.50003', title: 'Mutation-guided test generation for coding agents' })).toBe('irrelevant'); // no source
+  vi.stubEnv('FRONTIER_UNITS_REQUIRE_RELEVANCE', 'false');
+  expect(svc.ingestDiscovery(ev(4, 'hermes-eve-v'))).toBe('irrelevant'); // no unit on the direct path either
+  expect(svc.ingestDiscovery(ev(5, 'operator-chatgpt'))).toBe('unit');
+  vi.stubEnv('FRONTIER_UNITS_REQUIRE_RELEVANCE', 'true');
+  expect(svc.ingestDiscovery(ev(6, 'x', { agent: undefined, source: 'djimitflo-scout' }))).toBe('pending'); // event source when no agent
+  await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+  const judged = (db.prepare("SELECT subject_id FROM judgments WHERE judgment = 'discovery_relevance'").all() as Array<{ subject_id: string }>).length;
+  expect(judged).toBe(3);
+  expect(db.prepare("SELECT COUNT(*) n FROM judgments WHERE subject_id IN ('arxiv:2610.50002', 'arxiv:2610.50003', 'arxiv:2610.50004')").get()).toEqual({ n: 0 });
+});
