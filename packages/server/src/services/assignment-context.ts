@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { nonMakerRunSql } from './outcome-attribution';
 
 /**
  * WS-K: what a maker gets to see besides its finding.
@@ -13,6 +14,7 @@ import type { Database } from 'better-sqlite3';
  * M5 — memory under selection: a rule's fitness = runs that read it and verified minus runs that read it and regressed
  *    (reads are logged as `loop-maker:<run id>`). Fit rules (> 0) survive past the 14-day trial and come first; a rule
  *    with fitness <= -2 is never shown again; the last slot always goes to the newest untried rule (exploration).
+ *    OUTCOME_ATTRIBUTION_ENABLED: a regression attributed to a reviewer or the environment costs the rule nothing.
  */
 export interface AssignmentContext { examples: string[]; rules: Array<{ id: string; text: string; hash: string }>; memory_holdout?: true }
 
@@ -50,7 +52,7 @@ export function assignmentContext(db: Database, run: { id: string; goal_id: stri
     else if (env.LOOP_MEMORY_RULES_ENABLED === 'true') {
       const since = new Date(Date.now() - RULE_MAX_AGE_DAYS * 86_400_000).toISOString();
       const rows = db.prepare(`SELECT m.id, m.content, m.content_hash, m.created_at,
-          COALESCE(SUM(CASE s.status WHEN 'verified' THEN 1 WHEN 'regressed' THEN -1 ELSE 0 END), 0) AS fitness, COUNT(a.id) AS reads
+          COALESCE(SUM(CASE s.status WHEN 'verified' THEN 1 WHEN 'regressed' THEN (CASE WHEN ${nonMakerRunSql('r.id', env)} THEN 0 ELSE -1 END) ELSE 0 END), 0) AS fitness, COUNT(a.id) AS reads
         FROM memory_candidates m
         LEFT JOIN memory_access_log a ON a.candidate_id = m.id
         LEFT JOIN loop_runs r ON a.agent_id = 'loop-maker:' || r.id

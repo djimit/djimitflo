@@ -2,6 +2,7 @@ import type { Database } from 'better-sqlite3';
 import type { Species } from './evolve-selection';
 import { speciesKey } from './runtime-bandit';
 import { LoopEventService } from './loop-event-service';
+import { nonMakerRunSql } from './outcome-attribution';
 
 /**
  * D0 (Darwin engine, operator-approved 03-10): one fitness view over skill_outcomes for a maker species in a lane. The bandit
@@ -41,7 +42,9 @@ export interface FitnessRow { species: string; sources: Record<FitnessSource, { 
 export function fitnessPosterior(db: Database, lane: string, species: Species[], now = Date.now(), env: NodeJS.ProcessEnv = process.env): FitnessRow[] {
   const w = fitnessWeights(env); const halfLifeMs = num(env.FITNESS_HALF_LIFE_DAYS, 30) * 86_400_000;
   const rows = (skillId: string, model: string): Array<{ success: number; created_at: string; refs: string | null }> => {
-    try { return db.prepare('SELECT success, created_at, evidence_refs_json AS refs FROM skill_outcomes WHERE skill_id = ? AND COALESCE(model, \'\') = ?').all(skillId, model) as Array<{ success: number; created_at: string; refs: string | null }>; }
+    // OUTCOME_ATTRIBUTION_ENABLED: reviewer/environment failures are left out (neither success nor failure)
+    try { return db.prepare(`SELECT success, created_at, evidence_refs_json AS refs FROM skill_outcomes WHERE skill_id = ? AND COALESCE(model, '') = ?
+      AND NOT (success = 0 AND ${nonMakerRunSql('skill_outcomes.task_id', env)})`).all(skillId, model) as Array<{ success: number; created_at: string; refs: string | null }>; }
     catch { return []; } // skill_outcomes is created lazily
   };
   return species.map((s) => {

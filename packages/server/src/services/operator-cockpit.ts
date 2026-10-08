@@ -5,13 +5,15 @@ import { infraFailing } from './evolution-gym-service';
 import { decisionsInbox, openDecisionCounts } from './decisions-inbox';
 import { listSchedulers } from './scheduler-registry';
 import { countOpenLoopPrs, listDraftPrs } from './loop-draft-pr-service';
+import { nonMakerRunSql, outcomeAttributionEnabled } from './outcome-attribution';
 
 /**
  * S1 (operator 2026-09-28): one read-only snapshot of what the operator otherwise measures by hand over SSH —
  * scorecard + guardrails (plan §3), stalls, gym species (D6), remote workers, model/judgment usage. Every query is
  * fail-soft (a missing table yields null), so the cockpit never breaks on an older or partial schema.
  */
-export interface Guardrail { name: string; ok: boolean; value: number | null; limit: string }
+/** split: regressions by attributed class (maker / reviewer / environment) — with OUTCOME_ATTRIBUTION_ENABLED the guardrail counts maker only */
+export interface Guardrail { name: string; ok: boolean; value: number | null; limit: string; split?: { maker: number; reviewer: number; environment: number } }
 export interface CockpitSnapshot {
   at: string;
   build: { commit: string | null; build_time: string | null };
@@ -36,7 +38,7 @@ export interface CockpitSnapshot {
   deploys: Array<{ at: string; event: string; sha: string; detail: string }>;
 }
 
-export function operatorCockpit(db: Database, now = Date.now()): CockpitSnapshot {
+export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.ProcessEnv = process.env): CockpitSnapshot {
   const d7 = new Date(now - 7 * 86_400_000).toISOString(); const d1 = new Date(now - 86_400_000).toISOString();
   const one = (sql: string, ...args: unknown[]): number | null => {
     try { const r = db.prepare(sql).get(...args) as Record<string, unknown> | undefined; const v = r ? Object.values(r)[0] : null; return v === null || v === undefined ? null : Number(v); } catch { return null; }
@@ -62,9 +64,19 @@ export function operatorCockpit(db: Database, now = Date.now()): CockpitSnapshot
       FROM worker_leases WHERE role IN ('maker', 'checker', 'security_checker') AND created_at >= ?`, d7, d7),
   };
   const v = scorecard.verified_7d ?? 0;
+  // funnel phase 3: each regressed proposal by its newest outcome attribution (on the proposal or any of its runs); none = maker
+  const split = { maker: 0, reviewer: 0, environment: 0 };
+  for (const r of all<{ cls: string | null; n: number }>(`SELECT (SELECT j.decision FROM judgments j WHERE j.judgment = 'outcome_attribution'
+      AND ((j.subject_type = 'self_improvement' AND j.subject_id = s.id)
+        OR (j.subject_type = 'loop_run' AND j.subject_id IN (SELECT r.id FROM goals g JOIN loop_runs r ON r.goal_id = g.id WHERE g.improvement_id = s.id)))
+      ORDER BY j.created_at DESC LIMIT 1) AS cls, COUNT(*) AS n
+    FROM self_improvements s WHERE s.status = 'regressed' AND s.updated_at >= ? GROUP BY 1`, d7)) {
+    if (r.cls === 'reviewer_failure') split.reviewer += r.n; else if (r.cls === 'environment_failure') split.environment += r.n; else split.maker += r.n;
+  }
+  const regressions = outcomeAttributionEnabled(env) ? split.maker : scorecard.regressed_7d;
   // plan §3 guardrails
   const guardrails: Guardrail[] = [
-    { name: 'regressions', value: scorecard.regressed_7d, limit: `<= verified/5 (${(v / 5).toFixed(1)})`, ok: (scorecard.regressed_7d ?? 0) <= v / 5 },
+    { name: 'regressions', value: regressions, limit: `<= verified/5 (${(v / 5).toFixed(1)})${outcomeAttributionEnabled(env) ? ', maker failures only' : ''}`, ok: (regressions ?? 0) <= v / 5, split },
     { name: 'panel unparseable (7 d)', value: scorecard.panel_unparseable_7d, limit: '0', ok: (scorecard.panel_unparseable_7d ?? 0) === 0 },
     { name: 'reflection inflow (24 h)', value: scorecard.reflection_inflow_24h, limit: '<= 25', ok: (scorecard.reflection_inflow_24h ?? 0) <= 25 },
     { name: 'approvals expired (7 d)', value: scorecard.approvals_expired_7d, limit: 'not rising', ok: (scorecard.approvals_expired_7d ?? 0) <= (scorecard.approvals_decided_7d ?? 0) / 5 },
@@ -95,7 +107,8 @@ export function operatorCockpit(db: Database, now = Date.now()): CockpitSnapshot
   const genomesIn = (scope: 'gym' | 'production') => all<{ genome: string; skill_id: string; outcomes: number; wins: number }>(
     `SELECT substr(r.value, 8) AS genome, s.skill_id, COUNT(*) AS outcomes, SUM(s.success) AS wins
        FROM skill_outcomes s, json_each(s.evidence_refs_json) r
-      WHERE r.value LIKE 'genome:%' AND s.created_at >= ? AND (s.skill_id LIKE 'loop-maker:gym:%') = ? GROUP BY 1, 2 ORDER BY outcomes DESC LIMIT 20`, d30, scope === 'gym' ? 1 : 0)
+      WHERE r.value LIKE 'genome:%' AND s.created_at >= ? AND (s.skill_id LIKE 'loop-maker:gym:%') = ?
+        AND NOT (s.success = 0 AND ${nonMakerRunSql('s.task_id', env)}) GROUP BY 1, 2 ORDER BY outcomes DESC LIMIT 20`, d30, scope === 'gym' ? 1 : 0)
     .map((g) => ({ ...g, scope, win_pct: g.outcomes ? Math.round((100 * g.wins) / g.outcomes) : 0 }));
   const genomes = [...genomesIn('production'), ...genomesIn('gym')];
   const in60 = new Date(now + 3_600_000).toISOString();
