@@ -3,6 +3,7 @@ import type { Database } from 'better-sqlite3';
 import { rankEvolveCandidates, evolveWinner, type EvolveCandidate } from './evolve-fitness-service';
 import { LoopEventService } from './loop-event-service';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
+import { gradedContestMode, leaseGraded, leaseGradedRefs } from './graded-fitness';
 
 /**
  * E13 steps 2–3 (docs/design/evolve-loop.md): several makers on one objective, the fittest (computed in code) wins.
@@ -81,13 +82,29 @@ export function selectEvolveWinner(db: Database, runId: string, makerLeaseIds: s
     .filter((l): l is LeaseRow => Boolean(l));
   const artifact = goalArtifact(db, runId);
   const ranked = rankEvolveCandidates(leases.map((l) => candidate(l, artifact)));
-  const winner = evolveWinner(ranked);
+  const current = evolveWinner(ranked);
   const events = new LoopEventService(db);
   const table = ranked.map(({ makerLeaseId, species, rank, eligible, reason, diffLines, tokens }) => ({ makerLeaseId, species, rank, eligible, reason, diffLines, tokens }));
-  if (!winner) {
+  if (!current) {
     events.recordEvent(runId, 'evolve_no_winner', 'warning', 'Evolve: no maker passed the hard gates.', { fitness: table });
     return null;
   }
+  // SI-B (GRADED_CONTEST_MODE): among makers that passed every gate, the highest graded score (SI-A kill share on the lease;
+  // none = lowest) wins; a tie keeps the current rule's order. shadow logs the comparison; act decides by it.
+  const contest = gradedContestMode();
+  const passed = ranked.filter((r) => r.eligible);
+  const graded = new Map(passed.map((r) => [r.makerLeaseId, leaseGraded(JSON.parse(leases.find((l) => l.id === r.makerLeaseId)!.metadata || '{}'))?.score ?? null]));
+  let winner = current;
+  if (contest !== 'off' && passed.length >= 2) {
+    const gradedWinner = passed.reduce((best, r) => ((graded.get(r.makerLeaseId) ?? -1) > (graded.get(best.makerLeaseId) ?? -1) ? r : best), passed[0]);
+    try {
+      events.recordEvent(runId, 'contest_graded', 'info', `Graded contest (${contest}): ${gradedWinner.species} by graded score, ${current.species} by the current rule.`,
+        { current_winner: current.makerLeaseId, graded_winner: gradedWinner.makerLeaseId, scores: Object.fromEntries(graded), agree: gradedWinner.makerLeaseId === current.makerLeaseId });
+    } catch { /* evidence only */ }
+    if (contest === 'act') winner = gradedWinner;
+  }
+  const reasonOf = (r: typeof ranked[number]) => winner === current ? r.reason : r.makerLeaseId === winner.makerLeaseId ? 'winner: graded score'
+    : r.makerLeaseId === current.makerLeaseId ? `lost: graded ${graded.get(r.makerLeaseId) ?? 'n/a'} vs ${graded.get(winner.makerLeaseId)}` : r.reason;
   const now = new Date().toISOString();
   db.transaction(() => {
     for (const r of ranked) {
@@ -95,7 +112,7 @@ export function selectEvolveWinner(db: Database, runId: string, makerLeaseIds: s
         ? `json_remove(json_set(metadata, '$.evolve', json(?)), '$.superseded_by_maker_lease_id', '$.superseded_at')`
         : `json_set(metadata, '$.evolve', json(?), '$.superseded_by_maker_lease_id', '${winner.makerLeaseId}', '$.superseded_at', '${now}')`;
       db.prepare(`UPDATE worker_leases SET metadata = ${meta}, updated_at = ? WHERE id = ?`)
-        .run(JSON.stringify({ rank: r.rank, species: r.species, reason: r.reason }), now, r.makerLeaseId);
+        .run(JSON.stringify({ rank: r.rank, species: r.species, reason: reasonOf(r) }), now, r.makerLeaseId);
       if (r.makerLeaseId !== winner.makerLeaseId) {
         db.prepare(`UPDATE worker_leases SET status = 'cancelled', updated_at = ? WHERE loop_run_id = ? AND role IN ('checker', 'security_checker')
           AND status = 'prepared' AND json_extract(metadata, '$.maker_lease_id') = ?`).run(now, runId, r.makerLeaseId);
@@ -112,9 +129,12 @@ export function selectEvolveWinner(db: Database, runId: string, makerLeaseIds: s
       // a maker that never finished (still prepared/running) did not compete: no fitness verdict, only an event
       if (lease.status !== 'completed' && lease.status !== 'failed') continue;
       const model = (JSON.parse(lease.metadata || '{}') as { model?: unknown }).model;
+      // SI-B act: a maker that passed every gate and lost the contest did the work — success, tagged contest:passed_lost
+      const passedLost = contest === 'act' && r.eligible;
       skills.recordOutcome(`loop-maker:${loop}:${lease.runtime}`, {
-        success: false, tokensUsed: r.tokens ?? 0, durationMs: 0, domain: loop, taskId: runId, agentId: r.makerLeaseId,
-        ...(typeof model === 'string' ? { model } : {}), evidenceRefs: [`loop_run:${runId}`, `evolve:lost_to:${winner.species}`, `evolve:reason:${r.reason}`, `evolve:lost_${r.eligible ? 'eligible' : 'ineligible'}`],
+        success: passedLost, tokensUsed: r.tokens ?? 0, durationMs: 0, domain: loop, taskId: runId, agentId: r.makerLeaseId,
+        ...(typeof model === 'string' ? { model } : {}), evidenceRefs: [`loop_run:${runId}`, `evolve:lost_to:${winner.species}`, `evolve:reason:${reasonOf(r)}`,
+          passedLost ? 'contest:passed_lost' : `evolve:lost_${r.eligible ? 'eligible' : 'ineligible'}`, ...leaseGradedRefs(JSON.parse(lease.metadata || '{}'))],
       });
     }
   } catch { /* lineage bookkeeping must never change the selection */ }

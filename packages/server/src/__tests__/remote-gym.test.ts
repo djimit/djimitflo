@@ -192,3 +192,39 @@ it('GENOME_FIRE_CHECK off: a trial result without evidence scores as before', ()
   expect(JSON.parse((db.prepare('SELECT metadata FROM loop_runs WHERE id = ?').get(trial.runId) as { metadata: string }).metadata).gym_result.void).toBeUndefined();
   expect(db.prepare("SELECT COUNT(*) AS n FROM skill_outcomes WHERE evidence_refs_json LIKE '%genome:g1%'").get()).toEqual({ n: 1 });
 });
+
+it('SI-A gym (GRADED_FITNESS_MODE=shadow): write_test outcomes carry graded = killed / served mutants; repair outcomes the worker\'s graded; off records none', () => {
+  const svc = new RemoteGymService(db, () => []);
+  const run = (id: string, gym: object) => db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, repository_path, metadata, created_at, updated_at) VALUES (?, 'evolution-gym', 'closed', 'running', '/repo', ?, ?, ?)")
+    .run(id, JSON.stringify({ gym: { species: 'atomic@llama-router', remote_host: 'workstation', ...gym } }), new Date().toISOString(), new Date().toISOString());
+  const refs = (id: string) => JSON.parse((db.prepare('SELECT evidence_refs_json AS r FROM skill_outcomes WHERE task_id = ?').get(id) as { r: string }).r) as string[];
+  const wt = { commit: 'fail:r1', kind: 'write_test', mutant_keys: ['mut:a:t:1:1', 'mut:a:t:1:2', 'mut:a:t:1:3'] };
+  // off: nothing new on the outcome
+  run('w0', wt);
+  svc.record('w0', 'workstation', { status: 'success', reason: 'kills 2/3', killed_mutants: ['mut:a:t:1:1', 'mut:a:t:1:2'], graded: 0.667, graded_kind: 'mutant_kill' });
+  expect(refs('w0').some((r) => r.startsWith('graded'))).toBe(false);
+  vi.stubEnv('GRADED_FITNESS_MODE', 'shadow');
+  // write_test: the server counts the served keys itself (a worker cannot claim kills it was not handed)
+  run('w1', wt);
+  svc.record('w1', 'workstation', { status: 'success', reason: 'kills 2/3', killed_mutants: ['mut:a:t:1:1', 'mut:a:t:1:2', 'mut:forged'], graded: 1, graded_kind: 'mutant_kill' });
+  expect(refs('w1')).toEqual(expect.arrayContaining(['gym:fail', 'graded:0.667', 'graded_kind:mutant_kill']));
+  run('w2', wt);
+  svc.record('w2', 'workstation', { status: 'failure', reason: 'tests still red' });
+  expect(refs('w2')).toEqual(expect.arrayContaining(['graded:0.000', 'graded_kind:mutant_kill']));
+  // repair (mined / mutant): the worker's per-test share
+  run('r1', { commit: 'mut:abc:packages/server/src/services/x.ts:2:7' });
+  svc.record('r1', 'workstation', { status: 'failure', reason: 'tests still red', graded: 0.5, graded_kind: 'tests_green' });
+  expect(refs('r1')).toEqual(expect.arrayContaining(['graded:0.500', 'graded_kind:tests_green']));
+  run('r2', { commit: 'c1' });
+  svc.record('r2', 'workstation', { status: 'success', reason: 'tests green', graded: 1, graded_kind: 'binary' });
+  expect(refs('r2')).toEqual(expect.arrayContaining(['graded:1.000', 'graded_kind:binary']));
+  // an older worker without graded: binary from the verdict; nonsense is ignored the same way
+  run('r3', { commit: 'c2' });
+  svc.record('r3', 'workstation', { status: 'failure', reason: 'tests still red', graded: 7, graded_kind: 'tests_green' });
+  expect(refs('r3')).toEqual(expect.arrayContaining(['graded:0.000', 'graded_kind:binary']));
+  expect(db.prepare("SELECT json_extract(metadata, '$.gym_result.graded') AS g FROM loop_runs WHERE id = 'r1'").get()).toEqual({ g: 0.5 });
+  // a discard earns no outcome, graded or not
+  run('d1', { commit: 'c3' });
+  svc.record('d1', 'workstation', { status: 'discarded', reason: 'infra: npm ci failed', graded: 1, graded_kind: 'binary' });
+  expect(db.prepare("SELECT COUNT(*) AS n FROM skill_outcomes WHERE task_id = 'd1'").get()).toEqual({ n: 0 });
+});

@@ -66,7 +66,7 @@ export function failureRows(db: Database): FailureRow[] {
   } catch { return []; }
 }
 
-const laneOf = (evidence: string): FailureTask['lane'] | null =>
+export const laneOf = (evidence: string): FailureTask['lane'] | null =>
   /mutation-gap:/.test(evidence) ? null : /test-gap:[^"]*#exports/.test(evidence) ? 'exports' : /test-gap:/.test(evidence) ? 'test-gap' : null;
 
 /** Pure: which failure rows qualify, before any git lookup. */
