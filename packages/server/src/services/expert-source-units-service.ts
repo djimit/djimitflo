@@ -18,6 +18,20 @@ import { buildEvidencePack } from './commons-evidence-pack';
  */
 export const sourceUnitsEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.FRONTIER_EXPERT_SOURCE_UNITS_ENABLED === 'true';
 
+/**
+ * JEV-SCOPE (operator 08-10): DISCOVERY_RELEVANCE_SOURCES is a comma list of discovery agents (payload `agent`, else the event
+ * source) whose discoveries are judged and can become units; unset = every source (unchanged). Prod 08-10 (30 d): relevant
+ * verdicts djimitflo-scout 199 of 2 664, operator-chatgpt 8 of 217, hermes-macmini 0 of 105, hermes-eve-v 0 of 16. Other sources
+ * stay recorded in external_events, but get no judgment and no unit.
+ */
+export function discoveryRelevanceSources(env: NodeJS.ProcessEnv = process.env): Set<string> | null {
+  const list = (env.DISCOVERY_RELEVANCE_SOURCES ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  return list.length ? new Set(list) : null;
+}
+
+/** JEV-BURST: rejected-gate shadow judgments started but not yet recorded; the daily cap counts them (the rows only land later). */
+let rejectedInFlight = 0;
+
 const ACTOR = 'ingestion:source-units';
 const REPO = /github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)/g;
 
@@ -26,6 +40,8 @@ interface StoredPaper { source_ref: string; title: string; url: string | null; m
 export class ExpertSourceUnitsService {
   private readonly registry: FrontierExpertRegistryService;
   private readonly enrichment: ExpertEvidenceEnrichmentService;
+  /** JEV-BURST: fleetSourceGate per source, once per service instance (= once per ingest batch); it costs ~0.7 s on prod. */
+  private readonly gateCache = new Map<string, boolean>();
   constructor(private readonly db: Database) {
     this.registry = new FrontierExpertRegistryService(db);
     this.enrichment = new ExpertEvidenceEnrichmentService(db, { registry: this.registry });
@@ -52,8 +68,10 @@ export class ExpertSourceUnitsService {
     const ref = kind === 'paper' ? `arxiv:${id}` : `github:${id}`;
     if (this.knownRefs().has(ref)) return 'known';
     // AR-W6: survival of the fittest for fleet sources — a source whose discoveries are never relevant is not processed further
+    const scope = discoveryRelevanceSources();
+    if (scope && !scope.has(str(event.agent ?? event.source, 80))) return 'irrelevant';
     const source = str(event.agent, 80);
-    if (arenaGateEnabled() && source && !fleetSourceGate(this.db, source).allowed) return 'irrelevant';
+    if (arenaGateEnabled() && source && !this.sourceAllowed(source)) return 'irrelevant';
     const note = str(event.note ?? event.summary, 1000);
     const categories = Array.isArray(event.categories) ? event.categories.filter((c): c is string => typeof c === 'string').slice(0, 10) : [];
     const capabilities = this.enrichment.capabilitiesFor({ arxiv_id: id, url: '', title, summary: note, authors: [], categories, primary_category: categories[0] ?? null, published: null });
@@ -63,9 +81,11 @@ export class ExpertSourceUnitsService {
       const cap = Number(process.env.DISCOVERY_GATE_SHADOW_MAX_PER_DAY) || 100;
       const today = (this.db.prepare("SELECT COUNT(*) n FROM judgments WHERE judgment = 'discovery_relevance' AND subject_type = 'discovery_rejected' AND created_at >= ?")
         .get(new Date(Date.now() - 86_400_000).toISOString()) as { n: number }).n;
-      if (judgmentMode(discoveryRelevance.id) !== 'off' && today < cap) {
+      if (judgmentMode(discoveryRelevance.id) !== 'off' && today + rejectedInFlight < cap) {
         const pack = buildEvidencePack(this.db, 14);
-        void runJudgment(this.db, discoveryRelevance, { type: 'discovery_rejected', id: ref }, { title, note, capabilities: [], open_problems: { failing_gates: pack.top_failing_gates, failure_causes: pack.failure_causes } }).catch(() => undefined);
+        rejectedInFlight += 1;
+        void runJudgment(this.db, discoveryRelevance, { type: 'discovery_rejected', id: ref }, { title, note, capabilities: [], open_problems: { failing_gates: pack.top_failing_gates, failure_causes: pack.failure_causes } })
+          .catch(() => undefined).finally(() => { rejectedInFlight -= 1; });
       }
       return 'irrelevant';
     }
@@ -76,7 +96,8 @@ export class ExpertSourceUnitsService {
     // FRONTIER_UNITS_REQUIRE_RELEVANCE the unit is created only after jev classifies the discovery as an open problem or a lane
     // technique; the verdict is then re-pointed at the new unit. Fail-closed: no verdict, no unit. A ref is judged once.
     if (process.env.FRONTIER_UNITS_REQUIRE_RELEVANCE === 'true' && judgmentMode(discoveryRelevance.id) !== 'off') {
-      if (this.db.prepare("SELECT 1 FROM judgments WHERE judgment = 'discovery_relevance' AND subject_id = ? LIMIT 1").get(ref)) return 'known';
+      // a failed call (queue full, timeout) is not a verdict: the ref is judged again when it is sent again
+      if (this.db.prepare("SELECT 1 FROM judgments WHERE judgment = 'discovery_relevance' AND subject_id = ? AND decision <> 'error' LIMIT 1").get(ref)) return 'known';
       const pack = buildEvidencePack(this.db, 14);
       void runJudgment(this.db, discoveryRelevance, { type: 'discovery_pending', id: ref }, { title, note, capabilities, open_problems: { failing_gates: pack.top_failing_gates, failure_causes: pack.failure_causes } })
         .then((verdict) => {
@@ -94,6 +115,12 @@ export class ExpertSourceUnitsService {
       void runJudgment(this.db, discoveryRelevance, { type: 'expert_unit', id: expertId }, { title, note, capabilities, open_problems: { failing_gates: pack.top_failing_gates, failure_causes: pack.failure_causes } }).catch(() => undefined);
     }
     return 'unit';
+  }
+
+  private sourceAllowed(source: string): boolean {
+    let allowed = this.gateCache.get(source);
+    if (allowed === undefined) { allowed = fleetSourceGate(this.db, source).allowed; this.gateCache.set(source, allowed); }
+    return allowed;
   }
 
   /** Materialises up to `limit` new units; returns how many papers and repositories became units this call. */

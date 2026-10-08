@@ -48,6 +48,22 @@ describe('ExternalEventIngestService', () => {
     db.close();
   });
 
+  it('JEV-BURST: the fleet-source gate (knowledge overview, ~0.7 s on prod) runs once per source per batch, not once per discovery', async () => {
+    const db = createDb();
+    new FrontierExpertRegistryService(db).seedTaxonomy();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ events: Array.from({ length: 8 }, (_, i) => (
+      { _id: `d-${i}`, event_id: `discovery:arxiv:2610.6000${i}`, event_type: 'discovery.paper', source: 'djimitflo-scout', agent: 'djimitflo-scout', ref: `arxiv:2610.6000${i}`, title: `Mutation-guided test generation for coding agents ${i}` })) }), { status: 200 })));
+    vi.stubEnv('FRONTIER_EXPERT_SOURCE_UNITS_ENABLED', 'true'); vi.stubEnv('ARENA_GATE_ENABLED', 'true');
+    const prepare = db.prepare.bind(db); let overviews = 0;
+    vi.spyOn(db, 'prepare').mockImplementation(((sql: string) => { if (sql.includes('AS n7')) overviews += 1; return prepare(sql); }) as typeof db.prepare);
+    try {
+      expect(await new ExternalEventIngestService(db, 'http://event-bus').pollOnce()).toBe(8);
+    } finally { vi.unstubAllEnvs(); }
+    expect(overviews).toBe(1);
+    expect((db.prepare("SELECT COUNT(*) n FROM expert_identities WHERE kind = 'paper'").get() as { n: number }).n).toBe(8);
+    db.close();
+  });
+
   it('imports a board handoff as a causal event without treating it as approval', async () => {
     const db = createDb();
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ events: [
