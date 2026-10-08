@@ -133,11 +133,16 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     void: { attempts: voided.reduce((a, r) => a + r.n, 0), by_genome: voided, fire_checked },
     by_state: all<{ state: string; n: number }>('SELECT state, COUNT(*) AS n FROM genome_trial_results GROUP BY 1 ORDER BY 1'),
     // RX-12: a holdout is consumable — settled trials per epoch (rotate after ~6); RX-13: e-process shadow decisions
-    by_epoch: all<{ epoch: number | null; n: number; e_promote: number }>("SELECT epoch, COUNT(*) AS n, SUM(e_rule_decision = 'promote') AS e_promote FROM genome_trial_results GROUP BY 1 ORDER BY 1"),
-    recent: all<{ trial_id: string; parent_id: string; tier_set: string; deciding_n: number; f_parent_failures: number; b: number; c: number; p: number; power_q8_l05: number; state: string; recorded_at: string }>(
-      'SELECT trial_id, parent_id, tier_set, deciding_n, f_parent_failures, b, c, p, power_q8_l05, state, recorded_at FROM genome_trial_results ORDER BY recorded_at DESC LIMIT 10'),
+    // SI-C: graded decisions per epoch (acted on only under DREAM_PROMOTION_RULE=graded)
+    by_epoch: all<{ epoch: number | null; n: number; e_promote: number; graded_promote: number }>(
+      "SELECT epoch, COUNT(*) AS n, SUM(e_rule_decision = 'promote') AS e_promote, SUM(graded_decision = 'promote') AS graded_promote FROM genome_trial_results GROUP BY 1 ORDER BY 1"),
+    recent: all<{ trial_id: string; parent_id: string; tier_set: string; deciding_n: number | null; f_parent_failures: number; b: number; c: number; p: number; power_q8_l05: number; state: string; recorded_at: string;
+      graded_mean_parent: number | null; graded_mean_mutant: number | null; graded_p: number | null; graded_decision: string | null; graded_refs: number | null }>(
+      `SELECT trial_id, parent_id, tier_set, deciding_n, f_parent_failures, b, c, p, power_q8_l05, state, recorded_at,
+        graded_mean_parent, graded_mean_mutant, graded_p, graded_decision, graded_refs FROM genome_trial_results ORDER BY recorded_at DESC LIMIT 10`),
   };
-  const latestTrial = trials.recent[0];
+  // Gate A reads deciding-set diagnostics; shadow-only rows (e-process, graded) carry none
+  const latestTrial = trials.recent.find((t): t is typeof t & { deciding_n: number } => t.deciding_n != null);
   // RX-7: forecast scoring V2 summary (shadow): counts per state; details at GET /api/health/forecasts-v2
   const forecasts_v2 = (() => {
     try {

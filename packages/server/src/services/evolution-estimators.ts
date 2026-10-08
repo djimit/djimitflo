@@ -68,7 +68,7 @@ export function computeEstimates(db: Database, env: NodeJS.ProcessEnv = process.
   }
 
   // trial blindness: share of settled trials (RX-4 diagnostics) that could not have promoted anything
-  const trials = all<{ state: string; n: number }>('SELECT state, COUNT(*) AS n FROM genome_trial_results WHERE recorded_at >= ? GROUP BY 1', since(30));
+  const trials = all<{ state: string; n: number }>("SELECT state, COUNT(*) AS n FROM genome_trial_results WHERE recorded_at >= ? AND state <> 'graded_only' GROUP BY 1", since(30));
   const tn = trials.reduce((a, t) => a + t.n, 0);
   out.push(rate('trial_blindness', 'trials', 30, trials.find((t) => t.state === 'blind')?.n ?? 0, tn, Object.fromEntries(trials.map((t) => [t.state, t.n]))));
 

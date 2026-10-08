@@ -1367,6 +1367,11 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
     { name: 'epoch', definition: 'INTEGER' }, { name: 'e_value', definition: 'REAL' },
     { name: 'n_discordant', definition: 'INTEGER' }, { name: 'e_rule_decision', definition: 'TEXT' },
   ]);
+  // SI-C: graded genome trials — paired permutation test on graded scores; recorded for every trial, acted on under DREAM_PROMOTION_RULE=graded
+  addMissingColumns(db, 'genome_trial_results', [
+    { name: 'graded_mean_parent', definition: 'REAL' }, { name: 'graded_mean_mutant', definition: 'REAL' }, { name: 'graded_p', definition: 'REAL' },
+    { name: 'graded_decision', definition: 'TEXT' }, { name: 'graded_refs', definition: 'INTEGER' },
+  ]);
   // P1c: collapse duplicate fingerprints among LIVE rows (keep the newest) so the partial UNIQUE index never aborts.
   // Only live statuses can collide with that index. This used to delete every older row sharing a fingerprint
   // regardless of status, on every boot: parked/finished proposals vanished when a later one with the same text

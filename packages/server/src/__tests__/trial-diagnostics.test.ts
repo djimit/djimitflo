@@ -56,9 +56,9 @@ it('RX-4: with the flag on a settled trial records its blindness (f ≤ 4 → bl
   expect(e.gates.A).toMatchObject({ state: 'red' }); // parent passed 17/20 = 0.85, outside [0.30, 0.55]
 });
 
-it('RX-4: without the flag nothing is written; Gate A stays unknown', () => {
+it('RX-4: without the flag no diagnostics are written (only the SI-C graded shadow row); Gate A stays unknown', () => {
   evaluateTrials(db, 'atomic@llama-router', seed('g-c', 3, [1]), NOW);
-  expect(db.prepare('SELECT COUNT(*) AS n FROM genome_trial_results').get()).toEqual({ n: 0 });
+  expect(db.prepare('SELECT state, deciding_n, power_q8_l05 FROM genome_trial_results').all()).toEqual([{ state: 'graded_only', deciding_n: null, power_q8_l05: null }]);
   expect(buildEvolutionEvidence(db, {}, NOW).gates.A.state).toBe('unknown');
 });
 
