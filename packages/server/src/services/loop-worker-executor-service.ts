@@ -16,6 +16,7 @@ import type { LoopService } from './loop-service';
 import { judgmentMode, runJudgment } from './judgment-service';
 import { leaseIdentity } from './reviewer-independence-service';
 import { checkerSecondOpinion, checkerSecondOpinionState } from './judgments/checker-second-opinion';
+import { remoteMakerCancelReason } from '../execution/executors/remote-maker-executor';
 import type {
   LoopRunRecord,
   WorkerLeaseRecord,
@@ -205,6 +206,7 @@ export class LoopWorkerExecutorService {
     const failed = gates.some((gate) => gate.status === 'fail');
     const completionStatus = failed ? 'failed' : 'completed';
     const wasCancelled = this.loopService.isWorkerLeaseCancelled(makerLease.id);
+    const remoteCancel = makerLease.runtime === 'remote' ? remoteMakerCancelReason(result.stderr) : null;
 
     const metadataPatch: Record<string, unknown> = {
       completed_at: new Date().toISOString(), stdout_path: stdoutPath, stderr_path: stderrPath,
@@ -213,7 +215,7 @@ export class LoopWorkerExecutorService {
       runtime_signal: result.signal, runtime_timed_out: result.timedOut, runtime_timed_out_at: result.timedOutAt,
       runtime_warnings: runtimeWarnings, token_efficiency: efficiency,
       runtime_usage: runtimeUsage || { usage_source: 'unknown' },
-      ...(failed ? { failure_reason: `maker_gate_failed:${gates.filter((gate) => gate.status === 'fail').map((gate) => gate.name).join(',')}` } : {}),
+      ...(failed ? { failure_reason: `maker_gate_failed:${gates.filter((gate) => gate.status === 'fail').map((gate) => gate.name).join(',')}${remoteCancel ? `;remote_maker_cancelled:${remoteCancel}` : ''}` } : {}),
     };
 
     if (wasCancelled) {

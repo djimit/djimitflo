@@ -10,7 +10,8 @@ import type { Database } from 'better-sqlite3';
 export const remoteMakerEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.REMOTE_MAKER_ENABLED === 'true';
 export const MAX_PATCH_BYTES = 2 * 1024 * 1024;
 
-export interface RemoteMakerJob { id: string; host: string; species: string; base_commit: string; prompt: string; status: string; patch: string | null; reason: string | null }
+export interface RemoteMakerJob { id: string; host: string; species: string; base_commit: string; prompt: string; status: string; patch: string | null; reason: string | null; created_at: string; claimed_at: string | null }
+export type RemoteMakerExpiry = 'queue_timeout' | 'work_timeout';
 
 export class RemoteMakerQueue {
   constructor(private readonly db: Database) {
@@ -40,6 +41,11 @@ export class RemoteMakerQueue {
   record(id: string, host: string, result: { status: 'done' | 'failed'; patch?: string; reason?: string }): void {
     const job = this.db.prepare('SELECT host, status FROM remote_maker_jobs WHERE id = ?').get(id) as { host: string; status: string } | undefined;
     if (!job || job.host !== host) throw new Error('MAKER_JOB_NOT_FOUND');
+    if (job.status === 'cancelled') {
+      // the executor already gave up and failed its lease, so the result has nobody to apply it; still rejected, but a
+      // late arrival is recorded next to the cancel reason (prod 2026-10-08: patch posted 2 min after a timeout, reason NULL)
+      this.db.prepare("UPDATE remote_maker_jobs SET reason = COALESCE(reason, 'cancelled') || ';late_result' WHERE id = ? AND COALESCE(reason, '') NOT LIKE '%late_result%'").run(id);
+    }
     if (job.status !== 'claimed') throw new Error('MAKER_JOB_NOT_CLAIMED');
     if (result.status !== 'done' && result.status !== 'failed') throw new Error('MAKER_RESULT_INVALID');
     const patch = typeof result.patch === 'string' ? result.patch : '';
@@ -49,10 +55,24 @@ export class RemoteMakerQueue {
   }
 
   get(id: string): RemoteMakerJob | undefined {
-    return this.db.prepare('SELECT id, host, species, base_commit, prompt, status, patch, reason FROM remote_maker_jobs WHERE id = ?').get(id) as RemoteMakerJob | undefined;
+    return this.db.prepare('SELECT id, host, species, base_commit, prompt, status, patch, reason, created_at, claimed_at FROM remote_maker_jobs WHERE id = ?').get(id) as RemoteMakerJob | undefined;
   }
 
-  cancel(id: string): void {
-    this.db.prepare("UPDATE remote_maker_jobs SET status = 'cancelled', finished_at = ? WHERE id = ? AND status IN ('queued', 'claimed')").run(new Date().toISOString(), id);
+  /** Every cancel records why; `statuses` guards against a claim/result landing between the read and the cancel. */
+  cancel(id: string, reason: string, statuses: string[] = ['queued', 'claimed']): boolean {
+    return this.db.prepare(`UPDATE remote_maker_jobs SET status = 'cancelled', reason = ?, finished_at = ? WHERE id = ? AND status IN (${statuses.map(() => '?').join(', ')})`)
+      .run(reason, new Date().toISOString(), id, ...statuses).changes > 0;
+  }
+
+  /**
+   * Prod 2026-10-08: the work timeout counted from creation, so a job the host claimed late (busy with a gym attempt) was
+   * cancelled mid-work. An unclaimed job expires after `queueMs` from creation, a claimed one after `workMs` from its claim.
+   */
+  expire(id: string, queueMs: number, workMs: number, now = Date.now()): RemoteMakerExpiry | null {
+    const job = this.get(id);
+    if (!job) return null;
+    const reason: RemoteMakerExpiry | null = job.status === 'queued' && now - Date.parse(job.created_at) > queueMs ? 'queue_timeout'
+      : job.status === 'claimed' && job.claimed_at && now - Date.parse(job.claimed_at) > workMs ? 'work_timeout' : null;
+    return reason && this.cancel(id, reason, [job.status]) ? reason : null;
   }
 }

@@ -20,7 +20,7 @@ import { banditSpecies, chooseSpecies, speciesKey } from './runtime-bandit';
 import { recordFitnessShadow } from './fitness-view';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { authorityGateForGoal } from './authority-gate';
-import { remoteMakerTimeoutMs } from '../execution/executors/remote-maker-executor';
+import { remoteMakerWaitMs } from '../execution/executors/remote-maker-executor';
 /** Deterministic checks for daemon runs. The repo-wide `test` script cannot finish in 120 s, so hosts can scope it
  *  (LOOP_DAEMON_CHECK_SCRIPTS=test:changed,lint,type-check) and raise the per-script timeout (LOOP_DAEMON_CHECK_TIMEOUT_MS, max 600000). */
 export function daemonCheckOptions(env: NodeJS.ProcessEnv = process.env): { scripts?: string[]; timeout_ms: number } {
@@ -604,13 +604,13 @@ export class LoopDaemon {
               // lane (J5) it gets the same one-file scope and the same rule decision; anywhere else it still fails.
               if (!/APPROVAL_REQUIRED/.test(error instanceof Error ? error.message : String(error))
                 || !((await this.autoApproveSibling(run.id, makerLease.id, sibling.id)) || (await this.inheritApproval(run.id, sibling.id)))) throw error;
-              // a remote host may take up to REMOTE_MAKER_TIMEOUT_MS; the 11-min default gave up on both first workstation
-              // makers (prod 2026-09-27: patches arrived at +13 and +26 min, after the run was already blocked)
+              // a remote host may take up to REMOTE_MAKER_QUEUE_TIMEOUT_MS + REMOTE_MAKER_TIMEOUT_MS; the 11-min default gave up on
+              // both first workstation makers (prod 2026-09-27: patches arrived at +13 and +26 min, after the run was blocked)
               // prod 2026-10-01: right after an automatic approval the engine had not yet marked the sibling's task running,
               // so the wait returned at once and the read-back hit LOOP_WORKER_EXECUTION_IN_PROGRESS — 4/4 goals failed while
               // their runs went on. An execution in progress is waited for (bounded), not a failure.
               for (let attempt = 0; ; attempt++) {
-                await this.loops.awaitWorkerExecution(sibling.id, sp.runtime === 'remote' ? remoteMakerTimeoutMs() + 60_000 : undefined);
+                await this.loops.awaitWorkerExecution(sibling.id, sp.runtime === 'remote' ? remoteMakerWaitMs() + 60_000 : undefined);
                 try { await this.loops.executeWorker(run.id, siblingInput); break; } // returns the result of the approved execution
                 catch (waitError) {
                   if (attempt >= 3 || !/LOOP_WORKER_EXECUTION_IN_PROGRESS/.test(waitError instanceof Error ? waitError.message : String(waitError))) throw waitError;

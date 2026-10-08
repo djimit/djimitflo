@@ -12,8 +12,15 @@ import { Task, ExecutionEventType, LogLevel, type ExecutionEventCreateInput } fr
 import type { ExecutionResult, ExecutionSession, ExecutorKind, ExecutorOptions, TaskExecutor } from '../types';
 import { RemoteMakerQueue } from '../../services/remote-maker-queue';
 
-/** How long a host may take for one maker job (the daemon waits this long for a remote sibling too). */
+/** How long a host may work on one maker job, counted from its claim (REMOTE_MAKER_TIMEOUT_MS, default 30 min). */
 export const remoteMakerTimeoutMs = (): number => Number(process.env.REMOTE_MAKER_TIMEOUT_MS) || 1_800_000;
+/** How long a job may wait for a claim before an absent host fails it (REMOTE_MAKER_QUEUE_TIMEOUT_MS, default 45 min). */
+export const remoteMakerQueueTimeoutMs = (): number => Number(process.env.REMOTE_MAKER_QUEUE_TIMEOUT_MS) || 2_700_000;
+const WAIT_MARGIN_MS = 60_000;
+/** The longest a caller can wait for a remote maker: queue wait + work + margin (the daemon waits this for a remote sibling). */
+export const remoteMakerWaitMs = (workMs = remoteMakerTimeoutMs()): number => remoteMakerQueueTimeoutMs() + workMs + WAIT_MARGIN_MS;
+/** The cancel reason a failed remote maker reports in its stderr (`remote_maker_cancelled:<reason>`), for the lease's failure_reason. */
+export const remoteMakerCancelReason = (stderr: string | undefined): string | null => /remote_maker_cancelled:([a-z_;]+)/.exec(stderr || '')?.[1] ?? null;
 
 export function parseRemoteTarget(model: string | undefined): { host: string; species: string } | null {
   const m = /^([A-Za-z0-9._-]{1,40})\/([A-Za-z0-9._:@/-]{1,80})$/.exec(model || '');
@@ -37,8 +44,11 @@ export class RemoteMakerExecutor implements TaskExecutor {
     const finish = (code: number, stdout: string, stderr = '') => { if (finished) return; finished = true; emitter.emit('done', { code, stdout, stderr }); resolveClosed(); };
     const cwd = options?.workingDirectory || process.cwd();
     // waiting costs no CPU here; the host's worker polls every few minutes and a maker there takes ~5 min, so a loop
-    // maker timeout of 300-600 s would expire before the host even looked. REMOTE_MAKER_TIMEOUT_MS (default 30 min).
-    const timeoutMs = Math.max(options?.timeout ?? 0, remoteMakerTimeoutMs());
+    // maker timeout of 300-600 s would expire before the host even looked. Work is timed from the claim (the host may be
+    // busy finishing a gym attempt first); an unclaimed job fails after the queue timeout.
+    const workMs = Math.max(options?.timeout ?? 0, remoteMakerTimeoutMs());
+    const queueMs = remoteMakerQueueTimeoutMs();
+    const cancelled = (reason: string, detail: string) => finish(1, '', `remote maker cancelled (${detail}): remote_maker_cancelled:${reason}`);
 
     const run = () => {
       const target = parseRemoteTarget(options?.model);
@@ -50,7 +60,7 @@ export class RemoteMakerExecutor implements TaskExecutor {
       } catch { return finish(1, '', 'infra: base commit is not on origin/main, the remote host cannot fetch it'); }
       jobId = this.queue.enqueue(target.host, target.species, base, task.description);
       emitter.emit('log', `queued remote maker job ${jobId} for ${target.host} (${target.species}) at ${base.slice(0, 8)}`);
-      const deadline = Date.now() + timeoutMs;
+      const deadline = Date.now() + remoteMakerWaitMs(workMs); // backstop only: expire() fails the job first
       const poll = () => {
         if (finished) return;
         const job = this.queue.get(jobId!);
@@ -59,8 +69,11 @@ export class RemoteMakerExecutor implements TaskExecutor {
           const applied = spawnSync('git', ['-C', cwd, 'apply', '--whitespace=nowarn', '-'], { input: job.patch, encoding: 'utf8' });
           return applied.status === 0 ? finish(0, `remote maker (${target.host}): ${job.reason || 'patch applied'}`) : finish(1, '', `remote patch did not apply: ${(applied.stderr || '').slice(0, 300)}`);
         }
-        if (job && (job.status === 'failed' || job.status === 'cancelled')) return finish(1, '', `remote maker ${job.status}: ${job.reason || ''}`);
-        if (Date.now() > deadline) { this.queue.cancel(jobId!); return finish(1, '', `remote maker timed out after ${timeoutMs} ms (${job?.status ?? 'unknown'})`); }
+        if (job && job.status === 'failed') return finish(1, '', `remote maker failed: ${job.reason || ''}`);
+        if (job && job.status === 'cancelled') return cancelled(job.reason || 'unknown', 'by the server');
+        const expired = this.queue.expire(jobId!, queueMs, workMs);
+        if (expired) return cancelled(expired, expired === 'queue_timeout' ? `not claimed within ${queueMs} ms` : `not finished within ${workMs} ms of its claim`);
+        if (Date.now() > deadline) { this.queue.cancel(jobId!, 'wait_timeout'); return cancelled('wait_timeout', `${job?.status ?? 'unknown'}`); }
         setTimeout(poll, this.pollMs).unref?.();
       };
       poll();
@@ -72,7 +85,7 @@ export class RemoteMakerExecutor implements TaskExecutor {
       result: new Promise<ExecutionResult>((resolve) => emitter.once('done', ({ code, stdout, stderr }: { code: number; stdout: string; stderr: string }) => resolve(code === 0
         ? { status: 'completed', message: 'Remote maker completed', stdout, stderr, metrics: { executionTimeMs: 0 } }
         : { status: 'failed', message: 'Remote maker failed', stdout, stderr, error: stderr, metrics: { executionTimeMs: 0 } }))),
-      cancel: async () => { session.status = 'cancelled'; if (jobId) this.queue.cancel(jobId); finish(1, '', 'cancelled'); session.completedAt = new Date(); },
+      cancel: async () => { session.status = 'cancelled'; if (jobId) this.queue.cancel(jobId, 'session_cancelled'); finish(1, '', 'cancelled: remote_maker_cancelled:session_cancelled'); session.completedAt = new Date(); },
     };
     return session;
   }
