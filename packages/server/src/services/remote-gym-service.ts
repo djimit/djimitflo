@@ -9,6 +9,7 @@ import { LoopEventService } from './loop-event-service';
 import { changedFromReason, classifyHack, hackDetectorShadow } from './gym-hack-classifier';
 import { settleNoHeadroom } from './dream-evolution';
 import { FAILURE_TASK_CAPABILITY, failureDerivedTasks, gitLookup, gymFailureTasksEnabled, type TargetMutant } from './gym-failure-tasks';
+import { daemonCheckOptions } from './loop-daemon';
 import { dreamEvolutionEnabled, ensureBaseline, genome, holdout, mutantHoldout, mutantTrialsEnabled, nextTrialAttempt, type Genome } from './genome-registry';
 
 /**
@@ -53,8 +54,34 @@ function canaryDue(db: Database, capabilities: string[], env: NodeJS.ProcessEnv 
 }
 const SAFE = /^[A-Za-z0-9._:/@-]{1,80}$/;
 
-export type RemoteGymClaim = { runId: string; species: string; task: GymTask; genome?: { id: string; lines: string[] } } | { skipped: string };
-export interface RemoteGymResult { status: 'success' | 'failure' | 'discarded'; reason: string; tokens?: number; durationMs?: number; changed_files?: unknown; diff?: unknown; killed_mutants?: unknown }
+/**
+ * Gym gold agreement (prod 2026-10-08): atomic@llama-router solved 7/9 gym write_test tasks mined from production failures
+ * but 0/41 as a production maker — all 30 production regressions in 7 days were gate failures. The gym oracle (target test
+ * green, source-only scope, a mutant killed) is a proxy; production also runs LOOP_DAEMON_CHECK_SCRIPTS and the lane diff
+ * limit. GYM_PROD_GATES=true (default off) sends production's gate config with each claim to a worker announcing
+ * capabilities ['prod_gates']; the worker runs those scripts on a proxy success and scores a failing gate as
+ * 'prod_gate_failed:<check>'. Per-check results land in gym_result.prod_gates (evidence: proxy vs prod-gate success).
+ */
+export const gymProdGatesEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.GYM_PROD_GATES === 'true';
+export const PROD_GATES_CAPABILITY = 'prod_gates';
+/** Production's base maker diff limit (loop-daemon makerDiffMax for ordinary lanes; the worker raises it to 400 for a test-only change). */
+export const PROD_GATE_DIFF_MAX = 200;
+export interface ProdGatesConfig { scripts: string[]; timeout_ms: number; diff_max_lines: number }
+export function prodGatesConfig(env: NodeJS.ProcessEnv = process.env): ProdGatesConfig {
+  const opts = daemonCheckOptions(env);
+  // runDeterministicChecks' own default is the repo-wide 'test', which never finishes; prod always sets the scoped list
+  return { scripts: (opts.scripts ?? ['test:changed', 'lint', 'type-check']).filter((s) => /^[\w:.-]{1,40}$/.test(s)).slice(0, 8), timeout_ms: opts.timeout_ms, diff_max_lines: PROD_GATE_DIFF_MAX };
+}
+const GATE_STATUS = new Set(['pass', 'fail', 'skipped']);
+/** Only a small {check: pass|fail|skipped} map is stored. */
+export function sanitizeProdGates(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const out = Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([k, v]) => /^[\w:.-]{1,40}$/.test(k) && GATE_STATUS.has(String(v))).slice(0, 10).map(([k, v]) => [k, String(v)]));
+  return Object.keys(out).length ? out : undefined;
+}
+
+export type RemoteGymClaim = { runId: string; species: string; task: GymTask; genome?: { id: string; lines: string[] }; prod_gates?: ProdGatesConfig } | { skipped: string };
+export interface RemoteGymResult { status: 'success' | 'failure' | 'discarded'; reason: string; tokens?: number; durationMs?: number; changed_files?: unknown; diff?: unknown; killed_mutants?: unknown; prod_gates?: unknown }
 
 export class RemoteGymService {
   private readonly outcomes: SkillEvolutionEngine;
@@ -120,10 +147,11 @@ export class RemoteGymService {
     const runId = randomUUID();
     const { mutant: _mutantContent, ...stored } = task as MutantTask; // the mutant goes to the worker, not into every row
     const { canary: _canaryTest, mutants, ...meta } = stored as typeof stored & { canary?: unknown; mutants?: TargetMutant[] };
-    const gymMeta = { ...meta, ...(mutants ? { mutant_keys: mutants.map((m) => m.key) } : {}), species: key, remote_host: host, ...(trialGenome ? { genome: trialGenome.id } : {}), ...(probe ? { probe: 1 } : {}), ...(canary ? { canary: 1 } : {}) };
+    const gates = gymProdGatesEnabled() && (opts.capabilities ?? []).map(String).includes(PROD_GATES_CAPABILITY) ? prodGatesConfig() : null;
+    const gymMeta = { ...meta, ...(mutants ? { mutant_keys: mutants.map((m) => m.key) } : {}), species: key, remote_host: host, ...(trialGenome ? { genome: trialGenome.id } : {}), ...(probe ? { probe: 1 } : {}), ...(canary ? { canary: 1 } : {}), ...(gates ? { prod_gates: 1 } : {}) };
     this.db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, repository_path, metadata, created_at, updated_at) VALUES (?, 'evolution-gym', 'closed', 'running', ?, ?, ?, ?)")
       .run(runId, repo, JSON.stringify({ gym: gymMeta }), now.toISOString(), now.toISOString());
-    return { runId, species: key, task, ...(trialGenome ? { genome: { id: trialGenome.id, lines: trialGenome.lines } } : {}) };
+    return { runId, species: key, task, ...(trialGenome ? { genome: { id: trialGenome.id, lines: trialGenome.lines } } : {}), ...(gates ? { prod_gates: gates } : {}) };
   }
 
   /** Injectable for tests; production reads the deploy checkout's git history. */
@@ -131,7 +159,7 @@ export class RemoteGymService {
 
   record(runId: string, host: string, result: RemoteGymResult): void {
     const row = this.db.prepare("SELECT status, json_extract(metadata, '$.gym') AS gym FROM loop_runs WHERE id = ?").get(runId) as { status: string; gym: string | null } | undefined;
-    const gym = row?.gym ? JSON.parse(row.gym) as GymTask & { species: string; remote_host?: string; genome?: string; probe?: number; canary?: number; mutant_keys?: string[] } : null;
+    const gym = row?.gym ? JSON.parse(row.gym) as GymTask & { species: string; remote_host?: string; genome?: string; probe?: number; canary?: number; mutant_keys?: string[]; prod_gates?: number } : null;
     if (!row || !gym || gym.remote_host !== host) throw new Error('GYM_RUN_NOT_FOUND');
     if (row.status !== 'running') throw new Error('GYM_RUN_ALREADY_SETTLED');
     if (!['success', 'failure', 'discarded'].includes(result.status)) throw new Error('GYM_RESULT_INVALID');
@@ -155,8 +183,10 @@ export class RemoteGymService {
     }
     // B8: which of the served mutants the write_test maker's test killed (only keys the server handed out)
     const killed_mutants = Array.isArray(gym.mutant_keys) && Array.isArray(result.killed_mutants) ? result.killed_mutants.map(String).filter((k) => gym.mutant_keys!.includes(k)) : undefined;
+    // gym gold agreement: the per-check production gate results of a proxy success (only on a run claimed with the gates)
+    const prod_gates = gym.prod_gates ? sanitizeProdGates(result.prod_gates) : undefined;
     const now = new Date().toISOString();
     this.db.prepare("UPDATE loop_runs SET status = 'completed', updated_at = ?, metadata = json_set(metadata, '$.gym_result', json(?)) WHERE id = ?")
-      .run(now, JSON.stringify({ status: result.status, reason, ...(hack_flags ? { hack_flags } : {}), ...(killed_mutants ? { killed_mutants } : {}) }), runId);
+      .run(now, JSON.stringify({ status: result.status, reason, ...(hack_flags ? { hack_flags } : {}), ...(killed_mutants ? { killed_mutants } : {}), ...(prod_gates ? { prod_gates } : {}) }), runId);
   }
 }

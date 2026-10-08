@@ -121,3 +121,26 @@ it('a task that was infra-discarded twice for a species is not offered to it aga
   expect(svc.claim('workstation', ['atomic@llama-router'])).toMatchObject({ task: { commit: 'next' } });
   expect(svc.claim('workstation-2060', ['atomic@qwen36-2060'])).toMatchObject({ task: { commit: 'stuck' } }); // per species
 });
+
+it('GYM_PROD_GATES: the claim carries production\'s gate config only when on and announced; record stores per-check results', () => {
+  vi.stubEnv('EVOLUTION_GYM_REMOTE_MAX_PER_DAY', '100');
+  const svc = new RemoteGymService(db, () => [TASK('c1'), TASK('c2'), TASK('c3')]);
+  // off (default): no config even for a capable worker, and a sent prod_gates field is not stored
+  const off = svc.claim('workstation', ['atomic'], new Date(), { capabilities: ['prod_gates'] }) as { runId: string; prod_gates?: unknown };
+  expect(off.prod_gates).toBeUndefined();
+  svc.record(off.runId, 'workstation', { status: 'success', reason: 'tests green, source only', prod_gates: { lint: 'pass' } });
+  expect(JSON.parse((db.prepare("SELECT json_extract(metadata, '$.gym_result') AS r FROM loop_runs WHERE id = ?").get(off.runId) as { r: string }).r).prod_gates).toBeUndefined();
+  vi.stubEnv('GYM_PROD_GATES', 'true'); vi.stubEnv('LOOP_DAEMON_CHECK_SCRIPTS', 'test:changed,lint,type-check,test:mutation:grounded'); vi.stubEnv('LOOP_DAEMON_CHECK_TIMEOUT_MS', '300000');
+  // on, but the worker did not announce the capability: nothing (an old worker would ignore it and report a proxy score)
+  const old = svc.claim('workstation', ['atomic'], new Date(), { capabilities: ['canary'] }) as { runId: string; prod_gates?: unknown };
+  expect(old.prod_gates).toBeUndefined();
+  svc.record(old.runId, 'workstation', { status: 'failure', reason: 'tests still red' });
+  const on = svc.claim('workstation', ['atomic'], new Date(), { capabilities: ['prod_gates'] }) as { runId: string; prod_gates?: unknown };
+  expect(on.prod_gates).toEqual({ scripts: ['test:changed', 'lint', 'type-check', 'test:mutation:grounded'], timeout_ms: 300_000, diff_max_lines: 200 });
+  expect(db.prepare("SELECT json_extract(metadata, '$.gym.prod_gates') AS g FROM loop_runs WHERE id = ?").get(on.runId)).toEqual({ g: 1 });
+  svc.record(on.runId, 'workstation', { status: 'failure', reason: 'prod_gate_failed:lint', prod_gates: { diff_limit: 'pass', 'test:changed': 'pass', lint: 'fail', 'type-check': 'pass', 'bad key!': 'pass', x: 'maybe' } });
+  const stored = JSON.parse((db.prepare("SELECT json_extract(metadata, '$.gym_result') AS r FROM loop_runs WHERE id = ?").get(on.runId) as { r: string }).r);
+  expect(stored).toMatchObject({ status: 'failure', reason: 'prod_gate_failed:lint', prod_gates: { diff_limit: 'pass', 'test:changed': 'pass', lint: 'fail', 'type-check': 'pass' } });
+  expect(Object.keys(stored.prod_gates)).toHaveLength(4);
+  expect(db.prepare("SELECT success FROM skill_outcomes WHERE task_id = ?").get(on.runId)).toEqual({ success: 0 });
+});
