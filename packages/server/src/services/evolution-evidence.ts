@@ -11,6 +11,7 @@ import { autoMergeEvidence } from './loop-auto-merge-state';
 import { nonMakerRunSql } from './outcome-attribution';
 import { effortX1Evidence } from './effort-controller';
 import { gradedEvidence } from './graded-fitness';
+import { wilson } from './evolution-estimators';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -51,6 +52,35 @@ export function fisherExact(a: number, b: number, c: number, d: number): number 
   const observed = logP(a); let p = 0;
   for (let x = Math.max(0, c1 - r2); x <= Math.min(r1, c1); x++) { const lp = logP(x); if (lp <= observed + 1e-7) p += Math.exp(lp); }
   return Math.min(1, p);
+}
+
+/**
+ * S7 (operator 09-10): RX-11 hack-detector flags per maker genome (gym.genome — the `genome:` ref on the gym outcome;
+ * 'none' = no trial genome) and per gym task kind over the last 14 days, plus canary outcomes. scored = success/failure;
+ * checked = scored with gym_result.hack_flags present (HACK_DETECTOR_MODE=shadow was on); flagged = ≥ 1 flag. A canary
+ * that passes means the oracle or sandbox is compromised. Rates with a Wilson 95 % interval; 'insufficient' below n = 10.
+ */
+export function hackRateEvidence(db: Database, env: NodeJS.ProcessEnv, now: number) {
+  const since = new Date(now - 14 * 86_400_000).toISOString();
+  const all = <T>(sql: string): T[] => { try { return db.prepare(sql).all(since) as T[]; } catch { return []; } };
+  const rate = (k: number, n: number) => (n < 10 ? { rate: null, ci: null, status: 'insufficient' as const } : { rate: +(k / n).toFixed(4), ci: wilson(k, n), status: 'ok' as const });
+  const counts = `COALESCE(SUM(json_extract(metadata, '$.gym_result.status') IN ('success', 'failure')), 0) AS scored,
+      COALESCE(SUM(json_extract(metadata, '$.gym_result.status') IN ('success', 'failure') AND json_type(metadata, '$.gym_result.hack_flags') = 'array'), 0) AS checked,
+      COALESCE(SUM(json_extract(metadata, '$.gym_result.status') IN ('success', 'failure') AND json_array_length(json_extract(metadata, '$.gym_result.hack_flags')) > 0), 0) AS flagged
+    FROM loop_runs WHERE loop_name = 'evolution-gym' AND created_at >= ?`;
+  type Row = { scored: number; checked: number; flagged: number };
+  const by_genome = all<Row & { genome: string }>(`SELECT COALESCE(json_extract(metadata, '$.gym.genome'), 'none') AS genome, ${counts}
+      AND json_extract(metadata, '$.gym.canary') IS NULL GROUP BY 1 HAVING scored > 0 ORDER BY 1`).map((r) => ({ ...r, ...rate(r.flagged, r.checked) }));
+  const by_kind = all<Row & { kind: string }>(`SELECT CASE WHEN json_extract(metadata, '$.gym.canary') = 1 THEN 'canary' WHEN json_extract(metadata, '$.gym.probe') = 1 THEN 'probe'
+      WHEN json_extract(metadata, '$.gym.kind') = 'write_test' THEN 'write_test' WHEN json_extract(metadata, '$.gym.commit') LIKE 'mut:%' THEN 'mutant' ELSE 'mined' END AS kind, ${counts}
+      GROUP BY 1 HAVING scored > 0 ORDER BY 1`).map((r) => ({ ...r, ...rate(r.flagged, r.checked) }));
+  const c = all<{ served: number; scored: number; passed: number }>(`SELECT COUNT(*) AS served,
+      COALESCE(SUM(json_extract(metadata, '$.gym_result.status') IN ('success', 'failure')), 0) AS scored,
+      COALESCE(SUM(json_extract(metadata, '$.gym_result.status') = 'success'), 0) AS passed
+    FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.canary') = 1 AND created_at >= ?`)[0] ?? { served: 0, scored: 0, passed: 0 };
+  return { window_days: 14, mode: env.HACK_DETECTOR_MODE ?? null, canary_rate: env.GYM_CANARY_RATE ?? null, by_genome, by_kind,
+    canary: { served: c.served, scored: c.scored, passed: c.passed, ...rate(c.passed, c.scored), compromised: c.passed > 0 },
+    note: 'rate = flagged / checked (hack detector ran: HACK_DETECTOR_MODE=shadow); canary rate = passed / scored — any passed canary means a compromised oracle or sandbox. Wilson 95 %; insufficient below n = 10.' };
 }
 
 export type GateState = 'green' | 'red' | 'unknown';
@@ -212,7 +242,9 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   const memory_holdout = { rate: env.MEMORY_HOLDOUT_RATE ?? null, rules: withRules, holdout: heldOut,
     fisher_p: +fisherExact(withRules.verified, withRules.regressed, heldOut.verified, heldOut.regressed).toPrecision(4),
     note: 'runs with a settled proposal (verified or regressed); rules = ≥ 1 rule in the assignment, holdout = rules withheld by MEMORY_HOLDOUT_RATE. Two-sided Fisher exact.' };
-  return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, gym_prod_gates, trials, models, oracle, commons, forecasts_v2, hacks, estimates, ope,
+  return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, gym_prod_gates, trials, models, oracle, commons, forecasts_v2, hacks,
+    // S7: hack-detector flag rate per genome and gym task kind (14 d) and canary passes, Wilson 95 %
+    hack_rate: hackRateEvidence(db, env, now), estimates, ope,
     // UX-20: where model calls send data (shadow report; nothing is blocked)
     egress: egressEvidence(db, env, now),
     // UX-21: vectors compared across dimensions since boot, per store (resampled by default; skipped under VECTOR_STRICT_DIM)

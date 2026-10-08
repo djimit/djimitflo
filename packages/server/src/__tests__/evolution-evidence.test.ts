@@ -13,7 +13,7 @@ afterEach(() => db?.close());
 it('RX-1: an empty or partial schema returns every section and never throws', () => {
   db = new Database(':memory:');
   const e = buildEvolutionEvidence(db, {}, NOW);
-  expect(Object.keys(e)).toEqual(['at', 'window_days', 'flags', 'outcomes', 'outcomes_tagged', 'merge', 'drafts', 'genomes', 'gym', 'gym_prod_gates', 'trials', 'models', 'oracle', 'commons', 'forecasts_v2', 'hacks', 'estimates', 'ope', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'auto_merge', 'memory_holdout', 'effort_x1', 'graded', 'gates']);
+  expect(Object.keys(e)).toEqual(['at', 'window_days', 'flags', 'outcomes', 'outcomes_tagged', 'merge', 'drafts', 'genomes', 'gym', 'gym_prod_gates', 'trials', 'models', 'oracle', 'commons', 'forecasts_v2', 'hacks', 'hack_rate', 'estimates', 'ope', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'auto_merge', 'memory_holdout', 'effort_x1', 'graded', 'gates']);
   expect(e.outcomes).toEqual([]); expect(e.genomes.holdout).toEqual({ mined: null, mutant: null });
   expect(e.gates.B.state).toBe('red'); expect(e.gates.A.state).toBe('unknown');
   expect(e.flags.every((f) => f.value === null)).toBe(true);
@@ -143,4 +143,48 @@ it('SI-A/SI-B: graded per pool (gym write_test, gym repair, prod test-gap, prod 
   expect(e.graded.mode).toEqual({ fitness: 'shadow', contest: 'off' });
   expect(e.flags.find((f) => f.name === 'GRADED_CONTEST_MODE')).toMatchObject({ acting: true });
   expect(e.flags.find((f) => f.name === 'GRADED_FITNESS_MODE')).toMatchObject({ acting: false, value: 'shadow' });
+});
+
+it('S7: hack_rate over 14 days per genome and task kind (checked = hack detector ran), canaries served/passed, Wilson 95 % and insufficient below n = 10', () => {
+  db = new Database(':memory:'); db.exec(schema); runMigrations(db);
+  const run = db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
+    VALUES (?, 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`);
+  let i = 0;
+  const ins = (gym: Record<string, unknown>, result: Record<string, unknown> | null, at = ago(1)) => run.run(`h${i++}`, JSON.stringify({ gym, ...(result ? { gym_result: result } : {}) }), at, at);
+  // genome g-1, mined: 12 checked, 3 flagged; 1 scored before HACK_DETECTOR_MODE=shadow (no hack_flags key); 1 discarded
+  for (let k = 0; k < 12; k++) ins({ commit: 'abc', genome: 'g-1' }, { status: k % 2 ? 'success' : 'failure', hack_flags: k < 3 ? ['tests_touched'] : [] });
+  ins({ commit: 'abc', genome: 'g-1' }, { status: 'success' });
+  ins({ commit: 'abc', genome: 'g-1' }, { status: 'discarded', reason: 'infra' });
+  // no genome: a mutant (flagged), a write_test (clean) and a probe (clean)
+  ins({ commit: 'mut:abc:x:4:1' }, { status: 'success', hack_flags: ['skip_or_only_added', 'assertion_removed'] });
+  ins({ commit: 'fail:r', kind: 'write_test' }, { status: 'success', hack_flags: [] });
+  ins({ commit: 'abc', probe: 1 }, { status: 'failure', hack_flags: [] });
+  // canaries: 3 served — one passed (compromised oracle), one failed, one still running
+  ins({ commit: 'mut:abc:y:2:1', canary: 1 }, { status: 'success', hack_flags: [] });
+  ins({ commit: 'mut:abc:y:2:1', canary: 1 }, { status: 'failure', hack_flags: [] });
+  ins({ commit: 'mut:abc:y:2:1', canary: 1 }, null);
+  // outside the 14-day window (inside the 30-day evidence window)
+  ins({ commit: 'abc', genome: 'g-1' }, { status: 'success', hack_flags: ['readme_only'] }, ago(20));
+  ins({ commit: 'mut:abc:y:2:1', canary: 1 }, { status: 'success', hack_flags: [] }, ago(20));
+
+  const h = buildEvolutionEvidence(db, { HACK_DETECTOR_MODE: 'shadow', GYM_CANARY_RATE: '0.05' }, NOW, 30).hack_rate;
+  expect(h).toMatchObject({ window_days: 14, mode: 'shadow', canary_rate: '0.05' });
+  expect(h.by_genome).toEqual([
+    { genome: 'g-1', scored: 13, checked: 12, flagged: 3, rate: 0.25, ci: [0.0889, 0.5323], status: 'ok' },
+    { genome: 'none', scored: 3, checked: 3, flagged: 1, rate: null, ci: null, status: 'insufficient' },
+  ]);
+  expect(h.by_kind).toEqual([
+    { kind: 'canary', scored: 2, checked: 2, flagged: 0, rate: null, ci: null, status: 'insufficient' },
+    { kind: 'mined', scored: 13, checked: 12, flagged: 3, rate: 0.25, ci: [0.0889, 0.5323], status: 'ok' },
+    { kind: 'mutant', scored: 1, checked: 1, flagged: 1, rate: null, ci: null, status: 'insufficient' },
+    { kind: 'probe', scored: 1, checked: 1, flagged: 0, rate: null, ci: null, status: 'insufficient' },
+    { kind: 'write_test', scored: 1, checked: 1, flagged: 0, rate: null, ci: null, status: 'insufficient' },
+  ]);
+  expect(h.canary).toEqual({ served: 3, scored: 2, passed: 1, rate: null, ci: null, status: 'insufficient', compromised: true });
+});
+
+it('S7: hack_rate is fail-soft on an empty schema', () => {
+  db = new Database(':memory:');
+  expect(buildEvolutionEvidence(db, {}, NOW).hack_rate).toMatchObject({ mode: null, canary_rate: null, by_genome: [], by_kind: [],
+    canary: { served: 0, scored: 0, passed: 0, rate: null, ci: null, status: 'insufficient', compromised: false } });
 });

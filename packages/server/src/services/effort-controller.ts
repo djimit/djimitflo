@@ -18,6 +18,18 @@ import { LoopEventService } from './loop-event-service';
  *    lands in arm 'on' (siblings as today) or 'off' (no sibling) by sha256 of its goal id; the arm is stored on the goal
  *    (metadata.effort_arm) and in an `effort_arm` event; evolution-evidence `effort_x1` compares the arms.
  */
+/**
+ * S7 floor (operator 09-10): the decision points the controller weighs and their options ('<species>' = a configured
+ * evolve species key). It never decides over EFFORT_FLOOR — deterministic gates, the checker / security_checker
+ * reviewers, the scope gate, the human merge or auth. effort-controller-floor.test.ts fails on any new point or option.
+ */
+export const EFFORT_DECISION_POINTS = {
+  evolve_sibling: ['all', 'none', '<species>'],
+  remote_gym_claim: ['serve', 'skip'],
+  'judgment:<id>': ['run', 'skip'],
+} as const;
+export const EFFORT_FLOOR = ['deterministic_gates', 'checker', 'security_checker', 'scope_gate', 'human_merge', 'auth'] as const;
+
 export type EffortMode = 'off' | 'shadow';
 export const effortMode = (env: NodeJS.ProcessEnv = process.env): EffortMode => (env.EFFORT_CONTROLLER_MODE === 'shadow' ? 'shadow' : 'off');
 export const siblingRandomiseEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.EFFORT_SIBLING_RANDOMISE === 'true';
