@@ -11,6 +11,7 @@ import { runtimeHealth } from '../services/runtime-health';
 import { buildDigest } from '../services/operator-push';
 import { listDraftPrs } from '../services/loop-draft-pr-service';
 import { listSchedulers, noteScheduler, resetSchedulers } from '../services/scheduler-registry';
+import { efficiencyView } from '../services/resource-ledger';
 
 const NOW = Date.parse('2026-10-06T08:00:00Z');
 const ago = (d: number) => new Date(NOW - d * 86_400_000).toISOString();
@@ -37,6 +38,7 @@ const builders: Array<[OperatorContract, (d: Database.Database) => object]> = [
   ['digest', (d) => buildDigest(d, NOW, {})],
   ['draftPrs', (d) => listDraftPrs(d, 50, NOW)],
   ['schedulers', () => listSchedulers()],
+  ['efficiency', (d) => efficiencyView(d, NOW, {})],
 ];
 
 describe.each([false, true])('UX-2b: operator response contracts (seeded=%s)', (seed) => {

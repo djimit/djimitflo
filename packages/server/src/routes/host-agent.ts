@@ -5,6 +5,7 @@ import type { AuthMiddleware } from '../middleware/auth';
 import { FleetCommands } from '../services/fleet-commands';
 import { LocalShadowQueue } from '../services/local-shadow-queue';
 import { mintSpawnToken, resolveSpawnTokenSecret, validateSpawnToken } from '../services/spawn-token';
+import { recordPowerSample, resourceLedgerEnabled } from '../services/resource-ledger';
 
 export const HOST_AGENT_SCOPE = 'host-agent';
 const limiter = rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false });
@@ -30,7 +31,10 @@ export function createHostAgentRoutes(db: Database, auth: AuthMiddleware): Route
   };
   router.post('/poll', (req, res) => {
     const h = host(req, res); if (!h) return;
-    try { res.json({ commands: fleet.poll(h, typeof req.body?.info === 'object' && req.body.info ? req.body.info : {}, String(req.body?.version ?? '')) }); } catch (e) { fail(res, e); }
+    const info = typeof req.body?.info === 'object' && req.body.info ? req.body.info : {};
+    // E1: the agent's GPU power reading (absent on hosts without rocm-smi / nvidia-smi); a bad sample never fails the heartbeat
+    if (resourceLedgerEnabled()) { try { recordPowerSample(db, h, info.power); } catch { /* ledger is advisory */ } }
+    try { res.json({ commands: fleet.poll(h, info, String(req.body?.version ?? '')) }); } catch (e) { fail(res, e); }
   });
   router.post('/commands/:id/result', (req, res) => {
     const h = host(req, res); if (!h) return;
