@@ -83,6 +83,7 @@ export interface AgentScorecard {
 /** UX-9: GET /api/health/evolution-evidence (manage:config) — read-only evidence of the evolution loop. */
 export type GateState = 'green' | 'red' | 'unknown';
 export type MemoryArm = { n: number; verified: number; regressed: number; verified_rate: number | null };
+export type HackRateRow = { scored: number; checked: number; flagged: number; rate: number | null; ci: [number, number] | null; status: 'ok' | 'insufficient' };
 export type EffortArm = { goals: number; verified: number; regressed: number; infra: number; verified_rate: number | null };
 export interface EvolutionEvidence {
   at: string; window_days: number;
@@ -103,6 +104,11 @@ export interface EvolutionEvidence {
   forecasts_v2: { scored: number; decision_grade: number; decision_grade_skilled: number; insufficient: number };
   /** UX-2b: sections the server already sent (RX-11, RX-14, RX-15, UX-20, UX-21) that this type had dropped; kept loose until a page renders them. */
   hacks: Record<string, unknown>;
+  /** S7: hack-detector flag rate per genome / gym task kind (14 d) and canary passes; rate + Wilson 95 % ci null when insufficient (n < 10) */
+  hack_rate: { window_days: number; mode: string | null; canary_rate: string | null;
+    by_genome: Array<HackRateRow & { genome: string }>; by_kind: Array<HackRateRow & { kind: string }>;
+    canary: { served: number; scored: number; passed: number; rate: number | null; ci: [number, number] | null; status: 'ok' | 'insufficient'; compromised: boolean };
+    note: string };
   estimates: Record<string, unknown>;
   ope: Record<string, unknown>;
   egress: Record<string, unknown>;
