@@ -82,6 +82,7 @@ export interface AgentScorecard {
 
 /** UX-9: GET /api/health/evolution-evidence (manage:config) — read-only evidence of the evolution loop. */
 export type GateState = 'green' | 'red' | 'unknown';
+export type MemoryArm = { n: number; verified: number; regressed: number; verified_rate: number | null };
 export interface EvolutionEvidence {
   at: string; window_days: number;
   flags: Array<{ name: string; acting: boolean; value: string | null }>;
@@ -92,7 +93,9 @@ export interface EvolutionEvidence {
   genomes: { by_status: Array<{ status: string; origin: string; n: number }>; recent: Array<{ id: string; status: string; note: string | null; updated_at: string }>; holdout: { mined: number | null; mutant: number | null } };
   gym: Array<{ kind: string; tier: number | null; status: string | null; n: number }>;
   gym_prod_gates: { by_kind: Array<{ kind: string; scored: number; proxy_success: number; prod_gate_success: number; proxy_rate: number | null; prod_gate_rate: number | null }>; failed_checks: Array<{ check: string; n: number }> };
-  trials: { by_state: Array<{ state: string; n: number }>; recent: Array<{ trial_id: string; parent_id: string; tier_set: string; deciding_n: number; f_parent_failures: number; b: number; c: number; p: number; power_q8_l05: number; state: string; recorded_at: string }> };
+  trials: { by_state: Array<{ state: string; n: number }>; recent: Array<{ trial_id: string; parent_id: string; tier_set: string; deciding_n: number; f_parent_failures: number; b: number; c: number; p: number; power_q8_l05: number; state: string; recorded_at: string }>;
+    /** GENOME_FIRE_CHECK: trial attempts voided because the genome's lines never reached the maker (never paired) */
+    void?: { attempts: number; by_genome: Array<{ genome: string; n: number }>; fire_checked: number | null } };
   models: { mode: string; rows: Array<{ consumer: string; model: string; n: number; ok_rate: number; agree_rate: number | null; median_latency_ms: number | null; cost_weight: number }>; would_pick: Record<string, string | null> };
   oracle: { n: number; kappa: number | null; kappa_ci: [number, number] | null; agreement: { all: number | null; conf_ge_06: number | null; conf_lt_06: number | null }; accuracy: { n: number; jev: number | null; checker: number | null }; kappa_jev_outcome: number | null; kappa_jev_outcome_ci: [number, number] | null; kappa_checker_outcome: number | null; enforce_eligible: boolean; note: string };
   commons: { k: number; n: number; rate: number | null; ci: [number, number]; base_rate: number | null; base_ci: [number, number]; base_n: number; verdict: string; note: string };
@@ -110,6 +113,8 @@ export interface EvolutionEvidence {
     class: { state: 'active' | 'revoked'; reason?: string; pr_url?: string; revoked_at?: string; re_enabled_by?: string; re_enabled_at?: string; re_enable_reason?: string };
     counts: { merged: number; merged_24h: number; would_merge: number; audit_samples: number; audit_samples_open: number; waiting: number; ineligible: number };
     ineligible_by_reason: Record<string, number> };
+  /** MEMORY_HOLDOUT_RATE: proposal outcome of maker runs with rules vs runs held out, two-sided Fisher exact p */
+  memory_holdout: { rate: string | null; rules: MemoryArm; holdout: MemoryArm; fisher_p: number; note: string };
   gates: Record<'A' | 'B' | 'C' | 'D', { state: GateState; reason: string }>;
 }
 

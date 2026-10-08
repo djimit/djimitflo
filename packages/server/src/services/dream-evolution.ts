@@ -3,7 +3,7 @@ import type { Database } from 'better-sqlite3';
 import { redactSecrets } from './secret-patterns';
 import { generateText, llmEndpoints } from './llm-fallback';
 import { firstJsonObject } from './expert-council-service';
-import { BASELINE_GENOME, dreamEvolutionEnabled, ensureBaseline, frozenHoldoutCommits, genome, holdoutEpoch, mutantHoldoutKeys, mutantHoldoutTiers, mutantTrialsEnabled, trialHeadroomPrecheck, unscorable } from './genome-registry';
+import { BASELINE_GENOME, dreamEvolutionEnabled, ensureBaseline, frozenHoldoutCommits, genome, holdoutEpoch, mutantHoldoutKeys, mutantHoldoutTiers, mutantTrialsEnabled, NOT_VOID, trialHeadroomPrecheck, unscorable } from './genome-registry';
 
 /**
  * Y3b/Y3c (plan Phase Y, Darwin loop). Dreaming is the mutation operator: once a day the day's failed makers (real and
@@ -259,7 +259,7 @@ export function settleNoHeadroom(db: Database, speciesKey: string, holdoutCommit
   const iso = new Date(now).toISOString();
   const result = db.prepare(`SELECT json_extract(metadata, '$.gym_result.status') AS status FROM loop_runs WHERE loop_name = 'evolution-gym'
     AND json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.genome') = ? AND json_extract(metadata, '$.gym.commit') = ?
-    AND status = 'completed' AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%' ORDER BY created_at DESC LIMIT 1`);
+    AND status = 'completed' AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%' AND ${NOT_VOID} ORDER BY created_at DESC LIMIT 1`);
   const trials = db.prepare("SELECT id, COALESCE(parent_id, ?) AS parent FROM maker_genomes WHERE status = 'trial' ORDER BY created_at").all(BASELINE_GENOME) as Array<{ id: string; parent: string }>;
   const settled: Array<{ id: string; f: number; n: number; needed: number }> = [];
   for (const trial of trials) {
@@ -332,7 +332,10 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
   const results = db.prepare(`SELECT json_extract(metadata, '$.gym.commit') AS commit_sha, json_extract(metadata, '$.gym_result.status') AS status,
       COALESCE(json_extract(metadata, '$.gym_result.reason'), '') AS reason
     FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.genome') = ?
-      AND status = 'completed' AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%'`);
+      AND status = 'completed' AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%' AND ${NOT_VOID}`);
+  // GENOME_FIRE_CHECK: VOID attempts (the genome's lines never reached the maker) are never paired; counted for the note
+  const voids = db.prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ?
+      AND json_extract(metadata, '$.gym.genome') = ? AND NOT ${NOT_VOID}`);
   const score = (genomeId: string) => {
     const rows = (results.all(speciesKey, genomeId) as Array<{ commit_sha: string; status: string; reason: string }>).filter((r) => all.includes(r.commit_sha));
     const byCommit = new Map(rows.map((r) => [r.commit_sha, r]));
@@ -343,6 +346,7 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
   const settled: Array<{ id: string; status: 'active' | 'retired'; wins: number; parentWins: number }> = [];
   const promotedToday = () => Boolean(db.prepare("SELECT 1 FROM maker_genomes WHERE origin = 'dream' AND status = 'active' AND updated_at >= ? LIMIT 1").get(iso.slice(0, 10)));
   const trials = db.prepare("SELECT id, COALESCE(parent_id, ?) AS parent FROM maker_genomes WHERE status = 'trial' ORDER BY created_at").all(BASELINE_GENOME) as Array<{ id: string; parent: string }>;
+  const voidNote = (id: string) => { const n = (voids.get(speciesKey, id) as { n: number }).n; return n ? `; void ${n} (fire check)` : ''; };
   for (const trial of trials) {
     const mine = score(trial.id); const theirs = score(trial.parent);
     if (!mine.complete || !theirs.complete) continue;
@@ -359,7 +363,7 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
     const wins = b > c && p < promotionAlpha() && mined.c - mined.b <= 1 && mine.outOfScope <= theirs.outOfScope && !promotedToday();
     const status = wins ? 'active' : 'retired';
     db.prepare('UPDATE maker_genomes SET status = ?, note = ?, updated_at = ? WHERE id = ?')
-      .run(status, `holdout ${mine.wins}/${all.length} vs parent ${theirs.wins}/${all.length}; ${mutantCommits.length ? 'mutant ' : ''}discordant ${b} vs ${c}, McNemar p=${p.toFixed(3)}${mutantCommits.length ? `; mined discordant ${mined.b} vs ${mined.c}` : ''}; out of scope ${mine.outOfScope} vs ${theirs.outOfScope}`, iso, trial.id);
+      .run(status, `holdout ${mine.wins}/${all.length} vs parent ${theirs.wins}/${all.length}; ${mutantCommits.length ? 'mutant ' : ''}discordant ${b} vs ${c}, McNemar p=${p.toFixed(3)}${mutantCommits.length ? `; mined discordant ${mined.b} vs ${mined.c}` : ''}; out of scope ${mine.outOfScope} vs ${theirs.outOfScope}${voidNote(trial.id)}`, iso, trial.id);
     if (trialDiagnosticsEnabled()) {
       try { // RX-4: record what this trial could have shown; never changes the decision above
         const scored = deciding.filter((h) => !unscorable(db, speciesKey, trial.id, h) && !unscorable(db, speciesKey, trial.parent, h));

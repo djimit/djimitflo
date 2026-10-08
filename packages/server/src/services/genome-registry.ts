@@ -124,7 +124,7 @@ export function nextTrialAttempt(db: Database, speciesKey: string, holdoutCommit
   if (!trials.length || !holdoutCommits.length) return null;
   const done = db.prepare(`SELECT 1 FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ?
     AND json_extract(metadata, '$.gym.genome') = ? AND json_extract(metadata, '$.gym.commit') = ?
-    AND (status = 'running' OR COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%') LIMIT 1`);
+    AND (status = 'running' OR (COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%' AND ${NOT_VOID})) LIMIT 1`);
   // B8: with the precheck on, the parent's whole holdout comes first, so headroom is known before any mutant attempt is spent
   if (trialHeadroomPrecheck()) {
     for (const trial of trials) for (const commit of holdoutCommits) if (!done.get(speciesKey, trial.parent, commit) && !unscorable(db, speciesKey, trial.parent, commit)) return { genomeId: trial.parent, commit };
@@ -140,13 +140,41 @@ export function nextTrialAttempt(db: Database, speciesKey: string, holdoutCommit
 /**
  * A holdout task that keeps timing out for a genome is unscorable, not pending (prod 2026-10-01/02: 9b2fa2bf timed out 6 of
  * 10 times; served again after every bench, it benched the only gym species for 2 h at a time and no trial could complete).
- * After INFRA_GIVE_UP infra discards the pair is skipped and left out of the paired comparison on both sides.
+ * After INFRA_GIVE_UP infra discards (or VOID attempts, see GENOME_FIRE_CHECK) the pair is skipped and left out of the
+ * paired comparison on both sides.
  */
 export const INFRA_GIVE_UP = 3;
 export function unscorable(db: Database, speciesKey: string, genomeId: string, commit: string): boolean {
   return (db.prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ?
     AND json_extract(metadata, '$.gym.genome') = ? AND json_extract(metadata, '$.gym.commit') = ?
-    AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') LIKE 'infra:%'`).get(speciesKey, genomeId, commit) as { n: number }).n >= INFRA_GIVE_UP;
+    AND (COALESCE(json_extract(metadata, '$.gym_result.reason'), '') LIKE 'infra:%' OR NOT ${NOT_VOID})`).get(speciesKey, genomeId, commit) as { n: number }).n >= INFRA_GIVE_UP;
+}
+
+/**
+ * Fire check (metaharness lesson: three times their 'treatment' never reached the agent, so treatment = control, silently).
+ * With GENOME_FIRE_CHECK (default off) the gym worker reports the sha256 of the goal it actually sent the maker and how many
+ * of the genome's strategy lines were found in it. A scored attempt of a non-baseline genome without that evidence, or with
+ * fewer lines found than the genome has, is VOID: `gym_result.void` holds why. A VOID attempt is not an attempt — it is
+ * served again, never paired (McNemar / e-process), earns no outcome, and after INFRA_GIVE_UP of them the task is unscorable
+ * for that pair. Off: nothing is marked, so nothing is excluded.
+ */
+export const genomeFireCheck = (env: NodeJS.ProcessEnv = process.env): boolean => env.GENOME_FIRE_CHECK === 'true';
+export const NOT_VOID = "json_extract(metadata, '$.gym_result.void') IS NULL";
+export interface FireCheck { goal_sha256: string; genome_lines: number; genome_lines_found: number }
+/** The worker's evidence, sanitised (null when absent or malformed). */
+export function parseFireCheck(raw: unknown): FireCheck | null {
+  const f = raw && typeof raw === 'object' ? raw as Record<string, unknown> : null;
+  if (!f || typeof f.goal_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(f.goal_sha256)) return null;
+  const lines = Number(f.genome_lines); const found = Number(f.genome_lines_found);
+  if (!Number.isInteger(lines) || !Number.isInteger(found) || lines < 0 || found < 0 || found > lines) return null;
+  return { goal_sha256: f.goal_sha256, genome_lines: lines, genome_lines_found: found };
+}
+/** Why a scored attempt of `genomeId` is VOID, or null when the treatment provably reached the maker (or there is none). */
+export function fireCheckVoid(db: Database, genomeId: string | undefined, status: string, evidence: FireCheck | null): string | null {
+  if (!genomeId || genomeId === BASELINE_GENOME || (status !== 'success' && status !== 'failure')) return null;
+  const want = Math.max(1, genome(db, genomeId)?.lines.length ?? 0);
+  if (!evidence) return 'fire_check: no evidence that the genome lines reached the maker';
+  return evidence.genome_lines_found >= want ? null : `fire_check: ${evidence.genome_lines_found} of ${want} genome lines in the maker prompt`;
 }
 
 /**

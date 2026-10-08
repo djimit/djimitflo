@@ -2262,9 +2262,9 @@ export class LoopService {
     this.ensureControlDir(worktreePath);
     const advisoryContext = this.advisoryAssignmentContext(worktreePath, run, finding);
     const extra = assignmentContext(this.db, run, worktreePath, `loop-maker:${run.id}`);
-    if (extra.examples.length || extra.rules.length) {
-      this.recordLoopEvent(run.id, 'assignment_context', 'info', `Maker assignment includes ${extra.examples.length} proven example(s) and ${extra.rules.length} rule(s).`,
-        { examples: extra.examples, rule_ids: extra.rules.map((r) => r.id) });
+    if (extra.examples.length || extra.rules.length || extra.memory_holdout) {
+      this.recordLoopEvent(run.id, 'assignment_context', 'info', `Maker assignment includes ${extra.examples.length} proven example(s) and ${extra.rules.length} rule(s)${extra.memory_holdout ? ' (memory holdout: rules withheld)' : ''}.`,
+        { examples: extra.examples, rule_ids: extra.rules.map((r) => r.id), ...(extra.memory_holdout ? { memory_holdout: true } : {}) });
     }
     const content = [
       `# ${finding.metadata?.objective_mode ? 'Objective' : run.loop_name} Assignment`,

@@ -116,6 +116,8 @@ missing here. **Acting** = changes what the loop does; acting flags are switched
 | `DEPENDENCY_LANE_MAX_PER_DAY` | 4 (lane merges per UTC day; tick every `DEPENDENCY_LANE_INTERVAL_MS`, default 3 h) | yes | act (budget) | operator |
 | `DEAD_CODE_LANE_ENABLED` | off | yes (proposes deletions; each one needs the panel, a human maker approval and a human merge) | act | operator |
 | `DEAD_CODE_MAX_PER_DAY` | 2 (also the in-flight cap) | yes | act (budget) | operator |
+| `GENOME_FIRE_CHECK` | off | yes (a scored gym attempt of a non-baseline genome must carry the worker's `fire_check` — sha256 of the goal sent to the maker and the number of genome lines found in it; without it, or with fewer lines than the genome has, the attempt is VOID: `gym_result.void`, no outcome, served again, never paired in McNemar / the e-process, unscorable after 3; counted in `evolution-evidence` `trials.void` and the genome note). Needs a gym worker that reports `fire_check` — an older worker voids every trial attempt | act | operator |
+| `MEMORY_HOLDOUT_RATE` | 0 (off; clamped to [0, 1]) | yes (with `LOOP_MEMORY_RULES_ENABLED`, that deterministic fraction of maker runs — sha256 of the goal id, else run id — gets no engineering rules and logs `memory_holdout: true` on its `assignment_context` event; `evolution-evidence` `memory_holdout` compares verified/regressed per arm with a two-sided Fisher exact p) | measure (withholds rules) | operator |
 
 ## Prod status (2026-09-25, E4) — STALE
 

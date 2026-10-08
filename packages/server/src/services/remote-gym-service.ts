@@ -10,7 +10,7 @@ import { changedFromReason, classifyHack, hackDetectorShadow } from './gym-hack-
 import { settleNoHeadroom } from './dream-evolution';
 import { FAILURE_TASK_CAPABILITY, failureDerivedTasks, gitLookup, gymFailureTasksEnabled, type TargetMutant } from './gym-failure-tasks';
 import { daemonCheckOptions } from './loop-daemon';
-import { dreamEvolutionEnabled, ensureBaseline, genome, holdout, mutantHoldout, mutantTrialsEnabled, nextTrialAttempt, type Genome } from './genome-registry';
+import { dreamEvolutionEnabled, ensureBaseline, fireCheckVoid, genome, genomeFireCheck, holdout, mutantHoldout, mutantTrialsEnabled, nextTrialAttempt, parseFireCheck, type Genome } from './genome-registry';
 
 /**
  * Plan I1: the evolution gym on a remote compute host (the workstation: 48 threads, 125 GB, R9700) instead of the
@@ -81,7 +81,7 @@ export function sanitizeProdGates(value: unknown): Record<string, string> | unde
 }
 
 export type RemoteGymClaim = { runId: string; species: string; task: GymTask; genome?: { id: string; lines: string[] }; prod_gates?: ProdGatesConfig } | { skipped: string };
-export interface RemoteGymResult { status: 'success' | 'failure' | 'discarded'; reason: string; tokens?: number; durationMs?: number; changed_files?: unknown; diff?: unknown; killed_mutants?: unknown; prod_gates?: unknown }
+export interface RemoteGymResult { status: 'success' | 'failure' | 'discarded'; reason: string; tokens?: number; durationMs?: number; changed_files?: unknown; diff?: unknown; killed_mutants?: unknown; prod_gates?: unknown; fire_check?: unknown }
 
 export class RemoteGymService {
   private readonly outcomes: SkillEvolutionEngine;
@@ -164,7 +164,10 @@ export class RemoteGymService {
     if (row.status !== 'running') throw new Error('GYM_RUN_ALREADY_SETTLED');
     if (!['success', 'failure', 'discarded'].includes(result.status)) throw new Error('GYM_RESULT_INVALID');
     const reason = String(result.reason || '').slice(0, 200);
-    if (result.status !== 'discarded' && !gym.canary) {
+    // GENOME_FIRE_CHECK: a trial attempt without proof that the genome's lines reached the maker is VOID (genome-registry)
+    const fire_check = genomeFireCheck() ? parseFireCheck(result.fire_check) : null;
+    const voided = genomeFireCheck() ? fireCheckVoid(this.db, gym.genome, result.status, fire_check) : null;
+    if (result.status !== 'discarded' && !gym.canary && !voided) {
       const [species] = parseSpecies(gym.species, 1);
       this.outcomes.recordOutcome(`loop-maker:gym:${species.runtime}`, {
         success: result.status === 'success', tokensUsed: Math.max(0, Number(result.tokens) || 0), durationMs: Math.max(0, Number(result.durationMs) || 0), domain: 'gym', taskId: runId,
@@ -187,6 +190,8 @@ export class RemoteGymService {
     const prod_gates = gym.prod_gates ? sanitizeProdGates(result.prod_gates) : undefined;
     const now = new Date().toISOString();
     this.db.prepare("UPDATE loop_runs SET status = 'completed', updated_at = ?, metadata = json_set(metadata, '$.gym_result', json(?)) WHERE id = ?")
-      .run(now, JSON.stringify({ status: result.status, reason, ...(hack_flags ? { hack_flags } : {}), ...(killed_mutants ? { killed_mutants } : {}), ...(prod_gates ? { prod_gates } : {}) }), runId);
+      .run(now, JSON.stringify({ status: result.status, reason, ...(hack_flags ? { hack_flags } : {}), ...(killed_mutants ? { killed_mutants } : {}),
+        ...(prod_gates ? { prod_gates } : {}),
+        ...(fire_check ? { fire_check } : {}), ...(voided ? { void: voided } : {}) }), runId);
   }
 }

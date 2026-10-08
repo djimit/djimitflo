@@ -7,6 +7,7 @@
 //   DJIMITFLO_API=http://100.86.47.122:3001/api GYM_HOST=workstation GYM_SPECIES=atomic@llama-router \
 //   GYM_WORKER_TOKEN_FILE=~/.djimit/gym-worker.token node scripts/gym-worker.mjs      (--selfcheck for the pure parts)
 import { execFileSync, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -33,6 +34,22 @@ export const oneLine = (text) => String(text).replace(/\s*\n+\s*/g, ' ').replace
 const freshState = () => fs.mkdtempSync(path.join(WORK, 'state-'));
 const sh = (cmd, args, opts = {}) => execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts });
 const git = (cwd, args) => sh('git', ['-C', cwd, ...args]);
+
+/** Y3: the gym goal; a trial genome adds its strategy lines to the task (the only thing a genome may change). */
+export function gymGoal(task, writeTest, lines = []) {
+  const strategy = lines.length ? `\n\nStrategy:\n${lines.map((l) => `- ${String(l).slice(0, 300)}`).join('\n')}` : '';
+  return oneLine(writeTest
+    ? `Evolution gym: write the vitest test file ${task.source} that covers ${task.target}. Import ${task.target} with a relative import, do not mock it, assert its real behaviour with expect precisely enough that a subtly broken ${task.target} makes the test fail, skip nothing, and make it pass with: cd packages/server && npx vitest run ${task.source.replace(/^packages\/server\//, '')}. Change only ${task.source}; do not edit ${task.target} or any other file.${strategy}`
+    : `Evolution gym: make ${task.tests.join(', ')} pass. Change only ${task.source}. The tests describe the intended behaviour; do not edit them.${strategy}`);
+}
+/**
+ * GENOME_FIRE_CHECK (metaharness: a 'treatment' that never reaches the agent makes treatment = control, silently): the sha256
+ * of the exact maker input and how many genome lines appear in it. The server voids a trial attempt that cannot show its lines.
+ */
+export function fireCheck(sent, lines = []) {
+  const want = lines.map((l) => oneLine(`- ${String(l).slice(0, 300)}`));
+  return { goal_sha256: createHash('sha256').update(sent).digest('hex'), genome_lines: want.length, genome_lines_found: want.filter((l) => sent.includes(l)).length };
+}
 
 /** Files the maker touched, like changedFiles() on the VPS. */
 export function changedFrom(diffNames, untracked) {
@@ -278,7 +295,8 @@ async function main() {
   if (claim.skipped) { console.log(`skipped: ${claim.skipped}`); return; }
   const { runId, species, task } = claim;
   const started = Date.now();
-  const report = async (r) => { await api(`/gym-worker/runs/${runId}/result`, { ...r, tokens: 0, durationMs: Date.now() - started }); console.log(`${species} ${task.commit.slice(0, 8)} ${r.status}: ${r.reason}`); };
+  let fire = null;
+  const report = async (r) => { await api(`/gym-worker/runs/${runId}/result`, { ...r, ...(fire ? { fire_check: fire } : {}), tokens: 0, durationMs: Date.now() - started }); console.log(`${species} ${task.commit.slice(0, 8)} ${r.status}: ${r.reason}`); };
   fs.mkdirSync(WORK, { recursive: true });
   if (spawnSync('docker', ['image', 'inspect', IMAGE], { stdio: 'ignore' }).status !== 0) {
     const b = docker(['build', '--network', 'host', '-t', IMAGE, '-'], RUNNER_DOCKERFILE, 1_800_000);
@@ -305,17 +323,15 @@ async function main() {
     const ci = inRunner(wt, 'npm ci --legacy-peer-deps --no-audit --no-fund > /tmp/ci.log 2>&1; rc=$?; tail -40 /tmp/ci.log; exit $rc');
     if (ci.status !== 0) return report(npmCiFailure(ci.stdout));
     if (oracle(wt, task)) return report({ status: 'discarded', reason: writeTest ? 'task: test already green at base (gap closed)' : task.mutant ? 'task: mutant survives (tests stay green)' : 'tests already green on the parent' });
-    // Y3: a trial genome adds its strategy lines to the task (the only thing a genome may change)
-    const strategy = Array.isArray(claim.genome?.lines) && claim.genome.lines.length ? `\n\nStrategy:\n${claim.genome.lines.map((l) => `- ${String(l).slice(0, 300)}`).join('\n')}` : '';
-    const goal = oneLine(writeTest
-      ? `Evolution gym: write the vitest test file ${task.source} that covers ${task.target}. Import ${task.target} with a relative import, do not mock it, assert its real behaviour with expect precisely enough that a subtly broken ${task.target} makes the test fail, skip nothing, and make it pass with: cd packages/server && npx vitest run ${task.source.replace(/^packages\/server\//, '')}. Change only ${task.source}; do not edit ${task.target} or any other file.${strategy}`
-      : `Evolution gym: make ${task.tests.join(', ')} pass. Change only ${task.source}. The tests describe the intended behaviour; do not edit them.${strategy}`);
+    const genomeLines = Array.isArray(claim.genome?.lines) ? claim.genome.lines : [];
+    const input = `${gymGoal(task, writeTest, genomeLines)}\n`;
+    fire = fireCheck(input, genomeLines); // GENOME_FIRE_CHECK: proof of what the maker was actually sent
     const [runtime] = species.split('@');
     if (runtime !== 'atomic') return report({ status: 'discarded', reason: `infra: species ${species} not supported by this worker` });
     const state = freshState(); states.push(state);
     const cfg = inRunner(wt, `atomic-agent config set '${ATOMIC_LOCAL_CONFIG}' >/dev/null`, { extra: ['-v', `${state}:/state`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'], timeoutMs: 60_000 });
     if (cfg.status !== 0) return report({ status: 'discarded', reason: 'infra: atomic config failed' });
-    const run = inRunner(wt, 'atomic-agent run --cwd /w --max-steps 40 --no-approval', { input: `${goal}\n`, extra: ['-v', `${state}:/state`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'], timeoutMs: Number(env.GYM_MAKER_TIMEOUT_MS) || 900_000 });
+    const run = inRunner(wt, 'atomic-agent run --cwd /w --max-steps 40 --no-approval', { input, extra: ['-v', `${state}:/state`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'], timeoutMs: Number(env.GYM_MAKER_TIMEOUT_MS) || 900_000 });
     const makerOk = run.status === 0 && !run.error;
     const changed = changedFrom(git(wt, ['diff', '--name-only', 'HEAD']), git(wt, ['ls-files', '--others', '--exclude-standard']));
     const scoped = changed.length > 0 && changed.every((f) => f === task.source);
@@ -479,6 +495,11 @@ function selfcheck() {
   const extras = resultExtras(['packages/server/src/a.ts'], 'd'.repeat(DIFF_MAX + 10));
   assert(extras.diff.length === DIFF_MAX && JSON.stringify(extras.changed_files) === '["packages/server/src/a.ts"]', 'result carries changed_files and a diff capped at 50 KB');
   assert(resultExtras([], undefined).diff === '', 'no diff = empty string');
+  const lines = ['Read the failing test first.', 'Avoid: rewriting  the\nwhole file.'];
+  const fc = fireCheck(`${gymGoal({ ...task, tests: ['t.test.ts'] }, false, lines)}\n`, lines);
+  assert(fc.genome_lines === 2 && fc.genome_lines_found === 2 && /^[0-9a-f]{64}$/.test(fc.goal_sha256), 'fireCheck: every genome line is found in the goal sent');
+  assert(fireCheck(`${gymGoal({ ...task, tests: ['t.test.ts'] }, false, [])}\n`, lines).genome_lines_found === 0, 'fireCheck: a goal without the lines finds 0 (VOID on the server)');
+  assert(fireCheck(gymGoal(wTask, true, lines), lines).genome_lines_found === 2, 'fireCheck: write_test goals carry the lines too');
   canaryScopeCheck();
   writeTestScopeCheck();
   killMutantsCheck();

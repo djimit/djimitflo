@@ -77,3 +77,18 @@ it('Z5: "+2 wins" on a 20-task holdout at an 80 % base rate (3 vs 1 discordant) 
   expect(mcnemarOneSided(5, 0)).toBeCloseTo(0.03125);
   expect(mcnemarOneSided(0, 0)).toBe(1);
 });
+
+it('GENOME_FIRE_CHECK: VOID attempts (genome lines never reached the maker) are excluded from the paired comparison and counted', async () => {
+  gymRun('f1', 'c1', undefined, 'failure', 'tests still red');
+  const [trial] = (await dreamOnce(db, NOW, async () => '{"mutants":[{"gene":"strategy_lines","lines":["A"]}]}')).created;
+  const holdout = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
+  holdout.forEach((c, i) => gymRun(`p${i}`, c, BASELINE_GENOME, i === 0 ? 'success' : 'failure', i === 0 ? 'tests green, source only' : 'tests still red'));
+  gymRun('g0', 'h1', trial, 'success', 'tests green, source only');
+  // h2..h6: three 'successes' each whose prompt never carried the genome's lines — treatment = control
+  const voided = db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
+    VALUES (?, 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, '2026-10-01T01:00:00Z', '2026-10-01T01:00:00Z')`);
+  holdout.slice(1).forEach((c) => { for (let k = 0; k < 3; k++) voided.run(`v-${c}-${k}`, JSON.stringify({ gym: { commit: c, species: 'atomic@llama-router', genome: trial }, gym_result: { status: 'success', reason: 'tests green, source only', void: 'fire_check: no evidence that the genome lines reached the maker' } })); });
+  // only h1 is paired (0 vs 0 discordant): no promotion on 15 attempts that never tested the genome
+  expect(evaluateTrials(db, 'atomic@llama-router', holdout, NOW)).toEqual([{ id: trial, status: 'retired', wins: 1, parentWins: 1 }]);
+  expect((db.prepare('SELECT note FROM maker_genomes WHERE id = ?').get(trial) as { note: string }).note).toContain('discordant 0 vs 0, McNemar p=1.000; out of scope 0 vs 0; void 15 (fire check)');
+});

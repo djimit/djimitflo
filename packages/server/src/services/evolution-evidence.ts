@@ -30,7 +30,19 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'DEPENDENCY_LANE_MODE', acting: true }, { name: 'DEPENDENCY_LANE_MAX_PER_DAY', acting: true },
   { name: 'DEAD_CODE_LANE_ENABLED', acting: true }, { name: 'DEAD_CODE_MAX_PER_DAY', acting: true },
   { name: 'GYM_PROD_GATES', acting: false },
+  { name: 'GENOME_FIRE_CHECK', acting: true }, { name: 'MEMORY_HOLDOUT_RATE', acting: true },
 ];
+
+/** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */
+export function fisherExact(a: number, b: number, c: number, d: number): number {
+  const lf = (n: number): number => { let s = 0; for (let i = 2; i <= n; i++) s += Math.log(i); return s; };
+  const r1 = a + b; const r2 = c + d; const c1 = a + c; const n = r1 + r2;
+  if (!n) return 1;
+  const logP = (x: number) => lf(r1) + lf(r2) + lf(c1) + lf(n - c1) - lf(n) - lf(x) - lf(r1 - x) - lf(c1 - x) - lf(r2 - c1 + x);
+  const observed = logP(a); let p = 0;
+  for (let x = Math.max(0, c1 - r2); x <= Math.min(r1, c1); x++) { const lp = logP(x); if (lp <= observed + 1e-7) p += Math.exp(lp); }
+  return Math.min(1, p);
+}
 
 export type GateState = 'green' | 'red' | 'unknown';
 export interface Gate { state: GateState; reason: string }
@@ -103,8 +115,13 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
       WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.canary') = 1 AND created_at >= ? GROUP BY 1`, since),
   };
 
+  // GENOME_FIRE_CHECK: trial attempts voided because the genome's lines never reached the maker (never paired)
+  const voided = all<{ genome: string; n: number }>(`SELECT json_extract(metadata, '$.gym.genome') AS genome, COUNT(*) AS n FROM loop_runs
+    WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym_result.void') IS NOT NULL AND created_at >= ? GROUP BY 1 ORDER BY n DESC LIMIT 20`, since);
+  const fire_checked = one(`SELECT COUNT(*) FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym_result.fire_check') IS NOT NULL AND created_at >= ?`, since);
   // RX-4: settled trials and how much each could have shown
   const trials = {
+    void: { attempts: voided.reduce((a, r) => a + r.n, 0), by_genome: voided, fire_checked },
     by_state: all<{ state: string; n: number }>('SELECT state, COUNT(*) AS n FROM genome_trial_results GROUP BY 1 ORDER BY 1'),
     // RX-12: a holdout is consumable — settled trials per epoch (rotate after ~6); RX-13: e-process shadow decisions
     by_epoch: all<{ epoch: number | null; n: number; e_promote: number }>("SELECT epoch, COUNT(*) AS n, SUM(e_rule_decision = 'promote') AS e_promote FROM genome_trial_results GROUP BY 1 ORDER BY 1"),
@@ -164,6 +181,22 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
       WHERE json_extract(metadata, '$.evidence_freshness.state') IS NOT NULL AND created_at >= ? GROUP BY 1`, since),
     stale_events: one("SELECT COUNT(*) FROM loop_events WHERE event_type IN ('evidence_stale', 'evidence_stale_shadow') AND created_at >= ?", since),
   };
+  // MEMORY_HOLDOUT_RATE: proposal outcome (verified / regressed) of maker runs that got rules vs runs held out (read-only)
+  const arms = all<{ arm: string; status: string; n: number }>(`SELECT CASE WHEN json_extract(e.metadata, '$.memory_holdout') = 1 THEN 'holdout' ELSE 'rules' END AS arm,
+      s.status AS status, COUNT(DISTINCT e.loop_run_id) AS n
+    FROM loop_events e JOIN loop_runs r ON r.id = e.loop_run_id JOIN goals g ON g.id = r.goal_id JOIN self_improvements s ON s.id = g.improvement_id
+    WHERE e.event_type = 'assignment_context' AND e.created_at >= ? AND s.status IN ('verified', 'regressed')
+      AND (json_extract(e.metadata, '$.memory_holdout') = 1 OR json_array_length(json_extract(e.metadata, '$.rule_ids')) > 0)
+    GROUP BY 1, 2`, since);
+  const arm = (name: string) => {
+    const verified = arms.filter((r) => r.arm === name && r.status === 'verified').reduce((a, r) => a + r.n, 0);
+    const regressed = arms.filter((r) => r.arm === name && r.status === 'regressed').reduce((a, r) => a + r.n, 0);
+    return { n: verified + regressed, verified, regressed, verified_rate: verified + regressed ? +(verified / (verified + regressed)).toFixed(3) : null };
+  };
+  const withRules = arm('rules'); const heldOut = arm('holdout');
+  const memory_holdout = { rate: env.MEMORY_HOLDOUT_RATE ?? null, rules: withRules, holdout: heldOut,
+    fisher_p: +fisherExact(withRules.verified, withRules.regressed, heldOut.verified, heldOut.regressed).toPrecision(4),
+    note: 'runs with a settled proposal (verified or regressed); rules = ≥ 1 rule in the assignment, holdout = rules withheld by MEMORY_HOLDOUT_RATE. Two-sided Fisher exact.' };
   return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, gym_prod_gates, trials, models, oracle, commons, forecasts_v2, hacks, estimates, ope,
     // UX-20: where model calls send data (shadow report; nothing is blocked)
     egress: egressEvidence(db, env, now),
@@ -172,5 +205,5 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     failure_tasks: failureTaskEvidence(db, null, env),
     embedding_dim_mismatch: { strict: vectorStrictDim(env), by_store: embeddingDimMismatch() }, freshness,
     // earned auto-merge: mode, class state (active / revoked + why) and counts
-    auto_merge: autoMergeEvidence(db, env, now), gates };
+    auto_merge: autoMergeEvidence(db, env, now), memory_holdout, gates };
 }
