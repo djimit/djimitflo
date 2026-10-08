@@ -309,7 +309,8 @@ describe('LoopDaemon checker dispatch', () => {
     process.env.LOOP_EVOLVE_ENABLED = 'true'; process.env.LOOP_EVOLVE_SPECIES = 'remote@workstation/atomic@llama-router';
     try {
       await runOneTick(new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 }));
-      expect(wait).toHaveBeenCalledWith('maker-2', 1_860_000);
+      // queue wait (45 min) + work from the claim (30 min) + executor margin + daemon margin (prod 2026-10-08)
+      expect(wait).toHaveBeenCalledWith('maker-2', 2_700_000 + 1_800_000 + 60_000 + 60_000);
     } finally { delete process.env.LOOP_EVOLVE_ENABLED; delete process.env.LOOP_EVOLVE_SPECIES; }
   });
 
