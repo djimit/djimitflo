@@ -52,7 +52,7 @@ export function verdict(task, changed, green, makerOk = true) {
  * RX-11 (server #642): this worker can run canaries — a task whose extra test no source-only change can turn green; a solved
  * canary means the oracle or the sandbox is compromised. The server serves them only to workers that announce it.
  */
-export const CAPABILITIES = ['canary', 'write_test'];
+export const CAPABILITIES = ['canary', 'write_test', 'prod_gates'];
 export const claimBody = (offered) => ({ species: offered, capabilities: CAPABILITIES });
 /** The canary test to write before the oracle runs, or null. Only a test file under packages/ (never outside the worktree). */
 export function canaryFile(task) {
@@ -96,6 +96,57 @@ export function killMutants(wt, task, runTest) {
 export const mutantVerdict = (task, killed) => killed.length
   ? { status: 'success', reason: `tests green, source only, kills ${killed.length}/${task.mutants.length} mutants`, killed_mutants: killed }
   : { status: 'failure', reason: 'test kills no mutant', killed_mutants: [] };
+/**
+ * GYM_PROD_GATES (server): the gym oracle is a proxy — prod 2026-10-08, atomic@llama-router 7/9 on gym write_test tasks but
+ * 0/41 as a production maker, every regression a gate failure. When the claim carries `prod_gates` (the server decides;
+ * absent = off), a proxy success must also pass production's deterministic checks (LOOP_DAEMON_CHECK_SCRIPTS, each its own
+ * `npm run` in the runner with production's per-script timeout) and the lane diff limit (executor: 200, a test-only change
+ * 400, cap 2000). A failing gate is a scored failure 'prod_gate_failed:<check>'; per-check results go back as prod_gates.
+ */
+export const TEST_ONLY_DIFF_MAX = 400;
+export const testOnlyChange = (files) => files.length > 0 && files.every((f) => /(^|\/)__tests__\/|\.(test|spec)\.[cm]?[jt]sx?$/.test(f));
+export function prodGatesConfig(claim) {
+  const g = claim?.prod_gates;
+  if (!g || typeof g !== 'object' || !Array.isArray(g.scripts)) return null;
+  const timeout = Number(g.timeout_ms);
+  return {
+    scripts: g.scripts.map(String).filter((s) => /^[\w:.-]{1,40}$/.test(s)).slice(0, 8),
+    timeoutMs: Number.isFinite(timeout) && timeout >= 1_000 ? Math.min(timeout, 600_000) : 120_000,
+    diffMaxLines: Math.max(1, Math.min(Number(g.diff_max_lines) || 200, 2_000)),
+  };
+}
+/** Executor's diff_under_threshold: non-empty diff lines against the lane limit (raised to 400 for a test-only change). */
+export function diffGate(cfg, changed, diffText) {
+  const lines = String(diffText ?? '').split(/\r?\n/).filter(Boolean).length;
+  const max = Math.min(testOnlyChange(changed) ? Math.max(cfg.diffMaxLines, TEST_ONLY_DIFF_MAX) : cfg.diffMaxLines, 2_000);
+  return lines <= max ? 'pass' : 'fail';
+}
+/**
+ * Every gate runs (per-check evidence, like production's runDeterministicChecks); runScript(name) → 'pass' | 'fail' |
+ * 'skipped' | 'infra'. Only a proxy success is gated. A runner that could not start is infra (discard), never a score.
+ */
+export function applyProdGates(result, cfg, { changed, diffText, runScript }) {
+  if (!cfg || result.status !== 'success') return result;
+  const checks = { diff_limit: diffGate(cfg, changed, diffText) };
+  for (const name of cfg.scripts) checks[name] = runScript(name);
+  const infra = Object.keys(checks).find((k) => checks[k] === 'infra');
+  if (infra) return { status: 'discarded', reason: `infra: prod gate ${infra} runner failed` };
+  const failed = Object.keys(checks).find((k) => checks[k] === 'fail');
+  return failed ? { ...result, status: 'failure', reason: `prod_gate_failed:${failed}`, prod_gates: checks } : { ...result, prod_gates: checks };
+}
+/**
+ * One production check in the runner: a script missing from the worktree's package.json is skipped (as in production).
+ * The worktree's .git file points at <repo>/.git/worktrees/…, so that directory is mounted (read-only) at the same path:
+ * `vitest --changed` and mutation-gain ask git what changed.
+ */
+function runProdScript(repo, wt, name, timeoutMs) {
+  let scripts = {};
+  try { scripts = JSON.parse(fs.readFileSync(path.join(wt, 'package.json'), 'utf8')).scripts ?? {}; } catch { /* treated as missing */ }
+  if (!Object.hasOwn(scripts, name)) return 'skipped';
+  const r = inRunner(wt, `npm run ${name} > /tmp/gate.log 2>&1; rc=$?; tail -20 /tmp/gate.log; exit $rc`, { timeoutMs, extra: ['-v', `${path.join(repo, '.git')}:${path.join(repo, '.git')}:ro`] });
+  if (r.error && r.error.code !== 'ETIMEDOUT') return 'infra';
+  return r.status === 0 && !r.signal ? 'pass' : 'fail'; // a timeout is a failed check, as in production
+}
 export const DIFF_MAX = 50_000;
 /** What the hack classifier needs: the files the maker changed and its diff (capped, the server caps it too). */
 export const resultExtras = (changed, diffText) => ({ changed_files: changed.slice(0, 50), diff: String(diffText ?? '').slice(0, DIFF_MAX) });
@@ -275,6 +326,8 @@ async function main() {
     let result = gap ? { status: 'failure', reason: gap } : verdict(task, changed, green, makerOk);
     // B8: green on the real target is not enough — the test must also go red on at least one seeded mutant of it
     if (writeTest && result.status === 'success') result = mutantVerdict(task, killMutants(wt, task, () => oracle(wt, task)));
+    const gates = prodGatesConfig(claim);
+    result = applyProdGates(result, gates, { changed, diffText, runScript: (name) => runProdScript(repo, wt, name, gates.timeoutMs) });
     return report({ ...result, ...resultExtras(changed, diffText) });
   } catch (err) {
     return report({ status: 'discarded', reason: `infra: ${(err instanceof Error ? err.message : String(err)).slice(0, 150)}` });
@@ -362,6 +415,32 @@ function killMutantsCheck() {
   } finally { fs.rmSync(wt, { recursive: true, force: true }); }
 }
 
+/** GYM_PROD_GATES: a proxy success with a failing lint becomes 'prod_gate_failed:lint' (stubbed runner, no docker). */
+function prodGatesCheck() {
+  const assert = (c, m) => { if (!c) throw new Error(`selfcheck: ${m}`); };
+  const claim = { prod_gates: { scripts: ['test:changed', 'lint', 'type-check', 'x;rm -rf /'], timeout_ms: 300_000, diff_max_lines: 200 } };
+  const cfg = prodGatesConfig(claim);
+  assert(JSON.stringify(cfg.scripts) === '["test:changed","lint","type-check"]' && cfg.timeoutMs === 300_000, 'prod gate config: scripts sanitised, timeout kept');
+  assert(prodGatesConfig({}) === null && prodGatesConfig({ prod_gates: true }) === null, 'no prod_gates in the claim = off');
+  const proxy = { status: 'success', reason: 'tests green, source only, kills 1/3 mutants', killed_mutants: ['m1'] };
+  const src = { changed: ['packages/server/src/services/a.ts'], diffText: 'x\n'.repeat(10) };
+  const ran = [];
+  const lintRed = applyProdGates(proxy, cfg, { ...src, runScript: (n) => { ran.push(n); return n === 'lint' ? 'fail' : 'pass'; } });
+  assert(lintRed.status === 'failure' && lintRed.reason === 'prod_gate_failed:lint', 'a proxy success with a failing lint is failure prod_gate_failed:lint');
+  assert(JSON.stringify(lintRed.prod_gates) === '{"diff_limit":"pass","test:changed":"pass","lint":"fail","type-check":"pass"}' && ran.length === 3, 'every check runs and is reported');
+  const green = applyProdGates(proxy, cfg, { ...src, runScript: () => 'pass' });
+  assert(green.status === 'success' && green.reason === proxy.reason && green.prod_gates.lint === 'pass', 'all gates green keeps the success');
+  assert(applyProdGates(proxy, null, { ...src, runScript: () => 'fail' }) === proxy, 'no config = the proxy verdict');
+  const failed = { status: 'failure', reason: 'tests still red' };
+  assert(applyProdGates(failed, cfg, { ...src, runScript: () => { throw new Error('must not run'); } }) === failed, 'only a proxy success is gated');
+  assert(applyProdGates(proxy, cfg, { ...src, diffText: 'x\n'.repeat(201), runScript: () => 'pass' }).reason === 'prod_gate_failed:diff_limit', 'a 201-line source diff fails the lane limit');
+  const testOnly = { changed: ['packages/server/src/__tests__/a.test.ts'], diffText: 'x\n'.repeat(400) };
+  assert(applyProdGates(proxy, cfg, { ...testOnly, runScript: () => 'pass' }).status === 'success', 'a test-only change may use 400 lines');
+  assert(applyProdGates(proxy, cfg, { ...testOnly, diffText: 'x\n'.repeat(401), runScript: () => 'pass' }).reason === 'prod_gate_failed:diff_limit', 'and not 401');
+  assert(applyProdGates(proxy, cfg, { ...src, runScript: (n) => (n === 'type-check' ? 'infra' : 'pass') }).status === 'discarded', 'a runner that could not start is an infra discard');
+  assert(applyProdGates(proxy, cfg, { ...src, runScript: (n) => (n === 'lint' ? 'skipped' : 'pass') }).status === 'success', 'a missing script is skipped, as in production');
+}
+
 function selfcheck() {
   const task = { source: 'packages/server/src/a.ts' };
   const assert = (c, m) => { if (!c) throw new Error(`selfcheck: ${m}`); };
@@ -381,7 +460,7 @@ function selfcheck() {
   assert(!oneLine('a\nb\n\nc').includes('\n'), 'oneLine has no newline');
   assert(parseForecast('thinking... {"p": 0.35, "rationale": "lane rate is low"} done')?.p === 0.35, 'parseForecast reads p');
   assert(parseForecast('{"p": 1.7}') === null && parseForecast('no json') === null, 'parseForecast rejects bad output');
-  assert(JSON.stringify(claimBody(['atomic@llama-router'])) === '{"species":["atomic@llama-router"],"capabilities":["canary","write_test"]}', 'claim announces the canary and write_test capabilities');
+  assert(JSON.stringify(claimBody(['atomic@llama-router'])) === '{"species":["atomic@llama-router"],"capabilities":["canary","write_test","prod_gates"]}', 'claim announces the canary, write_test and prod_gates capabilities');
   const wTask = { commit: 'fail:r1', kind: 'write_test', base: 'a'.repeat(40), source: 'packages/server/src/__tests__/widget.test.ts', tests: ['packages/server/src/__tests__/widget.test.ts'], target: 'packages/server/src/services/widget.ts',
     mutants: [{ key: 'mut:aaaaaaaaaaaa:packages/server/src/services/widget.ts:1:1', content: 'export const widget = () => 2;\n' }] };
   assert(isWriteTest(wTask) && !isWriteTest(task) && writeTestValid(wTask), 'write_test task recognised and valid');
@@ -403,6 +482,7 @@ function selfcheck() {
   canaryScopeCheck();
   writeTestScopeCheck();
   killMutantsCheck();
+  prodGatesCheck();
   console.log('selfcheck ok');
 }
 

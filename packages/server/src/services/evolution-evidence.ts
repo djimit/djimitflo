@@ -29,6 +29,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'MODEL_SELECTOR_MODE', acting: true }, { name: 'EVOLUTION_ESTIMATORS_ENABLED', acting: false }, { name: 'GYM_IRT_SELECTION', acting: true },
   { name: 'DEPENDENCY_LANE_MODE', acting: true }, { name: 'DEPENDENCY_LANE_MAX_PER_DAY', acting: true },
   { name: 'DEAD_CODE_LANE_ENABLED', acting: true }, { name: 'DEAD_CODE_MAX_PER_DAY', acting: true },
+  { name: 'GYM_PROD_GATES', acting: false },
 ];
 
 export type GateState = 'green' | 'red' | 'unknown';
@@ -77,6 +78,21 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   const gym = all<{ kind: string; tier: number | null; status: string | null; n: number }>(`SELECT CASE WHEN json_extract(metadata, '$.gym.commit') LIKE 'mut:%' THEN 'mutant' ELSE 'mined' END AS kind,
     json_extract(metadata, '$.gym.tier') AS tier, json_extract(metadata, '$.gym_result.status') AS status, COUNT(*) AS n
     FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.canary') IS NULL AND created_at >= ? GROUP BY 1, 2, 3 ORDER BY 1, 2, 3`, since);
+  // gym gold agreement (GYM_PROD_GATES): on runs claimed with the production gates, how often the gym's own oracle said
+  // success (proxy) vs how often the production checks + lane diff limit agreed. A gated run carries gym_result.prod_gates
+  // exactly when its proxy oracle succeeded (the worker runs the gates only then).
+  const gateRuns = `FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.prod_gates') = 1
+    AND json_extract(metadata, '$.gym.canary') IS NULL AND json_extract(metadata, '$.gym_result.status') IN ('success', 'failure') AND created_at >= ?`;
+  const gym_prod_gates = {
+    by_kind: all<{ kind: string; scored: number; proxy_success: number; prod_gate_success: number }>(`SELECT CASE WHEN json_extract(metadata, '$.gym.kind') = 'write_test' THEN 'write_test'
+        WHEN json_extract(metadata, '$.gym.commit') LIKE 'mut:%' THEN 'mutant' ELSE 'mined' END AS kind, COUNT(*) AS scored,
+        SUM(json_extract(metadata, '$.gym_result.status') = 'success' OR json_extract(metadata, '$.gym_result.prod_gates') IS NOT NULL) AS proxy_success,
+        SUM(json_extract(metadata, '$.gym_result.status') = 'success' AND json_extract(metadata, '$.gym_result.prod_gates') IS NOT NULL) AS prod_gate_success
+      ${gateRuns} GROUP BY 1 ORDER BY 1`, since)
+      .map((r) => ({ ...r, proxy_rate: r.scored ? +(r.proxy_success / r.scored).toFixed(3) : null, prod_gate_rate: r.scored ? +(r.prod_gate_success / r.scored).toFixed(3) : null })),
+    failed_checks: all<{ check: string; n: number }>(`SELECT g.key AS "check", COUNT(*) AS n FROM loop_runs r, json_each(json_extract(r.metadata, '$.gym_result.prod_gates')) g
+      WHERE r.loop_name = 'evolution-gym' AND json_extract(r.metadata, '$.gym.prod_gates') = 1 AND g.value = 'fail' AND r.created_at >= ? GROUP BY 1 ORDER BY n DESC, 1`, since),
+  };
   // RX-11: shadow hack flags per species (from gym_result.hack_flags) and canary outcomes (a solved canary = compromised oracle)
   const hacks = {
     flags: all<{ species: string; flag: string; n: number }>(`SELECT json_extract(r.metadata, '$.gym.species') AS species, f.value AS flag, COUNT(*) AS n
@@ -148,7 +164,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
       WHERE json_extract(metadata, '$.evidence_freshness.state') IS NOT NULL AND created_at >= ? GROUP BY 1`, since),
     stale_events: one("SELECT COUNT(*) FROM loop_events WHERE event_type IN ('evidence_stale', 'evidence_stale_shadow') AND created_at >= ?", since),
   };
-  return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, trials, models, oracle, commons, forecasts_v2, hacks, estimates, ope,
+  return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, gym_prod_gates, trials, models, oracle, commons, forecasts_v2, hacks, estimates, ope,
     // UX-20: where model calls send data (shadow report; nothing is blocked)
     egress: egressEvidence(db, env, now),
     // UX-21: vectors compared across dimensions since boot, per store (resampled by default; skipped under VECTOR_STRICT_DIM)

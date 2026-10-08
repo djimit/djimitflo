@@ -13,7 +13,7 @@ afterEach(() => db?.close());
 it('RX-1: an empty or partial schema returns every section and never throws', () => {
   db = new Database(':memory:');
   const e = buildEvolutionEvidence(db, {}, NOW);
-  expect(Object.keys(e)).toEqual(['at', 'window_days', 'flags', 'outcomes', 'outcomes_tagged', 'merge', 'drafts', 'genomes', 'gym', 'trials', 'models', 'oracle', 'commons', 'forecasts_v2', 'hacks', 'estimates', 'ope', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'auto_merge', 'gates']);
+  expect(Object.keys(e)).toEqual(['at', 'window_days', 'flags', 'outcomes', 'outcomes_tagged', 'merge', 'drafts', 'genomes', 'gym', 'gym_prod_gates', 'trials', 'models', 'oracle', 'commons', 'forecasts_v2', 'hacks', 'estimates', 'ope', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'auto_merge', 'gates']);
   expect(e.outcomes).toEqual([]); expect(e.genomes.holdout).toEqual({ mined: null, mutant: null });
   expect(e.gates.B.state).toBe('red'); expect(e.gates.A.state).toBe('unknown');
   expect(e.flags.every((f) => f.value === null)).toBe(true);
@@ -62,4 +62,25 @@ it('RX-3: the share of production maker zeros that are infra / no change / eligi
   out.run('c', skill, 0, 'test-gap', '["outcome_class:regressed"]', ago(1)); out.run('d', skill, 1, 'test-gap', '[]', ago(1));
   out.run('g', 'loop-maker:gym:atomic', 0, 'gym', '["outcome_class:infra_failed"]', ago(1));
   expect(buildEvolutionEvidence(db, {}, NOW).outcomes_tagged).toEqual([{ skill, total: 4, failures: 3, tagged: 2, share: 0.5 }]);
+});
+
+it('GYM_PROD_GATES: evidence reports proxy vs prod-gate success per task kind on gated runs only', () => {
+  db = new Database(':memory:'); db.exec(schema); runMigrations(db);
+  const run = db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
+    VALUES (?, 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`);
+  const ins = (id: string, gym: Record<string, unknown>, result: Record<string, unknown>) => run.run(id, JSON.stringify({ gym, gym_result: result }), ago(1), ago(1));
+  const wt = { commit: 'fail:r', kind: 'write_test', prod_gates: 1 };
+  ins('w1', wt, { status: 'success', reason: 'ok', prod_gates: { diff_limit: 'pass', lint: 'pass' } });
+  ins('w2', wt, { status: 'failure', reason: 'prod_gate_failed:lint', prod_gates: { diff_limit: 'pass', lint: 'fail' } });
+  ins('w3', wt, { status: 'failure', reason: 'prod_gate_failed:diff_limit', prod_gates: { diff_limit: 'fail', lint: 'fail' } });
+  ins('w4', wt, { status: 'failure', reason: 'tests still red' });
+  ins('w5', wt, { status: 'discarded', reason: 'infra: x' });
+  ins('m1', { commit: 'mut:abc:x:4:1', prod_gates: 1 }, { status: 'failure', reason: 'prod_gate_failed:type-check', prod_gates: { 'type-check': 'fail' } });
+  ins('u1', { commit: 'abc' }, { status: 'success', reason: 'ok' }); // claimed without the gates: not in this section
+  const e = buildEvolutionEvidence(db, {}, NOW);
+  expect(e.gym_prod_gates.by_kind).toEqual([
+    { kind: 'mutant', scored: 1, proxy_success: 1, prod_gate_success: 0, proxy_rate: 1, prod_gate_rate: 0 },
+    { kind: 'write_test', scored: 4, proxy_success: 3, prod_gate_success: 1, proxy_rate: 0.75, prod_gate_rate: 0.25 },
+  ]);
+  expect(e.gym_prod_gates.failed_checks).toEqual([{ check: 'lint', n: 2 }, { check: 'diff_limit', n: 1 }, { check: 'type-check', n: 1 }]);
 });
