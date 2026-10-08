@@ -181,6 +181,11 @@ export function DecisionsInboxPage() {
                   className={i.label === label ? 'bg-background-tertiary font-semibold' : ''}
                   onClick={() => void act(`${i.id}-${label}`, () => api.labelPrescreen(i.id, label), `Labelled '${label}'`)}>{label}</Button>
               )) },
+              // D5 enforce: a proposal the pre-screen parked before the panel (reason 'prescreen: …') can be requeued (D2)
+              { key: 'requeue', label: 'Requeue', render: (i) => i.status === 'needs_more_evidence' && i.reason.startsWith('prescreen:') && (
+                <Button needs={canRequeue ? undefined : P.requeueProposal} disabled={busy !== null} aria-label={`Requeue ${i.id.slice(0, 8)}`}
+                  onClick={() => void act(`q-${i.id}`, () => api.requeueProposal(i.id, 'pre-screen rejection overridden by the operator'), `Requeued ${i.id.slice(0, 8)}`)}>Requeue</Button>
+              ) },
             ]} />
           </Section>
 

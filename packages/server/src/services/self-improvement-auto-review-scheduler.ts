@@ -142,14 +142,22 @@ export class SelfImprovementAutoReviewScheduler {
 
       for (const proposal of proposed) {
         try {
-          // System One pre-screen: shadow mode records what it WOULD decide next to the panel's real outcome (fail-open, never blocks).
+          // System One pre-screen: shadow mode records what it WOULD decide next to the panel's real outcome (fail-open, never blocks);
+          // enforce (D5) parks a confident 'no' before the panel (below).
           const prescreen = judgmentMode(proposalPrescreen.id) !== 'off' ? await runJudgment(this.db, proposalPrescreen, { type: 'self_improvement', id: proposal.id },
             { proposal: { type: proposal.type, title: proposal.title, description: proposal.description, rationale: proposal.rationale } }, undefined,
             process.env.LOOP_REPOSITORY_PATH ? { pathExists: namedPathsExist(`${proposal.description ?? ''} ${proposal.rationale ?? ''}`, process.env.LOOP_REPOSITORY_PATH) } : undefined).catch(() => null) : null;
           // AR2: code forecasters, recorded before any gate decides (scored by forecast-scoring, AR1)
           try { enqueueCommittee(this.db, proposal); } catch { /* AR-W: committee is best-effort */ }
           if (process.env.ARENA_FORECASTS_ENABLED === 'true') recordForecasts(this.db, proposal, (prescreen?.answers as Record<string, unknown> | undefined) ?? null);
-          if (!oracleLaneSkipsPanel(proposal)) await this.reviewIfNeeded(proposal, runId, result); // Z1: no panel tokens for oracle lanes
+          if (oracleLaneSkipsPanel(proposal)) continue; // Z1: no panel tokens for oracle lanes (and never parked by the pre-screen)
+          // D5 (operator 28-09, met at 52 labelled / 1.9 % wrong): enforce parks a confident 'no'; 'uncertain', an error or no
+          // judgment fails open to the panel. The operator can requeue a parked proposal from /decisions (D2).
+          if (judgmentMode(proposalPrescreen.id) === 'enforce' && prescreen?.mode === 'enforce' && prescreen.decision === 'no') {
+            if (this.improvements.parkByPrescreen(proposal.id, prescreen.reason)) result.parked.push(proposal.id);
+            continue;
+          }
+          await this.reviewIfNeeded(proposal, runId, result);
         } catch (err) {
           result.failed.push({ id: proposal.id, error: err instanceof Error ? err.message : String(err) });
         }

@@ -3,7 +3,8 @@ import type { Database } from 'better-sqlite3';
 
 /**
  * D2 (operator 2026-09-28): requeue = a NEW attempt linked to the original, never a mutation of it.
- * - only for a proposal that ended without a verdict worth keeping (regressed / infra_failed / no_change)
+ * - only for a proposal that ended without a verdict worth keeping (regressed / infra_failed / no_change), or one the
+ *   pre-screen parked before the panel (D5: needs_more_evidence with a `prescreen_park` judgment) — the operator overrides it
  * - idempotent per original: a second requeue returns the first copy
  * - counts against the lane budget: a test-gap copy carries its `test-gap:` ref, so the lane's daily cap sees it;
  *   refused when that cap is already reached
@@ -24,7 +25,9 @@ export function requeueImprovement(db: Database, originalId: string, input: Requ
   const link = `requeue-of:${originalId}`;
   const existing = db.prepare('SELECT id FROM self_improvements WHERE evidence_refs_json LIKE ? LIMIT 1').get(`%"${link}"%`) as { id: string } | undefined;
   if (existing) return { id: existing.id, created: false };
-  if (!REQUEUEABLE.includes(String(original.status))) throw new Error('REQUEUE_STATUS_NOT_ALLOWED');
+  const prescreenParked = original.status === 'needs_more_evidence'
+    && !!db.prepare("SELECT 1 FROM judgments WHERE judgment = 'prescreen_park' AND subject_id = ? LIMIT 1").get(originalId);
+  if (!REQUEUEABLE.includes(String(original.status)) && !prescreenParked) throw new Error('REQUEUE_STATUS_NOT_ALLOWED');
   const escalated = db.prepare(`SELECT 1 FROM loop_runs r JOIN goals g ON g.id = r.goal_id WHERE g.improvement_id = ? AND r.status = 'escalated' LIMIT 1`).get(originalId);
   if (escalated && !input.approveEscalation) throw new Error('REQUEUE_ESCALATED_NEEDS_APPROVAL');
   const refs = JSON.parse(String(original.evidence_refs_json || '[]')) as string[];

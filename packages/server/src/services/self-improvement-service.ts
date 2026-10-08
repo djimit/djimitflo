@@ -53,6 +53,9 @@ export function oracleLaneSkipsPanel(p: Pick<ImprovementProposal, 'source' | 'ev
   return env.ORACLE_LANES_SKIP_PANEL === 'true' && p.source === 'gap_analysis' && p.evidenceRefs.some((r) => /^(test-gap|mutation-gap):/.test(r));
 }
 
+/** D5: reason prefix of a pre-screen park (the `prescreen_park` judgment and the /decisions row). */
+export const PRESCREEN_PARK_PREFIX = 'prescreen: ';
+
 export class SelfImprovementService {
   private panels: SpecialistPanelService;
 
@@ -217,6 +220,22 @@ export class SelfImprovementService {
     if (panel.consensus.decision === 'goal') return this.authorizeGoal(id, `agent:approver:${runId}`);
     this.transition(id, 'needs_more_evidence');
     return this.getImprovement(id);
+  }
+
+  /**
+   * D5: the pre-screen (enforce mode) parks a confident 'no' before any panel review. Audited as a `prescreen_park` judgment
+   * whose reason starts with `prescreen:` — that row is what makes the parked proposal requeue-able (D2) and keeps it out of
+   * dissent refinement (it has no panel dissent). Only from 'proposed'; null when the proposal moved on meanwhile.
+   */
+  parkByPrescreen(id: string, reason: string): ImprovementProposal | null {
+    const now = new Date().toISOString();
+    const parked = this.db.transaction(() => {
+      const changed = this.db.prepare("UPDATE self_improvements SET status = 'needs_more_evidence', updated_at = ? WHERE id = ? AND status = 'proposed'").run(now, id).changes;
+      if (changed) this.db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at)
+        VALUES (?, 'prescreen_park', 'self_improvement', ?, 'proposal_prescreen', 'enforce', 'no', ?, ?)`).run(randomUUID(), id, `${PRESCREEN_PARK_PREFIX}${reason}`.slice(0, 300), now);
+      return changed === 1;
+    })();
+    return parked ? this.getImprovement(id) : null;
   }
 
   private authorizeGoal(id: string, approvedBy: string, oracleLane = false): ImprovementProposal {
@@ -394,6 +413,7 @@ export class SelfImprovementService {
       SELECT s.* FROM self_improvements s
       LEFT JOIN commons_proposal_reviews r ON r.improvement_id = s.id
       WHERE s.status = 'needs_more_evidence' AND s.refined_at IS NULL AND s.refined_from_id IS NULL
+        AND NOT EXISTS (SELECT 1 FROM judgments pp WHERE pp.judgment = 'prescreen_park' AND pp.subject_id = s.id)
         AND (? = 0 OR r.status IN ('completed', 'timeout'))
       ORDER BY (r.status = 'completed') DESC, s.created_at ASC LIMIT ?
     `).all(gated ? 1 : 0, normalizedLimit);
