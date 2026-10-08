@@ -1,14 +1,16 @@
 /**
  * Service map (operator 2026-09-28, replaces the /workstation-urls port scan that saw only the container's own namespace):
  * probes the endpoints this server is configured to use. URLs come only from the server's env — never from a request —
- * and no credentials are sent. Any HTTP answer = reachable (401/404 still means the service is there); 5xx = degraded;
- * timeout or connection error = down. Endpoints sharing a host:port are probed once. Cached for a minute.
+ * and no credentials are sent. 2xx/3xx/401/403 = up (the service answered; auth is its business); 404 = 'reachable' only —
+ * something listens, but not the path we probed, so it says nothing about health (prod 08-10: the event bus and agent
+ * registry read 'up' on a 404 from '/'; both serve /health); 5xx = degraded; timeout or connection error = down.
+ * Endpoints sharing a host:port are probed once. Cached for a minute.
  */
-export interface ServiceStatus { names: string[]; endpoint: string; status: 'up' | 'degraded' | 'down'; http: number | null; ms: number | null; error: string | null }
+export interface ServiceStatus { names: string[]; endpoint: string; status: 'up' | 'reachable' | 'degraded' | 'down'; http: number | null; ms: number | null; error: string | null }
 
 const CANDIDATES: Array<[string, string, string]> = [ // [name, env var(s) '|'-separated, probe path]
-  ['event bus', 'DJIMIT_EVENT_BUS_URL', '/'],
-  ['agent registry', 'AGENT_REGISTRY_URL', '/'],
+  ['event bus', 'DJIMIT_EVENT_BUS_URL', '/health'],
+  ['agent registry', 'AGENT_REGISTRY_URL', '/health'],
   ['Ollama (primary)', 'OLLAMA_URL', '/api/tags'],
   ['LiteLLM', 'LITELLM_BASE_URL|LITELLM_URL', '/'],
   ['Qdrant (read)', 'QDRANT_URL', '/healthz'],
@@ -47,7 +49,7 @@ export async function serviceMap(env: NodeJS.ProcessEnv = process.env, fetchFn: 
     const started = Date.now();
     try {
       const res = await fetchFn(t.probe, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(3_000) });
-      return { names: t.names, endpoint: t.endpoint, status: res.status >= 500 ? 'degraded' : 'up', http: res.status, ms: Date.now() - started, error: null };
+      return { names: t.names, endpoint: t.endpoint, status: res.status >= 500 ? 'degraded' : res.status === 404 ? 'reachable' : 'up', http: res.status, ms: Date.now() - started, error: null };
     } catch (err) {
       const e = err as { name?: string; cause?: { code?: string } };
       return { names: t.names, endpoint: t.endpoint, status: 'down', http: null, ms: null, error: e?.name === 'TimeoutError' ? 'timeout' : e?.cause?.code ?? 'unreachable' };

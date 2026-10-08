@@ -33,7 +33,7 @@ import type {
 import { API_BASE, authenticatedFetch } from './auth-store';
 export { API_BASE } from './auth-store';
 
-export type ServiceStatus = { names: string[]; endpoint: string; status: 'up' | 'degraded' | 'down'; http: number | null; ms: number | null; error: string | null };
+export type ServiceStatus = { names: string[]; endpoint: string; status: 'up' | 'reachable' | 'degraded' | 'down'; http: number | null; ms: number | null; error: string | null };
 
 export type FleetHost = { host: string; last_seen: string; seconds_ago: number; live: boolean; agent_version: string | null; info: Record<string, unknown> };
 export type FleetCommand = { id: string; host: string; kind: 'diagnostic' | 'shell'; command: string; command_sha256: string; status: string; requested_by: string;
@@ -124,14 +124,14 @@ export type OperatorCockpit = {
   scorecard: Record<string, number | null>;
   guardrails: Array<{ name: string; ok: boolean; value: number | null; limit: string }>;
   stalls: Array<{ subsystem: string; since: string | null; detail: string }>;
-  gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string; benched?: boolean }>;
+  gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string; benched?: boolean; stale?: boolean }>;
   needs_you?: { approvals: number; requeue: number; labels: number; memory_review: number;
     proposals?: number; draft_prs?: number; open_prs?: number; stalls?: number; approvals_expiring?: number; join_requests?: number; shell_requests?: number };
   /** UX-8: schedulers this server armed at boot vs off */
   schedulers?: { armed: number; off: number };
   remote_workers: Array<{ host: string; claims_24h: number; last_claim: string | null; interrupted_24h: number }>;
-  /** UX-2: real-maker outcomes per strategy genome and maker skill (30 d); the server sent this, the type dropped it. */
-  genomes?: Array<{ genome: string; skill_id: string; outcomes: number; wins: number; win_pct: number }>;
+  /** UX-2: maker outcomes per strategy genome and maker skill (30 d); scope separates gym makers from production makers. */
+  genomes?: Array<{ genome: string; skill_id: string; scope?: 'gym' | 'production'; outcomes: number; wins: number; win_pct: number }>;
   maker_usage_7d: Array<{ role: string; runtime: string; model: string | null; leases: number; tokens: number }>;
   judgments_7d: Array<{ judgment: string; calls: number; errors: number; input_tokens: number }>;
   deploys: Array<{ at: string; event: string; sha: string; detail: string }>;

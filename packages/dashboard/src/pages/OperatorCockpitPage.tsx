@@ -11,7 +11,7 @@ const LABELS: Record<string, string> = {
   verified_7d: 'Verified (7 d)', regressed_7d: 'Regressed (7 d)', infra_failed_7d: 'Infra failed (7 d)', approvals_pending: 'Approvals pending',
   approvals_decided_7d: 'Approvals decided (7 d)', approvals_expired_7d: 'Approvals expired (7 d)', runs_failed_7d: 'Runs failed/interrupted (7 d)',
   panel_unparseable_7d: 'Panel unparseable (7 d)', reflection_inflow_24h: 'Reflection inflow (24 h)', needs_grounding_stock: 'Needs grounding',
-  needs_more_evidence_stock: 'Needs more evidence', memory_reads_7d: 'Memory reads (7 d)', tokens_per_outcome_7d: 'Tokens per outcome (7 d)',
+  needs_more_evidence_stock: 'Needs more evidence', memory_reads_7d: 'Memory reads (7 d)', tokens_per_verified_change_7d: 'Tokens per verified change (7 d, maker + reviewers)',
 };
 
 /** UX-13: the daily digest, read-only (Telegram delivery is OPERATOR_DIGEST_ENABLED on the server). */
@@ -94,8 +94,9 @@ export function OperatorCockpitPage() {
                 empty="No service endpoints configured or the probe failed." columns={[
                   { key: 'service', label: 'Service', render: (s) => s.names.join(' · ') },
                   { key: 'endpoint', label: 'Endpoint', render: (s) => s.endpoint, cellClassName: () => 'font-mono text-xs' },
-                  { key: 'status', label: 'Status', render: (s) => `${s.status}${s.error ? ` (${s.error})` : ''}`,
-                    cellClassName: (s) => (s.status === 'up' ? 'text-status-completed' : s.status === 'degraded' ? 'text-status-warning' : 'text-status-error') },
+                  // a 404 says something listens, not that it is healthy: 'reachable (404)', never 'up'
+                  { key: 'status', label: 'Status', render: (s) => `${s.status === 'up' && s.http === 404 ? 'reachable' : s.status}${s.error ? ` (${s.error})` : s.http === 404 ? ' (404)' : ''}`,
+                    cellClassName: (s) => (s.status === 'up' && s.http !== 404 ? 'text-status-completed' : s.status === 'down' ? 'text-status-error' : 'text-status-warning') },
                   { key: 'http', label: 'HTTP', render: (s) => s.http ?? '—' },
                   { key: 'ms', label: 'Latency', render: (s) => (s.ms === null ? '—' : `${s.ms} ms`) },
                 ]} />
@@ -138,7 +139,8 @@ export function OperatorCockpitPage() {
                 { key: 'species', label: 'Species', render: (g) => g.species },
                 { key: 'state', label: 'State', render: (g) => (g.benched
                   ? <StatusPill tone="error" label="benched" title="Circuit breaker: 3+ infra discards; the species takes no gym work until the cool-down probe succeeds" />
-                  : <StatusPill tone="ok" label="active" />) },
+                  : g.stale ? <StatusPill tone="warn" label="stale" title="No gym outcome for 72 h or more" />
+                    : <StatusPill tone="ok" label="active" />) },
                 { key: 'outcomes', label: 'Outcomes', render: (g) => g.outcomes },
                 { key: 'success', label: 'Success', render: (g) => `${g.success_pct}%` },
                 { key: 'secs', label: 'Avg s', render: (g) => fmt(g.avg_seconds) },
@@ -156,15 +158,23 @@ export function OperatorCockpitPage() {
             </Section>
           </div>
 
-          <Section id="genomes" title="Strategy genomes on real makers (30 d)">
-            <DataTable caption="Real-maker outcomes per strategy genome" rows={data.genomes ?? []} rowKey={(g) => `${g.genome}:${g.skill_id}`}
-              empty="No real-maker outcome carries a genome yet." columns={[
-                { key: 'genome', label: 'Genome', render: (g) => g.genome },
-                { key: 'skill', label: 'Maker skill', render: (g) => g.skill_id },
-                { key: 'outcomes', label: 'Outcomes (n)', render: (g) => g.outcomes },
-                { key: 'wins', label: 'Wins', render: (g) => g.wins },
-                { key: 'rate', label: 'Win rate', render: (g) => `${g.win_pct}%` },
-              ]} />
+          <Section id="genomes" title="Strategy genomes (30 d)">
+            {/* gym makers (loop-maker:gym:*) and makers on real goals were one 'real makers' table; never mixed again */}
+            {(['production', 'gym'] as const).map((scope) => (
+              <div key={scope} className="space-y-2">
+                <h3 className="text-sm font-semibold">{scope === 'production' ? 'Production makers' : 'Gym makers'}</h3>
+                <DataTable caption={scope === 'production' ? 'Production-maker outcomes per strategy genome' : 'Gym-maker outcomes per strategy genome'}
+                  rows={(data.genomes ?? []).filter((g) => (g.scope ?? (g.skill_id.startsWith('loop-maker:gym:') ? 'gym' : 'production')) === scope)}
+                  rowKey={(g) => `${g.genome}:${g.skill_id}`}
+                  empty={scope === 'production' ? 'No production-maker outcome carries a genome yet.' : 'No gym-maker outcome carries a genome yet.'} columns={[
+                    { key: 'genome', label: 'Genome', render: (g) => g.genome },
+                    { key: 'skill', label: 'Maker skill', render: (g) => g.skill_id },
+                    { key: 'outcomes', label: 'Outcomes (n)', render: (g) => g.outcomes },
+                    { key: 'wins', label: 'Wins', render: (g) => g.wins },
+                    { key: 'rate', label: 'Win rate', render: (g) => `${g.win_pct}%` },
+                  ]} />
+              </div>
+            ))}
           </Section>
 
           <div className="grid md:grid-cols-2 gap-6">
