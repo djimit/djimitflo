@@ -14,7 +14,20 @@ import type { Database } from 'better-sqlite3';
  *    (reads are logged as `loop-maker:<run id>`). Fit rules (> 0) survive past the 14-day trial and come first; a rule
  *    with fitness <= -2 is never shown again; the last slot always goes to the newest untried rule (exploration).
  */
-export interface AssignmentContext { examples: string[]; rules: Array<{ id: string; text: string; hash: string }> }
+export interface AssignmentContext { examples: string[]; rules: Array<{ id: string; text: string; hash: string }>; memory_holdout?: true }
+
+/**
+ * Memory holdout (prod: rules were read in 121 of 122 maker runs — no control group, Fisher p = 1.0). MEMORY_HOLDOUT_RATE
+ * (default 0 = off, clamped to [0, 1]) withholds the rules from a deterministic fraction of maker runs: the sha256 of the
+ * goal id (else the run id) picks the arm, so every run of one goal lands in the same arm. A held-out run gets no rules,
+ * logs no read and carries `memory_holdout: true` on its assignment_context event; evolution-evidence compares the arms.
+ */
+export const memoryHoldoutRate = (env: NodeJS.ProcessEnv = process.env): number => {
+  const r = Number(env.MEMORY_HOLDOUT_RATE); return Number.isFinite(r) ? Math.min(1, Math.max(0, r)) : 0;
+};
+export function memoryHoldout(key: string, rate: number): boolean {
+  return rate > 0 && parseInt(createHash('sha256').update(`memory-holdout:${key}`).digest('hex').slice(0, 8), 16) / 0x1_0000_0000 < rate;
+}
 
 const RULE_MAX_AGE_DAYS = 14;
 
@@ -33,7 +46,8 @@ export function assignmentContext(db: Database, run: { id: string; goal_id: stri
         WHERE status = 'verified' AND evidence_refs_json LIKE '%"test-gap:%' AND grounding_json IS NOT NULL ORDER BY updated_at DESC LIMIT 10`).all() as Array<{ title: string; artifact: string | null }>;
       out.examples = rows.filter((r) => r.artifact && fs.existsSync(path.join(checkoutPath, r.artifact))).slice(0, 2).map((r) => `${r.artifact} — ${r.title}`);
     }
-    if (env.LOOP_MEMORY_RULES_ENABLED === 'true') {
+    if (env.LOOP_MEMORY_RULES_ENABLED === 'true' && memoryHoldout(run.goal_id || run.id, memoryHoldoutRate(env))) out.memory_holdout = true;
+    else if (env.LOOP_MEMORY_RULES_ENABLED === 'true') {
       const since = new Date(Date.now() - RULE_MAX_AGE_DAYS * 86_400_000).toISOString();
       const rows = db.prepare(`SELECT m.id, m.content, m.content_hash, m.created_at,
           COALESCE(SUM(CASE s.status WHEN 'verified' THEN 1 WHEN 'regressed' THEN -1 ELSE 0 END), 0) AS fitness, COUNT(a.id) AS reads

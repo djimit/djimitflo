@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import express from 'express';
+import { rateLimit } from 'express-rate-limit';
 import request from 'supertest';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
@@ -143,4 +144,51 @@ it('GYM_PROD_GATES: the claim carries production\'s gate config only when on and
   expect(stored).toMatchObject({ status: 'failure', reason: 'prod_gate_failed:lint', prod_gates: { diff_limit: 'pass', 'test:changed': 'pass', lint: 'fail', 'type-check': 'pass' } });
   expect(Object.keys(stored.prod_gates)).toHaveLength(4);
   expect(db.prepare("SELECT success FROM skill_outcomes WHERE task_id = ?").get(on.runId)).toEqual({ success: 0 });
+});
+
+it('GENOME_FIRE_CHECK: a trial result without proof that the genome lines reached the maker is VOID (no outcome, served again); with proof it scores', async () => {
+  vi.stubEnv('DREAM_EVOLUTION_ENABLED', 'true'); vi.stubEnv('GENOME_FIRE_CHECK', 'true');
+  const tasks = Array.from({ length: 40 }, (_, i) => TASK(`c${String(i).padStart(2, '0')}`));
+  const app = express(); app.use(rateLimit({ windowMs: 60_000, limit: 600 })); app.use(express.json());
+  const pass = (_req: any, _res: any, next: any) => next();
+  app.use('/gym-worker', createRemoteGymRoutes(db, { requireAuth: pass, requirePermission: () => pass } as never));
+  // the route builds its own service; seed the holdout and a trial genome through one with the same task list
+  const svc = new RemoteGymService(db, () => tasks);
+  db.prepare(`INSERT INTO maker_genomes (id, parent_id, gene, lines_json, origin, status, created_at, updated_at)
+    VALUES ('g1', 'baseline', 'strategy_lines', '["Read the failing test first."]', 'dream', 'trial', datetime('now'), datetime('now'))`).run();
+  const base = svc.claim('workstation', ['atomic@llama-router']) as { runId: string; genome: { id: string } };
+  expect(base.genome.id).toBe('baseline');
+  svc.record(base.runId, 'workstation', { status: 'failure', reason: 'tests still red' }); // baseline needs no evidence
+  const token = mintSpawnToken(resolveSpawnTokenSecret(), 'workstation', REMOTE_GYM_SCOPE, 60_000);
+  const trial = svc.claim('workstation', ['atomic@llama-router']) as { runId: string; task: { commit: string }; genome: { id: string } };
+  expect(trial.genome.id).toBe('g1');
+  await request(app).post(`/gym-worker/runs/${trial.runId}/result`).set('X-Gym-Host', 'workstation').set('X-Gym-Worker-Token', token)
+    .send({ status: 'success', reason: 'tests green, source only', fire_check: { goal_sha256: 'a'.repeat(64), genome_lines: 1, genome_lines_found: 0 } }).expect(200);
+  const meta = (id: string) => JSON.parse((db.prepare('SELECT metadata FROM loop_runs WHERE id = ?').get(id) as { metadata: string }).metadata).gym_result;
+  expect(meta(trial.runId).void).toBe('fire_check: 0 of 1 genome lines in the maker prompt');
+  expect(db.prepare("SELECT COUNT(*) AS n FROM skill_outcomes WHERE evidence_refs_json LIKE '%genome:g1%'").get()).toEqual({ n: 0 });
+  const again = svc.claim('workstation', ['atomic@llama-router']) as { runId: string; task: { commit: string }; genome: { id: string } };
+  expect(again).toMatchObject({ task: { commit: trial.task.commit }, genome: { id: 'g1' } }); // a VOID attempt is not an attempt
+  svc.record(again.runId, 'workstation', { status: 'success', reason: 'tests green, source only' }); // no evidence at all
+  expect(meta(again.runId).void).toBe('fire_check: no evidence that the genome lines reached the maker');
+  const proven = svc.claim('workstation', ['atomic@llama-router']) as { runId: string; task: { commit: string } };
+  expect(proven.task.commit).toBe(trial.task.commit);
+  svc.record(proven.runId, 'workstation', { status: 'success', reason: 'tests green, source only', fire_check: { goal_sha256: 'b'.repeat(64), genome_lines: 1, genome_lines_found: 1 } });
+  expect(meta(proven.runId)).toMatchObject({ status: 'success', fire_check: { genome_lines_found: 1 } });
+  expect(meta(proven.runId).void).toBeUndefined();
+  expect(db.prepare("SELECT COUNT(*) AS n FROM skill_outcomes WHERE evidence_refs_json LIKE '%genome:g1%'").get()).toEqual({ n: 1 });
+});
+
+it('GENOME_FIRE_CHECK off: a trial result without evidence scores as before', () => {
+  vi.stubEnv('DREAM_EVOLUTION_ENABLED', 'true');
+  const tasks = Array.from({ length: 40 }, (_, i) => TASK(`c${String(i).padStart(2, '0')}`));
+  const svc = new RemoteGymService(db, () => tasks);
+  db.prepare(`INSERT INTO maker_genomes (id, parent_id, gene, lines_json, origin, status, created_at, updated_at)
+    VALUES ('g1', 'baseline', 'strategy_lines', '["A"]', 'dream', 'trial', datetime('now'), datetime('now'))`).run();
+  const base = svc.claim('workstation', ['atomic@llama-router']) as { runId: string };
+  svc.record(base.runId, 'workstation', { status: 'failure', reason: 'tests still red' });
+  const trial = svc.claim('workstation', ['atomic@llama-router']) as { runId: string };
+  svc.record(trial.runId, 'workstation', { status: 'success', reason: 'tests green, source only' });
+  expect(JSON.parse((db.prepare('SELECT metadata FROM loop_runs WHERE id = ?').get(trial.runId) as { metadata: string }).metadata).gym_result.void).toBeUndefined();
+  expect(db.prepare("SELECT COUNT(*) AS n FROM skill_outcomes WHERE evidence_refs_json LIKE '%genome:g1%'").get()).toEqual({ n: 1 });
 });

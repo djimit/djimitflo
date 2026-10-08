@@ -2,7 +2,7 @@ import { afterEach, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { buildEvolutionEvidence } from '../services/evolution-evidence';
+import { buildEvolutionEvidence, fisherExact } from '../services/evolution-evidence';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 
 const NOW = Date.parse('2026-10-04T20:00:00Z');
@@ -13,7 +13,7 @@ afterEach(() => db?.close());
 it('RX-1: an empty or partial schema returns every section and never throws', () => {
   db = new Database(':memory:');
   const e = buildEvolutionEvidence(db, {}, NOW);
-  expect(Object.keys(e)).toEqual(['at', 'window_days', 'flags', 'outcomes', 'outcomes_tagged', 'merge', 'drafts', 'genomes', 'gym', 'gym_prod_gates', 'trials', 'models', 'oracle', 'commons', 'forecasts_v2', 'hacks', 'estimates', 'ope', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'auto_merge', 'gates']);
+  expect(Object.keys(e)).toEqual(['at', 'window_days', 'flags', 'outcomes', 'outcomes_tagged', 'merge', 'drafts', 'genomes', 'gym', 'gym_prod_gates', 'trials', 'models', 'oracle', 'commons', 'forecasts_v2', 'hacks', 'estimates', 'ope', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'auto_merge', 'memory_holdout', 'gates']);
   expect(e.outcomes).toEqual([]); expect(e.genomes.holdout).toEqual({ mined: null, mutant: null });
   expect(e.gates.B.state).toBe('red'); expect(e.gates.A.state).toBe('unknown');
   expect(e.flags.every((f) => f.value === null)).toBe(true);
@@ -83,4 +83,37 @@ it('GYM_PROD_GATES: evidence reports proxy vs prod-gate success per task kind on
     { kind: 'write_test', scored: 4, proxy_success: 3, prod_gate_success: 1, proxy_rate: 0.75, prod_gate_rate: 0.25 },
   ]);
   expect(e.gym_prod_gates.failed_checks).toEqual([{ check: 'lint', n: 2 }, { check: 'diff_limit', n: 1 }, { check: 'type-check', n: 1 }]);
+});
+
+it('fisherExact: two-sided exact p on a 2×2 table', () => {
+  expect(fisherExact(3, 1, 1, 3)).toBeCloseTo(0.4857, 4);
+  expect(fisherExact(10, 0, 0, 10)).toBeCloseTo(1.0825e-5, 8);
+  expect(fisherExact(121, 0, 1, 0)).toBeCloseTo(1, 10); // prod: rules read in 121/122 runs — no control group
+  expect(fisherExact(0, 0, 0, 0)).toBe(1);
+});
+
+it('MEMORY_HOLDOUT_RATE: verified/regressed per arm (rules vs holdout) with n and a Fisher p; fire-check VOID attempts are counted', () => {
+  db = new Database(':memory:'); db.exec(schema); runMigrations(db); db.pragma('foreign_keys = OFF');
+  const imp = db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, priority, evidence_refs_json, created_at, updated_at)
+    VALUES (?, 'feature', 't', 'd', 'r', 'gap_analysis', ?, 0.5, '[]', ?, ?)`);
+  const goal = db.prepare("INSERT INTO goals (id, objective, risk_class, status, metadata, improvement_id, created_at, updated_at) VALUES (?, 'o', 'low', 'completed', '{}', ?, ?, ?)");
+  const run = db.prepare("INSERT INTO loop_runs (id, goal_id, loop_name, mode, status, created_at, updated_at) VALUES (?, ?, 'test-gap', 'closed', 'completed', ?, ?)");
+  const ev = db.prepare("INSERT INTO loop_events (id, loop_run_id, event_type, level, message, metadata, created_at) VALUES (?, ?, 'assignment_context', 'info', 'm', ?, ?)");
+  const maker = (id: string, status: string, meta: Record<string, unknown>, at = ago(1)) => {
+    imp.run(`s-${id}`, status, at, at); goal.run(`g-${id}`, `s-${id}`, at, at); run.run(id, `g-${id}`, at, at); ev.run(`e-${id}`, id, JSON.stringify(meta), at);
+  };
+  for (let i = 0; i < 10; i++) maker(`r${i}`, 'verified', { examples: [], rule_ids: ['rule-1'] });
+  maker('h0', 'regressed', { examples: [], rule_ids: [], memory_holdout: true });
+  for (let i = 1; i < 10; i++) maker(`h${i}`, 'regressed', { examples: [], rule_ids: [], memory_holdout: true });
+  maker('open', 'executing', { examples: [], rule_ids: ['rule-1'] }); // unsettled: in neither arm
+  maker('none', 'verified', { examples: ['x'], rule_ids: [] }); // no rules, not held out: in neither arm
+  maker('old', 'regressed', { examples: [], rule_ids: [], memory_holdout: true }, ago(60)); // outside the window
+  const gym = db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, metadata, created_at, updated_at) VALUES (?, 'evolution-gym', 'closed', 'completed', ?, ?, ?)`);
+  gym.run('v1', JSON.stringify({ gym: { genome: 'g-1' }, gym_result: { status: 'success', void: 'fire_check: no evidence', fire_check: null } }), ago(1), ago(1));
+  gym.run('v2', JSON.stringify({ gym: { genome: 'g-1' }, gym_result: { status: 'success', fire_check: { goal_sha256: 'a'.repeat(64), genome_lines: 1, genome_lines_found: 1 } } }), ago(1), ago(1));
+  const e = buildEvolutionEvidence(db, { MEMORY_HOLDOUT_RATE: '0.5', GENOME_FIRE_CHECK: 'true' }, NOW, 30);
+  expect(e.memory_holdout).toMatchObject({ rate: '0.5', rules: { n: 10, verified: 10, regressed: 0, verified_rate: 1 }, holdout: { n: 10, verified: 0, regressed: 10, verified_rate: 0 } });
+  expect(e.memory_holdout.fisher_p).toBeCloseTo(1.0825e-5, 8);
+  expect(e.trials.void).toEqual({ attempts: 1, by_genome: [{ genome: 'g-1', n: 1 }], fire_checked: 1 });
+  expect(e.flags.find((f) => f.name === 'GENOME_FIRE_CHECK')).toMatchObject({ value: 'true', acting: true });
 });

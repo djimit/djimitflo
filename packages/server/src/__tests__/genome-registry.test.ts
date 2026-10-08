@@ -114,3 +114,16 @@ it('D2: a production maker of the evolving species is attributed to the active g
   db.prepare("UPDATE maker_genomes SET status = 'active', updated_at = datetime('now') WHERE id = 'g1'").run();
   expect(strategyGenomeFor(db, 'remote', 'workstation/atomic@llama-router')).toMatchObject({ id: 'g1', lines: ['Run the target test first.'] });
 });
+
+it('GENOME_FIRE_CHECK: a VOID trial attempt is not an attempt; after 3 the pair is unscorable', async () => {
+  const { unscorable } = await import('../services/genome-registry');
+  ensureBaseline(db); mutant('g1', ['A']);
+  const run = (id: string, genome: string, commit: string, extra: Record<string, unknown> = {}) => db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
+    VALUES (?, 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, datetime('now'), datetime('now'))`).run(id, JSON.stringify({ gym: { commit, species: 'atomic@llama-router', genome }, gym_result: { status: 'success', reason: 'tests green, source only', ...extra } }));
+  run('b0', BASELINE_GENOME, 'c00');
+  run('v0', 'g1', 'c00', { void: 'fire_check: 0 of 1 genome lines in the maker prompt' });
+  expect(nextTrialAttempt(db, 'atomic@llama-router', ['c00'])).toEqual({ genomeId: 'g1', commit: 'c00' });
+  run('v1', 'g1', 'c00', { void: 'fire_check: no evidence that the genome lines reached the maker' }); run('v2', 'g1', 'c00', { void: 'fire_check: x' });
+  expect(unscorable(db, 'atomic@llama-router', 'g1', 'c00')).toBe(true);
+  expect(nextTrialAttempt(db, 'atomic@llama-router', ['c00'])).toBeNull();
+});
