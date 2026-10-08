@@ -83,6 +83,7 @@ export interface AgentScorecard {
 /** UX-9: GET /api/health/evolution-evidence (manage:config) — read-only evidence of the evolution loop. */
 export type GateState = 'green' | 'red' | 'unknown';
 export type MemoryArm = { n: number; verified: number; regressed: number; verified_rate: number | null };
+export type EffortArm = { goals: number; verified: number; regressed: number; infra: number; verified_rate: number | null };
 export interface EvolutionEvidence {
   at: string; window_days: number;
   flags: Array<{ name: string; acting: boolean; value: string | null }>;
@@ -115,6 +116,8 @@ export interface EvolutionEvidence {
     ineligible_by_reason: Record<string, number> };
   /** MEMORY_HOLDOUT_RATE: proposal outcome of maker runs with rules vs runs held out, two-sided Fisher exact p */
   memory_holdout: { rate: string | null; rules: MemoryArm; holdout: MemoryArm; fisher_p: number; note: string };
+  /** X1 (EFFORT_SIBLING_RANDOMISE): oracle-lane goals with evolve siblings (on) vs without (off), two-sided Fisher exact p */
+  effort_x1: { enabled: string | null; on: EffortArm; off: EffortArm; fisher_p: number; note: string };
   gates: Record<'A' | 'B' | 'C' | 'D', { state: GateState; reason: string }>;
 }
 

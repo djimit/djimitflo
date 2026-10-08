@@ -6,6 +6,7 @@ import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { infraFailing, triedTasks } from './evolution-gym-service';
 import { mutantTask, type MutantTask } from './gym-mutants';
 import { LoopEventService } from './loop-event-service';
+import { recordEffortGym } from './effort-controller';
 import { changedFromReason, classifyHack, hackDetectorShadow } from './gym-hack-classifier';
 import { settleNoHeadroom } from './dream-evolution';
 import { FAILURE_TASK_CAPABILITY, failureDerivedTasks, gitLookup, gymFailureTasksEnabled, type TargetMutant } from './gym-failure-tasks';
@@ -151,6 +152,7 @@ export class RemoteGymService {
     const gymMeta = { ...meta, ...(mutants ? { mutant_keys: mutants.map((m) => m.key) } : {}), species: key, remote_host: host, ...(trialGenome ? { genome: trialGenome.id } : {}), ...(probe ? { probe: 1 } : {}), ...(canary ? { canary: 1 } : {}), ...(gates ? { prod_gates: 1 } : {}) };
     this.db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, repository_path, metadata, created_at, updated_at) VALUES (?, 'evolution-gym', 'closed', 'running', ?, ?, ?, ?)")
       .run(runId, repo, JSON.stringify({ gym: gymMeta }), now.toISOString(), now.toISOString());
+    recordEffortGym(this.db, runId, key, task.commit); // EVC effort controller: shadow only (serve vs skip), changes nothing
     return { runId, species: key, task, ...(trialGenome ? { genome: { id: trialGenome.id, lines: trialGenome.lines } } : {}), ...(gates ? { prod_gates: gates } : {}) };
   }
 

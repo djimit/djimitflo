@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { TypeSafeClient, prepareState, typesafeConfigured, type TsAnswer, type TsQuestion } from './typesafe-client';
 import { isLocalShadowJudgment } from './local-shadow-queue';
+import { recordEffortJudgment } from './effort-controller';
 
 /**
  * Every System One judgment is written to `judgments` (state hash, typed answers, decision, cost, latency, model) so it can
@@ -31,6 +32,7 @@ export interface JudgmentRecord { id: string; decision: Decision; reason: string
 export async function runJudgment(db: Database, def: JudgmentDef, subject: { type: string; id: string }, state: unknown, client = new TypeSafeClient(), facts?: Record<string, unknown>): Promise<JudgmentRecord | null> {
   const mode = judgmentMode(def.id);
   if (mode === 'off' || !typesafeConfigured()) return null;
+  recordEffortJudgment(db, def.id, subject); // EVC effort controller: shadow only (run vs skip), changes nothing
   const started = Date.now();
   const stateHash = createHash('sha256').update(JSON.stringify(state)).digest('hex').slice(0, 16);
   const id = randomUUID();
@@ -60,6 +62,7 @@ export async function runJudgment(db: Database, def: JudgmentDef, subject: { typ
 export async function runJudgments(db: Database, defs: JudgmentDef[], subject: { type: string; id: string }, state: unknown, client = new TypeSafeClient()): Promise<Array<JudgmentRecord | null>> {
   const active = defs.filter((d) => judgmentMode(d.id) !== 'off');
   if (active.length <= 1 || !typesafeConfigured()) return Promise.all(defs.map((d) => (active.includes(d) ? runJudgment(db, d, subject, state, client) : Promise.resolve(null))));
+  for (const d of active) recordEffortJudgment(db, d.id, subject); // EVC effort controller: shadow only
   const started = Date.now();
   const stateHash = createHash('sha256').update(JSON.stringify(state)).digest('hex').slice(0, 16);
   const questions: Record<string, TsQuestion> = {};

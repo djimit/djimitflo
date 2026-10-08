@@ -16,6 +16,7 @@ import { CommonsProposalReviewService } from './commons-proposal-review-service'
 import { SelfImprovementService } from './self-improvement-service';
 import { LoopDraftPrService } from './loop-draft-pr-service';
 import { evolveEligible, evolveSpecies, selectEvolveWinner } from './evolve-selection';
+import { assignSiblingArm, recordEffortSibling, siblingRandomiseEnabled } from './effort-controller';
 import { runGenome } from './maker-genome';
 import { strategyGenomeFor } from './genome-registry';
 import { banditSpecies, chooseSpecies, speciesKey } from './runtime-bandit';
@@ -589,8 +590,12 @@ export class LoopDaemon {
       // the fittest (computed in code) stays the only non-superseded maker and goes on to the reviewers.
       // Y1: never a sibling of the species the bandit already chose as the first maker (it would run the same work twice)
       const primary = this.db.prepare("SELECT runtime, json_extract(metadata, '$.model') AS model FROM worker_leases WHERE id = ?").get(makerLease.id) as { runtime: string; model: string | null } | undefined;
-      const species = (!makerAlreadyDone && !pendingSibling && evolveEligible(this.db, goal.id) ? evolveSpecies() : [])
+      const candidates = (!makerAlreadyDone && !pendingSibling && evolveEligible(this.db, goal.id) ? evolveSpecies() : [])
         .filter((sp) => !(primary && sp.runtime === primary.runtime && (sp.model ?? null) === (primary.model ?? null)));
+      // X1 (EFFORT_SIBLING_RANDOMISE, acting): arm 'off' of the goal-id hash gets no sibling; arm 'on' is today's behaviour
+      const species = candidates.length && siblingRandomiseEnabled() && assignSiblingArm(this.db, run.id, goal.id) === 'off' ? [] : candidates;
+      // EVC effort controller (EFFORT_CONTROLLER_MODE=shadow): records what it would pick; changes nothing
+      recordEffortSibling(this.db, run.id, loopName, candidates, species);
       if (species.length) {
         const contenders = [activeMakerLease.id];
         for (const sp of species) {

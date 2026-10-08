@@ -9,6 +9,7 @@ import { egressEvidence } from './egress-classification';
 import { embeddingDimMismatch, vectorStrictDim } from './embedding-dims';
 import { autoMergeEvidence } from './loop-auto-merge-state';
 import { nonMakerRunSql } from './outcome-attribution';
+import { effortX1Evidence } from './effort-controller';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -35,6 +36,8 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'TYPESAFE_PROPOSAL_PRESCREEN_MODE', acting: true },
   { name: 'RESOURCE_LEDGER_ENABLED', acting: false },
   { name: 'OUTCOME_ATTRIBUTION_ENABLED', acting: true },
+  { name: 'EFFORT_CONTROLLER_MODE', acting: false }, { name: 'EFFORT_LAMBDA_TOK', acting: false }, { name: 'EFFORT_LAMBDA_KWH', acting: false }, { name: 'EFFORT_EXPLORATION', acting: false },
+  { name: 'EFFORT_SIBLING_RANDOMISE', acting: true },
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */
@@ -210,5 +213,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     failure_tasks: failureTaskEvidence(db, null, env),
     embedding_dim_mismatch: { strict: vectorStrictDim(env), by_store: embeddingDimMismatch() }, freshness,
     // earned auto-merge: mode, class state (active / revoked + why) and counts
-    auto_merge: autoMergeEvidence(db, env, now), memory_holdout, gates };
+    auto_merge: autoMergeEvidence(db, env, now), memory_holdout,
+    // X1 (EFFORT_SIBLING_RANDOMISE): verified / regressed / infra per sibling arm
+    effort_x1: effortX1Evidence(db, since, env, fisherExact), gates };
 }
