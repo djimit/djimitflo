@@ -10,3 +10,12 @@ GHSA-qwww-vcr4-c8h2
 # v2.100.0 with the dependency bumped.
 CVE-2026-56864
 CVE-2026-56865
+
+# gh CLI (/usr/bin/gh) is built with Go stdlib 1.26.8 (v2.100.0) / 1.27.1 (latest v2.102.0); both CVEs are fixed only in
+# 1.26.9 / 1.27.2 and no gh release ships those yet. Both are denial-of-service bugs in SERVER code paths:
+# CVE-2026-78667 net/http Range-header handling when serving content, CVE-2026-97031 crypto/tls ECH outer-extension
+# processing of a ClientHello. djimitflo runs gh only as an HTTPS client (pr view / pr diff / comment / api in
+# GithubPrReviewService, github-cocreate); it never serves HTTP or terminates TLS with gh. Revisit when cli/cli ships a
+# release built with Go >= 1.27.2 (then bump GH_CLI_VERSION in the Dockerfile and drop these lines).
+CVE-2026-78667
+CVE-2026-97031
