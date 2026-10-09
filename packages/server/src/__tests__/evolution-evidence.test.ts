@@ -14,7 +14,7 @@ it('RX-1: an empty or partial schema returns every section and never throws', ()
   db = new Database(':memory:');
   const e = buildEvolutionEvidence(db, {}, NOW);
   expect(Object.keys(e)).toEqual(['at', 'window_days', 'flags', 'outcomes', 'outcomes_tagged', 'merge', 'drafts', 'genomes', 'gym', 'gym_prod_gates', 'trials', 'models', 'oracle', 'commons', 'forecasts_v2', 'hacks', 'hack_rate', 'estimates', 'ope', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'auto_merge', 'memory_holdout', 'effort_x1', 'graded', 'gates']);
-  expect(e.outcomes).toEqual([]); expect(e.genomes.holdout).toEqual({ mined: null, mutant: null });
+  expect(e.outcomes).toEqual([]); expect(e.genomes.holdout).toEqual({ mined: null, mutant: null, write_test: null });
   expect(e.gates.B.state).toBe('red'); expect(e.gates.A.state).toBe('unknown');
   expect(e.flags.every((f) => f.value === null)).toBe(true);
 });
@@ -42,7 +42,7 @@ it('RX-1: counts outcomes per source, loop PRs, genomes and gym tiers like hand 
   expect(e.drafts).toMatchObject({ unsettled: 2, unsettled_open_or_recent: 2, age_days_max: 3 });
   expect(e.gates.C.reason).toContain('open or merged < 14 d ago');
   expect(e.genomes.by_status).toEqual([{ status: 'retired', origin: 'dream', n: 1 }]);
-  expect(e.genomes.holdout).toEqual({ mined: 1, mutant: 0 });
+  expect(e.genomes.holdout).toEqual({ mined: 1, mutant: 0, write_test: 0 });
   expect(e.gym).toEqual(expect.arrayContaining([{ kind: 'mutant', tier: 4, status: 'failure', n: 1 }, { kind: 'mined', tier: null, status: 'success', n: 1 }]));
   expect(e.flags.find((f) => f.name === 'LOOP_BANDIT_ENABLED')).toMatchObject({ value: 'true', acting: true });
   expect(e.gates.B.reason).toContain('1 settled');
