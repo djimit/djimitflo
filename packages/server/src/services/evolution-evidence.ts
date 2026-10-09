@@ -257,5 +257,12 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // X1 (EFFORT_SIBLING_RANDOMISE): verified / regressed / infra per sibling arm
     effort_x1: effortX1Evidence(db, since, env, fisherExact),
     // SI-A/SI-B: graded executed fitness per pool (n, mean, share at 1.0) and graded-contest agreement with the current rule
-    graded: gradedEvidence(db, since, env), gates };
+    graded: gradedEvidence(db, since, env),
+    // KE-3: does knowledge reach evolution? Mutant genomes written from injected knowledge units, and proposals citing a
+    // unit or claim (evidence ref `expert_unit:<id>` / `expert_claim:<id>`; no proposal path cites knowledge yet)
+    knowledge_links: {
+      genomes_with_refs: one("SELECT COUNT(*) FROM maker_genomes WHERE knowledge_refs_json IS NOT NULL AND knowledge_refs_json <> '[]'"),
+      genomes_total: one("SELECT COUNT(*) FROM maker_genomes WHERE origin = 'dream'"),
+      proposals_with_refs: one(`SELECT COUNT(*) FROM self_improvements WHERE evidence_refs_json LIKE '%"expert_unit:%' OR evidence_refs_json LIKE '%"expert_claim:%'`),
+    }, gates };
 }

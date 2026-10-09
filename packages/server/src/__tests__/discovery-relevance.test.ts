@@ -129,3 +129,86 @@ it('JEV-SCOPE: DISCOVERY_RELEVANCE_SOURCES limits judgments and units to the lis
   expect(judged).toBe(3);
   expect(db.prepare("SELECT COUNT(*) n FROM judgments WHERE subject_id IN ('arxiv:2610.50002', 'arxiv:2610.50003', 'arxiv:2610.50004')").get()).toEqual({ n: 0 });
 });
+
+const meta = (ref: string) => JSON.parse((db.prepare(`SELECT e.metadata_json m FROM expert_evidence e JOIN expert_identities i ON i.id = e.expert_id
+  WHERE i.aliases_json LIKE ?`).get(`%"${ref}"%`) as { m: string }).m) as Record<string, unknown>;
+const busEvent = (ref: string, title: string, agent = 'djimitflo-scout', note = '') => {
+  const payload = { event_id: `discovery:${ref}`, event_type: 'discovery.paper', source: agent, agent, ref, title, note };
+  db.prepare("INSERT INTO external_events (id, event_type, source, occurred_at, payload) VALUES (?, 'discovery.paper', ?, ?, ?)").run(`discovery:${ref}`, agent, new Date().toISOString(), JSON.stringify(payload));
+  return payload;
+};
+
+it('KE-1: a discovery note that carries an abstract is stored as the unit\'s abstract; a scout keyword note is not', () => {
+  const svc = new ExpertSourceUnitsService(db);
+  const prose = 'We present a mutation-guided test generation method for coding agents. Across four benchmarks it kills 23% more mutants than prior LLM baselines while keeping tests readable and deterministic. Code and data are released.';
+  expect(svc.ingestDiscovery({ event_type: 'discovery.paper', ref: 'arxiv:2610.60001', title: 'Scalable oversight for coding agents', agent: 'operator-chatgpt', note: prose })).toBe('unit');
+  expect(meta('arxiv:2610.60001')).toMatchObject({ abstract: prose, note: prose, derived: 'fleet-discovery' });
+  expect(svc.ingestDiscovery({ event_type: 'discovery.paper', ref: 'arxiv:2610.60002', title: 'Scalable oversight for coding agents II', agent: 'djimitflo-scout',
+    note: 'scout match: unit test, agent evaluation, requirements, agent, coding, prompt, benchmark, agentic, engineering, evaluation, failure' })).toBe('unit');
+  expect(meta('arxiv:2610.60002').abstract).toBeUndefined();
+});
+
+it('KE-2: under FRONTIER_UNITS_REQUIRE_RELEVANCE a gate-rejected discovery that jev calls relevant becomes a unit (taxonomy_override:jev)', async () => {
+  vi.stubEnv('TYPESAFE_API_KEY', 'k');
+  vi.stubEnv('TYPESAFE_DISCOVERY_RELEVANCE_MODE', 'shadow');
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ model: 'jev-test', answers: ans('lane_technique', 0.9, 0.7) }) }));
+  const svc = new ExpertSourceUnitsService(db);
+  const units = () => (db.prepare("SELECT COUNT(*) n FROM expert_identities WHERE kind = 'paper'").get() as { n: number }).n;
+  // flag off: the shadow verdict stays a measurement, the gate is unchanged
+  expect(svc.ingestDiscovery({ event_type: 'discovery.paper', ref: 'arxiv:2610.61001', title: 'Trapped-ion qubit calibration', agent: 'djimitflo-scout' })).toBe('irrelevant');
+  await vi.waitFor(() => expect(db.prepare("SELECT decision FROM judgments WHERE subject_id = 'arxiv:2610.61001'").get()).toEqual({ decision: 'yes' }));
+  await new Promise((r) => setTimeout(r, 20));
+  expect(units()).toBe(0);
+  vi.stubEnv('FRONTIER_UNITS_REQUIRE_RELEVANCE', 'true');
+  expect(svc.ingestDiscovery({ event_type: 'discovery.paper', ref: 'arxiv:2610.61002', title: 'Trapped-ion qubit calibration II', agent: 'djimitflo-scout' })).toBe('irrelevant');
+  await vi.waitFor(() => expect(units()).toBe(1));
+  expect(meta('arxiv:2610.61002')).toMatchObject({ derived: 'taxonomy_override:jev', agent: 'djimitflo-scout' });
+  const unit = db.prepare("SELECT id, lifecycle_state AS state FROM expert_identities WHERE kind = 'paper'").get() as { id: string; state: string };
+  expect(unit.state).toBe('EVIDENCE_COLLECTED'); // no taxonomy capability: it stops before CAPABILITY_INFERRED
+  expect(db.prepare("SELECT subject_type, subject_id FROM judgments WHERE decision = 'yes' AND subject_id = ?").get(unit.id)).toEqual({ subject_type: 'expert_unit', subject_id: unit.id });
+});
+
+it('KE-2: backfillRejectedOverrides turns existing rejected-but-yes verdicts into units once (not auto-run)', () => {
+  busEvent('arxiv:2610.62001', 'Trapped-ion qubit calibration');
+  const j = db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at)
+    VALUES (?, 'discovery_relevance', 'discovery_rejected', ?, 'h', 'shadow', ?, 'r', ?, ?)`);
+  j.run('j1', 'arxiv:2610.62001', 'yes', JSON.stringify(ans('open_problem', 0.9, 0.8)), new Date().toISOString());
+  j.run('j2', 'arxiv:2610.62002', 'no', JSON.stringify(ans('off_topic', 0.9, 0.1)), new Date().toISOString());
+  j.run('j3', 'arxiv:2610.62003', 'yes', JSON.stringify(ans('open_problem', 0.9, 0.8)), new Date().toISOString()); // no bus event: skipped
+  const svc = new ExpertSourceUnitsService(db);
+  expect(svc.backfillRejectedOverrides()).toEqual({ candidates: 2, created: 1, missing_event: 1, known: 0 });
+  expect(meta('arxiv:2610.62001')).toMatchObject({ derived: 'taxonomy_override:jev', backfill: true });
+  expect(db.prepare("SELECT subject_type FROM judgments WHERE id = 'j1'").get()).toEqual({ subject_type: 'expert_unit' });
+  expect(svc.backfillRejectedOverrides()).toEqual({ candidates: 1, created: 0, missing_event: 1, known: 0 });
+});
+
+it('KE-5: errored discovery_relevance judgments are retried once by the tick (bounded), and the retry is recorded', async () => {
+  vi.stubEnv('TYPESAFE_API_KEY', 'k');
+  vi.stubEnv('TYPESAFE_DISCOVERY_RELEVANCE_MODE', 'shadow');
+  vi.stubEnv('FRONTIER_UNITS_REQUIRE_RELEVANCE', 'true');
+  const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 503 });
+  vi.stubGlobal('fetch', fetchMock);
+  const svc = new ExpertSourceUnitsService(db);
+  const a = busEvent('arxiv:2610.63001', 'Mutation-guided test generation for coding agents');
+  const b = busEvent('arxiv:2610.63002', 'Mutation-guided program repair for coding agents');
+  const c = busEvent('arxiv:2610.63003', 'Trapped-ion qubit calibration');
+  for (const e of [a, b, c]) svc.ingestDiscovery(e);
+  const errors = () => (db.prepare("SELECT COUNT(*) n FROM judgments WHERE decision = 'error'").get() as { n: number }).n;
+  await vi.waitFor(() => expect(errors()).toBe(3));
+  // three failures opened the jev breaker: the tick waits instead of burning its one retry
+  expect(svc.retryErroredRelevance(50)).toEqual({ retried: 0, skipped: 'jev_busy' });
+  resetTypesafeBreaker();
+  fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ model: 'jev-test', answers: ans('lane_technique', 0.9, 0.7) }) });
+  expect(svc.retryErroredRelevance(2)).toEqual({ retried: 2 }); // bounded per tick
+  expect(svc.retryErroredRelevance(50)).toEqual({ retried: 1 });
+  await vi.waitFor(() => expect(db.prepare("SELECT COUNT(*) n FROM expert_identities WHERE kind = 'paper'").get()).toEqual({ n: 3 }));
+  expect(db.prepare("SELECT DISTINCT reason FROM judgments WHERE decision = 'error'").all()).toEqual([{ reason: 'retry=1' }]);
+  expect(svc.retryErroredRelevance(50)).toEqual({ retried: 0 }); // a verdict now exists
+  // a retry that errors again is not retried a second time
+  fetchMock.mockResolvedValue({ ok: false, status: 503 });
+  svc.ingestDiscovery(busEvent('arxiv:2610.63004', 'Mutation-guided flaky test repair for coding agents'));
+  await vi.waitFor(() => expect(errors()).toBe(4));
+  expect(svc.retryErroredRelevance(50)).toEqual({ retried: 1 });
+  await vi.waitFor(() => expect(errors()).toBe(5));
+  expect(svc.retryErroredRelevance(50)).toEqual({ retried: 0 });
+});

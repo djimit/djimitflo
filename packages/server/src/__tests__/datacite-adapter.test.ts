@@ -29,4 +29,14 @@ describe('DataCite DOI adapter (arXiv-native Tier-1 evidence, §10, I10)', () =>
     expect(calls[0]).toContain('creators.name:("Leike, Jan" OR "Jan Leike")');
     await expect(new DataCiteAdapter((async () => new Response('', { status: 503 })) as typeof fetch).searchAuthorPapers('X')).rejects.toThrow('DATACITE_HTTP_503');
   });
+  it('KE-1: looks up one arXiv paper by its DataCite DOI; 404 is "not there", other failures throw', async () => {
+    const calls: string[] = [];
+    const adapter = new DataCiteAdapter((async (url: string | URL | Request) => { calls.push(String(url)); return new Response(JSON.stringify({ data: fixture.data[0] }), { status: 200 }); }) as typeof fetch);
+    const paper = await adapter.paperByArxivId('2601.04728');
+    expect(calls).toEqual(['https://api.datacite.org/dois/10.48550%2Farxiv.2601.04728']);
+    expect(paper).toMatchObject({ arxiv_id: '2601.04728' });
+    expect(paper!.summary.length).toBeGreaterThan(100);
+    expect(await new DataCiteAdapter((async () => new Response('', { status: 404 })) as typeof fetch).paperByArxivId('2601.00000')).toBeNull();
+    await expect(new DataCiteAdapter((async () => new Response('', { status: 503 })) as typeof fetch).paperByArxivId('2601.00000')).rejects.toThrow('DATACITE_HTTP_503');
+  });
 });

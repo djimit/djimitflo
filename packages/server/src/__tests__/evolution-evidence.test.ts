@@ -13,7 +13,8 @@ afterEach(() => db?.close());
 it('RX-1: an empty or partial schema returns every section and never throws', () => {
   db = new Database(':memory:');
   const e = buildEvolutionEvidence(db, {}, NOW);
-  expect(Object.keys(e)).toEqual(['at', 'window_days', 'flags', 'outcomes', 'outcomes_tagged', 'merge', 'drafts', 'genomes', 'gym', 'gym_prod_gates', 'trials', 'models', 'oracle', 'commons', 'forecasts_v2', 'hacks', 'hack_rate', 'estimates', 'ope', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'auto_merge', 'memory_holdout', 'effort_x1', 'graded', 'gates']);
+  expect(Object.keys(e)).toEqual(['at', 'window_days', 'flags', 'outcomes', 'outcomes_tagged', 'merge', 'drafts', 'genomes', 'gym', 'gym_prod_gates', 'trials', 'models', 'oracle', 'commons', 'forecasts_v2', 'hacks', 'hack_rate', 'estimates', 'ope', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'auto_merge', 'memory_holdout', 'effort_x1', 'graded', 'knowledge_links', 'gates']);
+  expect(e.knowledge_links).toEqual({ genomes_with_refs: null, genomes_total: null, proposals_with_refs: null });
   expect(e.outcomes).toEqual([]); expect(e.genomes.holdout).toEqual({ mined: null, mutant: null, write_test: null });
   expect(e.gates.B.state).toBe('red'); expect(e.gates.A.state).toBe('unknown');
   expect(e.flags.every((f) => f.value === null)).toBe(true);
@@ -189,4 +190,13 @@ it('S7: hack_rate is fail-soft on an empty schema', () => {
   db = new Database(':memory:');
   expect(buildEvolutionEvidence(db, {}, NOW).hack_rate).toMatchObject({ mode: null, canary_rate: null, by_genome: [], by_kind: [],
     canary: { served: 0, scored: 0, passed: 0, rate: null, ci: null, status: 'insufficient', compromised: false } });
+});
+
+it('KE-3: knowledge_links counts genomes and proposals that cite knowledge units or claims', () => {
+  db = new Database(':memory:'); db.exec(schema); runMigrations(db);
+  const g = db.prepare("INSERT INTO maker_genomes (id, gene, lines_json, origin, status, created_at, updated_at, knowledge_refs_json) VALUES (?, 'strategy_lines', '[]', 'dream', 'trial', ?, ?, ?)");
+  g.run('g1', ago(1), ago(1), '["u1"]'); g.run('g2', ago(1), ago(1), null); g.run('g3', ago(1), ago(1), '[]');
+  const p = db.prepare("INSERT INTO self_improvements (id, type, title, description, rationale, source, status, priority, created_at, updated_at, evidence_refs_json) VALUES (?, 'feature', ?, 'd', 'r', 's', 'proposed', 0.5, ?, ?, ?)");
+  p.run('p1', 't1', ago(1), ago(1), '["expert_unit:u1"]'); p.run('p2', 't2', ago(1), ago(1), '["expert_claim:c1","test-gap:x"]'); p.run('p3', 't3', ago(1), ago(1), '["test-gap:y"]');
+  expect(buildEvolutionEvidence(db, {}, NOW).knowledge_links).toEqual({ genomes_with_refs: 1, genomes_total: 3, proposals_with_refs: 2 });
 });
