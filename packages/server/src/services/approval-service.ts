@@ -31,6 +31,24 @@ export function approvalTtlMs(env: NodeJS.ProcessEnv = process.env): number {
   return Number.isFinite(ms) && ms > 0 ? Math.min(7 * 86_400_000, Math.max(300_000, ms)) : 3_600_000;
 }
 
+/**
+ * §16 step 2 (ADQ): the loop run, lease, goal and proposal an approval is for, from the worker task's metadata
+ * (tasks.metadata.loop_run_id / lease_id, written by the loop worker executor). Stored on the approval at creation so the
+ * approval → goal → outcome join no longer depends on the task row. Empty for non-loop tasks; fail-soft (never blocks).
+ */
+export function loopApprovalLink(db: Database, task: Pick<Task, 'metadata'>): Record<string, string> {
+  try {
+    const raw = task.metadata as unknown;
+    const meta = (typeof raw === 'string' ? JSON.parse(raw || '{}') : raw ?? {}) as Record<string, unknown>;
+    const runId = typeof meta.loop_run_id === 'string' ? meta.loop_run_id : null;
+    if (!runId) return {};
+    const row = db.prepare('SELECT r.goal_id, g.improvement_id FROM loop_runs r LEFT JOIN goals g ON g.id = r.goal_id WHERE r.id = ?').get(runId) as
+      { goal_id: string | null; improvement_id: string | null } | undefined;
+    return Object.fromEntries(Object.entries({ loop_run_id: runId, lease_id: meta.lease_id, goal_id: row?.goal_id, improvement_id: row?.improvement_id })
+      .filter((e): e is [string, string] => typeof e[1] === 'string' && e[1].length > 0));
+  } catch { return {}; }
+}
+
 export class ApprovalService {
   constructor(
     private db: Database,
@@ -101,7 +119,7 @@ export class ApprovalService {
           taskTitle: input.task.title,
         }),
         expiresAt,
-        JSON.stringify(input.metadata || {}),
+        JSON.stringify({ ...loopApprovalLink(this.db, input.task), ...(input.metadata || {}) }), // §16 step 2: caller metadata wins
         input.requestedBy || input.task.owner_user_id || input.task.created_by || 'system',
         now,
         now

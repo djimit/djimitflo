@@ -85,6 +85,12 @@ export type GateState = 'green' | 'red' | 'unknown';
 export type MemoryArm = { n: number; verified: number; regressed: number; verified_rate: number | null };
 export type HackRateRow = { scored: number; checked: number; flagged: number; rate: number | null; ci: [number, number] | null; status: 'ok' | 'insufficient' };
 export type EffortArm = { goals: number; verified: number; regressed: number; infra: number; verified_rate: number | null };
+/** §16 step 1: one metric contract's read-only status; value and ci are null unless status is 'ok' (never 0 for missing evidence) */
+export type IntelligenceMetric = {
+  metric_id: 'VIG' | 'RIR' | 'GTI' | 'CLY' | 'FRR' | 'CAR' | 'CIA' | 'MCS' | 'ADQ' | 'EII' | 'ESE' | 'SCIG' | 'ECON';
+  version: string; status: 'ok' | 'INSUFFICIENT_EVIDENCE' | 'UNDEFINED';
+  value: number | null; ci: [number, number] | null; n: number; blocker: string | null; detail: Record<string, unknown>;
+};
 export interface EvolutionEvidence {
   at: string; window_days: number;
   flags: Array<{ name: string; acting: boolean; value: string | null }>;
@@ -134,6 +140,8 @@ export interface EvolutionEvidence {
   };
   /** KE-3: mutant genomes written from injected knowledge units, and proposals citing a unit or claim */
   knowledge_links: { genomes_with_refs: number | null; genomes_total: number | null; proposals_with_refs: number | null };
+  /** §16 step 1: read-only status per metric contract (METRIC_CONTRACTS.yaml v0.1.0); no composite score */
+  intelligence: { contract_version: string; metrics: IntelligenceMetric[]; note: string };
   gates: Record<'A' | 'B' | 'C' | 'D', { state: GateState; reason: string }>;
 }
 
