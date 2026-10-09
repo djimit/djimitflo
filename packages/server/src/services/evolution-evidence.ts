@@ -41,6 +41,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'EFFORT_CONTROLLER_MODE', acting: false }, { name: 'EFFORT_LAMBDA_TOK', acting: false }, { name: 'EFFORT_LAMBDA_KWH', acting: false }, { name: 'EFFORT_EXPLORATION', acting: false },
   { name: 'EFFORT_SIBLING_RANDOMISE', acting: true },
   { name: 'GRADED_FITNESS_MODE', acting: false }, { name: 'GRADED_CONTEST_MODE', acting: true },
+  { name: 'SHIPPED_CODE_SCAN_MODE', acting: false },
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */

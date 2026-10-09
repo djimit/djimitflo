@@ -54,6 +54,7 @@ import { TelegramApiService } from './services/telegram-api-service';
 import { parseTelegramAllowedUsers, parseTelegramUserMap } from './routes/telegram';
 import { noteScheduler } from './services/scheduler-registry';
 import { laneIntervalMs, startDependencyLane } from './services/dependency-lane';
+import { SHIPPED_CODE_SCAN_INTERVAL_MS, startShippedCodeScan } from './services/shipped-code-scan';
 
 // Operator rule (2026-09-29): this server never calls the hosts in OUTBOUND_DENY_HOSTS (the workstation only pulls).
 installOutboundGuard();
@@ -311,6 +312,11 @@ async function main() {
   // Dependency lane — verified Dependabot patch/minor merges, one per tick (DEPENDENCY_LANE_MODE=shadow|act, default off)
   if (noteScheduler('dependency_lane', 'DEPENDENCY_LANE_MODE', !!startDependencyLane(db), laneIntervalMs())) {
     console.log(`📦 Dependency lane armed (${process.env.DEPENDENCY_LANE_MODE})`);
+  }
+
+  // Shipped-code scan — daily parse-only scan of the installed runtime packages, evidence candidates only (SHIPPED_CODE_SCAN_MODE=shadow, default off)
+  if (noteScheduler('shipped_code_scan', 'SHIPPED_CODE_SCAN_MODE', !!startShippedCodeScan(db), SHIPPED_CODE_SCAN_INTERVAL_MS)) {
+    console.log('🔎 Shipped-code scan armed (shadow)');
   }
 
   // API routes
