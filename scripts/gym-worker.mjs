@@ -215,10 +215,20 @@ function sweepOrphans() {
 }
 // SI-A: `report` names a vitest JSON report under .djimitflo/ (outside the maker's scope) for per-test results
 const oracle = (wt, task, report) => inRunner(wt, `${report ? `rm -f /w/.djimitflo/${report}.json; mkdir -p /w/.djimitflo; ` : ''}cd packages/server && npx vitest run ${task.tests.map((t) => t.replace(/^packages\/server\//, '')).map((t) => `'${t}'`).join(' ')}${report ? ` --reporter=default --reporter=json --outputFile.json=/w/.djimitflo/${report}.json` : ''}`, { timeoutMs: 300_000 }).status === 0;
-/** The per-test outcomes of a JSON report the oracle wrote (read once, then removed), or null. */
-const readReport = (wt, report) => {
+/**
+ * The AFTER report, read whatever vitest's exit code was — a red run is the normal case here (prod 08–09-10: most failed
+ * repair runs were recorded graded_kind:binary). A test file that no longer loads (the maker broke the source: parse error,
+ * missing export) is in the report with no assertion results; its tests are simply not green. So a readable report always
+ * gives outcomes ({} when nothing passed); null only when the report is truly absent or unreadable (timeout, crash) — then
+ * gradedOf falls back to binary.
+ */
+export function afterOutcomes(json) {
+  try { return Array.isArray(JSON.parse(json)?.testResults) ? testOutcomes(json) ?? {} : null; } catch { return null; }
+}
+/** The per-test outcomes of a JSON report the oracle wrote (read once, then removed), or null. 'after' reads a red run too. */
+export const readReport = (wt, report) => {
   const file = path.join(wt, '.djimitflo', `${report}.json`);
-  try { return testOutcomes(fs.readFileSync(file, 'utf8')); } catch { return null; } finally { try { fs.rmSync(file, { force: true }); } catch { /* ignore */ } }
+  try { const json = fs.readFileSync(file, 'utf8'); return report === 'after' ? afterOutcomes(json) : testOutcomes(json); } catch { return null; } finally { try { fs.rmSync(file, { force: true }); } catch { /* ignore */ } }
 };
 
 async function api(pathName, body) {
@@ -368,7 +378,8 @@ async function main() {
     const scoped = changed.length > 0 && changed.every((f) => f === task.source);
     const gap = writeTest && scoped ? writeTestGap(task, fs.readFileSync(path.join(wt, task.source), 'utf8')) : null;
     const green = scoped && !gap && oracle(wt, task, writeTest ? undefined : 'after');
-    const after = writeTest ? null : scoped && !gap ? readReport(wt, 'after') : {}; // no in-scope change: nothing turned green
+    // the after-report is read whether the oracle went green or red; no in-scope change: nothing turned green
+    const after = writeTest ? null : scoped && !gap ? readReport(wt, 'after') : {};
     let diffText = '';
     try { git(wt, ['add', '-A', '-N', '.']); diffText = git(wt, ['diff', 'HEAD', '--', '.', ':(exclude)package-lock.json', ':(exclude).atomic*', ':(exclude).djimitflo']); } catch { /* the verdict does not need it */ }
     let result = gap ? { status: 'failure', reason: gap } : verdict(task, changed, green, makerOk);
@@ -505,6 +516,36 @@ function gradedCheck() {
   assert(JSON.stringify(gradedOf(wTask, { status: 'success', killed_mutants: ['m1', 'm3'] })) === '{"graded":0.667,"graded_kind":"mutant_kill"}', 'write_test: killed / seeded mutants');
   assert(JSON.stringify(gradedOf(wTask, { status: 'failure', reason: 'tests still red' })) === '{"graded":0,"graded_kind":"mutant_kill"}', 'write_test: no green test kills nothing');
   assert(gradedOf(repair, { status: 'discarded' }, before, after) === null, 'a discard is not graded');
+  redRunCheck();
+}
+
+/** A red repair run (vitest exits non-zero) still yields tests_green from its after-report; only a missing report is binary. */
+function redRunCheck() {
+  const assert = (c, m) => { if (!c) throw new Error(`selfcheck: ${m}`); };
+  const wt = fs.mkdtempSync(path.join(os.tmpdir(), 'gym-selfcheck-'));
+  try {
+    const repair = { source: 'packages/server/src/services/x.ts', tests: ['packages/server/src/__tests__/x.test.ts', 'packages/server/src/__tests__/y.test.ts'] };
+    const x = '/w/packages/server/src/__tests__/x.test.ts'; const y = '/w/packages/server/src/__tests__/y.test.ts';
+    const file = (assertions) => JSON.stringify({ success: false, numFailedTests: 1, testResults: assertions });
+    const before = testOutcomes(file([{ name: x, status: 'failed', assertionResults: [{ fullName: 'a', status: 'failed' }, { fullName: 'b', status: 'failed' }] },
+      { name: y, status: 'failed', assertionResults: [{ fullName: 'c', status: 'failed' }] }]));
+    const write = (json) => { fs.mkdirSync(path.join(wt, '.djimitflo'), { recursive: true }); fs.writeFileSync(path.join(wt, '.djimitflo', 'after.json'), json); };
+    // vitest exit 1: one test turned green, one still red, and y.test.ts no longer loads (no assertion results)
+    write(file([{ name: x, status: 'failed', assertionResults: [{ fullName: 'a', status: 'passed' }, { fullName: 'b', status: 'failed' }] },
+      { name: y, status: 'failed', message: 'Transform failed with 1 error: [PARSE_ERROR]', assertionResults: [] }]));
+    const red = gradedOf(repair, { status: 'failure', reason: 'tests still red' }, before, readReport(wt, 'after'));
+    assert(JSON.stringify(red) === '{"graded":0.333,"graded_kind":"tests_green"}', `red run: partial tests_green share, got ${JSON.stringify(red)}`);
+    assert(!fs.existsSync(path.join(wt, '.djimitflo', 'after.json')), 'the after-report is read once, then removed');
+    // the maker broke the source so no test file loads at all: still a report, nothing turned green (not binary)
+    write(file([{ name: x, status: 'failed', assertionResults: [] }, { name: y, status: 'failed', assertionResults: [] }]));
+    assert(JSON.stringify(gradedOf(repair, { status: 'failure', reason: 'tests still red' }, before, readReport(wt, 'after'))) === '{"graded":0,"graded_kind":"tests_green"}', 'red run, nothing loads: tests_green 0');
+    // truly absent (timeout / crash before the reporter ran) or unreadable: the binary fallback stays
+    assert(readReport(wt, 'after') === null, 'absent after-report = null');
+    write('{"truncated');
+    assert(JSON.stringify(gradedOf(repair, { status: 'failure', reason: 'tests still red' }, before, readReport(wt, 'after'))) === '{"graded":0,"graded_kind":"binary"}', 'unreadable after-report = binary');
+    write(file([{ name: x, status: 'failed', assertionResults: [] }]));
+    assert(readReport(wt, 'before') === null, 'a before-report without assertions is still no evidence (null)');
+  } finally { fs.rmSync(wt, { recursive: true, force: true }); }
 }
 
 function selfcheck() {

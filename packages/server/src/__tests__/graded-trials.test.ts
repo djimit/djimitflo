@@ -21,11 +21,11 @@ afterEach(() => { vi.unstubAllEnvs(); db.close(); });
 
 let seq = 0;
 /** one scored gym attempt; `graded` (when given) lands as a `graded:<x>` evidence ref on its skill outcome, as the gym writes it */
-const gymRun = (commit: string, genomeId: string, ok: boolean, graded?: number) => {
-  const id = `r${seq++}`;
+const gymRun = (commit: string, genomeId: string, ok: boolean, graded?: number, opts: { gated?: boolean; at?: string } = {}) => {
+  const id = `r${seq++}`; const at = opts.at ?? '2026-10-08T11:00:00Z';
   db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
-    VALUES (?, 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`).run(id, JSON.stringify({ gym: { commit, species: SPECIES, genome: genomeId },
-    gym_result: { status: ok ? 'success' : 'failure', reason: ok ? 'tests green, source only' : 'tests still red' } }), '2026-10-08T11:00:00Z', '2026-10-08T11:00:00Z');
+    VALUES (?, 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`).run(id, JSON.stringify({ gym: { commit, species: SPECIES, genome: genomeId, ...(opts.gated ? { prod_gates: 1 } : {}) },
+    gym_result: { status: ok ? 'success' : 'failure', reason: ok ? 'tests green, source only' : 'tests still red' } }), at, at);
   db.prepare("INSERT INTO skill_outcomes (id, skill_id, success, domain, model, evidence_refs_json, created_at) VALUES (?, 'loop-maker:gym:atomic', ?, 'gym', 'llama-router', ?, ?)")
     .run(`o-${id}`, ok ? 1 : 0, JSON.stringify([`gym:${commit}`, `loop_run:${id}`, ...(graded === undefined ? [] : [`graded:${graded}`, 'graded_kind:mutants_killed'])]), '2026-10-08T11:00:00Z');
 };
@@ -140,8 +140,62 @@ it('SI-C: graded headroom — no no_headroom under graded while the parent\'s me
 it('SI-C: graded headroom — a parent at mean graded ≥ 0.95 with < 5 failures is still no_headroom; its mean is recorded', () => {
   vi.stubEnv('TRIAL_HEADROOM_PRECHECK', 'true'); vi.stubEnv('DREAM_PROMOTION_RULE', 'graded');
   trial('g-sat');
-  commits.forEach((c, i) => gymRun(c, BASELINE_GENOME, i >= 3, i >= 3 ? 1 : 0.8)); // (17 + 2.4) / 20 = 0.97
+  commits.forEach((c, i) => gymRun(c, BASELINE_GENOME, i >= 3, i >= 3 ? 1 : 0.8, { gated: true })); // (17 + 2.4) / 20 = 0.97
   expect(settleNoHeadroom(db, SPECIES, commits, [], NOW)).toEqual([{ id: 'g-sat', f: 3, n: 20, needed: 5 }]);
   expect(row('g-sat').state).toBe('no_headroom');
   expect(row('g-sat').graded_mean_parent).toBeCloseTo(0.97, 9);
+});
+
+const wtKeys = Array.from({ length: 8 }, (_, i) => `fail:w${i}`);
+
+it('WT-HOLDOUT: rule graded — write_test mutant_kill scores join the paired graded test; the repair holdout alone is blind', () => {
+  vi.stubEnv('DREAM_PROMOTION_RULE', 'graded');
+  trial('g-wt');
+  commits.forEach((c) => { gymRun(c, BASELINE_GENOME, true, 1); gymRun(c, 'g-wt', true, 1); }); // repair tasks: 1 vs 1, no signal
+  expect(evaluateTrials(db, SPECIES, commits, NOW, [], wtKeys)).toEqual([]); // the write_test holdout is not run yet: not complete
+  wtKeys.forEach((k) => { gymRun(k, BASELINE_GENOME, true, 0.333); gymRun(k, 'g-wt', true, 1); }); // kills 1 of 3 vs 3 of 3
+  expect(evaluateTrials(db, SPECIES, commits, NOW, [], wtKeys)).toEqual([{ id: 'g-wt', status: 'active', wins: 20, parentWins: 20 }]);
+  expect(row('g-wt')).toMatchObject({ graded_decision: 'promote', graded_refs: 56, graded_p: 2 ** -8 });
+  expect(row('g-wt').graded_mean_parent).toBeCloseTo((20 + 8 * 0.333) / 28, 9);
+  const note = (db.prepare('SELECT note FROM maker_genomes WHERE id = ?').get('g-wt') as { note: string }).note;
+  expect(note).toContain('holdout 20/20 vs parent 20/20'); expect(note).toContain('write_test 8');
+  // without the write_test holdout the same trial is inconclusive
+  db.prepare("UPDATE maker_genomes SET status = 'trial' WHERE id = 'g-wt'").run();
+  expect(evaluateTrials(db, SPECIES, commits, NOW)).toEqual([{ id: 'g-wt', status: 'retired', wins: 20, parentWins: 20 }]);
+  expect(row('g-wt').graded_decision).toBe('inconclusive');
+});
+
+it('WT-HOLDOUT: shadow — under McNemar the write_test scores land in the graded columns only; binary stays on the deciding set', () => {
+  trial('g-wts');
+  commits.forEach((c) => { gymRun(c, BASELINE_GENOME, true, 1); gymRun(c, 'g-wts', true, 1); });
+  wtKeys.forEach((k) => { gymRun(k, BASELINE_GENOME, false, 0); gymRun(k, 'g-wts', true, 0.667); }); // binary wins too, but not on the deciding set
+  expect(evaluateTrials(db, SPECIES, commits, NOW, [], wtKeys)).toEqual([{ id: 'g-wts', status: 'retired', wins: 20, parentWins: 20 }]);
+  expect(row('g-wts')).toMatchObject({ state: 'graded_only', graded_decision: 'promote', graded_refs: 56 });
+});
+
+it('WT-HOLDOUT headroom (graded): judged on the parent\'s most recent GATED results, not its older ungated passes', () => {
+  vi.stubEnv('TRIAL_HEADROOM_PRECHECK', 'true'); vi.stubEnv('DREAM_PROMOTION_RULE', 'graded');
+  trial('g-gate');
+  commits.forEach((c) => gymRun(c, BASELINE_GENOME, true, 1, { at: '2026-10-08T09:00:00Z' })); // ungated: 20/20, mean 1
+  expect(settleNoHeadroom(db, SPECIES, commits, [], NOW)).toEqual([]); // no gated result yet: headroom unknown, the trial runs
+  commits.forEach((c, i) => gymRun(c, BASELINE_GENOME, i >= 8, i >= 8 ? 1 : 0, { gated: true, at: '2026-10-08T10:00:00Z' })); // gated: fails 8
+  commits.forEach((c) => gymRun(c, BASELINE_GENOME, true, 1, { at: '2026-10-08T11:00:00Z' })); // a newer ungated pass does not hide them
+  expect(settleNoHeadroom(db, SPECIES, commits, [], NOW)).toEqual([]);
+  expect(status('g-gate')).toBe('trial');
+  vi.stubEnv('DREAM_PROMOTION_RULE', 'mcnemar'); // other rules: unchanged, the latest result of any kind
+  expect(settleNoHeadroom(db, SPECIES, commits, [], NOW)).toEqual([{ id: 'g-gate', f: 0, n: 20, needed: 5 }]);
+});
+
+it('WT-HOLDOUT headroom (graded): the write_test holdout\'s graded mean decides; < 0.95 is headroom, ≥ 0.95 is not, unscored waits', () => {
+  vi.stubEnv('TRIAL_HEADROOM_PRECHECK', 'true'); vi.stubEnv('DREAM_PROMOTION_RULE', 'graded');
+  trial('g-wth');
+  commits.forEach((c, i) => gymRun(c, BASELINE_GENOME, i >= 2, 1, { gated: true })); // gated: fails 2, repair mean 1
+  expect(settleNoHeadroom(db, SPECIES, commits, [], NOW, wtKeys)).toEqual([]); // the parent has not run the write_test holdout yet
+  wtKeys.forEach((k) => gymRun(k, BASELINE_GENOME, true, 0.667)); // kills 2 of 3: mean 0.667
+  expect(settleNoHeadroom(db, SPECIES, commits, [], NOW, wtKeys)).toEqual([]);
+  expect(status('g-wth')).toBe('trial');
+  db.prepare("DELETE FROM loop_runs WHERE json_extract(metadata, '$.gym.commit') LIKE 'fail:%'").run();
+  wtKeys.forEach((k) => gymRun(k, BASELINE_GENOME, true, 1)); // kills every mutant: nothing left to win
+  expect(settleNoHeadroom(db, SPECIES, commits, [], NOW, wtKeys)).toEqual([{ id: 'g-wth', f: 2, n: 20, needed: 5 }]);
+  expect(row('g-wth')).toMatchObject({ state: 'no_headroom', graded_mean_parent: 1 });
 });

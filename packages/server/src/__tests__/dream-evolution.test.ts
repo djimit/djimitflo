@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { BASELINE_GENOME, genome } from '../services/genome-registry';
-import { dreamInputs, dreamOnce, evaluateTrials, guardLines, mcnemarOneSided } from '../services/dream-evolution';
+import { dreamInputs, dreamOnce, evaluateTrials, failureClusters, guardLines, mcnemarOneSided } from '../services/dream-evolution';
 
 let db: Database.Database;
 beforeEach(() => { db = new Database(':memory:'); db.pragma('foreign_keys = OFF'); db.exec(schema); runMigrations(db); vi.stubEnv('DREAM_EVOLUTION_ENABLED', 'true'); });
@@ -22,6 +22,14 @@ it('D3: trial runs and holdout tasks never reach the mutation step (prod 03-10: 
   gymRun('m', 'mut:m1', undefined, 'failure', 'mutant holdout red');  // a mutant holdout task
   gymRun('ok', 'c2', undefined, 'failure', 'normal replay red');
   expect(dreamInputs(db, NOW).failures).toEqual(['gym: packages/server/src/services/x.ts — normal replay red']);
+});
+
+it('WT-HOLDOUT: a write_test holdout task never reaches the mutation step either (flat list and evidence clusters)', () => {
+  db.prepare("INSERT INTO gym_write_test_holdout (key, task_json, created_at, epoch) VALUES ('fail:w1', '{}', ?, 0)").run('2026-10-01T00:00:00Z');
+  gymRun('w', 'fail:w1', undefined, 'failure', 'write_test holdout red');
+  gymRun('ok', 'c2', undefined, 'failure', 'normal replay red');
+  expect(dreamInputs(db, NOW).failures).toEqual(['gym: packages/server/src/services/x.ts — normal replay red']);
+  expect(failureClusters(db, NOW).flatMap((c) => c.excerpts.map((e) => e.reason))).toEqual(['normal replay red']);
 });
 
 it('Y3b: the guard keeps strategy lines and drops anything that steers gates, checks, scope, secrets, deploy or the tests', () => {
