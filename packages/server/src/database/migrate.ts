@@ -1370,6 +1370,8 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   addMissingColumns(db, 'gym_mutant_holdout', [{ name: 'epoch', definition: 'INTEGER NOT NULL DEFAULT 0' }]);
   // B8: the failure clusters a dream mutant cites (evidence-or-no-op, DREAM_EVIDENCE_MUTATIONS)
   addMissingColumns(db, 'maker_genomes', [{ name: 'evidence_clusters', definition: 'TEXT' }]);
+  // KE-3: the knowledge units (expert_identities ids) whose titles the dream that wrote this mutant injected; null = none
+  addMissingColumns(db, 'maker_genomes', [{ name: 'knowledge_refs_json', definition: 'TEXT' }]);
   addMissingColumns(db, 'genome_trial_results', [
     { name: 'epoch', definition: 'INTEGER' }, { name: 'e_value', definition: 'REAL' },
     { name: 'n_discordant', definition: 'INTEGER' }, { name: 'e_rule_decision', definition: 'TEXT' },

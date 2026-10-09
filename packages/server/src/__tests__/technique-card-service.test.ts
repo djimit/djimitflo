@@ -52,3 +52,27 @@ it('skips papers whose abstract is too short to hold a claim, and abstains witho
   delete process.env.FRONTIER_EXPERTS_RUNTIME;
   expect(await new TechniqueCardService(db).extractBatch(5)).toEqual({ cards: 0, claims: 0, contradictions: 0 });
 });
+
+it('KE-1: a paper unit without an abstract gets one (note first, else the scholarly adapter, capped per tick) and is re-attempted', async () => {
+  const { db } = setup();
+  const units = new ExpertSourceUnitsService(db);
+  for (const n of [1, 2, 3]) units.ingestDiscovery({ event_type: 'discovery.paper', ref: `arxiv:2610.7000${n}`, title: `Scalable oversight for coding agents ${n}`, agent: 'djimitflo-scout', note: 'scout match: agent' });
+  // a unit created before KE-1 whose operator note held the abstract (only the note was stored)
+  const unitId = (ref: string) => (db.prepare('SELECT id FROM expert_identities WHERE aliases_json LIKE ?').get(`%"${ref}"%`) as { id: string }).id;
+  units.ingestDiscovery({ event_type: 'discovery.paper', ref: 'arxiv:2610.70004', title: 'Scalable oversight for coding agents 4', agent: 'operator-chatgpt', note: longAbstract('Debate improves oversight.') });
+  db.prepare("UPDATE expert_evidence SET metadata_json = json_remove(metadata_json, '$.abstract') WHERE expert_id = ?").run(unitId('arxiv:2610.70004'));
+  const runner = async () => ({ claims: [{ subject: 'Debate', relation: 'improves', object: 'oversight', polarity: 'asserts', confidence: 0.7 }] });
+  const fetched: string[] = [];
+  const fetchAbstract = async (id: string) => { fetched.push(id); return id === 'arxiv:2610.70003' ? null : longAbstract(`Abstract of ${id}.`); };
+  const svc = new TechniqueCardService(db, runner, fetchAbstract);
+  expect(await svc.extractBatch(10)).toEqual({ cards: 0, claims: 0, contradictions: 0 }); // no abstract yet: attempted, nothing extracted
+  // notes cost no network and are not capped; fetches are (2 here, 10 on the tick)
+  expect(await svc.fillAbstracts(2)).toEqual({ from_note: 1, fetched: 2, missing: 0 });
+  expect(fetched).toEqual(['arxiv:2610.70001', 'arxiv:2610.70002']);
+  expect(await svc.fillAbstracts(10)).toEqual({ from_note: 0, fetched: 0, missing: 1 });
+  expect(await svc.fillAbstracts(10)).toEqual({ from_note: 0, fetched: 0, missing: 0 }); // a miss is not fetched again
+  expect(fetched).toEqual(['arxiv:2610.70001', 'arxiv:2610.70002', 'arxiv:2610.70003']);
+  const abs = db.prepare("SELECT json_extract(metadata_json, '$.abstract_source') s FROM expert_evidence WHERE expert_id = ?").get(unitId('arxiv:2610.70001'));
+  expect(abs).toEqual({ s: 'scholarly-adapter' });
+  expect(await svc.extractBatch(10)).toEqual({ cards: 3, claims: 3, contradictions: 0 }); // attempted was cleared for the three with an abstract
+});
