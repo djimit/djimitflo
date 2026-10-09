@@ -56,7 +56,8 @@ export interface ShippedCodeReport {
 export interface ScanOptions { maxParseBytes?: number; maxFiles?: number; maxHashBytes?: number; deadlineMs?: number; parser?: TsLike | null }
 
 // ─── TypeScript compiler API, loaded lazily and typed structurally ──────────────────────────────────────────────────
-// The server's own `typescript` is 7.x (native compiler, no JS API); the root workspace's 6.x has createSourceFile.
+// The server's own `typescript` is 7.x (native compiler, no JS API). A 6.x JS API ships as the runtime dependency alias
+// `typescript-parser` (npm:typescript@6.x, present under --omit=dev); the root workspace's dev `typescript` is the fallback.
 interface TsNode { kind: number; [k: string]: any }
 export interface TsLike {
   version: string;
@@ -67,16 +68,23 @@ export interface TsLike {
   forEachChild(node: TsNode, cb: (n: TsNode) => void): void;
 }
 let cachedTs: TsLike | null | undefined;
-export function loadTsParser(): TsLike | null {
-  if (cachedTs !== undefined) return cachedTs;
-  cachedTs = null;
-  for (const from of [__filename, path.resolve(__dirname, '../../../../package.json')]) {
+const TS_CANDIDATES: Array<[from: string, id: string]> = [
+  [__filename, 'typescript-parser'],
+  [__filename, 'typescript'],
+  [path.resolve(__dirname, '../../../../package.json'), 'typescript'],
+];
+export function loadTsParser(candidates: Array<[from: string, id: string]> = TS_CANDIDATES): TsLike | null {
+  const useCache = candidates === TS_CANDIDATES;
+  if (useCache && cachedTs !== undefined) return cachedTs;
+  let found: TsLike | null = null;
+  for (const [from, id] of candidates) {
     try {
-      const ts = createRequire(from)('typescript') as Partial<TsLike>;
-      if (typeof ts.createSourceFile === 'function' && typeof ts.forEachChild === 'function') { cachedTs = ts as TsLike; break; }
+      const ts = createRequire(from)(id) as Partial<TsLike>;
+      if (typeof ts.createSourceFile === 'function' && typeof ts.forEachChild === 'function') { found = ts as TsLike; break; }
     } catch { /* not installed here */ }
   }
-  return cachedTs;
+  if (useCache) cachedTs = found;
+  return found;
 }
 
 // ─── Canonical JSON + hashing ───────────────────────────────────────────────────────────────────────────────────────
