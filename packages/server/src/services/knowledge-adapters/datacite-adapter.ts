@@ -54,14 +54,28 @@ export class DataCiteAdapter {
   constructor(private readonly fetchImpl: typeof fetch = fetch) {}
 
   /** Newest DOIs naming the person as creator; throws DATACITE_HTTP_<status> so "unavailable" ≠ "no papers" (I10). */
-  async searchAuthorPapers(name: string, limit: number = 10): Promise<ArxivPaper[]> {
+  private async throttle(): Promise<void> {
     const wait = this.lastRequest + this.rateLimitMs - Date.now();
     if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
     this.lastRequest = Date.now();
+  }
+
+  async searchAuthorPapers(name: string, limit: number = 10): Promise<ArxivPaper[]> {
+    await this.throttle();
     const quoted = (value: string) => `"${value.replace(/["\\]/g, ' ').trim()}"`;
     const params = new URLSearchParams({ query: `creators.name:(${quoted(dataCiteName(name))} OR ${quoted(name)})`, 'page[size]': String(Math.min(50, limit * 2)), sort: '-created' });
     const response = await this.fetchImpl(`${this.baseUrl}?${params}`, { signal: AbortSignal.timeout(20_000), headers: { Accept: 'application/vnd.api+json' } });
     if (!response.ok) throw new Error(`DATACITE_HTTP_${response.status}`);
     return parseDataCiteRecords(await response.json() as { data?: DataCiteRecord[] }).slice(0, limit);
+  }
+
+  /** KE-1: one arXiv paper by its DataCite DOI (10.48550/arxiv.<id>); null when DataCite has no such DOI, throws otherwise. */
+  async paperByArxivId(arxivId: string): Promise<ArxivPaper | null> {
+    await this.throttle();
+    const response = await this.fetchImpl(`${this.baseUrl}/${encodeURIComponent(`10.48550/arxiv.${arxivId}`)}`, { signal: AbortSignal.timeout(20_000), headers: { Accept: 'application/vnd.api+json' } });
+    if (response.status === 404) return null;
+    if (!response.ok) throw new Error(`DATACITE_HTTP_${response.status}`);
+    const record = (await response.json() as { data?: DataCiteRecord }).data;
+    return record ? parseDataCiteRecords({ data: [record] })[0] ?? null : null;
   }
 }

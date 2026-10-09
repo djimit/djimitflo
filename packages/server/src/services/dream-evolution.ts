@@ -149,7 +149,7 @@ export function guardLines(lines: unknown): string[] | null {
   return clean.every((l) => l.length > 0 && l.length <= MAX_LINE_CHARS && !FORBIDDEN.test(l)) ? clean : null;
 }
 
-export function dreamInputs(db: Database, now = Date.now()): { failures: string[]; knowledge: string[] } {
+export function dreamInputs(db: Database, now = Date.now()): { failures: string[]; knowledge: string[]; knowledgeRefs: string[] } {
   const all = <T>(sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } };
   const d1 = new Date(now - 86_400_000).toISOString(); const d30 = new Date(now - 30 * 86_400_000).toISOString();
   const gym = all<{ source: string; reason: string }>(`SELECT json_extract(metadata, '$.gym.source') AS source, json_extract(metadata, '$.gym_result.reason') AS reason
@@ -164,9 +164,10 @@ export function dreamInputs(db: Database, now = Date.now()): { failures: string[
   const real = all<{ reason: string; files: string }>(`SELECT json_extract(metadata, '$.failure_reason') AS reason, json_extract(metadata, '$.changed_files') AS files
     FROM worker_leases WHERE role = 'maker' AND status = 'failed' AND created_at >= ? LIMIT 20`, d1)
     .map((r) => `maker: ${r.reason || 'failed'} — changed ${r.files || '[]'}`);
-  const knowledge = all<{ t: string }>(`SELECT i.canonical_name AS t FROM judgments j JOIN expert_identities i ON i.id = j.subject_id
-    WHERE j.judgment = 'discovery_relevance' AND j.decision = 'yes' AND j.created_at >= ? ORDER BY j.created_at DESC LIMIT 3`, d30).map((r) => r.t);
-  return { failures: [...gym, ...real].map((f) => f.slice(0, 300)), knowledge };
+  // KE-3: the unit ids travel with the titles, so a mutant genome records which knowledge it was written from
+  const units = all<{ t: string; id: string }>(`SELECT i.canonical_name AS t, i.id FROM judgments j JOIN expert_identities i ON i.id = j.subject_id
+    WHERE j.judgment = 'discovery_relevance' AND j.decision = 'yes' AND j.created_at >= ? ORDER BY j.created_at DESC LIMIT 3`, d30);
+  return { failures: [...gym, ...real].map((f) => f.slice(0, 300)), knowledge: units.map((r) => r.t), knowledgeRefs: units.map((r) => r.id) };
 }
 
 /**
@@ -269,7 +270,7 @@ export async function dreamOnce(db: Database, now = Date.now(), call: DreamCalle
   if (db.prepare("SELECT 1 FROM maker_genomes WHERE origin = 'dream' AND created_at >= ? LIMIT 1").get(iso.slice(0, 10))) return { created: [], skipped: 'already dreamt today' };
   if (db.prepare("SELECT 1 FROM maker_genomes WHERE status = 'trial' LIMIT 1").get()) return { created: [], skipped: 'a trial is still running' };
   if (evidenceMutationsEnabled()) return dreamFromEvidence(db, now, iso, call);
-  const { failures, knowledge } = dreamInputs(db, now);
+  const { failures, knowledge, knowledgeRefs } = dreamInputs(db, now);
   if (!failures.length) return { created: [], skipped: 'no failures to learn from' };
   const parent = genome(db, activeParent(db))!;
   const prompt = [
@@ -284,8 +285,9 @@ export async function dreamOnce(db: Database, now = Date.now(), call: DreamCalle
   ].join('\n');
   const parsed = firstJsonObject(await call(prompt));
   const mutants = Array.isArray(parsed?.mutants) ? parsed!.mutants as Array<Record<string, unknown>> : [];
-  const insert = db.prepare(`INSERT INTO maker_genomes (id, parent_id, gene, lines_json, origin, status, note, created_at, updated_at)
-    VALUES (?, ?, ?, ?, 'dream', 'trial', ?, ?, ?)`);
+  const refs = knowledgeRefs.length ? JSON.stringify(knowledgeRefs) : null;
+  const insert = db.prepare(`INSERT INTO maker_genomes (id, parent_id, gene, lines_json, origin, status, note, created_at, updated_at, knowledge_refs_json)
+    VALUES (?, ?, ?, ?, 'dream', 'trial', ?, ?, ?, ?)`);
   const created: string[] = [];
   for (const m of mutants.slice(0, MAX_MUTANTS)) {
     const gene = m.gene === 'anti_pattern' ? 'anti_pattern' : m.gene === 'strategy_lines' ? 'strategy_lines' : null;
@@ -293,7 +295,7 @@ export async function dreamOnce(db: Database, now = Date.now(), call: DreamCalle
     if (!gene || !lines) continue;
     const added = gene === 'anti_pattern' ? lines.map((l) => (l.toLowerCase().startsWith('avoid') ? l : `Avoid: ${l}`)) : lines;
     const id = `g-${randomUUID().slice(0, 8)}`;
-    insert.run(id, parent.id, gene, JSON.stringify([...parent.lines, ...added]), String(m.rationale ?? '').slice(0, 300), iso, iso);
+    insert.run(id, parent.id, gene, JSON.stringify([...parent.lines, ...added]), String(m.rationale ?? '').slice(0, 300), iso, iso, refs);
     created.push(id);
   }
   return { created, ...(created.length ? {} : { skipped: 'no mutant passed the guard' }) };
@@ -369,7 +371,7 @@ export function settleNoHeadroom(db: Database, speciesKey: string, holdoutCommit
 async function dreamFromEvidence(db: Database, now: number, iso: string, call: DreamCaller): Promise<{ created: string[]; skipped?: string; rejected: Array<{ reason: string }> }> {
   const clusters = failureClusters(db, now);
   if (!clusters.length) return { created: [], skipped: 'no failures to learn from', rejected: [] };
-  const { knowledge } = dreamInputs(db, now);
+  const { knowledge, knowledgeRefs } = dreamInputs(db, now);
   const parent = genome(db, activeParent(db))!;
   const prompt = [
     'You improve the instructions given to an autonomous coding agent ("maker") that fixes code so that given tests pass.',
@@ -384,8 +386,9 @@ async function dreamFromEvidence(db: Database, now: number, iso: string, call: D
   const parsed = firstJsonObject(await call(prompt));
   const mutants = Array.isArray(parsed?.mutants) ? parsed!.mutants as Array<Record<string, unknown>> : [];
   const valid = new Set(clusters.map((c) => c.id)); const usedClusters = new Set<string>();
-  const insert = db.prepare(`INSERT INTO maker_genomes (id, parent_id, gene, lines_json, origin, status, note, created_at, updated_at, evidence_clusters)
-    VALUES (?, ?, ?, ?, 'dream', 'trial', ?, ?, ?, ?)`);
+  const refs = knowledgeRefs.length ? JSON.stringify(knowledgeRefs) : null;
+  const insert = db.prepare(`INSERT INTO maker_genomes (id, parent_id, gene, lines_json, origin, status, note, created_at, updated_at, evidence_clusters, knowledge_refs_json)
+    VALUES (?, ?, ?, ?, 'dream', 'trial', ?, ?, ?, ?, ?)`);
   const created: string[] = []; const rejected: Array<{ reason: string }> = [];
   for (const m of mutants) {
     if (created.length >= MAX_MUTANTS) break;
@@ -399,7 +402,7 @@ async function dreamFromEvidence(db: Database, now: number, iso: string, call: D
     const added = gene === 'anti_pattern' ? lines.map((l) => (l.toLowerCase().startsWith('avoid') ? l : `Avoid: ${l}`)) : lines;
     const id = `g-${randomUUID().slice(0, 8)}`;
     usedClusters.add(fresh[0]);
-    insert.run(id, parent.id, gene, JSON.stringify([...parent.lines, ...added]), String(m.rationale ?? '').slice(0, 300), iso, iso, JSON.stringify([fresh[0]]));
+    insert.run(id, parent.id, gene, JSON.stringify([...parent.lines, ...added]), String(m.rationale ?? '').slice(0, 300), iso, iso, JSON.stringify([fresh[0]]), refs);
     created.push(id);
   }
   return { created, rejected, ...(created.length ? {} : { skipped: rejected.some((r) => r.reason === 'no_evidence') ? 'no mutant cited a failure cluster' : 'no mutant passed the guard' }) };

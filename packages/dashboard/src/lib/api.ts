@@ -95,6 +95,8 @@ export interface EvolutionEvidence {
   genomes: { by_status: Array<{ status: string; origin: string; n: number }>; recent: Array<{ id: string; status: string; note: string | null; updated_at: string }>; holdout: { mined: number | null; mutant: number | null } };
   gym: Array<{ kind: string; tier: number | null; status: string | null; n: number }>;
   gym_prod_gates: { by_kind: Array<{ kind: string; scored: number; proxy_success: number; prod_gate_success: number; proxy_rate: number | null; prod_gate_rate: number | null }>; failed_checks: Array<{ check: string; n: number }> };
+  /** GYM_STORE_DIFFS: stored (task, redacted diff, oracle result) pairs, all time */
+  gym_diffs?: { enabled: boolean; stored: number; distinct_tasks: number; successes: number; failures: number; redacted_attempts: number };
   trials: { by_state: Array<{ state: string; n: number }>; recent: Array<{ trial_id: string; parent_id: string; tier_set: string; deciding_n: number; f_parent_failures: number; b: number; c: number; p: number; power_q8_l05: number; state: string; recorded_at: string }>;
     /** GENOME_FIRE_CHECK: trial attempts voided because the genome's lines never reached the maker (never paired) */
     void?: { attempts: number; by_genome: Array<{ genome: string; n: number }>; fire_checked: number | null } };
@@ -130,6 +132,8 @@ export interface EvolutionEvidence {
     pools: Array<{ pool: string; n: number; mean: number | null; share_full: number | null }>;
     contest: { contests: number; agree: number; agreement_rate: number | null };
   };
+  /** KE-3: mutant genomes written from injected knowledge units, and proposals citing a unit or claim */
+  knowledge_links: { genomes_with_refs: number | null; genomes_total: number | null; proposals_with_refs: number | null };
   gates: Record<'A' | 'B' | 'C' | 'D', { state: GateState; reason: string }>;
 }
 
