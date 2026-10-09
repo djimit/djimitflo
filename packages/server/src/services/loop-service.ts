@@ -31,6 +31,7 @@ import { LoopPersistenceService } from './loop-persistence-service';
 import { ExperienceRetrievalService } from './experience-retrieval-service';
 import { SelfImprovementService } from './self-improvement-service';
 import { assignmentContext, assignmentContextMarkdown } from './assignment-context';
+import { firstJsonObject } from './model-json';
 import type {
   LoopName,
   WorkerRole,
@@ -289,6 +290,8 @@ export const MAKER_TEMPLATE_RULES = [
   '- Run relevant deterministic checks before handing off to checker.',
   '- Checker approval is required before completion.',
 ];
+
+const VALID_CHECKER_VERDICTS: string[] = ['accepted', 'needs_revision', 'rejected', 'insufficient_evidence'];
 
 export class LoopService {
 
@@ -2378,7 +2381,7 @@ export class LoopService {
       : '';
     const stdoutPath = typeof maker.metadata.stdout_path === 'string' ? maker.metadata.stdout_path : '';
     const stderrPath = typeof maker.metadata.stderr_path === 'string' ? maker.metadata.stderr_path : '';
-    const checks = JSON.stringify(maker.metadata.deterministic_checks || [], null, 2);
+    const checks = this.checkResultsForReviewer(maker.metadata.deterministic_checks);
     return [
       `# ${run.loop_name} ${checker.role === 'security_checker' ? 'Security Checker' : 'Checker'} Assignment`,
       '',
@@ -2387,7 +2390,12 @@ export class LoopService {
       `Maker lease: ${maker.id}`,
       '',
       'You are an independent checker. Do not edit files, merge, push, deploy, modify secrets or change policy.',
-      'Work only inside your own worktree (the maker\'s changes are already in it); do not read the maker\'s worktree. To run tests, install dependencies here with `npm ci --legacy-peer-deps` first; lockfile rewrites are reverted automatically.',
+      'Work only inside your own worktree (the maker\'s changes are already in it); do not read the maker\'s worktree.',
+      // prod 09-10 (run 5b91e689): reviewers spent 20–24 of ~30 tool calls on npm ci / a native better-sqlite3 build the
+      // container cannot do / apt-get / re-running Stryker, and every step re-sends the whole context: 29 steps × ~36k ≈
+      // 1.03M > OPENCODE_MAX_RUN_TOKENS. The check logs sit outside the worktree (opencode denies reading them), so their
+      // output is inlined below instead.
+      'Do not install dependencies (no npm ci / npm install / npm install-scripts / apt-get / node-gyp), do not build, and do not re-run mutation testing (Stryker, test:mutation*), the full test suite, lint or type-check: the deterministic checks below already ran on exactly this diff and their output is included (the log paths are outside your worktree and not readable). Judge from the diff, the source and those results; if they are missing or contradict the diff, say so in your verdict instead of re-running them.',
       checker.role === 'security_checker'
         ? 'You are the separate security checker. Review high-risk paths, related sibling paths, the original failure or exploit, and preserved governance invariants. Do not relax gates. Your verdict is not human approval or permission to merge.'
         : 'Your technical verdict is not human approval or permission to merge.',
@@ -2412,6 +2420,26 @@ export class LoopService {
     ].join('\n');
   }
 
+  /** The maker's deterministic checks for a reviewer: name, status, exit and the ANSI-stripped tail of each log (capped). */
+  private checkResultsForReviewer(raw: unknown): string {
+    const checks = Array.isArray(raw) ? raw as Array<Record<string, unknown>> : [];
+    if (!checks.length) return 'No deterministic checks recorded.';
+    const tail = (file: unknown, max: number): string => {
+      if (typeof file !== 'string' || !file) return '';
+      try {
+        const text = fs.readFileSync(file, 'utf8').replace(/\u001b\[[0-9;]*[A-Za-z]/g, '').replace(/\r/g, '').trim();
+        return text.length > max ? `…${text.slice(-max)}` : text;
+      } catch { return ''; }
+    };
+    return checks.map((check) => {
+      const failed = check.status !== 'pass' && check.status !== 'skipped';
+      const out = tail(check.stdout_path, 1_200);
+      const err = failed ? tail(check.stderr_path, 800) : '';
+      return [`### ${String(check.name)}: ${String(check.status)} (exit=${String(check.exit_status ?? 'n/a')}${check.timed_out ? ', timed out' : ''})`,
+        out ? `stdout (tail):\n${out}` : 'stdout: (empty or unavailable)', ...(err ? [`stderr (tail):\n${err}`] : [])].join('\n');
+    }).join('\n\n');
+  }
+
   public buildMockCheckerCommand(_worktreePath: string, _prompt: string): { command: string; args: string[] } {
     const script = [
       'console.log(JSON.stringify({ verdict: "accepted", notes: "mock checker accepted maker output", usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 } }));',
@@ -2426,7 +2454,7 @@ export class LoopService {
     const payload = this.extractCheckerPayload(stdout);
     if (payload) {
       const verdict = String(payload.verdict || payload.checker_verdict || '').trim();
-      if (['accepted', 'needs_revision', 'rejected', 'insufficient_evidence'].includes(verdict)) {
+      if (VALID_CHECKER_VERDICTS.includes(verdict)) {
         return verdict as CheckerVerdictInput['verdict'];
       }
     }
@@ -2437,38 +2465,68 @@ export class LoopService {
 
   public extractCheckerNotes(stdout: string): string {
     const notes = this.extractCheckerPayload(stdout)?.notes;
-    return typeof notes === 'string' ? notes : stdout.trim().slice(0, 1_000);
+    if (typeof notes === 'string') return notes;
+    // no verdict object: the reviewer's last text part, not the raw opencode/codex event stream (prod 02-10, lease 09272945)
+    const texts = this.runtimeTexts(stdout);
+    return (texts.length ? texts[texts.length - 1] : stdout).trim().slice(0, 1_000);
   }
 
-  private extractCheckerPayload(stdout: string): Record<string, unknown> | undefined {
+  /** The text parts of an opencode/codex JSON event stream (part.text, agent_message items, result/response), in order. */
+  private runtimeTexts(stdout: string): string[] {
+    const texts: string[] = [];
     for (const line of stdout.split(/\r?\n/)) {
       const trimmed = line.trim();
       if (!trimmed.startsWith('{')) continue;
       try {
         const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-        const part = parsed.part;
+        const part = parsed.part as Record<string, unknown> | undefined;
         const item = parsed.item as Record<string, unknown> | undefined;
-        const candidates = [parsed, typeof part === 'object' && part ? part as Record<string, unknown> : undefined,
-          item?.type === 'agent_message' ? item : undefined];
-        const text = candidates.flatMap((candidate) => [candidate?.text, candidate?.result, candidate?.response]).find((value) => typeof value === 'string');
-        if (typeof text === 'string') {
-          // Models often put a prose paragraph before the requested one-line JSON verdict inside the same text part.
-          // Models also drop the final brace of the verdict line (prod 2026-09-23: an 'accepted' security verdict was lost and
-          // counted as insufficient_evidence): try every '{' line from last to first, with one repaired closing brace.
-          const lines = text.trim().startsWith('{') ? [text.trim()] : text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.startsWith('{')).reverse();
-          const verdictLine = lines.map((l) => [l, `${l}}`].map((c) => { try { return JSON.parse(c) as Record<string, unknown>; } catch { return undefined; } }).find(Boolean))
-            .find((p) => p && (typeof p.verdict === 'string' || typeof p.checker_verdict === 'string'));
-          if (verdictLine) candidates.push(verdictLine);
-        }
-        const payload = candidates.find((candidate) => candidate && (
-          typeof candidate.verdict === 'string'
-          || typeof candidate.checker_verdict === 'string'
-          || typeof candidate.notes === 'string'
-        ));
-        if (payload) return payload;
-      } catch {
-        continue;
+        const text = [parsed, part && typeof part === 'object' ? part : undefined, item?.type === 'agent_message' ? item : undefined]
+          .flatMap((candidate) => [candidate?.text, candidate?.result, candidate?.response]).find((value) => typeof value === 'string');
+        if (typeof text === 'string' && text.trim()) texts.push(text);
+      } catch { continue; }
+    }
+    return texts;
+  }
+
+  /**
+   * The checker's verdict object. The LAST valid one wins, so an early plan or draft never shadows the final answer.
+   * Within a text part every '{' is tried from last to first with the balanced-object scanner (firstJsonObject), also with
+   * one repaired closing brace (prod 2026-09-23: a dropped final brace lost an 'accepted' verdict). That finds a verdict
+   * embedded in prose or backticks (prod 02-10, lease 09272945: "`{"verdict":"needs_revision",...}`" mid-paragraph →
+   * stored as insufficient_evidence with the raw event stream as notes). Only a known verdict value counts, so the echoed
+   * format template ("accepted|needs_revision|…") and nested usage objects are skipped. The explicit verdict is never
+   * re-interpreted: an insufficient_evidence whose notes approve stays insufficient_evidence (fails checker_verdict).
+   */
+  private extractCheckerPayload(stdout: string): Record<string, unknown> | undefined {
+    const known = (p: Record<string, unknown> | null | undefined): p is Record<string, unknown> =>
+      !!p && VALID_CHECKER_VERDICTS.includes(String(p.verdict ?? p.checker_verdict ?? ''));
+    const verdictIn = (full: string): Record<string, unknown> | undefined => {
+      const text = full.slice(-20_000); // a final answer, not a tool dump: bounds the per-'{' scan
+      for (let start = text.lastIndexOf('{'); start >= 0; start = start > 0 ? text.lastIndexOf('{', start - 1) : -1) {
+        const slice = text.slice(start);
+        const found = [firstJsonObject(slice), firstJsonObject(`${slice}}`)].find(known);
+        if (found) return found;
       }
+      return undefined;
+    };
+    const lines = stdout.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.startsWith('{')).reverse();
+    for (const line of lines) {
+      let parsed: Record<string, unknown>;
+      try { parsed = JSON.parse(line) as Record<string, unknown>; } catch { continue; }
+      const part = parsed.part;
+      const item = parsed.item as Record<string, unknown> | undefined;
+      const candidates = [parsed, typeof part === 'object' && part ? part as Record<string, unknown> : undefined,
+        item?.type === 'agent_message' ? item : undefined];
+      const text = candidates.flatMap((candidate) => [candidate?.text, candidate?.result, candidate?.response]).find((value) => typeof value === 'string');
+      const fromText = typeof text === 'string' ? verdictIn(text) : undefined;
+      if (fromText) return fromText;
+      const payload = candidates.find((candidate) => candidate && (
+        typeof candidate.verdict === 'string'
+        || typeof candidate.checker_verdict === 'string'
+        || typeof candidate.notes === 'string'
+      ));
+      if (payload) return payload;
     }
     return undefined;
   }

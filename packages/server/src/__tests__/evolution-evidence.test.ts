@@ -118,7 +118,7 @@ it('MEMORY_HOLDOUT_RATE: verified/regressed per arm (rules vs holdout) with n an
   expect(e.flags.find((f) => f.name === 'GENOME_FIRE_CHECK')).toMatchObject({ value: 'true', acting: true });
 });
 
-it('SI-A/SI-B: graded per pool (gym write_test, gym repair, prod test-gap, prod exports) with n, mean and share at 1.0, plus contest agreement', () => {
+it('SI-A/SI-B: graded per pool (gym write_test, gym repair, prod test-gap, prod exports, prod mutation) with n, mean and share at 1.0, plus contest agreement', () => {
   db = new Database(':memory:'); db.exec(schema); runMigrations(db); new SkillEvolutionEngine(db);
   const out = db.prepare('INSERT INTO skill_outcomes (id, skill_id, success, domain, evidence_refs_json, created_at) VALUES (?, ?, ?, ?, ?, ?)');
   const g = (score: string, kind: string, ...extra: string[]) => JSON.stringify([`graded:${score}`, `graded_kind:${kind}`, ...extra]);
@@ -127,6 +127,7 @@ it('SI-A/SI-B: graded per pool (gym write_test, gym repair, prod test-gap, prod 
   out.run('r1', 'loop-maker:gym:atomic', 0, 'gym', g('0.500', 'tests_green'), ago(1));
   out.run('t1', 'loop-maker:test-gap:opencode', 1, 'test-gap', g('0.667', 'mutant_kill', 'graded_lane:test-gap'), ago(1));
   out.run('x1', 'loop-maker:test-gap:codex', 0, 'test-gap', g('1.000', 'mutant_kill', 'graded_lane:exports'), ago(1));
+  out.run('m1', 'loop-maker:doc-drift-and-small-fix-loop:opencode', 1, 'doc-drift-and-small-fix-loop', g('0.982', 'mutation_score', 'graded_lane:mutation'), ago(1));
   out.run('old', 'loop-maker:gym:atomic', 1, 'gym', g('1.000', 'binary'), ago(40));
   out.run('plain', 'loop-maker:gym:atomic', 1, 'gym', '[]', ago(1));
   db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, gates_json, created_at, updated_at) VALUES ('c', 'test-gap', 'closed', 'completed', '[]', ?, ?)").run(ago(1), ago(1));
@@ -138,6 +139,7 @@ it('SI-A/SI-B: graded per pool (gym write_test, gym repair, prod test-gap, prod 
     { pool: 'gym_repair', n: 1, mean: 0.5, share_full: 0 },
     { pool: 'prod_test_gap', n: 1, mean: 0.667, share_full: 0 },
     { pool: 'prod_exports', n: 1, mean: 1, share_full: 1 },
+    { pool: 'prod_mutation', n: 1, mean: 0.982, share_full: 0 },
   ]);
   expect(e.graded.contest).toEqual({ contests: 3, agree: 2, agreement_rate: 0.667 });
   expect(e.graded.mode).toEqual({ fitness: 'shadow', contest: 'off' });
