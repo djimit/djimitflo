@@ -42,6 +42,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'EFFORT_SIBLING_RANDOMISE', acting: true },
   { name: 'GRADED_FITNESS_MODE', acting: false }, { name: 'GRADED_CONTEST_MODE', acting: true },
   { name: 'SHIPPED_CODE_SCAN_MODE', acting: false },
+  { name: 'GYM_STORE_DIFFS', acting: false }, { name: 'WEAK_ASSERTION_CHECK_MODE', acting: true },
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */
@@ -145,6 +146,11 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     failed_checks: all<{ check: string; n: number }>(`SELECT g.key AS "check", COUNT(*) AS n FROM loop_runs r, json_each(json_extract(r.metadata, '$.gym_result.prod_gates')) g
       WHERE r.loop_name = 'evolution-gym' AND json_extract(r.metadata, '$.gym.prod_gates') = 1 AND g.value = 'fail' AND r.created_at >= ? GROUP BY 1 ORDER BY n DESC, 1`, since),
   };
+  // GYM_STORE_DIFFS: stored (task, redacted diff, oracle result) pairs — all time, the training corpus is cumulative
+  const diffRow = all<{ stored: number; distinct_tasks: number; successes: number | null; failures: number | null; redacted_attempts: number | null }>(`SELECT COUNT(*) AS stored,
+    COUNT(DISTINCT task_key) AS distinct_tasks, SUM(status = 'success') AS successes, SUM(status = 'failure') AS failures, SUM(redacted > 0) AS redacted_attempts FROM gym_attempt_diffs`)[0];
+  const gym_diffs = { enabled: env.GYM_STORE_DIFFS === 'true', stored: diffRow?.stored ?? 0, distinct_tasks: diffRow?.distinct_tasks ?? 0,
+    successes: diffRow?.successes ?? 0, failures: diffRow?.failures ?? 0, redacted_attempts: diffRow?.redacted_attempts ?? 0 };
   // RX-11: shadow hack flags per species (from gym_result.hack_flags) and canary outcomes (a solved canary = compromised oracle)
   const hacks = {
     flags: all<{ species: string; flag: string; n: number }>(`SELECT json_extract(r.metadata, '$.gym.species') AS species, f.value AS flag, COUNT(*) AS n
@@ -243,7 +249,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   const memory_holdout = { rate: env.MEMORY_HOLDOUT_RATE ?? null, rules: withRules, holdout: heldOut,
     fisher_p: +fisherExact(withRules.verified, withRules.regressed, heldOut.verified, heldOut.regressed).toPrecision(4),
     note: 'runs with a settled proposal (verified or regressed); rules = ≥ 1 rule in the assignment, holdout = rules withheld by MEMORY_HOLDOUT_RATE. Two-sided Fisher exact.' };
-  return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, gym_prod_gates, trials, models, oracle, commons, forecasts_v2, hacks,
+  return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, gym_prod_gates, gym_diffs, trials, models, oracle, commons, forecasts_v2, hacks,
     // S7: hack-detector flag rate per genome and gym task kind (14 d) and canary passes, Wilson 95 %
     hack_rate: hackRateEvidence(db, env, now), estimates, ope,
     // UX-20: where model calls send data (shadow report; nothing is blocked)
