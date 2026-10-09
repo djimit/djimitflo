@@ -101,6 +101,39 @@ describe('scanPackage: parse-only inspection of an installed package', () => {
     expect(noParser.lifecycle).toHaveLength(1);
   });
 
+  it('covers the less obvious shapes: template URLs, vm, destructured fs writes, $HOME, ESM re-exports, PE magic, minified-style requires', async () => {
+    const { dir, base } = createEvilPackage({ extra: {
+      'lib/shapes.mjs': [
+        "import { writeFileSync } from 'node:fs';",
+        "export { request } from 'node:http2';",
+        "import vm from 'vm';",
+        "const id = 7; fetch(`https://api.example.dev/v1/${id}`);",
+        "writeFileSync(process.env.HOME + '/.npmrc', 'x');",
+        "globalThis.fetch('http://plain.example.dev/');",
+        "new EventSource('https://sse.example.dev/stream');",
+        "const s = process.env.SESSION_COOKIE; const ok = process.env.HOMEBREW_PREFIX;",
+      ].join('\n'),
+      'vendor/win.exe': 'MZ\x90\x00rest',
+    } }); track(base);
+    const r = await scanPackage(dir);
+    const at = (file: string) => r.findings.filter((f) => f.file === file).map((f) => `${f.kind}:${f.detail}`);
+    expect(at('lib/shapes.mjs')).toEqual(expect.arrayContaining([
+      'module_import:network:http2', 'module_import:code:vm', 'endpoint:fetch https://api.example.dev/v1/', 'endpoint:fetch http://plain.example.dev/',
+      'endpoint:EventSource https://sse.example.dev/stream', 'home_write:writeFileSync', 'env_token_read:SESSION_COOKIE',
+    ]));
+    expect(at('lib/shapes.mjs').some((x) => x.includes('HOMEBREW_PREFIX'))).toBe(false);
+    expect(r.hosts).toEqual(expect.arrayContaining(['api.example.dev', 'plain.example.dev', 'sse.example.dev']));
+    expect(r.binaries.find((b) => b.path === 'vendor/win.exe')?.format).toBe('pe');
+  });
+
+  it('a syntax error in shipped JS is recorded as parse-tolerant (TS recovers) and never aborts the scan', async () => {
+    const { dir, base } = createEvilPackage({ extra: { 'lib/broken.js': "eval('x'); function (( {{{ \n require(dyn" } }); track(base);
+    const r = await scanPackage(dir);
+    expect(r.findings.some((f) => f.file === 'lib/broken.js' && f.kind === 'eval')).toBe(true);
+    expect(r.lifecycle).toHaveLength(1);
+    expect(r.files.some((f) => f.path === 'lib/broken.js')).toBe(true);
+  });
+
   it('rejects a path that is not a directory', async () => {
     const { dir, base } = createEvilPackage(); track(base);
     await expect(scanPackage(join(dir, 'package.json'))).rejects.toThrow(/not a directory/);
