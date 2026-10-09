@@ -1,9 +1,8 @@
-import fs from 'node:fs';
 import type { Database } from 'better-sqlite3';
 import { rankEvolveCandidates, evolveWinner, type EvolveCandidate } from './evolve-fitness-service';
 import { LoopEventService } from './loop-event-service';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
-import { gradedContestMode, leaseGraded, leaseGradedRefs } from './graded-fitness';
+import { gradedContestMode, leaseGraded, leaseGradedRefs, mutationScoreOf } from './graded-fitness';
 
 /**
  * E13 steps 2–3 (docs/design/evolve-loop.md): several makers on one objective, the fittest (computed in code) wins.
@@ -34,12 +33,7 @@ export function evolveEligible(db: Database, goalId: string): boolean {
   return /"(test-gap|mutation-gap):/.test(row.evidence_refs_json || ''); // M2: the mutation lane has a continuous fitness
 }
 
-/** M2: the `after` score from the mutation-gain check's JSON line (scripts/mutation-gain.mjs), or null when not measured. */
-export function mutationScoreOf(checks: Array<{ name?: string; stdout_path?: string }>): number | null {
-  const path = checks.find((c) => c.name === 'test:mutation:grounded')?.stdout_path;
-  // D0: `|| null` turned a measured score of 0 into "not measured"
-  try { const n = path ? Number(/"after":(\d+(?:\.\d+)?)/.exec(fs.readFileSync(path, 'utf8'))?.[1] ?? NaN) : NaN; return Number.isFinite(n) ? n : null; } catch { return null; }
-}
+export { mutationScoreOf }; // M2 helper, lives in graded-fitness (SI-A grades the mutation lane with it)
 
 interface LeaseRow { id: string; runtime: string; status: string; metadata: string; updated_at: string }
 
