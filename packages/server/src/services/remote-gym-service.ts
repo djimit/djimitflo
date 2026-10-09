@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { mineGymTasks, type GymTask } from './gym-task-miner';
 import { parseSpecies } from './evolve-selection';
@@ -11,6 +11,7 @@ import { changedFromReason, classifyHack, hackDetectorShadow } from './gym-hack-
 import { settleNoHeadroom } from './dream-evolution';
 import { FAILURE_TASK_CAPABILITY, failureDerivedTasks, gitLookup, gymFailureTasksEnabled, type TargetMutant } from './gym-failure-tasks';
 import { daemonCheckOptions } from './loop-daemon';
+import { redactSecrets } from './secret-patterns';
 import { gradedFitnessMode, gradedRefs, roundGraded, type GradedKind } from './graded-fitness';
 import { dreamEvolutionEnabled, ensureBaseline, fireCheckVoid, genome, genomeFireCheck, holdout, mutantHoldout, mutantTrialsEnabled, nextTrialAttempt, parseFireCheck, writeTestHoldout, writeTestHoldoutEnabled, type Genome } from './genome-registry';
 
@@ -92,6 +93,24 @@ export function gymGraded(gym: { kind?: string; mutant_keys?: string[] }, result
   const g = Number(result.graded);
   if ((result.graded_kind === 'tests_green' || result.graded_kind === 'binary') && typeof result.graded === 'number' && g >= 0 && g <= 1) return { graded: roundGraded(g), graded_kind: result.graded_kind };
   return { graded: result.status === 'success' ? 1 : 0, graded_kind: 'binary' };
+}
+
+/**
+ * GYM_STORE_DIFFS=true (default off, Phase SOUP baseline 09-10: 0 stored (task, diff, oracle result) pairs): the diff of
+ * every scored attempt (success or failure, never a discard) goes to gym_attempt_diffs — secret-redacted with the
+ * diff-capture patterns (redactSecrets), then capped at GYM_DIFF_MAX_BYTES, with the sha256 of what was stored.
+ * gym_result.diff_ref = 'sha256:<hex>' links the run to it; loop_runs.metadata never carries the diff itself.
+ */
+export const gymStoreDiffs = (env: NodeJS.ProcessEnv = process.env): boolean => env.GYM_STORE_DIFFS === 'true';
+export const GYM_DIFF_MAX_BYTES = 50_000;
+export function prepareGymDiff(raw: string): { diff: string; sha256: string; redacted: number; truncated: boolean } {
+  // redact before the cap, so a cut never leaves half a secret the patterns no longer match
+  const { redacted: text, count } = redactSecrets(raw.slice(0, 4 * GYM_DIFF_MAX_BYTES));
+  const bytes = Buffer.from(text, 'utf8');
+  const truncated = bytes.length > GYM_DIFF_MAX_BYTES || raw.length > 4 * GYM_DIFF_MAX_BYTES;
+  // a byte cut can split a multi-byte character; drop the replacement char it leaves
+  const diff = bytes.length > GYM_DIFF_MAX_BYTES ? bytes.subarray(0, GYM_DIFF_MAX_BYTES).toString('utf8').replace(/\uFFFD+$/, '') : text;
+  return { diff, sha256: createHash('sha256').update(diff).digest('hex'), redacted: count, truncated };
 }
 
 export type RemoteGymClaim = { runId: string; species: string; task: GymTask; genome?: { id: string; lines: string[] }; prod_gates?: ProdGatesConfig } | { skipped: string };
@@ -208,9 +227,18 @@ export class RemoteGymService {
     // gym gold agreement: the per-check production gate results of a proxy success (only on a run claimed with the gates)
     const prod_gates = gym.prod_gates ? sanitizeProdGates(result.prod_gates) : undefined;
     const now = new Date().toISOString();
+    let diff_ref: string | undefined;
+    if (gymStoreDiffs() && result.status !== 'discarded' && typeof result.diff === 'string' && result.diff.trim()) {
+      try {
+        const d = prepareGymDiff(result.diff);
+        this.db.prepare('INSERT OR REPLACE INTO gym_attempt_diffs (run_id, task_key, status, species, sha256, diff, redacted, truncated, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+          .run(runId, String(gym.commit), result.status, gym.species, d.sha256, d.diff, d.redacted, d.truncated ? 1 : 0, now);
+        diff_ref = `sha256:${d.sha256}`;
+      } catch { /* training data only: never break the report */ }
+    }
     this.db.prepare("UPDATE loop_runs SET status = 'completed', updated_at = ?, metadata = json_set(metadata, '$.gym_result', json(?)) WHERE id = ?")
       .run(now, JSON.stringify({ status: result.status, reason, ...(hack_flags ? { hack_flags } : {}), ...(killed_mutants ? { killed_mutants } : {}),
-        ...(prod_gates ? { prod_gates } : {}), ...(graded ?? {}),
+        ...(prod_gates ? { prod_gates } : {}), ...(graded ?? {}), ...(diff_ref ? { diff_ref } : {}),
         ...(fire_check ? { fire_check } : {}), ...(voided ? { void: voided } : {}) }), runId);
   }
 }
