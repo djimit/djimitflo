@@ -255,7 +255,7 @@ export class AgentSocialAutopilotService {
       });
       for (const agent of agents) {
         const spec = this.runtimeFor(agent.id);
-        try { this.comms.heartbeat(agent.id, spec.runtime, spec.model); result.heartbeats += 1; } catch { result.failures += 1; }
+        try { this.comms.heartbeat(agent.id, spec.runtime, spec.model, 'in_process_resident'); result.heartbeats += 1; } catch { result.failures += 1; }
       }
       // AR-W5: an open committee question comes before chat — at most 2 residents per tick answer one (bounded cloud cost)
       let forecastsThisTick = 0;

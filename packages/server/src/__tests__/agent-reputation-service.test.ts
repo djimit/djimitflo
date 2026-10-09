@@ -72,13 +72,15 @@ describe('AgentReputationService', () => {
     expect(reputation.score).toBeLessThan(0.5);
   });
 
-  it('counts a bite when the agent heartbeat falls inside a lure it was invited to', () => {
+  it('counts only causal bites (lure_events), not a heartbeat that merely falls inside the lure window', () => {
     const now = new Date();
     const created = new Date(now.getTime() - 60_000).toISOString();
     const expires = new Date(now.getTime() + 60_000).toISOString();
     insertAgent('a5', { metadata: JSON.stringify({ social_runtime: { last_heartbeat_at: now.toISOString() } }) });
     db.prepare("INSERT INTO social_lures (id, topic, topic_ref, created_by, created_at, expires_at, invited_json) VALUES ('lure-1', 't', 'ref', 'operator', ?, ?, ?)")
       .run(created, expires, JSON.stringify(['a5']));
+    expect(service.computeReputation('a5').bite_count).toBe(0); // coincident heartbeat, no delivered invite
+    db.prepare("INSERT INTO lure_events (lure_id, agent_id, transition, reason, at) VALUES ('lure-1', 'a5', 'bitten', 'heartbeat_after_delivery', ?)").run(now.toISOString());
     const reputation = service.computeReputation('a5');
     expect(reputation.bite_count).toBe(1);
     expect(reputation.sample_size).toBe(1);

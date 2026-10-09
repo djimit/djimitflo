@@ -38,8 +38,8 @@ export class AgentReputationService {
 
   computeReputation(agentId: string): AgentReputation {
     const agent = this.db.prepare(
-      'SELECT total_tasks, completed_tasks, failed_tasks, metadata FROM agents WHERE id = ?'
-    ).get(agentId) as { total_tasks: number; completed_tasks: number; failed_tasks: number; metadata: string | null } | undefined;
+      'SELECT total_tasks, completed_tasks, failed_tasks FROM agents WHERE id = ?'
+    ).get(agentId) as { total_tasks: number; completed_tasks: number; failed_tasks: number } | undefined;
     if (!agent) throw new Error('AGENT_REPUTATION_AGENT_NOT_FOUND');
 
     let score = 0.5;
@@ -58,7 +58,7 @@ export class AgentReputationService {
       score -= (probeCount - FREE_PROBE_THRESHOLD) * PROBE_PENALTY_PER_OVER;
     }
 
-    const biteCount = this.countBites(agentId, agent.metadata);
+    const biteCount = this.countBites(agentId);
     score = Math.max(0, Math.min(1, score));
 
     return {
@@ -72,26 +72,12 @@ export class AgentReputationService {
   }
 
   /**
-   * A "bite" is a signed heartbeat received while a lure this agent was
-   * invited to was still open — same definition AgentLureService.status()
-   * uses, mirrored here since there's no persisted bite log to query
-   * directly (only the agent's single current last_heartbeat_at value).
+   * A "bite" is a stored, causal `bitten` row in lure_events (a token-authenticated heartbeat after the invite was
+   * delivered, inside the lure window) — the same log AgentLureService.status() reports from. No log table → 0.
    */
-  private countBites(agentId: string, metadataJson: string | null): number {
-    let heartbeat: string | null = null;
+  private countBites(agentId: string): number {
     try {
-      heartbeat = (JSON.parse(metadataJson || '{}') as { social_runtime?: { last_heartbeat_at?: string } }).social_runtime?.last_heartbeat_at || null;
-    } catch { /* treat as no heartbeat */ }
-    if (!heartbeat) return 0;
-
-    const lures = this.db.prepare('SELECT invited_json, created_at, expires_at FROM social_lures').all() as
-      Array<{ invited_json: string; created_at: string; expires_at: string }>;
-    let bites = 0;
-    for (const lure of lures) {
-      let invited: string[] = [];
-      try { invited = JSON.parse(lure.invited_json || '[]'); } catch { continue; }
-      if (invited.includes(agentId) && heartbeat >= lure.created_at && heartbeat <= lure.expires_at) bites += 1;
-    }
-    return bites;
+      return (this.db.prepare("SELECT COUNT(*) AS n FROM lure_events WHERE agent_id = ? AND transition = 'bitten'").get(agentId) as { n: number }).n;
+    } catch { return 0; }
   }
 }

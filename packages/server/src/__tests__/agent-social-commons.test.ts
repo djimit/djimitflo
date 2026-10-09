@@ -12,8 +12,8 @@ describe('agent commons read-model', () => {
     db = createTestDb();
     db.prepare("INSERT INTO agents (id, name, status, capabilities_json) VALUES ('agent-a', 'Agent A', 'active', '[\"security\"]'), ('agent-b', 'Agent B', 'active', '[\"ux\"]')").run();
     comms = new AgentCommunicationService(db);
-    comms.heartbeat('agent-a', 'codex', 'model-a');
-    comms.heartbeat('agent-b', 'opencode', 'model-b');
+    comms.heartbeat('agent-a', 'codex', 'model-a', 'runtime_token');
+    comms.heartbeat('agent-b', 'opencode', 'model-b', 'runtime_token');
   });
 
   afterEach(() => db.close());
@@ -121,7 +121,7 @@ describe('agent commons read-model', () => {
 
   it('seeks out peers that have not met before the same pair talks again', () => {
     db.prepare("INSERT INTO agents (id, name, status, capabilities_json) VALUES ('agent-c', 'Agent C', 'active', '[]')").run();
-    comms.heartbeat('agent-c', 'ollama', 'test-model');
+    comms.heartbeat('agent-c', 'ollama', 'test-model', 'runtime_token');
     expect(comms.socialize(0).participants).toEqual(['agent-a', 'agent-b']);
     const second = comms.socialize(0);
     expect(second.status).toBe('started');
