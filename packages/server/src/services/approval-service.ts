@@ -139,12 +139,24 @@ export class ApprovalService {
 
   /** Ledger + bus record of an approval lifecycle step; best-effort, never blocks the approval itself. */
   private recordDecision(approval: ApprovalRequest, state: string, decision: 'ALLOW' | 'DENY' | 'HOLD', actor: string, eventType: string): void {
-    const human = actor !== 'system' && !actor.startsWith('agent:');
     recordAuthorityEvent(this.db, {
-      correlationId: approval.task_id, artifactId: approval.id, actorSubject: actor, actorType: human ? 'human' : actor.startsWith('agent:') ? 'agent' : 'service',
+      correlationId: approval.task_id, artifactId: approval.id, actorSubject: actor, actorType: this.actorType(actor),
       requestedState: state, decision, payload: { approval_id: approval.id, risk_level: approval.risk_level, policy_id: approval.policy_id, status: approval.status },
     });
     enqueueEvent(this.db, { type: eventType, aggregateId: approval.id, correlationId: approval.task_id, payload: { approval_id: approval.id, task_id: approval.task_id, risk_level: approval.risk_level, status: approval.status, decided_by: approval.decided_by ?? null } });
+  }
+
+  /**
+   * 'human' only for a real user (users.id or users.email: the approvals route decides as the JWT subject). Rule deciders
+   * (`autonomy:*`), inherited approvals (`inherit:*`), `system` and any other label are automation → 'service'
+   * (the ledger's CHECK allows human/agent/service/ci). Prod 2026-10-09: 194 `autonomy:*` rows were recorded as human.
+   */
+  private actorType(actor: string): 'human' | 'agent' | 'service' {
+    if (actor.startsWith('agent:')) return 'agent';
+    try {
+      if (this.db.prepare('SELECT 1 FROM users WHERE id = ? OR email = ? LIMIT 1').get(actor, actor)) return 'human';
+    } catch { /* no users table: nobody is provably human */ }
+    return 'service';
   }
 
   decideApproval(id: string, approved: boolean, decidedBy: string, reason?: string): ApprovalRequest {

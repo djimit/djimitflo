@@ -57,26 +57,36 @@ export function mintSpawnToken(secret: string, leaseId: string, spawnTreeId: str
   return `${payloadB64}.${sig}`;
 }
 
+export type SpawnTokenRejection = 'malformed' | 'bad_mac' | 'expired' | 'wrong_scope' | 'wrong_subject';
+
+/**
+ * Why a spawn token is refused, or null when it is valid for (expectedLeaseId, expectedTreeId). Never throws.
+ * Check order is unchanged from the boolean validator: shape, MAC, subject/scope, then expiry.
+ */
+export function spawnTokenRejection(secret: string, token: string, expectedLeaseId: string, expectedTreeId: string): SpawnTokenRejection | null {
+  const parts = token.split('.');
+  if (parts.length !== 2) return 'malformed';
+  const [payloadB64, sig] = parts;
+  const expected = createHmac('sha256', secret).update(payloadB64).digest('base64url');
+  if (sig.length !== expected.length || !constTimeEq(sig, expected)) return 'bad_mac';
+  const fields = Buffer.from(payloadB64, 'base64url').toString('utf8').split('|');
+  // < 3 fields could never pass the old checks either; > 3 is left as before (first three fields decide) so acceptance is unchanged.
+  if (fields.length < 3) return 'malformed';
+  const [leaseId, treeId, expiresAtStr] = fields;
+  if (leaseId !== expectedLeaseId) return 'wrong_subject';
+  if (treeId !== expectedTreeId) return 'wrong_scope';
+  const expiresAt = Number(expiresAtStr);
+  if (!Number.isFinite(expiresAt)) return 'malformed';
+  if (expiresAt < Date.now()) return 'expired';
+  return null;
+}
+
 /**
  * Validate a spawn token against the expected (leaseId, spawnTreeId) scope and the
  * secret. Returns false (never throws) on any malformed/expired/wrong-scope token;
- * the caller maps that to a 401 SPAWN_TOKEN_INVALID at the HTTP layer.
+ * the caller maps that to a 401 SPAWN_TOKEN_INVALID at the HTTP layer. Use
+ * spawnTokenRejection when the reason should be logged.
  */
 export function validateSpawnToken(secret: string, token: string, expectedLeaseId: string, expectedTreeId: string): boolean {
-  const parts = token.split('.');
-  if (parts.length !== 2) return false;
-  const [payloadB64, sig] = parts;
-  const expected = createHmac('sha256', secret).update(payloadB64).digest('base64url');
-  if (sig.length !== expected.length || !constTimeEq(sig, expected)) return false;
-  let payload: string;
-  try {
-    payload = Buffer.from(payloadB64, 'base64url').toString('utf8');
-  } catch {
-    return false;
-  }
-  const [leaseId, treeId, expiresAtStr] = payload.split('|');
-  if (leaseId !== expectedLeaseId || treeId !== expectedTreeId) return false;
-  const expiresAt = Number(expiresAtStr);
-  if (!Number.isFinite(expiresAt) || expiresAt < Date.now()) return false;
-  return true;
+  return spawnTokenRejection(secret, token, expectedLeaseId, expectedTreeId) === null;
 }

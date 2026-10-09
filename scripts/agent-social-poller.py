@@ -230,6 +230,8 @@ def main():
     api('POST', f'/api/swarm-v2/social-runtime/{agent}/heartbeat', {'runtime': runtime, 'model_id': model})
     _, body = api('GET', f'/api/swarm-v2/social-runtime/{agent}/messages?limit=1'); failures = processed = 0
     for message in body.get('messages', []):
+        if (message.get('payload') or {}).get('action') == 'social.invite':  # informational: the server marked it read; the next heartbeat is the bite
+            print(json.dumps({'agent': agent, 'invite': message['payload'].get('thread_id')})); continue
         try:
             output, run_id, usage = RUNTIMES[runtime](prompt_for(message))
             reply = extract_object(output); reply.update({'runtime': runtime, 'model_id': model, 'runtime_run_id': run_id, 'usage': usage, 'delivery_lease_token': message.get('deliveryLeaseToken', '')})

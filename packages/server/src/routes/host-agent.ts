@@ -4,7 +4,7 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { FleetCommands } from '../services/fleet-commands';
 import { LocalShadowQueue } from '../services/local-shadow-queue';
-import { mintSpawnToken, resolveSpawnTokenSecret, validateSpawnToken } from '../services/spawn-token';
+import { mintSpawnToken, resolveSpawnTokenSecret, spawnTokenRejection } from '../services/spawn-token';
 import { recordPowerSample, resourceLedgerEnabled } from '../services/resource-ledger';
 
 export const HOST_AGENT_SCOPE = 'host-agent';
@@ -23,7 +23,9 @@ export function createHostAgentRoutes(db: Database, auth: AuthMiddleware): Route
   const fleet = new FleetCommands(db);
   const host = (req: any, res: any): string | null => {
     const h = String(req.get('X-Host') || '');
-    if (!h || !validateSpawnToken(resolveSpawnTokenSecret(), String(req.get('X-Host-Token') || ''), h, HOST_AGENT_SCOPE)) {
+    const rejection = h ? spawnTokenRejection(resolveSpawnTokenSecret(), String(req.get('X-Host-Token') || ''), h, HOST_AGENT_SCOPE) : 'wrong_subject';
+    if (rejection) {
+      console.warn(`[host-agent] token rejected host=${JSON.stringify(h.slice(0, 100))} reason=${rejection}`);
       res.status(401).json({ error: { code: 'HOST_TOKEN_INVALID', message: 'Host token is invalid, expired, or scoped to another host' } });
       return null;
     }
