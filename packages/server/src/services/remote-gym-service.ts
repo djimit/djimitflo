@@ -12,7 +12,7 @@ import { settleNoHeadroom } from './dream-evolution';
 import { FAILURE_TASK_CAPABILITY, failureDerivedTasks, gitLookup, gymFailureTasksEnabled, type TargetMutant } from './gym-failure-tasks';
 import { daemonCheckOptions } from './loop-daemon';
 import { gradedFitnessMode, gradedRefs, roundGraded, type GradedKind } from './graded-fitness';
-import { dreamEvolutionEnabled, ensureBaseline, fireCheckVoid, genome, genomeFireCheck, holdout, mutantHoldout, mutantTrialsEnabled, nextTrialAttempt, parseFireCheck, type Genome } from './genome-registry';
+import { dreamEvolutionEnabled, ensureBaseline, fireCheckVoid, genome, genomeFireCheck, holdout, mutantHoldout, mutantTrialsEnabled, nextTrialAttempt, parseFireCheck, writeTestHoldout, writeTestHoldoutEnabled, type Genome } from './genome-registry';
 
 /**
  * Plan I1: the evolution gym on a remote compute host (the workstation: 48 threads, 125 GB, R9700) instead of the
@@ -38,7 +38,7 @@ export function tierProbe(db: Database, env: NodeJS.ProcessEnv = process.env): n
   return tiers[n("AND json_extract(metadata, '$.gym.probe') = 1") % tiers.length];
 }
 const holdoutKeys = (db: Database): string[] => {
-  try { return (db.prepare('SELECT commit_sha AS k FROM gym_holdout UNION SELECT key AS k FROM gym_mutant_holdout').all() as Array<{ k: string }>).map((r) => r.k); } catch { return []; }
+  try { return (db.prepare('SELECT commit_sha AS k FROM gym_holdout UNION SELECT key AS k FROM gym_mutant_holdout UNION SELECT key AS k FROM gym_write_test_holdout').all() as Array<{ k: string }>).map((r) => r.k); } catch { return []; }
 };
 /**
  * RX-11: a canary is a mutant task whose run also carries a test that no source-only change can turn green. A solved canary
@@ -142,15 +142,18 @@ export class RemoteGymService {
       ensureBaseline(this.db, now.toISOString());
       const mutants = mutantTrialsEnabled() ? mutantHoldout(this.db, (tier, tried) => mutantTask(this.db, repo, key, tried, tier), now.toISOString()) : [];
       const frozen = holdout(this.db, tasks, now.toISOString());
-      settleNoHeadroom(this.db, key, frozen, mutants.map((m) => m.commit), now.getTime()); // B8: no mutant attempt on a trial nothing could win
-      const next = nextTrialAttempt(this.db, key, [...frozen, ...mutants.map((m) => m.commit)]);
-      if (next) { task = tasks.find((t) => t.commit === next.commit) ?? mutants.find((m) => m.commit === next.commit); trialGenome = task ? genome(this.db, next.genomeId) : null; }
+      // WT-HOLDOUT: frozen write_test tasks come after the existing phases, and only a write_test worker can run one
+      const writeTests = writeTestHoldoutEnabled() ? writeTestHoldout(this.db, () => this.failureTasks(repo), now.toISOString()) : [];
+      const servable = (opts.capabilities ?? []).map(String).includes(FAILURE_TASK_CAPABILITY) ? writeTests : [];
+      settleNoHeadroom(this.db, key, frozen, mutants.map((m) => m.commit), now.getTime(), writeTests.map((t) => t.commit)); // B8: no mutant attempt on a trial nothing could win
+      const next = nextTrialAttempt(this.db, key, [...frozen, ...mutants.map((m) => m.commit), ...servable.map((t) => t.commit)]);
+      if (next) { task = tasks.find((t) => t.commit === next.commit) ?? mutants.find((m) => m.commit === next.commit) ?? servable.find((t) => t.commit === next.commit); trialGenome = task ? genome(this.db, next.genomeId) : null; }
       if (!trialGenome) task = undefined;
     }
     // Batch-8: a failure-derived 'write_test' task (real production failure) — only for a worker that can run one
     if (!task && gymFailureTasksEnabled() && (opts.capabilities ?? []).map(String).includes(FAILURE_TASK_CAPABILITY)) {
-      const tried = triedTasks(this.db, key);
-      task = this.failureTasks(repo).find((t) => !tried.has(t.commit));
+      const tried = triedTasks(this.db, key); const held = new Set(holdoutKeys(this.db)); // WT-HOLDOUT: a frozen task is never served outside trials
+      task = this.failureTasks(repo).find((t) => !tried.has(t.commit) && !held.has(t.commit));
     }
     if (!task) {
       const tried = triedTasks(this.db, key);

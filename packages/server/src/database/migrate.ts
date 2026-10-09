@@ -1301,6 +1301,8 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
     CREATE TABLE IF NOT EXISTS gym_holdout (commit_sha TEXT PRIMARY KEY, created_at TEXT NOT NULL);
     -- Z5: frozen seeded mutant-repair tasks (tier 2–3) that genome trials are judged on; the task (base + mutant) is stored
     CREATE TABLE IF NOT EXISTS gym_mutant_holdout (key TEXT PRIMARY KEY, task_json TEXT NOT NULL, created_at TEXT NOT NULL);
+    -- WT-HOLDOUT: frozen failure-derived write_test tasks (graded as mutant_kill) per epoch, served only in genome trials
+    CREATE TABLE IF NOT EXISTS gym_write_test_holdout (key TEXT PRIMARY KEY, task_json TEXT NOT NULL, created_at TEXT NOT NULL, epoch INTEGER NOT NULL DEFAULT 0);
     -- RX-4: per settled trial, what it could have shown (parent failures on the deciding set, power, blind/underpowered/powered)
     CREATE TABLE IF NOT EXISTS genome_trial_results (trial_id TEXT PRIMARY KEY, parent_id TEXT, tier_set TEXT, deciding_n INTEGER, f_parent_failures INTEGER,
       b INTEGER, c INTEGER, p REAL, mined_b INTEGER, mined_c INTEGER, power_q8_l05 REAL, state TEXT NOT NULL, recorded_at TEXT NOT NULL);

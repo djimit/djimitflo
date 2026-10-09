@@ -1,6 +1,7 @@
 import type { Database } from 'better-sqlite3';
 import type { GymTask } from './gym-task-miner';
 import type { MutantTask } from './gym-mutants';
+import type { FailureTask } from './gym-failure-tasks';
 import { fitIrt, gymObservations, irtSelectionEnabled, pickInformativeItems, respondentKey } from './gym-irt';
 
 /**
@@ -38,7 +39,7 @@ export const requestedHoldoutEpoch = (env: NodeJS.ProcessEnv = process.env): num
   const n = Number(env.GYM_HOLDOUT_EPOCH); return Number.isInteger(n) && n >= 0 ? n : 0;
 };
 const warned = new Set<string>();
-export function holdoutEpoch(db: Database, table: 'gym_holdout' | 'gym_mutant_holdout', env: NodeJS.ProcessEnv = process.env): number {
+export function holdoutEpoch(db: Database, table: 'gym_holdout' | 'gym_mutant_holdout' | 'gym_write_test_holdout', env: NodeJS.ProcessEnv = process.env): number {
   const want = requestedHoldoutEpoch(env);
   let epochs: number[] = [];
   try { epochs = (db.prepare(`SELECT DISTINCT epoch FROM ${table}`).all() as Array<{ epoch: number }>).map((r) => r.epoch); } catch { return want; }
@@ -110,6 +111,34 @@ export function mutantHoldout(db: Database, make: (tier: number, tried: Set<stri
     if (!task) break;
     tried.add(task.commit); insert.run(task.commit, JSON.stringify(task), now, epoch);
   }
+  return read();
+}
+
+/**
+ * WT-HOLDOUT (09-10): the mined and mutant holdouts are REPAIR tasks — their graded score is 0/1 by nature (prod: graded mean
+ * of the parent 0.85 = its binary pass rate), so graded trials gain no power on them. A failure-derived write_test task is
+ * graded as the share of seeded target mutants its test kills (mutant_kill), which keeps moving where pass/fail saturates.
+ * With DREAM_TRIAL_WRITE_TEST_HOLDOUT (default off) up to 20 of them are frozen per epoch (same pattern as the mutant holdout:
+ * the whole task with base, target and mutants is stored; a new epoch never reuses a task), served only in trials, after the
+ * existing phases and only to a worker announcing 'write_test'; dreamInputs never sees them. Fewer than
+ * WRITE_TEST_HOLDOUT_MIN available tasks freeze nothing (a tiny holdout would lock the epoch); the next claim tries again.
+ */
+export const writeTestHoldoutEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.DREAM_TRIAL_WRITE_TEST_HOLDOUT === 'true';
+export const WRITE_TEST_HOLDOUT_MIN = 5;
+export function writeTestHoldoutKeys(db: Database): string[] {
+  return (db.prepare('SELECT key FROM gym_write_test_holdout WHERE epoch = ? ORDER BY key').all(holdoutEpoch(db, 'gym_write_test_holdout')) as Array<{ key: string }>).map((r) => r.key);
+}
+export function writeTestHoldout(db: Database, make: () => FailureTask[], now = new Date().toISOString()): FailureTask[] {
+  const epoch = holdoutEpoch(db, 'gym_write_test_holdout');
+  const read = () => (db.prepare('SELECT task_json FROM gym_write_test_holdout WHERE epoch = ? ORDER BY key').all(epoch) as Array<{ task_json: string }>)
+    .map((r) => JSON.parse(r.task_json) as FailureTask);
+  const frozen = read();
+  if (frozen.length) return frozen;
+  const used = new Set((db.prepare('SELECT key FROM gym_write_test_holdout').all() as Array<{ key: string }>).map((r) => r.key));
+  const fresh = make().filter((t) => !used.has(t.commit)).sort((a, b) => a.commit.localeCompare(b.commit)).slice(0, HOLDOUT_SIZE);
+  if (fresh.length < WRITE_TEST_HOLDOUT_MIN) return [];
+  const insert = db.prepare('INSERT OR IGNORE INTO gym_write_test_holdout (key, task_json, created_at, epoch) VALUES (?, ?, ?, ?)');
+  for (const t of fresh) insert.run(t.commit, JSON.stringify(t), now, epoch);
   return read();
 }
 
