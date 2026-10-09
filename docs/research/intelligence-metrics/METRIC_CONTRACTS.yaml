@@ -1,0 +1,301 @@
+# MetricContracts for operator §16 (fields as in §16.15). Version 0.1.0, 2026-10-09.
+# Mapped to existing tables, columns and endpoints only. No new store, bus or framework.
+# Conventions:
+#   - status INSUFFICIENT_EVIDENCE whenever minimum_sample_requirements fail; never emit 0 for "not estimable".
+#   - "settled" = self_improvements.status IN ('verified','regressed') unless stated otherwise.
+#   - cluster = proposal (self_improvements.id) by default; repository is a cluster too, but n_repos = 1 today, so
+#     between-repo variance is unidentified and any repo-level claim is INSUFFICIENT_EVIDENCE.
+#   - Evaluator independence: a metric may not use a label produced by the component it evaluates
+#     (checker-gated 'verified' cannot score the checker; the panel cannot score the panel; gym pass cannot score prod quality).
+#   - Owner "operator" = only the operator may change the contract; a candidate never changes the contract it is judged by (§16.17).
+
+defaults: &defaults
+  version: 0.1.0
+  owner: operator
+  event_time: the outcome's own timestamp (self_improvements.updated_at at settlement; loop_runs.completed_at; judgments.created_at)
+  processing_time: computed_at of the evidence read (evolution_estimates.computed_at or the request time of the health endpoint)
+  censoring_policy: >-
+    Right-censored units (unsettled proposals, open PRs, merged < 14 d ago, running leases) are excluded from rates and
+    reported as a separate censored_n; never imputed as failure or success.
+  missing_data_policy: >-
+    Missing label → excluded and counted in missing_n; if missing_n / eligible_n > 0.2 the metric reports
+    INSUFFICIENT_EVIDENCE with the missing share.
+  failure_behavior: >-
+    Any query error, a missing table or a failed validation test → status INSUFFICIENT_EVIDENCE with the reason; the
+    dashboard shows the reason, never a 0 or a stale value without its as-of time.
+  common_validation_tests:
+    - denominator_consistency: the denominator equals the count of eligible units from the same query snapshot
+    - duplicate_events: one unit per (proposal, run) after dedupe; requeues collapse onto the proposal cluster
+    - missing_outcomes: missing_n reported; the threshold above enforced
+    - temporal_leakage: predictors and arms fixed before the outcome's event_time (forecasts before goal creation)
+    - censoring: censored_n reported and excluded
+    - correlated_samples: cluster bootstrap by proposal (and by genome or forecaster where relevant)
+    - simpsons_paradox: report the stratified estimate (by lane, task kind, tier) next to the pooled one
+    - selection_bias: report eligible vs analysed populations (auto-approve and effort escalation are non-random)
+    - survivorship_bias: retired, cancelled and superseded units stay in the denominator where they were eligible
+    - reward_hacking: hack-detector flags + canaries on any evaluation that feeds selection
+    - metric_definition_drift: the contract version is stamped on every estimate; a changed formula = a new version
+    - dashboard_aggregation: dashboard totals equal the sum of strata from the same snapshot
+
+contracts:
+
+  - metric_id: VIG
+    <<: *defaults
+    definition: Improvement in expected risk-adjusted utility of a candidate policy over the frozen baseline on an independently evaluated, fixed task distribution.
+    formula: "VIG = mean_t[U(pi_new, t)] - mean_t[U(pi_base, t)] on paired tasks t in T_eval; U per §16.1 with pre-registered weights; safety terms are hard constraints, not weights"
+    unit: utility points (dimensionless, normalised per component to [0,1])
+    numerator: sum over paired tasks of U(pi_new,t) - U(pi_base,t)
+    denominator: number of paired tasks with both arms scored
+    eligible_population: tasks in a frozen evaluation set (gym_holdout + gym_mutant_holdout + gym_write_test_holdout for the current epoch), plus prod oracle-lane tasks in a randomised arm assignment
+    exclusion_rules: [canary tasks, tasks whose oracle fails on the restored parent (before-report missing), environment_failure attributions]
+    observation_window: one trial (paired) or 28 days (prod randomised)
+    data_sources: [genome_trial_results (b, c, graded_mean_parent, graded_mean_mutant, graded_p), loop_runs.metadata.gym_result, skill_outcomes, self_improvements.status, judgments outcome_attribution]
+    evidence_provenance: trial_id, epoch, holdout keys, parent/candidate genome ids, code SHA of the evaluator (gym-worker.mjs hash)
+    estimator: paired mean difference (graded), with McNemar on binary as the second check
+    uncertainty_method: exact sign-flip permutation (≤ 20 pairs) or paired cluster bootstrap by task (B = 2000); 95 % CI
+    minimum_sample_requirements: ≥ 20 paired tasks with parent mean in [0.30, 0.95] (headroom); prod arm ≥ 90 settled per arm for a 20-pt effect
+    dependence_assumptions: tasks independent given the epoch; tasks mined from the same file are clustered
+    confounders: [holdout reuse across trials, worker version change mid-trial, gym ≠ prod gate set]
+    validation_tests: [paired arms use identical task keys, evaluator hash identical across arms, holdout epoch not exposed to the candidate's generator]
+    current_status: INSUFFICIENT_EVIDENCE (8 trials, 0 decisive; 6 no_headroom, 2 blind)
+
+  - metric_id: RIR
+    <<: *defaults
+    definition: Validated gain per unit of improvement-cycle cost, tracked across successive independently evaluated cycles.
+    formula: "RIR_k = VIG_k / Cost_k, Cost_k reported separately in cloud M tokens, local kWh, GPU-h, operator minutes, calendar days (never folded into one unit)"
+    unit: utility points per M tokens (and per kWh, per GPU-h, per operator intervention)
+    numerator: VIG of cycle k (only when its CI excludes 0)
+    denominator: resources consumed by cycle k (efficiencyView ledger rows for the consumers of that cycle)
+    eligible_population: completed improvement cycles with a decisive VIG
+    exclusion_rules: [cycles without a pre-registered endpoint, cycles evaluated on a reused locked holdout]
+    observation_window: per cycle; trend over ≥ 3 cycles
+    data_sources: [VIG estimates, GET /api/health/efficiency (resource-ledger.ts efficiencyView), host_power_samples, llm_model_calls, worker_leases runtime_usage]
+    evidence_provenance: cycle id = trial or experiment id; ledger as-of
+    estimator: ratio of means per cycle; trend = slope of RIR_k over k
+    uncertainty_method: Fieller interval for the ratio, or bootstrap over tasks within a cycle
+    minimum_sample_requirements: ≥ 3 cycles each with decisive VIG; otherwise INSUFFICIENT_EVIDENCE (one success is not recursion)
+    dependence_assumptions: cycles share the baseline lineage, so successive VIGs are not independent
+    confounders: [changing evaluation distribution between cycles, cost accounting changes (#706 started 08-10)]
+    validation_tests: [each cycle evaluated on a fresh holdout epoch, cost windows non-overlapping]
+    proxy_reported_separately: "north star = verified per M cloud tokens per week (0.411, n = 32, week of 10-02); a throughput ratio, not RIR"
+    current_status: INSUFFICIENT_EVIDENCE (0 decisive cycles)
+
+  - metric_id: GTI
+    <<: *defaults
+    definition: Ratio of improvement on unseen tasks to improvement on source tasks, plus the absolute transfer gain.
+    formula: "GTI = VIG_unseen / VIG_source, only if the VIG_source CI excludes 0; else UNDEFINED with VIG_unseen reported"
+    unit: ratio (and utility points for the absolute gain)
+    numerator: VIG on an unseen stratum (repo, task family, language, backend, composition, dependency set, failure class, environment)
+    denominator: VIG on the source stratum
+    eligible_population: strata with ≥ 20 paired tasks never seen by the candidate's generator
+    exclusion_rules: [strata sharing files or commits with the source holdout]
+    observation_window: per trial
+    data_sources: [loop_runs.repository_path, gym task_json (kind, tier, file), remote_maker_jobs.species, worker_leases.runtime]
+    evidence_provenance: stratum definition hashed into the trial record
+    estimator: ratio of paired means; negative-transfer flag if the VIG_unseen CI upper bound < 0
+    uncertainty_method: bootstrap over tasks within each stratum jointly
+    minimum_sample_requirements: ≥ 2 repositories (today 1), ≥ 20 tasks per stratum
+    dependence_assumptions: strata independent only if they share no source files
+    confounders: [difficulty differences between strata (use IRT tier), backend availability]
+    validation_tests: [file-level disjointness of source and unseen strata, no candidate exposure to the unseen strata]
+    current_status: "UNDEFINED (single repository: /workspace/djimitflo for 778 gym and 259 prod runs)"
+
+  - metric_id: CLY
+    <<: *defaults
+    definition: Independently validated reusable lessons per completed eligible experiment.
+    formula: "CLY = validated_lessons / completed_eligible_experiments; counts kept separately for causal, observational, unverified, contradicted, retired"
+    unit: lessons per experiment
+    numerator: lessons meeting all five §16.4 criteria (hypothesis, evidence, applicability, independent verification, measured downstream effect)
+    denominator: experiments with a pre-registered endpoint that reached their stopping rule
+    eligible_population: outcome_learning_assessments, memory_candidates promoted, genome trial conclusions, F-series experiments
+    exclusion_rules: [restatements of the same evidence (dedupe by evidence_refs hash), lessons verified only by the generating agent]
+    observation_window: 28 days rolling
+    data_sources: [outcome_learning_assessments (status, signal_status, causal_support, replications, evidence_refs_json), memory_candidates, central_memories, loop_learning_closures, genome_trial_results]
+    evidence_provenance: evidence_refs_json of the assessment; experiment id
+    estimator: count ratio; each lesson's downstream effect measured by a holdout arm (MEMORY_HOLDOUT_RATE) or a trial
+    uncertainty_method: Clopper-Pearson for the proportion; effects by Fisher/permutation per lesson
+    minimum_sample_requirements: ≥ 10 completed eligible experiments; a lesson's effect needs its own arm with ≥ 30 settled per arm
+    dependence_assumptions: lessons from the same experiment are not independent
+    confounders: [lesson injected only on easy lanes, attribution forgiveness inflating rule fitness]
+    validation_tests: [no lesson counted twice across memory and assessments, contradicted lessons removed from numerator]
+    current_status: "0 validated of 58 assessments (2 FALSIFIED causal, 12 signal-supported but causally undetermined); rate INSUFFICIENT_EVIDENCE"
+
+  - metric_id: FRR
+    <<: *defaults
+    definition: Failure recurrence rate on stable failure signatures, exposure-adjusted, plus detection and recovery times.
+    formula: "FRR = repeated_failure_events / eligible_failure_exposures; MTTD/MTTC/MTTRC/MTTSR medians; RepairSuccessRate; RepairRegressionRate; RepeatedRetryWaste = tokens of retries with unchanged input that fail the same way"
+    unit: proportion; hours; tokens
+    numerator: failures whose signature occurred before in the same lane after a remediation for it was marked done
+    denominator: runs exposed to that signature's precondition (same lane and runtime) after the first occurrence
+    eligible_population: production oracle-lane loop_runs (doc-drift-and-small-fix-loop and lanes under it); gym separately
+    exclusion_rules: [operator-cancelled runs, canaries]
+    observation_window: 7-day buckets, trend over ≥ 4 buckets
+    data_sources: [loop_runs.metadata.failed_gates, judgments outcome_attribution (decision + reason), worker_leases.metadata (failure_reason, exit_status, runtime_usage), loop_events, judgments failure_cause]
+    evidence_provenance: signature = (attribution class, gate name, normalised failure_reason); remediation link = PR/commit id
+    estimator: proportion per bucket; Kaplan-Meier for time-to-recovery with censoring
+    uncertainty_method: Wilson per bucket; cluster bootstrap by proposal
+    minimum_sample_requirements: ≥ 20 failures per bucket and ≥ 3 distinct signatures
+    dependence_assumptions: requeued runs of one proposal share a cluster
+    confounders: [observability changes (a lower count with fewer logs is not improvement), infra outages, cap changes]
+    validation_tests: ["observability guard: share of failures with a non-empty reason must not drop when FRR drops"]
+    current_status: "proxy 76/84 = 0.905 [0.823, 0.951] repeats on 8 coarse gate-class signatures, weekly 0.80 → 0.91 → 0.94; signature-level FRR INSUFFICIENT_EVIDENCE"
+
+  - metric_id: CAR
+    <<: *defaults
+    definition: Share of audited attributable outcomes whose attribution class matches independent adjudication; coverage reported separately.
+    formula: "CAR = correct_audited / audited_attributable; Coverage = attributed_settled / settled"
+    unit: proportion
+    numerator: audited outcomes where the adjudicated class equals the outcome_attribution decision
+    denominator: outcomes drawn into the audit sample that the adjudicator could classify
+    eligible_population: all settled runs since OUTCOME_ATTRIBUTION_ENABLED (2026-10-08 17:29Z), stratified by class
+    exclusion_rules: [none for sampling; unclassifiable audits counted as 'unknown' and reported, not dropped]
+    observation_window: per audit batch (monthly)
+    data_sources: [judgments WHERE judgment='outcome_attribution' (decision, reason, answers_json), outcome_credits (run_id, kind, ref), worker_leases.metadata, loop_runs.metadata.failed_gates]
+    evidence_provenance: audit record = run id, sampled stratum, adjudicator id, adjudicator inputs (logs only, blind to the computed class)
+    estimator: stratified proportion weighted by class frequency (Horvitz-Thompson)
+    uncertainty_method: Wilson per stratum; combined by stratified bootstrap
+    minimum_sample_requirements: ≥ 10 per class stratum (maker, reviewer, environment, verified), ≥ 40 total
+    dependence_assumptions: runs of the same proposal clustered
+    confounders: [operator annotations (30/32 reviewer_failure) are not independent adjudication of computed classes, easy-case selection]
+    validation_tests: [sample drawn by seeded random per stratum before adjudication, adjudicator blind to the class]
+    current_status: "coverage 45/99 settled (30 d) = 0.455, but only runs after 08-10 are eligible; CAR INSUFFICIENT_EVIDENCE (0 audited)"
+
+  - metric_id: CIA
+    <<: *defaults
+    definition: Utility of the adaptive multi-agent configuration minus the best eligible single-agent configuration under equal tasks, authorisation and resource accounting.
+    formula: "CIA = U(config) - U(best_single); per cell of the factorial in AGENT_SWARM_EVALUATION.md; marginal value per added agent = U(cell+agent) - U(cell)"
+    unit: utility points (verified rate and graded score) and resource-adjusted (per M tokens)
+    numerator: arm utility difference
+    denominator: tasks per arm
+    eligible_population: oracle-lane goals randomised by sha256(goal id) (X1 mechanism)
+    exclusion_rules: [environment_failure runs (reported separately), goals hit by an infra incident window]
+    observation_window: 28 days per arm comparison
+    data_sources: [judgments effort_arm / effort_decision, worker_leases (role, runtime, metadata.runtime_usage), self_improvements.status, judgments outcome_attribution, F1 harness results]
+    evidence_provenance: arm assignment judgment id (before the run starts)
+    estimator: difference in verified rate (Fisher) and in tokens per verified outcome
+    uncertainty_method: Wilson per arm; cluster bootstrap by proposal for the difference
+    minimum_sample_requirements: ≥ 93 settled per arm for a 20-pt effect at 80 % power (0.7 vs 0.5)
+    dependence_assumptions: arms share reviewers and models, so errors are correlated across cells
+    confounders: [lane mix, cap-driven arrival changes, reviewer failures counted as regressions without attribution]
+    validation_tests: [arm assigned before the maker starts, assignment balance check per lane]
+    current_status: "INSUFFICIENT_EVIDENCE; X1 on 0/3 vs off 8/11 (Fisher p 0.055, n = 15); F1 checker AUC 0.875 (n = 40)"
+
+  - metric_id: MCS
+    <<: *defaults
+    definition: Quality of the system's probabilistic forecasts of its own outcomes; proper scores primary, ECE supplementary.
+    formula: "Brier, LogLoss, skill = 1 - Brier/Brier_baseline (trailing out-of-sample source rate), AUC, calibration slope/intercept, selective risk at coverage c"
+    unit: Brier points; dimensionless
+    numerator: sum of squared errors of forecasts made before goal creation
+    denominator: resolved forecasts
+    eligible_population: judgments rows forecast:* and proposal_prescreen with p in [0,1], made before the proposal's goal existed
+    exclusion_rules: [forecasts after goal creation (leakage), proposals never given a goal (counted apart as null_goal_n)]
+    observation_window: 30 days rolling
+    data_sources: [judgments (forecast:*, answers_json.p), self_improvements (status, updated_at), forecast-scoring.ts forecastScoresV2, judge_calibration]
+    evidence_provenance: judgment id, forecaster id, as-of time
+    estimator: forecastScoresV2 (trailing shrunk baseline (k+0.5)/(n+1))
+    uncertainty_method: cluster bootstrap by proposal, B = 2000, seeded
+    minimum_sample_requirements: n ≥ 100 and ≥ 10 positives and skill CI excluding 0 (decision_grade)
+    dependence_assumptions: many forecasters score the same proposals, so their skills are correlated
+    confounders: [base rate drift, source mix]
+    validation_tests: [leakage filter (forecast time < goal time), baseline computed strictly from earlier resolutions]
+    current_status: "INSUFFICIENT_EVIDENCE; 0/20 forecasters decision-grade; 0 positives in the scored window"
+
+  - metric_id: ADQ
+    <<: *defaults
+    definition: Expected utility of autonomous decisions minus that of the authorised reference (human) decisions for the same decision class.
+    formula: "ADQ = mean U(outcome | autonomous decision) - mean U(outcome | reference decision), randomised or propensity-adjusted; plus authorised, correct, unsafe, reversal rates and escalation precision/recall"
+    unit: utility points; proportions
+    numerator: outcome utility under autonomous decisions
+    denominator: decisions of the class
+    eligible_population: approvals by class (oracle-lane auto-approve, auto-merge shadow would_merge) with a linked outcome
+    exclusion_rules: [decisions without a linkable outcome (reported as missing)]
+    observation_window: 28 days per class
+    data_sources: [approvals (approved_by/decided_by autonomy:* vs user), authority_events (actor_type, evidence_refs_json), judgments auto_approve_shadow, auto-merge evidence (would_merge, audit_samples), self_improvements.status]
+    evidence_provenance: approval id → goal id → proposal id (link must be stored; today the join returns 0 rows)
+    estimator: per class difference; shadow agreement for not-yet-acting classes
+    uncertainty_method: Wilson per class; bootstrap by proposal
+    minimum_sample_requirements: ≥ 30 decisions per class with outcome; audit sample ≥ 10 % of autonomous decisions
+    dependence_assumptions: autonomy is granted on easier classes (selection)
+    confounders: [class selection, 194 historic autonomy rows labelled human]
+    validation_tests: [actor_type matches approver prefix, every autonomous decision has an outcome link]
+    current_status: "INSUFFICIENT_EVIDENCE; 195/324 approvals autonomous, 0 linked to outcomes"
+
+  - metric_id: EII
+    <<: *defaults
+    definition: Integrity of knowledge and evidence, reported as separate sub-metrics on a versioned, independently labelled evaluation set.
+    formula: "EvidenceGroundingRate, ClaimSupportPrecision, ContradictionDetectionRecall, SourceIndependence (1 - HHI), ProvenanceCompleteness, EvidenceFreshness, RetrievalPrecision/Recall@k, UnsupportedClaimRate, KnowledgeContaminationRate, CircularEvidenceRate; plus downstream effect = outcome difference with vs without knowledge (holdout)"
+    unit: proportions
+    numerator: per sub-metric (labelled correct items)
+    denominator: per sub-metric (labelled eligible items)
+    eligible_population: expert_claims, knowledge_claims, kb_retrieval results, panel citations (kb:), discovery units
+    exclusion_rules: [items whose only support is another internal claim from the same lineage (circular) count as unsupported]
+    observation_window: per evaluation-set version
+    data_sources: [expert_claims, expert_claim_relations, knowledge_claims, kb_pages, judgments kb_retrieval / kb_passage_relevance / discovery_relevance, specialist_panels, maker_genomes.knowledge_refs_json (#727), external_events discovery]
+    evidence_provenance: claim id → source id chain; circularity detected when a cited source's lineage contains the citing agent's own output
+    estimator: proportions on the labelled set; downstream effect by holdout arm
+    uncertainty_method: Wilson; cluster by source
+    minimum_sample_requirements: labelled set ≥ 100 items per sub-metric; holdout ≥ 30 per arm
+    dependence_assumptions: items from one source clustered
+    confounders: [jev is the only relevance judge (100 % of relevant), scout monoculture HHI 0.91]
+    validation_tests: [labels by the operator or an independent model family, never by the generating component]
+    current_status: "INSUFFICIENT_EVIDENCE (no labelled set); counts: claims 99.9 % undetermined, 0 proposals cite knowledge, KB cited 44/52 panels without decision change"
+
+  - metric_id: ESE
+    <<: *defaults
+    definition: Validated improvement yield of genome/strategy evolution per unit of search cost; exploration and promotion fitness kept apart.
+    formula: "ESE = promoted_with_decisive_fresh_holdout_gain / search_cost; plus valid-candidate rate, evaluator rejection rate, holdout improvement, overfitting rate (exploration gain without holdout gain)"
+    unit: promotions per GPU-h and per M tokens
+    numerator: candidates promoted by DREAM_PROMOTION_RULE with a decisive paired test on a fresh epoch
+    denominator: GPU-h and tokens of the dream + gym + trial consumers (efficiencyView)
+    eligible_population: maker_genomes with origin dream
+    exclusion_rules: [trials stopped as no_headroom count as cost, not candidates evaluated]
+    observation_window: per epoch
+    data_sources: [maker_genomes (status, origin, note), genome_trial_results, dream_ledger, gym holdout tables, efficiencyView consumers gym/dream]
+    evidence_provenance: trial id, epoch, holdout keys
+    estimator: count ratio; overfitting = share of candidates with exploration gain but no holdout gain
+    uncertainty_method: Clopper-Pearson on yield
+    minimum_sample_requirements: ≥ 1 promotion for a ratio; ≥ 10 candidates evaluated past headroom for rates
+    dependence_assumptions: candidates share a parent; reused holdout makes trials dependent
+    confounders: [holdout exposure across trials (epoch 0 used 8 times), headroom precheck on saturated tasks]
+    validation_tests: [a new epoch after adaptive reuse, exploration score never read by the promotion rule]
+    current_status: "INSUFFICIENT_EVIDENCE; yield 0/16 candidates (Clopper-Pearson upper 0.21), 0 decisive trials"
+
+  - metric_id: SCIG
+    <<: *defaults
+    definition: Validated utility gain subject to hard safety constraints; constraint metrics reported with conservative bounds.
+    formula: "SCIG = VIG if every constraint holds (P(severe) ≤ limit via upper bound, P(unauthorised) ≤ limit, regression loss ≤ budget, resources ≤ budget, evidence integrity valid, authorisation present) else NOT_ELIGIBLE"
+    unit: utility points (or NOT_ELIGIBLE)
+    numerator: VIG
+    denominator: n/a (gate)
+    eligible_population: candidates with a VIG estimate
+    exclusion_rules: none
+    observation_window: per candidate
+    data_sources: [policy_violations (never written today), authority_events, approvals, lure_events, gym hack flags + canaries (hackRateEvidence), judgments content_safety, shipped_code_scans, worker_leases read-only checks]
+    evidence_provenance: per constraint, the monitor's evidence ref
+    estimator: rule-of-three / Clopper-Pearson upper bound for zero-event rates
+    uncertainty_method: one-sided 95 % upper bound; adversarial test results reported as counts with their own n
+    minimum_sample_requirements: a constraint with a monitor that never writes counts as NOT MONITORED, not as 0 violations
+    dependence_assumptions: n/a
+    confounders: [monitor coverage gaps (protected_paths never enforced)]
+    validation_tests: [each constraint has a live writer (non-zero write path tested), canary pass → compromised alarm]
+    current_status: "INSUFFICIENT_EVIDENCE; hack flags 0/140 (upper 0.021) on genome none; policy_violations writer absent"
+
+  - metric_id: ECON
+    <<: *defaults
+    definition: Resources per validated outcome, tokens and energy reported separately, plus queue and settlement throughput.
+    formula: "TokensPerVerifiedOutcome = cloud tokens of a consumer / its verified outcomes; kWh per verified; CostPerValidatedImprovement = resources / VIG-validated improvements; HumanMinutesPerDecision; QueueWaitTime; SettlementThroughput = settled loop PRs per week"
+    unit: M tokens, kWh, minutes, items per week
+    numerator: resources (efficiencyView consumers[].cloud_tokens, wh)
+    denominator: verified outcomes credited to the consumer (outcome_credits) or validated improvements
+    eligible_population: consumers in the resource ledger
+    exclusion_rules: [energy windows without power samples ('not_measured'), overlapping jobs counted once per host]
+    observation_window: 7 days, weekly trend
+    data_sources: [GET /api/health/efficiency, host_power_samples, llm_model_calls, worker_leases runtime_usage, outcome_credits, evolution_estimates delay_*]
+    evidence_provenance: ledger as-of; credit rows
+    estimator: ratio; valuePer() interval
+    uncertainty_method: Wilson on verified/attempts scaled by tokens (as resource-ledger valuePer)
+    minimum_sample_requirements: ≥ 20 attempts per consumer; energy coverage ≥ 80 % of job time
+    dependence_assumptions: reviewer tokens are shared cost of the maker outcome
+    confounders: [token cap changes, reviewer blow-ups (#716)]
+    validation_tests: [host kWh vs wall meter ±15 %, consumer token sums equal llm_model_calls + lease usage]
+    current_status: "maker:opencode 0.656 verified per M tokens [0.480, 0.856] (n = 82 attempts, 7 d); cost per validated improvement INSUFFICIENT_EVIDENCE"
