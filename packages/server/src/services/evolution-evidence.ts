@@ -12,6 +12,8 @@ import { nonMakerRunSql } from './outcome-attribution';
 import { effortX1Evidence } from './effort-controller';
 import { gradedEvidence } from './graded-fitness';
 import { wilson } from './evolution-estimators';
+import { intelligenceEvidence } from './intelligence-metrics';
+import type { ForecasterScoreV2 } from './forecast-scoring';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -181,9 +183,10 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   // Gate A reads deciding-set diagnostics; shadow-only rows (e-process, graded) carry none
   const latestTrial = trials.recent.find((t): t is typeof t & { deciding_n: number } => t.deciding_n != null);
   // RX-7: forecast scoring V2 summary (shadow): counts per state; details at GET /api/health/forecasts-v2
+  let forecasters: ForecasterScoreV2[] = [];
   const forecasts_v2 = (() => {
     try {
-      const f = forecastScoresV2(db, { boot: 500 }).forecasters;
+      const f = forecasters = forecastScoresV2(db, { boot: 500 }).forecasters;
       const grade = f.filter((x) => x.state === 'decision_grade');
       return { scored: f.length, decision_grade: grade.length, decision_grade_skilled: grade.filter((x) => x.skill_ci[0] > 0).length, insufficient: f.length - grade.length };
     } catch { return { scored: 0, decision_grade: 0, decision_grade_skilled: 0, insufficient: 0 }; }
@@ -249,6 +252,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   const memory_holdout = { rate: env.MEMORY_HOLDOUT_RATE ?? null, rules: withRules, holdout: heldOut,
     fisher_p: +fisherExact(withRules.verified, withRules.regressed, heldOut.verified, heldOut.regressed).toPrecision(4),
     note: 'runs with a settled proposal (verified or regressed); rules = ≥ 1 rule in the assignment, holdout = rules withheld by MEMORY_HOLDOUT_RATE. Two-sided Fisher exact.' };
+  const effort_x1 = effortX1Evidence(db, since, env, fisherExact);
   return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, gym_prod_gates, gym_diffs, trials, models, oracle, commons, forecasts_v2, hacks,
     // S7: hack-detector flag rate per genome and gym task kind (14 d) and canary passes, Wilson 95 %
     hack_rate: hackRateEvidence(db, env, now), estimates, ope,
@@ -261,7 +265,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // earned auto-merge: mode, class state (active / revoked + why) and counts
     auto_merge: autoMergeEvidence(db, env, now), memory_holdout,
     // X1 (EFFORT_SIBLING_RANDOMISE): verified / regressed / infra per sibling arm
-    effort_x1: effortX1Evidence(db, since, env, fisherExact),
+    effort_x1,
     // SI-A/SI-B: graded executed fitness per pool (n, mean, share at 1.0) and graded-contest agreement with the current rule
     graded: gradedEvidence(db, since, env),
     // KE-3: does knowledge reach evolution? Mutant genomes written from injected knowledge units, and proposals citing a
@@ -270,5 +274,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
       genomes_with_refs: one("SELECT COUNT(*) FROM maker_genomes WHERE knowledge_refs_json IS NOT NULL AND knowledge_refs_json <> '[]'"),
       genomes_total: one("SELECT COUNT(*) FROM maker_genomes WHERE origin = 'dream'"),
       proposals_with_refs: one(`SELECT COUNT(*) FROM self_improvements WHERE evidence_refs_json LIKE '%"expert_unit:%' OR evidence_refs_json LIKE '%"expert_claim:%'`),
-    }, gates };
+    },
+    // §16 step 1: one read-only status per metric contract (METRIC_CONTRACTS.yaml); INSUFFICIENT_EVIDENCE is never rendered as 0
+    intelligence: intelligenceEvidence(db, env, now, since, { forecasters, effort_x1, memory_holdout }), gates };
 }
