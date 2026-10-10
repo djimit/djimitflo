@@ -5,6 +5,7 @@ import { generateText, llmEndpoints } from './llm-fallback';
 import { firstJsonObject } from './expert-council-service';
 import { BASELINE_GENOME, dreamEvolutionEnabled, ensureBaseline, frozenHoldoutCommits, genome, holdoutEpoch, mutantHoldoutKeys, mutantHoldoutTiers, mutantTrialsEnabled, NOT_VOID, trialHeadroomPrecheck, unscorable, writeTestHoldoutEnabled, writeTestHoldoutKeys } from './genome-registry';
 import { markRun } from './scheduler-registry';
+import { HOLDOUT_REUSE_LIMIT, holdoutExposure } from './evolution-evidence';
 
 /**
  * Y3b/Y3c (plan Phase Y, Darwin loop). Dreaming is the mutation operator: once a day the day's failed makers (real and
@@ -415,7 +416,7 @@ async function dreamFromEvidence(db: Database, now: number, iso: string, call: D
  * trial settles; their graded mutant_kill scores join the paired graded test (decides under the graded rule, shadow columns
  * otherwise). Binary wins, McNemar, the mined no-regression check and out-of-scope stay on the repair holdouts.
  */
-export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits: string[], now = Date.now(), mutantCommits: string[] = [], writeTestKeys: string[] = []): Array<{ id: string; status: 'active' | 'retired'; wins: number; parentWins: number }> {
+export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits: string[], now = Date.now(), mutantCommits: string[] = [], writeTestKeys: string[] = []): Array<{ id: string; status: 'active' | 'retired' | 'inconclusive'; wins: number; parentWins: number }> {
   if (!holdoutCommits.length) return [];
   const binary = [...holdoutCommits, ...mutantCommits];
   const all = [...binary, ...writeTestKeys];
@@ -435,7 +436,16 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
       won: new Set(repair.filter((r) => r.status === 'success').map((r) => r.commit_sha)),
       outOfScope: repair.filter((r) => r.reason.startsWith('out of scope')).length };
   };
-  const settled: Array<{ id: string; status: 'active' | 'retired'; wins: number; parentWins: number }> = [];
+  const settled: Array<{ id: string; status: 'active' | 'retired' | 'inconclusive'; wins: number; parentWins: number }> = [];
+  // Cockpit 3.0 scenario 10 (§16.11): the deciding holdout epoch, once more distinct candidates were judged on it than the contract
+  // allows, no longer separates skill from repeated exposure — neither a win nor a loss on it is evidence. Default on (safety block);
+  // DREAM_HOLDOUT_REUSE_LIMIT overrides the limit. A fresh epoch (GYM_HOLDOUT_EPOCH) is the operator's way out.
+  const reuseLimit = Number(process.env.DREAM_HOLDOUT_REUSE_LIMIT) > 0 ? Number(process.env.DREAM_HOLDOUT_REUSE_LIMIT) : HOLDOUT_REUSE_LIMIT;
+  const decidingHoldout = mutantCommits.length ? 'mutant' : 'mined';
+  const exhausted = () => {
+    const epoch = holdoutEpoch(db, mutantCommits.length ? 'gym_mutant_holdout' : 'gym_holdout');
+    return holdoutExposure(db, process.env, reuseLimit).epochs.find((e) => e.holdout === decidingHoldout && e.epoch === epoch && e.candidates > reuseLimit);
+  };
   const promotedToday = () => Boolean(db.prepare("SELECT 1 FROM maker_genomes WHERE origin = 'dream' AND status = 'active' AND updated_at >= ? LIMIT 1").get(iso.slice(0, 10)));
   const trials = db.prepare("SELECT id, COALESCE(parent_id, ?) AS parent FROM maker_genomes WHERE status = 'trial' ORDER BY created_at").all(BASELINE_GENOME) as Array<{ id: string; parent: string }>;
   const grade = gradedScorer(db);
@@ -443,6 +453,14 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
   for (const trial of trials) {
     const mine = score(trial.id); const theirs = score(trial.parent);
     if (!mine.complete || !theirs.complete) continue;
+    const spent = exhausted();
+    if (spent) { // symmetric on purpose: no promotion and no retirement from a spent holdout
+      db.prepare("UPDATE maker_genomes SET status = 'inconclusive', note = ?, updated_at = ? WHERE id = ? AND status = 'trial'")
+        .run(`holdout_exhausted: ${spent.holdout} epoch ${spent.epoch} used by ${spent.candidates} candidates (limit ${reuseLimit})`, iso, trial.id);
+      console.log(`🧬 genome ${trial.id} inconclusive (holdout_exhausted: ${spent.holdout} epoch ${spent.epoch}, ${spent.candidates} candidates > ${reuseLimit})`);
+      settled.push({ id: trial.id, status: 'inconclusive', wins: mine.wins, parentWins: theirs.wins });
+      continue;
+    }
     // paired comparison only on tasks both genomes could be scored on (a timed-out pair is unscorable, not lost)
     const discordant = (list: string[]) => {
       const scored = list.filter((h) => !unscorable(db, speciesKey, trial.id, h) && !unscorable(db, speciesKey, trial.parent, h));
