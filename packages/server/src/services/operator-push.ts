@@ -4,7 +4,7 @@ import { detectStalls } from './stall-watch';
 import { listSchedulers } from './scheduler-registry';
 import { dependencyLaneQueue, laneMode } from './dependency-lane';
 import { redactSecrets } from './secret-patterns';
-import { decisionsInbox, openDecisionCounts, type DecisionsInbox } from './decisions-inbox';
+import { decisionsInbox, openDecisionCounts, recordNeedsYouRanking, type DecisionsInbox } from './decisions-inbox';
 import { countOpenLoopPrs } from './loop-draft-pr-service';
 import { autoMergeEvidence } from './loop-auto-merge-state';
 
@@ -260,5 +260,6 @@ let digestTimer: ReturnType<typeof setInterval> | null = null;
 /** One 15-minute tick for the daily digest and the triage push; armed only when one of them is enabled. */
 export function startOperatorDigest(db: Database): void {
   if (digestTimer || (!digestEnabled() && !triageEnabled())) return;
-  digestTimer = setInterval(() => { void maybeSendDigest(db).then(() => pushTriage(db)); }, 15 * 60_000); digestTimer.unref?.();
+  // ponytail: the Phase 3 shadow ranking rides this 15-min tick (once per day); its own scheduler if the digest is ever off
+  digestTimer = setInterval(() => { recordNeedsYouRanking(db); void maybeSendDigest(db).then(() => pushTriage(db)); }, 15 * 60_000); digestTimer.unref?.();
 }
