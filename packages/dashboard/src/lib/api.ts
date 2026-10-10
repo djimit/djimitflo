@@ -85,8 +85,9 @@ export type GateState = 'green' | 'red' | 'unknown';
 export type MemoryArm = { n: number; verified: number; regressed: number; verified_rate: number | null };
 export type HackRateRow = { scored: number; checked: number; flagged: number; rate: number | null; ci: [number, number] | null; status: 'ok' | 'insufficient' };
 export type EffortArm = { goals: number; verified: number; regressed: number; infra: number; verified_rate: number | null };
+export type CheckerFamilyComparison = { delta_kappa: number | null; delta_kappa_ci: [number, number] | null; fisher_p: number; n: { same: number; cross: number } };
 export type CheckerFamilyArmEvidence = { goals: number; reviewed: number; verdicts: { accepted: number; needs_revision: number; rejected: number }; realized_cross: number;
-  outcome: { n: number; agree: number; agreement: number | null; kappa: number | null }; outcome_wo_checker: { n: number; agree: number; kappa: number | null }; outcome_survival: { n: number; agree: number; kappa: number | null };
+  outcome: { circular: true; n: number; agree: number; agreement: number | null; kappa: number | null }; outcome_wo_checker: { n: number; agree: number; kappa: number | null }; outcome_survival: { n: number; agree: number; kappa: number | null };
   weak_assertion: { n: number; weak: number; caught: number; missed: number; false_alarms: number; sensitivity: number | null } };
 /** §16 step 1: one metric contract's read-only status; value and ci are null unless status is 'ok' (never 0 for missing evidence) */
 export type IntelligenceMetric = {
@@ -136,8 +137,12 @@ export interface EvolutionEvidence {
   /** X1 (EFFORT_SIBLING_RANDOMISE): oracle-lane goals with evolve siblings (on) vs without (off), two-sided Fisher exact p */
   effort_x1: { enabled: string | null; on: EffortArm; off: EffortArm; fisher_p: number; note: string };
   /** F2 (CHECKER_FAMILY_RANDOMISE): checker verdicts and outcome agreement per checker-family arm (same = maker's family, cross = CHECKER_CROSS_MODEL) */
-  checker_family: { enabled: string | null; cross_model: string; same: CheckerFamilyArmEvidence; cross: CheckerFamilyArmEvidence;
-    delta_kappa: number | null; delta_kappa_ci: [number, number] | null; fisher_p: number; weak_fisher_p: number;
+  checker_family: { enabled: string | null; cross_model: string; target_per_arm: number; same: CheckerFamilyArmEvidence; cross: CheckerFamilyArmEvidence;
+    /** EXP-1 primary: a checker-independent label (merge survival once settled, else the other failed gates); interim before the target */
+    primary: CheckerFamilyComparison & { endpoint: 'outcome_wo_checker' | 'outcome_survival'; read: 'interim' | 'final' };
+    /** the attributed outcome contains the checker's own rejection */
+    secondary_circular: CheckerFamilyComparison & { endpoint: 'outcome'; circular: true };
+    weak_fisher_p: number;
     stop: { per_arm: number; reached: boolean; verdict: 'collecting' | 'inconclusive' | 'supported' | 'reversed' | 'falsified' }; note: string };
   /** SI-A/SI-B (GRADED_FITNESS_MODE / GRADED_CONTEST_MODE): graded executed fitness per pool and graded-contest agreement */
   graded: {

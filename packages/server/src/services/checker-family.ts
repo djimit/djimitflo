@@ -22,11 +22,18 @@ import { LoopEventService } from './loop-event-service';
  * reviewer. /app/opencode.json registers qwen3.5:cloud, glm-5.2:cloud and kimi-k3:cloud; kimi-k3 (Moonshot) is the panel
  * reviewer (MODEL_CANDIDATES_PANEL_REVIEW) → ollama/kimi-k3:cloud. deepseek / gpt-oss are not registered with opencode.
  *
- * Pre-registered: stop and report at CHECKER_FAMILY_STOP_PER_ARM labelled goals per arm; the hypothesis (cross agrees
- * better with the outcome) is falsified if the bootstrap 95 % CI of Δkappa (cross − same) includes 0.
+ * Pre-registered (EXPERIMENT_PROTOCOL EXP-1, operator 10-10: the protocol wins over the 30/arm brief): primary endpoint is a
+ * label the checker does not produce — merge survival once settled, else the other failed gates (outcome_wo_checker); the
+ * attributed-outcome kappa is secondary and marked circular. Stop at CHECKER_FAMILY_TARGET_PER_ARM (default 93) per arm;
+ * before that every read is interim (verdict 'collecting'); falsified if the bootstrap 95 % CI of Δkappa includes 0.
  */
 export const DEFAULT_CHECKER_CROSS_MODEL = 'ollama/kimi-k3:cloud';
-export const CHECKER_FAMILY_STOP_PER_ARM = 30;
+/** EXP-1 registration (EXPERIMENT_PROTOCOL): ≥ 93 settled per arm. */
+export const CHECKER_FAMILY_TARGET_DEFAULT = 93;
+export const checkerFamilyTarget = (env: NodeJS.ProcessEnv = process.env): number => {
+  const n = Number(env.CHECKER_FAMILY_TARGET_PER_ARM);
+  return Number.isInteger(n) && n >= 2 ? n : CHECKER_FAMILY_TARGET_DEFAULT;
+};
 export type CheckerFamilyArm = 'same' | 'cross';
 
 export const checkerFamilyEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.CHECKER_FAMILY_RANDOMISE === 'on';
@@ -73,7 +80,8 @@ const kappaOf = (rows: Array<{ verdict: string; y: 0 | 1 }>): number | null => {
   const k = cohenKappa(t);
   return k === null ? null : +k.toFixed(4);
 };
-const labelled = (rows: Row[], key: 'outcome' | 'woChecker' | 'survived') => rows.filter((r) => r[key] !== null).map((r) => ({ verdict: r.verdict, y: r[key] as 0 | 1 }));
+type Label = 'outcome' | 'woChecker' | 'survived';
+const labelled = (rows: Row[], key: Label) => rows.filter((r) => r[key] !== null).map((r) => ({ verdict: r.verdict, y: r[key] as 0 | 1 }));
 const agreeCount = (rows: Array<{ verdict: string; y: 0 | 1 }>) => rows.filter((r) => (r.verdict === 'accepted') === (r.y === 1)).length;
 
 /** Seeded two-sample bootstrap 95 % interval of kappa(cross) − kappa(same). */
@@ -134,27 +142,42 @@ export function checkerFamilyEvidence(db: Database, since: string, env: NodeJS.P
       goals: goals.find((g) => g.arm === name)?.n ?? 0, reviewed: rs.length,
       verdicts: Object.fromEntries(LABELS.map((v) => [v, rs.filter((r) => r.verdict === v).length])) as Record<typeof LABELS[number], number>,
       realized_cross: rs.filter((r) => r.cross).length,
-      outcome: { n: out.length, agree: agreeCount(out), agreement: out.length ? +(agreeCount(out) / out.length).toFixed(3) : null, kappa: kappaOf(out) },
+      // secondary, circular: a checker rejection is itself a maker_failure
+      outcome: { circular: true as const, n: out.length, agree: agreeCount(out), agreement: out.length ? +(agreeCount(out) / out.length).toFixed(3) : null, kappa: kappaOf(out) },
       outcome_wo_checker: { n: wo.length, agree: agreeCount(wo), kappa: kappaOf(wo) },
       // merge survival (pr_outcome.survived): the label EXPERIMENT_PROTOCOL EXP-1 registers, independent of the checker
       outcome_survival: { n: sv.length, agree: agreeCount(sv), kappa: kappaOf(sv) },
       weak_assertion: { n: strong.length, weak: weak.length, caught, missed: weak.length - caught,
         false_alarms: strong.filter((r) => r.strength === 'pass' && r.verdict !== 'accepted').length,
         sensitivity: weak.length ? +(caught / weak.length).toFixed(3) : null },
-      _out: out,
+      _lab: { outcome: out, woChecker: wo, survived: sv } as Record<Label, Array<{ verdict: string; y: 0 | 1 }>>,
     };
   };
-  const { _out: sOut, ...same } = arm('same'); const { _out: cOut, ...cross } = arm('cross');
-  const delta = same.outcome.kappa !== null && cross.outcome.kappa !== null ? +(cross.outcome.kappa - same.outcome.kappa).toFixed(4) : null;
-  const ci = deltaKappaCi(sOut, cOut);
-  const reached = same.outcome.n >= CHECKER_FAMILY_STOP_PER_ARM && cross.outcome.n >= CHECKER_FAMILY_STOP_PER_ARM;
+  const { _lab: sLab, ...same } = arm('same'); const { _lab: cLab, ...cross } = arm('cross');
+  const target = checkerFamilyTarget(env);
+  /** Δkappa (cross − same), its bootstrap CI and the agree/disagree × arm Fisher p for one label */
+  const compare = (key: Label) => {
+    const ks = kappaOf(sLab[key]); const kc = kappaOf(cLab[key]);
+    const agree = (r: Array<{ verdict: string; y: 0 | 1 }>) => agreeCount(r);
+    return { delta_kappa: ks !== null && kc !== null ? +(kc - ks).toFixed(4) : null, delta_kappa_ci: deltaKappaCi(sLab[key], cLab[key]),
+      fisher_p: +fisher(agree(cLab[key]), cLab[key].length - agree(cLab[key]), agree(sLab[key]), sLab[key].length - agree(sLab[key])).toPrecision(4),
+      n: { same: sLab[key].length, cross: cLab[key].length } };
+  };
+  // EXP-1 primary: a label the checker does not produce. Merge survival once it has settled for the target in both arms, else
+  // the other failed gates. The attributed outcome contains the checker's own rejection: secondary, marked circular.
+  const survivalSettled = sLab.survived.length >= target && cLab.survived.length >= target;
+  const endpoint: 'outcome_survival' | 'outcome_wo_checker' = survivalSettled ? 'outcome_survival' : 'outcome_wo_checker';
+  const p = compare(survivalSettled ? 'survived' : 'woChecker');
+  const reached = p.n.same >= target && p.n.cross >= target;
+  const ci = p.delta_kappa_ci;
+  // no falsified/supported before the target: until then any read is interim and the verdict stays collecting
   const verdict = !reached ? 'collecting' : !ci ? 'inconclusive' : ci[0] > 0 ? 'supported' : ci[1] < 0 ? 'reversed' : 'falsified';
   return {
-    enabled: env.CHECKER_FAMILY_RANDOMISE ?? null, cross_model: checkerCrossModel(env), same, cross,
-    delta_kappa: delta, delta_kappa_ci: ci,
-    fisher_p: +fisher(cross.outcome.agree, cross.outcome.n - cross.outcome.agree, same.outcome.agree, same.outcome.n - same.outcome.agree).toPrecision(4),
+    enabled: env.CHECKER_FAMILY_RANDOMISE ?? null, cross_model: checkerCrossModel(env), target_per_arm: target, same, cross,
+    primary: { endpoint, read: reached ? 'final' as const : 'interim' as const, ...p },
+    secondary_circular: { endpoint: 'outcome' as const, circular: true as const, ...compare('outcome') },
     weak_fisher_p: +fisher(cross.weak_assertion.caught, cross.weak_assertion.missed, same.weak_assertion.caught, same.weak_assertion.missed).toPrecision(4),
-    stop: { per_arm: CHECKER_FAMILY_STOP_PER_ARM, reached, verdict },
-    note: 'F2 (CHECKER_FAMILY_RANDOMISE): oracle-lane goals by sha256(checker-family:goal id); same = checker on the runtime default, cross = CHECKER_CROSS_MODEL; security checker unchanged. One row per goal (its last completed checker with a verdict). outcome: verified = 1, maker_failure = 0, reviewer/environment failures excluded — the checker\'s own rejection is part of maker_failure, so outcome_wo_checker relabels from the other failed gates only and outcome_survival uses merge survival (checker-independent; few labels until drafts settle). kappa: binary (accepted vs not). delta_kappa_ci: seeded two-sample bootstrap 95 %. fisher_p: agree/disagree × arm; weak_fisher_p: weak-assertion diffs caught/missed × arm. Pre-registered stop at 30 labelled goals per arm; falsified if the Δkappa CI includes 0.',
+    stop: { per_arm: target, reached, verdict },
+    note: 'F2 (CHECKER_FAMILY_RANDOMISE): oracle-lane goals by sha256(checker-family:goal id); same = checker on the runtime default, cross = CHECKER_CROSS_MODEL; security checker unchanged. One row per goal (its last completed checker with a verdict). outcome: verified = 1, maker_failure = 0, reviewer/environment failures excluded — the checker\'s own rejection is part of maker_failure, so outcome_wo_checker relabels from the other failed gates only and outcome_survival uses merge survival (checker-independent; few labels until drafts settle). kappa: binary (accepted vs not). delta_kappa_ci: seeded two-sample bootstrap 95 %. fisher_p: agree/disagree × arm; weak_fisher_p: weak-assertion diffs caught/missed × arm. Primary (EXP-1): outcome_survival once ≥ target per arm have settled, else outcome_wo_checker; outcome (attributed) is secondary and circular. Pre-registered stop at CHECKER_FAMILY_TARGET_PER_ARM (default 93) labelled goals per arm on the primary label; before it the read is interim and the verdict collecting; falsified if the Δkappa CI includes 0.',
   };
 }

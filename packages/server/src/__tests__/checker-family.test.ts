@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import {
-  CHECKER_FAMILY_STOP_PER_ARM, DEFAULT_CHECKER_CROSS_MODEL, assignCheckerFamily, checkerCrossModel, checkerFamilyArm, checkerFamilyEnabled, checkerFamilyEvidence,
+  CHECKER_FAMILY_TARGET_DEFAULT, DEFAULT_CHECKER_CROSS_MODEL, assignCheckerFamily, checkerCrossModel, checkerFamilyArm, checkerFamilyEnabled, checkerFamilyEvidence, checkerFamilyTarget,
 } from '../services/checker-family';
 import { EVOLUTION_FLAGS, buildEvolutionEvidence, fisherExact } from '../services/evolution-evidence';
 
@@ -93,46 +93,77 @@ describe('evidence section checker_family', () => {
     expect(e).toMatchObject({ enabled: 'on', cross_model: 'ollama/kimi-k3:cloud' });
     expect(e.same).toMatchObject({ goals: 5, reviewed: 5, verdicts: { accepted: 3, needs_revision: 1, rejected: 1 }, realized_cross: 0, outcome: { n: 4, agree: 2, kappa: 0 } });
     expect(e.cross).toMatchObject({ goals: 4, reviewed: 4, verdicts: { accepted: 2, needs_revision: 1, rejected: 1 }, realized_cross: 4, outcome: { n: 4, agree: 4, kappa: 1 } });
-    expect(e.delta_kappa).toBe(1);
-    expect(e.fisher_p).toBeCloseTo(fisherExact(4, 0, 2, 2), 3);
-    // the checker's own verdict is part of the attributed outcome: also report agreement with the other gates alone
+    expect(e.same.outcome).toMatchObject({ circular: true });
+    // secondary, circular: the attributed outcome contains the checker's own rejection
+    expect(e.secondary_circular).toMatchObject({ endpoint: 'outcome', circular: true, delta_kappa: 1, n: { same: 4, cross: 4 } });
+    expect(e.secondary_circular.fisher_p).toBeCloseTo(fisherExact(4, 0, 2, 2), 3);
+    // primary (EXP-1): the other failed gates only, until merge survival has settled
+    expect(e.same.outcome_wo_checker).toMatchObject({ n: 4, agree: 1 });
     expect(e.cross.outcome_wo_checker).toMatchObject({ n: 4, agree: 3 });
+    expect(e.primary).toMatchObject({ endpoint: 'outcome_wo_checker', read: 'interim', n: { same: 4, cross: 4 } });
+    expect(e.primary.fisher_p).toBeCloseTo(fisherExact(3, 1, 1, 3), 3);
     expect(e.same.outcome_survival).toMatchObject({ n: 0, kappa: null }); // no merge-survival labels yet
     expect(e.same.weak_assertion).toMatchObject({ n: 2, weak: 1, caught: 0, missed: 1, false_alarms: 0, sensitivity: 0 });
     expect(e.cross.weak_assertion).toMatchObject({ n: 2, weak: 2, caught: 1, missed: 1, sensitivity: 0.5 });
     expect(e.weak_fisher_p).toBeCloseTo(fisherExact(1, 1, 0, 1), 3);
-    expect(e.stop).toMatchObject({ per_arm: CHECKER_FAMILY_STOP_PER_ARM, reached: false, verdict: 'collecting' });
+    expect(e.stop).toMatchObject({ per_arm: 93, reached: false, verdict: 'collecting' });
   });
 
-  it('merge survival is a checker-independent label (pr_outcome.survived on the run)', () => {
+  it('target per arm: default 93 (EXP-1), CHECKER_FAMILY_TARGET_PER_ARM overrides, junk falls back', () => {
+    expect(CHECKER_FAMILY_TARGET_DEFAULT).toBe(93);
+    expect(checkerFamilyTarget({})).toBe(93);
+    expect(checkerFamilyTarget({ CHECKER_FAMILY_TARGET_PER_ARM: '120' })).toBe(120);
+    expect(checkerFamilyTarget({ CHECKER_FAMILY_TARGET_PER_ARM: 'x' })).toBe(93);
+    expect(checkerFamilyTarget({ CHECKER_FAMILY_TARGET_PER_ARM: '0' })).toBe(93);
+    expect(EVOLUTION_FLAGS).toContainEqual({ name: 'CHECKER_FAMILY_TARGET_PER_ARM', acting: false });
+  });
+
+  it('merge survival is a checker-independent label and becomes the primary once settled for the target in both arms', () => {
     seed('cross', 'accepted', 'verified'); seed('cross', 'rejected', 'maker_failure', ['checker_verdict']);
     db.prepare("UPDATE loop_runs SET metadata = ? WHERE id = 'r-' || ?").run(JSON.stringify({ pr_outcome: { survived: false } }), `cross-${n - 2}`);
     db.prepare("UPDATE loop_runs SET metadata = ? WHERE id = 'r-' || ?").run(JSON.stringify({ pr_outcome: { survived: true } }), `cross-${n - 1}`);
-    expect(checkerFamilyEvidence(db, '2026-09-10T00:00:00Z', {}, fisherExact).cross.outcome_survival).toMatchObject({ n: 2, agree: 0, kappa: -1 });
+    const e = checkerFamilyEvidence(db, '2026-09-10T00:00:00Z', { CHECKER_FAMILY_TARGET_PER_ARM: '2' }, fisherExact);
+    expect(e.cross.outcome_survival).toMatchObject({ n: 2, agree: 0, kappa: -1 });
+    expect(e.primary.endpoint).toBe('outcome_wo_checker'); // the same arm has no survival labels yet
+    seed('same', 'accepted', 'verified'); seed('same', 'rejected', 'maker_failure', ['checker_verdict']);
+    db.prepare("UPDATE loop_runs SET metadata = ? WHERE id = 'r-' || ?").run(JSON.stringify({ pr_outcome: { survived: true } }), `same-${n - 2}`);
+    db.prepare("UPDATE loop_runs SET metadata = ? WHERE id = 'r-' || ?").run(JSON.stringify({ pr_outcome: { survived: false } }), `same-${n - 1}`);
+    const settled = checkerFamilyEvidence(db, '2026-09-10T00:00:00Z', { CHECKER_FAMILY_TARGET_PER_ARM: '2' }, fisherExact);
+    expect(settled.primary).toMatchObject({ endpoint: 'outcome_survival', delta_kappa: -2, n: { same: 2, cross: 2 } });
   });
 
-  it('pre-registered stop at 30 per arm: falsified when the delta-kappa CI includes 0, supported when it excludes 0 upward', () => {
-    expect(CHECKER_FAMILY_STOP_PER_ARM).toBe(30);
-    for (let i = 0; i < 30; i++) {
-      seed('same', i % 2 ? 'accepted' : 'rejected', i % 2 ? 'verified' : 'maker_failure');
-      seed('cross', i % 2 ? 'accepted' : 'rejected', i % 2 ? 'verified' : 'maker_failure');
-    }
+  // perfect agreement on the primary label: a rejection also fails the security checker (another gate), an accept verifies
+  const perfect = (arm: 'same' | 'cross', i: number) => (i % 2 ? seed(arm, 'accepted', 'verified') : seed(arm, 'rejected', 'maker_failure', ['checker_verdict', 'security_checker_verdict']));
+  // chance agreement: verdict and label independent
+  const chance = (arm: 'same' | 'cross', i: number) => {
+    const acc = i % 2 === 1; const ok = i % 4 < 2;
+    seed(arm, acc ? 'accepted' : 'rejected', ok ? 'verified' : 'maker_failure', ok ? (acc ? [] : ['checker_verdict']) : (acc ? ['security_checker_verdict'] : ['checker_verdict', 'security_checker_verdict']));
+  };
+
+  it('no verdict before the target: an interim read stays collecting even when the CI excludes 0', () => {
+    for (let i = 0; i < 92; i++) { chance('same', i); perfect('cross', i); }
+    const e = checkerFamilyEvidence(db, '2026-09-10T00:00:00Z', {}, fisherExact);
+    expect(e.primary.delta_kappa_ci![0]).toBeGreaterThan(0);
+    expect(e.primary.read).toBe('interim');
+    expect(e.stop).toMatchObject({ per_arm: 93, reached: false, verdict: 'collecting' });
+  });
+
+  it('pre-registered stop at 93 per arm on the primary label: falsified when the Δkappa CI includes 0, supported when it excludes 0 upward', () => {
+    for (let i = 0; i < 93; i++) { perfect('same', i); perfect('cross', i); }
     const equal = checkerFamilyEvidence(db, '2026-09-10T00:00:00Z', {}, fisherExact);
+    expect(equal.primary).toMatchObject({ endpoint: 'outcome_wo_checker', read: 'final', delta_kappa: 0 });
     expect(equal.stop).toMatchObject({ reached: true, verdict: 'falsified' });
-    expect(equal.delta_kappa).toBe(0);
 
     db.exec("DELETE FROM goals; DELETE FROM loop_runs; DELETE FROM worker_leases; DELETE FROM judgments");
-    for (let i = 0; i < 30; i++) {
-      seed('same', i % 2 ? 'accepted' : 'rejected', i % 4 < 2 ? 'verified' : 'maker_failure'); // chance agreement
-      seed('cross', i % 2 ? 'accepted' : 'rejected', i % 2 ? 'verified' : 'maker_failure'); // perfect
-    }
+    for (let i = 0; i < 93; i++) { chance('same', i); perfect('cross', i); }
     const better = checkerFamilyEvidence(db, '2026-09-10T00:00:00Z', {}, fisherExact);
-    expect(better.delta_kappa_ci![0]).toBeGreaterThan(0);
+    expect(better.primary.delta_kappa_ci![0]).toBeGreaterThan(0);
     expect(better.stop).toMatchObject({ reached: true, verdict: 'supported' });
   });
 
   it('is part of evolution-evidence and fail-soft on an empty database', () => {
     const e = buildEvolutionEvidence(db, {}, NOW, 30);
-    expect(e.checker_family).toMatchObject({ enabled: null, same: { goals: 0, reviewed: 0 }, cross: { goals: 0, reviewed: 0 }, delta_kappa: null, stop: { reached: false } });
+    expect(e.checker_family).toMatchObject({ enabled: null, target_per_arm: 93, same: { goals: 0, reviewed: 0 }, cross: { goals: 0, reviewed: 0 },
+      primary: { endpoint: 'outcome_wo_checker', read: 'interim', delta_kappa: null }, secondary_circular: { circular: true }, stop: { reached: false, verdict: 'collecting' } });
   });
 });
