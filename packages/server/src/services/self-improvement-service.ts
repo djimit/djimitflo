@@ -224,6 +224,17 @@ export class SelfImprovementService {
     const panel = this.panels.getPanel(proposal.panelId);
     if (panel.status !== 'consensus_ready') return null;
     if (panel.consensus.decision === 'goal') return this.authorizeGoal(id, `agent:approver:${runId}`);
+    // a panel whose every review is a model failure (unparseable / generation failed) is not a verdict: prod 25–26-09
+    // parked 10 of 24 validly grounded Commons proposals this way. Retry the panel once; a second all-failure panel is
+    // infra_failed, never needs_more_evidence.
+    if (this.panels.allReviewsMachineFailed(panel.id)) {
+      const retried = this.db.prepare("SELECT 1 FROM judgments WHERE judgment = 'panel_failed' AND subject_id = ? LIMIT 1").get(id);
+      this.db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at)
+        VALUES (?, 'panel_failed', 'self_improvement', ?, ?, 'enforce', 'infra', ?, ?)`)
+        .run(randomUUID(), id, panel.id, `infra: every specialist review failed to generate or parse${retried ? '; second time, infra_failed' : '; panel reset for one retry'}`, new Date().toISOString());
+      if (retried) this.transition(id, 'infra_failed'); else this.panels.resetMachineFailedReviews(panel.id);
+      return this.getImprovement(id);
+    }
     this.transition(id, 'needs_more_evidence');
     return this.getImprovement(id);
   }
@@ -401,7 +412,10 @@ export class SelfImprovementService {
     const parked = this.getImprovement(parkedId);
     if (parked.status !== 'needs_grounding' || parked.refinedAt || parked.refinedFromId) return null;
     return this.createProposal({
-      type: parked.type, title: parked.title.slice(0, 80), description: parked.description,
+      // the pre-screen's names-file question reads only the description (judgments/proposal-prescreen.ts): with the grounded
+      // target in the rationale alone, all 18 grounded refinements on prod were rejected 'names no concrete file'
+      type: parked.type, title: parked.title.slice(0, 80),
+      description: `${parked.description}\n\nTarget: ${grounding.target}. Test: ${grounding.acceptanceTest}.`,
       rationale: `${parked.rationale}\n\nGrounded by Agent Commons: target ${grounding.target}, test ${grounding.acceptanceTest}.`,
       source: 'refinement', priority: parked.priority,
       evidenceRefs: [...parked.evidenceRefs, `refinement-of:${parkedId}`, evidenceRef],
