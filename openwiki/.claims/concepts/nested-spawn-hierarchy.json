@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d47546cfc9963e2fc25349a166cc460f2167570b3a556f38fdc873be5b13fe36",
+  "pageVersion": "sha256:ba30b77420d38cb8d8ab1d8609b70e4e78b45bb05194ca6bc62fbc95ab1ef996",
   "claims": [
     {
       "id": "claim_4814f19743814e92a38aaa0783302339",
@@ -154,8 +154,12 @@
     },
     {
       "id": "claim_f7d22959cca1427ba62d07df160342a3",
-      "statement": "Spawn tokens are HMAC-scoped credentials of shape base64url(\"leaseId|spawnTreeId|expiresAt\").sig with a 30-minute TTL; validation is constant-time on the signature and never throws, returning false for malformed/expired/wrong-scope tokens which surfaces as SPAWN_TOKEN_INVALID (HTTP 401).",
+      "statement": "Spawn tokens are HMAC-scoped credentials of shape base64url(\"leaseId|spawnTreeId|expiresAt\").sig with a 30-minute TTL (SPAWN_TOKEN_TTL_MS). The validator is a reason-returning pipeline (spawnTokenRejection) that never throws and checks in a fixed order — shape, MAC (constant-time via constTimeEq), subject/scope (wrong_subject/wrong_scope), then expiry — with validateSpawnToken as the boolean wrapper; any rejection surfaces uniformly from requestSpawn as SPAWN_TOKEN_INVALID (HTTP 401).",
       "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L269-L282",
+          "version": "repo-lines-v1:sha256:aa85ca585182dc28fd0c109aff7f58e60695c8975f57ccd84d4104ee4990f581:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyZmVhYzEwMDMzYWI4NjJhN2QxMjk3YzAwNzU0NmE1MWE2ZWEyOTUzMjRmZWY1NGVjNDViNzg1ZmIxM2Y2YmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFlZWI2MDRhOTljMjk2NjE0MmJlOGI1YTc5ZmRiMWViYWViOGFjZWM0NzE5MjU0ODVmMjhjMDAwNWQ0MzNiMGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE0MmFmN2Y4MTI0Njg2ZjUwZWEyMTg1MDYzYjQ4ZTY2NWJmZjU0YjczZTkxODdhNjQxNWRiNTA0ZjFjYjQ4NTYifQ"
+        },
         {
           "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L475-L477",
           "version": "repo-lines-v1:sha256:b592e86ec8d6005ab4085a0573334a90d912f0ecaec6a892da5ae1fd0af11258:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTNmMjg1M2I3YjQ1OTk3MDgwMDhkMTU0ZjI3OGJhMjBlZmE0MmU3ODQwNWFhZmRhZTZlMmNmOGQwZWI5NTdhYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWI4MDI2MTI2MGQ3MGVmNDMzMDk0MDcwMjBlYTQyM2YxYWUxODQ4ZmMzYWE3YThiZDYyZWU4NzY5OWZmNWMwNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTI0NTc3MmRjMjc5MmMxZTU0Y2ZjNDk0MTY2MjRhZDEzOWI1OTI1MGU3MDNjNzUyZGUxMzkyZWY0YTQ3NTFkMiJ9"
@@ -165,8 +169,8 @@
           "version": "repo-lines-v1:sha256:6df0c182486a4b9e16f2169af995a452e8760e6d654f7b11f1227123f510230f:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWE5ZmQ2NTBlODMyZDYyODU4M2Y1MTRlODA4NWNlNDA2MjM4MGFmZjMwYjc3NDk4YjY2YWEwYzlhNjIyZGJiMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDFhNDc3NjI5N2Q3MTVmY2ZmMjMyNTYwNDk2ZTgxOTA1ZWUyYWYwMjg1Mjk3Y2NiZTIxMDVhZDQzMWM1MzQwYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjQ0MDFkMTVjOGE5ZGI5OTQyN2M1NTYyMDQ2NmQ1NTEzYWI4MjRlZjFiMjA3MGJiY2U3NDAzZDBiY2Y3MzAzMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDllYTM2OTAzYjdjOGU4OGFkNDk3ZGUzZjUwNjA3YmZlNjYxNjY1NmI2ZTA1OTRlN2VjNzY0Njk1NWUyMTJiYSJ9"
         },
         {
-          "resource": "repo://packages/server/src/services/spawn-token.ts#L43-L82",
-          "version": "repo-lines-v1:sha256:bccfe7f3c45c5e5e2c5a114169b7cea485db5d613ee252f2b17ce0b2956fbc49:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5MDI5NTQwODExMzM4OTM2MWEyNDUwYThjNTIxZWI3OGY0NzU1ZDI0M2I5NjQxZGQ2N2Y2ODkxNDllNTAwNTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjliZDA5OTI4MzExZDA5NzgxNTA0YjNjNTc1OGU3YzYwOTBiZmUzOTFlM2I0NjA4ZGZlNTM1NmIzMGMxZWYzNjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://packages/server/src/services/spawn-token.ts#L43-L92",
+          "version": "repo-lines-v1:sha256:e8853a042db7dadc0c6cc17f8ca4373a503ab93a26d5039ab55cfb2d1d90baa0:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5MDI5NTQwODExMzM4OTM2MWEyNDUwYThjNTIxZWI3OGY0NzU1ZDI0M2I5NjQxZGQ2N2Y2ODkxNDllNTAwNTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjliZDA5OTI4MzExZDA5NzgxNTA0YjNjNTc1OGU3YzYwOTBiZmUzOTFlM2I0NjA4ZGZlNTM1NmIzMGMxZWYzNjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
     },
@@ -385,10 +389,68 @@
           "version": "repo-lines-v1:sha256:603393ab966c60c65ce436a0ee10e2333c73644a7055d104a31dd9c7671dca77:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3MmE0MjkzODJiMmUxNDcxOGUwZTM3YjA1NzBhOGExNzAyOTkxZmNkODQ5OGNkODQwNjBhOGJmNGYwNTAxN2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ2MDM1NTE2MzgyZGI2M2M3ZWU2NDBlNWNmYzI1OGI2ODM3ZTIzZDE1ZGUxZGZkOGZmZmRjNDgyNTdjNmY4MjkifQ"
         }
       ]
+    },
+    {
+      "id": "claim_4f6adcdbd9ec4a0a85031867798a48a5",
+      "statement": "The sub_agent_spawns reject_reason column is an unconstrained TEXT documented in the migration as the closed core vocabulary depth_budget_exceeded / cycle_detected / capability_not_live / token_budget_exceeded / wall_budget_exceeded / concurrency_exceeded, but the service can additionally record operator_paused, capability_not_found, capability_action_forbidden, and capability_risk_exceeds_ceiling; a token-gate failure (SPAWN_TOKEN_INVALID) throws before any audit row exists and so has no reject_reason.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L670-L688",
+          "version": "repo-lines-v1:sha256:c6de38e7be2ddba32ad75907c4a46bb4aafedacde636dd583b06658914c8c1fb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1OGQ4ZGQ4NWU4M2YyMWRmNjYxOTNmMzc1MGE4Mjc3MDVlNmQ4ZDExMmRiNmQxOTcyOWFlZmVhMDQ1NGI2MzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0ZTQyMDhjZDZmZmI4YzRhMzU0N2IyZjU0YWRhMTk5NzhjM2YzNjVlNzhmOTUwMmVmNTE0NWNkZDJhYTg1NDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZhMGQ4ZDJjOTI3ZTBmNjlhY2QyNDA4NGQzNzIxODU0YjFmOTY1NGFkOGM0OGQxOTRiZjI3MjJhNGU5NGJlOTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZlYWNlZDE3N2M4MTNlMjNjYmUwYmUwZTY3OThhYWYzNjk2NmMxZmQ1ZmY3NTQzYjYzNmE2ZjljYzIxNmJkYzAifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L293-L340",
+          "version": "repo-lines-v1:sha256:6e006a2430571ec432d4ebd3c894c5b0b841a822cd44d7dda24e611d4a7447ce:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExZGY4N2E0NzMxNmM3MDhjNTUwMjA5OGU5YWY2YzQ0NTM0ZWI4MGJlYWRjZjYwNjMwMjhlZmNhODU5MzdhYmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM1YmJmNDE2ZWJlYWVkMmVlZTM5Y2RjMGNlMWI2ZDJmODMyMDI0ODJjYWU3OTRhNzU5MGM3MWNjYzc4MjA2NGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMzNjFhNGFkYzgzMjE5ZWEyNjBlZmY2YWYzODQ3YTZmOTcwYmQxMmJiNTY5ZjRjOTAzYjY2YTQ4NThjYTFkZmQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L545-L566",
+          "version": "repo-lines-v1:sha256:559ca6344a374e111749e053bb4572baab6126ddae607262ec6d06e9fa81d73c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ0NjllNTQxMjMxOTRjMmE0ZGI2ZDMwY2RiYmNlMDdjODg1NGJiZTAyMWY0MzJjY2RkM2RkNzMwMzk5ZmMxNGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM2MDcxNWY2NWVhOTM3MTAxMTc1MGM4ODg0NDM2MjliYWViMzZjNzY5ZTQwNGQ0OWM0MjNmZDViZjNjNTc3NjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI5MDg3MWI5M2NkYWI0ZGZhMjFlMDQ1ZGQ5NTNmMGY1YzI1MTAyM2I5ZWQ0NzkzMGY3ODFiMDQxMDM4ZmRjMzEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5c44e2ba5fdb4b49ab975ec2673efa43",
+      "statement": "Nested spawning is default-deny: createRoot resolves the tree depth budget from explicit input or the SPAWN_DEPTH_BUDGET env with a fallback of 0, and depth 0 arms no child with allowNestedSpawn, so nested spawning is off unless the operator explicitly raises the budget (mirroring RUNTIME_ALLOW_SKIP_PERMISSIONS).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L694-L704",
+          "version": "repo-lines-v1:sha256:a79c6a4677523a24cd13dd9a7144b32bc85a9ad0fea9491a754f1d314527aa4b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJjYmUwYTMxYzc2ZmUyY2VkNjNlYWU5Yjc4MjZhYTVjZGU1ZmQ4YTA1MDJiZjllMzE3MTE1ZTgxNzRmN2ZkNjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIwOGM0YWU2Yzc1Y2YyODIxYzNkZWQ5ODZhYTRiNTQzZjVjNWQ4ZWM4NjVhY2UyZTEyMjExY2Y1ZGM2Mjg4ZTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI2ZDhjNmE4NjJjMDVmNDM4OGUwNzk0NjBhNjg2MzI1YjgxNDY3YWU5OTQwYjVlYmFiMzcyZjU0MzI3ZjFkMTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhN2Q3NGUwZTY5NTRlZWQ5NjYyYTdlODQwMzdjMDNmMmI3NTAzZDhjMzM1MWEyN2U0NmVlNzIyNDg1YjkzYzcifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L137-L137",
+          "version": "repo-lines-v1:sha256:b88b264a25e3996560913f3e83f26d753855aa2eda32ae5d2bc5425268b16cc2:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjg4YjI2NGEyNWUzOTk2NTYwOTEzZjNlODNmMjZkNzUzODU1YWEyZWRhMzJhZTVkMmJjNTQyNTI2OGIxNmNjMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjg4YjI2NGEyNWUzOTk2NTYwOTEzZjNlODNmMjZkNzUzODU1YWEyZWRhMzJhZTVkMmJjNTQyNTI2OGIxNmNjMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGVhOThlNTc4YWRmNjU1ZTgwMGNmMTI1M2Y5ZGI2YjljODE3OTYyMmNlZjdhMmM5ODkxYmU5ZTU1ZTkwOGM2OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWQ3YzM5NjNmNjhjN2I1OTI0YWNlYjhlMWI5YTQ4NjViYTg5ZjRmYmM3NjEzYTRjMDkxNDc1NjM5YWZiNzZkNiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L170-L182",
+          "version": "repo-lines-v1:sha256:53dc3bc81c1388004b788897b578a55c78f54bc707e5088db304fa6bda81e5ec:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhMDFkNjlmODg1MDAyODUyNGY1NGRjNjlhN2IzMzZmMGU2MGQwOWY2ODQyMzEyOGQwZmRiN2U3YWYxZWE1OTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5N2NjYmNkN2RkODkxMGUyNWZlOGNiMmU3ZGQ2MDFmNmI0NWYzYTEwOGU1NGY4NTM3Nzc0OGViMjk1MWFhNmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiYTE5MDQwOTQ1ZmQ2MTNmZmRlNzE5ODA3ZTg1ZDZkMjdlMWQ2MWFlM2MxYzQxYTcwMTk5MTQxNjk1OTc4NDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFkZWI3OWNmMzhiOWFmZTQ2NDc5ZTA2MTA4ODRhNzE0ZmI1MzY0NTUwYTI4ODkyYzBjY2Q1YmUwMTUwY2VhNzMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8802eaab9a6c4d94b6c89e4e591f3acf",
+      "statement": "The /swarms/spawns router is mounted with requireAuthOrSpawnToken BEFORE the generic /swarms requireAuth mount, so either a verified user JWT or an X-Spawn-Token admits the request — but POST /spawns/root keeps requirePermission('write:swarm_action') inside the router, which 401s when req.user is unset, so a token-only child can POST /spawns and poll status yet can never create roots.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/middleware/auth.ts#L107-L135",
+          "version": "repo-lines-v1:sha256:fcab29234722836050f9fd0aed997a3fd36f496469a34e4556bf84642d3f0dce:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzNmFjMDUxODFhM2Q2Y2IxNDM0NzFjNjZmNTgwZjkwNWQ4ZWI5MzQ2MDBkMzVjMTEwYmU2YWZlYWRkOWIxMDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ5MGVmZGM2OWEwYzc5ODA1YWJkNzdiNDZlNjNlM2VlODFkMTNiMmVmZjZkMzk2MzliMGRlMzY2YWY0ZmZmZjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdmNTgyMjU4NzRiNGY3MWMyM2ZhNjUxZDg5NzQyNTdjOThjMWRjYTk0ZjViM2YzNjUxNGRlZmY1MjMyODVhMjcifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L114-L121",
+          "version": "repo-lines-v1:sha256:f451b9f667048be5cc51f7f20d043b4a361ccb1af3f4a8df8d83029b1a458fcd:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGJlMDIxZjJhZTg2MzQ3MGQ3MTgzY2FmZTA0MWY5YzQwYmVmMmQ4NTM4YmYzYTQ0NGNjMzYxZGY3ZmNkZjdiZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTc0MzlhNWM4N2QwMzYzMTVmNTBhYzkyM2ZjNDY1MzAzNjUxN2IzZTQyY2VjNmY1NWZhNjYzM2IwMzY1ZjhjMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjJlYmQ1NzI0OWI0OWU2ZGI2NjE2MjFiN2QyNTVlNzgzMDhlN2RiZmFiNGI3MjlkMjhiNTU3Y2RhMzE3YTc2MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTdjYzViZDEyNTYzMTlmMzc4YjUwNzA3Y2VmZDZkNDEyOWJmYzRiZTlhZGY3ZGQ3ZjNkMDY0NDU2MjRkNzAwYSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L188-L194",
+          "version": "repo-lines-v1:sha256:6f89b722353883bba15609206ba6065b3413d5aedea4d10c672217bd0c256378:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzIxNTQ0N2FjMzc2NTk3NDUzOThiNjY1NjAyOTQ2YTM2NDkxOWMzMDI1ZjUzNjE2MDJkMjgxNWIwNGU5NzY0ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2FlMTU1MzJmMjRiZjkwYTA5MDAwZjY2NmY4OTRmM2Y5ZmQ1MjFjNmUwOTA3YWJjOWU0YWI1N2Y1Yzk2NDEyOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmRjMGI5ZTNlNzk0Mjc4OWVlZTdjYzRkM2QwOWY2ZjY0OGUwYzRjZTM0NjA1NTAwZGNjY2Q0ZDAwZjE1ODNmMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODE3YWE3ZThhNGYzZDBmYTgwNTM2NjRkYzdkZjY0ODFlZDcwMGMzMzlhNjM4ZjdhNjY0YjVjMjNiMjc2MmE5ZiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/spawns.ts#L44-L52",
+          "version": "repo-lines-v1:sha256:4415b58137c5650756e0d755ad3cb766a17c0bd8e913cbc4e4b71e740096bfb6:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODIwZWMxZGEwMzA3NmUxYzA0OGM4OGFkOWE1OWEyOTA0ZmNkZDA4ODc1NmUwYjJkZmE2ZTAyYmM5YjYwZDBiYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTFkZjg3YTQ3MzE2YzcwOGM1NTAyMDk4ZTlhZjZjNDQ1MzRlYjgwYmVhZGNmNjA2MzAyOGVmY2E4NTkzN2FiZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmI1ODBlOTY0ZjgzYTQ3M2Y0M2Q0NDM4NDYyOTQ5ZDY4YjU2MDBmZGE3ODdmMTYzNzQ1ZDAwZGU4OWNiZjM2YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmU5YzVmOGNmODY5ODMwM2ZhMmI1ODExNGExOTE0NTUxNDkzNWY0NWJlMDY5NDExZjZiN2RmNzY3Yjg1ZWZkNyJ9"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-25T13:29:02.244Z"
+    "at": "2026-10-10T14:22:19.101Z"
   }
 }

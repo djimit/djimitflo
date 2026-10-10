@@ -1,12 +1,12 @@
 ---
 type: "Reference"
 title: "SQLite Data Model, Migrations & Provenance"
-description: "Data-plane reference for the better-sqlite3 schema: path resolution, boot/boot migrations, the ColumnSpec ALTER tail, loop run/goal/worker-lease vocabularies, worker manifest evidence, the mcp_servers baseline seed, and evidence-root persistence."
+description: "Data-plane reference for the better-sqlite3 schema: path resolution, pre-schema and post-schema migration phases, the ColumnSpec ALTER tail, loop run/goal/worker-lease vocabularies, nested-spawn and memory-store tables, the mcp_servers baseline seed, and database provenance/instance identity."
 tags: ["sqlite", "data-model", "migrations", "loop-lifecycle", "evidence", "provenance", "better-sqlite3"]
 openwiki_generated: true
 verified:
   - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
+    at: 2026-10-10T14:22:19.101Z
 sources:
   - id: openwiki-source-5b54a58d1b51cd490b0e7162
     resource: repo://package.json
@@ -38,6 +38,8 @@ sources:
     resource: repo://packages/server/src/routes/health.ts
   - id: openwiki-source-90e32b8856e546e132bff6b2
     resource: repo://packages/server/src/services/backup-service.ts
+  - id: openwiki-source-a871fbd1c673763d77b4e573
+    resource: repo://packages/server/src/services/bandit-propensity.ts
   - id: openwiki-source-e1fac1d43de60c6a93d86d47
     resource: repo://packages/server/src/services/compliance-audit-service.ts
   - id: openwiki-source-6996102cb8a12952e08c5888
@@ -56,7 +58,7 @@ sources:
     resource: repo://README.md
   - id: openwiki-source-888c29a9218be65489c39049
     resource: repo://scripts/live-identity-evidence.mjs
-generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-10-10T14:22:19.101Z" }
 ---
 
 
@@ -159,7 +161,7 @@ The center of the row domain. `tasks` carries status, priority, risk level, exec
 
 The agentic-loop family is created by `createAgenticLoopTables()` in `migrate.ts` and is where most CHECK-constraint churn lives:
 
-- `goals` — objective + constraints + acceptance criteria + risk class + budget (per-mission container); status vocabulary `created / decomposed / running / blocked / completed / failed / cancelled`.
+- `goals` — objective + constraints + acceptance criteria + risk class + budget (per-mission container); status vocabulary `created / decomposed / running / blocked / completed / failed / cancelled`. The loop daemon drives most transitions: a goal whose newly started run discovers **zero findings** is written straight to `status = 'completed'` (`UPDATE goals … WHERE id` in `executeGoal`, before any lease is created), an approval wait parks it as `blocked` with an `awaiting_approval` metadata blob, and an approved/denied/expired approval resumes it to `decomposed` or fails it. See `/openwiki/concepts/loop-lifecycle` for the full state machine.
 - `loop_runs` — `mode closed|open`, status checked against the constant `LOOP_RUN_STATUSES` in `migrate.ts`, whose full vocabulary is `created / planning / running / verifying / ready_for_human_merge / blocked / completed / failed / escalated / cancelled / interrupted`. `loop-types.ts` mirrors this list one-for-one as the `LoopRunStatus` union type, so the TS type and the SQLite CHECK can never silently diverge (a new status must be added to both or writes are rejected). `ensureLoopRunsReadyStatus()` and `ensureLoopRunsInterruptedStatus()` detect old CHECK lists on existing databases and rebuild `loop_runs` (plus `loop_events`, `worker_leases`, `agent_trace_spans`, `loop_checkpoints`) inside a `foreign_keys = OFF` dance, copying rows between old and new tables — this is how `ready_for_human_merge` and `interrupted` landed on pre-existing installs.
 - `loop_events` — leveled run log (`debug / info / warning / error / critical`).
 - `worker_leases` — worker role (`planner / maker / checker / security_checker / memory_curator / governance_guard`), runtime, status (`prepared / running / completed / failed / cancelled`), finding, worktree, `budget_json`, and the nested-spawn lineage columns (`parent_lease_id`, `spawn_tree_id`, `depth`, `spawned_by_agent_id`, `capability_id`) added by `createNestedSpawnTables()`. The free-text `metadata` column is where the daemon parks control state that never earned its own column (see *worker_lease metadata conventions* below).
@@ -193,7 +195,7 @@ erDiagram
 - **`auto_approved_scope`** — set by the loop daemon's test-gap auto-approve path (`blockForApproval()` / `autoApproveSibling()` in `loop-daemon.ts`) before it approves a maker's pending approval. It records the single test file the approval covered. The verification gate of the same name in `loop-verification-service.ts` then fails the run unless the maker's `changed_files` is exactly that one file, so an auto-approved maker can never broaden its own scope.
 - **`retry_root_maker_lease_id` / `retry_of_maker_lease_id` / `retry_attempt`** — retry lineage written by `retryLoopRun()` in `loop-lifecycle-service.ts`. `retryRootFor()` in `loop-service.ts` resolves a maker to its retry root, and the retry budget is enforced by counting maker leases that share a root (`usedRetries >= maxRetries` throws `LOOP_RETRY_BUDGET_EXHAUSTED`). The original maker is stamped `superseded_by_maker_lease_id` + `superseded_at`, which `completionBlockingLeases()` reads to exclude superseded makers from completion.
 - **`evolve_sibling_of`** — set when `retryLoopRun()` is called with `sibling: true` (evolve, E13): an extra maker next to a *successful* one rather than a retry after failure, with selection decided later.
-- **`bandit`** — when `LOOP_BANDIT_ENABLED` (E12) lets the daemon choose the maker species via `chooseSpecies()` in `runtime-bandit.ts`, the daemon rewrites the lease `runtime` and stores `bandit: { reason, posterior }` (plus `model` when the species fixes one) so the choice is auditable on the lease. A matching `bandit_selected` / `bandit_skipped` loop event is recorded.
+- **`bandit`** — with the bandit acting (`LOOP_BANDIT_ENABLED=true`), the loop daemon chooses the maker species via `chooseSpecies()` over `runtime-bandit.ts`, then rewrites the lease `runtime` and stamps `bandit: { reason, posterior }` (plus `model` when the species fixes one) via a `json_set` update guarded `WHERE status = 'prepared'`, so the choice and its posterior are auditable on the lease. A matching `bandit_selected` loop event (or `bandit_skipped` when applying the choice threw) carries the posterior, the chosen species key, and `max_share`, which the RX-15 off-policy evaluator in `bandit-propensity.ts` later reads to reconstruct each choice's propensity. The rewrite is skipped on a resumed evolve sibling — its species is the point of the sibling.
 - **`approval_id` / `execution_task_id`** — the daemon needs these to resume approval-blocked goals; `blockForApproval()` falls back from lease metadata to the `approvals` table by `task_id` when the checker path never copied the id onto the lease.
 
 `WorkerLeaseRepo.updateStatus()` additionally guarantees a `failure_reason` (derived from `execution_denied_reason`, `runtime_contract_failed_at`, `timed_out`, or non-zero `exit_status`, falling back to `'unspecified: caller supplied no reason'`) before any lease may be written as `failed` — a guard added after 136 production leases failed with no stored reason.
@@ -204,7 +206,7 @@ Every worker action the loop service takes is persisted as evidence: `LoopServic
 
 ### Knowledge & memory
 
-`memory_candidates` (typed by `store` into `episodic / procedural / semantic / working`, a G8 column added on top of the memory flywheel), `memory_access_log`, `specialist_panels` / `specialist_reviews` (with `UNIQUE(panel_id, specialist_id)`), `knowledge_claims`, `goal_hypotheses`, `strategy_nodes`, `vector_memories` (embedding-JSON store with TTL), `swarm_learning` (the older pattern-ledger), `context_cache`, `consensus_debates` / `consensus_proposals`, `proposal_clusters`, `knowledge_maintenance_runs`, `commons_proposal_reviews`, and the frontier-expert set (`expert_capability_taxonomy`, `expert_identities` with a 13-state lifecycle, `expert_affiliations`, `expert_evidence` with tiering, `expert_capabilities`, `expert_claims`, `expert_claim_relations`, `expert_versions`, `expert_lifecycle_events`, `expert_source_snapshots` — see `createFrontierExpertTables()`).
+`memory_candidates` (typed by `store` into `episodic / procedural / semantic / working`, a G8 column added on top of the memory flywheel so it routes memories to typed cognitive stores; the same `memoryCandidatesColumns` migration also carries `content_hash`, the sha256 of the reviewed content sealed on first use — production had grown the column ad hoc before the migration pinned it), `memory_access_log`, `specialist_panels` / `specialist_reviews` (with `UNIQUE(panel_id, specialist_id)`), `knowledge_claims`, `goal_hypotheses`, `strategy_nodes`, `vector_memories` (embedding-JSON store with TTL), `swarm_learning` (the older pattern-ledger), `context_cache`, `consensus_debates` / `consensus_proposals`, `proposal_clusters`, `knowledge_maintenance_runs`, `commons_proposal_reviews`, and the frontier-expert set (`expert_capability_taxonomy`, `expert_identities` with a 13-state lifecycle, `expert_affiliations`, `expert_evidence` with tiering, `expert_capabilities`, `expert_claims`, `expert_claim_relations`, `expert_versions`, `expert_lifecycle_events`, `expert_source_snapshots` — see `createFrontierExpertTables()`).
 
 ### Swarm & council
 
@@ -213,6 +215,8 @@ Every worker action the loop service takes is persisted as evidence: `LoopServic
 ### Explainer pipeline, ops plumbing, and tenancy
 
 The `explainerSchema` block plus `createExplainRepoTables()` own `explainer_tasks`, `explainer_bundles`, `explainer_sections`, `explainer_jobs`, `explainer_feedback`, `human_review_queue`, `explainer_audit_log`, `repository_scan_artifacts`, `discovered_repositories`, `repo_graph_snapshots`. Ops plumbing: `messages`, `board_handoff_claims` / `board_idempotency_keys` / `board_handoff_outbox` (statuses `pending / published / failed`), `event_outbox`, `self_improvements` and its proposal-cluster support tables (`createSelfImprovementTables()` also enforces the partial-unique fingerprint index via a delete of stale live duplicates — the comment there records a production incident where every parked proposal vanished until this was scoped to live statuses only), `provider_configs` from `migrate-phase56.ts`, `sub_agent_tool_outputs` / `sub_agent_scratch`, `agent_archives`, `runtime_contract_probes`, and `system_state` (the `key/value` store the provenance code writes into).
+
+The same `createSelfImprovementTables()` block also holds a growing set of operator-dated single-purpose tables for the fleet and evolution planes: `fleet_hosts` / `fleet_commands` (the pull-based host-agent audit — who asked, who approved, sha256-bound shell commands with a 15-minute approval window), `maker_genomes` / `gym_holdout` / `gym_mutant_holdout` / `gym_write_test_holdout` / `gym_attempt_diffs` (the Darwin-loop gym: baseline + dream-mutant strategy genomes judged on frozen, never-shown holdouts), `genome_trial_results` / `evolution_estimates` (settled-trial statistics and the nightly estimator thermometer), `shipped_code_scans`, `llm_model_calls` (per-call model ledger), `committee_genomes` / `committee_jobs`, `local_shadow_jobs`, `telegram_identities`, `judgments`, and `registry_agents`. Treat this list as illustrative rather than exhaustive — it is the fastest-growing region of the file.
 
 `applyMultiTenancyMigration()` and the `20260823-multi-tenancy-audit-trail.sql` migration introduce `organization_id` columns on `agents`, `loops`, `loop_runs`, `approvals`, and `users`, plus an `organizations` table and a tenant-scoped `audit_logs` envelope. The SQL file sets WAL and creates hash-indexed audit columns (`log_hash`); in current code, that audit shape is superseded by `audit_events` + the `ComplianceAuditService` chain — the SQL file is historical, kept in `migrations/` for reference while the TS migration applies the same columns idempotently.
 
@@ -237,8 +241,9 @@ The `explainerSchema` block plus `createExplainRepoTables()` own `explainer_task
 The upsert mechanics are deliberate:
 
 - The insert sets `status = 'unknown'` and empty `command`/`args`/`env`, keyed `ON CONFLICT(name)`. On conflict only `url`, `description`, `metadata`, and `updated_at` are overwritten — so the row's `id`, runtime `status`, `last_ping_at`, and `error_message` (owned by the health checker at request time) are never clobbered by a reboot reseed. The test `seed-mcp-servers.test.ts` pins this: seeding over a server in `error`/`stopped` state leaves that state alone while refreshing URL and metadata.
-- **Metadata merge preserves stored keys.** Before each upsert the seed reads the existing row's `metadata`, parses it, and spreads `{ ...stored, ...seeded }`. Seed keys win for the fields the seed owns (`probe_path`, `openapi_path`, `api_url`), but operator- or runtime-added keys the seed does not know about (e.g. an `owner: 'ops'` marker) survive reseeding verbatim.
-- **`known_unreachable` marker semantics**: a server can be marked `known_unreachable: true` with a `known_unreachable_reason` when the host is not routable from the deployment (production VPS vs the workstation, where the 192.168.1.28 LAN address is unreachable and only the Tailscale IP 100.81.133.48 answers). Because the merge preserves stored keys, simply *omitting* the key from the seed would leave a stale `true` in place forever; clearing requires explicitly re-seeding `known_unreachable: false` with a null reason (the seed does exactly this for `research-agent` and `uams-read` after the port came back on 2026-09-24).
+- **Metadata merge preserves stored keys.** Before each upsert the seed reads the existing row's `metadata`, parses it, and spreads `{ ...stored, ...seeded }`. Seed keys win for the fields the seed owns (`probe_path`, `probe_url`, `openapi_path`, `api_url`, `catalog_only`/`integration_kind`, and the reachability markers), but operator- or runtime-added keys the seed does not know about (e.g. an `owner: 'ops'` marker) survive reseeding verbatim — `seed-mcp-servers.test.ts` pins exactly that scenario.
+- **Reachability split (`AGENTIC` vs workstation-only).** Following operator rule 2026-09-29 — *the control plane never calls the workstation; it only pulls, and `OUTBOUND_DENY_HOSTS` enforces it* — the seed splits the fleet by where a sidecar actually runs. `research-agent`, `qdrant`, `uams-read`, and `knowledge-mcp-bridge` point at the co-located agenticservices host (`AGENTIC = http://100.77.58.72`) and carry an explicit `reachable` marker (`known_unreachable: false` with a null reason); `deerflow`, `searxng`, and `litellm-mgmt` stay on the workstation Tailscale IP (`100.81.133.48`) and are seeded `known_unreachable: true` with a reason string, so the UI shows them as stopped instead of repainting a connection refusal as an error. `context7` is the only public-internet entry. Six of the eight rows are `catalog_only` / `integration_kind: 'dependency'` sidecars — the two exceptions are `research-agent` itself and `knowledge-mcp-bridge`, the directly probed bridges.
+- **Marker set/clear is explicit, never omission.** Because the merge preserves stored keys, simply *omitting* `known_unreachable` from a seed entry would leave a stale `true` in place forever; the seed therefore always writes the marker in one direction or the other via the shared `reachable` / `workstationOnly` spread objects. A second seed test enforces the invariant that no probed row points at the workstation IP without `known_unreachable` set, and that `qdrant` resolves to the `AGENTIC` host.
 
 ## Evidence persistence: resolveEvidenceRoot
 

@@ -3,9 +3,6 @@ type: operations-runbook
 title: Backup, Restore & Data Retention
 description: How the Djimitflo server snapshots its SQLite database into validated tar.gz bundles, stages two-phase restores through a restore-pending.json marker applied at startup, and guards disk capacity via RetentionService purges and the DiskGuardService alerting loop.
 tags: [backup, restore, sqlite, retention, disk-guard, disaster-recovery, operations, audit]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-24T19:59:50.419Z
 sources:
   - id: openwiki-source-526c2013720d2821623139b9
     resource: repo://packages/server/src/__tests__/backup.test.ts

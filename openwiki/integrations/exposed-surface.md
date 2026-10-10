@@ -26,10 +26,18 @@ sources:
     resource: repo://packages/server/src/routes/explore-public.ts
   - id: openwiki-source-7896dda6652bd02503b56b0e
     resource: repo://packages/server/src/routes/health.ts
+  - id: openwiki-source-71021f8dd8ee22ee3952bea0
+    resource: repo://packages/server/src/routes/host-agent.ts
   - id: openwiki-source-13e7bffe2fd4d8b2a22e195d
     resource: repo://packages/server/src/routes/index.ts
   - id: openwiki-source-e5c4c6f6bbbf9092efac4c9a
     resource: repo://packages/server/src/routes/metrics.ts
+  - id: openwiki-source-5ae743f194dee8dcc975b1df
+    resource: repo://packages/server/src/routes/remote-gym.ts
+  - id: openwiki-source-3b48fdf6c91879952665c466
+    resource: repo://packages/server/src/routes/telegram.ts
+  - id: openwiki-source-9f91c8fd7c8efed80db6be05
+    resource: repo://packages/server/src/services/usage-telemetry.ts
   - id: openwiki-source-fa568b0862f0b0b901ecfc19
     resource: repo://packages/server/src/services/websocket-service.ts
   - id: openwiki-source-a3695f6a34078796ab87072d
@@ -40,7 +48,10 @@ sources:
     resource: repo://scripts/contract-inventory.mjs
   - id: openwiki-source-1d9734c69d8b750a412da9f0
     resource: repo://scripts/route-source-inventory.mjs
-generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-10-10T14:22:19.101Z
+generated: { by: "openwiki/0.5.2", at: "2026-10-10T14:22:19.101Z" }
 ---
 
 # HTTP/WebSocket API Surface & Route Inventory
@@ -79,32 +90,57 @@ would also intercept later public routes such as the Telegram webhook.
 `auth` is missing, so the API router can never be constructed without the
 authentication boundary in place.
 
+Two direct routes sit outside the mount table but inside the same `/api`
+router: `GET /api/version` (public) and `GET /api/openapi.json`
+(rate-limited + `requireAuth`), both registered before `mountRoutes` runs so
+they appear in `collectRoutes` output as top-level paths.
+
 ## Per-prefix authentication
 
 Nearly every prefix mounts `requireAuth` — a Bearer-JWT check that verifies the
 token, re-reads the user, refuses disabled accounts, and rebinds the principal's
 role/organization from current state rather than trusting stale claims. The
-exceptions are explicit:
+exceptions are explicit, and each is safe for a specific reason:
 
 - `/auth` mounts with empty middleware; its login/register endpoints are public
-  and its protected endpoints authenticate themselves.
+  (they are the credential entry point) and its protected endpoints (e.g.
+  `GET /auth/me`) authenticate themselves.
 - `/swarms/spawns` admits either a user JWT or a scoped `X-Spawn-Token` via
   `requireAuthOrSpawnToken`, so a runtime child with no user session can POST
-  spawns and poll status — but child-only callers still cannot create root
-  spawns because `POST /spawns/root` requires the `write:swarm_action`
-  permission inside the router.
-- `/swarm-v2/social-runtime` mounts with empty middleware because it serves
-  signed runtime callbacks scoped to an agent; no user JWT is accepted there.
+  spawns and poll status — but `POST /spawns/root` still requires the
+  `write:swarm_action` permission inside the router, and `requireAuthOrSpawnToken`
+  leaves `req.user` unset on the token path, so `requirePermission` 401s a
+  token-only child that tries to create roots. Only operators create roots.
+- `/swarm-v2/social-runtime` mounts with empty middleware because it is a
+  least-privilege pull surface for signed agent-runtime pollers; each handler
+  authenticates with a host-scoped HMAC token (`X-Agent-Social-Token`, scope
+  `social-runtime`) validated against the spawn-token secret, and no user JWT
+  is accepted there.
+- `/gym-worker` mounts with empty middleware because remote compute hosts pull
+  evolution-gym and maker work; claim/result/committee/kb handlers authenticate
+  themselves with a host-scoped HMAC token (`X-Gym-Host` + `X-Gym-Worker-Token`,
+  scope `gym-worker`). Only the operator-facing `POST /gym-worker/tokens` mint
+  endpoint uses `requireAuth` + `manage:tokens`.
+- `/host-agent` mounts with empty middleware for the same pull reason: fleet
+  hosts heartbeat and pull commands/shadow-judgment jobs and authenticate per
+  request with a host-scoped HMAC token (`X-Host` + `X-Host-Token`, scope
+  `host-agent`); rejected tokens 401 and are recorded as policy violations.
+  Token minting (`POST /host-agent/tokens`) stays behind `requireAuth` +
+  `manage:tokens`.
 - `/api/health` mounts with empty middleware (basic liveness is public; the
-  deep and metrics variants inside that router authenticate themselves with
-  `requireAuth` + `requirePermission('read:evidence')`).
-- `/telegram` mounts with empty middleware so its secret webhook endpoint
-  remains reachable without a user session.
-- `GET /api/version` is a public direct route reporting `{ version, name: 'Djimitflo API' }`.
+  deep, stalls, cockpit, and metrics variants inside that router authenticate
+  themselves with `requireAuth` + `requirePermission('read:evidence')`).
+- `/telegram` mounts with empty middleware so its webhook endpoint remains
+  reachable without a user session; the webhook itself is authenticated by the
+  `X-Telegram-Bot-Api-Secret-Token` shared secret (503 when unset, 401 on
+  mismatch).
+- `GET /api/version` is a public direct route reporting
+  `{ version, name: 'Djimitflo API' }`.
 
 Within authenticated prefixes, individual handlers add
 `requirePermission('<perm>')`, which is branded `requiresAuth: true` so the
-inventory also counts per-route permission guards as authenticated.
+inventory counts per-route permission guards as authenticated even on prefixes
+whose mount middleware is empty.
 
 ## Global guards on /api
 
@@ -117,25 +153,47 @@ Before any route matches, the API router applies:
   `express-rate-limit` (`standardHeaders: 'draft-8'`). The server sets
   `trust proxy` to 1 hop so this limiter keys on the real client IP behind the
   nginx hop; the `/traceability` prefix additionally tightens itself to
-  30 requests/minute, and `/openapi.json` has its own 100-per-15-minute limiter.
+  30 requests/minute, the `/api/health` router adds its own 600/minute
+  per-router limiter, and `/openapi.json` has its own 100-per-15-minute
+  limiter.
+
+## Usage telemetry on /api
+
+The router also mounts `UsageTelemetry.middleware()` before the mount table,
+which counts every matched route pattern (method + status class) into a
+`usage_counts` SQLite table buffered in memory and flushed once a minute —
+counts only, no user ids, query strings, or bodies, so dormant surface can be
+measured before consolidation. Two authenticated operator endpoints sit beside
+it: `GET /api/telemetry/usage` (summarizes the last N days, clamped to 1–90)
+and `POST /api/telemetry/pageview` (records a dashboard page path after
+normalizing ids to `:id` and validating the shape).
 
 ## /api/openapi.json — derived, not handwritten
 
-`GET /api/openapi.json` is `requireAuth`-guarded and lazily builds (then caches
-per process) an OpenAPI 3.1 skeleton from the **live router stack**:
-`collectRoutes(router)` walks mounted layers using the metadata `mountRoutes`
-recorded, joining prefixes with route paths, converting Express `:param`
-segments to `{param}` templates, and marking each operation with a
+`GET /api/openapi.json` is `requireAuth`-guarded (behind the dedicated
+100-per-15-minute `openApiRateLimiter`) and lazily builds (then caches per
+process via `openApiSpec ??=`) an OpenAPI 3.1 skeleton from the **live router
+stack**: `collectRoutes(router)` walks mounted layers using the metadata
+`mountRoutes` recorded, joining prefixes with route paths, converting Express
+`:param` segments to `{param}` templates, and marking each operation with a
 `bearerAuth` security requirement when it is authenticated. The spec is
 deliberately paths + methods + auth flag only — no request/response schemas
 (the header comment calls this state "ponytail" and names zod schemas as the
 upgrade path). `collectRoutes` fails closed: it throws `Route inventory
-incomplete` on any nested router that `mountRoutes` did not record, and rejects
-non-string paths, so `openapi.json` can never silently omit routes.
+incomplete: unrecorded nested router` on any nested router that `mountRoutes`
+did not record, and rejects non-string paths, so `openapi.json` can never
+silently omit routes.
 
-Two sibling startup routes outside the `/api` table feed the same surface:
-`GET /workstation/urls` (authenticated, enumerates the host's listening ports
-via `netstat`/`ss` best-effort) and `GET /version`.
+The companion test (`createRoutes exposes the platform surface through
+/openapi.json`) invokes the `/openapi.json` layer handler directly and asserts
+the spec exposes more than 100 paths, spot-checking well-known endpoints
+across mounts (`/api/tasks/{id}`, `/api/openmythos/score/{agentId}`,
+`/api/apex/llm/route`, `/api/version`, `/api/openapi.json`,
+`/api/health/services`, `/api/swarms/scheduler/tick`) and the `bearerAuth`
+security marker on an authenticated operation. The old container-local port
+scan `GET /api/workstation/urls` was replaced by the service map at
+`GET /api/health/services`; the inventory test pins a 404 regression for the
+removed route.
 
 ## /metrics — default-off Prometheus exposition
 
@@ -144,7 +202,7 @@ via `netstat`/`ss` best-effort) and `GET /version`.
 it responds 404 — the endpoint is invisible, not merely forbidden. When armed,
 it requires `Authorization: Bearer <METRICS_TOKEN>` compared with
 `timingSafeEqual` (plain bearer, not JWT, because JWT auth does not fit
-scrapers) and is rate-limited to 300 scrapes per 15 minutes per IP
+scrapers) and is rate-limited to 300 requests per 15 minutes per IP
 (`metricsRateLimiter`, using `express-rate-limit` specifically so CodeQL's
 missing-rate-limiting check recognizes it). All gauges — task/agent/loop/lease/
 approval/work-item counts by status, latest OpenMythos scores per agent,
@@ -160,13 +218,22 @@ build-time environment variables: `DJIMITFLO_COMMIT_SHA` (runtime commit),
 `DJIMITFLO_BUILD_COMMIT`, `DJIMITFLO_BUILD_SOURCE`, `DJIMITFLO_BUILD_TIME`,
 `DJIMITFLO_INSTANCE_ID`, and a `commit_matches_build` boolean that is true only
 when the running revision equals the baked build revision — making a deployed
-artifact attributable only when runtime and artifact agree. `/api/health/deep`
-(requires `read:evidence`) probes the database, memory pressure, active worker
-leases, the knowledge runtime, and the configured LiteLLM/Ollama/Qdrant
-dependencies, returning 503 when any check errors. `packages/server/src/routes/health.ts`
-also implements the authenticated in-band `/api/metrics` and
-`/api/metrics/json` endpoints (`read:evidence`), which are distinct from the
-token-armed root `/metrics`.
+artifact attributable only when runtime and artifact agree. The `/api/health`
+router also installs its own per-router limiter (600 requests/minute, visible
+to CodeQL) on top of the global `/api` 300/minute cap.
+
+`/api/health/deep` (requires `read:evidence`) probes the database, memory
+pressure, active worker leases, the knowledge runtime, and the configured
+LiteLLM/Ollama/Qdrant dependencies, returning 503 (`degraded`) when any check
+errors and including the database provenance block (`getDatabaseProvenance(db)`)
+in its response. The same router hosts the operator observability windows:
+`/api/health/stalls` (silent-stall detector status per subsystem), `/api/health/cockpit`,
+`/api/health/schedulers` (`manage:config`), `/api/health/services`
+(the reachability service map that replaced `/api/workstation/urls`), and
+several other read-only views. `packages/server/src/routes/health.ts` also
+implements the authenticated in-band `/api/metrics` and `/api/metrics/json`
+endpoints (`read:evidence`), which are distinct from the token-armed root
+`/metrics`.
 
 ## /explore — public explainer pages
 
@@ -251,14 +318,29 @@ The mount table is verified end-to-end rather than trusted:
 - `scripts/route-source-inventory.mjs` statically parses every
   `createXRoutes` factory (literal `router.<method>` calls only), expands the
   mount graph from `index:createRoutes` at base `/api` (detecting cyclic
-  mounts), and fingerprints all route/auth sources via SHA-256.
-- `packages/server/src/__tests__/route-inventory.test.ts` instantiates the real
-  aggregator, compares `collectRoutes` output against the source declaration
-  (`compareRuntimeRoutes` must show zero drift), probes **every** authenticated
-  route over HTTP and requires a 401 for each anonymous probe, and asserts the
-  `/api/openapi.json` operation count equals the inventory size. When
-  `RUNTIME_ROUTE_INVENTORY_PATH` is set, the test writes the runtime inventory
-  artifact for CI.
+  mounts), and fingerprints all route sources plus `route-inventory.ts` and
+  `middleware/auth.ts` via SHA-256.
+- `packages/server/src/__tests__/route-inventory.test.ts` runs an aggregate
+  sweep against the **real** aggregator: it builds the API router with
+  `createRoutes(db, undefined, service, auth, …)` on a test database, compares
+  `collectRoutes(router)` output against `inventoryRouteSource(root)` via
+  `compareRuntimeRoutes` (which must show zero drift in both directions), then
+  HTTP-probes **every** route marked `authenticated` with an anonymous request
+  and requires a 401 for each. To keep real `express-rate-limit` burst windows
+  intact (this is an auth-boundary sweep, not a rate-limit load test) it
+  rebuilds a fresh `createRoutes` router every 100 probes and re-asserts the
+  fresh router's inventory equals the first; route params are replaced with a
+  fixture id. The sweep also asserts `/api/version` and `/api/health` are 200
+  anonymously, pins the `/api/workstation/urls` → 404 regression note
+  (replaced by `/api/health/services`), mocks `fetch` to fail if any provider
+  registration path is hit during the anonymous proof, and asserts the
+  authenticated `GET /api/openapi.json` operation count equals the inventory
+  size. When `RUNTIME_ROUTE_INVENTORY_PATH` is set, the test writes the runtime
+  inventory artifact (routes, comparison, per-route probe outcomes, and summary
+  counters) for CI. A companion test (`createRoutes exposes the platform
+  surface through /openapi.json`) invokes the `/openapi.json` layer handler
+  directly and asserts the spec exposes more than 100 paths with bearer
+  security on authenticated operations.
 - `scripts/contract-inventory.mjs` (npm script `assurance:contracts`, also
   `assurance:route-contracts`) cross-references source declarations against
   test files, flags `critical_unclassified` routes in security-sensitive
@@ -273,9 +355,9 @@ the runtime inventory go stale all fail the assurance run.
 
 ## Where this surface is mounted
 
-`packages/server/src/index.ts` mounts, in order: the GitHub webhook
-connector (raw-signature, before the JSON parser), the JSON parser and request
-logger, `GET /health`, the `/ws` WebSocket server, `GET /metrics`,
-`app.use('/api', createRoutes(...))`, `app.use('/explore', ...)`, the static
-dashboard bundle with an SPA fallback that yields to `/api`, `/ws`, and
-`/health` paths, and finally the error handler.
+`packages/server/src/index.ts` mounts, in order: `securityHeaders` and CORS,
+the GitHub webhook connector (raw-signature, before the JSON parser), the JSON
+parser and request logger, `GET /health`, the `/ws` WebSocket server,
+`GET /metrics`, `app.use('/api', createRoutes(...))`, `app.use('/explore', ...)`,
+the static dashboard bundle with an SPA fallback that yields to `/api`, `/ws`,
+and `/health` paths, and finally the error handler.

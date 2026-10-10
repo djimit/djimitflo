@@ -1,7 +1,7 @@
 ---
 type: architectural-mechanism
 title: Server Runtime & Startup Composition
-description: How packages/server/src/index.ts boots the Djimitflo control plane — database init, crash recovery of loops and tasks, profile-gated service wiring, the Express middleware chain, route aggregation, the authenticated WebSocket server, dashboard static serving, and SIGTERM graceful shutdown.
+description: How packages/server/src/index.ts boots the Djimitflo control plane — database init and staged-restore application, crash recovery of loops and tasks, profile-gated service wiring, the Express middleware chain, route aggregation, the authenticated WebSocket server, dashboard static serving, and SIGTERM graceful shutdown.
 tags: [server-startup, express, sqlite, crash-recovery, graceful-shutdown, runtime-profile, websocket, middleware]
 sources:
   - id: openwiki-source-be80b8bb0c3f3a4106e1484a
@@ -40,11 +40,18 @@ sources:
     resource: repo://packages/server/src/services/loop-service.ts
   - id: openwiki-source-79e38068daabb6567e2c465d
     resource: repo://packages/server/src/services/runtime-governance-service.ts
+  - id: openwiki-source-7a3b7174c12d6f71149b943b
+    resource: repo://packages/server/src/services/scheduler-registry.ts
   - id: openwiki-source-8aaff226df3ca5c2697d015e
     resource: repo://packages/server/src/services/self-healing-scheduler.ts
   - id: openwiki-source-fa568b0862f0b0b901ecfc19
     resource: repo://packages/server/src/services/websocket-service.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+  - id: openwiki-source-a3695f6a34078796ab87072d
+    resource: repo://packages/server/src/utils/route-inventory.ts
+generated: { by: "openwiki/0.5.2", at: "2026-10-10T14:22:19.101Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-10-10T14:22:19.101Z
 ---
 
 # Server Runtime & Startup Composition
@@ -94,8 +101,7 @@ Before `main()` runs, two module-level adjustments apply:
 `main()` wires the process in the following exact order; each step only sees
 dependencies constructed earlier:
 
-<!-- openwiki: mermaid parse failed and this diagram was converted to a text fence so it does not break rendering. Fix the diagram source and restore the mermaid fence. Parser error: Parse error on line 26: ...tall SIGTERM handler Expecting '()', 'SOLID_OPEN_ARROW', 'DOTTED_OPEN_ARROW', 'SOLID_ARROW', 'SOLID_ARROW_TOP', 'SOLID_ARROW_BOTTOM', 'STICK_ARROW_TOP', 'STICK_ARROW_BOTTOM', 'SOLID_ARROW_TOP_DOTTED', 'SOLID_ARROW_BOTTOM_DOTTED', 'STICK_ARROW_TOP_DOTTED', 'STICK_ARROW_BOTTOM_DOTTED', 'SOLID_ARROW_TOP_REVERSE', 'SOLID_ARROW_BOTTOM_REVERSE', 'STICK_ARROW_TOP_REVERSE', 'STI -->
-```text
+```mermaid
 sequenceDiagram
     autonumber
     participant M as main
@@ -108,10 +114,10 @@ sequenceDiagram
     participant EE as ExecutionEngine
     participant LR as learning services
     participant SC as schedulers
-    participant RT as /api router
+    participant RT as API router
 
     M->>DB: open sqlite, pragmas, schema, migrations
-    M->>LS: recoverInterruptedRuns (orphaned runs to interrupted, leases to failed, prune worktrees)
+    M->>LS: recoverInterruptedRuns delegates to LoopRecoveryService then prunes worktrees
     M->>BS: profile-gated init (operator / autonomous bootstrap, LoopDaemon)
     M->>AU: bootstrapAdmin, createAuthMiddleware
     M->>EX: securityHeaders, cors, webhook raw-body, express.json, requestLogger
@@ -121,7 +127,7 @@ sequenceDiagram
     M->>SC: default-off schedulers armed (retention, compliance, self-healing, etc.)
     M->>RT: mount /api router, /explore public pages, /metrics
     M->>EX: dashboard static + SPA fallback, errorHandler last
-    M->>M: httpServer.listen; install SIGTERM handler
+    M->>M: httpServer.listen then install SIGTERM handler
 ```
 
 Exact boot wiring order in `main()` — recovery happens before any route accepts traffic.
@@ -135,7 +141,9 @@ Exact boot wiring order in `main()` — recovery happens before any route accept
    persistent database instance id (`ensureDatabaseInstanceId`).
 2. **Loop crash recovery (non-fatal).** A `LoopService` is constructed and
    `recoverInterruptedRuns()` is invoked inside try/catch — a failure only logs a
-   warning and boot continues. The same `recoverySvc` instance is shared with
+   warning and boot continues. `LoopService.recoverInterruptedRuns()` delegates to
+   `LoopRecoveryService.recoverInterruptedRuns()` (leases and runs) and then calls
+   its own `pruneOrphanedWorktrees()`. The same `recoverySvc` instance is shared with
    `initAutonomousServices` and the `LoopDaemon` so daemon and API share runtime
    leases. A `SelfModelService` is constructed in the same block for calibrated
    runtime selection.
@@ -153,8 +161,9 @@ Exact boot wiring order in `main()` — recovery happens before any route accept
    `ERR_ERL_UNEXPECTED_X_FORWARDED_FOR`), then `securityHeaders`, then `cors`
    (origins from `CORS_ORIGINS`, default the Vite dev origins, credentials true),
    then the **GitHub webhook router mounted at `/github/webhook` BEFORE
-   `express.json()`** — its HMAC signature check must consume the exact raw wire bytes
-   (`express.raw`), never reserialized JSON — then `express.json()`, then
+   `express.json()`** — that router installs `raw({ type: 'application/json' })`
+   (the `raw` export from express) itself, so its HMAC signature check consumes the
+   exact raw wire bytes, never reserialized JSON — then `express.json()`, then
    `requestLogger`. The public `/health` liveness endpoint (which reports build
    identity and `commit_matches_build`) is registered directly on the app.
 6. **HTTP + WebSocket server.** `createServer(app)` hosts a `WebSocketServer` on path
@@ -184,8 +193,11 @@ Exact boot wiring order in `main()` — recovery happens before any route accept
    self-improvement auto-review, frontier experts, specialist-panel backlog, memory
    candidate review — each `start()` returns false (no-op) unless its enable env var
    is set; the OpenMythos nightly scheduler additionally requires the autonomous
-   profile. Operator profile also starts `RetentionService` and
-   `CognitiveLoopClosureService` unconditionally.
+   profile. The dependency lane (`DEPENDENCY_LANE_MODE`) and daily shipped-code scan
+   (`SHIPPED_CODE_SCAN_MODE`) follow the same default-off pattern. Every arm is
+   reported through `noteScheduler(...)` into the in-process scheduler registry so
+   the cockpit can see which flags are armed. Separately, the operator profile
+   starts `RetentionService` and `CognitiveLoopClosureService` unconditionally.
 10. **Route aggregation.** `createRoutes(...)` mounts under `/api`. It requires the
     auth service and middleware (throws `AUTH_MIDDLEWARE_REQUIRED` otherwise), limits
     bodies to 1 MB, re-applies `securityHeaders` and a 300-req/min rate limit, serves
@@ -215,14 +227,18 @@ Exact boot wiring order in `main()` — recovery happens before any route accept
 
 At boot the process's in-memory lease registry (`RuntimeLeaseRegistry` in
 loop-recovery-service.ts) is **empty by construction** — live worker child processes
-never survive a restart. Recovery therefore treats durable state as orphaned:
+never survive a restart. `LoopService.recoverInterruptedRuns()` delegates the
+lease/run reconciliation to `LoopRecoveryService.recoverInterruptedRuns()` and then
+prunes orphaned worktrees. Recovery therefore treats durable state as orphaned:
 
 - Every `worker_lease` still `'running'` in the DB whose id is not in the (empty)
   live set is marked `'failed'` with `failed_reason: 'server_restart'`.
 - Every `loop_run` in an active status with no live lease is marked `'interrupted'`
-  with `interrupted_reason: 'server_restart'` — **except** runs in `planning` and
-  runs whose goal is `blocked` awaiting a human approval (`awaiting_approval.run_id`),
-  which are idle-by-design and must not be flipped by a restart.
+  with `interrupted_reason: 'server_restart'` — **except** runs in `planning`, runs
+  whose goal is `blocked` awaiting a human approval (`awaiting_approval.run_id`),
+  and remote gym runs (metadata `gym.remote_host` set), which execute on their host:
+  a server restart does not touch them, and a host claim settles any real loss.
+  These are idle-by-design and must not be flipped by a restart.
 - Orphaned on-disk worktrees whose leases are terminal (or absent) and older than
   `LOOP_WORKTREE_MAX_AGE_HOURS` (24 h) grace are pruned in the same call.
 - The operation is idempotent and safe to call anytime; interrupted runs can later be
@@ -274,7 +290,8 @@ entrypoint's signal path) executes:
 
 There is no SIGINT handler in this entrypoint, and the 5 s deadline covers only the
 WebSocket drain — the overall HTTP drain has no timeout here (unlike the standalone
-`LifecycleManager`, which force-resolves `server.close` after 10 s).
+`LifecycleManager`, which force-resolves `server.close` after 10 s and would handle
+SIGINT if any entrypoint called its `initSignalHandlers`).
 
 ## Failure posture during boot
 

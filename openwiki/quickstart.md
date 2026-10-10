@@ -1,12 +1,11 @@
 ---
 type: guide
 title: DjimFlo Wiki Quickstart
-description: Entry point to the DjimFlo wiki. Explains what DjimFlo is (a research-grade agent orchestration control plane with governance guardrails), how the wiki is organized, and routes you to the right page for your task.
+description: Entry point to the DjimFlo wiki. Explains what DjimFlo is (a research-grade agentic governance control plane), the epistemic reading discipline, how the wiki is organized, and routes you to the right page for your task.
 tags: [quickstart, orientation, governance, agent-orchestration, wiki]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
 sources:
+  - id: openwiki-source-caa3d30952fbec0c6dae3808
+    resource: repo://docs/adr/0001-djimitflo-core-retire-paperclip.md
   - id: openwiki-source-5b54a58d1b51cd490b0e7162
     resource: repo://package.json
   - id: openwiki-source-e57612dc55cb1fe7d7373bd5
@@ -19,7 +18,10 @@ sources:
     resource: repo://packages/shared/package.json
   - id: openwiki-source-23775c3de52f3ab95a13cb8b
     resource: repo://README.md
-generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-10-10T14:22:19.101Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-10-10T14:22:19.101Z
 ---
 
 # DjimFlo Wiki Quickstart
@@ -30,24 +32,40 @@ need to do, then follow the task-routing map to the page that covers it in depth
 ## What is DjimFlo?
 
 DjimFlo is a **research-grade agentic governance laboratory**: a TypeScript
-npm-workspaces monorepo — a Node.js/Express + SQLite backend with a React
-dashboard — for orchestrating AI coding agents, managing tasks across multiple
-agent runtimes, and governing agent behavior with approval workflows, policy
-enforcement, and audit trails. The root `package.json` describes it as a
-"Codex-native agent orchestration control plane."
+npm-workspaces monorepo — a Node.js/Express + SQLite backend with a React 19 +
+Vite dashboard — for orchestrating AI coding agents, managing tasks across
+multiple agent runtimes, and governing agent behavior with approval workflows,
+policy enforcement, and audit trails. The root `package.json` describes it as a
+"Codex-native agent orchestration control plane for serious engineering teams."
+The current release line is **0.5.8** across all packages, on Node.js >= 22 and
+< 25 with TypeScript 6.x strict mode.
 
 > **Status: research prototype.** DjimFlo is not production-ready for sensitive
 > data. Adapter registration, rendered screens, and passing unit tests do not
 > establish production readiness.
 
+Per [ADR 0001](../docs/adr/0001-djimitflo-core-retire-paperclip.md), DjimFlo is
+the work control plane of the Djimit ecosystem: it owns work intake, approvals,
+execution, audit, and learning closure. Live production capabilities, each
+behind its own flag, include a self-improvement loop (proposal → expert panel →
+goal → approval → maker → checks → checker → draft PR), grounded test-gap /
+mutation-gap lanes, competing maker-species evolution, a frontier-expert
+registry, an Agent Commons, and native event-bus intake.
+
 The spine of the system is a **single authoritative server**
 (`packages/server`, published as `@djimitflo/server`). It boots from
-`packages/server/src/index.ts`, which initializes the SQLite database, runs loop
-and task crash recovery, wires services, mounts the API, and attaches the
-WebSocket server. Behavior varies by runtime profile (`api`, `operator`,
-`autonomous`) resolved from `DJIMITFLO_RUNTIME_PROFILE`.
+`packages/server/src/index.ts`, which resolves the runtime profile, installs an
+outbound-network guard, initializes the SQLite database, runs loop and task
+crash recovery, wires services, mounts the aggregated API under `/api`, and
+attaches an authenticated WebSocket server at `/ws`. Behavior varies by runtime
+profile (`api`, `operator`, `autonomous`) resolved from
+`DJIMITFLO_RUNTIME_PROFILE` — an unset or invalid value falls back to `api`,
+`operator` additionally arms operator services, and `autonomous` additionally
+starts the loop daemon.
 
-Around this spine orbit several satellite surfaces:
+Around this spine orbit several satellite surfaces. The monorepo holds **7 npm
+workspaces** (the root `workspaces: ["packages/*"]` glob) plus a
+runtime-generated knowledge directory:
 
 - **Dashboard** (`packages/dashboard`) — React 19 + Vite frontend, served
   statically by the server in production.
@@ -61,6 +79,13 @@ Around this spine orbit several satellite surfaces:
 - **Knowledge runtime directory** (`packages/knowledge`) — runtime-generated
   knowledge storage.
 
+The server's REST surface is composed in
+`packages/server/src/routes/index.ts`: a declarative mount table (auth, tasks,
+agents, approvals, policies, goals, loops, swarms, spawns, MCP, telegram, and
+dozens more domain routers) is mounted under `/api`, and the same table feeds a
+source-derived route inventory that produces the OpenAPI metadata at
+`/api/openapi.json`.
+
 ## Reading discipline
 
 The project follows an epistemic discipline you should apply when reading this
@@ -68,10 +93,10 @@ wiki. Terms mean exactly what they say:
 
 | Term used | What it actually means |
 |---|---|
-| "Immutable" audit log | Append-only at the SQLite trigger level; not externally anchored |
-| "Compliant" | Control evidence exists; not certified by an external auditor |
+| "Immutable" | Append-only at SQLite trigger level; not externally anchored |
+| "Compliant" | Control evidence exists; not certified by external auditor |
 | "Sandboxed" | Docker container with isolation flags; not gVisor/Kata |
-| "Policy-enforced" | ToolBroker evaluates calls; runtime enforcement is limited to pre-execution |
+| "Policy-enforced" | ToolBroker evaluates; runtime enforcement limited to pre-execution |
 | "Production-grade" | Research prototype; not validated for enterprise production |
 
 Claims in this wiki are intended to be falsifiable via the test suite. Green
@@ -110,7 +135,6 @@ The wiki mirrors the system's architecture. Pages are grouped into domains:
 | Add or understand an agent runtime / executor adapter | [Agent Runtimes & Executor Adapters](concepts/runtime-executors.md) |
 | Understand loop runs, leases, worktrees, and crash recovery | [Loop Domain Model](concepts/loop-lifecycle.md) |
 | Understand nested spawning, swarm trees, and spawn budgets | [Nested Spawn & Swarm Trees](concepts/nested-spawn-hierarchy.md) |
-| Understand memory sync, learning, and evolution subsystems | [Knowledge Runtime & OKF Bundle Operations](operations/knowledge-runtime.md) |
 <!-- openwiki: broken internal link [workflows/task-execution-lifecycle.md] file "workflows/task-execution-lifecycle.md" does not exist. Fix the href or restore the target, then delete this comment. -->
 | Trace a task from API call through execution to audit | [Task Execution Lifecycle](workflows/task-execution-lifecycle.md) |
 | Understand the approval lifecycle across REST / WS / dashboard / Telegram | [Approval Request & Decision Flow](workflows/approval-decision-flow.md) |
@@ -120,7 +144,7 @@ The wiki mirrors the system's architecture. Pages are grouped into domains:
 | Set up local development, build, and run tests | [Local Development, Build & Test Commands](operations/local-development.md) |
 | Look up environment variables and dangerous knobs | [Configuration & Environment Variable Reference](operations/configuration-reference.md) |
 | Back up, restore, or manage data retention | [Backup, Restore & Data Retention](operations/backup-restore.md) |
-| Operate the OKF knowledge bundle and capability sync | [Knowledge Runtime & OKF Bundle Operations](operations/knowledge-runtime.md) |
+| Operate the OKF knowledge bundle, memory sync, and capability sync | [Knowledge Runtime & OKF Bundle Operations](operations/knowledge-runtime.md) |
 | Explore the REST/WebSocket API surface | [HTTP/WebSocket API Surface & Route Inventory](integrations/exposed-surface.md) |
 | Integrate GitHub webhooks / PR review | [GitHub Integration](integrations/github-webhooks.md) |
 | Connect Claude Code / Cursor / VS Code via MCP | [MCP Server Package](integrations/mcp-server.md) |

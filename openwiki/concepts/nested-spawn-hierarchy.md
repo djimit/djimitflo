@@ -3,9 +3,6 @@ type: security-gated-mechanism
 title: Nested Spawn & Swarm Trees
 description: How NestedSpawnService gives running runtime children a gated, budget-accounted path to spawn sub-agents — depth budgets (default 0 = off), cycle guards, cumulative token/wall budgets, capability routing, per-tree concurrency caps, scoped spawn tokens, and the /api/swarms/spawns control endpoint.
 tags: [nested-spawn, spawn-trees, worker-leases, spawn-tokens, default-deny, budgets, capability-routing, auth-middleware, control-endpoint, audit]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
 sources:
   - id: openwiki-source-c0941a928920f2167e6565c3
     resource: repo://packages/server/src/__tests__/loop-routing-continuation.test.ts
@@ -35,7 +32,10 @@ sources:
     resource: repo://packages/server/src/services/spawn-token.ts
   - id: openwiki-source-0dfefeca89a6d1280d92409c
     resource: repo://packages/shared/src/types/websocket.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-10-10T14:22:19.101Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-10-10T14:22:19.101Z
 ---
 
 # Nested Spawn & Swarm Trees
@@ -114,11 +114,34 @@ columns (per-sub-agent context isolation, `0` = no isolation); `createRoot`
 detects them with `PRAGMA table_info` and includes them only when present so
 the insert stays backward-compatible.
 
+### The reject_reason vocabulary
+
+The `sub_agent_spawns.status` CHECK constraint fixes the lifecycle to
+`requested | gated_out | prepared | running | completed | failed | cancelled`,
+and the migration's `reject_reason` comment documents the closed gate-out
+vocabulary: `depth_budget_exceeded`, `cycle_detected`, `capability_not_live`,
+`token_budget_exceeded`, `wall_budget_exceeded`, `concurrency_exceeded`. That
+comment is a *subset* of what the service can record: `requestSpawn` also gates
+out with `operator_paused` (the operator pause is deliberately audited as a
+soft denial rather than thrown), and the capability router can additionally
+return `capability_not_found`, `capability_action_forbidden`, and
+`capability_risk_exceeds_ceiling`. Because `reject_reason` is a plain `TEXT`
+column with no CHECK, all ten values insert cleanly — treat the migration
+comment as the canonical core, not an exhaustive enum. The
+`SPAWN_TOKEN_INVALID` failure is *not* in this vocabulary: a bad token throws
+before any audit row exists, so there is nothing to annotate.
+
 ## The gate chain (requestSpawn)
 
-`requestSpawn` applies six gates in order. The first failure short-circuits
+After validating the token and principal (a thrown `SPAWN_TOKEN_INVALID`, not
+an audit row), `requestSpawn` applies the runtime gates in order: operator
+pause, depth, cycle, cumulative budget, capability routing, and finally the
+concurrency cap. The first failure short-circuits
 into `gateOut`, which writes the `gated_out` audit row, emits
-`SWARM_SPAWN_GATED_OUT`, and returns without materializing anything.
+`SWARM_SPAWN_GATED_OUT`, and returns without materializing anything. The tree
+lookup itself (`SPAWN_TREE_NOT_FOUND` / `SPAWN_TREE_CLOSED` /
+`SPAWN_TREE_MISMATCH`, `PARENT_LEASE_NOT_FOUND`) also throws rather than
+gating out — there is no trustworthy tree context to audit against.
 
 ```mermaid
 flowchart TD
@@ -141,15 +164,15 @@ flowchart TD
   J --> K["prepareNestedLease materializes child lease"]
 ```
 
-*Caption: the six requestSpawn gates short-circuit to an audited `gated_out` row; only a fully-clean request reaches `prepareNestedLease`.*
+*Caption: the requestSpawn gates short-circuit to an audited `gated_out` row (the token/principal check throws instead); only a fully-clean request reaches `prepareNestedLease`.*
 
-1. **Token gate.** External (HTTP) callers must present a valid, unexpired
-   spawn token scoped to `(requested_by_lease_id, spawn_tree_id)`; a bad or
-   missing token throws `SPAWN_TOKEN_INVALID`. Same-process internal calls
-   (`opts.internal = true`) bypass the token because the operator already
+1. **Token gate (throws, no audit row).** External (HTTP) callers must present a
+   valid, unexpired spawn token scoped to `(requested_by_lease_id, spawn_tree_id)`;
+   a bad or missing token throws `SPAWN_TOKEN_INVALID`. Same-process internal
+   calls (`opts.internal = true`) bypass the token because the operator already
    authorized the tree at `createRoot` time — and the HTTP route never trusts a
    request-body `internal` flag. Separately, the spawning principal must be the
-   parent: `requested_by_lease_id !== parent_lease_id` is rejected.
+   parent: `requested_by_lease_id !== parent_lease_id` is rejected the same way.
 2. **Operator pause.** `assertOperatorNotPaused` on the parent's loop run maps
    `LOOP_OPERATOR_PAUSED` to a `gated_out` row with reason `operator_paused`
    (a soft denial, not an exception).
@@ -196,8 +219,30 @@ HMAC-SHA256(secret, payload). Scope is a single `(leaseId, spawnTreeId)` pair
 with a short TTL (`SPAWN_TOKEN_TTL_MS` = 30 minutes, a child lease's spawn
 window), so a leaked child token can only spawn children inside that one tree
 within its window. Validation is constant-time on the signature and never
-throws — any malformed, expired, or wrong-scope token returns `false`, which
-`requestSpawn` maps to `SPAWN_TOKEN_INVALID` → HTTP 401.
+throws. `spawnTokenRejection` is the single check pipeline — it walks a fixed
+rejection order of shape → MAC → subject/scope → expiry, returning one of
+`malformed | bad_mac | wrong_subject | wrong_scope | expired` (or `null` when
+valid):
+
+1. **shape** — anything that is not exactly `payload.sig`, a payload decoding
+   to fewer than three `|`-separated fields, or a non-numeric `expiresAt` is
+   `malformed`.
+2. **MAC** — the supplied signature is compared with
+   `HMAC-SHA256(secret, payloadB64)` via `constTimeEq` (fixed-iteration XOR
+   accumulation, no early exit so signature bytes do not leak via timing); a
+   mismatch is `bad_mac`, so a forged payload never even reaches the field
+   checks.
+3. **subject/scope** — a payload `leaseId` other than the expected requesting
+   lease is `wrong_subject`; a `spawnTreeId` outside the expected tree is
+   `wrong_scope`.
+4. **expiry** — `expiresAt < Date.now()` is `expired`.
+
+`validateSpawnToken` is the boolean wrapper (`=== null`) used in the hot path.
+`requestSpawn` does not branch on the specific reason — *any* rejection
+surfaces uniformly as `SPAWN_TOKEN_INVALID` → HTTP 401 (`validateSpawnToken`
+doc comment: use `spawnTokenRejection` when the reason should be logged). The
+distinguished vocabulary exists for operators debugging a child whose spawn
+calls are being refused.
 
 The secret resolves through `resolveSpawnTokenSecret`: a dedicated
 `DJIMITFLO_SPAWN_TOKEN_SECRET` wins, otherwise `JWT_SECRET` is reused;
@@ -308,6 +353,11 @@ Operator-facing configuration (all resolved with `envInt` fallbacks):
   `auth-principal-chain.test.ts` — the `requireAuthOrSpawnToken` admit/deny
   matrix.
 
+This page is the target of the [Quickstart](/openwiki/quickstart.md)
+task-routing rows "Understand nested spawning, swarm trees, and spawn budgets"
+and "Understand swarm trees, nested spawn delegation, and the daemon's goal
+dispatch".
+
 ## Related pages
 
 - [Loop Domain Model: Runs, Leases, Worktrees & Recovery](/openwiki/concepts/loop-lifecycle.md) —
@@ -316,4 +366,11 @@ Operator-facing configuration (all resolved with `envInt` fallbacks):
 - [AuthN/AuthZ: Roles, JWT Sessions & WebSocket Auth](/openwiki/concepts/roles-and-permissions.md) —
   the auth middleware and RBAC/default-deny posture nested spawning mirrors.
 - [Maker–Checker Loop Execution](/openwiki/workflows/maker-checker-loop.md) —
-  the goal/daemon queue and swarm control plane the spawn routes are mounted under.
+  the goal/daemon queue and swarm control plane the spawn routes are mounted
+  under; a prepared child lease executes as an ordinary maker/checker lease in
+  the loop executor this workflow describes, self-spawning over the control
+  endpoint mid-run when armed.
+- [HTTP/WebSocket API Surface & Route Inventory](/openwiki/integrations/exposed-surface.md) —
+  the mounted route inventory where the `/swarms/spawns` dual-auth mount appears in registration order.
+- [Configuration & Environment Variable Reference](/openwiki/operations/configuration-reference.md) —
+  the operator-facing nested-spawn env knobs (`SPAWN_*`, `DJIMITFLO_CONTROL_URL`, token secret) in one table.
