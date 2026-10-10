@@ -153,29 +153,31 @@ export interface DraftPrRow { run_id: string; lane: string; pr_url: string; pr_n
  * UX-7: the loop's draft PRs, read from loop_runs.metadata.pr_url (no GitHub call). `outcome` is the merge-survival
  * settlement (merged / closed) once it exists; unsettled = open on GitHub or merged < 14 d ago — only GitHub knows which.
  */
-export function listDraftPrs(db: Database, limit = 50, now = Date.now()): { total: number; unsettled: number; rows: DraftPrRow[] } {
+/** Cockpit 3.0: a failed read gives total/unsettled null (unknown), not 0. */
+export function listDraftPrs(db: Database, limit = 50, now = Date.now()): { total: number | null; unsettled: number | null; rows: DraftPrRow[] } {
   const n = Math.min(100, Math.max(1, Math.floor(Number(limit)) || 50));
   let raw: Array<{ id: string; loop_name: string; url: string; created_at: string; state: string | null; survived: number | null; auto_merge: string | null }> = [];
+  let failed = false;
   try {
     raw = db.prepare(`SELECT id, loop_name, json_extract(metadata, '$.pr_url') AS url, created_at,
         json_extract(metadata, '$.pr_outcome.state') AS state, json_extract(metadata, '$.pr_outcome.survived') AS survived, json_extract(metadata, '$.auto_merge.decision') AS auto_merge
       FROM loop_runs WHERE json_extract(metadata, '$.pr_url') IS NOT NULL ORDER BY created_at DESC`).all() as typeof raw;
-  } catch { /* fail-soft on a partial schema */ }
+  } catch { failed = true; /* fail-soft on a partial schema: rows empty, counts unknown */ }
   const rows = raw.slice(0, n).map((r) => ({
     run_id: r.id, lane: r.loop_name, pr_url: r.url, pr_number: Number(/\/pull\/(\d+)/.exec(r.url)?.[1]) || null,
     age_days: +((now - Date.parse(r.created_at)) / 86_400_000).toFixed(1), outcome: r.state ?? null, survived: r.survived === null || r.survived === undefined ? null : r.survived === 1,
     auto_merge: r.auto_merge ?? null, // earned auto-merge decision ('audit_sample' = stays for the human)
   }));
-  return { total: raw.length, unsettled: raw.filter((r) => !r.state).length, rows };
+  return { total: failed ? null : raw.length, unsettled: failed ? null : raw.filter((r) => !r.state).length, rows };
 }
 
 /**
  * Needs-you: loop draft PRs still open, as merge survival last saw them on GitHub (no outcome yet = open). Merged PRs
  * that are still settling are not open — they no longer wait for the operator.
  */
-export function countOpenLoopPrs(db: Database): number {
+export function countOpenLoopPrs(db: Database): number | null {
   try {
     return (db.prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE json_extract(metadata, '$.pr_url') IS NOT NULL
       AND COALESCE(json_extract(metadata, '$.pr_outcome.state'), 'open') = 'open'`).get() as { n: number }).n;
-  } catch { return 0; }
+  } catch { return null; } // unknown, not 'nothing open'
 }

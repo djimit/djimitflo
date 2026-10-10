@@ -214,3 +214,14 @@ it('Cockpit 3.0: the server total wins and system-side requeue candidates are sh
   expect(deduped).toContain('Needs you (1)');
   expect(deduped).toContain('22 budgeted requeue');
 });
+
+it('Cockpit 3.0: a failed stall detector or a scheduler that stopped ticking is blocked work, never healthy', () => {
+  const d = snap({ guardrails: [{ name: 'g', ok: true, state: 'HEALTHY', value: 0, limit: '0' }],
+    detectors: [{ name: 'gym', status: 'error', error: 'no such table', checked_at: new Date().toISOString() }],
+    schedulers: { armed: 2, off: 0, by_status: { executing: 1, armed_not_ticking: 1 }, health: 'BREACHED' } });
+  expect(overallHealth(d).state).not.toBe('HEALTHY');
+  const html = renderToStaticMarkup(<MemoryRouter><CommandStrip d={d} /></MemoryRouter>);
+  expect(html).toContain('detector failed (unwatched): gym');
+  expect(html).toContain('1 scheduler(s) armed but not ticking');
+  expect(html).toContain('2 blocked');
+});
