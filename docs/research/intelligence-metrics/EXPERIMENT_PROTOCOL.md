@@ -69,6 +69,15 @@ evaluator_isolation_check: # how the candidate is prevented from touching evalua
   settled per arm for a 20-pt verified-rate effect; at ~12 oracle goals/day under the caps that is ~16 days for both arms.
   Kappa needs survival labels, which first settle around 19-10.
 - **Falsifier.** Stage 1: arm B accepts defective ≥ arm A, or the McNemar p ≥ 0.05 → retain the single-family checker.
+- **Stage 2 built (10-10, operator-approved, default off).** `CHECKER_FAMILY_RANDOMISE=on` randomises the checker (never the
+  security checker) by sha256(`checker-family:` + goal id); arm B = `CHECKER_CROSS_MODEL`, default `ollama/kimi-k3:cloud` (registered
+  in prod's opencode config, another family than the glm maker, already the panel reviewer). Evidence: `evolution-evidence`
+  `checker_family`. The operator set the stop at 30 labelled goals per arm, falsified if the Δkappa CI includes 0. Two deviations
+  from this registration are on record: (1) 30/arm is below the ≥ 93/arm above — at 30/arm a Δkappa of 0.3 is detected with
+  power ≈ 0.34 (simulated: kappa 0.5 → 0.8, balanced labels, bootstrap CI; 80 % power needs Δ ≈ 0.5, or ~93/arm for Δ 0.3), so a CI that includes 0 is weak evidence of no effect; (2) the attributed outcome is
+  partly the checker's own label (a rejection is maker_failure), which the global "independent labels" rule forbids as a
+  primary endpoint — `outcome_wo_checker` (other gates only), `outcome_survival` (merge survival, this registration's endpoint)
+  and the assertion-strength result are reported beside it.
 - **Isolation.** The checker prompt, harness and defect generator are frozen at the F1 commit; the arm only swaps the model alias.
 
 ### EXP-2 — X1 evolve-sibling arm (running, operator-approved 08-10)

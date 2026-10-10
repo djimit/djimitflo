@@ -18,6 +18,7 @@ import { LoopDraftPrService } from './loop-draft-pr-service';
 import { evolveEligible, evolveSpecies, selectEvolveWinner } from './evolve-selection';
 import { leaseGradedRefs, recordMakerGraded } from './graded-fitness';
 import { assignSiblingArm, recordEffortSibling, siblingRandomiseEnabled } from './effort-controller';
+import { assignCheckerFamily, checkerFamilyEnabled } from './checker-family';
 import { runGenome, skillContentHash } from './maker-genome';
 import { strategyGenomeFor } from './genome-registry';
 import { banditSpecies, chooseSpecies, speciesKey } from './runtime-bandit';
@@ -699,6 +700,9 @@ export class LoopDaemon {
             id, loopRunId: run.id, role, runtime: 'manual', findingId: failed.finding_id ?? '', worktreePath: null, branchName: null, now: new Date().toISOString(),
             metadata: {
               maker_lease_id: meta.maker_lease_id, retry_of: leaseId, retry_reason: meta.failure_reason,
+              // F2: a randomised checker's retry keeps its arm and model (only the checker ever carries them)
+              ...(role === 'checker' && meta.checker_family_arm ? Object.fromEntries(['model', 'checker_family_arm', 'checker_model_id', 'checker_model_family', 'maker_model_family']
+                .filter((k) => meta[k] !== undefined).map((k) => [k, meta[k]])) : {}),
               ...(role === 'checker' ? { requires_independent_review: true } : { requires_security_review: true, ...(meta.high_risk_reason ? { high_risk_reason: meta.high_risk_reason } : {}) }),
             },
           });
@@ -724,7 +728,13 @@ export class LoopDaemon {
           return false;
         };
         // A run resumed after a reviewer's approval already has the earlier reviewer's verdict: don't dispatch it twice.
-        if (!leaseDone('checker') && await dispatch('checker', reviewerFor('checker'))) return;
+        const checkerLease = reviewerFor('checker');
+        // F2 (CHECKER_FAMILY_RANDOMISE=on, acting): an oracle-lane goal's checker runs on the default (same) or on
+        // CHECKER_CROSS_MODEL (cross) by sha256 of the goal id; opencode only (the model is an opencode provider/model)
+        if (checkerLease && !leaseDone('checker') && checkerFamilyEnabled() && runtime === 'opencode' && evolveEligible(this.db, goal.id)) {
+          try { assignCheckerFamily(this.db, run.id, goal.id, checkerLease, runtime); } catch { /* unassigned: the checker runs as today */ }
+        }
+        if (!leaseDone('checker') && await dispatch('checker', checkerLease)) return;
         // The security reviewer is a separate, higher autonomy step (removes human security review): its own flag.
         if (process.env.LOOP_DAEMON_AUTOMATED_SECURITY_CHECKER_ENABLED === 'true' && !leaseDone('security_checker')) {
           const security = reviewerFor('security_checker');

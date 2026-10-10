@@ -10,6 +10,7 @@ import { embeddingDimMismatch, vectorStrictDim } from './embedding-dims';
 import { autoMergeEvidence } from './loop-auto-merge-state';
 import { nonMakerRunSql } from './outcome-attribution';
 import { effortX1Evidence } from './effort-controller';
+import { checkerFamilyEvidence } from './checker-family';
 import { gradedEvidence } from './graded-fitness';
 import { wilson } from './evolution-estimators';
 import { intelligenceEvidence } from './intelligence-metrics';
@@ -47,6 +48,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'SHIPPED_CODE_SCAN_MODE', acting: false },
   { name: 'GYM_STORE_DIFFS', acting: false }, { name: 'WEAK_ASSERTION_CHECK_MODE', acting: true },
   { name: 'POLICY_VIOLATION_LOG', acting: false },
+  { name: 'CHECKER_FAMILY_RANDOMISE', acting: true }, { name: 'CHECKER_CROSS_MODEL', acting: true },
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */
@@ -302,6 +304,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     auto_merge: autoMergeEvidence(db, env, now), memory_holdout,
     // X1 (EFFORT_SIBLING_RANDOMISE): verified / regressed / infra per sibling arm
     effort_x1,
+    // F2 (CHECKER_FAMILY_RANDOMISE): checker verdicts, outcome agreement and kappa per checker-family arm
+    checker_family: checkerFamilyEvidence(db, since, env, fisherExact),
     // SI-A/SI-B: graded executed fitness per pool (n, mean, share at 1.0) and graded-contest agreement with the current rule
     graded: gradedEvidence(db, since, env),
     // KE-3: does knowledge reach evolution? Mutant genomes written from injected knowledge units, and proposals citing a
