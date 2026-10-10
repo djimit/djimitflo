@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5bd48f46f7fbc28d9355b90fd8efbe9e2914302c089e2f0983bf19ae8ec7d7a7",
+  "pageVersion": "sha256:1cdead06f340409b367d3c8d4ee9351109d51e4086f1be53f16a6f49c1105d8a",
   "claims": [
     {
       "id": "claim_17defd1293ac4151b7b92a058063261b",
@@ -136,43 +136,47 @@
         },
         {
           "resource": "repo://packages/server/src/services/github-pr-review-service.ts#L92-L133",
-          "version": "repo-lines-v1:sha256:10b30c1bfef7b1c81ae1d1e7d5097af22026c664f376d0a2022c6ca2bb8bcc64:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzMWJlYjAyYjUzM2EyYWQyYWU1NDAwMGY0Mzg2NDYyYmMwYjhlMWZhOWJmODgzODA1OWM3MWU3NzFhMjI0NTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU2NzJkNTlkYWE5MjNlYzYxYjFjNzEzNjNiMDkxMDZlMTBmM2JjMmQzM2ZkYzBmNGIxOWIxOWY4NWQ0ZGI1NDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU5YzU4MjFjNDg3Yzk0NjMzMjYyNTVkNTlhOTg4ZDBiOWU1ODQ2ZDgwYjAyODg5YjZkNWYwZTJmOGU2OWVlNWEifQ"
+          "version": "repo-lines-v1:sha256:488e64f1a40a17dbb3e965b14a3ad9689d2148008b570b6400336e13c8a82e97:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzMWJlYjAyYjUzM2EyYWQyYWU1NDAwMGY0Mzg2NDYyYmMwYjhlMWZhOWJmODgzODA1OWM3MWU3NzFhMjI0NTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU2NzJkNTlkYWE5MjNlYzYxYjFjNzEzNjNiMDkxMDZlMTBmM2JjMmQzM2ZkYzBmNGIxOWIxOWY4NWQ0ZGI1NDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU5YzU4MjFjNDg3Yzk0NjMzMjYyNTVkNTlhOTg4ZDBiOWU1ODQ2ZDgwYjAyODg5YjZkNWYwZTJmOGU2OWVlNWEifQ"
         }
       ]
     },
     {
       "id": "claim_02bcd559157141839dbec98c27bad74f",
-      "statement": "Phase 1 (default, no LLM) synthesizes an already-completed manual maker lease (the PR's commits are the patch, no worktree) and a manual checker lease driving the real LoopService.submitCheckerVerdict with a manual_attestation; the verdict is a rule-based stub over gh pr view stats — >40 files or >1500 changed lines or paths matching /.env|secret|credential/i yield needs_revision, otherwise accepted — and the worktree-less loop_run settling as blocked is expected since the GitHub-posted verdict is computed independently.",
+      "statement": "Phase 1 (default, no LLM) synthesizes an already-completed manual maker lease (the PR's commits are the patch, no worktree) and a manual checker lease driving the real LoopService.submitCheckerVerdict with a manual_attestation; the verdict is a rule-based stub over gh pr view stats — >40 files or >1500 changed lines or paths matching /.env|secret|credential/i yield needs_revision, otherwise accepted. The worktree-less review run's worktree/diff verification gates legitimately fail on the synthetic lease, but once the verdict is posted settleReviewRun flips the run (running or blocked) to completed with metadata.settled_by='github-pr-review' and idempotently completes the still-running goals of all settled review runs — the GitHub-posted verdict is computed independently from the PR's own diff stats either way.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/__tests__/github-pr-review-webhook.test.ts#L88-L129",
-          "version": "repo-lines-v1:sha256:089fa4f4b47871fc6d9055ba6d577035d7dac997f27341994126754e705512b0:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwMDkxZWQ1OTdkYWJmZjM2ZTU5YjQxNzk4NTE4ZThjZTgwN2Q2M2E3YTNkYzhkNjQzNjQyMDkyYjg5OTAzZmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZjMjA1ODljYzZhODZmNmMxMWNkZTJhZDc0NDFiZDFhMTNjMjI4NmI4ODQ2OWEyZTY0Y2YwMjlmOTk2MmFjNDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcxYTZlZDBhY2MzZmM1OGI0OGZlNDhkMDRkMDNmMjIzYzdhZTU0NDM2YWNjNzM5ZGM1ZWVmZmJhNjViYWI2NTYifQ"
+          "resource": "repo://packages/server/src/__tests__/github-pr-review-webhook.test.ts#L88-L126",
+          "version": "repo-lines-v1:sha256:2686deb2c80e0a5f040948e31178ff714990505ca825b7df0f75585b423b0dd8:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwMDkxZWQ1OTdkYWJmZjM2ZTU5YjQxNzk4NTE4ZThjZTgwN2Q2M2E3YTNkYzhkNjQzNjQyMDkyYjg5OTAzZmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZjMjA1ODljYzZhODZmNmMxMWNkZTJhZDc0NDFiZDFhMTNjMjI4NmI4ODQ2OWEyZTY0Y2YwMjlmOTk2MmFjNDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMyNzljNGU5NWJjMWFmN2JiYmIyNjY1ODI5NTA2NDQ2NWM0Njk2ZWQyNzFhMDg0N2UxNjAwM2E3ZDI5ZTJiYjkifQ"
         },
         {
-          "resource": "repo://packages/server/src/services/github-pr-review-service.ts#L135-L176",
-          "version": "repo-lines-v1:sha256:536e5f39f541f015c24ee36da668da3b7c5aede88b62cd17012738dd2b9073d5:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3ZDg2MzJlNTRlOTI5OGFiYjk1ODcyN2UyZDUxNDA4YWJhZjEzNjYwMzUzNzkxMDE0MGFiZjY1YjMwYWI2MTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkNTM4MDk3MzZhZDVkNWU4MTI5M2Q2YTgxZTIzMDgyMDU3YjdiMjlkNWEzOTViYWI4YmJjODY2ZmZjMTNlNGIifQ"
+          "resource": "repo://packages/server/src/services/github-pr-review-service.ts#L136-L177",
+          "version": "repo-lines-v1:sha256:536e5f39f541f015c24ee36da668da3b7c5aede88b62cd17012738dd2b9073d5:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3ZDg2MzJlNTRlOTI5OGFiYjk1ODcyN2UyZDUxNDA4YWJhZjEzNjYwMzUzNzkxMDE0MGFiZjY1YjMwYWI2MTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2NGY0ZTNmMTUxOTNkN2FiODkwZmEwOGQ3NWI3NmRhZWQyNDRlZmNjNTUzOTc2MDJhOGQ1ODk2ODljZWEyMmIifQ"
         },
         {
-          "resource": "repo://packages/server/src/services/github-pr-review-service.ts#L266-L292",
-          "version": "repo-lines-v1:sha256:9bc2cccea3d9aec5201cd9547d2e3a0c93dca634581faee2315672af80552829:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVhMjEwMmE5MTkzMGJiMDg1NmM0NTFjNmFiZjg1Njk1NWEyMDI3OWI2Zjc0YTVlMzI3MGY1NmQ0MzQzM2ZjYjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3ZDg2MzJlNTRlOTI5OGFiYjk1ODcyN2UyZDUxNDA4YWJhZjEzNjYwMzUzNzkxMDE0MGFiZjY1YjMwYWI2MTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE0ZmU4NDYyOWYzNzMyNDg5ZmRkYWI1YjVjYTUwMjQzNDQ3OWZkYmZmZmU4OGU2ZTdmMjEyMzJiNzMxNDBjZmUifQ"
+          "resource": "repo://packages/server/src/services/github-pr-review-service.ts#L179-L193",
+          "version": "repo-lines-v1:sha256:6fc8603b0e0dc7ca3775679d788acc43346210cf3db727410bdbcedcb3ea2f08:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYxZjM0MGUxNmZiODU3ZmU1M2U2NGI3MTFhZTcwYjMxMTkxYzBkZDAxNjVhYTEzZGMzYzhiMTRhNzIzNmI5OWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkNTM4MDk3MzZhZDVkNWU4MTI5M2Q2YTgxZTIzMDgyMDU3YjdiMjlkNWEzOTViYWI4YmJjODY2ZmZjMTNlNGIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/github-pr-review-service.ts#L297-L310",
+          "version": "repo-lines-v1:sha256:22d9c91726f39a80404f3f1fb055d964a46f8fd5db81747ceab4abd41e664a31:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3OGRjNGZiY2YwZDdlMzU4Y2QzNjc3NGM2YjkyYmQ4MzgxYjcwOGM2OTBlZWY2YTc5ODZhNDE2NjUyMzY2NTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWVmZGQ1MTEzZDk5MDU2ZjFlMTlkZTFiN2Q1YmVkZTZlMGEzMDFmOWU4ZjdiZTRlYWQzZjhmOGRhODY2YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE0ZmU4NDYyOWYzNzMyNDg5ZmRkYWI1YjVjYTUwMjQzNDQ3OWZkYmZmZmU4OGU2ZTdmMjEyMzJiNzMxNDBjZmUifQ"
         }
       ]
     },
     {
       "id": "claim_378c6bcbcf0947558e9a97ccffc4b478",
-      "statement": "Phase 2 (opt-in via GITHUB_PR_REVIEW_RUNTIME set to codex/opencode/claude/gemini/editor/mock) returns pending immediately and asynchronously fetches pull/<n>/head, materializes a real worktree on a djimitflo/pr-review branch reset to the head SHA, writes gh pr diff into .djimitflo/PR_REVIEW_PACKET.md wrapped as untrusted external content, and drives a real checker through LoopService.executeChecker with a 480s timeout; it is off by default to avoid auto-spawning paid LLM calls on every PR push.",
+      "statement": "Phase 2 (opt-in via GITHUB_PR_REVIEW_RUNTIME set to codex/opencode/claude/gemini/editor/mock) returns pending immediately and asynchronously fetches pull/<n>/head, materializes a real worktree on a djimitflo/pr-review branch reset to the head SHA, writes gh pr diff into .djimitflo/PR_REVIEW_PACKET.md wrapped as untrusted external content, and drives a real checker through LoopService.executeChecker with a 480s timeout; on success it posts the comment and settles the run via settleReviewRun like Phase 1, and it is off by default to avoid auto-spawning paid LLM calls on every PR push.",
       "evidence": [
         {
           "resource": "repo://packages/server/src/__tests__/github-pr-review-llm.test.ts#L49-L141",
           "version": "repo-lines-v1:sha256:ea3d2f318a0cd7b84cc16cef282b424667985df87714b1d7483d89a7e417e7fd:eyJzZWxlY3RlZExpbmVDb3VudCI6OTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzYWFjOGY1MGFmN2M3NjNhZGNkOGY3ODZlMzM2Y2JhYmQzNmYzMzkwYTZlYmYxMGQ1ODAzYjZhMTQ1NTE1NmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhMTY1NTgyZTIwMmQxZTYzMmYwZDdlNDNhMWRjNTliMWMyNWZkMGNkNTc5ODNjMGViNGE3MDI1MjdiNjEzNmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjljZDkyYjIxNjc5YmMyODMxYzU4NjYwMmU2NDI3ZWNmNDU3ODBjNzRmMDU2NDczOTdmNDU0ZmI2NzQ5NDllMWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxYzc2YjJjMmY4MzU3YTgzNTNjYzIzMWM5OGRhZmZkODcyZTQ3NDkyNzNkODBjYzNiMzMxNTIzOGFhOTUzZDkifQ"
         },
         {
-          "resource": "repo://packages/server/src/services/github-pr-review-service.ts#L178-L181",
-          "version": "repo-lines-v1:sha256:ef8e5bdd3132c0eff99056e5f7bcbd8721d5c2390ad9992ac3175a35cac7a794:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjYxYWQ3NjAxZjZlYTYzNWJiNDkyZjQ5MWMyYzE1ZGY3YTJhMTdiMjhjOGM0ZmQ2YTdjZTMxYWM3OTUxZDI3ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjFmMzQwZTE2ZmI4NTdmZTUzZTY0YjcxMWFlNzBiMzExOTFjMGRkMDE2NWFhMTNkYzNjOGIxNGE3MjM2Yjk5ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzBjZmZkZmU1MzgxODc0ZTY0ZGQxNDBiYTkzNjJkZDA0NWM0ODU5NDA1ZDAzMDRiMTIwODRkNmFiMzIxNDVjYiJ9"
+          "resource": "repo://packages/server/src/services/github-pr-review-service.ts#L195-L198",
+          "version": "repo-lines-v1:sha256:ef8e5bdd3132c0eff99056e5f7bcbd8721d5c2390ad9992ac3175a35cac7a794:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjYxYWQ3NjAxZjZlYTYzNWJiNDkyZjQ5MWMyYzE1ZGY3YTJhMTdiMjhjOGM0ZmQ2YTdjZTMxYWM3OTUxZDI3ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzkxNjFlZmM4OTZlMjgxZTY5OWM5YTg4NmVjMTg1ZjQ5YWJiNTdjMmVhMjRjNWE0YmNiMzE3MDMxZTJiMjU0NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzBjZmZkZmU1MzgxODc0ZTY0ZGQxNDBiYTkzNjJkZDA0NWM0ODU5NDA1ZDAzMDRiMTIwODRkNmFiMzIxNDVjYiJ9"
         },
         {
-          "resource": "repo://packages/server/src/services/github-pr-review-service.ts#L189-L264",
-          "version": "repo-lines-v1:sha256:c3c869ec653b5dd3802508d4f87fb76c7cbbfdcc78b1b0201fc06359ead002fa:eyJzZWxlY3RlZExpbmVDb3VudCI6NzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2ZWUzMGUzYzY3M2M2ZDQxYWYxOTJmOTBmMzFjMGM4Y2RiNmJjNzVlZmI5NWMyYzgzYmIzNzJjNjM5ZWU3YmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmNjM0ODFjYjNkMjkzYzA1MTA4NDAzMWM0MWE4MGEwNjc5NzcxODRjYmRkZTRmYmZhMTQ1MmNhNzc4N2Y5NjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM2NGZmMTk2OGI2ZjBlYTZiODNiYWMxZTg5YjcwYzg3ZDFjNGE1Y2M2YzE2NzQ5NmE2YjY3OWYwYjQ4MmIyMTIifQ"
+          "resource": "repo://packages/server/src/services/github-pr-review-service.ts#L200-L282",
+          "version": "repo-lines-v1:sha256:99904abf468843f86dba4121214c8fff2ff02d689593da135d6b26e7f1841fa4:eyJzZWxlY3RlZExpbmVDb3VudCI6ODMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ0ZmM3ZDkyOGU5ZDJmMzgxY2QzMTM4NWI0NGFlNDFlNzc4MGMzY2VjOTcyZmZiNGI0ZmM3MDNmNDhhNDIzNDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM2NGZmMTk2OGI2ZjBlYTZiODNiYWMxZTg5YjcwYzg3ZDFjNGE1Y2M2YzE2NzQ5NmE2YjY3OWYwYjQ4MmIyMTIifQ"
         }
       ]
     },
@@ -192,11 +196,11 @@
     },
     {
       "id": "claim_de1d47a840ba43eab40f255c6eec9498",
-      "statement": "Because GithubPrReviewService shells out to gh for PR comments and commit statuses, the production Dockerfile runner stage installs the OS packages ca-certificates, git, python3-minimal, curl, and procps via apt (L61–L64), then installs the GitHub CLI from a statically fetched, pinned .deb — ARG GH_CLI_VERSION=2.100.0, downloaded from github.com/cli/cli/releases for the dpkg build architecture, installed with dpkg -i, and verified with gh --version at build time (L66–L74) — rather than adding a third-party apt repository; an inline comment names GithubPrReviewService as the consumer.",
+      "statement": "Because GithubPrReviewService shells out to gh for PR comments and commit statuses, the production Dockerfile runner stage installs the OS packages ca-certificates, git, python3-minimal, curl, procps, and libatomic1 via apt (L64-L67, under a retry- and IPv4-bounded apt config added after repeated Debian-mirror build stalls), then installs the GitHub CLI from a statically fetched, pinned .deb — ARG GH_CLI_VERSION=2.100.0, downloaded via retry-bounded curl from github.com/cli/cli/releases for the dpkg build architecture, installed with dpkg -i, and verified with gh --version at build time (L69-L77) — rather than adding a third-party apt repository; an inline comment names GithubPrReviewService as the consumer.",
       "evidence": [
         {
-          "resource": "repo://Dockerfile#L61-L74",
-          "version": "repo-lines-v1:sha256:73c1712b0c71712792f7e39dc0948b98137226ac1a764e7776144c294a354558:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5NWIxZDNjYzc2N2Q3ZmEwOTUxMTQ0MjJjMDBiYzk5Mjk1MjJiMDJiZjJhZWMyYjlmM2JhYzIxYmI5ODUzZWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2YzlmNDVlYThiNWNiNTJiMjE3NjlkMjZjNWY2MTJiMGU3NzcwMDllMjZlNjI5YTRjOWRkNzExYmZkMGJlZjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM1YjdjMjk0YmZhYzljODg4YzIzZGI5MTUwMmRiODBmZGExNDIxNzYzYzNlMmZmNDc2MjVmZDU3MDZmYTlkMDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRhMDQ0YTIxN2IyOTY4N2YwMmI3YTA1MGFmYjc3YzAwNWU4MmFjYzg1MDU4MGM5Y2MzNTIyNWJmNzE1ZWJmZTcifQ"
+          "resource": "repo://Dockerfile#L55-L77",
+          "version": "repo-lines-v1:sha256:cebe6304207af41d3a40fcd8dabd5ddc4d86c1e5f79cbab06480ffa032317b57:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYyYTk0MzcyNTBlYWE1YWYzMTU4MmI2Nzc5YmFmMmRjMGEwNTI4YTZkMjcwNjc3YjIxNjRjYTFmZTU3Y2E5YjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2YzlmNDVlYThiNWNiNTJiMjE3NjlkMjZjNWY2MTJiMGU3NzcwMDllMjZlNjI5YTRjOWRkNzExYmZkMGJlZjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM0NjYyNTk0YjEwNjZkODM0ZDExMmExNzBlYmU4YjJiNjMwYzY0NTYxNDBlMmVlOGIxYTVjMTYwNmU1MThjZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhlMzdiOTU5ZDE1MjUyNTBhNTY1ZjIxMGU1ZTNmYjA2NjE1ZjVkODVkYzUyODgyYjJiYzJiN2M5N2YxNTQyYzUifQ"
         }
       ]
     },
@@ -233,28 +237,84 @@
       "statement": "The draft-PR push commits only the maker's real files from the latest non-superseded completed maker lease's worktree — tracked diffs plus untracked files, excluding node_modules content, symlinks, and lockfile install noise (a package-lock.json whose sibling package.json was untouched) — failing with 'no changes in the maker worktree' if nothing qualifies, and authenticates the push with the token as a one-off http.extraheader basic-auth header so the token is never written to the remote URL or .git/config and is scrubbed from any recorded error message.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/services/loop-draft-pr-service.ts#L27-L48",
-          "version": "repo-lines-v1:sha256:0ccdfa5cbaac8a65a5372d4accb121161d932338694be10c50b11aa0cfac0e34:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImViNjExYzA2ZmNhZWM3ZWI4YWJkOGExZjY5YzZjMDg3YTVmNTgyMjRmM2Q2ZmM2MWY5MjI4Y2I5OWQzNmQxM2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVmMjBhZjM3MDE1ZDkwMjc2YWYxYjU1YmM3NTAyOWZlMWQxNGE2ZTY5NzE4NWFiNmE4NjgxYmI1MGVhYWNlNTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ2ZjhhODUwY2JiN2Q1YjhmNmYzZmYzN2MyNzM5Y2VhNTgzMTUxNWY4Y2I2Y2Y2MDI0MWE5YzA1OGNkNDdlYTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM1Mzk1ZDgxYTE0NzE4Njc2OWI1Nzk1ODFmMDEzZjlhYzY5OTY0YTJkMmM2MWNiNzQ4OGM4NDg5NGEzMmMzMGMifQ"
+          "resource": "repo://packages/server/src/__tests__/loop-draft-pr-service.test.ts#L43-L54",
+          "version": "repo-lines-v1:sha256:482c79db1c48d53f8920d6d91c03513b009cbc7dc0e1cec1aabd928f0bfa917f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4ODJmNGM4ZGI5MmMzMjE5M2RmOGY2NmY4N2E3NjJiMjM5ZDIwYmZlMWUyMTk3MDJjNmMzN2Y2M2E5MWJiNDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc5NzlmMmJmY2NjNTM2ZTRiMjU5NzFkOGU3MzcyYTYyMmM4YzlhNDUzOGUyYzM0YzVjZDdlODc4MWNiM2Q4NWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhmN2ZlNzQ4MzJjYTE2NmE5YmQ4OTAwZWZkYWU1ZjI3MTY0ZjRiMDc1YTFhY2JjNGRiYzVlYWRiOTU1YmE0YWYifQ"
         },
         {
-          "resource": "repo://packages/server/src/services/loop-draft-pr-service.ts#L64-L64",
-          "version": "repo-lines-v1:sha256:966a7be1e249a92916a4fac837c48b3a4b5014d779271bd1d27473b6e21749c4:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTY2YTdiZTFlMjQ5YTkyOTE2YTRmYWM4MzdjNDhiM2E0YjUwMTRkNzc5MjcxYmQxZDI3NDczYjZlMjE3NDljNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTY2YTdiZTFlMjQ5YTkyOTE2YTRmYWM4MzdjNDhiM2E0YjUwMTRkNzc5MjcxYmQxZDI3NDczYjZlMjE3NDljNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzY2Zjg4M2E2OGU4Y2I3YmVlMjk3YzczNzVhNTRhZTI5ZWI2MzJmOWM3MzE5NzRlZjc5ZmEzM2YzZTZjZjc1ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMGUwZjcyOTNkMTU2YTZkMTI1MjhkYjEyOTMzNzllNTJhNWY4MzY3MDQ0Mjk3YjIyODJiOTdmZjJjODYwNDM4ZCJ9"
+          "resource": "repo://packages/server/src/services/loop-draft-pr-service.ts#L103-L105",
+          "version": "repo-lines-v1:sha256:32ecad5a6cbc7c1418c0bb7780476cf498080ade9b0ebc1441433ad0c61e7225:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDhkYjc0NjA4MTgyY2I3Y2E0ZDlmYmE0OWEzOTQ5OWE3ZjM5MDdiNGVhMDMzYjE0OTJhZDVjZjBiZWVlZWNlZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg5M2Y0MGUzNzgxZWI4OTZjODJkMDQ2YTA4MDY3YTExZTM1Y2RmMmYxZGZhZjI2ZmVhOTBiOGRiNjY3NjQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTgyMTEzMjNiY2NiZmUzODYwMTU4MWQ4OGQyNzY1NjYyZjgxYjk5ZTM3OGNkNmY2ZDk4NTYxNTE2YTEzMGVkYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWE5MjkzZmQ4MDU0YjZlNDcyNDgzNzNmMzlmNGRkNzc4MDAxMDVlYjc1ODM0ODY4NzI1NDI4NWNkMTI4MmI3OCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-draft-pr-service.ts#L29-L42",
+          "version": "repo-lines-v1:sha256:7253cc6014fd41697d5c9c93fe32f44d728d2f1f5ae993d00636a71a6ab55f3f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImViNjExYzA2ZmNhZWM3ZWI4YWJkOGExZjY5YzZjMDg3YTVmNTgyMjRmM2Q2ZmM2MWY5MjI4Y2I5OWQzNmQxM2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYwMTczOGEyODVkODc0ZDE4MTA5YWY0MzhkOWE0YjY4YjM2MGVhNDExNTQ5MGM5YjA2OGUzOGM2NTFhNjY2ZmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ2ZjhhODUwY2JiN2Q1YjhmNmYzZmYzN2MyNzM5Y2VhNTgzMTUxNWY4Y2I2Y2Y2MDI0MWE5YzA1OGNkNDdlYTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY5Y2I3MWU0NDBkMzA4Y2UxYzQzM2NhMTY5YzEzYjMyOGVmNjAzMzdlZDAzM2Y0ZTNjNzk2M2NkZDAyMTQxNmIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-draft-pr-service.ts#L83-L87",
+          "version": "repo-lines-v1:sha256:0a79401be7713c18947e517f4b482f657a562ceea8b8e951d7ea2f3e9edaa96d:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzg4NTE4NDVmYjBmNjIzZmQ0NTk5MGYxNzQyNzE3N2EwOWQ5ODQ4OGIzZjVkNGM4YzAwMGVmNDcyNzE5N2M4ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNWYyMGFmMzcwMTVkOTAyNzZhZjFiNTViYzc1MDI5ZmUxZDE0YTZlNjk3MTg1YWI2YTg2ODFiYjUwZWFhY2U1NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2VhZDY0ODJjMjhjNWY1ODMxZjUwZTc3NGQ0NjZhYmQ0OTJjY2NjMWUwNWU4ZjVhMTM2YWIwODExMzRlMmU2NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzUzOTVkODFhMTQ3MTg2NzY5YjU3OTU4MWYwMTNmOWFjNjk5NjRhMmQyYzYxY2I3NDg4Yzg0ODk0YTMyYzMwYyJ9"
         }
       ]
     },
     {
       "id": "claim_98a308f135dc4838a54b89f41ca16d73",
-      "statement": "The draft PR is opened via POST /repos/{GITHUB_REPOSITORY}/pulls with draft: true, a 'loop:'-prefixed title taken from the linked self-improvement proposal when the goal has one, base branch LOOP_DRAFT_PR_BASE (default main), push remote LOOP_DRAFT_PR_REMOTE (default origin), and a body listing the recorded checker/security_checker verdicts and the file list; on success the PR URL is persisted into loop_runs.metadata.pr_url and a draft_pr_opened loop event is recorded.",
+      "statement": "The draft PR is opened via POST /repos/{GITHUB_REPOSITORY}/pulls with draft: true, a 'loop:'-prefixed title taken from the linked self-improvement proposal when the goal has one, base branch LOOP_DRAFT_PR_BASE (default main), push remote LOOP_DRAFT_PR_REMOTE (default origin), and a body listing the recorded checker/security_checker verdicts and the file list; on success the PR URL is persisted into loop_runs.metadata.pr_url (at most one PR per run) and a draft_pr_opened loop event is recorded.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/services/loop-draft-pr-service.ts#L50-L61",
-          "version": "repo-lines-v1:sha256:9a7c44c1da2ff12f512f8275d2844bf626acb882b958fde0fb5081ce138a1846:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJlMTBlNWZlYTM0NTEzNzY1ZTg2N2I3NzVhNDA1Y2M0MjU3ZTI2MDlmNDRjY2M4NTIxMTY1NjJiMmY3ZDU3ZDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQyOWZmODIxZDk5NzkxYzZlNjU0NDRiOTI3MzJjNjRhNTk3YWFlZDZjY2QwZTYyODUxYmJmMjc3OTRmOGU4ZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU3MzgxNTU4NGMwNDg0MmY5Y2M5MWI3NjZhOTQ3NzU3NGE0YWZkZTQxN2ExOWJhZTFjYzZlNjZiOTk0NzE0YmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE3Y2NlMGY5ODdjZTFlNTFmNDc1NDU4YTEzNDRhYzZkZDc3Yzg3NTY0ZDBhZDY4NjhkNzY0MDJjN2UxYWY5NmUifQ"
+          "resource": "repo://packages/server/src/services/loop-draft-pr-service.ts#L24-L31",
+          "version": "repo-lines-v1:sha256:d1188af4c79d2c126b18cc42862f33bc82a01c9abdc9ab8c081172cdc35c4940:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWY0YWM5YWMzMTRhYTA5NGY0NjdmNDU3NzAyMTk2NzE3YzYxNzgxNjZhYjFjY2U5MDAyNWJiYmZlZjE5MzA2ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGYyNzQxMjgzNjNhMGYyYzVhZmU5NGI1Y2ZmZWU3N2IxMGI2YmUyZjZjYWI1NDAzZWEyYjFjNmNiMWI3ZWI2YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2VhOWZkODBmMzI2OWVhNmE3Nzk3ODY3MGVlZjExOTU3YWI3YjcxNjE2YWMyOWY1ZDQ0NGFhMjFkMzc2MmU2MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2JiOWM0ODhlZDg4ODdkMDY2M2ViNjQwMmY3ZTcwOWQ4OTYxYzU5ZWE0OWZkZDE5ZjQ0MjVlMWE0N2FlMWQ4OCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-draft-pr-service.ts#L81-L102",
+          "version": "repo-lines-v1:sha256:801d85ca4ff9e58867cf9ec3865603bb1b0860cca806f2f32f38e73ff445705d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0NjY0MTdkZjhiZDUwZjE2NjU3YzE2ZDgxNTdkOGM0MTcxMjk5MWIxMGI3YjM2MTA5YWEwNGEwNmI0NTQ0MGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwZTI0MDUyODAxNGNiYTEwZmQ4NTI5Mjg0ZmE2MjFkMzcyYzU5YjQwZjExYTI5YmFiNzY5Y2IwOWI1NzNlZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAxMzQxZDBjNTg4MmU5MWE2NmM2MGNiODYwMjBiMjQ3ZjBhZmMzMzZjZGY3NmMwYWUxOGJjZDIwYWM4ZmUxZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMyZWNhZDVhNmNiYzdjMTQxOGMwYmI3NzgwNDc2Y2Y0OTgwODBhZGU5YjBlYmMxNDQxNDMzYWQwYzYxZTcyMjUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b1086eee50824faea7c81c0d42a57dd5",
+      "statement": "Before pushing, openForRun applies two optional gates: Batch-8 evidence freshness (LOOP_EVIDENCE_FRESHNESS_MODE, default off) re-fingerprints the maker lease's evidence_read_set against FETCH_HEAD of the base branch — shadow records evidence_stale_shadow but opens anyway, enforce records evidence_stale with metadata.evidence_freshness.requeue=true and does not open, and a failed fetch fails open as 'unknown' — and the RX-6 arrival throttle (LOOP_DRAFT_PR_THROTTLE_MODE) counts open 'loop:' PRs and at or above LOOP_DRAFT_PR_MAX_OPEN (default 5) records draft_pr_throttled (enforce, opens nothing) or draft_pr_throttle_shadow (shadow, opens anyway), failing open when the open-PR list call fails.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/evidence-freshness.test.ts#L64-L92",
+          "version": "repo-lines-v1:sha256:4f8906626aae637917a4bf11151e93aad69b3310888baab7be527e7783e91637:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwMTQwZDQwNzQ3N2FlZGUyY2UyMTlmNTZjOGJiMzY4ZmNlNzgzNzMwYjg0YzVkYjcxYTQ2MmJkYTg5ODlhNGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkZjhmMzc3MWQxNDJjZTNhYjkyMmZlOWVlODc3YWJkNjhhMDMzYTVjYTkzYTI3NjBjNzkxZmQ5YzJmNmZjNWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/__tests__/loop-draft-pr-service.test.ts#L96-L100",
+          "version": "repo-lines-v1:sha256:42332ee72f44ed8d922b380846b18ce0fc85966faccf4ad68164f3f840a6a712:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGI1NmY3YzY3OGQxMTc0NmNiODI4MGJjYjBlNjNkOTMzYTZiMzRkMDcwNWM0NmZjOWViYzFkMjJiZmM4NTBmOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWYwOTViNzY3Y2Q4YzliMmRiOTcxYjkzNTczNGRiNjZjYWIyZGRjYTI3Zjc5MTQ3MzQ0M2VmYmFhNTU0NjI0OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzRiZGEwMDExNjVjZGQ0MGUyNjQ0Y2I4MTExNDQzODdkYTA5ODkzN2E0NWIzNjZkMzA2ZGRmY2NjYTkzZjgyNyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-draft-pr-service.ts#L138-L148",
+          "version": "repo-lines-v1:sha256:35df59eee6d5f1bf73ca8cf4c15e0f6f8d642b89192e549829bd6d5d9c1d46d5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwMDgwMTk1YjEyMTkyOTNhOGZiMGM2NGI1MjhmNDY5ZjNkM2Y5NzhkYmRkM2Q1NDk2YzE3ZjMwNzJlNjhhNDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJiYmFhZDc2M2FmMjJiMjkwZmJmNTg0ODJlODE5Y2FkM2U0NzZkOGY0YmEwZjhlM2FlNDIxMWNlOTQ5ODY1ODAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFmNmNmN2E2MmYzYTYwNTlhZWQxNmEyY2RjM2UxMTM4OTE4YWNlNTBlMzhlYmY1MDM0OTZkMmQ5MzM2MjA1ODkifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-draft-pr-service.ts#L44-L67",
+          "version": "repo-lines-v1:sha256:c844421a7471ed0b52663fbb9fadbdec3fd679efa0436d5d7b5f98ae0a58339c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiZDYxYmY4ZGRmZTFhMTAyMGEwMzc4MTMwZWU1OWQ4MTA3MTIxM2ZlNDRmYjc0NjI2YWUzMjUwOWNlNmM5ZTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNjJmNjBkODU5MGE1NzljZjQ2ZjhkNjczNzhjNGM1NzJiOTYyY2VjY2RiOTBjN2E1ZjdiNDJiOTYwNzgyYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhOGVmNGNjMWIyYzVhYmQ2M2RjMmVmMTAxYTE1YjdkZjkzZmZjN2EzZDJjYjI0MTA1MzFlODE1ZmFkYzNiNDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM5MjBiZjUwNjAwNGIyOTFjOGI2N2QzYjExZjE1MTc4MDQxMjhhNmFmZjg1ZDZkNWE1MDM1YWVjNGU4ZWY3M2MifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-draft-pr-service.ts#L69-L79",
+          "version": "repo-lines-v1:sha256:591dd32203c206093d63c02b96bdee3dcdd63a8346d0961ffce33ec4369ff9a9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjYWQ5MWM4ZTk5YmRjOTJhNmVhMWUyNGI5NmI0ZWFjYjlkMjI3ZDQ3NTY4MTU2MDAxMDFkZjhhY2YwZDNlNzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNjJmNjBkODU5MGE1NzljZjQ2ZjhkNjczNzhjNGM1NzJiOTYyY2VjY2RiOTBjN2E1ZjdiNDJiOTYwNzgyYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAxMzQxZDBjNTg4MmU5MWE2NmM2MGNiODYwMjBiMjQ3ZjBhZmMzMzZjZGY3NmMwYWUxOGJjZDIwYWM4ZmUxZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNlYWQ2NDgyYzI4YzVmNTgzMWY1MGU3NzRkNDY2YWJkNDkyY2NjYzFlMDVlOGY1YTEzNmFiMDgxMTM0ZTJlNjUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c37beede42954f7994836f65daea8dd7",
+      "statement": "The draft PR begins the merge-survival fitness measurement: merge-survival.ts (MERGE_SURVIVAL_ENABLED, default off) polls every loop_runs.metadata.pr_url read-only and settles it exactly once — closed unmerged is failure; merged counts success only when at least MERGE_SURVIVAL_MIN_RETAINED (default 0.5) of the PR's added lines remain on main after SURVIVAL_DAYS (14 days) — landing as a skill outcome (domain 'merge') for the maker species; listDraftPrs/countOpenLoopPrs expose the same metadata with no GitHub call.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-draft-pr-service.ts#L151-L181",
+          "version": "repo-lines-v1:sha256:4c2e231c37af85261b7147dd5508b79518f6c14e1d77c465bcd482172d47625d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjljZGNmNjljOTc1MDc0OWU1ODI0ZWFiMjNkZmM0MTQyZmY4OGZmZmU1N2YzYTkxMTBhOTc4OGRlNTM3OTUwYTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiNTgwZTk2NGY4M2E0NzNmNDNkNDQzODQ2Mjk0OWQ2OGI1NjAwZmRhNzg3ZjE2Mzc0NWQwMGRlODljYmYzNmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/merge-survival.ts#L34-L37",
+          "version": "repo-lines-v1:sha256:c59c53ee5c6b3749123cc61cd8cb35df03c0796c9b0d971598c6f71fed4a22df:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjYyZjgxZTFhNDFhZDc3Nzc0MjI5MDZiNTAwMWNhYTlhNGY0ZjYyMzBhMzIxZjI0MDUyZGU3NDUzM2U1NWNkMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWExZDFhNjMzOTAyMjljNzk4MzQ3ZTgzYTA0MDU0NDFjOTQwMDAzNTI4NGFkMTY4YzFiZjZjZGYxZDcwYTM3MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTAzMDhkNWMyMGUxYmExMDVlYjYyZjJmM2U0ZGRiMGRiMTQ5YmEzZGU3OGJkNjk2MDE4YWMyMWVlN2IwOTQ4NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTZjMmIzYzJlMDIyM2Y0NzQ5ZWYxZjRmMjA1Y2NjYjRhZTA4MjkyNjAzYTBlYWQ4OGIzYWRjNmU0MDlhNTJiNyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/merge-survival.ts#L5-L17",
+          "version": "repo-lines-v1:sha256:852cf21a41bd489754263f231a37436c45846e0b2af7f3d973fa6d21130035ec:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkMTYxZTFiMjkxOTg1OTIwZDVlZmYyOWJhMzg1MTdjODNlODQ3OTM3NGQxMWU1MzhhN2Y4N2E4OGVhNzNiNjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA2MDJlZDU4ODI0ZDhlNDljNTMxYjcyY2ZmYWE0Njg1MGIyYTkxMjRmMmZlOTYxM2Q0MDgxM2NhZGYyMTUxNzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVlNTkzODYxZDkyYWI2YjBiMDI3YjAxMzEyNmNiZTAzODk1YTQ3OGE5M2FmMTJmNzg2MzQ1MDgzM2FhOTlmOTUifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-25T13:29:02.244Z"
+    "at": "2026-10-10T14:22:19.101Z"
   }
 }

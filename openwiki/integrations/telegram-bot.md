@@ -1,11 +1,8 @@
 ---
 type: integration-surface
 title: Telegram Bot Gateway & Webhook Route
-description: The two Telegram surfaces — the @djimitflo/telegram long-polling gateway (TELEGRAM_BOTS_CONFIG, filesystem bot-token leases, machine-scoped task creation) and the server's unauthenticated-but-secret-gated /api/telegram webhook route (TelegramBotService, allowed-user and identity-link checks, readiness status) — plus the TelegramApiService that funnels both into the authenticated local REST/approval spine.
-tags: [telegram, webhook, long-polling, file-lease, identity-linking, operator-profile, approvals, environment-configuration]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
+description: The two Telegram surfaces — the @djimitflo/telegram long-polling gateway (TELEGRAM_BOTS_CONFIG, filesystem bot-token single-poller leases, machine-scoped task creation) and the server's secret-token-gated /api/telegram webhook route (TelegramBotService, D3 telegram_identities authorisation for approve/deny/triage buttons, approver-gated readiness status) — plus the TelegramApiService loopback client and the operator push/digest wiring that funnels everything into the authenticated local REST/approval spine.
+tags: [telegram, webhook, long-polling, file-lease, identity-linking, operator-profile, approvals, operator-push, environment-configuration]
 sources:
   - id: openwiki-source-bb3f481cb7205f63895b02fc
     resource: repo://packages/server/src/__tests__/live-canvas.test.ts
@@ -13,18 +10,38 @@ sources:
     resource: repo://packages/server/src/__tests__/public-boundaries.test.ts
   - id: openwiki-source-4d8d624020a6e9a8fee06db9
     resource: repo://packages/server/src/__tests__/telegram-api-chain.test.ts
+  - id: openwiki-source-f1335b23c2574efd59e8ad5a
+    resource: repo://packages/server/src/__tests__/telegram-identity.test.ts
+  - id: openwiki-source-f58b1dd397ba2ebc85842c01
+    resource: repo://packages/server/src/__tests__/telegram-triage.test.ts
+  - id: openwiki-source-bba4030f92909a51ce121819
+    resource: repo://packages/server/src/__tests__/tg2-telegram-context.test.ts
+  - id: openwiki-source-d51c6e3eca462ac5da2da494
+    resource: repo://packages/server/src/__tests__/tg3-approval-already-processed.test.ts
   - id: openwiki-source-e57612dc55cb1fe7d7373bd5
     resource: repo://packages/server/src/config/runtime-profile.ts
+  - id: openwiki-source-34dcb5fad537d29b30c58bda
+    resource: repo://packages/server/src/database/migrate.ts
   - id: openwiki-source-922486a2b03bd894d1e9f283
     resource: repo://packages/server/src/index.ts
   - id: openwiki-source-13e7bffe2fd4d8b2a22e195d
     resource: repo://packages/server/src/routes/index.ts
+  - id: openwiki-source-34ae7c3a7cf830b5ef01826b
+    resource: repo://packages/server/src/routes/self-improvement.ts
   - id: openwiki-source-3b48fdf6c91879952665c466
     resource: repo://packages/server/src/routes/telegram.ts
+  - id: openwiki-source-fb188ee3df500e339b426861
+    resource: repo://packages/server/src/services/approval-service.ts
+  - id: openwiki-source-b9d3801bef731bdaa945c129
+    resource: repo://packages/server/src/services/decisions-inbox.ts
+  - id: openwiki-source-5619b6ed7c07b419c8fb3fd2
+    resource: repo://packages/server/src/services/operator-push.ts
   - id: openwiki-source-a666ef9855d3d9d9e0c851f0
     resource: repo://packages/server/src/services/telegram-api-service.ts
   - id: openwiki-source-e4cd8cc6130b083fe8ec600a
     resource: repo://packages/server/src/services/telegram-bot-service.ts
+  - id: openwiki-source-1914db9c4b7d9d79c827e45d
+    resource: repo://packages/server/src/services/telegram-identity.ts
   - id: openwiki-source-03ff56e13d2508b0e43d5df4
     resource: repo://packages/telegram/package.json
   - id: openwiki-source-5ffb649082c8f0103a72ae51
@@ -33,7 +50,10 @@ sources:
     resource: repo://packages/telegram/src/index.ts
   - id: openwiki-source-eac024e1155739aa49af1b28
     resource: repo://packages/telegram/src/transport.test.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-10-10T14:22:19.101Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-10-10T14:22:19.101Z
 ---
 
 # Telegram Bot Gateway & Webhook Route
@@ -44,31 +64,44 @@ conventions but never share transport code:
 1. **The long-polling gateway** (`packages/telegram`, package
    `@djimitflo/telegram`): a multi-bot grammY long poller started in-process by
    the server in operator-capable runtime profiles, guarded by filesystem
-   leases so only one process polls a given bot token.
+   leases so only one process polls a given bot token (single-poller lease,
+   `EEXIST` restart protection).
 2. **The webhook route** (`packages/server/src/routes/telegram.ts`): a
    single-bot HTTP webhook mounted at `/api/telegram`, where Telegram pushes
    updates to a public URL (`TELEGRAM_WEBHOOK_URL`) authenticated by a shared
-   secret header.
+   secret header. It is always mounted, in every runtime profile.
 
-Both surfaces resolve Telegram senders to DjimFlo users through an explicit
-allowlist + user map, and both reach the task API exclusively through
-`TelegramApiService`, whose own header comment states the architecture:
-*Telegram is an authenticated API client, not another task/approval writer.*
-Neither surface writes tasks, approvals, or telemetry directly — every
-mutation is a loopback HTTP call carrying a freshly minted per-actor Bearer
-token into the ordinary `/api` task and approval routes, so ownership, audit
-events, and separation-of-duties rules apply unchanged (see
+Both surfaces gate **chat commands** behind an allowlist (`allowedUsers`)
+plus an explicit sender→account map, and both reach the task API exclusively
+through `TelegramApiService`, whose own header comment states the
+architecture: *Telegram is an authenticated API client, not another
+task/approval writer.* Neither surface writes tasks, approvals, or telemetry
+directly — every mutation is a loopback HTTP call carrying a freshly minted
+per-actor Bearer token into the ordinary `/api` task and approval routes, so
+ownership, audit events, and separation-of-duties rules apply unchanged (see
 [Approval Decision Flow](/openwiki/workflows/approval-decision-flow.md)).
+
+**Two different identity maps apply.** `TELEGRAM_USER_MAP` links chat commands
+only. Inline **button presses** (Approve / Deny and one-tap triage) are
+authorised exclusively against the D3 table `telegram_identities` joined to an
+active user whose RBAC role holds the permission the equivalent web route
+demands — `approve:task` for approvals and memory review, `write:governance`
+for D5 pre-screen labels. The TG-2 comment in `routes/telegram.ts` records
+why: readiness used to be derived from env alone while every button press was
+refused, so `TELEGRAM_USER_MAP` deliberately does not authorise buttons.
 
 ```mermaid
 flowchart TD
-  TG["Telegram servers"] -->|"pushed updates (secret header)"| WH["POST /api/telegram/webhook"]
+  TG["Telegram servers"] -->|"pushed updates (X-Telegram-Bot-Api-Secret-Token)"| WH["POST /api/telegram/webhook"]
   GW["TelegramGatewayService (operator profile)"] -->|"getUpdates long poll per bot token"| TG
   WH --> SVC["TelegramBotService"]
   GW --> SVC2["ops callbacks (createTask / getStatus / cancelTask)"]
-  SVC --> TAPI["TelegramApiService"]
+  SVC -->|"chat commands: allowedUsers + userMap"| TAPI["TelegramApiService"]
+  SVC -->|"buttons: telegram_identities ⋈ active user + approve:task / write:governance"| D3["telegram-identity (D3 allowlist, audited)"]
+  D3 --> TAPI
   SVC2 --> TAPI
   TAPI -->|"loopback HTTP + per-actor Bearer token"| API["local /api tasks & approvals spine"]
+  PUSH["operator-push (pushApproval / pushTriage / digest)"] -->|"setPushSender(bot)"| SVC
   SVC -->|"sendMessage (outbound only)"| TG
 ```
 
@@ -85,23 +118,23 @@ actorUserRef)`.
 
 ### Server wiring
 
-In `packages/server/src/index.ts` (L325–L343) the gateway starts **only when
-`runtimeProfileEnablesOperator()` is true** — i.e. the `operator` or
-`autonomous` profile, never the default `api` profile
-(`packages/server/src/config/runtime-profile.ts`) — and only when
-`TELEGRAM_BOTS_CONFIG` is set; otherwise a log line notes the gateway is
-disabled. The env value is parsed as a JSON array, each entry's `allowedUsers`
-and `userMap` falling back to the `TELEGRAM_ALLOWED_USERS` /
+In `packages/server/src/index.ts` (L348–L366) the gateway starts **only when
+`operatorRuntime` is true** — i.e. the `operator` or `autonomous` profile, never
+the default `api` profile (`packages/server/src/config/runtime-profile.ts`) —
+and only when `TELEGRAM_BOTS_CONFIG` is set; otherwise a log line notes the
+gateway is disabled. The env value is parsed as a JSON array, each entry's
+`allowedUsers` and `userMap` falling back to the `TELEGRAM_ALLOWED_USERS` /
 `TELEGRAM_USER_MAP` parsers shared with the webhook route, and
 `TelegramGatewayService` is dynamically imported and constructed with a
 `TelegramApiService` pointed at the loopback base
-`http://127.0.0.1:${PORT}/api`. The instance is retained so the SIGTERM
-handler can `stopAll()` it — without that, a restart sees `EEXIST` on the
-lease files and skips polling (see
-[Server Runtime](/openwiki/architecture/server-runtime.md)). Init and `startAll()`
-failures are logged and swallowed: a broken Telegram setup never blocks boot.
+`http://127.0.0.1:${PORT}/api`. The instance is retained in a
+`telegramGateway` variable so the SIGTERM handler can `stopAll()` it (L426–L428)
+— the wiring comment spells out why: *SIGTERM must call stopAll() so leases are
+released, otherwise a restart sees EEXIST and skips polling forever.* Init and
+`startAll()` failures are logged and swallowed: a broken Telegram setup never
+blocks boot.
 
-### Lease protocol
+### Single-poller lease protocol
 
 Each config acquires a per-token lease file before polling:
 
@@ -149,13 +182,14 @@ and keep the process alive rather than crashing.
 
 ## The webhook route (`/api/telegram`)
 
-`createTelegramRoutes(db, auth?, _wsService?, api?)` mounts at `/telegram`
-under `/api` with **no mount-level middleware** — the webhook authenticates
-itself, and any blanket guard at `/` or `/telegram` would break Telegram's
-calls (the mount table deliberately leaves this prefix open; see
-[HTTP/WebSocket API Surface](/openwiki/integrations/exposed-surface.md)). The
-mount also constructs its own `TelegramApiService` against the loopback base
-so the webhook surface works even when the polling gateway is not running.
+`createTelegramRoutes(db, auth?, _wsService?, api?)` is mounted at `/telegram`
+under `/api` by the central mount table in `packages/server/src/routes/index.ts`
+(L229) with **`middleware: []`** — the webhook authenticates itself, and any
+blanket guard at `/` or `/telegram` would break Telegram's calls (the mount
+table deliberately leaves this prefix open; see [HTTP/WebSocket API
+Surface](/openwiki/integrations/exposed-surface.md)). The mount also constructs
+its own `TelegramApiService` against the loopback base so the webhook surface
+works even when the polling gateway is not running.
 
 ### Env parsing and readiness
 
@@ -166,16 +200,26 @@ Three exported pure functions define the configuration contract:
 - `parseTelegramUserMap(value)` — a JSON object of Telegram-id → user ref.
   Non-object/array JSON and any entry whose key is not an all-digit string or
   whose value is a blank/non-string is discarded; parse failure yields `{}`.
-- `telegramConfigStatus(env, configured)` — reports `{configured, ready,
+- `telegramConfigStatus(env, configured, db?)` — reports `{configured, ready,
   allowed_user_count, webhook_configured, linked_identity_count,
-  missing_env}`. `ready` requires **all five** of `TELEGRAM_BOT_TOKEN`,
-  a non-empty allowed-user list, `TELEGRAM_WEBHOOK_URL`,
-  `TELEGRAM_WEBHOOK_SECRET`, and a non-empty user map. The report is
+  approver_identity_count, missing_env, blocking}`. The env side of `ready`
+  requires `TELEGRAM_BOT_TOKEN`, a non-empty allowed-user list,
+  `TELEGRAM_WEBHOOK_URL`, and `TELEGRAM_WEBHOOK_SECRET`; on top of that,
+  `ready` additionally requires **at least one `telegram_identities` row that
+  joins to an active user whose role holds `approve:task`** (TG-2:
+  `approverIdentityCount` — a missing table on an old schema counts as zero).
+  `TELEGRAM_USER_MAP` still appears in `missing_env` (and its entry count in
+  `linked_identity_count`) but no longer gates readiness, with `blocking`
+  naming exactly why ('no telegram_identities row for an active user with
+  approve:task … TELEGRAM_USER_MAP does not authorise buttons'). Operators add
+  approver identities on `/decisions` via
+  `PUT/DELETE /api/self-improve/telegram-identities/:id`. The whole report is
   count-and-name only — token, URL, secret, and mapped user refs are never
   included in the payload, so the status endpoint cannot leak credentials.
 
 On router creation, `TelegramBotService.configure()` runs only when
-`TELEGRAM_BOT_TOKEN` is present.
+`TELEGRAM_BOT_TOKEN` is present; that same branch also wires the operator push
+channel (below).
 
 ### Endpoints
 
@@ -191,12 +235,14 @@ Only then is the body passed to `bot.handleWebhook()`, which returns `{ok:
 true}` on success and `500` on internal error.
 
 **`GET /api/telegram/status`** requires auth (or passes through when no auth
-middleware was supplied, as in tests) and returns `telegramConfigStatus()`.
+middleware was supplied, as in tests) and returns `telegramConfigStatus()`
+with the live database for the approver count.
 
 ### `TelegramBotService` behavior
 
-`handleWebhook()` validates the payload shape (safe-integer chat/from ids,
-string text) and then applies the four-step identity ladder **before** any
+`handleWebhook()` routes `callback_query` updates to `handleCallback()`; for
+plain messages it validates the payload shape (safe-integer chat/from ids,
+string text) and then applies the three-step identity ladder **before** any
 command runs:
 
 1. sender id ∈ `allowedUsers`, else '⛔ You are not authorized';
@@ -218,21 +264,53 @@ Commands (`/start`, `/status`, `/loops`, `/agents`, `/dennis`, `/dennis_task`,
   `local`-mode pending task with machine `telegram-webhook`; `/cancel` calls
   the task cancel route; `/approve` and `/reject` (the latter maps to
   `/approvals/:id/deny`) hit the approval routes, and a
-  `SELF_APPROVAL_FORBIDDEN` response is translated to the Dutch 'Je kunt je
+  `SELF_APPROVAL_FORBIDDEN` response is translated to the Dutch '⛔ Je kunt je
   eigen aanvraag niet goedkeuren.' — separation of duties survives Telegram.
-  `/dennis_task` additionally permission-checks `create:task`, ensures the
-  `dennis-agent` row exists, and creates a `dry_run`-only task pinned to
-  Dennis with approval-gated metadata. If no `api` was injected, every
-  mutation answers `TELEGRAM_API_UNAVAILABLE`.
+  `/dennis_task` additionally permission-checks `create:task` (via
+  `api.requireActor`), ensures the `dennis-agent` row exists, and creates a
+  `dry_run`-only task pinned to Dennis with approval-gated metadata. If no
+  `api` was injected, every mutation answers `TELEGRAM_API_UNAVAILABLE`.
+
+### Buttons: approval and triage callbacks (D3-authorised)
+
+`handleCallback()` handles `callback_query` button taps. Payloads are strictly
+validated — a safe-integer chat id, `callback_data` ≤ 64 bytes
+(`CALLBACK_DATA_MAX_BYTES`, Telegram's limit), and a kind+id grammar
+(`ap:<id>`, `dn:<id>`, `rs:<id>:<reason>`; triage `pl:<id>:o|w`, `mp:<id>`,
+`mr:<id>`) — then authorised through `telegram-identity.ts`:
+
+- `mayApproveViaTelegram` / `mayActViaTelegram` resolve the sender against
+  `telegram_identities` joined to `users`: the row must exist, the mapped user
+  must be active, and their role must hold the web route's permission —
+  `approve:task` for Approve/Deny and memory review, `write:governance` for
+  D5 pre-screen labels. The sender must *also* still be in `allowedUsers`.
+  Every resolution and every allow/deny is appended to the `judgments` table
+  as a `telegram_access` record (auditing is fail-safe: an audit error never
+  turns a deny into an allow); unauthorised taps are answered '⛔ Not allowed:
+  this Telegram account is not mapped to a user who may …'. The table ships
+  empty and is operator-maintained; chat or group membership grants nothing.
+- `dn:` does not decide directly — it asks for one of the fixed deny reasons
+  (`rs:` with Out of scope / Too risky / Wrong change / Not now, keeping the
+  payload under 64 bytes). The decision itself is a `TelegramApiService` call
+  to `/approvals/:id/approve|deny` **as the mapped user**, so
+  `SELF_APPROVAL_FORBIDDEN` and every other server rule applies unchanged; an
+  `APPROVAL_ALREADY_PROCESSED` response (TG-3: e.g. a lane rule auto-approved
+  first) is answered with who decided and when, looked up from the approvals
+  row.
+- Triage callbacks (`handleTriageCallback`) require the same dual check, are
+  refused while `TELEGRAM_TRIAGE_ENABLED` is off, verify the target id exists
+  (a pre-screen rejection for `pl:`, a review-pending memory candidate for
+  `mp:`/`mr:`), then call the exact API route the `/decisions` dashboard uses
+  as the mapped user — so a promote records that user as the human approver.
 
 Outbound delivery is one-way and fire-and-forget: `sendMessage()` POSTs
 MarkdownV2 to `api.telegram.org/bot<token>/sendMessage` with a 15 s timeout,
 pre-escaping MarkdownV2 metacharacters, and `broadcastAlert()` /
-`requestApproval()` fan text out to the allowlist. Because the request URL
-embeds the credential, **all fetch errors are collapsed to
-`TELEGRAM_DELIVERY_FAILED`** — raw errors could smuggle the token into logs —
-and secrets handling here stays aligned with the secret-patterns service, as
-verified by the delivery-rejection tests.
+`requestApproval()` / `requestTriage()` fan text out to the allowlist.
+Because the request URL embeds the credential, **all fetch errors are
+collapsed to `TELEGRAM_DELIVERY_FAILED`** — raw errors could smuggle the
+token into logs — and secrets handling here stays aligned with the
+secret-patterns service, as verified by the delivery-rejection tests.
 
 ## `TelegramApiService` — the authenticated chain
 
@@ -241,11 +319,13 @@ The constructor enforces `TELEGRAM_API_MUST_BE_LOCAL`: the base URL must be
 mapped user's Bearer token can never be forwarded to a remote origin.
 `requireActor(ref, permission?)` resolves the actor by id or email, rejects
 disabled/unlinked accounts (`AUTH_DISABLED_OR_UNLINKED`), and enforces RBAC
-(`FORBIDDEN`). `request()` mints a fresh JWT per call
+(`FORBIDDEN`). `request()` calls `requireActor`, mints a fresh JWT per call
 (`auth.generateToken(user)`) and fetches with `redirect: 'error'` and a 15 s
-timeout; non-2xx responses surface the server's error code. The `createTask`,
-`getStatus`, and `cancelTask` fields are exactly the `ops` shape the polling
-gateway consumes, so the same chain test exercises both surfaces.
+timeout; non-2xx responses surface the server's error code (falling back to
+`DJIMFLO_API_HTTP_<status>`), and a 204 No Content parses cleanly.
+The `createTask`, `getStatus`, and `cancelTask` fields are exactly the `ops`
+shape the polling gateway consumes, so the same chain test exercises both
+surfaces.
 
 The net effect, proven end-to-end in `telegram-api-chain.test.ts`: wrong
 webhook secret → 401; unknown/unlinked/unpermitted sender → zero tasks; an
@@ -254,6 +334,34 @@ allowed `/task` creates a pending task owned by the mapped user with a
 approve; an approver-role user approves and the mock execution completes; a
 viewer gets `FORBIDDEN`; only the owner can cancel a running task; a disabled
 account stops creating tasks immediately.
+
+## Operator push and daily digest
+
+The webhook bot is the canonical operator **push channel** (UX-12/13).
+`createTelegramRoutes` only activates it when `TELEGRAM_BOT_TOKEN` is present
+— `setPushSender(bot)` installs the service as the process-wide `PushSender`
+and `startOperatorDigest(db)` arms a single 15-minute tick. Everything is off
+by default and never throws; Telegram is observability, not a dependency of
+the approval flow:
+
+- `TELEGRAM_PUSH_ENABLED`: when `ApprovalService` creates an approval it calls
+  `pushApproval` after `TELEGRAM_PUSH_DELAY_MS` (default 15 s), so a request a
+  lane rule auto-approves immediately is skipped as `decided` (TG-2).
+  `pushApproval` dedupes per id in `telegram_push_log`, honors
+  `TELEGRAM_QUIET_HOURS` (UTC window, may wrap midnight) and an hourly cap
+  (`TELEGRAM_PUSH_MAX_PER_HOUR`, default 6), and sends a redacted, aggregate
+  ≤ 1 000-char message — proposal, lane, files, risk plus *why*, run id —
+  with Approve / Deny / Open (deep link only with an https
+  `DJIMITFLO_PUBLIC_URL`) buttons to every allowed user.
+- `TELEGRAM_TRIAGE_ENABLED` (sub-flag of push): one message per unlabelled D5
+  pre-screen rejection and per memory candidate awaiting review, at most
+  `TELEGRAM_TRIAGE_MAX_PER_PUSH` (default 3) per tick, deduped under
+  `triage:` keys and hour-capped separately from approvals.
+- `OPERATOR_DIGEST_ENABLED`: one daily digest per UTC day at
+  `OPERATOR_DIGEST_HOUR` (default 7), deduped in `operator_digest_log`,
+  summarising 24 h evolution outcomes, per-section "waiting for you" counts
+  with `/decisions` deep links, realm gates, stalls, scheduler health,
+  dependency lane and auto-merge state.
 
 ## Failure semantics and operational notes
 
@@ -268,11 +376,16 @@ account stops creating tasks immediately.
   that bot and cleans up its lease.
 - **Restart correctness depends on SIGTERM** calling `stopAll()` (heartbeat
   cleared, bots stopped, leases unlinked) — wired in
-  `packages/server/src/index.ts` L403–L405. Without it the next boot must
+  `packages/server/src/index.ts` L426–L428. Without it the next boot must
   wait out retries or the TTL.
 - All Telegram variables (`TELEGRAM_BOTS_CONFIG`, `TELEGRAM_BOT_TOKEN`,
   `TELEGRAM_ALLOWED_USERS`, `TELEGRAM_USER_MAP`, `TELEGRAM_WEBHOOK_URL`,
-  `TELEGRAM_WEBHOOK_SECRET`, `DJIMIT_TELEGRAM_LEASE_DIR`) are tabulated in the
+  `TELEGRAM_WEBHOOK_SECRET`, `DJIMIT_TELEGRAM_LEASE_DIR`,
+  `TELEGRAM_PUSH_ENABLED`, `TELEGRAM_PUSH_DELAY_MS`,
+  `TELEGRAM_PUSH_MAX_PER_HOUR`, `TELEGRAM_QUIET_HOURS`,
+  `TELEGRAM_TRIAGE_ENABLED`, `TELEGRAM_TRIAGE_MAX_PER_PUSH`,
+  `OPERATOR_DIGEST_ENABLED`, `OPERATOR_DIGEST_HOUR`, `DJIMITFLO_PUBLIC_URL`)
+  are tabulated in the
   [Configuration Reference](/openwiki/operations/configuration-reference.md)
   with defaults and danger ratings.
 
@@ -291,6 +404,22 @@ account stops creating tasks immediately.
   chain; loopback-only base URL enforcement; Telegram delivery rejections
   surfaced without credentials; secret-gated webhook reachable through the
   full router without making diff/status routes public.
+- `packages/server/src/__tests__/telegram-identity.test.ts` — the D3 table
+  ships empty; allowlisted-id resolution, inactive/invalid denial, and
+  `approve:task` enforcement, each path audited as `telegram_access`.
+- `packages/server/src/__tests__/telegram-triage.test.ts` — triage callback
+  grammar/≤ 64-byte validation, id existence, the triage flag gate, D3 +
+  per-route permission refusals, label/promote/reject executed through the
+  same API routes as `/decisions`, and push-side dedupe/caps/quiet hours.
+- `packages/server/src/__tests__/tg2-telegram-context.test.ts` — readiness is
+  not `ready` with only `TELEGRAM_USER_MAP`; an approver-identity row flips
+  it; viewer or inactive users do not count; push context (lane/proposal/
+  files/why) is redacted and ≤ 1 000 chars; already-decided approvals are not
+  pushed.
+- `packages/server/src/__tests__/tg3-approval-already-processed.test.ts` — a
+  second tap on a decided approval reports who decided instead of erroring.
+- `packages/server/src/__tests__/operator-push.test.ts` — push flags,
+  dedupe, hourly cap, quiet hours, digest cadence.
 - `packages/server/src/__tests__/public-boundaries.test.ts` — missing
   `TELEGRAM_WEBHOOK_SECRET` fails closed with 503.
 - `packages/server/src/__tests__/live-canvas.test.ts` (Telegram section) —

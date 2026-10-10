@@ -3,9 +3,6 @@ type: security-architecture
 title: "AuthN/AuthZ: Roles, JWT Sessions & WebSocket Auth"
 description: The seven-role RBAC model and ROLE_PERMISSIONS table, AuthService JWT issuance with revocable session-bound access tokens and 30-day refresh-cookie rotation, requireAuth/requirePermission middleware that re-reads role and organization membership from the DB on every request, and bearer-subprotocol WebSocket authentication with close-code-driven client re-auth.
 tags: [authentication, authorization, rbac, jwt, refresh-token-rotation, sessions, websocket, middleware, separation-of-duties, tenancy]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-24T19:59:50.419Z
 sources:
   - id: openwiki-source-a43d7cc8a5a9d2a77f3767e3
     resource: repo://packages/dashboard/src/hooks/useWebSocket.ts
@@ -21,6 +18,8 @@ sources:
     resource: repo://packages/server/src/index.ts
   - id: openwiki-source-a40039ae355451b2b0bf2d41
     resource: repo://packages/server/src/middleware/auth.ts
+  - id: openwiki-source-04c039c6fe98be2f6714626f
+    resource: repo://packages/server/src/middleware/rate-limiter.ts
   - id: openwiki-source-c6ff9a9bb5a3e771103ed6e5
     resource: repo://packages/server/src/routes/approvals.ts
   - id: openwiki-source-c4473e47757202c4b07ce9e4
@@ -29,6 +28,8 @@ sources:
     resource: repo://packages/server/src/routes/index.ts
   - id: openwiki-source-b1ecc86b3bdfbe9ada697f4f
     resource: repo://packages/server/src/routes/organizations.ts
+  - id: openwiki-source-0890280ec1905b32aeed79aa
+    resource: repo://packages/server/src/routes/tasks.ts
   - id: openwiki-source-fb188ee3df500e339b426861
     resource: repo://packages/server/src/services/approval-service.ts
   - id: openwiki-source-bafa824370e2b0da2c9a92e8
@@ -45,7 +46,10 @@ sources:
     resource: repo://packages/shared/src/types/auth.ts
   - id: openwiki-source-0dfefeca89a6d1280d92409c
     resource: repo://packages/shared/src/types/websocket.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-10-10T14:22:19.101Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-10-10T14:22:19.101Z
 ---
 
 # AuthN/AuthZ: Roles, JWT Sessions & WebSocket Auth
@@ -83,7 +87,7 @@ fixed list of capability-scoped permission strings
 
 | Role | Permissions (grouped) |
 |---|---|
-| `admin` | Full set: read, scan, create/execute/approve/delete tasks, write evidence/claims/capabilities/swarm actions/governance, manage config, users, backups, policies, tokens, read audit |
+| `admin` | Full set: read, scan, create/execute/approve/delete tasks, write evidence/claims/capabilities/agents/skills/swarm actions/governance/runner manifests, manage config, users, backups, policies, tokens, read audit |
 | `platform_admin` | Operations only: `manage:config`, `manage:users`, `manage:backups`, `manage:policies`, `manage:tokens`, plus read evidence/repository/audit — no task execution or approval |
 | `approver` | `approve:task`, `create:task`, read evidence/repository |
 | `maker` | `create:task`, `execute:task`, `write:evidence`, `write:agents`, `write:skills`, `write:capability`, `write:claim`, `write:swarm_action`, `scan:repository`, reads |
@@ -92,9 +96,22 @@ fixed list of capability-scoped permission strings
 | `viewer` | `read:evidence`, `read:repository` only |
 
 The table is the single authority consulted by `requirePermission`, by
-`AuthService.hasPermission`, by `AuthorizationService` (per-resource checks),
-and by the dashboard's `auth-store` for UI gating — so a permission change in
-one enum file propagates to every enforcement and presentation surface.
+`AuthService.hasPermission`, by `AuthorizationService` (per-resource checks,
+see below), and by the dashboard's `auth-store` for UI gating — so a
+permission change in one enum file propagates to every enforcement and
+presentation surface.
+
+`AuthorizationService` (packages/server/src/services/authorization-service.ts)
+adds an ownership dimension on top of the table: `admin`/`platform_admin` are
+privileged and bypass ownership, `canReadTask`/`canModifyTask`/`canExecuteTask`
+combine a `ROLE_PERMISSIONS` check with owner-or-creator matching
+(`owner_user_id`/`created_by`), `canDeleteTask` is privileged-only, and
+`canApproveForTask` explicitly denies a non-privileged approver their own task.
+It also renders those rules as SQL visibility filters:
+`getTaskVisibilityWhere` scopes `GET /api/tasks` to `(owner_user_id = ? OR
+created_by = ?)` for everyone except `admin`, and
+`getApprovalTaskVisibilityWhere` exempts `auditor` and `approver` in addition
+to the privileged pair so they can see the work queue they must review.
 
 ### Maker–checker–approver separation
 
@@ -106,9 +123,10 @@ that the rest of the pipeline relies on (see /openwiki/concepts/governance-pipel
 - `approver` holds `approve:task` but **cannot execute** — `execute:task` is absent.
 - `checker` validates (`scan:repository`, `write:evidence`) with neither.
 - Only `admin` holds both `execute:task` and `approve:task`, so the
-  role table alone cannot stop a self-approval by an admin. The data layer
-  closes that gap: `ApprovalService.decideApproval` throws
-  `SELF_APPROVAL_FORBIDDEN` when `decided_by === requested_by`
+  role table alone cannot stop a self-approval by an admin. Closing that gap is
+  a **data-layer** concern shared with the governance pipeline (see
+  /openwiki/concepts/governance-pipeline.md): `ApprovalService.decideApproval`
+  throws `SELF_APPROVAL_FORBIDDEN` when `decided_by === requested_by`
   (packages/server/src/services/approval-service.ts), and
   `AuthorizationService.canApproveForTask` denies non-privileged users from
   approving tasks they own (packages/server/src/services/authorization-service.ts).
@@ -244,8 +262,11 @@ Browser sessions (dashboard) are distinguished by the
 
 - `/api/auth/login` with the header sets a `djimitflo_refresh` cookie —
   `HttpOnly`, `SameSite=Strict`, `Path=/api/auth`, 30-day max age — and returns
-  the access token in the JSON body. The cookie is `Secure` in production
-  unless `AUTH_COOKIE_SECURE` explicitly overrides it (`'true'`/`'false'`).
+  the access token in the JSON body. The `Path=/api/auth` scope means browsers
+  only send the raw refresh token to the auth endpoints, never to other API
+  routes. The `Secure` flag is computed from `AUTH_COOKIE_SECURE`: `'true'`
+  forces it on (useful for TLS-terminating dev setups), `'false'` forces it
+  off, and any other/unset value falls back to `NODE_ENV === 'production'`.
   JS never reads the cookie; the raw refresh token never appears in a response
   body.
 - `/api/auth/refresh` and `/api/auth/logout` (cookie path) require the browser
@@ -261,9 +282,16 @@ Browser sessions (dashboard) are distinguished by the
   audit writes inside `withSessionTransaction`, so an audit-service failure
   rolls the session state back atomically (the tests force `audit.record` to
   throw and assert zero partial state and no `Set-Cookie`).
-- Login is additionally fronted by `loginRateLimiter`: per-IP 429 with code
-  `RATE_LIMITED` on too many attempts, failures recorded, counter reset on
-  success; malformed bodies are rejected 400 before any credential operation.
+- Login is additionally fronted by `loginRateLimiter`
+  (packages/server/src/middleware/rate-limiter.ts): an in-memory per-IP
+  limiter keyed by `req.ip` that 429s with code `RATE_LIMITED` after
+  **10 failures inside a 15-minute window**, records a failure only on a 401,
+  and resets on success; it is process-local (the file header calls out that
+  multi-instance deployments need a shared store such as Redis). Malformed
+  bodies are rejected 400 before any credential operation. The auth router and
+  the `/api` aggregator also carry express-rate-limit ceilings (600 and 300
+  requests/minute respectively), so credential attempts face three stacked
+  caps.
 
 The **legacy non-browser login** (no header) still returns a bare
 `{ token, user }` JWT via `authenticate()` — no refresh row, no `sid`, and
