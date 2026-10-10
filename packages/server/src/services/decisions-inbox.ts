@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { earnedAutonomy, type ClassRecord } from './earned-autonomy';
+import { attributionAuditSample, type AttributionAuditSample } from './outcome-attribution';
 
 /**
  * S2 (operator 2026-09-28): the operator's open decisions in one place instead of in chat.
@@ -9,6 +10,8 @@ import { earnedAutonomy, type ClassRecord } from './earned-autonomy';
  *   labels are stored as `operator_label` judgments so the false-rejection rate can be computed next to the verdicts.
  *   A proposal the enforced pre-screen parked shows the park reason (`prescreen: …`) and can be requeued (D2)
  * - Telegram allowlist (D3): the rows of telegram_identities (ids only, no tokens)
+ * - CAR audit (§16 step 4): this week's seeded sample of computed attributions for the operator to judge correct / wrong /
+ *   unclear (POST /self-improve/attribution-audit/:runId); reading the inbox never writes a label
  * A requeue candidate the operator dismissed (`requeue_dismiss` judgment) leaves the list; `no_change` rows stay listed
  * but are not counted as waiting for the operator (see openDecisionCounts).
  */
@@ -20,6 +23,7 @@ export interface DecisionsInbox {
   telegram: Array<{ telegram_user_id: string; user_id: string; email: string | null; role: string | null; added_by: string; created_at: string }>;
   memory: Array<{ id: string; title: string; content: string; memory_type: string; status: string; created_at: string }>;
   autonomy: ClassRecord[];
+  attribution_audit: AttributionAuditSample;
 }
 
 export function decisionsInbox(db: Database, now = Date.now()): DecisionsInbox {
@@ -47,6 +51,7 @@ export function decisionsInbox(db: Database, now = Date.now()): DecisionsInbox {
     WHERE status IN ('review_required', 'candidate') ORDER BY CASE status WHEN 'review_required' THEN 0 ELSE 1 END, created_at DESC LIMIT 50`);
   return {
     autonomy: earnedAutonomy(db, now),
+    attribution_audit: attributionAuditSample(db, now),
     memory,
     requeue,
     prescreen: { items, labelled, wrong, false_rejection_pct: labelled ? Math.round((1000 * wrong) / labelled) / 10 : null, enforce_threshold: '>= 30 labelled and <= 5 % wrong (D5)' },

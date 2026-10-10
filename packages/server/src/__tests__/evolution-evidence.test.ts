@@ -13,7 +13,7 @@ afterEach(() => db?.close());
 it('RX-1: an empty or partial schema returns every section and never throws', () => {
   db = new Database(':memory:');
   const e = buildEvolutionEvidence(db, {}, NOW);
-  expect(Object.keys(e)).toEqual(['at', 'window_days', 'flags', 'outcomes', 'outcomes_tagged', 'merge', 'drafts', 'genomes', 'gym', 'gym_prod_gates', 'gym_diffs', 'trials', 'models', 'oracle', 'commons', 'forecasts_v2', 'hacks', 'hack_rate', 'estimates', 'ope', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'auto_merge', 'memory_holdout', 'effort_x1', 'graded', 'knowledge_links', 'intelligence', 'gates']);
+  expect(Object.keys(e)).toEqual(['at', 'window_days', 'flags', 'outcomes', 'outcomes_tagged', 'merge', 'drafts', 'genomes', 'gym', 'gym_prod_gates', 'gym_diffs', 'trials', 'models', 'oracle', 'commons', 'forecasts_v2', 'hacks', 'hack_rate', 'estimates', 'ope', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'auto_merge', 'memory_holdout', 'effort_x1', 'graded', 'knowledge_links', 'holdout_exposure', 'intelligence', 'gates']);
   expect(e.knowledge_links).toEqual({ genomes_with_refs: null, genomes_total: null, proposals_with_refs: null });
   expect(e.outcomes).toEqual([]); expect(e.genomes.holdout).toEqual({ mined: null, mutant: null, write_test: null });
   expect(e.gates.B.state).toBe('red'); expect(e.gates.A.state).toBe('unknown');
@@ -200,4 +200,47 @@ it('KE-3: knowledge_links counts genomes and proposals that cite knowledge units
   const p = db.prepare("INSERT INTO self_improvements (id, type, title, description, rationale, source, status, priority, created_at, updated_at, evidence_refs_json) VALUES (?, 'feature', ?, 'd', 'r', 's', 'proposed', 0.5, ?, ?, ?)");
   p.run('p1', 't1', ago(1), ago(1), '["expert_unit:u1"]'); p.run('p2', 't2', ago(1), ago(1), '["expert_claim:c1","test-gap:x"]'); p.run('p3', 't3', ago(1), ago(1), '["test-gap:y"]');
   expect(buildEvolutionEvidence(db, {}, NOW).knowledge_links).toEqual({ genomes_with_refs: 1, genomes_total: 3, proposals_with_refs: 2 });
+});
+
+it('§16 step 7: holdout exposure counts distinct candidates run or decided per frozen epoch and flags reuse_risk above the contract limit', () => {
+  db = new Database(':memory:'); db.exec(schema); runMigrations(db); db.pragma('foreign_keys = OFF'); new SkillEvolutionEngine(db);
+  db.prepare("INSERT INTO gym_holdout (commit_sha, created_at, epoch) VALUES ('c1', ?, 0), ('c2', ?, 0), ('c9', ?, 1)").run(ago(9), ago(9), ago(1));
+  db.prepare("INSERT INTO gym_mutant_holdout (key, task_json, created_at, epoch) VALUES ('mut:1', '{}', ?, 0)").run(ago(8));
+  const gym = db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
+    VALUES (?, 'evolution-gym', 'closed', ?, '[]', '{}', '[]', '[]', ?, ?, ?)`);
+  let n = 0;
+  const run = (commit: string, genome: string | null, extra: Record<string, unknown> = {}, status = 'completed') =>
+    gym.run(`gr${n++}`, status, JSON.stringify({ gym: { commit, genome, ...extra }, gym_result: { status: 'success' } }), ago(5), ago(5));
+  for (let g = 0; g < 11; g++) { run('c1', `g-${g}`); run('c2', `g-${g}`); } // 11 candidates on mined epoch 0
+  run('c1', 'baseline'); run('c2', 'baseline'); // the parent is not a candidate
+  run('c1', 'g-canary', { canary: 1 }); // canaries are not trial evaluations
+  run('c2', 'g-cancelled', {}, 'cancelled'); // never completed: no evaluation
+  run('mut:1', 'g-0'); run('mut:1', 'g-1');
+  const trial = db.prepare(`INSERT INTO genome_trial_results (trial_id, parent_id, tier_set, deciding_n, f_parent_failures, b, c, p, mined_b, mined_c, power_q8_l05, state, recorded_at, epoch)
+    VALUES (?, 'baseline', '2,3', 20, 1, 0, 0, 1, 0, 0, 0, 'no_headroom', ?, 0)`);
+  trial.run('g-1', ago(4)); trial.run('g-nh1', ago(4)); trial.run('g-nh2', ago(3)); // decided on the mutant holdout without running
+  const before = (db.prepare('SELECT COUNT(*) AS n FROM genome_trial_results').get() as { n: number }).n;
+  const e = buildEvolutionEvidence(db, {}, NOW, 30);
+  const x = e.holdout_exposure;
+  expect(x.limit).toBe(10);
+  const mined0 = x.epochs.find((r) => r.holdout === 'mined' && r.epoch === 0)!;
+  expect(mined0).toMatchObject({ tasks: 2, candidates: 11, decisions: 0, evaluations: 24, current: true, reuse_risk: true });
+  expect(x.epochs.find((r) => r.holdout === 'mined' && r.epoch === 1)).toMatchObject({ tasks: 1, candidates: 0, evaluations: 0, current: false, reuse_risk: false });
+  // mutant epoch 0: g-0, g-1 ran; g-1, g-nh1, g-nh2 decided → 4 distinct candidates, 3 decisions
+  expect(x.epochs.find((r) => r.holdout === 'mutant' && r.epoch === 0)).toMatchObject({ tasks: 1, candidates: 4, decisions: 3, evaluations: 2, current: true, reuse_risk: false });
+  expect(x.epochs.some((r) => r.holdout === 'write_test')).toBe(false); // nothing frozen
+  expect(x.reuse_risk).toBe(true);
+  // the flag is a read-only metric: no epoch is rotated, nothing is written
+  expect((db.prepare('SELECT COUNT(*) AS n FROM genome_trial_results').get() as { n: number }).n).toBe(before);
+  expect((db.prepare('SELECT COUNT(DISTINCT epoch) AS n FROM gym_holdout').get() as { n: number }).n).toBe(2);
+  const vig = e.intelligence.metrics.find((m) => m.metric_id === 'VIG')!;
+  expect(vig.detail.holdout_reuse_risk).toEqual([{ holdout: 'mined', epoch: 0, candidates: 11 }]);
+  // with GYM_HOLDOUT_EPOCH=1 and no genome in trial, epoch 1 is current and fresh
+  const fresh = buildEvolutionEvidence(db, { GYM_HOLDOUT_EPOCH: '1' }, NOW, 30).holdout_exposure;
+  expect(fresh.epochs.find((r) => r.holdout === 'mined' && r.epoch === 1)!.current).toBe(true);
+});
+
+it('§16 step 7: holdout exposure is fail-soft on an empty schema', () => {
+  db = new Database(':memory:');
+  expect(buildEvolutionEvidence(db, {}, NOW).holdout_exposure).toMatchObject({ limit: 10, epochs: [], reuse_risk: false });
 });

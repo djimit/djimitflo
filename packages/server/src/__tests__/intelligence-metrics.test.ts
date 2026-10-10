@@ -4,6 +4,7 @@ import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { buildEvolutionEvidence } from '../services/evolution-evidence';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
+import { attributionBackfill } from '../services/outcome-attribution';
 import { INTELLIGENCE_CONTRACT_VERSION, INTELLIGENCE_METRIC_IDS, failureRecurrence, failureSignature, normaliseErrorClass } from '../services/intelligence-metrics';
 
 const NOW = Date.parse('2026-10-09T12:00:00Z');
@@ -146,4 +147,91 @@ it('§16 step 1: VIG ignores no_headroom and blind trials (they cannot show a di
   t.run('g-pow', 'powered', ago(0.5), 0.5, 0.6);
   vig = buildEvolutionEvidence(db, {}, NOW).intelligence.metrics.find((m) => m.metric_id === 'VIG')!;
   expect(vig.status).toBe('ok'); expect(vig.value).toBeCloseTo(0.1, 4); expect(vig.n).toBe(20);
+});
+
+// ── §16 step 3 (plan): read-only attribution backfill; step 4: CAR from operator audit labels ─────────────────────────
+
+/** One settled production run: loop run + maker lease (+ checker) + its maker outcome, optionally already attributed. */
+function settledRun(d: Database.Database, id: string, o: { lane?: string; gates?: string[]; maker?: { status: string; meta: Record<string, unknown> } | null;
+  checker?: { status: string; verdict?: string }; success: boolean; at: string; attributed?: string; improvement?: string }) {
+  const lane = o.lane ?? 'doc-drift-and-small-fix-loop';
+  if (o.improvement) {
+    d.prepare("INSERT INTO self_improvements (id, type, title, description, rationale, source, status, created_at, updated_at) VALUES (?, 'feature', 't', 'd', 'r', 'test-gap', ?, ?, ?)")
+      .run(o.improvement, o.success ? 'verified' : 'regressed', o.at, o.at);
+    d.prepare("INSERT INTO goals (id, objective, risk_class, status, improvement_id, created_at, updated_at) VALUES (?, 't', 'low', 'completed', ?, ?, ?)").run(`g-${id}`, o.improvement, o.at, o.at);
+  }
+  d.prepare(`INSERT INTO loop_runs (id, goal_id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
+    VALUES (?, ?, ?, 'closed', ?, '[]', '{}', '[]', '[]', ?, ?, ?)`).run(id, o.improvement ? `g-${id}` : null, lane, o.success ? 'completed' : 'blocked',
+    JSON.stringify(o.gates?.length ? { failed_gates: o.gates } : {}), o.at, o.at);
+  const maker = o.maker === undefined ? { status: 'completed', meta: { exit_status: 0, completed_at: 'x', changed_files: ['a.ts'] } } : o.maker;
+  if (maker) d.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES (?, ?, 'maker', 'opencode', ?, ?, ?, ?)")
+    .run(`m-${id}`, id, maker.status, JSON.stringify(maker.meta), o.at, o.at);
+  if (o.checker) d.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES (?, ?, 'checker', 'opencode', ?, ?, ?, ?)")
+    .run(`c-${id}`, id, o.checker.status, JSON.stringify({ maker_lease_id: `m-${id}`, ...(o.checker.verdict ? { verdict: o.checker.verdict } : {}) }), o.at, o.at);
+  d.prepare("INSERT INTO skill_outcomes (id, skill_id, agent_id, success, domain, task_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .run(`o-${id}`, `loop-maker:${lane}:opencode`, maker ? `m-${id}` : null, o.success ? 1 : 0, lane, id, o.at);
+  if (o.attributed) d.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at)
+    VALUES (?, 'outcome_attribution', 'loop_run', ?, ?, 'annotation', ?, 'computed', '{"computed":true}', ?)`).run(`oa-${id}`, id, o.attributed, o.attributed, o.at);
+}
+const rowCounts = (d: Database.Database) => ['judgments', 'outcome_credits', 'self_improvements', 'loop_runs'].map((t) => {
+  try { return (d.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n; } catch { return -1; }
+});
+
+it('§16 step 3: the attribution backfill computes what attributeOutcome would say for unattributed settled runs — per class and lane — and writes nothing', () => {
+  db = fresh();
+  settledRun(db, 'r1', { success: true, at: ago(20) });
+  settledRun(db, 'r2', { success: false, at: ago(19), gates: ['checker_verdict: needs an accepted verdict'], checker: { status: 'failed' } });
+  settledRun(db, 'r3', { success: false, at: ago(18), gates: ['tests_lint_typecheck: exit 1'] });
+  settledRun(db, 'r4', { success: false, at: ago(17), gates: ['maker_completion: never ran'], maker: null });
+  // an operator annotation on the proposal (08-10 backfill style) wins over the rules; the rules alone say maker_failure
+  settledRun(db, 'r5', { lane: 'test-gap', success: false, at: ago(16), gates: ['checker_verdict: x'], checker: { status: 'completed', verdict: 'rejected' }, improvement: 's5' });
+  db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at)
+    VALUES ('ann5', 'outcome_attribution', 'self_improvement', 's5', 'x', 'annotation', 'reviewer_failure', 'operator', ?)`).run(ago(15));
+  settledRun(db, 'r6', { success: true, at: ago(1), attributed: 'verified' }); // already attributed: not in the backfill frame
+  // a failed run whose failed gates were never recorded (cancelled / blocked before the gates were stored): its inputs are
+  // missing, so it is excluded and counted — never classified as 'verified' from an empty gate list
+  settledRun(db, 'r7', { success: false, at: ago(14) });
+  // gym outcomes are not production runs
+  db.prepare("INSERT INTO skill_outcomes (id, skill_id, success, domain, task_id, created_at) VALUES ('og', 'loop-maker:evolution-gym:atomic', 0, 'gym', 'gym-1', ?)").run(ago(3));
+  const before = rowCounts(db);
+  const report = attributionBackfill(db);
+  expect(rowCounts(db)).toEqual(before); // zero rows written
+  expect(report.writes).toBe(0);
+  expect(report.runs).toBe(5);
+  expect(report.missing_inputs).toBe(1);
+  expect(report.classes).toEqual({ maker_failure: 1, reviewer_failure: 2, environment_failure: 1, verified: 1 });
+  expect(report.rules_only).toEqual({ maker_failure: 2, reviewer_failure: 1, environment_failure: 1, verified: 1 });
+  expect(report.annotated).toEqual({ n: 1, agree: 0 });
+  expect(report.by_lane.find((l) => l.lane === 'test-gap')).toEqual({ lane: 'test-gap', n: 1, classes: { maker_failure: 0, reviewer_failure: 1, environment_failure: 0, verified: 0 } });
+  expect(report.by_lane.reduce((a, l) => a + l.n, 0)).toBe(report.runs); // strata sum to the pooled count
+  expect(report.coverage).toEqual({ attributed: 1, settled: 7, value: +(1 / 7).toFixed(4) });
+  expect(report.outcome_mismatch).toBe(0);
+  // the intelligence section carries it as CAR coverage context, never as judgments
+  const car = buildEvolutionEvidence(db, {}, NOW, 30).intelligence.metrics.find((m) => m.metric_id === 'CAR')!;
+  expect(car.detail.backfill).toMatchObject({ runs: 5, classes: report.classes });
+  expect(car.detail.coverage).toEqual(report.coverage);
+  expect(rowCounts(db)).toEqual(before);
+});
+
+it('§16 step 4: CAR = correct / audited operator labels (latest label per run, unclear stays in the denominator); ok only at ≥ 40 with ≥ 10 per class', () => {
+  db = fresh();
+  const label = db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at)
+    VALUES (?, 'attribution_audit', 'loop_run', ?, ?, 'operator_label', ?, 'by op', ?)`);
+  const classes = ['maker_failure', 'reviewer_failure', 'environment_failure', 'verified'];
+  let i = 0;
+  const audit = (cls: string, verdict: string) => { label.run(`a${i}`, `run-${cls}-${i}`, cls, verdict, ago(2)); i++; };
+  for (const c of classes) for (let k = 0; k < 5; k++) audit(c, k === 0 ? 'wrong' : 'correct');
+  let car = buildEvolutionEvidence(db, {}, NOW).intelligence.metrics.find((m) => m.metric_id === 'CAR')!;
+  expect(car.status).toBe('INSUFFICIENT_EVIDENCE'); expect(car.value).toBeNull(); expect(car.n).toBe(20);
+  expect(car.blocker).toMatch(/40/);
+  for (const c of classes) for (let k = 0; k < 5; k++) audit(c, k === 0 ? 'unclear' : 'correct');
+  // a run relabelled later: the newest label wins (one unit per run)
+  label.run('relabel', 'run-maker_failure-0', 'maker_failure', 'correct', ago(1));
+  car = buildEvolutionEvidence(db, {}, NOW).intelligence.metrics.find((m) => m.metric_id === 'CAR')!;
+  expect(car.status).toBe('ok'); expect(car.n).toBe(40);
+  // 32 correct + 1 relabelled = 33; wrong 3; unclear 4 (counted in the denominator, reported apart)
+  expect(car.value).toBeCloseTo(33 / 40, 4);
+  expect(car.ci![0]).toBeLessThan(car.value!); expect(car.ci![1]).toBeGreaterThan(car.value!);
+  expect(car.detail).toMatchObject({ audited: 40, correct: 33, wrong: 3, unclear: 4 });
+  expect((car.detail.per_class as Record<string, { audited: number }>).maker_failure.audited).toBe(10);
 });

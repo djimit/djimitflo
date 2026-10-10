@@ -14,6 +14,7 @@ import { ImprovementFunnelService } from '../services/improvement-funnel-service
 import { createError } from '../middleware/error-handler';
 import { requeueImprovement } from '../services/improvement-requeue';
 import { decisionsInbox, dismissRequeue, labelPrescreen, setTelegramIdentity } from '../services/decisions-inbox';
+import { adjudicateAttribution } from '../services/outcome-attribution';
 
 function boundedLimit(value: unknown, fallback = 100): number {
   if (value === undefined) return fallback;
@@ -103,6 +104,21 @@ export function createSelfImprovementRoutes(db: Database, auth?: AuthMiddleware)
       res.status(204).end();
     } catch (error) {
       next(error instanceof Error && error.message === 'LABEL_NO_PRESCREEN_REJECTION' ? createError(404, 'No pre-screen rejection for this proposal', error.message) : error);
+    }
+  });
+  // §16 step 4: the operator judges a sampled attribution (correct / wrong / unclear) — an attribution_audit operator_label
+  // judgment; only runs in this week's CAR sample. Same permission as the D5 labels.
+  router.post('/attribution-audit/:runId', requirePermission('write:governance'), (req, res, next) => {
+    try {
+      const actor = req.user?.sub || req.user?.email;
+      if (!actor) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
+      const { verdict, note } = req.body ?? {};
+      if (verdict !== 'correct' && verdict !== 'wrong' && verdict !== 'unclear') throw createError(400, "verdict must be 'correct', 'wrong' or 'unclear'", 'VALIDATION_ERROR');
+      if (note !== undefined && typeof note !== 'string') throw createError(400, 'note must be a string', 'VALIDATION_ERROR');
+      adjudicateAttribution(db, req.params.runId, verdict, actor, note ?? '');
+      res.status(204).end();
+    } catch (error) {
+      next(error instanceof Error && error.message === 'ATTRIBUTION_AUDIT_NOT_SAMPLED' ? createError(404, "Run is not in this week's attribution audit sample", error.message) : error);
     }
   });
   // D2: the operator decides a requeue candidate needs no requeue — audited (requeue_dismiss judgment), the row leaves /decisions

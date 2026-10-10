@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 
 /**
@@ -209,4 +209,128 @@ export function attributionSummary(db: Database, now = Date.now(), days = 30, en
     top_contributors: top,
     note: 'learners count only maker_failure as a failure when OUTCOME_ATTRIBUTION_ENABLED=true; reviewer/environment failures are neither success nor failure',
   };
+}
+
+// ---- §16 step 3: read-only attribution backfill (docs/research/intelligence-metrics/IMPLEMENTATION_PLAN.md) ----
+
+const zeroClasses = (): Record<OutcomeClass, number> => ({ maker_failure: 0, reviewer_failure: 0, environment_failure: 0, verified: 0 });
+
+/**
+ * What attributeOutcome WOULD say for settled production runs that carry no run-level attribution (mostly runs from before
+ * OUTCOME_ATTRIBUTION_ENABLED went live on 08-10). Computed in memory with the live inputs (attributionInputForRun), returned
+ * as a report and NEVER written as judgments: an in-memory class is context for CAR coverage, not a label learners read.
+ * `classes` honours operator annotations exactly as the live path does; `rules_only` is the classifier alone, and
+ * `annotated` shows how often it agrees with the operator where an annotation exists. One unit per run (its latest maker
+ * outcome); gym and merge outcomes are not production runs. A failed run without recorded failed gates is `missing_inputs`.
+ */
+export function attributionBackfill(db: Database, opts: { limit?: number } = {}) {
+  const all = <T>(sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } };
+  const settled = all<{ run: string; lease: string | null; success: number; lane: string | null; attributed: number }>(`SELECT o.task_id AS run, o.agent_id AS lease, o.success,
+      r.loop_name AS lane, EXISTS (SELECT 1 FROM judgments j WHERE j.judgment = 'outcome_attribution' AND j.subject_type = 'loop_run' AND j.subject_id = o.task_id) AS attributed
+    FROM skill_outcomes o JOIN loop_runs r ON r.id = o.task_id
+    WHERE o.skill_id LIKE 'loop-maker:%' AND o.domain NOT IN ('gym', 'merge')
+      AND o.created_at = (SELECT MAX(x.created_at) FROM skill_outcomes x WHERE x.task_id = o.task_id AND x.skill_id LIKE 'loop-maker:%')
+    GROUP BY o.task_id ORDER BY o.created_at LIMIT ?`, Math.max(1, Math.min(20000, opts.limit ?? 5000)));
+  const firstComputed = all<{ at: string | null }>(`SELECT MIN(created_at) AS at FROM judgments WHERE judgment = 'outcome_attribution' AND subject_type = 'loop_run'`)[0]?.at ?? null;
+  const classes = zeroClasses(); const rulesOnly = zeroClasses();
+  const lanes = new Map<string, Record<OutcomeClass, number>>(); const reasons = new Map<string, number>();
+  const annotated = { n: 0, agree: 0 }; let runs = 0; let mismatch = 0; let failed = 0; let missing = 0;
+  for (const s of settled.filter((x) => !x.attributed)) {
+    let input: AttributionRun;
+    try { input = attributionInputForRun(db, s.run, s.lease); } catch { failed++; continue; }
+    // a failed outcome without recorded failed gates (cancelled / blocked before the gates were stored, prod 10-10: 11 runs) has
+    // missing inputs: excluded and counted, never 'verified' from an empty gate list (contract missing_data_policy)
+    if (s.success !== 1 && input.failed_gates.length === 0) { missing++; continue; }
+    const effective = attributeOutcome(input); const rules = attributeOutcome({ ...input, annotations: [] });
+    runs++; classes[effective.outcome]++; rulesOnly[rules.outcome]++;
+    const lane = s.lane ?? 'unknown'; const l = lanes.get(lane) ?? zeroClasses(); l[effective.outcome]++; lanes.set(lane, l);
+    reasons.set(rules.reason.replace(/\d+/g, 'n'), (reasons.get(rules.reason.replace(/\d+/g, 'n')) ?? 0) + 1);
+    if (effective.reason === 'annotation') { annotated.n++; if (effective.outcome === rules.outcome) annotated.agree++; }
+    if ((s.success === 1) !== (effective.outcome === 'verified')) mismatch++;
+  }
+  const attributed = settled.filter((x) => x.attributed).length;
+  return {
+    frame: 'settled production maker runs (latest loop-maker outcome per run) without a run-level outcome_attribution judgment',
+    runs, first_computed_at: firstComputed, classes, rules_only: rulesOnly, annotated,
+    by_lane: [...lanes.entries()].map(([lane, c]) => ({ lane, n: Object.values(c).reduce((a, b) => a + b, 0), classes: c })).sort((a, b) => b.n - a.n || a.lane.localeCompare(b.lane)),
+    by_rule: [...reasons.entries()].map(([reason, n]) => ({ reason, n })).sort((a, b) => b.n - a.n || a.reason.localeCompare(b.reason)).slice(0, 12),
+    // the maker outcome said success but the class is not verified (or the reverse): a sign the inputs moved since settlement
+    outcome_mismatch: mismatch, input_errors: failed, missing_inputs: missing,
+    coverage: { attributed, settled: settled.length, value: settled.length ? +(attributed / settled.length).toFixed(4) : null },
+    writes: 0 as const,
+    note: 'in-memory classes only — never written as judgments, never read by a learner; context for CAR coverage',
+  };
+}
+export type AttributionBackfill = ReturnType<typeof attributionBackfill>;
+
+// ---- §16 step 4: CAR audit sampler (weekly, seeded, stratified by computed class); operator labels only ----
+
+export type AuditVerdict = 'correct' | 'wrong' | 'unclear';
+const VERDICTS: readonly string[] = ['correct', 'wrong', 'unclear'];
+export const AUDIT_SAMPLE_SIZE = 10;
+/** Monday 00:00Z of the week containing `now`. */
+export function auditWeekStart(now = Date.now()): string {
+  const d = new Date(now); d.setUTCHours(0, 0, 0, 0); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString();
+}
+export interface AuditItem {
+  run_id: string; lane: string | null; computed: OutcomeClass; reason: string | null; failed_gates: string[]; attributed_at: string;
+  verdict: AuditVerdict | null; labelled_by: string | null; labelled_at: string | null;
+}
+
+/**
+ * The week's CAR audit sample. Frame: COMPUTED run attributions (operator annotations are the reference, not the subject)
+ * made before the week started, minus runs audited before the week started — so the frame, and with it the sample, is fixed
+ * for the whole week, and labelling a run never reshuffles it. Seed `car-audit:<monday>`; within each class runs are ordered
+ * by sha256(seed|run) and drawn round-robin over the classes until `size` (a short class gives its turn away).
+ * Read-only: the sample is recomputed from the seed, nothing is stored; only adjudicateAttribution writes, on an operator action.
+ */
+export function attributionAuditSample(db: Database, now = Date.now(), size = AUDIT_SAMPLE_SIZE) {
+  const week_start = auditWeekStart(now); const seed = `car-audit:${week_start.slice(0, 10)}`;
+  const all = <T>(sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } };
+  const frame = all<{ run_id: string; computed: string; reason: string | null; answers: string | null; attributed_at: string; lane: string | null }>(`SELECT j.subject_id AS run_id,
+      j.decision AS computed, j.reason, j.answers_json AS answers, j.created_at AS attributed_at, (SELECT r.loop_name FROM loop_runs r WHERE r.id = j.subject_id) AS lane
+    FROM judgments j WHERE j.judgment = 'outcome_attribution' AND j.subject_type = 'loop_run' AND json_extract(j.answers_json, '$.computed') = 1 AND j.created_at < ?
+      AND NOT EXISTS (SELECT 1 FROM judgments a WHERE a.judgment = 'attribution_audit' AND a.subject_id = j.subject_id AND a.created_at < ?)
+    GROUP BY j.subject_id`, week_start, week_start).filter((r) => CLASSES.includes(r.computed));
+  const rank = (run: string) => createHash('sha256').update(`${seed}|${run}`).digest('hex');
+  const strata = CLASSES.map((c) => frame.filter((r) => r.computed === c).sort((a, b) => rank(a.run_id).localeCompare(rank(b.run_id))));
+  const picked: typeof frame = [];
+  for (let round = 0; picked.length < size && strata.some((s) => s.length > round); round++) {
+    for (const s of strata) if (picked.length < size && s[round]) picked.push(s[round]);
+  }
+  const labels = new Map(all<{ run: string; verdict: string; actor: string | null; at: string }>(`SELECT subject_id AS run, decision AS verdict, json_extract(answers_json, '$.actor') AS actor,
+      created_at AS at FROM judgments WHERE judgment = 'attribution_audit' AND mode = 'operator_label' ORDER BY created_at, rowid`).map((l) => [l.run, l]));
+  const items: AuditItem[] = picked.map((r) => {
+    const l = labels.get(r.run_id); const answers = (() => { try { return JSON.parse(r.answers || '{}') as { failed_gates?: unknown }; } catch { return {}; } })();
+    return { run_id: r.run_id, lane: r.lane, computed: r.computed as OutcomeClass, reason: r.reason, attributed_at: r.attributed_at,
+      failed_gates: Array.isArray(answers.failed_gates) ? answers.failed_gates.map(String) : [],
+      verdict: l && VERDICTS.includes(l.verdict) ? l.verdict as AuditVerdict : null, labelled_by: l?.actor ?? null, labelled_at: l?.at ?? null };
+  });
+  const latest = [...labels.values()].filter((l) => VERDICTS.includes(l.verdict));
+  return {
+    week_start, seed, size, frame_n: frame.length,
+    strata: Object.fromEntries(CLASSES.map((c, i) => [c, strata[i].length])) as Record<OutcomeClass, number>,
+    items,
+    audited: { total: latest.length, correct: latest.filter((l) => l.verdict === 'correct').length, wrong: latest.filter((l) => l.verdict === 'wrong').length, unclear: latest.filter((l) => l.verdict === 'unclear').length },
+    note: 'Is the computed class right? correct / wrong / unclear from the run\'s evidence. Labels are ground truth for CAR; the system never labels.',
+  };
+}
+export type AttributionAuditSample = ReturnType<typeof attributionAuditSample>;
+
+/**
+ * The operator's adjudication of one sampled attribution: a `judgments` row (judgment 'attribution_audit', mode
+ * 'operator_label', state_hash = the computed class it judges). Only runs in the current week's sample; a later label on
+ * the same run supersedes the earlier one (newest wins). Annotation-only: no learner reads these rows.
+ */
+export function adjudicateAttribution(db: Database, runId: string, verdict: AuditVerdict, actor: string, note = '', now = Date.now()): void {
+  if (!VERDICTS.includes(verdict)) throw new Error('ATTRIBUTION_AUDIT_VERDICT_INVALID');
+  const sample = attributionAuditSample(db, now);
+  const item = sample.items.find((i) => i.run_id === runId);
+  if (!item) throw new Error('ATTRIBUTION_AUDIT_NOT_SAMPLED');
+  const why = note.replace(/\s+/g, ' ').trim().slice(0, 300);
+  db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at)
+    VALUES (?, 'attribution_audit', 'loop_run', ?, ?, 'operator_label', ?, ?, ?, ?)`)
+    .run(randomUUID(), runId, item.computed, verdict, `attribution '${item.computed}' judged ${verdict} by ${actor}${why ? `: ${why}` : ''}`,
+      JSON.stringify({ actor, seed: sample.seed, week_start: sample.week_start, computed_reason: item.reason }), new Date(now).toISOString());
 }
