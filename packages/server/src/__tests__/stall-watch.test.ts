@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { detectStalls } from '../services/stall-watch';
+import { detectStalls, detectStallsWithHealth } from '../services/stall-watch';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 
 let db: Database.Database;
@@ -43,4 +43,24 @@ it('T1: errors of the local shadow (<judgment>@local) are not production stalls'
   const ins = db.prepare("INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, created_at) VALUES (?, 'discovery_relevance@local', 's', 'x', 'h', 'shadow', 'error', ?)");
   for (let i = 0; i < 12; i++) ins.run(`l${i}`, at(1));
   expect(subsystems().filter((s) => s.startsWith('judgment:'))).toEqual([]);
+});
+
+it('EP6: a remote gym at its daily cap is waiting by design, not stalled; below its cap it still stalls', () => {
+  // last gym outcome 7 h ago; local gym off, remote gym on with cap 20
+  db.prepare("INSERT INTO skill_outcomes (id, skill_id, success, tokens_used, duration_ms, domain, created_at) VALUES ('o1', 'loop-maker:gym:atomic', 1, 0, 1, 'gym', ?)").run(at(7));
+  const claim = (i: number, h: number) => db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, metadata, created_at) VALUES (?, 'evolution-gym', 'closed', 'completed', ?, ?)")
+    .run(`rc${i}`, JSON.stringify({ gym: { remote_host: 'workstation', species: 'atomic@llama-router' }, gym_result: { status: 'success' } }), at(h));
+  const env = { EVOLUTION_GYM_REMOTE_ENABLED: 'true', EVOLUTION_GYM_REMOTE_MAX_PER_DAY: '20' };
+  for (let i = 0; i < 19; i++) claim(i, 23 - i);
+  expect(subsystems(env)).toContain('gym'); // 19/20: below the cap and silent for 7 h → a real stall
+  claim(19, 8);
+  expect(subsystems(env)).not.toContain('gym');
+  const r = detectStallsWithHealth(db, NOW, env);
+  const gym = r.detectors.find((d) => d.name === 'gym');
+  expect(gym?.status).toBe('capped');
+  expect(gym?.detail).toContain('daily cap 20/20');
+  expect(gym?.detail).toContain(new Date(Date.parse(at(23)) + 86_400_000).toISOString());
+  expect(r.health).toBe('HEALTHY');
+  // the local gym on: its own budget is not this cap, so a silent gym still stalls
+  expect(subsystems({ ...env, EVOLUTION_GYM_ENABLED: 'true' })).toContain('gym');
 });
