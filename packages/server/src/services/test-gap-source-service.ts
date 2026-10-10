@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Database } from 'better-sqlite3';
 import { SelfImprovementService } from './self-improvement-service';
+import { markRun } from './scheduler-registry';
 
 /**
  * A deterministic, high-yield source of proposals: server services that no test imports. The 2026-09-21 loop proof showed
@@ -170,6 +171,7 @@ export class TestGapSourceService {
   start(intervalMs = 6 * 3600_000): void {
     if (this.timer || !testGapSourceEnabled()) return;
     const run = () => {
+      markRun('test_gap_source');
       try { const r = this.run(); if (r.created) console.log(`🧪 test-gap source: ${r.created} proposal(s) created`); } catch (err) { console.warn('Test-gap source failed:', err instanceof Error ? err.message : String(err)); }
       try { const r = this.runMutationGaps(); if (r.created) console.log(`🧬 mutation-gap source: ${r.created} proposal(s) created`); } catch (err) { console.warn('Mutation-gap source failed:', err instanceof Error ? err.message : String(err)); }
     };
