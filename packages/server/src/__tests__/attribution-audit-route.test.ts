@@ -1,4 +1,5 @@
 import express from 'express';
+import { rateLimit } from 'express-rate-limit';
 import Database from 'better-sqlite3';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -28,7 +29,7 @@ beforeAll(async () => {
     VALUES ('oa1', 'outcome_attribution', 'loop_run', 'run-1', 'maker_failure', 'annotation', 'maker_failure', 'gate tests_lint_typecheck failed', '{"computed":true}', ?)`)
     .run(new Date(Date.now() - 8 * 86_400_000).toISOString());
   const auth = createAuthMiddleware(authService);
-  const app = express(); app.use(express.json());
+  const app = express(); app.use(rateLimit({ windowMs: 60_000, limit: 600 })); app.use(express.json());
   app.use('/api/self-improve', auth.requireAuth, createSelfImprovementRoutes(db, auth));
   app.use(errorHandler);
   server = await new Promise((resolve) => { const l = app.listen(0, '127.0.0.1', () => resolve(l)); });
