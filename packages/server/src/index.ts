@@ -5,7 +5,7 @@
 
 import { setLlmLedger } from './services/model-selector';
 import express from 'express';
-import { installOutboundGuard } from './utils/outbound-guard';
+import { installOutboundGuard, outboundViolation } from './utils/outbound-guard';
 import cors from 'cors';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
@@ -57,7 +57,9 @@ import { laneIntervalMs, startDependencyLane } from './services/dependency-lane'
 import { SHIPPED_CODE_SCAN_INTERVAL_MS, startShippedCodeScan } from './services/shipped-code-scan';
 
 // Operator rule (2026-09-29): this server never calls the hosts in OUTBOUND_DENY_HOSTS (the workstation only pulls).
-installOutboundGuard();
+// §16 step 8: refusals are also counted in policy_violations (POLICY_VIOLATION_LOG=shadow) once the database is open.
+let outboundViolationDb: ReturnType<typeof initializeDatabase> | null = null;
+installOutboundGuard(process.env, undefined, (host) => { if (outboundViolationDb) outboundViolation(outboundViolationDb, host); });
 
 type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string; allowedUsers?: number[]; userMap?: Record<string, string> };
 
@@ -90,6 +92,7 @@ async function main() {
   // Initialize database
   console.log('📦 Initializing database...');
   const db = initializeDatabase();
+  outboundViolationDb = db;
   // UX-18: one model-call ledger for every server-side LLM call (call sites without a db handle record here)
   setLlmLedger(db);
 

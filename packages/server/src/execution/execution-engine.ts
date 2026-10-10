@@ -60,6 +60,7 @@ import { DennisAgentService } from '../services/dennis-agent-service';
 import { EvidenceType, EvidenceSeverity, RiskLevel } from '@djimitflo/shared';
 import { createError } from '../middleware/error-handler';
 import { checkAdmission, type AdmissionCheck } from './runtime-admission';
+import { recordPolicyViolation } from '../services/policy-violations';
 
 // Probe rows written before this process started may describe a binary from the previous image.
 const ENGINE_BOOT_ISO = new Date().toISOString();
@@ -844,6 +845,10 @@ export class ExecutionEngine {
       level: check.allowed ? LogLevel.INFO : shadow ? LogLevel.WARNING : LogLevel.ERROR,
       metadata: { source: 'runtime-admission', runtime: executorKind, observed_version: observed, ...check },
     });
+    // §16 step 8 (shadow, POLICY_VIOLATION_LOG): a refused admission is a violation whether or not RUNTIME_ADMISSION_MODE enforces it
+    if (!check.allowed) recordPolicyViolation(this.db, { kind: 'runtime_admission', actor: `runtime:${executorKind}`, severity: 'high', dedupe_key: `${taskId}:${executorKind}`,
+      task_id: taskId, evidence_ref: check.ref ? `runtime_admission:${check.ref}` : `runtime_admission:${executorKind}`,
+      description: `runtime ${executorKind} ${check.decision}${shadow ? ' (admission shadow, not enforced)' : ''}: ${check.reasons[0] ?? ''}` });
     return shadow ? { ...check, allowed: true } : check;
   }
 
