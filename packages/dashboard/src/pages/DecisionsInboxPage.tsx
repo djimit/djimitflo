@@ -60,6 +60,23 @@ export function DependencyLaneSection() {
   );
 }
 
+const KIND_LABEL = { requeue: 'requeue', loop_pr: 'loop PR merge', label: 'pre-screen label', memory_review: 'memory review' } as const;
+/** Cockpit 3.0 Phase 3: the top 5 by expected value per operator minute — shadow only, it changes nothing that needs you. */
+export function RankingSection({ ranking }: { ranking: NonNullable<DecisionsInbox['ranking']> }) {
+  const top = ranking.slice(0, 5);
+  return (
+    <Section id="ranking" title="Highest expected value first (shadow)" headingClassName="text-lg font-semibold mb-1">
+      <p className="text-sm text-foreground-secondary mb-2">Shadow ranking — does not change what needs you. Score = measured expected gain × reversibility ÷ operator minutes; no score = insufficient evidence.</p>
+      {top.length ? <ol className="list-decimal pl-5 space-y-1 text-sm">{top.map((r) => (
+        <li key={`${r.kind}:${r.id}`}>
+          <span className="font-medium">{KIND_LABEL[r.kind]}</span> · {r.title} · score {r.score === null ? 'insufficient evidence' : r.score}
+          <div className="text-xs text-foreground-tertiary">{r.evidence.join(' · ')}</div>
+        </li>
+      ))}</ol> : <p className="text-sm text-foreground-secondary">Nothing to rank.</p>}
+    </Section>
+  );
+}
+
 export function DecisionsInboxPage() {
   const [data, setData] = useState<DecisionsInbox | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -117,6 +134,7 @@ export function DecisionsInboxPage() {
 
       {data && (
         <>
+          {data.ranking && <RankingSection ranking={data.ranking} />}
           <Section id="autonomy" title="Earned autonomy (U1, read-only)" headingClassName="text-lg font-semibold mb-1">
             <p className="text-xs text-foreground-tertiary mb-2">Per action class over 30 days. A class earns autonomy after ≥ 20 human approvals, none denied or expired, and at most one regression. Nothing is auto-approved from this table yet.</p>
             <DataTable caption="Approvals and outcomes per action class (30 d)" rows={data.autonomy} rowKey={(c) => c.cls} empty="No approvals in the last 30 days." columns={[

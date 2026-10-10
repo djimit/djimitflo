@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, expect, it, vi } from 'vitest';
-import { DecisionsInboxPage, DependencyLaneSection, DraftPrsSection } from './DecisionsInboxPage';
+import { DecisionsInboxPage, DependencyLaneSection, DraftPrsSection, RankingSection } from './DecisionsInboxPage';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { api } from '../lib/api';
 import { useAuthStore } from '../lib/auth-store';
 
@@ -141,4 +142,14 @@ it('§16 step 4: the CAR audit sample shows the computed class and evidence; the
   expect(screen.getByRole('button', { name: 'correct eeeeeeee' }).getAttribute('aria-pressed')).toBe('true');
   fireEvent.click(screen.getByRole('button', { name: 'wrong dddddddd' }));
   await waitFor(() => expect(judge).toHaveBeenCalledWith('dddddddd-1', 'wrong'));
+});
+
+it('Cockpit 3.0 Phase 3: shows the top 5 of the shadow ranking with reasons, and says it changes nothing', () => {
+  const ranking = Array.from({ length: 7 }, (_, i) => ({ kind: 'requeue' as const, id: `p${i}`, title: `proposal ${i}`, expected_gain: i < 6 ? 0.8 : null,
+    reversibility: 1, operator_minutes: 1, score: i < 6 ? 0.8 : null, evidence: [i < 6 ? 'earlier requeues verified 4/5 (30 d)' : 'INSUFFICIENT_EVIDENCE: x', 'assumed: 1 click'] }));
+  const html = renderToStaticMarkup(<RankingSection ranking={ranking} />);
+  expect(html).toContain('does not change what needs you');
+  expect((html.match(/<li/g) ?? []).length).toBe(5);
+  expect(html).toContain('earlier requeues verified 4/5');
+  expect(html).not.toContain('proposal 5');
 });
