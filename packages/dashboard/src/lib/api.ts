@@ -38,7 +38,7 @@ export type ServiceStatus = { names: string[]; endpoint: string; status: 'up' | 
 export type FleetHost = { host: string; last_seen: string; seconds_ago: number; live: boolean; agent_version: string | null; info: Record<string, unknown> };
 export type FleetCommand = { id: string; host: string; kind: 'diagnostic' | 'shell'; command: string; command_sha256: string; status: string; requested_by: string;
   approved_by: string | null; approved_at: string | null; expires_at: string | null; decided_reason: string | null; started_at: string | null;
-  finished_at: string | null; exit_code: number | null; output: string | null; created_at: string };
+  finished_at: string | null; exit_code: number | null; output: string | null; created_at: string; self_approved?: number | boolean };
 
 export type KnowledgeOverview = {
   at: string;

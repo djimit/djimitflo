@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { AuditEventType, RiskLevel } from '@djimitflo/shared';
 import { prepareState } from './typesafe-client';
+import { AuditService } from './audit-service';
 
 /**
  * Fleet host agent (operator decision 2026-09-29: "root, per-command approval"). Djimitflo never connects to a host — every
@@ -18,7 +20,9 @@ const now = () => new Date().toISOString();
 
 export interface FleetCommand { id: string; host: string; kind: 'diagnostic' | 'shell'; command: string; command_sha256: string; status: string; requested_by: string;
   approved_by: string | null; approved_at: string | null; expires_at: string | null; decided_reason: string | null; started_at: string | null;
-  finished_at: string | null; exit_code: number | null; output: string | null; created_at: string }
+  finished_at: string | null; exit_code: number | null; output: string | null; created_at: string;
+  /** F2: the requester approved their own command (one operator, so allowed — but explicit on /fleet and in the audit trail) */
+  self_approved?: number }
 
 export class FleetCommands {
   constructor(private readonly db: Database) {}
@@ -45,6 +49,9 @@ export class FleetCommands {
     const at = now();
     this.db.prepare(`UPDATE fleet_commands SET status = 'queued', approved_by = ?, approved_at = ?, expires_at = ? WHERE id = ? AND status = 'pending_approval'`)
       .run(approver, at, new Date(Date.now() + APPROVAL_WINDOW_MS).toISOString(), id);
+    // ponytail: no separation of duties with a single operator (operator decision 10-10) — self-approval is recorded, not blocked
+    new AuditService(this.db).record({ event_type: AuditEventType.APPROVAL_GRANTED, action: 'fleet_command_approved', resource_type: 'fleet_command', resource_id: id,
+      user_id: approver, risk_level: RiskLevel.CRITICAL, metadata: { host: c.host, command_sha256: c.command_sha256, requested_by: c.requested_by, self_approved: approver === c.requested_by } });
     return this.get(id)!;
   }
 
@@ -78,12 +85,12 @@ export class FleetCommands {
       .run(exitCode === 0 ? 'done' : 'failed', Number.isInteger(exitCode) ? exitCode : null, text, now(), id);
   }
 
-  get(id: string): FleetCommand | undefined { return this.db.prepare('SELECT * FROM fleet_commands WHERE id = ?').get(id) as FleetCommand | undefined; }
+  get(id: string): FleetCommand | undefined { return this.db.prepare('SELECT *, (approved_at IS NOT NULL AND approved_by = requested_by) AS self_approved FROM fleet_commands WHERE id = ?').get(id) as FleetCommand | undefined; }
 
   hosts(nowMs = Date.now()): Array<{ host: string; last_seen: string; seconds_ago: number; live: boolean; agent_version: string | null; info: Record<string, unknown> }> {
     return (this.db.prepare('SELECT * FROM fleet_hosts ORDER BY host').all() as Array<{ host: string; last_seen: string; agent_version: string | null; info_json: string }>)
       .map((h) => { const ago = Math.round((nowMs - Date.parse(h.last_seen)) / 1000); return { host: h.host, last_seen: h.last_seen, seconds_ago: ago, live: ago <= 120, agent_version: h.agent_version, info: JSON.parse(h.info_json || '{}') }; });
   }
 
-  recent(limit = 100): FleetCommand[] { return this.db.prepare('SELECT * FROM fleet_commands ORDER BY created_at DESC LIMIT ?').all(Math.min(500, limit)) as FleetCommand[]; }
+  recent(limit = 100): FleetCommand[] { return this.db.prepare('SELECT *, (approved_at IS NOT NULL AND approved_by = requested_by) AS self_approved FROM fleet_commands ORDER BY created_at DESC LIMIT ?').all(Math.min(500, limit)) as FleetCommand[]; }
 }
