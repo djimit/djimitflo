@@ -4,7 +4,7 @@
  * Extracted from index.ts for separation of concerns.
  */
 import { lifecycleManager } from '../services/lifecycle-manager';
-import { noteScheduler } from '../services/scheduler-registry';
+import { markRun, noteScheduler } from '../services/scheduler-registry';
 import { LoopService } from '../services/loop-service';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
 import { NestedSpawnService } from '../services/nested-spawn-service';
@@ -331,6 +331,7 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     // Panel-authorised (scheduled) proposals used to become goals only at boot: a requeued or late-scheduled proposal
     // waited for the next restart (prod 2026-09-25: dc1143b8 sat 'scheduled' for 40+ min). Only this generator, hourly.
     const scheduledTimer = setInterval(() => {
+      markRun('scheduled_proposal_goals');
       try { const n = autonomousGoals.generateFromSelfImprovements(); if (n) console.log(`🎯 ${n} goal(s) from scheduled proposals`); }
       catch (err) { console.warn('Scheduled-proposal goals failed:', err instanceof Error ? err.message : String(err)); }
     }, Number(process.env.SCHEDULED_PROPOSAL_GOALS_INTERVAL_MS) || 3_600_000);
