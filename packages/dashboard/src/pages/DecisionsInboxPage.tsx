@@ -18,7 +18,7 @@ export function DraftPrsSection() {
       {!data && !error && <p className="text-sm text-foreground-secondary">Loading…</p>}
       {data && (
         <>
-          {data.rows.length > 0 && <p className="text-sm text-foreground-secondary mb-2">{data.total} PRs (n), {data.unsettled} not settled yet — still open, or merged less than 14 days ago; merge survival settles them after 14 days.</p>}
+          {data.rows.length > 0 && <p className="text-sm text-foreground-secondary mb-2">{data.total ?? 'unknown'} PRs (n), {data.unsettled ?? 'unknown'} not settled yet — still open, or merged less than 14 days ago; merge survival settles them after 14 days.</p>}
           <DataTable caption="Loop draft PRs and their settlement" rows={data.rows} rowKey={(r) => r.run_id} empty="The loop has opened no draft PR yet." columns={[
             { key: 'pr', label: 'PR', render: (r) => <a className="underline" href={r.pr_url} target="_blank" rel="noreferrer">#{r.pr_number ?? '?'}</a> },
             { key: 'lane', label: 'Lane', render: (r) => r.lane },

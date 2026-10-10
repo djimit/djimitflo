@@ -34,6 +34,7 @@ import { ExpertSourceUnitsService, sourceUnitsEnabled } from './expert-source-un
 import { TechniqueCardService, techniqueCardsEnabled } from './technique-card-service';
 import { ExpertCouncilService } from './expert-council-service';
 import { frontierExpertPersonsEnabled, syncAreas } from './expert-areas';
+import { markRun } from './scheduler-registry';
 
 const MINUTE_MS = 60 * 1000;
 const SCHEDULER_ACTOR = 'autopilot:frontier-experts';
@@ -100,6 +101,7 @@ export class FrontierExpertScheduler {
   }
 
   async tick(): Promise<FrontierExpertTickResult> {
+    markRun('frontier_experts'); // Cockpit 3.0: execution evidence for the scheduler registry
     const result: FrontierExpertTickResult = { ingested: false, enriched: 0, reviewed: [], failed: [] };
 
     try {

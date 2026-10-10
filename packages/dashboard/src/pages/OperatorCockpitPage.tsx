@@ -59,6 +59,10 @@ export function overallHealth(d: CockpitView, now = Date.now()): { state: Health
   for (const g of d.guardrails) { const s = guardrailState(g); states.push(s); if (s !== 'HEALTHY' && s !== 'NOT_APPLICABLE') reasons.push(`${g.name}: ${lower(s)}`); }
   if (d.errors?.length) { states.push('UNKNOWN'); reasons.push(`${d.errors.length} section(s) failed to load`); }
   if (d.stalls.length) { states.push('DEGRADED'); reasons.push(`${d.stalls.length} silent stall(s)`); }
+  const failedDetectors = (d.detectors ?? []).filter((x) => x.status === 'error');
+  if (failedDetectors.length) { states.push('UNKNOWN'); reasons.push(`${failedDetectors.length} stall detector(s) failed — unwatched`); }
+  const notTicking = (d.schedulers?.by_status?.armed_not_ticking ?? 0) + (d.schedulers?.by_status?.failing ?? 0);
+  if (notTicking) { states.push('DEGRADED'); reasons.push(`${notTicking} scheduler(s) not running`); }
   if (!(Date.parse(d.at) >= now - STALE_MS)) { states.push('STALE'); reasons.push(`snapshot from ${since(d.at, now)}`); }
   return { state: worst(states), reasons };
 }
@@ -70,7 +74,9 @@ export function CommandStrip({ d, now = Date.now() }: { d: CockpitView; now?: nu
   const health = overallHealth(d, now);
   const benched = d.gym.filter((g) => g.benched).map((g) => g.species);
   const stale = d.gym.filter((g) => g.stale && !g.benched).map((g) => g.species);
-  const blocked = d.stalls.length + benched.length;
+  const failedDetectors = (d.detectors ?? []).filter((x) => x.status === 'error').map((x) => x.name);
+  const sb = d.schedulers?.by_status;
+  const blocked = d.stalls.length + benched.length + failedDetectors.length + (sb?.armed_not_ticking ?? 0) + (sb?.failing ?? 0);
   const card = (id: string, title: string, body: ReactNode) => (
     <section aria-labelledby={id} className="p-4 rounded-lg border border-border">
       <h2 id={id} className="text-xs uppercase tracking-wide text-foreground-tertiary mb-1">{title}</h2>{body}
@@ -92,6 +98,9 @@ export function CommandStrip({ d, now = Date.now() }: { d: CockpitView; now?: nu
           {d.stalls.slice(0, 3).map((s) => <li key={s.subsystem}><a href="#stalls" className="underline">{s.subsystem}</a></li>)}
           {benched.map((sp) => <li key={sp}>benched: {sp}</li>)}
           {stale.length > 0 && <li>stale species: {stale.join(', ')}</li>}
+          {failedDetectors.length > 0 && <li>detector failed (unwatched): {failedDetectors.join(', ')}</li>}
+          {sb?.armed_not_ticking ? <li>{sb.armed_not_ticking} scheduler(s) armed but not ticking</li> : null}
+          {sb?.failing ? <li>{sb.failing} scheduler(s) failing</li> : null}
         </ul>
       </>)}
       {card('cmd-needs-you', 'What needs you?', d.needs_you ? <NeedsYouTotal n={d.needs_you} /> : <div className="text-xl font-semibold">unknown</div>)}
@@ -224,7 +233,7 @@ export function OperatorCockpitPage() {
           {data.needs_you && <NeedsYou n={data.needs_you} />}
           <DigestCard />
           <EfficiencySection />
-          {data.schedulers && <p className="text-sm text-foreground-secondary">Schedulers: {data.schedulers.armed} armed, {data.schedulers.off} off</p>}
+          {data.schedulers && <p className="text-sm text-foreground-secondary">Schedulers: {data.schedulers.armed} armed, {data.schedulers.off} off{data.schedulers.by_status ? ` · ${Object.entries(data.schedulers.by_status).filter(([k, n]) => n && k !== 'off').map(([k, n]) => `${n} ${k.replace(/_/g, ' ')}`).join(', ')}` : ''}</p>}
           <Disclose id="guardrails" title="Guardrails" open>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
               {data.guardrails.map((g) => { const st = guardrailState(g); return (

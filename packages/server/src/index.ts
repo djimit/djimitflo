@@ -277,38 +277,44 @@ async function main() {
   }
 
   // Compliance report scheduler — periodic reporting, in-process (default-off, see service header)
-  if (noteScheduler('compliance_report', 'COMPLIANCE_REPORT_SCHEDULER_ENABLED', new ComplianceReportScheduler(db).start())) {
+  const complianceReportSched = new ComplianceReportScheduler(db);
+  if (noteScheduler('compliance_report', 'COMPLIANCE_REPORT_SCHEDULER_ENABLED', complianceReportSched.start(), complianceReportSched.intervalHours() * 3_600_000)) {
     console.log('📋 Compliance report scheduler armed');
   }
 
   // Self-healing scheduler — periodic detect-and-fix (stale leases, etc.), in-process (default-off, see service header)
-  if (noteScheduler('self_healing', 'SELF_HEALING_SCHEDULER_ENABLED', new SelfHealingScheduler(db).start())) {
+  const selfHealingSched = new SelfHealingScheduler(db);
+  if (noteScheduler('self_healing', 'SELF_HEALING_SCHEDULER_ENABLED', selfHealingSched.start(), selfHealingSched.intervalMinutes() * 60_000)) {
     console.log('🩺 Self-healing scheduler armed');
   }
 
   // Self-improvement auto-review scheduler — LLM-generated specialist reviews
   // + autonomous goal-authorization, in-process (default-off, see service header)
-  if (noteScheduler('self_improvement_auto_review', 'SELF_IMPROVEMENT_AUTO_REVIEW_ENABLED', new SelfImprovementAutoReviewScheduler(db).start())) {
+  const selfImprovementAutoReviewSched = new SelfImprovementAutoReviewScheduler(db);
+  if (noteScheduler('self_improvement_auto_review', 'SELF_IMPROVEMENT_AUTO_REVIEW_ENABLED', selfImprovementAutoReviewSched.start(), selfImprovementAutoReviewSched.intervalMinutes() * 60_000)) {
     console.log('🧭 Self-improvement auto-review scheduler armed');
   }
 
   // Frontier expert scheduler — automates discovery/enrichment/peer-review only;
   // stops below the registry's hard approval/activation governance wall,
   // in-process (default-off, gated on DJIMITFLO_FRONTIER_EXPERTS_ENABLED too, see service header)
-  if (noteScheduler('frontier_experts', 'FRONTIER_EXPERTS_SCHEDULER_ENABLED', new FrontierExpertScheduler(db).start())) {
+  const frontierExpertsSched = new FrontierExpertScheduler(db);
+  if (noteScheduler('frontier_experts', 'FRONTIER_EXPERTS_SCHEDULER_ENABLED', frontierExpertsSched.start(), frontierExpertsSched.intervalMinutes() * 60_000)) {
     console.log('🔭 Frontier expert scheduler armed');
   }
 
   // Specialist panel backlog scheduler — projects consensus_ready general
   // panels into real work items, in-process (default-off, see service header)
-  if (noteScheduler('specialist_panel_backlog', 'SPECIALIST_PANEL_BACKLOG_ENABLED', new SpecialistPanelBacklogScheduler(db).start())) {
+  const specialistPanelBacklogSched = new SpecialistPanelBacklogScheduler(db);
+  if (noteScheduler('specialist_panel_backlog', 'SPECIALIST_PANEL_BACKLOG_ENABLED', specialistPanelBacklogSched.start(), specialistPanelBacklogSched.intervalMinutes() * 60_000)) {
     console.log('🗂️  Specialist panel backlog scheduler armed');
   }
 
   // Memory candidate review scheduler — real specialist-panel analysis for
   // auto-promotion + a self-improvement evolution loop on the criteria,
   // in-process (default-off, see service header)
-  if (noteScheduler('memory_candidate_review', 'MEMORY_CANDIDATE_REVIEW_ENABLED', new MemoryCandidateReviewScheduler(db).start())) {
+  const memoryCandidateReviewSched = new MemoryCandidateReviewScheduler(db);
+  if (noteScheduler('memory_candidate_review', 'MEMORY_CANDIDATE_REVIEW_ENABLED', memoryCandidateReviewSched.start(), memoryCandidateReviewSched.intervalMinutes() * 60_000)) {
     console.log('🧬 Memory candidate review scheduler armed');
   }
 
