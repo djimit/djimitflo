@@ -75,7 +75,10 @@ SHA="$(main_sha)"; CUR="$(current_sha)"
 
 CHECKS="$(check_runs "$SHA")"
 node -e '
-  const r = JSON.parse(require("fs").readFileSync(0, "utf8")).check_runs || [];
+  // checks that gate no code (the scheduled OpenWiki `update` job runs on main HEAD daily; prod 10-10 it held the deploy
+  // of #738-#744 for its whole run, and when it fails — as on 08-10 and 09-10 — it would block every deploy until main moved)
+  const ignore = new Set((process.env.AUTO_DEPLOY_IGNORE_CHECKS ?? "update").split(",").map((s) => s.trim()).filter(Boolean));
+  const r = (JSON.parse(require("fs").readFileSync(0, "utf8")).check_runs || []).filter((c) => !ignore.has(c.name));
   const bad = r.filter((c) => c.status !== "completed" || !["success", "skipped", "neutral"].includes(c.conclusion));
   process.exit(r.length > 0 && bad.length === 0 ? 0 : 1);' <<<"$CHECKS" || { log "CI not green (yet) for $SHA"; exit 0; }
 

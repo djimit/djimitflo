@@ -25,6 +25,11 @@ it('holds for every unsafe condition, and says why', () => {
   expect(run({ AD_CHECKS: `echo '${JSON.stringify({ check_runs: [{ status: 'in_progress', conclusion: null }] })}'` })).toContain('CI not green');
   expect(run({ AD_CHECKS: `echo '${JSON.stringify({ check_runs: [{ status: 'completed', conclusion: 'failure' }] })}'` })).toContain('CI not green');
   expect(run({ AD_CHECKS: `echo '{"check_runs":[]}'` })).toContain('CI not green');
+  // the scheduled OpenWiki `update` job gates no code: running or failing, it must not hold a deploy
+  const wiki = (conclusion: string | null, status: string) => JSON.stringify({ check_runs: [{ name: 'build-and-test (22)', status: 'completed', conclusion: 'success' }, { name: 'update', status, conclusion }] });
+  expect(run({ AD_CHECKS: `echo '${wiki(null, 'in_progress')}'` })).toContain('DEPLOYED');
+  expect(run({ AD_CHECKS: `echo '${wiki('failure', 'completed')}'` })).toContain('DEPLOYED');
+  expect(run({ AD_CHECKS: `echo '${JSON.stringify({ check_runs: [{ name: 'update', status: 'completed', conclusion: 'success' }] })}'` })).toContain('CI not green');
   expect(run({ AD_COMMIT: `echo '${minutesAgo(5)}'` })).toContain('settling until 20');
   expect(run({ AD_LEASES: 'echo 2' })).toContain('2 loop worker(s) running');
   for (const out of [run({ AD_CURRENT_SHA: `echo ${NEW}` }), run({ AD_LEASES: 'echo 1' })]) expect(out).not.toContain('DEPLOYED');
