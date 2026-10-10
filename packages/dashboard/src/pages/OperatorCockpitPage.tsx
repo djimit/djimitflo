@@ -56,7 +56,8 @@ export function EfficiencySection() {
             <div className="p-3 rounded-lg border border-border"><div className="text-xs text-foreground-tertiary">Cloud M tokens</div><div className="text-xl font-semibold">{week.cloud_m_tokens.toFixed(1)}</div></div>
             <div className="p-3 rounded-lg border border-border"><div className="text-xs text-foreground-tertiary">Verified per M tokens</div><div className="text-xl font-semibold">{ratio(week.per_m_tokens)}</div></div>
             <div className="p-3 rounded-lg border border-border"><div className="text-xs text-foreground-tertiary">Verified per local kWh</div>
-              <div className="text-xl font-semibold">{week.local_kwh === null ? 'not measured' : ratio(week.per_kwh)}</div></div>
+              <div className="text-xl font-semibold">{week.local_kwh === null ? 'not measured' : week.per_kwh === null && week.per_kwh_reason ? 'insufficient evidence' : ratio(week.per_kwh)}</div>
+              {week.per_kwh_reason && <div className="text-xs text-foreground-tertiary">{week.per_kwh_reason.replace(/^INSUFFICIENT_EVIDENCE: /, '')}</div>}</div>
           </div>
         )}
         <DataTable caption="North star per week" rows={view.north_star.weeks} rowKey={(w) => w.week_start} columns={[
@@ -65,7 +66,7 @@ export function EfficiencySection() {
           { key: 'tokens', label: 'Cloud M tokens', render: (w) => w.cloud_m_tokens.toFixed(1) },
           { key: 'kwh', label: 'Local kWh', render: (w) => (w.local_kwh === null ? 'not measured' : `${w.local_kwh.toFixed(2)} (${w.local_covered_h} h sampled)`) },
           { key: 'per_tok', label: 'per M tokens', render: (w) => ratio(w.per_m_tokens) },
-          { key: 'per_kwh', label: 'per kWh', render: (w) => ratio(w.per_kwh) },
+          { key: 'per_kwh', label: 'per kWh', render: (w) => (w.per_kwh === null && w.per_kwh_reason ? <span title={w.per_kwh_reason}>insufficient evidence</span> : ratio(w.per_kwh)) },
         ]} />
         <DataTable caption="Resources and value per consumer" rows={view.consumers} rowKey={(c) => c.consumer} empty="No tokens, GPU jobs or outcomes in the window." columns={[
           { key: 'consumer', label: 'Consumer', render: (c) => c.consumer, cellClassName: () => 'font-mono text-xs' },
