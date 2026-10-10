@@ -4,7 +4,7 @@ import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import fs from 'fs';
 import path from 'path';
-import { interestProfile, interestTerms, MIN_TERM_N, PROFILE_TERM_CAP, publishInterestProfile, SCOUT_STATIC_TERMS } from '../services/interest-feedback';
+import { interestProfile, interestTerms, MIN_TERM_N, PROFILE_TERM_CAP, publishInterestProfile, SCOUT_STATIC_TERMS, TRIAL_SLOTS } from '../services/interest-feedback';
 
 let db: Database.Database;
 const NOW = Date.parse('2026-09-28T18:00:00Z');
@@ -47,21 +47,26 @@ it('N4: drops ids, title verbs and plural duplicates (prod profile 30-09 carried
 const ev = (db_: Database.Database) => db_.prepare("INSERT INTO external_events (id, event_type, source, occurred_at, payload) VALUES (?, 'discovery.paper', 'djimitflo-scout', ?, ?)");
 const verdict = (db_: Database.Database) => db_.prepare("INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at) VALUES (?, 'discovery_relevance', 'discovery_rejected', ?, 'h', 'shadow', ?, NULL, ?)");
 /** n scout discoveries whose note matched `hits`, of which `yes` were judged relevant. */
-function scouted(prefix: string, hits: string, n: number, yes: number) {
+function scouted(prefix: string, hits: string, n: number, yes: number, at = NOW) {
   for (let i = 0; i < n; i++) {
     const ref = `arxiv:${prefix}.${i}`;
-    ev(db).run(`e-${ref}`, new Date(NOW - 2 * 86_400_000).toISOString(), JSON.stringify({ ref, title: `t ${ref}`, agent: 'djimitflo-scout', note: `scout match: ${hits}` }));
-    verdict(db).run(`j-${ref}`, ref, i < yes ? 'yes' : 'uncertain', new Date(NOW - 86_400_000).toISOString());
+    ev(db).run(`e-${ref}`, new Date(at - 2 * 86_400_000).toISOString(), JSON.stringify({ ref, title: `t ${ref}`, agent: 'djimitflo-scout', note: `scout match: ${hits}` }));
+    verdict(db).run(`j-${ref}`, ref, i < yes ? 'yes' : 'uncertain', new Date(at - 86_400_000).toISOString());
   }
 }
 /** candidate terms: relevant discoveries (G3 'yes' on expert units) whose titles name them twice */
-function candidates(...titles: string[]) {
+function candidates(...titles: string[]) { candidatesAt(NOW, 'c', ...titles); }
+function candidatesAt(at: number, prefix: string, ...titles: string[]) {
   titles.forEach((t, i) => {
-    db.prepare("INSERT INTO expert_identities (id, canonical_name, kind, provenance_json) VALUES (?, ?, 'paper', '{}')").run(`expert:c${i}`, t);
+    db.prepare("INSERT INTO expert_identities (id, canonical_name, kind, provenance_json) VALUES (?, ?, 'paper', '{}')").run(`expert:${prefix}${i}`, t);
     db.prepare("INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at) VALUES (?, 'discovery_relevance', 'expert_unit', ?, 'h', 'shadow', 'yes', NULL, ?)")
-      .run(`jc${i}`, `expert:c${i}`, new Date(NOW - 86_400_000).toISOString());
+      .run(`j${prefix}${i}`, `expert:${prefix}${i}`, new Date(at - 86_400_000).toISOString());
   });
 }
+const DAY = 86_400_000;
+const published = (at: number) => JSON.parse((db.prepare('SELECT payload_json FROM event_outbox WHERE aggregate_id = ?')
+  .get(`interests-${new Date(at).toISOString().slice(0, 10)}`) as { payload_json: string }).payload_json) as
+  { terms: string[]; yields: Array<{ term: string; trial?: boolean; since?: string; n: number }>; cooldown: Array<{ term: string; at: string }> };
 
 it('N4 yield gate: a high-yield term is kept, a low-yield term is dropped, an unmeasured term (n < 20) is dropped', () => {
   scouted('s', 'mutation', 40, 8); // static baseline 20 %
@@ -70,7 +75,8 @@ it('N4 yield gate: a high-yield term is kept, a low-yield term is dropped, an un
   scouted('l', 'lattice', 10, 10); // 100 % but n = 10 → unmeasured, dropped
   candidates('Fuzzer repair lattice', 'Fuzzer repair lattice again');
   const p = interestProfile(db as never, NOW);
-  expect(p.terms).toEqual(['repair']);
+  expect(p.yields.filter((y) => !y.trial).map((y) => y.term)).toEqual(['repair']);
+  expect(p.yields.filter((y) => y.trial).map((y) => y.term)).toEqual(['lattice']); // unmeasured → only as a trial
   expect(p.baseline).toEqual({ yield: 0.2, n: 40 });
 });
 
@@ -90,6 +96,7 @@ it('N4 exploration cap: at most PROFILE_TERM_CAP profile terms, best yield first
   const p = interestProfile(db as never, NOW);
   expect(PROFILE_TERM_CAP).toBeLessThanOrEqual(10);
   expect(p.terms).toHaveLength(PROFILE_TERM_CAP);
+  expect(p.yields.some((y) => y.trial)).toBe(false); // trial slots only fill what the measured terms leave
   expect(p.yields.map((y) => y.yield)).toEqual([...p.yields.map((y) => y.yield)].sort((a, b) => b - a));
 });
 
@@ -107,4 +114,57 @@ it('N4: the static scout list mirrors scripts/fleet-discovery-publisher.py INTER
   const py = fs.readFileSync(path.resolve(__dirname, '../../../../scripts/fleet-discovery-publisher.py'), 'utf8');
   const list = /^INTERESTS = \[([\s\S]*?)\]/m.exec(py)![1];
   expect([...list.matchAll(/'([^']+)'/g)].map((m) => m[1])).toEqual(SCOUT_STATIC_TERMS);
+});
+
+// N4 exploration reserve: without trials a never-published term is never measured, so the profile could never learn again.
+it('N4 trial: up to TRIAL_SLOTS unmeasured candidates are published as trials, after the measured terms', () => {
+  scouted('s', 'mutation', 40, 8); scouted('r', 'repair', 30, 9);
+  candidates('Repair lattice sieves tableau', 'Repair lattice sieves tableau again');
+  const p = interestProfile(db as never, NOW);
+  expect(TRIAL_SLOTS).toBe(2);
+  expect(p.terms).toEqual(['repair', 'lattice', 'sieves']);
+  expect(p.yields.slice(1)).toEqual([
+    { term: 'lattice', yield: null, n: 0, trial: true, since: new Date(NOW).toISOString() },
+    { term: 'sieves', yield: null, n: 0, trial: true, since: new Date(NOW).toISOString() }]);
+});
+
+it('N4 trial: keeps its slot while unmeasured, then the yield gate promotes it at n ≥ 20', () => {
+  scouted('s', 'mutation', 40, 8);
+  candidates('Lattice sieves', 'Lattice sieves again');
+  expect(publishInterestProfile(db as never, NOW)).toBe(true);
+  expect(published(NOW).yields.find((y) => y.term === 'lattice')).toMatchObject({ trial: true, since: new Date(NOW).toISOString() });
+  expect(publishInterestProfile(db as never, NOW + 3 * DAY)).toBe(true);
+  expect(published(NOW + 3 * DAY).yields.find((y) => y.term === 'lattice')).toMatchObject({ trial: true, since: new Date(NOW).toISOString() });
+  scouted('l', 'lattice', 20, 10, NOW + 5 * DAY); // 50 % ≥ 20 %
+  expect(publishInterestProfile(db as never, NOW + 5 * DAY)).toBe(true);
+  expect(published(NOW + 5 * DAY).yields.find((y) => y.term === 'lattice')).toEqual({ term: 'lattice', yield: 0.5, n: 20 });
+});
+
+it('N4 trial: dropped when it reaches n ≥ 20 with a bad yield, and not retried', () => {
+  scouted('s', 'mutation', 40, 8);
+  candidates('Lattice sieves', 'Lattice sieves again');
+  publishInterestProfile(db as never, NOW);
+  scouted('l', 'lattice', 20, 1, NOW + 5 * DAY); // 5 % < 20 %
+  publishInterestProfile(db as never, NOW + 5 * DAY);
+  const p = published(NOW + 5 * DAY);
+  expect(p.terms).not.toContain('lattice');
+  expect(p.cooldown).toEqual([{ term: 'lattice', at: new Date(NOW + 5 * DAY).toISOString() }]);
+});
+
+it('N4 trial: dropped after 14 days unmeasured and not retried for 30 days', () => {
+  scouted('s', 'mutation', 40, 8);
+  candidates('Lattice sieves', 'Lattice sieves again');
+  publishInterestProfile(db as never, NOW);
+  publishInterestProfile(db as never, NOW + 14 * DAY);
+  expect(published(NOW + 14 * DAY).terms).toContain('lattice'); // day 14: still inside the trial
+  publishInterestProfile(db as never, NOW + 15 * DAY);
+  expect(published(NOW + 15 * DAY).terms).not.toContain('lattice');
+  expect(published(NOW + 15 * DAY).cooldown.map((c) => c.term)).toEqual(['lattice', 'sieves']);
+  // fresh evidence for both, still inside the cool-down: no retry
+  scouted('s2', 'mutation', 40, 8, NOW + 40 * DAY); candidatesAt(NOW + 40 * DAY, 'd', 'Lattice sieves', 'Lattice sieves again');
+  publishInterestProfile(db as never, NOW + 40 * DAY);
+  expect(published(NOW + 40 * DAY).terms).toEqual([]);
+  // 31 days after the drop: retried as a fresh trial
+  publishInterestProfile(db as never, NOW + 46 * DAY);
+  expect(published(NOW + 46 * DAY).yields.find((y) => y.term === 'lattice')).toMatchObject({ trial: true, since: new Date(NOW + 46 * DAY).toISOString() });
 });

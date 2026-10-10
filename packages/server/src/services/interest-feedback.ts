@@ -14,6 +14,9 @@ import { enqueueEvent } from './event-outbox-service';
  * discoveries the scout matched on it ('scout match:' / 'match:' notes) have a jev 'yes' rate ≥ the static list's, measured on
  * ≥ MIN_TERM_N judged matches; generic words never qualify, and at most PROFILE_TERM_CAP terms ride along so the static list
  * (which the publisher keeps first) stays the bulk of the scout — the exploration reserve against a self-reinforcing profile.
+ * So the profile can still learn, up to TRIAL_SLOTS unmeasured candidates (n < MIN_TERM_N) ride along as trials after the
+ * measured terms: a trial keeps its slot until n ≥ MIN_TERM_N (then the yield gate keeps or drops it) for at most
+ * TRIAL_MAX_DAYS; a dropped trial cools down for COOLDOWN_DAYS. The state (trial `since`, `cooldown`) lives in the profile event.
  */
 const STOP = new Set(('about above after again against among around based because before being between beyond both build could during each every '
   + 'first from further have into large language learning model models more most other over paper papers same should since some such than that '
@@ -45,12 +48,16 @@ export const SCOUT_STATIC_TERMS = ['test generation', 'unit test', 'mutation', '
   'self-improv', 'fault localization', 'regression', 'flaky test', 'static analysis', 'prompt injection'];
 export const MIN_TERM_N = 20;
 export const PROFILE_TERM_CAP = 10;
+export const TRIAL_SLOTS = 2;
+const TRIAL_MAX_DAYS = 14;
+const COOLDOWN_DAYS = 30;
 /** Substrings of nearly every AI paper: the prod profile terms of 09-10 that pulled papers at or below half the static yield. */
 const GENERIC = new Set(('agent agentic benchmark prove generation reasoning evaluation evaluating optimization context engineering '
   + 'software coding prompt memory alignment automated operator adaptive program').split(' '));
 const isGeneric = (w: string) => GENERIC.has(w) || (w.endsWith('s') && GENERIC.has(w.slice(0, -1)));
 
-export interface TermYield { term: string; yield: number; n: number }
+export interface TermYield { term: string; yield: number | null; n: number; trial?: true; since?: string }
+export interface Cooldown { term: string; at: string }
 
 /** Per matched term: jev 'yes' rate over the judged scout discoveries of the window, plus the static-list baseline. */
 export function termYields(db: Database, since: string): { terms: Map<string, { n: number; yes: number }>; baseline: { n: number; yes: number } } {
@@ -79,7 +86,8 @@ const rate = (c: { n: number; yes: number }) => Math.round((1000 * c.yes) / c.n)
 
 export function interestProfile(db: Database, now = Date.now()): {
   terms: string[]; sources: Record<string, number>; yields: TermYield[]; baseline: { yield: number | null; n: number };
-  rule: { window_days: number; min_n: number; cap: number };
+  rule: { window_days: number; min_n: number; cap: number; trial_slots: number; trial_max_days: number; cooldown_days: number };
+  cooldown: Cooldown[];
 } {
   const since = new Date(now - 30 * 86_400_000).toISOString();
   const all = <T>(sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } };
@@ -90,16 +98,39 @@ export function interestProfile(db: Database, now = Date.now()): {
     .map((p) => (all<{ title: string }>('SELECT title FROM kb_pages WHERE path = ?', p)[0]?.title ?? ''));
   const measured = termYields(db, since);
   const base = measured.baseline.n >= MIN_TERM_N ? rate(measured.baseline) : null;
-  const yields = interestTerms([...relevant, ...kb], 50)
-    .filter((t) => !isGeneric(t) && !SCOUT_STATIC_TERMS.includes(t))
-    .map((t) => ({ term: t, c: measured.terms.get(t) }))
-    .filter((x): x is { term: string; c: { n: number; yes: number } } => base !== null && !!x.c && x.c.n >= MIN_TERM_N && rate(x.c) >= base)
-    .map(({ term, c }) => ({ term, yield: rate(c), n: c.n }))
-    .sort((a, b) => b.yield - a.yield || b.n - a.n || a.term.localeCompare(b.term))
+  const pool = interestTerms([...relevant, ...kb], 50).filter((t) => !isGeneric(t) && !SCOUT_STATIC_TERMS.includes(t));
+  // trial state: the newest earlier profile (a day's aggregate id sorts by date)
+  let prev: { yields?: TermYield[]; cooldown?: Cooldown[] } = {};
+  try {
+    const row = db.prepare("SELECT payload_json FROM event_outbox WHERE event_type = 'djimitflo.feedback.interests' AND aggregate_id < ? ORDER BY aggregate_id DESC LIMIT 1")
+      .get(`interests-${new Date(now).toISOString().slice(0, 10)}`) as { payload_json: string } | undefined;
+    if (row) prev = JSON.parse(row.payload_json);
+  } catch { /* no history: no trials running */ }
+  const nowIso = new Date(now).toISOString();
+  const cooldown = new Map((Array.isArray(prev.cooldown) ? prev.cooldown : [])
+    .filter((c) => now - Date.parse(c.at) <= COOLDOWN_DAYS * 86_400_000).map((c) => [c.term, c.at] as const));
+  const prevTrials = new Map((Array.isArray(prev.yields) ? prev.yields : []).filter((y) => y.trial && y.since).map((y) => [y.term, y.since!] as const));
+  const passes = (t: string) => { const c = measured.terms.get(t); return base !== null && !!c && c.n >= MIN_TERM_N && rate(c) >= base; };
+  const kept: TermYield[] = [...new Set([...pool, ...prevTrials.keys()])].filter(passes)
+    .map((term) => { const c = measured.terms.get(term)!; return { term, yield: rate(c), n: c.n }; })
+    .sort((a, b) => b.yield! - a.yield! || b.n - a.n || a.term.localeCompare(b.term))
     .slice(0, PROFILE_TERM_CAP);
+  const unmeasured = (t: string) => (measured.terms.get(t)?.n ?? 0) < MIN_TERM_N;
+  const running: Array<[string, string]> = [];
+  for (const [t, since] of prevTrials) {
+    if (!unmeasured(t)) { if (!passes(t)) cooldown.set(t, nowIso); } // measured: the yield gate decided
+    else if (now - Date.parse(since) > TRIAL_MAX_DAYS * 86_400_000) cooldown.set(t, nowIso); // ran out of time
+    else running.push([t, since]);
+  }
+  const fresh = pool.filter((t) => unmeasured(t) && !cooldown.has(t) && !prevTrials.has(t)).map((t) => [t, nowIso] as [string, string]);
+  const trials: TermYield[] = base === null ? [] : [...running, ...fresh].slice(0, Math.min(TRIAL_SLOTS, PROFILE_TERM_CAP - kept.length))
+    .map(([term, since]) => { const c = measured.terms.get(term); return { term, yield: c?.n ? rate(c) : null, n: c?.n ?? 0, trial: true, since }; });
+  const yields = [...kept, ...trials];
   return {
     terms: yields.map((y) => y.term), sources: { relevant: relevant.length, kb_hits: kb.length }, yields,
-    baseline: { yield: base, n: measured.baseline.n }, rule: { window_days: 30, min_n: MIN_TERM_N, cap: PROFILE_TERM_CAP },
+    baseline: { yield: base, n: measured.baseline.n },
+    rule: { window_days: 30, min_n: MIN_TERM_N, cap: PROFILE_TERM_CAP, trial_slots: TRIAL_SLOTS, trial_max_days: TRIAL_MAX_DAYS, cooldown_days: COOLDOWN_DAYS },
+    cooldown: [...cooldown].map(([term, at]) => ({ term, at })).sort((a, b) => a.term.localeCompare(b.term)),
   };
 }
 
@@ -108,7 +139,7 @@ export function publishInterestProfile(db: Database, now = Date.now()): boolean 
   const aggregateId = `interests-${new Date(now).toISOString().slice(0, 10)}`;
   if (db.prepare('SELECT 1 FROM event_outbox WHERE aggregate_id = ? LIMIT 1').get(aggregateId)) return false;
   const profile = interestProfile(db, now);
-  if (!profile.terms.length) return false;
+  if (!profile.terms.length && !profile.cooldown.length) return false; // a cool-down must survive a day without terms
   enqueueEvent(db, { type: 'djimitflo.feedback.interests', aggregateId, payload: profile });
   return true;
 }
