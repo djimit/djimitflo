@@ -205,7 +205,7 @@ export type OperatorCockpit = {
     /** Cockpit 3.0: execution, not intent — armed_not_ticking / failing schedulers silently stopped working */
     by_status?: Partial<Record<'off' | 'executing' | 'failing' | 'armed_pending' | 'armed_not_ticking' | 'unknown', number>>; health?: 'HEALTHY' | 'BREACHED' | 'UNKNOWN' };
   /** stall detectors; status 'error' = that subsystem is unwatched (an empty stall list is then not healthy) */
-  detectors?: Array<{ name: string; status: 'ok' | 'error' | 'not_applicable'; error?: string; checked_at: string }>;
+  detectors?: Array<{ name: string; status: 'ok' | 'error' | 'not_applicable' | 'capped'; error?: string; checked_at: string }>;
   remote_workers: Array<{ host: string; claims_24h: number; last_claim: string | null; interrupted_24h: number }>;
   /** UX-2: maker outcomes per strategy genome and maker skill (30 d); scope separates gym makers from production makers. */
   genomes?: Array<{ genome: string; skill_id: string; scope?: 'gym' | 'production'; outcomes: number; wins: number; win_pct: number }>;
