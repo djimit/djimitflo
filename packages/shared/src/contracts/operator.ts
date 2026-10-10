@@ -23,7 +23,7 @@ export const OPERATOR_CONTRACTS = {
   /** one row of GET /api/loops/draft-prs */
   draftPrRow: ['run_id', 'lane', 'pr_url', 'pr_number', 'age_days', 'outcome', 'survived', 'auto_merge'],
   /** GET /api/health/efficiency — services/resource-ledger.ts efficiencyView (Phase E1/E3) */
-  efficiency: ['at', 'window_days', 'ledger_enabled', 'consumers', 'ledger', 'hosts', 'north_star', 'notes'],
+  efficiency: ['at', 'window_days', 'ledger_enabled', 'consumers', 'ledger', 'hosts', 'north_star', 'coverage', 'notes'],
   /** GET /api/health/schedulers — services/scheduler-registry.ts listSchedulers */
   schedulers: ['armed', 'off', 'schedulers'],
 } as const;
