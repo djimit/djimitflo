@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
-import { EfficiencySection, NeedsYou, OperatorCockpitPage } from './OperatorCockpitPage';
+import { CommandStrip, EfficiencySection, NeedsYou, OperatorCockpitPage, overallHealth, type CockpitView } from './OperatorCockpitPage';
 import { api } from '../lib/api';
 
 beforeEach(() => { vi.restoreAllMocks(); vi.spyOn(api, 'getServiceMap').mockResolvedValue({ services: [
@@ -20,10 +20,10 @@ it('shows breached guardrails, stalls and gym species from the cockpit endpoint'
     remote_workers: [], maker_usage_7d: [], judgments_7d: [],
     deploys: [{ at: '2026-09-28T18:43:09Z', event: 'verdict_ok', sha: 'f9f481ad3eb5', detail: '' }],
   });
-  render(<OperatorCockpitPage />);
+  render(<MemoryRouter><OperatorCockpitPage /></MemoryRouter>);
   expect(await screen.findByText('breached · limit <= verified/5 (2.2)')).toBeTruthy();
   expect(screen.getByText('maker 2 · reviewer 3 · environment 0')).toBeTruthy(); // funnel phase 3: whose regressions
-  expect(screen.getByText('gym:atomic@llama-router')).toBeTruthy();
+  expect(screen.getAllByText('gym:atomic@llama-router').length).toBeGreaterThan(0); // command strip + stalls section
   expect(screen.getByText('89%')).toBeTruthy();
   expect(screen.getByText('No remote host has claimed work.')).toBeTruthy();
   expect(screen.getByText('verdict ok')).toBeTruthy();
@@ -33,18 +33,18 @@ it('shows breached guardrails, stalls and gym species from the cockpit endpoint'
 it('UX-2: shows real-maker outcomes per strategy genome with n, and an honest empty state', async () => {
   const base = { at: '2026-10-04T20:00:00Z', build: { commit: null, build_time: null }, scorecard: {}, guardrails: [], stalls: [], gym: [], remote_workers: [], maker_usage_7d: [], judgments_7d: [], deploys: [] };
   vi.spyOn(api, 'getOperatorCockpit').mockResolvedValueOnce({ ...base, genomes: [{ genome: 'g-abc123', skill_id: 'loop-maker:test-gap:opencode', outcomes: 12, wins: 7, win_pct: 58 }] });
-  const { unmount } = render(<OperatorCockpitPage />);
+  const { unmount } = render(<MemoryRouter><OperatorCockpitPage /></MemoryRouter>);
   expect(await screen.findByText('g-abc123')).toBeTruthy();
   expect(screen.getByText('58%')).toBeTruthy(); expect(screen.getByText('12')).toBeTruthy();
   unmount();
   vi.spyOn(api, 'getOperatorCockpit').mockResolvedValueOnce(base);
-  render(<OperatorCockpitPage />);
+  render(<MemoryRouter><OperatorCockpitPage /></MemoryRouter>);
   expect(await screen.findByText('No production-maker outcome carries a genome yet.')).toBeTruthy();
 });
 
 it('shows the error when the endpoint fails', async () => {
   vi.spyOn(api, 'getOperatorCockpit').mockRejectedValue(new Error('Access denied'));
-  render(<OperatorCockpitPage />);
+  render(<MemoryRouter><OperatorCockpitPage /></MemoryRouter>);
   expect((await screen.findByRole('alert')).textContent).toBe('Access denied');
 });
 
@@ -82,7 +82,7 @@ it('UX-8: the cockpit shows how many schedulers are armed', async () => {
     at: '2026-10-06T12:00:00Z', build: { commit: null, build_time: null }, scorecard: {}, guardrails: [], stalls: [], gym: [], remote_workers: [], maker_usage_7d: [], judgments_7d: [], deploys: [],
     schedulers: { armed: 9, off: 5 },
   });
-  render(<OperatorCockpitPage />);
+  render(<MemoryRouter><OperatorCockpitPage /></MemoryRouter>);
   expect(await screen.findByText('Schedulers: 9 armed, 5 off')).toBeTruthy();
 });
 
@@ -99,7 +99,7 @@ it('honest cockpit: tokens per verified change, stale gym species, gym vs produc
       { genome: 'g-gym', skill_id: 'loop-maker:gym:atomic', scope: 'gym', outcomes: 30, wins: 27, win_pct: 90 },
     ],
   });
-  render(<OperatorCockpitPage />);
+  render(<MemoryRouter><OperatorCockpitPage /></MemoryRouter>);
   expect(await screen.findByText('Tokens per verified change (7 d, maker + reviewers)')).toBeTruthy();
   expect(screen.queryByText('Tokens per outcome (7 d)')).toBeNull();
   expect(screen.getByText('stale')).toBeTruthy();
@@ -159,4 +159,51 @@ it('E3: says energy is not measured while power sampling is off, and degrades qu
   vi.spyOn(api, 'getEfficiency').mockRejectedValueOnce(new Error('Access denied'));
   render(<EfficiencySection />);
   expect(await screen.findByText('Efficiency view unavailable.')).toBeTruthy();
+});
+
+const snap = (over: Partial<CockpitView> = {}): CockpitView => ({ at: new Date().toISOString(), build: { commit: null, build_time: null },
+  scorecard: { verified_7d: 3, regressed_7d: 1 }, guardrails: [{ name: 'regressions', ok: true, value: 0, limit: '<= 0.6' }], stalls: [], gym: [],
+  remote_workers: [], maker_usage_7d: [], judgments_7d: [], deploys: [], ...over });
+
+it('Cockpit 3.0: an UNKNOWN guardrail (or a null value from an old server that said ok) never renders healthy', () => {
+  expect(overallHealth(snap()).state).toBe('HEALTHY');
+  const oldServer = snap({ guardrails: [{ name: 'panel unparseable (7 d)', ok: true, value: null, limit: '0' }] }); // failed SQL → null, old server said ok
+  expect(overallHealth(oldServer).state).toBe('UNKNOWN');
+  expect(overallHealth(snap({ guardrails: [{ name: 'x', ok: true, value: 1, limit: '', state: 'UNKNOWN' }] })).state).toBe('UNKNOWN');
+  expect(overallHealth(snap({ guardrails: [] })).state).toBe('UNKNOWN');
+  expect(overallHealth(snap({ errors: [{ section: 'gym', message: 'no such table' }] })).state).toBe('UNKNOWN');
+  expect(overallHealth(snap({ health: 'HEALTHY', guardrails: [{ name: 'r', ok: false, value: 9, limit: '' }] })).state).toBe('BREACHED');
+  expect(overallHealth(snap({ at: '2026-01-01T00:00:00Z' })).state).toBe('STALE');
+  const html = renderToStaticMarkup(<MemoryRouter><CommandStrip d={oldServer} /></MemoryRouter>);
+  expect(html).toContain('unknown'); expect(html).not.toContain('>healthy<');
+  expect(html).toContain('throughput, not intelligence'); expect(html).toContain('href="/evolution"');
+});
+
+it('Cockpit 3.0: null needs-you counts render as unknown, never as a calm zero', () => {
+  const html = renderToStaticMarkup(<MemoryRouter><NeedsYou n={{ approvals: null, requeue: 0, labels: 0, memory_review: 0 }} /></MemoryRouter>);
+  expect(html).toContain('Needs you: unknown'); expect(html).toContain('Could not count: approvals');
+  expect(html).not.toContain('Nothing needs you right now');
+  expect(renderToStaticMarkup(<MemoryRouter><NeedsYou n={{ approvals: 2, requeue: null, labels: 0, memory_review: 0 }} /></MemoryRouter>)).toContain('Needs you (≥ 2)');
+  expect(renderToStaticMarkup(<MemoryRouter><CommandStrip d={snap({ needs_you: undefined })} /></MemoryRouter>)).toMatch(/What needs you\?.*unknown/);
+});
+
+it('Cockpit 3.0: a partial failure shows the errors banner and the page still renders old-server payloads', async () => {
+  vi.spyOn(api, 'getOperatorCockpit').mockResolvedValue(snap({ errors: [{ section: 'judgments_7d', message: 'no such table: judgments' }], snapshot_id: 's1' }) as never);
+  render(<MemoryRouter><OperatorCockpitPage /></MemoryRouter>);
+  const alert = await screen.findByRole('alert');
+  expect(alert.textContent).toContain('judgments_7d'); expect(alert.textContent).toContain('not as healthy');
+  expect(screen.getByRole('status').textContent).toContain('unknown');
+});
+
+it('Cockpit 3.0: a slower older response never overwrites a newer one', async () => {
+  let resolveOld: (v: CockpitView) => void = () => {};
+  const spy = vi.spyOn(api, 'getOperatorCockpit')
+    .mockImplementationOnce(() => new Promise((r) => { resolveOld = r as never; }) as never)
+    .mockResolvedValueOnce(snap({ build: { commit: 'newer000aaaa', build_time: null } }) as never);
+  render(<MemoryRouter><OperatorCockpitPage /></MemoryRouter>);
+  (await screen.findByRole('button', { name: /refresh/i })).click();
+  expect(await screen.findByText('newer000')).toBeTruthy();
+  resolveOld(snap({ build: { commit: 'older111bbbb', build_time: null } }));
+  await new Promise((r) => setTimeout(r, 20));
+  expect(screen.queryByText('older111')).toBeNull(); expect(spy).toHaveBeenCalledTimes(2);
 });
