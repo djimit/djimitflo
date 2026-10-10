@@ -153,14 +153,14 @@ describe('cockpit + decisions route permissions (scenario 9)', () => {
   // GAP (operator decision, auth = ask-first): the approval_granted/denied audit_events row names 'system', not the approver —
   // approval-service.ts decideApproval → auditService.record() passes no user_id. The approver is only in approvals.decided_by
   // (a mutable row), so the hash-chained audit trail cannot attribute a human approval.
-  it.fails('GAP: the approval audit event names the approver', () => {
+  it('the approval audit event names the approver (fixed by F1)', () => {
     expect(db.prepare("SELECT user_id FROM audit_events WHERE action = 'approval_granted' AND resource_id = 'ap-1'").get())
       .toEqual({ user_id: ids.get(UserRole.APPROVER) });
   });
 
   // GAP: fleet root shell has no separation of duties — the admin who requested the command can approve it himself
   // (fleet-commands.ts approve() never compares approver with requested_by; approvals.ts has SELF_APPROVAL_FORBIDDEN).
-  it.fails('GAP: the requester of a root shell command cannot approve it', async () => {
+  it.fails('BY DESIGN (operator 10-10, single operator: audited as self_approved, not blocked): the requester of a root shell command cannot approve it', async () => {
     expect((await call(UserRole.ADMIN, `/fleet-hosts/commands/${fleetId}/approve`, 'POST', { sha256: fleetSha })).status).toBe(403);
   });
 });
