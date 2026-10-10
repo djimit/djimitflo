@@ -3,6 +3,7 @@
  */
 
 import { Router } from 'express';
+import { ROLE_PERMISSIONS, type UserRole } from '@djimitflo/shared';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { AutonomousDocsService } from '../services/autonomous-docs-service';
@@ -93,7 +94,12 @@ export function createSelfImprovementRoutes(db: Database, auth?: AuthMiddleware)
   });
 
   // S2: the operator's open decisions (requeue candidates, D5 pre-screen labelling, Telegram allowlist)
-  router.get('/decisions', requirePermission('read:evidence'), (_req, res) => { res.json(decisionsInbox(db)); });
+  router.get('/decisions', requirePermission('read:evidence'), (req, res) => {
+    const inbox = decisionsInbox(db);
+    // F6: viewers see the allowlist ids, not who is behind them (email/role need manage:config)
+    if (!(ROLE_PERMISSIONS[req.user?.role as UserRole] ?? []).includes('manage:config')) inbox.telegram = inbox.telegram.map((t) => ({ ...t, email: null, role: null }));
+    res.json(inbox);
+  });
   router.post('/proposals/:id/prescreen-label', requirePermission('write:governance'), (req, res, next) => {
     try {
       const actor = req.user?.sub || req.user?.email;

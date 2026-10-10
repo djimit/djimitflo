@@ -238,6 +238,7 @@ export class ApprovalService {
         resource_id: id,
         task_id: updated.task_id,
         risk_level: updated.risk_level,
+        user_id: decidedBy,
         metadata: { reason: reason || null },
       });
       return updated;
