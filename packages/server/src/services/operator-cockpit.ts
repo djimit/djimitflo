@@ -1,10 +1,10 @@
 import fs from 'fs';
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
-import { detectStalls, type Stall } from './stall-watch';
+import { detectStallsWithHealth, type DetectorHealth, type Stall } from './stall-watch';
 import { infraFailing } from './evolution-gym-service';
 import { ATTRIBUTION_OF_PROPOSAL, decisionsInbox, openDecisionCounts } from './decisions-inbox';
-import { listSchedulers } from './scheduler-registry';
+import { listSchedulers, type SchedulerHealth, type SchedulerStatus } from './scheduler-registry';
 import { nonMakerRunSql, outcomeAttributionEnabled } from './outcome-attribution';
 
 /**
@@ -50,8 +50,10 @@ export interface CockpitSnapshot {
     total: number | null;
     /** requeue candidates that are system work, not decisions (counted, never hidden) */
     system_requeue: Partial<Record<'budgeted_requeue' | 'attribution_unknown' | 'not_actionable', number>> | null };
-  /** UX-8: schedulers armed at boot vs off */
-  schedulers: { armed: number; off: number };
+  /** UX-8: armed/off = intent; by_status + health = execution (Cockpit 3.0: armed_not_ticking / failing degrade the snapshot) */
+  schedulers: { armed: number; off: number; by_status: Record<SchedulerStatus, number>; health: SchedulerHealth };
+  /** stall detectors: an `error` detector means its subsystem is unwatched — an empty stall list is then not 'healthy' */
+  detectors: DetectorHealth[];
   /** Y2: maker outcomes per strategy genome and maker skill (30 d) — what Y3's dreaming mutates and the bandit selects.
    *  scope: 'gym' for loop-maker:gym:* (benchmark makers), 'production' for makers on real goals — never mixed in one table. */
   genomes: Array<{ genome: string; skill_id: string; scope: 'gym' | 'production'; outcomes: number; wins: number; win_pct: number }>;
@@ -168,7 +170,7 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
   const genomes = [...genomesIn('production'), ...genomesIn('gym')];
   const in60 = new Date(now + 3_600_000).toISOString();
   section = 'needs_you';
-  // same predicates as loop-draft-pr-service listDraftPrs().unsettled / countOpenLoopPrs, which swallow errors as 0
+  // same predicates as loop-draft-pr-service listDraftPrs().unsettled / countOpenLoopPrs, kept inline so a failure is recorded as a section error
   let needs_you: CockpitSnapshot['needs_you'] = { approvals: scorecard.approvals_pending, requeue: null, labels: null, memory_review: null,
     proposals: one("SELECT COUNT(*) FROM self_improvements WHERE status = 'proposed'"),
     // merged loop PRs still settling (survival not decided) — disjoint from open_prs, which counts never-polled PRs as open
@@ -189,17 +191,23 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
   } catch (e) { fail('decisions', e); }
   let stalls: Stall[] = [];
   // an empty list from a failed detector is not 'no stalls': stalls stays [] but needs_you.stalls null + an error
-  try { stalls = detectStalls(db, now); needs_you.stalls = stalls.length; } catch (e) { fail('stalls', e); }
+  let detectors: DetectorHealth[] = [];
+  try {
+    const report = detectStallsWithHealth(db, now, env); stalls = report.stalls; detectors = report.detectors; needs_you.stalls = stalls.length;
+    for (const d of detectors) if (d.status === 'error') fail(`detector:${d.name}`, new Error(d.error ?? 'detector query failed'));
+  } catch (e) { fail('stalls', e); }
   const blocking = [needs_you.approvals, needs_you.requeue, needs_you.labels, needs_you.memory_review, needs_you.open_prs, needs_you.proposals,
     needs_you.stalls, needs_you.join_requests, needs_you.shell_requests];
   needs_you.total = blocking.some((x) => x === null) || needs_you.shared_subjects === null ? null
     : (blocking as number[]).reduce((a, b) => a + b, 0) - (needs_you.shared_subjects as number);
-  const { armed, off } = listSchedulers();
-  const health = worstState([...guardrails.map((g) => g.state), errors.length || stalls.length ? 'DEGRADED' : 'HEALTHY']);
+  const { armed, off, by_status, health: schedulersHealth } = listSchedulers(now);
+  const health = worstState([...guardrails.map((g) => g.state), errors.length || stalls.length ? 'DEGRADED' : 'HEALTHY',
+    // a failed detector leaves its subsystem unwatched; a scheduler that stopped ticking or fails is work that silently stopped
+    detectors.some((d) => d.status === 'error') ? 'UNKNOWN' : 'HEALTHY', schedulersHealth === 'BREACHED' ? 'DEGRADED' : 'HEALTHY']);
   return {
     at: new Date(now).toISOString(), snapshot_id: randomUUID(), health, errors,
     build: { commit: process.env.DJIMITFLO_BUILD_COMMIT ?? null, build_time: process.env.DJIMITFLO_BUILD_TIME ?? null },
-    scorecard, guardrails, stalls, gym, remote_workers, maker_usage_7d, judgments_7d, needs_you, schedulers: { armed, off }, genomes, deploys: recentDeploys(),
+    scorecard, guardrails, stalls, gym, remote_workers, maker_usage_7d, judgments_7d, needs_you, schedulers: { armed, off, by_status, health: schedulersHealth }, detectors, genomes, deploys: recentDeploys(),
   };
 }
 

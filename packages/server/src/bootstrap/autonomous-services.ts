@@ -152,7 +152,7 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
 
   // C2 evolution gym: sandbox replay tasks from our own history; outcomes feed species selection. Default off.
   try {
-    if (noteScheduler('evolution_gym', 'EVOLUTION_GYM_ENABLED', gymEnabled())) {
+    if (noteScheduler('evolution_gym', 'EVOLUTION_GYM_ENABLED', gymEnabled(), 3_600_000)) {
       const gym = new EvolutionGymService(db, recoverySvc);
       gym.start();
       lifecycleManager.register({ serviceName: 'EvolutionGym', stop: () => gym.stop() });

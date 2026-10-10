@@ -201,7 +201,11 @@ export type OperatorCockpit = {
     join_requests?: number | null; shell_requests?: number | null; shared_subjects?: number | null; total?: number | null;
     system_requeue?: Partial<Record<'budgeted_requeue' | 'attribution_unknown' | 'not_actionable', number>> | null };
   /** UX-8: schedulers this server armed at boot vs off */
-  schedulers?: { armed: number; off: number };
+  schedulers?: { armed: number; off: number;
+    /** Cockpit 3.0: execution, not intent — armed_not_ticking / failing schedulers silently stopped working */
+    by_status?: Partial<Record<'off' | 'executing' | 'failing' | 'armed_pending' | 'armed_not_ticking' | 'unknown', number>>; health?: 'HEALTHY' | 'BREACHED' | 'UNKNOWN' };
+  /** stall detectors; status 'error' = that subsystem is unwatched (an empty stall list is then not healthy) */
+  detectors?: Array<{ name: string; status: 'ok' | 'error' | 'not_applicable' | 'capped'; error?: string; checked_at: string }>;
   remote_workers: Array<{ host: string; claims_24h: number; last_claim: string | null; interrupted_24h: number }>;
   /** UX-2: maker outcomes per strategy genome and maker skill (30 d); scope separates gym makers from production makers. */
   genomes?: Array<{ genome: string; skill_id: string; scope?: 'gym' | 'production'; outcomes: number; wins: number; win_pct: number }>;
@@ -214,7 +218,8 @@ export type OperatorCockpit = {
 export type OperatorDigest = { at: string; text: string; data: Record<string, unknown> };
 
 /** UX-7: the loop's draft PRs from loop_runs metadata (no GitHub call); outcome = merge-survival settlement once it exists. */
-export type DraftPrs = { total: number; unsettled: number; rows: Array<{ run_id: string; lane: string; pr_url: string; pr_number: number | null; age_days: number; outcome: string | null; survived: boolean | null; auto_merge: string | null }> };
+/** total/unsettled null = the read failed (unknown, not 0) */
+export type DraftPrs = { total: number | null; unsettled: number | null; rows: Array<{ run_id: string; lane: string; pr_url: string; pr_number: number | null; age_days: number; outcome: string | null; survived: boolean | null; auto_merge: string | null }> };
 export type DependencyLane = { mode: 'off' | 'shadow' | 'act'; effective_mode: 'off' | 'shadow' | 'act'; revoked_at: string | null; revoked_reason: string | null; max_per_day: number; merged_24h: number; open: number; rows: Array<{ pr_number: number; title: string; html_url: string | null; bump: string; age_days: number | null; check_state: string | null; decision: string; reason: string | null; updated_at: string }> };
 
 export type DecisionsInbox = {
