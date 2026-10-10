@@ -6,6 +6,7 @@ import { testOnlyChange, TEST_ONLY_DIFF_MAX } from './loop-worker-executor-servi
 import { pushNotice } from './operator-push';
 import { SURVIVAL_DAYS } from './merge-survival';
 import { autoMergeMaxPerDay, autoMergeMode, isAuditSample, readClassState, revokeClass } from './loop-auto-merge-state';
+import { markRun } from './scheduler-registry';
 
 /**
  * Earned auto-merge for verified test-only loop PRs (operator-approved 2026-10-07: 30 loop PRs, 22 merged by the human,
@@ -199,6 +200,7 @@ export function startLoopAutoMerge(db: Database, intervalMs = 15 * 60_000): (() 
   if (autoMergeMode() === 'off') return null;
   let running = false;
   const tick = () => {
+    markRun('loop_auto_merge');
     if (running) return; running = true;
     runAutoMergeTick(db).then((r) => { if (r.merged || r.revoked) console.log(`🤝 loop auto-merge: ${r.merged} merged, revoked=${r.revoked} (${r.evaluated} evaluated)`); })
       .catch((e) => console.warn('loop auto-merge failed:', e instanceof Error ? e.message : String(e)))

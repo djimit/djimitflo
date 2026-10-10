@@ -4,6 +4,7 @@ import { redactSecrets } from './secret-patterns';
 import { generateText, llmEndpoints } from './llm-fallback';
 import { firstJsonObject } from './expert-council-service';
 import { BASELINE_GENOME, dreamEvolutionEnabled, ensureBaseline, frozenHoldoutCommits, genome, holdoutEpoch, mutantHoldoutKeys, mutantHoldoutTiers, mutantTrialsEnabled, NOT_VOID, trialHeadroomPrecheck, unscorable, writeTestHoldoutEnabled, writeTestHoldoutKeys } from './genome-registry';
+import { markRun } from './scheduler-registry';
 
 /**
  * Y3b/Y3c (plan Phase Y, Darwin loop). Dreaming is the mutation operator: once a day the day's failed makers (real and
@@ -501,6 +502,7 @@ export function startDreamEvolution(db: Database, intervalMs = 3_600_000): (() =
   if (!dreamEvolutionEnabled()) return null;
   const species = process.env.DREAM_EVOLUTION_SPECIES || 'atomic@llama-router';
   const tick = () => {
+    markRun('dream_evolution');
     try {
       const commits = frozenHoldoutCommits(db); // RX-12: the current epoch's mined holdout
       const mutants = mutantTrialsEnabled() ? mutantHoldoutKeys(db) : [];
