@@ -4,6 +4,7 @@ import { wilson } from './evolution-estimators';
 import { nonMakerRunSql, attributionSummary } from './outcome-attribution';
 import { efficiencyView } from './resource-ledger';
 import type { ForecasterScoreV2 } from './forecast-scoring';
+import { policyViolationCounts, policyViolationLogEnabled } from './policy-violations';
 
 /**
  * §16 step 1 (docs/research/intelligence-metrics/IMPLEMENTATION_PLAN.md, METRIC_CONTRACTS.yaml v0.1.0): one read-only status
@@ -292,12 +293,15 @@ export function intelligenceEvidence(db: Database, env: NodeJS.ProcessEnv, now: 
     ? metric('ESE', 'ok', pastHeadroom, null, eseDetail, r4(promoted / pastHeadroom), wilson(promoted, pastHeadroom))
     : metric('ESE', 'INSUFFICIENT_EVIDENCE', pastHeadroom, `${promoted} decisive promotion(s), ${pastHeadroom} candidate(s) past headroom; needs ≥ 1 and ≥ 10`, eseDetail));
 
-  // SCIG: VIG gated by constraints with live monitors; policy_violations never written today → not monitored
+  // SCIG: VIG gated by constraints with live monitors. §16 step 8: the shadow writer (POLICY_VIOLATION_LOG) makes the gates'
+  // detections countable per kind; with it on, 0 rows means 0 detected breaches, not "no writer"
   const violations = count('SELECT COUNT(*) FROM policy_violations');
-  const scigBlockers = [vig.status !== 'ok' ? `VIG ${vig.status}` : '', !violations ? 'policy_violations not monitored (0 rows: no live writer)' : ''].filter(Boolean);
+  const logOn = policyViolationLogEnabled(env);
+  const scigDetail = { policy_violations: violations, policy_violation_log: logOn ? 'shadow' : 'off', policy_violations_by_kind: policyViolationCounts(db) };
+  const scigBlockers = [vig.status !== 'ok' ? `VIG ${vig.status}` : '', !violations && !logOn ? 'policy_violations not monitored (0 rows and POLICY_VIOLATION_LOG off)' : ''].filter(Boolean);
   metrics.push(scigBlockers.length
-    ? metric('SCIG', 'INSUFFICIENT_EVIDENCE', vig.n, scigBlockers.join('; '), { policy_violations: violations })
-    : metric('SCIG', 'ok', vig.n, null, { policy_violations: violations }, vig.value, vig.ci));
+    ? metric('SCIG', 'INSUFFICIENT_EVIDENCE', vig.n, scigBlockers.join('; '), scigDetail)
+    : metric('SCIG', 'ok', vig.n, null, scigDetail, vig.value, vig.ci));
 
   // ECON: verified per M cloud tokens for the consumer with the most attempts (≥ 20), resource-ledger valuePer interval
   const consumers = (() => { try { return efficiencyView(db, now, env).consumers; } catch { return []; } })()
