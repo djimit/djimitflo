@@ -1,18 +1,18 @@
 import { createHash } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { wilson } from './evolution-estimators';
-import { nonMakerRunSql, attributionSummary } from './outcome-attribution';
+import { nonMakerRunSql, attributionSummary, attributionBackfill } from './outcome-attribution';
 import { efficiencyView } from './resource-ledger';
 import type { ForecasterScoreV2 } from './forecast-scoring';
 import { policyViolationCounts, policyViolationLogEnabled } from './policy-violations';
 
 /**
- * §16 step 1 (docs/research/intelligence-metrics/IMPLEMENTATION_PLAN.md, METRIC_CONTRACTS.yaml v0.1.0): one read-only status
+ * §16 step 1 (docs/research/intelligence-metrics/IMPLEMENTATION_PLAN.md, METRIC_CONTRACTS.yaml v0.2.0): one read-only status
  * per metric contract, computed from tables and helpers that already exist. A metric is 'ok' only when the contract's
  * minimum sample holds; otherwise INSUFFICIENT_EVIDENCE (or UNDEFINED when the estimand cannot exist yet) with value and ci
  * null and the blocker spelled out — never 0 for "not estimable". Nothing here writes, selects or promotes.
  */
-export const INTELLIGENCE_CONTRACT_VERSION = '0.1.0';
+export const INTELLIGENCE_CONTRACT_VERSION = '0.2.0';
 export const INTELLIGENCE_METRIC_IDS = ['VIG', 'RIR', 'GTI', 'CLY', 'FRR', 'CAR', 'CIA', 'MCS', 'ADQ', 'EII', 'ESE', 'SCIG', 'ECON'] as const;
 export type IntelligenceMetricId = (typeof INTELLIGENCE_METRIC_IDS)[number];
 export type IntelligenceStatus = 'ok' | 'INSUFFICIENT_EVIDENCE' | 'UNDEFINED';
@@ -198,6 +198,8 @@ export interface IntelligenceInputs {
   forecasters: ForecasterScoreV2[];
   effort_x1: { on: { verified: number; regressed: number }; off: { verified: number; regressed: number } };
   memory_holdout: { rules: { n: number }; holdout: { n: number } };
+  /** §16 step 7: current holdout epochs over the reuse limit (evolution-evidence holdout_exposure) */
+  holdout_reuse_risk?: Array<{ holdout: string; epoch: number; candidates: number }>;
 }
 
 export function intelligenceEvidence(db: Database, env: NodeJS.ProcessEnv, now: number, since: string, inputs: IntelligenceInputs) {
@@ -217,9 +219,9 @@ export function intelligenceEvidence(db: Database, env: NodeJS.ProcessEnv, now: 
   const vigTrial = vigEligible[0];
   const vig = vigTrial
     ? metric('VIG', 'ok', vigTrial.deciding_n!, null, { trial_id: vigTrial.trial_id, decisive: decisive(vigTrial), p: vigTrial.graded_p ?? vigTrial.p, trials: trials.length, by_state: byState,
-      note: 'paired mean difference (graded when recorded, else (b − c) / n); the trial stores p only, so the CI is not available here' },
+      holdout_reuse_risk: inputs.holdout_reuse_risk ?? [], note: 'paired mean difference (graded when recorded, else (b − c) / n); the trial stores p only, so the CI is not available here' },
       r4(vigTrial.graded_mean_mutant !== null && vigTrial.graded_mean_parent !== null ? vigTrial.graded_mean_mutant - vigTrial.graded_mean_parent : ((vigTrial.b ?? 0) - (vigTrial.c ?? 0)) / vigTrial.deciding_n!))
-    : metric('VIG', 'INSUFFICIENT_EVIDENCE', trials.length, `${trials.length} trial(s), none past headroom (not no_headroom / blind) with ≥ 20 paired tasks and parent mean in [0.30, 0.95] (${Object.entries(byState).map(([s, n]) => `${n} ${s}`).join(', ') || 'none recorded'})`, { trials: trials.length, by_state: byState });
+    : metric('VIG', 'INSUFFICIENT_EVIDENCE', trials.length, `${trials.length} trial(s), none past headroom (not no_headroom / blind) with ≥ 20 paired tasks and parent mean in [0.30, 0.95] (${Object.entries(byState).map(([s, n]) => `${n} ${s}`).join(', ') || 'none recorded'})`, { trials: trials.length, by_state: byState, holdout_reuse_risk: inputs.holdout_reuse_risk ?? [] });
   metrics.push(vig);
 
   // RIR: needs ≥ 3 cycles each with a decisive VIG
@@ -248,17 +250,30 @@ export function intelligenceEvidence(db: Database, env: NodeJS.ProcessEnv, now: 
   // FRR (§16 step 3)
   metrics.push(failureRecurrence(failureUnits(db, since)));
 
-  // CAR: adjudicated audit sample vs the computed class (judgments outcome_attribution_audit, plan step 4)
-  const audits = all<{ adjudicated: string; computed: string | null }>(`SELECT a.decision AS adjudicated, (SELECT c.decision FROM judgments c WHERE c.judgment = 'outcome_attribution'
-      AND c.subject_id = a.subject_id ORDER BY c.created_at DESC LIMIT 1) AS computed FROM judgments a WHERE a.judgment = 'outcome_attribution_audit'`);
-  const classifiable = audits.filter((a) => a.adjudicated !== 'unknown' && a.computed);
-  const perClass = classifiable.reduce<Record<string, number>>((a, r) => ({ ...a, [r.computed!]: (a[r.computed!] ?? 0) + 1 }), {});
+  // CAR (§16 steps 3–4): operator adjudications of the weekly audit sample (judgments attribution_audit, mode operator_label,
+  // state_hash = the computed class judged; newest label per run). CAR = correct / audited — unclear stays in the denominator
+  // and is reported. Coverage (attributed / settled) and the read-only backfill of unattributed runs are context, never labels.
+  const audits = all<{ computed: string; verdict: string }>(`SELECT a.state_hash AS computed, a.decision AS verdict FROM judgments a
+    WHERE a.judgment = 'attribution_audit' AND a.mode = 'operator_label'
+      AND a.rowid = (SELECT b.rowid FROM judgments b WHERE b.judgment = 'attribution_audit' AND b.mode = 'operator_label' AND b.subject_id = a.subject_id ORDER BY b.created_at DESC, b.rowid DESC LIMIT 1)`)
+    .filter((a) => ['correct', 'wrong', 'unclear'].includes(a.verdict));
+  const carClasses = ['maker_failure', 'reviewer_failure', 'environment_failure', 'verified'];
+  const tally = (rows: typeof audits) => ({ audited: rows.length, correct: rows.filter((a) => a.verdict === 'correct').length,
+    wrong: rows.filter((a) => a.verdict === 'wrong').length, unclear: rows.filter((a) => a.verdict === 'unclear').length });
+  const per_class = Object.fromEntries(carClasses.map((c) => {
+    const t = tally(audits.filter((a) => a.computed === c));
+    return [c, { ...t, car: t.audited ? r4(t.correct / t.audited) : null, ci: t.audited ? wilson(t.correct, t.audited) : null }];
+  })) as Record<string, ReturnType<typeof tally> & { car: number | null; ci: [number, number] | null }>;
+  const pooled = tally(audits);
   const attribution = (() => { try { const s = attributionSummary(db, now, 30, env); return { enabled: s.enabled, classes: s.classes }; } catch { return null; } })();
-  const carOk = classifiable.length >= 40 && ['maker_failure', 'reviewer_failure', 'environment_failure', 'verified'].every((c) => (perClass[c] ?? 0) >= 10);
-  const correct = classifiable.filter((a) => a.adjudicated === a.computed).length;
+  const backfill = (() => { try { return attributionBackfill(db); } catch { return null; } })();
+  const carDetail = { ...pooled, per_class, coverage: backfill?.coverage ?? null, attribution,
+    backfill: backfill && { runs: backfill.runs, first_computed_at: backfill.first_computed_at, classes: backfill.classes, rules_only: backfill.rules_only, annotated: backfill.annotated, by_lane: backfill.by_lane, outcome_mismatch: backfill.outcome_mismatch, missing_inputs: backfill.missing_inputs, note: backfill.note },
+    note: 'pooled CAR = correct / audited (unclear in the denominator); per_class is the stratified view. Labels come only from the operator (Decisions inbox).' };
+  const carOk = pooled.audited >= 40 && carClasses.every((c) => per_class[c].audited >= 10);
   metrics.push(carOk
-    ? metric('CAR', 'ok', classifiable.length, null, { audited: audits.length, unknown: audits.length - classifiable.length, per_class: perClass, attribution }, r4(correct / classifiable.length), wilson(correct, classifiable.length))
-    : metric('CAR', 'INSUFFICIENT_EVIDENCE', classifiable.length, `${classifiable.length} adjudicated audit(s); needs ≥ 40 with ≥ 10 per class`, { audited: audits.length, per_class: perClass, attribution }));
+    ? metric('CAR', 'ok', pooled.audited, null, carDetail, r4(pooled.correct / pooled.audited), wilson(pooled.correct, pooled.audited))
+    : metric('CAR', 'INSUFFICIENT_EVIDENCE', pooled.audited, `${pooled.audited} operator-audited attribution(s); needs ≥ 40 with ≥ 10 per class (${carClasses.map((c) => `${per_class[c].audited} ${c}`).join(', ')})`, carDetail));
 
   // CIA: X1 sibling arms (on − off verified rate), ≥ 93 settled per arm
   const on = inputs.effort_x1.on; const off = inputs.effort_x1.off;

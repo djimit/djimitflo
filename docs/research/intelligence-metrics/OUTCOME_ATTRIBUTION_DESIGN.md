@@ -92,6 +92,15 @@ classes and missing ones.
 7. **Cadence.** Monthly, or after any change to `outcome-attribution.ts`. The audit record is stored as `outcome_attribution_audit`
    judgments (mode `annotation`) on the run, so no new table is needed.
 
+**As built (§16 step 4, 2026-10-10).** A first, smaller version of the above runs on the Decisions inbox: 10 runs per week, seed
+`car-audit:<monday>`, drawn round-robin over the four classes from computed attributions made before the week started (fixed for
+the week; runs audited before the week leave the frame). The operator sees the computed class and reason and judges it
+`correct` / `wrong` / `unclear` (so this audit is **not blind**; the blind four-class adjudication above stays the target).
+Records are `judgments` rows `judgment='attribution_audit'`, `mode='operator_label'`, `state_hash` = the class judged, written
+only through `POST /self-improve/attribution-audit/:runId` (write:governance). CAR = correct / audited with `unclear` in the
+denominator; the rule-10 and large-diff strata and the planted cases are not built yet. The read-only backfill
+(`attributionBackfill`) reports what `attributeOutcome` would say for unattributed settled runs, as CAR coverage context only.
+
 **Cost.** About 40 adjudications. Operator time is ~2–3 min each (~2 h), or ~40 cross-family model calls (≈ 1.5 M tokens at
 F1's 36 k tokens per call).
 

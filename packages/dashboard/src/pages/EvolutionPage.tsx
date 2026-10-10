@@ -79,6 +79,12 @@ export function EvolutionBody({ data }: { data: EvolutionEvidence }) {
 
       <Section title="Genome trials">
         <p className="text-sm text-foreground-secondary">Holdouts: mined {data.genomes.holdout.mined ?? '—'}, mutant {data.genomes.holdout.mutant ?? '—'} tasks.</p>
+        {/* §16 step 7: how often each current frozen epoch has been used; a reuse risk asks the operator for a fresh epoch */}
+        {data.holdout_exposure?.epochs.filter((e) => e.current).map((e) => (
+          <p key={`${e.holdout}-${e.epoch}`} className={`text-sm ${e.reuse_risk ? 'text-status-error' : 'text-foreground-secondary'}`}>
+            {`${e.holdout} epoch ${e.epoch}: ${e.candidates} candidates (limit ${data.holdout_exposure.limit})${e.reuse_risk ? ' — reuse risk, introduce a fresh epoch' : ''}`}; {e.decisions} decisions, {e.evaluations} evaluations on {e.tasks} tasks.
+          </p>
+        ))}
         {!data.trials.recent.length ? <Empty text="No settled trial has diagnostics yet." /> : (
           <Table head={['Trial', 'Tiers', 'Deciding tasks', 'Parent failures', 'Wins / losses', 'p', 'Power', 'State']}
             rows={data.trials.recent.map((t) => [t.trial_id, t.tier_set, `n = ${t.deciding_n}`, t.f_parent_failures, `${t.b} / ${t.c}`, num(t.p, 3), pct(t.power_q8_l05), t.state])} />

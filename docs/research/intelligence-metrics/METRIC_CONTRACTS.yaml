@@ -1,4 +1,5 @@
-# MetricContracts for operator §16 (fields as in §16.15). Version 0.1.0, 2026-10-09.
+# MetricContracts for operator §16 (fields as in §16.15). Version 0.2.0, 2026-10-10 (0.1.0 of 2026-10-09 + CAR operator-label
+# denominator and the holdout reuse limit, §16 steps 3/4/7).
 # Mapped to existing tables, columns and endpoints only. No new store, bus or framework.
 # Conventions:
 #   - status INSUFFICIENT_EVIDENCE whenever minimum_sample_requirements fail; never emit 0 for "not estimable".
@@ -10,7 +11,7 @@
 #   - Owner "operator" = only the operator may change the contract; a candidate never changes the contract it is judged by (§16.17).
 
 defaults: &defaults
-  version: 0.1.0
+  version: 0.2.0
   owner: operator
   event_time: the outcome's own timestamp (self_improvements.updated_at at settlement; loop_runs.completed_at; judgments.created_at)
   processing_time: computed_at of the evidence read (evolution_estimates.computed_at or the request time of the health endpoint)
@@ -57,6 +58,7 @@ contracts:
     dependence_assumptions: tasks independent given the epoch; tasks mined from the same file are clustered
     confounders: [holdout reuse across trials, worker version change mid-trial, gym ≠ prod gate set]
     validation_tests: [paired arms use identical task keys, evaluator hash identical across arms, holdout epoch not exposed to the candidate's generator]
+    holdout_reuse_limit: 10   # distinct candidate genomes run or decided on one frozen epoch; above it evolution-evidence holdout_exposure flags reuse_risk (§16.11). Read-only; a fresh epoch (GYM_HOLDOUT_EPOCH) is an operator action
     current_status: INSUFFICIENT_EVIDENCE (8 trials, 0 decisive; 6 no_headroom, 2 blind)
 
   - metric_id: RIR
@@ -145,8 +147,11 @@ contracts:
     definition: Share of audited attributable outcomes whose attribution class matches independent adjudication; coverage reported separately.
     formula: "CAR = correct_audited / audited_attributable; Coverage = attributed_settled / settled"
     unit: proportion
-    numerator: audited outcomes where the adjudicated class equals the outcome_attribution decision
-    denominator: outcomes drawn into the audit sample that the adjudicator could classify
+    numerator: audited outcomes the operator judged 'correct' (the computed outcome_attribution class is right)
+    denominator: "audited outcomes (latest operator label per run: correct / wrong / unclear); 'unclear' stays in the denominator and is reported apart"
+    audit_record: "judgments judgment='attribution_audit', mode='operator_label', subject = loop run, state_hash = the computed class judged, actor in answers_json; written only by POST /self-improve/attribution-audit/:runId (write:governance); the system never labels"
+    sampler: "weekly, seed car-audit:<monday UTC>; frame = computed run attributions made before the week started, minus runs audited before it; within each class ordered by sha256(seed|run), drawn round-robin over the classes, 10 per week"
+    coverage_context: "attributionBackfill — what attributeOutcome would say for unattributed settled runs, in memory only (never judgments), next to Coverage = attributed / settled"
     eligible_population: all settled runs since OUTCOME_ATTRIBUTION_ENABLED (2026-10-08 17:29Z), stratified by class
     exclusion_rules: [none for sampling; unclassifiable audits counted as 'unknown' and reported, not dropped]
     observation_window: per audit batch (monthly)
@@ -157,7 +162,7 @@ contracts:
     minimum_sample_requirements: ≥ 10 per class stratum (maker, reviewer, environment, verified), ≥ 40 total
     dependence_assumptions: runs of the same proposal clustered
     confounders: [operator annotations (30/32 reviewer_failure) are not independent adjudication of computed classes, easy-case selection]
-    validation_tests: [sample drawn by seeded random per stratum before adjudication, adjudicator blind to the class]
+    validation_tests: [sample drawn by seeded random per stratum before adjudication and fixed for the week, labels only from the authenticated operator route, backfill writes zero rows]
     current_status: "coverage 45/99 settled (30 d) = 0.455, but only runs after 08-10 are eligible; CAR INSUFFICIENT_EVIDENCE (0 audited)"
 
   - metric_id: CIA

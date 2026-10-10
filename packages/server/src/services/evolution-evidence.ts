@@ -14,6 +14,7 @@ import { gradedEvidence } from './graded-fitness';
 import { wilson } from './evolution-estimators';
 import { intelligenceEvidence } from './intelligence-metrics';
 import type { ForecasterScoreV2 } from './forecast-scoring';
+import { BASELINE_GENOME, holdoutEpoch } from './genome-registry';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -90,6 +91,39 @@ export function hackRateEvidence(db: Database, env: NodeJS.ProcessEnv, now: numb
 
 export type GateState = 'green' | 'red' | 'unknown';
 export interface Gate { state: GateState; reason: string }
+
+/**
+ * §16 step 7 (§16.11: never optimise against a repeatedly exposed locked holdout). Per frozen holdout epoch: how many distinct
+ * candidate genomes it has been used for — ran a completed, non-canary gym attempt on one of its tasks, or had a trial decided
+ * on it (genome_trial_results; tier_set 'mined' = the mined holdout, else the mutant holdout) — plus the decisions and
+ * evaluations behind that. The parent (baseline) is not a candidate. `reuse_risk` once candidates exceed the contract limit
+ * (METRIC_CONTRACTS.yaml VIG holdout_reuse_limit): introduce a fresh epoch (GYM_HOLDOUT_EPOCH, an operator action). Read-only:
+ * nothing here rotates an epoch.
+ */
+export const HOLDOUT_REUSE_LIMIT = 10;
+export function holdoutExposure(db: Database, env: NodeJS.ProcessEnv = process.env, limit = HOLDOUT_REUSE_LIMIT) {
+  const all = <T>(sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } };
+  const tables = [['mined', 'gym_holdout', 'commit_sha'], ['mutant', 'gym_mutant_holdout', 'key'], ['write_test', 'gym_write_test_holdout', 'key']] as const;
+  const epochs = tables.flatMap(([holdout, table, key]) => {
+    const frozen = all<{ epoch: number; tasks: number; frozen_at: string }>(`SELECT epoch, COUNT(*) AS tasks, MIN(created_at) AS frozen_at FROM ${table} GROUP BY epoch ORDER BY epoch`);
+    if (!frozen.length) return [];
+    const runs = all<{ epoch: number; genome: string | null; n: number }>(`SELECT h.epoch, json_extract(r.metadata, '$.gym.genome') AS genome, COUNT(*) AS n
+      FROM loop_runs r JOIN ${table} h ON h.${key} = json_extract(r.metadata, '$.gym.commit')
+      WHERE r.loop_name = 'evolution-gym' AND r.status = 'completed' AND json_extract(r.metadata, '$.gym.canary') IS NULL GROUP BY 1, 2`);
+    const decided = holdout === 'write_test' ? [] : all<{ epoch: number; trial_id: string }>(
+      `SELECT COALESCE(epoch, 0) AS epoch, trial_id FROM genome_trial_results WHERE tier_set IS NOT NULL AND (tier_set = 'mined') = ?`, holdout === 'mined' ? 1 : 0);
+    const current = (() => { try { return holdoutEpoch(db, table, env); } catch { return null; } })();
+    return frozen.map((f) => {
+      const ran = runs.filter((r) => r.epoch === f.epoch);
+      const dec = decided.filter((d) => d.epoch === f.epoch);
+      const candidates = new Set([...ran.map((r) => r.genome).filter((g): g is string => Boolean(g) && g !== BASELINE_GENOME), ...dec.map((d) => d.trial_id)]).size;
+      return { holdout, epoch: f.epoch, tasks: f.tasks, frozen_at: f.frozen_at, current: f.epoch === current, candidates, decisions: dec.length,
+        evaluations: ran.reduce((a, r) => a + r.n, 0), reuse_risk: candidates > limit };
+    });
+  });
+  return { limit, epochs, reuse_risk: epochs.some((e) => e.current && e.reuse_risk), write_test_enabled: env.DREAM_TRIAL_WRITE_TEST_HOLDOUT === 'true',
+    note: `candidates = distinct genomes (parent excluded) that ran on or were decided on the epoch; reuse_risk above ${limit} (contract) — introduce a fresh epoch (GYM_HOLDOUT_EPOCH, operator). Read-only.` };
+}
 
 /** MS-2: the expert runner's model from FRONTIER_EXPERTS_RUNTIME ('ollama:kimi-k3:cloud' → 'kimi-k3:cloud'), parsed like the runner does. */
 const frontierIncumbent = (runtime?: string): string | undefined => (runtime || '').trim() ? parseRuntimeSpec(runtime, { runtime: 'ollama', model: '' }).model : undefined;
@@ -254,6 +288,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     fisher_p: +fisherExact(withRules.verified, withRules.regressed, heldOut.verified, heldOut.regressed).toPrecision(4),
     note: 'runs with a settled proposal (verified or regressed); rules = ≥ 1 rule in the assignment, holdout = rules withheld by MEMORY_HOLDOUT_RATE. Two-sided Fisher exact.' };
   const effort_x1 = effortX1Evidence(db, since, env, fisherExact);
+  const holdout_exposure = holdoutExposure(db, env);
   return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, gym_prod_gates, gym_diffs, trials, models, oracle, commons, forecasts_v2, hacks,
     // S7: hack-detector flag rate per genome and gym task kind (14 d) and canary passes, Wilson 95 %
     hack_rate: hackRateEvidence(db, env, now), estimates, ope,
@@ -276,6 +311,9 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
       genomes_total: one("SELECT COUNT(*) FROM maker_genomes WHERE origin = 'dream'"),
       proposals_with_refs: one(`SELECT COUNT(*) FROM self_improvements WHERE evidence_refs_json LIKE '%"expert_unit:%' OR evidence_refs_json LIKE '%"expert_claim:%'`),
     },
+    // §16 step 7: per frozen holdout epoch, distinct candidates run or decided on it; reuse_risk above the contract limit (read-only)
+    holdout_exposure,
     // §16 step 1: one read-only status per metric contract (METRIC_CONTRACTS.yaml); INSUFFICIENT_EVIDENCE is never rendered as 0
-    intelligence: intelligenceEvidence(db, env, now, since, { forecasters, effort_x1, memory_holdout }), gates };
+    intelligence: intelligenceEvidence(db, env, now, since, { forecasters, effort_x1, memory_holdout,
+      holdout_reuse_risk: holdout_exposure.epochs.filter((e) => e.current && e.reuse_risk).map((e) => ({ holdout: e.holdout, epoch: e.epoch, candidates: e.candidates })) }), gates };
 }

@@ -140,7 +140,12 @@ export interface EvolutionEvidence {
   };
   /** KE-3: mutant genomes written from injected knowledge units, and proposals citing a unit or claim */
   knowledge_links: { genomes_with_refs: number | null; genomes_total: number | null; proposals_with_refs: number | null };
-  /** §16 step 1: read-only status per metric contract (METRIC_CONTRACTS.yaml v0.1.0); no composite score */
+  /** §16 step 1: read-only status per metric contract (METRIC_CONTRACTS.yaml); no composite score */
+  /** §16 step 7: per frozen holdout epoch, distinct candidates run or decided on it; reuse_risk above the contract limit (read-only) */
+  holdout_exposure: {
+    limit: number; reuse_risk: boolean; write_test_enabled: boolean; note: string;
+    epochs: Array<{ holdout: 'mined' | 'mutant' | 'write_test'; epoch: number; tasks: number; frozen_at: string; current: boolean; candidates: number; decisions: number; evaluations: number; reuse_risk: boolean }>;
+  };
   intelligence: { contract_version: string; metrics: IntelligenceMetric[]; note: string };
   gates: Record<'A' | 'B' | 'C' | 'D', { state: GateState; reason: string }>;
 }
@@ -198,7 +203,16 @@ export type DecisionsInbox = {
   telegram: Array<{ telegram_user_id: string; user_id: string; email: string | null; role: string | null; added_by: string; created_at: string }>;
   memory: Array<{ id: string; title: string; content: string; memory_type: string; status: string; created_at: string }>;
   autonomy: Array<{ cls: string; human_approved: number; auto_approved: number; denied: number; expired: number; verified: number; regressed: number; infra: number; pending: number; earned: boolean; why: string }>;
+  /** §16 step 4: this week's seeded CAR audit sample of computed attributions; the operator labels, the system never does */
+  attribution_audit: {
+    week_start: string; seed: string; size: number; frame_n: number; strata: Record<AttributionClass, number>;
+    items: Array<{ run_id: string; lane: string | null; computed: AttributionClass; reason: string | null; failed_gates: string[]; attributed_at: string;
+      verdict: AuditVerdict | null; labelled_by: string | null; labelled_at: string | null }>;
+    audited: { total: number; correct: number; wrong: number; unclear: number }; note: string;
+  };
 };
+export type AttributionClass = 'maker_failure' | 'reviewer_failure' | 'environment_failure' | 'verified';
+export type AuditVerdict = 'correct' | 'wrong' | 'unclear';
 
 export type ImprovementFunnel = {
   generatedAt: string;
@@ -1487,6 +1501,11 @@ class ApiClient {
 
   async labelPrescreen(id: string, label: 'ok' | 'wrong'): Promise<void> {
     await this.request<void>(`/self-improve/proposals/${encodeURIComponent(id)}/prescreen-label`, { method: 'POST', body: JSON.stringify({ label }) });
+  }
+
+  /** §16 step 4: the operator's verdict on a sampled attribution (stored as an attribution_audit operator_label judgment). */
+  async adjudicateAttribution(runId: string, verdict: AuditVerdict, note?: string): Promise<void> {
+    await this.request<void>(`/self-improve/attribution-audit/${encodeURIComponent(runId)}`, { method: 'POST', body: JSON.stringify(note ? { verdict, note } : { verdict }) });
   }
 
   async setTelegramIdentity(telegramId: string, userId: string, note?: string): Promise<void> {

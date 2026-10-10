@@ -65,7 +65,7 @@ export function DecisionsInboxPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const canMemory = useCan(P.memoryReview); const canRequeue = useCan(P.requeueProposal); const canDismiss = useCan(P.dismissRequeue); const canLabel = useCan(P.labelPrescreen); const canTelegram = useCan(P.telegramIdentity);
+  const canMemory = useCan(P.memoryReview); const canRequeue = useCan(P.requeueProposal); const canDismiss = useCan(P.dismissRequeue); const canLabel = useCan(P.labelPrescreen); const canAudit = useCan(P.auditAttribution); const canTelegram = useCan(P.telegramIdentity);
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [tgId, setTgId] = useState('');
   const [tgUser, setTgUser] = useState('');
@@ -186,6 +186,24 @@ export function DecisionsInboxPage() {
                 <Button needs={canRequeue ? undefined : P.requeueProposal} disabled={busy !== null} aria-label={`Requeue ${i.id.slice(0, 8)}`}
                   onClick={() => void act(`q-${i.id}`, () => api.requeueProposal(i.id, 'pre-screen rejection overridden by the operator'), `Requeued ${i.id.slice(0, 8)}`)}>Requeue</Button>
               ) },
+            ]} />
+          </Section>
+
+          <Section id="attribution-audit" title="Attribution audit (CAR)" headingClassName="text-lg font-semibold mb-1">
+            <p className="text-xs text-foreground-tertiary mb-2">
+              Is the computed class right? Judge each sampled run from its evidence: <strong>correct</strong>, <strong>wrong</strong> or <strong>unclear</strong>.
+              Sample of the week of {data.attribution_audit.week_start.slice(0, 10)} (seed {data.attribution_audit.seed}, {data.attribution_audit.items.length} of {data.attribution_audit.frame_n} computed attributions, stratified by class);
+              fixed for the week. {data.attribution_audit.audited.total} audited so far ({data.attribution_audit.audited.correct} correct, {data.attribution_audit.audited.wrong} wrong, {data.attribution_audit.audited.unclear} unclear). Your labels are the ground truth for CAR; the system never labels.
+            </p>
+            <DataTable caption="Sampled attributions to judge" rows={data.attribution_audit.items} rowKey={(i) => i.run_id} rowClassName={() => 'align-top'} empty="No computed attribution to audit this week." columns={[
+              { key: 'run', label: 'Run', render: (i) => <>{i.lane ?? '—'}<div className="text-xs text-foreground-muted">{i.run_id.slice(0, 8)}</div></> },
+              { key: 'class', label: 'Computed class', render: (i) => i.computed, cellClassName: () => 'font-mono text-xs' },
+              { key: 'evidence', label: 'Evidence', render: (i) => <>{i.reason ?? '—'}{i.failed_gates.length > 0 && <div className="text-xs text-foreground-muted">gates: {i.failed_gates.join(', ')}</div>}</>, cellClassName: () => 'text-foreground-secondary' },
+              { key: 'verdict', label: 'Verdict', cellClassName: () => 'whitespace-nowrap space-x-1', render: (i) => (['correct', 'wrong', 'unclear'] as const).map((verdict) => (
+                <Button key={verdict} needs={canAudit ? undefined : P.auditAttribution} aria-pressed={i.verdict === verdict} disabled={busy !== null} aria-label={`${verdict} ${i.run_id.slice(0, 8)}`}
+                  className={i.verdict === verdict ? 'bg-background-tertiary font-semibold' : ''}
+                  onClick={() => void act(`a-${i.run_id}-${verdict}`, () => api.adjudicateAttribution(i.run_id, verdict), `Judged ${i.run_id.slice(0, 8)} '${verdict}'`)}>{verdict}</Button>
+              )) },
             ]} />
           </Section>
 
