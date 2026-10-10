@@ -69,6 +69,7 @@ evaluator_isolation_check: # how the candidate is prevented from touching evalua
   settled per arm for a 20-pt verified-rate effect; at ~12 oracle goals/day under the caps that is ~16 days for both arms.
   Kappa needs survival labels, which first settle around 19-10.
 - **Falsifier.** Stage 1: arm B accepts defective ≥ arm A, or the McNemar p ≥ 0.05 → retain the single-family checker.
+- **Decision 10-10 (operator).** Stage 2 built as `CHECKER_FAMILY_RANDOMISE` (#734, default off, arm B `ollama/kimi-k3:cloud`) to this registration: ≥ 93/arm, primary = a checker-independent label (merge survival once settled, else the other failed gates), attributed-outcome kappa secondary and marked circular.
 - **Isolation.** The checker prompt, harness and defect generator are frozen at the F1 commit; the arm only swaps the model alias.
 
 ### EXP-2 — X1 evolve-sibling arm (running, operator-approved 08-10)
