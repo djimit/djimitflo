@@ -28,3 +28,14 @@ export function runGenome(db: Database, runId: string): MakerGenome {
   const genome = { template: MAKER_TEMPLATE_HASH, examples, rules };
   return { id: sha(JSON.stringify(genome)).slice(0, 16), ...genome };
 }
+
+/**
+ * §16 step 9: `skill_outcomes.skill_content_hash` — the identity of what actually shaped a maker run, so skill reuse and
+ * per-skill fitness are computable. sha256 (full hex) of the canonical JSON (keys sorted, arrays sorted by runGenome) of
+ * { examples, genome_id (the strategy genome on the lease, or null), rules (`<rule id>:<seal>` from the assignment_context
+ * event), template_hash (assignment template version) }. Identical inputs → identical hash; any changed or resealed rule,
+ * example, template or strategy genome → a new hash.
+ */
+export function skillContentHash(genome: MakerGenome, strategyGenomeId: string | null): string {
+  return sha(JSON.stringify({ examples: [...genome.examples].sort(), genome_id: strategyGenomeId, rules: [...genome.rules].sort(), template_hash: genome.template }));
+}

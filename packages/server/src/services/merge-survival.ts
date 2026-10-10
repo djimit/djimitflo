@@ -128,8 +128,10 @@ export async function checkLoopPrs(db: Database, fetchImpl: typeof fetch = fetch
     if (success === null && outcome.not_scored) { outcome.settled_at = now.toISOString(); settled++; } // settled, but no fitness verdict
     if (success !== null) {
       outcome.settled_at = now.toISOString();
+      // §16 step 9: the merged change was shaped by the same genome as the run's maker outcome — inherit its skill content hash
+      const shaped = db.prepare("SELECT skill_content_hash AS h FROM skill_outcomes WHERE task_id = ? AND domain != 'merge' AND skill_content_hash IS NOT NULL ORDER BY created_at DESC LIMIT 1").get(run.id) as { h: string } | undefined;
       engine.recordOutcome(`loop-maker:merge:${maker?.runtime ?? 'unknown'}`, {
-        success, tokensUsed: 0, durationMs: 0, domain: 'merge', taskId: run.id, ...(maker?.model ? { model: maker.model } : {}),
+        success, tokensUsed: 0, durationMs: 0, domain: 'merge', taskId: run.id, ...(maker?.model ? { model: maker.model } : {}), ...(shaped ? { skillContentHash: shaped.h } : {}),
         evidenceRefs: [`pr:${run.url}`, `loop_run:${run.id}`, `pr_outcome:${outcome.state}${outcome.survived === undefined ? '' : outcome.survived ? ':survived' : ':removed'}`,
           ...(outcome.retained !== undefined ? [`retained:${outcome.retained}`] : []), ...(outcome.human_commits !== undefined ? [`human_commits:${outcome.human_commits}`] : []),
           ...(maker?.prompt_hash ? [`prompt:${maker.prompt_hash}`] : []), ...(maker?.genome_id ? [`genome:${maker.genome_id}`] : []), ...(v2 ? ['msv:2'] : [])],

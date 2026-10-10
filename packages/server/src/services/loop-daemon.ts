@@ -18,7 +18,7 @@ import { LoopDraftPrService } from './loop-draft-pr-service';
 import { evolveEligible, evolveSpecies, selectEvolveWinner } from './evolve-selection';
 import { leaseGradedRefs, recordMakerGraded } from './graded-fitness';
 import { assignSiblingArm, recordEffortSibling, siblingRandomiseEnabled } from './effort-controller';
-import { runGenome } from './maker-genome';
+import { runGenome, skillContentHash } from './maker-genome';
 import { strategyGenomeFor } from './genome-registry';
 import { banditSpecies, chooseSpecies, speciesKey } from './runtime-bandit';
 import { recordFitnessShadow } from './fitness-view';
@@ -789,6 +789,8 @@ export class LoopDaemon {
           domain: loopName,
           taskId: run.id,
           agentId: activeMakerLease.id,
+          // §16 step 9: identity of the template + examples + sealed rules + strategy genome this maker ran with
+          skillContentHash: skillContentHash(genome, typeof meta.genome_id === 'string' ? meta.genome_id : null),
           ...(typeof meta.model === 'string' ? { model: meta.model } : {}),
           evidenceRefs: [`loop_run:${run.id}`, `genome:${genome.id}`, ...(typeof meta.genome_id === 'string' ? [`strategy_genome:${meta.genome_id}`] : []), ...verification.gates.filter(g => g.status !== 'pass').map(g => `gate:${g.name}:${g.status}`),
             // RX-3: why a failed run failed (infra / no change / regressed) — the bandit counts all three as 0 today
