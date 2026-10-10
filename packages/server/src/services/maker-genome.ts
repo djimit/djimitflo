@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { MAKER_TEMPLATE_RULES } from './loop-service';
+import type { AceContext } from './ace-001';
 
 /**
  * Y2 (plan Phase Y): a run's strategy genome — the assignment template, the proven examples and the sealed memory rules
@@ -38,4 +39,13 @@ export function runGenome(db: Database, runId: string): MakerGenome {
  */
 export function skillContentHash(genome: MakerGenome, strategyGenomeId: string | null): string {
   return sha(JSON.stringify({ examples: [...genome.examples].sort(), genome_id: strategyGenomeId, rules: [...genome.rules].sort(), template_hash: genome.template }));
+}
+
+/** ACE-001: the arm recorded on this run's latest assignment_context event (null when the run was not in the experiment). */
+export function runAce001(db: Database, runId: string): AceContext | null {
+  try {
+    const event = db.prepare("SELECT metadata FROM loop_events WHERE loop_run_id = ? AND event_type = 'assignment_context' ORDER BY created_at DESC LIMIT 1").get(runId) as { metadata: string } | undefined;
+    const ace = event ? (JSON.parse(event.metadata || '{}') as { ace_001?: AceContext }).ace_001 : undefined;
+    return ace && typeof ace.arm === 'string' ? ace : null;
+  } catch { return null; }
 }
