@@ -614,6 +614,26 @@ export class SpecialistPanelService {
       .map((row) => this.parseReview(row));
   }
 
+  /** Model-failure fallbacks written by SelfImprovementAgentReviewService (confidence 0, fixed finding text). */
+  private static machineFailed(review: SpecialistReviewRecord): boolean {
+    return review.confidence === 0 && review.findings.some((f) => f.startsWith('Model response could not be parsed') || f.startsWith('Review generation failed'));
+  }
+
+  allReviewsMachineFailed(panelId: string): boolean {
+    const reviews = this.listReviews(panelId);
+    return reviews.length > 0 && reviews.every((r) => SpecialistPanelService.machineFailed(r));
+  }
+
+  /** Drop the model-failure reviews so the next review tick regenerates those seats. */
+  resetMachineFailedReviews(panelId: string): void {
+    const panel = this.getPanel(panelId);
+    const del = this.db.prepare('DELETE FROM specialist_reviews WHERE id = ?');
+    for (const r of this.listReviews(panelId)) if (SpecialistPanelService.machineFailed(r)) del.run(r.id);
+    const reviews = this.listReviews(panelId);
+    this.db.prepare('UPDATE specialist_panels SET status = ?, consensus_json = ?, updated_at = ?, completed_at = NULL WHERE id = ?')
+      .run(reviews.length ? 'reviewing' : 'planned', JSON.stringify(this.computeConsensus(panel, reviews)), new Date().toISOString(), panelId);
+  }
+
   private emptyConsensus(requiredReviews: number): SpecialistConsensus {
     return {
       required_reviews: requiredReviews,
