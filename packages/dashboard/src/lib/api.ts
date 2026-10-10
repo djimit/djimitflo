@@ -227,6 +227,9 @@ export type DecisionsInbox = {
     queue_class?: 'operator' | 'budgeted_requeue' | 'attribution_unknown' | 'not_actionable' | 'requeued' | 'no_change' }>;
   /** untruncated counts over the same filters as the paginated lists; null = the count failed */
   totals?: Record<string, number | null | Record<string, number>>;
+  /** Cockpit 3.0 Phase 3 shadow ranking: score = expected_gain × reversibility / operator_minutes; null = insufficient evidence */
+  ranking?: Array<{ kind: 'requeue' | 'loop_pr' | 'label' | 'memory_review'; id: string; title: string; expected_gain: number | null;
+    reversibility: number; operator_minutes: number; score: number | null; evidence: string[] }>;
   prescreen: {
     items: Array<{ id: string; title: string; status: string; reason: string; verdict_at: string; label: 'ok' | 'wrong' | null }>;
     labelled: number; wrong: number; false_rejection_pct: number | null; enforce_threshold: string;

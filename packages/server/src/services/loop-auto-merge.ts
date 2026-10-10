@@ -7,6 +7,7 @@ import { pushNotice } from './operator-push';
 import { SURVIVAL_DAYS } from './merge-survival';
 import { autoMergeMaxPerDay, autoMergeMode, isAuditSample, readClassState, revokeClass } from './loop-auto-merge-state';
 import { markRun } from './scheduler-registry';
+import { assertionStrengthVerdict } from './test-assertion-strength';
 
 /**
  * Earned auto-merge for verified test-only loop PRs (operator-approved 2026-10-07: 30 loop PRs, 22 merged by the human,
@@ -15,9 +16,12 @@ import { markRun } from './scheduler-registry';
  * Eligible: a loop draft PR (loop_runs.metadata.pr_url, title 'loop:', head = the maker branch in this repo, never a
  * Dependabot PR) of a run whose proposal is 'verified' with no failed gate; every changed file is a test file
  * (testOnlyChange) and none is deleted; additions + deletions within the maker's lane limit; no outstanding
- * CHANGES_REQUESTED review. A deterministic 10 % (hash of the PR number) stays for the human as an audit sample.
+ * CHANGES_REQUESTED review; the maker's test:assertion-strength verdict is 'pass' (shadow or enforce — skipped, missing or
+ * failed is ineligible: F1 09-10, the checker accepted toBeDefined-only tests). A deterministic 10 % (hash of the PR number) stays for the human as an audit sample.
  * Act: mark ready → update the branch when behind (branch protection wants up to date) → wait for every check on the head
  * to be green → squash-merge with the token the draft-PR service uses. Every step is one tick (15 min); nothing blocks.
+ * Shadow re-evaluates its would_merge PRs every tick, incl. the merge-conflict check act runs (10-10: #658 went conflicting
+ * and stayed 'would_merge'); a decision is rewritten only when it changes.
  * Cap: LOOP_AUTO_MERGE_MAX_PER_DAY (default 10, rolling 24 h).
  * Revert window: an auto-merged PR that is reverted on main (a commit within 14 d whose message says revert and names the
  * PR or its merge commit), whose added lines merge survival marks removed, or whose merge commit's checks fail on main
@@ -69,11 +73,13 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
   for (const run of runs) {
     const meta = JSON.parse(run.metadata || '{}') as { pr_url: string; auto_merge?: AutoMergeRecord };
     const prev = meta.auto_merge;
-    if (prev && (['merged', 'audit_sample', 'ineligible'].includes(prev.decision) || (prev.decision === 'would_merge' && mode === 'shadow'))) continue;
+    if (prev && ['merged', 'audit_sample', 'ineligible'].includes(prev.decision)) continue;
     const number = Number(/\/pull\/(\d+)$/.exec(meta.pr_url)?.[1]);
     if (!number) continue;
     evaluated++;
     const record = (decision: Decision, reason: string, extra: Partial<AutoMergeRecord> = {}): AutoMergeRecord => {
+      // unchanged decision (shadow re-checks every tick): keep the first record, so `at` stays when it was first decided
+      if (prev && prev.mode === mode && prev.decision === decision && prev.reason === reason) return prev;
       const rec: AutoMergeRecord = { mode, decision, reason, at: now.toISOString(), pr_number: number, ...extra };
       db.prepare("UPDATE loop_runs SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.auto_merge', json(?)) WHERE id = ?").run(JSON.stringify(rec), run.id);
       if (!prev || prev.decision !== decision || prev.reason !== reason) {
@@ -91,8 +97,8 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     const pr = await json<Pr>(`pulls/${number}`);
     if (!pr) { record('waiting', 'github_unavailable'); continue; }
     if (pr.state !== 'open') { record('ineligible', `not_open: ${pr.state}`); continue; }
-    const maker = db.prepare(`SELECT branch_name, json_extract(metadata, '$.diff_max_lines') AS diff_max FROM worker_leases WHERE loop_run_id = ? AND role = 'maker'
-      AND status = 'completed' AND json_extract(metadata, '$.superseded_by_maker_lease_id') IS NULL ORDER BY updated_at DESC LIMIT 1`).get(run.id) as { branch_name: string | null; diff_max: number | null } | undefined;
+    const maker = db.prepare(`SELECT branch_name, json_extract(metadata, '$.diff_max_lines') AS diff_max, json_extract(metadata, '$.deterministic_checks') AS checks FROM worker_leases WHERE loop_run_id = ? AND role = 'maker'
+      AND status = 'completed' AND json_extract(metadata, '$.superseded_by_maker_lease_id') IS NULL ORDER BY updated_at DESC LIMIT 1`).get(run.id) as { branch_name: string | null; diff_max: number | null; checks: string | null } | undefined;
     // never a non-loop or Dependabot PR: the title, the author, the head repo and the maker branch must all match
     if (!String(pr.title ?? '').startsWith('loop:') || /dependabot/i.test(String(pr.user?.login ?? '')) || /^dependabot\//.test(String(pr.head?.ref ?? ''))
       || pr.head?.repo?.full_name !== repo || !maker?.branch_name || pr.head?.ref !== maker.branch_name || pr.base?.ref !== base) {
@@ -113,6 +119,8 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     const diff = files.reduce((a, f) => a + (Number(f.additions) || 0) + (Number(f.deletions) || 0), 0);
     const limit = Number(maker.diff_max) > 0 ? Number(maker.diff_max) : TEST_ONLY_DIFF_MAX;
     if (diff > limit) { record('ineligible', `diff_over_limit: ${diff} > ${limit}`); continue; }
+    const strength = assertionStrengthVerdict((() => { try { return JSON.parse(maker.checks || '[]'); } catch { return []; } })());
+    if (strength !== 'pass') { record('ineligible', `assertion_strength_${strength ?? 'missing'}`); continue; }
     const reviews = await json<Array<{ user?: { login?: string }; state?: string }>>(`pulls/${number}/reviews?per_page=100`);
     if (!reviews) { record('waiting', 'reviews_unavailable'); continue; }
     const latest = new Map<string, string>();
@@ -122,12 +130,15 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
 
     const effective = mode === 'act' && readClassState(db).state === 'revoked' ? 'held' : mode;
     if (effective === 'held') { record('revoked_hold', `class revoked: ${readClassState(db).reason ?? 'unknown'}`); continue; }
+    // a PR already counted as would_merge / merged in this window does not count against its own re-check
+    const counted = prev?.mode === mode && prev.decision === (mode === 'act' ? 'merged' : 'would_merge') && Date.parse(prev.at) >= now.getTime() - DAY ? 1 : 0;
     const today = (db.prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE json_extract(metadata, '$.auto_merge.decision') = ? AND json_extract(metadata, '$.auto_merge.at') >= ?`)
       .get(mode === 'act' ? 'merged' : 'would_merge', new Date(now.getTime() - DAY).toISOString()) as { n: number }).n;
-    if (today >= cap) { record('capped', `${today} ${mode === 'act' ? 'merged' : 'would merge'} in 24 h ≥ cap ${cap}`); continue; }
+    if (today - counted >= cap) { record('capped', `${today} ${mode === 'act' ? 'merged' : 'would merge'} in 24 h ≥ cap ${cap}`); continue; }
     const sha = String(pr.head?.sha ?? '');
     const state = await checks(sha);
     if (state === 'red') { record('ineligible', 'checks_failed'); continue; }
+    if (pr.mergeable === false || pr.mergeable_state === 'dirty') { record('ineligible', 'merge_conflict'); continue; }
 
     if (mode === 'shadow') {
       const steps = [pr.draft ? 'mark_ready' : null, pr.mergeable_state === 'behind' ? 'update_branch' : null, state === 'pending' ? 'wait_for_checks' : null, 'squash_merge'].filter((s): s is string => !!s);
@@ -140,7 +151,6 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
       const body = r.ok ? await r.json().catch(() => null) as { errors?: unknown[] } | null : null;
       record('waiting', r.ok && !body?.errors?.length ? 'marked_ready' : `mark_ready_failed: ${r.status}`, { steps: ['mark_ready'] }); continue;
     }
-    if (pr.mergeable === false || pr.mergeable_state === 'dirty') { record('ineligible', 'merge_conflict'); continue; }
     if (pr.mergeable_state === 'behind') {
       const r = await gh(`pulls/${number}/update-branch`, 'PUT', { expected_head_sha: sha });
       record('waiting', r.ok ? 'branch_updated' : `update_branch_failed: ${r.status}`, { steps: ['update_branch'] }); continue;

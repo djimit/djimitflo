@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { earnedAutonomy, type ClassRecord } from './earned-autonomy';
 import { attributionAuditSample, type AttributionAuditSample } from './outcome-attribution';
+import { listDraftPrs } from './loop-draft-pr-service';
 
 /**
  * S2 (operator 2026-09-28): the operator's open decisions in one place instead of in chat.
@@ -42,7 +43,24 @@ export interface DecisionsInbox {
     prescreen_labelled: number | null; prescreen_wrong: number | null; memory: number | null;
     /** proposals counted twice in needs-you: operator requeue AND an unlabelled pre-screen rejection */
     shared_subjects: number | null };
+  /** Cockpit 3.0 Phase 3 (shadow): needs-you items ranked by expected value; display only, it changes nothing that needs you */
+  ranking: RankedItem[];
 }
+
+/**
+ * Phase 3 smallest experiment: score = expected_gain × reversibility / operator_minutes.
+ * expected_gain is measured (null = INSUFFICIENT_EVIDENCE, listed last; never a guess). reversibility and operator_minutes
+ * are stated assumptions per kind (`assumed`), not measurements — no operator-effort telemetry exists yet.
+ */
+export interface RankedItem { kind: 'requeue' | 'loop_pr' | 'label' | 'memory_review'; id: string; title: string;
+  expected_gain: number | null; reversibility: number; operator_minutes: number; score: number | null; evidence: string[] }
+const KIND_ASSUMPTIONS: Record<RankedItem['kind'], { reversibility: number; operator_minutes: number; why: string }> = {
+  requeue: { reversibility: 1, operator_minutes: 1, why: 'assumed: a requeue adds a linked attempt, the original stays (1 click)' },
+  loop_pr: { reversibility: 0.5, operator_minutes: 5, why: 'assumed: a merge is revertable but lands on main (review ~5 min)' },
+  label: { reversibility: 1, operator_minutes: 1, why: 'assumed: a label is one judgment row, relabel overrides it (1 click)' },
+  memory_review: { reversibility: 1, operator_minutes: 2, why: 'assumed: a promoted rule can be retired (read + 1 click)' },
+};
+const MIN_N = 5;
 
 /** newest outcome_attribution decision on proposal `s` or any of its runs (same rule as the cockpit regression split) */
 export const ATTRIBUTION_OF_PROPOSAL = `(SELECT j.decision FROM judgments j WHERE j.judgment = 'outcome_attribution'
@@ -109,7 +127,10 @@ export function decisionsInbox(db: Database, now = Date.now(), env: NodeJS.Proce
   // memory review (U4): candidates waiting for a human; promote/reject via /swarms/memory/candidates/:id/{promote,reject}
   const memory = all<DecisionsInbox['memory'][number]>(`SELECT id, title, substr(content, 1, 600) AS content, memory_type, status, created_at ${memoryWhere}
     ORDER BY CASE status WHEN 'review_required' THEN 0 ELSE 1 END, created_at DESC LIMIT 50`);
+  const ranking = rankNeedsYou(db, requeue.filter((r) => r.queue_class === 'operator'), items.filter((i) => !i.label), memory, now,
+    { labelled: totals.prescreen_labelled, wrong: totals.prescreen_wrong });
   return {
+    ranking,
     autonomy: earnedAutonomy(db, now),
     attribution_audit: attributionAuditSample(db, now),
     memory,
@@ -118,6 +139,55 @@ export function decisionsInbox(db: Database, now = Date.now(), env: NodeJS.Proce
     telegram,
     totals,
   };
+}
+
+/** Phase 3 shadow ranking over the listed needs-you items; only measured gains, see RankedItem. Never throws. */
+export function rankNeedsYou(db: Database, requeue: InboxRequeue[], labels: InboxLabel[], memory: DecisionsInbox['memory'], now: number,
+  d5: { labelled: number | null; wrong: number | null }): RankedItem[] {
+  const d30 = new Date(now - 30 * 86_400_000).toISOString();
+  const rate = (sql: string, ...args: unknown[]): { p: number | null; n: number; k: number } => {
+    try { const r = db.prepare(sql).get(...args) as { k: number | null; n: number | null }; const n = r?.n ?? 0, k = r?.k ?? 0; return { p: n >= MIN_N ? k / n : null, n, k }; }
+    catch { return { p: null, n: 0, k: 0 }; }
+  };
+  // requeue: how often an earlier requeue (a child carrying requeue-of:) verified once it settled, 30 d
+  const rq = rate(`SELECT SUM(status = 'verified') AS k, COUNT(*) AS n FROM self_improvements
+    WHERE evidence_refs_json LIKE '%"requeue-of:%' AND status IN ('verified', 'regressed', 'infra_failed', 'no_change') AND updated_at >= ?`, d30);
+  // loop PR: already verified (gain 1) × merge survival rate of settled loop PRs
+  const ms = rate(`SELECT SUM(json_extract(metadata, '$.pr_outcome.survived') = 1) AS k, COUNT(*) AS n FROM loop_runs
+    WHERE json_extract(metadata, '$.pr_outcome.survived') IS NOT NULL`);
+  // label: before the D5 gate (30 labels) each label is 1/remaining of the way; after it, the chance it catches a wrong rejection
+  const labelled = d5.labelled, wrong = d5.wrong;
+  const labelGain = labelled === null || wrong === null ? null : labelled < 30 ? 1 / (30 - labelled) : labelled >= MIN_N ? wrong / labelled : null;
+  const item = (kind: RankedItem['kind'], id: string, title: string, gain: number | null, why: string): RankedItem => {
+    const a = KIND_ASSUMPTIONS[kind];
+    const score = gain === null ? null : Math.round((1000 * gain * a.reversibility) / a.operator_minutes) / 1000;
+    return { kind, id, title, expected_gain: gain === null ? null : Math.round(1000 * gain) / 1000, reversibility: a.reversibility, operator_minutes: a.operator_minutes,
+      score, evidence: [gain === null ? `INSUFFICIENT_EVIDENCE: ${why}` : why, a.why] };
+  };
+  let prs: ReturnType<typeof listDraftPrs>['rows'] = [];
+  try { prs = listDraftPrs(db, 100, now).rows.filter((r) => !r.outcome); } catch { /* table absent */ }
+  const out = [
+    ...requeue.map((r) => item('requeue', r.id, r.title, rq.p, `earlier requeues verified ${rq.k}/${rq.n} (30 d${rq.n < MIN_N ? `, need ${MIN_N}` : ''})`)),
+    ...prs.map((r) => item('loop_pr', String(r.pr_number ?? r.run_id), r.pr_url, ms.p, `merge survival ${ms.k}/${ms.n} settled loop PRs${ms.n < MIN_N ? ` (need ${MIN_N})` : ''}`)),
+    ...labels.map((l) => item('label', l.id, l.title, labelGain, labelled === null ? 'label counts unavailable'
+      : labelled < 30 ? `D5 gate: ${labelled}/30 labels` : `D5 gate met; ${wrong}/${labelled} labels found a wrong rejection`)),
+    ...memory.map((m) => item('memory_review', m.id, m.title, null, 'no fitness exists for an unpromoted candidate')),
+  ];
+  // measured first, by score; INSUFFICIENT_EVIDENCE last (stable within each group)
+  return out.map((r, i) => ({ r, i })).sort((a, b) => (b.r.score ?? -1) - (a.r.score ?? -1) || a.i - b.i).map(({ r }) => r);
+}
+
+/** One `needs_you_ranking` shadow judgment per UTC day (top 5), so after 2 weeks we can check whether the operator acted on them first. */
+export function recordNeedsYouRanking(db: Database, now = Date.now()): boolean {
+  try {
+    const day = new Date(now).toISOString().slice(0, 10);
+    if (db.prepare("SELECT 1 FROM judgments WHERE judgment = 'needs_you_ranking' AND subject_id = ?").get(day)) return false;
+    const top = decisionsInbox(db, now).ranking.slice(0, 5).map((r) => ({ kind: r.kind, id: r.id, score: r.score }));
+    db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at)
+      VALUES (?, 'needs_you_ranking', 'operator_queue', ?, 'score=gain*reversibility/minutes', 'shadow', 'yes', ?, ?, ?)`)
+      .run(randomUUID(), day, `shadow ranking of ${top.length} top needs-you items`, JSON.stringify(top), new Date(now).toISOString());
+    return true;
+  } catch { return false; }
 }
 
 /**
