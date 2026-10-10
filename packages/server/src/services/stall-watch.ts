@@ -17,10 +17,20 @@ const ago = (now: number, hours: number) => new Date(now - hours * 3_600_000).to
  * table, SQL error) is `error`, a detector whose flag is off is `not_applicable` — so a broken detector reads UNKNOWN,
  * never HEALTHY. Queries here throw on purpose; detectStallsWithHealth catches per detector.
  */
-export type DetectorStatus = 'ok' | 'error' | 'not_applicable';
-export interface DetectorHealth { name: string; status: DetectorStatus; error?: string; checked_at: string }
+/** capped (EP6): the subsystem is idle because it reached its own budget — expected, not a stall and not unknown. */
+export type DetectorStatus = 'ok' | 'error' | 'not_applicable' | 'capped';
+export interface DetectorHealth { name: string; status: DetectorStatus; error?: string; detail?: string; checked_at: string }
 export type StallHealth = 'HEALTHY' | 'DEGRADED' | 'UNKNOWN' | 'BREACHED';
 export interface StallReport { stalls: Stall[]; detectors: DetectorHealth[]; health: StallHealth }
+
+/** The remote gym's rolling 24 h cap (EVOLUTION_GYM_REMOTE_MAX_PER_DAY): claims used, the limit, and when the oldest claim
+ *  in the window ages out. Shared by claim() and the stall watch, so a gym idle at its cap is not reported as stalled. */
+export function remoteGymCap(db: Database, now = Date.now(), env: NodeJS.ProcessEnv = process.env): { used: number; max: number; capped: boolean; next_slot_at: string | null } {
+  const since = new Date(now - 86_400_000).toISOString();
+  const r = db.prepare("SELECT COUNT(*) AS n, MIN(created_at) AS oldest FROM loop_runs WHERE json_extract(metadata, '$.gym.remote_host') IS NOT NULL AND created_at >= ?").get(since) as { n: number; oldest: string | null };
+  const max = Number(env.EVOLUTION_GYM_REMOTE_MAX_PER_DAY) || 24;
+  return { used: r.n, max, capped: r.n >= max, next_slot_at: r.oldest ? new Date(Date.parse(r.oldest) + 86_400_000).toISOString() : null };
+}
 
 interface DeployEvent { at: string; event: string; sha: string; detail?: string }
 /** Deploy log as auto-deploy.sh writes it (same file recentDeploys reads); null when the file does not exist (dev, tests). */
@@ -42,18 +52,25 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
   const all = <T>(sql: string, ...args: unknown[]) => db.prepare(sql).all(...args) as T[];
   const gymOn = env.EVOLUTION_GYM_ENABLED === 'true' || env.EVOLUTION_GYM_REMOTE_ENABLED === 'true';
   const out: Stall[] = []; const detectors: DetectorHealth[] = []; const checked_at = new Date(now).toISOString();
-  const run = (name: string, applicable: boolean, fn: () => void) => {
+  const run = (name: string, applicable: boolean, fn: () => void | { capped: string }) => {
     if (!applicable) { detectors.push({ name, status: 'not_applicable', checked_at }); return; }
-    try { fn(); detectors.push({ name, status: 'ok', checked_at }); }
+    try { const r = fn(); detectors.push(r ? { name, status: 'capped', detail: r.capped, checked_at } : { name, status: 'ok', checked_at }); }
     catch (e) { detectors.push({ name, status: 'error', error: (e instanceof Error ? e.message : String(e)).slice(0, 200), checked_at }); }
   };
   // 1. gym enabled but no scored outcome for 6 h (the breaker or the worker can silently idle it)
   run('gym', gymOn, () => {
     const last = one<{ t: string | null }>("SELECT MAX(created_at) AS t FROM skill_outcomes WHERE domain = 'gym'")?.t ?? null;
     if (!last || last < ago(now, 6)) {
+      // EP6 (prod 10-10: the 20/day remote cap idled the gym and the cockpit read BREACHED): with the local gym off, a
+      // remote gym that used its daily cap is waiting by design — alarm only when it is below its cap and still silent
+      const cap = remoteGymCap(db, now, env);
+      if (env.EVOLUTION_GYM_ENABLED !== 'true' && env.EVOLUTION_GYM_REMOTE_ENABLED === 'true' && cap.capped) {
+        return { capped: `gym at its daily cap ${cap.used}/${cap.max}; next slot at ${cap.next_slot_at ?? 'unknown'}` };
+      }
       const infra = one<{ n: number }>("SELECT COUNT(*) AS n FROM loop_runs WHERE loop_name = 'evolution-gym' AND created_at >= ? AND json_extract(metadata, '$.gym_result.reason') LIKE 'infra:%'", ago(now, 24))?.n ?? 0;
       out.push({ subsystem: 'gym', since: last, detail: `no gym outcome for > 6 h; ${infra} infra discard(s) in 24 h (circuit breaker benches a species at 3)` });
     }
+    return undefined;
   });
   // 1b. per species: its last three gym attempts were all infra discards → the circuit breaker is benching it (prod 2026-09-27:
   // the workstation's only species sat out 9 h while VPS gym outcomes kept the global check quiet)
