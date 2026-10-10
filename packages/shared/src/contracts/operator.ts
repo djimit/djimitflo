@@ -25,7 +25,9 @@ export const OPERATOR_CONTRACTS = {
   /** GET /api/health/efficiency — services/resource-ledger.ts efficiencyView (Phase E1/E3) */
   efficiency: ['at', 'window_days', 'ledger_enabled', 'consumers', 'ledger', 'hosts', 'north_star', 'notes'],
   /** GET /api/health/schedulers — services/scheduler-registry.ts listSchedulers */
-  schedulers: ['armed', 'off', 'schedulers'],
+  schedulers: ['armed', 'by_status', 'health', 'off', 'schedulers'],
+  /** GET /api/health/stalls — services/stall-watch.ts detectStallsWithHealth */
+  stalls: ['stalls', 'detectors', 'health'],
 } as const;
 
 export type OperatorContract = keyof typeof OPERATOR_CONTRACTS;
