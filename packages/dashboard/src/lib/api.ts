@@ -181,16 +181,25 @@ export interface EfficiencyView {
   notes: string[];
 }
 
+export type HealthState = 'HEALTHY' | 'DEGRADED' | 'BREACHED' | 'UNKNOWN' | 'STALE' | 'NOT_APPLICABLE';
 export type OperatorCockpit = {
   at: string;
+  /** Cockpit 3.0: one id per snapshot; health = worst guardrail state (DEGRADED for a partial snapshot or open stall) */
+  snapshot_id?: string;
+  health?: HealthState;
+  /** sections whose query failed — their numbers are null, not zero */
+  errors?: Array<{ section: string; message: string }>;
   build: { commit: string | null; build_time: string | null };
   scorecard: Record<string, number | null>;
   /** split (regressions): by attributed class — reviewer/environment failures are not the maker's */
-  guardrails: Array<{ name: string; ok: boolean; value: number | null; limit: string; split?: { maker: number; reviewer: number; environment: number } }>;
+  guardrails: Array<{ name: string; ok: boolean; state?: HealthState; value: number | null; limit: string; split?: { maker: number; reviewer: number; environment: number; unknown?: number } }>;
   stalls: Array<{ subsystem: string; since: string | null; detail: string }>;
   gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string; benched?: boolean; stale?: boolean }>;
-  needs_you?: { approvals: number; requeue: number; labels: number; memory_review: number;
-    proposals?: number; draft_prs?: number; open_prs?: number; stalls?: number; approvals_expiring?: number; join_requests?: number; shell_requests?: number };
+  /** null = that count could not be read; total = distinct things waiting (server-side dedupe) */
+  needs_you?: { approvals: number | null; requeue: number | null; labels: number | null; memory_review: number | null;
+    proposals?: number | null; draft_prs?: number | null; open_prs?: number | null; stalls?: number | null; approvals_expiring?: number | null;
+    join_requests?: number | null; shell_requests?: number | null; shared_subjects?: number | null; total?: number | null;
+    system_requeue?: Partial<Record<'budgeted_requeue' | 'attribution_unknown' | 'not_actionable', number>> | null };
   /** UX-8: schedulers this server armed at boot vs off */
   schedulers?: { armed: number; off: number };
   remote_workers: Array<{ host: string; claims_24h: number; last_claim: string | null; interrupted_24h: number }>;
@@ -209,7 +218,10 @@ export type DraftPrs = { total: number; unsettled: number; rows: Array<{ run_id:
 export type DependencyLane = { mode: 'off' | 'shadow' | 'act'; effective_mode: 'off' | 'shadow' | 'act'; revoked_at: string | null; revoked_reason: string | null; max_per_day: number; merged_24h: number; open: number; rows: Array<{ pr_number: number; title: string; html_url: string | null; bump: string; age_days: number | null; check_state: string | null; decision: string; reason: string | null; updated_at: string }> };
 
 export type DecisionsInbox = {
-  requeue: Array<{ id: string; title: string; status: string; updated_at: string; requeued_as: string | null }>;
+  requeue: Array<{ id: string; title: string; status: string; updated_at: string; requeued_as: string | null;
+    queue_class?: 'operator' | 'budgeted_requeue' | 'attribution_unknown' | 'not_actionable' | 'requeued' | 'no_change' }>;
+  /** untruncated counts over the same filters as the paginated lists; null = the count failed */
+  totals?: Record<string, number | null | Record<string, number>>;
   prescreen: {
     items: Array<{ id: string; title: string; status: string; reason: string; verdict_at: string; label: 'ok' | 'wrong' | null }>;
     labelled: number; wrong: number; false_rejection_pct: number | null; enforce_threshold: string;

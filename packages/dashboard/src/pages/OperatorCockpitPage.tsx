@@ -36,7 +36,8 @@ export function DigestCard() {
  */
 export type HealthState = 'HEALTHY' | 'DEGRADED' | 'BREACHED' | 'UNKNOWN' | 'STALE' | 'NOT_APPLICABLE';
 type Gr = OperatorCockpit['guardrails'][number] & { state?: HealthState; split?: { maker: number; reviewer: number; environment: number; unknown?: number } };
-type NeedsYouCounts = { [K in keyof NonNullable<OperatorCockpit['needs_you']>]?: number | null };
+type NeedsYouCounts = { [K in Exclude<keyof NonNullable<OperatorCockpit['needs_you']>, 'system_requeue'>]?: number | null }
+  & { system_requeue?: NonNullable<OperatorCockpit['needs_you']>['system_requeue'] };
 export type CockpitView = Omit<OperatorCockpit, 'guardrails' | 'needs_you'> & {
   guardrails: Gr[]; needs_you?: NeedsYouCounts;
   health?: HealthState; errors?: Array<{ section: string; message: string }>; snapshot_id?: string;
@@ -378,13 +379,15 @@ function needsYouItems(n: NeedsYouCounts) {
   // UX-6: 'approvals expiring' is a subset of 'approvals' and unsettled loop PRs include merged ones still settling — not double-counted;
   // open loop PRs wait for a human merge or close, so they count
   const blocking = items.filter((item) => item.label !== 'approvals expiring within 1 h' && item.label !== 'loop PRs unsettled');
-  const total = blocking.reduce((sum, item) => sum + (item.count ?? 0), 0);
+  // the server's total counts a proposal waiting in two sections once; older servers send no total
+  const total = n.total ?? blocking.reduce((sum, item) => sum + (item.count ?? 0), 0);
   const unknown = blocking.filter((item) => item.count === null);
   return { items, total, unknown };
 }
 
 export function NeedsYou({ n }: { n: NeedsYouCounts }) {
   const { items, total, unknown } = needsYouItems(n);
+  const sys = n.system_requeue;
   return (
     <section aria-labelledby="needs-you" className={`rounded-lg border p-4 ${total || unknown.length ? 'border-status-paused/40 bg-status-paused/10' : 'border-border'}`}>
       <h2 id="needs-you" className="text-lg font-semibold mb-2">{total ? `Needs you (${unknown.length ? '≥ ' : ''}${total})` : unknown.length ? 'Needs you: unknown' : 'Nothing needs you right now'}</h2>
@@ -392,6 +395,11 @@ export function NeedsYou({ n }: { n: NeedsYouCounts }) {
       {items.some((item) => item.count) && <ul className="flex flex-wrap gap-4 text-sm">{items.filter((item) => item.count).map((item) => (
         <li key={item.label}><Link to={item.href} className="underline">{item.count} {item.label}</Link></li>
       ))}</ul>}
+      {sys && (sys.budgeted_requeue || sys.attribution_unknown || sys.not_actionable) ? (
+        <p className="text-xs text-foreground-tertiary mt-2">
+          System-side requeue candidates (not counted): {sys.budgeted_requeue ?? 0} budgeted requeue · {sys.attribution_unknown ?? 0} attribution unknown · {sys.not_actionable ?? 0} not actionable
+        </p>
+      ) : null}
     </section>
   );
 }

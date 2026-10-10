@@ -15,7 +15,16 @@ import { attributionAuditSample, type AttributionAuditSample } from './outcome-a
  * A requeue candidate the operator dismissed (`requeue_dismiss` judgment) leaves the list; `no_change` rows stay listed
  * but are not counted as waiting for the operator (see openDecisionCounts).
  */
-export interface InboxRequeue { id: string; title: string; status: string; updated_at: string; requeued_as: string | null }
+/**
+ * Who has to act on a requeue candidate (Cockpit 3.0; prod 10-10: 59 'needs you' rows, of which 22 were system work):
+ * - operator: regressed / infra_failed with a maker or environment attribution (or infra), nobody requeued it yet
+ * - budgeted_requeue: newest outcome attribution = reviewer_failure — the daily budgeted requeue handles it
+ * - attribution_unknown: regressed with no outcome attribution — evidence first, not a decision
+ * - not_actionable: its source lane is switched off, or a later proposal with the same title verified
+ * - requeued / no_change: already requeued, or nothing changed
+ */
+export type RequeueClass = 'operator' | 'budgeted_requeue' | 'attribution_unknown' | 'not_actionable' | 'requeued' | 'no_change';
+export interface InboxRequeue { id: string; title: string; status: string; updated_at: string; requeued_as: string | null; queue_class: RequeueClass }
 export interface InboxLabel { id: string; title: string; status: string; reason: string; verdict_at: string; label: 'ok' | 'wrong' | null }
 export interface DecisionsInbox {
   requeue: InboxRequeue[];
@@ -24,31 +33,82 @@ export interface DecisionsInbox {
   memory: Array<{ id: string; title: string; content: string; memory_type: string; status: string; created_at: string }>;
   autonomy: ClassRecord[];
   attribution_audit: AttributionAuditSample;
+  /**
+   * Cockpit 3.0: the lists above are paginated (LIMIT 50/100/50); these are the untruncated counts over the same WHERE.
+   * null = the count query failed (missing table, SQL error) — never read as 0.
+   * requeue_open = regressed / infra_failed, not dismissed, not yet requeued (what openDecisionCounts reports).
+   */
+  totals: { requeue: number | null; requeue_open: number | null; requeue_classes: Partial<Record<RequeueClass, number>> | null; prescreen: number | null; prescreen_unlabelled: number | null;
+    prescreen_labelled: number | null; prescreen_wrong: number | null; memory: number | null;
+    /** proposals counted twice in needs-you: operator requeue AND an unlabelled pre-screen rejection */
+    shared_subjects: number | null };
 }
 
-export function decisionsInbox(db: Database, now = Date.now()): DecisionsInbox {
+/** newest outcome_attribution decision on proposal `s` or any of its runs (same rule as the cockpit regression split) */
+export const ATTRIBUTION_OF_PROPOSAL = `(SELECT j.decision FROM judgments j WHERE j.judgment = 'outcome_attribution'
+      AND ((j.subject_type = 'self_improvement' AND j.subject_id = s.id)
+        OR (j.subject_type = 'loop_run' AND j.subject_id IN (SELECT r.id FROM goals g JOIN loop_runs r ON r.goal_id = g.id WHERE g.improvement_id = s.id)))
+      ORDER BY j.created_at DESC LIMIT 1)`;
+
+export function decisionsInbox(db: Database, now = Date.now(), env: NodeJS.ProcessEnv = process.env): DecisionsInbox {
   const all = <T>(sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } };
+  const count = (sql: string, ...args: unknown[]): number | null => { try { return Number((db.prepare(sql).get(...args) as { n: number }).n); } catch { return null; } };
   const d30 = new Date(now - 30 * 86_400_000).toISOString();
-  const requeue = all<InboxRequeue>(`SELECT s.id, s.title, s.status, s.updated_at,
-      (SELECT c.id FROM self_improvements c WHERE c.evidence_refs_json LIKE '%"requeue-of:' || s.id || '"%' LIMIT 1) AS requeued_as
-    FROM self_improvements s WHERE s.status IN ('regressed', 'infra_failed', 'no_change') AND s.updated_at >= ?
-      AND NOT EXISTS (SELECT 1 FROM judgments d WHERE d.judgment = 'requeue_dismiss' AND d.subject_id = s.id)
-    ORDER BY s.updated_at DESC LIMIT 50`, d30);
+  const requeueFrom = `FROM self_improvements s WHERE s.status IN ('regressed', 'infra_failed', 'no_change') AND s.updated_at >= ?
+      AND NOT EXISTS (SELECT 1 FROM judgments d WHERE d.judgment = 'requeue_dismiss' AND d.subject_id = s.id)`;
+  const requeuedAs = `(SELECT c.id FROM self_improvements c WHERE c.evidence_refs_json LIKE '%"requeue-of:' || s.id || '"%' LIMIT 1)`;
+  // lanes switched off in this deployment (their failures have no lane to come back to)
+  const offLanes = [
+    env.REFLECTION_PROPOSALS_MAX_PER_DAY === '0' ? "s.source = 'reflection'" : null,
+    env.SELF_IMPROVEMENT_REFINEMENT_ENABLED !== 'true' ? "s.source = 'refinement'" : null,
+    // build-failure proposals only; security findings share source 'feedback' and stay actionable
+    env.BUILD_ERROR_PROPOSALS_ENABLED === 'false' ? "(s.source = 'feedback' AND s.type != 'security' AND s.evidence_refs_json LIKE '%build:test-failure%')" : null,
+  ].filter(Boolean);
+  const queueClass = `CASE
+      WHEN s.status = 'no_change' THEN 'no_change'
+      WHEN ${requeuedAs} IS NOT NULL THEN 'requeued'
+      WHEN ${offLanes.length ? `(${offLanes.join(' OR ')}) OR ` : ''}EXISTS (SELECT 1 FROM self_improvements v WHERE v.status = 'verified' AND v.title = s.title
+        AND v.id != s.id AND v.created_at > s.created_at) THEN 'not_actionable'
+      WHEN ${ATTRIBUTION_OF_PROPOSAL} = 'reviewer_failure' THEN 'budgeted_requeue'
+      WHEN s.status = 'regressed' AND ${ATTRIBUTION_OF_PROPOSAL} IS NULL THEN 'attribution_unknown'
+      ELSE 'operator' END`;
+  const requeue = all<InboxRequeue>(`SELECT s.id, s.title, s.status, s.updated_at, ${requeuedAs} AS requeued_as, ${queueClass} AS queue_class
+    ${requeueFrom} ORDER BY s.updated_at DESC LIMIT 50`, d30);
+  const classRows = (() => { try { return db.prepare(`SELECT ${queueClass} AS c, COUNT(*) AS n ${requeueFrom} GROUP BY 1`).all(d30) as Array<{ c: RequeueClass; n: number }>; } catch { return null; } })();
+  const requeueClasses = classRows ? Object.fromEntries(classRows.map((r) => [r.c, r.n])) as Partial<Record<RequeueClass, number>> : null;
+  const labelOf = `(SELECT CASE l.decision WHEN 'yes' THEN 'ok' WHEN 'no' THEN 'wrong' END FROM judgments l
+        WHERE l.judgment = 'operator_label' AND l.subject_id = s.id ORDER BY l.created_at DESC LIMIT 1)`;
+  const prescreenFrom = `FROM judgments j JOIN self_improvements s ON s.id = j.subject_id
+    WHERE j.judgment = 'proposal_prescreen' AND j.decision = 'no'
+      AND j.created_at = (SELECT MAX(created_at) FROM judgments x WHERE x.judgment = 'proposal_prescreen' AND x.subject_id = j.subject_id)`;
   const items = all<InboxLabel>(`SELECT s.id, s.title, s.status, j.created_at AS verdict_at,
       COALESCE((SELECT pp.reason FROM judgments pp WHERE pp.judgment = 'prescreen_park' AND pp.subject_id = s.id AND s.status = 'needs_more_evidence'
         ORDER BY pp.created_at DESC LIMIT 1), j.reason) AS reason,
-      (SELECT CASE l.decision WHEN 'yes' THEN 'ok' WHEN 'no' THEN 'wrong' END FROM judgments l
-        WHERE l.judgment = 'operator_label' AND l.subject_id = s.id ORDER BY l.created_at DESC LIMIT 1) AS label
-    FROM judgments j JOIN self_improvements s ON s.id = j.subject_id
-    WHERE j.judgment = 'proposal_prescreen' AND j.decision = 'no'
-      AND j.created_at = (SELECT MAX(created_at) FROM judgments x WHERE x.judgment = 'proposal_prescreen' AND x.subject_id = j.subject_id)
-    ORDER BY j.created_at DESC LIMIT 100`);
-  const labelled = items.filter((i) => i.label).length; const wrong = items.filter((i) => i.label === 'wrong').length;
+      ${labelOf} AS label
+    ${prescreenFrom} ORDER BY j.created_at DESC LIMIT 100`);
+  const labels = (() => { try { return db.prepare(`SELECT COUNT(*) AS n, SUM(label IS NULL) AS unlabelled, SUM(label = 'wrong') AS wrong
+      FROM (SELECT ${labelOf} AS label ${prescreenFrom})`).get() as { n: number; unlabelled: number | null; wrong: number | null }; } catch { return null; } })();
+  const memoryWhere = `FROM memory_candidates WHERE status IN ('review_required', 'candidate')`;
+  const totals: DecisionsInbox['totals'] = {
+    requeue: requeueClasses ? Object.values(requeueClasses).reduce((a, b) => a + b, 0) : null,
+    requeue_open: requeueClasses ? requeueClasses.operator ?? 0 : null,
+    requeue_classes: requeueClasses,
+    prescreen: labels ? labels.n : null,
+    prescreen_unlabelled: labels ? labels.unlabelled ?? 0 : null,
+    prescreen_labelled: labels ? labels.n - (labels.unlabelled ?? 0) : null,
+    prescreen_wrong: labels ? labels.wrong ?? 0 : null,
+    memory: count(`SELECT COUNT(*) AS n ${memoryWhere}`),
+    shared_subjects: count(`SELECT COUNT(*) AS n FROM (SELECT s.id ${prescreenFrom} AND ${labelOf} IS NULL) p
+      WHERE p.id IN (SELECT s.id ${requeueFrom} AND ${queueClass} = 'operator')`, d30),
+  };
+  // the D5 rate is over every labelled rejection, not only the 100 newest listed
+  const labelled = totals.prescreen_labelled ?? items.filter((i) => i.label).length;
+  const wrong = totals.prescreen_wrong ?? items.filter((i) => i.label === 'wrong').length;
   const telegram = all<DecisionsInbox['telegram'][number]>(`SELECT t.telegram_user_id, t.user_id, u.email, u.role, t.added_by, t.created_at
     FROM telegram_identities t LEFT JOIN users u ON u.id = t.user_id ORDER BY t.created_at`);
   // memory review (U4): candidates waiting for a human; promote/reject via /swarms/memory/candidates/:id/{promote,reject}
-  const memory = all<DecisionsInbox['memory'][number]>(`SELECT id, title, substr(content, 1, 600) AS content, memory_type, status, created_at FROM memory_candidates
-    WHERE status IN ('review_required', 'candidate') ORDER BY CASE status WHEN 'review_required' THEN 0 ELSE 1 END, created_at DESC LIMIT 50`);
+  const memory = all<DecisionsInbox['memory'][number]>(`SELECT id, title, substr(content, 1, 600) AS content, memory_type, status, created_at ${memoryWhere}
+    ORDER BY CASE status WHEN 'review_required' THEN 0 ELSE 1 END, created_at DESC LIMIT 50`);
   return {
     autonomy: earnedAutonomy(db, now),
     attribution_audit: attributionAuditSample(db, now),
@@ -56,19 +116,17 @@ export function decisionsInbox(db: Database, now = Date.now()): DecisionsInbox {
     requeue,
     prescreen: { items, labelled, wrong, false_rejection_pct: labelled ? Math.round((1000 * wrong) / labelled) / 10 : null, enforce_threshold: '>= 30 labelled and <= 5 % wrong (D5)' },
     telegram,
+    totals,
   };
 }
 
 /**
- * Needs-you counts shared by the cockpit and the daily digest. Requeue counts only regressed / infra_failed rows nobody
- * requeued yet — a `no_change` outcome changed nothing, so there is nothing for the operator to rescue.
+ * Needs-you counts shared by the cockpit and the daily digest. Requeue counts only the `operator` class (see RequeueClass):
+ * system-side rows (budgeted requeue, unknown attribution, not actionable) are counted in totals.requeue_classes instead.
+ * Counts come from the untruncated totals (prod 10-10: the listed arrays stop at 50/100); null = the count failed.
  */
-export function openDecisionCounts(inbox: DecisionsInbox): { requeue: number; labels: number; memory_review: number } {
-  return {
-    requeue: inbox.requeue.filter((r) => !r.requeued_as && r.status !== 'no_change').length,
-    labels: inbox.prescreen.items.filter((i) => !i.label).length,
-    memory_review: inbox.memory.length,
-  };
+export function openDecisionCounts(inbox: DecisionsInbox): { requeue: number | null; labels: number | null; memory_review: number | null; shared_subjects: number | null } {
+  return { requeue: inbox.totals.requeue_open, labels: inbox.totals.prescreen_unlabelled, memory_review: inbox.totals.memory, shared_subjects: inbox.totals.shared_subjects };
 }
 
 /** D2: the operator decides a requeue candidate needs no requeue; audited as a `requeue_dismiss` judgment, the row leaves the list. */

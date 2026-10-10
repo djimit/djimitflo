@@ -46,6 +46,9 @@ it('manages the Telegram allowlist with validation and an audit trail', () => {
 
 it('honest needs-you: no_change rows are listed but not counted; a dismissed candidate leaves the list with an audit row', () => {
   proposal('r1', 'regressed'); proposal('i1', 'infra_failed'); proposal('n1', 'no_change'); proposal('v1', 'verified');
+  // a regression with a maker attribution is the operator's; unattributed ones are counted as attribution_unknown
+  db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at)
+    VALUES ('a-r1', 'outcome_attribution', 'self_improvement', 'r1', 'h', 'annotation', 'maker_failure', 'test', ?)`).run(new Date().toISOString());
   expect(openDecisionCounts(decisionsInbox(db, NOW)).requeue).toBe(2);
   expect(decisionsInbox(db, NOW).requeue.map((r) => r.id).sort()).toEqual(['i1', 'n1', 'r1']);
   dismissRequeue(db, 'i1', 'op', '  runner was down \n fixed  ');
