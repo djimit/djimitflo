@@ -144,6 +144,10 @@ export interface EvolutionEvidence {
     secondary_circular: CheckerFamilyComparison & { endpoint: 'outcome'; circular: true };
     weak_fisher_p: number;
     stop: { per_arm: number; reached: boolean; verdict: 'collecting' | 'inconclusive' | 'supported' | 'reversed' | 'falsified' }; note: string };
+  /** ACE-001 (ACE_001_MODE): oracle-lane maker outcomes per arm (R retrieval × S example selection; '00' = control) */
+  ace_001: { mode: string | null; target_per_arm: number; status: 'collecting' | 'analysable';
+    arms: Record<'00' | '01' | '10' | '11', { n: number; verified: number; verified_rate: number | null; ci: [number, number] | null; graded_n: number; graded_mean: number | null; tokens_mean: number | null }>;
+    main_effects: { retrieval: AceMainEffect; examples: AceMainEffect }; note: string };
   /** SI-A/SI-B (GRADED_FITNESS_MODE / GRADED_CONTEST_MODE): graded executed fitness per pool and graded-contest agreement */
   graded: {
     mode: { fitness: 'off' | 'shadow'; contest: 'off' | 'shadow' | 'act' };
@@ -182,6 +186,7 @@ export interface EfficiencyView {
 }
 
 export type HealthState = 'HEALTHY' | 'DEGRADED' | 'BREACHED' | 'UNKNOWN' | 'STALE' | 'NOT_APPLICABLE';
+export type AceMainEffect = { on_n: number; off_n: number; diff: number | null };
 export type OperatorCockpit = {
   at: string;
   /** Cockpit 3.0: one id per snapshot; health = worst guardrail state (DEGRADED for a partial snapshot or open stall) */

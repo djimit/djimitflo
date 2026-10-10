@@ -19,7 +19,7 @@ import { evolveEligible, evolveSpecies, selectEvolveWinner } from './evolve-sele
 import { leaseGradedRefs, recordMakerGraded } from './graded-fitness';
 import { assignSiblingArm, recordEffortSibling, siblingRandomiseEnabled } from './effort-controller';
 import { assignCheckerFamily, checkerFamilyEnabled } from './checker-family';
-import { runGenome, skillContentHash } from './maker-genome';
+import { runAce001, runGenome, skillContentHash } from './maker-genome';
 import { strategyGenomeFor } from './genome-registry';
 import { banditSpecies, chooseSpecies, speciesKey } from './runtime-bandit';
 import { recordFitnessShadow } from './fitness-view';
@@ -791,6 +791,9 @@ export class LoopDaemon {
         // Y2: the strategy genome this maker ran with (template + examples + sealed rules), on the lease and the outcome
         const genome = runGenome(this.db, run.id);
         this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.genome', json(?)) WHERE id = ?").run(JSON.stringify(genome), activeMakerLease.id);
+        // ACE-001: the arm and injected items of this maker's assignment, on the lease and as `ace-001-arm:<RS>` on the outcome
+        const ace = runAce001(this.db, run.id);
+        if (ace) this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.ace_001', json(?)) WHERE id = ?").run(JSON.stringify(ace), activeMakerLease.id);
         // One outcome per run: two daemon passes can finish the same run.
         if (!this.db.prepare('SELECT 1 FROM skill_outcomes WHERE skill_id = ? AND task_id = ? AND agent_id = ? LIMIT 1').get(skillId, run.id, activeMakerLease.id)) skills.recordOutcome(skillId, {
           success: allGatesPass,
@@ -805,7 +808,8 @@ export class LoopDaemon {
           evidenceRefs: [`loop_run:${run.id}`, `genome:${genome.id}`, ...(typeof meta.genome_id === 'string' ? [`strategy_genome:${meta.genome_id}`] : []), ...verification.gates.filter(g => g.status !== 'pass').map(g => `gate:${g.name}:${g.status}`),
             // RX-3: why a failed run failed (infra / no change / regressed) — the bandit counts all three as 0 today
             ...(allGatesPass ? [] : [`outcome_class:${runOutcomeOnFailure(this.db, activeMakerLease.id)}`]),
-            ...leaseGradedRefs(meta)], // SI-A: graded:<score>, graded_kind, graded_lane when the maker was graded
+            ...leaseGradedRefs(meta), // SI-A: graded:<score>, graded_kind, graded_lane when the maker was graded
+            ...(ace ? [`ace-001-arm:${ace.arm}`] : [])],
         });
       } catch { /* best-effort learning */ }
 
