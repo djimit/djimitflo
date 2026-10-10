@@ -7,6 +7,13 @@ import { enqueueEvent } from './event-outbox-service';
  * last 30 days (proposal titles are code tasks, not research topics) — and publishes `djimitflo.feedback.interests` on the event bus (outbox). The
  * scout (scripts/fleet-discovery-publisher.py --interests-from-bus) adds these terms to its static list.
  *   FEEDBACK_INTERESTS_ENABLED=true (default off)
+ *
+ * Yield gate (Phase KE 09-10): unchecked, the profile broadened the scout into generic terms ('agent', 'benchmark', 'prove',
+ * 'generation') — 3,992 of 4,776 scout papers matched only profile terms at 5.7 % jev 'yes' vs 13.5 % for the static list,
+ * which overloaded jev and fed the profile again. A candidate term is now published only if, over the last 30 days, the
+ * discoveries the scout matched on it ('scout match:' / 'match:' notes) have a jev 'yes' rate ≥ the static list's, measured on
+ * ≥ MIN_TERM_N judged matches; generic words never qualify, and at most PROFILE_TERM_CAP terms ride along so the static list
+ * (which the publisher keeps first) stays the bulk of the scout — the exploration reserve against a self-reinforcing profile.
  */
 const STOP = new Set(('about above after again against among around based because before being between beyond both build could during each every '
   + 'first from further have into large language learning model models more most other over paper papers same should since some such than that '
@@ -32,7 +39,48 @@ export function interestTerms(texts: string[], max = 20): string[] {
   return [...counts.entries()].filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, max).map(([w]) => w);
 }
 
-export function interestProfile(db: Database, now = Date.now()): { terms: string[]; sources: Record<string, number> } {
+/** Mirror of INTERESTS in scripts/fleet-discovery-publisher.py (drift-tested): the scout's static list, the yield baseline. */
+export const SCOUT_STATIC_TERMS = ['test generation', 'unit test', 'mutation', 'program repair', 'bug fix', 'code review', 'coding agent',
+  'software engineering agent', 'swe-bench', 'agent evaluation', 'llm-as-a-judge', 'tool use', 'context compression',
+  'self-improv', 'fault localization', 'regression', 'flaky test', 'static analysis', 'prompt injection'];
+export const MIN_TERM_N = 20;
+export const PROFILE_TERM_CAP = 10;
+/** Substrings of nearly every AI paper: the prod profile terms of 09-10 that pulled papers at or below half the static yield. */
+const GENERIC = new Set(('agent agentic benchmark prove generation reasoning evaluation evaluating optimization context engineering '
+  + 'software coding prompt memory alignment automated operator adaptive program').split(' '));
+const isGeneric = (w: string) => GENERIC.has(w) || (w.endsWith('s') && GENERIC.has(w.slice(0, -1)));
+
+export interface TermYield { term: string; yield: number; n: number }
+
+/** Per matched term: jev 'yes' rate over the judged scout discoveries of the window, plus the static-list baseline. */
+export function termYields(db: Database, since: string): { terms: Map<string, { n: number; yes: number }>; baseline: { n: number; yes: number } } {
+  const all = <T>(sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } };
+  const hits = new Map<string, string[]>();
+  for (const e of all<{ ref: string | null; note: string | null }>(`SELECT json_extract(payload, '$.ref') AS ref, json_extract(payload, '$.note') AS note
+      FROM external_events WHERE event_type LIKE 'discovery.%' AND occurred_at >= ?`, new Date(Date.parse(since) - 30 * 86_400_000).toISOString())) {
+    const m = /\bmatch:\s*([^;]*)/.exec(e.note ?? '');
+    if (e.ref && m && !hits.has(e.ref)) hits.set(e.ref, [...new Set(m[1].split(',').map((t) => t.trim().toLowerCase()).filter(Boolean))]);
+  }
+  // one outcome per discovery: judged before it became a unit (subject = ref) or as a unit (provenance carries the ref)
+  const verdicts = all<{ ref: string | null; yes: number }>(`SELECT CASE WHEN j.subject_type = 'expert_unit' THEN json_extract(i.provenance_json, '$.ref') ELSE j.subject_id END AS ref,
+      MAX(j.decision = 'yes') AS yes FROM judgments j LEFT JOIN expert_identities i ON i.id = j.subject_id
+     WHERE j.judgment = 'discovery_relevance' AND j.decision IN ('yes', 'no', 'uncertain') AND j.created_at >= ? GROUP BY 1`, since);
+  const terms = new Map<string, { n: number; yes: number }>(); const baseline = { n: 0, yes: 0 };
+  for (const v of verdicts) {
+    const matched = v.ref ? hits.get(v.ref) : undefined;
+    if (!matched) continue;
+    for (const t of matched) { const c = terms.get(t) ?? { n: 0, yes: 0 }; c.n += 1; c.yes += v.yes ? 1 : 0; terms.set(t, c); }
+    if (matched.some((t) => SCOUT_STATIC_TERMS.includes(t))) { baseline.n += 1; baseline.yes += v.yes ? 1 : 0; }
+  }
+  return { terms, baseline };
+}
+
+const rate = (c: { n: number; yes: number }) => Math.round((1000 * c.yes) / c.n) / 1000;
+
+export function interestProfile(db: Database, now = Date.now()): {
+  terms: string[]; sources: Record<string, number>; yields: TermYield[]; baseline: { yield: number | null; n: number };
+  rule: { window_days: number; min_n: number; cap: number };
+} {
   const since = new Date(now - 30 * 86_400_000).toISOString();
   const all = <T>(sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } };
   const relevant = all<{ t: string }>(`SELECT i.canonical_name AS t FROM judgments j JOIN expert_identities i ON i.id = j.subject_id
@@ -40,7 +88,19 @@ export function interestProfile(db: Database, now = Date.now()): { terms: string
   const kb = all<{ reason: string }>("SELECT reason FROM judgments WHERE judgment = 'kb_retrieval' AND created_at >= ?", since)
     .flatMap((r) => (r.reason || '').split(' ').map((hit) => hit.split('@')[0]))
     .map((p) => (all<{ title: string }>('SELECT title FROM kb_pages WHERE path = ?', p)[0]?.title ?? ''));
-  return { terms: interestTerms([...relevant, ...kb]), sources: { relevant: relevant.length, kb_hits: kb.length } };
+  const measured = termYields(db, since);
+  const base = measured.baseline.n >= MIN_TERM_N ? rate(measured.baseline) : null;
+  const yields = interestTerms([...relevant, ...kb], 50)
+    .filter((t) => !isGeneric(t) && !SCOUT_STATIC_TERMS.includes(t))
+    .map((t) => ({ term: t, c: measured.terms.get(t) }))
+    .filter((x): x is { term: string; c: { n: number; yes: number } } => base !== null && !!x.c && x.c.n >= MIN_TERM_N && rate(x.c) >= base)
+    .map(({ term, c }) => ({ term, yield: rate(c), n: c.n }))
+    .sort((a, b) => b.yield - a.yield || b.n - a.n || a.term.localeCompare(b.term))
+    .slice(0, PROFILE_TERM_CAP);
+  return {
+    terms: yields.map((y) => y.term), sources: { relevant: relevant.length, kb_hits: kb.length }, yields,
+    baseline: { yield: base, n: measured.baseline.n }, rule: { window_days: 30, min_n: MIN_TERM_N, cap: PROFILE_TERM_CAP },
+  };
 }
 
 /** Enqueue today's profile once (the date is the aggregate id). */
