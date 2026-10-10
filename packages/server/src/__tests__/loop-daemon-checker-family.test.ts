@@ -120,3 +120,14 @@ it('a reviewer retry of a cross-arm checker keeps the cross model', async () => 
   const retry = seen.find((s) => s.metadata.retry_of === 'checker-1');
   expect(retry?.metadata).toMatchObject({ model: 'ollama/kimi-k3:cloud', checker_family_arm: 'cross' });
 });
+
+it('a non-opencode reviewer runtime is not randomised (the cross model is an opencode provider/model)', async () => {
+  vi.stubEnv('CHECKER_FAMILY_RANDOMISE', 'on');
+  seed('cross');
+  db.prepare("UPDATE worker_leases SET runtime = 'codex' WHERE id = 'maker-1'").run();
+  stub.continueLoopRun.mockReturnValue({ leases: [{ id: 'maker-1', role: 'maker', status: 'prepared', runtime: 'codex' }] });
+  await tick();
+  expect(seen[0]).toMatchObject({ lease_id: 'checker-1', runtime: 'codex', metadata: { maker_lease_id: 'maker-1', requires_independent_review: true } });
+  expect(seen[0].metadata).not.toHaveProperty('model');
+  expect(events('checker_family_arm')).toEqual([]);
+});
