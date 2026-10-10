@@ -207,3 +207,10 @@ it('Cockpit 3.0: a slower older response never overwrites a newer one', async ()
   await new Promise((r) => setTimeout(r, 20));
   expect(screen.queryByText('older111')).toBeNull(); expect(spy).toHaveBeenCalledTimes(2);
 });
+
+it('Cockpit 3.0: the server total wins and system-side requeue candidates are shown, not counted', () => {
+  const deduped = renderToStaticMarkup(<MemoryRouter><NeedsYou n={{ approvals: 0, requeue: 1, labels: 1, memory_review: 0, total: 1,
+    system_requeue: { budgeted_requeue: 22, attribution_unknown: 17, not_actionable: 3 } }} /></MemoryRouter>);
+  expect(deduped).toContain('Needs you (1)');
+  expect(deduped).toContain('22 budgeted requeue');
+});

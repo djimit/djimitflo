@@ -194,9 +194,9 @@ export function buildDigest(db: Database, now = Date.now(), env: NodeJS.ProcessE
   // one count + deep link per /decisions section (links only with an https DJIMITFLO_PUBLIC_URL)
   const sections = [
     { key: 'approvals', label: 'approvals', anchor: 'approvals', count: one("SELECT COUNT(*) FROM approvals WHERE status = 'pending'") },
-    { key: 'labels', label: 'pre-screen labels (D5)', anchor: 'prescreen', count: open.labels },
-    { key: 'memory_review', label: 'memory reviews', anchor: 'memory', count: open.memory_review },
-    { key: 'requeue', label: 'requeue candidates', anchor: 'requeue', count: open.requeue },
+    { key: 'labels', label: 'pre-screen labels (D5)', anchor: 'prescreen', count: open.labels ?? 0 },
+    { key: 'memory_review', label: 'memory reviews', anchor: 'memory', count: open.memory_review ?? 0 },
+    { key: 'requeue', label: 'requeue candidates', anchor: 'requeue', count: open.requeue ?? 0 },
     { key: 'open_prs', label: 'open loop PRs', anchor: 'draft-prs', count: countOpenLoopPrs(db) },
   ].map((x) => ({ ...x, link: base ? `${base}/decisions#${x.anchor}` : `/decisions#${x.anchor}` }));
   const lane = laneMode(env) === 'off' ? null : (() => { try { return dependencyLaneQueue(db, env, now); } catch { return null; } })();
