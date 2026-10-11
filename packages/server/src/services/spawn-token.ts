@@ -70,8 +70,9 @@ export function spawnTokenRejection(secret: string, token: string, expectedLease
   const expected = createHmac('sha256', secret).update(payloadB64).digest('base64url');
   if (sig.length !== expected.length || !constTimeEq(sig, expected)) return 'bad_mac';
   const fields = Buffer.from(payloadB64, 'base64url').toString('utf8').split('|');
-  // < 3 fields could never pass the old checks either; > 3 is left as before (first three fields decide) so acceptance is unchanged.
-  if (fields.length < 3) return 'malformed';
+  // exactly lease|tree|expiry: every minter writes three fields; a fourth means a forged or corrupted payload (or a subject
+  // containing '|', which never validated anyway because the fields shift)
+  if (fields.length !== 3) return 'malformed';
   const [leaseId, treeId, expiresAtStr] = fields;
   if (leaseId !== expectedLeaseId) return 'wrong_subject';
   if (treeId !== expectedTreeId) return 'wrong_scope';

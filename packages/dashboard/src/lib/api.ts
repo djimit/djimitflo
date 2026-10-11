@@ -146,8 +146,29 @@ export interface EvolutionEvidence {
     stop: { per_arm: number; reached: boolean; verdict: 'collecting' | 'inconclusive' | 'supported' | 'reversed' | 'falsified' }; note: string };
   /** ACE-001 (ACE_001_MODE): oracle-lane maker outcomes per arm (R retrieval × S example selection; '00' = control) */
   ace_001: { mode: string | null; target_per_arm: number; status: 'collecting' | 'analysable';
+    /** Amendment 1: primary numbers count outcomes from analysis_since; delivery_invalid = earlier outcomes, excluded */
+    analysis_since?: string; delivery_invalid?: number;
+    delivery?: { per_arm: Record<'00' | '01' | '10' | '11', { runs: number; r_treated: number; r_delivered: number; s_treated: number; s_delivered: number }>;
+      retrieval_rate: number | null; examples_rate: number | null; fallback_reasons: Record<string, number> };
     arms: Record<'00' | '01' | '10' | '11', { n: number; verified: number; verified_rate: number | null; ci: [number, number] | null; graded_n: number; graded_mean: number | null; tokens_mean: number | null }>;
     main_effects: { retrieval: AceMainEffect; examples: AceMainEffect }; note: string };
+  /** STE-001 (STE_001_MODE): oracle-lane maker outcomes per template arm (0 = current, 1 = Simplified Technical English) */
+  ste_001: { mode: string | null; target_per_arm: number; ste_template_hash: string; status: 'collecting' | 'analysable'; diff: number | null;
+    arms: Record<'0' | '1', { n: number; verified: number; verified_rate: number | null; ci: [number, number] | null; out_of_scope: number; out_of_scope_share: number | null; tokens_mean: number | null }>;
+    note: string };
+  /** TG-001 (TG_001_MODE): the same frozen write_test tasks under four prompt representations (A gym, B production, C controlled, D structured) */
+  /** integrity addendum: invalid_manifest = the frozen analysis plan is missing, edited or later than the first outcome → no analysis */
+  tg_001: { mode: string | null; status: 'not_frozen' | 'collecting' | 'complete' | 'invalid_manifest'; reason?: string | null; label?: string; tasks: number; frozen_at?: string; commit?: string | null; species?: string; harness?: string | null; skipped?: number;
+    mde?: number; alpha?: number; interpretation_rules?: string[];
+    arms: Array<{ arm: string; name: string; n: number; success: number; failure?: number; rate: number | null; ci95: [number, number] | null; failures: Record<string, number>;
+      tokens_mean: number | 'UNKNOWN' | null; tokens_known: number; duration_ms_mean: number | null; tool_calls?: number | 'UNKNOWN'; files_inspected?: number | 'UNKNOWN';
+      infra_censored?: number; pending: number; invalid: number }>;
+    paired: Array<Record<string, unknown> & { arms: string; n_pairs: number; effect: number | null; ci95: [number, number] | null; mcnemar_exact_p: number | null; discordant?: number; excluded_tasks?: number; infra_censored?: number }>;
+    omnibus_cochran_q?: { k: number; n_blocks: number; q: number | null; df: number; p: number | null; method: string };
+    order_effects?: { positions: Array<{ position: number; n: number; success: number; rate: number | null }>; cochran_q: { q: number | null; p: number | null } };
+    prior_exposure?: { exposed: number; unexposed: number; prior_attempts: number };
+    result?: { verdict: string; falsified: string | null; supported: string | null; not_tested: string[]; next_experiment: string | null };
+    transfer_gap?: string; note?: string };
   /** SI-A/SI-B (GRADED_FITNESS_MODE / GRADED_CONTEST_MODE): graded executed fitness per pool and graded-contest agreement */
   graded: {
     mode: { fitness: 'off' | 'shadow'; contest: 'off' | 'shadow' | 'act' };

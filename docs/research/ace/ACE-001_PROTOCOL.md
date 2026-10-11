@@ -65,3 +65,36 @@ A factor is **promoted** (made the default context) only if all hold:
 
 - similarity retrieval of memory rules (no rule vectors);
 - an independent, held-out task set: the population is live production goals, so the "independent evaluation set" is the production oracle itself, not a frozen benchmark. A frozen gym set is not used because gym success does not predict production (80.8 % vs 5.7 % for atomic, Cockpit 3.0 EVOLUTION_VALIDATION).
+
+## Amendment 1 (2026-10-11) — treatment delivery and control definition
+
+Recorded before any efficacy look: the interim counts were never analysed, only checked for delivery.
+
+**Defect found (prod, read-only, assignment_context events since the 10-10 19:06Z deploy).** Of the treated factor slots,
+retrieval (R=1) was delivered on 1 of 3 runs and examples (S=1) on 1 of 4. Every fallback was a **requeued** proposal:
+`requeueImprovement` inserts the copy directly and never embeds it, so the copy had no `proposal_embeddings` row
+(16 of 16 requeued oracle proposals without a vector; 62 of 62 generator proposals since 05-10 had one). Generator-created
+proposals were treated correctly.
+
+**Fix.** A requeued copy now inherits its original's stored vector, which is the same text and needs no network call (all 16
+originals had one). If the original has none, the copy is embedded asynchronously like any new proposal. A failed embedding
+call is recorded (`proposal_embedding` judgment, decision `error`). Each fallback carries a reason: `no_embedding`,
+`embedding_failed`, or `no_match` (a vector exists but no verified example is present in the checkout).
+
+**Control definition (corrected).** This protocol said control S=0 = "the 2 most recent verified tests". Production
+actually shows **0 examples** on most current runs. K1 takes the 10 most recently verified test-gap proposals and keeps only those
+whose test file exists in the checkout. The recent ones are loop draft PRs that are not merged into main, so none survives the
+filter. The mutation lane gets no examples by design. Control is **whatever production K1 does** (unchanged; a test pins that
+arm 00 equals the ACE-off context). Expect S=0 to be mostly "no examples" until loop PRs merge. The S contrast is therefore
+"similarity examples vs production K1 (often none)". Changing K1 now would change control mid-experiment, so that is a separate
+decision after this experiment.
+
+**Analysis window.** The primary analysis counts only outcomes created at or after `ACE_001_ANALYSIS_SINCE` (env; set to the
+deploy time of this fix; default 2026-10-12T00:00:00Z). Earlier ACE-001 outcomes are kept and reported as `delivery_invalid`,
+excluded from every primary number. The target stays 50 per arm, counted from the window start.
+
+**Delivery monitoring.** evolution-evidence `ace_001.delivery` reports, per arm, treated slots vs delivered slots
+(latest assignment per run) and the fallback reasons. If either factor's delivery rate stays below 0.8 after 20 treated runs,
+the experiment is paused and the cause fixed before more goals are spent.
+
+**STE-001.** Checked: the template arm has no fallback path, because the STE template is always written for arm 1. No amendment is needed.

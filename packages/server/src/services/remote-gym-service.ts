@@ -1,4 +1,7 @@
 import { createHash, randomUUID } from 'crypto';
+import { execFileSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
 import type { Database } from 'better-sqlite3';
 import { mineGymTasks, type GymTask } from './gym-task-miner';
 import { parseSpecies } from './evolve-selection';
@@ -13,7 +16,9 @@ import { FAILURE_TASK_CAPABILITY, failureDerivedTasks, gitLookup, gymFailureTask
 import { daemonCheckOptions } from './loop-daemon';
 import { redactSecrets } from './secret-patterns';
 import { remoteGymCap } from './stall-watch';
+import { gymSkillContentHash } from './gym-skill-hash';
 import { gradedFitnessMode, gradedRefs, roundGraded, type GradedKind } from './graded-fitness';
+import { TG_CAPABILITY, TG_LOOP, claimTg001, freezeTg001, recordTg001, tg001On, tgManifest } from './tg-001';
 import { dreamEvolutionEnabled, ensureBaseline, fireCheckVoid, genome, genomeFireCheck, holdout, mutantHoldout, mutantTrialsEnabled, nextTrialAttempt, parseFireCheck, writeTestHoldout, writeTestHoldoutEnabled, type Genome } from './genome-registry';
 
 /**
@@ -40,7 +45,7 @@ export function tierProbe(db: Database, env: NodeJS.ProcessEnv = process.env): n
   return tiers[n("AND json_extract(metadata, '$.gym.probe') = 1") % tiers.length];
 }
 const holdoutKeys = (db: Database): string[] => {
-  try { return (db.prepare('SELECT commit_sha AS k FROM gym_holdout UNION SELECT key AS k FROM gym_mutant_holdout UNION SELECT key AS k FROM gym_write_test_holdout').all() as Array<{ k: string }>).map((r) => r.k); } catch { return []; }
+  try { return (db.prepare('SELECT commit_sha AS k FROM gym_holdout UNION SELECT key AS k FROM gym_mutant_holdout UNION SELECT key AS k FROM gym_write_test_holdout UNION SELECT task_key AS k FROM tg_attempts').all() as Array<{ k: string }>).map((r) => r.k); } catch { return []; }
 };
 /**
  * RX-11: a canary is a mutant task whose run also carries a test that no source-only change can turn green. A solved canary
@@ -57,6 +62,9 @@ function canaryDue(db: Database, capabilities: string[], env: NodeJS.ProcessEnv 
   try { return ((db.prepare("SELECT COUNT(*) AS n FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.remote_host') IS NOT NULL").get() as { n: number }).n + 1) % every === 0; } catch { return false; }
 }
 const SAFE = /^[A-Za-z0-9._:/@-]{1,80}$/;
+const gitHead = (repo: string): string | null => { try { return execFileSync('git', ['-C', repo, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 10_000 }).trim() || null; } catch { return null; } };
+/** TG-001 manifest: the worker version the experiment is frozen against = sha256 of scripts/gym-worker.mjs in the deploy checkout. */
+const harnessHash = (repo: string): string | null => { try { return `scripts/gym-worker.mjs@sha256:${createHash('sha256').update(fs.readFileSync(path.join(repo, 'scripts/gym-worker.mjs'))).digest('hex')}`; } catch { return null; } };
 
 /**
  * Gym gold agreement (prod 2026-10-08): atomic@llama-router solved 7/9 gym write_test tasks mined from production failures
@@ -114,8 +122,8 @@ export function prepareGymDiff(raw: string): { diff: string; sha256: string; red
   return { diff, sha256: createHash('sha256').update(diff).digest('hex'), redacted: count, truncated };
 }
 
-export type RemoteGymClaim = { runId: string; species: string; task: GymTask; genome?: { id: string; lines: string[] }; prod_gates?: ProdGatesConfig } | { skipped: string };
-export interface RemoteGymResult { status: 'success' | 'failure' | 'discarded'; reason: string; tokens?: number; durationMs?: number; changed_files?: unknown; diff?: unknown; killed_mutants?: unknown; prod_gates?: unknown; fire_check?: unknown; graded?: unknown; graded_kind?: unknown }
+export type RemoteGymClaim = { runId: string; species: string; task: GymTask; genome?: { id: string; lines: string[] }; prod_gates?: ProdGatesConfig; prompt_override?: string; tg?: { experiment: string; arm: string } } | { skipped: string };
+export interface RemoteGymResult { status: 'success' | 'failure' | 'discarded'; reason: string; tokens?: number; durationMs?: number; changed_files?: unknown; diff?: unknown; killed_mutants?: unknown; prod_gates?: unknown; fire_check?: unknown; graded?: unknown; graded_kind?: unknown; tg_metrics?: unknown }
 
 export class RemoteGymService {
   private readonly outcomes: SkillEvolutionEngine;
@@ -132,9 +140,13 @@ export class RemoteGymService {
     if (!species.length) throw new Error('GYM_SPECIES_REQUIRED');
     // A host runs one attempt at a time (systemd oneshot), so its runs still 'running' at a new claim lost their report
     // (prod 2026-09-27: 'fetch failed' left f2df0beb running for good). Settle them as an infra discard — the task stays untried.
+    // TG-001 runs too: their attempt is settled as an infra discard (re-queued or INFRA_CENSORED), never left 'claimed'
+    const lost = this.db.prepare(`SELECT id, json_extract(metadata, '$.gym.tg.attempt_id') AS tg FROM loop_runs
+      WHERE loop_name IN ('evolution-gym', '${TG_LOOP}') AND status = 'running' AND json_extract(metadata, '$.gym.remote_host') = ?`).all(host) as Array<{ id: string; tg: string | null }>;
     this.db.prepare(`UPDATE loop_runs SET status = 'completed', updated_at = ?,
       metadata = json_set(metadata, '$.gym_result', json_object('status', 'discarded', 'reason', 'infra: worker lost the result (no report before its next claim)'))
-      WHERE loop_name = 'evolution-gym' AND status = 'running' AND json_extract(metadata, '$.gym.remote_host') = ?`).run(now.toISOString(), host);
+      WHERE loop_name IN ('evolution-gym', '${TG_LOOP}') AND status = 'running' AND json_extract(metadata, '$.gym.remote_host') = ?`).run(now.toISOString(), host);
+    for (const r of lost) if (r.tg) { try { recordTg001(this.db, r.tg, r.id, { status: 'discarded', reason: 'infra: worker lost the result (no report before its next claim)' }, now.toISOString()); } catch { /* bookkeeping */ } }
     const since = new Date(now.getTime() - 86_400_000).toISOString();
     if (remoteGymCap(this.db, now.getTime()).capped) return { skipped: 'daily cap reached' };
     // the offered species with the fewest gym outcomes goes next
@@ -147,7 +159,20 @@ export class RemoteGymService {
     // RX-5: the probe takes its share even while trials run (prod 05-10: trials take every claim for days, so a probe
     // behind them never ran); trials and ordinary replays share the rest
     let task: GymTask | undefined; let trialGenome: Genome | null = null; let probe = false; let canary = false;
-    if (canaryDue(this.db, (opts.capabilities ?? []).map(String))) {
+    // TG-001: the transfer-gap experiment takes the next claim while it runs (prompt per arm sent verbatim; needs a worker that
+    // can take a prompt override, write_test tasks and production gates — the primary metric is prod-gated success)
+    const caps = (opts.capabilities ?? []).map(String);
+    const runId = randomUUID();
+    let tg: { experiment: string; arm: string; attempt_id: string } | null = null; let promptOverride: string | undefined;
+    if (tg001On() && gymProdGatesEnabled() && [TG_CAPABILITY, FAILURE_TASK_CAPABILITY, PROD_GATES_CAPABILITY].every((c) => caps.includes(c))) {
+      // B27: the claim that freezes the plan starts no TG attempt, so the plan strictly predates the first physical attempt
+      const frozen = tgManifest(this.db);
+      if (!frozen) freezeTg001(this.db, this.failureTasks(repo), { checkoutPath: repo, species: key, commit: gitHead(repo), harness: harnessHash(repo),
+        prodGates: prodGatesConfig(), reserved: new Set(holdoutKeys(this.db)), now: now.toISOString() });
+      const next = frozen && frozen.species === key && frozen.frozen_at < now.toISOString() ? claimTg001(this.db, frozen, runId, now.toISOString()) : null;
+      if (next) { task = next.task; promptOverride = next.prompt; tg = { experiment: frozen!.id, arm: next.arm, attempt_id: next.attempt_id }; }
+    }
+    if (!task && canaryDue(this.db, (opts.capabilities ?? []).map(String))) {
       const c = mutantTask(this.db, repo, key, new Set([...triedTasks(this.db, key), ...holdoutKeys(this.db)]));
       if (c) { task = { ...c, tests: [...c.tests, CANARY_TEST_PATH], canary: { test_path: CANARY_TEST_PATH, test_content: CANARY_TEST } } as GymTask; canary = true; }
     }
@@ -180,15 +205,17 @@ export class RemoteGymService {
       task = tasks.find((t) => !tried.has(t.commit)) ?? mutantTask(this.db, repo, key, tried) ?? undefined;
     }
     if (!task) return { skipped: 'no untried task' };
-    const runId = randomUUID();
     const { mutant: _mutantContent, ...stored } = task as MutantTask; // the mutant goes to the worker, not into every row
     const { canary: _canaryTest, mutants, ...meta } = stored as typeof stored & { canary?: unknown; mutants?: TargetMutant[] };
     const gates = gymProdGatesEnabled() && (opts.capabilities ?? []).map(String).includes(PROD_GATES_CAPABILITY) ? prodGatesConfig() : null;
-    const gymMeta = { ...meta, ...(mutants ? { mutant_keys: mutants.map((m) => m.key) } : {}), species: key, remote_host: host, ...(trialGenome ? { genome: trialGenome.id } : {}), ...(probe ? { probe: 1 } : {}), ...(canary ? { canary: 1 } : {}), ...(gates ? { prod_gates: 1 } : {}) };
-    this.db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, repository_path, metadata, created_at, updated_at) VALUES (?, 'evolution-gym', 'closed', 'running', ?, ?, ?, ?)")
-      .run(runId, repo, JSON.stringify({ gym: gymMeta }), now.toISOString(), now.toISOString());
-    recordEffortGym(this.db, runId, key, task.commit); // EVC effort controller: shadow only (serve vs skip), changes nothing
-    return { runId, species: key, task, ...(trialGenome ? { genome: { id: trialGenome.id, lines: trialGenome.lines } } : {}), ...(gates ? { prod_gates: gates } : {}) };
+    const gymMeta = { ...meta, ...(mutants ? { mutant_keys: mutants.map((m) => m.key) } : {}), species: key, remote_host: host, ...(trialGenome ? { genome: trialGenome.id } : {}), ...(probe ? { probe: 1 } : {}), ...(canary ? { canary: 1 } : {}), ...(gates ? { prod_gates: 1 } : {}), ...(tg ? { tg } : {}) };
+    // B27 isolation by provenance: a TG-001 run is not an 'evolution-gym' run, so no gym statistic, breaker, IRT, hack rate,
+    // graded pool, trial deciding set or estimator (all of which select loop_name = 'evolution-gym') can count it
+    this.db.prepare('INSERT INTO loop_runs (id, loop_name, mode, status, repository_path, metadata, created_at, updated_at) VALUES (?, ?, \'closed\', \'running\', ?, ?, ?, ?)')
+      .run(runId, tg ? TG_LOOP : 'evolution-gym', repo, JSON.stringify({ gym: gymMeta }), now.toISOString(), now.toISOString());
+    if (!tg) recordEffortGym(this.db, runId, key, task.commit); // EVC effort controller: shadow only (serve vs skip), changes nothing
+    return { runId, species: key, task, ...(trialGenome ? { genome: { id: trialGenome.id, lines: trialGenome.lines } } : {}), ...(gates ? { prod_gates: gates } : {}),
+      ...(tg ? { prompt_override: promptOverride, tg: { experiment: tg.experiment, arm: tg.arm } } : {}) };
   }
 
   /** Injectable for tests; production reads the deploy checkout's git history. */
@@ -196,7 +223,7 @@ export class RemoteGymService {
 
   record(runId: string, host: string, result: RemoteGymResult): void {
     const row = this.db.prepare("SELECT status, json_extract(metadata, '$.gym') AS gym FROM loop_runs WHERE id = ?").get(runId) as { status: string; gym: string | null } | undefined;
-    const gym = row?.gym ? JSON.parse(row.gym) as GymTask & { species: string; remote_host?: string; genome?: string; probe?: number; canary?: number; mutant_keys?: string[]; prod_gates?: number } : null;
+    const gym = row?.gym ? JSON.parse(row.gym) as GymTask & { species: string; remote_host?: string; genome?: string; probe?: number; canary?: number; mutant_keys?: string[]; prod_gates?: number; tg?: { attempt_id: string } } : null;
     if (!row || !gym || gym.remote_host !== host) throw new Error('GYM_RUN_NOT_FOUND');
     if (row.status !== 'running') throw new Error('GYM_RUN_ALREADY_SETTLED');
     if (!['success', 'failure', 'discarded'].includes(result.status)) throw new Error('GYM_RESULT_INVALID');
@@ -207,10 +234,12 @@ export class RemoteGymService {
     // B8: which of the served mutants the write_test maker's test killed (only keys the server handed out)
     const killed_mutants = Array.isArray(gym.mutant_keys) && Array.isArray(result.killed_mutants) ? result.killed_mutants.map(String).filter((k) => gym.mutant_keys!.includes(k)) : undefined;
     const graded = result.status !== 'discarded' && gradedFitnessMode() === 'shadow' ? gymGraded(gym, result, killed_mutants) : null;
-    if (result.status !== 'discarded' && !gym.canary && !voided) {
+    // TG-001 attempts are an experiment on the prompt, not gym fitness: no skill outcome (the attempt row keeps the result)
+    if (result.status !== 'discarded' && !gym.canary && !voided && !gym.tg) {
       const [species] = parseSpecies(gym.species, 1);
       this.outcomes.recordOutcome(`loop-maker:gym:${species.runtime}`, {
         success: result.status === 'success', tokensUsed: Math.max(0, Number(result.tokens) || 0), durationMs: Math.max(0, Number(result.durationMs) || 0), domain: 'gym', taskId: runId,
+        skillContentHash: gymSkillContentHash((gym as { kind?: string }).kind, gym.genome),
         ...(species.model ? { model: species.model } : {}), evidenceRefs: [`gym:${gym.commit}`, `loop_run:${runId}`, `gym_result:${reason}`, `remote:${host}`, ...(gym.genome ? [`genome:${gym.genome}`] : []), ...(gym.probe ? ['gym:probe'] : []), ...((gym as { kind?: string }).kind === 'write_test' ? ['gym:fail'] : []), ...(graded ? gradedRefs(graded.graded, graded.graded_kind) : [])],
       });
     }
@@ -228,7 +257,9 @@ export class RemoteGymService {
     const prod_gates = gym.prod_gates ? sanitizeProdGates(result.prod_gates) : undefined;
     const now = new Date().toISOString();
     let diff_ref: string | undefined;
-    if (gymStoreDiffs() && result.status !== 'discarded' && typeof result.diff === 'string' && result.diff.trim()) {
+    // a TG-001 diff stays out of the gym training dataset (a copy would lose the experiment's provenance); its sha256 is kept on the run
+    if (gym.tg && typeof result.diff === 'string' && result.diff.trim()) diff_ref = `sha256:${prepareGymDiff(result.diff).sha256}`;
+    else if (gymStoreDiffs() && result.status !== 'discarded' && typeof result.diff === 'string' && result.diff.trim()) {
       try {
         const d = prepareGymDiff(result.diff);
         this.db.prepare('INSERT OR REPLACE INTO gym_attempt_diffs (run_id, task_key, status, species, sha256, diff, redacted, truncated, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
@@ -240,5 +271,6 @@ export class RemoteGymService {
       .run(now, JSON.stringify({ status: result.status, reason, ...(hack_flags ? { hack_flags } : {}), ...(killed_mutants ? { killed_mutants } : {}),
         ...(prod_gates ? { prod_gates } : {}), ...(graded ?? {}), ...(diff_ref ? { diff_ref } : {}),
         ...(fire_check ? { fire_check } : {}), ...(voided ? { void: voided } : {}) }), runId);
+    if (gym.tg?.attempt_id) { try { recordTg001(this.db, gym.tg.attempt_id, runId, { status: result.status, reason, durationMs: result.durationMs, tg_metrics: result.tg_metrics }, now); } catch { /* experiment bookkeeping never breaks the report */ } }
   }
 }

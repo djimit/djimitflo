@@ -140,7 +140,7 @@ export class FrontierExpertScheduler {
         const service = new TechniqueCardService(this.db);
         // KE-1: abstracts first (discovery notes, else ≤ 10 scholarly-adapter lookups), so units without one can be carded
         const abstracts = await service.fillAbstracts(10);
-        if (abstracts.from_note || abstracts.fetched) console.log(`🔭 technique cards: +${abstracts.from_note} abstract(s) from notes, +${abstracts.fetched} fetched, ${abstracts.missing} missing`);
+        if (abstracts.from_note || abstracts.from_evidence || abstracts.fetched) console.log(`🔭 technique cards: +${abstracts.from_note} abstract(s) from notes, +${abstracts.from_evidence} from same-title evidence, +${abstracts.fetched} fetched, ${abstracts.missing} missing, ${abstracts.unresolved} unresolved`);
         const cards = await service.extractBatch(5);
         if (cards.claims) console.log(`🔭 technique cards: +${cards.cards} card(s), +${cards.claims} claim(s), ${cards.contradictions} contradiction(s)`);
       } catch (err) {
