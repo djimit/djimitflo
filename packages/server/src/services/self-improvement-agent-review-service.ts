@@ -96,6 +96,20 @@ const CONNECTIVITY_ERROR = /fetch failed|ECONN|ETIMEDOUT|EHOSTUNREACH|ENETUNREAC
 
 const UNPARSEABLE = 'model response could not be parsed as a structured review';
 
+/** The fixed instruction lines of every specialist panel review prompt (exported for the STE prompt lint). */
+export const PANEL_REVIEW_INSTRUCTIONS = [
+  'You are one of several independent reviewers. Your job is to genuinely evaluate this proposal',
+  "from your domain's perspective, not to approve it by default. If the evidence is insufficient,",
+  "respond with stance 'needs_evidence'. If you see a real problem, respond with stance 'oppose'.",
+  "Only respond 'support' if you are actually convinced.",
+  '',
+  'Respond with ONLY a JSON object matching this exact shape (no markdown, no prose outside the JSON):',
+  '{"stance": "support|oppose|uncertain|needs_evidence", "confidence": 0.0-1.0,',
+  ' "findings": ["..."], "recommendations": ["..."], "evidence_refs": ["..."], "limitations": "..."}',
+  'evidence_refs must cite something concrete from the context above (e.g. a specific fact from the',
+  'description/rationale) — do not leave it empty and do not invent evidence that is not in the context.',
+];
+
 export class SelfImprovementAgentReviewService {
   private readonly panels: SpecialistPanelService;
   private readonly callModel: ModelCaller;
@@ -224,16 +238,7 @@ export class SelfImprovementAgentReviewService {
       ...(this.targetEvidence(panel) ? ['', this.targetEvidence(panel) as string, 'The target source is provided above: judge the proposal against it and do not ask for the source code again.'] : []),
       ...(lessons ? ['', lessons] : []),
       '',
-      'You are one of several independent reviewers. Your job is to genuinely evaluate this proposal',
-      "from your domain's perspective, not to approve it by default. If the evidence is insufficient,",
-      "respond with stance 'needs_evidence'. If you see a real problem, respond with stance 'oppose'.",
-      "Only respond 'support' if you are actually convinced.",
-      '',
-      'Respond with ONLY a JSON object matching this exact shape (no markdown, no prose outside the JSON):',
-      '{"stance": "support|oppose|uncertain|needs_evidence", "confidence": 0.0-1.0,',
-      ' "findings": ["..."], "recommendations": ["..."], "evidence_refs": ["..."], "limitations": "..."}',
-      'evidence_refs must cite something concrete from the context above (e.g. a specific fact from the',
-      'description/rationale) — do not leave it empty and do not invent evidence that is not in the context.',
+      ...PANEL_REVIEW_INSTRUCTIONS,
     ].join('\n');
   }
 

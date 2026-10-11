@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { nonMakerRunSql } from './outcome-attribution';
 import { ace001On, aceArm, aceLane, similarExamples, similarKbPages, type AceContext } from './ace-001';
+import { ste001On, steArm, STE_TEMPLATE_HASH, type SteContext } from './ste-001';
 
 /**
  * WS-K: what a maker gets to see besides its finding.
@@ -19,7 +20,9 @@ import { ace001On, aceArm, aceLane, similarExamples, similarKbPages, type AceCon
  */
 export interface AssignmentContext { examples: string[]; rules: Array<{ id: string; text: string; hash: string }>; memory_holdout?: true;
   /** ACE-001 (ACE_001_MODE=on): the arm and what it injected; kb = R=1 pages (reference data) */
-  ace?: AceContext; kb?: Array<{ path: string; title: string; body: string; score: number }> }
+  ace?: AceContext; kb?: Array<{ path: string; title: string; body: string; score: number }>;
+  /** STE-001 (STE_001_MODE=on): arm 1 = the Simplified Technical English maker template */
+  ste?: SteContext }
 
 /**
  * Memory holdout (prod: rules were read in 121 of 122 maker runs — no control group, Fisher p = 1.0). MEMORY_HOLDOUT_RATE
@@ -65,6 +68,11 @@ export function assignmentContext(db: Database, run: { id: string; goal_id: stri
         if (pages === null) ctx.fallback.push('r'); else { out.kb = pages; ctx.kb_paths = pages.map((p) => p.path); }
       }
       out.ace = ctx;
+    }
+    // STE-001: arm 1 gets the Simplified Technical English maker template (writeWorkAssignment picks the rules from this)
+    if (ste001On(env) && run.goal_id && aceLane(db, run.goal_id)) {
+      const arm = steArm(run.goal_id);
+      out.ste = { arm, template_hash: arm ? STE_TEMPLATE_HASH : 'control' };
     }
     if (env.LOOP_MEMORY_RULES_ENABLED === 'true' && memoryHoldout(run.goal_id || run.id, memoryHoldoutRate(env))) out.memory_holdout = true;
     else if (env.LOOP_MEMORY_RULES_ENABLED === 'true') {

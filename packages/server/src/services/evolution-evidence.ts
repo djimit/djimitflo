@@ -14,6 +14,7 @@ import { checkerFamilyEvidence } from './checker-family';
 import { gradedEvidence } from './graded-fitness';
 import { wilson } from './evolution-estimators';
 import { ace001Evidence } from './ace-001';
+import { ste001Evidence } from './ste-001';
 import { intelligenceEvidence } from './intelligence-metrics';
 import type { ForecasterScoreV2 } from './forecast-scoring';
 import { BASELINE_GENOME, holdoutEpoch } from './genome-registry';
@@ -51,6 +52,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'POLICY_VIOLATION_LOG', acting: false },
   { name: 'CHECKER_FAMILY_RANDOMISE', acting: true }, { name: 'CHECKER_CROSS_MODEL', acting: true }, { name: 'CHECKER_FAMILY_TARGET_PER_ARM', acting: false },
   { name: 'ACE_001_MODE', acting: true },
+  { name: 'STE_001_MODE', acting: true },
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */
@@ -312,6 +314,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     graded: gradedEvidence(db, since, env),
     // ACE-001 (ACE_001_MODE): oracle-lane maker outcomes per retrieval × example-selection arm (pre-registered, collecting until target)
     ace_001: ace001Evidence(db, since, env),
+    ste_001: ste001Evidence(db, since, env),
     // KE-3: does knowledge reach evolution? Mutant genomes written from injected knowledge units, and proposals citing a
     // unit or claim (evidence ref `expert_unit:<id>` / `expert_claim:<id>`; no proposal path cites knowledge yet)
     knowledge_links: {
