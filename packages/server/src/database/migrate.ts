@@ -1378,6 +1378,9 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   addMissingColumns(db, 'llm_model_calls', [{ name: 'provider', definition: 'TEXT' }, { name: 'tokens_in', definition: 'INTEGER' }, { name: 'tokens_out', definition: 'INTEGER' },
     { name: 'task_kind', definition: 'TEXT' }, { name: 'run_id', definition: 'TEXT' }, { name: 'status', definition: 'TEXT' },
     { name: 'attempts', definition: 'INTEGER' }]);
+  // B29: purpose, experiment arm and cost of every model call (marginal 0 only for a known flat subscription / local / free tier)
+  addMissingColumns(db, 'llm_model_calls', [{ name: 'purpose', definition: 'TEXT' }, { name: 'experiment_id', definition: 'TEXT' },
+    { name: 'cost_basis', definition: 'TEXT' }, { name: 'list_price_cost', definition: 'REAL' }, { name: 'marginal_cost', definition: 'REAL' }]);
   addMissingColumns(db, 'gym_mutant_holdout', [{ name: 'epoch', definition: 'INTEGER NOT NULL DEFAULT 0' }]);
   // B8: the failure clusters a dream mutant cites (evidence-or-no-op, DREAM_EVIDENCE_MUTATIONS)
   addMissingColumns(db, 'maker_genomes', [{ name: 'evidence_clusters', definition: 'TEXT' }]);
