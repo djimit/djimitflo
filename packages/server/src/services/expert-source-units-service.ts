@@ -6,6 +6,7 @@ import type { ArxivPaper } from './knowledge-adapters/arxiv-adapter';
 import { judgmentMode, runJudgment } from './judgment-service';
 import { discoveryRelevance } from './judgments/discovery-relevance';
 import { buildEvidencePack } from './commons-evidence-pack';
+import { typesafeBusy } from './typesafe-client';
 
 /**
  * E2 (Frontier Experts 2.0): expertise units beyond people. Prod 2026-09-25: 1 365 distinct arXiv papers were stored only
@@ -31,6 +32,17 @@ export function discoveryRelevanceSources(env: NodeJS.ProcessEnv = process.env):
 
 /** JEV-BURST: rejected-gate shadow judgments started but not yet recorded; the daily cap counts them (the rows only land later). */
 let rejectedInFlight = 0;
+
+/**
+ * KE-1: a discovery note is the paper's abstract when it is prose (operator-chatgpt notes are, prod 09-10: 165 of 166 ≥ 200
+ * chars), not a scout/HF keyword line ("scout match: agent, coding, …").
+ */
+export function abstractFromNote(note: unknown): string | null {
+  const text = typeof note === 'string' ? note.trim() : '';
+  return text.length >= 200 && !/^(scout match|hf daily)\b/i.test(text) ? text : null;
+}
+
+interface Discovery { kind: 'paper' | 'repository'; id: string; ref: string; title: string; note: string; categories: string[]; agent: string; source: string }
 
 const ACTOR = 'ingestion:source-units';
 const REPO = /github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)/g;
@@ -59,39 +71,34 @@ export class ExpertSourceUnitsService {
    * (quantum, clinical) are noise for Djimitflo and stay in external_events only.
    */
   ingestDiscovery(event: Record<string, unknown>): 'unit' | 'pending' | 'known' | 'irrelevant' | 'invalid' {
-    const str = (value: unknown, max: number) => (typeof value === 'string' ? value.trim().slice(0, max) : '');
-    const kind = event.event_type === 'discovery.repository' ? 'repository' : 'paper';
-    const raw = str(event.ref ?? event.arxiv_id ?? event.repo, 200).replace(/^(arxiv:|github:|https?:\/\/(arxiv\.org\/abs\/|github\.com\/))/i, '').replace(/\/$/, '');
-    const id = kind === 'paper' ? /^\d{4}\.\d{4,5}/.exec(raw)?.[0] : /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(raw) ? raw.replace(/\.git$/, '').toLowerCase() : undefined;
-    const title = str(event.title, 300) || id || '';
-    if (!id || !title) return 'invalid';
-    const ref = kind === 'paper' ? `arxiv:${id}` : `github:${id}`;
+    const d = parseDiscovery(event);
+    if (!d) return 'invalid';
+    const { id, ref, title, note, categories } = d;
     if (this.knownRefs().has(ref)) return 'known';
     // AR-W6: survival of the fittest for fleet sources — a source whose discoveries are never relevant is not processed further
     const scope = discoveryRelevanceSources();
-    if (scope && !scope.has(str(event.agent ?? event.source, 80))) return 'irrelevant';
-    const source = str(event.agent, 80);
+    if (scope && !scope.has(d.source)) return 'irrelevant';
+    const source = typeof event.agent === 'string' ? event.agent.trim().slice(0, 80) : '';
     if (arenaGateEnabled() && source && !this.sourceAllowed(source)) return 'irrelevant';
-    const note = str(event.note ?? event.summary, 1000);
-    const categories = Array.isArray(event.categories) ? event.categories.filter((c): c is string => typeof c === 'string').slice(0, 10) : [];
     const capabilities = this.enrichment.capabilitiesFor({ arxiv_id: id, url: '', title, summary: note, authors: [], categories, primary_category: categories[0] ?? null, published: null });
     if (!capabilities.length) {
       // R3 (shadow): the keyword gate's rejections were never measured. jev judges a capped share of them too, so its
       // relevance can be compared with the gate (yes-rate on rejected vs accepted) before it replaces the gate.
-      const cap = Number(process.env.DISCOVERY_GATE_SHADOW_MAX_PER_DAY) || 100;
-      const today = (this.db.prepare("SELECT COUNT(*) n FROM judgments WHERE judgment = 'discovery_relevance' AND subject_type = 'discovery_rejected' AND created_at >= ?")
-        .get(new Date(Date.now() - 86_400_000).toISOString()) as { n: number }).n;
-      if (judgmentMode(discoveryRelevance.id) !== 'off' && today + rejectedInFlight < cap) {
+      if (judgmentMode(discoveryRelevance.id) !== 'off' && this.rejectedShadowLeft()) {
         const pack = buildEvidencePack(this.db, 14);
         rejectedInFlight += 1;
         void runJudgment(this.db, discoveryRelevance, { type: 'discovery_rejected', id: ref }, { title, note, capabilities: [], open_problems: { failing_gates: pack.top_failing_gates, failure_causes: pack.failure_causes } })
+          .then((verdict) => {
+            // KE-2 (prod 09-10: 95 of 222 jev 'yes' sat on gate-rejected refs, so no unit and no consumer ever saw them): when jev
+            // decides unit creation (FRONTIER_UNITS_REQUIRE_RELEVANCE) its 'yes' overrides the keyword gate, as FE2 does for
+            // accepted ones. Otherwise the verdict stays a measurement and the gate is unchanged.
+            if (verdict?.decision === 'yes' && process.env.FRONTIER_UNITS_REQUIRE_RELEVANCE === 'true' && !this.knownRefs().has(ref)) this.overrideUnit(d, verdict.id);
+          })
           .catch(() => undefined).finally(() => { rejectedInFlight -= 1; });
       }
       return 'irrelevant';
     }
-    const agent = str(event.agent ?? event.source, 80) || 'unknown-agent';
-    const url = kind === 'paper' ? `https://arxiv.org/abs/${id}` : `https://github.com/${id}`;
-    const createUnit = () => this.unit(kind, kind === 'paper' ? title : id, ref, { kind, title, url, sourceRef: ref, sourceFamily: `agent:${agent}`, metadata: { derived: 'fleet-discovery', agent, note, categories } }, capabilities, { source: 'fleet-discovery', agent });
+    const createUnit = () => this.fleetUnit(d, capabilities);
     // FE2 (plan, 29-09): ~1 000 units/week were created for every taxonomy match and nothing used them. With
     // FRONTIER_UNITS_REQUIRE_RELEVANCE the unit is created only after jev classifies the discovery as an open problem or a lane
     // technique; the verdict is then re-pointed at the new unit. Fail-closed: no verdict, no unit. A ref is judged once.
@@ -115,6 +122,80 @@ export class ExpertSourceUnitsService {
       void runJudgment(this.db, discoveryRelevance, { type: 'expert_unit', id: expertId }, { title, note, capabilities, open_problems: { failing_gates: pack.top_failing_gates, failure_causes: pack.failure_causes } }).catch(() => undefined);
     }
     return 'unit';
+  }
+
+  /** R3 cap: rejected-gate shadow judgments in the last 24 h (+ in flight) stay below DISCOVERY_GATE_SHADOW_MAX_PER_DAY (100). */
+  private rejectedShadowLeft(): boolean {
+    const cap = Number(process.env.DISCOVERY_GATE_SHADOW_MAX_PER_DAY) || 100;
+    const today = (this.db.prepare("SELECT COUNT(*) n FROM judgments WHERE judgment = 'discovery_relevance' AND subject_type = 'discovery_rejected' AND created_at >= ?")
+      .get(new Date(Date.now() - 86_400_000).toISOString()) as { n: number }).n;
+    return today + rejectedInFlight < cap;
+  }
+
+  private fleetUnit(d: Discovery, capabilities: string[], derived = 'fleet-discovery', extra: Record<string, unknown> = {}): string {
+    const url = d.kind === 'paper' ? `https://arxiv.org/abs/${d.id}` : `https://github.com/${d.id}`;
+    const abstract = abstractFromNote(d.note);
+    return this.unit(d.kind, d.kind === 'paper' ? d.title : d.id, d.ref, { kind: d.kind, title: d.title, url, sourceRef: d.ref, sourceFamily: `agent:${d.agent}`,
+      metadata: { derived, agent: d.agent, note: d.note, categories: d.categories, ...(abstract ? { abstract } : {}), ...extra } }, capabilities, { source: 'fleet-discovery', agent: d.agent });
+  }
+
+  /** KE-2: a gate-rejected discovery jev called relevant becomes a unit (no taxonomy capability, so it stops at EVIDENCE_COLLECTED). */
+  private overrideUnit(d: Discovery, judgmentId: string, extra: Record<string, unknown> = {}): string {
+    const unitId = this.fleetUnit(d, [], 'taxonomy_override:jev', extra);
+    this.db.prepare("UPDATE judgments SET subject_type = 'expert_unit', subject_id = ? WHERE id = ?").run(unitId, judgmentId);
+    return unitId;
+  }
+
+  private discoveryEvent(ref: string): Record<string, unknown> | null {
+    const row = this.db.prepare("SELECT payload FROM external_events WHERE event_type LIKE 'discovery.%' AND json_extract(payload, '$.ref') = ? ORDER BY occurred_at DESC LIMIT 1").get(ref) as { payload: string } | undefined;
+    try { return row ? JSON.parse(row.payload) as Record<string, unknown> : null; } catch { return null; }
+  }
+
+  /**
+   * KE-2 one-shot backfill (not run automatically): every existing 'yes' verdict on a gate-rejected ref without a unit
+   * becomes a unit from its stored bus event, exactly as the live override does. Idempotent. Run on prod with:
+   *   docker exec -e NODE_PATH=/app/node_modules djimitflo-live node -e "const D=require('better-sqlite3');const {ExpertSourceUnitsService}=require('/app/packages/server/dist/services/expert-source-units-service.js');console.log(new ExpertSourceUnitsService(new D('/data/djimitflo.sqlite',{timeout:10000})).backfillRejectedOverrides())"
+   */
+  backfillRejectedOverrides(limit = 1_000): { candidates: number; created: number; missing_event: number; known: number } {
+    const rows = this.db.prepare(`SELECT subject_id AS ref, MAX(created_at) AS at, id FROM judgments WHERE judgment = 'discovery_relevance' AND subject_type = 'discovery_rejected' AND decision = 'yes'
+      GROUP BY subject_id ORDER BY at LIMIT ?`).all(limit) as Array<{ ref: string; id: string }>;
+    const out = { candidates: rows.length, created: 0, missing_event: 0, known: 0 };
+    const known = this.knownRefs();
+    for (const row of rows) {
+      if (known.has(row.ref)) { out.known += 1; continue; }
+      const d = parseDiscovery(this.discoveryEvent(row.ref) ?? {});
+      if (!d || d.ref !== row.ref) { out.missing_event += 1; continue; }
+      this.overrideUnit(d, row.id, { backfill: true });
+      known.add(row.ref); out.created += 1;
+    }
+    return out;
+  }
+
+  /**
+   * KE-5 (prod 09-10: 288 TYPESAFE_QUEUE_FULL + 6 timeouts on discovery_relevance, never re-judged because publishers never
+   * re-send a ref): a discovery whose only judgments are errors is re-ingested once from its stored bus event, ≤ `limit` per
+   * tick, through the normal path (same gate, same cap, same jev limiter). Not while the jev breaker is open or calls are
+   * queued. The errored rows are marked `retry=1` (or `retry=0 <why>` when there is nothing to retry), so a retry that
+   * errors again is not retried a second time.
+   */
+  retryErroredRelevance(limit = 50): { retried: number; skipped?: string } {
+    if (judgmentMode(discoveryRelevance.id) === 'off') return { retried: 0, skipped: 'off' };
+    if (typesafeBusy()) return { retried: 0, skipped: 'jev_busy' };
+    const rows = this.db.prepare(`SELECT j.subject_id AS ref, j.subject_type AS type FROM judgments j
+      WHERE j.judgment = 'discovery_relevance' AND j.decision = 'error' AND j.subject_type IN ('discovery_pending', 'discovery_rejected')
+        AND NOT EXISTS (SELECT 1 FROM judgments k WHERE k.judgment = 'discovery_relevance' AND k.subject_id = j.subject_id AND (k.decision <> 'error' OR k.reason LIKE 'retry=%'))
+      GROUP BY j.subject_id, j.subject_type ORDER BY MAX(j.created_at) DESC LIMIT ?`).all(limit) as Array<{ ref: string; type: string }>;
+    const mark = this.db.prepare("UPDATE judgments SET reason = ? WHERE judgment = 'discovery_relevance' AND decision = 'error' AND subject_id = ? AND reason IS NULL");
+    let retried = 0;
+    for (const row of rows) {
+      const event = this.discoveryEvent(row.ref);
+      if (!event) { mark.run('retry=0 no_event', row.ref); continue; }
+      if (row.type === 'discovery_rejected' && !this.rejectedShadowLeft()) continue; // the daily cap: next tick
+      mark.run('retry=1', row.ref);
+      this.ingestDiscovery(event);
+      retried += 1;
+    }
+    return { retried };
   }
 
   private sourceAllowed(source: string): boolean {
@@ -159,7 +240,21 @@ export class ExpertSourceUnitsService {
     this.registry.transition(expert.id, 'EVIDENCE_COLLECTED', { actor: ACTOR, reason: `${kind} evidence`, evidenceRefs: [evidenceId] });
     // one piece of evidence per unit: modest confidence; a repository inherits its paper's topics at lower confidence
     for (const capability of capabilities) this.registry.inferCapability(expert.id, { capability, confidence: kind === 'paper' ? 0.6 : 0.5, evidenceRefs: [evidenceId], derivedBy: `source-units:${kind}` });
-    this.registry.transition(expert.id, 'CAPABILITY_INFERRED', { actor: ACTOR, reason: `${capabilities.length} capability(ies) from ${kind} evidence` });
+    // KE-2: a jev override has no taxonomy capability; the registry requires one for CAPABILITY_INFERRED, so it stays here
+    if (capabilities.length) this.registry.transition(expert.id, 'CAPABILITY_INFERRED', { actor: ACTOR, reason: `${capabilities.length} capability(ies) from ${kind} evidence` });
     return expert.id;
   }
+}
+
+/** A fleet discovery event, normalised: arXiv ids and GitHub slugs only (they identify the unit exactly), text clipped. */
+function parseDiscovery(event: Record<string, unknown>): Discovery | null {
+  const str = (value: unknown, max: number) => (typeof value === 'string' ? value.trim().slice(0, max) : '');
+  const kind = event.event_type === 'discovery.repository' ? 'repository' : 'paper';
+  const raw = str(event.ref ?? event.arxiv_id ?? event.repo, 200).replace(/^(arxiv:|github:|https?:\/\/(arxiv\.org\/abs\/|github\.com\/))/i, '').replace(/\/$/, '');
+  const id = kind === 'paper' ? /^\d{4}\.\d{4,5}/.exec(raw)?.[0] : /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(raw) ? raw.replace(/\.git$/, '').toLowerCase() : undefined;
+  const title = str(event.title, 300) || id || '';
+  if (!id || !title) return null;
+  const categories = Array.isArray(event.categories) ? event.categories.filter((c): c is string => typeof c === 'string').slice(0, 10) : [];
+  return { kind, id, ref: kind === 'paper' ? `arxiv:${id}` : `github:${id}`, title, note: str(event.note ?? event.summary, 1000), categories,
+    agent: str(event.agent ?? event.source, 80) || 'unknown-agent', source: str(event.agent ?? event.source, 80) };
 }

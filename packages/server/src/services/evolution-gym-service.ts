@@ -7,6 +7,7 @@ import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { mineGymTasks, type GymTask } from './gym-task-miner';
 import { classifyHack, hackDetectorShadow } from './gym-hack-classifier';
 import { evolveSpecies, parseSpecies, type Species } from './evolve-selection';
+import { markRun } from './scheduler-registry';
 
 /**
  * C2b evolution gym runner (docs/design/evolution-gym.md). One attempt = one species on one replay task in a sandbox
@@ -85,7 +86,7 @@ export class EvolutionGymService {
 
   start(intervalMs = 3_600_000): void {
     if (this.timer || !gymEnabled()) return;
-    const run = () => { this.runOne().then((r) => { if (r.status !== 'skipped') console.log(`🏋️ gym: ${r.status} (${r.reason}) ${r.species ?? ''} ${r.task?.source ?? ''}`); }).catch((err) => console.warn('Gym attempt failed:', err instanceof Error ? err.message : String(err))); };
+    const run = () => { markRun('evolution_gym'); this.runOne().then((r) => { if (r.status !== 'skipped') console.log(`🏋️ gym: ${r.status} (${r.reason}) ${r.species ?? ''} ${r.task?.source ?? ''}`); }).catch((err) => console.warn('Gym attempt failed:', err instanceof Error ? err.message : String(err))); };
     this.timer = setInterval(run, intervalMs); this.timer.unref?.();
     // auto-deploy restarts the server every hour or two: waiting a full interval after boot would starve the gym
     setTimeout(run, Number(process.env.EVOLUTION_GYM_FIRST_DELAY_MS) || 600_000).unref?.();

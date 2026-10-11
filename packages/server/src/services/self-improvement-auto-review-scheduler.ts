@@ -47,6 +47,7 @@ import { AutonomousGoalGenerator } from './autonomous-goal-generator';
 import { namedPathsExist, proposalPrescreen } from './judgments/proposal-prescreen';
 import { recordForecasts } from './forecasters';
 import { enqueueCommittee } from './committee-swarm';
+import { markRun } from './scheduler-registry';
 
 const MINUTE_MS = 60 * 1000;
 const REFINEMENT_MAX_PER_TICK_CEILING = 10;
@@ -133,6 +134,7 @@ export class SelfImprovementAutoReviewScheduler {
    * in bootstrap/autonomous-services.ts.
    */
   async tick(): Promise<AutoReviewTickResult> {
+    markRun('self_improvement_auto_review'); // Cockpit 3.0: execution evidence for the scheduler registry
     if (this.running) return { reviewed: [], approved: [], parked: [], refined: [], refinementAttempted: 0, failed: [] };
     this.running = true;
     try {

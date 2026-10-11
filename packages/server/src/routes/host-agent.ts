@@ -6,6 +6,7 @@ import { FleetCommands } from '../services/fleet-commands';
 import { LocalShadowQueue } from '../services/local-shadow-queue';
 import { mintSpawnToken, resolveSpawnTokenSecret, spawnTokenRejection } from '../services/spawn-token';
 import { recordPowerSample, resourceLedgerEnabled } from '../services/resource-ledger';
+import { hourBucket, recordPolicyViolation } from '../services/policy-violations';
 
 export const HOST_AGENT_SCOPE = 'host-agent';
 const limiter = rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false });
@@ -26,6 +27,9 @@ export function createHostAgentRoutes(db: Database, auth: AuthMiddleware): Route
     const rejection = h ? spawnTokenRejection(resolveSpawnTokenSecret(), String(req.get('X-Host-Token') || ''), h, HOST_AGENT_SCOPE) : 'wrong_subject';
     if (rejection) {
       console.warn(`[host-agent] token rejected host=${JSON.stringify(h.slice(0, 100))} reason=${rejection}`);
+      // §16 step 8 (shadow, POLICY_VIOLATION_LOG): one row per host × reason × hour, never per request
+      recordPolicyViolation(db, { kind: 'token_rejected', actor: `host:${h.slice(0, 100)}`, severity: 'medium', dedupe_key: `${HOST_AGENT_SCOPE}:${h.slice(0, 100)}:${rejection}:${hourBucket()}`,
+        evidence_ref: `token:${HOST_AGENT_SCOPE}`, description: `${HOST_AGENT_SCOPE} token rejected: ${rejection}` });
       res.status(401).json({ error: { code: 'HOST_TOKEN_INVALID', message: 'Host token is invalid, expired, or scoped to another host' } });
       return null;
     }

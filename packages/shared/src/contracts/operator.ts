@@ -6,10 +6,10 @@
  */
 export const OPERATOR_CONTRACTS = {
   /** GET /api/health/cockpit — services/operator-cockpit.ts */
-  cockpit: ['at', 'build', 'scorecard', 'guardrails', 'stalls', 'gym', 'remote_workers', 'maker_usage_7d', 'judgments_7d', 'needs_you', 'schedulers', 'genomes', 'deploys'],
+  cockpit: ['at', 'snapshot_id', 'health', 'errors', 'build', 'scorecard', 'guardrails', 'stalls', 'detectors', 'gym', 'remote_workers', 'maker_usage_7d', 'judgments_7d', 'needs_you', 'schedulers', 'genomes', 'deploys'],
   /** GET /api/health/evolution-evidence — services/evolution-evidence.ts */
-  evolutionEvidence: ['at', 'window_days', 'flags', 'outcomes', 'outcomes_tagged', 'merge', 'drafts', 'genomes', 'gym', 'gym_prod_gates', 'trials', 'models', 'oracle', 'commons',
-    'forecasts_v2', 'hacks', 'hack_rate', 'estimates', 'ope', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'auto_merge', 'memory_holdout', 'effort_x1', 'graded', 'gates'],
+  evolutionEvidence: ['at', 'window_days', 'flags', 'outcomes', 'outcomes_tagged', 'merge', 'drafts', 'genomes', 'gym', 'gym_prod_gates', 'gym_diffs', 'trials', 'models', 'oracle', 'commons',
+    'forecasts_v2', 'hacks', 'hack_rate', 'estimates', 'ope', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'auto_merge', 'memory_holdout', 'effort_x1', 'checker_family', 'graded', 'ace_001', 'knowledge_links', 'holdout_exposure', 'intelligence', 'gates'],
   /** GET /api/health/forecasts-v2 — services/forecast-scoring.ts forecastScoresV2 */
   forecastsV2: ['forecasters', 'would_have_stopped'],
   /** GET /api/health/runtimes — { runtimes: RuntimeHealthRow[] } */
@@ -23,9 +23,11 @@ export const OPERATOR_CONTRACTS = {
   /** one row of GET /api/loops/draft-prs */
   draftPrRow: ['run_id', 'lane', 'pr_url', 'pr_number', 'age_days', 'outcome', 'survived', 'auto_merge'],
   /** GET /api/health/efficiency — services/resource-ledger.ts efficiencyView (Phase E1/E3) */
-  efficiency: ['at', 'window_days', 'ledger_enabled', 'consumers', 'ledger', 'hosts', 'north_star', 'notes'],
+  efficiency: ['at', 'window_days', 'ledger_enabled', 'consumers', 'ledger', 'hosts', 'north_star', 'coverage', 'notes'],
   /** GET /api/health/schedulers — services/scheduler-registry.ts listSchedulers */
-  schedulers: ['armed', 'off', 'schedulers'],
+  schedulers: ['armed', 'by_status', 'health', 'off', 'schedulers'],
+  /** GET /api/health/stalls — services/stall-watch.ts detectStallsWithHealth */
+  stalls: ['stalls', 'detectors', 'health'],
 } as const;
 
 export type OperatorContract = keyof typeof OPERATOR_CONTRACTS;

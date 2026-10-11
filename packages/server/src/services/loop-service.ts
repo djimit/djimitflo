@@ -1,4 +1,5 @@
 import { mutationCheckEnv } from './test-gap-source-service';
+import { assertionStrengthCheck } from './test-assertion-strength';
 import { deadCodeCheckEnv } from './dead-code-source-service';
 import fs from 'fs';
 import os from 'os';
@@ -1091,6 +1092,11 @@ export class LoopService {
     });
 
     if (installFailure) checks.unshift(installFailure);
+    // F1 (09-10): deterministic assertion strength of a test-writing maker's changed test files (WEAK_ASSERTION_CHECK_MODE)
+    try {
+      const strength = assertionStrengthCheck(this.db, run.goal_id, makerLease.worktree_path!, makerLease.metadata?.changed_files, outputDir);
+      if (strength) checks.push(strength);
+    } catch { /* an evidence check never breaks the scripted checks */ }
     const failed = checks.some((check) => check.status === 'fail');
     // Batch-8 evidence freshness: fingerprint what the checks READ (configs, lockfile, imports) at the base commit.
     let evidenceReadSet: ReadSet | undefined;
@@ -2265,9 +2271,9 @@ export class LoopService {
     this.ensureControlDir(worktreePath);
     const advisoryContext = this.advisoryAssignmentContext(worktreePath, run, finding);
     const extra = assignmentContext(this.db, run, worktreePath, `loop-maker:${run.id}`);
-    if (extra.examples.length || extra.rules.length || extra.memory_holdout) {
-      this.recordLoopEvent(run.id, 'assignment_context', 'info', `Maker assignment includes ${extra.examples.length} proven example(s) and ${extra.rules.length} rule(s)${extra.memory_holdout ? ' (memory holdout: rules withheld)' : ''}.`,
-        { examples: extra.examples, rule_ids: extra.rules.map((r) => r.id), ...(extra.memory_holdout ? { memory_holdout: true } : {}) });
+    if (extra.examples.length || extra.rules.length || extra.memory_holdout || extra.ace) {
+      this.recordLoopEvent(run.id, 'assignment_context', 'info', `Maker assignment includes ${extra.examples.length} proven example(s) and ${extra.rules.length} rule(s)${extra.memory_holdout ? ' (memory holdout: rules withheld)' : ''}${extra.ace ? ` (ACE-001 arm ${extra.ace.arm})` : ''}.`,
+        { examples: extra.examples, rule_ids: extra.rules.map((r) => r.id), ...(extra.memory_holdout ? { memory_holdout: true } : {}), ...(extra.ace ? { ace_001: extra.ace } : {}) });
     }
     const content = [
       `# ${finding.metadata?.objective_mode ? 'Objective' : run.loop_name} Assignment`,
@@ -2435,7 +2441,8 @@ export class LoopService {
       const failed = check.status !== 'pass' && check.status !== 'skipped';
       const out = tail(check.stdout_path, 1_200);
       const err = failed ? tail(check.stderr_path, 800) : '';
-      return [`### ${String(check.name)}: ${String(check.status)} (exit=${String(check.exit_status ?? 'n/a')}${check.timed_out ? ', timed out' : ''})`,
+      const status = check.mode === 'shadow' && check.shadow_status ? `shadow ${String(check.shadow_status)}` : String(check.status);
+      return [`### ${String(check.name)}: ${status} (exit=${String(check.exit_status ?? 'n/a')}${check.timed_out ? ', timed out' : ''})`,
         out ? `stdout (tail):\n${out}` : 'stdout: (empty or unavailable)', ...(err ? [`stderr (tail):\n${err}`] : [])].join('\n');
     }).join('\n\n');
   }

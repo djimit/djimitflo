@@ -34,6 +34,7 @@ import { ExpertSourceUnitsService, sourceUnitsEnabled } from './expert-source-un
 import { TechniqueCardService, techniqueCardsEnabled } from './technique-card-service';
 import { ExpertCouncilService } from './expert-council-service';
 import { frontierExpertPersonsEnabled, syncAreas } from './expert-areas';
+import { markRun } from './scheduler-registry';
 
 const MINUTE_MS = 60 * 1000;
 const SCHEDULER_ACTOR = 'autopilot:frontier-experts';
@@ -100,6 +101,7 @@ export class FrontierExpertScheduler {
   }
 
   async tick(): Promise<FrontierExpertTickResult> {
+    markRun('frontier_experts'); // Cockpit 3.0: execution evidence for the scheduler registry
     const result: FrontierExpertTickResult = { ingested: false, enriched: 0, reviewed: [], failed: [] };
 
     try {
@@ -122,8 +124,12 @@ export class FrontierExpertScheduler {
     // E2: papers and repositories from stored evidence become their own expertise units (no network, default off)
     if (sourceUnitsEnabled()) {
       try {
-        const units = new ExpertSourceUnitsService(this.db).materialize(20);
+        const sourceUnits = new ExpertSourceUnitsService(this.db);
+        const units = sourceUnits.materialize(20);
         if (units.papers || units.repositories) console.log(`🔭 frontier expert units: +${units.papers} paper(s), +${units.repositories} repositor(ies)`);
+        // KE-5: discovery judgments that failed (queue full, timeout) get one more try, ≤ 50 a tick
+        const retry = sourceUnits.retryErroredRelevance(50);
+        if (retry.retried) console.log(`🔭 discovery relevance: ${retry.retried} errored judgment(s) retried`);
       } catch (err) {
         result.failed.push({ stage: 'enrich', error: `source units: ${err instanceof Error ? err.message : String(err)}` });
       }
@@ -131,7 +137,11 @@ export class FrontierExpertScheduler {
     // E3: technique cards (claims + contradictions) from paper units, via the council runtime (default off)
     if (techniqueCardsEnabled()) {
       try {
-        const cards = await new TechniqueCardService(this.db).extractBatch(5);
+        const service = new TechniqueCardService(this.db);
+        // KE-1: abstracts first (discovery notes, else ≤ 10 scholarly-adapter lookups), so units without one can be carded
+        const abstracts = await service.fillAbstracts(10);
+        if (abstracts.from_note || abstracts.fetched) console.log(`🔭 technique cards: +${abstracts.from_note} abstract(s) from notes, +${abstracts.fetched} fetched, ${abstracts.missing} missing`);
+        const cards = await service.extractBatch(5);
         if (cards.claims) console.log(`🔭 technique cards: +${cards.cards} card(s), +${cards.claims} claim(s), ${cards.contradictions} contradiction(s)`);
       } catch (err) {
         result.failed.push({ stage: 'enrich', error: `technique cards: ${err instanceof Error ? err.message : String(err)}` });

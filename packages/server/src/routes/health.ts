@@ -9,7 +9,7 @@ import type { AuthMiddleware } from '../middleware/auth';
 import { MetricsService } from '../services/metrics-service';
 import { KnowledgeRuntimeService } from '../services/knowledge-runtime-service';
 import { getAppVersion } from '../utils/version';
-import { detectStalls } from '../services/stall-watch';
+import { detectStallsWithHealth } from '../services/stall-watch';
 import { serviceMap } from '../services/service-map';
 import { operatorCockpit } from '../services/operator-cockpit';
 import { listSchedulers } from '../services/scheduler-registry';
@@ -132,9 +132,9 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   });
 
   // GET /api/metrics — Prometheus-format metrics
-  // plan M10: silent stalls per subsystem (read-only)
+  // plan M10: silent stalls per subsystem (read-only); Cockpit 3.0: + per-detector status and overall health (UNKNOWN ≠ HEALTHY)
   router.get('/stalls', requireAuth, requirePermission('read:evidence'), (_req, res) => {
-    res.json({ stalls: detectStalls(db) });
+    res.json(detectStallsWithHealth(db));
   });
 
   // plan S1: operator cockpit — scorecard, guardrails, stalls, gym species, remote workers, model/judgment usage (read-only)
@@ -153,6 +153,7 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
     res.json(buildDigest(db));
   });
 
+  // Cockpit 3.0: each scheduler's status from its last tick (executing / armed_not_ticking / unknown …), not only armed vs off
   router.get('/schedulers', requireAuth, requirePermission('manage:config'), (_req, res) => {
     res.json(listSchedulers());
   });

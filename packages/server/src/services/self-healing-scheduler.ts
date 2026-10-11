@@ -32,6 +32,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { SelfHealingService } from './self-healing-service';
+import { markRun } from './scheduler-registry';
 
 type Healer = Pick<SelfHealingService, 'heal'>;
 
@@ -66,6 +67,7 @@ export class SelfHealingScheduler {
   }
 
   tick(): ReturnType<SelfHealingService['heal']> | null {
+    markRun('self_healing'); // Cockpit 3.0: execution evidence for the scheduler registry
     try {
       return this.healer.heal();
     } catch (err) {

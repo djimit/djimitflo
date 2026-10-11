@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, expect, it, vi } from 'vitest';
-import { DecisionsInboxPage, DependencyLaneSection, DraftPrsSection } from './DecisionsInboxPage';
+import { DecisionsInboxPage, DependencyLaneSection, DraftPrsSection, RankingSection } from './DecisionsInboxPage';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { api } from '../lib/api';
 import { useAuthStore } from '../lib/auth-store';
 
@@ -15,6 +16,15 @@ const inbox = {
   telegram: [],
   autonomy: [{ cls: 'maker:test-gap:opencode', human_approved: 14, auto_approved: 8, denied: 0, expired: 1, verified: 10, regressed: 7, infra: 0, pending: 5, earned: false, why: '6 more human approvals' }],
   memory: [{ id: 'm1', title: 'djimit-unguarded-json-extract', content: 'Never JSON.parse model output without a guard', memory_type: 'engineering_rule', status: 'review_required', created_at: '' }],
+  attribution_audit: {
+    week_start: '2026-10-12T00:00:00.000Z', seed: 'car-audit:2026-10-12', size: 10, frame_n: 15,
+    strata: { maker_failure: 4, reviewer_failure: 2, environment_failure: 1, verified: 8 },
+    items: [
+      { run_id: 'dddddddd-1', lane: 'test-gap', computed: 'reviewer_failure', reason: 'maker completed; no checker verdict', failed_gates: ['checker_verdict'], attributed_at: '2026-10-09T08:43:21Z', verdict: null, labelled_by: null, labelled_at: null },
+      { run_id: 'eeeeeeee-1', lane: 'doc-drift-and-small-fix-loop', computed: 'verified', reason: 'all gates passed', failed_gates: [], attributed_at: '2026-10-09T08:27:37Z', verdict: 'correct', labelled_by: 'op', labelled_at: '2026-10-12T09:00:00Z' },
+    ],
+    audited: { total: 1, correct: 1, wrong: 0, unclear: 0 }, note: '',
+  },
 };
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -121,4 +131,25 @@ it('earned auto-merge: an audit-sample loop PR is flagged for the human; auto-me
   render(<DraftPrsSection />);
   expect(await screen.findByText('audit sample — review it')).toBeTruthy();
   expect(screen.getByText('merged')).toBeTruthy();
+});
+
+it('§16 step 4: the CAR audit sample shows the computed class and evidence; the operator judges it correct / wrong / unclear', async () => {
+  const judge = vi.spyOn(api, 'adjudicateAttribution').mockResolvedValue(undefined);
+  renderPage();
+  expect(await screen.findByText('reviewer_failure')).toBeTruthy();
+  expect(screen.getByText(/car-audit:2026-10-12/)).toBeTruthy();
+  expect(screen.getByText(/1 audited/)).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'correct eeeeeeee' }).getAttribute('aria-pressed')).toBe('true');
+  fireEvent.click(screen.getByRole('button', { name: 'wrong dddddddd' }));
+  await waitFor(() => expect(judge).toHaveBeenCalledWith('dddddddd-1', 'wrong'));
+});
+
+it('Cockpit 3.0 Phase 3: shows the top 5 of the shadow ranking with reasons, and says it changes nothing', () => {
+  const ranking = Array.from({ length: 7 }, (_, i) => ({ kind: 'requeue' as const, id: `p${i}`, title: `proposal ${i}`, expected_gain: i < 6 ? 0.8 : null,
+    reversibility: 1, operator_minutes: 1, score: i < 6 ? 0.8 : null, evidence: [i < 6 ? 'earlier requeues verified 4/5 (30 d)' : 'INSUFFICIENT_EVIDENCE: x', 'assumed: 1 click'] }));
+  const html = renderToStaticMarkup(<RankingSection ranking={ranking} />);
+  expect(html).toContain('does not change what needs you');
+  expect((html.match(/<li/g) ?? []).length).toBe(5);
+  expect(html).toContain('earlier requeues verified 4/5');
+  expect(html).not.toContain('proposal 5');
 });

@@ -38,7 +38,7 @@ export type ServiceStatus = { names: string[]; endpoint: string; status: 'up' | 
 export type FleetHost = { host: string; last_seen: string; seconds_ago: number; live: boolean; agent_version: string | null; info: Record<string, unknown> };
 export type FleetCommand = { id: string; host: string; kind: 'diagnostic' | 'shell'; command: string; command_sha256: string; status: string; requested_by: string;
   approved_by: string | null; approved_at: string | null; expires_at: string | null; decided_reason: string | null; started_at: string | null;
-  finished_at: string | null; exit_code: number | null; output: string | null; created_at: string };
+  finished_at: string | null; exit_code: number | null; output: string | null; created_at: string; self_approved?: number | boolean };
 
 export type KnowledgeOverview = {
   at: string;
@@ -85,6 +85,16 @@ export type GateState = 'green' | 'red' | 'unknown';
 export type MemoryArm = { n: number; verified: number; regressed: number; verified_rate: number | null };
 export type HackRateRow = { scored: number; checked: number; flagged: number; rate: number | null; ci: [number, number] | null; status: 'ok' | 'insufficient' };
 export type EffortArm = { goals: number; verified: number; regressed: number; infra: number; verified_rate: number | null };
+export type CheckerFamilyComparison = { delta_kappa: number | null; delta_kappa_ci: [number, number] | null; fisher_p: number; n: { same: number; cross: number } };
+export type CheckerFamilyArmEvidence = { goals: number; reviewed: number; verdicts: { accepted: number; needs_revision: number; rejected: number }; realized_cross: number;
+  outcome: { circular: true; n: number; agree: number; agreement: number | null; kappa: number | null }; outcome_wo_checker: { n: number; agree: number; kappa: number | null }; outcome_survival: { n: number; agree: number; kappa: number | null };
+  weak_assertion: { n: number; weak: number; caught: number; missed: number; false_alarms: number; sensitivity: number | null } };
+/** §16 step 1: one metric contract's read-only status; value and ci are null unless status is 'ok' (never 0 for missing evidence) */
+export type IntelligenceMetric = {
+  metric_id: 'VIG' | 'RIR' | 'GTI' | 'CLY' | 'FRR' | 'CAR' | 'CIA' | 'MCS' | 'ADQ' | 'EII' | 'ESE' | 'SCIG' | 'ECON';
+  version: string; status: 'ok' | 'INSUFFICIENT_EVIDENCE' | 'UNDEFINED';
+  value: number | null; ci: [number, number] | null; n: number; blocker: string | null; detail: Record<string, unknown>;
+};
 export interface EvolutionEvidence {
   at: string; window_days: number;
   flags: Array<{ name: string; acting: boolean; value: string | null }>;
@@ -95,6 +105,8 @@ export interface EvolutionEvidence {
   genomes: { by_status: Array<{ status: string; origin: string; n: number }>; recent: Array<{ id: string; status: string; note: string | null; updated_at: string }>; holdout: { mined: number | null; mutant: number | null } };
   gym: Array<{ kind: string; tier: number | null; status: string | null; n: number }>;
   gym_prod_gates: { by_kind: Array<{ kind: string; scored: number; proxy_success: number; prod_gate_success: number; proxy_rate: number | null; prod_gate_rate: number | null }>; failed_checks: Array<{ check: string; n: number }> };
+  /** GYM_STORE_DIFFS: stored (task, redacted diff, oracle result) pairs, all time */
+  gym_diffs?: { enabled: boolean; stored: number; distinct_tasks: number; successes: number; failures: number; redacted_attempts: number };
   trials: { by_state: Array<{ state: string; n: number }>; recent: Array<{ trial_id: string; parent_id: string; tier_set: string; deciding_n: number; f_parent_failures: number; b: number; c: number; p: number; power_q8_l05: number; state: string; recorded_at: string }>;
     /** GENOME_FIRE_CHECK: trial attempts voided because the genome's lines never reached the maker (never paired) */
     void?: { attempts: number; by_genome: Array<{ genome: string; n: number }>; fire_checked: number | null } };
@@ -124,12 +136,33 @@ export interface EvolutionEvidence {
   memory_holdout: { rate: string | null; rules: MemoryArm; holdout: MemoryArm; fisher_p: number; note: string };
   /** X1 (EFFORT_SIBLING_RANDOMISE): oracle-lane goals with evolve siblings (on) vs without (off), two-sided Fisher exact p */
   effort_x1: { enabled: string | null; on: EffortArm; off: EffortArm; fisher_p: number; note: string };
+  /** F2 (CHECKER_FAMILY_RANDOMISE): checker verdicts and outcome agreement per checker-family arm (same = maker's family, cross = CHECKER_CROSS_MODEL) */
+  checker_family: { enabled: string | null; cross_model: string; target_per_arm: number; same: CheckerFamilyArmEvidence; cross: CheckerFamilyArmEvidence;
+    /** EXP-1 primary: a checker-independent label (merge survival once settled, else the other failed gates); interim before the target */
+    primary: CheckerFamilyComparison & { endpoint: 'outcome_wo_checker' | 'outcome_survival'; read: 'interim' | 'final' };
+    /** the attributed outcome contains the checker's own rejection */
+    secondary_circular: CheckerFamilyComparison & { endpoint: 'outcome'; circular: true };
+    weak_fisher_p: number;
+    stop: { per_arm: number; reached: boolean; verdict: 'collecting' | 'inconclusive' | 'supported' | 'reversed' | 'falsified' }; note: string };
+  /** ACE-001 (ACE_001_MODE): oracle-lane maker outcomes per arm (R retrieval × S example selection; '00' = control) */
+  ace_001: { mode: string | null; target_per_arm: number; status: 'collecting' | 'analysable';
+    arms: Record<'00' | '01' | '10' | '11', { n: number; verified: number; verified_rate: number | null; ci: [number, number] | null; graded_n: number; graded_mean: number | null; tokens_mean: number | null }>;
+    main_effects: { retrieval: AceMainEffect; examples: AceMainEffect }; note: string };
   /** SI-A/SI-B (GRADED_FITNESS_MODE / GRADED_CONTEST_MODE): graded executed fitness per pool and graded-contest agreement */
   graded: {
     mode: { fitness: 'off' | 'shadow'; contest: 'off' | 'shadow' | 'act' };
     pools: Array<{ pool: string; n: number; mean: number | null; share_full: number | null }>;
     contest: { contests: number; agree: number; agreement_rate: number | null };
   };
+  /** KE-3: mutant genomes written from injected knowledge units, and proposals citing a unit or claim */
+  knowledge_links: { genomes_with_refs: number | null; genomes_total: number | null; proposals_with_refs: number | null };
+  /** §16 step 1: read-only status per metric contract (METRIC_CONTRACTS.yaml); no composite score */
+  /** §16 step 7: per frozen holdout epoch, distinct candidates run or decided on it; reuse_risk above the contract limit (read-only) */
+  holdout_exposure: {
+    limit: number; reuse_risk: boolean; write_test_enabled: boolean; note: string;
+    epochs: Array<{ holdout: 'mined' | 'mutant' | 'write_test'; epoch: number; tasks: number; frozen_at: string; current: boolean; candidates: number; decisions: number; evaluations: number; reuse_risk: boolean }>;
+  };
+  intelligence: { contract_version: string; metrics: IntelligenceMetric[]; note: string };
   gates: Record<'A' | 'B' | 'C' | 'D', { state: GateState; reason: string }>;
 }
 
@@ -137,7 +170,7 @@ export interface EvolutionEvidence {
 export interface ValueInterval { value: number; low: number | null; high: number | null; n: number }
 export interface EfficiencyConsumer {
   consumer: string; cloud_tokens: number; local_tokens: number; gpu_seconds: number; jobs: number;
-  wh: number | null; energy: 'measured' | 'partial' | 'not_measured'; energy_coverage: number | null;
+  wh: number | null; energy: 'measured' | 'partial' | 'not_measured'; energy_coverage: number | null; coverage_pct?: number | null;
   verified: number | null; attempts: number | null; lanes: Record<string, number> | null;
   per_m_tokens: ValueInterval | null; per_kwh: ValueInterval | null;
 }
@@ -145,23 +178,39 @@ export interface EfficiencyView {
   at: string; window_days: number; ledger_enabled: boolean;
   consumers: EfficiencyConsumer[];
   ledger: Array<{ day: string; consumer: string; cloud_tokens: number; local_tokens: number; gpu_seconds: number; jobs: number; wh: number | null; covered_s: number }>;
-  hosts: Array<{ host: string; samples: number; last_sample: string | null; avg_watts: number | null; gpu_kwh: number | null; covered_h: number }>;
-  north_star: { weeks: Array<{ week_start: string; verified: number; cloud_m_tokens: number; local_kwh: number | null; local_covered_h: number; per_m_tokens: number | null; per_kwh: number | null }> };
+  hosts: Array<{ host: string; samples: number; last_sample: string | null; avg_watts: number | null; gpu_kwh: number | null; covered_h: number; coverage_pct?: number }>;
+  north_star: { weeks: Array<{ week_start: string; verified: number; cloud_m_tokens: number; local_kwh: number | null; local_covered_h: number; per_m_tokens: number | null; per_kwh: number | null;
+    local_verified?: number; coverage_pct?: number | null; per_kwh_reason?: string | null }> };
+  coverage?: { jobs_pct: number | null; window_pct: number | null };
   notes: string[];
 }
 
+export type HealthState = 'HEALTHY' | 'DEGRADED' | 'BREACHED' | 'UNKNOWN' | 'STALE' | 'NOT_APPLICABLE';
+export type AceMainEffect = { on_n: number; off_n: number; diff: number | null };
 export type OperatorCockpit = {
   at: string;
+  /** Cockpit 3.0: one id per snapshot; health = worst guardrail state (DEGRADED for a partial snapshot or open stall) */
+  snapshot_id?: string;
+  health?: HealthState;
+  /** sections whose query failed — their numbers are null, not zero */
+  errors?: Array<{ section: string; message: string }>;
   build: { commit: string | null; build_time: string | null };
   scorecard: Record<string, number | null>;
   /** split (regressions): by attributed class — reviewer/environment failures are not the maker's */
-  guardrails: Array<{ name: string; ok: boolean; value: number | null; limit: string; split?: { maker: number; reviewer: number; environment: number } }>;
+  guardrails: Array<{ name: string; ok: boolean; state?: HealthState; value: number | null; limit: string; split?: { maker: number; reviewer: number; environment: number; unknown?: number } }>;
   stalls: Array<{ subsystem: string; since: string | null; detail: string }>;
   gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string; benched?: boolean; stale?: boolean }>;
-  needs_you?: { approvals: number; requeue: number; labels: number; memory_review: number;
-    proposals?: number; draft_prs?: number; open_prs?: number; stalls?: number; approvals_expiring?: number; join_requests?: number; shell_requests?: number };
+  /** null = that count could not be read; total = distinct things waiting (server-side dedupe) */
+  needs_you?: { approvals: number | null; requeue: number | null; labels: number | null; memory_review: number | null;
+    proposals?: number | null; draft_prs?: number | null; open_prs?: number | null; stalls?: number | null; approvals_expiring?: number | null;
+    join_requests?: number | null; shell_requests?: number | null; shared_subjects?: number | null; total?: number | null;
+    system_requeue?: Partial<Record<'budgeted_requeue' | 'attribution_unknown' | 'not_actionable', number>> | null };
   /** UX-8: schedulers this server armed at boot vs off */
-  schedulers?: { armed: number; off: number };
+  schedulers?: { armed: number; off: number;
+    /** Cockpit 3.0: execution, not intent — armed_not_ticking / failing schedulers silently stopped working */
+    by_status?: Partial<Record<'off' | 'executing' | 'failing' | 'armed_pending' | 'armed_not_ticking' | 'unknown', number>>; health?: 'HEALTHY' | 'BREACHED' | 'UNKNOWN' };
+  /** stall detectors; status 'error' = that subsystem is unwatched (an empty stall list is then not healthy) */
+  detectors?: Array<{ name: string; status: 'ok' | 'error' | 'not_applicable' | 'capped'; error?: string; checked_at: string }>;
   remote_workers: Array<{ host: string; claims_24h: number; last_claim: string | null; interrupted_24h: number }>;
   /** UX-2: maker outcomes per strategy genome and maker skill (30 d); scope separates gym makers from production makers. */
   genomes?: Array<{ genome: string; skill_id: string; scope?: 'gym' | 'production'; outcomes: number; wins: number; win_pct: number }>;
@@ -174,11 +223,18 @@ export type OperatorCockpit = {
 export type OperatorDigest = { at: string; text: string; data: Record<string, unknown> };
 
 /** UX-7: the loop's draft PRs from loop_runs metadata (no GitHub call); outcome = merge-survival settlement once it exists. */
-export type DraftPrs = { total: number; unsettled: number; rows: Array<{ run_id: string; lane: string; pr_url: string; pr_number: number | null; age_days: number; outcome: string | null; survived: boolean | null; auto_merge: string | null }> };
+/** total/unsettled null = the read failed (unknown, not 0) */
+export type DraftPrs = { total: number | null; unsettled: number | null; rows: Array<{ run_id: string; lane: string; pr_url: string; pr_number: number | null; age_days: number; outcome: string | null; survived: boolean | null; auto_merge: string | null }> };
 export type DependencyLane = { mode: 'off' | 'shadow' | 'act'; effective_mode: 'off' | 'shadow' | 'act'; revoked_at: string | null; revoked_reason: string | null; max_per_day: number; merged_24h: number; open: number; rows: Array<{ pr_number: number; title: string; html_url: string | null; bump: string; age_days: number | null; check_state: string | null; decision: string; reason: string | null; updated_at: string }> };
 
 export type DecisionsInbox = {
-  requeue: Array<{ id: string; title: string; status: string; updated_at: string; requeued_as: string | null }>;
+  requeue: Array<{ id: string; title: string; status: string; updated_at: string; requeued_as: string | null;
+    queue_class?: 'operator' | 'budgeted_requeue' | 'attribution_unknown' | 'not_actionable' | 'requeued' | 'no_change' }>;
+  /** untruncated counts over the same filters as the paginated lists; null = the count failed */
+  totals?: Record<string, number | null | Record<string, number>>;
+  /** Cockpit 3.0 Phase 3 shadow ranking: score = expected_gain × reversibility / operator_minutes; null = insufficient evidence */
+  ranking?: Array<{ kind: 'requeue' | 'loop_pr' | 'label' | 'memory_review'; id: string; title: string; expected_gain: number | null;
+    reversibility: number; operator_minutes: number; score: number | null; evidence: string[] }>;
   prescreen: {
     items: Array<{ id: string; title: string; status: string; reason: string; verdict_at: string; label: 'ok' | 'wrong' | null }>;
     labelled: number; wrong: number; false_rejection_pct: number | null; enforce_threshold: string;
@@ -186,7 +242,16 @@ export type DecisionsInbox = {
   telegram: Array<{ telegram_user_id: string; user_id: string; email: string | null; role: string | null; added_by: string; created_at: string }>;
   memory: Array<{ id: string; title: string; content: string; memory_type: string; status: string; created_at: string }>;
   autonomy: Array<{ cls: string; human_approved: number; auto_approved: number; denied: number; expired: number; verified: number; regressed: number; infra: number; pending: number; earned: boolean; why: string }>;
+  /** §16 step 4: this week's seeded CAR audit sample of computed attributions; the operator labels, the system never does */
+  attribution_audit: {
+    week_start: string; seed: string; size: number; frame_n: number; strata: Record<AttributionClass, number>;
+    items: Array<{ run_id: string; lane: string | null; computed: AttributionClass; reason: string | null; failed_gates: string[]; attributed_at: string;
+      verdict: AuditVerdict | null; labelled_by: string | null; labelled_at: string | null }>;
+    audited: { total: number; correct: number; wrong: number; unclear: number }; note: string;
+  };
 };
+export type AttributionClass = 'maker_failure' | 'reviewer_failure' | 'environment_failure' | 'verified';
+export type AuditVerdict = 'correct' | 'wrong' | 'unclear';
 
 export type ImprovementFunnel = {
   generatedAt: string;
@@ -898,7 +963,9 @@ export type SocialAgentPresence = {
 };
 
 export type CommonsStats = { threads_7d: number; open_7d: number; learnings_7d: number; lessons_7d?: number; proposals: number; proposals_grounded: number; proposals_verified: number; proposals_archived: number;
-  proposals_by_status?: Record<string, number>; residents?: Array<{ agent: string; last: string }>; autopilot_idle?: boolean; guild?: Array<{ agent: string; groundings: number; valid: number; verified: number }> };
+  proposals_by_status?: Record<string, number>;
+  /** where validly grounded proposals stopped (furthest stage of their refinement); null = could not be read */
+  grounding_stops?: Record<'no_refinement' | 'pending_panel' | 'panel_failed' | 'panel_backlog' | 'rejected' | 'goal' | 'maker' | 'outcome', number> | null; residents?: Array<{ agent: string; last: string }>; autopilot_idle?: boolean; guild?: Array<{ agent: string; groundings: number; valid: number; verified: number }> };
 export type SocialCommons = { agents: SocialAgentPresence[]; threads: SocialThread[]; total_threads?: number; stats?: CommonsStats };
 
 // Frontier Expert Intelligence (§36): states other than ACTIVE are tentative and shown as such.
@@ -1475,6 +1542,11 @@ class ApiClient {
 
   async labelPrescreen(id: string, label: 'ok' | 'wrong'): Promise<void> {
     await this.request<void>(`/self-improve/proposals/${encodeURIComponent(id)}/prescreen-label`, { method: 'POST', body: JSON.stringify({ label }) });
+  }
+
+  /** §16 step 4: the operator's verdict on a sampled attribution (stored as an attribution_audit operator_label judgment). */
+  async adjudicateAttribution(runId: string, verdict: AuditVerdict, note?: string): Promise<void> {
+    await this.request<void>(`/self-improve/attribution-audit/${encodeURIComponent(runId)}`, { method: 'POST', body: JSON.stringify(note ? { verdict, note } : { verdict }) });
   }
 
   async setTelegramIdentity(telegramId: string, userId: string, note?: string): Promise<void> {
