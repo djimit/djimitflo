@@ -1320,7 +1320,7 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
       summary_json TEXT NOT NULL, scanned_at TEXT NOT NULL);
     -- TG-001 (gym → production transfer gap): the frozen experiment manifest (tasks + the four rendered prompts per task) and one
     -- row per (task, arm) attempt in its Latin-square order; history_json keeps every attempt (incl. re-queued infra discards)
-    CREATE TABLE IF NOT EXISTS tg_experiments (id TEXT PRIMARY KEY, frozen_at TEXT NOT NULL, manifest_json TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS tg_experiments (id TEXT PRIMARY KEY, frozen_at TEXT NOT NULL, manifest_json TEXT NOT NULL, analysis_sha256 TEXT);
     CREATE TABLE IF NOT EXISTS tg_attempts (id TEXT PRIMARY KEY, experiment_id TEXT NOT NULL, task_key TEXT NOT NULL, arm TEXT NOT NULL, seq INTEGER NOT NULL,
       status TEXT NOT NULL, retries INTEGER NOT NULL DEFAULT 0, run_id TEXT, result_json TEXT, history_json TEXT, updated_at TEXT NOT NULL, UNIQUE(experiment_id, task_key, arm));
     CREATE INDEX IF NOT EXISTS idx_shipped_code_scans_package ON shipped_code_scans(package, id);
@@ -1364,6 +1364,9 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
       raw_json TEXT NOT NULL DEFAULT '{}', synced_at TEXT NOT NULL
     );
   `);
+  // TG-001 integrity addendum: sha256 of the frozen analysis manifest, written in the freeze transaction
+  addMissingColumns(db, 'tg_experiments', [{ name: 'analysis_sha256', definition: 'TEXT' }]);
+  addMissingColumns(db, 'tg_attempts', [{ name: 'first_claimed_at', definition: 'TEXT' }]); // B27: first physical attempt
   // Add missing columns BEFORE creating indexes that reference them — a stale
   // pre-existing self_improvements table (no fingerprint) otherwise breaks
   // CREATE INDEX idx_self_improve_fingerprint with "no such column".
