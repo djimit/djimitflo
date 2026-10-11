@@ -158,6 +158,13 @@ export interface EvolutionEvidence {
   ste_001: { mode: string | null; target_per_arm: number; ste_template_hash: string; status: 'collecting' | 'analysable'; diff: number | null;
     arms: Record<'0' | '1', { n: number; verified: number; verified_rate: number | null; ci: [number, number] | null; out_of_scope: number; out_of_scope_share: number | null; tokens_mean: number | null }>;
     note: string };
+  /** H-D5NO: prospective false-rejection risk of jev confident-NO on proposal_prescreen (shadow); confident_yes is descriptive only */
+  d5_no: { status: 'collecting' | 'ready' | 'rejected' | 'insufficient_evidence' | 'unavailable'; cutoff: string; prereg_sha256?: string; analysis_n?: number; max_risk?: number;
+    excluded?: { pre_cutoff_cluster: number; oracle_lane: number };
+    confident_no?: { cases: number; false_rejection: number; correct_rejection: number; pending: number; censored: number; resolved: number; false_rejection_upper_95: number | null;
+      analysis_n_reached: number; analysis_errors: number; analysis_upper_95: number | null };
+    min_clusters_for_bound?: number; max_errors_allowed_at_n?: number;
+    confident_yes?: D5Tally; uncertain?: D5Tally; note?: string };
   /** TG-001 (TG_001_MODE): the same frozen write_test tasks under four prompt representations (A gym, B production, C controlled, D structured) */
   /** integrity addendum: invalid_manifest = the frozen analysis plan is missing, edited or later than the first outcome → no analysis */
   tg_001: { mode: string | null; status: 'not_frozen' | 'collecting' | 'complete' | 'invalid_manifest'; reason?: string | null; label?: string; tasks: number; frozen_at?: string; commit?: string | null; species?: string; harness?: string | null; skipped?: number;
@@ -210,6 +217,7 @@ export interface EfficiencyView {
 
 export type HealthState = 'HEALTHY' | 'DEGRADED' | 'BREACHED' | 'UNKNOWN' | 'STALE' | 'NOT_APPLICABLE';
 export type AceMainEffect = { on_n: number; off_n: number; diff: number | null };
+export type D5Tally = { cases: number; false_rejection: number; correct_rejection: number; pending: number; censored: number; verified_rate: number | null; ci: [number, number] | null };
 export type OperatorCockpit = {
   at: string;
   /** Cockpit 3.0: one id per snapshot; health = worst guardrail state (DEGRADED for a partial snapshot or open stall) */
