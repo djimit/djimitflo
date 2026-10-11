@@ -232,6 +232,7 @@ The polling gateway in `packages/telegram` (`TELEGRAM_BOTS_CONFIG`) is kept as i
 | `TELEGRAM_TRIAGE_MAX_PER_PUSH` | 3 | triage messages per 15-minute tick; triage also stays under `TELEGRAM_PUSH_MAX_PER_HOUR`, counted apart from approvals |
 | `OPERATOR_DIGEST_ENABLED` | off | daily digest via the bot: counts + `/decisions` links for approvals, D5 labels, memory review, requeue candidates and open loop PRs |
 | `OPERATOR_DIGEST_HOUR` | 7 | UTC hour of the digest |
+| `SCHEDULER_SELF_HEAL_MODE` | shadow | P0.1 watchdog every 15 min: an armed scheduler with no tick past 2× its interval is diagnosed (`scheduler_recovery` judgment); `act` re-arms it once via its own start function (≤ 1 restart / 6 h), verifies a tick within one interval + 10 min, else quarantines it (status `quarantined`, stall `scheduler:<name>`, no further restarts); `shadow` diagnoses and escalates without restarting; `off` disables |
 
 Buttons only work for an allowlisted Telegram id mapped in `telegram_identities` (D3) to an active user whose role holds
 `approve:task`; the decision is made through the normal approval API as that user, so `SELF_APPROVAL_FORBIDDEN` applies.

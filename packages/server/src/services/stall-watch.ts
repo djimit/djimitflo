@@ -1,7 +1,8 @@
 import fs from 'fs';
 import type { Database } from 'better-sqlite3';
 import { decide, expiringAdmissions } from '../execution/runtime-admission';
-import { markRun } from './scheduler-registry';
+import { randomUUID } from 'crypto';
+import { guardTick, healSchedulers, quarantinedSchedulers, selfHealMode, type RecoveryAction } from './scheduler-registry';
 
 /**
  * Plan M10: Djimitflo noticed none of its own silent failures on 2026-09-27 — the workstation gym benched for 9 h, NVIDIA
@@ -132,6 +133,10 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
     const last = mine[mine.length - 1];
     if (last?.event === 'done' && Date.parse(last.at) < now - 40 * 60_000) out.push({ subsystem: 'deploy', since: last.at, detail: `build ${commit!.slice(0, 8)} deployed but no post-deploy verdict within 40 min — functional readiness unproven` });
   });
+  // P0.1 escalation: a scheduler the self-heal quarantined (no tick after its bounded restart, or no restart possible)
+  run('schedulers', true, () => {
+    for (const name of quarantinedSchedulers()) out.push({ subsystem: `scheduler:${name}`, since: null, detail: `scheduler '${name}' is armed but not ticking and was quarantined (see scheduler_recovery judgments); needs the operator` });
+  });
   return { stalls: out, detectors, health: stallHealth(out, detectors) };
 }
 
@@ -142,7 +147,27 @@ export function detectStalls(db: Database, now = Date.now(), env: NodeJS.Process
 
 export function startStallWatch(db: Database, intervalMs = 3_600_000): (() => void) | null {
   if (process.env.STALL_WATCH_ENABLED !== 'true') return null;
-  const tick = () => { markRun('stall_watch'); for (const s of detectStalls(db)) console.warn(`🚨 stall: ${s.subsystem} since ${s.since ?? 'never'} — ${s.detail}`); };
+  const tick = guardTick('stall_watch', () => { for (const s of detectStalls(db)) console.warn(`🚨 stall: ${s.subsystem} since ${s.since ?? 'never'} — ${s.detail}`); });
   const timer = setInterval(tick, intervalMs); timer.unref?.();
+  return () => clearInterval(timer);
+}
+
+/** Each recovery action as a `scheduler_recovery` judgment (failure_id, strategy, attempt, result, next_action). Fail-soft. */
+export function recordRecoveryActions(db: Database, actions: RecoveryAction[]): void {
+  for (const a of actions) {
+    try {
+      db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at)
+        VALUES (?, 'scheduler_recovery', 'scheduler', ?, ?, 'annotation', ?, ?, ?, ?)`)
+        .run(randomUUID(), a.scheduler, a.failure_id, a.result, `${a.strategy} attempt ${a.attempt}: ${a.result}; next: ${a.next_action}`.slice(0, 300), JSON.stringify(a), a.at);
+    } catch { /* judgments table absent */ }
+    console.warn(`🩹 scheduler ${a.scheduler}: ${a.result} (${a.strategy}, attempt ${a.attempt}) — next: ${a.next_action}`);
+  }
+}
+
+/** Scheduler self-heal watchdog (P0.1), every 15 min; independent of the stall watch so a stuck stall watch is healed too. */
+export function startSchedulerWatchdog(db: Database, intervalMs = 15 * 60_000): (() => void) | null {
+  if (selfHealMode() === 'off') return null;
+  const timer = setInterval(() => { try { recordRecoveryActions(db, healSchedulers()); } catch (e) { console.warn('scheduler watchdog failed:', e instanceof Error ? e.message : String(e)); } }, intervalMs);
+  timer.unref?.();
   return () => clearInterval(timer);
 }

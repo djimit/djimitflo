@@ -34,7 +34,7 @@ import { ExpertSourceUnitsService, sourceUnitsEnabled } from './expert-source-un
 import { TechniqueCardService, techniqueCardsEnabled } from './technique-card-service';
 import { ExpertCouncilService } from './expert-council-service';
 import { frontierExpertPersonsEnabled, syncAreas } from './expert-areas';
-import { markRun } from './scheduler-registry';
+import { guardTick, markRun } from './scheduler-registry';
 
 const MINUTE_MS = 60 * 1000;
 const SCHEDULER_ACTOR = 'autopilot:frontier-experts';
@@ -70,9 +70,9 @@ export class FrontierExpertScheduler {
     if (!frontierExpertsEnabled(process.env)) return false;
     if (process.env.FRONTIER_EXPERTS_SCHEDULER_ENABLED !== 'true') return false;
     const intervalMs = this.intervalMinutes() * MINUTE_MS;
-    this.timer = setInterval(() => void this.tick(), intervalMs);
+    this.timer = setInterval(guardTick('frontier_experts', () => this.tick()), intervalMs);
     this.timer.unref();
-    void this.tick(); // catch-up on boot
+    guardTick('frontier_experts', () => this.tick())(); // catch-up on boot
     return true;
   }
 
