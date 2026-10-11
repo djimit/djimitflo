@@ -45,7 +45,7 @@ it('an unattributed regression is unknown, not maker, and keeps the guardrail ou
   for (let i = 0; i < 10; i++) proposal(`v${i}`, 'verified');
   proposal('r1', 'regressed');
   const reg = operatorCockpit(db, NOW, ON).guardrails.find((g) => g.name === 'regressions')!;
-  expect(reg.split).toEqual({ maker: 0, reviewer: 0, environment: 0, unknown: 1 });
+  expect(reg.split).toEqual({ maker: 0, reviewer: 0, environment: 0, unknown: 1, post_verification: 0 });
   expect(reg.state).toBe('DEGRADED');
   expect(reg.ok).toBe(false);
 });

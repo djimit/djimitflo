@@ -194,7 +194,23 @@ export interface EvolutionEvidence {
   };
   intelligence: { contract_version: string; metrics: IntelligenceMetric[]; note: string };
   gates: Record<'A' | 'B' | 'C' | 'D', { state: GateState; reason: string }>;
+  lineage?: EvolutionLineage;
 }
+
+/** 'Restore Evolutionary Health': GET cockpit.evolution / evolution-evidence.lineage — services/evolution-lineage.ts */
+export type LineageStage = { stage: string; count: number | null; conversion: number | null; median_age_days: number | null; top_failure: string | null;
+  compute_tokens: number | null; operator_decisions: number | null; measured: 'measured' | 'not_linked' | 'not_measured'; note?: string };
+export type EvolutionLineage = {
+  window_days: number; stages: LineageStage[];
+  bottleneck: { from: string; to: string; lost: number; conversion: number | null; reason: string | null; oldest_queue: { stage: string; median_age_days: number | null } | null } | null;
+  regression_split: { mutation_failure: number; reviewer_rejection: number; environment: number; post_verification: number; post_verification_follow_up_fix: number | null; unknown: number };
+  evolutionary_regressions: number;
+  nev: { status: 'ok' | 'INSUFFICIENT_EVIDENCE'; reason: string | null; value: number | null; survived: number; settled: number; survival_rate: number | null; survival_ci: [number, number] | null;
+    severity_weights: Record<string, number>; per_m_cloud_tokens: number | null; per_kwh: number | null; per_kwh_status: string; per_operator_decision: number | null;
+    operator_decisions: number; cloud_tokens: number | null; note: string };
+  throughput: { verified: number; label: string };
+  jev_semantic_routing: string; errors: string[];
+};
 
 /** Phase E1/E3: GET /api/health/efficiency — resources and value per consumer (7 d) and the north-star trend. */
 export interface ValueInterval { value: number; low: number | null; high: number | null; n: number }
@@ -228,7 +244,7 @@ export type OperatorCockpit = {
   build: { commit: string | null; build_time: string | null };
   scorecard: Record<string, number | null>;
   /** split (regressions): by attributed class — reviewer/environment failures are not the maker's */
-  guardrails: Array<{ name: string; ok: boolean; state?: HealthState; value: number | null; limit: string; split?: { maker: number; reviewer: number; environment: number; unknown?: number } }>;
+  guardrails: Array<{ name: string; ok: boolean; state?: HealthState; value: number | null; limit: string; split?: { maker: number; reviewer: number; environment: number; unknown?: number; post_verification?: number | null } }>;
   stalls: Array<{ subsystem: string; since: string | null; detail: string }>;
   gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string; benched?: boolean; stale?: boolean }>;
   /** null = that count could not be read; total = distinct things waiting (server-side dedupe) */
@@ -248,6 +264,7 @@ export type OperatorCockpit = {
   maker_usage_7d: Array<{ role: string; runtime: string; model: string | null; leases: number; tokens: number }>;
   judgments_7d: Array<{ judgment: string; calls: number; errors: number; input_tokens: number }>;
   deploys: Array<{ at: string; event: string; sha: string; detail: string }>;
+  evolution?: EvolutionLineage | null;
 };
 
 /** UX-13: GET /api/health/digest — services/operator-push.ts buildDigest. */
