@@ -9,6 +9,7 @@
 
 import fs from 'fs';
 import { swarmEventBus } from './swarm-event-bus';
+import { recordPolicyViolation } from './policy-violations';
 import type {
   LoopService,
 } from './loop-service';
@@ -158,6 +159,14 @@ export class LoopVerificationService {
     }
 
     const db = (this.loopService as any).db;
+    // §16 step 8 (shadow, POLICY_VIOLATION_LOG): the scope gate already failed these; record each breach once, decide nothing
+    for (const lease of completedMakerLeases) {
+      if (!lease.metadata?.auto_approved_scope || this.leaseWithinScope(lease)) continue;
+      const files = Array.isArray(lease.metadata.changed_files) ? lease.metadata.changed_files.map(String) : [];
+      recordPolicyViolation(db, { kind: 'scope_gate', actor: `maker:${lease.runtime}`, severity: 'high', dedupe_key: lease.id, run_id: run.id, lease_id: lease.id,
+        evidence_ref: `loop_run:${run.id}/lease:${lease.id}`,
+        description: `auto-approved maker changed files outside ${String(lease.metadata.auto_approved_scope)}: ${files.filter((f: string) => f !== lease.metadata.auto_approved_scope).join(', ') || '(none listed)'}` });
+    }
     db.prepare(`
       UPDATE loop_runs
       SET status = ?, gates_json = ?, updated_at = ?, metadata = ?

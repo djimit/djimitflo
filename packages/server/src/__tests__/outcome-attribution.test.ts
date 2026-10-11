@@ -114,10 +114,11 @@ describe('maker-side learners count only maker_failure when OUTCOME_ATTRIBUTION_
   it('production genome win rates and the regressions guardrail', () => {
     const off = operatorCockpit(db, NOW, {});
     expect(off.genomes.find((g) => g.scope === 'production')).toMatchObject({ genome: 'gA', outcomes: 4, wins: 1 });
-    expect(off.guardrails[0]).toMatchObject({ name: 'regressions', value: 3, split: { maker: 1, reviewer: 1, environment: 1 } });
+    // the third regression carries no attribution: unknown (Cockpit 3.0), no longer silently the maker's
+    expect(off.guardrails[0]).toMatchObject({ name: 'regressions', value: 3, split: { maker: 0, reviewer: 1, environment: 1, unknown: 1 } });
     const on = operatorCockpit(db, NOW, { OUTCOME_ATTRIBUTION_ENABLED: 'true' });
     expect(on.genomes.find((g) => g.scope === 'production')).toMatchObject({ genome: 'gA', outcomes: 2, wins: 1 });
-    expect(on.guardrails[0]).toMatchObject({ name: 'regressions', value: 1, split: { maker: 1, reviewer: 1, environment: 1 } });
+    expect(on.guardrails[0]).toMatchObject({ name: 'regressions', value: 0, state: 'DEGRADED', split: { maker: 0, reviewer: 1, environment: 1, unknown: 1 } });
   });
 });
 

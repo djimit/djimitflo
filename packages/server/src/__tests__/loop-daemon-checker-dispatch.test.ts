@@ -5,6 +5,7 @@ import { runMigrations } from '../database/migrate';
 import { LoopDaemon } from '../services/loop-daemon';
 import { GoalService } from '../services/goal-service';
 import { LoopService } from '../services/loop-service';
+import { runGenome, skillContentHash } from '../services/maker-genome';
 
 /**
  * Regression coverage for the fix to the root cause found 2026-09-20/21:
@@ -153,6 +154,15 @@ describe('LoopDaemon checker dispatch', () => {
     await runOneTick(daemon);
     const rows = db.prepare('SELECT skill_id, success, task_id, agent_id, domain FROM skill_outcomes').all();
     expect(rows).toEqual([{ skill_id: 'loop-maker:doc-drift-and-small-fix-loop:codex', success: 0, task_id: 'run-1', agent_id: 'maker-1', domain: 'doc-drift-and-small-fix-loop' }]);
+  });
+
+  it('§16 step 9: the maker outcome carries the skill content hash of the genome that shaped the run', async () => {
+    seedQualifyingGoal();
+    const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+    await runOneTick(daemon);
+    const row = db.prepare('SELECT skill_content_hash AS hash FROM skill_outcomes').get() as { hash: string | null };
+    expect(row.hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(row.hash).toBe(skillContentHash(runGenome(db, 'run-1'), null));
   });
 
   it('SI-A: the maker outcome carries the graded refs stored on its lease (graded:<score>, graded_kind, graded_lane)', async () => {

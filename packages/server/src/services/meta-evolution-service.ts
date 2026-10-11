@@ -5,14 +5,15 @@ import { swarmEventBus } from './swarm-event-bus';
 /**
  * G32: MetaEvolutionService — periodic self-evaluation of the swarm's performance.
  *
- * Evaluates: planner accuracy, rule accuracy, capability usage.
+ * Evaluates: maker lease completion rate, rule accuracy, capability usage.
  * Prunes: dormant capabilities (0 runs in 30 days), demotes bad rules (≥3 contradictions).
  * Emits a `meta_evolution` event on the SSE stream with the evaluation report.
  */
 
 interface EvaluationReport {
   timestamp: string;
-  planner_accuracy: number;
+  /** completed maker leases / all maker leases — completion, not correctness (was mislabelled planner_accuracy; fitness audit 11-10) */
+  maker_lease_completion_rate: number;
   rule_count: number;
   contradicted_rules: number;
   total_capabilities: number;
@@ -49,10 +50,10 @@ export class MetaEvolutionService {
   evaluate(): EvaluationReport {
     const now = new Date().toISOString();
 
-    // 1. Planner accuracy: % of maker leases that completed successfully.
+    // 1. Maker lease completion rate: % of maker leases that completed (a completed lease can still produce a wrong change).
     const totalMakers = this.db.prepare('SELECT COUNT(*) as c FROM worker_leases WHERE role = \'maker\'').get() as { c: number };
     const completedMakers = this.db.prepare('SELECT COUNT(*) as c FROM worker_leases WHERE role = \'maker\' AND status = \'completed\'').get() as { c: number };
-    const plannerAccuracy = totalMakers.c > 0 ? completedMakers.c / totalMakers.c : 0;
+    const makerLeaseCompletionRate = totalMakers.c > 0 ? completedMakers.c / totalMakers.c : 0;
 
     // 2. Rule accuracy: count contradicted rules.
     const totalRules = this.db.prepare('SELECT COUNT(*) as c FROM swarm_claims WHERE claim_type = \'memory\'').get() as { c: number };
@@ -141,7 +142,7 @@ export class MetaEvolutionService {
 
     const report: EvaluationReport = {
       timestamp: now,
-      planner_accuracy: plannerAccuracy,
+      maker_lease_completion_rate: makerLeaseCompletionRate,
       rule_count: totalRules.c,
       contradicted_rules: contradicted.c,
       total_capabilities: caps.length,

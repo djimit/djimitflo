@@ -55,14 +55,17 @@ const fakeFetch = vi.fn(async (url: string, init?: { method?: string; body?: str
 });
 const writes = () => calls.filter((c) => c.method !== 'GET');
 
-function seedPr(number: number, opts: { files?: string[]; proposal?: string; title?: string; login?: string; reviews?: FakePr['reviews']; removed?: boolean; lines?: number; draft?: boolean; behind?: boolean } = {}) {
+function seedPr(number: number, opts: { files?: string[]; proposal?: string; title?: string; login?: string; reviews?: FakePr['reviews']; removed?: boolean; lines?: number; draft?: boolean; behind?: boolean; strength?: 'pass' | 'fail' | 'skipped' | 'none' } = {}) {
   const id = `run-${number}`; const branch = `agent/loop/${id}`;
   db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status) VALUES (?, 'test', ?, 'd', 'r', 'test-gap', ?)`).run(`si-${number}`, `t${number}`, opts.proposal ?? 'verified');
   db.prepare("INSERT INTO goals (id, objective, risk_class, status, metadata, improvement_id, created_at, updated_at) VALUES (?, 'o', 'low', 'completed', '{}', ?, datetime('now'), datetime('now'))").run(`g-${number}`, `si-${number}`);
   db.prepare(`INSERT INTO loop_runs (id, goal_id, loop_name, mode, status, gates_json, metadata, created_at, updated_at) VALUES (?, ?, 'test-gap', 'closed', 'completed', ?, ?, ?, ?)`)
     .run(id, `g-${number}`, JSON.stringify([{ name: 'diff_under_threshold', status: 'pass' }]), JSON.stringify({ pr_url: `https://github.com/o/r/pull/${number}` }), '2026-10-06T00:00:00Z', '2026-10-06T00:00:00Z');
   db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, branch_name, metadata, created_at, updated_at) VALUES (?, ?, 'maker', 'opencode', 'completed', ?, ?, ?, ?)`)
-    .run(`m-${number}`, id, branch, JSON.stringify({ diff_max_lines: 400 }), '2026-10-06T00:00:00Z', '2026-10-06T00:00:00Z');
+    .run(`m-${number}`, id, branch, JSON.stringify({ diff_max_lines: 400,
+      // the prod shadow record: status 'skipped' by design, the measured verdict in shadow_status
+      ...(opts.strength === 'none' ? {} : { deterministic_checks: [{ name: 'test:assertion-strength', mode: 'shadow', status: 'skipped', shadow_status: opts.strength ?? 'pass', exit_status: null }] }) }),
+      '2026-10-06T00:00:00Z', '2026-10-06T00:00:00Z');
   const files = (opts.files ?? ['packages/server/src/__tests__/x.test.ts']).map((f) => ({ filename: f, status: opts.removed ? 'removed' : 'added', additions: opts.lines ?? 40, deletions: 0 }));
   prs.set(number, { number, state: 'open', draft: opts.draft ?? true, title: opts.title ?? `loop: add tests ${number}`, node_id: `PR_${number}`, mergeable: true,
     mergeable_state: opts.behind ? 'behind' : 'clean', user: { login: opts.login ?? 'djimitflo-bot' }, head: { sha: `sha${number}`, ref: branch, repo: { full_name: 'o/r' } },
@@ -238,4 +241,36 @@ it('revocation: merge survival marking the lines removed, or red checks on the m
   await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), new Date(NOW.getTime() + 3_600_000));
   expect(readClassState(db)).toMatchObject({ state: 'revoked' });
   expect(readClassState(db).reason).toContain('checks failing on main at merge commit merge702');
+});
+
+it('B14: shadow re-checks would_merge each tick — a PR that goes conflicting flips to ineligible, an unchanged one keeps its record', async () => {
+  seedPr(700); seedPr(702);
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('shadow'), NOW);
+  expect(decision(700).decision).toBe('would_merge');
+  const first = decision(702).at;
+  prs.get(700)!.mergeable = false; prs.get(700)!.mergeable_state = 'dirty';
+  const later = new Date(NOW.getTime() + 15 * 60_000);
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('shadow'), later);
+  expect(decision(700)).toMatchObject({ decision: 'ineligible', reason: 'merge_conflict' });
+  expect(decision(702)).toMatchObject({ decision: 'would_merge', at: first }); // unchanged: not rewritten
+  expect(db.prepare("SELECT COUNT(*) AS n FROM loop_events WHERE event_type = 'auto_merge_would_merge'").get()).toEqual({ n: 2 });
+  expect(writes()).toEqual([]);
+});
+
+it('B14: re-checking a would_merge PR does not count it against its own daily cap', async () => {
+  seedPr(700);
+  const capped = env('shadow', { LOOP_AUTO_MERGE_MAX_PER_DAY: '1' });
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, capped, NOW);
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, capped, new Date(NOW.getTime() + 15 * 60_000));
+  expect(decision(700).decision).toBe('would_merge');
+});
+
+it('B14: assertion strength must have passed (the shadow verdict counts); skipped, failed or missing is ineligible', async () => {
+  seedPr(700); seedPr(702, { strength: 'fail' }); seedPr(703, { strength: 'skipped' }); seedPr(704, { strength: 'none' });
+  // eligible needs a verified proposal; 703/704 proposals are verified too — only the check differs
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('shadow'), NOW);
+  expect(decision(700).decision).toBe('would_merge');
+  expect(decision(702)).toMatchObject({ decision: 'ineligible', reason: 'assertion_strength_fail' });
+  expect(decision(703)).toMatchObject({ decision: 'ineligible', reason: 'assertion_strength_skipped' });
+  expect(decision(704)).toMatchObject({ decision: 'ineligible', reason: 'assertion_strength_missing' });
 });

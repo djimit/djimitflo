@@ -20,7 +20,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { generateText, llmEndpoints } from './llm-fallback';
+import { generateText, llmEndpoints, type LlmUsage } from './llm-fallback';
 import { prepareState } from './typesafe-client';
 import { buildDecisionContext } from './decision-context-service';
 import { kbContext } from './kb-corpus';
@@ -31,7 +31,8 @@ import { repairModelJson } from './model-json';
 import { z } from 'zod';
 
 /** The model argument is only passed when MODEL_SELECTOR_MODE is on; undefined = the caller's own default (unchanged). */
-export type ModelCaller = (prompt: string, model?: string) => Promise<string>;
+/** usage: B29 — the provider's token counts for this call (not called = unknown; the ledger keeps null, never 0) */
+export type ModelCaller = (prompt: string, model?: string, usage?: (u: LlmUsage) => void) => Promise<string>;
 const CONSUMER = 'panel_review';
 
 interface ParsedReview {
@@ -61,9 +62,9 @@ function reviewTimeoutMs(): number {
   return Number(process.env.SELF_IMPROVEMENT_REVIEW_TIMEOUT_MS) || 120_000;
 }
 
-async function callOllama(prompt: string, model = defaultModel()): Promise<string> {
+async function callOllama(prompt: string, model = defaultModel(), usage?: (u: LlmUsage) => void): Promise<string> {
   return generateText(
-    { prompt, model, temperature: 0.2, maxTokens: 1024, timeoutMs: reviewTimeoutMs() },
+    { prompt, model, temperature: 0.2, maxTokens: 1024, timeoutMs: reviewTimeoutMs(), purpose: 'panel_review:review', onUsage: usage },
     { endpoints: llmEndpoints(defaultOllamaUrl()) },
   );
 }
@@ -95,6 +96,20 @@ export function readTargetExcerpt(target: unknown, repoRoot = process.env.REVIEW
 const CONNECTIVITY_ERROR = /fetch failed|ECONN|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|EAI_AGAIN|aborted|timed? ?out|socket hang up/i;
 
 const UNPARSEABLE = 'model response could not be parsed as a structured review';
+
+/** The fixed instruction lines of every specialist panel review prompt (exported for the STE prompt lint). */
+export const PANEL_REVIEW_INSTRUCTIONS = [
+  'You are one of several independent reviewers. Your job is to genuinely evaluate this proposal',
+  "from your domain's perspective, not to approve it by default. If the evidence is insufficient,",
+  "respond with stance 'needs_evidence'. If you see a real problem, respond with stance 'oppose'.",
+  "Only respond 'support' if you are actually convinced.",
+  '',
+  'Respond with ONLY a JSON object matching this exact shape (no markdown, no prose outside the JSON):',
+  '{"stance": "support|oppose|uncertain|needs_evidence", "confidence": 0.0-1.0,',
+  ' "findings": ["..."], "recommendations": ["..."], "evidence_refs": ["..."], "limitations": "..."}',
+  'evidence_refs must cite something concrete from the context above (e.g. a specific fact from the',
+  'description/rationale) — do not leave it empty and do not invent evidence that is not in the context.',
+];
 
 export class SelfImprovementAgentReviewService {
   private readonly panels: SpecialistPanelService;
@@ -172,12 +187,20 @@ export class SelfImprovementAgentReviewService {
   private async ask(prompt: string, who: string, model?: string, incumbentStance?: ParsedReview['stance'] | null): Promise<ParsedReview | { error: string }> {
     const started = Date.now();
     const shadow = incumbentStance !== undefined;
+    // B29: tokens of this call (summed over a JSON repair call) as the provider reported them; recorded on the selector row
+    // (the transport row then carries none, so they count once). No row (selector off) = the transport row keeps them.
+    let usage: { tokensIn: number | null; tokensOut: number | null; provider: string | null } = { tokensIn: null, tokensOut: null, provider: null };
+    const sink = (u: LlmUsage) => {
+      const add = (a: number | null, b: number | null) => (a === null && b === null ? null : (a ?? 0) + (b ?? 0));
+      usage = { tokensIn: add(usage.tokensIn, u.tokensIn), tokensOut: add(usage.tokensOut, u.tokensOut), provider: u.provider };
+    };
     const record = (ok: boolean, chars: number, stance?: string) => {
       if (model) recordModelCall(this.db, { consumer: CONSUMER, model, ok, latencyMs: Date.now() - started, outChars: chars, shadow: shadow ? 1 : 0,
-        agree: shadow && incumbentStance && stance ? stance === incumbentStance : null });
+        agree: shadow && incumbentStance && stance ? stance === incumbentStance : null,
+        provider: usage.provider, tokensIn: usage.tokensIn, tokensOut: usage.tokensOut, taskKind: 'review', purpose: `panel_review:${shadow ? 'shadow' : 'review'}` });
     };
     try {
-      const raw = await this.callModel(prompt, model);
+      const raw = await this.callModel(prompt, model, model ? sink : undefined);
       // prod 2026-09-25 (sample logged since #416): the "unreadable" answers were empty responses — a transient model
       // failure, treated like an unreachable host (no attempt spent, never recorded as a vote)
       if (!raw.trim()) { record(false, 0); return { error: 'empty model response (timed out)' }; }
@@ -187,7 +210,7 @@ export class SelfImprovementAgentReviewService {
       // UX-19: one repair call to the same model (LLM_JSON_REPAIR_ENABLED); recorded as 'repaired' / 'unparseable'
       if (!parsed) {
         const repaired = await repairModelJson({ db: this.db, consumer: CONSUMER, model: model ?? defaultModel(), raw, schema: REVIEW_SCHEMA, shape: REVIEW_SHAPE,
-          ask: (repairPrompt) => this.callModel(repairPrompt, model) });
+          ask: (repairPrompt) => this.callModel(repairPrompt, model, model ? sink : undefined) });
         if (repaired) parsed = this.parseResponse(repaired);
       }
       // keep a short sample so the next unreadable answer can be diagnosed (prod 2026-09-25: 16 in 7 days, in pairs per panel)
@@ -224,16 +247,7 @@ export class SelfImprovementAgentReviewService {
       ...(this.targetEvidence(panel) ? ['', this.targetEvidence(panel) as string, 'The target source is provided above: judge the proposal against it and do not ask for the source code again.'] : []),
       ...(lessons ? ['', lessons] : []),
       '',
-      'You are one of several independent reviewers. Your job is to genuinely evaluate this proposal',
-      "from your domain's perspective, not to approve it by default. If the evidence is insufficient,",
-      "respond with stance 'needs_evidence'. If you see a real problem, respond with stance 'oppose'.",
-      "Only respond 'support' if you are actually convinced.",
-      '',
-      'Respond with ONLY a JSON object matching this exact shape (no markdown, no prose outside the JSON):',
-      '{"stance": "support|oppose|uncertain|needs_evidence", "confidence": 0.0-1.0,',
-      ' "findings": ["..."], "recommendations": ["..."], "evidence_refs": ["..."], "limitations": "..."}',
-      'evidence_refs must cite something concrete from the context above (e.g. a specific fact from the',
-      'description/rationale) — do not leave it empty and do not invent evidence that is not in the context.',
+      ...PANEL_REVIEW_INSTRUCTIONS,
     ].join('\n');
   }
 

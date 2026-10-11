@@ -65,6 +65,9 @@ it('W3: splits gym species per model, flags a benched species and counts what ne
 it('honest needs-you: open loop PRs count, merged ones do not; no_change and dismissed requeue candidates do not', async () => {
   const { dismissRequeue } = await import('../services/decisions-inbox');
   proposal('r1', 'regressed'); proposal('i1', 'infra_failed'); proposal('n1', 'no_change');
+  // a regression with a maker attribution is the operator's; unattributed ones are counted as attribution_unknown
+  db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at)
+    VALUES ('a-r1', 'outcome_attribution', 'self_improvement', 'r1', 'h', 'annotation', 'maker_failure', 'test', ?)`).run(new Date().toISOString());
   const run = db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
     VALUES (?, 'test-gap', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`);
   run.run('o1', JSON.stringify({ pr_url: 'https://github.com/o/r/pull/1' }), ago(30), ago(30));

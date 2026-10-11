@@ -18,7 +18,10 @@ import { LoopDraftPrService } from './loop-draft-pr-service';
 import { evolveEligible, evolveSpecies, selectEvolveWinner } from './evolve-selection';
 import { leaseGradedRefs, recordMakerGraded } from './graded-fitness';
 import { assignSiblingArm, recordEffortSibling, siblingRandomiseEnabled } from './effort-controller';
-import { runGenome } from './maker-genome';
+import { assignCheckerFamily, checkerFamilyEnabled } from './checker-family';
+import { runAce001, runGenome, skillContentHash } from './maker-genome';
+import { runSte001 } from './ste-001';
+import { recordMakerCall } from './model-call-ledger';
 import { strategyGenomeFor } from './genome-registry';
 import { banditSpecies, chooseSpecies, speciesKey } from './runtime-bandit';
 import { recordFitnessShadow } from './fitness-view';
@@ -699,6 +702,9 @@ export class LoopDaemon {
             id, loopRunId: run.id, role, runtime: 'manual', findingId: failed.finding_id ?? '', worktreePath: null, branchName: null, now: new Date().toISOString(),
             metadata: {
               maker_lease_id: meta.maker_lease_id, retry_of: leaseId, retry_reason: meta.failure_reason,
+              // F2: a randomised checker's retry keeps its arm and model (only the checker ever carries them)
+              ...(role === 'checker' && meta.checker_family_arm ? Object.fromEntries(['model', 'checker_family_arm', 'checker_model_id', 'checker_model_family', 'maker_model_family']
+                .filter((k) => meta[k] !== undefined).map((k) => [k, meta[k]])) : {}),
               ...(role === 'checker' ? { requires_independent_review: true } : { requires_security_review: true, ...(meta.high_risk_reason ? { high_risk_reason: meta.high_risk_reason } : {}) }),
             },
           });
@@ -724,7 +730,13 @@ export class LoopDaemon {
           return false;
         };
         // A run resumed after a reviewer's approval already has the earlier reviewer's verdict: don't dispatch it twice.
-        if (!leaseDone('checker') && await dispatch('checker', reviewerFor('checker'))) return;
+        const checkerLease = reviewerFor('checker');
+        // F2 (CHECKER_FAMILY_RANDOMISE=on, acting): an oracle-lane goal's checker runs on the default (same) or on
+        // CHECKER_CROSS_MODEL (cross) by sha256 of the goal id; opencode only (the model is an opencode provider/model)
+        if (checkerLease && !leaseDone('checker') && checkerFamilyEnabled() && runtime === 'opencode' && evolveEligible(this.db, goal.id)) {
+          try { assignCheckerFamily(this.db, run.id, goal.id, checkerLease, runtime); } catch { /* unassigned: the checker runs as today */ }
+        }
+        if (!leaseDone('checker') && await dispatch('checker', checkerLease)) return;
         // The security reviewer is a separate, higher autonomy step (removes human security review): its own flag.
         if (process.env.LOOP_DAEMON_AUTOMATED_SECURITY_CHECKER_ENABLED === 'true' && !leaseDone('security_checker')) {
           const security = reviewerFor('security_checker');
@@ -781,19 +793,31 @@ export class LoopDaemon {
         // Y2: the strategy genome this maker ran with (template + examples + sealed rules), on the lease and the outcome
         const genome = runGenome(this.db, run.id);
         this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.genome', json(?)) WHERE id = ?").run(JSON.stringify(genome), activeMakerLease.id);
+        // ACE-001: the arm and injected items of this maker's assignment, on the lease and as `ace-001-arm:<RS>` on the outcome
+        const ace = runAce001(this.db, run.id);
+        if (ace) this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.ace_001', json(?)) WHERE id = ?").run(JSON.stringify(ace), activeMakerLease.id);
+        // STE-001: the template arm of this maker's assignment, on the lease and as `ste-001-arm:<0|1>` on the outcome
+        const ste = runSte001(this.db, run.id);
+        if (ste) this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.ste_001', json(?)) WHERE id = ?").run(JSON.stringify(ste), activeMakerLease.id);
         // One outcome per run: two daemon passes can finish the same run.
-        if (!this.db.prepare('SELECT 1 FROM skill_outcomes WHERE skill_id = ? AND task_id = ? AND agent_id = ? LIMIT 1').get(skillId, run.id, activeMakerLease.id)) skills.recordOutcome(skillId, {
+        const firstPass = !this.db.prepare('SELECT 1 FROM skill_outcomes WHERE skill_id = ? AND task_id = ? AND agent_id = ? LIMIT 1').get(skillId, run.id, activeMakerLease.id);
+        // B29: the maker's model call in the ledger, with the experiment arms it ran in (opencode/remote runtime_usage; missing = null)
+        if (firstPass) recordMakerCall(this.db, { runId: run.id, goalId: goal.id, loopName, runtime: activeMakerLease.runtime, meta, ace, ste, durationMs: Date.now() - startedAtMs, ok: allGatesPass });
+        if (firstPass) skills.recordOutcome(skillId, {
           success: allGatesPass,
           tokensUsed: Number(meta.runtime_usage?.total_tokens) || 0,
           durationMs: Date.now() - startedAtMs,
           domain: loopName,
           taskId: run.id,
           agentId: activeMakerLease.id,
+          // §16 step 9: identity of the template + examples + sealed rules + strategy genome this maker ran with
+          skillContentHash: skillContentHash(genome, typeof meta.genome_id === 'string' ? meta.genome_id : null),
           ...(typeof meta.model === 'string' ? { model: meta.model } : {}),
           evidenceRefs: [`loop_run:${run.id}`, `genome:${genome.id}`, ...(typeof meta.genome_id === 'string' ? [`strategy_genome:${meta.genome_id}`] : []), ...verification.gates.filter(g => g.status !== 'pass').map(g => `gate:${g.name}:${g.status}`),
             // RX-3: why a failed run failed (infra / no change / regressed) — the bandit counts all three as 0 today
             ...(allGatesPass ? [] : [`outcome_class:${runOutcomeOnFailure(this.db, activeMakerLease.id)}`]),
-            ...leaseGradedRefs(meta)], // SI-A: graded:<score>, graded_kind, graded_lane when the maker was graded
+            ...leaseGradedRefs(meta), // SI-A: graded:<score>, graded_kind, graded_lane when the maker was graded
+            ...(ace ? [`ace-001-arm:${ace.arm}`] : []), ...(ste ? [`ste-001-arm:${ste.arm}`] : [])],
         });
       } catch { /* best-effort learning */ }
 

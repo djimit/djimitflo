@@ -3,6 +3,7 @@ import { failureTaskEvidence } from './gym-failure-tasks';
 import { forecastScoresV2 } from './forecast-scoring';
 import { parseRuntimeSpec } from './social-runtime-providers';
 import { modelEvidence } from './model-selector';
+import { ledgerTotals } from './model-call-ledger';
 import { commonsYield, oracleAgreement } from './honest-numbers';
 import { banditOpe } from './bandit-propensity';
 import { egressEvidence } from './egress-classification';
@@ -10,8 +11,16 @@ import { embeddingDimMismatch, vectorStrictDim } from './embedding-dims';
 import { autoMergeEvidence } from './loop-auto-merge-state';
 import { nonMakerRunSql } from './outcome-attribution';
 import { effortX1Evidence } from './effort-controller';
+import { checkerFamilyEvidence } from './checker-family';
 import { gradedEvidence } from './graded-fitness';
 import { wilson } from './evolution-estimators';
+import { ace001Evidence } from './ace-001';
+import { ste001Evidence } from './ste-001';
+import { d5NoEvidence } from './d5-no';
+import { tg001Evidence } from './tg-001';
+import { intelligenceEvidence } from './intelligence-metrics';
+import type { ForecasterScoreV2 } from './forecast-scoring';
+import { BASELINE_GENOME, holdoutEpoch } from './genome-registry';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -42,6 +51,12 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'EFFORT_SIBLING_RANDOMISE', acting: true },
   { name: 'GRADED_FITNESS_MODE', acting: false }, { name: 'GRADED_CONTEST_MODE', acting: true },
   { name: 'SHIPPED_CODE_SCAN_MODE', acting: false },
+  { name: 'GYM_STORE_DIFFS', acting: false }, { name: 'WEAK_ASSERTION_CHECK_MODE', acting: true },
+  { name: 'POLICY_VIOLATION_LOG', acting: false },
+  { name: 'CHECKER_FAMILY_RANDOMISE', acting: true }, { name: 'CHECKER_CROSS_MODEL', acting: true }, { name: 'CHECKER_FAMILY_TARGET_PER_ARM', acting: false },
+  { name: 'ACE_001_MODE', acting: true },
+  { name: 'STE_001_MODE', acting: true },
+  { name: 'TG_001_MODE', acting: true },
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */
@@ -86,6 +101,39 @@ export function hackRateEvidence(db: Database, env: NodeJS.ProcessEnv, now: numb
 
 export type GateState = 'green' | 'red' | 'unknown';
 export interface Gate { state: GateState; reason: string }
+
+/**
+ * §16 step 7 (§16.11: never optimise against a repeatedly exposed locked holdout). Per frozen holdout epoch: how many distinct
+ * candidate genomes it has been used for — ran a completed, non-canary gym attempt on one of its tasks, or had a trial decided
+ * on it (genome_trial_results; tier_set 'mined' = the mined holdout, else the mutant holdout) — plus the decisions and
+ * evaluations behind that. The parent (baseline) is not a candidate. `reuse_risk` once candidates exceed the contract limit
+ * (METRIC_CONTRACTS.yaml VIG holdout_reuse_limit): introduce a fresh epoch (GYM_HOLDOUT_EPOCH, an operator action). Read-only:
+ * nothing here rotates an epoch.
+ */
+export const HOLDOUT_REUSE_LIMIT = 10;
+export function holdoutExposure(db: Database, env: NodeJS.ProcessEnv = process.env, limit = HOLDOUT_REUSE_LIMIT) {
+  const all = <T>(sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } };
+  const tables = [['mined', 'gym_holdout', 'commit_sha'], ['mutant', 'gym_mutant_holdout', 'key'], ['write_test', 'gym_write_test_holdout', 'key']] as const;
+  const epochs = tables.flatMap(([holdout, table, key]) => {
+    const frozen = all<{ epoch: number; tasks: number; frozen_at: string }>(`SELECT epoch, COUNT(*) AS tasks, MIN(created_at) AS frozen_at FROM ${table} GROUP BY epoch ORDER BY epoch`);
+    if (!frozen.length) return [];
+    const runs = all<{ epoch: number; genome: string | null; n: number }>(`SELECT h.epoch, json_extract(r.metadata, '$.gym.genome') AS genome, COUNT(*) AS n
+      FROM loop_runs r JOIN ${table} h ON h.${key} = json_extract(r.metadata, '$.gym.commit')
+      WHERE r.loop_name = 'evolution-gym' AND r.status = 'completed' AND json_extract(r.metadata, '$.gym.canary') IS NULL GROUP BY 1, 2`);
+    const decided = holdout === 'write_test' ? [] : all<{ epoch: number; trial_id: string }>(
+      `SELECT COALESCE(epoch, 0) AS epoch, trial_id FROM genome_trial_results WHERE tier_set IS NOT NULL AND (tier_set = 'mined') = ?`, holdout === 'mined' ? 1 : 0);
+    const current = (() => { try { return holdoutEpoch(db, table, env); } catch { return null; } })();
+    return frozen.map((f) => {
+      const ran = runs.filter((r) => r.epoch === f.epoch);
+      const dec = decided.filter((d) => d.epoch === f.epoch);
+      const candidates = new Set([...ran.map((r) => r.genome).filter((g): g is string => Boolean(g) && g !== BASELINE_GENOME), ...dec.map((d) => d.trial_id)]).size;
+      return { holdout, epoch: f.epoch, tasks: f.tasks, frozen_at: f.frozen_at, current: f.epoch === current, candidates, decisions: dec.length,
+        evaluations: ran.reduce((a, r) => a + r.n, 0), reuse_risk: candidates > limit };
+    });
+  });
+  return { limit, epochs, reuse_risk: epochs.some((e) => e.current && e.reuse_risk), write_test_enabled: env.DREAM_TRIAL_WRITE_TEST_HOLDOUT === 'true',
+    note: `candidates = distinct genomes (parent excluded) that ran on or were decided on the epoch; reuse_risk above ${limit} (contract) — introduce a fresh epoch (GYM_HOLDOUT_EPOCH, operator). Read-only.` };
+}
 
 /** MS-2: the expert runner's model from FRONTIER_EXPERTS_RUNTIME ('ollama:kimi-k3:cloud' → 'kimi-k3:cloud'), parsed like the runner does. */
 const frontierIncumbent = (runtime?: string): string | undefined => (runtime || '').trim() ? parseRuntimeSpec(runtime, { runtime: 'ollama', model: '' }).model : undefined;
@@ -145,6 +193,11 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     failed_checks: all<{ check: string; n: number }>(`SELECT g.key AS "check", COUNT(*) AS n FROM loop_runs r, json_each(json_extract(r.metadata, '$.gym_result.prod_gates')) g
       WHERE r.loop_name = 'evolution-gym' AND json_extract(r.metadata, '$.gym.prod_gates') = 1 AND g.value = 'fail' AND r.created_at >= ? GROUP BY 1 ORDER BY n DESC, 1`, since),
   };
+  // GYM_STORE_DIFFS: stored (task, redacted diff, oracle result) pairs — all time, the training corpus is cumulative
+  const diffRow = all<{ stored: number; distinct_tasks: number; successes: number | null; failures: number | null; redacted_attempts: number | null }>(`SELECT COUNT(*) AS stored,
+    COUNT(DISTINCT task_key) AS distinct_tasks, SUM(status = 'success') AS successes, SUM(status = 'failure') AS failures, SUM(redacted > 0) AS redacted_attempts FROM gym_attempt_diffs`)[0];
+  const gym_diffs = { enabled: env.GYM_STORE_DIFFS === 'true', stored: diffRow?.stored ?? 0, distinct_tasks: diffRow?.distinct_tasks ?? 0,
+    successes: diffRow?.successes ?? 0, failures: diffRow?.failures ?? 0, redacted_attempts: diffRow?.redacted_attempts ?? 0 };
   // RX-11: shadow hack flags per species (from gym_result.hack_flags) and canary outcomes (a solved canary = compromised oracle)
   const hacks = {
     flags: all<{ species: string; flag: string; n: number }>(`SELECT json_extract(r.metadata, '$.gym.species') AS species, f.value AS flag, COUNT(*) AS n
@@ -175,9 +228,10 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   // Gate A reads deciding-set diagnostics; shadow-only rows (e-process, graded) carry none
   const latestTrial = trials.recent.find((t): t is typeof t & { deciding_n: number } => t.deciding_n != null);
   // RX-7: forecast scoring V2 summary (shadow): counts per state; details at GET /api/health/forecasts-v2
+  let forecasters: ForecasterScoreV2[] = [];
   const forecasts_v2 = (() => {
     try {
-      const f = forecastScoresV2(db, { boot: 500 }).forecasters;
+      const f = forecasters = forecastScoresV2(db, { boot: 500 }).forecasters;
       const grade = f.filter((x) => x.state === 'decision_grade');
       return { scored: f.length, decision_grade: grade.length, decision_grade_skilled: grade.filter((x) => x.skill_ci[0] > 0).length, insufficient: f.length - grade.length };
     } catch { return { scored: 0, decision_grade: 0, decision_grade_skilled: 0, insufficient: 0 }; }
@@ -204,7 +258,9 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   };
   // MS-1: model calls per consumer (14-day selector window) and what the cost-aware selector would pick
   const frontier = frontierIncumbent(env.FRONTIER_EXPERTS_RUNTIME);
-  const models = modelEvidence(db, { panel_review: env.SELF_IMPROVEMENT_REVIEW_MODEL, ...(frontier ? { frontier_experts: frontier } : {}) }, env, now);
+  const models = { ...modelEvidence(db, { panel_review: env.SELF_IMPROVEMENT_REVIEW_MODEL, ...(frontier ? { frontier_experts: frontier } : {}) }, env, now),
+    // B29: calls / tokens (unknown counted apart) / list + marginal cost per purpose and per experiment arm, 7 d
+    ledger_7d: ledgerTotals(db, new Date(now - 7 * 86_400_000).toISOString()) };
   // RX-9 / RX-8: honest agreement and yield numbers (one row per maker; attempted Commons children vs source base rate)
   const oracle = oracleAgreement(db);
   const commons = commonsYield(db);
@@ -243,7 +299,9 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   const memory_holdout = { rate: env.MEMORY_HOLDOUT_RATE ?? null, rules: withRules, holdout: heldOut,
     fisher_p: +fisherExact(withRules.verified, withRules.regressed, heldOut.verified, heldOut.regressed).toPrecision(4),
     note: 'runs with a settled proposal (verified or regressed); rules = ≥ 1 rule in the assignment, holdout = rules withheld by MEMORY_HOLDOUT_RATE. Two-sided Fisher exact.' };
-  return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, gym_prod_gates, trials, models, oracle, commons, forecasts_v2, hacks,
+  const effort_x1 = effortX1Evidence(db, since, env, fisherExact);
+  const holdout_exposure = holdoutExposure(db, env);
+  return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, gym_prod_gates, gym_diffs, trials, models, oracle, commons, forecasts_v2, hacks,
     // S7: hack-detector flag rate per genome and gym task kind (14 d) and canary passes, Wilson 95 %
     hack_rate: hackRateEvidence(db, env, now), estimates, ope,
     // UX-20: where model calls send data (shadow report; nothing is blocked)
@@ -255,7 +313,28 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // earned auto-merge: mode, class state (active / revoked + why) and counts
     auto_merge: autoMergeEvidence(db, env, now), memory_holdout,
     // X1 (EFFORT_SIBLING_RANDOMISE): verified / regressed / infra per sibling arm
-    effort_x1: effortX1Evidence(db, since, env, fisherExact),
+    effort_x1,
+    // F2 (CHECKER_FAMILY_RANDOMISE): checker verdicts, outcome agreement and kappa per checker-family arm
+    checker_family: checkerFamilyEvidence(db, since, env, fisherExact),
     // SI-A/SI-B: graded executed fitness per pool (n, mean, share at 1.0) and graded-contest agreement with the current rule
-    graded: gradedEvidence(db, since, env), gates };
+    graded: gradedEvidence(db, since, env),
+    // ACE-001 (ACE_001_MODE): oracle-lane maker outcomes per retrieval × example-selection arm (pre-registered, collecting until target)
+    ace_001: ace001Evidence(db, since, env),
+    ste_001: ste001Evidence(db, since, env),
+    // H-D5NO (prescreen in shadow): prospective false-rejection risk of jev confident-NO; never mixed with JC (NE-001)
+    d5_no: d5NoEvidence(db),
+    // TG-001 (TG_001_MODE): gym → production transfer gap — the same frozen write_test tasks under four prompt representations
+    tg_001: tg001Evidence(db, env),
+    // KE-3: does knowledge reach evolution? Mutant genomes written from injected knowledge units, and proposals citing a
+    // unit or claim (evidence ref `expert_unit:<id>` / `expert_claim:<id>`; no proposal path cites knowledge yet)
+    knowledge_links: {
+      genomes_with_refs: one("SELECT COUNT(*) FROM maker_genomes WHERE knowledge_refs_json IS NOT NULL AND knowledge_refs_json <> '[]'"),
+      genomes_total: one("SELECT COUNT(*) FROM maker_genomes WHERE origin = 'dream'"),
+      proposals_with_refs: one(`SELECT COUNT(*) FROM self_improvements WHERE evidence_refs_json LIKE '%"expert_unit:%' OR evidence_refs_json LIKE '%"expert_claim:%'`),
+    },
+    // §16 step 7: per frozen holdout epoch, distinct candidates run or decided on it; reuse_risk above the contract limit (read-only)
+    holdout_exposure,
+    // §16 step 1: one read-only status per metric contract (METRIC_CONTRACTS.yaml); INSUFFICIENT_EVIDENCE is never rendered as 0
+    intelligence: intelligenceEvidence(db, env, now, since, { forecasters, effort_x1, memory_holdout,
+      holdout_reuse_risk: holdout_exposure.epochs.filter((e) => e.current && e.reuse_risk).map((e) => ({ holdout: e.holdout, epoch: e.epoch, candidates: e.candidates })) }), gates };
 }

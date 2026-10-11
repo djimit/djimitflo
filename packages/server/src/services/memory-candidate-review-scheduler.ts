@@ -57,6 +57,7 @@ import { MemoryCandidateService, type MemoryCandidateRecord } from './memory-can
 import { SpecialistPanelService, type SpecialistPanelRecord } from './specialist-panel-service';
 import { SelfImprovementAgentReviewService } from './self-improvement-agent-review-service';
 import { SelfImprovementService } from './self-improvement-service';
+import { markRun } from './scheduler-registry';
 
 const MINUTE_MS = 60 * 1000;
 const SCHEDULER_ACTOR = 'agent:memory-approver';
@@ -106,6 +107,7 @@ export class MemoryCandidateReviewScheduler {
   }
 
   async tick(): Promise<MemoryReviewTickResult> {
+    markRun('memory_candidate_review'); // Cockpit 3.0: execution evidence for the scheduler registry
     const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const result: MemoryReviewTickResult = { reviewed: [], promoted: [], parked: [], failed: [], evolutionProposalGenerated: false };
 

@@ -3,6 +3,7 @@ import type { Database } from 'better-sqlite3';
 import { kbContext } from './kb-corpus';
 import { forecastScores } from './forecast-scoring';
 import { knowledgeOverview } from './knowledge-overview';
+import { markRun } from './scheduler-registry';
 
 /**
  * AR-W (operator 04-10): committee swarms on the workstation. For every new proposal a committee of member genomes
@@ -202,7 +203,7 @@ export function evolveCommittee(db: Database, now = new Date(), env: NodeJS.Proc
 /** Hourly check; evolution itself runs at most once a day. */
 export function startCommitteeEvolution(db: Database, intervalMs = 3_600_000): (() => void) | null {
   if (!committeeEnabled()) return null;
-  const tick = () => { try { const r = evolveCommittee(db); if (r.born || r.retired.length) console.log(`🧠 committee: born ${r.born ?? '-'}, retired ${r.retired.join(',') || '-'}`); } catch (e) { console.warn('committee evolution failed:', e instanceof Error ? e.message : String(e)); } };
+  const tick = () => { markRun('committee_evolution'); try { const r = evolveCommittee(db); if (r.born || r.retired.length) console.log(`🧠 committee: born ${r.born ?? '-'}, retired ${r.retired.join(',') || '-'}`); } catch (e) { console.warn('committee evolution failed:', e instanceof Error ? e.message : String(e)); } };
   const t = setInterval(tick, intervalMs); t.unref?.();
   return () => clearInterval(t);
 }

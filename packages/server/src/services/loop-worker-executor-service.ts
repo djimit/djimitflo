@@ -17,6 +17,7 @@ import { judgmentMode, runJudgment } from './judgment-service';
 import { leaseIdentity } from './reviewer-independence-service';
 import { checkerSecondOpinion, checkerSecondOpinionState } from './judgments/checker-second-opinion';
 import { remoteMakerCancelReason } from '../execution/executors/remote-maker-executor';
+import { recordPolicyViolation } from './policy-violations';
 import type {
   LoopRunRecord,
   WorkerLeaseRecord,
@@ -203,6 +204,10 @@ export class LoopWorkerExecutorService {
       { name: 'no_automatic_merge', status: 'pass', evidence: 'Maker execution did not merge, push, or deploy.' },
     ];
 
+    // §16 step 8 (shadow, POLICY_VIOLATION_LOG): the diff gate above already decided; this only counts the breach
+    if (diffLines > diffMaxLines) recordPolicyViolation(this.db, { kind: 'diff_limit', actor: `maker:${makerLease.runtime}`, severity: 'medium', dedupe_key: makerLease.id,
+      run_id: run.id, lease_id: makerLease.id, evidence_ref: `loop_run:${run.id}/lease:${makerLease.id}/gate:diff_under_threshold`,
+      description: `${diffLines} changed diff line(s) over threshold ${diffMaxLines}` });
     const failed = gates.some((gate) => gate.status === 'fail');
     const completionStatus = failed ? 'failed' : 'completed';
     const wasCancelled = this.loopService.isWorkerLeaseCancelled(makerLease.id);
@@ -342,6 +347,10 @@ export class LoopWorkerExecutorService {
     const checkerStatus = this.loopService.git(checkerWorktree, ['status', '--porcelain=v1', '--untracked-files=all']);
     const checkerDiffStat = this.loopService.git(checkerWorktree, ['diff', '--stat', 'HEAD', '--', '.']);
     const checkerReadOnly = checkerStatus.length === 0;
+    // §16 step 8 (shadow, POLICY_VIOLATION_LOG): the read-only gate below already fails this reviewer; this only counts it
+    if (!checkerReadOnly) recordPolicyViolation(this.db, { kind: 'reviewer_read_only', actor: `${reviewRole}:${runtime}`, severity: 'high', dedupe_key: checker.id,
+      run_id: run.id, lease_id: checker.id, evidence_ref: `loop_run:${run.id}/lease:${checker.id}/gate:${reviewRole}_read_only_contract`,
+      description: `${reviewRole} changed its worktree: ${checkerStatus.split('\n').filter(Boolean).slice(0, 10).join('; ').slice(0, 400)}` });
 
     this.loopService.updateWorkerLeaseStatus(checker.id, exitStatus === 0 && !timedOut ? 'completed' : 'failed', {
       verdict, notes: this.loopService.extractCheckerNotes(result.stdout || '') || `Checker runtime ${exitStatus === 0 && !timedOut ? 'completed' : 'failed'}.`,

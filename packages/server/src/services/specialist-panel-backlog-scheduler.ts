@@ -29,6 +29,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { SpecialistPanelService } from './specialist-panel-service';
+import { markRun } from './scheduler-registry';
 
 const MINUTE_MS = 60 * 1000;
 
@@ -65,6 +66,7 @@ export class SpecialistPanelBacklogScheduler {
   }
 
   tick(): BacklogTickResult {
+    markRun('specialist_panel_backlog'); // Cockpit 3.0: execution evidence for the scheduler registry
     const result: BacklogTickResult = { projected: [], failed: [] };
     const candidates = this.panels.listPanels(500).filter((panel) =>
       panel.status === 'consensus_ready'
