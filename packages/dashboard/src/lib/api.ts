@@ -148,6 +148,10 @@ export interface EvolutionEvidence {
   ace_001: { mode: string | null; target_per_arm: number; status: 'collecting' | 'analysable';
     arms: Record<'00' | '01' | '10' | '11', { n: number; verified: number; verified_rate: number | null; ci: [number, number] | null; graded_n: number; graded_mean: number | null; tokens_mean: number | null }>;
     main_effects: { retrieval: AceMainEffect; examples: AceMainEffect }; note: string };
+  /** STE-001 (STE_001_MODE): oracle-lane maker outcomes per template arm (0 = current, 1 = Simplified Technical English) */
+  ste_001: { mode: string | null; target_per_arm: number; ste_template_hash: string; status: 'collecting' | 'analysable'; diff: number | null;
+    arms: Record<'0' | '1', { n: number; verified: number; verified_rate: number | null; ci: [number, number] | null; out_of_scope: number; out_of_scope_share: number | null; tokens_mean: number | null }>;
+    note: string };
   /** SI-A/SI-B (GRADED_FITNESS_MODE / GRADED_CONTEST_MODE): graded executed fitness per pool and graded-contest agreement */
   graded: {
     mode: { fitness: 'off' | 'shadow'; contest: 'off' | 'shadow' | 'act' };
