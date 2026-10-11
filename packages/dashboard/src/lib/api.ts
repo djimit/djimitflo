@@ -239,7 +239,7 @@ export type OperatorCockpit = {
   /** UX-8: schedulers this server armed at boot vs off */
   schedulers?: { armed: number; off: number;
     /** Cockpit 3.0: execution, not intent — armed_not_ticking / failing schedulers silently stopped working */
-    by_status?: Partial<Record<'off' | 'executing' | 'failing' | 'armed_pending' | 'armed_not_ticking' | 'unknown', number>>; health?: 'HEALTHY' | 'BREACHED' | 'UNKNOWN' };
+    by_status?: Partial<Record<'off' | 'executing' | 'failing' | 'armed_pending' | 'armed_not_ticking' | 'unknown' | 'quarantined', number>>; health?: 'HEALTHY' | 'BREACHED' | 'UNKNOWN' };
   /** stall detectors; status 'error' = that subsystem is unwatched (an empty stall list is then not healthy) */
   detectors?: Array<{ name: string; status: 'ok' | 'error' | 'not_applicable' | 'capped'; error?: string; checked_at: string }>;
   remote_workers: Array<{ host: string; claims_24h: number; last_claim: string | null; interrupted_24h: number }>;
