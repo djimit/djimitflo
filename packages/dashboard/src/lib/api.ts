@@ -110,7 +110,9 @@ export interface EvolutionEvidence {
   trials: { by_state: Array<{ state: string; n: number }>; recent: Array<{ trial_id: string; parent_id: string; tier_set: string; deciding_n: number; f_parent_failures: number; b: number; c: number; p: number; power_q8_l05: number; state: string; recorded_at: string }>;
     /** GENOME_FIRE_CHECK: trial attempts voided because the genome's lines never reached the maker (never paired) */
     void?: { attempts: number; by_genome: Array<{ genome: string; n: number }>; fire_checked: number | null } };
-  models: { mode: string; rows: Array<{ consumer: string; model: string; n: number; ok_rate: number; agree_rate: number | null; median_latency_ms: number | null; cost_weight: number }>; would_pick: Record<string, string | null> };
+  models: { mode: string; rows: Array<{ consumer: string; model: string; n: number; ok_rate: number; agree_rate: number | null; median_latency_ms: number | null; cost_weight: number }>; would_pick: Record<string, string | null>;
+    /** B29: per purpose / experiment arm, 7 d; null sums = unknown, never 0 */
+    ledger_7d?: { by_purpose: Array<Record<string, unknown>>; by_experiment: Array<Record<string, unknown>> } };
   oracle: { n: number; kappa: number | null; kappa_ci: [number, number] | null; agreement: { all: number | null; conf_ge_06: number | null; conf_lt_06: number | null }; accuracy: { n: number; jev: number | null; checker: number | null }; kappa_jev_outcome: number | null; kappa_jev_outcome_ci: [number, number] | null; kappa_checker_outcome: number | null; enforce_eligible: boolean; note: string };
   commons: { k: number; n: number; rate: number | null; ci: [number, number]; base_rate: number | null; base_ci: [number, number]; base_n: number; verdict: string; note: string };
   forecasts_v2: { scored: number; decision_grade: number; decision_grade_skilled: number; insufficient: number };
