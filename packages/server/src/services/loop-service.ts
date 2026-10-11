@@ -32,7 +32,7 @@ import { LoopPersistenceService } from './loop-persistence-service';
 import { ExperienceRetrievalService } from './experience-retrieval-service';
 import { SelfImprovementService } from './self-improvement-service';
 import { MAKER_TEMPLATE_RULES_STE } from './ste-001';
-import { assignmentContext, assignmentContextMarkdown } from './assignment-context';
+import { assignmentContext, assignmentContextMarkdown, type AssignmentContext } from './assignment-context';
 import { firstJsonObject } from './model-json';
 import type {
   LoopName,
@@ -295,6 +295,46 @@ export const MAKER_TEMPLATE_RULES = [
 
 /** STE-001: arm 1 gets the Simplified Technical English rules; everyone else (and STE_001_MODE off) today's rules. */
 export const makerTemplateRules = (ste?: { arm: 0 | 1 }): string[] => (ste?.arm === 1 ? MAKER_TEMPLATE_RULES_STE : MAKER_TEMPLATE_RULES);
+/**
+ * The maker's LOOP_WORK.md text (writeWorkAssignment writes it; a remote maker gets it flattened to one line).
+ * TG-001 renders the same text for a frozen task and, for its CONTROLLED arm, leaves out parts that should not matter for
+ * solving the task: `ids` (loop run / runtime / finding id lines), `advisory` (past-experience block), `policy` (the fixed
+ * maker rules template). Production always renders with nothing omitted.
+ */
+export type AssignmentOmit = 'ids' | 'advisory' | 'policy';
+export function renderWorkAssignment(run: { id: string; loop_name: string }, finding: LoopFinding, runtime: string, advisoryText: string,
+  extra: AssignmentContext, options: { nestedSpawnControl?: string; omit?: AssignmentOmit[] } = {}): string {
+  const omit = new Set(options.omit ?? []);
+  return [
+    `# ${finding.metadata?.objective_mode ? 'Objective' : run.loop_name} Assignment`,
+    '',
+    ...(omit.has('ids') ? [] : [`Loop run: ${run.id}`, `Runtime target: ${runtime}`, `Finding: ${finding.id}`]),
+    `File: ${finding.file}${finding.line ? `:${finding.line}` : ''}`,
+    ...(finding.metadata?.objective_mode && !finding.file.startsWith('(') ? [objectiveScopeLine(finding.file)] : []),
+    '',
+    '## Finding',
+    '',
+    finding.message,
+    '',
+    '## Evidence',
+    '',
+    finding.evidence,
+    '',
+    '## Suggested Fix',
+    '',
+    finding.suggested_fix,
+    '',
+    ...(omit.has('advisory') ? [] : ['## Advisory Past Experience', '', advisoryText || 'No matching observed episodes were retrieved.', '']),
+    ...assignmentContextMarkdown(extra),
+    ...(omit.has('policy') ? [] : makerTemplateRules(extra.ste)),
+    '',
+    // Nested-spawn control block (P1). Only injected when this lease is itself
+    // permitted to spawn sub-agents (operator-armed, depth within budget). This
+    // is the single path a runtime child uses to spawn children: it shells out
+    // to the control endpoint with its scoped token. See prepareNestedLease.
+    ...(options.nestedSpawnControl ? [options.nestedSpawnControl, ''] : []),
+  ].join('\n');
+}
 
 /** The objective-assignment scope line (exported for the STE prompt lint). */
 export const objectiveScopeLine = (file: string): string => `Change only this file: ${file}. Do not edit README.md, CONTRIBUTING.md or any other file.`;
@@ -2298,40 +2338,7 @@ export class LoopService {
       this.recordLoopEvent(run.id, 'assignment_context', 'info', `Maker assignment includes ${extra.examples.length} proven example(s) and ${extra.rules.length} rule(s)${extra.memory_holdout ? ' (memory holdout: rules withheld)' : ''}${extra.ace ? ` (ACE-001 arm ${extra.ace.arm})` : ''}${extra.ste ? ` (STE-001 arm ${extra.ste.arm})` : ''}.`,
         { examples: extra.examples, rule_ids: extra.rules.map((r) => r.id), ...(extra.memory_holdout ? { memory_holdout: true } : {}), ...(extra.ace ? { ace_001: extra.ace } : {}), ...(extra.ste ? { ste_001: extra.ste } : {}) });
     }
-    const content = [
-      `# ${finding.metadata?.objective_mode ? 'Objective' : run.loop_name} Assignment`,
-      '',
-      `Loop run: ${run.id}`,
-      `Runtime target: ${runtime}`,
-      `Finding: ${finding.id}`,
-      `File: ${finding.file}${finding.line ? `:${finding.line}` : ''}`,
-      ...(finding.metadata?.objective_mode && !finding.file.startsWith('(') ? [objectiveScopeLine(finding.file)] : []),
-      '',
-      '## Finding',
-      '',
-      finding.message,
-      '',
-      '## Evidence',
-      '',
-      finding.evidence,
-      '',
-      '## Suggested Fix',
-      '',
-      finding.suggested_fix,
-      '',
-      '## Advisory Past Experience',
-      '',
-      advisoryContext.text || 'No matching observed episodes were retrieved.',
-      '',
-      ...assignmentContextMarkdown(extra),
-      ...makerTemplateRules(extra.ste),
-      '',
-      // Nested-spawn control block (P1). Only injected when this lease is itself
-      // permitted to spawn sub-agents (operator-armed, depth within budget). This
-      // is the single path a runtime child uses to spawn children: it shells out
-      // to the control endpoint with its scoped token. See prepareNestedLease.
-      ...(options.nestedSpawnControl ? [options.nestedSpawnControl, ''] : []),
-    ].join('\n');
+    const content = renderWorkAssignment(run, finding, runtime, advisoryContext.text, extra, { nestedSpawnControl: options.nestedSpawnControl });
     fs.writeFileSync(this.workAssignmentPath(worktreePath), content, 'utf8');
   }
 
