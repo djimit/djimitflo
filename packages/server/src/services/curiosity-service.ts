@@ -189,7 +189,7 @@ export class CuriosityService {
             domain: cap.id,
             type: 'competence',
             severity: 1 - competence.success_rate,
-            description: `Low success rate (${(competence.success_rate * 100).toFixed(0)}%) for capability '${cap.id}'`,
+            description: `Low lease completion rate (${(competence.success_rate * 100).toFixed(0)}%) for capability '${cap.id}'`,
           });
         }
       }
