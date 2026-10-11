@@ -1366,6 +1366,7 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   `);
   // TG-001 integrity addendum: sha256 of the frozen analysis manifest, written in the freeze transaction
   addMissingColumns(db, 'tg_experiments', [{ name: 'analysis_sha256', definition: 'TEXT' }]);
+  addMissingColumns(db, 'tg_attempts', [{ name: 'first_claimed_at', definition: 'TEXT' }]); // B27: first physical attempt
   // Add missing columns BEFORE creating indexes that reference them — a stale
   // pre-existing self_improvements table (no fingerprint) otherwise breaks
   // CREATE INDEX idx_self_improve_fingerprint with "no such column".
