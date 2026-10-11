@@ -13,6 +13,7 @@ import { FAILURE_TASK_CAPABILITY, failureDerivedTasks, gitLookup, gymFailureTask
 import { daemonCheckOptions } from './loop-daemon';
 import { redactSecrets } from './secret-patterns';
 import { remoteGymCap } from './stall-watch';
+import { gymSkillContentHash } from './gym-skill-hash';
 import { gradedFitnessMode, gradedRefs, roundGraded, type GradedKind } from './graded-fitness';
 import { dreamEvolutionEnabled, ensureBaseline, fireCheckVoid, genome, genomeFireCheck, holdout, mutantHoldout, mutantTrialsEnabled, nextTrialAttempt, parseFireCheck, writeTestHoldout, writeTestHoldoutEnabled, type Genome } from './genome-registry';
 
@@ -211,6 +212,7 @@ export class RemoteGymService {
       const [species] = parseSpecies(gym.species, 1);
       this.outcomes.recordOutcome(`loop-maker:gym:${species.runtime}`, {
         success: result.status === 'success', tokensUsed: Math.max(0, Number(result.tokens) || 0), durationMs: Math.max(0, Number(result.durationMs) || 0), domain: 'gym', taskId: runId,
+        skillContentHash: gymSkillContentHash((gym as { kind?: string }).kind, gym.genome),
         ...(species.model ? { model: species.model } : {}), evidenceRefs: [`gym:${gym.commit}`, `loop_run:${runId}`, `gym_result:${reason}`, `remote:${host}`, ...(gym.genome ? [`genome:${gym.genome}`] : []), ...(gym.probe ? ['gym:probe'] : []), ...((gym as { kind?: string }).kind === 'write_test' ? ['gym:fail'] : []), ...(graded ? gradedRefs(graded.graded, graded.graded_kind) : [])],
       });
     }
