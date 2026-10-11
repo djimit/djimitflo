@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { addDimColumn, checkProposalDuplicate, proposalDedupeEnabled } from './proposal-dedupe';
 
 /**
  * D2 (operator 2026-09-28): requeue = a NEW attempt linked to the original, never a mutation of it.
@@ -48,5 +49,20 @@ export function requeueImprovement(db: Database, originalId: string, input: Requ
       VALUES (?, 'requeue', 'self_improvement', ?, ?, 'enforce', 'yes', ?, ?)`)
       .run(randomUUID(), originalId, id.slice(0, 16), `requeued as ${id} by ${actor}${escalated ? ' (escalation approved)' : ''}: ${reason.slice(0, 300)}`, now);
   })();
+  // ACE-001 delivery (prod 11-10: all 13 requeued oracle proposals had no vector → every treated arm fell back to control):
+  // the copy has the original's text, so it inherits the original's vector; no network on this path
+  if (!copyEmbedding(db, originalId, id, now) && proposalDedupeEnabled(env)) {
+    void checkProposalDuplicate(db, { id, title: String(original.title ?? ''), description: String(original.description ?? '') }).catch(() => null);
+  }
   return { id, created: true };
+}
+
+/** Copies the original proposal's stored embedding to its requeued copy; false when the original has none. */
+export function copyEmbedding(db: Database, fromId: string, toId: string, now = new Date().toISOString()): boolean {
+  try {
+    db.exec('CREATE TABLE IF NOT EXISTS proposal_embeddings (proposal_id TEXT PRIMARY KEY, model TEXT NOT NULL, vector BLOB NOT NULL, created_at TEXT NOT NULL)');
+    addDimColumn(db, 'proposal_embeddings');
+    return db.prepare(`INSERT OR IGNORE INTO proposal_embeddings (proposal_id, model, vector, created_at, embedding_dim)
+      SELECT ?, model, vector, ?, embedding_dim FROM proposal_embeddings WHERE proposal_id = ?`).run(toId, now, fromId).changes > 0;
+  } catch { return false; }
 }

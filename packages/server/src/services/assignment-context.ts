@@ -3,7 +3,7 @@ import path from 'path';
 import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { nonMakerRunSql } from './outcome-attribution';
-import { ace001On, aceArm, aceLane, similarExamples, similarKbPages, type AceContext } from './ace-001';
+import { ace001On, aceArm, aceFallbackReason, aceLane, similarExamples, similarKbPages, type AceContext } from './ace-001';
 import { ste001On, steArm, STE_TEMPLATE_HASH, type SteContext } from './ste-001';
 
 /**
@@ -67,6 +67,7 @@ export function assignmentContext(db: Database, run: { id: string; goal_id: stri
         const pages = similarKbPages(db, ace.improvementId);
         if (pages === null) ctx.fallback.push('r'); else { out.kb = pages; ctx.kb_paths = pages.map((p) => p.path); }
       }
+      if (ctx.fallback.length) ctx.fallback_reason = aceFallbackReason(db, ace.improvementId);
       out.ace = ctx;
     }
     // STE-001: arm 1 gets the Simplified Technical English maker template (writeWorkAssignment picks the rules from this)

@@ -96,10 +96,10 @@ it('evidence counts production outcomes per arm (gym outcomes and other refs exc
     .run(randomUUID(), skill, success ? 1 : 0, randomUUID(), JSON.stringify([...(arm ? [`ace-001-arm:${arm}`] : []), ...(graded !== undefined ? [`graded:${graded}`] : [])]), now);
   outcome('00', true); outcome('00', false); outcome('11', true, undefined, 0.75); outcome('11', true, undefined, 0.25);
   outcome('01', true, 'loop-maker:gym:atomic'); outcome(null, true);
-  const ev = ace001Evidence(db, new Date(Date.now() - 86_400_000).toISOString(), { ACE_001_MODE: 'on' });
+  const ev = ace001Evidence(db, new Date(Date.now() - 86_400_000).toISOString(), { ACE_001_MODE: 'on', ACE_001_ANALYSIS_SINCE: '2020-01-01T00:00:00Z' });
   expect(ev.arms['00']).toMatchObject({ n: 2, verified: 1, verified_rate: 0.5, tokens_mean: 1000 });
   expect(ev.arms['11']).toMatchObject({ n: 2, verified: 2, graded_n: 2, graded_mean: 0.5 });
   expect(ev.arms['01'].n).toBe(0); expect(ev.status).toBe('collecting');
   expect(ev.main_effects.retrieval).toMatchObject({ on_n: 2, off_n: 2, diff: 0.5 });
-  expect(buildEvolutionEvidence(db, { ACE_001_MODE: 'on' }).ace_001.arms['11'].n).toBe(2);
+  expect(buildEvolutionEvidence(db, { ACE_001_MODE: 'on', ACE_001_ANALYSIS_SINCE: '2020-01-01T00:00:00Z' }).ace_001.arms['11'].n).toBe(2);
 });
