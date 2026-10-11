@@ -33,6 +33,13 @@ export const TG_CAPABILITY = 'prompt_override';
 export const TG_C_REMOVED: AssignmentOmit[] = ['ids', 'advisory', 'policy'];
 /** An infrastructure discard puts the attempt back in the queue, at most this many times. */
 export const TG_MAX_INFRA_RETRIES = 2;
+/** Integrity addendum (pre-data, 11-10): minimum practically relevant paired difference A − B, and the test level. */
+export const TG_MDE = 0.2;
+export const TG_ALPHA = 0.05;
+export const TG_LABEL = 'diagnostic: prompt sensitivity under the gym harness (max-steps 40) — not a generalization benchmark, not a promotion holdout';
+/** Canonical JSON (sorted object keys) for the analysis-manifest fingerprint. */
+export const canonicalJson = (v: unknown): string => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x)
+  ? Object.fromEntries(Object.entries(x as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b))) : x));
 
 /** Arm A — must equal scripts/gym-worker.mjs gymGoal(task, true, []) (tg-001.test.ts compares them). */
 export function armAGoal(task: { source: string; target: string }): string {
@@ -91,7 +98,24 @@ export interface TgManifest {
   flags: Record<string, string | null>; seed: number; arms: Record<TgArm, string>; c_removed: AssignmentOmit[];
   tasks: Array<{ key: string; lane: string; run_id: string; base: string; source: string; target: string; prior_gym_attempts: number; prompt_sha256: Record<TgArm, string>; prompts: Record<TgArm, string>; task: FailureTask }>;
   skipped: Array<{ key: string; reason: string }>;
+  /** integrity addendum: the analysis plan, frozen in the same transaction as the tasks, before any outcome exists */
+  analysis?: TgAnalysis;
 }
+export interface TgAnalysis {
+  experiment_id: string; frozen_at: string; commit: string | null; worker_version: string | null; task_ids: string[];
+  task_fingerprints: Record<string, string>; prompt_fingerprints: Record<string, Record<TgArm, string>>; seed: number;
+  condition_order: Array<{ seq: number; task_key: string; arm: TgArm }>;
+  retry_policy: string; exclusion_policy: string[]; scoring_gates: unknown;
+  primary: string; secondary: string[]; tests: string[]; mde: number; alpha: number; interpretation: string[];
+  prior_exposure: Record<string, { prior_exposure: boolean; prior_attempt_count: number; prior_condition_if_known: TgArm | null }>;
+  label: string;
+}
+export const TG_INTERPRETATION = [
+  `A − B ≥ ${TG_MDE} with exact McNemar p < ${TG_ALPHA}: assignment representation is a supported contributor (within the gym harness) → next: prompt-component ablation (C vs B, D vs B) before any gym redesign`,
+  `upper 95 % bound of A − B < ${TG_MDE}: representation rejected as the dominant explanation within this environment → next: 40 vs 60 max-steps with task, prompt, model, worker, runtime and evaluator fixed`,
+  'otherwise inconclusive → extend to 40 tasks (protocol stopping rule); never change arms, prompts or the primary comparison after outcomes',
+];
+export const TG_NOT_TESTED = ['step budget (gym max-steps 40 vs production 60)', 'production harness, runtime, tools and checker', 'unseen-task generalization (most tasks have prior arm-A exposure)', 'model routing', 'task distribution'];
 export const TG_FLAGS = ['GYM_PROD_GATES', 'GYM_FAILURE_TASKS_ENABLED', 'LOOP_MEMORY_RULES_ENABLED', 'LOOP_SKILL_CARDS_ENABLED', 'MEMORY_HOLDOUT_RATE', 'LOOP_DAEMON_CHECK_SCRIPTS', 'EVOLUTION_GYM_REMOTE_MAX_PER_DAY', 'GYM_MAKER_TIMEOUT_MS'];
 
 export function tgManifest(db: Database): TgManifest | null {
@@ -126,12 +150,51 @@ export function freezeTg001(db: Database, tasks: FailureTask[], ctx: { checkoutP
     flags: Object.fromEntries(TG_FLAGS.map((f) => [f, env[f] ?? null])), seed: TG_SEED,
     arms: { A: 'MINIMAL_GYM', B: 'FULL_PRODUCTION', C: 'CONTROLLED_PRODUCTION', D: 'STRUCTURED_MINIMAL' }, c_removed: TG_C_REMOVED, tasks: picked, skipped,
   };
+  const schedule = tgSchedule(picked.map((p) => p.key));
+  manifest.analysis = tgAnalysisPlan(manifest, schedule);
   const ins = db.prepare("INSERT INTO tg_attempts (id, experiment_id, task_key, arm, seq, status, retries, updated_at) VALUES (?, ?, ?, ?, ?, 'pending', 0, ?)");
   db.transaction(() => {
-    db.prepare('INSERT INTO tg_experiments (id, frozen_at, manifest_json) VALUES (?, ?, ?)').run(TG_ID, ctx.now, JSON.stringify(manifest));
-    for (const s of tgSchedule(picked.map((p) => p.key))) ins.run(randomUUID(), TG_ID, s.task_key, s.arm, s.seq, ctx.now);
+    db.prepare('INSERT INTO tg_experiments (id, frozen_at, manifest_json, analysis_sha256) VALUES (?, ?, ?, ?)').run(TG_ID, ctx.now, JSON.stringify(manifest), sha(canonicalJson(manifest.analysis)));
+    for (const s of schedule) ins.run(randomUUID(), TG_ID, s.task_key, s.arm, s.seq, ctx.now);
   })();
   return { frozen: true, manifest };
+}
+
+/** Integrity addendum: the analysis plan, fixed before any outcome. Prior gym attempts on a task ran the ordinary gym goal = arm A. */
+export function tgAnalysisPlan(m: TgManifest, schedule: Array<{ seq: number; task_key: string; arm: TgArm }>): TgAnalysis {
+  return {
+    experiment_id: m.id, frozen_at: m.frozen_at, commit: m.commit, worker_version: m.harness, task_ids: m.tasks.map((t) => t.key),
+    task_fingerprints: Object.fromEntries(m.tasks.map((t) => [t.key, sha(canonicalJson(t.task))])),
+    prompt_fingerprints: Object.fromEntries(m.tasks.map((t) => [t.key, t.prompt_sha256])), seed: m.seed, condition_order: schedule,
+    retry_policy: `an infra discard re-queues the same (task, arm) at most ${TG_MAX_INFRA_RETRIES}×; retries are not observations — the first non-infra result is the observation`,
+    exclusion_policy: ['INFRA_CENSORED: every permitted attempt was an infra discard (neither success nor failure; reported per arm, excluded from paired tables)',
+      'INVALID: a task discard (the task itself failed, e.g. gap already closed) — excluded and reported', 'historical gym attempts are never observations'],
+    scoring_gates: m.evaluator, primary: 'A vs B: paired discordance, exact two-sided McNemar, absolute paired difference A − B with 95 % CI (unit = (task, arm); task = block)',
+    secondary: ["Cochran's Q over the four arms (complete blocks, chi-square df = 3)", 'then only the predeclared contrasts C vs B and D vs B (exact McNemar); no other pairwise tests'],
+    tests: ['mcnemar_exact', 'cochran_q_chi2'], mde: TG_MDE, alpha: TG_ALPHA, interpretation: TG_INTERPRETATION,
+    prior_exposure: Object.fromEntries(m.tasks.map((t) => [t.key, { prior_exposure: t.prior_gym_attempts > 0, prior_attempt_count: t.prior_gym_attempts, prior_condition_if_known: t.prior_gym_attempts > 0 ? 'A' as TgArm : null }])),
+    label: TG_LABEL,
+  };
+}
+
+/**
+ * The analysis may only run on the plan frozen before the data: the stored fingerprint must match the manifest's analysis,
+ * and the plan must predate every outcome. Anything else (missing plan, edited plan, late plan) → no analysis.
+ */
+export function tgAnalysisValidity(db: Database, m: TgManifest): { valid: boolean; reason: string | null } {
+  if (!m.analysis) return { valid: false, reason: 'no frozen analysis manifest' };
+  let row: { frozen_at: string; analysis_sha256: string | null } | undefined;
+  try { row = db.prepare('SELECT frozen_at, analysis_sha256 FROM tg_experiments WHERE id = ?').get(m.id) as typeof row; } catch { return { valid: false, reason: 'analysis fingerprint unreadable' }; }
+  if (!row?.analysis_sha256) return { valid: false, reason: 'no stored analysis fingerprint' };
+  if (sha(canonicalJson(m.analysis)) !== row.analysis_sha256) return { valid: false, reason: 'analysis manifest changed after freeze' };
+  if (m.analysis.frozen_at !== row.frozen_at) return { valid: false, reason: 'analysis manifest frozen_at differs from the experiment row' };
+  let first: string | null = null;
+  try {
+    for (const r of db.prepare('SELECT history_json FROM tg_attempts WHERE experiment_id = ? AND history_json IS NOT NULL').all(m.id) as Array<{ history_json: string }>)
+      for (const h of JSON.parse(r.history_json) as Array<{ at?: string }>) if (h.at && (!first || h.at < first)) first = h.at;
+  } catch { return { valid: false, reason: 'attempt history unreadable' }; }
+  if (first && m.analysis.frozen_at > first) return { valid: false, reason: `analysis manifest (${m.analysis.frozen_at}) written after the first outcome (${first})` };
+  return { valid: true, reason: null };
 }
 
 /** The next queued (task, arm), oldest seq first; it is marked claimed for this run. */
@@ -144,7 +207,7 @@ export function claimTg001(db: Database, manifest: TgManifest, runId: string, no
   return { attempt_id: row.id, arm: row.arm, task: entry.task, prompt: entry.prompts[row.arm] };
 }
 
-export type TgFailure = 'UNDERSTANDING_FAILURE' | 'PLANNING_FAILURE' | 'CONTEXT_FAILURE' | 'TOOL_FAILURE' | 'IMPLEMENTATION_FAILURE' | 'TEST_FAILURE' | 'TIMEOUT' | 'INFRASTRUCTURE_FAILURE' | 'EVALUATOR_FAILURE' | 'UNKNOWN';
+export type TgFailure = 'UNDERSTANDING_FAILURE' | 'PLANNING_FAILURE' | 'CONTEXT_FAILURE' | 'TOOL_FAILURE' | 'IMPLEMENTATION_FAILURE' | 'TEST_FAILURE' | 'TIMEOUT' | 'INFRASTRUCTURE_FAILURE' | 'EVALUATOR_FAILURE' | 'UNKNOWN_FAILURE';
 export interface TgMetrics { prompt_sha256?: string | null; prompt_chars?: number | null; tokens?: number | null; tool_calls?: number | null; failed_tool_calls?: number | null;
   files_inspected?: string[] | null; files_modified?: string[] | null; retries?: number | null; termination?: string | null; model?: string | null; oracle_green?: boolean | null; maker_ms?: number | null }
 
@@ -161,7 +224,8 @@ export function sanitizeTgMetrics(v: unknown): TgMetrics {
 
 /**
  * Deterministic failure category from what was recorded. UNDERSTANDING only with a defensible signal: the maker exited
- * cleanly within 60 s and changed nothing (the #609 'Ready. What would you like me to do?' pattern); otherwise UNKNOWN.
+ * cleanly within 60 s and changed nothing (the #609 'Ready. What would you like me to do?' pattern); TOOL_FAILURE only with
+ * observed failed tool calls (atomic does not report them today, so it never fires); otherwise UNKNOWN_FAILURE.
  */
 export function classifyTgFailure(status: string, reason: string, m: TgMetrics): TgFailure | null {
   if (status === 'success') return null;
@@ -173,10 +237,10 @@ export function classifyTgFailure(status: string, reason: string, m: TgMetrics):
   if (/^no change/.test(reason)) {
     if ((m.failed_tool_calls ?? 0) > 0) return 'TOOL_FAILURE';
     if (m.termination === 'exit:0' && m.maker_ms !== null && m.maker_ms !== undefined && m.maker_ms < 60_000) return 'UNDERSTANDING_FAILURE';
-    return 'UNKNOWN';
+    return 'UNKNOWN_FAILURE';
   }
-  if (/tests still red|no seeded mutant|mutant|does not import|mock|expect|skip/i.test(reason)) return 'TEST_FAILURE';
-  return 'UNKNOWN';
+  if (/\b(tests still red|no seeded mutant|mutant|does not import|mock|expect|skip)/i.test(reason)) return 'TEST_FAILURE';
+  return 'UNKNOWN_FAILURE';
 }
 
 /** A run's result settles its attempt; an infra discard (or a timeout without a change) re-queues it up to TG_MAX_INFRA_RETRIES. */
@@ -215,30 +279,118 @@ export function pairedTable(rows: Array<{ task_key: string; arm: string; status:
     ci_method: 'wald (paired)', mcnemar_exact_p: n ? Math.round(mcnemarExact(xOnly, yOnly) * 10000) / 10000 : null };
 }
 
+/** erfc via Abramowitz & Stegun 7.1.26 (|error| < 1.5e-7). */
+function erfc(x: number): number {
+  const z = Math.abs(x); const t = 1 / (1 + 0.3275911 * z);
+  const y = t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429)))) * Math.exp(-z * z);
+  return x >= 0 ? y : 2 - y;
+}
+/** Upper tail of chi-square with integer df (closed forms for even and odd df). */
+export function chi2Sf(x: number, df: number): number {
+  if (x <= 0) return 1;
+  const h = x / 2; let sum = 0; let term: number;
+  if (df % 2 === 0) { term = 1; for (let i = 0; i < df / 2; i++) { if (i > 0) term *= h / i; sum += term; } return Math.min(1, Math.exp(-h) * sum); }
+  term = Math.sqrt(x); // x^(1/2)/1
+  for (let j = 1; j <= (df - 1) / 2; j++) { if (j > 1) term *= x / (2 * j - 1); sum += term; }
+  return Math.min(1, erfc(Math.sqrt(h)) + Math.sqrt(2 / Math.PI) * Math.exp(-h) * sum);
+}
+
+/**
+ * Cochran's Q for k related binary conditions over complete blocks (rows = tasks, columns = conditions). The p-value uses the
+ * chi-square approximation with df = k − 1 (not the exact permutation distribution); with ~20 blocks it is a descriptive omnibus.
+ */
+export function cochranQ(blocks: boolean[][]): { k: number; n_blocks: number; q: number | null; df: number; p: number | null; method: string } {
+  const k = blocks[0]?.length ?? 0; const df = Math.max(0, k - 1);
+  const method = 'chi-square approximation, df = k − 1';
+  if (blocks.length === 0 || k < 2) return { k, n_blocks: blocks.length, q: null, df, p: null, method };
+  const col = Array.from({ length: k }, (_, j) => blocks.filter((b) => b[j]).length);
+  const rowSums = blocks.map((b) => b.filter(Boolean).length);
+  const N = rowSums.reduce((a, v) => a + v, 0);
+  const den = k * N - rowSums.reduce((a, v) => a + v * v, 0);
+  if (den === 0) return { k, n_blocks: blocks.length, q: 0, df, p: 1, method };
+  const q = ((k - 1) * (k * col.reduce((a, v) => a + v * v, 0) - N * N)) / den;
+  return { k, n_blocks: blocks.length, q: Math.round(q * 1000) / 1000, df, p: Math.round(chi2Sf(q, df) * 10000) / 10000, method };
+}
+
+export type TgObservation = 'success' | 'failure' | 'INFRA_CENSORED' | 'INVALID' | 'pending';
+/**
+ * One experimental observation per (task, arm): retries are collapsed — the first non-infra result is the observation; a row
+ * whose permitted attempts were all infra discards is INFRA_CENSORED (neither success nor failure).
+ */
+export function tgObservation(rowStatus: string, resultStatus: string | null): TgObservation {
+  if (rowStatus === 'infra_exhausted') return 'INFRA_CENSORED';
+  if (rowStatus === 'invalid') return 'INVALID';
+  if (rowStatus === 'done' && (resultStatus === 'success' || resultStatus === 'failure')) return resultStatus;
+  if (rowStatus === 'done') return 'INVALID';
+  return 'pending';
+}
+const unknownOr = (n: number, known: number) => (known ? n : 'UNKNOWN' as const);
+
+/** Interpretation per the frozen rules — only once the plan is valid and the primary comparison reached TG_MIN_TASKS pairs. */
+export function tgInterpret(primary: { n_pairs: number; effect: number | null; ci95: number[] | null; mcnemar_exact_p: number | null }, ready: boolean) {
+  if (!ready || primary.effect === null || !primary.ci95 || primary.mcnemar_exact_p === null) return { verdict: 'pending' as const, falsified: null, supported: null, not_tested: TG_NOT_TESTED, next_experiment: null };
+  if (primary.effect >= TG_MDE && primary.mcnemar_exact_p < TG_ALPHA) return { verdict: 'representation_supported' as const,
+    falsified: `H0 — the production assignment representation does not lower prod-gated success (within the gym harness)`,
+    supported: `H1 — FULL_PRODUCTION lowers success vs MINIMAL_GYM by ${primary.effect} (95 % CI ${primary.ci95.join('…')}, exact McNemar p ${primary.mcnemar_exact_p}) on the same tasks`,
+    not_tested: TG_NOT_TESTED, next_experiment: 'prompt-component ablation: C vs B and D vs B locate which production parts carry the effect, before any gym redesign' };
+  if (primary.ci95[1] < TG_MDE) return { verdict: 'representation_rejected' as const,
+    falsified: `H1 — assignment representation is not the dominant explanation of the transfer gap within the gym harness (upper 95 % bound ${primary.ci95[1]} < ${TG_MDE})`,
+    supported: null, not_tested: TG_NOT_TESTED, next_experiment: '40 vs 60 max-steps on the same tasks with prompt, model, worker, runtime and evaluator fixed' };
+  return { verdict: 'inconclusive' as const, falsified: null, supported: null, not_tested: TG_NOT_TESTED, next_experiment: 'extend to 40 tasks (protocol stopping rule); arms and primary comparison unchanged' };
+}
+
 /** Evidence section: per arm results, failure categories, cost/latency, and the paired A vs B (+ C, D vs B) comparisons. */
 export function tg001Evidence(db: Database, env: NodeJS.ProcessEnv = process.env) {
   const manifest = tgManifest(db);
   if (!manifest) return { mode: env.TG_001_MODE ?? null, status: 'not_frozen' as const, tasks: 0, arms: [], paired: [] };
-  let rows: Array<{ task_key: string; arm: string; status: string; result_json: string | null }> = [];
-  try { rows = db.prepare('SELECT task_key, arm, status, result_json FROM tg_attempts WHERE experiment_id = ?').all(TG_ID) as typeof rows; } catch { rows = []; }
-  const scored = rows.map((r) => { const res = r.result_json ? JSON.parse(r.result_json) as { status: string; failure: TgFailure | null; duration_ms: number | null; metrics: TgMetrics } : null;
-    return { task_key: r.task_key, arm: r.arm, status: r.status === 'done' && res ? res.status : r.status, res }; });
+  const validity = tgAnalysisValidity(db, manifest);
+  if (!validity.valid) return { mode: env.TG_001_MODE ?? null, status: 'invalid_manifest' as const, reason: validity.reason, tasks: manifest.tasks.length, arms: [], paired: [], label: TG_LABEL };
+  let rows: Array<{ task_key: string; arm: string; seq: number; status: string; result_json: string | null }> = [];
+  try { rows = db.prepare('SELECT task_key, arm, seq, status, result_json FROM tg_attempts WHERE experiment_id = ?').all(TG_ID) as typeof rows; } catch { rows = []; }
+  const obs = rows.map((r) => { const res = r.result_json ? JSON.parse(r.result_json) as { status: string; failure: TgFailure | null; duration_ms: number | null; metrics: TgMetrics } : null;
+    return { task_key: r.task_key, arm: r.arm, position: (r.seq % TG_ARMS.length) + 1, status: tgObservation(r.status, res?.status ?? null), res }; });
+  const scoredObs = obs.filter((o) => o.status === 'success' || o.status === 'failure');
+  const mean = (xs: number[]) => (xs.length ? Math.round(xs.reduce((s, v) => s + v, 0) / xs.length) : null);
   const arms = TG_ARMS.map((arm) => {
-    const mine = scored.filter((r) => r.arm === arm && (r.status === 'success' || r.status === 'failure'));
+    const mine = scoredObs.filter((r) => r.arm === arm);
     const ok = mine.filter((r) => r.status === 'success').length;
     const failures: Record<string, number> = {};
     for (const r of mine) if (r.res?.failure) failures[r.res.failure] = (failures[r.res.failure] ?? 0) + 1;
-    const tok = mine.map((r) => r.res?.metrics.tokens).filter((v): v is number => typeof v === 'number');
+    const known = (f: (m: TgMetrics) => unknown) => mine.filter((r) => r.res && f(r.res.metrics) !== null && f(r.res.metrics) !== undefined);
+    const tok = known((m) => m.tokens).map((r) => r.res!.metrics.tokens as number);
     const dur = mine.map((r) => r.res?.duration_ms).filter((v): v is number => typeof v === 'number');
-    const mean = (xs: number[]) => (xs.length ? Math.round(xs.reduce((s, v) => s + v, 0) / xs.length) : null);
-    return { arm, name: manifest.arms[arm], n: mine.length, success: ok, rate: mine.length ? Math.round((ok / mine.length) * 1000) / 1000 : null, ci95: mine.length ? wilson(ok, mine.length) : null,
-      failures, tokens_mean: mean(tok), tokens_known: tok.length, duration_ms_mean: mean(dur),
-      pending: scored.filter((r) => r.arm === arm && (r.status === 'pending' || r.status === 'claimed')).length,
-      invalid: scored.filter((r) => r.arm === arm && (r.status === 'invalid' || r.status === 'infra_exhausted')).length };
+    const toolKnown = known((m) => m.tool_calls); const inspectedKnown = known((m) => m.files_inspected);
+    return { arm, name: manifest.arms[arm], n: mine.length, success: ok, failure: mine.length - ok, rate: mine.length ? Math.round((ok / mine.length) * 1000) / 1000 : null, ci95: mine.length ? wilson(ok, mine.length) : null,
+      failures, tokens_mean: tok.length ? mean(tok) : 'UNKNOWN' as const, tokens_known: tok.length, duration_ms_mean: mean(dur),
+      tool_calls: unknownOr(toolKnown.reduce((a, r) => a + (r.res!.metrics.tool_calls as number), 0), toolKnown.length),
+      files_inspected: unknownOr(inspectedKnown.reduce((a, r) => a + (r.res!.metrics.files_inspected as string[]).length, 0), inspectedKnown.length),
+      infra_censored: obs.filter((r) => r.arm === arm && r.status === 'INFRA_CENSORED').length,
+      pending: obs.filter((r) => r.arm === arm && r.status === 'pending').length,
+      invalid: obs.filter((r) => r.arm === arm && r.status === 'INVALID').length };
   });
-  const paired = [pairedTable(scored, 'A', 'B'), pairedTable(scored, 'C', 'B'), pairedTable(scored, 'D', 'B')];
-  const open = scored.some((r) => r.status === 'pending' || r.status === 'claimed');
-  return { mode: env.TG_001_MODE ?? null, status: open ? 'collecting' as const : 'complete' as const, frozen_at: manifest.frozen_at, commit: manifest.commit, species: manifest.species,
-    harness: manifest.harness, tasks: manifest.tasks.length, skipped: manifest.skipped.length, arms, paired,
-    note: 'primary = A vs B (McNemar exact, two-sided); C and D vs B decompose the representation. Gym harness for all arms (max-steps 40); production remote makers run with max-steps 60 — an environment factor for the next experiment, not this one.' };
+  const excluded = (x: TgArm, y: TgArm) => {
+    const keys = new Set(obs.filter((o) => (o.arm === x || o.arm === y) && (o.status === 'INFRA_CENSORED' || o.status === 'INVALID')).map((o) => o.task_key));
+    return { excluded_tasks: keys.size, infra_censored: obs.filter((o) => (o.arm === x || o.arm === y) && o.status === 'INFRA_CENSORED').length };
+  };
+  const paired = (['B', 'B', 'B'] as const).map((y, i) => { const x = (['A', 'C', 'D'] as const)[i]; const t = pairedTable(scoredObs, x, y); return { ...t, discordant: (t[`${x}_only`] as number) + (t[`${y}_only`] as number), ...excluded(x, y) }; });
+  const byTask = new Map<string, Map<string, boolean>>();
+  for (const o of scoredObs) { const m = byTask.get(o.task_key) ?? new Map(); m.set(o.arm, o.status === 'success'); byTask.set(o.task_key, m); }
+  const complete = [...byTask.values()].filter((m) => TG_ARMS.every((a) => m.has(a)));
+  const omnibus = cochranQ(complete.map((m) => TG_ARMS.map((a) => m.get(a)!)));
+  // order-effect diagnostics: success by execution position within a task's block (1–4), and Cochran's Q over positions
+  const byPos = new Map<string, Map<number, boolean>>();
+  for (const o of scoredObs) { const m = byPos.get(o.task_key) ?? new Map(); m.set(o.position, o.status === 'success'); byPos.set(o.task_key, m); }
+  const positions = [1, 2, 3, 4].map((p) => { const at = scoredObs.filter((o) => o.position === p); const ok = at.filter((o) => o.status === 'success').length;
+    return { position: p, n: at.length, success: ok, rate: at.length ? Math.round((ok / at.length) * 1000) / 1000 : null }; });
+  const posQ = cochranQ([...byPos.values()].filter((m) => [1, 2, 3, 4].every((p) => m.has(p))).map((m) => [1, 2, 3, 4].map((p) => m.get(p)!)));
+  const prior = Object.values(manifest.analysis!.prior_exposure);
+  const open = obs.some((r) => r.status === 'pending');
+  const primary = paired[0];
+  return { mode: env.TG_001_MODE ?? null, status: open ? 'collecting' as const : 'complete' as const, label: TG_LABEL, frozen_at: manifest.frozen_at, commit: manifest.commit, species: manifest.species,
+    harness: manifest.harness, tasks: manifest.tasks.length, skipped: manifest.skipped.length, mde: TG_MDE, alpha: TG_ALPHA, interpretation_rules: TG_INTERPRETATION,
+    arms, paired, omnibus_cochran_q: omnibus, order_effects: { positions, cochran_q: posQ },
+    prior_exposure: { exposed: prior.filter((p) => p.prior_exposure).length, unexposed: prior.filter((p) => !p.prior_exposure).length, prior_attempts: prior.reduce((a, p) => a + p.prior_attempt_count, 0) },
+    result: tgInterpret(primary, !open && primary.n_pairs >= TG_MIN_TASKS),
+    transfer_gap: 'gym 78.8 % vs production 7.0 % (workstation species, 30 d, CODEX_REPORT); TG-001 can only attribute the part due to assignment representation under the gym harness — the rest stays UNKNOWN',
+    note: 'unit = (task, arm), task = block; retries collapsed (first non-infra result); primary = A vs B exact McNemar; Cochran\'s Q omnibus, then only C vs B and D vs B. All arms run the gym harness (max-steps 40); production remote makers run with 60 — the next experiment, not this one.' };
 }

@@ -104,3 +104,36 @@ harness difference), time budget, production checker + reviewer path vs gym orac
 
 What the gym measures; which fitness signals can support selection; the minimal code change (only after the cause is known);
 the next falsifiable experiment. Until then gym fitness must not drive promotion (genome trials stay off).
+
+## Integrity addendum (pre-data, 2026-10-11)
+
+Written before any TG-001 outcome exists (the gym worker that can take TG attempts was not installed yet). Arms and prompts are
+unchanged; this fixes the analysis.
+
+- **Experimental unit:** `(task_id, arm)`. Task is the block; TG-001 is a paired randomized block/crossover design, never 80
+  independent samples. Every physical attempt is kept in `tg_attempts.history_json`; retries collapse into one observation, the
+  first non-infra result. If every permitted attempt (1 + 2 retries) is an infra discard → **INFRA_CENSORED**: neither success nor
+  failure, reported per arm, excluded from paired tables (excluded tasks counted per comparison). A task discard is **INVALID**.
+- **Frozen analysis manifest** (`manifest.analysis`, stored with its sha256 in `tg_experiments.analysis_sha256` in the freeze
+  transaction): experiment id, commit, worker version (gym-worker hash), task ids, task fingerprints, prompt fingerprints, seed,
+  condition order, retry and exclusion policy, scoring gates, primary and secondary comparisons, tests, minimum practically
+  relevant effect, interpretation rules, prior exposure per task. The evidence section refuses analysis
+  (`status: invalid_manifest`) when the plan is missing, its fingerprint no longer matches, or it is dated after the first outcome.
+- **Primary:** A (MINIMAL_GYM) vs B (FULL_PRODUCTION): discordant pairs, exact two-sided McNemar, absolute paired difference A − B
+  with 95 % CI, n. **Minimum practically relevant effect: 20 points.** α = 0.05.
+- **Secondary:** Cochran's Q over the four arms on complete blocks (chi-square approximation, df = 3 — not the exact permutation
+  distribution; descriptive at ~20 blocks), then only the predeclared contrasts C vs B and D vs B. No other pairwise tests.
+- **Prior exposure:** per task `prior_exposure`, `prior_attempt_count`, `prior_condition_if_known` (ordinary gym attempts ran
+  the arm-A goal). Earlier attempts are never observations. Because most tasks were seen under A, TG-001 is **diagnostic evidence
+  about prompt sensitivity under the gym harness — not a generalization benchmark and not a promotion holdout**; TG task keys are
+  excluded from every holdout freeze.
+- **Step budget:** every arm runs the gym's 40 steps. TG-001 estimates the effect of assignment representation *conditional on
+  the gym harness*, not the full gym → production causal effect (production remote makers run 60 steps).
+- **Telemetry:** tool calls, files opened and tokens are stored as null when the agent does not report them and shown as
+  UNKNOWN, never 0. TOOL_FAILURE requires observed failed tool calls; otherwise UNKNOWN_FAILURE.
+- **Order effects:** success by execution position (1–4) and Cochran's Q over positions, reported descriptively.
+- **Interpretation (frozen):** A − B ≥ 20 pt with p < 0.05 → representation supported → prompt-component ablation (C vs B,
+  D vs B) before any gym redesign. Upper 95 % bound of A − B < 20 pt → representation rejected as the dominant explanation within
+  this environment → next: 40 vs 60 max-steps with task, prompt, model, worker, runtime and evaluator fixed. Otherwise
+  inconclusive → extend to 40 tasks. The evidence reports what TG-001 falsified, supported, did not test, and the next experiment.
+- **No evolutionary fitness change based on TG-001 alone.**

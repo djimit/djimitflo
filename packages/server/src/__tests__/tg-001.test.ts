@@ -93,7 +93,7 @@ it('TG-001 failure categories come from recorded fields only', () => {
   expect(classifyTgFailure('failure', 'tests still red', {})).toBe('TEST_FAILURE');
   expect(classifyTgFailure('failure', 'no change (maker gave up)', { termination: 'exit:0', maker_ms: 12_000 })).toBe('UNDERSTANDING_FAILURE');
   expect(classifyTgFailure('failure', 'no change (maker gave up)', { failed_tool_calls: 3 })).toBe('TOOL_FAILURE');
-  expect(classifyTgFailure('failure', 'no change (maker gave up)', { termination: 'exit:0', maker_ms: 400_000 })).toBe('UNKNOWN');
+  expect(classifyTgFailure('failure', 'no change (maker gave up)', { termination: 'exit:0', maker_ms: 400_000 })).toBe('UNKNOWN_FAILURE');
 });
 
 it('TG_001_MODE=on: the first capable claim freezes the experiment and serves arms with the prompt; TG runs earn no gym outcome', () => {
