@@ -78,6 +78,11 @@ const selfImprovementRefinementColumns: ColumnSpec[] = [
 
 const specialistReviewActorColumns: ColumnSpec[] = [
   { name: 'reviewer_actor', definition: 'TEXT' },
+  // B32: provenance of an automated review (model, prompt hash, raw answer hash, attempt that produced it)
+  { name: 'model', definition: 'TEXT' },
+  { name: 'prompt_sha256', definition: 'TEXT' },
+  { name: 'raw_sha256', definition: 'TEXT' },
+  { name: 'attempt', definition: 'INTEGER' },
 ];
 
 const goalImprovementColumns: ColumnSpec[] = [
@@ -901,6 +906,25 @@ function createAgenticLoopTables(db: BetterSqlite3Database) {
     CREATE INDEX IF NOT EXISTS idx_specialist_reviews_panel_id ON specialist_reviews(panel_id);
     CREATE INDEX IF NOT EXISTS idx_specialist_reviews_specialist_id ON specialist_reviews(specialist_id);
     CREATE INDEX IF NOT EXISTS idx_specialist_reviews_stance ON specialist_reviews(stance);
+
+    -- B32: a specialist answer that failed schema/semantic validation is quarantined here, never stored as a review.
+    -- closes_seat = 1: the seat's attempts are exhausted and the panel decides on its valid reviews only.
+    -- cleared = 1: superseded by a panel reset (#758 retry), no longer counted.
+    CREATE TABLE IF NOT EXISTS specialist_review_quarantine (
+      id TEXT PRIMARY KEY,
+      panel_id TEXT NOT NULL,
+      specialist_id TEXT NOT NULL,
+      model TEXT,
+      prompt_sha256 TEXT,
+      raw_sha256 TEXT,
+      raw_excerpt TEXT,
+      error TEXT NOT NULL,
+      attempt INTEGER NOT NULL DEFAULT 1,
+      closes_seat INTEGER NOT NULL DEFAULT 0,
+      cleared INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_specialist_review_quarantine_seat ON specialist_review_quarantine(panel_id, specialist_id);
 
     CREATE TABLE IF NOT EXISTS agent_trace_spans (
       id TEXT PRIMARY KEY,
