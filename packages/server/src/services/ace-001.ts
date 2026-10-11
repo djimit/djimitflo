@@ -22,7 +22,25 @@ export const ace001On = (env: NodeJS.ProcessEnv = process.env): boolean => env.A
 export const ACE_001_TARGET_PER_ARM = 50;
 export const ACE_ARMS = ['00', '01', '10', '11'] as const;
 export type AceArm = typeof ACE_ARMS[number];
-export interface AceContext { arm: AceArm; lane: AceLane; examples_source: 'recency' | 'similarity' | 'fallback_recency'; kb_paths: string[]; fallback: Array<'r' | 's'> }
+export interface AceContext { arm: AceArm; lane: AceLane; examples_source: 'recency' | 'similarity' | 'fallback_recency'; kb_paths: string[]; fallback: Array<'r' | 's'>;
+  /** why a treated factor fell back to control: no stored vector at all, or the embedding call failed (proposal_embedding judgment) */
+  fallback_reason?: 'no_embedding' | 'embedding_failed' | 'no_match' }
+
+/**
+ * Amendment 1 (2026-10-11, docs/research/ace/ACE-001_PROTOCOL.md): treated arms were mostly not treated before the delivery
+ * fix (requeued proposals had no vector). The primary analysis counts only outcomes from ACE_001_ANALYSIS_SINCE (set to the
+ * deploy time of the fix); earlier outcomes are kept and reported as `delivery_invalid`.
+ */
+export const ACE_001_ANALYSIS_SINCE_DEFAULT = '2026-10-12T00:00:00Z';
+export const aceAnalysisSince = (env: NodeJS.ProcessEnv = process.env): string => env.ACE_001_ANALYSIS_SINCE || ACE_001_ANALYSIS_SINCE_DEFAULT;
+
+/** Why a treated factor fell back: no vector, a failed embedding call, or a vector with no match. */
+export function aceFallbackReason(db: Database, improvementId: string): 'no_embedding' | 'embedding_failed' | 'no_match' {
+  if (proposalVector(db, improvementId)) return 'no_match'; // a vector exists, but no verified example in the checkout matched
+  try {
+    return db.prepare("SELECT 1 FROM judgments WHERE judgment = 'proposal_embedding' AND decision = 'error' AND subject_id = ? LIMIT 1").get(improvementId) ? 'embedding_failed' : 'no_embedding';
+  } catch { return 'no_embedding'; }
+}
 export type AceLane = 'test-gap' | 'mutation';
 
 export function aceArm(goalId: string): { r: 0 | 1; s: 0 | 1; code: AceArm } {
@@ -76,8 +94,15 @@ export function similarKbPages(db: Database, improvementId: string, k = 3, min =
 }
 
 /** Per-arm evidence (production maker outcomes carrying `ace-001-arm:<RS>`): n, verified, graded mean, tokens, Wilson 95 %. */
-export function ace001Evidence(db: Database, since: string, env: NodeJS.ProcessEnv = process.env) {
+export function ace001Evidence(db: Database, windowSince: string, env: NodeJS.ProcessEnv = process.env) {
+  const analysisSince = aceAnalysisSince(env);
+  const since = windowSince > analysisSince ? windowSince : analysisSince;
   let rows: Array<{ arm: string; success: number; tokens: number; graded: number | null }> = [];
+  let deliveryInvalid = 0;
+  try {
+    deliveryInvalid = (db.prepare(`SELECT COUNT(*) AS n FROM skill_outcomes o, json_each(o.evidence_refs_json) r
+      WHERE r.value LIKE 'ace-001-arm:%' AND o.skill_id NOT LIKE 'loop-maker:gym:%' AND o.created_at < ?`).get(analysisSince) as { n: number }).n;
+  } catch { /* skill_outcomes absent */ }
   try {
     rows = db.prepare(`SELECT substr(r.value, 13) AS arm, o.success, o.tokens_used AS tokens,
         (SELECT CAST(substr(g.value, 8) AS REAL) FROM json_each(o.evidence_refs_json) g WHERE g.value LIKE 'graded:%' LIMIT 1) AS graded
@@ -98,8 +123,36 @@ export function ace001Evidence(db: Database, since: string, env: NodeJS.ProcessE
     const pOn = sum(on, 'n') ? sum(on, 'verified') / sum(on, 'n') : null; const pOff = sum(off, 'n') ? sum(off, 'verified') / sum(off, 'n') : null;
     return { on_n: sum(on, 'n'), off_n: sum(off, 'n'), diff: pOn !== null && pOff !== null ? +(pOn - pOff).toFixed(3) : null };
   };
-  return { mode: env.ACE_001_MODE ?? null, target_per_arm: ACE_001_TARGET_PER_ARM, arms,
+  return { mode: env.ACE_001_MODE ?? null, target_per_arm: ACE_001_TARGET_PER_ARM, analysis_since: analysisSince, delivery_invalid: deliveryInvalid,
+    delivery: aceDelivery(db, since), arms,
     main_effects: { retrieval: main((a) => a[0] === '1'), examples: main((a) => a[1] === '1') },
     status: reached ? 'analysable' as const : 'collecting' as const,
-    note: 'Production maker outcomes of oracle-lane goals by ACE-001 arm (R = KB retrieval, S = similarity examples). Interim diffs are descriptive only; the pre-registered analysis (docs/research/ace/ACE-001_PROTOCOL.md) runs once every arm reaches the target.' };
+    note: 'Production maker outcomes of oracle-lane goals by ACE-001 arm (R = KB retrieval, S = similarity examples), from analysis_since (Amendment 1); delivery_invalid = earlier outcomes, kept but excluded. Interim diffs are descriptive only; the pre-registered analysis (docs/research/ace/ACE-001_PROTOCOL.md) runs once every arm reaches the target.' };
+}
+
+/**
+ * Delivery per arm: of the treated factor slots in maker assignments since `since`, how many actually got the treatment
+ * (one assignment per run: the latest assignment_context event). Control factors are not counted (nothing to deliver).
+ */
+export function aceDelivery(db: Database, since: string) {
+  const out = Object.fromEntries(ACE_ARMS.map((a) => [a, { runs: 0, r_treated: 0, r_delivered: 0, s_treated: 0, s_delivered: 0 }])) as
+    Record<AceArm, { runs: number; r_treated: number; r_delivered: number; s_treated: number; s_delivered: number }>;
+  const reasons: Record<string, number> = {};
+  let events: Array<{ metadata: string }> = [];
+  try {
+    events = db.prepare(`SELECT e.metadata FROM loop_events e WHERE e.event_type = 'assignment_context' AND e.created_at >= ?
+      AND e.created_at = (SELECT MAX(x.created_at) FROM loop_events x WHERE x.loop_run_id = e.loop_run_id AND x.event_type = 'assignment_context')`).all(since) as typeof events;
+  } catch { /* loop_events absent */ }
+  for (const e of events) {
+    let ace: AceContext | undefined;
+    try { ace = (JSON.parse(e.metadata) as { ace_001?: AceContext }).ace_001; } catch { continue; }
+    if (!ace || !(ACE_ARMS as readonly string[]).includes(ace.arm)) continue;
+    const a = out[ace.arm]; a.runs++;
+    if (ace.arm[0] === '1') { a.r_treated++; if (!ace.fallback.includes('r')) a.r_delivered++; }
+    if (ace.arm[1] === '1') { a.s_treated++; if (!ace.fallback.includes('s')) a.s_delivered++; }
+    if (ace.fallback.length) reasons[ace.fallback_reason ?? 'unrecorded'] = (reasons[ace.fallback_reason ?? 'unrecorded'] ?? 0) + 1;
+  }
+  const rate = (d: number, t: number) => (t ? +(d / t).toFixed(3) : null);
+  const tot = ACE_ARMS.reduce((acc, k) => ({ r_t: acc.r_t + out[k].r_treated, r_d: acc.r_d + out[k].r_delivered, s_t: acc.s_t + out[k].s_treated, s_d: acc.s_d + out[k].s_delivered }), { r_t: 0, r_d: 0, s_t: 0, s_d: 0 });
+  return { per_arm: out, retrieval_rate: rate(tot.r_d, tot.r_t), examples_rate: rate(tot.s_d, tot.s_t), fallback_reasons: reasons };
 }

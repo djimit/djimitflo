@@ -146,6 +146,10 @@ export interface EvolutionEvidence {
     stop: { per_arm: number; reached: boolean; verdict: 'collecting' | 'inconclusive' | 'supported' | 'reversed' | 'falsified' }; note: string };
   /** ACE-001 (ACE_001_MODE): oracle-lane maker outcomes per arm (R retrieval × S example selection; '00' = control) */
   ace_001: { mode: string | null; target_per_arm: number; status: 'collecting' | 'analysable';
+    /** Amendment 1: primary numbers count outcomes from analysis_since; delivery_invalid = earlier outcomes, excluded */
+    analysis_since?: string; delivery_invalid?: number;
+    delivery?: { per_arm: Record<'00' | '01' | '10' | '11', { runs: number; r_treated: number; r_delivered: number; s_treated: number; s_delivered: number }>;
+      retrieval_rate: number | null; examples_rate: number | null; fallback_reasons: Record<string, number> };
     arms: Record<'00' | '01' | '10' | '11', { n: number; verified: number; verified_rate: number | null; ci: [number, number] | null; graded_n: number; graded_mean: number | null; tokens_mean: number | null }>;
     main_effects: { retrieval: AceMainEffect; examples: AceMainEffect }; note: string };
   /** STE-001 (STE_001_MODE): oracle-lane maker outcomes per template arm (0 = current, 1 = Simplified Technical English) */
