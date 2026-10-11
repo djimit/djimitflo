@@ -14,6 +14,7 @@ import { effortX1Evidence } from './effort-controller';
 import { checkerFamilyEvidence } from './checker-family';
 import { gradedEvidence } from './graded-fitness';
 import { wilson } from './evolution-estimators';
+import { evolutionLineage } from './evolution-lineage';
 import { ace001Evidence } from './ace-001';
 import { ste001Evidence } from './ste-001';
 import { d5NoEvidence } from './d5-no';
@@ -336,5 +337,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     holdout_exposure,
     // §16 step 1: one read-only status per metric contract (METRIC_CONTRACTS.yaml); INSUFFICIENT_EVIDENCE is never rendered as 0
     intelligence: intelligenceEvidence(db, env, now, since, { forecasters, effort_x1, memory_holdout,
-      holdout_reuse_risk: holdout_exposure.epochs.filter((e) => e.current && e.reuse_risk).map((e) => ({ holdout: e.holdout, epoch: e.epoch, candidates: e.candidates })) }), gates };
+      holdout_reuse_risk: holdout_exposure.epochs.filter((e) => e.current && e.reuse_risk).map((e) => ({ holdout: e.holdout, epoch: e.epoch, candidates: e.candidates })) }), gates,
+    // 'Restore Evolutionary Health': proposal lineage to survival, 4-way regression split, survival-adjusted NEV (shadow)
+    lineage: evolutionLineage(db, now, env) };
 }

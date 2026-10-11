@@ -6,6 +6,7 @@ import { infraFailing } from './evolution-gym-service';
 import { ATTRIBUTION_OF_PROPOSAL, decisionsInbox, openDecisionCounts } from './decisions-inbox';
 import { listSchedulers, type SchedulerHealth, type SchedulerStatus } from './scheduler-registry';
 import { nonMakerRunSql, outcomeAttributionEnabled } from './outcome-attribution';
+import { evolutionLineage, postVerificationRegressions } from './evolution-lineage';
 
 /**
  * S1 (operator 2026-09-28): one read-only snapshot of what the operator otherwise measures by hand over SSH —
@@ -23,7 +24,7 @@ export const worstState = (states: HealthState[]): HealthState =>
  * split: regressions by attributed class — with OUTCOME_ATTRIBUTION_ENABLED the guardrail counts maker only.
  * unknown = no outcome_attribution judgment (was silently 'maker'). ok = state === 'HEALTHY' (kept for older clients).
  */
-export interface Guardrail { name: string; ok: boolean; state: HealthState; value: number | null; limit: string; split?: { maker: number; reviewer: number; environment: number; unknown: number } }
+export interface Guardrail { name: string; ok: boolean; state: HealthState; value: number | null; limit: string; split?: { maker: number; reviewer: number; environment: number; unknown: number; post_verification: number | null } }
 export interface CockpitSnapshot {
   at: string;
   /** one id per snapshot; every section is read in this one synchronous pass, so `at` is each section's observation time */
@@ -61,6 +62,8 @@ export interface CockpitSnapshot {
   maker_usage_7d: Array<{ role: string; runtime: string; model: string | null; leases: number; tokens: number }>;
   judgments_7d: Array<{ judgment: string; calls: number; errors: number; input_tokens: number }>;
   deploys: Array<{ at: string; event: string; sha: string; detail: string }>;
+  /** 'Restore Evolutionary Health': lineage funnel, 4-way regression split, survival-adjusted NEV (shadow, read-only) */
+  evolution: ReturnType<typeof evolutionLineage> | null;
 }
 
 export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.ProcessEnv = process.env): CockpitSnapshot {
@@ -104,7 +107,7 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
   const v = scorecard.verified_7d;
   // funnel phase 3: each regressed proposal by its newest outcome attribution (on the proposal or any of its runs); none = unknown
   section = 'regression_split';
-  const split = { maker: 0, reviewer: 0, environment: 0, unknown: 0 };
+  const split = { maker: 0, reviewer: 0, environment: 0, unknown: 0, post_verification: null as number | null };
   const splitRows = all<{ cls: string | null; n: number }>(`SELECT ${ATTRIBUTION_OF_PROPOSAL} AS cls, COUNT(*) AS n
     FROM self_improvements s WHERE s.status = 'regressed' AND s.updated_at >= ? GROUP BY 1`, d7);
   for (const r of splitRows ?? []) {
@@ -112,7 +115,10 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
     else if (r.cls === 'maker_failure') split.maker += r.n; else split.unknown += r.n;
   }
   const attributed = outcomeAttributionEnabled(env);
-  const regressions = attributed ? (splitRows ? split.maker : null) : scorecard.regressed_7d;
+  // evolutionary regressions = maker (mutation) failures + verified-and-merged changes that did not survive; a reviewer
+  // rejection is the gate working, not a regression
+  split.post_verification = postVerificationRegressions(db, d7);
+  const regressions = attributed ? (splitRows && split.post_verification !== null ? split.maker + split.post_verification : null) : scorecard.regressed_7d;
   const state = (value: number | null, bad: boolean): HealthState => (value === null ? 'UNKNOWN' : bad ? 'BREACHED' : 'HEALTHY');
   const guard = (g: Omit<Guardrail, 'ok'>): Guardrail => ({ ...g, ok: g.state === 'HEALTHY' });
   // regressions: maker-failed (attribution on) or all regressed proposals updated in 7 d, vs verified proposals updated in 7 d.
@@ -123,7 +129,7 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
   // plan §3 guardrails
   const guardrails: Guardrail[] = [
     guard({ name: 'regressions', value: regressions, state: regState, split,
-      limit: `<= verified/5 (${v === null ? '?' : (v / 5).toFixed(1)})${attributed ? `, maker failures only${split.unknown ? `; ${split.unknown} unattributed` : ''}` : ''}` }),
+      limit: `<= verified/5 (${v === null ? '?' : (v / 5).toFixed(1)})${attributed ? `, maker failures + post-verification regressions${split.unknown ? `; ${split.unknown} unattributed` : ''}` : ''}` }),
     // specialist reviews created in 7 d whose findings could not be parsed; any is a breach
     guard({ name: 'panel unparseable (7 d)', value: scorecard.panel_unparseable_7d, limit: '0', state: state(scorecard.panel_unparseable_7d, (scorecard.panel_unparseable_7d ?? 0) > 0) }),
     // reflection-sourced proposals created in the last 24 h
@@ -200,6 +206,9 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
     needs_you.stalls, needs_you.join_requests, needs_you.shell_requests];
   needs_you.total = blocking.some((x) => x === null) || needs_you.shared_subjects === null ? null
     : (blocking as number[]).reduce((a, b) => a + b, 0) - (needs_you.shared_subjects as number);
+  section = 'evolution';
+  let evolution: CockpitSnapshot['evolution'] = null;
+  try { evolution = evolutionLineage(db, now, env); for (const m of evolution.errors) fail('evolution', new Error(m)); } catch (e) { fail('evolution', e); }
   const { armed, off, by_status, health: schedulersHealth } = listSchedulers(now);
   const health = worstState([...guardrails.map((g) => g.state), errors.length || stalls.length ? 'DEGRADED' : 'HEALTHY',
     // a failed detector leaves its subsystem unwatched; a scheduler that stopped ticking or fails is work that silently stopped
@@ -207,7 +216,7 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
   return {
     at: new Date(now).toISOString(), snapshot_id: randomUUID(), health, errors,
     build: { commit: process.env.DJIMITFLO_BUILD_COMMIT ?? null, build_time: process.env.DJIMITFLO_BUILD_TIME ?? null },
-    scorecard, guardrails, stalls, gym, remote_workers, maker_usage_7d, judgments_7d, needs_you, schedulers: { armed, off, by_status, health: schedulersHealth }, detectors, genomes, deploys: recentDeploys(),
+    scorecard, guardrails, stalls, gym, remote_workers, maker_usage_7d, judgments_7d, needs_you, schedulers: { armed, off, by_status, health: schedulersHealth }, detectors, genomes, deploys: recentDeploys(), evolution,
   };
 }
 
