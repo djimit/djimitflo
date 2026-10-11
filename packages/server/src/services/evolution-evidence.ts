@@ -3,6 +3,7 @@ import { failureTaskEvidence } from './gym-failure-tasks';
 import { forecastScoresV2 } from './forecast-scoring';
 import { parseRuntimeSpec } from './social-runtime-providers';
 import { modelEvidence } from './model-selector';
+import { ledgerTotals } from './model-call-ledger';
 import { commonsYield, oracleAgreement } from './honest-numbers';
 import { banditOpe } from './bandit-propensity';
 import { egressEvidence } from './egress-classification';
@@ -15,6 +16,7 @@ import { gradedEvidence } from './graded-fitness';
 import { wilson } from './evolution-estimators';
 import { ace001Evidence } from './ace-001';
 import { ste001Evidence } from './ste-001';
+import { d5NoEvidence } from './d5-no';
 import { tg001Evidence } from './tg-001';
 import { intelligenceEvidence } from './intelligence-metrics';
 import type { ForecasterScoreV2 } from './forecast-scoring';
@@ -256,7 +258,9 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   };
   // MS-1: model calls per consumer (14-day selector window) and what the cost-aware selector would pick
   const frontier = frontierIncumbent(env.FRONTIER_EXPERTS_RUNTIME);
-  const models = modelEvidence(db, { panel_review: env.SELF_IMPROVEMENT_REVIEW_MODEL, ...(frontier ? { frontier_experts: frontier } : {}) }, env, now);
+  const models = { ...modelEvidence(db, { panel_review: env.SELF_IMPROVEMENT_REVIEW_MODEL, ...(frontier ? { frontier_experts: frontier } : {}) }, env, now),
+    // B29: calls / tokens (unknown counted apart) / list + marginal cost per purpose and per experiment arm, 7 d
+    ledger_7d: ledgerTotals(db, new Date(now - 7 * 86_400_000).toISOString()) };
   // RX-9 / RX-8: honest agreement and yield numbers (one row per maker; attempted Commons children vs source base rate)
   const oracle = oracleAgreement(db);
   const commons = commonsYield(db);
@@ -317,6 +321,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // ACE-001 (ACE_001_MODE): oracle-lane maker outcomes per retrieval × example-selection arm (pre-registered, collecting until target)
     ace_001: ace001Evidence(db, since, env),
     ste_001: ste001Evidence(db, since, env),
+    // H-D5NO (prescreen in shadow): prospective false-rejection risk of jev confident-NO; never mixed with JC (NE-001)
+    d5_no: d5NoEvidence(db),
     // TG-001 (TG_001_MODE): gym → production transfer gap — the same frozen write_test tasks under four prompt representations
     tg_001: tg001Evidence(db, env),
     // KE-3: does knowledge reach evolution? Mutant genomes written from injected knowledge units, and proposals citing a

@@ -110,7 +110,9 @@ export interface EvolutionEvidence {
   trials: { by_state: Array<{ state: string; n: number }>; recent: Array<{ trial_id: string; parent_id: string; tier_set: string; deciding_n: number; f_parent_failures: number; b: number; c: number; p: number; power_q8_l05: number; state: string; recorded_at: string }>;
     /** GENOME_FIRE_CHECK: trial attempts voided because the genome's lines never reached the maker (never paired) */
     void?: { attempts: number; by_genome: Array<{ genome: string; n: number }>; fire_checked: number | null } };
-  models: { mode: string; rows: Array<{ consumer: string; model: string; n: number; ok_rate: number; agree_rate: number | null; median_latency_ms: number | null; cost_weight: number }>; would_pick: Record<string, string | null> };
+  models: { mode: string; rows: Array<{ consumer: string; model: string; n: number; ok_rate: number; agree_rate: number | null; median_latency_ms: number | null; cost_weight: number }>; would_pick: Record<string, string | null>;
+    /** B29: per purpose / experiment arm, 7 d; null sums = unknown, never 0 */
+    ledger_7d?: { by_purpose: Array<Record<string, unknown>>; by_experiment: Array<Record<string, unknown>> } };
   oracle: { n: number; kappa: number | null; kappa_ci: [number, number] | null; agreement: { all: number | null; conf_ge_06: number | null; conf_lt_06: number | null }; accuracy: { n: number; jev: number | null; checker: number | null }; kappa_jev_outcome: number | null; kappa_jev_outcome_ci: [number, number] | null; kappa_checker_outcome: number | null; enforce_eligible: boolean; note: string };
   commons: { k: number; n: number; rate: number | null; ci: [number, number]; base_rate: number | null; base_ci: [number, number]; base_n: number; verdict: string; note: string };
   forecasts_v2: { scored: number; decision_grade: number; decision_grade_skilled: number; insufficient: number };
@@ -156,6 +158,13 @@ export interface EvolutionEvidence {
   ste_001: { mode: string | null; target_per_arm: number; ste_template_hash: string; status: 'collecting' | 'analysable'; diff: number | null;
     arms: Record<'0' | '1', { n: number; verified: number; verified_rate: number | null; ci: [number, number] | null; out_of_scope: number; out_of_scope_share: number | null; tokens_mean: number | null }>;
     note: string };
+  /** H-D5NO: prospective false-rejection risk of jev confident-NO on proposal_prescreen (shadow); confident_yes is descriptive only */
+  d5_no: { status: 'collecting' | 'ready' | 'rejected' | 'insufficient_evidence' | 'unavailable'; cutoff: string; prereg_sha256?: string; analysis_n?: number; max_risk?: number;
+    excluded?: { pre_cutoff_cluster: number; oracle_lane: number };
+    confident_no?: { cases: number; false_rejection: number; correct_rejection: number; pending: number; censored: number; resolved: number; false_rejection_upper_95: number | null;
+      analysis_n_reached: number; analysis_errors: number; analysis_upper_95: number | null };
+    min_clusters_for_bound?: number; max_errors_allowed_at_n?: number;
+    confident_yes?: D5Tally; uncertain?: D5Tally; note?: string };
   /** TG-001 (TG_001_MODE): the same frozen write_test tasks under four prompt representations (A gym, B production, C controlled, D structured) */
   /** integrity addendum: invalid_manifest = the frozen analysis plan is missing, edited or later than the first outcome → no analysis */
   tg_001: { mode: string | null; status: 'not_frozen' | 'collecting' | 'complete' | 'invalid_manifest'; reason?: string | null; label?: string; tasks: number; frozen_at?: string; commit?: string | null; species?: string; harness?: string | null; skipped?: number;
@@ -208,6 +217,7 @@ export interface EfficiencyView {
 
 export type HealthState = 'HEALTHY' | 'DEGRADED' | 'BREACHED' | 'UNKNOWN' | 'STALE' | 'NOT_APPLICABLE';
 export type AceMainEffect = { on_n: number; off_n: number; diff: number | null };
+export type D5Tally = { cases: number; false_rejection: number; correct_rejection: number; pending: number; censored: number; verified_rate: number | null; ci: [number, number] | null };
 export type OperatorCockpit = {
   at: string;
   /** Cockpit 3.0: one id per snapshot; health = worst guardrail state (DEGRADED for a partial snapshot or open stall) */
