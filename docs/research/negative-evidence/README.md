@@ -1,0 +1,31 @@
+# Negative evidence
+
+Falsified, rejected and inconclusive hypotheses are part of Djimitflo's learned capability boundary. This registry keeps
+them so that no agent rediscovers a rejected approach and silently retries it.
+
+- `NEGATIVE_EVIDENCE.yaml` is the machine-readable registry. It is written in JSON syntax, which is valid YAML 1.2, so any
+  YAML or JSON parser reads it (no YAML dependency in the repo).
+- Each entry has an `id`, `hypothesis`, `verdict` (REJECT, NO_GO, FALSIFIED or INCONCLUSIVE), `conditions`, `result`,
+  `why`, `evidence` pointers, `allowed_follow_up`, `forbidden_reuse` and a `reopen_condition`.
+- `forbidden_code_patterns` lists identifiers that may not appear in the server source while the entry's verdict is REJECT,
+  NO_GO or FALSIFIED. `packages/server/src/__tests__/negative-evidence.test.ts` enforces this.
+
+## Rules
+
+1. Never edit `result`, `why` or `evidence` of an entry. A new study gets a new entry.
+2. Reopen only when `reopen_condition` holds. Record the reopening as a new entry that references the old one.
+3. A rejected approach is not retried under another name. If a change needs a forbidden pattern, first record the new
+   evidence here and change the verdict through review.
+
+## Current entries
+
+| ID | Hypothesis | Verdict |
+|---|---|---|
+| NE-001 | jev confidence routing for proposal pre-screen (PR #779) | REJECT |
+| NE-002 | Memory rules improve maker outcomes | INCONCLUSIVE |
+| NE-003 | Commons grounding path produces verified changes | REJECT |
+| NE-004 | Gym tiers 4–6 are harder (H2) | INCONCLUSIVE |
+| NE-005 | Clef Flash beats jev as System One backend | REJECT |
+| NE-006 | Soup as fine-tuning backend | REJECT |
+| NE-007 | ruDevolution for shipped-code inspection | NO_GO |
+| NE-008 | REA integration | NO_GO |

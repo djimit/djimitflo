@@ -21,6 +21,7 @@ import { assignSiblingArm, recordEffortSibling, siblingRandomiseEnabled } from '
 import { assignCheckerFamily, checkerFamilyEnabled } from './checker-family';
 import { runAce001, runGenome, skillContentHash } from './maker-genome';
 import { runSte001 } from './ste-001';
+import { recordMakerCall } from './model-call-ledger';
 import { strategyGenomeFor } from './genome-registry';
 import { banditSpecies, chooseSpecies, speciesKey } from './runtime-bandit';
 import { recordFitnessShadow } from './fitness-view';
@@ -799,7 +800,10 @@ export class LoopDaemon {
         const ste = runSte001(this.db, run.id);
         if (ste) this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.ste_001', json(?)) WHERE id = ?").run(JSON.stringify(ste), activeMakerLease.id);
         // One outcome per run: two daemon passes can finish the same run.
-        if (!this.db.prepare('SELECT 1 FROM skill_outcomes WHERE skill_id = ? AND task_id = ? AND agent_id = ? LIMIT 1').get(skillId, run.id, activeMakerLease.id)) skills.recordOutcome(skillId, {
+        const firstPass = !this.db.prepare('SELECT 1 FROM skill_outcomes WHERE skill_id = ? AND task_id = ? AND agent_id = ? LIMIT 1').get(skillId, run.id, activeMakerLease.id);
+        // B29: the maker's model call in the ledger, with the experiment arms it ran in (opencode/remote runtime_usage; missing = null)
+        if (firstPass) recordMakerCall(this.db, { runId: run.id, goalId: goal.id, loopName, runtime: activeMakerLease.runtime, meta, ace, ste, durationMs: Date.now() - startedAtMs, ok: allGatesPass });
+        if (firstPass) skills.recordOutcome(skillId, {
           success: allGatesPass,
           tokensUsed: Number(meta.runtime_usage?.total_tokens) || 0,
           durationMs: Date.now() - startedAtMs,

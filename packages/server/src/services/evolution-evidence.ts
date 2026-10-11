@@ -3,6 +3,7 @@ import { failureTaskEvidence } from './gym-failure-tasks';
 import { forecastScoresV2 } from './forecast-scoring';
 import { parseRuntimeSpec } from './social-runtime-providers';
 import { modelEvidence } from './model-selector';
+import { ledgerTotals } from './model-call-ledger';
 import { commonsYield, oracleAgreement } from './honest-numbers';
 import { banditOpe } from './bandit-propensity';
 import { egressEvidence } from './egress-classification';
@@ -256,7 +257,9 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   };
   // MS-1: model calls per consumer (14-day selector window) and what the cost-aware selector would pick
   const frontier = frontierIncumbent(env.FRONTIER_EXPERTS_RUNTIME);
-  const models = modelEvidence(db, { panel_review: env.SELF_IMPROVEMENT_REVIEW_MODEL, ...(frontier ? { frontier_experts: frontier } : {}) }, env, now);
+  const models = { ...modelEvidence(db, { panel_review: env.SELF_IMPROVEMENT_REVIEW_MODEL, ...(frontier ? { frontier_experts: frontier } : {}) }, env, now),
+    // B29: calls / tokens (unknown counted apart) / list + marginal cost per purpose and per experiment arm, 7 d
+    ledger_7d: ledgerTotals(db, new Date(now - 7 * 86_400_000).toISOString()) };
   // RX-9 / RX-8: honest agreement and yield numbers (one row per maker; attempted Commons children vs source base rate)
   const oracle = oracleAgreement(db);
   const commons = commonsYield(db);
