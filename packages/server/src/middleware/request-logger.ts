@@ -11,8 +11,8 @@ export function requestLogger(req: Request, res: Response, next: NextFunction) {
     const duration = Date.now() - start;
     const { method, ip } = req;
     const { statusCode } = res;
-    const isJoinStatus = /^\/api\/swarm-v2\/social-runtime\/join\/[^/]+\/status\/?$/i.test(req.path);
-    const loggedUrl = isJoinStatus ? req.path : req.originalUrl;
+    // Query strings can carry tokens or user input; the route path is enough for operations.
+    const loggedUrl = req.path;
     
     const level = statusCode >= 500 ? 'ERROR' : statusCode >= 400 ? 'WARN' : 'INFO';
     
