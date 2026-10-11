@@ -80,7 +80,7 @@ UNKNOWN otherwise. PLANNING_FAILURE has no defensible signal yet and is never as
 ## Analysis (pre-registered)
 
 - **Primary:** A vs B on tasks with a scored result in both arms. Report the paired table (both pass / A only / B only / both
-  fail), discordant pairs, absolute effect (A − B success) with 95 % CI (paired Wald), exact two-sided McNemar p, n pairs.
+  fail), discordant pairs, absolute effect (A − B success) with 95 % CI (Tango score interval — paired Wald until the B27 pre-data fix), exact two-sided McNemar p, n pairs.
 - **Secondary (decomposition):** C vs B (does removing ids/advisory/policy recover success?), D vs B (does a structured minimal
   prompt with the production finding beat B?). Exploratory, no multiplicity claim.
 - Percentages are never reported without n and CI.
@@ -137,3 +137,26 @@ unchanged; this fixes the analysis.
   this environment → next: 40 vs 60 max-steps with task, prompt, model, worker, runtime and evaluator fixed. Otherwise
   inconclusive → extend to 40 tasks. The evidence reports what TG-001 falsified, supported, did not test, and the next experiment.
 - **No evolutionary fitness change based on TG-001 alone.**
+
+## Pre-run integrity (2026-10-11, B27 — pre-data, before the first physical attempt)
+
+- **Interval defect fixed:** the paired Wald interval collapsed to [0, 0] at zero discordance and was anti-conservative for small
+  one-sided counts (b = 4, c = 0, n = 40 gave upper 0.193 → REJECTED although A won 4 tasks and B none). Replaced by the Tango
+  (1998) score interval, which like the exact McNemar test depends only on (b, c, n). The MDE (20 pt), α (0.05), the three rules
+  and the extension rule are unchanged. The verdict is computed on unrounded values. Full enumeration:
+  `TG-001_DECISION_SURFACE.md`.
+- **Plan before the first physical attempt:** a claim records `tg_attempts.first_claimed_at`; the analysis is invalid unless the
+  plan's `frozen_at` is strictly earlier than the first claim or result. The claim that freezes the plan starts no TG attempt.
+- **Isolation by provenance:** TG attempts run as `loop_runs.loop_name = 'tg-001'`, never `'evolution-gym'`, so no gym statistic,
+  circuit breaker, IRT/difficulty fit, hack rate, graded pool, trial deciding set or estimator can count them; no skill outcome;
+  no copy in `gym_attempt_diffs` (the diff's sha256 stays on the TG run); no effort events. A run whose report is lost settles
+  its TG attempt as an infra discard (re-queued ≤ 2×, then INFRA_CENSORED) instead of leaving it `claimed`.
+- **Censoring** is reported by arm × execution position (`censoring`, `order_effects.positions[].infra_censored`).
+- **Frozen in the analysis plan as well:** `ci_method`, `classifier_version` (`tg-classifier-v2`), `step_budget` (40).
+- **Go-checklist:** `tgGoChecklist(db, { commit, build_id, worker_sha256 })` records experiment id, commits, build id, worker
+  hash, analysis / task-set / per-arm prompt fingerprints, seed, gate version, classifier version, retry policy, step budget,
+  model/router, flags and timestamp, and checks frozen, analysis valid, plan predates the first attempt, worker hash and deploy
+  commit equal the manifest's.
+- **Known, not changed (operator rule):** INCONCLUSIVE at 20 tasks extends to 40 and re-applies α = 0.05 — two looks, so the
+  overall false-SUPPORTED rate is above 0.05 (Bonferroni bound 0.10). Reported, not corrected, because the stopping rule is
+  pre-registered by the operator.

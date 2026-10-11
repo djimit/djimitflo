@@ -23,6 +23,8 @@ import type { LoopFinding } from './loop-discovery-service';
  */
 export const tg001On = (env: NodeJS.ProcessEnv = process.env): boolean => env.TG_001_MODE === 'on';
 export const TG_ID = 'tg-001';
+/** B27: loop_runs.loop_name of TG-001 attempts — never 'evolution-gym', so gym statistics exclude them by provenance */
+export const TG_LOOP = 'tg-001';
 export const TG_ARMS = ['A', 'B', 'C', 'D'] as const;
 export type TgArm = typeof TG_ARMS[number];
 export const TG_TASKS = 20;
@@ -33,6 +35,10 @@ export const TG_CAPABILITY = 'prompt_override';
 export const TG_C_REMOVED: AssignmentOmit[] = ['ids', 'advisory', 'policy'];
 /** An infrastructure discard puts the attempt back in the queue, at most this many times. */
 export const TG_MAX_INFRA_RETRIES = 2;
+/** Recorded in the go-checklist (B27); a change to classifyTgFailure must bump it and start a new experiment version. */
+export const TG_CLASSIFIER_VERSION = 'tg-classifier-v2'; // v2 = #777 word-boundary fix
+/** The gym worker's atomic --max-steps for every arm (production remote makers run 60: the next experiment). */
+export const TG_STEP_BUDGET = 40;
 /** Integrity addendum (pre-data, 11-10): minimum practically relevant paired difference A − B, and the test level. */
 export const TG_MDE = 0.2;
 export const TG_ALPHA = 0.05;
@@ -106,7 +112,8 @@ export interface TgAnalysis {
   task_fingerprints: Record<string, string>; prompt_fingerprints: Record<string, Record<TgArm, string>>; seed: number;
   condition_order: Array<{ seq: number; task_key: string; arm: TgArm }>;
   retry_policy: string; exclusion_policy: string[]; scoring_gates: unknown;
-  primary: string; secondary: string[]; tests: string[]; mde: number; alpha: number; interpretation: string[];
+  primary: string; secondary: string[]; tests: string[]; ci_method?: string; mde: number; alpha: number; interpretation: string[];
+  classifier_version?: string; step_budget?: number;
   prior_exposure: Record<string, { prior_exposure: boolean; prior_attempt_count: number; prior_condition_if_known: TgArm | null }>;
   label: string;
 }
@@ -169,9 +176,10 @@ export function tgAnalysisPlan(m: TgManifest, schedule: Array<{ seq: number; tas
     retry_policy: `an infra discard re-queues the same (task, arm) at most ${TG_MAX_INFRA_RETRIES}×; retries are not observations — the first non-infra result is the observation`,
     exclusion_policy: ['INFRA_CENSORED: every permitted attempt was an infra discard (neither success nor failure; reported per arm, excluded from paired tables)',
       'INVALID: a task discard (the task itself failed, e.g. gap already closed) — excluded and reported', 'historical gym attempts are never observations'],
-    scoring_gates: m.evaluator, primary: 'A vs B: paired discordance, exact two-sided McNemar, absolute paired difference A − B with 95 % CI (unit = (task, arm); task = block)',
+    scoring_gates: m.evaluator, primary: 'A vs B: paired discordance, exact two-sided McNemar, absolute paired difference A − B with 95 % Tango score CI (unit = (task, arm); task = block); verdict on unrounded values',
     secondary: ["Cochran's Q over the four arms (complete blocks, chi-square df = 3)", 'then only the predeclared contrasts C vs B and D vs B (exact McNemar); no other pairwise tests'],
-    tests: ['mcnemar_exact', 'cochran_q_chi2'], mde: TG_MDE, alpha: TG_ALPHA, interpretation: TG_INTERPRETATION,
+    tests: ['mcnemar_exact', 'cochran_q_chi2'], ci_method: 'tango score interval (paired difference)', mde: TG_MDE, alpha: TG_ALPHA, interpretation: TG_INTERPRETATION,
+    classifier_version: TG_CLASSIFIER_VERSION, step_budget: TG_STEP_BUDGET,
     prior_exposure: Object.fromEntries(m.tasks.map((t) => [t.key, { prior_exposure: t.prior_gym_attempts > 0, prior_attempt_count: t.prior_gym_attempts, prior_condition_if_known: t.prior_gym_attempts > 0 ? 'A' as TgArm : null }])),
     label: TG_LABEL,
   };
@@ -188,13 +196,46 @@ export function tgAnalysisValidity(db: Database, m: TgManifest): { valid: boolea
   if (!row?.analysis_sha256) return { valid: false, reason: 'no stored analysis fingerprint' };
   if (sha(canonicalJson(m.analysis)) !== row.analysis_sha256) return { valid: false, reason: 'analysis manifest changed after freeze' };
   if (m.analysis.frozen_at !== row.frozen_at) return { valid: false, reason: 'analysis manifest frozen_at differs from the experiment row' };
+  const first = firstPhysicalAttempt(db, m.id);
+  if (first === undefined) return { valid: false, reason: 'attempt history unreadable' };
+  if (first && m.analysis.frozen_at >= first) return { valid: false, reason: `analysis manifest (${m.analysis.frozen_at}) not written before the first physical attempt (${first})` };
+  return { valid: true, reason: null };
+}
+
+/**
+ * B27 go-checklist: what must be recorded immediately before the worker is enabled, and the checks that gate TG-001 = GO.
+ * Read-only. `deploy` comes from the running build (/health), `worker_sha256` from the installed worker file.
+ */
+export function tgGoChecklist(db: Database, deploy: { commit: string | null; build_id: string | null; worker_sha256: string | null }, env: NodeJS.ProcessEnv = process.env, now = new Date().toISOString()) {
+  const m = tgManifest(db);
+  const validity = m ? tgAnalysisValidity(db, m) : { valid: false, reason: 'not frozen' };
+  const first = m ? firstPhysicalAttempt(db, m.id) : null;
+  const record = m ? {
+    experiment_id: m.id, git_commit: m.commit, deploy_commit: deploy.commit, build_id: deploy.build_id, worker_version: m.harness, installed_worker_sha256: deploy.worker_sha256,
+    analysis_fingerprint: sha(canonicalJson(m.analysis)), task_set_fingerprint: sha(canonicalJson(m.tasks.map((t) => t.key))),
+    prompt_fingerprints: Object.fromEntries(TG_ARMS.map((a) => [a, sha(canonicalJson(m.tasks.map((t) => sha(t.prompts[a]))))])),
+    seed: m.seed, gate_version: sha(canonicalJson(m.evaluator ?? null)), classifier_version: TG_CLASSIFIER_VERSION, retry_policy: `infra discard re-queued ≤ ${TG_MAX_INFRA_RETRIES}×; semantic failures never retried`,
+    step_budget: TG_STEP_BUDGET, model_router: m.species, flags: Object.fromEntries(TG_FLAGS.map((f) => [f, env[f] ?? null])), timestamp: now } : null;
+  const checks = {
+    frozen: Boolean(m), analysis_valid: validity.valid, analysis_reason: validity.reason,
+    plan_predates_first_attempt: first === null ? true : first === undefined ? false : Boolean(m && m.analysis && m.analysis.frozen_at < first),
+    no_attempt_yet: first === null,
+    worker_matches_manifest: Boolean(m && m.harness && deploy.worker_sha256 && (m.harness === deploy.worker_sha256 || m.harness.endsWith(`:${deploy.worker_sha256}`))),
+    deploy_matches_manifest: Boolean(m && deploy.commit && m.commit === deploy.commit),
+  };
+  return { record, checks, go: Object.entries(checks).every(([k, v]) => k === 'analysis_reason' || k === 'no_attempt_yet' || v === true) };
+}
+
+/** Earliest physical execution attempt (claim or result) of the experiment; null = none yet; undefined = unreadable. */
+export function firstPhysicalAttempt(db: Database, experimentId: string): string | null | undefined {
   let first: string | null = null;
   try {
-    for (const r of db.prepare('SELECT history_json FROM tg_attempts WHERE experiment_id = ? AND history_json IS NOT NULL').all(m.id) as Array<{ history_json: string }>)
-      for (const h of JSON.parse(r.history_json) as Array<{ at?: string }>) if (h.at && (!first || h.at < first)) first = h.at;
-  } catch { return { valid: false, reason: 'attempt history unreadable' }; }
-  if (first && m.analysis.frozen_at > first) return { valid: false, reason: `analysis manifest (${m.analysis.frozen_at}) written after the first outcome (${first})` };
-  return { valid: true, reason: null };
+    for (const r of db.prepare('SELECT first_claimed_at, history_json FROM tg_attempts WHERE experiment_id = ?').all(experimentId) as Array<{ first_claimed_at: string | null; history_json: string | null }>) {
+      if (r.first_claimed_at && (!first || r.first_claimed_at < first)) first = r.first_claimed_at;
+      for (const h of (r.history_json ? JSON.parse(r.history_json) : []) as Array<{ at?: string }>) if (h.at && (!first || h.at < first)) first = h.at;
+    }
+  } catch { return undefined; }
+  return first;
 }
 
 /** The next queued (task, arm), oldest seq first; it is marked claimed for this run. */
@@ -203,7 +244,8 @@ export function claimTg001(db: Database, manifest: TgManifest, runId: string, no
   if (!row) return null;
   const entry = manifest.tasks.find((t) => t.key === row.task_key);
   if (!entry) return null;
-  db.prepare("UPDATE tg_attempts SET status = 'claimed', run_id = ?, updated_at = ? WHERE id = ?").run(runId, now, row.id);
+  // first_claimed_at = the first physical execution attempt (B27): the analysis plan must predate it, not only the first result
+  db.prepare("UPDATE tg_attempts SET status = 'claimed', run_id = ?, updated_at = ?, first_claimed_at = COALESCE(first_claimed_at, ?) WHERE id = ?").run(runId, now, now, row.id);
   return { attempt_id: row.id, arm: row.arm, task: entry.task, prompt: entry.prompts[row.arm] };
 }
 
@@ -265,6 +307,29 @@ export function mcnemarExact(b: number, c: number): number {
   return Math.min(1, (2 * s) / 2 ** n);
 }
 
+/**
+ * Tango (1998) score interval for the paired difference (b − c)/n: the roots of
+ * Z(Δ) = (b − c − nΔ) / √(n(2q̃ + Δ(1 − Δ))) = ±z, with q̃ the restricted MLE of the B-only cell under Δ.
+ * It depends only on (b, c, n) — like the exact McNemar test — and never collapses to a zero-width interval.
+ * Pre-data fix (B27): the Wald interval used before gave [0, 0] at zero discordance and REJECTED e.g. b = 4, c = 0, n = 40
+ * (upper bound 0.193) where the score interval reaches 0.22 (docs/research/ace/TG-001_DECISION_SURFACE.md).
+ */
+export function tangoInterval(b: number, c: number, n: number, z = 1.96): [number, number] {
+  if (n <= 0) return [-1, 1];
+  const score = (d: number): number => {
+    const A = 2 * n; const B = -b - c + (2 * n - b + c) * d; const C = -c * d * (1 - d);
+    const q = (Math.sqrt(Math.max(0, B * B - 4 * A * C)) - B) / (2 * A);
+    const v = n * (2 * q + d * (1 - d));
+    return v <= 0 ? (b - c - n * d === 0 ? 0 : Math.sign(b - c - n * d) * Infinity) : (b - c - n * d) / Math.sqrt(v);
+  };
+  const root = (lo: number, hi: number, target: number): number => { // score() decreases in d
+    for (let i = 0; i < 200; i++) { const mid = (lo + hi) / 2; if (score(mid) > target) lo = mid; else hi = mid; }
+    return (lo + hi) / 2;
+  };
+  const d = (b - c) / n;
+  return [d <= -1 ? -1 : root(-1, d, z), d >= 1 ? 1 : root(d, 1, -z)];
+}
+
 /** Paired comparison x vs y over tasks where both arms produced a scored (success/failure) result. */
 export function pairedTable(rows: Array<{ task_key: string; arm: string; status: string }>, x: TgArm, y: TgArm) {
   const by = new Map<string, Record<string, boolean>>();
@@ -273,10 +338,14 @@ export function pairedTable(rows: Array<{ task_key: string; arm: string; status:
   for (const m of by.values()) { if (!(x in m) || !(y in m)) continue; if (m[x] && m[y]) both++; else if (m[x]) xOnly++; else if (m[y]) yOnly++; else neither++; }
   const n = both + xOnly + yOnly + neither;
   const d = n ? (xOnly - yOnly) / n : null;
-  const se = n ? Math.sqrt(Math.max(0, xOnly + yOnly - ((xOnly - yOnly) ** 2) / n)) / n : null;
+  const ci = n ? tangoInterval(xOnly, yOnly, n) : null;
+  const p = n ? mcnemarExact(xOnly, yOnly) : null;
+  const r3 = (v: number) => Math.round(v * 1000) / 1000;
   return { arms: `${x} vs ${y}`, n_pairs: n, both_pass: both, [`${x}_only`]: xOnly, [`${y}_only`]: yOnly, both_fail: neither,
-    effect: d === null ? null : Math.round(d * 1000) / 1000, ci95: d === null || se === null ? null : [Math.round((d - 1.96 * se) * 1000) / 1000, Math.round((d + 1.96 * se) * 1000) / 1000],
-    ci_method: 'wald (paired)', mcnemar_exact_p: n ? Math.round(mcnemarExact(xOnly, yOnly) * 10000) / 10000 : null };
+    effect: d === null ? null : r3(d), ci95: ci ? [r3(ci[0]), r3(ci[1])] : null,
+    ci_method: 'tango score (paired)', mcnemar_exact_p: p === null ? null : Math.round(p * 10000) / 10000,
+    // the verdict is computed on these unrounded values (rounding to 3 decimals could move a bound across 0.2)
+    raw: d === null || !ci || p === null ? null : { effect: d, ci95: ci, mcnemar_exact_p: p } };
 }
 
 /** erfc via Abramowitz & Stegun 7.1.26 (|error| < 1.5e-7). */
@@ -327,13 +396,23 @@ export function tgObservation(rowStatus: string, resultStatus: string | null): T
 const unknownOr = (n: number, known: number) => (known ? n : 'UNKNOWN' as const);
 
 /** Interpretation per the frozen rules — only once the plan is valid and the primary comparison reached TG_MIN_TASKS pairs. */
-export function tgInterpret(primary: { n_pairs: number; effect: number | null; ci95: number[] | null; mcnemar_exact_p: number | null }, ready: boolean) {
+export type TgVerdict = 'representation_supported' | 'representation_rejected' | 'inconclusive';
+/** The frozen decision rule alone (B27 decision surface enumerates it): exactly one verdict per (effect, interval, p). */
+export function tgVerdict(effect: number, ci95: readonly number[], p: number): TgVerdict {
+  if (effect >= TG_MDE - 1e-12 /* (b − c)/n = 0.2 exactly, despite float division */ && p < TG_ALPHA) return 'representation_supported';
+  if (ci95[1] < TG_MDE) return 'representation_rejected';
+  return 'inconclusive';
+}
+
+export function tgInterpret(primary: { n_pairs: number; effect: number | null; ci95: number[] | null; mcnemar_exact_p: number | null; raw?: { effect: number; ci95: number[]; mcnemar_exact_p: number } | null }, ready: boolean) {
   if (!ready || primary.effect === null || !primary.ci95 || primary.mcnemar_exact_p === null) return { verdict: 'pending' as const, falsified: null, supported: null, not_tested: TG_NOT_TESTED, next_experiment: null };
-  if (primary.effect >= TG_MDE && primary.mcnemar_exact_p < TG_ALPHA) return { verdict: 'representation_supported' as const,
+  const raw = primary.raw ?? { effect: primary.effect, ci95: primary.ci95, mcnemar_exact_p: primary.mcnemar_exact_p };
+  const verdict = tgVerdict(raw.effect, raw.ci95, raw.mcnemar_exact_p);
+  if (verdict === 'representation_supported') return { verdict: 'representation_supported' as const,
     falsified: `H0 — the production assignment representation does not lower prod-gated success (within the gym harness)`,
     supported: `H1 — FULL_PRODUCTION lowers success vs MINIMAL_GYM by ${primary.effect} (95 % CI ${primary.ci95.join('…')}, exact McNemar p ${primary.mcnemar_exact_p}) on the same tasks`,
     not_tested: TG_NOT_TESTED, next_experiment: 'prompt-component ablation: C vs B and D vs B locate which production parts carry the effect, before any gym redesign' };
-  if (primary.ci95[1] < TG_MDE) return { verdict: 'representation_rejected' as const,
+  if (verdict === 'representation_rejected') return { verdict: 'representation_rejected' as const,
     falsified: `H1 — assignment representation is not the dominant explanation of the transfer gap within the gym harness (upper 95 % bound ${primary.ci95[1]} < ${TG_MDE})`,
     supported: null, not_tested: TG_NOT_TESTED, next_experiment: '40 vs 60 max-steps on the same tasks with prompt, model, worker, runtime and evaluator fixed' };
   return { verdict: 'inconclusive' as const, falsified: null, supported: null, not_tested: TG_NOT_TESTED, next_experiment: 'extend to 40 tasks (protocol stopping rule); arms and primary comparison unchanged' };
@@ -381,14 +460,17 @@ export function tg001Evidence(db: Database, env: NodeJS.ProcessEnv = process.env
   const byPos = new Map<string, Map<number, boolean>>();
   for (const o of scoredObs) { const m = byPos.get(o.task_key) ?? new Map(); m.set(o.position, o.status === 'success'); byPos.set(o.task_key, m); }
   const positions = [1, 2, 3, 4].map((p) => { const at = scoredObs.filter((o) => o.position === p); const ok = at.filter((o) => o.status === 'success').length;
-    return { position: p, n: at.length, success: ok, rate: at.length ? Math.round((ok / at.length) * 1000) / 1000 : null }; });
+    return { position: p, n: at.length, success: ok, rate: at.length ? Math.round((ok / at.length) * 1000) / 1000 : null,
+      infra_censored: obs.filter((o) => o.position === p && o.status === 'INFRA_CENSORED').length }; });
+  // censoring by arm × position (B27): a position-dependent censoring pattern is a threat to validity, reported not corrected
+  const censoring = TG_ARMS.map((arm) => ({ arm, by_position: [1, 2, 3, 4].map((p) => obs.filter((o) => o.arm === arm && o.position === p && o.status === 'INFRA_CENSORED').length) }));
   const posQ = cochranQ([...byPos.values()].filter((m) => [1, 2, 3, 4].every((p) => m.has(p))).map((m) => [1, 2, 3, 4].map((p) => m.get(p)!)));
   const prior = Object.values(manifest.analysis!.prior_exposure);
   const open = obs.some((r) => r.status === 'pending');
   const primary = paired[0];
   return { mode: env.TG_001_MODE ?? null, status: open ? 'collecting' as const : 'complete' as const, label: TG_LABEL, frozen_at: manifest.frozen_at, commit: manifest.commit, species: manifest.species,
     harness: manifest.harness, tasks: manifest.tasks.length, skipped: manifest.skipped.length, mde: TG_MDE, alpha: TG_ALPHA, interpretation_rules: TG_INTERPRETATION,
-    arms, paired, omnibus_cochran_q: omnibus, order_effects: { positions, cochran_q: posQ },
+    arms, paired, omnibus_cochran_q: omnibus, order_effects: { positions, cochran_q: posQ }, censoring,
     prior_exposure: { exposed: prior.filter((p) => p.prior_exposure).length, unexposed: prior.filter((p) => !p.prior_exposure).length, prior_attempts: prior.reduce((a, p) => a + p.prior_attempt_count, 0) },
     result: tgInterpret(primary, !open && primary.n_pairs >= TG_MIN_TASKS),
     transfer_gap: 'gym 78.8 % vs production 7.0 % (workstation species, 30 d, CODEX_REPORT); TG-001 can only attribute the part due to assignment representation under the gym harness — the rest stays UNKNOWN',
