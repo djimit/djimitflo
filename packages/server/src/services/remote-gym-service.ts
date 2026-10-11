@@ -18,7 +18,7 @@ import { redactSecrets } from './secret-patterns';
 import { remoteGymCap } from './stall-watch';
 import { gymSkillContentHash } from './gym-skill-hash';
 import { gradedFitnessMode, gradedRefs, roundGraded, type GradedKind } from './graded-fitness';
-import { TG_CAPABILITY, claimTg001, freezeTg001, recordTg001, tg001On, tgManifest } from './tg-001';
+import { TG_CAPABILITY, TG_LOOP, claimTg001, freezeTg001, recordTg001, tg001On, tgManifest } from './tg-001';
 import { dreamEvolutionEnabled, ensureBaseline, fireCheckVoid, genome, genomeFireCheck, holdout, mutantHoldout, mutantTrialsEnabled, nextTrialAttempt, parseFireCheck, writeTestHoldout, writeTestHoldoutEnabled, type Genome } from './genome-registry';
 
 /**
@@ -140,9 +140,13 @@ export class RemoteGymService {
     if (!species.length) throw new Error('GYM_SPECIES_REQUIRED');
     // A host runs one attempt at a time (systemd oneshot), so its runs still 'running' at a new claim lost their report
     // (prod 2026-09-27: 'fetch failed' left f2df0beb running for good). Settle them as an infra discard — the task stays untried.
+    // TG-001 runs too: their attempt is settled as an infra discard (re-queued or INFRA_CENSORED), never left 'claimed'
+    const lost = this.db.prepare(`SELECT id, json_extract(metadata, '$.gym.tg.attempt_id') AS tg FROM loop_runs
+      WHERE loop_name IN ('evolution-gym', '${TG_LOOP}') AND status = 'running' AND json_extract(metadata, '$.gym.remote_host') = ?`).all(host) as Array<{ id: string; tg: string | null }>;
     this.db.prepare(`UPDATE loop_runs SET status = 'completed', updated_at = ?,
       metadata = json_set(metadata, '$.gym_result', json_object('status', 'discarded', 'reason', 'infra: worker lost the result (no report before its next claim)'))
-      WHERE loop_name = 'evolution-gym' AND status = 'running' AND json_extract(metadata, '$.gym.remote_host') = ?`).run(now.toISOString(), host);
+      WHERE loop_name IN ('evolution-gym', '${TG_LOOP}') AND status = 'running' AND json_extract(metadata, '$.gym.remote_host') = ?`).run(now.toISOString(), host);
+    for (const r of lost) if (r.tg) { try { recordTg001(this.db, r.tg, r.id, { status: 'discarded', reason: 'infra: worker lost the result (no report before its next claim)' }, now.toISOString()); } catch { /* bookkeeping */ } }
     const since = new Date(now.getTime() - 86_400_000).toISOString();
     if (remoteGymCap(this.db, now.getTime()).capped) return { skipped: 'daily cap reached' };
     // the offered species with the fewest gym outcomes goes next
@@ -161,9 +165,11 @@ export class RemoteGymService {
     const runId = randomUUID();
     let tg: { experiment: string; arm: string; attempt_id: string } | null = null; let promptOverride: string | undefined;
     if (tg001On() && gymProdGatesEnabled() && [TG_CAPABILITY, FAILURE_TASK_CAPABILITY, PROD_GATES_CAPABILITY].every((c) => caps.includes(c))) {
-      const frozen = tgManifest(this.db) ?? freezeTg001(this.db, this.failureTasks(repo), { checkoutPath: repo, species: key, commit: gitHead(repo), harness: harnessHash(repo),
-        prodGates: prodGatesConfig(), reserved: new Set(holdoutKeys(this.db)), now: now.toISOString() }).manifest ?? null;
-      const next = frozen && frozen.species === key ? claimTg001(this.db, frozen, runId, now.toISOString()) : null;
+      // B27: the claim that freezes the plan starts no TG attempt, so the plan strictly predates the first physical attempt
+      const frozen = tgManifest(this.db);
+      if (!frozen) freezeTg001(this.db, this.failureTasks(repo), { checkoutPath: repo, species: key, commit: gitHead(repo), harness: harnessHash(repo),
+        prodGates: prodGatesConfig(), reserved: new Set(holdoutKeys(this.db)), now: now.toISOString() });
+      const next = frozen && frozen.species === key && frozen.frozen_at < now.toISOString() ? claimTg001(this.db, frozen, runId, now.toISOString()) : null;
       if (next) { task = next.task; promptOverride = next.prompt; tg = { experiment: frozen!.id, arm: next.arm, attempt_id: next.attempt_id }; }
     }
     if (!task && canaryDue(this.db, (opts.capabilities ?? []).map(String))) {
@@ -203,9 +209,11 @@ export class RemoteGymService {
     const { canary: _canaryTest, mutants, ...meta } = stored as typeof stored & { canary?: unknown; mutants?: TargetMutant[] };
     const gates = gymProdGatesEnabled() && (opts.capabilities ?? []).map(String).includes(PROD_GATES_CAPABILITY) ? prodGatesConfig() : null;
     const gymMeta = { ...meta, ...(mutants ? { mutant_keys: mutants.map((m) => m.key) } : {}), species: key, remote_host: host, ...(trialGenome ? { genome: trialGenome.id } : {}), ...(probe ? { probe: 1 } : {}), ...(canary ? { canary: 1 } : {}), ...(gates ? { prod_gates: 1 } : {}), ...(tg ? { tg } : {}) };
-    this.db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, repository_path, metadata, created_at, updated_at) VALUES (?, 'evolution-gym', 'closed', 'running', ?, ?, ?, ?)")
-      .run(runId, repo, JSON.stringify({ gym: gymMeta }), now.toISOString(), now.toISOString());
-    recordEffortGym(this.db, runId, key, task.commit); // EVC effort controller: shadow only (serve vs skip), changes nothing
+    // B27 isolation by provenance: a TG-001 run is not an 'evolution-gym' run, so no gym statistic, breaker, IRT, hack rate,
+    // graded pool, trial deciding set or estimator (all of which select loop_name = 'evolution-gym') can count it
+    this.db.prepare('INSERT INTO loop_runs (id, loop_name, mode, status, repository_path, metadata, created_at, updated_at) VALUES (?, ?, \'closed\', \'running\', ?, ?, ?, ?)')
+      .run(runId, tg ? TG_LOOP : 'evolution-gym', repo, JSON.stringify({ gym: gymMeta }), now.toISOString(), now.toISOString());
+    if (!tg) recordEffortGym(this.db, runId, key, task.commit); // EVC effort controller: shadow only (serve vs skip), changes nothing
     return { runId, species: key, task, ...(trialGenome ? { genome: { id: trialGenome.id, lines: trialGenome.lines } } : {}), ...(gates ? { prod_gates: gates } : {}),
       ...(tg ? { prompt_override: promptOverride, tg: { experiment: tg.experiment, arm: tg.arm } } : {}) };
   }
@@ -249,7 +257,9 @@ export class RemoteGymService {
     const prod_gates = gym.prod_gates ? sanitizeProdGates(result.prod_gates) : undefined;
     const now = new Date().toISOString();
     let diff_ref: string | undefined;
-    if (gymStoreDiffs() && result.status !== 'discarded' && typeof result.diff === 'string' && result.diff.trim()) {
+    // a TG-001 diff stays out of the gym training dataset (a copy would lose the experiment's provenance); its sha256 is kept on the run
+    if (gym.tg && typeof result.diff === 'string' && result.diff.trim()) diff_ref = `sha256:${prepareGymDiff(result.diff).sha256}`;
+    else if (gymStoreDiffs() && result.status !== 'discarded' && typeof result.diff === 'string' && result.diff.trim()) {
       try {
         const d = prepareGymDiff(result.diff);
         this.db.prepare('INSERT OR REPLACE INTO gym_attempt_diffs (run_id, task_key, status, species, sha256, diff, redacted, truncated, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')

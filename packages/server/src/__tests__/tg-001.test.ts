@@ -96,7 +96,7 @@ it('TG-001 failure categories come from recorded fields only', () => {
   expect(classifyTgFailure('failure', 'no change (maker gave up)', { termination: 'exit:0', maker_ms: 400_000 })).toBe('UNKNOWN_FAILURE');
 });
 
-it('TG_001_MODE=on: the first capable claim freezes the experiment and serves arms with the prompt; TG runs earn no gym outcome', () => {
+it('TG_001_MODE=on: the first capable claim freezes the experiment, later claims serve arms with the prompt; TG runs earn no gym outcome', () => {
   vi.stubEnv('TG_001_MODE', 'on'); vi.stubEnv('GYM_PROD_GATES', 'true'); vi.stubEnv('GYM_FAILURE_TASKS_ENABLED', 'true');
   const tasks = Array.from({ length: 12 }, (_, i) => seedTask(i + 1, i < 3 ? 'test-gap' : 'exports'));
   const svc = new RemoteGymService(db, () => []);
@@ -106,6 +106,10 @@ it('TG_001_MODE=on: the first capable claim freezes the experiment and serves ar
   const plain = svc.claim('workstation', ['atomic@llama-router'], new Date(), { capabilities: ['write_test', 'prod_gates'] });
   expect(plain).toMatchObject({ task: { kind: 'write_test' } });
   expect((plain as { prompt_override?: string }).prompt_override).toBeUndefined();
+  db.prepare("UPDATE loop_runs SET status = 'completed' WHERE loop_name = 'evolution-gym'").run();
+  // B27: the freezing claim starts no TG attempt (the plan must strictly predate the first physical attempt)
+  const freezing = svc.claim('workstation', ['atomic@llama-router'], new Date(Date.now() - 60_000), caps) as { tg?: unknown };
+  expect(freezing.tg).toBeUndefined();
   db.prepare("UPDATE loop_runs SET status = 'completed' WHERE loop_name = 'evolution-gym'").run();
   const c = svc.claim('workstation', ['atomic@llama-router'], new Date(), caps) as { runId: string; task: FailureTask; prompt_override: string; tg: { arm: string } };
   expect(c.tg.arm).toMatch(/^[ABCD]$/);
