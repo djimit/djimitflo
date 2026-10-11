@@ -6,7 +6,8 @@ import { runMigrations } from '../database/migrate';
 import { steLint, steSummary } from '../services/ste-lint';
 import { CHECKER_INSTRUCTIONS, MAKER_TEMPLATE_RULES, makerTemplateRules, objectiveScopeLine } from '../services/loop-service';
 import { PANEL_REVIEW_INSTRUCTIONS } from '../services/self-improvement-agent-review-service';
-import { MAKER_TEMPLATE_RULES_STE, STE_TEMPLATE_HASH, ste001Evidence, steArm } from '../services/ste-001';
+import { MAKER_TEMPLATE_RULES_STE, STE_TEMPLATE_HASH, ste001Evidence, steArm, runSte001, ste001On, STE_001_TARGET_PER_ARM } from '../services/ste-001';
+import { wilson } from '../services/evolution-estimators';
 import { aceArm } from '../services/ace-001';
 import { assignmentContext } from '../services/assignment-context';
 import { MAKER_TEMPLATE_HASH, runGenome } from '../services/maker-genome';
@@ -114,4 +115,113 @@ it('evidence: per-arm n / verified / out-of-scope share / tokens; gym and untagg
   expect(ev.arms['1']).toMatchObject({ n: 2, verified: 2, out_of_scope_share: 0 });
   expect(ev.diff).toBe(0.5); expect(ev.status).toBe('collecting'); expect(ev.ste_template_hash).toBe(createHash('sha256').update(MAKER_TEMPLATE_RULES_STE.join('\n')).digest('hex').slice(0, 12));
   expect(buildEvolutionEvidence(db, { STE_001_MODE: 'on' }).ste_001.arms['1'].n).toBe(2);
+});
+// --- 4. runSte001 ---
+it('runSte001: null when no events, missing ste_001, invalid arm, or corrupt metadata', () => {
+  expect(runSte001(db, 'no-run')).toBeNull();
+  db.prepare(`INSERT INTO loop_events (id, loop_run_id, event_type, level, message, metadata, created_at) VALUES (?, 'r2', 'assignment_context', 'info', 'm', ?, ?)`)
+    .run(randomUUID(), JSON.stringify({ examples: [] }), now);
+  expect(runSte001(db, 'r2')).toBeNull();
+  db.prepare(`INSERT INTO loop_events (id, loop_run_id, event_type, level, message, metadata, created_at) VALUES (?, 'r3', 'assignment_context', 'info', 'm', ?, ?)`)
+    .run(randomUUID(), JSON.stringify({ ste_001: { arm: 0, template_hash: 'h0' } }), now);
+  expect(runSte001(db, 'r3')).toEqual({ arm: 0, template_hash: 'h0' });
+  db.prepare(`INSERT INTO loop_events (id, loop_run_id, event_type, level, message, metadata, created_at) VALUES (?, 'r4', 'assignment_context', 'info', 'm', ?, ?)`)
+    .run(randomUUID(), JSON.stringify({ ste_001: { arm: 1, template_hash: 'h1' } }), now);
+  expect(runSte001(db, 'r4')).toEqual({ arm: 1, template_hash: 'h1' });
+  db.prepare(`INSERT INTO loop_events (id, loop_run_id, event_type, level, message, metadata, created_at) VALUES (?, 'r5', 'assignment_context', 'info', 'm', ?, ?)`)
+    .run(randomUUID(), JSON.stringify({ ste_001: { arm: 2, template_hash: 'x' } }), now);
+  expect(runSte001(db, 'r5')).toBeNull();
+  db.prepare(`INSERT INTO loop_events (id, loop_run_id, event_type, level, message, metadata, created_at) VALUES (?, 'r6', 'assignment_context', 'info', 'm', ?, ?)`)
+    .run(randomUUID(), '{broken json', now);
+  expect(runSte001(db, 'r6')).toBeNull();
+});
+it('runSte001: latest assignment_context wins; other event types ignored', () => {
+  const t1 = new Date(Date.now() - 3600_000).toISOString();
+  const t2 = new Date().toISOString();
+  db.prepare(`INSERT INTO loop_events (id, loop_run_id, event_type, level, message, metadata, created_at) VALUES (?, 'r7', 'assignment_context', 'info', 'm', ?, ?)`)
+    .run(randomUUID(), JSON.stringify({ ste_001: { arm: 0, template_hash: 'old' } }), t1);
+  db.prepare(`INSERT INTO loop_events (id, loop_run_id, event_type, level, message, metadata, created_at) VALUES (?, 'r7', 'assignment_context', 'info', 'm', ?, ?)`)
+    .run(randomUUID(), JSON.stringify({ ste_001: { arm: 1, template_hash: 'new' } }), t2);
+  expect(runSte001(db, 'r7')).toEqual({ arm: 1, template_hash: 'new' });
+  db.prepare(`INSERT INTO loop_events (id, loop_run_id, event_type, level, message, metadata, created_at) VALUES (?, 'r8', 'other_event', 'info', 'm', ?, ?)`)
+    .run(randomUUID(), JSON.stringify({ ste_001: { arm: 1, template_hash: 'x' } }), t2);
+  expect(runSte001(db, 'r8')).toBeNull();
+});
+// --- 5. ste001On ---
+it('ste001On: true only for STE_001_MODE=on', () => {
+  expect(ste001On({ STE_001_MODE: 'on' })).toBe(true);
+  expect(ste001On({ STE_001_MODE: 'off' })).toBe(false);
+  expect(ste001On({})).toBe(false);
+  expect(ste001On({ STE_001_MODE: '' })).toBe(false);
+});
+// --- 6. steArm exact values (pin slice/base) ---
+it('steArm: known goal ids map to expected arms', () => {
+  expect(steArm('goal-a')).toBe(0);
+  expect(steArm('goal-b')).toBe(0);
+  expect(steArm('goal-d')).toBe(1);
+  expect(STE_TEMPLATE_HASH).toHaveLength(12);
+  expect(/^[0-9a-f]{12}$/.test(STE_TEMPLATE_HASH)).toBe(true);
+});
+// --- 7. evidence edge cases ---
+it('evidence: empty arms produce null rates and collecting status', () => {
+  new SkillEvolutionEngine(db);
+  const since = new Date(Date.now() - 86_400_000).toISOString();
+  const ev = ste001Evidence(db, since, { STE_001_MODE: 'on' });
+  expect(ev.arms['0']).toEqual({ n: 0, verified: 0, verified_rate: null, ci: null, out_of_scope: 0, out_of_scope_share: null, tokens_mean: null });
+  expect(ev.arms['1']).toEqual({ n: 0, verified: 0, verified_rate: null, ci: null, out_of_scope: 0, out_of_scope_share: null, tokens_mean: null });
+  expect(ev.diff).toBeNull();
+  expect(ev.status).toBe('collecting');
+  expect(ev.target_per_arm).toBe(STE_001_TARGET_PER_ARM);
+});
+it('evidence: outcomes before the since window are excluded; mode uses ?? not ||', () => {
+  new SkillEvolutionEngine(db);
+  const oldDate = new Date(Date.now() - 2 * 86_400_000).toISOString();
+  db.prepare(`INSERT INTO skill_outcomes (id, skill_id, success, tokens_used, duration_ms, domain, task_id, agent_id, evidence_refs_json, created_at) VALUES (?, ?, 1, 500, 1, 'x', ?, 'a', ?, ?)`)
+    .run(randomUUID(), 'loop-maker:doc-drift-and-small-fix-loop:opencode', randomUUID(), JSON.stringify(['ste-001-arm:0']), oldDate);
+  const since = new Date(Date.now() - 86_400_000).toISOString();
+  const ev = ste001Evidence(db, since, {});
+  expect(ev.arms['0'].n).toBe(0);
+  expect(ev.mode).toBeNull(); // undefined ?? null
+  const evEmpty = ste001Evidence(db, since, { STE_001_MODE: '' });
+  expect(evEmpty.mode).toBe(''); // '' ?? null → '' (not || which would give null)
+});
+it('evidence: both arms at target → analysable; one arm short → collecting', () => {
+  new SkillEvolutionEngine(db);
+  const outcome = (arm: string, success: boolean) => db.prepare(`INSERT INTO skill_outcomes (id, skill_id, success, tokens_used, duration_ms, domain, task_id, agent_id, evidence_refs_json, created_at) VALUES (?, ?, ?, 200, 1, 'x', ?, 'a', ?, ?)`)
+    .run(randomUUID(), 'loop-maker:doc-drift-and-small-fix-loop:opencode', success ? 1 : 0, randomUUID(), JSON.stringify([`ste-001-arm:${arm}`]), now);
+  for (let i = 0; i < STE_001_TARGET_PER_ARM; i++) outcome('0', true);
+  for (let i = 0; i < STE_001_TARGET_PER_ARM - 1; i++) outcome('1', true);
+  const since = new Date(Date.now() - 86_400_000).toISOString();
+  let ev = ste001Evidence(db, since, {});
+  expect(ev.status).toBe('collecting');
+  expect(ev.arms['0'].n).toBe(STE_001_TARGET_PER_ARM);
+  expect(ev.arms['1'].n).toBe(STE_001_TARGET_PER_ARM - 1);
+  outcome('1', false);
+  ev = ste001Evidence(db, since, {});
+  expect(ev.status).toBe('analysable');
+});
+it('evidence: Wilson CI bounds and diff are correct for known k/n', () => {
+  new SkillEvolutionEngine(db);
+  const outcome = (arm: string, success: boolean) => db.prepare(`INSERT INTO skill_outcomes (id, skill_id, success, tokens_used, duration_ms, domain, task_id, agent_id, evidence_refs_json, created_at) VALUES (?, ?, ?, 300, 1, 'x', ?, 'a', ?, ?)`)
+    .run(randomUUID(), 'loop-maker:doc-drift-and-small-fix-loop:opencode', success ? 1 : 0, randomUUID(), JSON.stringify([`ste-001-arm:${arm}`]), now);
+  for (let i = 0; i < 3; i++) outcome('0', true);
+  outcome('0', false);
+  outcome('1', true);
+  for (let i = 0; i < 3; i++) outcome('1', false);
+  const since = new Date(Date.now() - 86_400_000).toISOString();
+  const ev = ste001Evidence(db, since, {});
+  expect(ev.arms['0'].verified_rate).toBe(0.75);
+  expect(ev.arms['1'].verified_rate).toBe(0.25);
+  expect(ev.diff).toBe(-0.5);
+  // wilson(3,4): ci ≈ [0.3006, 0.9544]
+  expect(ev.arms['0'].ci![0]).toBeGreaterThan(0.25);
+  expect(ev.arms['0'].ci![0]).toBeLessThan(0.40);
+  expect(ev.arms['0'].ci![1]).toBeGreaterThan(0.90);
+  expect(ev.arms['0'].ci![1]).toBeLessThanOrEqual(1);
+  // wilson(1,4): ci ≈ [0.0651, 0.6649]
+  expect(ev.arms['1'].ci![0]).toBeGreaterThanOrEqual(0);
+  expect(ev.arms['1'].ci![0]).toBeLessThan(0.15);
+  expect(ev.arms['1'].ci![1]).toBeGreaterThan(0.5);
+  expect(ev.arms['1'].ci![1]).toBeLessThan(0.80);
+  expect(ev.arms['0'].tokens_mean).toBe(300);
 });
