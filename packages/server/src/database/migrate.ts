@@ -1318,6 +1318,11 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
     CREATE TABLE IF NOT EXISTS shipped_code_scans (id INTEGER PRIMARY KEY AUTOINCREMENT, package TEXT NOT NULL, version TEXT, runtime_id TEXT NOT NULL,
       scanned_path TEXT NOT NULL, report_hash TEXT NOT NULL, prev_report_hash TEXT, report_json TEXT NOT NULL, diff_json TEXT NOT NULL,
       summary_json TEXT NOT NULL, scanned_at TEXT NOT NULL);
+    -- TG-001 (gym → production transfer gap): the frozen experiment manifest (tasks + the four rendered prompts per task) and one
+    -- row per (task, arm) attempt in its Latin-square order; history_json keeps every attempt (incl. re-queued infra discards)
+    CREATE TABLE IF NOT EXISTS tg_experiments (id TEXT PRIMARY KEY, frozen_at TEXT NOT NULL, manifest_json TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS tg_attempts (id TEXT PRIMARY KEY, experiment_id TEXT NOT NULL, task_key TEXT NOT NULL, arm TEXT NOT NULL, seq INTEGER NOT NULL,
+      status TEXT NOT NULL, retries INTEGER NOT NULL DEFAULT 0, run_id TEXT, result_json TEXT, history_json TEXT, updated_at TEXT NOT NULL, UNIQUE(experiment_id, task_key, arm));
     CREATE INDEX IF NOT EXISTS idx_shipped_code_scans_package ON shipped_code_scans(package, id);
     -- MS-1: every model call of a consumer (incumbent and shadow candidates): did it parse, did it agree, how long, how long the answer
     CREATE TABLE IF NOT EXISTS llm_model_calls (id INTEGER PRIMARY KEY AUTOINCREMENT, consumer TEXT NOT NULL, model TEXT NOT NULL, ok INTEGER NOT NULL,

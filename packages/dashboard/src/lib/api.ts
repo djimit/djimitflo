@@ -152,6 +152,10 @@ export interface EvolutionEvidence {
   ste_001: { mode: string | null; target_per_arm: number; ste_template_hash: string; status: 'collecting' | 'analysable'; diff: number | null;
     arms: Record<'0' | '1', { n: number; verified: number; verified_rate: number | null; ci: [number, number] | null; out_of_scope: number; out_of_scope_share: number | null; tokens_mean: number | null }>;
     note: string };
+  /** TG-001 (TG_001_MODE): the same frozen write_test tasks under four prompt representations (A gym, B production, C controlled, D structured) */
+  tg_001: { mode: string | null; status: 'not_frozen' | 'collecting' | 'complete'; tasks: number; frozen_at?: string; commit?: string | null; species?: string; harness?: string | null; skipped?: number;
+    arms: Array<{ arm: string; name: string; n: number; success: number; rate: number | null; ci95: [number, number] | null; failures: Record<string, number>; tokens_mean: number | null; tokens_known: number; duration_ms_mean: number | null; pending: number; invalid: number }>;
+    paired: Array<Record<string, unknown> & { arms: string; n_pairs: number; effect: number | null; ci95: [number, number] | null; mcnemar_exact_p: number | null }>; note?: string };
   /** SI-A/SI-B (GRADED_FITNESS_MODE / GRADED_CONTEST_MODE): graded executed fitness per pool and graded-contest agreement */
   graded: {
     mode: { fitness: 'off' | 'shadow'; contest: 'off' | 'shadow' | 'act' };
