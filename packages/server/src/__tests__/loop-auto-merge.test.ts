@@ -231,7 +231,8 @@ it('revocation: a revert on main revokes the class; it holds every later PR unti
 
 it('revocation: merge survival marking the lines removed, or red checks on the merge commit, also revoke', async () => {
   await mergeOne(700);
-  db.prepare("UPDATE loop_runs SET metadata = json_set(metadata, '$.pr_outcome', json(?)) WHERE id = 'run-700'").run(JSON.stringify({ state: 'merged', survived: false, settled_at: 'x' }));
+  db.prepare("UPDATE loop_runs SET metadata = json_set(metadata, '$.pr_outcome', json(?)) WHERE id = 'run-700'")
+    .run(JSON.stringify({ state: 'merged', merged_at: NOW.toISOString(), survived: false, settled_at: new Date(NOW.getTime() + 14 * 86_400_000 + 3_600_000).toISOString() }));
   await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), new Date(NOW.getTime() + 15 * 86_400_000));
   expect(readClassState(db).reason).toContain('merge survival');
 
@@ -241,6 +242,19 @@ it('revocation: merge survival marking the lines removed, or red checks on the m
   await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), new Date(NOW.getTime() + 3_600_000));
   expect(readClassState(db)).toMatchObject({ state: 'revoked' });
   expect(readClassState(db).reason).toContain('checks failing on main at merge commit merge702');
+});
+
+it('E1: an anomalous or pending survival outcome is neither a removal (no revocation) nor a settlement (window stays open)', async () => {
+  await mergeOne(700);
+  const setOutcome = (o: object) => db.prepare("UPDATE loop_runs SET metadata = json_set(metadata, '$.pr_outcome', json(?)) WHERE id = 'run-700'").run(JSON.stringify(o));
+  // survived false + settled_at, but no merged_at: PIPELINE_ANOMALY — main revoked the class on it
+  setOutcome({ state: 'merged', survived: false, settled_at: new Date(NOW.getTime() + 14 * 86_400_000).toISOString() });
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), new Date(NOW.getTime() + 15 * 86_400_000));
+  expect(readClassState(db).state).not.toBe('revoked');
+  expect(decision(700).window_closed).toBeUndefined(); // an anomaly does not close the 14-day window; the 30-day fallback does
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), new Date(NOW.getTime() + 31 * 86_400_000));
+  expect(decision(700).window_closed).toBe(true);
+  expect(readClassState(db).state).not.toBe('revoked');
 });
 
 it('B14: shadow re-checks would_merge each tick — a PR that goes conflicting flips to ineligible, an unchanged one keeps its record', async () => {

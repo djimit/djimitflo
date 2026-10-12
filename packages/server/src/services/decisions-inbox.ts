@@ -3,6 +3,7 @@ import type { Database } from 'better-sqlite3';
 import { earnedAutonomy, type ClassRecord } from './earned-autonomy';
 import { attributionAuditSample, type AttributionAuditSample } from './outcome-attribution';
 import { listDraftPrs } from './loop-draft-pr-service';
+import { loopPrSettlements, survivalCounts } from './merge-survival';
 
 /**
  * S2 (operator 2026-09-28): the operator's open decisions in one place instead of in chat.
@@ -155,8 +156,11 @@ export function rankNeedsYou(db: Database, requeue: InboxRequeue[], labels: Inbo
   const rq = rate(`SELECT SUM(status = 'verified') AS k, COUNT(*) AS n FROM self_improvements
     WHERE evidence_refs_json LIKE '%"requeue-of:%' AND status IN ('verified', 'regressed', 'infra_failed', 'no_change') AND updated_at >= ?`, d30);
   // loop PR: already verified (gain 1) × merge survival rate of settled loop PRs
-  const ms = rate(`SELECT SUM(json_extract(metadata, '$.pr_outcome.survived') = 1) AS k, COUNT(*) AS n FROM loop_runs
-    WHERE json_extract(metadata, '$.pr_outcome.survived') IS NOT NULL`);
+  // E1: settled states only — merged PRs still in the window and pipeline anomalies are in neither k nor n
+  const ms = (() => {
+    try { const c = survivalCounts(loopPrSettlements(db, now).map((p) => p.settlement.state)); return { p: c.settled >= MIN_N ? c.survived / c.settled : null, n: c.settled, k: c.survived }; }
+    catch { return { p: null, n: 0, k: 0 }; }
+  })();
   // label: before the D5 gate (30 labels) each label is 1/remaining of the way; after it, the chance it catches a wrong rejection
   const labelled = d5.labelled, wrong = d5.wrong;
   const labelGain = labelled === null || wrong === null ? null : labelled < 30 ? 1 / (30 - labelled) : labelled >= MIN_N ? wrong / labelled : null;
@@ -167,7 +171,9 @@ export function rankNeedsYou(db: Database, requeue: InboxRequeue[], labels: Inbo
       score, evidence: [gain === null ? `INSUFFICIENT_EVIDENCE: ${why}` : why, a.why] };
   };
   let prs: ReturnType<typeof listDraftPrs>['rows'] = [];
-  try { prs = listDraftPrs(db, 100, now).rows.filter((r) => !r.outcome); } catch { /* table absent */ }
+  // E1: PRs that wait for the operator = open on GitHub, or never polled (an overdue poll is an anomaly, but the PR still
+  // waits) — not merged PRs settling, not closed ones
+  try { prs = listDraftPrs(db, 100, now).rows.filter((r) => (r.settlement === 'OPEN_BLOCKED' && !r.settlement_terminal) || r.outcome === null); } catch { /* table absent */ }
   const out = [
     ...requeue.map((r) => item('requeue', r.id, r.title, rq.p, `earlier requeues verified ${rq.k}/${rq.n} (30 d${rq.n < MIN_N ? `, need ${MIN_N}` : ''})`)),
     ...prs.map((r) => item('loop_pr', String(r.pr_number ?? r.run_id), r.pr_url, ms.p, `merge survival ${ms.k}/${ms.n} settled loop PRs${ms.n < MIN_N ? ` (need ${MIN_N})` : ''}`)),
