@@ -96,15 +96,19 @@ it('a result for a run of another generation is rejected (409) and a pre-restore
 });
 
 it('plan_matches_r1: identical plan → no difference; a changed plan names exactly the differing fields; GO requires it', () => {
-  // "r1": frozen at a millisecond the external record only kept to the second, with another commit and worker
+  // "r1": frozen at an exact millisecond, with another commit and worker
   const r1db = fresh();
   const r1 = frozenRecord(r1db, { now: '2026-10-11T12:00:00.437Z', commit: 'c-r1', harness: 'h-r1' });
-  const asR1: TgPlanRecord = { ...r1.record, analysis_fingerprint: sha(canonicalJson(r1.manifest.analysis)), frozen_at: '2026-10-11T12:00:00Z', git_commit: 'c-r1', worker_version: 'h-r1' };
+  const asR1: TgPlanRecord = { ...r1.record, analysis_fingerprint: sha(canonicalJson(r1.manifest.analysis)), frozen_at: '2026-10-11T12:00:00.437Z', git_commit: 'c-r1', worker_version: 'h-r1' };
   r1db.close();
   // r2: same tasks, prompts and seed, frozen later on another commit and worker → same plan
   const same = frozenRecord(db, { now: '2026-10-12T09:30:00.000Z', commit: 'c-r2', harness: 'h-r2' });
   expect(same.record.analysis_fingerprint).not.toBe(asR1.analysis_fingerprint); // frozen_at/commit/worker are in the analysis
   expect(tgPlanDiff(same.manifest, same.record, asR1)).toEqual([]);
+  // exact single re-hash: a frozen_at 1 ms off (or without milliseconds) no longer matches
+  expect(tgPlanDiff(same.manifest, same.record, { ...asR1, frozen_at: '2026-10-11T12:00:00.436Z' })).toEqual(['analysis_fingerprint']);
+  expect(tgPlanDiff(same.manifest, same.record, { ...asR1, frozen_at: '2026-10-11T12:00:00.438Z' })).toEqual(['analysis_fingerprint']);
+  expect(tgPlanDiff(same.manifest, same.record, { ...asR1, frozen_at: '2026-10-11T12:00:00Z' })).toEqual(['analysis_fingerprint']);
   // another model router and one changed production finding → named, nothing else
   const d2 = fresh();
   const diff = frozenRecord(d2, { now: '2026-10-12T09:30:00.000Z', species: 'atomic@other', fix: 'Write a different test.' });
@@ -127,7 +131,7 @@ it('r1 is a read-only ABORTED_DATA_LOSS record in the evidence and never counted
   const ev = tg001Evidence(db, {}) as unknown as { experiment_id: string; generation: string; prior_generations: Array<Record<string, unknown>>; arms: Array<{ arm: string; n: number; pending: number }> };
   expect(ev).toMatchObject({ experiment_id: 'tg-001-r2', generation: 'r2' });
   expect(ev.prior_generations).toHaveLength(1);
-  expect(ev.prior_generations[0]).toMatchObject({ generation: 'r1', status: 'ABORTED_DATA_LOSS', frozen_at: '2026-10-11T23:04:15Z', first_attempt_at: '2026-10-11T23:25:18Z',
+  expect(ev.prior_generations[0]).toMatchObject({ generation: 'r1', status: 'ABORTED_DATA_LOSS', frozen_at: '2026-10-11T23:04:15.146Z', first_attempt_at: '2026-10-11T23:25:18.735Z',
     attempts_executed: '~5 UNKNOWN/LOST', pooled: false, analysis_fingerprint: 'ff29c34441f68804b0177b0599f673f369386e139234662eeb33f23d234e70ec' });
   expect(ev.arms.find((a) => a.arm === 'A')).toMatchObject({ n: 0, pending: 10 }); // the r1 row is not an observation
   expect(tg001Evidence(fresh(), {})).toMatchObject({ status: 'not_frozen', generation: 'r2', prior_generations: [expect.objectContaining({ status: 'ABORTED_DATA_LOSS' })] });

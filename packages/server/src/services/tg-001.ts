@@ -36,7 +36,7 @@ export const TG_ID = `${TG_PLAN_ID}-${TG_GENERATION}`;
  * analysis. r1 values are the GO checklist recorded externally at 2026-10-11T23:20:22Z.
  */
 export const TG_PRIOR_GENERATIONS = [{
-  generation: 'r1', experiment_id: TG_PLAN_ID, status: 'ABORTED_DATA_LOSS', frozen_at: '2026-10-11T23:04:15Z', first_attempt_at: '2026-10-11T23:25:18Z',
+  generation: 'r1', experiment_id: TG_PLAN_ID, status: 'ABORTED_DATA_LOSS', frozen_at: '2026-10-11T23:04:15.146Z', first_attempt_at: '2026-10-11T23:25:18.735Z',
   attempts_executed: '~5 UNKNOWN/LOST', cause: 'provider snapshot rollback to ~2026-10-11T04:11Z', pooled: false,
   record_at: '2026-10-11T23:20:22Z',
   analysis_fingerprint: 'ff29c34441f68804b0177b0599f673f369386e139234662eeb33f23d234e70ec',
@@ -262,20 +262,14 @@ export function tgGoChecklist(db: Database, deploy: { commit: string | null; bui
 
 /**
  * plan_matches_r1: the plan fields of this generation that differ from the frozen r1 plan (empty = the same plan). The analysis
- * object carries frozen_at, commit and worker_version, which a new generation cannot share, so its fingerprint is compared with
- * those three set to r1's. r1's frozen_at is recorded to the second; the unknown milliseconds of the original toISOString()
- * are tried (.000–.999) — a deterministic 1000-candidate check, not a search over plan content.
+ * object carries frozen_at, commit and worker_version, which a new generation cannot share, so its fingerprint is re-hashed
+ * once with those three set to r1's exact values (frozen_at to the millisecond, from the prod probe).
  */
 export function tgPlanDiff(m: TgManifest, rec: { task_set_fingerprint: string; prompt_fingerprints: Record<string, string>; seed: number; gate_version: string;
   classifier_version: string; step_budget: number; model_router: string }, r1: TgPlanRecord = TG_R1): string[] {
   const out: string[] = [];
   if (!m.analysis) out.push('analysis_fingerprint');
-  else {
-    const bare = /^(.*T\d{2}:\d{2}:\d{2})Z$/.exec(r1.frozen_at);
-    const candidates = bare ? [r1.frozen_at, ...Array.from({ length: 1000 }, (_, i) => `${bare[1]}.${String(i).padStart(3, '0')}Z`)] : [r1.frozen_at];
-    const as = (frozen_at: string) => sha(canonicalJson({ ...m.analysis, frozen_at, commit: r1.git_commit, worker_version: r1.worker_version }));
-    if (!candidates.some((f) => as(f) === r1.analysis_fingerprint)) out.push('analysis_fingerprint');
-  }
+  else if (sha(canonicalJson({ ...m.analysis, frozen_at: r1.frozen_at, commit: r1.git_commit, worker_version: r1.worker_version })) !== r1.analysis_fingerprint) out.push('analysis_fingerprint');
   if (rec.task_set_fingerprint !== r1.task_set_fingerprint) out.push('task_set_fingerprint');
   for (const a of TG_ARMS) if (rec.prompt_fingerprints[a] !== r1.prompt_fingerprints[a]) out.push(`prompt_fingerprints.${a}`);
   for (const k of ['seed', 'gate_version', 'classifier_version', 'step_budget', 'model_router'] as const) if (rec[k] !== r1[k]) out.push(k);

@@ -7,9 +7,9 @@ Generation r1 of TG-001 ([protocol](TG-001_PROTOCOL.md)) is **ABORTED_DATA_LOSS*
 | When | What |
 |---|---|
 | ~2026-10-11T04:11Z | Time of the provider snapshot that production was later restored from |
-| 2026-10-11T23:04:15Z | r1 manifest and analysis plan frozen on production (`tg_experiments.id = 'tg-001'`) |
+| 2026-10-11T23:04:15.146Z | r1 manifest and analysis plan frozen on production (`tg_experiments.id = 'tg-001'`) |
 | 2026-10-11T23:20:22Z | GO checklist recorded outside the server (the r1 record below) |
-| 2026-10-11T23:25:18Z | First physical r1 attempt claimed |
+| 2026-10-11T23:25:18.735Z | First physical r1 attempt claimed |
 | after that | About 5 attempts ran |
 | later | The hosting provider restored the VPS from the ~04:11Z snapshot. The r1 manifest and every `tg_attempts` row are gone |
 
@@ -49,7 +49,7 @@ r1 record (from the GO checklist):
 3. **Only the plan is reused.**
    - The generation stays out of the hashed analysis. `analysis.experiment_id` stays the plan id `'tg-001'`, so identical tasks, prompts and seed give identical fingerprints.
    - GO requires `plan_matches_r1`: the analysis fingerprint, task set, four prompt fingerprints, seed, gate_version, classifier_version, step_budget and model_router must all equal r1.
-   - The analysis object also contains `frozen_at`, `commit` and `worker_version`, which a new generation cannot share. Its fingerprint is therefore compared with those three set to r1's values. r1's `frozen_at` is recorded only to the second, so the check tries all 1000 possible milliseconds.
+   - The analysis object also contains `frozen_at`, `commit` and `worker_version`, which a new generation cannot share. Its fingerprint is therefore re-hashed once with those three set to r1's exact values (`frozen_at` 2026-10-11T23:04:15.146Z from the prod probe).
    - Commit and worker may differ. They are listed under `plan_reuse.recorded_separately` and are not compared.
    - On a mismatch, `plan_reuse.differs` names each differing field and GO is false.
 4. **The plan is derived from database state.** The task pool, the prior-exposure counts in the analysis, and the production findings behind prompts B, C and D are all read from the database at freeze time. The restore rolled the database back to 04:11Z, and runs after the restore add to it. An r2 freeze can therefore produce a different plan. If it does, the checklist reports which fields differ, and the operator decides; nothing is forced to match.
