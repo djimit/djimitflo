@@ -164,22 +164,24 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   const settled = all<{ state: string; survived: number | null; n: number }>(`SELECT json_extract(metadata, '$.pr_outcome.state') AS state,
     json_extract(metadata, '$.pr_outcome.survived') AS survived, COUNT(*) AS n FROM loop_runs
     WHERE json_extract(metadata, '$.pr_outcome.settled_at') IS NOT NULL GROUP BY 1, 2`);
-  const openDrafts = all<{ created_at: string }>(`SELECT created_at FROM loop_runs WHERE json_extract(metadata, '$.pr_url') IS NOT NULL
-    AND json_extract(metadata, '$.pr_outcome.settled_at') IS NULL ORDER BY created_at`);
+  let prs: ReturnType<typeof loopPrSettlements> | null = null;
+  try { prs = loopPrSettlements(db, now); } catch { /* loop_runs absent: settlement unknown */ }
+  // E1: not settled yet = OPEN_BLOCKED (not closed) + MERGED_SURVIVAL_PENDING; anomalies are reported apart, never as waiting
+  const openDrafts = (prs ?? []).filter((p) => (p.settlement.state === 'OPEN_BLOCKED' && !p.settlement.terminal) || p.settlement.state === 'MERGED_SURVIVAL_PENDING');
   const ages = openDrafts.map((r) => (now - Date.parse(r.created_at)) / 86_400_000).sort((a, b) => a - b);
   const q = (p: number) => (ages.length ? +ages[Math.min(ages.length - 1, Math.floor(p * ages.length))].toFixed(1) : null);
   // E1: survival only over SETTLED_SURVIVED / SETTLED_REGRESSED — pending and anomalous PRs are in neither numerator nor denominator
   const settlement = (() => {
-    try {
-      const prs = loopPrSettlements(db, now); const by_state = emptySettlementCounts(); const anomalies: Record<string, number> = {};
-      for (const p of prs) { by_state[p.settlement.state]++; if (p.settlement.state === 'PIPELINE_ANOMALY') anomalies[p.settlement.reason] = (anomalies[p.settlement.reason] ?? 0) + 1; }
-      const c = survivalCounts(prs.map((p) => p.settlement.state));
-      return { by_state, anomalies, survived: c.survived, regressed: c.regressed, settled: c.settled, survival_rate: c.rate };
-    } catch { return null; } // unknown, not 0
+    if (!prs) return null; // unknown, not 0
+    const by_state = emptySettlementCounts(); const anomalies: Record<string, number> = {};
+    for (const p of prs) { by_state[p.settlement.state]++; if (p.settlement.state === 'PIPELINE_ANOMALY') anomalies[p.settlement.reason] = (anomalies[p.settlement.reason] ?? 0) + 1; }
+    const c = survivalCounts(prs.map((p) => p.settlement.state));
+    return { by_state, anomalies, survived: c.survived, regressed: c.regressed, settled: c.settled, survival_rate: c.rate };
   })();
   const merge = { settled, settlement, merge_outcomes: one("SELECT COUNT(*) FROM skill_outcomes WHERE domain = 'merge'"), first_settled: all<{ at: string }>("SELECT MIN(created_at) AS at FROM skill_outcomes WHERE domain = 'merge'")[0]?.at ?? null };
-  const drafts = { unsettled: openDrafts.length, unsettled_open_or_recent: openDrafts.length, age_days_p50: q(0.5), age_days_max: ages.length ? +ages[ages.length - 1].toFixed(1) : null,
-    note: 'unsettled_open_or_recent = PR url without a merge-survival settlement: still open, or merged < 14 d ago. Only GitHub knows which; the open count is the draft throttle\'s (RX-6, draft_pr_throttle* events)' };
+  const drafts = { unsettled: openDrafts.length, unsettled_open_or_recent: openDrafts.length, anomalous: settlement ? settlement.by_state.PIPELINE_ANOMALY : null,
+    age_days_p50: q(0.5), age_days_max: ages.length ? +ages[ages.length - 1].toFixed(1) : null,
+    note: 'unsettled_open_or_recent = settlement OPEN_BLOCKED (not closed) or MERGED_SURVIVAL_PENDING: still open, or merged < 14 d ago (E1 settlementState). anomalous = PIPELINE_ANOMALY, counted apart. The open count is the draft throttle\'s (RX-6, draft_pr_throttle* events)' };
 
   const genomes = {
     by_status: all<{ status: string; origin: string; n: number }>('SELECT status, origin, COUNT(*) AS n FROM maker_genomes GROUP BY 1, 2'),
@@ -327,7 +329,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // X1 (EFFORT_SIBLING_RANDOMISE): verified / regressed / infra per sibling arm
     effort_x1,
     // F2 (CHECKER_FAMILY_RANDOMISE): checker verdicts, outcome agreement and kappa per checker-family arm
-    checker_family: checkerFamilyEvidence(db, since, env, fisherExact),
+    checker_family: checkerFamilyEvidence(db, since, env, fisherExact, now),
     // SI-A/SI-B: graded executed fitness per pool (n, mean, share at 1.0) and graded-contest agreement with the current rule
     graded: gradedEvidence(db, since, env),
     // ACE-001 (ACE_001_MODE): oracle-lane maker outcomes per retrieval × example-selection arm (pre-registered, collecting until target)

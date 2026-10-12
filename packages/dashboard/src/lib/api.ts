@@ -88,7 +88,7 @@ export type HackRateRow = { scored: number; checked: number; flagged: number; ra
 export type EffortArm = { goals: number; verified: number; regressed: number; infra: number; verified_rate: number | null };
 export type CheckerFamilyComparison = { delta_kappa: number | null; delta_kappa_ci: [number, number] | null; fisher_p: number; n: { same: number; cross: number } };
 export type CheckerFamilyArmEvidence = { goals: number; reviewed: number; verdicts: { accepted: number; needs_revision: number; rejected: number }; realized_cross: number;
-  outcome: { circular: true; n: number; agree: number; agreement: number | null; kappa: number | null }; outcome_wo_checker: { n: number; agree: number; kappa: number | null }; outcome_survival: { n: number; agree: number; kappa: number | null };
+  outcome: { circular: true; n: number; agree: number; agreement: number | null; kappa: number | null }; outcome_wo_checker: { n: number; agree: number; kappa: number | null }; outcome_survival: { n: number; agree: number; kappa: number | null; unlabelled: number };
   weak_assertion: { n: number; weak: number; caught: number; missed: number; false_alarms: number; sensitivity: number | null } };
 /** §16 step 1: one metric contract's read-only status; value and ci are null unless status is 'ok' (never 0 for missing evidence) */
 export type IntelligenceMetric = {
@@ -104,7 +104,7 @@ export interface EvolutionEvidence {
   merge: { settled: Array<{ state: string; survived: number | null; n: number }>; merge_outcomes: number | null; first_settled: string | null;
     /** E1: survival over SETTLED_SURVIVED / SETTLED_REGRESSED only; null = unreadable */
     settlement: { by_state: Record<LoopPrSettlementState, number>; anomalies: Record<string, number>; survived: number; regressed: number; settled: number; survival_rate: number | null } | null };
-  drafts: { unsettled: number; unsettled_open_or_recent: number; age_days_p50: number | null; age_days_max: number | null; note: string };
+  drafts: { unsettled: number; unsettled_open_or_recent: number; anomalous: number | null; age_days_p50: number | null; age_days_max: number | null; note: string };
   genomes: { by_status: Array<{ status: string; origin: string; n: number }>; recent: Array<{ id: string; status: string; note: string | null; updated_at: string }>; holdout: { mined: number | null; mutant: number | null } };
   gym: Array<{ kind: string; tier: number | null; status: string | null; n: number }>;
   gym_prod_gates: { by_kind: Array<{ kind: string; scored: number; proxy_success: number; prod_gate_success: number; proxy_rate: number | null; prod_gate_rate: number | null }>; failed_checks: Array<{ check: string; n: number }> };

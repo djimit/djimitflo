@@ -147,6 +147,13 @@ describe('survival rates count SETTLED_SURVIVED / SETTLED_REGRESSED only', () =>
     expect(ev.gates.B.reason).toContain('2 settled loop PRs (1 survived, 1 not)');
   });
 
+  it('evolution evidence drafts.unsettled and gate C count OPEN_BLOCKED (not closed) + MERGED_SURVIVAL_PENDING; anomalies apart', () => {
+    seed(); prRun('r8', null); prRun('r9', { state: 'open', checked_at: iso(NOW - H) }); // r8: never polled for 30 d → anomaly
+    const ev = buildEvolutionEvidence(db, {}, NOW);
+    expect(ev.drafts).toMatchObject({ unsettled: 2, unsettled_open_or_recent: 2, anomalous: 3, age_days_max: 30 }); // main: 3 (r3, r8, r9), anomalies hidden
+    expect(ev.gates.C.reason).toMatch(/^2 loop PRs/);
+  });
+
   it('decisions inbox ranking and attribution summary', () => {
     seed(); prRun('r7', { state: 'open', checked_at: iso(NOW - H) });
     const ranked = decisionsInbox(db, NOW).ranking.filter((r) => r.kind === 'loop_pr');
