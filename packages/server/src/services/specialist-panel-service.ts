@@ -471,7 +471,7 @@ export class SpecialistPanelService {
     );
 
     // C3: weighted-vote shadow judgment next to the actual decision (default off; never changes the decision)
-    if (nextStatus === 'consensus_ready') recordPanelShadow(this.db, panel.id, reviews, consensus.decision);
+    if (nextStatus === 'consensus_ready') recordPanelShadow(this.db, panel.id, reviews.filter((r) => !SpecialistPanelService.machineFailed(r)), consensus.decision);
   }
 
   /** B32: record an answer that failed validation (or kept failing to generate). Raw text is kept only as a short excerpt. */
@@ -574,7 +574,11 @@ export class SpecialistPanelService {
     return profiles;
   }
 
-  private computeConsensus(panel: SpecialistPanelRecord, reviews: SpecialistReviewRecord[], closed: Set<string> = new Set()): SpecialistConsensus {
+  private computeConsensus(panel: SpecialistPanelRecord, allReviews: SpecialistReviewRecord[], closedSeats: Set<string> = new Set()): SpecialistConsensus {
+    // E2: a legacy model-failure row (pre-B32 coercion: confidence 0, fixed failure text) is no observation — its seat counts
+    // as closed, it never votes (no needs_evidence, no dissent)
+    const reviews = allReviews.filter((r) => !SpecialistPanelService.machineFailed(r));
+    const closed = new Set([...closedSeats, ...allReviews.filter((r) => SpecialistPanelService.machineFailed(r)).map((r) => r.specialist_id)]);
     // B32: a closed (quarantined) seat has no valid review; the panel decides on the valid reviews it has
     const reviewed = new Set(reviews.map((r) => r.specialist_id));
     const required = panel.panel.filter((s) => !(closed.has(s.id) && !reviewed.has(s.id))).length;

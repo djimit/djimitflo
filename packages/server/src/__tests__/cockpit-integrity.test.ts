@@ -68,7 +68,8 @@ it('reflection inflow is NOT_APPLICABLE with reflection proposals capped at 0; t
 });
 
 it('requeue candidates are classed; only operator rows count as needs-you, every row stays listed', () => {
-  proposal('op', 'infra_failed');
+  proposal('op', 'regressed'); attribute('op', 'maker_failure');
+  proposal('infra', 'infra_failed'); // E2: an operational failure is system work, never an operator decision beside regressions
   proposal('rev', 'regressed'); attribute('rev', 'reviewer_failure');
   proposal('unk', 'regressed');
   proposal('refl', 'regressed', { source: 'reflection' }); attribute('refl', 'maker_failure');
@@ -76,11 +77,11 @@ it('requeue candidates are classed; only operator rows count as needs-you, every
   proposal('new', 'verified', { title: 'same target', created: 12 });
   const inbox = decisionsInbox(db, NOW, { REFLECTION_PROPOSALS_MAX_PER_DAY: '0' } as NodeJS.ProcessEnv);
   expect(Object.fromEntries(inbox.requeue.map((r) => [r.id, r.queue_class]))).toEqual({
-    op: 'operator', rev: 'budgeted_requeue', unk: 'attribution_unknown', refl: 'not_actionable', old: 'not_actionable' });
-  expect(inbox.totals.requeue_classes).toEqual({ operator: 1, budgeted_requeue: 1, attribution_unknown: 1, not_actionable: 2 });
+    op: 'operator', infra: 'infra_failed', rev: 'budgeted_requeue', unk: 'attribution_unknown', refl: 'not_actionable', old: 'not_actionable' });
+  expect(inbox.totals.requeue_classes).toEqual({ operator: 1, infra_failed: 1, budgeted_requeue: 1, attribution_unknown: 1, not_actionable: 2 });
   const n = operatorCockpit(db, NOW, { ...ON, REFLECTION_PROPOSALS_MAX_PER_DAY: '0' }).needs_you;
   expect(n.requeue).toBe(1);
-  expect(n.system_requeue).toEqual({ budgeted_requeue: 1, attribution_unknown: 1, not_actionable: 2 });
+  expect(n.system_requeue).toEqual({ budgeted_requeue: 1, infra_failed: 1, attribution_unknown: 1, not_actionable: 2 });
 });
 
 it('separates window spend per verified change from the verified changes\' own lease tokens', () => {

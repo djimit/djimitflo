@@ -50,7 +50,7 @@ export interface CockpitSnapshot {
     /** distinct things waiting: blocking counts (not approvals_expiring ⊂ approvals, not draft_prs) minus shared_subjects; null if any is unknown */
     total: number | null;
     /** requeue candidates that are system work, not decisions (counted, never hidden) */
-    system_requeue: Partial<Record<'budgeted_requeue' | 'attribution_unknown' | 'not_actionable', number>> | null };
+    system_requeue: Partial<Record<'budgeted_requeue' | 'infra_failed' | 'attribution_unknown' | 'not_actionable', number>> | null };
   /** UX-8: armed/off = intent; by_status + health = execution (Cockpit 3.0: armed_not_ticking / failing degrade the snapshot) */
   schedulers: { armed: number; off: number; by_status: Record<SchedulerStatus, number>; health: SchedulerHealth };
   /** stall detectors: an `error` detector means its subsystem is unwatched — an empty stall list is then not 'healthy' */
@@ -195,7 +195,7 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
     const counts = openDecisionCounts(inbox);
     needs_you = { ...needs_you, ...counts };
     const c = inbox.totals.requeue_classes;
-    needs_you.system_requeue = c ? { budgeted_requeue: c.budgeted_requeue ?? 0, attribution_unknown: c.attribution_unknown ?? 0, not_actionable: c.not_actionable ?? 0 } : null;
+    needs_you.system_requeue = c ? { budgeted_requeue: c.budgeted_requeue ?? 0, infra_failed: c.infra_failed ?? 0, attribution_unknown: c.attribution_unknown ?? 0, not_actionable: c.not_actionable ?? 0 } : null;
     if (Object.values(counts).some((c) => c === null)) fail('decisions', new Error('a decisions inbox count query failed'));
   } catch (e) { fail('decisions', e); }
   let stalls: Stall[] = [];
