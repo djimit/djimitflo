@@ -855,6 +855,9 @@ export class LoopService {
         }
         throw new Error(`LOOP_COMPLETION_BLOCKED:${failingGate.name}`);
       }
+      // E2: missing evidence is not a failed gate, but it still blocks completion
+      const unknownGate = verified.gates.find((gate) => gate.status === 'unknown');
+      if (unknownGate) throw new Error(`LOOP_COMPLETION_INSUFFICIENT_EVIDENCE:${unknownGate.name}`);
 
       const incompleteLease = this.completionBlockingLeases(verified.leases).find((lease) => lease.status !== 'completed');
       if (incompleteLease) {
@@ -1481,6 +1484,9 @@ export class LoopService {
   public assertNoFailedGates(run: LoopRunRecord): void {
     if (run.gates.some((gate) => gate.status === 'fail')) {
       throw new Error('LOOP_FAILED_GATES_BLOCK_CONTINUE');
+    }
+    if (run.gates.some((gate) => gate.status === 'unknown')) {
+      throw new Error('LOOP_INSUFFICIENT_EVIDENCE_BLOCKS_CONTINUE');
     }
   }
 
@@ -2461,7 +2467,9 @@ export class LoopService {
       const failed = check.status !== 'pass' && check.status !== 'skipped';
       const out = tail(check.stdout_path, 1_200);
       const err = failed ? tail(check.stderr_path, 800) : '';
-      const status = check.mode === 'shadow' && check.shadow_status ? `shadow ${String(check.shadow_status)}` : String(check.status);
+      // E2: exit 127 is a missing tool (environment, cf. makerFailureClass), not evidence about the change under review
+      const status = check.mode === 'shadow' && check.shadow_status ? `shadow ${String(check.shadow_status)}`
+        : check.exit_status === 127 ? `${String(check.status)} — tool missing (environment failure, not evidence about the change)` : String(check.status ?? 'unknown');
       return [`### ${String(check.name)}: ${status} (exit=${String(check.exit_status ?? 'n/a')}${check.timed_out ? ', timed out' : ''})`,
         out ? `stdout (tail):\n${out}` : 'stdout: (empty or unavailable)', ...(err ? [`stderr (tail):\n${err}`] : [])].join('\n');
     }).join('\n\n');

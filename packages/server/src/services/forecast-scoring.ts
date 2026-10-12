@@ -13,7 +13,8 @@ import type { Database } from 'better-sqlite3';
 export interface ForecasterScore { forecaster: string; n: number; positives: number; brier: number; baselineBrier: number; skill: number; auc: number | null }
 
 const VERIFIED = new Set(['verified', 'applied']);
-const RESOLVED = ['verified', 'applied', 'regressed', 'no_change', 'infra_failed', 'needs_more_evidence', 'archived'];
+/** E2: 'infra_failed' is not a resolution — an infra failure says nothing about the proposal, so it is never a Brier 0. */
+export const RESOLVED = ['verified', 'applied', 'regressed', 'no_change', 'needs_more_evidence', 'archived'];
 
 export function auc(pairs: Array<[number, number]>): number | null {
   const pos = pairs.filter(([, o]) => o === 1).map(([p]) => p); const neg = pairs.filter(([, o]) => o === 0).map(([p]) => p);

@@ -2,6 +2,7 @@ import type { Database } from 'better-sqlite3';
 import { wilson } from './evolution-estimators';
 import { ATTRIBUTION_OF_PROPOSAL } from './decisions-inbox';
 import { efficiencyView } from './resource-ledger';
+import { loopPrSettlements, parseOutcome, settlementState, survivalCounts, type SettlementState } from './merge-survival';
 
 /**
  * Operator directive 'Restore Evolutionary Health' (2026-10-11): `verified` throughput is not fitness. This read-only view
@@ -40,7 +41,8 @@ export interface Stage {
 }
 
 interface Row { id: string; status: string; created_at: string; updated_at: string; goal_at: string | null; run_id: string | null;
-  pr_state: string | null; merged_at: string | null; settled_at: string | null; survived: number | null; not_scored: string | null; cls: string | null }
+  pr_state: string | null; merged_at: string | null; settled_at: string | null; survived: number | null; not_scored: string | null; cls: string | null;
+  run_at: string | null; pr_url: string | null; pr_outcome: string | null; settlement?: SettlementState | null }
 
 const median = (xs: number[]) => { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b); return +s[Math.floor(s.length / 2)].toFixed(1); };
 
@@ -58,11 +60,14 @@ export function evolutionLineage(db: Database, now = Date.now(), env: NodeJS.Pro
   const rows = all<Row>(`SELECT s.id, s.status, s.created_at, s.updated_at, g.created_at AS goal_at, r.id AS run_id,
       json_extract(r.metadata, '$.pr_outcome.state') AS pr_state, json_extract(r.metadata, '$.pr_outcome.merged_at') AS merged_at,
       json_extract(r.metadata, '$.pr_outcome.settled_at') AS settled_at, json_extract(r.metadata, '$.pr_outcome.survived') AS survived,
-      json_extract(r.metadata, '$.pr_outcome.not_scored') AS not_scored, ${ATTRIBUTION_OF_PROPOSAL} AS cls
+      json_extract(r.metadata, '$.pr_outcome.not_scored') AS not_scored, ${ATTRIBUTION_OF_PROPOSAL} AS cls,
+      r.created_at AS run_at, json_extract(r.metadata, '$.pr_url') AS pr_url, json_extract(r.metadata, '$.pr_outcome') AS pr_outcome
     FROM self_improvements s
     LEFT JOIN goals g ON g.improvement_id = s.id
     LEFT JOIN loop_runs r ON r.id = (SELECT r2.id FROM loop_runs r2 WHERE r2.goal_id = g.id ORDER BY (json_extract(r2.metadata, '$.pr_url') IS NOT NULL) DESC, r2.created_at DESC LIMIT 1)
     WHERE s.created_at >= ?`, since) ?? [];
+  // E1: every survival number goes through the settlement state (pending and anomalies are in neither side of a rate)
+  for (const r of rows) r.settlement = r.pr_url ? settlementState(r.run_at, parseOutcome(r.pr_outcome), now).state : null;
   const tokensOf = (runIds: Array<string | null>): number | null => {
     const ids = runIds.filter((x): x is string => Boolean(x));
     if (!ids.length) return null;
@@ -81,9 +86,9 @@ export function evolutionLineage(db: Database, now = Date.now(), env: NodeJS.Pro
   const exp = rows.filter((r) => r.run_id);
   const ver = rows.filter((r) => r.status === 'verified');
   const merged = ver.filter((r) => r.pr_state === 'merged');
-  // settled with a fitness verdict (not_scored settlements say nothing about survival)
-  const settled = merged.filter((r) => r.settled_at && r.survived !== null);
-  const survived = settled.filter((r) => r.survived === 1);
+  // E1: settled = SETTLED_SURVIVED | SETTLED_REGRESSED (not_scored, pending and anomalous PRs say nothing about survival)
+  const settled = merged.filter((r) => r.settlement === 'SETTLED_SURVIVED' || r.settlement === 'SETTLED_REGRESSED');
+  const survived = settled.filter((r) => r.settlement === 'SETTLED_SURVIVED');
   const discoveries = one("SELECT COUNT(*) FROM external_events WHERE event_type LIKE 'discovery.%' AND occurred_at >= ?", since);
   const labels = one("SELECT COUNT(*) FROM judgments WHERE judgment IN ('operator_label', 'attribution_audit') AND created_at >= ?", since);
   const top = (xs: string[]) => { if (!xs.length) return null; const c = new Map<string, number>(); for (const x of xs) c.set(x, (c.get(x) ?? 0) + 1);
@@ -104,12 +109,13 @@ export function evolutionLineage(db: Database, now = Date.now(), env: NodeJS.Pro
       top_failure: top(ver.filter((r) => r.pr_state !== 'merged').map((r) => (r.pr_state === 'closed_unmerged' ? 'closed_unmerged' : r.pr_state === 'open' || !r.pr_state ? 'awaiting_human_merge' : r.pr_state))),
       compute_tokens: tokensOf(ver.map((r) => r.run_id)), operator_decisions: null, measured: 'measured' },
     { stage: 'merged', count: merged.length, conversion: conv(merged.length, ver.length),
-      median_age_days: median(merged.filter((r) => !r.settled_at).map((r) => days(r.merged_at))),
-      top_failure: top(merged.filter((r) => !r.settled_at).map(() => 'within_14d_survival_window')), compute_tokens: null,
+      median_age_days: median(merged.filter((r) => r.settlement === 'MERGED_SURVIVAL_PENDING').map((r) => days(r.merged_at))),
+      top_failure: top(merged.filter((r) => r.settlement === 'MERGED_SURVIVAL_PENDING' || r.settlement === 'PIPELINE_ANOMALY')
+        .map((r) => (r.settlement === 'PIPELINE_ANOMALY' ? 'pipeline_anomaly' : 'within_14d_survival_window'))), compute_tokens: null,
       // every merged loop PR is a human merge today (earned auto-merge is shadow)
       operator_decisions: merged.length, measured: 'measured' },
     { stage: 'settled', count: settled.length, conversion: conv(settled.length, merged.length), median_age_days: null,
-      top_failure: top(settled.filter((r) => r.survived === 0).map(() => 'removed_or_reverted')), compute_tokens: null, operator_decisions: 0, measured: 'measured' },
+      top_failure: top(settled.filter((r) => r.settlement === 'SETTLED_REGRESSED').map(() => 'removed_or_reverted')), compute_tokens: null, operator_decisions: 0, measured: 'measured' },
     { stage: 'survived_14d', count: survived.length, conversion: conv(survived.length, settled.length), median_age_days: null, top_failure: null, compute_tokens: null, operator_decisions: 0, measured: 'measured' },
     { stage: 'survived_30d', count: null, conversion: null, median_age_days: null, top_failure: null, compute_tokens: null, operator_decisions: null, measured: 'not_measured',
       note: 'merge survival checks once at 14 d; no 30-day check exists' },
@@ -134,7 +140,7 @@ export function evolutionLineage(db: Database, now = Date.now(), env: NodeJS.Pro
     /** the gate worked: a reviewer rejected the change — not an evolutionary regression */
     reviewer_rejection: reg.filter((r) => r.cls === 'reviewer_failure').length,
     environment: reg.filter((r) => r.cls === 'environment_failure').length + rows.filter((r) => r.status === 'infra_failed').length,
-    post_verification: settled.filter((r) => r.survived === 0).length,
+    post_verification: settled.filter((r) => r.settlement === 'SETTLED_REGRESSED').length,
     /** follow-up fixes of a merged change are not detected yet — weight 0.5 once they are */
     post_verification_follow_up_fix: null as number | null,
     unknown: reg.filter((r) => !r.cls || !['maker_failure', 'reviewer_failure', 'environment_failure'].includes(r.cls)).length,
@@ -155,7 +161,7 @@ export function evolutionLineage(db: Database, now = Date.now(), env: NodeJS.Pro
     reason: enough ? null : `${settled.length} settled lineage(s) with a survival verdict; NEV needs ≥ ${NEV_MIN_SETTLED}`,
     value: enough ? nevRaw : null,
     survived: survived.length, settled: settled.length,
-    survival_rate: settled.length ? +(survived.length / settled.length).toFixed(3) : null,
+    survival_rate: survivalCounts(settled.map((r) => r.settlement as SettlementState)).rate,
     survival_ci: settled.length ? wilson(survived.length, settled.length) : null,
     severity_weights: SEVERITY,
     per_m_cloud_tokens: enough && cloudTokens ? +(nevRaw / (cloudTokens / 1e6)).toFixed(3) : null,
@@ -174,9 +180,9 @@ export function evolutionLineage(db: Database, now = Date.now(), env: NodeJS.Pro
  * Post-verification regressions settled in the window (merged loop PRs that did not survive 14 d) — added to the cockpit
  * regressions guardrail under outcome attribution, next to maker failures.
  */
-export function postVerificationRegressions(db: Database, since: string): number | null {
+export function postVerificationRegressions(db: Database, since: string, now = Date.now()): number | null {
   try {
-    return (db.prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE json_extract(metadata, '$.pr_outcome.state') = 'merged'
-      AND json_extract(metadata, '$.pr_outcome.survived') = 0 AND json_extract(metadata, '$.pr_outcome.settled_at') >= ?`).get(since) as { n: number }).n;
+    const t = Date.parse(since);
+    return loopPrSettlements(db, now).filter((p) => p.settlement.state === 'SETTLED_REGRESSED' && Date.parse(String(p.outcome?.settled_at)) >= t).length;
   } catch { return null; }
 }

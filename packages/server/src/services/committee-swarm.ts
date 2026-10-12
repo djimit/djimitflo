@@ -122,7 +122,8 @@ export function recordCommittee(db: Database, jobId: string, host: string, answe
     VALUES (?, ?, 'self_improvement', ?, ?, 'shadow', ?, ?, ?, ?, ?)`);
   let n = 0;
   for (const a of answers as Array<{ member?: unknown; p?: unknown; rationale?: unknown; model?: unknown }>) {
-    const p = Number(a?.p);
+    // E2: a failed member answer (no numeric p, or an error) is no forecast — Number(null|''|false) would have scored it as 0
+    const p = typeof a?.p === 'number' && !(a as { error?: unknown }).error ? a.p : NaN;
     if (typeof a?.member !== 'string' || !members.has(a.member) || !Number.isFinite(p) || p < 0 || p > 1) continue;
     const rationale = typeof a.rationale === 'string' ? a.rationale.slice(0, 500) : '';
     ins.run(randomUUID(), `forecast:committee:${a.member}`, job.subject_id, jobId, p >= 0.5 ? 'yes' : 'no', rationale,

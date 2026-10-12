@@ -18,10 +18,10 @@ export const OPERATOR_CONTRACTS = {
   runtimeRow: ['runtime', 'admission', 'version', 'probe', 'leases_30d', 'leases_90d', 'last_success_at', 'gym', 'readiness'],
   /** GET /api/health/digest — services/operator-push.ts buildDigest */
   digest: ['at', 'text', 'data'],
-  /** GET /api/loops/draft-prs — services/loop-draft-pr-service.ts listDraftPrs */
-  draftPrs: ['total', 'unsettled', 'rows'],
+  /** GET /api/loops/draft-prs — services/loop-draft-pr-service.ts listDraftPrs (E1: counts per settlement state) */
+  draftPrs: ['total', 'unsettled', 'by_settlement', 'closed_unmerged', 'rows'],
   /** one row of GET /api/loops/draft-prs */
-  draftPrRow: ['run_id', 'lane', 'pr_url', 'pr_number', 'age_days', 'outcome', 'survived', 'auto_merge'],
+  draftPrRow: ['run_id', 'lane', 'pr_url', 'pr_number', 'age_days', 'outcome', 'survived', 'auto_merge', 'settlement', 'settlement_reason', 'settlement_terminal', 'settlement_age_days'],
   /** GET /api/health/efficiency — services/resource-ledger.ts efficiencyView (Phase E1/E3) */
   efficiency: ['at', 'window_days', 'ledger_enabled', 'consumers', 'ledger', 'hosts', 'north_star', 'coverage', 'notes'],
   /** GET /api/health/schedulers — services/scheduler-registry.ts listSchedulers */
@@ -29,6 +29,13 @@ export const OPERATOR_CONTRACTS = {
   /** GET /api/health/stalls — services/stall-watch.ts detectStallsWithHealth */
   stalls: ['stalls', 'detectors', 'health'],
 } as const;
+
+/**
+ * E1: the evolutionary settlement state of a loop PR (server: services/merge-survival.ts settlementState) — one per PR,
+ * independent of its GitHub state. Only SETTLED_SURVIVED / SETTLED_REGRESSED enter a survival rate.
+ */
+export const LOOP_PR_SETTLEMENT_STATES = ['OPEN_BLOCKED', 'MERGED_SURVIVAL_PENDING', 'SETTLED_SURVIVED', 'SETTLED_REGRESSED', 'PIPELINE_ANOMALY'] as const;
+export type LoopPrSettlementState = (typeof LOOP_PR_SETTLEMENT_STATES)[number];
 
 export type OperatorContract = keyof typeof OPERATOR_CONTRACTS;
 export type ContractKeys<C extends OperatorContract> = (typeof OPERATOR_CONTRACTS)[C][number];
