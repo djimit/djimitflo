@@ -19,7 +19,7 @@ import { efficiencyView } from './resource-ledger';
 export const NEV_MIN_SETTLED = 10;
 /** severity weights of a post-verification regression (stated, not fitted): revert / removal = 1, follow-up fix = 0.5 */
 export const SEVERITY = { removed: 1, follow_up_fix: 0.5 } as const;
-const HUMAN = (decidedBy: string | null) => Boolean(decidedBy) && !/^(autonomy|inherit|agent|system|auto)[:-]/.test(String(decidedBy));
+export const HUMAN = (decidedBy: string | null) => Boolean(decidedBy) && !/^(autonomy|inherit|agent|system|auto)[:-]/.test(String(decidedBy));
 
 export type StageName = 'discovery' | 'proposal' | 'experiment' | 'verified' | 'merged' | 'settled' | 'survived_14d' | 'survived_30d' | 'capability_gain' | 'reproduced';
 export interface Stage {

@@ -15,6 +15,7 @@ import { checkerFamilyEvidence } from './checker-family';
 import { gradedEvidence } from './graded-fitness';
 import { wilson } from './evolution-estimators';
 import { evolutionLineage } from './evolution-lineage';
+import { provenanceSummary } from './provenance-dag';
 import { ace001Evidence } from './ace-001';
 import { ste001Evidence } from './ste-001';
 import { d5NoEvidence } from './d5-no';
@@ -339,5 +340,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     intelligence: intelligenceEvidence(db, env, now, since, { forecasters, effort_x1, memory_holdout,
       holdout_reuse_risk: holdout_exposure.epochs.filter((e) => e.current && e.reuse_risk).map((e) => ({ holdout: e.holdout, epoch: e.epoch, candidates: e.candidates })) }), gates,
     // 'Restore Evolutionary Health': proposal lineage to survival, 4-way regression split, survival-adjusted NEV (shadow)
-    lineage: evolutionLineage(db, now, env) };
+    lineage: evolutionLineage(db, now, env),
+    // E3: many-to-many provenance DAG (source → proposal → experiment → change → survival), counts + 13 answers, no edge list
+    provenance: provenanceSummary(db, now) };
 }
