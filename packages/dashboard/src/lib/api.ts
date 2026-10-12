@@ -3,6 +3,7 @@
  */
 
 import type {
+  LoopPrSettlementState,
   ApprovalRequest,
   ApprovalPolicy,
   ExecutionPolicy,
@@ -100,7 +101,9 @@ export interface EvolutionEvidence {
   flags: Array<{ name: string; acting: boolean; value: string | null }>;
   outcomes: Array<{ domain: string; skill: string; n: number; ok: number }>;
   outcomes_tagged: Array<{ skill: string; total: number; failures: number; tagged: number; share: number }>;
-  merge: { settled: Array<{ state: string; survived: number | null; n: number }>; merge_outcomes: number | null; first_settled: string | null };
+  merge: { settled: Array<{ state: string; survived: number | null; n: number }>; merge_outcomes: number | null; first_settled: string | null;
+    /** E1: survival over SETTLED_SURVIVED / SETTLED_REGRESSED only; null = unreadable */
+    settlement: { by_state: Record<LoopPrSettlementState, number>; anomalies: Record<string, number>; survived: number; regressed: number; settled: number; survival_rate: number | null } | null };
   drafts: { unsettled: number; unsettled_open_or_recent: number; age_days_p50: number | null; age_days_max: number | null; note: string };
   genomes: { by_status: Array<{ status: string; origin: string; n: number }>; recent: Array<{ id: string; status: string; note: string | null; updated_at: string }>; holdout: { mined: number | null; mutant: number | null } };
   gym: Array<{ kind: string; tier: number | null; status: string | null; n: number }>;
@@ -270,9 +273,14 @@ export type OperatorCockpit = {
 /** UX-13: GET /api/health/digest — services/operator-push.ts buildDigest. */
 export type OperatorDigest = { at: string; text: string; data: Record<string, unknown> };
 
-/** UX-7: the loop's draft PRs from loop_runs metadata (no GitHub call); outcome = merge-survival settlement once it exists. */
-/** total/unsettled null = the read failed (unknown, not 0) */
-export type DraftPrs = { total: number | null; unsettled: number | null; rows: Array<{ run_id: string; lane: string; pr_url: string; pr_number: number | null; age_days: number; outcome: string | null; survived: boolean | null; auto_merge: string | null }> };
+/**
+ * UX-7: the loop's draft PRs from loop_runs metadata (no GitHub call); outcome = the GitHub state merge survival last polled,
+ * settlement = the evolutionary settlement state (E1). unsettled = not settled and not closed unmerged.
+ * total/unsettled/by_settlement null = the read failed (unknown, not 0)
+ */
+export type DraftPrs = { total: number | null; unsettled: number | null; by_settlement: Record<LoopPrSettlementState, number> | null; closed_unmerged: number | null;
+  rows: Array<{ run_id: string; lane: string; pr_url: string; pr_number: number | null; age_days: number; outcome: string | null; survived: boolean | null; auto_merge: string | null;
+    settlement: LoopPrSettlementState; settlement_reason: string; settlement_terminal: boolean; settlement_age_days: number | null }> };
 export type DependencyLane = { mode: 'off' | 'shadow' | 'act'; effective_mode: 'off' | 'shadow' | 'act'; revoked_at: string | null; revoked_reason: string | null; max_per_day: number; merged_24h: number; open: number; rows: Array<{ pr_number: number; title: string; html_url: string | null; bump: string; age_days: number | null; check_state: string | null; decision: string; reason: string | null; updated_at: string }> };
 
 export type DecisionsInbox = {

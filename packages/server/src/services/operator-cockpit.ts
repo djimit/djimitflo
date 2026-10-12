@@ -120,7 +120,7 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
   const attributed = outcomeAttributionEnabled(env);
   // evolutionary regressions = maker (mutation) failures + verified-and-merged changes that did not survive; a reviewer
   // rejection is the gate working, not a regression
-  split.post_verification = postVerificationRegressions(db, d7);
+  split.post_verification = postVerificationRegressions(db, d7, now);
   const regressions = attributed ? (splitRows && split.post_verification !== null ? split.maker + split.post_verification : null) : scorecard.regressed_7d;
   const state = (value: number | null, bad: boolean): HealthState => (value === null ? 'UNKNOWN' : bad ? 'BREACHED' : 'HEALTHY');
   const guard = (g: Omit<Guardrail, 'ok'>): Guardrail => ({ ...g, ok: g.state === 'HEALTHY' });
