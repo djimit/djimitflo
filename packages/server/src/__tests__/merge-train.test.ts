@@ -107,7 +107,7 @@ const train = (over: Record<string, string>, opts: { merged?: boolean; withTestF
   const own = tmp('mt-t-'); const merges = path.join(own, 'merges'); const log = path.join(own, 'log'); const state = path.join(own, 'merged');
   // a simulated squash merge really lands the change on main and flips the PR to MERGED (the outcome is read back live)
   const land = `echo x >> ${merges}; touch ${state}; git apply ${diff} && git add -A && git -c user.email=t@t -c user.name=t commit -q -m squash`;
-  const env = { MT_LEDGER: ledger, MT_BASE: 'main', MT_FETCH: 'true', MT_PR_VIEW: `if [ -f ${state} ]; then echo MERGED aaaa1111; else echo OPEN aaaa1111; fi`,
+  const env = { MT_LEDGER: ledger, MT_BASE: 'main', MT_FETCH: 'true', MT_PR_VIEW: `if [ -f ${state} ]; then echo MERGED aaaa1111 false; else echo OPEN aaaa1111 false; fi`,
     MT_PR_DIFF: `cat ${diff}`, MT_UPDATE: 'echo updated', MT_CHECKS: 'echo pass', MT_SLEEP: 'true', MT_MERGE: land, ...over };
   const r = runScript(dir, ['run', log, opts.pr ?? '778'], env);
   return { ...r, merges: fs.existsSync(merges) ? fs.readFileSync(merges, 'utf8').split('\n').filter(Boolean).length : 0, ledger, dir };
@@ -118,13 +118,15 @@ it('merges an open PR once and records CLAIMED → RUNNING → MERGED', () => {
   expect(r.status).toBe(0);
   expect(r.out).toContain('#778 MERGED');
   expect(r.merges).toBe(1);
-  const events = fs.readFileSync(r.ledger, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l).event);
+  // lifecycle states; the step entries between them (update_intent, ci_wait, ci_green, merge_intent) are operation state
+  const lifecycle = new Set(['claimed', 'running', 'merged', 'satisfied', 'fail_closed', 'escalated', 'superseded', 'hold', 'cancelled']);
+  const events = fs.readFileSync(r.ledger, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l).event).filter((e: string) => lifecycle.has(e));
   expect(events).toEqual(['claimed', 'running', 'merged']);
 });
 
 it('replay after a merge: SATISFIED only because the change is on main — no second merge', () => {
   const first = train({});
-  const replay = train({ MT_PR_VIEW: 'echo MERGED aaaa1111' }, { merged: true, ledger: first.ledger });
+  const replay = train({ MT_PR_VIEW: 'echo MERGED aaaa1111 false' }, { merged: true, ledger: first.ledger });
   expect(replay.out).toContain('SATISFIED');
   expect(replay.merges).toBe(0);
 });
@@ -134,14 +136,14 @@ it('crash after the merge but before the ledger completion: the replay recovers 
   const crashed = train({ MT_MERGE: 'kill -9 $$' }, { ledger });
   expect(crashed.status).not.toBe(0);
   expect(fs.readFileSync(ledger, 'utf8')).not.toContain('"event":"merged"');
-  const replay = train({ MT_PR_VIEW: 'echo MERGED aaaa1111' }, { merged: true, ledger }); // stale claim of the dead pid is reclaimed
+  const replay = train({ MT_PR_VIEW: 'echo MERGED aaaa1111 false' }, { merged: true, ledger }); // stale claim of the dead pid is reclaimed
   expect(replay.status).toBe(0);
   expect(replay.out).toContain('MERGED (recovered');
   expect(replay.merges).toBe(0);
 });
 
 it('patch-id alone is not proof: a merged PR whose change is not fully on main fails closed', () => {
-  const r = train({ MT_PR_VIEW: 'echo MERGED aaaa1111' }, { merged: true, withTestFile: false });
+  const r = train({ MT_PR_VIEW: 'echo MERGED aaaa1111 false' }, { merged: true, withTestFile: false });
   expect(r.status).toBe(3);
   expect(r.out).toContain('FAIL_CLOSED');
   expect(r.merges).toBe(0);
@@ -152,7 +154,7 @@ it('two workers claiming the same intent: only one acts', async () => {
   const ledger = path.join(tmp('mt-led-'), 'l'); const own = tmp('mt-2w-'); const merges = path.join(own, 'merges'); const state = path.join(own, 'state');
   // realistic GitHub: after the merge the PR reads MERGED; the first worker holds its claim for ~3 s
   const env = { ...process.env, MT_LEDGER: ledger, MT_BASE: 'main', MT_FETCH: 'true', MT_PR_DIFF: `cat ${diff}`,
-    MT_PR_VIEW: `if [ -f ${state} ]; then echo MERGED aaaa1111; else echo OPEN aaaa1111; fi`,
+    MT_PR_VIEW: `if [ -f ${state} ]; then echo MERGED aaaa1111 false; else echo OPEN aaaa1111 false; fi`,
     MT_UPDATE: 'echo updated', MT_CHECKS: 'echo pass', MT_SLEEP: 'sleep 1', MT_MERGE: `echo x >> ${merges}; git apply ${diff} && git add -A && git -c user.email=t@t -c user.name=t commit -q -m squash; touch ${state}` };
   const { spawn } = await import('child_process');
   const go = () => new Promise<{ code: number | null; out: string }>((resolve) => {
@@ -168,7 +170,7 @@ it('two workers claiming the same intent: only one acts', async () => {
 it('a stale job queued for an older head exits SUPERSEDED without acting', () => {
   const { dir, diff } = mainRepo(false);
   const r = runScript(dir, ['run', path.join(dir, '..', 'log-s'), '778@bbbb2222'], { MT_LEDGER: path.join(tmp('mt-led-'), 'l'), MT_BASE: 'main', MT_FETCH: 'true',
-    MT_PR_VIEW: 'echo OPEN aaaa1111', MT_PR_DIFF: `cat ${diff}`, MT_MERGE: 'echo MERGE_CALLED' });
+    MT_PR_VIEW: 'echo OPEN aaaa1111 false', MT_PR_DIFF: `cat ${diff}`, MT_MERGE: 'echo MERGE_CALLED' });
   expect(r.status).toBe(5);
   expect(r.out).toContain('SUPERSEDED');
   expect(r.out).not.toContain('MERGE_CALLED');
@@ -176,11 +178,11 @@ it('a stale job queued for an older head exits SUPERSEDED without acting', () =>
 
 it('PR closed (or reopened with a new head) during execution: abort as SUPERSEDED before the merge call', () => {
   const f = path.join(tmp('mt-c-'), 'n');
-  const closed = train({ MT_PR_VIEW: counter(f, 'OPEN aaaa1111', 'CLOSED aaaa1111') });
+  const closed = train({ MT_PR_VIEW: counter(f, 'OPEN aaaa1111 false', 'CLOSED aaaa1111 false') });
   expect(closed.status).toBe(5);
   expect(closed.merges).toBe(0);
   const g = path.join(tmp('mt-c-'), 'n');
-  const reopened = train({ MT_PR_VIEW: counter(g, 'OPEN aaaa1111', 'OPEN cccc3333') });
+  const reopened = train({ MT_PR_VIEW: counter(g, 'OPEN aaaa1111 false', 'OPEN cccc3333 false') });
   expect(reopened.status).toBe(5);
   expect(reopened.merges).toBe(0);
 });
@@ -222,7 +224,7 @@ it('11-10 #778 regression: the merge lands but branch cleanup fails — MERGED f
   const r = runScript(dir, ['run', path.join(own, 'log'), '778', '779'], {
     MT_LEDGER: path.join(own, 'ledger'), MT_BASE: 'main', MT_FETCH: 'true', MT_CHECKS: 'echo pass', MT_SLEEP: 'true',
     MT_PR_DIFF: `cat ${own}/pr$4.diff`,
-    MT_PR_VIEW: `if [ -f ${own}/merged$4 ]; then echo MERGED h$4; else echo OPEN h$4; fi`,
+    MT_PR_VIEW: `if [ -f ${own}/merged$4 ]; then echo MERGED h$4 false; else echo OPEN h$4 false; fi`,
     MT_UPDATE: `echo $4 >> ${own}/updates; echo updated`,
     MT_MERGE: `echo $4 >> ${own}/merges; git apply ${own}/pr$4.diff && git add -A && git -c user.email=t@t -c user.name=t commit -q -m sq$4; touch ${own}/merged$4; echo "failed to delete local branch: used by worktree" >&2; exit 1`,
   });
