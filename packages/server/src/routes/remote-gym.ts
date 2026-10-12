@@ -29,7 +29,7 @@ export function createRemoteGymRoutes(db: Database, auth: AuthMiddleware): Route
   }
   const fail = (res: any, error: unknown) => {
     const code = error instanceof Error ? error.message : 'GYM_WORKER_ERROR';
-    res.status(/^GYM_(HOST|SPECIES|RESULT)_|^MAKER_(RESULT|PATCH)_/.test(code) ? 400 : /_NOT_FOUND$/.test(code) ? 404 : code === 'GYM_RUN_ALREADY_SETTLED' || code === 'MAKER_JOB_NOT_CLAIMED' ? 409 : 500).json({ error: { code, message: code } });
+    res.status(/^GYM_(HOST|SPECIES|RESULT)_|^MAKER_(RESULT|PATCH)_/.test(code) ? 400 : /_NOT_FOUND$/.test(code) ? 404 : code === 'GYM_RUN_ALREADY_SETTLED' || code === 'GYM_RUN_STALE_GENERATION' || code === 'MAKER_JOB_NOT_CLAIMED' ? 409 : 500).json({ error: { code, message: code } });
   };
 
   router.post('/claim', (req, res) => {

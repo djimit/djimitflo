@@ -170,7 +170,10 @@ export interface EvolutionEvidence {
     confident_yes?: D5Tally; uncertain?: D5Tally; note?: string };
   /** TG-001 (TG_001_MODE): the same frozen write_test tasks under four prompt representations (A gym, B production, C controlled, D structured) */
   /** integrity addendum: invalid_manifest = the frozen analysis plan is missing, edited or later than the first outcome → no analysis */
-  tg_001: { mode: string | null; status: 'not_frozen' | 'collecting' | 'complete' | 'invalid_manifest'; reason?: string | null; label?: string; tasks: number; frozen_at?: string; commit?: string | null; species?: string; harness?: string | null; skipped?: number;
+  /** generations: r1 = ABORTED_DATA_LOSS (provider rollback, docs/research/ace/TG-001_R1_INCIDENT.md) — shown read-only, never pooled */
+  tg_001: { mode: string | null; experiment_id?: string; generation?: string;
+    prior_generations?: ReadonlyArray<{ generation: string; experiment_id: string; status: string; frozen_at: string; first_attempt_at: string; attempts_executed: string; cause: string; pooled: boolean } & Record<string, unknown>>;
+    status: 'not_frozen' | 'collecting' | 'complete' | 'invalid_manifest'; reason?: string | null; label?: string; tasks: number; frozen_at?: string; commit?: string | null; species?: string; harness?: string | null; skipped?: number;
     mde?: number; alpha?: number; interpretation_rules?: string[];
     arms: Array<{ arm: string; name: string; n: number; success: number; failure?: number; rate: number | null; ci95: [number, number] | null; failures: Record<string, number>;
       tokens_mean: number | 'UNKNOWN' | null; tokens_known: number; duration_ms_mean: number | null; tool_calls?: number | 'UNKNOWN'; files_inspected?: number | 'UNKNOWN';
