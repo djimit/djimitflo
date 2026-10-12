@@ -200,6 +200,7 @@ export interface EvolutionEvidence {
   lineage?: EvolutionLineage;
   /** E3: GET /api/health/provenance-dag without its edge list — services/provenance-dag.ts provenanceSummary */
   provenance?: ProvenanceSummary;
+  panel_attempts?: PanelAttemptMetrics;
 }
 
 /** E3: one answer of the provenance DAG — a value, or UNKNOWN with the reason (never 0 for a missing link) */
@@ -208,6 +209,25 @@ export type ProvenanceSummary = {
   at: string; window_days: number | null; proposals: number; edge_counts: Record<string, number>; edges_total: number; answers: ProvenanceAnswer[];
   not_linked: { proposals_without_source: number; gym_trials: number | null; discovery_units_uncited: number | null; note: string };
   capability: { status: 'not_measured'; reason: string }; errors: string[];
+};
+
+/** E4: specialist-panel answer attempts — services/panel-attempt-metrics.ts. Rates are null without attempts; quality null unless status 'ok'. */
+export type PanelAttemptState = 'VALID_FIRST_PASS' | 'VALID_AFTER_RETRY' | 'QUARANTINED' | 'GENERATION_FAILED' | 'PARSE_FAILED' | 'SCHEMA_INVALID' | 'INFRA_FAILED' | 'UNKNOWN_FAILURE';
+export type PanelSemanticQuality = { status: 'ok' | 'INSUFFICIENT_EVIDENCE'; value: number | null; ci: [number, number] | null; n_valid: number; n_semantically_scored: number; ground_truth: string; circular: boolean };
+export type PanelAttemptGroup = {
+  model: string; model_version: 'UNKNOWN'; prompt_fingerprint: 'UNKNOWN'; prompt_instances: number | null; provider: string;
+  n_attempt: number; n_valid: number; n_first_pass: number; n_after_retry: number; n_quarantined: number | null; n_shadow: number | null;
+  states: Record<PanelAttemptState | 'PARSE_FAILED|SCHEMA_INVALID', number>;
+  reliability: { value: number | null; ci: [number, number] | null; n_attempt: number; n_valid: number };
+  first_pass: { value: number | null; ci: [number, number] | null; n_attempt: number; n_first_pass: number };
+  semantic_quality: PanelSemanticQuality; panel_agreement: PanelSemanticQuality;
+};
+export type PanelAttemptMetrics = {
+  window_days: number;
+  seat_attempts: { groups: PanelAttemptGroup[]; totals: { n_attempt: number; n_valid: number; n_quarantined: number; states: PanelAttemptGroup['states'] } };
+  model_calls: { recorded: boolean; groups: PanelAttemptGroup[] };
+  legacy: { coerced_unparseable: number; coerced_generation_failed: number; unprovenanced: number };
+  unreadable: string[]; note: string;
 };
 
 /** 'Restore Evolutionary Health': GET cockpit.evolution / evolution-evidence.lineage — services/evolution-lineage.ts */
@@ -257,7 +277,7 @@ export type OperatorCockpit = {
   build: { commit: string | null; build_time: string | null };
   scorecard: Record<string, number | null>;
   /** split (regressions): by attributed class — reviewer/environment failures are not the maker's */
-  guardrails: Array<{ name: string; ok: boolean; state?: HealthState; value: number | null; limit: string; split?: { maker: number; reviewer: number; environment: number; unknown?: number; post_verification?: number | null } }>;
+  guardrails: Array<{ name: string; ok: boolean; state?: HealthState; value: number | null; limit: string; split?: { maker: number; reviewer: number; environment: number; unknown?: number; post_verification?: number | null }; attempts?: PanelAttemptMetrics['seat_attempts']['totals'] & { legacy: PanelAttemptMetrics['legacy'] } }>;
   stalls: Array<{ subsystem: string; since: string | null; detail: string }>;
   gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string; benched?: boolean; stale?: boolean }>;
   /** null = that count could not be read; total = distinct things waiting (server-side dedupe) */
