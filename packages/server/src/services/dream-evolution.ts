@@ -261,8 +261,8 @@ function activeParent(db: Database): string {
   return row?.id ?? BASELINE_GENOME;
 }
 
-const defaultCaller: DreamCaller = (prompt) => generateText(
-  { prompt, model: process.env.DREAM_EVOLUTION_MODEL || process.env.SELF_IMPROVEMENT_REVIEW_MODEL || 'kimi-k3:cloud', temperature: 0.7, maxTokens: 1200, timeoutMs: 120_000 },
+export const defaultCaller: DreamCaller = (prompt) => generateText(
+  { prompt, model: process.env.DREAM_EVOLUTION_MODEL || process.env.SELF_IMPROVEMENT_REVIEW_MODEL || 'kimi-k3:cloud', temperature: 0.7, maxTokens: 1200, timeoutMs: 120_000, purpose: 'dream_evolution' },
   { endpoints: llmEndpoints(process.env.OLLAMA_URL || 'https://ollama.com') },
 );
 
