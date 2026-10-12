@@ -120,9 +120,12 @@ required_json() {
 json_or_null() { if printf '%s' "$1" | jq -e 'type == "object" or type == "array"' >/dev/null 2>&1; then printf '%s' "$1"; else printf 'null'; fi; }
 checks_verdict() {   # → {verdict: green|pending|red, red, pending, missing, reason?}
   local sha="$1" runs st
+  local d; d="$(mktemp -d "$MT_TMP/ci.XXXXXX")"
   runs="$(ghx api "repos/$REPO_SLUG/commits/$sha/check-runs?per_page=100" 2>/dev/null || true)"
   st="$(ghx api "repos/$REPO_SLUG/commits/$sha/status" 2>/dev/null || true)"
-  jq -cn --argjson runs "$(json_or_null "$runs")" --argjson st "$(json_or_null "$st")" --argjson req "$(required_json)" '
+  json_or_null "$runs" > "$d/runs.json"; json_or_null "$st" > "$d/status.json"   # files, not argv: responses can be large
+  jq -cn --slurpfile R "$d/runs.json" --slurpfile S "$d/status.json" --argjson req "$(required_json)" '
+    $R[0] as $runs | $S[0] as $st |
     if $runs == null then {verdict: "pending", red: [], pending: [], missing: $req.contexts, reason: "check_runs_unavailable"} else
     ($runs.check_runs // []) as $cr | (($st // {}).statuses // []) as $ss | (($st // {}).state // "") as $state |
     ([$cr[] | select(.status == "completed" and (.conclusion | IN("failure", "timed_out", "action_required", "startup_failure"))) | .name]
@@ -146,7 +149,7 @@ classify_pr() {   # classify_pr N → one JSON object; never READY on missing da
   for page in 1 2 3 4 5 6 7 8 9 10; do
     batch="$(json_or_null "$(ghx api "repos/$REPO_SLUG/pulls/$n/files?per_page=100&page=$page" 2>/dev/null || true)")"
     [ "$batch" = null ] && { files=null; break; }
-    files="$(jq -cn --argjson a "$files" --argjson b "$batch" '$a + $b')"
+    printf '%s' "$files" > "$d/acc.json"; printf '%s' "$batch" > "$d/batch.json"; files="$(jq -cs 'add' "$d/acc.json" "$d/batch.json")"
     [ "$(jq 'length' <<<"$batch")" -lt 100 ] && break
   done
   reviews="$(json_or_null "$(ghx api "repos/$REPO_SLUG/pulls/$n/reviews?per_page=100" 2>/dev/null || true)")"
@@ -447,7 +450,8 @@ dry_run() {
   for page in 1 2 3 4 5 6 7 8 9 10; do
     batch="$(json_or_null "$(ghx api "repos/$REPO_SLUG/pulls?state=open&per_page=100&page=$page" 2>/dev/null || true)")"
     [ "$batch" = null ] && { echo "cannot list open PRs — no plan (fail closed)" >&2; exit 3; }
-    list="$(jq -cn --argjson a "$list" --argjson b "$batch" '$a + $b')"
+    printf '%s' "$list" > "$MT_TMP/acc.json"; printf '%s' "$batch" > "$MT_TMP/batch.json"
+    list="$(jq -cs 'add | map({number, title, head: {ref: .head.ref}})' "$MT_TMP/acc.json" "$MT_TMP/batch.json")"
     [ "$(jq 'length' <<<"$batch")" -lt 100 ] && break
   done
   local n rows="$MT_TMP/rows.jsonl"; : > "$rows"
