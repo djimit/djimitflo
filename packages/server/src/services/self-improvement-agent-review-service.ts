@@ -56,6 +56,18 @@ const sha256 = (text: string) => createHash('sha256').update(text).digest('hex')
 interface Provenance { model: string; prompt_sha256: string; raw_sha256: string | null; attempt: number }
 type AskOutcome = { review: ParsedReview; provenance: Provenance } | { invalid: string; raw: string; provenance: Provenance } | { error: string };
 
+/**
+ * E4: why an answer failed validation — 'parse' (no JSON object could be read) vs 'schema' (JSON, but a field breaks the
+ * review schema). The writer records it (ledger status invalid_parse / invalid_schema); the quarantine row keeps the exact
+ * error text, which reviewFailureKind() maps back without guessing (the parse messages are this fixed list).
+ */
+export type ReviewFailureKind = 'parse' | 'schema';
+export const PARSE_ERRORS = ['no JSON object in the answer', 'answer is not valid JSON', 'answer is not a JSON object'] as const;
+const SCHEMA_ERROR = /^(stance|confidence|findings|evidence_refs|recommendations|limitations) must /;
+export function reviewFailureKind(error: string): ReviewFailureKind | null {
+  return (PARSE_ERRORS as readonly string[]).includes(error) ? 'parse' : SCHEMA_ERROR.test(error) ? 'schema' : null;
+}
+
 const PLACEHOLDER_REF = /^(\.{2,}|n\/a|none|todo|tbd)$/i;
 
 /**
@@ -64,29 +76,31 @@ const PLACEHOLDER_REF = /^(\.{2,}|n\/a|none|todo|tbd)$/i;
  * ponytail: 'cited evidence exists' is checked as 'non-empty, not a placeholder'; matching refs against the prompt
  * context is the upgrade if invented refs show up in quarantine / audit samples.
  */
-export function validateReview(raw: string): { ok: true; review: ParsedReview } | { ok: false; error: string } {
+export function validateReview(raw: string): { ok: true; review: ParsedReview } | { ok: false; error: string; kind: ReviewFailureKind } {
+  const parse = (error: string) => ({ ok: false as const, error, kind: 'parse' as const });
+  const schema = (error: string) => ({ ok: false as const, error, kind: 'schema' as const });
   // thinking models (and the LLM fallback) may prefix the answer with a reasoning block that itself contains braces
   const trimmed = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const first = trimmed.indexOf('{');
   const last = trimmed.lastIndexOf('}');
   const jsonText = fenced ? fenced[1].trim() : first !== -1 && last > first ? trimmed.slice(first, last + 1) : null;
-  if (!jsonText) return { ok: false, error: 'no JSON object in the answer' };
+  if (!jsonText) return parse(PARSE_ERRORS[0]);
   let c: Record<string, unknown>;
-  try { c = JSON.parse(jsonText); } catch { return { ok: false, error: 'answer is not valid JSON' }; }
-  if (!c || typeof c !== 'object' || Array.isArray(c)) return { ok: false, error: 'answer is not a JSON object' };
+  try { c = JSON.parse(jsonText); } catch { return parse(PARSE_ERRORS[1]); }
+  if (!c || typeof c !== 'object' || Array.isArray(c)) return parse(PARSE_ERRORS[2]);
   if (typeof c.stance !== 'string' || !VALID_STANCES.has(c.stance)) {
-    return { ok: false, error: `stance must be one of support|oppose|uncertain|needs_evidence (got ${JSON.stringify(c.stance ?? null)})` };
+    return schema(`stance must be one of support|oppose|uncertain|needs_evidence (got ${JSON.stringify(c.stance ?? null)})`);
   }
   const confidence = typeof c.confidence === 'number' ? c.confidence : Number.NaN;
-  if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) return { ok: false, error: 'confidence must be a number between 0 and 1' };
+  if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) return schema('confidence must be a number between 0 and 1');
   const strings = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').map((x) => x.trim()).filter(Boolean) : null);
   const findings = strings(c.findings);
-  if (!findings || findings.length === 0) return { ok: false, error: 'findings must be a non-empty array of strings' };
+  if (!findings || findings.length === 0) return schema('findings must be a non-empty array of strings');
   const evidence = strings(c.evidence_refs)?.filter((r) => r.length >= 3 && !PLACEHOLDER_REF.test(r));
-  if (!evidence || evidence.length === 0) return { ok: false, error: 'evidence_refs must cite at least one concrete item from the context' };
-  if (c.recommendations !== undefined && !Array.isArray(c.recommendations)) return { ok: false, error: 'recommendations must be an array of strings' };
-  if (c.limitations !== undefined && c.limitations !== null && typeof c.limitations !== 'string') return { ok: false, error: 'limitations must be a string' };
+  if (!evidence || evidence.length === 0) return schema('evidence_refs must cite at least one concrete item from the context');
+  if (c.recommendations !== undefined && !Array.isArray(c.recommendations)) return schema('recommendations must be an array of strings');
+  if (c.limitations !== undefined && c.limitations !== null && typeof c.limitations !== 'string') return schema('limitations must be a string');
   return {
     ok: true,
     review: {
@@ -240,7 +254,7 @@ export class SelfImprovementAgentReviewService {
 
   /**
    * One answer with at most one re-ask: the re-ask quotes the validation error. With a model given the call is recorded in
-   * the MS-1 ledger (status ok / repaired / invalid; a shadow call when incumbentStance is passed).
+   * the MS-1 ledger (status ok / repaired / invalid_parse / invalid_schema (E4; 'invalid' before) / empty / error; a shadow call when incumbentStance is passed).
    */
   private async ask(prompt: string, who: string, model?: string, incumbentStance?: ParsedReview['stance'] | null): Promise<AskOutcome> {
     const started = Date.now();
@@ -272,7 +286,7 @@ export class SelfImprovementAgentReviewService {
       }
       const provenance: Provenance = { model: model ?? defaultModel(), prompt_sha256: promptSha, raw_sha256: sha256(raw), attempt };
       if (!checked.ok) {
-        record(false, raw.length, 'invalid');
+        record(false, raw.length, `invalid_${checked.kind}`);
         console.warn(`self-improvement review for ${who}${shadow ? ' (shadow)' : ''}: invalid answer after re-ask (${checked.error}; ${raw.length} chars): ${JSON.stringify(raw.slice(0, 160))}`);
         return { invalid: checked.error, raw, provenance };
       }

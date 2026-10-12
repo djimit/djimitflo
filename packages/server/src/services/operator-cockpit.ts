@@ -7,6 +7,7 @@ import { ATTRIBUTION_OF_PROPOSAL, decisionsInbox, openDecisionCounts } from './d
 import { listSchedulers, type SchedulerHealth, type SchedulerStatus } from './scheduler-registry';
 import { nonMakerRunSql, outcomeAttributionEnabled } from './outcome-attribution';
 import { evolutionLineage, postVerificationRegressions } from './evolution-lineage';
+import { panelAttemptMetrics, type PanelAttemptMetrics } from './panel-attempt-metrics';
 
 /**
  * S1 (operator 2026-09-28): one read-only snapshot of what the operator otherwise measures by hand over SSH —
@@ -24,7 +25,9 @@ export const worstState = (states: HealthState[]): HealthState =>
  * split: regressions by attributed class — with OUTCOME_ATTRIBUTION_ENABLED the guardrail counts maker only.
  * unknown = no outcome_attribution judgment (was silently 'maker'). ok = state === 'HEALTHY' (kept for older clients).
  */
-export interface Guardrail { name: string; ok: boolean; state: HealthState; value: number | null; limit: string; split?: { maker: number; reviewer: number; environment: number; unknown: number; post_verification: number | null } }
+export interface Guardrail { name: string; ok: boolean; state: HealthState; value: number | null; limit: string; split?: { maker: number; reviewer: number; environment: number; unknown: number; post_verification: number | null };
+  /** E4: the panel guardrail's attempt split (7 d) — services/panel-attempt-metrics.ts */
+  attempts?: PanelAttemptMetrics['seat_attempts']['totals'] & { legacy: PanelAttemptMetrics['legacy'] } }
 export interface CockpitSnapshot {
   at: string;
   /** one id per snapshot; every section is read in this one synchronous pass, so `at` is each section's observation time */
@@ -130,11 +133,14 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
   if (attributed && regState === 'HEALTHY' && split.unknown > 0) regState = 'DEGRADED';
   const expiredBad = (scorecard.approvals_expired_7d ?? 0) > (scorecard.approvals_decided_7d ?? 0) / 5;
   // plan §3 guardrails
+  // E4: the same 7 d window split per attempt state (first pass / retry / parse / schema / generation / infra), legacy apart
+  const panelAttempts7d = panelAttemptMetrics(db, { days: 7, now });
   const guardrails: Guardrail[] = [
     guard({ name: 'regressions', value: regressions, state: regState, split,
       limit: `<= verified/5 (${v === null ? '?' : (v / 5).toFixed(1)})${attributed ? `, maker failures + post-verification regressions${split.unknown ? `; ${split.unknown} unattributed` : ''}` : ''}` }),
     // specialist reviews created in 7 d whose findings could not be parsed; any is a breach
-    guard({ name: 'panel unparseable (7 d)', value: scorecard.panel_unparseable_7d, limit: '0', state: state(scorecard.panel_unparseable_7d, (scorecard.panel_unparseable_7d ?? 0) > 0) }),
+    guard({ name: 'panel unparseable (7 d)', value: scorecard.panel_unparseable_7d, limit: '0', state: state(scorecard.panel_unparseable_7d, (scorecard.panel_unparseable_7d ?? 0) > 0),
+      attempts: { ...panelAttempts7d.seat_attempts.totals, legacy: panelAttempts7d.legacy } }),
     // reflection-sourced proposals created in the last 24 h
     // NOT_APPLICABLE when reflection proposals are capped at 0 (Y7): 0 inflow then says nothing about health
     guard({ name: 'reflection inflow (24 h)', value: scorecard.reflection_inflow_24h, limit: '<= 25',
