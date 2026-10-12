@@ -83,7 +83,10 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
     approvals_expired_7d: one("SELECT COUNT(*) FROM approvals WHERE status = 'expired' AND updated_at >= ?", d7),
     approvals_pending: one("SELECT COUNT(*) FROM approvals WHERE status = 'pending'"),
     runs_failed_7d: one("SELECT COUNT(*) FROM loop_runs WHERE status IN ('failed', 'interrupted') AND created_at >= ?", d7),
-    panel_unparseable_7d: one("SELECT COUNT(*) FROM specialist_reviews WHERE findings_json LIKE '%could not be parsed%' AND created_at >= ?", d7),
+    // #784 quarantines invalid answers instead of storing a coerced 'could not be parsed' review: count both, so neither the
+    // pre-#784 rows nor the new attempts read as 0; an unreadable quarantine table is UNKNOWN (null), not 0
+    panel_unparseable_7d: one(`SELECT (SELECT COUNT(*) FROM specialist_reviews WHERE findings_json LIKE '%could not be parsed%' AND created_at >= ?)
+      + (SELECT COUNT(*) FROM specialist_review_quarantine WHERE created_at >= ?)`, d7, d7),
     // spend_per_verified_change_7d: tokens of every maker/checker/security lease CREATED in 7 d (all lanes, all outcomes)
     // over proposals VERIFIED (settled) in 7 d = what a verified change costs including the failures around it.
     // tokens_per_verified_change_7d is the same number under its old name (kept for older clients).

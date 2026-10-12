@@ -96,3 +96,14 @@ it('separates window spend per verified change from the verified changes\' own l
   expect(s.tokens_per_verified_change_7d).toBe(4_000_000);
   expect(s.direct_tokens_per_verified_change_7d).toBe(1_000_000);
 });
+
+it('panel unparseable counts quarantined attempts (#784) next to legacy coerced reviews; unreadable = UNKNOWN', () => {
+  const q = db.prepare(`INSERT INTO specialist_review_quarantine (id, panel_id, specialist_id, error, created_at) VALUES (?, 'p1', 's1', 'stance missing', ?)`);
+  q.run('q1', iso(2)); q.run('q2', iso(3)); q.run('q-old', iso(24 * 8));
+  db.prepare(`INSERT INTO specialist_reviews (id, panel_id, specialist_id, specialist_title, stance, confidence, findings_json, status, created_at)
+    VALUES ('r1', 'p1', 's2', 'S2', 'needs_evidence', 0, '["Review could not be parsed"]', 'submitted', ?)`).run(iso(5));
+  expect(operatorCockpit(db, NOW).guardrails.find((g) => g.name === 'panel unparseable (7 d)')!.value).toBe(3);
+  db.exec('DROP TABLE specialist_review_quarantine');
+  const g = operatorCockpit(db, NOW).guardrails.find((x) => x.name === 'panel unparseable (7 d)')!;
+  expect(g).toMatchObject({ value: null, state: 'UNKNOWN' });
+});
