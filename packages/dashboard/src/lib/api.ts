@@ -198,7 +198,17 @@ export interface EvolutionEvidence {
   intelligence: { contract_version: string; metrics: IntelligenceMetric[]; note: string };
   gates: Record<'A' | 'B' | 'C' | 'D', { state: GateState; reason: string }>;
   lineage?: EvolutionLineage;
+  /** E3: GET /api/health/provenance-dag without its edge list — services/provenance-dag.ts provenanceSummary */
+  provenance?: ProvenanceSummary;
 }
+
+/** E3: one answer of the provenance DAG — a value, or UNKNOWN with the reason (never 0 for a missing link) */
+export type ProvenanceAnswer = { question: string; status: 'ok' | 'UNKNOWN'; value: unknown; reason: string | null };
+export type ProvenanceSummary = {
+  at: string; window_days: number | null; proposals: number; edge_counts: Record<string, number>; edges_total: number; answers: ProvenanceAnswer[];
+  not_linked: { proposals_without_source: number; gym_trials: number | null; discovery_units_uncited: number | null; note: string };
+  capability: { status: 'not_measured'; reason: string }; errors: string[];
+};
 
 /** 'Restore Evolutionary Health': GET cockpit.evolution / evolution-evidence.lineage — services/evolution-lineage.ts */
 export type LineageStage = { stage: string; count: number | null; conversion: number | null; median_age_days: number | null; top_failure: string | null;
