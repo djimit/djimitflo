@@ -19,13 +19,14 @@ import { loopPrSettlements, survivalCounts } from './merge-survival';
  */
 /**
  * Who has to act on a requeue candidate (Cockpit 3.0; prod 10-10: 59 'needs you' rows, of which 22 were system work):
- * - operator: regressed / infra_failed with a maker or environment attribution (or infra), nobody requeued it yet
+ * - operator: regressed with a maker or environment attribution, nobody requeued it yet
  * - budgeted_requeue: newest outcome attribution = reviewer_failure — the daily budgeted requeue handles it
+ * - infra_failed: the run failed operationally (infra / missing evidence) — system work, not a semantic operator decision (E2)
  * - attribution_unknown: regressed with no outcome attribution — evidence first, not a decision
  * - not_actionable: its source lane is switched off, or a later proposal with the same title verified
  * - requeued / no_change: already requeued, or nothing changed
  */
-export type RequeueClass = 'operator' | 'budgeted_requeue' | 'attribution_unknown' | 'not_actionable' | 'requeued' | 'no_change';
+export type RequeueClass = 'operator' | 'budgeted_requeue' | 'infra_failed' | 'attribution_unknown' | 'not_actionable' | 'requeued' | 'no_change';
 export interface InboxRequeue { id: string; title: string; status: string; updated_at: string; requeued_as: string | null; queue_class: RequeueClass }
 export interface InboxLabel { id: string; title: string; status: string; reason: string; verdict_at: string; label: 'ok' | 'wrong' | null }
 export interface DecisionsInbox {
@@ -89,6 +90,7 @@ export function decisionsInbox(db: Database, now = Date.now(), env: NodeJS.Proce
       WHEN ${offLanes.length ? `(${offLanes.join(' OR ')}) OR ` : ''}EXISTS (SELECT 1 FROM self_improvements v WHERE v.status = 'verified' AND v.title = s.title
         AND v.id != s.id AND v.created_at > s.created_at) THEN 'not_actionable'
       WHEN ${ATTRIBUTION_OF_PROPOSAL} = 'reviewer_failure' THEN 'budgeted_requeue'
+      WHEN s.status = 'infra_failed' THEN 'infra_failed'
       WHEN s.status = 'regressed' AND ${ATTRIBUTION_OF_PROPOSAL} IS NULL THEN 'attribution_unknown'
       ELSE 'operator' END`;
   const requeue = all<InboxRequeue>(`SELECT s.id, s.title, s.status, s.updated_at, ${requeuedAs} AS requeued_as, ${queueClass} AS queue_class
@@ -198,7 +200,7 @@ export function recordNeedsYouRanking(db: Database, now = Date.now()): boolean {
 
 /**
  * Needs-you counts shared by the cockpit and the daily digest. Requeue counts only the `operator` class (see RequeueClass):
- * system-side rows (budgeted requeue, unknown attribution, not actionable) are counted in totals.requeue_classes instead.
+ * system-side rows (budgeted requeue, infra failure, unknown attribution, not actionable) are counted in totals.requeue_classes instead.
  * Counts come from the untruncated totals (prod 10-10: the listed arrays stop at 50/100); null = the count failed.
  */
 export function openDecisionCounts(inbox: DecisionsInbox): { requeue: number | null; labels: number | null; memory_review: number | null; shared_subjects: number | null } {
