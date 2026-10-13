@@ -8,6 +8,11 @@ Operator directive: DI-001 P3 (2026-10-14). Read-only on prod. No flags, no rest
 embedding API calls. Builds on `DISCOVERY_RELEVANCE_AUDIT.md` (PR #825, the pause and the `unjudged` marker) and the
 DI-001 scoring method (PR #827: PREREG/LABELS/LOSS).
 
+Amendment 1 (operator correction, made before any result or sample existed; both versions are in the branch history):
+§6b names single-operator re-label agreement *intra-annotator consistency*, never inter-annotator agreement; §6a freezes
+the protected sample before any optimisation. `PREREG.sha256` is the hash of this amended file; the first frozen
+version is commit `31d219e2`.
+
 ## 0. What was already seen (not a blind protocol)
 
 Before this file was written, three read-only inventory probes were run on prod (snapshot `2026-10-13T22:44Z`, container
@@ -131,7 +136,8 @@ If the result is INSUFFICIENT, BENCHMARK.md delivers a bounded human-labelling p
 - A representative **PROTECTED** evaluation sample is drawn from the primary population, stratified by source × ISO week of
   first occurrence, proportional allocation, minimum 3 refs per non-empty cell, order within a cell by
   `sha256(ref + "di001-relevance-eval")` ascending. The list of refs is frozen in `eval-sample.json` with its sha256 in
-  `eval-sample.sha256`, committed before any label on it exists.
+  `eval-sample.sha256`, committed in its own commit **before any label on it exists and before any optimisation** (no
+  threshold, calibration or model choice is fitted before the freeze; the sample depends only on label-free data).
 - Size `N_eval` = the McNemar paired-proportion sample size for a minimum detectable difference **δ = 0.10** in per-item
   error rate between two candidates, α = 0.05 two-sided, power 0.80, with discordance ψ = the label-free disagreement rate
   of A vs C\* on the primary population at snapshot (for two binary decisions, exactly one is wrong when they disagree,
@@ -150,18 +156,21 @@ If the result is INSUFFICIENT, BENCHMARK.md delivers a bounded human-labelling p
 - The card shows title, note/abstract, source and URL only. It is **blind** to every candidate (no jev class or
   confidence, no taxonomy match, no admission state) and to any earlier label. Order is randomised per session.
 - `unclear` is a recorded label, not a negative: it is excluded from precision/recall and counted.
-- ≥ 2 independent annotations on a **≥ 20 % overlap subset** (stratified like the sample). Agreement: Cohen's κ (two
-  raters) or Fleiss' κ (≥ 3) with a bootstrap 95 % CI (B = 2000, seed `20261014`), plus raw agreement and the
-  confusion table.
-- With one human operator: independence comes from a **delayed blind re-label** — the overlap subset is shown again ≥ 7
-  days after the first label, shuffled, without the first label. That gives **intra-rater (test-retest) reliability
-  only**. It can show whether the operator's own labels are stable; it cannot show that a second person would agree, and
-  it cannot detect a bias the operator holds consistently. If a second human is available, their labels on the overlap
-  subset give the inter-rater κ, and the report names which kind of agreement it is.
+- ≥ 2 annotations on a **≥ 20 % overlap subset** (stratified like the sample), reported with raw agreement, the
+  confusion table and κ with a bootstrap 95 % CI (B = 2000, seed `20261014`). What the number is called depends on who
+  annotated:
+  - **two or more independent humans** → **inter-annotator agreement** (Cohen's κ for two, Fleiss' κ for ≥ 3);
+  - **one operator only** → a **delayed blind re-label** of the overlap subset (shown again ≥ 7 days after the first
+    label, shuffled, without the first label) → **intra-annotator consistency** (test-retest). It is reported under that
+    name only. The κ computed from it is **not** inter-annotator agreement and is never presented as such.
+- Limitation (one operator): intra-annotator consistency shows whether the operator's own labels are stable over time. It
+  cannot show that another person would agree, and it cannot detect a bias the operator holds consistently. A verdict
+  resting on single-operator labels says so explicitly. When a second human becomes available, they label the same
+  overlap subset and the report gives both numbers, each under its own name.
 - Adjudication: a disagreement goes to a third reviewer when one exists, else the operator decides with both earlier labels
   visible. The adjudicated label is used; both original labels are kept and the item is flagged. Disagreements are
   logged, never discarded.
-- If κ's lower CI bound < 0.4 the labels are reported as unreliable and no GO verdict may rest on them.
+- If the κ lower CI bound (of either kind) is < 0.4 the labels are reported as unreliable and no GO verdict may rest on them.
 - Label UI = the existing `/decisions` pattern (`decisions-inbox.ts` D5: one row, a few buttons, an `operator_label`
   judgment with `state_hash = 'discovery_relevance'`). Design only, nothing is built here.
 - jev output is never ground truth, never shown to the annotator, and never used to adjudicate.
