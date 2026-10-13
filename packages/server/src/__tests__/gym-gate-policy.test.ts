@@ -6,7 +6,8 @@ import { RemoteGymService, prodGatesConfig } from '../services/remote-gym-servic
 import { buildEvolutionEvidence } from '../services/evolution-evidence';
 import { TG_ID, TG_LOOP } from '../services/tg-001';
 import type { FailureTask } from '../services/gym-failure-tasks';
-import { GATE_POLICY_ID, activeGatePolicyInput, GYM_EVALUATOR_VERSION, attemptGatePolicy, canonicalGateJson, gatePolicyClause, gatePolicyHash, holdoutEpochOf } from '../services/gym-gate-policy';
+import { CANONICALIZATION_VERSION, GATE_POLICY_ID, GATE_POLICY_VERSION, GYM_EVALUATOR_VERSION, activeGatePolicyInput, attemptGatePolicy, canonicalGateJson, currentPolicyIdentity, gateConfig,
+  gateConfigDigest, gatePolicyClass, gatePolicyClause, holdoutEpochOf } from '../services/gym-gate-policy';
 
 const TASK = (commit: string) => ({ commit, source: 'packages/server/src/services/x.ts', tests: ['packages/server/src/__tests__/x.test.ts'], sourceLines: 5 });
 const GATES = { scripts: ['test:changed', 'lint', 'type-check'], timeout_ms: 300_000, diff_max_lines: 200 };
@@ -21,23 +22,29 @@ afterEach(() => { vi.unstubAllEnvs(); db.close(); });
 
 describe('gate-policy hash', () => {
   it('is deterministic (key order is irrelevant), pinned, and changes when any gate config value changes', () => {
-    const h = gatePolicyHash(GATES);
+    const h = gateConfigDigest(GATES);
     expect(h).toMatch(/^[0-9a-f]{64}$/);
-    expect(gatePolicyHash({ diff_max_lines: 200, timeout_ms: 300_000, scripts: ['test:changed', 'lint', 'type-check'] })).toBe(h);
+    expect(gateConfigDigest({ diff_max_lines: 200, timeout_ms: 300_000, scripts: ['test:changed', 'lint', 'type-check'] })).toBe(h);
     expect(canonicalGateJson({ b: 1, a: { d: 2, c: [{ f: 1, e: 0 }] } })).toBe('{"a":{"c":[{"e":0,"f":1}],"d":2},"b":1}');
+    // canon/v1: reordering the keys of the recorded config never changes its digest
+    const cfg = gateConfig(GATES) as Record<string, unknown>;
+    const reversed = Object.fromEntries(Object.keys(cfg).reverse().map((k) => [k, cfg[k]]));
+    expect(JSON.stringify(reversed)).not.toBe(JSON.stringify(cfg));
+    expect(canonicalGateJson(reversed)).toBe(canonicalGateJson(cfg));
+    expect(CANONICALIZATION_VERSION).toBe('canon/v1');
     for (const changed of [{ ...GATES, scripts: ['test:changed', 'lint'] }, { ...GATES, scripts: ['lint', 'test:changed', 'type-check'] },
-      { ...GATES, timeout_ms: 300_001 }, { ...GATES, diff_max_lines: 400 }]) expect(gatePolicyHash(changed)).not.toBe(h);
+      { ...GATES, timeout_ms: 300_001 }, { ...GATES, diff_max_lines: 400 }]) expect(gateConfigDigest(changed)).not.toBe(h);
     // the hash follows the active prod config (env), so a config change yields a new policy hash
-    expect(gatePolicyHash(prodGatesConfig())).toBe(h);
+    expect(gateConfigDigest(prodGatesConfig())).toBe(h);
     vi.stubEnv('LOOP_DAEMON_CHECK_SCRIPTS', 'test:changed,lint');
-    expect(gatePolicyHash(prodGatesConfig())).not.toBe(h);
+    expect(gateConfigDigest(prodGatesConfig())).not.toBe(h);
   });
   it('activeGatePolicyInput (cycle-free copy for evidence readers) equals remote-gym prodGatesConfig for every env shape', () => {
     for (const env of [{}, { LOOP_DAEMON_CHECK_SCRIPTS: 'a, b ,bad key!,c', LOOP_DAEMON_CHECK_TIMEOUT_MS: '999' }, { LOOP_DAEMON_CHECK_SCRIPTS: Array.from({ length: 12 }, (_, i) => `s${i}`).join(','), LOOP_DAEMON_CHECK_TIMEOUT_MS: '900000' },
       { LOOP_DAEMON_CHECK_SCRIPTS: 'lint', LOOP_DAEMON_CHECK_TIMEOUT_MS: 'x' }]) expect(activeGatePolicyInput(env)).toEqual(prodGatesConfig(env));
   });
   it('the hash of the current canonical policy is pinned (an unintended policy change fails here)', () => {
-    expect(gatePolicyHash(GATES)).toBe(PINNED);
+    expect(gateConfigDigest(GATES)).toBe(PINNED);
   });
 });
 
@@ -48,19 +55,22 @@ describe('claim + result binding (non-TG)', () => {
     const svc = new RemoteGymService(db, () => [TASK('c1')]);
     const at = new Date('2026-10-14T10:00:00.000Z');
     const c = svc.claim('workstation', ['atomic@llama-router'], at, { capabilities: ['prod_gates'] }) as { runId: string };
-    expect(meta(c.runId).gym.gate_policy).toEqual({ id: GATE_POLICY_ID, hash: gatePolicyHash(GATES), evaluator_version: GYM_EVALUATOR_VERSION, code_sha: 'abc1234',
+    expect(meta(c.runId).gym.gate_policy).toEqual({ policy_id: 'gym-prod-gates', policy_version: 'v1', config_digest: gateConfigDigest(GATES), canonicalization_version: 'canon/v1',
+      evaluator_version: GYM_EVALUATOR_VERSION, implementation_sha: 'abc1234', config: gateConfig(GATES),
       attempt_id: c.runId, claimed_at: at.toISOString(), task: 'c1', species: 'atomic@llama-router', gated: true, holdout: { table: 'gym_holdout', epoch: 2 } });
+    expect([GATE_POLICY_ID, GATE_POLICY_VERSION]).toEqual(['gym-prod-gates', 'v1']);
     svc.record(c.runId, 'workstation', { status: 'failure', reason: 'prod_gate_failed:lint', prod_gates: { lint: 'fail', 'type-check': 'pass' } });
     const r = meta(c.runId).gym_result;
-    expect(r.gate_policy).toEqual({ id: GATE_POLICY_ID, hash: gatePolicyHash(GATES), result_at: expect.any(String), gate_results: { lint: 'fail', 'type-check': 'pass' } });
+    expect(r.gate_policy).toEqual({ policy_id: 'gym-prod-gates', policy_version: 'v1', config_digest: gateConfigDigest(GATES), result_at: expect.any(String), gate_results: { lint: 'fail', 'type-check': 'pass' } });
     expect(r.prod_gates).toEqual({ lint: 'fail', 'type-check': 'pass' }); // the existing field is unchanged
     const read = attemptGatePolicy(JSON.stringify(meta(c.runId)));
-    expect(read).toMatchObject({ status: 'recorded', claim: { attempt_id: c.runId }, result: { hash: gatePolicyHash(GATES) } });
+    expect(read).toMatchObject({ status: 'recorded', claim: { attempt_id: c.runId }, result: { config_digest: gateConfigDigest(GATES) } });
+    expect(gatePolicyClass(read, currentPolicyIdentity(GATES, process.env))).toBe('CURRENT_POLICY');
   });
   it('an ungated claim is bound too (gated:false, no holdout field for a non-holdout task)', () => {
     const svc = new RemoteGymService(db, () => [TASK('c9')]);
     const c = svc.claim('workstation', ['atomic'], new Date()) as { runId: string };
-    expect(meta(c.runId).gym.gate_policy).toMatchObject({ gated: false, task: 'c9', species: 'atomic', hash: gatePolicyHash(GATES) });
+    expect(meta(c.runId).gym.gate_policy).toMatchObject({ gated: false, task: 'c9', species: 'atomic', config_digest: gateConfigDigest(GATES) });
     expect(meta(c.runId).gym.gate_policy.holdout).toBeUndefined();
     expect(holdoutEpochOf(db, 'c9')).toBeUndefined();
   });
@@ -110,24 +120,57 @@ describe('TG and historical rows', () => {
 });
 
 describe('GYM_REQUIRE_GATE_POLICY_HASH (gated-evidence reader)', () => {
-  const seed = (id: string, hash?: string) => db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, metadata, created_at, updated_at) VALUES (?, 'evolution-gym', 'closed', 'completed', ?, ?, ?)")
-    .run(id, JSON.stringify({ gym: { commit: id, species: 'atomic', prod_gates: 1, ...(hash ? { gate_policy: { hash } } : {}) },
-      gym_result: { status: 'success', reason: 'ok', prod_gates: { lint: 'pass' }, ...(hash ? { gate_policy: { hash } } : {}) } }), new Date().toISOString(), new Date().toISOString());
-  it('flag off (default): no clause, the reader counts exactly as before and exposes the optional by-hash breakdown', () => {
-    seed('u1'); seed('u2'); seed('m1', gatePolicyHash(GATES)); seed('x1', 'f'.repeat(64));
+  const ident = (digest: string) => ({ ...currentPolicyIdentity(GATES, {}), config_digest: digest });
+  const seed = (id: string, digest?: string) => db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, metadata, created_at, updated_at) VALUES (?, 'evolution-gym', 'closed', 'completed', ?, ?, ?)")
+    .run(id, JSON.stringify({ gym: { commit: id, species: 'atomic', prod_gates: 1, ...(digest ? { gate_policy: ident(digest) } : {}) },
+      gym_result: { status: 'success', reason: 'ok', prod_gates: { lint: 'pass' }, ...(digest ? { gate_policy: { policy_id: GATE_POLICY_ID, policy_version: GATE_POLICY_VERSION, config_digest: digest } } : {}) } }), new Date().toISOString(), new Date().toISOString());
+  const key = (digest: string) => `gym-prod-gates/v1/canon/v1/${GYM_EVALUATOR_VERSION}/${digest}`;
+  it('flag off (default): no clause, the reader counts exactly as before and exposes the optional by-identity breakdown', () => {
+    seed('u1'); seed('u2'); seed('m1', gateConfigDigest(GATES)); seed('x1', 'f'.repeat(64));
     expect(gatePolicyClause(GATES)).toBe('');
     const ev = buildEvolutionEvidence(db, process.env).gym_prod_gates;
     expect(ev.by_kind).toEqual([expect.objectContaining({ kind: 'mined', scored: 4, prod_gate_success: 4 })]);
-    expect(ev.gate_policy).toEqual({ current_hash: gatePolicyHash(GATES), required: false, by_hash: [{ hash: 'unrecorded', n: 2 }, { hash: gatePolicyHash(GATES), n: 1 }, { hash: 'f'.repeat(64), n: 1 }] });
+    expect(ev.gate_policy).toEqual({ current: key(gateConfigDigest(GATES)), required: false,
+      by_identity: [{ identity: 'unrecorded', n: 2 }, { identity: key(gateConfigDigest(GATES)), n: 1 }, { identity: key('f'.repeat(64)), n: 1 }] });
   });
-  it('flag on: only attempts bound to the current policy hash (claim and result) are eligible', () => {
-    seed('u1'); seed('m1', gatePolicyHash(GATES)); seed('x1', 'f'.repeat(64));
+  it('flag on: only attempts bound to the current identity tuple (claim and result) are eligible', () => {
+    seed('u1'); seed('m1', gateConfigDigest(GATES)); seed('x1', 'f'.repeat(64));
     vi.stubEnv('GYM_REQUIRE_GATE_POLICY_HASH', 'true');
-    expect(gatePolicyClause(GATES)).toContain(gatePolicyHash(GATES));
+    expect(gatePolicyClause(GATES)).toContain(gateConfigDigest(GATES));
     const ev = buildEvolutionEvidence(db, process.env).gym_prod_gates;
     expect(ev.by_kind).toEqual([expect.objectContaining({ kind: 'mined', scored: 1 })]);
     expect(ev.gate_policy.required).toBe(true);
   });
 });
 
-const PINNED = '4040c2e3f42b6437801c67b0d6f6ccac178b4d33531f13ae8c3295805c56d548'; // computed once on this branch; a change is a new policy
+describe('gatePolicyClass (pure; not wired into Gate A eligibility yet)', () => {
+  const current = currentPolicyIdentity(GATES, { DJIMITFLO_BUILD_COMMIT: 'sha-now' });
+  const claim = (over: Record<string, unknown> = {}) => ({ ...current, config: gateConfig(GATES), attempt_id: 'a', claimed_at: 't', task: 'c', species: 's', gated: true, ...over });
+  const result = { policy_id: GATE_POLICY_ID, policy_version: GATE_POLICY_VERSION, config_digest: current.config_digest, result_at: 't2', gate_results: null };
+  it('CURRENT_POLICY: a valid tuple equal to the current one (implementation_sha is provenance, not policy identity)', () => {
+    expect(gatePolicyClass({ claim: claim(), result }, current)).toBe('CURRENT_POLICY');
+    expect(gatePolicyClass({ claim: claim({ implementation_sha: 'older-build' }) }, current)).toBe('CURRENT_POLICY'); // no result yet: still classifiable
+    expect(gatePolicyClass({ claim: claim({ implementation_sha: null }) }, current)).toBe('CURRENT_POLICY');
+  });
+  it('STALE_POLICY: a self-consistent tuple from another config, policy version or evaluator', () => {
+    const other = { ...GATES, timeout_ms: 60_000 };
+    expect(gatePolicyClass({ claim: claim({ config: gateConfig(other), config_digest: gateConfigDigest(other) }) }, current)).toBe('STALE_POLICY');
+    expect(gatePolicyClass({ claim: claim({ policy_version: 'v0' }) }, current)).toBe('STALE_POLICY');
+    expect(gatePolicyClass({ claim: claim({ evaluator_version: 'gym-evaluator/old' }) }, current)).toBe('STALE_POLICY');
+  });
+  it('UNRECORDED: no claim binding (historical / TG rows)', () => {
+    expect(gatePolicyClass(null, current)).toBe('UNRECORDED');
+    expect(gatePolicyClass({}, current)).toBe('UNRECORDED');
+    expect(gatePolicyClass(attemptGatePolicy(JSON.stringify({ gym: { commit: 'c' } })), current)).toBe('UNRECORDED');
+  });
+  it('INVALID_PROVENANCE: malformed or partial tuple, a digest that does not match its own config, or a result from another policy', () => {
+    const { evaluator_version: _e, ...noEvaluator } = claim(); const { implementation_sha: _i, ...noSha } = claim(); const { config: _c, ...noConfig } = claim();
+    for (const bad of [noEvaluator, noSha, noConfig, claim({ policy_id: '' }), claim({ config_digest: 'nothex' }), claim({ canonicalization_version: 'canon/v9' }),
+      claim({ config: gateConfig({ ...GATES, diff_max_lines: 999 }) }), claim({ implementation_sha: 42 }), 'garbage', 7])
+      expect(gatePolicyClass({ claim: bad }, current)).toBe('INVALID_PROVENANCE');
+    expect(gatePolicyClass({ claim: claim(), result: { ...result, config_digest: 'f'.repeat(64) } }, current)).toBe('INVALID_PROVENANCE');
+    expect(gatePolicyClass({ claim: claim(), result: 'x' }, current)).toBe('INVALID_PROVENANCE');
+  });
+});
+
+const PINNED = '32ffc3cc106348b89a7f537ba691a7a2dd02572e439836ca0c84064924f82f0d'; // computed once on this branch; a change is a new policy

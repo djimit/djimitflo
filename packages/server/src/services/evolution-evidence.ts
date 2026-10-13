@@ -25,7 +25,7 @@ import { tg001Evidence } from './tg-001';
 import { intelligenceEvidence } from './intelligence-metrics';
 import type { ForecasterScoreV2 } from './forecast-scoring';
 import { BASELINE_GENOME, holdoutEpoch } from './genome-registry';
-import { activeGatePolicyInput, gatePolicyClause, gatePolicyHash, requireGatePolicyHash } from './gym-gate-policy';
+import { activeGatePolicyInput, currentPolicyIdentity, gatePolicyClause, policyKey, requireGatePolicyHash } from './gym-gate-policy';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -208,10 +208,12 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
       .map((r) => ({ ...r, proxy_rate: r.scored ? +(r.proxy_success / r.scored).toFixed(3) : null, prod_gate_rate: r.scored ? +(r.prod_gate_success / r.scored).toFixed(3) : null })),
     failed_checks: all<{ check: string; n: number }>(`SELECT g.key AS "check", COUNT(*) AS n FROM loop_runs r, json_each(json_extract(r.metadata, '$.gym_result.prod_gates')) g
       WHERE r.loop_name = 'evolution-gym' AND json_extract(r.metadata, '$.gym.prod_gates') = 1 AND g.value = 'fail' AND r.created_at >= ?${gatePolicyClause(activeGatePolicyInput(env), env, 'r')} GROUP BY 1 ORDER BY n DESC, 1`, since),
-    // optional gate-policy binding (gym-gate-policy): the current policy hash, whether eligibility requires it, and the gated
-    // scored attempts per recorded hash ('unrecorded' = claimed before the binding existed; never back-filled)
-    gate_policy: { current_hash: gatePolicyHash(activeGatePolicyInput(env)), required: requireGatePolicyHash(env),
-      by_hash: all<{ hash: string; n: number }>(`SELECT COALESCE(json_extract(metadata, '$.gym.gate_policy.hash'), 'unrecorded') AS hash, COUNT(*) AS n FROM loop_runs
+    // optional gate-policy binding (gym-gate-policy): the current policy identity key, whether eligibility requires it, and
+    // the gated scored attempts per recorded identity ('unrecorded' = claimed before the binding existed; never back-filled)
+    gate_policy: { current: policyKey(currentPolicyIdentity(activeGatePolicyInput(env), env)), required: requireGatePolicyHash(env),
+      by_identity: all<{ identity: string; n: number }>(`SELECT COALESCE(json_extract(metadata, '$.gym.gate_policy.policy_id') || '/' || json_extract(metadata, '$.gym.gate_policy.policy_version')
+        || '/' || json_extract(metadata, '$.gym.gate_policy.canonicalization_version') || '/' || json_extract(metadata, '$.gym.gate_policy.evaluator_version')
+        || '/' || json_extract(metadata, '$.gym.gate_policy.config_digest'), 'unrecorded') AS identity, COUNT(*) AS n FROM loop_runs
         WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.prod_gates') = 1 AND json_extract(metadata, '$.gym.canary') IS NULL
         AND json_extract(metadata, '$.gym_result.status') IN ('success', 'failure') AND created_at >= ? GROUP BY 1 ORDER BY n DESC, 1`, since) },
   };
