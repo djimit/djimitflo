@@ -21,7 +21,8 @@ export interface LlmEndpoint { id: string; kind: 'ollama' | 'openai'; baseUrl: s
 export interface LlmUsage { tokensIn: number | null; tokensOut: number | null; provider: string; model: string }
 export interface GenerateOptions {
   prompt: string; model: string; temperature?: number; maxTokens?: number; timeoutMs: number;
-  /** B29: what the call is for and the experiment arm it runs in, recorded on the ledger row of every attempt */
+  /** B29: what the call is for (the caller's identity, e.g. 'self_improvement:refinement') and the experiment arm it runs
+   *  in, recorded on the ledger row of every attempt. A call without one is recorded as 'untagged:generateText'. */
   purpose?: string; experimentId?: string | null;
   /** B29: the caller records its own ledger row (e.g. the panel's selector row) and takes the tokens from here, so they
    *  are counted once — the transport row then carries no tokens */
@@ -76,6 +77,16 @@ async function callEndpoint(endpoint: LlmEndpoint, options: GenerateOptions, fet
   return { text: data.choices?.[0]?.message?.content || '', tokensIn: count(data.usage?.prompt_tokens), tokensOut: count(data.usage?.completion_tokens) };
 }
 
+/**
+ * Ledger purpose of a transport row. A caller that records its own row (onUsage, e.g. the panel's selector row) keeps the
+ * 'transport:<purpose>' convention so the call is not counted twice by purpose; otherwise the transport row IS the call
+ * and carries the caller's purpose. No purpose = 'untagged:generateText', never NULL or the anonymous 'fallback:generate'.
+ */
+export function transportPurpose(options: Pick<GenerateOptions, 'purpose' | 'onUsage'>): string {
+  if (!options.purpose) return 'untagged:generateText';
+  return options.onUsage ? `transport:${options.purpose}` : options.purpose;
+}
+
 export async function generateText(
   options: GenerateOptions,
   deps: { endpoints: LlmEndpoint[]; fetchFn?: typeof fetch; now?: () => number },
@@ -89,7 +100,7 @@ export async function generateText(
       // UX-18: every attempt is a ledger row (consumer 'fallback', provider = endpoint id); the call itself is unchanged
       const model = endpoint.model || options.model;
       const reply = await measured({ consumer: 'fallback', model, provider: endpoint.id, taskKind: 'generate',
-        purpose: options.purpose ? `transport:${options.purpose}` : null, experimentId: options.experimentId ?? null },
+        purpose: transportPurpose(options), experimentId: options.experimentId ?? null },
         () => callEndpoint(endpoint, options, fetchFn),
         (r) => (options.onUsage ? { outChars: r.text.length } : { outChars: r.text.length, tokensIn: r.tokensIn, tokensOut: r.tokensOut }));
       downUntil.delete(endpoint.id);
