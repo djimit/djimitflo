@@ -13,24 +13,34 @@
  * - Mutation: Random trait modification
  * - Selection: Keep top-N skills by fitness
  * - Reproduction: Create new skills from successful patterns
+ *
+ * DORMANT (fitness audit 2026-10-11, docs/research/eco/FITNESS_AUDIT.md): a SkillGenome has no executable genotype —
+ * only the trait numbers — and prod holds 0 rows. Traits and fitness are therefore measured PHENOTYPE, computed from
+ * the skill's recorded skill_outcomes only (null = INSUFFICIENT_EVIDENCE, never a default 0.5), and mutation refuses to
+ * touch them: changing a number is not changing behaviour. fitness = measured reliability (success share).
+ * generality/complexity/adaptability have no measurement and stay null. Retirement is for the W8 operator review (14-10).
+ * recordOutcome() and the skill_outcomes table are live (bandit, gym, attribution) and unchanged.
  */
 
 import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { UNFAIR_ZERO_SQL } from './runtime-bandit';
 
 interface SkillGenome {
   id: string;
   skillId: string;
   generation: number;
   parents: string[];
+  /** measured phenotype from skill_outcomes; null = no measurement */
   traits: {
-    efficiency: number;    // 0-1, higher = fewer tokens per task
-    reliability: number;   // 0-1, higher = more successful
-    generality: number;    // 0-1, higher = works in more domains
-    complexity: number;    // 0-1, lower = simpler implementation
-    adaptability: number;  // 0-1, higher = learns faster
+    efficiency: number | null;    // mean min(1, 1000 / tokens) over outcomes
+    reliability: number | null;   // success share over outcomes
+    generality: number | null;    // no measurement → null
+    complexity: number | null;    // no measurement → null
+    adaptability: number | null;  // no measurement → null
   };
-  fitness: number;
+  /** = traits.reliability; null = INSUFFICIENT_EVIDENCE */
+  fitness: number | null;
   mutations: string[];
   createdAt: string;
 }
@@ -56,31 +66,20 @@ export class SkillEvolutionEngine {
    * Register a new skill genome.
    */
   registerSkill(skillId: string, initialTraits?: Partial<SkillGenome['traits']>): SkillGenome {
+    // declared traits are claims, not measurements: they are recorded as such and never enter fitness
+    const declared = initialTraits && Object.keys(initialTraits).length ? [`declared traits ignored: ${JSON.stringify(initialTraits)}`] : [];
+    const traits = this.measuredTraits(skillId);
     const genome: SkillGenome = {
       id: randomUUID(),
       skillId,
       generation: 1,
       parents: [],
-      traits: {
-        efficiency: initialTraits?.efficiency ?? 0.5,
-        reliability: initialTraits?.reliability ?? 0.5,
-        generality: initialTraits?.generality ?? 0.5,
-        complexity: initialTraits?.complexity ?? 0.5,
-        adaptability: initialTraits?.adaptability ?? 0.5,
-      },
-      fitness: 0,
-      mutations: [],
+      traits,
+      fitness: traits.reliability,
+      mutations: declared,
       createdAt: new Date().toISOString(),
     };
-
-    genome.fitness = this.calculateFitness(genome.traits);
-
-    this.db.prepare(`
-      INSERT INTO skill_genomes (id, skill_id, generation, parents_json, traits_json, fitness, mutations_json, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(genome.id, genome.skillId, genome.generation, JSON.stringify(genome.parents),
-      JSON.stringify(genome.traits), genome.fitness, JSON.stringify(genome.mutations), genome.createdAt);
-
+    this.persist(genome);
     return genome;
   }
 
@@ -94,10 +93,12 @@ export class SkillEvolutionEngine {
     const nextGen: SkillGenome[] = [];
 
     // Keep top 50% (elitism)
-    const sorted = [...currentGenomes].sort((a, b) => b.fitness - a.fitness);
+    const sorted = [...currentGenomes].sort((a, b) => (b.fitness ?? -1) - (a.fitness ?? -1));
     const elite = sorted.slice(0, Math.ceil(sorted.length / 2));
     nextGen.push(...elite.map((genome) => ({
       ...genome,
+      traits: this.measuredTraits(genome.skillId),
+      fitness: this.measuredTraits(genome.skillId).reliability,
       id: randomUUID(),
       generation: genome.generation + 1,
       parents: [genome.id],
@@ -119,13 +120,7 @@ export class SkillEvolutionEngine {
     }
 
     // Persist next generation
-    for (const genome of nextGen) {
-      this.db.prepare(`
-        INSERT INTO skill_genomes (id, skill_id, generation, parents_json, traits_json, fitness, mutations_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(genome.id, genome.skillId, genome.generation, JSON.stringify(genome.parents),
-        JSON.stringify(genome.traits), genome.fitness, JSON.stringify(genome.mutations), genome.createdAt);
-    }
+    for (const genome of nextGen) this.persist(genome);
 
     return nextGen;
   }
@@ -167,7 +162,7 @@ export class SkillEvolutionEngine {
     );
 
     // Update skill traits based on outcome
-    this.updateTraits(skillId, outcome);
+    this.updateTraits(skillId);
   }
 
   /**
@@ -176,7 +171,7 @@ export class SkillEvolutionEngine {
   getStats(): {
     totalGenomes: number;
     currentGeneration: number;
-    avgFitness: number;
+    avgFitness: number | null;
     topSkill: string | null;
     totalOutcomes: number;
   } {
@@ -184,13 +179,12 @@ export class SkillEvolutionEngine {
     const outcomes = (this.db.prepare('SELECT COUNT(*) as c FROM skill_outcomes').get() as any)?.c || 0;
 
     const maxGen = genomes.reduce((max: number, g: any) => Math.max(max, g.generation), 0);
-    const avgFitness = genomes.length > 0
-      ? genomes.reduce((sum: number, g: any) => sum + g.fitness, 0) / genomes.length
-      : 0;
-
-    const topSkill = genomes.length > 0
-      ? genomes.sort((a: any, b: any) => b.fitness - a.fitness)[0].skill_id
-      : null;
+    // fitness is read from outcomes, never from the stored column; skills without outcomes are left out
+    // per distinct skill: elitism copies a genome row, which must not shift the average
+    const measured = [...new Set(genomes.map((g: any) => g.skill_id as string))].map((skill) => ({ skill, fitness: this.measuredTraits(skill).reliability }))
+      .filter((g): g is { skill: string; fitness: number } => g.fitness !== null);
+    const avgFitness = measured.length ? measured.reduce((sum, g) => sum + g.fitness, 0) / measured.length : null;
+    const topSkill = measured.length ? measured.sort((a, b) => b.fitness - a.fitness)[0].skill : null;
 
     return {
       totalGenomes: genomes.length,
@@ -203,15 +197,23 @@ export class SkillEvolutionEngine {
 
   // ─── Private ──────────────────────────────────────────────────────────
 
-  private calculateFitness(traits: SkillGenome['traits']): number {
-    // Weighted fitness function
-    return (
-      traits.efficiency * 0.3 +
-      traits.reliability * 0.3 +
-      traits.generality * 0.15 +
-      (1 - traits.complexity) * 0.15 +
-      traits.adaptability * 0.1
-    );
+  /** Phenotype measured from this skill's recorded outcomes only. */
+  measuredTraits(skillId: string): SkillGenome['traits'] {
+    // E2: an infra / no-change zero is no observation of the skill (left out, never a 0)
+    const r = this.db.prepare(`SELECT COUNT(*) AS n, AVG(success) AS rel,
+        AVG(MIN(1.0, 1000.0 / MAX(1, tokens_used))) AS eff FROM skill_outcomes WHERE skill_id = ?
+        AND NOT (success = 0 AND ${UNFAIR_ZERO_SQL})`).get(skillId) as { n: number; rel: number | null; eff: number | null };
+    const has = r.n > 0;
+    return { efficiency: has ? r.eff : null, reliability: has ? r.rel : null, generality: null, complexity: null, adaptability: null };
+  }
+
+  private persist(genome: SkillGenome): void {
+    // ponytail: the legacy NOT NULL fitness column stores 0 for 'no measurement'; every read goes through measuredTraits()
+    this.db.prepare(`
+      INSERT INTO skill_genomes (id, skill_id, generation, parents_json, traits_json, fitness, mutations_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(genome.id, genome.skillId, genome.generation, JSON.stringify(genome.parents),
+      JSON.stringify(genome.traits), genome.fitness ?? 0, JSON.stringify(genome.mutations), genome.createdAt);
   }
 
   private getCurrentGeneration(): SkillGenome[] {
@@ -222,63 +224,34 @@ export class SkillEvolutionEngine {
   }
 
   private crossover(parent1: SkillGenome, parent2: SkillGenome): SkillGenome {
-    const child: SkillGenome = {
+    // a child is a new, unmeasured skill: it inherits lineage, not its parents' measured numbers
+    const skillId = `${parent1.skillId}-x-${parent2.skillId}`;
+    const traits = this.measuredTraits(skillId);
+    return {
       id: randomUUID(),
-      skillId: `${parent1.skillId}-x-${parent2.skillId}`,
+      skillId,
       generation: parent1.generation + 1,
       parents: [parent1.id, parent2.id],
-      traits: {
-        efficiency: this.random() < 0.5 ? parent1.traits.efficiency : parent2.traits.efficiency,
-        reliability: this.random() < 0.5 ? parent1.traits.reliability : parent2.traits.reliability,
-        generality: this.random() < 0.5 ? parent1.traits.generality : parent2.traits.generality,
-        complexity: this.random() < 0.5 ? parent1.traits.complexity : parent2.traits.complexity,
-        adaptability: this.random() < 0.5 ? parent1.traits.adaptability : parent2.traits.adaptability,
-      },
-      fitness: 0,
+      traits,
+      fitness: traits.reliability,
       mutations: [],
       createdAt: new Date().toISOString(),
     };
-
-    child.fitness = this.calculateFitness(child.traits);
-    return child;
   }
 
-  private mutate(genome: SkillGenome): void {
-    const traits = ['efficiency', 'reliability', 'generality', 'complexity', 'adaptability'] as const;
-    const traitToMutate = traits[Math.floor(this.random() * traits.length)];
-
-    // Small random adjustment (±0.1)
-    const adjustment = (this.random() - 0.5) * 0.2;
-    genome.traits[traitToMutate] = Math.max(0, Math.min(1, genome.traits[traitToMutate] + adjustment));
-
-    genome.mutations.push(`mutated ${traitToMutate} by ${adjustment.toFixed(2)}`);
-    genome.fitness = this.calculateFitness(genome.traits);
+  /** Refuses: traits are measured phenotype and a SkillGenome has no executable genotype to mutate. */
+  mutate(genome: SkillGenome): void {
+    genome.mutations.push('refused: traits are measured phenotype; no executable genotype to mutate (DORMANT)');
   }
 
-  private updateTraits(skillId: string, outcome: {
-    success: boolean;
-    tokensUsed: number;
-    durationMs: number;
-    domain: string;
-  }): void {
+  private updateTraits(skillId: string): void {
     const genomes = this.db.prepare('SELECT * FROM skill_genomes WHERE skill_id = ? ORDER BY generation DESC LIMIT 1').all(skillId) as any[];
     if (genomes.length === 0) return;
 
-    const genome = parseGenome(genomes[0]);
-
-    // Update reliability based on success
-    const alpha = 0.3;
-    genome.traits.reliability = genome.traits.reliability * (1 - alpha) + (outcome.success ? 1 : 0) * alpha;
-
-    // Update efficiency based on token usage (normalized)
-    const expectedTokens = 1000;
-    const efficiencyGain = Math.max(0, Math.min(1, expectedTokens / Math.max(1, outcome.tokensUsed)));
-    genome.traits.efficiency = genome.traits.efficiency * (1 - alpha) + efficiencyGain * alpha;
-
-    genome.fitness = this.calculateFitness(genome.traits);
-
+    // the outcome is already in skill_outcomes: the stored phenotype is re-measured from all of them
+    const traits = this.measuredTraits(skillId);
     this.db.prepare('UPDATE skill_genomes SET traits_json = ?, fitness = ? WHERE id = ?')
-      .run(JSON.stringify(genome.traits), genome.fitness, genome.id);
+      .run(JSON.stringify(traits), traits.reliability ?? 0, genomes[0].id);
   }
 
   private ensureTables(): void {

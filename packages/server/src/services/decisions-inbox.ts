@@ -3,6 +3,7 @@ import type { Database } from 'better-sqlite3';
 import { earnedAutonomy, type ClassRecord } from './earned-autonomy';
 import { attributionAuditSample, type AttributionAuditSample } from './outcome-attribution';
 import { listDraftPrs } from './loop-draft-pr-service';
+import { loopPrSettlements, survivalCounts } from './merge-survival';
 
 /**
  * S2 (operator 2026-09-28): the operator's open decisions in one place instead of in chat.
@@ -18,13 +19,14 @@ import { listDraftPrs } from './loop-draft-pr-service';
  */
 /**
  * Who has to act on a requeue candidate (Cockpit 3.0; prod 10-10: 59 'needs you' rows, of which 22 were system work):
- * - operator: regressed / infra_failed with a maker or environment attribution (or infra), nobody requeued it yet
+ * - operator: regressed with a maker or environment attribution, nobody requeued it yet
  * - budgeted_requeue: newest outcome attribution = reviewer_failure — the daily budgeted requeue handles it
+ * - infra_failed: the run failed operationally (infra / missing evidence) — system work, not a semantic operator decision (E2)
  * - attribution_unknown: regressed with no outcome attribution — evidence first, not a decision
  * - not_actionable: its source lane is switched off, or a later proposal with the same title verified
  * - requeued / no_change: already requeued, or nothing changed
  */
-export type RequeueClass = 'operator' | 'budgeted_requeue' | 'attribution_unknown' | 'not_actionable' | 'requeued' | 'no_change';
+export type RequeueClass = 'operator' | 'budgeted_requeue' | 'infra_failed' | 'attribution_unknown' | 'not_actionable' | 'requeued' | 'no_change';
 export interface InboxRequeue { id: string; title: string; status: string; updated_at: string; requeued_as: string | null; queue_class: RequeueClass }
 export interface InboxLabel { id: string; title: string; status: string; reason: string; verdict_at: string; label: 'ok' | 'wrong' | null }
 export interface DecisionsInbox {
@@ -88,6 +90,7 @@ export function decisionsInbox(db: Database, now = Date.now(), env: NodeJS.Proce
       WHEN ${offLanes.length ? `(${offLanes.join(' OR ')}) OR ` : ''}EXISTS (SELECT 1 FROM self_improvements v WHERE v.status = 'verified' AND v.title = s.title
         AND v.id != s.id AND v.created_at > s.created_at) THEN 'not_actionable'
       WHEN ${ATTRIBUTION_OF_PROPOSAL} = 'reviewer_failure' THEN 'budgeted_requeue'
+      WHEN s.status = 'infra_failed' THEN 'infra_failed'
       WHEN s.status = 'regressed' AND ${ATTRIBUTION_OF_PROPOSAL} IS NULL THEN 'attribution_unknown'
       ELSE 'operator' END`;
   const requeue = all<InboxRequeue>(`SELECT s.id, s.title, s.status, s.updated_at, ${requeuedAs} AS requeued_as, ${queueClass} AS queue_class
@@ -153,8 +156,11 @@ export function rankNeedsYou(db: Database, requeue: InboxRequeue[], labels: Inbo
   const rq = rate(`SELECT SUM(status = 'verified') AS k, COUNT(*) AS n FROM self_improvements
     WHERE evidence_refs_json LIKE '%"requeue-of:%' AND status IN ('verified', 'regressed', 'infra_failed', 'no_change') AND updated_at >= ?`, d30);
   // loop PR: already verified (gain 1) × merge survival rate of settled loop PRs
-  const ms = rate(`SELECT SUM(json_extract(metadata, '$.pr_outcome.survived') = 1) AS k, COUNT(*) AS n FROM loop_runs
-    WHERE json_extract(metadata, '$.pr_outcome.survived') IS NOT NULL`);
+  // E1: settled states only — merged PRs still in the window and pipeline anomalies are in neither k nor n
+  const ms = (() => {
+    try { const c = survivalCounts(loopPrSettlements(db, now).map((p) => p.settlement.state)); return { p: c.settled >= MIN_N ? c.survived / c.settled : null, n: c.settled, k: c.survived }; }
+    catch { return { p: null, n: 0, k: 0 }; }
+  })();
   // label: before the D5 gate (30 labels) each label is 1/remaining of the way; after it, the chance it catches a wrong rejection
   const labelled = d5.labelled, wrong = d5.wrong;
   const labelGain = labelled === null || wrong === null ? null : labelled < 30 ? 1 / (30 - labelled) : labelled >= MIN_N ? wrong / labelled : null;
@@ -165,7 +171,9 @@ export function rankNeedsYou(db: Database, requeue: InboxRequeue[], labels: Inbo
       score, evidence: [gain === null ? `INSUFFICIENT_EVIDENCE: ${why}` : why, a.why] };
   };
   let prs: ReturnType<typeof listDraftPrs>['rows'] = [];
-  try { prs = listDraftPrs(db, 100, now).rows.filter((r) => !r.outcome); } catch { /* table absent */ }
+  // E1: PRs that wait for the operator = open on GitHub, or never polled (an overdue poll is an anomaly, but the PR still
+  // waits) — not merged PRs settling, not closed ones
+  try { prs = listDraftPrs(db, 100, now).rows.filter((r) => (r.settlement === 'OPEN_BLOCKED' && !r.settlement_terminal) || r.outcome === null); } catch { /* table absent */ }
   const out = [
     ...requeue.map((r) => item('requeue', r.id, r.title, rq.p, `earlier requeues verified ${rq.k}/${rq.n} (30 d${rq.n < MIN_N ? `, need ${MIN_N}` : ''})`)),
     ...prs.map((r) => item('loop_pr', String(r.pr_number ?? r.run_id), r.pr_url, ms.p, `merge survival ${ms.k}/${ms.n} settled loop PRs${ms.n < MIN_N ? ` (need ${MIN_N})` : ''}`)),
@@ -192,7 +200,7 @@ export function recordNeedsYouRanking(db: Database, now = Date.now()): boolean {
 
 /**
  * Needs-you counts shared by the cockpit and the daily digest. Requeue counts only the `operator` class (see RequeueClass):
- * system-side rows (budgeted requeue, unknown attribution, not actionable) are counted in totals.requeue_classes instead.
+ * system-side rows (budgeted requeue, infra failure, unknown attribution, not actionable) are counted in totals.requeue_classes instead.
  * Counts come from the untruncated totals (prod 10-10: the listed arrays stop at 50/100); null = the count failed.
  */
 export function openDecisionCounts(inbox: DecisionsInbox): { requeue: number | null; labels: number | null; memory_review: number | null; shared_subjects: number | null } {

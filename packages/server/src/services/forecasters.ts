@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
-import { forecastOf } from './forecast-scoring';
+import { forecastOf, RESOLVED as RESOLVED_STATUSES } from './forecast-scoring';
 
 /**
  * Plan AR2 step 1: the first forecaster population for "this proposal ends verified", scored by forecast-scoring (AR1).
@@ -10,7 +10,7 @@ import { forecastOf } from './forecast-scoring';
  *    probabilities as features). Backfill 2026-10-02: raw prescreen product Brier 0.41 vs base rate 0.11 — badly calibrated.
  * ponytail: histogram calibration (source × prescreen bucket), not logistic regression; replace when n per bucket > 200.
  */
-const RESOLVED = "('verified','applied','regressed','no_change','infra_failed','needs_more_evidence','archived')";
+const RESOLVED = `(${RESOLVED_STATUSES.map((s) => `'${s}'`).join(',')})`; // E2: infra_failed is not a resolved outcome
 const PRIOR = 2; // Laplace weight toward the source rate
 
 const bucket = (p: number) => (p >= 0.5 ? 'high' : p >= 0.15 ? 'mid' : 'low');
