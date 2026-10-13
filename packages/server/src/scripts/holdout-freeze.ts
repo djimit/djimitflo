@@ -7,12 +7,14 @@
  * audit event (holdout.freeze) inside it. It never sets DREAM_EVOLUTION_ENABLED or GYM_HOLDOUT_EPOCH and starts nothing.
  * The power report (exact one-sided McNemar, paired) uses the stated assumptions; it is printed, never used to size.
  * Exit: 0 frozen / valid dry run, 2 refused, 3 hold, 64 usage.
+ * Build mode (read-only, writes only --out): --build --out <file> --epoch <n> --size <n> --tiers 3,4,5,6 --repo <checkout>
+ *   [--base <manifest>] — the same exclusions as the freeze; keeps the base's still-eligible tasks, refills mined.
  */
 import fs from 'fs';
 import { execFileSync } from 'child_process';
 import Database from 'better-sqlite3';
 import { runMigrations } from '../database/migrate';
-import { freezeHoldoutFromManifest } from '../services/holdout-manifest';
+import { buildHoldoutManifest, freezeHoldoutFromManifest } from '../services/holdout-manifest';
 import { pairedPowerReport } from '../services/holdout-power';
 import { mineGymTasks } from '../services/gym-task-miner';
 import { failureDerivedTasks, gitLookup } from '../services/gym-failure-tasks';
@@ -21,13 +23,25 @@ import { ComplianceAuditService } from '../services/compliance-audit-service';
 
 const arg = (name: string, fallback = '') => { const i = process.argv.indexOf(`--${name}`); return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback; };
 const [dbPath, manifestPath, epochRaw, expect, repo] = [arg('db'), arg('manifest'), arg('epoch'), arg('expect-sha'), arg('repo')];
+const git = (args: string[]) => { try { return execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null; } catch { return null; } };
+if (process.argv.includes('--build')) {
+  const out = arg('out'); const size = Number(arg('size', '20')); const tiers = arg('tiers', '3,4,5,6').split(',').map(Number);
+  if (!dbPath || !out || !repo || !/^\d+$/.test(epochRaw)) { console.error('usage: holdout-freeze --build --db <path> --out <file> --epoch <n> --size <n> --tiers 3,4 --repo <checkout> [--base <manifest>]'); process.exit(64); }
+  const bdb = new Database(dbPath, { readonly: true, fileMustExist: true });
+  const base = arg('base') ? JSON.parse(fs.readFileSync(arg('base'), 'utf8')) as Record<string, unknown> : undefined;
+  const built = buildHoldoutManifest(bdb, { epoch: Number(epochRaw), size, tiers, base, pool: { mined: mineGymTasks(repo), writeTest: failureDerivedTasks(bdb, gitLookup(repo)) },
+    provenance: { origin_sha: git(['rev-parse', 'HEAD']), builder: 'holdout-freeze --build' } });
+  bdb.close();
+  fs.writeFileSync(out, JSON.stringify(built.manifest, null, 1) + '\n');
+  console.log(JSON.stringify({ out, manifest_sha256: built.manifest.manifest_sha256, dropped: built.dropped, added: built.added, notes: built.notes, shortfall: built.shortfall }, null, 2));
+  process.exit(built.shortfall ? 3 : 0);
+}
 if (!dbPath || !manifestPath || !/^\d+$/.test(epochRaw) || !/^[0-9a-f]{64}$/.test(expect) || !repo) {
   console.error('usage: holdout-freeze --db <path> --manifest <file> --epoch <n> --expect-sha <sha256> --repo <checkout> [--apply]'); process.exit(64);
 }
 const apply = process.argv.includes('--apply');
 const species = arg('species', 'atomic@llama-router');
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
-const git = (args: string[]) => { try { return execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null; } catch { return null; } };
 
 const db = new Database(dbPath, apply ? {} : { readonly: true, fileMustExist: true });
 if (apply) { db.pragma('foreign_keys = ON'); runMigrations(db); }

@@ -73,6 +73,9 @@ export function validateManifestSchema(m: unknown): string[] {
     || !mutant.proposed_tiers.every((t) => Number.isInteger(t) && t >= 1 && t <= 8))) errors.push('tasks.mutant must be {generated_at_freeze: true, proposed_tiers: [1..8]}');
   if (m.calibration !== undefined && (!isObj(m.calibration) || (m.calibration.mined !== undefined && !isKeys(m.calibration.mined))
     || (m.calibration.write_test !== undefined && !isKeys(m.calibration.write_test)))) errors.push('calibration must be {mined?: string[], write_test?: string[]}');
+  const policy = isObj(m.evaluation_policy) ? m.evaluation_policy : {};
+  if (policy.deciding !== undefined && policy.deciding !== 'mutant' && policy.deciding !== 'mined') errors.push("evaluation_policy.deciding must be 'mutant' or 'mined'");
+  if (policy.deciding === 'mutant' && mutant === undefined) errors.push("evaluation_policy.deciding is 'mutant' but tasks.mutant is missing");
   const all = [...(isTasks(m.tasks.mined) ? m.tasks.mined : []), ...(isTasks(m.tasks.write_test) ? m.tasks.write_test : [])].map((t) => t.key);
   const dup = all.filter((k, i) => all.indexOf(k) !== i);
   if (dup.length) errors.push(`duplicate task keys: ${[...new Set(dup)].join(', ')}`);
@@ -153,4 +156,62 @@ export function freezeHoldoutFromManifest(db: Database, input: unknown, opts: Fr
     opts.onFrozen?.(record);
   })();
   return { status: 'FROZEN', ...record };
+}
+
+/**
+ * Epoch 1 (operator 14-10): the manifest builder uses exactly the freeze's exclusions (holdoutExclusions: gym failures AND
+ * failed maker leases' changed_files in each dream window, frozen, TG-001, trial-attempted, derived), so a built manifest
+ * cannot miss an exposure source the freeze checks. With a base manifest its still-eligible tasks are kept and refused ones
+ * dropped with the reason; the mined part is refilled to `size` by a deterministic every-k-th spread over the remaining
+ * eligible pool (sorted by key). A pool too small is reported as `shortfall`, never padded. A write_test part with fewer than
+ * WRITE_TEST_HOLDOUT_MIN eligible tasks is left out (noted). Mutants are generated at freeze (their keys depend on HEAD).
+ */
+export interface BuildOptions {
+  epoch: number; size: number; pool: { mined: GymTask[]; writeTest?: FailureTask[] }; tiers: number[];
+  base?: Record<string, unknown>; provenance: Record<string, unknown>; now?: string; deciding?: 'mutant' | 'mined';
+}
+export function buildHoldoutManifest(db: Database, o: BuildOptions) {
+  const ex = holdoutExclusions(db);
+  const base = o.base as Partial<HoldoutManifest> | undefined;
+  const dropped: Array<{ key: string; reason: string }> = []; const notes: string[] = [];
+  const minedPool = new Map(o.pool.mined.map((t) => [t.commit, t]));
+  const wtPool = new Map((o.pool.writeTest ?? []).map((t) => [t.commit, t]));
+  const keep = (list: ManifestTask[] | undefined, pool: Map<string, GymTask | FailureTask>): string[] => (list ?? []).flatMap((t) => {
+    const p = pool.get(t.key);
+    const why = !p ? 'not in the eligible pool' : p.source !== t.source ? `source changed to ${p.source}` : exclusionReason(ex, p);
+    if (why) { dropped.push({ key: t.key, reason: why }); return []; }
+    return [t.key];
+  });
+  const keptMined = keep(base?.tasks?.mined, minedPool).slice(0, o.size);
+  const remaining = o.pool.mined.filter((t) => !keptMined.includes(t.commit) && !exclusionReason(ex, t)).sort((a, b) => a.commit.localeCompare(b.commit));
+  const need = Math.max(0, o.size - keptMined.length);
+  const added: string[] = [];
+  if (remaining.length <= need) added.push(...remaining.map((t) => t.commit));
+  else { const step = remaining.length / need; for (let i = 0; i < need; i++) added.push(remaining[Math.floor(i * step)].commit); }
+  const mined = [...keptMined, ...added].sort();
+  const keptWt = keep(base?.tasks?.write_test, wtPool);
+  const wt = [...new Set([...keptWt, ...[...wtPool.values()].filter((t) => !exclusionReason(ex, t)).map((t) => t.commit)])].sort().slice(0, o.size);
+  if (wt.length < WRITE_TEST_HOLDOUT_MIN) notes.push(`write_test left out: ${wt.length} eligible, fewer than ${WRITE_TEST_HOLDOUT_MIN}`);
+  const deciding = o.deciding ?? 'mutant';
+  const manifest: Record<string, unknown> = {
+    manifest_version: 1, holdout_epoch: o.epoch, status: 'PROPOSED_NOT_FROZEN', freeze_timestamp: null,
+    provenance: { ...o.provenance, built_at: o.now ?? new Date().toISOString(), ...(base?.manifest_sha256 ? { rebuilt_from_sha256: base.manifest_sha256 } : {}) },
+    evaluation_policy: { holdout_size: o.size, deciding, mined_role: deciding === 'mutant' ? 'no_regression' : 'deciding', promotion_rule: 'unchanged (as deployed)' },
+    selection_rule: {
+      excluded: ['frozen in any holdout epoch', 'TG-001 task keys', 'attempted in a genome trial',
+        'dream exposure: commits, source / out-of-scope files and run ids of gym failures AND failed maker leases (changed_files) in the 24 h before each dream genome',
+        'derived tasks on an exposed file, base commit or run'],
+      mined: base ? 'base manifest tasks still eligible, refilled by every-k-th spread over the remaining eligible pool (sorted by key)' : 'every-k-th spread over the eligible pool (sorted by key)',
+      write_test: `every eligible failure-derived task (≤ size, ≥ ${WRITE_TEST_HOLDOUT_MIN} or none)`,
+    },
+    exclusion_counts: { frozen: ex.frozen.size, tg_keys: ex.tg.size, trial_attempted: ex.trialAttempted.size, dream_genomes: ex.dreamGenomes,
+      dream_exposed_commits: ex.exposedCommits.size, dream_exposed_sources: ex.exposedSources.size, dream_exposed_runs: ex.exposedRuns.size },
+    tasks: {
+      mined: mined.map((k) => ({ key: k, source: minedPool.get(k)!.source })),
+      ...(wt.length >= WRITE_TEST_HOLDOUT_MIN ? { write_test: wt.map((k) => ({ key: k, source: wtPool.get(k)!.source })) } : {}),
+      mutant: { generated_at_freeze: true, proposed_tiers: o.tiers },
+    },
+  };
+  manifest.manifest_sha256 = manifestSha256(manifest);
+  return { manifest, dropped, added, notes, shortfall: Math.max(0, o.size - mined.length) };
 }

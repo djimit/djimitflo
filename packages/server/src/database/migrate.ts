@@ -2334,7 +2334,9 @@ function createSubAgentContextTables(db: BetterSqlite3Database) {
   `);
 }
 
-if (require.main === module) {
+// only when migrate itself is the entry point: in a bundle every module is `require.main`, and a bundled operator script
+// must never migrate the DB_PATH database as a side effect (holdout-freeze dry run, 14-10)
+if (require.main === module && /migrate\.[cm]?[jt]s$/.test(process.argv[1] ?? '')) {
   const dbPath = resolveDbPath();
   const db = new Database(dbPath);
   db.pragma('foreign_keys = ON');

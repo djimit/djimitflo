@@ -28,12 +28,12 @@ beforeEach(() => {
 afterEach(() => db.close());
 
 it('excludes tasks exposed only through failed maker leases changed_files (mined source and write_test file)', () => {
-  const pool = { mined: MINED, writeTest: [WT(0, SRC(50)), WT(1, SRC(51)), WT(2, SRC(52))] };
+  const pool = { mined: MINED, writeTest: Array.from({ length: 6 }, (_, i) => WT(i, SRC(50 + i))) };
   const { manifest, dropped } = buildHoldoutManifest(db, { epoch: 1, size: 40, pool, tiers: [3, 4, 5, 6], provenance: { origin_sha: 'x' }, now: '2026-10-14T12:00:00Z' });
   const mined = (manifest.tasks.mined as Array<{ key: string }>).map((t) => t.key);
   expect(mined).toHaveLength(40);
   expect(mined).not.toContain('c03');
-  expect((manifest.tasks.write_test as Array<{ key: string }>).map((t) => t.key)).toEqual(['fail:r0', 'fail:r2']);
+  expect((manifest.tasks.write_test as Array<{ key: string }>).map((t) => t.key)).toEqual(['fail:r0', 'fail:r2', 'fail:r3', 'fail:r4', 'fail:r5']);
   expect(dropped).toEqual([]);
   expect(manifest.evaluation_policy).toMatchObject({ holdout_size: 40, deciding: 'mutant', mined_role: 'no_regression' });
   expect(manifest.manifest_sha256).toBe(manifestSha256(manifest));
@@ -42,7 +42,7 @@ it('excludes tasks exposed only through failed maker leases changed_files (mined
   const makeMutant = (tier: number): MutantTask => { const i = n++; return { commit: `mut:b:${SRC(20 + (i % 30))}:${tier}:${i}`, base: 'b', source: SRC(20 + (i % 30)), tests: [], sourceLines: 9, mutant: 'x', tier }; };
   const r = freezeHoldoutFromManifest(db, manifest, { epoch: 1, expectedSha256: manifest.manifest_sha256 as string, pool, makeMutant, origin: { sha: 'x', version: null }, env: {}, dryRun: true });
   expect(r.status).toBe('VALID_DRY_RUN');
-  expect(r.status === 'VALID_DRY_RUN' && r.counts).toMatchObject({ mined: 40, mutant: 40, write_test: 2 });
+  expect(r.status === 'VALID_DRY_RUN' && r.counts).toMatchObject({ mined: 40, mutant: 40, write_test: 5 });
 });
 
 it('rebuilding from a base manifest keeps its eligible tasks, drops refused ones with the reason and refills deterministically', () => {
@@ -59,6 +59,8 @@ it('rebuilding from a base manifest keeps its eligible tasks, drops refused ones
     { key: 'fail:r1', reason: expect.stringMatching(/dream-exposed source/) },
   ]);
   expect(a.added).toHaveLength(18);
+  expect(a.manifest.tasks.write_test).toBeUndefined(); // fewer than the write_test minimum left: the part is left out, and said so
+  expect(a.notes.join(' ')).toMatch(/write_test/);
   expect((a.manifest.provenance as Record<string, unknown>).rebuilt_from_sha256).toBe(base.manifest_sha256);
 });
 

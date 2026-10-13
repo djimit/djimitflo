@@ -1,0 +1,234 @@
+{
+ "manifest_version": 1,
+ "holdout_epoch": 1,
+ "status": "PROPOSED_NOT_FROZEN",
+ "freeze_timestamp": null,
+ "provenance": {
+  "origin_sha": "bb02a7311ac56d216d1cffbfeb0c5a9ba04ced9c",
+  "builder": "holdout-freeze --build",
+  "built_at": "2026-10-13T23:06:39.940Z",
+  "rebuilt_from_sha256": "30bcd7bf23a4aff755262f164c9df2bcfc2ca68e344cd78bd48cc5c362b89d14"
+ },
+ "evaluation_policy": {
+  "holdout_size": 40,
+  "deciding": "mutant",
+  "mined_role": "no_regression",
+  "promotion_rule": "unchanged (as deployed)"
+ },
+ "selection_rule": {
+  "excluded": [
+   "frozen in any holdout epoch",
+   "TG-001 task keys",
+   "attempted in a genome trial",
+   "dream exposure: commits, source / out-of-scope files and run ids of gym failures AND failed maker leases (changed_files) in the 24 h before each dream genome",
+   "derived tasks on an exposed file, base commit or run"
+  ],
+  "mined": "base manifest tasks still eligible, refilled by every-k-th spread over the remaining eligible pool (sorted by key)",
+  "write_test": "every eligible failure-derived task (≤ size, ≥ 5 or none)"
+ },
+ "exclusion_counts": {
+  "frozen": 40,
+  "tg_keys": 20,
+  "trial_attempted": 40,
+  "dream_genomes": 16,
+  "dream_exposed_commits": 49,
+  "dream_exposed_sources": 61,
+  "dream_exposed_runs": 168
+ },
+ "tasks": {
+  "mined": [
+   {
+    "key": "04350f43200937ce4e943bc56d995784d236ca47",
+    "source": "packages/server/src/services/queue-hygiene-service.ts"
+   },
+   {
+    "key": "0623fd323ad8bf5d94cafa34282c7969e1dd5c4b",
+    "source": "packages/server/src/services/memory-sync-service.ts"
+   },
+   {
+    "key": "09cbf48ddd9e5071e2f1ace50bf09ecc9e3e267a",
+    "source": "packages/server/src/services/worktree-manager.ts"
+   },
+   {
+    "key": "0bc48ac77748465df0cccb73d130ba5b65bfd59c",
+    "source": "packages/server/src/services/pacing-frontier-ingestion-service.ts"
+   },
+   {
+    "key": "1a2431ef4aa2ac86515514f670071d3314888fda",
+    "source": "packages/server/src/services/knowledge-runtime-service.ts"
+   },
+   {
+    "key": "1bd519b501bc7750e4f901445d36821a8b028979",
+    "source": "packages/server/src/services/assignment-context.ts"
+   },
+   {
+    "key": "260748c8c53c006d6bcdd5430351fde9f995daa6",
+    "source": "packages/server/src/services/agent-communication-service.ts"
+   },
+   {
+    "key": "27b9843b1b0c6bed5fb5217390d0c571ab434619",
+    "source": "packages/server/src/services/agent-communication-service.ts"
+   },
+   {
+    "key": "3503a8b3ecbfd5a6b659ee015aadb985e4ed572d",
+    "source": "packages/server/src/services/evolution-gym-service.ts"
+   },
+   {
+    "key": "3550f0c535b6a747ccf57f40176d579189700ee9",
+    "source": "packages/server/src/services/agent-lure-service.ts"
+   },
+   {
+    "key": "3cfd624115f6ead8685d22a31d8b894019598d08",
+    "source": "packages/server/src/services/improvement-funnel-service.ts"
+   },
+   {
+    "key": "4070185a254a833ca4303ccd71ff21ea986e736e",
+    "source": "packages/server/src/services/evolution-gym-service.ts"
+   },
+   {
+    "key": "4209a0bcd8558e27ff7c5505e447639e9faba9b1",
+    "source": "packages/server/src/services/tool-broker.ts"
+   },
+   {
+    "key": "4fc68e3ad2ea266021b80bc97039c21a6b6bf4e7",
+    "source": "packages/server/src/services/agent-communication-service.ts"
+   },
+   {
+    "key": "51abefd1f32fa4a9fe541377e9b8f3b6c3363e83",
+    "source": "packages/server/src/services/agent-communication-service.ts"
+   },
+   {
+    "key": "5c7f58b2b19c3d09a3e034b014ea83ceb7940eca",
+    "source": "packages/server/src/services/evolution-gym-service.ts"
+   },
+   {
+    "key": "648b66c97e20101abeb87047bcf06768c97619fe",
+    "source": "packages/server/src/services/agent-communication-service.ts"
+   },
+   {
+    "key": "655a37ecc46d7157e7774a6588f5d09f316ff27d",
+    "source": "packages/server/src/services/expert-evidence-enrichment-service.ts"
+   },
+   {
+    "key": "6bce1d9c62a0354e52327d99a0216686b9019d7b",
+    "source": "packages/server/src/services/expert-council-service.ts"
+   },
+   {
+    "key": "6c7da864dd5d7a046990adfa513246928a9ef018",
+    "source": "packages/server/src/services/autonomy-shadow-service.ts"
+   },
+   {
+    "key": "76b959158b424302162cdfff71b460a471b4910f",
+    "source": "packages/server/src/services/loop-service.ts"
+   },
+   {
+    "key": "839f42d3e5a7a7a392bb544563baadd35a4685ac",
+    "source": "packages/server/src/services/memory-candidate-service.ts"
+   },
+   {
+    "key": "858716ae54dca07cad08c1ef53533bf41982eec1",
+    "source": "packages/server/src/services/queue-hygiene-service.ts"
+   },
+   {
+    "key": "8a4c56ec1ddf31cf79beebe4826690cec7f0c78a",
+    "source": "packages/server/src/services/council-orchestrator.ts"
+   },
+   {
+    "key": "903653359742d0b81298373ba9115ed3b99209ee",
+    "source": "packages/server/src/services/dream-state-service.ts"
+   },
+   {
+    "key": "913e40ee76aa7042e710f0cbaacb7f1e5fe16491",
+    "source": "packages/server/src/services/council-orchestrator.ts"
+   },
+   {
+    "key": "9c1410182ad7227d0e562f3e6eb4ed85ef7b0079",
+    "source": "packages/server/src/services/agent-commons-open-door-service.ts"
+   },
+   {
+    "key": "aa2d4229e8db42643db459d626600bfbc226c284",
+    "source": "packages/server/src/services/segml-federated-governance-bridge.ts"
+   },
+   {
+    "key": "aa4648c2c3996e81ffef299ea5b7bf0c73916eed",
+    "source": "packages/server/src/services/resource-ledger.ts"
+   },
+   {
+    "key": "b1636ff0c521180e6d66c35a803bb461f7e02705",
+    "source": "packages/server/src/services/fitness-view.ts"
+   },
+   {
+    "key": "b2f192d1669237baa018e7f50760da85f7777d22",
+    "source": "packages/server/src/services/loop-service.ts"
+   },
+   {
+    "key": "b966307e0e9fd3f93454ee727eb338b8321ffbdc",
+    "source": "packages/server/src/services/loop-worker-executor-service.ts"
+   },
+   {
+    "key": "c1c290458b1b0f4abd45cfc3a8b1e718bb807638",
+    "source": "packages/server/src/services/remote-gym-service.ts"
+   },
+   {
+    "key": "c23c8e7fa6eba67c2ec30ca5bbd604718569021d",
+    "source": "packages/server/src/services/loop-service.ts"
+   },
+   {
+    "key": "d1bccae7716e1aa7a907a57a7dcc57d2bad5848f",
+    "source": "packages/server/src/services/loop-service.ts"
+   },
+   {
+    "key": "df66c0d74b30bc3c11e056370cc1cba0a3925720",
+    "source": "packages/server/src/services/loop-service.ts"
+   },
+   {
+    "key": "e6f3539e761c4ddb01b76f46ef14d42ef436ba60",
+    "source": "packages/server/src/services/expert-swarm-orchestrator.ts"
+   },
+   {
+    "key": "e81c4e1ac9935d424ac8e60e40cb8b5488592461",
+    "source": "packages/server/src/services/loop-service.ts"
+   },
+   {
+    "key": "fa2aa5247856ddd43dba5bcda6ba6ad0d13e3b9f",
+    "source": "packages/server/src/services/gym-task-miner.ts"
+   },
+   {
+    "key": "fa3779204d0b54bcbeb3fada1f3dddba053e9239",
+    "source": "packages/server/src/services/self-improvement-agent-review-service.ts"
+   }
+  ],
+  "write_test": [
+   {
+    "key": "fail:366d480b-a66a-4f1c-b0df-b7e4b989ef5a",
+    "source": "packages/server/src/__tests__/evolution-evidence.exports.test.ts"
+   },
+   {
+    "key": "fail:7951ce7b-1fdd-4551-9c6a-40b463e5bef5",
+    "source": "packages/server/src/__tests__/loop-run-mutation-service.test.ts"
+   },
+   {
+    "key": "fail:865f2ea0-bac2-4178-9c1f-a8a257833fdd",
+    "source": "packages/server/src/__tests__/gym-irt.exports.test.ts"
+   },
+   {
+    "key": "fail:8c6169bd-e2bd-4081-bbcf-f6aee3fac3fd",
+    "source": "packages/server/src/__tests__/swarm-task-decomposer.test.ts"
+   },
+   {
+    "key": "fail:a4c792b9-9c11-453b-9373-cf10bdd09e54",
+    "source": "packages/server/src/__tests__/evolution-lineage.exports.test.ts"
+   }
+  ],
+  "mutant": {
+   "generated_at_freeze": true,
+   "proposed_tiers": [
+    3,
+    4,
+    5,
+    6
+   ]
+  }
+ },
+ "manifest_sha256": "5205c2aa828b2912c2265ea608d76436420e1ec7f02dd72eee2339218d0bc734"
+}
