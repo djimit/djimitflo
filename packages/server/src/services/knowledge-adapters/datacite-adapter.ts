@@ -71,8 +71,13 @@ export class DataCiteAdapter {
 
   /** KE-1: one arXiv paper by its DataCite DOI (10.48550/arxiv.<id>); null when DataCite has no such DOI, throws otherwise. */
   async paperByArxivId(arxivId: string): Promise<ArxivPaper | null> {
+    return this.paperByDoi(`10.48550/arxiv.${arxivId}`);
+  }
+
+  /** One record by DOI; null when DataCite has no such DOI (e.g. a Crossref-only DOI), throws otherwise. */
+  async paperByDoi(doi: string): Promise<ArxivPaper | null> {
     await this.throttle();
-    const response = await this.fetchImpl(`${this.baseUrl}/${encodeURIComponent(`10.48550/arxiv.${arxivId}`)}`, { signal: AbortSignal.timeout(20_000), headers: { Accept: 'application/vnd.api+json' } });
+    const response = await this.fetchImpl(`${this.baseUrl}/${encodeURIComponent(doi)}`, { signal: AbortSignal.timeout(20_000), headers: { Accept: 'application/vnd.api+json' } });
     if (response.status === 404) return null;
     if (!response.ok) throw new Error(`DATACITE_HTTP_${response.status}`);
     const record = (await response.json() as { data?: DataCiteRecord }).data;

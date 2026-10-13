@@ -27,6 +27,33 @@ export const judgmentMode = (id: string): JudgmentMode => {
 /** Three-tier band (cookbook): below lo = no, above hi = yes, in between = uncertain. */
 export const band = (p: number | undefined, lo: number, hi: number): Decision => (p === undefined ? 'uncertain' : p < lo ? 'no' : p > hi ? 'yes' : 'uncertain');
 
+/** A valid observation for one question: the typed field present and in range (noul/confidence in [0,1], a choice among the criteria). */
+function validAnswer(q: TsQuestion, a: TsAnswer | undefined): boolean {
+  if (!a || typeof a !== 'object') return false;
+  const unit = (x: unknown) => typeof x === 'number' && Number.isFinite(x) && x >= 0 && x <= 1;
+  if (a.confidence !== undefined && !unit(a.confidence)) return false;
+  if (q.type === 'noul') return unit(a.noul);
+  if (q.type === 'score') return typeof a.score === 'number' && Number.isFinite(a.score);
+  const criteria = q.criteria && typeof q.criteria === 'object' ? Object.keys(q.criteria as Record<string, unknown>) : null;
+  return typeof a.choice === 'string' && a.choice.length > 0 && (!criteria || criteria.includes(a.choice));
+}
+
+/**
+ * E2 (no valid observation ≠ negative observation): the single place a jev response becomes a decision. Only valid answers
+ * are kept and evaluated; if any question has no valid answer the response is not a full observation of the state, so the
+ * decision is 'uncertain' (insufficient evidence) — never a 'yes' or 'no' read from a default for the missing answer.
+ */
+export function decideObserved(def: JudgmentDef, raw: Record<string, TsAnswer>, facts?: Record<string, unknown>): { decision: Decision; reason: string; answers: Record<string, TsAnswer> } {
+  const answers: Record<string, TsAnswer> = {};
+  const invalid: string[] = [];
+  for (const [k, q] of Object.entries(def.questions)) {
+    if (validAnswer(q, raw?.[k])) answers[k] = raw[k];
+    else invalid.push(k);
+  }
+  if (invalid.length) return { decision: 'uncertain', reason: `insufficient_evidence: no valid answer for ${invalid.join(', ')}`.slice(0, 300), answers };
+  return { ...def.decide(answers, facts), answers };
+}
+
 export interface JudgmentRecord { id: string; decision: Decision; reason: string; answers: Record<string, TsAnswer>; mode: JudgmentMode }
 
 export async function runJudgment(db: Database, def: JudgmentDef, subject: { type: string; id: string }, state: unknown, client = new TypeSafeClient(), facts?: Record<string, unknown>): Promise<JudgmentRecord | null> {
@@ -39,12 +66,12 @@ export async function runJudgment(db: Database, def: JudgmentDef, subject: { typ
   try {
     // B8: a shadow judgment is fire-and-forget — retrying during a burst only deepens the queue; enforce keeps its retries
     const response = await client.systemOne(state, def.questions, mode === 'shadow' ? { retries: 0 } : {});
-    const { decision, reason } = def.decide(response.answers, facts);
+    const { decision, reason, answers } = decideObserved(def, response.answers, facts);
     localShadow(db, def, subject, stateHash, state, def.questions, facts);
     db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, input_tokens, output_tokens, latency_ms, model, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, def.id, subject.type, subject.id, stateHash, mode, decision, reason, JSON.stringify(response.answers),
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, def.id, subject.type, subject.id, stateHash, mode, decision, reason, JSON.stringify(answers),
       response.usage?.input_tokens ?? 0, response.usage?.output_tokens ?? 0, Date.now() - started, response.model, new Date().toISOString());
-    return { id, decision, reason, answers: response.answers, mode };
+    return { id, decision, reason, answers, mode };
   } catch (err) {
     try {
       db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, error, latency_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, 'error', ?, ?, ?)`)
@@ -75,8 +102,8 @@ export async function runJudgments(db: Database, defs: JudgmentDef[], subject: {
     const out = new Map<JudgmentDef, JudgmentRecord>();
     for (const d of active) {
       const prefix = `${d.id}__`;
-      const answers = Object.fromEntries(Object.entries(response.answers).filter(([k]) => k.startsWith(prefix)).map(([k, a]) => [k.slice(prefix.length), a]));
-      const { decision, reason } = d.decide(answers);
+      const raw = Object.fromEntries(Object.entries(response.answers ?? {}).filter(([k]) => k.startsWith(prefix)).map(([k, a]) => [k.slice(prefix.length), a]));
+      const { decision, reason, answers } = decideObserved(d, raw);
       localShadow(db, d, subject, stateHash, state, d.questions);
       const id = randomUUID(); const mode = judgmentMode(d.id);
       insertOk.run(id, d.id, subject.type, subject.id, stateHash, mode, decision, reason, JSON.stringify(answers), share(response.usage?.input_tokens), share(response.usage?.output_tokens), Date.now() - started, response.model, new Date().toISOString());

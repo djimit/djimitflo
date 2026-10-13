@@ -86,6 +86,23 @@ export interface SpecialistReviewInput {
   recommendations?: string[];
   evidence_refs?: string[];
   limitations?: string;
+  /** B32: provenance of an automated review (absent for human reviews) */
+  model?: string | null;
+  prompt_sha256?: string | null;
+  raw_sha256?: string | null;
+  attempt?: number | null;
+}
+
+/** B32: one specialist answer that failed schema/semantic validation (or kept failing to generate). Never a review. */
+export interface QuarantinedAttempt {
+  panel_id: string;
+  specialist_id: string;
+  model?: string | null;
+  prompt_sha256?: string | null;
+  raw_sha256?: string | null;
+  raw_excerpt?: string | null;
+  error: string;
+  attempt: number;
 }
 
 const VALID_RISKS: RiskClass[] = ['low', 'medium', 'high', 'critical'];
@@ -395,14 +412,15 @@ export class SpecialistPanelService {
           UPDATE specialist_reviews
           SET specialist_title = ?, stance = ?, confidence = ?, findings_json = ?,
               recommendations_json = ?, evidence_refs_json = ?, limitations = ?,
-              status = ?, reviewer_actor = ?, updated_at = ?
+              status = ?, reviewer_actor = ?, model = ?, prompt_sha256 = ?, raw_sha256 = ?, attempt = ?, updated_at = ?
           WHERE id = ?
         `)
       : this.db.prepare(`
           INSERT INTO specialist_reviews (
             specialist_title, stance, confidence, findings_json, recommendations_json,
-            evidence_refs_json, limitations, status, reviewer_actor, updated_at, id, panel_id, specialist_id, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            evidence_refs_json, limitations, status, reviewer_actor, model, prompt_sha256, raw_sha256, attempt,
+            updated_at, id, panel_id, specialist_id, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
     const args = [
@@ -415,6 +433,10 @@ export class SpecialistPanelService {
       input.limitations?.trim() || null,
       'submitted',
       actor,
+      input.model ?? null,
+      input.prompt_sha256 ?? null,
+      input.raw_sha256 ?? null,
+      input.attempt ?? null,
       now,
       id,
     ];
@@ -424,9 +446,18 @@ export class SpecialistPanelService {
       run.run(...args, panel.id, profile.id, now);
     }
 
+    this.refreshStatus(panel, now);
+    return this.getPanel(panel.id);
+  }
+
+  /** Recompute consensus and status from the valid reviews and the closed (quarantined) seats. */
+  private refreshStatus(panel: SpecialistPanelRecord, now = new Date().toISOString()): void {
     const reviews = this.listReviews(panel.id);
-    const consensus = this.computeConsensus(panel, reviews);
-    const nextStatus: PanelStatus = reviews.length >= panel.panel.length ? 'consensus_ready' : 'reviewing';
+    const closed = this.closedSeats(panel.id);
+    const consensus = this.computeConsensus(panel, reviews, closed);
+    const reviewed = new Set(reviews.map((r) => r.specialist_id));
+    const done = panel.panel.every((s) => reviewed.has(s.id) || closed.has(s.id));
+    const nextStatus: PanelStatus = done ? 'consensus_ready' : reviews.length || closed.size ? 'reviewing' : 'planned';
     this.db.prepare(`
       UPDATE specialist_panels
       SET status = ?, consensus_json = ?, updated_at = ?, completed_at = ?
@@ -440,8 +471,38 @@ export class SpecialistPanelService {
     );
 
     // C3: weighted-vote shadow judgment next to the actual decision (default off; never changes the decision)
-    if (nextStatus === 'consensus_ready') recordPanelShadow(this.db, panel.id, reviews, consensus.decision);
-    return this.getPanel(panel.id);
+    if (nextStatus === 'consensus_ready') recordPanelShadow(this.db, panel.id, reviews.filter((r) => !SpecialistPanelService.machineFailed(r)), consensus.decision);
+  }
+
+  /** B32: record an answer that failed validation (or kept failing to generate). Raw text is kept only as a short excerpt. */
+  quarantineAttempt(attempt: QuarantinedAttempt): void {
+    this.db.prepare(`INSERT INTO specialist_review_quarantine
+      (id, panel_id, specialist_id, model, prompt_sha256, raw_sha256, raw_excerpt, error, attempt, closes_seat, cleared, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?)`)
+      .run(randomUUID(), attempt.panel_id, attempt.specialist_id, attempt.model ?? null, attempt.prompt_sha256 ?? null, attempt.raw_sha256 ?? null,
+        attempt.raw_excerpt ? attempt.raw_excerpt.slice(0, 500) : null, attempt.error.slice(0, 500), attempt.attempt, new Date().toISOString());
+  }
+
+  /** Quarantined attempts of one seat since the last panel reset. */
+  seatQuarantineCount(panelId: string, specialistId: string): number {
+    return (this.db.prepare('SELECT COUNT(*) AS n FROM specialist_review_quarantine WHERE panel_id = ? AND specialist_id = ? AND cleared = 0')
+      .get(panelId, specialistId) as { n: number }).n;
+  }
+
+  /** B32: a seat whose attempts are exhausted: the panel decides on its valid reviews only (never on a coerced review). */
+  closeSeat(panelId: string, specialistId: string): SpecialistPanelRecord {
+    this.db.prepare(`UPDATE specialist_review_quarantine SET closes_seat = 1
+      WHERE id = (SELECT id FROM specialist_review_quarantine WHERE panel_id = ? AND specialist_id = ? AND cleared = 0 ORDER BY created_at DESC LIMIT 1)`)
+      .run(panelId, specialistId);
+    this.refreshStatus(this.getPanel(panelId));
+    return this.getPanel(panelId);
+  }
+
+  closedSeats(panelId: string): Set<string> {
+    try {
+      return new Set((this.db.prepare('SELECT DISTINCT specialist_id FROM specialist_review_quarantine WHERE panel_id = ? AND closes_seat = 1 AND cleared = 0')
+        .all(panelId) as Array<{ specialist_id: string }>).map((r) => r.specialist_id));
+    } catch { return new Set(); }
   }
 
   projectPanelToBacklog(panelId: string): { panel: SpecialistPanelRecord; work_item: WorkItemRecord; created: boolean } {
@@ -513,8 +574,14 @@ export class SpecialistPanelService {
     return profiles;
   }
 
-  private computeConsensus(panel: SpecialistPanelRecord, reviews: SpecialistReviewRecord[]): SpecialistConsensus {
-    const required = panel.panel.length;
+  private computeConsensus(panel: SpecialistPanelRecord, allReviews: SpecialistReviewRecord[], closedSeats: Set<string> = new Set()): SpecialistConsensus {
+    // E2: a legacy model-failure row (pre-B32 coercion: confidence 0, fixed failure text) is no observation — its seat counts
+    // as closed, it never votes (no needs_evidence, no dissent)
+    const reviews = allReviews.filter((r) => !SpecialistPanelService.machineFailed(r));
+    const closed = new Set([...closedSeats, ...allReviews.filter((r) => SpecialistPanelService.machineFailed(r)).map((r) => r.specialist_id)]);
+    // B32: a closed (quarantined) seat has no valid review; the panel decides on the valid reviews it has
+    const reviewed = new Set(reviews.map((r) => r.specialist_id));
+    const required = panel.panel.filter((s) => !(closed.has(s.id) && !reviewed.has(s.id))).length;
     const submitted = reviews.filter((review) => review.status === 'submitted');
     const supportCount = submitted.filter((review) => review.stance === 'support').length;
     const opposeCount = submitted.filter((review) => review.stance === 'oppose').length;
@@ -534,7 +601,7 @@ export class SpecialistPanelService {
 
     let consensusLevel: ConsensusLevel = 'no_consensus';
     let decision: ConsensusDecision = 'needs_more_evidence';
-    if (submitted.length < required) {
+    if (required === 0 || submitted.length < required) {
       consensusLevel = 'no_consensus';
       decision = 'needs_more_evidence';
     } else if (opposeCount > 0) {
@@ -543,7 +610,7 @@ export class SpecialistPanelService {
     } else if (needsEvidenceCount > 0 || uncertainCount >= Math.ceil(required / 2)) {
       consensusLevel = 'weak';
       decision = 'needs_more_evidence';
-    } else if (supportCount === required && averageConfidence >= 0.8) {
+    } else if (supportCount === required && averageConfidence >= 0.8 && submitted.length >= 2) {
       consensusLevel = 'strong';
       // Was `panel.risk_class === 'low' ? 'goal' : 'backlog'` — a deliberate
       // ceiling that made unanimous, high-confidence consensus on a
@@ -612,6 +679,37 @@ export class SpecialistPanelService {
   private listReviews(panelId: string): SpecialistReviewRecord[] {
     return (this.db.prepare('SELECT * FROM specialist_reviews WHERE panel_id = ? ORDER BY created_at ASC').all(panelId) as any[])
       .map((row) => this.parseReview(row));
+  }
+
+  /** Model-failure fallbacks written by SelfImprovementAgentReviewService (confidence 0, fixed finding text). */
+  private static machineFailed(review: SpecialistReviewRecord): boolean {
+    return review.confidence === 0 && review.findings.some((f) => f.startsWith('Model response could not be parsed') || f.startsWith('Review generation failed'));
+  }
+
+  /** No valid review at all: every seat is a closed (quarantined) seat or a legacy model-failure review row. */
+  allReviewsMachineFailed(panelId: string): boolean {
+    const reviews = this.listReviews(panelId);
+    const closed = this.closedSeats(panelId);
+    if (!reviews.length && !closed.size) return false;
+    return reviews.every((r) => SpecialistPanelService.machineFailed(r));
+  }
+
+  /** B32: quarantined (invalid) specialist answers since `since` — the honest 'panel unparseable' count. */
+  quarantinedAttemptsSince(since: string): number {
+    try {
+      return (this.db.prepare('SELECT COUNT(*) AS n FROM specialist_review_quarantine WHERE created_at >= ?').get(since) as { n: number }).n;
+    } catch { return 0; }
+  }
+
+  /** Drop the model-failure reviews so the next review tick regenerates those seats. */
+  resetMachineFailedReviews(panelId: string): void {
+    const panel = this.getPanel(panelId);
+    const del = this.db.prepare('DELETE FROM specialist_reviews WHERE id = ?');
+    for (const r of this.listReviews(panelId)) if (SpecialistPanelService.machineFailed(r)) del.run(r.id);
+    this.db.prepare('UPDATE specialist_review_quarantine SET cleared = 1 WHERE panel_id = ? AND cleared = 0').run(panelId);
+    const reviews = this.listReviews(panelId);
+    this.db.prepare('UPDATE specialist_panels SET status = ?, consensus_json = ?, updated_at = ?, completed_at = NULL WHERE id = ?')
+      .run(reviews.length ? 'reviewing' : 'planned', JSON.stringify(this.computeConsensus(panel, reviews)), new Date().toISOString(), panelId);
   }
 
   private emptyConsensus(requiredReviews: number): SpecialistConsensus {

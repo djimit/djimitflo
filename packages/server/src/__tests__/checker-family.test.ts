@@ -118,17 +118,32 @@ describe('evidence section checker_family', () => {
     expect(EVOLUTION_FLAGS).toContainEqual({ name: 'CHECKER_FAMILY_TARGET_PER_ARM', acting: false });
   });
 
+  /** E1: a valid settlement (merged, settled after the 14-day window) */
+  const settledPr = (survived: boolean) => ({ pr_url: 'https://github.com/o/r/pull/1', pr_outcome: { state: 'merged', merged_at: '2026-09-15T00:00:00Z', settled_at: '2026-10-01T00:00:00Z', survived } });
+
+  it('E1: only SETTLED_SURVIVED / SETTLED_REGRESSED label survival; pending and anomalous outcomes are unlabelled', () => {
+    seed('cross', 'accepted', 'verified'); seed('cross', 'rejected', 'maker_failure', ['checker_verdict']); seed('cross', 'accepted', 'verified');
+    const set = (id: string, meta: object) => db.prepare("UPDATE loop_runs SET metadata = ? WHERE id = 'r-' || ?").run(JSON.stringify(meta), id);
+    set(`cross-${n - 3}`, settledPr(true));
+    // survived set but no merged_at (pipeline anomaly) — main counted it as a survival label
+    set(`cross-${n - 2}`, { pr_url: 'https://github.com/o/r/pull/2', pr_outcome: { state: 'merged', settled_at: '2026-10-01T00:00:00Z', survived: false } });
+    // merged 3 d ago, still in the window: pending, no label
+    set(`cross-${n - 1}`, { pr_url: 'https://github.com/o/r/pull/3', pr_outcome: { state: 'merged', merged_at: '2026-10-07T12:00:00Z', survived: true } });
+    const e = checkerFamilyEvidence(db, '2026-09-10T00:00:00Z', {}, fisherExact, NOW);
+    expect(e.cross.outcome_survival).toMatchObject({ n: 1, unlabelled: 2 });
+  });
+
   it('merge survival is a checker-independent label and becomes the primary once settled for the target in both arms', () => {
     seed('cross', 'accepted', 'verified'); seed('cross', 'rejected', 'maker_failure', ['checker_verdict']);
-    db.prepare("UPDATE loop_runs SET metadata = ? WHERE id = 'r-' || ?").run(JSON.stringify({ pr_outcome: { survived: false } }), `cross-${n - 2}`);
-    db.prepare("UPDATE loop_runs SET metadata = ? WHERE id = 'r-' || ?").run(JSON.stringify({ pr_outcome: { survived: true } }), `cross-${n - 1}`);
-    const e = checkerFamilyEvidence(db, '2026-09-10T00:00:00Z', { CHECKER_FAMILY_TARGET_PER_ARM: '2' }, fisherExact);
+    db.prepare("UPDATE loop_runs SET metadata = ? WHERE id = 'r-' || ?").run(JSON.stringify(settledPr(false)), `cross-${n - 2}`);
+    db.prepare("UPDATE loop_runs SET metadata = ? WHERE id = 'r-' || ?").run(JSON.stringify(settledPr(true)), `cross-${n - 1}`);
+    const e = checkerFamilyEvidence(db, '2026-09-10T00:00:00Z', { CHECKER_FAMILY_TARGET_PER_ARM: '2' }, fisherExact, NOW);
     expect(e.cross.outcome_survival).toMatchObject({ n: 2, agree: 0, kappa: -1 });
     expect(e.primary.endpoint).toBe('outcome_wo_checker'); // the same arm has no survival labels yet
     seed('same', 'accepted', 'verified'); seed('same', 'rejected', 'maker_failure', ['checker_verdict']);
-    db.prepare("UPDATE loop_runs SET metadata = ? WHERE id = 'r-' || ?").run(JSON.stringify({ pr_outcome: { survived: true } }), `same-${n - 2}`);
-    db.prepare("UPDATE loop_runs SET metadata = ? WHERE id = 'r-' || ?").run(JSON.stringify({ pr_outcome: { survived: false } }), `same-${n - 1}`);
-    const settled = checkerFamilyEvidence(db, '2026-09-10T00:00:00Z', { CHECKER_FAMILY_TARGET_PER_ARM: '2' }, fisherExact);
+    db.prepare("UPDATE loop_runs SET metadata = ? WHERE id = 'r-' || ?").run(JSON.stringify(settledPr(true)), `same-${n - 2}`);
+    db.prepare("UPDATE loop_runs SET metadata = ? WHERE id = 'r-' || ?").run(JSON.stringify(settledPr(false)), `same-${n - 1}`);
+    const settled = checkerFamilyEvidence(db, '2026-09-10T00:00:00Z', { CHECKER_FAMILY_TARGET_PER_ARM: '2' }, fisherExact, NOW);
     expect(settled.primary).toMatchObject({ endpoint: 'outcome_survival', delta_kappa: -2, n: { same: 2, cross: 2 } });
   });
 
