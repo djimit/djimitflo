@@ -144,13 +144,16 @@ it.each(['checker', 'security_checker'] as const)('fails closed when a previousl
     { exit_status: 1 }, { timed_out: true }, { runtime_timed_out: true }, { runtime_was_cancelled: true },
     { runtime_verdict: 'rejected' }, { verdict: 'rejected' }, { read_only_contract_passed: false },
     { runtime_contract: { available: false, status: 'unavailable' } },
-    { runtime_contract: { available: true, status: 'drifted' } }, { runtime_adapter: 'codex' },
-    { stdout_path: path.join(root, 'missing-evidence') },
+    { runtime_contract: { available: true, status: 'drifted' } }, { runtime_adapter: 'codex' }, { stdout_path: null },
   ]) {
     db.prepare('UPDATE worker_leases SET status = ?, metadata = ? WHERE id = ?')
       .run('completed', JSON.stringify({ ...valid, ...invalid }), role);
     expect(gate(`${role}_verdict`)?.status).toBe('fail');
   }
+  // E2: a recorded stdout file that is no longer readable is unavailable evidence — still blocking, but unknown, not fail
+  db.prepare('UPDATE worker_leases SET status = ?, metadata = ? WHERE id = ?')
+    .run('completed', JSON.stringify({ ...valid, stdout_path: path.join(root, 'missing-evidence') }), role);
+  expect(gate(`${role}_verdict`)?.status).toBe('unknown');
 });
 
 it('does not relabel a rejected runtime verdict as runtime acceptance through manual submission', async () => {

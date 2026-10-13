@@ -154,3 +154,15 @@ export function assertionStrengthCheck(db: Database, goalId: string | null | und
     ? { ...base, status: result.status, exit_status: result.status === 'pass' ? 0 : 1 }
     : { ...base, status: 'skipped', shadow_status: result.status, exit_status: null };
 }
+
+/**
+ * The check's real verdict from a maker lease's deterministic_checks. In shadow mode the record's `status` is 'skipped' by
+ * design (no gate fails) and the verdict lives in `shadow_status` — prod 10-10: all post-#730 records read 'skipped' while
+ * every shadow_status was a measured 'pass'. Readers must use this, not `status`. null = no check recorded.
+ */
+export function assertionStrengthVerdict(checks: unknown): 'pass' | 'fail' | 'skipped' | null {
+  const c = (Array.isArray(checks) ? checks : []).find((x) => (x as { name?: unknown })?.name === ASSERTION_STRENGTH_CHECK) as { status?: unknown; shadow_status?: unknown } | undefined;
+  if (!c) return null;
+  const v = c.shadow_status ?? c.status;
+  return v === 'pass' || v === 'fail' || v === 'skipped' ? v : null;
+}

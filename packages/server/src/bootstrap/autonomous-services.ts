@@ -4,7 +4,7 @@
  * Extracted from index.ts for separation of concerns.
  */
 import { lifecycleManager } from '../services/lifecycle-manager';
-import { noteScheduler } from '../services/scheduler-registry';
+import { guardTick, noteScheduler, registerRestart } from '../services/scheduler-registry';
 import { LoopService } from '../services/loop-service';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
 import { NestedSpawnService } from '../services/nested-spawn-service';
@@ -33,7 +33,7 @@ import { DreamStateService, dreamStateEnabled } from '../services/dream-state-se
 import { NeedsGroundingTriageService, needsGroundingTriageEnabled } from '../services/needs-grounding-triage-service';
 import { DiskGuardService, diskGuardEnabled } from '../services/disk-guard-service';
 import { QueueHygieneService, queueHygieneEnabled } from '../services/queue-hygiene-service';
-import { startStallWatch } from '../services/stall-watch';
+import { startSchedulerWatchdog, startStallWatch } from '../services/stall-watch';
 import { startInterestFeedback } from '../services/interest-feedback';
 import { startDreamEvolution } from '../services/dream-evolution';
 import { startEvolutionEstimators } from '../services/evolution-estimators';
@@ -131,6 +131,7 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     if (noteScheduler('test_gap_source', 'TEST_GAP_SOURCE_ENABLED', testGapSourceEnabled(), 6 * 3_600_000)) {
       const testGaps = new TestGapSourceService(db);
       testGaps.start();
+      registerRestart('test_gap_source', () => { testGaps.stop(); testGaps.start(); });
       lifecycleManager.register({ serviceName: 'TestGapSource', stop: () => testGaps.stop() });
       console.log('🧪 Test-gap source on (max 2 proposals/day).');
     }
@@ -143,6 +144,7 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     if (noteScheduler('dead_code_lane', 'DEAD_CODE_LANE_ENABLED', deadCodeLaneEnabled(), 12 * 3_600_000)) {
       const deadCode = new DeadCodeSourceService(db);
       deadCode.start();
+      registerRestart('dead_code_lane', () => { deadCode.stop(); deadCode.start(); });
       lifecycleManager.register({ serviceName: 'DeadCodeSource', stop: () => deadCode.stop() });
       console.log(`🧹 Dead-code lane on (max ${Number(process.env.DEAD_CODE_MAX_PER_DAY) || 2} proposals/day).`);
     }
@@ -152,9 +154,10 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
 
   // C2 evolution gym: sandbox replay tasks from our own history; outcomes feed species selection. Default off.
   try {
-    if (noteScheduler('evolution_gym', 'EVOLUTION_GYM_ENABLED', gymEnabled())) {
+    if (noteScheduler('evolution_gym', 'EVOLUTION_GYM_ENABLED', gymEnabled(), 3_600_000)) {
       const gym = new EvolutionGymService(db, recoverySvc);
       gym.start();
+      registerRestart('evolution_gym', () => { gym.stop(); gym.start(); });
       lifecycleManager.register({ serviceName: 'EvolutionGym', stop: () => gym.stop() });
       console.log(`🏋️ Evolution gym on (max ${Number(process.env.EVOLUTION_GYM_MAX_PER_DAY) || 12} attempts/day).`);
     }
@@ -167,6 +170,7 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     if (noteScheduler('dream_state', 'DREAM_STATE_ENABLED', dreamStateEnabled(), 6 * 3_600_000)) {
       const dreamState = new DreamStateService(db);
       dreamState.start();
+      registerRestart('dream_state', () => { dreamState.stop(); dreamState.start(); });
       lifecycleManager.register({ serviceName: 'DreamState', stop: () => dreamState.stop() });
       console.log('🌙 Dream state on (failure-cause replay every 6 h).');
     }
@@ -208,54 +212,69 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
 
   // Y3: dreaming as mutation — daily mutants of the maker genome, judged on the frozen gym holdout. DREAM_EVOLUTION_ENABLED=true.
   try {
-    const stopDream = startDreamEvolution(db);
+    let stopDream = startDreamEvolution(db);
+    registerRestart('dream_evolution', () => { stopDream?.(); stopDream = startDreamEvolution(db); });
     noteScheduler('dream_evolution', 'DREAM_EVOLUTION_ENABLED', !!stopDream, 3_600_000);
-    if (stopDream) { lifecycleManager.register({ serviceName: 'DreamEvolution', stop: stopDream }); console.log('🧬 Dream evolution on (hourly tick, one dream a day).'); }
+    if (stopDream) { lifecycleManager.register({ serviceName: 'DreamEvolution', stop: () => stopDream?.() }); console.log('🧬 Dream evolution on (hourly tick, one dream a day).'); }
   } catch (error) {
     console.warn('⚠️  Dream evolution failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // RX-14: nightly evolution estimates (thermometer) — one row per estimator, scope and UTC day. EVOLUTION_ESTIMATORS_ENABLED=true.
   try {
-    const stopEstimates = startEvolutionEstimators(db);
+    let stopEstimates = startEvolutionEstimators(db);
+    registerRestart('evolution_estimators', () => { stopEstimates?.(); stopEstimates = startEvolutionEstimators(db); });
     noteScheduler('evolution_estimators', 'EVOLUTION_ESTIMATORS_ENABLED', !!stopEstimates, 3_600_000);
-    if (stopEstimates) { lifecycleManager.register({ serviceName: 'EvolutionEstimators', stop: stopEstimates }); console.log('🌡️  Evolution estimates on (daily).'); }
+    if (stopEstimates) { lifecycleManager.register({ serviceName: 'EvolutionEstimators', stop: () => stopEstimates?.() }); console.log('🌡️  Evolution estimates on (daily).'); }
   } catch (error) {
     console.warn('⚠️  Evolution estimates failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // AR-W3: committee members evolve on real-outcome skill (extinction n >= 30, one child a day). COMMITTEE_SWARM_ENABLED=true.
   try {
-    const stopCommittee = startCommitteeEvolution(db);
+    let stopCommittee = startCommitteeEvolution(db);
+    registerRestart('committee_evolution', () => { stopCommittee?.(); stopCommittee = startCommitteeEvolution(db); });
     noteScheduler('committee_evolution', 'COMMITTEE_SWARM_ENABLED', !!stopCommittee, 3_600_000);
-    if (stopCommittee) { lifecycleManager.register({ serviceName: 'CommitteeEvolution', stop: stopCommittee }); console.log('🧠 Committee evolution on (daily).'); }
+    if (stopCommittee) { lifecycleManager.register({ serviceName: 'CommitteeEvolution', stop: () => stopCommittee?.() }); console.log('🧠 Committee evolution on (daily).'); }
   } catch (error) {
     console.warn('⚠️  Committee evolution failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // EV4: loop draft PRs settled by merge + 14 days in main → skill outcomes (domain 'merge'). MERGE_SURVIVAL_ENABLED=true.
   try {
-    const stopMerge = startMergeSurvival(db);
+    let stopMerge = startMergeSurvival(db);
+    registerRestart('merge_survival', () => { stopMerge?.(); stopMerge = startMergeSurvival(db); });
     noteScheduler('merge_survival', 'MERGE_SURVIVAL_ENABLED', !!stopMerge, 6 * 3_600_000);
-    if (stopMerge) { lifecycleManager.register({ serviceName: 'MergeSurvival', stop: stopMerge }); console.log('🧾 Merge survival on (every 6 h).'); }
+    if (stopMerge) { lifecycleManager.register({ serviceName: 'MergeSurvival', stop: () => stopMerge?.() }); console.log('🧾 Merge survival on (every 6 h).'); }
   } catch (error) {
     console.warn('⚠️  Merge survival failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // Earned auto-merge for verified test-only loop PRs (shadow/act, self-revoking). LOOP_AUTO_MERGE_TEST_ONLY=shadow|act.
   try {
-    const stopAutoMerge = startLoopAutoMerge(db);
+    let stopAutoMerge = startLoopAutoMerge(db);
+    registerRestart('loop_auto_merge', () => { stopAutoMerge?.(); stopAutoMerge = startLoopAutoMerge(db); });
     noteScheduler('loop_auto_merge', 'LOOP_AUTO_MERGE_TEST_ONLY', !!stopAutoMerge, 15 * 60_000);
-    if (stopAutoMerge) { lifecycleManager.register({ serviceName: 'LoopAutoMerge', stop: stopAutoMerge }); console.log('🤝 Loop auto-merge (test-only) on (every 15 min).'); }
+    if (stopAutoMerge) { lifecycleManager.register({ serviceName: 'LoopAutoMerge', stop: () => stopAutoMerge?.() }); console.log('🤝 Loop auto-merge (test-only) on (every 15 min).'); }
   } catch (error) {
     console.warn('⚠️  Loop auto-merge failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
+  // P0.1 scheduler self-heal watchdog: armed-but-not-ticking ⇒ diagnose ⇒ one bounded restart (act) ⇒ verify ⇒ quarantine + escalate.
+  // SCHEDULER_SELF_HEAL_MODE=shadow (default: diagnose + escalate, no restart) | act | off.
+  try {
+    const stopWatchdog = startSchedulerWatchdog(db);
+    if (stopWatchdog) { lifecycleManager.register({ serviceName: 'SchedulerWatchdog', stop: stopWatchdog }); console.log(`🩹 Scheduler watchdog on (${process.env.SCHEDULER_SELF_HEAL_MODE || 'shadow'}, every 15 min).`); }
+  } catch (error) {
+    console.warn('⚠️  Scheduler watchdog failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
   // Stall watch (M10): hourly log line per silent stall. STALL_WATCH_ENABLED=true (default off).
   try {
-    const stopStallWatch = startStallWatch(db);
+    let stopStallWatch = startStallWatch(db);
+    registerRestart('stall_watch', () => { stopStallWatch?.(); stopStallWatch = startStallWatch(db); });
     noteScheduler('stall_watch', 'STALL_WATCH_ENABLED', !!stopStallWatch, 3_600_000);
-    if (stopStallWatch) { lifecycleManager.register({ serviceName: 'StallWatch', stop: stopStallWatch }); console.log('🚨 Stall watch on (hourly).'); }
+    if (stopStallWatch) { lifecycleManager.register({ serviceName: 'StallWatch', stop: () => stopStallWatch?.() }); console.log('🚨 Stall watch on (hourly).'); }
   } catch (error) {
     console.warn('⚠️  Stall watch failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
@@ -330,11 +349,14 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     });
     // Panel-authorised (scheduled) proposals used to become goals only at boot: a requeued or late-scheduled proposal
     // waited for the next restart (prod 2026-09-25: dc1143b8 sat 'scheduled' for 40+ min). Only this generator, hourly.
-    const scheduledTimer = setInterval(() => {
+    const scheduledTick = guardTick('scheduled_proposal_goals', () => {
       try { const n = autonomousGoals.generateFromSelfImprovements(); if (n) console.log(`🎯 ${n} goal(s) from scheduled proposals`); }
       catch (err) { console.warn('Scheduled-proposal goals failed:', err instanceof Error ? err.message : String(err)); }
-    }, Number(process.env.SCHEDULED_PROPOSAL_GOALS_INTERVAL_MS) || 3_600_000);
+    });
+    const scheduledInterval = Number(process.env.SCHEDULED_PROPOSAL_GOALS_INTERVAL_MS) || 3_600_000;
+    let scheduledTimer = setInterval(scheduledTick, scheduledInterval);
     scheduledTimer.unref?.();
+    registerRestart('scheduled_proposal_goals', () => { clearInterval(scheduledTimer); scheduledTimer = setInterval(scheduledTick, scheduledInterval); scheduledTimer.unref?.(); });
     noteScheduler('scheduled_proposal_goals', '(always on with autonomy)', true, Number(process.env.SCHEDULED_PROPOSAL_GOALS_INTERVAL_MS) || 3_600_000);
     lifecycleManager.register({ serviceName: 'ScheduledProposalGoals', stop: () => clearInterval(scheduledTimer) });
   } catch (error) {

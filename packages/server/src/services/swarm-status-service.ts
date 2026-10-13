@@ -1549,6 +1549,7 @@ export class SwarmStatusService {
     if (['high', 'critical'].includes(riskClass) && !input.allow_high_risk) blocked.push('high_risk_requires_security_or_human_gate');
     if (['blocked', 'escalated', 'cancelled', 'completed', 'failed'].includes(String(row.run_status))) blocked.push(`loop_status_${row.run_status}`);
     if (gates.some((gate) => gate.status === 'fail')) blocked.push('failed_gate_present');
+    if (gates.some((gate) => gate.status === 'unknown')) blocked.push('insufficient_evidence_gate_present');
     blocked.push(...this.evaluatePolicyGates(row, runMetadata, gates, riskClass));
     blocked.push(...this.evaluateCapabilityRouting(row, runMetadata, riskClass, role, effectiveRuntime));
     if (!pool) {
@@ -1624,6 +1625,9 @@ export class SwarmStatusService {
     const runtimeWarnings = this.toStringArray(runMetadata.runtime_warnings || row.runtime_warnings);
     if (gates.some((gate) => gate.status === 'fail')) {
       blocked.push('failed_gate_present');
+    }
+    if (gates.some((gate) => gate.status === 'unknown')) {
+      blocked.push('insufficient_evidence_gate_present');
     }
     if (['high', 'critical'].includes(riskClass) && runtimeWarnings.length > 0) {
       blocked.push('runtime_warning_gate_failed');

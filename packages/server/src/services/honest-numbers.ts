@@ -129,6 +129,42 @@ export function commonsChildren(db: Database) {
   } catch { return empty; }
 }
 
+export type GroundingStop = 'no_refinement' | 'pending_panel' | 'panel_failed' | 'panel_backlog' | 'rejected' | 'goal' | 'maker' | 'outcome';
+const STOPS: GroundingStop[] = ['no_refinement', 'pending_panel', 'panel_failed', 'panel_backlog', 'rejected', 'goal', 'maker', 'outcome'];
+
+/**
+ * ECO item 4 (10-10): where each validly grounded Commons proposal stopped — the furthest stage its newest refinement reached.
+ * Prod trace 10-10: 24 valid groundings, 0 goals (10 unparseable panels archived, 6 no refinement while APPLY was off, 3 panel
+ * 'backlog' that never becomes a goal, 5 rejected). Read-only; each grounded proposal is counted once.
+ */
+export function commonsGroundingStops(db: Database): Record<GroundingStop, number> | null {
+  try {
+    const rows = db.prepare(`SELECT g.subject_id AS parent, (SELECT json_extract(x.answers_json, '$.refinement_id') FROM judgments x
+        WHERE x.judgment = 'commons_grounding' AND x.decision = 'yes' AND x.subject_id = g.subject_id
+          AND json_extract(x.answers_json, '$.refinement_id') IS NOT NULL ORDER BY x.created_at DESC LIMIT 1) AS kid
+      FROM judgments g WHERE g.judgment = 'commons_grounding' AND g.decision = 'yes' GROUP BY g.subject_id`).all() as Array<{ parent: string; kid: string | null }>;
+    const one = (sql: string, ...a: unknown[]) => { try { return db.prepare(sql).get(...a) as Record<string, unknown> | undefined; } catch { return undefined; } };
+    const out = Object.fromEntries(STOPS.map((k) => [k, 0])) as Record<GroundingStop, number>;
+    for (const r of rows) {
+      const kid = r.kid ? one('SELECT s.status, p.consensus_json FROM self_improvements s LEFT JOIN specialist_panels p ON p.id = s.panel_id WHERE s.id = ?', r.kid) : undefined;
+      let stop: GroundingStop;
+      if (!kid) stop = 'no_refinement';
+      else if (['verified', 'regressed', 'infra_failed', 'no_change', 'applied'].includes(String(kid.status))) stop = 'outcome';
+      else if (one(`SELECT 1 FROM worker_leases l JOIN loop_runs lr ON lr.id = l.loop_run_id JOIN goals go ON go.id = lr.goal_id
+          WHERE go.improvement_id = ? AND l.role = 'maker' LIMIT 1`, r.kid)) stop = 'maker';
+      else if (one('SELECT 1 FROM goals WHERE improvement_id = ? LIMIT 1', r.kid)) stop = 'goal';
+      else if (one("SELECT 1 FROM judgments WHERE judgment = 'panel_failed' AND subject_id = ? LIMIT 1", r.kid)) stop = 'panel_failed';
+      else {
+        let decision: string | undefined;
+        try { decision = JSON.parse(String(kid.consensus_json ?? '{}')).decision; } catch { /* no consensus yet */ }
+        stop = decision === 'backlog' ? 'panel_backlog' : decision || ['needs_more_evidence', 'blocked', 'archived', 'rejected'].includes(String(kid.status)) ? 'rejected' : 'pending_panel';
+      }
+      out[stop]++;
+    }
+    return out;
+  } catch { return null; }
+}
+
 /** K/N of attempted Commons children vs the base rate of the same source ('refinement'); a verdict only with N ≥ 30. */
 export function commonsYield(db: Database) {
   const c = commonsChildren(db);
