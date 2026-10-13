@@ -24,6 +24,7 @@
 
 import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { UNFAIR_ZERO_SQL } from './runtime-bandit';
 
 interface SkillGenome {
   id: string;
@@ -198,8 +199,10 @@ export class SkillEvolutionEngine {
 
   /** Phenotype measured from this skill's recorded outcomes only. */
   measuredTraits(skillId: string): SkillGenome['traits'] {
+    // E2: an infra / no-change zero is no observation of the skill (left out, never a 0)
     const r = this.db.prepare(`SELECT COUNT(*) AS n, AVG(success) AS rel,
-        AVG(MIN(1.0, 1000.0 / MAX(1, tokens_used))) AS eff FROM skill_outcomes WHERE skill_id = ?`).get(skillId) as { n: number; rel: number | null; eff: number | null };
+        AVG(MIN(1.0, 1000.0 / MAX(1, tokens_used))) AS eff FROM skill_outcomes WHERE skill_id = ?
+        AND NOT (success = 0 AND ${UNFAIR_ZERO_SQL})`).get(skillId) as { n: number; rel: number | null; eff: number | null };
     const has = r.n > 0;
     return { efficiency: has ? r.eff : null, reliability: has ? r.rel : null, generality: null, complexity: null, adaptability: null };
   }

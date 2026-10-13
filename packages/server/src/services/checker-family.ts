@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import { settlementState, type SettlementOutcome } from './merge-survival';
 import type { Database } from 'better-sqlite3';
 import { cohenKappa } from './honest-numbers';
 import { rng } from './gym-mutants';
@@ -103,13 +104,13 @@ function deltaKappaCi(same: Array<{ verdict: string; y: 0 | 1 }>, cross: Array<{
  * attributed outcome (verified = 1, maker_failure = 0; reviewer_failure / environment_failure excluded), Cohen's kappa, and
  * the maker's assertion-strength result (WEAK_ASSERTION_CHECK_MODE shadow/enforce) as a second ground truth for test lanes.
  */
-export function checkerFamilyEvidence(db: Database, since: string, env: NodeJS.ProcessEnv, fisher: (a: number, b: number, c: number, d: number) => number) {
-  let leases: Array<{ run_id: string; goal_id: string; metadata: string; run: string | null; maker: string | null; decision: string | null; answers: string | null }> = [];
+export function checkerFamilyEvidence(db: Database, since: string, env: NodeJS.ProcessEnv, fisher: (a: number, b: number, c: number, d: number) => number, now = Date.now()) {
+  let leases: Array<{ run_id: string; goal_id: string; metadata: string; run: string | null; run_at: string | null; maker: string | null; decision: string | null; answers: string | null }> = [];
   let goals: Array<{ arm: string; n: number }> = [];
   try {
     goals = db.prepare(`SELECT json_extract(metadata, '$.checker_family_arm') AS arm, COUNT(*) AS n FROM goals
       WHERE json_extract(metadata, '$.checker_family_arm') IN ('same', 'cross') AND created_at >= ? GROUP BY 1`).all(since) as typeof goals;
-    leases = db.prepare(`SELECT l.loop_run_id AS run_id, r.goal_id, l.metadata, r.metadata AS run, m.metadata AS maker,
+    leases = db.prepare(`SELECT l.loop_run_id AS run_id, r.goal_id, l.metadata, r.metadata AS run, r.created_at AS run_at, m.metadata AS maker,
         (SELECT j.decision FROM judgments j WHERE j.judgment = 'outcome_attribution' AND j.subject_type = 'loop_run' AND j.subject_id = l.loop_run_id ORDER BY j.created_at DESC LIMIT 1) AS decision,
         (SELECT j.answers_json FROM judgments j WHERE j.judgment = 'outcome_attribution' AND j.subject_type = 'loop_run' AND j.subject_id = l.loop_run_id ORDER BY j.created_at DESC LIMIT 1) AS answers
       FROM worker_leases l JOIN loop_runs r ON r.id = l.loop_run_id JOIN goals g ON g.id = r.goal_id
@@ -125,11 +126,14 @@ export function checkerFamilyEvidence(db: Database, since: string, env: NodeJS.P
     const gates = ((parse(l.answers).failed_gates as unknown[] | undefined) ?? []).map(String).filter((g) => !CHECKER_GATES.has(g));
     const check = ((parse(l.maker).deterministic_checks as Array<Record<string, unknown>> | undefined) ?? []).find((c) => c?.name === 'test:assertion-strength');
     const s = check ? (check.shadow_status ?? check.status) : null;
-    const survived = (parse(l.run).pr_outcome as { survived?: unknown } | undefined)?.survived;
+    // E1: the survival label only from a settled state — pending, anomalous, open or closed-unmerged PRs carry no label
+    const run = parse(l.run);
+    const settled = run.pr_url ? settlementState(l.run_at, (run.pr_outcome as SettlementOutcome | undefined) ?? null, now).state : null;
+    const survived = settled === 'SETTLED_SURVIVED' ? 1 : settled === 'SETTLED_REGRESSED' ? 0 : null;
     byGoal.set(l.goal_id, {
       arm: m.checker_family_arm as CheckerFamilyArm, verdict: String(m.verdict),
       cross: typeof m.maker_model_family === 'string' && typeof m.checker_model_family === 'string' && m.maker_model_family !== m.checker_model_family,
-      outcome, woChecker: outcome === null ? null : gates.length ? 0 : 1, survived: survived === true ? 1 : survived === false ? 0 : null, strength: s === 'pass' || s === 'fail' ? s : null,
+      outcome, woChecker: outcome === null ? null : gates.length ? 0 : 1, survived, strength: s === 'pass' || s === 'fail' ? s : null,
     });
   }
   const rows = [...byGoal.values()];
@@ -146,7 +150,7 @@ export function checkerFamilyEvidence(db: Database, since: string, env: NodeJS.P
       outcome: { circular: true as const, n: out.length, agree: agreeCount(out), agreement: out.length ? +(agreeCount(out) / out.length).toFixed(3) : null, kappa: kappaOf(out) },
       outcome_wo_checker: { n: wo.length, agree: agreeCount(wo), kappa: kappaOf(wo) },
       // merge survival (pr_outcome.survived): the label EXPERIMENT_PROTOCOL EXP-1 registers, independent of the checker
-      outcome_survival: { n: sv.length, agree: agreeCount(sv), kappa: kappaOf(sv) },
+      outcome_survival: { n: sv.length, agree: agreeCount(sv), kappa: kappaOf(sv), unlabelled: rs.length - sv.length },
       weak_assertion: { n: strong.length, weak: weak.length, caught, missed: weak.length - caught,
         false_alarms: strong.filter((r) => r.strength === 'pass' && r.verdict !== 'accepted').length,
         sensitivity: weak.length ? +(caught / weak.length).toFixed(3) : null },

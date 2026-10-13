@@ -45,7 +45,7 @@ it('an unattributed regression is unknown, not maker, and keeps the guardrail ou
   for (let i = 0; i < 10; i++) proposal(`v${i}`, 'verified');
   proposal('r1', 'regressed');
   const reg = operatorCockpit(db, NOW, ON).guardrails.find((g) => g.name === 'regressions')!;
-  expect(reg.split).toEqual({ maker: 0, reviewer: 0, environment: 0, unknown: 1 });
+  expect(reg.split).toEqual({ maker: 0, reviewer: 0, environment: 0, unknown: 1, post_verification: 0 });
   expect(reg.state).toBe('DEGRADED');
   expect(reg.ok).toBe(false);
 });
@@ -68,7 +68,8 @@ it('reflection inflow is NOT_APPLICABLE with reflection proposals capped at 0; t
 });
 
 it('requeue candidates are classed; only operator rows count as needs-you, every row stays listed', () => {
-  proposal('op', 'infra_failed');
+  proposal('op', 'regressed'); attribute('op', 'maker_failure');
+  proposal('infra', 'infra_failed'); // E2: an operational failure is system work, never an operator decision beside regressions
   proposal('rev', 'regressed'); attribute('rev', 'reviewer_failure');
   proposal('unk', 'regressed');
   proposal('refl', 'regressed', { source: 'reflection' }); attribute('refl', 'maker_failure');
@@ -76,11 +77,11 @@ it('requeue candidates are classed; only operator rows count as needs-you, every
   proposal('new', 'verified', { title: 'same target', created: 12 });
   const inbox = decisionsInbox(db, NOW, { REFLECTION_PROPOSALS_MAX_PER_DAY: '0' } as NodeJS.ProcessEnv);
   expect(Object.fromEntries(inbox.requeue.map((r) => [r.id, r.queue_class]))).toEqual({
-    op: 'operator', rev: 'budgeted_requeue', unk: 'attribution_unknown', refl: 'not_actionable', old: 'not_actionable' });
-  expect(inbox.totals.requeue_classes).toEqual({ operator: 1, budgeted_requeue: 1, attribution_unknown: 1, not_actionable: 2 });
+    op: 'operator', infra: 'infra_failed', rev: 'budgeted_requeue', unk: 'attribution_unknown', refl: 'not_actionable', old: 'not_actionable' });
+  expect(inbox.totals.requeue_classes).toEqual({ operator: 1, infra_failed: 1, budgeted_requeue: 1, attribution_unknown: 1, not_actionable: 2 });
   const n = operatorCockpit(db, NOW, { ...ON, REFLECTION_PROPOSALS_MAX_PER_DAY: '0' }).needs_you;
   expect(n.requeue).toBe(1);
-  expect(n.system_requeue).toEqual({ budgeted_requeue: 1, attribution_unknown: 1, not_actionable: 2 });
+  expect(n.system_requeue).toEqual({ budgeted_requeue: 1, infra_failed: 1, attribution_unknown: 1, not_actionable: 2 });
 });
 
 it('separates window spend per verified change from the verified changes\' own lease tokens', () => {
@@ -95,4 +96,15 @@ it('separates window spend per verified change from the verified changes\' own l
   expect(s.spend_per_verified_change_7d).toBe(4_000_000);
   expect(s.tokens_per_verified_change_7d).toBe(4_000_000);
   expect(s.direct_tokens_per_verified_change_7d).toBe(1_000_000);
+});
+
+it('panel unparseable counts quarantined attempts (#784) next to legacy coerced reviews; unreadable = UNKNOWN', () => {
+  const q = db.prepare(`INSERT INTO specialist_review_quarantine (id, panel_id, specialist_id, error, created_at) VALUES (?, 'p1', 's1', 'stance missing', ?)`);
+  q.run('q1', iso(2)); q.run('q2', iso(3)); q.run('q-old', iso(24 * 8));
+  db.prepare(`INSERT INTO specialist_reviews (id, panel_id, specialist_id, specialist_title, stance, confidence, findings_json, status, created_at)
+    VALUES ('r1', 'p1', 's2', 'S2', 'needs_evidence', 0, '["Review could not be parsed"]', 'submitted', ?)`).run(iso(5));
+  expect(operatorCockpit(db, NOW).guardrails.find((g) => g.name === 'panel unparseable (7 d)')!.value).toBe(3);
+  db.exec('DROP TABLE specialist_review_quarantine');
+  const g = operatorCockpit(db, NOW).guardrails.find((x) => x.name === 'panel unparseable (7 d)')!;
+  expect(g).toMatchObject({ value: null, state: 'UNKNOWN' });
 });

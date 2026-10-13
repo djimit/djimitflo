@@ -67,6 +67,7 @@ Back up before editing (`cp -p runtime.env runtime.env.bak-<date>`), then `docke
 | `PANEL_WEIGHTED_SHADOW_ENABLED` | C3: `panel_weighted` (track-record-weighted vote) and `panel_unweighted` shadow judgments per panel; changes no decision |
 | `LOOP_AUTO_APPROVE_TEST_GAP` | **operator decision** (J5): when the shadow rule says yes, a test-gap maker approval whose artifact is one new `__tests__/*.test.ts` is approved by `autonomy:test-gap-rule-v1`; the `auto_approved_scope` gate fails the run if the maker touched any other file. Checker and human merge stay |
 | `SEGML_ENABLED`, `DREAM_CYCLE_LEGACY_ENABLED` | restore the gated-off legacy loops (off since 2026-09-24) |
+| `LLM_COST_BASIS` | B29: `<provider-or-model substring>=<basis>,…` (flat_subscription / local / free_tier / metered) overrides how the model-call ledger prices a call; defaults: Ollama (`ollama.com`, `:cloud`) flat subscription, llama-router / localhost local, NVIDIA free tier, TypeSafe metered. marginal_cost is 0 only for the first three, null when unknown. Totals per purpose / experiment: `models.ledger_7d` in `/api/health/evolution-evidence` |
 | **Operator decisions** `NEEDS_GROUNDING_TRIAGE_ENABLED`, `DREAM_STATE_PROPOSALS_ENABLED`, any `…_MODE=enforce` | act on shadow judgments; switch on only after the funnel agreement numbers justify it |
 
 ## Evolution flags (Phase F, RX-2)
@@ -144,6 +145,10 @@ missing here. **Acting** = changes what the loop does; acting flags are switched
 | `TG_001_MODE` | off (`on`) | yes (TG-001, operator 11-10, protocol docs/research/ace/TG-001_PROTOCOL.md: gym → production transfer gap. The first remote gym claim from a worker announcing `prompt_override`, `write_test` and `prod_gates` (and GYM_PROD_GATES=true) freezes 20 failure-derived write_test tasks with four prompts each — A gym one-liner, B the failed run's production LOOP_WORK.md, C B without ids/advisory/policy template, D A + finding + suggested fix — into `tg_experiments`, and a seeded Latin-square queue into `tg_attempts`. TG attempts are served before other gym work inside EVOLUTION_GYM_REMOTE_MAX_PER_DAY and earn no gym skill outcome; frozen tasks are never served as ordinary work. `evolution-evidence` `tg_001`: per arm n / success / Wilson CI / failure categories / tokens (only when printed) / duration, paired A vs B (+ C, D vs B) with exact McNemar) | measure (changes which prompt the gym worker sends) | operator |
 | `CHECKER_CROSS_MODEL` | `ollama/kimi-k3:cloud` (rule: registered in prod's opencode provider config, another family than the maker, already a prod reviewer — `MODEL_CANDIDATES_PANEL_REVIEW`) | yes (the cross arm's checker model; must be a provider/model opencode knows) | measure | operator |
 | `CHECKER_FAMILY_TARGET_PER_ARM` | 93 (EXP-1 registration; integer ≥ 2, else 93) | no (evidence only: the per-arm n at which `checker_family` gives a final verdict) | measure | operator |
+
+## Negative evidence
+
+Rejected and falsified approaches are recorded in [`docs/research/negative-evidence/`](../research/negative-evidence/README.md); read it before reviving an idea, and add a new entry instead of editing an old one.
 
 ## Prod status (2026-09-25, E4) — STALE
 
@@ -232,6 +237,7 @@ The polling gateway in `packages/telegram` (`TELEGRAM_BOTS_CONFIG`) is kept as i
 | `TELEGRAM_TRIAGE_MAX_PER_PUSH` | 3 | triage messages per 15-minute tick; triage also stays under `TELEGRAM_PUSH_MAX_PER_HOUR`, counted apart from approvals |
 | `OPERATOR_DIGEST_ENABLED` | off | daily digest via the bot: counts + `/decisions` links for approvals, D5 labels, memory review, requeue candidates and open loop PRs |
 | `OPERATOR_DIGEST_HOUR` | 7 | UTC hour of the digest |
+| `SCHEDULER_SELF_HEAL_MODE` | shadow | P0.1 watchdog every 15 min: an armed scheduler with no tick past 2× its interval is diagnosed (`scheduler_recovery` judgment); `act` re-arms it once via its own start function (≤ 1 restart / 6 h), verifies a tick within one interval + 10 min, else quarantines it (status `quarantined`, stall `scheduler:<name>`, no further restarts); `shadow` diagnoses and escalates without restarting; `off` disables |
 
 Buttons only work for an allowlisted Telegram id mapped in `telegram_identities` (D3) to an active user whose role holds
 `approve:task`; the decision is made through the normal approval API as that user, so `SELF_APPROVAL_FORBIDDEN` applies.

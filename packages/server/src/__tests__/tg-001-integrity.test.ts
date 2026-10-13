@@ -4,7 +4,7 @@ import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import type { FailureTask } from '../services/gym-failure-tasks';
 import { writeTestHoldout } from '../services/genome-registry';
-import { classifyTgFailure, cochranQ, chi2Sf, freezeTg001, recordTg001, sanitizeTgMetrics, tg001Evidence, tgInterpret, tgManifest, TG_MDE } from '../services/tg-001';
+import { classifyTgFailure, cochranQ, chi2Sf, freezeTg001, recordTg001, sanitizeTgMetrics, tg001Evidence, tgInterpret, tgManifest, TG_ID, TG_MDE } from '../services/tg-001';
 
 // TG-001 integrity addendum (operator 11-10, pre-data): one observation per (task, arm), infra-censoring, a frozen analysis
 // manifest that the evidence refuses to analyse once edited or written late, Cochran's Q, prior exposure, UNKNOWN telemetry.
@@ -68,15 +68,15 @@ it('2: the analysis manifest is frozen with its fingerprint; an edited or late m
   expect(tg001Evidence(db)).toMatchObject({ status: 'collecting' });
   // editing the plan after freeze (e.g. a new primary comparison) → refused
   const edited = { ...manifest, analysis: { ...a, primary: 'C vs D' } };
-  db.prepare('UPDATE tg_experiments SET manifest_json = ? WHERE id = ?').run(JSON.stringify(edited), 'tg-001');
+  db.prepare('UPDATE tg_experiments SET manifest_json = ? WHERE id = ?').run(JSON.stringify(edited), TG_ID);
   expect(tg001Evidence(db)).toMatchObject({ status: 'invalid_manifest', reason: 'analysis manifest changed after freeze' });
   // restoring the plan but backdating outcomes before the freeze (a plan written after the data) → refused
-  db.prepare('UPDATE tg_experiments SET manifest_json = ? WHERE id = ?').run(JSON.stringify(manifest), 'tg-001');
+  db.prepare('UPDATE tg_experiments SET manifest_json = ? WHERE id = ?').run(JSON.stringify(manifest), TG_ID);
   settle(manifest.tasks[0].key, 'A', 'success', 'tests green, source only', '2026-10-11T11:00:00Z');
   expect(tg001Evidence(db)).toMatchObject({ status: 'invalid_manifest' });
-  expect((tg001Evidence(db) as { reason: string }).reason).toMatch(/after the first outcome/);
+  expect((tg001Evidence(db) as { reason: string }).reason).toMatch(/not written before the first physical attempt/);
   // a manifest without a plan (frozen before the addendum) is never analysed
-  db.prepare('UPDATE tg_experiments SET manifest_json = ?, analysis_sha256 = NULL WHERE id = ?').run(JSON.stringify({ ...manifest, analysis: undefined }), 'tg-001');
+  db.prepare('UPDATE tg_experiments SET manifest_json = ?, analysis_sha256 = NULL WHERE id = ?').run(JSON.stringify({ ...manifest, analysis: undefined }), TG_ID);
   expect(tg001Evidence(db)).toMatchObject({ status: 'invalid_manifest', reason: 'no frozen analysis manifest' });
 });
 

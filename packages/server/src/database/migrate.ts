@@ -78,6 +78,11 @@ const selfImprovementRefinementColumns: ColumnSpec[] = [
 
 const specialistReviewActorColumns: ColumnSpec[] = [
   { name: 'reviewer_actor', definition: 'TEXT' },
+  // B32: provenance of an automated review (model, prompt hash, raw answer hash, attempt that produced it)
+  { name: 'model', definition: 'TEXT' },
+  { name: 'prompt_sha256', definition: 'TEXT' },
+  { name: 'raw_sha256', definition: 'TEXT' },
+  { name: 'attempt', definition: 'INTEGER' },
 ];
 
 const goalImprovementColumns: ColumnSpec[] = [
@@ -902,6 +907,25 @@ function createAgenticLoopTables(db: BetterSqlite3Database) {
     CREATE INDEX IF NOT EXISTS idx_specialist_reviews_specialist_id ON specialist_reviews(specialist_id);
     CREATE INDEX IF NOT EXISTS idx_specialist_reviews_stance ON specialist_reviews(stance);
 
+    -- B32: a specialist answer that failed schema/semantic validation is quarantined here, never stored as a review.
+    -- closes_seat = 1: the seat's attempts are exhausted and the panel decides on its valid reviews only.
+    -- cleared = 1: superseded by a panel reset (#758 retry), no longer counted.
+    CREATE TABLE IF NOT EXISTS specialist_review_quarantine (
+      id TEXT PRIMARY KEY,
+      panel_id TEXT NOT NULL,
+      specialist_id TEXT NOT NULL,
+      model TEXT,
+      prompt_sha256 TEXT,
+      raw_sha256 TEXT,
+      raw_excerpt TEXT,
+      error TEXT NOT NULL,
+      attempt INTEGER NOT NULL DEFAULT 1,
+      closes_seat INTEGER NOT NULL DEFAULT 0,
+      cleared INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_specialist_review_quarantine_seat ON specialist_review_quarantine(panel_id, specialist_id);
+
     CREATE TABLE IF NOT EXISTS agent_trace_spans (
       id TEXT PRIMARY KEY,
       trace_id TEXT NOT NULL,
@@ -1366,6 +1390,7 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   `);
   // TG-001 integrity addendum: sha256 of the frozen analysis manifest, written in the freeze transaction
   addMissingColumns(db, 'tg_experiments', [{ name: 'analysis_sha256', definition: 'TEXT' }]);
+  addMissingColumns(db, 'tg_attempts', [{ name: 'first_claimed_at', definition: 'TEXT' }]); // B27: first physical attempt
   // Add missing columns BEFORE creating indexes that reference them — a stale
   // pre-existing self_improvements table (no fingerprint) otherwise breaks
   // CREATE INDEX idx_self_improve_fingerprint with "no such column".
@@ -1378,6 +1403,9 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   addMissingColumns(db, 'llm_model_calls', [{ name: 'provider', definition: 'TEXT' }, { name: 'tokens_in', definition: 'INTEGER' }, { name: 'tokens_out', definition: 'INTEGER' },
     { name: 'task_kind', definition: 'TEXT' }, { name: 'run_id', definition: 'TEXT' }, { name: 'status', definition: 'TEXT' },
     { name: 'attempts', definition: 'INTEGER' }]);
+  // B29: purpose, experiment arm and cost of every model call (marginal 0 only for a known flat subscription / local / free tier)
+  addMissingColumns(db, 'llm_model_calls', [{ name: 'purpose', definition: 'TEXT' }, { name: 'experiment_id', definition: 'TEXT' },
+    { name: 'cost_basis', definition: 'TEXT' }, { name: 'list_price_cost', definition: 'REAL' }, { name: 'marginal_cost', definition: 'REAL' }]);
   addMissingColumns(db, 'gym_mutant_holdout', [{ name: 'epoch', definition: 'INTEGER NOT NULL DEFAULT 0' }]);
   // B8: the failure clusters a dream mutant cites (evidence-or-no-op, DREAM_EVIDENCE_MUTATIONS)
   addMissingColumns(db, 'maker_genomes', [{ name: 'evidence_clusters', definition: 'TEXT' }]);
