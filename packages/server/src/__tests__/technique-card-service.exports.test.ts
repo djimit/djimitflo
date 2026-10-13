@@ -18,8 +18,8 @@ const dataciteBody = (doi: string, abstract: string) => ({
 const arxivXml = (id: string, summary: string) =>
   `<feed xmlns="http://www.w3.org/2005/Atom"><entry><id>http://arxiv.org/abs/${id}</id><title>Paper ${id}</title><summary>${summary}</summary><author><name>A Researcher</name></author></entry></feed>`;
 
-const isDatacite = (url: string) => url.includes('api.datacite.org');
-const isArxiv = (url: string) => url.includes('export.arxiv.org');
+const isDatacite = (url: string) => new URL(url).hostname === 'api.datacite.org';
+const isArxiv = (url: string) => new URL(url).hostname === 'export.arxiv.org';
 
 describe('scholarlyAbstractFetcher', () => {
   it('returns the DataCite abstract for a doi: ref', async () => {
