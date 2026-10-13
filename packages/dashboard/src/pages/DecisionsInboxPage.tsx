@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { WebSocketEventType } from '@djimitflo/shared';
+import { LOOP_PR_SETTLEMENT_STATES, WebSocketEventType, type LoopPrSettlementState } from '@djimitflo/shared';
 import { useWsSubscribe } from '../components/WebSocketProvider';
 import { Inbox, RefreshCw } from 'lucide-react';
 import { api, type DecisionsInbox, type DependencyLane, type DraftPrs } from '../lib/api';
@@ -7,6 +7,11 @@ import { usePendingApprovals } from '../hooks/usePendingApprovals';
 import { ApprovalQueuePage } from './ApprovalQueuePage';
 import { ACTION_PERMISSIONS as P, useCan } from '../lib/permissions';
 import { Button, DataTable, Section } from '../components/ui';
+
+/** E1: evolutionary settlement state (not the GitHub state, which has its own column) */
+const SETTLEMENT_LABEL: Record<LoopPrSettlementState, string> = {
+  OPEN_BLOCKED: 'open/blocked', MERGED_SURVIVAL_PENDING: 'merged, survival pending', SETTLED_SURVIVED: 'survived', SETTLED_REGRESSED: 'regressed', PIPELINE_ANOMALY: 'pipeline anomaly',
+};
 
 /** UX-7: the last step of the loop — its draft PRs, how old they are, and whether merge survival has settled them. */
 export function DraftPrsSection() {
@@ -18,12 +23,19 @@ export function DraftPrsSection() {
       {!data && !error && <p className="text-sm text-foreground-secondary">Loading…</p>}
       {data && (
         <>
-          {data.rows.length > 0 && <p className="text-sm text-foreground-secondary mb-2">{data.total} PRs (n), {data.unsettled} not settled yet — still open, or merged less than 14 days ago; merge survival settles them after 14 days.</p>}
+          {data.rows.length > 0 && (
+            <p className="text-sm text-foreground-secondary mb-2">
+              {data.total ?? 'unknown'} PRs (n), {data.unsettled ?? 'unknown'} not settled yet — open, merged and inside the 14-day survival window, or a pipeline anomaly.
+              {data.by_settlement && <> By settlement: {LOOP_PR_SETTLEMENT_STATES.map((s) => `${SETTLEMENT_LABEL[s]} ${data.by_settlement![s]}`).join(' · ')}{data.closed_unmerged ? ` (open/blocked includes ${data.closed_unmerged} closed unmerged)` : ''}.</>}
+            </p>
+          )}
           <DataTable caption="Loop draft PRs and their settlement" rows={data.rows} rowKey={(r) => r.run_id} empty="The loop has opened no draft PR yet." columns={[
             { key: 'pr', label: 'PR', render: (r) => <a className="underline" href={r.pr_url} target="_blank" rel="noreferrer">#{r.pr_number ?? '?'}</a> },
             { key: 'lane', label: 'Lane', render: (r) => r.lane },
             { key: 'age', label: 'Age (days)', render: (r) => r.age_days },
-            { key: 'settlement', label: 'Settlement', render: (r) => (r.outcome ? `${r.outcome}${r.survived === null ? '' : r.survived ? ' · survived' : ' · removed'}` : 'not settled') },
+            { key: 'github', label: 'GitHub state', render: (r) => r.outcome?.replace(/_/g, ' ') ?? 'not polled' },
+            { key: 'settlement', label: 'Settlement', render: (r) => <span title={r.settlement_reason}>{SETTLEMENT_LABEL[r.settlement]}{r.settlement_terminal ? ' (closed)' : ''}{r.settlement_age_days === null ? '' : ` · ${r.settlement_age_days} d`}</span>,
+              cellClassName: (r) => (r.settlement === 'PIPELINE_ANOMALY' || r.settlement === 'SETTLED_REGRESSED' ? 'text-status-error' : undefined) },
             // earned auto-merge: an audit sample is a test-only PR the loop could have merged but deliberately leaves to you
             { key: 'auto', label: 'Auto-merge', render: (r) => (r.auto_merge === 'audit_sample' ? <strong>audit sample — review it</strong> : r.auto_merge ? r.auto_merge.replace(/_/g, ' ') : '—') },
           ]} />
@@ -60,12 +72,29 @@ export function DependencyLaneSection() {
   );
 }
 
+const KIND_LABEL = { requeue: 'requeue', loop_pr: 'loop PR merge', label: 'pre-screen label', memory_review: 'memory review' } as const;
+/** Cockpit 3.0 Phase 3: the top 5 by expected value per operator minute — shadow only, it changes nothing that needs you. */
+export function RankingSection({ ranking }: { ranking: NonNullable<DecisionsInbox['ranking']> }) {
+  const top = ranking.slice(0, 5);
+  return (
+    <Section id="ranking" title="Highest expected value first (shadow)" headingClassName="text-lg font-semibold mb-1">
+      <p className="text-sm text-foreground-secondary mb-2">Shadow ranking — does not change what needs you. Score = measured expected gain × reversibility ÷ operator minutes; no score = insufficient evidence.</p>
+      {top.length ? <ol className="list-decimal pl-5 space-y-1 text-sm">{top.map((r) => (
+        <li key={`${r.kind}:${r.id}`}>
+          <span className="font-medium">{KIND_LABEL[r.kind]}</span> · {r.title} · score {r.score === null ? 'insufficient evidence' : r.score}
+          <div className="text-xs text-foreground-tertiary">{r.evidence.join(' · ')}</div>
+        </li>
+      ))}</ol> : <p className="text-sm text-foreground-secondary">Nothing to rank.</p>}
+    </Section>
+  );
+}
+
 export function DecisionsInboxPage() {
   const [data, setData] = useState<DecisionsInbox | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const canMemory = useCan(P.memoryReview); const canRequeue = useCan(P.requeueProposal); const canDismiss = useCan(P.dismissRequeue); const canLabel = useCan(P.labelPrescreen); const canTelegram = useCan(P.telegramIdentity);
+  const canMemory = useCan(P.memoryReview); const canRequeue = useCan(P.requeueProposal); const canDismiss = useCan(P.dismissRequeue); const canLabel = useCan(P.labelPrescreen); const canAudit = useCan(P.auditAttribution); const canTelegram = useCan(P.telegramIdentity);
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [tgId, setTgId] = useState('');
   const [tgUser, setTgUser] = useState('');
@@ -117,6 +146,7 @@ export function DecisionsInboxPage() {
 
       {data && (
         <>
+          {data.ranking && <RankingSection ranking={data.ranking} />}
           <Section id="autonomy" title="Earned autonomy (U1, read-only)" headingClassName="text-lg font-semibold mb-1">
             <p className="text-xs text-foreground-tertiary mb-2">Per action class over 30 days. A class earns autonomy after ≥ 20 human approvals, none denied or expired, and at most one regression. Nothing is auto-approved from this table yet.</p>
             <DataTable caption="Approvals and outcomes per action class (30 d)" rows={data.autonomy} rowKey={(c) => c.cls} empty="No approvals in the last 30 days." columns={[
@@ -186,6 +216,24 @@ export function DecisionsInboxPage() {
                 <Button needs={canRequeue ? undefined : P.requeueProposal} disabled={busy !== null} aria-label={`Requeue ${i.id.slice(0, 8)}`}
                   onClick={() => void act(`q-${i.id}`, () => api.requeueProposal(i.id, 'pre-screen rejection overridden by the operator'), `Requeued ${i.id.slice(0, 8)}`)}>Requeue</Button>
               ) },
+            ]} />
+          </Section>
+
+          <Section id="attribution-audit" title="Attribution audit (CAR)" headingClassName="text-lg font-semibold mb-1">
+            <p className="text-xs text-foreground-tertiary mb-2">
+              Is the computed class right? Judge each sampled run from its evidence: <strong>correct</strong>, <strong>wrong</strong> or <strong>unclear</strong>.
+              Sample of the week of {data.attribution_audit.week_start.slice(0, 10)} (seed {data.attribution_audit.seed}, {data.attribution_audit.items.length} of {data.attribution_audit.frame_n} computed attributions, stratified by class);
+              fixed for the week. {data.attribution_audit.audited.total} audited so far ({data.attribution_audit.audited.correct} correct, {data.attribution_audit.audited.wrong} wrong, {data.attribution_audit.audited.unclear} unclear). Your labels are the ground truth for CAR; the system never labels.
+            </p>
+            <DataTable caption="Sampled attributions to judge" rows={data.attribution_audit.items} rowKey={(i) => i.run_id} rowClassName={() => 'align-top'} empty="No computed attribution to audit this week." columns={[
+              { key: 'run', label: 'Run', render: (i) => <>{i.lane ?? '—'}<div className="text-xs text-foreground-muted">{i.run_id.slice(0, 8)}</div></> },
+              { key: 'class', label: 'Computed class', render: (i) => i.computed, cellClassName: () => 'font-mono text-xs' },
+              { key: 'evidence', label: 'Evidence', render: (i) => <>{i.reason ?? '—'}{i.failed_gates.length > 0 && <div className="text-xs text-foreground-muted">gates: {i.failed_gates.join(', ')}</div>}</>, cellClassName: () => 'text-foreground-secondary' },
+              { key: 'verdict', label: 'Verdict', cellClassName: () => 'whitespace-nowrap space-x-1', render: (i) => (['correct', 'wrong', 'unclear'] as const).map((verdict) => (
+                <Button key={verdict} needs={canAudit ? undefined : P.auditAttribution} aria-pressed={i.verdict === verdict} disabled={busy !== null} aria-label={`${verdict} ${i.run_id.slice(0, 8)}`}
+                  className={i.verdict === verdict ? 'bg-background-tertiary font-semibold' : ''}
+                  onClick={() => void act(`a-${i.run_id}-${verdict}`, () => api.adjudicateAttribution(i.run_id, verdict), `Judged ${i.run_id.slice(0, 8)} '${verdict}'`)}>{verdict}</Button>
+              )) },
             ]} />
           </Section>
 

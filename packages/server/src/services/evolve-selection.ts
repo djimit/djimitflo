@@ -1,9 +1,8 @@
-import fs from 'node:fs';
 import type { Database } from 'better-sqlite3';
 import { rankEvolveCandidates, evolveWinner, type EvolveCandidate } from './evolve-fitness-service';
 import { LoopEventService } from './loop-event-service';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
-import { gradedContestMode, leaseGraded, leaseGradedRefs } from './graded-fitness';
+import { gradedContestMode, leaseGraded, leaseGradedRefs, mutationScoreOf } from './graded-fitness';
 
 /**
  * E13 steps 2–3 (docs/design/evolve-loop.md): several makers on one objective, the fittest (computed in code) wins.
@@ -34,12 +33,7 @@ export function evolveEligible(db: Database, goalId: string): boolean {
   return /"(test-gap|mutation-gap):/.test(row.evidence_refs_json || ''); // M2: the mutation lane has a continuous fitness
 }
 
-/** M2: the `after` score from the mutation-gain check's JSON line (scripts/mutation-gain.mjs), or null when not measured. */
-export function mutationScoreOf(checks: Array<{ name?: string; stdout_path?: string }>): number | null {
-  const path = checks.find((c) => c.name === 'test:mutation:grounded')?.stdout_path;
-  // D0: `|| null` turned a measured score of 0 into "not measured"
-  try { const n = path ? Number(/"after":(\d+(?:\.\d+)?)/.exec(fs.readFileSync(path, 'utf8'))?.[1] ?? NaN) : NaN; return Number.isFinite(n) ? n : null; } catch { return null; }
-}
+export { mutationScoreOf }; // M2 helper, lives in graded-fitness (SI-A grades the mutation lane with it)
 
 interface LeaseRow { id: string; runtime: string; status: string; metadata: string; updated_at: string }
 
@@ -106,6 +100,7 @@ export function selectEvolveWinner(db: Database, runId: string, makerLeaseIds: s
   const reasonOf = (r: typeof ranked[number]) => winner === current ? r.reason : r.makerLeaseId === winner.makerLeaseId ? 'winner: graded score'
     : r.makerLeaseId === current.makerLeaseId ? `lost: graded ${graded.get(r.makerLeaseId) ?? 'n/a'} vs ${graded.get(winner.makerLeaseId)}` : r.reason;
   const now = new Date().toISOString();
+  const leftovers: string[] = [];
   db.transaction(() => {
     for (const r of ranked) {
       const meta = r.makerLeaseId === winner.makerLeaseId
@@ -117,6 +112,17 @@ export function selectEvolveWinner(db: Database, runId: string, makerLeaseIds: s
         db.prepare(`UPDATE worker_leases SET status = 'cancelled', updated_at = ? WHERE loop_run_id = ? AND role IN ('checker', 'security_checker')
           AND status = 'prepared' AND json_extract(metadata, '$.maker_lease_id') = ?`).run(now, runId, r.makerLeaseId);
       }
+    }
+    // prod 2026-10-09 (run 161f7840): a retry maker whose execution never got going stayed 'prepared' and non-superseded
+    // next to the winner, so maker_completion (every non-superseded maker completed) failed although the winner passed.
+    // Every other maker of the run that has not started is superseded by the winner and cancelled, with its reviewers.
+    leftovers.push(...(db.prepare(`SELECT id FROM worker_leases WHERE loop_run_id = ? AND role = 'maker' AND status = 'prepared' AND id != ?`)
+      .all(runId, winner.makerLeaseId) as Array<{ id: string }>).map((l) => l.id));
+    for (const id of leftovers) {
+      db.prepare(`UPDATE worker_leases SET status = 'cancelled', metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.superseded_by_maker_lease_id', ?,
+        '$.superseded_at', ?, '$.cancellation_reason', 'superseded_by_evolve_winner'), updated_at = ? WHERE id = ?`).run(winner.makerLeaseId, now, now, id);
+      db.prepare(`UPDATE worker_leases SET status = 'cancelled', updated_at = ? WHERE loop_run_id = ? AND role IN ('checker', 'security_checker')
+        AND status = 'prepared' AND json_extract(metadata, '$.maker_lease_id') = ?`).run(now, runId, id);
     }
   })();
   // N7 lineage: a species that lost the head-to-head is an outcome too (success 0), or the bandit would only ever see
@@ -138,6 +144,6 @@ export function selectEvolveWinner(db: Database, runId: string, makerLeaseIds: s
       });
     }
   } catch { /* lineage bookkeeping must never change the selection */ }
-  events.recordEvent(runId, 'evolve_selected', 'info', `Evolve: ${winner.species} won out of ${ranked.length} makers.`, { winner: winner.makerLeaseId, fitness: table });
+  events.recordEvent(runId, 'evolve_selected', 'info', `Evolve: ${winner.species} won out of ${ranked.length} makers.`, { winner: winner.makerLeaseId, fitness: table, ...(leftovers.length ? { superseded_prepared_makers: leftovers } : {}) });
   return winner.makerLeaseId;
 }

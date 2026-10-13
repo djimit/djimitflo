@@ -20,13 +20,14 @@ let db: Database.Database;
 let app: express.Express;
 let admin: string;
 let checker: string;
+let authService: AuthService;
 let temp: string;
 beforeEach(() => {
   temp = mkdtempSync(join(tmpdir(), 'djimitflo-agent-boundary-')); vi.stubEnv('OKF_BASE', temp);
   db = new Database(':memory:'); db.pragma('foreign_keys=ON'); db.exec(schema); runMigrations(db);
   db.prepare('INSERT INTO users(id,email,password_hash,role) VALUES(?,?,?,?)').run('admin', 'admin@test', 'unused', 'admin');
   db.prepare('INSERT INTO users(id,email,password_hash,role) VALUES(?,?,?,?)').run('checker', 'checker@test', 'unused', 'checker');
-  const service = new AuthService(db); const auth = createAuthMiddleware(service);
+  const service = new AuthService(db); authService = service; const auth = createAuthMiddleware(service);
   admin = service.generateToken(service.findUserById('admin')!); checker = service.generateToken(service.findUserById('checker')!);
   app = express(); app.use(express.json()); app.use('/agents', createAgentRoutes(db, auth));
   app.use('/retirement', auth.requireAuth, createRetirementRoutes(db, auth)); app.use(errorHandler);
@@ -67,13 +68,30 @@ it.each(['paused', 'pending_approval', 'offline'])('heartbeat cannot promote %s 
   db.prepare('UPDATE agents SET status=? WHERE id=?').run(status, 'a'); task('dispatch', 'a', 'pending');
   const engine = new ExecutionEngine(db);
   await expect(engine.executeTask('dispatch', 'mock')).rejects.toMatchObject({ code: 'AGENT_UNAVAILABLE' });
-  const response = await request(app).post('/agents/a/heartbeat').auth(checker, { type: 'bearer' })
+  const response = await request(app).post('/agents/a/heartbeat').auth(admin, { type: 'bearer' })
     .send({ status: 'active', active_tasks: 0, metadata: { system_prompt: 'replaced', sample: 1 } });
   expect(response.status).toBe(200);
   const row = db.prepare('SELECT status,metadata,last_heartbeat_at FROM agents WHERE id=?').get('a') as any;
   expect(row.status).toBe(status); expect(row.last_heartbeat_at).toBeTruthy();
   expect(JSON.parse(row.metadata).system_prompt).toBe('protected');
   await expect(engine.executeTask('dispatch', 'mock')).rejects.toMatchObject({ code: 'AGENT_UNAVAILABLE' });
+});
+
+it('a write:evidence principal cannot heartbeat another agent; only the agent itself or an admin can, and the sender is recorded', async () => {
+  const denied = await request(app).post('/agents/a/heartbeat').auth(checker, { type: 'bearer' }).send({ status: 'active', active_tasks: 0 });
+  expect(denied.status).toBe(403);
+  expect(denied.body.error.code).toBe('HEARTBEAT_NOT_SELF');
+  expect(db.prepare('SELECT last_heartbeat_at FROM agents WHERE id = ?').get('a')).toEqual({ last_heartbeat_at: null });
+
+  // a principal whose identity IS the agent (sub = agent id) may report its own liveness
+  db.prepare('INSERT INTO users(id,email,password_hash,role) VALUES(?,?,?,?)').run('b', 'b@agents.test', 'unused', 'checker');
+  const self = authService.generateToken(authService.findUserById('b')!);
+  expect((await request(app).post('/agents/b/heartbeat').auth(self, { type: 'bearer' }).send({ active_tasks: 1 })).status).toBe(200);
+  expect(JSON.parse((db.prepare('SELECT metadata FROM agents WHERE id = ?').get('b') as any).metadata).heartbeat).toMatchObject({ reported_by: 'b', reported_as: 'self' });
+  expect((await request(app).post('/agents/a/heartbeat').auth(self, { type: 'bearer' }).send({})).status).toBe(403);
+
+  expect((await request(app).post('/agents/a/heartbeat').auth(admin, { type: 'bearer' }).send({ active_tasks: 0 })).status).toBe(200);
+  expect(JSON.parse((db.prepare('SELECT metadata FROM agents WHERE id = ?').get('a') as any).metadata).heartbeat).toMatchObject({ reported_by: 'admin', reported_as: 'operator' });
 });
 
 it('same-ID registration preserves statistics, task ownership, child messages and controlled status', async () => {
@@ -141,7 +159,7 @@ it('retirement audit failure rolls back tombstone, lease changes and archive', a
 
 it('retired tombstones cannot be revived by heartbeat, registration or direct status update', async () => {
   db.prepare("UPDATE agents SET status='offline',retired_at='2026-09-09T00:00:00Z',retirement_reason='Fixture' WHERE id='a'").run();
-  await request(app).post('/agents/a/heartbeat').auth(checker, { type: 'bearer' }).send({ status: 'active' });
+  await request(app).post('/agents/a/heartbeat').auth(admin, { type: 'bearer' }).send({ status: 'active' });
   await request(app).post('/agents').auth(admin, { type: 'bearer' }).send({ id: 'a', name: 'a', description: 'Fixture', status: 'idle' });
   const result = await request(app).patch('/agents/a/status').auth(admin, { type: 'bearer' }).send({ status: 'idle' });
   expect(result.status).toBe(409);

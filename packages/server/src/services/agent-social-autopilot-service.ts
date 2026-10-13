@@ -160,7 +160,7 @@ export class AgentSocialAutopilotService {
   /** UX-18: every resident model call is a ledger row (consumer resident:<agent>); content and prompts are never stored. */
   private residentCall<T extends { content: string; usage?: Record<string, unknown> }>(agentId: string, taskKind: string, spec: { runtime: string; model: string }, call: () => Promise<T>): Promise<T> {
     const n = (u: Record<string, unknown> | undefined, ...keys: string[]): number | null => { for (const k of keys) { const v = u?.[k]; if (typeof v === 'number') return v; } return null; };
-    return measured({ consumer: `resident:${agentId}`, model: spec.model, provider: spec.runtime, taskKind }, call,
+    return measured({ consumer: `resident:${agentId}`, model: spec.model, provider: spec.runtime, taskKind, purpose: `resident:${agentId}:${taskKind}` }, call,
       (r) => ({ outChars: r.content.length, tokensIn: n(r.usage, 'prompt_eval_count', 'prompt_tokens', 'input_tokens', 'promptTokenCount'), tokensOut: n(r.usage, 'eval_count', 'completion_tokens', 'output_tokens', 'candidatesTokenCount') }), this.db);
   }
 
@@ -255,7 +255,7 @@ export class AgentSocialAutopilotService {
       });
       for (const agent of agents) {
         const spec = this.runtimeFor(agent.id);
-        try { this.comms.heartbeat(agent.id, spec.runtime, spec.model); result.heartbeats += 1; } catch { result.failures += 1; }
+        try { this.comms.heartbeat(agent.id, spec.runtime, spec.model, 'in_process_resident'); result.heartbeats += 1; } catch { result.failures += 1; }
       }
       // AR-W5: an open committee question comes before chat — at most 2 residents per tick answer one (bounded cloud cost)
       let forecastsThisTick = 0;

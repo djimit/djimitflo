@@ -75,7 +75,7 @@ const LOCAL_KW = 0.3;
 
 /** One maker species as an option: fitness-view posterior (production + capped gym prior + merge), mean lease tokens. */
 function speciesOption(db: Database, lane: string, s: Species, now: number): EffortOption {
-  const p = fitnessPosterior(db, lane, [s], now)[0].mean;
+  const p = fitnessPosterior(db, lane, [s], now)[0].mean_clean; // E2: infra / no-change zeros are not a species' failure
   const one = <T>(sql: string, ...args: unknown[]): T | undefined => { try { return db.prepare(sql).get(...args) as T | undefined; } catch { return undefined; } };
   const tokens = cloudSpecies(s) ? Number(one<{ t: number | null }>(`SELECT AVG(json_extract(metadata, '$.runtime_usage.total_tokens')) AS t FROM worker_leases
     WHERE role = 'maker' AND runtime = ? AND COALESCE(json_extract(metadata, '$.model'), '') = ? AND json_extract(metadata, '$.runtime_usage.total_tokens') IS NOT NULL`, s.runtime, s.model ?? '')?.t) || 0 : 0;

@@ -9,7 +9,7 @@ import type { AuthMiddleware } from '../middleware/auth';
 import { MetricsService } from '../services/metrics-service';
 import { KnowledgeRuntimeService } from '../services/knowledge-runtime-service';
 import { getAppVersion } from '../utils/version';
-import { detectStalls } from '../services/stall-watch';
+import { detectStallsWithHealth } from '../services/stall-watch';
 import { serviceMap } from '../services/service-map';
 import { operatorCockpit } from '../services/operator-cockpit';
 import { listSchedulers } from '../services/scheduler-registry';
@@ -18,11 +18,13 @@ import { forecastScores, forecastScoresV2 } from '../services/forecast-scoring';
 import { runtimeHealth } from '../services/runtime-health';
 import { agentScorecards, runtimeScorecards } from '../services/scorecards';
 import { buildEvolutionEvidence } from '../services/evolution-evidence';
+import { provenanceDag } from '../services/provenance-dag';
 import { attributionSummary } from '../services/outcome-attribution';
 import { runtimeConfigView } from '../services/runtime-config-view';
 import { buildDigest } from '../services/operator-push';
 import { getDatabaseProvenance } from '../database/provenance';
 import { efficiencyView } from '../services/resource-ledger';
+import { shippedCodeView } from '../services/shipped-code-scan';
 
 export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -131,9 +133,9 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   });
 
   // GET /api/metrics — Prometheus-format metrics
-  // plan M10: silent stalls per subsystem (read-only)
+  // plan M10: silent stalls per subsystem (read-only); Cockpit 3.0: + per-detector status and overall health (UNKNOWN ≠ HEALTHY)
   router.get('/stalls', requireAuth, requirePermission('read:evidence'), (_req, res) => {
-    res.json({ stalls: detectStalls(db) });
+    res.json(detectStallsWithHealth(db));
   });
 
   // plan S1: operator cockpit — scorecard, guardrails, stalls, gym species, remote workers, model/judgment usage (read-only)
@@ -152,6 +154,7 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
     res.json(buildDigest(db));
   });
 
+  // Cockpit 3.0: each scheduler's status from its last tick (executing / armed_not_ticking / unknown …), not only armed vs off
   router.get('/schedulers', requireAuth, requirePermission('manage:config'), (_req, res) => {
     res.json(listSchedulers());
   });
@@ -181,9 +184,20 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
     res.json(efficiencyView(db));
   });
 
+  // supply chain (shadow): latest deterministic shipped-code scan per runtime package and its release-to-release diff (read-only)
+  router.get('/shipped-code', requireAuth, requirePermission('read:evidence'), (_req, res) => {
+    res.json(shippedCodeView(db));
+  });
+
   // RX-1 (Phase F): evolution evidence — flags, outcomes per source, loop PRs, genomes/holdouts, gym per tier, Realm Gates (read-only)
   router.get('/evolution-evidence', requireAuth, requirePermission('manage:config'), (req, res) => {
     res.json(buildEvolutionEvidence(db, process.env, Date.now(), Number(req.query.days) || 30));
+  });
+
+  // E3: provenance DAG with edge evidence (read-only); ?days= limits to proposals of the window (default: all history)
+  router.get('/provenance-dag', requireAuth, requirePermission('read:evidence'), (req, res) => {
+    const days = Number(req.query.days);
+    res.json(provenanceDag(db, Date.now(), { windowDays: Number.isFinite(days) && days > 0 ? Math.min(days, 3650) : null, edgeLimit: 2000 }));
   });
 
   // RX-7 (Phase F, shadow): forecast scoring V2 — trailing out-of-sample base rate, bootstrap CIs, decision_grade, and what V1 vs V2 would stop

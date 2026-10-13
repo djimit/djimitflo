@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { BASELINE_GENOME, genome } from '../services/genome-registry';
-import { dreamInputs, dreamOnce, evaluateTrials, guardLines, mcnemarOneSided } from '../services/dream-evolution';
+import { dreamInputs, dreamOnce, evaluateTrials, failureClusters, guardLines, mcnemarOneSided } from '../services/dream-evolution';
 
 let db: Database.Database;
 beforeEach(() => { db = new Database(':memory:'); db.pragma('foreign_keys = OFF'); db.exec(schema); runMigrations(db); vi.stubEnv('DREAM_EVOLUTION_ENABLED', 'true'); });
@@ -22,6 +22,14 @@ it('D3: trial runs and holdout tasks never reach the mutation step (prod 03-10: 
   gymRun('m', 'mut:m1', undefined, 'failure', 'mutant holdout red');  // a mutant holdout task
   gymRun('ok', 'c2', undefined, 'failure', 'normal replay red');
   expect(dreamInputs(db, NOW).failures).toEqual(['gym: packages/server/src/services/x.ts — normal replay red']);
+});
+
+it('WT-HOLDOUT: a write_test holdout task never reaches the mutation step either (flat list and evidence clusters)', () => {
+  db.prepare("INSERT INTO gym_write_test_holdout (key, task_json, created_at, epoch) VALUES ('fail:w1', '{}', ?, 0)").run('2026-10-01T00:00:00Z');
+  gymRun('w', 'fail:w1', undefined, 'failure', 'write_test holdout red');
+  gymRun('ok', 'c2', undefined, 'failure', 'normal replay red');
+  expect(dreamInputs(db, NOW).failures).toEqual(['gym: packages/server/src/services/x.ts — normal replay red']);
+  expect(failureClusters(db, NOW).flatMap((c) => c.excerpts.map((e) => e.reason))).toEqual(['normal replay red']);
 });
 
 it('Y3b: the guard keeps strategy lines and drops anything that steers gates, checks, scope, secrets, deploy or the tests', () => {
@@ -91,4 +99,21 @@ it('GENOME_FIRE_CHECK: VOID attempts (genome lines never reached the maker) are 
   // only h1 is paired (0 vs 0 discordant): no promotion on 15 attempts that never tested the genome
   expect(evaluateTrials(db, 'atomic@llama-router', holdout, NOW)).toEqual([{ id: trial, status: 'retired', wins: 1, parentWins: 1 }]);
   expect((db.prepare('SELECT note FROM maker_genomes WHERE id = ?').get(trial) as { note: string }).note).toContain('discordant 0 vs 0, McNemar p=1.000; out of scope 0 vs 0; void 15 (fire check)');
+});
+
+it('KE-3: the knowledge units whose titles a dream injected are recorded on each mutant genome (knowledge_refs_json)', async () => {
+  gymRun('f1', 'c1', undefined, 'failure', 'tests still red');
+  db.prepare(`INSERT INTO expert_identities (id, canonical_name, kind, aliases_json, provenance_json, lifecycle_state, identity_confidence) VALUES ('u1', 'Mutation-guided repair', 'paper', '["arxiv:2610.1"]', '{}', 'EVIDENCE_COLLECTED', 1)`).run();
+  db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, created_at) VALUES ('j1', 'discovery_relevance', 'expert_unit', 'u1', 'h', 'shadow', 'yes', ?)`).run('2026-09-30T00:00:00Z');
+  expect(dreamInputs(db, NOW)).toMatchObject({ knowledge: ['Mutation-guided repair'], knowledgeRefs: ['u1'] });
+  const call = vi.fn(async () => '{"mutants":[{"gene":"strategy_lines","lines":["Run the named test first."],"rationale":"red"}]}');
+  const [id] = (await dreamOnce(db, NOW, call)).created;
+  expect(call.mock.calls[0][0]).toContain('- Mutation-guided repair');
+  expect(JSON.parse((db.prepare('SELECT knowledge_refs_json r FROM maker_genomes WHERE id = ?').get(id) as { r: string }).r)).toEqual(['u1']);
+});
+
+it('KE-3: a dream without injected knowledge leaves knowledge_refs_json null', async () => {
+  gymRun('f1', 'c1', undefined, 'failure', 'tests still red');
+  const [id] = (await dreamOnce(db, NOW, async () => '{"mutants":[{"gene":"strategy_lines","lines":["Run the named test first."]}]}')).created;
+  expect(db.prepare('SELECT knowledge_refs_json r FROM maker_genomes WHERE id = ?').get(id)).toEqual({ r: null });
 });

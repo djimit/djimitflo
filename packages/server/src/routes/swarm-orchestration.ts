@@ -10,7 +10,8 @@ import type { AuthMiddleware } from '../middleware/auth';
 import { SwarmOrchestrationService } from '../services/swarm-orchestration-service';
 import { AgentCommunicationService } from '../services/agent-communication-service';
 import { createError } from '../middleware/error-handler';
-import { mintSpawnToken, resolveSpawnTokenSecret, validateSpawnToken } from '../services/spawn-token';
+import { mintSpawnToken, resolveSpawnTokenSecret, spawnTokenRejection } from '../services/spawn-token';
+import { hourBucket, recordPolicyViolation } from '../services/policy-violations';
 import { RuntimeGovernanceService } from '../services/runtime-governance-service';
 import { AgentLureService } from '../services/agent-lure-service';
 import { AgentCommonsOpenDoorService } from '../services/agent-commons-open-door-service';
@@ -351,8 +352,12 @@ export function createAgentSocialRuntimeRoutes(db: Database, runtimeGovernance =
   function authorized(req: any, res: any): boolean {
     const agentId = String(req.params.agentId || '');
     const token = req.get('X-Agent-Social-Token') || '';
-    if (!agentId || !validateSpawnToken(resolveSpawnTokenSecret(), token, agentId, 'social-runtime')) {
-      lure.recordProbe(agentId, req.ip, token ? 'token_invalid' : 'token_missing');
+    const rejection = !token ? 'missing' : !agentId ? 'wrong_subject' : spawnTokenRejection(resolveSpawnTokenSecret(), token, agentId, 'social-runtime');
+    if (rejection) {
+      lure.recordProbe(agentId, req.ip, token ? `token_invalid:${rejection}` : 'token_missing');
+      // §16 step 8 (shadow, POLICY_VIOLATION_LOG): one row per agent × reason × hour, never per request
+      recordPolicyViolation(db, { kind: 'token_rejected', actor: `agent:${agentId.slice(0, 100)}`, severity: 'medium', dedupe_key: `social-runtime:${agentId.slice(0, 100)}:${rejection}:${hourBucket()}`,
+        evidence_ref: 'token:social-runtime', description: `social-runtime token rejected: ${rejection}` });
       res.status(401).json({ error: { code: 'SOCIAL_TOKEN_INVALID', message: 'Social runtime token is invalid, expired, or scoped to another agent' } });
       return false;
     }
@@ -375,12 +380,17 @@ export function createAgentSocialRuntimeRoutes(db: Database, runtimeGovernance =
 
   router.post('/:agentId/heartbeat', (req, res) => {
     if (!authorized(req, res)) return;
-    try { res.json(comms.heartbeat(req.params.agentId, req.body?.runtime, req.body?.model_id)); } catch (error) { fail(res, error); }
+    try {
+      const beat = comms.heartbeat(req.params.agentId, req.body?.runtime, req.body?.model_id, 'runtime_token');
+      lure.recordHeartbeat(req.params.agentId, beat.timestamp); // a bite only if an invite was delivered first (causal)
+      res.json(beat);
+    } catch (error) { fail(res, error); }
   });
 
   router.get('/:agentId/messages', (req, res) => {
     if (!authorized(req, res)) return;
-    try { res.json({ messages: comms.receiveSocial(req.params.agentId, Number(req.query.limit) || 4) }); } catch (error) { fail(res, error); }
+    // Invites are informational and come on top of the social work limit, so a poller with limit=1 still gets its question.
+    try { res.json({ messages: [...lure.deliverInvites(req.params.agentId), ...comms.receiveSocial(req.params.agentId, Number(req.query.limit) || 4)] }); } catch (error) { fail(res, error); }
   });
 
   router.post('/:agentId/messages/:messageId/respond', (req, res) => {

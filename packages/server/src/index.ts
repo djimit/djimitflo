@@ -5,7 +5,7 @@
 
 import { setLlmLedger } from './services/model-selector';
 import express from 'express';
-import { installOutboundGuard } from './utils/outbound-guard';
+import { installOutboundGuard, outboundViolation } from './utils/outbound-guard';
 import cors from 'cors';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
@@ -52,11 +52,14 @@ import { initAutonomousServices } from './bootstrap/autonomous-services';
 import { DennisAgentService } from './services/dennis-agent-service';
 import { TelegramApiService } from './services/telegram-api-service';
 import { parseTelegramAllowedUsers, parseTelegramUserMap } from './routes/telegram';
-import { noteScheduler } from './services/scheduler-registry';
+import { noteScheduler, registerRestart } from './services/scheduler-registry';
 import { laneIntervalMs, startDependencyLane } from './services/dependency-lane';
+import { SHIPPED_CODE_SCAN_INTERVAL_MS, startShippedCodeScan } from './services/shipped-code-scan';
 
 // Operator rule (2026-09-29): this server never calls the hosts in OUTBOUND_DENY_HOSTS (the workstation only pulls).
-installOutboundGuard();
+// §16 step 8: refusals are also counted in policy_violations (POLICY_VIOLATION_LOG=shadow) once the database is open.
+let outboundViolationDb: ReturnType<typeof initializeDatabase> | null = null;
+installOutboundGuard(process.env, undefined, (host) => { if (outboundViolationDb) outboundViolation(outboundViolationDb, host); });
 
 type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string; allowedUsers?: number[]; userMap?: Record<string, string> };
 
@@ -89,6 +92,7 @@ async function main() {
   // Initialize database
   console.log('📦 Initializing database...');
   const db = initializeDatabase();
+  outboundViolationDb = db;
   // UX-18: one model-call ledger for every server-side LLM call (call sites without a db handle record here)
   setLlmLedger(db);
 
@@ -273,44 +277,65 @@ async function main() {
   }
 
   // Compliance report scheduler — periodic reporting, in-process (default-off, see service header)
-  if (noteScheduler('compliance_report', 'COMPLIANCE_REPORT_SCHEDULER_ENABLED', new ComplianceReportScheduler(db).start())) {
+  const complianceReportSched = new ComplianceReportScheduler(db);
+  registerRestart('compliance_report', () => { complianceReportSched.stop(); complianceReportSched.start(); }); // P0.1 bounded self-heal re-arm
+  if (noteScheduler('compliance_report', 'COMPLIANCE_REPORT_SCHEDULER_ENABLED', complianceReportSched.start(), complianceReportSched.intervalHours() * 3_600_000)) {
     console.log('📋 Compliance report scheduler armed');
   }
 
   // Self-healing scheduler — periodic detect-and-fix (stale leases, etc.), in-process (default-off, see service header)
-  if (noteScheduler('self_healing', 'SELF_HEALING_SCHEDULER_ENABLED', new SelfHealingScheduler(db).start())) {
+  const selfHealingSched = new SelfHealingScheduler(db);
+  registerRestart('self_healing', () => { selfHealingSched.stop(); selfHealingSched.start(); }); // P0.1 bounded self-heal re-arm
+  if (noteScheduler('self_healing', 'SELF_HEALING_SCHEDULER_ENABLED', selfHealingSched.start(), selfHealingSched.intervalMinutes() * 60_000)) {
     console.log('🩺 Self-healing scheduler armed');
   }
 
   // Self-improvement auto-review scheduler — LLM-generated specialist reviews
   // + autonomous goal-authorization, in-process (default-off, see service header)
-  if (noteScheduler('self_improvement_auto_review', 'SELF_IMPROVEMENT_AUTO_REVIEW_ENABLED', new SelfImprovementAutoReviewScheduler(db).start())) {
+  const selfImprovementAutoReviewSched = new SelfImprovementAutoReviewScheduler(db);
+  registerRestart('self_improvement_auto_review', () => { selfImprovementAutoReviewSched.stop(); selfImprovementAutoReviewSched.start(); }); // P0.1 bounded self-heal re-arm
+  if (noteScheduler('self_improvement_auto_review', 'SELF_IMPROVEMENT_AUTO_REVIEW_ENABLED', selfImprovementAutoReviewSched.start(), selfImprovementAutoReviewSched.intervalMinutes() * 60_000)) {
     console.log('🧭 Self-improvement auto-review scheduler armed');
   }
 
   // Frontier expert scheduler — automates discovery/enrichment/peer-review only;
   // stops below the registry's hard approval/activation governance wall,
   // in-process (default-off, gated on DJIMITFLO_FRONTIER_EXPERTS_ENABLED too, see service header)
-  if (noteScheduler('frontier_experts', 'FRONTIER_EXPERTS_SCHEDULER_ENABLED', new FrontierExpertScheduler(db).start())) {
+  const frontierExpertsSched = new FrontierExpertScheduler(db);
+  registerRestart('frontier_experts', () => { frontierExpertsSched.stop(); frontierExpertsSched.start(); }); // P0.1 bounded self-heal re-arm
+  if (noteScheduler('frontier_experts', 'FRONTIER_EXPERTS_SCHEDULER_ENABLED', frontierExpertsSched.start(), frontierExpertsSched.intervalMinutes() * 60_000)) {
     console.log('🔭 Frontier expert scheduler armed');
   }
 
   // Specialist panel backlog scheduler — projects consensus_ready general
   // panels into real work items, in-process (default-off, see service header)
-  if (noteScheduler('specialist_panel_backlog', 'SPECIALIST_PANEL_BACKLOG_ENABLED', new SpecialistPanelBacklogScheduler(db).start())) {
+  const specialistPanelBacklogSched = new SpecialistPanelBacklogScheduler(db);
+  registerRestart('specialist_panel_backlog', () => { specialistPanelBacklogSched.stop(); specialistPanelBacklogSched.start(); }); // P0.1 bounded self-heal re-arm
+  if (noteScheduler('specialist_panel_backlog', 'SPECIALIST_PANEL_BACKLOG_ENABLED', specialistPanelBacklogSched.start(), specialistPanelBacklogSched.intervalMinutes() * 60_000)) {
     console.log('🗂️  Specialist panel backlog scheduler armed');
   }
 
   // Memory candidate review scheduler — real specialist-panel analysis for
   // auto-promotion + a self-improvement evolution loop on the criteria,
   // in-process (default-off, see service header)
-  if (noteScheduler('memory_candidate_review', 'MEMORY_CANDIDATE_REVIEW_ENABLED', new MemoryCandidateReviewScheduler(db).start())) {
+  const memoryCandidateReviewSched = new MemoryCandidateReviewScheduler(db);
+  registerRestart('memory_candidate_review', () => { memoryCandidateReviewSched.stop(); memoryCandidateReviewSched.start(); }); // P0.1 bounded self-heal re-arm
+  if (noteScheduler('memory_candidate_review', 'MEMORY_CANDIDATE_REVIEW_ENABLED', memoryCandidateReviewSched.start(), memoryCandidateReviewSched.intervalMinutes() * 60_000)) {
     console.log('🧬 Memory candidate review scheduler armed');
   }
 
   // Dependency lane — verified Dependabot patch/minor merges, one per tick (DEPENDENCY_LANE_MODE=shadow|act, default off)
-  if (noteScheduler('dependency_lane', 'DEPENDENCY_LANE_MODE', !!startDependencyLane(db), laneIntervalMs())) {
+  let stopDependencyLane = startDependencyLane(db);
+  registerRestart('dependency_lane', () => { stopDependencyLane?.(); stopDependencyLane = startDependencyLane(db); });
+  if (noteScheduler('dependency_lane', 'DEPENDENCY_LANE_MODE', !!stopDependencyLane, laneIntervalMs())) {
     console.log(`📦 Dependency lane armed (${process.env.DEPENDENCY_LANE_MODE})`);
+  }
+
+  // Shipped-code scan — daily parse-only scan of the installed runtime packages, evidence candidates only (SHIPPED_CODE_SCAN_MODE=shadow, default off)
+  let stopShippedScan = startShippedCodeScan(db);
+  registerRestart('shipped_code_scan', () => { stopShippedScan?.(); stopShippedScan = startShippedCodeScan(db); });
+  if (noteScheduler('shipped_code_scan', 'SHIPPED_CODE_SCAN_MODE', !!stopShippedScan, SHIPPED_CODE_SCAN_INTERVAL_MS)) {
+    console.log('🔎 Shipped-code scan armed (shadow)');
   }
 
   // API routes
