@@ -5,7 +5,7 @@ import { runMigrations } from '../database/migrate';
 import { BASELINE_GENOME, nextTrialAttempt } from '../services/genome-registry';
 import { evaluateTrials, settleNoHeadroom } from '../services/dream-evolution';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
-import { buildEvolutionEvidence } from '../services/evolution-evidence';
+import { buildEvolutionEvidence, GATE_A_BAND } from '../services/evolution-evidence';
 
 /**
  * EVOLUTION ENGINE 4.0 P0 (13-10): parent fitness / headroom / promotion may only rest on ELIGIBLE observations — claimed with
@@ -27,12 +27,12 @@ afterEach(() => { vi.unstubAllEnvs(); db.close(); });
 let seq = 0;
 const PASS = { lint: 'pass', 'type-check': 'pass' };
 /** one scored attempt; gated = claimed with GYM_PROD_GATES (a gated success carries the per-check map, as the gym writes it) */
-const run = (commit: string, genomeId: string, ok: boolean, o: { gated?: boolean; gates?: Record<string, string>; at?: string } = {}) => {
+const run = (commit: string, genomeId: string, ok: boolean, o: { gated?: boolean; gates?: Record<string, string>; at?: string; gym?: Record<string, unknown>; result?: Record<string, unknown> } = {}) => {
   const at = o.at ?? '2026-10-13T11:00:00Z'; const gated = o.gated ?? true;
   db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
     VALUES (?, 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`).run(`r${seq++}`, JSON.stringify({
-    gym: { commit, species: SPECIES, genome: genomeId, ...(gated ? { prod_gates: 1 } : {}) },
-    gym_result: { status: ok ? 'success' : 'failure', reason: ok ? 'tests green, source only' : 'tests still red', ...(gated && ok ? { prod_gates: o.gates ?? PASS } : {}) } }), at, at);
+    gym: { commit, species: SPECIES, genome: genomeId, ...(gated ? { prod_gates: 1 } : {}), ...o.gym },
+    gym_result: { status: ok ? 'success' : 'failure', reason: ok ? 'tests green, source only' : 'tests still red', ...(gated && ok ? { prod_gates: o.gates ?? PASS } : {}), ...o.result } }), at, at);
 };
 const trial = (id: string) => db.prepare("INSERT INTO maker_genomes (id, parent_id, gene, lines_json, origin, status, created_at, updated_at) VALUES (?, ?, 'strategy_lines', '[\"x\"]', 'dream', 'trial', ?, ?)")
   .run(id, BASELINE_GENOME, '2026-10-13T09:00:00Z', '2026-10-13T09:00:00Z');
@@ -67,7 +67,7 @@ describe('headroom (settleNoHeadroom) uses only eligible gated parent evidence',
     expect(r).toMatchObject({ state: 'no_headroom', deciding_n: 20, f_parent_failures: 3 });
     expect(r.gate_policy).toMatch(/^prod_gates\/v1:[0-9a-f]{12}$/);
     const ev = JSON.parse(r.evidence_json!);
-    expect(ev).toMatchObject({ gate_policy: r.gate_policy, holdout: 'gym_holdout', epoch: 0, parent: { eligible: 20, ungated: 20 }, families: { repair: 20 } });
+    expect(ev).toMatchObject({ gate_policy: r.gate_policy, holdout: 'gym_holdout', epoch: 0, parent: { eligible: 20, unknown: 0, classes: { ELIGIBLE_PASS: 17, ELIGIBLE_FAIL: 3, INELIGIBLE: 20 } }, families: { repair: 20 } });
   });
 });
 
@@ -83,7 +83,7 @@ describe('promotion (evaluateTrials) uses only eligible gated evidence, for ever
     const r = trialRow('g-x')!;
     expect(r.state).toBe('hold_ineligible');
     expect(r.deciding_n).toBeNull(); // a hold never feeds Gate A
-    expect(JSON.parse(r.evidence_json!)).toMatchObject({ parent: { eligible: 0, ungated: 20 } });
+    expect(JSON.parse(r.evidence_json!)).toMatchObject({ parent: { eligible: 0, unknown: 20, classes: { INELIGIBLE: 20 } }, mutant: { eligible: 20, unknown: 0, classes: { ELIGIBLE_PASS: 20 } } });
   });
 
   it.each(['mcnemar', 'both', 'graded'])('rule %s: a trial with enough gated parent results still proceeds and promotes', (rule) => {
@@ -179,5 +179,94 @@ describe('Gate A and the trial scheduler', () => {
     expect(nextTrialAttempt(db, SPECIES, commits)).toEqual({ genomeId: BASELINE_GENOME, commit: 'h1' });
     run('h1', BASELINE_GENOME, true);
     expect(nextTrialAttempt(db, SPECIES, commits)).toEqual({ genomeId: BASELINE_GENOME, commit: 'h2' });
+  });
+});
+
+describe('verification matrix (operator conditional GO, 13-10)', () => {
+  const insertRaw = (id: string, commit: string, genomeId: string, at: string, gym: Record<string, unknown>, result: Record<string, unknown>, status = 'completed') =>
+    db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
+      VALUES (?, 'evolution-gym', 'closed', ?, '[]', '{}', '[]', '[]', ?, ?, ?)`).run(id, status, JSON.stringify({ gym: { commit, species: SPECIES, genome: genomeId, ...gym }, gym_result: result }), at, at);
+
+  it('#2 same-attempt binding: a verdict is never joined across attempts (a newer success without its own gate map does not borrow an older map)', () => {
+    trial('g-bind');
+    commits.forEach((c, i) => {
+      if (i < 10) {
+        insertRaw(`old${i}`, c, BASELINE_GENOME, '2026-10-13T10:00:00Z', { prod_gates: 1 }, { status: 'failure', reason: 'tests still red', prod_gates: { lint: 'pass' } });
+        insertRaw(`new${i}`, c, BASELINE_GENOME, '2026-10-13T11:00:00Z', { prod_gates: 1 }, { status: 'success', reason: 'tests green, source only' }); // no map: INELIGIBLE
+      } else run(c, BASELINE_GENOME, true);
+      run(c, 'g-bind', true);
+    });
+    expect(evaluateTrials(db, SPECIES, commits, NOW)).toEqual([{ id: 'g-bind', status: 'active', wins: 20, parentWins: 10 }]);
+  });
+
+  it('#4 compatibility: species, task family and difficulty must match on a pair — else HOLD, no imputation', () => {
+    trial('g-kind');
+    commits.forEach((c, i) => { run(c, BASELINE_GENOME, i >= 10, i === 0 ? { gym: { kind: 'write_test' } } : i === 1 ? { gym: { tier: 3 } } : {}); run(c, 'g-kind', true); });
+    expect(evaluateTrials(db, SPECIES, commits, NOW)[0].status).toBe('inconclusive');
+    expect(genomeRow('g-kind').note).toMatch(/^inconclusive: incompatible evidence contract on 2 task\(s\)/);
+    db.prepare('DELETE FROM loop_runs').run();
+    trial('g-spec'); // the parent's results under another species are not this trial's evidence
+    commits.forEach((c, i) => insertRaw(`sp${i}`, c, BASELINE_GENOME, '2026-10-13T11:00:00Z', { prod_gates: 1, species: 'other@model' }, { status: 'failure', reason: 'tests still red' }));
+    commits.forEach((c) => run(c, 'g-spec', true));
+    expect(evaluateTrials(db, SPECIES, commits, NOW)).toEqual([]); // the parent never ran under this species: nothing decided
+  });
+
+  it('#5 deterministic newest-eligible selection: equal timestamps break on id (created_at, then id), never on insertion order', () => {
+    trial('g-tie');
+    const at = '2026-10-13T11:00:00Z';
+    commits.forEach((c, i) => {
+      if (i < 10) { // inserted b-then-a: insertion order would make the success newest; (created_at, id) makes 'b' (the failure) newest
+        insertRaw(`tie-b-${i}`, c, BASELINE_GENOME, at, { prod_gates: 1 }, { status: 'failure', reason: 'tests still red' });
+        insertRaw(`tie-a-${i}`, c, BASELINE_GENOME, at, { prod_gates: 1 }, { status: 'success', reason: 'tests green, source only', prod_gates: PASS });
+      } else run(c, BASELINE_GENOME, true);
+      run(c, 'g-tie', true);
+    });
+    expect(evaluateTrials(db, SPECIES, commits, NOW)).toEqual([{ id: 'g-tie', status: 'active', wins: 20, parentWins: 10 }]);
+  });
+
+  it('#9 concurrency + idempotence: a claimed (running) retry is never served twice; repeated ticks add nothing', () => {
+    vi.stubEnv('TRIAL_HEADROOM_PRECHECK', 'true'); vi.stubEnv('GYM_PROD_GATES', 'true');
+    trial('g-cc'); commits.forEach((c) => run(c, BASELINE_GENOME, true, { gated: false }));
+    insertRaw('claimed-h0', 'h0', BASELINE_GENOME, '2026-10-13T11:50:00Z', { prod_gates: 1 }, {}, 'running'); // a concurrent claim holds the h0 retry
+    const count = (t: string) => (db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n;
+    const before = count('loop_runs');
+    expect(nextTrialAttempt(db, SPECIES, commits)).toEqual({ genomeId: BASELINE_GENOME, commit: 'h1' });
+    expect(nextTrialAttempt(db, SPECIES, commits)).toEqual({ genomeId: BASELINE_GENOME, commit: 'h1' });
+    expect(settleNoHeadroom(db, SPECIES, commits, [], NOW)).toEqual([]); expect(settleNoHeadroom(db, SPECIES, commits, [], NOW)).toEqual([]);
+    expect(count('loop_runs')).toBe(before);
+    db.prepare("DELETE FROM loop_runs WHERE id = 'claimed-h0'").run();
+    commits.forEach((c, i) => run(c, BASELINE_GENOME, i >= 10)); commits.forEach((c) => run(c, 'g-cc', true));
+    expect(evaluateTrials(db, SPECIES, commits, NOW)).toHaveLength(1);
+    const results = count('genome_trial_results');
+    expect(evaluateTrials(db, SPECIES, commits, NOW)).toEqual([]); // settled once: a repeated tick decides nothing again
+    expect(count('genome_trial_results')).toBe(results);
+  });
+
+  it('#10 infrastructure failures without a valid gate observation are INFRA_CENSORED, never counted as model failures', () => {
+    vi.stubEnv('TRIAL_HEADROOM_PRECHECK', 'true');
+    trial('g-inf');
+    commits.forEach((c) => run(c, BASELINE_GENOME, true));
+    commits.slice(0, 3).forEach((c) => run(c, BASELINE_GENOME, true, { at: '2026-10-13T11:30:00Z', result: { status: 'failure', reason: 'infra: npm ci failed' } }));
+    insertRaw('disc-h6', 'h6', BASELINE_GENOME, '2026-10-13T11:40:00Z', { prod_gates: 1 }, { status: 'discarded', reason: 'worker lost the result' });
+    commits.slice(3, 6).forEach((c) => run(c, BASELINE_GENOME, false, { at: '2026-10-13T11:45:00Z' })); // real gated failures on h3..h5
+    // counting the censored attempts as failures would give f = 7 ≥ 5 (headroom); only h3..h5 are model failures
+    expect(settleNoHeadroom(db, SPECIES, commits, [], NOW)).toEqual([{ id: 'g-inf', f: 3, n: 20, needed: 5 }]);
+    expect(JSON.parse(trialRow('g-inf')!.evidence_json!).parent).toEqual({ eligible: 20, unknown: 0,
+      classes: { ELIGIBLE_PASS: 20, ELIGIBLE_FAIL: 3, INFRA_CENSORED: 4 } });
+  });
+
+  it('#10 a discarded attempt is censored in the paired test too: never a parent failure (no imputation, the pair waits)', () => {
+    trial('g-disc');
+    commits.forEach((c, i) => { if (i < 5) insertRaw(`d${i}`, c, BASELINE_GENOME, '2026-10-13T11:00:00Z', { prod_gates: 1 }, { status: 'discarded', reason: 'worker lost the result' }); else run(c, BASELINE_GENOME, true); run(c, 'g-disc', true); });
+    expect(evaluateTrials(db, SPECIES, commits, NOW)).toEqual([]); // 5 censored parent tasks would be 5 'wins' (p = 0.031) if counted as failures
+    expect(genomeRow('g-disc').status).toBe('trial');
+  });
+
+  it('#12 Gate A band is unchanged: [0.30, 0.55] inclusive', () => {
+    expect(GATE_A_BAND).toEqual([0.30, 0.55]);
+    const ins = db.prepare(`INSERT INTO genome_trial_results (trial_id, parent_id, tier_set, deciding_n, f_parent_failures, b, c, p, mined_b, mined_c, power_q8_l05, state, recorded_at, epoch, gate_policy)
+      VALUES (?, 'baseline', 'mined', 20, ?, 0, 0, 1, 0, 0, 0, 'powered', ?, 0, 'prod_gates/v1:000000000000')`);
+    const gateA = (f: number, k: number) => { ins.run(`band-${k}`, f, `2026-10-13T11:0${k}:00Z`); return buildEvolutionEvidence(db, {}, NOW).gates.A.state; };
+    expect([gateA(14, 0), gateA(15, 1), gateA(9, 2), gateA(8, 3)]).toEqual(['green', 'red', 'green', 'red']); // 0.30, 0.25, 0.55, 0.60
   });
 });
