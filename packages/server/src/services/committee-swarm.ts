@@ -3,6 +3,7 @@ import type { Database } from 'better-sqlite3';
 import { kbContext } from './kb-corpus';
 import { forecastScores } from './forecast-scoring';
 import { knowledgeOverview } from './knowledge-overview';
+import { markRun } from './scheduler-registry';
 
 /**
  * AR-W (operator 04-10): committee swarms on the workstation. For every new proposal a committee of member genomes
@@ -121,7 +122,8 @@ export function recordCommittee(db: Database, jobId: string, host: string, answe
     VALUES (?, ?, 'self_improvement', ?, ?, 'shadow', ?, ?, ?, ?, ?)`);
   let n = 0;
   for (const a of answers as Array<{ member?: unknown; p?: unknown; rationale?: unknown; model?: unknown }>) {
-    const p = Number(a?.p);
+    // E2: a failed member answer (no numeric p, or an error) is no forecast — Number(null|''|false) would have scored it as 0
+    const p = typeof a?.p === 'number' && !(a as { error?: unknown }).error ? a.p : NaN;
     if (typeof a?.member !== 'string' || !members.has(a.member) || !Number.isFinite(p) || p < 0 || p > 1) continue;
     const rationale = typeof a.rationale === 'string' ? a.rationale.slice(0, 500) : '';
     ins.run(randomUUID(), `forecast:committee:${a.member}`, job.subject_id, jobId, p >= 0.5 ? 'yes' : 'no', rationale,
@@ -202,7 +204,7 @@ export function evolveCommittee(db: Database, now = new Date(), env: NodeJS.Proc
 /** Hourly check; evolution itself runs at most once a day. */
 export function startCommitteeEvolution(db: Database, intervalMs = 3_600_000): (() => void) | null {
   if (!committeeEnabled()) return null;
-  const tick = () => { try { const r = evolveCommittee(db); if (r.born || r.retired.length) console.log(`🧠 committee: born ${r.born ?? '-'}, retired ${r.retired.join(',') || '-'}`); } catch (e) { console.warn('committee evolution failed:', e instanceof Error ? e.message : String(e)); } };
+  const tick = () => { markRun('committee_evolution'); try { const r = evolveCommittee(db); if (r.born || r.retired.length) console.log(`🧠 committee: born ${r.born ?? '-'}, retired ${r.retired.join(',') || '-'}`); } catch (e) { console.warn('committee evolution failed:', e instanceof Error ? e.message : String(e)); } };
   const t = setInterval(tick, intervalMs); t.unref?.();
   return () => clearInterval(t);
 }

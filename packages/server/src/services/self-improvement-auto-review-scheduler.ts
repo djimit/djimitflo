@@ -47,6 +47,7 @@ import { AutonomousGoalGenerator } from './autonomous-goal-generator';
 import { namedPathsExist, proposalPrescreen } from './judgments/proposal-prescreen';
 import { recordForecasts } from './forecasters';
 import { enqueueCommittee } from './committee-swarm';
+import { guardTick, markRun } from './scheduler-registry';
 
 const MINUTE_MS = 60 * 1000;
 const REFINEMENT_MAX_PER_TICK_CEILING = 10;
@@ -97,9 +98,9 @@ export class SelfImprovementAutoReviewScheduler {
     const writerModel = process.env.SELF_IMPROVEMENT_REFINEMENT_MODEL || reviewModel;
     if (reviewModel && reviewModel === writerModel) console.warn(`⚠️  self-improvement review and refinement use the same model (${reviewModel}); use a different model family for independent review`);
     const intervalMs = this.intervalMinutes() * MINUTE_MS;
-    this.timer = setInterval(() => void this.tick(), intervalMs);
+    this.timer = setInterval(guardTick('self_improvement_auto_review', () => this.tick()), intervalMs);
     this.timer.unref();
-    void this.tick(); // catch-up on boot
+    guardTick('self_improvement_auto_review', () => this.tick())(); // catch-up on boot
     return true;
   }
 
@@ -133,6 +134,7 @@ export class SelfImprovementAutoReviewScheduler {
    * in bootstrap/autonomous-services.ts.
    */
   async tick(): Promise<AutoReviewTickResult> {
+    markRun('self_improvement_auto_review'); // Cockpit 3.0: execution evidence for the scheduler registry
     if (this.running) return { reviewed: [], approved: [], parked: [], refined: [], refinementAttempted: 0, failed: [] };
     this.running = true;
     try {
