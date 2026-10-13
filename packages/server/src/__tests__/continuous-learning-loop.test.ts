@@ -70,8 +70,8 @@ describe('G127: Continuous Learning Loop', () => {
   it('opens one bounded social round for connected runtimes', async () => {
     db.prepare("INSERT INTO agents (id, name, status, capabilities_json) VALUES ('agent-a', 'Agent A', 'active', '[\"analysis\"]'), ('agent-b', 'Agent B', 'active', '[\"research\"]')").run();
     const communication = new AgentCommunicationService(db);
-    communication.heartbeat('agent-a', 'runtime-a', 'model-a');
-    communication.heartbeat('agent-b', 'runtime-b', 'model-b');
+    communication.heartbeat('agent-a', 'runtime-a', 'model-a', 'runtime_token');
+    communication.heartbeat('agent-b', 'runtime-b', 'model-b', 'runtime_token');
     process.env.DJIMITFLO_COMMIT_SHA = 'a'.repeat(40);
     try {
       const result = await loop.runCycle();

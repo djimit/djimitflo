@@ -112,3 +112,23 @@ it('SI-A prod (shadow): no test file in the diff, a failed maker or another lane
   expect(calls).toEqual([]);
   expect(meta('m-1').graded).toBeUndefined();
 });
+
+it('SI-A prod (shadow): a mutation-gap maker is graded from its own test:mutation:grounded result (after / 100), no extra runtime', () => {
+  const log = path.join(wt, 'mutation.stdout.log');
+  fs.writeFileSync(log, 'stryker noise\n{"mutation_gain":{"file":"x","test":"y","before":14.5,"after":98.2,"gain":83.7,"min_gain":10,"pass":true}}\n');
+  seed(['mutation-gap:widget'], [TEST]);
+  db.prepare('UPDATE worker_leases SET metadata = ? WHERE id = ?').run(JSON.stringify({ changed_files: [TEST], deterministic_checks: [{ name: 'lint', status: 'pass' }, { name: 'test:mutation:grounded', status: 'pass', stdout_path: log }] }), 'm-1');
+  const calls: string[] = [];
+  recordMakerGraded(db, 'run-1', 'm-1', { env: { GRADED_FITNESS_MODE: 'shadow' }, run: runner([], calls) });
+  expect(calls).toEqual([]);
+  expect(meta('m-1').graded).toMatchObject({ score: 0.982, kind: 'mutation_score', lane: 'mutation' });
+  expect(leaseGradedRefs(meta('m-1'))).toEqual(['graded:0.982', 'graded_kind:mutation_score', 'graded_lane:mutation']);
+  expect(parseGraded(leaseGradedRefs(meta('m-1')))).toEqual({ score: 0.982, kind: 'mutation_score' });
+  // a measured 0 is a score; off records nothing
+  db.prepare("UPDATE worker_leases SET metadata = json_remove(metadata, '$.graded') WHERE id = 'm-1'").run();
+  fs.writeFileSync(log, '{"mutation_gain":{"before":0,"after":0,"gain":0,"pass":false}}\n');
+  recordMakerGraded(db, 'run-1', 'm-1', { env: {} });
+  expect(meta('m-1').graded).toBeUndefined();
+  recordMakerGraded(db, 'run-1', 'm-1', { env: { GRADED_FITNESS_MODE: 'shadow' } });
+  expect(leaseGradedRefs(meta('m-1'))).toEqual(['graded:0.000', 'graded_kind:mutation_score', 'graded_lane:mutation']);
+});

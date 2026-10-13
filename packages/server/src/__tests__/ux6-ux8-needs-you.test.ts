@@ -50,7 +50,7 @@ it('UX-6: needs_you counts every blocking category from seeded rows (foreign key
   expect(c.needs_you).toMatchObject({ approvals: 3, proposals: 2, draft_prs: 1, approvals_expiring: 1, join_requests: 1, shell_requests: 1 });
   expect(Object.keys(c.needs_you)).toEqual(expect.arrayContaining(['approvals', 'requeue', 'labels', 'memory_review']));
   expect(c.needs_you.stalls).toBe(c.stalls.length);
-  expect(c.schedulers).toEqual({ armed: 1, off: 1 });
+  expect(c.schedulers).toMatchObject({ armed: 1, off: 1 });
 });
 
 it('UX-8: GET /api/health/schedulers needs manage:config', async () => {

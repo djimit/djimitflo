@@ -12,7 +12,7 @@
  * 5. TTL expiration — stale messages auto-expire
  */
 
-import { commonsChildren } from './honest-numbers';
+import { commonsChildren, commonsGroundingStops, type GroundingStop } from './honest-numbers';
 import { NOT_PROOF_FIXTURE_SQL } from './proof-fixture';
 import { buildEvidencePack, evidencePackEnabled } from './commons-evidence-pack';
 import { randomUUID } from 'crypto';
@@ -60,6 +60,8 @@ export interface SocializationResult {
   messages: AgentMessage[];
   reason: string | null;
 }
+
+export type SocialHeartbeatProvenance = 'runtime_token' | 'in_process_resident';
 
 export interface SocialRuntimeReply {
   answer: string;
@@ -147,6 +149,8 @@ export interface CommonsStats {
   /** RX-8: the like-for-like denominator — attempted refinement children of valid groundings, not parked parents. */
   children_attempted?: number; children_verified?: number; parents_archived_after_refinement?: number;
   children_by_period?: { before_2026_09_29: { attempted: number; verified: number }; from_2026_09_29: { attempted: number; verified: number } };
+  /** ECO item 4: per validly grounded proposal, the furthest stage its refinement reached (null = could not be read) */
+  grounding_stops?: Record<GroundingStop, number> | null;
 }
 
 export interface SocialCommons {
@@ -441,7 +445,7 @@ export class AgentCommunicationService {
     } catch { /* no judgments table yet */ }
     return { threads_7d: t.threads, open_7d: t.open ?? 0, learnings_7d: t.learnings, lessons_7d: t.lessons ?? 0, proposals: p.n, proposals_grounded: grounded, proposals_verified: p.verified ?? 0, proposals_archived: p.archived ?? 0,
       proposals_by_status: byStatus, residents, autopilot_idle: residents.length > 0 && residents.every((r) => r.last < dayAgo),
-      guild: guild.map((g) => ({ ...g, valid: g.valid ?? 0, verified: g.verified ?? 0 })), ...commonsChildren(this.db) };
+      guild: guild.map((g) => ({ ...g, valid: g.valid ?? 0, verified: g.verified ?? 0 })), ...commonsChildren(this.db), grounding_stops: commonsGroundingStops(this.db) };
     } catch { return null; } // minimal schemas (no self_improvements) still get the overview
   }
 
@@ -523,14 +527,18 @@ export class AgentCommunicationService {
     return { topic: seeds[index], topicRef: index === 0 ? 'ecosystem:cross-agent-learning' : `ecosystem:curiosity-seed-${index}`, evidence: [index === 0 ? 'ecosystem:cross-agent-learning' : `ecosystem:curiosity-seed-${index}`] };
   }
 
-  /** Record a signed runtime poller as eligible for future social rounds. */
-  heartbeat(agentId: string, runtime: string, modelId?: string): { agent_id: string; status: 'active'; timestamp: string } {
+  /**
+   * Record a social runtime as eligible for future social rounds. `provenance` says how it got here: 'runtime_token' = an
+   * external poller that presented a valid HMAC social-runtime token; 'in_process_resident' = a Commons resident driven by
+   * the in-process autopilot (no token). Neither is a signature over the heartbeat.
+   */
+  heartbeat(agentId: string, runtime: string, modelId: string | undefined, provenance: SocialHeartbeatProvenance): { agent_id: string; status: 'active'; timestamp: string } {
     const row = this.db.prepare('SELECT id, status, metadata FROM agents WHERE id = ?').get(agentId) as { id: string; status: string; metadata: string | null } | undefined;
     if (!row) throw new Error('SOCIAL_AGENT_NOT_FOUND');
     if (!new Set(['active', 'idle']).has(row.status)) throw new Error(`SOCIAL_AGENT_NOT_ELIGIBLE: agent ${agentId} has status '${row.status}'`);
     const timestamp = new Date().toISOString();
     const metadata = this.object(row.metadata);
-    metadata.social_runtime = { enabled: true, runtime: this.cleanRequired(runtime, 'SOCIAL_RUNTIME_REQUIRED', 100), model_id: this.cleanRequired(modelId, 'SOCIAL_MODEL_REQUIRED', 100), last_heartbeat_at: timestamp, provenance_status: 'signed_runtime_poller' };
+    metadata.social_runtime = { enabled: true, runtime: this.cleanRequired(runtime, 'SOCIAL_RUNTIME_REQUIRED', 100), model_id: this.cleanRequired(modelId, 'SOCIAL_MODEL_REQUIRED', 100), last_heartbeat_at: timestamp, provenance_status: provenance };
     this.db.prepare(`UPDATE agents SET status = 'active', metadata = ?, last_active_at = ?, updated_at = ? WHERE id = ? AND status IN ('active', 'idle')`).run(JSON.stringify(metadata), timestamp, timestamp, agentId);
     return { agent_id: agentId, status: 'active', timestamp };
   }
@@ -555,6 +563,21 @@ export class AgentCommunicationService {
       }
       return claimed;
     })(Math.max(1, Math.min(Number(limit) || 4, 10)));
+  }
+
+  /**
+   * Claim this agent's pending `social.invite` messages. An invite is informational (nothing to reply to), so it goes
+   * straight to 'read' on claim instead of taking a delivery lease; it is therefore delivered at most once.
+   */
+  claimInvites(agentId: string): AgentMessage[] {
+    this.cleanup();
+    return this.db.transaction(() => {
+      const rows = this.db.prepare(`SELECT * FROM agent_messages WHERE to_agent = ? AND status = 'pending'
+        AND json_extract(payload_json, '$.action') = 'social.invite' AND json_type(payload_json, '$.thread_id') = 'text'
+        ORDER BY timestamp ASC LIMIT 10`).all(agentId) as Array<Record<string, unknown>>;
+      const read = this.db.prepare(`UPDATE agent_messages SET status = 'read' WHERE id = ? AND to_agent = ? AND status = 'pending'`);
+      return rows.filter((row) => read.run(row.id, agentId).changes === 1).map((row) => this.runtimeSafeMessage({ ...this.messageFromRow(row), status: 'read' }));
+    })();
   }
 
   /** Persist an isolated runtime reply or candidate learning; never promote it. */

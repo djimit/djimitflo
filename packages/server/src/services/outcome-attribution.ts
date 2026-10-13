@@ -1,4 +1,5 @@
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
+import { loopPrSettlements, survivalCounts, type SettlementState } from './merge-survival';
 import type { Database } from 'better-sqlite3';
 
 /**
@@ -6,7 +7,8 @@ import type { Database } from 'better-sqlite3';
  * Every learner read verified/regressed, but 30 of 45 regressions (30 d) were a missing reviewer verdict after a COMPLETED
  * maker — asymmetric label noise ρ ≈ 0.32–0.42 on the maker's reward. A settled run is now attributed to one class:
  *   maker_failure       — the maker's own work failed (checks, diff limit, scope) or a reviewer that ran said no
- *   reviewer_failure    — the maker completed but no reviewer verdict came back (timeout, token budget, unparsed, insufficient_evidence)
+ *   reviewer_failure    — the maker completed but no reviewer verdict came back (timeout, token budget, unparsed, insufficient_evidence);
+ *                         the cause is stored additively as answers_json.sub_reason (reviewerSubReason), counted in attributionSummary
  *   environment_failure — the maker never ran / crashed without a change / a check's tool was missing / worktree gone / no change
  *   verified            — every gate passed (`survived` comes later from merge survival)
  * OUTCOME_ATTRIBUTION_ENABLED (default off): record the class per settled run (an `outcome_attribution` judgment, mode
@@ -31,8 +33,18 @@ export interface AttributionRun {
   /** existing outcome_attribution judgments for the run or its proposal (operator annotations win, newest first) */
   annotations?: Array<{ decision: string; created_at: string }>;
   pr_outcome?: { survived?: boolean } | null;
+  /** reviewer roles named by a `checker_dispatch_failed` loop event of the run (loop-daemon.ts dispatch catch) */
+  dispatch_failed_roles?: string[];
 }
-export interface Attribution { outcome: OutcomeClass; survived: boolean | null; reason: string }
+/**
+ * Why a reviewer_failure had no verdict, from the stored reviewer lease alone (additive; the class is unchanged).
+ * 'unrecorded' is never computed: it is how the summary reports rows written before sub_reason existed.
+ */
+export type ReviewerSubReason = 'dispatch_failed' | 'timeout' | 'token_budget' | 'runtime_exit' | 'unparsed_verdict' | 'read_only_violation'
+  | 'insufficient_evidence' | 'rejected' | 'unknown';
+export const REVIEWER_SUB_REASONS: readonly ReviewerSubReason[] = ['dispatch_failed', 'timeout', 'token_budget', 'runtime_exit', 'unparsed_verdict',
+  'read_only_violation', 'insufficient_evidence', 'rejected', 'unknown'];
+export interface Attribution { outcome: OutcomeClass; survived: boolean | null; reason: string; sub_reason?: ReviewerSubReason }
 
 /** A3/EV3 (moved from loop-daemon runOutcomeOnFailure, unchanged): why a maker lease's run failed, from its metadata alone. */
 export function makerFailureClass(meta: MakerMeta): 'regressed' | 'infra_failed' | 'no_change' {
@@ -48,6 +60,42 @@ const MAKER_GATES = new Set(['tests_lint_typecheck', 'diff_threshold_all_makers'
 const REVIEW_GATES: Record<string, string> = { checker_verdict: 'checker', security_checker_verdict: 'security_checker', maker_checker_separation: 'checker' };
 const ENV_GATES = new Set(['worktree_isolation', 'assignment_file_present', 'run_not_cancelled']);
 const REJECTING = new Set(['rejected', 'needs_revision']);
+const KNOWN_VERDICTS = new Set(['accepted', 'needs_revision', 'rejected', 'insufficient_evidence']); // loop-service.ts VALID_CHECKER_VERDICTS
+
+/**
+ * Pure: the sub-reason of one reviewer role's missing verdict, from the newest lease of that role for the maker. Sources:
+ * - failure_reason `<role>_runtime_failed:exit=N,timed_out=B: <stderr>` (loop-worker-executor-service.ts executeChecker, #687);
+ *   'token budget exceeded' / timed_out=true are the reviewerRetryable cases (loop-daemon.ts, #703/#716);
+ *   'stale_timeout' marks a hung running lease failed (background-worker-service.ts taskOrphanLeaseCleanup)
+ * - read_only_contract_passed, verdict (executeChecker; a failed runtime stores verdict insufficient_evidence)
+ * - 'rejected' only for a rejecting verdict on a lease that did not end 'completed' (a completed rejection is maker_failure)
+ * - no lease, or a prepared/running one with a `checker_dispatch_failed` event (loop-daemon.ts dispatch catch)
+ * Anything else is 'unknown' — never guessed.
+ */
+export function reviewerSubReason(lease: AttributionLease | undefined, dispatchFailed: boolean): ReviewerSubReason {
+  if (!lease) return 'dispatch_failed';
+  const m = lease.metadata as AttributionLease['metadata'] & { read_only_contract_passed?: unknown };
+  const fr = typeof m.failure_reason === 'string' ? m.failure_reason : '';
+  if (lease.status === 'failed') {
+    if (/token budget exceeded/i.test(fr)) return 'token_budget';
+    if (m.timed_out === true || m.runtime_timed_out === true || /timed_out=true/.test(fr) || fr === 'stale_timeout') return 'timeout';
+    if (m.read_only_contract_passed === false) return 'read_only_violation';
+    if (/_runtime_failed:exit=/.test(fr)) return 'runtime_exit';
+    return 'unknown';
+  }
+  if (lease.status === 'completed') {
+    if (m.read_only_contract_passed === false) return 'read_only_violation';
+    const verdict = typeof m.verdict === 'string' ? m.verdict : '';
+    if (!KNOWN_VERDICTS.has(verdict)) return 'unparsed_verdict';
+    if (verdict === 'insufficient_evidence') return 'insufficient_evidence';
+    if (REJECTING.has(verdict)) return 'rejected'; // unreachable today: attributeOutcome classes this maker_failure first
+    return 'unknown';
+  }
+  // a rejecting verdict on a lease that did not end 'completed' (e.g. stopped by the runner after a submitted verdict)
+  if (REJECTING.has(String(m.verdict))) return 'rejected';
+  if ((lease.status === 'prepared' || lease.status === 'running') && dispatchFailed) return 'dispatch_failed';
+  return 'unknown';
+}
 
 /** Pure: the class of one settled run. */
 export function attributeOutcome(run: AttributionRun): Attribution {
@@ -73,7 +121,11 @@ export function attributeOutcome(run: AttributionRun): Attribution {
   if (rejected) return { outcome: 'maker_failure', survived, reason: `${rejected.role} verdict ${String(rejected.metadata.verdict)}` };
   const envGate = [...gates].find((g) => ENV_GATES.has(g));
   if (envGate) return { outcome: 'environment_failure', survived, reason: `gate ${envGate} failed` };
-  if (reviewGates.length) return { outcome: 'reviewer_failure', survived, reason: `maker completed; no ${reviewGates.join('/')} verdict (reviewer missing, failed or inconclusive)` };
+  if (reviewGates.length) {
+    const role = REVIEW_GATES[reviewGates[0]];
+    const sub_reason = reviewerSubReason(forMaker.filter((r) => r.role === role).pop(), (run.dispatch_failed_roles ?? []).includes(role));
+    return { outcome: 'reviewer_failure', survived, reason: `maker completed; no ${reviewGates.join('/')} verdict (reviewer missing, failed or inconclusive)`, sub_reason };
+  }
   return { outcome: 'maker_failure', survived, reason: `unclassified gate(s): ${[...gates].join(', ')}` };
 }
 
@@ -104,7 +156,13 @@ export function attributionInputForRun(db: Database, runId: string, makerLeaseId
     annotations = db.prepare(`SELECT decision, created_at FROM judgments WHERE judgment = 'outcome_attribution'
       AND ((subject_type = 'loop_run' AND subject_id = ?) OR (subject_type = 'self_improvement' AND subject_id = ? AND created_at >= ?))`).all(runId, run?.improvement_id ?? '', run?.created_at ?? '') as typeof annotations;
   } catch { /* judgments absent */ }
+  let dispatchFailedRoles: string[] = [];
+  try {
+    dispatchFailedRoles = (db.prepare("SELECT message FROM loop_events WHERE loop_run_id = ? AND event_type = 'checker_dispatch_failed'").all(runId) as Array<{ message: string }>)
+      .map((e) => /^Automated (checker|security_checker) dispatch failed/.exec(e.message)?.[1]).filter((r): r is string => !!r);
+  } catch { /* loop_events absent */ }
   return {
+    dispatch_failed_roles: dispatchFailedRoles,
     failed_gates: failedGates ?? (Array.isArray(meta.failed_gates) ? meta.failed_gates.map(String) : []),
     maker: leases.find((l) => l.id === makerLeaseId) ?? leases.filter((l) => l.role === 'maker').pop() ?? null,
     reviewers: leases.filter((l) => l.role === 'checker' || l.role === 'security_checker'),
@@ -125,7 +183,7 @@ export function recordOutcomeAttribution(db: Database, runId: string, makerLease
     const a = attributeOutcome(input);
     db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at)
       VALUES (?, 'outcome_attribution', 'loop_run', ?, ?, 'annotation', ?, ?, ?, ?)`)
-      .run(randomUUID(), runId, a.outcome, a.outcome, a.reason.slice(0, 300), JSON.stringify({ computed: true, failed_gates: input.failed_gates.map((g) => g.split(':')[0]) }), new Date().toISOString());
+      .run(randomUUID(), runId, a.outcome, a.outcome, a.reason.slice(0, 300), JSON.stringify({ computed: true, failed_gates: input.failed_gates.map((g) => g.split(':')[0]), ...(a.sub_reason ? { sub_reason: a.sub_reason } : {}) }), new Date().toISOString());
     if (a.outcome === 'verified') recordCredits(db, runId, input.maker?.id ?? makerLeaseId);
     return a;
   } catch { return null; } // learning bookkeeping must never break the daemon
@@ -197,16 +255,150 @@ export function attributionSummary(db: Database, now = Date.now(), days = 30, en
     FROM judgments WHERE judgment = 'outcome_attribution' AND created_at >= ? GROUP BY 1, 2 ORDER BY 1, 2`, since);
   const classes: Record<OutcomeClass, number> = { maker_failure: 0, reviewer_failure: 0, environment_failure: 0, verified: 0 };
   for (const r of by) if (r.outcome in classes) classes[r.outcome as OutcomeClass] += r.n;
-  const survived = all<{ survived: number | null; n: number }>(`SELECT json_extract(r.metadata, '$.pr_outcome.survived') AS survived, COUNT(*) AS n FROM judgments j JOIN loop_runs r ON r.id = j.subject_id
-    WHERE j.judgment = 'outcome_attribution' AND j.subject_type = 'loop_run' AND j.decision = 'verified' AND j.created_at >= ?
-      AND json_extract(r.metadata, '$.pr_outcome.settled_at') IS NOT NULL GROUP BY 1`, since);
+  // E1: survival of attributed-verified runs over settled states only (pending and anomalous PRs count on neither side)
+  const verifiedRuns = new Set(all<{ id: string }>(`SELECT DISTINCT j.subject_id AS id FROM judgments j
+    WHERE j.judgment = 'outcome_attribution' AND j.subject_type = 'loop_run' AND j.decision = 'verified' AND j.created_at >= ?`, since).map((r) => r.id));
+  let settledStates: SettlementState[] = [];
+  try { settledStates = loopPrSettlements(db, now).filter((p) => verifiedRuns.has(p.run_id)).map((p) => p.settlement.state); } catch { /* loop_runs absent */ }
+  const sc = survivalCounts(settledStates);
+  // reviewer_failure split by sub_reason; rows written before it existed (and operator annotations) carry none → 'unrecorded'
+  const reviewerSubReasons: Record<string, number> = Object.fromEntries([...REVIEWER_SUB_REASONS, 'unrecorded'].map((k) => [k, 0]));
+  for (const r of all<{ sub: string | null; n: number }>(`SELECT json_extract(answers_json, '$.sub_reason') AS sub, COUNT(*) AS n FROM judgments
+    WHERE judgment = 'outcome_attribution' AND decision = 'reviewer_failure' AND created_at >= ? GROUP BY 1`, since)) {
+    const key = r.sub && (REVIEWER_SUB_REASONS as readonly string[]).includes(r.sub) ? r.sub : 'unrecorded';
+    reviewerSubReasons[key] += r.n;
+  }
   const top = all<{ kind: string; ref: string; credits: number }>(`SELECT kind, ref, COUNT(*) AS credits FROM outcome_credits WHERE created_at >= ?
     GROUP BY 1, 2 ORDER BY credits DESC, kind, ref LIMIT 30`, since);
   return {
-    at: new Date(now).toISOString(), enabled: outcomeAttributionEnabled(env), since, classes, by_source: by,
-    survived: { yes: survived.filter((s) => s.survived === 1).reduce((a, s) => a + s.n, 0), no: survived.filter((s) => s.survived === 0).reduce((a, s) => a + s.n, 0) },
+    at: new Date(now).toISOString(), enabled: outcomeAttributionEnabled(env), since, classes, reviewer_sub_reasons: reviewerSubReasons, by_source: by,
+    survived: { yes: sc.survived, no: sc.regressed },
     credited_runs: all<{ n: number }>('SELECT COUNT(DISTINCT run_id) AS n FROM outcome_credits WHERE created_at >= ?', since)[0]?.n ?? 0,
     top_contributors: top,
     note: 'learners count only maker_failure as a failure when OUTCOME_ATTRIBUTION_ENABLED=true; reviewer/environment failures are neither success nor failure',
   };
+}
+
+// ---- §16 step 3: read-only attribution backfill (docs/research/intelligence-metrics/IMPLEMENTATION_PLAN.md) ----
+
+const zeroClasses = (): Record<OutcomeClass, number> => ({ maker_failure: 0, reviewer_failure: 0, environment_failure: 0, verified: 0 });
+
+/**
+ * What attributeOutcome WOULD say for settled production runs that carry no run-level attribution (mostly runs from before
+ * OUTCOME_ATTRIBUTION_ENABLED went live on 08-10). Computed in memory with the live inputs (attributionInputForRun), returned
+ * as a report and NEVER written as judgments: an in-memory class is context for CAR coverage, not a label learners read.
+ * `classes` honours operator annotations exactly as the live path does; `rules_only` is the classifier alone, and
+ * `annotated` shows how often it agrees with the operator where an annotation exists. One unit per run (its latest maker
+ * outcome); gym and merge outcomes are not production runs. A failed run without recorded failed gates is `missing_inputs`.
+ */
+export function attributionBackfill(db: Database, opts: { limit?: number } = {}) {
+  const all = <T>(sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } };
+  const settled = all<{ run: string; lease: string | null; success: number; lane: string | null; attributed: number }>(`SELECT o.task_id AS run, o.agent_id AS lease, o.success,
+      r.loop_name AS lane, EXISTS (SELECT 1 FROM judgments j WHERE j.judgment = 'outcome_attribution' AND j.subject_type = 'loop_run' AND j.subject_id = o.task_id) AS attributed
+    FROM skill_outcomes o JOIN loop_runs r ON r.id = o.task_id
+    WHERE o.skill_id LIKE 'loop-maker:%' AND o.domain NOT IN ('gym', 'merge')
+      AND o.created_at = (SELECT MAX(x.created_at) FROM skill_outcomes x WHERE x.task_id = o.task_id AND x.skill_id LIKE 'loop-maker:%')
+    GROUP BY o.task_id ORDER BY o.created_at LIMIT ?`, Math.max(1, Math.min(20000, opts.limit ?? 5000)));
+  const firstComputed = all<{ at: string | null }>(`SELECT MIN(created_at) AS at FROM judgments WHERE judgment = 'outcome_attribution' AND subject_type = 'loop_run'`)[0]?.at ?? null;
+  const classes = zeroClasses(); const rulesOnly = zeroClasses();
+  const lanes = new Map<string, Record<OutcomeClass, number>>(); const reasons = new Map<string, number>();
+  const annotated = { n: 0, agree: 0 }; let runs = 0; let mismatch = 0; let failed = 0; let missing = 0;
+  for (const s of settled.filter((x) => !x.attributed)) {
+    let input: AttributionRun;
+    try { input = attributionInputForRun(db, s.run, s.lease); } catch { failed++; continue; }
+    // a failed outcome without recorded failed gates (cancelled / blocked before the gates were stored, prod 10-10: 11 runs) has
+    // missing inputs: excluded and counted, never 'verified' from an empty gate list (contract missing_data_policy)
+    if (s.success !== 1 && input.failed_gates.length === 0) { missing++; continue; }
+    const effective = attributeOutcome(input); const rules = attributeOutcome({ ...input, annotations: [] });
+    runs++; classes[effective.outcome]++; rulesOnly[rules.outcome]++;
+    const lane = s.lane ?? 'unknown'; const l = lanes.get(lane) ?? zeroClasses(); l[effective.outcome]++; lanes.set(lane, l);
+    reasons.set(rules.reason.replace(/\d+/g, 'n'), (reasons.get(rules.reason.replace(/\d+/g, 'n')) ?? 0) + 1);
+    if (effective.reason === 'annotation') { annotated.n++; if (effective.outcome === rules.outcome) annotated.agree++; }
+    if ((s.success === 1) !== (effective.outcome === 'verified')) mismatch++;
+  }
+  const attributed = settled.filter((x) => x.attributed).length;
+  return {
+    frame: 'settled production maker runs (latest loop-maker outcome per run) without a run-level outcome_attribution judgment',
+    runs, first_computed_at: firstComputed, classes, rules_only: rulesOnly, annotated,
+    by_lane: [...lanes.entries()].map(([lane, c]) => ({ lane, n: Object.values(c).reduce((a, b) => a + b, 0), classes: c })).sort((a, b) => b.n - a.n || a.lane.localeCompare(b.lane)),
+    by_rule: [...reasons.entries()].map(([reason, n]) => ({ reason, n })).sort((a, b) => b.n - a.n || a.reason.localeCompare(b.reason)).slice(0, 12),
+    // the maker outcome said success but the class is not verified (or the reverse): a sign the inputs moved since settlement
+    outcome_mismatch: mismatch, input_errors: failed, missing_inputs: missing,
+    coverage: { attributed, settled: settled.length, value: settled.length ? +(attributed / settled.length).toFixed(4) : null },
+    writes: 0 as const,
+    note: 'in-memory classes only — never written as judgments, never read by a learner; context for CAR coverage',
+  };
+}
+export type AttributionBackfill = ReturnType<typeof attributionBackfill>;
+
+// ---- §16 step 4: CAR audit sampler (weekly, seeded, stratified by computed class); operator labels only ----
+
+export type AuditVerdict = 'correct' | 'wrong' | 'unclear';
+const VERDICTS: readonly string[] = ['correct', 'wrong', 'unclear'];
+export const AUDIT_SAMPLE_SIZE = 10;
+/** Monday 00:00Z of the week containing `now`. */
+export function auditWeekStart(now = Date.now()): string {
+  const d = new Date(now); d.setUTCHours(0, 0, 0, 0); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString();
+}
+export interface AuditItem {
+  run_id: string; lane: string | null; computed: OutcomeClass; reason: string | null; failed_gates: string[]; attributed_at: string;
+  verdict: AuditVerdict | null; labelled_by: string | null; labelled_at: string | null;
+}
+
+/**
+ * The week's CAR audit sample. Frame: COMPUTED run attributions (operator annotations are the reference, not the subject)
+ * made before the week started, minus runs audited before the week started — so the frame, and with it the sample, is fixed
+ * for the whole week, and labelling a run never reshuffles it. Seed `car-audit:<monday>`; within each class runs are ordered
+ * by sha256(seed|run) and drawn round-robin over the classes until `size` (a short class gives its turn away).
+ * Read-only: the sample is recomputed from the seed, nothing is stored; only adjudicateAttribution writes, on an operator action.
+ */
+export function attributionAuditSample(db: Database, now = Date.now(), size = AUDIT_SAMPLE_SIZE) {
+  const week_start = auditWeekStart(now); const seed = `car-audit:${week_start.slice(0, 10)}`;
+  const all = <T>(sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } };
+  const frame = all<{ run_id: string; computed: string; reason: string | null; answers: string | null; attributed_at: string; lane: string | null }>(`SELECT j.subject_id AS run_id,
+      j.decision AS computed, j.reason, j.answers_json AS answers, j.created_at AS attributed_at, (SELECT r.loop_name FROM loop_runs r WHERE r.id = j.subject_id) AS lane
+    FROM judgments j WHERE j.judgment = 'outcome_attribution' AND j.subject_type = 'loop_run' AND json_extract(j.answers_json, '$.computed') = 1 AND j.created_at < ?
+      AND NOT EXISTS (SELECT 1 FROM judgments a WHERE a.judgment = 'attribution_audit' AND a.subject_id = j.subject_id AND a.created_at < ?)
+    GROUP BY j.subject_id`, week_start, week_start).filter((r) => CLASSES.includes(r.computed));
+  const rank = (run: string) => createHash('sha256').update(`${seed}|${run}`).digest('hex');
+  const strata = CLASSES.map((c) => frame.filter((r) => r.computed === c).sort((a, b) => rank(a.run_id).localeCompare(rank(b.run_id))));
+  const picked: typeof frame = [];
+  for (let round = 0; picked.length < size && strata.some((s) => s.length > round); round++) {
+    for (const s of strata) if (picked.length < size && s[round]) picked.push(s[round]);
+  }
+  const labels = new Map(all<{ run: string; verdict: string; actor: string | null; at: string }>(`SELECT subject_id AS run, decision AS verdict, json_extract(answers_json, '$.actor') AS actor,
+      created_at AS at FROM judgments WHERE judgment = 'attribution_audit' AND mode = 'operator_label' ORDER BY created_at, rowid`).map((l) => [l.run, l]));
+  const items: AuditItem[] = picked.map((r) => {
+    const l = labels.get(r.run_id); const answers = (() => { try { return JSON.parse(r.answers || '{}') as { failed_gates?: unknown }; } catch { return {}; } })();
+    return { run_id: r.run_id, lane: r.lane, computed: r.computed as OutcomeClass, reason: r.reason, attributed_at: r.attributed_at,
+      failed_gates: Array.isArray(answers.failed_gates) ? answers.failed_gates.map(String) : [],
+      verdict: l && VERDICTS.includes(l.verdict) ? l.verdict as AuditVerdict : null, labelled_by: l?.actor ?? null, labelled_at: l?.at ?? null };
+  });
+  const latest = [...labels.values()].filter((l) => VERDICTS.includes(l.verdict));
+  return {
+    week_start, seed, size, frame_n: frame.length,
+    strata: Object.fromEntries(CLASSES.map((c, i) => [c, strata[i].length])) as Record<OutcomeClass, number>,
+    items,
+    audited: { total: latest.length, correct: latest.filter((l) => l.verdict === 'correct').length, wrong: latest.filter((l) => l.verdict === 'wrong').length, unclear: latest.filter((l) => l.verdict === 'unclear').length },
+    note: 'Is the computed class right? correct / wrong / unclear from the run\'s evidence. Labels are ground truth for CAR; the system never labels.',
+  };
+}
+export type AttributionAuditSample = ReturnType<typeof attributionAuditSample>;
+
+/**
+ * The operator's adjudication of one sampled attribution: a `judgments` row (judgment 'attribution_audit', mode
+ * 'operator_label', state_hash = the computed class it judges). Only runs in the current week's sample; a later label on
+ * the same run supersedes the earlier one (newest wins). Annotation-only: no learner reads these rows.
+ */
+export function adjudicateAttribution(db: Database, runId: string, verdict: AuditVerdict, actor: string, note = '', now = Date.now()): void {
+  if (!VERDICTS.includes(verdict)) throw new Error('ATTRIBUTION_AUDIT_VERDICT_INVALID');
+  const sample = attributionAuditSample(db, now);
+  const item = sample.items.find((i) => i.run_id === runId);
+  if (!item) throw new Error('ATTRIBUTION_AUDIT_NOT_SAMPLED');
+  const why = note.replace(/\s+/g, ' ').trim().slice(0, 300);
+  db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at)
+    VALUES (?, 'attribution_audit', 'loop_run', ?, ?, 'operator_label', ?, ?, ?, ?)`)
+    .run(randomUUID(), runId, item.computed, verdict, `attribution '${item.computed}' judged ${verdict} by ${actor}${why ? `: ${why}` : ''}`,
+      JSON.stringify({ actor, seed: sample.seed, week_start: sample.week_start, computed_reason: item.reason }), new Date(now).toISOString());
 }
