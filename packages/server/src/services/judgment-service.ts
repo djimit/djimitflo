@@ -72,7 +72,15 @@ export function insertJudgmentRow(db: Database, cols: Record<string, unknown>): 
 }
 
 
-export async function runJudgment(db: Database, def: JudgmentDef, subject: { type: string; id: string }, state: unknown, client = new TypeSafeClient(), facts?: Record<string, unknown>): Promise<JudgmentRecord | null> {
+/** DI-001 C: a commit hook vetoed the write (e.g. its claim was taken over): nothing is recorded, not even an error row. */
+class CommitVetoed extends Error {}
+
+/**
+ * `commit` (optional) runs in one transaction with the judgment insert: returning false rolls the insert back (no row, null
+ * returned), throwing rolls both back and records an error row. Callers use it to write a decision exactly once.
+ */
+export async function runJudgment(db: Database, def: JudgmentDef, subject: { type: string; id: string }, state: unknown, client = new TypeSafeClient(), facts?: Record<string, unknown>,
+  commit?: (record: JudgmentRecord) => boolean): Promise<JudgmentRecord | null> {
   const mode = judgmentMode(def.id);
   if (mode === 'off' || !typesafeConfigured()) return null;
   recordEffortJudgment(db, def.id, subject); // EVC effort controller: shadow only (run vs skip), changes nothing
@@ -86,10 +94,16 @@ export async function runJudgment(db: Database, def: JudgmentDef, subject: { typ
     localShadow(db, def, subject, stateHash, state, def.questions, facts);
     const at = new Date().toISOString();
     const provenance = buildProvenance({ writer: 'judgment-service.runJudgment', def, mode, state, subject, stateHash, at, model: response.model, decision, reason, answers });
-    insertJudgmentRow(db, { id, judgment: def.id, subject_type: subject.type, subject_id: subject.id, state_hash: stateHash, mode, decision, reason, answers_json: JSON.stringify(answers),
-      input_tokens: response.usage?.input_tokens ?? 0, output_tokens: response.usage?.output_tokens ?? 0, latency_ms: Date.now() - started, model: response.model, created_at: at, provenance_json: provenanceJson(provenance) });
-    return { id, decision, reason, answers, mode, provenance };
+    const record: JudgmentRecord = { id, decision, reason, answers, mode, provenance };
+    // DI-001 C: the optional commit hook runs in the same transaction as the insert (veto = no row, throw = roll back)
+    db.transaction(() => {
+      insertJudgmentRow(db, { id, judgment: def.id, subject_type: subject.type, subject_id: subject.id, state_hash: stateHash, mode, decision, reason, answers_json: JSON.stringify(answers),
+        input_tokens: response.usage?.input_tokens ?? 0, output_tokens: response.usage?.output_tokens ?? 0, latency_ms: Date.now() - started, model: response.model, created_at: at, provenance_json: provenanceJson(provenance) });
+      if (commit && !commit(record)) throw new CommitVetoed();
+    })();
+    return record;
   } catch (err) {
+    if (err instanceof CommitVetoed) return null;
     try {
       const at = new Date().toISOString();
       insertJudgmentRow(db, { id, judgment: def.id, subject_type: subject.type, subject_id: subject.id, state_hash: stateHash, mode, decision: 'error',

@@ -82,22 +82,23 @@ Path split: keyword-rejected refs judged 1 790 (non-error), yes 108 → **6.0 %*
 ## 5. The pause (implemented, default off)
 
 `DISCOVERY_RELEVANCE_PAUSED=true` (`expert-source-units-service.ts`, `discoveryRelevancePaused`) stops every **new**
-discovery_relevance call. Historical judgments, the judgment definition, the schema and the mode flag stay as they are.
+discovery_relevance call. Historical judgments, the judgment definition, the existing tables and the mode flag stay as
+they are. One new table, `discovery_relevance_backlog`, holds what the pause left unjudged (section 5.1).
 The fallback is explicit for each dependent:
 
 | Dependent | Paused behaviour |
 |-----------|------------------|
-| W1 FE2 admission | **No unit admitted**. This is the existing fail-closed rule ("no verdict, no unit"). `ingestDiscovery` returns `paused-pending`. The ingest service stores the bus event with `relevance: 'unjudged', relevance_paused: 'pending', relevance_paused_at` in `external_events.payload`. A ref that already has a verdict still returns `known`. |
-| W2 R3 / KE-2 | No shadow call and no override unit. The keyword gate's rejection stands (pre-KE-2 behaviour). Returns `paused-rejected` and the event is marked the same way (`relevance_paused: 'rejected'`). |
-| W3 G3 direct path | The unit is created as before, because admission there never waited for jev. Only the shadow call is skipped (`paused-unit`, marked). |
+| W1 FE2 admission | **No unit admitted**. This is the existing fail-closed rule ("no verdict, no unit"). `ingestDiscovery` parks the event in the backlog (path `pending`) and returns `paused-pending`. The ingest service also annotates the stored bus event with `relevance: 'unjudged', relevance_paused, relevance_paused_at`; that is informational, the backlog holds the state. A ref that already has a verdict still returns `known`. |
+| W2 R3 / KE-2 | No shadow call and no override unit. The keyword gate's rejection stands (pre-KE-2 behaviour). Parked (path `rejected`), returns `paused-rejected`. |
+| W3 G3 direct path | The unit is created as before, because admission there never waited for jev. Only the shadow call is skipped; parked (path `unit`, the shadow is judged on the unit later). |
 | W4 KE-5 retry | `{ skipped: 'paused' }`, so no retry is used up. |
-| Re-judge | New `rejudgePaused(limit)` (called next to KE-5 in the FE scheduler, also usable by hand). Once unpaused, each unjudged ref is re-ingested **once** through the normal path: same scope, gate, R3 cap and jev limiter. The marker becomes `requeued`. A rejected ref over today's cap waits for the next call. |
+| Re-judge | `rejudgePaused()`, called next to KE-5 in the FE scheduler and usable by hand. It works through the backlog under the contract in 5.1, bounded per call and per day. Unpaused normal ingestion never judges a ref that has an open backlog row; the backlog owns that decision. |
 | R3 fleet source gate / R4 overview | Unchanged code. Paused events have no verdict, so they are **missing**, never `no` (test: 49 `no` + 10 paused events = 49 judged, gate open). |
 | R5 N4 yields | `termYields` counts verdicts only, so paused events are left out of n (tested). **Changed:** while paused, an unmeasured trial is not expired by the 14-day clock. Its clock restarts, so a pause cannot kill a trial for missing data. Once unpaused, the 14-day rule applies again. Over a long pause the 30-d window drains: measured terms fall below n = 20 and become "unmeasured". That reads as missing, not as failed. |
 | R6 committee scout | Keeps the 5 newest historical `yes` (it has no window). Stale, not wrong. |
 | R9 stall watch | While paused, "no judgment for 36 h" is not a stall. The check becomes "no discovery **received** for 36 h", so a publisher outage is still caught. |
 | R12 evolution evidence | `DISCOVERY_RELEVANCE_PAUSED` is listed as an acting flag. |
-| Counter | `GET /api/health/knowledge` → `relevance_pause`: `paused`, `unjudged {pending, rejected, unit}`, `calls_avoided` (rejected capped per day at the R3 cap), `mean_tokens_per_call` (7 d up to the last real call) and `tokens_avoided_estimate`. All of it comes from the markers in the database, not from an in-memory counter, so it survives restarts. It is labelled "estimate". |
+| Counter | `GET /api/health/knowledge` → `relevance_pause`: `paused`, `unjudged {pending, rejected, unit}`, `calls_avoided` (rejected capped per day at the R3 cap), `mean_tokens_per_call` (7 d up to the last real call) and `tokens_avoided_estimate`. Also `backlog` (unjudged + rejudging), `states`, `oldest_unjudged_age_hours` and `rejudge {batch, max_per_day, claim_timeout_minutes, max_attempts, tick_minutes, per_day, drain_estimate_days}`. Everything is read from the backlog table, not from memory, so it survives restarts. The token figure is labelled "estimate". |
 
 Event ingest, recording, taxonomy matching, abstracts (KE-1), K1 content safety and the interest profile keep running.
 
@@ -105,8 +106,52 @@ Event ingest, recording, taxonomy matching, abstracts (KE-1), K1 content safety 
 837 tok). The 18-day run rate is ≈ 208 calls/day, which gives ≈ 1.2 M tokens/week. Queue pressure goes away too: 288
 `TYPESAFE_QUEUE_FULL` in one day (08-10) were discovery_relevance calls crowding the shared jev limiter.
 
-Activate (operator): set `DISCOVERY_RELEVANCE_PAUSED=true` in the live env and restart. Revert by unsetting it. Then
-run `rejudgePaused` per tick, or by hand with the same `docker exec … node -e` pattern as `backfillRejectedOverrides`.
+Activate (operator): set `DISCOVERY_RELEVANCE_PAUSED=true` in the live env and restart. Revert by unsetting it. Unsetting
+it replays nothing by itself. The backlog drains only through `rejudgePaused()`, either per FE scheduler tick (off on prod
+today) or by hand with the same `docker exec … node -e` pattern as `backfillRejectedOverrides`.
+
+### 5.1 Recovery contract: what is and isn't guaranteed
+
+State model (`discovery_relevance_backlog`, PK = **decision identity `(event_id, policy)`**). `policy` is
+`discovery_relevance:<sha256(questions + confidence floor + DECIDE_RULE)[:12]>`, so a changed prompt or rule gives a new identity rather
+than an overwrite. The states:
+
+`unjudged` → `rejudging` (claim: `fence = fence + 1`, `claimed_at`) → `judged` | `skipped` (invalid / ref already decided /
+no unit) | `failed` (after `DISCOVERY_REJUDGE_MAX_ATTEMPTS`, default 5). A failed call or commit goes back to `unjudged`
+with `attempts + 1`. A `rejudging` claim older than `DISCOVERY_REJUDGE_CLAIM_TIMEOUT_MINUTES` (default 15; jev p95 is 320 s)
+can be reclaimed, which increments the fence again.
+
+Guaranteed:
+- **Durable.** Every discovery parked during the pause is a row in SQLite, so a restart at any point loses nothing.
+  Duplicate delivery of the same `event_id` is `INSERT OR IGNORE`, giving one row.
+- **Fenced claims.** A claim is one atomic `UPDATE … WHERE state = 'unjudged' OR stale claim … RETURNING fence`, so of
+  two workers, on one or two connections, only one gets a given fence. The fence is monotonic per row.
+- **At most one persisted decision per identity.** The `judgments` insert, the backlog transition to `judged` (guarded
+  by `fence = <worker's fence> AND state = 'rejudging'`) and the downstream admission (unit creation and re-pointing
+  the judgment to the unit, or the KE-2 override) run in **one SQLite transaction**
+  (`runJudgment(…, commit)` in `judgment-service.ts`). A worker whose fence is no longer current is vetoed and writes
+  nothing: no judgment row, no decision, no unit. A newer valid decision can therefore never be overwritten.
+  `judgment_id` is `UNIQUE`.
+- **Atomic failure.** If the judgment insert or the admission throws, all of it rolls back, the row returns to
+  `unjudged`, and a later call retries it. No unit can exist without its decision, and a unit is never created twice.
+- **Bounded drain.** Each call claims at most `DISCOVERY_REJUDGE_BATCH` (default 20) and at most
+  `DISCOVERY_REJUDGE_MAX_PER_DAY` (default 200) per rolling 24 h, counted from `claimed_at` in the table, so a restart
+  does not reset the budget. It also skips while jev is busy (limiter queue or breaker), and the R3 daily cap still
+  applies to rejected rows. With the hourly FE tick the default drain rate is **200/day** (`min(20 × 24, 200)`),
+  which is about the pre-pause rate of ≈ 208 calls/day. `drain_estimate_days = backlog / per_day`.
+- **Same rules as ingestion.** A ref that already has a verdict or a unit is `skipped`, not judged again. The second
+  event id of one ref therefore costs no call.
+
+Not guaranteed:
+- **Exactly-once external execution.** The jev call is **at-least-once**. A worker that crashes after jev answered
+  but before its commit, or whose claim times out while jev is still slow, leaves the row reclaimable. The next
+  worker calls jev again. Tokens are spent twice, but one decision is persisted. The provider has no idempotency key.
+- **Exactly-once per ref across policies.** A new policy version is a new identity. Rows of an old policy are not
+  re-judged by this code (`rejudgePaused` selects the current policy only) and stay visible in `states`.
+- **Liveness under a permanently failing jev.** After 5 attempts a row is `failed` and needs an operator. It is counted
+  in `states.failed` and never silently dropped.
+- **Scope/gate at re-judge time.** `DISCOVERY_RELEVANCE_SOURCES` and the arena gate were applied at ingest; they are
+  not re-evaluated when a parked row is judged.
 
 ## 6. Economics: is there a cheaper decision procedure? (assessment, not built)
 
@@ -134,8 +179,22 @@ reach CHECKED, or N4 terms whose yield beats the static baseline). Without a con
 
 ## 7. Tests
 
-`packages/server/src/__tests__/discovery-relevance-pause.test.ts` (8 tests) covers: flag default false / only `'true'`;
-unpaused FE2 unchanged; paused FE2 through `pollOnce` (no jev fetch, no unit, event stored + marked unjudged); paused
-R3/KE-2 and G3 paths; KE-5 retry and re-judge standing still while paused, then a re-judge exactly once when unpaused;
-overview counter and estimate; fleet gate and N4 yields treating paused events as missing; stall watch paused vs
-unpaused; N4 trial clock not expiring while paused.
+`packages/server/src/__tests__/discovery-relevance-pause.test.ts` has 16 tests:
+- flag default false / only `'true'`; unpaused FE2 unchanged;
+- paused FE2 through `pollOnce` (no jev fetch, no unit, event stored and parked); paused R3/KE-2 and G3 paths;
+- KE-5 retry and re-judge standing still while paused;
+- restart during backlog accumulation (file DB reopened twice);
+- crash between jev response and commit (reclaim only after the timeout, jev called twice, one decision, the late stale
+  worker vetoed);
+- stale worker answering before the new owner (vetoed);
+- duplicate delivery (same event id twice in one bus batch, plus a direct call: one event, one row, one judgment);
+- partial DB failure (judgment insert throws; admission throws after the unit was created: both roll back, then one
+  decision and one unit);
+- concurrent workers on two connections;
+- pause/unpause toggles (no duplicate, no loss, normal ingestion defers to the backlog);
+- bounded drain (no replay on unpause, batch 20, backpressure while jev is busy, daily cap, next day continues);
+- overview backlog/age/drain and token estimate; fleet gate and N4 yields treating paused events as missing;
+  stall watch; N4 trial clock.
+
+Ten of these failed against the first PR head `02fd0eba`, which had no backlog table, fence or bounded drain. The other
+six pass on both heads.

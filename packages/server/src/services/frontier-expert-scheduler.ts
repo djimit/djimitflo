@@ -131,8 +131,8 @@ export class FrontierExpertScheduler {
         const retry = sourceUnits.retryErroredRelevance(50);
         if (retry.retried) console.log(`🔭 discovery relevance: ${retry.retried} errored judgment(s) retried`);
         // DI-001 C: discoveries stored unjudged during DISCOVERY_RELEVANCE_PAUSED are judged once the pause is lifted
-        const rejudge = sourceUnits.rejudgePaused(50);
-        if (rejudge.requeued) console.log(`🔭 discovery relevance: ${rejudge.requeued} paused discovery(ies) re-judged`);
+        const rejudge = sourceUnits.rejudgePaused(); // bounded: DISCOVERY_REJUDGE_BATCH per tick, MAX_PER_DAY per 24 h
+        if (rejudge.claimed) console.log(`🔭 discovery relevance: ${rejudge.claimed} paused discovery(ies) claimed for re-judging`);
       } catch (err) {
         result.failed.push({ stage: 'enrich', error: `source units: ${err instanceof Error ? err.message : String(err)}` });
       }
