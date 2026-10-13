@@ -3,9 +3,10 @@ import type { Database } from 'better-sqlite3';
 import { redactSecrets } from './secret-patterns';
 import { generateText, llmEndpoints } from './llm-fallback';
 import { firstJsonObject } from './expert-council-service';
-import { BASELINE_GENOME, dreamEvolutionEnabled, ensureBaseline, frozenHoldoutCommits, genome, holdoutEpoch, mutantHoldoutKeys, mutantHoldoutTiers, mutantTrialsEnabled, NOT_VOID, trialHeadroomPrecheck, unscorable, writeTestHoldoutEnabled, writeTestHoldoutKeys } from './genome-registry';
+import { BASELINE_GENOME, dreamEvolutionEnabled, ELIGIBLE_GATED, ensureBaseline, frozenHoldoutCommits, genome, holdoutEpoch, mutantHoldoutKeys, mutantHoldoutTiers, mutantTrialsEnabled, NOT_VOID, trialHeadroomPrecheck, unscorable, writeTestHoldoutEnabled, writeTestHoldoutKeys } from './genome-registry';
 import { markRun } from './scheduler-registry';
 import { type DecidingHoldout, holdoutValidity, promoteGenome } from './genome-promotion';
+import { prodGatesConfig } from './remote-gym-service';
 
 /**
  * Y3b/Y3c (plan Phase Y, Darwin loop). Dreaming is the mutation operator: once a day the day's failed makers (real and
@@ -311,10 +312,10 @@ export async function dreamOnce(db: Database, now = Date.now(), call: DreamCalle
  * with zero losses (McNemar 5 at α 0.05; under DREAM_PROMOTION_RULE=both the smaller of McNemar and the e-process). Such a trial is settled 'inconclusive' before any
  * of its deciding attempts are spent. TRIAL_HEADROOM_PRECHECK (default off). SI-C: under DREAM_PROMOTION_RULE=graded a parent
  * whose mean graded score is below GRADED_HEADROOM still has headroom, whatever its binary failures.
- * WT-HOLDOUT (09-10): under the graded rule the parent's failures come from its most recent GATED results (claimed with
- * GYM_PROD_GATES: prod 09-10 the gated pass rate is ~55–60 %, the old ungated holdout results 17/20) — a deciding task without
- * one leaves headroom unknown and the trial runs — and the graded mean from the write_test holdout when there is one (its
- * mutant_kill share moves; a repair score is 0/1). The parent not yet scored on that holdout: wait. Other rules: unchanged.
+ * WT-HOLDOUT (09-10) + P0 (13-10): under EVERY rule the parent's failures come from its newest ELIGIBLE gated results
+ * (gatedEvidence: prod 09-10 the gated pass rate is ~55–60 %, the old ungated holdout results 17/20) — a deciding task without
+ * one leaves headroom unknown and the trial runs; under the graded rule the graded mean comes from the write_test holdout
+ * when there is one (its mutant_kill share moves; a repair score is 0/1). The parent not yet scored on that holdout: wait.
  */
 /**
  * The fewest wins that make ANY trial significant: the best case for a mutant is to win exactly the tasks its parent
@@ -329,40 +330,125 @@ export function minWinsNeeded(alpha = promotionAlpha(), rule: PromotionRule = pr
   }
   return rule === 'both' ? Math.min(mcnemar, eproc) : mcnemar;
 }
+
+/**
+ * P0 (EVOLUTION ENGINE 4.0, 13-10). Prod 13-10: under DREAM_PROMOTION_RULE=both 17 of the 20 parent results on the deciding
+ * mutant holdout were ungated 10-03 runs (gated pass rate since 10-08: 34/91), and headroom, Gate A and promotion all read
+ * them. For EVERY rule (mcnemar, e-process / both, graded) headroom, parent fitness and the paired promotion test rest only on
+ * ELIGIBLE observations:
+ *  1. production-gated: claimed with GYM_PROD_GATES and the gate verdict recorded on that attempt (ELIGIBLE_GATED); a
+ *     'success' with any failing check is a failure — never a win;
+ *  2. same holdout epoch: a task frozen in a holdout table counts only when frozen in that table's CURRENT epoch, and only
+ *     attempts made after it was frozen; a task frozen under another epoch is rejected, never combined;
+ *  3. same evaluation contract: same task key and species; scored under the active gate policy (gatePolicyVersion, recorded
+ *     on every decision — attempts do not carry a policy version yet, so 'gated' is the per-attempt check); parent and mutant
+ *     on a pair share task family (gym.kind), difficulty (gym.tier) and graded kind where recorded;
+ *  4. per task the NEWEST eligible attempt counts (created_at, then id): an older one never overrides it, an ungated one never counts.
+ * Missing eligible evidence leaves headroom unknown (the trial runs) and settles a finished trial as inconclusive
+ * ('inconclusive: no eligible gated parent evidence'), never as a promotion. Ungated history stays readable as counts
+ * (genome_trial_results.evidence_json), never as a verdict. Thresholds and Gate A's band are unchanged.
+ */
+export const GATE_POLICY_SCHEMA = 'prod_gates/v1';
+export const gatePolicyVersion = (env: NodeJS.ProcessEnv = process.env): string =>
+  `${GATE_POLICY_SCHEMA}:${createHash('sha256').update(JSON.stringify(prodGatesConfig(env))).digest('hex').slice(0, 12)}`;
+type HoldoutTable = 'gym_holdout' | 'gym_mutant_holdout' | 'gym_write_test_holdout';
+const HOLDOUT_KEY: Record<HoldoutTable, string> = { gym_holdout: 'commit_sha', gym_mutant_holdout: 'key', gym_write_test_holdout: 'key' };
+/** task key → when the CURRENT epoch froze it, or null when only another epoch froze it; keys in no holdout table are absent */
+function epochFreeze(db: Database): Map<string, string | null> {
+  const out = new Map<string, string | null>();
+  for (const table of Object.keys(HOLDOUT_KEY) as HoldoutTable[]) {
+    try {
+      const current = holdoutEpoch(db, table);
+      for (const r of db.prepare(`SELECT ${HOLDOUT_KEY[table]} AS k, epoch, created_at FROM ${table}`).all() as Array<{ k: string; epoch: number; created_at: string }>) {
+        if (r.epoch === current) out.set(r.k, r.created_at); else if (!out.has(r.k)) out.set(r.k, null);
+      }
+    } catch { /* no such table yet: nothing frozen there */ }
+  }
+  return out;
+}
+export interface GatedObservation { id: string; commit: string; status: 'success' | 'failure'; reason: string; created_at: string; kind: string; tier: number | null; graded_kind: string | null }
+/**
+ * Evidence classes, one per attempt (P0 conditional GO, 13-10):
+ *  ELIGIBLE_PASS  gated, every recorded gate passed (or skipped), task passed, provenance valid
+ *  ELIGIBLE_FAIL  gated, verdict recorded on the same attempt, task failed or a gate failed
+ *  INELIGIBLE     ungated / gated success without its own gate map / other epoch / before the freeze / VOID (invalid provenance)
+ *  INFRA_CENSORED infra failure or a discarded attempt: no task-level observation — never a failure, never a pass
+ * Per task: UNKNOWN when no eligible attempt exists. Only ELIGIBLE_* attempts decide anything; an incompatible pair is a HOLD.
+ * Status, gate map and provenance are always read from the same loop_run row: a verdict is never joined across attempts.
+ */
+export type EvidenceClass = 'ELIGIBLE_PASS' | 'ELIGIBLE_FAIL' | 'INELIGIBLE' | 'INFRA_CENSORED';
+export interface GatedEvidence { byKey: Map<string, GatedObservation>; classes: Partial<Record<EvidenceClass, number>> }
+/** The newest eligible attempt per task of one genome (see above; ties on created_at break on id), plus per-attempt class counts. */
+export function gatedEvidence(db: Database, speciesKey: string, genomeId: string, keys: string[], freeze = epochFreeze(db)): GatedEvidence {
+  const want = new Set(keys); const byKey = new Map<string, GatedObservation>(); const classes: Partial<Record<EvidenceClass, number>> = {};
+  const rows = db.prepare(`SELECT id, json_extract(metadata, '$.gym.commit') AS commit_sha, json_extract(metadata, '$.gym_result.status') AS status,
+      COALESCE(json_extract(metadata, '$.gym_result.reason'), '') AS reason, created_at, COALESCE(json_extract(metadata, '$.gym.kind'), 'repair') AS kind,
+      json_extract(metadata, '$.gym.tier') AS tier, json_extract(metadata, '$.gym_result.graded_kind') AS graded_kind, ${ELIGIBLE_GATED} AS eligible, NOT ${NOT_VOID} AS voided,
+      EXISTS (SELECT 1 FROM json_each(CASE WHEN json_type(metadata, '$.gym_result.prod_gates') = 'object' THEN json_extract(metadata, '$.gym_result.prod_gates') ELSE '{}' END) g WHERE g.value = 'fail') AS gate_failed
+    FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.genome') = ? AND status = 'completed'
+    ORDER BY created_at, id`).all(speciesKey, genomeId) as Array<{ id: string; commit_sha: string; status: string; reason: string; created_at: string; kind: string; tier: number | null; graded_kind: string | null; eligible: number; voided: number; gate_failed: number }>;
+  for (const r of rows) {
+    if (!want.has(r.commit_sha)) continue;
+    const frozen = freeze.get(r.commit_sha);
+    const cls: EvidenceClass = r.reason.startsWith('infra:') || r.status === 'discarded' ? 'INFRA_CENSORED'
+      : r.voided || frozen === null || (frozen !== undefined && r.created_at < frozen) || !r.eligible ? 'INELIGIBLE' // provenance, other epoch, pre-freeze, ungated
+        : r.status === 'success' && !r.gate_failed ? 'ELIGIBLE_PASS' : 'ELIGIBLE_FAIL';
+    classes[cls] = (classes[cls] ?? 0) + 1;
+    if (cls !== 'ELIGIBLE_PASS' && cls !== 'ELIGIBLE_FAIL') continue;
+    byKey.set(r.commit_sha, { id: r.id, commit: r.commit_sha, status: cls === 'ELIGIBLE_PASS' ? 'success' : 'failure', reason: r.reason,
+      created_at: r.created_at, kind: r.kind, tier: r.tier, graded_kind: r.graded_kind }); // ascending (created_at, id): the newest eligible attempt wins
+  }
+  return { byKey, classes };
+}
+const tally = (xs: Array<string | number | null>): Record<string, number> => xs.reduce<Record<string, number>>((a, x) => (x == null ? a : { ...a, [String(x)]: (a[String(x)] ?? 0) + 1 }), {});
+/** What a trial decision rested on: gate policy, epoch, eligible / UNKNOWN tasks, per-attempt evidence classes, task families and difficulties. */
+function evidenceSummary(policy: string, holdout: HoldoutTable, epoch: number, keys: string[], parent: GatedEvidence, mutant?: GatedEvidence): string {
+  const obs = keys.map((k) => parent.byKey.get(k)).filter((o): o is GatedObservation => Boolean(o));
+  const count = (e: GatedEvidence) => { const eligible = keys.filter((k) => e.byKey.has(k)).length; return { eligible, unknown: keys.length - eligible, classes: e.classes }; };
+  return JSON.stringify({ gate_policy: policy, holdout, epoch, deciding_n: keys.length, parent: count(parent), ...(mutant ? { mutant: count(mutant) } : {}),
+    families: tally(obs.map((o) => o.kind)), tiers: tally(obs.map((o) => o.tier)) });
+}
+
 export function settleNoHeadroom(db: Database, speciesKey: string, holdoutCommits: string[], mutantCommits: string[] = [], now = Date.now(), writeTestKeys: string[] = []): Array<{ id: string; f: number; n: number; needed: number }> {
   if (!trialHeadroomPrecheck() || !holdoutCommits.length) return [];
   const deciding = mutantCommits.length ? mutantCommits : holdoutCommits;
   const iso = new Date(now).toISOString();
   const graded = promotionRule() === 'graded';
-  const latest = (gated: boolean) => db.prepare(`SELECT id, json_extract(metadata, '$.gym_result.status') AS status FROM loop_runs WHERE loop_name = 'evolution-gym'
+  // any scored attempt: only to see whether the mutant already ran (then evaluateTrials decides) — never a verdict
+  const result = db.prepare(`SELECT id FROM loop_runs WHERE loop_name = 'evolution-gym'
     AND json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.genome') = ? AND json_extract(metadata, '$.gym.commit') = ?
     AND status = 'completed' AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%' AND ${NOT_VOID}
-    ${gated ? "AND json_extract(metadata, '$.gym.prod_gates') = 1" : ''} ORDER BY created_at DESC LIMIT 1`);
-  const result = latest(false);
-  const parentResult = graded ? latest(true) : result;
+    AND COALESCE(json_extract(metadata, '$.gym_result.status'), '') <> 'discarded' LIMIT 1`);
   const trials = db.prepare("SELECT id, COALESCE(parent_id, ?) AS parent FROM maker_genomes WHERE status = 'trial' ORDER BY created_at").all(BASELINE_GENOME) as Array<{ id: string; parent: string }>;
   const settled: Array<{ id: string; f: number; n: number; needed: number }> = [];
   const grade = gradedScorer(db);
+  const freeze = epochFreeze(db); const policy = gatePolicyVersion();
+  const table: HoldoutTable = mutantCommits.length ? 'gym_mutant_holdout' : 'gym_holdout';
   for (const trial of trials) {
     const scored = deciding.filter((c) => !unscorable(db, speciesKey, trial.parent, c));
-    const parent = scored.map((c) => parentResult.get(speciesKey, trial.parent, c) as { id: string; status: string } | undefined);
-    if (parent.some((r) => !r)) continue; // the parent is not fully scored yet (graded rule: no gated result yet)
+    const evidence = gatedEvidence(db, speciesKey, trial.parent, scored, freeze);
+    // P0: headroom is unknown until every deciding task has an eligible gated parent result — the trial runs, never settles on ungated history
+    if (scored.some((c) => !evidence.byKey.has(c))) continue;
+    const parent = scored.map((c) => evidence.byKey.get(c)!);
     if (scored.every((c) => result.get(speciesKey, trial.id, c) || unscorable(db, speciesKey, trial.id, c))) continue; // already run: evaluateTrials decides
-    const n = scored.length; const f = parent.filter((r) => r?.status !== 'success').length;
+    const n = scored.length; const f = parent.filter((r) => r.status !== 'success').length;
     const needed = minWinsNeeded();
     if (f >= needed) continue;
     // WT-HOLDOUT: under the graded rule the write_test holdout's mutant_kill mean is the graded headroom when there is one
-    const wt = graded ? writeTestKeys.filter((k) => !unscorable(db, speciesKey, trial.parent, k)).map((k) => result.get(speciesKey, trial.parent, k) as { id: string; status: string } | undefined) : [];
-    if (wt.some((r) => !r)) continue; // the parent has not run the write_test holdout yet
-    const parentGraded = avg((wt.length ? wt : parent).map((r) => grade(r!.id, r!.status === 'success').score));
+    const wtKeys = graded ? writeTestKeys.filter((k) => !unscorable(db, speciesKey, trial.parent, k)) : [];
+    const wtEvidence = gatedEvidence(db, speciesKey, trial.parent, wtKeys, freeze);
+    if (wtKeys.some((k) => !wtEvidence.byKey.has(k))) continue; // no eligible parent result on the write_test holdout yet
+    const wt = wtKeys.map((k) => wtEvidence.byKey.get(k)!);
+    const parentGraded = avg((wt.length ? wt : parent).map((r) => grade(r.id, r.status === 'success').score));
     if (graded && parentGraded < GRADED_HEADROOM) continue; // SI-C: graded headroom
     const shown = Number.isFinite(needed) ? needed : n + 1;
     db.prepare("UPDATE maker_genomes SET status = 'inconclusive', note = ?, updated_at = ? WHERE id = ? AND status = 'trial'")
-      .run(`no_headroom: parent fails ${f} of ${n}; ≥ ${shown} needed for any significant win`, iso, trial.id);
+      .run(`no_headroom: parent fails ${f} of ${n}; ≥ ${shown} needed for any significant win; gates ${policy}`, iso, trial.id);
     try {
-      db.prepare(`INSERT OR REPLACE INTO genome_trial_results (trial_id, parent_id, tier_set, deciding_n, f_parent_failures, b, c, p, mined_b, mined_c, power_q8_l05, state, recorded_at, epoch, graded_mean_parent)
-        VALUES (?, ?, ?, ?, ?, 0, 0, 1, 0, 0, 0, 'no_headroom', ?, ?, ?)`).run(trial.id, trial.parent, mutantCommits.length ? mutantHoldoutTiers().join(',') : 'mined', n, f, iso,
-        holdoutEpoch(db, mutantCommits.length ? 'gym_mutant_holdout' : 'gym_holdout'), parentGraded);
+      const epoch = holdoutEpoch(db, table);
+      db.prepare(`INSERT OR REPLACE INTO genome_trial_results (trial_id, parent_id, tier_set, deciding_n, f_parent_failures, b, c, p, mined_b, mined_c, power_q8_l05, state, recorded_at, epoch, graded_mean_parent, gate_policy, evidence_json)
+        VALUES (?, ?, ?, ?, ?, 0, 0, 1, 0, 0, 0, 'no_headroom', ?, ?, ?, ?, ?)`).run(trial.id, trial.parent, mutantCommits.length ? mutantHoldoutTiers().join(',') : 'mined', n, f, iso,
+        epoch, parentGraded, policy, evidenceSummary(policy, table, epoch, scored, evidence));
     } catch { /* the record is fail-soft; the settlement above is what stops the attempts */ }
     console.log(`🧬 genome ${trial.id} inconclusive (no headroom: parent fails ${f} of ${n}; ≥ ${shown} needed for any significant win)`);
     settled.push({ id: trial.id, f, n, needed: shown });
@@ -422,19 +508,22 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
   const binary = [...holdoutCommits, ...mutantCommits];
   const all = [...binary, ...writeTestKeys];
   const iso = new Date(now).toISOString();
-  const results = db.prepare(`SELECT id, json_extract(metadata, '$.gym.commit') AS commit_sha, json_extract(metadata, '$.gym_result.status') AS status,
-      COALESCE(json_extract(metadata, '$.gym_result.reason'), '') AS reason
+  // any scored attempt: only whether a task was run at all (completeness) — verdicts come from gatedEvidence (P0)
+  const results = db.prepare(`SELECT DISTINCT json_extract(metadata, '$.gym.commit') AS commit_sha
     FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.genome') = ?
-      AND status = 'completed' AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%' AND ${NOT_VOID}`);
+      AND status = 'completed' AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%' AND ${NOT_VOID}
+      AND COALESCE(json_extract(metadata, '$.gym_result.status'), '') <> 'discarded'`); // INFRA_CENSORED: not a run of the task
   // GENOME_FIRE_CHECK: VOID attempts (the genome's lines never reached the maker) are never paired; counted for the note
   const voids = db.prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ?
       AND json_extract(metadata, '$.gym.genome') = ? AND NOT ${NOT_VOID}`);
+  const freeze = epochFreeze(db); const policy = gatePolicyVersion();
   const score = (genomeId: string) => {
-    const rows = (results.all(speciesKey, genomeId) as Array<{ id: string; commit_sha: string; status: string; reason: string }>).filter((r) => all.includes(r.commit_sha));
-    const byCommit = new Map(rows.map((r) => [r.commit_sha, r]));
-    const repair = [...byCommit.values()].filter((r) => binary.includes(r.commit_sha));
-    return { byCommit, complete: all.every((c) => byCommit.has(c) || unscorable(db, speciesKey, genomeId, c)), wins: repair.filter((r) => r.status === 'success').length,
-      won: new Set(repair.filter((r) => r.status === 'success').map((r) => r.commit_sha)),
+    const ran = new Set((results.all(speciesKey, genomeId) as Array<{ commit_sha: string }>).map((r) => r.commit_sha));
+    const evidence = gatedEvidence(db, speciesKey, genomeId, all, freeze);
+    const byCommit = evidence.byKey;
+    const repair = [...byCommit.values()].filter((r) => binary.includes(r.commit));
+    return { evidence, byCommit, complete: all.every((c) => ran.has(c) || unscorable(db, speciesKey, genomeId, c)), wins: repair.filter((r) => r.status === 'success').length,
+      won: new Set(repair.filter((r) => r.status === 'success').map((r) => r.commit)),
       outOfScope: repair.filter((r) => r.reason.startsWith('out of scope')).length };
   };
   const settled: Array<{ id: string; status: 'active' | 'retired' | 'inconclusive'; wins: number; parentWins: number }> = [];
@@ -454,6 +543,29 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
     if (validity.state !== 'valid') { // symmetric on purpose: no promotion and no retirement from a spent or unknown holdout
       db.prepare("UPDATE maker_genomes SET status = 'inconclusive', note = ?, updated_at = ? WHERE id = ? AND status = 'trial'").run(validity.reason, iso, trial.id);
       console.log(`🧬 genome ${trial.id} inconclusive (${validity.reason})`);
+      settled.push({ id: trial.id, status: 'inconclusive', wins: mine.wins, parentWins: theirs.wins });
+      continue;
+    }
+    // P0: every task both genomes were scored on needs an eligible gated result on both sides, under one contract — else HOLD
+    const table: HoldoutTable = mutantCommits.length ? 'gym_mutant_holdout' : 'gym_holdout';
+    const pairedKeys = all.filter((h) => !unscorable(db, speciesKey, trial.id, h) && !unscorable(db, speciesKey, trial.parent, h));
+    const eligibleOn = (s: typeof mine) => pairedKeys.filter((h) => s.byCommit.has(h)).length;
+    const incompatible = pairedKeys.filter((h) => {
+      const pr = theirs.byCommit.get(h); const mr = mine.byCommit.get(h);
+      return pr && mr && (pr.kind !== mr.kind || pr.tier !== mr.tier || (pr.graded_kind != null && mr.graded_kind != null && pr.graded_kind !== mr.graded_kind));
+    });
+    const left = (s: typeof mine) => `${eligibleOn(s)} of ${pairedKeys.length} tasks eligible, ${pairedKeys.length - eligibleOn(s)} UNKNOWN; attempts ${JSON.stringify(s.evidence.classes)}`;
+    const hold = eligibleOn(theirs) < pairedKeys.length ? `inconclusive: no eligible gated parent evidence (${left(theirs)})`
+      : eligibleOn(mine) < pairedKeys.length ? `inconclusive: no eligible gated mutant evidence (${left(mine)})`
+        : incompatible.length ? `inconclusive: incompatible evidence contract on ${incompatible.length} task(s) (task family, difficulty or graded kind differ)` : null;
+    if (hold) {
+      db.prepare("UPDATE maker_genomes SET status = 'inconclusive', note = ?, updated_at = ? WHERE id = ? AND status = 'trial'").run(`${hold}; gates ${policy}`, iso, trial.id);
+      try {
+        const epoch = holdoutEpoch(db, table);
+        db.prepare(`INSERT OR REPLACE INTO genome_trial_results (trial_id, parent_id, tier_set, state, recorded_at, epoch, gate_policy, evidence_json) VALUES (?, ?, ?, 'hold_ineligible', ?, ?, ?, ?)`)
+          .run(trial.id, trial.parent, mutantCommits.length ? mutantHoldoutTiers().join(',') : 'mined', iso, epoch, policy, evidenceSummary(policy, table, epoch, pairedKeys, theirs.evidence, mine.evidence));
+      } catch { /* the record is fail-soft; the settlement above is the decision */ }
+      console.log(`🧬 genome ${trial.id} ${hold}`);
       settled.push({ id: trial.id, status: 'inconclusive', wins: mine.wins, parentWins: theirs.wins });
       continue;
     }
@@ -477,7 +589,7 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
     const significant = promotionRule() === 'graded' ? graded.decision === 'promote' : b > c && p < promotionAlpha();
     const wins = significant && mined.c - mined.b <= 1 && mine.outOfScope <= theirs.outOfScope && !promotedToday();
     const gradedNote = promotionRule() === 'graded' ? `; graded ${graded.mutant.toFixed(3)} vs ${graded.parent.toFixed(3)}, permutation p=${graded.p.toPrecision(3)} (${graded.decision})` : '';
-    const note = `holdout ${mine.wins}/${binary.length} vs parent ${theirs.wins}/${binary.length}; ${mutantCommits.length ? 'mutant ' : ''}discordant ${b} vs ${c}, McNemar p=${p.toFixed(3)}${gradedNote}${writeTestKeys.length ? `; write_test ${writeTestKeys.length} in the graded test` : ''}${mutantCommits.length ? `; mined discordant ${mined.b} vs ${mined.c}` : ''}; out of scope ${mine.outOfScope} vs ${theirs.outOfScope}${voidNote(trial.id)}`;
+    const note = `holdout ${mine.wins}/${binary.length} vs parent ${theirs.wins}/${binary.length}; ${mutantCommits.length ? 'mutant ' : ''}discordant ${b} vs ${c}, McNemar p=${p.toFixed(3)}${gradedNote}${writeTestKeys.length ? `; write_test ${writeTestKeys.length} in the graded test` : ''}${mutantCommits.length ? `; mined discordant ${mined.b} vs ${mined.c}` : ''}; out of scope ${mine.outOfScope} vs ${theirs.outOfScope}${voidNote(trial.id)}; gates ${policy}`;
     let status: 'active' | 'retired' | 'inconclusive' = 'retired';
     if (wins) status = promoteGenome(db, trial.id, decidingHoldout, deciding, note, iso).promoted ? 'active' : 'inconclusive';
     else db.prepare("UPDATE maker_genomes SET status = 'retired', note = ?, updated_at = ? WHERE id = ?").run(note, iso, trial.id);
@@ -506,6 +618,9 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
         VALUES (?, ?, 'graded_only', ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(trial_id) DO UPDATE SET graded_mean_parent = excluded.graded_mean_parent,
         graded_mean_mutant = excluded.graded_mean_mutant, graded_p = excluded.graded_p, graded_decision = excluded.graded_decision, graded_refs = excluded.graded_refs`)
         .run(trial.id, trial.parent, iso, holdoutEpoch(db, mutantCommits.length ? 'gym_mutant_holdout' : 'gym_holdout'), graded.parent, graded.mutant, graded.p, graded.decision, graded.refs);
+      // P0: the gate policy and the eligible evidence this decision rested on (Gate A reads only rows that carry it)
+      db.prepare('UPDATE genome_trial_results SET gate_policy = ?, evidence_json = ? WHERE trial_id = ?')
+        .run(policy, evidenceSummary(policy, table, holdoutEpoch(db, table), pairedKeys, theirs.evidence, mine.evidence), trial.id);
     } catch { /* the record is fail-soft */ }
     settled.push({ id: trial.id, status, wins: mine.wins, parentWins: theirs.wins });
   }
