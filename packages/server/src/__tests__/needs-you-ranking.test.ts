@@ -10,13 +10,19 @@ const NOW = Date.parse('2026-10-10T12:00:00Z');
 const at = (h: number) => new Date(NOW - h * 3_600_000).toISOString();
 const proposal = (id: string, status: string, refs = '["test-gap:x"]') => db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, evidence_refs_json, created_at, updated_at)
   VALUES (?, 'test', ?, 'd', 'r', 'gap_analysis', ?, ?, ?, ?)`).run(id, `title ${id}`, status, refs, at(48), at(1));
+// E2: an infra_failed proposal is operational system work (not ranked for the operator); the operator's candidate is a maker-attributed regression
+const operatorCandidate = () => {
+  proposal('cand', 'regressed');
+  db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at)
+    VALUES ('a-cand', 'outcome_attribution', 'self_improvement', 'cand', 'h', 'annotation', 'maker_failure', 'test', ?)`).run(at(1));
+};
 beforeEach(() => { db = new Database(':memory:'); db.exec(schema); runMigrations(db); db.pragma('foreign_keys = OFF'); });
 afterEach(() => db.close());
 
 it('ranks a requeue by the measured verify rate of earlier requeues; unmeasured kinds are listed last with null score', () => {
   ['v1', 'v2', 'v3', 'v4'].forEach((id) => proposal(id, 'verified', `["requeue-of:old-${id}"]`));
   proposal('x1', 'regressed', '["requeue-of:old-x1"]');
-  proposal('cand', 'infra_failed');
+  operatorCandidate();
   db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, metadata, created_at, updated_at) VALUES ('run1', 'test-gap', 'closed', 'completed', ?, ?, ?)`)
     .run(JSON.stringify({ pr_url: 'https://github.com/djimit/djimitflo/pull/9' }), at(30), at(30));
   const r = decisionsInbox(db, NOW).ranking;
@@ -33,14 +39,14 @@ it('ranks a requeue by the measured verify rate of earlier requeues; unmeasured 
 
 it('below the minimum sample the requeue gain is INSUFFICIENT_EVIDENCE, not a rate from 1 attempt', () => {
   proposal('v1', 'verified', '["requeue-of:old"]');
-  proposal('cand', 'infra_failed');
+  operatorCandidate();
   const req = decisionsInbox(db, NOW).ranking.find((i) => i.id === 'cand');
   expect(req?.score).toBeNull();
   expect(req?.evidence[0]).toContain('need 5');
 });
 
 it('records one shadow ranking judgment per UTC day and changes nothing else', () => {
-  proposal('cand', 'infra_failed');
+  operatorCandidate();
   const before = db.prepare("SELECT status FROM self_improvements WHERE id = 'cand'").get();
   expect(recordNeedsYouRanking(db, NOW)).toBe(true);
   expect(recordNeedsYouRanking(db, NOW + 3_600_000)).toBe(false);

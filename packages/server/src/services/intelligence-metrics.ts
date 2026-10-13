@@ -110,7 +110,7 @@ export function failureRecurrence(units: FailureUnit[], min = { failures: 20, si
 }
 
 /** Production maker outcomes in the window as failure units (gym and merge domains are not production failures). */
-function failureUnits(db: Database, since: string): FailureUnit[] {
+export function failureUnits(db: Database, since: string): FailureUnit[] {
   let rows: Array<{ skill_id: string; success: number; refs: string | null; at: string; run: string | null; lease_reason: string | null; attribution_reason: string | null; failed_gates: string | null }> = [];
   try {
     rows = db.prepare(`SELECT o.skill_id, o.success, o.evidence_refs_json AS refs, o.created_at AS at, o.task_id AS run,

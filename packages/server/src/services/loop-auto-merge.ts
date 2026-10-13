@@ -4,7 +4,7 @@ import { AuditService } from './audit-service';
 import { LoopEventService } from './loop-event-service';
 import { testOnlyChange, TEST_ONLY_DIFF_MAX } from './loop-worker-executor-service';
 import { pushNotice } from './operator-push';
-import { SURVIVAL_DAYS } from './merge-survival';
+import { settlementState, SURVIVAL_DAYS, type SettlementOutcome } from './merge-survival';
 import { autoMergeMaxPerDay, autoMergeMode, isAuditSample, readClassState, revokeClass } from './loop-auto-merge-state';
 import { markRun } from './scheduler-registry';
 import { assertionStrengthVerdict } from './test-assertion-strength';
@@ -91,7 +91,7 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
 
     // verified run
     const gates = (() => { try { return JSON.parse(run.gates_json || '[]') as Array<{ status?: string }>; } catch { return [{ status: 'fail' }]; } })();
-    if (run.improvement_status !== 'verified' || !['completed', 'ready_for_human_merge'].includes(run.status) || gates.some((g) => g.status === 'fail')) {
+    if (run.improvement_status !== 'verified' || !['completed', 'ready_for_human_merge'].includes(run.status) || gates.some((g) => g.status === 'fail' || g.status === 'unknown')) {
       record('ineligible', `not_verified: run ${run.status}, proposal ${run.improvement_status ?? 'unlinked'}`); continue;
     }
     const pr = await json<Pr>(`pulls/${number}`);
@@ -173,14 +173,16 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
 /** The revert window: true when this tick revoked the class. Closes a PR's window after 14 d once merge survival settled it (or 30 d). */
 async function checkRevocations(db: Database, json: <T>(p: string) => Promise<T | null>, checks: (sha: string) => Promise<Checks>,
   events: LoopEventService, base: string, now: Date, env: NodeJS.ProcessEnv): Promise<boolean> {
-  const merged = db.prepare(`SELECT id, metadata FROM loop_runs WHERE json_extract(metadata, '$.auto_merge.decision') = 'merged'
-    AND json_extract(metadata, '$.auto_merge.window_closed') IS NULL`).all() as Array<{ id: string; metadata: string }>;
+  const merged = db.prepare(`SELECT id, created_at, metadata FROM loop_runs WHERE json_extract(metadata, '$.auto_merge.decision') = 'merged'
+    AND json_extract(metadata, '$.auto_merge.window_closed') IS NULL`).all() as Array<{ id: string; created_at: string; metadata: string }>;
   let revokedNow = false;
   for (const run of merged) {
-    const meta = JSON.parse(run.metadata) as { pr_url: string; auto_merge: AutoMergeRecord; pr_outcome?: { survived?: boolean; settled_at?: string } };
+    const meta = JSON.parse(run.metadata) as { pr_url: string; auto_merge: AutoMergeRecord; pr_outcome?: SettlementOutcome };
+    // E1: only a settled state counts — a pending or anomalous outcome is neither a removal nor a survival
+    const settled = settlementState(run.created_at, meta.pr_outcome ?? null, now.getTime()).state;
     const am = meta.auto_merge; const mergedAt = Date.parse(am.merged_at ?? am.at); const age = now.getTime() - mergedAt;
     const reasons: string[] = [];
-    if (meta.pr_outcome?.survived === false) reasons.push('merge survival: its added lines were removed from main');
+    if (settled === 'SETTLED_REGRESSED') reasons.push('merge survival: its added lines were removed from main');
     if (age <= SURVIVAL_DAYS * DAY) {
       const commits = await json<Array<{ sha?: string; commit?: { message?: string } }>>(`commits?sha=${encodeURIComponent(base)}&since=${encodeURIComponent(new Date(mergedAt).toISOString())}&per_page=100`);
       const ref = new RegExp(`#${am.pr_number}\\b`);
@@ -198,7 +200,7 @@ async function checkRevocations(db: Database, json: <T>(p: string) => Promise<T 
       events.recordEvent(run.id, 'auto_merge_revoked', 'warning', `Auto-merge class revoked — ${reason}`, { pr_url: meta.pr_url, reasons, newly_revoked: fresh });
       if (fresh) await pushNotice(`Auto-merge for test-only loop PRs REVOKED — ${reason}. Re-enable needs an operator: ${meta.pr_url}`, env);
     }
-    if (age > SURVIVAL_DAYS * DAY && (meta.pr_outcome?.settled_at || age > 30 * DAY)) {
+    if (age > SURVIVAL_DAYS * DAY && (settled === 'SETTLED_SURVIVED' || settled === 'SETTLED_REGRESSED' || age > 30 * DAY)) {
       db.prepare("UPDATE loop_runs SET metadata = json_set(metadata, '$.auto_merge.window_closed', json('true')) WHERE id = ?").run(run.id);
     }
   }

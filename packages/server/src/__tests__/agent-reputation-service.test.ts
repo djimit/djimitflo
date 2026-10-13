@@ -96,6 +96,31 @@ describe('AgentReputationService', () => {
     expect(service.computeReputation('a7').score).toBeGreaterThanOrEqual(0);
   });
 
+  it('computes the exact score for a mixed completion/failure history without clamping', () => {
+    insertAgent('a8', { total_tasks: 10, completed_tasks: 2, failed_tasks: 1 });
+    const reputation = service.computeReputation('a8');
+    expect(reputation.task_completion_rate).toBeCloseTo(0.2, 10);
+    expect(reputation.score).toBeCloseTo(0.53, 2);
+  });
+
+  it('applies the exact probe penalty for one probe over the free threshold', () => {
+    insertAgent('a9', { total_tasks: 10, completed_tasks: 0, failed_tasks: 0 });
+    for (let i = 0; i < 3; i += 1) {
+      db.prepare("INSERT INTO social_lure_probes (id, agent_id, ip, reason, created_at) VALUES (?, 'a9', '10.0.0.1', 'bad_token', datetime('now'))").run(`probe-a9-${i}`);
+    }
+    const reputation = service.computeReputation('a9');
+    expect(reputation.score).toBeCloseTo(0.45, 2);
+    expect(reputation.sample_size).toBe(13);
+  });
+
+  it('returns bite_count 0 when the lure_events table is missing (catch path)', () => {
+    insertAgent('a10');
+    db.exec('DROP TABLE lure_events');
+    const reputation = service.computeReputation('a10');
+    expect(reputation.bite_count).toBe(0);
+    expect(reputation.sample_size).toBe(0);
+  });
+
   it('throws AGENT_REPUTATION_AGENT_NOT_FOUND for an unknown agent id', () => {
     expect(() => service.computeReputation('does-not-exist')).toThrow('AGENT_REPUTATION_AGENT_NOT_FOUND');
   });

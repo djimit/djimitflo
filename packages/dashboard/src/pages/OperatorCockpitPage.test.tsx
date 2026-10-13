@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
-import { CommandStrip, EfficiencySection, NeedsYou, OperatorCockpitPage, overallHealth, type CockpitView } from './OperatorCockpitPage';
+import { CommandStrip, EfficiencySection, EvolutionFunnel, NeedsYou, OperatorCockpitPage, overallHealth, type CockpitView } from './OperatorCockpitPage';
 import { api } from '../lib/api';
 
 beforeEach(() => { vi.restoreAllMocks(); vi.spyOn(api, 'getServiceMap').mockResolvedValue({ services: [
@@ -176,7 +176,7 @@ it('Cockpit 3.0: an UNKNOWN guardrail (or a null value from an old server that s
   expect(overallHealth(snap({ at: '2026-01-01T00:00:00Z' })).state).toBe('STALE');
   const html = renderToStaticMarkup(<MemoryRouter><CommandStrip d={oldServer} /></MemoryRouter>);
   expect(html).toContain('unknown'); expect(html).not.toContain('>healthy<');
-  expect(html).toContain('throughput, not intelligence'); expect(html).toContain('href="/evolution"');
+  expect(html).toContain('throughput, not improvement'); expect(html).toContain('href="/evolution"');
 });
 
 it('Cockpit 3.0: null needs-you counts render as unknown, never as a calm zero', () => {
@@ -224,4 +224,24 @@ it('Cockpit 3.0: a failed stall detector or a scheduler that stopped ticking is 
   expect(html).toContain('detector failed (unwatched): gym');
   expect(html).toContain('1 scheduler(s) armed but not ticking');
   expect(html).toContain('2 blocked');
+});
+
+it('Restore Evolutionary Health: the funnel shows the bottleneck, the 4-way split, NEV evidence state and the JC-001 rejection', () => {
+  const st = (stage: string, count: number | null, conversion: number | null, measured: 'measured' | 'not_linked' | 'not_measured' = 'measured') =>
+    ({ stage, count, conversion, median_age_days: null, top_failure: null, compute_tokens: null, operator_decisions: 0, measured });
+  const html = renderToStaticMarkup(<EvolutionFunnel e={{ window_days: 60,
+    stages: [st('discovery', 300, null, 'not_linked'), st('proposal', 100, null), st('experiment', 80, 0.8), st('verified', 50, 0.625), st('merged', 20, 0.4),
+      st('settled', 2, 0.1), st('survived_14d', 2, 1), st('survived_30d', null, null, 'not_measured'), st('capability_gain', null, null, 'not_measured'), st('reproduced', null, null, 'not_measured')],
+    bottleneck: { from: 'verified', to: 'merged', lost: 30, conversion: 0.4, reason: 'awaiting_human_merge (31)', oldest_queue: null },
+    regression_split: { mutation_failure: 4, reviewer_rejection: 26, environment: 19, post_verification: 0, post_verification_follow_up_fix: null, unknown: 8 },
+    evolutionary_regressions: 4,
+    nev: { status: 'INSUFFICIENT_EVIDENCE', reason: '2 settled lineage(s) with a survival verdict; NEV needs ≥ 10', value: null, survived: 2, settled: 2, survival_rate: 1, survival_ci: [0.34, 1],
+      severity_weights: { removed: 1, follow_up_fix: 0.5 }, per_m_cloud_tokens: null, per_kwh: null, per_kwh_status: 'INSUFFICIENT_EVIDENCE', per_operator_decision: null, operator_decisions: 40, cloud_tokens: null, note: '' },
+    throughput: { verified: 50, label: 'throughput, not improvement' }, jev_semantic_routing: 'REJECTED by JC-001 (NE-001, PR #779)', errors: [] }} />);
+  expect(html).toContain('Largest bottleneck');
+  expect(html).toContain('throughput, not improvement');
+  expect(html).toContain('reviewer rejection 26 (gate worked, not a regression)');
+  expect(html).toContain('insufficient evidence');
+  expect(html).toContain('not measured');
+  expect(html).toContain('JEV semantic routing: REJECTED by JC-001 (NE-001, PR #779)');
 });

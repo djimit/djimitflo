@@ -76,10 +76,11 @@ it('honest needs-you: open loop PRs count, merged ones do not; no_change and dis
   run.run('c1', JSON.stringify({ pr_url: 'https://github.com/o/r/pull/4', pr_outcome: { state: 'closed_unmerged', settled_at: ago(1) } }), ago(30), ago(30));
   let c = operatorCockpit(db, NOW);
   expect(c.needs_you.open_prs).toBe(2);
-  expect(c.needs_you.requeue).toBe(2);
-  dismissRequeue(db, 'i1', 'op');
+  expect(c.needs_you.requeue).toBe(1); // E2: i1 (infra_failed) is operational system work, not an operator decision
+  expect(c.needs_you.system_requeue?.infra_failed).toBe(1);
+  dismissRequeue(db, 'r1', 'op');
   c = operatorCockpit(db, NOW);
-  expect(c.needs_you.requeue).toBe(1);
+  expect(c.needs_you.requeue).toBe(0);
 });
 
 it('honest cockpit: tokens per verified change = maker + reviewer lease tokens / verified proposals (not an average over zero-token gym outcomes)', () => {

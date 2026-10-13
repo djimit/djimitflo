@@ -208,8 +208,9 @@ export function buildDigest(db: Database, now = Date.now(), env: NodeJS.ProcessE
     new_proposals_24h: one('SELECT COUNT(*) FROM self_improvements WHERE created_at >= ?', d1),
     approvals_expired_24h: one("SELECT COUNT(*) FROM approvals WHERE status = 'expired' AND updated_at >= ?", d1),
     approvals_pending: one("SELECT COUNT(*) FROM approvals WHERE status = 'pending'"),
-    loop_prs_settled: evidence ? (evidence.merge.settled as Array<{ state: string; survived: number | null; n: number }>).reduce((s, r) => s + r.n, 0) : 0,
-    loop_prs_survived: evidence ? (evidence.merge.settled as Array<{ survived: number | null; n: number }>).filter((r) => r.survived === 1).reduce((s, r) => s + r.n, 0) : 0,
+    // E1: settled = SETTLED_SURVIVED + SETTLED_REGRESSED (closed-unmerged, pending and anomalous PRs are not survival settlements)
+    loop_prs_settled: evidence?.merge.settlement?.settled ?? 0,
+    loop_prs_survived: evidence?.merge.settlement?.survived ?? 0,
     drafts_unsettled: evidence?.drafts.unsettled ?? 0,
     drafts_age_max_days: evidence?.drafts.age_days_max ?? null,
     gates: evidence ? Object.fromEntries(Object.entries(evidence.gates).map(([k, g]) => [k, (g as { state: string }).state])) : {},
