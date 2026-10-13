@@ -15,7 +15,7 @@ import { ExecutionEngine } from '../execution/execution-engine';
 import { checkContentSafety, resetContentSafetyPause } from '../services/content-safety';
 import { installOutboundGuard } from '../utils/outbound-guard';
 import { createHostAgentRoutes } from '../routes/host-agent';
-import { POLICY_VIOLATION_KINDS, policyViolationCounts, recordPolicyViolation } from '../services/policy-violations';
+import { hourBucket, POLICY_VIOLATION_KINDS, policyViolationCounts, recordPolicyViolation } from '../services/policy-violations';
 import { buildEvolutionEvidence, EVOLUTION_FLAGS } from '../services/evolution-evidence';
 
 /**
@@ -228,5 +228,30 @@ describe('SCIG detail', () => {
     expect(detail.policy_violations_by_kind).toEqual(Object.fromEntries(POLICY_VIOLATION_KINDS.map((k) => [k, k === 'scope_gate' ? 2 : k === 'diff_limit' ? 1 : 0])));
     expect(detail.policy_violation_log).toBe('shadow');
     expect(policyViolationCounts(new Database(':memory:'))).toBeNull();
+  });
+});
+
+describe('truncation and id shape', () => {
+  it('hourBucket returns the ISO hour prefix', () => {
+    expect(hourBucket(Date.parse('2026-10-09T12:34:56Z'))).toBe('2026-10-09T12');
+    expect(hourBucket(Date.parse('2026-10-09T12:34:56Z'))).toHaveLength(13);
+  });
+
+  it('truncates actor, dedupe_key, description and shapes the id', () => {
+    const db = freshDb();
+    db.prepare(`INSERT INTO tasks(id,title,description,status,priority,risk_level,execution_mode,metadata) VALUES ('task-99','Fixture','x','pending','low','low','local','{}')`).run();
+    const longActor = 'A'.repeat(500);
+    const longDedupe = 'D'.repeat(500);
+    const longDesc = 'X'.repeat(800);
+    const v = { kind: 'diff_limit' as const, actor: longActor, severity: 'medium' as const, description: longDesc, dedupe_key: longDedupe, task_id: 'task-99' };
+    expect(recordPolicyViolation(db, v, { POLICY_VIOLATION_LOG: 'shadow' })).toBe(true);
+    const r = db.prepare("SELECT id, description, metadata FROM policy_violations").all() as Array<{ id: string; description: string; metadata: string }>;
+    expect(r).toHaveLength(1);
+    expect(r[0].id).toMatch(/^pv-[0-9a-f]{24}$/);
+    expect(r[0].description).toHaveLength(500);
+    const meta = JSON.parse(r[0].metadata);
+    expect(meta.actor).toHaveLength(200);
+    expect(meta.dedupe_key).toHaveLength(300);
+    expect(meta.task_id).toBe('task-99');
   });
 });

@@ -1,5 +1,8 @@
+import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { LOOP_PR_SETTLEMENT_STATES, type LoopPrSettlementState } from '@djimitflo/shared';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
+import { markRun } from './scheduler-registry';
 
 /**
  * EV4 (plan Phase EV, 03-10): the strongest fitness signal is whether a loop change survives in the real repository.
@@ -30,6 +33,109 @@ interface PrOutcome {
   review_latency_h?: number; human_commits?: number; attribution?: Record<string, unknown>;
   version?: 2; not_scored?: 'deletion_only' | 'docs_only' | 'stale_loop' | 'unknown_content'; unknown_files?: number;
 }
+/** The poller's interval (startMergeSurvival) and the slack after which a missing poll result is an anomaly, not a wait. */
+export const POLL_INTERVAL_MS = 6 * 3_600_000;
+export const POLL_SLACK_MS = 3_600_000;
+const DAY_MS = 86_400_000;
+
+/**
+ * E1: the evolutionary settlement state of one loop PR — distinct from its GitHub state (open / merged / closed), which
+ * pr_outcome.state records on every poll. Exactly one state per PR; the age is a separate field (days since `since`, the
+ * state's authoritative timestamp) and is never encoded in the state.
+ *
+ *  OPEN_BLOCKED            not merged: open on GitHub (since = run created_at), or never polled yet within one poll interval
+ *                          + slack (reason not_polled_yet), or closed unmerged — a TERMINAL OPEN_BLOCKED (reason
+ *                          closed_unmerged, terminal true, since = settled_at): it never entered the survival window, so it
+ *                          is neither survived nor regressed and no survival rate counts it. Its fitness verdict (merge
+ *                          skill outcome, success false) is unchanged.
+ *  MERGED_SURVIVAL_PENDING merged, survival not checked yet: now − merged_at < 14 d, or ≥ 14 d but the check is at most one
+ *                          poll interval + slack overdue (since = merged_at).
+ *  SETTLED_SURVIVED        merged, settled_at ≥ merged_at + 14 d, survived true (since = settled_at).
+ *  SETTLED_REGRESSED       merged, settled_at ≥ merged_at + 14 d, survived false (since = settled_at).
+ *  PIPELINE_ANOMALY        evidence that does not fit (reason names it): merged without a parseable merged_at, settled_at
+ *                          or survived on an unmerged PR, settled before the window ended, never polled past one interval +
+ *                          slack, survival check overdue, unknown GitHub state, a closed PR without settlement, and merged
+ *                          PRs settled without a survival verdict (v2 not_scored: …) — those carry no verdict either way.
+ *
+ * 14-day boundary (merged_at authoritative): the window is complete AT exactly 14 d (the poller checks at ≥ 14 d), so a
+ * settlement at merged_at + 14 d is valid; before that the PR is pending. Only SETTLED_SURVIVED / SETTLED_REGRESSED enter a
+ * survival rate (numerator and denominator); MERGED_SURVIVAL_PENDING and PIPELINE_ANOMALY never do.
+ */
+export const SETTLEMENT_STATES = LOOP_PR_SETTLEMENT_STATES;
+export type SettlementState = LoopPrSettlementState;
+export interface Settlement { state: SettlementState; reason: string; terminal: boolean; since: string | null; age_days: number | null }
+export type SettlementOutcome = Partial<Pick<PrOutcome, 'merged_at' | 'survived' | 'settled_at' | 'checked_at' | 'not_scored'>> & { state?: string | null };
+
+export function settlementState(createdAt: string | null, outcome: SettlementOutcome | null | undefined, now: number): Settlement {
+  const t = (s: unknown) => (typeof s === 'string' && s ? Date.parse(s) : NaN);
+  const at = (state: SettlementState, reason: string, since: string | null | undefined, terminal = false): Settlement => {
+    const ms = t(since);
+    return { state, reason, terminal, since: Number.isFinite(ms) ? String(since) : null, age_days: Number.isFinite(ms) ? +((now - ms) / DAY_MS).toFixed(2) : null };
+  };
+  const anomaly = (reason: string) => at('PIPELINE_ANOMALY', reason, outcome?.checked_at ?? createdAt);
+  if (outcome && !outcome.state) return anomaly('outcome_without_state');
+  if (!outcome) {
+    const created = t(createdAt);
+    if (!Number.isFinite(created)) return anomaly('never_polled:no_created_at');
+    return now - created > POLL_INTERVAL_MS + POLL_SLACK_MS ? anomaly('never_polled') : at('OPEN_BLOCKED', 'not_polled_yet', createdAt);
+  }
+  const survivedSet = typeof outcome.survived === 'boolean';
+  if (outcome.state === 'open') {
+    if (outcome.merged_at) return anomaly('open_with_merged_at');
+    if (outcome.settled_at || survivedSet) return anomaly('settled_while_unmerged');
+    return at('OPEN_BLOCKED', 'open', createdAt);
+  }
+  if (outcome.state === 'closed_unmerged') {
+    if (outcome.merged_at) return anomaly('closed_unmerged_with_merged_at');
+    if (survivedSet) return anomaly('settled_while_unmerged');
+    if (!Number.isFinite(t(outcome.settled_at))) return anomaly('closed_without_settlement');
+    return at('OPEN_BLOCKED', 'closed_unmerged', outcome.settled_at, true);
+  }
+  if (outcome.state !== 'merged') return anomaly(`unknown_state:${String(outcome.state).slice(0, 40)}`);
+  const merged = t(outcome.merged_at);
+  if (!Number.isFinite(merged)) return anomaly('merged_without_merged_at');
+  if (merged > now + 60_000) return anomaly('merged_at_in_future');
+  const windowEnd = merged + SURVIVAL_DAYS * DAY_MS;
+  if (outcome.settled_at) {
+    const settled = t(outcome.settled_at);
+    if (!Number.isFinite(settled)) return anomaly('unparseable_settled_at');
+    if (settled < windowEnd) return anomaly('settled_before_window');
+    if (survivedSet && outcome.not_scored) return anomaly('verdict_and_not_scored');
+    if (survivedSet) return at(outcome.survived ? 'SETTLED_SURVIVED' : 'SETTLED_REGRESSED', outcome.survived ? 'survived' : 'removed', outcome.settled_at);
+    return anomaly(outcome.not_scored ? `not_scored:${outcome.not_scored}` : 'settled_without_verdict');
+  }
+  if (survivedSet) return anomaly('survived_without_settled_at');
+  if (now - windowEnd > POLL_INTERVAL_MS + POLL_SLACK_MS) return anomaly('survival_check_overdue');
+  return at('MERGED_SURVIVAL_PENDING', now < windowEnd ? 'within_14d_window' : 'awaiting_survival_check', outcome.merged_at);
+}
+
+/** Survival over settled states only: SETTLED_SURVIVED / (SETTLED_SURVIVED + SETTLED_REGRESSED); pending and anomalies are in neither. */
+export function survivalCounts(states: Iterable<SettlementState>): { survived: number; regressed: number; settled: number; rate: number | null } {
+  let survived = 0; let regressed = 0;
+  for (const s of states) { if (s === 'SETTLED_SURVIVED') survived++; else if (s === 'SETTLED_REGRESSED') regressed++; }
+  const settled = survived + regressed;
+  return { survived, regressed, settled, rate: settled ? +(survived / settled).toFixed(3) : null };
+}
+
+export interface LoopPrSettlement { run_id: string; created_at: string; pr_url: string; outcome: SettlementOutcome | null; settlement: Settlement }
+/** Every loop PR (loop_runs.metadata.pr_url) with its derived settlement; throws when the table cannot be read. */
+export function loopPrSettlements(db: Database, now = Date.now()): LoopPrSettlement[] {
+  const rows = db.prepare(`SELECT id, created_at, json_extract(metadata, '$.pr_url') AS url, json_extract(metadata, '$.pr_outcome') AS o FROM loop_runs
+    WHERE json_extract(metadata, '$.pr_url') IS NOT NULL`).all() as Array<{ id: string; created_at: string; url: string; o: string | null }>;
+  return rows.map((r) => {
+    const outcome = parseOutcome(r.o);
+    return { run_id: r.id, created_at: r.created_at, pr_url: r.url, outcome, settlement: settlementState(r.created_at, outcome, now) };
+  });
+}
+
+/** pr_outcome JSON text (json_extract of metadata) → object; unparseable text becomes an unknown state (→ PIPELINE_ANOMALY). */
+export function parseOutcome(text: string | null | undefined): SettlementOutcome | null {
+  if (!text) return null;
+  try { const v = JSON.parse(text) as unknown; return v && typeof v === 'object' ? v as SettlementOutcome : { state: 'unparseable' }; } catch { return { state: 'unparseable' }; }
+}
+
+export const emptySettlementCounts = (): Record<SettlementState, number> => Object.fromEntries(SETTLEMENT_STATES.map((s) => [s, 0])) as Record<SettlementState, number>;
+
 /** D1: share of the PR's added lines that must still be on main after SURVIVAL_DAYS (MERGE_SURVIVAL_MIN_RETAINED, default 0.5). */
 export const minRetained = (env: NodeJS.ProcessEnv = process.env): number => {
   const v = Number(env.MERGE_SURVIVAL_MIN_RETAINED); return Number.isFinite(v) && v > 0 && v <= 1 ? v : 0.5;
@@ -55,15 +161,45 @@ export function addedLinesV2(patches: Array<{ filename: string; patch?: string }
   return out;
 }
 
+/**
+ * E1: the counts of one poll cycle, persisted as a `merge_survival_poll` judgments row (answers_json) — observe only.
+ * considered = unsettled loop PRs (any age); selected = those inside the scan window; skipped = selected but not updated
+ * (no PR number, or the PR read failed); updated = pr_outcome written; anomalous = updated rows whose derived settlement is
+ * PIPELINE_ANOMALY (by reason); api_failures = non-OK GitHub responses by HTTP status (a contents 404 is "file gone", not a
+ * failure) plus `threw` when a call threw (the cycle then aborts as before).
+ */
+export interface PollCycle { cycle_id: string; at: string; version: 1 | 2; disabled?: string; considered: number | null; selected: number; skipped: number; updated: number;
+  settled: number; anomalous: number; anomalies: Record<string, number>; api_failures: Record<string, number> }
+
+function recordPollCycle(db: Database, c: PollCycle): void {
+  try {
+    const failures = Object.values(c.api_failures).reduce((a, n) => a + n, 0);
+    db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at)
+      VALUES (?, 'merge_survival_poll', 'poll_cycle', ?, ?, 'observe', ?, ?, ?, ?)`)
+      .run(randomUUID(), c.cycle_id, `msv:${c.version}`, c.api_failures.threw ? 'error' : 'recorded',
+        c.disabled ?? `considered ${c.considered ?? 'unknown'}, selected ${c.selected}, skipped ${c.skipped}, updated ${c.updated}, settled ${c.settled}, anomalous ${c.anomalous}, api failures ${failures}`,
+        JSON.stringify(c), c.at);
+  } catch { /* judgments table absent: the poll itself is unaffected */ }
+}
+
 export async function checkLoopPrs(db: Database, fetchImpl: typeof fetch = fetch, env: NodeJS.ProcessEnv = process.env, now = new Date()): Promise<{ checked: number; settled: number }> {
   const repo = env.GITHUB_REPOSITORY; const token = env.GITHUB_TOKEN;
-  if (!repo || !token) return { checked: 0, settled: 0 };
   const v2 = mergeSurvivalV2(env);
+  const cycle: PollCycle = { cycle_id: randomUUID(), at: now.toISOString(), version: v2 ? 2 : 1, considered: null, selected: 0, skipped: 0, updated: 0, settled: 0, anomalous: 0, anomalies: {}, api_failures: {} };
+  if (!repo || !token) { recordPollCycle(db, { ...cycle, disabled: 'GITHUB_REPOSITORY/GITHUB_TOKEN missing' }); return { checked: 0, settled: 0 }; }
+  try { cycle.considered = (db.prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE json_extract(metadata, '$.pr_url') IS NOT NULL
+    AND json_extract(metadata, '$.pr_outcome.settled_at') IS NULL`).get() as { n: number }).n; } catch { /* unknown, stays null */ }
   // ponytail: v2 still bounds the scan (365 d) so a forgotten run cannot be polled forever
   const since = new Date(now.getTime() - (v2 ? 365 : 60) * 86_400_000).toISOString();
-  const runs = db.prepare(`SELECT id, json_extract(metadata, '$.pr_url') AS url, json_extract(metadata, '$.pr_close_reason') AS close_reason FROM loop_runs
-    WHERE json_extract(metadata, '$.pr_url') IS NOT NULL AND json_extract(metadata, '$.pr_outcome.settled_at') IS NULL AND created_at >= ?`).all(since) as Array<{ id: string; url: string; close_reason: string | null }>;
-  const get = async (p: string) => fetchImpl(`https://api.github.com/repos/${repo}/${p}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' } });
+  const runs = db.prepare(`SELECT id, created_at, json_extract(metadata, '$.pr_url') AS url, json_extract(metadata, '$.pr_close_reason') AS close_reason FROM loop_runs
+    WHERE json_extract(metadata, '$.pr_url') IS NOT NULL AND json_extract(metadata, '$.pr_outcome.settled_at') IS NULL AND created_at >= ?`).all(since) as Array<{ id: string; created_at: string; url: string; close_reason: string | null }>;
+  const fail = (key: string) => { cycle.api_failures[key] = (cycle.api_failures[key] ?? 0) + 1; };
+  const get = async (p: string, gone404 = false) => {
+    const res = await fetchImpl(`https://api.github.com/repos/${repo}/${p}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' } });
+    if (!res.ok && !(gone404 && res.status === 404)) fail(String(res.status));
+    return res;
+  };
+  cycle.selected = runs.length;
   /** v2: every page of a list endpoint (per_page=100, ≤ 30 pages); null when a page fails (try again next tick). */
   const getAll = async <T>(p: string): Promise<T[] | null> => {
     const all: T[] = [];
@@ -78,11 +214,12 @@ export async function checkLoopPrs(db: Database, fetchImpl: typeof fetch = fetch
   };
   const engine = new SkillEvolutionEngine(db);
   let checked = 0; let settled = 0;
+  try {
   for (const run of runs) {
     const number = /\/pull\/(\d+)$/.exec(run.url)?.[1];
-    if (!number) continue;
+    if (!number) { cycle.skipped++; continue; }
     const res = await get(`pulls/${number}`);
-    if (!res.ok) continue; // rate limit or outage: try again next tick
+    if (!res.ok) { cycle.skipped++; continue; } // rate limit or outage: try again next tick
     const pr = await res.json() as { state?: string; merged_at?: string | null; created_at?: string };
     checked++;
     const maker = db.prepare(`SELECT id, runtime, json_extract(metadata, '$.model') AS model, json_extract(metadata, '$.model_id') AS model_id,
@@ -111,7 +248,7 @@ export async function checkLoopPrs(db: Database, fetchImpl: typeof fetch = fetch
         let total = 0; let kept = 0; let unknown = false; let unknownFiles = 0;
         for (const [file, lines] of added) {
           total += lines.length;
-          const c = await get(`contents/${file.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(env.LOOP_DRAFT_PR_BASE || 'main')}`);
+          const c = await get(`contents/${file.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(env.LOOP_DRAFT_PR_BASE || 'main')}`, true);
           if (c.status === 404) continue; // file gone: none kept
           if (!c.ok) { unknown = true; break; }
           const body = await c.json() as { content?: string; encoding?: string };
@@ -139,14 +276,18 @@ export async function checkLoopPrs(db: Database, fetchImpl: typeof fetch = fetch
       settled++;
     }
     db.prepare("UPDATE loop_runs SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.pr_outcome', json(?)) WHERE id = ?").run(JSON.stringify(outcome), run.id);
+    cycle.updated++;
+    const s = settlementState(run.created_at, outcome, now.getTime());
+    if (s.state === 'PIPELINE_ANOMALY') { cycle.anomalous++; cycle.anomalies[s.reason] = (cycle.anomalies[s.reason] ?? 0) + 1; }
   }
+  } catch (e) { fail('threw'); throw e; } finally { cycle.settled = settled; recordPollCycle(db, cycle); }
   return { checked, settled };
 }
 
 /** Every 6 h (first run 5 min after boot). */
-export function startMergeSurvival(db: Database, intervalMs = 6 * 3_600_000): (() => void) | null {
+export function startMergeSurvival(db: Database, intervalMs = POLL_INTERVAL_MS): (() => void) | null {
   if (!mergeSurvivalEnabled()) return null;
-  const tick = () => { checkLoopPrs(db).then((r) => { if (r.settled) console.log(`🧾 merge survival: ${r.settled} loop PR(s) settled of ${r.checked} checked`); })
+  const tick = () => { markRun('merge_survival'); checkLoopPrs(db).then((r) => { if (r.settled) console.log(`🧾 merge survival: ${r.settled} loop PR(s) settled of ${r.checked} checked`); })
     .catch((e) => console.warn('merge survival failed:', e instanceof Error ? e.message : String(e))); };
   const first = setTimeout(tick, 300_000); first.unref?.();
   const timer = setInterval(tick, intervalMs); timer.unref?.();

@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'crypto';
+import { loopPrSettlements, survivalCounts, type SettlementState } from './merge-survival';
 import type { Database } from 'better-sqlite3';
 
 /**
@@ -197,14 +198,17 @@ export function attributionSummary(db: Database, now = Date.now(), days = 30, en
     FROM judgments WHERE judgment = 'outcome_attribution' AND created_at >= ? GROUP BY 1, 2 ORDER BY 1, 2`, since);
   const classes: Record<OutcomeClass, number> = { maker_failure: 0, reviewer_failure: 0, environment_failure: 0, verified: 0 };
   for (const r of by) if (r.outcome in classes) classes[r.outcome as OutcomeClass] += r.n;
-  const survived = all<{ survived: number | null; n: number }>(`SELECT json_extract(r.metadata, '$.pr_outcome.survived') AS survived, COUNT(*) AS n FROM judgments j JOIN loop_runs r ON r.id = j.subject_id
-    WHERE j.judgment = 'outcome_attribution' AND j.subject_type = 'loop_run' AND j.decision = 'verified' AND j.created_at >= ?
-      AND json_extract(r.metadata, '$.pr_outcome.settled_at') IS NOT NULL GROUP BY 1`, since);
+  // E1: survival of attributed-verified runs over settled states only (pending and anomalous PRs count on neither side)
+  const verifiedRuns = new Set(all<{ id: string }>(`SELECT DISTINCT j.subject_id AS id FROM judgments j
+    WHERE j.judgment = 'outcome_attribution' AND j.subject_type = 'loop_run' AND j.decision = 'verified' AND j.created_at >= ?`, since).map((r) => r.id));
+  let settledStates: SettlementState[] = [];
+  try { settledStates = loopPrSettlements(db, now).filter((p) => verifiedRuns.has(p.run_id)).map((p) => p.settlement.state); } catch { /* loop_runs absent */ }
+  const sc = survivalCounts(settledStates);
   const top = all<{ kind: string; ref: string; credits: number }>(`SELECT kind, ref, COUNT(*) AS credits FROM outcome_credits WHERE created_at >= ?
     GROUP BY 1, 2 ORDER BY credits DESC, kind, ref LIMIT 30`, since);
   return {
     at: new Date(now).toISOString(), enabled: outcomeAttributionEnabled(env), since, classes, by_source: by,
-    survived: { yes: survived.filter((s) => s.survived === 1).reduce((a, s) => a + s.n, 0), no: survived.filter((s) => s.survived === 0).reduce((a, s) => a + s.n, 0) },
+    survived: { yes: sc.survived, no: sc.regressed },
     credited_runs: all<{ n: number }>('SELECT COUNT(DISTINCT run_id) AS n FROM outcome_credits WHERE created_at >= ?', since)[0]?.n ?? 0,
     top_contributors: top,
     note: 'learners count only maker_failure as a failure when OUTCOME_ATTRIBUTION_ENABLED=true; reviewer/environment failures are neither success nor failure',

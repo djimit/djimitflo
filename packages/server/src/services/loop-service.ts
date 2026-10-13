@@ -31,7 +31,8 @@ import { LoopRecoveryService, RuntimeLeaseRegistry } from './loop-recovery-servi
 import { LoopPersistenceService } from './loop-persistence-service';
 import { ExperienceRetrievalService } from './experience-retrieval-service';
 import { SelfImprovementService } from './self-improvement-service';
-import { assignmentContext, assignmentContextMarkdown } from './assignment-context';
+import { MAKER_TEMPLATE_RULES_STE } from './ste-001';
+import { assignmentContext, assignmentContextMarkdown, type AssignmentContext } from './assignment-context';
 import { firstJsonObject } from './model-json';
 import type {
   LoopName,
@@ -291,6 +292,68 @@ export const MAKER_TEMPLATE_RULES = [
   '- Run relevant deterministic checks before handing off to checker.',
   '- Checker approval is required before completion.',
 ];
+
+/** STE-001: arm 1 gets the Simplified Technical English rules; everyone else (and STE_001_MODE off) today's rules. */
+export const makerTemplateRules = (ste?: { arm: 0 | 1 }): string[] => (ste?.arm === 1 ? MAKER_TEMPLATE_RULES_STE : MAKER_TEMPLATE_RULES);
+/**
+ * The maker's LOOP_WORK.md text (writeWorkAssignment writes it; a remote maker gets it flattened to one line).
+ * TG-001 renders the same text for a frozen task and, for its CONTROLLED arm, leaves out parts that should not matter for
+ * solving the task: `ids` (loop run / runtime / finding id lines), `advisory` (past-experience block), `policy` (the fixed
+ * maker rules template). Production always renders with nothing omitted.
+ */
+export type AssignmentOmit = 'ids' | 'advisory' | 'policy';
+export function renderWorkAssignment(run: { id: string; loop_name: string }, finding: LoopFinding, runtime: string, advisoryText: string,
+  extra: AssignmentContext, options: { nestedSpawnControl?: string; omit?: AssignmentOmit[] } = {}): string {
+  const omit = new Set(options.omit ?? []);
+  return [
+    `# ${finding.metadata?.objective_mode ? 'Objective' : run.loop_name} Assignment`,
+    '',
+    ...(omit.has('ids') ? [] : [`Loop run: ${run.id}`, `Runtime target: ${runtime}`, `Finding: ${finding.id}`]),
+    `File: ${finding.file}${finding.line ? `:${finding.line}` : ''}`,
+    ...(finding.metadata?.objective_mode && !finding.file.startsWith('(') ? [objectiveScopeLine(finding.file)] : []),
+    '',
+    '## Finding',
+    '',
+    finding.message,
+    '',
+    '## Evidence',
+    '',
+    finding.evidence,
+    '',
+    '## Suggested Fix',
+    '',
+    finding.suggested_fix,
+    '',
+    ...(omit.has('advisory') ? [] : ['## Advisory Past Experience', '', advisoryText || 'No matching observed episodes were retrieved.', '']),
+    ...assignmentContextMarkdown(extra),
+    ...(omit.has('policy') ? [] : makerTemplateRules(extra.ste)),
+    '',
+    // Nested-spawn control block (P1). Only injected when this lease is itself
+    // permitted to spawn sub-agents (operator-armed, depth within budget). This
+    // is the single path a runtime child uses to spawn children: it shells out
+    // to the control endpoint with its scoped token. See prepareNestedLease.
+    ...(options.nestedSpawnControl ? [options.nestedSpawnControl, ''] : []),
+  ].join('\n');
+}
+
+/** The objective-assignment scope line (exported for the STE prompt lint). */
+export const objectiveScopeLine = (file: string): string => `Change only this file: ${file}. Do not edit README.md, CONTRIBUTING.md or any other file.`;
+
+/** The fixed instruction lines of every checker / security-checker assignment (exported for the STE prompt lint). */
+export const CHECKER_INSTRUCTIONS = {
+  common: [
+    'You are an independent checker. Do not edit files, merge, push, deploy, modify secrets or change policy.',
+    'Work only inside your own worktree (the maker\'s changes are already in it); do not read the maker\'s worktree.',
+    // prod 09-10 (run 5b91e689): reviewers spent 20–24 of ~30 tool calls on npm ci / a native better-sqlite3 build the
+    // container cannot do / apt-get / re-running Stryker, and every step re-sends the whole context: 29 steps × ~36k ≈
+    // 1.03M > OPENCODE_MAX_RUN_TOKENS. The check logs sit outside the worktree (opencode denies reading them), so their
+    // output is inlined below instead.
+    'Do not install dependencies (no npm ci / npm install / npm install-scripts / apt-get / node-gyp), do not build, and do not re-run mutation testing (Stryker, test:mutation*), the full test suite, lint or type-check: the deterministic checks below already ran on exactly this diff and their output is included (the log paths are outside your worktree and not readable). Judge from the diff, the source and those results; if they are missing or contradict the diff, say so in your verdict instead of re-running them.',
+  ],
+  security: 'You are the separate security checker. Review high-risk paths, related sibling paths, the original failure or exploit, and preserved governance invariants. Do not relax gates. Your verdict is not human approval or permission to merge.',
+  checker: 'Your technical verdict is not human approval or permission to merge.',
+  tail: ['Review the maker output using the evidence below.', '', 'Return a concise verdict. Prefer JSON on one line:'],
+};
 
 const VALID_CHECKER_VERDICTS: string[] = ['accepted', 'needs_revision', 'rejected', 'insufficient_evidence'];
 
@@ -792,6 +855,9 @@ export class LoopService {
         }
         throw new Error(`LOOP_COMPLETION_BLOCKED:${failingGate.name}`);
       }
+      // E2: missing evidence is not a failed gate, but it still blocks completion
+      const unknownGate = verified.gates.find((gate) => gate.status === 'unknown');
+      if (unknownGate) throw new Error(`LOOP_COMPLETION_INSUFFICIENT_EVIDENCE:${unknownGate.name}`);
 
       const incompleteLease = this.completionBlockingLeases(verified.leases).find((lease) => lease.status !== 'completed');
       if (incompleteLease) {
@@ -1418,6 +1484,9 @@ export class LoopService {
   public assertNoFailedGates(run: LoopRunRecord): void {
     if (run.gates.some((gate) => gate.status === 'fail')) {
       throw new Error('LOOP_FAILED_GATES_BLOCK_CONTINUE');
+    }
+    if (run.gates.some((gate) => gate.status === 'unknown')) {
+      throw new Error('LOOP_INSUFFICIENT_EVIDENCE_BLOCKS_CONTINUE');
     }
   }
 
@@ -2271,44 +2340,11 @@ export class LoopService {
     this.ensureControlDir(worktreePath);
     const advisoryContext = this.advisoryAssignmentContext(worktreePath, run, finding);
     const extra = assignmentContext(this.db, run, worktreePath, `loop-maker:${run.id}`);
-    if (extra.examples.length || extra.rules.length || extra.memory_holdout) {
-      this.recordLoopEvent(run.id, 'assignment_context', 'info', `Maker assignment includes ${extra.examples.length} proven example(s) and ${extra.rules.length} rule(s)${extra.memory_holdout ? ' (memory holdout: rules withheld)' : ''}.`,
-        { examples: extra.examples, rule_ids: extra.rules.map((r) => r.id), ...(extra.memory_holdout ? { memory_holdout: true } : {}) });
+    if (extra.examples.length || extra.rules.length || extra.memory_holdout || extra.ace || extra.ste) {
+      this.recordLoopEvent(run.id, 'assignment_context', 'info', `Maker assignment includes ${extra.examples.length} proven example(s) and ${extra.rules.length} rule(s)${extra.memory_holdout ? ' (memory holdout: rules withheld)' : ''}${extra.ace ? ` (ACE-001 arm ${extra.ace.arm})` : ''}${extra.ste ? ` (STE-001 arm ${extra.ste.arm})` : ''}.`,
+        { examples: extra.examples, rule_ids: extra.rules.map((r) => r.id), ...(extra.memory_holdout ? { memory_holdout: true } : {}), ...(extra.ace ? { ace_001: extra.ace } : {}), ...(extra.ste ? { ste_001: extra.ste } : {}) });
     }
-    const content = [
-      `# ${finding.metadata?.objective_mode ? 'Objective' : run.loop_name} Assignment`,
-      '',
-      `Loop run: ${run.id}`,
-      `Runtime target: ${runtime}`,
-      `Finding: ${finding.id}`,
-      `File: ${finding.file}${finding.line ? `:${finding.line}` : ''}`,
-      ...(finding.metadata?.objective_mode && !finding.file.startsWith('(') ? [`Change only this file: ${finding.file}. Do not edit README.md, CONTRIBUTING.md or any other file.`] : []),
-      '',
-      '## Finding',
-      '',
-      finding.message,
-      '',
-      '## Evidence',
-      '',
-      finding.evidence,
-      '',
-      '## Suggested Fix',
-      '',
-      finding.suggested_fix,
-      '',
-      '## Advisory Past Experience',
-      '',
-      advisoryContext.text || 'No matching observed episodes were retrieved.',
-      '',
-      ...assignmentContextMarkdown(extra),
-      ...MAKER_TEMPLATE_RULES,
-      '',
-      // Nested-spawn control block (P1). Only injected when this lease is itself
-      // permitted to spawn sub-agents (operator-armed, depth within budget). This
-      // is the single path a runtime child uses to spawn children: it shells out
-      // to the control endpoint with its scoped token. See prepareNestedLease.
-      ...(options.nestedSpawnControl ? [options.nestedSpawnControl, ''] : []),
-    ].join('\n');
+    const content = renderWorkAssignment(run, finding, runtime, advisoryContext.text, extra, { nestedSpawnControl: options.nestedSpawnControl });
     fs.writeFileSync(this.workAssignmentPath(worktreePath), content, 'utf8');
   }
 
@@ -2395,19 +2431,9 @@ export class LoopService {
       `Checker lease: ${checker.id}`,
       `Maker lease: ${maker.id}`,
       '',
-      'You are an independent checker. Do not edit files, merge, push, deploy, modify secrets or change policy.',
-      'Work only inside your own worktree (the maker\'s changes are already in it); do not read the maker\'s worktree.',
-      // prod 09-10 (run 5b91e689): reviewers spent 20–24 of ~30 tool calls on npm ci / a native better-sqlite3 build the
-      // container cannot do / apt-get / re-running Stryker, and every step re-sends the whole context: 29 steps × ~36k ≈
-      // 1.03M > OPENCODE_MAX_RUN_TOKENS. The check logs sit outside the worktree (opencode denies reading them), so their
-      // output is inlined below instead.
-      'Do not install dependencies (no npm ci / npm install / npm install-scripts / apt-get / node-gyp), do not build, and do not re-run mutation testing (Stryker, test:mutation*), the full test suite, lint or type-check: the deterministic checks below already ran on exactly this diff and their output is included (the log paths are outside your worktree and not readable). Judge from the diff, the source and those results; if they are missing or contradict the diff, say so in your verdict instead of re-running them.',
-      checker.role === 'security_checker'
-        ? 'You are the separate security checker. Review high-risk paths, related sibling paths, the original failure or exploit, and preserved governance invariants. Do not relax gates. Your verdict is not human approval or permission to merge.'
-        : 'Your technical verdict is not human approval or permission to merge.',
-      'Review the maker output using the evidence below.',
-      '',
-      'Return a concise verdict. Prefer JSON on one line:',
+      ...CHECKER_INSTRUCTIONS.common,
+      checker.role === 'security_checker' ? CHECKER_INSTRUCTIONS.security : CHECKER_INSTRUCTIONS.checker,
+      ...CHECKER_INSTRUCTIONS.tail,
       '{"verdict":"accepted|needs_revision|rejected|insufficient_evidence","notes":"...","usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}',
       '',
       '## Assignment Packet',
@@ -2441,7 +2467,9 @@ export class LoopService {
       const failed = check.status !== 'pass' && check.status !== 'skipped';
       const out = tail(check.stdout_path, 1_200);
       const err = failed ? tail(check.stderr_path, 800) : '';
-      const status = check.mode === 'shadow' && check.shadow_status ? `shadow ${String(check.shadow_status)}` : String(check.status);
+      // E2: exit 127 is a missing tool (environment, cf. makerFailureClass), not evidence about the change under review
+      const status = check.mode === 'shadow' && check.shadow_status ? `shadow ${String(check.shadow_status)}`
+        : check.exit_status === 127 ? `${String(check.status)} — tool missing (environment failure, not evidence about the change)` : String(check.status ?? 'unknown');
       return [`### ${String(check.name)}: ${status} (exit=${String(check.exit_status ?? 'n/a')}${check.timed_out ? ', timed out' : ''})`,
         out ? `stdout (tail):\n${out}` : 'stdout: (empty or unavailable)', ...(err ? [`stderr (tail):\n${err}`] : [])].join('\n');
     }).join('\n\n');

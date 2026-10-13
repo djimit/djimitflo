@@ -137,10 +137,10 @@ export class GithubPrReviewService {
    * A PR review is checker-only: the PR's commits already are the "patch",
    * so the maker lease is synthesized as already-completed rather than
    * driving a real fix-generation pass. This has no isolated worktree, so
-   * LoopVerificationService's worktree/diff gates will legitimately show
-   * 'fail' and the loop_run itself settles as 'blocked' — that's expected
-   * and does not affect the verdict posted to GitHub below, which is
-   * computed independently from the PR's own diff stats.
+   * LoopVerificationService marks the change-loop artifact gates (worktree,
+   * assignment, diff, checks) 'skipped' — not applicable (E2) — and leaves
+   * the run's status for settleReviewRun. The verdict posted to GitHub below
+   * is computed independently from the PR's own diff stats.
    */
   private runCheckerVerdict(input: StartReviewInput): { verdict: Verdict; checkerLeaseId: string } {
     const run = this.loops.getLoopRun(input.loopRunId);
@@ -177,13 +177,13 @@ export class GithubPrReviewService {
   }
 
   /**
-   * The review's loop_run exists only as bookkeeping (synthetic maker, no worktree), so loop verification always leaves it
-   * 'blocked'. Prod 2026-09-25: after the webhook fix 32 such runs in 3 h inflated the blocked count and would have been
+   * The review's loop_run exists only as bookkeeping (synthetic maker, no worktree): loop verification leaves its status
+   * as it was (planning/running), or 'blocked' when the review itself failed a gate. Prod 2026-09-25: after the webhook fix 32 such runs in 3 h inflated the blocked count and would have been
    * replayed as failures by the dream state. Once the verdict is on GitHub the run has done its job: settle it completed.
    */
   private settleReviewRun(loopRunId: string): void {
     this.db.prepare(`UPDATE loop_runs SET status = 'completed', updated_at = ?,
-      metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.settled_by', 'github-pr-review') WHERE id = ? AND status IN ('running', 'blocked')`)
+      metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.settled_by', 'github-pr-review') WHERE id = ? AND status IN ('planning', 'running', 'blocked')`)
       .run(new Date().toISOString(), loopRunId);
     // its goal too (prod 2026-09-27: 42 review goals stayed 'running' after their run was settled); idempotently catches
     // earlier settled reviews as well

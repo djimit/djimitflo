@@ -79,8 +79,9 @@ it('MS-1: enforce uses the qualified cheaper model and falls back to the incumbe
   models.length = 0;
   const garbled = new SelfImprovementAgentReviewService(db, async (_p, model) => { models.push(model); return model === 'glm-5.3-flash:cloud' ? 'I think it is fine.' : REVIEW('support'); }, { random: () => 1 });
   const updated = await garbled.reviewMissingSpecialists(panel(), 'run-4');
-  // one parse failure drops the candidate below the Wilson bar (41/42 ok): the second specialist goes straight to the incumbent
-  expect(models).toEqual(['glm-5.3-flash:cloud', 'kimi-k3:cloud', 'kimi-k3:cloud']);
+  // B32: the candidate's invalid answer gets one re-ask before the incumbent fallback; that failure drops the candidate
+  // below the Wilson bar (41/42 ok): the second specialist goes straight to the incumbent
+  expect(models).toEqual(['glm-5.3-flash:cloud', 'glm-5.3-flash:cloud', 'kimi-k3:cloud', 'kimi-k3:cloud']);
   expect(updated.consensus.support_count).toBe(2);
 });
 
