@@ -4,6 +4,7 @@ import { FrontierExpertRegistryService } from './frontier-expert-registry-servic
 import { ExpertEvidenceEnrichmentService } from './expert-evidence-enrichment-service';
 import type { ArxivPaper } from './knowledge-adapters/arxiv-adapter';
 import { judgmentMode, runJudgment } from './judgment-service';
+import { hasMandatoryProvenance } from './judgment-provenance';
 import { discoveryRelevance } from './judgments/discovery-relevance';
 import { buildEvidencePack } from './commons-evidence-pack';
 import { typesafeBusy } from './typesafe-client';
@@ -92,7 +93,8 @@ export class ExpertSourceUnitsService {
             // KE-2 (prod 09-10: 95 of 222 jev 'yes' sat on gate-rejected refs, so no unit and no consumer ever saw them): when jev
             // decides unit creation (FRONTIER_UNITS_REQUIRE_RELEVANCE) its 'yes' overrides the keyword gate, as FE2 does for
             // accepted ones. Otherwise the verdict stays a measurement and the gate is unchanged.
-            if (verdict?.decision === 'yes' && process.env.FRONTIER_UNITS_REQUIRE_RELEVANCE === 'true' && !this.knownRefs().has(ref)) this.overrideUnit(d, verdict.id);
+            // DI-001 B: a promotion — only on a verdict with recorded provenance (fail-closed)
+            if (verdict?.decision === 'yes' && hasMandatoryProvenance(verdict) && process.env.FRONTIER_UNITS_REQUIRE_RELEVANCE === 'true' && !this.knownRefs().has(ref)) this.overrideUnit(d, verdict.id);
           })
           .catch(() => undefined).finally(() => { rejectedInFlight -= 1; });
       }
@@ -109,7 +111,8 @@ export class ExpertSourceUnitsService {
       void runJudgment(this.db, discoveryRelevance, { type: 'discovery_pending', id: ref }, { title, note, capabilities, open_problems: { failing_gates: pack.top_failing_gates, failure_causes: pack.failure_causes } })
         .then((verdict) => {
           const cls = verdict?.answers?.relevance?.choice;
-          if (!verdict || (cls !== 'open_problem' && cls !== 'lane_technique') || this.knownRefs().has(ref)) return;
+          // DI-001 B: unit creation is a promotion — no recorded provenance, no unit (fail-closed, like no verdict)
+          if (!verdict || !hasMandatoryProvenance(verdict) || (cls !== 'open_problem' && cls !== 'lane_technique') || this.knownRefs().has(ref)) return;
           const unitId = createUnit();
           this.db.prepare("UPDATE judgments SET subject_type = 'expert_unit', subject_id = ? WHERE id = ?").run(unitId, verdict.id);
         }).catch(() => undefined);
@@ -156,13 +159,15 @@ export class ExpertSourceUnitsService {
    * becomes a unit from its stored bus event, exactly as the live override does. Idempotent. Run on prod with:
    *   docker exec -e NODE_PATH=/app/node_modules djimitflo-live node -e "const D=require('better-sqlite3');const {ExpertSourceUnitsService}=require('/app/packages/server/dist/services/expert-source-units-service.js');console.log(new ExpertSourceUnitsService(new D('/data/djimitflo.sqlite',{timeout:10000})).backfillRejectedOverrides())"
    */
-  backfillRejectedOverrides(limit = 1_000): { candidates: number; created: number; missing_event: number; known: number } {
-    const rows = this.db.prepare(`SELECT subject_id AS ref, MAX(created_at) AS at, id FROM judgments WHERE judgment = 'discovery_relevance' AND subject_type = 'discovery_rejected' AND decision = 'yes'
-      GROUP BY subject_id ORDER BY at LIMIT ?`).all(limit) as Array<{ ref: string; id: string }>;
-    const out = { candidates: rows.length, created: 0, missing_event: 0, known: 0 };
+  backfillRejectedOverrides(limit = 1_000): { candidates: number; created: number; missing_event: number; known: number; no_provenance: number } {
+    const rows = this.db.prepare(`SELECT subject_id AS ref, MAX(created_at) AS at, id, provenance_json FROM judgments WHERE judgment = 'discovery_relevance' AND subject_type = 'discovery_rejected' AND decision = 'yes'
+      GROUP BY subject_id ORDER BY at LIMIT ?`).all(limit) as Array<{ ref: string; id: string; provenance_json: string | null }>;
+    const out = { candidates: rows.length, created: 0, missing_event: 0, known: 0, no_provenance: 0 };
     const known = this.knownRefs();
     for (const row of rows) {
       if (known.has(row.ref)) { out.known += 1; continue; }
+      // DI-001 B: a backfill is a NEW promotion, so a verdict without recorded provenance (pre-activation history) is not used
+      if (!hasMandatoryProvenance(row)) { out.no_provenance += 1; continue; }
       const d = parseDiscovery(this.discoveryEvent(row.ref) ?? {});
       if (!d || d.ref !== row.ref) { out.missing_event += 1; continue; }
       this.overrideUnit(d, row.id, { backfill: true });
