@@ -21,7 +21,8 @@ import { AuditEventType } from '@djimitflo/shared';
 import { normalizeName } from './expert-evidence-enrichment-service';
 import { selectingRunner } from './model-selector';
 
-export type PerspectiveRunner = (role: 'perspective' | 'adversary', system: string, user: string) => Promise<unknown>;
+/** purpose: the caller's identity on the model-call ledger row (default 'frontier_experts:<role>'). */
+export type PerspectiveRunner = (role: 'perspective' | 'adversary', system: string, user: string, purpose?: string) => Promise<unknown>;
 
 export interface CouncilPerspective {
   expert_id: string;
@@ -114,7 +115,7 @@ export async function createModelPerspectiveRunner(env: NodeJS.ProcessEnv = proc
       return { json: await parseOrRepair(result.content, model, system), chars: String(result.content ?? '').length };
     };
     const select = selectingRunner(db, 'frontier_experts', spec.model, ask, frontierUsable, frontierAgree, env);
-    return { runner: async (_role, system, user) => select(system, user), label: `${spec.runtime}:${spec.model}` };
+    return { runner: async (role, system, user, purpose) => select(system, user, purpose ?? `frontier_experts:${role}`), label: `${spec.runtime}:${spec.model}` };
   }
   return { runner, label: `${spec.runtime}:${spec.model}` };
 }
@@ -212,7 +213,7 @@ export class ExpertCouncilService {
     });
     const payload = JSON.stringify({ target: compact(target.canonical_name, capabilities), reviewer: compact(reviewer.canonical_name, reviewerCapabilities) });
     if (payload.length > 60_000) throw new Error('EXPERT_REVIEW_CONTEXT_TOO_LARGE');
-    const raw = await model.runner('perspective', `${system} For every supported decision, cite at least one exact id from EACH dossier (target in evidence_refs, reviewer in reviewer_evidence_refs) and explain the methodological connection. If the reviewer lens cannot substantiate the assessment, return uncertain, never invent a connection.`, quoteUntrusted(payload, 60_000)) as { checks?: unknown } | null;
+    const raw = await model.runner('perspective', `${system} For every supported decision, cite at least one exact id from EACH dossier (target in evidence_refs, reviewer in reviewer_evidence_refs) and explain the methodological connection. If the reviewer lens cannot substantiate the assessment, return uncertain, never invent a connection.`, quoteUntrusted(payload, 60_000), 'frontier_experts:review') as { checks?: unknown } | null;
     if (!Array.isArray(raw?.checks) || raw.checks.length !== capabilities.length) throw new Error('EXPERT_REVIEW_OUTPUT_INVALID');
     const reviewerRefs = new Set(reviewerCapabilities.flatMap((item) => item.evidence.map((evidence) => evidence.id)));
     const seen = new Set<string>();
