@@ -204,6 +204,15 @@ export interface EvolutionEvidence {
   /** E3: GET /api/health/provenance-dag without its edge list — services/provenance-dag.ts provenanceSummary */
   provenance?: ProvenanceSummary;
   panel_attempts?: PanelAttemptMetrics;
+  /** P0 §5: maker token accounting per runtime × model (services/maker-token-accounting.ts); old leases count as unrecorded */
+  maker_tokens?: MakerTokenAccountingEvidence;
+}
+
+export type TokenMeasurementSource = 'provider_reported' | 'runtime_log' | 'estimated' | 'unavailable';
+export interface MakerTokenAccountingEvidence {
+  since: string; leases: number; note: string;
+  by_runtime_model: Array<{ runtime: string; model: string; leases: number; unrecorded: number; tokens_measured: number; tokens_measured_share: number | null;
+    cost_known: number; cost_known_share: number | null; total_tokens_measured: number; estimated_cost_usd_known: number; by_source: Record<TokenMeasurementSource, number> }>;
 }
 
 /** E3: one answer of the provenance DAG — a value, or UNKNOWN with the reason (never 0 for a missing link) */
