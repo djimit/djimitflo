@@ -72,7 +72,8 @@ export function fitnessPosterior(db: Database, lane: string, species: Species[],
 export function recordFitnessShadow(db: Database, runId: string, lane: string, species: Species[], actual: string | null, now = Date.now()): void {
   if (!fitnessShadowEnabled() || species.length < 2) return;
   const table = fitnessPosterior(db, lane, species, now);
-  const pick = table.reduce((b, r) => (r.mean > b.mean ? r : b), table[0]).species;
+  // E2: pick on mean_clean — infra / no-change zeros are not the species' failure
+  const pick = table.reduce((b, r) => (r.mean_clean > b.mean_clean ? r : b), table[0]).species;
   new LoopEventService(db).recordEvent(runId, 'fitness_shadow', 'info', `Fitness view would pick ${pick}; bandit chose ${actual ?? 'none'}${pick === actual ? ' (agree)' : ''}`,
     { lane, would_pick: pick, actual, agree: pick === actual, weights: fitnessWeights(), table });
 }

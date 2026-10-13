@@ -32,6 +32,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { SelfHealingService } from './self-healing-service';
+import { guardTick, markRun } from './scheduler-registry';
 
 type Healer = Pick<SelfHealingService, 'heal'>;
 
@@ -49,9 +50,9 @@ export class SelfHealingScheduler {
   start(): boolean {
     if (process.env.SELF_HEALING_SCHEDULER_ENABLED !== 'true') return false;
     const intervalMs = this.intervalMinutes() * MINUTE_MS;
-    this.timer = setInterval(() => this.tick(), intervalMs);
+    this.timer = setInterval(guardTick('self_healing', () => this.tick()), intervalMs);
     this.timer.unref();
-    this.tick(); // catch-up on boot
+    guardTick('self_healing', () => this.tick())(); // catch-up on boot
     return true;
   }
 
@@ -66,6 +67,7 @@ export class SelfHealingScheduler {
   }
 
   tick(): ReturnType<SelfHealingService['heal']> | null {
+    markRun('self_healing'); // Cockpit 3.0: execution evidence for the scheduler registry
     try {
       return this.healer.heal();
     } catch (err) {

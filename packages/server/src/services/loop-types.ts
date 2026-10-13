@@ -13,7 +13,12 @@ export type { LoopFinding };
 
 export type RiskClass = 'low' | 'medium' | 'high' | 'critical';
 export type LoopRunStatus = 'created' | 'planning' | 'running' | 'verifying' | 'ready_for_human_merge' | 'blocked' | 'completed' | 'failed' | 'escalated' | 'cancelled' | 'interrupted';
-export type GateStatus = 'pass' | 'fail' | 'skipped';
+/**
+ * E2 observation validity: 'fail' = durable evidence shows the invariant failed; 'unknown' = the evidence needed to decide is
+ * missing/unavailable (insufficient evidence — never a negative verdict, but still blocks certification/completion/merge);
+ * 'skipped' = genuinely not applicable to this run.
+ */
+export type GateStatus = 'pass' | 'fail' | 'unknown' | 'skipped';
 export type WorkerRole = 'planner' | 'maker' | 'checker' | 'security_checker' | 'memory_curator' | 'governance_guard';
 
 export type { LoopName };

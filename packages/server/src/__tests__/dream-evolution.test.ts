@@ -100,3 +100,20 @@ it('GENOME_FIRE_CHECK: VOID attempts (genome lines never reached the maker) are 
   expect(evaluateTrials(db, 'atomic@llama-router', holdout, NOW)).toEqual([{ id: trial, status: 'retired', wins: 1, parentWins: 1 }]);
   expect((db.prepare('SELECT note FROM maker_genomes WHERE id = ?').get(trial) as { note: string }).note).toContain('discordant 0 vs 0, McNemar p=1.000; out of scope 0 vs 0; void 15 (fire check)');
 });
+
+it('KE-3: the knowledge units whose titles a dream injected are recorded on each mutant genome (knowledge_refs_json)', async () => {
+  gymRun('f1', 'c1', undefined, 'failure', 'tests still red');
+  db.prepare(`INSERT INTO expert_identities (id, canonical_name, kind, aliases_json, provenance_json, lifecycle_state, identity_confidence) VALUES ('u1', 'Mutation-guided repair', 'paper', '["arxiv:2610.1"]', '{}', 'EVIDENCE_COLLECTED', 1)`).run();
+  db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, created_at) VALUES ('j1', 'discovery_relevance', 'expert_unit', 'u1', 'h', 'shadow', 'yes', ?)`).run('2026-09-30T00:00:00Z');
+  expect(dreamInputs(db, NOW)).toMatchObject({ knowledge: ['Mutation-guided repair'], knowledgeRefs: ['u1'] });
+  const call = vi.fn(async () => '{"mutants":[{"gene":"strategy_lines","lines":["Run the named test first."],"rationale":"red"}]}');
+  const [id] = (await dreamOnce(db, NOW, call)).created;
+  expect(call.mock.calls[0][0]).toContain('- Mutation-guided repair');
+  expect(JSON.parse((db.prepare('SELECT knowledge_refs_json r FROM maker_genomes WHERE id = ?').get(id) as { r: string }).r)).toEqual(['u1']);
+});
+
+it('KE-3: a dream without injected knowledge leaves knowledge_refs_json null', async () => {
+  gymRun('f1', 'c1', undefined, 'failure', 'tests still red');
+  const [id] = (await dreamOnce(db, NOW, async () => '{"mutants":[{"gene":"strategy_lines","lines":["Run the named test first."]}]}')).created;
+  expect(db.prepare('SELECT knowledge_refs_json r FROM maker_genomes WHERE id = ?').get(id)).toEqual({ r: null });
+});

@@ -14,13 +14,28 @@ import { AuthService } from '../services/auth-service';
 import { createHealthRoutes } from '../routes/health';
 import { checkAdmission } from '../execution/runtime-admission';
 import {
-  defaultScanTargets, diffReports, reportHash, runShippedCodeScan, scanPackage, shippedCodeScanMode, shippedCodeView, startShippedCodeScan,
+  defaultScanTargets, diffReports, loadTsParser, reportHash, runShippedCodeScan, scanPackage, shippedCodeScanMode, shippedCodeView, startShippedCodeScan,
 } from '../services/shipped-code-scan';
 import { createCleanPackage, createEvilPackage, MARKER_NAME } from './fixtures/shipped-code-packages';
 
 const tmp: string[] = [];
 const track = <T extends string>(p: T): T => { tmp.push(p); return p; };
 afterEach(() => { for (const p of tmp.splice(0)) rmSync(p, { recursive: true, force: true }); });
+
+describe('loadTsParser: the runtime `typescript-parser` alias', () => {
+  it('resolves a TS-6 JS API through the alias alone (no dev typescript) and parses a fixture', async () => {
+    const serverFile = join(__dirname, '../services/shipped-code-scan.ts');
+    const ts = loadTsParser([[serverFile, 'typescript-parser']]);
+    expect(ts).not.toBeNull();
+    expect(ts!.version).toMatch(/^6\./);
+    expect(loadTsParser([[serverFile, 'no-such-parser-pkg']])).toBeNull();
+    const { dir, base } = createEvilPackage(); track(base);
+    const r = await scanPackage(dir, { parser: ts });
+    expect(r.parser).toEqual({ name: 'typescript', version: ts!.version });
+    expect(r.truncated).not.toContain('js_parser_unavailable');
+    expect(r.findings.length).toBeGreaterThan(0);
+  });
+});
 
 describe('scanPackage: parse-only inspection of an installed package', () => {
   it('reports lifecycle scripts, bins, sorted hashed files, native binaries and parsed JS findings', async () => {

@@ -243,6 +243,12 @@ export function AgentCommonsPage() {
               {Object.entries(stats.proposals_by_status).sort((a, b) => b[1] - a[1]).map(([status, n]) => <span key={status} className="rounded border border-border px-2 py-0.5">{status.replace(/_/g, ' ')} <strong>{n}</strong></span>)}
             </div>
           )}
+          {stats.grounding_stops && (
+            <div className="mt-2 flex flex-wrap gap-2 text-xs text-foreground-secondary" aria-label="Where validly grounded proposals stopped">
+              <span>Grounded proposals stopped at:</span>
+              {Object.entries(stats.grounding_stops).filter(([, n]) => n > 0).map(([stage, n]) => <span key={stage} className="rounded border border-border px-2 py-0.5">{stage.replace(/_/g, ' ')} <strong>{n}</strong></span>)}
+            </div>
+          )}
           {!!stats.guild?.length && (
             <table className="mt-3 w-full text-xs" aria-label="Groundings per agent">
               <thead><tr className="text-left text-foreground-tertiary"><th className="py-1">Agent</th><th>Groundings</th><th>Valid</th><th>Verified</th></tr></thead>

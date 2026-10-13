@@ -9,6 +9,7 @@
 
 import fs from 'fs';
 import { swarmEventBus } from './swarm-event-bus';
+import { recordPolicyViolation } from './policy-violations';
 import type {
   LoopService,
 } from './loop-service';
@@ -16,7 +17,18 @@ import type {
   LoopRunRecord,
   WorkerLeaseRecord,
   LoopGate,
+  GateStatus,
 } from './loop-types';
+
+/** E2: combine per-lease observations — any durable failure fails; otherwise any missing evidence is unknown. */
+const combine = (statuses: GateStatus[]): GateStatus =>
+  statuses.includes('fail') ? 'fail' : statuses.includes('unknown') ? 'unknown' : 'pass';
+
+/** Change-loop artifact gates (worktree, assignment, diff, checks, security review, auto-approval scope). */
+const CHANGE_LOOP_ARTIFACT_GATES = new Set(['worktree_isolation', 'assignment_file_present', 'diff_threshold_all_makers',
+  'tests_lint_typecheck', 'security_checker_verdict', 'auto_approved_scope']);
+/** A gym run is graded by its own oracle (gym_result): none of the change-loop maker/checker gates apply. */
+const GYM_INAPPLICABLE_GATES = new Set([...CHANGE_LOOP_ARTIFACT_GATES, 'maker_completion', 'maker_checker_separation', 'checker_verdict']);
 
 export interface VerificationResult {
   run: LoopRunRecord;
@@ -57,8 +69,9 @@ export class LoopVerificationService {
       });
     const completedMakerLeases = activeMakerLeases.filter((lease) => lease.status === 'completed');
     const highRisk = this.loopService.isHighRiskRun(run);
+    const notApplicable = this.inapplicableGates(run, activeMakerLeases);
 
-    const gates: LoopGate[] = [
+    const computedGates: LoopGate[] = [
       {
         name: 'run_not_cancelled',
         status: run.status === 'cancelled' ? 'fail' : 'pass',
@@ -76,12 +89,12 @@ export class LoopVerificationService {
       },
       {
         name: 'worktree_isolation',
-        status: activeMakerLeases.every((lease) => lease.worktree_path && fs.existsSync(lease.worktree_path)) ? 'pass' : 'fail',
-        evidence: 'Every maker lease must have an existing isolated worktree.',
+        status: combine(activeMakerLeases.map((lease) => this.worktreeObservation(lease))),
+        evidence: 'Every maker lease must have an existing isolated worktree (a completed maker whose recorded worktree is gone is insufficient evidence, not a failure).',
       },
       {
         name: 'assignment_file_present',
-        status: activeMakerLeases.every((lease) => fs.existsSync(this.loopService.resolveWorkAssignmentPath(lease))) ? 'pass' : 'fail',
+        status: combine(activeMakerLeases.map((lease) => this.assignmentObservation(lease))),
         evidence: 'Every maker worktree must contain .djimitflo/LOOP_WORK.md or a readable historical LOOP_WORK.md.',
       },
       {
@@ -93,7 +106,7 @@ export class LoopVerificationService {
       },
       {
         name: 'checker_verdict',
-        status: completedMakerLeases.every((lease) => this.hasAcceptedCheckerVerdict(lease.id, checkerLeases)) ? 'pass' : completedMakerLeases.length === 0 ? 'skipped' : 'fail',
+        status: completedMakerLeases.length === 0 ? 'skipped' : combine(completedMakerLeases.map((lease) => this.reviewObservation(lease.id, checkerLeases))),
         evidence: completedMakerLeases.length === 0
           ? 'No completed maker leases yet.'
           : 'Every completed maker lease requires an accepted checker verdict.',
@@ -111,7 +124,7 @@ export class LoopVerificationService {
           ? 'skipped'
           : completedMakerLeases.length === 0
             ? 'skipped'
-            : completedMakerLeases.every((lease) => this.hasAcceptedSecurityCheckerVerdict(lease.id, securityCheckerLeases)) ? 'pass' : 'fail',
+            : combine(completedMakerLeases.map((lease) => this.reviewObservation(lease.id, securityCheckerLeases))),
         evidence: !highRisk
           ? 'Run is not high-risk.'
           : `${securityCheckerLeases.length} active security checker lease(s); high-risk completion requires accepted security verdict for every completed maker.`,
@@ -128,15 +141,22 @@ export class LoopVerificationService {
         evidence: 'Loop only prepared worktrees and did not merge, push, or deploy.',
       },
     ];
+    const gates: LoopGate[] = computedGates.map((gate) => notApplicable.gates.has(gate.name)
+      ? { name: gate.name, status: 'skipped', evidence: `Not applicable: ${notApplicable.reason}.` }
+      : gate);
 
     const waitingForMakers = activeMakerLeases.some((lease) => lease.status === 'prepared' || lease.status === 'running')
       && activeMakerLeases.every((lease) => lease.status !== 'failed' && lease.status !== 'cancelled');
     const blockingGate = gates.some((gate) => gate.status === 'fail'
       && !(gate.name === 'maker_completion' && waitingForMakers));
+    const unknownGates = gates.filter((gate) => gate.status === 'unknown');
     const status = run.status === 'cancelled' || run.status === 'completed'
       ? run.status
-      : blockingGate
+      : blockingGate || unknownGates.length > 0
       ? 'blocked'
+      // a run that is not a change loop (gym, PR review) has no merge readiness to assert: its owner settles it
+      : notApplicable.gates.size > 0
+        ? run.status
       : activeMakerLeases.length > 0 && completedMakerLeases.length === activeMakerLeases.length
         ? 'ready_for_human_merge'
         : 'verifying';
@@ -145,12 +165,20 @@ export class LoopVerificationService {
     const failedGates = gates.filter((gate) => gate.status === 'fail');
     const blockMetadata: Record<string, unknown> = { ...run.metadata };
 
-    if (status === 'blocked') {
+    delete blockMetadata.unknown_gates;
+    if (status === 'blocked' && failedGates.length > 0) {
       blockMetadata.block_reason = 'gate_failed';
       blockMetadata.failed_gates = failedGates.map((g) => `${g.name}: ${g.evidence}`);
       blockMetadata.recommendations = ['Review failed gates and address issues before re-verifying'];
       blockMetadata.blocked_at = new Date().toISOString();
-    } else if (blockMetadata.block_reason === 'gate_failed') {
+    } else if (status === 'blocked' && unknownGates.length > 0) {
+      // E2: missing evidence is reported as insufficient evidence, never as a failed invariant (no failed_gates entry)
+      blockMetadata.block_reason = 'insufficient_evidence';
+      delete blockMetadata.failed_gates;
+      blockMetadata.unknown_gates = unknownGates.map((g) => `${g.name}: ${g.evidence}`);
+      blockMetadata.recommendations = ['Evidence for these gates is missing or unavailable; re-run or re-collect it before re-verifying'];
+      blockMetadata.blocked_at = new Date().toISOString();
+    } else if (blockMetadata.block_reason === 'gate_failed' || blockMetadata.block_reason === 'insufficient_evidence') {
       delete blockMetadata.block_reason;
       delete blockMetadata.failed_gates;
       delete blockMetadata.recommendations;
@@ -158,14 +186,22 @@ export class LoopVerificationService {
     }
 
     const db = (this.loopService as any).db;
+    // §16 step 8 (shadow, POLICY_VIOLATION_LOG): the scope gate already failed these; record each breach once, decide nothing
+    for (const lease of completedMakerLeases) {
+      if (notApplicable.gates.has('auto_approved_scope') || !lease.metadata?.auto_approved_scope || this.leaseWithinScope(lease)) continue;
+      const files = Array.isArray(lease.metadata.changed_files) ? lease.metadata.changed_files.map(String) : [];
+      recordPolicyViolation(db, { kind: 'scope_gate', actor: `maker:${lease.runtime}`, severity: 'high', dedupe_key: lease.id, run_id: run.id, lease_id: lease.id,
+        evidence_ref: `loop_run:${run.id}/lease:${lease.id}`,
+        description: `auto-approved maker changed files outside ${String(lease.metadata.auto_approved_scope)}: ${files.filter((f: string) => f !== lease.metadata.auto_approved_scope).join(', ') || '(none listed)'}` });
+    }
     db.prepare(`
       UPDATE loop_runs
       SET status = ?, gates_json = ?, updated_at = ?, metadata = ?
       WHERE id = ?
     `).run(status, JSON.stringify(gates), new Date().toISOString(), JSON.stringify(blockMetadata), run.id);
 
-    this.loopService.recordLoopEvent(run.id, 'loop_verified', failedGates.length > 0 ? 'warning' : 'info',
-      `Verification status: ${status}; ${failedGates.length} gate(s) incomplete or failed.`,
+    this.loopService.recordLoopEvent(run.id, 'loop_verified', failedGates.length + unknownGates.length > 0 ? 'warning' : 'info',
+      `Verification status: ${status}; ${failedGates.length} gate(s) incomplete or failed${unknownGates.length ? `; ${unknownGates.length} gate(s) with insufficient evidence` : ''}.`,
       { gates, block_metadata: blockMetadata });
 
     return { run: this.loopService.getLoopRun(run.id), gates, leases };
@@ -200,37 +236,70 @@ export class LoopVerificationService {
     return diffMaxLines > 0 && diffLines <= diffMaxLines;
   }
 
-  private hasAcceptedCheckerVerdict(makerLeaseId: string, checkerLeases: WorkerLeaseRecord[]): boolean {
-    return checkerLeases.some(
-      (l) => l.metadata.maker_lease_id === makerLeaseId && this.hasAcceptedReviewEvidence(l)
-    );
+  /**
+   * E2: which gates do not apply to this run. A gym run (loop_name evolution-gym or metadata.gym) is graded by its oracle; a
+   * GitHub PR review (synthetic maker lease carrying github_pr) is checker-only — the PR's commits are the patch, so the
+   * change-loop artifact gates have nothing to observe. Governed change loops get the empty set (no gate weakened).
+   */
+  private inapplicableGates(run: LoopRunRecord, activeMakerLeases: WorkerLeaseRecord[]): { gates: Set<string>; reason: string } {
+    const gym = run.metadata?.gym;
+    if (run.loop_name === 'evolution-gym' || (gym !== null && typeof gym === 'object')) {
+      return { gates: GYM_INAPPLICABLE_GATES, reason: 'gym run, graded by the gym oracle rather than change-loop gates' };
+    }
+    const prReview = activeMakerLeases.length > 0 && activeMakerLeases.every((lease) => lease.metadata?.synthetic === true
+      && lease.metadata?.github_pr !== null && typeof lease.metadata?.github_pr === 'object');
+    if (prReview) return { gates: CHANGE_LOOP_ARTIFACT_GATES, reason: 'pull-request review, the maker is the PR itself and has no change-loop artifacts' };
+    return { gates: new Set(), reason: '' };
   }
 
-  private hasAcceptedSecurityCheckerVerdict(makerLeaseId: string, securityCheckerLeases: WorkerLeaseRecord[]): boolean {
-    return securityCheckerLeases.some(
-      (l) => l.metadata.maker_lease_id === makerLeaseId && this.hasAcceptedReviewEvidence(l)
-    );
+  /** No recorded worktree is a durable failure; a completed (historical) maker whose recorded worktree is gone is unknown. */
+  private worktreeObservation(lease: WorkerLeaseRecord): GateStatus {
+    if (!lease.worktree_path) return 'fail';
+    if (fs.existsSync(lease.worktree_path)) return 'pass';
+    return lease.status === 'completed' ? 'unknown' : 'fail';
+  }
+
+  /** No assignment recorded at all is a failure; an unreadable historical assignment of a completed maker is unknown. */
+  private assignmentObservation(lease: WorkerLeaseRecord): GateStatus {
+    const assignmentPath = this.loopService.resolveWorkAssignmentPath(lease);
+    if (assignmentPath && fs.existsSync(assignmentPath)) return 'pass';
+    return assignmentPath && lease.status === 'completed' ? 'unknown' : 'fail';
+  }
+
+  private reviewObservation(makerLeaseId: string, reviewerLeases: WorkerLeaseRecord[]): GateStatus {
+    const observations = reviewerLeases.filter((l) => l.metadata.maker_lease_id === makerLeaseId).map((l) => this.reviewEvidence(l));
+    return observations.includes('pass') ? 'pass' : observations.includes('unknown') ? 'unknown' : 'fail';
   }
 
   public hasAcceptedReviewEvidence(lease: WorkerLeaseRecord): boolean {
-    if (lease.status !== 'completed' || lease.metadata.verdict !== 'accepted') return false;
+    return this.reviewEvidence(lease) === 'pass';
+  }
+
+  /**
+   * E2: 'pass' = accepted with full runtime proof; 'unknown' = every recorded observation is an accepted verdict but its
+   * recorded stdout file is no longer readable (unavailable evidence); 'fail' = anything else.
+   */
+  public reviewEvidence(lease: WorkerLeaseRecord): GateStatus {
+    if (lease.status !== 'completed' || lease.metadata.verdict !== 'accepted') return 'fail';
     // Manual review is an explicit, supported decision path, not runtime proof.
     // P1a: require attestation — a named reviewer + a recorded reason. Without it, the
     // manual bypass would silently skip all runtime evidence checks (G-audit P3.3).
     if (lease.runtime === 'manual') {
       const att = lease.metadata.manual_review_attestation as { reviewer?: unknown; reason?: unknown } | undefined;
       return typeof att?.reviewer === 'string' && att.reviewer.length > 0
-        && typeof att?.reason === 'string' && att.reason.length > 0;
+        && typeof att?.reason === 'string' && att.reason.length > 0 ? 'pass' : 'fail';
     }
     const proof = lease.metadata;
     const contract = proof.runtime_contract as { available?: unknown; status?: unknown } | undefined;
     // Historical runtime verdicts lacking these observations remain blocked; an
     // accepted string cannot erase cancellation, runtime failure or a write violation.
-    return proof.exit_status === 0 && proof.timed_out === false && proof.runtime_verdict === 'accepted'
+    const proven = proof.exit_status === 0 && proof.timed_out === false && proof.runtime_verdict === 'accepted'
       && proof.runtime_was_cancelled !== true && proof.runtime_timed_out !== true
       && proof.read_only_contract_passed === true && proof.runtime_adapter === lease.runtime
       && contract?.available === true && contract.status === 'ok'
-      && typeof proof.stdout_path === 'string' && fs.existsSync(proof.stdout_path);
+      && typeof proof.stdout_path === 'string';
+    if (!proven) return 'fail';
+    return fs.existsSync(proof.stdout_path as string) ? 'pass' : 'unknown';
   }
 
   private leaseChecksPassed(lease: WorkerLeaseRecord): boolean {

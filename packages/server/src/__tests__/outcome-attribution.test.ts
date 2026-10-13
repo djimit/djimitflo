@@ -10,7 +10,7 @@ import { UserRole } from '@djimitflo/shared';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
-import { attributeOutcome, recordOutcomeAttribution, type AttributionLease } from '../services/outcome-attribution';
+import { attributeOutcome, attributionSummary, recordOutcomeAttribution, type AttributionLease } from '../services/outcome-attribution';
 import { chooseSpecies } from '../services/runtime-bandit';
 import { fitnessPosterior } from '../services/fitness-view';
 import { assignmentContext } from '../services/assignment-context';
@@ -53,6 +53,50 @@ describe('attributeOutcome', () => {
   it('an operator annotation wins (newest first)', () => {
     expect(attributeOutcome({ failed_gates: ['tests_lint_typecheck'], maker: maker('completed'), reviewers: [],
       annotations: [{ decision: 'maker_failure', created_at: '2026-10-01' }, { decision: 'reviewer_failure', created_at: '2026-10-08' }] })).toMatchObject({ outcome: 'reviewer_failure', reason: 'annotation' });
+  });
+});
+
+describe('reviewer_failure sub_reason (from stored reviewer lease fields; classes unchanged)', () => {
+  const gate = ['checker_verdict: Every completed maker lease requires an accepted checker verdict.'];
+  const lease = (status: string, metadata: Record<string, unknown>): AttributionLease => ({ role: 'checker', status, metadata: { maker_lease_id: 'm', ...metadata } });
+  const sub = (reviewers: AttributionLease[], dispatch_failed_roles?: string[]) => {
+    const a = attributeOutcome({ failed_gates: gate, maker: maker('completed'), reviewers, dispatch_failed_roles });
+    expect(a.outcome).toBe('reviewer_failure'); // the class never moves
+    return a.sub_reason;
+  };
+  it('maps each stored failure shape to its sub_reason', () => {
+    expect(sub([])).toBe('dispatch_failed');
+    expect(sub([lease('prepared', {})], ['checker'])).toBe('dispatch_failed');
+    expect(sub([lease('failed', { verdict: 'insufficient_evidence', exit_status: null, timed_out: true, failure_reason: 'checker_runtime_failed:exit=signal,timed_out=true: ' })])).toBe('timeout');
+    expect(sub([lease('failed', { failure_reason: 'stale_timeout' })])).toBe('timeout');
+    expect(sub([lease('failed', { verdict: 'insufficient_evidence', exit_status: 1, timed_out: false, failure_reason: 'checker_runtime_failed:exit=1,timed_out=false: Error: OpenCode token budget exceeded (1040000 > 1000000)' })])).toBe('token_budget');
+    expect(sub([lease('failed', { exit_status: 2, timed_out: false, failure_reason: 'checker_runtime_failed:exit=2,timed_out=false: boom' })])).toBe('runtime_exit');
+    expect(sub([lease('completed', { verdict: 'insufficient_evidence', read_only_contract_passed: false })])).toBe('read_only_violation');
+    expect(sub([lease('completed', { verdict: 'insufficient_evidence', read_only_contract_passed: true })])).toBe('insufficient_evidence');
+    expect(sub([lease('completed', {})])).toBe('unparsed_verdict');
+    expect(sub([lease('completed', { verdict: 'looks good' })])).toBe('unparsed_verdict');
+    // a rejecting verdict on a lease that did not end 'completed' is named, not hidden (a completed one is maker_failure)
+    expect(sub([lease('cancelled', { verdict: 'rejected', stopped_by_runner: true })])).toBe('rejected');
+    expect(sub([{ role: 'security_checker', status: 'completed', metadata: { maker_lease_id: 'm', verdict: 'accepted' } }, lease('needs_revision', { verdict: 'needs_revision' })])).toBe('rejected');
+  });
+  it('unknown when the fields are missing — never guessed', () => {
+    expect(sub([lease('failed', {})])).toBe('unknown');
+    expect(sub([lease('prepared', {})])).toBe('unknown'); // not dispatched yet, but no dispatch error recorded
+    expect(sub([lease('cancelled', {})])).toBe('unknown');
+    expect(sub([lease('completed', { verdict: 'accepted' })])).toBe('unknown');
+  });
+  it('reads the newest lease of the failing role for this maker (a retry wins over the first attempt)', () => {
+    expect(sub([lease('failed', { timed_out: true }), lease('completed', { verdict: 'insufficient_evidence' })])).toBe('insufficient_evidence');
+    expect(sub([lease('failed', { timed_out: true }), { role: 'checker', status: 'completed', metadata: { maker_lease_id: 'other', verdict: 'insufficient_evidence' } }])).toBe('timeout');
+    expect(attributeOutcome({ failed_gates: ['security_checker_verdict'], maker: maker('completed'),
+      reviewers: [lease('completed', { verdict: 'accepted' }), { role: 'security_checker', status: 'failed', metadata: { maker_lease_id: 'm', failure_reason: 'security_checker_runtime_failed:exit=1,timed_out=false: OpenCode token budget exceeded' } }] }).sub_reason).toBe('token_budget');
+  });
+  it('a genuine rejection is maker_failure (no sub_reason); other classes carry none', () => {
+    const r = attributeOutcome({ failed_gates: gate, maker: maker('completed'), reviewers: [lease('completed', { verdict: 'rejected' })] });
+    expect(r).toMatchObject({ outcome: 'maker_failure', reason: 'checker verdict rejected' });
+    expect(r.sub_reason).toBeUndefined();
+    expect(attributeOutcome({ failed_gates: [], maker: maker('completed'), reviewers: [] }).sub_reason).toBeUndefined();
+    expect(attributeOutcome({ failed_gates: ['worktree_isolation', 'checker_verdict'], maker: maker('completed'), reviewers: [] }).sub_reason).toBeUndefined();
   });
 });
 
@@ -114,10 +158,11 @@ describe('maker-side learners count only maker_failure when OUTCOME_ATTRIBUTION_
   it('production genome win rates and the regressions guardrail', () => {
     const off = operatorCockpit(db, NOW, {});
     expect(off.genomes.find((g) => g.scope === 'production')).toMatchObject({ genome: 'gA', outcomes: 4, wins: 1 });
-    expect(off.guardrails[0]).toMatchObject({ name: 'regressions', value: 3, split: { maker: 1, reviewer: 1, environment: 1 } });
+    // the third regression carries no attribution: unknown (Cockpit 3.0), no longer silently the maker's
+    expect(off.guardrails[0]).toMatchObject({ name: 'regressions', value: 3, split: { maker: 0, reviewer: 1, environment: 1, unknown: 1 } });
     const on = operatorCockpit(db, NOW, { OUTCOME_ATTRIBUTION_ENABLED: 'true' });
     expect(on.genomes.find((g) => g.scope === 'production')).toMatchObject({ genome: 'gA', outcomes: 2, wins: 1 });
-    expect(on.guardrails[0]).toMatchObject({ name: 'regressions', value: 1, split: { maker: 1, reviewer: 1, environment: 1 } });
+    expect(on.guardrails[0]).toMatchObject({ name: 'regressions', value: 0, state: 'DEGRADED', split: { maker: 0, reviewer: 1, environment: 1, unknown: 1 } });
   });
 });
 
@@ -154,6 +199,23 @@ describe('recording and credit', () => {
     expect(recordOutcomeAttribution(db, 'rr', 'm-rr', settled('rr', false, 'failed'), env)?.outcome).toBe('reviewer_failure');
     expect(db.prepare('SELECT COUNT(*) AS n FROM outcome_credits WHERE run_id = ?').get('rr')).toEqual({ n: 0 }); // failures credit nobody
     expect(db.prepare("SELECT status FROM self_improvements WHERE id = 's-rr'").get()).toEqual({ status: 'executing' }); // never touched
+    const answers = (id: string) => JSON.parse((db.prepare("SELECT answers_json AS a FROM judgments WHERE judgment = 'outcome_attribution' AND subject_id = ?").get(id) as { a: string }).a);
+    expect(answers('rr')).toEqual({ computed: true, failed_gates: ['checker_verdict'], sub_reason: 'timeout' });
+    expect(answers('rv')).toEqual({ computed: true, failed_gates: [] }); // only reviewer_failure carries one
+  });
+
+  it('a checker_dispatch_failed event names dispatch_failed; a historical computed row without sub_reason is unrecorded', () => {
+    const env = { OUTCOME_ATTRIBUTION_ENABLED: 'true' };
+    const gates = settled('rd', false, 'completed');
+    db.prepare("UPDATE worker_leases SET status = 'prepared', metadata = ? WHERE id = 'c-rd'").run(JSON.stringify({ maker_lease_id: 'm-rd' }));
+    db.prepare(`INSERT INTO loop_events (id, loop_run_id, event_type, level, message, metadata) VALUES ('ed', 'rd', 'checker_dispatch_failed', 'warning', 'Automated checker dispatch failed: CHECKER_WORKTREE_NOT_INDEPENDENT', '{}')`).run();
+    expect(recordOutcomeAttribution(db, 'rd', 'm-rd', gates, env)).toMatchObject({ outcome: 'reviewer_failure', sub_reason: 'dispatch_failed' });
+    db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at)
+      VALUES ('jh', 'outcome_attribution', 'loop_run', 'r-old', 'reviewer_failure', 'annotation', 'reviewer_failure', 'maker completed; no checker_verdict verdict', '{"computed":true,"failed_gates":["checker_verdict"]}', ?)`).run(iso(DAY));
+    const s = attributionSummary(db, NOW, 30, env);
+    expect(s.classes.reviewer_failure).toBe(3); // s2 annotation + historical row + rd
+    expect(s.reviewer_sub_reasons).toMatchObject({ dispatch_failed: 1, unrecorded: 2 });
+    expect(Object.values(s.reviewer_sub_reasons).reduce((a, b) => a + b, 0)).toBe(s.classes.reviewer_failure);
   });
 
   it('GET /api/health/attribution needs read:evidence and summarises classes and top contributors', async () => {
@@ -168,6 +230,8 @@ describe('recording and credit', () => {
     const res = await request(app).get('/api/health/attribution').set('Authorization', `Bearer ${viewer}`);
     expect(res.status).toBe(200);
     expect(res.body.classes).toEqual({ maker_failure: 0, reviewer_failure: 2, environment_failure: 1, verified: 1 });
+    // rr is computed now (timed-out checker); the 08-10 proposal annotation predates sub_reason: unrecorded, never rewritten
+    expect(res.body.reviewer_sub_reasons).toMatchObject({ timeout: 1, unrecorded: 1, dispatch_failed: 0, unknown: 0 });
     expect(res.body.credited_runs).toBe(1);
     expect(res.body.top_contributors).toContainEqual({ kind: 'maker', ref: 'opencode@ollama/kimi-k2.6:cloud', credits: 1 });
     authDb.close();
