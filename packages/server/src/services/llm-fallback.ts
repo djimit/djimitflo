@@ -17,7 +17,17 @@ import { measured } from './model-selector';
 
 export interface LlmEndpoint { id: string; kind: 'ollama' | 'openai'; baseUrl: string; apiKey?: string; model?: string }
 
-export interface GenerateOptions { prompt: string; model: string; temperature?: number; maxTokens?: number; timeoutMs: number }
+/** Token usage as the provider reported it; null = the provider did not say (never 0 by default). */
+export interface LlmUsage { tokensIn: number | null; tokensOut: number | null; provider: string; model: string }
+export interface GenerateOptions {
+  prompt: string; model: string; temperature?: number; maxTokens?: number; timeoutMs: number;
+  /** B29: what the call is for (the caller's identity, e.g. 'self_improvement:refinement') and the experiment arm it runs
+   *  in, recorded on the ledger row of every attempt. A call without one is recorded as 'untagged:generateText'. */
+  purpose?: string; experimentId?: string | null;
+  /** B29: the caller records its own ledger row (e.g. the panel's selector row) and takes the tokens from here, so they
+   *  are counted once — the transport row then carries no tokens */
+  onUsage?: (usage: LlmUsage) => void;
+}
 
 const BREAKER_MS = 60_000;
 const downUntil = new Map<string, number>();
@@ -41,7 +51,9 @@ export function isConnectivityFailure(message: string): boolean {
   return /fetch failed|ECONN|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|EAI_AGAIN|aborted|timed? ?out|socket hang up|HTTP 5\d\d/i.test(message);
 }
 
-async function callEndpoint(endpoint: LlmEndpoint, options: GenerateOptions, fetchFn: typeof fetch): Promise<string> {
+const count = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+interface EndpointReply { text: string; tokensIn: number | null; tokensOut: number | null }
+async function callEndpoint(endpoint: LlmEndpoint, options: GenerateOptions, fetchFn: typeof fetch): Promise<EndpointReply> {
   const model = endpoint.model || options.model;
   const signal = AbortSignal.timeout(options.timeoutMs);
   if (endpoint.kind === 'ollama') {
@@ -51,7 +63,9 @@ async function callEndpoint(endpoint: LlmEndpoint, options: GenerateOptions, fet
       body: JSON.stringify({ model, prompt: options.prompt, stream: false, format: 'json', think: false, options: { temperature: options.temperature ?? 0.2, num_predict: options.maxTokens ?? 1024 } }),
     });
     if (!response.ok) throw new Error(`Ollama request failed: ${response.status}`);
-    return ((await response.json()) as { response?: string }).response || '';
+    // Ollama reports prompt_eval_count / eval_count; absent = unknown (null), never 0
+    const data = (await response.json()) as { response?: string; prompt_eval_count?: unknown; eval_count?: unknown };
+    return { text: data.response || '', tokensIn: count(data.prompt_eval_count), tokensOut: count(data.eval_count) };
   }
   const response = await fetchFn(`${endpoint.baseUrl}/chat/completions`, {
     method: 'POST', signal,
@@ -59,8 +73,18 @@ async function callEndpoint(endpoint: LlmEndpoint, options: GenerateOptions, fet
     body: JSON.stringify({ model, messages: [{ role: 'user', content: options.prompt }], response_format: { type: 'json_object' }, temperature: options.temperature ?? 0.2, max_tokens: options.maxTokens ?? 1024 }),
   });
   if (!response.ok) throw new Error(`OpenAI-compatible request failed: HTTP ${response.status}`);
-  const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  return data.choices?.[0]?.message?.content || '';
+  const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: unknown; completion_tokens?: unknown } };
+  return { text: data.choices?.[0]?.message?.content || '', tokensIn: count(data.usage?.prompt_tokens), tokensOut: count(data.usage?.completion_tokens) };
+}
+
+/**
+ * Ledger purpose of a transport row. A caller that records its own row (onUsage, e.g. the panel's selector row) keeps the
+ * 'transport:<purpose>' convention so the call is not counted twice by purpose; otherwise the transport row IS the call
+ * and carries the caller's purpose. No purpose = 'untagged:generateText', never NULL or the anonymous 'fallback:generate'.
+ */
+export function transportPurpose(options: Pick<GenerateOptions, 'purpose' | 'onUsage'>): string {
+  if (!options.purpose) return 'untagged:generateText';
+  return options.onUsage ? `transport:${options.purpose}` : options.purpose;
 }
 
 export async function generateText(
@@ -74,10 +98,14 @@ export async function generateText(
   for (const endpoint of ordered) {
     try {
       // UX-18: every attempt is a ledger row (consumer 'fallback', provider = endpoint id); the call itself is unchanged
-      const text = await measured({ consumer: 'fallback', model: endpoint.model || options.model, provider: endpoint.id, taskKind: 'generate' },
-        () => callEndpoint(endpoint, options, fetchFn), (t) => ({ outChars: t.length }));
+      const model = endpoint.model || options.model;
+      const reply = await measured({ consumer: 'fallback', model, provider: endpoint.id, taskKind: 'generate',
+        purpose: transportPurpose(options), experimentId: options.experimentId ?? null },
+        () => callEndpoint(endpoint, options, fetchFn),
+        (r) => (options.onUsage ? { outChars: r.text.length } : { outChars: r.text.length, tokensIn: r.tokensIn, tokensOut: r.tokensOut }));
       downUntil.delete(endpoint.id);
-      return text;
+      try { options.onUsage?.({ tokensIn: reply.tokensIn, tokensOut: reply.tokensOut, provider: endpoint.id, model }); } catch { /* usage never breaks the call */ }
+      return reply.text;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       errors.push(endpoint === deps.endpoints[0] ? message : `${endpoint.id}: ${message}`);

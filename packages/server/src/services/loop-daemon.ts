@@ -20,6 +20,8 @@ import { leaseGradedRefs, recordMakerGraded } from './graded-fitness';
 import { assignSiblingArm, recordEffortSibling, siblingRandomiseEnabled } from './effort-controller';
 import { assignCheckerFamily, checkerFamilyEnabled } from './checker-family';
 import { runAce001, runGenome, skillContentHash } from './maker-genome';
+import { runSte001 } from './ste-001';
+import { recordMakerCall } from './model-call-ledger';
 import { strategyGenomeFor } from './genome-registry';
 import { banditSpecies, chooseSpecies, speciesKey } from './runtime-bandit';
 import { recordFitnessShadow } from './fitness-view';
@@ -57,6 +59,15 @@ export function daemonMakerTimeoutMs(mutationLane: boolean, env: NodeJS.ProcessE
 export function runOutcomeOnFailure(db: Database, makerLeaseId: string): 'regressed' | 'infra_failed' | 'no_change' {
   const lease = db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(makerLeaseId) as { metadata: string } | undefined;
   return makerFailureClass(JSON.parse(lease?.metadata || '{}') as MakerMeta);
+}
+
+/**
+ * E2: the outcome class of a run that did not pass all its gates. When no gate failed and some gate only lacks evidence
+ * ('unknown'), nothing negative was observed: the run is operational (infra_failed), never a semantic 'regressed'.
+ */
+export function verificationFailureOutcome(db: Database, makerLeaseId: string, gates: Array<{ status: string }>): 'regressed' | 'infra_failed' | 'no_change' {
+  if (!gates.some((g) => g.status === 'fail') && gates.some((g) => g.status === 'unknown')) return 'infra_failed';
+  return runOutcomeOnFailure(db, makerLeaseId);
 }
 
 /** Reviewer (checker/security) timeout. Prod 2026-09-24: accepted reviews took 45–119 s; 2/7 reviews hit the old fixed 120 s. */
@@ -774,12 +785,13 @@ export class LoopDaemon {
       // 9a'. What the run achieved is the proposal's outcome (feeds the source bandit + panel calibration).
       try {
         const linked = this.db.prepare('SELECT improvement_id FROM goals WHERE id = ?').get(goal.id) as { improvement_id: string | null } | undefined;
-        if (linked?.improvement_id) new SelfImprovementService(this.db).recordOutcome(linked.improvement_id, allGatesPass ? 'verified' : runOutcomeOnFailure(this.db, activeMakerLease.id));
+        if (linked?.improvement_id) new SelfImprovementService(this.db).recordOutcome(linked.improvement_id, allGatesPass ? 'verified' : verificationFailureOutcome(this.db, activeMakerLease.id, verification.gates));
       } catch { /* best-effort learning */ }
 
       // 9a'+. Attributable outcome (OUTCOME_ATTRIBUTION_ENABLED): maker / reviewer / environment failure or verified, recorded
       // once per run before the maker outcome below, so maker-side learners can leave reviewer/env failures out.
-      recordOutcomeAttribution(this.db, run.id, activeMakerLease.id, verification.gates.filter((g) => g.status === 'fail').map((g) => g.name));
+      // E2: a gate without evidence is passed on too, so an unknown-only run is never attributed 'verified' (it lands on environment/reviewer)
+      recordOutcomeAttribution(this.db, run.id, activeMakerLease.id, verification.gates.filter((g) => g.status === 'fail' || g.status === 'unknown').map((g) => g.name));
 
       // 9a''. Heritability (E10): each run is one outcome of its maker "skill" (loop × runtime) — the fitness signal the
       // skill-evolution engine and a later runtime bandit select on. Before this, skill_outcomes only got manual API writes.
@@ -794,8 +806,14 @@ export class LoopDaemon {
         // ACE-001: the arm and injected items of this maker's assignment, on the lease and as `ace-001-arm:<RS>` on the outcome
         const ace = runAce001(this.db, run.id);
         if (ace) this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.ace_001', json(?)) WHERE id = ?").run(JSON.stringify(ace), activeMakerLease.id);
+        // STE-001: the template arm of this maker's assignment, on the lease and as `ste-001-arm:<0|1>` on the outcome
+        const ste = runSte001(this.db, run.id);
+        if (ste) this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.ste_001', json(?)) WHERE id = ?").run(JSON.stringify(ste), activeMakerLease.id);
         // One outcome per run: two daemon passes can finish the same run.
-        if (!this.db.prepare('SELECT 1 FROM skill_outcomes WHERE skill_id = ? AND task_id = ? AND agent_id = ? LIMIT 1').get(skillId, run.id, activeMakerLease.id)) skills.recordOutcome(skillId, {
+        const firstPass = !this.db.prepare('SELECT 1 FROM skill_outcomes WHERE skill_id = ? AND task_id = ? AND agent_id = ? LIMIT 1').get(skillId, run.id, activeMakerLease.id);
+        // B29: the maker's model call in the ledger, with the experiment arms it ran in (opencode/remote runtime_usage; missing = null)
+        if (firstPass) recordMakerCall(this.db, { runId: run.id, goalId: goal.id, loopName, runtime: activeMakerLease.runtime, meta, ace, ste, durationMs: Date.now() - startedAtMs, ok: allGatesPass });
+        if (firstPass) skills.recordOutcome(skillId, {
           success: allGatesPass,
           tokensUsed: Number(meta.runtime_usage?.total_tokens) || 0,
           durationMs: Date.now() - startedAtMs,
@@ -807,9 +825,9 @@ export class LoopDaemon {
           ...(typeof meta.model === 'string' ? { model: meta.model } : {}),
           evidenceRefs: [`loop_run:${run.id}`, `genome:${genome.id}`, ...(typeof meta.genome_id === 'string' ? [`strategy_genome:${meta.genome_id}`] : []), ...verification.gates.filter(g => g.status !== 'pass').map(g => `gate:${g.name}:${g.status}`),
             // RX-3: why a failed run failed (infra / no change / regressed) — the bandit counts all three as 0 today
-            ...(allGatesPass ? [] : [`outcome_class:${runOutcomeOnFailure(this.db, activeMakerLease.id)}`]),
+            ...(allGatesPass ? [] : [`outcome_class:${verificationFailureOutcome(this.db, activeMakerLease.id, verification.gates)}`]),
             ...leaseGradedRefs(meta), // SI-A: graded:<score>, graded_kind, graded_lane when the maker was graded
-            ...(ace ? [`ace-001-arm:${ace.arm}`] : [])],
+            ...(ace ? [`ace-001-arm:${ace.arm}`] : []), ...(ste ? [`ste-001-arm:${ste.arm}`] : [])],
         });
       } catch { /* best-effort learning */ }
 

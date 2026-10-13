@@ -50,13 +50,22 @@ export async function checkProposalDuplicate(db: Database, proposal: { id: strin
   db.exec('CREATE TABLE IF NOT EXISTS proposal_embeddings (proposal_id TEXT PRIMARY KEY, model TEXT NOT NULL, vector BLOB NOT NULL, created_at TEXT NOT NULL)');
   addDimColumn(db, 'proposal_embeddings');
   const v = await embed(`${proposal.title}\n${proposal.description}`, fetchFn);
-  if (!v) return null;
+  if (!v) {
+    // ACE-001 reads this to tell 'embedding_failed' from 'no_embedding' when a treated arm falls back to control
+    try {
+      db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at)
+        VALUES (?, 'proposal_embedding', 'self_improvement', ?, 'embed', 'shadow', 'error', 'embedding call failed', ?)`).run(randomUUID(), proposal.id, new Date().toISOString());
+    } catch { /* recording is best effort */ }
+    return null;
+  }
   const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
   // a refinement / grounded child repeats its parent's text on purpose (prod 2026-09-27: commons grounding adds target +
   // test to an identical proposal → cosine 1.000); lineage is not duplication
   const refsOf = (id: string) => (db.prepare('SELECT evidence_refs_json AS r FROM self_improvements WHERE id = ?').get(id) as { r: string | null } | undefined)?.r ?? '';
   const mine = refsOf(proposal.id);
-  const related = (other: string) => mine.includes(`refinement-of:${other}`) || refsOf(other).includes(`refinement-of:${proposal.id}`);
+  // a requeued copy (D2) repeats its original verbatim too
+  const related = (other: string) => mine.includes(`refinement-of:${other}`) || refsOf(other).includes(`refinement-of:${proposal.id}`)
+    || mine.includes(`requeue-of:${other}`) || refsOf(other).includes(`requeue-of:${proposal.id}`);
   let best: { id: string; score: number } | null = null;
   for (const row of db.prepare('SELECT proposal_id, vector FROM proposal_embeddings WHERE created_at >= ? AND proposal_id != ?').all(since, proposal.id) as Array<{ proposal_id: string; vector: Buffer }>) {
     if (related(row.proposal_id)) continue;

@@ -790,11 +790,30 @@ const SCHEMA = `
     evidence_refs_json TEXT NOT NULL DEFAULT '[]',
     limitations TEXT,
     reviewer_actor TEXT,
+    model TEXT,
+    prompt_sha256 TEXT,
+    raw_sha256 TEXT,
+    attempt INTEGER,
     status TEXT NOT NULL CHECK(status IN ('draft', 'submitted', 'rejected')),
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (panel_id) REFERENCES specialist_panels(id) ON DELETE CASCADE,
     UNIQUE(panel_id, specialist_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS specialist_review_quarantine (
+    id TEXT PRIMARY KEY,
+    panel_id TEXT NOT NULL,
+    specialist_id TEXT NOT NULL,
+    model TEXT,
+    prompt_sha256 TEXT,
+    raw_sha256 TEXT,
+    raw_excerpt TEXT,
+    error TEXT NOT NULL,
+    attempt INTEGER NOT NULL DEFAULT 1,
+    closes_seat INTEGER NOT NULL DEFAULT 0,
+    cleared INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS self_improvements (

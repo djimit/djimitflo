@@ -8,6 +8,7 @@ import { mineGymTasks, type GymTask } from './gym-task-miner';
 import { classifyHack, hackDetectorShadow } from './gym-hack-classifier';
 import { evolveSpecies, parseSpecies, type Species } from './evolve-selection';
 import { markRun } from './scheduler-registry';
+import { gymSkillContentHash } from './gym-skill-hash';
 
 /**
  * C2b evolution gym runner (docs/design/evolution-gym.md). One attempt = one species on one replay task in a sandbox
@@ -168,7 +169,7 @@ export class EvolutionGymService {
     if (result.status !== 'discarded') {
       const tokens = maker ? this.makerTokens(maker.id) : 0;
       new SkillEvolutionEngine(this.db).recordOutcome(`loop-maker:gym:${species.runtime}`, {
-        success: result.status === 'success', tokensUsed: tokens, durationMs: Date.now() - started, domain: 'gym', taskId: run.id,
+        success: result.status === 'success', tokensUsed: tokens, durationMs: Date.now() - started, domain: 'gym', taskId: run.id, skillContentHash: gymSkillContentHash((task as { kind?: string }).kind, null),
         ...(species.model ? { model: species.model } : {}), evidenceRefs: [`gym:${task.commit}`, `loop_run:${run.id}`, `gym_result:${result.reason}`],
       });
     }
