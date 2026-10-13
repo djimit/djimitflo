@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import { yamlScalar } from '../utils/yaml-scalar';
+import { findTemplateMatches, memoryTemplateDedupMode, recordTemplateDuplicate, templateFingerprint } from './memory-template-dedup';
 
 type MemoryType = 'operational_memory' | 'engineering_rule' | 'policy_rule';
 
@@ -77,6 +78,22 @@ export class MemoryCandidateService {
       throw new Error('MEMORY_CANDIDATE_SECRET_DETECTED');
     }
 
+    // Intervention 3: template-duplicate check (MEMORY_TEMPLATE_DEDUP_MODE, default off). shadow records a judgment and
+    // still creates; enforce returns the newest existing match instead of creating. Nothing is ever deleted or promoted here.
+    const dedupMode = memoryTemplateDedupMode();
+    let templateDup: { fingerprint: string; matches: Array<{ id: string; status: string }> } | null = null;
+    if (dedupMode !== 'off') {
+      const fingerprint = templateFingerprint(input.content.trim());
+      const matches = findTemplateMatches(this.db, fingerprint);
+      if (matches.length > 0) {
+        templateDup = { fingerprint, matches };
+        if (dedupMode === 'enforce') {
+          recordTemplateDuplicate(this.db, { subjectId: matches[0].id, fingerprint, mode: 'enforce', matches, sourceRef: input.source_ref || null });
+          return this.get(matches[0].id);
+        }
+      }
+    }
+
     const classification = this.classify(memoryType, input.content);
     const id = randomUUID();
     const now = new Date().toISOString();
@@ -105,6 +122,7 @@ export class MemoryCandidateService {
       now
     );
 
+    if (templateDup) recordTemplateDuplicate(this.db, { subjectId: id, fingerprint: templateDup.fingerprint, mode: 'shadow', matches: templateDup.matches, sourceRef: input.source_ref || null });
     return this.get(id);
   }
 

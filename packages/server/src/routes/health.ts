@@ -25,6 +25,7 @@ import { buildDigest } from '../services/operator-push';
 import { getDatabaseProvenance } from '../database/provenance';
 import { efficiencyView } from '../services/resource-ledger';
 import { shippedCodeView } from '../services/shipped-code-scan';
+import { memoryTemplateAnalysis } from '../services/memory-template-dedup';
 
 export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -187,6 +188,11 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   // supply chain (shadow): latest deterministic shipped-code scan per runtime package and its release-to-release diff (read-only)
   router.get('/shipped-code', requireAuth, requirePermission('read:evidence'), (_req, res) => {
     res.json(shippedCodeView(db));
+  });
+
+  // intervention 3 (shadow): template-duplicate groups among memory candidates and promoted memories + consolidation proposals (read-only, never applied)
+  router.get('/memory-templates', requireAuth, requirePermission('read:evidence'), (req, res) => {
+    res.json(memoryTemplateAnalysis(db, { minSize: Number(req.query.min_size) || 2, limit: Number(req.query.limit) || 50 }));
   });
 
   // RX-1 (Phase F): evolution evidence — flags, outcomes per source, loop PRs, genomes/holdouts, gym per tier, Realm Gates (read-only)
