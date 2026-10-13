@@ -78,6 +78,7 @@ it('UX-4: the permission map mirrors the server routes (hand list from packages/
     labelPrescreen: 'write:governance', // self-improvement.ts POST /proposals/:id/prescreen-label
     dismissRequeue: 'write:governance', // self-improvement.ts POST /proposals/:id/requeue-dismiss
     auditAttribution: 'write:governance', // self-improvement.ts POST /attribution-audit/:runId
+    labelDiscoveryRelevance: 'write:governance', // self-improvement.ts POST /discovery-labels
     memoryReview: 'approve:task', // swarm-governance.ts POST /memory/candidates/:id/promote|reject
     telegramIdentity: 'manage:config', // self-improvement.ts PUT|DELETE /telegram-identities/:telegramId
     mcpCreateServer: 'manage:config', // mcp.ts POST /servers
