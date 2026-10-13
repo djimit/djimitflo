@@ -7,7 +7,8 @@
  */
 
 import { Router } from 'express';
-import { WebSocketEventType } from '@djimitflo/shared';
+import { AuditEventType, RiskLevel, WebSocketEventType } from '@djimitflo/shared';
+import { AuditService } from '../services/audit-service';
 import type { Database } from 'better-sqlite3';
 import { createError } from '../middleware/error-handler';
 import type { AuthMiddleware } from '../middleware/auth';
@@ -98,6 +99,7 @@ export function createGovernanceRoutes(db: Database, auth?: AuthMiddleware, wsSe
   const assurance = new AgentAssuranceService(db);
   const proofRuns = new ProofRunService(db);
   const memoryCandidates = new MemoryCandidateService(db);
+  const audit = new AuditService(db);
   const knowledgeRuntime = new KnowledgeRuntimeService(db);
   const csSkillSwarmHarness = new CsSkillSwarmHarnessService(db);
 
@@ -186,18 +188,25 @@ export function createGovernanceRoutes(db: Database, auth?: AuthMiddleware, wsSe
     try {
       const actor = req.user?.sub || req.user?.email;
       if (!actor) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
-      res.json(memoryCandidates.reject(req.params.id, actor, String(req.body?.reason ?? '')));
+      const out = memoryCandidates.reject(req.params.id, actor, String(req.body?.reason ?? ''));
+      audit.record({ event_type: AuditEventType.POLICY_UPDATED, action: 'memory_candidate_rejected', resource_type: 'memory_candidate', resource_id: req.params.id,
+        user_id: actor, risk_level: RiskLevel.MEDIUM, metadata: { reason: String(req.body?.reason ?? '').slice(0, 300) } });
+      res.json(out);
     } catch (error) { next(mapMemoryCandidateError(error)); }
   });
 
   router.post('/memory/candidates/:id/promote', requirePermission('approve:task'), (req, res, next) => {
     try {
       const approvedBy = req.user?.sub || req.user?.email;
-      res.json(memoryCandidates.promote(req.params.id, {
+      const out = memoryCandidates.promote(req.params.id, {
         sinks: req.body?.sinks,
         human_approved: req.body?.human_approved === true && Boolean(approvedBy),
         approved_by: req.body?.human_approved === true ? approvedBy : undefined,
-      }));
+        actor: approvedBy,
+      });
+      audit.record({ event_type: AuditEventType.POLICY_UPDATED, action: 'memory_candidate_promoted', resource_type: 'memory_candidate', resource_id: req.params.id,
+        user_id: approvedBy, risk_level: RiskLevel.MEDIUM, metadata: { human_approved: req.body?.human_approved === true, sinks: req.body?.sinks ?? null } });
+      res.json(out);
     } catch (error) { next(mapMemoryCandidateError(error)); }
   });
 

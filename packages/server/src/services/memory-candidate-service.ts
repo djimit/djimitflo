@@ -45,6 +45,8 @@ export interface MemoryPromotionInput {
   sinks?: Array<'okf' | 'uams' | 'qdrant'>;
   approved_by?: string;
   human_approved?: boolean;
+  /** F5: the session user who pressed promote — recorded as promoted_by; unlike approved_by it never satisfies a review gate */
+  actor?: string;
 }
 
 const VALID_TYPES: MemoryType[] = ['operational_memory', 'engineering_rule', 'policy_rule'];
@@ -201,7 +203,7 @@ export class MemoryCandidateService {
     const metadata = {
       ...candidate.metadata,
       promoted_at: now,
-      promoted_by: input.approved_by || 'system',
+      promoted_by: input.approved_by || input.actor || 'system',
       promoted_sinks: results,
       trust_level: 'validated',
       candidate_only: false,
@@ -384,7 +386,7 @@ export class MemoryCandidateService {
         `memory_type: ${candidate.memory_type}`,
         'trust_level: validated',
         `source_ref: ${yamlScalar(candidate.source_ref)}`,
-        `approved_by: ${yamlScalar(input.approved_by || 'system')}`,
+        `approved_by: ${yamlScalar(input.approved_by || input.actor || 'system')}`,
         `timestamp: ${new Date().toISOString()}`,
         '---',
         '',

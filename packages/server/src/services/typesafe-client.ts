@@ -46,6 +46,8 @@ import { recordLlmCall } from './model-selector';
 let active = 0;
 const waiting: Array<() => void> = [];
 export function resetTypesafeLimiter(): void { active = 0; waiting.length = 0; }
+/** KE-5: deferred work (retries) waits while the breaker is open or calls are already queued behind the limiter. */
+export const typesafeBusy = (): boolean => Date.now() < downUntil || waiting.length > 0;
 const envInt = (name: string, d: number): number => { const n = Number(process.env[name]); return Number.isInteger(n) && n > 0 ? n : d; };
 async function acquire(): Promise<boolean> {
   if (active < envInt('TYPESAFE_MAX_CONCURRENCY', 6)) { active += 1; return true; }

@@ -35,6 +35,10 @@ const FULL: EvolutionEvidence = {
   oracle: { ...EMPTY.oracle, n: 41, kappa: 0.31, kappa_ci: [0.12, 0.5], agreement: { all: 0.71, conf_ge_06: 0.8, conf_lt_06: 0.5 } },
   commons: { ...EMPTY.commons, k: 1, n: 18, rate: 0.056, ci: [0.001, 0.27] },
   forecasts_v2: { scored: 18, decision_grade: 1, decision_grade_skilled: 1, insufficient: 17 },
+  holdout_exposure: { limit: 10, reuse_risk: true, write_test_enabled: false, note: '', epochs: [
+    { holdout: 'mined', epoch: 0, tasks: 20, frozen_at: '2026-10-01T06:10:23Z', current: true, candidates: 11, decisions: 0, evaluations: 251, reuse_risk: true },
+    { holdout: 'mutant', epoch: 0, tasks: 20, frozen_at: '2026-10-02T23:22:59Z', current: true, candidates: 6, decisions: 8, evaluations: 140, reuse_risk: false },
+  ] },
 };
 
 it('UX-9: shows the four Realm Gates with their state as text and the reason', () => {
@@ -72,4 +76,11 @@ it('earned auto-merge: shows the class state, why it was revoked, and the counts
   const html = renderToStaticMarkup(<EvolutionBody data={{ ...FULL, auto_merge }} />);
   for (const text of ['Test-only auto-merge (mode act)', 'revoked', 'PR #700: reverted on main by rev1', 'n = 4 merged', '1 audit sample(s) open']) expect(html).toContain(text);
   expect(renderToStaticMarkup(<EvolutionBody data={{ ...FULL, auto_merge: { ...auto_merge, mode: 'off' } }} />)).not.toContain('Test-only auto-merge');
+});
+
+it('§16 step 7: holdout exposure per epoch is shown with n and a reuse-risk flag; absent evidence renders nothing', () => {
+  const html = renderToStaticMarkup(<EvolutionBody data={FULL} />);
+  expect(html).toContain('mined epoch 0: 11 candidates (limit 10) — reuse risk, introduce a fresh epoch');
+  expect(html).toContain('mutant epoch 0: 6 candidates (limit 10)');
+  expect(renderToStaticMarkup(<EvolutionBody data={EMPTY} />)).not.toContain('reuse risk');
 });

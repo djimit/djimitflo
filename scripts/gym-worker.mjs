@@ -11,6 +11,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const env = process.env;
 const WORK = (env.GYM_WORK_DIR || path.join(os.homedir(), '.djimitflo-gym')).replace(/^~/, os.homedir());
@@ -69,7 +70,29 @@ export function verdict(task, changed, green, makerOk = true) {
  * RX-11 (server #642): this worker can run canaries — a task whose extra test no source-only change can turn green; a solved
  * canary means the oracle or the sandbox is compromised. The server serves them only to workers that announce it.
  */
-export const CAPABILITIES = ['canary', 'write_test', 'prod_gates'];
+export const CAPABILITIES = ['canary', 'write_test', 'prod_gates', 'prompt_override'];
+/**
+ * TG-001 (server tg-001.ts): a claim may carry the experiment arm's full prompt. It is sent verbatim, flattened with the same
+ * oneLine as a production remote maker job, so arm B (the production assignment) reaches the agent exactly as in production.
+ * Without an override the ordinary gym goal (+ genome strategy lines) is sent.
+ */
+export const makerInput = (claim, task, writeTest, lines = []) =>
+  typeof claim?.prompt_override === 'string' && claim.prompt_override.trim() ? `${oneLine(claim.prompt_override)}\n` : `${gymGoal(task, writeTest, lines)}\n`;
+/** How the maker process ended: a spawnSync timeout / kill is 'timeout', otherwise its exit code (never guessed). */
+export const termination = (run) => (!run ? null : run.error?.code === 'ETIMEDOUT' || run.signal ? 'timeout' : run.error ? 'error' : `exit:${run.status}`);
+/** Token total only when the agent printed one; atomic-agent prints no tool-call counts, so those stay null (not 0). */
+export function tokensFrom(out) {
+  const m = /"total_tokens"\s*:\s*(\d+)/.exec(String(out ?? ''));
+  return m ? Number(m[1]) : null;
+}
+/** The model id(s) the local router actually serves right now (best effort, 3 s); null when it cannot be read. */
+async function routerModel() {
+  try {
+    const r = await fetch(`${(env.GYM_LLAMA_URL || 'http://127.0.0.1:8084').replace(/\/$/, '')}/v1/models`, { signal: AbortSignal.timeout(3000) });
+    const ids = ((await r.json())?.data ?? []).map((m) => m?.id).filter((x) => typeof x === 'string');
+    return ids.length ? ids.join(',').slice(0, 120) : null;
+  } catch { return null; }
+}
 export const claimBody = (offered) => ({ species: offered, capabilities: CAPABILITIES });
 /** The canary test to write before the oracle runs, or null. Only a test file under packages/ (never outside the worktree). */
 export function canaryFile(task) {
@@ -336,7 +359,9 @@ async function main() {
   const { runId, species, task } = claim;
   const started = Date.now();
   let fire = null;
-  const report = async (r) => { await api(`/gym-worker/runs/${runId}/result`, { ...r, ...(fire ? { fire_check: fire } : {}), tokens: 0, durationMs: Date.now() - started }); console.log(`${species} ${task.commit.slice(0, 8)} ${r.status}: ${r.reason}`); };
+  // TG-001: per-attempt measurements, filled as the attempt runs; anything not observed stays null
+  const tgm = claim.tg ? { prompt_sha256: null, prompt_chars: null, tokens: null, tool_calls: null, failed_tool_calls: null, files_inspected: null, files_modified: null, retries: 0, termination: null, model: null, oracle_green: null, maker_ms: null } : null;
+  const report = async (r) => { await api(`/gym-worker/runs/${runId}/result`, { ...r, ...(fire ? { fire_check: fire } : {}), ...(tgm ? { tg_metrics: tgm } : {}), tokens: tgm?.tokens ?? 0, durationMs: Date.now() - started }); console.log(`${species} ${task.commit.slice(0, 8)} ${claim.tg ? `tg ${claim.tg.arm} ` : ''}${r.status}: ${r.reason}`); };
   fs.mkdirSync(WORK, { recursive: true });
   if (spawnSync('docker', ['image', 'inspect', IMAGE], { stdio: 'ignore' }).status !== 0) {
     const b = docker(['build', '--network', 'host', '-t', IMAGE, '-'], RUNNER_DOCKERFILE, 1_800_000);
@@ -365,19 +390,23 @@ async function main() {
     if (oracle(wt, task, writeTest ? undefined : 'before')) return report({ status: 'discarded', reason: writeTest ? 'task: test already green at base (gap closed)' : task.mutant ? 'task: mutant survives (tests stay green)' : 'tests already green on the parent' });
     const before = writeTest ? null : readReport(wt, 'before'); // SI-A: read before the maker runs (it could edit the file)
     const genomeLines = Array.isArray(claim.genome?.lines) ? claim.genome.lines : [];
-    const input = `${gymGoal(task, writeTest, genomeLines)}\n`;
+    const input = makerInput(claim, task, writeTest, genomeLines);
+    if (tgm) { tgm.prompt_sha256 = createHash('sha256').update(input.trim()).digest('hex'); tgm.prompt_chars = input.trim().length; tgm.model = await routerModel(); }
     fire = fireCheck(input, genomeLines); // GENOME_FIRE_CHECK: proof of what the maker was actually sent
     const [runtime] = species.split('@');
     if (runtime !== 'atomic') return report({ status: 'discarded', reason: `infra: species ${species} not supported by this worker` });
     const state = freshState(); states.push(state);
     const cfg = inRunner(wt, `atomic-agent config set '${ATOMIC_LOCAL_CONFIG}' >/dev/null`, { extra: ['-v', `${state}:/state`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'], timeoutMs: 60_000 });
     if (cfg.status !== 0) return report({ status: 'discarded', reason: 'infra: atomic config failed' });
+    const makerStarted = Date.now();
     const run = inRunner(wt, 'atomic-agent run --cwd /w --max-steps 40 --no-approval', { input, extra: ['-v', `${state}:/state`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'], timeoutMs: Number(env.GYM_MAKER_TIMEOUT_MS) || 900_000 });
     const makerOk = run.status === 0 && !run.error;
     const changed = changedFrom(git(wt, ['diff', '--name-only', 'HEAD']), git(wt, ['ls-files', '--others', '--exclude-standard']));
+    if (tgm) { tgm.termination = termination(run); tgm.tokens = tokensFrom(run.stdout); tgm.files_modified = changed; tgm.maker_ms = Date.now() - makerStarted; }
     const scoped = changed.length > 0 && changed.every((f) => f === task.source);
     const gap = writeTest && scoped ? writeTestGap(task, fs.readFileSync(path.join(wt, task.source), 'utf8')) : null;
     const green = scoped && !gap && oracle(wt, task, writeTest ? undefined : 'after');
+    if (tgm) tgm.oracle_green = scoped && !gap ? green : null;
     // the after-report is read whether the oracle went green or red; no in-scope change: nothing turned green
     const after = writeTest ? null : scoped && !gap ? readReport(wt, 'after') : {};
     let diffText = '';
@@ -567,7 +596,12 @@ function selfcheck() {
   assert(!oneLine('a\nb\n\nc').includes('\n'), 'oneLine has no newline');
   assert(parseForecast('thinking... {"p": 0.35, "rationale": "lane rate is low"} done')?.p === 0.35, 'parseForecast reads p');
   assert(parseForecast('{"p": 1.7}') === null && parseForecast('no json') === null, 'parseForecast rejects bad output');
-  assert(JSON.stringify(claimBody(['atomic@llama-router'])) === '{"species":["atomic@llama-router"],"capabilities":["canary","write_test","prod_gates"]}', 'claim announces the canary, write_test and prod_gates capabilities');
+  assert(JSON.stringify(claimBody(['atomic@llama-router'])) === '{"species":["atomic@llama-router"],"capabilities":["canary","write_test","prod_gates","prompt_override"]}', 'claim announces the canary, write_test, prod_gates and prompt_override capabilities');
+  const ovTask = { source: 'packages/server/src/__tests__/w.test.ts', target: 'packages/server/src/services/w.ts', tests: ['packages/server/src/__tests__/w.test.ts'] };
+  assert(makerInput({ prompt_override: '# Objective Assignment\n\nFile: a.ts\n  Change only this file.' }, ovTask, true) === '# Objective Assignment File: a.ts Change only this file.\n', 'TG-001: a prompt override is sent verbatim, flattened like a production maker job');
+  assert(makerInput({}, ovTask, true) === `${gymGoal(ovTask, true, [])}\n` && makerInput({ prompt_override: '  ' }, ovTask, true) === `${gymGoal(ovTask, true, [])}\n`, 'TG-001: no (or a blank) override = the ordinary gym goal');
+  assert(termination({ status: 0 }) === 'exit:0' && termination({ status: null, signal: 'SIGTERM' }) === 'timeout' && termination({ error: { code: 'ETIMEDOUT' } }) === 'timeout' && termination(null) === null, 'TG-001: termination reason');
+  assert(tokensFrom('x {"total_tokens": 1234} y') === 1234 && tokensFrom('no usage printed') === null, 'TG-001: tokens only when printed');
   const wTask = { commit: 'fail:r1', kind: 'write_test', base: 'a'.repeat(40), source: 'packages/server/src/__tests__/widget.test.ts', tests: ['packages/server/src/__tests__/widget.test.ts'], target: 'packages/server/src/services/widget.ts',
     mutants: [{ key: 'mut:aaaaaaaaaaaa:packages/server/src/services/widget.ts:1:1', content: 'export const widget = () => 2;\n' }] };
   assert(isWriteTest(wTask) && !isWriteTest(task) && writeTestValid(wTask), 'write_test task recognised and valid');
@@ -599,5 +633,7 @@ function selfcheck() {
   console.log('selfcheck ok');
 }
 
-if (process.argv.includes('--selfcheck')) selfcheck();
-else main().catch((err) => { console.error(err instanceof Error ? err.message : String(err)); process.exit(1); });
+// run only when executed directly (tests import the pure functions)
+const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain && process.argv.includes('--selfcheck')) selfcheck();
+else if (isMain) main().catch((err) => { console.error(err instanceof Error ? err.message : String(err)); process.exit(1); });

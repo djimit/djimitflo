@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router-dom';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { App } from './App';
@@ -55,7 +56,7 @@ it('UX-3: the cockpit refetches on its interval and on an approval message, and 
   const get = vi.spyOn(api, 'getOperatorCockpit').mockResolvedValue(cockpit as never);
   const handlers = new Map<string, (m: WebSocketMessage) => void>();
   const subscribe = (type: string, h: (m: WebSocketMessage) => void) => { handlers.set(type, h); return () => handlers.delete(type); };
-  render(<WsContext.Provider value={{ subscribe: subscribe as never, isConnected: true }}><OperatorCockpitPage /></WsContext.Provider>);
+  render(<WsContext.Provider value={{ subscribe: subscribe as never, isConnected: true }}><MemoryRouter><OperatorCockpitPage /></MemoryRouter></WsContext.Provider>);
   await waitFor(() => expect(get).toHaveBeenCalledTimes(1));
   expect(await screen.findByText(/updated \d+ s ago/)).toBeTruthy();
   await act(async () => { vi.advanceTimersByTime(30_000); });

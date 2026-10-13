@@ -28,19 +28,25 @@ it('UX-19: think tags and code fences are stripped and a JSON object in the midd
   expect(reexported).toBe(firstJsonObject); // existing importers (dream-evolution) keep working
 });
 
-it('UX-19: flag off — no repair call, nothing recorded, the unreadable answer falls back exactly as before', async () => {
+it('UX-19: flag off — repairModelJson makes no repair call and records nothing', async () => {
   fresh();
   const ask = vi.fn(async () => REVIEW('support'));
   expect(await repairModelJson({ db, consumer: 'panel_review', model: 'm', raw: 'garbled', schema: SHAPE, shape: '{}', ask })).toBeNull();
   expect(ask).not.toHaveBeenCalled();
-  const prompts: string[] = [];
-  const reviewer = new SelfImprovementAgentReviewService(db, async (p) => { prompts.push(p); return 'I think it is fine.'; });
-  for (let i = 0; i < 3; i++) await reviewer.reviewMissingSpecialists(panel(), `run-${i}`); // 3 unreadable attempts on fresh panels
-  expect(prompts.every((p) => !p.includes('Your previous answer'))).toBe(true);
   expect(ledger()).toEqual([]);
 });
 
-it('UX-19: flag on — a malformed panel answer is repaired by one retry to the same model and recorded as repaired', async () => {
+it('B32 supersedes UX-19 for panels: one re-ask with the validation error regardless of the flag, never a repair-call row', async () => {
+  fresh();
+  const prompts: string[] = [];
+  const reviewer = new SelfImprovementAgentReviewService(db, async (p) => { prompts.push(p); return 'I think it is fine.'; });
+  await reviewer.reviewMissingSpecialists(panel(), 'run-0');
+  expect(prompts).toHaveLength(4); // 2 seats × (call + one re-ask)
+  expect(prompts.filter((p) => p.includes('Your previous answer was rejected'))).toHaveLength(2);
+  expect(ledger()).toEqual([]);
+});
+
+it('UX-19 / B32: a malformed panel answer is repaired by one re-ask to the same model (review attempt 2)', async () => {
   fresh(); vi.stubEnv('LLM_JSON_REPAIR_ENABLED', 'true'); vi.stubEnv('SELF_IMPROVEMENT_REVIEW_MODEL', 'glm-5.3-flash:cloud');
   const calls: string[] = [];
   const reviewer = new SelfImprovementAgentReviewService(db, async (p) => {
@@ -48,9 +54,9 @@ it('UX-19: flag on — a malformed panel answer is repaired by one retry to the 
     return p.includes('Your previous answer') ? REVIEW('oppose') : 'Overall this looks reasonable, I would lean towards support.';
   });
   const updated = await reviewer.reviewMissingSpecialists(panel(), 'run-r');
-  expect(calls).toHaveLength(4); // per reviewer: the review + one repair, no more
+  expect(calls).toHaveLength(4); // per reviewer: the review + one re-ask (B32), no more
   expect(updated.reviews.map((r) => r.stance)).toEqual(['oppose', 'oppose']);
-  expect(ledger()).toEqual([{ consumer: 'panel_review', status: 'repaired', ok: 1 }, { consumer: 'panel_review', status: 'repaired', ok: 1 }]);
+  expect(updated.reviews.every((r) => (db.prepare('SELECT attempt FROM specialist_reviews WHERE id = ?').get(r.id) as { attempt: number }).attempt === 2)).toBe(true);
 });
 
 it('UX-19: flag on — an irreparable answer is recorded as unparseable and the review path is unchanged', async () => {

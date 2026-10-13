@@ -135,6 +135,8 @@ export function writeTestHoldout(db: Database, make: () => FailureTask[], now = 
   const frozen = read();
   if (frozen.length) return frozen;
   const used = new Set((db.prepare('SELECT key FROM gym_write_test_holdout').all() as Array<{ key: string }>).map((r) => r.key));
+  // TG-001 tasks are diagnostic (prior exposure, four prompts each) — never a promotion holdout
+  try { for (const r of db.prepare('SELECT DISTINCT task_key AS k FROM tg_attempts').all() as Array<{ k: string }>) used.add(r.k); } catch { /* tg_attempts absent */ }
   const fresh = make().filter((t) => !used.has(t.commit)).sort((a, b) => a.commit.localeCompare(b.commit)).slice(0, HOLDOUT_SIZE);
   if (fresh.length < WRITE_TEST_HOLDOUT_MIN) return [];
   const insert = db.prepare('INSERT OR IGNORE INTO gym_write_test_holdout (key, task_json, created_at, epoch) VALUES (?, ?, ?, ?)');
