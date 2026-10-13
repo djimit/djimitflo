@@ -120,6 +120,27 @@ function addMissingColumns(db: BetterSqlite3Database, tableName: string, columns
   }
 }
 
+/**
+ * DI-001 B: versioned decision provenance (services/judgment-provenance.ts). Additive and idempotent: one nullable column;
+ * existing rows stay NULL (read as 'unrecorded', never backfilled). The trigger gives every NEW row from a writer that does
+ * not supply provenance a 'partial' floor built only from the row's own columns, with the reason for each missing field.
+ * Down (SQLite >= 3.35): DROP TRIGGER IF EXISTS trg_judgments_provenance_floor; ALTER TABLE judgments DROP COLUMN provenance_json;
+ */
+export function ensureJudgmentProvenance(db: BetterSqlite3Database): void {
+  addMissingColumns(db, 'judgments', [{ name: 'provenance_json', definition: 'TEXT' }]);
+  if (!getColumns(db, 'judgments').has('provenance_json')) return;
+  db.exec(`CREATE TRIGGER IF NOT EXISTS trg_judgments_provenance_floor AFTER INSERT ON judgments WHEN NEW.provenance_json IS NULL
+    BEGIN
+      UPDATE judgments SET provenance_json = json_object('v', 1, 'status', 'partial', 'writer', 'uninstrumented',
+        'policy_id', NEW.judgment, 'policy_version', NULL, 'prompt_id', NULL, 'prompt_version', NULL, 'input_digest', NULL,
+        'model_id', NEW.model, 'model_version', NULL, 'evaluator_version', NULL, 'execution_mode', NEW.mode,
+        'decision_timestamp', NEW.created_at, 'evidence_reference', NEW.subject_type || ':' || NEW.subject_id, 'uncertainty', NULL,
+        'missing', json_object('policy_version', 'writer_not_instrumented', 'prompt_version', 'writer_not_instrumented',
+          'input_digest', 'writer_not_instrumented', 'evaluator_version', 'writer_not_instrumented'))
+      WHERE rowid = NEW.rowid;
+    END`);
+}
+
 function tableSql(db: BetterSqlite3Database, tableName: string): string | null {
   const row = db.prepare(`
     SELECT sql FROM sqlite_master
@@ -1391,6 +1412,7 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   // TG-001 integrity addendum: sha256 of the frozen analysis manifest, written in the freeze transaction
   addMissingColumns(db, 'tg_experiments', [{ name: 'analysis_sha256', definition: 'TEXT' }]);
   addMissingColumns(db, 'tg_attempts', [{ name: 'first_claimed_at', definition: 'TEXT' }]); // B27: first physical attempt
+  ensureJudgmentProvenance(db);
   // Add missing columns BEFORE creating indexes that reference them — a stale
   // pre-existing self_improvements table (no fingerprint) otherwise breaks
   // CREATE INDEX idx_self_improve_fingerprint with "no such column".
