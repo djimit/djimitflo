@@ -6,8 +6,8 @@
  "provenance": {
   "origin_sha": "bb02a7311ac56d216d1cffbfeb0c5a9ba04ced9c",
   "builder": "holdout-freeze --build",
-  "built_at": "2026-10-13T23:06:39.940Z",
-  "rebuilt_from_sha256": "30bcd7bf23a4aff755262f164c9df2bcfc2ca68e344cd78bd48cc5c362b89d14"
+  "built_at": "2026-10-13T23:11:50.875Z",
+  "rebuilt_from_sha256": "5205c2aa828b2912c2265ea608d76436420e1ec7f02dd72eee2339218d0bc734"
  },
  "evaluation_policy": {
   "holdout_size": 40,
@@ -227,8 +227,9 @@
     4,
     5,
     6
-   ]
+   ],
+   "max_per_source": 1
   }
  },
- "manifest_sha256": "5205c2aa828b2912c2265ea608d76436420e1ec7f02dd72eee2339218d0bc734"
+ "manifest_sha256": "37b8172e7d843a9f897fa399d5bb164ef46819c1b6cf620d1ffac1efc16d0963"
 }

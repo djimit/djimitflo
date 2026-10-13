@@ -27,7 +27,7 @@ export interface ManifestTask { key: string; source: string }
 export interface HoldoutManifest {
   manifest_version: 1; holdout_epoch: number; provenance?: Record<string, unknown>;
   evaluation_policy?: { holdout_size?: number } & Record<string, unknown>; holdout_size?: number;
-  tasks: { mined: ManifestTask[]; write_test?: ManifestTask[]; mutant?: { generated_at_freeze: boolean; proposed_tiers: number[] } & Record<string, unknown> } & Record<string, unknown>;
+  tasks: { mined: ManifestTask[]; write_test?: ManifestTask[]; mutant?: { generated_at_freeze: boolean; proposed_tiers: number[]; max_per_source?: number } & Record<string, unknown> } & Record<string, unknown>;
   calibration?: { mined?: string[]; write_test?: string[] };
   manifest_sha256: string;
 }
@@ -70,7 +70,8 @@ export function validateManifestSchema(m: unknown): string[] {
   if (m.tasks.write_test !== undefined && !isTasks(m.tasks.write_test)) errors.push('tasks.write_test must be a list of {key, source}');
   const mutant = m.tasks.mutant;
   if (mutant !== undefined && (!isObj(mutant) || mutant.generated_at_freeze !== true || !Array.isArray(mutant.proposed_tiers) || !mutant.proposed_tiers.length
-    || !mutant.proposed_tiers.every((t) => Number.isInteger(t) && t >= 1 && t <= 8))) errors.push('tasks.mutant must be {generated_at_freeze: true, proposed_tiers: [1..8]}');
+    || !mutant.proposed_tiers.every((t) => Number.isInteger(t) && t >= 1 && t <= 8)
+    || (mutant.max_per_source !== undefined && (!Number.isInteger(mutant.max_per_source) || (mutant.max_per_source as number) < 1)))) errors.push('tasks.mutant must be {generated_at_freeze: true, proposed_tiers: [1..8], max_per_source?: integer >= 1}');
   if (m.calibration !== undefined && (!isObj(m.calibration) || (m.calibration.mined !== undefined && !isKeys(m.calibration.mined))
     || (m.calibration.write_test !== undefined && !isKeys(m.calibration.write_test)))) errors.push('calibration must be {mined?: string[], write_test?: string[]}');
   const policy = isObj(m.evaluation_policy) ? m.evaluation_policy : {};
@@ -129,7 +130,7 @@ export function freezeHoldoutFromManifest(db: Database, input: unknown, opts: Fr
   const reasons: string[] = [];
   if (decidingMined.length < size) reasons.push(`mined: ${decidingMined.length} of ${size} deciding tasks`);
   if (decidingWt.length > 0 && decidingWt.length < WRITE_TEST_HOLDOUT_MIN) reasons.push(`write_test: ${decidingWt.length} deciding tasks, fewer than ${WRITE_TEST_HOLDOUT_MIN}`);
-  const mutants = m.tasks.mutant && opts.makeMutant ? generateMutants(ex, opts.makeMutant, m.tasks.mutant.proposed_tiers, size) : [];
+  const mutants = m.tasks.mutant && opts.makeMutant ? generateMutants(ex, opts.makeMutant, m.tasks.mutant.proposed_tiers, size, m.tasks.mutant.max_per_source ?? Infinity) : [];
   if (m.tasks.mutant && mutants.length < size) reasons.push(`mutant: ${mutants.length} of ${size} eligible mutants generated`);
   if (reasons.length) return { status: 'HOLD', reasons };
 
@@ -168,7 +169,7 @@ export function freezeHoldoutFromManifest(db: Database, input: unknown, opts: Fr
  */
 export interface BuildOptions {
   epoch: number; size: number; pool: { mined: GymTask[]; writeTest?: FailureTask[] }; tiers: number[];
-  base?: Record<string, unknown>; provenance: Record<string, unknown>; now?: string; deciding?: 'mutant' | 'mined';
+  base?: Record<string, unknown>; provenance: Record<string, unknown>; now?: string; deciding?: 'mutant' | 'mined'; maxPerSource?: number;
 }
 export function buildHoldoutManifest(db: Database, o: BuildOptions) {
   const ex = holdoutExclusions(db);
@@ -209,7 +210,7 @@ export function buildHoldoutManifest(db: Database, o: BuildOptions) {
     tasks: {
       mined: mined.map((k) => ({ key: k, source: minedPool.get(k)!.source })),
       ...(wt.length >= WRITE_TEST_HOLDOUT_MIN ? { write_test: wt.map((k) => ({ key: k, source: wtPool.get(k)!.source })) } : {}),
-      mutant: { generated_at_freeze: true, proposed_tiers: o.tiers },
+      mutant: { generated_at_freeze: true, proposed_tiers: o.tiers, ...(o.maxPerSource ? { max_per_source: o.maxPerSource } : {}) },
     },
   };
   manifest.manifest_sha256 = manifestSha256(manifest);

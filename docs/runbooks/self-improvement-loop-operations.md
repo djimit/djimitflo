@@ -163,7 +163,7 @@ Never automatic. Nothing sets `DREAM_EVOLUTION_ENABLED` or `GYM_HOLDOUT_EPOCH`, 
    Build it with the same exclusions the freeze checks (gym failures AND failed maker leases' `changed_files`), on a read-only DB copy:
    `node dist/scripts/holdout-freeze.js --build --db <copy> --repo <checkout> --epoch 1 --size 40 --tiers 3,4,5,6 [--base <old manifest>] --out <file>`.
    With `--base` it keeps the base's still-eligible tasks, lists the dropped ones with the reason, and refills mined by an every-k-th spread. A shortfall exits 3; it is never padded.
-   Epoch 1 (operator 14-10) is `docs/holdout/epoch1-manifest-20261014.json` (sha256 in the `.sha256` file next to it): 40 mined (no-regression check only), 5 write_test, 40 mutants at tiers 3–6 generated at freeze (deciding), `HOLDOUT_SIZE=40`.
+   Epoch 1 (operator 14-10) is `docs/holdout/epoch1-manifest-20261014.json` (sha256 in the `.sha256` file next to it): 40 mined (no-regression check only), 5 write_test, 40 mutants at tiers 3–6 generated at freeze (deciding, `max_per_source: 1` → 40 distinct files, design effect 1.0, power 0.80 for +30 points at p0 0.35), `HOLDOUT_SIZE=40`. Build with `--max-per-source 1`: without a cap mutantTask returns the same file at every tier.
    Mutant keys contain the checkout HEAD, so repeat the dry run on the deploy checkout right before `--apply`.
 2. Back up `runtime.env` and the DB. Use `.backup` to a unique path, then run an integrity check.
 3. Dry run. It opens the DB read-only and writes nothing:

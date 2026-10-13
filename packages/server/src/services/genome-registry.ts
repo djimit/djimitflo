@@ -132,15 +132,22 @@ export function mutantHoldout(db: Database, make: (tier: number, tried: Set<stri
   db.transaction(() => { for (const task of picked) insert.run(task.commit, JSON.stringify(task), now, epoch); })();
   return read();
 }
-/** Up to `size` eligible mutants, tiers round-robin; an excluded one is marked tried and the generator asked again (bounded). */
-export function generateMutants(ex: ReturnType<typeof holdoutExclusions>, make: (tier: number, tried: Set<string | null>) => MutantTask | null, tiers: number[], size: number): MutantTask[] {
-  const tried = new Set<string | null>(ex.frozen); const picked: MutantTask[] = [];
-  for (let attempts = 0; picked.length < size && attempts < size * 25; attempts++) {
+/**
+ * Up to `size` eligible mutants, tiers round-robin; an excluded one is marked tried and the generator asked again (bounded).
+ * mutantTask picks the file from the seed alone, so without a cap the same file comes back at every tier (epoch-1 dry run
+ * 14-10: 40 mutants on 10 files, design effect 1.3). `maxPerSource` caps mutants per source file (manifest
+ * tasks.mutant.max_per_source); the claim-time freeze keeps no cap (unchanged).
+ */
+export function generateMutants(ex: ReturnType<typeof holdoutExclusions>, make: (tier: number, tried: Set<string | null>) => MutantTask | null, tiers: number[], size: number,
+  maxPerSource = Infinity): MutantTask[] {
+  const tried = new Set<string | null>(ex.frozen); const picked: MutantTask[] = []; const perSource = new Map<string, number>();
+  for (let attempts = 0; picked.length < size && attempts < size * 100; attempts++) {
     const task = make(tiers[picked.length % tiers.length], tried);
     if (!task) break;
     if (tried.has(task.commit)) continue;
     tried.add(task.commit);
-    if (!exclusionReason(ex, task)) picked.push(task);
+    if (exclusionReason(ex, task) || (perSource.get(task.source) ?? 0) >= maxPerSource) continue;
+    picked.push(task); perSource.set(task.source, (perSource.get(task.source) ?? 0) + 1);
   }
   return picked;
 }

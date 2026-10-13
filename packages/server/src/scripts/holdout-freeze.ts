@@ -26,10 +26,11 @@ const [dbPath, manifestPath, epochRaw, expect, repo] = [arg('db'), arg('manifest
 const git = (args: string[]) => { try { return execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null; } catch { return null; } };
 if (process.argv.includes('--build')) {
   const out = arg('out'); const size = Number(arg('size', '20')); const tiers = arg('tiers', '3,4,5,6').split(',').map(Number);
+  const maxPerSource = arg('max-per-source') ? Number(arg('max-per-source')) : undefined;
   if (!dbPath || !out || !repo || !/^\d+$/.test(epochRaw)) { console.error('usage: holdout-freeze --build --db <path> --out <file> --epoch <n> --size <n> --tiers 3,4 --repo <checkout> [--base <manifest>]'); process.exit(64); }
   const bdb = new Database(dbPath, { readonly: true, fileMustExist: true });
   const base = arg('base') ? JSON.parse(fs.readFileSync(arg('base'), 'utf8')) as Record<string, unknown> : undefined;
-  const built = buildHoldoutManifest(bdb, { epoch: Number(epochRaw), size, tiers, base, pool: { mined: mineGymTasks(repo), writeTest: failureDerivedTasks(bdb, gitLookup(repo)) },
+  const built = buildHoldoutManifest(bdb, { epoch: Number(epochRaw), size, tiers, base, maxPerSource, pool: { mined: mineGymTasks(repo), writeTest: failureDerivedTasks(bdb, gitLookup(repo)) },
     provenance: { origin_sha: git(['rev-parse', 'HEAD']), builder: 'holdout-freeze --build' } });
   bdb.close();
   fs.writeFileSync(out, JSON.stringify(built.manifest, null, 1) + '\n');
@@ -55,11 +56,16 @@ const result = freezeHoldoutFromManifest(db, manifest, {
     evidence: { manifest_sha256: record.manifest_sha256, counts: record.counts, origin_sha: record.origin_sha, holdout_size: record.holdout_size },
     event: { eventType: 'holdout.freeze', resourceType: 'gym_holdout', riskLevel: 'high', after: { epoch: record.epoch, keys: record.keys } } }),
 });
+// task families (same source file) of the DECIDING set: the generated mutants when the manifest declares them deciding
 const tasks = (manifest.tasks ?? {}) as { mined?: Array<{ source: string }> };
-const families = new Map<string, number>(); for (const t of tasks.mined ?? []) families.set(t.source, (families.get(t.source) ?? 0) + 1);
+const policy = (manifest.evaluation_policy ?? {}) as { deciding?: string };
+const frozenKeys = result.status === 'FROZEN' || result.status === 'VALID_DRY_RUN' ? result.keys : null;
+const familySources = policy.deciding === 'mutant' && frozenKeys ? frozenKeys.mutant.map((k) => k.split(':')[2]) : (tasks.mined ?? []).map((t) => t.source);
+const families = new Map<string, number>(); for (const f of familySources) families.set(f, (families.get(f) ?? 0) + 1);
 const size = result.status === 'FROZEN' || result.status === 'VALID_DRY_RUN' ? result.holdout_size : (tasks.mined ?? []).length;
 const power = pairedPowerReport({ n: size, p0: Number(arg('p0', '0.37')), p1: Number(arg('p1', '0.57')), alpha: Number(arg('alpha', '0.05')),
   clusterSizes: [...families.values()], icc: Number(arg('icc', '0.1')) });
-console.log(JSON.stringify({ mode: apply ? 'apply' : 'dry-run', result, power_report: { note: 'assumptions, not measurements; never used to size the holdout', ...power } }, null, 2));
+console.log(JSON.stringify({ mode: apply ? 'apply' : 'dry-run', result, power_report: { note: 'assumptions, not measurements; never used to size the holdout',
+  deciding: policy.deciding ?? 'mined', families: families.size, family_sizes: [...families.values()].sort((a, b) => b - a), ...power } }, null, 2));
 db.close();
 process.exit(result.status === 'REFUSED' ? 2 : result.status === 'HOLD' ? 3 : 0);
