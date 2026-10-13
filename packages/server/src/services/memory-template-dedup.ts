@@ -59,6 +59,18 @@ export function recordTemplateDuplicate(db: Database, input: { subjectId: string
   } catch { /* judgments table absent: candidate creation is unaffected */ }
 }
 
+/** Logs and (best effort) records a `memory_template_dedup_error` judgment; never throws, so candidate creation always proceeds. */
+export function recordTemplateDedupError(db: Database, input: { mode: MemoryTemplateDedupMode; stage: 'lookup' | 'enforce' | 'record'; error: unknown; subjectId?: string; sourceRef: string | null }): void {
+  const message = input.error instanceof Error ? input.error.message : String(input.error);
+  try { console.warn(`[memory-template-dedup] ${input.stage} failed (${input.mode}), creating candidate normally: ${message}`); } catch { /* logging must not throw */ }
+  try {
+    db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, error, answers_json, created_at)
+      VALUES (?, 'memory_template_dedup_error', 'memory_candidate', ?, '', ?, 'fail_open', ?, ?, ?, ?)`)
+      .run(randomUUID(), input.subjectId ?? 'pending', input.mode, `dedup ${input.stage} failed; candidate created normally`, message.slice(0, 500),
+        JSON.stringify({ stage: input.stage, source_ref: input.sourceRef }), new Date().toISOString());
+  } catch { /* judgments table unavailable: the log line is the record */ }
+}
+
 function sourceRun(r: Row): string | null {
   try {
     const m = r.metadata ? JSON.parse(r.metadata) : {};

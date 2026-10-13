@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import { yamlScalar } from '../utils/yaml-scalar';
-import { findTemplateMatches, memoryTemplateDedupMode, recordTemplateDuplicate, templateFingerprint } from './memory-template-dedup';
+import { findTemplateMatches, memoryTemplateDedupMode, recordTemplateDedupError, recordTemplateDuplicate, templateFingerprint } from './memory-template-dedup';
 
 type MemoryType = 'operational_memory' | 'engineering_rule' | 'policy_rule';
 
@@ -80,16 +80,27 @@ export class MemoryCandidateService {
 
     // Intervention 3: template-duplicate check (MEMORY_TEMPLATE_DEDUP_MODE, default off). shadow records a judgment and
     // still creates; enforce returns the newest existing match instead of creating. Nothing is ever deleted or promoted here.
+    // Fails open in every mode: an error in fingerprint / lookup / judgment never blocks or skips a candidate.
     const dedupMode = memoryTemplateDedupMode();
     let templateDup: { fingerprint: string; matches: Array<{ id: string; status: string }> } | null = null;
+    let dedupError: { stage: 'lookup' | 'enforce'; error: unknown } | null = null;
     if (dedupMode !== 'off') {
-      const fingerprint = templateFingerprint(input.content.trim());
-      const matches = findTemplateMatches(this.db, fingerprint);
-      if (matches.length > 0) {
-        templateDup = { fingerprint, matches };
-        if (dedupMode === 'enforce') {
-          recordTemplateDuplicate(this.db, { subjectId: matches[0].id, fingerprint, mode: 'enforce', matches, sourceRef: input.source_ref || null });
-          return this.get(matches[0].id);
+      try {
+        const fingerprint = templateFingerprint(input.content.trim());
+        const matches = findTemplateMatches(this.db, fingerprint);
+        if (matches.length > 0) templateDup = { fingerprint, matches };
+      } catch (error) {
+        templateDup = null;
+        dedupError = { stage: 'lookup', error };
+      }
+      if (templateDup && dedupMode === 'enforce') {
+        try {
+          const existing = this.get(templateDup.matches[0].id);
+          recordTemplateDuplicate(this.db, { subjectId: existing.id, fingerprint: templateDup.fingerprint, mode: 'enforce', matches: templateDup.matches, sourceRef: input.source_ref || null });
+          return existing;
+        } catch (error) {
+          templateDup = null; // fail open: create normally
+          dedupError = { stage: 'enforce', error };
         }
       }
     }
@@ -122,7 +133,14 @@ export class MemoryCandidateService {
       now
     );
 
-    if (templateDup) recordTemplateDuplicate(this.db, { subjectId: id, fingerprint: templateDup.fingerprint, mode: 'shadow', matches: templateDup.matches, sourceRef: input.source_ref || null });
+    if (dedupError) recordTemplateDedupError(this.db, { mode: dedupMode, stage: dedupError.stage, error: dedupError.error, subjectId: id, sourceRef: input.source_ref || null });
+    if (templateDup) {
+      try {
+        recordTemplateDuplicate(this.db, { subjectId: id, fingerprint: templateDup.fingerprint, mode: 'shadow', matches: templateDup.matches, sourceRef: input.source_ref || null });
+      } catch (error) {
+        recordTemplateDedupError(this.db, { mode: dedupMode, stage: 'record', error, subjectId: id, sourceRef: input.source_ref || null });
+      }
+    }
     return this.get(id);
   }
 
