@@ -1413,6 +1413,8 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   addMissingColumns(db, 'tg_experiments', [{ name: 'analysis_sha256', definition: 'TEXT' }]);
   addMissingColumns(db, 'tg_attempts', [{ name: 'first_claimed_at', definition: 'TEXT' }]); // B27: first physical attempt
   ensureJudgmentProvenance(db);
+  // DI-001: when the members' context was assembled (claim) and whether the proposal already had an outcome then; null = unrecorded
+  addMissingColumns(db, 'committee_jobs', [{ name: 'context_at', definition: 'TEXT' }, { name: 'outcome_known_at_context', definition: 'INTEGER' }]);
   // Add missing columns BEFORE creating indexes that reference them — a stale
   // pre-existing self_improvements table (no fingerprint) otherwise breaks
   // CREATE INDEX idx_self_improve_fingerprint with "no such column".
