@@ -11,6 +11,7 @@ import { runtimeHealth } from '../services/runtime-health';
 import { buildDigest } from '../services/operator-push';
 import { listDraftPrs } from '../services/loop-draft-pr-service';
 import { listSchedulers, noteScheduler, resetSchedulers } from '../services/scheduler-registry';
+import { detectStallsWithHealth } from '../services/stall-watch';
 import { efficiencyView } from '../services/resource-ledger';
 
 const NOW = Date.parse('2026-10-06T08:00:00Z');
@@ -38,6 +39,7 @@ const builders: Array<[OperatorContract, (d: Database.Database) => object]> = [
   ['digest', (d) => buildDigest(d, NOW, {})],
   ['draftPrs', (d) => listDraftPrs(d, 50, NOW)],
   ['schedulers', () => listSchedulers()],
+  ['stalls', (d) => detectStallsWithHealth(d, NOW, {})],
   ['efficiency', (d) => efficiencyView(d, NOW, {})],
 ];
 

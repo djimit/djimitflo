@@ -32,6 +32,7 @@ function mapLoopServiceError(error: unknown): never {
   if (message === 'LOOP_RETRY_NOT_ALLOWED') throw createError(409, 'maker lease is not failed, rejected, or marked for revision', 'LOOP_RETRY_NOT_ALLOWED');
   if (message === 'LOOP_ESCALATED_REQUIRES_HUMAN') throw createError(409, 'loop is escalated and requires human review before leasing more workers', 'LOOP_ESCALATED_REQUIRES_HUMAN');
   if (message === 'LOOP_FAILED_GATES_BLOCK_CONTINUE') throw createError(409, 'failed gates block continuation', 'LOOP_FAILED_GATES_BLOCK_CONTINUE');
+  if (message === 'LOOP_INSUFFICIENT_EVIDENCE_BLOCKS_CONTINUE') throw createError(409, 'gates with insufficient evidence block continuation', 'LOOP_INSUFFICIENT_EVIDENCE_BLOCKS_CONTINUE');
   if (message.startsWith('WORKTREE_CREATE_FAILED')) throw createError(500, message, 'WORKTREE_CREATE_FAILED');
   if (message === 'MAKER_LEASE_NOT_FOUND') throw createError(404, 'maker lease not found', 'MAKER_LEASE_NOT_FOUND');
   if (message === 'LEASE_NOT_MAKER') throw createError(400, 'lease is not a maker lease', 'LEASE_NOT_MAKER');
@@ -65,6 +66,10 @@ function mapLoopServiceError(error: unknown): never {
   if (message.startsWith('LOOP_COMPLETION_BLOCKED:')) {
     const gate = message.split(':')[1] || 'unknown';
     throw createError(409, `loop completion blocked by gate: ${gate}`, 'LOOP_COMPLETION_BLOCKED');
+  }
+  if (message.startsWith('LOOP_COMPLETION_INSUFFICIENT_EVIDENCE:')) {
+    const gate = message.split(':')[1] || 'unknown';
+    throw createError(409, `loop completion blocked: insufficient evidence for gate ${gate}`, 'LOOP_COMPLETION_INSUFFICIENT_EVIDENCE');
   }
   throw error;
 }

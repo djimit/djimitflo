@@ -102,6 +102,8 @@ it('digest: counts and a /decisions deep link per section (approvals, D5 labels,
   ins.run('r1', 'regressed', '2026-10-06T08:00:00Z', '2026-10-06T09:00:00Z'); ins.run('n1', 'no_change', '2026-10-06T08:00:00Z', '2026-10-06T09:00:00Z');
   db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at)
     VALUES ('j1', 'proposal_prescreen', 'self_improvement', 'l1', 'h', 'shadow', 'no', 'r', '2026-10-06T09:00:00Z')`).run();
+  db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at)
+    VALUES ('a1', 'outcome_attribution', 'self_improvement', 'r1', 'h', 'annotation', 'maker_failure', 'r', '2026-10-06T09:00:00Z')`).run(); // unattributed = system work
   db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
     VALUES ('o1', 'test-gap', 'closed', 'completed', '[]', '{}', '[]', '[]', '{"pr_url":"https://github.com/o/r/pull/1"}', '2026-10-05T00:00:00Z', '2026-10-05T00:00:00Z')`).run();
   const d = buildDigest(db, NOON.getTime(), { DJIMITFLO_PUBLIC_URL: 'https://djimitflo.example' });

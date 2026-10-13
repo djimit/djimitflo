@@ -14,7 +14,7 @@ import { createHostAgentRoutes, HOST_AGENT_SCOPE } from '../routes/host-agent';
 import { mintSpawnToken, resolveSpawnTokenSecret } from '../services/spawn-token';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 import { RemoteMakerQueue } from '../services/remote-maker-queue';
-import { efficiencyView, integrateWh, isLocalModel, recordPowerSample, valuePer } from '../services/resource-ledger';
+import { efficiencyView, exclusiveWh, integrateWh, isLocalModel, recordPowerSample, valuePer } from '../services/resource-ledger';
 
 const NOW = Date.parse('2026-10-08T12:00:00Z');
 const iso = (msAgo: number) => new Date(NOW - msAgo).toISOString();
@@ -114,9 +114,13 @@ it('E1/E3: aggregates tokens, GPU time, measured Wh and verified outcomes per co
   // per host: the wall-meter comparable total (300 Wh + 100 Wh), and the daily ledger rows
   expect(v.hosts).toEqual([expect.objectContaining({ host: 'ws', gpu_kwh: 0.4, covered_h: 1.5 })]);
   expect(v.ledger.find((d) => d.consumer === 'gym:atomic@llama-router')).toMatchObject({ day: '2026-10-08', wh: 300, jobs: 1 });
-  // north star: this week 1 verified ÷ 5 cloud M tokens (3 M maker + 1 M checker + 1 M jev) and ÷ 0.4 measured kWh
+  // north star: this week 1 verified ÷ 5 cloud M tokens (3 M maker + 1 M checker + 1 M jev); per kWh is gated: 1.5 of 168 h
+  // sampled and the verified change was cloud-made → INSUFFICIENT_EVIDENCE, not 1 / 0.4 kWh
   expect(v.north_star.weeks).toHaveLength(8);
-  expect(v.north_star.weeks[0]).toMatchObject({ verified: 1, cloud_m_tokens: 5, local_kwh: 0.4, per_m_tokens: 0.2, per_kwh: 2.5 });
+  expect(v.north_star.weeks[0]).toMatchObject({ verified: 1, cloud_m_tokens: 5, local_kwh: 0.4, per_m_tokens: 0.2, per_kwh: null, local_verified: 0, coverage_pct: 0.9 });
+  expect(v.north_star.weeks[0].per_kwh_reason).toMatch(/^INSUFFICIENT_EVIDENCE: metered hosts sampled 0.9 %/);
+  expect(row('gym:atomic@llama-router').coverage_pct).toBe(100);
+  expect(v.coverage).toEqual({ jobs_pct: expect.any(Number), window_pct: 0.9 });
   expect(v.north_star.weeks[1]).toMatchObject({ verified: 0, cloud_m_tokens: 10, local_kwh: null, per_kwh: null });
 });
 
@@ -147,4 +151,36 @@ it('E3: GET /api/health/efficiency requires read:evidence and returns consumers,
   expect(res.body).toMatchObject({ window_days: 7, ledger_enabled: false, consumers: expect.any(Array), ledger: expect.any(Array), hosts: [], notes: expect.any(Array) });
   expect(res.body.north_star.weeks).toHaveLength(8);
   expect(res.body.north_star.weeks[0]).toMatchObject({ local_kwh: null, per_kwh: null });
+});
+
+it('CP3: overlapping jobs on one host share the measured Wh — the consumers never sum to more than the host', () => {
+  const s = Array.from({ length: 61 }, (_, i) => ({ t: i * 60_000, w: 120 })); // 1 h at 120 W = 120 Wh
+  expect(exclusiveWh(s, [{ start: 0, end: H }, { start: 0, end: H }])).toEqual([{ wh: 60, covered_s: 3600 }, { wh: 60, covered_s: 3600 }]);
+  // half overlap: 0–40 min alone (80 Wh) + 40–60 shared (40 Wh / 2) for job A; job B 40–60 shared + 60–… unsampled
+  const [a, b] = exclusiveWh(s, [{ start: 0, end: H }, { start: 40 * 60_000, end: 2 * H }]);
+  expect(a.wh + b.wh).toBeCloseTo(120, 3);
+  expect(a.wh).toBeCloseTo(100, 3); expect(b.wh).toBeCloseTo(20, 3); expect(b.covered_s).toBe(1200);
+
+  // through the view: two remote gym runs over the same sampled hour on one host
+  const run = (id: string, species: string) => db.prepare('INSERT INTO loop_runs (id, loop_name, mode, status, metadata, created_at, updated_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(id, 'evolution-gym', 'closed', 'completed', JSON.stringify({ gym: { species, remote_host: 'ws' } }), iso(2 * H), iso(H), iso(H));
+  run('g1', 'atomic@a'); run('g2', 'atomic@b');
+  samples('ws', 300, 2 * H, H);
+  const v = efficiencyView(db, NOW, {});
+  const total = v.consumers.filter((c) => c.consumer.startsWith('gym:')).reduce((sum, c) => sum + (c.wh ?? 0), 0);
+  expect(total).toBeCloseTo(v.hosts[0].gpu_kwh! * 1000, 0); // 300 Wh, not 600
+  expect(total).toBeCloseTo(300, 0);
+});
+
+it('CP3: per kWh counts only changes made on a metered host, and only with ≥ 80 % energy coverage of the week', () => {
+  samples('ws', 100, 7 * 24 * H - 60_000, 0); // the whole week sampled
+  const skills = new SkillEvolutionEngine(db);
+  skills.recordOutcome('loop-maker:test-gap:remote', { success: true, tokensUsed: 0, durationMs: 0, domain: 'test-gap', model: 'ws/atomic@llama-router' });
+  skills.recordOutcome('loop-maker:test-gap:remote', { success: true, tokensUsed: 0, durationMs: 0, domain: 'test-gap', model: 'macmini/atomic@x' }); // unmetered host
+  skills.recordOutcome('loop-maker:test-gap:opencode', { success: true, tokensUsed: 0, durationMs: 0, domain: 'test-gap', model: 'glm-5' }); // cloud
+  db.prepare('UPDATE skill_outcomes SET created_at = ?').run(iso(3 * H));
+  const w = efficiencyView(db, NOW, {}).north_star.weeks[0];
+  expect(w).toMatchObject({ local_verified: 1, per_kwh_reason: null });
+  expect(w.coverage_pct!).toBeGreaterThanOrEqual(80);
+  expect(w.per_kwh).toBeCloseTo(1 / w.local_kwh!, 2);
 });
