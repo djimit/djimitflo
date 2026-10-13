@@ -343,7 +343,7 @@ export function minWinsNeeded(alpha = promotionAlpha(), rule: PromotionRule = pr
  *  3. same evaluation contract: same task key and species; scored under the active gate policy (gatePolicyVersion, recorded
  *     on every decision — attempts do not carry a policy version yet, so 'gated' is the per-attempt check); parent and mutant
  *     on a pair share task family (gym.kind), difficulty (gym.tier) and graded kind where recorded;
- *  4. per task the NEWEST eligible attempt counts: an older one never overrides it, an ungated one never counts.
+ *  4. per task the NEWEST eligible attempt counts (created_at, then id): an older one never overrides it, an ungated one never counts.
  * Missing eligible evidence leaves headroom unknown (the trial runs) and settles a finished trial as inconclusive
  * ('inconclusive: no eligible gated parent evidence'), never as a promotion. Ungated history stays readable as counts
  * (genome_trial_results.evidence_json), never as a verdict. Thresholds and Gate A's band are unchanged.
@@ -367,32 +367,44 @@ function epochFreeze(db: Database): Map<string, string | null> {
   return out;
 }
 export interface GatedObservation { id: string; commit: string; status: 'success' | 'failure'; reason: string; created_at: string; kind: string; tier: number | null; graded_kind: string | null }
-export interface GatedEvidence { byKey: Map<string, GatedObservation>; ungated: number; stale: number }
-/** The newest eligible attempt per task of one genome (see above), plus counts of what was left out (diagnostics only). */
+/**
+ * Evidence classes, one per attempt (P0 conditional GO, 13-10):
+ *  ELIGIBLE_PASS  gated, every recorded gate passed (or skipped), task passed, provenance valid
+ *  ELIGIBLE_FAIL  gated, verdict recorded on the same attempt, task failed or a gate failed
+ *  INELIGIBLE     ungated / gated success without its own gate map / other epoch / before the freeze / VOID (invalid provenance)
+ *  INFRA_CENSORED infra failure or a discarded attempt: no task-level observation — never a failure, never a pass
+ * Per task: UNKNOWN when no eligible attempt exists. Only ELIGIBLE_* attempts decide anything; an incompatible pair is a HOLD.
+ * Status, gate map and provenance are always read from the same loop_run row: a verdict is never joined across attempts.
+ */
+export type EvidenceClass = 'ELIGIBLE_PASS' | 'ELIGIBLE_FAIL' | 'INELIGIBLE' | 'INFRA_CENSORED';
+export interface GatedEvidence { byKey: Map<string, GatedObservation>; classes: Partial<Record<EvidenceClass, number>> }
+/** The newest eligible attempt per task of one genome (see above; ties on created_at break on id), plus per-attempt class counts. */
 export function gatedEvidence(db: Database, speciesKey: string, genomeId: string, keys: string[], freeze = epochFreeze(db)): GatedEvidence {
-  const want = new Set(keys); const byKey = new Map<string, GatedObservation>(); let ungated = 0; let stale = 0;
+  const want = new Set(keys); const byKey = new Map<string, GatedObservation>(); const classes: Partial<Record<EvidenceClass, number>> = {};
   const rows = db.prepare(`SELECT id, json_extract(metadata, '$.gym.commit') AS commit_sha, json_extract(metadata, '$.gym_result.status') AS status,
       COALESCE(json_extract(metadata, '$.gym_result.reason'), '') AS reason, created_at, COALESCE(json_extract(metadata, '$.gym.kind'), 'repair') AS kind,
-      json_extract(metadata, '$.gym.tier') AS tier, json_extract(metadata, '$.gym_result.graded_kind') AS graded_kind, ${ELIGIBLE_GATED} AS eligible,
+      json_extract(metadata, '$.gym.tier') AS tier, json_extract(metadata, '$.gym_result.graded_kind') AS graded_kind, ${ELIGIBLE_GATED} AS eligible, NOT ${NOT_VOID} AS voided,
       EXISTS (SELECT 1 FROM json_each(CASE WHEN json_type(metadata, '$.gym_result.prod_gates') = 'object' THEN json_extract(metadata, '$.gym_result.prod_gates') ELSE '{}' END) g WHERE g.value = 'fail') AS gate_failed
-    FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.genome') = ?
-      AND status = 'completed' AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%' AND ${NOT_VOID}
-    ORDER BY created_at, rowid`).all(speciesKey, genomeId) as Array<{ id: string; commit_sha: string; status: string; reason: string; created_at: string; kind: string; tier: number | null; graded_kind: string | null; eligible: number; gate_failed: number }>;
+    FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.genome') = ? AND status = 'completed'
+    ORDER BY created_at, id`).all(speciesKey, genomeId) as Array<{ id: string; commit_sha: string; status: string; reason: string; created_at: string; kind: string; tier: number | null; graded_kind: string | null; eligible: number; voided: number; gate_failed: number }>;
   for (const r of rows) {
     if (!want.has(r.commit_sha)) continue;
     const frozen = freeze.get(r.commit_sha);
-    if (frozen === null || (frozen !== undefined && r.created_at < frozen)) { stale++; continue; } // another epoch, or before this one froze it
-    if (!r.eligible) { ungated++; continue; }
-    byKey.set(r.commit_sha, { id: r.id, commit: r.commit_sha, status: r.status === 'success' && !r.gate_failed ? 'success' : 'failure', reason: r.reason,
-      created_at: r.created_at, kind: r.kind, tier: r.tier, graded_kind: r.graded_kind }); // ascending: the newest eligible attempt wins
+    const cls: EvidenceClass = r.reason.startsWith('infra:') || r.status === 'discarded' ? 'INFRA_CENSORED'
+      : r.voided || frozen === null || (frozen !== undefined && r.created_at < frozen) || !r.eligible ? 'INELIGIBLE' // provenance, other epoch, pre-freeze, ungated
+        : r.status === 'success' && !r.gate_failed ? 'ELIGIBLE_PASS' : 'ELIGIBLE_FAIL';
+    classes[cls] = (classes[cls] ?? 0) + 1;
+    if (cls !== 'ELIGIBLE_PASS' && cls !== 'ELIGIBLE_FAIL') continue;
+    byKey.set(r.commit_sha, { id: r.id, commit: r.commit_sha, status: cls === 'ELIGIBLE_PASS' ? 'success' : 'failure', reason: r.reason,
+      created_at: r.created_at, kind: r.kind, tier: r.tier, graded_kind: r.graded_kind }); // ascending (created_at, id): the newest eligible attempt wins
   }
-  return { byKey, ungated, stale };
+  return { byKey, classes };
 }
 const tally = (xs: Array<string | number | null>): Record<string, number> => xs.reduce<Record<string, number>>((a, x) => (x == null ? a : { ...a, [String(x)]: (a[String(x)] ?? 0) + 1 }), {});
-/** What a trial decision rested on: gate policy, epoch, eligible vs left-out counts, task families and difficulties. */
+/** What a trial decision rested on: gate policy, epoch, eligible / UNKNOWN tasks, per-attempt evidence classes, task families and difficulties. */
 function evidenceSummary(policy: string, holdout: HoldoutTable, epoch: number, keys: string[], parent: GatedEvidence, mutant?: GatedEvidence): string {
   const obs = keys.map((k) => parent.byKey.get(k)).filter((o): o is GatedObservation => Boolean(o));
-  const count = (e: GatedEvidence) => ({ eligible: keys.filter((k) => e.byKey.has(k)).length, ungated: e.ungated, stale: e.stale });
+  const count = (e: GatedEvidence) => { const eligible = keys.filter((k) => e.byKey.has(k)).length; return { eligible, unknown: keys.length - eligible, classes: e.classes }; };
   return JSON.stringify({ gate_policy: policy, holdout, epoch, deciding_n: keys.length, parent: count(parent), ...(mutant ? { mutant: count(mutant) } : {}),
     families: tally(obs.map((o) => o.kind)), tiers: tally(obs.map((o) => o.tier)) });
 }
@@ -405,7 +417,8 @@ export function settleNoHeadroom(db: Database, speciesKey: string, holdoutCommit
   // any scored attempt: only to see whether the mutant already ran (then evaluateTrials decides) — never a verdict
   const result = db.prepare(`SELECT id FROM loop_runs WHERE loop_name = 'evolution-gym'
     AND json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.genome') = ? AND json_extract(metadata, '$.gym.commit') = ?
-    AND status = 'completed' AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%' AND ${NOT_VOID} LIMIT 1`);
+    AND status = 'completed' AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%' AND ${NOT_VOID}
+    AND COALESCE(json_extract(metadata, '$.gym_result.status'), '') <> 'discarded' LIMIT 1`);
   const trials = db.prepare("SELECT id, COALESCE(parent_id, ?) AS parent FROM maker_genomes WHERE status = 'trial' ORDER BY created_at").all(BASELINE_GENOME) as Array<{ id: string; parent: string }>;
   const settled: Array<{ id: string; f: number; n: number; needed: number }> = [];
   const grade = gradedScorer(db);
@@ -498,7 +511,8 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
   // any scored attempt: only whether a task was run at all (completeness) — verdicts come from gatedEvidence (P0)
   const results = db.prepare(`SELECT DISTINCT json_extract(metadata, '$.gym.commit') AS commit_sha
     FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.genome') = ?
-      AND status = 'completed' AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%' AND ${NOT_VOID}`);
+      AND status = 'completed' AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%' AND ${NOT_VOID}
+      AND COALESCE(json_extract(metadata, '$.gym_result.status'), '') <> 'discarded'`); // INFRA_CENSORED: not a run of the task
   // GENOME_FIRE_CHECK: VOID attempts (the genome's lines never reached the maker) are never paired; counted for the note
   const voids = db.prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ?
       AND json_extract(metadata, '$.gym.genome') = ? AND NOT ${NOT_VOID}`);
@@ -540,7 +554,7 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
       const pr = theirs.byCommit.get(h); const mr = mine.byCommit.get(h);
       return pr && mr && (pr.kind !== mr.kind || pr.tier !== mr.tier || (pr.graded_kind != null && mr.graded_kind != null && pr.graded_kind !== mr.graded_kind));
     });
-    const left = (s: typeof mine) => `${eligibleOn(s)} of ${pairedKeys.length} tasks eligible; ungated ${s.evidence.ungated}, stale ${s.evidence.stale}`;
+    const left = (s: typeof mine) => `${eligibleOn(s)} of ${pairedKeys.length} tasks eligible, ${pairedKeys.length - eligibleOn(s)} UNKNOWN; attempts ${JSON.stringify(s.evidence.classes)}`;
     const hold = eligibleOn(theirs) < pairedKeys.length ? `inconclusive: no eligible gated parent evidence (${left(theirs)})`
       : eligibleOn(mine) < pairedKeys.length ? `inconclusive: no eligible gated mutant evidence (${left(mine)})`
         : incompatible.length ? `inconclusive: incompatible evidence contract on ${incompatible.length} task(s) (task family, difficulty or graded kind differ)` : null;

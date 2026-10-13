@@ -154,12 +154,14 @@ export function nextTrialAttempt(db: Database, speciesKey: string, holdoutCommit
   const trials = db.prepare("SELECT id, COALESCE(parent_id, ?) AS parent FROM maker_genomes WHERE status = 'trial' ORDER BY created_at").all(BASELINE_GENOME) as Array<{ id: string; parent: string }>;
   if (!trials.length || !holdoutCommits.length) return null;
   const attempts = db.prepare(`SELECT COALESCE(SUM(status = 'running'), 0) AS running,
-      COALESCE(SUM(status <> 'running' AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%' AND ${NOT_VOID}), 0) AS scored,
-      COALESCE(SUM(status <> 'running' AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%' AND ${NOT_VOID} AND ${ELIGIBLE_GATED}), 0) AS eligible
+      COALESCE(SUM(status <> 'running' AND ${SCORED}), 0) AS scored,
+      COALESCE(SUM(status <> 'running' AND ${SCORED} AND ${ELIGIBLE_GATED}), 0) AS eligible
     FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ?
     AND json_extract(metadata, '$.gym.genome') = ? AND json_extract(metadata, '$.gym.commit') = ?`);
   // P0 (13-10): with GYM_PROD_GATES on only an eligible gated result settles a task — an ungated one is served again (at most
-  // INFRA_GIVE_UP scored attempts in all, so a worker without the prod_gates capability cannot loop on it); off: unchanged
+  // INFRA_GIVE_UP scored attempts in all, so a worker without the prod_gates capability cannot loop on it); off: unchanged.
+  // A claimed (running) attempt counts as done, so a second claim never serves the same retry; better-sqlite3 runs claim()
+  // synchronously on one connection, so check-then-insert in claim() cannot interleave.
   const gates = gymProdGatesOn();
   const done = { get: (species: string, genomeId: string, commit: string): boolean => {
     const a = attempts.get(species, genomeId, commit) as { running: number; scored: number; eligible: number };
@@ -187,8 +189,11 @@ export const INFRA_GIVE_UP = 3;
 export function unscorable(db: Database, speciesKey: string, genomeId: string, commit: string): boolean {
   return (db.prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ?
     AND json_extract(metadata, '$.gym.genome') = ? AND json_extract(metadata, '$.gym.commit') = ?
-    AND (COALESCE(json_extract(metadata, '$.gym_result.reason'), '') LIKE 'infra:%' OR NOT ${NOT_VOID})`).get(speciesKey, genomeId, commit) as { n: number }).n >= INFRA_GIVE_UP;
+    AND (COALESCE(json_extract(metadata, '$.gym_result.reason'), '') LIKE 'infra:%' OR json_extract(metadata, '$.gym_result.status') = 'discarded' OR NOT ${NOT_VOID})`).get(speciesKey, genomeId, commit) as { n: number }).n >= INFRA_GIVE_UP;
 }
+/** A completed attempt that observed the task: not infra-censored (infra reason or discarded), not VOID. */
+const SCORED = `(COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%' AND COALESCE(json_extract(metadata, '$.gym_result.status'), '') <> 'discarded'
+  AND json_extract(metadata, '$.gym_result.void') IS NULL)`;
 
 /**
  * Fire check (metaharness lesson: three times their 'treatment' never reached the agent, so treatment = control, silently).
