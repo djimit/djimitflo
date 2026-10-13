@@ -2529,6 +2529,15 @@ export class LoopService {
   }
 
   public extractCheckerVerdict(stdout: string): CheckerVerdictInput['verdict'] {
+    return this.parsedCheckerVerdict(stdout) ?? 'insufficient_evidence';
+  }
+
+  /** Whether stdout carries a known verdict at all — an explicit insufficient_evidence counts, an absent or invalid one does not. */
+  public checkerVerdictParsed(stdout: string): boolean {
+    return this.parsedCheckerVerdict(stdout) !== undefined;
+  }
+
+  private parsedCheckerVerdict(stdout: string): CheckerVerdictInput['verdict'] | undefined {
     const payload = this.extractCheckerPayload(stdout);
     if (payload) {
       const verdict = String(payload.verdict || payload.checker_verdict || '').trim();
@@ -2538,7 +2547,7 @@ export class LoopService {
     }
     const plainVerdict = stdout.trim().toLowerCase();
     if (['accepted', 'needs_revision', 'rejected'].includes(plainVerdict)) return plainVerdict as CheckerVerdictInput['verdict'];
-    return 'insufficient_evidence';
+    return undefined;
   }
 
   public extractCheckerNotes(stdout: string): string {
