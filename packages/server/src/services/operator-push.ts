@@ -4,7 +4,7 @@ import { detectStalls } from './stall-watch';
 import { listSchedulers } from './scheduler-registry';
 import { dependencyLaneQueue, laneMode } from './dependency-lane';
 import { redactSecrets } from './secret-patterns';
-import { decisionsInbox, openDecisionCounts, type DecisionsInbox } from './decisions-inbox';
+import { decisionsInbox, openDecisionCounts, recordNeedsYouRanking, type DecisionsInbox } from './decisions-inbox';
 import { countOpenLoopPrs } from './loop-draft-pr-service';
 import { autoMergeEvidence } from './loop-auto-merge-state';
 
@@ -185,18 +185,19 @@ export interface Digest { at: string; text: string; data: Record<string, unknown
 
 export function buildDigest(db: Database, now = Date.now(), env: NodeJS.ProcessEnv = process.env): Digest {
   const d1 = new Date(now - 86_400_000).toISOString();
-  const one = (sql: string, ...args: unknown[]): number => { try { return Number(Object.values(db.prepare(sql).get(...args) as Record<string, unknown>)[0] ?? 0); } catch { return 0; } };
+  // Cockpit 3.0: a count that could not be read is null and reads 'unknown' — never a calm 0
+  const one = (sql: string, ...args: unknown[]): number | null => { try { const v = Object.values(db.prepare(sql).get(...args) as Record<string, unknown>)[0]; return v === null || v === undefined ? null : Number(v); } catch { return null; } };
   const evidence = (() => { try { return buildEvolutionEvidence(db, env, now, 30); } catch { return null; } })();
-  const stalls = (() => { try { return detectStalls(db, now, env); } catch { return []; } })();
+  const stalls = (() => { try { return detectStalls(db, now, env); } catch { return null; } })();
   const sched = listSchedulers();
-  const open = (() => { try { return openDecisionCounts(decisionsInbox(db, now)); } catch { return { requeue: 0, labels: 0, memory_review: 0 }; } })();
+  const open: { requeue: number | null; labels: number | null; memory_review: number | null } = (() => { try { return openDecisionCounts(decisionsInbox(db, now)); } catch { return { requeue: null, labels: null, memory_review: null }; } })();
   const base = publicBase(env);
   // one count + deep link per /decisions section (links only with an https DJIMITFLO_PUBLIC_URL)
   const sections = [
     { key: 'approvals', label: 'approvals', anchor: 'approvals', count: one("SELECT COUNT(*) FROM approvals WHERE status = 'pending'") },
-    { key: 'labels', label: 'pre-screen labels (D5)', anchor: 'prescreen', count: open.labels },
-    { key: 'memory_review', label: 'memory reviews', anchor: 'memory', count: open.memory_review },
-    { key: 'requeue', label: 'requeue candidates', anchor: 'requeue', count: open.requeue },
+    { key: 'labels', label: 'pre-screen labels (D5)', anchor: 'prescreen', count: open.labels ?? null },
+    { key: 'memory_review', label: 'memory reviews', anchor: 'memory', count: open.memory_review ?? null },
+    { key: 'requeue', label: 'requeue candidates', anchor: 'requeue', count: open.requeue ?? null },
     { key: 'open_prs', label: 'open loop PRs', anchor: 'draft-prs', count: countOpenLoopPrs(db) },
   ].map((x) => ({ ...x, link: base ? `${base}/decisions#${x.anchor}` : `/decisions#${x.anchor}` }));
   const lane = laneMode(env) === 'off' ? null : (() => { try { return dependencyLaneQueue(db, env, now); } catch { return null; } })();
@@ -207,27 +208,31 @@ export function buildDigest(db: Database, now = Date.now(), env: NodeJS.ProcessE
     new_proposals_24h: one('SELECT COUNT(*) FROM self_improvements WHERE created_at >= ?', d1),
     approvals_expired_24h: one("SELECT COUNT(*) FROM approvals WHERE status = 'expired' AND updated_at >= ?", d1),
     approvals_pending: one("SELECT COUNT(*) FROM approvals WHERE status = 'pending'"),
-    loop_prs_settled: evidence ? (evidence.merge.settled as Array<{ state: string; survived: number | null; n: number }>).reduce((s, r) => s + r.n, 0) : 0,
-    loop_prs_survived: evidence ? (evidence.merge.settled as Array<{ survived: number | null; n: number }>).filter((r) => r.survived === 1).reduce((s, r) => s + r.n, 0) : 0,
+    // E1: settled = SETTLED_SURVIVED + SETTLED_REGRESSED (closed-unmerged, pending and anomalous PRs are not survival settlements)
+    loop_prs_settled: evidence?.merge.settlement?.settled ?? 0,
+    loop_prs_survived: evidence?.merge.settlement?.survived ?? 0,
     drafts_unsettled: evidence?.drafts.unsettled ?? 0,
     drafts_age_max_days: evidence?.drafts.age_days_max ?? null,
     gates: evidence ? Object.fromEntries(Object.entries(evidence.gates).map(([k, g]) => [k, (g as { state: string }).state])) : {},
-    stalls: stalls.map((s) => s.subsystem),
+    stalls: stalls ? stalls.map((s) => s.subsystem) : null,
     schedulers_off: sched.schedulers.filter((s) => !s.armed).map((s) => s.name),
     needs_you: Object.fromEntries(sections.map((x) => [x.key, { count: x.count, link: x.link }])),
     dependency_lane: lane ? { mode: lane.effective_mode, open: lane.open, merged_24h: lane.merged_24h, revoked: !!lane.revoked_at } : null,
     auto_merge: am && am.mode !== 'off' ? { mode: am.mode, class: am.class.state, merged_24h: am.counts.merged_24h, audit_samples_open: am.counts.audit_samples_open } : null,
   };
+  const n = (v: number | null) => (v === null ? 'unknown' : String(v));
+  const known = sections.filter((x) => x.count !== null);
+  const waiting = `${known.length < sections.length ? '≥ ' : ''}${known.reduce((t, x) => t + (x.count as number), 0)}${known.length < sections.length ? ` (${sections.length - known.length} unknown)` : ''}`;
   const gates = Object.entries(data.gates).map(([k, s]) => `${k} ${s}`).join(', ') || 'unknown';
   const text = [
     `Djimitflo daily digest (${new Date(now).toISOString().slice(0, 10)})`,
-    `Last 24 h: ${data.verified_24h} verified, ${data.regressed_24h} regressed, ${data.new_proposals_24h} new proposals, ${data.approvals_expired_24h} approvals expired`,
-    `Waiting for you: ${sections.reduce((n, x) => n + x.count, 0)}`,
-    ...sections.map((x) => `- ${x.count} ${x.label}: ${x.link}`),
+    `Last 24 h: ${n(data.verified_24h)} verified, ${n(data.regressed_24h)} regressed, ${n(data.new_proposals_24h)} new proposals, ${n(data.approvals_expired_24h)} approvals expired`,
+    `Waiting for you: ${waiting}`,
+    ...sections.map((x) => `- ${n(x.count)} ${x.label}: ${x.link}`),
     `Loop PRs unsettled: ${data.drafts_unsettled}${data.drafts_age_max_days != null ? ` (oldest ${data.drafts_age_max_days} d)` : ''}`,
     `Loop PRs settled: ${data.loop_prs_settled} (${data.loop_prs_survived} survived)`,
     `Realm gates: ${gates}`,
-    data.stalls.length ? `Stalls: ${data.stalls.join(', ')}` : 'Stalls: none',
+    data.stalls === null ? 'Stalls: unknown (stall watch failed)' : data.stalls.length ? `Stalls: ${data.stalls.join(', ')}` : 'Stalls: none',
     data.schedulers_off.length ? `Schedulers off: ${data.schedulers_off.length}` : null,
     data.dependency_lane ? `Dependency lane (${data.dependency_lane.mode}${data.dependency_lane.revoked ? ', act revoked' : ''}): ${data.dependency_lane.open} Dependabot PRs open, ${data.dependency_lane.merged_24h} merged in 24 h` : null,
     data.auto_merge ? `Test-only auto-merge (${data.auto_merge.mode}): class ${data.auto_merge.class}, ${data.auto_merge.merged_24h} merged in 24 h, ${data.auto_merge.audit_samples_open} audit sample(s) waiting for you` : null,
@@ -256,5 +261,6 @@ let digestTimer: ReturnType<typeof setInterval> | null = null;
 /** One 15-minute tick for the daily digest and the triage push; armed only when one of them is enabled. */
 export function startOperatorDigest(db: Database): void {
   if (digestTimer || (!digestEnabled() && !triageEnabled())) return;
-  digestTimer = setInterval(() => { void maybeSendDigest(db).then(() => pushTriage(db)); }, 15 * 60_000); digestTimer.unref?.();
+  // ponytail: the Phase 3 shadow ranking rides this 15-min tick (once per day); its own scheduler if the digest is ever off
+  digestTimer = setInterval(() => { recordNeedsYouRanking(db); void maybeSendDigest(db).then(() => pushTriage(db)); }, 15 * 60_000); digestTimer.unref?.();
 }

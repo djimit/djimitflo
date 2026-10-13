@@ -3,6 +3,7 @@ import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { addedLines, checkLoopPrs } from '../services/merge-survival';
+import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 
 const NOW = new Date('2026-10-30T12:00:00Z');
 const env = { GITHUB_REPOSITORY: 'o/r', GITHUB_TOKEN: 't' } as NodeJS.ProcessEnv;
@@ -38,7 +39,11 @@ it('D1: a merged PR survives only if its added lines are still on main after 14 
     if (m) return { ok: true, status: 200, json: async () => pulls[m[1]] };
     return url.includes('t1.test.ts') ? file('import x\nit("adds two", () => {\n  expect(add(1, 1)).toBe(2);\n});') : file('// rewritten by hand\nit("other", () => {});');
   }) as unknown as typeof fetch;
+  // §16 step 9: the merge outcome inherits the skill content hash of the run's own maker outcome (none → null)
+  new SkillEvolutionEngine(db).recordOutcome('loop-maker:doc-drift-and-small-fix-loop:remote', { success: true, tokensUsed: 0, durationMs: 0, domain: 'doc-drift-and-small-fix-loop', taskId: 'survived', skillContentHash: 'c'.repeat(64) });
   expect(await checkLoopPrs(db, fetchImpl, env, NOW)).toEqual({ checked: 5, settled: 3 });
+  expect(db.prepare("SELECT task_id, skill_content_hash AS h FROM skill_outcomes WHERE domain = 'merge' ORDER BY task_id").all()).toEqual([
+    { task_id: 'rejected', h: null }, { task_id: 'rewritten', h: null }, { task_id: 'survived', h: 'c'.repeat(64) }]);
   const outcomes = db.prepare("SELECT task_id, success, evidence_refs_json FROM skill_outcomes WHERE domain = 'merge' ORDER BY task_id").all() as Array<{ task_id: string; success: number; evidence_refs_json: string }>;
   expect(outcomes.map((o) => [o.task_id, o.success])).toEqual([['rejected', 0], ['rewritten', 0], ['survived', 1]]);
   const survived = JSON.parse((db.prepare("SELECT metadata FROM loop_runs WHERE id = 'survived'").get() as { metadata: string }).metadata).pr_outcome;

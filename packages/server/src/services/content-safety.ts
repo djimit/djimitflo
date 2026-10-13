@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { recordModelCall } from './model-selector';
+import { recordPolicyViolation } from './policy-violations';
 
 /**
  * Plan K1: a fast content-safety check on text Djimitflo did not write (fleet/HF discoveries, replies from external
@@ -77,6 +78,12 @@ export async function checkContentSafety(db: Database, subject: { type: string; 
     const { verdict, categories } = parseSafety(body.choices?.[0]?.message?.content ?? '');
     if (!verdict) { record('error', `unparsed:${JSON.stringify((body.choices?.[0]?.message?.content ?? '').slice(0, 80))}`); return null; }
     record(verdict === 'safe' ? 'yes' : 'no', `verdict=${verdict}${categories ? ` categories=${categories}` : ''}`);
+    // §16 step 8 (shadow, POLICY_VIOLATION_LOG): untrusted input judged unsafe is counted; nothing is blocked (still shadow)
+    if (verdict === 'unsafe') {
+      const stateHash = createHash('sha256').update(text).digest('hex').slice(0, 16);
+      recordPolicyViolation(db, { kind: 'content_unsafe', actor: `${subject.type}:${subject.id}`.slice(0, 200), severity: 'high', dedupe_key: `${subject.type}:${subject.id}:${stateHash}`,
+        evidence_ref: `judgment:content_safety:${subject.type}:${subject.id}:${stateHash}`, description: `content safety 'unsafe'${categories ? ` (${categories})` : ''} on ${subject.type}` });
+    }
     return verdict;
   } catch (error) {
     // prod 05-10 07:23Z: a burst of 300 checks ended in 224 timeouts within 16 s — a timeout pauses like a 429, one row per burst

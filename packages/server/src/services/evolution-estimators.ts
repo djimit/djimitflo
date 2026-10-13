@@ -116,11 +116,13 @@ export function runEstimators(db: Database, env: NodeJS.ProcessEnv = process.env
 export function startEvolutionEstimators(db: Database, intervalMs = 3_600_000, env: NodeJS.ProcessEnv = process.env, clock = () => Date.now()): (() => void) | null {
   if (!estimatorsEnabled(env)) return null;
   const tick = () => {
+    // P0.1 (prod 11-10): the 'already written today' return came before markRun, so after a mid-day restart the hourly
+    // tick ran but never reported — armed_not_ticking for the rest of the day. Report the tick first, then decide.
+    markRun('evolution_estimators');
     try {
       const now = clock(); const day = new Date(now).toISOString().slice(0, 10);
       if (db.prepare('SELECT 1 FROM evolution_estimates WHERE as_of_day = ? LIMIT 1').get(day)) return;
       const n = runEstimators(db, env, now);
-      markRun('evolution_estimators');
       console.log(`🌡️  evolution estimates: ${n} row(s) for ${day}`);
     } catch (e) { markRun('evolution_estimators', e); console.warn('evolution estimates failed:', e instanceof Error ? e.message : String(e)); }
   };

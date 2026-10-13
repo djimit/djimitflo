@@ -1,4 +1,5 @@
 import { mutationCheckEnv } from './test-gap-source-service';
+import { assertionStrengthCheck } from './test-assertion-strength';
 import { deadCodeCheckEnv } from './dead-code-source-service';
 import fs from 'fs';
 import os from 'os';
@@ -30,7 +31,9 @@ import { LoopRecoveryService, RuntimeLeaseRegistry } from './loop-recovery-servi
 import { LoopPersistenceService } from './loop-persistence-service';
 import { ExperienceRetrievalService } from './experience-retrieval-service';
 import { SelfImprovementService } from './self-improvement-service';
-import { assignmentContext, assignmentContextMarkdown } from './assignment-context';
+import { MAKER_TEMPLATE_RULES_STE } from './ste-001';
+import { assignmentContext, assignmentContextMarkdown, type AssignmentContext } from './assignment-context';
+import { firstJsonObject } from './model-json';
 import type {
   LoopName,
   WorkerRole,
@@ -289,6 +292,70 @@ export const MAKER_TEMPLATE_RULES = [
   '- Run relevant deterministic checks before handing off to checker.',
   '- Checker approval is required before completion.',
 ];
+
+/** STE-001: arm 1 gets the Simplified Technical English rules; everyone else (and STE_001_MODE off) today's rules. */
+export const makerTemplateRules = (ste?: { arm: 0 | 1 }): string[] => (ste?.arm === 1 ? MAKER_TEMPLATE_RULES_STE : MAKER_TEMPLATE_RULES);
+/**
+ * The maker's LOOP_WORK.md text (writeWorkAssignment writes it; a remote maker gets it flattened to one line).
+ * TG-001 renders the same text for a frozen task and, for its CONTROLLED arm, leaves out parts that should not matter for
+ * solving the task: `ids` (loop run / runtime / finding id lines), `advisory` (past-experience block), `policy` (the fixed
+ * maker rules template). Production always renders with nothing omitted.
+ */
+export type AssignmentOmit = 'ids' | 'advisory' | 'policy';
+export function renderWorkAssignment(run: { id: string; loop_name: string }, finding: LoopFinding, runtime: string, advisoryText: string,
+  extra: AssignmentContext, options: { nestedSpawnControl?: string; omit?: AssignmentOmit[] } = {}): string {
+  const omit = new Set(options.omit ?? []);
+  return [
+    `# ${finding.metadata?.objective_mode ? 'Objective' : run.loop_name} Assignment`,
+    '',
+    ...(omit.has('ids') ? [] : [`Loop run: ${run.id}`, `Runtime target: ${runtime}`, `Finding: ${finding.id}`]),
+    `File: ${finding.file}${finding.line ? `:${finding.line}` : ''}`,
+    ...(finding.metadata?.objective_mode && !finding.file.startsWith('(') ? [objectiveScopeLine(finding.file)] : []),
+    '',
+    '## Finding',
+    '',
+    finding.message,
+    '',
+    '## Evidence',
+    '',
+    finding.evidence,
+    '',
+    '## Suggested Fix',
+    '',
+    finding.suggested_fix,
+    '',
+    ...(omit.has('advisory') ? [] : ['## Advisory Past Experience', '', advisoryText || 'No matching observed episodes were retrieved.', '']),
+    ...assignmentContextMarkdown(extra),
+    ...(omit.has('policy') ? [] : makerTemplateRules(extra.ste)),
+    '',
+    // Nested-spawn control block (P1). Only injected when this lease is itself
+    // permitted to spawn sub-agents (operator-armed, depth within budget). This
+    // is the single path a runtime child uses to spawn children: it shells out
+    // to the control endpoint with its scoped token. See prepareNestedLease.
+    ...(options.nestedSpawnControl ? [options.nestedSpawnControl, ''] : []),
+  ].join('\n');
+}
+
+/** The objective-assignment scope line (exported for the STE prompt lint). */
+export const objectiveScopeLine = (file: string): string => `Change only this file: ${file}. Do not edit README.md, CONTRIBUTING.md or any other file.`;
+
+/** The fixed instruction lines of every checker / security-checker assignment (exported for the STE prompt lint). */
+export const CHECKER_INSTRUCTIONS = {
+  common: [
+    'You are an independent checker. Do not edit files, merge, push, deploy, modify secrets or change policy.',
+    'Work only inside your own worktree (the maker\'s changes are already in it); do not read the maker\'s worktree.',
+    // prod 09-10 (run 5b91e689): reviewers spent 20–24 of ~30 tool calls on npm ci / a native better-sqlite3 build the
+    // container cannot do / apt-get / re-running Stryker, and every step re-sends the whole context: 29 steps × ~36k ≈
+    // 1.03M > OPENCODE_MAX_RUN_TOKENS. The check logs sit outside the worktree (opencode denies reading them), so their
+    // output is inlined below instead.
+    'Do not install dependencies (no npm ci / npm install / npm install-scripts / apt-get / node-gyp), do not build, and do not re-run mutation testing (Stryker, test:mutation*), the full test suite, lint or type-check: the deterministic checks below already ran on exactly this diff and their output is included (the log paths are outside your worktree and not readable). Judge from the diff, the source and those results; if they are missing or contradict the diff, say so in your verdict instead of re-running them.',
+  ],
+  security: 'You are the separate security checker. Review high-risk paths, related sibling paths, the original failure or exploit, and preserved governance invariants. Do not relax gates. Your verdict is not human approval or permission to merge.',
+  checker: 'Your technical verdict is not human approval or permission to merge.',
+  tail: ['Review the maker output using the evidence below.', '', 'Return a concise verdict. Prefer JSON on one line:'],
+};
+
+const VALID_CHECKER_VERDICTS: string[] = ['accepted', 'needs_revision', 'rejected', 'insufficient_evidence'];
 
 export class LoopService {
 
@@ -788,6 +855,9 @@ export class LoopService {
         }
         throw new Error(`LOOP_COMPLETION_BLOCKED:${failingGate.name}`);
       }
+      // E2: missing evidence is not a failed gate, but it still blocks completion
+      const unknownGate = verified.gates.find((gate) => gate.status === 'unknown');
+      if (unknownGate) throw new Error(`LOOP_COMPLETION_INSUFFICIENT_EVIDENCE:${unknownGate.name}`);
 
       const incompleteLease = this.completionBlockingLeases(verified.leases).find((lease) => lease.status !== 'completed');
       if (incompleteLease) {
@@ -1088,6 +1158,11 @@ export class LoopService {
     });
 
     if (installFailure) checks.unshift(installFailure);
+    // F1 (09-10): deterministic assertion strength of a test-writing maker's changed test files (WEAK_ASSERTION_CHECK_MODE)
+    try {
+      const strength = assertionStrengthCheck(this.db, run.goal_id, makerLease.worktree_path!, makerLease.metadata?.changed_files, outputDir);
+      if (strength) checks.push(strength);
+    } catch { /* an evidence check never breaks the scripted checks */ }
     const failed = checks.some((check) => check.status === 'fail');
     // Batch-8 evidence freshness: fingerprint what the checks READ (configs, lockfile, imports) at the base commit.
     let evidenceReadSet: ReadSet | undefined;
@@ -1409,6 +1484,9 @@ export class LoopService {
   public assertNoFailedGates(run: LoopRunRecord): void {
     if (run.gates.some((gate) => gate.status === 'fail')) {
       throw new Error('LOOP_FAILED_GATES_BLOCK_CONTINUE');
+    }
+    if (run.gates.some((gate) => gate.status === 'unknown')) {
+      throw new Error('LOOP_INSUFFICIENT_EVIDENCE_BLOCKS_CONTINUE');
     }
   }
 
@@ -2262,44 +2340,11 @@ export class LoopService {
     this.ensureControlDir(worktreePath);
     const advisoryContext = this.advisoryAssignmentContext(worktreePath, run, finding);
     const extra = assignmentContext(this.db, run, worktreePath, `loop-maker:${run.id}`);
-    if (extra.examples.length || extra.rules.length || extra.memory_holdout) {
-      this.recordLoopEvent(run.id, 'assignment_context', 'info', `Maker assignment includes ${extra.examples.length} proven example(s) and ${extra.rules.length} rule(s)${extra.memory_holdout ? ' (memory holdout: rules withheld)' : ''}.`,
-        { examples: extra.examples, rule_ids: extra.rules.map((r) => r.id), ...(extra.memory_holdout ? { memory_holdout: true } : {}) });
+    if (extra.examples.length || extra.rules.length || extra.memory_holdout || extra.ace || extra.ste) {
+      this.recordLoopEvent(run.id, 'assignment_context', 'info', `Maker assignment includes ${extra.examples.length} proven example(s) and ${extra.rules.length} rule(s)${extra.memory_holdout ? ' (memory holdout: rules withheld)' : ''}${extra.ace ? ` (ACE-001 arm ${extra.ace.arm})` : ''}${extra.ste ? ` (STE-001 arm ${extra.ste.arm})` : ''}.`,
+        { examples: extra.examples, rule_ids: extra.rules.map((r) => r.id), ...(extra.memory_holdout ? { memory_holdout: true } : {}), ...(extra.ace ? { ace_001: extra.ace } : {}), ...(extra.ste ? { ste_001: extra.ste } : {}) });
     }
-    const content = [
-      `# ${finding.metadata?.objective_mode ? 'Objective' : run.loop_name} Assignment`,
-      '',
-      `Loop run: ${run.id}`,
-      `Runtime target: ${runtime}`,
-      `Finding: ${finding.id}`,
-      `File: ${finding.file}${finding.line ? `:${finding.line}` : ''}`,
-      ...(finding.metadata?.objective_mode && !finding.file.startsWith('(') ? [`Change only this file: ${finding.file}. Do not edit README.md, CONTRIBUTING.md or any other file.`] : []),
-      '',
-      '## Finding',
-      '',
-      finding.message,
-      '',
-      '## Evidence',
-      '',
-      finding.evidence,
-      '',
-      '## Suggested Fix',
-      '',
-      finding.suggested_fix,
-      '',
-      '## Advisory Past Experience',
-      '',
-      advisoryContext.text || 'No matching observed episodes were retrieved.',
-      '',
-      ...assignmentContextMarkdown(extra),
-      ...MAKER_TEMPLATE_RULES,
-      '',
-      // Nested-spawn control block (P1). Only injected when this lease is itself
-      // permitted to spawn sub-agents (operator-armed, depth within budget). This
-      // is the single path a runtime child uses to spawn children: it shells out
-      // to the control endpoint with its scoped token. See prepareNestedLease.
-      ...(options.nestedSpawnControl ? [options.nestedSpawnControl, ''] : []),
-    ].join('\n');
+    const content = renderWorkAssignment(run, finding, runtime, advisoryContext.text, extra, { nestedSpawnControl: options.nestedSpawnControl });
     fs.writeFileSync(this.workAssignmentPath(worktreePath), content, 'utf8');
   }
 
@@ -2378,7 +2423,7 @@ export class LoopService {
       : '';
     const stdoutPath = typeof maker.metadata.stdout_path === 'string' ? maker.metadata.stdout_path : '';
     const stderrPath = typeof maker.metadata.stderr_path === 'string' ? maker.metadata.stderr_path : '';
-    const checks = JSON.stringify(maker.metadata.deterministic_checks || [], null, 2);
+    const checks = this.checkResultsForReviewer(maker.metadata.deterministic_checks);
     return [
       `# ${run.loop_name} ${checker.role === 'security_checker' ? 'Security Checker' : 'Checker'} Assignment`,
       '',
@@ -2386,14 +2431,9 @@ export class LoopService {
       `Checker lease: ${checker.id}`,
       `Maker lease: ${maker.id}`,
       '',
-      'You are an independent checker. Do not edit files, merge, push, deploy, modify secrets or change policy.',
-      'Work only inside your own worktree (the maker\'s changes are already in it); do not read the maker\'s worktree. To run tests, install dependencies here with `npm ci --legacy-peer-deps` first; lockfile rewrites are reverted automatically.',
-      checker.role === 'security_checker'
-        ? 'You are the separate security checker. Review high-risk paths, related sibling paths, the original failure or exploit, and preserved governance invariants. Do not relax gates. Your verdict is not human approval or permission to merge.'
-        : 'Your technical verdict is not human approval or permission to merge.',
-      'Review the maker output using the evidence below.',
-      '',
-      'Return a concise verdict. Prefer JSON on one line:',
+      ...CHECKER_INSTRUCTIONS.common,
+      checker.role === 'security_checker' ? CHECKER_INSTRUCTIONS.security : CHECKER_INSTRUCTIONS.checker,
+      ...CHECKER_INSTRUCTIONS.tail,
       '{"verdict":"accepted|needs_revision|rejected|insufficient_evidence","notes":"...","usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}',
       '',
       '## Assignment Packet',
@@ -2412,6 +2452,29 @@ export class LoopService {
     ].join('\n');
   }
 
+  /** The maker's deterministic checks for a reviewer: name, status, exit and the ANSI-stripped tail of each log (capped). */
+  private checkResultsForReviewer(raw: unknown): string {
+    const checks = Array.isArray(raw) ? raw as Array<Record<string, unknown>> : [];
+    if (!checks.length) return 'No deterministic checks recorded.';
+    const tail = (file: unknown, max: number): string => {
+      if (typeof file !== 'string' || !file) return '';
+      try {
+        const text = fs.readFileSync(file, 'utf8').replace(/\u001b\[[0-9;]*[A-Za-z]/g, '').replace(/\r/g, '').trim();
+        return text.length > max ? `…${text.slice(-max)}` : text;
+      } catch { return ''; }
+    };
+    return checks.map((check) => {
+      const failed = check.status !== 'pass' && check.status !== 'skipped';
+      const out = tail(check.stdout_path, 1_200);
+      const err = failed ? tail(check.stderr_path, 800) : '';
+      // E2: exit 127 is a missing tool (environment, cf. makerFailureClass), not evidence about the change under review
+      const status = check.mode === 'shadow' && check.shadow_status ? `shadow ${String(check.shadow_status)}`
+        : check.exit_status === 127 ? `${String(check.status)} — tool missing (environment failure, not evidence about the change)` : String(check.status ?? 'unknown');
+      return [`### ${String(check.name)}: ${status} (exit=${String(check.exit_status ?? 'n/a')}${check.timed_out ? ', timed out' : ''})`,
+        out ? `stdout (tail):\n${out}` : 'stdout: (empty or unavailable)', ...(err ? [`stderr (tail):\n${err}`] : [])].join('\n');
+    }).join('\n\n');
+  }
+
   public buildMockCheckerCommand(_worktreePath: string, _prompt: string): { command: string; args: string[] } {
     const script = [
       'console.log(JSON.stringify({ verdict: "accepted", notes: "mock checker accepted maker output", usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 } }));',
@@ -2426,7 +2489,7 @@ export class LoopService {
     const payload = this.extractCheckerPayload(stdout);
     if (payload) {
       const verdict = String(payload.verdict || payload.checker_verdict || '').trim();
-      if (['accepted', 'needs_revision', 'rejected', 'insufficient_evidence'].includes(verdict)) {
+      if (VALID_CHECKER_VERDICTS.includes(verdict)) {
         return verdict as CheckerVerdictInput['verdict'];
       }
     }
@@ -2437,38 +2500,68 @@ export class LoopService {
 
   public extractCheckerNotes(stdout: string): string {
     const notes = this.extractCheckerPayload(stdout)?.notes;
-    return typeof notes === 'string' ? notes : stdout.trim().slice(0, 1_000);
+    if (typeof notes === 'string') return notes;
+    // no verdict object: the reviewer's last text part, not the raw opencode/codex event stream (prod 02-10, lease 09272945)
+    const texts = this.runtimeTexts(stdout);
+    return (texts.length ? texts[texts.length - 1] : stdout).trim().slice(0, 1_000);
   }
 
-  private extractCheckerPayload(stdout: string): Record<string, unknown> | undefined {
+  /** The text parts of an opencode/codex JSON event stream (part.text, agent_message items, result/response), in order. */
+  private runtimeTexts(stdout: string): string[] {
+    const texts: string[] = [];
     for (const line of stdout.split(/\r?\n/)) {
       const trimmed = line.trim();
       if (!trimmed.startsWith('{')) continue;
       try {
         const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-        const part = parsed.part;
+        const part = parsed.part as Record<string, unknown> | undefined;
         const item = parsed.item as Record<string, unknown> | undefined;
-        const candidates = [parsed, typeof part === 'object' && part ? part as Record<string, unknown> : undefined,
-          item?.type === 'agent_message' ? item : undefined];
-        const text = candidates.flatMap((candidate) => [candidate?.text, candidate?.result, candidate?.response]).find((value) => typeof value === 'string');
-        if (typeof text === 'string') {
-          // Models often put a prose paragraph before the requested one-line JSON verdict inside the same text part.
-          // Models also drop the final brace of the verdict line (prod 2026-09-23: an 'accepted' security verdict was lost and
-          // counted as insufficient_evidence): try every '{' line from last to first, with one repaired closing brace.
-          const lines = text.trim().startsWith('{') ? [text.trim()] : text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.startsWith('{')).reverse();
-          const verdictLine = lines.map((l) => [l, `${l}}`].map((c) => { try { return JSON.parse(c) as Record<string, unknown>; } catch { return undefined; } }).find(Boolean))
-            .find((p) => p && (typeof p.verdict === 'string' || typeof p.checker_verdict === 'string'));
-          if (verdictLine) candidates.push(verdictLine);
-        }
-        const payload = candidates.find((candidate) => candidate && (
-          typeof candidate.verdict === 'string'
-          || typeof candidate.checker_verdict === 'string'
-          || typeof candidate.notes === 'string'
-        ));
-        if (payload) return payload;
-      } catch {
-        continue;
+        const text = [parsed, part && typeof part === 'object' ? part : undefined, item?.type === 'agent_message' ? item : undefined]
+          .flatMap((candidate) => [candidate?.text, candidate?.result, candidate?.response]).find((value) => typeof value === 'string');
+        if (typeof text === 'string' && text.trim()) texts.push(text);
+      } catch { continue; }
+    }
+    return texts;
+  }
+
+  /**
+   * The checker's verdict object. The LAST valid one wins, so an early plan or draft never shadows the final answer.
+   * Within a text part every '{' is tried from last to first with the balanced-object scanner (firstJsonObject), also with
+   * one repaired closing brace (prod 2026-09-23: a dropped final brace lost an 'accepted' verdict). That finds a verdict
+   * embedded in prose or backticks (prod 02-10, lease 09272945: "`{"verdict":"needs_revision",...}`" mid-paragraph →
+   * stored as insufficient_evidence with the raw event stream as notes). Only a known verdict value counts, so the echoed
+   * format template ("accepted|needs_revision|…") and nested usage objects are skipped. The explicit verdict is never
+   * re-interpreted: an insufficient_evidence whose notes approve stays insufficient_evidence (fails checker_verdict).
+   */
+  private extractCheckerPayload(stdout: string): Record<string, unknown> | undefined {
+    const known = (p: Record<string, unknown> | null | undefined): p is Record<string, unknown> =>
+      !!p && VALID_CHECKER_VERDICTS.includes(String(p.verdict ?? p.checker_verdict ?? ''));
+    const verdictIn = (full: string): Record<string, unknown> | undefined => {
+      const text = full.slice(-20_000); // a final answer, not a tool dump: bounds the per-'{' scan
+      for (let start = text.lastIndexOf('{'); start >= 0; start = start > 0 ? text.lastIndexOf('{', start - 1) : -1) {
+        const slice = text.slice(start);
+        const found = [firstJsonObject(slice), firstJsonObject(`${slice}}`)].find(known);
+        if (found) return found;
       }
+      return undefined;
+    };
+    const lines = stdout.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.startsWith('{')).reverse();
+    for (const line of lines) {
+      let parsed: Record<string, unknown>;
+      try { parsed = JSON.parse(line) as Record<string, unknown>; } catch { continue; }
+      const part = parsed.part;
+      const item = parsed.item as Record<string, unknown> | undefined;
+      const candidates = [parsed, typeof part === 'object' && part ? part as Record<string, unknown> : undefined,
+        item?.type === 'agent_message' ? item : undefined];
+      const text = candidates.flatMap((candidate) => [candidate?.text, candidate?.result, candidate?.response]).find((value) => typeof value === 'string');
+      const fromText = typeof text === 'string' ? verdictIn(text) : undefined;
+      if (fromText) return fromText;
+      const payload = candidates.find((candidate) => candidate && (
+        typeof candidate.verdict === 'string'
+        || typeof candidate.checker_verdict === 'string'
+        || typeof candidate.notes === 'string'
+      ));
+      if (payload) return payload;
     }
     return undefined;
   }
