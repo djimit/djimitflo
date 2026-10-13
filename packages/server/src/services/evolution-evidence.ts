@@ -23,6 +23,7 @@ import { ste001Evidence } from './ste-001';
 import { d5NoEvidence } from './d5-no';
 import { tg001Evidence } from './tg-001';
 import { intelligenceEvidence } from './intelligence-metrics';
+import { makerTokenAccountingEvidence } from './maker-token-accounting';
 import type { ForecasterScoreV2 } from './forecast-scoring';
 import { BASELINE_GENOME, holdoutEpoch } from './genome-registry';
 
@@ -365,5 +366,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // E3: many-to-many provenance DAG (source → proposal → experiment → change → survival), counts + 13 answers, no edge list
     provenance: provenanceSummary(db, now),
     // E4: specialist-panel answer attempts — reliability P(valid | model, prompt, provider) apart from conditional quality
-    panel_attempts: panelAttemptMetrics(db, { days: window, now }) };
+    panel_attempts: panelAttemptMetrics(db, { days: window, now }),
+    // P0 §5: maker token accounting per runtime × model — leases, share with measured tokens, share with a known cost
+    maker_tokens: makerTokenAccountingEvidence(db, since) };
 }
