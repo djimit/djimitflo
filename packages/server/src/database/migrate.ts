@@ -1420,6 +1420,8 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
     { name: 'graded_mean_parent', definition: 'REAL' }, { name: 'graded_mean_mutant', definition: 'REAL' }, { name: 'graded_p', definition: 'REAL' },
     { name: 'graded_decision', definition: 'TEXT' }, { name: 'graded_refs', definition: 'INTEGER' },
   ]);
+  // P0 (13-10): the gate policy and the eligible-evidence summary (epoch, counts, task family/difficulty) each trial decision rested on
+  addMissingColumns(db, 'genome_trial_results', [{ name: 'gate_policy', definition: 'TEXT' }, { name: 'evidence_json', definition: 'TEXT' }]);
   // P1c: collapse duplicate fingerprints among LIVE rows (keep the newest) so the partial UNIQUE index never aborts.
   // Only live statuses can collide with that index. This used to delete every older row sharing a fingerprint
   // regardless of status, on every boot: parked/finished proposals vanished when a later one with the same text
