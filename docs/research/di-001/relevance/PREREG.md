@@ -13,6 +13,14 @@ Amendment 1 (operator correction, made before any result or sample existed; both
 the protected sample before any optimisation. `PREREG.sha256` is the hash of this amended file; the first frozen
 version is commit `31d219e2`.
 
+Amendment 2 (2026-10-14, pre-result correction: no L2 label exists yet, prod has 0 `operator_label` rows with
+`state_hash = 'discovery_relevance'`): the labelling UI (#835) writes one row per (ref, pass), with `answers_json.pass` =
+`first` or `relabel`. L2 uses **only** the `first` row of a ref as its label. A `relabel` row is used solely for the
+§6b consistency statistic, paired with the same ref's first label; it never replaces or overrides the label. A row
+without a recognised pass is ignored and counted. A first-pass label with `answers_json.sample = 'al'` is a training
+label (§6a) and never enters an evaluation number. `PREREG.sha256` now hashes this file; the eval sample (frozen under
+amendment 1, `eval-sample.json` field `prereg_sha256`) is unchanged.
+
 ## 0. What was already seen (not a blind protocol)
 
 Before this file was written, three read-only inventory probes were run on prod (snapshot `2026-10-13T22:44Z`, container
@@ -45,7 +53,7 @@ evidence is sufficient. Every rule and threshold below is fixed by reference to 
 | id | label source | positive | negative | rule |
 |---|---|---|---|---|
 | L1 | operator lifecycle action on the discovery's unit (`expert_lifecycle_events`, human actor = an account id, i.e. not `ingestion:*`, `model-review:*`, `codex:*`, `system*`, `loop:*`, any agent id) | latest human transition to `CHECKED`, `APPROVED`, `ACTIVE` | latest human transition to `REJECTED`, `REVOKED` | latest human event wins; a human transition back to an automated state (un-check) without a later human state = unlabelled |
-| L2 | explicit operator relevance label (`judgments`, `mode IN ('operator_label','annotation')` on the ref or its unit, about `discovery_relevance`) | `yes` / relevant | `no` / not relevant | 0 exist today; this is what the label UI (BENCHMARK §6) writes |
+| L2 | explicit operator relevance label (`judgments`, `mode IN ('operator_label','annotation')` on the ref or its unit, about `discovery_relevance`) | `yes` / relevant | `no` / not relevant | 0 exist today; this is what the label UI (BENCHMARK §6) writes. Only the `pass = 'first'` row counts; `relabel` rows feed only the §6b consistency statistic (amendment 2) |
 | L3 | downstream use in a verified run: the ref, unit id or one of its `expert_claims` ids is cited by a `self_improvements` row with `status = 'verified'` (title, description, rationale, evidence refs, grounding), or by its goal / loop run | cited by a verified change | **never** | absence of a citation is missing evidence, not a negative |
 
 Precedence: L2 over L1 (L2 asks the relevance question directly). L3 only adds positives. A conflict (one source positive,

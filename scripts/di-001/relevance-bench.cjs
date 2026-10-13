@@ -9,10 +9,6 @@
  * DB path: DB_PATH env, default /data/djimitflo.sqlite.
  */
 const crypto = require('crypto');
-const Database = require('better-sqlite3');
-const db = new Database(process.env.DB_PATH || '/data/djimitflo.sqlite', { readonly: true, fileMustExist: true });
-const all = (sql, ...a) => db.prepare(sql).all(...a);
-const snapshot_at = new Date().toISOString();
 const SCOPE = new Set(['djimitflo-scout', 'operator-chatgpt']);
 const RELEVANT = new Set(['open_problem', 'lane_technique']);
 const POS_STATES = new Set(['CHECKED', 'APPROVED', 'ACTIVE']);
@@ -32,6 +28,80 @@ function bootstrap(groups, stat) { // groups: array of arrays of items; resample
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
 function isoWeek(iso) { const d = new Date(iso); const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())); const day = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - day); const y = new Date(Date.UTC(t.getUTCFullYear(), 0, 1)); return `${t.getUTCFullYear()}-W${String(Math.ceil(((t - y) / 86400000 + 1) / 7)).padStart(2, '0')}`; }
 
+const round4 = (x) => (x === null || x === undefined || !Number.isFinite(x) ? null : +x.toFixed(4));
+
+// ---- L2 (PREREG amendment 2): the #835 labelling UI writes one judgments row per (ref, pass), mode 'operator_label',
+// state_hash 'discovery_relevance', answers_json {label, pass: 'first'|'relabel', sample, actor, seconds, ...}.
+// Only pass 'first' is a label. 'relabel' rows are used solely for the consistency statistic, paired with the same ref's
+// first label; they never replace or override it. A row without a recognised pass is ignored (counted).
+const L2_VALUE = { relevant: 'positive', not_relevant: 'negative', unclear: 'unclear', yes: 'positive', no: 'negative' };
+function parseL2(rows) { // rows ordered by created_at, rowid
+  const first = new Map(); const relabel = new Map(); const ignored = [];
+  for (const r of rows) {
+    let a = {}; try { a = JSON.parse(r.answers_json || '{}') || {}; } catch { a = {}; }
+    const target = a.pass === 'first' ? first : a.pass === 'relabel' ? relabel : null;
+    if (!target) { ignored.push(r.subject_id); continue; }
+    if (target.has(r.subject_id)) continue; // the earliest row per (ref, pass) wins; #835 refuses a changed answer anyway
+    target.set(r.subject_id, { ref: r.subject_id, value: L2_VALUE[a.label] || L2_VALUE[r.decision] || 'unclear', at: r.created_at,
+      actor: a.actor || null, sample: a.sample || null, seconds: a.seconds ?? null });
+  }
+  return { first, relabel, ignored };
+}
+
+/** Verification of one ref from its independent facts (PREREG §2): L2 first-pass over L1; L3 only adds positives. */
+function verifyRef({ l1Event = null, l2First = null, l3Hit = false }) {
+  const lab = [];
+  if (l1Event && POS_STATES.has(l1Event.to_state)) lab.push(['L1', 'positive', l1Event.created_at]);
+  if (l1Event && NEG_STATES.has(l1Event.to_state)) lab.push(['L1', 'negative', l1Event.created_at]);
+  if (l2First) lab.push(['L2', l2First.value, l2First.at]);
+  if (l3Hit) lab.push(['L3', 'positive', null]);
+  // AL labels (sample 'al') are training labels: kept on the record, never in an evaluation number (PREREG §6a)
+  const use = l2First && l2First.sample === 'al' ? 'training' : 'evaluation';
+  const l2pick = lab.find((x) => x[0] === 'L2' && x[1] !== 'unclear');
+  const vals = new Set(lab.filter((x) => x[1] !== 'unclear').map((x) => x[1]));
+  if (l2pick && !(vals.size > 1 && lab.some((x) => x[0] === 'L3'))) return { label: l2pick[1], source: 'L2', session: String(l2pick[2]).slice(0, 10), use };
+  if (vals.size > 1) return { label: 'conflict', source: lab.map((x) => x[0]).join('+'), session: null, use };
+  if (vals.size === 1) { const f = lab.find((x) => x[1] !== 'unclear'); return { label: f[1], source: lab.map((x) => x[0]).join('+'), session: f[2] ? String(f[2]).slice(0, 10) : 'L3', use }; }
+  if (lab.length) return { label: 'unclear', source: lab.map((x) => x[0]).join('+'), session: null, use };
+  return { label: 'unlabelled', source: null, session: null, use };
+}
+
+function cohenKappa(pairs) {
+  const n = pairs.length; if (!n) return null;
+  const cats = [...new Set(pairs.flat())];
+  const po = pairs.filter(([a, b]) => a === b).length / n;
+  let pe = 0; for (const c of cats) pe += (pairs.filter((p) => p[0] === c).length / n) * (pairs.filter((p) => p[1] === c).length / n);
+  return pe === 1 ? null : (po - pe) / (1 - pe);
+}
+
+/**
+ * Agreement between each ref's first label and its re-label (PREREG §6b, amendment 1). Same actor on both passes =
+ * intra-annotator consistency (test-retest), never presented as inter-annotator agreement. Different actors =
+ * inter-annotator agreement. An actor missing on either side = annotator_unknown (reported, never called inter).
+ */
+function consistency(first, relabel) {
+  const buckets = { intra_annotator_consistency: [], inter_annotator_agreement: [], annotator_unknown: [] }; const unpaired = [];
+  for (const [ref, r] of relabel) {
+    const f = first.get(ref); if (!f) { unpaired.push(ref); continue; }
+    const k = !f.actor || !r.actor ? 'annotator_unknown' : f.actor === r.actor ? 'intra_annotator_consistency' : 'inter_annotator_agreement';
+    buckets[k].push([f.value, r.value]);
+  }
+  const stat = (x) => {
+    if (!x.length) return { n: 0 };
+    const bin = x.filter(([a, b]) => a !== 'unclear' && b !== 'unclear'); const confusion = {};
+    for (const [a, b] of x) confusion[`${a}->${b}`] = (confusion[`${a}->${b}`] || 0) + 1;
+    return { n: x.length, raw_agreement: wilson(x.filter(([a, b]) => a === b).length, x.length), kappa: round4(cohenKappa(x)),
+      kappa_ci: bootstrap(x.map((p) => [p]), (s) => cohenKappa(s)), n_binary: bin.length, kappa_binary: round4(cohenKappa(bin)), confusion };
+  };
+  return { ...Object.fromEntries(Object.entries(buckets).map(([k, v]) => [k, stat(v)])), relabels_without_first: unpaired,
+    note: 'intra_annotator_consistency is one annotator re-labelling blind; it is not inter-annotator agreement' };
+}
+
+function main() {
+const Database = require('better-sqlite3');
+const db = new Database(process.env.DB_PATH || '/data/djimitflo.sqlite', { readonly: true, fileMustExist: true });
+const all = (sql, ...a) => db.prepare(sql).all(...a);
+const snapshot_at = new Date().toISOString();
 // ---- population: distinct discovery refs
 const refs = new Map();
 for (const r of all(`SELECT json_extract(payload,'$.ref') ref, COALESCE(json_extract(payload,'$.agent'), source) src, event_type, occurred_at FROM external_events
@@ -70,9 +140,8 @@ for (const e of all(`SELECT expert_id, to_state, actor, created_at FROM expert_l
   if (!unitById.has(e.expert_id) || !human(e.actor)) continue;
   l1.set(e.expert_id, e); // latest human event wins
 }
-const l2 = new Map();
-for (const j of all(`SELECT subject_id, decision, created_at FROM judgments WHERE mode IN ('operator_label','annotation')
-  AND (judgment = 'discovery_relevance' OR state_hash = 'discovery_relevance') AND created_at <= ? ORDER BY created_at`, snapshot_at)) l2.set(j.subject_id, j);
+const l2 = parseL2(all(`SELECT subject_id, decision, answers_json, created_at FROM judgments WHERE mode IN ('operator_label','annotation')
+  AND (judgment = 'discovery_relevance' OR state_hash = 'discovery_relevance') AND created_at <= ? ORDER BY created_at, rowid`, snapshot_at));
 // L3: verified self_improvements (and their goals / runs) citing a ref, unit id or claim id
 const claimToUnit = new Map(all(`SELECT c.id, c.expert_id FROM expert_claims c JOIN expert_identities e ON e.id = c.expert_id WHERE e.kind IN ('paper','repository')`).map((r) => [r.id, r.expert_id]));
 const keyToRef = new Map();
@@ -108,25 +177,15 @@ for (const d of refs.values()) {
   const D = A !== 'admit' ? A : (j && j.decision === 'no' ? 'reject' : 'admit');
   const p = j && j.conf !== null && j.cls ? (RELEVANT.has(j.cls) ? j.conf : 1 - j.conf) : null;
   // verification
-  let v = 'unlabelled', vsrc = null, vday = null; const lab = [];
-  const lu = u && l1.get(u.id);
-  if (lu && POS_STATES.has(lu.to_state)) lab.push(['L1', 'positive', lu.created_at]);
-  if (lu && NEG_STATES.has(lu.to_state)) lab.push(['L1', 'negative', lu.created_at]);
-  const l2r = l2.get(d.ref) || (u && l2.get(u.id));
-  if (l2r) lab.push(['L2', l2r.decision === 'yes' ? 'positive' : l2r.decision === 'no' ? 'negative' : 'unclear', l2r.created_at]);
-  if (l3.has(d.ref) && !SELF_REFS.has(d.ref)) lab.push(['L3', 'positive', null]);
-  const l2pick = lab.find((x) => x[0] === 'L2' && x[1] !== 'unclear');
-  const vals = new Set(lab.filter((x) => x[1] !== 'unclear').map((x) => x[1]));
-  if (l2pick && !(vals.size > 1 && lab.some((x) => x[0] === 'L3'))) { v = l2pick[1]; vsrc = 'L2'; vday = String(l2pick[2]).slice(0, 10); }
-  else if (vals.size > 1) { v = 'conflict'; vsrc = lab.map((x) => x[0]).join('+'); }
-  else if (vals.size === 1) { const f = lab.find((x) => x[1] !== 'unclear'); v = f[1]; vsrc = lab.map((x) => x[0]).join('+'); vday = f[2] ? String(f[2]).slice(0, 10) : 'L3'; }
+  const verification = verifyRef({ l1Event: (u && l1.get(u.id)) || null, l2First: l2.first.get(d.ref) || (u && l2.first.get(u.id)) || null,
+    l3Hit: l3.has(d.ref) && !SELF_REFS.has(d.ref) });
   recs.push({ ref: d.ref, src: d.src, senders: d.senders, kind: d.kind, at: d.at, week: isoWeek(d.at), in_scope: inScope,
     classification: { A, B: 'not_computable', C, C_star: Cs, D, jev: j ? { decision: j.decision, cls: j.cls, conf: j.conf, p, subject_type: j.subject_type } : null, jev_errors: jevErr.get(d.ref) || 0 },
     admission: u ? { unit: u.id, derived: u.derived, lifecycle_state: u.lifecycle_state, usrc: u.usrc } : null,
-    verification: { label: v, source: vsrc, session: vday } });
+    verification });
 }
 const primary = recs.filter((r) => r.in_scope);
-const labelled = (set) => set.filter((r) => r.verification.label === 'positive' || r.verification.label === 'negative');
+const labelled = (set) => set.filter((r) => (r.verification.label === 'positive' || r.verification.label === 'negative') && r.verification.use === 'evaluation');
 const LAB = labelled(primary); const LAB_ALL = labelled(recs);
 
 // ---- metrics
@@ -189,7 +248,8 @@ const result = {
   protocol: 'docs/research/di-001/relevance/PREREG.md', snapshot_at, scope: [...SCOPE],
   population: { refs_all: recs.length, refs_primary: primary.length, by_source: dist(recs, (r) => r.src), primary_decisions_label_free: popDecisions,
     admitted_units_primary: primary.filter((r) => r.admission).length },
-  labels: { L1_human_units_any_kind: l1.size, L2_rows: l2.size, L3_cited_refs_raw: [...l3.entries()].map(([ref, si]) => ({ ref, si, excluded: SELF_REFS.has(ref) ? "self repository (deviation 2)" : null })), verified_self_improvements_scanned: siScanned,
+  labels: { L1_human_units_any_kind: l1.size, L2_first_pass: l2.first.size, L2_relabel_pass: l2.relabel.size, L2_ignored_no_pass: l2.ignored.length,
+    L2_training_only: recs.filter((r) => r.verification.use === 'training').length, L3_cited_refs_raw: [...l3.entries()].map(([ref, si]) => ({ ref, si, excluded: SELF_REFS.has(ref) ? "self repository (deviation 2)" : null })), verified_self_improvements_scanned: siScanned,
     labelled_primary: LAB.length, labelled_all_sources: LAB_ALL.length, by_label: dist(LAB, (r) => r.verification.label), by_source: dist(LAB, (r) => r.src),
     by_session: dist(LAB, (r) => r.verification.session), conflicts: recs.filter((r) => r.verification.label === 'conflict').map((r) => r.ref),
     labelled_items: LAB_ALL.map(ser) },
@@ -202,9 +262,14 @@ const result = {
   },
   scores_primary: Object.fromEntries(CANDS.map((c) => [c, score(LAB, c)])),
   comparisons: [['A', 'C'], ['A', 'C_star'], ['A', 'D'], ['C_star', 'D'], ['A', 'B'], ['B', 'C_star']].map(([x, y]) => evaluable(LAB, x, y)),
+  label_consistency: consistency(l2.first, l2.relabel),
   cost_C: cost,
   plan: { delta, alpha: 0.05, power: 0.8, psi_A_vs_Cstar: +psi.toFixed(4), psi_n: both.length, n_mcnemar_raw: Math.ceil(nMcNemar(psi, delta)), N_eval,
     overlap_relabel: Math.ceil(N_eval * 0.2), eval_cells: alloc.length, active_learning_pool_outside_eval: alPool },
   eval_sample: evalSample,
 };
 process.stdout.write(JSON.stringify(result, null, 1) + '\n');
+}
+
+if (require.main === module) main();
+module.exports = { parseL2, verifyRef, consistency, cohenKappa };

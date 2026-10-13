@@ -1,6 +1,6 @@
 # DI-001 P3 — discovery relevance benchmark: result
 
-Protocol: `PREREG.md` (sha256 `893eb43c…35ac1a`, amendment 1 included; first frozen version commit `31d219e2`).
+Protocol: `PREREG.md` (sha256 `2de706a2…c5b739`, amendments 1 and 2 included; first frozen version commit `31d219e2`; the results below were computed under amendment 1, `893eb43c…35ac1a`. Amendment 2 changes only how future L2 rows are read, and a re-run gives identical numbers because 0 L2 rows exist).
 Every number comes from `results.json`, written by `scripts/di-001/relevance-bench.cjs` (read-only, run inside
 `djimitflo-live`, snapshot `2026-10-13T22:50:26Z` container clock). No jev, LLM or embedding call was made.
 
