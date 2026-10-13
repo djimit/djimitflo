@@ -29,7 +29,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { SpecialistPanelService } from './specialist-panel-service';
-import { markRun } from './scheduler-registry';
+import { guardTick, markRun } from './scheduler-registry';
 
 const MINUTE_MS = 60 * 1000;
 
@@ -49,9 +49,9 @@ export class SpecialistPanelBacklogScheduler {
   start(): boolean {
     if (process.env.SPECIALIST_PANEL_BACKLOG_ENABLED !== 'true') return false;
     const intervalMs = this.intervalMinutes() * MINUTE_MS;
-    this.timer = setInterval(() => this.tick(), intervalMs);
+    this.timer = setInterval(guardTick('specialist_panel_backlog', () => this.tick()), intervalMs);
     this.timer.unref();
-    this.tick(); // catch-up on boot
+    guardTick('specialist_panel_backlog', () => this.tick())(); // catch-up on boot
     return true;
   }
 

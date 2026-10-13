@@ -5,6 +5,7 @@ import { generateText, llmEndpoints } from './llm-fallback';
 import { firstJsonObject } from './expert-council-service';
 import { BASELINE_GENOME, dreamEvolutionEnabled, ensureBaseline, frozenHoldoutCommits, genome, holdoutEpoch, mutantHoldoutKeys, mutantHoldoutTiers, mutantTrialsEnabled, NOT_VOID, trialHeadroomPrecheck, unscorable, writeTestHoldoutEnabled, writeTestHoldoutKeys } from './genome-registry';
 import { markRun } from './scheduler-registry';
+import { type DecidingHoldout, holdoutValidity, promoteGenome } from './genome-promotion';
 
 /**
  * Y3b/Y3c (plan Phase Y, Darwin loop). Dreaming is the mutation operator: once a day the day's failed makers (real and
@@ -140,8 +141,9 @@ export const trialDiagnosticsEnabled = (env: NodeJS.ProcessEnv = process.env): b
 const MAX_LINES = 5;
 const MAX_LINE_CHARS = 200;
 // what a genome may never steer: gates, checks, scope, secrets, deploy, approvals, git history (a gym `git commit` empties the
-// diff the verdict reads — first dream 2026-10-01 proposed 'commit the smallest confirmed improvement') — or the tests
-const FORBIDDEN = /\b(gates?|checks?|checker|scope|secrets?|tokens?|passwords?|credentials?|deploy\w*|push\w*|merge\w*|commit\w*|stash\w*|reset|revert\w*|approv\w*|skip\w*|disable\w*|no-verify|package\.json|lock ?files?|\.github|polic(y|ies)|auth\w*)\b|\b(edit|change|modify|delete|remove|rewrite|weaken)\s+(the\s+|a\s+|any\s+)?tests?\b/i;
+// diff the verdict reads — first dream 2026-10-01 proposed 'commit the smallest confirmed improvement') — or the tests, or the
+// evaluator that judges the genome itself (holdout, oracle, verdict, promotion, the genome/gym code; Codex P0 11-10)
+const FORBIDDEN = /\b(gates?|checks?|checker|scope|secrets?|tokens?|passwords?|credentials?|deploy\w*|push\w*|merge\w*|commit\w*|stash\w*|reset|revert\w*|approv\w*|skip\w*|disable\w*|no-verify|package\.json|lock ?files?|\.github|polic(y|ies)|auth\w*|holdouts?|evaluat\w*|promot\w*|fitness|oracles?|verdicts?|genomes?|dream-evolution|genome-\w+|gym-worker)\b|\b(edit|change|modify|delete|remove|rewrite|weaken)\s+(the\s+|a\s+|any\s+)?tests?\b/i;
 
 /** Lines a mutant may add: strings, ≤ 5, ≤ 200 chars, none touching what the guard forbids. null when anything is off. */
 export function guardLines(lines: unknown): string[] | null {
@@ -259,8 +261,8 @@ function activeParent(db: Database): string {
   return row?.id ?? BASELINE_GENOME;
 }
 
-const defaultCaller: DreamCaller = (prompt) => generateText(
-  { prompt, model: process.env.DREAM_EVOLUTION_MODEL || process.env.SELF_IMPROVEMENT_REVIEW_MODEL || 'kimi-k3:cloud', temperature: 0.7, maxTokens: 1200, timeoutMs: 120_000 },
+export const defaultCaller: DreamCaller = (prompt) => generateText(
+  { prompt, model: process.env.DREAM_EVOLUTION_MODEL || process.env.SELF_IMPROVEMENT_REVIEW_MODEL || 'kimi-k3:cloud', temperature: 0.7, maxTokens: 1200, timeoutMs: 120_000, purpose: 'dream_evolution' },
   { endpoints: llmEndpoints(process.env.OLLAMA_URL || 'https://ollama.com') },
 );
 
@@ -415,7 +417,7 @@ async function dreamFromEvidence(db: Database, now: number, iso: string, call: D
  * trial settles; their graded mutant_kill scores join the paired graded test (decides under the graded rule, shadow columns
  * otherwise). Binary wins, McNemar, the mined no-regression check and out-of-scope stay on the repair holdouts.
  */
-export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits: string[], now = Date.now(), mutantCommits: string[] = [], writeTestKeys: string[] = []): Array<{ id: string; status: 'active' | 'retired'; wins: number; parentWins: number }> {
+export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits: string[], now = Date.now(), mutantCommits: string[] = [], writeTestKeys: string[] = []): Array<{ id: string; status: 'active' | 'retired' | 'inconclusive'; wins: number; parentWins: number }> {
   if (!holdoutCommits.length) return [];
   const binary = [...holdoutCommits, ...mutantCommits];
   const all = [...binary, ...writeTestKeys];
@@ -435,7 +437,12 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
       won: new Set(repair.filter((r) => r.status === 'success').map((r) => r.commit_sha)),
       outOfScope: repair.filter((r) => r.reason.startsWith('out of scope')).length };
   };
-  const settled: Array<{ id: string; status: 'active' | 'retired'; wins: number; parentWins: number }> = [];
+  const settled: Array<{ id: string; status: 'active' | 'retired' | 'inconclusive'; wins: number; parentWins: number }> = [];
+  // Cockpit 3.0 scenario 10 (§16.11): the deciding holdout epoch, once more distinct candidates were judged on it than the contract
+  // allows, no longer separates skill from repeated exposure — neither a win nor a loss on it is evidence. Default on (safety block);
+  // DREAM_HOLDOUT_REUSE_LIMIT overrides the limit. A fresh epoch (GYM_HOLDOUT_EPOCH) is the operator's way out. Codex P0: the same
+  // check (strict: unknown validity also refuses) runs again inside promoteGenome, the only writer of status 'active'.
+  const decidingHoldout: DecidingHoldout = mutantCommits.length ? 'mutant' : 'mined';
   const promotedToday = () => Boolean(db.prepare("SELECT 1 FROM maker_genomes WHERE origin = 'dream' AND status = 'active' AND updated_at >= ? LIMIT 1").get(iso.slice(0, 10)));
   const trials = db.prepare("SELECT id, COALESCE(parent_id, ?) AS parent FROM maker_genomes WHERE status = 'trial' ORDER BY created_at").all(BASELINE_GENOME) as Array<{ id: string; parent: string }>;
   const grade = gradedScorer(db);
@@ -443,6 +450,13 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
   for (const trial of trials) {
     const mine = score(trial.id); const theirs = score(trial.parent);
     if (!mine.complete || !theirs.complete) continue;
+    const validity = holdoutValidity(db, decidingHoldout, mutantCommits.length ? mutantCommits : holdoutCommits);
+    if (validity.state !== 'valid') { // symmetric on purpose: no promotion and no retirement from a spent or unknown holdout
+      db.prepare("UPDATE maker_genomes SET status = 'inconclusive', note = ?, updated_at = ? WHERE id = ? AND status = 'trial'").run(validity.reason, iso, trial.id);
+      console.log(`🧬 genome ${trial.id} inconclusive (${validity.reason})`);
+      settled.push({ id: trial.id, status: 'inconclusive', wins: mine.wins, parentWins: theirs.wins });
+      continue;
+    }
     // paired comparison only on tasks both genomes could be scored on (a timed-out pair is unscorable, not lost)
     const discordant = (list: string[]) => {
       const scored = list.filter((h) => !unscorable(db, speciesKey, trial.id, h) && !unscorable(db, speciesKey, trial.parent, h));
@@ -462,10 +476,11 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
       decision: gradedDecision(diffs), refs: pairs.reduce((a, [pg, mg]) => a + Number(pg.graded) + Number(mg.graded), 0) };
     const significant = promotionRule() === 'graded' ? graded.decision === 'promote' : b > c && p < promotionAlpha();
     const wins = significant && mined.c - mined.b <= 1 && mine.outOfScope <= theirs.outOfScope && !promotedToday();
-    const status = wins ? 'active' : 'retired';
     const gradedNote = promotionRule() === 'graded' ? `; graded ${graded.mutant.toFixed(3)} vs ${graded.parent.toFixed(3)}, permutation p=${graded.p.toPrecision(3)} (${graded.decision})` : '';
-    db.prepare('UPDATE maker_genomes SET status = ?, note = ?, updated_at = ? WHERE id = ?')
-      .run(status, `holdout ${mine.wins}/${binary.length} vs parent ${theirs.wins}/${binary.length}; ${mutantCommits.length ? 'mutant ' : ''}discordant ${b} vs ${c}, McNemar p=${p.toFixed(3)}${gradedNote}${writeTestKeys.length ? `; write_test ${writeTestKeys.length} in the graded test` : ''}${mutantCommits.length ? `; mined discordant ${mined.b} vs ${mined.c}` : ''}; out of scope ${mine.outOfScope} vs ${theirs.outOfScope}${voidNote(trial.id)}`, iso, trial.id);
+    const note = `holdout ${mine.wins}/${binary.length} vs parent ${theirs.wins}/${binary.length}; ${mutantCommits.length ? 'mutant ' : ''}discordant ${b} vs ${c}, McNemar p=${p.toFixed(3)}${gradedNote}${writeTestKeys.length ? `; write_test ${writeTestKeys.length} in the graded test` : ''}${mutantCommits.length ? `; mined discordant ${mined.b} vs ${mined.c}` : ''}; out of scope ${mine.outOfScope} vs ${theirs.outOfScope}${voidNote(trial.id)}`;
+    let status: 'active' | 'retired' | 'inconclusive' = 'retired';
+    if (wins) status = promoteGenome(db, trial.id, decidingHoldout, deciding, note, iso).promoted ? 'active' : 'inconclusive';
+    else db.prepare("UPDATE maker_genomes SET status = 'retired', note = ?, updated_at = ? WHERE id = ?").run(note, iso, trial.id);
     if (trialDiagnosticsEnabled()) {
       try { // RX-4: record what this trial could have shown; never changes the decision above
         const scored = deciding.filter((h) => !unscorable(db, speciesKey, trial.id, h) && !unscorable(db, speciesKey, trial.parent, h));

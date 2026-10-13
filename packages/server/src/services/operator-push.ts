@@ -4,7 +4,7 @@ import { detectStalls } from './stall-watch';
 import { listSchedulers } from './scheduler-registry';
 import { dependencyLaneQueue, laneMode } from './dependency-lane';
 import { redactSecrets } from './secret-patterns';
-import { decisionsInbox, openDecisionCounts, type DecisionsInbox } from './decisions-inbox';
+import { decisionsInbox, openDecisionCounts, recordNeedsYouRanking, type DecisionsInbox } from './decisions-inbox';
 import { countOpenLoopPrs } from './loop-draft-pr-service';
 import { autoMergeEvidence } from './loop-auto-merge-state';
 
@@ -208,8 +208,9 @@ export function buildDigest(db: Database, now = Date.now(), env: NodeJS.ProcessE
     new_proposals_24h: one('SELECT COUNT(*) FROM self_improvements WHERE created_at >= ?', d1),
     approvals_expired_24h: one("SELECT COUNT(*) FROM approvals WHERE status = 'expired' AND updated_at >= ?", d1),
     approvals_pending: one("SELECT COUNT(*) FROM approvals WHERE status = 'pending'"),
-    loop_prs_settled: evidence ? (evidence.merge.settled as Array<{ state: string; survived: number | null; n: number }>).reduce((s, r) => s + r.n, 0) : 0,
-    loop_prs_survived: evidence ? (evidence.merge.settled as Array<{ survived: number | null; n: number }>).filter((r) => r.survived === 1).reduce((s, r) => s + r.n, 0) : 0,
+    // E1: settled = SETTLED_SURVIVED + SETTLED_REGRESSED (closed-unmerged, pending and anomalous PRs are not survival settlements)
+    loop_prs_settled: evidence?.merge.settlement?.settled ?? 0,
+    loop_prs_survived: evidence?.merge.settlement?.survived ?? 0,
     drafts_unsettled: evidence?.drafts.unsettled ?? 0,
     drafts_age_max_days: evidence?.drafts.age_days_max ?? null,
     gates: evidence ? Object.fromEntries(Object.entries(evidence.gates).map(([k, g]) => [k, (g as { state: string }).state])) : {},
@@ -260,5 +261,6 @@ let digestTimer: ReturnType<typeof setInterval> | null = null;
 /** One 15-minute tick for the daily digest and the triage push; armed only when one of them is enabled. */
 export function startOperatorDigest(db: Database): void {
   if (digestTimer || (!digestEnabled() && !triageEnabled())) return;
-  digestTimer = setInterval(() => { void maybeSendDigest(db).then(() => pushTriage(db)); }, 15 * 60_000); digestTimer.unref?.();
+  // ponytail: the Phase 3 shadow ranking rides this 15-min tick (once per day); its own scheduler if the digest is ever off
+  digestTimer = setInterval(() => { recordNeedsYouRanking(db); void maybeSendDigest(db).then(() => pushTriage(db)); }, 15 * 60_000); digestTimer.unref?.();
 }
