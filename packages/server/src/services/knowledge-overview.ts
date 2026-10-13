@@ -13,9 +13,12 @@ export interface KnowledgeOverview {
   recent_relevant: Array<{ ref: string; title: string; source: string; at: string }>;
   kb_retrieval: { hits_30d: number; panels_30d: number; last: string | null };
   interest_profile: { at: string; terms: string[] } | null;
+  /** DI-001 C: DISCOVERY_RELEVANCE_PAUSED — discoveries stored unjudged and the jev calls (and tokens, estimated) not made. */
+  relevance_pause: { paused: boolean; unjudged: { pending: number; rejected: number; unit: number }; calls_avoided: number;
+    mean_tokens_per_call: number | null; tokens_avoided_estimate: number | null; basis: string };
 }
 
-export function knowledgeOverview(db: Database, now = Date.now()): KnowledgeOverview {
+export function knowledgeOverview(db: Database, now = Date.now(), env: NodeJS.ProcessEnv = process.env): KnowledgeOverview {
   const all = <T>(sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } };
   const d30 = new Date(now - 30 * 86_400_000).toISOString(); const d7 = new Date(now - 7 * 86_400_000).toISOString();
   const bySource = new Map<string, SourceRow>();
@@ -73,8 +76,24 @@ export function knowledgeOverview(db: Database, now = Date.now()): KnowledgeOver
       interest_profile = { at: profile.created_at, terms };
     } catch { /* malformed payload: no profile */ }
   }
+  // DI-001 C: a call is avoided per unjudged ref; keyword-rejected ones only up to the R3 daily cap (that is all R3 would judge)
+  const cap = Number(env.DISCOVERY_GATE_SHADOW_MAX_PER_DAY) || 100;
+  const unjudged = { pending: 0, rejected: 0, unit: 0 }; let calls_avoided = 0;
+  for (const p of all<{ path: string; refs: number }>(`SELECT json_extract(payload, '$.relevance_paused') AS path, COUNT(DISTINCT json_extract(payload, '$.ref')) AS refs
+      FROM external_events WHERE event_type LIKE 'discovery.%' AND json_extract(payload, '$.relevance') = 'unjudged'
+      GROUP BY 1, substr(json_extract(payload, '$.relevance_paused_at'), 1, 10)`)) {
+    if (p.path !== 'pending' && p.path !== 'rejected' && p.path !== 'unit') continue;
+    unjudged[p.path] += p.refs; calls_avoided += p.path === 'rejected' ? Math.min(cap, p.refs) : p.refs;
+  }
+  const last = all<{ t: string | null }>("SELECT MAX(created_at) AS t FROM judgments WHERE judgment = 'discovery_relevance' AND decision <> 'error'")[0]?.t ?? null;
+  const mean = last ? all<{ m: number | null }>(`SELECT AVG(input_tokens + output_tokens) AS m FROM judgments WHERE judgment = 'discovery_relevance' AND decision <> 'error' AND created_at >= ?`,
+    new Date(Date.parse(last) - 7 * 86_400_000).toISOString())[0]?.m ?? null : null;
+  const mean_tokens_per_call = mean === null ? null : Math.round(mean);
+  const relevance_pause = { paused: env.DISCOVERY_RELEVANCE_PAUSED === 'true', unjudged, calls_avoided, mean_tokens_per_call,
+    tokens_avoided_estimate: mean_tokens_per_call === null ? null : calls_avoided * mean_tokens_per_call,
+    basis: 'estimate: calls avoided × mean input+output tokens of the 7 days up to the last real discovery_relevance call' };
   return {
-    at: new Date(now).toISOString(), sources, relevance, recent_relevant,
+    at: new Date(now).toISOString(), sources, relevance, recent_relevant, relevance_pause,
     kb_retrieval: { hits_30d: kb?.hits ?? 0, panels_30d: kb?.panels ?? 0, last: kb?.last ?? null },
     interest_profile,
   };

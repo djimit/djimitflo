@@ -31,6 +31,18 @@ export function discoveryRelevanceSources(env: NodeJS.ProcessEnv = process.env):
   return list.length ? new Set(list) : null;
 }
 
+/**
+ * DI-001 C (operator 14-10): DISCOVERY_RELEVANCE_PAUSED=true stops NEW discovery_relevance jev calls (default off =
+ * unchanged). Historical judgments and the judgment definition stay. No silent fallback — each path says what it does:
+ *  - FE2 admission (FRONTIER_UNITS_REQUIRE_RELEVANCE): no unit is admitted (fail-closed, as for "no verdict"); the bus
+ *    event is stored with `relevance: 'unjudged'` so rejudgePaused() can judge it after the pause.
+ *  - R3 / KE-2 (keyword-rejected): no shadow call, no override unit; the keyword gate's rejection stands, also marked.
+ *  - G3 direct path (REQUIRE_RELEVANCE off): the unit is created as before (it never waited for jev); only the shadow call goes.
+ * Readers of verdicts (fleet source gate, N4 term yields, knowledge overview) see no verdict = missing, never 'no'.
+ */
+export const discoveryRelevancePaused = (env: NodeJS.ProcessEnv = process.env): boolean => env.DISCOVERY_RELEVANCE_PAUSED === 'true';
+export type IngestResult = 'unit' | 'pending' | 'known' | 'irrelevant' | 'invalid' | 'paused-pending' | 'paused-rejected' | 'paused-unit';
+
 /** JEV-BURST: rejected-gate shadow judgments started but not yet recorded; the daily cap counts them (the rows only land later). */
 let rejectedInFlight = 0;
 
@@ -71,7 +83,7 @@ export class ExpertSourceUnitsService {
    * untrusted and clipped, and only discoveries that match the capability taxonomy become units — most briefing papers
    * (quantum, clinical) are noise for Djimitflo and stay in external_events only.
    */
-  ingestDiscovery(event: Record<string, unknown>): 'unit' | 'pending' | 'known' | 'irrelevant' | 'invalid' {
+  ingestDiscovery(event: Record<string, unknown>): IngestResult {
     const d = parseDiscovery(event);
     if (!d) return 'invalid';
     const { id, ref, title, note, categories } = d;
@@ -85,6 +97,7 @@ export class ExpertSourceUnitsService {
     if (!capabilities.length) {
       // R3 (shadow): the keyword gate's rejections were never measured. jev judges a capped share of them too, so its
       // relevance can be compared with the gate (yes-rate on rejected vs accepted) before it replaces the gate.
+      if (judgmentMode(discoveryRelevance.id) !== 'off' && discoveryRelevancePaused()) return 'paused-rejected';
       if (judgmentMode(discoveryRelevance.id) !== 'off' && this.rejectedShadowLeft()) {
         const pack = buildEvidencePack(this.db, 14);
         rejectedInFlight += 1;
@@ -107,6 +120,7 @@ export class ExpertSourceUnitsService {
     if (process.env.FRONTIER_UNITS_REQUIRE_RELEVANCE === 'true' && judgmentMode(discoveryRelevance.id) !== 'off') {
       // a failed call (queue full, timeout) is not a verdict: the ref is judged again when it is sent again
       if (this.db.prepare("SELECT 1 FROM judgments WHERE judgment = 'discovery_relevance' AND subject_id = ? AND decision <> 'error' LIMIT 1").get(ref)) return 'known';
+      if (discoveryRelevancePaused()) return 'paused-pending';
       const pack = buildEvidencePack(this.db, 14);
       void runJudgment(this.db, discoveryRelevance, { type: 'discovery_pending', id: ref }, { title, note, capabilities, open_problems: { failing_gates: pack.top_failing_gates, failure_causes: pack.failure_causes } })
         .then((verdict) => {
@@ -121,6 +135,7 @@ export class ExpertSourceUnitsService {
     const expertId = createUnit();
     // G3 (shadow): is this discovery relevant beyond its topic? Fire-and-forget; never blocks ingestion.
     if (judgmentMode(discoveryRelevance.id) !== 'off') {
+      if (discoveryRelevancePaused()) return 'paused-unit';
       const pack = buildEvidencePack(this.db, 14);
       void runJudgment(this.db, discoveryRelevance, { type: 'expert_unit', id: expertId }, { title, note, capabilities, open_problems: { failing_gates: pack.top_failing_gates, failure_causes: pack.failure_causes } }).catch(() => undefined);
     }
@@ -185,6 +200,7 @@ export class ExpertSourceUnitsService {
    */
   retryErroredRelevance(limit = 50): { retried: number; skipped?: string } {
     if (judgmentMode(discoveryRelevance.id) === 'off') return { retried: 0, skipped: 'off' };
+    if (discoveryRelevancePaused()) return { retried: 0, skipped: 'paused' };
     if (typesafeBusy()) return { retried: 0, skipped: 'jev_busy' };
     const rows = this.db.prepare(`SELECT j.subject_id AS ref, j.subject_type AS type FROM judgments j
       WHERE j.judgment = 'discovery_relevance' AND j.decision = 'error' AND j.subject_type IN ('discovery_pending', 'discovery_rejected')
@@ -201,6 +217,31 @@ export class ExpertSourceUnitsService {
       retried += 1;
     }
     return { retried };
+  }
+
+  /**
+   * DI-001 C: after the pause, a discovery stored as `relevance: 'unjudged'` (FE2 or keyword-rejected path) is re-ingested
+   * once through the normal path (same scope, gate, R3 cap and jev limiter), ≤ `limit` refs per call, and marked
+   * 'requeued'. A rejected one over today's R3 cap waits for the next call. Not auto-run (the FE scheduler is off on prod).
+   */
+  rejudgePaused(limit = 50): { requeued: number; skipped?: string } {
+    if (judgmentMode(discoveryRelevance.id) === 'off') return { requeued: 0, skipped: 'off' };
+    if (discoveryRelevancePaused()) return { requeued: 0, skipped: 'paused' };
+    if (typesafeBusy()) return { requeued: 0, skipped: 'jev_busy' };
+    const rows = this.db.prepare(`SELECT json_extract(payload, '$.ref') AS ref, MAX(payload) AS payload, json_extract(payload, '$.relevance_paused') AS path FROM external_events
+      WHERE event_type LIKE 'discovery.%' AND json_extract(payload, '$.relevance') = 'unjudged' AND json_extract(payload, '$.relevance_paused') IN ('pending', 'rejected')
+      GROUP BY 1 ORDER BY MIN(occurred_at) LIMIT ?`).all(limit) as Array<{ ref: string; payload: string; path: string }>;
+    const mark = this.db.prepare("UPDATE external_events SET payload = json_set(payload, '$.relevance', 'requeued', '$.relevance_requeued_at', ?) WHERE event_type LIKE 'discovery.%' AND json_extract(payload, '$.ref') = ? AND json_extract(payload, '$.relevance') = 'unjudged'");
+    let requeued = 0;
+    for (const row of rows) {
+      if (row.path === 'rejected' && !this.rejectedShadowLeft()) continue; // the daily cap: next call
+      const event = JSON.parse(row.payload) as Record<string, unknown>;
+      for (const key of ['relevance', 'relevance_paused', 'relevance_paused_at']) delete event[key];
+      mark.run(new Date().toISOString(), row.ref);
+      this.ingestDiscovery(event);
+      requeued += 1;
+    }
+    return { requeued };
   }
 
   private sourceAllowed(source: string): boolean {

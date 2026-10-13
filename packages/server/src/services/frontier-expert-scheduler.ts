@@ -130,6 +130,9 @@ export class FrontierExpertScheduler {
         // KE-5: discovery judgments that failed (queue full, timeout) get one more try, ≤ 50 a tick
         const retry = sourceUnits.retryErroredRelevance(50);
         if (retry.retried) console.log(`🔭 discovery relevance: ${retry.retried} errored judgment(s) retried`);
+        // DI-001 C: discoveries stored unjudged during DISCOVERY_RELEVANCE_PAUSED are judged once the pause is lifted
+        const rejudge = sourceUnits.rejudgePaused(50);
+        if (rejudge.requeued) console.log(`🔭 discovery relevance: ${rejudge.requeued} paused discovery(ies) re-judged`);
       } catch (err) {
         result.failed.push({ stage: 'enrich', error: `source units: ${err instanceof Error ? err.message : String(err)}` });
       }
