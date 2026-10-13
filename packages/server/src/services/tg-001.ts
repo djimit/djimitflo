@@ -22,7 +22,34 @@ import type { LoopFinding } from './loop-discovery-service';
  *   TG_001_MODE=on (default off)
  */
 export const tg001On = (env: NodeJS.ProcessEnv = process.env): boolean => env.TG_001_MODE === 'on';
-export const TG_ID = 'tg-001';
+/** The pre-registered experiment (plan + analysis.experiment_id); kept out of every generation so the plan's fingerprints carry no generation. */
+export const TG_PLAN_ID = 'tg-001';
+/**
+ * Each physical execution of the frozen plan is a generation (docs/research/ace/TG-001_R1_INCIDENT.md). r1 was lost to a
+ * provider snapshot rollback; r2 is current. Every row and key that identifies an attempt, claim or result carries TG_ID;
+ * rows of another generation are never served, resumed, settled or pooled.
+ */
+export const TG_GENERATION = 'r2';
+export const TG_ID = `${TG_PLAN_ID}-${TG_GENERATION}`;
+/**
+ * Prior generations — a durable record, not data: never inserted into tg_experiments/tg_attempts, never counted in any
+ * analysis. r1 values are the GO checklist recorded externally at 2026-10-11T23:20:22Z.
+ */
+export const TG_PRIOR_GENERATIONS = [{
+  generation: 'r1', experiment_id: TG_PLAN_ID, status: 'ABORTED_DATA_LOSS', frozen_at: '2026-10-11T23:04:15.146Z', first_attempt_at: '2026-10-11T23:25:18.735Z',
+  attempts_executed: '~5 UNKNOWN/LOST', cause: 'provider snapshot rollback to ~2026-10-11T04:11Z', pooled: false,
+  record_at: '2026-10-11T23:20:22Z',
+  analysis_fingerprint: 'ff29c34441f68804b0177b0599f673f369386e139234662eeb33f23d234e70ec',
+  task_set_fingerprint: 'd0eee603a3afa4fbf1988f9bd9a26c4bc0564ae1d98e08d02755a578a57e1594',
+  prompt_fingerprints: { A: '1ca310dc176dcf2a0658857dd03f157f7cd7fd7d9a6b9f4bbae9a1dd7bf33ca0', B: 'fa7fdcc1238f085e84e161f5c04f92db630115e22e123aca1f64bafc711df5f5',
+    C: '5a8270f5f6833182166ed7ef5dc1c0d77057b297e3672c0667e09fa968dfa4c4', D: '8736acc0038db7db96a13bfb2d0e7cf9856bdfc1076cb84eb275c10313ddb671' },
+  seed: 11102026, gate_version: '633dd7a096aba028eebff3228fd4a0cd23ec044cf089cd6caad95c4890a6ba47', classifier_version: 'tg-classifier-v2', step_budget: 40,
+  model_router: 'atomic@llama-router', worker_version: 'scripts/gym-worker.mjs@sha256:409ef06ef0de45c091cd2705538b04ef1dafcc6940f9b9707f45d0bdb3f8a7d1',
+  git_commit: 'a4f241c1a381bb4217f98450bdc83705520fbf19',
+}] as const;
+export type TgPlanRecord = { analysis_fingerprint: string; task_set_fingerprint: string; prompt_fingerprints: Record<TgArm, string>; seed: number; gate_version: string;
+  classifier_version: string; step_budget: number; model_router: string; frozen_at: string; git_commit: string | null; worker_version: string | null };
+export const TG_R1: TgPlanRecord = TG_PRIOR_GENERATIONS[0];
 /** B27: loop_runs.loop_name of TG-001 attempts — never 'evolution-gym', so gym statistics exclude them by provenance */
 export const TG_LOOP = 'tg-001';
 export const TG_ARMS = ['A', 'B', 'C', 'D'] as const;
@@ -100,7 +127,7 @@ export function productionArms(db: Database, task: FailureTask, checkoutPath: st
 }
 
 export interface TgManifest {
-  id: string; frozen_at: string; commit: string | null; species: string; harness: string | null; evaluator: { oracle: string; prod_gates: unknown };
+  id: string; generation?: string; frozen_at: string; commit: string | null; species: string; harness: string | null; evaluator: { oracle: string; prod_gates: unknown };
   flags: Record<string, string | null>; seed: number; arms: Record<TgArm, string>; c_removed: AssignmentOmit[];
   tasks: Array<{ key: string; lane: string; run_id: string; base: string; source: string; target: string; prior_gym_attempts: number; prompt_sha256: Record<TgArm, string>; prompts: Record<TgArm, string>; task: FailureTask }>;
   skipped: Array<{ key: string; reason: string }>;
@@ -153,7 +180,7 @@ export function freezeTg001(db: Database, tasks: FailureTask[], ctx: { checkoutP
   for (const t of pool) { if (picked.length >= TG_TASKS) break; if (!picked.some((p) => p.key === t.commit) && !skipped.some((s) => s.key === t.commit)) take(t); }
   if (picked.length < TG_MIN_TASKS) return { frozen: false, reason: `only ${picked.length} renderable write_test tasks (need ${TG_MIN_TASKS})` };
   const manifest: TgManifest = {
-    id: TG_ID, frozen_at: ctx.now, commit: ctx.commit, species: ctx.species, harness: ctx.harness, evaluator: { oracle: WRITE_TEST_ORACLE, prod_gates: ctx.prodGates },
+    id: TG_ID, generation: TG_GENERATION, frozen_at: ctx.now, commit: ctx.commit, species: ctx.species, harness: ctx.harness, evaluator: { oracle: WRITE_TEST_ORACLE, prod_gates: ctx.prodGates },
     flags: Object.fromEntries(TG_FLAGS.map((f) => [f, env[f] ?? null])), seed: TG_SEED,
     arms: { A: 'MINIMAL_GYM', B: 'FULL_PRODUCTION', C: 'CONTROLLED_PRODUCTION', D: 'STRUCTURED_MINIMAL' }, c_removed: TG_C_REMOVED, tasks: picked, skipped,
   };
@@ -162,7 +189,7 @@ export function freezeTg001(db: Database, tasks: FailureTask[], ctx: { checkoutP
   const ins = db.prepare("INSERT INTO tg_attempts (id, experiment_id, task_key, arm, seq, status, retries, updated_at) VALUES (?, ?, ?, ?, ?, 'pending', 0, ?)");
   db.transaction(() => {
     db.prepare('INSERT INTO tg_experiments (id, frozen_at, manifest_json, analysis_sha256) VALUES (?, ?, ?, ?)').run(TG_ID, ctx.now, JSON.stringify(manifest), sha(canonicalJson(manifest.analysis)));
-    for (const s of schedule) ins.run(randomUUID(), TG_ID, s.task_key, s.arm, s.seq, ctx.now);
+    for (const s of schedule) ins.run(`${TG_ID}:${randomUUID()}`, TG_ID, s.task_key, s.arm, s.seq, ctx.now);
   })();
   return { frozen: true, manifest };
 }
@@ -170,7 +197,8 @@ export function freezeTg001(db: Database, tasks: FailureTask[], ctx: { checkoutP
 /** Integrity addendum: the analysis plan, fixed before any outcome. Prior gym attempts on a task ran the ordinary gym goal = arm A. */
 export function tgAnalysisPlan(m: TgManifest, schedule: Array<{ seq: number; task_key: string; arm: TgArm }>): TgAnalysis {
   return {
-    experiment_id: m.id, frozen_at: m.frozen_at, commit: m.commit, worker_version: m.harness, task_ids: m.tasks.map((t) => t.key),
+    // the plan's id, not the generation's: identical tasks/prompts/seed reproduce the same analysis fingerprint in every generation
+    experiment_id: TG_PLAN_ID, frozen_at: m.frozen_at, commit: m.commit, worker_version: m.harness, task_ids: m.tasks.map((t) => t.key),
     task_fingerprints: Object.fromEntries(m.tasks.map((t) => [t.key, sha(canonicalJson(t.task))])),
     prompt_fingerprints: Object.fromEntries(m.tasks.map((t) => [t.key, t.prompt_sha256])), seed: m.seed, condition_order: schedule,
     retry_policy: `an infra discard re-queues the same (task, arm) at most ${TG_MAX_INFRA_RETRIES}×; retries are not observations — the first non-infra result is the observation`,
@@ -211,7 +239,7 @@ export function tgGoChecklist(db: Database, deploy: { commit: string | null; bui
   const validity = m ? tgAnalysisValidity(db, m) : { valid: false, reason: 'not frozen' };
   const first = m ? firstPhysicalAttempt(db, m.id) : null;
   const record = m ? {
-    experiment_id: m.id, git_commit: m.commit, deploy_commit: deploy.commit, build_id: deploy.build_id, worker_version: m.harness, installed_worker_sha256: deploy.worker_sha256,
+    experiment_id: m.id, generation: m.generation ?? null, git_commit: m.commit, deploy_commit: deploy.commit, build_id: deploy.build_id, worker_version: m.harness, installed_worker_sha256: deploy.worker_sha256,
     analysis_fingerprint: sha(canonicalJson(m.analysis)), task_set_fingerprint: sha(canonicalJson(m.tasks.map((t) => t.key))),
     prompt_fingerprints: Object.fromEntries(TG_ARMS.map((a) => [a, sha(canonicalJson(m.tasks.map((t) => sha(t.prompts[a]))))])),
     seed: m.seed, gate_version: sha(canonicalJson(m.evaluator ?? null)), classifier_version: TG_CLASSIFIER_VERSION, retry_policy: `infra discard re-queued ≤ ${TG_MAX_INFRA_RETRIES}×; semantic failures never retried`,
@@ -222,8 +250,30 @@ export function tgGoChecklist(db: Database, deploy: { commit: string | null; bui
     no_attempt_yet: first === null,
     worker_matches_manifest: Boolean(m && m.harness && deploy.worker_sha256 && (m.harness === deploy.worker_sha256 || m.harness.endsWith(`:${deploy.worker_sha256}`))),
     deploy_matches_manifest: Boolean(m && deploy.commit && m.commit === deploy.commit),
+    plan_matches_r1: false,
   };
-  return { record, checks, go: Object.entries(checks).every(([k, v]) => k === 'analysis_reason' || k === 'no_attempt_yet' || v === true) };
+  const differs = m && record ? tgPlanDiff(m, record) : ['not frozen'];
+  checks.plan_matches_r1 = differs.length === 0;
+  const plan_reuse = { compared_to: 'r1', matches: checks.plan_matches_r1, differs,
+    // commit and worker may differ between generations; they are recorded here, never compared
+    recorded_separately: { git_commit: { r1: TG_R1.git_commit, current: m?.commit ?? null }, worker_version: { r1: TG_R1.worker_version, current: m?.harness ?? null } } };
+  return { record, checks, plan_reuse, go: Object.entries(checks).every(([k, v]) => k === 'analysis_reason' || k === 'no_attempt_yet' || v === true) };
+}
+
+/**
+ * plan_matches_r1: the plan fields of this generation that differ from the frozen r1 plan (empty = the same plan). The analysis
+ * object carries frozen_at, commit and worker_version, which a new generation cannot share, so its fingerprint is re-hashed
+ * once with those three set to r1's exact values (frozen_at to the millisecond, from the prod probe).
+ */
+export function tgPlanDiff(m: TgManifest, rec: { task_set_fingerprint: string; prompt_fingerprints: Record<string, string>; seed: number; gate_version: string;
+  classifier_version: string; step_budget: number; model_router: string }, r1: TgPlanRecord = TG_R1): string[] {
+  const out: string[] = [];
+  if (!m.analysis) out.push('analysis_fingerprint');
+  else if (sha(canonicalJson({ ...m.analysis, frozen_at: r1.frozen_at, commit: r1.git_commit, worker_version: r1.worker_version })) !== r1.analysis_fingerprint) out.push('analysis_fingerprint');
+  if (rec.task_set_fingerprint !== r1.task_set_fingerprint) out.push('task_set_fingerprint');
+  for (const a of TG_ARMS) if (rec.prompt_fingerprints[a] !== r1.prompt_fingerprints[a]) out.push(`prompt_fingerprints.${a}`);
+  for (const k of ['seed', 'gate_version', 'classifier_version', 'step_budget', 'model_router'] as const) if (rec[k] !== r1[k]) out.push(k);
+  return out;
 }
 
 /** Earliest physical execution attempt (claim or result) of the experiment; null = none yet; undefined = unreadable. */
@@ -240,6 +290,7 @@ export function firstPhysicalAttempt(db: Database, experimentId: string): string
 
 /** The next queued (task, arm), oldest seq first; it is marked claimed for this run. */
 export function claimTg001(db: Database, manifest: TgManifest, runId: string, now: string): { attempt_id: string; arm: TgArm; task: FailureTask; prompt: string } | null {
+  if (manifest.id !== TG_ID) return null; // a manifest of another generation is never served
   const row = db.prepare("SELECT id, task_key, arm FROM tg_attempts WHERE experiment_id = ? AND status = 'pending' ORDER BY seq LIMIT 1").get(TG_ID) as { id: string; task_key: string; arm: TgArm } | undefined;
   if (!row) return null;
   const entry = manifest.tasks.find((t) => t.key === row.task_key);
@@ -287,11 +338,12 @@ export function classifyTgFailure(status: string, reason: string, m: TgMetrics):
 
 /** A run's result settles its attempt; an infra discard (or a timeout without a change) re-queues it up to TG_MAX_INFRA_RETRIES. */
 export function recordTg001(db: Database, attemptId: string, runId: string, result: { status: string; reason: string; durationMs?: unknown; tg_metrics?: unknown }, now: string): void {
-  const row = db.prepare('SELECT status, retries, history_json FROM tg_attempts WHERE id = ? AND run_id = ?').get(attemptId, runId) as { status: string; retries: number; history_json: string | null } | undefined;
+  // only an attempt of the current generation is ever settled (a pre-restore claim never resumes)
+  const row = db.prepare('SELECT status, retries, history_json FROM tg_attempts WHERE id = ? AND run_id = ? AND experiment_id = ?').get(attemptId, runId, TG_ID) as { status: string; retries: number; history_json: string | null } | undefined;
   if (!row || row.status !== 'claimed') return;
   const metrics = sanitizeTgMetrics(result.tg_metrics);
   const failure = classifyTgFailure(result.status, String(result.reason || ''), metrics);
-  const rec = { run_id: runId, status: result.status, reason: String(result.reason || '').slice(0, 200), duration_ms: num(result.durationMs), failure, metrics, at: now };
+  const rec = { generation: TG_GENERATION, run_id: runId, status: result.status, reason: String(result.reason || '').slice(0, 200), duration_ms: num(result.durationMs), failure, metrics, at: now };
   const history = [...(row.history_json ? JSON.parse(row.history_json) as unknown[] : []), rec];
   const infra = result.status === 'discarded' && /^infra:/.test(rec.reason);
   const status = infra && row.retries < TG_MAX_INFRA_RETRIES ? 'pending' : result.status === 'discarded' ? (infra ? 'infra_exhausted' : 'invalid') : 'done';
@@ -421,9 +473,11 @@ export function tgInterpret(primary: { n_pairs: number; effect: number | null; c
 /** Evidence section: per arm results, failure categories, cost/latency, and the paired A vs B (+ C, D vs B) comparisons. */
 export function tg001Evidence(db: Database, env: NodeJS.ProcessEnv = process.env) {
   const manifest = tgManifest(db);
-  if (!manifest) return { mode: env.TG_001_MODE ?? null, status: 'not_frozen' as const, tasks: 0, arms: [], paired: [] };
+  // read-only record of earlier generations: shown, never pooled (rows are selected by the current TG_ID only)
+  const gen = { experiment_id: TG_ID, generation: TG_GENERATION, prior_generations: TG_PRIOR_GENERATIONS };
+  if (!manifest) return { mode: env.TG_001_MODE ?? null, ...gen, status: 'not_frozen' as const, tasks: 0, arms: [], paired: [] };
   const validity = tgAnalysisValidity(db, manifest);
-  if (!validity.valid) return { mode: env.TG_001_MODE ?? null, status: 'invalid_manifest' as const, reason: validity.reason, tasks: manifest.tasks.length, arms: [], paired: [], label: TG_LABEL };
+  if (!validity.valid) return { mode: env.TG_001_MODE ?? null, ...gen, status: 'invalid_manifest' as const, reason: validity.reason, tasks: manifest.tasks.length, arms: [], paired: [], label: TG_LABEL };
   let rows: Array<{ task_key: string; arm: string; seq: number; status: string; result_json: string | null }> = [];
   try { rows = db.prepare('SELECT task_key, arm, seq, status, result_json FROM tg_attempts WHERE experiment_id = ?').all(TG_ID) as typeof rows; } catch { rows = []; }
   const obs = rows.map((r) => { const res = r.result_json ? JSON.parse(r.result_json) as { status: string; failure: TgFailure | null; duration_ms: number | null; metrics: TgMetrics } : null;
@@ -468,7 +522,7 @@ export function tg001Evidence(db: Database, env: NodeJS.ProcessEnv = process.env
   const prior = Object.values(manifest.analysis!.prior_exposure);
   const open = obs.some((r) => r.status === 'pending');
   const primary = paired[0];
-  return { mode: env.TG_001_MODE ?? null, status: open ? 'collecting' as const : 'complete' as const, label: TG_LABEL, frozen_at: manifest.frozen_at, commit: manifest.commit, species: manifest.species,
+  return { mode: env.TG_001_MODE ?? null, ...gen, status: open ? 'collecting' as const : 'complete' as const, label: TG_LABEL, frozen_at: manifest.frozen_at, commit: manifest.commit, species: manifest.species,
     harness: manifest.harness, tasks: manifest.tasks.length, skipped: manifest.skipped.length, mde: TG_MDE, alpha: TG_ALPHA, interpretation_rules: TG_INTERPRETATION,
     arms, paired, omnibus_cochran_q: omnibus, order_effects: { positions, cochran_q: posQ }, censoring,
     prior_exposure: { exposed: prior.filter((p) => p.prior_exposure).length, unexposed: prior.filter((p) => !p.prior_exposure).length, prior_attempts: prior.reduce((a, p) => a + p.prior_attempt_count, 0) },

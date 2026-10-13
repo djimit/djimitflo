@@ -18,7 +18,7 @@ import { redactSecrets } from './secret-patterns';
 import { remoteGymCap } from './stall-watch';
 import { gymSkillContentHash } from './gym-skill-hash';
 import { gradedFitnessMode, gradedRefs, roundGraded, type GradedKind } from './graded-fitness';
-import { TG_CAPABILITY, TG_LOOP, claimTg001, freezeTg001, recordTg001, tg001On, tgManifest } from './tg-001';
+import { TG_CAPABILITY, TG_GENERATION, TG_ID, TG_LOOP, claimTg001, freezeTg001, recordTg001, tg001On, tgManifest } from './tg-001';
 import { dreamEvolutionEnabled, ensureBaseline, fireCheckVoid, genome, genomeFireCheck, holdout, mutantHoldout, mutantTrialsEnabled, nextTrialAttempt, parseFireCheck, writeTestHoldout, writeTestHoldoutEnabled, type Genome } from './genome-registry';
 
 /**
@@ -122,7 +122,7 @@ export function prepareGymDiff(raw: string): { diff: string; sha256: string; red
   return { diff, sha256: createHash('sha256').update(diff).digest('hex'), redacted: count, truncated };
 }
 
-export type RemoteGymClaim = { runId: string; species: string; task: GymTask; genome?: { id: string; lines: string[] }; prod_gates?: ProdGatesConfig; prompt_override?: string; tg?: { experiment: string; arm: string } } | { skipped: string };
+export type RemoteGymClaim = { runId: string; species: string; task: GymTask; genome?: { id: string; lines: string[] }; prod_gates?: ProdGatesConfig; prompt_override?: string; tg?: { experiment: string; generation: string; arm: string } } | { skipped: string };
 export interface RemoteGymResult { status: 'success' | 'failure' | 'discarded'; reason: string; tokens?: number; durationMs?: number; changed_files?: unknown; diff?: unknown; killed_mutants?: unknown; prod_gates?: unknown; fire_check?: unknown; graded?: unknown; graded_kind?: unknown; tg_metrics?: unknown }
 
 export class RemoteGymService {
@@ -163,14 +163,14 @@ export class RemoteGymService {
     // can take a prompt override, write_test tasks and production gates — the primary metric is prod-gated success)
     const caps = (opts.capabilities ?? []).map(String);
     const runId = randomUUID();
-    let tg: { experiment: string; arm: string; attempt_id: string } | null = null; let promptOverride: string | undefined;
+    let tg: { experiment: string; generation: string; arm: string; attempt_id: string } | null = null; let promptOverride: string | undefined;
     if (tg001On() && gymProdGatesEnabled() && [TG_CAPABILITY, FAILURE_TASK_CAPABILITY, PROD_GATES_CAPABILITY].every((c) => caps.includes(c))) {
       // B27: the claim that freezes the plan starts no TG attempt, so the plan strictly predates the first physical attempt
       const frozen = tgManifest(this.db);
       if (!frozen) freezeTg001(this.db, this.failureTasks(repo), { checkoutPath: repo, species: key, commit: gitHead(repo), harness: harnessHash(repo),
         prodGates: prodGatesConfig(), reserved: new Set(holdoutKeys(this.db)), now: now.toISOString() });
       const next = frozen && frozen.species === key && frozen.frozen_at < now.toISOString() ? claimTg001(this.db, frozen, runId, now.toISOString()) : null;
-      if (next) { task = next.task; promptOverride = next.prompt; tg = { experiment: frozen!.id, arm: next.arm, attempt_id: next.attempt_id }; }
+      if (next) { task = next.task; promptOverride = next.prompt; tg = { experiment: frozen!.id, generation: TG_GENERATION, arm: next.arm, attempt_id: next.attempt_id }; }
     }
     if (!task && canaryDue(this.db, (opts.capabilities ?? []).map(String))) {
       const c = mutantTask(this.db, repo, key, new Set([...triedTasks(this.db, key), ...holdoutKeys(this.db)]));
@@ -215,7 +215,7 @@ export class RemoteGymService {
       .run(runId, tg ? TG_LOOP : 'evolution-gym', repo, JSON.stringify({ gym: gymMeta }), now.toISOString(), now.toISOString());
     if (!tg) recordEffortGym(this.db, runId, key, task.commit); // EVC effort controller: shadow only (serve vs skip), changes nothing
     return { runId, species: key, task, ...(trialGenome ? { genome: { id: trialGenome.id, lines: trialGenome.lines } } : {}), ...(gates ? { prod_gates: gates } : {}),
-      ...(tg ? { prompt_override: promptOverride, tg: { experiment: tg.experiment, arm: tg.arm } } : {}) };
+      ...(tg ? { prompt_override: promptOverride, tg: { experiment: tg.experiment, generation: tg.generation, arm: tg.arm } } : {}) };
   }
 
   /** Injectable for tests; production reads the deploy checkout's git history. */
@@ -223,9 +223,11 @@ export class RemoteGymService {
 
   record(runId: string, host: string, result: RemoteGymResult): void {
     const row = this.db.prepare("SELECT status, json_extract(metadata, '$.gym') AS gym FROM loop_runs WHERE id = ?").get(runId) as { status: string; gym: string | null } | undefined;
-    const gym = row?.gym ? JSON.parse(row.gym) as GymTask & { species: string; remote_host?: string; genome?: string; probe?: number; canary?: number; mutant_keys?: string[]; prod_gates?: number; tg?: { attempt_id: string } } : null;
+    const gym = row?.gym ? JSON.parse(row.gym) as GymTask & { species: string; remote_host?: string; genome?: string; probe?: number; canary?: number; mutant_keys?: string[]; prod_gates?: number; tg?: { attempt_id: string; experiment?: string } } : null;
     if (!row || !gym || gym.remote_host !== host) throw new Error('GYM_RUN_NOT_FOUND');
     if (row.status !== 'running') throw new Error('GYM_RUN_ALREADY_SETTLED');
+    // TG-001 generations: a result for a run claimed under another generation (e.g. before a restore) is never accepted
+    if (gym.tg && gym.tg.experiment !== TG_ID) throw new Error('GYM_RUN_STALE_GENERATION');
     if (!['success', 'failure', 'discarded'].includes(result.status)) throw new Error('GYM_RESULT_INVALID');
     const reason = String(result.reason || '').slice(0, 200);
     // GENOME_FIRE_CHECK: a trial attempt without proof that the genome's lines reached the maker is VOID (genome-registry)

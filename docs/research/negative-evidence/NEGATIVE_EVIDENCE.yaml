@@ -132,6 +132,21 @@
       "forbidden_reuse": ["installing REA's MCP server or skill"],
       "forbidden_code_patterns": [],
       "reopen_condition": "A concrete question the shipped-code scan cannot answer, plus operator approval of an isolated host."
+    },
+    {
+      "id": "NE-010",
+      "title": "MiroFish (LLM social simulation) as prediction or evolution substrate",
+      "hypothesis": "Running MiroFish-style LLM social simulations, or adopting its mechanisms directly, improves Djimitflo's prediction, capability discovery or evolutionary selection.",
+      "verdict": "REJECT",
+      "decided_on": "2026-10-12",
+      "conditions": "github.com/666ghj/MiroFish at commit 7657031ac01184afe2cb220f5ee3545573b5e843 (2026-10-02), AGPL-3.0, source read only; not installed or run.",
+      "result": "No outcome validation of any kind; simulated posts written into the same Zep graph as seed facts without a marker; unauthenticated 0.0.0.0 API with CORS * and a default secret; one shared model, generated persona parameters unused; unseeded and unreproducible; nothing selected or retained across runs.",
+      "why": "Simulation narratives are not evidence; provenance contamination violates SIMULATED != OBSERVED != VERIFIED; security below production requirements; no evolutionary mechanism; does not touch Djimitflo's limiting stage (verified -> merged -> settled). AGPL-3.0 is a separate constraint.",
+      "evidence": ["docs/research/negative-evidence/NE-010-mirofish.md", "github.com/666ghj/MiroFish@7657031ac01184afe2cb220f5ee3545573b5e843"],
+      "allowed_follow_up": "DEFER: interviewing the agents of a finished run as a debugging pattern for Djimitflo's own committee and panel traces; nothing built.",
+      "forbidden_reuse": ["writing simulation output into DjimitWiki, production memory or the verified knowledge graph as fact", "running MiroFish as shipped on a networked host"],
+      "forbidden_code_patterns": ["camel-oasis", "zep-cloud"],
+      "reopen_condition": "A new implementation or verified evidence meeting all of: pre-registered evaluation; comparison against simple statistical and historical baselines; independent real-world outcome validation; strict separation of simulated, inferred and observed data; reproducible experiments with protected holdouts; authentication, authorisation, secrets and isolation controls; measurable benefit over existing Djimitflo capabilities; acceptable licence and cost. Permits a new evaluation, not adoption."
     }
   ]
 }
