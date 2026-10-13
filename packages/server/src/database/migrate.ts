@@ -1407,6 +1407,10 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   addMissingColumns(db, 'llm_model_calls', [{ name: 'purpose', definition: 'TEXT' }, { name: 'experiment_id', definition: 'TEXT' },
     { name: 'cost_basis', definition: 'TEXT' }, { name: 'list_price_cost', definition: 'REAL' }, { name: 'marginal_cost', definition: 'REAL' }]);
   addMissingColumns(db, 'gym_mutant_holdout', [{ name: 'epoch', definition: 'INTEGER NOT NULL DEFAULT 0' }]);
+  // Holdout epoch 1: calibration rows never decide; one provenance row per manifest-frozen epoch (holdout-manifest.ts)
+  for (const t of ['gym_holdout', 'gym_mutant_holdout', 'gym_write_test_holdout']) addMissingColumns(db, t, [{ name: 'role', definition: "TEXT NOT NULL DEFAULT 'deciding'" }]);
+  db.exec(`CREATE TABLE IF NOT EXISTS gym_holdout_freezes (epoch INTEGER PRIMARY KEY, manifest_sha256 TEXT NOT NULL, frozen_at TEXT NOT NULL, origin_sha TEXT, version TEXT,
+    holdout_size INTEGER NOT NULL, counts_json TEXT NOT NULL, operator TEXT, manifest_json TEXT NOT NULL)`);
   // B8: the failure clusters a dream mutant cites (evidence-or-no-op, DREAM_EVIDENCE_MUTATIONS)
   addMissingColumns(db, 'maker_genomes', [{ name: 'evidence_clusters', definition: 'TEXT' }]);
   // KE-3: the knowledge units (expert_identities ids) whose titles the dream that wrote this mutant injected; null = none

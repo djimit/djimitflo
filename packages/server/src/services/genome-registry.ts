@@ -3,6 +3,7 @@ import type { GymTask } from './gym-task-miner';
 import type { MutantTask } from './gym-mutants';
 import type { FailureTask } from './gym-failure-tasks';
 import { fitIrt, gymObservations, irtSelectionEnabled, pickInformativeItems, respondentKey } from './gym-irt';
+import { DEFAULT_HOLDOUT_SIZE, exclusionReason, holdoutExclusions, resolveHoldoutSize } from './holdout-exposure';
 
 /**
  * Y3 (plan Phase Y, Darwin loop): the population of maker strategy genomes and the frozen gym holdout they are judged on.
@@ -12,7 +13,24 @@ import { fitIrt, gymObservations, irtSelectionEnabled, pickInformativeItems, res
  */
 export interface Genome { id: string; parent_id: string | null; gene: string; lines: string[]; origin: string; status: string }
 export const BASELINE_GENOME = 'baseline';
-export const HOLDOUT_SIZE = 20;
+export const HOLDOUT_SIZE = DEFAULT_HOLDOUT_SIZE;
+/**
+ * Holdout epoch 1 (14-10): calibration rows (role 'calibration', only from a manifest freeze) are frozen and never deciding:
+ * every reader of a deciding set below filters them out. An epoch frozen from a manifest (gym_holdout_freezes) never grows
+ * at claim time. The claim-time size is HOLDOUT_SIZE (validated; invalid or too few eligible tasks freeze nothing).
+ */
+const DECIDING = "COALESCE(role, 'deciding') = 'deciding'";
+const manifestFrozen = (db: Database, epoch: number): boolean => {
+  try { return Boolean(db.prepare('SELECT 1 FROM gym_holdout_freezes WHERE epoch = ?').get(epoch)); } catch { return false; }
+};
+// claim time: frozen / TG-001 / dream-exposed (tasks, source files, derived). Trial-attempted is checked by the manifest
+// freeze only: trials run only on frozen tasks, so outside a manifest it adds nothing a frozen key does not already exclude.
+const claimExclusions = (db: Database) => ({ ...holdoutExclusions(db), trialAttempted: new Set<string>() });
+const claimSize = (table: string): number | null => {
+  const s = resolveHoldoutSize();
+  if (s.ok) return s.size;
+  console.warn(`🧬 ${table}: HOLD — ${s.reason}; nothing frozen`); return null;
+};
 export const dreamEvolutionEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.DREAM_EVOLUTION_ENABLED === 'true';
 
 export function ensureBaseline(db: Database, now = new Date().toISOString()): void {
@@ -50,18 +68,20 @@ export function holdoutEpoch(db: Database, table: 'gym_holdout' | 'gym_mutant_ho
   return current;
 }
 export function frozenHoldoutCommits(db: Database): string[] {
-  return (db.prepare('SELECT commit_sha FROM gym_holdout WHERE epoch = ? ORDER BY commit_sha').all(holdoutEpoch(db, 'gym_holdout')) as Array<{ commit_sha: string }>).map((r) => r.commit_sha);
+  return (db.prepare(`SELECT commit_sha FROM gym_holdout WHERE epoch = ? AND ${DECIDING} ORDER BY commit_sha`).all(holdoutEpoch(db, 'gym_holdout')) as Array<{ commit_sha: string }>).map((r) => r.commit_sha);
 }
 
-/** Picks the holdout of the current epoch once — every k-th mined task not used by another epoch, deterministic — and never changes it. */
+/** Picks the holdout of the current epoch once — every k-th eligible mined task (holdoutExclusions), deterministic — and never changes it. */
 export function holdout(db: Database, tasks: GymTask[], now = new Date().toISOString()): string[] {
   const epoch = holdoutEpoch(db, 'gym_holdout');
-  const frozen = (db.prepare('SELECT commit_sha FROM gym_holdout WHERE epoch = ? ORDER BY commit_sha').all(epoch) as Array<{ commit_sha: string }>).map((r) => r.commit_sha);
-  const used = new Set((db.prepare('SELECT commit_sha FROM gym_holdout').all() as Array<{ commit_sha: string }>).map((r) => r.commit_sha));
-  const fresh = tasks.filter((t) => !used.has(t.commit));
-  if (frozen.length || fresh.length < HOLDOUT_SIZE) return frozen;
+  const frozen = (db.prepare(`SELECT commit_sha FROM gym_holdout WHERE epoch = ? AND ${DECIDING} ORDER BY commit_sha`).all(epoch) as Array<{ commit_sha: string }>).map((r) => r.commit_sha);
+  if (frozen.length || !tasks.length || manifestFrozen(db, epoch)) return frozen;
+  const size = claimSize('gym_holdout'); if (size === null) return frozen;
+  const ex = claimExclusions(db);
+  const fresh = tasks.filter((t) => !exclusionReason(ex, { commit: t.commit, source: t.source }));
+  if (fresh.length < size) return frozen;
   const sorted = [...fresh].sort((a, b) => a.commit.localeCompare(b.commit));
-  const step = sorted.length / HOLDOUT_SIZE;
+  const step = sorted.length / size;
   const insert = db.prepare('INSERT OR IGNORE INTO gym_holdout (commit_sha, created_at, epoch) VALUES (?, ?, ?)');
   // B8: with GYM_IRT_SELECTION the new epoch prefers the fresh tasks with the most information at the parent's ability;
   // the rest is filled with the deterministic spread below (off: exactly the spread, as before)
@@ -70,13 +90,13 @@ export function holdout(db: Database, tasks: GymTask[], now = new Date().toISOSt
     const fit = fitIrt(gymObservations(db));
     const theta = fit.abilities[respondentKey(process.env.DREAM_EVOLUTION_SPECIES || 'atomic@llama-router')] ?? 0;
     const freshKeys = new Set(fresh.map((t) => t.commit));
-    picked.push(...pickInformativeItems(fit.items.filter((it) => freshKeys.has(it.key)), theta, HOLDOUT_SIZE).map((it) => it.key));
+    picked.push(...pickInformativeItems(fit.items.filter((it) => freshKeys.has(it.key)), theta, size).map((it) => it.key));
   }
-  for (let i = 0; picked.length < HOLDOUT_SIZE && i < sorted.length; i++) {
+  for (let i = 0; picked.length < size && i < sorted.length; i++) {
     const c = sorted[Math.floor(i * step) % sorted.length].commit;
     if (!picked.includes(c)) picked.push(c);
   }
-  for (const c of picked.slice(0, HOLDOUT_SIZE)) insert.run(c, now, epoch);
+  db.transaction(() => { for (const c of picked.slice(0, size)) insert.run(c, now, epoch); })();
   return holdout(db, [], now);
 }
 
@@ -94,24 +114,35 @@ export const mutantHoldoutTiers = (env: NodeJS.ProcessEnv = process.env): number
   return tiers.length ? tiers : [2, 3];
 };
 export function mutantHoldoutKeys(db: Database, tiers = mutantHoldoutTiers()): string[] {
-  return (db.prepare('SELECT key, task_json FROM gym_mutant_holdout WHERE epoch = ? ORDER BY key').all(holdoutEpoch(db, 'gym_mutant_holdout')) as Array<{ key: string; task_json: string }>)
+  return (db.prepare(`SELECT key, task_json FROM gym_mutant_holdout WHERE epoch = ? AND ${DECIDING} ORDER BY key`).all(holdoutEpoch(db, 'gym_mutant_holdout')) as Array<{ key: string; task_json: string }>)
     .filter((r) => tiers.includes(Number((JSON.parse(r.task_json) as MutantTask).tier))).map((r) => r.key);
 }
 export function mutantHoldout(db: Database, make: (tier: number, tried: Set<string | null>) => MutantTask | null, now = new Date().toISOString(), tiers = mutantHoldoutTiers()): MutantTask[] {
   const epoch = holdoutEpoch(db, 'gym_mutant_holdout');
-  const read = () => (db.prepare('SELECT task_json FROM gym_mutant_holdout WHERE epoch = ? ORDER BY key').all(epoch) as Array<{ task_json: string }>)
+  const read = () => (db.prepare(`SELECT task_json FROM gym_mutant_holdout WHERE epoch = ? AND ${DECIDING} ORDER BY key`).all(epoch) as Array<{ task_json: string }>)
     .map((r) => JSON.parse(r.task_json) as MutantTask).filter((t) => tiers.includes(Number(t.tier)));
   const frozen = read();
-  if (frozen.length) return frozen;
-  // RX-12: a new epoch never reuses a task frozen by another one
-  const tried = new Set<string | null>((db.prepare('SELECT key FROM gym_mutant_holdout').all() as Array<{ key: string }>).map((r) => r.key));
+  if (frozen.length || manifestFrozen(db, epoch)) return frozen;
+  const size = claimSize('gym_mutant_holdout'); if (size === null) return frozen;
+  // RX-12: a new epoch never reuses a task frozen by another one; epoch 1: nor a mutant on a dream-exposed source file
+  const ex = claimExclusions(db);
+  const picked = generateMutants(ex, make, tiers, size);
+  if (picked.length < size) { console.warn(`🧬 gym_mutant_holdout: HOLD — ${picked.length} of ${size} eligible mutants; nothing frozen`); return frozen; }
   const insert = db.prepare('INSERT OR IGNORE INTO gym_mutant_holdout (key, task_json, created_at, epoch) VALUES (?, ?, ?, ?)');
-  for (let i = 0; i < HOLDOUT_SIZE; i++) {
-    const task = make(tiers[i % tiers.length], tried);
-    if (!task) break;
-    tried.add(task.commit); insert.run(task.commit, JSON.stringify(task), now, epoch);
-  }
+  db.transaction(() => { for (const task of picked) insert.run(task.commit, JSON.stringify(task), now, epoch); })();
   return read();
+}
+/** Up to `size` eligible mutants, tiers round-robin; an excluded one is marked tried and the generator asked again (bounded). */
+export function generateMutants(ex: ReturnType<typeof holdoutExclusions>, make: (tier: number, tried: Set<string | null>) => MutantTask | null, tiers: number[], size: number): MutantTask[] {
+  const tried = new Set<string | null>(ex.frozen); const picked: MutantTask[] = [];
+  for (let attempts = 0; picked.length < size && attempts < size * 25; attempts++) {
+    const task = make(tiers[picked.length % tiers.length], tried);
+    if (!task) break;
+    if (tried.has(task.commit)) continue;
+    tried.add(task.commit);
+    if (!exclusionReason(ex, task)) picked.push(task);
+  }
+  return picked;
 }
 
 /**
@@ -126,21 +157,22 @@ export function mutantHoldout(db: Database, make: (tier: number, tried: Set<stri
 export const writeTestHoldoutEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.DREAM_TRIAL_WRITE_TEST_HOLDOUT === 'true';
 export const WRITE_TEST_HOLDOUT_MIN = 5;
 export function writeTestHoldoutKeys(db: Database): string[] {
-  return (db.prepare('SELECT key FROM gym_write_test_holdout WHERE epoch = ? ORDER BY key').all(holdoutEpoch(db, 'gym_write_test_holdout')) as Array<{ key: string }>).map((r) => r.key);
+  return (db.prepare(`SELECT key FROM gym_write_test_holdout WHERE epoch = ? AND ${DECIDING} ORDER BY key`).all(holdoutEpoch(db, 'gym_write_test_holdout')) as Array<{ key: string }>).map((r) => r.key);
 }
 export function writeTestHoldout(db: Database, make: () => FailureTask[], now = new Date().toISOString()): FailureTask[] {
   const epoch = holdoutEpoch(db, 'gym_write_test_holdout');
-  const read = () => (db.prepare('SELECT task_json FROM gym_write_test_holdout WHERE epoch = ? ORDER BY key').all(epoch) as Array<{ task_json: string }>)
+  const read = () => (db.prepare(`SELECT task_json FROM gym_write_test_holdout WHERE epoch = ? AND ${DECIDING} ORDER BY key`).all(epoch) as Array<{ task_json: string }>)
     .map((r) => JSON.parse(r.task_json) as FailureTask);
   const frozen = read();
-  if (frozen.length) return frozen;
-  const used = new Set((db.prepare('SELECT key FROM gym_write_test_holdout').all() as Array<{ key: string }>).map((r) => r.key));
-  // TG-001 tasks are diagnostic (prior exposure, four prompts each) — never a promotion holdout
-  try { for (const r of db.prepare('SELECT DISTINCT task_key AS k FROM tg_attempts').all() as Array<{ k: string }>) used.add(r.k); } catch { /* tg_attempts absent */ }
-  const fresh = make().filter((t) => !used.has(t.commit)).sort((a, b) => a.commit.localeCompare(b.commit)).slice(0, HOLDOUT_SIZE);
+  if (frozen.length || manifestFrozen(db, epoch)) return frozen;
+  const size = claimSize('gym_write_test_holdout'); if (size === null) return frozen;
+  // other epochs' tasks, TG-001 tasks (diagnostic: prior exposure, four prompts each) and anything dream-exposed or derived
+  // from it (target/test file, base commit, failing run) never enter a promotion holdout
+  const ex = claimExclusions(db);
+  const fresh = make().filter((t) => !exclusionReason(ex, t)).sort((a, b) => a.commit.localeCompare(b.commit)).slice(0, size);
   if (fresh.length < WRITE_TEST_HOLDOUT_MIN) return [];
   const insert = db.prepare('INSERT OR IGNORE INTO gym_write_test_holdout (key, task_json, created_at, epoch) VALUES (?, ?, ?, ?)');
-  for (const t of fresh) insert.run(t.commit, JSON.stringify(t), now, epoch);
+  db.transaction(() => { for (const t of fresh) insert.run(t.commit, JSON.stringify(t), now, epoch); })();
   return read();
 }
 
