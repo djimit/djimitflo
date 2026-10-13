@@ -178,11 +178,12 @@ export function modelEvidence(db: Database, incumbents: Record<string, string | 
  * expected shape; agree() compares a shadow answer with the incumbent's (null = not comparable). Off: one incumbent call,
  * nothing recorded. Shadow: the incumbent answers; a sample also asks one cheaper candidate, recorded and discarded.
  * Enforce: the cheapest qualified model answers; an unusable answer falls back to the incumbent.
+ * purpose (e.g. 'technique_card', 'frontier_experts:review') is the caller's identity on every row; absent = the consumer.
  */
 export type AskModel = (model: string, system: string, user: string) => Promise<{ json: unknown; chars: number }>;
 export function selectingRunner(db: Database, consumer: string, incumbent: string, ask: AskModel, usable: (json: unknown) => boolean,
   agree: (a: unknown, b: unknown) => boolean | null, env: NodeJS.ProcessEnv = process.env, random: () => number = Math.random, now?: number) {
-  return async (system: string, user: string): Promise<unknown> => {
+  return async (system: string, user: string, purpose?: string): Promise<unknown> => {
     const mode = modelSelectorMode(env);
     if (mode === 'off') return (await ask(incumbent, system, user)).json;
     const call = async (model: string, shadow: 0 | 1, reference?: unknown): Promise<{ json: unknown; ok: boolean }> => {
@@ -190,10 +191,10 @@ export function selectingRunner(db: Database, consumer: string, incumbent: strin
       try {
         const { json, chars } = await ask(model, system, user);
         const ok = usable(json);
-        recordModelCall(db, { consumer, model, ok, latencyMs: Date.now() - started, outChars: chars, shadow, agree: shadow && ok && usable(reference) ? agree(reference, json) : null });
+        recordModelCall(db, { consumer, model, ok, latencyMs: Date.now() - started, outChars: chars, shadow, agree: shadow && ok && usable(reference) ? agree(reference, json) : null, purpose });
         return { json, ok };
       } catch (error) {
-        recordModelCall(db, { consumer, model, ok: false, latencyMs: Date.now() - started, outChars: 0, shadow, agree: null });
+        recordModelCall(db, { consumer, model, ok: false, latencyMs: Date.now() - started, outChars: 0, shadow, agree: null, purpose });
         if (shadow) return { json: null, ok: false };
         throw error;
       }
