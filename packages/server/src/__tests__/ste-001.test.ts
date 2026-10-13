@@ -6,7 +6,7 @@ import { runMigrations } from '../database/migrate';
 import { steLint, steSummary } from '../services/ste-lint';
 import { CHECKER_INSTRUCTIONS, MAKER_TEMPLATE_RULES, makerTemplateRules, objectiveScopeLine } from '../services/loop-service';
 import { PANEL_REVIEW_INSTRUCTIONS } from '../services/self-improvement-agent-review-service';
-import { MAKER_TEMPLATE_RULES_STE, STE_TEMPLATE_HASH, ste001Evidence, steArm } from '../services/ste-001';
+import { MAKER_TEMPLATE_RULES_STE, STE_TEMPLATE_HASH, runSte001, ste001Evidence, steArm } from '../services/ste-001';
 import { aceArm } from '../services/ace-001';
 import { assignmentContext } from '../services/assignment-context';
 import { MAKER_TEMPLATE_HASH, runGenome } from '../services/maker-genome';
@@ -114,4 +114,65 @@ it('evidence: per-arm n / verified / out-of-scope share / tokens; gym and untagg
   expect(ev.arms['1']).toMatchObject({ n: 2, verified: 2, out_of_scope_share: 0 });
   expect(ev.diff).toBe(0.5); expect(ev.status).toBe('collecting'); expect(ev.ste_template_hash).toBe(createHash('sha256').update(MAKER_TEMPLATE_RULES_STE.join('\n')).digest('hex').slice(0, 12));
   expect(buildEvolutionEvidence(db, { STE_001_MODE: 'on' }).ste_001.arms['1'].n).toBe(2);
+});
+
+it('evidence: mode reflects STE_001_MODE env and diff is null when an arm is empty', () => {
+  new SkillEvolutionEngine(db);
+  const ev = ste001Evidence(db, new Date(Date.now() - 86_400_000).toISOString(), { STE_001_MODE: 'on' });
+  expect(ev.mode).toBe('on');
+  expect(ev.arms['0'].n).toBe(0);
+  expect(ev.arms['1'].n).toBe(0);
+  expect(ev.diff).toBeNull();
+  const evOff = ste001Evidence(db, new Date(Date.now() - 86_400_000).toISOString(), {});
+  expect(evOff.mode).toBeNull();
+});
+
+it('evidence: status is analysable when both arms reach the target, collecting when one falls short', () => {
+  new SkillEvolutionEngine(db);
+  const outcome = (arm: string, success: boolean) => db.prepare(`INSERT INTO skill_outcomes
+      (id, skill_id, success, tokens_used, duration_ms, domain, task_id, agent_id, evidence_refs_json, created_at) VALUES (?, ?, ?, 1000, 1, 'x', ?, 'a', ?, ?)`)
+    .run(randomUUID(), 'loop-maker:doc-drift-and-small-fix-loop:opencode', success ? 1 : 0, randomUUID(), JSON.stringify([`ste-001-arm:${arm}`]), now);
+  for (let i = 0; i < 100; i++) { outcome('0', true); outcome('1', i % 2 === 0); }
+  const ev = ste001Evidence(db, new Date(Date.now() - 86_400_000).toISOString(), { STE_001_MODE: 'on' });
+  expect(ev.arms['0'].n).toBe(100);
+  expect(ev.arms['1'].n).toBe(100);
+  expect(ev.status).toBe('analysable');
+  expect(ev.diff).toBe(-0.5);
+});
+
+it('evidence: collecting when arm 0 reaches target but arm 1 does not', () => {
+  new SkillEvolutionEngine(db);
+  const outcome = (arm: string) => db.prepare(`INSERT INTO skill_outcomes
+      (id, skill_id, success, tokens_used, duration_ms, domain, task_id, agent_id, evidence_refs_json, created_at) VALUES (?, ?, 1, 1000, 1, 'x', ?, 'a', ?, ?)`)
+    .run(randomUUID(), 'loop-maker:doc-drift-and-small-fix-loop:opencode', randomUUID(), JSON.stringify([`ste-001-arm:${arm}`]), now);
+  for (let i = 0; i < 100; i++) outcome('0');
+  for (let i = 0; i < 99; i++) outcome('1');
+  const ev = ste001Evidence(db, new Date(Date.now() - 86_400_000).toISOString(), { STE_001_MODE: 'on' });
+  expect(ev.arms['0'].n).toBe(100);
+  expect(ev.arms['1'].n).toBe(99);
+  expect(ev.status).toBe('collecting');
+});
+
+it('runSte001: returns the ste context from the latest assignment_context event, null otherwise', () => {
+  const insertEvent = (runId: string, metadata: string) => db.prepare(`INSERT INTO loop_events (id, loop_run_id, event_type, level, message, metadata, created_at) VALUES (?, ?, 'assignment_context', 'info', 'm', ?, ?)`)
+    .run(randomUUID(), runId, metadata, now);
+  insertEvent('run-a', JSON.stringify({ ste_001: { arm: 0, template_hash: STE_TEMPLATE_HASH } }));
+  insertEvent('run-b', JSON.stringify({ ste_001: { arm: 1, template_hash: STE_TEMPLATE_HASH } }));
+  insertEvent('run-c', JSON.stringify({ ste_001: { arm: 2, template_hash: 'x' } }));
+  insertEvent('run-d', JSON.stringify({ examples: [] }));
+  insertEvent('run-e', '{not valid json');
+  expect(runSte001(db, 'run-a')).toEqual({ arm: 0, template_hash: STE_TEMPLATE_HASH });
+  expect(runSte001(db, 'run-b')).toEqual({ arm: 1, template_hash: STE_TEMPLATE_HASH });
+  expect(runSte001(db, 'run-c')).toBeNull();
+  expect(runSte001(db, 'run-d')).toBeNull();
+  expect(runSte001(db, 'run-e')).toBeNull();
+  expect(runSte001(db, 'run-none')).toBeNull();
+});
+
+it('runSte001: picks the latest assignment_context event when several exist', () => {
+  const insertEvent = (runId: string, metadata: string, createdAt: string) => db.prepare(`INSERT INTO loop_events (id, loop_run_id, event_type, level, message, metadata, created_at) VALUES (?, ?, 'assignment_context', 'info', 'm', ?, ?)`)
+    .run(randomUUID(), runId, metadata, createdAt);
+  insertEvent('run-x', JSON.stringify({ ste_001: { arm: 0, template_hash: STE_TEMPLATE_HASH } }), '2024-01-01T00:00:00Z');
+  insertEvent('run-x', JSON.stringify({ ste_001: { arm: 1, template_hash: STE_TEMPLATE_HASH } }), '2024-01-02T00:00:00Z');
+  expect(runSte001(db, 'run-x')?.arm).toBe(1);
 });
