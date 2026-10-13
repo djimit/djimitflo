@@ -76,3 +76,35 @@ it('a manifest that declares mutant deciding but has no mutant part is refused',
   const r = freezeHoldoutFromManifest(db, m, { epoch: 1, expectedSha256: m.manifest_sha256 as string, pool: { mined: MINED }, origin: { sha: null, version: null }, env: {}, dryRun: true });
   expect(r.status === 'REFUSED' && r.violations.join(' ')).toMatch(/deciding/);
 });
+
+it('mutant generation spreads over files: the seed picks the file regardless of tier, so a per-file cap is needed (at most 2 per file)', async () => {
+  const { generateMutants } = await import('../services/genome-registry');
+  const { holdoutExclusions } = await import('../services/holdout-exposure');
+  // like mutantTask: the file depends on the seed only; the first untried seed is returned for each tier
+  const files = Array.from({ length: 30 }, (_, i) => SRC(i));
+  const make = (tier: number, tried: Set<string | null>): MutantTask | null => {
+    for (let seed = 1; seed <= 500; seed++) {
+      const source = files[(seed * 7) % files.length]; const key = `mut:b:${source}:${tier}:${seed}`;
+      if (!tried.has(key)) return { commit: key, base: 'b', source, tests: [], sourceLines: 9, mutant: 'x', tier };
+    }
+    return null;
+  };
+  const perFile = (sources: string[]) => Object.values(sources.reduce<Record<string, number>>((a, f) => ({ ...a, [f]: (a[f] ?? 0) + 1 }), {}));
+  const ex = holdoutExclusions(db); // s03 is exposed through the maker lease
+  const uncapped = generateMutants(ex, make, [3, 4, 5, 6], 40);
+  expect(Math.max(...perFile(uncapped.map((m) => m.source)))).toBe(4); // the bug: one file at every tier
+  const capped = generateMutants(ex, make, [3, 4, 5, 6], 40, 2);
+  expect(capped).toHaveLength(40);
+  expect(Math.max(...perFile(capped.map((m) => m.source)))).toBeLessThanOrEqual(2);
+  expect(perFile(capped.map((m) => m.source)).length).toBeGreaterThanOrEqual(20);
+  expect(capped.some((m) => m.source === SRC(3))).toBe(false);
+  expect(new Set(capped.map((m) => m.tier))).toEqual(new Set([3, 4, 5, 6]));
+  // the builder records the cap and the freeze honours it
+  const pool = { mined: MINED, writeTest: [] };
+  const { manifest } = buildHoldoutManifest(db, { epoch: 1, size: 40, pool, tiers: [3, 4, 5, 6], maxPerSource: 2, provenance: {}, now: '2026-10-14T12:00:00Z' });
+  expect((manifest.tasks as Record<string, Record<string, unknown>>).mutant.max_per_source).toBe(2);
+  const r = freezeHoldoutFromManifest(db, manifest, { epoch: 1, expectedSha256: manifest.manifest_sha256 as string, pool, makeMutant: make, origin: { sha: null, version: null }, env: {}, dryRun: true });
+  expect(r.status).toBe('VALID_DRY_RUN');
+  const keys = r.status === 'VALID_DRY_RUN' ? r.keys.mutant : [];
+  expect(Math.max(...perFile(keys.map((k) => k.split(':')[2])))).toBeLessThanOrEqual(2);
+});
