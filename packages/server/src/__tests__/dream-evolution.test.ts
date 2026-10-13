@@ -12,7 +12,8 @@ afterEach(() => { vi.unstubAllEnvs(); db.close(); });
 const NOW = Date.parse('2026-10-01T02:00:00Z');
 const gymRun = (id: string, commit: string, genomeId: string | undefined, status: string, reason: string, created = '2026-10-01T01:00:00Z') => db.prepare(`INSERT INTO loop_runs
   (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
-  VALUES (?, 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`).run(id, JSON.stringify({ gym: { commit, source: 'packages/server/src/services/x.ts', species: 'atomic@llama-router', genome: genomeId }, gym_result: { status, reason } }), created, created);
+  VALUES (?, 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`).run(id, JSON.stringify({ gym: { commit, source: 'packages/server/src/services/x.ts', species: 'atomic@llama-router', genome: genomeId,
+    ...(genomeId ? { prod_gates: 1 } : {}) }, gym_result: { status, reason, ...(genomeId && status === 'success' ? { prod_gates: { lint: 'pass' } } : {}) } }), created, created); // trial attempts are production-gated (P0)
 
 it('D3: trial runs and holdout tasks never reach the mutation step (prod 03-10: mutants were written from holdout failures)', () => {
   db.prepare("INSERT INTO gym_holdout (commit_sha, created_at) VALUES ('h1', ?)").run('2026-10-01T00:00:00Z');
@@ -98,7 +99,7 @@ it('GENOME_FIRE_CHECK: VOID attempts (genome lines never reached the maker) are 
   holdout.slice(1).forEach((c) => { for (let k = 0; k < 3; k++) voided.run(`v-${c}-${k}`, JSON.stringify({ gym: { commit: c, species: 'atomic@llama-router', genome: trial }, gym_result: { status: 'success', reason: 'tests green, source only', void: 'fire_check: no evidence that the genome lines reached the maker' } })); });
   // only h1 is paired (0 vs 0 discordant): no promotion on 15 attempts that never tested the genome
   expect(evaluateTrials(db, 'atomic@llama-router', holdout, NOW)).toEqual([{ id: trial, status: 'retired', wins: 1, parentWins: 1 }]);
-  expect((db.prepare('SELECT note FROM maker_genomes WHERE id = ?').get(trial) as { note: string }).note).toContain('discordant 0 vs 0, McNemar p=1.000; out of scope 0 vs 0; void 15 (fire check)');
+  expect((db.prepare('SELECT note FROM maker_genomes WHERE id = ?').get(trial) as { note: string }).note).toContain('discordant 0 vs 0, McNemar p=1.000; out of scope 0 vs 0; void 15 (fire check); gates prod_gates/v1:');
 });
 
 it('KE-3: the knowledge units whose titles a dream injected are recorded on each mutant genome (knowledge_refs_json)', async () => {
