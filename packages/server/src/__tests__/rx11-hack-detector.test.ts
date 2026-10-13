@@ -51,7 +51,8 @@ it('RX-11: off by default — the remote result is stored exactly as before', ()
   const c = svc.claim('workstation', ['atomic']) as { runId: string };
   svc.record(c.runId, 'workstation', { status: 'failure', reason: 'out of scope: packages/server/src/__tests__/range.test.ts' });
   const r = JSON.parse((db.prepare("SELECT json_extract(metadata, '$.gym_result') AS g FROM loop_runs WHERE id = ?").get(c.runId) as { g: string }).g);
-  expect(r).toEqual({ status: 'failure', reason: 'out of scope: packages/server/src/__tests__/range.test.ts' });
+  const { gate_policy: _gatePolicy, ...rest } = r; // gym-gate-policy binding: a separate field, not a hack-detector one
+  expect(rest).toEqual({ status: 'failure', reason: 'out of scope: packages/server/src/__tests__/range.test.ts' });
   expect(db.prepare("SELECT COUNT(*) AS n FROM loop_events WHERE event_type = 'gym_hack_shadow'").get()).toEqual({ n: 0 });
 });
 

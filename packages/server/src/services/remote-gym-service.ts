@@ -19,6 +19,7 @@ import { remoteGymCap } from './stall-watch';
 import { gymSkillContentHash } from './gym-skill-hash';
 import { gradedFitnessMode, gradedRefs, roundGraded, type GradedKind } from './graded-fitness';
 import { TG_CAPABILITY, TG_GENERATION, TG_ID, TG_LOOP, claimTg001, freezeTg001, recordTg001, tg001On, tgManifest } from './tg-001';
+import { gatePolicyClaim, gatePolicyResult, type GatePolicyClaim } from './gym-gate-policy';
 import { dreamEvolutionEnabled, ensureBaseline, fireCheckVoid, genome, genomeFireCheck, holdout, mutantHoldout, mutantTrialsEnabled, nextTrialAttempt, parseFireCheck, writeTestHoldout, writeTestHoldoutEnabled, type Genome } from './genome-registry';
 
 /**
@@ -209,6 +210,8 @@ export class RemoteGymService {
     const { canary: _canaryTest, mutants, ...meta } = stored as typeof stored & { canary?: unknown; mutants?: TargetMutant[] };
     const gates = gymProdGatesEnabled() && (opts.capabilities ?? []).map(String).includes(PROD_GATES_CAPABILITY) ? prodGatesConfig() : null;
     const gymMeta = { ...meta, ...(mutants ? { mutant_keys: mutants.map((m) => m.key) } : {}), species: key, remote_host: host, ...(trialGenome ? { genome: trialGenome.id } : {}), ...(probe ? { probe: 1 } : {}), ...(canary ? { canary: 1 } : {}), ...(gates ? { prod_gates: 1 } : {}), ...(tg ? { tg } : {}) };
+    // gate-policy binding (gym-gate-policy): non-TG attempts only — a TG run's metadata stays exactly as before
+    if (!tg) Object.assign(gymMeta, { gate_policy: gatePolicyClaim(this.db, { gates: gates ?? prodGatesConfig(), gated: !!gates, attemptId: runId, claimedAt: now.toISOString(), task: String(task.commit), species: key }) });
     // B27 isolation by provenance: a TG-001 run is not an 'evolution-gym' run, so no gym statistic, breaker, IRT, hack rate,
     // graded pool, trial deciding set or estimator (all of which select loop_name = 'evolution-gym') can count it
     this.db.prepare('INSERT INTO loop_runs (id, loop_name, mode, status, repository_path, metadata, created_at, updated_at) VALUES (?, ?, \'closed\', \'running\', ?, ?, ?, ?)')
@@ -223,7 +226,7 @@ export class RemoteGymService {
 
   record(runId: string, host: string, result: RemoteGymResult): void {
     const row = this.db.prepare("SELECT status, json_extract(metadata, '$.gym') AS gym FROM loop_runs WHERE id = ?").get(runId) as { status: string; gym: string | null } | undefined;
-    const gym = row?.gym ? JSON.parse(row.gym) as GymTask & { species: string; remote_host?: string; genome?: string; probe?: number; canary?: number; mutant_keys?: string[]; prod_gates?: number; tg?: { attempt_id: string; experiment?: string } } : null;
+    const gym = row?.gym ? JSON.parse(row.gym) as GymTask & { species: string; remote_host?: string; genome?: string; probe?: number; canary?: number; mutant_keys?: string[]; prod_gates?: number; tg?: { attempt_id: string; experiment?: string }; gate_policy?: GatePolicyClaim } : null;
     if (!row || !gym || gym.remote_host !== host) throw new Error('GYM_RUN_NOT_FOUND');
     if (row.status !== 'running') throw new Error('GYM_RUN_ALREADY_SETTLED');
     // TG-001 generations: a result for a run claimed under another generation (e.g. before a restore) is never accepted
@@ -269,10 +272,12 @@ export class RemoteGymService {
         diff_ref = `sha256:${d.sha256}`;
       } catch { /* training data only: never break the report */ }
     }
+    // gate-policy binding: a no-op for TG runs and for runs claimed before the binding existed (never a retrospective hash)
+    const boundResult = gym.tg ? undefined : gatePolicyResult(gym.gate_policy, now, prod_gates); const policyResult = boundResult ? { gate_policy: boundResult } : {};
     this.db.prepare("UPDATE loop_runs SET status = 'completed', updated_at = ?, metadata = json_set(metadata, '$.gym_result', json(?)) WHERE id = ?")
       .run(now, JSON.stringify({ status: result.status, reason, ...(hack_flags ? { hack_flags } : {}), ...(killed_mutants ? { killed_mutants } : {}),
         ...(prod_gates ? { prod_gates } : {}), ...(graded ?? {}), ...(diff_ref ? { diff_ref } : {}),
-        ...(fire_check ? { fire_check } : {}), ...(voided ? { void: voided } : {}) }), runId);
+        ...(fire_check ? { fire_check } : {}), ...(voided ? { void: voided } : {}), ...policyResult }), runId);
     if (gym.tg?.attempt_id) { try { recordTg001(this.db, gym.tg.attempt_id, runId, { status: result.status, reason, durationMs: result.durationMs, tg_metrics: result.tg_metrics }, now); } catch { /* experiment bookkeeping never breaks the report */ } }
   }
 }
