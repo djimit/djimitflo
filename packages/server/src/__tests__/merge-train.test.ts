@@ -16,8 +16,18 @@ const git = (cwd: string, args: string) => {
 const write = (dir: string, file: string, text: string) => fs.writeFileSync(path.join(dir, file), text);
 const commit = (dir: string, msg: string) => { git(dir, 'add -A'); git(dir, `commit -q -m "${msg}"`); return git(dir, 'rev-parse HEAD'); };
 const lines = (n: number, tag = '') => Array.from({ length: n }, (_, i) => `line ${i}${tag}`).join('\n') + '\n';
-const runScript = (cwd: string, args: string[], env: Record<string, string>) => {
-  const r = spawnSync('bash', [script, ...args], { cwd, env: { ...process.env, ...env }, encoding: 'utf8' });
+// The script runs like a CI runner does: no global/system git config and no hostname-derived identity (macOS would
+// otherwise pass on the developer's ~/.gitconfig while ubuntu CI has none). Rebuilding commits needs an identity, so the
+// harness supplies one explicitly; `noIdentity` drops it to pin the fail-closed preflight.
+const IDENTITY = { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' };
+const hermeticEnv = () => {
+  const e: Record<string, string | undefined> = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1',
+    GIT_CONFIG_COUNT: '2', GIT_CONFIG_KEY_0: 'user.useConfigOnly', GIT_CONFIG_VALUE_0: 'true', GIT_CONFIG_KEY_1: 'commit.gpgsign', GIT_CONFIG_VALUE_1: 'false' };
+  for (const k of ['GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL', 'EMAIL']) delete e[k];
+  return e;
+};
+const runScript = (cwd: string, args: string[], env: Record<string, string>, opts: { noIdentity?: boolean } = {}) => {
+  const r = spawnSync('bash', [script, ...args], { cwd, env: { ...hermeticEnv(), ...(opts.noIdentity ? {} : IDENTITY), ...env }, encoding: 'utf8' });
   return { status: r.status, out: `${r.stdout}${r.stderr}` };
 };
 
@@ -55,6 +65,18 @@ it('#778 regression: a raw rebase stops with HEAD at main (a push would empty th
   expect(git(dir, 'diff --name-only main feat')).toBe('c.txt'); // exactly #778's own change, on top of main
   expect(git(dir, `diff ${c3}^ ${c3}`)).toBe(git(dir, 'diff main feat'));
   expect(fs.readFileSync(ledger, 'utf8')).toMatch(/"event":"superseded","pr":"778"/);
+});
+
+it('Linux CI regression: without a git committer identity the rebuild fails closed up front — branch untouched, nothing pushed', () => {
+  // ubuntu runners have no user.email: the cherry-pick used to die silently and surface as a misleading ESCALATE (4)
+  const { dir } = incidentRepo();
+  const before = git(dir, 'rev-parse feat');
+  const r = runScript(dir, ['rebase', 'feat', '1', '778'], { MT_BASE: 'main', MT_LEDGER: path.join(tmp('mt-led-'), 'l'), MT_PUSH: 'echo PUSHED' }, { noIdentity: true });
+  expect(r.status).toBe(3);
+  expect(r.out).toContain('FAIL_CLOSED: no git committer identity');
+  expect(r.out).not.toContain('PUSHED');
+  expect(git(dir, 'rev-parse feat')).toBe(before);
+  expect(git(dir, 'rev-parse --abbrev-ref HEAD')).toBe('feat');
 });
 
 it('with the wrong commit count the ambiguous #777 original fails closed — nothing is pushed', () => {

@@ -496,6 +496,8 @@ rebase_onto_main() {
   mkdir -p "$CLAIMS"; touch "$LEDGER"
   git rev-parse --verify -q "$branch" >/dev/null || { echo "FAIL_CLOSED: no branch $branch"; exit 3; }
   if [ -d "$(git rev-parse --git-dir)/rebase-merge" ] || [ -d "$(git rev-parse --git-dir)/rebase-apply" ]; then echo "FAIL_CLOSED: a rebase is in progress"; exit 3; fi
+  # the rebuild commits (cherry-pick); without an identity (bare CI runners) every pick fails and would read as a conflict
+  git var GIT_COMMITTER_IDENT >/dev/null 2>&1 || { echo "FAIL_CLOSED: no git committer identity (set user.name/user.email) — branch untouched, nothing pushed"; exit 3; }
   local old_head; old_head="$(git rev-parse "$branch")"
   local absent=() c
   for c in $(git rev-list --reverse "$branch~$own..$branch"); do
@@ -512,7 +514,7 @@ rebase_onto_main() {
   # rebuild explicitly instead of trusting `git rebase` (it stops mid-way on a conflict with HEAD at main)
   git checkout -q -B "$branch" "$BASE"
   for c in "${absent[@]}"; do
-    git cherry-pick "$c" >/dev/null 2>&1 || { restore; echo "ESCALATE: cherry-pick of ${c:0:8} onto $BASE failed — branch restored, nothing pushed"; record escalated "$pr" "$old_head" "" "cherry-pick ${c:0:8}"; exit 4; }
+    git cherry-pick "$c" >/dev/null 2>"$MT_TMP/pick.err" || { restore; echo "ESCALATE: cherry-pick of ${c:0:8} onto $BASE failed — branch restored, nothing pushed"; head -3 "$MT_TMP/pick.err" | sed 's/^/  git: /'; record escalated "$pr" "$old_head" "" "cherry-pick ${c:0:8}"; exit 4; }
   done
   post_rebuild
   if git diff --quiet "$BASE" "$branch"; then restore; echo "FAIL_CLOSED: rebuilt $branch is identical to $BASE — nothing pushed"; record fail_closed "$pr" "$old_head" "" empty_after_rebuild; exit 3; fi
