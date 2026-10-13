@@ -212,7 +212,12 @@ export type TokenMeasurementSource = 'provider_reported' | 'runtime_log' | 'esti
 export interface MakerTokenAccountingEvidence {
   since: string; leases: number; note: string;
   by_runtime_model: Array<{ runtime: string; model: string; leases: number; unrecorded: number; tokens_measured: number; tokens_measured_share: number | null;
-    cost_known: number; cost_known_share: number | null; total_tokens_measured: number; estimated_cost_usd_known: number; by_source: Record<TokenMeasurementSource, number> }>;
+    cost_known: number; cost_known_share: number | null; cost_partial: number;
+    /** per field: n = leases that reported it; sum/mean over those only (null when none did) */
+    fields: Record<'input_tokens' | 'output_tokens' | 'cache_read_tokens' | 'cache_write_tokens' | 'reasoning_tokens' | 'total_tokens', { n: number; sum: number | null; mean: number | null }>;
+    /** estimated cost per LLM_PRICE_PER_MTOK price version; never summed across versions */
+    cost_by_price_version: Array<{ price_version: string; leases: number; partial: number; estimated_cost_usd: number }>;
+    by_source: Record<TokenMeasurementSource, number> }>;
 }
 
 /** E3: one answer of the provenance DAG — a value, or UNKNOWN with the reason (never 0 for a missing link) */
