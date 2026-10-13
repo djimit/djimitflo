@@ -26,7 +26,7 @@ it('summarises runs, failing gates and failure causes without raw content', () =
 
 it('a Commons round carries the pack only when enabled', () => {
   const comms = new AgentCommunicationService(db);
-  comms.heartbeat('agent-a', 'codex', 'm'); comms.heartbeat('agent-b', 'opencode', 'm');
+  comms.heartbeat('agent-a', 'codex', 'm', 'runtime_token'); comms.heartbeat('agent-b', 'opencode', 'm', 'runtime_token');
   expect(comms.socialize(0).messages[0].payload.params.evidence_pack).toBeUndefined();
   process.env.COMMONS_EVIDENCE_PACK_ENABLED = 'true';
   const pack = comms.socialize(0).messages[0].payload.params.evidence_pack as { top_failing_gates: unknown[] };

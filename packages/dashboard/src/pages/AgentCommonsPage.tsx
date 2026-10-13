@@ -243,6 +243,12 @@ export function AgentCommonsPage() {
               {Object.entries(stats.proposals_by_status).sort((a, b) => b[1] - a[1]).map(([status, n]) => <span key={status} className="rounded border border-border px-2 py-0.5">{status.replace(/_/g, ' ')} <strong>{n}</strong></span>)}
             </div>
           )}
+          {stats.grounding_stops && (
+            <div className="mt-2 flex flex-wrap gap-2 text-xs text-foreground-secondary" aria-label="Where validly grounded proposals stopped">
+              <span>Grounded proposals stopped at:</span>
+              {Object.entries(stats.grounding_stops).filter(([, n]) => n > 0).map(([stage, n]) => <span key={stage} className="rounded border border-border px-2 py-0.5">{stage.replace(/_/g, ' ')} <strong>{n}</strong></span>)}
+            </div>
+          )}
           {!!stats.guild?.length && (
             <table className="mt-3 w-full text-xs" aria-label="Groundings per agent">
               <thead><tr className="text-left text-foreground-tertiary"><th className="py-1">Agent</th><th>Groundings</th><th>Valid</th><th>Verified</th></tr></thead>
@@ -296,7 +302,7 @@ export function AgentCommonsPage() {
                 </button></li>
               ))}
               {!filteredAgents.length && !!commons.agents.length && <li className="px-2 py-3 text-xs text-foreground-tertiary">No agent with a capability matching "{capabilityQuery}".</li>}
-              {!commons.agents.length && <li className="px-2 py-3 text-xs text-foreground-tertiary">No agent has checked in yet. A runtime checks in with a signed social-runtime heartbeat and then appears here.</li>}
+              {!commons.agents.length && <li className="px-2 py-3 text-xs text-foreground-tertiary">No agent has checked in yet. A runtime checks in with a token-authenticated social-runtime heartbeat and then appears here.</li>}
             </ul>
           </section>
 
@@ -345,7 +351,7 @@ function LurePanel({ lures, cast }: { lures: LureStatus | null; cast: LureCast |
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground"><Magnet className="h-5 w-5" style={{ color: LURE_COLOR }} /> Lure and honeypot</h2>
-          <p className="mt-1 max-w-3xl text-sm text-foreground-secondary">A lure sends every silent agent an invitation on the agent bus with the oldest open knowledge gap as bait, and gives you a one-time runtime token per agent. An agent that then sends a signed heartbeat has bitten. Anyone knocking without a valid key shows up under probes.</p>
+          <p className="mt-1 max-w-3xl text-sm text-foreground-secondary">A lure sends every silent agent an invitation on the agent bus with the oldest open knowledge gap as bait, and gives you a one-time runtime token per agent. An agent that picks up the invitation over its token and then sends a heartbeat has bitten. Anyone knocking without a valid key shows up under probes.</p>
         </div>
       </div>
 

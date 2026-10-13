@@ -46,6 +46,20 @@ describe('authority ledger', () => {
     expect(ledger.map(r => r.requested_state)).toContain('EXECUTION_DENIED');
     expect(rows('SELECT event_type FROM event_outbox').length).toBeGreaterThanOrEqual(4);
   });
+  it('labels only real users as human; autonomy:/inherit:/agent:/system deciders are not human', () => {
+    db.prepare('INSERT INTO users(id,email,password_hash,role) VALUES(?,?,?,?)').run('u-1', 'op@test', 'unused', 'approver');
+    for (const decider of ['autonomy:test-gap-rule-v1', 'inherit:appr-0', 'agent:checker', 'system', 'u-1', 'op@test', 'unknown-label']) {
+      service.decideApproval(create().id, true, decider);
+    }
+    const decided = rows("SELECT actor_subject, actor_type FROM authority_events WHERE requested_state = 'EXECUTION_APPROVED'");
+    const typeOf = Object.fromEntries(decided.map((r) => [r.actor_subject, r.actor_type]));
+    expect(typeOf).toEqual({
+      'autonomy:test-gap-rule-v1': 'service', 'inherit:appr-0': 'service', 'agent:checker': 'agent', system: 'service',
+      'u-1': 'human', 'op@test': 'human', 'unknown-label': 'service',
+    });
+    // the HOLD of a request made by a non-user ('maker') is not a human event either
+    expect(rows("SELECT DISTINCT actor_type FROM authority_events WHERE requested_state = 'EXECUTION_APPROVAL_REQUESTED'")).toEqual([{ actor_type: 'service' }]);
+  });
 });
 
 describe('event outbox', () => {

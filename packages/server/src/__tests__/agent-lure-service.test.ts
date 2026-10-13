@@ -21,7 +21,7 @@ describe('agent commons lure (honeypot)', () => {
     db = createTestDb();
     db.prepare("INSERT INTO agents (id, name, status) VALUES ('present', 'Present', 'active'), ('silent', 'Silent', 'idle'), ('paused', 'Paused', 'paused')").run();
     comms = new AgentCommunicationService(db);
-    comms.heartbeat('present', 'codex', 'test-model');
+    comms.heartbeat('present', 'codex', 'test-model', 'runtime_token');
     lure = new AgentLureService(db, comms);
   });
 
@@ -41,19 +41,20 @@ describe('agent commons lure (honeypot)', () => {
     expect(validateSpawnToken(secret, invitation.token, 'present', 'social-runtime')).toBe(false);
     expect(invitation.poller_env).toContain("DJIMITFLO_AGENT_ID='silent'");
 
-    const [invite] = comms.receive('silent');
+    expect(comms.receiveSocial('silent')).toHaveLength(0); // the social-work queue never hands out invites
+    const [invite] = lure.deliverInvites('silent'); // the token path does
     expect(invite.payload.action).toBe('social.invite');
     expect(invite.payload.thread_id).toBe(cast.lure.id);
     expect(JSON.stringify(invite)).not.toContain(invitation.token);
-    expect(comms.receiveSocial('silent')).toHaveLength(0);
 
 
     let status = lure.status();
     expect(status.lures[0].invitees).toEqual([expect.objectContaining({ agent_id: 'silent', state: 'seen' })]);
 
-    comms.heartbeat('silent', 'ollama', 'qwen');
+    const beat = comms.heartbeat('silent', 'ollama', 'qwen', 'runtime_token');
+    expect(lure.recordHeartbeat('silent', beat.timestamp)).toEqual([cast.lure.id]);
     status = lure.status();
-    expect(status.lures[0]).toMatchObject({ bites: 1, invitees: [expect.objectContaining({ agent_id: 'silent', state: 'bit' })] });
+    expect(status.lures[0]).toMatchObject({ bites: 1, invitees: [expect.objectContaining({ agent_id: 'silent', state: 'bit', coincident_heartbeat: beat.timestamp })] });
   });
 
   it('shell-quotes untrusted ids in the poller command and persists nothing when nobody is absent', () => {
@@ -62,8 +63,8 @@ describe('agent commons lure (honeypot)', () => {
     const evil = cast.invitations.find((invitation) => invitation.agent_id === 'evil;rm -rf /')!;
     expect(evil.poller_env).toContain("DJIMITFLO_AGENT_ID='evil;rm -rf /'");
     expect(evil.poller_env).toContain(`DJIMITFLO_SOCIAL_TOKEN='${evil.token}'`);
-    comms.heartbeat('silent', 'codex', 'test-model');
-    comms.heartbeat('evil;rm -rf /', 'codex', 'test-model');
+    comms.heartbeat('silent', 'codex', 'test-model', 'runtime_token');
+    comms.heartbeat('evil;rm -rf /', 'codex', 'test-model', 'runtime_token');
     const empty = lure.castLure({ by: 'op', baseUrl: 'http://127.0.0.1:3001' });
     expect(empty.lure.invited).toEqual([]);
     expect((db.prepare('SELECT COUNT(*) AS n FROM social_lures').get() as { n: number }).n).toBe(1);

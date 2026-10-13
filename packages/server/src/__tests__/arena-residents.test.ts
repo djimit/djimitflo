@@ -84,7 +84,7 @@ it('SOCIAL_AUTOPILOT_FORECAST_ONLY: residents heartbeat and forecast, but post n
   const { db, autopilot, comms, prompts } = setup({ forecastOnly: true });
   autopilot.seedResidents();
   prop(db, 'p1'); enqueueCommittee(db, { id: 'p1', title: 't', source: 'gap_analysis' });
-  for (const r of RESIDENTS) comms.heartbeat(r.id, 'ollama', 'm');
+  for (const r of RESIDENTS) comms.heartbeat(r.id, 'ollama', 'm', 'runtime_token');
   comms.socialize(0, 'operator', RESIDENTS.map((r) => r.id)); // an open thread waiting for residents
   const pending = () => (db.prepare("SELECT COUNT(*) n FROM agent_messages WHERE json_extract(payload_json, '$.action') = 'social.question' AND status = 'pending'").get() as { n: number }).n;
   const before = pending();

@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { evolveEligible, evolveSpecies, mutationScoreOf, selectEvolveWinner } from '../services/evolve-selection';
+import { LoopService } from '../services/loop-service';
 
 let db: Database.Database;
 const now = new Date().toISOString();
@@ -170,4 +171,32 @@ describe('SI-B graded contest (GRADED_CONTEST_MODE)', () => {
     expect(outcome('m-strong')).toBeUndefined(); // the winner's own outcome is the daemon's (9a'')
     expect(JSON.parse(contestEvent()!.metadata)).toMatchObject({ current_winner: 'm-small', graded_winner: 'm-strong', agree: false });
   });
+});
+
+it('prod 2026-10-09 run 161f7840: a retry maker still prepared when the winner is chosen is superseded, so maker_completion judges the winner only', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'evolve-leftover-'));
+  const loops = new LoopService(db, path.join(root, 'evidence'));
+  const worktree = path.join(root, 'wt'); fs.mkdirSync(worktree); fs.writeFileSync(path.join(worktree, 'LOOP_WORK.md'), 'assignment');
+  db.prepare("UPDATE loop_runs SET repository_path = ?, findings_json = '[]', metadata = '{}' WHERE id = 'run-1'").run(root);
+  // the first maker failed its checks; retryLoopRun made a retry (whose execution never got going) and then the evolve sibling
+  maker('m-first', 'opencode', { exit_status: 1, superseded_by_maker_lease_id: 'm-sib' }); reviewer('c-first', 'checker', 'm-first');
+  db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES ('m-retry', 'run-1', 'maker', 'opencode', 'prepared', ?, ?, ?)`)
+    .run(JSON.stringify({ retry_of_maker_lease_id: 'm-first', retry_attempt: 1 }), now, now);
+  reviewer('c-retry', 'checker', 'm-retry'); reviewer('s-retry', 'security_checker', 'm-retry');
+  maker('m-sib', 'remote', ok(30, { retry_of_maker_lease_id: 'm-first', evolve_sibling_of: 'm-first', retry_attempt: 2, assignment_file: path.join(worktree, 'LOOP_WORK.md') }));
+  db.prepare("UPDATE worker_leases SET worktree_path = ? WHERE id = 'm-sib'").run(worktree);
+  reviewer('c-sib', 'checker', 'm-sib');
+
+  expect(selectEvolveWinner(db, 'run-1', ['m-first', 'm-sib'])).toBe('m-sib');
+  expect(loops.verifyLoopRun('run-1').gates.find((g) => g.name === 'maker_completion')).toMatchObject({ status: 'pass', evidence: expect.stringMatching(/^1\/1 /) });
+  expect(meta('m-retry')).toMatchObject({ superseded_by_maker_lease_id: 'm-sib', cancellation_reason: 'superseded_by_evolve_winner' });
+  expect([status('m-retry'), status('c-retry'), status('s-retry'), status('c-sib')]).toEqual(['cancelled', 'cancelled', 'cancelled', 'prepared']);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+it('a maker of the run that is already running when the winner is chosen is left alone', () => {
+  maker('m-a', 'opencode', ok(20)); maker('m-b', 'codex', ok(40));
+  db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES ('m-run', 'run-1', 'maker', 'opencode', 'running', '{}', ?, ?)`).run(now, now);
+  expect(selectEvolveWinner(db, 'run-1', ['m-a', 'm-b'])).toBe('m-a');
+  expect([status('m-run'), meta('m-run').superseded_by_maker_lease_id]).toEqual(['running', undefined]);
 });
