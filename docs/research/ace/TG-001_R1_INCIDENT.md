@@ -57,3 +57,17 @@ r1 record (from the GO checklist):
 ## Reconciliation rule
 
 If the provider later supplies a newer disk image, mount it **read-only**. Compare it with production record by record before any selective reconcile. Never overwrite production with the image. Reconciled r1 rows would still be r1 (`experiment_id = 'tg-001'`), and r2 never serves or pools them.
+
+## Addendum (2026-10-12, recovery report)
+
+- **Refined window:** last surviving row 2026-10-11T04:16:22.715Z; first post-restore write 2026-10-12T16:43:39Z
+  ([recovery note](../RECOVERY-2026-10-12.md)).
+- **r1 attempts:** the workstation journal shows about 7 r1 outcome lines, not ~5. They are metadata only, are not imported, and
+  stay UNKNOWN/LOST.
+- **Plan provenance limitation:** the r1 fingerprints above come from the GO checklist output recorded in the operator's session and
+  plan file. They were never written to Git or another immutable store before the rollback, and the full r1 manifest (task list,
+  prompts) existed only in the lost database. The r1 plan therefore **cannot be verified from an immutable source**.
+- **Operator decision (2026-10-12):** r2 freezes a **new plan** from the restored database, with the same design (arms, oracle, gates,
+  analysis rules, MDE, interval method, step budget, species, worker). `plan_matches_r1` is still computed and its differing fields are
+  recorded, but a mismatch does not block r2: r2 is a new run of the same design, never pooled with r1. All other GO checks remain
+  required.
