@@ -29,3 +29,4 @@ them so that no agent rediscovers a rejected approach and silently retries it.
 | NE-006 | Soup as fine-tuning backend | REJECT |
 | NE-007 | ruDevolution for shipped-code inspection | NO_GO |
 | NE-008 | REA integration | NO_GO |
+| NE-010 | MiroFish (LLM social simulation) as prediction or evolution substrate — [details](NE-010-mirofish.md) | REJECT |
