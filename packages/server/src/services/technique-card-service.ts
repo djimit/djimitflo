@@ -16,7 +16,7 @@ import { abstractFromNote } from './expert-source-units-service';
 export const techniqueCardsEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.FRONTIER_TECHNIQUE_CARDS_ENABLED === 'true';
 
 export type ClaimRunner = (role: string, system: string, user: string) => Promise<unknown>;
-/** KE-1: abstract for a unit ref (`arxiv:<id>`); null = the source has none (not retried), a throw = source unavailable (retried). */
+/** KE-1: abstract for a unit ref (`arxiv:<id>` or `doi:<doi>`); null = the source has none (not retried), a throw = source unavailable (retried). */
 export type AbstractFetcher = (ref: string) => Promise<string | null>;
 
 /**
@@ -26,6 +26,9 @@ export type AbstractFetcher = (ref: string) => Promise<string | null>;
 export function scholarlyAbstractFetcher(): AbstractFetcher {
   const datacite = new DataCiteAdapter(); const arxiv = new ArxivAdapter();
   return async (ref) => {
+    // B18: a DOI ref is a DataCite lookup only (Crossref would be a new outbound host; DataCite mints arXiv and most repository DOIs)
+    const doi = /^doi:(10\.\S+)$/i.exec(ref)?.[1];
+    if (doi) return (await datacite.paperByDoi(doi))?.summary || null;
     const id = /^arxiv:(\d{4}\.\d{4,5})/i.exec(ref)?.[1];
     if (!id) return null;
     const paper = await datacite.paperByArxivId(id);
@@ -57,20 +60,34 @@ export class TechniqueCardService {
    * (no network, uncapped), else from the scholarly adapters (at most `maxFetches` per tick; a miss is not fetched again,
    * an unavailable source is). A unit that gets an abstract has its technique-card attempt cleared, so extractBatch
    * re-attempts it. Units with a relevant jev verdict go first.
+   * B18 (prod 11-10: 2 735 abstract-less units carry `expert:<unit id>` refs — the paper's own arXiv id was lost when the
+   * person pipeline was retired — and all 2 735 share their exact title with an active paper evidence row that has an
+   * `arxiv:`/`doi:` ref; 1 999 of those rows already hold the abstract): an `expert:` unit copies its same-title twin's
+   * abstract (no network, uncapped, `same-title-evidence`), else is fetched under the twin's ref (capped); a unit without
+   * a twin (person-shaped / unresolvable) is marked attempted and never fetched. `doi:` refs go to DataCite.
+   * ponytail: exact-title match, a different paper with an identical title would lend its abstract; add a DOI/arXiv id
+   * to stored-evidence units if title collisions show up in claims.
    */
-  async fillAbstracts(maxFetches = 10): Promise<{ from_note: number; fetched: number; missing: number }> {
-    const out = { from_note: 0, fetched: 0, missing: 0 };
-    const rows = this.db.prepare(`SELECT i.id, e.id AS evidence_id, e.source_ref AS ref, json_extract(e.metadata_json, '$.note') AS note,
+  async fillAbstracts(maxFetches = 10): Promise<{ from_note: number; from_evidence: number; fetched: number; missing: number; unresolved: number }> {
+    const out = { from_note: 0, from_evidence: 0, fetched: 0, missing: 0, unresolved: 0 };
+    const rows = this.db.prepare(`SELECT i.id, e.id AS evidence_id, e.source_ref AS ref, COALESCE(NULLIF(e.title, ''), i.canonical_name) AS title, json_extract(e.metadata_json, '$.note') AS note,
         json_extract(i.provenance_json, '$.abstract_fetch.attempted_at') AS tried
       FROM expert_identities i JOIN expert_evidence e ON e.expert_id = i.id AND e.kind = 'paper' AND e.lifecycle = 'active'
       WHERE i.kind = 'paper' AND i.lifecycle_state NOT IN ('REJECTED', 'REVOKED')
         AND LENGTH(COALESCE(json_extract(e.metadata_json, '$.abstract'), '')) <= 80
-        -- fetchable (an arXiv ref not tried yet; prod 09-10: 1 920 stored-evidence units carry expert:/doi: refs) or a long note
-        AND ((json_extract(i.provenance_json, '$.abstract_fetch.attempted_at') IS NULL AND e.source_ref LIKE 'arxiv:%') OR LENGTH(COALESCE(json_extract(e.metadata_json, '$.note'), '')) >= 200)
+        -- fetchable (an arXiv / DOI / stored-evidence ref not tried yet) or a long note
+        AND ((json_extract(i.provenance_json, '$.abstract_fetch.attempted_at') IS NULL
+              AND (e.source_ref LIKE 'arxiv:%' OR e.source_ref LIKE 'doi:%' OR e.source_ref LIKE 'expert:%'))
+          OR LENGTH(COALESCE(json_extract(e.metadata_json, '$.note'), '')) >= 200)
         AND NOT EXISTS (SELECT 1 FROM expert_claims c WHERE c.expert_id = i.id)
       GROUP BY i.id
       ORDER BY EXISTS (SELECT 1 FROM judgments j WHERE j.judgment = 'discovery_relevance' AND j.subject_id = i.id AND j.decision = 'yes') DESC, i.created_at, i.rowid
-      LIMIT 500`).all() as Array<{ id: string; evidence_id: string; ref: string | null; note: string | null; tried: string | null }>;
+      LIMIT 500`).all() as Array<{ id: string; evidence_id: string; ref: string | null; title: string | null; note: string | null; tried: string | null }>;
+    // the same paper under its real ref: longest stored abstract first
+    const twin = this.db.prepare(`SELECT o.source_ref AS ref, json_extract(o.metadata_json, '$.abstract') AS abstract FROM expert_evidence o
+      WHERE o.kind = 'paper' AND o.lifecycle = 'active' AND o.title = ? AND o.id <> ? AND (o.source_ref LIKE 'arxiv:%' OR o.source_ref LIKE 'doi:%')
+      ORDER BY LENGTH(COALESCE(json_extract(o.metadata_json, '$.abstract'), '')) DESC LIMIT 1`);
+    const markTried = (id: string) => this.db.prepare("UPDATE expert_identities SET provenance_json = json_set(COALESCE(NULLIF(provenance_json, ''), '{}'), '$.abstract_fetch.attempted_at', ?) WHERE id = ?").run(new Date().toISOString(), id);
     const store = (row: { id: string; evidence_id: string }, abstract: string, source: string) => {
       this.db.prepare("UPDATE expert_evidence SET metadata_json = json_set(COALESCE(NULLIF(metadata_json, ''), '{}'), '$.abstract', ?, '$.abstract_source', ?) WHERE id = ?").run(abstract.slice(0, 4_000), source, row.evidence_id);
       this.db.prepare("UPDATE expert_identities SET provenance_json = json_remove(provenance_json, '$.technique_cards.attempted_at') WHERE id = ?").run(row.id);
@@ -80,12 +97,20 @@ export class TechniqueCardService {
     for (const row of rows) {
       const fromNote = abstractFromNote(row.note);
       if (fromNote) { store(row, fromNote, 'note'); out.from_note += 1; continue; }
-      if (row.tried || fetches >= maxFetches || !row.ref?.toLowerCase().startsWith('arxiv:')) continue;
+      if (row.tried) continue;
+      let ref = row.ref?.toLowerCase() ?? '';
+      if (ref.startsWith('expert:')) {
+        const t = row.title ? twin.get(row.title, row.evidence_id) as { ref: string; abstract: string | null } | undefined : undefined;
+        if (t?.abstract && t.abstract.trim().length > 80) { store(row, t.abstract.trim(), 'same-title-evidence'); out.from_evidence += 1; continue; }
+        if (!t) { markTried(row.id); out.unresolved += 1; continue; } // no paper behind the ref: never fetched
+        ref = t.ref.toLowerCase();
+      }
+      if (fetches >= maxFetches || !(ref.startsWith('arxiv:') || ref.startsWith('doi:'))) continue;
       fetcher ??= scholarlyAbstractFetcher();
       fetches += 1;
       let abstract: string | null;
-      try { abstract = await fetcher(row.ref); } catch { break; } // source unavailable: stop this tick, retry the unit next time
-      this.db.prepare("UPDATE expert_identities SET provenance_json = json_set(COALESCE(NULLIF(provenance_json, ''), '{}'), '$.abstract_fetch.attempted_at', ?) WHERE id = ?").run(new Date().toISOString(), row.id);
+      try { abstract = await fetcher(ref); } catch { break; } // source unavailable: stop this tick, retry the unit next time
+      markTried(row.id);
       if (abstract && abstract.trim().length > 80) { store(row, abstract.trim(), 'scholarly-adapter'); out.fetched += 1; } else out.missing += 1;
     }
     return out;
@@ -102,7 +127,7 @@ export class TechniqueCardService {
   }
 
   async extractBatch(limit = 5): Promise<{ cards: number; claims: number; contradictions: number }> {
-    if (!this.runner) { const model = await createModelPerspectiveRunner(process.env, this.db); if (!model) return { cards: 0, claims: 0, contradictions: 0 }; this.runner = (_role, system, user) => model.runner('perspective', system, user); }
+    if (!this.runner) { const model = await createModelPerspectiveRunner(process.env, this.db); if (!model) return { cards: 0, claims: 0, contradictions: 0 }; this.runner = (_role, system, user) => model.runner('perspective', system, user, 'technique_card'); }
     let cards = 0; let claims = 0; let contradictions = 0;
     for (const unit of this.pending(limit)) {
       const raw = unit.abstract.length > 80

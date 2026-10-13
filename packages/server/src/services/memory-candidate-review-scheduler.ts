@@ -57,7 +57,7 @@ import { MemoryCandidateService, type MemoryCandidateRecord } from './memory-can
 import { SpecialistPanelService, type SpecialistPanelRecord } from './specialist-panel-service';
 import { SelfImprovementAgentReviewService } from './self-improvement-agent-review-service';
 import { SelfImprovementService } from './self-improvement-service';
-import { markRun } from './scheduler-registry';
+import { guardTick, markRun } from './scheduler-registry';
 
 const MINUTE_MS = 60 * 1000;
 const SCHEDULER_ACTOR = 'agent:memory-approver';
@@ -90,9 +90,9 @@ export class MemoryCandidateReviewScheduler {
   start(): boolean {
     if (process.env.MEMORY_CANDIDATE_REVIEW_ENABLED !== 'true') return false;
     const intervalMs = this.intervalMinutes() * MINUTE_MS;
-    this.timer = setInterval(() => void this.tick(), intervalMs);
+    this.timer = setInterval(guardTick('memory_candidate_review', () => this.tick()), intervalMs);
     this.timer.unref();
-    void this.tick(); // catch-up on boot
+    guardTick('memory_candidate_review', () => this.tick())(); // catch-up on boot
     return true;
   }
 

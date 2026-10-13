@@ -3,7 +3,7 @@ import { WebSocketEventType } from '@djimitflo/shared';
 import { useWsSubscribe } from '../components/WebSocketProvider';
 import { Link } from 'react-router-dom';
 import { Activity, RefreshCw } from 'lucide-react';
-import { api, type EfficiencyConsumer, type EfficiencyView, type OperatorCockpit, type ServiceStatus, type ValueInterval } from '../lib/api';
+import { api, type EfficiencyConsumer, type EfficiencyView, type EvolutionLineage, type OperatorCockpit, type ServiceStatus, type ValueInterval } from '../lib/api';
 import { fmt, since } from '../lib/format';
 import { DataTable, Section, StatusPill } from '../components/ui';
 
@@ -90,7 +90,7 @@ export function CommandStrip({ d, now = Date.now() }: { d: CockpitView; now?: nu
       </div>)}
       {card('cmd-improvement', 'Is improvement occurring?', <>
         <div className="text-xl font-semibold">{num(d.scorecard.verified_7d)} verified · {num(d.scorecard.regressed_7d)} regressed</div>
-        <p className="text-xs text-foreground-secondary">7 d throughput, not intelligence — see <Link to="/evolution" className="underline">Evolution</Link> for the validated-improvement scorecard.</p>
+        <p className="text-xs text-foreground-secondary">7 d throughput, not improvement — see <Link to="/evolution" className="underline">Evolution</Link> for the validated-improvement scorecard.</p>
       </>)}
       {card('cmd-blocked', 'What is blocked?', <>
         <div className="text-xl font-semibold">{blocked ? `${blocked} blocked` : 'nothing blocked'}</div>
@@ -105,6 +105,38 @@ export function CommandStrip({ d, now = Date.now() }: { d: CockpitView; now?: nu
       </>)}
       {card('cmd-needs-you', 'What needs you?', d.needs_you ? <NeedsYouTotal n={d.needs_you} /> : <div className="text-xl font-semibold">unknown</div>)}
     </div>
+  );
+}
+
+
+const STAGE_LABEL: Record<string, string> = { discovery: 'Discovery', proposal: 'Proposal', experiment: 'Experiment', verified: 'Verified', merged: 'Merged',
+  settled: 'Settled', survived_14d: 'Survived 14 d', survived_30d: 'Survived 30 d', capability_gain: 'Capability gain', reproduced: 'Reproduced' };
+const pct = (v: number | null) => (v === null ? '—' : `${Math.round(v * 100)} %`);
+
+/** 'Restore Evolutionary Health': the evolutionary funnel (lineage to survival), the largest bottleneck, 4-way regressions and NEV. */
+export function EvolutionFunnel({ e }: { e: EvolutionLineage }) {
+  const b = e.bottleneck; const r = e.regression_split; const n = e.nev;
+  return (
+    <section aria-labelledby="evo-funnel" className="rounded-lg border border-border p-4 space-y-3" data-testid="evolution-funnel">
+      <h2 id="evo-funnel" className="text-lg font-semibold">Evolutionary funnel ({e.window_days} d)</h2>
+      <p className="text-xs text-foreground-secondary">{e.throughput.verified} verified = {e.throughput.label}. Survival, not verification, is the fitness signal.</p>
+      {b && <p role="status" className="text-sm"><strong>Largest bottleneck:</strong> {STAGE_LABEL[b.from] ?? b.from} → {STAGE_LABEL[b.to] ?? b.to}: {b.lost} lineage(s) lost
+        ({pct(b.conversion)} convert){b.reason ? `; top reason ${b.reason}` : ''}{b.oldest_queue ? `; oldest queue ${STAGE_LABEL[b.oldest_queue.stage] ?? b.oldest_queue.stage} (median ${b.oldest_queue.median_age_days} d)` : ''}</p>}
+      <DataTable caption="Lineage per stage" rows={e.stages} rowKey={(s) => s.stage} empty="No lineages in the window." columns={[
+        { key: 'stage', label: 'Stage', render: (s) => <span className={b && (s.stage === b.to) ? 'font-semibold text-status-warning' : ''}>{STAGE_LABEL[s.stage] ?? s.stage}</span> },
+        { key: 'count', label: 'Count', render: (s) => (s.count === null ? (s.measured === 'not_measured' ? 'not measured' : 'unknown') : fmt(s.count)) },
+        { key: 'conv', label: 'Conversion', render: (s) => (s.measured === 'not_linked' ? 'not linked' : pct(s.conversion)) },
+        { key: 'age', label: 'Median wait', render: (s) => (s.median_age_days === null ? '—' : `${s.median_age_days} d`) },
+        { key: 'why', label: 'Top reason', render: (s) => s.top_failure ?? s.note ?? '—' },
+        { key: 'tok', label: 'Compute', render: (s) => (s.compute_tokens === null ? '—' : `${(s.compute_tokens / 1e6).toFixed(2)} M tok`) },
+        { key: 'op', label: 'Operator decisions', render: (s) => (s.operator_decisions === null ? 'unknown' : fmt(s.operator_decisions)) },
+      ]} />
+      <p className="text-sm">Regressions: mutation failure {r.mutation_failure} · post-verification {r.post_verification} (evolutionary {e.evolutionary_regressions}) ·
+        reviewer rejection {r.reviewer_rejection} (gate worked, not a regression) · environment {r.environment} · unattributed {r.unknown}</p>
+      <p className="text-sm">NEV (shadow): {n.status === 'ok' ? `${n.value} (per M cloud tokens ${n.per_m_cloud_tokens ?? '—'}, per operator decision ${n.per_operator_decision ?? '—'})` : `insufficient evidence — ${n.reason}`};
+        survival {n.survived}/{n.settled}{n.survival_ci ? ` [${n.survival_ci[0].toFixed(2)}–${n.survival_ci[1].toFixed(2)}]` : ''}; per kWh: {n.per_kwh ?? n.per_kwh_status}</p>
+      <p className="text-xs text-foreground-secondary">JEV semantic routing: {e.jev_semantic_routing}</p>
+    </section>
   );
 }
 
@@ -221,6 +253,7 @@ export function OperatorCockpitPage() {
       {data && (
         <>
           <CommandStrip d={data} />
+          {data.evolution && <EvolutionFunnel e={data.evolution} />}
           {data.errors && data.errors.length > 0 && (
             <div role="alert" className="rounded border border-status-warning/60 bg-status-warning/10 p-3 text-sm">
               <strong>Partial data:</strong> these sections failed and are shown as unknown, not as healthy.
@@ -241,7 +274,7 @@ export function OperatorCockpitPage() {
                   <div className="text-xs text-foreground-tertiary">{g.name}</div>
                   <div className="text-2xl font-semibold">{num(g.value)}</div>
                   <div className={`text-xs ${st === 'HEALTHY' ? 'text-foreground-muted' : st === 'BREACHED' ? 'text-status-error' : 'text-status-warning'}`}>{lower(st)} · limit {g.limit}</div>
-                  {g.split && <div className="text-xs text-foreground-tertiary">maker {g.split.maker} · reviewer {g.split.reviewer} · environment {g.split.environment}{g.split.unknown ? ` · unattributed ${g.split.unknown}` : ''}</div>}
+                  {g.split && <div className="text-xs text-foreground-tertiary">maker {g.split.maker} · reviewer {g.split.reviewer} · environment {g.split.environment}{g.split.unknown ? ` · unattributed ${g.split.unknown}` : ''}{g.split.post_verification ? ` · post-verification ${g.split.post_verification}` : ''}</div>}
                 </div>
               ); })}
             </div>
