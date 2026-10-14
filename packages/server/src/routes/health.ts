@@ -23,7 +23,7 @@ import { attributionSummary } from '../services/outcome-attribution';
 import { runtimeConfigView } from '../services/runtime-config-view';
 import { buildDigest } from '../services/operator-push';
 import { getDatabaseProvenance } from '../database/provenance';
-import { efficiencyView } from '../services/resource-ledger';
+import { efficiencyWithCost } from '../services/cost-ledger';
 import { shippedCodeView } from '../services/shipped-code-scan';
 import { memoryTemplateAnalysis } from '../services/memory-template-dedup';
 
@@ -181,8 +181,10 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   });
 
   // Phase E1/E3: tokens, local GPU time and measured GPU energy per consumer (7 d), value per M tokens / per kWh, north-star trend
-  router.get('/efficiency', requireAuth, requirePermission('read:evidence'), (_req, res) => {
-    res.json(efficiencyView(db));
+  // + verified cost ledger (cost_per_verified): population, usage events with one owner each, coverage, versioned metrics; ?days= 1–90 (default 7)
+  router.get('/efficiency', requireAuth, requirePermission('read:evidence'), (req, res) => {
+    const days = Number(req.query.days);
+    res.json(efficiencyWithCost(db, Date.now(), process.env, Number.isInteger(days) && days >= 1 && days <= 90 ? days : 7));
   });
 
   // supply chain (shadow): latest deterministic shipped-code scan per runtime package and its release-to-release diff (read-only)
