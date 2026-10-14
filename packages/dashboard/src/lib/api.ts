@@ -355,7 +355,14 @@ export type OperatorCockpit = {
   judgments_7d: Array<{ judgment: string; calls: number; errors: number; input_tokens: number }>;
   deploys: Array<{ at: string; event: string; sha: string; detail: string }>;
   evolution?: EvolutionLineage | null;
+  /** Workstream B: capability chain per watched capability (server: services/capability-chain.ts) */
+  capabilities?: CapabilityVerdict[];
 };
+export type CapabilityState = 'HEALTHY' | 'IDLE_EXPECTED' | 'BLOCKED' | 'STALLED' | 'MISCONFIGURED' | 'UNKNOWN';
+export type CapabilityChainLink = 'CONFIGURED' | 'ENABLED' | 'DEPENDENCIES_READY' | 'SCHEDULED' | 'EXECUTED' | 'OUTCOME_PERSISTED';
+export type CapabilityVerdict = { component: string; state: CapabilityState; link: CapabilityChainLink;
+  chain: Record<CapabilityChainLink, 'ok' | 'failed' | 'unknown' | 'not_applicable'>; facts: Array<{ fact: string; at: string | null }>;
+  window: { ms: number; since: string }; remediation: string };
 
 /** UX-13: GET /api/health/digest — services/operator-push.ts buildDigest. */
 export type OperatorDigest = { at: string; text: string; data: Record<string, unknown> };

@@ -42,7 +42,9 @@ interface AgentSkillAssignment {
   assignedAt: string;
 }
 
-const SKILLS_DIR = process.env.DJIMITFLO_SKILLS_DIR || join(process.cwd(), '.opencode/skills/generated');
+/** relative to the server's working dir; the stall watch's capability chain checks the same default */
+export const DEFAULT_SKILLS_DIR_REL = '.opencode/skills/generated';
+const SKILLS_DIR = process.env.DJIMITFLO_SKILLS_DIR || join(process.cwd(), DEFAULT_SKILLS_DIR_REL);
 
 function configuredAllowlist(): Set<string> | null {
   const value = process.env.DJIMITFLO_SKILL_ALLOWLIST?.trim();
