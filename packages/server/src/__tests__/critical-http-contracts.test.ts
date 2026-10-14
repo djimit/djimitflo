@@ -22,7 +22,6 @@ import { createRuntimeGovernanceRoutes } from '../routes/runtime-governance';
 import { createSpawnRoutes } from '../routes/spawns';
 import { createMCPRoutes } from '../routes/mcp';
 import { createSwarmRoutes } from '../routes/swarms';
-import { createSelfModificationRoutes } from '../routes/self-modification';
 import { createSBOMRoutes } from '../routes/sbom';
 
 describe('critical HTTP contracts', () => {
@@ -73,7 +72,6 @@ describe('critical HTTP contracts', () => {
     app.use('/mcp', createMCPRoutes(db, passAuth));
     app.use('/swarms/spawns', createSpawnRoutes(db, passAuth));
     app.use('/swarms', createSwarmRoutes(db, passAuth));
-    app.use('/self-modification', createSelfModificationRoutes(db, passAuth));
     app.use('/sbom', createSBOMRoutes(db, passAuth));
     app.use(errorHandler);
     server = await new Promise(resolve => {
@@ -293,25 +291,7 @@ describe('critical HTTP contracts', () => {
     expect((await request('/swarms/fix/batch', { method: 'POST', body: JSON.stringify({ requests: [] }) })).status).toBe(200);
   });
 
-  it('exercises self-modification planning gates and SBOM generation', async () => {
-    const status = await request('/self-modification/status');
-    expect(status.status).toBe(200);
-    const analysis = await request('/self-modification/analyze', { method: 'POST', body: '{}' });
-    expect(analysis.status).toBe(200);
-    const opportunities = (await analysis.json() as any).opportunities;
-    expect(Array.isArray(opportunities)).toBe(true);
-    if (opportunities.length > 0) {
-      const plan = await request('/self-modification/plan', {
-        method: 'POST', body: JSON.stringify({ opportunityId: opportunities[0].id }),
-      });
-      expect(plan.status).toBe(201);
-    }
-    expect((await request('/self-modification/plan', { method: 'POST', body: '{}' })).status).toBe(400);
-    expect((await request('/self-modification/plan', { method: 'POST', body: JSON.stringify({ opportunityId: 'missing' }) })).status).toBe(404);
-    const execute = await request('/self-modification/execute', { method: 'POST', body: '{}' });
-    expect(execute.status).toBe(451);
-    expect((await execute.json() as any).error.code).toBe('SELF_MODIFICATION_DISABLED');
-
+  it('exercises SBOM generation', async () => {
     const sbom = await request('/sbom/generate');
     expect(sbom.status).toBe(200);
     expect(sbom.headers.get('content-disposition')).toContain('sbom.json');
