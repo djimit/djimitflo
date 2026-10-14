@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { kbContext } from './kb-corpus';
+import { filterForPrompt } from './content-safety';
 import { forecastScores, RESOLVED } from './forecast-scoring';
 import { knowledgeOverview } from './knowledge-overview';
 import { markRun } from './scheduler-registry';
@@ -84,16 +85,19 @@ export async function memberContext(db: Database, recipe: string, question: { pr
     case 'kb': return (await kbContext(db, { type: 'committee', id: subjectId }, text, 3).catch(() => null)) ?? '';
     case 'experts': {
       const ws = words(text); if (!ws.length) return '';
-      const rows = all<{ subject: string; relation: string; object: string; confidence: number }>(`SELECT subject, relation, object, confidence FROM expert_claims
+      const rows = all<{ id: string; subject: string; relation: string; object: string; confidence: number }>(`SELECT id, subject, relation, object, confidence FROM expert_claims
         WHERE ${ws.map(() => '(lower(subject) LIKE ? OR lower(object) LIKE ?)').join(' OR ')} ORDER BY confidence DESC LIMIT 5`, ...ws.flatMap((w) => [`%${w}%`, `%${w}%`]));
-      return cap(rows.map((r) => `- claim: ${r.subject} ${r.relation} ${r.object} (confidence ${Number(r.confidence).toFixed(2)})`));
+      // B19: claims are model output over untrusted abstracts; each needs a 'safe' verdict under enforce
+      const safe = await filterForPrompt(db, rows, (r) => ({ type: 'expert_claim', id: r.id }), (r) => `${r.subject} ${r.relation} ${r.object}`);
+      return cap(safe.map((r) => `- claim: ${r.subject} ${r.relation} ${r.object} (confidence ${Number(r.confidence).toFixed(2)})`));
     }
     case 'memory': return cap(all<{ title: string; content: string }>(`SELECT title, content FROM memory_candidates WHERE status = 'promoted' AND memory_type = 'engineering_rule'
       ORDER BY updated_at DESC LIMIT 3`).map((r) => `- rule: ${r.title}: ${r.content.replace(/\s+/g, ' ').slice(0, 300)}`));
     case 'skills': return cap(all<{ title: string }>(`SELECT title FROM self_improvements WHERE source = ? AND status IN ('verified','applied') AND id <> ?
       ORDER BY updated_at DESC LIMIT 5`, p.source ?? '', subjectId).map((r) => `- verified example: ${r.title}`));
-    case 'discoveries': return cap(all<{ t: string }>(`SELECT i.canonical_name AS t FROM judgments j JOIN expert_identities i ON i.id = j.subject_id
-      WHERE j.judgment = 'discovery_relevance' AND j.decision = 'yes' ORDER BY j.created_at DESC LIMIT 5`).map((r) => `- relevant discovery: ${r.t}`));
+    case 'discoveries': return cap((await filterForPrompt(db, all<{ id: string; t: string }>(`SELECT i.id, i.canonical_name AS t FROM judgments j JOIN expert_identities i ON i.id = j.subject_id
+      WHERE j.judgment = 'discovery_relevance' AND j.decision = 'yes' ORDER BY j.created_at DESC LIMIT 5`), (r) => ({ type: 'expert_unit', id: r.id }), (r) => r.t))
+      .map((r) => `- relevant discovery: ${r.t}`));
     default: return ''; // history (already in the frozen question) and none
   }
 }
