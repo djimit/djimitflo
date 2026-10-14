@@ -20,6 +20,7 @@ import { provenanceSummary } from './provenance-dag';
 import { panelAttemptMetrics } from './panel-attempt-metrics';
 import { ace001Evidence } from './ace-001';
 import { ste001Evidence } from './ste-001';
+import { makerDeps001Evidence } from './maker-deps-001';
 import { d5NoEvidence } from './d5-no';
 import { tg001Evidence } from './tg-001';
 import { intelligenceEvidence } from './intelligence-metrics';
@@ -345,6 +346,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // ACE-001 (ACE_001_MODE): oracle-lane maker outcomes per retrieval × example-selection arm (pre-registered, collecting until target)
     ace_001: ace001Evidence(db, since, env),
     ste_001: ste001Evidence(db, since, env),
+    // MAKER-DEPS-001 (MAKER_DEPS_001_MODE): ITT verified completion per dependency-preparation arm (pre-registered, collecting)
+    maker_deps_001: makerDeps001Evidence(db, since, env),
     // H-D5NO (prescreen in shadow): prospective false-rejection risk of jev confident-NO; never mixed with JC (NE-001)
     d5_no: d5NoEvidence(db),
     // TG-001 (TG_001_MODE): gym → production transfer gap — the same frozen write_test tasks under four prompt representations

@@ -1964,10 +1964,53 @@ export class LoopService {
     'OPENCODE_GEMINI_API_KEY', 'OPENCODE_MOONSHOT_API_KEY', 'OPENCODE_NVIDIA_API_KEY', 'OPENCODE_OPENROUTER_API_KEY', 'OPENCODE_REQUESTY_API_KEY',
   ];
 
+  /** The deterministic checks' install command; MAKER-DEPS-001 arm B runs exactly this before the maker. */
+  public static readonly WORKTREE_INSTALL_ARGS = ['ci', '--legacy-peer-deps', '--no-audit', '--no-fund'] as const;
+
+  /**
+   * MAKER-DEPS-001 arm B (docs/research/di-001/MAKER_DEPS_001_PREREG.md): what the deterministic checks install anyway, done
+   * before the maker starts — the checks' own `npm ci` (lockfile + node_modules absent) and the @djimitflo/shared build that
+   * test:changed runs first (dist absent). Provenance: lockfile sha256, npm version, command, exit + duration. No registry, no
+   * script approval; the lockfile's integrity hashes are the only supply-chain control. Never throws.
+   */
+  public prepareMakerWorktree(runId: string, leaseId: string, worktree: string) {
+    const started = Date.now();
+    const outputDir = path.join(this.evidenceRoot, runId, 'maker-prepare', leaseId);
+    const run = (args: readonly string[], timeout: number) => {
+      const t0 = Date.now();
+      const r = spawnSync('npm', [...args], { cwd: worktree, encoding: 'utf8', timeout, env: this.buildRuntimeEnv(), maxBuffer: 5 * 1024 * 1024 });
+      return { exit: r.status ?? null, ms: Date.now() - t0, stdout: r.stdout || '', stderr: r.stderr || r.error?.message || '' };
+    };
+    const out = { command: `npm ${LoopService.WORKTREE_INSTALL_ARGS.join(' ')}`, npm_version: null as string | null, lockfile_sha256: null as string | null,
+      installed: false, install_exit: null as number | null, install_ms: 0, install_failed: false,
+      shared_built: false, shared_exit: null as number | null, shared_ms: 0, shared_failed: false, duration_ms: 0 };
+    try {
+      fs.mkdirSync(outputDir, { recursive: true });
+      const lock = path.join(worktree, 'package-lock.json');
+      if (fs.existsSync(lock)) out.lockfile_sha256 = createHash('sha256').update(fs.readFileSync(lock)).digest('hex');
+      const v = run(['--version'], 30_000); out.npm_version = v.exit === 0 ? v.stdout.trim() || null : null;
+      if (out.lockfile_sha256 && !fs.existsSync(path.join(worktree, 'node_modules'))) {
+        const r = run(LoopService.WORKTREE_INSTALL_ARGS, 600_000);
+        out.install_exit = r.exit; out.install_ms = r.ms; out.install_failed = r.exit !== 0;
+        out.installed = !out.install_failed && fs.existsSync(path.join(worktree, 'node_modules'));
+        fs.writeFileSync(path.join(outputDir, 'install.stdout.log'), r.stdout, 'utf8');
+        fs.writeFileSync(path.join(outputDir, 'install.stderr.log'), r.stderr, 'utf8');
+      }
+      const shared = path.join(worktree, 'packages', 'shared');
+      if (!out.install_failed && fs.existsSync(path.join(shared, 'package.json')) && !fs.existsSync(path.join(shared, 'dist', 'index.js'))) {
+        const r = run(['run', 'build', '--workspace=@djimitflo/shared'], 300_000);
+        out.shared_exit = r.exit; out.shared_ms = r.ms; out.shared_built = r.exit === 0; out.shared_failed = !out.shared_built;
+        if (out.shared_failed) fs.writeFileSync(path.join(outputDir, 'shared-build.stderr.log'), r.stderr, 'utf8');
+      }
+    } catch { if (out.installed) out.shared_failed = true; else out.install_failed = true; }
+    out.duration_ms = Date.now() - started;
+    return out;
+  }
+
   /** `npm ci` in a worktree that has a lockfile but no node_modules; returns a failed 'install' check, or null. */
   private installWorktreeDependencies(worktree: string, outputDir: string, timeoutMs: number): Record<string, unknown> | null {
     if (!fs.existsSync(path.join(worktree, 'package-lock.json')) || fs.existsSync(path.join(worktree, 'node_modules'))) return null;
-    const result = spawnSync('npm', ['ci', '--legacy-peer-deps', '--no-audit', '--no-fund'], {
+    const result = spawnSync('npm', [...LoopService.WORKTREE_INSTALL_ARGS], {
       cwd: worktree, encoding: 'utf8', timeout: Math.max(timeoutMs, 600_000), env: this.buildRuntimeEnv(), maxBuffer: 5 * 1024 * 1024,
     });
     if (result.status === 0) return null;
