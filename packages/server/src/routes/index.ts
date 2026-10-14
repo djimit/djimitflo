@@ -56,7 +56,6 @@ import { createRetirementRoutes } from './retirement';
 import { createRedTeamRoutes } from './red-team';
 import { createPlatformRoutes } from './platform';
 import { createHealthRoutes } from './health';
-import { createLegalRoutes } from './legal';
 import { createResearchRoutes } from './research';
 import { createTelegramRoutes } from './telegram';
 import { TelegramApiService } from '../services/telegram-api-service';
@@ -211,7 +210,6 @@ export function createRoutes(
     { prefix: '/red-team', middleware: [requireAuth], router: createRedTeamRoutes(db, auth, runtimeGovernance) },
     { prefix: '/platform', middleware: [requireAuth], router: createPlatformRoutes(db, auth, runtimeGovernance) },
     { prefix: '/health', middleware: [], router: createHealthRoutes(db, auth) },
-    { prefix: '/legal', middleware: [requireAuth], router: createLegalRoutes(db, auth) },
     { prefix: '/research', middleware: [requireAuth], router: createResearchRoutes(db, auth) },
     { prefix: '/telegram', middleware: [], router: createTelegramRoutes(db, auth, wsService, new TelegramApiService(authService!, `http://127.0.0.1:${process.env.PORT || 3001}/api`)) },
     { prefix: '/apex', middleware: [requireAuth], router: createApexRoutes(db, auth, operatorRuntime) },
