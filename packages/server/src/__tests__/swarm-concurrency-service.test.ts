@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SwarmConcurrencyService } from '../services/swarm-concurrency-service';
 
 describe('SwarmConcurrencyService — concurrency slots', () => {
@@ -123,5 +123,48 @@ describe('SwarmConcurrencyService — circuit breaker', () => {
     expect(svc.checkCircuitBreaker('a').tripped).toBe(true);
     expect(svc.checkCircuitBreaker('b').tripped).toBe(false);
     expect(svc.checkCircuitBreaker('b').failures).toBe(1);
+  });
+
+  it('stays tripped at exactly the cooldown boundary (strict greater-than)', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2025-01-01T00:01:00Z'));
+    const svc = new SwarmConcurrencyService();
+    for (let i = 0; i < 3; i++) svc.recordCircuitBreakerFailure('scope');
+    const state = (svc as unknown as { circuitBreakerState: Map<string, { lastFailureAt: string }> }).circuitBreakerState.get('scope')!;
+    state.lastFailureAt = new Date(Date.now() - 60_000).toISOString();
+    const result = svc.checkCircuitBreaker('scope');
+    expect(result.tripped).toBe(true);
+    expect(result.reason).not.toBeNull();
+    vi.useRealTimers();
+  });
+
+  it('subsequent checkCircuitBreaker after cooldown reset is still not tripped', () => {
+    const svc = new SwarmConcurrencyService();
+    for (let i = 0; i < 3; i++) svc.recordCircuitBreakerFailure('scope');
+    const state = (svc as unknown as { circuitBreakerState: Map<string, { lastFailureAt: string }> }).circuitBreakerState.get('scope')!;
+    state.lastFailureAt = new Date(Date.now() - 61_000).toISOString();
+    expect(svc.checkCircuitBreaker('scope').tripped).toBe(false);
+    expect(svc.checkCircuitBreaker('scope')).toEqual({ tripped: false, failures: 0, reason: null });
+  });
+
+  it('stays tripped when breaker is tripped but lastFailureAt is null', () => {
+    const svc = new SwarmConcurrencyService(
+      new Map(),
+      new Map([['scope', { failures: 3, tripped: true, lastFailureAt: null }]]),
+    );
+    const result = svc.checkCircuitBreaker('scope');
+    expect(result.tripped).toBe(true);
+    expect(result.failures).toBe(3);
+    expect(result.reason).not.toBeNull();
+  });
+
+  it('reset via cooldown clears failures so new failures start from 1', () => {
+    const svc = new SwarmConcurrencyService();
+    for (let i = 0; i < 3; i++) svc.recordCircuitBreakerFailure('scope');
+    const state = (svc as unknown as { circuitBreakerState: Map<string, { lastFailureAt: string }> }).circuitBreakerState.get('scope')!;
+    state.lastFailureAt = new Date(Date.now() - 61_000).toISOString();
+    svc.checkCircuitBreaker('scope');
+    const result = svc.recordCircuitBreakerFailure('scope');
+    expect(result).toEqual({ tripped: false, failures: 1 });
   });
 });
