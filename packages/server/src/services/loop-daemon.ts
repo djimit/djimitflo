@@ -11,6 +11,7 @@ import { ResourceScheduler } from './resource-scheduler';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import { LoopEventService } from './loop-event-service';
+import { blockOnUnmetDependencies, settleDependencyBlockedGoals } from './goal-dependency-gate';
 import { inheritableApproval } from './approval-inheritance';
 import { CommonsProposalReviewService } from './commons-proposal-review-service';
 import { SelfImprovementService } from './self-improvement-service';
@@ -223,6 +224,7 @@ export class LoopDaemon {
 
     try {
       this.resumeApprovalBlockedGoals();
+      try { settleDependencyBlockedGoals(this.db); } catch (error) { console.error('[LoopDaemon] dependency settle error:', error instanceof Error ? error.message : String(error)); }
       const queue = this.loadQueue();
       if (queue.length === 0) {
         this.scheduleNext();
@@ -233,7 +235,9 @@ export class LoopDaemon {
       const slots = this.getAvailableSlots();
       // prod 2026-10-01: a goal resumed after an approval is 'decomposed' while it runs, so every tick dispatched it again;
       // the second pass found the running evolve sibling and failed the goal with LOOP_WORKER_EXECUTION_IN_PROGRESS
-      const eligible = queue.filter((g) => !this.executing.has(g.id));
+      // An unmet depends_on parks the goal as dependency-blocked (one event) instead of dispatching it into a silent failure
+      const eligible = queue.filter((g) => !this.executing.has(g.id)
+        && !(Array.isArray(g.metadata?.depends_on_goal_keys) && g.metadata.depends_on_goal_keys.length > 0 && this.dependencyBlocked(g.id)));
       const toStart = eligible.slice(0, slots);
       let objectiveModeDispatchedThisTick = 0;
       const tickId = randomUUID(); // DI-001: groups the propensity records of one selection
@@ -428,6 +432,11 @@ export class LoopDaemon {
       try { new CommonsProposalReviewService(this.db).recordGoalOutcome(row.id, 'failed', reason); } catch { /* best-effort learning */ }
       swarmEventBus.emit('loop_completed', { loopRunId: waiting.run_id, goalId: row.id, goalType: 'doc-drift-and-small-fix-loop', mode: 'closed', status: 'failed', durationMs: 0, strategy: 'objective', startedAt: now, completedAt: now });
     }
+  }
+
+  /** True when the goal is (now) blocked on an unmet dependency; an evaluation error leaves dispatch as before. */
+  private dependencyBlocked(goalId: string): boolean {
+    try { return blockOnUnmetDependencies(this.db, goalId); } catch { return false; }
   }
 
   private scheduleNext(): void {
@@ -922,6 +931,8 @@ export class LoopDaemon {
 
     } catch (error) {
       if (runId && error instanceof Error && error.message === 'LOOP_WORKER_APPROVAL_REQUIRED' && this.blockForApproval(goal, runId)) return;
+      // A dependency that became unmet after the pre-dispatch check (decompose/startLoop assert it again) is a wait, not a failure.
+      if (error instanceof Error && error.message.startsWith('GOAL_DEPENDENCY_') && this.dependencyBlocked(goal.id)) return;
       // Mark the goal as failed if execution fails.
       this.db.prepare('UPDATE goals SET status = ?, updated_at = ? WHERE id = ?')
         .run('failed', new Date().toISOString(), goal.id);
