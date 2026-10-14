@@ -46,6 +46,10 @@ it('DI-001: one dispatched goal writes exactly one propensity record with the ca
   expect(a).toMatchObject({ chosen: high, propensity: 1, deterministic: true, policy_id: SELECTION_POLICY.id, policy_version: SELECTION_POLICY.version, rank: 0, slots: 1 });
   expect(a.candidates).toEqual([high, low]); // the whole eligible queue, in policy order
   expect(a.candidate_count).toBe(2);
+  // DI-001 B (#824): written with instrumented provenance, not the trigger's 'uninstrumented' floor
+  const prov = JSON.parse((db.prepare("SELECT provenance_json FROM judgments WHERE judgment = 'selection_propensity'").get() as { provenance_json: string }).provenance_json);
+  expect(prov).toMatchObject({ status: 'recorded', writer: 'loop-daemon.selection', policy_id: SELECTION_POLICY.id, policy_version: String(SELECTION_POLICY.version), execution_mode: 'shadow', model_id: null });
+  expect(prov.input_digest).toMatch(/^canon\/v1:sha256:/);
 });
 
 it('DI-001: two goals dispatched in one tick → two records sharing the tick and the same candidate set; no behaviour change', async () => {

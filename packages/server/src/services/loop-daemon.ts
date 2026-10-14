@@ -25,6 +25,7 @@ import { recordMakerCall } from './model-call-ledger';
 import { strategyGenomeFor } from './genome-registry';
 import { banditSpecies, chooseSpecies, speciesKey } from './runtime-bandit';
 import { recordFitnessShadow } from './fitness-view';
+import { buildProvenance, provenanceJson } from './judgment-provenance';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { authorityGateForGoal } from './authority-gate';
 import { remoteMakerWaitMs } from '../execution/executors/remote-maker-executor';
@@ -114,12 +115,24 @@ const MAX_LOGGED_CANDIDATES = 200;
 
 /** One additive `selection_propensity` judgment per dispatched goal: candidate set, chosen, p, policy. Telemetry only. */
 export function recordSelectionPropensity(db: Database, tickId: string, candidates: string[], chosen: string, rank: number, slots: number, now = new Date()): void {
-  db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, model, created_at)
-    VALUES (?, 'selection_propensity', 'goal', ?, ?, 'shadow', 'selected', ?, ?, ?, ?)`).run(
-    randomUUID(), chosen, tickId, `deterministic queue order, rank ${rank} of ${candidates.length}`,
-    JSON.stringify({ chosen, propensity: 1, deterministic: true, policy_id: SELECTION_POLICY.id, policy_version: SELECTION_POLICY.version, rank, slots,
-      candidate_count: candidates.length, candidates: candidates.slice(0, MAX_LOGGED_CANDIDATES), candidates_truncated: candidates.length > MAX_LOGGED_CANDIDATES }),
-    'policy', now.toISOString());
+  const at = now.toISOString();
+  const reason = `deterministic queue order, rank ${rank} of ${candidates.length}`;
+  const answers = { chosen, propensity: 1, deterministic: true, policy_id: SELECTION_POLICY.id, policy_version: SELECTION_POLICY.version, rank, slots,
+    candidate_count: candidates.length, candidates: candidates.slice(0, MAX_LOGGED_CANDIDATES), candidates_truncated: candidates.length > MAX_LOGGED_CANDIDATES };
+  // DI-001 B (#824): versioned provenance like every instrumented judgment writer. No model decides here (model_id stays null).
+  const provenance = provenanceJson(buildProvenance({
+    writer: 'loop-daemon.selection', mode: 'shadow', state: { candidates, slots }, subject: { type: 'goal', id: chosen }, stateHash: tickId, at,
+    decision: 'selected', reason, evaluator: `${SELECTION_POLICY.id}/v${SELECTION_POLICY.version}`,
+    def: { id: SELECTION_POLICY.id, policyVersion: String(SELECTION_POLICY.version), questions: {}, decide: loadQueueOrder },
+  }));
+  db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, model, created_at, provenance_json)
+    VALUES (?, 'selection_propensity', 'goal', ?, ?, 'shadow', 'selected', ?, ?, ?, ?, ?)`).run(
+    randomUUID(), chosen, tickId, reason, JSON.stringify(answers), 'policy', at, provenance);
+}
+
+/** The ordering loadQueue applies, as a function so the provenance prompt_version hashes the actual rule. */
+function loadQueueOrder(): string {
+  return "ORDER BY CASE risk_class WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 WHEN 'low' THEN 1 ELSE 0 END DESC, created_at ASC; first `slots` not executing";
 }
 
 interface QueueEntry {
