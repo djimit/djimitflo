@@ -161,6 +161,12 @@ export interface EvolutionEvidence {
   ste_001: { mode: string | null; target_per_arm: number; ste_template_hash: string; status: 'collecting' | 'analysable'; diff: number | null;
     arms: Record<'0' | '1', { n: number; verified: number; verified_rate: number | null; ci: [number, number] | null; out_of_scope: number; out_of_scope_share: number | null; tokens_mean: number | null }>;
     note: string };
+  /** MAKER-DEPS-001 (MAKER_DEPS_001_MODE): ITT verified completion per goal, A = existing, B = dependencies prepared before the maker */
+  maker_deps_001: { experiment: 'MAKER-DEPS-001'; version: 'v1'; mode: string | null; target_per_arm: number; status: 'collecting' | 'analysable';
+    diff: number | null; diff_ci_descriptive: [number, number] | null;
+    arms: Record<'A' | 'B', { goals: number; terminal: number; verified: number; regressed: number; censored: number; verified_rate: number | null;
+      preparations: number; preparation_failed: number; maker_leases: number; maker_failed: number; maker_timed_out: number; tokens_mean: number | null }>;
+    note: string };
   /** H-D5NO: prospective false-rejection risk of jev confident-NO on proposal_prescreen (shadow); confident_yes is descriptive only */
   d5_no: { status: 'collecting' | 'ready' | 'rejected' | 'insufficient_evidence' | 'unavailable'; cutoff: string; prereg_sha256?: string; analysis_n?: number; max_risk?: number;
     excluded?: { pre_cutoff_cluster: number; oracle_lane: number };
