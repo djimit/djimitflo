@@ -70,12 +70,25 @@ const PRICE_PER_MTOK: Record<string, number> = {
  * (e.g. "jev-1.13.0=0.042/0"). Unknown models have no price (null); a price is never invented.
  */
 export function modelPrice(model: string, env: NodeJS.ProcessEnv = process.env): { input: number; output: number } | null {
+  const entry = modelPriceEntry(model, env);
+  return entry ? { input: entry.input, output: entry.output } : null;
+}
+
+/**
+ * The LLM_PRICE_PER_MTOK entry for a model, raw and parsed. An entry may add cache prices: "model=in/out/cache_read/cache_write";
+ * a cache price that is not given is null (unpriced), never 0.
+ */
+export function modelPriceEntry(model: string, env: NodeJS.ProcessEnv = process.env):
+  { raw: string; input: number; output: number; cache_read: number | null; cache_write: number | null } | null {
   const base = model.replace(/^ollama:/, '').replace(/:cloud$/, '');
   for (const pair of String(env.LLM_PRICE_PER_MTOK || '').split(',')) {
     const [name, prices] = pair.split('=').map((s) => s?.trim());
     if (!name || !prices || (name !== model && name !== base)) continue;
-    const [input, output] = prices.split('/').map(Number);
-    if (Number.isFinite(input) && Number.isFinite(output ?? 0)) return { input, output: output ?? 0 };
+    const [input, output, cacheRead, cacheWrite] = prices.split('/').map((p) => (p.trim() === '' ? NaN : Number(p)));
+    const opt = (v: number | undefined) => (v !== undefined && Number.isFinite(v) ? v : null);
+    if (Number.isFinite(input) && Number.isFinite(output ?? 0)) {
+      return { raw: `${name}=${prices}`, input, output: Number.isFinite(output) ? output : 0, cache_read: opt(cacheRead), cache_write: opt(cacheWrite) };
+    }
   }
   return null;
 }

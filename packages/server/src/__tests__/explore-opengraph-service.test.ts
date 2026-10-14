@@ -150,6 +150,181 @@ describe("ExploreOpenGraphService", () => {
     expect(svg).toContain("…");
     const renderedTagline = svg.match(/font-size="32">(.+?)<\/text>/);
     expect(renderedTagline).not.toBeNull();
-    expect(renderedTagline![1].length).toBeLessThanOrEqual(91);
+    expect(renderedTagline![1].length).toBe(90);
+  });
+
+  it("selects green at the exact score 85 boundary", () => {
+    const service = new ExploreOpenGraphService();
+    const { svg } = service.render({
+      bundleContent: baseBundle({
+        manifest: { ...baseBundle().manifest, openmythos_score: 85 },
+      }),
+    });
+    expect(svg).toContain("#34d399");
+    expect(svg).not.toContain("#fbbf24");
+  });
+
+  it("selects amber at the exact score 60 boundary", () => {
+    const service = new ExploreOpenGraphService();
+    const { svg } = service.render({
+      bundleContent: baseBundle({
+        manifest: { ...baseBundle().manifest, openmythos_score: 60 },
+      }),
+    });
+    expect(svg).toContain("#fbbf24");
+    expect(svg).not.toContain("#fb7185");
+  });
+
+  it("renders 0 as the score label when score is zero (nullish coalescing)", () => {
+    const service = new ExploreOpenGraphService();
+    const { svg } = service.render({
+      bundleContent: baseBundle({
+        manifest: { ...baseBundle().manifest, openmythos_score: 0 },
+      }),
+    });
+    expect(svg).toContain(">0<");
+    expect(svg).not.toContain(">—<");
+  });
+
+  it("escapes single quotes in the repository name", () => {
+    const service = new ExploreOpenGraphService();
+    const { svg } = service.render({
+      bundleContent: baseBundle({
+        manifest: {
+          ...baseBundle().manifest,
+          repository_full_name: "a'b",
+        },
+      }),
+    });
+    expect(svg).toContain("a&apos;b");
+    expect(svg).not.toContain("a'b");
+  });
+
+  it("strips a trailing period from the extracted tagline", () => {
+    const service = new ExploreOpenGraphService();
+    const { svg } = service.render({ bundleContent: baseBundle() });
+    const renderedTagline = svg.match(/font-size="32">(.+?)<\/text>/);
+    expect(renderedTagline).not.toBeNull();
+    expect(renderedTagline![1]).not.toMatch(/\.$/);
+  });
+
+  it("selects the second body line when the first body line is long (i > 0 guard)", () => {
+    const service = new ExploreOpenGraphService();
+    const { svg } = service.render({
+      bundleContent: baseBundle({
+        sections: {
+          overview:
+            "First long body line that should be skipped by the index guard\nSecond long body line that should be selected instead",
+          health: "Overall score: 50",
+        },
+      }),
+    });
+    expect(svg).toContain("Second long body line that should be selected instead");
+    expect(svg).not.toContain("First long body line that should be skipped by the index guard");
+  });
+
+  it("falls back to the heading text when the overview has no body", () => {
+    const service = new ExploreOpenGraphService();
+    const { svg } = service.render({
+      bundleContent: baseBundle({
+        sections: { overview: "# My Project Heading", health: "Overall score: 50" },
+      }),
+    });
+    expect(svg).toContain(">My Project Heading<");
+  });
+
+  it("falls back to the default tagline when the heading is just a hash", () => {
+    const service = new ExploreOpenGraphService();
+    const { svg } = service.render({
+      bundleContent: baseBundle({
+        sections: { overview: "#", health: "Overall score: 50" },
+      }),
+    });
+    expect(svg).toContain("An AI-generated explainer for this repository.");
+  });
+
+  it("does not select a body line of exactly 20 characters (length > 20 boundary)", () => {
+    const service = new ExploreOpenGraphService();
+    const { svg } = service.render({
+      bundleContent: baseBundle({
+        sections: { overview: "# MyHeading\n\n01234567890123456789", health: "Overall score: 50" },
+      }),
+    });
+    expect(svg).toContain("MyHeading");
+    expect(svg).not.toContain("01234567890123456789");
+  });
+
+  it("does not truncate a tagline of exactly 90 characters (length <= max boundary)", () => {
+    const service = new ExploreOpenGraphService();
+    const { svg } = service.render({
+      bundleContent: baseBundle({
+        sections: { overview: `# Title\n\n${"A".repeat(90)}`, health: "Overall score: 50" },
+      }),
+    });
+    expect(svg).not.toContain("…");
+    const renderedTagline = svg.match(/font-size="32">(.+?)<\/text>/);
+    expect(renderedTagline).not.toBeNull();
+    expect(renderedTagline![1].length).toBe(90);
+  });
+
+  it("does not add an ellipsis to a short tagline", () => {
+    const service = new ExploreOpenGraphService();
+    const { svg } = service.render({
+      bundleContent: baseBundle({
+        sections: { overview: "# Title\n\nShort body text here", health: "Overall score: 50" },
+      }),
+    });
+    expect(svg).not.toContain("…");
+  });
+
+  it("trims trailing whitespace before appending the ellipsis", () => {
+    const body = "A".repeat(85) + "    " + "B".repeat(30);
+    const service = new ExploreOpenGraphService();
+    const { svg } = service.render({
+      bundleContent: baseBundle({
+        sections: { overview: `# Title\n\n${body}`, health: "Overall score: 50" },
+      }),
+    });
+    const renderedTagline = svg.match(/font-size="32">(.+?)<\/text>/);
+    expect(renderedTagline).not.toBeNull();
+    expect(renderedTagline![1].length).toBe(86);
+    expect(renderedTagline![1]).not.toContain(" ");
+  });
+
+  it("renders an empty string when the repository name is null", () => {
+    const service = new ExploreOpenGraphService();
+    const { svg } = service.render({
+      bundleContent: baseBundle({
+        manifest: {
+          ...baseBundle().manifest,
+          repository_full_name: null as unknown as string,
+        },
+      }),
+    });
+    expect(svg).not.toContain(">null<");
+  });
+
+  it("renders an empty string when the repository name is undefined", () => {
+    const service = new ExploreOpenGraphService();
+    const { svg } = service.render({
+      bundleContent: baseBundle({
+        manifest: {
+          ...baseBundle().manifest,
+          repository_full_name: undefined as unknown as string,
+        },
+      }),
+    });
+    expect(svg).not.toContain(">undefined<");
+  });
+
+  it("shows an em-dash when the health section has no score pattern", () => {
+    const service = new ExploreOpenGraphService();
+    const { svg } = service.render({
+      bundleContent: baseBundle({
+        sections: { overview: "# Overview\n\nbody text", health: "Everything looks great" },
+      }),
+    });
+    expect(svg).toContain(">—<");
+    expect(svg).not.toContain(">great<");
   });
 });
