@@ -10,6 +10,7 @@ import { band, type JudgmentDef } from '../judgment-service';
  */
 export const proposalPrescreen: JudgmentDef = {
   id: 'proposal_prescreen',
+  policyVersion: '1', // DI-001 B: bump when the meaning of this judgment changes
   questions: {
     names_file: { type: 'noul', instructions: 'Does `proposal.description` name a specific source file or module path that the change would touch?' },
     verifiable: { type: 'noul', instructions: 'Could the change described in `proposal` be verified by running one command, for example a single test file?' },
