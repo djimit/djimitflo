@@ -1,6 +1,6 @@
 # DI-001: failed and cancelled maker leases
 
-**Status:** diagnosis complete; fix for the dominant non-gate cause built behind a flag (`LOOP_MAKER_PREPARE_DEPS=on`, default off).
+**Status:** diagnosis complete; the fix for the dominant non-gate cause is built as the pre-registered randomised experiment MAKER-DEPS-001 v1 (`MAKER_DEPS_001_MODE=on`, default off; §6).
 **Window:** 2026-09-14 .. 2026-10-14 07:33Z (prod `djimitflo-live`, read-only better-sqlite3 plus the lease stdout/stderr files; no app code ran in the container).
 **Same method as** `REVIEWER_NO_VERDICT.md`: every lease is classified from its own stdout/stderr/metadata; missing outcomes stay UNKNOWN; reviewer, environment and orchestration failures are never relabelled as maker failures.
 
@@ -199,49 +199,77 @@ Each of these steps re-sends the 35–50 k context, so 10–15 bootstrap steps c
 
 | # | intervention | verified avoidable | cost / risk | status |
 |---|---|---|---|---|
-| 1 | **install worktree dependencies before a local maker starts** (the same `npm ci` the checks already run, plus the `@djimitflo/shared` build that `test:changed` runs first) | **13.3–15.4 M on failed makers / 30 d.** 14.9 M more on completed makers. | install time before the maker; maker timeout and caps unchanged; shifts the maker baseline of running experiments equally in every arm | **built**, flag off |
+| 1 | **install worktree dependencies before a local maker starts** (the same `npm ci` the checks already run, plus the `@djimitflo/shared` build that `test:changed` runs first) | **13.3–15.4 M on failed makers / 30 d.** 14.9 M more on completed makers. | install time before the maker; maker timeout and caps unchanged; shifts the maker baseline of running experiments equally in every arm | **built** as MAKER-DEPS-001 (randomised, mode off) |
 | 2 | stop `npm install-scripts approve` from editing package.json (follows from #1: nothing is blocked once installed) | the 22 package.json out-of-scope edits | — | covered by #1 |
 | 3 | mutation-lane makers: no full Stryker inside the maker loop (the oracle check runs it anyway) | part of 11.54 M of timeouts, not separable from the stdout | changes the maker template (STE-001 / ACE-001 arms) | not built: experiment |
 | 4 | remote capacity (work/queue timeouts) | 0 reported tokens; 21 × 30–45 min | host-side | not built (remote-gym-service / gym-worker are out of scope) |
 | 5 | record usage on cancelled leases | makes 45 UNKNOWN measurable | — | recommendation |
 | 6 | gates (token efficiency, diff, mutation gain) | 0 | — | doing their job; unchanged |
 
-## 6. The fix (`LOOP_MAKER_PREPARE_DEPS=on`, default off)
+## 6. The fix: MAKER-DEPS-001 v1, a randomised experiment (`MAKER_DEPS_001_MODE=on`, default off)
 
-**Change** (`loop-worker-executor-service.ts`, `loop-service.ts`):
-- **When:** before a maker with a local runtime starts. Remote makers run on the compute host's own checkout, and mock/manual makers run nothing, so they are skipped.
-- **What it runs:** the daemon calls `prepareMakerWorktree`, which runs:
-  - the existing `installWorktreeDependencies`: `npm ci --legacy-peer-deps --no-audit --no-fund`, only when there is a lockfile and no `node_modules`;
-  - `npm run build --workspace=@djimitflo/shared`, only when `packages/shared/dist/index.js` is missing.
-- **Event:** it records `maker_worktree_prepared`, with `installed`, `install_failed`, `shared_built`, `shared_failed` and `duration_ms`.
+**Operator decision:** dependency preparation is a randomised experiment, not a global switch. The global `LOOP_MAKER_PREPARE_DEPS` flag of the first commit is withdrawn.
 
-**Unchanged:**
+The pre-registration is `MAKER_DEPS_001_PREREG.md`. It was committed alone, before any assignment code, and its sha256 is in `MAKER_DEPS_001_PREREG.sha256`.
+
+**Assignment** (`maker-deps-001.ts`):
+- **Arm:** the parity of `sha256('maker-deps-001:' + goal_id)`.
+  - **A** = existing behaviour.
+  - **B** = the daemon prepares dependencies before the maker starts.
+  - The salt is orthogonal to ACE-001, STE-001, X1 and F2; a test checks this.
+- **Eligible:** local `opencode` makers of goal runs only.
+  - Never TG-001 (`loop_name` `tg-001`), the gym, or remote, mock, manual or other runtimes.
+  - `tg-001.ts`, `remote-gym-service.ts` and `gym-worker.mjs` are unchanged.
+- **Record:** made before the maker starts. It is one `maker_deps_arm` event plus `metadata.maker_deps_001` on the lease, holding `{experiment: 'MAKER-DEPS-001', version: 'v1', arm, goal_id, maker_lease_id}`.
+  - The lease value is written only if absent.
+  - A lease that already has an arm keeps it.
+
+**Arm B** (`loop-service.ts` `prepareMakerWorktree`):
+- **Install:** **the identical command the checks run**, `npm ci --legacy-peer-deps --no-audit --no-fund`, via the shared `WORKTREE_INSTALL_ARGS`. It runs only when there is a lockfile and no `node_modules`.
+- **Build:** `npm run build --workspace=@djimitflo/shared`, only when `packages/shared/dist/index.js` is missing.
+- **Event:** `maker_worktree_prepared` records:
+  - provenance: lockfile sha256, `npm --version` and the command;
+  - install and shared-build exit status and duration.
+- **No `--ignore-scripts`:** the checks do not use it, and npm 12 already blocks install scripts.
+- **Supply chain:** no registry is added and nothing is approved. Integrity rests on the lockfile.
+
+**The same in both arms:**
 - **Caps, gates and limits:** gates, `OPENCODE_MAX_RUN_TOKENS`, diff limits and the maker timeout. The install runs before `makerStartedAt` and outside the runtime timeout.
-- **The prompt and template:** the STE-001/ACE-001 arms and the genome template hash. The prompt line "install if node_modules is missing" simply finds it present.
+- **The prompt and template:** so the STE-001/ACE-001 arms and the genome template hash are unaffected.
+
+**Failure handling:**
+- **Install failure:** a warning event. The arm stays B (intent-to-treat), and the maker runs as in A.
+- **Maker failure:** it stays a maker failure.
+- **Mode unset:** behaviour is identical to today.
+
+**Evidence:** `evolution-evidence.maker_deps_001` reports, per arm:
+- goals, terminal, verified, regressed and censored;
+- preparations and preparation failures;
+- maker lease failures and timeouts, and mean tokens.
+
+It also reports a descriptive cluster-bootstrap difference. Status is `collecting` until both arms reach 141 terminal goals. Nothing reads the result and nothing is promoted automatically.
+
+**Tests** (`maker-deps-001.test.ts`):
+- **Real shape:** a fake npm 12.0.2 replays the "install scripts blocked" output of 0328565b.
+- **Arm B:**
+  - the arm is recorded before the engine is called;
+  - npm calls are exactly `--version`, the checks' `ci` command and the shared build;
+  - provenance is recorded.
+- **Arm A:** no npm calls.
+- **Mode off:** nothing happens.
+- **Immutable arm:** an arm already on the lease is kept.
 - **Failure handling:**
-  - An install failure is a warning event. The maker runs exactly as today, and the lease outcome and `failure_reason` are untouched.
-  - A maker failure stays a maker failure: the brake reason is not rewritten.
-- **The change set:** install output never enters it (`node_modules/` and `dist/` are git-ignored).
-- **Flag unset:** behaviour is identical to today.
-
-**Why the flag is off by default:** STE-001 and ACE-001 (and any other running maker experiment) are measuring maker outcomes on oracle lanes right now. The change is arm-neutral, but it shifts every arm's baseline mid-experiment, so switching it on is the operator's call at an analysis boundary.
-
-**Tests** (`maker-worktree-prepare.test.ts`):
-- **Real shape:** the test uses a fake `npm` on PATH that replays npm 12's "install scripts blocked" output from 0328565b, in a worktree with a lockfile and `packages/shared` but no `node_modules` or `dist`.
-  - With the flag on, the maker starts with both present, after exactly `npm ci --legacy-peer-deps --no-audit --no-fund` and `npm run build --workspace=@djimitflo/shared`.
-- **Off is the baseline:** no install, no build, no event.
-- **Install failure:** a warning event, then the maker runs and completes; the gate list is unchanged.
-- **The brake failure:** it keeps `maker_gate_failed:maker_runtime_exit_zero`.
-- **Idempotent:** no calls when `node_modules` and the shared `dist` exist.
-- **Remote makers:** untouched.
+  - an install failure leaves the arm recorded, the gates unchanged and no failure reason;
+  - the brake reason stays the same.
+- **Never assigned:** TG-001 runs, evolution-gym runs, remote makers and goal-less runs get no arm.
+- **Independence:** 4 000 synthetic goals against ACE-001 r/s, STE-001, X1 and F2, χ² < 10.83.
+- **Evidence:** ITT counts.
 
 **Expected effect (estimate, labelled).**
-- **Post-#716 rate:** bootstrap steps cost 3.36 M in failed and 5.44 M in completed makers over 4.56 d. That is ≈ **22 M / 30 d on failed makers** (19.6 M conservative) and ≈ 58 M / 30 d over all opencode makers (49 M conservative).
+- **Post-#716 rate:** bootstrap steps cost 3.36 M in failed and 5.44 M in completed makers over 4.56 d.
+- **Projection:** that is about **22 M / 30 d on failed makers** (19.6 M conservative) if all makers were prepared, and about 58 M / 30 d over all opencode makers. Under the experiment only arm B (≈ 50 %) gets the saving.
 - **Upper bound:** a prepared maker may still probe once or twice.
-- **What this does not claim:**
-  - **Brake/timeout leases that would then pass:** 21/22 and 12/19 would have had headroom, but their outcome is **UNKNOWN** until measured.
-  - **Shadow measure before claiming any effect:** compare env-step tokens per maker and brake/timeout rate in the 7 d before vs after enabling, with n ≥ 20 opencode makers per side.
-  - **Brake rate and "last test passed" share:** report both separately and do not merge them into one outcome claim.
+- **Outcome effect:** UNKNOWN until the pre-registered analysis (141 goals/arm).
 
 ## 7. Per-lease table (213)
 
