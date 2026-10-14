@@ -47,7 +47,6 @@ import { createRuntimeGovernanceRoutes } from './runtime-governance';
 import { createCognitiveRoutes } from './cognitive';
 import { createMemoryRoutes } from './memory';
 import { createSelfModificationRoutes } from './self-modification';
-import { createFleetRoutes } from './fleet';
 import { createMultiModelRoutes } from './multi-model';
 import { createComplianceRoutes } from './compliance';
 import { createTraceabilityRoutes } from './traceability';
@@ -200,7 +199,6 @@ export function createRoutes(
     { prefix: '/runtime-governance', middleware: [requireAuth], router: createRuntimeGovernanceRoutes(db, auth, runtimeGovernance) },
     { prefix: '/cognitive', middleware: [requireAuth], router: createCognitiveRoutes(db, auth, cognitiveLoop) },
     { prefix: '/self-modification', middleware: [requireAuth], router: createSelfModificationRoutes(db, auth) },
-    { prefix: '/fleet', middleware: [requireAuth], router: createFleetRoutes(db, auth) },
     { prefix: '/models', middleware: [requireAuth], router: createMultiModelRoutes(db, auth) },
     { prefix: '/compliance', middleware: [requireAuth], router: createComplianceRoutes(db, auth) },
     { prefix: '/retirement', middleware: [requireAuth], router: createRetirementRoutes(db, auth) },
