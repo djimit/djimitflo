@@ -83,3 +83,22 @@ it('RX-7: V1 output is unchanged and the V2 bootstrap CI is deterministic for a 
   expect(a.skill_ci).toEqual(b.skill_ci); expect(a.skill_ci[0]).toBeLessThanOrEqual(a.skill); expect(a.skill_ci[1]).toBeGreaterThanOrEqual(a.skill);
   expect(a.state).toBe('insufficient'); // n 20 < 100
 });
+
+it('DI-001 committee leakage: V2 drops a forecast whose member context was assembled at or after the outcome; rows without context_at stay (unrecorded, counted apart)', () => {
+  // all three resolved at t(0) (updated_at); goals at 30, so the as_of filter alone would keep every forecast below
+  proposal('a', 'gap_analysis', 'verified', 30); proposal('b', 'gap_analysis', 'regressed', 30); proposal('c', 'gap_analysis', 'verified', 30);
+  forecast('forecast:committee:m', 'a', { p: 0.9, as_of: t(-10), context_at: t(5), outcome_known_at_context: true }, 20); // context after the outcome: leak
+  forecast('forecast:committee:m', 'b', { p: 0.2, as_of: t(-10), context_at: t(-5), outcome_known_at_context: false }, 20); // context before: counts
+  forecast('forecast:committee:m', 'c', { p: 0.7, as_of: t(-10) }, 20); // historical row: context_at never recorded, never backfilled
+  const m = forecastScoresV2(db, { boot: 10 }).forecasters.find((x) => x.forecaster === 'forecast:committee:m')!;
+  expect(m.n).toBe(2);
+  expect(m.context_unrecorded_n).toBe(1);
+  // V1 is unchanged (arenaGate / evolution read it): it still counts all three
+  expect(forecastScores(db).find((x) => x.forecaster === 'forecast:committee:m')!.n).toBe(3);
+});
+
+it('DI-001: a forecast stamped outcome_known_at_context is dropped by V2 even when its timestamps tie', () => {
+  proposal('k', 'gap_analysis', 'verified', 30);
+  forecast('forecast:committee:k', 'k', { p: 0.9, as_of: t(-10), context_at: t(0), outcome_known_at_context: true }, 20); // context_at == resolution time
+  expect(forecastScoresV2(db, { boot: 10 }).forecasters.find((x) => x.forecaster === 'forecast:committee:k')).toBeUndefined();
+});

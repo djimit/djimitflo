@@ -1403,6 +1403,18 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_judgments_subject ON judgments(judgment, subject_id, created_at);
+    -- DI-001 C: discoveries left unjudged by DISCOVERY_RELEVANCE_PAUSED. Decision identity = (event_id, policy), the PK.
+    -- unjudged → rejudging (fence + 1 per claim, claimed_at; a stale claim is reclaimed after a timeout) → judged | skipped |
+    -- failed. A decision commits only with the current fence; judgment_id is UNIQUE (one judgment decides one row).
+    CREATE TABLE IF NOT EXISTS discovery_relevance_backlog (
+      event_id TEXT NOT NULL, policy TEXT NOT NULL, ref TEXT NOT NULL,
+      path TEXT NOT NULL CHECK (path IN ('pending', 'rejected', 'unit')), event_json TEXT NOT NULL,
+      state TEXT NOT NULL DEFAULT 'unjudged' CHECK (state IN ('unjudged', 'rejudging', 'judged', 'skipped', 'failed')),
+      fence INTEGER NOT NULL DEFAULT 0, claimed_at TEXT, attempts INTEGER NOT NULL DEFAULT 0, judgment_id TEXT UNIQUE, decision TEXT,
+      paused_at TEXT NOT NULL, judged_at TEXT, PRIMARY KEY (event_id, policy)
+    );
+    CREATE INDEX IF NOT EXISTS idx_discovery_relevance_backlog_ref ON discovery_relevance_backlog(ref, state);
+    CREATE INDEX IF NOT EXISTS idx_discovery_relevance_backlog_state ON discovery_relevance_backlog(state, paused_at);
     CREATE TABLE IF NOT EXISTS registry_agents (
       name TEXT PRIMARY KEY, host TEXT NOT NULL DEFAULT '', runtime TEXT NOT NULL DEFAULT '', framework TEXT NOT NULL DEFAULT '',
       version TEXT NOT NULL DEFAULT '', capabilities_json TEXT NOT NULL DEFAULT '[]', api_endpoint TEXT NOT NULL DEFAULT '',
@@ -1413,6 +1425,8 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   addMissingColumns(db, 'tg_experiments', [{ name: 'analysis_sha256', definition: 'TEXT' }]);
   addMissingColumns(db, 'tg_attempts', [{ name: 'first_claimed_at', definition: 'TEXT' }]); // B27: first physical attempt
   ensureJudgmentProvenance(db);
+  // DI-001: when the members' context was assembled (claim) and whether the proposal already had an outcome then; null = unrecorded
+  addMissingColumns(db, 'committee_jobs', [{ name: 'context_at', definition: 'TEXT' }, { name: 'outcome_known_at_context', definition: 'INTEGER' }]);
   // Add missing columns BEFORE creating indexes that reference them — a stale
   // pre-existing self_improvements table (no fingerprint) otherwise breaks
   // CREATE INDEX idx_self_improve_fingerprint with "no such column".
@@ -1429,6 +1443,10 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   addMissingColumns(db, 'llm_model_calls', [{ name: 'purpose', definition: 'TEXT' }, { name: 'experiment_id', definition: 'TEXT' },
     { name: 'cost_basis', definition: 'TEXT' }, { name: 'list_price_cost', definition: 'REAL' }, { name: 'marginal_cost', definition: 'REAL' }]);
   addMissingColumns(db, 'gym_mutant_holdout', [{ name: 'epoch', definition: 'INTEGER NOT NULL DEFAULT 0' }]);
+  // Holdout epoch 1: calibration rows never decide; one provenance row per manifest-frozen epoch (holdout-manifest.ts)
+  for (const t of ['gym_holdout', 'gym_mutant_holdout', 'gym_write_test_holdout']) addMissingColumns(db, t, [{ name: 'role', definition: "TEXT NOT NULL DEFAULT 'deciding'" }]);
+  db.exec(`CREATE TABLE IF NOT EXISTS gym_holdout_freezes (epoch INTEGER PRIMARY KEY, manifest_sha256 TEXT NOT NULL, frozen_at TEXT NOT NULL, origin_sha TEXT, version TEXT,
+    holdout_size INTEGER NOT NULL, counts_json TEXT NOT NULL, operator TEXT, manifest_json TEXT NOT NULL)`);
   // B8: the failure clusters a dream mutant cites (evidence-or-no-op, DREAM_EVIDENCE_MUTATIONS)
   addMissingColumns(db, 'maker_genomes', [{ name: 'evidence_clusters', definition: 'TEXT' }]);
   // KE-3: the knowledge units (expert_identities ids) whose titles the dream that wrote this mutant injected; null = none
@@ -2352,7 +2370,9 @@ function createSubAgentContextTables(db: BetterSqlite3Database) {
   `);
 }
 
-if (require.main === module) {
+// only when migrate itself is the entry point: in a bundle every module is `require.main`, and a bundled operator script
+// must never migrate the DB_PATH database as a side effect (holdout-freeze dry run, 14-10)
+if (require.main === module && /migrate\.[cm]?[jt]s$/.test(process.argv[1] ?? '')) {
   const dbPath = resolveDbPath();
   const db = new Database(dbPath);
   db.pragma('foreign_keys = ON');

@@ -22,8 +22,8 @@ export const OPERATOR_CONTRACTS = {
   draftPrs: ['total', 'unsettled', 'by_settlement', 'closed_unmerged', 'rows'],
   /** one row of GET /api/loops/draft-prs */
   draftPrRow: ['run_id', 'lane', 'pr_url', 'pr_number', 'age_days', 'outcome', 'survived', 'auto_merge', 'settlement', 'settlement_reason', 'settlement_terminal', 'settlement_age_days'],
-  /** GET /api/health/efficiency — services/resource-ledger.ts efficiencyView (Phase E1/E3) */
-  efficiency: ['at', 'window_days', 'ledger_enabled', 'consumers', 'ledger', 'hosts', 'north_star', 'coverage', 'notes'],
+  /** GET /api/health/efficiency — services/cost-ledger.ts efficiencyWithCost (resource-ledger efficiencyView + cost_per_verified) */
+  efficiency: ['at', 'window_days', 'ledger_enabled', 'consumers', 'ledger', 'hosts', 'north_star', 'coverage', 'notes', 'cost_per_verified'],
   /** GET /api/health/schedulers — services/scheduler-registry.ts listSchedulers */
   schedulers: ['armed', 'by_status', 'health', 'off', 'schedulers'],
   /** GET /api/health/stalls — services/stall-watch.ts detectStallsWithHealth */
