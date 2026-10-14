@@ -9,6 +9,7 @@ import type { JudgmentDef } from '../judgment-service';
  */
 export const discoveryRelevance: JudgmentDef = {
   id: 'discovery_relevance',
+  policyVersion: '1', // DI-001 B: bump when the meaning of this judgment changes
   questions: {
     relevance: {
       type: 'choice',
