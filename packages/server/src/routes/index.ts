@@ -59,7 +59,6 @@ import { createResearchRoutes } from './research';
 import { createTelegramRoutes } from './telegram';
 import { TelegramApiService } from '../services/telegram-api-service';
 import { createSBOMRoutes } from './sbom';
-import { createRepositoryIndexRoutes } from './repository-index';
 import { createExplainerRoutes } from './explainer';
 import { createApexRoutes } from './apex';
 import { createAgentSocialRuntimeRoutes, createSwarmOrchestrationRoutes } from './swarm-orchestration';
@@ -220,7 +219,6 @@ export function createRoutes(
     { prefix: '/meta', middleware: [requireAuth], router: createMetaOrchestrationRoutes(db, auth, metaOrchestration) },
     { prefix: '/traceability', middleware: [rateLimit({ windowMs: 60_000, limit: 30 }), requireAuth], router: createTraceabilityRoutes() },
     { prefix: '/sbom', middleware: [requireAuth], router: createSBOMRoutes(db, auth) },
-    { prefix: '/repo-index', middleware: [requireAuth], router: createRepositoryIndexRoutes(db, auth) },
     { prefix: '/explainer', middleware: [requireAuth], router: createExplainerRoutes(db, auth) },
     { prefix: '/council', middleware: [requireAuth], router: createCouncilRoutes(db, auth) },
     { prefix: '/segml/federation', middleware: [requireAuth], router: createSegmlFederationRoutes(db, auth) },

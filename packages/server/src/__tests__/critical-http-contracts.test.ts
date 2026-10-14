@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { schema } from '../database/schema';
@@ -24,7 +24,6 @@ import { createMCPRoutes } from '../routes/mcp';
 import { createSwarmRoutes } from '../routes/swarms';
 import { createSelfModificationRoutes } from '../routes/self-modification';
 import { createSBOMRoutes } from '../routes/sbom';
-import { createRepositoryIndexRoutes } from '../routes/repository-index';
 
 describe('critical HTTP contracts', () => {
   const envKeys = ['DB_PATH', 'BACKUP_DIR', 'JWT_SECRET', 'AUTH_BOOTSTRAP_ADMIN_EMAIL', 'AUTH_BOOTSTRAP_ADMIN_PASSWORD'] as const;
@@ -76,7 +75,6 @@ describe('critical HTTP contracts', () => {
     app.use('/swarms', createSwarmRoutes(db, passAuth));
     app.use('/self-modification', createSelfModificationRoutes(db, passAuth));
     app.use('/sbom', createSBOMRoutes(db, passAuth));
-    app.use('/repo-index', createRepositoryIndexRoutes(db, passAuth));
     app.use(errorHandler);
     server = await new Promise(resolve => {
       const listening = app.listen(0, () => resolve(listening));
@@ -321,49 +319,5 @@ describe('critical HTTP contracts', () => {
     expect(sbomBody).toMatchObject({ bomFormat: 'CycloneDX', specVersion: '1.6', version: 1 });
     expect(sbomBody.components.length).toBeGreaterThan(0);
     expect((await request('/sbom/summary')).status).toBe(200);
-  });
-
-  it('exercises repository-index registration, indexing, search, and deletion', async () => {
-    const repositoryPath = join(dataDir, 'indexed-repository');
-    mkdirSync(repositoryPath, { recursive: true });
-    writeFileSync(join(repositoryPath, 'governance.ts'), 'export const governanceSignal = "verified";\n');
-    for (const body of [{ name: {}, path: repositoryPath }, { name: 'fixture', path: [] }, { name: ' ', path: repositoryPath }, { name: 'fixture', path: repositoryPath, url: 7 }]) {
-      const invalid = await request('/repo-index/register', { method: 'POST', body: JSON.stringify(body) });
-      expect(invalid.status, JSON.stringify(body)).toBe(400);
-    }
-    const registered = await request('/repo-index/register', {
-      method: 'POST', body: JSON.stringify({ name: 'fixture', path: repositoryPath }),
-    });
-    expect(registered.status).toBe(201);
-    const repository = await registered.json() as any;
-    expect((await request('/repo-index/repositories')).status).toBe(200);
-    const indexed = await request(`/repo-index/${repository.id}/index`, { method: 'POST', body: '{}' });
-    expect(indexed.status).toBe(200);
-    expect((await indexed.json() as any).indexed_files).toBe(1);
-    expect((await request(`/repo-index/${repository.id}/stats`)).status).toBe(200);
-    const search = await request('/repo-index/search', {
-      method: 'POST', body: JSON.stringify({ query: 'governanceSignal', repository_id: repository.id }),
-    });
-    expect(search.status).toBe(200);
-    expect((await search.json() as any).count).toBeGreaterThan(0);
-    for (const body of [
-      { query: null }, { query: {} }, { query: [] }, { query: 7 }, { query: '   ' },
-      { query: 'governanceSignal', repository_id: {} },
-      { query: 'governanceSignal', file_pattern: [] },
-      { query: 'governanceSignal', language: 7 },
-      { query: 'governanceSignal', search_type: 'semantic' },
-    ]) {
-      const invalid = await request('/repo-index/search', { method: 'POST', body: JSON.stringify(body) });
-      expect(invalid.status, JSON.stringify(body)).toBe(400);
-    }
-    for (const [field, value] of [['limit', 0], ['limit', -1], ['limit', 1.5], ['limit', 'invalid'], ['offset', -1], ['offset', 1.5], ['offset', 'invalid']] as const) {
-      const invalid = await request('/repo-index/search', {
-        method: 'POST', body: JSON.stringify({ query: 'governanceSignal', repository_id: repository.id, [field]: value }),
-      });
-      expect(invalid.status, `${field}=${value}`).toBe(400);
-    }
-    expect((await request(`/repo-index/${repository.id}`, { method: 'DELETE' })).status).toBe(204);
-    expect((await request(`/repo-index/${repository.id}/stats`)).status).toBe(404);
-    expect((await request(`/repo-index/${repository.id}`, { method: 'DELETE' })).status).toBe(404);
   });
 });
