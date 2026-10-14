@@ -21,8 +21,8 @@ afterEach(() => { vi.unstubAllEnvs(); db.close(); });
 let seq = 0;
 const gymRun = (commit: string, genomeId: string, ok: boolean) => db.prepare(`INSERT INTO loop_runs
   (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
-  VALUES (?, 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`).run(`r${seq++}`, JSON.stringify({ gym: { commit, species: SPECIES, genome: genomeId },
-    gym_result: { status: ok ? 'success' : 'failure', reason: ok ? 'tests green, source only' : 'tests still red' } }), '2026-10-06T11:00:00Z', '2026-10-06T11:00:00Z');
+  VALUES (?, 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`).run(`r${seq++}`, JSON.stringify({ gym: { commit, species: SPECIES, genome: genomeId, prod_gates: 1 },
+    gym_result: { status: ok ? 'success' : 'failure', reason: ok ? 'tests green, source only' : 'tests still red', ...(ok ? { prod_gates: { lint: 'pass' } } : {}) } }), '2026-10-06T11:00:00Z', '2026-10-06T11:00:00Z');
 const trial = (id: string) => db.prepare("INSERT INTO maker_genomes (id, parent_id, gene, lines_json, origin, status, created_at, updated_at) VALUES (?, ?, 'strategy_lines', '[\"x\"]', 'dream', 'trial', ?, ?)")
   .run(id, BASELINE_GENOME, '2026-10-06T10:00:00Z', '2026-10-06T10:00:00Z');
 const commits = Array.from({ length: 20 }, (_, i) => `h${i}`);
@@ -41,7 +41,7 @@ it('B8-HEAD: flag on, parent fails 3 of 20 — no mutant attempt, trial inconclu
   vi.stubEnv('TRIAL_HEADROOM_PRECHECK', 'true'); vi.stubEnv('TRIAL_DIAGNOSTICS_ENABLED', 'true');
   trial('g-low'); parentScored(3);
   expect(settleNoHeadroom(db, SPECIES, commits, [], NOW)).toEqual([{ id: 'g-low', f: 3, n: 20, needed: 5 }]);
-  expect(status('g-low')).toEqual({ status: 'inconclusive', note: 'no_headroom: parent fails 3 of 20; ≥ 5 needed for any significant win' });
+  expect(status('g-low')).toEqual({ status: 'inconclusive', note: expect.stringMatching(/^no_headroom: parent fails 3 of 20; ≥ 5 needed for any significant win; gates prod_gates\/v1:/) });
   expect(nextTrialAttempt(db, SPECIES, commits)).toBeNull(); // nothing left to claim for that trial
   expect(db.prepare('SELECT state, deciding_n, f_parent_failures FROM genome_trial_results WHERE trial_id = ?').get('g-low'))
     .toEqual({ state: 'no_headroom', deciding_n: 20, f_parent_failures: 3 });
@@ -95,7 +95,7 @@ it('B8-HEAD: a proceeding trial is decided exactly as without the precheck', () 
 it('B8-HEAD: the remote gym claim runs the precheck before serving a trial attempt', () => {
   vi.stubEnv('EVOLUTION_GYM_REMOTE_ENABLED', 'true'); vi.stubEnv('LOOP_DAEMON_REPOSITORY_PATH', '/repo'); vi.stubEnv('TRIAL_HEADROOM_PRECHECK', 'true');
   const tasks = Array.from({ length: 40 }, (_, i) => ({ commit: `c${i}`, source: 'packages/server/src/services/x.ts', tests: ['packages/server/src/__tests__/x.test.ts'], sourceLines: 5 }));
-  const frozen = holdout(db, tasks, new Date(NOW).toISOString());
+  const frozen = holdout(db, tasks, '2026-10-06T10:00:00.000Z'); // frozen before the parent's attempts (P0: earlier attempts are another epoch's)
   trial('g-claim');
   frozen.forEach((c, i) => gymRun(c, BASELINE_GENOME, i >= 2)); // parent fails 2 of 20
   const claim = new RemoteGymService(db, () => tasks).claim('workstation', [SPECIES], new Date(NOW)) as { genome?: unknown; task: { commit: string } };
