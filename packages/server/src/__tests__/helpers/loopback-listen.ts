@@ -20,7 +20,7 @@ import { createRequire } from 'node:module';
  *   127.0.0.1.
  */
 if (process.platform === 'darwin') {
-  const require = createRequire(import.meta.url);
+  const require = createRequire(__filename);
   const Test = require('supertest/lib/test.js') as { prototype: { serverAddress(app: net.Server, path: string): string; _server?: net.Server } };
   Test.prototype.serverAddress = function serverAddress(app: net.Server, path: string): string {
     if (!app.address()) this._server = app.listen(0);
