@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { addDimColumn, cosine, embed } from './proposal-dedupe';
-import { checkContentSafety, contentSafetyApplies } from './content-safety';
+import { checkContentSafety, contentSafetyApplies, filterForPrompt } from './content-safety';
 import { runJudgment, type JudgmentDef } from './judgment-service';
 import type { TypeSafeClient } from './typesafe-client';
 import { dimsMatch } from './embedding-dims';
@@ -74,6 +74,9 @@ export async function kbContext(db: Database, subject: { type: string; id: strin
       .filter((x) => dimsMatch('kb_pages', q.length, x.vec.length))
       .map(({ r, vec }) => ({ r, score: cosine(q, vec) }))
       .filter((h) => h.score >= 0.3).sort((a, b) => b.score - a.score).slice(0, k);
+    // B19: before any model (jev relevance, panel) reads a page; same text the ingest check saw, so its verdict is reused,
+    // and a page whose check errored is not shown under CONTENT_SAFETY_MODE=enforce
+    hits = await filterForPrompt(db, hits, (h) => ({ type: 'kb_page', id: h.r.path }), (h) => `${h.r.title}\n${h.r.body}`.slice(0, 4_000), fetchFn);
     if (!hits.length) return null;
     const kept = await gatePassages(db, subject, text, hits.map((h) => h.r));
     hits = hits.filter((h) => kept.has(h.r.path));
