@@ -1,0 +1,8136 @@
+{
+ "study": "DI-001",
+ "prereg_sha256": "4696b134a6fb30b3750e973c78c936a2b8a268fe346026454ee81bae84e57846",
+ "manifest_rows_sha256": "48d1f0aa0c0306b0941108a07fc2510dddf1b4e22e11426b65af5dc7425cff60",
+ "snapshot_at": "2026-10-13T22:28:27.395Z",
+ "seed": 20261014,
+ "bootstrap_B": 2000,
+ "label_drift_since_manifest": [],
+ "population": {
+  "development": {
+   "n": 44,
+   "clusters": 40,
+   "design_effect": 1.1,
+   "by_label_class": {
+    "ORACLE_PASS_VERIFIED": 25,
+    "ENV": 10,
+    "NO_VERDICT": 6,
+    "CHECKER_REJECT": 3
+   },
+   "verified": 25,
+   "regressed": 19
+  },
+  "calibration": {
+   "n": 30,
+   "clusters": 30,
+   "design_effect": 1,
+   "by_label_class": {
+    "ORACLE_PASS_VERIFIED": 9,
+    "NO_VERDICT": 14,
+    "ENV": 7
+   },
+   "verified": 9,
+   "regressed": 21
+  },
+  "holdout": {
+   "n": 54,
+   "clusters": 52,
+   "design_effect": 1.0385,
+   "by_label_class": {
+    "ORACLE_PASS_VERIFIED": 38,
+    "ENV": 9,
+    "NO_VERDICT": 7
+   },
+   "verified": 38,
+   "regressed": 16
+  },
+  "all": {
+   "n": 128,
+   "clusters": 110,
+   "design_effect": 1.1636,
+   "by_label_class": {
+    "ORACLE_PASS_VERIFIED": 72,
+    "NO_VERDICT": 27,
+    "ENV": 26,
+    "CHECKER_REJECT": 3
+   },
+   "verified": 72,
+   "regressed": 56
+  }
+ },
+ "label_provenance": {
+  "resolved_by_rule": 128,
+  "of": 128,
+  "with_outcome_attribution": 83,
+  "final_maker_ran_checks": 107,
+  "final_maker_ran_mutation": 100,
+  "final_maker_ran_assertion_strength": 26,
+  "any_maker_attempt_check_failed": [
+   {
+    "id": "1e753f5f-2f8e-4b26-87f1-8badad4b9343",
+    "label_class": "ENV",
+    "status": "regressed"
+   },
+   {
+    "id": "24f510cd-d8e2-4c66-98d2-5de3d518fa8e",
+    "label_class": "ORACLE_PASS_VERIFIED",
+    "status": "verified"
+   },
+   {
+    "id": "30ae9931-0bc5-4ec4-b9c4-efaf433c5d27",
+    "label_class": "ENV",
+    "status": "regressed"
+   },
+   {
+    "id": "30c690f6-d9aa-4860-8ffe-143f65ce9aaa",
+    "label_class": "NO_VERDICT",
+    "status": "regressed"
+   },
+   {
+    "id": "3761e568-dbb9-40cd-9474-6248ac5f70ef",
+    "label_class": "ORACLE_PASS_VERIFIED",
+    "status": "verified"
+   },
+   {
+    "id": "44e1e426-5353-453b-93f1-300ea00f29f1",
+    "label_class": "ORACLE_PASS_VERIFIED",
+    "status": "verified"
+   },
+   {
+    "id": "5389392b-488a-42b4-810e-599d8bebd0c6",
+    "label_class": "ORACLE_PASS_VERIFIED",
+    "status": "verified"
+   },
+   {
+    "id": "80503cc0-8cdb-424b-ac73-160ef3676202",
+    "label_class": "ORACLE_PASS_VERIFIED",
+    "status": "verified"
+   },
+   {
+    "id": "86b23cc3-fc94-4600-aedd-3e0179c63332",
+    "label_class": "NO_VERDICT",
+    "status": "regressed"
+   },
+   {
+    "id": "8d02e050-fc8c-467e-8a2f-ce8e92ae7721",
+    "label_class": "ORACLE_PASS_VERIFIED",
+    "status": "verified"
+   },
+   {
+    "id": "b58fba06-5a3f-4086-bf90-47c98447cf94",
+    "label_class": "ORACLE_PASS_VERIFIED",
+    "status": "verified"
+   },
+   {
+    "id": "b7d20c94-377f-4927-84d5-9484a5d88bae",
+    "label_class": "ENV",
+    "status": "regressed"
+   },
+   {
+    "id": "dc678165-7828-43bd-b397-1d3ecbd3230b",
+    "label_class": "ORACLE_PASS_VERIFIED",
+    "status": "verified"
+   }
+  ],
+  "operator_label_rows": 1,
+  "attribution_audit_rows": 0,
+  "assertion_strength_retroactive": {
+   "pass": 21
+  },
+  "label_reasons": {
+   "ORACLE_PASS_VERIFIED: all gates passed": 72,
+   "NO_VERDICT: checker_verdict+security_checker_verdict failed without a completed rejecting verdict": 13,
+   "ENV: maker_completion=fail": 24,
+   "NO_VERDICT: checker_verdict failed without a completed rejecting verdict": 8,
+   "NO_VERDICT: security_checker_verdict failed without a completed rejecting verdict": 6,
+   "CHECKER_REJECT: checker needs_revision": 2,
+   "CHECKER_REJECT: checker rejected": 1,
+   "ENV: no changed files": 2
+  }
+ },
+ "merge_survival": {
+  "with_pr": 65,
+  "by_state": {
+   "merged": 35,
+   "open": 30
+  },
+  "settled": [
+   {
+    "id": "0a019d91-52ac-4f77-bbe4-8d31ac1eb777",
+    "survived": true,
+    "label_class": "ORACLE_PASS_VERIFIED"
+   },
+   {
+    "id": "dc1143b8-bc01-4579-a330-4ff13e2b35fb",
+    "survived": true,
+    "label_class": "ORACLE_PASS_VERIFIED"
+   }
+  ]
+ },
+ "scores": {
+  "primary": {
+   "development/committee": {
+    "eligible": 25,
+    "covered": 0,
+    "clusters": 0,
+    "positives": 0,
+    "negatives": 0,
+    "TP": 0,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 0,
+    "abstention": 1,
+    "P_FA": null,
+    "P_FR": null,
+    "precision": null,
+    "recall": null,
+    "FAR": null,
+    "FRR": null,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": null,
+    "loss_ci95": null,
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "development/A0_accept_all": {
+    "eligible": 25,
+    "covered": 25,
+    "clusters": 25,
+    "positives": 25,
+    "negatives": 0,
+    "TP": 25,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 2,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 22,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "development/A1_reject_all": {
+    "eligible": 25,
+    "covered": 25,
+    "clusters": 25,
+    "positives": 25,
+    "negatives": 0,
+    "TP": 0,
+    "FP": 0,
+    "TN": 0,
+    "FN": 25,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 1,
+    "precision": null,
+    "recall": 0,
+    "FAR": null,
+    "FRR": 1,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1,
+    "loss_ci95": [
+     1,
+     1
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 2,
+      "FA": 0,
+      "FR": 2
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "low": {
+      "n": 22,
+      "FA": 0,
+      "FR": 22
+     }
+    }
+   },
+   "development/A2_source_rate": {
+    "eligible": 25,
+    "covered": 25,
+    "clusters": 25,
+    "positives": 25,
+    "negatives": 0,
+    "TP": 25,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": 0.079,
+    "ece10": 0.2547,
+    "n_prob": 25,
+    "by_risk_class": {
+     "security": {
+      "n": 2,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 22,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "development/A3_test_only": {
+    "eligible": 25,
+    "covered": 25,
+    "clusters": 25,
+    "positives": 25,
+    "negatives": 0,
+    "TP": 25,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 2,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 22,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "development/A4_template_regress": {
+    "eligible": 25,
+    "covered": 25,
+    "clusters": 25,
+    "positives": 25,
+    "negatives": 0,
+    "TP": 16,
+    "FP": 0,
+    "TN": 0,
+    "FN": 9,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0.36,
+    "precision": 1,
+    "recall": 0.64,
+    "FAR": null,
+    "FRR": 0.36,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.36,
+    "loss_ci95": [
+     0.2,
+     0.56
+    ],
+    "brier": 0.1669,
+    "ece10": 0.3648,
+    "n_prob": 25,
+    "by_risk_class": {
+     "security": {
+      "n": 2,
+      "FA": 0,
+      "FR": 2
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "low": {
+      "n": 22,
+      "FA": 0,
+      "FR": 6
+     }
+    }
+   },
+   "development/committee_asof_only": {
+    "eligible": 25,
+    "covered": 0,
+    "clusters": 0,
+    "positives": 0,
+    "negatives": 0,
+    "TP": 0,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 0,
+    "abstention": 1,
+    "P_FA": null,
+    "P_FR": null,
+    "precision": null,
+    "recall": null,
+    "FAR": null,
+    "FRR": null,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": null,
+    "loss_ci95": null,
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "development/committee_unfiltered": {
+    "eligible": 25,
+    "covered": 0,
+    "clusters": 0,
+    "positives": 0,
+    "negatives": 0,
+    "TP": 0,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 0,
+    "abstention": 1,
+    "P_FA": null,
+    "P_FR": null,
+    "precision": null,
+    "recall": null,
+    "FAR": null,
+    "FRR": null,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": null,
+    "loss_ci95": null,
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "development/prescreen": {
+    "eligible": 25,
+    "covered": 22,
+    "clusters": 22,
+    "positives": 22,
+    "negatives": 0,
+    "TP": 22,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 0.88,
+    "abstention": 0.12,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 2,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 20,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "calibration/committee": {
+    "eligible": 9,
+    "covered": 1,
+    "clusters": 1,
+    "positives": 1,
+    "negatives": 0,
+    "TP": 0,
+    "FP": 0,
+    "TN": 0,
+    "FN": 1,
+    "coverage": 0.1111,
+    "abstention": 0.8889,
+    "P_FA": 0,
+    "P_FR": 1,
+    "precision": null,
+    "recall": 0,
+    "FAR": null,
+    "FRR": 1,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1,
+    "loss_ci95": null,
+    "brier": 0.44,
+    "ece10": 0.6633,
+    "n_prob": 1,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     }
+    }
+   },
+   "calibration/A0_accept_all": {
+    "eligible": 9,
+    "covered": 9,
+    "clusters": 9,
+    "positives": 9,
+    "negatives": 0,
+    "TP": 9,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 8,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "calibration/A1_reject_all": {
+    "eligible": 9,
+    "covered": 9,
+    "clusters": 9,
+    "positives": 9,
+    "negatives": 0,
+    "TP": 0,
+    "FP": 0,
+    "TN": 0,
+    "FN": 9,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 1,
+    "precision": null,
+    "recall": 0,
+    "FAR": null,
+    "FRR": 1,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1,
+    "loss_ci95": [
+     1,
+     1
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 8,
+      "FA": 0,
+      "FR": 8
+     }
+    }
+   },
+   "calibration/A2_source_rate": {
+    "eligible": 9,
+    "covered": 9,
+    "clusters": 9,
+    "positives": 9,
+    "negatives": 0,
+    "TP": 9,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": 0.1834,
+    "ece10": 0.4241,
+    "n_prob": 9,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 8,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "calibration/A3_test_only": {
+    "eligible": 9,
+    "covered": 9,
+    "clusters": 9,
+    "positives": 9,
+    "negatives": 0,
+    "TP": 9,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 8,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "calibration/A4_template_regress": {
+    "eligible": 9,
+    "covered": 9,
+    "clusters": 9,
+    "positives": 9,
+    "negatives": 0,
+    "TP": 6,
+    "FP": 0,
+    "TN": 0,
+    "FN": 3,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0.3333,
+    "precision": 1,
+    "recall": 0.6667,
+    "FAR": null,
+    "FRR": 0.3333,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.3333,
+    "loss_ci95": [
+     0.1111,
+     0.6667
+    ],
+    "brier": 0.2096,
+    "ece10": 0.455,
+    "n_prob": 9,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 8,
+      "FA": 0,
+      "FR": 2
+     }
+    }
+   },
+   "calibration/committee_asof_only": {
+    "eligible": 9,
+    "covered": 1,
+    "clusters": 1,
+    "positives": 1,
+    "negatives": 0,
+    "TP": 0,
+    "FP": 0,
+    "TN": 0,
+    "FN": 1,
+    "coverage": 0.1111,
+    "abstention": 0.8889,
+    "P_FA": 0,
+    "P_FR": 1,
+    "precision": null,
+    "recall": 0,
+    "FAR": null,
+    "FRR": 1,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1,
+    "loss_ci95": null,
+    "brier": 0.44,
+    "ece10": 0.6633,
+    "n_prob": 1,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     }
+    }
+   },
+   "calibration/committee_unfiltered": {
+    "eligible": 9,
+    "covered": 9,
+    "clusters": 9,
+    "positives": 9,
+    "negatives": 0,
+    "TP": 0,
+    "FP": 0,
+    "TN": 0,
+    "FN": 9,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 1,
+    "precision": null,
+    "recall": 0,
+    "FAR": null,
+    "FRR": 1,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1,
+    "loss_ci95": [
+     1,
+     1
+    ],
+    "brier": 0.5608,
+    "ece10": 0.738,
+    "n_prob": 9,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 8,
+      "FA": 0,
+      "FR": 8
+     }
+    }
+   },
+   "calibration/prescreen": {
+    "eligible": 9,
+    "covered": 9,
+    "clusters": 9,
+    "positives": 9,
+    "negatives": 0,
+    "TP": 9,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 8,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "holdout/committee": {
+    "eligible": 38,
+    "covered": 2,
+    "clusters": 2,
+    "positives": 2,
+    "negatives": 0,
+    "TP": 1,
+    "FP": 0,
+    "TN": 0,
+    "FN": 1,
+    "coverage": 0.0526,
+    "abstention": 0.9474,
+    "P_FA": 0,
+    "P_FR": 0.5,
+    "precision": 1,
+    "recall": 0.5,
+    "FAR": null,
+    "FRR": 0.5,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.5,
+    "loss_ci95": [
+     0,
+     1
+    ],
+    "brier": 0.1903,
+    "ece10": 0.3963,
+    "n_prob": 2,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 2,
+      "FA": 0,
+      "FR": 1
+     }
+    }
+   },
+   "holdout/A0_accept_all": {
+    "eligible": 38,
+    "covered": 38,
+    "clusters": 38,
+    "positives": 38,
+    "negatives": 0,
+    "TP": 38,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 35,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "holdout/A1_reject_all": {
+    "eligible": 38,
+    "covered": 38,
+    "clusters": 38,
+    "positives": 38,
+    "negatives": 0,
+    "TP": 0,
+    "FP": 0,
+    "TN": 0,
+    "FN": 38,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 1,
+    "precision": null,
+    "recall": 0,
+    "FAR": null,
+    "FRR": 1,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1,
+    "loss_ci95": [
+     1,
+     1
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 3
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 35,
+      "FA": 0,
+      "FR": 35
+     }
+    }
+   },
+   "holdout/A2_source_rate": {
+    "eligible": 38,
+    "covered": 38,
+    "clusters": 38,
+    "positives": 38,
+    "negatives": 0,
+    "TP": 21,
+    "FP": 0,
+    "TN": 0,
+    "FN": 17,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0.4474,
+    "precision": 1,
+    "recall": 0.5526,
+    "FAR": null,
+    "FRR": 0.4474,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.4474,
+    "loss_ci95": [
+     0.3158,
+     0.6053
+    ],
+    "brier": 0.245,
+    "ece10": 0.4939,
+    "n_prob": 38,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 2
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 35,
+      "FA": 0,
+      "FR": 15
+     }
+    }
+   },
+   "holdout/A3_test_only": {
+    "eligible": 38,
+    "covered": 38,
+    "clusters": 38,
+    "positives": 38,
+    "negatives": 0,
+    "TP": 38,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 35,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "holdout/A4_template_regress": {
+    "eligible": 38,
+    "covered": 38,
+    "clusters": 38,
+    "positives": 38,
+    "negatives": 0,
+    "TP": 24,
+    "FP": 0,
+    "TN": 0,
+    "FN": 14,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0.3684,
+    "precision": 1,
+    "recall": 0.6316,
+    "FAR": null,
+    "FRR": 0.3684,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.3684,
+    "loss_ci95": [
+     0.2105,
+     0.5263
+    ],
+    "brier": 0.2223,
+    "ece10": 0.4667,
+    "n_prob": 38,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 1
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 35,
+      "FA": 0,
+      "FR": 13
+     }
+    }
+   },
+   "holdout/committee_asof_only": {
+    "eligible": 38,
+    "covered": 12,
+    "clusters": 12,
+    "positives": 12,
+    "negatives": 0,
+    "TP": 7,
+    "FP": 0,
+    "TN": 0,
+    "FN": 5,
+    "coverage": 0.3158,
+    "abstention": 0.6842,
+    "P_FA": 0,
+    "P_FR": 0.4167,
+    "precision": 1,
+    "recall": 0.5833,
+    "FAR": null,
+    "FRR": 0.4167,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.4167,
+    "loss_ci95": [
+     0.1667,
+     0.6667
+    ],
+    "brier": 0.2283,
+    "ece10": 0.4417,
+    "n_prob": 12,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 11,
+      "FA": 0,
+      "FR": 4
+     }
+    }
+   },
+   "holdout/committee_unfiltered": {
+    "eligible": 38,
+    "covered": 26,
+    "clusters": 26,
+    "positives": 26,
+    "negatives": 0,
+    "TP": 15,
+    "FP": 0,
+    "TN": 0,
+    "FN": 11,
+    "coverage": 0.6842,
+    "abstention": 0.3158,
+    "P_FA": 0,
+    "P_FR": 0.4231,
+    "precision": 1,
+    "recall": 0.5769,
+    "FAR": null,
+    "FRR": 0.4231,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.4231,
+    "loss_ci95": [
+     0.2308,
+     0.6154
+    ],
+    "brier": 0.2303,
+    "ece10": 0.4415,
+    "n_prob": 26,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 2
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 23,
+      "FA": 0,
+      "FR": 9
+     }
+    }
+   },
+   "holdout/prescreen": {
+    "eligible": 38,
+    "covered": 26,
+    "clusters": 26,
+    "positives": 26,
+    "negatives": 0,
+    "TP": 26,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 0.6842,
+    "abstention": 0.3158,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 23,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "all/committee": {
+    "eligible": 72,
+    "covered": 3,
+    "clusters": 3,
+    "positives": 3,
+    "negatives": 0,
+    "TP": 1,
+    "FP": 0,
+    "TN": 0,
+    "FN": 2,
+    "coverage": 0.0417,
+    "abstention": 0.9583,
+    "P_FA": 0,
+    "P_FR": 0.6667,
+    "precision": 1,
+    "recall": 0.3333,
+    "FAR": null,
+    "FRR": 0.6667,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.6667,
+    "loss_ci95": [
+     0,
+     1
+    ],
+    "brier": 0.2735,
+    "ece10": 0.4853,
+    "n_prob": 3,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 3,
+      "FA": 0,
+      "FR": 2
+     }
+    }
+   },
+   "all/A0_accept_all": {
+    "eligible": 72,
+    "covered": 72,
+    "clusters": 72,
+    "positives": 72,
+    "negatives": 0,
+    "TP": 72,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 6,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 65,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "all/A1_reject_all": {
+    "eligible": 72,
+    "covered": 72,
+    "clusters": 72,
+    "positives": 72,
+    "negatives": 0,
+    "TP": 0,
+    "FP": 0,
+    "TN": 0,
+    "FN": 72,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 1,
+    "precision": null,
+    "recall": 0,
+    "FAR": null,
+    "FRR": 1,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1,
+    "loss_ci95": [
+     1,
+     1
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 6,
+      "FA": 0,
+      "FR": 6
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "low": {
+      "n": 65,
+      "FA": 0,
+      "FR": 65
+     }
+    }
+   },
+   "all/A2_source_rate": {
+    "eligible": 72,
+    "covered": 72,
+    "clusters": 72,
+    "positives": 72,
+    "negatives": 0,
+    "TP": 55,
+    "FP": 0,
+    "TN": 0,
+    "FN": 17,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0.2361,
+    "precision": 1,
+    "recall": 0.7639,
+    "FAR": null,
+    "FRR": 0.2361,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.2361,
+    "loss_ci95": [
+     0.1389,
+     0.3333
+    ],
+    "brier": 0.1797,
+    "ece10": 0.4021,
+    "n_prob": 72,
+    "by_risk_class": {
+     "security": {
+      "n": 6,
+      "FA": 0,
+      "FR": 2
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 65,
+      "FA": 0,
+      "FR": 15
+     }
+    }
+   },
+   "all/A3_test_only": {
+    "eligible": 72,
+    "covered": 72,
+    "clusters": 72,
+    "positives": 72,
+    "negatives": 0,
+    "TP": 72,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 6,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 65,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "all/A4_template_regress": {
+    "eligible": 72,
+    "covered": 72,
+    "clusters": 72,
+    "positives": 72,
+    "negatives": 0,
+    "TP": 46,
+    "FP": 0,
+    "TN": 0,
+    "FN": 26,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0.3611,
+    "precision": 1,
+    "recall": 0.6389,
+    "FAR": null,
+    "FRR": 0.3611,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.3611,
+    "loss_ci95": [
+     0.2639,
+     0.4722
+    ],
+    "brier": 0.2014,
+    "ece10": 0.4299,
+    "n_prob": 72,
+    "by_risk_class": {
+     "security": {
+      "n": 6,
+      "FA": 0,
+      "FR": 4
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "low": {
+      "n": 65,
+      "FA": 0,
+      "FR": 21
+     }
+    }
+   },
+   "all/committee_asof_only": {
+    "eligible": 72,
+    "covered": 13,
+    "clusters": 13,
+    "positives": 13,
+    "negatives": 0,
+    "TP": 7,
+    "FP": 0,
+    "TN": 0,
+    "FN": 6,
+    "coverage": 0.1806,
+    "abstention": 0.8194,
+    "P_FA": 0,
+    "P_FR": 0.4615,
+    "precision": 1,
+    "recall": 0.5385,
+    "FAR": null,
+    "FRR": 0.4615,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.4615,
+    "loss_ci95": [
+     0.2308,
+     0.6923
+    ],
+    "brier": 0.2446,
+    "ece10": 0.4588,
+    "n_prob": 13,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 12,
+      "FA": 0,
+      "FR": 5
+     }
+    }
+   },
+   "all/committee_unfiltered": {
+    "eligible": 72,
+    "covered": 35,
+    "clusters": 35,
+    "positives": 35,
+    "negatives": 0,
+    "TP": 15,
+    "FP": 0,
+    "TN": 0,
+    "FN": 20,
+    "coverage": 0.4861,
+    "abstention": 0.5139,
+    "P_FA": 0,
+    "P_FR": 0.5714,
+    "precision": 1,
+    "recall": 0.4286,
+    "FAR": null,
+    "FRR": 0.5714,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.5714,
+    "loss_ci95": [
+     0.4,
+     0.7429
+    ],
+    "brier": 0.3153,
+    "ece10": 0.5177,
+    "n_prob": 35,
+    "by_risk_class": {
+     "security": {
+      "n": 4,
+      "FA": 0,
+      "FR": 3
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 31,
+      "FA": 0,
+      "FR": 17
+     }
+    }
+   },
+   "all/prescreen": {
+    "eligible": 72,
+    "covered": 57,
+    "clusters": 57,
+    "positives": 57,
+    "negatives": 0,
+    "TP": 57,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 0.7917,
+    "abstention": 0.2083,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 6,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 51,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   }
+  },
+  "status": {
+   "development/committee": {
+    "eligible": 44,
+    "covered": 0,
+    "clusters": 0,
+    "positives": 0,
+    "negatives": 0,
+    "TP": 0,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 0,
+    "abstention": 1,
+    "P_FA": null,
+    "P_FR": null,
+    "precision": null,
+    "recall": null,
+    "FAR": null,
+    "FRR": null,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": null,
+    "loss_ci95": null,
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "development/A0_accept_all": {
+    "eligible": 44,
+    "covered": 44,
+    "clusters": 40,
+    "positives": 25,
+    "negatives": 19,
+    "TP": 25,
+    "FP": 19,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.4318,
+    "P_FR": 0,
+    "precision": 0.5682,
+    "recall": 1,
+    "FAR": 1,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1.675,
+    "loss_ci95": [
+     0.975,
+     2.5125
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 2,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 4,
+      "FA": 3,
+      "FR": 0
+     },
+     "low": {
+      "n": 38,
+      "FA": 16,
+      "FR": 0
+     }
+    }
+   },
+   "development/A1_reject_all": {
+    "eligible": 44,
+    "covered": 44,
+    "clusters": 40,
+    "positives": 25,
+    "negatives": 19,
+    "TP": 0,
+    "FP": 0,
+    "TN": 19,
+    "FN": 25,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0.5682,
+    "precision": null,
+    "recall": 0,
+    "FAR": 0,
+    "FRR": 1,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.5875,
+    "loss_ci95": [
+     0.4375,
+     0.725
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 2,
+      "FA": 0,
+      "FR": 2
+     },
+     "production": {
+      "n": 4,
+      "FA": 0,
+      "FR": 1
+     },
+     "low": {
+      "n": 38,
+      "FA": 0,
+      "FR": 22
+     }
+    }
+   },
+   "development/A2_source_rate": {
+    "eligible": 44,
+    "covered": 44,
+    "clusters": 40,
+    "positives": 25,
+    "negatives": 19,
+    "TP": 25,
+    "FP": 19,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.4318,
+    "P_FR": 0,
+    "precision": 0.5682,
+    "recall": 1,
+    "FAR": 1,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1.675,
+    "loss_ci95": [
+     0.975,
+     2.5125
+    ],
+    "brier": 0.3126,
+    "ece10": 0.2182,
+    "n_prob": 44,
+    "by_risk_class": {
+     "security": {
+      "n": 2,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 4,
+      "FA": 3,
+      "FR": 0
+     },
+     "low": {
+      "n": 38,
+      "FA": 16,
+      "FR": 0
+     }
+    }
+   },
+   "development/A3_test_only": {
+    "eligible": 44,
+    "covered": 44,
+    "clusters": 40,
+    "positives": 25,
+    "negatives": 19,
+    "TP": 25,
+    "FP": 17,
+    "TN": 2,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.3864,
+    "P_FR": 0,
+    "precision": 0.5952,
+    "recall": 1,
+    "FAR": 0.8947,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1.175,
+    "loss_ci95": [
+     0.725,
+     1.6625
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 2,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 4,
+      "FA": 1,
+      "FR": 0
+     },
+     "low": {
+      "n": 38,
+      "FA": 16,
+      "FR": 0
+     }
+    }
+   },
+   "development/A4_template_regress": {
+    "eligible": 44,
+    "covered": 44,
+    "clusters": 40,
+    "positives": 25,
+    "negatives": 19,
+    "TP": 16,
+    "FP": 15,
+    "TN": 4,
+    "FN": 9,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.3409,
+    "P_FR": 0.2045,
+    "precision": 0.5161,
+    "recall": 0.64,
+    "FAR": 0.7895,
+    "FRR": 0.36,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1.5375,
+    "loss_ci95": [
+     0.925,
+     2.325
+    ],
+    "brier": 0.3358,
+    "ece10": 0.2847,
+    "n_prob": 44,
+    "by_risk_class": {
+     "security": {
+      "n": 2,
+      "FA": 0,
+      "FR": 2
+     },
+     "production": {
+      "n": 4,
+      "FA": 2,
+      "FR": 1
+     },
+     "low": {
+      "n": 38,
+      "FA": 13,
+      "FR": 6
+     }
+    }
+   },
+   "development/committee_asof_only": {
+    "eligible": 44,
+    "covered": 0,
+    "clusters": 0,
+    "positives": 0,
+    "negatives": 0,
+    "TP": 0,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 0,
+    "abstention": 1,
+    "P_FA": null,
+    "P_FR": null,
+    "precision": null,
+    "recall": null,
+    "FAR": null,
+    "FRR": null,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": null,
+    "loss_ci95": null,
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "development/committee_unfiltered": {
+    "eligible": 44,
+    "covered": 0,
+    "clusters": 0,
+    "positives": 0,
+    "negatives": 0,
+    "TP": 0,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 0,
+    "abstention": 1,
+    "P_FA": null,
+    "P_FR": null,
+    "precision": null,
+    "recall": null,
+    "FAR": null,
+    "FRR": null,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": null,
+    "loss_ci95": null,
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "development/prescreen": {
+    "eligible": 44,
+    "covered": 39,
+    "clusters": 39,
+    "positives": 22,
+    "negatives": 17,
+    "TP": 22,
+    "FP": 15,
+    "TN": 2,
+    "FN": 0,
+    "coverage": 0.8864,
+    "abstention": 0.1136,
+    "P_FA": 0.3846,
+    "P_FR": 0,
+    "precision": 0.5946,
+    "recall": 1,
+    "FAR": 0.8824,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1.1538,
+    "loss_ci95": [
+     0.6923,
+     1.6154
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 2,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 2,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 35,
+      "FA": 15,
+      "FR": 0
+     }
+    }
+   },
+   "calibration/committee": {
+    "eligible": 30,
+    "covered": 1,
+    "clusters": 1,
+    "positives": 1,
+    "negatives": 0,
+    "TP": 0,
+    "FP": 0,
+    "TN": 0,
+    "FN": 1,
+    "coverage": 0.0333,
+    "abstention": 0.9667,
+    "P_FA": 0,
+    "P_FR": 1,
+    "precision": null,
+    "recall": 0,
+    "FAR": null,
+    "FRR": 1,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1,
+    "loss_ci95": null,
+    "brier": 0.44,
+    "ece10": 0.6633,
+    "n_prob": 1,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     }
+    }
+   },
+   "calibration/A0_accept_all": {
+    "eligible": 30,
+    "covered": 30,
+    "clusters": 30,
+    "positives": 9,
+    "negatives": 21,
+    "TP": 9,
+    "FP": 21,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.7,
+    "P_FR": 0,
+    "precision": 0.3,
+    "recall": 1,
+    "FAR": 1,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 2.1,
+    "loss_ci95": [
+     1.6,
+     2.6
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 29,
+      "FA": 21,
+      "FR": 0
+     }
+    }
+   },
+   "calibration/A1_reject_all": {
+    "eligible": 30,
+    "covered": 30,
+    "clusters": 30,
+    "positives": 9,
+    "negatives": 21,
+    "TP": 0,
+    "FP": 0,
+    "TN": 21,
+    "FN": 9,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0.3,
+    "precision": null,
+    "recall": 0,
+    "FAR": 0,
+    "FRR": 1,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.3,
+    "loss_ci95": [
+     0.1333,
+     0.4667
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 29,
+      "FA": 0,
+      "FR": 8
+     }
+    }
+   },
+   "calibration/A2_source_rate": {
+    "eligible": 30,
+    "covered": 30,
+    "clusters": 30,
+    "positives": 9,
+    "negatives": 21,
+    "TP": 9,
+    "FP": 20,
+    "TN": 1,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.6667,
+    "P_FR": 0,
+    "precision": 0.3103,
+    "recall": 1,
+    "FAR": 0.9524,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 2,
+    "loss_ci95": [
+     1.5,
+     2.5
+    ],
+    "brier": 0.2972,
+    "ece10": 0.2826,
+    "n_prob": 30,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 29,
+      "FA": 20,
+      "FR": 0
+     }
+    }
+   },
+   "calibration/A3_test_only": {
+    "eligible": 30,
+    "covered": 30,
+    "clusters": 30,
+    "positives": 9,
+    "negatives": 21,
+    "TP": 9,
+    "FP": 21,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.7,
+    "P_FR": 0,
+    "precision": 0.3,
+    "recall": 1,
+    "FAR": 1,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 2.1,
+    "loss_ci95": [
+     1.6,
+     2.6
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 29,
+      "FA": 21,
+      "FR": 0
+     }
+    }
+   },
+   "calibration/A4_template_regress": {
+    "eligible": 30,
+    "covered": 30,
+    "clusters": 30,
+    "positives": 9,
+    "negatives": 21,
+    "TP": 6,
+    "FP": 20,
+    "TN": 1,
+    "FN": 3,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.6667,
+    "P_FR": 0.1,
+    "precision": 0.2308,
+    "recall": 0.6667,
+    "FAR": 0.9524,
+    "FRR": 0.3333,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 2.1,
+    "loss_ci95": [
+     1.6333,
+     2.5333
+    ],
+    "brier": 0.3171,
+    "ece10": 0.319,
+    "n_prob": 30,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 29,
+      "FA": 20,
+      "FR": 2
+     }
+    }
+   },
+   "calibration/committee_asof_only": {
+    "eligible": 30,
+    "covered": 3,
+    "clusters": 3,
+    "positives": 1,
+    "negatives": 2,
+    "TP": 0,
+    "FP": 1,
+    "TN": 1,
+    "FN": 1,
+    "coverage": 0.1,
+    "abstention": 0.9,
+    "P_FA": 0.3333,
+    "P_FR": 0.3333,
+    "precision": 0,
+    "recall": 0,
+    "FAR": 0.5,
+    "FRR": 1,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1.3333,
+    "loss_ci95": [
+     0,
+     3
+    ],
+    "brier": 0.3029,
+    "ece10": 0.2919,
+    "n_prob": 3,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 3,
+      "FA": 1,
+      "FR": 1
+     }
+    }
+   },
+   "calibration/committee_unfiltered": {
+    "eligible": 30,
+    "covered": 30,
+    "clusters": 30,
+    "positives": 9,
+    "negatives": 21,
+    "TP": 0,
+    "FP": 2,
+    "TN": 19,
+    "FN": 9,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.0667,
+    "P_FR": 0.3,
+    "precision": 0,
+    "recall": 0,
+    "FAR": 0.0952,
+    "FRR": 1,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.5,
+    "loss_ci95": [
+     0.2333,
+     0.8
+    ],
+    "brier": 0.2454,
+    "ece10": 0.1804,
+    "n_prob": 30,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 29,
+      "FA": 2,
+      "FR": 8
+     }
+    }
+   },
+   "calibration/prescreen": {
+    "eligible": 30,
+    "covered": 30,
+    "clusters": 30,
+    "positives": 9,
+    "negatives": 21,
+    "TP": 9,
+    "FP": 21,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.7,
+    "P_FR": 0,
+    "precision": 0.3,
+    "recall": 1,
+    "FAR": 1,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 2.1,
+    "loss_ci95": [
+     1.6,
+     2.6
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 29,
+      "FA": 21,
+      "FR": 0
+     }
+    }
+   },
+   "holdout/committee": {
+    "eligible": 54,
+    "covered": 2,
+    "clusters": 2,
+    "positives": 2,
+    "negatives": 0,
+    "TP": 1,
+    "FP": 0,
+    "TN": 0,
+    "FN": 1,
+    "coverage": 0.037,
+    "abstention": 0.963,
+    "P_FA": 0,
+    "P_FR": 0.5,
+    "precision": 1,
+    "recall": 0.5,
+    "FAR": null,
+    "FRR": 0.5,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.5,
+    "loss_ci95": [
+     0,
+     1
+    ],
+    "brier": 0.1903,
+    "ece10": 0.3963,
+    "n_prob": 2,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 2,
+      "FA": 0,
+      "FR": 1
+     }
+    }
+   },
+   "holdout/A0_accept_all": {
+    "eligible": 54,
+    "covered": 54,
+    "clusters": 52,
+    "positives": 38,
+    "negatives": 16,
+    "TP": 38,
+    "FP": 16,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.2963,
+    "P_FR": 0,
+    "precision": 0.7037,
+    "recall": 1,
+    "FAR": 1,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.8365,
+    "loss_ci95": [
+     0.4904,
+     1.1827
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 51,
+      "FA": 16,
+      "FR": 0
+     }
+    }
+   },
+   "holdout/A1_reject_all": {
+    "eligible": 54,
+    "covered": 54,
+    "clusters": 52,
+    "positives": 38,
+    "negatives": 16,
+    "TP": 0,
+    "FP": 0,
+    "TN": 16,
+    "FN": 38,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0.7037,
+    "precision": null,
+    "recall": 0,
+    "FAR": 0,
+    "FRR": 1,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.7212,
+    "loss_ci95": [
+     0.6058,
+     0.8365
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 3
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 51,
+      "FA": 0,
+      "FR": 35
+     }
+    }
+   },
+   "holdout/A2_source_rate": {
+    "eligible": 54,
+    "covered": 54,
+    "clusters": 52,
+    "positives": 38,
+    "negatives": 16,
+    "TP": 21,
+    "FP": 4,
+    "TN": 12,
+    "FN": 17,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.0741,
+    "P_FR": 0.3148,
+    "precision": 0.84,
+    "recall": 0.5526,
+    "FAR": 0.25,
+    "FRR": 0.4474,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.5481,
+    "loss_ci95": [
+     0.3365,
+     0.7788
+    ],
+    "brier": 0.2422,
+    "ece10": 0.204,
+    "n_prob": 54,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 2
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 51,
+      "FA": 4,
+      "FR": 15
+     }
+    }
+   },
+   "holdout/A3_test_only": {
+    "eligible": 54,
+    "covered": 54,
+    "clusters": 52,
+    "positives": 38,
+    "negatives": 16,
+    "TP": 38,
+    "FP": 16,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.2963,
+    "P_FR": 0,
+    "precision": 0.7037,
+    "recall": 1,
+    "FAR": 1,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.8365,
+    "loss_ci95": [
+     0.4904,
+     1.1827
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 51,
+      "FA": 16,
+      "FR": 0
+     }
+    }
+   },
+   "holdout/A4_template_regress": {
+    "eligible": 54,
+    "covered": 54,
+    "clusters": 52,
+    "positives": 38,
+    "negatives": 16,
+    "TP": 24,
+    "FP": 8,
+    "TN": 8,
+    "FN": 14,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.1481,
+    "P_FR": 0.2593,
+    "precision": 0.75,
+    "recall": 0.6316,
+    "FAR": 0.5,
+    "FRR": 0.3684,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.6923,
+    "loss_ci95": [
+     0.4231,
+     0.9615
+    ],
+    "brier": 0.2349,
+    "ece10": 0.1766,
+    "n_prob": 54,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 1
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 51,
+      "FA": 8,
+      "FR": 13
+     }
+    }
+   },
+   "holdout/committee_asof_only": {
+    "eligible": 54,
+    "covered": 15,
+    "clusters": 15,
+    "positives": 12,
+    "negatives": 3,
+    "TP": 7,
+    "FP": 0,
+    "TN": 3,
+    "FN": 5,
+    "coverage": 0.2778,
+    "abstention": 0.7222,
+    "P_FA": 0,
+    "P_FR": 0.3333,
+    "precision": 1,
+    "recall": 0.5833,
+    "FAR": 0,
+    "FRR": 0.4167,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.3333,
+    "loss_ci95": [
+     0.1333,
+     0.6
+    ],
+    "brier": 0.2095,
+    "ece10": 0.3161,
+    "n_prob": 15,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 14,
+      "FA": 0,
+      "FR": 4
+     }
+    }
+   },
+   "holdout/committee_unfiltered": {
+    "eligible": 54,
+    "covered": 39,
+    "clusters": 39,
+    "positives": 26,
+    "negatives": 13,
+    "TP": 15,
+    "FP": 4,
+    "TN": 9,
+    "FN": 11,
+    "coverage": 0.7222,
+    "abstention": 0.2778,
+    "P_FA": 0.1026,
+    "P_FR": 0.2821,
+    "precision": 0.7895,
+    "recall": 0.5769,
+    "FAR": 0.3077,
+    "FRR": 0.4231,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.5897,
+    "loss_ci95": [
+     0.3333,
+     0.8974
+    ],
+    "brier": 0.2258,
+    "ece10": 0.2283,
+    "n_prob": 39,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 2
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 36,
+      "FA": 4,
+      "FR": 9
+     }
+    }
+   },
+   "holdout/prescreen": {
+    "eligible": 54,
+    "covered": 39,
+    "clusters": 39,
+    "positives": 26,
+    "negatives": 13,
+    "TP": 26,
+    "FP": 13,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 0.7222,
+    "abstention": 0.2778,
+    "P_FA": 0.3333,
+    "P_FR": 0,
+    "precision": 0.6667,
+    "recall": 1,
+    "FAR": 1,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1,
+    "loss_ci95": [
+     0.6154,
+     1.4615
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 36,
+      "FA": 13,
+      "FR": 0
+     }
+    }
+   },
+   "all/committee": {
+    "eligible": 128,
+    "covered": 3,
+    "clusters": 3,
+    "positives": 3,
+    "negatives": 0,
+    "TP": 1,
+    "FP": 0,
+    "TN": 0,
+    "FN": 2,
+    "coverage": 0.0234,
+    "abstention": 0.9766,
+    "P_FA": 0,
+    "P_FR": 0.6667,
+    "precision": 1,
+    "recall": 0.3333,
+    "FAR": null,
+    "FRR": 0.6667,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.6667,
+    "loss_ci95": [
+     0,
+     1
+    ],
+    "brier": 0.2735,
+    "ece10": 0.4853,
+    "n_prob": 3,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 3,
+      "FA": 0,
+      "FR": 2
+     }
+    }
+   },
+   "all/A0_accept_all": {
+    "eligible": 128,
+    "covered": 128,
+    "clusters": 110,
+    "positives": 72,
+    "negatives": 56,
+    "TP": 72,
+    "FP": 56,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.4375,
+    "P_FR": 0,
+    "precision": 0.5625,
+    "recall": 1,
+    "FAR": 1,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1.3864,
+    "loss_ci95": [
+     1.0545,
+     1.7318
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 6,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 4,
+      "FA": 3,
+      "FR": 0
+     },
+     "low": {
+      "n": 118,
+      "FA": 53,
+      "FR": 0
+     }
+    }
+   },
+   "all/A1_reject_all": {
+    "eligible": 128,
+    "covered": 128,
+    "clusters": 110,
+    "positives": 72,
+    "negatives": 56,
+    "TP": 0,
+    "FP": 0,
+    "TN": 56,
+    "FN": 72,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0.5625,
+    "precision": null,
+    "recall": 0,
+    "FAR": 0,
+    "FRR": 1,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.5909,
+    "loss_ci95": [
+     0.5045,
+     0.6727
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 6,
+      "FA": 0,
+      "FR": 6
+     },
+     "production": {
+      "n": 4,
+      "FA": 0,
+      "FR": 1
+     },
+     "low": {
+      "n": 118,
+      "FA": 0,
+      "FR": 65
+     }
+    }
+   },
+   "all/A2_source_rate": {
+    "eligible": 128,
+    "covered": 128,
+    "clusters": 110,
+    "positives": 72,
+    "negatives": 56,
+    "TP": 55,
+    "FP": 43,
+    "TN": 13,
+    "FN": 17,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.3359,
+    "P_FR": 0.1328,
+    "precision": 0.5612,
+    "recall": 0.7639,
+    "FAR": 0.7679,
+    "FRR": 0.2361,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1.2409,
+    "loss_ci95": [
+     0.9318,
+     1.5909
+    ],
+    "brier": 0.2793,
+    "ece10": 0.1465,
+    "n_prob": 128,
+    "by_risk_class": {
+     "security": {
+      "n": 6,
+      "FA": 0,
+      "FR": 2
+     },
+     "production": {
+      "n": 4,
+      "FA": 3,
+      "FR": 0
+     },
+     "low": {
+      "n": 118,
+      "FA": 40,
+      "FR": 15
+     }
+    }
+   },
+   "all/A3_test_only": {
+    "eligible": 128,
+    "covered": 128,
+    "clusters": 110,
+    "positives": 72,
+    "negatives": 56,
+    "TP": 72,
+    "FP": 54,
+    "TN": 2,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.4219,
+    "P_FR": 0,
+    "precision": 0.5714,
+    "recall": 1,
+    "FAR": 0.9643,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1.2045,
+    "loss_ci95": [
+     0.9545,
+     1.4545
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 6,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 4,
+      "FA": 1,
+      "FR": 0
+     },
+     "low": {
+      "n": 118,
+      "FA": 53,
+      "FR": 0
+     }
+    }
+   },
+   "all/A4_template_regress": {
+    "eligible": 128,
+    "covered": 128,
+    "clusters": 110,
+    "positives": 72,
+    "negatives": 56,
+    "TP": 46,
+    "FP": 43,
+    "TN": 13,
+    "FN": 26,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.3359,
+    "P_FR": 0.2031,
+    "precision": 0.5169,
+    "recall": 0.6389,
+    "FAR": 0.7679,
+    "FRR": 0.3611,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1.3045,
+    "loss_ci95": [
+     1.0091,
+     1.6364
+    ],
+    "brier": 0.2889,
+    "ece10": 0.1523,
+    "n_prob": 128,
+    "by_risk_class": {
+     "security": {
+      "n": 6,
+      "FA": 0,
+      "FR": 4
+     },
+     "production": {
+      "n": 4,
+      "FA": 2,
+      "FR": 1
+     },
+     "low": {
+      "n": 118,
+      "FA": 41,
+      "FR": 21
+     }
+    }
+   },
+   "all/committee_asof_only": {
+    "eligible": 128,
+    "covered": 18,
+    "clusters": 18,
+    "positives": 13,
+    "negatives": 5,
+    "TP": 7,
+    "FP": 1,
+    "TN": 4,
+    "FN": 6,
+    "coverage": 0.1406,
+    "abstention": 0.8594,
+    "P_FA": 0.0556,
+    "P_FR": 0.3333,
+    "precision": 0.875,
+    "recall": 0.5385,
+    "FAR": 0.2,
+    "FRR": 0.4615,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.5,
+    "loss_ci95": [
+     0.1667,
+     0.8889
+    ],
+    "brier": 0.2251,
+    "ece10": 0.2585,
+    "n_prob": 18,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 17,
+      "FA": 1,
+      "FR": 5
+     }
+    }
+   },
+   "all/committee_unfiltered": {
+    "eligible": 128,
+    "covered": 69,
+    "clusters": 69,
+    "positives": 35,
+    "negatives": 34,
+    "TP": 15,
+    "FP": 6,
+    "TN": 28,
+    "FN": 20,
+    "coverage": 0.5391,
+    "abstention": 0.4609,
+    "P_FA": 0.087,
+    "P_FR": 0.2899,
+    "precision": 0.7143,
+    "recall": 0.4286,
+    "FAR": 0.1765,
+    "FRR": 0.5714,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.5507,
+    "loss_ci95": [
+     0.3478,
+     0.7681
+    ],
+    "brier": 0.2343,
+    "ece10": 0.1677,
+    "n_prob": 69,
+    "by_risk_class": {
+     "security": {
+      "n": 4,
+      "FA": 0,
+      "FR": 3
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 65,
+      "FA": 6,
+      "FR": 17
+     }
+    }
+   },
+   "all/prescreen": {
+    "eligible": 128,
+    "covered": 108,
+    "clusters": 108,
+    "positives": 57,
+    "negatives": 51,
+    "TP": 57,
+    "FP": 49,
+    "TN": 2,
+    "FN": 0,
+    "coverage": 0.8438,
+    "abstention": 0.1563,
+    "P_FA": 0.4537,
+    "P_FR": 0,
+    "precision": 0.5377,
+    "recall": 1,
+    "FAR": 0.9608,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1.3611,
+    "loss_ci95": [
+     1.0833,
+     1.6389
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 6,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 2,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 100,
+      "FA": 49,
+      "FR": 0
+     }
+    }
+   }
+  },
+  "oracle_only": {
+   "development/committee": {
+    "eligible": 34,
+    "covered": 0,
+    "clusters": 0,
+    "positives": 0,
+    "negatives": 0,
+    "TP": 0,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 0,
+    "abstention": 1,
+    "P_FA": null,
+    "P_FR": null,
+    "precision": null,
+    "recall": null,
+    "FAR": null,
+    "FRR": null,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": null,
+    "loss_ci95": null,
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "development/A0_accept_all": {
+    "eligible": 34,
+    "covered": 34,
+    "clusters": 33,
+    "positives": 34,
+    "negatives": 0,
+    "TP": 34,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 2,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 31,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "development/A1_reject_all": {
+    "eligible": 34,
+    "covered": 34,
+    "clusters": 33,
+    "positives": 34,
+    "negatives": 0,
+    "TP": 0,
+    "FP": 0,
+    "TN": 0,
+    "FN": 34,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 1,
+    "precision": null,
+    "recall": 0,
+    "FAR": null,
+    "FRR": 1,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1,
+    "loss_ci95": [
+     1,
+     1
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 2,
+      "FA": 0,
+      "FR": 2
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "low": {
+      "n": 31,
+      "FA": 0,
+      "FR": 31
+     }
+    }
+   },
+   "development/A2_source_rate": {
+    "eligible": 34,
+    "covered": 34,
+    "clusters": 33,
+    "positives": 34,
+    "negatives": 0,
+    "TP": 34,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": 0.0706,
+    "ece10": 0.2411,
+    "n_prob": 34,
+    "by_risk_class": {
+     "security": {
+      "n": 2,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 31,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "development/A3_test_only": {
+    "eligible": 34,
+    "covered": 34,
+    "clusters": 33,
+    "positives": 34,
+    "negatives": 0,
+    "TP": 34,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 2,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 31,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "development/A4_template_regress": {
+    "eligible": 34,
+    "covered": 34,
+    "clusters": 33,
+    "positives": 34,
+    "negatives": 0,
+    "TP": 22,
+    "FP": 0,
+    "TN": 0,
+    "FN": 12,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0.3529,
+    "precision": 1,
+    "recall": 0.6471,
+    "FAR": null,
+    "FRR": 0.3529,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.3636,
+    "loss_ci95": [
+     0.2121,
+     0.5152
+    ],
+    "brier": 0.1537,
+    "ece10": 0.3483,
+    "n_prob": 34,
+    "by_risk_class": {
+     "security": {
+      "n": 2,
+      "FA": 0,
+      "FR": 2
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "low": {
+      "n": 31,
+      "FA": 0,
+      "FR": 9
+     }
+    }
+   },
+   "development/committee_asof_only": {
+    "eligible": 34,
+    "covered": 0,
+    "clusters": 0,
+    "positives": 0,
+    "negatives": 0,
+    "TP": 0,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 0,
+    "abstention": 1,
+    "P_FA": null,
+    "P_FR": null,
+    "precision": null,
+    "recall": null,
+    "FAR": null,
+    "FRR": null,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": null,
+    "loss_ci95": null,
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "development/committee_unfiltered": {
+    "eligible": 34,
+    "covered": 0,
+    "clusters": 0,
+    "positives": 0,
+    "negatives": 0,
+    "TP": 0,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 0,
+    "abstention": 1,
+    "P_FA": null,
+    "P_FR": null,
+    "precision": null,
+    "recall": null,
+    "FAR": null,
+    "FRR": null,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": null,
+    "loss_ci95": null,
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "development/prescreen": {
+    "eligible": 34,
+    "covered": 31,
+    "clusters": 31,
+    "positives": 31,
+    "negatives": 0,
+    "TP": 31,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 0.9118,
+    "abstention": 0.0882,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 2,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 29,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "calibration/committee": {
+    "eligible": 23,
+    "covered": 1,
+    "clusters": 1,
+    "positives": 1,
+    "negatives": 0,
+    "TP": 0,
+    "FP": 0,
+    "TN": 0,
+    "FN": 1,
+    "coverage": 0.0435,
+    "abstention": 0.9565,
+    "P_FA": 0,
+    "P_FR": 1,
+    "precision": null,
+    "recall": 0,
+    "FAR": null,
+    "FRR": 1,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1,
+    "loss_ci95": null,
+    "brier": 0.44,
+    "ece10": 0.6633,
+    "n_prob": 1,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     }
+    }
+   },
+   "calibration/A0_accept_all": {
+    "eligible": 23,
+    "covered": 23,
+    "clusters": 23,
+    "positives": 23,
+    "negatives": 0,
+    "TP": 23,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 22,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "calibration/A1_reject_all": {
+    "eligible": 23,
+    "covered": 23,
+    "clusters": 23,
+    "positives": 23,
+    "negatives": 0,
+    "TP": 0,
+    "FP": 0,
+    "TN": 0,
+    "FN": 23,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 1,
+    "precision": null,
+    "recall": 0,
+    "FAR": null,
+    "FRR": 1,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1,
+    "loss_ci95": [
+     1,
+     1
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 22,
+      "FA": 0,
+      "FR": 22
+     }
+    }
+   },
+   "calibration/A2_source_rate": {
+    "eligible": 23,
+    "covered": 23,
+    "clusters": 23,
+    "positives": 23,
+    "negatives": 0,
+    "TP": 22,
+    "FP": 0,
+    "TN": 0,
+    "FN": 1,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0.0435,
+    "precision": 1,
+    "recall": 0.9565,
+    "FAR": null,
+    "FRR": 0.0435,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.0435,
+    "loss_ci95": [
+     0,
+     0.1304
+    ],
+    "brier": 0.1823,
+    "ece10": 0.4228,
+    "n_prob": 23,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 22,
+      "FA": 0,
+      "FR": 1
+     }
+    }
+   },
+   "calibration/A3_test_only": {
+    "eligible": 23,
+    "covered": 23,
+    "clusters": 23,
+    "positives": 23,
+    "negatives": 0,
+    "TP": 23,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 22,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "calibration/A4_template_regress": {
+    "eligible": 23,
+    "covered": 23,
+    "clusters": 23,
+    "positives": 23,
+    "negatives": 0,
+    "TP": 19,
+    "FP": 0,
+    "TN": 0,
+    "FN": 4,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0.1739,
+    "precision": 1,
+    "recall": 0.8261,
+    "FAR": null,
+    "FRR": 0.1739,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.1739,
+    "loss_ci95": [
+     0.0435,
+     0.3478
+    ],
+    "brier": 0.1853,
+    "ece10": 0.4249,
+    "n_prob": 23,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 22,
+      "FA": 0,
+      "FR": 3
+     }
+    }
+   },
+   "calibration/committee_asof_only": {
+    "eligible": 23,
+    "covered": 3,
+    "clusters": 3,
+    "positives": 3,
+    "negatives": 0,
+    "TP": 1,
+    "FP": 0,
+    "TN": 0,
+    "FN": 2,
+    "coverage": 0.1304,
+    "abstention": 0.8696,
+    "P_FA": 0,
+    "P_FR": 0.6667,
+    "precision": 1,
+    "recall": 0.3333,
+    "FAR": null,
+    "FRR": 0.6667,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.6667,
+    "loss_ci95": [
+     0,
+     1
+    ],
+    "brier": 0.3397,
+    "ece10": 0.5728,
+    "n_prob": 3,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 3,
+      "FA": 0,
+      "FR": 2
+     }
+    }
+   },
+   "calibration/committee_unfiltered": {
+    "eligible": 23,
+    "covered": 23,
+    "clusters": 23,
+    "positives": 23,
+    "negatives": 0,
+    "TP": 2,
+    "FP": 0,
+    "TN": 0,
+    "FN": 21,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0.913,
+    "precision": 1,
+    "recall": 0.087,
+    "FAR": null,
+    "FRR": 0.913,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.913,
+    "loss_ci95": [
+     0.7826,
+     1
+    ],
+    "brier": 0.4966,
+    "ece10": 0.6907,
+    "n_prob": 23,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 22,
+      "FA": 0,
+      "FR": 20
+     }
+    }
+   },
+   "calibration/prescreen": {
+    "eligible": 23,
+    "covered": 23,
+    "clusters": 23,
+    "positives": 23,
+    "negatives": 0,
+    "TP": 23,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 22,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "holdout/committee": {
+    "eligible": 45,
+    "covered": 2,
+    "clusters": 2,
+    "positives": 2,
+    "negatives": 0,
+    "TP": 1,
+    "FP": 0,
+    "TN": 0,
+    "FN": 1,
+    "coverage": 0.0444,
+    "abstention": 0.9556,
+    "P_FA": 0,
+    "P_FR": 0.5,
+    "precision": 1,
+    "recall": 0.5,
+    "FAR": null,
+    "FRR": 0.5,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.5,
+    "loss_ci95": [
+     0,
+     1
+    ],
+    "brier": 0.1903,
+    "ece10": 0.3963,
+    "n_prob": 2,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 2,
+      "FA": 0,
+      "FR": 1
+     }
+    }
+   },
+   "holdout/A0_accept_all": {
+    "eligible": 45,
+    "covered": 45,
+    "clusters": 44,
+    "positives": 45,
+    "negatives": 0,
+    "TP": 45,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 42,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "holdout/A1_reject_all": {
+    "eligible": 45,
+    "covered": 45,
+    "clusters": 44,
+    "positives": 45,
+    "negatives": 0,
+    "TP": 0,
+    "FP": 0,
+    "TN": 0,
+    "FN": 45,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 1,
+    "precision": null,
+    "recall": 0,
+    "FAR": null,
+    "FRR": 1,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1,
+    "loss_ci95": [
+     1,
+     1
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 3
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 42,
+      "FA": 0,
+      "FR": 42
+     }
+    }
+   },
+   "holdout/A2_source_rate": {
+    "eligible": 45,
+    "covered": 45,
+    "clusters": 44,
+    "positives": 45,
+    "negatives": 0,
+    "TP": 22,
+    "FP": 0,
+    "TN": 0,
+    "FN": 23,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0.5111,
+    "precision": 1,
+    "recall": 0.4889,
+    "FAR": null,
+    "FRR": 0.5111,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.5,
+    "loss_ci95": [
+     0.3409,
+     0.6364
+    ],
+    "brier": 0.249,
+    "ece10": 0.4979,
+    "n_prob": 45,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 2
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 42,
+      "FA": 0,
+      "FR": 21
+     }
+    }
+   },
+   "holdout/A3_test_only": {
+    "eligible": 45,
+    "covered": 45,
+    "clusters": 44,
+    "positives": 45,
+    "negatives": 0,
+    "TP": 45,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 42,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "holdout/A4_template_regress": {
+    "eligible": 45,
+    "covered": 45,
+    "clusters": 44,
+    "positives": 45,
+    "negatives": 0,
+    "TP": 28,
+    "FP": 0,
+    "TN": 0,
+    "FN": 17,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0.3778,
+    "precision": 1,
+    "recall": 0.6222,
+    "FAR": null,
+    "FRR": 0.3778,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.375,
+    "loss_ci95": [
+     0.2386,
+     0.5114
+    ],
+    "brier": 0.2239,
+    "ece10": 0.4688,
+    "n_prob": 45,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 1
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 42,
+      "FA": 0,
+      "FR": 16
+     }
+    }
+   },
+   "holdout/committee_asof_only": {
+    "eligible": 45,
+    "covered": 14,
+    "clusters": 14,
+    "positives": 14,
+    "negatives": 0,
+    "TP": 7,
+    "FP": 0,
+    "TN": 0,
+    "FN": 7,
+    "coverage": 0.3111,
+    "abstention": 0.6889,
+    "P_FA": 0,
+    "P_FR": 0.5,
+    "precision": 1,
+    "recall": 0.5,
+    "FAR": null,
+    "FRR": 0.5,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.5,
+    "loss_ci95": [
+     0.2143,
+     0.7857
+    ],
+    "brier": 0.2683,
+    "ece10": 0.4803,
+    "n_prob": 14,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 13,
+      "FA": 0,
+      "FR": 6
+     }
+    }
+   },
+   "holdout/committee_unfiltered": {
+    "eligible": 45,
+    "covered": 32,
+    "clusters": 32,
+    "positives": 32,
+    "negatives": 0,
+    "TP": 16,
+    "FP": 0,
+    "TN": 0,
+    "FN": 16,
+    "coverage": 0.7111,
+    "abstention": 0.2889,
+    "P_FA": 0,
+    "P_FR": 0.5,
+    "precision": 1,
+    "recall": 0.5,
+    "FAR": null,
+    "FRR": 0.5,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.5,
+    "loss_ci95": [
+     0.3438,
+     0.6563
+    ],
+    "brier": 0.2768,
+    "ece10": 0.4863,
+    "n_prob": 32,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 2
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 29,
+      "FA": 0,
+      "FR": 14
+     }
+    }
+   },
+   "holdout/prescreen": {
+    "eligible": 45,
+    "covered": 32,
+    "clusters": 32,
+    "positives": 32,
+    "negatives": 0,
+    "TP": 32,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 0.7111,
+    "abstention": 0.2889,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 29,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "all/committee": {
+    "eligible": 102,
+    "covered": 3,
+    "clusters": 3,
+    "positives": 3,
+    "negatives": 0,
+    "TP": 1,
+    "FP": 0,
+    "TN": 0,
+    "FN": 2,
+    "coverage": 0.0294,
+    "abstention": 0.9706,
+    "P_FA": 0,
+    "P_FR": 0.6667,
+    "precision": 1,
+    "recall": 0.3333,
+    "FAR": null,
+    "FRR": 0.6667,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.6667,
+    "loss_ci95": [
+     0,
+     1
+    ],
+    "brier": 0.2735,
+    "ece10": 0.4853,
+    "n_prob": 3,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 3,
+      "FA": 0,
+      "FR": 2
+     }
+    }
+   },
+   "all/A0_accept_all": {
+    "eligible": 102,
+    "covered": 102,
+    "clusters": 90,
+    "positives": 102,
+    "negatives": 0,
+    "TP": 102,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 6,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 95,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "all/A1_reject_all": {
+    "eligible": 102,
+    "covered": 102,
+    "clusters": 90,
+    "positives": 102,
+    "negatives": 0,
+    "TP": 0,
+    "FP": 0,
+    "TN": 0,
+    "FN": 102,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 1,
+    "precision": null,
+    "recall": 0,
+    "FAR": null,
+    "FRR": 1,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1,
+    "loss_ci95": [
+     1,
+     1
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 6,
+      "FA": 0,
+      "FR": 6
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "low": {
+      "n": 95,
+      "FA": 0,
+      "FR": 95
+     }
+    }
+   },
+   "all/A2_source_rate": {
+    "eligible": 102,
+    "covered": 102,
+    "clusters": 90,
+    "positives": 102,
+    "negatives": 0,
+    "TP": 78,
+    "FP": 0,
+    "TN": 0,
+    "FN": 24,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0.2353,
+    "precision": 1,
+    "recall": 0.7647,
+    "FAR": null,
+    "FRR": 0.2353,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.2167,
+    "loss_ci95": [
+     0.1389,
+     0.3056
+    ],
+    "brier": 0.1745,
+    "ece10": 0.3953,
+    "n_prob": 102,
+    "by_risk_class": {
+     "security": {
+      "n": 6,
+      "FA": 0,
+      "FR": 2
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 95,
+      "FA": 0,
+      "FR": 22
+     }
+    }
+   },
+   "all/A3_test_only": {
+    "eligible": 102,
+    "covered": 102,
+    "clusters": 90,
+    "positives": 102,
+    "negatives": 0,
+    "TP": 102,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 6,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 95,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "all/A4_template_regress": {
+    "eligible": 102,
+    "covered": 102,
+    "clusters": 90,
+    "positives": 102,
+    "negatives": 0,
+    "TP": 69,
+    "FP": 0,
+    "TN": 0,
+    "FN": 33,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0.3235,
+    "precision": 1,
+    "recall": 0.6765,
+    "FAR": null,
+    "FRR": 0.3235,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.3222,
+    "loss_ci95": [
+     0.2333,
+     0.4222
+    ],
+    "brier": 0.1918,
+    "ece10": 0.4187,
+    "n_prob": 102,
+    "by_risk_class": {
+     "security": {
+      "n": 6,
+      "FA": 0,
+      "FR": 4
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "low": {
+      "n": 95,
+      "FA": 0,
+      "FR": 28
+     }
+    }
+   },
+   "all/committee_asof_only": {
+    "eligible": 102,
+    "covered": 17,
+    "clusters": 17,
+    "positives": 17,
+    "negatives": 0,
+    "TP": 8,
+    "FP": 0,
+    "TN": 0,
+    "FN": 9,
+    "coverage": 0.1667,
+    "abstention": 0.8333,
+    "P_FA": 0,
+    "P_FR": 0.5294,
+    "precision": 1,
+    "recall": 0.4706,
+    "FAR": null,
+    "FRR": 0.5294,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.5294,
+    "loss_ci95": [
+     0.2941,
+     0.7647
+    ],
+    "brier": 0.2809,
+    "ece10": 0.4966,
+    "n_prob": 17,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 16,
+      "FA": 0,
+      "FR": 8
+     }
+    }
+   },
+   "all/committee_unfiltered": {
+    "eligible": 102,
+    "covered": 55,
+    "clusters": 55,
+    "positives": 55,
+    "negatives": 0,
+    "TP": 18,
+    "FP": 0,
+    "TN": 0,
+    "FN": 37,
+    "coverage": 0.5392,
+    "abstention": 0.4608,
+    "P_FA": 0,
+    "P_FR": 0.6727,
+    "precision": 1,
+    "recall": 0.3273,
+    "FAR": null,
+    "FRR": 0.6727,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.6727,
+    "loss_ci95": [
+     0.5455,
+     0.8
+    ],
+    "brier": 0.3687,
+    "ece10": 0.5718,
+    "n_prob": 55,
+    "by_risk_class": {
+     "security": {
+      "n": 4,
+      "FA": 0,
+      "FR": 3
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 51,
+      "FA": 0,
+      "FR": 34
+     }
+    }
+   },
+   "all/prescreen": {
+    "eligible": 102,
+    "covered": 86,
+    "clusters": 86,
+    "positives": 86,
+    "negatives": 0,
+    "TP": 86,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 0.8431,
+    "abstention": 0.1569,
+    "P_FA": 0,
+    "P_FR": 0,
+    "precision": 1,
+    "recall": 1,
+    "FAR": null,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0,
+    "loss_ci95": [
+     0,
+     0
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 6,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 80,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   }
+  },
+  "x_status_evaluated": {
+   "development/committee": {
+    "eligible": 34,
+    "covered": 0,
+    "clusters": 0,
+    "positives": 0,
+    "negatives": 0,
+    "TP": 0,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 0,
+    "abstention": 1,
+    "P_FA": null,
+    "P_FR": null,
+    "precision": null,
+    "recall": null,
+    "FAR": null,
+    "FRR": null,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": null,
+    "loss_ci95": null,
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "development/A0_accept_all": {
+    "eligible": 34,
+    "covered": 34,
+    "clusters": 33,
+    "positives": 25,
+    "negatives": 9,
+    "TP": 25,
+    "FP": 9,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.2647,
+    "P_FR": 0,
+    "precision": 0.7353,
+    "recall": 1,
+    "FAR": 1,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.7727,
+    "loss_ci95": [
+     0.3636,
+     1.2273
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 2,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 31,
+      "FA": 9,
+      "FR": 0
+     }
+    }
+   },
+   "development/A1_reject_all": {
+    "eligible": 34,
+    "covered": 34,
+    "clusters": 33,
+    "positives": 25,
+    "negatives": 9,
+    "TP": 0,
+    "FP": 0,
+    "TN": 9,
+    "FN": 25,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0.7353,
+    "precision": null,
+    "recall": 0,
+    "FAR": 0,
+    "FRR": 1,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.7424,
+    "loss_ci95": [
+     0.5909,
+     0.8788
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 2,
+      "FA": 0,
+      "FR": 2
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "low": {
+      "n": 31,
+      "FA": 0,
+      "FR": 22
+     }
+    }
+   },
+   "development/A2_source_rate": {
+    "eligible": 34,
+    "covered": 34,
+    "clusters": 33,
+    "positives": 25,
+    "negatives": 9,
+    "TP": 25,
+    "FP": 9,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.2647,
+    "P_FR": 0,
+    "precision": 0.7353,
+    "recall": 1,
+    "FAR": 1,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.7727,
+    "loss_ci95": [
+     0.3636,
+     1.2273
+    ],
+    "brier": 0.2278,
+    "ece10": 0.1725,
+    "n_prob": 34,
+    "by_risk_class": {
+     "security": {
+      "n": 2,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 31,
+      "FA": 9,
+      "FR": 0
+     }
+    }
+   },
+   "development/A3_test_only": {
+    "eligible": 34,
+    "covered": 34,
+    "clusters": 33,
+    "positives": 25,
+    "negatives": 9,
+    "TP": 25,
+    "FP": 9,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.2647,
+    "P_FR": 0,
+    "precision": 0.7353,
+    "recall": 1,
+    "FAR": 1,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.7727,
+    "loss_ci95": [
+     0.3636,
+     1.2273
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 2,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 31,
+      "FA": 9,
+      "FR": 0
+     }
+    }
+   },
+   "development/A4_template_regress": {
+    "eligible": 34,
+    "covered": 34,
+    "clusters": 33,
+    "positives": 25,
+    "negatives": 9,
+    "TP": 16,
+    "FP": 6,
+    "TN": 3,
+    "FN": 9,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.1765,
+    "P_FR": 0.2647,
+    "precision": 0.7273,
+    "recall": 0.64,
+    "FAR": 0.6667,
+    "FRR": 0.36,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.7727,
+    "loss_ci95": [
+     0.4394,
+     1.1515
+    ],
+    "brier": 0.2584,
+    "ece10": 0.2258,
+    "n_prob": 34,
+    "by_risk_class": {
+     "security": {
+      "n": 2,
+      "FA": 0,
+      "FR": 2
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "low": {
+      "n": 31,
+      "FA": 6,
+      "FR": 6
+     }
+    }
+   },
+   "development/committee_asof_only": {
+    "eligible": 34,
+    "covered": 0,
+    "clusters": 0,
+    "positives": 0,
+    "negatives": 0,
+    "TP": 0,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 0,
+    "abstention": 1,
+    "P_FA": null,
+    "P_FR": null,
+    "precision": null,
+    "recall": null,
+    "FAR": null,
+    "FRR": null,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": null,
+    "loss_ci95": null,
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "development/committee_unfiltered": {
+    "eligible": 34,
+    "covered": 0,
+    "clusters": 0,
+    "positives": 0,
+    "negatives": 0,
+    "TP": 0,
+    "FP": 0,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 0,
+    "abstention": 1,
+    "P_FA": null,
+    "P_FR": null,
+    "precision": null,
+    "recall": null,
+    "FAR": null,
+    "FRR": null,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": null,
+    "loss_ci95": null,
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     }
+    }
+   },
+   "development/prescreen": {
+    "eligible": 34,
+    "covered": 31,
+    "clusters": 31,
+    "positives": 22,
+    "negatives": 9,
+    "TP": 22,
+    "FP": 9,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 0.9118,
+    "abstention": 0.0882,
+    "P_FA": 0.2903,
+    "P_FR": 0,
+    "precision": 0.7097,
+    "recall": 1,
+    "FAR": 1,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.871,
+    "loss_ci95": [
+     0.4839,
+     1.3548
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 2,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 29,
+      "FA": 9,
+      "FR": 0
+     }
+    }
+   },
+   "calibration/committee": {
+    "eligible": 23,
+    "covered": 1,
+    "clusters": 1,
+    "positives": 1,
+    "negatives": 0,
+    "TP": 0,
+    "FP": 0,
+    "TN": 0,
+    "FN": 1,
+    "coverage": 0.0435,
+    "abstention": 0.9565,
+    "P_FA": 0,
+    "P_FR": 1,
+    "precision": null,
+    "recall": 0,
+    "FAR": null,
+    "FRR": 1,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1,
+    "loss_ci95": null,
+    "brier": 0.44,
+    "ece10": 0.6633,
+    "n_prob": 1,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     }
+    }
+   },
+   "calibration/A0_accept_all": {
+    "eligible": 23,
+    "covered": 23,
+    "clusters": 23,
+    "positives": 9,
+    "negatives": 14,
+    "TP": 9,
+    "FP": 14,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.6087,
+    "P_FR": 0,
+    "precision": 0.3913,
+    "recall": 1,
+    "FAR": 1,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1.8261,
+    "loss_ci95": [
+     1.1739,
+     2.4783
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 22,
+      "FA": 14,
+      "FR": 0
+     }
+    }
+   },
+   "calibration/A1_reject_all": {
+    "eligible": 23,
+    "covered": 23,
+    "clusters": 23,
+    "positives": 9,
+    "negatives": 14,
+    "TP": 0,
+    "FP": 0,
+    "TN": 14,
+    "FN": 9,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0.3913,
+    "precision": null,
+    "recall": 0,
+    "FAR": 0,
+    "FRR": 1,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.3913,
+    "loss_ci95": [
+     0.1739,
+     0.6087
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 22,
+      "FA": 0,
+      "FR": 8
+     }
+    }
+   },
+   "calibration/A2_source_rate": {
+    "eligible": 23,
+    "covered": 23,
+    "clusters": 23,
+    "positives": 9,
+    "negatives": 14,
+    "TP": 9,
+    "FP": 13,
+    "TN": 1,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.5652,
+    "P_FR": 0,
+    "precision": 0.4091,
+    "recall": 1,
+    "FAR": 0.9286,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1.6957,
+    "loss_ci95": [
+     1.0435,
+     2.3478
+    ],
+    "brier": 0.2773,
+    "ece10": 0.1859,
+    "n_prob": 23,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 22,
+      "FA": 13,
+      "FR": 0
+     }
+    }
+   },
+   "calibration/A3_test_only": {
+    "eligible": 23,
+    "covered": 23,
+    "clusters": 23,
+    "positives": 9,
+    "negatives": 14,
+    "TP": 9,
+    "FP": 14,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.6087,
+    "P_FR": 0,
+    "precision": 0.3913,
+    "recall": 1,
+    "FAR": 1,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1.8261,
+    "loss_ci95": [
+     1.1739,
+     2.4783
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 22,
+      "FA": 14,
+      "FR": 0
+     }
+    }
+   },
+   "calibration/A4_template_regress": {
+    "eligible": 23,
+    "covered": 23,
+    "clusters": 23,
+    "positives": 9,
+    "negatives": 14,
+    "TP": 6,
+    "FP": 13,
+    "TN": 1,
+    "FN": 3,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.5652,
+    "P_FR": 0.1304,
+    "precision": 0.3158,
+    "recall": 0.6667,
+    "FAR": 0.9286,
+    "FRR": 0.3333,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1.8261,
+    "loss_ci95": [
+     1.2609,
+     2.3913
+    ],
+    "brier": 0.3002,
+    "ece10": 0.2306,
+    "n_prob": 23,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 22,
+      "FA": 13,
+      "FR": 2
+     }
+    }
+   },
+   "calibration/committee_asof_only": {
+    "eligible": 23,
+    "covered": 3,
+    "clusters": 3,
+    "positives": 1,
+    "negatives": 2,
+    "TP": 0,
+    "FP": 1,
+    "TN": 1,
+    "FN": 1,
+    "coverage": 0.1304,
+    "abstention": 0.8696,
+    "P_FA": 0.3333,
+    "P_FR": 0.3333,
+    "precision": 0,
+    "recall": 0,
+    "FAR": 0.5,
+    "FRR": 1,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1.3333,
+    "loss_ci95": [
+     0,
+     3
+    ],
+    "brier": 0.3029,
+    "ece10": 0.2919,
+    "n_prob": 3,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 3,
+      "FA": 1,
+      "FR": 1
+     }
+    }
+   },
+   "calibration/committee_unfiltered": {
+    "eligible": 23,
+    "covered": 23,
+    "clusters": 23,
+    "positives": 9,
+    "negatives": 14,
+    "TP": 0,
+    "FP": 2,
+    "TN": 12,
+    "FN": 9,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.087,
+    "P_FR": 0.3913,
+    "precision": 0,
+    "recall": 0,
+    "FAR": 0.1429,
+    "FRR": 1,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.6522,
+    "loss_ci95": [
+     0.3043,
+     1.0435
+    ],
+    "brier": 0.3015,
+    "ece10": 0.2176,
+    "n_prob": 23,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 22,
+      "FA": 2,
+      "FR": 8
+     }
+    }
+   },
+   "calibration/prescreen": {
+    "eligible": 23,
+    "covered": 23,
+    "clusters": 23,
+    "positives": 9,
+    "negatives": 14,
+    "TP": 9,
+    "FP": 14,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.6087,
+    "P_FR": 0,
+    "precision": 0.3913,
+    "recall": 1,
+    "FAR": 1,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1.8261,
+    "loss_ci95": [
+     1.1739,
+     2.4783
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 22,
+      "FA": 14,
+      "FR": 0
+     }
+    }
+   },
+   "holdout/committee": {
+    "eligible": 45,
+    "covered": 2,
+    "clusters": 2,
+    "positives": 2,
+    "negatives": 0,
+    "TP": 1,
+    "FP": 0,
+    "TN": 0,
+    "FN": 1,
+    "coverage": 0.0444,
+    "abstention": 0.9556,
+    "P_FA": 0,
+    "P_FR": 0.5,
+    "precision": 1,
+    "recall": 0.5,
+    "FAR": null,
+    "FRR": 0.5,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.5,
+    "loss_ci95": [
+     0,
+     1
+    ],
+    "brier": 0.1903,
+    "ece10": 0.3963,
+    "n_prob": 2,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 2,
+      "FA": 0,
+      "FR": 1
+     }
+    }
+   },
+   "holdout/A0_accept_all": {
+    "eligible": 45,
+    "covered": 45,
+    "clusters": 44,
+    "positives": 38,
+    "negatives": 7,
+    "TP": 38,
+    "FP": 7,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.1556,
+    "P_FR": 0,
+    "precision": 0.8444,
+    "recall": 1,
+    "FAR": 1,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.4432,
+    "loss_ci95": [
+     0.1705,
+     0.7841
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 42,
+      "FA": 7,
+      "FR": 0
+     }
+    }
+   },
+   "holdout/A1_reject_all": {
+    "eligible": 45,
+    "covered": 45,
+    "clusters": 44,
+    "positives": 38,
+    "negatives": 7,
+    "TP": 0,
+    "FP": 0,
+    "TN": 7,
+    "FN": 38,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0.8444,
+    "precision": null,
+    "recall": 0,
+    "FAR": 0,
+    "FRR": 1,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.8523,
+    "loss_ci95": [
+     0.7386,
+     0.9432
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 3
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 42,
+      "FA": 0,
+      "FR": 35
+     }
+    }
+   },
+   "holdout/A2_source_rate": {
+    "eligible": 45,
+    "covered": 45,
+    "clusters": 44,
+    "positives": 38,
+    "negatives": 7,
+    "TP": 21,
+    "FP": 1,
+    "TN": 6,
+    "FN": 17,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.0222,
+    "P_FR": 0.3778,
+    "precision": 0.9545,
+    "recall": 0.5526,
+    "FAR": 0.1429,
+    "FRR": 0.4474,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.4432,
+    "loss_ci95": [
+     0.2727,
+     0.6364
+    ],
+    "brier": 0.2429,
+    "ece10": 0.3423,
+    "n_prob": 45,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 2
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 42,
+      "FA": 1,
+      "FR": 15
+     }
+    }
+   },
+   "holdout/A3_test_only": {
+    "eligible": 45,
+    "covered": 45,
+    "clusters": 44,
+    "positives": 38,
+    "negatives": 7,
+    "TP": 38,
+    "FP": 7,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.1556,
+    "P_FR": 0,
+    "precision": 0.8444,
+    "recall": 1,
+    "FAR": 1,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.4432,
+    "loss_ci95": [
+     0.1705,
+     0.7841
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 42,
+      "FA": 7,
+      "FR": 0
+     }
+    }
+   },
+   "holdout/A4_template_regress": {
+    "eligible": 45,
+    "covered": 45,
+    "clusters": 44,
+    "positives": 38,
+    "negatives": 7,
+    "TP": 24,
+    "FP": 4,
+    "TN": 3,
+    "FN": 14,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.0889,
+    "P_FR": 0.3111,
+    "precision": 0.8571,
+    "recall": 0.6316,
+    "FAR": 0.5714,
+    "FRR": 0.3684,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.5455,
+    "loss_ci95": [
+     0.2955,
+     0.8182
+    ],
+    "brier": 0.2301,
+    "ece10": 0.3132,
+    "n_prob": 45,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 1
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 42,
+      "FA": 4,
+      "FR": 13
+     }
+    }
+   },
+   "holdout/committee_asof_only": {
+    "eligible": 45,
+    "covered": 14,
+    "clusters": 14,
+    "positives": 12,
+    "negatives": 2,
+    "TP": 7,
+    "FP": 0,
+    "TN": 2,
+    "FN": 5,
+    "coverage": 0.3111,
+    "abstention": 0.6889,
+    "P_FA": 0,
+    "P_FR": 0.3571,
+    "precision": 1,
+    "recall": 0.5833,
+    "FAR": 0,
+    "FRR": 0.4167,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.3571,
+    "loss_ci95": [
+     0.1429,
+     0.6429
+    ],
+    "brier": 0.2078,
+    "ece10": 0.3732,
+    "n_prob": 14,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 13,
+      "FA": 0,
+      "FR": 4
+     }
+    }
+   },
+   "holdout/committee_unfiltered": {
+    "eligible": 45,
+    "covered": 32,
+    "clusters": 32,
+    "positives": 26,
+    "negatives": 6,
+    "TP": 15,
+    "FP": 1,
+    "TN": 5,
+    "FN": 11,
+    "coverage": 0.7111,
+    "abstention": 0.2889,
+    "P_FA": 0.0313,
+    "P_FR": 0.3438,
+    "precision": 0.9375,
+    "recall": 0.5769,
+    "FAR": 0.1667,
+    "FRR": 0.4231,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.4375,
+    "loss_ci95": [
+     0.25,
+     0.6875
+    ],
+    "brier": 0.209,
+    "ece10": 0.3422,
+    "n_prob": 32,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 2
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 29,
+      "FA": 1,
+      "FR": 9
+     }
+    }
+   },
+   "holdout/prescreen": {
+    "eligible": 45,
+    "covered": 32,
+    "clusters": 32,
+    "positives": 26,
+    "negatives": 6,
+    "TP": 26,
+    "FP": 6,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 0.7111,
+    "abstention": 0.2889,
+    "P_FA": 0.1875,
+    "P_FR": 0,
+    "precision": 0.8125,
+    "recall": 1,
+    "FAR": 1,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.5625,
+    "loss_ci95": [
+     0.1875,
+     0.9375
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 3,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 29,
+      "FA": 6,
+      "FR": 0
+     }
+    }
+   },
+   "all/committee": {
+    "eligible": 102,
+    "covered": 3,
+    "clusters": 3,
+    "positives": 3,
+    "negatives": 0,
+    "TP": 1,
+    "FP": 0,
+    "TN": 0,
+    "FN": 2,
+    "coverage": 0.0294,
+    "abstention": 0.9706,
+    "P_FA": 0,
+    "P_FR": 0.6667,
+    "precision": 1,
+    "recall": 0.3333,
+    "FAR": null,
+    "FRR": 0.6667,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.6667,
+    "loss_ci95": [
+     0,
+     1
+    ],
+    "brier": 0.2735,
+    "ece10": 0.4853,
+    "n_prob": 3,
+    "by_risk_class": {
+     "security": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 3,
+      "FA": 0,
+      "FR": 2
+     }
+    }
+   },
+   "all/A0_accept_all": {
+    "eligible": 102,
+    "covered": 102,
+    "clusters": 90,
+    "positives": 72,
+    "negatives": 30,
+    "TP": 72,
+    "FP": 30,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.2941,
+    "P_FR": 0,
+    "precision": 0.7059,
+    "recall": 1,
+    "FAR": 1,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.7833,
+    "loss_ci95": [
+     0.5333,
+     1.05
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 6,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 95,
+      "FA": 30,
+      "FR": 0
+     }
+    }
+   },
+   "all/A1_reject_all": {
+    "eligible": 102,
+    "covered": 102,
+    "clusters": 90,
+    "positives": 72,
+    "negatives": 30,
+    "TP": 0,
+    "FP": 0,
+    "TN": 30,
+    "FN": 72,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0,
+    "P_FR": 0.7059,
+    "precision": null,
+    "recall": 0,
+    "FAR": 0,
+    "FRR": 1,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.7389,
+    "loss_ci95": [
+     0.65,
+     0.8222
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 6,
+      "FA": 0,
+      "FR": 6
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "low": {
+      "n": 95,
+      "FA": 0,
+      "FR": 65
+     }
+    }
+   },
+   "all/A2_source_rate": {
+    "eligible": 102,
+    "covered": 102,
+    "clusters": 90,
+    "positives": 72,
+    "negatives": 30,
+    "TP": 55,
+    "FP": 23,
+    "TN": 7,
+    "FN": 17,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.2255,
+    "P_FR": 0.1667,
+    "precision": 0.7051,
+    "recall": 0.7639,
+    "FAR": 0.7667,
+    "FRR": 0.2361,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.7556,
+    "loss_ci95": [
+     0.5278,
+     0.9944
+    ],
+    "brier": 0.2456,
+    "ece10": 0.2054,
+    "n_prob": 102,
+    "by_risk_class": {
+     "security": {
+      "n": 6,
+      "FA": 0,
+      "FR": 2
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 95,
+      "FA": 23,
+      "FR": 15
+     }
+    }
+   },
+   "all/A3_test_only": {
+    "eligible": 102,
+    "covered": 102,
+    "clusters": 90,
+    "positives": 72,
+    "negatives": 30,
+    "TP": 72,
+    "FP": 30,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.2941,
+    "P_FR": 0,
+    "precision": 0.7059,
+    "recall": 1,
+    "FAR": 1,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.7833,
+    "loss_ci95": [
+     0.5333,
+     1.05
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 6,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 95,
+      "FA": 30,
+      "FR": 0
+     }
+    }
+   },
+   "all/A4_template_regress": {
+    "eligible": 102,
+    "covered": 102,
+    "clusters": 90,
+    "positives": 72,
+    "negatives": 30,
+    "TP": 46,
+    "FP": 23,
+    "TN": 7,
+    "FN": 26,
+    "coverage": 1,
+    "abstention": 0,
+    "P_FA": 0.2255,
+    "P_FR": 0.2549,
+    "precision": 0.6667,
+    "recall": 0.6389,
+    "FAR": 0.7667,
+    "FRR": 0.3611,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.8611,
+    "loss_ci95": [
+     0.6389,
+     1.0889
+    ],
+    "brier": 0.2553,
+    "ece10": 0.2008,
+    "n_prob": 102,
+    "by_risk_class": {
+     "security": {
+      "n": 6,
+      "FA": 0,
+      "FR": 4
+     },
+     "production": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "low": {
+      "n": 95,
+      "FA": 23,
+      "FR": 21
+     }
+    }
+   },
+   "all/committee_asof_only": {
+    "eligible": 102,
+    "covered": 17,
+    "clusters": 17,
+    "positives": 13,
+    "negatives": 4,
+    "TP": 7,
+    "FP": 1,
+    "TN": 3,
+    "FN": 6,
+    "coverage": 0.1667,
+    "abstention": 0.8333,
+    "P_FA": 0.0588,
+    "P_FR": 0.3529,
+    "precision": 0.875,
+    "recall": 0.5385,
+    "FAR": 0.25,
+    "FRR": 0.4615,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.5294,
+    "loss_ci95": [
+     0.2353,
+     0.9412
+    ],
+    "brier": 0.2246,
+    "ece10": 0.3021,
+    "n_prob": 17,
+    "by_risk_class": {
+     "security": {
+      "n": 1,
+      "FA": 0,
+      "FR": 1
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 16,
+      "FA": 1,
+      "FR": 5
+     }
+    }
+   },
+   "all/committee_unfiltered": {
+    "eligible": 102,
+    "covered": 55,
+    "clusters": 55,
+    "positives": 35,
+    "negatives": 20,
+    "TP": 15,
+    "FP": 3,
+    "TN": 17,
+    "FN": 20,
+    "coverage": 0.5392,
+    "abstention": 0.4608,
+    "P_FA": 0.0545,
+    "P_FR": 0.3636,
+    "precision": 0.8333,
+    "recall": 0.4286,
+    "FAR": 0.15,
+    "FRR": 0.5714,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 0.5273,
+    "loss_ci95": [
+     0.3273,
+     0.7455
+    ],
+    "brier": 0.2477,
+    "ece10": 0.246,
+    "n_prob": 55,
+    "by_risk_class": {
+     "security": {
+      "n": 4,
+      "FA": 0,
+      "FR": 3
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 51,
+      "FA": 3,
+      "FR": 17
+     }
+    }
+   },
+   "all/prescreen": {
+    "eligible": 102,
+    "covered": 86,
+    "clusters": 86,
+    "positives": 57,
+    "negatives": 29,
+    "TP": 57,
+    "FP": 29,
+    "TN": 0,
+    "FN": 0,
+    "coverage": 0.8431,
+    "abstention": 0.1569,
+    "P_FA": 0.3372,
+    "P_FR": 0,
+    "precision": 0.6628,
+    "recall": 1,
+    "FAR": 1,
+    "FRR": 0,
+    "accuracy_note": "per risk class only; never pooled across risk classes as one accuracy",
+    "loss": 1.0116,
+    "loss_ci95": [
+     0.7326,
+     1.2907
+    ],
+    "brier": null,
+    "ece10": null,
+    "n_prob": 0,
+    "by_risk_class": {
+     "security": {
+      "n": 6,
+      "FA": 0,
+      "FR": 0
+     },
+     "production": {
+      "n": 0,
+      "FA": 0,
+      "FR": 0
+     },
+     "low": {
+      "n": 80,
+      "FA": 29,
+      "FR": 0
+     }
+    }
+   }
+  }
+ },
+ "leakage": {
+  "forecast:committee": {
+   "with_judgment": 69,
+   "created_after_outcome": 49,
+   "as_of_after_goal": 17,
+   "error_or_unparsable": 0
+  },
+  "proposal_prescreen": {
+   "with_judgment": 109,
+   "created_after_outcome": 0,
+   "as_of_after_goal": 0,
+   "error_or_unparsable": 1
+  }
+ },
+ "committee": {
+  "replication_no_leak_filter": {
+   "yes_verified": "15/21",
+   "no_verified": "20/48"
+  },
+  "contrast": {
+   "primary/calibration": {
+    "yes": {
+     "n": 0,
+     "pos": 0,
+     "clusters": 0,
+     "rate": null,
+     "wilson95": null
+    },
+    "no": {
+     "n": 1,
+     "pos": 1,
+     "clusters": 1,
+     "rate": 1,
+     "wilson95": [
+      0.2065,
+      1
+     ]
+    },
+    "diff": null,
+    "diff_cluster_ci95": null,
+    "mde_80pct_power": null,
+    "pooled_rate": 1,
+    "verdict": "INSUFFICIENT (a group or a label class is empty)"
+   },
+   "primary/holdout": {
+    "yes": {
+     "n": 1,
+     "pos": 1,
+     "clusters": 1,
+     "rate": 1,
+     "wilson95": [
+      0.2065,
+      1
+     ]
+    },
+    "no": {
+     "n": 1,
+     "pos": 1,
+     "clusters": 1,
+     "rate": 1,
+     "wilson95": [
+      0.2065,
+      1
+     ]
+    },
+    "diff": 0,
+    "diff_cluster_ci95": [
+     0,
+     0
+    ],
+    "mde_80pct_power": 0,
+    "pooled_rate": 1,
+    "verdict": "INSUFFICIENT (a group or a label class is empty)"
+   },
+   "primary/all": {
+    "yes": {
+     "n": 1,
+     "pos": 1,
+     "clusters": 1,
+     "rate": 1,
+     "wilson95": [
+      0.2065,
+      1
+     ]
+    },
+    "no": {
+     "n": 2,
+     "pos": 2,
+     "clusters": 2,
+     "rate": 1,
+     "wilson95": [
+      0.3424,
+      1
+     ]
+    },
+    "diff": 0,
+    "diff_cluster_ci95": [
+     0,
+     0
+    ],
+    "mde_80pct_power": 0,
+    "pooled_rate": 1,
+    "verdict": "INSUFFICIENT (a group or a label class is empty)"
+   },
+   "status/calibration": {
+    "yes": {
+     "n": 0,
+     "pos": 0,
+     "clusters": 0,
+     "rate": null,
+     "wilson95": null
+    },
+    "no": {
+     "n": 1,
+     "pos": 1,
+     "clusters": 1,
+     "rate": 1,
+     "wilson95": [
+      0.2065,
+      1
+     ]
+    },
+    "diff": null,
+    "diff_cluster_ci95": null,
+    "mde_80pct_power": null,
+    "pooled_rate": 1,
+    "verdict": "INSUFFICIENT (a group or a label class is empty)"
+   },
+   "status/holdout": {
+    "yes": {
+     "n": 1,
+     "pos": 1,
+     "clusters": 1,
+     "rate": 1,
+     "wilson95": [
+      0.2065,
+      1
+     ]
+    },
+    "no": {
+     "n": 1,
+     "pos": 1,
+     "clusters": 1,
+     "rate": 1,
+     "wilson95": [
+      0.2065,
+      1
+     ]
+    },
+    "diff": 0,
+    "diff_cluster_ci95": [
+     0,
+     0
+    ],
+    "mde_80pct_power": 0,
+    "pooled_rate": 1,
+    "verdict": "INSUFFICIENT (a group or a label class is empty)"
+   },
+   "status/all": {
+    "yes": {
+     "n": 1,
+     "pos": 1,
+     "clusters": 1,
+     "rate": 1,
+     "wilson95": [
+      0.2065,
+      1
+     ]
+    },
+    "no": {
+     "n": 2,
+     "pos": 2,
+     "clusters": 2,
+     "rate": 1,
+     "wilson95": [
+      0.3424,
+      1
+     ]
+    },
+    "diff": 0,
+    "diff_cluster_ci95": [
+     0,
+     0
+    ],
+    "mde_80pct_power": 0,
+    "pooled_rate": 1,
+    "verdict": "INSUFFICIENT (a group or a label class is empty)"
+   },
+   "oracle_only/calibration": {
+    "yes": {
+     "n": 0,
+     "pos": 0,
+     "clusters": 0,
+     "rate": null,
+     "wilson95": null
+    },
+    "no": {
+     "n": 1,
+     "pos": 1,
+     "clusters": 1,
+     "rate": 1,
+     "wilson95": [
+      0.2065,
+      1
+     ]
+    },
+    "diff": null,
+    "diff_cluster_ci95": null,
+    "mde_80pct_power": null,
+    "pooled_rate": 1,
+    "verdict": "INSUFFICIENT (a group or a label class is empty)"
+   },
+   "oracle_only/holdout": {
+    "yes": {
+     "n": 1,
+     "pos": 1,
+     "clusters": 1,
+     "rate": 1,
+     "wilson95": [
+      0.2065,
+      1
+     ]
+    },
+    "no": {
+     "n": 1,
+     "pos": 1,
+     "clusters": 1,
+     "rate": 1,
+     "wilson95": [
+      0.2065,
+      1
+     ]
+    },
+    "diff": 0,
+    "diff_cluster_ci95": [
+     0,
+     0
+    ],
+    "mde_80pct_power": 0,
+    "pooled_rate": 1,
+    "verdict": "INSUFFICIENT (a group or a label class is empty)"
+   },
+   "oracle_only/all": {
+    "yes": {
+     "n": 1,
+     "pos": 1,
+     "clusters": 1,
+     "rate": 1,
+     "wilson95": [
+      0.2065,
+      1
+     ]
+    },
+    "no": {
+     "n": 2,
+     "pos": 2,
+     "clusters": 2,
+     "rate": 1,
+     "wilson95": [
+      0.3424,
+      1
+     ]
+    },
+    "diff": 0,
+    "diff_cluster_ci95": [
+     0,
+     0
+    ],
+    "mde_80pct_power": 0,
+    "pooled_rate": 1,
+    "verdict": "INSUFFICIENT (a group or a label class is empty)"
+   },
+   "x_status_evaluated/calibration": {
+    "yes": {
+     "n": 0,
+     "pos": 0,
+     "clusters": 0,
+     "rate": null,
+     "wilson95": null
+    },
+    "no": {
+     "n": 1,
+     "pos": 1,
+     "clusters": 1,
+     "rate": 1,
+     "wilson95": [
+      0.2065,
+      1
+     ]
+    },
+    "diff": null,
+    "diff_cluster_ci95": null,
+    "mde_80pct_power": null,
+    "pooled_rate": 1,
+    "verdict": "INSUFFICIENT (a group or a label class is empty)"
+   },
+   "x_status_evaluated/holdout": {
+    "yes": {
+     "n": 1,
+     "pos": 1,
+     "clusters": 1,
+     "rate": 1,
+     "wilson95": [
+      0.2065,
+      1
+     ]
+    },
+    "no": {
+     "n": 1,
+     "pos": 1,
+     "clusters": 1,
+     "rate": 1,
+     "wilson95": [
+      0.2065,
+      1
+     ]
+    },
+    "diff": 0,
+    "diff_cluster_ci95": [
+     0,
+     0
+    ],
+    "mde_80pct_power": 0,
+    "pooled_rate": 1,
+    "verdict": "INSUFFICIENT (a group or a label class is empty)"
+   },
+   "x_status_evaluated/all": {
+    "yes": {
+     "n": 1,
+     "pos": 1,
+     "clusters": 1,
+     "rate": 1,
+     "wilson95": [
+      0.2065,
+      1
+     ]
+    },
+    "no": {
+     "n": 2,
+     "pos": 2,
+     "clusters": 2,
+     "rate": 1,
+     "wilson95": [
+      0.3424,
+      1
+     ]
+    },
+    "diff": 0,
+    "diff_cluster_ci95": [
+     0,
+     0
+    ],
+    "mde_80pct_power": 0,
+    "pooled_rate": 1,
+    "verdict": "INSUFFICIENT (a group or a label class is empty)"
+   }
+  },
+  "sensitivity_contrast": {
+   "committee_asof_only/primary/holdout": {
+    "yes": {
+     "n": 7,
+     "pos": 7,
+     "clusters": 7,
+     "rate": 1,
+     "wilson95": [
+      0.6457,
+      1
+     ]
+    },
+    "no": {
+     "n": 5,
+     "pos": 5,
+     "clusters": 5,
+     "rate": 1,
+     "wilson95": [
+      0.5655,
+      1
+     ]
+    },
+    "diff": 0,
+    "diff_cluster_ci95": [
+     0,
+     0
+    ],
+    "mde_80pct_power": 0,
+    "pooled_rate": 1,
+    "verdict": "INSUFFICIENT (a group or a label class is empty)"
+   },
+   "committee_asof_only/primary/all": {
+    "yes": {
+     "n": 7,
+     "pos": 7,
+     "clusters": 7,
+     "rate": 1,
+     "wilson95": [
+      0.6457,
+      1
+     ]
+    },
+    "no": {
+     "n": 6,
+     "pos": 6,
+     "clusters": 6,
+     "rate": 1,
+     "wilson95": [
+      0.6097,
+      1
+     ]
+    },
+    "diff": 0,
+    "diff_cluster_ci95": [
+     0,
+     0
+    ],
+    "mde_80pct_power": 0,
+    "pooled_rate": 1,
+    "verdict": "INSUFFICIENT (a group or a label class is empty)"
+   },
+   "committee_asof_only/status/holdout": {
+    "yes": {
+     "n": 7,
+     "pos": 7,
+     "clusters": 7,
+     "rate": 1,
+     "wilson95": [
+      0.6457,
+      1
+     ]
+    },
+    "no": {
+     "n": 8,
+     "pos": 5,
+     "clusters": 8,
+     "rate": 0.625,
+     "wilson95": [
+      0.3057,
+      0.8632
+     ]
+    },
+    "diff": 0.375,
+    "diff_cluster_ci95": [
+     0,
+     0.75
+    ],
+    "mde_80pct_power": 0.58,
+    "pooled_rate": 0.8,
+    "verdict": "not supported at this n (CI includes 0)"
+   },
+   "committee_asof_only/status/all": {
+    "yes": {
+     "n": 8,
+     "pos": 7,
+     "clusters": 8,
+     "rate": 0.875,
+     "wilson95": [
+      0.5291,
+      0.9776
+     ]
+    },
+    "no": {
+     "n": 10,
+     "pos": 6,
+     "clusters": 10,
+     "rate": 0.6,
+     "wilson95": [
+      0.3127,
+      0.8318
+     ]
+    },
+    "diff": 0.275,
+    "diff_cluster_ci95": [
+     -0.1299,
+     0.6667
+    ],
+    "mde_80pct_power": 0.5952,
+    "pooled_rate": 0.7222,
+    "verdict": "not supported at this n (CI includes 0)"
+   },
+   "committee_asof_only/oracle_only/holdout": {
+    "yes": {
+     "n": 7,
+     "pos": 7,
+     "clusters": 7,
+     "rate": 1,
+     "wilson95": [
+      0.6457,
+      1
+     ]
+    },
+    "no": {
+     "n": 7,
+     "pos": 7,
+     "clusters": 7,
+     "rate": 1,
+     "wilson95": [
+      0.6457,
+      1
+     ]
+    },
+    "diff": 0,
+    "diff_cluster_ci95": [
+     0,
+     0
+    ],
+    "mde_80pct_power": 0,
+    "pooled_rate": 1,
+    "verdict": "INSUFFICIENT (a group or a label class is empty)"
+   },
+   "committee_asof_only/oracle_only/all": {
+    "yes": {
+     "n": 8,
+     "pos": 8,
+     "clusters": 8,
+     "rate": 1,
+     "wilson95": [
+      0.6756,
+      1
+     ]
+    },
+    "no": {
+     "n": 9,
+     "pos": 9,
+     "clusters": 9,
+     "rate": 1,
+     "wilson95": [
+      0.7009,
+      1
+     ]
+    },
+    "diff": 0,
+    "diff_cluster_ci95": [
+     0,
+     0
+    ],
+    "mde_80pct_power": 0,
+    "pooled_rate": 1,
+    "verdict": "INSUFFICIENT (a group or a label class is empty)"
+   },
+   "committee_asof_only/x_status_evaluated/holdout": {
+    "yes": {
+     "n": 7,
+     "pos": 7,
+     "clusters": 7,
+     "rate": 1,
+     "wilson95": [
+      0.6457,
+      1
+     ]
+    },
+    "no": {
+     "n": 7,
+     "pos": 5,
+     "clusters": 7,
+     "rate": 0.7143,
+     "wilson95": [
+      0.3589,
+      0.9178
+     ]
+    },
+    "diff": 0.2857,
+    "diff_cluster_ci95": [
+     0,
+     0.6667
+    ],
+    "mde_80pct_power": 0.524,
+    "pooled_rate": 0.8571,
+    "verdict": "not supported at this n (CI includes 0)"
+   },
+   "committee_asof_only/x_status_evaluated/all": {
+    "yes": {
+     "n": 8,
+     "pos": 7,
+     "clusters": 8,
+     "rate": 0.875,
+     "wilson95": [
+      0.5291,
+      0.9776
+     ]
+    },
+    "no": {
+     "n": 9,
+     "pos": 6,
+     "clusters": 9,
+     "rate": 0.6667,
+     "wilson95": [
+      0.3542,
+      0.8794
+     ]
+    },
+    "diff": 0.2083,
+    "diff_cluster_ci95": [
+     -0.2,
+     0.6143
+    ],
+    "mde_80pct_power": 0.5775,
+    "pooled_rate": 0.7647,
+    "verdict": "not supported at this n (CI includes 0)"
+   },
+   "committee_unfiltered/primary/holdout": {
+    "yes": {
+     "n": 15,
+     "pos": 15,
+     "clusters": 15,
+     "rate": 1,
+     "wilson95": [
+      0.7961,
+      1
+     ]
+    },
+    "no": {
+     "n": 11,
+     "pos": 11,
+     "clusters": 11,
+     "rate": 1,
+     "wilson95": [
+      0.7412,
+      1
+     ]
+    },
+    "diff": 0,
+    "diff_cluster_ci95": [
+     0,
+     0
+    ],
+    "mde_80pct_power": 0,
+    "pooled_rate": 1,
+    "verdict": "INSUFFICIENT (a group or a label class is empty)"
+   },
+   "committee_unfiltered/primary/all": {
+    "yes": {
+     "n": 15,
+     "pos": 15,
+     "clusters": 15,
+     "rate": 1,
+     "wilson95": [
+      0.7961,
+      1
+     ]
+    },
+    "no": {
+     "n": 20,
+     "pos": 20,
+     "clusters": 20,
+     "rate": 1,
+     "wilson95": [
+      0.8389,
+      1
+     ]
+    },
+    "diff": 0,
+    "diff_cluster_ci95": [
+     0,
+     0
+    ],
+    "mde_80pct_power": 0,
+    "pooled_rate": 1,
+    "verdict": "INSUFFICIENT (a group or a label class is empty)"
+   },
+   "committee_unfiltered/status/holdout": {
+    "yes": {
+     "n": 19,
+     "pos": 15,
+     "clusters": 19,
+     "rate": 0.7895,
+     "wilson95": [
+      0.5667,
+      0.9149
+     ]
+    },
+    "no": {
+     "n": 20,
+     "pos": 11,
+     "clusters": 20,
+     "rate": 0.55,
+     "wilson95": [
+      0.3421,
+      0.7418
+     ]
+    },
+    "diff": 0.2395,
+    "diff_cluster_ci95": [
+     -0.0326,
+     0.519
+    ],
+    "mde_80pct_power": 0.4231,
+    "pooled_rate": 0.6667,
+    "verdict": "not supported at this n (CI includes 0)"
+   },
+   "committee_unfiltered/status/all": {
+    "yes": {
+     "n": 21,
+     "pos": 15,
+     "clusters": 21,
+     "rate": 0.7143,
+     "wilson95": [
+      0.5004,
+      0.8619
+     ]
+    },
+    "no": {
+     "n": 48,
+     "pos": 20,
+     "clusters": 48,
+     "rate": 0.4167,
+     "wilson95": [
+      0.2885,
+      0.5572
+     ]
+    },
+    "diff": 0.2976,
+    "diff_cluster_ci95": [
+     0.0561,
+     0.5354
+    ],
+    "mde_80pct_power": 0.3665,
+    "pooled_rate": 0.5072,
+    "verdict": "supported (CI excludes 0)"
+   },
+   "committee_unfiltered/oracle_only/holdout": {
+    "yes": {
+     "n": 16,
+     "pos": 16,
+     "clusters": 16,
+     "rate": 1,
+     "wilson95": [
+      0.8064,
+      1
+     ]
+    },
+    "no": {
+     "n": 16,
+     "pos": 16,
+     "clusters": 16,
+     "rate": 1,
+     "wilson95": [
+      0.8064,
+      1
+     ]
+    },
+    "diff": 0,
+    "diff_cluster_ci95": [
+     0,
+     0
+    ],
+    "mde_80pct_power": 0,
+    "pooled_rate": 1,
+    "verdict": "INSUFFICIENT (a group or a label class is empty)"
+   },
+   "committee_unfiltered/oracle_only/all": {
+    "yes": {
+     "n": 18,
+     "pos": 18,
+     "clusters": 18,
+     "rate": 1,
+     "wilson95": [
+      0.8241,
+      1
+     ]
+    },
+    "no": {
+     "n": 37,
+     "pos": 37,
+     "clusters": 37,
+     "rate": 1,
+     "wilson95": [
+      0.9059,
+      1
+     ]
+    },
+    "diff": 0,
+    "diff_cluster_ci95": [
+     0,
+     0
+    ],
+    "mde_80pct_power": 0,
+    "pooled_rate": 1,
+    "verdict": "INSUFFICIENT (a group or a label class is empty)"
+   },
+   "committee_unfiltered/x_status_evaluated/holdout": {
+    "yes": {
+     "n": 16,
+     "pos": 15,
+     "clusters": 16,
+     "rate": 0.9375,
+     "wilson95": [
+      0.7167,
+      0.9889
+     ]
+    },
+    "no": {
+     "n": 16,
+     "pos": 11,
+     "clusters": 16,
+     "rate": 0.6875,
+     "wilson95": [
+      0.444,
+      0.8584
+     ]
+    },
+    "diff": 0.25,
+    "diff_cluster_ci95": [
+     0,
+     0.5091
+    ],
+    "mde_80pct_power": 0.3866,
+    "pooled_rate": 0.8125,
+    "verdict": "not supported at this n (CI includes 0)"
+   },
+   "committee_unfiltered/x_status_evaluated/all": {
+    "yes": {
+     "n": 18,
+     "pos": 15,
+     "clusters": 18,
+     "rate": 0.8333,
+     "wilson95": [
+      0.6078,
+      0.9416
+     ]
+    },
+    "no": {
+     "n": 37,
+     "pos": 20,
+     "clusters": 37,
+     "rate": 0.5405,
+     "wilson95": [
+      0.3838,
+      0.6896
+     ]
+    },
+    "diff": 0.2928,
+    "diff_cluster_ci95": [
+     0.0424,
+     0.539
+    ],
+    "mde_80pct_power": 0.3873,
+    "pooled_rate": 0.6364,
+    "verdict": "supported (CI excludes 0)"
+   }
+  },
+  "sensitivity_by_label_class": {
+   "committee_asof_only": {
+    "yes": {
+     "ORACLE_PASS_VERIFIED": 7,
+     "NO_VERDICT": 1
+    },
+    "no": {
+     "NO_VERDICT": 3,
+     "ORACLE_PASS_VERIFIED": 6,
+     "ENV": 1
+    }
+   },
+   "committee_unfiltered": {
+    "yes": {
+     "ORACLE_PASS_VERIFIED": 15,
+     "ENV": 3,
+     "NO_VERDICT": 3
+    },
+    "no": {
+     "ORACLE_PASS_VERIFIED": 20,
+     "NO_VERDICT": 17,
+     "ENV": 11
+    }
+   }
+  },
+  "timing_all_forecasts_hours": {
+   "created_minus_outcome": {
+    "n": 69,
+    "gt0": 49,
+    "p50": 0.238,
+    "p95": 2.1916
+   },
+   "as_of_minus_goal": {
+    "n": 69,
+    "gt0": 51,
+    "p50": 0.0001,
+    "p95": 0.0002
+   },
+   "as_of_minus_outcome": {
+    "n": 69,
+    "gt0": 0,
+    "p50": -0.4081,
+    "p95": -0.0534
+   }
+  },
+  "by_label_class": {
+   "yes": {
+    "ORACLE_PASS_VERIFIED": 1
+   },
+   "no": {
+    "ORACLE_PASS_VERIFIED": 2
+   }
+  },
+  "p_recorded": 3,
+  "confidence_field_recorded": 0,
+  "latency_minutes_created_minus_as_of": {
+   "n": 3,
+   "p50": 4.2466,
+   "p95": 4.517
+  },
+  "forecast_minus_goal_minutes": {
+   "n": 3,
+   "written_after_goal": 3,
+   "p50": -4.2434
+  },
+  "tokens": {
+   "judgment_rows": 28,
+   "input_tokens": 0,
+   "output_tokens": 0,
+   "tokens_recorded": false,
+   "tokens_per_verified": 0
+  },
+  "selective_risk_status_label_all": {
+   "n": 3,
+   "full_coverage_risk": 0.6667,
+   "coverage_at_risk_0_20_optimistic": 0.3333,
+   "curve_deciles": [
+    [
+     0.3333,
+     0
+    ],
+    [
+     0.6667,
+     0.5
+    ],
+    [
+     1,
+     0.6667
+    ]
+   ]
+  }
+ },
+ "acceptance": {
+  "primary/holdout": {
+   "label": "primary",
+   "split": "holdout",
+   "rows": 2,
+   "clusters": 2,
+   "clusters_pos": 2,
+   "clusters_neg": 0,
+   "point_loss": {
+    "A0_accept_all": 0,
+    "A1_reject_all": 1,
+    "A2_source_rate": 0.5,
+    "A3_test_only": 0,
+    "A4_template_regress": 0.5,
+    "committee": 0.5
+   },
+   "best_baseline": "A0_accept_all",
+   "matched_brier": {
+    "committee": 0.1903,
+    "A2_source_rate": 0.2576,
+    "A4_template_regress": 0.2668,
+    "constant_rate": 0
+   },
+   "diff_best_minus_committee": -0.5,
+   "diff_cluster_ci95": [
+    -1,
+    0
+   ],
+   "grid_cells": 108,
+   "grid_committee_better": 0,
+   "grid_committee_worse": 108,
+   "verdict": "INSUFFICIENT"
+  },
+  "primary/all": {
+   "label": "primary",
+   "split": "all",
+   "rows": 3,
+   "clusters": 3,
+   "clusters_pos": 3,
+   "clusters_neg": 0,
+   "point_loss": {
+    "A0_accept_all": 0,
+    "A1_reject_all": 1,
+    "A2_source_rate": 0.3333,
+    "A3_test_only": 0,
+    "A4_template_regress": 0.3333,
+    "committee": 0.6667
+   },
+   "best_baseline": "A0_accept_all",
+   "matched_brier": {
+    "committee": 0.2735,
+    "A2_source_rate": 0.2411,
+    "A4_template_regress": 0.2357,
+    "constant_rate": 0
+   },
+   "diff_best_minus_committee": -0.6667,
+   "diff_cluster_ci95": [
+    -1,
+    0
+   ],
+   "grid_cells": 108,
+   "grid_committee_better": 0,
+   "grid_committee_worse": 108,
+   "verdict": "INSUFFICIENT"
+  },
+  "status/holdout": {
+   "label": "status",
+   "split": "holdout",
+   "rows": 2,
+   "clusters": 2,
+   "clusters_pos": 2,
+   "clusters_neg": 0,
+   "point_loss": {
+    "A0_accept_all": 0,
+    "A1_reject_all": 1,
+    "A2_source_rate": 0.5,
+    "A3_test_only": 0,
+    "A4_template_regress": 0.5,
+    "committee": 0.5
+   },
+   "best_baseline": "A0_accept_all",
+   "matched_brier": {
+    "committee": 0.1903,
+    "A2_source_rate": 0.2576,
+    "A4_template_regress": 0.2668,
+    "constant_rate": 0
+   },
+   "diff_best_minus_committee": -0.5,
+   "diff_cluster_ci95": [
+    -1,
+    0
+   ],
+   "grid_cells": 108,
+   "grid_committee_better": 0,
+   "grid_committee_worse": 108,
+   "verdict": "INSUFFICIENT"
+  },
+  "status/all": {
+   "label": "status",
+   "split": "all",
+   "rows": 3,
+   "clusters": 3,
+   "clusters_pos": 3,
+   "clusters_neg": 0,
+   "point_loss": {
+    "A0_accept_all": 0,
+    "A1_reject_all": 1,
+    "A2_source_rate": 0.3333,
+    "A3_test_only": 0,
+    "A4_template_regress": 0.3333,
+    "committee": 0.6667
+   },
+   "best_baseline": "A0_accept_all",
+   "matched_brier": {
+    "committee": 0.2735,
+    "A2_source_rate": 0.2411,
+    "A4_template_regress": 0.2357,
+    "constant_rate": 0
+   },
+   "diff_best_minus_committee": -0.6667,
+   "diff_cluster_ci95": [
+    -1,
+    0
+   ],
+   "grid_cells": 108,
+   "grid_committee_better": 0,
+   "grid_committee_worse": 108,
+   "verdict": "INSUFFICIENT"
+  },
+  "oracle_only/holdout": {
+   "label": "oracle_only",
+   "split": "holdout",
+   "rows": 2,
+   "clusters": 2,
+   "clusters_pos": 2,
+   "clusters_neg": 0,
+   "point_loss": {
+    "A0_accept_all": 0,
+    "A1_reject_all": 1,
+    "A2_source_rate": 0.5,
+    "A3_test_only": 0,
+    "A4_template_regress": 0.5,
+    "committee": 0.5
+   },
+   "best_baseline": "A0_accept_all",
+   "matched_brier": {
+    "committee": 0.1903,
+    "A2_source_rate": 0.2576,
+    "A4_template_regress": 0.2668,
+    "constant_rate": 0
+   },
+   "diff_best_minus_committee": -0.5,
+   "diff_cluster_ci95": [
+    -1,
+    0
+   ],
+   "grid_cells": 108,
+   "grid_committee_better": 0,
+   "grid_committee_worse": 108,
+   "verdict": "INSUFFICIENT"
+  },
+  "oracle_only/all": {
+   "label": "oracle_only",
+   "split": "all",
+   "rows": 3,
+   "clusters": 3,
+   "clusters_pos": 3,
+   "clusters_neg": 0,
+   "point_loss": {
+    "A0_accept_all": 0,
+    "A1_reject_all": 1,
+    "A2_source_rate": 0.3333,
+    "A3_test_only": 0,
+    "A4_template_regress": 0.3333,
+    "committee": 0.6667
+   },
+   "best_baseline": "A0_accept_all",
+   "matched_brier": {
+    "committee": 0.2735,
+    "A2_source_rate": 0.2411,
+    "A4_template_regress": 0.2357,
+    "constant_rate": 0
+   },
+   "diff_best_minus_committee": -0.6667,
+   "diff_cluster_ci95": [
+    -1,
+    0
+   ],
+   "grid_cells": 108,
+   "grid_committee_better": 0,
+   "grid_committee_worse": 108,
+   "verdict": "INSUFFICIENT"
+  },
+  "x_status_evaluated/holdout": {
+   "label": "x_status_evaluated",
+   "split": "holdout",
+   "rows": 2,
+   "clusters": 2,
+   "clusters_pos": 2,
+   "clusters_neg": 0,
+   "point_loss": {
+    "A0_accept_all": 0,
+    "A1_reject_all": 1,
+    "A2_source_rate": 0.5,
+    "A3_test_only": 0,
+    "A4_template_regress": 0.5,
+    "committee": 0.5
+   },
+   "best_baseline": "A0_accept_all",
+   "matched_brier": {
+    "committee": 0.1903,
+    "A2_source_rate": 0.2576,
+    "A4_template_regress": 0.2668,
+    "constant_rate": 0
+   },
+   "diff_best_minus_committee": -0.5,
+   "diff_cluster_ci95": [
+    -1,
+    0
+   ],
+   "grid_cells": 108,
+   "grid_committee_better": 0,
+   "grid_committee_worse": 108,
+   "verdict": "INSUFFICIENT"
+  },
+  "x_status_evaluated/all": {
+   "label": "x_status_evaluated",
+   "split": "all",
+   "rows": 3,
+   "clusters": 3,
+   "clusters_pos": 3,
+   "clusters_neg": 0,
+   "point_loss": {
+    "A0_accept_all": 0,
+    "A1_reject_all": 1,
+    "A2_source_rate": 0.3333,
+    "A3_test_only": 0,
+    "A4_template_regress": 0.3333,
+    "committee": 0.6667
+   },
+   "best_baseline": "A0_accept_all",
+   "matched_brier": {
+    "committee": 0.2735,
+    "A2_source_rate": 0.2411,
+    "A4_template_regress": 0.2357,
+    "constant_rate": 0
+   },
+   "diff_best_minus_committee": -0.6667,
+   "diff_cluster_ci95": [
+    -1,
+    0
+   ],
+   "grid_cells": 108,
+   "grid_committee_better": 0,
+   "grid_committee_worse": 108,
+   "verdict": "INSUFFICIENT"
+  }
+ },
+ "sensitivity_acceptance": {
+  "committee_asof_only/status/holdout": {
+   "label": "status",
+   "split": "holdout",
+   "rows": 15,
+   "clusters": 15,
+   "clusters_pos": 12,
+   "clusters_neg": 3,
+   "point_loss": {
+    "A0_accept_all": 0.6,
+    "A1_reject_all": 0.8,
+    "A2_source_rate": 0.3333,
+    "A3_test_only": 0.6,
+    "A4_template_regress": 0.8,
+    "committee_asof_only": 0.3333
+   },
+   "best_baseline": "A2_source_rate",
+   "matched_brier": {
+    "committee_asof_only": 0.2095,
+    "A2_source_rate": 0.2417,
+    "A4_template_regress": 0.2323,
+    "constant_rate": 0.16
+   },
+   "diff_best_minus_committee": 0,
+   "diff_cluster_ci95": [
+    0,
+    0
+   ],
+   "grid_cells": 108,
+   "grid_committee_better": 0,
+   "grid_committee_worse": 45,
+   "verdict": "INSUFFICIENT"
+  },
+  "committee_asof_only/status/all": {
+   "label": "status",
+   "split": "all",
+   "rows": 18,
+   "clusters": 18,
+   "clusters_pos": 13,
+   "clusters_neg": 5,
+   "point_loss": {
+    "A0_accept_all": 0.8333,
+    "A1_reject_all": 0.7222,
+    "A2_source_rate": 0.6111,
+    "A3_test_only": 0.8333,
+    "A4_template_regress": 1,
+    "committee_asof_only": 0.5
+   },
+   "best_baseline": "A2_source_rate",
+   "matched_brier": {
+    "committee_asof_only": 0.2251,
+    "A2_source_rate": 0.2554,
+    "A4_template_regress": 0.252,
+    "constant_rate": 0.2006
+   },
+   "diff_best_minus_committee": 0.1111,
+   "diff_cluster_ci95": [
+    -0.1667,
+    0.5
+   ],
+   "grid_cells": 108,
+   "grid_committee_better": 45,
+   "grid_committee_worse": 54,
+   "verdict": "INSUFFICIENT"
+  },
+  "committee_asof_only/x_status_evaluated/holdout": {
+   "label": "x_status_evaluated",
+   "split": "holdout",
+   "rows": 14,
+   "clusters": 14,
+   "clusters_pos": 12,
+   "clusters_neg": 2,
+   "point_loss": {
+    "A0_accept_all": 0.4286,
+    "A1_reject_all": 0.8571,
+    "A2_source_rate": 0.3571,
+    "A3_test_only": 0.4286,
+    "A4_template_regress": 0.6429,
+    "committee_asof_only": 0.3571
+   },
+   "best_baseline": "A2_source_rate",
+   "matched_brier": {
+    "committee_asof_only": 0.2078,
+    "A2_source_rate": 0.2431,
+    "A4_template_regress": 0.228,
+    "constant_rate": 0.1224
+   },
+   "diff_best_minus_committee": 0,
+   "diff_cluster_ci95": [
+    0,
+    0
+   ],
+   "grid_cells": 108,
+   "grid_committee_better": 0,
+   "grid_committee_worse": 63,
+   "verdict": "INSUFFICIENT"
+  },
+  "committee_asof_only/x_status_evaluated/all": {
+   "label": "x_status_evaluated",
+   "split": "all",
+   "rows": 17,
+   "clusters": 17,
+   "clusters_pos": 13,
+   "clusters_neg": 4,
+   "point_loss": {
+    "A0_accept_all": 0.7059,
+    "A1_reject_all": 0.7647,
+    "A2_source_rate": 0.6471,
+    "A3_test_only": 0.7059,
+    "A4_template_regress": 0.8824,
+    "committee_asof_only": 0.5294
+   },
+   "best_baseline": "A2_source_rate",
+   "matched_brier": {
+    "committee_asof_only": 0.2246,
+    "A2_source_rate": 0.2574,
+    "A4_template_regress": 0.2496,
+    "constant_rate": 0.1799
+   },
+   "diff_best_minus_committee": 0.1177,
+   "diff_cluster_ci95": [
+    -0.1765,
+    0.5294
+   ],
+   "grid_cells": 108,
+   "grid_committee_better": 27,
+   "grid_committee_worse": 63,
+   "verdict": "INSUFFICIENT"
+  },
+  "committee_unfiltered/status/holdout": {
+   "label": "status",
+   "split": "holdout",
+   "rows": 39,
+   "clusters": 39,
+   "clusters_pos": 26,
+   "clusters_neg": 13,
+   "point_loss": {
+    "A0_accept_all": 1,
+    "A1_reject_all": 0.6667,
+    "A2_source_rate": 0.5897,
+    "A3_test_only": 1,
+    "A4_template_regress": 0.8205,
+    "committee_unfiltered": 0.5897
+   },
+   "best_baseline": "A2_source_rate",
+   "matched_brier": {
+    "committee_unfiltered": 0.2258,
+    "A2_source_rate": 0.2456,
+    "A4_template_regress": 0.2385,
+    "constant_rate": 0.2222
+   },
+   "diff_best_minus_committee": 0,
+   "diff_cluster_ci95": [
+    0,
+    0
+   ],
+   "grid_cells": 108,
+   "grid_committee_better": 0,
+   "grid_committee_worse": 72,
+   "verdict": "INCONCLUSIVE"
+  },
+  "committee_unfiltered/status/all": {
+   "label": "status",
+   "split": "all",
+   "rows": 69,
+   "clusters": 69,
+   "clusters_pos": 35,
+   "clusters_neg": 34,
+   "point_loss": {
+    "A0_accept_all": 1.4783,
+    "A1_reject_all": 0.5072,
+    "A2_source_rate": 1.2029,
+    "A3_test_only": 1.4783,
+    "A4_template_regress": 1.3768,
+    "committee_unfiltered": 0.5507
+   },
+   "best_baseline": "A1_reject_all",
+   "matched_brier": {
+    "committee_unfiltered": 0.2343,
+    "A2_source_rate": 0.268,
+    "A4_template_regress": 0.2727,
+    "constant_rate": 0.2499
+   },
+   "diff_best_minus_committee": -0.0435,
+   "diff_cluster_ci95": [
+    -0.2899,
+    0.1739
+   ],
+   "grid_cells": 108,
+   "grid_committee_better": 36,
+   "grid_committee_worse": 72,
+   "verdict": "INCONCLUSIVE"
+  },
+  "committee_unfiltered/x_status_evaluated/holdout": {
+   "label": "x_status_evaluated",
+   "split": "holdout",
+   "rows": 32,
+   "clusters": 32,
+   "clusters_pos": 26,
+   "clusters_neg": 6,
+   "point_loss": {
+    "A0_accept_all": 0.5625,
+    "A1_reject_all": 0.8125,
+    "A2_source_rate": 0.4375,
+    "A3_test_only": 0.5625,
+    "A4_template_regress": 0.625,
+    "committee_unfiltered": 0.4375
+   },
+   "best_baseline": "A2_source_rate",
+   "matched_brier": {
+    "committee_unfiltered": 0.209,
+    "A2_source_rate": 0.246,
+    "A4_template_regress": 0.2305,
+    "constant_rate": 0.1523
+   },
+   "diff_best_minus_committee": 0,
+   "diff_cluster_ci95": [
+    0,
+    0
+   ],
+   "grid_cells": 108,
+   "grid_committee_better": 0,
+   "grid_committee_worse": 72,
+   "verdict": "INCONCLUSIVE"
+  },
+  "committee_unfiltered/x_status_evaluated/all": {
+   "label": "x_status_evaluated",
+   "split": "all",
+   "rows": 55,
+   "clusters": 55,
+   "clusters_pos": 35,
+   "clusters_neg": 20,
+   "point_loss": {
+    "A0_accept_all": 1.0909,
+    "A1_reject_all": 0.6364,
+    "A2_source_rate": 0.9636,
+    "A3_test_only": 1.0909,
+    "A4_template_regress": 1.1273,
+    "committee_unfiltered": 0.5273
+   },
+   "best_baseline": "A1_reject_all",
+   "matched_brier": {
+    "committee_unfiltered": 0.2477,
+    "A2_source_rate": 0.2591,
+    "A4_template_regress": 0.2596,
+    "constant_rate": 0.2314
+   },
+   "diff_best_minus_committee": 0.1091,
+   "diff_cluster_ci95": [
+    -0.1273,
+    0.3273
+   ],
+   "grid_cells": 108,
+   "grid_committee_better": 36,
+   "grid_committee_worse": 63,
+   "verdict": "INCONCLUSIVE"
+  }
+ },
+ "tokens": {
+  "committee": {
+   "judgment_rows": 623,
+   "input_tokens": 0,
+   "output_tokens": 0,
+   "tokens_per_verified_in_population": 0,
+   "latency_ms_p50": 0,
+   "latency_ms_p95": 0,
+   "note": "tokens not recorded on these rows (UNKNOWN, not zero)"
+  },
+  "prescreen": {
+   "judgment_rows": 111,
+   "input_tokens": 69275,
+   "output_tokens": 8030,
+   "tokens_per_verified_in_population": 1073.6806,
+   "latency_ms_p50": 248,
+   "latency_ms_p95": 1757,
+   "note": ""
+  },
+  "A2_A4_baselines": {
+   "judgment_rows": 0,
+   "input_tokens": 0,
+   "output_tokens": 0,
+   "tokens_per_verified_in_population": 0,
+   "latency_ms_p50": null,
+   "latency_ms_p95": null,
+   "note": "deterministic, 0 tokens"
+  }
+ },
+ "human_capacity": {
+  "holdout_days": 5.4363,
+  "budget_min_per_day": 30,
+  "per_predictor": {
+   "committee": {
+    "accepts": 1,
+    "accepts_per_day": 0.1839,
+    "review_minutes_per_accept_at_budget": 163.0891
+   },
+   "A0_accept_all": {
+    "accepts": 54,
+    "accepts_per_day": 9.9332,
+    "review_minutes_per_accept_at_budget": 3.0202
+   },
+   "A1_reject_all": {
+    "accepts": 0,
+    "accepts_per_day": 0,
+    "review_minutes_per_accept_at_budget": null
+   },
+   "A2_source_rate": {
+    "accepts": 25,
+    "accepts_per_day": 4.5987,
+    "review_minutes_per_accept_at_budget": 6.5236
+   },
+   "A3_test_only": {
+    "accepts": 54,
+    "accepts_per_day": 9.9332,
+    "review_minutes_per_accept_at_budget": 3.0202
+   },
+   "A4_template_regress": {
+    "accepts": 32,
+    "accepts_per_day": 5.8864,
+    "review_minutes_per_accept_at_budget": 5.0965
+   },
+   "committee_asof_only": {
+    "accepts": 7,
+    "accepts_per_day": 1.2876,
+    "review_minutes_per_accept_at_budget": 23.2984
+   },
+   "committee_unfiltered": {
+    "accepts": 19,
+    "accepts_per_day": 3.495,
+    "review_minutes_per_accept_at_budget": 8.5836
+   },
+   "prescreen": {
+    "accepts": 39,
+    "accepts_per_day": 7.174,
+    "review_minutes_per_accept_at_budget": 4.1818
+   }
+  }
+ }
+}

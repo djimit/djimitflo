@@ -147,6 +147,21 @@
       "forbidden_reuse": ["writing simulation output into DjimitWiki, production memory or the verified knowledge graph as fact", "running MiroFish as shipped on a networked host"],
       "forbidden_code_patterns": ["camel-oasis", "zep-cloud"],
       "reopen_condition": "A new implementation or verified evidence meeting all of: pre-registered evaluation; comparison against simple statistical and historical baselines; independent real-world outcome validation; strict separation of simulated, inferred and observed data; reproducible experiments with protected holdouts; authentication, authorisation, secrets and isolation controls; measurable benefit over existing Djimitflo capabilities; acceptable licence and cost. Permits a new evaluation, not adoption."
+    },
+    {
+      "id": "NE-011",
+      "title": "Unvalidated agent-ecosystem claims (ChrisRoyse repositories)",
+      "hypothesis": "Adopting code or mechanisms from Serendipity, Pheromind, NeuralShrink or Cognitive-Triangulation-Pipeline improves Djimitflo's discovery, swarm routing, model compression or code-knowledge graph.",
+      "verdict": "REJECT",
+      "decided_on": "2026-10-14",
+      "conditions": "Serendipity 56e38e5a, Pheromind 994b04d9, NeuralShrink be116d14, Cognitive-Triangulation-Pipeline 71a014b4; shallow clones, source read only, nothing installed or run.",
+      "result": "Claims without any evaluation: DSPy mocked (Serendipity), framework is prompt docs only (Pheromind), '95 % accuracy' is a config value (NeuralShrink), 'benchmarks' are node counts (CTP). Committed node_modules + user DB (Serendipity) and a committed API key (CTP).",
+      "why": "No evidence for any claimed capability; Djimitflo already has equivalents (scout relevance gate, bandit + fitness shadow, repo-graph-builder); none touches the limiting stage verified -> merged -> settled.",
+      "evidence": ["docs/research/negative-evidence/NE-011-agent-ecosystem-claims.md"],
+      "allowed_follow_up": "None from these repositories. contextgraph ideas (coverage-gated graded kills) are adapted in-house separately and are not covered by this entry.",
+      "forbidden_reuse": ["installing or running these repositories, their MCP configs or hooks on trusted infrastructure", "using the committed credentials"],
+      "forbidden_code_patterns": [],
+      "reopen_condition": "A pinned release with a reproducible evaluation against a simple baseline on real outcomes, an acceptable licence and no committed secrets or dependencies; permits a new pre-registered evaluation, not adoption."
     }
   ]
 }

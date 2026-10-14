@@ -23,6 +23,7 @@ import { ste001Evidence } from './ste-001';
 import { d5NoEvidence } from './d5-no';
 import { tg001Evidence } from './tg-001';
 import { intelligenceEvidence } from './intelligence-metrics';
+import { makerTokenAccountingEvidence } from './maker-token-accounting';
 import type { ForecasterScoreV2 } from './forecast-scoring';
 import { BASELINE_GENOME, holdoutEpoch } from './genome-registry';
 
@@ -38,7 +39,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'FITNESS_SHADOW_ENABLED', acting: false }, { name: 'MERGE_SURVIVAL_ENABLED', acting: false }, { name: 'MERGE_SURVIVAL_V2', acting: false }, { name: 'LOOP_EVIDENCE_FRESHNESS_MODE', acting: true },
   { name: 'DREAM_EVOLUTION_ENABLED', acting: true }, { name: 'DREAM_TRIAL_MUTANTS', acting: true }, { name: 'DREAM_TRIAL_MUTANT_TIERS', acting: true },
   { name: 'DREAM_PROMOTION_ALPHA', acting: true }, { name: 'TRIAL_DIAGNOSTICS_ENABLED', acting: false }, { name: 'TRIAL_HEADROOM_PRECHECK', acting: true }, { name: 'DREAM_PROMOTION_RULE', acting: false }, { name: 'DREAM_TRIAL_WRITE_TEST_HOLDOUT', acting: true }, { name: 'DREAM_EVIDENCE_MUTATIONS', acting: true }, { name: 'GYM_HOLDOUT_EPOCH', acting: true }, { name: 'GENOME_APPLY_MODE', acting: false },
-  { name: 'ARENA_GATE_ENABLED', acting: true }, { name: 'DISCOVERY_RELEVANCE_SOURCES', acting: true }, { name: 'COMMITTEE_SWARM_ENABLED', acting: true }, { name: 'COMMONS_GROUNDING_APPLY', acting: true }, { name: 'SOCIAL_AUTOPILOT_FORECAST_ONLY', acting: true },
+  { name: 'ARENA_GATE_ENABLED', acting: true }, { name: 'DISCOVERY_RELEVANCE_SOURCES', acting: true }, { name: 'DISCOVERY_RELEVANCE_PAUSED', acting: true }, { name: 'COMMITTEE_SWARM_ENABLED', acting: true }, { name: 'COMMONS_GROUNDING_APPLY', acting: true }, { name: 'SOCIAL_AUTOPILOT_FORECAST_ONLY', acting: true },
   { name: 'LOOP_AUTO_DRAFT_PR_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_TEST_ONLY', acting: true }, { name: 'LOOP_AUTO_MERGE_MAX_PER_DAY', acting: true }, { name: 'LOOP_AUTO_APPROVE_TEST_GAP', acting: true }, { name: 'ORACLE_LANES_AUTO_APPROVE', acting: true },
   { name: 'LOOP_MEMORY_RULES_ENABLED', acting: true }, { name: 'EVOLUTION_GYM_REMOTE_MAX_PER_DAY', acting: true }, { name: 'DJIMITFLO_PUBLIC_URL', acting: false },
   { name: 'GYM_TIER_PROBE_ENABLED', acting: false }, { name: 'GYM_TIER_PROBE_TIERS', acting: false }, { name: 'GYM_TIER_PROBE_EVERY', acting: false },
@@ -104,6 +105,8 @@ export function hackRateEvidence(db: Database, env: NodeJS.ProcessEnv, now: numb
     note: 'rate = flagged / checked (hack detector ran: HACK_DETECTOR_MODE=shadow); canary rate = passed / scored — any passed canary means a compromised oracle or sandbox. Wilson 95 %; insufficient below n = 10.' };
 }
 
+/** Gate A: the parent's pass rate on the deciding set must lie in this band (inclusive) for a trial to be informative. */
+export const GATE_A_BAND: readonly [number, number] = [0.30, 0.55];
 export type GateState = 'green' | 'red' | 'unknown';
 export interface Gate { state: GateState; reason: string }
 
@@ -237,12 +240,16 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     by_epoch: all<{ epoch: number | null; n: number; e_promote: number; graded_promote: number }>(
       "SELECT epoch, COUNT(*) AS n, SUM(e_rule_decision = 'promote') AS e_promote, SUM(graded_decision = 'promote') AS graded_promote FROM genome_trial_results GROUP BY 1 ORDER BY 1"),
     recent: all<{ trial_id: string; parent_id: string; tier_set: string; deciding_n: number | null; f_parent_failures: number; b: number; c: number; p: number; power_q8_l05: number; state: string; recorded_at: string;
-      graded_mean_parent: number | null; graded_mean_mutant: number | null; graded_p: number | null; graded_decision: string | null; graded_refs: number | null }>(
+      graded_mean_parent: number | null; graded_mean_mutant: number | null; graded_p: number | null; graded_decision: string | null; graded_refs: number | null; gate_policy: string | null }>(
       `SELECT trial_id, parent_id, tier_set, deciding_n, f_parent_failures, b, c, p, power_q8_l05, state, recorded_at,
-        graded_mean_parent, graded_mean_mutant, graded_p, graded_decision, graded_refs FROM genome_trial_results ORDER BY recorded_at DESC LIMIT 10`),
+        graded_mean_parent, graded_mean_mutant, graded_p, graded_decision, graded_refs, gate_policy FROM genome_trial_results ORDER BY recorded_at DESC LIMIT 10`),
   };
-  // Gate A reads deciding-set diagnostics; shadow-only rows (e-process, graded) carry none
-  const latestTrial = trials.recent.find((t): t is typeof t & { deciding_n: number } => t.deciding_n != null);
+  // Gate A reads deciding-set diagnostics; shadow-only rows (e-process, graded) carry none. P0 (13-10): only rows decided on
+  // eligible production-gated parent evidence (gate_policy recorded) — older rows counted ungated parent results (17/20)
+  const latestTrial = (all<typeof trials.recent[number]>(`SELECT trial_id, parent_id, tier_set, deciding_n, f_parent_failures, b, c, p, power_q8_l05, state, recorded_at,
+      graded_mean_parent, graded_mean_mutant, graded_p, graded_decision, graded_refs, gate_policy FROM genome_trial_results
+    WHERE deciding_n IS NOT NULL AND gate_policy IS NOT NULL ORDER BY recorded_at DESC, trial_id DESC LIMIT 1`))
+    .find((t): t is typeof t & { deciding_n: number } => t.deciding_n != null);
   // RX-7: forecast scoring V2 summary (shadow): counts per state; details at GET /api/health/forecasts-v2
   let forecasters: ForecasterScoreV2[] = [];
   const forecasts_v2 = (() => {
@@ -254,9 +261,9 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   })();
   const gates: Record<'A' | 'B' | 'C' | 'D', Gate> = {
     A: (() => {
-      if (!latestTrial) return { state: 'unknown', reason: 'no settled trial with diagnostics yet (TRIAL_DIAGNOSTICS_ENABLED)' } as Gate;
+      if (!latestTrial) return { state: 'unknown', reason: 'no settled trial with diagnostics on eligible production-gated parent evidence yet (TRIAL_DIAGNOSTICS_ENABLED, GYM_PROD_GATES)' } as Gate;
       const pass = latestTrial.deciding_n ? (latestTrial.deciding_n - latestTrial.f_parent_failures) / latestTrial.deciding_n : null;
-      const ok = pass !== null && pass >= 0.30 && pass <= 0.55;
+      const ok = pass !== null && pass >= GATE_A_BAND[0] && pass <= GATE_A_BAND[1];
       return { state: ok ? 'green' : 'red', reason: `latest trial ${latestTrial.trial_id}: parent passed ${latestTrial.deciding_n - latestTrial.f_parent_failures}/${latestTrial.deciding_n} deciding tasks (${latestTrial.state === 'no_headroom' ? 'no headroom — trial skipped before any mutant attempt' : latestTrial.state}); needs a pass rate in [0.30, 0.55]` } as Gate;
     })(),
     B: (() => {
@@ -359,5 +366,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // E3: many-to-many provenance DAG (source → proposal → experiment → change → survival), counts + 13 answers, no edge list
     provenance: provenanceSummary(db, now),
     // E4: specialist-panel answer attempts — reliability P(valid | model, prompt, provider) apart from conditional quality
-    panel_attempts: panelAttemptMetrics(db, { days: window, now }) };
+    panel_attempts: panelAttemptMetrics(db, { days: window, now }),
+    // P0 §5: maker token accounting per runtime × model — leases, share with measured tokens, share with a known cost
+    maker_tokens: makerTokenAccountingEvidence(db, since) };
 }
