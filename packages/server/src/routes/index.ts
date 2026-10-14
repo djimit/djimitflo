@@ -55,7 +55,6 @@ import { createTraceabilityRoutes } from './traceability';
 import { createRetirementRoutes } from './retirement';
 import { createRedTeamRoutes } from './red-team';
 import { createPlatformRoutes } from './platform';
-import { createAdvancedRoutes } from './advanced';
 import { createHealthRoutes } from './health';
 import { createLegalRoutes } from './legal';
 import { createResearchRoutes } from './research';
@@ -214,7 +213,6 @@ export function createRoutes(
     { prefix: '/retirement', middleware: [requireAuth], router: createRetirementRoutes(db, auth) },
     { prefix: '/red-team', middleware: [requireAuth], router: createRedTeamRoutes(db, auth, runtimeGovernance) },
     { prefix: '/platform', middleware: [requireAuth], router: createPlatformRoutes(db, auth, runtimeGovernance) },
-    { prefix: '/advanced', middleware: [requireAuth], router: createAdvancedRoutes(db, auth) },
     { prefix: '/health', middleware: [], router: createHealthRoutes(db, auth) },
     { prefix: '/legal', middleware: [requireAuth], router: createLegalRoutes(db, auth) },
     { prefix: '/research', middleware: [requireAuth], router: createResearchRoutes(db, auth) },
