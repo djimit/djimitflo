@@ -1,8 +1,6 @@
 import fs from 'fs';
 import type { Database } from 'better-sqlite3';
 import { listSchedulers, type SchedulerStatus } from './scheduler-registry';
-import { DEFAULT_SKILL_TRAINING_EVAL_RUNNER } from './skill-training-promotion-gate';
-import { DEFAULT_SKILLS_DIR_REL } from './skill-loader-service';
 
 /**
  * Stall watch, capability chain (Workstream B): a capability is only healthy when every link holds —
@@ -12,11 +10,13 @@ import { DEFAULT_SKILLS_DIR_REL } from './skill-loader-service';
  * detector saw it. One declarative row per watched capability; observe() reads facts (env, paths, scheduler registry,
  * outcome/input queries), classify() is pure over those facts, so a fact set collected read-only on prod replays in a test.
  * Expected inactivity (flag off, cap reached, no input work) is IDLE_EXPECTED, never STALLED; missing evidence is UNKNOWN.
+ * A required path env that is unset (no implicit default) is DISABLED_BY_POLICY or UNCONFIGURED per spec — explicit, not an
+ * anomaly; a path that is set but missing/unreadable here stays MISCONFIGURED.
  * Read-only: nothing here restarts or reconfigures anything (the scheduler self-heal stays as it is).
  */
 export const CHAIN_LINKS = ['CONFIGURED', 'ENABLED', 'DEPENDENCIES_READY', 'SCHEDULED', 'EXECUTED', 'OUTCOME_PERSISTED'] as const;
 export type ChainLink = (typeof CHAIN_LINKS)[number];
-export type CapabilityState = 'HEALTHY' | 'IDLE_EXPECTED' | 'BLOCKED' | 'STALLED' | 'MISCONFIGURED' | 'UNKNOWN';
+export type CapabilityState = 'HEALTHY' | 'IDLE_EXPECTED' | 'DISABLED_BY_POLICY' | 'UNCONFIGURED' | 'BLOCKED' | 'STALLED' | 'MISCONFIGURED' | 'UNKNOWN';
 export type LinkStatus = 'ok' | 'failed' | 'unknown' | 'not_applicable';
 
 const H = 3_600_000;
@@ -26,8 +26,8 @@ export interface CapabilitySpec {
   flags: Array<{ env: string; on?: string[] }>;
   /** required dependencies: the capability runs but cannot produce its outcome without them */
   dependency_flags?: Array<{ env: string; on: string[] }>;
-  /** configured paths that must exist as `kind` in this environment (`<cwd>` in a default = the server's working dir) */
-  paths?: Array<{ label: string; env: string; default: string; kind: 'dir' | 'file' }>;
+  /** paths named by env that must exist as `kind` here; no default: env unset → the `unset` state (off by policy, or not configured) */
+  paths?: Array<{ label: string; env: string; kind: 'dir' | 'file'; unset: 'DISABLED_BY_POLICY' | 'UNCONFIGURED' }>;
   /** scheduler-registry name (noteScheduler); omitted for on-demand capabilities */
   scheduler?: string;
   /** observation window: an outcome / progress older than this is stale */
@@ -68,11 +68,11 @@ export const CAPABILITY_SPECS: CapabilitySpec[] = [
   { name: 'goal_queue', flags: [], window_ms: 6 * H,
     input: { label: 'goal(s) created/decomposed, not started', pending_sql: "SELECT COUNT(*) AS n FROM goals WHERE status IN ('created', 'decomposed')", progress_sql: 'SELECT MAX(updated_at) AS t FROM goals' },
     hint: 'the loop daemon picks up goals (services/loop-service.ts)' },
-  { name: 'skill_loader', flags: [], window_ms: 24 * H, paths: [{ label: 'skills directory', env: 'DJIMITFLO_SKILLS_DIR', default: `<cwd>/${DEFAULT_SKILLS_DIR_REL}`, kind: 'dir' }],
-    hint: 'services/skill-loader-service.ts loads 0 skills, silently, when its directory is missing' },
+  { name: 'skill_loader', flags: [], window_ms: 24 * H, paths: [{ label: 'skills directory', env: 'DJIMITFLO_SKILLS_DIR', kind: 'dir', unset: 'DISABLED_BY_POLICY' }],
+    hint: 'skill loading is off unless DJIMITFLO_SKILLS_DIR names an operator-provisioned skills directory (services/skill-loader-service.ts; the image provisions none)' },
   { name: 'skill_training_promotion_gate', flags: [], window_ms: 24 * H,
-    paths: [{ label: 'skill-training eval runner', env: 'DJIMIT_SKILL_TRAINING_EVAL_RUNNER', default: DEFAULT_SKILL_TRAINING_EVAL_RUNNER, kind: 'file' }],
-    hint: 'services/skill-training-promotion-gate.ts: every skill promotion throws SKILL_TRAINING_PROMOTION_GATE_UNAVAILABLE without its runner' },
+    paths: [{ label: 'skill-training eval runner', env: 'DJIMIT_SKILL_TRAINING_EVAL_RUNNER', kind: 'file', unset: 'UNCONFIGURED' }],
+    hint: 'services/skill-training-promotion-gate.ts refuses every skill promotion (fail-closed) until DJIMIT_SKILL_TRAINING_EVAL_RUNNER names a readable runner' },
 ];
 
 type Q<T> = { value: T } | { error: string };
@@ -81,7 +81,7 @@ export interface CapabilityObservation {
   name: string;
   observed_at: string;
   env: Record<string, string | null>;
-  paths: Array<{ label: string; env: string; path: string; kind: 'dir' | 'file'; status: 'ok' | 'missing' | 'unreadable' | 'wrong_kind' }>;
+  paths: Array<{ label: string; env: string; path: string | null; kind: 'dir' | 'file'; status: 'ok' | 'unset' | 'missing' | 'unreadable' | 'wrong_kind' }>;
   /** null = not observed (no registry in this process, or the scheduler never registered) */
   scheduler: { status: SchedulerStatus; last_run: string | null; last_error: string | null } | null;
   outcome: Q<string | null> | null;
@@ -101,7 +101,6 @@ export interface CapabilityVerdict {
 }
 
 export interface ObserveOptions {
-  cwd?: string;
   /** injectable for tests: 'dir' | 'file' | 'missing' | 'unreadable' */
   stat?: (p: string) => 'dir' | 'file' | 'missing' | 'unreadable';
   /** scheduler registry snapshot; default: this process' registry */
@@ -115,7 +114,7 @@ export function statPath(p: string): 'dir' | 'file' | 'missing' | 'unreadable' {
 }
 
 export function observeCapability(spec: CapabilitySpec, db: Database, now: number, env: NodeJS.ProcessEnv, opts: ObserveOptions = {}): CapabilityObservation {
-  const cwd = opts.cwd ?? process.cwd(); const stat = opts.stat ?? statPath;
+  const stat = opts.stat ?? statPath;
   const q = <T>(fn: () => T): Q<T> => { try { return { value: fn() }; } catch (e) { return { error: errMsg(e) }; } };
   const envKeys = [...spec.flags.map((f) => f.env), ...(spec.dependency_flags ?? []).map((f) => f.env), ...(spec.paths ?? []).map((p) => p.env), ...(spec.cap ? [spec.cap.max_env] : [])];
   const schedulers = opts.schedulers ?? listSchedulers(now).schedulers;
@@ -124,7 +123,8 @@ export function observeCapability(spec: CapabilitySpec, db: Database, now: numbe
     name: spec.name, observed_at: new Date(now).toISOString(),
     env: Object.fromEntries(envKeys.map((k) => [k, env[k] ?? null])),
     paths: (spec.paths ?? []).map((p) => {
-      const resolved = env[p.env] || p.default.replace('<cwd>', cwd); const st = stat(resolved);
+      const resolved = env[p.env]?.trim(); if (!resolved) return { label: p.label, env: p.env, path: null, kind: p.kind, status: 'unset' as const };
+      const st = stat(resolved);
       return { label: p.label, env: p.env, path: resolved, kind: p.kind, status: st === 'missing' || st === 'unreadable' ? st : st === p.kind ? 'ok' : 'wrong_kind' };
     }),
     scheduler: s ? { status: s.status, last_run: s.last_run, last_error: s.last_error } : null,
@@ -152,9 +152,16 @@ export function classifyCapability(spec: CapabilitySpec, obs: CapabilityObservat
   const off = spec.flags.filter((f) => !flagOn(obs.env[f.env] ?? null, f.on ?? ['true']));
   if (off.length) { chain.ENABLED = 'failed'; return verdict('IDLE_EXPECTED', 'ENABLED', `none: ${off.map((f) => f.env).join(', ')} off — inactive by configuration`); }
   chain.ENABLED = 'ok';
-  // CONFIGURED: declared paths exist in this environment
+  // CONFIGURED: declared paths are set (no implicit default) and exist in this environment. Unset is decided from env, so a
+  // fact set recorded before defaults were removed replays to the same explicit state.
+  const isSet = (env: string) => !!obs.env[env]?.trim();
+  for (const p of obs.paths) facts.push({ fact: isSet(p.env) ? `${p.label} ${p.path} (${p.env}): ${p.status}` : `${p.label}: ${p.env} unset`, at });
+  const unset = (spec.paths ?? []).find((p) => !isSet(p.env));
+  if (unset) {
+    if (unset.unset === 'DISABLED_BY_POLICY') chain.ENABLED = 'failed'; else chain.CONFIGURED = 'failed';
+    return verdict(unset.unset, unset.unset === 'DISABLED_BY_POLICY' ? 'ENABLED' : 'CONFIGURED', `none: ${unset.env} unset — ${spec.hint}`);
+  }
   const bad = obs.paths.filter((p) => p.status !== 'ok');
-  for (const p of obs.paths) facts.push({ fact: `${p.label} ${p.path} (${p.env}${obs.env[p.env] ? '' : ' unset, default'}): ${p.status}`, at });
   if (bad.length) {
     chain.CONFIGURED = 'failed';
     return verdict('MISCONFIGURED', 'CONFIGURED', bad.map((p) => `set ${p.env} to a readable ${p.kind} in this environment (${p.path} is ${p.status} here)`).join('; ') + ` — ${spec.hint}`);
