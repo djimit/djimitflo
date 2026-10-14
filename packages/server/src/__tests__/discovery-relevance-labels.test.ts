@@ -1,4 +1,5 @@
 import express from 'express';
+import { rateLimit } from 'express-rate-limit';
 import Database from 'better-sqlite3';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -48,7 +49,7 @@ describe('DI-001 blind discovery-relevance labelling', () => {
     for (let i = 0; i < 3; i++) event(`arxiv:2609.0000${i}`, 'operator-chatgpt');
     event('arxiv:2609.09999', 'hermes-macmini');
     const auth = createAuthMiddleware(authService);
-    const app = express(); app.use(express.json());
+    const app = express(); app.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false })); app.use(express.json());
     app.use('/self-improve', auth.requireAuth, createSelfImprovementRoutes(db, auth));
     app.use(errorHandler);
     server = await new Promise((resolve) => { const l = app.listen(0, () => resolve(l)); });
