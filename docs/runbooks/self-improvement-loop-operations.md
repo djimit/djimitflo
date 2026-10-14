@@ -97,7 +97,8 @@ missing here. **Acting** = changes what the loop does; acting flags are switched
 | `DREAM_PROMOTION_RULE` | mcnemar | `graded`: yes (promotes on an exact paired sign-flip permutation test of the gym's `graded:` scores — one-sided p < α AND mean diff ≥ 0.05, mined net loss ≤ 1; retires otherwise; headroom = parent mean graded < 0.95); `both`: no (records the anytime-valid e-process decision next to McNemar). The graded columns of `genome_trial_results` are recorded under every value (shadow) | shadow | operator |
 | `DREAM_TRIAL_WRITE_TEST_HOLDOUT` | off | yes (freezes up to 20 failure-derived write_test tasks per `GYM_HOLDOUT_EPOCH` in `gym_write_test_holdout` — at least 5 or nothing; served only in genome trials, after the mined/mutant phases and only to a worker announcing `write_test`; never to dreamInputs or the ordinary failure-task path. Their graded `mutant_kill` scores join the paired graded test — decides under `DREAM_PROMOTION_RULE=graded`, shadow columns otherwise; binary McNemar stays on the repair holdouts. Under `graded` the headroom precheck uses the parent's most recent gated (`GYM_PROD_GATES`) results and this holdout's graded mean < 0.95). Needs `GRADED_FITNESS_MODE=shadow` for graded refs | act | operator |
 | `DREAM_EVIDENCE_MUTATIONS` | off | yes (dream mutants must cite a failure cluster; one mutant per cluster; uncited mutants are rejected as no_evidence) | act | operator |
-| `GYM_HOLDOUT_EPOCH` | 0 (the holdout frozen since 01-10) | yes (a new epoch freezes 20 fresh tasks next to the old; refused while a genome is in trial) | act | operator |
+| `GYM_HOLDOUT_EPOCH` | 0 (the holdout frozen since 01-10) | yes (selects the epoch trials use. A claim-time freeze of a new epoch (remote gym, only with `DREAM_EVOLUTION_ENABLED`) takes `HOLDOUT_SIZE` tasks that are not frozen anywhere, not TG-001, not trial-attempted, not dream-exposed and not on a dream-exposed source file — too few, or an invalid size, freezes nothing; an epoch frozen from a manifest never grows at claim time. Prefer the manifest freeze below; refused while a genome is in trial) | act | operator |
+| `HOLDOUT_SIZE` | 20 (integer in [10, 200]; invalid = HOLD, nothing frozen) | yes (size of a NEW holdout epoch — mined and mutant deciding sets, write_test at most this many; frozen epochs never change. With a manifest, `holdout_size` there and this must agree or the freeze is refused. Promotion thresholds are unchanged) | act | operator |
 | `GENOME_APPLY_MODE` | unset (only `shadow` exists) | no | shadow | loop (shadow) |
 | `ARENA_GATE_ENABLED` | off | yes | act | operator |
 | `COMMITTEE_SWARM_ENABLED` | off | yes | act | operator |
@@ -147,6 +148,46 @@ missing here. **Acting** = changes what the loop does; acting flags are switched
 | `MEMORY_TEMPLATE_DEDUP_MODE` | off (`shadow`, `enforce`) | yes (intervention 3, outcome-engineering audit 13-10: at memory candidate creation the content's template fingerprint — sha256 of the text with uuids, ISO dates, hex ids and numbers/scores replaced by placeholders — is compared with every existing candidate and promoted memory. `shadow` still creates the candidate and records a `memory_template_duplicate` judgment (subject = new candidate, refs = matching ids); `enforce` skips creating the template-only candidate and returns the newest match (not to be enabled yet). No memory is ever deleted, promoted or retired. `GET /api/health/memory-templates` (read:evidence) reports template groups with a consolidation proposal per group, never applied) | shadow: observe; enforce: skips candidate creation | operator |
 | `CHECKER_CROSS_MODEL` | `ollama/kimi-k3:cloud` (rule: registered in prod's opencode provider config, another family than the maker, already a prod reviewer — `MODEL_CANDIDATES_PANEL_REVIEW`) | yes (the cross arm's checker model; must be a provider/model opencode knows) | measure | operator |
 | `CHECKER_FAMILY_TARGET_PER_ARM` | 93 (EXP-1 registration; integer ≥ 2, else 93) | no (evidence only: the per-arm n at which `checker_family` gives a final verdict) | measure | operator |
+
+## Freeze a holdout epoch from a manifest (operator only)
+
+Never automatic. Nothing sets `DREAM_EVOLUTION_ENABLED` or `GYM_HOLDOUT_EPOCH`, and nothing starts a scheduler. The code is `holdout-manifest.ts` (`freezeHoldoutFromManifest`), `holdout-exposure.ts` (the exclusions) and the script `packages/server/src/scripts/holdout-freeze.ts`.
+
+1. Prepare the manifest offline (schema `manifest_version: 1`; see the epoch-1 manifest). Fields:
+   - `holdout_epoch`;
+   - `tasks.mined[] {key, source}`;
+   - optional `tasks.write_test[] {key, source}`;
+   - optional `tasks.mutant {generated_at_freeze: true, proposed_tiers}`;
+   - optional `calibration {mined[], write_test[]}`: frozen as role `calibration`, never deciding;
+   - `holdout_size` (or `evaluation_policy.holdout_size`);
+   - `manifest_sha256` = sha256 of `JSON.stringify(manifest without manifest_sha256)`, key order as written.
+   Build it with the same exclusions the freeze checks (gym failures AND failed maker leases' `changed_files`), on a read-only DB copy:
+   `node dist/scripts/holdout-freeze.js --build --db <copy> --repo <checkout> --epoch 1 --size 40 --tiers 3,4,5,6 [--base <old manifest>] --out <file>`.
+   With `--base` it keeps the base's still-eligible tasks, lists the dropped ones with the reason, and refills mined by an every-k-th spread. A shortfall exits 3; it is never padded.
+   Epoch 1 (operator 14-10) is `docs/holdout/epoch1-manifest-20261014.json` (sha256 in the `.sha256` file next to it): 40 mined (no-regression check only), 5 write_test, 40 mutants at tiers 3–6 generated at freeze (deciding, `max_per_source: 1` → 40 distinct files, design effect 1.0, power 0.80 for +30 points at p0 0.35), `HOLDOUT_SIZE=40`. Build with `--max-per-source 1`: without a cap mutantTask returns the same file at every tier.
+   Mutant keys contain the checkout HEAD, so repeat the dry run on the deploy checkout right before `--apply`.
+2. Back up `runtime.env` and the DB. Use `.backup` to a unique path, then run an integrity check.
+3. Dry run. It opens the DB read-only and writes nothing:
+   `docker exec <container> node dist/scripts/holdout-freeze.js --db <db> --manifest <file> --epoch 1 --expect-sha <sha256> --repo <deploy checkout>`.
+   Exit codes: 0 = `VALID_DRY_RUN`, 2 = `REFUSED` (with the violations), 3 = `HOLD` (with the reasons).
+4. Read the output. It is refused when any of these fails:
+   - the schema;
+   - the sha256 matches both the embedded value and `--expect-sha`;
+   - the requested epoch is the manifest's epoch;
+   - the size is valid and does not conflict with `HOLDOUT_SIZE`;
+   - the epoch has no rows yet;
+   - every task is eligible NOW. That means: it is in the mined / failure-derived pool with the same source; it is not frozen in any epoch; it is not a TG-001 key; it was never attempted in a trial; it is not dream-exposed; its source or target file is not dream-exposed; it is not derived from an exposed commit or run.
+
+   Dream exposure is the gym failures and failed maker leases in the 24 h before each `origin = 'dream'` genome. It covers their commits, source / out-of-scope / changed files and run ids.
+
+   It is HOLD when there are fewer deciding tasks than the size, fewer than 5 write_test tasks, or the mutant generator cannot fill the size with eligible mutants. A HOLD never freezes a smaller epoch.
+
+   The output also carries a power report: exact one-sided McNemar, paired. Its assumptions are set with `--p0 --p1 --alpha --icc`, and task families are grouped by source file. The report is never used to size the epoch.
+5. Apply with the same command plus `--apply`. It migrates, then writes every row in one transaction: the holdout rows, a `gym_holdout_freezes` provenance row (manifest sha, `frozen_at`, origin sha / version, size, counts, operator, manifest) and a hash-chained `holdout.freeze` audit event. If the audit event fails, nothing is frozen.
+6. Verify (read-only):
+   - `SELECT epoch, role, COUNT(*) FROM gym_holdout / gym_mutant_holdout / gym_write_test_holdout GROUP BY 1, 2`;
+   - `SELECT * FROM gym_holdout_freezes`.
+7. Only then, and as a separate decision, switch trials to it. Set `GYM_HOLDOUT_EPOCH=<n>`, and set `DREAM_TRIAL_MUTANT_TIERS` to the manifest tiers so the mutant reader sees them.
 
 ## Negative evidence
 
