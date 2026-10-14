@@ -9,6 +9,7 @@ import type { JudgmentDef } from '../judgment-service';
  */
 export const commonsContribution: JudgmentDef = {
   id: 'commons_contribution',
+  policyVersion: '1', // DI-001 B: bump when the meaning of this judgment changes
   questions: {
     contribution: {
       type: 'choice',

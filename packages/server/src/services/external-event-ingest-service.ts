@@ -189,7 +189,11 @@ export class ExternalEventIngestService {
           void checkContentSafety(this.db, { type: 'external_event', id }, [normalizedEvent.title, normalizedEvent.note].filter((v) => typeof v === 'string').join('\n')).catch(() => undefined);
         }
         if (eventType.startsWith('discovery.') && sourceUnits) {
-          try { sourceUnits.ingestDiscovery(normalizedEvent); } catch { /* never let one discovery break ingestion */ }
+          try {
+            // DI-001 C: a discovery not judged because of DISCOVERY_RELEVANCE_PAUSED is stored marked, so it can be judged later
+            const result = sourceUnits.ingestDiscovery(normalizedEvent);
+            if (result.startsWith('paused-')) normalizedEvent = { ...normalizedEvent, relevance: 'unjudged', relevance_paused: result.slice('paused-'.length), relevance_paused_at: new Date().toISOString() };
+          } catch { /* never let one discovery break ingestion */ }
         }
         const added = insert.run(
           id,

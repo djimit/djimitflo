@@ -18,6 +18,7 @@ import { leaseIdentity } from './reviewer-independence-service';
 import { checkerSecondOpinion, checkerSecondOpinionState } from './judgments/checker-second-opinion';
 import { remoteMakerCancelReason } from '../execution/executors/remote-maker-executor';
 import { recordPolicyViolation } from './policy-violations';
+import { computeTokenAccounting, safeTokenAccounting } from './maker-token-accounting';
 import type {
   LoopRunRecord,
   WorkerLeaseRecord,
@@ -168,6 +169,7 @@ export class LoopWorkerExecutorService {
     const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
     const prompt = fs.readFileSync(this.loopService.resolveWorkAssignmentPath(makerLease), 'utf8');
     const skipPermissions = this.loopService.resolveSkipPermissions(input.skip_permissions);
+    const makerStartedAt = Date.now();
     const result = makerLease.runtime === 'mock'
       ? await this.executeMockWorker(makerLease, prompt, timeoutMs, skipPermissions)
       : await this.executeViaEngine(run, makerLease, makerLease.runtime, prompt, makerLease.worktree_path!, timeoutMs, skipPermissions,
@@ -193,6 +195,9 @@ export class LoopWorkerExecutorService {
     const timedOut = result.timedOut;
     const runtimeUsage = this.loopService.extractRuntimeUsage(result.stdout || '');
     const runtimeWarnings = this.loopService.extractRuntimeWarnings(result.stdout || '', result.stderr || '');
+    // §5 token accounting: what the runtime reported, never fabricated; a failure here is recorded, never changes the outcome
+    const tokenAccounting = safeTokenAccounting(() => computeTokenAccounting({ runtime: makerLease.runtime, stdout: result.stdout || '',
+      leaseMetadata: makerLease.metadata || {}, durationMs: Date.now() - makerStartedAt }), makerLease.runtime);
     const tokenBudget = this.loopService.evaluateTokenBudget(run, runtimeUsage, makerLease.id, diffLines);
     const efficiency = this.loopService.calculateWorkerEfficiency(runtimeUsage, diffLines);
 
@@ -219,7 +224,7 @@ export class LoopWorkerExecutorService {
       runtime_adapter: makerLease.runtime, runtime_contract: runtimeContract, runtime_pid: result.runtimePid,
       runtime_signal: result.signal, runtime_timed_out: result.timedOut, runtime_timed_out_at: result.timedOutAt,
       runtime_warnings: runtimeWarnings, token_efficiency: efficiency,
-      runtime_usage: runtimeUsage || { usage_source: 'unknown' },
+      runtime_usage: runtimeUsage || { usage_source: 'unknown' }, token_accounting: tokenAccounting,
       ...(failed ? { failure_reason: `maker_gate_failed:${gates.filter((gate) => gate.status === 'fail').map((gate) => gate.name).join(',')}${remoteCancel ? `;remote_maker_cancelled:${remoteCancel}` : ''}` } : {}),
     };
 

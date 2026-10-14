@@ -120,6 +120,27 @@ function addMissingColumns(db: BetterSqlite3Database, tableName: string, columns
   }
 }
 
+/**
+ * DI-001 B: versioned decision provenance (services/judgment-provenance.ts). Additive and idempotent: one nullable column;
+ * existing rows stay NULL (read as 'unrecorded', never backfilled). The trigger gives every NEW row from a writer that does
+ * not supply provenance a 'partial' floor built only from the row's own columns, with the reason for each missing field.
+ * Down (SQLite >= 3.35): DROP TRIGGER IF EXISTS trg_judgments_provenance_floor; ALTER TABLE judgments DROP COLUMN provenance_json;
+ */
+export function ensureJudgmentProvenance(db: BetterSqlite3Database): void {
+  addMissingColumns(db, 'judgments', [{ name: 'provenance_json', definition: 'TEXT' }]);
+  if (!getColumns(db, 'judgments').has('provenance_json')) return;
+  db.exec(`CREATE TRIGGER IF NOT EXISTS trg_judgments_provenance_floor AFTER INSERT ON judgments WHEN NEW.provenance_json IS NULL
+    BEGIN
+      UPDATE judgments SET provenance_json = json_object('v', 1, 'status', 'partial', 'writer', 'uninstrumented',
+        'policy_id', NEW.judgment, 'policy_version', NULL, 'prompt_id', NULL, 'prompt_version', NULL, 'input_digest', NULL,
+        'model_id', NEW.model, 'model_version', NULL, 'evaluator_version', NULL, 'execution_mode', NEW.mode,
+        'decision_timestamp', NEW.created_at, 'evidence_reference', NEW.subject_type || ':' || NEW.subject_id, 'uncertainty', NULL,
+        'missing', json_object('policy_version', 'writer_not_instrumented', 'prompt_version', 'writer_not_instrumented',
+          'input_digest', 'writer_not_instrumented', 'evaluator_version', 'writer_not_instrumented'))
+      WHERE rowid = NEW.rowid;
+    END`);
+}
+
 function tableSql(db: BetterSqlite3Database, tableName: string): string | null {
   const row = db.prepare(`
     SELECT sql FROM sqlite_master
@@ -1382,6 +1403,18 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_judgments_subject ON judgments(judgment, subject_id, created_at);
+    -- DI-001 C: discoveries left unjudged by DISCOVERY_RELEVANCE_PAUSED. Decision identity = (event_id, policy), the PK.
+    -- unjudged → rejudging (fence + 1 per claim, claimed_at; a stale claim is reclaimed after a timeout) → judged | skipped |
+    -- failed. A decision commits only with the current fence; judgment_id is UNIQUE (one judgment decides one row).
+    CREATE TABLE IF NOT EXISTS discovery_relevance_backlog (
+      event_id TEXT NOT NULL, policy TEXT NOT NULL, ref TEXT NOT NULL,
+      path TEXT NOT NULL CHECK (path IN ('pending', 'rejected', 'unit')), event_json TEXT NOT NULL,
+      state TEXT NOT NULL DEFAULT 'unjudged' CHECK (state IN ('unjudged', 'rejudging', 'judged', 'skipped', 'failed')),
+      fence INTEGER NOT NULL DEFAULT 0, claimed_at TEXT, attempts INTEGER NOT NULL DEFAULT 0, judgment_id TEXT UNIQUE, decision TEXT,
+      paused_at TEXT NOT NULL, judged_at TEXT, PRIMARY KEY (event_id, policy)
+    );
+    CREATE INDEX IF NOT EXISTS idx_discovery_relevance_backlog_ref ON discovery_relevance_backlog(ref, state);
+    CREATE INDEX IF NOT EXISTS idx_discovery_relevance_backlog_state ON discovery_relevance_backlog(state, paused_at);
     CREATE TABLE IF NOT EXISTS registry_agents (
       name TEXT PRIMARY KEY, host TEXT NOT NULL DEFAULT '', runtime TEXT NOT NULL DEFAULT '', framework TEXT NOT NULL DEFAULT '',
       version TEXT NOT NULL DEFAULT '', capabilities_json TEXT NOT NULL DEFAULT '[]', api_endpoint TEXT NOT NULL DEFAULT '',
@@ -1391,6 +1424,7 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   // TG-001 integrity addendum: sha256 of the frozen analysis manifest, written in the freeze transaction
   addMissingColumns(db, 'tg_experiments', [{ name: 'analysis_sha256', definition: 'TEXT' }]);
   addMissingColumns(db, 'tg_attempts', [{ name: 'first_claimed_at', definition: 'TEXT' }]); // B27: first physical attempt
+  ensureJudgmentProvenance(db);
   // Add missing columns BEFORE creating indexes that reference them — a stale
   // pre-existing self_improvements table (no fingerprint) otherwise breaks
   // CREATE INDEX idx_self_improve_fingerprint with "no such column".
