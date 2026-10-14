@@ -56,6 +56,9 @@ export interface ExecuteWorkerResult {
 
 export const TEST_ONLY_DIFF_MAX = 400;
 /** Every changed file is a test (``__tests__/``, ``*.test.*`` or ``*.spec.*``); no changes is not test-only. */
+/** LOOP_MAKER_PREPARE_DEPS=on (default off): install worktree dependencies before a local maker starts (MAKER_FAILURES.md). */
+export const makerPrepareDepsOn = (env: NodeJS.ProcessEnv = process.env): boolean => env.LOOP_MAKER_PREPARE_DEPS === 'on';
+
 export function testOnlyChange(files: string[]): boolean {
   return files.length > 0 && files.every((f) => /(^|\/)__tests__\/|\.(test|spec)\.[cm]?[jt]sx?$/.test(f));
 }
@@ -165,6 +168,14 @@ export class LoopWorkerExecutorService {
     if (run.repository_path && makerLease.worktree_path && makerLease.branch_name
       && this.loopService.repairWorktree(run.repository_path, makerLease.worktree_path, makerLease.branch_name)) {
       this.loopService.recordLoopEvent(run.id, 'worktree_repaired', 'warning', 'Maker worktree was unlinked from the runtime repository (a deploy in between); re-registered on its branch.', { maker_lease_id: makerLease.id });
+    }
+    // MAKER_FAILURES.md: a third of failed opencode makers' tokens went to bootstrapping a worktree without node_modules.
+    // Local runtimes only: a remote maker runs on the compute host's own checkout; mock/manual run nothing.
+    if (makerPrepareDepsOn() && !['remote', 'mock', 'manual'].includes(makerLease.runtime)) {
+      const prep = this.loopService.prepareMakerWorktree(run.id, makerLease.id, makerLease.worktree_path!);
+      this.loopService.recordLoopEvent(run.id, 'maker_worktree_prepared', prep.install_failed || prep.shared_failed ? 'warning' : 'info',
+        `Maker worktree prepared before the maker started (installed=${prep.installed}, shared_built=${prep.shared_built}${prep.install_failed || prep.shared_failed ? '; failed, the maker runs as before' : ''}).`,
+        { maker_lease_id: makerLease.id, ...prep });
     }
     const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
     const prompt = fs.readFileSync(this.loopService.resolveWorkAssignmentPath(makerLease), 'utf8');

@@ -1964,6 +1964,30 @@ export class LoopService {
     'OPENCODE_GEMINI_API_KEY', 'OPENCODE_MOONSHOT_API_KEY', 'OPENCODE_NVIDIA_API_KEY', 'OPENCODE_OPENROUTER_API_KEY', 'OPENCODE_REQUESTY_API_KEY',
   ];
 
+  /**
+   * LOOP_MAKER_PREPARE_DEPS (docs/research/di-001/MAKER_FAILURES.md): what the deterministic checks install anyway, done before
+   * the maker starts, so it does not spend its tool loop (and the OPENCODE_MAX_RUN_TOKENS budget) bootstrapping the worktree.
+   * Same `npm ci` as the checks, plus the @djimitflo/shared build that test:changed runs first. Never throws.
+   */
+  public prepareMakerWorktree(runId: string, leaseId: string, worktree: string): { installed: boolean; install_failed: boolean; shared_built: boolean; shared_failed: boolean; duration_ms: number } {
+    const started = Date.now();
+    const outputDir = path.join(this.evidenceRoot, runId, 'maker-prepare', leaseId);
+    let installed = false; let installFailed = false; let sharedBuilt = false; let sharedFailed = false;
+    try {
+      fs.mkdirSync(outputDir, { recursive: true });
+      const hadModules = fs.existsSync(path.join(worktree, 'node_modules'));
+      installFailed = this.installWorktreeDependencies(worktree, outputDir, 600_000) !== null;
+      installed = !hadModules && !installFailed && fs.existsSync(path.join(worktree, 'node_modules'));
+      const shared = path.join(worktree, 'packages', 'shared');
+      if (!installFailed && fs.existsSync(path.join(shared, 'package.json')) && !fs.existsSync(path.join(shared, 'dist', 'index.js'))) {
+        const result = spawnSync('npm', ['run', 'build', '--workspace=@djimitflo/shared'], { cwd: worktree, encoding: 'utf8', timeout: 300_000, env: this.buildRuntimeEnv(), maxBuffer: 5 * 1024 * 1024 });
+        sharedBuilt = result.status === 0; sharedFailed = !sharedBuilt;
+        if (sharedFailed) fs.writeFileSync(path.join(outputDir, 'shared-build.stderr.log'), result.stderr || result.error?.message || '', 'utf8');
+      }
+    } catch { if (installed) sharedFailed = true; else installFailed = true; }
+    return { installed, install_failed: installFailed, shared_built: sharedBuilt, shared_failed: sharedFailed, duration_ms: Date.now() - started };
+  }
+
   /** `npm ci` in a worktree that has a lockfile but no node_modules; returns a failed 'install' check, or null. */
   private installWorktreeDependencies(worktree: string, outputDir: string, timeoutMs: number): Record<string, unknown> | null {
     if (!fs.existsSync(path.join(worktree, 'package-lock.json')) || fs.existsSync(path.join(worktree, 'node_modules'))) return null;
