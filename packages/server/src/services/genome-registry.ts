@@ -153,9 +153,20 @@ export const trialHeadroomPrecheck = (env: NodeJS.ProcessEnv = process.env): boo
 export function nextTrialAttempt(db: Database, speciesKey: string, holdoutCommits: string[]): { genomeId: string; commit: string } | null {
   const trials = db.prepare("SELECT id, COALESCE(parent_id, ?) AS parent FROM maker_genomes WHERE status = 'trial' ORDER BY created_at").all(BASELINE_GENOME) as Array<{ id: string; parent: string }>;
   if (!trials.length || !holdoutCommits.length) return null;
-  const done = db.prepare(`SELECT 1 FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ?
-    AND json_extract(metadata, '$.gym.genome') = ? AND json_extract(metadata, '$.gym.commit') = ?
-    AND (status = 'running' OR (COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%' AND ${NOT_VOID})) LIMIT 1`);
+  const attempts = db.prepare(`SELECT COALESCE(SUM(status = 'running'), 0) AS running,
+      COALESCE(SUM(status <> 'running' AND ${SCORED}), 0) AS scored,
+      COALESCE(SUM(status <> 'running' AND ${SCORED} AND ${ELIGIBLE_GATED}), 0) AS eligible
+    FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ?
+    AND json_extract(metadata, '$.gym.genome') = ? AND json_extract(metadata, '$.gym.commit') = ?`);
+  // P0 (13-10): with GYM_PROD_GATES on only an eligible gated result settles a task — an ungated one is served again (at most
+  // INFRA_GIVE_UP scored attempts in all, so a worker without the prod_gates capability cannot loop on it); off: unchanged.
+  // A claimed (running) attempt counts as done, so a second claim never serves the same retry; better-sqlite3 runs claim()
+  // synchronously on one connection, so check-then-insert in claim() cannot interleave.
+  const gates = gymProdGatesOn();
+  const done = { get: (species: string, genomeId: string, commit: string): boolean => {
+    const a = attempts.get(species, genomeId, commit) as { running: number; scored: number; eligible: number };
+    return a.running > 0 || (gates ? a.eligible > 0 || a.scored >= INFRA_GIVE_UP : a.scored > 0);
+  } };
   // B8: with the precheck on, the parent's whole holdout comes first, so headroom is known before any mutant attempt is spent
   if (trialHeadroomPrecheck()) {
     for (const trial of trials) for (const commit of holdoutCommits) if (!done.get(speciesKey, trial.parent, commit) && !unscorable(db, speciesKey, trial.parent, commit)) return { genomeId: trial.parent, commit };
@@ -178,8 +189,11 @@ export const INFRA_GIVE_UP = 3;
 export function unscorable(db: Database, speciesKey: string, genomeId: string, commit: string): boolean {
   return (db.prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ?
     AND json_extract(metadata, '$.gym.genome') = ? AND json_extract(metadata, '$.gym.commit') = ?
-    AND (COALESCE(json_extract(metadata, '$.gym_result.reason'), '') LIKE 'infra:%' OR NOT ${NOT_VOID})`).get(speciesKey, genomeId, commit) as { n: number }).n >= INFRA_GIVE_UP;
+    AND (COALESCE(json_extract(metadata, '$.gym_result.reason'), '') LIKE 'infra:%' OR json_extract(metadata, '$.gym_result.status') = 'discarded' OR NOT ${NOT_VOID})`).get(speciesKey, genomeId, commit) as { n: number }).n >= INFRA_GIVE_UP;
 }
+/** A completed attempt that observed the task: not infra-censored (infra reason or discarded), not VOID. */
+const SCORED = `(COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%' AND COALESCE(json_extract(metadata, '$.gym_result.status'), '') <> 'discarded'
+  AND json_extract(metadata, '$.gym_result.void') IS NULL)`;
 
 /**
  * Fire check (metaharness lesson: three times their 'treatment' never reached the agent, so treatment = control, silently).
@@ -191,6 +205,15 @@ export function unscorable(db: Database, speciesKey: string, genomeId: string, c
  */
 export const genomeFireCheck = (env: NodeJS.ProcessEnv = process.env): boolean => env.GENOME_FIRE_CHECK === 'true';
 export const NOT_VOID = "json_extract(metadata, '$.gym_result.void') IS NULL";
+/**
+ * P0 (13-10, EVOLUTION ENGINE 4.0): a gym attempt whose verdict holds under the production gates — claimed with them
+ * (gym.prod_gates = 1, GYM_PROD_GATES) and the gate verdict recorded on that attempt: a failure (proxy or prod_gate_failed:*),
+ * or a success carrying its per-check gym_result.prod_gates map (the worker runs the gates only on a proxy success). A gated
+ * success without that map never proved its gates ran. Only such attempts may decide headroom or promotion (dream-evolution).
+ */
+export const ELIGIBLE_GATED = `(json_extract(metadata, '$.gym.prod_gates') = 1 AND (json_extract(metadata, '$.gym_result.status') = 'failure'
+  OR (json_extract(metadata, '$.gym_result.status') = 'success' AND json_type(metadata, '$.gym_result.prod_gates') = 'object')))`;
+export const gymProdGatesOn = (env: NodeJS.ProcessEnv = process.env): boolean => env.GYM_PROD_GATES === 'true';
 export interface FireCheck { goal_sha256: string; genome_lines: number; genome_lines_found: number }
 /** The worker's evidence, sanitised (null when absent or malformed). */
 export function parseFireCheck(raw: unknown): FireCheck | null {
