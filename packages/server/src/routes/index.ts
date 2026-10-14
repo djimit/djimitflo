@@ -75,14 +75,7 @@ import { createAgiRoutes } from './agi';
 import { createIntelligenceRoutes } from './intelligence';
 import { createMetaOrchestrationRoutes } from './meta-orchestration';
 import { createCouncilRoutes } from './council';
-import { createSegmlRoutes } from './segml';
 import { createSegmlFederationRoutes } from './segml-federation';
-import { createSegmlLiteratureRoutes } from './segml-literature';
-import { createSegmlFinetuningRoutes } from './segml-finetuning';
-import { createSegmlL3Routes } from './segml-l3';
-import { createSegmlL4Routes } from './segml-l4';
-import { createSegmlL5Routes } from './segml-l5';
-import { createSegmlProductionRoutes } from './segml-production';
 import { createOrganizationRoutes } from './organizations';
 import { createAuditLogRoutes } from './audit-logs';
 import { limitBodySize } from '../middleware/input-validation';
@@ -242,14 +235,7 @@ export function createRoutes(
     { prefix: '/explainer', middleware: [requireAuth], router: createExplainerRoutes(db, auth) },
     { prefix: '/console', middleware: [requireAuth], router: createConsoleRoutes(db, auth) },
     { prefix: '/council', middleware: [requireAuth], router: createCouncilRoutes(db, auth) },
-    { prefix: '/segml', middleware: [requireAuth], router: createSegmlRoutes(db, auth) },
     { prefix: '/segml/federation', middleware: [requireAuth], router: createSegmlFederationRoutes(db, auth) },
-    { prefix: '/segml/literature', middleware: [requireAuth], router: createSegmlLiteratureRoutes(db, auth) },
-    { prefix: '/segml/finetuning', middleware: [requireAuth], router: createSegmlFinetuningRoutes(db, auth) },
-    { prefix: '/segml/l3', middleware: [requireAuth], router: createSegmlL3Routes(db, auth) },
-    { prefix: '/segml/l4', middleware: [requireAuth], router: createSegmlL4Routes(db, auth) },
-    { prefix: '/segml/l5', middleware: [requireAuth], router: createSegmlL5Routes(db, auth) },
-    { prefix: '/segml/production', middleware: [requireAuth], router: createSegmlProductionRoutes(db, auth) },
     { prefix: '/organizations', middleware: [requireAuth], router: createOrganizationRoutes(db, requireAuth, authService, auditService) },
     { prefix: '/audit-logs', middleware: [requireAuth], router: createAuditLogRoutes(db, requireAuth) },
   );
