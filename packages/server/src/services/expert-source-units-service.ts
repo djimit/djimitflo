@@ -4,9 +4,13 @@ import { FrontierExpertRegistryService } from './frontier-expert-registry-servic
 import { ExpertEvidenceEnrichmentService } from './expert-evidence-enrichment-service';
 import type { ArxivPaper } from './knowledge-adapters/arxiv-adapter';
 import { judgmentMode, runJudgment } from './judgment-service';
+import { hasMandatoryProvenance } from './judgment-provenance';
 import { discoveryRelevance } from './judgments/discovery-relevance';
+import { CONFIDENCE_FLOOR } from './judgments/checker-second-opinion';
 import { buildEvidencePack } from './commons-evidence-pack';
-import { typesafeBusy } from './typesafe-client';
+import { typesafeBusy, typesafeConfigured } from './typesafe-client';
+import { createHash } from 'crypto';
+import { discoveryRejudgeConfig } from './knowledge-overview';
 
 /**
  * E2 (Frontier Experts 2.0): expertise units beyond people. Prod 2026-09-25: 1 365 distinct arXiv papers were stored only
@@ -29,6 +33,27 @@ export function discoveryRelevanceSources(env: NodeJS.ProcessEnv = process.env):
   const list = (env.DISCOVERY_RELEVANCE_SOURCES ?? '').split(',').map((s) => s.trim()).filter(Boolean);
   return list.length ? new Set(list) : null;
 }
+
+/**
+ * DI-001 C (operator 14-10): DISCOVERY_RELEVANCE_PAUSED=true stops NEW discovery_relevance jev calls (default off =
+ * unchanged). Historical judgments and the judgment definition stay. No silent fallback — each path says what it does:
+ *  - FE2 admission (FRONTIER_UNITS_REQUIRE_RELEVANCE): no unit is admitted (fail-closed, as for "no verdict").
+ *  - R3 / KE-2 (keyword-rejected): no shadow call, no override unit; the keyword gate's rejection stands.
+ *  - G3 direct path (REQUIRE_RELEVANCE off): the unit is created as before (it never waited for jev); only the shadow call goes.
+ * Every such discovery is parked durably in discovery_relevance_backlog (see rejudgePaused for the recovery contract).
+ * Readers of verdicts (fleet source gate, N4 term yields, knowledge overview) see no verdict = missing, never 'no'.
+ */
+export const discoveryRelevancePaused = (env: NodeJS.ProcessEnv = process.env): boolean => env.DISCOVERY_RELEVANCE_PAUSED === 'true';
+export type IngestResult = 'unit' | 'pending' | 'known' | 'irrelevant' | 'invalid' | 'paused-pending' | 'paused-rejected' | 'paused-unit';
+
+/**
+ * Decision identity = (event_id, judge policy version). The version hashes the judgment's questions, the confidence floor
+ * and DECIDE_RULE (bump it when discoveryRelevance.decide changes), so a changed policy is a new identity, never an overwrite.
+ */
+const DECIDE_RULE = 'decide:v1';
+export const DISCOVERY_RELEVANCE_POLICY = `discovery_relevance:${createHash('sha256').update(JSON.stringify(discoveryRelevance.questions)).update(`${CONFIDENCE_FLOOR}|${DECIDE_RULE}`).digest('hex').slice(0, 12)}`;
+const eventIdOf = (event: Record<string, unknown>, ref: string): string => [event.event_id, event._id].map((v) => (typeof v === 'string' ? v.trim() : '')).find(Boolean) || `ref:${ref}`;
+interface BacklogRow { event_id: string; policy: string; ref: string; path: 'pending' | 'rejected' | 'unit'; event_json: string }
 
 /** JEV-BURST: rejected-gate shadow judgments started but not yet recorded; the daily cap counts them (the rows only land later). */
 let rejectedInFlight = 0;
@@ -70,7 +95,7 @@ export class ExpertSourceUnitsService {
    * untrusted and clipped, and only discoveries that match the capability taxonomy become units — most briefing papers
    * (quantum, clinical) are noise for Djimitflo and stay in external_events only.
    */
-  ingestDiscovery(event: Record<string, unknown>): 'unit' | 'pending' | 'known' | 'irrelevant' | 'invalid' {
+  ingestDiscovery(event: Record<string, unknown>): IngestResult {
     const d = parseDiscovery(event);
     if (!d) return 'invalid';
     const { id, ref, title, note, categories } = d;
@@ -84,6 +109,8 @@ export class ExpertSourceUnitsService {
     if (!capabilities.length) {
       // R3 (shadow): the keyword gate's rejections were never measured. jev judges a capped share of them too, so its
       // relevance can be compared with the gate (yes-rate on rejected vs accepted) before it replaces the gate.
+      if (judgmentMode(discoveryRelevance.id) !== 'off' && discoveryRelevancePaused()) return this.park(event, ref, 'rejected');
+      if (judgmentMode(discoveryRelevance.id) !== 'off' && this.backlogOwns(ref)) return 'irrelevant'; // the backlog decides it
       if (judgmentMode(discoveryRelevance.id) !== 'off' && this.rejectedShadowLeft()) {
         const pack = buildEvidencePack(this.db, 14);
         rejectedInFlight += 1;
@@ -92,7 +119,8 @@ export class ExpertSourceUnitsService {
             // KE-2 (prod 09-10: 95 of 222 jev 'yes' sat on gate-rejected refs, so no unit and no consumer ever saw them): when jev
             // decides unit creation (FRONTIER_UNITS_REQUIRE_RELEVANCE) its 'yes' overrides the keyword gate, as FE2 does for
             // accepted ones. Otherwise the verdict stays a measurement and the gate is unchanged.
-            if (verdict?.decision === 'yes' && process.env.FRONTIER_UNITS_REQUIRE_RELEVANCE === 'true' && !this.knownRefs().has(ref)) this.overrideUnit(d, verdict.id);
+            // DI-001 B: a promotion — only on a verdict with recorded provenance (fail-closed)
+            if (verdict?.decision === 'yes' && hasMandatoryProvenance(verdict) && process.env.FRONTIER_UNITS_REQUIRE_RELEVANCE === 'true' && !this.knownRefs().has(ref)) this.overrideUnit(d, verdict.id);
           })
           .catch(() => undefined).finally(() => { rejectedInFlight -= 1; });
       }
@@ -105,11 +133,14 @@ export class ExpertSourceUnitsService {
     if (process.env.FRONTIER_UNITS_REQUIRE_RELEVANCE === 'true' && judgmentMode(discoveryRelevance.id) !== 'off') {
       // a failed call (queue full, timeout) is not a verdict: the ref is judged again when it is sent again
       if (this.db.prepare("SELECT 1 FROM judgments WHERE judgment = 'discovery_relevance' AND subject_id = ? AND decision <> 'error' LIMIT 1").get(ref)) return 'known';
+      if (discoveryRelevancePaused()) return this.park(event, ref, 'pending');
+      if (this.backlogOwns(ref)) return 'known'; // parked during a pause: rejudgePaused decides it
       const pack = buildEvidencePack(this.db, 14);
       void runJudgment(this.db, discoveryRelevance, { type: 'discovery_pending', id: ref }, { title, note, capabilities, open_problems: { failing_gates: pack.top_failing_gates, failure_causes: pack.failure_causes } })
         .then((verdict) => {
           const cls = verdict?.answers?.relevance?.choice;
-          if (!verdict || (cls !== 'open_problem' && cls !== 'lane_technique') || this.knownRefs().has(ref)) return;
+          // DI-001 B: unit creation is a promotion — no recorded provenance, no unit (fail-closed, like no verdict)
+          if (!verdict || !hasMandatoryProvenance(verdict) || (cls !== 'open_problem' && cls !== 'lane_technique') || this.knownRefs().has(ref)) return;
           const unitId = createUnit();
           this.db.prepare("UPDATE judgments SET subject_type = 'expert_unit', subject_id = ? WHERE id = ?").run(unitId, verdict.id);
         }).catch(() => undefined);
@@ -118,6 +149,7 @@ export class ExpertSourceUnitsService {
     const expertId = createUnit();
     // G3 (shadow): is this discovery relevant beyond its topic? Fire-and-forget; never blocks ingestion.
     if (judgmentMode(discoveryRelevance.id) !== 'off') {
+      if (discoveryRelevancePaused()) return this.park(event, ref, 'unit');
       const pack = buildEvidencePack(this.db, 14);
       void runJudgment(this.db, discoveryRelevance, { type: 'expert_unit', id: expertId }, { title, note, capabilities, open_problems: { failing_gates: pack.top_failing_gates, failure_causes: pack.failure_causes } }).catch(() => undefined);
     }
@@ -156,13 +188,15 @@ export class ExpertSourceUnitsService {
    * becomes a unit from its stored bus event, exactly as the live override does. Idempotent. Run on prod with:
    *   docker exec -e NODE_PATH=/app/node_modules djimitflo-live node -e "const D=require('better-sqlite3');const {ExpertSourceUnitsService}=require('/app/packages/server/dist/services/expert-source-units-service.js');console.log(new ExpertSourceUnitsService(new D('/data/djimitflo.sqlite',{timeout:10000})).backfillRejectedOverrides())"
    */
-  backfillRejectedOverrides(limit = 1_000): { candidates: number; created: number; missing_event: number; known: number } {
-    const rows = this.db.prepare(`SELECT subject_id AS ref, MAX(created_at) AS at, id FROM judgments WHERE judgment = 'discovery_relevance' AND subject_type = 'discovery_rejected' AND decision = 'yes'
-      GROUP BY subject_id ORDER BY at LIMIT ?`).all(limit) as Array<{ ref: string; id: string }>;
-    const out = { candidates: rows.length, created: 0, missing_event: 0, known: 0 };
+  backfillRejectedOverrides(limit = 1_000): { candidates: number; created: number; missing_event: number; known: number; no_provenance: number } {
+    const rows = this.db.prepare(`SELECT subject_id AS ref, MAX(created_at) AS at, id, provenance_json FROM judgments WHERE judgment = 'discovery_relevance' AND subject_type = 'discovery_rejected' AND decision = 'yes'
+      GROUP BY subject_id ORDER BY at LIMIT ?`).all(limit) as Array<{ ref: string; id: string; provenance_json: string | null }>;
+    const out = { candidates: rows.length, created: 0, missing_event: 0, known: 0, no_provenance: 0 };
     const known = this.knownRefs();
     for (const row of rows) {
       if (known.has(row.ref)) { out.known += 1; continue; }
+      // DI-001 B: a backfill is a NEW promotion, so a verdict without recorded provenance (pre-activation history) is not used
+      if (!hasMandatoryProvenance(row)) { out.no_provenance += 1; continue; }
       const d = parseDiscovery(this.discoveryEvent(row.ref) ?? {});
       if (!d || d.ref !== row.ref) { out.missing_event += 1; continue; }
       this.overrideUnit(d, row.id, { backfill: true });
@@ -180,6 +214,7 @@ export class ExpertSourceUnitsService {
    */
   retryErroredRelevance(limit = 50): { retried: number; skipped?: string } {
     if (judgmentMode(discoveryRelevance.id) === 'off') return { retried: 0, skipped: 'off' };
+    if (discoveryRelevancePaused()) return { retried: 0, skipped: 'paused' };
     if (typesafeBusy()) return { retried: 0, skipped: 'jev_busy' };
     const rows = this.db.prepare(`SELECT j.subject_id AS ref, j.subject_type AS type FROM judgments j
       WHERE j.judgment = 'discovery_relevance' AND j.decision = 'error' AND j.subject_type IN ('discovery_pending', 'discovery_rejected')
@@ -196,6 +231,88 @@ export class ExpertSourceUnitsService {
       retried += 1;
     }
     return { retried };
+  }
+
+  /** DI-001 C: park a discovery the pause left unjudged. Idempotent on (event_id, policy): a re-delivered event is one row. */
+  private park(event: Record<string, unknown>, ref: string, path: BacklogRow['path']): IngestResult {
+    this.db.prepare('INSERT OR IGNORE INTO discovery_relevance_backlog (event_id, policy, ref, path, event_json, paused_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(eventIdOf(event, ref), DISCOVERY_RELEVANCE_POLICY, ref, path, JSON.stringify(event), new Date().toISOString());
+    return `paused-${path}`;
+  }
+
+  /** An open backlog row (unjudged or claimed) owns the ref's decision; normal ingestion does not judge it a second time. */
+  private backlogOwns(ref: string): boolean {
+    return Boolean(this.db.prepare("SELECT 1 FROM discovery_relevance_backlog WHERE ref = ? AND state IN ('unjudged', 'rejudging') LIMIT 1").get(ref));
+  }
+
+  /**
+   * DI-001 C recovery contract. Each parked discovery is one row keyed by (event_id, policy) — the decision identity.
+   *  - Claim: one atomic UPDATE moves 'unjudged' (or a 'rejudging' claim older than the claim timeout) to 'rejudging' and
+   *    increments the row's fence (monotonic); the worker holds that fence value.
+   *  - Commit: the judgment row, the backlog decision and the downstream admission (unit creation / re-pointing) are ONE
+   *    transaction, and it commits only while the row is 'rejudging' with the worker's fence. A stale worker (its claim was
+   *    reclaimed) is vetoed and writes nothing: at most one persisted decision per identity.
+   *  - The jev call itself is at-least-once: a crash or a reclaimed claim can call jev again; one result is persisted.
+   *  - A failed call or a failed commit releases the claim with attempts + 1; at DISCOVERY_REJUDGE_MAX_ATTEMPTS → 'failed'.
+   *  - Bounded: ≤ DISCOVERY_REJUDGE_BATCH claims per call and ≤ DISCOVERY_REJUDGE_MAX_PER_DAY claims per 24 h, both counted
+   *    from the table (a restart does not reset them). Unpausing never replays the backlog at once.
+   */
+  rejudgePaused(opts: { limit?: number; now?: number } = {}): { claimed: number; skipped?: string } {
+    if (judgmentMode(discoveryRelevance.id) === 'off' || !typesafeConfigured()) return { claimed: 0, skipped: 'off' };
+    if (discoveryRelevancePaused()) return { claimed: 0, skipped: 'paused' };
+    if (typesafeBusy()) return { claimed: 0, skipped: 'jev_busy' };
+    const cfg = discoveryRejudgeConfig(); const now = opts.now ?? Date.now(); const nowIso = new Date(now).toISOString();
+    const used = (this.db.prepare('SELECT COUNT(*) n FROM discovery_relevance_backlog WHERE claimed_at >= ?').get(new Date(now - 86_400_000).toISOString()) as { n: number }).n;
+    const take = Math.min(opts.limit ?? cfg.batch, cfg.batch, cfg.max_per_day - used);
+    if (take <= 0) return { claimed: 0, skipped: 'daily_cap' };
+    const stale = new Date(now - cfg.claim_timeout_minutes * 60_000).toISOString();
+    const open = "(state = 'unjudged' OR (state = 'rejudging' AND claimed_at < ?))";
+    const rows = this.db.prepare(`SELECT event_id, policy, ref, path, event_json FROM discovery_relevance_backlog WHERE policy = ? AND ${open} ORDER BY paused_at, event_id LIMIT ?`)
+      .all(DISCOVERY_RELEVANCE_POLICY, stale, take) as BacklogRow[];
+    const claim = this.db.prepare(`UPDATE discovery_relevance_backlog SET state = 'rejudging', fence = fence + 1, claimed_at = ? WHERE event_id = ? AND policy = ? AND ${open} RETURNING fence`);
+    let claimed = 0;
+    for (const row of rows) {
+      if (row.path === 'rejected' && !this.rejectedShadowLeft()) continue; // R3's own daily cap: a later call
+      const won = claim.get(nowIso, row.event_id, row.policy, stale) as { fence: number } | undefined;
+      if (!won) continue; // another worker claimed it first
+      claimed += 1;
+      this.rejudgeOne(row, won.fence);
+    }
+    return { claimed };
+  }
+
+  private rejudgeOne(row: BacklogRow, fence: number): void {
+    const key = [row.event_id, row.policy, fence] as const;
+    const finish = (state: 'judged' | 'skipped', decision: string, judgmentId: string | null) => this.db.prepare(`UPDATE discovery_relevance_backlog SET state = ?, decision = ?, judgment_id = ?, judged_at = ?
+      WHERE event_id = ? AND policy = ? AND fence = ? AND state = 'rejudging'`).run(state, decision, judgmentId, new Date().toISOString(), ...key).changes === 1;
+    const release = () => this.db.prepare(`UPDATE discovery_relevance_backlog SET attempts = attempts + 1, state = CASE WHEN attempts + 1 >= ? THEN 'failed' ELSE 'unjudged' END
+      WHERE event_id = ? AND policy = ? AND fence = ? AND state = 'rejudging'`).run(discoveryRejudgeConfig().max_attempts, ...key);
+    const d = parseDiscovery(JSON.parse(row.event_json) as Record<string, unknown>);
+    if (!d) { finish('skipped', 'invalid', null); return; }
+    const unitOf = () => (this.db.prepare("SELECT id FROM expert_identities WHERE kind IN ('paper', 'repository') AND aliases_json LIKE ? LIMIT 1").get(`%"${d.ref}"%`) as { id: string } | undefined)?.id;
+    const judged = () => this.db.prepare("SELECT 1 FROM judgments WHERE judgment = 'discovery_relevance' AND subject_id = ? AND decision <> 'error' LIMIT 1").get(d.ref);
+    // a ref already decided (another event of the same ref, or a unit) is not judged again: the same rule as ingestion
+    if (row.path !== 'unit' && (unitOf() || judged())) { finish('skipped', 'known', null); return; }
+    const unitId = row.path === 'unit' ? unitOf() : undefined;
+    if (row.path === 'unit' && !unitId) { finish('skipped', 'no_unit', null); return; }
+    const capabilities = row.path === 'pending' ? this.enrichment.capabilitiesFor({ arxiv_id: d.id, url: '', title: d.title, summary: d.note, authors: [], categories: d.categories, primary_category: d.categories[0] ?? null, published: null }) : [];
+    const subject = unitId ? { type: 'expert_unit', id: unitId } : { type: row.path === 'pending' ? 'discovery_pending' : 'discovery_rejected', id: d.ref };
+    const pack = buildEvidencePack(this.db, 14);
+    if (row.path === 'rejected') rejectedInFlight += 1;
+    void runJudgment(this.db, discoveryRelevance, subject, { title: d.title, note: d.note, capabilities, open_problems: { failing_gates: pack.top_failing_gates, failure_causes: pack.failure_causes } }, undefined, undefined,
+      (verdict) => {
+        if (!finish('judged', verdict.decision, verdict.id)) return false; // stale fence: vetoed, nothing is written
+        const requireRelevance = process.env.FRONTIER_UNITS_REQUIRE_RELEVANCE === 'true';
+        if (row.path === 'pending') {
+          const cls = verdict.answers?.relevance?.choice;
+          if ((!requireRelevance || cls === 'open_problem' || cls === 'lane_technique') && !unitOf()) {
+            this.db.prepare("UPDATE judgments SET subject_type = 'expert_unit', subject_id = ? WHERE id = ?").run(this.fleetUnit(d, capabilities), verdict.id);
+          }
+        } else if (row.path === 'rejected' && verdict.decision === 'yes' && requireRelevance && !unitOf()) this.overrideUnit(d, verdict.id);
+        return true;
+      })
+      .then((verdict) => { if (!verdict) release(); }) // a no-op when the fence moved on
+      .catch(() => undefined).finally(() => { if (row.path === 'rejected') rejectedInFlight -= 1; });
   }
 
   private sourceAllowed(source: string): boolean {

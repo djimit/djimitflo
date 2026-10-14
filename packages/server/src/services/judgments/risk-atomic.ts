@@ -9,6 +9,7 @@ import { band, type JudgmentDef } from '../judgment-service';
  */
 export const riskAtomic: JudgmentDef = {
   id: 'risk_atomic',
+  policyVersion: '1', // DI-001 B: bump when the meaning of this judgment changes
   questions: {
     changes_auth: { type: 'noul', instructions: 'Would the change described in `task` alter authentication, authorization, permissions or approval logic (not merely test it)?' },
     handles_secrets: { type: 'noul', instructions: 'Would the change described in `task` read, write, move or log secrets, tokens, keys or credentials?' },
