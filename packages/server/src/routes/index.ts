@@ -30,7 +30,6 @@ import { createAuthorityRoutes } from './authority';
 import { createUsageRoutes } from './usage';
 import { createDiscussionRoutes } from './discussions';
 import { createExportRoutes } from './exports';
-import { createMessageRoutes } from './messages';
 import { createSkillRoutes } from './skills';
 import { createLearningRoutes } from './learning';
 import { getAppVersion } from '../utils/version';
@@ -188,7 +187,6 @@ export function createRoutes(
     { prefix: '/learning', middleware: [requireAuth], router: createLearningRoutes(db, auth, cognitiveLoop) },
     { prefix: '/backups', middleware: [requireAuth], router: createBackupRoutes(db, auth!) },
     { prefix: '/exports', middleware: [requireAuth], router: createExportRoutes(db, auth!) },
-    { prefix: '/messages', middleware: [requireAuth], router: createMessageRoutes(db, wsService, auth) },
     { prefix: '/memory', middleware: [requireAuth], router: createMemoryRoutes(db, auth) },
     { prefix: '/skills', middleware: [requireAuth], router: createSkillRoutes(db, auth) },
     { prefix: '/openmythos', middleware: [requireAuth], router: createOpenMythosRoutes(db, auth) },
