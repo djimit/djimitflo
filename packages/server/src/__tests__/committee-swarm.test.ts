@@ -91,3 +91,35 @@ it('AR-W3: survival of the fittest — no extinction below n = 30; the best memb
   expect(genesChanged).toBe(1);
   expect(evolveCommittee(db).born).toBeNull(); // once a day
 });
+
+it('DI-001: the claim stamps when the members\' context was assembled and whether the proposal already had an outcome; forecasts carry both, member confidence when given, and the committee spread', async () => {
+  vi.stubEnv('COMMITTEE_SWARM_ENABLED', 'true');
+  prop('p1'); prop('p2', 'verified');
+  const asOf = new Date(Date.now() - 3_600_000);
+  const j1 = enqueueCommittee(db, { id: 'p1', title: 't', source: 'gap_analysis' }, asOf)!;
+  const j2 = enqueueCommittee(db, { id: 'p2', title: 't', source: 'gap_analysis' }, new Date(asOf.getTime() + 1000))!;
+  const at1 = new Date(Date.now() - 60_000); const at2 = new Date(Date.now() - 30_000);
+  await claimCommittee(db, 'workstation', at1); await claimCommittee(db, 'workstation', at2);
+  const job = (id: string) => db.prepare('SELECT context_at, outcome_known_at_context FROM committee_jobs WHERE id = ?').get(id);
+  expect(job(j1)).toEqual({ context_at: at1.toISOString(), outcome_known_at_context: 0 });
+  expect(job(j2)).toEqual({ context_at: at2.toISOString(), outcome_known_at_context: 1 });
+  recordCommittee(db, j1, 'workstation', [{ member: 'cm-oracle', p: 0.2, confidence: 0.7 }, { member: 'cm-skeptic', p: 0.6 }, { member: 'cm-scout', p: 0.4, confidence: 'high' }]);
+  const rows = Object.fromEntries((db.prepare('SELECT judgment, answers_json FROM judgments WHERE state_hash = ?').all(j1) as Array<{ judgment: string; answers_json: string }>)
+    .map((r) => [r.judgment, JSON.parse(r.answers_json)]));
+  expect(rows['forecast:committee:cm-oracle']).toEqual({ p: 0.2, as_of: asOf.toISOString(), context_at: at1.toISOString(), outcome_known_at_context: false, confidence: 0.7 });
+  expect(rows['forecast:committee:cm-skeptic']).not.toHaveProperty('confidence');
+  expect(rows['forecast:committee:cm-scout']).not.toHaveProperty('confidence'); // not a number in [0, 1]: not recorded
+  expect(rows['forecast:committee']).toMatchObject({ context_at: at1.toISOString(), outcome_known_at_context: false, spread: { n: 3, min: 0.2, max: 0.6, range: 0.4 } });
+  expect(rows['forecast:committee'].spread.sd).toBeCloseTo(0.1633, 3);
+});
+
+it('DI-001: a job claimed before context stamping existed records no context_at (unrecorded, never backfilled)', async () => {
+  vi.stubEnv('COMMITTEE_SWARM_ENABLED', 'true');
+  prop('p1');
+  const j = enqueueCommittee(db, { id: 'p1', title: 't', source: 'gap_analysis' })!;
+  db.prepare("UPDATE committee_jobs SET status = 'claimed', host = 'workstation', claimed_at = ? WHERE id = ?").run(new Date().toISOString(), j); // old-style claim
+  recordCommittee(db, j, 'workstation', [{ member: 'cm-oracle', p: 0.3 }]);
+  const row = db.prepare("SELECT answers_json FROM judgments WHERE judgment = 'forecast:committee:cm-oracle'").get() as { answers_json: string };
+  const a = JSON.parse(row.answers_json);
+  expect(a).not.toHaveProperty('context_at'); expect(a).not.toHaveProperty('outcome_known_at_context');
+});
