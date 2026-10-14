@@ -10,6 +10,7 @@ import type { JudgmentDef } from '../judgment-service';
 // DjimitKBWiki/GraphStore were read as Djimitflo changes. So: Djimitflo is spelled out, and `grounded` replaces `testable`.
 export const commonsIdea: JudgmentDef = {
   id: 'commons_idea',
+  policyVersion: '1', // DI-001 B: bump when the meaning of this judgment changes
   questions: {
     kind: {
       type: 'choice',
