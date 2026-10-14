@@ -9,6 +9,7 @@ import type { JudgmentDef } from '../judgment-service';
  */
 export const reflectionTriage: JudgmentDef = {
   id: 'reflection_triage',
+  policyVersion: '1', // DI-001 B: bump when the meaning of this judgment changes
   questions: {
     kind: {
       type: 'choice',
