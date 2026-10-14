@@ -23,8 +23,9 @@ import { attributionSummary } from '../services/outcome-attribution';
 import { runtimeConfigView } from '../services/runtime-config-view';
 import { buildDigest } from '../services/operator-push';
 import { getDatabaseProvenance } from '../database/provenance';
-import { efficiencyView } from '../services/resource-ledger';
+import { efficiencyWithCost } from '../services/cost-ledger';
 import { shippedCodeView } from '../services/shipped-code-scan';
+import { memoryTemplateAnalysis } from '../services/memory-template-dedup';
 
 export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -180,13 +181,20 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   });
 
   // Phase E1/E3: tokens, local GPU time and measured GPU energy per consumer (7 d), value per M tokens / per kWh, north-star trend
-  router.get('/efficiency', requireAuth, requirePermission('read:evidence'), (_req, res) => {
-    res.json(efficiencyView(db));
+  // + verified cost ledger (cost_per_verified): population, usage events with one owner each, coverage, versioned metrics; ?days= 1–90 (default 7)
+  router.get('/efficiency', requireAuth, requirePermission('read:evidence'), (req, res) => {
+    const days = Number(req.query.days);
+    res.json(efficiencyWithCost(db, Date.now(), process.env, Number.isInteger(days) && days >= 1 && days <= 90 ? days : 7));
   });
 
   // supply chain (shadow): latest deterministic shipped-code scan per runtime package and its release-to-release diff (read-only)
   router.get('/shipped-code', requireAuth, requirePermission('read:evidence'), (_req, res) => {
     res.json(shippedCodeView(db));
+  });
+
+  // intervention 3 (shadow): template-duplicate groups among memory candidates and promoted memories + consolidation proposals (read-only, never applied)
+  router.get('/memory-templates', requireAuth, requirePermission('read:evidence'), (req, res) => {
+    res.json(memoryTemplateAnalysis(db, { minSize: Number(req.query.min_size) || 2, limit: Number(req.query.limit) || 50 }));
   });
 
   // RX-1 (Phase F): evolution evidence — flags, outcomes per source, loop PRs, genomes/holdouts, gym per tier, Realm Gates (read-only)

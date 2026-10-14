@@ -43,6 +43,7 @@ import { SelfImprovementRefinementService } from './self-improvement-refinement-
 import { SpecialistPanelService } from './specialist-panel-service';
 import { CommonsProposalReviewService } from './commons-proposal-review-service';
 import { judgmentMode, runJudgment } from './judgment-service';
+import { hasMandatoryProvenance } from './judgment-provenance';
 import { AutonomousGoalGenerator } from './autonomous-goal-generator';
 import { namedPathsExist, proposalPrescreen } from './judgments/proposal-prescreen';
 import { recordForecasts } from './forecasters';
@@ -155,7 +156,9 @@ export class SelfImprovementAutoReviewScheduler {
           if (oracleLaneSkipsPanel(proposal)) continue; // Z1: no panel tokens for oracle lanes (and never parked by the pre-screen)
           // D5 (operator 28-09, met at 52 labelled / 1.9 % wrong): enforce parks a confident 'no'; 'uncertain', an error or no
           // judgment fails open to the panel. The operator can requeue a parked proposal from /decisions (D2).
-          if (judgmentMode(proposalPrescreen.id) === 'enforce' && prescreen?.mode === 'enforce' && prescreen.decision === 'no') {
+          // DI-001 B: parking is an evidence-backed verdict, so it requires recorded provenance; without it the proposal goes
+          // to the panel (the stricter, pre-D5 path) — no gate is weakened.
+          if (judgmentMode(proposalPrescreen.id) === 'enforce' && prescreen?.mode === 'enforce' && prescreen.decision === 'no' && hasMandatoryProvenance(prescreen)) {
             if (this.improvements.parkByPrescreen(proposal.id, prescreen.reason)) result.parked.push(proposal.id);
             continue;
           }

@@ -120,6 +120,27 @@ function addMissingColumns(db: BetterSqlite3Database, tableName: string, columns
   }
 }
 
+/**
+ * DI-001 B: versioned decision provenance (services/judgment-provenance.ts). Additive and idempotent: one nullable column;
+ * existing rows stay NULL (read as 'unrecorded', never backfilled). The trigger gives every NEW row from a writer that does
+ * not supply provenance a 'partial' floor built only from the row's own columns, with the reason for each missing field.
+ * Down (SQLite >= 3.35): DROP TRIGGER IF EXISTS trg_judgments_provenance_floor; ALTER TABLE judgments DROP COLUMN provenance_json;
+ */
+export function ensureJudgmentProvenance(db: BetterSqlite3Database): void {
+  addMissingColumns(db, 'judgments', [{ name: 'provenance_json', definition: 'TEXT' }]);
+  if (!getColumns(db, 'judgments').has('provenance_json')) return;
+  db.exec(`CREATE TRIGGER IF NOT EXISTS trg_judgments_provenance_floor AFTER INSERT ON judgments WHEN NEW.provenance_json IS NULL
+    BEGIN
+      UPDATE judgments SET provenance_json = json_object('v', 1, 'status', 'partial', 'writer', 'uninstrumented',
+        'policy_id', NEW.judgment, 'policy_version', NULL, 'prompt_id', NULL, 'prompt_version', NULL, 'input_digest', NULL,
+        'model_id', NEW.model, 'model_version', NULL, 'evaluator_version', NULL, 'execution_mode', NEW.mode,
+        'decision_timestamp', NEW.created_at, 'evidence_reference', NEW.subject_type || ':' || NEW.subject_id, 'uncertainty', NULL,
+        'missing', json_object('policy_version', 'writer_not_instrumented', 'prompt_version', 'writer_not_instrumented',
+          'input_digest', 'writer_not_instrumented', 'evaluator_version', 'writer_not_instrumented'))
+      WHERE rowid = NEW.rowid;
+    END`);
+}
+
 function tableSql(db: BetterSqlite3Database, tableName: string): string | null {
   const row = db.prepare(`
     SELECT sql FROM sqlite_master
@@ -1382,6 +1403,18 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_judgments_subject ON judgments(judgment, subject_id, created_at);
+    -- DI-001 C: discoveries left unjudged by DISCOVERY_RELEVANCE_PAUSED. Decision identity = (event_id, policy), the PK.
+    -- unjudged → rejudging (fence + 1 per claim, claimed_at; a stale claim is reclaimed after a timeout) → judged | skipped |
+    -- failed. A decision commits only with the current fence; judgment_id is UNIQUE (one judgment decides one row).
+    CREATE TABLE IF NOT EXISTS discovery_relevance_backlog (
+      event_id TEXT NOT NULL, policy TEXT NOT NULL, ref TEXT NOT NULL,
+      path TEXT NOT NULL CHECK (path IN ('pending', 'rejected', 'unit')), event_json TEXT NOT NULL,
+      state TEXT NOT NULL DEFAULT 'unjudged' CHECK (state IN ('unjudged', 'rejudging', 'judged', 'skipped', 'failed')),
+      fence INTEGER NOT NULL DEFAULT 0, claimed_at TEXT, attempts INTEGER NOT NULL DEFAULT 0, judgment_id TEXT UNIQUE, decision TEXT,
+      paused_at TEXT NOT NULL, judged_at TEXT, PRIMARY KEY (event_id, policy)
+    );
+    CREATE INDEX IF NOT EXISTS idx_discovery_relevance_backlog_ref ON discovery_relevance_backlog(ref, state);
+    CREATE INDEX IF NOT EXISTS idx_discovery_relevance_backlog_state ON discovery_relevance_backlog(state, paused_at);
     CREATE TABLE IF NOT EXISTS registry_agents (
       name TEXT PRIMARY KEY, host TEXT NOT NULL DEFAULT '', runtime TEXT NOT NULL DEFAULT '', framework TEXT NOT NULL DEFAULT '',
       version TEXT NOT NULL DEFAULT '', capabilities_json TEXT NOT NULL DEFAULT '[]', api_endpoint TEXT NOT NULL DEFAULT '',
@@ -1391,6 +1424,9 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   // TG-001 integrity addendum: sha256 of the frozen analysis manifest, written in the freeze transaction
   addMissingColumns(db, 'tg_experiments', [{ name: 'analysis_sha256', definition: 'TEXT' }]);
   addMissingColumns(db, 'tg_attempts', [{ name: 'first_claimed_at', definition: 'TEXT' }]); // B27: first physical attempt
+  ensureJudgmentProvenance(db);
+  // DI-001: when the members' context was assembled (claim) and whether the proposal already had an outcome then; null = unrecorded
+  addMissingColumns(db, 'committee_jobs', [{ name: 'context_at', definition: 'TEXT' }, { name: 'outcome_known_at_context', definition: 'INTEGER' }]);
   // Add missing columns BEFORE creating indexes that reference them — a stale
   // pre-existing self_improvements table (no fingerprint) otherwise breaks
   // CREATE INDEX idx_self_improve_fingerprint with "no such column".
@@ -1407,6 +1443,10 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   addMissingColumns(db, 'llm_model_calls', [{ name: 'purpose', definition: 'TEXT' }, { name: 'experiment_id', definition: 'TEXT' },
     { name: 'cost_basis', definition: 'TEXT' }, { name: 'list_price_cost', definition: 'REAL' }, { name: 'marginal_cost', definition: 'REAL' }]);
   addMissingColumns(db, 'gym_mutant_holdout', [{ name: 'epoch', definition: 'INTEGER NOT NULL DEFAULT 0' }]);
+  // Holdout epoch 1: calibration rows never decide; one provenance row per manifest-frozen epoch (holdout-manifest.ts)
+  for (const t of ['gym_holdout', 'gym_mutant_holdout', 'gym_write_test_holdout']) addMissingColumns(db, t, [{ name: 'role', definition: "TEXT NOT NULL DEFAULT 'deciding'" }]);
+  db.exec(`CREATE TABLE IF NOT EXISTS gym_holdout_freezes (epoch INTEGER PRIMARY KEY, manifest_sha256 TEXT NOT NULL, frozen_at TEXT NOT NULL, origin_sha TEXT, version TEXT,
+    holdout_size INTEGER NOT NULL, counts_json TEXT NOT NULL, operator TEXT, manifest_json TEXT NOT NULL)`);
   // B8: the failure clusters a dream mutant cites (evidence-or-no-op, DREAM_EVIDENCE_MUTATIONS)
   addMissingColumns(db, 'maker_genomes', [{ name: 'evidence_clusters', definition: 'TEXT' }]);
   // KE-3: the knowledge units (expert_identities ids) whose titles the dream that wrote this mutant injected; null = none
@@ -1420,6 +1460,8 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
     { name: 'graded_mean_parent', definition: 'REAL' }, { name: 'graded_mean_mutant', definition: 'REAL' }, { name: 'graded_p', definition: 'REAL' },
     { name: 'graded_decision', definition: 'TEXT' }, { name: 'graded_refs', definition: 'INTEGER' },
   ]);
+  // P0 (13-10): the gate policy and the eligible-evidence summary (epoch, counts, task family/difficulty) each trial decision rested on
+  addMissingColumns(db, 'genome_trial_results', [{ name: 'gate_policy', definition: 'TEXT' }, { name: 'evidence_json', definition: 'TEXT' }]);
   // P1c: collapse duplicate fingerprints among LIVE rows (keep the newest) so the partial UNIQUE index never aborts.
   // Only live statuses can collide with that index. This used to delete every older row sharing a fingerprint
   // regardless of status, on every boot: parked/finished proposals vanished when a later one with the same text
@@ -2328,7 +2370,9 @@ function createSubAgentContextTables(db: BetterSqlite3Database) {
   `);
 }
 
-if (require.main === module) {
+// only when migrate itself is the entry point: in a bundle every module is `require.main`, and a bundled operator script
+// must never migrate the DB_PATH database as a side effect (holdout-freeze dry run, 14-10)
+if (require.main === module && /migrate\.[cm]?[jt]s$/.test(process.argv[1] ?? '')) {
   const dbPath = resolveDbPath();
   const db = new Database(dbPath);
   db.pragma('foreign_keys = ON');

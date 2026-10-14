@@ -204,6 +204,20 @@ export interface EvolutionEvidence {
   /** E3: GET /api/health/provenance-dag without its edge list — services/provenance-dag.ts provenanceSummary */
   provenance?: ProvenanceSummary;
   panel_attempts?: PanelAttemptMetrics;
+  /** P0 §5: maker token accounting per runtime × model (services/maker-token-accounting.ts); old leases count as unrecorded */
+  maker_tokens?: MakerTokenAccountingEvidence;
+}
+
+export type TokenMeasurementSource = 'provider_reported' | 'runtime_log' | 'estimated' | 'unavailable';
+export interface MakerTokenAccountingEvidence {
+  since: string; leases: number; note: string;
+  by_runtime_model: Array<{ runtime: string; model: string; leases: number; unrecorded: number; tokens_measured: number; tokens_measured_share: number | null;
+    cost_known: number; cost_known_share: number | null; cost_partial: number;
+    /** per field: n = leases that reported it; sum/mean over those only (null when none did) */
+    fields: Record<'input_tokens' | 'output_tokens' | 'cache_read_tokens' | 'cache_write_tokens' | 'reasoning_tokens' | 'total_tokens', { n: number; sum: number | null; mean: number | null }>;
+    /** estimated cost per LLM_PRICE_PER_MTOK price version; never summed across versions */
+    cost_by_price_version: Array<{ price_version: string; leases: number; partial: number; estimated_cost_usd: number }>;
+    by_source: Record<TokenMeasurementSource, number> }>;
 }
 
 /** E3: one answer of the provenance DAG — a value, or UNKNOWN with the reason (never 0 for a missing link) */
@@ -262,8 +276,42 @@ export interface EfficiencyView {
   ledger: Array<{ day: string; consumer: string; cloud_tokens: number; local_tokens: number; gpu_seconds: number; jobs: number; wh: number | null; covered_s: number }>;
   hosts: Array<{ host: string; samples: number; last_sample: string | null; avg_watts: number | null; gpu_kwh: number | null; covered_h: number; coverage_pct?: number }>;
   north_star: { weeks: Array<{ week_start: string; verified: number; cloud_m_tokens: number; local_kwh: number | null; local_covered_h: number; per_m_tokens: number | null; per_kwh: number | null;
-    local_verified?: number; coverage_pct?: number | null; per_kwh_reason?: string | null }> };
+    local_verified?: number; coverage_pct?: number | null; per_kwh_reason?: string | null;
+    /** efficiency.cloud_tokens version; superseded keeps the v1 (maker double-counted) values beside the corrected ones */
+    metric_version?: number; superseded?: { metric_version: number; cloud_m_tokens: number; per_m_tokens: number | null; correction: 'ACCOUNTING_CORRECTION' } }> };
   coverage?: { jobs_pct: number | null; window_pct: number | null };
+  notes: string[];
+  cost_per_verified: CostPerVerified;
+}
+
+/** Verified cost ledger (server services/cost-ledger.ts): UNKNOWN parts are null with status 'UNKNOWN', never 0. */
+export interface CostMetricRef { id: string; version: number; hash: string }
+export interface CostMeasure { value: number | null; unit: string; status: 'measured' | 'partial' | 'UNKNOWN'; coverage: number | null; note?: string }
+export interface CostPerUnit { value: number | null; status: 'measured' | 'lower_bound' | 'UNKNOWN'; reason?: string }
+type CostParts<T> = { cloud_tokens: T; task_path_cloud_tokens: T; local_tokens: T; local_gpu_kwh: T; review_minutes: T; usd: T };
+export interface CostScope {
+  metric: CostMetricRef; scope: 'task' | 'reviewer' | 'merge' | 'surviving_pr'; definition: string; n: number; censored: number | null; censored_reason: string | null;
+  numerator: CostParts<CostMeasure>; per_unit: CostParts<CostPerUnit>;
+  successful_only: { events: number; cloud_tokens: number; per_unit: number | null };
+  with_duplicate: { cloud_tokens: number; per_unit: number | null; delta_tokens: number; correction: 'ACCOUNTING_CORRECTION' };
+}
+interface CostShareWindow { value: number | null; numerator_tokens: number; denominator_tokens: number; with_duplicate: number | null }
+export interface CostPerVerified {
+  at: string; window: { since: string; until: string; days: number; lost_windows: ReadonlyArray<{ from: string; to: string; ref: string }>; lost_hours_in_window: number };
+  metrics: Array<CostMetricRef & { definition: string; supersedes?: number; reason?: string }>;
+  scopes: CostScope[];
+  population: { definition: CostMetricRef; members: number; verified: number; open: number; runs: number; prs: number; merged: number; surviving: number; survival_pending: number;
+    unattributed: { events: number; cloud_tokens: number; note: string } };
+  shares: { unverified_run_tokens: CostShareWindow & { metric: CostMetricRef; window: CostShareWindow; correction: string; note: string };
+    reviewer_no_verdict: CostShareWindow & { metric: CostMetricRef; leases: number; window: CostShareWindow & { leases: number }; correction: string; note: string } };
+  by_consumer: Array<{ consumer: string; locality: 'cloud' | 'local'; events: number; events_tokens_known: number; tokens: number; output_split_known: number; coverage: number }>;
+  usage: { events: number; by_source: Array<{ source: string; events: number; events_tokens_known: number; tokens: number; first_record: string | null; window_coverage: number }>;
+    mirrors_excluded: Array<{ source: string; rule: string; rows: number; tokens: number; owner_kind: string }>; shared_groups: number; shared_events: number;
+    owners: number; sum_over_owners: number; total_tokens: number; owners_sum_equals_total: boolean };
+  tool_calls: { events: number; linked: number; linked_share: number | null; by_role: Record<string, number>; unlinked: { no_task: number; no_lease_id: number; lease_missing: number }; rule: string };
+  corrections: Array<{ metric: CostMetricRef; from: CostMetricRef; classification: 'ACCOUNTING_CORRECTION'; reason: string; v1_cloud_tokens: number; v2_cloud_tokens: number; delta_tokens: number; note: string }>;
+  operational_savings: { verified: never[]; note: string };
+  price_list: { entries: number; as_of: string | null; note: string };
   notes: string[];
 }
 
