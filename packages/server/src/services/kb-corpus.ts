@@ -95,7 +95,7 @@ export async function gatePassages(db: Database, subject: { type: string; id: st
   const all = new Set(pages.map((p) => p.path));
   const questions = Object.fromEntries(pages.map((_, i) => [`p${i}`, { type: 'noul' as const, instructions: `Does \`p${i}\` contain information that helps a reviewer judge the proposal in \`question\`?` }]));
   const def: JudgmentDef = {
-    id: 'kb_passage_relevance', questions,
+    id: 'kb_passage_relevance', policyVersion: '1', questions,
     decide: (a) => {
       const verdicts = pages.map((p, i) => `${p.path}@${(a[`p${i}`]?.noul ?? 1).toFixed(2)}`);
       return { decision: pages.some((_, i) => (a[`p${i}`]?.noul ?? 1) >= 0.5) ? 'yes' : 'no', reason: verdicts.join(' ') };

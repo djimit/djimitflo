@@ -117,7 +117,7 @@ export function termYields(db: Database, since: string): { terms: Map<string, { 
 
 const rate = (c: { n: number; yes: number }) => Math.round((1000 * c.yes) / c.n) / 1000;
 
-export function interestProfile(db: Database, now = Date.now()): {
+export function interestProfile(db: Database, now = Date.now(), env: NodeJS.ProcessEnv = process.env): {
   terms: string[]; sources: Record<string, number>; yields: TermYield[]; baseline: { yield: number | null; n: number };
   rule: { window_days: number; min_n: number; cap: number; trial_slots: number; trial_max_days: number; cooldown_days: number; gap_trial_slots: number; gap_kill_rule: string };
   cooldown: Cooldown[];
@@ -154,6 +154,9 @@ export function interestProfile(db: Database, now = Date.now()): {
   const running: Array<[string, string]> = [];
   for (const [t, since] of prevTrials) {
     if (!unmeasured(t)) { if (!passes(t)) cooldown.set(t, nowIso); } // measured: the yield gate decided
+    // DI-001 C: while DISCOVERY_RELEVANCE_PAUSED nothing can be measured, so a pause never runs a trial out of time:
+    // its clock restarts, and it gets its full TRIAL_MAX_DAYS once judging resumes (missing data is not a failed trial)
+    else if (env.DISCOVERY_RELEVANCE_PAUSED === 'true') running.push([t, nowIso]);
     else if (now - Date.parse(since) > TRIAL_MAX_DAYS * 86_400_000) cooldown.set(t, nowIso); // ran out of time
     else running.push([t, since]);
   }
@@ -183,10 +186,10 @@ export function interestProfile(db: Database, now = Date.now()): {
 }
 
 /** Enqueue today's profile once (the date is the aggregate id). */
-export function publishInterestProfile(db: Database, now = Date.now()): boolean {
+export function publishInterestProfile(db: Database, now = Date.now(), env: NodeJS.ProcessEnv = process.env): boolean {
   const aggregateId = `interests-${new Date(now).toISOString().slice(0, 10)}`;
   if (db.prepare('SELECT 1 FROM event_outbox WHERE aggregate_id = ? LIMIT 1').get(aggregateId)) return false;
-  const profile = interestProfile(db, now);
+  const profile = interestProfile(db, now, env);
   if (!profile.terms.length && !profile.cooldown.length) return false; // a cool-down must survive a day without terms
   enqueueEvent(db, { type: 'djimitflo.feedback.interests', aggregateId, payload: profile });
   return true;

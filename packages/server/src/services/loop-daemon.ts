@@ -25,6 +25,7 @@ import { recordMakerCall } from './model-call-ledger';
 import { strategyGenomeFor } from './genome-registry';
 import { banditSpecies, chooseSpecies, speciesKey } from './runtime-bandit';
 import { recordFitnessShadow } from './fitness-view';
+import { buildProvenance, provenanceJson } from './judgment-provenance';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { authorityGateForGoal } from './authority-gate';
 import { remoteMakerWaitMs } from '../execution/executors/remote-maker-executor';
@@ -102,6 +103,37 @@ export function reviewerRetryable(role: string, status: string | undefined, fail
  * The daemon runs in-process, using the existing continueLoopRun machinery. It
  * starts on server boot (after recoverInterruptedRuns + resumeInterruptedRuns).
  */
+
+/**
+ * DI-001 (PR #828: task selection is deterministic and no propensity was logged → BLOCKED_CAUSAL_IDENTIFICATION). The policy
+ * that orders the goal queue (loadQueue: risk_class desc, created_at asc, first `slots` not already executing). It is
+ * deterministic, so the chosen goal's selection probability is 1.0 — recorded honestly, not invented. Bump `version` whenever
+ * loadQueue's ordering or the slot rule changes.
+ */
+export const SELECTION_POLICY = { id: 'loop-daemon.queue:risk_desc_created_asc', version: 1 } as const;
+const MAX_LOGGED_CANDIDATES = 200;
+
+/** One additive `selection_propensity` judgment per dispatched goal: candidate set, chosen, p, policy. Telemetry only. */
+export function recordSelectionPropensity(db: Database, tickId: string, candidates: string[], chosen: string, rank: number, slots: number, now = new Date()): void {
+  const at = now.toISOString();
+  const reason = `deterministic queue order, rank ${rank} of ${candidates.length}`;
+  const answers = { chosen, propensity: 1, deterministic: true, policy_id: SELECTION_POLICY.id, policy_version: SELECTION_POLICY.version, rank, slots,
+    candidate_count: candidates.length, candidates: candidates.slice(0, MAX_LOGGED_CANDIDATES), candidates_truncated: candidates.length > MAX_LOGGED_CANDIDATES };
+  // DI-001 B (#824): versioned provenance like every instrumented judgment writer. No model decides here (model_id stays null).
+  const provenance = provenanceJson(buildProvenance({
+    writer: 'loop-daemon.selection', mode: 'shadow', state: { candidates, slots }, subject: { type: 'goal', id: chosen }, stateHash: tickId, at,
+    decision: 'selected', reason, evaluator: `${SELECTION_POLICY.id}/v${SELECTION_POLICY.version}`,
+    def: { id: SELECTION_POLICY.id, policyVersion: String(SELECTION_POLICY.version), questions: {}, decide: loadQueueOrder },
+  }));
+  db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, model, created_at, provenance_json)
+    VALUES (?, 'selection_propensity', 'goal', ?, ?, 'shadow', 'selected', ?, ?, ?, ?, ?)`).run(
+    randomUUID(), chosen, tickId, reason, JSON.stringify(answers), 'policy', at, provenance);
+}
+
+/** The ordering loadQueue applies, as a function so the provenance prompt_version hashes the actual rule. */
+function loadQueueOrder(): string {
+  return "ORDER BY CASE risk_class WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 WHEN 'low' THEN 1 ELSE 0 END DESC, created_at ASC; first `slots` not executing";
+}
 
 interface QueueEntry {
   id: string;
@@ -201,8 +233,10 @@ export class LoopDaemon {
       const slots = this.getAvailableSlots();
       // prod 2026-10-01: a goal resumed after an approval is 'decomposed' while it runs, so every tick dispatched it again;
       // the second pass found the running evolve sibling and failed the goal with LOOP_WORKER_EXECUTION_IN_PROGRESS
-      const toStart = queue.filter((g) => !this.executing.has(g.id)).slice(0, slots);
+      const eligible = queue.filter((g) => !this.executing.has(g.id));
+      const toStart = eligible.slice(0, slots);
       let objectiveModeDispatchedThisTick = 0;
+      const tickId = randomUUID(); // DI-001: groups the propensity records of one selection
 
       for (const goal of toStart) {
         // G3.4 authority gate (fail-closed; flag AUTHORITY_GATE).
@@ -275,6 +309,9 @@ export class LoopDaemon {
             enabled: objectiveModeEnabled(),
           });
         }
+
+        // DI-001: log the selection (candidate set + p of the chosen goal under the policy) — telemetry, never blocks dispatch
+        try { recordSelectionPropensity(this.db, tickId, eligible.map((g) => g.id), goal.id, eligible.indexOf(goal), slots); } catch { /* telemetry only */ }
 
         // Non-blocking: start the goal and don't wait for it to finish.
         this.executing.add(goal.id);

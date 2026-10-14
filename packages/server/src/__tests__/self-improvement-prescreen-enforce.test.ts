@@ -8,6 +8,8 @@ import type { SelfImprovementAgentReviewService } from '../services/self-improve
 import { decisionsInbox } from '../services/decisions-inbox';
 import { requeueImprovement } from '../services/improvement-requeue';
 import type { JudgmentRecord } from '../services/judgment-service';
+import { buildProvenance } from '../services/judgment-provenance';
+import { proposalPrescreen } from '../services/judgments/proposal-prescreen';
 
 // D5: the jev pre-screen's verdict is injected; everything else (modes, park, panel, requeue) is the real code
 const judged = vi.hoisted(() => ({ next: null as null | (() => Promise<unknown>) }));
@@ -20,8 +22,10 @@ let db: Database.Database;
 let improvements: SelfImprovementService;
 const reviewMissingSpecialists = vi.fn(async () => undefined);
 const scheduler = () => new SelfImprovementAutoReviewScheduler(db, { reviewMissingSpecialists } as unknown as SelfImprovementAgentReviewService);
-const verdict = (decision: JudgmentRecord['decision'], mode: JudgmentRecord['mode'] = 'enforce') => {
-  judged.next = async () => ({ id: 'j', decision, reason: 'names no concrete file', answers: {}, mode });
+// DI-001 B: a real runJudgment record carries recorded provenance; `provenance: null` models a writer that could not supply it
+const recorded = buildProvenance({ writer: 'test', def: proposalPrescreen, mode: 'enforce', state: {}, subject: { type: 'self_improvement', id: 'x' }, stateHash: 'h', at: new Date().toISOString(), model: 'jev-1.13.0', decision: 'no' });
+const verdict = (decision: JudgmentRecord['decision'], mode: JudgmentRecord['mode'] = 'enforce', provenance: JudgmentRecord['provenance'] = recorded) => {
+  judged.next = async () => ({ id: 'j', decision, reason: 'names no concrete file', answers: {}, mode, provenance });
 };
 const propose = () => improvements.generateFromReflection({ whatFailed: [], lessonsLearned: [], proposedImprovements: ['Improve things somewhere in the platform'] })[0];
 
@@ -43,6 +47,16 @@ it('enforce + a confident no: parked as needs_more_evidence with the pre-screen 
     .toEqual({ mode: 'enforce', decision: 'no', reason: 'prescreen: names no concrete file' });
   // a parked proposal has no panel dissent: it never takes a refinement slot
   expect(improvements.getRefinementEligible(10)).toEqual([]);
+});
+
+it('DI-001 B: enforce + a confident no WITHOUT recorded provenance is not parked: the panel reviews it (fail-closed to the stricter path)', async () => {
+  const p = propose(); verdict('no', 'enforce', null);
+  const result = await scheduler().tick();
+  expect(result.parked).toEqual([]);
+  expect(reviewMissingSpecialists).toHaveBeenCalled();
+  expect(improvements.getImprovement(p.id).status).not.toBe('needs_more_evidence');
+  verdict('no', 'enforce', { ...recorded, status: 'partial', policy_version: null });
+  expect((await scheduler().tick()).parked).toEqual([]);
 });
 
 it('a pre-screen-parked proposal is distinguishable in /decisions and requeue-able (D2)', async () => {
