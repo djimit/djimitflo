@@ -8,6 +8,8 @@ import { runMigrations } from '../database/migrate';
 import { detectStalls, detectStallsWithHealth } from '../services/stall-watch';
 import { listSchedulers, markRun, noteScheduler, resetSchedulers, schedulerHealth } from '../services/scheduler-registry';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
+/** capability chain (stall-watch): a configured environment, so these tests see only the legacy detectors they assert on */
+const C = { DJIMITFLO_SKILLS_DIR: __dirname, DJIMIT_SKILL_TRAINING_EVAL_RUNNER: __filename };
 
 // Cockpit 3.0 adversarial checks: a broken detector, a scheduler that never ticks and a deploy without a verdict must
 // never read as healthy.
@@ -18,23 +20,23 @@ beforeEach(() => { db = new Database(':memory:'); db.exec(schema); runMigrations
 afterEach(() => { db.close(); resetSchedulers(); });
 
 it('a detector whose query fails makes health UNKNOWN, not HEALTHY', () => {
-  expect(detectStallsWithHealth(db, NOW, {}).health).toBe('HEALTHY');
+  expect(detectStallsWithHealth(db, NOW, C).health).toBe('HEALTHY');
   db.exec('DROP TABLE goals');
-  const r = detectStallsWithHealth(db, NOW, {});
+  const r = detectStallsWithHealth(db, NOW, C);
   expect(r.stalls).toEqual([]);
   expect(r.detectors.find((d) => d.name === 'goals')).toMatchObject({ status: 'error' });
   expect(r.health).toBe('UNKNOWN');
-  expect(detectStalls(db, NOW, {})).toEqual([]); // compatible signature
+  expect(detectStalls(db, NOW, C)).toEqual([]); // compatible signature
 });
 
 it('flag-off detectors are not_applicable; any stall is BREACHED', () => {
-  const r = detectStallsWithHealth(db, NOW, {});
+  const r = detectStallsWithHealth(db, NOW, C);
   expect(r.detectors.find((d) => d.name === 'gym')?.status).toBe('not_applicable');
-  expect(detectStallsWithHealth(db, NOW, { EVOLUTION_GYM_ENABLED: 'true' }).health).toBe('BREACHED'); // gym on, no outcome ever
+  expect(detectStallsWithHealth(db, NOW, { ...C, EVOLUTION_GYM_ENABLED: 'true' }).health).toBe('BREACHED'); // gym on, no outcome ever
 });
 
 it('discoveries enabled but never judged is a stall (no telemetry ≠ healthy)', () => {
-  expect(detectStalls(db, NOW, { FRONTIER_EXPERT_SOURCE_UNITS_ENABLED: 'true' }).map((s) => s.subsystem)).toContain('discoveries');
+  expect(detectStalls(db, NOW, { ...C, FRONTIER_EXPERT_SOURCE_UNITS_ENABLED: 'true' }).map((s) => s.subsystem)).toContain('discoveries');
 });
 
 it('deploy done without a post-deploy verdict for 40 min is a stall; verdict_ok clears it', () => {
@@ -42,14 +44,14 @@ it('deploy done without a post-deploy verdict for 40 min is a stall; verdict_ok 
   const write = (...ev: object[]) => fs.writeFileSync(file, ev.map((e) => JSON.stringify(e)).join('\n') + '\n');
   const env = { DJIMITFLO_BUILD_COMMIT: 'abc123def', DEPLOY_LOG_PATH: file };
   write({ at: at(50), event: 'deploying', sha: 'abc123def' }, { at: at(45), event: 'done', sha: 'abc123def' });
-  expect(detectStalls(db, NOW, env).map((s) => s.subsystem)).toEqual(['deploy']);
+  expect(detectStalls(db, NOW, { ...C, ...env }).map((s) => s.subsystem)).toEqual(['deploy']);
   write({ at: at(20), event: 'done', sha: 'abc123def' });
-  expect(detectStalls(db, NOW, env)).toEqual([]); // inside the 40-min window
+  expect(detectStalls(db, NOW, { ...C, ...env })).toEqual([]); // inside the 40-min window
   write({ at: at(50), event: 'done', sha: 'abc123def' }, { at: at(35), event: 'verdict_ok', sha: 'abc123def' });
-  expect(detectStalls(db, NOW, env)).toEqual([]);
+  expect(detectStalls(db, NOW, { ...C, ...env })).toEqual([]);
   write({ at: at(50), event: 'done', sha: 'abc123def' }, { at: at(35), event: 'verdict_ok', sha: 'abc123def' }, { at: at(5), event: 'paused', sha: 'fff000', detail: 'stalls: panel' });
-  expect(detectStalls(db, NOW, env)[0]?.detail).toContain("'paused'");
-  expect(detectStallsWithHealth(db, NOW, { DEPLOY_LOG_PATH: file }).detectors.find((d) => d.name === 'deploy')?.status).toBe('not_applicable'); // no build commit
+  expect(detectStalls(db, NOW, { ...C, ...env })[0]?.detail).toContain("'paused'");
+  expect(detectStallsWithHealth(db, NOW, { ...C, DEPLOY_LOG_PATH: file }).detectors.find((d) => d.name === 'deploy')?.status).toBe('not_applicable'); // no build commit
 });
 
 it('an armed scheduler that never ticks becomes armed_not_ticking after its grace', () => {

@@ -1,7 +1,7 @@
 import { existsSync } from 'fs';
 import { spawnSync } from 'child_process';
 
-const DEFAULT_RUNNER = '/Users/dlandman/agent-skills/common/skill-training-eval-runner/scripts/run_skill_training_eval.mjs';
+export const DEFAULT_SKILL_TRAINING_EVAL_RUNNER = '/Users/dlandman/agent-skills/common/skill-training-eval-runner/scripts/run_skill_training_eval.mjs';
 
 export interface PromotionGateCapability {
   id: string;
@@ -20,7 +20,7 @@ export class SkillTrainingPromotionGate {
       return { passed: true, skipped: true, evidenceRef: null };
     }
 
-    const runner = process.env.DJIMIT_SKILL_TRAINING_EVAL_RUNNER || DEFAULT_RUNNER;
+    const runner = process.env.DJIMIT_SKILL_TRAINING_EVAL_RUNNER || DEFAULT_SKILL_TRAINING_EVAL_RUNNER;
     if (!existsSync(runner)) {
       throw new Error(`SKILL_TRAINING_PROMOTION_GATE_UNAVAILABLE:${runner}`);
     }

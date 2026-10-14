@@ -5,6 +5,8 @@ import { runMigrations } from '../database/migrate';
 import { approvalMessage, buildDigest, inQuietHours, maybeSendDigest, pushApproval, setPushSender } from '../services/operator-push';
 import { TelegramBotService } from '../services/telegram-bot-service';
 import { SECRET_PATTERNS } from '../services/secret-patterns';
+/** capability chain (stall-watch): a configured environment, so the digest's stall line sees only seeded stalls */
+const C = { DJIMITFLO_SKILLS_DIR: __dirname, DJIMIT_SKILL_TRAINING_EVAL_RUNNER: __filename };
 
 let db: Database.Database;
 const sent: Array<{ id: string; text: string; url?: string | null }> = [];
@@ -81,7 +83,7 @@ it('UX-12: a mapped approver approves through the API as themselves; deny asks a
 });
 
 it('UX-13: the digest reports a seeded day and says so honestly on an empty one; sent once per day at the hour', async () => {
-  const empty = buildDigest(db, NOON.getTime(), {});
+  const empty = buildDigest(db, NOON.getTime(), C);
   expect(empty.text).toContain('0 verified, 0 regressed'); expect(empty.text).toContain('Stalls: none');
   const ins = db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, created_at, updated_at) VALUES (?, 'test', 't', 'd', 'r', 'gap_analysis', ?, ?, ?)`);
   ins.run('v1', 'verified', '2026-10-06T08:00:00Z', '2026-10-06T09:00:00Z'); ins.run('r1', 'regressed', '2026-10-06T08:00:00Z', '2026-10-06T09:00:00Z');
