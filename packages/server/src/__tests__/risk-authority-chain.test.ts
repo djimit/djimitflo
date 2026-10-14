@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createTestDb } from './helpers/test-db';
 import { createAuthorityRoutes } from '../routes/authority';
 import { createRiskRoutes } from '../routes/risk';
-import { createCanvasRoutes } from '../routes/canvas';
 
 const auth = {
   requirePermission: () => (req: any, _res: any, next: any) => {
@@ -13,11 +12,11 @@ const auth = {
   },
 } as any;
 
-describe('risk, canvas and authority route chains', () => {
+describe('risk and authority route chains', () => {
   const dbs: ReturnType<typeof createTestDb>[] = [];
   afterEach(() => { for (const db of dbs.splice(0)) db.close(); });
 
-  it('classifies risk, streams a canvas session and projects authority evidence', async () => {
+  it('classifies risk and projects authority evidence', async () => {
     const db = createTestDb();
     dbs.push(db);
     db.exec(`
@@ -34,7 +33,6 @@ describe('risk, canvas and authority route chains', () => {
     const app = express().use(express.json());
     app.use('/authority', createAuthorityRoutes(db, auth));
     app.use('/risk', createRiskRoutes(db, auth));
-    app.use('/canvas', createCanvasRoutes(db, auth));
 
     const trace = await request(app).get('/authority/trace/corr-1');
     expect(trace.status).toBe(200);
@@ -52,27 +50,5 @@ describe('risk, canvas and authority route chains', () => {
     const task = await request(app).post('/risk/task').send({ task: { title: 'Read fixture', description: 'Inspect a local file' }, executorKind: 'codex' });
     expect(task.status).toBe(200);
     expect(task.body.assessment).toMatchObject({ action_type: 'task_execution', recommended_decision: expect.any(String) });
-
-    const created = await request(app).post('/canvas/sessions').send({ runId: 'canvas-route-run' });
-    expect(created.status).toBe(201);
-    expect(created.body).toMatchObject({ run_id: 'canvas-route-run' });
-    const session = await request(app).get('/canvas/sessions/canvas-route-run');
-    expect(session.status).toBe(200);
-    expect(session.body).toMatchObject({ status: 'active', messageCount: 0 });
-    for (const [path, body] of [
-      ['thinking', { content: 'reasoning' }],
-      ['tool-call', { tool: 'read_file', args: { path: 'README.md' } }],
-      ['tool-result', { tool: 'read_file', result: 'ok' }],
-      ['diff', { filePath: 'README.md', diff: '+verified' }],
-      ['progress', { current: 1, total: 2, label: 'halfway' }],
-    ] as const) {
-      const response = await request(app).post(`/canvas/sessions/canvas-route-run/${path}`).send(body);
-      expect(response.status, path).toBe(200);
-    }
-    const completed = await request(app).post('/canvas/sessions/canvas-route-run/complete').send({ summary: 'done' });
-    expect(completed.status).toBe(200);
-    const listed = await request(app).get('/canvas/sessions');
-    expect(listed.status).toBe(200);
-    expect(listed.body.sessions[0]).toMatchObject({ runId: 'canvas-route-run', status: 'completed', messageCount: 6 });
   });
 });

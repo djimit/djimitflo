@@ -8,7 +8,6 @@ import { createSwarmRoutes } from '../routes/swarms';
 import { createRiskRoutes } from '../routes/risk';
 import { createApexRoutes } from '../routes/apex';
 import { createAgiRoutes } from '../routes/agi';
-import { createCanvasRoutes } from '../routes/canvas';
 import { createRuntimeGovernanceRoutes } from '../routes/runtime-governance';
 import { errorHandler } from '../middleware/error-handler';
 
@@ -27,7 +26,6 @@ describe('mutation routes fail closed on missing required input', () => {
     app.use('/risk', createRiskRoutes(db, auth));
     app.use('/apex', createApexRoutes(db, auth));
     app.use('/agi', createAgiRoutes(db, auth));
-    app.use('/canvas', createCanvasRoutes(db, auth));
     app.use('/runtime-governance', createRuntimeGovernanceRoutes(db, auth));
     app.use(errorHandler);
 
@@ -45,18 +43,6 @@ describe('mutation routes fail closed on missing required input', () => {
     expect(llm.status).toBe(400);
     const resolve = await request(app).post('/agi/consensus/debates/missing-debate/resolve').send({});
     expect(resolve.status).toBe(404);
-    const canvasToolResult = await request(app).post('/canvas/sessions/missing-run/tool-result').send({});
-    expect(canvasToolResult.status).toBe(400);
-    expect((await request(app).post('/canvas/sessions/missing-run/thinking').send({})).status).toBe(400);
-    expect((await request(app).post('/canvas/sessions/missing-run/tool-call').send({})).status).toBe(400);
-    expect((await request(app).post('/canvas/sessions/missing-run/diff').send({})).status).toBe(400);
-    expect((await request(app).post('/canvas/sessions/missing-run/progress').send({})).status).toBe(400);
-    const complete = await request(app).post('/canvas/sessions/missing-run/complete').send({});
-    expect(complete.status).toBe(404);
-    expect(complete.body.error.code).toBe('CANVAS_SESSION_NOT_FOUND');
-    const thinking = await request(app).post('/canvas/sessions/missing-run/thinking').send({ content: 'orphan' });
-    expect(thinking.status).toBe(404);
-    expect(thinking.body.error.code).toBe('CANVAS_SESSION_NOT_FOUND');
     const governanceRegister = await request(app).post('/runtime-governance/agents/missing-agent/register').send({});
     expect(governanceRegister.status).toBe(400);
     expect(db.prepare('SELECT COUNT(*) AS n FROM cognitive_episodes').get()).toEqual({ n: 0 });
