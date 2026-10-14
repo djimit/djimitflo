@@ -61,10 +61,8 @@ import { createResearchRoutes } from './research';
 import { createTelegramRoutes } from './telegram';
 import { TelegramApiService } from '../services/telegram-api-service';
 import { createSBOMRoutes } from './sbom';
-import { createGovernanceFeedbackRoutes } from './governance-feedback';
 import { createRepositoryIndexRoutes } from './repository-index';
 import { createExplainerRoutes } from './explainer';
-import { createConsoleRoutes } from './console';
 import { createApexRoutes } from './apex';
 import { createAgentSocialRuntimeRoutes, createSwarmOrchestrationRoutes } from './swarm-orchestration';
 import { createSelfImprovementRoutes } from './self-improvement';
@@ -226,10 +224,8 @@ export function createRoutes(
     { prefix: '/meta', middleware: [requireAuth], router: createMetaOrchestrationRoutes(db, auth, metaOrchestration) },
     { prefix: '/traceability', middleware: [rateLimit({ windowMs: 60_000, limit: 30 }), requireAuth], router: createTraceabilityRoutes() },
     { prefix: '/sbom', middleware: [requireAuth], router: createSBOMRoutes(db, auth) },
-    { prefix: '/governance-feedback', middleware: [requireAuth], router: createGovernanceFeedbackRoutes(db, auth, wsService) },
     { prefix: '/repo-index', middleware: [requireAuth], router: createRepositoryIndexRoutes(db, auth) },
     { prefix: '/explainer', middleware: [requireAuth], router: createExplainerRoutes(db, auth) },
-    { prefix: '/console', middleware: [requireAuth], router: createConsoleRoutes(db, auth) },
     { prefix: '/council', middleware: [requireAuth], router: createCouncilRoutes(db, auth) },
     { prefix: '/segml/federation', middleware: [requireAuth], router: createSegmlFederationRoutes(db, auth) },
     { prefix: '/organizations', middleware: [requireAuth], router: createOrganizationRoutes(db, requireAuth, authService, auditService) },
