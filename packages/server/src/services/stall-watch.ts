@@ -104,6 +104,12 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
   });
   // 5. fleet discoveries stopped (publishers run daily). Never judged at all while enabled = no telemetry, also a stall.
   run('discoveries', env.FRONTIER_EXPERT_SOURCE_UNITS_ENABLED === 'true', () => {
+    // DI-001 C: while DISCOVERY_RELEVANCE_PAUSED nothing is judged on purpose; a stall is then publishers that stopped sending
+    if (env.DISCOVERY_RELEVANCE_PAUSED === 'true') {
+      const received = one<{ t: string | null }>("SELECT MAX(occurred_at) AS t FROM external_events WHERE event_type LIKE 'discovery.%'")?.t ?? null;
+      if (!received || received < ago(now, 36)) out.push({ subsystem: 'discoveries', since: received, detail: 'no fleet discovery received for > 36 h (discovery_relevance is paused: DISCOVERY_RELEVANCE_PAUSED)' });
+      return;
+    }
     const last = one<{ t: string | null }>("SELECT MAX(created_at) AS t FROM judgments WHERE judgment = 'discovery_relevance'")?.t ?? null;
     if (!last || last < ago(now, 36)) out.push({ subsystem: 'discoveries', since: last, detail: last ? 'no fleet discovery judged for > 36 h (publishers on Mac mini / Eve-V / workstation)' : 'source units are enabled but no fleet discovery was ever judged' });
   });

@@ -1403,6 +1403,18 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_judgments_subject ON judgments(judgment, subject_id, created_at);
+    -- DI-001 C: discoveries left unjudged by DISCOVERY_RELEVANCE_PAUSED. Decision identity = (event_id, policy), the PK.
+    -- unjudged → rejudging (fence + 1 per claim, claimed_at; a stale claim is reclaimed after a timeout) → judged | skipped |
+    -- failed. A decision commits only with the current fence; judgment_id is UNIQUE (one judgment decides one row).
+    CREATE TABLE IF NOT EXISTS discovery_relevance_backlog (
+      event_id TEXT NOT NULL, policy TEXT NOT NULL, ref TEXT NOT NULL,
+      path TEXT NOT NULL CHECK (path IN ('pending', 'rejected', 'unit')), event_json TEXT NOT NULL,
+      state TEXT NOT NULL DEFAULT 'unjudged' CHECK (state IN ('unjudged', 'rejudging', 'judged', 'skipped', 'failed')),
+      fence INTEGER NOT NULL DEFAULT 0, claimed_at TEXT, attempts INTEGER NOT NULL DEFAULT 0, judgment_id TEXT UNIQUE, decision TEXT,
+      paused_at TEXT NOT NULL, judged_at TEXT, PRIMARY KEY (event_id, policy)
+    );
+    CREATE INDEX IF NOT EXISTS idx_discovery_relevance_backlog_ref ON discovery_relevance_backlog(ref, state);
+    CREATE INDEX IF NOT EXISTS idx_discovery_relevance_backlog_state ON discovery_relevance_backlog(state, paused_at);
     CREATE TABLE IF NOT EXISTS registry_agents (
       name TEXT PRIMARY KEY, host TEXT NOT NULL DEFAULT '', runtime TEXT NOT NULL DEFAULT '', framework TEXT NOT NULL DEFAULT '',
       version TEXT NOT NULL DEFAULT '', capabilities_json TEXT NOT NULL DEFAULT '[]', api_endpoint TEXT NOT NULL DEFAULT '',
