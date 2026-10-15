@@ -3,6 +3,7 @@
  */
 
 import { Router } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import { ROLE_PERMISSIONS, type UserRole } from '@djimitflo/shared';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
@@ -16,6 +17,7 @@ import { createError } from '../middleware/error-handler';
 import { requeueImprovement } from '../services/improvement-requeue';
 import { decisionsInbox, dismissRequeue, labelPrescreen, setTelegramIdentity } from '../services/decisions-inbox';
 import { adjudicateAttribution } from '../services/outcome-attribution';
+import { recordRelevanceLabel, relevanceQueue } from '../services/discovery-relevance-labels';
 
 function boundedLimit(value: unknown, fallback = 100): number {
   if (value === undefined) return fallback;
@@ -28,6 +30,7 @@ function boundedLimit(value: unknown, fallback = 100): number {
 
 export function createSelfImprovementRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
+  router.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false })); // per-router limiter CodeQL can see; /api also caps 300/min
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
 
   const docs = new AutonomousDocsService(db);
@@ -126,6 +129,28 @@ export function createSelfImprovementRoutes(db: Database, auth?: AuthMiddleware)
     } catch (error) {
       next(error instanceof Error && error.message === 'ATTRIBUTION_AUDIT_NOT_SAMPLED' ? createError(404, "Run is not in this week's attribution audit sample", error.message) : error);
     }
+  });
+  // DI-001 P3: blind discovery-relevance labelling (BENCHMARK §6). Cards carry title/note/source/link only — never jev,
+  // the taxonomy filter, admission or an earlier label. A manifest whose sha256 does not match the freeze is refused (503).
+  const relevanceError = (error: unknown) => {
+    const code = error instanceof Error ? error.message : '';
+    if (code === 'EVAL_SAMPLE_SHA_MISMATCH' || code === 'EVAL_SAMPLE_INVALID') return createError(503, 'Protected evaluation sample failed its integrity check; labelling is refused', code);
+    if (code === 'LABEL_REF_UNKNOWN' || code === 'LABEL_NOT_IN_OVERLAP') return createError(404, code === 'LABEL_REF_UNKNOWN' ? 'Not a labellable discovery' : 'Not in the re-label overlap subset', code);
+    if (code === 'LABEL_ALREADY_RECORDED' || code === 'LABEL_RELABEL_NOT_DUE') return createError(409, code === 'LABEL_ALREADY_RECORDED' ? 'A different label is already recorded for this pass' : 'Re-label is not due yet (7 days after the first label)', code);
+    if (code.startsWith('LABEL_')) return createError(400, code, 'VALIDATION_ERROR');
+    return error;
+  };
+  router.get('/discovery-labels/next', requirePermission('read:evidence'), (req, res, next) => {
+    try { res.json(relevanceQueue(db, Number(req.query.limit ?? 5))); } catch (error) { next(relevanceError(error)); }
+  });
+  router.post('/discovery-labels', requirePermission('write:governance'), (req, res, next) => {
+    try {
+      const actor = req.user?.sub || req.user?.email;
+      if (!actor) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
+      const { ref, pass, label, seconds } = req.body ?? {};
+      const result = recordRelevanceLabel(db, { ref, pass, label, seconds }, actor);
+      res.status(result.recorded ? 201 : 200).json(result);
+    } catch (error) { next(relevanceError(error)); }
   });
   // D2: the operator decides a requeue candidate needs no requeue — audited (requeue_dismiss judgment), the row leaves /decisions
   router.post('/proposals/:id/requeue-dismiss', requirePermission('write:governance'), (req, res, next) => {

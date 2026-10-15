@@ -13,6 +13,7 @@ export const ACTION_PERMISSIONS = {
   labelPrescreen: 'write:governance', // POST /self-improve/proposals/:id/prescreen-label
   dismissRequeue: 'write:governance', // POST /self-improve/proposals/:id/requeue-dismiss
   auditAttribution: 'write:governance', // POST /self-improve/attribution-audit/:runId
+  labelDiscoveryRelevance: 'write:governance', // POST /self-improve/discovery-labels
   memoryReview: 'approve:task', // POST /swarms/memory/candidates/:id/promote|reject
   telegramIdentity: 'manage:config', // PUT|DELETE /self-improve/telegram-identities/:id
   mcpCreateServer: 'manage:config', // POST /mcp/servers

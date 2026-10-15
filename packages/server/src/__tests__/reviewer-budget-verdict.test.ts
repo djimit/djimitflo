@@ -78,3 +78,22 @@ it('existing semantics kept: an explicit insufficient_evidence stays insufficien
   expect(loops.extractCheckerVerdict(prose)).toBe('insufficient_evidence');
   expect(loops.extractCheckerNotes(prose)).toBe('All good, approve.');
 });
+
+/**
+ * Prod 10-13 lease d32721a7 (the only post-#716 no-verdict reviewer): one step, exit 0, finish reason 'stop', and the only
+ * text part was a leaked tool-call fragment. It is stored as insufficient_evidence (unchanged); checkerVerdictParsed tells
+ * that apart from a reviewer that explicitly said insufficient_evidence (docs/research/di-001/REVIEWER_NO_VERDICT.md).
+ */
+it('checkerVerdictParsed: a leaked tool-call fragment or an unknown verdict is not a parsed verdict; an explicit one is', () => {
+  const part = (text: string) => JSON.stringify({ type: 'text', part: { type: 'text', text } });
+  const leaked = [JSON.stringify({ type: 'step_start', part: { type: 'step-start' } }),
+    part('</arg_key><arg_value>/data/loop-worktrees/a4c792b9/security_checker-d32721a7/packages/server/src/services/evolution-lineage.ts</arg_value></tool_call>'),
+    JSON.stringify({ type: 'step_finish', part: { type: 'step-finish', reason: 'stop', tokens: { total: 16386, input: 15263, output: 99 } } })].join('\n');
+  expect(loops.extractCheckerVerdict(leaked)).toBe('insufficient_evidence');
+  expect(loops.checkerVerdictParsed(leaked)).toBe(false);
+  expect(loops.checkerVerdictParsed(part('{"verdict":"approved","notes":"lgtm"}'))).toBe(false); // an invalid verdict is never valid
+  expect(loops.extractCheckerVerdict(part('{"verdict":"approved","notes":"lgtm"}'))).toBe('insufficient_evidence');
+  expect(loops.checkerVerdictParsed(part('Format: {"verdict":"accepted|needs_revision|rejected|insufficient_evidence","notes":"..."}'))).toBe(false);
+  expect(loops.checkerVerdictParsed(part('{"verdict":"insufficient_evidence","notes":"no diff available"}'))).toBe(true);
+  expect(loops.checkerVerdictParsed(part('{"verdict":"accepted","notes":"tests cover the branch"}'))).toBe(true);
+});
