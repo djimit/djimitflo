@@ -366,7 +366,7 @@ export type OperatorCockpit = {
   /** Workstream B: capability chain per watched capability (server: services/capability-chain.ts) */
   capabilities?: CapabilityVerdict[];
 };
-export type CapabilityState = 'HEALTHY' | 'IDLE_EXPECTED' | 'BLOCKED' | 'STALLED' | 'MISCONFIGURED' | 'UNKNOWN';
+export type CapabilityState = 'HEALTHY' | 'IDLE_EXPECTED' | 'DISABLED_BY_POLICY' | 'UNCONFIGURED' | 'BLOCKED' | 'STALLED' | 'MISCONFIGURED' | 'UNKNOWN';
 export type CapabilityChainLink = 'CONFIGURED' | 'ENABLED' | 'DEPENDENCIES_READY' | 'SCHEDULED' | 'EXECUTED' | 'OUTCOME_PERSISTED';
 export type CapabilityVerdict = { component: string; state: CapabilityState; link: CapabilityChainLink;
   chain: Record<CapabilityChainLink, 'ok' | 'failed' | 'unknown' | 'not_applicable'>; facts: Array<{ fact: string; at: string | null }>;

@@ -7,7 +7,7 @@ import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 import { DreamStateService } from '../services/dream-state-service';
-import { CAPABILITY_SPECS, capabilityChain, classifyCapability, classifyObservations, observeCapability, type CapabilityObservation, type CapabilitySpec, type ObserveOptions } from '../services/capability-chain';
+import { CAPABILITY_SPECS, capabilityChain, classifyCapability, classifyObservations, isAnomaly, observeCapability, type CapabilityObservation, type CapabilitySpec, type ObserveOptions } from '../services/capability-chain';
 import { detectStallsWithHealth } from '../services/stall-watch';
 import { markRun, noteScheduler, resetSchedulers } from '../services/scheduler-registry';
 
@@ -17,7 +17,7 @@ const at = (hoursAgo: number) => new Date(NOW - hoursAgo * 3_600_000).toISOStrin
 const spec = (name: string) => CAPABILITY_SPECS.find((s) => s.name === name)!;
 const executing = (name: string, lastRun = at(1)) => ({ name, status: 'executing' as const, last_run: lastRun, last_error: null });
 /** all declared paths exist, no scheduler registered — each test overrides what it exercises */
-const base: ObserveOptions = { cwd: '/srv/app', stat: () => 'dir', schedulers: [] };
+const base: ObserveOptions = { stat: () => 'dir', schedulers: [] };
 let db: Database.Database;
 beforeEach(() => { db = new Database(':memory:'); db.exec(schema); runMigrations(db); db.pragma('foreign_keys = OFF'); new SkillEvolutionEngine(db); new DreamStateService(db); });
 afterEach(() => { db.close(); resetSchedulers(); });
@@ -99,19 +99,31 @@ describe('3. configured skill directory missing or unreadable', () => {
       expect(observeCapability(spec('skill_loader'), db, NOW, { DJIMITFLO_SKILLS_DIR: path.join(dir, 'f') }, { schedulers: [] }).paths[0].status).toBe('wrong_kind');
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   });
-  it('unset: the default is resolved against the server working dir', () => {
-    const v = verdict('skill_loader', {}, { ...base, stat: (p) => (p === '/srv/app/.opencode/skills/generated' ? 'unreadable' : 'dir') });
-    expect(v.state).toBe('MISCONFIGURED');
-    expect(v.facts[0].fact).toBe('skills directory /srv/app/.opencode/skills/generated (DJIMITFLO_SKILLS_DIR unset, default): unreadable');
+  it('unset: no implicit default directory — DISABLED_BY_POLICY at ENABLED, not an anomaly, nothing is stat-ed', () => {
+    const stat = (): 'dir' => { throw new Error('an unset skills dir must not be resolved against any default path'); };
+    const v = verdict('skill_loader', {}, { ...base, stat });
+    expect([v.state, v.link, v.chain.ENABLED]).toEqual(['DISABLED_BY_POLICY', 'ENABLED', 'failed']);
+    expect(v.facts[0].fact).toBe('skills directory: DJIMITFLO_SKILLS_DIR unset');
+    expect(v.remediation).toMatch(/^none: DJIMITFLO_SKILLS_DIR unset/);
+    expect(isAnomaly(v)).toBe(false);
+    expect(verdict('skill_loader', { DJIMITFLO_SKILLS_DIR: '  ' }, { ...base, stat }).state).toBe('DISABLED_BY_POLICY');
   });
 });
 
-describe('4. promotion gate referencing an environment-specific path', () => {
-  it("the gate's default MacBook runner path does not exist here → MISCONFIGURED, remediation names the env override", () => {
-    const v = verdict('skill_training_promotion_gate', {}, { ...base, stat: () => 'missing' });
+describe('4. promotion gate runner: unset vs configured-but-missing', () => {
+  it('unset → UNCONFIGURED at CONFIGURED (no machine-specific default path), not an anomaly', () => {
+    const v = verdict('skill_training_promotion_gate', {}, { ...base, stat: () => { throw new Error('no default runner path'); } });
+    expect([v.state, v.link, v.chain.CONFIGURED]).toEqual(['UNCONFIGURED', 'CONFIGURED', 'failed']);
+    expect(v.facts[0].fact).toBe('skill-training eval runner: DJIMIT_SKILL_TRAINING_EVAL_RUNNER unset');
+    expect(JSON.stringify(v)).not.toContain('/Users/');
+    expect(isAnomaly(v)).toBe(false);
+  });
+  it('configured but missing → still MISCONFIGURED, remediation names the env override; a readable file → HEALTHY', () => {
+    const v = verdict('skill_training_promotion_gate', { DJIMIT_SKILL_TRAINING_EVAL_RUNNER: '/nope/run.mjs' }, { ...base, stat: () => 'missing' });
     expect([v.state, v.link]).toEqual(['MISCONFIGURED', 'CONFIGURED']);
-    expect(v.facts[0].fact).toContain('/Users/dlandman/agent-skills/common/skill-training-eval-runner/scripts/run_skill_training_eval.mjs');
+    expect(v.facts[0].fact).toBe('skill-training eval runner /nope/run.mjs (DJIMIT_SKILL_TRAINING_EVAL_RUNNER): missing');
     expect(v.remediation).toContain('set DJIMIT_SKILL_TRAINING_EVAL_RUNNER to a readable file');
+    expect(isAnomaly(v)).toBe(true);
     expect(verdict('skill_training_promotion_gate', { DJIMIT_SKILL_TRAINING_EVAL_RUNNER: __filename }, { schedulers: [] }).state).toBe('HEALTHY');
   });
 });
@@ -182,8 +194,8 @@ describe('prod replay (read-only fact probe of djimitflo-live, 2026-10-14)', () 
       memory_candidate_review: 'IDLE_EXPECTED', // no candidate pending promotion
       proposal_review: 'IDLE_EXPECTED', // nothing in 'proposed'
       goal_queue: 'IDLE_EXPECTED', // nothing queued
-      skill_loader: 'MISCONFIGURED', // /app/.opencode/skills/generated missing
-      skill_training_promotion_gate: 'MISCONFIGURED', // default MacBook runner path
+      skill_loader: 'DISABLED_BY_POLICY', // DJIMITFLO_SKILLS_DIR unset; the image provisions no skills dir
+      skill_training_promotion_gate: 'UNCONFIGURED', // DJIMIT_SKILL_TRAINING_EVAL_RUNNER unset: promotion refused (fail-closed)
     });
   });
   it('reproduces the dream-state anomaly from the observed facts: on, dependency off, no ledger row since 2026-10-08 17:39Z', () => {
