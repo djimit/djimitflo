@@ -9,7 +9,8 @@ import { decisionsInbox } from '../services/decisions-inbox';
 let db: Database.Database;
 const NOW = Date.now();
 const iso = (h: number) => new Date(NOW - h * 3_600_000).toISOString();
-const ON = { OUTCOME_ATTRIBUTION_ENABLED: 'true' } as NodeJS.ProcessEnv;
+// capability chain (stall-watch): a configured environment, so a missing skills dir / eval runner here is not a waiting stall
+const ON = { OUTCOME_ATTRIBUTION_ENABLED: 'true', DJIMITFLO_SKILLS_DIR: __dirname, DJIMIT_SKILL_TRAINING_EVAL_RUNNER: __filename } as NodeJS.ProcessEnv;
 beforeEach(() => { db = new Database(':memory:'); db.exec(schema); runMigrations(db); db.pragma('foreign_keys = OFF'); });
 afterEach(() => db.close());
 const proposal = (id: string, status: string, o: { title?: string; source?: string; created?: number } = {}) => db.prepare(`INSERT INTO self_improvements

@@ -1,0 +1,1719 @@
+{
+ "protocol": "docs/research/di-001/relevance/PREREG.md §6a",
+ "prereg_sha256": "893eb43c817ce08b4b5e2b20f7084e623c685e6f5886ff52b301167f9235ac1a",
+ "built_at": "2026-10-13T22:51:11.737Z",
+ "builder": "scripts/di-001/relevance-bench.cjs",
+ "rule": "primary population (sources djimitflo-scout, operator-chatgpt), strata source x ISO week of first occurrence, proportional, min 3 per non-empty cell, order within cell sha256(ref+\"di001-relevance-eval\") asc",
+ "size": {
+  "N_eval": 340,
+  "delta": 0.1,
+  "alpha": 0.05,
+  "power": 0.8,
+  "psi_A_vs_Cstar": 0.4335,
+  "psi_n": 3315,
+  "n_mcnemar_raw": 338
+ },
+ "use": "PROTECTED: evaluation only. Never for training, thresholds or calibration. Active learning selects outside this list.",
+ "refs": [
+  {
+   "ref": "arxiv:2303.17760",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "arxiv:2306.10599",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "arxiv:2404.19699",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "arxiv:2406.00584",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "arxiv:2411.03116",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "arxiv:2412.18956",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "arxiv:2501.09223",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "arxiv:2502.05352",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "arxiv:2503.10809",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "arxiv:2504.12285",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "arxiv:2504.17544",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "arxiv:2505.08088",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2507.02735",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2507.14805",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "arxiv:2508.12087",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2510.00909",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "arxiv:2510.17932",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2510.19138",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2510.23883",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "arxiv:2511.02817",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2511.15304",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "arxiv:2601.22352",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2602.06547",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "arxiv:2602.11678",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2602.18998",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2602.20731",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2603.13228",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2603.23533",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2603.29112",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2604.07341",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2604.08295",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2604.12138",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2604.14128",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2604.21965",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2604.22825",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2605.03882",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2605.04922",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2605.06140",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2605.06455",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2605.13030",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2605.14322",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2605.14841",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2605.15156",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "arxiv:2605.16364",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2605.18387",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2605.24140",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2605.29889",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2605.30212",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "arxiv:2605.31135",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2606.01725",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2606.05080",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "arxiv:2606.05614",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2606.08081",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2606.08696",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2606.13175",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "arxiv:2606.14594",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "arxiv:2606.15420",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2606.16193",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2606.17114",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "arxiv:2606.19390",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "arxiv:2606.21804",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2606.23181",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2606.26567",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2606.31518",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2607.02137",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2607.05363",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2608.02287",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2608.02613",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2608.02709",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2608.04460",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2608.04682",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2608.05127",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2608.09745",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2608.16697",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2608.18508",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2608.19880",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "arxiv:2608.19993",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2608.21027",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2608.25466",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2608.25735",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2609.04909",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.10648",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2609.11146",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.18462",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2609.23033",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.23796",
+   "src": "djimitflo-scout",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "arxiv:2609.24928",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.25804",
+   "src": "djimitflo-scout",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "arxiv:2609.27632",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.31383",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.31587",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.31796",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.31847",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.31857",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.32021",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.32061",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.32188",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.32379",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.32499",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.32530",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.32679",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.32758",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.32773",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.32777",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2609.32795",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.32835",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.32957",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.33289",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.33378",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.33401",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.33485",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.33713",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.34069",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.34078",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.34268",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.34547",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.34582",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.34619",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.34722",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.34772",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.34790",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.34920",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.35017",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.35032",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.35184",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.35328",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.35652",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2609.35686",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.35741",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.35954",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.36073",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.36364",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.36376",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.36393",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.36581",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.36611",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.36659",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2609.36726",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.36903",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.36984",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.36986",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.37022",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.37066",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.37203",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.37349",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.37443",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.37475",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.37533",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.37617",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.37968",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.38043",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.38194",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.38334",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.38359",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.38420",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.38460",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.38504",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.38578",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.38642",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.38798",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.38954",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.38984",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.39049",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.39068",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2609.39074",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.39080",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.39284",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.39490",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.39625",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.39678",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.39933",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2609.40097",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.00003",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.00094",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.00233",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.00294",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.00354",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.00531",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.00705",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.00899",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.00902",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.00979",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.00980",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.01028",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.01306",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.01325",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.01458",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.01506",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.01616",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.01710",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.01756",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.01780",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.01871",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.02001",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.02002",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.02023",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.02054",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.02070",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.02148",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "arxiv:2610.02242",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.02299",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.02351",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.02381",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.02504",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.02616",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.02631",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.02665",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.02772",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.02867",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.02999",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.03014",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.03251",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.03258",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.03403",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.03574",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.03713",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.03747",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.03894",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.04109",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.04246",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.04418",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.04467",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.04517",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.04588",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.04676",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.04719",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.04860",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.04906",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.04942",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.05161",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.05163",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.05266",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.05337",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.05399",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.05413",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.05538",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.05566",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.05823",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.05830",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.05935",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.05996",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.06132",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.06146",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.06227",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.06280",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.06452",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.06636",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.06851",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.07641",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.07715",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.07911",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.07967",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.08244",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.08901",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.09034",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.09159",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.09239",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.09243",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.09305",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.09554",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.09580",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.09817",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.09858",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.09894",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.09927",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.09993",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.10170",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.10226",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.10285",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.10506",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.10533",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.10560",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.10735",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.10778",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.10844",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.11299",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.11410",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.11561",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.11631",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.11816",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.11858",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.11862",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.11889",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.11959",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.12126",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.12212",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.12333",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.12386",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.12466",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "arxiv:2610.12569",
+   "src": "djimitflo-scout",
+   "week": "2026-W42"
+  },
+  {
+   "ref": "github:activeloopai/hivemind",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:agentic-community/community",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:agents365-ai/drawio-skill",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:antvis/infographic",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:apple/coreai-models",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:cloudnative-pg/cloudnative-pg",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:companion-inc/feynman",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:composiohq/awesome-claude-skills",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:coral79/pami-code",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "github:craftsman-labs/simpleagents",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:danielmiessler/lifeos",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:disesdi/auto_axelrod",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:fahdseddik/skill-constellations",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "github:garrytan/gbrain",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:helixdb/helix-db",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:huggingface/openenv",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:impetus/kundera",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:intelchina-ai/k-mf",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "github:jaredpalmer/kev",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:jshollaj/awesome-llm-interpretability",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:lab700xorg/aisbom",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:landing-ai/ade-python",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:langchain-ai/deepagents",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:llm-d/llm-d",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:locailabs/needle",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "github:luli3220/s2d-opd",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "github:memmachine/memmachine",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:mercor-intelligence/archipelago",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:metarubric/metarubric",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "github:moon4sake/harness-aware-distillation",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "github:mrkiing-jin/softwaregym",
+   "src": "djimitflo-scout",
+   "week": "2026-W42"
+  },
+  {
+   "ref": "github:nv-tlabs/pixelumm",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "github:nvidia-nemo/rl",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "github:opencv/opencv",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:phuryn/claude-usage",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:pku-value-lab/omnireasoning",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "github:qdrant/mcp-server-qdrant",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:risys-lab/kalibench",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "github:run-llama/llama_index",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:sarkar-dipankar/llm-evaluation-self-audit",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "github:tcsbench/tcsbench",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:tencentcloud/tencentdb-agent-memory",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:toshi2k2/fure",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "github:uditakhourii/adhd",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:vastsa/pi-desktop",
+   "src": "operator-chatgpt",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:vis-ground/code",
+   "src": "djimitflo-scout",
+   "week": "2026-W42"
+  },
+  {
+   "ref": "github:wangxinglin/persontts",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  },
+  {
+   "ref": "github:wbopan/tastebench",
+   "src": "djimitflo-scout",
+   "week": "2026-W39"
+  },
+  {
+   "ref": "github:wwwtaylor/storyengine",
+   "src": "djimitflo-scout",
+   "week": "2026-W40"
+  },
+  {
+   "ref": "github:youzhe0305/ouroworld",
+   "src": "djimitflo-scout",
+   "week": "2026-W41"
+  }
+ ]
+}

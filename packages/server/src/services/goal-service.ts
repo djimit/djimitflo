@@ -59,6 +59,27 @@ export interface GoalRecord {
   updated_at: string;
 }
 
+export type GoalDependencyBlockReason = 'missing' | 'cyclic' | 'failed' | 'unresolved';
+
+export interface GoalDependencyBlock {
+  reason: GoalDependencyBlockReason;
+  dependency_key: string;
+  dependency_goal_id: string | null;
+  dependency_status: string | null;
+  detail?: string;
+  cycle?: string[];
+}
+
+function dependencyKeys(metadata: Record<string, unknown>): string[] {
+  const keys = metadata.depends_on_goal_keys;
+  return Array.isArray(keys) ? keys.map(String) : [];
+}
+
+function goalBatchKey(metadata: Record<string, unknown>): string | null {
+  const batch = metadata.goal_batch as { id?: unknown } | undefined;
+  return batch && typeof batch.id === 'string' && batch.id ? batch.id : null;
+}
+
 export interface DecomposedLoopCandidate {
   loop_name: string;
   mode: string;
@@ -203,18 +224,65 @@ export class GoalService {
   }
 
   assertDependenciesSatisfied(id: string, metadata = this.getGoalById(id).metadata): void {
-    const keys = metadata.depends_on_goal_keys;
-    if (!Array.isArray(keys)) return;
+    const block = this.dependencyBlock(metadata);
+    if (!block) return;
+    // API error codes unchanged: a missing key is NOT_FOUND, every other unmet dependency (incl. a cycle) is UNSATISFIED
+    throw new Error(`GOAL_DEPENDENCY_${block.reason === 'missing' ? 'NOT_FOUND' : 'UNSATISFIED'}:${block.dependency_key}`);
+  }
+
+  /**
+   * Why a goal's `depends_on_goal_keys` are not met, or null when they are (or there are none). Keys are goal_batch ids.
+   * cyclic: the goal reaches its own key through the dependency graph; missing: no goal has the key; failed: the dependency
+   * goal is failed/cancelled; unresolved: it exists but is not completed with acceptance evidence (yet).
+   */
+  dependencyBlock(metadata: Record<string, unknown>): GoalDependencyBlock | null {
+    const keys = dependencyKeys(metadata);
+    if (keys.length === 0) return null;
+    const ownKey = goalBatchKey(metadata);
+    const cycle = ownKey ? this.findDependencyCycle(ownKey, keys) : null;
+    if (cycle) {
+      const dep = this.goalByKey(cycle[1]);
+      return { reason: 'cyclic', dependency_key: cycle[1], dependency_goal_id: dep?.id ?? null, dependency_status: dep?.status ?? null, cycle };
+    }
     for (const key of keys) {
-      const row = this.db.prepare('SELECT * FROM goals WHERE json_extract(metadata, ?) = ?')
-        .get('$.goal_batch.id', String(key)) as Record<string, unknown> | undefined;
-      if (!row) throw new Error(`GOAL_DEPENDENCY_NOT_FOUND:${key}`);
-      const predecessor = parseGoal(row);
-      const evidence = predecessor.metadata.acceptance_evidence;
-      if (predecessor.status !== 'completed' || !Array.isArray(evidence) || evidence.length === 0) {
-        throw new Error(`GOAL_DEPENDENCY_UNSATISFIED:${key}`);
+      const dep = this.goalByKey(key);
+      if (!dep) return { reason: 'missing', dependency_key: key, dependency_goal_id: null, dependency_status: null };
+      if (dep.status === 'failed' || dep.status === 'cancelled') return { reason: 'failed', dependency_key: key, dependency_goal_id: dep.id, dependency_status: dep.status };
+      const evidence = dep.metadata.acceptance_evidence;
+      if (dep.status !== 'completed' || !Array.isArray(evidence) || evidence.length === 0) {
+        return {
+          reason: 'unresolved', dependency_key: key, dependency_goal_id: dep.id, dependency_status: dep.status,
+          ...(dep.status === 'completed' ? { detail: 'completed_without_acceptance_evidence' } : {}),
+        };
       }
     }
+    return null;
+  }
+
+  private goalByKey(key: string): GoalRecord | null {
+    const row = this.db.prepare('SELECT * FROM goals WHERE json_extract(metadata, ?) = ?').get('$.goal_batch.id', key) as Record<string, unknown> | undefined;
+    return row ? parseGoal(row) : null;
+  }
+
+  /** Bounded DFS (each key expanded once) for a path from ownKey back to itself, returned as [ownKey, ..., ownKey]. */
+  private findDependencyCycle(ownKey: string, keys: string[]): string[] | null {
+    const visited = new Set<string>();
+    const walk = (key: string, path: string[]): string[] | null => {
+      if (key === ownKey) return [...path, key];
+      if (visited.has(key)) return null;
+      visited.add(key);
+      const dep = this.goalByKey(key);
+      for (const next of dep ? dependencyKeys(dep.metadata) : []) {
+        const found = walk(next, [...path, key]);
+        if (found) return found;
+      }
+      return null;
+    };
+    for (const key of keys) {
+      const found = walk(key, [ownKey]);
+      if (found) return found;
+    }
+    return null;
   }
 
   decomposeGoal(id: string, contracts: Array<{ name: string; mode: string; description: string; verification: string[] }>, primaryLoopName: string): { goal: GoalRecord; candidates: DecomposedLoopCandidate[] } {

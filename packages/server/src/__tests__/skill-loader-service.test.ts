@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { SkillLoaderService } from '../services/skill-loader-service';
+import { SkillLoaderService, configuredSkillsDir } from '../services/skill-loader-service';
 
 describe('SkillLoaderService admission boundary', () => {
   let database: Database.Database;
@@ -137,5 +137,23 @@ describe('SkillLoaderService admission boundary', () => {
     ]);
     const changed = new SkillLoaderService(database, skillsDir, new Set(['.opencode.skills.running-tests']));
     expect(changed.getSkill('.opencode.skills.running-tests')?.contentHash).not.toBe(originalHash);
+  });
+});
+
+describe('SkillLoaderService: skill loading is off unless DJIMITFLO_SKILLS_DIR enables it (no implicit default dir)', () => {
+  it('unset/blank → null; set → the trimmed path', () => {
+    expect(configuredSkillsDir({})).toBeNull();
+    expect(configuredSkillsDir({ DJIMITFLO_SKILLS_DIR: '  ' })).toBeNull();
+    expect(configuredSkillsDir({ DJIMITFLO_SKILLS_DIR: ' /srv/skills ' })).toBe('/srv/skills');
+  });
+  it('no skills dir → nothing loaded and the stats say DISABLED_BY_POLICY; a dir → ENABLED', () => {
+    const database = new Database(':memory:');
+    database.exec('CREATE TABLE agents (id TEXT PRIMARY KEY);');
+    try {
+      const off = new SkillLoaderService(database, null);
+      expect(off.listSkills()).toEqual([]);
+      expect(off.getStats()).toMatchObject({ skillLoading: 'DISABLED_BY_POLICY', totalSkills: 0 });
+      expect(new SkillLoaderService(database, os.tmpdir()).getStats().skillLoading).toBe('ENABLED');
+    } finally { database.close(); }
   });
 });

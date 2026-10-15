@@ -2,6 +2,7 @@ import fs from 'fs';
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { detectStallsWithHealth, type DetectorHealth, type Stall } from './stall-watch';
+import type { CapabilityVerdict } from './capability-chain';
 import { infraFailing } from './evolution-gym-service';
 import { ATTRIBUTION_OF_PROPOSAL, decisionsInbox, openDecisionCounts } from './decisions-inbox';
 import { listSchedulers, type SchedulerHealth, type SchedulerStatus } from './scheduler-registry';
@@ -67,6 +68,8 @@ export interface CockpitSnapshot {
   deploys: Array<{ at: string; event: string; sha: string; detail: string }>;
   /** 'Restore Evolutionary Health': lineage funnel, 4-way regression split, survival-adjusted NEV (shadow, read-only) */
   evolution: ReturnType<typeof evolutionLineage> | null;
+  /** Workstream B: capability chain per watched capability (state, broken link, observed facts, remediation) */
+  capabilities: CapabilityVerdict[];
 }
 
 export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.ProcessEnv = process.env): CockpitSnapshot {
@@ -207,8 +210,9 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
   let stalls: Stall[] = [];
   // an empty list from a failed detector is not 'no stalls': stalls stays [] but needs_you.stalls null + an error
   let detectors: DetectorHealth[] = [];
+  let capabilities: CapabilityVerdict[] = [];
   try {
-    const report = detectStallsWithHealth(db, now, env); stalls = report.stalls; detectors = report.detectors; needs_you.stalls = stalls.length;
+    const report = detectStallsWithHealth(db, now, env); stalls = report.stalls; detectors = report.detectors; capabilities = report.capabilities; needs_you.stalls = stalls.length;
     for (const d of detectors) if (d.status === 'error') fail(`detector:${d.name}`, new Error(d.error ?? 'detector query failed'));
   } catch (e) { fail('stalls', e); }
   const blocking = [needs_you.approvals, needs_you.requeue, needs_you.labels, needs_you.memory_review, needs_you.open_prs, needs_you.proposals,
@@ -225,7 +229,7 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
   return {
     at: new Date(now).toISOString(), snapshot_id: randomUUID(), health, errors,
     build: { commit: process.env.DJIMITFLO_BUILD_COMMIT ?? null, build_time: process.env.DJIMITFLO_BUILD_TIME ?? null },
-    scorecard, guardrails, stalls, gym, remote_workers, maker_usage_7d, judgments_7d, needs_you, schedulers: { armed, off, by_status, health: schedulersHealth }, detectors, genomes, deploys: recentDeploys(), evolution,
+    scorecard, guardrails, stalls, gym, remote_workers, maker_usage_7d, judgments_7d, needs_you, schedulers: { armed, off, by_status, health: schedulersHealth }, detectors, genomes, deploys: recentDeploys(), evolution, capabilities,
   };
 }
 
