@@ -42,9 +42,14 @@ interface AgentSkillAssignment {
   assignedAt: string;
 }
 
-/** relative to the server's working dir; the stall watch's capability chain checks the same default */
-export const DEFAULT_SKILLS_DIR_REL = '.opencode/skills/generated';
-const SKILLS_DIR = process.env.DJIMITFLO_SKILLS_DIR || join(process.cwd(), DEFAULT_SKILLS_DIR_REL);
+/**
+ * Skill loading is off unless an operator names a provisioned skills directory: there is no implicit default
+ * (the former `<cwd>/.opencode/skills/generated` default came from a dev checkout; no image provisions it, so in prod it
+ * looked configured while loading nothing). The stall watch's capability chain reports unset as DISABLED_BY_POLICY.
+ */
+export function configuredSkillsDir(env: NodeJS.ProcessEnv = process.env): string | null {
+  return env.DJIMITFLO_SKILLS_DIR?.trim() || null;
+}
 
 function configuredAllowlist(): Set<string> | null {
   const value = process.env.DJIMITFLO_SKILL_ALLOWLIST?.trim();
@@ -55,7 +60,7 @@ export class SkillLoaderService {
   private skills: Map<string, SkillDefinition> = new Map();
   private rejectedSkills: RejectedSkill[] = [];
 
-  constructor(private db: Database, private skillsDir = SKILLS_DIR, private allowedSkillIds = configuredAllowlist()) {
+  constructor(private db: Database, private skillsDir: string | null = configuredSkillsDir(), private allowedSkillIds = configuredAllowlist()) {
     this.ensureTables();
     this.loadSkills();
   }
@@ -69,16 +74,17 @@ export class SkillLoaderService {
     this.skills.clear();
     this.rejectedSkills = [];
 
-    if (!existsSync(this.skillsDir)) {
+    if (!this.skillsDir || !existsSync(this.skillsDir)) {
       return loaded;
     }
 
-    const entries = readdirSync(this.skillsDir, { withFileTypes: true });
+    const skillsDir = this.skillsDir;
+    const entries = readdirSync(skillsDir, { withFileTypes: true });
 
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
 
-      const skillPath = join(this.skillsDir, entry.name);
+      const skillPath = join(skillsDir, entry.name);
       const skillMdPath = join(skillPath, 'SKILL.md');
 
       if (!existsSync(skillMdPath)) continue;
@@ -195,6 +201,7 @@ export class SkillLoaderService {
     enabledSkills: number;
     assignedSkills: number;
     rejectedSkills: number;
+    skillLoading: 'DISABLED_BY_POLICY' | 'ENABLED';
   } {
     const assigned = (this.db.prepare('SELECT COUNT(*) as c FROM agent_skills WHERE enabled = 1').get() as any)?.c || 0;
 
@@ -203,6 +210,7 @@ export class SkillLoaderService {
       enabledSkills: Array.from(this.skills.values()).filter((s) => s.enabled).length,
       assignedSkills: assigned,
       rejectedSkills: this.rejectedSkills.length,
+      skillLoading: this.skillsDir ? 'ENABLED' : 'DISABLED_BY_POLICY',
     };
   }
 
