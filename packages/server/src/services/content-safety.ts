@@ -8,9 +8,10 @@ import { recordPolicyViolation } from './policy-violations';
  * agents) before it flows into prompts. NVIDIA nemotron-3.5-content-safety answers in ~0.3 s and flagged a prompt
  * injection 'unsafe' while paper text stayed 'safe' (measured 2026-09-27). SHADOW ONLY: the verdict is recorded as a
  * judgment ('content_safety'); nothing is blocked (quarantine is an operator decision). Fail-open.
- *   CONTENT_SAFETY_MODE=shadow + NVIDIA_API_KEY (default off)
+ *   CONTENT_SAFETY_MODE=shadow + NVIDIA_API_KEY (default off); 'enforce' checks the same way and additionally makes the
+ *   prompt gate (gateUntrustedForPrompt, B19) exclude untrusted text without a 'safe' verdict.
  */
-export const contentSafetyEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.CONTENT_SAFETY_MODE === 'shadow' && Boolean(env.NVIDIA_API_KEY);
+export const contentSafetyEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => (env.CONTENT_SAFETY_MODE === 'shadow' || env.CONTENT_SAFETY_MODE === 'enforce') && Boolean(env.NVIDIA_API_KEY);
 
 /**
  * CONTENT_SAFETY_SCOPE (default 'all' = every subject). 'decision' = only text that can lead to a decision: replies/messages
@@ -19,8 +20,8 @@ export const contentSafetyEnabled = (env: NodeJS.ProcessEnv = process.env): bool
  * taxonomy and never act directly, so under 'decision' they get no call and no row.
  */
 const DECISION_SUBJECTS = new Set(['social_reply', 'remote_patch', 'maker_result', 'lure_probe']);
-export const contentSafetyApplies = (subjectType: string, env: NodeJS.ProcessEnv = process.env): boolean =>
-  contentSafetyEnabled(env) && (env.CONTENT_SAFETY_SCOPE !== 'decision' || DECISION_SUBJECTS.has(subjectType));
+export const contentSafetyApplies = (subjectType: string, env: NodeJS.ProcessEnv = process.env, promptBound = false): boolean =>
+  contentSafetyEnabled(env) && (promptBound || env.CONTENT_SAFETY_SCOPE !== 'decision' || DECISION_SUBJECTS.has(subjectType));
 
 /**
  * NVIDIA's free tier answers 429 after ~4 calls in a burst (measured 2026-09-27: 4×200 then 429s within 3 s), which left
@@ -49,8 +50,8 @@ export function parseSafety(content: string): { verdict: 'safe' | 'unsafe' | nul
 let pausedUntil = 0;
 export const resetContentSafetyPause = (): void => { pausedUntil = 0; };
 
-export async function checkContentSafety(db: Database, subject: { type: string; id: string }, text: string, fetchFn: typeof fetch = fetch): Promise<'safe' | 'unsafe' | null> {
-  if (!contentSafetyApplies(subject.type) || !text.trim() || Date.now() < pausedUntil) return null;
+export async function checkContentSafety(db: Database, subject: { type: string; id: string }, text: string, fetchFn: typeof fetch = fetch, promptBound = false): Promise<'safe' | 'unsafe' | null> {
+  if (!contentSafetyApplies(subject.type, process.env, promptBound) || !text.trim() || Date.now() < pausedUntil) return null;
   const model = process.env.CONTENT_SAFETY_MODEL || 'nvidia/nemotron-3.5-content-safety';
   const started = Date.now();
   // prod 2026-09-27: 1 241 of 1 312 KB pages got no verdict and nothing said why; failures are recorded as 'error' now
@@ -96,4 +97,44 @@ export async function checkContentSafety(db: Database, subject: { type: string; 
     try { record('error', (error instanceof Error ? error.name === 'TimeoutError' ? 'timeout' : error.message : String(error)).slice(0, 120)); } catch { /* never break the caller */ }
     return null;
   }
+}
+
+/**
+ * B19 (Frontier Experts baseline / Evolution Spine): untrusted text that is about to be interpolated into a model prompt
+ * (paper abstracts and evidence excerpts, expert claims, discovery titles, KB pages) needs a recorded 'safe' verdict for
+ * exactly that text. An earlier verdict (same subject + text hash) is reused, otherwise the text is checked first —
+ * prompt-bound text is checked even under CONTENT_SAFETY_SCOPE=decision. Mode = CONTENT_SAFETY_MODE:
+ *   unset (default) — no gate, prompts unchanged, no call, no row;
+ *   shadow (prod)    — prompts unchanged; what enforce would exclude is recorded ('content_safety_prompt_gate', decision 'no');
+ *   enforce          — fail closed: unsafe text AND text without a verdict (429 / timeout / error / no key) is excluded, recorded.
+ */
+export async function gateUntrustedForPrompt(db: Database, subject: { type: string; id: string }, text: string, fetchFn: typeof fetch = fetch): Promise<{ include: boolean; verdict: 'safe' | 'unsafe' | null }> {
+  const mode = process.env.CONTENT_SAFETY_MODE === 'enforce' ? 'enforce' : process.env.CONTENT_SAFETY_MODE === 'shadow' ? 'shadow' : 'off';
+  const body = text.slice(0, 4_000);
+  if (mode === 'off' || !body.trim()) return { include: true, verdict: null };
+  const hash = createHash('sha256').update(body).digest('hex').slice(0, 16);
+  const latest = (decisions: string) => db.prepare(`SELECT decision, reason FROM judgments WHERE judgment = 'content_safety' AND subject_type = ? AND subject_id = ? AND state_hash = ?
+    AND decision IN (${decisions}) ORDER BY created_at DESC, rowid DESC LIMIT 1`).get(subject.type, subject.id, hash) as { decision: string; reason: string } | undefined;
+  const prior = latest("'yes', 'no'");
+  const verdict = prior ? (prior.decision === 'yes' ? 'safe' : 'unsafe') : await checkContentSafety(db, subject, body, fetchFn, true);
+  if (verdict === 'safe') return { include: true, verdict };
+  const reason = `${mode === 'enforce' ? 'excluded' : 'would exclude'}: ${verdict === 'unsafe' ? 'verdict unsafe' : `no safe verdict (${latest("'error'")?.reason.slice(0, 80) ?? 'check unavailable'})`}`;
+  try {
+    // one row per subject + text + mode + reason: a claim read by every committee job is not recorded every time
+    if (!db.prepare("SELECT 1 FROM judgments WHERE judgment = 'content_safety_prompt_gate' AND subject_type = ? AND subject_id = ? AND state_hash = ? AND mode = ? AND reason = ? LIMIT 1").get(subject.type, subject.id, hash, mode, reason)) {
+      db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at) VALUES (?, 'content_safety_prompt_gate', ?, ?, ?, ?, 'no', ?, ?)`)
+        .run(randomUUID(), subject.type, subject.id, hash, mode, reason, new Date().toISOString());
+    }
+  } catch { /* recording must not decide inclusion */ }
+  return { include: mode !== 'enforce', verdict };
+}
+
+/** B19: the items whose untrusted text may enter a prompt (sequential: NVIDIA's free tier 429s on bursts). A gate that throws excludes only under enforce. */
+export async function filterForPrompt<T>(db: Database, items: T[], subject: (item: T) => { type: string; id: string }, text: (item: T) => string, fetchFn: typeof fetch = fetch): Promise<T[]> {
+  const out: T[] = [];
+  for (const item of items) {
+    const { include } = await gateUntrustedForPrompt(db, subject(item), text(item), fetchFn).catch(() => ({ include: process.env.CONTENT_SAFETY_MODE !== 'enforce' }));
+    if (include) out.push(item);
+  }
+  return out;
 }

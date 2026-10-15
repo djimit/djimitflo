@@ -54,7 +54,7 @@ export function integrateWh(samples: Sample[], start: number, end: number, maxGa
   return { wh: +wh.toFixed(3), covered_s: Math.round(covered) };
 }
 
-function hostSamples(db: Database, host: string, start: number, end: number): Sample[] {
+export function hostSamples(db: Database, host: string, start: number, end: number): Sample[] {
   try {
     return (db.prepare('SELECT at, gpu_watts FROM host_power_samples WHERE host = ? AND at >= ? AND at <= ? ORDER BY at')
       .all(host, new Date(start - MAX_SAMPLE_GAP_MS).toISOString(), new Date(end + MAX_SAMPLE_GAP_MS).toISOString()) as Array<{ at: string; gpu_watts: number }>)
@@ -69,7 +69,7 @@ export const isLocalModel = (provider: string | null, model: string | null): boo
   return ['ollama', 'local', 'llama.cpp', 'llama-router'].includes(p) || /^(ollama|local)[:/]/i.test(m);
 };
 
-const leaseConsumer = (role: string, runtime: string, model: string | null) =>
+export const leaseConsumer = (role: string, runtime: string, model: string | null) =>
   role === 'maker' ? `maker:${runtime}${model ? `@${model}` : ''}` : role === 'checker' || role === 'security_checker' ? `reviewer:${role}:${runtime}` : `lease:${role}:${runtime}`;
 
 export interface Job { consumer: string; host: string; start: number; end: number }
@@ -107,7 +107,9 @@ export interface ConsumerRow {
  * ratio of cloud-made changes over a fraction of local energy (prod 10-10: 28 cloud changes / 2.2 kWh over 38.7 of 168 h).
  */
 export interface NorthStarWeek { week_start: string; verified: number; cloud_m_tokens: number; local_kwh: number | null; local_covered_h: number; per_m_tokens: number | null; per_kwh: number | null;
-  local_verified: number; coverage_pct: number | null; per_kwh_reason: string | null }
+  local_verified: number; coverage_pct: number | null; per_kwh_reason: string | null;
+  /** efficiency.cloud_tokens version of cloud_m_tokens / per_m_tokens; `superseded` keeps the v1 values next to them (never overwritten) */
+  metric_version: 2; superseded: { metric_version: 1; cloud_m_tokens: number; per_m_tokens: number | null; correction: 'ACCOUNTING_CORRECTION' } }
 export const MIN_ENERGY_COVERAGE = 0.8;
 export interface EfficiencyView {
   at: string; window_days: number; ledger_enabled: boolean;
@@ -136,8 +138,13 @@ export function gpuJobs(db: Database, since: string, until: string): Job[] {
     .filter((j) => j.host && Number.isFinite(j.start) && Number.isFinite(j.end) && j.end > j.start);
 }
 
-/** Cloud and local tokens per (day, consumer) from leases and model calls created in [since, until). */
-export function tokenLedger(db: Database, since: string, until: string): Array<{ day: string; consumer: string; cloud: number; local: number }> {
+/**
+ * Cloud and local tokens per (day, consumer) from leases and model calls created in [since, until).
+ * Metric efficiency.cloud_tokens (cost-ledger METRIC_DEFINITIONS): v2 (default) leaves out llm_model_calls consumer 'maker' —
+ * that row (B29, recordMakerCall, since 2026-10-12) mirrors the lease's runtime_usage, which the lease branch already counts.
+ * v1 (the definition until this fix, kept so its historical values stay reproducible) counts both.
+ */
+export function tokenLedger(db: Database, since: string, until: string, version: 1 | 2 = 2): Array<{ day: string; consumer: string; cloud: number; local: number }> {
   const out: Array<{ day: string; consumer: string; cloud: number; local: number }> = [];
   for (const r of safeAll<{ day: string; role: string; runtime: string; model: string | null; tokens: number }>(db, `SELECT substr(created_at, 1, 10) AS day, role, runtime,
       json_extract(metadata, '$.model') AS model, COALESCE(SUM(json_extract(metadata, '$.runtime_usage.total_tokens')), 0) AS tokens
@@ -146,7 +153,7 @@ export function tokenLedger(db: Database, since: string, until: string): Array<{
     out.push({ day: r.day, consumer: leaseConsumer(r.role, r.runtime, r.model), cloud: local ? 0 : r.tokens, local: local ? r.tokens : 0 });
   }
   for (const r of safeAll<{ day: string; consumer: string; model: string; provider: string | null; tokens: number }>(db, `SELECT substr(created_at, 1, 10) AS day, consumer, model, provider,
-      COALESCE(SUM(COALESCE(tokens_in, 0) + COALESCE(tokens_out, 0)), 0) AS tokens FROM llm_model_calls WHERE created_at >= ? AND created_at < ? GROUP BY 1, 2, 3, 4`, since, until)) {
+      COALESCE(SUM(COALESCE(tokens_in, 0) + COALESCE(tokens_out, 0)), 0) AS tokens FROM llm_model_calls WHERE created_at >= ? AND created_at < ?${version === 1 ? '' : " AND consumer != 'maker'"} GROUP BY 1, 2, 3, 4`, since, until)) {
     const local = isLocalModel(r.provider, r.model);
     out.push({ day: r.day, consumer: `llm:${r.consumer}`, cloud: local ? 0 : r.tokens, local: local ? r.tokens : 0 });
   }
@@ -244,6 +251,7 @@ export function efficiencyView(db: Database, now = Date.now(), env: NodeJS.Proce
     const wsI = new Date(ws).toISOString(); const weI = new Date(we).toISOString();
     const verified = (safeAll<{ n: number }>(db, "SELECT COUNT(*) AS n FROM self_improvements WHERE status = 'verified' AND updated_at >= ? AND updated_at < ?", wsI, weI)[0]?.n) ?? 0;
     const cloud = tokenLedger(db, wsI, weI).reduce((s, t) => s + t.cloud, 0) / 1e6;
+    const cloudV1 = tokenLedger(db, wsI, weI, 1).reduce((s, t) => s + t.cloud, 0) / 1e6;
     const energy = hostEnergy(db, ws, we);
     const covered = energy.reduce((s, h) => s + h.covered_s, 0);
     const kwh = covered > 0 ? energy.reduce((s, h) => s + h.wh, 0) / 1000 : null;
@@ -259,7 +267,8 @@ export function efficiencyView(db: Database, now = Date.now(), env: NodeJS.Proce
     weeks.push({ week_start: wsI.slice(0, 10), verified, cloud_m_tokens: +cloud.toFixed(3), local_kwh: kwh === null ? null : +kwh.toFixed(3),
       local_covered_h: +(covered / 3600).toFixed(1), per_m_tokens: cloud > 0 ? +(verified / cloud).toFixed(3) : null,
       per_kwh: reason ? null : +(localVerified / kwh!).toFixed(3), local_verified: localVerified,
-      coverage_pct: coverage === null ? null : +(coverage * 100).toFixed(1), per_kwh_reason: reason });
+      coverage_pct: coverage === null ? null : +(coverage * 100).toFixed(1), per_kwh_reason: reason, metric_version: 2,
+      superseded: { metric_version: 1, cloud_m_tokens: +cloudV1.toFixed(3), per_m_tokens: cloudV1 > 0 ? +(verified / cloudV1).toFixed(3) : null, correction: 'ACCOUNTING_CORRECTION' } });
   }
   const gpuS = consumers.reduce((s, c) => s + c.gpu_seconds, 0);
   const sampledS = consumers.reduce((s, c) => s + (c.energy_coverage ?? 0) * c.gpu_seconds, 0);

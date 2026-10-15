@@ -20,6 +20,7 @@ import { provenanceSummary } from './provenance-dag';
 import { panelAttemptMetrics } from './panel-attempt-metrics';
 import { ace001Evidence } from './ace-001';
 import { ste001Evidence } from './ste-001';
+import { makerDeps001Evidence } from './maker-deps-001';
 import { d5NoEvidence } from './d5-no';
 import { tg001Evidence } from './tg-001';
 import { intelligenceEvidence } from './intelligence-metrics';
@@ -39,7 +40,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'FITNESS_SHADOW_ENABLED', acting: false }, { name: 'MERGE_SURVIVAL_ENABLED', acting: false }, { name: 'MERGE_SURVIVAL_V2', acting: false }, { name: 'LOOP_EVIDENCE_FRESHNESS_MODE', acting: true },
   { name: 'DREAM_EVOLUTION_ENABLED', acting: true }, { name: 'DREAM_TRIAL_MUTANTS', acting: true }, { name: 'DREAM_TRIAL_MUTANT_TIERS', acting: true },
   { name: 'DREAM_PROMOTION_ALPHA', acting: true }, { name: 'TRIAL_DIAGNOSTICS_ENABLED', acting: false }, { name: 'TRIAL_HEADROOM_PRECHECK', acting: true }, { name: 'DREAM_PROMOTION_RULE', acting: false }, { name: 'DREAM_TRIAL_WRITE_TEST_HOLDOUT', acting: true }, { name: 'DREAM_EVIDENCE_MUTATIONS', acting: true }, { name: 'GYM_HOLDOUT_EPOCH', acting: true }, { name: 'GENOME_APPLY_MODE', acting: false },
-  { name: 'ARENA_GATE_ENABLED', acting: true }, { name: 'DISCOVERY_RELEVANCE_SOURCES', acting: true }, { name: 'COMMITTEE_SWARM_ENABLED', acting: true }, { name: 'COMMONS_GROUNDING_APPLY', acting: true }, { name: 'SOCIAL_AUTOPILOT_FORECAST_ONLY', acting: true },
+  { name: 'ARENA_GATE_ENABLED', acting: true }, { name: 'DISCOVERY_RELEVANCE_SOURCES', acting: true }, { name: 'DISCOVERY_RELEVANCE_PAUSED', acting: true }, { name: 'COMMITTEE_SWARM_ENABLED', acting: true }, { name: 'COMMONS_GROUNDING_APPLY', acting: true }, { name: 'SOCIAL_AUTOPILOT_FORECAST_ONLY', acting: true },
   { name: 'LOOP_AUTO_DRAFT_PR_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_TEST_ONLY', acting: true }, { name: 'LOOP_AUTO_MERGE_MAX_PER_DAY', acting: true }, { name: 'LOOP_AUTO_APPROVE_TEST_GAP', acting: true }, { name: 'ORACLE_LANES_AUTO_APPROVE', acting: true },
   { name: 'LOOP_MEMORY_RULES_ENABLED', acting: true }, { name: 'EVOLUTION_GYM_REMOTE_MAX_PER_DAY', acting: true }, { name: 'DJIMITFLO_PUBLIC_URL', acting: false },
   { name: 'GYM_TIER_PROBE_ENABLED', acting: false }, { name: 'GYM_TIER_PROBE_TIERS', acting: false }, { name: 'GYM_TIER_PROBE_EVERY', acting: false },
@@ -345,6 +346,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // ACE-001 (ACE_001_MODE): oracle-lane maker outcomes per retrieval × example-selection arm (pre-registered, collecting until target)
     ace_001: ace001Evidence(db, since, env),
     ste_001: ste001Evidence(db, since, env),
+    // MAKER-DEPS-001 (MAKER_DEPS_001_MODE): ITT verified completion per dependency-preparation arm (pre-registered, collecting)
+    maker_deps_001: makerDeps001Evidence(db, since, env),
     // H-D5NO (prescreen in shadow): prospective false-rejection risk of jev confident-NO; never mixed with JC (NE-001)
     d5_no: d5NoEvidence(db),
     // TG-001 (TG_001_MODE): gym → production transfer gap — the same frozen write_test tasks under four prompt representations

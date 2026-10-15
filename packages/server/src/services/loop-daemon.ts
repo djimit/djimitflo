@@ -11,6 +11,7 @@ import { ResourceScheduler } from './resource-scheduler';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import { LoopEventService } from './loop-event-service';
+import { blockOnUnmetDependencies, settleDependencyBlockedGoals } from './goal-dependency-gate';
 import { inheritableApproval } from './approval-inheritance';
 import { CommonsProposalReviewService } from './commons-proposal-review-service';
 import { SelfImprovementService } from './self-improvement-service';
@@ -25,6 +26,7 @@ import { recordMakerCall } from './model-call-ledger';
 import { strategyGenomeFor } from './genome-registry';
 import { banditSpecies, chooseSpecies, speciesKey } from './runtime-bandit';
 import { recordFitnessShadow } from './fitness-view';
+import { buildProvenance, provenanceJson } from './judgment-provenance';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { authorityGateForGoal } from './authority-gate';
 import { remoteMakerWaitMs } from '../execution/executors/remote-maker-executor';
@@ -102,6 +104,37 @@ export function reviewerRetryable(role: string, status: string | undefined, fail
  * The daemon runs in-process, using the existing continueLoopRun machinery. It
  * starts on server boot (after recoverInterruptedRuns + resumeInterruptedRuns).
  */
+
+/**
+ * DI-001 (PR #828: task selection is deterministic and no propensity was logged → BLOCKED_CAUSAL_IDENTIFICATION). The policy
+ * that orders the goal queue (loadQueue: risk_class desc, created_at asc, first `slots` not already executing). It is
+ * deterministic, so the chosen goal's selection probability is 1.0 — recorded honestly, not invented. Bump `version` whenever
+ * loadQueue's ordering or the slot rule changes.
+ */
+export const SELECTION_POLICY = { id: 'loop-daemon.queue:risk_desc_created_asc', version: 1 } as const;
+const MAX_LOGGED_CANDIDATES = 200;
+
+/** One additive `selection_propensity` judgment per dispatched goal: candidate set, chosen, p, policy. Telemetry only. */
+export function recordSelectionPropensity(db: Database, tickId: string, candidates: string[], chosen: string, rank: number, slots: number, now = new Date()): void {
+  const at = now.toISOString();
+  const reason = `deterministic queue order, rank ${rank} of ${candidates.length}`;
+  const answers = { chosen, propensity: 1, deterministic: true, policy_id: SELECTION_POLICY.id, policy_version: SELECTION_POLICY.version, rank, slots,
+    candidate_count: candidates.length, candidates: candidates.slice(0, MAX_LOGGED_CANDIDATES), candidates_truncated: candidates.length > MAX_LOGGED_CANDIDATES };
+  // DI-001 B (#824): versioned provenance like every instrumented judgment writer. No model decides here (model_id stays null).
+  const provenance = provenanceJson(buildProvenance({
+    writer: 'loop-daemon.selection', mode: 'shadow', state: { candidates, slots }, subject: { type: 'goal', id: chosen }, stateHash: tickId, at,
+    decision: 'selected', reason, evaluator: `${SELECTION_POLICY.id}/v${SELECTION_POLICY.version}`,
+    def: { id: SELECTION_POLICY.id, policyVersion: String(SELECTION_POLICY.version), questions: {}, decide: loadQueueOrder },
+  }));
+  db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, model, created_at, provenance_json)
+    VALUES (?, 'selection_propensity', 'goal', ?, ?, 'shadow', 'selected', ?, ?, ?, ?, ?)`).run(
+    randomUUID(), chosen, tickId, reason, JSON.stringify(answers), 'policy', at, provenance);
+}
+
+/** The ordering loadQueue applies, as a function so the provenance prompt_version hashes the actual rule. */
+function loadQueueOrder(): string {
+  return "ORDER BY CASE risk_class WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 WHEN 'low' THEN 1 ELSE 0 END DESC, created_at ASC; first `slots` not executing";
+}
 
 interface QueueEntry {
   id: string;
@@ -191,6 +224,7 @@ export class LoopDaemon {
 
     try {
       this.resumeApprovalBlockedGoals();
+      try { settleDependencyBlockedGoals(this.db); } catch (error) { console.error('[LoopDaemon] dependency settle error:', error instanceof Error ? error.message : String(error)); }
       const queue = this.loadQueue();
       if (queue.length === 0) {
         this.scheduleNext();
@@ -201,8 +235,12 @@ export class LoopDaemon {
       const slots = this.getAvailableSlots();
       // prod 2026-10-01: a goal resumed after an approval is 'decomposed' while it runs, so every tick dispatched it again;
       // the second pass found the running evolve sibling and failed the goal with LOOP_WORKER_EXECUTION_IN_PROGRESS
-      const toStart = queue.filter((g) => !this.executing.has(g.id)).slice(0, slots);
+      // An unmet depends_on parks the goal as dependency-blocked (one event) instead of dispatching it into a silent failure
+      const eligible = queue.filter((g) => !this.executing.has(g.id)
+        && !(Array.isArray(g.metadata?.depends_on_goal_keys) && g.metadata.depends_on_goal_keys.length > 0 && this.dependencyBlocked(g.id)));
+      const toStart = eligible.slice(0, slots);
       let objectiveModeDispatchedThisTick = 0;
+      const tickId = randomUUID(); // DI-001: groups the propensity records of one selection
 
       for (const goal of toStart) {
         // G3.4 authority gate (fail-closed; flag AUTHORITY_GATE).
@@ -275,6 +313,9 @@ export class LoopDaemon {
             enabled: objectiveModeEnabled(),
           });
         }
+
+        // DI-001: log the selection (candidate set + p of the chosen goal under the policy) — telemetry, never blocks dispatch
+        try { recordSelectionPropensity(this.db, tickId, eligible.map((g) => g.id), goal.id, eligible.indexOf(goal), slots); } catch { /* telemetry only */ }
 
         // Non-blocking: start the goal and don't wait for it to finish.
         this.executing.add(goal.id);
@@ -391,6 +432,11 @@ export class LoopDaemon {
       try { new CommonsProposalReviewService(this.db).recordGoalOutcome(row.id, 'failed', reason); } catch { /* best-effort learning */ }
       swarmEventBus.emit('loop_completed', { loopRunId: waiting.run_id, goalId: row.id, goalType: 'doc-drift-and-small-fix-loop', mode: 'closed', status: 'failed', durationMs: 0, strategy: 'objective', startedAt: now, completedAt: now });
     }
+  }
+
+  /** True when the goal is (now) blocked on an unmet dependency; an evaluation error leaves dispatch as before. */
+  private dependencyBlocked(goalId: string): boolean {
+    try { return blockOnUnmetDependencies(this.db, goalId); } catch { return false; }
   }
 
   private scheduleNext(): void {
@@ -885,6 +931,8 @@ export class LoopDaemon {
 
     } catch (error) {
       if (runId && error instanceof Error && error.message === 'LOOP_WORKER_APPROVAL_REQUIRED' && this.blockForApproval(goal, runId)) return;
+      // A dependency that became unmet after the pre-dispatch check (decompose/startLoop assert it again) is a wait, not a failure.
+      if (error instanceof Error && error.message.startsWith('GOAL_DEPENDENCY_') && this.dependencyBlocked(goal.id)) return;
       // Mark the goal as failed if execution fails.
       this.db.prepare('UPDATE goals SET status = ?, updated_at = ? WHERE id = ?')
         .run('failed', new Date().toISOString(), goal.id);

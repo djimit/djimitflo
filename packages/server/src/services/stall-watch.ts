@@ -3,6 +3,7 @@ import type { Database } from 'better-sqlite3';
 import { decide, expiringAdmissions } from '../execution/runtime-admission';
 import { randomUUID } from 'crypto';
 import { guardTick, healSchedulers, quarantinedSchedulers, selfHealMode, type RecoveryAction } from './scheduler-registry';
+import { capabilityChain, isAnomaly, type CapabilityVerdict, type ObserveOptions } from './capability-chain';
 
 /**
  * Plan M10: Djimitflo noticed none of its own silent failures on 2026-09-27 — the workstation gym benched for 9 h, NVIDIA
@@ -22,7 +23,10 @@ const ago = (now: number, hours: number) => new Date(now - hours * 3_600_000).to
 export type DetectorStatus = 'ok' | 'error' | 'not_applicable' | 'capped';
 export interface DetectorHealth { name: string; status: DetectorStatus; error?: string; detail?: string; checked_at: string }
 export type StallHealth = 'HEALTHY' | 'DEGRADED' | 'UNKNOWN' | 'BREACHED';
-export interface StallReport { stalls: Stall[]; detectors: DetectorHealth[]; health: StallHealth }
+/** capabilities: the capability chain (configured → outcome) per watched capability, with its observed facts (capability-chain.ts) */
+export interface StallReport { stalls: Stall[]; detectors: DetectorHealth[]; health: StallHealth; capabilities: CapabilityVerdict[] }
+/** A capability anomaly already raised by a legacy detector above is not raised twice (its verdict still lists the chain). */
+const LEGACY_SUBSYSTEM: Record<string, string> = { evolution_estimates: 'estimates', evolution_gym: 'gym' };
 
 /** The remote gym's rolling 24 h cap (EVOLUTION_GYM_REMOTE_MAX_PER_DAY): claims used, the limit, and when the oldest claim
  *  in the window ages out. Shared by claim() and the stall watch, so a gym idle at its cap is not reported as stalled. */
@@ -48,7 +52,7 @@ export function stallHealth(stalls: Stall[], detectors: DetectorHealth[]): Stall
   return 'HEALTHY';
 }
 
-export function detectStallsWithHealth(db: Database, now = Date.now(), env: NodeJS.ProcessEnv = process.env): StallReport {
+export function detectStallsWithHealth(db: Database, now = Date.now(), env: NodeJS.ProcessEnv = process.env, chainOpts: ObserveOptions = {}): StallReport {
   const one = <T>(sql: string, ...args: unknown[]) => db.prepare(sql).get(...args) as T | undefined;
   const all = <T>(sql: string, ...args: unknown[]) => db.prepare(sql).all(...args) as T[];
   const gymOn = env.EVOLUTION_GYM_ENABLED === 'true' || env.EVOLUTION_GYM_REMOTE_ENABLED === 'true';
@@ -104,6 +108,12 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
   });
   // 5. fleet discoveries stopped (publishers run daily). Never judged at all while enabled = no telemetry, also a stall.
   run('discoveries', env.FRONTIER_EXPERT_SOURCE_UNITS_ENABLED === 'true', () => {
+    // DI-001 C: while DISCOVERY_RELEVANCE_PAUSED nothing is judged on purpose; a stall is then publishers that stopped sending
+    if (env.DISCOVERY_RELEVANCE_PAUSED === 'true') {
+      const received = one<{ t: string | null }>("SELECT MAX(occurred_at) AS t FROM external_events WHERE event_type LIKE 'discovery.%'")?.t ?? null;
+      if (!received || received < ago(now, 36)) out.push({ subsystem: 'discoveries', since: received, detail: 'no fleet discovery received for > 36 h (discovery_relevance is paused: DISCOVERY_RELEVANCE_PAUSED)' });
+      return;
+    }
     const last = one<{ t: string | null }>("SELECT MAX(created_at) AS t FROM judgments WHERE judgment = 'discovery_relevance'")?.t ?? null;
     if (!last || last < ago(now, 36)) out.push({ subsystem: 'discoveries', since: last, detail: last ? 'no fleet discovery judged for > 36 h (publishers on Mac mini / Eve-V / workstation)' : 'source units are enabled but no fleet discovery was ever judged' });
   });
@@ -137,7 +147,19 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
   run('schedulers', true, () => {
     for (const name of quarantinedSchedulers()) out.push({ subsystem: `scheduler:${name}`, since: null, detail: `scheduler '${name}' is armed but not ticking and was quarantined (see scheduler_recovery judgments); needs the operator` });
   });
-  return { stalls: out, detectors, health: stallHealth(out, detectors) };
+  // Workstream B: the capability chain — an enabled capability with a disabled dependency, a misconfigured path, a ticking
+  // scheduler without outcomes, or pending work without progress is a stall; idle by design (flag off, cap, no input) is not
+  let capabilities: CapabilityVerdict[] = [];
+  run('capabilities', true, () => {
+    capabilities = capabilityChain(db, now, env, chainOpts);
+    for (const v of capabilities.filter(isAnomaly)) {
+      if (out.some((s) => s.subsystem === LEGACY_SUBSYSTEM[v.component])) continue;
+      // since = the newest evidence the chain stopped at (last outcome / state change / tick), not the observation time
+      const since = v.facts.map((f) => f.at).filter((t): t is string => Boolean(t) && t !== checked_at).sort().pop() ?? null;
+      out.push({ subsystem: `capability:${v.component}`, since, detail: `${v.state} at ${v.link}: ${v.facts.map((f) => f.fact).join('; ')}`.slice(0, 500) });
+    }
+  });
+  return { stalls: out, detectors, health: stallHealth(out, detectors), capabilities };
 }
 
 /** Compatibility: the stalls only (callers that need detector health use detectStallsWithHealth). */

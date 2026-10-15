@@ -161,6 +161,12 @@ export interface EvolutionEvidence {
   ste_001: { mode: string | null; target_per_arm: number; ste_template_hash: string; status: 'collecting' | 'analysable'; diff: number | null;
     arms: Record<'0' | '1', { n: number; verified: number; verified_rate: number | null; ci: [number, number] | null; out_of_scope: number; out_of_scope_share: number | null; tokens_mean: number | null }>;
     note: string };
+  /** MAKER-DEPS-001 (MAKER_DEPS_001_MODE): ITT verified completion per goal, A = existing, B = dependencies prepared before the maker */
+  maker_deps_001: { experiment: 'MAKER-DEPS-001'; version: 'v1'; mode: string | null; target_per_arm: number; status: 'collecting' | 'analysable';
+    diff: number | null; diff_ci_descriptive: [number, number] | null;
+    arms: Record<'A' | 'B', { goals: number; terminal: number; verified: number; regressed: number; censored: number; verified_rate: number | null;
+      preparations: number; preparation_failed: number; maker_leases: number; maker_failed: number; maker_timed_out: number; tokens_mean: number | null }>;
+    note: string };
   /** H-D5NO: prospective false-rejection risk of jev confident-NO on proposal_prescreen (shadow); confident_yes is descriptive only */
   d5_no: { status: 'collecting' | 'ready' | 'rejected' | 'insufficient_evidence' | 'unavailable'; cutoff: string; prereg_sha256?: string; analysis_n?: number; max_risk?: number;
     excluded?: { pre_cutoff_cluster: number; oracle_lane: number };
@@ -276,8 +282,42 @@ export interface EfficiencyView {
   ledger: Array<{ day: string; consumer: string; cloud_tokens: number; local_tokens: number; gpu_seconds: number; jobs: number; wh: number | null; covered_s: number }>;
   hosts: Array<{ host: string; samples: number; last_sample: string | null; avg_watts: number | null; gpu_kwh: number | null; covered_h: number; coverage_pct?: number }>;
   north_star: { weeks: Array<{ week_start: string; verified: number; cloud_m_tokens: number; local_kwh: number | null; local_covered_h: number; per_m_tokens: number | null; per_kwh: number | null;
-    local_verified?: number; coverage_pct?: number | null; per_kwh_reason?: string | null }> };
+    local_verified?: number; coverage_pct?: number | null; per_kwh_reason?: string | null;
+    /** efficiency.cloud_tokens version; superseded keeps the v1 (maker double-counted) values beside the corrected ones */
+    metric_version?: number; superseded?: { metric_version: number; cloud_m_tokens: number; per_m_tokens: number | null; correction: 'ACCOUNTING_CORRECTION' } }> };
   coverage?: { jobs_pct: number | null; window_pct: number | null };
+  notes: string[];
+  cost_per_verified: CostPerVerified;
+}
+
+/** Verified cost ledger (server services/cost-ledger.ts): UNKNOWN parts are null with status 'UNKNOWN', never 0. */
+export interface CostMetricRef { id: string; version: number; hash: string }
+export interface CostMeasure { value: number | null; unit: string; status: 'measured' | 'partial' | 'UNKNOWN'; coverage: number | null; note?: string }
+export interface CostPerUnit { value: number | null; status: 'measured' | 'lower_bound' | 'UNKNOWN'; reason?: string }
+type CostParts<T> = { cloud_tokens: T; task_path_cloud_tokens: T; local_tokens: T; local_gpu_kwh: T; review_minutes: T; usd: T };
+export interface CostScope {
+  metric: CostMetricRef; scope: 'task' | 'reviewer' | 'merge' | 'surviving_pr'; definition: string; n: number; censored: number | null; censored_reason: string | null;
+  numerator: CostParts<CostMeasure>; per_unit: CostParts<CostPerUnit>;
+  successful_only: { events: number; cloud_tokens: number; per_unit: number | null };
+  with_duplicate: { cloud_tokens: number; per_unit: number | null; delta_tokens: number; correction: 'ACCOUNTING_CORRECTION' };
+}
+interface CostShareWindow { value: number | null; numerator_tokens: number; denominator_tokens: number; with_duplicate: number | null }
+export interface CostPerVerified {
+  at: string; window: { since: string; until: string; days: number; lost_windows: ReadonlyArray<{ from: string; to: string; ref: string }>; lost_hours_in_window: number };
+  metrics: Array<CostMetricRef & { definition: string; supersedes?: number; reason?: string }>;
+  scopes: CostScope[];
+  population: { definition: CostMetricRef; members: number; verified: number; open: number; runs: number; prs: number; merged: number; surviving: number; survival_pending: number;
+    unattributed: { events: number; cloud_tokens: number; note: string } };
+  shares: { unverified_run_tokens: CostShareWindow & { metric: CostMetricRef; window: CostShareWindow; correction: string; note: string };
+    reviewer_no_verdict: CostShareWindow & { metric: CostMetricRef; leases: number; window: CostShareWindow & { leases: number }; correction: string; note: string } };
+  by_consumer: Array<{ consumer: string; locality: 'cloud' | 'local'; events: number; events_tokens_known: number; tokens: number; output_split_known: number; coverage: number }>;
+  usage: { events: number; by_source: Array<{ source: string; events: number; events_tokens_known: number; tokens: number; first_record: string | null; window_coverage: number }>;
+    mirrors_excluded: Array<{ source: string; rule: string; rows: number; tokens: number; owner_kind: string }>; shared_groups: number; shared_events: number;
+    owners: number; sum_over_owners: number; total_tokens: number; owners_sum_equals_total: boolean };
+  tool_calls: { events: number; linked: number; linked_share: number | null; by_role: Record<string, number>; unlinked: { no_task: number; no_lease_id: number; lease_missing: number }; rule: string };
+  corrections: Array<{ metric: CostMetricRef; from: CostMetricRef; classification: 'ACCOUNTING_CORRECTION'; reason: string; v1_cloud_tokens: number; v2_cloud_tokens: number; delta_tokens: number; note: string }>;
+  operational_savings: { verified: never[]; note: string };
+  price_list: { entries: number; as_of: string | null; note: string };
   notes: string[];
 }
 
@@ -315,7 +355,14 @@ export type OperatorCockpit = {
   judgments_7d: Array<{ judgment: string; calls: number; errors: number; input_tokens: number }>;
   deploys: Array<{ at: string; event: string; sha: string; detail: string }>;
   evolution?: EvolutionLineage | null;
+  /** Workstream B: capability chain per watched capability (server: services/capability-chain.ts) */
+  capabilities?: CapabilityVerdict[];
 };
+export type CapabilityState = 'HEALTHY' | 'IDLE_EXPECTED' | 'DISABLED_BY_POLICY' | 'UNCONFIGURED' | 'BLOCKED' | 'STALLED' | 'MISCONFIGURED' | 'UNKNOWN';
+export type CapabilityChainLink = 'CONFIGURED' | 'ENABLED' | 'DEPENDENCIES_READY' | 'SCHEDULED' | 'EXECUTED' | 'OUTCOME_PERSISTED';
+export type CapabilityVerdict = { component: string; state: CapabilityState; link: CapabilityChainLink;
+  chain: Record<CapabilityChainLink, 'ok' | 'failed' | 'unknown' | 'not_applicable'>; facts: Array<{ fact: string; at: string | null }>;
+  window: { ms: number; since: string }; remediation: string };
 
 /** UX-13: GET /api/health/digest — services/operator-push.ts buildDigest. */
 export type OperatorDigest = { at: string; text: string; data: Record<string, unknown> };
