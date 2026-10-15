@@ -63,6 +63,95 @@ it('routes: agents need their host token; approval needs approve:task', async ()
   expect(polled.body.commands.map((c: any) => c.command)).toEqual(['whoami']);
   expect((await request(app).post(`/api/host-agent/commands/${created.body.id}/result`).set('X-Host', 'workstation').set('X-Host-Token', token).send({ exit_code: 0, output: 'root' })).status).toBe(200);
   const list = await request(app).get('/api/fleet-hosts').set('X-Role', 'viewer');
-  expect(list.body.hosts[0]).toMatchObject({ host: 'workstation', live: true, agent_version: '1' });
+  expect(list.body.hosts[0]).toMatchObject({ host: 'workstation', live: true, agent_version: '1', info: { os: 'linux' } });
   expect(list.body.commands[0]).toMatchObject({ status: 'done', output: 'root', requested_by: 'admin', approved_by: 'admin' });
+});
+
+it('rejects invalid host, command, and actor in request', () => {
+  expect(() => fleet.request('invalid host!', 'ping', 'op')).toThrow('FLEET_HOST_INVALID');
+  expect(() => fleet.request('!workstation', 'ping', 'op')).toThrow('FLEET_HOST_INVALID');
+  expect(() => fleet.request('workstation!', 'ping', 'op')).toThrow('FLEET_HOST_INVALID');
+  expect(() => fleet.request('x'.repeat(81), 'ping', 'op')).toThrow('FLEET_HOST_INVALID');
+  expect(() => fleet.request('workstation', '', 'op')).toThrow('FLEET_COMMAND_INVALID');
+  expect(() => fleet.request('workstation', 'x'.repeat(4001), 'op')).toThrow('FLEET_COMMAND_INVALID');
+  expect(() => fleet.request('workstation', null as any, 'op')).toThrow('FLEET_COMMAND_INVALID');
+  expect(() => fleet.request('workstation', 'ping', '  ')).toThrow('FLEET_ACTOR_REQUIRED');
+  expect(() => fleet.request('workstation', 'ping', '')).toThrow('FLEET_ACTOR_REQUIRED');
+  expect(fleet.request('workstation', 'x'.repeat(4000), 'op').command).toHaveLength(4000);
+});
+
+it('approve: validates existence, pending status, empty approver, hash mismatch, and records self-approval', () => {
+  const c = fleet.request('workstation', 'reboot', 'op');
+  expect(() => fleet.approve('nonexistent-id', 'op', sha('reboot'))).toThrow('FLEET_COMMAND_NOT_FOUND');
+  expect(() => fleet.approve(c.id, '  ', sha('reboot'))).toThrow('FLEET_ACTOR_REQUIRED');
+  expect(() => fleet.approve(c.id, 'dennis', sha('wrong'))).toThrow('FLEET_COMMAND_HASH_MISMATCH');
+  const approved = fleet.approve(c.id, 'op', sha('reboot'));
+  expect(approved.self_approved).toBeTruthy();
+  const c2 = fleet.request('workstation', 'whoami', 'alice');
+  const approved2 = fleet.approve(c2.id, 'bob', sha('whoami'));
+  expect(approved2.self_approved).toBeFalsy();
+  expect(() => fleet.approve(c.id, 'dennis', sha('reboot'))).toThrow('FLEET_COMMAND_NOT_PENDING');
+  const c3 = fleet.request('workstation', 'ls', 'op');
+  db.prepare('UPDATE fleet_commands SET command_sha256 = ? WHERE id = ?').run(sha('tampered'), c3.id);
+  expect(() => fleet.approve(c3.id, 'dennis', sha('tampered'))).toThrow('FLEET_COMMAND_HASH_MISMATCH');
+});
+
+it('deny: validates existence, pending/queued status, and truncates long reasons', () => {
+  expect(() => fleet.deny('nonexistent-id', 'op')).toThrow('FLEET_COMMAND_NOT_FOUND');
+  const c = fleet.request('workstation', 'reboot', 'op');
+  fleet.approve(c.id, 'dennis', sha('reboot'));
+  const denied = fleet.deny(c.id, 'dennis', 'x'.repeat(500));
+  expect(denied).toMatchObject({ status: 'denied' });
+  expect(denied.decided_reason).toHaveLength(300);
+  const done = fleet.request('workstation', 'uptime', 'op');
+  fleet.poll('workstation');
+  fleet.result(done.id, 'workstation', 0, 'up');
+  expect(() => fleet.deny(done.id, 'dennis')).toThrow('FLEET_COMMAND_NOT_PENDING');
+});
+
+it('result: validates running status and exit code mapping', () => {
+  const c = fleet.request('workstation', 'reboot', 'op');
+  expect(() => fleet.result(c.id, 'workstation', 0, '')).toThrow('FLEET_COMMAND_NOT_RUNNING');
+  fleet.approve(c.id, 'dennis', sha('reboot'));
+  fleet.poll('workstation');
+  fleet.result(c.id, 'workstation', 1, 'error');
+  expect(fleet.get(c.id)).toMatchObject({ status: 'failed', exit_code: 1 });
+  const d = fleet.request('workstation', 'ping', 'op');
+  fleet.poll('workstation');
+  fleet.result(d.id, 'workstation', 1.5 as any, 'partial');
+  expect(fleet.get(d.id)!.exit_code).toBeNull();
+  const e = fleet.request('workstation', 'uptime', 'op');
+  fleet.poll('workstation');
+  fleet.result(e.id, 'workstation', 0, null as any);
+  expect(fleet.get(e.id)!.output).toBe('');
+});
+
+it('poll: caps version and info, and filters tampered commands', () => {
+  fleet.poll('workstation', { os: 'linux' }, 'x'.repeat(50));
+  const h = fleet.hosts()[0];
+  expect(h.agent_version).toHaveLength(40);
+  const bigInfo: Record<string, unknown> = {};
+  for (let i = 0; i < 300; i++) bigInfo[`key${i}`] = 'x'.repeat(30);
+  fleet.poll('macmini', bigInfo, '1');
+  const stored = db.prepare('SELECT info_json FROM fleet_hosts WHERE host = ?').get('macmini') as { info_json: string };
+  expect(stored.info_json.length).toBeLessThanOrEqual(4000);
+  const tampered = fleet.request('workstation', 'rm -rf /', 'op');
+  fleet.approve(tampered.id, 'dennis', sha('rm -rf /'));
+  db.prepare('UPDATE fleet_commands SET command_sha256 = ? WHERE id = ?').run(sha('WRONG'), tampered.id);
+  const delivered = fleet.poll('workstation');
+  expect(delivered.map((c) => c.command)).not.toContain('rm -rf /');
+});
+
+it('hosts: live boundary at 120 seconds and handles empty info_json', () => {
+  vi.useFakeTimers({ now: Date.parse('2026-09-29T00:00:00Z') });
+  fleet.poll('workstation', { os: 'linux' }, '1');
+  vi.setSystemTime(Date.parse('2026-09-29T00:02:00Z'));
+  expect(fleet.hosts()[0].live).toBe(true);
+  vi.setSystemTime(Date.parse('2026-09-29T00:02:01Z'));
+  expect(fleet.hosts()[0].live).toBe(false);
+  db.prepare("INSERT INTO fleet_hosts (host, last_seen, agent_version, info_json) VALUES (?, ?, ?, ?)")
+    .run('emptyinfo', '2026-09-29T00:00:00Z', null, '');
+  const hosts = fleet.hosts(Date.parse('2026-09-29T00:00:00Z'));
+  const empty = hosts.find((h) => h.host === 'emptyinfo')!;
+  expect(empty.info).toEqual({});
 });
