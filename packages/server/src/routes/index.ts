@@ -30,7 +30,6 @@ import { createAuthorityRoutes } from './authority';
 import { createUsageRoutes } from './usage';
 import { createDiscussionRoutes } from './discussions';
 import { createExportRoutes } from './exports';
-import { createMessageRoutes } from './messages';
 import { createSkillRoutes } from './skills';
 import { createLearningRoutes } from './learning';
 import { getAppVersion } from '../utils/version';
@@ -46,43 +45,26 @@ import { createRemoteGymRoutes } from './remote-gym';
 import { createRuntimeGovernanceRoutes } from './runtime-governance';
 import { createCognitiveRoutes } from './cognitive';
 import { createMemoryRoutes } from './memory';
-import { createMemoryEvolutionRoutes } from './memory-evolution';
-import { createSelfModificationRoutes } from './self-modification';
-import { createFleetRoutes } from './fleet';
 import { createMultiModelRoutes } from './multi-model';
 import { createComplianceRoutes } from './compliance';
 import { createTraceabilityRoutes } from './traceability';
 import { createRetirementRoutes } from './retirement';
 import { createRedTeamRoutes } from './red-team';
 import { createPlatformRoutes } from './platform';
-import { createAdvancedRoutes } from './advanced';
 import { createHealthRoutes } from './health';
-import { createLegalRoutes } from './legal';
 import { createResearchRoutes } from './research';
-import { createCanvasRoutes } from './canvas';
 import { createTelegramRoutes } from './telegram';
 import { TelegramApiService } from '../services/telegram-api-service';
 import { createSBOMRoutes } from './sbom';
-import { createGovernanceFeedbackRoutes } from './governance-feedback';
-import { createRepositoryIndexRoutes } from './repository-index';
 import { createExplainerRoutes } from './explainer';
-import { createConsoleRoutes } from './console';
 import { createApexRoutes } from './apex';
 import { createAgentSocialRuntimeRoutes, createSwarmOrchestrationRoutes } from './swarm-orchestration';
 import { createSelfImprovementRoutes } from './self-improvement';
-import { createSwarmIntelRoutes } from './swarm-intel';
 import { createAgiRoutes } from './agi';
 import { createIntelligenceRoutes } from './intelligence';
 import { createMetaOrchestrationRoutes } from './meta-orchestration';
 import { createCouncilRoutes } from './council';
-import { createSegmlRoutes } from './segml';
 import { createSegmlFederationRoutes } from './segml-federation';
-import { createSegmlLiteratureRoutes } from './segml-literature';
-import { createSegmlFinetuningRoutes } from './segml-finetuning';
-import { createSegmlL3Routes } from './segml-l3';
-import { createSegmlL4Routes } from './segml-l4';
-import { createSegmlL5Routes } from './segml-l5';
-import { createSegmlProductionRoutes } from './segml-production';
 import { createOrganizationRoutes } from './organizations';
 import { createAuditLogRoutes } from './audit-logs';
 import { limitBodySize } from '../middleware/input-validation';
@@ -203,9 +185,7 @@ export function createRoutes(
     { prefix: '/learning', middleware: [requireAuth], router: createLearningRoutes(db, auth, cognitiveLoop) },
     { prefix: '/backups', middleware: [requireAuth], router: createBackupRoutes(db, auth!) },
     { prefix: '/exports', middleware: [requireAuth], router: createExportRoutes(db, auth!) },
-    { prefix: '/messages', middleware: [requireAuth], router: createMessageRoutes(db, wsService, auth) },
     { prefix: '/memory', middleware: [requireAuth], router: createMemoryRoutes(db, auth) },
-    { prefix: '/memory-evolution', middleware: [requireAuth], router: createMemoryEvolutionRoutes(db, auth) },
     { prefix: '/skills', middleware: [requireAuth], router: createSkillRoutes(db, auth) },
     { prefix: '/openmythos', middleware: [requireAuth], router: createOpenMythosRoutes(db, auth) },
     { prefix: '/gym', middleware: [requireAuth], router: createGymRoutes(db, auth) },
@@ -214,42 +194,26 @@ export function createRoutes(
     { prefix: '/fleet-hosts', middleware: [requireAuth], router: createFleetHostRoutes(db, auth!) },
     { prefix: '/runtime-governance', middleware: [requireAuth], router: createRuntimeGovernanceRoutes(db, auth, runtimeGovernance) },
     { prefix: '/cognitive', middleware: [requireAuth], router: createCognitiveRoutes(db, auth, cognitiveLoop) },
-    { prefix: '/self-modification', middleware: [requireAuth], router: createSelfModificationRoutes(db, auth) },
-    { prefix: '/fleet', middleware: [requireAuth], router: createFleetRoutes(db, auth) },
     { prefix: '/models', middleware: [requireAuth], router: createMultiModelRoutes(db, auth) },
     { prefix: '/compliance', middleware: [requireAuth], router: createComplianceRoutes(db, auth) },
     { prefix: '/retirement', middleware: [requireAuth], router: createRetirementRoutes(db, auth) },
     { prefix: '/red-team', middleware: [requireAuth], router: createRedTeamRoutes(db, auth, runtimeGovernance) },
     { prefix: '/platform', middleware: [requireAuth], router: createPlatformRoutes(db, auth, runtimeGovernance) },
-    { prefix: '/advanced', middleware: [requireAuth], router: createAdvancedRoutes(db, auth) },
     { prefix: '/health', middleware: [], router: createHealthRoutes(db, auth) },
-    { prefix: '/legal', middleware: [requireAuth], router: createLegalRoutes(db, auth) },
     { prefix: '/research', middleware: [requireAuth], router: createResearchRoutes(db, auth) },
-    { prefix: '/canvas', middleware: [requireAuth], router: createCanvasRoutes(db, auth) },
     { prefix: '/telegram', middleware: [], router: createTelegramRoutes(db, auth, wsService, new TelegramApiService(authService!, `http://127.0.0.1:${process.env.PORT || 3001}/api`)) },
     { prefix: '/apex', middleware: [requireAuth], router: createApexRoutes(db, auth, operatorRuntime) },
     { prefix: '/swarm-v2', middleware: [requireAuth], router: createSwarmOrchestrationRoutes(db, auth) },
     { prefix: '/swarm', middleware: [requireAuth], router: createSwarmOrchestrationRoutes(db, auth) },
     { prefix: '/self-improve', middleware: [requireAuth], router: createSelfImprovementRoutes(db, auth) },
-    { prefix: '/swarm-intel', middleware: [requireAuth], router: createSwarmIntelRoutes(db, auth) },
     { prefix: '/agi', middleware: [requireAuth], router: createAgiRoutes(db, auth) },
     { prefix: '/intelligence', middleware: [requireAuth], router: createIntelligenceRoutes(db, auth) },
     { prefix: '/meta', middleware: [requireAuth], router: createMetaOrchestrationRoutes(db, auth, metaOrchestration) },
     { prefix: '/traceability', middleware: [rateLimit({ windowMs: 60_000, limit: 30 }), requireAuth], router: createTraceabilityRoutes() },
     { prefix: '/sbom', middleware: [requireAuth], router: createSBOMRoutes(db, auth) },
-    { prefix: '/governance-feedback', middleware: [requireAuth], router: createGovernanceFeedbackRoutes(db, auth, wsService) },
-    { prefix: '/repo-index', middleware: [requireAuth], router: createRepositoryIndexRoutes(db, auth) },
     { prefix: '/explainer', middleware: [requireAuth], router: createExplainerRoutes(db, auth) },
-    { prefix: '/console', middleware: [requireAuth], router: createConsoleRoutes(db, auth) },
     { prefix: '/council', middleware: [requireAuth], router: createCouncilRoutes(db, auth) },
-    { prefix: '/segml', middleware: [requireAuth], router: createSegmlRoutes(db, auth) },
     { prefix: '/segml/federation', middleware: [requireAuth], router: createSegmlFederationRoutes(db, auth) },
-    { prefix: '/segml/literature', middleware: [requireAuth], router: createSegmlLiteratureRoutes(db, auth) },
-    { prefix: '/segml/finetuning', middleware: [requireAuth], router: createSegmlFinetuningRoutes(db, auth) },
-    { prefix: '/segml/l3', middleware: [requireAuth], router: createSegmlL3Routes(db, auth) },
-    { prefix: '/segml/l4', middleware: [requireAuth], router: createSegmlL4Routes(db, auth) },
-    { prefix: '/segml/l5', middleware: [requireAuth], router: createSegmlL5Routes(db, auth) },
-    { prefix: '/segml/production', middleware: [requireAuth], router: createSegmlProductionRoutes(db, auth) },
     { prefix: '/organizations', middleware: [requireAuth], router: createOrganizationRoutes(db, requireAuth, authService, auditService) },
     { prefix: '/audit-logs', middleware: [requireAuth], router: createAuditLogRoutes(db, requireAuth) },
   );

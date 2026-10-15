@@ -161,6 +161,12 @@ export interface EvolutionEvidence {
   ste_001: { mode: string | null; target_per_arm: number; ste_template_hash: string; status: 'collecting' | 'analysable'; diff: number | null;
     arms: Record<'0' | '1', { n: number; verified: number; verified_rate: number | null; ci: [number, number] | null; out_of_scope: number; out_of_scope_share: number | null; tokens_mean: number | null }>;
     note: string };
+  /** MAKER-DEPS-001 (MAKER_DEPS_001_MODE): ITT verified completion per goal, A = existing, B = dependencies prepared before the maker */
+  maker_deps_001: { experiment: 'MAKER-DEPS-001'; version: 'v1'; mode: string | null; target_per_arm: number; status: 'collecting' | 'analysable';
+    diff: number | null; diff_ci_descriptive: [number, number] | null;
+    arms: Record<'A' | 'B', { goals: number; terminal: number; verified: number; regressed: number; censored: number; verified_rate: number | null;
+      preparations: number; preparation_failed: number; maker_leases: number; maker_failed: number; maker_timed_out: number; tokens_mean: number | null }>;
+    note: string };
   /** H-D5NO: prospective false-rejection risk of jev confident-NO on proposal_prescreen (shadow); confident_yes is descriptive only */
   d5_no: { status: 'collecting' | 'ready' | 'rejected' | 'insufficient_evidence' | 'unavailable'; cutoff: string; prereg_sha256?: string; analysis_n?: number; max_risk?: number;
     excluded?: { pre_cutoff_cluster: number; oracle_lane: number };
@@ -317,6 +323,14 @@ export interface CostPerVerified {
 
 export type HealthState = 'HEALTHY' | 'DEGRADED' | 'BREACHED' | 'UNKNOWN' | 'STALE' | 'NOT_APPLICABLE';
 export type AceMainEffect = { on_n: number; off_n: number; diff: number | null };
+export type RelevanceLabel = 'relevant' | 'not_relevant' | 'unclear';
+export type RelevancePass = 'first' | 'relabel';
+export type RelevanceCard = { ref: string; pass: RelevancePass; title: string; note: string; source: string; url: string };
+export type RelevanceQueue = {
+  cards: RelevanceCard[];
+  progress: { protected: { labelled: number; total: number }; relabel: { labelled: number; total: number; due: number }; al: { labelled: number; total: number } };
+  today: { day: string; labels: number; seconds: number; median_seconds: number | null; target_seconds: number; remaining_seconds: number; est_cards_left: number | null };
+};
 export type D5Tally = { cases: number; false_rejection: number; correct_rejection: number; pending: number; censored: number; verified_rate: number | null; ci: [number, number] | null };
 export type OperatorCockpit = {
   at: string;
@@ -349,7 +363,14 @@ export type OperatorCockpit = {
   judgments_7d: Array<{ judgment: string; calls: number; errors: number; input_tokens: number }>;
   deploys: Array<{ at: string; event: string; sha: string; detail: string }>;
   evolution?: EvolutionLineage | null;
+  /** Workstream B: capability chain per watched capability (server: services/capability-chain.ts) */
+  capabilities?: CapabilityVerdict[];
 };
+export type CapabilityState = 'HEALTHY' | 'IDLE_EXPECTED' | 'DISABLED_BY_POLICY' | 'UNCONFIGURED' | 'BLOCKED' | 'STALLED' | 'MISCONFIGURED' | 'UNKNOWN';
+export type CapabilityChainLink = 'CONFIGURED' | 'ENABLED' | 'DEPENDENCIES_READY' | 'SCHEDULED' | 'EXECUTED' | 'OUTCOME_PERSISTED';
+export type CapabilityVerdict = { component: string; state: CapabilityState; link: CapabilityChainLink;
+  chain: Record<CapabilityChainLink, 'ok' | 'failed' | 'unknown' | 'not_applicable'>; facts: Array<{ fact: string; at: string | null }>;
+  window: { ms: number; since: string }; remediation: string };
 
 /** UX-13: GET /api/health/digest — services/operator-push.ts buildDigest. */
 export type OperatorDigest = { at: string; text: string; data: Record<string, unknown> };
@@ -1684,6 +1705,15 @@ class ApiClient {
   /** §16 step 4: the operator's verdict on a sampled attribution (stored as an attribution_audit operator_label judgment). */
   async adjudicateAttribution(runId: string, verdict: AuditVerdict, note?: string): Promise<void> {
     await this.request<void>(`/self-improve/attribution-audit/${encodeURIComponent(runId)}`, { method: 'POST', body: JSON.stringify(note ? { verdict, note } : { verdict }) });
+  }
+
+  /** DI-001: next blind relevance cards (title, note, source, link only) and today's 30-min quota */
+  async getRelevanceQueue(limit = 5): Promise<RelevanceQueue> {
+    return this.request(`/self-improve/discovery-labels/next?limit=${limit}`);
+  }
+
+  async labelDiscoveryRelevance(ref: string, pass: RelevancePass, label: RelevanceLabel, seconds: number): Promise<{ recorded: boolean }> {
+    return this.request('/self-improve/discovery-labels', { method: 'POST', body: JSON.stringify({ ref, pass, label, seconds }) });
   }
 
   async setTelegramIdentity(telegramId: string, userId: string, note?: string): Promise<void> {
