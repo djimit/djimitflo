@@ -11,6 +11,7 @@ import { ResourceScheduler } from './resource-scheduler';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import { LoopEventService } from './loop-event-service';
+import { blockOnUnmetDependencies, settleDependencyBlockedGoals } from './goal-dependency-gate';
 import { inheritableApproval } from './approval-inheritance';
 import { CommonsProposalReviewService } from './commons-proposal-review-service';
 import { SelfImprovementService } from './self-improvement-service';
@@ -29,7 +30,7 @@ import { buildProvenance, provenanceJson } from './judgment-provenance';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { authorityGateForGoal } from './authority-gate';
 import { remoteMakerWaitMs } from '../execution/executors/remote-maker-executor';
-import { makerFailureClass, recordOutcomeAttribution, type MakerMeta } from './outcome-attribution';
+import { makerFailureClass, recordOutcomeAttribution, reviewerSubReason, type AttributionLease, type MakerMeta } from './outcome-attribution';
 /** Deterministic checks for daemon runs. The repo-wide `test` script cannot finish in 120 s, so hosts can scope it
  *  (LOOP_DAEMON_CHECK_SCRIPTS=test:changed,lint,type-check) and raise the per-script timeout (LOOP_DAEMON_CHECK_TIMEOUT_MS, max 600000). */
 export function daemonCheckOptions(env: NodeJS.ProcessEnv = process.env): { scripts?: string[]; timeout_ms: number } {
@@ -85,6 +86,15 @@ export function reviewerRetryable(role: string, status: string | undefined, fail
   if (status !== 'failed' || typeof failureReason !== 'string' || !failureReason.startsWith(`${role}_runtime_failed:`)) return false;
   return /timed_out=true/.test(failureReason) || /token budget exceeded/i.test(failureReason);
 }
+
+/**
+ * LOOP_REVIEWER_STRATEGY=bounded (challenger, default off; docs/research/di-001/REVIEWER_NO_VERDICT.md): once the checker
+ * (after its one retry) has no accepted/needs_revision/rejected verdict, the checker_verdict gate cannot pass, so the
+ * security checker is not dispatched. Prod 09-13..10-14: 9 such runs spent 3.97 M security tokens. Gates are unchanged;
+ * the missing verdict stays insufficient_evidence (reviewer_failure), never accept or reject.
+ */
+export const reviewerStrategyBounded = (env: NodeJS.ProcessEnv = process.env): boolean => env.LOOP_REVIEWER_STRATEGY === 'bounded';
+const DECISIVE_VERDICTS = ['accepted', 'needs_revision', 'rejected'];
 
 /**
  * G16+G19: ParallelLoopDaemon — continuous + parallel operation mode.
@@ -223,6 +233,7 @@ export class LoopDaemon {
 
     try {
       this.resumeApprovalBlockedGoals();
+      try { settleDependencyBlockedGoals(this.db); } catch (error) { console.error('[LoopDaemon] dependency settle error:', error instanceof Error ? error.message : String(error)); }
       const queue = this.loadQueue();
       if (queue.length === 0) {
         this.scheduleNext();
@@ -233,7 +244,9 @@ export class LoopDaemon {
       const slots = this.getAvailableSlots();
       // prod 2026-10-01: a goal resumed after an approval is 'decomposed' while it runs, so every tick dispatched it again;
       // the second pass found the running evolve sibling and failed the goal with LOOP_WORKER_EXECUTION_IN_PROGRESS
-      const eligible = queue.filter((g) => !this.executing.has(g.id));
+      // An unmet depends_on parks the goal as dependency-blocked (one event) instead of dispatching it into a silent failure
+      const eligible = queue.filter((g) => !this.executing.has(g.id)
+        && !(Array.isArray(g.metadata?.depends_on_goal_keys) && g.metadata.depends_on_goal_keys.length > 0 && this.dependencyBlocked(g.id)));
       const toStart = eligible.slice(0, slots);
       let objectiveModeDispatchedThisTick = 0;
       const tickId = randomUUID(); // DI-001: groups the propensity records of one selection
@@ -428,6 +441,11 @@ export class LoopDaemon {
       try { new CommonsProposalReviewService(this.db).recordGoalOutcome(row.id, 'failed', reason); } catch { /* best-effort learning */ }
       swarmEventBus.emit('loop_completed', { loopRunId: waiting.run_id, goalId: row.id, goalType: 'doc-drift-and-small-fix-loop', mode: 'closed', status: 'failed', durationMs: 0, strategy: 'objective', startedAt: now, completedAt: now });
     }
+  }
+
+  /** True when the goal is (now) blocked on an unmet dependency; an evaluation error leaves dispatch as before. */
+  private dependencyBlocked(goalId: string): boolean {
+    try { return blockOnUnmetDependencies(this.db, goalId); } catch { return false; }
   }
 
   private scheduleNext(): void {
@@ -786,7 +804,16 @@ export class LoopDaemon {
         // The security reviewer is a separate, higher autonomy step (removes human security review): its own flag.
         if (process.env.LOOP_DAEMON_AUTOMATED_SECURITY_CHECKER_ENABLED === 'true' && !leaseDone('security_checker')) {
           const security = reviewerFor('security_checker');
-          if (security && await dispatch('security_checker', security)) return;
+          const checkers = reviewerStrategyBounded() ? (this.db.prepare(`SELECT id, role, status, metadata FROM worker_leases WHERE loop_run_id = ? AND role = 'checker'
+            AND (json_extract(metadata, '$.maker_lease_id') IS NULL OR json_extract(metadata, '$.maker_lease_id') = ?) ORDER BY rowid`).all(run.id, activeMakerLease.id) as Array<{ id: string; role: string; status: string; metadata: string }>)
+            .map((l) => ({ ...l, metadata: JSON.parse(l.metadata || '{}') as AttributionLease['metadata'] })) : [];
+          const checkerNoVerdict = checkers.length > 0 && !checkers.some((l) => l.status === 'completed' && DECISIVE_VERDICTS.includes(String(l.metadata.verdict)));
+          if (security && checkerNoVerdict) {
+            try {
+              new LoopEventService(this.db).recordEvent(run.id, 'security_checker_dispatch_skipped', 'info', 'Security checker not dispatched: the checker has no verdict, so the checker_verdict gate cannot pass (LOOP_REVIEWER_STRATEGY=bounded).',
+                { goal_id: goal.id, maker_lease_id: activeMakerLease.id, security_lease_id: security, strategy: 'bounded', checker_sub_reason: reviewerSubReason(checkers[checkers.length - 1], false) });
+            } catch { /* logging */ }
+          } else if (security && await dispatch('security_checker', security)) return;
         }
       }
 
@@ -922,6 +949,8 @@ export class LoopDaemon {
 
     } catch (error) {
       if (runId && error instanceof Error && error.message === 'LOOP_WORKER_APPROVAL_REQUIRED' && this.blockForApproval(goal, runId)) return;
+      // A dependency that became unmet after the pre-dispatch check (decompose/startLoop assert it again) is a wait, not a failure.
+      if (error instanceof Error && error.message.startsWith('GOAL_DEPENDENCY_') && this.dependencyBlocked(goal.id)) return;
       // Mark the goal as failed if execution fails.
       this.db.prepare('UPDATE goals SET status = ?, updated_at = ? WHERE id = ?')
         .run('failed', new Date().toISOString(), goal.id);

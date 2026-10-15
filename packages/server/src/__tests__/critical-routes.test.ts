@@ -23,7 +23,6 @@ import { createCatalogRoutes } from '../routes/catalog';
 import { createApprovalRoutes } from '../routes/approvals';
 import { createBackupRoutes } from '../routes/backup';
 import { createExportRoutes } from '../routes/exports';
-import { createMessageRoutes } from '../routes/messages';
 import { createAuditRoutes } from '../routes/audit';
 import { createUsageRoutes } from '../routes/usage';
 import { createRepositoryRoutes, createDiffRoutes } from '../routes/repositories';
@@ -64,7 +63,6 @@ describe('Critical Route Factories', () => {
       createApprovalRoutes,
       createBackupRoutes,
       createExportRoutes,
-      createMessageRoutes,
       createAuditRoutes,
       createUsageRoutes,
       createRepositoryRoutes,
@@ -78,8 +76,8 @@ describe('Critical Route Factories', () => {
       createSwarmRoutes,
     ];
 
-    it('has 21 route factories', () => {
-      expect(factories.length).toBe(21);
+    it('has 20 route factories', () => {
+      expect(factories.length).toBe(20);
     });
 
     it('all factories are functions', () => {
@@ -141,12 +139,6 @@ describe('Critical Route Factories', () => {
 
     it('createExportRoutes mounts', () => {
       const router = createExportRoutes(db, auth);
-      expect(router).toBeDefined();
-      expect(router.stack.length).toBeGreaterThan(0);
-    });
-
-    it('createMessageRoutes mounts', () => {
-      const router = createMessageRoutes(db, auth);
       expect(router).toBeDefined();
       expect(router.stack.length).toBeGreaterThan(0);
     });
