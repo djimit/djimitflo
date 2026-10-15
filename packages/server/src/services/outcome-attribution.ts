@@ -87,7 +87,8 @@ export function reviewerSubReason(lease: AttributionLease | undefined, dispatchF
     if (m.read_only_contract_passed === false) return 'read_only_violation';
     const verdict = typeof m.verdict === 'string' ? m.verdict : '';
     if (!KNOWN_VERDICTS.has(verdict)) return 'unparsed_verdict';
-    if (verdict === 'insufficient_evidence') return 'insufficient_evidence';
+    // executeChecker stores insufficient_evidence when nothing parsed too; verdict_parsed (absent on older rows) tells them apart
+    if (verdict === 'insufficient_evidence') return (m as { verdict_parsed?: unknown }).verdict_parsed === false ? 'unparsed_verdict' : 'insufficient_evidence';
     if (REJECTING.has(verdict)) return 'rejected'; // unreachable today: attributeOutcome classes this maker_failure first
     return 'unknown';
   }

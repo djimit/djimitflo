@@ -19,6 +19,7 @@ import { checkerSecondOpinion, checkerSecondOpinionState } from './judgments/che
 import { remoteMakerCancelReason } from '../execution/executors/remote-maker-executor';
 import { recordPolicyViolation } from './policy-violations';
 import { computeTokenAccounting, safeTokenAccounting } from './maker-token-accounting';
+import { assignMakerDepsArm, makerDeps001On, makerDepsEligible } from './maker-deps-001';
 import type {
   LoopRunRecord,
   WorkerLeaseRecord,
@@ -165,6 +166,17 @@ export class LoopWorkerExecutorService {
     if (run.repository_path && makerLease.worktree_path && makerLease.branch_name
       && this.loopService.repairWorktree(run.repository_path, makerLease.worktree_path, makerLease.branch_name)) {
       this.loopService.recordLoopEvent(run.id, 'worktree_repaired', 'warning', 'Maker worktree was unlinked from the runtime repository (a deploy in between); re-registered on its branch.', { maker_lease_id: makerLease.id });
+    }
+    // MAKER-DEPS-001 (pre-registered, MAKER_DEPS_001_MODE): the arm is recorded before the maker starts; arm B gets the checks'
+    // own install first. Local opencode makers of goal runs only (never TG-001, the gym or remote); caps and prompt are the same.
+    if (makerDeps001On() && run.goal_id && makerDepsEligible({ runtime: makerLease.runtime, role: makerLease.role, goal_id: run.goal_id, loop_name: run.loop_name })) {
+      const assigned = assignMakerDepsArm(this.db, run.id, makerLease, run.goal_id);
+      if (assigned.arm === 'B') {
+        const prep = this.loopService.prepareMakerWorktree(run.id, makerLease.id, makerLease.worktree_path!);
+        this.loopService.recordLoopEvent(run.id, 'maker_worktree_prepared', prep.install_failed || prep.shared_failed ? 'warning' : 'info',
+          `MAKER-DEPS-001 arm B: dependencies prepared before the maker started (installed=${prep.installed}, shared_built=${prep.shared_built}${prep.install_failed || prep.shared_failed ? '; failed, the maker runs as in arm A' : ''}).`,
+          { maker_lease_id: makerLease.id, arm: assigned.arm, experiment: assigned.experiment, version: assigned.version, ...prep });
+      }
     }
     const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
     const prompt = fs.readFileSync(this.loopService.resolveWorkAssignmentPath(makerLease), 'utf8');
@@ -364,6 +376,8 @@ export class LoopWorkerExecutorService {
       runtime_timed_out: result.timedOut, runtime_timed_out_at: result.timedOutAt, runtime_adapter: runtime,
       runtime_contract: runtimeContract, runtime_usage: runtimeUsage || { usage_source: 'unknown' }, runtime_warnings: runtimeWarnings,
       read_only_contract_passed: checkerReadOnly, runtime_verdict: verdict,
+      // separates "no verdict parsed" from an explicit insufficient_evidence (both are stored as that verdict); reviewerSubReason
+      verdict_parsed: exitStatus === 0 && !timedOut && this.loopService.checkerVerdictParsed(result.stdout || ''),
       // without it the lease repo fell back to the reviewer's notes, so 'failed' leases carried prose (or a raw event line) as their reason
       ...(exitStatus === 0 && !timedOut ? {} : { failure_reason: `${reviewRole}_runtime_failed:exit=${exitStatus ?? 'signal'},timed_out=${timedOut}: ${(result.stderr || '').split('\n').map((line) => line.trim()).filter((line) => line && !line.startsWith('at ')).pop()?.slice(0, 200) ?? ''}` }),
     });
