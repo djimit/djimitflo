@@ -1451,6 +1451,8 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   addMissingColumns(db, 'maker_genomes', [{ name: 'evidence_clusters', definition: 'TEXT' }]);
   // KE-3: the knowledge units (expert_identities ids) whose titles the dream that wrote this mutant injected; null = none
   addMissingColumns(db, 'maker_genomes', [{ name: 'knowledge_refs_json', definition: 'TEXT' }]);
+  // EVO-K (DREAM_EVIDENCE_SOURCES): the skill / anti-pattern card run ids and K1 knowledge ids a dream mutant cites; null = sources off
+  addMissingColumns(db, 'maker_genomes', [{ name: 'evidence_sources_json', definition: 'TEXT' }]);
   addMissingColumns(db, 'genome_trial_results', [
     { name: 'epoch', definition: 'INTEGER' }, { name: 'e_value', definition: 'REAL' },
     { name: 'n_discordant', definition: 'INTEGER' }, { name: 'e_rule_decision', definition: 'TEXT' },
