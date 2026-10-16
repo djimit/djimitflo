@@ -27,6 +27,7 @@ import { intelligenceEvidence } from './intelligence-metrics';
 import { makerTokenAccountingEvidence } from './maker-token-accounting';
 import { negativeEvidenceEvidence } from './negative-evidence-check';
 import { knowledgeGapEvidence } from './knowledge-gaps';
+import { jevChallengerEvidence } from './jev-challenger';
 import type { ForecasterScoreV2 } from './forecast-scoring';
 import { BASELINE_GENOME, holdoutEpoch } from './genome-registry';
 
@@ -70,6 +71,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'NE_GENERATOR_CHECK_MODE', acting: false },
   { name: 'KNOWLEDGE_GAP_MODE', acting: false },
   { name: 'EVOLUTION_FEEDBACK_MODE', acting: false },
+  { name: 'JEV_CHALLENGER_MODEL', acting: false },
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */
@@ -381,5 +383,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // K3 (NE_GENERATOR_CHECK_MODE, shadow): generated proposals / mutants / units naming a negative-evidence entry, and matched proposals that later verified
     negative_evidence: negativeEvidenceEvidence(db, since, env),
     // K2 (KNOWLEDGE_GAP_MODE): open knowledge gaps by source, recurrences, oldest age; insufficient while off
-    knowledge_gaps: knowledgeGapEvidence(db, env, now) };
+    knowledge_gaps: knowledgeGapEvidence(db, env, now),
+    // JEV-114 (JEV_CHALLENGER_MODEL, shadow): paired challenger vs pinned jev — agreement and accuracy vs ground truth; null below 20 pairs
+    jev_challenger: jevChallengerEvidence(db, env) };
 }

@@ -246,6 +246,17 @@ export interface EvolutionEvidence {
   };
   /** K2 (KNOWLEDGE_GAP_MODE): open knowledge gaps (services/knowledge-gaps.ts knowledgeGapEvidence); nulls while off */
   knowledge_gaps?: KnowledgeGapEvidence;
+  /** JEV-114 (JEV_CHALLENGER_MODEL, shadow): paired challenger vs pinned jev (services/jev-challenger.ts); rates null below min_n */
+  jev_challenger?: JevChallengerEvidence;
+}
+
+export interface JevChallengerRate { k: number; n: number; rate: number | null; ci_low: number | null; ci_high: number | null; status: 'ok' | 'insufficient' }
+export interface JevChallengerTruth { primary: JevChallengerRate; challenger: JevChallengerRate; abstained?: { primary: number; challenger: number } }
+export interface JevChallengerEvidence {
+  mode: 'off' | 'shadow'; model: string | null; primary_model: string; sample: number; min_n: number; status: 'ok' | 'insufficient';
+  by_judgment: Array<{ judgment: string; model: string; n_pairs: number; n_errors: number; agreement: JevChallengerRate;
+    ground_truth: { names_file: JevChallengerTruth | null; d5_operator: JevChallengerTruth | null; relevance_blind: JevChallengerTruth | null } }>;
+  note: string;
 }
 
 export interface KnowledgeGapEvidence {
