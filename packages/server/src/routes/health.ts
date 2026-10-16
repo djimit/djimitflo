@@ -28,6 +28,7 @@ import { shippedCodeView } from '../services/shipped-code-scan';
 import { memoryTemplateAnalysis } from '../services/memory-template-dedup';
 import { skillCardsView } from '../services/skill-distillation';
 import { evolutionFeedbackMode, latestEvolutionDigest } from '../services/evolution-feedback';
+import { expertUnitDedupe } from '../services/expert-unit-dedupe';
 
 export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -192,6 +193,11 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   // supply chain (shadow): latest deterministic shipped-code scan per runtime package and its release-to-release diff (read-only)
   router.get('/shipped-code', requireAuth, requirePermission('read:evidence'), (_req, res) => {
     res.json(shippedCodeView(db));
+  });
+
+  // FE-DEDUPE (audit 11-10): duplicate clusters among Frontier Experts units and the FE metrics a collapse would change — read-only, never merged
+  router.get('/expert-dedupe', requireAuth, requirePermission('read:evidence'), (req, res) => {
+    res.json(expertUnitDedupe(db, { limit: Number(req.query.limit) || 20 }));
   });
 
   // intervention 3 (shadow): template-duplicate groups among memory candidates and promoted memories + consolidation proposals (read-only, never applied)
