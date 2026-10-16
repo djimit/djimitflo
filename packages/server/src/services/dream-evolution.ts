@@ -8,6 +8,7 @@ import { markRun } from './scheduler-registry';
 import { type DecidingHoldout, holdoutValidity, promoteGenome } from './genome-promotion';
 import { prodGatesConfig } from './remote-gym-service';
 import { recordNegativeEvidenceMatches } from './negative-evidence-check';
+import { buildSourcePack, CITED_FORMAT, citedLines, dreamEvidenceSources, genomeSourceColumns, type PackItem, recordDreamPack, type SourcePack, sourcePrompt } from './dream-evidence-sources';
 
 /**
  * Y3b/Y3c (plan Phase Y, Darwin loop). Dreaming is the mutation operator: once a day the day's failed makers (real and
@@ -258,6 +259,33 @@ export function clusterPrompt(clusters: FailureCluster[]): string[] {
   return out;
 }
 
+/**
+ * DREAM_EVIDENCE_SOURCES (EVO-K, default '' = unchanged): the pack of skill / anti-pattern cards and valued knowledge the
+ * mutation step must cite (dream-evidence-sources.ts); null when off. Lanes = the day's failing maker lanes (their cards first).
+ */
+const failureLanes = (clusters: FailureCluster[]): string[] => clusters.filter((c) => c.source === 'maker').map((c) => c.lane);
+function sourcePackFor(db: Database, now: number, lanes: () => string[]): SourcePack | null {
+  const sources = dreamEvidenceSources();
+  return sources.length ? buildSourcePack(db, sources, lanes(), now) : null;
+}
+/** Per dream: the deterministic citation check (off: lines pass through untouched), the genome columns and the pack record. */
+class CitationTally {
+  dropped = 0; rejected = 0; private made: Array<{ id: string; cites: PackItem[] }> = [];
+  constructor(private readonly pack: SourcePack | null) {}
+  check(raw: unknown): { lines: unknown; cites: PackItem[] } | null {
+    if (!this.pack) return { lines: raw, cites: [] };
+    const c = citedLines(raw, this.pack);
+    this.dropped += c.dropped;
+    if (!c.lines.length) { this.rejected++; return null; }
+    return c;
+  }
+  columns(cites: PackItem[], keRefs: string[], offRefs: string | null): { knowledgeRefs: string | null; sources: string | null } {
+    return this.pack ? genomeSourceColumns(cites, keRefs) : { knowledgeRefs: offRefs, sources: null };
+  }
+  created(id: string, cites: PackItem[]): void { this.made.push({ id, cites }); }
+  record(db: Database, iso: string): void { if (this.pack) recordDreamPack(db, iso, this.pack, this.made, this.dropped, this.rejected); }
+}
+
 function activeParent(db: Database): string {
   const row = db.prepare("SELECT id FROM maker_genomes WHERE status = 'active' AND id <> ? ORDER BY updated_at DESC LIMIT 1").get(BASELINE_GENOME) as { id: string } | undefined;
   return row?.id ?? BASELINE_GENOME;
@@ -277,34 +305,41 @@ export async function dreamOnce(db: Database, now = Date.now(), call: DreamCalle
   if (evidenceMutationsEnabled()) return dreamFromEvidence(db, now, iso, call);
   const { failures, knowledge, knowledgeRefs } = dreamInputs(db, now);
   if (!failures.length) return { created: [], skipped: 'no failures to learn from' };
+  const pack = sourcePackFor(db, now, () => failureLanes(failureClusters(db, now)));
+  if (pack && !pack.items.length) { recordDreamPack(db, iso, pack, [], 0, 0); return { created: [], skipped: 'no evidence sources in the pack' }; }
   const parent = genome(db, activeParent(db))!;
   const prompt = [
     'You improve the instructions given to an autonomous coding agent ("maker") that fixes code so that given tests pass.',
     `Its current extra strategy lines: ${parent.lines.length ? parent.lines.map((l) => `"${l}"`).join('; ') : '(none)'}.`,
     'Today it failed on:', ...failures.map((f) => `- ${f}`),
     ...(knowledge.length ? ['Recent relevant research titles:', ...knowledge.map((k) => `- ${k}`)] : []),
+    ...(pack ? sourcePrompt(pack) : []),
     `Propose at most ${MAX_MUTANTS} alternative strategies. Each changes ONE thing: either new "strategy_lines" (how to approach the work)`,
     'or an "anti_pattern" line (a mistake to avoid that today\'s failures show). At most 5 short lines each. Never mention tests to edit,',
     'gates, checks, scope, approvals, secrets, deploy or merging. Return JSON only:',
-    '{"mutants":[{"gene":"strategy_lines|anti_pattern","lines":["..."],"rationale":"which failure this addresses"}]}',
+    pack ? CITED_FORMAT.replace('%EXTRA%', '') : '{"mutants":[{"gene":"strategy_lines|anti_pattern","lines":["..."],"rationale":"which failure this addresses"}]}',
   ].join('\n');
   const parsed = firstJsonObject(await call(prompt));
   const mutants = Array.isArray(parsed?.mutants) ? parsed!.mutants as Array<Record<string, unknown>> : [];
   const refs = knowledgeRefs.length ? JSON.stringify(knowledgeRefs) : null;
-  const insert = db.prepare(`INSERT INTO maker_genomes (id, parent_id, gene, lines_json, origin, status, note, created_at, updated_at, knowledge_refs_json)
-    VALUES (?, ?, ?, ?, 'dream', 'trial', ?, ?, ?, ?)`);
-  const created: string[] = [];
+  const insert = db.prepare(`INSERT INTO maker_genomes (id, parent_id, gene, lines_json, origin, status, note, created_at, updated_at, knowledge_refs_json, evidence_sources_json)
+    VALUES (?, ?, ?, ?, 'dream', 'trial', ?, ?, ?, ?, ?)`);
+  const created: string[] = []; const cited = new CitationTally(pack);
   for (const m of mutants.slice(0, MAX_MUTANTS)) {
+    const c = cited.check(m.lines);
+    if (!c) continue;
     const gene = m.gene === 'anti_pattern' ? 'anti_pattern' : m.gene === 'strategy_lines' ? 'strategy_lines' : null;
-    const lines = guardLines(m.lines);
+    const lines = guardLines(c.lines);
     if (!gene || !lines) continue;
     const added = gene === 'anti_pattern' ? lines.map((l) => (l.toLowerCase().startsWith('avoid') ? l : `Avoid: ${l}`)) : lines;
     const id = `g-${randomUUID().slice(0, 8)}`;
-    insert.run(id, parent.id, gene, JSON.stringify([...parent.lines, ...added]), String(m.rationale ?? '').slice(0, 300), iso, iso, refs);
+    const cols = cited.columns(c.cites, knowledgeRefs, refs);
+    insert.run(id, parent.id, gene, JSON.stringify([...parent.lines, ...added]), String(m.rationale ?? '').slice(0, 300), iso, iso, cols.knowledgeRefs, cols.sources);
     recordNegativeEvidenceMatches(db, { type: 'maker_genome', id }, [...added, String(m.rationale ?? '')].join('\n'), 'dream_mutant'); // K3 shadow
-    created.push(id);
+    cited.created(id, c.cites); created.push(id);
   }
-  return { created, ...(created.length ? {} : { skipped: 'no mutant passed the guard' }) };
+  cited.record(db, iso);
+  return { created, ...(created.length ? {} : { skipped: cited.rejected ? 'no mutant line cited an evidence source' : 'no mutant passed the guard' }) };
 }
 
 /**
@@ -463,41 +498,49 @@ async function dreamFromEvidence(db: Database, now: number, iso: string, call: D
   const clusters = failureClusters(db, now);
   if (!clusters.length) return { created: [], skipped: 'no failures to learn from', rejected: [] };
   const { knowledge, knowledgeRefs } = dreamInputs(db, now);
+  const pack = sourcePackFor(db, now, () => failureLanes(clusters));
+  if (pack && !pack.items.length) { recordDreamPack(db, iso, pack, [], 0, 0); return { created: [], skipped: 'no evidence sources in the pack', rejected: [] }; }
   const parent = genome(db, activeParent(db))!;
   const prompt = [
     'You improve the instructions given to an autonomous coding agent ("maker") that fixes code so that given tests pass.',
     `Its current extra strategy lines: ${parent.lines.length ? parent.lines.map((l) => `"${l}"`).join('; ') : '(none)'}.`,
     'Today\'s failures, grouped into clusters (id, count, shape, raw excerpts):', ...clusterPrompt(clusters),
     ...(knowledge.length ? ['Recent relevant research titles:', ...knowledge.map((k) => `- ${k}`)] : []),
+    ...(pack ? sourcePrompt(pack) : []),
     `Propose at most ${MAX_MUTANTS} alternative strategies, at most one per cluster. Each changes ONE thing: either new "strategy_lines" (how to approach the work)`,
     'or an "anti_pattern" line (a mistake to avoid that the cluster shows). At most 5 short lines each. Each MUST name the cluster id it addresses in "addresses".',
     'A mutant without a valid cluster id is discarded. Never mention tests to edit, gates, checks, scope, approvals, secrets, deploy or merging. Return JSON only:',
-    '{"mutants":[{"gene":"strategy_lines|anti_pattern","lines":["..."],"addresses":["fc-…"],"rationale":"how this fixes that cluster"}]}',
+    pack ? CITED_FORMAT.replace('%EXTRA%', '"addresses":["fc-…"],') : '{"mutants":[{"gene":"strategy_lines|anti_pattern","lines":["..."],"addresses":["fc-…"],"rationale":"how this fixes that cluster"}]}',
   ].join('\n');
   const parsed = firstJsonObject(await call(prompt));
   const mutants = Array.isArray(parsed?.mutants) ? parsed!.mutants as Array<Record<string, unknown>> : [];
   const valid = new Set(clusters.map((c) => c.id)); const usedClusters = new Set<string>();
   const refs = knowledgeRefs.length ? JSON.stringify(knowledgeRefs) : null;
-  const insert = db.prepare(`INSERT INTO maker_genomes (id, parent_id, gene, lines_json, origin, status, note, created_at, updated_at, evidence_clusters, knowledge_refs_json)
-    VALUES (?, ?, ?, ?, 'dream', 'trial', ?, ?, ?, ?, ?)`);
-  const created: string[] = []; const rejected: Array<{ reason: string }> = [];
+  const insert = db.prepare(`INSERT INTO maker_genomes (id, parent_id, gene, lines_json, origin, status, note, created_at, updated_at, evidence_clusters, knowledge_refs_json, evidence_sources_json)
+    VALUES (?, ?, ?, ?, 'dream', 'trial', ?, ?, ?, ?, ?, ?)`);
+  const created: string[] = []; const rejected: Array<{ reason: string }> = []; const cited = new CitationTally(pack);
   for (const m of mutants) {
     if (created.length >= MAX_MUTANTS) break;
     const cites = (Array.isArray(m.addresses) ? m.addresses : [m.addresses]).map(String).filter((c) => valid.has(c));
     const fresh = cites.filter((c) => !usedClusters.has(c));
     if (!cites.length) { rejected.push({ reason: 'no_evidence' }); continue; }
     if (!fresh.length) { rejected.push({ reason: 'cluster_taken' }); continue; }
+    const c = cited.check(m.lines);
+    if (!c) { rejected.push({ reason: 'uncited_source' }); continue; }
     const gene = m.gene === 'anti_pattern' ? 'anti_pattern' : m.gene === 'strategy_lines' ? 'strategy_lines' : null;
-    const lines = guardLines(m.lines);
+    const lines = guardLines(c.lines);
     if (!gene || !lines) { rejected.push({ reason: 'guard' }); continue; }
     const added = gene === 'anti_pattern' ? lines.map((l) => (l.toLowerCase().startsWith('avoid') ? l : `Avoid: ${l}`)) : lines;
     const id = `g-${randomUUID().slice(0, 8)}`;
     usedClusters.add(fresh[0]);
-    insert.run(id, parent.id, gene, JSON.stringify([...parent.lines, ...added]), String(m.rationale ?? '').slice(0, 300), iso, iso, JSON.stringify([fresh[0]]), refs);
+    const cols = cited.columns(c.cites, knowledgeRefs, refs);
+    insert.run(id, parent.id, gene, JSON.stringify([...parent.lines, ...added]), String(m.rationale ?? '').slice(0, 300), iso, iso, JSON.stringify([fresh[0]]), cols.knowledgeRefs, cols.sources);
     recordNegativeEvidenceMatches(db, { type: 'maker_genome', id }, [...added, String(m.rationale ?? '')].join('\n'), 'dream_mutant'); // K3 shadow
-    created.push(id);
+    cited.created(id, c.cites); created.push(id);
   }
-  return { created, rejected, ...(created.length ? {} : { skipped: rejected.some((r) => r.reason === 'no_evidence') ? 'no mutant cited a failure cluster' : 'no mutant passed the guard' }) };
+  cited.record(db, iso);
+  return { created, rejected, ...(created.length ? {} : { skipped: rejected.some((r) => r.reason === 'no_evidence') ? 'no mutant cited a failure cluster'
+    : rejected.some((r) => r.reason === 'uncited_source') ? 'no mutant line cited an evidence source' : 'no mutant passed the guard' }) };
 }
 
 /** Settles finished trials: paired holdout results decide; at most one promotion a day; everything else retires. */
