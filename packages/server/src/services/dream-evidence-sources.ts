@@ -132,7 +132,8 @@ export function dreamSourcesEvidence(db: Database, env: NodeJS.ProcessEnv = proc
   let dropped = 0;
   for (const p of packs) dropped += Number(parse(p.a).dropped_uncited_lines) || 0;
   let rows: Array<{ status: string; s: string | null }> = [];
-  try { rows = db.prepare("SELECT status, evidence_sources_json AS s FROM maker_genomes WHERE evidence_sources_json IS NOT NULL").all() as typeof rows; } catch { /* unknown */ }
+  // playbook genes (DREAM_PLAYBOOK_GENE) also cite cards but are reported under genomes.playbook, not as dream-cited mutants
+  try { rows = db.prepare("SELECT status, evidence_sources_json AS s FROM maker_genomes WHERE evidence_sources_json IS NOT NULL AND gene <> 'playbook'").all() as typeof rows; } catch { /* unknown */ }
   const by_source = Object.fromEntries(EVIDENCE_SOURCES.map((src) => {
     const mine = rows.filter((r) => { try { return (JSON.parse(r.s ?? '[]') as Array<{ source?: string }>).some((c) => c.source === src); } catch { return false; } });
     const n = (st: string) => mine.filter((r) => r.status === st).length;

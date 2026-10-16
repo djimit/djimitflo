@@ -9,6 +9,7 @@ import { type DecidingHoldout, holdoutValidity, promoteGenome } from './genome-p
 import { prodGatesConfig } from './remote-gym-service';
 import { recordNegativeEvidenceMatches } from './negative-evidence-check';
 import { buildSourcePack, CITED_FORMAT, citedLines, dreamEvidenceSources, genomeSourceColumns, type PackItem, recordDreamPack, type SourcePack, sourcePrompt } from './dream-evidence-sources';
+import { dreamPlaybookGene, playbookFor, playbookLanes, playbookNote } from './lane-playbook';
 
 /**
  * Y3b/Y3c (plan Phase Y, Darwin loop). Dreaming is the mutation operator: once a day the day's failed makers (real and
@@ -302,7 +303,40 @@ export async function dreamOnce(db: Database, now = Date.now(), call: DreamCalle
   ensureBaseline(db, iso);
   if (db.prepare("SELECT 1 FROM maker_genomes WHERE origin = 'dream' AND created_at >= ? LIMIT 1").get(iso.slice(0, 10))) return { created: [], skipped: 'already dreamt today' };
   if (db.prepare("SELECT 1 FROM maker_genomes WHERE status = 'trial' LIMIT 1").get()) return { created: [], skipped: 'a trial is still running' };
-  if (evidenceMutationsEnabled()) return dreamFromEvidence(db, now, iso, call);
+  const r = evidenceMutationsEnabled() ? await dreamFromEvidence(db, now, iso, call) : await dreamFromFailures(db, now, iso, call);
+  // DREAM_PLAYBOOK_GENE: after the model's mutants (a failed call leaves the day undreamt), at most one deterministic playbook mutant
+  const pb = dreamPlaybookGene() ? proposePlaybookMutant(db, now, iso) : null;
+  return pb ? { ...r, created: [...r.created, pb] } : r;
+}
+
+/**
+ * DREAM_PLAYBOOK_GENE=on (default off): ONE mutant of the active genome whose only change is the current lane playbook
+ * (lane-playbook.ts — fixed template over skill-card fields, no model). Lanes: the day's failing maker lanes first, then by
+ * card count. Each line passes guardLines on its own (the playbook caps itself at 12 lines; guardLines' 5-line cap is for
+ * model mutants) and lines the parent already has are not added again; a playbook (lane + sha256) is trialled once ever.
+ * evidence_sources_json cites every kept line's source cards ({source, id, line}); the K3 NE check records as for any
+ * mutant. Trial and promotion are the unchanged rules.
+ */
+function proposePlaybookMutant(db: Database, now: number, iso: string): string | null {
+  const parent = genome(db, activeParent(db))!;
+  for (const lane of playbookLanes(db, failureLanes(failureClusters(db, now)))) {
+    const p = playbookFor(db, lane);
+    if (!p || db.prepare("SELECT 1 FROM maker_genomes WHERE gene = 'playbook' AND note = ?").get(playbookNote(p))) continue;
+    const kept = p.lines.map((l, i) => ({ line: guardLines([l])?.[0], cites: p.cites[i] }))
+      .filter((k): k is { line: string; cites: typeof k.cites } => Boolean(k.line) && !parent.lines.includes(k.line!));
+    if (!kept.length) continue;
+    const lines = [...parent.lines, ...kept.map((k) => k.line)];
+    const sources = kept.flatMap((k, i) => k.cites.map((c) => ({ source: c.source, id: c.id, line: parent.lines.length + i })));
+    const id = `g-${randomUUID().slice(0, 8)}`;
+    db.prepare(`INSERT INTO maker_genomes (id, parent_id, gene, lines_json, origin, status, note, created_at, updated_at, evidence_sources_json)
+      VALUES (?, ?, 'playbook', ?, 'dream', 'trial', ?, ?, ?, ?)`).run(id, parent.id, JSON.stringify(lines), playbookNote(p), iso, iso, JSON.stringify(sources));
+    recordNegativeEvidenceMatches(db, { type: 'maker_genome', id }, kept.map((k) => k.line).join('\n'), 'dream_mutant'); // K3 shadow
+    return id;
+  }
+  return null;
+}
+
+async function dreamFromFailures(db: Database, now: number, iso: string, call: DreamCaller): Promise<{ created: string[]; skipped?: string }> {
   const { failures, knowledge, knowledgeRefs } = dreamInputs(db, now);
   if (!failures.length) return { created: [], skipped: 'no failures to learn from' };
   const pack = sourcePackFor(db, now, () => failureLanes(failureClusters(db, now)));
