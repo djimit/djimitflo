@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { KnowledgeBody } from './KnowledgePage';
+import { KnowledgeBody, SkillCardsSection } from './KnowledgePage';
 
 it('W5: shows sources with relevance, recent relevant items, KB hits and the interest profile', () => {
   const html = renderToStaticMarkup(<KnowledgeBody data={{
@@ -17,4 +17,17 @@ it('W5: shows sources with relevance, recent relevant items, KB hits and the int
 it('W5: empty states say what is missing', () => {
   const html = renderToStaticMarkup(<KnowledgeBody data={{ at: '', sources: [], relevance: { yes: 0, uncertain: 0, no: 0 }, recent_relevant: [], kb_retrieval: { hits_30d: 0, panels_30d: 0, last: null }, interest_profile: null }} />);
   for (const text of ['No discoveries in the last 30 days.', 'Nothing judged relevant yet.', 'No profile published yet.']) expect(html).toContain(text);
+});
+
+it('K4: skill cards by lane and status, with the latest cards; unknown is not zero', () => {
+  const html = renderToStaticMarkup(<SkillCardsSection data={{
+    mode: 'shadow', total: 3, reason: null, note: 'record-only: cards are never injected into any maker, checker or panel context',
+    by_lane: [{ lane: 'test-gap-loop', kind: 'skill', status: 'survived', n: 2 }, { lane: 'test-gap-loop', kind: 'anti_pattern', status: 'candidate', n: 1 }],
+    latest: [{ run_id: 'r1', kind: 'anti_pattern', status: 'candidate', content_sha256: 'x', created_at: '2026-10-16T08:00:00Z', updated_at: '2026-10-16T08:00:00Z',
+      card: { lane: 'test-gap-loop', task_kind: 'test_gap', target_pattern: ['src/*.test.ts'], runtime: 'opencode', model: 'kimi', diff_shape: { files_changed: 1, diff_lines: 10, test_only: true }, failure: { gate: 'tests_lint_typecheck', signature: 'abc' } } }],
+  }} />);
+  for (const text of ['Distilled skill cards', '3 card(s)', 'never injected', 'test-gap-loop', 'anti-pattern · candidate', 'src/*.test.ts', 'gate tests_lint_typecheck']) expect(html).toContain(text);
+  const unknown = renderToStaticMarkup(<SkillCardsSection data={{ mode: 'off', total: null, by_lane: [], latest: [], reason: 'no cards recorded yet', note: 'record-only' }} />);
+  expect(unknown).toContain('unknown (no cards recorded yet)');
+  expect(unknown).not.toContain('0 card(s)');
 });

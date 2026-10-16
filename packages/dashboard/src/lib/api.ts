@@ -50,6 +50,19 @@ export type KnowledgeOverview = {
   interest_profile: { at: string; terms: string[] } | null;
 };
 
+/** K4: GET /api/health/skills (read:evidence) — record-only skill / anti-pattern cards; mirrors services/skill-distillation.ts. */
+export type SkillCardsView = {
+  mode: 'off' | 'shadow';
+  total: number | null;
+  by_lane: Array<{ lane: string; kind: 'skill' | 'anti_pattern'; status: 'candidate' | 'survived' | 'regressed'; n: number }>;
+  latest: Array<{ run_id: string; kind: 'skill' | 'anti_pattern'; status: string; content_sha256: string; created_at: string; updated_at: string;
+    card: { lane: string | null; task_kind: string | null; target_pattern: string[] | null; runtime: string | null; model: string | null;
+      diff_shape: { files_changed: number | null; diff_lines: number | null; test_only: boolean | null };
+      failure?: { gate: string | null; signature: string | null } } }>;
+  reason: string | null;
+  note: string;
+};
+
 /** UX-16: GET /api/health/runtimes (read:evidence) — one row per runtime; mirrors services/runtime-health.ts. */
 export interface RuntimeHealthRow {
   runtime: string;
@@ -1660,6 +1673,11 @@ class ApiClient {
 
   async getKnowledgeOverview(): Promise<KnowledgeOverview> {
     return this.request('/health/knowledge');
+  }
+
+  /** K4: distilled skill / anti-pattern cards (record-only, never injected into a maker). */
+  async getSkillCards(): Promise<SkillCardsView> {
+    return this.request('/health/skills');
   }
 
   /** Phase E1/E3: tokens, GPU time, measured Wh and value per consumer (7 d), north-star trend. */
