@@ -26,6 +26,7 @@ import { tg001Evidence } from './tg-001';
 import { intelligenceEvidence } from './intelligence-metrics';
 import { makerTokenAccountingEvidence } from './maker-token-accounting';
 import { negativeEvidenceEvidence } from './negative-evidence-check';
+import { knowledgeGapEvidence } from './knowledge-gaps';
 import type { ForecasterScoreV2 } from './forecast-scoring';
 import { BASELINE_GENOME, holdoutEpoch } from './genome-registry';
 
@@ -67,6 +68,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'MEMORY_TEMPLATE_DEDUP_MODE', acting: true },
   { name: 'SKILL_DISTILLATION_MODE', acting: false },
   { name: 'NE_GENERATOR_CHECK_MODE', acting: false },
+  { name: 'KNOWLEDGE_GAP_MODE', acting: false },
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */
@@ -376,5 +378,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // P0 §5: maker token accounting per runtime × model — leases, share with measured tokens, share with a known cost
     maker_tokens: makerTokenAccountingEvidence(db, since),
     // K3 (NE_GENERATOR_CHECK_MODE, shadow): generated proposals / mutants / units naming a negative-evidence entry, and matched proposals that later verified
-    negative_evidence: negativeEvidenceEvidence(db, since, env) };
+    negative_evidence: negativeEvidenceEvidence(db, since, env),
+    // K2 (KNOWLEDGE_GAP_MODE): open knowledge gaps by source, recurrences, oldest age; insufficient while off
+    knowledge_gaps: knowledgeGapEvidence(db, env, now) };
 }

@@ -1,6 +1,7 @@
 import type { Database } from 'better-sqlite3';
 import { enqueueEvent } from './event-outbox-service';
 import { failureUnits } from './intelligence-metrics';
+import { knowledgeGapMode, openKnowledgeGaps } from './knowledge-gaps';
 
 /**
  * Plan N4 (feedback to the agents, step 1): Djimitflo tells its scouts what turned out to matter. Once a day it derives an
@@ -70,6 +71,12 @@ const GAP_STOP = new Set(('error errors failed failure failures exceeded thresho
 
 export interface GapTerm { term: string; signature: string; occurrences: number }
 
+/** The first usable discovery word among `parts` (no stopwords, failure vocabulary, generic or static terms, ids). */
+function gapWord(parts: Array<string | null | undefined>, taken: (w: string) => boolean): string | undefined {
+  const words = parts.flatMap((p) => (p ?? '').toLowerCase().replace(/<[a-z]+>/g, ' ').replace(/[^a-z\s]/g, ' ').split(/\s+/));
+  return words.find((w) => w.length >= 5 && !STOP.has(w) && !GAP_STOP.has(w) && !isGeneric(w) && !SCOUT_STATIC_TERMS.includes(w) && !taken(w));
+}
+
 /** One discovery term per recurring production failure signature (most frequent first), derived from the signature's parts. */
 export function gapTerms(db: Database, since: string, max = GAP_TRIAL_SLOTS * 3): GapTerm[] {
   const bySig = new Map<string, { key: string; parts: Array<string | null>; n: number }>();
@@ -80,9 +87,7 @@ export function gapTerms(db: Database, since: string, max = GAP_TRIAL_SLOTS * 3)
   }
   const out: GapTerm[] = [];
   for (const c of [...bySig.values()].filter((c) => c.n >= 2).sort((a, b) => b.n - a.n || a.key.localeCompare(b.key))) {
-    const words = c.parts.flatMap((p) => (p ?? '').toLowerCase().replace(/<[a-z]+>/g, ' ').replace(/[^a-z\s]/g, ' ').split(/\s+/));
-    const term = words.find((w) => w.length >= 5 && !STOP.has(w) && !GAP_STOP.has(w) && !isGeneric(w) && !SCOUT_STATIC_TERMS.includes(w)
-      && !out.some((o) => o.term === w));
+    const term = gapWord(c.parts, (w) => out.some((o) => o.term === w));
     if (term) out.push({ term, signature: c.key, occurrences: c.n });
     if (out.length >= max) break;
   }
@@ -91,6 +96,8 @@ export function gapTerms(db: Database, since: string, max = GAP_TRIAL_SLOTS * 3)
 
 export interface TermYield { term: string; yield: number | null; n: number; trial?: true; since?: string; gap?: string }
 export interface Cooldown { term: string; at: string }
+/** K2 (KNOWLEDGE_GAP_MODE=shadow): a term an open knowledge gap would put into the gap trial slot — recorded, never published. */
+export interface GapTrialCandidate { term: string; gap_id: string; source: string; signature: string; would_take_slot: boolean; reason: string }
 
 /** Per matched term: jev 'yes' rate over the judged scout discoveries of the window, plus the static-list baseline. */
 export function termYields(db: Database, since: string): { terms: Map<string, { n: number; yes: number }>; baseline: { n: number; yes: number } } {
@@ -121,6 +128,7 @@ export function interestProfile(db: Database, now = Date.now(), env: NodeJS.Proc
   terms: string[]; sources: Record<string, number>; yields: TermYield[]; baseline: { yield: number | null; n: number };
   rule: { window_days: number; min_n: number; cap: number; trial_slots: number; trial_max_days: number; cooldown_days: number; gap_trial_slots: number; gap_kill_rule: string };
   cooldown: Cooldown[];
+  gap_trial_candidates?: GapTrialCandidate[];
 } {
   const since = new Date(now - 30 * 86_400_000).toISOString();
   const all = <T>(sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } };
@@ -175,6 +183,23 @@ export function interestProfile(db: Database, now = Date.now(), env: NodeJS.Proc
     .slice(0, Math.max(0, Math.min(GAP_TRIAL_SLOTS, PROFILE_TERM_CAP - kept.length - ordinary.length))).map(asTrial);
   const trials = [...ordinary, ...gapTrials];
   const yields = [...kept, ...trials];
+  // K2 shadow: open knowledge gaps compete for the same gap trial slot under the same yield gate and cap; only recorded
+  let gap_trial_candidates: GapTrialCandidate[] | undefined;
+  if (knowledgeGapMode(env) === 'shadow') {
+    let free = base === null ? 0 : Math.max(0, Math.min(GAP_TRIAL_SLOTS - gapTrials.length, PROFILE_TERM_CAP - yields.length));
+    const inProfile = new Set(yields.map((y) => y.term));
+    gap_trial_candidates = [];
+    for (const g of openKnowledgeGaps(db, now)) {
+      const term = gapWord(g.source === 'expert_abstention' ? (g.terms ?? []) : [g.error_class, g.gate, (g.lane ?? '').split(':')[0]],
+        (w) => gap_trial_candidates!.some((c) => c.term === w));
+      if (!term) continue;
+      const reason = base === null ? 'no measured baseline' : inProfile.has(term) ? 'already in profile' : !unmeasured(term) ? 'measured: the yield gate decides'
+        : cooldown.has(term) ? 'cooling down' : prevTrials.has(term) ? 'already a trial' : free <= 0 ? 'no free gap trial slot' : 'would take the gap trial slot';
+      const take = reason === 'would take the gap trial slot';
+      if (take) free--;
+      gap_trial_candidates.push({ term, gap_id: g.id, source: g.source, signature: g.signature, would_take_slot: take, reason });
+    }
+  }
   return {
     terms: yields.map((y) => y.term), sources: { relevant: relevant.length, kb_hits: kb.length }, yields,
     baseline: { yield: base, n: measured.baseline.n },
@@ -182,6 +207,7 @@ export function interestProfile(db: Database, now = Date.now(), env: NodeJS.Proc
       gap_trial_slots: GAP_TRIAL_SLOTS,
       gap_kill_rule: `a gap term (from a recurring failure signature) is dropped unless its jev-yes rate >= the static-list baseline (0.181 on 2026-10-09) at n >= ${MIN_TERM_N} within ${TRIAL_MAX_DAYS} days` },
     cooldown: [...cooldown].map(([term, at]) => ({ term, at })).sort((a, b) => a.term.localeCompare(b.term)),
+    ...(gap_trial_candidates ? { gap_trial_candidates } : {}),
   };
 }
 
