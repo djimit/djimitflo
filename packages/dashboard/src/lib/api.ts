@@ -244,6 +244,14 @@ export interface EvolutionEvidence {
     by_entry: Array<{ entry_id: string; source: string; confidence: string; matches: number; subjects: number }> | null;
     proposals: { matched: number; verified: number; regressed: number; settled: number; verified_share: number | null } | null;
   };
+  /** K2 (KNOWLEDGE_GAP_MODE): open knowledge gaps (services/knowledge-gaps.ts knowledgeGapEvidence); nulls while off */
+  knowledge_gaps?: KnowledgeGapEvidence;
+}
+
+export interface KnowledgeGapEvidence {
+  mode: 'off' | 'shadow'; status: 'insufficient' | 'ok'; window_days: number; open: number | null;
+  open_by_source: { failure_recurrence: number; expert_abstention: number } | null; recurrences: number | null;
+  oldest_age_days: number | null; capability_candidates: number | null; note: string;
 }
 
 export type TokenMeasurementSource = 'provider_reported' | 'runtime_log' | 'estimated' | 'unavailable';

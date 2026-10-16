@@ -43,6 +43,7 @@ import { createWorkerRoutes } from './swarm-workers';
 import { createIntelligenceRoutes } from './swarm-intel';
 import { createGovernanceRoutes } from './swarm-governance';
 import { createKnowledgeRoutes } from './swarm-knowledge';
+import { recordAbstentionGap } from '../services/knowledge-gaps';
 
 type RouteHandler = (req: Request, res: Response, next: NextFunction) => void | Promise<void>;
 
@@ -267,7 +268,9 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   router.post('/expert/resolve', requirePermission('read:evidence'), route((req, res) => {
     const question = typeof req.body?.question === 'string' ? req.body.question.trim() : '';
     if (!question) throw createError(400, 'question is required', 'VALIDATION_ERROR');
-    res.json(new ExpertResolverService(db).resolve(question, { maxExperts: boundedParallel(req.body.max_experts), asOf: typeof req.body.as_of === 'string' ? req.body.as_of : undefined, capabilities: Array.isArray(req.body.capabilities) ? req.body.capabilities.map(String) : undefined }));
+    const resolution = new ExpertResolverService(db).resolve(question, { maxExperts: boundedParallel(req.body.max_experts), asOf: typeof req.body.as_of === 'string' ? req.body.as_of : undefined, capabilities: Array.isArray(req.body.capabilities) ? req.body.capabilities.map(String) : undefined });
+    recordAbstentionGap(db, resolution); // K2: KNOWLEDGE_GAP_MODE=shadow, never throws
+    res.json(resolution);
   }));
   router.post('/expert/experts/:id/transition', requirePermission('write:swarm_action'), route((req, res) => {
     const actor = operatorActor(req);
