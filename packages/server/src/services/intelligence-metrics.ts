@@ -72,7 +72,7 @@ export function failureSignature(input: { lane: string; refs?: unknown[]; failed
   return { signature: createHash('sha256').update(key).digest('hex').slice(0, 16), key, lane: input.lane, gate, error_class };
 }
 
-export interface FailureUnit { at: string; lane: string; failed: boolean; signature: FailureSignature | null }
+export interface FailureUnit { at: string; lane: string; failed: boolean; signature: FailureSignature | null; run?: string | null }
 
 /**
  * Failure recurrence (FRR proxy until remediation links exist, plan step 5): in time order, a unit is *exposed* once its lane
@@ -136,7 +136,7 @@ export function failureUnits(db: Database, since: string): FailureUnit[] {
     const lane = r.skill_id.slice('loop-maker:'.length);
     // an evolve loser carries its loss reason as a ref (`evolve:reason:runtime exit != 0`)
     const evolveReason = refs.find((x): x is string => typeof x === 'string' && x.startsWith('evolve:reason:'))?.slice('evolve:reason:'.length);
-    return [{ at: r.at, lane, failed, signature: failed ? failureSignature({ lane, refs, failed_gates: parse(r.failed_gates), reasons: [r.lease_reason, evolveReason, r.attribution_reason] }) : null }];
+    return [{ at: r.at, lane, run: r.run, failed, signature: failed ? failureSignature({ lane, refs, failed_gates: parse(r.failed_gates), reasons: [r.lease_reason, evolveReason, r.attribution_reason] }) : null }];
   });
 }
 

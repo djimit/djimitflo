@@ -197,6 +197,7 @@ export class AgentCommunicationService {
     const recent = this.db.prepare(`
       SELECT payload_json FROM agent_messages
       WHERE json_extract(payload_json, '$.action') = 'social.question' AND timestamp >= ? AND status <> 'expired'
+        AND from_agent <> 'djimitflo:evolution-digest' -- K5: the daily digest thread (evolution-feedback.ts) never delays a round
         AND (? IS NULL OR to_agent IN (SELECT value FROM json_each(?)))
       ORDER BY timestamp DESC LIMIT 1
     `).get(cutoff, participantScope, participantScope) as { payload_json: string } | undefined;
@@ -245,7 +246,7 @@ export class AgentCommunicationService {
     const failureTopic = () => (process.env.COMMONS_AGENDA_FROM_FAILURES === 'true' ? this.pickFailureTopic() : null);
     const groundingTopic = () => (commonsGroundingAgendaEnabled() ? pickGroundingTopic(this.db) : null);
     const lastWasFailure = String((this.db.prepare(`SELECT json_extract(payload_json, '$.params.topic_ref') AS r FROM agent_messages
-      WHERE json_extract(payload_json, '$.action') = 'social.question' ORDER BY timestamp DESC, rowid DESC LIMIT 1`).get() as { r: string | null } | undefined)?.r ?? '').startsWith('run:');
+      WHERE json_extract(payload_json, '$.action') = 'social.question' AND from_agent <> 'djimitflo:evolution-digest' ORDER BY timestamp DESC, rowid DESC LIMIT 1`).get() as { r: string | null } | undefined)?.r ?? '').startsWith('run:');
     const failure = lastWasFailure ? (groundingTopic() ?? failureTopic()) : (failureTopic() ?? groundingTopic());
     // Agent interests are messages, not a second task queue. Discuss each once before recycling gaps.
     const interest = failure ? undefined : this.db.prepare(`
