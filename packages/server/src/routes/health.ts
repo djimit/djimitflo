@@ -26,6 +26,7 @@ import { getDatabaseProvenance } from '../database/provenance';
 import { efficiencyWithCost } from '../services/cost-ledger';
 import { shippedCodeView } from '../services/shipped-code-scan';
 import { memoryTemplateAnalysis } from '../services/memory-template-dedup';
+import { skillCardsView } from '../services/skill-distillation';
 
 export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -195,6 +196,11 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   // intervention 3 (shadow): template-duplicate groups among memory candidates and promoted memories + consolidation proposals (read-only, never applied)
   router.get('/memory-templates', requireAuth, requirePermission('read:evidence'), (req, res) => {
     res.json(memoryTemplateAnalysis(db, { minSize: Number(req.query.min_size) || 2, limit: Number(req.query.limit) || 50 }));
+  });
+
+  // K4 (shadow, SKILL_DISTILLATION_MODE): distilled skill / anti-pattern cards by lane and status + the latest cards (read-only, never injected)
+  router.get('/skills', requireAuth, requirePermission('read:evidence'), (req, res) => {
+    res.json(skillCardsView(db, process.env, Number(req.query.limit) || 20));
   });
 
   // RX-1 (Phase F): evolution evidence — flags, outcomes per source, loop PRs, genomes/holdouts, gym per tier, Realm Gates (read-only)

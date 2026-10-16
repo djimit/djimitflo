@@ -1,14 +1,16 @@
 import { Library } from 'lucide-react';
-import { api, type KnowledgeOverview } from '../lib/api';
+import { api, type KnowledgeOverview, type SkillCardsView } from '../lib/api';
 import { useResource } from '../hooks/useResource';
 
 const fetchKnowledge = () => api.getKnowledgeOverview();
+const fetchSkills = () => api.getSkillCards();
 
 const day = (value: string | null) => (value ? new Date(value).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '—');
 
 /** W5: what the knowledge pipeline brought in, per source, and whether jev judged it relevant (30 days). */
 export function KnowledgePage() {
   const { data, error } = useResource(fetchKnowledge);
+  const skills = useResource(fetchSkills);
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
@@ -22,6 +24,8 @@ export function KnowledgePage() {
       {error && <p role="alert" className="text-status-error">{error}</p>}
       {!data && !error && <p className="text-sm text-foreground-secondary">Loading…</p>}
       {data && <KnowledgeBody data={data} />}
+      {skills.error && <p role="alert" className="text-status-error">{skills.error}</p>}
+      {skills.data && <SkillCardsSection data={skills.data} />}
     </div>
   );
 }
@@ -75,5 +79,42 @@ export function KnowledgeBody({ data }: { data: KnowledgeOverview }) {
         </div>
       </section>
     </>
+  );
+}
+
+/** K4: skill cards distilled from verified runs and anti-patterns from maker failures — evidence only, never given to a maker. */
+export function SkillCardsSection({ data }: { data: SkillCardsView }) {
+  const lanes = [...new Set(data.by_lane.map((r) => r.lane))];
+  const count = (lane: string, kind: string, status?: string) => data.by_lane.filter((r) => r.lane === lane && r.kind === kind && (!status || r.status === status)).reduce((a, r) => a + r.n, 0);
+  return (
+    <section aria-labelledby="skill-cards">
+      <h2 id="skill-cards" className="text-lg font-semibold mb-2">Distilled skill cards</h2>
+      <p className="text-xs text-foreground-tertiary mb-2">
+        Mode {data.mode} · {data.total === null ? 'unknown (no cards recorded yet)' : `${data.total} card(s)`} · {data.note}.
+      </p>
+      {data.total === null ? <p className="text-sm text-foreground-secondary">{data.reason ?? 'No cards recorded yet.'}</p> : data.total === 0 ? <p className="text-sm text-foreground-secondary">No cards yet.</p> : (
+        <>
+          <table className="w-full text-sm mb-3">
+            <thead><tr className="text-left text-foreground-tertiary"><th>Lane</th><th>Candidate</th><th>Survived</th><th>Regressed</th><th>Anti-patterns</th></tr></thead>
+            <tbody>{lanes.map((lane) => (
+              <tr key={lane} className="border-t border-border">
+                <td>{lane}</td><td>{count(lane, 'skill', 'candidate')}</td><td className="text-status-completed">{count(lane, 'skill', 'survived')}</td>
+                <td className="text-status-error">{count(lane, 'skill', 'regressed')}</td><td>{count(lane, 'anti_pattern')}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+          <ul className="space-y-1 text-sm">{data.latest.map((c) => (
+            <li key={c.run_id}>
+              <span className="text-foreground">{c.kind === 'skill' ? 'skill' : 'anti-pattern'} · {c.status}</span>{' '}
+              <span className="text-xs text-foreground-tertiary">
+                · {c.card.lane ?? 'unknown lane'} · {c.card.task_kind ?? 'unknown kind'} · {(c.card.target_pattern ?? ['unknown files']).join(', ')}
+                {' '}· {c.card.diff_shape.files_changed ?? '?'} file(s){c.card.diff_shape.test_only ? ', test-only' : ''}
+                {c.card.failure ? ` · gate ${c.card.failure.gate ?? 'unknown'}` : ''} · {c.card.runtime ?? '?'}{c.card.model ? `@${c.card.model}` : ''} · {day(c.created_at)}
+              </span>
+            </li>
+          ))}</ul>
+        </>
+      )}
+    </section>
   );
 }
