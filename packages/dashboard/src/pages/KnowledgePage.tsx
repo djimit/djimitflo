@@ -1,5 +1,5 @@
 import { Library } from 'lucide-react';
-import { api, type KnowledgeOverview, type SkillCardsView } from '../lib/api';
+import { api, type KnowledgeFitness, type KnowledgeOverview, type SkillCardsView } from '../lib/api';
 import { useResource } from '../hooks/useResource';
 
 const fetchKnowledge = () => api.getKnowledgeOverview();
@@ -78,6 +78,7 @@ export function KnowledgeBody({ data }: { data: KnowledgeOverview }) {
           </div>
         </div>
       </section>
+      {data.fitness && <FitnessSection fitness={data.fitness} />}
     </>
   );
 }
@@ -114,6 +115,41 @@ export function SkillCardsSection({ data }: { data: SkillCardsView }) {
             </li>
           ))}</ul>
         </>
+      )}
+    </section>
+  );
+}
+
+const STATUS_LABEL = { used_with_value: 'with value', used_no_value: 'no value', insufficient: 'insufficient', unused: 'unused' } as const;
+const pct = (v: number | null) => (v === null ? '—' : `${Math.round(v * 100)} %`);
+
+/** K1: knowledge items credited by the maker-attributable outcomes of the runs that used them (read-only). */
+export function FitnessSection({ fitness }: { fitness: KnowledgeFitness }) {
+  const { runs, baseline } = fitness;
+  return (
+    <section aria-labelledby="fitness">
+      <h2 id="fitness" className="text-lg font-semibold mb-2">Knowledge fitness</h2>
+      <p className="text-xs text-foreground-tertiary mb-2">
+        {runs.in_window} runs in {fitness.window_days} days: {runs.maker_attributable} maker-attributable (baseline {pct(baseline.verified_rate)} verified), {runs.non_maker} reviewer/environment failures and {runs.unattributed} unattributed credit nobody. Fewer than {fitness.min_n} attributable uses is insufficient; decay half-life {fitness.half_life_days} days.
+      </p>
+      <table className="w-full text-sm mb-4">
+        <thead><tr className="text-left text-foreground-tertiary"><th>Kind</th><th>Known</th><th>With value</th><th>No value</th><th>Insufficient</th><th>Unused</th></tr></thead>
+        <tbody>{fitness.by_kind.map((k) => (
+          <tr key={k.kind} className="border-t border-border">
+            <td>{k.kind}</td><td>{k.inventory ?? '—'}</td><td className="text-status-completed">{k.used_with_value}</td><td>{k.used_no_value}</td><td>{k.insufficient}</td><td>{k.unused ?? '—'}</td>
+          </tr>
+        ))}</tbody>
+      </table>
+      {fitness.top.length === 0 ? <p className="text-sm text-foreground-secondary">No knowledge item was used by a run in the window.</p> : (
+        <table className="w-full text-sm">
+          <thead><tr className="text-left text-foreground-tertiary"><th>Item</th><th>Kind</th><th>Used</th><th>Verified</th><th>Regressed</th><th>Survived 14 d</th><th>Wilson</th><th>Decayed</th><th>Status</th><th>Last</th></tr></thead>
+          <tbody>{fitness.top.map((i) => (
+            <tr key={`${i.kind}:${i.id}`} className="border-t border-border">
+              <td title={i.id}>{i.title ?? i.id}</td><td>{i.kind}</td><td>{i.n_used}</td><td>{i.n_verified}</td><td>{i.n_regressed}</td><td>{i.n_survived_14d ?? '—'}</td>
+              <td>{i.wilson ? `${pct(i.wilson[0])}–${pct(i.wilson[1])}` : '—'}</td><td>{pct(i.decayed_verified_rate)}</td><td>{STATUS_LABEL[i.status]}</td><td>{day(i.last_used_at)}</td>
+            </tr>
+          ))}</tbody>
+        </table>
       )}
     </section>
   );
