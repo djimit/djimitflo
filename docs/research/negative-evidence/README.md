@@ -9,6 +9,9 @@ them so that no agent rediscovers a rejected approach and silently retries it.
   `why`, `evidence` pointers, `allowed_follow_up`, `forbidden_reuse` and a `reopen_condition`.
 - `forbidden_code_patterns` lists identifiers that may not appear in the server source while the entry's verdict is REJECT,
   NO_GO or FALSIFIED. `packages/server/src/__tests__/negative-evidence.test.ts` enforces this.
+- `match_terms` (optional) lists distinctive names (dependencies, repositories) that identify the entry in generated text.
+  Keep them conservative: a generic word gives false positives. Under `NE_GENERATOR_CHECK_MODE=shadow` generated proposals,
+  dream mutants and discovery units naming a pattern or term get a `negative_evidence_match` judgment (record only).
 
 ## Rules
 

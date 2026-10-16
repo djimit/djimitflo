@@ -86,10 +86,11 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
       if (last.length === 3 && last.every((r) => (r.reason ?? '').startsWith('infra:'))) out.push({ subsystem: `gym:${sp}`, since: last[2].created_at, detail: `last 3 attempts were infra discards (${(last[0].reason ?? '').slice(0, 80)}); the breaker benches this species` });
     }
   });
-  // 2. a judgment failing more than 30 % of the time in the last 6 h (e.g. provider 429s). `<judgment>@local` rows are the T1
-  // shadow experiment against the workstation, not production signals: their errors show in the cockpit, not as stalls.
+  // 2. a judgment failing more than 30 % of the time in the last 6 h (e.g. provider 429s). `<judgment>@local` (T1, the
+  // workstation) and `<judgment>@<model>` (JEV-114 challenger) rows are shadow experiments, not production signals: their errors
+  // show in the cockpit, not as stalls.
   run('judgments', true, () => {
-    for (const j of all<{ judgment: string; errors: number; n: number }>("SELECT judgment, SUM(decision = 'error') AS errors, COUNT(*) AS n FROM judgments WHERE created_at >= ? AND judgment NOT LIKE '%@local' GROUP BY judgment HAVING n >= 10", ago(now, 6))) {
+    for (const j of all<{ judgment: string; errors: number; n: number }>("SELECT judgment, SUM(decision = 'error') AS errors, COUNT(*) AS n FROM judgments WHERE created_at >= ? AND instr(judgment, '@') = 0 GROUP BY judgment HAVING n >= 10", ago(now, 6))) {
       if (j.errors / j.n > 0.3) out.push({ subsystem: `judgment:${j.judgment}`, since: ago(now, 6), detail: `${j.errors}/${j.n} verdicts were errors in 6 h` });
     }
   });
