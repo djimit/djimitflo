@@ -9,7 +9,7 @@ import { markRun } from './scheduler-registry';
  * this class end to end (a test-only change, verified by one command, reviewed by a checker), while free-text "reflection"
  * proposals yielded 1 verified out of ~450. Every proposal is fully grounded (target file, runtime command, artifact, budget)
  * so the panel never has to ask for specifics. Default off: TEST_GAP_SOURCE_ENABLED=true.
- *   TEST_GAP_MAX_PER_DAY (default 2)   TEST_GAP_MAX_IN_FLIGHT (default 2)   TEST_GAP_REPO_PATH (default LOOP_DAEMON_REPOSITORY_PATH)
+ *   TEST_GAP_MAX_PER_DAY (default 2)   TEST_GAP_REQUEUE_RESERVE (default 0, slots kept for requeues)   TEST_GAP_MAX_IN_FLIGHT (default 2)   TEST_GAP_REPO_PATH (default LOOP_DAEMON_REPOSITORY_PATH)
  */
 export const testGapSourceEnabled = (): boolean => process.env.TEST_GAP_SOURCE_ENABLED === 'true';
 
@@ -186,7 +186,8 @@ export class TestGapSourceService {
     const day = new Date(now.getTime() - 86_400_000).toISOString();
     const createdToday = (this.db.prepare("SELECT COUNT(*) n FROM self_improvements WHERE evidence_refs_json LIKE '%test-gap:%' AND created_at >= ?").get(day) as { n: number }).n;
     const inFlight = (this.db.prepare("SELECT COUNT(*) n FROM self_improvements WHERE evidence_refs_json LIKE '%test-gap:%' AND status IN ('proposed', 'scheduled', 'executing')").get() as { n: number }).n;
-    const maxPerDay = Number(process.env.TEST_GAP_MAX_PER_DAY) || 2; const maxInFlight = Number(process.env.TEST_GAP_MAX_IN_FLIGHT) || 2;
+    // TEST_GAP_REQUEUE_RESERVE: daily slots the generator leaves for requeues (improvement-requeue.ts checks the full cap)
+    const maxPerDay = Math.max(0, (Number(process.env.TEST_GAP_MAX_PER_DAY) || 2) - (Number(process.env.TEST_GAP_REQUEUE_RESERVE) || 0)); const maxInFlight = Number(process.env.TEST_GAP_MAX_IN_FLIGHT) || 2;
     if (createdToday >= maxPerDay) return { created: 0, skipped: 'daily cap reached' };
     if (inFlight >= maxInFlight) return { created: 0, skipped: 'enough proposals in flight' };
     const improvements = new SelfImprovementService(this.db);

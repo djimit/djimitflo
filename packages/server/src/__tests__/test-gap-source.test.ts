@@ -44,6 +44,14 @@ it('creates fully grounded proposals (they pass the grounding gate), never twice
   expect(svc.run().created).toBe(1); // beta next; alpha is never proposed again
   expect(svc.run().created).toBe(0);
 });
+it('TEST_GAP_REQUEUE_RESERVE keeps daily slots free for requeues: the generator stops below the cap', () => {
+  process.env.TEST_GAP_MAX_PER_DAY = '2'; process.env.TEST_GAP_MAX_IN_FLIGHT = '5'; process.env.TEST_GAP_REQUEUE_RESERVE = '1';
+  try {
+    const svc = new TestGapSourceService(db);
+    expect(svc.run().created).toBe(1); // 2 - 1 reserved
+    expect(svc.run().skipped).toBe('daily cap reached');
+  } finally { delete process.env.TEST_GAP_REQUEUE_RESERVE; delete process.env.TEST_GAP_MAX_IN_FLIGHT; }
+});
 
 it('J3: finds exported functions of tested services that no test names, and proposes them behind TEST_GAP_EXPORTS_ENABLED', () => {
   write('packages/server/src/services/gamma.ts', `export const gamma = 1;\nexport function covered() {}\nexport function orphanA() {}\nexport const orphanB = async (x: number) => x;\nexport const flagEnabled = (): boolean => process.env.FLAG === 'true';\n${'// filler\n'.repeat(40)}`); // flag readers are skipped
