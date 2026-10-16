@@ -5,6 +5,7 @@ import type { Database } from 'better-sqlite3';
 import { SpecialistPanelService } from './specialist-panel-service';
 import { judgmentMode, runJudgment } from './judgment-service';
 import { reflectionTriage } from './judgments/reflection-triage';
+import { recordNegativeEvidenceMatches } from './negative-evidence-check';
 
 export type ImprovementStatus = 'proposed' | 'scheduled' | 'executing' | 'verified' | 'evaluating' | 'applied' | 'rejected' | 'no_change' | 'regressed' | 'needs_more_evidence' | 'needs_grounding' | 'archived' | 'infra_failed';
 
@@ -343,6 +344,7 @@ export class SelfImprovementService {
       if (judgmentMode(reflectionTriage.id) !== 'off') void runJudgment(this.db, reflectionTriage, { type: 'self_improvement', id },
         { proposal: { title: input.title, description: input.description, rationale: input.rationale } }).catch(() => null);
       if (proposalDedupeEnabled()) void checkProposalDuplicate(this.db, { id, title: input.title, description: input.description }).catch(() => null);
+      recordNegativeEvidenceMatches(this.db, { type: 'self_improvement', id }, `${input.title}\n${input.description}\n${input.rationale}`, 'proposal');
       return this.getImprovement(id);
     }
     const riskClass = input.type === 'security' ? 'high' : 'low';
@@ -375,6 +377,8 @@ export class SelfImprovementService {
     create();
     // K2a (shadow): the same idea in other words — recorded, never acted on
     if (proposalDedupeEnabled()) void checkProposalDuplicate(this.db, { id, title: input.title, description: input.description }).catch(() => null);
+    // K3 (NE_GENERATOR_CHECK_MODE=shadow): does the proposal name a negative-evidence entry? Recorded only, never acted on
+    recordNegativeEvidenceMatches(this.db, { type: 'self_improvement', id }, `${input.title}\n${input.description}\n${input.rationale}`, 'proposal');
     return this.getImprovement(id);
   }
 
