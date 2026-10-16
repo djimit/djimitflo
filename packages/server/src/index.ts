@@ -55,6 +55,7 @@ import { parseTelegramAllowedUsers, parseTelegramUserMap } from './routes/telegr
 import { noteScheduler, registerRestart } from './services/scheduler-registry';
 import { laneIntervalMs, startDependencyLane } from './services/dependency-lane';
 import { SHIPPED_CODE_SCAN_INTERVAL_MS, startShippedCodeScan } from './services/shipped-code-scan';
+import { SKILL_DISTILLATION_INTERVAL_MS, startSkillDistillation } from './services/skill-distillation';
 
 // Operator rule (2026-09-29): this server never calls the hosts in OUTBOUND_DENY_HOSTS (the workstation only pulls).
 // §16 step 8: refusals are also counted in policy_violations (POLICY_VIOLATION_LOG=shadow) once the database is open.
@@ -336,6 +337,13 @@ async function main() {
   registerRestart('shipped_code_scan', () => { stopShippedScan?.(); stopShippedScan = startShippedCodeScan(db); });
   if (noteScheduler('shipped_code_scan', 'SHIPPED_CODE_SCAN_MODE', !!stopShippedScan, SHIPPED_CODE_SCAN_INTERVAL_MS)) {
     console.log('🔎 Shipped-code scan armed (shadow)');
+  }
+
+  // Skill distillation — daily record-only skill / anti-pattern cards from attributed runs, never injected (SKILL_DISTILLATION_MODE=shadow, default off)
+  let stopSkillDistillation = startSkillDistillation(db);
+  registerRestart('skill_distillation', () => { stopSkillDistillation?.(); stopSkillDistillation = startSkillDistillation(db); });
+  if (noteScheduler('skill_distillation', 'SKILL_DISTILLATION_MODE', !!stopSkillDistillation, SKILL_DISTILLATION_INTERVAL_MS)) {
+    console.log('🧠 Skill distillation armed (shadow)');
   }
 
   // API routes

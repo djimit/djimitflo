@@ -48,6 +48,32 @@ export type KnowledgeOverview = {
   recent_relevant: Array<{ ref: string; title: string; source: string; at: string }>;
   kb_retrieval: { hits_30d: number; panels_30d: number; last: string | null };
   interest_profile: { at: string; terms: string[] } | null;
+  /** K1: mirrors services/knowledge-fitness.ts (absent on servers before K1) */
+  fitness?: KnowledgeFitness;
+};
+
+export type KnowledgeFitnessStatus = 'used_with_value' | 'used_no_value' | 'unused' | 'insufficient';
+export type KnowledgeFitness = {
+  at: string; window_days: number; half_life_days: number; min_n: number;
+  baseline: { n: number; verified_rate: number | null };
+  runs: { in_window: number; maker_attributable: number; non_maker: number; unattributed: number };
+  by_kind: Array<{ kind: string; inventory: number | null; used_with_value: number; used_no_value: number; insufficient: number; unused: number | null }>;
+  top: Array<{ kind: string; id: string; title: string | null; n_used: number; n_verified: number; n_regressed: number; n_survived_14d: number | null;
+    wilson: [number, number] | null; last_used_at: string | null; decayed_verified_rate: number | null; status: KnowledgeFitnessStatus }>;
+  rule: string;
+};
+
+/** K4: GET /api/health/skills (read:evidence) — record-only skill / anti-pattern cards; mirrors services/skill-distillation.ts. */
+export type SkillCardsView = {
+  mode: 'off' | 'shadow';
+  total: number | null;
+  by_lane: Array<{ lane: string; kind: 'skill' | 'anti_pattern'; status: 'candidate' | 'survived' | 'regressed'; n: number }>;
+  latest: Array<{ run_id: string; kind: 'skill' | 'anti_pattern'; status: string; content_sha256: string; created_at: string; updated_at: string;
+    card: { lane: string | null; task_kind: string | null; target_pattern: string[] | null; runtime: string | null; model: string | null;
+      diff_shape: { files_changed: number | null; diff_lines: number | null; test_only: boolean | null };
+      failure?: { gate: string | null; signature: string | null } } }>;
+  reason: string | null;
+  note: string;
 };
 
 /** UX-16: GET /api/health/runtimes (read:evidence) — one row per runtime; mirrors services/runtime-health.ts. */
@@ -212,6 +238,20 @@ export interface EvolutionEvidence {
   panel_attempts?: PanelAttemptMetrics;
   /** P0 §5: maker token accounting per runtime × model (services/maker-token-accounting.ts); old leases count as unrecorded */
   maker_tokens?: MakerTokenAccountingEvidence;
+  /** K3 (NE_GENERATOR_CHECK_MODE, shadow): generated text naming a negative-evidence entry (services/negative-evidence-check.ts); null = unknown */
+  negative_evidence?: {
+    mode: 'off' | 'shadow'; registry_entries: number | null; note: string;
+    by_entry: Array<{ entry_id: string; source: string; confidence: string; matches: number; subjects: number }> | null;
+    proposals: { matched: number; verified: number; regressed: number; settled: number; verified_share: number | null } | null;
+  };
+  /** K2 (KNOWLEDGE_GAP_MODE): open knowledge gaps (services/knowledge-gaps.ts knowledgeGapEvidence); nulls while off */
+  knowledge_gaps?: KnowledgeGapEvidence;
+}
+
+export interface KnowledgeGapEvidence {
+  mode: 'off' | 'shadow'; status: 'insufficient' | 'ok'; window_days: number; open: number | null;
+  open_by_source: { failure_recurrence: number; expert_abstention: number } | null; recurrences: number | null;
+  oldest_age_days: number | null; capability_candidates: number | null; note: string;
 }
 
 export type TokenMeasurementSource = 'provider_reported' | 'runtime_log' | 'estimated' | 'unavailable';
@@ -1128,7 +1168,7 @@ export type SocialCommons = { agents: SocialAgentPresence[]; threads: SocialThre
 
 // Frontier Expert Intelligence (§36): states other than ACTIVE are tentative and shown as such.
 export type ExpertLifecycleState = 'DISCOVERED' | 'IDENTITY_RESOLVED' | 'EVIDENCE_COLLECTED' | 'CAPABILITY_INFERRED' | 'CHECKED' | 'APPROVED' | 'ACTIVE' | 'AMBIGUOUS' | 'INSUFFICIENT_EVIDENCE' | 'CONTRADICTED' | 'STALE' | 'REJECTED' | 'REVOKED';
-export type ExpertSummary = { id: string; canonical_name: string; lifecycle_state: ExpertLifecycleState; identity_confidence: number; version: number; updated_at: string; capabilities: string[]; provenance_json: string; kind?: 'person' | 'paper' | 'repository' | 'area' };
+export type ExpertSummary = { id: string; canonical_name: string; lifecycle_state: ExpertLifecycleState; identity_confidence: number; version: number; updated_at: string; capabilities: string[]; provenance_json: string; kind?: 'person' | 'paper' | 'repository' | 'area'; /** K5: open knowledge gaps matching this area's capabilities (EVOLUTION_FEEDBACK_MODE=on, read-only) */ gap_demand?: number };
 export type ExpertEvidenceItem = { id: string; kind: string; tier: number; title: string; url: string | null; source_family: string };
 export type ExpertCapabilityProvenance = { capability_id: string; status: string; confidence: number; evidence: ExpertEvidenceItem[] };
 export type ExpertClaim = { id: string; subject: string; relation: string; object: string; polarity: string; conditions: string | null; scope: string | null; evidence_refs_json: string; confidence: number; criticality: string; support_status: string; created_at: string };
@@ -1660,6 +1700,11 @@ class ApiClient {
 
   async getKnowledgeOverview(): Promise<KnowledgeOverview> {
     return this.request('/health/knowledge');
+  }
+
+  /** K4: distilled skill / anti-pattern cards (record-only, never injected into a maker). */
+  async getSkillCards(): Promise<SkillCardsView> {
+    return this.request('/health/skills');
   }
 
   /** Phase E1/E3: tokens, GPU time, measured Wh and value per consumer (7 d), north-star trend. */

@@ -43,6 +43,8 @@ import { createWorkerRoutes } from './swarm-workers';
 import { createIntelligenceRoutes } from './swarm-intel';
 import { createGovernanceRoutes } from './swarm-governance';
 import { createKnowledgeRoutes } from './swarm-knowledge';
+import { recordAbstentionGap } from '../services/knowledge-gaps';
+import { gapDemandByCapability } from '../services/evolution-feedback';
 
 type RouteHandler = (req: Request, res: Response, next: NextFunction) => void | Promise<void>;
 
@@ -249,7 +251,10 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     if (kind !== undefined && !kinds.includes(kind)) throw createError(400, `kind must be ${kinds.join(', ')}`, 'VALIDATION_ERROR');
     // The funnel counts the whole registry (the list is capped), per kind and lifecycle state.
     const funnel = db.prepare(`SELECT COALESCE(kind, 'person') AS kind, lifecycle_state AS state, COUNT(*) AS count FROM expert_identities ${persons ? '' : "WHERE COALESCE(kind, 'person') != 'person'"} GROUP BY 1, 2`).all();
-    res.json({ experts: registry().list({ state: req.query.state as string | undefined, capability: req.query.capability as string | undefined, name: req.query.name as string | undefined, kind: kind as ExpertKind | undefined, excludePersons: !persons, limit }), funnel });
+    const experts = registry().list({ state: req.query.state as string | undefined, capability: req.query.capability as string | undefined, name: req.query.name as string | undefined, kind: kind as ExpertKind | undefined, excludePersons: !persons, limit });
+    // K5 (EVOLUTION_FEEDBACK_MODE=on): read-only count of open knowledge gaps matching an area's capabilities
+    const demand = gapDemandByCapability(db);
+    res.json({ experts: demand ? experts.map((e) => { const n = e.kind === 'area' ? e.capabilities.reduce((a, c) => a + (demand.get(c) ?? 0), 0) : 0; return n ? { ...e, gap_demand: n } : e; }) : experts, funnel });
   }));
   router.get('/expert/experts/:id', requirePermission('read:evidence'), route((req, res) => {
     const reg = registry();
@@ -267,7 +272,9 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   router.post('/expert/resolve', requirePermission('read:evidence'), route((req, res) => {
     const question = typeof req.body?.question === 'string' ? req.body.question.trim() : '';
     if (!question) throw createError(400, 'question is required', 'VALIDATION_ERROR');
-    res.json(new ExpertResolverService(db).resolve(question, { maxExperts: boundedParallel(req.body.max_experts), asOf: typeof req.body.as_of === 'string' ? req.body.as_of : undefined, capabilities: Array.isArray(req.body.capabilities) ? req.body.capabilities.map(String) : undefined }));
+    const resolution = new ExpertResolverService(db).resolve(question, { maxExperts: boundedParallel(req.body.max_experts), asOf: typeof req.body.as_of === 'string' ? req.body.as_of : undefined, capabilities: Array.isArray(req.body.capabilities) ? req.body.capabilities.map(String) : undefined });
+    recordAbstentionGap(db, resolution); // K2: KNOWLEDGE_GAP_MODE=shadow, never throws
+    res.json(resolution);
   }));
   router.post('/expert/experts/:id/transition', requirePermission('write:swarm_action'), route((req, res) => {
     const actor = operatorActor(req);
