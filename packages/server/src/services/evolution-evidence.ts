@@ -25,6 +25,10 @@ import { d5NoEvidence } from './d5-no';
 import { tg001Evidence } from './tg-001';
 import { intelligenceEvidence } from './intelligence-metrics';
 import { makerTokenAccountingEvidence } from './maker-token-accounting';
+import { negativeEvidenceEvidence } from './negative-evidence-check';
+import { knowledgeGapEvidence } from './knowledge-gaps';
+import { jevChallengerEvidence } from './jev-challenger';
+import { dreamSourcesEvidence } from './dream-evidence-sources';
 import type { ForecasterScoreV2 } from './forecast-scoring';
 import { BASELINE_GENOME, holdoutEpoch } from './genome-registry';
 
@@ -64,6 +68,12 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'STE_001_MODE', acting: true },
   { name: 'TG_001_MODE', acting: true },
   { name: 'MEMORY_TEMPLATE_DEDUP_MODE', acting: true },
+  { name: 'SKILL_DISTILLATION_MODE', acting: false },
+  { name: 'NE_GENERATOR_CHECK_MODE', acting: false },
+  { name: 'KNOWLEDGE_GAP_MODE', acting: false },
+  { name: 'EVOLUTION_FEEDBACK_MODE', acting: false },
+  { name: 'JEV_CHALLENGER_MODEL', acting: false },
+  { name: 'DREAM_EVIDENCE_SOURCES', acting: false },
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */
@@ -194,6 +204,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     by_status: all<{ status: string; origin: string; n: number }>('SELECT status, origin, COUNT(*) AS n FROM maker_genomes GROUP BY 1, 2'),
     recent: all<{ id: string; status: string; note: string | null; updated_at: string; evidence_clusters: string | null }>("SELECT id, status, note, updated_at, evidence_clusters FROM maker_genomes WHERE status IN ('active', 'retired', 'trial') AND id <> 'baseline' ORDER BY updated_at DESC LIMIT 8"),
     holdout: { mined: one('SELECT COUNT(*) FROM gym_holdout'), mutant: one('SELECT COUNT(*) FROM gym_mutant_holdout'), write_test: one('SELECT COUNT(*) FROM gym_write_test_holdout') },
+    // EVO-K (DREAM_EVIDENCE_SOURCES): mutants per cited source, dropped uncited lines, per-source trial outcomes; null = no dream with sources yet
+    evidence_sources: dreamSourcesEvidence(db, env),
   };
   const gym = all<{ kind: string; tier: number | null; status: string | null; n: number }>(`SELECT CASE WHEN json_extract(metadata, '$.gym.commit') LIKE 'mut:%' THEN 'mutant' ELSE 'mined' END AS kind,
     json_extract(metadata, '$.gym.tier') AS tier, json_extract(metadata, '$.gym_result.status') AS status, COUNT(*) AS n
@@ -371,5 +383,11 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // E4: specialist-panel answer attempts — reliability P(valid | model, prompt, provider) apart from conditional quality
     panel_attempts: panelAttemptMetrics(db, { days: window, now }),
     // P0 §5: maker token accounting per runtime × model — leases, share with measured tokens, share with a known cost
-    maker_tokens: makerTokenAccountingEvidence(db, since) };
+    maker_tokens: makerTokenAccountingEvidence(db, since),
+    // K3 (NE_GENERATOR_CHECK_MODE, shadow): generated proposals / mutants / units naming a negative-evidence entry, and matched proposals that later verified
+    negative_evidence: negativeEvidenceEvidence(db, since, env),
+    // K2 (KNOWLEDGE_GAP_MODE): open knowledge gaps by source, recurrences, oldest age; insufficient while off
+    knowledge_gaps: knowledgeGapEvidence(db, env, now),
+    // JEV-114 (JEV_CHALLENGER_MODEL, shadow): paired challenger vs pinned jev — agreement and accuracy vs ground truth; null below 20 pairs
+    jev_challenger: jevChallengerEvidence(db, env) };
 }
