@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { messageBus } from '../services/message_bus';
 import type { SwarmMessage } from '../services/message_bus';
 
@@ -15,6 +15,8 @@ const msg = (overrides?: Partial<SwarmMessage>): SwarmMessage => ({
 });
 
 describe('messageBus', () => {
+  beforeEach(() => messageBus.disconnect());
+
   it('is a singleton with the expected methods', () => {
     expect(typeof messageBus.publish).toBe('function');
     expect(typeof messageBus.subscribe).toBe('function');
@@ -71,14 +73,33 @@ describe('messageBus', () => {
 
   it('disconnect() clears all subscriptions across agents', async () => {
     const received: SwarmMessage[] = [];
-    const unA = messageBus.subscribe('dc-a', (m) => received.push(m));
-    const unB = messageBus.subscribe('dc-b', (m) => received.push(m));
+    messageBus.subscribe('dc-a', (m) => received.push(m));
+    messageBus.subscribe('dc-b', (m) => received.push(m));
     messageBus.disconnect();
-    // After disconnect, even the old unsubscribe handles are harmless
-    unA();
-    unB();
     await messageBus.publish('dc-a', msg({ to_agent_id: 'dc-a' }));
     await messageBus.publish('dc-b', msg({ to_agent_id: 'dc-b' }));
     expect(received).toHaveLength(0);
+  });
+
+  it('old unsubscribe handles remain harmless after disconnect', () => {
+    const unA = messageBus.subscribe('dc-2', () => {});
+    messageBus.disconnect();
+    expect(() => unA()).not.toThrow();
+  });
+
+  it('removes the agent entry from the internal map after the last callback unsubscribes', () => {
+    const un = messageBus.subscribe('cleanup', () => {});
+    un();
+    expect((messageBus as any).callbacks.has('cleanup')).toBe(false);
+  });
+
+  it('keeps the agent entry when other callbacks remain', () => {
+    const unA = messageBus.subscribe('partial', () => {});
+    const unB = messageBus.subscribe('partial', () => {});
+    unA();
+    expect((messageBus as any).callbacks.has('partial')).toBe(true);
+    expect((messageBus as any).callbacks.get('partial').size).toBe(1);
+    unB();
+    expect((messageBus as any).callbacks.has('partial')).toBe(false);
   });
 });
