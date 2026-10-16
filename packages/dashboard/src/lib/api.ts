@@ -225,6 +225,12 @@ export interface EvolutionEvidence {
   panel_attempts?: PanelAttemptMetrics;
   /** P0 §5: maker token accounting per runtime × model (services/maker-token-accounting.ts); old leases count as unrecorded */
   maker_tokens?: MakerTokenAccountingEvidence;
+  /** K3 (NE_GENERATOR_CHECK_MODE, shadow): generated text naming a negative-evidence entry (services/negative-evidence-check.ts); null = unknown */
+  negative_evidence?: {
+    mode: 'off' | 'shadow'; registry_entries: number | null; note: string;
+    by_entry: Array<{ entry_id: string; source: string; confidence: string; matches: number; subjects: number }> | null;
+    proposals: { matched: number; verified: number; regressed: number; settled: number; verified_share: number | null } | null;
+  };
 }
 
 export type TokenMeasurementSource = 'provider_reported' | 'runtime_log' | 'estimated' | 'unavailable';
