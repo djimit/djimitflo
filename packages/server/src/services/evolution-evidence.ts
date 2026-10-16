@@ -69,6 +69,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'SKILL_DISTILLATION_MODE', acting: false },
   { name: 'NE_GENERATOR_CHECK_MODE', acting: false },
   { name: 'KNOWLEDGE_GAP_MODE', acting: false },
+  { name: 'EVOLUTION_FEEDBACK_MODE', acting: false },
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */
