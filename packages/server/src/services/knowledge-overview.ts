@@ -1,4 +1,5 @@
 import type { Database } from 'better-sqlite3';
+import { knowledgeFitness, type KnowledgeFitness } from './knowledge-fitness';
 
 /**
  * W5 (plan Phase W): what the knowledge pipeline produced and whether it was worth it, per source. Discoveries
@@ -18,6 +19,8 @@ export interface KnowledgeOverview {
     mean_tokens_per_call: number | null; tokens_avoided_estimate: number | null; basis: string;
     backlog: number; states: Record<string, number>; oldest_unjudged_age_hours: number | null;
     rejudge: DiscoveryRejudgeConfig & { per_day: number; drain_estimate_days: number | null } };
+  /** K1: per knowledge item, the maker-attributable outcomes of the runs that used it (read-only). */
+  fitness: KnowledgeFitness;
 }
 
 /**
@@ -115,5 +118,6 @@ export function knowledgeOverview(db: Database, now = Date.now(), env: NodeJS.Pr
     at: new Date(now).toISOString(), sources, relevance, recent_relevant, relevance_pause,
     kb_retrieval: { hits_30d: kb?.hits ?? 0, panels_30d: kb?.panels ?? 0, last: kb?.last ?? null },
     interest_profile,
+    fitness: knowledgeFitness(db, now),
   };
 }
