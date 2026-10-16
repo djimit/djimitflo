@@ -9,7 +9,7 @@ import { wilson } from './evolution-estimators';
  *   - self_improvements.evidence_refs_json knowledge refs (kb:/expert_unit:/expert_claim:/okf: …) → the proposal's runs
  *   - kb_retrieval judgments on a specialist_panel → self_improvements.panel_id → the proposal's runs
  *   - memory_access_log reads (agent_id 'loop-maker:<run>', assignment-context.ts) → that run
- *   - maker_genomes.knowledge_refs_json (#727) → runs whose maker lease ran that genome (metadata.genome_id)
+ *   - maker_genomes.knowledge_refs_json (#727; typed refs from DREAM_EVIDENCE_SOURCES) → runs whose maker lease ran that genome (metadata.genome_id)
  *   - outcome_credits kind knowledge / memory_rule (#707) → that run
  *   - an expert unit used by a run also credits the discovery it was made from (expert_identities.provenance_json.ref, E3)
  * Only maker-attributable outcomes count: an outcome_attribution of `verified` (n_verified) or `maker_failure`
@@ -109,7 +109,12 @@ export function knowledgeFitness(db: Database, now = Date.now(), topN = 20): Kno
   }
   for (const g of all<{ run: string; refs: string | null }>(`SELECT l.loop_run_id AS run, m.knowledge_refs_json AS refs FROM worker_leases l
       JOIN maker_genomes m ON m.id = json_extract(l.metadata, '$.genome_id') WHERE l.role = 'maker' AND m.knowledge_refs_json IS NOT NULL AND l.created_at >= ?`, since)) {
-    for (const ref of parseList(g.refs)) if (typeof ref === 'string') use('expert_unit', ref, g.run);
+    // plain ids are expert units (KE-3); DREAM_EVIDENCE_SOURCES also stores kb:/expert_claim:/okf:/knowledge: refs (typed)
+    for (const ref of parseList(g.refs)) {
+      if (typeof ref !== 'string') continue;
+      const k = /^(kb|expert_claim|okf|knowledge):/.test(ref) ? knowledgeItem(ref) : null;
+      if (k) use(k.kind, k.id, g.run); else use('expert_unit', ref, g.run);
+    }
   }
   for (const c of all<{ run: string; kind: string; ref: string }>("SELECT run_id AS run, kind, ref FROM outcome_credits WHERE kind IN ('knowledge', 'memory_rule')")) {
     if (c.kind === 'memory_rule') use('memory_rule', c.ref, c.run); else useRef(c.ref, c.run);
