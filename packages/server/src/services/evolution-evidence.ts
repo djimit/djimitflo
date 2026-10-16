@@ -29,6 +29,7 @@ import { negativeEvidenceEvidence } from './negative-evidence-check';
 import { knowledgeGapEvidence } from './knowledge-gaps';
 import { jevChallengerEvidence } from './jev-challenger';
 import { dreamSourcesEvidence } from './dream-evidence-sources';
+import { playbookGeneEvidence } from './lane-playbook';
 import type { ForecasterScoreV2 } from './forecast-scoring';
 import { BASELINE_GENOME, holdoutEpoch } from './genome-registry';
 
@@ -74,6 +75,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'EVOLUTION_FEEDBACK_MODE', acting: false },
   { name: 'JEV_CHALLENGER_MODEL', acting: false },
   { name: 'DREAM_EVIDENCE_SOURCES', acting: false },
+  { name: 'DREAM_PLAYBOOK_GENE', acting: false },
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */
@@ -206,6 +208,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     holdout: { mined: one('SELECT COUNT(*) FROM gym_holdout'), mutant: one('SELECT COUNT(*) FROM gym_mutant_holdout'), write_test: one('SELECT COUNT(*) FROM gym_write_test_holdout') },
     // EVO-K (DREAM_EVIDENCE_SOURCES): mutants per cited source, dropped uncited lines, per-source trial outcomes; null = no dream with sources yet
     evidence_sources: dreamSourcesEvidence(db, env),
+    // EVO-K inheritance (DREAM_PLAYBOOK_GENE): playbook genes proposed / promoted / retired; null = none proposed yet
+    playbook: playbookGeneEvidence(db, env),
   };
   const gym = all<{ kind: string; tier: number | null; status: string | null; n: number }>(`SELECT CASE WHEN json_extract(metadata, '$.gym.commit') LIKE 'mut:%' THEN 'mutant' ELSE 'mined' END AS kind,
     json_extract(metadata, '$.gym.tier') AS tier, json_extract(metadata, '$.gym_result.status') AS status, COUNT(*) AS n
