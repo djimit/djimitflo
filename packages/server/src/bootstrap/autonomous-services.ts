@@ -35,6 +35,7 @@ import { DiskGuardService, diskGuardEnabled } from '../services/disk-guard-servi
 import { QueueHygieneService, queueHygieneEnabled } from '../services/queue-hygiene-service';
 import { startSchedulerWatchdog, startStallWatch } from '../services/stall-watch';
 import { startInterestFeedback } from '../services/interest-feedback';
+import { startEvolutionFeedback } from '../services/evolution-feedback';
 import { startDreamEvolution } from '../services/dream-evolution';
 import { startEvolutionEstimators } from '../services/evolution-estimators';
 import { startMergeSurvival } from '../services/merge-survival';
@@ -208,6 +209,14 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     if (stopFeedback) { lifecycleManager.register({ serviceName: 'InterestFeedback', stop: stopFeedback }); console.log('📣 Interest feedback on (daily).'); }
   } catch (error) {
     console.warn('⚠️  Interest feedback failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // K5: daily evolution digest outward (judgment row; on: outbox djimitflo.feedback.evolution + one Commons thread). EVOLUTION_FEEDBACK_MODE=shadow|on.
+  try {
+    const stopEvolutionFeedback = startEvolutionFeedback(db);
+    if (stopEvolutionFeedback) { lifecycleManager.register({ serviceName: 'EvolutionFeedback', stop: stopEvolutionFeedback }); console.log('📣 Evolution feedback on (daily).'); }
+  } catch (error) {
+    console.warn('⚠️  Evolution feedback failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // Y3: dreaming as mutation — daily mutants of the maker genome, judged on the frozen gym holdout. DREAM_EVOLUTION_ENABLED=true.

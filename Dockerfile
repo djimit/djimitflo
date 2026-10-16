@@ -133,6 +133,8 @@ COPY --from=builder /build/packages/mcp-server/dist packages/mcp-server/dist
 COPY specs specs
 # ExplainerCriticService reads packages/server/corpus/explainer.corpus.jsonl relative to dist; without it every explainer task fails with ENOENT.
 COPY packages/server/corpus packages/server/corpus
+# NE_GENERATOR_CHECK_MODE reads the negative-evidence registry relative to dist (packages/server/dist/services → /app/docs)
+COPY docs/research/negative-evidence/NEGATIVE_EVIDENCE.yaml docs/research/negative-evidence/NEGATIVE_EVIDENCE.yaml
 
 # Copy entrypoint
 COPY docker-entrypoint.sh ./docker-entrypoint.sh

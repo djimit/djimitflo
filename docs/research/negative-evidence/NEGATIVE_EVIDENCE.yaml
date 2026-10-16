@@ -56,6 +56,7 @@
       "allowed_follow_up": "A grounded proposal with a file + one-command oracle goes through the existing oracle lanes.",
       "forbidden_reuse": ["re-enabling COMMONS_GROUNDING_APPLY to raise proposal volume"],
       "forbidden_code_patterns": [],
+      "match_terms": ["COMMONS_GROUNDING_APPLY"],
       "reopen_condition": "Grounded proposals carry an executable target that an oracle lane can judge."
     },
     {
@@ -71,6 +72,7 @@
       "allowed_follow_up": "Other task sources (failure-derived write_test with killed-mutant oracle, TG-001 matched tasks).",
       "forbidden_reuse": ["raising DREAM_TRIAL_MUTANT_TIERS as a difficulty lever without new evidence"],
       "forbidden_code_patterns": [],
+      "match_terms": ["DREAM_TRIAL_MUTANT_TIERS"],
       "reopen_condition": "Tiers 4-6 reach n >= 20 each and show a pass rate in 30-55 %."
     },
     {
@@ -86,6 +88,7 @@
       "allowed_follow_up": "Clef Flash as a local fallback only if jev outages matter (operator decision).",
       "forbidden_reuse": ["switching the System One backend without a new outcome-labelled comparison"],
       "forbidden_code_patterns": [],
+      "match_terms": ["Clef Flash"],
       "reopen_condition": "A pre-registered comparison on newer labelled data shows Clef ahead with a CI excluding zero."
     },
     {
@@ -101,6 +104,7 @@
       "allowed_follow_up": "If a fine-tune is ever justified: plain transformers + peft + trl and a commit-pinned llama.cpp.",
       "forbidden_reuse": ["installing Soup on trusted infrastructure"],
       "forbidden_code_patterns": [],
+      "match_terms": ["MakazhanAlpamys/Soup"],
       "reopen_condition": "A release fixes the export and supply-chain findings and a benchmark shows a gain over the plain stack."
     },
     {
@@ -116,6 +120,7 @@
       "allowed_follow_up": "None; the shipped-code scan is the path.",
       "forbidden_reuse": ["running ruDevolution or its npx hooks on trusted infrastructure"],
       "forbidden_code_patterns": [],
+      "match_terms": ["ruDevolution"],
       "reopen_condition": "A new pinned release passes the falsification report's tests in the same sandbox."
     },
     {
@@ -131,6 +136,7 @@
       "allowed_follow_up": "DEFER: one concrete supply-chain question the scan cannot answer, on an offline pinned host the operator approves.",
       "forbidden_reuse": ["installing REA's MCP server or skill"],
       "forbidden_code_patterns": [],
+      "match_terms": ["morluto/rea"],
       "reopen_condition": "A concrete question the shipped-code scan cannot answer, plus operator approval of an isolated host."
     },
     {
@@ -146,6 +152,7 @@
       "allowed_follow_up": "DEFER: interviewing the agents of a finished run as a debugging pattern for Djimitflo's own committee and panel traces; nothing built.",
       "forbidden_reuse": ["writing simulation output into DjimitWiki, production memory or the verified knowledge graph as fact", "running MiroFish as shipped on a networked host"],
       "forbidden_code_patterns": ["camel-oasis", "zep-cloud"],
+      "match_terms": ["MiroFish"],
       "reopen_condition": "A new implementation or verified evidence meeting all of: pre-registered evaluation; comparison against simple statistical and historical baselines; independent real-world outcome validation; strict separation of simulated, inferred and observed data; reproducible experiments with protected holdouts; authentication, authorisation, secrets and isolation controls; measurable benefit over existing Djimitflo capabilities; acceptable licence and cost. Permits a new evaluation, not adoption."
     },
     {
@@ -161,6 +168,7 @@
       "allowed_follow_up": "None from these repositories. contextgraph ideas (coverage-gated graded kills) are adapted in-house separately and are not covered by this entry.",
       "forbidden_reuse": ["installing or running these repositories, their MCP configs or hooks on trusted infrastructure", "using the committed credentials"],
       "forbidden_code_patterns": [],
+      "match_terms": ["ChrisRoyse", "Pheromind", "NeuralShrink", "Cognitive-Triangulation-Pipeline"],
       "reopen_condition": "A pinned release with a reproducible evaluation against a simple baseline on real outcomes, an acceptable licence and no committed secrets or dependencies; permits a new pre-registered evaluation, not adoption."
     }
   ]

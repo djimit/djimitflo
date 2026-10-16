@@ -11,6 +11,7 @@ import { buildEvidencePack } from './commons-evidence-pack';
 import { typesafeBusy, typesafeConfigured } from './typesafe-client';
 import { createHash } from 'crypto';
 import { discoveryRejudgeConfig } from './knowledge-overview';
+import { recordNegativeEvidenceMatches } from './negative-evidence-check';
 
 /**
  * E2 (Frontier Experts 2.0): expertise units beyond people. Prod 2026-09-25: 1 365 distinct arXiv papers were stored only
@@ -359,6 +360,9 @@ export class ExpertSourceUnitsService {
     for (const capability of capabilities) this.registry.inferCapability(expert.id, { capability, confidence: kind === 'paper' ? 0.6 : 0.5, evidenceRefs: [evidenceId], derivedBy: `source-units:${kind}` });
     // KE-2: a jev override has no taxonomy capability; the registry requires one for CAPABILITY_INFERRED, so it stays here
     if (capabilities.length) this.registry.transition(expert.id, 'CAPABILITY_INFERRED', { actor: ACTOR, reason: `${capabilities.length} capability(ies) from ${kind} evidence` });
+    // K3 (NE_GENERATOR_CHECK_MODE=shadow): every unit admission path ends here; the untrusted text is only matched, never followed
+    const meta = (evidence.metadata ?? {}) as Record<string, unknown>;
+    recordNegativeEvidenceMatches(this.db, { type: 'expert_unit', id: expert.id }, [name, ref, evidence.title, meta.note, meta.abstract].filter((x) => typeof x === 'string').join('\n'), 'discovery_unit');
     return expert.id;
   }
 }
