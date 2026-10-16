@@ -41,6 +41,20 @@ export type FleetCommand = { id: string; host: string; kind: 'diagnostic' | 'she
   approved_by: string | null; approved_at: string | null; expires_at: string | null; decided_reason: string | null; started_at: string | null;
   finished_at: string | null; exit_code: number | null; output: string | null; created_at: string; self_approved?: number | boolean };
 
+interface DedupeStat { units: number; clusters: number; duplicate_units: number; inflation_factor: number | null }
+export interface ExpertDedupeReport {
+  at: string;
+  totals: DedupeStat & { duplicate_clusters: number; distinct_titles: number };
+  by_kind: Array<DedupeStat & { kind: string }>;
+  by_key_type: Array<DedupeStat & { key_type: string }>;
+  metrics_if_collapsed: {
+    funnel: { units_before: number; units_after: number; cells_changed: number };
+    gap_demand: { areas_annotated_before: number; areas_annotated_after: number; total_before: number; total_after: number } | null;
+    knowledge_fitness: { inventory_before: number; inventory_after: number; used_items_before: number; used_items_after: number; used_items_in_duplicate_clusters: number; unused_before: number; unused_after: number } | null;
+  };
+  writes: 0;
+}
+
 export type KnowledgeOverview = {
   at: string;
   sources: Array<{ source: string; events: number; events_7d: number; last: string | null; yes: number; uncertain: number; no: number; units: number; relevant_pct: number | null }>;
@@ -2196,6 +2210,11 @@ class ApiClient {
 
   async castLure(): Promise<LureCast> {
     return this.request('/swarm-v2/social/lures', { method: 'POST', body: '{}' });
+  }
+
+  /** FE-DEDUPE: duplicate clusters among Frontier Experts units and what a collapse would change (read-only, never applied). */
+  async getExpertDedupe(limit = 5): Promise<ExpertDedupeReport> {
+    return this.request(`/health/expert-dedupe?limit=${limit}`);
   }
 
   async listExperts(params: { state?: string; capability?: string; name?: string; kind?: string; limit?: number } = {}): Promise<{ experts: ExpertSummary[]; funnel?: Array<{ kind: string; state: ExpertLifecycleState; count: number }> }> {
