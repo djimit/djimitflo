@@ -7,6 +7,7 @@ import { BASELINE_GENOME, dreamEvolutionEnabled, ELIGIBLE_GATED, ensureBaseline,
 import { markRun } from './scheduler-registry';
 import { type DecidingHoldout, holdoutValidity, promoteGenome } from './genome-promotion';
 import { prodGatesConfig } from './remote-gym-service';
+import { recordNegativeEvidenceMatches } from './negative-evidence-check';
 
 /**
  * Y3b/Y3c (plan Phase Y, Darwin loop). Dreaming is the mutation operator: once a day the day's failed makers (real and
@@ -300,6 +301,7 @@ export async function dreamOnce(db: Database, now = Date.now(), call: DreamCalle
     const added = gene === 'anti_pattern' ? lines.map((l) => (l.toLowerCase().startsWith('avoid') ? l : `Avoid: ${l}`)) : lines;
     const id = `g-${randomUUID().slice(0, 8)}`;
     insert.run(id, parent.id, gene, JSON.stringify([...parent.lines, ...added]), String(m.rationale ?? '').slice(0, 300), iso, iso, refs);
+    recordNegativeEvidenceMatches(db, { type: 'maker_genome', id }, [...added, String(m.rationale ?? '')].join('\n'), 'dream_mutant'); // K3 shadow
     created.push(id);
   }
   return { created, ...(created.length ? {} : { skipped: 'no mutant passed the guard' }) };
@@ -492,6 +494,7 @@ async function dreamFromEvidence(db: Database, now: number, iso: string, call: D
     const id = `g-${randomUUID().slice(0, 8)}`;
     usedClusters.add(fresh[0]);
     insert.run(id, parent.id, gene, JSON.stringify([...parent.lines, ...added]), String(m.rationale ?? '').slice(0, 300), iso, iso, JSON.stringify([fresh[0]]), refs);
+    recordNegativeEvidenceMatches(db, { type: 'maker_genome', id }, [...added, String(m.rationale ?? '')].join('\n'), 'dream_mutant'); // K3 shadow
     created.push(id);
   }
   return { created, rejected, ...(created.length ? {} : { skipped: rejected.some((r) => r.reason === 'no_evidence') ? 'no mutant cited a failure cluster' : 'no mutant passed the guard' }) };
