@@ -48,6 +48,19 @@ export type KnowledgeOverview = {
   recent_relevant: Array<{ ref: string; title: string; source: string; at: string }>;
   kb_retrieval: { hits_30d: number; panels_30d: number; last: string | null };
   interest_profile: { at: string; terms: string[] } | null;
+  /** K1: mirrors services/knowledge-fitness.ts (absent on servers before K1) */
+  fitness?: KnowledgeFitness;
+};
+
+export type KnowledgeFitnessStatus = 'used_with_value' | 'used_no_value' | 'unused' | 'insufficient';
+export type KnowledgeFitness = {
+  at: string; window_days: number; half_life_days: number; min_n: number;
+  baseline: { n: number; verified_rate: number | null };
+  runs: { in_window: number; maker_attributable: number; non_maker: number; unattributed: number };
+  by_kind: Array<{ kind: string; inventory: number | null; used_with_value: number; used_no_value: number; insufficient: number; unused: number | null }>;
+  top: Array<{ kind: string; id: string; title: string | null; n_used: number; n_verified: number; n_regressed: number; n_survived_14d: number | null;
+    wilson: [number, number] | null; last_used_at: string | null; decayed_verified_rate: number | null; status: KnowledgeFitnessStatus }>;
+  rule: string;
 };
 
 /** K4: GET /api/health/skills (read:evidence) — record-only skill / anti-pattern cards; mirrors services/skill-distillation.ts. */

@@ -31,3 +31,14 @@ it('K4: skill cards by lane and status, with the latest cards; unknown is not ze
   expect(unknown).toContain('unknown (no cards recorded yet)');
   expect(unknown).not.toContain('0 card(s)');
 });
+
+it('K1: shows knowledge fitness counts per kind and the top items; unknown stays a dash', () => {
+  const html = renderToStaticMarkup(<KnowledgeBody data={{
+    at: '', sources: [], relevance: { yes: 0, uncertain: 0, no: 0 }, recent_relevant: [], kb_retrieval: { hits_30d: 0, panels_30d: 0, last: null }, interest_profile: null,
+    fitness: { at: '', window_days: 90, half_life_days: 30, min_n: 5, baseline: { n: 10, verified_rate: 0.4 }, runs: { in_window: 12, maker_attributable: 10, non_maker: 1, unattributed: 1 },
+      by_kind: [{ kind: 'kb_page', inventory: 2, used_with_value: 1, used_no_value: 0, insufficient: 0, unused: 1 }, { kind: 'discovery', inventory: null, used_with_value: 0, used_no_value: 0, insufficient: 0, unused: null }],
+      top: [{ kind: 'kb_page', id: 'a.md', title: 'Runbook', n_used: 5, n_verified: 4, n_regressed: 1, n_survived_14d: null, wilson: [0.38, 0.96], last_used_at: '2026-10-15T00:00:00Z', decayed_verified_rate: 0.8, status: 'used_with_value' }],
+      rule: 'r' },
+  }} />);
+  for (const text of ['Knowledge fitness', '10 maker-attributable (baseline 40 % verified)', 'Runbook', '38 %–96 %', 'with value']) expect(html).toContain(text);
+});
