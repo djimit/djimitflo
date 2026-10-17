@@ -131,7 +131,7 @@ describe('goal batch service', () => {
         : originalCwd;
       process.chdir(path.join(monorepoRoot, 'packages', 'server'));
       const service = new GoalBatchService(db);
-      const preview = service.preview({ path: 'openspec/changes/prove-learning-flywheel-operator-loop/goals.batch.json' });
+      const preview = service.preview({ path: 'openspec/changes/archive/2026-06-26-prove-learning-flywheel-operator-loop/goals.batch.json' });
       expect(preview.total).toBeGreaterThan(0);
       expect(preview.errors).not.toContainEqual({ id: 'batch', error: 'GOAL_BATCH_NOT_FOUND' });
     } finally {
