@@ -4,9 +4,6 @@ title: "SQLite Data Model, Migrations & Provenance"
 description: "Data-plane reference for the better-sqlite3 schema: path resolution, boot/boot migrations, the ColumnSpec ALTER tail, loop run/goal/worker-lease vocabularies, worker manifest evidence, the mcp_servers baseline seed, and evidence-root persistence."
 tags: ["sqlite", "data-model", "migrations", "loop-lifecycle", "evidence", "provenance", "better-sqlite3"]
 openwiki_generated: true
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
 sources:
   - id: openwiki-source-5b54a58d1b51cd490b0e7162
     resource: repo://package.json

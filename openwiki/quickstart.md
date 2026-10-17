@@ -3,9 +3,6 @@ type: guide
 title: DjimFlo Wiki Quickstart
 description: Entry point to the DjimFlo wiki. Explains what DjimFlo is (a research-grade agent orchestration control plane with governance guardrails), how the wiki is organized, and routes you to the right page for your task.
 tags: [quickstart, orientation, governance, agent-orchestration, wiki]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
 sources:
   - id: openwiki-source-5b54a58d1b51cd490b0e7162
     resource: repo://package.json
@@ -19,7 +16,10 @@ sources:
     resource: repo://packages/shared/package.json
   - id: openwiki-source-23775c3de52f3ab95a13cb8b
     resource: repo://README.md
-generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-10-17T12:03:52.116Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-10-17T12:03:52.116Z
 ---
 
 # DjimFlo Wiki Quickstart
@@ -42,10 +42,13 @@ enforcement, and audit trails. The root `package.json` describes it as a
 
 The spine of the system is a **single authoritative server**
 (`packages/server`, published as `@djimitflo/server`). It boots from
-`packages/server/src/index.ts`, which initializes the SQLite database, runs loop
-and task crash recovery, wires services, mounts the API, and attaches the
-WebSocket server. Behavior varies by runtime profile (`api`, `operator`,
-`autonomous`) resolved from `DJIMITFLO_RUNTIME_PROFILE`.
+`packages/server/src/index.ts`, which resolves the runtime profile
+(`api`, `operator`, `autonomous`) from `DJIMITFLO_RUNTIME_PROFILE`, initializes
+the SQLite database, runs loop and task crash recovery, performs
+profile-gated service wiring, mounts the `routes/index.ts` aggregate at `/api`,
+attaches the authenticated WebSocket server at `/ws`, serves the dashboard
+statically in production, and shuts down gracefully on SIGTERM. An outbound
+HTTP guard is installed before boot so the server never dials denied hosts.
 
 Around this spine orbit several satellite surfaces:
 
@@ -66,16 +69,15 @@ Around this spine orbit several satellite surfaces:
 The project follows an epistemic discipline you should apply when reading this
 wiki. Terms mean exactly what they say:
 
-| Term used | What it actually means |
-|---|---|
-| "Immutable" audit log | Append-only at the SQLite trigger level; not externally anchored |
-| "Compliant" | Control evidence exists; not certified by an external auditor |
+| Term | Meaning |
+|------|---------|
+| "Immutable" | Append-only at SQLite trigger level; not externally anchored |
+| "Compliant" | Control evidence exists; not certified by external auditor |
 | "Sandboxed" | Docker container with isolation flags; not gVisor/Kata |
-| "Policy-enforced" | ToolBroker evaluates calls; runtime enforcement is limited to pre-execution |
+| "Policy-enforced" | ToolBroker evaluates; runtime enforcement limited to pre-execution |
 | "Production-grade" | Research prototype; not validated for enterprise production |
 
-Claims in this wiki are intended to be falsifiable via the test suite. Green
-tests are necessary but not sufficient for production assurance.
+Claims are falsifiable via the test suite. Green tests are necessary but not sufficient for production assurance.
 
 ## How this wiki is organized
 
@@ -111,7 +113,6 @@ The wiki mirrors the system's architecture. Pages are grouped into domains:
 | Understand loop runs, leases, worktrees, and crash recovery | [Loop Domain Model](concepts/loop-lifecycle.md) |
 | Understand nested spawning, swarm trees, and spawn budgets | [Nested Spawn & Swarm Trees](concepts/nested-spawn-hierarchy.md) |
 | Understand memory sync, learning, and evolution subsystems | [Knowledge Runtime & OKF Bundle Operations](operations/knowledge-runtime.md) |
-<!-- openwiki: broken internal link [workflows/task-execution-lifecycle.md] file "workflows/task-execution-lifecycle.md" does not exist. Fix the href or restore the target, then delete this comment. -->
 | Trace a task from API call through execution to audit | [Task Execution Lifecycle](workflows/task-execution-lifecycle.md) |
 | Understand the approval lifecycle across REST / WS / dashboard / Telegram | [Approval Request & Decision Flow](workflows/approval-decision-flow.md) |
 | Understand doc-drift / self-improvement / issue loops end to end | [Maker–Checker Loop Execution](workflows/maker-checker-loop.md) |
@@ -140,7 +141,6 @@ The wiki mirrors the system's architecture. Pages are grouped into domains:
 - **Making a change to execution or governance?** Read the
   [Governance Pipeline](concepts/governance-pipeline.md) and
   [Roles & Permissions](concepts/roles-and-permissions.md) first, then the
-<!-- openwiki: broken internal link [workflows/task-execution-lifecycle.md] file "workflows/task-execution-lifecycle.md" does not exist. Fix the href or restore the target, then delete this comment. -->
   [Task Execution Lifecycle](workflows/task-execution-lifecycle.md).
 - **Working on autonomous operation?** Read the
   [Autonomous Goal → Daemon → Earned-Autonomy Pipeline](workflows/autonomous-improvement-pipeline.md)

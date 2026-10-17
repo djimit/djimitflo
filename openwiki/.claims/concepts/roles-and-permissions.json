@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3ad4537d4aa8cb77a1d260469d3369419fd18be80d8064a03ba8e5ad63061c90",
+  "pageVersion": "sha256:ebd21d14464576a0eff8fef11e3b15dbc34fe96c48339a08b3c8dc032656b9b1",
   "claims": [
     {
       "id": "claim_66722a4b508a48cc89b2f4e787373624",
@@ -214,22 +214,26 @@
     },
     {
       "id": "claim_bdb2cf71915a4b9586470daf930c16ff",
-      "statement": "Browser sessions are distinguished by the X-Djimitflo-Session: browser header: /api/auth/login with it issues a revocable token pair and sets a djimitflo_refresh cookie that is HttpOnly, SameSite=Strict, Path=/api/auth, 30-day max age, Secure in production unless AUTH_COOKIE_SECURE overrides it; /api/auth/refresh and cookie-based logout return 403 without the header (blocking ambient-credential cross-origin use under explicit credentialed CORS), the refresh cookie must be present, well-formed, known, and unambiguous with no JSON-body fallback, and failures clear the browser cookie.",
+      "statement": "Browser sessions are distinguished by the X-Djimitflo-Session: browser header: /api/auth/login with it issues a revocable token pair and sets a djimitflo_refresh cookie that is HttpOnly, SameSite=Strict, Path=/api/auth, 30-day max age, Secure in production unless AUTH_COOKIE_SECURE overrides it; /api/auth/refresh returns 403 without the header and /api/auth/logout returns 403 when a refresh cookie is presented without it (blocking ambient-credential cross-origin use under explicit credentialed CORS), the refresh cookie must be present, well-formed, known, and unambiguous with no JSON-body fallback, and failures clear the browser cookie.",
       "evidence": [
         {
           "resource": "repo://packages/server/src/__tests__/auth-cookie-session.test.ts#L68-L129",
           "version": "repo-lines-v1:sha256:d7848fc9f1fcec2b7bb6e55813c465cef22ecb13e6eb877ce7766ea7fa818f44:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiMjg1Y2JkNGEzMzA1ZDMxMDgyOWM2YTRkNzc1YzE2YTIwZmM4NThhYzQzNmMzMzBmYjFkYTI2ZTY1Mzc4M2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlNmYzMjhmM2JiZTJjZmJiMDg1MDNhYjFmMzAyZDJlMjRiMWIzNmFmMTc2NmFiMWM4NmUyODJhNmI5ZTlmM2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUzZmE3NzdkZjUxMGQxN2NlMWZmOTc0YmU3MDQ5YjhmOTBhYTVkNWM5ZGJiOWU4OGJkY2ZlZjU0NDQ0NWRlOTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEyNjg0MjIzYmFiMGI3NDkxODNkNzRhNjU2ZjE2YTMyOTI2NmE3Njk4NDlmNDRmMWRlMWM2ZGNhZDhlMTQ2NTcifQ"
         },
         {
-          "resource": "repo://packages/server/src/routes/auth.ts#L104-L141",
+          "resource": "repo://packages/server/src/routes/auth.ts#L106-L143",
           "version": "repo-lines-v1:sha256:223acc7690a21141665aec915500e7dfff69edb488d4fac85b2a32342b7c7fd5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkNzNhMTMxMzVhMTYzYmM2ZjY0OTEwY2NlNjIxMzQ0NzY4YjBkZDJiNDY4ZWQyMjYxYzdhMDk5NGJmMTU3MDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRlMzhhZmY2ZmFjNTNiY2Q5OTc0OWVjMDhjYWYzN2JjN2YyZTU3ZTg4N2RlMmM5YjJiNmY3MjAzMWIxNTA5ZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUwMzhlMGZlOWNjMmU2MmNjY2ExNWJkNGYyOTFiODVlNmEwZWYzYWI0M2Y0ZGNmNWE1YTU3MWI3YjEyZTA0MDcifQ"
         },
         {
-          "resource": "repo://packages/server/src/routes/auth.ts#L15-L39",
-          "version": "repo-lines-v1:sha256:b2dca75dd7f3dfb051e0aaf1c1d50ecbcb9e26033f8bdac667a545adc344e682:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYxZWU1YzRlZmY3ZjE3MzRiNTMyNzY2YWQwOWRmZjIxN2RkNGUyMGVmMjc5OTUxODEyYWYwMGFiMTdmNjgwZGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMzZTYzMDNhNTNlMDE4NjRkMGY4MmEwMjcyNTZkYzkzNjY3NjlhOWNlNDJkNjk3ZmYxMjVmNDMzZDYwZDZjN2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE5MGJjNmFiZGJhZTdhNjI0MTI0MzlkYWFmMjdkODg2OTVhNmYwMTk1YTE1NWM4MGRlNzUzYjBkMzEzZDc5NzgifQ"
+          "resource": "repo://packages/server/src/routes/auth.ts#L13-L42",
+          "version": "repo-lines-v1:sha256:bf0d9b319ac9728013b7aa3f193309a5f7b53f3c709f2675dc828c38d09155b5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMwNWI1ZmY5NGJlYzc5MDJlM2ZlZGNmYzQ3MTA5OTBmY2UyZTc0MmNlNThiZWExYjQ1MGI3YmYwNzE4NmYyOWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI3YzU3ZTNiYzk3Y2RjZjRkODlkMzMwOGJiYTJjNzAzY2IyNmQ0YjQzMzM0NWMwOWUwNmNlZDY5ODNlNDJmYmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRhNmIwODVhZDhkN2NmNTk1M2MxMGM2ZDNjMzVjMTVmNGI5ZWY5MGM2MjE2MDVjZWI1NDI0YjQwNTkzYzM3ODUifQ"
         },
         {
-          "resource": "repo://packages/server/src/routes/auth.ts#L57-L81",
+          "resource": "repo://packages/server/src/routes/auth.ts#L154-L186",
+          "version": "repo-lines-v1:sha256:dc0e6747c1cc266ee6172752166ffcbdedb5282d5b2e91896cba56231b432078:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3ZGY5ODMxNzRmMWM5MjdkMjc5MmFlYWU3Y2E0ZTBkODc3NzdjOWU1NGY3MjU3MzU2YTBkMDNmODg3ZWJjNWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk1ZDAwMDU0OWVjMGM0NTQ2NmZkNWQ2Y2RlZGVlZGFiMTdhODRkZTA0MjZmZTUwZWIwYTM1ZGRkMmMxMDdmNjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU0NzhjMDUyYzgxMWUxMTc2MDcwN2FmOTQ1M2I3OWY1ZjkwYTgwM2UyM2JjZmM3MWVlY2RjYTgzNzI4ODc5MTgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/auth.ts#L59-L83",
           "version": "repo-lines-v1:sha256:718f1c24b4d82d8f8d4e7233d7bcebb9a8293880b86d44d230e1b2a9d7356953:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlNWU0NDEwN2RiOTU1MGU5MGYzODBmNGRkYTFlNGI4ODRjZTc5ZjQwMjFhMjNjOTAyODdkYTU4NTQzNmQ2ZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZhNDFkNzNjNDUyMmJlYTM5ZmY4MTVlMjRiY2YxMzExODUzMWQ2NzFlYjNjZjUzMTIxODg1ZTExYTFjNDcyNGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM3ODVkOGFiYTg1N2ExNTMwM2Y4ZGQyYmZiNDZlM2NmMmU3OTg3YmRlMjI2ZDIxMjVkMjI2MDNiMTA1YzAxZDAifQ"
         }
       ]
@@ -395,6 +399,6 @@
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-24T19:59:50.419Z"
+    "at": "2026-10-17T12:03:52.116Z"
   }
 }

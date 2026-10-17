@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:bf12b4c98656e69f36855e00e01b80d9c83846405c24ec908b45fcd6c69bd55b",
+  "pageVersion": "sha256:b2f46eaaa7dea59e144493ed8dfa160c2ac566f4978b6a0baba211bab800171f",
   "claims": [
     {
       "id": "claim_5d10f5f2a9444a9992e8342fef2d49fd",
@@ -304,7 +304,7 @@
       "evidence": [
         {
           "resource": "repo://packages/mcp-server/src/__tests__/mcp-server.test.ts#L213-L250",
-          "version": "repo-lines-v1:sha256:b222685248473851782f91f03690a2185d4558d0c2a4aa3b5aaacf07530ea7d3:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJkNWQ4ZDBiZDhlNDUwZjQ5ZmYyNTA3YjQ1YjBlYzI0MDQxMGIyZTJhYmU0OGZlMGNmM2JhMWIwZTUzZTg4YzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYxMTU4OTA1ZDRjMTY5MTBmNDZhYzJjNWE0YTNlZWU0ZDE4MjI4Nzk0ODVmZDI0ZWMwNmJlNDAyYWQ3YjllMzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ5MzViYzRhY2M1ZjNkNmM3YmI1OThjMGQ3NjQ1MGRiMzI0ZjBiY2Y5NzdhMDBhZTc5Y2YyMDUwOWE2MWI3ODkifQ"
+          "version": "repo-lines-v1:sha256:99209c6f8b5dfb1170a1a13aedb8d0ba42fa8c2769a41527ede5ce2ae3b8442f:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJkNWQ4ZDBiZDhlNDUwZjQ5ZmYyNTA3YjQ1YjBlYzI0MDQxMGIyZTJhYmU0OGZlMGNmM2JhMWIwZTUzZTg4YzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYxMTU4OTA1ZDRjMTY5MTBmNDZhYzJjNWE0YTNlZWU0ZDE4MjI4Nzk0ODVmZDI0ZWMwNmJlNDAyYWQ3YjllMzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ5MzViYzRhY2M1ZjNkNmM3YmI1OThjMGQ3NjQ1MGRiMzI0ZjBiY2Y5NzdhMDBhZTc5Y2YyMDUwOWE2MWI3ODkifQ"
         },
         {
           "resource": "repo://packages/mcp-server/src/tools/governance.ts#L290-L316",
@@ -434,13 +434,55 @@
         },
         {
           "resource": "repo://packages/mcp-server/src/tools/experts.ts#L22-L97",
-          "version": "repo-lines-v1:sha256:d77d831747d3bc17be14948651758a513812b95c9e444776b4500fe5bf9ec026:eyJzZWxlY3RlZExpbmVDb3VudCI6NzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJiOTg0MWU1ZWY1YTRmMDg4MTYxNjg1NWQ5OTk3MDY5N2JmYjk5ZmViN2FmMWZjNmYxNTAzYjQ0MTIxMjhkNjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlYTg0Nzk5ODgwN2M2MTI5MDQ2NjM3ZjczNTQzZjZiNGYzMjM4ZjFhNDJjMTJmMTkxOWQ4Zjg0NmJkMmQxZTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "version": "repo-lines-v1:sha256:b3c43a9f27513bdfd8f3637ac4dc4ec8109a9837e78576aa5c29f3b456142ce8:eyJzZWxlY3RlZExpbmVDb3VudCI6NzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJiOTg0MWU1ZWY1YTRmMDg4MTYxNjg1NWQ5OTk3MDY5N2JmYjk5ZmViN2FmMWZjNmYxNTAzYjQ0MTIxMjhkNjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlYTg0Nzk5ODgwN2M2MTI5MDQ2NjM3ZjczNTQzZjZiNGYzMjM4ZjFhNDJjMTJmMTkxOWQ4Zjg0NmJkMmQxZTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b0a01cba68504b40a90a33f6bc6b47ee",
+      "statement": "The experts family fails safe and preserves disagreement: when the expert_* tables are missing, all four djimitflo_expert_* tools return an explicit 'not present' isError result instead of fabricating rows; non-ACTIVE lifecycle states are described as tentative and returned verbatim; and djimitflo_expert_claims returns SUPPORTS/CONTRADICTS/QUALIFIES relations as-is with an unresolved_contradictions count rather than averaging conflicting claims.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/tools/experts.ts#L18-L47",
+          "version": "repo-lines-v1:sha256:3f7a7f533d2e5bc77ed333e776e9ccb2b32207eaefab2bf9d7148314bff6e2eb:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1ZTRlNGY3ODU2NTFhZWQ0NDVlY2M4NTI4MTE4YjcwODZiYzZkNThlNDBjYTg1MDZjYTkxMDZjNzMwNzI1MWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFmMGNkYjk3MmE3YmZiN2VkMjQ2ZjlmZjY3MjM4NWU1NWY0OTY4ZmMxMTA0M2RjNWI2ODRkNTFkZmEzMWRiY2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyMmU4YzQ1N2NhZDNlZDZmNjUyNGU1ODU4ZTZkNmVlMzFhNWJjYjVjN2ZjMTk5OTNmZGFhNTg1NjczY2RkYTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0MDc0ZGFjNmE0ZmY2OWM0OTUwMTE0MzJiZjYyODc0YmY2Njg2ZDc0MDE4ZThiY2MwZDI2YWY4MjdlYTlmZmEifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/experts.ts#L84-L101",
+          "version": "repo-lines-v1:sha256:f6debab71faec5cb98f2cf3d3c25d8dcd3e739de72818b53d7f0246d6a522f22:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4OTRmOTIyMTEyMzNlMjExOGQ5OGJmMmNlMWFiY2IzMTI1YmQ1MTAwM2UzOGIxMjRjOGQ2YTcxZDZiZWI1MzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1ZWYwMWJjMDhkYmMzYjYzZTRlNzVlYTNkMjZhNWI5NDE4OTE4NzdlMjdhZDg5MTMyOWM4NDExZDdkOGRjNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEzMGM1OGE5MTcwNWFhODYzZTdmZDIzOTJkZGE0ZGNhYzM0YjQwODQ0ZjQ2NzgxZGNjOWI2M2VlYTM3ZmRjMmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_dd951f7c213e4f779253feed7235f56c",
+      "statement": "Per FE-AREAS, the experts family hides person-kind expert identities by default in search, get, and claims results unless FRONTIER_EXPERT_PERSONS_ENABLED=true, treating Frontier Experts as fields of interest rather than exposable people.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/__tests__/expert-tools.test.ts#L70-L76",
+          "version": "repo-lines-v1:sha256:9aa596db473d0b97a85f3042c2bd46f51a94880e70578fb3224390910607dd04:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDFiZTUxZGZmYmVlNGZlMTAyYTI3OWYxYzNkMWNlZDhkZWNhMWI4ZTlmYWU5YzI4MzIxNTc1MmEzNDEwMDRhNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2EzZTQ2Zjk0Mjc2YjZmNmY0ZWQxZjAyYWY3OGJlZjZhMmVlMWM0MzlkZDU1ODRiOTczOTQ4MzEzMjE0ZDJiNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTIwYmJjZmRkNTI2OGJlMTdmN2I5M2QzODViMTQwMTM5YjgxMDM4MDdhNDY2M2FiMmE3M2YyYzJjZDM1MzI5NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiJ9"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/experts.ts#L15-L16",
+          "version": "repo-lines-v1:sha256:6c636a30b996b33d9b83fa0dc556ca636d2a5a69d30d77a9d81fb6d781d34d88:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjgyOWY0MDQ0ZTI2YWI0ODE5NjE5Y2RmMjYxYTBiOWJhZTk4Mjc1MDkxMTQwYTdlYTg0MTA0NWM4YjA3MjQzYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTJjYmYxYzk0ZDQ1ZTM5ZThhZjFiOGRiNzdhNzk4ZDMwYzdmNWRhMjUxYzkxMWE3MzUyZTZjYmQxZThhZjAzNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjllNzVhOWNiN2U1MTYyYTQ0YWI0NDNmZjAyYmZjN2I1Njg1NTZkODY1NDY2YTAxYjA2OTU1MTVjMDFkOWVlZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzI2MzFmNzkwODZjNTExM2FjM2U3MWQ1OTcxMGE0MTJhZWEzM2UzMTY1Y2Q2OTQ5ZmQ5YjU0MzJjNWQzYzNiNiJ9"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/experts.ts#L37-L59",
+          "version": "repo-lines-v1:sha256:378821608bcba7ab2eef8679b5111e4fe4ec18d71406da2249cbde0f4b764c96:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEyMmVkYWJlNDAwY2IwYjFlN2E2NmVjZGM3YTU2NTE4MjYwNWMxNjUyODMzZGQ0ODUzZmIyMTk4MzQ4MjVmMzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM5NDNlY2UzMjFkZjZjYTdmOWE1MzM2YjFmNjc1NjM1OWIzZDg0YWNkMzllNGZmZmZiZGIyYmZkNTdjN2E2ZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5MGM3ZmUwMTFhZWEzM2IwYWZkNTc1NjFjMzA1MDdiNDhmYTRjZjQwZTYwMTMyYWVlMTNjNjUwMDE1NmEzODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEyZTU3YzY5ZDRkMGM2ZTBiYmQ5ODA1ZTRkNDdhMjIzMzE2MTFmNWJlYTZkMjkzNjg2N2UxZWNiNzdjYmZkMDgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_34d02130a6014fafaaec0cf9503d771e",
+      "statement": "The expert-tools test suite contracts the read-only experts surface: explicit missing-table errors, an end-to-end search/get/capabilities/claims round-trip returning verbatim CONTRADICTS relations with an unresolved count, and the FRONTIER_EXPERT_PERSONS_ENABLED visibility gate for person-kind records.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/__tests__/expert-tools.test.ts#L43-L76",
+          "version": "repo-lines-v1:sha256:ef9acf120975f687972122527dda9d9af7d695586548931952aa444eee743882:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5N2QyY2Q4MDg0NWNhMTUwN2Y3YjA4YWI1OWUyMTk0NTllY2JiZjRjNTVhZDlmNjY4NTAxYmVjOWE5NzkwZTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZlMWY4ZDQ0ODFmYTYwYjUwMDc2YTc1YmE0MTA1NDg3Y2Y0OTkyNTJhMzU1YTg4NmNlYmYwNjRlMTVmY2FiYzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-24T19:59:50.419Z"
+    "at": "2026-10-17T12:03:52.116Z"
   }
 }

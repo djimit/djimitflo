@@ -10,6 +10,8 @@ sources:
     resource: repo://packages/mcp-server/src/__tests__/authority-tools.test.ts
   - id: openwiki-source-98839c85310f2361920fdde1
     resource: repo://packages/mcp-server/src/__tests__/db.test.ts
+  - id: openwiki-source-6200567cdc34e1718c3313d0
+    resource: repo://packages/mcp-server/src/__tests__/expert-tools.test.ts
   - id: openwiki-source-c611658bc71229073f0e22d4
     resource: repo://packages/mcp-server/src/__tests__/explainer-tools.test.ts
   - id: openwiki-source-f32a88438a95fd9c406f31ef
@@ -60,7 +62,10 @@ sources:
     resource: repo://packages/shared/src/jwt.ts
   - id: openwiki-source-f873c20d1298723efcbc88e6
     resource: repo://packages/shared/src/types/auth.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-10-17T12:03:52.116Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-10-17T12:03:52.116Z
 ---
 
 # MCP Server Package
@@ -192,7 +197,12 @@ each tool name is listed with its mutating posture. A second registrar,
 (`djimitflo_expert_search`, `djimitflo_expert_get`,
 `djimitflo_expert_capabilities`, `djimitflo_expert_claims` — read-only provenance
 views over the `expert_*` tables) but is not imported by the binary's `main`, so
-those tools only appear where that module is wired in explicitly.
+those tools only appear where that module is wired in explicitly. The experts
+family treats non-`ACTIVE` lifecycle states as tentative signals, returns
+contradicting claims verbatim with an `unresolved_contradictions` count instead
+of merging them, and — per FE-AREAS — hides person-kind experts unless
+`FRONTIER_EXPERT_PERSONS_ENABLED=true`; when the `expert_*` tables are absent the
+tools answer with an explicit "not present" error instead of guessing.
 
 | Family | Tools | Posture |
 | --- | --- | --- |
@@ -266,6 +276,9 @@ Focused contracts live in `src/__tests__/`:
 - `authority-tools.test.ts` — emit/trace/stats round-trip with sequence numbering
   and payload digests, `ALLOW`-forgery refusal for every role, and snapshot/anonymous
   write rejection.
+- `expert-tools.test.ts` — missing-`expert_*`-tables error reporting, read-only
+  search/get/capabilities round-trip, verbatim CONTRADICTS relations with an
+  unresolved count, and the FE-AREAS person visibility gate.
 
 ## Configuration summary
 
@@ -279,6 +292,7 @@ Focused contracts live in `src/__tests__/`:
 | `JWT_SECRET` | Required for `--transport http`; verifies Bearer JWTs |
 | `DJIMITFLO_API_URL` | Base URL for council/approval/export forwarding (default `http://127.0.0.1:3001/api`) |
 | `OKF_BASE`, `NOTEBOOKLM_PYTHON`, `NOTEBOOKLM_BRIDGE_PATH`, `EXPLAINER_SERVER_URL`, `DJIMITFLO_API_TOKEN`, `MCP_STATUS_TTL_MS` | Knowledge-bundle, NotebookLM bridge, explainer delegation, and stale-server classification tuning |
+| `FRONTIER_EXPERT_PERSONS_ENABLED` | `true` unhides person-kind records in the experts family; by default only fields-of-interest experts are visible |
 
 See `/openwiki/operations/configuration-reference.md` for the fleet-wide view of
 these variables and `/openwiki/architecture/monorepo-layout.md` for where this
@@ -296,6 +310,9 @@ package sits in the workspace build order (`@djimitflo/shared` must build first)
   `MCP_PERMISSION_DENIED`, `DJIMITFLO_LIVE_DATA_REQUIRED`) before any write occurs.
 - Control-plane records ≠ execution: spawn, handoff, and approval tools persist
   intent only; task/loop services and the dashboard own dispatch and decisions.
+- The MCP server is a **direct SQLite peer** of the server runtime, not an API
+  client — both must therefore agree on schema and on the provenance/instance-id
+  contract.
 - The MCP server is a **direct SQLite peer** of the server runtime, not an API
   client — both must therefore agree on schema and on the provenance/instance-id
   contract.

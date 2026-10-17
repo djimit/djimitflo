@@ -38,10 +38,10 @@ sources:
     resource: repo://packages/server/src/services/runtime-governance-service.ts
   - id: openwiki-source-39bff2b9dbe3e565ff3d8077
     resource: repo://packages/server/src/services/tool-broker.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
 verified:
   - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
+    at: 2026-10-17T12:03:52.116Z
+generated: { by: "openwiki/0.5.2", at: "2026-10-17T12:03:52.116Z" }
 ---
 
 # Governance Pipeline: Policy, ToolBroker, Approvals & Audit Chain
@@ -73,15 +73,16 @@ AuditAnchoringService.
 ## Preflight order in executeTask
 
 `executeTask()` consults the pipeline in a fixed order, and the order itself is a
-security property: cheap structural holds run before any policy work, and every gate
-failure is persisted as an event and/or audit row before the method returns or throws.
+security property: cheap structural holds and admission guards run before any policy
+work, and every gate failure is persisted as an event and/or audit row before the
+method returns or throws.
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant C as Caller (route or re-dispatch)
     participant E as ExecutionEngine
-    participant R as RuntimeGovernanceService
+    participant RT as Runtime Admission
     participant K as CommandRiskClassifier
     participant P as PolicyDecisionService
     participant G as GovernanceGateService
@@ -89,14 +90,14 @@ sequenceDiagram
     participant D as AuditService to ComplianceAuditService
 
     C->>E: executeTask(taskId, executorKind, dispatcherId)
-    E->>E: in-memory and durable duplicate or running guards
+    E->>E: duplicate and durable running guards
     E->>E: recovery-hold and assurance-hold metadata checks
     E->>A: getLatestPendingForTask(executionOnly)
     A-->>E: pending execution approval or null
-    E->>R: isAllowed(agent_id)
-    alt agent quarantined or circuit-broken
-        E-->>C: denied, task cancelled
-    end
+    E->>E: loop-paused and agent-availability asserts
+    E->>E: skill-attribution guard
+    E->>RT: admitRuntime(taskId, executorKind)
+    RT-->>E: admission record or RUNTIME_NOT_ADMITTED
     E->>K: assessTask(task, executorKind)
     K-->>E: RiskAssessment
     E->>P: evaluate(assessment)
@@ -117,43 +118,59 @@ sequenceDiagram
     end
 ```
 
-*The decision flow every task dispatch traverses; the same pipeline re-runs verbatim
-after any concurrency-capacity wait and on every fallback-executor admission.*
+*The decision flow every task dispatch traverses; the policy trio (classify → evaluate
+→ gate) re-runs verbatim after any concurrency-capacity wait and on every
+fallback-executor admission.*
 
 Concretely, inside `executeTask()`:
 
-1. **Duplicate/running guards** — in-memory `activeSessions`/`pendingExecutions` and a
-   durable `running` status check (packages/server/src/execution/execution-engine.ts#L249-L261).
+1. **Duplicate/running guards** — an in-memory `activeSessions`/`pendingExecutions`
+   check throws "Task is already running", and a durable `TaskStatus.RUNNING` check
+   throws `TASK_RUNNING` (L259-L270).
 2. **Recovery-hold checks** — `metadata.execution_recovery_hold === true` set by
-   startup reconciliation throws `EXECUTION_RECOVERY_REQUIRED` (L270-L272), and
+   startup reconciliation throws `EXECUTION_RECOVERY_REQUIRED` (L279-L281), and
    `metadata.deep_agent_assurance_hold === true` throws `DEEP_AGENT_ASSURANCE_HOLD`
-   (L274-L276).
+   (L283-L285).
 3. **Pending approval check** — `approvalService.getLatestPendingForTask(taskId,
    { executionOnly: true })` throws "Task is awaiting approval" if an execution-gate
-   approval is pending (L278-L281).
-4. **Runtime-governance allow check** — a quarantined or circuit-breaker-tripped
-   agent (`runtimeGovernance.isAllowed`) cancels the task and returns `denied`
-   (L283-L294; packages/server/src/services/runtime-governance-service.ts#L138-L141).
-5. **Risk classification** — `riskClassifier.assessTask(parsedTask, executorKind,
-   process.cwd(), riskAssessmentText)` (L315), persisted to `risk_assessments` and
-   broadcast as `RISK_DETECTED` by `persistRiskAssessment` (L1437-L1465).
-6. **Policy evaluation** — `policyDecisionService.evaluate(assessment)` (L316);
+   approval is pending (L287-L290).
+4. **Loop/agent admission asserts** — `assertTaskLoopNotPaused` throws
+   `LOOP_OPERATOR_PAUSED` when the task's loop run or goal metadata is operator-paused
+   (resolving `loop_run_id` from task metadata and the `worker_leases` back-pointer),
+   and `assertAssignedAgentAvailable` throws `AGENT_UNAVAILABLE` when the assigned
+   agent is missing, retired, not idle/active, or runtime-governance blocked
+   (L305-L306, L554-L596).
+5. **Skill-attribution guard** — `blockInvalidSkillAttribution` cancels the task and
+   returns `denied` when an explicit `metadata.skillId` is not assigned to the agent
+   or the skill set is ambiguous (L308-L311; `captureEvidence` POLICY_DECISION).
+6. **Runtime admission** — `admitRuntime(taskId, executorKind)` checks the
+   `runtime_contract_probes`-observed runtime@version against the static admission
+   ledger (`checkAdmission`); a refusal returns `RUNTIME_NOT_ADMITTED` and is also
+   recorded as a `runtime_admission` policy violation (logged even in
+   `RUNTIME_ADMISSION_MODE === 'shadow'`, where it is not enforced) (L320-L321,
+   L832-L853).
+7. **Risk classification** — `riskClassifier.assessTask(parsedTask, executorKind,
+   process.cwd(), riskAssessmentText)` (L328), persisted to `risk_assessments` and
+   broadcast as `RISK_DETECTED` by `persistRiskAssessment` (L1481-L1509).
+8. **Policy evaluation** — `policyDecisionService.evaluate(assessment)` (L329);
    without a matching policy the classifier's `recommended_decision` is the fallback.
-7. **Gate tightening** — `governanceGate.assess(...)`; on `require_approval` with a
-   current `allow`, the decision is replaced and `GOVERNANCE` evidence captured
-   (L319-L339).
-8. **Outcomes** — `deny` cancels the task, captures POLICY_DECISION evidence,
-   records `EXECUTION_DENIED`, and returns `denied` (L341-L374);
-   `require_approval` without a valid grant creates the approval, moves the task to
-   `awaiting_approval`, broadcasts `EXECUTION_PAUSED_FOR_APPROVAL`, and records
-   `EXECUTION_PAUSED` (L376-L419); otherwise the task is queued (L422-L423).
+9. **Gate tightening** — `governanceGate.assess(...)`; on `require_approval` with a
+   current `allow`, the decision is replaced and `GOVERNANCE`-sourced POLICY_DECISION
+   evidence captured (L333-L352).
+10. **Outcomes** — `deny` cancels the task, captures POLICY_DECISION evidence,
+    records `EXECUTION_DENIED`, and returns `denied` (L354-L387);
+    `require_approval` without a valid grant creates the approval, moves the task to
+    `awaiting_approval`, broadcasts `EXECUTION_PAUSED_FOR_APPROVAL`, and records
+    `EXECUTION_PAUSED` (L389-L432); otherwise the task is queued (L436).
 
 Admission is revalidated end-to-end after the `runtimeConcurrencySemaphore` capacity
-wait (L482-L513): the task input hash must be unchanged, and risk classification,
-policy evaluation, and gate assessment run again — a tighter decision after the wait
-aborts with `EXECUTION_POLICY_DENIED` / `EXECUTION_APPROVAL_STALE` rather than
-dispatching on stale authority. `fallbackAdmitted()` (L811-L817) applies the same
-classify → evaluate → approved-grant test to every fallback executor.
+wait (L482-L526): the loop-pause and agent-availability asserts re-run, the two
+recovery-hold metadata checks re-run, the task must still be `QUEUED`, the task input
+hash must be unchanged, and risk classification, policy evaluation, and gate
+assessment run again — a tighter decision after the wait aborts with
+`EXECUTION_POLICY_DENIED` / `EXECUTION_APPROVAL_STALE` rather than dispatching on
+stale authority. `fallbackAdmitted()` (L855-L861) applies the same classify →
+evaluate → approved-grant test to every fallback executor.
 
 ## Stage 1 — CommandRiskClassifier
 
@@ -251,7 +268,7 @@ calls, independent of the task-level spine:
 **Limitation (header-documented):** CLI executors do not mediate their internal
 tools through the broker, so constructing it inside `ExecutionEngine` does not
 enforce per-tool policy for executor-internal calls — callers that want the boundary
-must call `evaluateToolCall()`/`validateCapabilityToken()` themselves.
+must call `evaluateToolCall()`/`validateCapabilityToken()` themselves (L1-L17).
 
 ## Stage 5 — ApprovalService lifecycle and invariants
 
@@ -259,13 +276,13 @@ must call `evaluateToolCall()`/`validateCapabilityToken()` themselves.
 `approvals` table lifecycle. Its invariants are the core of the pipeline:
 
 - **Configurable expiry, fail-closed:** `createApproval()` stamps
-  `expires_at = now + approvalTtlMs()` (L71–L74). `APPROVAL_TTL_MS` configures the
-  TTL — default 1 hour, clamped to 5 minutes … 7 days on valid input; an expired
-  approval still never executes anything (L23–L31; pinned by
+  `expires_at = now + approvalTtlMs()` (L93). `APPROVAL_TTL_MS` configures the TTL —
+  default 1 hour, clamped to 5 minutes … 7 days on valid input; an expired approval
+  still never executes anything (L29-L32; pinned by
   packages/server/src/__tests__/approval-ttl.test.ts). Expiry is lazy — realized on
   read or on a decision attempt (below).
 - **Pending-query semantics:** `getLatestPendingForTask(taskId, { executionOnly })`
-  (L52–L69) first runs an **expiry sweep** — every `pending` row whose `expires_at`
+  (L71-L88) first runs an **expiry sweep** — every `pending` row whose `expires_at`
   is missing or already past is moved to `expired` (with its audit row, publish, and
   ledger record) before any read. With `executionOnly: true` it filters out
   `metadata.manual_action === true` reviews via
@@ -273,66 +290,75 @@ must call `evaluateToolCall()`/`validateCapabilityToken()` themselves.
   deliberately distinguishes the server-owned boolean `true` from strings/numbers —
   applied **before** `ORDER BY created_at DESC LIMIT 1`, so a newer manual review
   cannot hide an older execution gate. The engine's pending check
-  (`execution-engine.ts` L278) always passes `executionOnly: true`.
+  (L287) always passes `executionOnly: true`.
 - **Transaction-wrapped create/decide:** `createApproval()` writes the approval row
   and its canonical `APPROVAL_REQUESTED` audit entry in one
   `db.transaction().immediate()`; if the audit insert fails, the approval row rolls
-  back with it (L71–L123; `decideApproval` does the same for the status UPDATE and
-  its `APPROVAL_GRANTED`/`APPROVAL_DENIED` audit, L144–L208 — both pinned by
+  back with it (L95-L142; `decideApproval` does the same for the status UPDATE and
+  its `APPROVAL_GRANTED`/`APPROVAL_DENIED` audit, L184-L245 — both pinned by
   packages/server/src/__tests__/approval-atomicity.test.ts). Only after commit does
   it broadcast `APPROVAL_REQUESTED` over WebSocket and call `recordDecision()`
-  (L124–L129); a failed broadcast is only `console.warn`'d, never a domain failure
-  (L275–L283).
-- **`decideApproval` ordering of checks:** inside its immediate transaction it
-  requires a boolean `approved` (else `INVALID_APPROVAL_DECISION`, thrown before the
-  transaction, L145–L147), loads the row (404), rejects an already-`expired` row with
-  `APPROVAL_EXPIRED`, rejects any non-`pending` row as "Approval already processed"
-  — the double-process/double-decide guard — then realizes TTL expiry: if
+  (L148-L153); a failed broadcast is only `console.warn`'d, never a domain failure
+  (L312-L320).
+- **Optional Telegram push (off by default):** after the create transaction commits,
+  `createApproval` also schedules `pushApproval()` — a best-effort operator push that
+  is a no-op unless `TELEGRAM_PUSH_ENABLED` is set. `TELEGRAM_PUSH_DELAY_MS`
+  (default 15 s) defers the push so that an approval a lane rule auto-approves
+  immediately afterwards is skipped as `decided` rather than pushed (L143-L147).
+- **`decideApproval` ordering of checks:** it requires a boolean `approved` (else
+  `INVALID_APPROVAL_DECISION`, thrown before the transaction, L181-L183), then inside
+  its immediate transaction loads the row (404), rejects an already-`expired` row
+  with `APPROVAL_EXPIRED`, rejects any non-`pending` row as "Approval already
+  processed" — the double-process/double-decide guard — then realizes TTL expiry: if
   `expires_at` is missing or past, `expireApprovalRecord()` persists `expired` plus
   its audit **inside the same transaction**, commits, broadcasts `APPROVAL_EXPIRED`,
   records a ledger `DENY`, and only then throws `APPROVAL_EXPIRED` — so the refusal
-  is durable evidence, written exactly once (L148–L162, L209–L218; test
+  is durable evidence, written exactly once (L189-L198, L246-L255; test
   "persists expired decision refusal and its audit once, outside the throwing
   transaction"). Only a still-pending, unexpired row reaches the decision UPDATE.
 - **Self-approval is forbidden at the data layer:** `decideApproval` throws
   `SELF_APPROVAL_FORBIDDEN` when `decidedBy === approval.requested_by`, independent
-  of any route-level permission check (L163–L168). Status transitions to `approved`
+  of any route-level permission check (L199-L204). Status transitions to `approved`
   or `denied` set `decided_at`/`decided_by`/`decision_reason` (and
   `approved_at`/`denied_at`/`denial_reason`) via a guarded
-  `WHERE id = ? AND status = 'pending'` update (L169–L195).
+  `WHERE id = ? AND status = 'pending'` update (L205-L231).
 - **Expired approvals unstick their tasks:** realizing expiry cancels a task still
   in `awaiting_approval` (guarded, so a task that moved on is untouched), with its
-  own audit row — mirroring what a denial does (L235–L273).
+  own audit row — mirroring what a denial does (L272-L310).
 - **`manual_action` approvals never gate execution:** approvals created via
   `POST /api/approvals` for human action review carry `metadata.manual_action: true`
   (packages/server/src/routes/approvals.ts#L31-L58). Besides the `executionOnly`
   filter above, `handleApprovalDecision` records their decision as evidence and
-  returns without dispatching (execution-engine.ts L840-L849), and `hasApprovedStart`
-  applies the same `json_type(...) != 'true'` exclusion (L1482–L1495).
+  returns without dispatching (execution-engine.ts L882-L893), and `hasApprovedStart`
+  applies the same `json_type(...) != 'true'` exclusion (L1526-L1540).
 
-Every lifecycle step also calls `recordDecision()` (L134–L142), which appends a
+Every lifecycle step also calls `recordDecision()` (L159-L165), which appends a
 best-effort, never-blocking event to the append-only `authority_events` ledger
 (sequenced per `correlationId` = task id, with a sha-256 payload digest;
 packages/server/src/services/authority-ledger-service.ts) and enqueues a
 `djimitflo.approval.*` domain event in `event_outbox` — the outbox insert is a no-op
 unless `EVENT_PUBLISH_ENABLED=true`, and an `EventOutboxService` drain publishes
 pending rows to the external bus (`DJIMIT_EVENT_BUS_URL`)
-(packages/server/src/services/event-outbox-service.ts).
+(packages/server/src/services/event-outbox-service.ts). The ledger's `actorType` is
+resolved by `actorType()` (L172-L178): `agent:`-prefixed actors are `agent`, a real
+user (matching `users.id` or `users.email`) is `human`, and rule deciders
+(`autonomy:*`), inherited approvals (`inherit:*`), `system`, and any other label are
+automation → `service`.
 
 ### Approvals are bound to the exact execution input
 
 An approval is not a reusable grant. `ExecutionEngine.hasApprovedStart()`
-(execution-engine.ts L1482-L1496) only honors an approval for the same `executorKind`
+(execution-engine.ts L1526-L1540) only honors an approval for the same `executorKind`
 whose `expires_at` is still in the future, whose metadata is **not** a manual action,
 and whose stored `executionInputHash` equals a fresh hash of the task's dispatch
 relevant bytes (title, description, priority, risk, mode, agent, repository, tags,
-instructive metadata; runtime output/recovery stamps excluded, L1467-L1480). Any task
+instructive metadata; runtime output/recovery stamps excluded, L1511-L1524). Any task
 edit, expiry, or executor-kind change forces a new approval — pinned by
 packages/server/src/__tests__/execution-approval-binding.test.ts. An opt-in escape,
 `LOOP_REVIEWER_APPROVAL_INHERIT=true`, lets read-only checker/security-checker tasks
 inherit their loop run's human-approved maker approval under strict conditions
-(L1498-L1528). After a granted approval, `handleApprovalDecision` resumes by
-re-entering `executeTask()`, where the full preflight runs again (L909-L910).
+(L1542-L1572). After a granted approval, `handleApprovalDecision` resumes by
+re-entering `executeTask()`, where the full preflight runs again (L953-L954).
 
 ## Two-layer audit: AuditService façade over a hash-chained canonical log
 
@@ -370,7 +396,8 @@ Auditing has two layers with a single physical store:
   tools default to `deny`; no gate evidence means allow but never loosens policy;
   expired approvals count as `DENY` in the ledger.
 - Durable-before-notify: approval and audit state commit in one transaction;
-  broadcasts, ledger, and outbox writes are post-commit and best-effort.
+  broadcasts, ledger, outbox, and Telegram-push writes are post-commit and
+  best-effort.
 - Freshness is enforced, not assumed: approval grants are bound to an input hash and
   a 1-hour expiry, and the whole classify → policy → gate pipeline re-runs after any
   capacity wait before a provider process starts.
@@ -382,12 +409,5 @@ Auditing has two layers with a single physical store:
   role/governance model this pipeline's checks sit on top of.
 - [Approval Decision Flow](/openwiki/workflows/approval-decision-flow.md) — the
   human-facing approve/deny UX on top of `handleApprovalDecision`.
-<!-- openwiki: broken internal link [/openwiki/workflows/task-execution-lifecycle.md] file "/openwiki/workflows/task-execution-lifecycle.md" does not exist. Fix the href or restore the target, then delete this comment. -->
-- [Task Execution Lifecycle](/openwiki/workflows/task-execution-lifecycle.md) — what
-  happens after the pipeline admits a task.
-after the pipeline admits a task.
-- [Approval Decision Flow](/openwiki/workflows/approval-decision-flow.md) — the
-  human-facing approve/deny UX on top of `handleApprovalDecision`.
-<!-- openwiki: broken internal link [/openwiki/workflows/task-execution-lifecycle.md] file "/openwiki/workflows/task-execution-lifecycle.md" does not exist. Fix the href or restore the target, then delete this comment. -->
 - [Task Execution Lifecycle](/openwiki/workflows/task-execution-lifecycle.md) — what
   happens after the pipeline admits a task.

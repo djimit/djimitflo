@@ -37,9 +37,6 @@ sources:
   - id: openwiki-source-cc57a9eb4496f91fdc73afb9
     resource: repo://packages/shared/src/loop-catalog.ts
 generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
 ---
 
 # Loop Domain Model: Runs, Leases, Worktrees & Recovery
