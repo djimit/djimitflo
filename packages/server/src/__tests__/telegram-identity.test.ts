@@ -35,3 +35,43 @@ it('approval via Telegram needs the web approve:task permission', () => {
     { subject_id: '2', decision: 'yes', reason: 'approve: user a (approver)' },
   ]);
 });
+
+it('trims surrounding whitespace from the telegram user id before validating it', () => {
+  user('u', 'viewer'); map('777', 'u');
+  expect(resolveTelegramActor(db, '  777 ')).toEqual({ telegramUserId: '777', userId: 'u', role: 'viewer' });
+  expect(resolveTelegramActor(db, '  abc  ')).toBeNull();
+  expect(audits().map((a) => (a as { reason: string }).reason)).toContain('resolve: invalid telegram user id');
+});
+
+it('rejects ids longer than 20 digits and accepts the 20-digit boundary', () => {
+  user('u', 'viewer'); map('12345678901234567890', 'u');
+  expect(resolveTelegramActor(db, '12345678901234567890')?.userId).toBe('u');
+  expect(resolveTelegramActor(db, '123456789012345678901')).toBeNull();
+  expect(audits().map((a) => (a as { reason: string }).reason)).toEqual(['resolve: invalid telegram user id']);
+});
+
+it('treats null/undefined telegram user ids as missing and audits them under (missing)', () => {
+  expect(resolveTelegramActor(db, null as unknown as undefined)).toBeNull();
+  expect(resolveTelegramActor(db, undefined as unknown as undefined)).toBeNull();
+  expect(audits().map((a) => (a as { subject_id: string }).subject_id)).toEqual(['(missing)', '(missing)']);
+});
+
+it('uses the supplied action label (truncated to 16 chars) in the audit state_hash', () => {
+  expect(resolveTelegramActor(db, 5, 'a-very-long-action-label')).toBeNull();
+  const row = db.prepare("SELECT subject_id, state_hash, reason FROM judgments WHERE judgment = 'telegram_access' ORDER BY rowid").get() as { subject_id: string; state_hash: string; reason: string };
+  expect(row.subject_id).toBe('5');
+  expect(row.state_hash).toBe('a-very-long-acti');
+  expect(row.reason).toBe('a-very-long-action-label: not in the allowlist');
+});
+
+it('denies a mapped id whose user row is missing from the users table', () => {
+  map('9', 'ghost');
+  expect(resolveTelegramActor(db, 9)).toBeNull();
+  expect(audits().map((a) => (a as { reason: string }).reason)).toEqual(['resolve: mapped user ghost missing or inactive']);
+});
+
+it('does not crash when auditing fails: a deny stays a deny even if the judgment write throws', () => {
+  db.exec("DROP TABLE judgments");
+  expect(resolveTelegramActor(db, 5)).toBeNull();
+  expect(mayApproveViaTelegram(db, 5)).toBeNull();
+});
