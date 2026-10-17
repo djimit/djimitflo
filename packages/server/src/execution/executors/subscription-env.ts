@@ -13,7 +13,8 @@ export const isBillingKey = (name: string): boolean =>
 
 /**
  * A subscription maker's child env: billing keys dropped, the login added from the server env (claude: the OAuth token;
- * codex: CODEX_HOME when set — else the CLI reads $HOME/.codex). Any other runtime gets the keys dropped and no login.
+ * codex: CODEX_HOME when set — else the CLI reads $HOME/.codex). Any other runtime (opencode-free species: OPENCODE_API_KEY
+ * dropped too, so the CLI's built-in 'opencode' provider runs keyless and loads free models only) gets the keys dropped and no login.
  */
 export function subscriptionChildEnv(base: NodeJS.ProcessEnv, runtime: string | undefined, env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = {};
