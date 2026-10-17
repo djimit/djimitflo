@@ -3,9 +3,6 @@ type: security-gated-mechanism
 title: Nested Spawn & Swarm Trees
 description: How NestedSpawnService gives running runtime children a gated, budget-accounted path to spawn sub-agents — depth budgets (default 0 = off), cycle guards, cumulative token/wall budgets, capability routing, per-tree concurrency caps, scoped spawn tokens, and the /api/swarms/spawns control endpoint.
 tags: [nested-spawn, spawn-trees, worker-leases, spawn-tokens, default-deny, budgets, capability-routing, auth-middleware, control-endpoint, audit]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
 sources:
   - id: openwiki-source-c0941a928920f2167e6565c3
     resource: repo://packages/server/src/__tests__/loop-routing-continuation.test.ts
@@ -36,6 +33,9 @@ sources:
   - id: openwiki-source-0dfefeca89a6d1280d92409c
     resource: repo://packages/shared/src/types/websocket.ts
 generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-10-17T12:03:52.116Z
 ---
 
 # Nested Spawn & Swarm Trees

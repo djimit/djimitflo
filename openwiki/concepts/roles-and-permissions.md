@@ -3,9 +3,6 @@ type: security-architecture
 title: "AuthN/AuthZ: Roles, JWT Sessions & WebSocket Auth"
 description: The seven-role RBAC model and ROLE_PERMISSIONS table, AuthService JWT issuance with revocable session-bound access tokens and 30-day refresh-cookie rotation, requireAuth/requirePermission middleware that re-reads role and organization membership from the DB on every request, and bearer-subprotocol WebSocket authentication with close-code-driven client re-auth.
 tags: [authentication, authorization, rbac, jwt, refresh-token-rotation, sessions, websocket, middleware, separation-of-duties, tenancy]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-24T19:59:50.419Z
 sources:
   - id: openwiki-source-a43d7cc8a5a9d2a77f3767e3
     resource: repo://packages/dashboard/src/hooks/useWebSocket.ts
@@ -45,7 +42,10 @@ sources:
     resource: repo://packages/shared/src/types/auth.ts
   - id: openwiki-source-0dfefeca89a6d1280d92409c
     resource: repo://packages/shared/src/types/websocket.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-10-17T12:03:52.116Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-10-17T12:03:52.116Z
 ---
 
 # AuthN/AuthZ: Roles, JWT Sessions & WebSocket Auth
@@ -248,9 +248,10 @@ Browser sessions (dashboard) are distinguished by the
   unless `AUTH_COOKIE_SECURE` explicitly overrides it (`'true'`/`'false'`).
   JS never reads the cookie; the raw refresh token never appears in a response
   body.
-- `/api/auth/refresh` and `/api/auth/logout` (cookie path) require the browser
-  header and return 403 without it, which — combined with explicit-origin
-  credentialed CORS — stops cross-origin pages from riding ambient cookies.
+- `/api/auth/refresh` requires the browser header and returns 403 without it;
+  `/api/auth/logout` answers 403 when a refresh cookie arrives **without** the
+  header, which — combined with explicit-origin credentialed CORS — stops
+  cross-origin pages from riding ambient cookies.
   The refresh endpoint accepts the cookie only: an absent, malformed, unknown,
   or duplicated cookie is 401, and a `refresh_token` JSON body is never a
   fallback. Failure also clears the browser cookie.

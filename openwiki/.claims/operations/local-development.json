@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:6898dc53d4bdba79786c4fc576e00a55334e9b1f6c49fd1a5c14828a67454235",
+  "pageVersion": "sha256:6e07a8c5538516b5a735a4e0c3f457b79089f25f1a2e96669346a6c7dab5e708",
   "claims": [
     {
       "id": "claim_662ff36ed9c94fe291ee7fea898f9dda",
@@ -94,11 +94,11 @@
     },
     {
       "id": "claim_8b32ce44ee9542d0b9ea82009d7ad064",
-      "statement": "The root npm run test pipeline runs five script selftests BEFORE any workspace test: deploy-vps.selftest.sh, wiki-delta-emitter.selftest.sh, paperclip-archive-export.py --selftest, paperclip-readonly-monitor.py --selftest, live-identity-evidence.test.mjs, and integration-probes.test.mjs; it then builds shared and agent-catalog and only afterwards runs npm run test --workspaces --if-present.",
+      "statement": "The root npm run test pipeline runs four script selftests BEFORE any workspace test: deploy-vps.selftest.sh, wiki-delta-emitter.selftest.sh, live-identity-evidence.test.mjs, and integration-probes.test.mjs; it then builds shared and agent-catalog and only afterwards runs npm run test --workspaces --if-present.",
       "evidence": [
         {
           "resource": "repo://package.json#L18-L18",
-          "version": "repo-lines-v1:sha256:fc5157e4fa43b3ef911b2d0ef5c413035ff969f0f38b4564360e65996cb0af73:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmM1MTU3ZTRmYTQzYjNlZjkxMWIyZDBlZjVjNDEzMDM1ZmY5NjlmMGYzOGI0NTY0MzYwZTY1OTk2Y2IwYWY3MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmM1MTU3ZTRmYTQzYjNlZjkxMWIyZDBlZjVjNDEzMDM1ZmY5NjlmMGYzOGI0NTY0MzYwZTY1OTk2Y2IwYWY3MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDQ4MmQyOGE3ZTNlMmZjNjgxZmZlM2NlNTJmZTcwODg1YjI1MTUwYzQ1Y2VmMmMyMjc4OTg4ZmMwNzU4YTQ4NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzhlMGQ0ZGEzYmI3MjQwNGRlYjA4MjJkMzYwNTE3Nzc0ZmVhMDE5NzMwODZlYWE0YzlmMWI2NjUyZWNjM2U0YyJ9"
+          "version": "repo-lines-v1:sha256:a7cb2373a60bea977337ad75ae776aba5268b42f4a5ad03b4e65d54d8c8f52e6:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTdjYjIzNzNhNjBiZWE5NzczMzdhZDc1YWU3NzZhYmE1MjY4YjQyZjRhNWFkMDNiNGU2NWQ1NGQ4YzhmNTJlNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTdjYjIzNzNhNjBiZWE5NzczMzdhZDc1YWU3NzZhYmE1MjY4YjQyZjRhNWFkMDNiNGU2NWQ1NGQ4YzhmNTJlNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDQ4MmQyOGE3ZTNlMmZjNjgxZmZlM2NlNTJmZTcwODg1YjI1MTUwYzQ1Y2VmMmMyMjc4OTg4ZmMwNzU4YTQ4NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmJiMmEzMzI2ZGMxNWNhYTIwYzkxNTc1OTEwY2ZhNjU5ZTUzZGRiNjY1ZDYwZGQxOGU1MjZiZDA3MzA0ZmVmYSJ9"
         },
         {
           "resource": "repo://scripts/deploy-vps.selftest.sh#L1-L9",
@@ -113,10 +113,6 @@
           "version": "repo-lines-v1:sha256:1bd12926f09b255a813808895e697919205c954072f48405c9fbb76ee330cad8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwNjYyZmJjYzBkNGQ4YzExOTY4M2RhMTk0N2IxMjA0NjgwM2Q0OGI0NDc5ODgxOTdlYzMwOTJmZmU1YThiNGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhOTIyMzZhOTA4ZDU4YzNmMDJhOTAzOTMxYjUyYzAzMjI0YmQyZjI3MDhkNWE4MjkyODY1ZDEzOGU3ZjlmNGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc3NTJlMzE5OTAzMGU0YmExMTBhNzU3MmYzMGI3MWQ0ZGQwNzgzYTQ5NzA1OTU2OWZiMzk3YTQwNzIyY2IzNzIifQ"
         },
         {
-          "resource": "repo://scripts/paperclip-archive-export.py#L1-L11",
-          "version": "repo-lines-v1:sha256:6d89d8a26049e36defc03a60d642382fbb5f1c5d4b71e16d5560e7c85ede5153:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2ODJjYmRiNGM4YjA3NTE4YmY0ODZjNTg5OTBmYzM5MTc4M2FhMjBhOTE2YmZiMjdhZDIxMWViMWQ1YzM2NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2MmY2ZDgyMzljYzU1MmJjMTNhYzg2OGNiNDQ1YTc0ZDA1NGQ3ZmFlMDM0ZWM3MDUxZjdiNDEyZGRhYmQ2MTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE2ODYwNjAwZTY3ZmRiY2RhYjQ5NDk1NWQ1NTFjNDQ3NmY1YTZhNDIwODQxMGZhODM3OWJjZTY4MWIxNzljNWEifQ"
-        },
-        {
           "resource": "repo://scripts/wiki-delta-emitter.selftest.sh#L1-L5",
           "version": "repo-lines-v1:sha256:79726edf4846b542d36214fddd8ab153b73b418138b08ddf0d7170c9371fe136:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWQ5NWZjMDRhODBjOTUyZjQ5Y2U0MTg4NjI3YzUzYjBmYmU4YzQ0MDQxYjk1MmQ1OTJhY2QxZGU5OTg2MTQ2NiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTY3YTc0ZWIzMWVmOWZhYjIyZTkwYzA5YzY1OThjNGFjNTEzOGYxZmU2OWVkZGYyM2JiODFhNWE2NGZiYTBmYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2IyMjQ2ZDU2OWRhZTcwODJiNThhMDA3YmFmNzg4NmQwNzk0MmFlZTBhOWY3YmU3YmYyYTgwYTgyMDM0ZGZlZCJ9"
         }
@@ -124,11 +120,11 @@
     },
     {
       "id": "claim_f764bc2744664788b09ebd61c8d9d297",
-      "statement": "test:changed runs vitest --changed in the server workspace; the root vitest.config.mts selects the jsdom environment with no setup files, and the dashboard configures jsdom with globals.",
+      "statement": "test:changed first builds shared and agent-catalog, then runs vitest --changed across the server, shared, agent-catalog, and mcp-server workspaces; the root vitest.config.mts selects the jsdom environment with no setup files, and the dashboard configures jsdom with globals.",
       "evidence": [
         {
-          "resource": "repo://package.json#L19-L19",
-          "version": "repo-lines-v1:sha256:dc8c9ead37f5f51cf195c91a3858d053f35f5ab25a61338798e23a247208d41b:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGM4YzllYWQzN2Y1ZjUxY2YxOTVjOTFhMzg1OGQwNTNmMzVmNWFiMjVhNjEzMzg3OThlMjNhMjQ3MjA4ZDQxYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGM4YzllYWQzN2Y1ZjUxY2YxOTVjOTFhMzg1OGQwNTNmMzVmNWFiMjVhNjEzMzg3OThlMjNhMjQ3MjA4ZDQxYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjkxNzIyMjEzMjFmZDcwZjlkZmNiODg4N2FmZDYxOTljYzJhMjgxYzE0ZTVlYjM0NzZmYTM0Y2FmMTc4YTgzOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzdiNjRlODdmM2NhYWVjYmExZmFiOTJhZGE4MzhiMTBiNWE3OWRmNDVlOWE4OTIzZjAyYTEwYWZlOGE0MWUwNCJ9"
+          "resource": "repo://package.json#L18-L21",
+          "version": "repo-lines-v1:sha256:2b0727a38cc1e61975744a1a688033d01f7e67fb9bd9999963def9bc2fc3548a:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTdjYjIzNzNhNjBiZWE5NzczMzdhZDc1YWU3NzZhYmE1MjY4YjQyZjRhNWFkMDNiNGU2NWQ1NGQ4YzhmNTJlNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGVlODM2YjIxMWJmMzBlOTE3ODA5OGE3YTkzY2Y3OGY1ZDFmY2Y5MWYyZGRlYjBmMGZjZTZkYjE1YWIzOTUwOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDQ4MmQyOGE3ZTNlMmZjNjgxZmZlM2NlNTJmZTcwODg1YjI1MTUwYzQ1Y2VmMmMyMjc4OTg4ZmMwNzU4YTQ4NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjQzNjgxZDgzMDA4MzY5MWVkMmZkMmJjYTQyZjY5OWZmODU5ODhmNTM2MmJjZmE5NTQxNjBmMGM3MjkyMmNkOSJ9"
         },
         {
           "resource": "repo://packages/dashboard/vite.config.ts#L39-L42",
@@ -152,15 +148,15 @@
     },
     {
       "id": "claim_e44b42a377504b4bb6d194d0c202ae5f",
-      "statement": "db:migrate and db:seed run via tsx (no build of server required): migrate executes runMigrations directly against resolveDbPath(), which resolves DB_PATH, else DJIMITFLO_DB, else <repo>/.data/djimitflo.sqlite; seed populates mock agents via initializeDatabase(). Normal server startup applies the same schema through initializeDatabase(), so these scripts exist to provision a database without booting the API.",
+      "statement": "db:migrate and db:seed run via tsx (no build of server required). migrate runs only when migrate.ts is the process entry point (a require.main===module guard plus an argv[1] filename check, so a bundled operator script never migrates the DB as an import side effect), then executes runMigrations against resolveDbPath(), which resolves DB_PATH, else DJIMITFLO_DB, else <repo>/.data/djimitflo.sqlite; seed populates mock agents via initializeDatabase(). Normal server startup applies the same schema through initializeDatabase(), so these scripts exist to provision a database without booting the API.",
       "evidence": [
         {
           "resource": "repo://packages/server/package.json#L15-L16",
           "version": "repo-lines-v1:sha256:013e67da8ed6902894225aac20e922eb825b95515fb300496699e5565196d685:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTEyZDg3YzFjMTM3OGMwYjMzYWMzMjMzZjE3YzVkMzY5YzE2MjlkZWMxNDI3OTQwOGJiNGFiNjMwODBjNjIyNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTliMGQzNjRjZDFiZDI2MDcyMjBhNzFlOTM5Y2M4YjIzZTJhNTNkODEwNzY2ZjU1ZjcyNjFkMTdjYzU4NzIzZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDQyMDBhMTA5ZDhkYWUyZDE2MjBiYTI4ZDcyNGViZmY0YjM4NGI3YjJkMjVhYjVhOWIyZTY3NzU1OWRlMmI1NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjVkZjY5MzZmYzYxMmZiOGE3ZWU5MjBlZGUzMGQwZmQ1YjdmYjE1OTBkOWIwNDkwN2I4OWU2Mjg2YTg5ZTdlMiJ9"
         },
         {
-          "resource": "repo://packages/server/src/database/migrate.ts#L2205-L2211",
-          "version": "repo-lines-v1:sha256:de8503082b08fdcbd3c83b17cbd5724fd7234ddce786135420fed47fee89be5f:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjc3M2MzYTgwMTNjYTNjOGQ2MzQ0NjEwMmViNmNlZGNmYWUxZGM2ZTY3YWU4NDVhYmFkZDNiOGMyMWRlNzVhNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjU5MzI0NzMwMGEyMjQwNjY4MzQ5YWY5ZWU2NmJkZWFjZmQwMGU3ZTNlOTRiOGE5Y2UzZDg4ZDFiOGQxOTVkNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+          "resource": "repo://packages/server/src/database/migrate.ts#L2377-L2383",
+          "version": "repo-lines-v1:sha256:7a71b1f6fb68397d14067f2e30c6e48f1b676e52daf3fc4bb2f29ff87c6d3a7c:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTEyZGMyNjUyZjlmZDM5YmNiNjQzMWRkYmMyYmU5YzU3ZGYzYjY5YjkzYTcxM2Y2YWQwMTJhM2I1ZjZhZjU5NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzgwNzRjN2MwZTQ1NzU3MmQwYWJjYjNiNWMyMjVlZGVlMzFkNTIzMDk5ZDliNjk2MDdkYTk0NWZjNTdhMTUzZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
         },
         {
           "resource": "repo://packages/server/src/database/path.ts#L7-L13",
@@ -171,14 +167,14 @@
           "version": "repo-lines-v1:sha256:8ae79c48a49eda43cdfcc73297eb739e0f6be07f551db3a1376598f5ddf7a790:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzE1MTBkMzJmNjU3ODQ3NTA2MDM5Y2Q4MzA0ODMzYjk0OWQ5MmJhMzhjMWE3ZTZiMjhjOWYxYjU3MTVlYWZhMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzBhNTQ3MzQwZmJmYTg2ODEyZTJmMmJlNzdiZWIyZTljYTcxNjczZWUzM2U3ZjdmZGRkZmFkYTM4MjBkODc4NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTA3OWQ0NjM1YWE4ZTY0N2FhM2RiMGE5ZTRkNTJhYWE5Yjc1MzVlYTgwNGJkMmYxM2UwMDhiZWMzNTMxOTM3NyJ9"
         },
         {
-          "resource": "repo://packages/server/src/index.ts#L82-L84",
-          "version": "repo-lines-v1:sha256:4fab397765e5e9248d2afea5ab71ec8f1623c187af2b17fd283efe655fba8b6b:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWQ1MTY3YTVkYmNjN2FhYWFmMWNkODk2ZTQ4YWVmODY3MDA5M2Y5OTUxYTI4NjUwNTYxZGZkZGViNjFmMTQ3ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzg3NDYwZjQxNDJjYzIwYTBkYjk3YjYwZjRlMTE4YTUzZmUxNThkNWNkYjI3YzQxYWQxZTY3YTQwNjY2ZWM1YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTJlZjZmZTAzY2ZhNGE5ZWMwNDFjZDk1NGU5NDBhYmQ4Y2JkZGQ3YTQ3YWJhYzc0YzkwOWYyZTY0YThhZmEzYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjAxYTc3NWQ1MWFkOGE3MGRhNTMzMTQwMTNmZjgxNTczZjY1NmI1MGU4MTU0NmEyNjMxY2Q5N2NjYWVlZmYwZCJ9"
+          "resource": "repo://packages/server/src/index.ts#L93-L95",
+          "version": "repo-lines-v1:sha256:4fab397765e5e9248d2afea5ab71ec8f1623c187af2b17fd283efe655fba8b6b:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWQ1MTY3YTVkYmNjN2FhYWFmMWNkODk2ZTQ4YWVmODY3MDA5M2Y5OTUxYTI4NjUwNTYxZGZkZGViNjFmMTQ3ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzg3NDYwZjQxNDJjYzIwYTBkYjk3YjYwZjRlMTE4YTUzZmUxNThkNWNkYjI3YzQxYWQxZTY3YTQwNjY2ZWM1YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTJlZjZmZTAzY2ZhNGE5ZWMwNDFjZDk1NGU5NDBhYmQ4Y2JkZGQ3YTQ3YWJhYzc0YzkwOWYyZTY0YThhZmEzYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYmNkMzFhYzg0MjVlODJlYjMxMjI2YWZiYjFjODJlZWI4OWYxYmE0YmM2ZWIwMTE0OTJiY2ZkYWNiMjM0ODllYyJ9"
         }
       ]
     },
     {
       "id": "claim_d18d042244fe45ddaa508fc07e6e013e",
-      "statement": "Server development config comes from packages/server/.env.example: dev uses a default JWT secret with a warning while production refuses to start without JWT_SECRET; AUTH_BOOTSTRAP_ADMIN_EMAIL/PASSWORD create a bootstrap admin only when no users exist; DJIMITFLO_RUNTIME_PROFILE (api/operator/autonomous) gates operator integrations, maintenance loops, the loop daemon, and autonomous services.",
+      "statement": "Server development config comes from packages/server/.env.example: dev uses a default JWT secret with a warning while config/env.ts validateEnv() process.exit(1)s in production without JWT_SECRET; AUTH_BOOTSTRAP_ADMIN_EMAIL/PASSWORD create a bootstrap admin only when no users exist; DJIMITFLO_RUNTIME_PROFILE (resolved by config/runtime-profile.ts: api default, operator, autonomous) gates operator integrations and maintenance loops (operator) plus the loop daemon and autonomous/self-modification services (autonomous).",
       "evidence": [
         {
           "resource": "repo://packages/server/.env.example#L18-L22",
@@ -189,38 +185,46 @@
           "version": "repo-lines-v1:sha256:ceb9b5c71dbf0cbc3f88240782a2173164e616d2085be13df4390e9cdf435ec4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNmYzljMTBkNjlhY2RkNzc0ODAyMDY0MDY4NjVjNmI5MjEwYzQ4MzQxYWU1ZjM4YzU1NDc4Y2JmYmViOTBmY2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViNGExNDQyMDIwNjZmNjdhZTlmMzdiNmI4ZmI0NTUxM2ZkOGM1OGQxMzUwMDdlMGZlMjNmZDFjMjc5MjIxMTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJiYmM0NGI3Y2M0ZGQ2ZTE5YjdiY2ZjNDgxODEzM2YzNzYwZWQ3YTY0NDg4N2RlNjVhYzBkOTcwNDUyMGUwYjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRkY2FkZWZhOWNlYzY2OTVkOGNjMjEyZmJmNjk5M2E4NDlmODUzZDY4MmI0OTg2MjJkOGRkNjNmZjBjYzliMzgifQ"
         },
         {
-          "resource": "repo://packages/server/src/index.ts#L75-L118",
-          "version": "repo-lines-v1:sha256:f469333a6d8068c7ebc459cd46997b7a0b7042bacc1d3891ce644ec8ff857aec:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlODIwMGViZDE3MDliNmE2NzViZWNiM2JlOWYzOWU1M2JiYWMwMmNjOTI3MjM0NjJjMDU0NjhlYjBkYTZhMTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA0N2Y1NjJmNmFhOGJiNzFhOTYzOTE1YjM4YTdmY2JhMDZhODJjMzdhYTNlY2YwMjUzYzhkZjE2MGU1MDQ1ZGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3YTQwZjE0ZTI0OGVmYmU1NzVkYmQwZDJlNjExYzczYzFiNDQ1NjMzYzZkNDI0ZGU4YTM5OGE1Yzg4NTJmOTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwYjA3NTFlNDIzNmU4OTIzNDU3Nzc0NWZjMjkzNGM1MGEyZjBkNmY4ZmE5NWE0M2RjOTk1YjMzNzI3NDJlODEifQ"
+          "resource": "repo://packages/server/src/config/env.ts#L60-L85",
+          "version": "repo-lines-v1:sha256:f9260fcb1399cc349ea617c63f03a960664a3e345679c1013d84bd53c3fa4ead:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQyMjQxMjdjMzQ2MTYyODIxMDYwNTVmZWRlYWM4YzVmODIwNDUwZjVlZWZiMTlkOGE5YTIyZjBiNWRlMWMxODMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk1YzI1Y2UwMzVkNGUwODdjZjExMTJmZjI2ZTgxODMwN2Q5YzRlY2NhODFjMzgxYjczZGQ0ZmU1M2MwYTBkODIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdhNTYxNWJhODA0Y2FhMjRhNTM4NDExMTlkNTE0MjgyNzA5MWUxMWM3YzI5NTM1ODM5N2M4M2RmOTNiNWFiZjMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/config/runtime-profile.ts#L5-L19",
+          "version": "repo-lines-v1:sha256:93a33bedb1914eb7190565c3152e2cd7593619731abd3dbd89566077172a740e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3OTc5NTM4ZTc5NTRhMGFlMjgzMzU1NjI1NDlmOGRhMGRiYjdjNWI5ODNlMDNmN2I2NDFjZDA5ZTZiNDgwM2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMzY2RhODJhMDA2OWFkNTFjY2M5ZDhhNTgxMmFiZmQ3OGQxNTE1ZTU3NjZhY2I5NzAyNzRhNjI5MWM0M2I3NzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L86-L129",
+          "version": "repo-lines-v1:sha256:188f3f8fa7a206e6fc255a6a2586be6337bd5162cf17bfabfd1160311fe3a489:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlODIwMGViZDE3MDliNmE2NzViZWNiM2JlOWYzOWU1M2JiYWMwMmNjOTI3MjM0NjJjMDU0NjhlYjBkYTZhMTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3YTQwZjE0ZTI0OGVmYmU1NzVkYmQwZDJlNjExYzczYzFiNDQ1NjMzYzZkNDI0ZGU4YTM5OGE1Yzg4NTJmOTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkNjFlNmRhZTk1NTRhMzgwYTZiMmY2N2Q3M2JiZGM2MzYyZGYwNjYyMzMwOWNjNzEwNDUyNTc3NmUzMGMzNTEifQ"
         }
       ]
     },
     {
       "id": "claim_26b2b2a5dfbb466d9dedddb79bd13799",
-      "statement": "The Dockerfile is a two-stage build: a builder stage installs all dependencies (with the python3/make/g++ native toolchain) and runs the same npm run build workspace chain, and a runner stage upgrades the base image, installs exactly ca-certificates git python3-minimal curl procps via apt, pins the gh CLI as a static .deb via ARG GH_CLI_VERSION=2.100.0 (verified with gh --version), pins the global agent runtime CLIs @openai/codex@0.146.0, opencode-ai@1.18.10 and @anthropic-ai/claude-code@2.1.282 with immediate git/codex/opencode/claude --version probes, creates the non-root djimitflo user/group at uid/gid 1001 and chowns /data to it, installs production dependencies only with better-sqlite3 smoke-tested via an in-memory open before the build toolchain is purged, bakes build provenance env vars (DJIMITFLO_COMMIT_SHA, DJIMITFLO_BUILD_COMMIT/TIME/SOURCE) from the VCS_REF/BUILD_TIME/BUILD_SOURCE build args, and runs as the non-root djimitflo user with VOLUME /data, ENTRYPOINT docker-entrypoint.sh and CMD node packages/server/dist/index.js.",
+      "statement": "The Dockerfile is a two-stage build: a builder stage installs all dependencies (with the python3/make/g++ native toolchain) and runs the same npm run build workspace chain, and a runner stage upgrades the base image, installs ca-certificates git python3-minimal curl procps libatomic1 via apt, pins the gh CLI as a static .deb via ARG GH_CLI_VERSION=2.100.0 (verified with gh --version), installs the pinned Atomic Agent release tarball (version + per-arch sha256 verified, symlinked to /usr/local/bin/atomic-agent, probed with atomic-agent --version), pins the global agent runtime CLIs @openai/codex@0.146.0, opencode-ai@1.18.10 and @anthropic-ai/claude-code@2.1.282 with immediate git/codex/opencode/claude --version probes, creates the non-root djimitflo user/group at uid/gid 1001 and chowns /data to it, installs production dependencies only with better-sqlite3 smoke-tested via an in-memory open before the build toolchain is purged, bakes build provenance env vars (DJIMITFLO_COMMIT_SHA, DJIMITFLO_BUILD_COMMIT/TIME/SOURCE) from the VCS_REF/BUILD_TIME/BUILD_SOURCE build args, and runs as the non-root djimitflo user with VOLUME /data, ENTRYPOINT docker-entrypoint.sh and CMD node packages/server/dist/index.js.",
       "evidence": [
         {
-          "resource": "repo://Dockerfile#L137-L154",
-          "version": "repo-lines-v1:sha256:aa6b71387bda3532d17fdc3dd4150a40a74fe965881b5d442bc1ff428854d140:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyYjEzOWYxMDk5NGFiYzYyYmVlMDJlYzQ0OTliZWM0MWQ0MTY4MWQzMDZhNDQ2ZWJmZDMwMjYwYTJmNWRiZDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2YTZmNWFlMDQxZjJjMzQ5ZTY0NDNjYjFlZjJiZjc2NGE4OTZkMmE4MmZlZjI2YWMxYmRmOWFkZDNlOTFlOWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJhNjVlNmYxNjVmMjM4NWRhMzRhNDBlM2MwZTVjYTU4ZGUyYTg0YWQ0ZWUyYjNlOWM0M2IyNDVlZmE2MDIyZTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://Dockerfile#L111-L117",
+          "version": "repo-lines-v1:sha256:e919314373e3f9e0f25131e2c4d10a3b93f487edf8656999083aca5a8c557b13:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzY5Njk3NzhmZDE2NmY0MDU0MjhkMzA1NjhhMGYwZGY3YTZlZDUwNjkyNjMxZGYwOWNlNTk5MmNjNjQxNjA4YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTI0OWJhNTM4MGExMDM2ZTE3MTVlMTc0MjI5ZWI4MzMwNGU4OTNkZGNiM2VlZmFhZjQxYmNlNzA4YTdkZmQ0ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWJhNjExYjU0MzJkYmU1ODc5Yzc4YTBjMGY0NTAxNTFmNDkwYmI3MTM0ODUzYmJjYTg4OTU3ZWU4NTM2MTkwYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDdmNzA0NGMzOTZlYzk4ZDk1NmRlZDYxZGZmOWFlOGMwMGQ5OTJmMGQ3NzA3ZWU4NGIyNTFjNjhmMzgwZTkzYiJ9"
         },
         {
-          "resource": "repo://Dockerfile#L49-L50",
-          "version": "repo-lines-v1:sha256:70899b75faf40b455f83880c3524a7e21af08efd4265cf4fafa0a6b8e89acdea:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzI1YmQzMGI2NmJmNjAyN2IxMzJiZDBjZTMyZjYwNzk4MGU5Y2YxYWRhOTIzMThjZTQxYmQxNWNjYzJlZjhhMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTNlYWExYWYwMDc0NDBmZDUyZjBiOTUyZTY3ZTIyM2M3ZmM5ZTU2NDQ4YzI3YmU5MzAwMzBiNmUxMzQyYWI2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDNmMjFkMjEwMDI2OWJjOWIzMmUxZTk1ZTUyMTU2ZGM2NWUxMTU3ZTBmNDUwMjk4ODgwMzkzZjExOTQ1ZTE5MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWFmOGZhNmU1OWZhMGM4M2MwMzkyMGU2ODlhNzhhMTQyZWIwN2UwMjEzMjFjZjNhZTc4MmI1YzZkY2E1OGQ5ZSJ9"
+          "resource": "repo://Dockerfile#L148-L176",
+          "version": "repo-lines-v1:sha256:27e394b4bb6e435fee67aa587d38735467e9c3150b1668b9ee65e710102175cf:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdmZjhiYWFiYzY3MjQyMjdmYzAyMTlkMGNmZjY3ZjczYmE2YmNiYzlkNTJhZGU3Y2RjOTAzY2RjMDIwOGE2ZmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2YTZmNWFlMDQxZjJjMzQ5ZTY0NDNjYjFlZjJiZjc2NGE4OTZkMmE4MmZlZjI2YWMxYmRmOWFkZDNlOTFlOWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJiYWQ1MmU3ZjAxYzEyZTdmMTA2YzEwOGZhYjI2YzdkMThhNjVhYjkyZjhjNzhhMGMzMGY2MmIxMDk3YTVlNWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         },
         {
-          "resource": "repo://Dockerfile#L57-L64",
-          "version": "repo-lines-v1:sha256:af00300bbcf59164f9364af9040d897ad45df39569394d3c672b365507e319af:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2RjNmU5ZmIwNjU0MjY4NWU5MTI3MmI5MGVjYTY3YWEyODVhMTE1ZDYxMjBiNzIyYzU3NmU2YWViNWZiZTI0NyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTI0OWJhNTM4MGExMDM2ZTE3MTVlMTc0MjI5ZWI4MzMwNGU4OTNkZGNiM2VlZmFhZjQxYmNlNzA4YTdkZmQ0ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2E4MmY5ZGM3ZTE3NGYyMDQ0MzZjM2RmYWM1ZGVmYjg1MDI2YzcxNjg1YWYzNzY5NTZlY2VkYWVmOTI4ODgwMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDU1M2ExNzJlN2VmNDBmYThiMGU2Zjg3MjYxMGUyMzVhYTQzMGM1N2NhMWE5OWRkOWM4ZGIyOTY0OTcxZWU2NiJ9"
+          "resource": "repo://Dockerfile#L56-L67",
+          "version": "repo-lines-v1:sha256:96238e5f1e95c7462ba1fd29d988cc18e6605a225610157c8c6904036e6d7f0d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwYjE4OWM5MzM4MzUwYTM4Njg0YjU2MzlmMTA2MTQ3OWU4YzNjYjEyYmY2ZjI4NGEyM2M1MTAxMzE5ZDQ0NWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkyNDliYTUzODBhMTAzNmUxNzE1ZTE3NDIyOWViODMzMDRlODkzZGRjYjNlZWZhYWY0MWJjZTcwOGE3ZGZkNGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA5MmEwNTBiOTM2ZmUxNGQyNTViZWRhYTJjM2Q5ZjFlMDUwMDMwM2UxNTA3ZTllZWIzYjc2MDc3MDU5OWZjODQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ1NTNhMTcyZTdlZjQwZmE4YjBlNmY4NzI2MTBlMjM1YWE0MzBjNTdjYTFhOTlkZDljOGRiMjk2NDk3MWVlNjYifQ"
         },
         {
-          "resource": "repo://Dockerfile#L66-L85",
-          "version": "repo-lines-v1:sha256:e38575e22e53386b026b0bf19376e524330e16151afde41c5b07125d1d370b70:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZmFkY2RjOGE0YmViNDMxOGNhMTJlNjEwOWU5YmJkNGU3YWQyNWY5NWUzNmY1ZDMwYzJlNGEwMDBlMDNlZDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5MzJlNWM5YmY3ZGY2YWYyMzVmMDc0NDg0ZTRiZWE1YTMxOWM0YTZlMGMyZGQzZDhmNjI2ZmI3MWIxOGQyY2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3Nzg4YTVjMGYwN2FmZTEzOWM2NjVlNGUxYTczYjg2YzEzN2I2Njk0ODAyYTNlYjZkNGQ0ZGQ3ZWY5YTUzNTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg4MGU2MTIwMTg0YTQwNThjYzZjNGRjYzE5MDMyMWNlMDk4ZGJlZWY4N2IxNWJhYWNkOGRmOWU3OWIwYzhlZWEifQ"
+          "resource": "repo://Dockerfile#L72-L94",
+          "version": "repo-lines-v1:sha256:a26fb115a9f479eda86980d8203d700ebd354ecebe2b1dce10f61768c82dbe78:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwNmZjYTczYWFmMmU5MDZhZWE2NmRkMTNkYzVlNWIzOTI1MTk2ZDkxYTQzMDRlNjIxOTA1MGZhYjJlN2Q1ZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5YzllMjdhOTkyOGJmYmEyYzJlNjE5OWJjMDQ4YmE2ZDliZDczZmE3Y2JmNzY3NTU2ZjIyNzQ5ZjA3MDYxNDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg5OTRiMWUyOTgwZjgwZTZmNjZkMzUwOTk1ZDc2ZjNlYTFhNTdjZTExOWE4NGI0MGM0M2M4NGZhYjY3Mzg0YjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ2NzM5MjEyYTNkMzNhYjhlMjM3MWYwNzFiODdkMzcxZTNlMWFlN2M3ZjBmMTM2ZGNmNDUzZmE4YmMzYmI4MWUifQ"
         },
         {
-          "resource": "repo://Dockerfile#L9-L16",
-          "version": "repo-lines-v1:sha256:4949aa255d8ff94150413d643a9ac7c0bd479e137d836fd8d7a62812c2157e43:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWUwMTU5Y2Q5NzFhYzQ2OTUzZjcyNDRmNTI1ODI1MDEwYzEyZTViYmZjNWZkMDUxYjE3NzU1M2RkOTdkNWEyYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTI0OWJhNTM4MGExMDM2ZTE3MTVlMTc0MjI5ZWI4MzMwNGU4OTNkZGNiM2VlZmFhZjQxYmNlNzA4YTdkZmQ0ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzA0OWY1MzAxYzY1NzRlOGVkMTZkZjM0YjJmOGVkNmZhZGQ3MDgxN2NjYmVjNDhmZGQyNjA5MDQ0YjkyN2JjNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmY1ZDI0Y2M1NTZhN2I3NWI2NmNlNjRkMzlhZTEwMWNhZWNhNmI1YjQwZDQ1ZDUzMzhjYWIyNmYxOTM3YTJlZSJ9"
+          "resource": "repo://Dockerfile#L9-L19",
+          "version": "repo-lines-v1:sha256:32eb4a3377a0f689ff76f57ed246deae44591c467dd3d478eebeb81dcd8c3756:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlMDE1OWNkOTcxYWM0Njk1M2Y3MjQ0ZjUyNTgyNTAxMGMxMmU1YmJmYzVmZDA1MWIxNzc1NTNkZDk3ZDVhMmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkyNDliYTUzODBhMTAzNmUxNzE1ZTE3NDIyOWViODMzMDRlODkzZGRjYjNlZWZhYWY0MWJjZTcwOGE3ZGZkNGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMwNDlmNTMwMWM2NTc0ZThlZDE2ZGYzNGIyZjhlZDZmYWRkNzA4MTdjY2JlYzQ4ZmRkMjYwOTA0NGI5MjdiYzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJmNWQyNGNjNTU2YTdiNzViNjZjZTY0ZDM5YWUxMDFjYWVjYTZiNWI0MGQ0NWQ1MzM4Y2FiMjZmMTkzN2EyZWUifQ"
         },
         {
           "resource": "repo://Dockerfile#L96-L108",
-          "version": "repo-lines-v1:sha256:81a0196abf26827d4511dd1ed241b9589e23355a137d4cf3c3efc8ce769ffd5c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2OTY5Nzc4ZmQxNjZmNDA1NDI4ZDMwNTY4YTBmMGRmN2E2ZWQ1MDY5MjYzMWRmMDljZTU5OTJjYzY0MTYwOGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhZTcwMmJiZjIxZmRiN2FhN2QwMzZmNjllYzZjMWJlMTBmZDQ0YmZmMDVjMTQ3YWNhNDk3M2U3OTNiNjA0NjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFiYTYxMWI1NDMyZGJlNTg3OWM3OGEwYzBmNDUwMTUxZjQ5MGJiNzEzNDg1M2JiY2E4ODk1N2VlODUzNjE5MGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2NjQzMWM2NzhmNDU3ZmFmN2UwYzNhZDM4YzgyNzc4M2FhMTI3Mzg0MzEyMDdjNjhmZDRjMmJkOGYyMjE0MDMifQ"
+          "version": "repo-lines-v1:sha256:eff9946bfeca6f94e9dd510fa742807d4f9344ae46e13acf26d66b63bd449cc4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4ZmRiODc5MzM1YWI5NzA5ZDBhOWUyMzBiN2E1MmQ0MTBmN2FiM2E4NGIwY2VhZmMzNGQ4NDE3YmIwNzQ4MmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhZTliYzUyMTFjZDg5MjA2ZjdmODIzZTM0ZWY5MjgwMjE3NGY3MjQ0NDAxMDAwNjNiOWM2Mjg5ZmY4N2IyNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwZThlMWU2MWU2NTEwZGUxODIzMWU5OTAwMTA4MTA1ZDgwYTljNDFlMTU0ODgwN2YwMzQ5MjQyMmUwM2YxNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFjMzk5NWE3YmNjODIxY2I2YzA2NDFlM2Y3MjMzYjYyNzNlMWU3ZmUyZDBiNjliOTY5YTJhM2ZiNjI1MmI1ZGMifQ"
         }
       ]
     },
@@ -254,11 +258,11 @@
     },
     {
       "id": "claim_efaf592d4f854c8c82996e77d8f89fa9",
-      "statement": "The root npm run test pipeline is a chained script that runs script-level selftests before any workspace test: bash scripts/deploy-vps.selftest.sh (fixture-compose checks of the VPS deployer scripts/deploy-vps.sh, including image/commit/mount rewrite and rollback), bash scripts/wiki-delta-emitter.selftest.sh, python3 scripts/paperclip-archive-export.py --selftest and python3 scripts/paperclip-readonly-monitor.py --selftest (pg_dump COPY allowlist parsing into JSONL plus sha256 MANIFEST.json), node scripts/live-identity-evidence.test.mjs and node scripts/integration-probes.test.mjs; it then builds @djimitflo/shared and @djimitflo/agent-catalog (their dist outputs are what test imports resolve under tsx type-stripping) and only afterwards runs npm run test --workspaces --if-present.",
+      "statement": "The root npm run test pipeline is a chained script that runs script-level selftests before any workspace test: bash scripts/deploy-vps.selftest.sh (fixture-compose checks of the VPS deployer scripts/deploy-vps.sh, including image/commit/mount rewrite and rollback), bash scripts/wiki-delta-emitter.selftest.sh, node scripts/live-identity-evidence.test.mjs and node scripts/integration-probes.test.mjs; it then builds @djimitflo/shared and @djimitflo/agent-catalog (their dist outputs are what test imports resolve under tsx type-stripping) and only afterwards runs npm run test --workspaces --if-present.",
       "evidence": [
         {
           "resource": "repo://package.json#L18-L18",
-          "version": "repo-lines-v1:sha256:fc5157e4fa43b3ef911b2d0ef5c413035ff969f0f38b4564360e65996cb0af73:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmM1MTU3ZTRmYTQzYjNlZjkxMWIyZDBlZjVjNDEzMDM1ZmY5NjlmMGYzOGI0NTY0MzYwZTY1OTk2Y2IwYWY3MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmM1MTU3ZTRmYTQzYjNlZjkxMWIyZDBlZjVjNDEzMDM1ZmY5NjlmMGYzOGI0NTY0MzYwZTY1OTk2Y2IwYWY3MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDQ4MmQyOGE3ZTNlMmZjNjgxZmZlM2NlNTJmZTcwODg1YjI1MTUwYzQ1Y2VmMmMyMjc4OTg4ZmMwNzU4YTQ4NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTFhYjA4NDE4OTBiYWQxMjBiMWNjNDAwMWJlMTA5YmYyYmRmNTNkODAwMDk0YzQyZjM4ZWRkMmZhOWI5YmJmMCJ9"
+          "version": "repo-lines-v1:sha256:a7cb2373a60bea977337ad75ae776aba5268b42f4a5ad03b4e65d54d8c8f52e6:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTdjYjIzNzNhNjBiZWE5NzczMzdhZDc1YWU3NzZhYmE1MjY4YjQyZjRhNWFkMDNiNGU2NWQ1NGQ4YzhmNTJlNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTdjYjIzNzNhNjBiZWE5NzczMzdhZDc1YWU3NzZhYmE1MjY4YjQyZjRhNWFkMDNiNGU2NWQ1NGQ4YzhmNTJlNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDQ4MmQyOGE3ZTNlMmZjNjgxZmZlM2NlNTJmZTcwODg1YjI1MTUwYzQ1Y2VmMmMyMjc4OTg4ZmMwNzU4YTQ4NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmJiMmEzMzI2ZGMxNWNhYTIwYzkxNTc1OTEwY2ZhNjU5ZTUzZGRiNjY1ZDYwZGQxOGU1MjZiZDA3MzA0ZmVmYSJ9"
         },
         {
           "resource": "repo://scripts/deploy-vps.selftest.sh#L1-L9",
@@ -275,10 +279,6 @@
         {
           "resource": "repo://scripts/live-identity-evidence.test.mjs#L1-L12",
           "version": "repo-lines-v1:sha256:1bd12926f09b255a813808895e697919205c954072f48405c9fbb76ee330cad8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwNjYyZmJjYzBkNGQ4YzExOTY4M2RhMTk0N2IxMjA0NjgwM2Q0OGI0NDc5ODgxOTdlYzMwOTJmZmU1YThiNGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhOTIyMzZhOTA4ZDU4YzNmMDJhOTAzOTMxYjUyYzAzMjI0YmQyZjI3MDhkNWE4MjkyODY1ZDEzOGU3ZjlmNGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc3NTJlMzE5OTAzMGU0YmExMTBhNzU3MmYzMGI3MWQ0ZGQwNzgzYTQ5NzA1OTU2OWZiMzk3YTQwNzIyY2IzNzIifQ"
-        },
-        {
-          "resource": "repo://scripts/paperclip-archive-export.py#L1-L11",
-          "version": "repo-lines-v1:sha256:6d89d8a26049e36defc03a60d642382fbb5f1c5d4b71e16d5560e7c85ede5153:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2ODJjYmRiNGM4YjA3NTE4YmY0ODZjNTg5OTBmYzM5MTc4M2FhMjBhOTE2YmZiMjdhZDIxMWViMWQ1YzM2NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2MmY2ZDgyMzljYzU1MmJjMTNhYzg2OGNiNDQ1YTc0ZDA1NGQ3ZmFlMDM0ZWM3MDUxZjdiNDEyZGRhYmQ2MTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE2ODYwNjAwZTY3ZmRiY2RhYjQ5NDk1NWQ1NTFjNDQ3NmY1YTZhNDIwODQxMGZhODM3OWJjZTY4MWIxNzljNWEifQ"
         },
         {
           "resource": "repo://scripts/wiki-delta-emitter.selftest.sh#L1-L5",
@@ -300,7 +300,7 @@
         },
         {
           "resource": "repo://vitest.mutation.config.ts#L3-L16",
-          "version": "repo-lines-v1:sha256:0d5136859df55996eaf269aae8cfdc00b2d7b8ccfca4725b6c22775e79c4fadb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyY2VjYjE0NGE0NmY1ZGNmMTJhNjE2OWZjZWVkNzY5NWU4Mjk0YjA5MGRlNzZmMzY2MWNkZDAyNDkzMDAxNDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI0MDAwYTAxZjhmODA4YzA2OThjMjlhMzNjMzczYmQ3MGJmYWYzN2VmN2IyNjI3NzAxMjY2YjM2OWQ2MGU2MjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "version": "repo-lines-v1:sha256:887eee041919947e603c125de7398d96bd096bc4b1219f342e76f6b0e13c40e6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyY2VjYjE0NGE0NmY1ZGNmMTJhNjE2OWZjZWVkNzY5NWU4Mjk0YjA5MGRlNzZmMzY2MWNkZDAyNDkzMDAxNDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI0MDAwYTAxZjhmODA4YzA2OThjMjlhMzNjMzczYmQ3MGJmYWYzN2VmN2IyNjI3NzAxMjY2YjM2OWQ2MGU2MjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
     },
@@ -333,14 +333,18 @@
       "statement": "The gh CLI is installed in the runner image because the server's PR-review service shells out to it for PR comments and Check Runs, and the global agent runtimes are pinned to keep the production worker surface equal to the runtimes accepted by /swarms/runtime-readiness; the Dockerfile comments state both rationales.",
       "evidence": [
         {
-          "resource": "repo://Dockerfile#L66-L79",
-          "version": "repo-lines-v1:sha256:4b5aeb7d044a660eebe7ecf68da9de154f6d4278b08af41c84542f5924d1f6da:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZmFkY2RjOGE0YmViNDMxOGNhMTJlNjEwOWU5YmJkNGU3YWQyNWY5NWUzNmY1ZDMwYzJlNGEwMDBlMDNlZDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5YzllMjdhOTkyOGJmYmEyYzJlNjE5OWJjMDQ4YmE2ZDliZDczZmE3Y2JmNzY3NTU2ZjIyNzQ5ZjA3MDYxNDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3Nzg4YTVjMGYwN2FmZTEzOWM2NjVlNGUxYTczYjg2YzEzN2I2Njk0ODAyYTNlYjZkNGQ0ZGQ3ZWY5YTUzNTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ2NzM5MjEyYTNkMzNhYjhlMjM3MWYwNzFiODdkMzcxZTNlMWFlN2M3ZjBmMTM2ZGNmNDUzZmE4YmMzYmI4MWUifQ"
+          "resource": "repo://Dockerfile#L69-L71",
+          "version": "repo-lines-v1:sha256:8994b1e2980f80e6f66d350995d76f3ea1a57ce119a84b40c43c84fab67384b7:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWRmYWRjZGM4YTRiZWI0MzE4Y2ExMmU2MTA5ZTliYmQ0ZTdhZDI1Zjk1ZTM2ZjVkMzBjMmU0YTAwMGUwM2VkNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTZjMTQ1NmFhYTdhYjJlMWJjYTU4YzZiMzZiNWI4NWUyZTY4Mjg2OGU5YmM2Y2ZlYTRmNzFkNGNjMTQ0YjJhOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNmMGU4NTU2NjI1N2JkM2JmYzFlZDVlNGRlMjZhMzFiYTI2YWYwZGZmZjQ5ZTA1MGNiNjhmN2U5ZTk5ZGJiZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2VkNzc5YjVhZDg2OGY5NGNhYzcxMWU0ZjFkNmM2OGRkMmJlZWI3ZjRiODMwZTcyZGYxMjE1MGQzZWVkZmJhNCJ9"
+        },
+        {
+          "resource": "repo://Dockerfile#L91-L94",
+          "version": "repo-lines-v1:sha256:6580f3f36d39ef20623f649d59aa29e7414a1bb0719d66f37aec09053f0ca3a4:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDVmNjE0YTllNjQxMTJkMmZlZDE3NDlhNTJkYzVlMWRmMDg5ZWQ1ZjE2ZmJjYzFkZDVhNGU4NTBhMGZiNjNmYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzljOWUyN2E5OTI4YmZiYTJjMmU2MTk5YmMwNDhiYTZkOWJkNzNmYTdjYmY3Njc1NTZmMjI3NDlmMDcwNjE0OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzIxYTkxMGYxZGE5MjU4MTlmODQzZWYyZWU2ODliYjhiYThlYmIwNGRkNDNmMGE1OTgxMDk0NWMxOTBiZTc1ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDY3MzkyMTJhM2QzM2FiOGUyMzcxZjA3MWI4N2QzNzFlM2UxYWU3YzdmMGYxMzZkY2Y0NTNmYThiYzNiYjgxZSJ9"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-25T13:29:02.244Z"
+    "at": "2026-10-17T12:03:52.116Z"
   }
 }

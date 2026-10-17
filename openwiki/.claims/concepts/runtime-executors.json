@@ -1,32 +1,32 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c4fd57524965028758757f850fe48ac0db58ebedc0eccf0fd812207731749be2",
+  "pageVersion": "sha256:3214a58703a82a97ab54c7b5a61798fecfaf443a88655270bd54c797cebc7821",
   "claims": [
     {
       "id": "claim_ba0e430361374ce6868f5cd080fb4a7f",
-      "statement": "`ExecutorKind` enumerates every runtime the server can name — 'mock', 'opencode', 'codex', 'claude', 'hermes', 'gemini', 'editor', 'pi', 'docker', 'deep-agent', and 'custom' — and the ExecutionEngine constructor always registers the eight defaults mock/opencode/codex/claude/hermes/gemini/editor/pi while registering deep-agent only when DJIMIT_DEEP_ENABLED=true (also instantiating the DeepAgentContractIssuer).",
+      "statement": "`ExecutorKind` enumerates every runtime the server can name — 'mock', 'opencode', 'codex', 'claude', 'hermes', 'gemini', 'editor', 'pi', 'atomic', 'remote', 'docker', 'deep-agent', and 'custom' — and the ExecutionEngine constructor always registers the ten defaults mock/opencode/codex/claude/hermes/gemini/editor/pi/atomic/remote while registering deep-agent only when DJIMIT_DEEP_ENABLED=true (also instantiating the DeepAgentContractIssuer).",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/execution/execution-engine.ts#L155-L167",
-          "version": "repo-lines-v1:sha256:000cad6260b63d8f59d8a63adbd959e684cb38c7f82f76eaeee37527423859a7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5Nzc0NGU5YzYyMGQxNmJkNjBlMGRiYjgzY2M0NDdmY2FhOTc4MmRmMGQyMTY0ZjdlYTkzYjhmOWNkYzhkNmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxMTQzNTU5MmIxMTNmOWM1ZjU2MmU2OGI1ODdmYzc0MjU3NzcyZjE4MWExY2M0NmNmNjhhYmNjNzgzZmMxMzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImViMGZkNjk2OTE4NmEwMjIwMTgwYTMwYzA4MWRkM2YyOGJjZjBlOGRjNGFhMDhlM2I3ZTk2OTBiZTA2NGIzMjMifQ"
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L162-L176",
+          "version": "repo-lines-v1:sha256:a0393d7e10953327b736c8db172055c1ff80a9166a568a320b58cc515bfd36e9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5Nzc0NGU5YzYyMGQxNmJkNjBlMGRiYjgzY2M0NDdmY2FhOTc4MmRmMGQyMTY0ZjdlYTkzYjhmOWNkYzhkNmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxMTQzNTU5MmIxMTNmOWM1ZjU2MmU2OGI1ODdmYzc0MjU3NzcyZjE4MWExY2M0NmNmNjhhYmNjNzgzZmMxMzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImViMGZkNjk2OTE4NmEwMjIwMTgwYTMwYzA4MWRkM2YyOGJjZjBlOGRjNGFhMDhlM2I3ZTk2OTBiZTA2NGIzMjMifQ"
         },
         {
           "resource": "repo://packages/server/src/execution/types.ts#L10-L10",
-          "version": "repo-lines-v1:sha256:289f831edb9b19faaaf7570444970546e9071a1ca1b9cd35b266f88c383d425f:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjg5ZjgzMWVkYjliMTlmYWFhZjc1NzA0NDQ5NzA1NDZlOTA3MWExY2ExYjljZDM1YjI2NmY4OGMzODNkNDI1ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjg5ZjgzMWVkYjliMTlmYWFhZjc1NzA0NDQ5NzA1NDZlOTA3MWExY2ExYjljZDM1YjI2NmY4OGMzODNkNDI1ZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWI2NmVhN2MwNjIwMDgzMmFhYmM1OWI3MWVjMzE5YTA2ZDhhYmYwYWVmMjMyZjUyZDQ4MTZkOGFkYWU5OWZiZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjk3MTU0NTQ0OWE0NDAwYTFhNDhjYWRiYWI2NzZiM2NiMmJkMWY1ZGJhZWMwNjIzOWE1YzU3ODczMGIyNWM2NyJ9"
+          "version": "repo-lines-v1:sha256:87a28726d7100b04041932b147054d16db427f3603897a5ee04c6796b33a114b:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODdhMjg3MjZkNzEwMGIwNDA0MTkzMmIxNDcwNTRkMTZkYjQyN2YzNjAzODk3YTVlZTA0YzY3OTZiMzNhMTE0YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODdhMjg3MjZkNzEwMGIwNDA0MTkzMmIxNDcwNTRkMTZkYjQyN2YzNjAzODk3YTVlZTA0YzY3OTZiMzNhMTE0YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWI2NmVhN2MwNjIwMDgzMmFhYmM1OWI3MWVjMzE5YTA2ZDhhYmYwYWVmMjMyZjUyZDQ4MTZkOGFkYWU5OWZiZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjk3MTU0NTQ0OWE0NDAwYTFhNDhjYWRiYWI2NzZiM2NiMmJkMWY1ZGJhZWMwNjIzOWE1YzU3ODczMGIyNWM2NyJ9"
         }
       ]
     },
     {
       "id": "claim_0d40a6292eec4be3984658d3e3624590",
-      "statement": "`docker` and `custom` are never registered by the constructor: 'docker' only appears as the kind reported by DockerSandboxExecutor when the engine wraps another executor at dispatch time, and 'custom' is the extension slot for out-of-tree implementations added via registerExecutor().",
+      "statement": "`docker` and `custom` are never registered by the constructor: 'docker' only appears as the kind reported by DockerSandboxExecutor when the engine wraps another executor at dispatch time (startExecutionAttempt, gated on task.metadata.sandbox.enabled), and 'custom' is the extension slot for out-of-tree implementations added via registerExecutor().",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/execution/execution-engine.ts#L155-L167",
-          "version": "repo-lines-v1:sha256:000cad6260b63d8f59d8a63adbd959e684cb38c7f82f76eaeee37527423859a7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5Nzc0NGU5YzYyMGQxNmJkNjBlMGRiYjgzY2M0NDdmY2FhOTc4MmRmMGQyMTY0ZjdlYTkzYjhmOWNkYzhkNmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxMTQzNTU5MmIxMTNmOWM1ZjU2MmU2OGI1ODdmYzc0MjU3NzcyZjE4MWExY2M0NmNmNjhhYmNjNzgzZmMxMzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImViMGZkNjk2OTE4NmEwMjIwMTgwYTMwYzA4MWRkM2YyOGJjZjBlOGRjNGFhMDhlM2I3ZTk2OTBiZTA2NGIzMjMifQ"
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L162-L176",
+          "version": "repo-lines-v1:sha256:a0393d7e10953327b736c8db172055c1ff80a9166a568a320b58cc515bfd36e9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5Nzc0NGU5YzYyMGQxNmJkNjBlMGRiYjgzY2M0NDdmY2FhOTc4MmRmMGQyMTY0ZjdlYTkzYjhmOWNkYzhkNmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxMTQzNTU5MmIxMTNmOWM1ZjU2MmU2OGI1ODdmYzc0MjU3NzcyZjE4MWExY2M0NmNmNjhhYmNjNzgzZmMxMzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImViMGZkNjk2OTE4NmEwMjIwMTgwYTMwYzA4MWRkM2YyOGJjZjBlOGRjNGFhMDhlM2I3ZTk2OTBiZTA2NGIzMjMifQ"
         },
         {
-          "resource": "repo://packages/server/src/execution/execution-engine.ts#L173-L176",
-          "version": "repo-lines-v1:sha256:a6e258aea0293f19e4fc991b44785e47392ecc2257c2e6aac217fe68c07c9d29:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjEyODNkMzlhMzQ2Y2JiZWQ4ODg3ZjMzMDA4MjYwMmU4YzU5NDZkY2E0NWVkZDM0NWZmZjkyYWU3YTJlOWQxMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTg0NjZhYjBkYjdhNDIzYmE3NmZmZWU5ZTBhYjMwOTRlZDk0ZGEwZmIwNGVmNmU0MTVjNGJlNjE2ZGI0OGJmNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDdkMzhhMWQ0N2Q5ZDI1NjNjZjQ2YmQ1MGNlMzQyMzNhMTk1ZTFhYmYzNTAyNzUyNjY5NTE0ODBlY2I5OTFiMSJ9"
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L628-L641",
+          "version": "repo-lines-v1:sha256:1ee4ed7159ea823dae3c18c510e73ca7962e306aceb4d8732663665b35745377:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkMThlZDY1N2U2NDg1MzM2OGE3MDQ2NTEyMzg1YTc1MTI2YWZiZTM1NTA2OTU5YWU4ZDk4MTZlMDBhZmU5YjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY4MGY5NmMyNGI2M2I5MzAxZjBiZjQwMzYxMGQyM2RmYzcwM2JhZWU4OTc5YzdkYzRkMzlmYThjNGFmOWNkY2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlMjI4MDU5NjcwMDAzNzE2MzY0ZmFiM2E1ZTJkZGE5MmRhNmI5ZjEyMDA5NTZkMzcwMzVjZDcwOWVmZjM4OGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMwYmE2NjczZDEzMDBjN2RkNWQyMjc0M2VmMTQyNDA4ODBkYTk2ZGUzMGQ4YmJiZGY3MzBjOTYyODZlOTIxOTkifQ"
         },
         {
           "resource": "repo://packages/server/src/execution/executors/docker-sandbox-executor.ts#L56-L56",
@@ -224,15 +224,19 @@
     },
     {
       "id": "claim_2bb4f236e5cb4b95ab0e6dbb9a969058",
-      "statement": "The production Dockerfile pins @openai/codex@0.146.0, opencode-ai@1.18.10, and @anthropic-ai/claude-code@2.1.282 globally and build-time-verifies them with git/codex/opencode/claude --version probes; the same layer installs the gh CLI as a static .deb pinned via ARG GH_CLI_VERSION=2.100.0 (verified with gh --version) for GithubPrReviewService, which shells out to gh for PR review comments and Check Runs. At runtime GET /swarms/runtime-readiness treats only codex and opencode as production runtimes, checks their binary contracts and provider credentials, returns ready/blocked_reasons per runtime, and never starts a worker (starts_workers: false).",
+      "statement": "The production Dockerfile pins @openai/codex@0.146.0, opencode-ai@1.18.10, and @anthropic-ai/claude-code@2.1.282 globally and build-time-verifies them with git/codex/opencode/claude --version probes; separate layers install the gh CLI as a static .deb pinned via ARG GH_CLI_VERSION=2.100.0 (verified with gh --version) for GithubPrReviewService, which shells out to gh for PR review comments and Check Runs, and the Atomic Agent release tarball pinned by version and per-arch sha256 (ATOMIC_AGENT_VERSION=0.6.5, ATOMIC_AGENT_SHA256_X64/ARM64, verified with sha256sum -c and atomic-agent --version) for the `atomic` executor. At runtime GET /swarms/runtime-readiness treats only codex and opencode as production runtimes, checks their binary contracts and provider credentials, returns ready/blocked_reasons per runtime, and never starts a worker (starts_workers: false).",
       "evidence": [
         {
-          "resource": "repo://Dockerfile#L66-L74",
-          "version": "repo-lines-v1:sha256:e950cde6e523b22154160a441a952852374affa3addddcbfd63284e68533a8bb:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWRmYWRjZGM4YTRiZWI0MzE4Y2ExMmU2MTA5ZTliYmQ0ZTdhZDI1Zjk1ZTM2ZjVkMzBjMmU0YTAwMGUwM2VkNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDZjOWY0NWVhOGI1Y2I1MmIyMTc2OWQyNmM1ZjYxMmIwZTc3NzAwOWUyNmU2MjlhNGM5ZGQ3MTFiZmQwYmVmMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjc3ODhhNWMwZjA3YWZlMTM5YzY2NWU0ZTFhNzNiODZjMTM3YjY2OTQ4MDJhM2ViNmQ0ZDRkZDdlZjlhNTM1OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGEwNDRhMjE3YjI5Njg3ZjAyYjdhMDUwYWZiNzdjMDA1ZTgyYWNjODUwNTgwYzljYzM1MjI1YmY3MTVlYmZlNyJ9"
+          "resource": "repo://Dockerfile#L69-L77",
+          "version": "repo-lines-v1:sha256:19fbd86ff97726ad1fe38e60388d97362d16d5269f85be0d4539c969fec698ac:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWRmYWRjZGM4YTRiZWI0MzE4Y2ExMmU2MTA5ZTliYmQ0ZTdhZDI1Zjk1ZTM2ZjVkMzBjMmU0YTAwMGUwM2VkNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDZjOWY0NWVhOGI1Y2I1MmIyMTc2OWQyNmM1ZjYxMmIwZTc3NzAwOWUyNmU2MjlhNGM5ZGQ3MTFiZmQwYmVmMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNmMGU4NTU2NjI1N2JkM2JmYzFlZDVlNGRlMjZhMzFiYTI2YWYwZGZmZjQ5ZTA1MGNiNjhmN2U5ZTk5ZGJiZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGUzN2I5NTlkMTUyNTI1MGE1NjVmMjEwZTVlM2ZiMDY2MTVmNWQ4NWRjNTI4ODJiMmJjMmI3Yzk3ZjE1NDJjNSJ9"
         },
         {
-          "resource": "repo://Dockerfile#L76-L79",
-          "version": "repo-lines-v1:sha256:6580f3f36d39ef20623f649d59aa29e7414a1bb0719d66f37aec09053f0ca3a4:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDVmNjE0YTllNjQxMTJkMmZlZDE3NDlhNTJkYzVlMWRmMDg5ZWQ1ZjE2ZmJjYzFkZDVhNGU4NTBhMGZiNjNmYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzljOWUyN2E5OTI4YmZiYTJjMmU2MTk5YmMwNDhiYTZkOWJkNzNmYTdjYmY3Njc1NTZmMjI3NDlmMDcwNjE0OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmE4NTc5ZDM2NjZiMmQ4NTBkMGIzZWNkOThmOWEzODU5OWFiNDE2NTZmOGFhYzAzMzE1MTQyYTM0MGIyY2JkYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDY3MzkyMTJhM2QzM2FiOGUyMzcxZjA3MWI4N2QzNzFlM2UxYWU3YzdmMGYxMzZkY2Y0NTNmYThiYzNiYjgxZSJ9"
+          "resource": "repo://Dockerfile#L79-L89",
+          "version": "repo-lines-v1:sha256:9d2adac47374a2e7a908c16d0d2b6ea9d16b5964d501819ce5538d1c3548f1c1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5YTE4N2FhZGM2NWRiNWU3ZWI5YTNiMzQ0ZWZiODJjZWYyYzNiNWUzNjFjYzBiMmUxZDMyMTY1MThkYWRkODYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzMzE4OGQ0OTBlNGE0MTVmZWU3YTRhMTk3ODJlNzFiYjQyYzE0NzZjNDM5MWVlMTg4M2UwZGQ1MGViZjg5N2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJhODU3OWQzNjY2YjJkODUwZDBiM2VjZDk4ZjlhMzg1OTlhYjQxNjU2ZjhhYWMwMzMxNTE0MmEzNDBiMmNiZGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRhMDQ0YTIxN2IyOTY4N2YwMmI3YTA1MGFmYjc3YzAwNWU4MmFjYzg1MDU4MGM5Y2MzNTIyNWJmNzE1ZWJmZTcifQ"
+        },
+        {
+          "resource": "repo://Dockerfile#L91-L94",
+          "version": "repo-lines-v1:sha256:6580f3f36d39ef20623f649d59aa29e7414a1bb0719d66f37aec09053f0ca3a4:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDVmNjE0YTllNjQxMTJkMmZlZDE3NDlhNTJkYzVlMWRmMDg5ZWQ1ZjE2ZmJjYzFkZDVhNGU4NTBhMGZiNjNmYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzljOWUyN2E5OTI4YmZiYTJjMmU2MTk5YmMwNDhiYTZkOWJkNzNmYTdjYmY3Njc1NTZmMjI3NDlmMDcwNjE0OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzIxYTkxMGYxZGE5MjU4MTlmODQzZWYyZWU2ODliYjhiYThlYmIwNGRkNDNmMGE1OTgxMDk0NWMxOTBiZTc1ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDY3MzkyMTJhM2QzM2FiOGUyMzcxZjA3MWI4N2QzNzFlM2UxYWU3YzdmMGYxMzZkY2Y0NTNmYThiYzNiYjgxZSJ9"
         },
         {
           "resource": "repo://packages/server/src/routes/swarm-knowledge.ts#L26-L51",
@@ -240,7 +244,7 @@
         },
         {
           "resource": "repo://packages/server/src/services/github-pr-review-service.ts#L215-L215",
-          "version": "repo-lines-v1:sha256:ea8cb93aee714379cdab282b5d879237808d4b65981c8e5235ca4de628a9ae9a:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWE4Y2I5M2FlZTcxNDM3OWNkYWIyODJiNWQ4NzkyMzc4MDhkNGI2NTk4MWM4ZTUyMzVjYTRkZTYyOGE5YWU5YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWE4Y2I5M2FlZTcxNDM3OWNkYWIyODJiNWQ4NzkyMzc4MDhkNGI2NTk4MWM4ZTUyMzVjYTRkZTYyOGE5YWU5YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzIzZDVhZjlhZDFmNzFjNzYxMGI3YmU0MDk5NjBmMDQyMjZkZWQ2YmExMmMwYWM0ZDcyY2NkODhmNGIwMzY3ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTEwZWMzM2M1YTllMGI3YmI0N2Y2ZGY1OTExYjIyNWY2NjNlNzk1ZDgxOTExODYzMjg1NTZlOTNmN2U5MDVjYSJ9"
+          "version": "repo-lines-v1:sha256:0a5ac6657533224b7fc9724135f112eee6b485f269db885d3f084ab7dbc380a7:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGE1YWM2NjU3NTMzMjI0YjdmYzk3MjQxMzVmMTEyZWVlNmI0ODVmMjY5ZGI4ODVkM2YwODRhYjdkYmMzODBhNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGE1YWM2NjU3NTMzMjI0YjdmYzk3MjQxMzVmMTEyZWVlNmI0ODVmMjY5ZGI4ODVkM2YwODRhYjdkYmMzODBhNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzdlODg3OGNmYzNjY2IxMmM5MGMxM2VkZDRjZGU2ZDU0Yjc2ZDMzNmY1OTQ2NWMyNTQyNzUzODFhY2YzNWZlNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTBmMTIzMTkxNWMxNWI4NjhlMjVlMTQ4ZGNmMzJjNzllZDIwYzQxZjM1NzJiYTNmYWU3ZTFhODM0OTZmY2NhYiJ9"
         }
       ]
     },
@@ -260,11 +264,23 @@
     },
     {
       "id": "claim_f9046342e3a34922ac01c230f29ac466",
-      "statement": "RuntimeCommandService.getRuntimeContract probes each CLI runtime with <bin> --version plus a --help probe, marks the contract drifted when required json/cwd/headless flags are missing from the help output, stamps a sha256 conformance contract_hash with named checks (runtime_available, contract_not_drifted, structured_events, usage_accounting, bounded_lifecycle), caches contracts for LOOP_RUNTIME_CONTRACT_CACHE_MS (default 5s), and persists probes to the runtime_contract_probes table.",
+      "statement": "RuntimeCommandService.getRuntimeContract returns static contracts for 'manual' (always available), 'mock' (in-process static), and 'remote' (ok only when REMOTE_MAKER_ENABLED=true), and live-probes every other runtime — codex, opencode, claude, gemini, editor, pi, and atomic — with <bin> --version plus a --help probe, marks the contract drifted when required json/cwd/headless flags are missing from the help output, stamps a sha256 conformance contract_hash with named checks (runtime_available, contract_not_drifted, structured_events, usage_accounting, bounded_lifecycle), caches contracts for LOOP_RUNTIME_CONTRACT_CACHE_MS (default 5s, clamped 500ms-60s), and persists probes to the runtime_contract_probes table.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/services/runtime-command-service.ts#L148-L236",
-          "version": "repo-lines-v1:sha256:7cc5d1beff2a63eb88994d24b7c28641a70344b49bbfb75cafc71ea084157be8:eyJzZWxlY3RlZExpbmVDb3VudCI6ODksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2YmE0NjI0ZjMxYzIzMWNjMTZhNDIyZTk5YjI1MmRmNGI1NmIxYmEzNjU3MTU0MGFjYTU1NDVkNjRkOGVlODIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQzYTQyMWMyZGFlNDBlY2E5MmFhNTU0ZjBjMDYzODBkN2VlOTk1NWU1YmI2MzUwMTA4NjYyNDI0NzdkMTU0MzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI4N2M4NGU3N2U4Y2ZhZGExOGYxNDIwNDBhZWRmMmNjMTYzYzUwNDBkOGNhMzVlMmVlZTg0ZDZjNTExYTA1Y2UifQ"
+          "resource": "repo://packages/server/src/services/runtime-command-service.ts#L149-L217",
+          "version": "repo-lines-v1:sha256:c6515b48e6f4d61e581b5a4dd2c138d1c9cf618f652422d84d49e9346c09ba69:eyJzZWxlY3RlZExpbmVDb3VudCI6NjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2YmE0NjI0ZjMxYzIzMWNjMTZhNDIyZTk5YjI1MmRmNGI1NmIxYmEzNjU3MTU0MGFjYTU1NDVkNjRkOGVlODIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQzYTQyMWMyZGFlNDBlY2E5MmFhNTU0ZjBjMDYzODBkN2VlOTk1NWU1YmI2MzUwMTA4NjYyNDI0NzdkMTU0MzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQyMjkyYzEwZTdjMjNmYjUwYWExYmVlMjk4ZjM3OTZlYTE3YjdjMzM0ZjdmNTkzYmRhMjhmNTc0ZDU5NzZlMDIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/runtime-command-service.ts#L219-L244",
+          "version": "repo-lines-v1:sha256:2c49aae1d2b9b5e772735db9d6ab4ffa9cb357eaec0705da29ca3493f3fd3213:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjMzc1MWIzZDgwOTk3YWExZjhkNTNjZjJhNDE2MjAzYmI5YzU1YTJiODdiODhkMDU3MGZmZTk0NTEzOTc1YzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEwYzBmY2I4M2Q3YWU1YWQ4NDU0ZmY2ZjkwNDU5NDY2OTM5OTU3YThiNjU4OWI4ZjQ5YTVkZDJhNzY2NTMxMWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI4N2M4NGU3N2U4Y2ZhZGExOGYxNDIwNDBhZWRmMmNjMTYzYzUwNDBkOGNhMzVlMmVlZTg0ZDZjNTExYTA1Y2UifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/runtime-command-service.ts#L23-L23",
+          "version": "repo-lines-v1:sha256:93cf1b2c87c3576861f8c837ea6b76ddcf605d94370c56e5834618376a059ee0:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTNjZjFiMmM4N2MzNTc2ODYxZjhjODM3ZWE2Yjc2ZGRjZjYwNWQ5NDM3MGM1NmU1ODM0NjE4Mzc2YTA1OWVlMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTNjZjFiMmM4N2MzNTc2ODYxZjhjODM3ZWE2Yjc2ZGRjZjYwNWQ5NDM3MGM1NmU1ODM0NjE4Mzc2YTA1OWVlMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2RlYWI2YzRkZDk5ZjY4MzVmZWIzNGVlM2VlMjI4ZDJkYTIzYWRlOGNjYTNjYmJhYTQzZGM1ZWQ4NGY4Yzc2NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDliMDc5ZTIxZjMyOTIwNDE2NmNlOGJiNTg3YTI0NWEwOGYyZTA1M2ZiOTFiYWZjZDM1NTAzZjBjYTY1NzlhOCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/runtime-command-service.ts#L29-L41",
+          "version": "repo-lines-v1:sha256:df849ab5a0581cf95fce596c1d33ac62e8468ee62fb5a175d184341d08ca3f89:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5NTNkMGVlYTY2MTAxYTRiNDQ1MzMyMTgwZmE2MGUzNWZmYzNkOWJkZDk4OGQyZTg4YjMxMzk1Y2U2ZGRjZWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgxYzM2ZmM5YjZjMzE5OWFlODM2YTYzMjllZThjOTYwYzM3ZGFmNzkzMmJiZDAyNzdhOTBmYmU1YmYyNGQxMzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU5MjU4NDg3ZjYzYjcwNDlhMzM3YTYxMWM0YThjZTBiYWU4Y2ZlYjRmNjU3NzQxMjVjYmY5OTI3MjFjZjgxZGMifQ"
         }
       ]
     },
@@ -295,12 +311,12 @@
       "statement": "OpenCodeExecutor reports token usage and cost collected from NDJSON step_finish parts as tokenUsage/costDollars metrics on the ExecutionResult, and resolves an exit-0 run as failed with code VERIFICATION_FAILED (retryable: false, sideEffectsPossible: true) when a verification tool step (build_check/lint/test/typecheck or a bash command matching tsc/eslint/vitest/jest/pytest/…) reports failure.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/execution/executors/opencode-executor.ts#L282-L346",
-          "version": "repo-lines-v1:sha256:b50b49355002fc2b8d704fb9f7677155e93c40aae264282229cbe6081ee68bce:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjZWMwZDkzMDcyZGMzMjMxNmUwNzc3Mjk0MzFkMTE2MGMyZDU2ZTM3N2RkNjYwNzM4NzQxNTU3NjliZTkyN2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZhYjE3ODUyYTIzOTk1ZGYwODUzY2MwMTNkMzkzMTM5MDkzZGIyOGVhYzYzZDJiMjQwN2Y3MDRhYjQzNDJjYmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRjNWMzOTJhYTAzNzM0OTcyMzZjZDk1ZWZiYzgxYjk1MWE2MDZlMGUwMzg4NzUwMTE4ZDkyYWM5ZWQ3NGU4MTcifQ"
+          "resource": "repo://packages/server/src/execution/executors/opencode-executor.ts#L287-L366",
+          "version": "repo-lines-v1:sha256:73f8b1357e22cad1e5438ebea8fb00ae17f7cb46935e65c55b648806233a67a6:eyJzZWxlY3RlZExpbmVDb3VudCI6ODAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5NTMzNjI0NzgzYzJkMzljNTMyOTU4YzEzZTE0NGE1OGJjNmJhNzU3NmRkODMzYjZkNGZiOTAzMThiYTU3NDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3ZDg2MzJlNTRlOTI5OGFiYjk1ODcyN2UyZDUxNDA4YWJhZjEzNjYwMzUzNzkxMDE0MGFiZjY1YjMwYWI2MTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRjNWMzOTJhYTAzNzM0OTcyMzZjZDk1ZWZiYzgxYjk1MWE2MDZlMGUwMzg4NzUwMTE4ZDkyYWM5ZWQ3NGU4MTcifQ"
         },
         {
-          "resource": "repo://packages/server/src/execution/executors/opencode-executor.ts#L633-L658",
-          "version": "repo-lines-v1:sha256:ef07d8ea535a3b99a483a766ab04d55f5dc86d0ce4486d023e5868a71caba351:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNjYjRhYzg5NzJjYmYwN2FiMTI5YzcyZWMwZTZlM2U1YzUwNzU3ZWE0ZmI1NjMyMzY2ZDQ5NTViZDA2NjZjMTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhMzdlM2MwOTQxZDE1NzdjMDM5OGUzYjY3ODRlZjNiM2YwMTI4OGJjZGVjOWE0YmJhMWFiZmFhNzQwYWI2ZjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwNjdkMDM2NTc5MGY1Y2EzZDlmMmRkMWY1NjYwMTY2OTQxMjQ1OTNiZjYxYWMxZWVkYmQ5Mzc5YTNiMzZmNzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIzNjI0NmJhMDBkN2ZiMjUzNzcwMmM5NDA4NmNmMTUwYThmOTcyYzNiZjA1NTdiNTJjYWExN2NkNGUzMDU0ZGQifQ"
+          "resource": "repo://packages/server/src/execution/executors/opencode-executor.ts#L644-L678",
+          "version": "repo-lines-v1:sha256:4ddde0dc1ce39d5e56ae5e21266a7b52c509abfe154c4c86ea7fbbc98861aac6:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkMDc5YmQzODExYWE2ZDRkNzRlODY0MTBhMjQyZjgzM2ZhNjBhMDEzZGJkZmY2MGVkMWI5NGNhODBmYWE3MDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhMzdlM2MwOTQxZDE1NzdjMDM5OGUzYjY3ODRlZjNiM2YwMTI4OGJjZGVjOWE0YmJhMWFiZmFhNzQwYWI2ZjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg0MmZjMGRjZjVlOTJkZjJkYTkzMTQ4OWIwMTM3MmQxYmY4NzBhMWRkYWZkMDhmN2U2YzBmYjQ0N2FiNzY2OTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIzNjI0NmJhMDBkN2ZiMjUzNzcwMmM5NDA4NmNmMTUwYThmOTcyYzNiZjA1NTdiNTJjYWExN2NkNGUzMDU0ZGQifQ"
         }
       ]
     },
@@ -313,10 +329,94 @@
           "version": "repo-lines-v1:sha256:b2ff7dcbba9aeb75be73d08b7eb64ea38b4587eeec86e5d4d47152ed0d48de7b:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjQ3MDMzZGMzZWQ1ODhmMjdjZDQ4MGI2OTgyNjZlYjg3MGQ4MDZiZGQ4MjFmMzZhMmRlNjQwMDIwYzExMTE2MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjI0MjYzMDIyZjZjODhkZDBjZTk0NjJlNjY0NTEwYzIzMTFiZDg3NjM2OTJlZWFhNDM2MmE3NGMxYTdlMDNjZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2E5N2FmY2MxNDEzMjA5Njk2YzAzNDdhOTgzMjdmYjg0MjFhMjU0NzYyNTlkZWUzODRkNDFjN2YyZmQwNTdlOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjViZTc2MDIyNzlkNjVmN2QzZDgxOWE3ZDg2YjBjNjQ2YjY1YWY5NTY0N2M2ZjIxMWNlMDAzZWIzZmJmMjdmNCJ9"
         }
       ]
+    },
+    {
+      "id": "claim_fcb8e45bf8664576aef1ddecd7ff6d48",
+      "statement": "AtomicExecutor (kind 'atomic', always registered) runs `atomic-agent run --cwd <dir> --max-steps <ATOMIC_AGENT_MAX_STEPS, default 40>` with the goal fed on stdin and plain-text stdout; `--no-approval` is passed only under operator-armed skipPermissions. Before each run it writes a Djimitflo-owned provider config (`atomic-agent config set`) under DJIMITFLO_ATOMIC_STATE_DIR (default /data/atomic-agent) pointing at an OpenAI-compatible provider (default Ollama Cloud; key from the ATOMIC_AGENT_API_KEY_ENV-named var, default OLLAMA_API_KEY) so the operator's ~/.atomic-agent is never touched; timeout ATOMIC_EXECUTION_TIMEOUT_MS (default 600s).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/executors/atomic-executor.ts#L24-L37",
+          "version": "repo-lines-v1:sha256:e861c6911a438f55ec38ef340e839d86e20d33a3eb61ae8a4f68252b7a0b6a5e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxNjlkMDU3MWFiZGEyMTIxNGViN2E0ZmViZGY2YjhhNzdiOTlhYjA5OGRlNjUzYWU3MDRmNjgxMjAyZTM1YzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE0NWM5YjM3MzFlMTNkMTdmNzZhM2EwYWE2MzIwYjdlYjJjMjIwN2Q3ZjJhYzVlMjk4ZjEyMWE0MjdhZWQ1YjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQyNWM0NGZjNWYxMzM2YWIzZjk5MjdlZTM3YTk2NjkyNDc2NTU0MTVjYTM0ZjVjOGQ3YzhmM2Y5ODlkNGVmNTYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/executors/atomic-executor.ts#L46-L58",
+          "version": "repo-lines-v1:sha256:32df7300bedc4d3434aca676e2681f058e295576649e0dbd19d36ca4d71fdf99:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3Zjc0MjFjYzkyZTNjZGM3ZDI5NzcxNDVjZDhjOWU4MTM1MzBlYTliMWMxYTBiOTMyYzM2YmY1ZTAxNmMxM2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk0NGZhODJhMDYwOTYwNTU5M2JmNTI3NTVmZjY5ZWJhNjAzYjY5ZTNlMjAwY2U4NzIzYzA3YjhjZDNlNjQwMWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdkMmU1MGVmNDhjODRmM2M2ZjllMTM0NzA1YTQ1MTMyNGQ5ZjAzNTc2YzQ0ZWJlMTFiMDM2OTkyZDcxNDgwOGQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/executors/atomic-executor.ts#L60-L97",
+          "version": "repo-lines-v1:sha256:dabd999dd3b9d6497afec808fa2279271e13ca31420068a9b66fa4fc7878a750:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhZTIxMTk2MGIxNTI0Njk3MTkzYzA0Njk0OTA2MzZiYjRkMTZhYzY3ZGU3MjFiYWU1YjRlNzE3N2EwN2U1MmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhmOTIyYmU4MmUxOWZkOWMzOWU3YmQ5YjVhMTNmM2RmYjJkZDQzNDZlYWQwYjI5MDI4MTg2YTk3NGNmMWJiNWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRhOGQ4MjU2ODJiZGEyODI0N2JmMDJhMjAzMGVjZGNkODg3NmY1MjEyOWE2YWEwNzY0ZDZjN2E0MDIzYzlhMmIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c1ad5363fe6f47be99c0e338a7ba55ca",
+      "statement": "RemoteMakerExecutor (kind 'remote', always registered, gated in practice by REMOTE_MAKER_ENABLED) enqueues a maker job on the SQLite RemoteMakerQueue for `<host>/<species>` parsed from the lease model, requires the base commit to be an ancestor of origin/main (the host clones from GitHub), applies the returned patch to the local worktree with git apply, fails an unclaimed job after REMOTE_MAKER_QUEUE_TIMEOUT_MS (default 45 min) and times work from the claim against REMOTE_MAKER_TIMEOUT_MS (default 30 min), and reports cancellation as remote_maker_cancelled:<reason> in stderr for the lease failure_reason.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/executors/remote-maker-executor.ts#L15-L36",
+          "version": "repo-lines-v1:sha256:abc5d52827362c6bf97bbbf49b4c97306b0d3cce00a373ca429e7b60f5b0d1f9:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhNGEzNmMzM2NhNTA3OWFmYTEwMmM5NmMxNjU1M2FlMjliMTI2YzE5YWZkMDZmYjJlYjg5YWIyMTliZDQwYmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwYjY0ZjEyZjhlZGQ4YjM4MDBjNTRiMmEyMDdlNzMzMDljOWU1NWI2M2Y0NGY2NTQyYWM2NDU2ZDc3NjBmNDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI4MTE5NTkxNGMwOGFmYjZjZmFmMTcyNzMwMGUyM2MxN2QyZGE5NTM4MzFhNDFkYzE2ODNiNjU0M2ZkNjM4NDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdkMmU1MGVmNDhjODRmM2M2ZjllMTM0NzA1YTQ1MTMyNGQ5ZjAzNTc2YzQ0ZWJlMTFiMDM2OTkyZDcxNDgwOGQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/executors/remote-maker-executor.ts#L53-L80",
+          "version": "repo-lines-v1:sha256:b75165d7bea334271e9fde2cd43b301fce56a5365343da8699ff0405e9f9e679:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhlZTE3OWU0Yzg0ZGM4ODZjZDg4N2ZmMTA5ZTRiZTAyYzFjY2JiOTI5MWI4NjgyNDdjOGE3ZmY1MDZiYmIxMGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkOWUxMjU0NjQyNTU3NmQzZGVhZThjOWI5ZGJmMTI4ZDVkNmRkYWY1ZDdmZTg1NzkzNDkyN2RlZmZhM2I5ZGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVjMmUyMDc3NmUzNjA2NTYwOTk0OWMyNDkyMzY1NzlkMGJlNmJhMDhlOWZlNzUyNmZiNDE5MWM3YjVkNzk3YTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVjOGI3NDgxNGFlYmRkZjE1ZGZiZjY2YmM5M2RiNjlhZjZjNTIzZGM1Mjc4MTIwMWZlYjU3MTZkNTkyODc5YmUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/executors/remote-maker-executor.ts#L82-L91",
+          "version": "repo-lines-v1:sha256:54b826d190d5bd97cf4554a62d6190f7f61a269115310ff2b0d0f7b1598401b7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkMzhhNDJkZGI1ZjM0ZTBlMmY4Njk2Yzg5MmI5Nzk3MzlhODA4ZWVhY2I0NWZhZTI0ZmMyNTBlY2Q4ZThmNmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ0MGYxOTc2ZDYwMjBhMmFhZDUxZGM2ZDM0ODg3NjRjMjc0MjFiMmU3YTczZTMxYmVmN2IwYjA3ZGJlNmI5ZTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMxMzExZTMwZTFmMDkxMGYzYWExMmViYjA1YmU5MDI4MDcwMzMxMmI1NTUyMzAyMDg5ODQ2ZGY5MDgwOTZiODIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/remote-maker-queue.ts#L8-L10",
+          "version": "repo-lines-v1:sha256:68a9599e6c0f9837fe3955f2eac54c9722f002ab1565c8fe0a05fc1334a74717:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGUxZDdjMjkxNDI3ZTVlZjQ0NGRjZDJlMTgxNDZiOTM4ZmMyMWYxOGE1M2Y5ZTNiMjgwZDFjMTM4NjY4M2UzOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWIxYTY5NDU0ZTczYjZiMDBmYmIyODdjNjE2ZjhlYmRmYTAyOWZiNTc3ODgzZDUxYjUyZTg5Y2E0ZDAzNTBmNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzY3NWNkNTBiMjNkOWQ4OWQxYmU1ZjNkY2UwM2JmMjQ5YTMxNWUyZTM1OTZmYjc4N2ExYmM0N2NkYjFmNDE3MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTZjZDZkMmU0ZTFlMDE1YWY2NTVmM2ZlMGM5MTZiM2U5NDU5OWRkMmM2NmNhYWQ2YWRlOTc2Yjk1M2FmMjkzYSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_8339a3418adf42eb8e14c99d69931575",
+      "statement": "After each maker worker exits, LoopWorkerExecutorService.executeMaker computes token_accounting via computeTokenAccounting (maker-token-accounting.ts): per-runtime stdout parsers (opencode step_finish tokens, codex turn.completed usage, claude result usage, generic usage JSON otherwise) yield provider_reported measurement for opencode/codex/claude and runtime_log for the rest, while remote/atomic/mock are hard-coded measurement_source 'unavailable'; the record is persisted on lease metadata, cost-estimated against LLM_PRICE_PER_MTOK when priced, and aggregated per runtime x model by makerTokenAccountingEvidence.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L211-L212",
+          "version": "repo-lines-v1:sha256:11151b95e2dae8e711ea6446d944320cf27e017dec6905fdc41bd5d8d19934d9:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzhhODIzMzUzOTU1YTZjZDk4NDFiNjVkZWZhMzlkY2VhOTAyY2Y1OTI5YmM2YmRmMWJkNmYwOGI3MDNlYjA4YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzY3ZTg1N2FmMTQ5NjkxYTFlZWNhZGVkYmFjNmIxYmEwODg4MzY3YTRjZGMzNTI3NjA3M2Y0YzRjZWM5NjgzNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDJlYTUwZjhmYzc5YzUwYTIxZTRkNDdhYWFmNDZjZWVkNDAxZjUwMjFjMDkzM2E4ZjI0MzIzMjdiNDA5Mjc2MiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTU3MTdlOTNmOTEwZWFmYzFkMzFmZTk3OTZjMGNhMTMzNTE5MmNlMzYxNWYwNzU3N2ZjNmYzNDYwMDYyZGNhYSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/maker-token-accounting.ts#L113-L147",
+          "version": "repo-lines-v1:sha256:f30af87c57a5966a59ade8b7eaf996e7ba5ba331e14900e7aa67afa67f03cee4:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZlYWQ5YTFmNjMxYmI5YTcxNGUxZDBhYzZkZDhkZmZmYjFmZDNjMTMyYTgyODUyZTNjZWM2YTg4ZTY0ZmY4NzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmZTM4NWY5MDhkZjRkZjJkNzBlODdmYmQ0MGNjYjljYzk0MjgzMTIyYmViNzQ2ZjkxMWMxMGVlYjEyNmQ3MjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhkZDMzNzMwZWMzNzQ1ZjgzYTk0ZjA3YTg3YTA0YzNkOWI1YzUxN2FiYzEyM2QyNDgxZWE2ODY5YTk3NzQ1MmQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/maker-token-accounting.ts#L170-L202",
+          "version": "repo-lines-v1:sha256:3cad4f03c691707765c808baf2ddbb4ebec5b2243e1edfe405a1a3022ef5e0cc:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZiODQzZjlkY2U5MDM5ZDdiMGQ0ZTE5MTcwMTRmMDg4NmI4ODMxYTk4ZTg0YzQwYWM2OTU4ZjRjN2EyMmMzY2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxNTU4NWFhMzI0YTQzMDQ1NjcxMDA4ZmYzOGFhMjIzNjM5ZTQ3NDM2ZDc1ZWFkNGFmY2Q3MGFhZDkzNWIyOTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFmMzVlYTRkYWRjZTU5OTU5YmQ0YjUyOGI4MTg0OWVmYjZmMGI5YzBkNjM3MTBjNTU3OWE5Y2NjOTE1ZDcxYjAifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/maker-token-accounting.ts#L85-L110",
+          "version": "repo-lines-v1:sha256:46bddeb842a6adbe15ee9210f11f9bbd27aba5e582b26876ccc1caf2b334b4f4:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZhYTAzNTg0MmRkZGMyYmJhYTkwMzU0MmFjZTQxYmM2ZTVmNmZkZmVjNzIxMmZhNjNkMDVhNjI0ZjE4OGJiMmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1ODE5ZWM1N2NkMjMyYmFhMGYxZjJhYTUzYWRjZTM5YTI3NGQ0NzVmODMxNTliOGVkMGVhMjQ0ZTMzNzFiNTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQyNzliNjgwNTIwZWQ1MjZkY2M0YzhhYTM3MzUyNzU5MGUyODE5NWU0MGZiZTYxMDdlMWU1YjQ5NWE0NTc3MzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRlNTU3NjRjNWZiYTM4ZTMwMzAwMjU1MDBhNWYyMmY0Y2U3NDE0YjliOTU2ZTJiNjU4NzJiY2RiODkwN2EzNGEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4f36bddb65584a0db3c6f2b6eca99982",
+      "statement": "The LoopService runtime contract set exposed at GET /loops/runtime-contracts covers manual, mock, codex, opencode, claude, gemini, editor, and pi; RuntimeCommandService can additionally compute contracts for atomic (live probe of atomic-agent) and remote (static contract gated on REMOTE_MAKER_ENABLED) when a worker lease names those runtimes, even though they are not in the operator-facing list.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L1358-L1371",
+          "version": "repo-lines-v1:sha256:384d100d5a76ee9ad78c13e7b27dd9c25cee11fc45aab6228f0b78a9d5f849cc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxZDNkZDk0NGNkYjQ2ZjA4OWFmYThhODc5MjQxMTcxZTY3NzU1YmZhMWI1ZDI3NjNhOTk1YzFjYjYwMTdhMDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWVmZGQ1MTEzZDk5MDU2ZjFlMTlkZTFiN2Q1YmVkZTZlMGEzMDFmOWU4ZjdiZTRlYWQzZjhmOGRhODY2YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkxYTVjZDI0OTMwOThlNzhiMmM5OWQwMWI2MDEwZDAwY2Y4YTE5OTAyYTdmYTJmMmI3ZGU5YTU2MmY2ZmQ5MWEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L136-L136",
+          "version": "repo-lines-v1:sha256:aa8e555764275f33604b3bfc873a0ca2623ef90b7cc52c077a81d701b128b248:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWE4ZTU1NTc2NDI3NWYzMzYwNGIzYmZjODczYTBjYTI2MjNlZjkwYjdjYzUyYzA3N2E4MWQ3MDFiMTI4YjI0OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWE4ZTU1NTc2NDI3NWYzMzYwNGIzYmZjODczYTBjYTI2MjNlZjkwYjdjYzUyYzA3N2E4MWQ3MDFiMTI4YjI0OCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDRiOWEwYjE2Yjk5MTBiYWE1ZDBhNGRjYWZmOGE2MGM0Mjk2MzNiZjJhZTNjYmFjYzgyMDI5MDc1ODBkMTBjYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjQ5OTQ4MzFhYmI3ZWNmNzBhMzhjOWNlMzU4ZTY3MjIwOTgzZDhiY2UxMzExMjZjZmQ1YjQ4MTRmYWQ0ZGEyOSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/runtime-command-service.ts#L153-L156",
+          "version": "repo-lines-v1:sha256:bf486fa58ba92edf358b66831203fe3a7bcf4d051cd482f9cba0157ab5adf70d:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWVmODA0M2Y1ZTUwMTE1NzIyOWJmZjNiMDYwMTQ5MTllOTA3ZTE1YWQ5ZDBkZmEzODNlMTljNmEzNjgxZGViMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjI3MjViM2QwZGM2NDgyZGM5MmFmYTEwODk0OGU2ZTc5N2M0N2UzMzViMTNkNzcxMTcxZTY3MDk5NjFhNWQyYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjk0NTk5MGMzZWMwNjVlZWMwMzE4OTY3ZDlhYmVhNDRjNWYyMmRmOWEzMTJmOWU4OGVjMDYzNmZhMTMxYTU5NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmE0NDFlN2IxOWRlN2M1MzNiMGE0MWU1ZDMzNDJkY2FlNTJlZWUxODMyNjk0M2IyNzFhZjEzOTFhNmQ3NjUyNCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/runtime-command-service.ts#L168-L169",
+          "version": "repo-lines-v1:sha256:16d874822f7be8786ca4ef2e26742fa10d18117ddd804befc7c246e260ce064e:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWU4ZDA1YjA5Y2MyMTBkODYyNGNjMjgwODhiNTdlNGM4ZmUyZWI5NTc1ZDQwMjQzMGI3Mjk3YzE3N2JlYThjMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDM0ODJiNDQ4MmNkYzhiYjNmYjU5NGVkOTBlNWQ5Mjc4MWQ4YzcwZmQ2ZjU1MTZjMjM3ZjFkMjA1YjQ3NzYxZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDMxYWRlYmVjNzIxZTU0Mzg2Yjc3NjRjODE3YmZiNTg1ZjA5Yzk5ZjVmYjI5MmU4YTVhZDk3ZWEyZTA4Mzk5ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjgyYTg1ZmIyNjlkZDYxZWM1MGIzZTY4MzE0YzFjOWJiYzZkNjFlMmY4MmNlYjQyNjNlMDA3ZmM5NDdjNjA1NSJ9"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-25T13:29:02.244Z"
+    "at": "2026-10-17T12:03:52.116Z"
   }
 }

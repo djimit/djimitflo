@@ -6,16 +6,22 @@ tags: [github, webhook, hmac-signature, pr-review, integration-inbox, gh-cli, de
 sources:
   - id: openwiki-source-bb1ebe868e35e9e500714501
     resource: repo://Dockerfile
+  - id: openwiki-source-e085af0cae8866b4b64f17a2
+    resource: repo://packages/server/src/__tests__/evidence-freshness.test.ts
   - id: openwiki-source-f322ba4a78e55adb01bd4c05
     resource: repo://packages/server/src/__tests__/github-pr-review-llm.test.ts
   - id: openwiki-source-5e8ccb34bcafd796b3f6a16f
     resource: repo://packages/server/src/__tests__/github-pr-review-webhook.test.ts
   - id: openwiki-source-fb6f8ef1a73fc922398d2685
     resource: repo://packages/server/src/__tests__/github-webhooks.test.ts
+  - id: openwiki-source-eade8d5b063b116951ad7f82
+    resource: repo://packages/server/src/__tests__/loop-draft-pr-service.test.ts
   - id: openwiki-source-922486a2b03bd894d1e9f283
     resource: repo://packages/server/src/index.ts
   - id: openwiki-source-88025dd4e11a95c17cde0683
     resource: repo://packages/server/src/routes/github-webhooks.ts
+  - id: openwiki-source-e25da9650619e280c998992e
+    resource: repo://packages/server/src/services/evidence-freshness.ts
   - id: openwiki-source-34dbd5b3123e070678b30d30
     resource: repo://packages/server/src/services/github-pr-review-service.ts
   - id: openwiki-source-875d6fe4c748ad23e7800ff1
@@ -24,12 +30,14 @@ sources:
     resource: repo://packages/server/src/services/loop-daemon.ts
   - id: openwiki-source-b41bf296406aa0c468600a4e
     resource: repo://packages/server/src/services/loop-draft-pr-service.ts
+  - id: openwiki-source-7154de76781720358bf72a94
+    resource: repo://packages/server/src/services/repo-registry.ts
   - id: openwiki-source-6c7f10ad81b9df82a04d3c57
     resource: repo://packages/server/src/services/work-item-service.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-10-17T12:03:52.116Z" }
 verified:
   - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
+    at: 2026-10-17T12:03:52.116Z
 ---
 
 # GitHub Integration: Webhooks & PR Review
@@ -205,10 +213,21 @@ deletions,changedFiles,files`:
 - any path matching `/\.env|secret|credential/i` → `needs_revision`;
 - otherwise `accepted`.
 
-The loop_run legitimately settles as `blocked` (worktree/diff verification
-gates fail on a worktree-less synthetic lease), which the service comment
-calls expected: the verdict posted to GitHub is computed independently from
-the PR's own diff stats, not from the loop outcome.
+The bookkeeping loop_run has no worktree, so loop verification marks the
+worktree/assignment/diff/checks gates `skipped` (E2, not applicable) and
+leaves the status alone; the verdict posted to GitHub is computed
+independently from the PR's own diff stats, not from the loop outcome. Once
+that verdict is on GitHub the run has done its job, so after a successful
+comment `settleReviewRun` settles it: the loop_run is set to `completed`
+(from `planning`/`running`/`blocked`) with metadata
+`settled_by: 'github-pr-review'`, and — idempotently, catching earlier
+settles too — any still-`running` goal of an already-settled review run is
+also completed. Both updates are prod-hardening fixes: 32 blocked review
+runs in 3 hours (2026-09-25) inflated the blocked count and would have been
+replayed as failures by the dream state, and 42 review goals stayed
+`running` after their runs were settled (2026-09-27). A review that failed
+a gate still leaves the run `blocked`, since the `UPDATE` only fires on the
+success path.
 
 ### Phase 2 (opt-in real LLM checker)
 
@@ -239,7 +258,8 @@ code explains the Checks API rejects personal-access-token auth with a hard
 `status: 'failed'` on the review row with the error in metadata, a
 `github_pr_review_failed` audit entry is written, and the webhook still
 answers 202, keeping Djimitflo's own database authoritative over a transient
-GitHub outage. Every `git`/`gh` subprocess call in both phases carries a
+GitHub outage; successful reviews likewise write a `github_pr_reviewed`
+audit entry. Every `git`/`gh` subprocess call in both phases carries a
 **15s timeout** (`GH_TIMEOUT_MS`); only the Phase 2 checker LLM runs longer
 (480s).
 
@@ -247,7 +267,8 @@ GitHub outage. Every `git`/`gh` subprocess call in both phases carries a
 
 The outbound counterpart of the review flow lives entirely outside the
 webhook. When the loop daemon's verification pass finds all gates passing
-(step 9b of `packages/server/src/services/loop-daemon.ts`), it calls
+(step 9b of `packages/server/src/services/loop-daemon.ts`, inside the
+`if (allGatesPass)` learning-loop closure at `L912`–`L915`), it calls
 `LoopDraftPrService.openForRun(run.id)` inside a try/catch whose comment
 promises a PR failure will **never fail the daemon**. The service
 (`packages/server/src/services/loop-draft-pr-service.ts`) is gated on
@@ -258,9 +279,37 @@ and the merge stays human because the PR is opened as a **draft** hand-off.
 
 `openForRun` then requires `GITHUB_REPOSITORY` (`owner/repo`) and
 `GITHUB_TOKEN`; any missing precondition is not thrown but recorded as a
-`draft_pr_failed` warning loop event with a null return. Only runs in
-`ready_for_human_merge` or `completed` qualify, and a run whose metadata
-already carries `pr_url` returns it unchanged — at most one PR per run.
+`draft_pr_failed` warning loop event with a null return. Only runs in `ready_for_human_merge` or
+`completed` qualify, and a run whose metadata already carries `pr_url`
+returns it unchanged — at most one PR per run.
+
+The target repo is per-goal (B2, multi-repo oracle lanes), not blindly
+`GITHUB_REPOSITORY`: the slug comes from the linked proposal's
+`repo:<slug>` evidence ref, falling back to the primary repo. A proposal
+naming a different repo gets a PR only when that repo is a registered extra
+repo (`repo-registry`, `EXTRA_REPOS_ENABLED` on) — otherwise
+`draft_pr_failed: repo_not_registered` — and the worktree's push-remote URL
+must parse back to the same slug or the run fails with `repo_mismatch` and
+nothing is pushed.
+
+Two quality gates can run between the change-set selection and the push:
+
+- **Batch-8 evidence freshness** (`evidence-freshness.ts`,
+  `LOOP_EVIDENCE_FRESHNESS_MODE=off|shadow|enforce`): the maker lease's
+  recorded `evidence_read_set` (files the checks *read* but did not edit)
+  is re-fingerprinted against freshly fetched current main, and the
+  `fresh|stale|unknown` result is persisted into
+  `loop_runs.metadata.evidence_freshness`. A `stale` read set records an
+  `evidence_stale` (enforce) or `evidence_stale_shadow` event; enforce mode
+  additionally marks the run with a `requeue` metadata flag and returns
+  null — the re-check is queued rather than opening a PR over evidence that
+  has rotted. A failed base fetch means "unknown" and fails open.
+- **RX-6 arrival throttle** (`LOOP_DRAFT_PR_THROTTLE_MODE=shadow|enforce`):
+  counts open GitHub PRs whose title starts with `loop:` against
+  `LOOP_DRAFT_PR_MAX_OPEN` (default 5). At or over the cap, enforce mode
+  records `draft_pr_throttled` and opens nothing (shadow records
+  `draft_pr_throttle_shadow` and opens anyway). A failing open-PR list
+  call never throttles — the queue probe fails open.
 
 The publication itself is deliberately hygienic:
 
@@ -270,35 +319,53 @@ The publication itself is deliberately hygienic:
   lockfile install noise (a `package-lock.json` whose sibling
   `package.json` was not itself touched), and symlinks. An empty change set
   fails with `no changes in the maker worktree` instead of pushing noise.
-- The push authenticates with the token passed as a one-off
+- The commit and push run as `djimitflo-loop <loop@djimitflo.invalid>`,
+  and the push authenticates with the token passed as a one-off
   `http.extraheader` basic-auth header, so the token is never written into
   the remote URL or `.git/config` (a test asserts the absence), and any
   error message is scrubbed of `basic …` credentials before it lands in the
   `draft_pr_failed` event.
 - The PR is opened over the REST API (`POST /repos/{repo}/pulls`, bearer
-  token) with `draft: true`, a title prefixed `loop:` taken from the linked
-  self-improvement proposal when the goal has one, base
-  `LOOP_DRAFT_PR_BASE` (default `main`), remote `LOOP_DRAFT_PR_REMOTE`
+  token) with `draft: true`, a 120-character-capped title prefixed `loop:`
+  taken from the linked self-improvement proposal when the goal has one,
+  base `LOOP_DRAFT_PR_BASE` (default `main`), remote `LOOP_DRAFT_PR_REMOTE`
   (default `origin`), and a body listing the recorded checker and
-  security_checker verdicts plus the file list.
+  security_checker verdicts plus the file list. Behind
+  `LOOP_PR_BODY_V2 === 'true'` the body (UX-10) additionally carries the
+  lane name, oracle check results, a gate summary, the `HEAD~1..HEAD` diff
+  stat, a mutation score parsed from the mutation check's report, and a run
+  link only when `DJIMITFLO_PUBLIC_URL` is https — stripped to ids,
+  aggregates and numbers, and secret-redacted, because the repo is public.
 - On success the PR URL is persisted into `loop_runs.metadata.pr_url` and a
   `draft_pr_opened` event is recorded; on any failure the run is untouched
   and only the `draft_pr_failed` event remains.
+
+The service file also exports two read models over
+`loop_runs.metadata.pr_url` (no GitHub call): `listDraftPrs` for the
+draft-PRs cockpit route — folding merge-survival's polled `pr_outcome` and
+`auto_merge` decision into per-row evolutionary settlement states and
+aggregate counts, failing soft to `null` totals on a partial schema and
+leaving registered-extra-repo PRs out of the default view — and
+`countOpenLoopPrs` for the needs-you count, which likewise returns `null`
+(unknown) on a schema hiccup rather than "nothing open".
 
 ## Production dependency: the pinned gh CLI in the Dockerfile
 
 Because the review phases shell out to `gh` and the draft-PR flow shells out
 to `git`, the production image (`Dockerfile`, runner stage) provisions both.
-The apt layer (`L61`–`L64`) installs
-`ca-certificates git python3-minimal curl procps` with
-`--no-install-recommends` after a full `apt-get upgrade`; a comment over the
-`gh` block (`L66`–`L68`) names `GithubPrReviewService` as the consumer of the
+The apt layer (`L64`–`L67`) installs
+`ca-certificates git python3-minimal curl procps libatomic1` with
+`--no-install-recommends` after a full `apt-get upgrade` (the layer is
+preceded by an apt config forcing IPv4 and bounded retries/timeouts after
+three stalled mirror downloads); a comment over the
+`gh` block (`L69`–`L71`) names `GithubPrReviewService` as the consumer of the
 CLI for PR comments and Check Runs. The CLI itself is installed from a
 **statically fetched, pinned `.deb`** — `ARG GH_CLI_VERSION=2.100.0`,
-downloading `gh_${GH_CLI_VERSION}_linux_${ARCH}.deb` from
-`github.com/cli/cli/releases` with `curl -fsSL`, installing via `dpkg -i`,
-and probed with `gh --version` so a broken install fails the build — rather
-than adding a third-party apt repository. The `git`, `curl`, and
+downloading `gh_${GH_CLI_VERSION}_linux_${ARCH}.deb` for the
+`dpkg --print-architecture` build architecture from
+`github.com/cli/cli/releases` with `curl -fsSL` plus retry flags, installing
+via `dpkg -i`, and probed with `gh --version` so a broken install fails the
+build — rather than adding a third-party apt repository. The `git`, `curl`, and
 `ca-certificates` packages in the same layer are what Phase 2's
 fetch/reset worktree commands and the draft-PR push rely on.
 
@@ -313,8 +380,12 @@ fetch/reset worktree commands and the draft-PR push rely on.
 | `ROBOREV_PENDING_PATH` | Location of pending roborev findings folded into the comment |
 | `LOOP_WORKTREE_ROOT` | Worktree root used by the Phase 2 path |
 | `LOOP_AUTO_DRAFT_PR_ENABLED` | Master switch for the G4 draft-PR hand-off (default off) |
-| `GITHUB_REPOSITORY` / `GITHUB_TOKEN` | Target repo and bearer token for the draft-PR push and REST call |
+| `GITHUB_REPOSITORY` / `GITHUB_TOKEN` | Primary repo and bearer token for the draft-PR push and REST call |
 | `LOOP_DRAFT_PR_BASE` / `LOOP_DRAFT_PR_REMOTE` | Draft PR base branch (default `main`) and push remote (default `origin`) |
+| `EXTRA_REPOS_ENABLED` / `GITHUB_REPOSITORY_PATHS` | Repo registry for the per-goal draft-PR target (B2 multi-repo lanes) |
+| `LOOP_EVIDENCE_FRESHNESS_MODE` | Re-fingerprint the check read set vs current main before publishing (`off`/`shadow`/`enforce`) |
+| `LOOP_DRAFT_PR_THROTTLE_MODE` / `LOOP_DRAFT_PR_MAX_OPEN` | RX-6 arrival throttle on open `loop:`-titled PRs (cap default 5; list failure fails open) |
+| `LOOP_PR_BODY_V2` / `DJIMITFLO_PUBLIC_URL` | Richer redacted PR body (UX-10); run link only over an https public URL |
 
 Operator-facing defaults and environment setup are cross-referenced in
 `/openwiki/operations/configuration-reference.md`.
@@ -329,11 +400,15 @@ Operator-facing defaults and environment setup are cross-referenced in
   rewinding operator-set `status`/`assigned_runtime`.
 - `packages/server/src/__tests__/github-pr-review-webhook.test.ts` — the
   Phase 1 PR branch with mocked `gh`: small PR → accepted with a
-  `github_pull_request_reviews` row and completed maker+checker leases; large
-  PRs (>40 files / >1500 lines) and sensitive paths (`.env.production`) →
-  `needs_revision`; a failing `gh pr comment` records `failed` without
-  crashing the webhook; duplicate deliveries re-POST with no further `gh`
-  calls; roborev findings are folded into or omitted from the comment body.
+  `github_pull_request_reviews` row, completed maker+checker leases, and the
+  bookkeeping loop_run settled `completed` with `settled_by:
+  github-pr-review`; settling also idempotently completes the goals of
+  earlier settled review runs while leaving a real running goal untouched;
+  large PRs (>40 files / >1500 lines) and sensitive paths
+  (`.env.production`) → `needs_revision`; a failing `gh pr comment` records
+  `failed` without crashing the webhook; duplicate deliveries re-POST with
+  no further `gh` calls; roborev findings are folded into or omitted from
+  the comment body.
 - `packages/server/src/__tests__/github-pr-review-llm.test.ts` — Phase 2
   with only `gh` faked: a real `git` origin exposes `refs/pull/9/head`, the
   worktree is materialized and reset to the PR SHA, the mock checker runs
@@ -345,4 +420,20 @@ Operator-facing defaults and environment setup are cross-referenced in
   thrown); the pushed branch contains only the maker's files (lockfile noise
   and the `node_modules` symlink excluded); the token never lands in
   `.git/config`; a second call for the same run returns the stored URL
-  without re-opening the PR.
+  without re-opening the PR; and the RX-6 throttle tests cover off (no list
+  call), shadow over the cap (event + PR opened), enforce over/under the
+  cap (nothing pushed/PR opened), and a failing open-PR list never
+  throttling, plus the UX-10 v2 body assertions (lane, oracle, gates,
+  mutation gain, secret redaction, https-only run link).
+- `packages/server/src/__tests__/evidence-freshness.test.ts` — the Batch-8
+  read-set gate on `openForRun`: off leaves the flow unchanged, shadow
+  records and still opens, enforce blocks the PR when files the checks read
+  changed on main, and a base-fetch failure fails open.
+- `packages/server/src/__tests__/multi-repo-oracle-lanes.test.ts` — the B2
+  per-goal PR target: unregistered extra-repo proposals get no PR, and the
+  draft lands in the registered extra repo when `EXTRA_REPOS_ENABLED=on`.
+
+The same service also feeds the cockpit: `listDraftPrs` aggregates
+`loop_runs.metadata.pr_url` rows with merge-survival settlement states
+(covered by `draft-prs-route.test.ts`, `loop-auto-merge.test.ts` and
+`merge-survival-settlement.test.ts`).

@@ -1,0 +1,418 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:67b69c25fad4c2e3ec7fcf2fc1a490082ef96e31c43bdc06e7cecc76aed58e05",
+  "claims": [
+    {
+      "id": "claim_71706b475e934dab89ce7cefd72c0dd1",
+      "statement": "POST /api/tasks creation requires the create:task permission, title and description, enriches metadata with an advisory, hash-stamped swarm/knowledge context snapshot (Qdrant, OKF MCP, DjimitKB, episodic retrieval) appended to the description, inserts the row and the TASK_CREATED audit event in one SQLite transaction, and broadcasts task.created only after commit; retrieval failure degrades to an empty context snapshot marked degraded rather than failing creation.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/tasks.ts#L141-L252",
+          "version": "repo-lines-v1:sha256:2a9cfe62cea076df3904d8c1a80cb0223a22d4b5f5dbbcb94e85d41b2525e90e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzZjlhYzc3Yjk0MmYwNmFjOGQ0M2UyZDM5MGNhN2E3YThlZDhhMTAzMGQyZmQ0NDY3NTRiMmYxYjdjNmI3MjVhIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzYTNlNDZmOTQyNzZiNmY2ZjRlZDFmMDJhZjc4YmVmNmEyZWUxYzQzOWRkNTU4NGI5NzM5NDgzMTMyMTRkMmI3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI2ZTY2YTkwNGI2YTkyM2Q5YzZmNjlmMjc5MmRkMDNiOThkYzYzZGM5ZmYzOTUwOGVkNzcyNmQ4OGYxMTY0NWI1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjZThhMDFlN2RhODUwY2U5MmFhYjQzZjVmMjQ2OWI4NDRmZTU1YzE5MzI1ZThhNjYwY2U0NjRiZjUxOWU2YzJkIn0"
+        },
+        {
+          "resource": "repo://packages/server/src/services/context-injection-service.ts#L88-L121",
+          "version": "repo-lines-v1:sha256:21b454b47682495a40ebef839ed5c8c726d829b36c9c1973938d98288abd803a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFjMzk3ZDczMjQ2Y2JlMWMyNWZjNDM0NDY3NTIxMWEzMDU1ODhlZDAyMGVhYzU4M2EzZGI4ZmVlODYzZjU2MWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhZTdhMWJlNTkyNzIzZDExYzgxMzUwYjlkOGQxMjFlMjA2ODNiYjVhNWNkY2FlZTIzZjZjZmQ5OThiMWU4YmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyODljMzkzNzgwMzBiZjE0OGRkOTY3ZWUzYzJkZDA2NTJjNGU3ZWJmNDhlMDQ1ZDQ5NGQwM2FjYTU3NzM5MGEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_68e7782e64bd4ec5854d3975afba09f3",
+      "statement": "Task intake treats executor-process environment and recovery provenance as server-owned: request metadata key 'environment' is rejected with EXECUTOR_ENVIRONMENT_RESERVED and all 'execution_recovery_' keys are deleted on create and stripped (with server values re-applied) on PATCH.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/tasks.ts#L162-L167",
+          "version": "repo-lines-v1:sha256:bc3cb78d7de6af021b7152056e5619c787976bd22001196ca43e83e66ac67671:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWNhYmQxNDI3YmU2YWY2MTM2NjNhOTQ1ZGY4MDg1Y2E1Mjc3ZDAzNGU4NGRmOTI1ODgzNmE5ZDM1NGFlOTIwMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWI2MmY2MGQ4NTkwYTU3OWNmNDZmOGQ2NzM3OGM0YzU3MmI5NjJjZWNjZGI5MGM3YTVmN2I0MmI5NjA3ODJhNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTkxNDZiZGI3YmU5Zjk5MDA0YjE2ZGM1MWNkNDQwYWE3OTQwZjQ2ZDU2Nzg1MjdiMTg1NzA5YmU5NGE5MGM4NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDU4YjFmMTY4NGI4OTczZmJmZTNiZmE2YjViMmY3M2VjMjMxYzk2ZTdiOGNiMjE2ZjgwMGIxOGVhMTNiMzA3MyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/tasks.ts#L211-L211",
+          "version": "repo-lines-v1:sha256:0cdf15f4c1a17a374b52e9018b53bd7e822c7cace1c096bd608f2469a0518f82:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGNkZjE1ZjRjMWExN2EzNzRiNTJlOTAxOGI1M2JkN2U4MjJjN2NhY2UxYzA5NmJkNjA4ZjI0NjlhMDUxOGY4MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGNkZjE1ZjRjMWExN2EzNzRiNTJlOTAxOGI1M2JkN2U4MjJjN2NhY2UxYzA5NmJkNjA4ZjI0NjlhMDUxOGY4MiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTRmODc5MzIyZTc3MGIxYzhlMjMyNzgwN2U2MGRjOTFkMjFiYTYxYjE5NGRhYjM3YzNlZDI5MTY0MTFiOTUyOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMGVkZjFiNjk3YWY5ZjZiOWZlOWQ5OTU1ZWUzYmFlZjM3YmQ1ZDRhMDNjYTFjMjY0NDQ5ZGU1YzgwNGNjZGRhMyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/tasks.ts#L290-L293",
+          "version": "repo-lines-v1:sha256:3c03feea7258d0322937fd4369659280ff982d30d7f41ccd50836e53388aab7d:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWM2MTc5NzhjNThiMWJkYWY4ZTdhN2U2MjBiZDQzZDQ0YzZiMWE0ZWUxZTYxZmZmMjZlYjEyMTE4Zjg2ODgzOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZThlZDkyNzE3MmI1ZDJjZTZmZDFhN2I0YWU1NGExY2VkMWMwODNmNzgwNDM3MTVlY2YxZWNlNDhlMjc3Y2E0NSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjdhMzc2NWRhMzgxNzg4NGZjZWE1ZGMwZTRiMjYzNGM4OTFjY2RhYjE0MWYyNmRjZjgzOWFmN2I4YzhmMWU2ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2MwMTQyYjljZGFhZDNlMGIyMmQzYzFiNTQ3ZWJhYmVmZWUwODYxMGM0N2MxYWI2NmVhMTMxODc0NjZiZmU5NCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_c99cffae0d004902bf8f0441a1bcfe74",
+      "statement": "AuthorizationService is the task-scoped authorization authority: non-privileged users are limited by SQL visibility clause or per-task owner/created_by checks, unauthorized access to read/execute/cancel/delete returns 404 rather than 403 (non-disclosure of existence), delete is privileged-only, and canApproveForTask forbids the task owner from approving their own task.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/tasks.ts#L441-L444",
+          "version": "repo-lines-v1:sha256:d3e11483c968946fd1eadb1008f47261175355e4730c0ecf1d2eb0d3bf4e51b2:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWFkZWUyOGIzMGE5NTU4NTQ2YjlkNmI5OGRlYmJlMGI2NDNlYjYzZDQ4MGMxZWYyMWY4ZTQ4YWRjZjM2ZTBjMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWI2MmY2MGQ4NTkwYTU3OWNmNDZmOGQ2NzM3OGM0YzU3MmI5NjJjZWNjZGI5MGM3YTVmN2I0MmI5NjA3ODJhNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmQxMjRhYTBhNGI2ZTkxYmEwMmIyYzZjNTg0OGMyMWUyMWJmNmEyYzAwZjM1NTdkOGE1YmY3MjVkZDE0ZTA4NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODlmMDNmNWRkZmEzM2M3OWJlMTcxM2EyNzdjNWM1MDk1ZjdlMWZjNGFkMjZjNTBjMjZhMGU2NWJkN2Q2NzIzMSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/authorization-service.ts#L18-L44",
+          "version": "repo-lines-v1:sha256:f91005232b615bcabcb4b3f97440cf34c66354cab8472236582698b3edb994cf:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkOTE5OTAyZTQ0NGYzZWU2NTJhNDU3NmJkZjhjNzEzYjcwOGYxMmQ5YWJlZTk5ZWQ3NGI5NzFmZDUzYjMyN2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI3OWFkNmRmN2RhZjk5OTk4ZDIxZmJmYjAwOGVhNzY2YTMzODU0YWU5Y2I1NTIwZTA5N2E5NzE4YjFhMDkxOTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY4ZmJjMDAzM2M5MTNhY2VmYTA4NmVkM2M3N2NiNDI5YjFiZjc2YWE1YzFlMGJmYzdlNjczNGI1ODNiZjg2MDgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/authorization-service.ts#L79-L94",
+          "version": "repo-lines-v1:sha256:85a74ffafa4cf9874546be6f4133c2eb1a81630f63f0caf4230b3e383e308cef:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0NmQ4MWJiOTdhNTVhM2E0ZmRlZmVjN2ViNWM5MTY1ZWI1ODNhM2FhZmM2NjYzYzZlNTFhMjVmNzAzMjQxYzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkNDljODY4Mzk3NzFmZmNkNjc3ZTVjZjQzYmM4MWFhZjZhNTMwNTlkM2FmZTVmMjE3MTE3NzgzNDZhYjQ3MGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQxMGIzNmFhNzRhNTliY2Y0YTg4MTg1ODM3ZjY1OGFmYWYzNjQ2ZWZmMmJiMTZjMzkyOGQwZTkzMzVlOTQ1ZDIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f4ed4a2c96ee40a79a2397968353a54e",
+      "statement": "POST /api/tasks/:id/execute requires execute:task, resolves the executor kind from request body over persisted metadata.executor over default 'opencode', rejects an in-flight task with 409 TASK_RUNNING, and delegates to ExecutionEngine.executeTask whose result distinguishes started, awaiting_approval, and denied.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L68-L73",
+          "version": "repo-lines-v1:sha256:0dc28e036cc19f9bd638709f7b0dd96757edb6cfba6774ba86e28394b84cb011:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTMyMDY0NDdlNGQwYjAwYWRjNDIzZDAzNjMxMjZjYTE3YWYwOTY5NGNjZGM3NmNkYzgwYTMwYWU3YmYxMGU1ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDAyZGJiNjNkODU2OGU0NmMzZjg0M2NmMTkyZWM1YTc2MmEzNzRiNDEwM2ZhZjA3ZTllYjA4YzNmYWUxNjQyZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjQxYTk0YzI5YmE5ZTU0Y2JkZTVkZmZiYmY0ZjI1M2YxNmYyZmE0NzQxN2E3MmM2NDY3ZDVlMTVkNjhiOWJhMiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/tasks.ts#L434-L484",
+          "version": "repo-lines-v1:sha256:0161c5f0b1de71ed15bd9f623acbdcff484dbe30d68e8a1433376f48248cfcdc:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzODk2ZjU5YTJhZmEwODA2MjFkMWZhODMwZDc5OTI0NGUyN2QyYmYxMTRjNjQxMmFjMTk1NWIwOTdkYWExNDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEwMmE5NGMyZjkwNWRjYWE1ZTcyOWM0N2RiNThlMDc0MmQzYTI4Y2M3MzkxZTAwNTRkYTI2MDBhNWQ3MDkwOTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFlMGFkN2NlN2YyNTUwZGM0ZWVhNTBkYzRjOTE5MjI0ODNjZGMxZDRjYzgxYTNiZTY3ZDQzNzMwMGQwZTJhMGIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_10acf2001eba493e94a4aaf50808af95",
+      "statement": "ExecutionEngine.executeTask's synchronous admission chain refuses dispatch when a session or pending execution exists, the durable status is already running, metadata.execution_recovery_hold or deep_agent_assurance_hold is set, a pending execution approval exists, the assigned agent is missing/retired/unavailable or blocked by runtime governance (which cancels the task and returns denied), the owning loop run or goal is operator-paused, or skill attribution is invalid, unassigned, or ambiguous.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L1426-L1479",
+          "version": "repo-lines-v1:sha256:d77d22c54ff0d883ad113bb389bd3422d1fa36a7374670b58a36cdd03baa667c:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1MDMyZDIzOWM5MWU5Yjc3OGZhYjhkYTY1Y2Y0NDBiY2VjMWEwY2YxOWE1NzAzNzZjN2VjYzdjMzVjYThhMzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVlMTJiNjExODk0M2UzMGMwMDY4MzNlNzgxNjMwYTUzYjMyZjQxN2VmNWY5Nzk1YzNmMTJmMzMwODAyNGM1ZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZiYmI3ODkyNjg3YTEzYmViNDA1N2I3OTA1YWJkZDI3ZGYxMDdiZjI3NGEzOTdhMTZhMzMxNGFmY2Y4YjRhMmYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L258-L311",
+          "version": "repo-lines-v1:sha256:aa292f20876d26490f04342f4193afe0b0f42070abbb9f0836172a601c6b95d0:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5ZDIwYTViODgwYjBkNGU5MzZlN2M5MjhkMzZkYWU3ZDVkMTgxZDQ5MTJmYmVkZDEzODJlYjE3MTczMjc5ZTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgyMmE4NzFmMDUzMzY4MzU1MWY0ZGQ0YmEyNWU0NzAzMDg5YWU5ZWI2NDkzOWY2MGY3ZWVmYzNjYTdlZTE1ODMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ0YjQzYmM3ZjkyNDM1OTVkZmY2MGNhYWQxMjhiYWExOTU3OWNmZjc1OThhY2FkMmY0ZTkwZDA1MWNjMTAzNmYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L554-L596",
+          "version": "repo-lines-v1:sha256:26d65cd013d9fbbdd4d060763c7139f28a9c3e2fbee1d08489a6e42ad0878fe8:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJkMjVkNjlmMjRhMjJkMjVkYWUwMGFhZWE0ZThmMmNlOThmNDhmNzRkMzkwZjUwMmNiOGQzYWQ0YTViYzA0YTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3ZDg2MzJlNTRlOTI5OGFiYjk1ODcyN2UyZDUxNDA4YWJhZjEzNjYwMzUzNzkxMDE0MGFiZjY1YjMwYWI2MTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjljNzkyNmVmYmJjMzkyNTA0ZmM2OTlkNjgyNDY1NjVkYjRkODA2ZDNiMmMzNDZiZTdmN2IwMDQ2Njg0NzdiN2YifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f43f88831cba46d3909c168018a69585",
+      "statement": "Before an executor runs, admitRuntime resolves the runtime at its post-boot probed version from runtime_contract_probes against the in-repo RUNTIME_ADMISSIONS ledger where a critical gate FAIL always rejects and version-pinned admissions deny on drift; every decision is persisted as an execution event, refusals are recorded as runtime_admission policy violations whether or not enforced, RUNTIME_ADMISSION_MODE=shadow records the denial while allowing the run, and every fallback attempt must re-pass admission.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L624-L626",
+          "version": "repo-lines-v1:sha256:2094c71d10eff0099879fe8e3e79d13009fc98c91bb729c0afe3aafc9ec9e89a:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2QyNmZiNWVjOWQ4MDA1MzBkMzQyMDQ2OTAwZTE0ZTM0NjZjMmZhMmY4NjhlNzkwMWZhYzQyYThiYmQ5OGIwOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjI4ZTg0MTYyZWIwYjA4MDY5NDZjZmRhNzI4NDY0ZGYwNGQyOTQ5YjhmODA2YmNiOTc4MzgzZmM2MWY4NjdjYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWU1MDIwMzNhNzMxMDBhZjUwYzM2M2JiZWE4MGNhMTJjZWQxMDJhYTc3OWViZGIyZmFkMDFhYzcwNjBhNzc5NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWIwNWIwMTI3NWFhYzQ2ZjkyODk0YzFhMGUzZGI5ZDk3NmUwNzAwNjhiNmQ2MmZiODg0ZmI4MTFjNWE0MzY4OSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L832-L853",
+          "version": "repo-lines-v1:sha256:54125ece6c8b2cd66fb624f72133701cc47696f5ea4b127e5b3b7a39cf1483d7:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlMWEzNGFhMTNiNTg3MTJhYWE2MTA1NjA1NDBmZGU3OTZkOGUwMmFlODY4ZWQwNDMyMzNlYTRhYzNlN2IxZDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQwOTE5MjJjN2MzODM3MDQzMjM1ZmViZjE4MjdhNjg2ZjQwZDczNmEwODI0MjM5ZThkODBjNGE0M2M0YjliYTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA5N2EyY2U3NDQ4NWQ5MjU0OWEwOGRjYTMyM2JlMTczYTZkYTAwNmMxMWFkMzA2ZDkwODEyYTRkYzgxZWQ5NzgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/runtime-admission.ts#L48-L108",
+          "version": "repo-lines-v1:sha256:6026a6b328c9b333ae4e758e0bd6f987aa88817c2be9c91ba2d5663d1ecc567d:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQyYzdmZDJmYzk2OTA5ZWY0MjZjNDg1MDhjYTIzNDcxZDc0Zjk0MjczZDM2Zjg3MmU1NWZjMTUyMDMxM2FkZDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIyOTI5MzgzN2E3MTEzMjVhMzBjZWFlZTYyMDRkMjMxYzg4MmYzYTY3MmY1Yjg1MzFiOWZmNmZlYTA4OGQzZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA5NGZiY2I5ODc0ZmYyMzRkOGQzOTAyMDZjYzI3NjNjNmYwNDE3OTUwYzE4ZjFlYzNkOTc0ZjE0NGFkMzY2OWYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ce89efe8608241c7961325d99706f45c",
+      "statement": "CommandRiskClassifier.assessTask derives the RiskAssessment from the task row (stored risk level, review_only mode collapsing to allow, sensitive keywords escalating to HIGH and require_approval, local-opencode baseline raise, and pattern-classified requested_command with unknown commands defaulting to MEDIUM require_approval), and PolicyDecisionService.evaluate matches it against enabled approval_policies or falls back to the classifier recommendation; every assessment is persisted to risk_assessments and broadcast as risk.detected.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L1481-L1509",
+          "version": "repo-lines-v1:sha256:21af0408654993e6d075f8fd7bce5bde758deefa0e15aa687f621a552d2a6b0c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExYjkzMDI0ZDI1N2E1OTJlNTlmY2U0NDU5MzBmZDRjMzAxYzcyNTkyOTAyNWM3Y2MwNTEwODZmOTY3ZGJkMDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdlNTViNTUwMWJjYmY3Mzg1ZDlhMTY0NjAyMGU3YjQ3MDM1ZGNhNGM4YWMyMGE2MTQ4ZjMxNWYxNjkwYzUyMTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZlOTVlYjZiZDQyNjYyY2U5Zjk5NGU0OTE3ZTExZTgzZDdkZTgzYjQ5MjYwMjVhZWQ1Yzg2NjViMWRmZTBjMDYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/command-risk-classifier.ts#L78-L120",
+          "version": "repo-lines-v1:sha256:8fdc0390ad9d0e7d97d77e846d8bb826ae5f0bfbc7ef5f8b9c8121e77b9fe49e:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3ZmMzMjEyMjcwYzA3MzMxNTcxNmIzNjhmMTdlMDA1OTA1MDYxZjgyNTFkNWJkZWM0OTZlNGJmOGYyNzBhOGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVlMTJiNjExODk0M2UzMGMwMDY4MzNlNzgxNjMwYTUzYjMyZjQxN2VmNWY5Nzk1YzNmMTJmMzMwODAyNGM1ZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc0Y2VkMjc3M2Q1NTljMGJiMmRhYWFkMDVkZWI4M2UzZDYzZGM5ZjA0MmY4ZjVhNDQ2ZTFjOTc4NDQwYTZlNzEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/policy-decision-service.ts#L25-L83",
+          "version": "repo-lines-v1:sha256:5d4a4d7e095b2f83666db511728bb9bda065c7fbc5de8fb6c1b3f93cdd7928fb:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1NzU3M2ViODdlMjU0MDg3OWYzZmQ4OTA4MjRmZWJlYTVhNTQzOWIyZWZjNzAxM2QwOWNmODMxNzUyYjVhMDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1MjcyOGFjYmZiNGMxZjdlMTgzZDBmNzk1ZWFmYWEyZjBhZDk0ZTIyN2U4ZDhlNjYzMWIyZTU1NzYxMWMwNjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ4MWEyMzA1NzIyZmIzN2ZhM2VmYTNjNDIyYzQ1MDM3M2I0NmIxMjQ3OTE0ZmJkMmY2MjIxYmZiNTU2ZDkwNzEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d7e0714254c44245a4a265ede32f006c",
+      "statement": "GovernanceGateService can only tighten a policy decision: when the executing agent/model's OpenMythos benchmark score falls below the configured floor an allow becomes require_approval (recorded as policy-decision evidence), and it never loosens a deny or approval outcome; the engine applies the same tightening again after the capacity wait.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L332-L352",
+          "version": "repo-lines-v1:sha256:6cb36d6b88c288b2d767b082d402192f9ab1e355ee3164283d49932bc6c40b37:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhZmNjZWUyZTQ1N2IxZDg4NGEzNWI1MWQ1ZTRjZTRlYmRhNTM3YTAxYjk1OWI1YTc4ODExMWQ3MmNiYjI1NzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZTRiYmYzYjNhOGI3NmEyYzIwM2IyYTU0NjNjMmM0YTRjNGJhY2JiMzI4NGUyMjQzOGIzOGZkZTg0Y2FiMjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUyN2JmMDIzYmZlYWJlOWY5ZjI1MzA3NGQxMjM5NjI1ZGU2MDg3NTA2NTc3YjAzOWEzMTNkNDk3Y2Q4MTJiNTEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L504-L507",
+          "version": "repo-lines-v1:sha256:a308f4d22a4ca421eba98c59e213d2593737ce7e4c1e3ab00fb859369e012db1:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZhZWE4ZGIwODU1MmJiOGVmZjkwYzUyMDY1ZmI5YWRlZWU0NDFiMTU3NDM3MWM4MTQxOGJhMjI3YWQxNTcwZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWI2MmY2MGQ4NTkwYTU3OWNmNDZmOGQ2NzM3OGM0YzU3MmI5NjJjZWNjZGI5MGM3YTVmN2I0MmI5NjA3ODJhNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzNmNTY5NDZmZTE4YWJkMTYyMDJmYTZlNDA4YjVjODM3OGE5OTYyZGU5MDdmYmI4OGRiM2UxYjE0NWFkNjk4MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTZhMzkzZTVlYmE3NjdiMDNmOWFiMjhlZDczNzY4MjQ0Yjg2MTU0MzQwNGQyNTMxNzQ3NTJhYzIzYjc2YzEwNCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/governance-gate-service.ts#L1-L30",
+          "version": "repo-lines-v1:sha256:c895ea83a6fe536e534c332c1622324d31c62309cb1b020bea2e5b6099a5dc1a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3MmE0MjkzODJiMmUxNDcxOGUwZTM3YjA1NzBhOGExNzAyOTkxZmNkODQ5OGNkODQwNjBhOGJmNGYwNTAxN2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEwMGIyODNhZDljODQ4ZDljOWVkZTFiN2U3MzNkOWY0YmVmNDhkOWM1MTAyM2Q2YWJiYzRkZjBjODMxZDc3NWMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b699b5ce94ff4ecdb6ccc975f997bc76",
+      "statement": "A policy deny at admission executes nothing: the engine captures CRITICAL policy-decision evidence, persists an error event with the matching policy ids, audits execution_denied, broadcasts execution.denied_by_policy, cancels the task, and returns denied to the caller.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L354-L387",
+          "version": "repo-lines-v1:sha256:966739eb5ee46984e6154d9f6e0af19a1f8c2613e40fd7d947347c7db51795eb:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5MDIwMTczMGE3NDUwZDIxMGNhMmUwNTQ3NTFmNWYzNDQwYWViODM0YTY0ODM5MmQxNjA1NTFjM2RjNDg1NGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwNjNiZjJlNzlmMDBjMDliZmUwNGExMzVkZmRjNmY4NTk1ZjUyODU2MmIzMWFlNDIzY2ZkN2MxNGI2MDlhNWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ5NmQxZGY2ZWZkNGZkZjZlOWVjZDE1ZTMzZjdhNjc2NDZkYThkMWUzN2YwYzlhOTQyOTBlZWI2ZDI3MzBkN2YifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d11ee01595dd4b9682b037ea0189d2b9",
+      "statement": "A require_approval verdict without a currently valid grant creates a pending approval whose metadata binds executorKind and executionInputHash, moves the task to awaiting_approval, persists an approval.requested execution event, broadcasts execution.paused_for_approval, audits execution_paused, and returns awaiting_approval; granting later drives handleApprovalDecision which records evidence, broadcasts execution.resumed_after_approval, audits execution_resumed, and re-enters executeTask.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L389-L432",
+          "version": "repo-lines-v1:sha256:7db1db4f981f70621ddb6e4377adc743b2a6f1dba409c5b4c4731e85d8c0ed7e:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzMzg2MzYzOGQ0Nzk2MWVhYjQ3OTAxMGFjMGI0ZGZlY2VhMDYxYjMyNWNhOGNiOTFjZjFiYzRkMjdmNzlkNTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzZTcwNTY4MTRmMzg4MDcxZjUzZTZhY2NhZTgyN2Y5NGMyYzYzODhmZTM2MTZmN2FjOWEwODVkYjg4MzE5ZjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFkYjFhMThlZDk1YTgwY2I0ZmY2NzgxZWQ0ZGVhODljZjgyMmY2YWI4NjY2Mzk5OTcwNjQ1YjFiZDIyZjkxODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRhMGJiNTBiNDUwYWM1ODA5NTk3YWU3NTkzZTVjNDVhNWRlZjc3OGU5MjY5NWY5ZWUwNzM3MTRkOTU5OGFkMWQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L923-L954",
+          "version": "repo-lines-v1:sha256:274f42ccaf74ebe4e738b5d29cf410305c01c799b326205b3bea32128e9a0db0:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYwMDk5Zjg1MzgwNGQ0ZTA5Y2ZkZTczMzNiOTQ5MDFkZGE2MTJiMTI4NGQ1YTIyYzcyYWI2ZDBhNzA3ZTExMDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiZTA5Y2YyNmU5ZTAzMjE3Zjg4ZGY0NWZiYTZkZDdiNTc1ZGY0YTkxODgxOGRkNDBlZWM0YzU2YTNmYTMwNmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY5MjQ3NzZkM2U0ZGUzNmI1OGY2ZDE3MTM0MmE0ZDdiZmM0OWFiNDA2YmNmM2ZmNzljYzQyZDRlODc0ZjY1MGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImViMGZkNjk2OTE4NmEwMjIwMTgwYTMwYzA4MWRkM2YyOGJjZjBlOGRjNGFhMDhlM2I3ZTk2OTBiZTA2NGIzMjMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d15d2091870d42a3a3016bfd9d851de6",
+      "statement": "ApprovalService owns the pending to approved/denied/expired lifecycle with a configurable TTL (APPROVAL_TTL_MS, default 1 h, clamped 5 min to 7 days); expiry is realized lazily on next read or decision and cancels a task still in awaiting_approval exactly like a denial, and decideApproval enforces that expired approvals cannot authorize execution, each approval is decided exactly once, and the requester can never be the decider (SELF_APPROVAL_FORBIDDEN).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L180-L258",
+          "version": "repo-lines-v1:sha256:0f815d2e1911242b15ec29442b069e1f586f29143dbec7053baf1654221016c8:eyJzZWxlY3RlZExpbmVDb3VudCI6NzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyNGI3MmIxYmY1NDNmMjUwODM0N2MzYmI4YjY1MWQ2MDAzOGQ3OTM3MGJhNjA2NDJjZmJmZTBmM2RlMmQ2ZDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5Mzc3YjMyYTNiOGI1NTkxYzk4ZTRiODQ0ZjNkMDkxMDljNGRhNGE0YWVkNTk2MDY3NzNlNDJkMWY4MmNlMmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNhMzk3NTQ0YTYxNGEwYmY5MjUyYzI1MjgwM2FiODQwNTgxNWMzMWE3NzE4MDk5MGQ0ZmU4MzE5MWQ1ODhmOTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjliM2NjYTYwYTcyOTg5NWQxNjQxODY3YjkwOTRhOGRkZTZmYWM2ZTZkODJiMzAyZTdmY2ZlNGVlMThkYmEzZjMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L272-L310",
+          "version": "repo-lines-v1:sha256:f7d0f8cec804ae60781ced5de1555b39d4bf8952ce9745ac426192046b24e809:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVkYmI1MjkzMGI4ZTlhYjliM2RmOGZmNTY0MzE4N2ZjZTM2Y2ZhYzRhMDNhMzI1OWQ3MTViYzYyYmJiMzZjZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJmNGM5YzI3MTkyOWQzZGE0YmQ1NDNlYWU0OWMwYTNiNTVhOTRiYWM3YjYyMGI5MzkxYzNkZDk3YTdhNDYyMDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJkMjAxNjIyNjVmYWYzMmRiMGJjOGY4Yzg1M2M2NTEwNDYxMzk3ZGM3MWY2MWRiYmE4NmE5MGViZDczYzIyMWQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L29-L32",
+          "version": "repo-lines-v1:sha256:204973ad205873c272b5763b9b836dc2555ba17d498465fee85ee79fb4d62db2:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWFjMjQzYzZhYTFmOTY2MzE2ZGVlOGExMjZhNmE0ZTJmODk0Y2FkNDA5NWQ4NTkwMDM3ZGM4OTA5Y2Y1NDBiNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTAyNDA0ZDY0MWY3YjE2MjdmMmQwOTAzOTA4YjJlOTZjNjE0NjFlMjNiMGUyMGRiMGIwYjQwNGIyMmJiY2ZhMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmJlYWUxY2Q1ZGZiOWNjZGY4MmI5Y2Y2NjMwYTcwY2E3NGNhMWE2YTU3MjJkYzAzMGQxODExODQyNGI0YTEwYyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_cba0ce930b584e199fab5cf6d15a1ea5",
+      "statement": "Dispatch queues behind the global runtimeConcurrencySemaphore (RUNTIME_MAX_CONCURRENCY, default 4) and afterwards re-loads the task and revalidates everything: loop pause, agent availability, recovery/assurance holds, durable status still queued, executionInputHash equality, and a fresh risk/policy/governance evaluation recorded as queue-admission evidence; a now-deny fails with EXECUTION_POLICY_DENIED and a stale approval with EXECUTION_APPROVAL_STALE, forcing a new explicit request.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L1511-L1524",
+          "version": "repo-lines-v1:sha256:854b503e6dfa20107882bd51c0295c600d42d7ab13022452e539dfa92303cdd1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2OTY3YjUzZWUzMjY3ODhhZDk1ZTI0NDJiZDA1Mzk2MzNlNjBiN2VlZjgyMDc1NzRjMWMyNGFkNTkzNzFjNjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg0NzExM2YyZTQ3ZmJlNTQzNzhjODdmZDU4NDYwMjFmZTVhMzVhMDk3MDZjYzczODE3NDhlN2ZkYTZmNjExMDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZkM2RhMTg3ZGYwYmMzMmM2ZmQ0MTMwZGE2ZjVhNTcwNThiNzk1NjlmY2ZmMWYxMGI5Y2JjMWQyYWUwMTFkMmUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L476-L526",
+          "version": "repo-lines-v1:sha256:c1062503f96f03b0ae8de5e3352a98c96309a8cc7e6a97e6a48bffba79fb38cc:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU3MDIyZDE1YTIwNTY0ODUwNGVmNzMyNjliZjFmZjIzNTFhNmE5NDg1NDYxMjUxMzEzZDUyMzAwYTQyNTE2NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNjJmNjBkODU5MGE1NzljZjQ2ZjhkNjczNzhjNGM1NzJiOTYyY2VjY2RiOTBjN2E1ZjdiNDJiOTYwNzgyYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0YjlhMGIxNmI5OTEwYmFhNWQwYTRkY2FmZjhhNjBjNDI5NjMzYmYyYWUzY2JhY2M4MjAyOTA3NTgwZDEwY2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwNjBlNzczNzQzYjQwMDc5MzIxYzRlYWUxZDgwMGMzNGZmZGIwYzdkMzhkMjJjMmI5ODA1ZmQ1OTgwNWRiYzgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/concurrency-semaphore.ts#L1-L8",
+          "version": "repo-lines-v1:sha256:41f8eb6910343e48abad379f424bc04529f8e071aabddc7fc5d24d0517beb4a2:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmU4NjMzYjIzZTdmZDFkYTYxNWVlYjNhMzhlYWVhY2Y0M2JjNDlhYTUyN2Y2ODg4OGExMWFjYmEzNTI4MGE3NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmI4M2VhY2NjNjBlY2FkZmY3YjNlZGRiOGU5NDM0MWNkYjU0NmJmZjQ4NTQ1OGEyZjkyM2E1Yzg2YTIxOGE0YiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_145a651dfe444d36a7e7e58771c52204",
+      "statement": "Before any external process start, startExecutionAttempt transactionally stamps provenance: an execution_events row with metadata source execution-engine phase admitted and a fresh attempt_id, plus task status running and metadata.execution_recovery_attempt pointing at that event; executor options pass server-side validation (model, reasoning effort, codex sandbox) and skipPermissions requires both metadata opt-in and RUNTIME_ALLOW_SKIP_PERMISSIONS=true.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L643-L655",
+          "version": "repo-lines-v1:sha256:7ea8cb9a56c6f4717f0296452741cddf0bc5362a2407e45ad46c0805cfa4c4ce:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExZGY4N2E0NzMxNmM3MDhjNTUwMjA5OGU5YWY2YzQ0NTM0ZWI4MGJlYWRjZjYwNjMwMjhlZmNhODU5MzdhYmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNjJmNjBkODU5MGE1NzljZjQ2ZjhkNjczNzhjNGM1NzJiOTYyY2VjY2RiOTBjN2E1ZjdiNDJiOTYwNzgyYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcwOThiMzNmYjJhMmU1ZjY4MzM1YWMwYmM3ZWRhNzAxYjA5ODc0NTU5ZTQ5NWNiOGMzNDdlYTM1ZTY4NDg0MDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUyNGQxNmQyMjRkZjViYzJjYjdjMWQ3NjRiZDAyZjE1YmVkNWIwZDE0ODQ1MmU5M2ZhYzNiODNiNzBlZTY4OWEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L656-L676",
+          "version": "repo-lines-v1:sha256:fc0aa755f65a9d20eb800fd0560f87c82c93e0a6977074a8a62940927070b4a1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM3MzgyOGYzNDMwMmVhYTIyOTljOTYyMWY0YjNlNDQ1NjAyY2RhNmFiYzZlNjY5N2JlMzY0YmM2OGZjM2ZkZWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxN2FmMTEwMWM5N2I3YzJmNTI1NDA3ODJlNjM0Y2M0NDQwZjBlOTcwMzQxZTUyZjk3NTIzMTFkNzhiN2Q3ZDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFhZGQ2OWRhZGM3MzAyZGI3ZTI3YzJlNmE2YzU2NjQ1YzQzZDk2MzI2MjQ5NjViZDNkZjY4YjJiMmVmNDI4YzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFiZDQ2N2M4OTVkZWU2ODliMzg4ZWIwMTMzZGNjMDE3N2RhZTJjZDFkZWNhMjM2NDY5OTU2M2UxMjBhYTlmMjgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L80-L82",
+          "version": "repo-lines-v1:sha256:d5e3c686cb087459316c40887dfc1b55f7c6e006df16dbc446b04b9ba12adab5:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTM4ZWUzZWU2MGYwODE3NWM1ZGRiOGMxZDYyMGQwMjIyYTY0Y2RlNzE1YmJhZTZmNWEwOGU4NjNlM2Y3MjBiMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmEzMzc4NmYzMWNkYjgyMzMyNzNjZWQzOWM4MTNkNjFkNTllMzYwMjA1ZTM1Nzk1MDAyM2FlOGNiYjliODQ4NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGNjMjhkYzg0MWQ4YTY3NDQwMjgyMmJkMjMzMGIxMWM5YjQ2YTEwZmU3ZDgzMTRkMGIwMDYyZWFkNWFiZGExNSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_2e46c9db9220462b8c5aa3890da3f3bb",
+      "statement": "metadata.sandbox.enabled wraps the chosen executor in DockerSandboxExecutor with configured image, CPU and memory limits, network mode and bind mounts; the deep-agent executor forbids sandboxing (the sovereign runtime owns isolation), has no fallback, and receives a contract issued in memory that is deliberately removed from durable task metadata before dispatch.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L527-L532",
+          "version": "repo-lines-v1:sha256:fe086111090993e36ecdcb4ba2adcd627c4fa5266cb7713e4bf589b94518cbdd:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGViMjAwMGRiZmU5MmQzY2ZkOGE4NGUxZjkzYjhlODA2NmQ5M2FmNmRiZWM4NjJiNjdhOTIwOWE2NTAwZTA0YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWI2MmY2MGQ4NTkwYTU3OWNmNDZmOGQ2NzM3OGM0YzU3MmI5NjJjZWNjZGI5MGM3YTVmN2I0MmI5NjA3ODJhNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMGE5ODU4OTU5Y2RhMTE2OTUzZDM1YWUwNTFhZjI0MGVlZjdkMGM0NmJmZDdlYmUxOTAyZTU1OTdjN2IzZTVlMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGU1NzJiYTFiOTZlNTdiNWE2MjZkODUzNDA2MzE1OWRiZjcyYTI3Yjc1MTU4NTY0MGRlNmMyMzBhYzFkNzAxZiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L616-L616",
+          "version": "repo-lines-v1:sha256:f579369b4e16603c0c181b84d5cac9623a59f8e1615e816bb94f1810b2dbdda8:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjU3OTM2OWI0ZTE2NjAzYzBjMTgxYjg0ZDVjYWM5NjIzYTU5ZjhlMTYxNWU4MTZiYjk0ZjE4MTBiMmRiZGRhOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjU3OTM2OWI0ZTE2NjAzYzBjMTgxYjg0ZDVjYWM5NjIzYTU5ZjhlMTYxNWU4MTZiYjk0ZjE4MTBiMmRiZGRhOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWY2NjQyMTBiNWNhMGQyNjBkMzA3NjM5YmYyYmI2NTEyMzlmYjRiYzFiMzZjY2IzYjI4MjBiYTY2YjYxZmJmYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmYzY2U5MjU4N2ZjMGNmMmRkODIxYmNiMzFjODU2OWI3ZTg2NzNmNTg2ODZiYzU0NjgxMDA1YmVmMTkxNWU0ZSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L627-L641",
+          "version": "repo-lines-v1:sha256:056624a1e482ddf751c869c52bd2cdebd7c75ac80938686775c1f96b8e68b4f2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY4MGY5NmMyNGI2M2I5MzAxZjBiZjQwMzYxMGQyM2RmYzcwM2JhZWU4OTc5YzdkYzRkMzlmYThjNGFmOWNkY2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIwOTRjNzFkMTBlZmYwMDk5ODc5ZmU4ZTNlNzlkMTMwMDlmYzk4YzkxYmI3MjljMGFmZTNhYWZjOWVjOWU4OWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMwYmE2NjczZDEzMDBjN2RkNWQyMjc0M2VmMTQyNDA4ODBkYTk2ZGUzMGQ4YmJiZGY3MzBjOTYyODZlOTIxOTkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_41e9e0c0f1794db29b82baa55e9dc9d2",
+      "statement": "Failure handling is circuit-broken and bounded: per-executor circuit breakers (threshold default 3, recovery 30 s) gate attempts before the per-mode fallback chain (fast opencode/gemini/claude, standard claude/codex/gemini, controlled claude/codex, restricted claude only) advances up to the mode's maxRetries (1/2/3/0), a fallback must independently pass policy admission and runtime admission, and no automatic retry happens when the failure's sideEffectsPossible flag is true or it is not retryable.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L615-L620",
+          "version": "repo-lines-v1:sha256:14f43fa52c178622d1c2825ae61025ff55968dbda03daf500907bb2f9396d3b5:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWZmZjBlZTA0MjkwMGRlOTAxYWY4Y2RmYTRjN2QyMDNjNDdlNmE1MTUxOGM5OGEzMzI4ZGU4NDkzODEzODMyZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg5M2Y0MGUzNzgxZWI4OTZjODJkMDQ2YTA4MDY3YTExZTM1Y2RmMmYxZGZhZjI2ZmVhOTBiOGRiNjY3NjQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTM5OWY3MDU5YWY5ZGUwYmZlNWExYTY1NzdhYjI4ZmM2NWRjZTRiOTQzZjE5ZmUyNjhjMWExZTM5ZmEyZDQ0ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWU1MDIwMzNhNzMxMDBhZjUwYzM2M2JiZWE4MGNhMTJjZWQxMDJhYTc3OWViZGIyZmFkMDFhYzcwNjBhNzc5NiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L718-L725",
+          "version": "repo-lines-v1:sha256:b8d42b2da4e93ca2a8bc510b6681cc5aab93f28c56a33e50b529bf90eb74aa6b:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDhkYjc0NjA4MTgyY2I3Y2E0ZDlmYmE0OWEzOTQ5OWE3ZjM5MDdiNGVhMDMzYjE0OTJhZDVjZjBiZWVlZWNlZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg5M2Y0MGUzNzgxZWI4OTZjODJkMDQ2YTA4MDY3YTExZTM1Y2RmMmYxZGZhZjI2ZmVhOTBiOGRiNjY3NjQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGExYjU0MTdjOTg0NTg3MmJhODczNzc1NDc1MmZhMjJiMmYxMTMzMjVjMDVkMGM0OGVkZGFlY2FhOTU5YzlmOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTA0NGU5NDM1N2IwZTNmMmI1NjY3MTg1YmI1M2Q0MDc4Y2YxNTg4YjE2NTVjMmVmYjQ0M2YzMzAwMTY3MWI3ZiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L797-L809",
+          "version": "repo-lines-v1:sha256:d973f1454de321697be1a91eabcec4432ee40da9e5102da3ec528023a636a278:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRhNmY3N2Q0MDAyYWQ4MWM1NzVhMDVmYzgwNGY2MmQ5MTE5Mjk0YWEwNGZiOTdiN2QzZDY4YWY2NzQ5YjIzZDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEyNzZiYWU4ZjczMzc1NjQ0OTc5YmYxN2ZmMGVmNjMyNTgyNDNjYWY5M2I2NTY0YWY3YTUzMjE3OTQ1OTJhOTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNlMmRhZmJlYTAzNDM3YzcyYzM4NDI5ZWVmMjU0ZWY1NWM1ZmQ5OWUwZWQwN2IwYTAzZmFmM2YzNTQ1YzJjYjcifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L855-L861",
+          "version": "repo-lines-v1:sha256:c7fcd16a8c78cf271b0a23f83bbace71d645c7619523ca191585ab79974b049e:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTg3OWU0ZTgxMzQxZTAyM2QyOGQ0ZWE5MjMyYWJiZGQ3YTcyMjNjNDE4NGEyOGUwZDk3ZDkyYjYzOTNkMjc4NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTZjMWE4OTE1MjQwYTBhNTcwYmNkYzY2Y2YyOWU5ZTg1NWUwYjg4MjE2YTQ0MTFlNjlhN2Y4OTJiMGI3YmQzMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjJiNzllMDE5NWQ0YjliMWI0MjAxMDVmZmEwODkzMDdhYWI0YTVlMjZjZDU4ZDNjMWExMDU5ZmNlYjA4NzJlYiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/execution-mode-policy-service.ts#L24-L74",
+          "version": "repo-lines-v1:sha256:5464d3e6d54babf991cd98c5bb19810f35445dbbc1967b809524cd7393c22641:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3NThhMTlkNmNmMDlkNjY5OWIyMDExOGQ0MjJlZmFjZTNlZTI0MzVlMTUyNzM4ODMwMjZhMjFhNTlmY2FhOGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI0ODkzYjZlYzJkNzZlYTBlMTVmODNmODY0NzhhZGMxOWIwYmZkYWIzZmU1M2I3YWJkNTBjMzJiNDdkNDkwMjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ1NmQyOWIwNWQyNTdiOWQ4ZTM3MWM3ZTE0ZTU4MmUzNGE0NDhkYzYyZjU3YTE4MGM3NWVhOTFiYzI1NjVhMmEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/fallback-chain-service.ts#L13-L18",
+          "version": "repo-lines-v1:sha256:a2ca18af4a036195aec84b96220e72801389d1278a6e04b4a328073d30f851fc:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTEwMzViYzQ2OWIzZThjNjdhNWMyYjVmNWZkYjE3YWFmZjRkYmM0NTZiYjNhYTFlOTdlY2Y3MDRjMjk5N2YzZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWExZDFhNjMzOTAyMjljNzk4MzQ3ZTgzYTA0MDU0NDFjOTQwMDAzNTI4NGFkMTY4YzFiZjZjZGYxZDcwYTM3MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGU0YjZiZmFjODZmNWMxOGQyMGRlM2NhMzVmYTVjODhkMDFmM2Q0NjAyMjUyYTRjYmVhY2JkOTFlZTJlMjNjYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODQ0ZDdjNzE3MGE4OGFhNWIzNzc3YTk0NjA2MGQ3MGMzOTQxODc5ZmMwYTJlNzNiZjNjNjg0NDU3NTEyMDQ1MiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_8d666785010f47968f027e295fa8189e",
+      "statement": "Executor output is persist-before-publish: processEventStream persists each session event to execution_events then broadcasts execution.event carrying the persisted row's canonical timestamps, and the stream is truncated with a warning event after EXECUTION_EVENT_STREAM_TIMEOUT_MS (default 300 000 ms); WebSocket delivery is filtered by AuthorizationService.canReadTask against each client's rebound credentials, and the same events are readable over GET /api/tasks/:id/events.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L1002-L1089",
+          "version": "repo-lines-v1:sha256:4602dafd605d0a1c63fca198f463ce9911e0a8cbc6ad2388aa5c52537ea71378:eyJzZWxlY3RlZExpbmVDb3VudCI6ODgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0N2E4OTM2NmI5ZDc0YjljMmI3NGNiMzllYmQwMTkwMGMzM2MwYTJkMTZkZjBiOTIxNjhhZDk3N2ExNDMwYTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ5OWQyMzJkMTdmODM4ZGI3NWJmZmU5YWNiZTk2ZTIzZjhhOTc5M2VjNWJiZmMyYzY3YTA3Yzk1NWQyMmM4ZTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY2YzA2Y2EyNzhlMzQ1NjE1YzkyYmMxODg2NTExOWIwNmEyNjAxN2UxNjZlNTVmZjY5M2ExM2Q1MDRjOGJkMDEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/tasks.ts#L371-L400",
+          "version": "repo-lines-v1:sha256:b8863c74aab66226a90a4fc503ee3aa20b0351961434334c3864be4811e689f1:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmZTkxMmFhNjc2OWRkYjdmMTUyMTY4YjRmN2RjOTI1MmU0ZTIzOWY4OTI0YjZiNzU2MTIzYmRjZmM0OTU2MmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEyZmM3OTIwMzYyMDFiMWRmNDBkMmJlMmM0NGRmMTA3Yzk4OWRmNjA5NjBkNmJlYjVmMWQ1NzE1ZDk4YWI0YjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM5MzgxMWVkZDYwNGQ3N2Y0YmRiMTVmZTYwNjdjMTQwZTJmYTc1NTY3YmRiNjk1NzZmMzNhZDBiZWQ1MmQ5ZDMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/websocket-service.ts#L133-L166",
+          "version": "repo-lines-v1:sha256:ec9b6aa1323e0d4f8209834e970105f67e4fa9893241ce4b3a18bbf506d3cd1c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZDQ5OGNhZGIxOTYxYjExZGI5ZDg3NzFhODZiZWY0NGZmZWM1MWI4ZTVmZDJhZjI4N2Y5NTgzMWY0ZGM4MjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlmZTQyNGNmYzJlYzZjMjM2Y2VlYzBhZDdmMmZkODQyYzM2NzhlYTE2NDg2NDljZjNmZDE2ZDU4MzcwNjBiZjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNjZGEzZTY1M2QzNTVhYTI3ODNiZjc2NjY2MzE2OGI0OWM0OTdiYTA3MmQwZjM0Y2UyNTgyMTA1MGIxMzAwZmQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/websocket-service.ts#L180-L199",
+          "version": "repo-lines-v1:sha256:d68cfd3ef944aa0ac9493ce6fcda84957dfd041ceeb10aa225fbdd1a4559c99f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhNmI3N2I3MGMyNzQ4ODc1ZDg4YmM5YzQxNTI3ZTNhNGViYjIwZmQ2ZmM2Y2E0N2E5YzMyZmY1ZjQ0N2I2MDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI0MGFiZjU1ZmJhMGRhZjIwMzBhYzUwZjg4ZTIyODFmMjE3NGE0ODdlZGQ3ODIxMjEzNWEwMGQ4NjFhNWJmYjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjYmRhODQ4ZDg5MTMzZTk0OTNhYWIyNmIzYTNjNmEzNjIzNTkyMTM0MTc1OGI1NWI4M2IyZGE1ZDlkZjg5NjQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_257d2eae8292400186bad89d56bf8aff",
+      "statement": "Terminal handling releases the semaphore permit, stores metadata.executionResult and captures the post-execution repository diff (also on error) before writing completed/failed status with timestamps; completion triggers execution-summary evidence, a task.completed broadcast, and best-effort memory sync, reasoning bank, skill outcome and meta-orchestration outcome recording, while terminal transitions are audited by updateTaskStatus with user_id 'system' so engine transitions are never attributed to humans.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L1094-L1252",
+          "version": "repo-lines-v1:sha256:aaaec9212c8c99f8689388cfe61f7e3cdb727c9bc919bbf71aa6c9d3ad3996d3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTU5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI1YzVhMDk1MTUyMTc1ZTQyNmNmNTMxMzFkN2MwMjhjOGRlNGU4Y2EwNTBhMzAyNGYxYzMxYzI5YmM4MmRiMTI5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3M2E4ZTQxYTM2Yjc1OWQ1ZDZlZTEwMzk4MjZmNzI5NDhlZTE4MTM2YzRmZWVkMDU0NzhmODZiNmJmMjA2NjczIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxYTMwYjhlNWE2ZWM1NDY4MmYyYTAzZmE5MmQ3MTdiODJlNzFjNWI5Zjk2ZDlmODFiY2QxYmIzYmIyMDIyNDliIn0"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L1328-L1349",
+          "version": "repo-lines-v1:sha256:331d8bcafdd074ee1e2ffaa03a263363579bc4a67ebe90ef9bcfd33b06e118c5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJhZGU1Mjg2OTAxZWVmZTU5ZmQwYmUzODhlZDA2YmYzYjcyZjdlMDcwMjVlN2M2OWQwZjkxMjY2MjYwYmNiYWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2YTkwMzFhYzE2YTQ0MWU0MzU2ZmM4MTc3OTQxMWU1MDJmYWRlNGVkMDFhY2FhYjM3ZGYxZGIyZGM4ODIyM2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmZDQ0YzRlYTMyNzhmOGNlMmE0OTMxM2QwYzIxZjAwMThjZDE0NjlkN2EzODA4YTE1YzVhMzYzZTVmMThiNTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk1ZTI2NzcwMDkyMmIwYzE2NzJhZTFlMTZhOGRkOThkZDI0MGNmNGZlMjU3Mjc4ZGQxYTkwYzZhYWYyN2MxMTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e14ed81c4cf1410eaf5ab734f3c6b411",
+      "statement": "A completed deep-agent run never completes the task directly: the engine sets deep_agent_assurance_hold, returns the task to awaiting_approval, and records evidence that executor success is not promotion authority because the independent EVE-V assurance adapter is not installed.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L1108-L1133",
+          "version": "repo-lines-v1:sha256:17683f14dffc15e6e247fa98ecb1e456a631b49293a4648284872ec5dc462cad:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmM2I5YzI3ZjVjNjkwNDM5ODc0MzU1ZjAxNDJlOWY4MDVmMzU4ODllNjBmMjU1OWNkM2Q5OGYzNzAyNThhMTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3OTJmODQ3YmIyMWNiMjkyZGQwOWY3ZmE2ZTdjYWM0YThjMTRkOTdkMzg5NjMzYjNkMTUyMGVhMTRiNWIxZGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk1NjE3ZTQyN2EzZWExM2VlMzc4ZWZjZTU5MGU5MGQ4MDlmYTBhOTlhMzQzMmU0YWY1MDY4N2E1MWM0YzVhZjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdkYzAxNjY0ZmU5NWZmYjFkYWFmYWM1M2UyZGQ1YjVjOTJkMWZiMTJmOTk2OTg0ZDVjOWM0NTA0MDQ4NjU2ZjMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3e31cf4c15b94ce3b511f75554767baf",
+      "statement": "cancelTask marks the session cancelled, cancels the executor, releases the semaphore permit, deletes the diff context, sets status cancelled and broadcasts task.cancelled; result handlers ignore outcomes from sessions that were cancelled or superseded (activeSessions identity check), and the cancel route refuses with 409 when the engine has no live session.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L738-L739",
+          "version": "repo-lines-v1:sha256:7d8823a23e93169e9a17241924b5295de2f2985d96c846d3a1b6bc9f8dc1ab85:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDU3NDcyZDUxZWIxNWQ4OGRlNDc2ZDQwMWRiNmU4MTY1OGM5ZWI3ZmNkMjZiYWE5ZGM3MGMwMWUzNjAzZTAxYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjFjMmQ4NzgzZmY1NTUyMmM3MGMxZTdhOWEwOGI5OWJhZGY4MzQxMjhkNTkxMmQ2Njc1ZmFkOWJmNmQzZGNiOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTc0YjMzOTAzODljZWM4Y2FiZmU2NDAyOTdmNzQzN2FmNzNmZGFkMjUxODI0M2NhN2U5ZTk0NmVjMzZkZWExYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTIzNDk1ZDk3NmRlMzliYzcwYWZmYTMyY2Q3N2E3MWIzNGY0NWQ0NjQ1MTcxMDYxODY1ZjVmOTE4MmNjYWY2NSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L960-L983",
+          "version": "repo-lines-v1:sha256:961f1a6fe046d04074acaeca6af704fdbbb07feeadda98eba8d731f4154845c8:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiMmRhMmE5M2QzMjY2ZmNlOWFjZWVmYThhY2I4NmNjZWEzMjdkZTBjZDEzODQ1ZjdlODg2ODc1YTdmM2IxZDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg4MDc3NWQyNzNmM2EzZjZhN2IzNDY5ZjYyOGI3MzIzMTRkNGQ0YjczYThkZWIyYmY5YjZmZThkZWYyNGZlOTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI1MDMyMDRjMWIzMzFlYzY4NmU2YWUyYWYzZjM1Y2E5M2I2MDljZDIwNWY5MTkwOWU2NTczZWQxMTY4NTEyYzEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/tasks.ts#L487-L516",
+          "version": "repo-lines-v1:sha256:91b5b3c02052006125d7a448aa69994af34473578e26f22c7198f9e1b459e6a6:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlYzZjODlmZWU5MDU5Y2EwYzM3NzczZTE4MTIzZTcwZGU2NjFmNWI1ZGEyNWEzNWJlYWNhM2MxZjcxYjIzNjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUyNTljMTNiOTRjNDQ1OGEzZmMwYjgyZjc3ZThkMzcyNjY2NjFhNGE0YzBiZWJiMDJkM2Y5ZDE3ZmRhZDUzMWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwZWNlNzdkNjU0OTRmMTUxZDg1ZjQwNzgxMWY0N2JiMDYzN2U3NGY1MDk1YzVhMjFjNWJkMDJjZTg3NGMwMzAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e1347418fd3b4041bfef40915c53b73c",
+      "statement": "recoverInterruptedTasks runs once at server startup over durable running tasks with no live session: only when the execution_recovery_attempt stamp correlates with the latest engine-authored admitted event and both agree on mock/inProcess/not-sandboxed is the task failed as interrupted_in_process; every other case (external executors, sandboxed attempts, malformed or forged stamps, superseded mock stamps) is paused with execution_recovery_hold and outcome unknown, each transition committing an event, audit entry (automatic_replay false) and warning evidence in one transaction with no automatic replay.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/task-recovery.test.ts#L37-L121",
+          "version": "repo-lines-v1:sha256:ece92d4eb00cd2ab88a2a1784a231d6bf41df7d82d256a78f612869dea861fb2:eyJzZWxlY3RlZExpbmVDb3VudCI6ODUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiNTUyNWNhMTNjODM0MTQ4NTg5YzNhOWFjMjQxNzQwMzI5YzJkNTQwYzE3YTA0MGIzN2QwMWZmZTBmMzFlNGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJhMmMzNzVhZWFmY2QyNDg2MTJjNjk0YWJjYmQwOGVhMjhlMmEzMzA5NWQyYmY1MmE3ZGIwMTUwZGVlYTljMWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRhYzFkY2JlMjdkZjVmMDk3MzBhN2RmYWU1ZGQ0ODlkMDg3YmRkNjIzNzhmNWUxOTMyYWFiNGU0YzE2NDM0Y2IifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L195-L247",
+          "version": "repo-lines-v1:sha256:662fd4b1636c5762374f180feddba830df974c216880d36a8e241f2c69e113e3:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0MTM5MDI1OWM2YjU2ZTA3ZjllMmExMjE0MDA4MDBiYTA4YTA0OWM1NTc5OTdiNjY0MGI4ZGUzYmJkYmI3MGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhOTI5M2ZkODA1NGI2ZTQ3MjQ4MzczZjM5ZjRkZDc3ODAwMTA1ZWI3NTgzNDg2ODcyNTQyODVjZDEyODJiNzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ4OTA2MzQ3YjFkZTE3NWJkM2UzNWRjZWIyODVlZmEwODI3NWRkNTQzZWY5NmZjNzFhYTAxOWY3ODNjOGI4YmMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L220-L224",
+          "version": "repo-lines-v1:sha256:40fe1c712b0c2fc8db3ffaabc2283876ddb4d63b7281e051141b158cb9ef883c:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWFiNDlhYTFjYWVlMTA1OTUzY2E5NjM5ZDYzMmVhN2Q3NjUzZTBjYzNhOWU4OGY0Zjg5OGVlMzQ3YTg1ZTliYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjFiZjdmOWU5NDFiNzVlYTdiOTI1YTJjYzAyMjU1OGVhMGRmYzJlNDRmY2Y5Y2U1NGJiNGY4NjQ2YjcwNDEyZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTQ2NjNhOGFjN2Y5ZTdlZGY5NjgwNzU4M2NiY2M1ZWI3NDM2YTQ4ZDFjMWYyZGQ4MTZmYjA1MDU4MmIzOGY0ZSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_6bd579b373674ad68fc8ecc6416607dc",
+      "statement": "The execution_recovery_hold blocks all bypasses: executeTask refuses redispatch with 409 EXECUTION_RECOVERY_REQUIRED, PATCH refuses execution-state fields while the hold is set, DELETE refuses outright, and a held task can only proceed after operator reconciliation, as pinned by task-recovery tests covering HTTP PATCH/DELETE/execute and loop-worker replay blocking.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/task-recovery.test.ts#L82-L130",
+          "version": "repo-lines-v1:sha256:6df6b9683d2eb5605e3ed0e881a9ac4c3673d564a6bfe3385fdb574188461472:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxMDg2YWUxZWZmNjYxZGNmZTAyOTA4OWEyODYzNDFkZGNmYjBlYTQyZDk3OGVjNzNiZmM1ZDAxMTQ5ZTU2ZjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1MjdkMTZjMDYzZmMwZGQzMjMwYzcyNjA5NTA3Y2QxZGNmZjlhMWNlZDg4NzdlYTNhZDM3NDM3YjNiNTg3OWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI4OTg5MTFmYjA3ZmQ0NjQ3YWEzNWQwOWIyMDdhNGY1MTRkYzRkMTc4MDAxNjAwZGQ3ZmVjNmZhY2U5ZTdjNjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRlOGI1NWNlN2UyM2QyZjgwYmJjNzFmOWFlNWM3N2Q4ODNkZmY2MTMzMWJiZWY2Nzg4MGJlODk2NzAwYjQ0MWEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L279-L281",
+          "version": "repo-lines-v1:sha256:eb3985b8fcf455fb85635ab44ebed0aa49dcc1080c3157369691a958af413508:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjRiNzMwNDdiNDg3MGVmMGU2M2NjZGQ3ZmM2Y2UxMWIwZmZkODBiMjg0ZDdiOWE1MmQxNWFmNDAzYzlkNzNkMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg5M2Y0MGUzNzgxZWI4OTZjODJkMDQ2YTA4MDY3YTExZTM1Y2RmMmYxZGZhZjI2ZmVhOTBiOGRiNjY3NjQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOThlY2U0OWZjNTdmMmJhNTQyMWI2ODg0YjM1ODJiZmJjNTM1ZDRhMDZlYWFkZmE4ZDc5MDQ5MDM2ZDU2ZTA5OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMGQwYWY3ODZjMzcwODZiMjAxMjljMTBkYjhhZTRiYmYxZTRkYWU0MjAxYzJkZjdhNjEzMGE5NmUxMjUzNWEwOSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/tasks.ts#L279-L281",
+          "version": "repo-lines-v1:sha256:a5fd592f054be4a504e843b88f4ca3127434c4daf12f7193ba6446db839f111c:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzU4ZTUxZDRmOTZkZjJhOGNjNGQ3ZDMwMTVmNzc1OGZkZTljZGNkMGJkNzg5NWQ2Y2M3MDE1NzE5ZTIzMDVmZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWI2MmY2MGQ4NTkwYTU3OWNmNDZmOGQ2NzM3OGM0YzU3MmI5NjJjZWNjZGI5MGM3YTVmN2I0MmI5NjA3ODJhNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzI4NDRmYTM2M2U3NTY0ZjA3NDYwMzAwZGZiNTRhMDU0YWM0MzMzMmYwNTAxZTAzMDljODQ3ZGM1NWI2NTRmMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWY0YWVjMzExNzk0Yjg2ODliYWFhOTc2NmRhNTI0ZmE0ZTI3ZWI0MDRmZTJiZmU3OGQyZWIzYjc5NmUwNzY4NiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/tasks.ts#L349-L351",
+          "version": "repo-lines-v1:sha256:76be11fd501aaf12ee3afe433abe757ac2981f124cd208b40ad1b6e2f7d5d34f:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTBmMGNlMTZhMjc1YTVkZGFkN2I3ODk1NzRlYzQ0ODI4YWYyMTBmMWY1MDU4OTc3Y2U2Mzk2MmZhZjFmOTI2YyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWI2MmY2MGQ4NTkwYTU3OWNmNDZmOGQ2NzM3OGM0YzU3MmI5NjJjZWNjZGI5MGM3YTVmN2I0MmI5NjA3ODJhNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmY0ZTYxNzIzY2E5N2VmZGQ1ZTE0N2I0NTE3NTMwYTIxMzY0NTY5NGQwY2ExZTk2OTc3ZWNmZTRiY2MzMzYxOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGYyMzY4ZTgwOWE0ZmQ2OGI3YTc3ODBhZWQ2YzVlZDg2NTAyNmZlOTIzNjJkNDRkZWJlNTQwNWE0NzE3NTRkZSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_83cd95994ea5463387bf4458479a37bc",
+      "statement": "Approval grants are input-bound: hasApprovedStart only honors the latest approval for the requested executorKind that is non-manual, status approved, unexpired, and whose metadata executionInputHash equals the hash of the current task bytes; historical approvals without the hash remain evidence but are not reusable execution grants, as pinned by the execution-approval-binding tests.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/execution-approval-binding.test.ts#L34-L77",
+          "version": "repo-lines-v1:sha256:5705a9d79d4b80ef5e18ddd839a6f4d2346b7a374fc1434910626c4d31d22142:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjczZGZmNDM1OTliN2ZhMGE1MWEzNWQ3YjZlY2JlODQ1ODJjZjQ5ZjM2YjVmNjgzNDU2ZWJhYWMxMWNjZmZkMGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmODg2YmU1NTBhMWM5NmNiN2U4MzQyNTY3NTJmZTJmMTg1NGYzNmQ2MDlhNmNhZTUyMDM3Y2MzN2FlZDZjMzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZhZTkzMmExZmEwNTgyNGI0ODc5MDg5OTE2MzczZTJiMjBkZTg4Nzk4YWNjZmMxNmUxMjY2MGRlMGY5YjdiOGIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L1526-L1540",
+          "version": "repo-lines-v1:sha256:ef092283a1715d216f4928fbc51b912b0c5405c36754bb2acb06b9d590649d0a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3ODU3ZDYwZTU2MjE5ZjI2YjY4YjE3YmE2YjNiNDY0OGJmYzY1MTA0MTI3ZTA4MmMxMjdiMjM1NThhMzg3NzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJjMzMwMzg1YWUyOGRiZTMyMmE2NDA5ZmJmNTBhMjY3YWU5OWE5ZmJmYmZlYzYyNzJkOTgxMWQxZDI5ZmE1MDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhjYjkyYjIwMjBlODdiNGRmZGNmZGI4ZjQ3NGQ1NWZiNmE4ZTk1MWQ5OGQzMjI5MTFiMjUxYzg2ZTI1YmUyMzIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7f7567f886ed41d39a9bb6465e6fbf8a",
+      "statement": "ExecutionEngine registers eleven default executors (mock, opencode, codex, claude, hermes, gemini, editor, pi, atomic, remote, and deep-agent only when DJIMIT_DEEP_ENABLED=true), and new executor kinds plug in by implementing the TaskExecutor interface and calling registerExecutor.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L162-L177",
+          "version": "repo-lines-v1:sha256:ae443eb9fdc2afdb367b826d412c9c6efecb574f06468364d32b94513f9df61c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5Nzc0NGU5YzYyMGQxNmJkNjBlMGRiYjgzY2M0NDdmY2FhOTc4MmRmMGQyMTY0ZjdlYTkzYjhmOWNkYzhkNmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxMTQzNTU5MmIxMTNmOWM1ZjU2MmU2OGI1ODdmYzc0MjU3NzcyZjE4MWExY2M0NmNmNjhhYmNjNzgzZmMxMzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRlYjgxNzVkZmNhODkwZThkZmU0NTJmNzdiNmRjOWIwYTdlNzk2N2U0ZTdmMGVlNmVjNzIxOTgzMTIyZGI4YjgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L182-L192",
+          "version": "repo-lines-v1:sha256:3a591284fe06bb9f5b288d235479765834d8c580d93603c810abddedbb68a91c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIxMjgzZDM5YTM0NmNiYmVkODg4N2YzMzAwODI2MDJlOGM1OTQ2ZGNhNDVlZGQzNDVmZmY5MmFlN2EyZTlkMTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU4NDY2YWIwZGI3YTQyM2JhNzZmZmVlOWUwYWIzMDk0ZWQ5NGRhMGZiMDRlZjZlNDE1YzRiZTYxNmRiNDhiZjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAzOGE5ZmEwYTBkMTQ2MGYwN2M2YzIzMTliMDY3M2FjZjViMzZiM2MwZWY5NDlhNzg5OTQ4YmY2ODIwZWZkNDcifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/types.ts#L117-L135",
+          "version": "repo-lines-v1:sha256:662a70e66d02a395829284b52e9ae509e0a80bc7d95b7e01b7028d7601443e5c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmOWJkZDdkZDYwMzU4MjFiYjBiMmM4NWVkMDViNWZmMjcwN2UzNTEyNjdkMmQyMjUxOGNjZTFhMmQ0NzI1OTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhYTM5MjQ3ZGFhN2Q5OWRlMDNlMmUxYTk0ZDYxMTA3Y2QxYzNiZGUxYzA0MWEzMDk5NDYzNzg4MjcwNTFkNDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY3Mzg5NjUyOTIwNTU5ZDc5NzFjNTIxMTA5ZjgzNjQ1ZWRhMzJkZTg4YmU1NmUwZWEyODI3ZGFhZjJhOGNlMjgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_48db4d39554046c3a3987bb2052f77fc",
+      "statement": "A task row cannot be deleted once it has an audit trail: DELETE /api/tasks/:id returns 409 TASK_HAS_AUDIT_TRAIL when any audit_events row references the task, 409 TASK_RUNNING while running, and 409 EXECUTION_RECOVERY_REQUIRED while a recovery hold is set.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/tasks.ts#L334-L360",
+          "version": "repo-lines-v1:sha256:74558e14780821ee1a2af0759df375090bb7d181fc5cb4f64c9ab4397535555b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0NTRiMTgwNjk5ODFlZjQ0MTA2ZWRmOWUxMGMwMDk1N2I5NmM4NWE4NzEzNzAxNjMyNjc2MTg2YTAwYWMzZTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNjJmNjBkODU5MGE1NzljZjQ2ZjhkNjczNzhjNGM1NzJiOTYyY2VjY2RiOTBjN2E1ZjdiNDJiOTYwNzgyYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxZTY5MjcxMTNhMTIwZTE1NmIxNDAxYjgzYWUwMmQwZTM4ZTAxNWFhYTdiYTI4ZWYzYWUzYTMzNDJiMGNiYmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg2NmM5ZjViMzlkYjg4YzNiZDc1OTY4ZjRlZTg1YTRkNWNkMWNkMGMxZjVlYmFiOGFiYjJmZmQ5ZDdkZjhiZDEifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.2",
+    "at": "2026-10-17T12:03:52.116Z"
+  }
+}

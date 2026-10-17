@@ -1,8 +1,8 @@
 ---
 type: runtime-architecture
 title: "Agent Runtimes & Executor Adapters"
-description: The ExecutorKind taxonomy, TaskExecutor/ExecutionSession contract, the eight always-registered CLI adapters plus the opt-in deep-agent runtime, the DockerSandboxExecutor wrapping isolation layer, and the circuit breaker + fallback chain that route executions across providers.
-tags: [executors, executor-kind, task-executor, docker-sandbox, circuit-breaker, fallback-chain, skip-permissions, runtimes, opencode, codex, claude]
+description: The ExecutorKind taxonomy, TaskExecutor/ExecutionSession contract, the ten always-registered adapters (eight CLIs plus the Atomic Agent gym maker and the RemoteMaker pull-queue runtime), the opt-in deep-agent runtime, the DockerSandboxExecutor wrapping isolation layer, runtime-contract probing with token accounting, and the circuit breaker + fallback chain that route executions across providers.
+tags: [executors, executor-kind, task-executor, docker-sandbox, circuit-breaker, fallback-chain, skip-permissions, runtimes, opencode, codex, claude, atomic, remote-maker, runtime-contract, token-accounting]
 sources:
   - id: openwiki-source-bb1ebe868e35e9e500714501
     resource: repo://Dockerfile
@@ -14,6 +14,8 @@ sources:
     resource: repo://packages/server/src/execution/execution-engine.ts
   - id: openwiki-source-99861e0d575ab3b523c675ce
     resource: repo://packages/server/src/execution/executor-output.ts
+  - id: openwiki-source-7fedddd232873c62d4d95f33
+    resource: repo://packages/server/src/execution/executors/atomic-executor.ts
   - id: openwiki-source-5e0b6675f3f54d9fe05c8031
     resource: repo://packages/server/src/execution/executors/codex-executor.ts
   - id: openwiki-source-74b516a517202c2d66b1fc24
@@ -24,6 +26,8 @@ sources:
     resource: repo://packages/server/src/execution/executors/executor-env.ts
   - id: openwiki-source-65409349d5e7cefaf6114fd8
     resource: repo://packages/server/src/execution/executors/opencode-executor.ts
+  - id: openwiki-source-6970452608dc9d8b4adb0d50
+    resource: repo://packages/server/src/execution/executors/remote-maker-executor.ts
   - id: openwiki-source-a5ee7cd85d802e6d855cea8c
     resource: repo://packages/server/src/execution/executors/runtime-process.ts
   - id: openwiki-source-0ecf5370c0c64700498da232
@@ -46,12 +50,16 @@ sources:
     resource: repo://packages/server/src/services/loop-service.ts
   - id: openwiki-source-3a769a6d8998bdc53fa8b70d
     resource: repo://packages/server/src/services/loop-worker-executor-service.ts
+  - id: openwiki-source-c97874f89b8b57a25e35219d
+    resource: repo://packages/server/src/services/maker-token-accounting.ts
+  - id: openwiki-source-32340f197afd634b3ef7e085
+    resource: repo://packages/server/src/services/remote-maker-queue.ts
   - id: openwiki-source-4420159e8c2bcabac04f85cb
     resource: repo://packages/server/src/services/runtime-command-service.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-10-17T12:03:52.116Z" }
 verified:
   - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
+    at: 2026-10-17T12:03:52.116Z
 ---
 
 # Agent Runtimes & Executor Adapters
@@ -71,13 +79,19 @@ implementing the contract and registering it, not touching the orchestration spi
 ```ts
 export type ExecutorKind =
   'mock' | 'opencode' | 'codex' | 'claude' | 'hermes' | 'gemini' | 'editor' | 'pi'
-  | 'docker' | 'deep-agent' | 'custom';
+  | 'atomic' | 'remote' | 'docker' | 'deep-agent' | 'custom';
 ```
 
-The `ExecutionEngine` constructor always registers eight default executors — `mock`,
-`opencode`, `codex`, `claude`, `hermes`, `gemini`, `editor`, `pi` — and registers
-`deep-agent` only when the operator sets `DJIMIT_DEEP_ENABLED=true`, also creating the
+The `ExecutionEngine` constructor always registers ten default executors — `mock`,
+`opencode`, `codex`, `claude`, `hermes`, `gemini`, `editor`, `pi`, plus `atomic`
+(Atomic Agent, the gym-only maker species) and `remote` (RemoteMakerExecutor, backed
+by the pull-based RemoteMakerQueue) — and registers `deep-agent` only when the
+operator sets `DJIMIT_DEEP_ENABLED=true`, also creating the
 `DeepAgentContractIssuer` at that point (execution-engine.ts, constructor).
+`atomic` and `remote` are always registered but remain inert unless an operator
+deploys them: `atomic` needs the `atomic-agent` binary (shipped in the production
+image), and `remote`'s loop-runtime contract is `unavailable` until
+`REMOTE_MAKER_ENABLED=true`.
 `docker` is never registered standalone: it appears only as the `kind` reported by a
 `DockerSandboxExecutor` that wraps another executor at dispatch time. `custom` is the
 extension slot for out-of-tree implementations registered via
@@ -133,10 +147,11 @@ or `failure.sideEffectsPossible`.
 
 ## The default adapters
 
-All eight always-on adapters implement `TaskExecutor` by spawning a CLI with
+The eight always-on CLI adapters implement `TaskExecutor` by spawning a CLI with
 `stdio: ['ignore','pipe','pipe']`, parsing stdout into `ExecutionEventCreateInput`s, and
 deciding the final result from exit code (with structured-event awareness where the CLI
-provides it). They differ in binary, argument surface, and parsing strategy:
+provides it); `atomic` and `remote` (below) reuse the same session shape without a
+structured-event stream. They differ in binary, argument surface, and parsing strategy:
 
 | Kind | Binary (env override) | Skip-permissions flag | Notes on CLI contract |
 |---|---|---|---|
@@ -148,6 +163,8 @@ provides it). They differ in binary, argument surface, and parsing strategy:
 | `gemini` | `gemini` (`GEMINI_BIN_PATH`) | `-y` | `-p <prompt> -o json [-m <model>]`; same line-JSON + heuristic pattern as Claude. |
 | `editor` | `cline` (`CLINE_BIN_PATH`) | `--auto-approve true` | `editor` is the runtime name; the binary is `cline`. Worktree via `-c`. |
 | `pi` | `pi` (`PI_BIN_PATH`) | `--no-approve` (default on via `PI_NO_APPROVE`) | `pi --mode json -p --no-session`; NDJSON `session`/`agent_start`/`tool_execution_*`/`turn_end`. Pi has no permission popups — djimitflo's policy engine is the sole boundary, so `PI_TOOLS`, `PI_OFFLINE=1`, `PI_SKIP_VERSION_CHECK=1`, `PI_TELEMETRY=0` matter for sensitive runs. |
+| `atomic` | `atomic-agent` (`ATOMIC_AGENT_BIN_PATH`) | `--no-approval` (only when `skipPermissions` is armed — the operator's/approval boundary stays with Djimitflo) | `run --cwd <dir> --max-steps <ATOMIC_AGENT_MAX_STEPS, default 40>`; the goal is fed on **stdin** and the answer comes back as plain text on stdout (progress goes to stderr) — there are no structured events, the resulting diff is the only evidence. Before each run the executor writes a Djimitflo-owned provider config (`atomic-agent config set`) under `ATOMIC_AGENT_STATE_DIR`/`DJIMITFLO_ATOMIC_STATE_DIR` (default `/data/atomic-agent`) pointing at an OpenAI-compatible provider (default Ollama Cloud, key from `ATOMIC_AGENT_API_KEY_ENV`-named var, default `OLLAMA_API_KEY`), so the operator's own `~/.atomic-agent` is never touched. Default timeout `ATOMIC_EXECUTION_TIMEOUT_MS` = 600 s. Plan C5: the gym-only maker species. |
+| `remote` | — (pull queue; `REMOTE_MAKER_ENABLED`, default off) | n/a — the host runs its own runtime | RemoteMakerExecutor enqueues a maker job onto the RemoteMakerQueue (SQLite) for `<host>/<species>` parsed from the lease's model, e.g. `workstation/atomic@llama-router`. The base commit must be an ancestor of `origin/main` (the host clones from GitHub); the returned patch is applied to the local worktree with `git apply` and the loop's gates judge it like any maker's diff. An unclaimed job fails after `REMOTE_MAKER_QUEUE_TIMEOUT_MS` (default 45 min); work is timed from the claim against `REMOTE_MAKER_TIMEOUT_MS` (default 30 min). Cancellation reports `remote_maker_cancelled:<reason>` in stderr for the lease's failure_reason. No token counts — the host reports only patch + reason. |
 
 Every CLI adapter shares the same runtime-plumbing helpers:
 
@@ -288,8 +305,13 @@ and `sideEffectsPossible`.
 
 Before any loop worker spawns a CLI, `LoopWorkerExecutorService` (executeMaker /
 executeChecker) probes the binary through `LoopService.getRuntimeContract(runtime)` —
-delegated to `RuntimeCommandService`, which runs `<bin> --version` plus a
-`--help`-style probe per runtime (e.g. `codex exec --help`, `opencode run --help`) and
+delegated to `RuntimeCommandService`. Three runtimes answer without a probe:
+`manual` (always available, `proof_class: static`), `mock` (static in-process
+contract: `available: true, status: 'ok'`), and `remote` (a static contract that is
+`ok` only when `REMOTE_MAKER_ENABLED=true`). Everything else is a live probe:
+`RuntimeCommandService` runs `<bin> --version` plus a
+`--help`-style probe per runtime (e.g. `codex exec --help`, `opencode run --help`,
+`atomic-agent run --help`) and
 marks the contract `drifted` when required flags (`--json`/`--format`, cwd flag,
 headless flag) are missing from the help output. Contracts are conformance-hashed
 (`withConformance` emits sha256 `contract_hash` + named checks), cached for
@@ -309,11 +331,26 @@ The `manual` runtime is always "available" but is gated before contract probing:
 runtime requires human execution), and manual checkers can only be dispatched with an
 explicit non-manual runtime. `LoopService.getRuntimeContracts()` exposes the contract
 set (`manual`, `mock`, `codex`, `opencode`, `claude`, `gemini`, `editor`, `pi`) over
-`GET /loops/runtime-contracts`, and the mock executor's deterministic in-process
+`GET /loops/runtime-contracts`; `atomic` and `remote` contracts are computed by the
+same `getRuntimeContract()` path when a lease names them but are not in that operator
+facing list. The mock executor's deterministic in-process
 contract (`available: true, status: 'ok'`, `proof_class: static`) is what loop tests
 and `docker`-less development ride on. See
 [Loop Lifecycle](./loop-lifecycle.md) for where these checks sit in the run state
 machine.
+
+Usage accounting sits immediately after the worker exits: `executeMaker` runs
+`computeTokenAccounting()` (maker-token-accounting.ts) over the captured stdout with
+per-runtime parsers — `step_finish` token parts for opencode, `turn.completed`
+`usage.input_tokens/output_tokens` for codex, the trailing `result` usage object for
+claude, a generic `usage` JSON line for anything else — and stamps provider-reported
+counts for `opencode`/`codex`/`claude` versus `runtime_log` for the rest. `remote`,
+`atomic`, and `mock` are hard-coded `measurement_source: 'unavailable'` (a remote
+host reports only a patch and a reason; atomic prints plain text without usage; the
+mock has no model). The result is persisted on the lease metadata as
+`token_accounting`, cost-estimated against `LLM_PRICE_PER_MTOK` when the model is
+priced, and aggregated per runtime × model by `makerTokenAccountingEvidence()` for
+operator reporting.
 
 ## Production worker surface and readiness
 
@@ -321,12 +358,17 @@ The production Dockerfile pins the three provider CLIs the worker image ships �
 `npm install --global @openai/codex@0.146.0 opencode-ai@1.18.10
 @anthropic-ai/claude-code@2.1.282` — and build-time-verifies all three binaries
 (`git --version && codex --version && opencode --version && claude --version`)
-up front (Dockerfile L76–L79: "Versions are pinned for reproducible probes"). The same
-layer also installs the `gh` CLI as a static `.deb` pinned via `ARG
+up front ("Versions are pinned for reproducible probes", Dockerfile L91–L94). An
+adjacent layer installs the `gh` CLI as a static `.deb` pinned via `ARG
 GH_CLI_VERSION=2.100.0` (downloaded per-arch from `github.com/cli/cli` releases,
 installed with `dpkg`, then verified with `gh --version`) because
 `GithubPrReviewService` shells out to `gh pr diff` / `gh api` for PR review comments
-and Check Runs. The rationale for the pins is probe reproducibility:
+and Check Runs. A third layer installs the Atomic Agent used by the `atomic`
+executor: the release tarball is pinned by version **and sha256**
+(`ARG ATOMIC_AGENT_VERSION=0.6.5` plus per-arch `ATOMIC_AGENT_SHA256_X64/ARM64`,
+verified with `sha256sum -c` before extracting to `/opt/atomic-agent` and symlinking
+`/usr/local/bin/atomic-agent`, then verified with `atomic-agent --version`). The
+rationale for the pins is probe reproducibility:
 `runtime_contract` probes hash the binary's `--version` output, so an unpinned `latest`
 install would make probe evidence and drift detection non-deterministic.
 
