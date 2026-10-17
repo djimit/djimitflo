@@ -30,6 +30,7 @@ import { buildDecisionContext } from './decision-context-service';
 import { kbContext } from './kb-corpus';
 import type { Database } from 'better-sqlite3';
 import { SpecialistPanelService, type SpecialistPanelRecord, type SpecialistProfile } from './specialist-panel-service';
+import { extraRepoBySlug, repoRefOf } from './repo-registry';
 import { chooseModel, modelSelectorMode, recordModelCall, shadowCandidate, shadowRate } from './model-selector';
 
 /** The model argument is only passed when MODEL_SELECTOR_MODE is on; undefined = the caller's own default (unchanged). */
@@ -317,7 +318,9 @@ export class SelfImprovementAgentReviewService {
   }
 
   private targetEvidence(panel: SpecialistPanelRecord): string | null {
-    const grounding = (panel.context as { grounding?: { target?: unknown } } | undefined)?.grounding;
-    return readTargetExcerpt(grounding?.target);
+    const context = panel.context as { grounding?: { target?: unknown }; evidence_refs?: unknown } | undefined;
+    // multi-repo: a proposal for a registered extra repo (`repo:<slug>`, EXTRA_REPOS_ENABLED=on) is read from that checkout
+    const repo = extraRepoBySlug(repoRefOf(context?.evidence_refs));
+    return repo ? readTargetExcerpt(context?.grounding?.target, repo.path) : readTargetExcerpt(context?.grounding?.target);
   }
 }

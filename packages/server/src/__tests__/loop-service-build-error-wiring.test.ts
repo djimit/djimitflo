@@ -75,11 +75,12 @@ describe('LoopService deterministic checks -> self-improvement wiring', () => {
     expect(improvements.listImprovements()).toHaveLength(0);
   });
 
-  it('creates no self-improvement proposal when the script is simply not present (skipped, not failed)', () => {
+  it('creates no self-improvement proposal when the script is simply not present (B1: a failed check, but config, not a code error)', () => {
     fs.writeFileSync(path.join(worktree, 'package.json'), JSON.stringify({ scripts: {} }));
     seedLoopRunWithMakerLease('run-skip', 'lease-skip');
 
-    loops.runDeterministicChecks('run-skip', { lease_id: 'lease-skip', scripts: ['lint'] });
+    const result = loops.runDeterministicChecks('run-skip', { lease_id: 'lease-skip', scripts: ['lint'] });
+    expect(result.checks).toEqual([expect.objectContaining({ name: 'lint', status: 'fail', reason: 'missing_script' })]);
 
     const improvements = new SelfImprovementService(db);
     expect(improvements.listImprovements()).toHaveLength(0);

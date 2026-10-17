@@ -31,7 +31,8 @@ import { LoopRecoveryService, RuntimeLeaseRegistry } from './loop-recovery-servi
 import { LoopPersistenceService } from './loop-persistence-service';
 import { ExperienceRetrievalService } from './experience-retrieval-service';
 import { SelfImprovementService } from './self-improvement-service';
-import { MAKER_TEMPLATE_RULES_STE } from './ste-001';
+import { MAKER_TEMPLATE_RULES_STE, steRulesFor } from './ste-001';
+import { extraRepoByPath, extraRepoChecks } from './repo-registry';
 import { assignmentContext, assignmentContextMarkdown, type AssignmentContext } from './assignment-context';
 import { firstJsonObject } from './model-json';
 import type {
@@ -294,7 +295,8 @@ export const MAKER_TEMPLATE_RULES = [
 ];
 
 /** STE-001: arm 1 gets the Simplified Technical English rules; everyone else (and STE_001_MODE off) today's rules. */
-export const makerTemplateRules = (ste?: { arm: 0 | 1 }): string[] => (ste?.arm === 1 ? MAKER_TEMPLATE_RULES_STE : MAKER_TEMPLATE_RULES);
+export const makerTemplateRules = (ste?: { arm: 0 | 1 }, checkScripts?: string[]): string[] =>
+  (ste?.arm === 1 ? (checkScripts ? steRulesFor(checkScripts) : MAKER_TEMPLATE_RULES_STE) : MAKER_TEMPLATE_RULES);
 /**
  * The maker's LOOP_WORK.md text (writeWorkAssignment writes it; a remote maker gets it flattened to one line).
  * TG-001 renders the same text for a frozen task and, for its CONTROLLED arm, leaves out parts that should not matter for
@@ -303,7 +305,7 @@ export const makerTemplateRules = (ste?: { arm: 0 | 1 }): string[] => (ste?.arm 
  */
 export type AssignmentOmit = 'ids' | 'advisory' | 'policy';
 export function renderWorkAssignment(run: { id: string; loop_name: string }, finding: LoopFinding, runtime: string, advisoryText: string,
-  extra: AssignmentContext, options: { nestedSpawnControl?: string; omit?: AssignmentOmit[] } = {}): string {
+  extra: AssignmentContext, options: { nestedSpawnControl?: string; omit?: AssignmentOmit[]; checkScripts?: string[] } = {}): string {
   const omit = new Set(options.omit ?? []);
   return [
     `# ${finding.metadata?.objective_mode ? 'Objective' : run.loop_name} Assignment`,
@@ -326,7 +328,7 @@ export function renderWorkAssignment(run: { id: string; loop_name: string }, fin
     '',
     ...(omit.has('advisory') ? [] : ['## Advisory Past Experience', '', advisoryText || 'No matching observed episodes were retrieved.', '']),
     ...assignmentContextMarkdown(extra),
-    ...(omit.has('policy') ? [] : makerTemplateRules(extra.ste)),
+    ...(omit.has('policy') ? [] : makerTemplateRules(extra.ste, options.checkScripts)),
     '',
     // Nested-spawn control block (P1). Only injected when this lease is itself
     // permitted to spawn sub-agents (operator-armed, depth within budget). This
@@ -1127,9 +1129,12 @@ export class LoopService {
       if (!packageScripts.has(scriptName)) {
         fs.writeFileSync(stdoutPath, '', 'utf8');
         fs.writeFileSync(stderrPath, `script not present: ${scriptName}\n`, 'utf8');
+        // B1 (17-10): a configured check the repo does not have is a failed check, never 'skipped' — a repo without the
+        // scripts used to pass with nothing executed (vacuous pass).
         return {
           name: scriptName,
-          status: 'skipped',
+          status: 'fail',
+          reason: 'missing_script',
           exit_status: null,
           stdout_path: stdoutPath,
           stderr_path: stderrPath,
@@ -1179,7 +1184,7 @@ export class LoopService {
     this.updateWorkerLeaseStatus(makerLease.id, failed ? 'failed' : 'completed', {
       deterministic_checks: checks,
       checks_completed_at: new Date().toISOString(),
-      ...(failed ? { failure_reason: `deterministic_checks_failed:${checks.filter((check) => check.status === 'fail').map((check) => `${check.name}${check.timed_out ? '(timed_out)' : `(exit=${check.exit_status ?? 'signal'})`}`).join(',')}` } : {}),
+      ...(failed ? { failure_reason: `deterministic_checks_failed:${checks.filter((check) => check.status === 'fail').map((check) => `${check.name}${check.reason ? `(${check.reason})` : check.timed_out ? '(timed_out)' : `(exit=${check.exit_status ?? 'signal'})`}`).join(',')}` } : {}),
       ...(evidenceReadSet ? { evidence_read_set: evidenceReadSet } : {}),
     });
 
@@ -1194,7 +1199,7 @@ export class LoopService {
     if (failed) {
       try {
         const summaries = checks
-          .filter((check) => check.status === 'fail')
+          .filter((check) => check.status === 'fail' && check.reason !== 'missing_script') // a missing script is config, not a code error
           .map((check) => {
             const stderrPath = check.stderr_path as string;
             const stderrTail = fs.existsSync(stderrPath) ? fs.readFileSync(stderrPath, 'utf8').slice(-1000) : '';
@@ -2387,7 +2392,9 @@ export class LoopService {
       this.recordLoopEvent(run.id, 'assignment_context', 'info', `Maker assignment includes ${extra.examples.length} proven example(s) and ${extra.rules.length} rule(s)${extra.memory_holdout ? ' (memory holdout: rules withheld)' : ''}${extra.ace ? ` (ACE-001 arm ${extra.ace.arm})` : ''}${extra.ste ? ` (STE-001 arm ${extra.ste.arm})` : ''}.`,
         { examples: extra.examples, rule_ids: extra.rules.map((r) => r.id), ...(extra.memory_holdout ? { memory_holdout: true } : {}), ...(extra.ace ? { ace_001: extra.ace } : {}), ...(extra.ste ? { ste_001: extra.ste } : {}) });
     }
-    const content = renderWorkAssignment(run, finding, runtime, advisoryContext.text, extra, { nestedSpawnControl: options.nestedSpawnControl });
+    // multi-repo: an extra repo's maker is told that repo's check scripts (EXTRA_REPOS_ENABLED=on); djimitflo's text is unchanged
+    const repo = extraRepoByPath(run.repository_path);
+    const content = renderWorkAssignment(run, finding, runtime, advisoryContext.text, extra, { nestedSpawnControl: options.nestedSpawnControl, ...(repo ? { checkScripts: extraRepoChecks(repo.slug) } : {}) });
     fs.writeFileSync(this.workAssignmentPath(worktreePath), content, 'utf8');
   }
 

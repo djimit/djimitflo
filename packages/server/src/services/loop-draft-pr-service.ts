@@ -6,6 +6,7 @@ import { LoopEventService } from './loop-event-service';
 import { redactSecrets } from './secret-patterns';
 import { freshnessMode, staleAgainst, type ReadSet } from './evidence-freshness';
 import { emptySettlementCounts, parseOutcome, settlementState, type SettlementState } from './merge-survival';
+import { extraRepoBySlug, goalRepoSlug, isExtraRepoPr, slugFromRemote } from './repo-registry';
 
 /**
  * G4: a verified loop run becomes a *draft* PR. Before this, ready_for_human_merge output stayed in a VPS worktree
@@ -17,21 +18,31 @@ export class LoopDraftPrService {
 
   async openForRun(runId: string): Promise<string | null> {
     if (this.env.LOOP_AUTO_DRAFT_PR_ENABLED !== 'true') return null;
-    const repo = this.env.GITHUB_REPOSITORY; const token = this.env.GITHUB_TOKEN;
+    const primary = this.env.GITHUB_REPOSITORY; const token = this.env.GITHUB_TOKEN;
     const events = new LoopEventService(this.db);
     const fail = (reason: string) => { events.recordEvent(runId, 'draft_pr_failed', 'warning', `Draft PR not opened: ${reason}`, {}); return null; };
-    if (!repo || !token) return fail('GITHUB_REPOSITORY/GITHUB_TOKEN missing');
+    if (!primary || !token) return fail('GITHUB_REPOSITORY/GITHUB_TOKEN missing');
 
     const run = this.db.prepare('SELECT id, status, goal_id, metadata FROM loop_runs WHERE id = ?').get(runId) as { id: string; status: string; goal_id: string | null; metadata: string | null } | undefined;
     if (!run || !['ready_for_human_merge', 'completed'].includes(run.status)) return null;
+    // B2 (17-10): the PR goes to the repo of the goal's proposal (`repo:<slug>`, else the primary repo) — never blindly to
+    // GITHUB_REPOSITORY. A proposal for a repo that is not registered (or the flag is off) gets no PR.
     const meta = JSON.parse(run.metadata || '{}') as { pr_url?: string };
     if (meta.pr_url) return meta.pr_url; // once per run
+    const goalSlug = goalRepoSlug(this.db, run.goal_id);
+    if (goalSlug && goalSlug.toLowerCase() !== primary.toLowerCase() && !extraRepoBySlug(goalSlug, this.env)) return fail(`repo_not_registered: ${goalSlug}`);
+    const repo = goalSlug ?? primary;
 
     const maker = this.db.prepare(`SELECT id, worktree_path, branch_name FROM worker_leases WHERE loop_run_id = ? AND role = 'maker' AND status = 'completed'
       AND json_extract(metadata, '$.superseded_by_maker_lease_id') IS NULL ORDER BY updated_at DESC LIMIT 1`).get(runId) as { id: string; worktree_path: string | null; branch_name: string | null } | undefined;
     if (!maker?.worktree_path || !maker.branch_name || !fs.existsSync(maker.worktree_path)) return fail('no completed maker worktree');
     const wt = maker.worktree_path;
     const git = (...args: string[]) => execFileSync('git', ['-C', wt, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+
+    // B2: the worktree's push remote must be that same repo; when they differ nothing is pushed and no PR is opened.
+    let remoteSlug: string | null = null;
+    try { remoteSlug = slugFromRemote(git('remote', 'get-url', this.env.LOOP_DRAFT_PR_REMOTE || 'origin')); } catch { /* no such remote: the push below fails as before */ }
+    if (remoteSlug && remoteSlug.toLowerCase() !== repo.toLowerCase()) return fail(`repo_mismatch: worktree ${remoteSlug} ≠ goal ${repo}`);
 
     try {
       // Only the maker's real files: never node_modules symlinks from `npm ci`, never lockfile install noise.
@@ -159,7 +170,7 @@ export interface DraftPrRow { run_id: string; lane: string; pr_url: string; pr_n
  * OPEN_BLOCKED — open, merged and inside the survival window, or a pipeline anomaly. by_settlement counts every state.
  */
 /** Cockpit 3.0: a failed read gives total/unsettled/by_settlement null (unknown), not 0. */
-export function listDraftPrs(db: Database, limit = 50, now = Date.now()): { total: number | null; unsettled: number | null; by_settlement: Record<SettlementState, number> | null; closed_unmerged: number | null; rows: DraftPrRow[] } {
+export function listDraftPrs(db: Database, limit = 50, now = Date.now(), env: NodeJS.ProcessEnv = process.env): { total: number | null; unsettled: number | null; by_settlement: Record<SettlementState, number> | null; closed_unmerged: number | null; rows: DraftPrRow[] } {
   const n = Math.min(100, Math.max(1, Math.floor(Number(limit)) || 50));
   let raw: Array<{ id: string; loop_name: string; url: string; created_at: string; o: string | null; auto_merge: string | null }> = [];
   let failed = false;
@@ -168,7 +179,8 @@ export function listDraftPrs(db: Database, limit = 50, now = Date.now()): { tota
         json_extract(metadata, '$.auto_merge.decision') AS auto_merge
       FROM loop_runs WHERE json_extract(metadata, '$.pr_url') IS NOT NULL ORDER BY created_at DESC`).all() as typeof raw;
   } catch { failed = true; /* fail-soft on a partial schema: rows empty, counts unknown */ }
-  const all = raw.map((r) => {
+  // repo dimension: the default view leaves out PRs of registered extra repos (EXTRA_REPOS_ENABLED), see merge-survival
+  const all = raw.filter((r) => !isExtraRepoPr(r.url, env)).map((r) => {
     const o = parseOutcome(r.o);
     return { r, o, s: settlementState(r.created_at, o, now) };
   });
@@ -183,7 +195,7 @@ export function listDraftPrs(db: Database, limit = 50, now = Date.now()): { tota
   for (const { s } of all) by[s.state]++;
   const closed = all.filter(({ s }) => s.terminal).length;
   const unsettled = all.filter(({ s }) => !s.terminal && s.state !== 'SETTLED_SURVIVED' && s.state !== 'SETTLED_REGRESSED').length;
-  return failed ? { total: null, unsettled: null, by_settlement: null, closed_unmerged: null, rows } : { total: raw.length, unsettled, by_settlement: by, closed_unmerged: closed, rows };
+  return failed ? { total: null, unsettled: null, by_settlement: null, closed_unmerged: null, rows } : { total: all.length, unsettled, by_settlement: by, closed_unmerged: closed, rows };
 }
 
 /**

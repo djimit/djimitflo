@@ -1,8 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Database } from 'better-sqlite3';
 import { SelfImprovementService } from './self-improvement-service';
 import { markRun } from './scheduler-registry';
+import { extraRepos, extraReposMode, registeredExtraRepos, type ExtraRepo } from './repo-registry';
 
 /**
  * A deterministic, high-yield source of proposals: server services that no test imports. The 2026-09-21 loop proof showed
@@ -13,11 +15,11 @@ import { markRun } from './scheduler-registry';
  */
 export const testGapSourceEnabled = (): boolean => process.env.TEST_GAP_SOURCE_ENABLED === 'true';
 
-export interface TestGap { service: string; sourcePath: string; testPath: string; exports: string[]; loc: number; kind?: 'untested' | 'exports'; pkg?: string }
+export interface TestGap { service: string; sourcePath: string; testPath: string; exports: string[]; loc: number; kind?: 'untested' | 'exports'; pkg?: string; command?: string }
 
 const SERVICES_DIR = 'packages/server/src/services';
 const TESTS_DIR = 'packages/server/src/__tests__';
-const MIN_LOC = 30; const MAX_LOC = 250;
+const MIN_LOC = 30; const MAX_LOC = 250; const MAX_EXPORT_GAP_LOC = 600;
 
 /**
  * N12a: services some production file imports. Prod 2026-09-25: 27 services (~6,000 lines) were imported by no
@@ -102,11 +104,47 @@ export function discoverPackageGaps(repoPath: string): TestGap[] {
 }
 
 /**
+ * Multi-repo (EXTRA_REPOS_ENABLED): plain node:test JavaScript repos — tests in test/<name>.test.mjs, modules anywhere under src/ (.mjs),
+ * one command `node --test test/<name>.test.mjs`. A module no test names (file name or import) is an untested gap; a tested
+ * module whose exported functions no test names is an exports gap (`test/<name>.exports.test.mjs`). Same contract as the
+ * server lanes: one new test file, one command.
+ */
+export function discoverNodeTestGaps(repoPath: string): TestGap[] {
+  const testDir = path.join(repoPath, 'test'); const srcDir = path.join(repoPath, 'src');
+  if (!fs.existsSync(testDir) || !fs.existsSync(srcDir)) return [];
+  const testFiles = fs.readdirSync(testDir).filter((f) => /\.test\.mjs$/.test(f));
+  const testTexts = testFiles.map((f) => fs.readFileSync(path.join(testDir, f), 'utf8'));
+  const tested = new Set<string>(testFiles.map((f) => f.replace(/\.(exports\.)?test\.mjs$/, '')));
+  for (const t of testTexts) for (const m of t.matchAll(/(?:from|import)\s*\(?\s*['"][^'"]*\/([A-Za-z0-9_.-]+)\.mjs['"]/g)) tested.add(m[1]);
+  const allTests = testTexts.join('\n');
+  const walk = (dir: string): string[] => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory()
+    ? (e.name === 'node_modules' ? [] : walk(path.join(dir, e.name))) : /\.mjs$/.test(e.name) ? [path.join(dir, e.name)] : []);
+  const gaps: TestGap[] = [];
+  for (const file of walk(srcDir)) {
+    const name = path.basename(file, '.mjs'); const rel = path.relative(repoPath, file).split(path.sep).join('/');
+    if (name === 'index' || !/^[A-Za-z0-9_-]+$/.test(name)) continue;
+    const text = fs.readFileSync(file, 'utf8'); const loc = text.split('\n').length;
+    const exports = [...text.matchAll(/export\s+(?:async\s+)?(?:class|function\*?|const|let)\s+(\w+)/g)].map((m) => m[1]);
+    if (!exports.length || loc > MAX_EXPORT_GAP_LOC) continue;
+    if (!tested.has(name)) {
+      if (loc < MIN_LOC || loc > MAX_LOC) continue;
+      const testPath = `test/${name}.test.mjs`;
+      gaps.push({ service: name, sourcePath: rel, testPath, exports: exports.slice(0, 6), loc, command: `node --test ${testPath}` });
+      continue;
+    }
+    const untested = exports.filter((fn) => !new RegExp(`\\b${fn}\\b`).test(allTests)).slice(0, 3);
+    if (!untested.length || fs.existsSync(path.join(testDir, `${name}.exports.test.mjs`))) continue;
+    const testPath = `test/${name}.exports.test.mjs`;
+    gaps.push({ service: name, sourcePath: rel, testPath, exports: untested, loc, kind: 'exports', command: `node --test ${testPath}` });
+  }
+  return gaps.sort((a, b) => a.loc - b.loc || a.service.localeCompare(b.service));
+}
+
+/**
  * J3: the second grounded lane. A service with tests can still export functions no test ever names. Same contract as a
  * test gap (one new test file, one command), so the loop's only working lane gets more work without new risk. The test
  * goes into a new `<service>.exports.test.ts`, never into an existing test file.
  */
-const MAX_EXPORT_GAP_LOC = 600;
 export function discoverExportGaps(repoPath: string): TestGap[] {
   const servicesDir = path.join(repoPath, SERVICES_DIR); const testsDir = path.join(repoPath, TESTS_DIR);
   if (!fs.existsSync(servicesDir) || !fs.existsSync(testsDir)) return [];
@@ -182,7 +220,9 @@ export class TestGapSourceService {
 
   run(now = new Date()): { created: number; skipped: string } {
     const repo = process.env.TEST_GAP_REPO_PATH || process.env.LOOP_DAEMON_REPOSITORY_PATH;
-    if (!repo) return { created: 0, skipped: 'no repository path' };
+    if (extraReposMode() === 'shadow') this.recordExtraRepoShadow(now);
+    const extras = extraRepos(); // empty unless EXTRA_REPOS_ENABLED=on
+    if (!repo && !extras.length) return { created: 0, skipped: 'no repository path' };
     const day = new Date(now.getTime() - 86_400_000).toISOString();
     const createdToday = (this.db.prepare("SELECT COUNT(*) n FROM self_improvements WHERE evidence_refs_json LIKE '%test-gap:%' AND created_at >= ?").get(day) as { n: number }).n;
     const inFlight = (this.db.prepare("SELECT COUNT(*) n FROM self_improvements WHERE evidence_refs_json LIKE '%test-gap:%' AND status IN ('proposed', 'scheduled', 'executing')").get() as { n: number }).n;
@@ -193,9 +233,12 @@ export class TestGapSourceService {
     const improvements = new SelfImprovementService(this.db);
     let created = 0;
     // Untested services first, then untested exports of tested services (J3: TEST_GAP_EXPORTS_ENABLED).
-    const gaps = [...discoverTestGaps(repo), ...(process.env.TEST_GAP_EXPORTS_ENABLED === 'true' ? discoverExportGaps(repo) : []), ...(process.env.TEST_GAP_PACKAGES_ENABLED === 'true' ? discoverPackageGaps(repo) : [])];
+    const gaps: Array<TestGap & { repo?: ExtraRepo }> = repo ? [...discoverTestGaps(repo), ...(process.env.TEST_GAP_EXPORTS_ENABLED === 'true' ? discoverExportGaps(repo) : []), ...(process.env.TEST_GAP_PACKAGES_ENABLED === 'true' ? discoverPackageGaps(repo) : [])] : [];
+    // multi-repo: registered extra repos after the primary repo's candidates, inside the same caps
+    for (const extra of extras) gaps.push(...discoverNodeTestGaps(extra.path).map((g) => ({ ...g, repo: extra })));
     for (const gap of gaps) {
       if (createdToday + created >= maxPerDay || inFlight + created >= maxInFlight) break;
+      if (gap.repo) { if (this.createExtraRepoGap(gap, gap.repo)) created += 1; continue; }
       const ref = gap.kind === 'exports' ? `test-gap:${gap.service}#exports` : `test-gap:${gap.service}`;
       // a file that ever had a test-gap proposal of this kind (any outcome) is never proposed again automatically
       if (this.db.prepare("SELECT 1 FROM self_improvements WHERE evidence_refs_json LIKE ? LIMIT 1").get(`%${ref}"%`)) continue;
@@ -218,6 +261,36 @@ export class TestGapSourceService {
       if (proposal) created += 1;
     }
     return { created, skipped: created ? '' : 'no untested candidate' };
+  }
+
+  /** One grounded proposal for a node:test repo gap; the ref is `test-gap:<slug>/<module>[#exports]`, plus `repo:<slug>`. */
+  private createExtraRepoGap(gap: TestGap, repo: ExtraRepo): boolean {
+    const ref = `test-gap:${repo.slug}/${gap.service}${gap.kind === 'exports' ? '#exports' : ''}`;
+    if (this.db.prepare('SELECT 1 FROM self_improvements WHERE evidence_refs_json LIKE ? LIMIT 1').get(`%${ref}"%`)) return false;
+    const command = gap.command ?? `node --test ${gap.testPath}`;
+    const budget = 'one maker lease, <= 10 minutes wall clock, <= 30k tokens, one checker lease; abort if any file other than the new test file changes';
+    const covering = gap.kind === 'exports' ? `the untested exported functions ${gap.exports.join(', ')} of ${gap.sourcePath} (no existing test names them)` : `the public behaviour of ${gap.sourcePath} (exports: ${gap.exports.join(', ')})`;
+    const description = `Add ${gap.testPath} in the ${repo.slug} repository covering ${covering}. Test-only; no production code edits. Use node:test (\`import { test } from 'node:test'\`) and node:assert; write no files outside a temporary directory. `
+      + `RUNTIME COMMAND: from the repository root run \`${command}\` (exit 0 = pass, Node 22, no network, no env flags needed). `
+      + `ARTIFACT: the node:test stdout captured by the worker, plus the git diff of the single new test file (expected < 150 lines added). BUDGET: ${budget}.`;
+    return Boolean(new SelfImprovementService(this.db).generateFromGroundedGap({
+      title: gap.kind === 'exports' ? `Test untested exports of ${repo.slug}:${gap.sourcePath}` : `Add unit tests for ${repo.slug}:${gap.sourcePath}`, description,
+      rationale: gap.kind === 'exports'
+        ? `${gap.exports.join(', ')} in ${gap.sourcePath} are exported but no test names them; a test-only change is verifiable by one command`
+        : `${gap.sourcePath} (${gap.loc} lines) is not imported by any test; a test-only change is verifiable by one command`,
+      evidenceRef: ref, extraEvidenceRefs: [`repo:${repo.slug}`],
+      grounding: { target: gap.sourcePath, acceptanceTest: command, runtimeCommand: command, artifactPath: gap.testPath, budget },
+    }));
+  }
+
+  /** EXTRA_REPOS_ENABLED=shadow: what the node:test lane would propose per registered repo, as a judgments row (never acts). */
+  private recordExtraRepoShadow(now: Date): void {
+    try {
+      const found = registeredExtraRepos().map((r) => ({ repo: r.slug, gaps: discoverNodeTestGaps(r.path).map((g) => `${g.sourcePath}${g.kind === 'exports' ? '#exports' : ''}`) }));
+      this.db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at)
+        VALUES (?, 'extra_repo_test_gaps', 'repo_registry', 'test-gap', ?, 'shadow', 'recorded', ?, ?, ?)`)
+        .run(randomUUID(), `repos:${found.length}`, found.map((f) => `${f.repo}: ${f.gaps.length} gap(s)`).join('; ') || 'no registered extra repo', JSON.stringify(found), now.toISOString());
+    } catch { /* evidence only */ }
   }
 
   runMutationGaps(now = new Date()): { created: number; skipped: string } {

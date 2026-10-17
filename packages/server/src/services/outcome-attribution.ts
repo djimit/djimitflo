@@ -21,7 +21,7 @@ export const outcomeAttributionEnabled = (env: NodeJS.ProcessEnv = process.env):
 
 export interface MakerMeta {
   failure_reason?: string; timed_out?: boolean; runtime_timed_out?: boolean; exit_status?: number | null; completed_at?: string;
-  changed_files?: unknown; deterministic_checks?: Array<{ exit_status?: number | null }>;
+  changed_files?: unknown; deterministic_checks?: Array<{ exit_status?: number | null; reason?: string }>;
 }
 export interface AttributionLease { id?: string; role: string; status: string; metadata: MakerMeta & { verdict?: unknown; maker_lease_id?: unknown } }
 export interface AttributionRun {
@@ -51,7 +51,7 @@ export function makerFailureClass(meta: MakerMeta): 'regressed' | 'infra_failed'
   if (meta.timed_out || meta.runtime_timed_out || /runtime_contract/.test(meta.failure_reason ?? '')) return 'infra_failed';
   if (/maker_runtime_exit_zero/.test(meta.failure_reason ?? '')) return Array.isArray(meta.changed_files) && meta.changed_files.length ? 'regressed' : 'infra_failed';
   if (meta.exit_status === undefined && !meta.completed_at) return 'infra_failed'; // the maker never ran
-  if ((meta.deterministic_checks ?? []).some((c) => c?.exit_status === 127)) return 'infra_failed'; // a check's tool was missing
+  if ((meta.deterministic_checks ?? []).some((c) => c?.exit_status === 127 || c?.reason === 'missing_script')) return 'infra_failed'; // a check's tool or script was missing
   if (Array.isArray(meta.changed_files) && meta.changed_files.length === 0) return 'no_change';
   return 'regressed';
 }

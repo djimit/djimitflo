@@ -41,6 +41,15 @@ export const MAKER_TEMPLATE_RULES_STE = [
   '12. Before you stop, run `npm run test:changed`, `npm run lint` and `npm run type-check`.',
   '13. A checker must accept your change before the task is complete.',
 ];
+/**
+ * Multi-repo: the STE rules for a repo with other check scripts (EXTRA_REPO_CHECKS_<SLUG>) — only rule 12 names the scripts.
+ * steRulesFor(['test:changed', 'lint', 'type-check']) is exactly MAKER_TEMPLATE_RULES_STE (ste-001.test.ts pins it).
+ */
+export function steRulesFor(scripts: string[]): string[] {
+  const run = scripts.map((s) => `\`npm run ${s}\``);
+  const list = run.length > 1 ? `${run.slice(0, -1).join(', ')} and ${run[run.length - 1]}` : run[0] ?? '';
+  return MAKER_TEMPLATE_RULES_STE.map((line) => (line.startsWith('12. ') ? `12. Before you stop, run ${list}.` : line));
+}
 export const STE_TEMPLATE_HASH = createHash('sha256').update(MAKER_TEMPLATE_RULES_STE.join('\n')).digest('hex').slice(0, 12);
 
 /** STE-001: the arm recorded on this run's latest assignment_context event (null when the run was not in the experiment). */
@@ -62,7 +71,7 @@ export function ste001Evidence(db: Database, since: string, env: NodeJS.ProcessE
     rows = db.prepare(`SELECT substr(r.value, 13) AS arm, o.success, o.tokens_used AS tokens,
         EXISTS (SELECT 1 FROM json_each(o.evidence_refs_json) g WHERE g.value = 'gate:auto_approved_scope:fail') AS out_of_scope
       FROM skill_outcomes o, json_each(o.evidence_refs_json) r
-      WHERE r.value LIKE 'ste-001-arm:%' AND o.skill_id NOT LIKE 'loop-maker:gym:%' AND o.created_at >= ?`).all(since) as typeof rows;
+      WHERE r.value LIKE 'ste-001-arm:%' AND o.skill_id LIKE 'loop-maker:%' AND o.skill_id NOT LIKE 'loop-maker:gym:%' AND o.created_at >= ?`).all(since) as typeof rows;
   } catch { /* skill_outcomes absent */ }
   const arm = (a: '0' | '1') => {
     const r = rows.filter((x) => x.arm === a); const v = r.filter((x) => x.success).length; const s = r.filter((x) => x.out_of_scope).length;
