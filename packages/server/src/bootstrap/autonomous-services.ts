@@ -28,7 +28,7 @@ import { EventOutboxService, bridgeGoalEvents, eventPublishEnabled } from '../se
 import { AgentRegistrySyncService, registryUrl } from '../services/agent-registry-sync-service';
 import { TestGapSourceService, testGapSourceEnabled } from '../services/test-gap-source-service';
 import { DeadCodeSourceService, deadCodeLaneEnabled } from '../services/dead-code-source-service';
-import { EvolutionGymService, gymEnabled } from '../services/evolution-gym-service';
+import { EvolutionGymService, gymArmed } from '../services/evolution-gym-service';
 import { DreamStateService, dreamStateEnabled } from '../services/dream-state-service';
 import { NeedsGroundingTriageService, needsGroundingTriageEnabled } from '../services/needs-grounding-triage-service';
 import { DiskGuardService, diskGuardEnabled } from '../services/disk-guard-service';
@@ -155,12 +155,12 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
 
   // C2 evolution gym: sandbox replay tasks from our own history; outcomes feed species selection. Default off.
   try {
-    if (noteScheduler('evolution_gym', 'EVOLUTION_GYM_ENABLED', gymEnabled(), 3_600_000)) {
+    if (noteScheduler('evolution_gym', 'EVOLUTION_GYM_ENABLED', gymArmed(), 3_600_000)) {
       const gym = new EvolutionGymService(db, recoverySvc);
       gym.start();
       registerRestart('evolution_gym', () => { gym.stop(); gym.start(); });
       lifecycleManager.register({ serviceName: 'EvolutionGym', stop: () => gym.stop() });
-      console.log(`🏋️ Evolution gym on (max ${Number(process.env.EVOLUTION_GYM_MAX_PER_DAY) || 12} attempts/day).`);
+      console.log(`🏋️ Evolution gym on (max ${Number(process.env.EVOLUTION_GYM_MAX_PER_DAY) || 12} attempts/day${process.env.SUBSCRIPTION_GYM_SPECIES ? `; subscription species: ${process.env.SUBSCRIPTION_GYM_SPECIES}` : ''}).`);
     }
   } catch (error) {
     console.warn('⚠️  Evolution gym failed to start (non-fatal):', error instanceof Error ? error.message : String(error));

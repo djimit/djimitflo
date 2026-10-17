@@ -17,6 +17,7 @@ import { judgmentMode, runJudgment } from './judgment-service';
 import { leaseIdentity } from './reviewer-independence-service';
 import { checkerSecondOpinion, checkerSecondOpinionState } from './judgments/checker-second-opinion';
 import { remoteMakerCancelReason } from '../execution/executors/remote-maker-executor';
+import { SUBSCRIPTION_ENV_MARKER } from '../execution/executors/subscription-env';
 import { recordPolicyViolation } from './policy-violations';
 import { computeTokenAccounting, safeTokenAccounting } from './maker-token-accounting';
 import { assignMakerDepsArm, makerDeps001On, makerDepsEligible } from './maker-deps-001';
@@ -487,6 +488,9 @@ export class LoopWorkerExecutorService {
     const now = new Date().toISOString();
     const environment = Object.fromEntries(Object.entries(this.loopService.buildNestedSpawnEnv(lease) || {})
       .filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
+    // SUBSCRIPTION_GYM_SPECIES: a gym maker on a flat subscription — the executor drops every billing key and adds the login at
+    // spawn time (only the marker is stored here, never the token)
+    if (lease.role === 'maker' && lease.metadata.subscription_auth === runtime && (runtime === 'claude' || runtime === 'codex')) environment[SUBSCRIPTION_ENV_MARKER] = runtime;
     this.db.prepare(`
       INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, agent_id, tags, metadata, created_at, updated_at)
       VALUES (?, ?, ?, 'pending', ?, ?, 'local', ?, ?, ?, ?, ?)
