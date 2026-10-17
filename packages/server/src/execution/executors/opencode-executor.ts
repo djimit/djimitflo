@@ -163,7 +163,7 @@ export class OpenCodeExecutor implements TaskExecutor {
     const spawnProcess = () => {
       if (session.status === 'cancelled') { resolveClosed(); emitter.emit('exit', null); return; }
       const cwd = options?.workingDirectory || process.cwd();
-      const env = buildExecutorEnv(options?.environment);
+      const env = buildExecutorEnv(options?.environment, this.kind);
       const timeoutMs = options?.timeout ?? this.executionTimeoutMs;
 
       const child = spawn(this.opencodePath, args, {

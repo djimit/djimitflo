@@ -489,8 +489,8 @@ export class LoopWorkerExecutorService {
     const environment = Object.fromEntries(Object.entries(this.loopService.buildNestedSpawnEnv(lease) || {})
       .filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
     // SUBSCRIPTION_GYM_SPECIES: a gym maker on a flat subscription — the executor drops every billing key and adds the login at
-    // spawn time (only the marker is stored here, never the token)
-    if (lease.role === 'maker' && lease.metadata.subscription_auth === runtime && (runtime === 'claude' || runtime === 'codex')) environment[SUBSCRIPTION_ENV_MARKER] = runtime;
+    // spawn time (only the marker is stored here, never the token); opencode = an opencode-free:<model> species (keys dropped, no login)
+    if (lease.role === 'maker' && lease.metadata.subscription_auth === runtime && (runtime === 'claude' || runtime === 'codex' || runtime === 'opencode')) environment[SUBSCRIPTION_ENV_MARKER] = runtime;
     this.db.prepare(`
       INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, agent_id, tags, metadata, created_at, updated_at)
       VALUES (?, ?, ?, 'pending', ?, ?, 'local', ?, ?, ?, ?, ?)

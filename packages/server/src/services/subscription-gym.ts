@@ -20,14 +20,38 @@ export { SUBSCRIPTION_ENV_MARKER, isBillingKey, subscriptionChildEnv } from '../
  * ('infra: subscription_auth_missing'). A rate/usage-limit error from the CLI is 'infra: subscription_limit' (no species
  * penalty) and benches the species for SUBSCRIPTION_GYM_LIMIT_BACKOFF_MS (default 5 h, one subscription window).
  * The OAuth token is read from the server env at spawn time only: never persisted, never logged.
+ *
+ * `opencode-free:<model>` (operator 17-10): an OpenCode Zen free model (e.g. deepseek-v4.1-flash-free) through the opencode
+ * CLI's built-in 'opencode' provider, model `opencode/<model>`. Zen refuses free models over the raw API (FreeTierError 'can
+ * only be used from within OpenCode'), so they only run through the CLI. No login: without OPENCODE_API_KEY / an 'opencode'
+ * auth entry the CLI (1.18) sends apiKey 'public' and drops every model whose input cost is not 0 — and the child env drops
+ * OPENCODE_API_KEY with every other key, so a paid Zen model cannot even load. Only names ending in '-free' are accepted
+ * (anything else is refused and listed in the evidence). Ledger provider `free-tier-cli:opencode`, cost_basis free_tier.
  */
-export type SubscriptionRuntime = 'claude' | 'codex';
-const RUNTIMES: SubscriptionRuntime[] = ['claude', 'codex'];
+export type SubscriptionRuntime = 'claude' | 'codex' | 'opencode';
+/** One configured value. key = the gym species key (`$.gym.species`): runtime, or runtime@model. */
+export interface SubscriptionSpecies { name: string; runtime: SubscriptionRuntime; key: string; model?: string; freeTier?: true }
+const RUNTIMES = ['claude', 'codex'] as const;
+const FREE_PREFIX = 'opencode-free:';
+const FREE_MODEL = /^[a-z0-9][a-z0-9._-]*-free$/i;
 
-export function subscriptionGymSpecies(env: NodeJS.ProcessEnv = process.env): SubscriptionRuntime[] {
-  const want = (env.SUBSCRIPTION_GYM_SPECIES || '').split(',').map((s) => s.trim().toLowerCase());
-  return RUNTIMES.filter((r) => want.includes(r));
+/** SUBSCRIPTION_GYM_SPECIES parsed: accepted species (deduplicated, in order) and refused values (never run). */
+export function parseSubscriptionSpecies(env: NodeJS.ProcessEnv = process.env): { species: SubscriptionSpecies[]; refused: string[] } {
+  const species: SubscriptionSpecies[] = []; const refused: string[] = [];
+  for (const raw of (env.SUBSCRIPTION_GYM_SPECIES || '').split(',').map((s) => s.trim()).filter(Boolean)) {
+    const lower = raw.toLowerCase();
+    let s: SubscriptionSpecies | null = null;
+    if ((RUNTIMES as readonly string[]).includes(lower)) s = { name: lower, runtime: lower as SubscriptionRuntime, key: lower };
+    else if (lower.startsWith(FREE_PREFIX) && FREE_MODEL.test(raw.slice(FREE_PREFIX.length))) {
+      const model = `opencode/${raw.slice(FREE_PREFIX.length)}`;
+      s = { name: raw, runtime: 'opencode', model, key: `opencode@${model}`, freeTier: true };
+    }
+    if (!s) refused.push(raw);
+    else if (!species.some((x) => x.key === s!.key)) species.push(s);
+  }
+  return { species, refused };
 }
+export const subscriptionGymSpecies = (env: NodeJS.ProcessEnv = process.env): SubscriptionSpecies[] => parseSubscriptionSpecies(env).species;
 export const subscriptionGymMaxPerDay = (env: NodeJS.ProcessEnv = process.env): number => Number(env.SUBSCRIPTION_GYM_MAX_PER_DAY) || 5;
 export const subscriptionLimitBackoffMs = (env: NodeJS.ProcessEnv = process.env): number => Number(env.SUBSCRIPTION_GYM_LIMIT_BACKOFF_MS) || 5 * 3_600_000;
 
@@ -40,9 +64,10 @@ export function codexAuthFile(env: NodeJS.ProcessEnv = process.env): string {
 
 /**
  * The subscription login exists. claude: CLAUDE_CODE_OAUTH_TOKEN is set. codex: auth.json holds a ChatGPT login (`tokens`)
- * and no API key — an API-key login would bill per token, so it counts as missing. Values are inspected in memory only.
+ * and no API key — an API-key login would bill per token, so it counts as missing. opencode (free models): none needed. Values are inspected in memory only.
  */
 export function subscriptionAuthPresent(runtime: SubscriptionRuntime, env: NodeJS.ProcessEnv = process.env): boolean {
+  if (runtime === 'opencode') return true; // opencode-free: Zen free models need no login (the CLI sends apiKey 'public')
   if (runtime === 'claude') return Boolean(env.CLAUDE_CODE_OAUTH_TOKEN?.trim());
   try {
     const auth = JSON.parse(fs.readFileSync(codexAuthFile(env), 'utf8')) as { OPENAI_API_KEY?: unknown; tokens?: unknown };
@@ -50,7 +75,7 @@ export function subscriptionAuthPresent(runtime: SubscriptionRuntime, env: NodeJ
   } catch { return false; }
 }
 
-const LIMIT_RE = /usage limit|rate[ _-]?limit|hit your limit|limit reached|usage_limit_reached|too many requests|\b429\b|quota exceeded|insufficient_quota/i;
+const LIMIT_RE = /FreeUsageLimitError|FreeTierError|free usage exceeded|free_tier_limit|free limit reached|usage limit|rate[ _-]?limit|hit your limit|limit reached|usage_limit_reached|too many requests|\b429\b|quota exceeded|insufficient_quota/i;
 /** A failed run whose CLI output says the subscription window is exhausted (only failed runs: a fix may mention rate limits). */
 export function isSubscriptionLimit(exitStatus: unknown, stdout: string, stderr: string): boolean {
   if (exitStatus === 0) return false;
@@ -58,15 +83,15 @@ export function isSubscriptionLimit(exitStatus: unknown, stdout: string, stderr:
 }
 
 /** The species hit its subscription limit within the backoff window. */
-export function inLimitBackoff(db: Database, runtime: SubscriptionRuntime, now = Date.now(), env: NodeJS.ProcessEnv = process.env): boolean {
+export function inLimitBackoff(db: Database, key: string, now = Date.now(), env: NodeJS.ProcessEnv = process.env): boolean {
   const since = new Date(now - subscriptionLimitBackoffMs(env)).toISOString();
   return (db.prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ?
-    AND json_extract(metadata, '$.gym.subscription') = 1 AND json_extract(metadata, '$.gym_result.reason') = ? AND created_at >= ?`).get(runtime, LIMIT_HIT, since) as { n: number }).n > 0;
+    AND json_extract(metadata, '$.gym.subscription') = 1 AND json_extract(metadata, '$.gym_result.reason') = ? AND created_at >= ?`).get(key, LIMIT_HIT, since) as { n: number }).n > 0;
 }
 
-export function subscriptionAttemptsToday(db: Database, runtime: SubscriptionRuntime, now = Date.now()): number {
+export function subscriptionAttemptsToday(db: Database, key: string, now = Date.now()): number {
   return (db.prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ?
-    AND json_extract(metadata, '$.gym.subscription') = 1 AND created_at >= ?`).get(runtime, new Date(now - 86_400_000).toISOString()) as { n: number }).n;
+    AND json_extract(metadata, '$.gym.subscription') = 1 AND created_at >= ?`).get(key, new Date(now - 86_400_000).toISOString()) as { n: number }).n;
 }
 
 /**
@@ -74,8 +99,10 @@ export function subscriptionAttemptsToday(db: Database, runtime: SubscriptionRun
  * rate with a Wilson 95 % interval (null + 'insufficient' below 10 scored: never 0), limit hits and auth-missing refusals.
  */
 export function subscriptionGymEvidence(db: Database, since: string, env: NodeJS.ProcessEnv = process.env) {
-  const enabled = subscriptionGymSpecies(env);
-  const species = RUNTIMES.map((runtime) => {
+  const { species: enabled, refused } = parseSubscriptionSpecies(env);
+  const listed = [...RUNTIMES.map((r) => ({ name: r as string, key: r as string, freeTier: false })), ...enabled.filter((s) => s.freeTier).map((s) => ({ name: s.name, key: s.key, freeTier: true }))];
+  const species = listed.map(({ name, key, freeTier }) => {
+    const head = { species: name, key, enabled: enabled.some((s) => s.key === key), cost_basis: freeTier ? 'free_tier' as const : 'flat_subscription' as const };
     let r: { attempts: number; scored: number; successes: number; limit_hits: number; auth_missing: number } | undefined;
     try {
       r = db.prepare(`SELECT COUNT(*) AS attempts,
@@ -84,12 +111,12 @@ export function subscriptionGymEvidence(db: Database, since: string, env: NodeJS
           COALESCE(SUM(json_extract(metadata, '$.gym_result.reason') = ?), 0) AS limit_hits,
           COALESCE(SUM(json_extract(metadata, '$.gym_result.reason') = ?), 0) AS auth_missing
         FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.subscription') = 1
-          AND created_at >= ?`).get(LIMIT_HIT, AUTH_MISSING, runtime, since) as typeof r;
+          AND created_at >= ?`).get(LIMIT_HIT, AUTH_MISSING, key, since) as typeof r;
     } catch { r = undefined; }
-    if (!r) return { species: runtime, enabled: enabled.includes(runtime), attempts: null, scored: null, successes: null, limit_hits: null, auth_missing: null, rate: null, ci: null, status: 'insufficient' as const };
+    if (!r) return { ...head, attempts: null, scored: null, successes: null, limit_hits: null, auth_missing: null, rate: null, ci: null, status: 'insufficient' as const };
     const ok = r.scored >= 10;
-    return { species: runtime, enabled: enabled.includes(runtime), ...r, rate: ok ? +(r.successes / r.scored).toFixed(4) : null, ci: ok ? wilson(r.successes, r.scored) : null, status: ok ? 'ok' as const : 'insufficient' as const };
+    return { ...head, ...r, rate: ok ? +(r.successes / r.scored).toFixed(4) : null, ci: ok ? wilson(r.successes, r.scored) : null, status: ok ? 'ok' as const : 'insufficient' as const };
   });
-  return { enabled, max_per_day: subscriptionGymMaxPerDay(env), species,
-    note: 'local gym only (flat subscription, marginal cost 0, API keys stripped from the child). scored = success/failure; limit hits and auth refusals are infra discards. Wilson 95 %; insufficient below 10 scored.' };
+  return { enabled: enabled.map((s) => s.name), refused, max_per_day: subscriptionGymMaxPerDay(env), species,
+    note: 'local gym only (claude/codex: flat subscription; opencode-free:<model>: OpenCode Zen free tier, -free models only; marginal cost 0, API keys stripped from the child). scored = success/failure; limit hits and auth refusals are infra discards. Wilson 95 %; insufficient below 10 scored.' };
 }
