@@ -3,6 +3,9 @@
 
 /** Child-env marker the gym sets on a subscription maker's task; buildExecutorEnv turns it into the subscription env. */
 export const SUBSCRIPTION_ENV_MARKER = 'DJIMITFLO_SUBSCRIPTION_AUTH';
+/** True when the task's env carries the subscription marker naming this executor (a SUBSCRIPTION_GYM_SPECIES maker). */
+export const isSubscriptionRun = (options: { environment?: Record<string, string> } | undefined, runtime: string): boolean =>
+  options?.environment?.[SUBSCRIPTION_ENV_MARKER] === runtime;
 /**
  * Everything a CLI could bill per token against (or be routed to a metered proxy by) instead of the subscription login:
  * every `*_API_KEY` (ANTHROPIC_, OPENAI_, OPENCODE_*_, …; a subscription maker needs none) plus the Anthropic auth token

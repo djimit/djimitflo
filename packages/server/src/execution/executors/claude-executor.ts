@@ -3,7 +3,7 @@
  * streams best-effort execution events.
  *
  * CLI contract (headless, verified against the installed binary):
- *   claude -p "<prompt>" --output-format json [--dangerously-skip-permissions] [--model <m>]
+ *   claude -p "<prompt>" --output-format json [--dangerously-skip-permissions | --permission-mode acceptEdits (subscription maker)] [--model <m>]
  *
  * The worktree is inherited as cwd via spawn (no --cd flag). MVP parsing: each
  * stdout line is attempted as JSON (emitted as a LOG carrying the parsed shape)
@@ -15,6 +15,7 @@
 import { Task, ExecutionEventType, LogLevel, ExecutionEventCreateInput } from '@djimitflo/shared';
 import { TaskExecutor, ExecutionSession, ExecutionResult, ExecutorOptions, ExecutorKind } from '../types';
 import { buildExecutorEnv } from './executor-env';
+import { isSubscriptionRun } from './subscription-env';
 import { runtimeProcessClosed, stopRuntimeProcess } from './runtime-process';
 import { structuredRuntimeEvent } from './structured-runtime-event';
 import { randomUUID } from 'crypto';
@@ -61,7 +62,7 @@ export class ClaudeExecutor implements TaskExecutor {
     let resolveClosed!: () => void;
     const closed = new Promise<void>(resolve => { resolveClosed = resolve; });
 
-    const skipPerms = options?.skipPermissions ?? this.skipPermissions;
+    const skipPerms = !isSubscriptionRun(options, 'claude') && (options?.skipPermissions ?? this.skipPermissions);
 
     const spawnProcess = () => {
       if (session.status === 'cancelled') { resolveClosed(); emitter.emit('exit', null); return; }
@@ -138,8 +139,10 @@ export class ClaudeExecutor implements TaskExecutor {
       args.push('--output-format', 'json');
     }
 
-    const skipPerms = options?.skipPermissions ?? this.skipPermissions;
-    if (skipPerms) {
+    // SUBSCRIPTION_GYM_SPECIES maker: file edits in cwd only (no shell, no blanket bypass) — never the skip flag.
+    if (isSubscriptionRun(options, 'claude')) {
+      args.push('--permission-mode', 'acceptEdits');
+    } else if (options?.skipPermissions ?? this.skipPermissions) {
       args.push('--dangerously-skip-permissions');
     }
 
