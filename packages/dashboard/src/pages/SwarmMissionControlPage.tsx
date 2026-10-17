@@ -6,7 +6,7 @@ import { api, type CapacityPlanV2Result, type ClaimLedgerRecord, type GoalBatchP
 import { LoadErrorNotice } from '../components/LoadErrorNotice';
 import { useDialog } from '../components/ConfirmDialog';
 
-const FLYWHEEL_BATCH_PATH = 'openspec/changes/prove-learning-flywheel-operator-loop/goals.batch.json';
+const FLYWHEEL_BATCH_PATH = 'openspec/changes/archive/2026-06-26-prove-learning-flywheel-operator-loop/goals.batch.json';
 
 export function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? value as T[] : [];
