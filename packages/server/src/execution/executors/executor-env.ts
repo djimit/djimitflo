@@ -1,6 +1,8 @@
 // Shared env allowlist for tasks-path executors. Matches the loop-path
 // RUNTIME_ENV_ALLOWLIST in loop-service.ts — server secrets stay out of
 // spawned CLI children. RUNTIME_ENV_PASSTHROUGH=NAME,NAME adds extras.
+import { SUBSCRIPTION_ENV_MARKER, subscriptionChildEnv } from './subscription-env';
+
 const ALLOWLIST = [
   'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LANGUAGE', 'LC_ALL', 'LC_CTYPE', 'TZ', 'TERM',
   'TMPDIR', 'TMP', 'TEMP',
@@ -14,12 +16,18 @@ const ALLOWLIST = [
   'OPENCODE_GEMINI_API_KEY', 'OPENCODE_MOONSHOT_API_KEY', 'OPENCODE_NVIDIA_API_KEY', 'OPENCODE_OPENROUTER_API_KEY', 'OPENCODE_REQUESTY_API_KEY',
 ];
 
-export function buildExecutorEnv(overrides?: Record<string, string>): NodeJS.ProcessEnv {
+/**
+ * `kind` is the spawning executor. A task carrying the subscription marker (SUBSCRIPTION_GYM_SPECIES makers) gets every
+ * billing API key dropped — whatever the passthrough says — and the login only when the marker names this executor.
+ */
+export function buildExecutorEnv(overrides?: Record<string, string>, kind?: string): NodeJS.ProcessEnv {
   const names = new Set(ALLOWLIST);
   const extra = process.env.RUNTIME_ENV_PASSTHROUGH;
   if (extra) for (const n of extra.split(',').map((v) => v.trim()).filter(Boolean)) names.add(n);
   const env: NodeJS.ProcessEnv = {};
   for (const n of names) { const v = process.env[n]; if (v !== undefined) env[n] = v; }
   if (overrides) Object.assign(env, overrides);
+  const marker = env[SUBSCRIPTION_ENV_MARKER];
+  if (marker) return subscriptionChildEnv(env, marker === kind ? marker : undefined);
   return env;
 }

@@ -46,7 +46,7 @@ export interface ModelCall {
  * LLM_COST_BASIS=<provider-or-model substring>=<basis>,… overrides the defaults below (first match wins).
  */
 export type CostBasis = 'flat_subscription' | 'local' | 'free_tier' | 'metered' | 'unknown';
-const DEFAULT_COST_BASIS = 'ollama.com=flat_subscription,:cloud=flat_subscription,ollama=flat_subscription,llama-router=local,127.0.0.1=local,localhost=local,nvidia=free_tier,typesafe=metered';
+const DEFAULT_COST_BASIS = 'subscription-cli=flat_subscription,ollama.com=flat_subscription,:cloud=flat_subscription,ollama=flat_subscription,llama-router=local,127.0.0.1=local,localhost=local,nvidia=free_tier,typesafe=metered';
 export function costBasis(provider: string | null | undefined, model: string, env: NodeJS.ProcessEnv = process.env): CostBasis {
   const hay = `${provider ?? ''} ${model}`.toLowerCase();
   for (const pair of `${env.LLM_COST_BASIS ? `${env.LLM_COST_BASIS},` : ''}${DEFAULT_COST_BASIS}`.split(',')) {

@@ -66,7 +66,7 @@ export class ClaudeExecutor implements TaskExecutor {
     const spawnProcess = () => {
       if (session.status === 'cancelled') { resolveClosed(); emitter.emit('exit', null); return; }
       const cwd = options?.workingDirectory || process.cwd();
-      const env = buildExecutorEnv(options?.environment);
+      const env = buildExecutorEnv(options?.environment, 'claude');
       const timeoutMs = options?.timeout ?? this.executionTimeoutMs;
 
       const child = spawn(this.claudePath, args, {
