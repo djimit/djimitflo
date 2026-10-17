@@ -8,6 +8,7 @@ import { settlementState, SURVIVAL_DAYS, type SettlementOutcome } from './merge-
 import { autoMergeMaxPerDay, autoMergeMode, isAuditSample, readClassState, revokeClass } from './loop-auto-merge-state';
 import { markRun } from './scheduler-registry';
 import { assertionStrengthVerdict } from './test-assertion-strength';
+import { autoMergeAllowed, parsePrUrl } from './repo-registry';
 
 /**
  * Earned auto-merge for verified test-only loop PRs (operator-approved 2026-10-07: 30 loop PRs, 22 merged by the human,
@@ -47,13 +48,14 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
   if (mode === 'off' || !repo || !token) return { evaluated: 0, merged: 0, revoked: false };
   const base = env.LOOP_DRAFT_PR_BASE || 'main';
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' };
-  const gh = (p: string, method = 'GET', body?: unknown) => fetchImpl(p.startsWith('https://') ? p : `https://api.github.com/repos/${repo}/${p}`,
+  // Every call is scoped to the PR's own repo (owner/repo from its URL), never to GITHUB_REPOSITORY by number alone.
+  const gh = (slug: string, p: string, method = 'GET', body?: unknown) => fetchImpl(p.startsWith('https://') ? p : `https://api.github.com/repos/${slug}/${p}`,
     { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-  const json = async <T>(p: string): Promise<T | null> => { try { const r = await gh(p); return r.ok ? await r.json() as T : null; } catch { return null; } };
+  const json = async <T>(slug: string, p: string): Promise<T | null> => { try { const r = await gh(slug, p); return r.ok ? await r.json() as T : null; } catch { return null; } };
   const events = new LoopEventService(db);
-  const checks = async (sha: string): Promise<Checks> => {
-    const runs = (await json<{ check_runs?: Array<{ status?: string; conclusion?: string | null }> }>(`commits/${sha}/check-runs?per_page=100`))?.check_runs;
-    const status = await json<{ state?: string; total_count?: number }>(`commits/${sha}/status`);
+  const checks = async (slug: string, sha: string): Promise<Checks> => {
+    const runs = (await json<{ check_runs?: Array<{ status?: string; conclusion?: string | null }> }>(slug, `commits/${sha}/check-runs?per_page=100`))?.check_runs;
+    const status = await json<{ state?: string; total_count?: number }>(slug, `commits/${sha}/status`);
     if (!runs) return 'pending';
     if (runs.some((c) => c.status === 'completed' && RED.has(String(c.conclusion))) || status?.state === 'failure' || status?.state === 'error') return 'red';
     if (runs.some((c) => c.status !== 'completed' || c.conclusion === 'cancelled' || c.conclusion === 'stale') || (status?.total_count && status.state === 'pending')) return 'pending';
@@ -74,8 +76,9 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     const meta = JSON.parse(run.metadata || '{}') as { pr_url: string; auto_merge?: AutoMergeRecord };
     const prev = meta.auto_merge;
     if (prev && ['merged', 'audit_sample', 'ineligible'].includes(prev.decision)) continue;
-    const number = Number(/\/pull\/(\d+)$/.exec(meta.pr_url)?.[1]);
-    if (!number) continue;
+    const ref = parsePrUrl(meta.pr_url);
+    if (!ref) continue;
+    const { slug, number } = ref;
     evaluated++;
     const record = (decision: Decision, reason: string, extra: Partial<AutoMergeRecord> = {}): AutoMergeRecord => {
       // unchanged decision (shadow re-checks every tick): keep the first record, so `at` stays when it was first decided
@@ -89,24 +92,26 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
       return rec;
     };
 
+    // multi-repo: only repos on the explicit LOOP_AUTO_MERGE_REPOS allow-list (default: the primary repo only)
+    if (!autoMergeAllowed(slug, env)) { record('ineligible', `repo_not_allowed: ${slug}`); continue; }
     // verified run
     const gates = (() => { try { return JSON.parse(run.gates_json || '[]') as Array<{ status?: string }>; } catch { return [{ status: 'fail' }]; } })();
     if (run.improvement_status !== 'verified' || !['completed', 'ready_for_human_merge'].includes(run.status) || gates.some((g) => g.status === 'fail' || g.status === 'unknown')) {
       record('ineligible', `not_verified: run ${run.status}, proposal ${run.improvement_status ?? 'unlinked'}`); continue;
     }
-    const pr = await json<Pr>(`pulls/${number}`);
+    const pr = await json<Pr>(slug, `pulls/${number}`);
     if (!pr) { record('waiting', 'github_unavailable'); continue; }
     if (pr.state !== 'open') { record('ineligible', `not_open: ${pr.state}`); continue; }
     const maker = db.prepare(`SELECT branch_name, json_extract(metadata, '$.diff_max_lines') AS diff_max, json_extract(metadata, '$.deterministic_checks') AS checks FROM worker_leases WHERE loop_run_id = ? AND role = 'maker'
       AND status = 'completed' AND json_extract(metadata, '$.superseded_by_maker_lease_id') IS NULL ORDER BY updated_at DESC LIMIT 1`).get(run.id) as { branch_name: string | null; diff_max: number | null; checks: string | null } | undefined;
     // never a non-loop or Dependabot PR: the title, the author, the head repo and the maker branch must all match
     if (!String(pr.title ?? '').startsWith('loop:') || /dependabot/i.test(String(pr.user?.login ?? '')) || /^dependabot\//.test(String(pr.head?.ref ?? ''))
-      || pr.head?.repo?.full_name !== repo || !maker?.branch_name || pr.head?.ref !== maker.branch_name || pr.base?.ref !== base) {
+      || pr.head?.repo?.full_name !== slug || !maker?.branch_name || pr.head?.ref !== maker.branch_name || pr.base?.ref !== base) {
       record('ineligible', 'not_loop_pr: title, author, head repo, branch or base does not match the loop run'); continue;
     }
     const files: Array<{ filename: string; status?: string; additions?: number; deletions?: number }> = [];
     for (let page = 1; page <= 10; page++) {
-      const batch = await json<typeof files>(`pulls/${number}/files?per_page=100&page=${page}`);
+      const batch = await json<typeof files>(slug, `pulls/${number}/files?per_page=100&page=${page}`);
       if (!batch) { files.length = 0; break; }
       files.push(...batch);
       if (batch.length < 100) break;
@@ -121,7 +126,7 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     if (diff > limit) { record('ineligible', `diff_over_limit: ${diff} > ${limit}`); continue; }
     const strength = assertionStrengthVerdict((() => { try { return JSON.parse(maker.checks || '[]'); } catch { return []; } })());
     if (strength !== 'pass') { record('ineligible', `assertion_strength_${strength ?? 'missing'}`); continue; }
-    const reviews = await json<Array<{ user?: { login?: string }; state?: string }>>(`pulls/${number}/reviews?per_page=100`);
+    const reviews = await json<Array<{ user?: { login?: string }; state?: string }>>(slug, `pulls/${number}/reviews?per_page=100`);
     if (!reviews) { record('waiting', 'reviews_unavailable'); continue; }
     const latest = new Map<string, string>();
     for (const r of reviews) if (r.state && r.state !== 'COMMENTED' && r.state !== 'PENDING') latest.set(String(r.user?.login), r.state);
@@ -136,7 +141,7 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
       .get(mode === 'act' ? 'merged' : 'would_merge', new Date(now.getTime() - DAY).toISOString()) as { n: number }).n;
     if (today - counted >= cap) { record('capped', `${today} ${mode === 'act' ? 'merged' : 'would merge'} in 24 h ≥ cap ${cap}`); continue; }
     const sha = String(pr.head?.sha ?? '');
-    const state = await checks(sha);
+    const state = await checks(slug, sha);
     if (state === 'red') { record('ineligible', 'checks_failed'); continue; }
     if (pr.mergeable === false || pr.mergeable_state === 'dirty') { record('ineligible', 'merge_conflict'); continue; }
 
@@ -147,16 +152,16 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     }
     // act — one step per tick
     if (pr.draft) {
-      const r = await gh('https://api.github.com/graphql', 'POST', { query: 'mutation($id: ID!) { markPullRequestReadyForReview(input: { pullRequestId: $id }) { pullRequest { isDraft } } }', variables: { id: pr.node_id } });
+      const r = await gh(slug, 'https://api.github.com/graphql', 'POST', { query: 'mutation($id: ID!) { markPullRequestReadyForReview(input: { pullRequestId: $id }) { pullRequest { isDraft } } }', variables: { id: pr.node_id } });
       const body = r.ok ? await r.json().catch(() => null) as { errors?: unknown[] } | null : null;
       record('waiting', r.ok && !body?.errors?.length ? 'marked_ready' : `mark_ready_failed: ${r.status}`, { steps: ['mark_ready'] }); continue;
     }
     if (pr.mergeable_state === 'behind') {
-      const r = await gh(`pulls/${number}/update-branch`, 'PUT', { expected_head_sha: sha });
+      const r = await gh(slug, `pulls/${number}/update-branch`, 'PUT', { expected_head_sha: sha });
       record('waiting', r.ok ? 'branch_updated' : `update_branch_failed: ${r.status}`, { steps: ['update_branch'] }); continue;
     }
     if (pr.mergeable !== true || state !== 'green') { record('waiting', state !== 'green' ? 'checks_pending' : 'mergeability_pending'); continue; }
-    const res = await gh(`pulls/${number}/merge`, 'PUT', { merge_method: 'squash', sha, commit_title: `${pr.title} (#${number})`.slice(0, 250) });
+    const res = await gh(slug, `pulls/${number}/merge`, 'PUT', { merge_method: 'squash', sha, commit_title: `${pr.title} (#${number})`.slice(0, 250) });
     if (!res.ok) { record('waiting', `merge_failed: ${res.status}`); continue; }
     const mergeSha = String(((await res.json().catch(() => ({}))) as { sha?: string }).sha ?? '');
     record('merged', `squash-merged (${files.length} test file(s), ${diff} line(s))`, { merge_commit_sha: mergeSha, merged_at: now.toISOString(), steps: ['squash_merge'] });
@@ -171,7 +176,7 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
 }
 
 /** The revert window: true when this tick revoked the class. Closes a PR's window after 14 d once merge survival settled it (or 30 d). */
-async function checkRevocations(db: Database, json: <T>(p: string) => Promise<T | null>, checks: (sha: string) => Promise<Checks>,
+async function checkRevocations(db: Database, json: <T>(slug: string, p: string) => Promise<T | null>, checks: (slug: string, sha: string) => Promise<Checks>,
   events: LoopEventService, base: string, now: Date, env: NodeJS.ProcessEnv): Promise<boolean> {
   const merged = db.prepare(`SELECT id, created_at, metadata FROM loop_runs WHERE json_extract(metadata, '$.auto_merge.decision') = 'merged'
     AND json_extract(metadata, '$.auto_merge.window_closed') IS NULL`).all() as Array<{ id: string; created_at: string; metadata: string }>;
@@ -180,17 +185,18 @@ async function checkRevocations(db: Database, json: <T>(p: string) => Promise<T 
     const meta = JSON.parse(run.metadata) as { pr_url: string; auto_merge: AutoMergeRecord; pr_outcome?: SettlementOutcome };
     // E1: only a settled state counts — a pending or anomalous outcome is neither a removal nor a survival
     const settled = settlementState(run.created_at, meta.pr_outcome ?? null, now.getTime()).state;
+    const slug = parsePrUrl(meta.pr_url)?.slug ?? env.GITHUB_REPOSITORY ?? '';
     const am = meta.auto_merge; const mergedAt = Date.parse(am.merged_at ?? am.at); const age = now.getTime() - mergedAt;
     const reasons: string[] = [];
     if (settled === 'SETTLED_REGRESSED') reasons.push('merge survival: its added lines were removed from main');
     if (age <= SURVIVAL_DAYS * DAY) {
-      const commits = await json<Array<{ sha?: string; commit?: { message?: string } }>>(`commits?sha=${encodeURIComponent(base)}&since=${encodeURIComponent(new Date(mergedAt).toISOString())}&per_page=100`);
+      const commits = await json<Array<{ sha?: string; commit?: { message?: string } }>>(slug, `commits?sha=${encodeURIComponent(base)}&since=${encodeURIComponent(new Date(mergedAt).toISOString())}&per_page=100`);
       const ref = new RegExp(`#${am.pr_number}\\b`);
       const sha = am.merge_commit_sha ?? '';
       const revert = (commits ?? []).find((c) => c.sha !== sha && /revert/i.test(c.commit?.message ?? '')
         && (ref.test(c.commit?.message ?? '') || (sha.length >= 7 && (c.commit?.message ?? '').includes(sha.slice(0, 7)))));
       if (revert) reasons.push(`reverted on ${base} by ${String(revert.sha).slice(0, 8)}`);
-      if (sha && await checks(sha) === 'red') reasons.push(`checks failing on ${base} at merge commit ${sha.slice(0, 8)}`);
+      if (sha && await checks(slug, sha) === 'red') reasons.push(`checks failing on ${base} at merge commit ${sha.slice(0, 8)}`);
     }
     if (reasons.length && !am.revoked) {
       const reason = `PR #${am.pr_number}: ${reasons.join('; ')}`;

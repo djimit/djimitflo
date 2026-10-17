@@ -3,6 +3,7 @@ import type { Database } from 'better-sqlite3';
 import { LOOP_PR_SETTLEMENT_STATES, type LoopPrSettlementState } from '@djimitflo/shared';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { markRun } from './scheduler-registry';
+import { extraRepoBySlug, isExtraRepoPr, parsePrUrl, repoSkillPrefix } from './repo-registry';
 
 /**
  * EV4 (plan Phase EV, 03-10): the strongest fitness signal is whether a loop change survives in the real repository.
@@ -117,15 +118,21 @@ export function survivalCounts(states: Iterable<SettlementState>): { survived: n
   return { survived, regressed, settled, rate: settled ? +(survived / settled).toFixed(3) : null };
 }
 
-export interface LoopPrSettlement { run_id: string; created_at: string; pr_url: string; outcome: SettlementOutcome | null; settlement: Settlement }
-/** Every loop PR (loop_runs.metadata.pr_url) with its derived settlement; throws when the table cannot be read. */
-export function loopPrSettlements(db: Database, now = Date.now()): LoopPrSettlement[] {
+export interface LoopPrSettlement { run_id: string; created_at: string; pr_url: string; repo: string | null; outcome: SettlementOutcome | null; settlement: Settlement }
+/**
+ * Every loop PR (loop_runs.metadata.pr_url) with its derived settlement; throws when the table cannot be read.
+ * Repo dimension: `repo` = the owner/repo of the PR URL. The default view (repo omitted) leaves out PRs of registered extra
+ * repos (EXTRA_REPOS_ENABLED), so primary-repo survival numbers never mix with another repo; `repo` selects one slug.
+ */
+export function loopPrSettlements(db: Database, now = Date.now(), repo?: string, env: NodeJS.ProcessEnv = process.env): LoopPrSettlement[] {
   const rows = db.prepare(`SELECT id, created_at, json_extract(metadata, '$.pr_url') AS url, json_extract(metadata, '$.pr_outcome') AS o FROM loop_runs
     WHERE json_extract(metadata, '$.pr_url') IS NOT NULL`).all() as Array<{ id: string; created_at: string; url: string; o: string | null }>;
-  return rows.map((r) => {
-    const outcome = parseOutcome(r.o);
-    return { run_id: r.id, created_at: r.created_at, pr_url: r.url, outcome, settlement: settlementState(r.created_at, outcome, now) };
-  });
+  return rows
+    .filter((r) => (repo ? parsePrUrl(r.url)?.slug.toLowerCase() === repo.toLowerCase() : !isExtraRepoPr(r.url, env)))
+    .map((r) => {
+      const outcome = parseOutcome(r.o);
+      return { run_id: r.id, created_at: r.created_at, pr_url: r.url, repo: parsePrUrl(r.url)?.slug ?? null, outcome, settlement: settlementState(r.created_at, outcome, now) };
+    });
 }
 
 /** pr_outcome JSON text (json_extract of metadata) → object; unparseable text becomes an unknown state (→ PIPELINE_ANOMALY). */
@@ -194,17 +201,19 @@ export async function checkLoopPrs(db: Database, fetchImpl: typeof fetch = fetch
   const runs = db.prepare(`SELECT id, created_at, json_extract(metadata, '$.pr_url') AS url, json_extract(metadata, '$.pr_close_reason') AS close_reason FROM loop_runs
     WHERE json_extract(metadata, '$.pr_url') IS NOT NULL AND json_extract(metadata, '$.pr_outcome.settled_at') IS NULL AND created_at >= ?`).all(since) as Array<{ id: string; created_at: string; url: string; close_reason: string | null }>;
   const fail = (key: string) => { cycle.api_failures[key] = (cycle.api_failures[key] ?? 0) + 1; };
-  const get = async (p: string, gone404 = false) => {
-    const res = await fetchImpl(`https://api.github.com/repos/${repo}/${p}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' } });
+  // B3 (17-10): a PR is identified by owner/repo + number from its full URL, never by the number alone (a number in another
+  // repo used to be settled with the primary repo's PR of the same number).
+  const get = async (slug: string, p: string, gone404 = false) => {
+    const res = await fetchImpl(`https://api.github.com/repos/${slug}/${p}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' } });
     if (!res.ok && !(gone404 && res.status === 404)) fail(String(res.status));
     return res;
   };
   cycle.selected = runs.length;
   /** v2: every page of a list endpoint (per_page=100, ≤ 30 pages); null when a page fails (try again next tick). */
-  const getAll = async <T>(p: string): Promise<T[] | null> => {
+  const getAll = async <T>(slug: string, p: string): Promise<T[] | null> => {
     const all: T[] = [];
     for (let page = 1; page <= 30; page++) {
-      const res = await get(`${p}?per_page=100&page=${page}`);
+      const res = await get(slug, `${p}?per_page=100&page=${page}`);
       if (!res.ok) return null;
       const batch = await res.json() as T[];
       all.push(...batch);
@@ -216,9 +225,12 @@ export async function checkLoopPrs(db: Database, fetchImpl: typeof fetch = fetch
   let checked = 0; let settled = 0;
   try {
   for (const run of runs) {
-    const number = /\/pull\/(\d+)$/.exec(run.url)?.[1];
-    if (!number) { cycle.skipped++; continue; }
-    const res = await get(`pulls/${number}`);
+    const ref = parsePrUrl(run.url);
+    // only the primary repo or a registered extra repo; anything else is never polled (and never settled)
+    const extra = ref ? extraRepoBySlug(ref.slug, env) : null;
+    if (!ref || (ref.slug.toLowerCase() !== repo.toLowerCase() && !extra)) { cycle.skipped++; continue; }
+    const { slug, number } = ref;
+    const res = await get(slug, `pulls/${number}`);
     if (!res.ok) { cycle.skipped++; continue; } // rate limit or outage: try again next tick
     const pr = await res.json() as { state?: string; merged_at?: string | null; created_at?: string };
     checked++;
@@ -237,9 +249,9 @@ export async function checkLoopPrs(db: Database, fetchImpl: typeof fetch = fetch
     if (outcome.state === 'merged' && now.getTime() - Date.parse(String(pr.merged_at)) >= SURVIVAL_DAYS * 86_400_000) {
       // graded signal: commits a human added before merging (edits by the reviewer = the draft was not good enough as is)
       type Commit = { commit?: { author?: { name?: string } } }; type PrFile = { filename: string; patch?: string };
-      const commitList = v2 ? await getAll<Commit>(`pulls/${number}/commits`) : await get(`pulls/${number}/commits`).then(async (r) => (r.ok ? await r.json() as Commit[] : null));
+      const commitList = v2 ? await getAll<Commit>(slug, `pulls/${number}/commits`) : await get(slug, `pulls/${number}/commits`).then(async (r) => (r.ok ? await r.json() as Commit[] : null));
       if (commitList) outcome.human_commits = commitList.filter((c) => c.commit?.author?.name !== 'djimitflo-loop').length;
-      const fileList = v2 ? await getAll<PrFile>(`pulls/${number}/files`) : await get(`pulls/${number}/files`).then(async (r) => (r.ok ? await r.json() as PrFile[] : null));
+      const fileList = v2 ? await getAll<PrFile>(slug, `pulls/${number}/files`) : await get(slug, `pulls/${number}/files`).then(async (r) => (r.ok ? await r.json() as PrFile[] : null));
       const added = fileList ? (v2 ? addedLinesV2(fileList) : addedLines(fileList)) : null;
       if (added && v2 && added.size === 0) outcome.not_scored = 'deletion_only';
       else if (added && v2 && [...added.keys()].every((f) => DOC.test(f))) outcome.not_scored = 'docs_only';
@@ -248,7 +260,7 @@ export async function checkLoopPrs(db: Database, fetchImpl: typeof fetch = fetch
         let total = 0; let kept = 0; let unknown = false; let unknownFiles = 0;
         for (const [file, lines] of added) {
           total += lines.length;
-          const c = await get(`contents/${file.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(env.LOOP_DRAFT_PR_BASE || 'main')}`, true);
+          const c = await get(slug, `contents/${file.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(env.LOOP_DRAFT_PR_BASE || 'main')}`, true);
           if (c.status === 404) continue; // file gone: none kept
           if (!c.ok) { unknown = true; break; }
           const body = await c.json() as { content?: string; encoding?: string };
@@ -267,7 +279,7 @@ export async function checkLoopPrs(db: Database, fetchImpl: typeof fetch = fetch
       outcome.settled_at = now.toISOString();
       // §16 step 9: the merged change was shaped by the same genome as the run's maker outcome — inherit its skill content hash
       const shaped = db.prepare("SELECT skill_content_hash AS h FROM skill_outcomes WHERE task_id = ? AND domain != 'merge' AND skill_content_hash IS NOT NULL ORDER BY created_at DESC LIMIT 1").get(run.id) as { h: string } | undefined;
-      engine.recordOutcome(`loop-maker:merge:${maker?.runtime ?? 'unknown'}`, {
+      engine.recordOutcome(`${repoSkillPrefix(extra)}loop-maker:merge:${maker?.runtime ?? 'unknown'}`, {
         success, tokensUsed: 0, durationMs: 0, domain: 'merge', taskId: run.id, ...(maker?.model ? { model: maker.model } : {}), ...(shaped ? { skillContentHash: shaped.h } : {}),
         evidenceRefs: [`pr:${run.url}`, `loop_run:${run.id}`, `pr_outcome:${outcome.state}${outcome.survived === undefined ? '' : outcome.survived ? ':survived' : ':removed'}`,
           ...(outcome.retained !== undefined ? [`retained:${outcome.retained}`] : []), ...(outcome.human_commits !== undefined ? [`human_commits:${outcome.human_commits}`] : []),

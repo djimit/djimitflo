@@ -2,6 +2,7 @@ import type { Database } from 'better-sqlite3';
 import { rankEvolveCandidates, evolveWinner, type EvolveCandidate } from './evolve-fitness-service';
 import { LoopEventService } from './loop-event-service';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
+import { extraRepoByPath, repoSkillPrefix } from './repo-registry';
 import { gradedContestMode, leaseGraded, leaseGradedRefs, mutationScoreOf } from './graded-fitness';
 
 /**
@@ -128,7 +129,9 @@ export function selectEvolveWinner(db: Database, runId: string, makerLeaseIds: s
   // N7 lineage: a species that lost the head-to-head is an outcome too (success 0), or the bandit would only ever see
   // winners. The winner's own outcome is recorded when the run finishes (loop-daemon 9a'').
   try {
-    const loop = (db.prepare('SELECT loop_name FROM loop_runs WHERE id = ?').get(runId) as { loop_name: string } | undefined)?.loop_name ?? 'unknown';
+    const runRow = db.prepare('SELECT loop_name, repository_path FROM loop_runs WHERE id = ?').get(runId) as { loop_name: string; repository_path: string | null } | undefined;
+    const loop = runRow?.loop_name ?? 'unknown';
+    const prefix = repoSkillPrefix(extraRepoByPath(runRow?.repository_path)); // an extra repo's outcomes stay out of primary views
     const skills = new SkillEvolutionEngine(db);
     for (const r of ranked.filter((x) => x.makerLeaseId !== winner.makerLeaseId)) {
       const lease = leases.find((l) => l.id === r.makerLeaseId)!;
@@ -137,7 +140,7 @@ export function selectEvolveWinner(db: Database, runId: string, makerLeaseIds: s
       const model = (JSON.parse(lease.metadata || '{}') as { model?: unknown }).model;
       // SI-B act: a maker that passed every gate and lost the contest did the work — success, tagged contest:passed_lost
       const passedLost = contest === 'act' && r.eligible;
-      skills.recordOutcome(`loop-maker:${loop}:${lease.runtime}`, {
+      skills.recordOutcome(`${prefix}loop-maker:${loop}:${lease.runtime}`, {
         success: passedLost, tokensUsed: r.tokens ?? 0, durationMs: 0, domain: loop, taskId: runId, agentId: r.makerLeaseId,
         ...(typeof model === 'string' ? { model } : {}), evidenceRefs: [`loop_run:${runId}`, `evolve:lost_to:${winner.species}`, `evolve:reason:${reasonOf(r)}`,
           passedLost ? 'contest:passed_lost' : `evolve:lost_${r.eligible ? 'eligible' : 'ineligible'}`, ...leaseGradedRefs(JSON.parse(lease.metadata || '{}'))],

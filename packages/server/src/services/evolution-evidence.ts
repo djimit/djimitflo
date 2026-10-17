@@ -31,6 +31,7 @@ import { jevChallengerEvidence } from './jev-challenger';
 import { dreamSourcesEvidence } from './dream-evidence-sources';
 import { playbookGeneEvidence } from './lane-playbook';
 import type { ForecasterScoreV2 } from './forecast-scoring';
+import { extraRepos } from './repo-registry';
 import { BASELINE_GENOME, holdoutEpoch } from './genome-registry';
 
 /**
@@ -76,6 +77,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'JEV_CHALLENGER_MODEL', acting: false },
   { name: 'DREAM_EVIDENCE_SOURCES', acting: false },
   { name: 'DREAM_PLAYBOOK_GENE', acting: false },
+  { name: 'EXTRA_REPOS_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_REPOS', acting: true },
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */
@@ -180,11 +182,14 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
       OR evidence_refs_json LIKE '%"evolve:lost_eligible"%') THEN 1 ELSE 0 END) AS tagged
     FROM skill_outcomes WHERE skill_id LIKE 'loop-maker:%' AND domain NOT IN ('gym', 'merge') AND created_at >= ? GROUP BY 1 ORDER BY total DESC LIMIT 30`, since)
     .map((r) => ({ ...r, share: r.total ? +(r.tagged / r.total).toFixed(3) : 0 }));
+  // repo dimension: default numbers are the primary repo's; registered extra repos (EXTRA_REPOS_ENABLED=on) are reported apart
+  const extras = extraRepos(env);
   const settled = all<{ state: string; survived: number | null; n: number }>(`SELECT json_extract(metadata, '$.pr_outcome.state') AS state,
     json_extract(metadata, '$.pr_outcome.survived') AS survived, COUNT(*) AS n FROM loop_runs
-    WHERE json_extract(metadata, '$.pr_outcome.settled_at') IS NOT NULL GROUP BY 1, 2`);
+    WHERE json_extract(metadata, '$.pr_outcome.settled_at') IS NOT NULL${extras.map(() => " AND lower(json_extract(metadata, '$.pr_url')) NOT LIKE ?").join('')} GROUP BY 1, 2`,
+  ...extras.map((r) => `https://github.com/${r.slug.toLowerCase()}/pull/%`));
   let prs: ReturnType<typeof loopPrSettlements> | null = null;
-  try { prs = loopPrSettlements(db, now); } catch { /* loop_runs absent: settlement unknown */ }
+  try { prs = loopPrSettlements(db, now, undefined, env); } catch { /* loop_runs absent: settlement unknown */ }
   // E1: not settled yet = OPEN_BLOCKED (not closed) + MERGED_SURVIVAL_PENDING; anomalies are reported apart, never as waiting
   const openDrafts = (prs ?? []).filter((p) => (p.settlement.state === 'OPEN_BLOCKED' && !p.settlement.terminal) || p.settlement.state === 'MERGED_SURVIVAL_PENDING');
   const ages = openDrafts.map((r) => (now - Date.parse(r.created_at)) / 86_400_000).sort((a, b) => a - b);
@@ -197,7 +202,10 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     const c = survivalCounts(prs.map((p) => p.settlement.state));
     return { by_state, anomalies, survived: c.survived, regressed: c.regressed, settled: c.settled, survival_rate: c.rate };
   })();
-  const merge = { settled, settlement, merge_outcomes: one("SELECT COUNT(*) FROM skill_outcomes WHERE domain = 'merge'"), first_settled: all<{ at: string }>("SELECT MIN(created_at) AS at FROM skill_outcomes WHERE domain = 'merge'")[0]?.at ?? null };
+  const byRepo = extras.length ? extras.map((r) => {
+    try { const c = survivalCounts(loopPrSettlements(db, now, r.slug, env).map((p) => p.settlement.state)); return { repo: r.slug, ...c }; } catch { return { repo: r.slug, survived: null, regressed: null, settled: null, rate: null }; }
+  }) : undefined;
+  const merge = { settled, settlement, ...(byRepo ? { extra_repos: byRepo } : {}), merge_outcomes: one("SELECT COUNT(*) FROM skill_outcomes WHERE domain = 'merge' AND skill_id LIKE 'loop-maker:%'"), first_settled: all<{ at: string }>("SELECT MIN(created_at) AS at FROM skill_outcomes WHERE domain = 'merge' AND skill_id LIKE 'loop-maker:%'")[0]?.at ?? null };
   const drafts = { unsettled: openDrafts.length, unsettled_open_or_recent: openDrafts.length, anomalous: settlement ? settlement.by_state.PIPELINE_ANOMALY : null,
     age_days_p50: q(0.5), age_days_max: ages.length ? +ages[ages.length - 1].toFixed(1) : null,
     note: 'unsettled_open_or_recent = settlement OPEN_BLOCKED (not closed) or MERGED_SURVIVAL_PENDING: still open, or merged < 14 d ago (E1 settlementState). anomalous = PIPELINE_ANOMALY, counted apart. The open count is the draft throttle\'s (RX-6, draft_pr_throttle* events)' };

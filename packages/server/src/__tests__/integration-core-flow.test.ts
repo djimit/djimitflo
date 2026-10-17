@@ -76,7 +76,8 @@ describe('Integration: Core Loop Lifecycle', () => {
     fs.writeFileSync(path.join(tempDir, 'README.md'), '# Test\nThis is a test repo.\n\nTODO: add real documentation\n');
     fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({
       name: 'test-repo',
-      scripts: { test: 'node -e "process.exit(0)"' },
+      // B1: every check the fix loop runs must exist (a missing script is a failed check, no longer 'skipped')
+      scripts: { test: 'node -e "process.exit(0)"', lint: 'node -e "process.exit(0)"', 'type-check': 'node -e "process.exit(0)"' },
     }, null, 2));
     execFileSync('git', ['init'], { cwd: tempDir, stdio: 'ignore' });
     execFileSync('git', ['config', 'user.email', 'test@example.invalid'], { cwd: tempDir });

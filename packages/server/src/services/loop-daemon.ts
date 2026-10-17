@@ -22,6 +22,7 @@ import { assignSiblingArm, recordEffortSibling, siblingRandomiseEnabled } from '
 import { assignCheckerFamily, checkerFamilyEnabled } from './checker-family';
 import { runAce001, runGenome, skillContentHash } from './maker-genome';
 import { runSte001 } from './ste-001';
+import { extraRepoChecks, goalExtraRepo, goalRepoSlug, primaryRepo, repoSkillPrefix, type ExtraRepo } from './repo-registry';
 import { recordMakerCall } from './model-call-ledger';
 import { strategyGenomeFor } from './genome-registry';
 import { banditSpecies, chooseSpecies, speciesKey } from './runtime-bandit';
@@ -34,8 +35,9 @@ import { recordFailureGaps } from './knowledge-gaps';
 import { makerFailureClass, recordOutcomeAttribution, reviewerSubReason, type AttributionLease, type MakerMeta } from './outcome-attribution';
 /** Deterministic checks for daemon runs. The repo-wide `test` script cannot finish in 120 s, so hosts can scope it
  *  (LOOP_DAEMON_CHECK_SCRIPTS=test:changed,lint,type-check) and raise the per-script timeout (LOOP_DAEMON_CHECK_TIMEOUT_MS, max 600000). */
-export function daemonCheckOptions(env: NodeJS.ProcessEnv = process.env): { scripts?: string[]; timeout_ms: number } {
-  const scripts = (env.LOOP_DAEMON_CHECK_SCRIPTS || '').split(',').map((v) => v.trim()).filter(Boolean);
+export function daemonCheckOptions(env: NodeJS.ProcessEnv = process.env, repo: ExtraRepo | null = null): { scripts?: string[]; timeout_ms: number } {
+  // an extra repo (EXTRA_REPOS_ENABLED) has its own scripts (EXTRA_REPO_CHECKS_<SLUG>, default `test`), never djimitflo's
+  const scripts = repo ? extraRepoChecks(repo.slug, env) : (env.LOOP_DAEMON_CHECK_SCRIPTS || '').split(',').map((v) => v.trim()).filter(Boolean);
   const timeout = Number(env.LOOP_DAEMON_CHECK_TIMEOUT_MS);
   return { ...(scripts.length ? { scripts } : {}), timeout_ms: Number.isFinite(timeout) && timeout >= 1000 ? Math.min(timeout, 600_000) : 120_000 };
 }
@@ -514,12 +516,18 @@ export class LoopDaemon {
       // driven by its own objective instead of the safe doc-drift no-op —
       // see objective-loop-gate.ts for the dispatch decision made in tick().
       const resumeRunId = typeof goal.metadata?.resume_run_id === 'string' ? goal.metadata.resume_run_id : null;
+      // Multi-repo: a goal whose proposal names another repo (`repo:<slug>`) runs in that repo's checkout — and never in
+      // djimitflo's when the repo is not registered or EXTRA_REPOS_ENABLED is not on.
+      const goalRepo = goalExtraRepo(this.db, goal.id);
+      const namedRepo = goalRepoSlug(this.db, goal.id);
+      if (namedRepo && !goalRepo && namedRepo.toLowerCase() !== primaryRepo().toLowerCase()) throw new Error(`REPO_NOT_REGISTERED: ${namedRepo}`);
+      const repositoryPath = goalRepo?.path ?? process.env.LOOP_DAEMON_REPOSITORY_PATH;
       const run = resumeRunId
         ? this.loops.getLoopRun(resumeRunId) // approved: continue the same run, its maker lease is prepared
         : opts.allowObjectiveMode
         // Objective mode needs a real git checkout to create worktrees; process.cwd() is /app in the
         // production image (not a repository). LOOP_DAEMON_REPOSITORY_PATH points at the checkout.
-        ? this.loops.startObjectiveLoop({ goal_id: goal.id, ...(process.env.LOOP_DAEMON_REPOSITORY_PATH ? { repository_path: process.env.LOOP_DAEMON_REPOSITORY_PATH } : {}) })
+        ? this.loops.startObjectiveLoop({ goal_id: goal.id, ...(repositoryPath ? { repository_path: repositoryPath } : {}) })
         : this.loops.startDocDriftAndSmallFixLoop({ goal_id: goal.id });
       runId = run.id;
       loopName = (run as { loop_name?: string }).loop_name ?? loopName;
@@ -629,7 +637,7 @@ export class LoopDaemon {
       try {
         const checks = this.loops.runDeterministicChecks(run.id, {
           lease_id: makerLease.id,
-          ...daemonCheckOptions(),
+          ...daemonCheckOptions(process.env, goalRepo),
         });
 
         // 8. If checks fail, retry once (G3 feedback law).
@@ -648,7 +656,7 @@ export class LoopDaemon {
             }
             this.loops.runDeterministicChecks(run.id, {
               lease_id: retryMaker.id,
-              ...daemonCheckOptions(),
+              ...daemonCheckOptions(process.env, goalRepo),
             });
             activeMakerLease = retryMaker;
           } catch { /* best-effort retry */ }
@@ -697,7 +705,7 @@ export class LoopDaemon {
                 }
               }
             }
-            this.loops.runDeterministicChecks(run.id, { lease_id: sibling.id, ...daemonCheckOptions() });
+            this.loops.runDeterministicChecks(run.id, { lease_id: sibling.id, ...daemonCheckOptions(process.env, goalRepo) });
           } catch (error) {
             // Y0b (prod 2026-09-30 16:17/18:29): a sibling that still needs a human approval is not a failed sibling — the
             // run used to conclude 'no winner' at once and the approval arrived after the proposal was labelled regressed.
@@ -864,7 +872,8 @@ export class LoopDaemon {
         const maker = this.db.prepare('SELECT id, runtime, metadata FROM worker_leases WHERE id = ?').get(activeMakerLease.id) as { id: string; runtime: string; metadata: string } | undefined;
         const meta = maker ? JSON.parse(maker.metadata || '{}') as { model?: unknown; genome_id?: unknown; graded?: unknown; runtime_usage?: { total_tokens?: unknown } } : {};
         const skills = new SkillEvolutionEngine(this.db); // ensures skill_outcomes exists
-        const skillId = `loop-maker:${loopName}:${activeMakerLease.runtime}`;
+        // an extra repo's outcomes carry a `repo:<slug>:` prefix, so no primary-repo fitness / bandit view ever counts them
+        const skillId = `${repoSkillPrefix(goalRepo)}loop-maker:${loopName}:${activeMakerLease.runtime}`;
         // Y2: the strategy genome this maker ran with (template + examples + sealed rules), on the lease and the outcome
         const genome = runGenome(this.db, run.id);
         this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.genome', json(?)) WHERE id = ?").run(JSON.stringify(genome), activeMakerLease.id);

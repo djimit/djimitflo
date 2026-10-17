@@ -305,6 +305,8 @@ export class LoopVerificationService {
   private leaseChecksPassed(lease: WorkerLeaseRecord): boolean {
     const checks = lease.metadata?.deterministic_checks;
     if (!Array.isArray(checks) || checks.length === 0) return false;
+    // B1 (17-10): zero executed checks cannot verify a run — at least one check really ran and passed (all-skipped used to pass)
+    if (!checks.some((check) => (check as { status?: unknown }).status === 'pass')) return false;
     return checks.every((check) => {
       const status = (check as { status?: unknown }).status;
       return status === 'pass' || status === 'skipped';
