@@ -443,7 +443,7 @@ export class LoopService {
    * live (present in the in-memory runtimeLeases map) and their runs are left alone.
    * Also prunes stale, orphaned worktrees. Idempotent.
    */
-  recoverInterruptedRuns(): { interruptedRuns: number; failedLeases: number; prunedWorktrees: number } {
+  recoverInterruptedRuns(): { interruptedRuns: number; failedLeases: number; settledRuns: number; prunedWorktrees: number } {
     const result = this.recovery.recoverInterruptedRuns();
     const prunedWorktrees = this.pruneOrphanedWorktrees();
     return { ...result, prunedWorktrees };

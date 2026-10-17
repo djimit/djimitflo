@@ -107,6 +107,18 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
         AND g.updated_at < ?`, ago(now, 2));
     if (zombies && zombies.n > 0) out.push({ subsystem: 'goals', since: zombies.oldest, detail: `${zombies.n} goal(s) 'running' although their latest run ended` });
   });
+  // 4b. incident 17-10: proposals 'executing' whose goal is not running and whose latest run had no activity for > 2 h (a
+  // restart killed the worker; the goal was 'blocked', so check 4 never saw it). A wait on a pending approval is not a stall.
+  run('stuck_executing', true, () => {
+    const stuck = one<{ n: number; oldest: string | null }>(`SELECT COUNT(*) AS n, MIN(last) AS oldest FROM (
+        SELECT (SELECT MAX(t) FROM (SELECT r.updated_at AS t UNION ALL SELECT e.created_at FROM loop_events e WHERE e.loop_run_id = r.id)) AS last
+        FROM self_improvements p JOIN goals g ON g.improvement_id = p.id
+        JOIN loop_runs r ON r.id = (SELECT id FROM loop_runs WHERE goal_id = g.id ORDER BY created_at DESC LIMIT 1)
+        WHERE p.status = 'executing' AND g.status != 'running'
+          AND NOT EXISTS (SELECT 1 FROM approvals a WHERE a.id = json_extract(g.metadata, '$.awaiting_approval.approval_id') AND a.status = 'pending'))
+      WHERE julianday(last) < julianday(?)`, ago(now, 2));
+    if (stuck && stuck.n > 0) out.push({ subsystem: 'stuck_executing', since: stuck.oldest, detail: `${stuck.n} proposal(s) 'executing' while their goal is not running and their run had no activity for > 2 h (a restart may have killed the worker)` });
+  });
   // 5. fleet discoveries stopped (publishers run daily). Never judged at all while enabled = no telemetry, also a stall.
   run('discoveries', env.FRONTIER_EXPERT_SOURCE_UNITS_ENABLED === 'true', () => {
     // DI-001 C: while DISCOVERY_RELEVANCE_PAUSED nothing is judged on purpose; a stall is then publishers that stopped sending
