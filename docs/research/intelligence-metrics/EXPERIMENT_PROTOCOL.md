@@ -71,6 +71,14 @@ evaluator_isolation_check: # how the candidate is prevented from touching evalua
 - **Falsifier.** Stage 1: arm B accepts defective ≥ arm A, or the McNemar p ≥ 0.05 → retain the single-family checker.
 - **Decision 10-10 (operator).** Stage 2 built as `CHECKER_FAMILY_RANDOMISE` (#734, default off, arm B `ollama/kimi-k3:cloud`) to this registration: ≥ 93/arm, primary = a checker-independent label (merge survival once settled, else the other failed gates), attributed-outcome kappa secondary and marked circular.
 - **Isolation.** The checker prompt, harness and defect generator are frozen at the F1 commit; the arm only swaps the model alias.
+- **Amendment 17-10 (operator) — F2 v2.** Arm B's model changes from `ollama/kimi-k3:cloud` to `ollama/gemma4:31b:cloud`
+  (gemma4:31b, Google family). Reason: Ollama usage. The text above is the frozen v1 registration and is not edited.
+  - v1 (cross = kimi-k3) is closed on 2026-10-17 as **interim**: its result is recorded as-is (`checker_family.versions.v1`,
+    labelled `interim (closed 2026-10-17, cross=kimi-k3)`) and gets no final verdict.
+  - v2 re-randomises fresh: `CHECKER_FAMILY_VERSION=v2` puts the version in the arm salt, sha256(`checker-family:v2:` + goal id).
+    v2 counts only its own rows (`checker_family_version = v2` on the checker lease); v1 and v2 are **never pooled**.
+  - Unchanged for v2: endpoints (primary = merge survival once settled, else the other failed gates; attributed-outcome kappa
+    secondary, circular), target 93 settled per arm, falsifier (Δkappa bootstrap 95 % CI includes 0), security checker untouched.
 
 ### EXP-2 — X1 evolve-sibling arm (running, operator-approved 08-10)
 

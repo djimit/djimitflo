@@ -39,9 +39,18 @@ export type CheckerFamilyArm = 'same' | 'cross';
 
 export const checkerFamilyEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.CHECKER_FAMILY_RANDOMISE === 'on';
 export const checkerCrossModel = (env: NodeJS.ProcessEnv = process.env): string => env.CHECKER_CROSS_MODEL?.trim() || DEFAULT_CHECKER_CROSS_MODEL;
-/** ~50/50, salted so it is independent of the X1 and memory-holdout arms. */
-export const checkerFamilyArm = (goalId: string): CheckerFamilyArm =>
-  (createHash('sha256').update(`checker-family:${goalId}`).digest()[0] % 2 === 0 ? 'same' : 'cross');
+/**
+ * F2 version (operator 17-10). v1 (cross = kimi-k3) is closed as interim; v2 switches the cross model to gemma4:31b. A version
+ * other than v1 enters the arm salt, so v2 re-randomises fresh; v1 keeps its original salt (identical arms). Versions are never pooled.
+ */
+export const checkerFamilyVersion = (env: NodeJS.ProcessEnv = process.env): string => env.CHECKER_FAMILY_VERSION?.trim() || 'v1';
+/** Closed versions: their rows are reported as recorded, under their own label and cross model, never pooled with the current one. */
+export const CLOSED_CHECKER_FAMILY_VERSIONS: Record<string, { label: string; cross_model: string }> = {
+  v1: { label: 'interim (closed 2026-10-17, cross=kimi-k3)', cross_model: 'ollama/kimi-k3:cloud' },
+};
+/** ~50/50, salted so it is independent of the X1 and memory-holdout arms (and, from v2, of earlier F2 versions). */
+export const checkerFamilyArm = (goalId: string, version = 'v1'): CheckerFamilyArm =>
+  (createHash('sha256').update(version === 'v1' ? `checker-family:${goalId}` : `checker-family:${version}:${goalId}`).digest()[0] % 2 === 0 ? 'same' : 'cross');
 
 const parse = (s: string | null | undefined): Record<string, unknown> => { try { return JSON.parse(s || '{}') as Record<string, unknown>; } catch { return {}; } };
 
@@ -51,7 +60,8 @@ const parse = (s: string | null | undefined): Record<string, unknown> => { try {
  */
 export function assignCheckerFamily(db: Database, runId: string, goalId: string, checkerLeaseId: string, runtime: string,
   env: NodeJS.ProcessEnv = process.env): CheckerFamilyArm {
-  const arm = checkerFamilyArm(goalId);
+  const version = checkerFamilyVersion(env);
+  const arm = checkerFamilyArm(goalId, version);
   const lease = db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(checkerLeaseId) as { metadata: string } | undefined;
   const meta = parse(lease?.metadata);
   const maker = typeof meta.maker_lease_id === 'string'
@@ -59,13 +69,13 @@ export function assignCheckerFamily(db: Database, runId: string, goalId: string,
   const model = arm === 'cross' ? checkerCrossModel(env) : undefined;
   const id = leaseIdentity(runtime, model ?? (typeof meta.model === 'string' ? meta.model : undefined), '', env);
   const makerFamily = typeof maker.model_family === 'string' ? maker.model_family : null;
-  const stamp = { ...(model ? { model } : {}), checker_family_arm: arm, checker_model_id: id.model_id, checker_model_family: id.model_family, maker_model_family: makerFamily };
+  const stamp = { ...(model ? { model } : {}), checker_family_arm: arm, checker_family_version: version, checker_model_id: id.model_id, checker_model_family: id.model_family, maker_model_family: makerFamily };
   db.prepare('UPDATE worker_leases SET metadata = ? WHERE id = ?').run(JSON.stringify({ ...meta, ...stamp }), checkerLeaseId);
   try {
-    db.prepare("UPDATE goals SET metadata = json_set(json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.checker_family_arm', ?), '$.checker_model', ?) WHERE id = ?")
-      .run(arm, id.model_id, goalId);
-    new LoopEventService(db).recordEvent(runId, 'checker_family_arm', 'info', `F2 checker family: arm ${arm}, checker ${id.model_id} (${id.model_family}) for a ${makerFamily ?? 'unknown'} maker`,
-      { goal_id: goalId, arm, lease_id: checkerLeaseId, checker_model: id.model_id, checker_model_family: id.model_family, maker_model_family: makerFamily });
+    db.prepare("UPDATE goals SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.checker_family_arm', ?, '$.checker_model', ?, '$.checker_family_version', ?) WHERE id = ?")
+      .run(arm, id.model_id, version, goalId);
+    new LoopEventService(db).recordEvent(runId, 'checker_family_arm', 'info', `F2 ${version} checker family: arm ${arm}, checker ${id.model_id} (${id.model_family}) for a ${makerFamily ?? 'unknown'} maker`,
+      { goal_id: goalId, arm, version, lease_id: checkerLeaseId, checker_model: id.model_id, checker_model_family: id.model_family, maker_model_family: makerFamily });
   } catch { /* the arm still decides; only the record is best-effort */ }
   return arm;
 }
@@ -104,13 +114,21 @@ function deltaKappaCi(same: Array<{ verdict: string; y: 0 | 1 }>, cross: Array<{
  * attributed outcome (verified = 1, maker_failure = 0; reviewer_failure / environment_failure excluded), Cohen's kappa, and
  * the maker's assertion-strength result (WEAK_ASSERTION_CHECK_MODE shadow/enforce) as a second ground truth for test lanes.
  */
-export function checkerFamilyEvidence(db: Database, since: string, env: NodeJS.ProcessEnv, fisher: (a: number, b: number, c: number, d: number) => number, now = Date.now()) {
-  let leases: Array<{ run_id: string; goal_id: string; metadata: string; run: string | null; run_at: string | null; maker: string | null; decision: string | null; answers: string | null }> = [];
-  let goals: Array<{ arm: string; n: number }> = [];
+type Fisher = (a: number, b: number, c: number, d: number) => number;
+interface LeaseRow { run_id: string; goal_id: string; metadata: string; run: string | null; run_at: string | null; maker: string | null; decision: string | null; answers: string | null; version: string }
+
+/**
+ * Per F2 version (CHECKER_FAMILY_VERSION; rows without a version are v1): the top level is the current version only, `versions`
+ * lists every version separately — a closed one (v1) under its label and its own cross model. Versions are never pooled.
+ */
+export function checkerFamilyEvidence(db: Database, since: string, env: NodeJS.ProcessEnv, fisher: Fisher, now = Date.now()) {
+  let leases: LeaseRow[] = [];
+  let goals: Array<{ arm: string; version: string; n: number }> = [];
   try {
-    goals = db.prepare(`SELECT json_extract(metadata, '$.checker_family_arm') AS arm, COUNT(*) AS n FROM goals
-      WHERE json_extract(metadata, '$.checker_family_arm') IN ('same', 'cross') AND created_at >= ? GROUP BY 1`).all(since) as typeof goals;
+    goals = db.prepare(`SELECT json_extract(metadata, '$.checker_family_arm') AS arm, COALESCE(json_extract(metadata, '$.checker_family_version'), 'v1') AS version, COUNT(*) AS n FROM goals
+      WHERE json_extract(metadata, '$.checker_family_arm') IN ('same', 'cross') AND created_at >= ? GROUP BY 1, 2`).all(since) as typeof goals;
     leases = db.prepare(`SELECT l.loop_run_id AS run_id, r.goal_id, l.metadata, r.metadata AS run, r.created_at AS run_at, m.metadata AS maker,
+        COALESCE(json_extract(l.metadata, '$.checker_family_version'), 'v1') AS version,
         (SELECT j.decision FROM judgments j WHERE j.judgment = 'outcome_attribution' AND j.subject_type = 'loop_run' AND j.subject_id = l.loop_run_id ORDER BY j.created_at DESC LIMIT 1) AS decision,
         (SELECT j.answers_json FROM judgments j WHERE j.judgment = 'outcome_attribution' AND j.subject_type = 'loop_run' AND j.subject_id = l.loop_run_id ORDER BY j.created_at DESC LIMIT 1) AS answers
       FROM worker_leases l JOIN loop_runs r ON r.id = l.loop_run_id JOIN goals g ON g.id = r.goal_id
@@ -118,6 +136,18 @@ export function checkerFamilyEvidence(db: Database, since: string, env: NodeJS.P
       WHERE l.role = 'checker' AND l.status = 'completed' AND json_extract(l.metadata, '$.checker_family_arm') IN ('same', 'cross') AND g.created_at >= ?
       ORDER BY l.created_at, l.rowid`).all(since) as typeof leases;
   } catch { /* missing tables */ }
+  const current = checkerFamilyVersion(env);
+  const names = [...new Set([current, ...goals.map((g) => g.version), ...leases.map((l) => l.version)])].sort();
+  const of = (v: string) => {
+    const closed = v !== current ? CLOSED_CHECKER_FAMILY_VERSIONS[v] : undefined;
+    const e = evidenceFor(leases.filter((l) => l.version === v), goals.filter((g) => g.version === v), closed?.cross_model ?? checkerCrossModel(env), env, fisher, now);
+    return { label: closed?.label ?? (v === current ? 'current' : 'not current'), closed: !!closed, evidence: e };
+  };
+  const versions = Object.fromEntries(names.map((v) => [v, of(v)]));
+  return { ...versions[current].evidence, version: current, versions };
+}
+
+function evidenceFor(leases: LeaseRow[], goals: Array<{ arm: string; n: number }>, crossModel: string, env: NodeJS.ProcessEnv, fisher: Fisher, now: number) {
   const byGoal = new Map<string, Row>(); // the goal's last labelled checker verdict (a retry or a later run supersedes)
   for (const l of leases) {
     const m = parse(l.metadata);
@@ -177,11 +207,11 @@ export function checkerFamilyEvidence(db: Database, since: string, env: NodeJS.P
   // no falsified/supported before the target: until then any read is interim and the verdict stays collecting
   const verdict = !reached ? 'collecting' : !ci ? 'inconclusive' : ci[0] > 0 ? 'supported' : ci[1] < 0 ? 'reversed' : 'falsified';
   return {
-    enabled: env.CHECKER_FAMILY_RANDOMISE ?? null, cross_model: checkerCrossModel(env), target_per_arm: target, same, cross,
+    enabled: env.CHECKER_FAMILY_RANDOMISE ?? null, cross_model: crossModel, target_per_arm: target, same, cross,
     primary: { endpoint, read: reached ? 'final' as const : 'interim' as const, ...p },
     secondary_circular: { endpoint: 'outcome' as const, circular: true as const, ...compare('outcome') },
     weak_fisher_p: +fisher(cross.weak_assertion.caught, cross.weak_assertion.missed, same.weak_assertion.caught, same.weak_assertion.missed).toPrecision(4),
     stop: { per_arm: target, reached, verdict },
-    note: 'F2 (CHECKER_FAMILY_RANDOMISE): oracle-lane goals by sha256(checker-family:goal id); same = checker on the runtime default, cross = CHECKER_CROSS_MODEL; security checker unchanged. One row per goal (its last completed checker with a verdict). outcome: verified = 1, maker_failure = 0, reviewer/environment failures excluded — the checker\'s own rejection is part of maker_failure, so outcome_wo_checker relabels from the other failed gates only and outcome_survival uses merge survival (checker-independent; few labels until drafts settle). kappa: binary (accepted vs not). delta_kappa_ci: seeded two-sample bootstrap 95 %. fisher_p: agree/disagree × arm; weak_fisher_p: weak-assertion diffs caught/missed × arm. Primary (EXP-1): outcome_survival once ≥ target per arm have settled, else outcome_wo_checker; outcome (attributed) is secondary and circular. Pre-registered stop at CHECKER_FAMILY_TARGET_PER_ARM (default 93) labelled goals per arm on the primary label; before it the read is interim and the verdict collecting; falsified if the Δkappa CI includes 0.',
+    note: 'F2 (CHECKER_FAMILY_RANDOMISE): oracle-lane goals by sha256(checker-family:goal id) (from v2: checker-family:<version>:goal id; one version per section, never pooled); same = checker on the runtime default, cross = CHECKER_CROSS_MODEL; security checker unchanged. One row per goal (its last completed checker with a verdict). outcome: verified = 1, maker_failure = 0, reviewer/environment failures excluded — the checker\'s own rejection is part of maker_failure, so outcome_wo_checker relabels from the other failed gates only and outcome_survival uses merge survival (checker-independent; few labels until drafts settle). kappa: binary (accepted vs not). delta_kappa_ci: seeded two-sample bootstrap 95 %. fisher_p: agree/disagree × arm; weak_fisher_p: weak-assertion diffs caught/missed × arm. Primary (EXP-1): outcome_survival once ≥ target per arm have settled, else outcome_wo_checker; outcome (attributed) is secondary and circular. Pre-registered stop at CHECKER_FAMILY_TARGET_PER_ARM (default 93) labelled goals per arm on the primary label; before it the read is interim and the verdict collecting; falsified if the Δkappa CI includes 0.',
   };
 }

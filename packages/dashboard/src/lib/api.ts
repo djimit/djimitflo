@@ -126,6 +126,13 @@ export type GateState = 'green' | 'red' | 'unknown';
 export type MemoryArm = { n: number; verified: number; regressed: number; verified_rate: number | null };
 export type HackRateRow = { scored: number; checked: number; flagged: number; rate: number | null; ci: [number, number] | null; status: 'ok' | 'insufficient' };
 export type EffortArm = { goals: number; verified: number; regressed: number; infra: number; verified_rate: number | null };
+export type CheckerFamilyVersionEvidence = { enabled: string | null; cross_model: string; target_per_arm: number; same: CheckerFamilyArmEvidence; cross: CheckerFamilyArmEvidence;
+  /** EXP-1 primary: a checker-independent label (merge survival once settled, else the other failed gates); interim before the target */
+  primary: CheckerFamilyComparison & { endpoint: 'outcome_wo_checker' | 'outcome_survival'; read: 'interim' | 'final' };
+  /** the attributed outcome contains the checker's own rejection */
+  secondary_circular: CheckerFamilyComparison & { endpoint: 'outcome'; circular: true };
+  weak_fisher_p: number;
+  stop: { per_arm: number; reached: boolean; verdict: 'collecting' | 'inconclusive' | 'supported' | 'reversed' | 'falsified' }; note: string };
 export type CheckerFamilyComparison = { delta_kappa: number | null; delta_kappa_ci: [number, number] | null; fisher_p: number; n: { same: number; cross: number } };
 export type CheckerFamilyArmEvidence = { goals: number; reviewed: number; verdicts: { accepted: number; needs_revision: number; rejected: number }; realized_cross: number;
   outcome: { circular: true; n: number; agree: number; agreement: number | null; kappa: number | null }; outcome_wo_checker: { n: number; agree: number; kappa: number | null }; outcome_survival: { n: number; agree: number; kappa: number | null; unlabelled: number };
@@ -182,13 +189,11 @@ export interface EvolutionEvidence {
   /** X1 (EFFORT_SIBLING_RANDOMISE): oracle-lane goals with evolve siblings (on) vs without (off), two-sided Fisher exact p */
   effort_x1: { enabled: string | null; on: EffortArm; off: EffortArm; fisher_p: number; note: string };
   /** F2 (CHECKER_FAMILY_RANDOMISE): checker verdicts and outcome agreement per checker-family arm (same = maker's family, cross = CHECKER_CROSS_MODEL) */
-  checker_family: { enabled: string | null; cross_model: string; target_per_arm: number; same: CheckerFamilyArmEvidence; cross: CheckerFamilyArmEvidence;
-    /** EXP-1 primary: a checker-independent label (merge survival once settled, else the other failed gates); interim before the target */
-    primary: CheckerFamilyComparison & { endpoint: 'outcome_wo_checker' | 'outcome_survival'; read: 'interim' | 'final' };
-    /** the attributed outcome contains the checker's own rejection */
-    secondary_circular: CheckerFamilyComparison & { endpoint: 'outcome'; circular: true };
-    weak_fisher_p: number;
-    stop: { per_arm: number; reached: boolean; verdict: 'collecting' | 'inconclusive' | 'supported' | 'reversed' | 'falsified' }; note: string };
+  checker_family: CheckerFamilyVersionEvidence & {
+    /** CHECKER_FAMILY_VERSION (default v1): the top level is this version only */
+    version: string;
+    /** every F2 version separately (v1 closed 17-10 as interim, cross = kimi-k3); never pooled */
+    versions: Record<string, { label: string; closed: boolean; evidence: CheckerFamilyVersionEvidence }> };
   /** ACE-001 (ACE_001_MODE): oracle-lane maker outcomes per arm (R retrieval × S example selection; '00' = control) */
   ace_001: { mode: string | null; target_per_arm: number; status: 'collecting' | 'analysable';
     /** Amendment 1: primary numbers count outcomes from analysis_since; delivery_invalid = earlier outcomes, excluded */
