@@ -67,6 +67,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'GYM_STORE_DIFFS', acting: false }, { name: 'WEAK_ASSERTION_CHECK_MODE', acting: true },
   { name: 'POLICY_VIOLATION_LOG', acting: false },
   { name: 'CHECKER_FAMILY_RANDOMISE', acting: true }, { name: 'CHECKER_CROSS_MODEL', acting: true }, { name: 'CHECKER_FAMILY_TARGET_PER_ARM', acting: false },
+  { name: 'CHECKER_FAMILY_VERSION', acting: true },
   { name: 'ACE_001_MODE', acting: true },
   { name: 'STE_001_MODE', acting: true },
   { name: 'TG_001_MODE', acting: true },

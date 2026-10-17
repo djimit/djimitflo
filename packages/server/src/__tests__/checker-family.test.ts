@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
+import { createHash } from 'crypto';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import {
-  CHECKER_FAMILY_TARGET_DEFAULT, DEFAULT_CHECKER_CROSS_MODEL, assignCheckerFamily, checkerCrossModel, checkerFamilyArm, checkerFamilyEnabled, checkerFamilyEvidence, checkerFamilyTarget,
+  CHECKER_FAMILY_TARGET_DEFAULT, DEFAULT_CHECKER_CROSS_MODEL, assignCheckerFamily, checkerFamilyVersion, checkerCrossModel, checkerFamilyArm, checkerFamilyEnabled, checkerFamilyEvidence, checkerFamilyTarget,
 } from '../services/checker-family';
 import { EVOLUTION_FLAGS, buildEvolutionEvidence, fisherExact } from '../services/evolution-evidence';
 
@@ -20,6 +21,39 @@ describe('arm assignment', () => {
     let cross = 0; const N = 4_000;
     for (let i = 0; i < N; i++) if (checkerFamilyArm(`goal-${i}`) === 'cross') cross++;
     expect(cross / N).toBeGreaterThan(0.47); expect(cross / N).toBeLessThan(0.53);
+  });
+
+  it('F2 v2: a version other than v1 enters the salt (fresh arms); v1, the default, keeps the original salt', () => {
+    const legacy = (g: string) => (createHash('sha256').update(`checker-family:${g}`).digest()[0] % 2 === 0 ? 'same' : 'cross');
+    const salted = (g: string) => (createHash('sha256').update(`checker-family:v2:${g}`).digest()[0] % 2 === 0 ? 'same' : 'cross');
+    expect(checkerFamilyVersion({})).toBe('v1');
+    expect(checkerFamilyVersion({ CHECKER_FAMILY_VERSION: ' v2 ' })).toBe('v2');
+    expect(EVOLUTION_FLAGS).toContainEqual({ name: 'CHECKER_FAMILY_VERSION', acting: true });
+    let changed = 0; let cross = 0; const N = 4_000;
+    for (let i = 0; i < N; i++) {
+      const g = `goal-${i}`;
+      expect(checkerFamilyArm(g)).toBe(legacy(g));
+      expect(checkerFamilyArm(g, 'v1')).toBe(legacy(g));
+      expect(checkerFamilyArm(g, 'v2')).toBe(salted(g));
+      if (checkerFamilyArm(g, 'v2') !== checkerFamilyArm(g)) changed++;
+      if (checkerFamilyArm(g, 'v2') === 'cross') cross++;
+    }
+    expect(changed / N).toBeGreaterThan(0.45); expect(changed / N).toBeLessThan(0.55); // independent of v1
+    expect(cross / N).toBeGreaterThan(0.47); expect(cross / N).toBeLessThan(0.53);
+  });
+
+  it('F2 v2: the v2 arm and version are stamped on lease, goal and event; the cross checker runs gemma4:31b', () => {
+    const goalId = (() => { for (let i = 0; i < 1000; i++) if (checkerFamilyArm(`g-${i}`, 'v2') === 'cross' && checkerFamilyArm(`g-${i}`) === 'same') return `g-${i}`; throw new Error('no goal whose v2 arm differs from v1'); })();
+    db.prepare("INSERT INTO goals (id, objective, risk_class, status, metadata, created_at, updated_at) VALUES (?, 'o', 'low', 'running', '{}', ?, ?)").run(goalId, at, at);
+    db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, finding_id, metadata, created_at) VALUES ('c', 'r', 'checker', 'manual', 'prepared', 'f', '{}', ?)").run(at);
+    const env = { DJIMITFLO_OPENCODE_MODEL: 'ollama/glm-5.2:cloud', CHECKER_FAMILY_VERSION: 'v2', CHECKER_CROSS_MODEL: 'ollama/gemma4:31b:cloud' };
+    expect(assignCheckerFamily(db, 'r', goalId, 'c', 'opencode', env)).toBe('cross');
+    expect(JSON.parse((db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get('c') as { metadata: string }).metadata))
+      .toMatchObject({ model: 'ollama/gemma4:31b:cloud', checker_family_arm: 'cross', checker_family_version: 'v2', checker_model_family: 'gemma' });
+    expect(JSON.parse((db.prepare('SELECT metadata FROM goals WHERE id = ?').get(goalId) as { metadata: string }).metadata))
+      .toMatchObject({ checker_family_arm: 'cross', checker_family_version: 'v2', checker_model: 'ollama/gemma4:31b:cloud' });
+    const ev = db.prepare("SELECT metadata FROM loop_events WHERE event_type = 'checker_family_arm'").all() as Array<{ metadata: string }>;
+    expect(JSON.parse(ev[0].metadata)).toMatchObject({ arm: 'cross', version: 'v2', checker_model: 'ollama/gemma4:31b:cloud' });
   });
 
   it('flag off|on (default off) and a configurable cross model', () => {
@@ -49,7 +83,7 @@ describe('arm assignment', () => {
     expect(JSON.parse((db.prepare('SELECT metadata FROM goals WHERE id = ?').get(goalId) as { metadata: string }).metadata))
       .toMatchObject({ checker_family_arm: 'cross', checker_model: 'ollama/kimi-k3:cloud' });
     const ev = db.prepare("SELECT metadata FROM loop_events WHERE event_type = 'checker_family_arm'").all() as Array<{ metadata: string }>;
-    expect(ev.map((e) => JSON.parse(e.metadata))).toEqual([{ goal_id: goalId, arm: 'cross', lease_id: 'c', checker_model: 'ollama/kimi-k3:cloud', checker_model_family: 'kimi', maker_model_family: 'glm' }]);
+    expect(ev.map((e) => JSON.parse(e.metadata))).toEqual([{ goal_id: goalId, arm: 'cross', version: 'v1', lease_id: 'c', checker_model: 'ollama/kimi-k3:cloud', checker_model_family: 'kimi', maker_model_family: 'glm' }]);
   });
 
   it('same leaves the checker lease model untouched (the runtime default) and only records it', () => {
@@ -66,15 +100,16 @@ describe('arm assignment', () => {
 describe('evidence section checker_family', () => {
   let n = 0;
   /** one reviewed goal: checker verdict, attributed outcome (+ failed gates) and the maker's assertion-strength shadow result */
-  const seed = (arm: 'same' | 'cross', verdict: string, outcome: string, failedGates: string[] = [], strength?: 'pass' | 'fail') => {
+  const seed = (arm: 'same' | 'cross', verdict: string, outcome: string, failedGates: string[] = [], strength?: 'pass' | 'fail', version?: string) => {
+    const v = version ? { checker_family_version: version } : {};
     const id = `${arm}-${n++}`;
     db.prepare("INSERT INTO goals (id, objective, risk_class, status, metadata, created_at, updated_at) VALUES (?, 'o', 'low', 'completed', ?, ?, ?)")
-      .run(`g-${id}`, JSON.stringify({ checker_family_arm: arm }), at, at);
+      .run(`g-${id}`, JSON.stringify({ checker_family_arm: arm, ...v }), at, at);
     db.prepare("INSERT INTO loop_runs (id, goal_id, loop_name, mode, status, created_at, updated_at) VALUES (?, ?, 'test-gap', 'closed', 'completed', ?, ?)").run(`r-${id}`, `g-${id}`, at, at);
     const ins = db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, finding_id, metadata, created_at) VALUES (?, ?, ?, 'opencode', 'completed', 'f', ?, ?)");
     const checks = strength ? [{ name: 'test:assertion-strength', status: 'skipped', shadow_status: strength }] : [];
     ins.run(`m-${id}`, `r-${id}`, 'maker', JSON.stringify({ model_family: 'glm', deterministic_checks: checks }), at);
-    ins.run(`c-${id}`, `r-${id}`, 'checker', JSON.stringify({ maker_lease_id: `m-${id}`, verdict, checker_family_arm: arm, maker_model_family: 'glm', checker_model_family: arm === 'cross' ? 'kimi' : 'glm' }), at);
+    ins.run(`c-${id}`, `r-${id}`, 'checker', JSON.stringify({ maker_lease_id: `m-${id}`, verdict, checker_family_arm: arm, ...v, maker_model_family: 'glm', checker_model_family: arm === 'cross' ? 'kimi' : 'glm' }), at);
     db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at)
       VALUES (?, 'outcome_attribution', 'loop_run', ?, ?, 'annotation', ?, ?, ?, ?)`).run(`j-${id}`, `r-${id}`, outcome, outcome, outcome, JSON.stringify({ computed: true, failed_gates: failedGates }), at);
   };
@@ -107,6 +142,25 @@ describe('evidence section checker_family', () => {
     expect(e.cross.weak_assertion).toMatchObject({ n: 2, weak: 2, caught: 1, missed: 1, sensitivity: 0.5 });
     expect(e.weak_fisher_p).toBeCloseTo(fisherExact(1, 1, 0, 1), 3);
     expect(e.stop).toMatchObject({ per_arm: 93, reached: false, verdict: 'collecting' });
+  });
+
+  it('F2 v2: evidence per version — the top level counts only the current version, v1 is labelled closed interim, never pooled', () => {
+    seed('same', 'accepted', 'verified'); seed('cross', 'rejected', 'maker_failure', ['checker_verdict']); seed('cross', 'accepted', 'verified'); // v1 (unversioned)
+    seed('same', 'accepted', 'verified', [], undefined, 'v2'); seed('cross', 'accepted', 'verified', [], undefined, 'v2');
+    // default v1: identical to before — the v2 rows are not counted
+    const v1 = checkerFamilyEvidence(db, '2026-09-10T00:00:00Z', {}, fisherExact);
+    expect(v1).toMatchObject({ version: 'v1', cross_model: 'ollama/kimi-k3:cloud', same: { goals: 1, reviewed: 1 }, cross: { goals: 2, reviewed: 2 } });
+    expect(v1.versions.v1).toMatchObject({ label: 'current', closed: false });
+    expect(v1.versions.v2).toMatchObject({ label: 'not current', closed: false, evidence: { same: { reviewed: 1 }, cross: { reviewed: 1 } } });
+    // v2: only its own rows; v1 under its closed label and its own cross model
+    const env = { CHECKER_FAMILY_VERSION: 'v2', CHECKER_CROSS_MODEL: 'ollama/gemma4:31b:cloud' };
+    const v2 = checkerFamilyEvidence(db, '2026-09-10T00:00:00Z', env, fisherExact);
+    expect(v2).toMatchObject({ version: 'v2', cross_model: 'ollama/gemma4:31b:cloud', same: { goals: 1, reviewed: 1 }, cross: { goals: 1, reviewed: 1 },
+      primary: { n: { same: 1, cross: 1 } } });
+    expect(v2.versions.v1).toMatchObject({ label: 'interim (closed 2026-10-17, cross=kimi-k3)', closed: true,
+      evidence: { cross_model: 'ollama/kimi-k3:cloud', same: { goals: 1, reviewed: 1 }, cross: { goals: 2, reviewed: 2 } } });
+    expect(v2.versions.v2.evidence.same).toEqual(v2.same);
+    expect(Object.keys(v2.versions)).toEqual(['v1', 'v2']);
   });
 
   it('target per arm: default 93 (EXP-1), CHECKER_FAMILY_TARGET_PER_ARM overrides, junk falls back', () => {

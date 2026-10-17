@@ -776,7 +776,7 @@ export class LoopDaemon {
             metadata: {
               maker_lease_id: meta.maker_lease_id, retry_of: leaseId, retry_reason: meta.failure_reason,
               // F2: a randomised checker's retry keeps its arm and model (only the checker ever carries them)
-              ...(role === 'checker' && meta.checker_family_arm ? Object.fromEntries(['model', 'checker_family_arm', 'checker_model_id', 'checker_model_family', 'maker_model_family']
+              ...(role === 'checker' && meta.checker_family_arm ? Object.fromEntries(['model', 'checker_family_arm', 'checker_family_version', 'checker_model_id', 'checker_model_family', 'maker_model_family']
                 .filter((k) => meta[k] !== undefined).map((k) => [k, meta[k]])) : {}),
               ...(role === 'checker' ? { requires_independent_review: true } : { requires_security_review: true, ...(meta.high_risk_reason ? { high_risk_reason: meta.high_risk_reason } : {}) }),
             },
