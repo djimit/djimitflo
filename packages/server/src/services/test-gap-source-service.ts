@@ -5,6 +5,7 @@ import type { Database } from 'better-sqlite3';
 import { SelfImprovementService } from './self-improvement-service';
 import { markRun } from './scheduler-registry';
 import { extraRepos, extraReposMode, registeredExtraRepos, type ExtraRepo } from './repo-registry';
+import { recordSpecGapShadow, specGapMode, specRepo } from './spec-gap-source';
 
 /**
  * A deterministic, high-yield source of proposals: server services that no test imports. The 2026-09-21 loop proof showed
@@ -221,6 +222,7 @@ export class TestGapSourceService {
   run(now = new Date()): { created: number; skipped: string } {
     const repo = process.env.TEST_GAP_REPO_PATH || process.env.LOOP_DAEMON_REPOSITORY_PATH;
     if (extraReposMode() === 'shadow') this.recordExtraRepoShadow(now);
+    if (repo && specGapMode() !== 'off') recordSpecGapShadow(this.db, specRepo(repo), now); // SPEC_GAP_LANE: counts only, never creates a proposal
     const extras = extraRepos(); // empty unless EXTRA_REPOS_ENABLED=on
     if (!repo && !extras.length) return { created: 0, skipped: 'no repository path' };
     const day = new Date(now.getTime() - 86_400_000).toISOString();
