@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
-import { CommandStrip, EfficiencySection, EvolutionFunnel, NeedsYou, OperatorCockpitPage, overallHealth, type CockpitView } from './OperatorCockpitPage';
+import { CommandStrip, EfficiencySection, EvolutionFunnel, NeedsYou, OperatorCockpitPage, overallHealth, SubtractionSection, type CockpitView } from './OperatorCockpitPage';
 import { api } from '../lib/api';
 
 beforeEach(() => { vi.restoreAllMocks(); vi.spyOn(api, 'getServiceMap').mockResolvedValue({ services: [
@@ -244,4 +244,14 @@ it('Restore Evolutionary Health: the funnel shows the bottleneck, the 4-way spli
   expect(html).toContain('insufficient evidence');
   expect(html).toContain('not measured');
   expect(html).toContain('JEV semantic routing: REJECTED by JC-001 (NE-001, PR #779)');
+});
+
+it('SOUL subtraction: lines, ratio and route delta per ISO week; unknown with the reason when git is unavailable (never 0)', () => {
+  const week = { week: '2026-W42', start: '2026-10-12T00:00:00.000Z', end: '2026-10-19T00:00:00.000Z', commits: 3, lines_added: 120, lines_removed: 300, files_added: 1, files_deleted: 4,
+    ratio_removed_added: 2.5, routes_start: 560, routes_end: 557, routes_delta: -3 };
+  const html = renderToStaticMarkup(<SubtractionSection kpi={{ status: 'ok', reason: null, repo: '/repo', head: 'abc', weeks: [week], note: '' }} />);
+  expect(html).toContain('2026-W42'); expect(html).toContain('+120 / −300'); expect(html).toContain('2.50'); expect(html).toContain('-3');
+  const none = renderToStaticMarkup(<SubtractionSection kpi={{ status: 'unavailable', reason: 'git is not installed in this environment', repo: '/repo', head: null, weeks: null, note: '' }} />);
+  expect(none).toContain('Unknown — git is not installed in this environment');
+  expect(none).not.toContain('>0<');
 });
