@@ -54,6 +54,7 @@ import { TelegramApiService } from './services/telegram-api-service';
 import { parseTelegramAllowedUsers, parseTelegramUserMap } from './routes/telegram';
 import { noteScheduler, registerRestart } from './services/scheduler-registry';
 import { laneIntervalMs, startDependencyLane } from './services/dependency-lane';
+import { PROBE_INTERVAL_MS, startOllamaProbe } from './services/inference-failover';
 import { SHIPPED_CODE_SCAN_INTERVAL_MS, startShippedCodeScan } from './services/shipped-code-scan';
 import { SKILL_DISTILLATION_INTERVAL_MS, startSkillDistillation } from './services/skill-distillation';
 
@@ -330,6 +331,13 @@ async function main() {
   registerRestart('dependency_lane', () => { stopDependencyLane?.(); stopDependencyLane = startDependencyLane(db); });
   if (noteScheduler('dependency_lane', 'DEPENDENCY_LANE_MODE', !!stopDependencyLane, laneIntervalMs())) {
     console.log(`📦 Dependency lane armed (${process.env.DEPENDENCY_LANE_MODE})`);
+  }
+
+  // OLLAMA_AUTO_FAILOVER=on: every 30 min, while Ollama is recorded as usage-limited, one tiny probe call clears the state on success
+  let stopOllamaProbe = startOllamaProbe(db);
+  registerRestart('inference_failover_probe', () => { stopOllamaProbe?.(); stopOllamaProbe = startOllamaProbe(db); });
+  if (noteScheduler('inference_failover_probe', 'OLLAMA_AUTO_FAILOVER', !!stopOllamaProbe, PROBE_INTERVAL_MS)) {
+    console.log('🛟 Ollama auto-failover probe armed');
   }
 
   // Shipped-code scan — daily parse-only scan of the installed runtime packages, evidence candidates only (SHIPPED_CODE_SCAN_MODE=shadow, default off)

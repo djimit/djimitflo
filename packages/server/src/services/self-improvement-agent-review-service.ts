@@ -21,8 +21,10 @@
  * exhausted is closed and the panel decides on its valid reviews only; no valid review at all → panel_failed (#758).
  */
 
+import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { generateText, llmEndpoints, type LlmUsage } from './llm-fallback';
 import { prepareState } from './typesafe-client';
@@ -32,6 +34,10 @@ import type { Database } from 'better-sqlite3';
 import { SpecialistPanelService, type SpecialistPanelRecord, type SpecialistProfile } from './specialist-panel-service';
 import { extraRepoBySlug, repoRefOf } from './repo-registry';
 import { chooseModel, modelSelectorMode, recordModelCall, shadowCandidate, shadowRate } from './model-selector';
+import { noteOllamaOutput, ollamaLimitClass, PANEL_FALLBACK_PREFIX, panelFallbackModel, panelFallbackRuntime } from './inference-failover';
+import { effectiveFallbackRuntime } from './ollama-outage-fallback';
+import { AUTH_MISSING, LIMIT_HIT, isSubscriptionLimit, subscriptionAuthPresent } from './subscription-gym';
+import { subscriptionChildEnv } from '../execution/executors/subscription-env';
 
 /** The model argument is only passed when MODEL_SELECTOR_MODE is on; undefined = the caller's own default (unchanged). */
 /** usage: B29 — the provider's token counts for this call (not called = unknown; the ledger keeps null, never 0) */
@@ -132,6 +138,51 @@ async function callOllama(prompt: string, model = defaultModel(), usage?: (u: Ll
 
 const MAX_GENERATION_ATTEMPTS = 3;
 
+/**
+ * PANEL_FALLBACK_RUNTIME=claude: the CLI args of one panel answer — print mode, JSON result, no tools at all (`--tools ""`)
+ * in plan mode (read-only; the most restrictive mode of the 2.1.282 CLI), prompts nobody answers denied, no session kept,
+ * no MCP servers. Prompt on stdin.
+ */
+export const panelClaudeArgs = (model: string): string[] =>
+  ['-p', '--output-format', 'json', '--model', model, '--permission-mode', 'plan', '--permission-prompts', 'none', '--tools', '', '--no-session-persistence', '--strict-mcp-config'];
+/** A fallback failure that says nothing about the proposal (no OAuth token / subscription window used): no attempt spent. */
+const FALLBACK_INFRA = /^panel_fallback: infra: subscription_(auth_missing|limit)\b/; // AUTH_MISSING / LIMIT_HIT (literal: import cycle at load)
+export type SpawnFn = typeof spawn;
+
+/**
+ * One panel answer from the Claude Code CLI on the Max subscription: child env without any API key / base URL, the OAuth
+ * token injected (subscriptionChildEnv), cwd a temp dir (no repo CLAUDE.md). No token → refused before any spawn.
+ * model is 'claude:<model>' (the provenance name). Usage reported as provider subscription-cli:claude.
+ */
+export function callClaudePanel(prompt: string, model = `${PANEL_FALLBACK_PREFIX}${panelFallbackModel()}`, usage?: (u: LlmUsage) => void,
+  deps: { spawnFn?: SpawnFn; env?: NodeJS.ProcessEnv } = {}): Promise<string> {
+  const env = deps.env ?? process.env;
+  if (!subscriptionAuthPresent('claude', env)) return Promise.reject(new Error(`panel_fallback: ${AUTH_MISSING}`));
+  const cliModel = model.startsWith(PANEL_FALLBACK_PREFIX) ? model.slice(PANEL_FALLBACK_PREFIX.length) : model;
+  return new Promise((resolve, reject) => {
+    const child = (deps.spawnFn ?? spawn)(env.CLAUDE_BIN_PATH || 'claude', panelClaudeArgs(cliModel), { cwd: os.tmpdir(), env: subscriptionChildEnv(env, 'claude', env), stdio: ['pipe', 'pipe', 'pipe'] });
+    let stdout = ''; let stderr = '';
+    const timer = setTimeout(() => child.kill('SIGTERM'), reviewTimeoutMs());
+    child.stdout?.on('data', (d) => { stdout += String(d); });
+    child.stderr?.on('data', (d) => { stderr += String(d); });
+    child.on('error', (err) => { clearTimeout(timer); reject(new Error(`panel_fallback: ${err.message}`)); });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      let out: { result?: unknown; is_error?: unknown; usage?: { input_tokens?: unknown; output_tokens?: unknown } } | null = null;
+      try { out = JSON.parse(stdout.trim()); } catch { out = null; }
+      if (code !== 0 || !out || out.is_error === true || typeof out.result !== 'string') {
+        const detail = (typeof out?.result === 'string' ? out.result : stderr || stdout).trim().split('\n').pop()?.slice(0, 200) ?? '';
+        reject(new Error(`panel_fallback: ${isSubscriptionLimit(code ?? 1, stdout, stderr) ? LIMIT_HIT : `exit=${code ?? 'signal'}`} ${detail}`.trim()));
+        return;
+      }
+      const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+      try { usage?.({ tokensIn: n(out.usage?.input_tokens), tokensOut: n(out.usage?.output_tokens), provider: 'subscription-cli:claude', model }); } catch { /* usage never breaks the call */ }
+      resolve(out.result);
+    });
+    child.stdin?.end(prompt);
+  });
+}
+
 const EXCERPT_CHARS = 6000;
 const SENSITIVE_PATH = /(^|\/)(\.env|node_modules|\.git)(\/|$)|secret|credential|password|\.pem$|id_rsa|\.key$/i;
 
@@ -176,10 +227,13 @@ export class SelfImprovementAgentReviewService {
   private readonly generationFailures = new Map<string, number>();
   private readonly random: () => number;
 
-  constructor(private readonly db: Database, callModel: ModelCaller = callOllama, opts: { random?: () => number } = {}) {
+  private readonly callFallback: ModelCaller;
+
+  constructor(private readonly db: Database, callModel: ModelCaller = callOllama, opts: { random?: () => number; callFallback?: ModelCaller } = {}) {
     this.panels = new SpecialistPanelService(db);
     this.callModel = callModel;
     this.random = opts.random ?? Math.random;
+    this.callFallback = opts.callFallback ?? ((prompt, model, usage) => callClaudePanel(prompt, model, usage));
   }
 
   /** Generate and submit reviews for every specialist role that hasn't reviewed this panel yet. */
@@ -211,7 +265,7 @@ export class SelfImprovementAgentReviewService {
         // fall back to the recorded failure so a permanently broken proposal cannot spin forever.
         // A connectivity failure (host down, timeout) says nothing about the proposal: wait it out without
         // spending attempts, or a 45-minute outage would park every proposal in review (seen 2026-09-21).
-        if (CONNECTIVITY_ERROR.test(outcome.error)) {
+        if (CONNECTIVITY_ERROR.test(outcome.error) || FALLBACK_INFRA.test(outcome.error)) {
           console.warn(`self-improvement review for ${profile.id} skipped, model host unreachable (${outcome.error}); will retry next tick`);
           continue;
         }
@@ -230,7 +284,7 @@ export class SelfImprovementAgentReviewService {
       panel = this.panels.submitReview(
         panel.id,
         { specialist_id: profile.id, ...outcome.review, ...outcome.provenance },
-        `agent:${profile.id}:${runId}`,
+        `agent:${profile.id}:${runId}${outcome.provenance.model.startsWith(PANEL_FALLBACK_PREFIX) ? ':panel_fallback' : ''}`,
       );
     }
     return panel;
@@ -238,6 +292,19 @@ export class SelfImprovementAgentReviewService {
 
   private async reviewOne(panel: SpecialistPanelRecord, profile: SpecialistProfile, lessons?: string): Promise<AskOutcome> {
     const prompt = this.buildPrompt(panel, profile, lessons);
+    // PANEL_FALLBACK_RUNTIME=claude: while Ollama is limited (auto state or the manual outage flag) the seat is answered on the
+    // subscription; a panel call failing with the usage-limit shape is answered there too. Same validation / quarantine.
+    const fallback = panelFallbackRuntime() ? `${PANEL_FALLBACK_PREFIX}${panelFallbackModel()}` : null;
+    if (fallback && effectiveFallbackRuntime(this.db)) return this.ask(prompt, profile.id, fallback, undefined, this.callFallback);
+    const outcome = await this.reviewOnOllama(prompt, profile);
+    if (fallback && 'error' in outcome && ollamaLimitClass(outcome.error)) {
+      noteOllamaOutput(this.db, outcome.error, 'panel_review');
+      return this.ask(prompt, profile.id, fallback, undefined, this.callFallback);
+    }
+    return outcome;
+  }
+
+  private async reviewOnOllama(prompt: string, profile: SpecialistProfile): Promise<AskOutcome> {
     const mode = modelSelectorMode();
     if (mode === 'off') return this.ask(prompt, profile.id);
     // MS-1: enforce uses the cheapest model that earned it (incumbent as fallback); shadow samples one candidate and discards it
@@ -257,7 +324,7 @@ export class SelfImprovementAgentReviewService {
    * One answer with at most one re-ask: the re-ask quotes the validation error. With a model given the call is recorded in
    * the MS-1 ledger (status ok / repaired / invalid_parse / invalid_schema (E4; 'invalid' before) / empty / error; a shadow call when incumbentStance is passed).
    */
-  private async ask(prompt: string, who: string, model?: string, incumbentStance?: ParsedReview['stance'] | null): Promise<AskOutcome> {
+  private async ask(prompt: string, who: string, model?: string, incumbentStance?: ParsedReview['stance'] | null, callModel: ModelCaller = this.callModel): Promise<AskOutcome> {
     const started = Date.now();
     const shadow = incumbentStance !== undefined;
     const promptSha = sha256(prompt);
@@ -271,10 +338,11 @@ export class SelfImprovementAgentReviewService {
     const record = (ok: boolean, chars: number, status: string, stance?: string) => {
       if (model) recordModelCall(this.db, { consumer: CONSUMER, model, ok, latencyMs: Date.now() - started, outChars: chars, shadow: shadow ? 1 : 0,
         agree: shadow && incumbentStance && stance ? stance === incumbentStance : null, status,
-        provider: usage.provider, tokensIn: usage.tokensIn, tokensOut: usage.tokensOut, taskKind: 'review', purpose: `panel_review:${shadow ? 'shadow' : 'review'}` });
+        provider: usage.provider ?? (model.startsWith(PANEL_FALLBACK_PREFIX) ? 'subscription-cli:claude' : null), tokensIn: usage.tokensIn, tokensOut: usage.tokensOut,
+        taskKind: 'review', purpose: `panel_review:${shadow ? 'shadow' : model.startsWith(PANEL_FALLBACK_PREFIX) ? 'fallback' : 'review'}` });
     };
     try {
-      let raw = await this.callModel(prompt, model, model ? sink : undefined);
+      let raw = await callModel(prompt, model, model ? sink : undefined);
       // prod 2026-09-25 (sample logged since #416): the "unreadable" answers were empty responses — a transient model
       // failure, treated like an unreachable host (no attempt spent, never recorded as a vote)
       if (!raw.trim()) { record(false, 0, 'empty'); return { error: 'empty model response (timed out)' }; }
@@ -282,7 +350,7 @@ export class SelfImprovementAgentReviewService {
       let attempt = 1;
       if (!checked.ok) {
         attempt = 2;
-        const retry = await this.callModel(`${prompt}\n\nYour previous answer was rejected: ${checked.error}. Respond again with ONLY the JSON object in exactly this shape:\n${REVIEW_SHAPE}`, model, model ? sink : undefined);
+        const retry = await callModel(`${prompt}\n\nYour previous answer was rejected: ${checked.error}. Respond again with ONLY the JSON object in exactly this shape:\n${REVIEW_SHAPE}`, model, model ? sink : undefined);
         if (retry.trim()) { raw = retry; checked = validateReview(raw); }
       }
       const provenance: Provenance = { model: model ?? defaultModel(), prompt_sha256: promptSha, raw_sha256: sha256(raw), attempt };

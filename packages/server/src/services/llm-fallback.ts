@@ -13,7 +13,8 @@
  * last (never skipped, so a total outage still surfaces the primary's own error message).
  */
 
-import { measured } from './model-selector';
+import { getLlmLedger, measured } from './model-selector';
+import { limitMarker, limitWatching, noteOllamaOutput } from './inference-failover';
 
 export interface LlmEndpoint { id: string; kind: 'ollama' | 'openai'; baseUrl: string; apiKey?: string; model?: string }
 
@@ -62,7 +63,11 @@ async function callEndpoint(endpoint: LlmEndpoint, options: GenerateOptions, fet
       // think:false — reasoning models otherwise burn num_predict on a hidden trace and return no JSON.
       body: JSON.stringify({ model, prompt: options.prompt, stream: false, format: 'json', think: false, options: { temperature: options.temperature ?? 0.2, num_predict: options.maxTokens ?? 1024 } }),
     });
-    if (!response.ok) throw new Error(`Ollama request failed: ${response.status}`);
+    if (!response.ok) {
+      // OLLAMA_AUTO_FAILOVER / PANEL_FALLBACK_RUNTIME: the body says whether this is the Ollama Cloud usage limit (off: unread, unchanged)
+      const limit = limitWatching() ? noteOllamaOutput(getLlmLedger(), await response.text().catch(() => ''), `llm:${options.purpose ?? 'untagged'}`) : null;
+      throw new Error(`Ollama request failed: ${response.status}${limit ? ` ${limitMarker(limit)}` : ''}`);
+    }
     // Ollama reports prompt_eval_count / eval_count; absent = unknown (null), never 0
     const data = (await response.json()) as { response?: string; prompt_eval_count?: unknown; eval_count?: unknown };
     return { text: data.response || '', tokensIn: count(data.prompt_eval_count), tokensOut: count(data.eval_count) };

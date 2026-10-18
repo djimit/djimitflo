@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { redactSecrets } from './secret-patterns';
 import { generateText, llmEndpoints } from './llm-fallback';
+import { budgetPause } from './inference-budget';
 import { firstJsonObject } from './expert-council-service';
 import { BASELINE_GENOME, dreamEvolutionEnabled, ELIGIBLE_GATED, ensureBaseline, frozenHoldoutCommits, genome, holdoutEpoch, mutantHoldoutKeys, mutantHoldoutTiers, mutantTrialsEnabled, NOT_VOID, trialHeadroomPrecheck, unscorable, writeTestHoldoutEnabled, writeTestHoldoutKeys } from './genome-registry';
 import { markRun } from './scheduler-registry';
@@ -299,6 +300,7 @@ export const defaultCaller: DreamCaller = (prompt) => generateText(
 
 export async function dreamOnce(db: Database, now = Date.now(), call: DreamCaller = defaultCaller): Promise<{ created: string[]; skipped?: string }> {
   if (!dreamEvolutionEnabled()) return { created: [], skipped: 'disabled' };
+  if (budgetPause(db, 'dream_evolution')) return { created: [], skipped: 'inference_budget' }; // INFERENCE_BUDGET_THROTTLE=on
   const iso = new Date(now).toISOString();
   ensureBaseline(db, iso);
   if (db.prepare("SELECT 1 FROM maker_genomes WHERE origin = 'dream' AND created_at >= ? LIMIT 1").get(iso.slice(0, 10))) return { created: [], skipped: 'already dreamt today' };
