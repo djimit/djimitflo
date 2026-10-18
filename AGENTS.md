@@ -55,6 +55,10 @@ scripts/                    # deploy, merge train, gym worker, evidence and doc 
 openspec/                   # specs (capabilities) and changes
 ```
 
+## Before you edit
+
+- Read the file's git history (`git log -p --follow <file>`) before changing it.
+
 ## Protected paths
 
 Agents do not modify these without an explicit operator OK in the task or plan. Read-only is fine.

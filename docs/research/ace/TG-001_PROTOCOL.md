@@ -160,3 +160,16 @@ unchanged; this fixes the analysis.
 - **Known, not changed (operator rule):** INCONCLUSIVE at 20 tasks extends to 40 and re-applies α = 0.05 — two looks, so the
   overall false-SUPPORTED rate is above 0.05 (Bonferroni bound 0.10). Reported, not corrected, because the stopping rule is
   pre-registered by the operator.
+
+## Amendment 2026-10-19: stop condition
+
+Stop condition added; verdict rules unchanged. Operator-approved 2026-10-19. The text above is frozen and is not edited.
+
+- **State:** the 20-task result (r2) is INCONCLUSIVE, so the stopping rule extends once to 40 tasks. The second frozen set waits
+  on task supply: accrual of new tasks is ~0.
+- **Rule for ~0 accrual:** stop_by = today + 30 days. **stop_by: 2026-11-18** (the start + 90-day cap is 2027-01-09).
+- **Action at stop_by: decide: extend or close INCONCLUSIVE.** If the 40-task extension has not started by then, the operator
+  either starts it or closes TG-001 as INCONCLUSIVE at 20 tasks. The registry treats INCONCLUSIVE at 20 as not yet closed.
+- **Unchanged:** arms, task-set rules, the single extension to 40, analysis, interval method and verdict rules.
+- **Recorded:** `experiment-registry.ts` (`stop_by`, `stop_source`); the stall watch `experiment_overdue` reports TG-001
+  after this date while no closing verdict is recorded.

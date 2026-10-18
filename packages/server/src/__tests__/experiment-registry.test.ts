@@ -5,6 +5,8 @@ import { runMigrations } from '../database/migrate';
 import { experimentDefs, experimentsReport, type ExperimentDef } from '../services/experiment-registry';
 import { detectStallsWithHealth } from '../services/stall-watch';
 import { buildEvolutionEvidence } from '../services/evolution-evidence';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { D5NO_CUTOFF, D5NO_DEADLINE_DAYS } from '../services/d5-no';
 
 let db: Database.Database;
@@ -17,12 +19,30 @@ it('lists every running experiment with its registered target and stop date; non
   expect(r.experiments.map((e) => e.id)).toEqual(['ACE-001', 'STE-001', 'MAKER-DEPS-001', 'X1', 'F2', 'TG-001', 'D5-NO', 'JEV-114', 'memory-holdout']);
   expect(r.experiments.every((e) => !e.error)).toBe(true);
   expect(r.overdue).toEqual([]);
-  // only X1 (4 weeks) and D5-NO (cutoff + 90 d) register a stop date
+  // X1 (4 weeks) and D5-NO (cutoff + 90 d) were registered with a stop date; the other seven got one by the 2026-10-19 amendments
   expect(r.experiments.find((e) => e.id === 'X1')?.stop_by).toBe('2026-11-06T00:00:00.000Z');
   expect(r.experiments.find((e) => e.id === 'D5-NO')?.stop_by).toBe(new Date(Date.parse(D5NO_CUTOFF) + D5NO_DEADLINE_DAYS * 86_400_000).toISOString());
   expect(r.experiments.find((e) => e.id === 'D5-NO')?.started_at).toBe(D5NO_CUTOFF);
-  expect(r.no_stop_date).toEqual(['ACE-001', 'STE-001', 'MAKER-DEPS-001', 'F2', 'TG-001', 'JEV-114', 'memory-holdout']);
-  for (const e of r.experiments.filter((x) => x.stop_by === null)) expect(e.stop_note).toContain('no stop date — violates know-when-to-stop');
+  expect(r.no_stop_date).toEqual([]);
+  // every experiment has a stop date, a target n and the document that registers both
+  for (const e of r.experiments) {
+    expect(e.stop_by, e.id).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(e.target_n, e.id).toBeGreaterThan(0);
+    expect(e.stop_source, e.id).toMatch(/^docs\/research\/.+\.md/);
+    // the stall-watch cap: no stop date more than 90 days after the start
+    expect(Date.parse(e.stop_by as string) - Date.parse(e.started_at), e.id).toBeLessThanOrEqual(90 * 86_400_000);
+  }
+  // the amended stops cite the amendment, and the amendment text exists in that document
+  for (const e of r.experiments.filter((x) => !['X1', 'D5-NO'].includes(x.id))) {
+    const [file, anchor] = e.stop_source.split('#');
+    const doc = readFileSync(join(__dirname, '../../../..', file), 'utf8');
+    expect(doc, e.id).toContain('2026-10-19');
+    expect(doc, e.id).toContain('verdict rules unchanged');
+    expect(doc, e.id).toContain(e.stop_by!.slice(0, 10));
+    expect(anchor, e.id).toBeTruthy();
+  }
+  expect(r.experiments.find((e) => e.id === 'JEV-114')?.target_n).toBe(100);
+  expect(r.experiments.find((e) => e.id === 'memory-holdout')?.target_n).toBe(30);
   // n per arm is counted, never invented: an empty database gives 0 per arm, not null, where arms exist
   expect(r.experiments.find((e) => e.id === 'ACE-001')?.n_per_arm).toEqual({ '00': 0, '01': 0, '10': 0, '11': 0 });
 });
@@ -47,7 +67,8 @@ it("stall watch 'experiment_overdue' fires after a registered stop date and name
   expect(before.stalls.filter((s) => s.subsystem.startsWith('experiment:'))).toEqual([]);
   const det = before.detectors.find((d) => d.name === 'experiment_overdue');
   expect(det?.status).toBe('ok');
-  expect(det?.detail).toContain('no stop date — violates know-when-to-stop: ACE-001');
+  // every experiment has a stop date now: the detector names none as missing one
+  expect(det?.detail ?? '').not.toContain('no stop date');
   const after = detectStallsWithHealth(db, Date.parse('2026-11-07T00:00:00Z'), {});
   expect(after.stalls.find((s) => s.subsystem === 'experiment:X1')?.detail).toContain('past stop_by 2026-11-06');
 });
