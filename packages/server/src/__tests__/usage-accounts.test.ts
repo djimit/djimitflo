@@ -82,7 +82,10 @@ describe('plan limits', () => {
       expect(l.limit_text.length).toBeGreaterThan(0);
       if (l.limit !== null) expect(l.source_url && l.checked_at).toBeTruthy(); // a number only with a source and a date
     }
-    expect(p.account_plan).toEqual({}); // every account 'unknown' until the operator picks
+    // operator-picked plans (18-10) must each name an existing row of that account
+    for (const [account, plan] of Object.entries(p.account_plan)) {
+      expect(p.limits.some((l) => l.account === account && l.plan === plan)).toBe(true);
+    }
   });
   it('rejects malformed entries', () => {
     expect(parsePlanLimits({ provider_plan_limits: [{ account: 'nope', plan: 'x', window: '5h', unit: 'tokens', limit: null }, { account: 'nvidia', plan: 'x', window: 'hourly', unit: 'tokens', limit: 1 }] }))
