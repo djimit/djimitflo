@@ -1,0 +1,580 @@
+{
+  "label": "ESTIMATE: tokens = chars/4; saving = chars saved × later steps of the run; upper bound if the runtime prunes old tool output",
+  "evidence_root": "/data/agent-evidence/agentic-control-loop-fleet",
+  "min_chars": 4000,
+  "budgets": [
+    2000,
+    4000,
+    8000
+  ],
+  "until": "2026-10-13T22:00:00.000Z",
+  "streams": 788,
+  "window": [
+    "2026-06-26T14:37:03.000Z",
+    "2026-10-13T19:58:35.996Z"
+  ],
+  "manifest": {
+    "files": 2890,
+    "bytes": 45525135,
+    "sha256": "a92ad37dbadde12b61af73e48df19387f6323e64181d416a2826d4644c61094a",
+    "canonical": "JSON.stringify of [{path,bytes,sha256}] sorted by path"
+  },
+  "coverage": {
+    "worker-output": {
+      "streams": 534,
+      "opencode_json": 172,
+      "with_step_tokens": 172,
+      "with_tool_output": 172,
+      "steps": 3383,
+      "measured_context_tokens": 92910547,
+      "per_run_context_tokens": {
+        "runs": 172,
+        "p10": 165783,
+        "median": 483792,
+        "p90": 994594,
+        "sd_log": 0.716
+      }
+    },
+    "checker-output": {
+      "streams": 254,
+      "opencode_json": 191,
+      "with_step_tokens": 191,
+      "with_tool_output": 188,
+      "steps": 1450,
+      "measured_context_tokens": 39486986,
+      "per_run_context_tokens": {
+        "runs": 191,
+        "p10": 36988,
+        "median": 108837,
+        "p90": 589137,
+        "sd_log": 1.003
+      }
+    }
+  },
+  "tool_outputs_by_tool": {
+    "read": {
+      "outputs": 1136,
+      "chars": 7991335,
+      "over_min_chars": 596
+    },
+    "bash": {
+      "outputs": 3425,
+      "chars": 2189325,
+      "over_min_chars": 36
+    },
+    "glob": {
+      "outputs": 65,
+      "chars": 198386,
+      "over_min_chars": 12
+    },
+    "grep": {
+      "outputs": 179,
+      "chars": 799720,
+      "over_min_chars": 48
+    },
+    "todowrite": {
+      "outputs": 15,
+      "chars": 8031,
+      "over_min_chars": 0
+    },
+    "edit": {
+      "outputs": 165,
+      "chars": 4290,
+      "over_min_chars": 0
+    },
+    "write": {
+      "outputs": 130,
+      "chars": 3120,
+      "over_min_chars": 0
+    }
+  },
+  "replay": {
+    "bash/budget=2000/worker-output": {
+      "runs_with_tokens": 172,
+      "runs_affected": 17,
+      "share_affected": 0.099,
+      "outputs_compressed": 23,
+      "estimated_saved_tokens": 543095,
+      "measured_context_tokens": 92910547,
+      "pooled_reduction": 0.006,
+      "per_run_reduction": {
+        "p10": 0,
+        "median": 0,
+        "p90": 0,
+        "max": 0.355
+      },
+      "per_affected_run_reduction_median": 0.012,
+      "structured_pass_through": 7,
+      "integrity": {
+        "recovery_failures": 0,
+        "preserved_lines": {
+          "error": {
+            "seen": 152,
+            "dropped": 0
+          },
+          "security": {
+            "seen": 2,
+            "dropped": 0
+          },
+          "injection": {
+            "seen": 0,
+            "dropped": 0
+          },
+          "sourceRef": {
+            "seen": 59,
+            "dropped": 0
+          }
+        }
+      }
+    },
+    "bash/budget=2000/checker-output": {
+      "runs_with_tokens": 191,
+      "runs_affected": 3,
+      "share_affected": 0.016,
+      "outputs_compressed": 3,
+      "estimated_saved_tokens": 60222,
+      "measured_context_tokens": 39486986,
+      "pooled_reduction": 0.002,
+      "per_run_reduction": {
+        "p10": 0,
+        "median": 0,
+        "p90": 0,
+        "max": 0.111
+      },
+      "per_affected_run_reduction_median": 0.028,
+      "structured_pass_through": 2,
+      "integrity": {
+        "recovery_failures": 0,
+        "preserved_lines": {
+          "error": {
+            "seen": 25,
+            "dropped": 0
+          },
+          "security": {
+            "seen": 9,
+            "dropped": 0
+          },
+          "injection": {
+            "seen": 0,
+            "dropped": 0
+          },
+          "sourceRef": {
+            "seen": 0,
+            "dropped": 0
+          }
+        }
+      }
+    },
+    "bash/budget=4000/worker-output": {
+      "runs_with_tokens": 172,
+      "runs_affected": 10,
+      "share_affected": 0.058,
+      "outputs_compressed": 11,
+      "estimated_saved_tokens": 377806,
+      "measured_context_tokens": 92910547,
+      "pooled_reduction": 0.004,
+      "per_run_reduction": {
+        "p10": 0,
+        "median": 0,
+        "p90": 0,
+        "max": 0.328
+      },
+      "per_affected_run_reduction_median": 0.007,
+      "structured_pass_through": 7,
+      "integrity": {
+        "recovery_failures": 0,
+        "preserved_lines": {
+          "error": {
+            "seen": 63,
+            "dropped": 0
+          },
+          "security": {
+            "seen": 1,
+            "dropped": 0
+          },
+          "injection": {
+            "seen": 0,
+            "dropped": 0
+          },
+          "sourceRef": {
+            "seen": 29,
+            "dropped": 0
+          }
+        }
+      }
+    },
+    "bash/budget=4000/checker-output": {
+      "runs_with_tokens": 191,
+      "runs_affected": 3,
+      "share_affected": 0.016,
+      "outputs_compressed": 3,
+      "estimated_saved_tokens": 46580,
+      "measured_context_tokens": 39486986,
+      "pooled_reduction": 0.001,
+      "per_run_reduction": {
+        "p10": 0,
+        "median": 0,
+        "p90": 0,
+        "max": 0.098
+      },
+      "per_affected_run_reduction_median": 0.019,
+      "structured_pass_through": 2,
+      "integrity": {
+        "recovery_failures": 0,
+        "preserved_lines": {
+          "error": {
+            "seen": 25,
+            "dropped": 0
+          },
+          "security": {
+            "seen": 9,
+            "dropped": 0
+          },
+          "injection": {
+            "seen": 0,
+            "dropped": 0
+          },
+          "sourceRef": {
+            "seen": 0,
+            "dropped": 0
+          }
+        }
+      }
+    },
+    "bash/budget=8000/worker-output": {
+      "runs_with_tokens": 172,
+      "runs_affected": 3,
+      "share_affected": 0.017,
+      "outputs_compressed": 3,
+      "estimated_saved_tokens": 290629,
+      "measured_context_tokens": 92910547,
+      "pooled_reduction": 0.003,
+      "per_run_reduction": {
+        "p10": 0,
+        "median": 0,
+        "p90": 0,
+        "max": 0.3
+      },
+      "per_affected_run_reduction_median": 0.012,
+      "structured_pass_through": 7,
+      "integrity": {
+        "recovery_failures": 0,
+        "preserved_lines": {
+          "error": {
+            "seen": 23,
+            "dropped": 0
+          },
+          "security": {
+            "seen": 1,
+            "dropped": 0
+          },
+          "injection": {
+            "seen": 0,
+            "dropped": 0
+          },
+          "sourceRef": {
+            "seen": 0,
+            "dropped": 0
+          }
+        }
+      }
+    },
+    "bash/budget=8000/checker-output": {
+      "runs_with_tokens": 191,
+      "runs_affected": 1,
+      "share_affected": 0.005,
+      "outputs_compressed": 1,
+      "estimated_saved_tokens": 19357,
+      "measured_context_tokens": 39486986,
+      "pooled_reduction": 0,
+      "per_run_reduction": {
+        "p10": 0,
+        "median": 0,
+        "p90": 0,
+        "max": 0.072
+      },
+      "per_affected_run_reduction_median": 0.072,
+      "structured_pass_through": 2,
+      "integrity": {
+        "recovery_failures": 0,
+        "preserved_lines": {
+          "error": {
+            "seen": 9,
+            "dropped": 0
+          },
+          "security": {
+            "seen": 9,
+            "dropped": 0
+          },
+          "injection": {
+            "seen": 0,
+            "dropped": 0
+          },
+          "sourceRef": {
+            "seen": 0,
+            "dropped": 0
+          }
+        }
+      }
+    },
+    "all_tools_upper_bound/budget=2000/worker-output": {
+      "runs_with_tokens": 172,
+      "runs_affected": 153,
+      "share_affected": 0.89,
+      "outputs_compressed": 446,
+      "estimated_saved_tokens": 17234540,
+      "measured_context_tokens": 92910547,
+      "pooled_reduction": 0.185,
+      "per_run_reduction": {
+        "p10": 0,
+        "median": 0.135,
+        "p90": 0.355,
+        "max": 0.572
+      },
+      "per_affected_run_reduction_median": 0.149,
+      "structured_pass_through": 7,
+      "integrity": {
+        "recovery_failures": 0,
+        "preserved_lines": {
+          "error": {
+            "seen": 3666,
+            "dropped": 0
+          },
+          "security": {
+            "seen": 390,
+            "dropped": 0
+          },
+          "injection": {
+            "seen": 11,
+            "dropped": 0
+          },
+          "sourceRef": {
+            "seen": 63,
+            "dropped": 0
+          }
+        }
+      }
+    },
+    "all_tools_upper_bound/budget=2000/checker-output": {
+      "runs_with_tokens": 191,
+      "runs_affected": 167,
+      "share_affected": 0.874,
+      "outputs_compressed": 235,
+      "estimated_saved_tokens": 3229329,
+      "measured_context_tokens": 39486986,
+      "pooled_reduction": 0.082,
+      "per_run_reduction": {
+        "p10": 0,
+        "median": 0.058,
+        "p90": 0.147,
+        "max": 0.408
+      },
+      "per_affected_run_reduction_median": 0.067,
+      "structured_pass_through": 2,
+      "integrity": {
+        "recovery_failures": 0,
+        "preserved_lines": {
+          "error": {
+            "seen": 1874,
+            "dropped": 0
+          },
+          "security": {
+            "seen": 179,
+            "dropped": 0
+          },
+          "injection": {
+            "seen": 11,
+            "dropped": 0
+          },
+          "sourceRef": {
+            "seen": 4,
+            "dropped": 0
+          }
+        }
+      }
+    },
+    "all_tools_upper_bound/budget=4000/worker-output": {
+      "runs_with_tokens": 172,
+      "runs_affected": 147,
+      "share_affected": 0.855,
+      "outputs_compressed": 392,
+      "estimated_saved_tokens": 13826006,
+      "measured_context_tokens": 92910547,
+      "pooled_reduction": 0.149,
+      "per_run_reduction": {
+        "p10": 0,
+        "median": 0.095,
+        "p90": 0.326,
+        "max": 0.54
+      },
+      "per_affected_run_reduction_median": 0.114,
+      "structured_pass_through": 7,
+      "integrity": {
+        "recovery_failures": 0,
+        "preserved_lines": {
+          "error": {
+            "seen": 3427,
+            "dropped": 0
+          },
+          "security": {
+            "seen": 337,
+            "dropped": 0
+          },
+          "injection": {
+            "seen": 11,
+            "dropped": 0
+          },
+          "sourceRef": {
+            "seen": 33,
+            "dropped": 0
+          }
+        }
+      }
+    },
+    "all_tools_upper_bound/budget=4000/checker-output": {
+      "runs_with_tokens": 191,
+      "runs_affected": 158,
+      "share_affected": 0.827,
+      "outputs_compressed": 208,
+      "estimated_saved_tokens": 2481634,
+      "measured_context_tokens": 39486986,
+      "pooled_reduction": 0.063,
+      "per_run_reduction": {
+        "p10": 0,
+        "median": 0.038,
+        "p90": 0.131,
+        "max": 0.389
+      },
+      "per_affected_run_reduction_median": 0.047,
+      "structured_pass_through": 2,
+      "integrity": {
+        "recovery_failures": 0,
+        "preserved_lines": {
+          "error": {
+            "seen": 1760,
+            "dropped": 0
+          },
+          "security": {
+            "seen": 157,
+            "dropped": 0
+          },
+          "injection": {
+            "seen": 11,
+            "dropped": 0
+          },
+          "sourceRef": {
+            "seen": 4,
+            "dropped": 0
+          }
+        }
+      }
+    },
+    "all_tools_upper_bound/budget=8000/worker-output": {
+      "runs_with_tokens": 172,
+      "runs_affected": 98,
+      "share_affected": 0.57,
+      "outputs_compressed": 176,
+      "estimated_saved_tokens": 9017444,
+      "measured_context_tokens": 92910547,
+      "pooled_reduction": 0.097,
+      "per_run_reduction": {
+        "p10": 0,
+        "median": 0.021,
+        "p90": 0.239,
+        "max": 0.469
+      },
+      "per_affected_run_reduction_median": 0.09,
+      "structured_pass_through": 7,
+      "integrity": {
+        "recovery_failures": 0,
+        "preserved_lines": {
+          "error": {
+            "seen": 1951,
+            "dropped": 0
+          },
+          "security": {
+            "seen": 251,
+            "dropped": 0
+          },
+          "injection": {
+            "seen": 9,
+            "dropped": 0
+          },
+          "sourceRef": {
+            "seen": 2,
+            "dropped": 0
+          }
+        }
+      }
+    },
+    "all_tools_upper_bound/budget=8000/checker-output": {
+      "runs_with_tokens": 191,
+      "runs_affected": 83,
+      "share_affected": 0.435,
+      "outputs_compressed": 93,
+      "estimated_saved_tokens": 1324252,
+      "measured_context_tokens": 39486986,
+      "pooled_reduction": 0.034,
+      "per_run_reduction": {
+        "p10": 0,
+        "median": 0,
+        "p90": 0.09,
+        "max": 0.34
+      },
+      "per_affected_run_reduction_median": 0.053,
+      "structured_pass_through": 2,
+      "integrity": {
+        "recovery_failures": 0,
+        "preserved_lines": {
+          "error": {
+            "seen": 1033,
+            "dropped": 0
+          },
+          "security": {
+            "seen": 107,
+            "dropped": 0
+          },
+          "injection": {
+            "seen": 6,
+            "dropped": 0
+          },
+          "sourceRef": {
+            "seen": 0,
+            "dropped": 0
+          }
+        }
+      }
+    }
+  },
+  "check_logs": {
+    "note": "deterministic-check logs; not re-sent per step, so ratio only",
+    "budget": 2000,
+    "files": 2102,
+    "over_min_chars": 100,
+    "compressed": 98,
+    "chars": 6428704,
+    "compressed_chars": 3466759,
+    "files_with_failing_assertion_lines": 412,
+    "integrity": {
+      "recovery_failures": 0,
+      "preserved_lines": {
+        "error": {
+          "seen": 11053,
+          "dropped": 0
+        },
+        "security": {
+          "seen": 1702,
+          "dropped": 0
+        },
+        "injection": {
+          "seen": 0,
+          "dropped": 0
+        },
+        "sourceRef": {
+          "seen": 8289,
+          "dropped": 0
+        }
+      }
+    }
+  }
+}
