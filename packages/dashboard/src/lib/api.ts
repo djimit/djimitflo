@@ -192,7 +192,9 @@ export interface EvolutionEvidence {
   inference?: {
     failover: { mode: 'off' | 'on'; effective: 'claude' | 'off'; probe_model: string; transitions: Array<{ action: string; n: number }> | null;
       state: { state: 'ollama_limited'; detected_at: string; error_class: string; source: string; excerpt: string; last_probe_at?: string; last_probe_result?: string } | null };
-    panel_fallback: { mode: 'claude' | 'off'; model: string; reviews: number | null; quarantined: number | null; note: string };
+    panel_fallback: { mode: 'claude' | 'off'; model: string; reviews: number | null; quarantined: number | null; note: string;
+      /** shared Claude subscription backoff: inference_unavailable = seats wait (no attempt, quarantine or verdict) until backoff.until */
+      status: 'off' | 'available' | 'inference_unavailable'; backoff: { hit_at: string; source: string; until: string } | null };
     budget: { mode: 'off' | 'shadow' | 'on'; token_budget: number | null; throttle_at: number; usage_pct: number | null; status: 'no_budget' | 'insufficient' | 'ok' | 'over_threshold';
       usage: { ledger: { tokens: number; calls: number; calls_without_tokens: number } | null; opencode_leases: { tokens: number; leases: number; leases_without_tokens: number } | null; total_tokens: number | null };
       paused: string[]; would_pause: string[]; note: string };

@@ -12,7 +12,7 @@ import { egressEvidence } from './egress-classification';
 import { embeddingDimMismatch, vectorStrictDim } from './embedding-dims';
 import { autoMergeEvidence } from './loop-auto-merge-state';
 import { nonMakerRunSql } from './outcome-attribution';
-import { effectiveFallbackRuntime, notFallbackRunSql, outageFallbackEvidence } from './ollama-outage-fallback';
+import { effectiveFallbackRuntime, notFallbackRunSql, outageFallbackEvidence, panelInferenceStatus } from './ollama-outage-fallback';
 import { autoFailoverEvidence, PANEL_FALLBACK_PREFIX, panelFallbackModel, panelFallbackRuntime } from './inference-failover';
 import { budgetEvidence } from './inference-budget';
 import { effortX1Evidence } from './effort-controller';
@@ -179,7 +179,7 @@ export function inferenceEvidence(db: Database, since: string, env: NodeJS.Proce
   const count = (sql: string): number | null => { try { return (db.prepare(sql).get(`${PANEL_FALLBACK_PREFIX}%`, since) as { n: number }).n; } catch { return null; } };
   return {
     failover: { ...autoFailoverEvidence(db, since, env), effective: effectiveFallbackRuntime(db, env) ?? 'off' },
-    panel_fallback: { mode: panelFallbackRuntime(env) ?? 'off', model: `${PANEL_FALLBACK_PREFIX}${panelFallbackModel(env)}`,
+    panel_fallback: { mode: panelFallbackRuntime(env) ?? 'off', model: `${PANEL_FALLBACK_PREFIX}${panelFallbackModel(env)}`, ...panelInferenceStatus(db, env, now),
       reviews: count("SELECT COUNT(*) AS n FROM specialist_reviews WHERE model LIKE ? AND created_at >= ?"),
       quarantined: count('SELECT COUNT(*) AS n FROM specialist_review_quarantine WHERE model LIKE ? AND created_at >= ?'),
       note: `fallback reviews (model ${PANEL_FALLBACK_PREFIX}<model>, reviewer ':panel_fallback') pass the same validation/quarantine and are excluded from panel calibration` },

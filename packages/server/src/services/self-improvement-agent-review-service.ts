@@ -36,7 +36,7 @@ import { extraRepoBySlug, repoRefOf } from './repo-registry';
 import { chooseModel, modelSelectorMode, recordModelCall, shadowCandidate, shadowRate } from './model-selector';
 import { noteOllamaOutput, ollamaLimitClass, PANEL_FALLBACK_PREFIX, panelFallbackModel, panelFallbackRuntime } from './inference-failover';
 import { effectiveFallbackRuntime } from './ollama-outage-fallback';
-import { AUTH_MISSING, LIMIT_HIT, isSubscriptionLimit, subscriptionAuthPresent } from './subscription-gym';
+import { AUTH_MISSING, LIMIT_HIT, claudeSubscriptionBackoff, isSubscriptionLimit, recordSubscriptionLimit, subscriptionAuthPresent } from './subscription-gym';
 import { subscriptionChildEnv } from '../execution/executors/subscription-env';
 
 /** The model argument is only passed when MODEL_SELECTOR_MODE is on; undefined = the caller's own default (unchanged). */
@@ -295,12 +295,24 @@ export class SelfImprovementAgentReviewService {
     // PANEL_FALLBACK_RUNTIME=claude: while Ollama is limited (auto state or the manual outage flag) the seat is answered on the
     // subscription; a panel call failing with the usage-limit shape is answered there too. Same validation / quarantine.
     const fallback = panelFallbackRuntime() ? `${PANEL_FALLBACK_PREFIX}${panelFallbackModel()}` : null;
-    if (fallback && effectiveFallbackRuntime(this.db)) return this.ask(prompt, profile.id, fallback, undefined, this.callFallback);
+    if (fallback && effectiveFallbackRuntime(this.db)) return this.askFallback(prompt, profile.id, fallback);
     const outcome = await this.reviewOnOllama(prompt, profile);
     if (fallback && 'error' in outcome && ollamaLimitClass(outcome.error)) {
       noteOllamaOutput(this.db, outcome.error, 'panel_review');
-      return this.ask(prompt, profile.id, fallback, undefined, this.callFallback);
+      return this.askFallback(prompt, profile.id, fallback);
     }
+    return outcome;
+  }
+
+  /**
+   * The fallback seat under the shared Claude subscription backoff (subscription-gym claudeSubscriptionBackoff): while it holds,
+   * no spawn and an infra error (FALLBACK_INFRA: no attempt spent, no quarantine, no verdict); a limit hit records it.
+   */
+  private async askFallback(prompt: string, who: string, model: string): Promise<AskOutcome> {
+    const backoff = claudeSubscriptionBackoff(this.db);
+    if (backoff) return { error: `panel_fallback: ${LIMIT_HIT} backoff (hit ${backoff.hit_at} via ${backoff.source}, until ${backoff.until})` };
+    const outcome = await this.ask(prompt, who, model, undefined, this.callFallback);
+    if ('error' in outcome && outcome.error.startsWith(`panel_fallback: ${LIMIT_HIT}`)) recordSubscriptionLimit(this.db, 'panel_review');
     return outcome;
   }
 
