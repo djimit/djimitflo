@@ -25,7 +25,7 @@ const SOURCES = {
 export const BUDGETS = { 'AGENTS.md': 150, 'SOUL.md': 80, 'USER.md': 60, 'TOOLS.md': 120, 'HEARTBEAT.md': 100 };
 export const INFERENCE_FLAG = /^(OLLAMA_|PANEL_FALLBACK_|INFERENCE_|SUBSCRIPTION_GYM_|MODEL_SELECTOR_)/;
 const HEADER = (sources) => `<!-- generated — do not edit. Source: ${sources}. Regenerate: node scripts/gen-agent-docs.mjs -->`;
-const clip = (s, n) => { const t = String(s ?? '').replace(/\s+/g, ' ').replace(/\|/g, '\\|').trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
+const clip = (s, n) => { const t = String(s ?? '').replace(/\s+/g, ' ').replace(/\\/g, '\\\\').replace(/\|/g, '\\|').trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
 
 /** Names from the EVOLUTION_FLAGS array literal, in order. */
 export function parseEvolutionFlags(src) {
