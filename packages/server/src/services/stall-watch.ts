@@ -4,7 +4,8 @@ import { decide, expiringAdmissions } from '../execution/runtime-admission';
 import { randomUUID } from 'crypto';
 import { guardTick, healSchedulers, quarantinedSchedulers, selfHealMode, type RecoveryAction } from './scheduler-registry';
 import { capabilityChain, isAnomaly, type CapabilityVerdict, type ObserveOptions } from './capability-chain';
-import { autoFailoverMode, readOllamaLimit } from './inference-failover';
+import { autoFailoverMode, panelFallbackRuntime, readOllamaLimit } from './inference-failover';
+import { panelInferenceStatus } from './ollama-outage-fallback';
 
 /**
  * Plan M10: Djimitflo noticed none of its own silent failures on 2026-09-27 — the workstation gym benched for 9 h, NVIDIA
@@ -161,6 +162,12 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
   run('inference_limited', autoFailoverMode(env) === 'on', () => {
     const s = readOllamaLimit(db);
     if (s) out.push({ subsystem: 'inference_limited', since: s.detected_at, detail: `Ollama ${s.error_class} usage limit (via ${s.source}); opencode leases fail over to claude${s.last_probe_at ? `; last probe ${s.last_probe_at}: ${s.last_probe_result ?? ''}` : ''}`.slice(0, 300) });
+  });
+  // PANEL_FALLBACK_RUNTIME: the panel needs claude but the shared Claude subscription backoff holds; seats wait without a verdict
+  run('inference_unavailable', panelFallbackRuntime(env) !== null, () => {
+    const p = panelInferenceStatus(db, env, now);
+    if (p.status === 'inference_unavailable' && p.backoff) out.push({ subsystem: 'inference_unavailable', since: p.backoff.hit_at,
+      detail: `panel reviews wait: Claude subscription usage limit (via ${p.backoff.source}), backoff until ${p.backoff.until}; no attempt, quarantine or verdict meanwhile` });
   });
   // P0.1 escalation: a scheduler the self-heal quarantined (no tick after its bounded restart, or no restart possible)
   run('schedulers', true, () => {
