@@ -2,9 +2,9 @@
   "schema": "usage-plan-limits/v1",
   "note": "Operator-filled vendor plan limits for /usage (packages/server/src/services/usage-accounts.ts). limit null = no published number: the page shows limit_text and 'no published number' instead of a bar. Never invent a number. account: ollama_cloud | claude_max | chatgpt_pro | opencode_free | typesafe_jev | nvidia | local_workstation. window: 5h | session | weekly | daily | monthly | none. unit: tokens | messages | requests | credits | unknown. Optional: confidence ('first_party' | 'snippet, verify'), note, exceed_behaviour. account_plan: which plan (exactly a row's plan) each account is on; 'unknown' = all rows shown as candidates. Research: 2026-10-18, first-party pages quoted verbatim.",
   "account_plan": {
-    "ollama_cloud": "unknown",
-    "claude_max": "unknown",
-    "chatgpt_pro": "unknown",
+    "ollama_cloud": "Legacy Max (pre-2026-08-31)",
+    "claude_max": "Max 5x ($100/mo)",
+    "chatgpt_pro": "Pro $100/mo (Codex & Work)",
     "opencode_free": "unknown",
     "typesafe_jev": "unknown",
     "nvidia": "unknown",
@@ -117,7 +117,7 @@
     },
     {
       "account": "chatgpt_pro",
-      "plan": "Pro 100/200/500 (Codex & Work)",
+      "plan": "Pro $100/mo (Codex & Work)",
       "window": "5h",
       "unit": "unknown",
       "limit": null,
@@ -126,11 +126,11 @@
       "checked_at": "2026-10-18",
       "confidence": "first_party",
       "exceed_behaviour": "n/a",
-      "note": "Help-center items (Pro tiers, \"no five-hour usage limit in Work and Codex\") are search snippets only: snippet, verify."
+      "note": "Help-center items (Pro tiers, \"no five-hour usage limit in Work and Codex\") are search snippets only: snippet, verify. Operator plan 2026-10-18: Pro $100 (help-center snippet: \"5x Plus\"; verify)."
     },
     {
       "account": "chatgpt_pro",
-      "plan": "Pro 100/200/500 (Codex & Work)",
+      "plan": "Pro $100/mo (Codex & Work)",
       "window": "weekly",
       "unit": "unknown",
       "limit": null,
@@ -139,7 +139,7 @@
       "checked_at": "2026-10-18",
       "confidence": "first_party",
       "exceed_behaviour": "active turn may finish; then buy credits or use API key at API rates",
-      "note": "Pro 100 reportedly 5x Plus, Pro 200 20x Plus — search snippet only: snippet, verify. Codex signed in with ChatGPT shares one pool; Codex with an API key is billed at API rates."
+      "note": "Pro 100 reportedly 5x Plus, Pro 200 20x Plus \u2014 search snippet only: snippet, verify. Codex signed in with ChatGPT shares one pool; Codex with an API key is billed at API rates. Operator plan 2026-10-18: Pro $100 (help-center snippet: \"5x Plus\"; verify)."
     },
     {
       "account": "opencode_free",
@@ -152,7 +152,7 @@
       "checked_at": "2026-10-18",
       "confidence": "first_party",
       "exceed_behaviour": "not published",
-      "note": "No free-tier rate limits or quotas published. Not used for automation: the ToS (https://opencode.ai/legal/terms-of-service, effective 2026-08-15) prohibit use that \"automatically or programmatically extracts data or Output\"; no explicit permission for agent loops found — unclear. Do not send confidential data."
+      "note": "No free-tier rate limits or quotas published. Not used for automation: the ToS (https://opencode.ai/legal/terms-of-service, effective 2026-08-15) prohibit use that \"automatically or programmatically extracts data or Output\"; no explicit permission for agent loops found \u2014 unclear. Do not send confidential data."
     },
     {
       "account": "opencode_free",
