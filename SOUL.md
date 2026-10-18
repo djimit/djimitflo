@@ -2,6 +2,7 @@
 
 Owner: the operator. The loop never edits this file; agents may propose a change in a PR, the operator decides.
 Each line names what enforces it, or says `status: unverified (prose only)` when nothing in code does.
+Inspired by Rick Rubin, The Way of Code — thewayofcode.com (short quotes, attributed by chapter).
 
 ## Purpose
 
@@ -23,7 +24,7 @@ AI agents are accelerators, not authorities. Output is provisional until inspect
 - jev never for approval, promotion, code, risk or fitness — enforced by: FR-008 (NE-001), ANCHORED only for the rejected
   cascade pattern (negative-evidence.test.ts); the general rule is registry and review only.
 
-## Six principles
+## Principles
 
 1. Prefer essence over abstraction — status: unverified (prose only).
 2. Build without attachment — status: unverified (prose only).
@@ -32,6 +33,12 @@ AI agents are accelerators, not authorities. Output is provisional until inspect
 5. Water-like engineering — partly enforced by: lint and tsc inside
    `tests_lint_typecheck` (FR-003); conventions beyond that are prose only.
 6. Finish and detach — partly enforced by: loop contracts declare `stop_conditions` (loop-service.ts); no gate checks them.
+7. Know when to stop — "It helps to know when to stop. Knowing when to stop avoids disaster." (ch. 32) — enforced by:
+   experiment stop conditions (experiment-registry.ts; stall watch `experiment_overdue`; a protocol without a date is listed).
+8. Subtraction — "Less and less is done until non-action is achieved." (ch. 48) — measured, not gated: subtraction KPI
+   (subtraction-kpi.ts; cockpit 'Subtraction': lines, files and routes removed vs added per ISO week).
+9. Lead without controlling — "Stop trying to control. Let go of rigid plans and targets, then watch the system organize
+   itself." (ch. 57) — status: partial (earned autonomy U1 / auto-merge; operator minutes not yet measured).
 
 ## Anti-patterns
 

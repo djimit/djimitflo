@@ -38,6 +38,7 @@ import { playbookGeneEvidence } from './lane-playbook';
 import type { ForecasterScoreV2 } from './forecast-scoring';
 import { extraRepos } from './repo-registry';
 import { BASELINE_GENOME, holdoutEpoch } from './genome-registry';
+import { experimentsReport } from './experiment-registry';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -185,6 +186,27 @@ export function inferenceEvidence(db: Database, since: string, env: NodeJS.Proce
       note: `fallback reviews (model ${PANEL_FALLBACK_PREFIX}<model>, reviewer ':panel_fallback') pass the same validation/quarantine and are excluded from panel calibration` },
     budget: budgetEvidence(db, env, now),
   };
+}
+
+/** MEMORY_HOLDOUT_RATE: proposal outcome (verified / regressed) of maker runs that got rules vs runs held out (read-only) */
+export function memoryHoldoutEvidence(db: Database, since: string, env: NodeJS.ProcessEnv = process.env) {
+  const all = <T>(sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } };
+  const arms = all<{ arm: string; status: string; n: number }>(`SELECT CASE WHEN json_extract(e.metadata, '$.memory_holdout') = 1 THEN 'holdout' ELSE 'rules' END AS arm,
+      s.status AS status, COUNT(DISTINCT e.loop_run_id) AS n
+    FROM loop_events e JOIN loop_runs r ON r.id = e.loop_run_id JOIN goals g ON g.id = r.goal_id JOIN self_improvements s ON s.id = g.improvement_id
+    WHERE e.event_type = 'assignment_context' AND e.created_at >= ? AND s.status IN ('verified', 'regressed')
+      AND (json_extract(e.metadata, '$.memory_holdout') = 1 OR json_array_length(json_extract(e.metadata, '$.rule_ids')) > 0)
+      AND NOT (s.status = 'regressed' AND ${nonMakerRunSql('e.loop_run_id', env)}) AND ${notFallbackRunSql('e.loop_run_id')}
+    GROUP BY 1, 2`, since);
+  const arm = (name: string) => {
+    const verified = arms.filter((r) => r.arm === name && r.status === 'verified').reduce((a, r) => a + r.n, 0);
+    const regressed = arms.filter((r) => r.arm === name && r.status === 'regressed').reduce((a, r) => a + r.n, 0);
+    return { n: verified + regressed, verified, regressed, verified_rate: verified + regressed ? +(verified / (verified + regressed)).toFixed(3) : null };
+  };
+  const withRules = arm('rules'); const heldOut = arm('holdout');
+  return { rate: env.MEMORY_HOLDOUT_RATE ?? null, rules: withRules, holdout: heldOut,
+    fisher_p: +fisherExact(withRules.verified, withRules.regressed, heldOut.verified, heldOut.regressed).toPrecision(4),
+    note: 'runs with a settled proposal (verified or regressed); rules = ≥ 1 rule in the assignment, holdout = rules withheld by MEMORY_HOLDOUT_RATE. Two-sided Fisher exact.' };
 }
 
 export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = process.env, now = Date.now(), days = 30) {
@@ -360,23 +382,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
       WHERE json_extract(metadata, '$.evidence_freshness.state') IS NOT NULL AND created_at >= ? GROUP BY 1`, since),
     stale_events: one("SELECT COUNT(*) FROM loop_events WHERE event_type IN ('evidence_stale', 'evidence_stale_shadow') AND created_at >= ?", since),
   };
-  // MEMORY_HOLDOUT_RATE: proposal outcome (verified / regressed) of maker runs that got rules vs runs held out (read-only)
-  const arms = all<{ arm: string; status: string; n: number }>(`SELECT CASE WHEN json_extract(e.metadata, '$.memory_holdout') = 1 THEN 'holdout' ELSE 'rules' END AS arm,
-      s.status AS status, COUNT(DISTINCT e.loop_run_id) AS n
-    FROM loop_events e JOIN loop_runs r ON r.id = e.loop_run_id JOIN goals g ON g.id = r.goal_id JOIN self_improvements s ON s.id = g.improvement_id
-    WHERE e.event_type = 'assignment_context' AND e.created_at >= ? AND s.status IN ('verified', 'regressed')
-      AND (json_extract(e.metadata, '$.memory_holdout') = 1 OR json_array_length(json_extract(e.metadata, '$.rule_ids')) > 0)
-      AND NOT (s.status = 'regressed' AND ${nonMakerRunSql('e.loop_run_id', env)}) AND ${notFallbackRunSql('e.loop_run_id')}
-    GROUP BY 1, 2`, since);
-  const arm = (name: string) => {
-    const verified = arms.filter((r) => r.arm === name && r.status === 'verified').reduce((a, r) => a + r.n, 0);
-    const regressed = arms.filter((r) => r.arm === name && r.status === 'regressed').reduce((a, r) => a + r.n, 0);
-    return { n: verified + regressed, verified, regressed, verified_rate: verified + regressed ? +(verified / (verified + regressed)).toFixed(3) : null };
-  };
-  const withRules = arm('rules'); const heldOut = arm('holdout');
-  const memory_holdout = { rate: env.MEMORY_HOLDOUT_RATE ?? null, rules: withRules, holdout: heldOut,
-    fisher_p: +fisherExact(withRules.verified, withRules.regressed, heldOut.verified, heldOut.regressed).toPrecision(4),
-    note: 'runs with a settled proposal (verified or regressed); rules = ≥ 1 rule in the assignment, holdout = rules withheld by MEMORY_HOLDOUT_RATE. Two-sided Fisher exact.' };
+  const memory_holdout = memoryHoldoutEvidence(db, since, env);
   const effort_x1 = effortX1Evidence(db, since, env, fisherExact);
   const holdout_exposure = holdoutExposure(db, env);
   return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, gym_prod_gates, gym_diffs, trials, models, oracle, commons, forecasts_v2, hacks,
@@ -435,5 +441,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // K2 (KNOWLEDGE_GAP_MODE): open knowledge gaps by source, recurrences, oldest age; insufficient while off
     knowledge_gaps: knowledgeGapEvidence(db, env, now),
     // JEV-114 (JEV_CHALLENGER_MODEL, shadow): paired challenger vs pinned jev — agreement and accuracy vs ground truth; null below 20 pairs
-    jev_challenger: jevChallengerEvidence(db, env) };
+    jev_challenger: jevChallengerEvidence(db, env),
+    // Know when to stop (SOUL.md): running experiments, target n, registered stop date, n per arm, overdue (report-only)
+    experiments: experimentsReport(db, env, now) };
 }
