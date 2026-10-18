@@ -3,6 +3,7 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { UsageService } from '../services/usage-service';
 import { createError } from '../middleware/error-handler';
+import { usageAccounts } from '../services/usage-accounts';
 
 function boundedLimit(value: unknown, fallback = 20): number {
   if (value === undefined) return fallback;
@@ -17,6 +18,11 @@ export function createUsageRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
   const usageService = new UsageService(db);
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
+
+  // GET /api/usage/accounts — read-only usage per provider account (llm_model_calls + worker_leases + inference state + plan limits)
+  router.get('/accounts', requirePermission('manage:config'), (_req, res, next) => {
+    try { res.json(usageAccounts(db)); } catch (err) { next(err); }
+  });
 
   // GET /api/usage/tokens — query token usage
   router.get('/tokens', requirePermission('manage:config'), (req, res, next) => {
