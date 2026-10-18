@@ -120,6 +120,7 @@ describe('training dataset rows', () => {
     const stored = prodLease({ lease: { diff: `+const t = "${SECRET}";\n` } });
     const g = gymRun({ commit: 'g1', source: 'packages/server/src/services/g.ts' }, { diff: `+const t = "${SECRET}";\n` });
     gymRun({ commit: 'g2', source: 'packages/server/src/services/h.ts' }, { truncated: 1 });
+    const cut = prodLease({ target: 'packages/server/src/services/cut.ts', lease: { diff: '+partial\n', diff_truncated: true } });
     const ds = buildTrainingDataset(db, { now: NOW });
     const prod = ds.rows.filter((r) => r.source === 'prod');
     expect(prod.filter((r) => r.diff === null).map((r) => r.diff_reason)).toEqual(['diff_not_stored']);
@@ -130,8 +131,9 @@ describe('training dataset rows', () => {
       expect(r.redactions).toBeGreaterThan(0);
     }
     expect(ds.rows.map((r) => r.ref)).toEqual(expect.arrayContaining([`lease:${stored.lease}`, `loop_run:${g}`]));
-    expect(ds.excluded.truncated).toBe(1);
+    expect(ds.excluded.truncated).toBe(2);
     expect(ds.rows.some((r) => r.task_key === 'g2')).toBe(false);
+    expect(ds.rows.some((r) => r.ref === `lease:${cut.lease}`)).toBe(false);
     expect(trainingDatasetSummary(ds).prod_diff).toEqual({ with_diff: 1, diff_not_stored: 1 });
   });
 });

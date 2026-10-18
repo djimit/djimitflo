@@ -145,6 +145,7 @@ export function buildTrainingDataset(db: Database, opts: { now?: number } = {}):
     const target = str(p.target);
     if (!admit(target)) continue;
     const lm = json(p.lm); const rm = json(p.rm);
+    if (lm.diff_truncated === true && str(lm.diff)) { excluded.truncated++; continue; } // same rule as gym rows: a cut patch is not a training example
     const stored = str(lm.diff) ?? str(rm.diff);
     const d = stored ? redacted(stored) : null;
     const model = str(lm.model);
