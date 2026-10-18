@@ -188,6 +188,15 @@ export interface EvolutionEvidence {
   memory_holdout: { rate: string | null; rules: MemoryArm; holdout: MemoryArm; fisher_p: number; note: string };
   /** OLLAMA_OUTAGE_FALLBACK_RUNTIME: opencode production leases run on claude (subscription); by_role null = table missing */
   runtime_fallback?: { mode: 'claude' | 'off'; in_backoff: boolean; by_role: Array<{ role: string; n: number; limit_hits: number; auth_missing: number }> | null; note: string };
+  /** OLLAMA_AUTO_FAILOVER / PANEL_FALLBACK_RUNTIME / INFERENCE_BUDGET_THROTTLE: Ollama limit state, panel reviews on claude, 7-d Ollama token use; null = unknown */
+  inference?: {
+    failover: { mode: 'off' | 'on'; effective: 'claude' | 'off'; probe_model: string; transitions: Array<{ action: string; n: number }> | null;
+      state: { state: 'ollama_limited'; detected_at: string; error_class: string; source: string; excerpt: string; last_probe_at?: string; last_probe_result?: string } | null };
+    panel_fallback: { mode: 'claude' | 'off'; model: string; reviews: number | null; quarantined: number | null; note: string };
+    budget: { mode: 'off' | 'shadow' | 'on'; token_budget: number | null; throttle_at: number; usage_pct: number | null; status: 'no_budget' | 'insufficient' | 'ok' | 'over_threshold';
+      usage: { ledger: { tokens: number; calls: number; calls_without_tokens: number } | null; opencode_leases: { tokens: number; leases: number; leases_without_tokens: number } | null; total_tokens: number | null };
+      paused: string[]; would_pause: string[]; note: string };
+  };
   /** X1 (EFFORT_SIBLING_RANDOMISE): oracle-lane goals with evolve siblings (on) vs without (off), two-sided Fisher exact p */
   effort_x1: { enabled: string | null; on: EffortArm; off: EffortArm; fisher_p: number; note: string };
   /** F2 (CHECKER_FAMILY_RANDOMISE): checker verdicts and outcome agreement per checker-family arm (same = maker's family, cross = CHECKER_CROSS_MODEL) */

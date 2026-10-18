@@ -22,6 +22,7 @@ import { recordPolicyViolation } from './policy-violations';
 import { computeTokenAccounting, safeTokenAccounting } from './maker-token-accounting';
 import { assignMakerDepsArm, makerDeps001On, makerDepsEligible } from './maker-deps-001';
 import { applyOutageFallback, fallbackRefusal, isFallbackLease } from './ollama-outage-fallback';
+import { noteOllamaOutput } from './inference-failover';
 import { isSubscriptionLimit, LIMIT_HIT } from './subscription-gym';
 import type {
   LoopRunRecord,
@@ -212,6 +213,7 @@ export class LoopWorkerExecutorService {
     const exitStatus = result.exitCode;
     const timedOut = result.timedOut;
     const fallbackLimited = this.fallbackLimitHit(makerLease, exitStatus, result);
+    this.noteOpencodeLimit(makerLease.runtime, 'maker', exitStatus, result);
     const runtimeUsage = this.loopService.extractRuntimeUsage(result.stdout || '');
     const runtimeWarnings = this.loopService.extractRuntimeWarnings(result.stdout || '', result.stderr || '');
     // §5 token accounting: what the runtime reported, never fabricated; a failure here is recorded, never changes the outcome
@@ -365,6 +367,7 @@ export class LoopWorkerExecutorService {
     const runtimeUsage = this.loopService.extractRuntimeUsage(result.stdout || '');
     const runtimeWarnings = this.loopService.extractRuntimeWarnings(result.stdout || '', result.stderr || '');
     const fallbackLimited = this.fallbackLimitHit(checker, exitStatus, result);
+    this.noteOpencodeLimit(runtime, reviewRole, exitStatus, result);
     const verdict = exitStatus === 0 && !timedOut ? this.loopService.extractCheckerVerdict(result.stdout || '') : 'insufficient_evidence';
     if (shouldRecordSecondOpinion(runtime, reviewRole, judgmentMode(checkerSecondOpinion.id))) void this.recordSecondOpinion(run, maker, checker, verdict);
     const checkerChanged = this.loopService.git(checkerWorktree, ['diff', '--name-only', '--', '.']).split('\n').filter(Boolean);
@@ -444,6 +447,12 @@ export class LoopWorkerExecutorService {
     this.loopService.updateWorkerLeaseStatus(lease.id, 'failed', { failure_reason: refusal, failed_at: new Date().toISOString(), runtime_fallback_refused: true });
     this.loopService.recordLoopEvent(run.id, 'runtime_fallback_refused', 'warning', `${lease.role} lease ${lease.id} not spawned on the outage fallback: ${refusal}.`, { lease_id: lease.id, role: lease.role, reason: refusal });
     throw new Error(refusal === LIMIT_HIT ? 'SUBSCRIPTION_LIMIT_BACKOFF' : 'SUBSCRIPTION_AUTH_MISSING');
+  }
+
+  /** OLLAMA_AUTO_FAILOVER: a failed opencode run whose output carries the Ollama Cloud usage-limit error records the limited state. */
+  private noteOpencodeLimit(runtime: string | undefined, role: string, exitStatus: number | null | undefined, result: { stdout?: string; stderr?: string }): void {
+    if (runtime !== 'opencode' || exitStatus === 0) return;
+    noteOllamaOutput(this.db, `${result.stderr || ''}\n${(result.stdout || '').slice(-4_000)}`, `opencode:${role}`);
   }
 
   /** A failed fallback run whose CLI output says the subscription's usage window is exhausted (#881 detection). */

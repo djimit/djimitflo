@@ -12,7 +12,9 @@ import { egressEvidence } from './egress-classification';
 import { embeddingDimMismatch, vectorStrictDim } from './embedding-dims';
 import { autoMergeEvidence } from './loop-auto-merge-state';
 import { nonMakerRunSql } from './outcome-attribution';
-import { notFallbackRunSql, outageFallbackEvidence } from './ollama-outage-fallback';
+import { effectiveFallbackRuntime, notFallbackRunSql, outageFallbackEvidence } from './ollama-outage-fallback';
+import { autoFailoverEvidence, PANEL_FALLBACK_PREFIX, panelFallbackModel, panelFallbackRuntime } from './inference-failover';
+import { budgetEvidence } from './inference-budget';
 import { effortX1Evidence } from './effort-controller';
 import { checkerFamilyEvidence } from './checker-family';
 import { gradedEvidence } from './graded-fitness';
@@ -59,6 +61,8 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'DEAD_CODE_LANE_ENABLED', acting: true }, { name: 'DEAD_CODE_MAX_PER_DAY', acting: true },
   { name: 'GYM_PROD_GATES', acting: false },
   { name: 'SUBSCRIPTION_GYM_SPECIES', acting: true }, { name: 'SUBSCRIPTION_GYM_MAX_PER_DAY', acting: true }, { name: 'SUBSCRIPTION_GYM_LIMIT_BACKOFF_MS', acting: true }, { name: 'OLLAMA_OUTAGE_FALLBACK_RUNTIME', acting: true },
+  { name: 'OLLAMA_AUTO_FAILOVER', acting: true }, { name: 'OLLAMA_FAILOVER_PROBE_MODEL', acting: true }, { name: 'PANEL_FALLBACK_RUNTIME', acting: true }, { name: 'PANEL_FALLBACK_MODEL', acting: true },
+  { name: 'INFERENCE_BUDGET_THROTTLE', acting: true }, { name: 'OLLAMA_WEEKLY_TOKEN_BUDGET', acting: true }, { name: 'OLLAMA_THROTTLE_AT', acting: true },
   { name: 'GENOME_FIRE_CHECK', acting: true }, { name: 'MEMORY_HOLDOUT_RATE', acting: true },
   { name: 'TYPESAFE_PROPOSAL_PRESCREEN_MODE', acting: true },
   { name: 'RESOURCE_LEDGER_ENABLED', acting: false },
@@ -165,6 +169,23 @@ export function holdoutExposure(db: Database, env: NodeJS.ProcessEnv = process.e
 
 /** MS-2: the expert runner's model from FRONTIER_EXPERTS_RUNTIME ('ollama:kimi-k3:cloud' → 'kimi-k3:cloud'), parsed like the runner does. */
 const frontierIncumbent = (runtime?: string): string | undefined => (runtime || '').trim() ? parseRuntimeSpec(runtime, { runtime: 'ollama', model: '' }).model : undefined;
+
+/**
+ * `inference`: OLLAMA_AUTO_FAILOVER state (effective = the runtime opencode leases fail over to, manual flag first),
+ * PANEL_FALLBACK_RUNTIME reviews / quarantined attempts on claude in the window (null = table missing; excluded from panel
+ * calibration), and the INFERENCE_BUDGET_THROTTLE usage % of OLLAMA_WEEKLY_CALL_BUDGET.
+ */
+export function inferenceEvidence(db: Database, since: string, env: NodeJS.ProcessEnv = process.env, now = Date.now()) {
+  const count = (sql: string): number | null => { try { return (db.prepare(sql).get(`${PANEL_FALLBACK_PREFIX}%`, since) as { n: number }).n; } catch { return null; } };
+  return {
+    failover: { ...autoFailoverEvidence(db, since, env), effective: effectiveFallbackRuntime(db, env) ?? 'off' },
+    panel_fallback: { mode: panelFallbackRuntime(env) ?? 'off', model: `${PANEL_FALLBACK_PREFIX}${panelFallbackModel(env)}`,
+      reviews: count("SELECT COUNT(*) AS n FROM specialist_reviews WHERE model LIKE ? AND created_at >= ?"),
+      quarantined: count('SELECT COUNT(*) AS n FROM specialist_review_quarantine WHERE model LIKE ? AND created_at >= ?'),
+      note: `fallback reviews (model ${PANEL_FALLBACK_PREFIX}<model>, reviewer ':panel_fallback') pass the same validation/quarantine and are excluded from panel calibration` },
+    budget: budgetEvidence(db, env, now),
+  };
+}
 
 export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = process.env, now = Date.now(), days = 30) {
   const window = Math.min(90, Math.max(1, Math.floor(days) || 30));
@@ -372,6 +393,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     auto_merge: autoMergeEvidence(db, env, now), memory_holdout,
     // OLLAMA_OUTAGE_FALLBACK_RUNTIME: opencode production leases run on claude (subscription); excluded from the experiments above/below
     runtime_fallback: outageFallbackEvidence(db, since, env),
+    // OLLAMA_AUTO_FAILOVER / PANEL_FALLBACK_RUNTIME / INFERENCE_BUDGET_THROTTLE: limit state, panel reviews on claude, Ollama budget use
+    inference: inferenceEvidence(db, since, env),
     // X1 (EFFORT_SIBLING_RANDOMISE): verified / regressed / infra per sibling arm
     effort_x1,
     // F2 (CHECKER_FAMILY_RANDOMISE): checker verdicts, outcome agreement and kappa per checker-family arm

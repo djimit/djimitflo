@@ -17,6 +17,7 @@ import { commonsIdea } from './judgments/commons-idea';
 import { AgentCommunicationService, type AgentMessage, type SocialRuntimeReply } from './agent-communication-service';
 import { RuntimeGovernanceService } from './runtime-governance-service';
 import { arenaGate, arenaGateEnabled, parseForecastText, pendingResidentQuestion, recordResidentForecast } from './committee-swarm';
+import { budgetPause } from './inference-budget';
 import {
   chat as providerChat, isRuntimeConfigured, parseResidentRuntimes, parseRuntimeSpec, providerEnvFromEnv, PROVIDER_KINDS,
   type ProviderEnv, type ProviderKind, type RuntimeSpec,
@@ -239,6 +240,7 @@ export class AgentSocialAutopilotService {
   async tick(): Promise<AutopilotTick> {
     const result: AutopilotTick = { heartbeats: 0, replies: 0, attempts: 0, failures: 0, round_started: false, skipped: null };
     if (this.config.runtime === 'off' || this.stopped || this.busy) return { ...result, skipped: this.busy ? 'busy' : this.stopped ? 'stopped' : 'off' };
+    if (budgetPause(this.db, 'residents')) return { ...result, skipped: 'inference_budget' }; // INFERENCE_BUDGET_THROTTLE=on
     this.busy = true;
     const controller = new AbortController();
     this.activeTick = controller;

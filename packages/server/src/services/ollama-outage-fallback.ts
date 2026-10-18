@@ -1,5 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import { AUTH_MISSING, LIMIT_HIT, subscriptionAuthPresent, subscriptionLimitBackoffMs } from './subscription-gym';
+import { ollamaLimited } from './inference-failover';
 
 /**
  * OLLAMA_OUTAGE_FALLBACK_RUNTIME (operator 18-10, incident ~14:00Z: Ollama Cloud weekly usage limit on every model; all
@@ -27,6 +28,9 @@ export const TG_LOOP_NAME = 'tg-001';
 
 export const outageFallbackRuntime = (env: NodeJS.ProcessEnv = process.env): FallbackRuntime | null =>
   env.OLLAMA_OUTAGE_FALLBACK_RUNTIME?.trim().toLowerCase() === 'claude' ? 'claude' : null;
+/** The manual flag, else OLLAMA_AUTO_FAILOVER=on with a recorded Ollama usage limit (inference-failover.ts), else null. */
+export const effectiveFallbackRuntime = (db: Database | null | undefined, env: NodeJS.ProcessEnv = process.env): FallbackRuntime | null =>
+  outageFallbackRuntime(env) ?? (ollamaLimited(db, env) ? 'claude' : null);
 
 /** SQL: the skill outcome (alias) is not a fallback run. */
 export const notFallbackOutcomeSql = (alias: string): string => `COALESCE(${alias}.evidence_refs_json, '') NOT LIKE '%"${FALLBACK_REF}"%'`;
@@ -48,10 +52,11 @@ interface RunLike { id: string; loop_name: string }
 export function applyOutageFallback(db: Database, run: RunLike, lease: LeaseLike, runtime: string, env: NodeJS.ProcessEnv = process.env): string {
   const done = lease.metadata.runtime_fallback as { from?: unknown; to?: unknown } | undefined;
   if (done && typeof done === 'object' && typeof done.to === 'string') return runtime === done.from ? done.to : runtime; // a continuation keeps it
-  const to = outageFallbackRuntime(env);
+  const to = effectiveFallbackRuntime(db, env);
   if (!to || runtime !== 'opencode' || run.loop_name === 'evolution-gym' || run.loop_name === TG_LOOP_NAME || lease.metadata.subscription_auth) return runtime;
   const meta: Record<string, unknown> = { ...lease.metadata };
-  const fallback: Record<string, unknown> = { from: runtime, to, reason: FALLBACK_REASON, at: new Date().toISOString() };
+  const fallback: Record<string, unknown> = { from: runtime, to, reason: FALLBACK_REASON, at: new Date().toISOString(),
+    ...(outageFallbackRuntime(env) ? {} : { trigger: 'auto' }) }; // auto: OLLAMA_AUTO_FAILOVER recorded the usage limit
   if (typeof meta.model === 'string') fallback.from_model = meta.model;
   if (typeof meta.checker_family_arm === 'string') fallback.from_checker_family_arm = meta.checker_family_arm;
   delete meta.model; // an opencode provider/model means nothing to claude

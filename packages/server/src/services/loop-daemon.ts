@@ -32,7 +32,7 @@ import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { authorityGateForGoal } from './authority-gate';
 import { remoteMakerWaitMs } from '../execution/executors/remote-maker-executor';
 import { recordFailureGaps } from './knowledge-gaps';
-import { F2_SUSPENDED_ARM, FALLBACK_REF, outageFallbackRuntime } from './ollama-outage-fallback';
+import { F2_SUSPENDED_ARM, FALLBACK_REF, effectiveFallbackRuntime } from './ollama-outage-fallback';
 import { makerFailureClass, recordOutcomeAttribution, reviewerSubReason, type AttributionLease, type MakerMeta } from './outcome-attribution';
 /** Deterministic checks for daemon runs. The repo-wide `test` script cannot finish in 120 s, so hosts can scope it
  *  (LOOP_DAEMON_CHECK_SCRIPTS=test:changed,lint,type-check) and raise the per-script timeout (LOOP_DAEMON_CHECK_TIMEOUT_MS, max 600000). */
@@ -814,7 +814,7 @@ export class LoopDaemon {
         // CHECKER_CROSS_MODEL (cross) by sha256 of the goal id; opencode only (the model is an opencode provider/model)
         // OLLAMA_OUTAGE_FALLBACK_RUNTIME on: assignment suspended — arm 'fallback_suspended' on the lease, never counted in F2
         if (checkerLease && !leaseDone('checker') && checkerFamilyEnabled() && runtime === 'opencode' && evolveEligible(this.db, goal.id)) {
-          if (outageFallbackRuntime()) this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.checker_family_arm', ?) WHERE id = ?").run(F2_SUSPENDED_ARM, checkerLease);
+          if (effectiveFallbackRuntime(this.db)) this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.checker_family_arm', ?) WHERE id = ?").run(F2_SUSPENDED_ARM, checkerLease);
           else try { assignCheckerFamily(this.db, run.id, goal.id, checkerLease, runtime); } catch { /* unassigned: the checker runs as today */ }
         }
         if (!leaseDone('checker') && await dispatch('checker', checkerLease)) return;

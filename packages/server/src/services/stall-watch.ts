@@ -4,6 +4,7 @@ import { decide, expiringAdmissions } from '../execution/runtime-admission';
 import { randomUUID } from 'crypto';
 import { guardTick, healSchedulers, quarantinedSchedulers, selfHealMode, type RecoveryAction } from './scheduler-registry';
 import { capabilityChain, isAnomaly, type CapabilityVerdict, type ObserveOptions } from './capability-chain';
+import { autoFailoverMode, readOllamaLimit } from './inference-failover';
 
 /**
  * Plan M10: Djimitflo noticed none of its own silent failures on 2026-09-27 — the workstation gym benched for 9 h, NVIDIA
@@ -155,6 +156,11 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
     const mine = events.filter((e) => commit && e.sha && (e.sha.startsWith(commit) || commit.startsWith(e.sha)));
     const last = mine[mine.length - 1];
     if (last?.event === 'done' && Date.parse(last.at) < now - 40 * 60_000) out.push({ subsystem: 'deploy', since: last.at, detail: `build ${commit!.slice(0, 8)} deployed but no post-deploy verdict within 40 min — functional readiness unproven` });
+  });
+  // OLLAMA_AUTO_FAILOVER: Ollama Cloud answered with its usage limit; opencode leases run on claude until the 30-min probe succeeds
+  run('inference_limited', autoFailoverMode(env) === 'on', () => {
+    const s = readOllamaLimit(db);
+    if (s) out.push({ subsystem: 'inference_limited', since: s.detected_at, detail: `Ollama ${s.error_class} usage limit (via ${s.source}); opencode leases fail over to claude${s.last_probe_at ? `; last probe ${s.last_probe_at}: ${s.last_probe_result ?? ''}` : ''}`.slice(0, 300) });
   });
   // P0.1 escalation: a scheduler the self-heal quarantined (no tick after its bounded restart, or no restart possible)
   run('schedulers', true, () => {

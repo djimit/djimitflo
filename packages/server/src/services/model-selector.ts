@@ -83,6 +83,7 @@ export function recordModelCall(db: Database, c: ModelCall, at = new Date()): vo
  */
 let ledgerDb: Database | null = null;
 export function setLlmLedger(db: Database | null): void { ledgerDb = db; }
+export const getLlmLedger = (): Database | null => ledgerDb;
 export type LlmCall = Omit<ModelCall, 'shadow' | 'agree'> & { shadow?: 0 | 1; agree?: boolean | null };
 export function recordLlmCall(c: LlmCall, db: Database | null = ledgerDb): void {
   if (!db) return;

@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { notPanelFallbackReviewSql } from './inference-failover';
 
 /**
  * C3 (plan WS-N): panel votes weighted by each juror's track record, in shadow only. Prod 2026-09-24: 1 600 votes,
@@ -17,7 +18,7 @@ export function specialistAccuracy(db: Database): Map<string, number> {
       SUM(p.status IN ('verified', 'regressed')) AS n,
       SUM((r.stance = 'support' AND p.status = 'verified') OR (r.stance = 'oppose' AND p.status = 'regressed')
         OR (r.stance IN ('needs_evidence', 'oppose') AND p.status = 'regressed')) AS right
-    FROM specialist_reviews r JOIN self_improvements p ON p.panel_id = r.panel_id WHERE r.status = 'submitted' GROUP BY r.specialist_id`).all() as Array<{ s: string; n: number | null; right: number | null }>;
+    FROM specialist_reviews r JOIN self_improvements p ON p.panel_id = r.panel_id WHERE r.status = 'submitted' AND ${notPanelFallbackReviewSql('r')} GROUP BY r.specialist_id`).all() as Array<{ s: string; n: number | null; right: number | null }>;
   return new Map(rows.map((r) => [r.s, ((r.right ?? 0) + 1) / ((r.n ?? 0) + 2)]));
 }
 
