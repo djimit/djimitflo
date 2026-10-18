@@ -283,7 +283,7 @@ export interface EvolutionEvidence {
   /** Know when to stop (services/experiment-registry.ts): running experiments, target n, registered stop date, overdue (report-only) */
   experiments?: ExperimentsEvidence;
 }
-export type ExperimentRow = { id: string; flag: string; protocol: string; started_at: string; target_n: number | null; stop_by: string | null; stop_note: string;
+export type ExperimentRow = { id: string; flag: string; protocol: string; started_at: string; target_n: number | null; stop_by: string | null; stop_note: string; stop_source: string;
   n_per_arm: Record<string, number> | null; min_arm_n: number | null; verdict: string | null; overdue: boolean; overdue_reason: string | null; error?: string };
 export type ExperimentsEvidence = { experiments: ExperimentRow[]; overdue: string[]; no_stop_date: string[]; note: string };
 

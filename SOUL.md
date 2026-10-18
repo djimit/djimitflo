@@ -37,6 +37,7 @@ AI agents are accelerators, not authorities. Output is provisional until inspect
    experiment stop conditions (experiment-registry.ts; stall watch `experiment_overdue`; a protocol without a date is listed).
 8. Subtraction — "Less and less is done until non-action is achieved." (ch. 48) — measured, not gated: subtraction KPI
    (subtraction-kpi.ts; cockpit 'Subtraction': lines, files and routes removed vs added per ISO week).
+   Simplify ruthlessly: perfection is reached when there is nothing left to take away.
 9. Lead without controlling — "Stop trying to control. Let go of rigid plans and targets, then watch the system organize
    itself." (ch. 57) — status: partial (earned autonomy U1 / auto-merge; operator minutes not yet measured).
 

@@ -144,3 +144,21 @@ evaluator_isolation_check: # how the candidate is prevented from touching evalua
 | Routing vs fixed best model | OPE exists (SNIPS Δ −0.010, ESS 127); a fixed-model arm needs the bandit to be overridable per goal hash |
 | Gains on new tasks | a second repository in the gym and in the prod lanes |
 | Autonomy vs reference | approval → outcome link not stored |
+
+## Amendment 2026-10-19: stop conditions
+
+Stop conditions added for EXP-1 (F2 v2) and EXP-3 (memory holdout); verdict rules unchanged. Operator-approved 2026-10-19. The
+registrations above are frozen and are not edited. Rule: stop_by = min(start + 1.25 × target ÷ accrual rate of the slowest arm,
+start + 90 days). Accrual: prod, read-only (`experimentsReport` on `/data/djimitflo.sqlite`, `readonly: true`), 2026-10-18 22:33 UTC.
+
+- **EXP-1 F2 v2** (start 2026-10-17, target 93 settled per arm, unchanged). Settled: same = 1, cross = 1 in 1.9 days (0.52 per day;
+  merge survival settles late). The projection (225 days) passes the cap, so **stop_by: 2027-01-15** (start + 90 days).
+- **EXP-3 memory holdout** (start 2026-10-08). The registration names a power calculation (267 + 115) but no target n.
+  **Target n: 30 outcomes per arm** (operator-approved default, 2026-10-19). Settled: rules = 52, holdout = 22 in 10.9 days.
+  Slowest arm holdout: 2.01 per day. **stop_by: 2026-10-27** (2026-10-08 + 1.25 × 30 ÷ 2.01 = 18.6 days, rounded up; the cap is
+  2027-01-06). At 30 per arm the power for a 15-point effect is low: a null result is INSUFFICIENT_EVIDENCE, not "no effect".
+- **At stop_by:** if every arm has reached the target, the registered analysis runs once, as written. If not, the experiment
+  stops at the n reached and is recorded as INSUFFICIENT_EVIDENCE (never "no effect"); a new version needs a new registration.
+- **Unchanged:** arms, endpoints, safety/harm stops, analysis and decision rules. Only a stop condition is added.
+- **Recorded:** `experiment-registry.ts` (`stop_by`, `stop_source`); the stall watch `experiment_overdue` reports the experiment
+  after this date while it has no verdict.

@@ -98,3 +98,17 @@ excluded from every primary number. The target stays 50 per arm, counted from th
 the experiment is paused and the cause fixed before more goals are spent.
 
 **STE-001.** Checked: the template arm has no fallback path, because the STE template is always written for arm 1. No amendment is needed.
+
+## Amendment 2 (2026-10-19)
+
+Stop condition added; verdict rules unchanged. Operator-approved 2026-10-19. The text above is frozen and is not edited.
+
+- **Rule:** stop_by = min(start + 1.25 × target ÷ accrual rate of the slowest arm, start + 90 days).
+- **Accrual: prod, read-only (`experimentsReport` on `/data/djimitflo.sqlite`, `readonly: true`), 2026-10-18 22:33 UTC:** 00 = 21, 01 = 13, 10 = 15, 11 = 18 since 2026-10-12 (6.9 days). Slowest arm 01: 1.87 per day.
+- **stop_by: 2026-11-15** (2026-10-12 + 1.25 × 50 ÷ 1.87 = 33.4 days, rounded up to the day; the 90-day cap is 2027-01-10).
+  Target unchanged: 50 per arm.
+- **At stop_by:** if every arm has reached the target, the registered analysis runs once, as written. If not, the experiment
+  stops at the n reached and is recorded as INSUFFICIENT_EVIDENCE (never "no effect"); a new version needs a new registration.
+- **Unchanged:** arms, endpoints, safety/harm stops, analysis and decision rules. Only a stop condition is added.
+- **Recorded:** `experiment-registry.ts` (`stop_by`, `stop_source`); the stall watch `experiment_overdue` reports the experiment
+  after this date while it has no verdict.
