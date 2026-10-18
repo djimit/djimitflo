@@ -21,6 +21,8 @@ import { SUBSCRIPTION_ENV_MARKER } from '../execution/executors/subscription-env
 import { recordPolicyViolation } from './policy-violations';
 import { computeTokenAccounting, safeTokenAccounting } from './maker-token-accounting';
 import { assignMakerDepsArm, makerDeps001On, makerDepsEligible } from './maker-deps-001';
+import { applyOutageFallback, fallbackRefusal, isFallbackLease } from './ollama-outage-fallback';
+import { isSubscriptionLimit, LIMIT_HIT } from './subscription-gym';
 import type {
   LoopRunRecord,
   WorkerLeaseRecord,
@@ -115,6 +117,9 @@ export class LoopWorkerExecutorService {
       this.loopService.recordMakerFailure(run.id, makerLease.id, 'MANUAL_MAKER_REQUIRES_HUMAN', 'Manual runtime requires human intervention');
       throw new Error('MANUAL_MAKER_REQUIRES_HUMAN');
     }
+    // OLLAMA_OUTAGE_FALLBACK_RUNTIME: the effective runtime of this maker (an opencode lease → claude on the subscription)
+    applyOutageFallback(this.db, run, makerLease, makerLease.runtime);
+    this.refuseFallbackSpawn(run, makerLease);
 
     // Meta-orchestration: failure prediction before execution
     if (this.loopService.metaOrchestration) {
@@ -206,6 +211,7 @@ export class LoopWorkerExecutorService {
     const diffMaxLines = Math.max(1, Math.min(testOnlyChange(changedFiles) ? Math.max(input.diff_max_lines || 200, TEST_ONLY_DIFF_MAX) : (input.diff_max_lines || 200), 2_000));
     const exitStatus = result.exitCode;
     const timedOut = result.timedOut;
+    const fallbackLimited = this.fallbackLimitHit(makerLease, exitStatus, result);
     const runtimeUsage = this.loopService.extractRuntimeUsage(result.stdout || '');
     const runtimeWarnings = this.loopService.extractRuntimeWarnings(result.stdout || '', result.stderr || '');
     // §5 token accounting: what the runtime reported, never fabricated; a failure here is recorded, never changes the outcome
@@ -238,7 +244,7 @@ export class LoopWorkerExecutorService {
       runtime_signal: result.signal, runtime_timed_out: result.timedOut, runtime_timed_out_at: result.timedOutAt,
       runtime_warnings: runtimeWarnings, token_efficiency: efficiency,
       runtime_usage: runtimeUsage || { usage_source: 'unknown' }, token_accounting: tokenAccounting,
-      ...(failed ? { failure_reason: `maker_gate_failed:${gates.filter((gate) => gate.status === 'fail').map((gate) => gate.name).join(',')}${remoteCancel ? `;remote_maker_cancelled:${remoteCancel}` : ''}` } : {}),
+      ...(fallbackLimited ? { failure_reason: LIMIT_HIT, subscription_limit_hit_at: new Date().toISOString() } : failed ? { failure_reason: `maker_gate_failed:${gates.filter((gate) => gate.status === 'fail').map((gate) => gate.name).join(',')}${remoteCancel ? `;remote_maker_cancelled:${remoteCancel}` : ''}` } : {}),
     };
 
     if (wasCancelled) {
@@ -287,11 +293,14 @@ export class LoopWorkerExecutorService {
     if (!maker || maker.role !== 'maker' || maker.status !== 'completed') throw new Error('CHECKER_MAKER_NOT_COMPLETED');
     if (!maker.worktree_path || !fs.existsSync(maker.worktree_path)) throw new Error('MAKER_WORKTREE_NOT_FOUND');
 
-    const runtime = input.runtime || (checker.runtime !== 'manual' ? checker.runtime : undefined);
+    const requested = input.runtime || (checker.runtime !== 'manual' ? checker.runtime : undefined);
+    // OLLAMA_OUTAGE_FALLBACK_RUNTIME: an opencode reviewer runs on claude (subscription); a continuation already carries it
+    const runtime = requested && requested !== 'manual' ? applyOutageFallback(this.db, run, checker, requested) : requested;
     if (!runtime || runtime === 'manual') throw createError(400, 'An explicit runtime is required to dispatch a manual reviewer; use verdict submission for manual review', 'CHECKER_RUNTIME_REQUIRED');
     if (checker.metadata.execution_task_id && runtime !== checker.runtime) {
       throw createError(409, 'Reviewer continuation must use the originally dispatched runtime', 'CHECKER_RUNTIME_MISMATCH');
     }
+    this.refuseFallbackSpawn(run, checker);
     const runtimeContract = this.loopService.getRuntimeContract(runtime);
 
     this.loopService.recordWorkerManifest({
@@ -355,6 +364,7 @@ export class LoopWorkerExecutorService {
     const timedOut = result.timedOut;
     const runtimeUsage = this.loopService.extractRuntimeUsage(result.stdout || '');
     const runtimeWarnings = this.loopService.extractRuntimeWarnings(result.stdout || '', result.stderr || '');
+    const fallbackLimited = this.fallbackLimitHit(checker, exitStatus, result);
     const verdict = exitStatus === 0 && !timedOut ? this.loopService.extractCheckerVerdict(result.stdout || '') : 'insufficient_evidence';
     if (shouldRecordSecondOpinion(runtime, reviewRole, judgmentMode(checkerSecondOpinion.id))) void this.recordSecondOpinion(run, maker, checker, verdict);
     const checkerChanged = this.loopService.git(checkerWorktree, ['diff', '--name-only', '--', '.']).split('\n').filter(Boolean);
@@ -380,7 +390,7 @@ export class LoopWorkerExecutorService {
       // separates "no verdict parsed" from an explicit insufficient_evidence (both are stored as that verdict); reviewerSubReason
       verdict_parsed: exitStatus === 0 && !timedOut && this.loopService.checkerVerdictParsed(result.stdout || ''),
       // without it the lease repo fell back to the reviewer's notes, so 'failed' leases carried prose (or a raw event line) as their reason
-      ...(exitStatus === 0 && !timedOut ? {} : { failure_reason: `${reviewRole}_runtime_failed:exit=${exitStatus ?? 'signal'},timed_out=${timedOut}: ${(result.stderr || '').split('\n').map((line) => line.trim()).filter((line) => line && !line.startsWith('at ')).pop()?.slice(0, 200) ?? ''}` }),
+      ...(fallbackLimited ? { failure_reason: LIMIT_HIT, subscription_limit_hit_at: new Date().toISOString() } : exitStatus === 0 && !timedOut ? {} : { failure_reason: `${reviewRole}_runtime_failed:exit=${exitStatus ?? 'signal'},timed_out=${timedOut}: ${(result.stderr || '').split('\n').map((line) => line.trim()).filter((line) => line && !line.startsWith('at ')).pop()?.slice(0, 200) ?? ''}` }),
     });
 
     const gates: LoopGate[] = [
@@ -422,6 +432,24 @@ export class LoopWorkerExecutorService {
   }
 
   // ─── Private ──────────────────────────────────────────────────────────
+
+  /**
+   * OLLAMA_OUTAGE_FALLBACK_RUNTIME: a fallback lease without the OAuth token, or while the subscription is benched after a
+   * usage limit, is never spawned — failed as infra (never a regression) and the dispatch throws.
+   */
+  private refuseFallbackSpawn(run: LoopRunRecord, lease: WorkerLeaseRecord): void {
+    if (!isFallbackLease(lease)) return;
+    const refusal = fallbackRefusal(this.db);
+    if (!refusal) return;
+    this.loopService.updateWorkerLeaseStatus(lease.id, 'failed', { failure_reason: refusal, failed_at: new Date().toISOString(), runtime_fallback_refused: true });
+    this.loopService.recordLoopEvent(run.id, 'runtime_fallback_refused', 'warning', `${lease.role} lease ${lease.id} not spawned on the outage fallback: ${refusal}.`, { lease_id: lease.id, role: lease.role, reason: refusal });
+    throw new Error(refusal === LIMIT_HIT ? 'SUBSCRIPTION_LIMIT_BACKOFF' : 'SUBSCRIPTION_AUTH_MISSING');
+  }
+
+  /** A failed fallback run whose CLI output says the subscription's usage window is exhausted (#881 detection). */
+  private fallbackLimitHit(lease: WorkerLeaseRecord, exitStatus: number | null | undefined, result: { stdout?: string; stderr?: string }): boolean {
+    return isFallbackLease(lease) && isSubscriptionLimit(exitStatus ?? null, result.stdout || '', result.stderr || '');
+  }
 
   private async executeMockWorker(
     lease: WorkerLeaseRecord,
@@ -490,7 +518,8 @@ export class LoopWorkerExecutorService {
       .filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
     // SUBSCRIPTION_GYM_SPECIES: a gym maker on a flat subscription — the executor drops every billing key and adds the login at
     // spawn time (only the marker is stored here, never the token); opencode = an opencode-free:<model> species (keys dropped, no login)
-    if (lease.role === 'maker' && lease.metadata.subscription_auth === runtime && (runtime === 'claude' || runtime === 'codex' || runtime === 'opencode')) environment[SUBSCRIPTION_ENV_MARKER] = runtime;
+    // OLLAMA_OUTAGE_FALLBACK_RUNTIME: every role of a fallback lease (maker, checker, security checker) runs the same way
+    if ((lease.role === 'maker' || isFallbackLease(lease)) && lease.metadata.subscription_auth === runtime && (runtime === 'claude' || runtime === 'codex' || runtime === 'opencode')) environment[SUBSCRIPTION_ENV_MARKER] = runtime;
     this.db.prepare(`
       INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, agent_id, tags, metadata, created_at, updated_at)
       VALUES (?, ?, ?, 'pending', ?, ?, 'local', ?, ?, ?, ?, ?)

@@ -32,6 +32,7 @@ import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { authorityGateForGoal } from './authority-gate';
 import { remoteMakerWaitMs } from '../execution/executors/remote-maker-executor';
 import { recordFailureGaps } from './knowledge-gaps';
+import { F2_SUSPENDED_ARM, FALLBACK_REF, outageFallbackRuntime } from './ollama-outage-fallback';
 import { makerFailureClass, recordOutcomeAttribution, reviewerSubReason, type AttributionLease, type MakerMeta } from './outcome-attribution';
 /** Deterministic checks for daemon runs. The repo-wide `test` script cannot finish in 120 s, so hosts can scope it
  *  (LOOP_DAEMON_CHECK_SCRIPTS=test:changed,lint,type-check) and raise the per-script timeout (LOOP_DAEMON_CHECK_TIMEOUT_MS, max 600000). */
@@ -72,6 +73,9 @@ export function runOutcomeOnFailure(db: Database, makerLeaseId: string): 'regres
  */
 export function verificationFailureOutcome(db: Database, makerLeaseId: string, gates: Array<{ status: string }>): 'regressed' | 'infra_failed' | 'no_change' {
   if (!gates.some((g) => g.status === 'fail') && gates.some((g) => g.status === 'unknown')) return 'infra_failed';
+  // OLLAMA_OUTAGE_FALLBACK_RUNTIME: a lease of the run refused or limited on the subscription (no token / usage limit) is infra
+  if (db.prepare(`SELECT 1 FROM worker_leases WHERE loop_run_id = (SELECT loop_run_id FROM worker_leases WHERE id = ?)
+    AND json_extract(metadata, '$.runtime_fallback') IS NOT NULL AND json_extract(metadata, '$.failure_reason') LIKE 'infra: subscription_%' LIMIT 1`).get(makerLeaseId)) return 'infra_failed';
   return runOutcomeOnFailure(db, makerLeaseId);
 }
 
@@ -750,7 +754,9 @@ export class LoopDaemon {
       // checker, i.e. the failed first maker's, not the evolve winner's (run 4418f34d: the winner was never reviewed), and a remote winner made
       // the reviewer 'remote' too, a maker-only executor that needs a model (19 reviewers failed "remote maker needs model").
       const activeMakerStatus = (this.db.prepare('SELECT status FROM worker_leases WHERE id = ?').get(activeMakerLease.id) as { status: string } | undefined)?.status;
-      const reviewerRuntime = activeMakerLease.runtime === 'remote' ? process.env.LOOP_DAEMON_MAKER_RUNTIME : activeMakerLease.runtime;
+      // OLLAMA_OUTAGE_FALLBACK_RUNTIME: a fallback maker's reviewers are dispatched on its original runtime; executeChecker applies the fallback
+      const makerFallbackFrom = (this.db.prepare("SELECT json_extract(metadata, '$.runtime_fallback.from') AS f FROM worker_leases WHERE id = ?").get(activeMakerLease.id) as { f: string | null } | undefined)?.f;
+      const reviewerRuntime = activeMakerLease.runtime === 'remote' ? process.env.LOOP_DAEMON_MAKER_RUNTIME : makerFallbackFrom ?? activeMakerLease.runtime;
       const reviewerSkip = activeMakerStatus === 'failed' || activeMakerStatus === 'cancelled' ? `maker ${activeMakerLease.id} is ${activeMakerStatus}`
         : !reviewerRuntime || reviewerRuntime === 'remote' ? 'the maker ran remote and LOOP_DAEMON_MAKER_RUNTIME names no local reviewer runtime' : null;
       if (process.env.LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED === 'true' && reviewerSkip) {
@@ -806,8 +812,10 @@ export class LoopDaemon {
         const checkerLease = reviewerFor('checker');
         // F2 (CHECKER_FAMILY_RANDOMISE=on, acting): an oracle-lane goal's checker runs on the default (same) or on
         // CHECKER_CROSS_MODEL (cross) by sha256 of the goal id; opencode only (the model is an opencode provider/model)
+        // OLLAMA_OUTAGE_FALLBACK_RUNTIME on: assignment suspended — arm 'fallback_suspended' on the lease, never counted in F2
         if (checkerLease && !leaseDone('checker') && checkerFamilyEnabled() && runtime === 'opencode' && evolveEligible(this.db, goal.id)) {
-          try { assignCheckerFamily(this.db, run.id, goal.id, checkerLease, runtime); } catch { /* unassigned: the checker runs as today */ }
+          if (outageFallbackRuntime()) this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.checker_family_arm', ?) WHERE id = ?").run(F2_SUSPENDED_ARM, checkerLease);
+          else try { assignCheckerFamily(this.db, run.id, goal.id, checkerLease, runtime); } catch { /* unassigned: the checker runs as today */ }
         }
         if (!leaseDone('checker') && await dispatch('checker', checkerLease)) return;
         // The security reviewer is a separate, higher autonomy step (removes human security review): its own flag.
@@ -870,10 +878,12 @@ export class LoopDaemon {
       // skill-evolution engine and a later runtime bandit select on. Before this, skill_outcomes only got manual API writes.
       try {
         const maker = this.db.prepare('SELECT id, runtime, metadata FROM worker_leases WHERE id = ?').get(activeMakerLease.id) as { id: string; runtime: string; metadata: string } | undefined;
-        const meta = maker ? JSON.parse(maker.metadata || '{}') as { model?: unknown; genome_id?: unknown; graded?: unknown; runtime_usage?: { total_tokens?: unknown } } : {};
+        const meta = maker ? JSON.parse(maker.metadata || '{}') as { model?: unknown; genome_id?: unknown; graded?: unknown; runtime_usage?: { total_tokens?: unknown }; runtime_fallback?: unknown } : {};
+        // OLLAMA_OUTAGE_FALLBACK_RUNTIME: a fallback maker is its own species (loop-maker:<lane>:claude), tagged for experiment exclusion
+        const makerRuntime = meta.runtime_fallback && maker ? maker.runtime : activeMakerLease.runtime;
         const skills = new SkillEvolutionEngine(this.db); // ensures skill_outcomes exists
         // an extra repo's outcomes carry a `repo:<slug>:` prefix, so no primary-repo fitness / bandit view ever counts them
-        const skillId = `${repoSkillPrefix(goalRepo)}loop-maker:${loopName}:${activeMakerLease.runtime}`;
+        const skillId = `${repoSkillPrefix(goalRepo)}loop-maker:${loopName}:${makerRuntime}`;
         // Y2: the strategy genome this maker ran with (template + examples + sealed rules), on the lease and the outcome
         const genome = runGenome(this.db, run.id);
         this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.genome', json(?)) WHERE id = ?").run(JSON.stringify(genome), activeMakerLease.id);
@@ -886,7 +896,7 @@ export class LoopDaemon {
         // One outcome per run: two daemon passes can finish the same run.
         const firstPass = !this.db.prepare('SELECT 1 FROM skill_outcomes WHERE skill_id = ? AND task_id = ? AND agent_id = ? LIMIT 1').get(skillId, run.id, activeMakerLease.id);
         // B29: the maker's model call in the ledger, with the experiment arms it ran in (opencode/remote runtime_usage; missing = null)
-        if (firstPass) recordMakerCall(this.db, { runId: run.id, goalId: goal.id, loopName, runtime: activeMakerLease.runtime, meta, ace, ste, durationMs: Date.now() - startedAtMs, ok: allGatesPass });
+        if (firstPass) recordMakerCall(this.db, { runId: run.id, goalId: goal.id, loopName, runtime: makerRuntime, meta, ace, ste, durationMs: Date.now() - startedAtMs, ok: allGatesPass });
         if (firstPass) skills.recordOutcome(skillId, {
           success: allGatesPass,
           tokensUsed: Number(meta.runtime_usage?.total_tokens) || 0,
@@ -901,7 +911,7 @@ export class LoopDaemon {
             // RX-3: why a failed run failed (infra / no change / regressed) — the bandit counts all three as 0 today
             ...(allGatesPass ? [] : [`outcome_class:${verificationFailureOutcome(this.db, activeMakerLease.id, verification.gates)}`]),
             ...leaseGradedRefs(meta), // SI-A: graded:<score>, graded_kind, graded_lane when the maker was graded
-            ...(ace ? [`ace-001-arm:${ace.arm}`] : []), ...(ste ? [`ste-001-arm:${ste.arm}`] : [])],
+            ...(ace ? [`ace-001-arm:${ace.arm}`] : []), ...(ste ? [`ste-001-arm:${ste.arm}`] : []), ...(meta.runtime_fallback ? [FALLBACK_REF] : [])],
         });
       } catch { /* best-effort learning */ }
 

@@ -48,7 +48,7 @@ export interface Attribution { outcome: OutcomeClass; survived: boolean | null; 
 
 /** A3/EV3 (moved from loop-daemon runOutcomeOnFailure, unchanged): why a maker lease's run failed, from its metadata alone. */
 export function makerFailureClass(meta: MakerMeta): 'regressed' | 'infra_failed' | 'no_change' {
-  if (meta.timed_out || meta.runtime_timed_out || /runtime_contract/.test(meta.failure_reason ?? '')) return 'infra_failed';
+  if (meta.timed_out || meta.runtime_timed_out || /runtime_contract|^infra: subscription_/.test(meta.failure_reason ?? '')) return 'infra_failed'; // subscription_: OLLAMA_OUTAGE_FALLBACK_RUNTIME
   if (/maker_runtime_exit_zero/.test(meta.failure_reason ?? '')) return Array.isArray(meta.changed_files) && meta.changed_files.length ? 'regressed' : 'infra_failed';
   if (meta.exit_status === undefined && !meta.completed_at) return 'infra_failed'; // the maker never ran
   if ((meta.deterministic_checks ?? []).some((c) => c?.exit_status === 127 || c?.reason === 'missing_script')) return 'infra_failed'; // a check's tool or script was missing
