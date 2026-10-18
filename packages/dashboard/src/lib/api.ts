@@ -186,6 +186,8 @@ export interface EvolutionEvidence {
     ineligible_by_reason: Record<string, number> };
   /** MEMORY_HOLDOUT_RATE: proposal outcome of maker runs with rules vs runs held out, two-sided Fisher exact p */
   memory_holdout: { rate: string | null; rules: MemoryArm; holdout: MemoryArm; fisher_p: number; note: string };
+  /** OLLAMA_OUTAGE_FALLBACK_RUNTIME: opencode production leases run on claude (subscription); by_role null = table missing */
+  runtime_fallback?: { mode: 'claude' | 'off'; in_backoff: boolean; by_role: Array<{ role: string; n: number; limit_hits: number; auth_missing: number }> | null; note: string };
   /** X1 (EFFORT_SIBLING_RANDOMISE): oracle-lane goals with evolve siblings (on) vs without (off), two-sided Fisher exact p */
   effort_x1: { enabled: string | null; on: EffortArm; off: EffortArm; fisher_p: number; note: string };
   /** F2 (CHECKER_FAMILY_RANDOMISE): checker verdicts and outcome agreement per checker-family arm (same = maker's family, cross = CHECKER_CROSS_MODEL) */
