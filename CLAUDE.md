@@ -1,10 +1,7 @@
-@../AGENTS.md
-@.github/copilot-instructions.md
+# Claude Code loader
 
-# DjimFlo — Claude Code Loader
-
-This file loads project-specific instructions for Claude Code compatibility.
-Use `.github/copilot-instructions.md` as the source of truth for project rules.
+`AGENTS.md` (imported below) is the workspace home and source of truth: commands, protected paths, definition of done,
+review rules. It links SOUL.md, USER.md, TOOLS.md and HEARTBEAT.md. Nothing here overrides it.
 
 <!-- OPENWIKI:START -->
 

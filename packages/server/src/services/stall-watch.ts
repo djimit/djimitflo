@@ -6,6 +6,7 @@ import { guardTick, healSchedulers, quarantinedSchedulers, selfHealMode, type Re
 import { capabilityChain, isAnomaly, type CapabilityVerdict, type ObserveOptions } from './capability-chain';
 import { autoFailoverMode, panelFallbackRuntime, readOllamaLimit } from './inference-failover';
 import { panelInferenceStatus } from './ollama-outage-fallback';
+import { experimentsReport } from './experiment-registry';
 
 /**
  * Plan M10: Djimitflo noticed none of its own silent failures on 2026-09-27 — the workstation gym benched for 9 h, NVIDIA
@@ -169,6 +170,15 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
     if (p.status === 'inference_unavailable' && p.backoff) out.push({ subsystem: 'inference_unavailable', since: p.backoff.hit_at,
       detail: `panel reviews wait: Claude subscription usage limit (via ${p.backoff.source}), backoff until ${p.backoff.until}; no attempt, quarantine or verdict meanwhile` });
   });
+  // Know when to stop (SOUL.md, report-only): an experiment past its registered stop date, or at its target n in every arm,
+  // without a verdict is overdue. Experiments whose protocol registers no stop date are named in the detector detail.
+  let noStopDate: string[] = [];
+  run('experiment_overdue', true, () => {
+    const r = experimentsReport(db, env, now); noStopDate = r.no_stop_date;
+    for (const e of r.experiments.filter((x) => x.overdue)) out.push({ subsystem: `experiment:${e.id}`, since: e.stop_by ?? e.started_at, detail: `${e.overdue_reason}; record a verdict or stop it (${e.protocol})`.slice(0, 300) });
+  });
+  const expDetector = detectors.find((d) => d.name === 'experiment_overdue' && d.status === 'ok');
+  if (expDetector && noStopDate.length) expDetector.detail = `no stop date — violates know-when-to-stop: ${noStopDate.join(', ')}`;
   // P0.1 escalation: a scheduler the self-heal quarantined (no tick after its bounded restart, or no restart possible)
   run('schedulers', true, () => {
     for (const name of quarantinedSchedulers()) out.push({ subsystem: `scheduler:${name}`, since: null, detail: `scheduler '${name}' is armed but not ticking and was quarantined (see scheduler_recovery judgments); needs the operator` });

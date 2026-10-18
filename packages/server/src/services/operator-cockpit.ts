@@ -2,6 +2,7 @@ import fs from 'fs';
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { detectStallsWithHealth, type DetectorHealth, type Stall } from './stall-watch';
+import { subtractionKpi, type SubtractionKpi } from './subtraction-kpi';
 import type { CapabilityVerdict } from './capability-chain';
 import { infraFailing } from './evolution-gym-service';
 import { ATTRIBUTION_OF_PROPOSAL, decisionsInbox, openDecisionCounts } from './decisions-inbox';
@@ -70,6 +71,8 @@ export interface CockpitSnapshot {
   evolution: ReturnType<typeof evolutionLineage> | null;
   /** Workstream B: capability chain per watched capability (state, broken link, observed facts, remediation) */
   capabilities: CapabilityVerdict[];
+  /** SOUL.md subtraction KPI: lines/files/routes added vs removed per ISO week, last 8 (report-only; null weeks + reason without git) */
+  subtraction: SubtractionKpi;
 }
 
 export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.ProcessEnv = process.env): CockpitSnapshot {
@@ -230,6 +233,7 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
     at: new Date(now).toISOString(), snapshot_id: randomUUID(), health, errors,
     build: { commit: process.env.DJIMITFLO_BUILD_COMMIT ?? null, build_time: process.env.DJIMITFLO_BUILD_TIME ?? null },
     scorecard, guardrails, stalls, gym, remote_workers, maker_usage_7d, judgments_7d, needs_you, schedulers: { armed, off, by_status, health: schedulersHealth }, detectors, genomes, deploys: recentDeploys(), evolution, capabilities,
+    subtraction: subtractionKpi(env, now),
   };
 }
 

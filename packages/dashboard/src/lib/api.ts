@@ -280,7 +280,12 @@ export interface EvolutionEvidence {
   knowledge_gaps?: KnowledgeGapEvidence;
   /** JEV-114 (JEV_CHALLENGER_MODEL, shadow): paired challenger vs pinned jev (services/jev-challenger.ts); rates null below min_n */
   jev_challenger?: JevChallengerEvidence;
+  /** Know when to stop (services/experiment-registry.ts): running experiments, target n, registered stop date, overdue (report-only) */
+  experiments?: ExperimentsEvidence;
 }
+export type ExperimentRow = { id: string; flag: string; protocol: string; started_at: string; target_n: number | null; stop_by: string | null; stop_note: string;
+  n_per_arm: Record<string, number> | null; min_arm_n: number | null; verdict: string | null; overdue: boolean; overdue_reason: string | null; error?: string };
+export type ExperimentsEvidence = { experiments: ExperimentRow[]; overdue: string[]; no_stop_date: string[]; note: string };
 
 export interface JevChallengerRate { k: number; n: number; rate: number | null; ci_low: number | null; ci_high: number | null; status: 'ok' | 'insufficient' }
 export interface JevChallengerTruth { primary: JevChallengerRate; challenger: JevChallengerRate; abstained?: { primary: number; challenger: number } }
@@ -448,7 +453,12 @@ export type OperatorCockpit = {
   evolution?: EvolutionLineage | null;
   /** Workstream B: capability chain per watched capability (server: services/capability-chain.ts) */
   capabilities?: CapabilityVerdict[];
+  /** SOUL.md subtraction KPI per ISO week, last 8 (services/subtraction-kpi.ts); weeks null + reason without git — never 0 */
+  subtraction?: SubtractionKpi;
 };
+export type SubtractionWeek = { week: string; start: string; end: string; commits: number; lines_added: number; lines_removed: number; files_added: number; files_deleted: number;
+  ratio_removed_added: number | null; routes_start: number | null; routes_end: number | null; routes_delta: number | null };
+export type SubtractionKpi = { status: 'ok' | 'unavailable'; reason: string | null; repo: string | null; head: string | null; weeks: SubtractionWeek[] | null; note: string };
 export type CapabilityState = 'HEALTHY' | 'IDLE_EXPECTED' | 'DISABLED_BY_POLICY' | 'UNCONFIGURED' | 'BLOCKED' | 'STALLED' | 'MISCONFIGURED' | 'UNKNOWN';
 export type CapabilityChainLink = 'CONFIGURED' | 'ENABLED' | 'DEPENDENCIES_READY' | 'SCHEDULED' | 'EXECUTED' | 'OUTCOME_PERSISTED';
 export type CapabilityVerdict = { component: string; state: CapabilityState; link: CapabilityChainLink;

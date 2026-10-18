@@ -314,6 +314,10 @@ export function OperatorCockpitPage() {
             )}
           </Disclose>
 
+          <Disclose id="subtraction" title="Subtraction">
+            <SubtractionSection kpi={data.subtraction} />
+          </Disclose>
+
           <Disclose id="scorecard" title="Scorecard">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {Object.entries(data.scorecard).map(([k, v]) => (
@@ -443,6 +447,23 @@ export function NeedsYou({ n }: { n: NeedsYouCounts }) {
         </p>
       ) : null}
     </section>
+  );
+}
+
+/** SOUL.md subtraction KPI: what the checkout lost next to what it gained, per ISO week (report-only, never a gate). */
+export function SubtractionSection({ kpi }: { kpi: OperatorCockpit['subtraction'] }) {
+  if (!kpi) return <p className="text-sm text-foreground-secondary">Not reported by this server.</p>;
+  if (kpi.status !== 'ok' || !kpi.weeks) return <p className="text-sm text-status-warning">Unknown — {kpi.reason ?? 'no git history'}</p>;
+  const signed = (n: number | null) => (n === null ? '—' : n > 0 ? `+${n}` : String(n));
+  return (
+    <DataTable caption="Lines, files and routes added vs removed per ISO week (last 8)" rows={kpi.weeks} rowKey={(w) => w.week} columns={[
+      { key: 'week', label: 'Week', render: (w) => w.week },
+      { key: 'commits', label: 'Commits', render: (w) => w.commits },
+      { key: 'lines', label: 'Lines +/−', render: (w) => `+${w.lines_added} / −${w.lines_removed}` },
+      { key: 'ratio', label: 'Removed / added', render: (w) => (w.ratio_removed_added === null ? '—' : w.ratio_removed_added.toFixed(2)) },
+      { key: 'files', label: 'Files +/−', render: (w) => `+${w.files_added} / −${w.files_deleted}` },
+      { key: 'routes', label: 'Routes Δ', render: (w) => signed(w.routes_delta) },
+    ]} />
   );
 }
 
