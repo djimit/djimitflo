@@ -1,6 +1,6 @@
 import type { Database } from 'better-sqlite3';
-import { AUTH_MISSING, LIMIT_HIT, subscriptionAuthPresent, subscriptionLimitBackoffMs } from './subscription-gym';
-import { ollamaLimited } from './inference-failover';
+import { AUTH_MISSING, LIMIT_HIT, claudeSubscriptionBackoff, subscriptionAuthPresent, type SubscriptionLimitHit } from './subscription-gym';
+import { ollamaLimited, panelFallbackRuntime } from './inference-failover';
 
 /**
  * OLLAMA_OUTAGE_FALLBACK_RUNTIME (operator 18-10, incident ~14:00Z: Ollama Cloud weekly usage limit on every model; all
@@ -74,11 +74,20 @@ export const isFallbackLease = (lease: { metadata: Record<string, unknown> }): b
 
 /** A fallback lease hit the subscription's usage limit within the back-off window. */
 export function fallbackInLimitBackoff(db: Database, now = Date.now(), env: NodeJS.ProcessEnv = process.env): boolean {
-  const since = new Date(now - subscriptionLimitBackoffMs(env)).toISOString();
-  try {
-    return Boolean(db.prepare(`SELECT 1 FROM worker_leases WHERE json_extract(metadata, '$.runtime_fallback') IS NOT NULL
-      AND json_extract(metadata, '$.subscription_limit_hit_at') >= ? LIMIT 1`).get(since));
-  } catch { return false; }
+  return claudeSubscriptionBackoff(db, now, env) !== null; // shared with the claude gym species and the panel fallback
+}
+
+/**
+ * PANEL_FALLBACK_RUNTIME: the panel's inference status. 'inference_unavailable' = the fallback is needed (Ollama limited, or
+ * the panel itself hit the subscription limit) while the shared Claude subscription backoff holds: seats wait (no attempt,
+ * no quarantine, no verdict) until `backoff.until`. 'off' = flag off; 'available' otherwise.
+ */
+export function panelInferenceStatus(db: Database, env: NodeJS.ProcessEnv = process.env, now = Date.now()):
+  { status: 'off' | 'available' | 'inference_unavailable'; backoff: SubscriptionLimitHit | null } {
+  if (!panelFallbackRuntime(env)) return { status: 'off', backoff: null };
+  const backoff = claudeSubscriptionBackoff(db, now, env);
+  const needed = Boolean(backoff) && (effectiveFallbackRuntime(db, env) !== null || backoff!.source === 'panel_review');
+  return { status: needed ? 'inference_unavailable' : 'available', backoff };
 }
 
 /** Why a fallback lease must not spawn (no OAuth token, or the subscription is benched), else null. */
