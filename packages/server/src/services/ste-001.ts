@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { wilson } from './evolution-estimators';
+import { notFallbackOutcomeSql } from './ollama-outage-fallback';
 
 /**
  * STE-001 (operator 11-10, protocol docs/research/ace/STE-001_PROTOCOL.md): does a maker template written in ASD-STE100
@@ -71,7 +72,7 @@ export function ste001Evidence(db: Database, since: string, env: NodeJS.ProcessE
     rows = db.prepare(`SELECT substr(r.value, 13) AS arm, o.success, o.tokens_used AS tokens,
         EXISTS (SELECT 1 FROM json_each(o.evidence_refs_json) g WHERE g.value = 'gate:auto_approved_scope:fail') AS out_of_scope
       FROM skill_outcomes o, json_each(o.evidence_refs_json) r
-      WHERE r.value LIKE 'ste-001-arm:%' AND o.skill_id LIKE 'loop-maker:%' AND o.skill_id NOT LIKE 'loop-maker:gym:%' AND o.created_at >= ?`).all(since) as typeof rows;
+      WHERE r.value LIKE 'ste-001-arm:%' AND o.skill_id LIKE 'loop-maker:%' AND o.skill_id NOT LIKE 'loop-maker:gym:%' AND ${notFallbackOutcomeSql('o')} AND o.created_at >= ?`).all(since) as typeof rows;
   } catch { /* skill_outcomes absent */ }
   const arm = (a: '0' | '1') => {
     const r = rows.filter((x) => x.arm === a); const v = r.filter((x) => x.success).length; const s = r.filter((x) => x.out_of_scope).length;

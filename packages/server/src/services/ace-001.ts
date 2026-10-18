@@ -4,6 +4,7 @@ import { createHash } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { cosine } from './proposal-dedupe';
 import { wilson } from './evolution-estimators';
+import { notFallbackOutcomeSql } from './ollama-outage-fallback';
 
 /**
  * ACE-001 (operator 10-10, protocol docs/research/ace/ACE-001_PROTOCOL.md): a 2×2 factorial on real oracle-lane maker goals
@@ -107,7 +108,7 @@ export function ace001Evidence(db: Database, windowSince: string, env: NodeJS.Pr
     rows = db.prepare(`SELECT substr(r.value, 13) AS arm, o.success, o.tokens_used AS tokens,
         (SELECT CAST(substr(g.value, 8) AS REAL) FROM json_each(o.evidence_refs_json) g WHERE g.value LIKE 'graded:%' LIMIT 1) AS graded
       FROM skill_outcomes o, json_each(o.evidence_refs_json) r
-      WHERE r.value LIKE 'ace-001-arm:%' AND o.skill_id LIKE 'loop-maker:%' AND o.skill_id NOT LIKE 'loop-maker:gym:%' AND o.created_at >= ?`).all(since) as typeof rows;
+      WHERE r.value LIKE 'ace-001-arm:%' AND o.skill_id LIKE 'loop-maker:%' AND o.skill_id NOT LIKE 'loop-maker:gym:%' AND ${notFallbackOutcomeSql('o')} AND o.created_at >= ?`).all(since) as typeof rows;
   } catch { /* skill_outcomes absent */ }
   const arms = Object.fromEntries(ACE_ARMS.map((a) => {
     const r = rows.filter((x) => x.arm === a); const v = r.filter((x) => x.success).length;

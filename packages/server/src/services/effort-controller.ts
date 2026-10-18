@@ -4,6 +4,7 @@ import { parseSpecies, type Species } from './evolve-selection';
 import { fitnessKeys, fitnessPosterior } from './fitness-view';
 import { speciesKey } from './runtime-bandit';
 import { LoopEventService } from './loop-event-service';
+import { notFallbackGoalSql } from './ollama-outage-fallback';
 
 /**
  * "Effort Paradox" (operator-approved 08-10). Two pieces, both default off:
@@ -196,7 +197,7 @@ export function effortX1Evidence(db: Database, since: string, env: NodeJS.Proces
         COALESCE(SUM(EXISTS (SELECT 1 FROM loop_runs r JOIN skill_outcomes o ON o.task_id = r.id WHERE r.goal_id = g.id
           AND o.evidence_refs_json LIKE '%"outcome_class:infra_failed"%')), 0) AS infra
       FROM goals g LEFT JOIN self_improvements s ON s.id = g.improvement_id
-      WHERE json_extract(g.metadata, '$.effort_arm') IN ('on', 'off') AND g.created_at >= ? GROUP BY 1`).all(since) as typeof rows;
+      WHERE json_extract(g.metadata, '$.effort_arm') IN ('on', 'off') AND g.created_at >= ? AND ${notFallbackGoalSql('g.id')} GROUP BY 1`).all(since) as typeof rows;
   } catch { /* missing tables */ }
   const arm = (name: string) => {
     const r = rows.find((x) => x.arm === name) ?? { goals: 0, verified: 0, regressed: 0, infra: 0 };
