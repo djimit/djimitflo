@@ -552,6 +552,32 @@ type UsageQuota = {
   rate_limit_rpd: number | null;
 };
 
+export type UsageWindowId = '5h' | 'today' | '7d' | 'month';
+export type UsageWindowSum = { calls: number; tokens: number | null; calls_without_tokens: number };
+export type UsageLimitView = {
+  account: string; plan: string; window: '5h' | 'session' | 'weekly' | 'daily' | 'monthly' | 'none'; unit: 'tokens' | 'messages' | 'requests' | 'credits' | 'unknown';
+  limit: number | null; limit_text: string; source_url: string | null; checked_at: string | null;
+  confidence: string | null; note: string | null; exceed_behaviour: string | null;
+  measured_window: UsageWindowId; measured_unit: 'tokens' | 'calls'; used: number | null; comparable: boolean; used_pct: number | null; unit_note: string | null;
+  active: boolean | null;
+};
+export type UsageEventBrief = { at: string; message: string; consumer: string; model: string | null } | null;
+export type UsageAccount = {
+  id: string; label: string; windows: Record<UsageWindowId, UsageWindowSum>;
+  consumers_7d: Array<{ consumer: string; calls: number; tokens: number | null; calls_without_tokens: number }>;
+  providers_seen: string[]; last_error: UsageEventBrief; last_limit_hit: UsageEventBrief;
+  state: { state: 'limited' | 'backoff' | 'no_limit_recorded'; since: string | null; until: string | null; reason: string | null };
+  cost: { basis: string; observed_bases: string[]; list_price_usd_month: number | null; calls_without_list_price_month: number };
+  plan: string;
+  limits: UsageLimitView[];
+};
+export type UsageAccountsResponse = {
+  generated_at: string; window_starts: Record<UsageWindowId, string>;
+  sources: Record<string, 'ok' | 'missing'>;
+  plan_limits: { source: string; entries: number; invalid: number; error: string | null };
+  accounts: UsageAccount[]; note: string;
+};
+
 type UsageBreakdown = {
   date: string;
   tokens: number;
@@ -1886,6 +1912,10 @@ class ApiClient {
   }
 
   // Usage
+  async getUsageAccounts(): Promise<UsageAccountsResponse> {
+    return this.request('/usage/accounts');
+  }
+
   async getUsageQuotas(): Promise<{ quotas: UsageQuota[] }> {
     return this.request('/usage/quotas');
   }

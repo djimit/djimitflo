@@ -135,6 +135,8 @@ COPY specs specs
 COPY packages/server/corpus packages/server/corpus
 # NE_GENERATOR_CHECK_MODE reads the negative-evidence registry relative to dist (packages/server/dist/services → /app/docs)
 COPY docs/research/negative-evidence/NEGATIVE_EVIDENCE.yaml docs/research/negative-evidence/NEGATIVE_EVIDENCE.yaml
+# /usage plan limits (operator-filled) read relative to dist (packages/server/dist/services → /app/docs)
+COPY docs/usage-plan-limits.json docs/usage-plan-limits.json
 
 # Copy entrypoint
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
