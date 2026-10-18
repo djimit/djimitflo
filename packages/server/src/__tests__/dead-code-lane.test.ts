@@ -16,7 +16,8 @@ const NOW = new Date('2026-10-20T12:00:00Z');
 const S = 'packages/server/src';
 let repo: string; let db: Database.Database;
 const write = (rel: string, text: string) => { fs.mkdirSync(path.dirname(path.join(repo, rel)), { recursive: true }); fs.writeFileSync(path.join(repo, rel), text); };
-const usage = (day: string, name: string, count: number) => db.prepare("INSERT INTO usage_counts (day, kind, name, method, status_class, count) VALUES (?, 'api', ?, 'GET', '2xx', ?)").run(day, name, count);
+const usage = (day: string, name: string, count: number) => db.prepare(`INSERT INTO usage_counts (day, kind, name, method, status_class, count) VALUES (?, 'api', ?, 'GET', '2xx', ?)
+  ON CONFLICT (day, kind, name, method, status_class) DO UPDATE SET count = count + excluded.count`).run(day, name, count); // wall clock − 20 d hit the fixed 2026-09-28 row on 18-10
 
 beforeEach(() => {
   repo = fs.mkdtempSync(path.join(os.tmpdir(), 'dead-code-'));
