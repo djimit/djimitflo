@@ -47,6 +47,11 @@ export const ACCOUNTS: ReadonlyArray<{ id: AccountId; label: string; cost_basis:
   { id: 'other', label: 'Other / unmapped', cost_basis: 'unknown' },
 ];
 
+/** Provider strings may carry a base URL; match the hostname, not a substring. */
+function isOllamaHost(p: string): boolean {
+  try { const h = new URL(p).hostname; return h === 'ollama.com' || h.endsWith('.ollama.com'); } catch { return false; }
+}
+
 export function accountOfCall(provider: string | null | undefined, model: string | null | undefined, consumer?: string | null): AccountId {
   const p = String(provider ?? '').toLowerCase(); const m = String(model ?? '').toLowerCase();
   if (p === 'subscription-cli:claude') return 'claude_max';
@@ -54,7 +59,7 @@ export function accountOfCall(provider: string | null | undefined, model: string
   if (p === 'free-tier-cli:opencode' || m.startsWith('opencode/')) return 'opencode_free';
   if (p === 'typesafe' || consumer === 'jev') return 'typesafe_jev';
   if (p.includes('nvidia') || m.includes('nvidia')) return 'nvidia';
-  if (p === 'ollama' || p.startsWith('ollama:') || p.includes('ollama.com') || m.endsWith(':cloud') || m.startsWith('ollama/') || m.startsWith('ollama:')) return 'ollama_cloud';
+  if (p === 'ollama' || p.startsWith('ollama:') || isOllamaHost(p) || m.endsWith(':cloud') || m.startsWith('ollama/') || m.startsWith('ollama:')) return 'ollama_cloud';
   if (['local', 'remote', 'llama-router', 'llama.cpp'].includes(p) || /127\.0\.0\.1|localhost|llama-router/.test(p)) return 'local_workstation';
   return 'other';
 }
