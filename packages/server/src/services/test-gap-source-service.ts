@@ -105,37 +105,42 @@ export function discoverPackageGaps(repoPath: string): TestGap[] {
 }
 
 /**
- * Multi-repo (EXTRA_REPOS_ENABLED): plain node:test JavaScript repos — tests in test/<name>.test.mjs, modules anywhere under src/ (.mjs),
- * one command `node --test test/<name>.test.mjs`. A module no test names (file name or import) is an untested gap; a tested
- * module whose exported functions no test names is an exports gap (`test/<name>.exports.test.mjs`). Same contract as the
+ * Multi-repo (EXTRA_REPOS_ENABLED): plain node:test JavaScript repos — tests in test/ (or tests/) as <name>.test.mjs, modules anywhere
+ * under src/ (.mjs; also .js when package.json says "type":"module" — CommonJS .js stays out), one command `node --test <dir>/<name>.test.<ext>`
+ * (the new test takes its module's extension). A module no test names (file name or import) is an untested gap; a tested
+ * module whose exported functions no test names is an exports gap (`<dir>/<name>.exports.test.<ext>`). Same contract as the
  * server lanes: one new test file, one command.
  */
 export function discoverNodeTestGaps(repoPath: string): TestGap[] {
-  const testDir = path.join(repoPath, 'test'); const srcDir = path.join(repoPath, 'src');
-  if (!fs.existsSync(testDir) || !fs.existsSync(srcDir)) return [];
-  const testFiles = fs.readdirSync(testDir).filter((f) => /\.test\.mjs$/.test(f));
+  const dir = ['test', 'tests'].find((d) => fs.existsSync(path.join(repoPath, d))); const srcDir = path.join(repoPath, 'src');
+  if (!dir || !fs.existsSync(srcDir)) return [];
+  const testDir = path.join(repoPath, dir);
+  let esm = false;
+  try { esm = JSON.parse(fs.readFileSync(path.join(repoPath, 'package.json'), 'utf8')).type === 'module'; } catch { /* no package.json: .mjs only */ }
+  const ext = esm ? 'm?js' : 'mjs';
+  const testFiles = fs.readdirSync(testDir).filter((f) => new RegExp(`\\.test\\.${ext}$`).test(f));
   const testTexts = testFiles.map((f) => fs.readFileSync(path.join(testDir, f), 'utf8'));
-  const tested = new Set<string>(testFiles.map((f) => f.replace(/\.(exports\.)?test\.mjs$/, '')));
-  for (const t of testTexts) for (const m of t.matchAll(/(?:from|import)\s*\(?\s*['"][^'"]*\/([A-Za-z0-9_.-]+)\.mjs['"]/g)) tested.add(m[1]);
+  const tested = new Set<string>(testFiles.map((f) => f.replace(new RegExp(`\\.(exports\\.)?test\\.${ext}$`), '')));
+  for (const t of testTexts) for (const m of t.matchAll(new RegExp(`(?:from|import)\\s*\\(?\\s*['"][^'"]*\\/([A-Za-z0-9_.-]+)\\.${ext}['"]`, 'g'))) tested.add(m[1]);
   const allTests = testTexts.join('\n');
-  const walk = (dir: string): string[] => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory()
-    ? (e.name === 'node_modules' ? [] : walk(path.join(dir, e.name))) : /\.mjs$/.test(e.name) ? [path.join(dir, e.name)] : []);
+  const walk = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory()
+    ? (e.name === 'node_modules' ? [] : walk(path.join(d, e.name))) : new RegExp(`\\.${ext}$`).test(e.name) ? [path.join(d, e.name)] : []);
   const gaps: TestGap[] = [];
   for (const file of walk(srcDir)) {
-    const name = path.basename(file, '.mjs'); const rel = path.relative(repoPath, file).split(path.sep).join('/');
+    const fileExt = path.extname(file); const name = path.basename(file, fileExt); const rel = path.relative(repoPath, file).split(path.sep).join('/');
     if (name === 'index' || !/^[A-Za-z0-9_-]+$/.test(name)) continue;
     const text = fs.readFileSync(file, 'utf8'); const loc = text.split('\n').length;
     const exports = [...text.matchAll(/export\s+(?:async\s+)?(?:class|function\*?|const|let)\s+(\w+)/g)].map((m) => m[1]);
     if (!exports.length || loc > MAX_EXPORT_GAP_LOC) continue;
     if (!tested.has(name)) {
       if (loc < MIN_LOC || loc > MAX_LOC) continue;
-      const testPath = `test/${name}.test.mjs`;
+      const testPath = `${dir}/${name}.test${fileExt}`;
       gaps.push({ service: name, sourcePath: rel, testPath, exports: exports.slice(0, 6), loc, command: `node --test ${testPath}` });
       continue;
     }
     const untested = exports.filter((fn) => !new RegExp(`\\b${fn}\\b`).test(allTests)).slice(0, 3);
-    if (!untested.length || fs.existsSync(path.join(testDir, `${name}.exports.test.mjs`))) continue;
-    const testPath = `test/${name}.exports.test.mjs`;
+    if (!untested.length || fs.existsSync(path.join(testDir, `${name}.exports.test${fileExt}`))) continue;
+    const testPath = `${dir}/${name}.exports.test${fileExt}`;
     gaps.push({ service: name, sourcePath: rel, testPath, exports: untested, loc, kind: 'exports', command: `node --test ${testPath}` });
   }
   return gaps.sort((a, b) => a.loc - b.loc || a.service.localeCompare(b.service));
