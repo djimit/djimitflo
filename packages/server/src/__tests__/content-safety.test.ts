@@ -95,3 +95,14 @@ it("CONTENT_SAFETY_SCOPE=decision: a fleet discovery event / KB page gets no cal
   expect(contentSafetyApplies('external_event')).toBe(true);
   expect(contentSafetyApplies('kb_page')).toBe(true);
 });
+
+it('P0-11: the row mode is the regime the verdict is used under (prompt-bound under enforce, or an acting caller)', async () => {
+  vi.stubEnv('CONTENT_SAFETY_MODE', 'enforce'); vi.stubEnv('NVIDIA_API_KEY', 'k'); resetContentSafetyPause();
+  await checkContentSafety(db, { type: 'social_reply', id: 'r1' }, 'hello', reply('User Safety: safe')); // record-only caller
+  await checkContentSafety(db, { type: 'expert_claim', id: 'c1' }, 'hello', reply('User Safety: safe'), true); // prompt gate under enforce
+  vi.stubEnv('CONTENT_SAFETY_MODE', 'shadow');
+  await checkContentSafety(db, { type: 'expert_claim', id: 'c2' }, 'hello', reply('User Safety: safe'), true); // prompt gate under shadow
+  await checkContentSafety(db, { type: 'kb_page', id: 'p1' }, 'hello', reply('User Safety: unsafe'), false, true); // KB ingest acts
+  expect(db.prepare("SELECT subject_id, mode FROM judgments WHERE judgment = 'content_safety' ORDER BY subject_id").all()).toEqual([
+    { subject_id: 'c1', mode: 'enforce' }, { subject_id: 'c2', mode: 'shadow' }, { subject_id: 'p1', mode: 'enforce' }, { subject_id: 'r1', mode: 'shadow' }]);
+});

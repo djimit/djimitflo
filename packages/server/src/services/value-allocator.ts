@@ -21,8 +21,8 @@ import { listSchedulers, markRun } from './scheduler-registry';
  * (resource-ledger exclusiveWh); not measured over ≥ 90 % of the job time = null (unknown), never an invented figure.
  *
  * Value: verified runs credited to the consumer in outcome_credits (E2 attribution) weighted 1, plus 3 for each of those runs
- * whose loop PR SETTLED_SURVIVED (fitness-view weights: production 1, merge 3). Judgments read by a gate in enforce mode
- * carry `decision_consumed`. A consumer whose output nobody reads (only shadow rows, `<judgment>@<model>` challenger/local
+ * whose loop PR SETTLED_SURVIVED (fitness-view weights: production 1, merge 3). Judgments a gate actually reads
+ * (GATE_READ_JUDGMENTS, P0-11) carry `decision_consumed`. A consumer whose output nobody reads (only shadow rows, `<judgment>@<model>` challenger/local
  * rows, llm rows all shadow = 1) is NO_CONSUMER: value 0 BY DESIGN, distinct from unknown. Without any attribution recorded in
  * the window, value is unknown (null), never 0.
  *
@@ -58,7 +58,7 @@ const HARD_FLOORS: Array<[RegExp, string]> = [
   [/stall/i, 'stall watch'],
 ];
 export function hardFloor(consumer: string, status: ConsumerStatus): string | null {
-  if (status === 'decision_consumed') return 'gate (judgment read in enforce mode)';
+  if (status === 'decision_consumed') return 'gate (judgment read by a gate, GATE_READ_JUDGMENTS)';
   const hit = HARD_FLOORS.find(([re]) => re.test(consumer));
   return hit ? hit[1] : null;
 }
@@ -100,8 +100,33 @@ const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFi
 const energyOwner = (jobConsumer: string): string =>
   jobConsumer.startsWith('gym:') ? 'scheduler:evolution_gym' : jobConsumer === 'committee' ? 'scheduler:committee_evolution' : jobConsumer;
 
+type JudgmentRow = { mode: string; subject_type: string };
+/**
+ * P0-11: the judgments a gate actually reads, and when a row was read — not the row's mode label. Found by the call sites that
+ * branch on a judgment's decision (verified in code 2026-10-20). A row outside this registry is never decision-consumed, even
+ * when labelled 'enforce': telegram_access and memory_template_duplicate are a gate's audit of its own decision, not an input.
+ */
+export const GATE_READ_JUDGMENTS: Record<string, (row: JudgmentRow, env: NodeJS.ProcessEnv) => boolean> = {
+  // self-improvement-auto-review-scheduler: an enforce row's confident 'no' parks the proposal before the panel
+  proposal_prescreen: (r) => r.mode === 'enforce',
+  // decision-context-service: under enforce the selected memories are injected into the review prompt
+  decision_context: (r) => r.mode === 'enforce',
+  // kb-corpus gatePassages: under enforce pages below 0.5 are dropped before the panel prompt
+  kb_passage_relevance: (r) => r.mode === 'enforce',
+  // kb-corpus ingestKbPages deletes/skips a KB page on 'unsafe' in every mode; gateUntrustedForPrompt excludes text under enforce
+  content_safety: (r) => r.subject_type === 'kb_page' || r.mode === 'enforce',
+  // content-safety gateUntrustedForPrompt: an enforce row is an exclusion that happened
+  content_safety_prompt_gate: (r) => r.mode === 'enforce',
+  // agent-social-autopilot threadGated: reads the last two verdicts of a thread (shadow rows) when the gate is on
+  commons_contribution: (_r, env) => env.COMMONS_THREAD_GATE_ENABLED === 'true',
+  // needs-grounding-triage-service: moves/archives proposals on the latest (shadow) verdict when enabled
+  reflection_triage: (_r, env) => env.NEEDS_GROUNDING_TRIAGE_ENABLED === 'true',
+};
+const gateReads = (judgment: string, row: JudgmentRow, env: NodeJS.ProcessEnv): boolean =>
+  !judgment.includes('@') && Boolean(GATE_READ_JUDGMENTS[judgment]?.(row, env));
+
 /** Resources and consumer evidence per consumer key over [since, until). */
-function collect(db: Database, since: string, until: string, schedulers: string[]): Map<string, Acc> {
+function collect(db: Database, since: string, until: string, schedulers: string[], env: NodeJS.ProcessEnv = process.env): Map<string, Acc> {
   const out = new Map<string, Acc>();
   const acc = (key: string, kind: ConsumerKind) => { let a = out.get(key); if (!a) { a = newAcc(kind); out.set(key, a); } return a; };
   const tokens = (a: Acc, t: number | null, local: boolean) => {
@@ -118,11 +143,12 @@ function collect(db: Database, since: string, until: string, schedulers: string[
     tokens(a, tin === null && tout === null ? null : (tin ?? 0) + (tout ?? 0), isLocalModel(r.provider, r.model));
   }
 
-  for (const r of safeAll<{ judgment: string; mode: string; decision: string; model: string | null; tin: number | null; tout: number | null }>(db,
-    `SELECT judgment, mode, decision, model, input_tokens AS tin, output_tokens AS tout FROM judgments WHERE created_at >= ? AND created_at < ?`, since, until)) {
+  for (const r of safeAll<{ judgment: string; mode: string; subject_type: string; decision: string; model: string | null; tin: number | null; tout: number | null }>(db,
+    `SELECT judgment, mode, subject_type, decision, model, input_tokens AS tin, output_tokens AS tout FROM judgments WHERE created_at >= ? AND created_at < ?`, since, until)) {
     const a = acc(`judgment:${r.judgment}`, 'judgment'); a.runs++;
-    if (r.judgment.includes('@') || r.mode === 'shadow') a.shadowRows++;
-    else if (r.mode === 'enforce') { a.enforceRows++; if (r.decision !== 'error') a.enforceConsumed++; }
+    // P0-11: consumption is whether a gate read the row (registry), not its mode label — a shadow-labelled row a gate acts on counts
+    if (gateReads(r.judgment, r, env)) { a.enforceRows++; if (r.decision !== 'error') a.enforceConsumed++; }
+    else if (r.judgment.includes('@') || r.mode === 'shadow') a.shadowRows++;
     else a.otherRows++;
     if (!r.model) { a.noModel++; continue; } // deterministic: no model call was made
     // judgments.input/output_tokens are NOT NULL DEFAULT 0: a model row with 0 + 0 means the usage was not reported
@@ -220,7 +246,7 @@ function windowStats(a: Acc, status: ConsumerStatus, windowDays: number, credit:
     cls = 'UNKNOWN_COST';
     reason = calls ? `token count reported for ${a.known}/${calls} calls (< ${MIN_TOKEN_COVERAGE * 100} %)` : 'no per-consumer token or energy record';
   } else if (status === 'decision_consumed') {
-    cls = 'VALUE_PROVEN'; reason = `${a.enforceConsumed} decision(s) read by a gate in enforce mode${value.verified ? `; ${value.verified} credited verified run(s)` : ''}`;
+    cls = 'VALUE_PROVEN'; reason = `${a.enforceConsumed} decision(s) read by a gate${value.verified ? `; ${value.verified} credited verified run(s)` : ''}`;
   }
   else if (value.units === null) { cls = 'INSUFFICIENT'; reason = value.basis; }
   else if (value.units > 0 && n >= MIN_PROVEN_N) { cls = 'VALUE_PROVEN'; reason = `${value.verified} verified (${value.survived} survived) of ${n}`; }
@@ -269,7 +295,7 @@ export function buildValueAllocation(db: Database, now = Date.now(), env: NodeJS
   const scheds = schedulerNames ?? listSchedulers(now).schedulers.filter((s) => s.armed || s.last_run).map((s) => s.name);
   let survived = new Set<string>();
   try { survived = new Set(loopPrSettlements(db, now, undefined, env).filter((p) => p.settlement.state === 'SETTLED_SURVIVED').map((p) => p.run_id)); } catch { /* loop_runs absent */ }
-  const a7 = collect(db, since7, until, scheds); const a30 = collect(db, since30, until, scheds);
+  const a7 = collect(db, since7, until, scheds, env); const a30 = collect(db, since30, until, scheds, env);
   const c7 = credits(db, since7, until, survived); const c30 = credits(db, since30, until, survived);
 
   const rows = [...a7.entries()].map(([consumer, acc]) => {
