@@ -1,0 +1,16 @@
+{
+  "name": "djimitflo-finding-fix-eslint",
+  "private": true,
+  "description": "Pinned ESLint toolchain for the finding-fix gate (scripts/finding-fix-gate.mjs) in the prod image; same versions as the repo lockfile's dev dependencies.",
+  "dependencies": {
+    "eslint": "10.10.0",
+    "typescript-eslint": "8.70.0",
+    "typescript": "6.0.3"
+  },
+  "overrides": {
+    "@eslint-community/eslint-utils": "4.9.1",
+    "ignore": "7.0.9",
+    "acorn": "8.18.0",
+    "picomatch": "4.0.5"
+  }
+}
