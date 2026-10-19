@@ -128,6 +128,14 @@ describe('value allocator: value and class', () => {
     expect(m.w7.class).toBe('INSUFFICIENT');
   });
 
+  it('a non-enforce judgment has no credit path: value unknown even with attribution recorded, never NO_VALUE', () => {
+    makerRun({ credited: true });
+    for (let i = 0; i < 25; i++) judgment('outcome_review', 'annotation', { model: null });
+    const r = row(buildValueAllocation(db, NOW, {}, []), 'judgment:outcome_review');
+    expect(r.w7.value.units).toBeNull();
+    expect(r.w7.class).toBe('INSUFFICIENT');
+  });
+
   it('an enforce-mode judgment is decision-consumed: VALUE_PROVEN and a hard floor', () => {
     for (let i = 0; i < 3; i++) judgment('proposal_prescreen', 'enforce', { tin: 400, tout: 30 });
     const r = row(buildValueAllocation(db, NOW, {}, []), 'judgment:proposal_prescreen');

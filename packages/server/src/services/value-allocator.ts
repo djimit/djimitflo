@@ -196,13 +196,15 @@ function windowStats(a: Acc, status: ConsumerStatus, windowDays: number, credit:
 
   let value: WindowStats['value'];
   if (status === 'no_consumer') value = { verified: 0, survived: 0, units: 0, decision_consumed: 0, basis: 'no_consumer (by design: shadow output nobody reads)' };
-  else if (credit.recorded && (a.kind === 'maker' || a.kind === 'judgment')) {
+  // creditedContributors credits a judgment only when it gated the run in enforce mode: any other judgment has no credit path
+  else if (credit.recorded && (a.kind === 'maker' || status === 'decision_consumed')) {
     const v = credit.v ?? { verified: 0, survived: 0 };
     value = { verified: v.verified, survived: v.survived, units: v.verified * VALUE_WEIGHTS.verified + v.survived * VALUE_WEIGHTS.survived,
       decision_consumed: a.kind === 'judgment' ? a.enforceConsumed : null, basis: 'outcome_credits' };
   } else if (status === 'decision_consumed') value = { verified: null, survived: null, units: null, decision_consumed: a.enforceConsumed, basis: 'decision_consumed' };
   else value = { verified: null, survived: null, units: null, decision_consumed: a.kind === 'judgment' ? a.enforceConsumed : null,
-    basis: a.kind === 'maker' || a.kind === 'judgment' ? 'unknown: no outcome attribution recorded in the window' : 'unknown: no attribution path for this consumer kind' };
+    basis: a.kind === 'maker' ? 'unknown: no outcome attribution recorded in the window'
+      : a.kind === 'judgment' ? 'unknown: only enforce-mode judgments are credited' : 'unknown: no attribution path for this consumer kind' };
 
   const cloudKnown = tokens.cloud !== null && tokens.cloud > 0 && (coverage ?? 0) >= MIN_TOKEN_COVERAGE;
   const per_m_tokens = value.verified !== null && cloudKnown ? valuePer(value.verified, n, tokens.cloud! / 1e6) : null;
@@ -236,7 +238,7 @@ export function proposeAction(r: { consumer_status: ConsumerStatus; hard_floor: 
   const measuredCost = (w7.tokens.cloud ?? 0) + (w7.tokens.local ?? 0) > 0 || (w7.energy.wh ?? 0) > 0;
   switch (w7.class) {
     case 'NO_CONSUMER': p = measuredCost ? { action: 'pause', share: 0, reason: 'measured cost, output read by nobody' } : { action: 'keep', share: 1, reason: 'no consumer, but no measured cost to reclaim' }; break;
-    case 'NO_VALUE': p = { action: 'reduce_cap', share: 0.25, reason: 'enough volume, zero credited value' }; break;
+    case 'NO_VALUE': p = measuredCost ? { action: 'reduce_cap', share: 0.25, reason: 'enough volume, zero credited value' } : { action: 'keep', share: 1, reason: 'zero credited value, but no measured cost to reclaim' }; break;
     case 'UNKNOWN_COST': p = { action: 'keep', share: 1, reason: 'cost unknown: nothing to weigh' }; break;
     case 'INSUFFICIENT': p = { action: 'keep', share: 1, reason: 'insufficient evidence: keep exploring' }; break;
     default: {
