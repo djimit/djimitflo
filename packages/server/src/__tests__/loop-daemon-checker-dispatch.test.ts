@@ -191,6 +191,20 @@ describe('LoopDaemon checker dispatch', () => {
     expect((db.prepare('SELECT status FROM goals WHERE id = ?').get(goal.id) as { status: string }).status).toBe('failed');
   });
 
+  it('P0-7: an engine fallback (effective_runtime on the lease) is the maker skill of the runtime that ran, tagged with the requested one', async () => {
+    seedQualifyingGoal();
+    db.pragma('foreign_keys = OFF');
+    const now = new Date().toISOString();
+    db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES ('maker-1', 'run-1', 'maker', 'codex', 'completed', ?, ?, ?)`)
+      .run(JSON.stringify({ model: 'gpt-x', requested_runtime: 'codex', effective_runtime: 'claude', effective_model: null }), now, now);
+    const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+    await runOneTick(daemon);
+    const row = db.prepare('SELECT skill_id, model, evidence_refs_json AS refs FROM skill_outcomes').get() as { skill_id: string; model: string | null; refs: string };
+    expect(row.skill_id).toBe('loop-maker:doc-drift-and-small-fix-loop:claude');
+    expect(row.model ?? null).toBeNull(); // the requested runtime's model is not the fallback's
+    expect(JSON.parse(row.refs)).toContain('requested_runtime:codex');
+  });
+
   it('RX-3: a failed run tags its maker outcome with why it failed (here: the maker never ran → infra), success unchanged', async () => {
     seedQualifyingGoal();
     const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });

@@ -531,6 +531,22 @@ describe('ExecutionEngine', () => {
     expect(runtimeConcurrencySemaphore.activeCount).toBe(0);
   });
 
+  it('P0-7: an engine fallback records the runtime that actually started on the lease (effective_runtime), requested stays', async () => {
+    db.pragma('foreign_keys = OFF');
+    db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata) VALUES ('fb-lease', 'fb-run', 'maker', 'mock', 'running', ?)")
+      .run(JSON.stringify({ execution_task_id: 'fb-task', model: 'ollama/requested-model' }));
+    db.prepare("INSERT INTO tasks (id,title,description,status,priority,risk_level,execution_mode,metadata) VALUES ('fb-task','Fallback task','echo hello','pending','medium','low','local',?)")
+      .run(JSON.stringify({ lease_id: 'fb-lease', model: 'ollama/requested-model' }));
+    const mock = new MockExecutor();
+    engine.registerExecutor({ kind: 'mock', canExecute: () => true, start: async () => { throw new Error('Provider temporarily unavailable before process start'); } });
+    engine.registerExecutor({ kind: 'claude', canExecute: () => true, start: (t, o) => mock.start(t, o) });
+    const execution = await engine.executeTask('fb-task', 'mock');
+    await execution.completion;
+    const lease = db.prepare("SELECT runtime, metadata FROM worker_leases WHERE id = 'fb-lease'").get() as { runtime: string; metadata: string };
+    expect(lease.runtime).toBe('mock'); // the requested runtime column is not rewritten
+    expect(JSON.parse(lease.metadata)).toMatchObject({ requested_runtime: 'mock', effective_runtime: 'claude', effective_model: null });
+  });
+
   it('queues execution when the shared runtime concurrency cap is full', async () => {
     const previousLimit = process.env.RUNTIME_MAX_CONCURRENCY;
     process.env.RUNTIME_MAX_CONCURRENCY = '1';

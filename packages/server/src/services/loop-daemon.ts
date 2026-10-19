@@ -34,7 +34,7 @@ import { authorityGateForGoal } from './authority-gate';
 import { remoteMakerWaitMs } from '../execution/executors/remote-maker-executor';
 import { recordFailureGaps } from './knowledge-gaps';
 import { F2_SUSPENDED_ARM, FALLBACK_REF, effectiveFallbackRuntime } from './ollama-outage-fallback';
-import { makerFailureClass, recordOutcomeAttribution, reviewerSubReason, type AttributionLease, type MakerMeta } from './outcome-attribution';
+import { leaseRanOn, makerFailureClass, recordOutcomeAttribution, reviewerSubReason, type AttributionLease, type MakerMeta } from './outcome-attribution';
 /** Deterministic checks for daemon runs. The repo-wide `test` script cannot finish in 120 s, so hosts can scope it
  *  (LOOP_DAEMON_CHECK_SCRIPTS=test:changed,lint,type-check) and raise the per-script timeout (LOOP_DAEMON_CHECK_TIMEOUT_MS, max 600000). */
 export function daemonCheckOptions(env: NodeJS.ProcessEnv = process.env, repo: ExtraRepo | null = null): { scripts?: string[]; timeout_ms: number } {
@@ -883,9 +883,13 @@ export class LoopDaemon {
       // skill-evolution engine and a later runtime bandit select on. Before this, skill_outcomes only got manual API writes.
       try {
         const maker = this.db.prepare('SELECT id, runtime, metadata FROM worker_leases WHERE id = ?').get(activeMakerLease.id) as { id: string; runtime: string; metadata: string } | undefined;
-        const meta = maker ? JSON.parse(maker.metadata || '{}') as { model?: unknown; genome_id?: unknown; graded?: unknown; runtime_usage?: { total_tokens?: unknown }; runtime_fallback?: unknown } : {};
+        const leaseMeta = maker ? JSON.parse(maker.metadata || '{}') as { model?: unknown; genome_id?: unknown; graded?: unknown; runtime_usage?: { total_tokens?: unknown }; runtime_fallback?: unknown; effective_runtime?: unknown; effective_model?: unknown } : {};
         // OLLAMA_OUTAGE_FALLBACK_RUNTIME: a fallback maker is its own species (loop-maker:<lane>:claude), tagged for experiment exclusion
-        const makerRuntime = meta.runtime_fallback && maker ? maker.runtime : activeMakerLease.runtime;
+        // P0-7: an engine fallback (effective_runtime on the lease) is attributed to the runtime that ran, with its model (unknown = none)
+        const leaseRuntime = leaseMeta.runtime_fallback && maker ? maker.runtime : activeMakerLease.runtime;
+        const ran = leaseRanOn(leaseRuntime, leaseMeta);
+        const makerRuntime = ran.runtime;
+        const meta = { ...leaseMeta, model: ran.model ?? undefined };
         const skills = new SkillEvolutionEngine(this.db); // ensures skill_outcomes exists
         // an extra repo's outcomes carry a `repo:<slug>:` prefix, so no primary-repo fitness / bandit view ever counts them
         const skillId = `${repoSkillPrefix(goalRepo)}loop-maker:${loopName}:${makerRuntime}`;
@@ -916,7 +920,8 @@ export class LoopDaemon {
             // RX-3: why a failed run failed (infra / no change / regressed) — the bandit counts all three as 0 today
             ...(outcomeVerified ? [] : [`outcome_class:${verificationFailureOutcome(this.db, activeMakerLease.id, verification.gates)}`]),
             ...leaseGradedRefs(meta), // SI-A: graded:<score>, graded_kind, graded_lane when the maker was graded
-            ...(ace ? [`ace-001-arm:${ace.arm}`] : []), ...(ste ? [`ste-001-arm:${ste.arm}`] : []), ...(meta.runtime_fallback ? [FALLBACK_REF] : [])],
+            ...(ace ? [`ace-001-arm:${ace.arm}`] : []), ...(ste ? [`ste-001-arm:${ste.arm}`] : []), ...(meta.runtime_fallback ? [FALLBACK_REF] : []),
+            ...(ran.runtime !== leaseRuntime ? [`requested_runtime:${leaseRuntime}`] : [])],
         });
       } catch { /* best-effort learning */ }
 

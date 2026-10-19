@@ -131,7 +131,10 @@ function collect(db: Database, since: string, until: string, schedulers: string[
   }
 
   for (const r of safeAll<{ run: string; runtime: string; model: string | null; ta: number | null; ru: number | null }>(db,
-    `SELECT loop_run_id AS run, runtime, json_extract(metadata, '$.model') AS model, json_extract(metadata, '$.token_accounting.total_tokens') AS ta,
+    // P0-7: an engine fallback is attributed to the runtime that ran (effective_runtime) with its model (unknown = none)
+    `SELECT loop_run_id AS run, COALESCE(json_extract(metadata, '$.effective_runtime'), runtime) AS runtime,
+      CASE WHEN json_extract(metadata, '$.effective_runtime') IS NOT NULL AND json_extract(metadata, '$.effective_runtime') != runtime
+        THEN json_extract(metadata, '$.effective_model') ELSE json_extract(metadata, '$.model') END AS model, json_extract(metadata, '$.token_accounting.total_tokens') AS ta,
       json_extract(metadata, '$.runtime_usage.total_tokens') AS ru FROM worker_leases
       WHERE role = 'maker' AND runtime != 'manual' AND created_at >= ? AND created_at < ?`, since, until)) {
     const a = acc(leaseConsumer('maker', r.runtime, typeof r.model === 'string' ? r.model : null), 'maker');
