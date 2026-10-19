@@ -1,4 +1,5 @@
 import express from 'express';
+import { rateLimit } from 'express-rate-limit';
 import type { Server } from 'http';
 import type { AddressInfo } from 'net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -41,6 +42,7 @@ beforeAll(async () => {
   const auth = createAuthMiddleware(authService);
   const app = express();
   app.use(express.json());
+  app.use(rateLimit({ windowMs: 60_000, limit: 600 }));
   app.use('/federation', auth.requireAuth, createFederationRoutes(db, auth));
   const local = await listen(app);
   servers.push(local);
