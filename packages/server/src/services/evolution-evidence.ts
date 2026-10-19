@@ -88,6 +88,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'JEV_CHALLENGER_MODEL', acting: false },
   { name: 'DREAM_EVIDENCE_SOURCES', acting: false },
   { name: 'DREAM_PLAYBOOK_GENE', acting: false },
+  { name: 'TRAINING_DATASET_EXPORT', acting: false },
   { name: 'EXTRA_REPOS_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_REPOS', acting: true },
 ];
 
