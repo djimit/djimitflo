@@ -91,6 +91,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'DREAM_PLAYBOOK_GENE', acting: false },
   { name: 'TRAINING_DATASET_EXPORT', acting: false },
   { name: 'VALUE_ALLOCATOR_MODE', acting: false },
+  { name: 'VALUE_ANOMALY_ALARM', acting: false },
   { name: 'EXTRA_REPOS_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_REPOS', acting: true },
 ];
 
