@@ -27,6 +27,7 @@ interface FakePr {
 let db: Database.Database;
 let prs: Map<number, FakePr>; let checks: Map<string, 'green' | 'pending' | 'red'>; let mainCommits: Array<{ sha: string; commit: { message: string } }>;
 let calls: Array<{ method: string; url: string; body?: unknown }>;
+let commitsBySha: Map<string, { parents: Array<{ sha: string }>; committer: { login: string }; commit: { verification: { verified: boolean } } }>;
 const NOW = new Date('2026-10-07T12:00:00Z');
 const env = (mode: string, extra: Record<string, string> = {}) => ({ LOOP_AUTO_MERGE_TEST_ONLY: mode, GITHUB_REPOSITORY: 'o/r', GITHUB_TOKEN: 't0ken', ...extra }) as NodeJS.ProcessEnv;
 const res = (status: number, body: unknown) => ({ ok: status < 300, status, json: async () => body }) as Response;
@@ -49,18 +50,19 @@ const fakeFetch = vi.fn(async (url: string, init?: { method?: string; body?: str
     const s = checks.get(m[1]); if (!s) return res(200, { check_runs: [] });
     return res(200, { check_runs: [{ status: s === 'pending' ? 'in_progress' : 'completed', conclusion: s === 'red' ? 'failure' : s === 'green' ? 'success' : null }] });
   }
+  if ((m = /^commits\/([^/]+)$/.exec(path))) { const c = commitsBySha.get(m[1]); return c ? res(200, c) : res(404, {}); }
   if (/^commits\/[^/]+\/status$/.test(path)) return res(200, { state: 'pending', total_count: 0 });
   if (path === 'commits') return res(200, mainCommits);
   return res(404, {});
 });
 const writes = () => calls.filter((c) => c.method !== 'GET');
 
-function seedPr(number: number, opts: { files?: string[]; proposal?: string; title?: string; login?: string; reviews?: FakePr['reviews']; removed?: boolean; lines?: number; draft?: boolean; behind?: boolean; strength?: 'pass' | 'fail' | 'skipped' | 'none' } = {}) {
+function seedPr(number: number, opts: { files?: string[]; proposal?: string; title?: string; login?: string; reviews?: FakePr['reviews']; removed?: boolean; lines?: number; draft?: boolean; behind?: boolean; strength?: 'pass' | 'fail' | 'skipped' | 'none'; verified?: string | null } = {}) {
   const id = `run-${number}`; const branch = `agent/loop/${id}`;
   db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status) VALUES (?, 'test', ?, 'd', 'r', 'test-gap', ?)`).run(`si-${number}`, `t${number}`, opts.proposal ?? 'verified');
   db.prepare("INSERT INTO goals (id, objective, risk_class, status, metadata, improvement_id, created_at, updated_at) VALUES (?, 'o', 'low', 'completed', '{}', ?, datetime('now'), datetime('now'))").run(`g-${number}`, `si-${number}`);
   db.prepare(`INSERT INTO loop_runs (id, goal_id, loop_name, mode, status, gates_json, metadata, created_at, updated_at) VALUES (?, ?, 'test-gap', 'closed', 'completed', ?, ?, ?, ?)`)
-    .run(id, `g-${number}`, JSON.stringify([{ name: 'diff_under_threshold', status: 'pass' }]), JSON.stringify({ pr_url: `https://github.com/o/r/pull/${number}` }), '2026-10-06T00:00:00Z', '2026-10-06T00:00:00Z');
+    .run(id, `g-${number}`, JSON.stringify([{ name: 'diff_under_threshold', status: 'pass' }]), JSON.stringify({ pr_url: `https://github.com/o/r/pull/${number}`, ...(opts.verified === null ? {} : { verified_head_sha: opts.verified ?? `sha${number}` }) }), '2026-10-06T00:00:00Z', '2026-10-06T00:00:00Z');
   db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, branch_name, metadata, created_at, updated_at) VALUES (?, ?, 'maker', 'opencode', 'completed', ?, ?, ?, ?)`)
     .run(`m-${number}`, id, branch, JSON.stringify({ diff_max_lines: 400,
       // the prod shadow record: status 'skipped' by design, the measured verdict in shadow_status
@@ -76,7 +78,7 @@ const decision = (number: number) => JSON.parse((db.prepare('SELECT metadata FRO
 
 beforeEach(() => {
   db = new Database(':memory:'); db.exec(schema); runMigrations(db);
-  prs = new Map(); checks = new Map(); mainCommits = []; calls = []; fakeFetch.mockClear();
+  prs = new Map(); checks = new Map(); mainCommits = []; commitsBySha = new Map(); calls = []; fakeFetch.mockClear();
 });
 afterEach(() => { setPushSender(null); db.close(); });
 
@@ -287,4 +289,28 @@ it('B14: assertion strength must have passed (the shadow verdict counts); skippe
   expect(decision(702)).toMatchObject({ decision: 'ineligible', reason: 'assertion_strength_fail' });
   expect(decision(703)).toMatchObject({ decision: 'ineligible', reason: 'assertion_strength_skipped' });
   expect(decision(704)).toMatchObject({ decision: 'ineligible', reason: 'assertion_strength_missing' });
+});
+
+it('P0-6: merges only the verified head — a moved head, or a run without a recorded verified head, is never merged', async () => {
+  seedPr(700, { draft: false, verified: 'sha-verified' }); // head sha700 ≠ the verified commit: someone pushed after verification
+  seedPr(702, { draft: false, verified: null }); // legacy run: no verified head recorded
+  seedPr(703, { draft: false }); // head = verified
+  for (const mode of ['shadow', 'act']) {
+    await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env(mode), NOW);
+    expect(decision(700)).toMatchObject({ decision: 'ineligible', reason: 'head_moved' });
+    expect(decision(702)).toMatchObject({ decision: 'ineligible', reason: 'no_verified_head' });
+  }
+  const merges = writes().filter((c) => c.url.endsWith('/merge'));
+  expect(merges).toEqual([{ method: 'PUT', url: 'https://api.github.com/repos/o/r/pulls/703/merge', body: expect.objectContaining({ sha: 'sha703' }) }]);
+});
+
+it('P0-6: a GitHub update-branch merge on top of the verified head is accepted; a hand-pushed merge is head_moved', async () => {
+  seedPr(700, { draft: false, verified: 'v700' }); // head sha700 = web-flow merge of main into v700
+  commitsBySha.set('sha700', { parents: [{ sha: 'v700' }, { sha: 'main1' }], committer: { login: 'web-flow' }, commit: { verification: { verified: true } } });
+  seedPr(702, { draft: false, verified: 'v702' }); // head sha702 = unsigned merge pushed by someone else
+  commitsBySha.set('sha702', { parents: [{ sha: 'v702' }, { sha: 'main1' }], committer: { login: 'mallory' }, commit: { verification: { verified: false } } });
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), NOW);
+  expect(decision(700).decision).toBe('merged');
+  expect(decision(702)).toMatchObject({ decision: 'ineligible', reason: 'head_moved' });
+  expect(writes().filter((c) => c.url.endsWith('/merge')).map((c) => (c.body as { sha: string }).sha)).toEqual(['sha700']);
 });

@@ -49,6 +49,9 @@ it('pushes only the maker files and opens one draft PR per run', async () => {
   expect(req).toMatchObject({ head: 'agent/loop/run-1', base: 'main', draft: true });
   expect(req.body).toContain('checker: accepted');
   expect(fs.readFileSync(path.join(wt, '.git', 'config'), 'utf8')).not.toContain('t0ken'); // token never persisted
+  // P0-6: the pushed commit is recorded as the verified head that auto-merge binds to
+  const meta = JSON.parse((db.prepare("SELECT metadata FROM loop_runs WHERE id = 'run-1'").get() as { metadata: string }).metadata);
+  expect(meta.verified_head_sha).toBe(git(remote, 'rev-parse', 'agent/loop/run-1'));
   expect(await svc.openForRun('run-1')).toBe('https://github.com/o/r/pull/9');
   expect(f).toHaveBeenCalledTimes(1);
 });
