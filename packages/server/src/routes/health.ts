@@ -29,6 +29,7 @@ import { memoryTemplateAnalysis } from '../services/memory-template-dedup';
 import { skillCardsView } from '../services/skill-distillation';
 import { evolutionFeedbackMode, latestEvolutionDigest } from '../services/evolution-feedback';
 import { expertUnitDedupe } from '../services/expert-unit-dedupe';
+import { buildTrainingDataset, trainingDatasetMode, trainingDatasetSummary } from '../services/training-dataset';
 
 export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -218,6 +219,12 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   // RX-1 (Phase F): evolution evidence — flags, outcomes per source, loop PRs, genomes/holdouts, gym per tier, Realm Gates (read-only)
   router.get('/evolution-evidence', requireAuth, requirePermission('manage:config'), (req, res) => {
     res.json(buildEvolutionEvidence(db, process.env, Date.now(), Number(req.query.days) || 30));
+  });
+
+  // TRAINING_DATASET_EXPORT=shadow: counts of the read-only maker fine-tune dataset (source × split × outcome, readiness); never a diff
+  router.get('/training-dataset', requireAuth, requirePermission('manage:config'), (_req, res) => {
+    if (trainingDatasetMode() !== 'shadow') { res.status(404).json({ error: 'disabled', flag: 'TRAINING_DATASET_EXPORT' }); return; }
+    res.json({ mode: 'shadow', ...trainingDatasetSummary(buildTrainingDataset(db)) });
   });
 
   // E3: provenance DAG with edge evidence (read-only); ?days= limits to proposals of the window (default: all history)
