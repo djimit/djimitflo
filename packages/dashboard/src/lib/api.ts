@@ -455,6 +455,24 @@ export type OperatorCockpit = {
   capabilities?: CapabilityVerdict[];
   /** SOUL.md subtraction KPI per ISO week, last 8 (services/subtraction-kpi.ts); weeks null + reason without git — never 0 */
   subtraction?: SubtractionKpi;
+  /** G0.3/G0.4 (services/unit-economics.ts): € and operator minutes per verified / surviving change over 30 d; null = unknown, never 0 */
+  unit_economics?: UnitEconomics | null;
+};
+export type EurPrices = { ollama_cloud: number | null; claude_max: number | null; chatgpt_pro: number | null; vps: number | null; workstation_kwh_eur: number | null };
+export type UnitEconomics = {
+  window_days: number;
+  counts: { verified: number | null; surviving: number | null; superseded_excluded: number | null };
+  eur: { prices: EurPrices; source: string; source_error: string | null;
+    components: Array<{ key: string; eur: number | null; reason: string | null; kwh?: number | null; coverage_pct?: number | null }>;
+    known_cost: number | null; unknown_share: number; reason: string | null; per_verified: number | null; per_surviving: number | null };
+  operator_minutes: {
+    approvals: { human: number; excluded_automated: number; unknown_actor: number; waiting_minutes: number; handling_minutes_estimate: number } | null;
+    human_merges: { count: number; handling_minutes_estimate: number } | null;
+    waiting_minutes: number | null; handling_minutes_estimate: number | null;
+    per_surviving: { waiting_minutes: number | null; handling_minutes_estimate: number | null };
+    handling_minutes_per_item: number; reason: string | null };
+  errors: string[];
+  notes: string[];
 };
 export type SubtractionWeek = { week: string; start: string; end: string; commits: number; lines_added: number; lines_removed: number; files_added: number; files_deleted: number;
   ratio_removed_added: number | null; routes_start: number | null; routes_end: number | null; routes_delta: number | null };
