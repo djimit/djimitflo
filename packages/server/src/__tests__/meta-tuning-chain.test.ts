@@ -81,3 +81,31 @@ it.each(['{broken', '{}', '{"totalTokens":-1}', '{"totalTokens":"2000"}'])('does
   expect(meta.getActiveLoopTuning('doc-drift')).toBeNull();
   expect(db.prepare('SELECT COUNT(*) AS n FROM meta_tuning_log WHERE applied=1').get()).toEqual({ n: 0 });
 });
+
+// Prod 19-10: doc-drift episodes carried no token data (recorded as 0) → avg 0 → maxTokens clamped to the 1000 floor at
+// confidence 0.9 → every claude maker (5855 tokens) failed token_budget while non-reporting runtimes skipped the gate.
+it('episodes without token data are UNKNOWN, not 0: no meta token cap, a reporting maker is not failed', async () => {
+  for (let i = 0; i < 20; i++) record(i, 'success', 0);
+  for (let i = 20; i < 22; i++) record(i, 'success', 4000); // two measured episodes: fewer than the minimum
+  expect(await meta.runAutoTuning()).toEqual({ evaluated: 1, applied: 1 });
+  const tuning = meta.getActiveLoopTuning('doc-drift')!;
+  expect(tuning.recommendedBudget.maxTokens).toBeUndefined();
+  expect(tuning.recommendedBudget.maxRuntimeMs).toBeGreaterThan(0);
+  expect(loops.getTokenBudget(run)).toEqual({ source: 'none' });
+  expect(loops.evaluateTokenBudget(run, { total_tokens: 5855 }, 'fixture-lease')).toMatchObject({ exhausted: false, gate: { status: 'skipped' } });
+  // an explicit goal budget still applies
+  db.prepare("INSERT INTO goals(id,objective,status,risk_class,budget_json) VALUES('explicit-goal','fixture','created','low',?)").run(JSON.stringify({ max_tokens_per_worker: 5000 }));
+  expect(loops.evaluateTokenBudget({ ...run, goal_id: 'explicit-goal' }, { total_tokens: 5855 }, 'fixture-lease').gate.status).toBe('fail');
+});
+
+it('a stale 1000-floor tuning is replaced on the next tick; measured episodes still give avg × 1.5', async () => {
+  db.prepare("INSERT INTO meta_active_loop_parameters (goal_type, tuning_json, updated_at) VALUES ('doc-drift', ?, datetime('now'))")
+    .run(JSON.stringify({ goalType: 'doc-drift', recommendedConcurrency: 3, recommendedBudget: { maxTokens: 1000, maxRuntimeMs: 734365 }, recommendedGateThresholds: { diffMaxLines: 300, minSuccessRate: 0.9 }, confidence: 0.9 }));
+  expect(loops.evaluateTokenBudget(run, { total_tokens: 5855 }, 'fixture-lease').gate.status).toBe('fail');
+  for (let i = 0; i < 20; i++) record(i, 'success', 0);
+  await meta.runAutoTuning();
+  expect(loops.evaluateTokenBudget(run, { total_tokens: 5855 }, 'fixture-lease').gate.status).toBe('skipped');
+  // zero-token episodes do not drag the average of measured ones down: 3 × 2000 measured → 3000
+  for (let i = 20; i < 23; i++) record(i, 'success', 2000);
+  expect(meta.getLoopTuning('doc-drift').recommendedBudget.maxTokens).toBe(3000);
+});

@@ -1566,7 +1566,8 @@ export class LoopService {
   public getTokenBudget(run: LoopRunRecord): { maxTokens?: number; maxTokensPerWorker?: number; maxTokensPerDiffLine?: number; source: 'goal' | 'meta' | 'none' } {
     const configured = this.budget.getTokenBudget(run);
     const tuning = this.metaOrchestration?.getActiveLoopTuning(run.loop_name);
-    return configured.source === 'none' && tuning
+    // a tuning without maxTokens (no measured token history) is no budget, never an invented cap
+    return configured.source === 'none' && tuning?.recommendedBudget.maxTokens !== undefined
       ? { maxTokens: tuning.recommendedBudget.maxTokens, source: 'meta' }
       : configured;
   }
