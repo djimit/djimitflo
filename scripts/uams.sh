@@ -12,7 +12,7 @@
 set -euo pipefail
 
 WORKSTATION="djimit@192.168.1.28"
-API_KEY="${RESEARCH_AGENT_API_KEY:-djimit-local-research-agent-key-2026}"
+API_KEY="${RESEARCH_AGENT_API_KEY:?set RESEARCH_AGENT_API_KEY (no default key in the repo)}"
 UAMS_URL="http://localhost:8000/memory"
 
 case "${1:-help}" in
