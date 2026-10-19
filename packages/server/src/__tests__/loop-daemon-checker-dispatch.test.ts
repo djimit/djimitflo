@@ -177,6 +177,20 @@ describe('LoopDaemon checker dispatch', () => {
     expect(JSON.parse(row.refs)).toEqual(expect.arrayContaining(['graded:0.667', 'graded_kind:mutant_kill', 'graded_lane:test-gap']));
   });
 
+  it('P0-8: a non-high-risk run whose only non-pass gate is the skipped security review is a verified maker outcome (certification rule); completion unchanged', async () => {
+    const goal = seedQualifyingGoal();
+    stubLoops.verifyLoopRun.mockImplementation(() => ({ gates: [
+      { name: 'checker_verdict', status: 'pass', evidence: '' }, { name: 'tests_lint_typecheck', status: 'pass', evidence: '' },
+      { name: 'security_checker_verdict', status: 'skipped', evidence: 'Run is not high-risk.' }] }));
+    const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+    await runOneTick(daemon);
+    const row = db.prepare('SELECT success, evidence_refs_json AS refs FROM skill_outcomes').get() as { success: number; refs: string };
+    expect(row.success).toBe(1);
+    expect(JSON.parse(row.refs).some((r: string) => r.startsWith('outcome_class:'))).toBe(false);
+    // completion authorization keeps the strict every-gate-'pass' rule (operator decision, not changed here)
+    expect((db.prepare('SELECT status FROM goals WHERE id = ?').get(goal.id) as { status: string }).status).toBe('failed');
+  });
+
   it('RX-3: a failed run tags its maker outcome with why it failed (here: the maker never ran → infra), success unchanged', async () => {
     seedQualifyingGoal();
     const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });

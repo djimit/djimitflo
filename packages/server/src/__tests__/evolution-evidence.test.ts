@@ -2,7 +2,7 @@ import { afterEach, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { buildEvolutionEvidence, fisherExact } from '../services/evolution-evidence';
+import { buildEvolutionEvidence, fisherExact, gateRuleDisagreements } from '../services/evolution-evidence';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 
 const NOW = Date.parse('2026-10-04T20:00:00Z');
@@ -13,7 +13,7 @@ afterEach(() => db?.close());
 it('RX-1: an empty or partial schema returns every section and never throws', () => {
   db = new Database(':memory:');
   const e = buildEvolutionEvidence(db, {}, NOW);
-  expect(Object.keys(e)).toEqual(['at', 'window_days', 'flags', 'outcomes', 'outcomes_tagged', 'merge', 'drafts', 'genomes', 'gym', 'gym_prod_gates', 'gym_diffs', 'trials', 'models', 'oracle', 'commons', 'forecasts_v2', 'hacks', 'hack_rate', 'estimates', 'ope', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'auto_merge', 'memory_holdout', 'runtime_fallback', 'inference', 'effort_x1', 'checker_family', 'graded', 'ace_001', 'ste_001', 'maker_deps_001', 'd5_no', 'tg_001', 'knowledge_links', 'holdout_exposure', 'intelligence', 'gates', 'lineage', 'provenance', 'panel_attempts', 'maker_tokens', 'negative_evidence', 'knowledge_gaps', 'jev_challenger', 'experiments']);
+  expect(Object.keys(e)).toEqual(['at', 'window_days', 'flags', 'outcomes', 'outcomes_tagged', 'merge', 'drafts', 'genomes', 'gym', 'gym_prod_gates', 'gym_diffs', 'trials', 'models', 'oracle', 'commons', 'forecasts_v2', 'hacks', 'hack_rate', 'estimates', 'ope', 'egress', 'failure_tasks', 'embedding_dim_mismatch', 'freshness', 'auto_merge', 'memory_holdout', 'runtime_fallback', 'inference', 'effort_x1', 'checker_family', 'graded', 'ace_001', 'ste_001', 'maker_deps_001', 'd5_no', 'tg_001', 'knowledge_links', 'holdout_exposure', 'intelligence', 'gates', 'lineage', 'provenance', 'panel_attempts', 'maker_tokens', 'negative_evidence', 'knowledge_gaps', 'jev_challenger', 'gate_rule_disagreements', 'experiments']);
   // E3: no proposal table → every provenance answer is UNKNOWN, never a 0 count
   expect(e.provenance.answers.every((a) => a.status === 'UNKNOWN')).toBe(true);
   expect(e.knowledge_links).toEqual({ genomes_with_refs: null, genomes_total: null, proposals_with_refs: null });
@@ -26,6 +26,7 @@ it('RX-1: an empty or partial schema returns every section and never throws', ()
   expect(e.inference.panel_fallback).toMatchObject({ reviews: null, quarantined: null }); // no tables: unknown, not 0
   expect(e.inference.budget.usage).toEqual({ ledger: null, opencode_leases: null, total_tokens: null });
   expect(e.inference.failover.transitions).toBeNull();
+  expect(e.gate_rule_disagreements).toBeNull(); // P0-8: no loop_runs table → unknown, not 0
 });
 
 it('RX-1: counts outcomes per source, loop PRs, genomes and gym tiers like hand SQL (foreign keys on)', () => {
@@ -250,4 +251,17 @@ it('§16 step 7: holdout exposure counts distinct candidates run or decided per 
 it('§16 step 7: holdout exposure is fail-soft on an empty schema', () => {
   db = new Database(':memory:');
   expect(buildEvolutionEvidence(db, {}, NOW).holdout_exposure).toMatchObject({ limit: 10, epochs: [], reuse_risk: false });
+});
+
+it('P0-8: counts runs the strict daemon rule and certification judge differently (skipped security review), in the window only', () => {
+  db = new Database(':memory:'); db.exec(schema); runMigrations(db);
+  const run = db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
+    VALUES (?, 'test-gap', 'closed', 'blocked', '[]', '{}', ?, '[]', '{}', ?, ?)`);
+  const g = (sec: string, other = 'pass') => JSON.stringify([{ name: 'checker_verdict', status: other, evidence: '' }, { name: 'security_checker_verdict', status: sec, evidence: '' }]);
+  run.run('disagree', g('skipped'), ago(2), ago(2));
+  run.run('agree-pass', g('pass'), ago(2), ago(2));
+  run.run('agree-fail', g('skipped', 'fail'), ago(2), ago(2)); // both rules fail it
+  run.run('old', g('skipped'), ago(40), ago(40));
+  expect(gateRuleDisagreements(db, ago(30))).toBe(1);
+  expect(buildEvolutionEvidence(db, {}, NOW).gate_rule_disagreements).toBe(1);
 });

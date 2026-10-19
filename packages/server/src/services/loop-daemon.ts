@@ -29,6 +29,7 @@ import { banditSpecies, chooseSpecies, speciesKey } from './runtime-bandit';
 import { recordFitnessShadow } from './fitness-view';
 import { buildProvenance, provenanceJson } from './judgment-provenance';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
+import { allGatesPassed } from './loop-types';
 import { authorityGateForGoal } from './authority-gate';
 import { remoteMakerWaitMs } from '../execution/executors/remote-maker-executor';
 import { recordFailureGaps } from './knowledge-gaps';
@@ -846,7 +847,11 @@ export class LoopDaemon {
 
       // 9. Verify the run (G3.4 convergence verification).
       const verification = this.loops.verifyLoopRun(run.id);
+      // Completion (goal/run status, draft PR, learning closure) keeps the strict every-gate-'pass' rule.
       const allGatesPass = verification.gates.length > 0 && verification.gates.every(g => g.status === 'pass');
+      // P0-8: what learners record (cognitive episode, proposal outcome, skill_outcomes/bandit, model-call ledger, gaps) uses
+      // certification's rule — a skipped security review on a non-high-risk run passes — as outcome_credits already does.
+      const outcomeVerified = allGatesPassed(verification.gates);
 
       // 9a. Feed the cognitive layer: it only learns from 'loop_completed' bus events, which were
       // previously sent solely by the human-approval completeLoopRun() route — so it stayed at 0
@@ -856,7 +861,7 @@ export class LoopDaemon {
         goalId: goal.id,
         goalType: loopName,
         mode: 'closed',
-        status: allGatesPass ? 'completed' : 'failed',
+        status: outcomeVerified ? 'completed' : 'failed',
         durationMs: Date.now() - startedAtMs,
         strategy: executionMode,
         startedAt: new Date(startedAtMs).toISOString(),
@@ -866,7 +871,7 @@ export class LoopDaemon {
       // 9a'. What the run achieved is the proposal's outcome (feeds the source bandit + panel calibration).
       try {
         const linked = this.db.prepare('SELECT improvement_id FROM goals WHERE id = ?').get(goal.id) as { improvement_id: string | null } | undefined;
-        if (linked?.improvement_id) new SelfImprovementService(this.db).recordOutcome(linked.improvement_id, allGatesPass ? 'verified' : verificationFailureOutcome(this.db, activeMakerLease.id, verification.gates));
+        if (linked?.improvement_id) new SelfImprovementService(this.db).recordOutcome(linked.improvement_id, outcomeVerified ? 'verified' : verificationFailureOutcome(this.db, activeMakerLease.id, verification.gates));
       } catch { /* best-effort learning */ }
 
       // 9a'+. Attributable outcome (OUTCOME_ATTRIBUTION_ENABLED): maker / reviewer / environment failure or verified, recorded
@@ -896,9 +901,9 @@ export class LoopDaemon {
         // One outcome per run: two daemon passes can finish the same run.
         const firstPass = !this.db.prepare('SELECT 1 FROM skill_outcomes WHERE skill_id = ? AND task_id = ? AND agent_id = ? LIMIT 1').get(skillId, run.id, activeMakerLease.id);
         // B29: the maker's model call in the ledger, with the experiment arms it ran in (opencode/remote runtime_usage; missing = null)
-        if (firstPass) recordMakerCall(this.db, { runId: run.id, goalId: goal.id, loopName, runtime: makerRuntime, meta, ace, ste, durationMs: Date.now() - startedAtMs, ok: allGatesPass });
+        if (firstPass) recordMakerCall(this.db, { runId: run.id, goalId: goal.id, loopName, runtime: makerRuntime, meta, ace, ste, durationMs: Date.now() - startedAtMs, ok: outcomeVerified });
         if (firstPass) skills.recordOutcome(skillId, {
-          success: allGatesPass,
+          success: outcomeVerified,
           tokensUsed: Number(meta.runtime_usage?.total_tokens) || 0,
           durationMs: Date.now() - startedAtMs,
           domain: loopName,
@@ -909,14 +914,14 @@ export class LoopDaemon {
           ...(typeof meta.model === 'string' ? { model: meta.model } : {}),
           evidenceRefs: [`loop_run:${run.id}`, `genome:${genome.id}`, ...(typeof meta.genome_id === 'string' ? [`strategy_genome:${meta.genome_id}`] : []), ...verification.gates.filter(g => g.status !== 'pass').map(g => `gate:${g.name}:${g.status}`),
             // RX-3: why a failed run failed (infra / no change / regressed) — the bandit counts all three as 0 today
-            ...(allGatesPass ? [] : [`outcome_class:${verificationFailureOutcome(this.db, activeMakerLease.id, verification.gates)}`]),
+            ...(outcomeVerified ? [] : [`outcome_class:${verificationFailureOutcome(this.db, activeMakerLease.id, verification.gates)}`]),
             ...leaseGradedRefs(meta), // SI-A: graded:<score>, graded_kind, graded_lane when the maker was graded
             ...(ace ? [`ace-001-arm:${ace.arm}`] : []), ...(ste ? [`ste-001-arm:${ste.arm}`] : []), ...(meta.runtime_fallback ? [FALLBACK_REF] : [])],
         });
       } catch { /* best-effort learning */ }
 
       // 9a'''. K2 (KNOWLEDGE_GAP_MODE=shadow): a failure signature recurring >= 3x in 14 d becomes one knowledge gap (never throws)
-      if (!allGatesPass) recordFailureGaps(this.db);
+      if (!outcomeVerified) recordFailureGaps(this.db);
 
       // 9b. Close learning loop (reflection + memory + follow-up).
       if (allGatesPass) {

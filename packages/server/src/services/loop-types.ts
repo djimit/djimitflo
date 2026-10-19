@@ -45,6 +45,16 @@ export interface LoopGate {
   evidence: string;
 }
 
+/**
+ * P0-8: the one "this gate passed" rule. A security review that was skipped (the run is not high-risk) counts as a pass —
+ * certification (certifyLoopRun) and the daemon's learning outcome (skill_outcomes, bandit, proposal outcome) both use it,
+ * so a run is never 'regressed' for a learner while 'verified' in outcome_credits.
+ */
+export const gatePasses = (gate: Pick<LoopGate, 'name' | 'status'>): boolean =>
+  gate.status === 'pass' || (gate.name === 'security_checker_verdict' && gate.status === 'skipped');
+/** P0-8: every gate passed under {@link gatePasses}; no gates is not a pass. */
+export const allGatesPassed = (gates: ReadonlyArray<Pick<LoopGate, 'name' | 'status'>>): boolean => gates.length > 0 && gates.every(gatePasses);
+
 export interface LoopRunRecord {
   id: string;
   goal_id: string | null;
