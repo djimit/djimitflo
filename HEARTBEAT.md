@@ -28,6 +28,7 @@ unknown …) is `GET /api/health/schedulers` (admins). Armed is intent, not exec
 | specialist_panel_backlog | `SPECIALIST_PANEL_BACKLOG_ENABLED` | `specialistPanelBacklogSched.intervalMinutes()` min | `packages/server/src/index.ts` |
 | stall_watch | `STALL_WATCH_ENABLED` | 1 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | test_gap_source | `TEST_GAP_SOURCE_ENABLED` | 6 h | `packages/server/src/bootstrap/autonomous-services.ts` |
+| value_allocator | `VALUE_ALLOCATOR_MODE` | 6 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 
 ## Operator tasks (daily)
 
