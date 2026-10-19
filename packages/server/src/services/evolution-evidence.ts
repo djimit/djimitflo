@@ -41,6 +41,7 @@ import { extraRepos } from './repo-registry';
 import { allGatesPassed } from './loop-types';
 import { BASELINE_GENOME, holdoutEpoch } from './genome-registry';
 import { experimentsReport } from './experiment-registry';
+import { learningLedger } from './learning-ledger';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -414,6 +415,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   const memory_holdout = memoryHoldoutEvidence(db, since, env);
   const effort_x1 = effortX1Evidence(db, since, env, fisherExact);
   const holdout_exposure = holdoutExposure(db, env);
+  const experiments = experimentsReport(db, env, now);
   return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, gym_prod_gates, gym_diffs, trials, models, oracle, commons, forecasts_v2, hacks,
     // S7: hack-detector flag rate per genome and gym task kind (14 d) and canary passes, Wilson 95 %
     hack_rate: hackRateEvidence(db, env, now), estimates, ope,
@@ -474,5 +476,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // P0-8: runs the old daemon pass rule and certification would have judged differently (skipped security review), 30 d
     gate_rule_disagreements: gateRuleDisagreements(db, since),
     // Know when to stop (SOUL.md): running experiments, target n, registered stop date, n per arm, overdue (report-only)
-    experiments: experimentsReport(db, env, now) };
+    experiments,
+    // G3.5: per learning mechanism the effect + CI its experiment's evidence already computes, status, 'loops closed k/N' (read-only)
+    learning_ledger: learningLedger(db, experiments.experiments, ope) };
 }
