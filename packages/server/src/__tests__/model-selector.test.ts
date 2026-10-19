@@ -70,6 +70,9 @@ it('MS-1: shadow mode records the incumbent and one candidate, and never uses th
 });
 
 it('MS-1: enforce uses the qualified cheaper model and falls back to the incumbent when its answer does not parse', async () => {
+  // the service reads the wall clock; pin it to the fixture time so the 14-day window does not expire (it did on 2026-10-19)
+  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(NOW);
+  try {
   fresh(); for (const [k, v] of Object.entries({ ...ENV, MODEL_SELECTOR_MODE: 'enforce', SELF_IMPROVEMENT_REVIEW_MODEL: 'kimi-k3:cloud' })) vi.stubEnv(k, v as string);
   calls('glm-5.3-flash:cloud', 40);
   const models: Array<string | undefined> = [];
@@ -83,6 +86,7 @@ it('MS-1: enforce uses the qualified cheaper model and falls back to the incumbe
   // below the Wilson bar (41/42 ok): the second specialist goes straight to the incumbent
   expect(models).toEqual(['glm-5.3-flash:cloud', 'glm-5.3-flash:cloud', 'kimi-k3:cloud', 'kimi-k3:cloud']);
   expect(updated.consensus.support_count).toBe(2);
+  } finally { vi.useRealTimers(); }
 });
 
 it('MS-1: the evidence endpoint shows per-model calls, ok and agreement rates, cost and the would-pick', () => {
