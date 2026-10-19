@@ -28,6 +28,7 @@ let db: Database.Database;
 let prs: Map<number, FakePr>; let checks: Map<string, 'green' | 'pending' | 'red'>; let mainCommits: Array<{ sha: string; commit: { message: string } }>;
 let calls: Array<{ method: string; url: string; body?: unknown }>;
 let commitsBySha: Map<string, { parents: Array<{ sha: string }>; committer: { login: string }; commit: { verification: { verified: boolean } } }>;
+let commitStatus: Map<string, unknown>;
 const NOW = new Date('2026-10-07T12:00:00Z');
 const env = (mode: string, extra: Record<string, string> = {}) => ({ LOOP_AUTO_MERGE_TEST_ONLY: mode, GITHUB_REPOSITORY: 'o/r', GITHUB_TOKEN: 't0ken', ...extra }) as NodeJS.ProcessEnv;
 const res = (status: number, body: unknown) => ({ ok: status < 300, status, json: async () => body }) as Response;
@@ -50,8 +51,8 @@ const fakeFetch = vi.fn(async (url: string, init?: { method?: string; body?: str
     const s = checks.get(m[1]); if (!s) return res(200, { check_runs: [] });
     return res(200, { check_runs: [{ status: s === 'pending' ? 'in_progress' : 'completed', conclusion: s === 'red' ? 'failure' : s === 'green' ? 'success' : null }] });
   }
+  if ((m = /^commits\/([^/]+)\/status$/.exec(path))) return res(200, commitStatus.get(m[1]) ?? { state: 'pending', total_count: 0 });
   if ((m = /^commits\/([^/]+)$/.exec(path))) { const c = commitsBySha.get(m[1]); return c ? res(200, c) : res(404, {}); }
-  if (/^commits\/[^/]+\/status$/.test(path)) return res(200, { state: 'pending', total_count: 0 });
   if (path === 'commits') return res(200, mainCommits);
   return res(404, {});
 });
@@ -78,7 +79,7 @@ const decision = (number: number) => JSON.parse((db.prepare('SELECT metadata FRO
 
 beforeEach(() => {
   db = new Database(':memory:'); db.exec(schema); runMigrations(db);
-  prs = new Map(); checks = new Map(); mainCommits = []; commitsBySha = new Map(); calls = []; fakeFetch.mockClear();
+  prs = new Map(); checks = new Map(); mainCommits = []; commitsBySha = new Map(); calls = []; commitStatus = new Map(); fakeFetch.mockClear();
 });
 afterEach(() => { setPushSender(null); db.close(); });
 
@@ -162,6 +163,17 @@ it('act: ready → update branch → wait for checks → squash-merge, with a lo
   expect(sent).toEqual(['Auto-merged test-only loop PR #700: https://github.com/o/r/pull/700']);
   await tick();
   expect(writes()).toHaveLength(3); // merged is final
+});
+
+it('P0-5: the PR-review heuristic status (djimitflo-review) never makes a PR green; an independent check does', async () => {
+  seedPr(700, { draft: false }); checks.delete('sha700'); // no check runs: only the heuristic reported
+  commitStatus.set('sha700', { state: 'success', total_count: 1, statuses: [{ context: 'djimitflo-review', state: 'success' }] });
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), NOW);
+  expect(decision(700)).toMatchObject({ decision: 'waiting', reason: 'checks_pending' });
+  expect(writes()).toEqual([]);
+  commitStatus.set('sha700', { state: 'success', total_count: 2, statuses: [{ context: 'djimitflo-review', state: 'success' }, { context: 'ci/test', state: 'success' }] });
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), NOW);
+  expect(decision(700)).toMatchObject({ decision: 'merged' });
 });
 
 it('act: red checks make the PR ineligible and it is never merged', async () => {

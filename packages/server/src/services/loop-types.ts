@@ -218,8 +218,11 @@ export interface CheckerVerdictInput {
   maker_lease_id?: string;
   verdict: 'accepted' | 'needs_revision' | 'rejected' | 'insufficient_evidence';
   notes?: string;
-  /** P1a: manual-runtime verdicts require explicit attestation (reviewer + reason). */
-  manual_attestation?: { reviewer: string; reason: string };
+  /**
+   * P1a: manual-runtime verdicts require explicit attestation (reviewer + reason). P0-5: reviewer_type says what reviewed —
+   * 'heuristic' (an automated rule, e.g. the PR-review webhook) is never a human or independent review; absent = legacy/human.
+   */
+  manual_attestation?: { reviewer: string; reason: string; reviewer_type?: 'human' | 'heuristic' };
 }
 
 export interface RunChecksInput {
