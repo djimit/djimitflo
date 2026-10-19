@@ -1,6 +1,7 @@
 import { mutationCheckEnv } from './test-gap-source-service';
 import { assertionStrengthCheck } from './test-assertion-strength';
 import { deadCodeCheckEnv } from './dead-code-source-service';
+import { findingFixCheck, findingFixCheckEnv } from './finding-fix-source';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -1145,7 +1146,7 @@ export class LoopService {
         cwd: makerLease.worktree_path!,
         encoding: 'utf8',
         timeout: timeoutMs,
-        env: { ...this.buildRuntimeEnv(), ...mutationCheckEnv(this.db, run.goal_id), ...deadCodeCheckEnv(this.db, run.goal_id) },
+        env: { ...this.buildRuntimeEnv(), ...mutationCheckEnv(this.db, run.goal_id), ...deadCodeCheckEnv(this.db, run.goal_id), ...findingFixCheckEnv(this.db, run.goal_id) },
         maxBuffer: 5 * 1024 * 1024,
       });
       const exitStatus = typeof result.status === 'number' ? result.status : null;
@@ -1168,6 +1169,13 @@ export class LoopService {
       const strength = assertionStrengthCheck(this.db, run.goal_id, makerLease.worktree_path!, makerLease.metadata?.changed_files, outputDir);
       if (strength) checks.push(strength);
     } catch { /* an evidence check never breaks the scripted checks */ }
+    // G2.2 finding-fix lane: Djimitflo's own gate re-scans the target file; it is a gate, so an exception is a failed check
+    try {
+      const findingFix = findingFixCheck(this.db, run.goal_id, makerLease.worktree_path!, outputDir);
+      if (findingFix) checks.push(findingFix);
+    } catch (err) {
+      if (Object.keys(findingFixCheckEnv(this.db, run.goal_id)).length) checks.push({ name: 'test:finding-fix', status: 'fail', reason: `gate_error: ${err instanceof Error ? err.message : String(err)}`, exit_status: null });
+    }
     const failed = checks.some((check) => check.status === 'fail');
     // Batch-8 evidence freshness: fingerprint what the checks READ (configs, lockfile, imports) at the base commit.
     let evidenceReadSet: ReadSet | undefined;

@@ -137,6 +137,8 @@ COPY packages/server/corpus packages/server/corpus
 COPY docs/research/negative-evidence/NEGATIVE_EVIDENCE.yaml docs/research/negative-evidence/NEGATIVE_EVIDENCE.yaml
 # /usage plan limits (operator-filled) read relative to dist (packages/server/dist/services → /app/docs)
 COPY docs/usage-plan-limits.json docs/usage-plan-limits.json
+# Finding-fix lane oracle (Djimitflo-held; the daemon runs this copy, never the maker worktree's)
+COPY scripts/finding-fix-gate.mjs scripts/finding-fix-gate.mjs
 
 # Copy entrypoint
 COPY docker-entrypoint.sh ./docker-entrypoint.sh

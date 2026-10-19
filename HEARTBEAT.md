@@ -15,6 +15,7 @@ unknown …) is `GET /api/health/schedulers` (admins). Armed is intent, not exec
 | dream_state | `DREAM_STATE_ENABLED` | 6 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | evolution_estimators | `EVOLUTION_ESTIMATORS_ENABLED` | 1 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | evolution_gym | `EVOLUTION_GYM_ENABLED` | 1 h | `packages/server/src/bootstrap/autonomous-services.ts` |
+| finding_fix_lane | `FINDING_FIX_LANE` | 12 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | frontier_experts | `FRONTIER_EXPERTS_SCHEDULER_ENABLED` | `frontierExpertsSched.intervalMinutes()` min | `packages/server/src/index.ts` |
 | inference_failover_probe | `OLLAMA_AUTO_FAILOVER` | 30 min | `packages/server/src/index.ts` |
 | loop_auto_merge | `LOOP_AUTO_MERGE_TEST_ONLY` | 15 min | `packages/server/src/bootstrap/autonomous-services.ts` |
