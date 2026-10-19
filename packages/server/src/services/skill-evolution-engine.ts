@@ -25,6 +25,7 @@
 import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { UNFAIR_ZERO_SQL } from './runtime-bandit';
+import { supersededMergeOutcomeSql } from './merge-superseded';
 
 interface SkillGenome {
   id: string;
@@ -202,7 +203,7 @@ export class SkillEvolutionEngine {
     // E2: an infra / no-change zero is no observation of the skill (left out, never a 0)
     const r = this.db.prepare(`SELECT COUNT(*) AS n, AVG(success) AS rel,
         AVG(MIN(1.0, 1000.0 / MAX(1, tokens_used))) AS eff FROM skill_outcomes WHERE skill_id = ?
-        AND NOT (success = 0 AND ${UNFAIR_ZERO_SQL})`).get(skillId) as { n: number; rel: number | null; eff: number | null };
+        AND NOT (success = 0 AND ${UNFAIR_ZERO_SQL})${skillId.includes('loop-maker:merge:') ? ` AND NOT ${supersededMergeOutcomeSql('skill_outcomes')}` : ''}`).get(skillId) as { n: number; rel: number | null; eff: number | null };
     const has = r.n > 0;
     return { efficiency: has ? r.eff : null, reliability: has ? r.rel : null, generality: null, complexity: null, adaptability: null };
   }

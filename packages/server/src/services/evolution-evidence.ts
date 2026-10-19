@@ -1,5 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import { emptySettlementCounts, loopPrSettlements, survivalCounts } from './merge-survival';
+import { supersededMergeOutcomeSql } from './merge-superseded';
 import { failureTaskEvidence } from './gym-failure-tasks';
 import { specGapEvidence } from './spec-gap-source';
 import { forecastScoresV2 } from './forecast-scoring';
@@ -73,6 +74,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'GRADED_FITNESS_MODE', acting: false }, { name: 'GRADED_CONTEST_MODE', acting: true },
   { name: 'SHIPPED_CODE_SCAN_MODE', acting: false },
   { name: 'GYM_STORE_DIFFS', acting: false }, { name: 'WEAK_ASSERTION_CHECK_MODE', acting: true },
+  { name: 'MAKER_DIFF_CAPTURE', acting: false },
   { name: 'POLICY_VIOLATION_LOG', acting: false },
   { name: 'CHECKER_FAMILY_RANDOMISE', acting: true }, { name: 'CHECKER_CROSS_MODEL', acting: true }, { name: 'CHECKER_FAMILY_TARGET_PER_ARM', acting: false },
   { name: 'CHECKER_FAMILY_VERSION', acting: true },
@@ -87,6 +89,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'JEV_CHALLENGER_MODEL', acting: false },
   { name: 'DREAM_EVIDENCE_SOURCES', acting: false },
   { name: 'DREAM_PLAYBOOK_GENE', acting: false },
+  { name: 'TRAINING_DATASET_EXPORT', acting: false },
   { name: 'EXTRA_REPOS_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_REPOS', acting: true },
 ];
 
@@ -253,7 +256,11 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   const byRepo = extras.length ? extras.map((r) => {
     try { const c = survivalCounts(loopPrSettlements(db, now, r.slug, env).map((p) => p.settlement.state)); return { repo: r.slug, ...c }; } catch { return { repo: r.slug, survived: null, regressed: null, settled: null, rate: null }; }
   }) : undefined;
-  const merge = { settled, settlement, ...(byRepo ? { extra_repos: byRepo } : {}), merge_outcomes: one("SELECT COUNT(*) FROM skill_outcomes WHERE domain = 'merge' AND skill_id LIKE 'loop-maker:%'"), first_settled: all<{ at: string }>("SELECT MIN(created_at) AS at FROM skill_outcomes WHERE domain = 'merge' AND skill_id LIKE 'loop-maker:%'")[0]?.at ?? null };
+  // merge outcomes of PRs closed as superseded by a requeue are no verdict (merge-superseded.ts): counted apart, never in merge_outcomes
+  const scoredMerge = `FROM skill_outcomes o WHERE o.domain = 'merge' AND o.skill_id LIKE 'loop-maker:%' AND NOT ${supersededMergeOutcomeSql('o')}`;
+  const merge = { settled, settlement, ...(byRepo ? { extra_repos: byRepo } : {}), merge_outcomes: one(`SELECT COUNT(*) ${scoredMerge}`),
+    merge_outcomes_superseded: one(`SELECT COUNT(*) FROM skill_outcomes o WHERE o.domain = 'merge' AND o.skill_id LIKE 'loop-maker:%' AND ${supersededMergeOutcomeSql('o')}`),
+    first_settled: all<{ at: string }>(`SELECT MIN(o.created_at) AS at ${scoredMerge}`)[0]?.at ?? null };
   const drafts = { unsettled: openDrafts.length, unsettled_open_or_recent: openDrafts.length, anomalous: settlement ? settlement.by_state.PIPELINE_ANOMALY : null,
     age_days_p50: q(0.5), age_days_max: ages.length ? +ages[ages.length - 1].toFixed(1) : null,
     note: 'unsettled_open_or_recent = settlement OPEN_BLOCKED (not closed) or MERGED_SURVIVAL_PENDING: still open, or merged < 14 d ago (E1 settlementState). anomalous = PIPELINE_ANOMALY, counted apart. The open count is the draft throttle\'s (RX-6, draft_pr_throttle* events)' };

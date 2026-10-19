@@ -20,6 +20,7 @@ import { remoteMakerCancelReason } from '../execution/executors/remote-maker-exe
 import { SUBSCRIPTION_ENV_MARKER } from '../execution/executors/subscription-env';
 import { recordPolicyViolation } from './policy-violations';
 import { computeTokenAccounting, safeTokenAccounting } from './maker-token-accounting';
+import { captureMakerDiff } from './maker-diff-capture';
 import { assignMakerDepsArm, makerDeps001On, makerDepsEligible } from './maker-deps-001';
 import { applyOutageFallback, fallbackRefusal, isFallbackLease } from './ollama-outage-fallback';
 import { noteOllamaOutput } from './inference-failover';
@@ -246,6 +247,8 @@ export class LoopWorkerExecutorService {
       runtime_signal: result.signal, runtime_timed_out: result.timedOut, runtime_timed_out_at: result.timedOutAt,
       runtime_warnings: runtimeWarnings, token_efficiency: efficiency,
       runtime_usage: runtimeUsage || { usage_source: 'unknown' }, token_accounting: tokenAccounting,
+      // MAKER_DIFF_CAPTURE=on: the redacted, capped diff diff_lines was counted from (record-only; an error leaves only diff_capture_error)
+      ...captureMakerDiff(diff),
       ...(fallbackLimited ? { failure_reason: LIMIT_HIT, subscription_limit_hit_at: new Date().toISOString() } : failed ? { failure_reason: `maker_gate_failed:${gates.filter((gate) => gate.status === 'fail').map((gate) => gate.name).join(',')}${remoteCancel ? `;remote_maker_cancelled:${remoteCancel}` : ''}` } : {}),
     };
 

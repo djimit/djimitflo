@@ -1,5 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import { DreamStateService } from './dream-state-service';
+import { supersededMergeOutcomeSql } from './merge-superseded';
 
 /** Read-only SQL aggregation of the whole improvement chain, so "where does it leak" is one call. */
 
@@ -59,7 +60,7 @@ export class ImprovementFunnelService {
 
   private runCost(since: string, verified: number): { runs: number; runSuccessRate: number | null; tokensPerVerified: number | null } {
     try {
-      const r = this.db.prepare('SELECT COUNT(*) AS runs, SUM(success) AS ok, SUM(tokens_used) AS tokens FROM skill_outcomes WHERE skill_id LIKE ? AND created_at >= ?')
+      const r = this.db.prepare(`SELECT COUNT(*) AS runs, SUM(success) AS ok, SUM(tokens_used) AS tokens FROM skill_outcomes WHERE skill_id LIKE ? AND created_at >= ? AND NOT ${supersededMergeOutcomeSql('skill_outcomes')}`)
         .get('loop-maker:%', since) as { runs: number; ok: number | null; tokens: number | null };
       return { runs: r.runs, runSuccessRate: r.runs ? (r.ok ?? 0) / r.runs : null, tokensPerVerified: verified && r.tokens ? Math.round(r.tokens / verified) : null };
     } catch { return { runs: 0, runSuccessRate: null, tokensPerVerified: null }; } // skill_outcomes is created lazily

@@ -8,6 +8,7 @@ import { infraFailing } from './evolution-gym-service';
 import { ATTRIBUTION_OF_PROPOSAL, decisionsInbox, openDecisionCounts } from './decisions-inbox';
 import { listSchedulers, type SchedulerHealth, type SchedulerStatus } from './scheduler-registry';
 import { nonMakerRunSql, outcomeAttributionEnabled } from './outcome-attribution';
+import { supersededMergeOutcomeSql } from './merge-superseded';
 import { evolutionLineage, postVerificationRegressions } from './evolution-lineage';
 import { panelAttemptMetrics, type PanelAttemptMetrics } from './panel-attempt-metrics';
 
@@ -186,7 +187,7 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
     `SELECT substr(r.value, 8) AS genome, s.skill_id, COUNT(*) AS outcomes, SUM(s.success) AS wins
        FROM skill_outcomes s, json_each(s.evidence_refs_json) r
       WHERE r.value LIKE 'genome:%' AND s.created_at >= ? AND (s.skill_id LIKE 'loop-maker:gym:%') = ?
-        AND NOT (s.success = 0 AND ${nonMakerRunSql('s.task_id', env)}) GROUP BY 1, 2 ORDER BY outcomes DESC LIMIT 20`, d30, scope === 'gym' ? 1 : 0) ?? [])
+        AND NOT (s.success = 0 AND ${nonMakerRunSql('s.task_id', env)}) AND NOT ${supersededMergeOutcomeSql('s')} GROUP BY 1, 2 ORDER BY outcomes DESC LIMIT 20`, d30, scope === 'gym' ? 1 : 0) ?? [])
     .map((g) => ({ ...g, scope, win_pct: g.outcomes ? Math.round((100 * g.wins) / g.outcomes) : 0 }));
   const genomes = [...genomesIn('production'), ...genomesIn('gym')];
   const in60 = new Date(now + 3_600_000).toISOString();
