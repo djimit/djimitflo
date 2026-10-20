@@ -284,10 +284,27 @@ export interface EvolutionEvidence {
   jev_challenger?: JevChallengerEvidence;
   /** Know when to stop (services/experiment-registry.ts): running experiments, target n, registered stop date, overdue (report-only) */
   experiments?: ExperimentsEvidence;
+  /** G3.5 (services/learning-ledger.ts): per learning mechanism effect + CI from its experiment's evidence, status, loops closed k/N (read-only) */
+  learning_ledger?: LearningLedger;
 }
+export type ExperimentEffect = { metric: string; estimate: number | null; ci: [number, number] | null; p: number | null };
+/** G1.5 power left; null = unknown, never 0 */
+export type ExperimentPower = { n_so_far: number | null; target_per_arm: number | null; days_to_stop: number | null; accrual_window_days: number | null;
+  accrual_per_day: Record<string, number> | null; projected_min_arm_n: number | null; projected_reaches_target: boolean | null };
 export type ExperimentRow = { id: string; flag: string; protocol: string; started_at: string; target_n: number | null; stop_by: string | null; stop_note: string; stop_source: string;
-  n_per_arm: Record<string, number> | null; min_arm_n: number | null; verdict: string | null; overdue: boolean; overdue_reason: string | null; error?: string };
-export type ExperimentsEvidence = { experiments: ExperimentRow[]; overdue: string[]; no_stop_date: string[]; note: string };
+  population: 'oracle_goals' | 'gym_tasks' | 'prescreen_proposals' | 'judgments'; approved_over_limit?: string;
+  n_per_arm: Record<string, number> | null; min_arm_n: number | null; verdict: string | null; effects?: Record<string, ExperimentEffect>;
+  overdue: boolean; overdue_reason: string | null; power: ExperimentPower; error?: string };
+export type ExperimentsEvidence = { experiments: ExperimentRow[]; overdue: string[]; no_stop_date: string[]; note: string;
+  /** G1.5 WIP limit on the oracle-goal population (report-only) */
+  wip: { population: 'oracle_goals'; limit: number; active: string[]; active_count: number; over_wip_limit: boolean; counted: string[];
+    approved_over_limit: Array<{ id: string; reason: string }>; guard_ok: boolean } };
+export type LearningStatus = 'ADOPTED' | 'REJECTED' | 'RUNNING' | 'INSUFFICIENT' | 'NOT_MEASURED';
+export type LearningLedger = {
+  loops_closed: { k: number; n: number; headline: string }; by_status: Record<LearningStatus, number>; note: string;
+  mechanisms: Array<{ mechanism: string; name: string; data_source: string; experiment: string | null; metric: string | null; estimate: number | null;
+    ci: [number, number] | null; p: number | null; status: LearningStatus; closed: boolean; note: string }>;
+};
 
 export interface JevChallengerRate { k: number; n: number; rate: number | null; ci_low: number | null; ci_high: number | null; status: 'ok' | 'insufficient' }
 export interface JevChallengerTruth { primary: JevChallengerRate; challenger: JevChallengerRate; abstained?: { primary: number; challenger: number } }
