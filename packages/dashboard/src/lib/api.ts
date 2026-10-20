@@ -286,6 +286,12 @@ export interface EvolutionEvidence {
   experiments?: ExperimentsEvidence;
   /** G3.5 (services/learning-ledger.ts): per learning mechanism effect + CI from its experiment's evidence, status, loops closed k/N (read-only) */
   learning_ledger?: LearningLedger;
+  /** P0-3 (FLEET_EVENT_SIGNATURES): agent.outcome signature verdicts per host and the host key list (services/fleet-event-signatures.ts); null = table absent */
+  fleet_signatures?: {
+    mode: 'off' | 'shadow' | 'enforce';
+    by_host: Array<{ host: string; verdict: 'verified' | 'unsigned' | 'bad_signature' | 'replay' | 'unknown_host' | 'revoked'; n: number }> | null;
+    keys: Array<{ host: string; key_id: string; alg: string; status: string; created_at: string; revoked_at: string | null }> | null;
+  };
 }
 export type ExperimentEffect = { metric: string; estimate: number | null; ci: [number, number] | null; p: number | null };
 /** G1.5 power left; null = unknown, never 0 */

@@ -42,6 +42,7 @@ import { allGatesPassed } from './loop-types';
 import { BASELINE_GENOME, holdoutEpoch } from './genome-registry';
 import { experimentsReport } from './experiment-registry';
 import { learningLedger } from './learning-ledger';
+import { fleetSignatureEvidence } from './fleet-event-signatures';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -95,6 +96,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'TRAINING_DATASET_EXPORT', acting: false },
   { name: 'VALUE_ALLOCATOR_MODE', acting: false },
   { name: 'VALUE_ANOMALY_ALARM', acting: false },
+  { name: 'FLEET_EVENT_SIGNATURES', acting: true },
   { name: 'EXTRA_REPOS_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_REPOS', acting: true },
 ];
 
@@ -479,5 +481,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // Know when to stop (SOUL.md): running experiments, target n, registered stop date, n per arm, overdue (report-only)
     experiments,
     // G3.5: per learning mechanism the effect + CI its experiment's evidence already computes, status, 'loops closed k/N' (read-only)
-    learning_ledger: learningLedger(db, experiments.experiments, ope) };
+    learning_ledger: learningLedger(db, experiments.experiments, ope),
+    // P0-3 (FLEET_EVENT_SIGNATURES): agent.outcome signature verdicts per host (window) and the host key list, no secrets (read-only)
+    fleet_signatures: fleetSignatureEvidence(db, env, since) };
 }

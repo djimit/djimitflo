@@ -7,8 +7,50 @@ Stdlib only, Python 3.9-safe (Mac mini). Never raises into the caller: exit 0 ev
   emit-agent-outcome.py --agent hermes-eve-v --task-kind briefing --success true [--model kimi-k3] [--tokens 1200] \
       [--duration-ms 5400] [--ref https://...] [--dry-run]
   emit-agent-outcome.py --selfcheck
+
+P0-3 signing: when the key file exists (DJIMIT_FLEET_EVENT_KEY_FILE, default ~/.djimit/fleet-event.key, mode 600; one line
+`<host> <key_id> <secret>`, minted by the operator inside the Djimitflo container) the event gets host, key_id,
+sig_alg=hmac-sha256 and sig. HMAC-SHA256, not Ed25519: Python's stdlib has no Ed25519 and this script stays stdlib-only;
+the server verifier accepts both. Signed bytes: canonical JSON (sorted keys, no spaces) of {agent, event_id, host,
+payload_sha256, success, task_kind, ts}, payload_sha256 = sha256 hex of canonical JSON of the present optional fields
+(duration_ms, model, ref, tokens) as strings. No key file -> the event is sent unsigned, exactly as before.
 """
-import argparse, json, os, sys, time, urllib.request, uuid
+import argparse, base64, hashlib, hmac, json, os, sys, time, urllib.request, uuid
+
+KEY_FILE = os.environ.get('DJIMIT_FLEET_EVENT_KEY_FILE', os.path.expanduser('~/.djimit/fleet-event.key'))
+PAYLOAD_FIELDS = ('duration_ms', 'model', 'ref', 'tokens')
+
+
+def canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+
+
+def signed_body(event):
+    payload = {f: str(event[f]) for f in PAYLOAD_FIELDS if event.get(f) is not None}
+    return canonical({'agent': event['agent'], 'event_id': event['event_id'], 'host': event['host'],
+                      'payload_sha256': hashlib.sha256(canonical(payload).encode('utf-8')).hexdigest(),
+                      'success': event['success'], 'task_kind': event['task_kind'], 'ts': event['occurred_at']})
+
+
+def sign(event, host, key_id, secret):
+    """Adds host, key_id, sig_alg and sig in place; the secret itself never enters the event."""
+    event.update({'host': host, 'key_id': key_id, 'sig_alg': 'hmac-sha256'})
+    mac = hmac.new(secret.encode('utf-8'), signed_body(event).encode('utf-8'), hashlib.sha256).digest()
+    event['sig'] = base64.urlsafe_b64encode(mac).decode('ascii').rstrip('=')
+    return event
+
+
+def load_key(path=KEY_FILE):
+    """(host, key_id, secret) or None when there is no usable key file (then the event goes unsigned)."""
+    try:
+        with open(path) as f:
+            parts = f.read().split()
+    except OSError:
+        return None
+    if len(parts) != 3:
+        print('fleet event key file malformed; sending unsigned', file=sys.stderr)
+        return None
+    return tuple(parts)
 
 
 def build(agent, task_kind, success, model=None, tokens=None, duration_ms=None, ref=None):
@@ -32,10 +74,19 @@ def main():
     if a.selfcheck:
         e = build('x', 'y', True, tokens=3)
         assert e['event_type'] == 'agent.outcome' and e['success'] is True and e['tokens'] == 3 and 'model' not in e
-        print('selfcheck ok'); return
+        # fixed vector shared with the TS verifier test (packages/server/src/__tests__/fleet-event-signatures.test.ts)
+        v = sign({'event_id': 'agent-outcome:fixture-1', 'event_type': 'agent.outcome', 'source': 'hermes', 'agent': 'hermes',
+                  'task_kind': 'briefing', 'success': True, 'occurred_at': '2026-10-20T08:00:00Z', 'tokens': 1200, 'model': 'kimi-k3'},
+                 'macmini', '0123456789abcdef', 'fixture-secret')
+        assert v['sig'] == 'sGOwPZ1cvtEUsA1EBpcixRnV2kv8Us2q23n2C9CbT-0', v['sig']
+        assert 'fixture-secret' not in json.dumps(v)
+        print('selfcheck ok (signing ' + ('configured' if load_key() else 'not configured') + ')'); return
     if not (a.agent and a.task_kind and a.success in ('true', 'false')):
         ap.error('--agent, --task-kind and --success true|false are required')
     event = build(a.agent, a.task_kind, a.success == 'true', a.model, a.tokens, a.duration_ms, a.ref)
+    key = load_key()
+    if key:
+        sign(event, *key)
     if a.dry_run:
         print(json.dumps(event)); return
     try:
