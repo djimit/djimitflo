@@ -13,6 +13,7 @@ import { recordPolicyViolation } from './policy-violations';
 import type {
   LoopService,
 } from './loop-service';
+import { allGatesPassed } from './loop-types';
 import type {
   LoopRunRecord,
   WorkerLeaseRecord,
@@ -212,9 +213,7 @@ export class LoopVerificationService {
    */
   certifyLoopRun(id: string): CertificationResult {
     const result = this.verifyLoopRun(id);
-    const allPass = (result.run.status === 'ready_for_human_merge' || result.run.status === 'completed') && result.gates.every((g) =>
-      g.status === 'pass' || (g.name === 'security_checker_verdict' && g.status === 'skipped')
-    );
+    const allPass = (result.run.status === 'ready_for_human_merge' || result.run.status === 'completed') && allGatesPassed(result.gates);
     swarmEventBus.emit('convergence', {
       run_id: id,
       certified: allPass,

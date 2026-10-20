@@ -6,8 +6,9 @@ import { recordPolicyViolation } from './policy-violations';
 /**
  * Plan K1: a fast content-safety check on text Djimitflo did not write (fleet/HF discoveries, replies from external
  * agents) before it flows into prompts. NVIDIA nemotron-3.5-content-safety answers in ~0.3 s and flagged a prompt
- * injection 'unsafe' while paper text stayed 'safe' (measured 2026-09-27). SHADOW ONLY: the verdict is recorded as a
- * judgment ('content_safety'); nothing is blocked (quarantine is an operator decision). Fail-open.
+ * injection 'unsafe' while paper text stayed 'safe' (measured 2026-09-27). The verdict is recorded as a judgment
+ * ('content_safety'). Fail-open. NOT shadow-only everywhere: KB ingest (kb-corpus) deletes/skips a page on 'unsafe' in every
+ * mode, and those rows are recorded with mode 'enforce' (P0-11); other callers only record (mode 'shadow').
  *   CONTENT_SAFETY_MODE=shadow + NVIDIA_API_KEY (default off); 'enforce' checks the same way and additionally makes the
  *   prompt gate (gateUntrustedForPrompt, B19) exclude untrusted text without a 'safe' verdict.
  */
@@ -50,15 +51,20 @@ export function parseSafety(content: string): { verdict: 'safe' | 'unsafe' | nul
 let pausedUntil = 0;
 export const resetContentSafetyPause = (): void => { pausedUntil = 0; };
 
-export async function checkContentSafety(db: Database, subject: { type: string; id: string }, text: string, fetchFn: typeof fetch = fetch, promptBound = false): Promise<'safe' | 'unsafe' | null> {
+/**
+ * P0-11: the row's mode is the regime the verdict is used under, not a fixed label. `acting` = the caller acts on the verdict
+ * whatever CONTENT_SAFETY_MODE says (KB ingest deletes/skips a page on 'unsafe'); a prompt-bound check acts under enforce.
+ */
+export async function checkContentSafety(db: Database, subject: { type: string; id: string }, text: string, fetchFn: typeof fetch = fetch, promptBound = false, acting = false): Promise<'safe' | 'unsafe' | null> {
   if (!contentSafetyApplies(subject.type, process.env, promptBound) || !text.trim() || Date.now() < pausedUntil) return null;
   const model = process.env.CONTENT_SAFETY_MODEL || 'nvidia/nemotron-3.5-content-safety';
   const started = Date.now();
+  const mode = acting || (promptBound && process.env.CONTENT_SAFETY_MODE === 'enforce') ? 'enforce' : 'shadow';
   // prod 2026-09-27: 1 241 of 1 312 KB pages got no verdict and nothing said why; failures are recorded as 'error' now
   const record = (decision: string, reason: string) => {
     db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, latency_ms, model, created_at)
-      VALUES (?, 'content_safety', ?, ?, ?, 'shadow', ?, ?, ?, ?, ?)`).run(randomUUID(), subject.type, subject.id,
-      createHash('sha256').update(text).digest('hex').slice(0, 16), decision, reason, Date.now() - started, model, new Date().toISOString());
+      VALUES (?, 'content_safety', ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(randomUUID(), subject.type, subject.id,
+      createHash('sha256').update(text).digest('hex').slice(0, 16), mode, decision, reason, Date.now() - started, model, new Date().toISOString());
     // UX-18: one ledger row per recorded verdict (consumer 'content_safety'); sizes only, never the text
     recordModelCall(db, { consumer: 'content_safety', model, provider: 'nvidia', ok: decision !== 'error', latencyMs: Date.now() - started, outChars: 0, shadow: 0, agree: null,
       tokensIn: Math.ceil(Math.min(text.length, 4_000) / 4), taskKind: 'safety', status: reason.slice(0, 80) });

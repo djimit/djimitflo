@@ -45,6 +45,16 @@ export interface LoopGate {
   evidence: string;
 }
 
+/**
+ * P0-8: the one "this gate passed" rule. A security review that was skipped (the run is not high-risk) counts as a pass —
+ * certification (certifyLoopRun) and the daemon's learning outcome (skill_outcomes, bandit, proposal outcome) both use it,
+ * so a run is never 'regressed' for a learner while 'verified' in outcome_credits.
+ */
+export const gatePasses = (gate: Pick<LoopGate, 'name' | 'status'>): boolean =>
+  gate.status === 'pass' || (gate.name === 'security_checker_verdict' && gate.status === 'skipped');
+/** P0-8: every gate passed under {@link gatePasses}; no gates is not a pass. */
+export const allGatesPassed = (gates: ReadonlyArray<Pick<LoopGate, 'name' | 'status'>>): boolean => gates.length > 0 && gates.every(gatePasses);
+
 export interface LoopRunRecord {
   id: string;
   goal_id: string | null;
@@ -208,8 +218,11 @@ export interface CheckerVerdictInput {
   maker_lease_id?: string;
   verdict: 'accepted' | 'needs_revision' | 'rejected' | 'insufficient_evidence';
   notes?: string;
-  /** P1a: manual-runtime verdicts require explicit attestation (reviewer + reason). */
-  manual_attestation?: { reviewer: string; reason: string };
+  /**
+   * P1a: manual-runtime verdicts require explicit attestation (reviewer + reason). P0-5: reviewer_type says what reviewed —
+   * 'heuristic' (an automated rule, e.g. the PR-review webhook) is never a human or independent review; absent = legacy/human.
+   */
+  manual_attestation?: { reviewer: string; reason: string; reviewer_type?: 'human' | 'heuristic' };
 }
 
 export interface RunChecksInput {

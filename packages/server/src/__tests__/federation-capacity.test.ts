@@ -13,7 +13,7 @@ describe('federation work capacity', () => {
     process.env.RUNTIME_MAX_CONCURRENCY = '1';
     await runtimeConcurrencySemaphore.acquire('federation-test');
     const db = createTestDb();
-    const router = createFederationRoutes(db, { requireAuth: (_req: any, _res: any, next: any) => next() } as any);
+    const router = createFederationRoutes(db, { requireAuth: (_req: any, _res: any, next: any) => next(), requirePermission: () => (_req: any, _res: any, next: any) => next() } as any);
     const layer = router.stack.find((entry: any) => entry.route?.path === '/work');
     const handler = layer.route.stack.at(-1).handle;
     const json = vi.fn();
