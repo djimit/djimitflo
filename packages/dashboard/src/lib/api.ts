@@ -256,6 +256,8 @@ export interface EvolutionEvidence {
   };
   /** KE-3: mutant genomes written from injected knowledge units, and proposals citing a unit or claim */
   knowledge_links: { genomes_with_refs: number | null; genomes_total: number | null; proposals_with_refs: number | null };
+  /** P0-8: runs in the window where the strict daemon rule and the certification rule disagree (null = unreadable). */
+  gate_rule_disagreements: number | null;
   /** §16 step 1: read-only status per metric contract (METRIC_CONTRACTS.yaml); no composite score */
   /** §16 step 7: per frozen holdout epoch, distinct candidates run or decided on it; reuse_risk above the contract limit (read-only) */
   holdout_exposure: {
