@@ -140,6 +140,22 @@
       "reopen_condition": "A concrete question the shipped-code scan cannot answer, plus operator approval of an isolated host."
     },
     {
+      "id": "NE-009",
+      "title": "RuVector (ruvnet/RuVector), whole repository, as Djimitflo dependency or tooling",
+      "hypothesis": "Adopting any RuVector crate, npm package, MCP server or Claude Code hook improves Djimitflo's vector memory, retrieval, skill/memory selection or local inference.",
+      "verdict": "REJECT",
+      "decided_on": "2026-10-20",
+      "conditions": "github.com/ruvnet/RuVector@46d816ddc4c2a8a06cd3613534a79b1d557d858b (remote main HEAD on 2026-10-20), whole repository; sparse-attention crate 0.1.1 also reviewed at 75653afa (unchanged since). Shallow clone with hooks disabled, source read only; nothing installed, built or run.",
+      "result": "Benchmark recall hardcoded 1.0 and a Python baseline simulated as Rust x15; sota-bench labels synthetic Gaussian data with real ANN-Benchmarks dataset names; GNN 'improves with use' and SONA 'LoRA learning' have no training or feedback path; sparse-attention gate untrained, no SIMD, O(T) decode, accuracy only tested where window >= sequence (NO_GO at 75653afa stands); Claude Code hooks post commit messages and diff stats to pi.ruv.io with a shared committed token (server auth accepts any 8-character string) and spawn unpinned npx @claude-flow/cli with the full env; MCP server is allow-all by default despite a 'default-deny' claim, runs npx agentic-flow@alpha and has an SSRF-capable decompile_url; CI-built .node/.wasm binaries committed without provenance.",
+      "why": "No component addresses Djimitflo's real blockers (missing embedding model, three embedding spaces, cross-source score fusion, trust-tier ranking); at ~1.4k vectors exact SQLite cosine is the recall ceiling; no ROCm/Vulkan backend for the R9700; the exfiltration and unpinned-execution risks exceed any benefit.",
+      "evidence": ["docs/research/negative-evidence/NE-009-ruvector.md", "github.com/ruvnet/RuVector@46d816ddc4c2a8a06cd3613534a79b1d557d858b", "crates/ruvector-bench/src/bin/comparison_benchmark.rs:130-132,177-179,208-213,230-232,288-290 (recall = 1.0 hardcoded; baseline = rust_latency * 15)", ".claude/settings.json:46,90,197-198 (hooks POST to https://pi.ruv.io/v1/pipeline/inject; BRAIN_API_KEY committed)", ".claude/helpers/hook-handler.cjs:80-95,150-165 (detached unpinned npx @claude-flow/cli, env: process.env)", "npm/packages/ruvector/bin/mcp-policy.js:2-17 and bin/mcp-server.js:172,3278-3478,4124-4131 (allow-all default; npx agentic-flow@alpha; arbitrary URL fetch)", "crates/ruvllm_sparse_attention@75653afa (NO_GO, unchanged at 46d816dd)"],
+      "allowed_follow_up": "In-house re-implementation of public techniques seen there (reciprocal rank fusion; a hashed embedding-space identity with prefix policy), evaluated on Djimitflo's own labelled data; not covered by this entry and uses no RuVector code.",
+      "forbidden_reuse": ["installing ruvector / @ruvector/* packages or their MCP server", "running RuVector Claude Code hooks or 'ruvector hooks init'", "opening a RuVector checkout as a Claude Code / IDE project with hooks active on trusted infrastructure", "citing RuVector benchmark numbers as evidence"],
+      "forbidden_code_patterns": ["pi.ruv.io", "@ruvector/", "ruvector-crawl-2026", "agentic-flow@alpha", "ruvector@latest"],
+      "match_terms": ["RuVector", "ruvllm", "pi.ruv.io"],
+      "reopen_condition": "All of: a benchmark independently reproduced on Djimitflo's own data in our own harness (recall computed against exact search, no simulated baselines); hooks and MCP server removed or default-deny with no network calls by default; pinned releases with build provenance tying binaries to source; plus a concrete need that SQLite cosine / Qdrant / llama.cpp cannot meet. Permits a new pre-registered evaluation, not adoption."
+    },
+    {
       "id": "NE-010",
       "title": "MiroFish (LLM social simulation) as prediction or evolution substrate",
       "hypothesis": "Running MiroFish-style LLM social simulations, or adopting its mechanisms directly, improves Djimitflo's prediction, capability discovery or evolutionary selection.",
