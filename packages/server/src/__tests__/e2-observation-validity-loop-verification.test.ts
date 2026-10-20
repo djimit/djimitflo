@@ -35,7 +35,7 @@ function governedRun(id = 'run') {
   loops.updateWorkerLeaseStatus(`${id}-maker`, 'completed', {});
   loops.insertWorkerLease({ id: `${id}-checker`, loopRunId: id, role: 'checker', runtime: 'manual', findingId: 'finding', worktreePath: null, branchName: null,
     now: new Date().toISOString(), metadata: { maker_lease_id: `${id}-maker` } });
-  loops.updateWorkerLeaseStatus(`${id}-checker`, 'completed', { verdict: 'accepted', manual_review_attestation: { reviewer: 'op', reason: 'fixture' } });
+  loops.updateWorkerLeaseStatus(`${id}-checker`, 'completed', { verdict: 'accepted', manual_review_attestation: { reviewer: 'op', reviewer_type: 'human', reviewer_user_id: 'user-op', reason: 'fixture' } });
 }
 
 beforeEach(() => {
@@ -141,7 +141,7 @@ it('non-applicable → skipped: a PR review (synthetic maker, no worktree) does 
   loops.updateWorkerLeaseStatus('pr-maker', 'completed', {});
   loops.insertWorkerLease({ id: 'pr-checker', loopRunId: 'pr', role: 'checker', runtime: 'manual', findingId: 'finding', worktreePath: null, branchName: null,
     now: new Date().toISOString(), metadata: { maker_lease_id: 'pr-maker' } });
-  loops.updateWorkerLeaseStatus('pr-checker', 'completed', { verdict: 'accepted', manual_review_attestation: { reviewer: 'roborev-webhook', reason: 'fixture' } });
+  loops.updateWorkerLeaseStatus('pr-checker', 'completed', { verdict: 'accepted', manual_review_attestation: { reviewer: 'op', reviewer_type: 'human', reviewer_user_id: 'user-op', reason: 'fixture' } });
   const { gates, run } = loops.verifyLoopRun('pr');
   for (const name of ['worktree_isolation', 'assignment_file_present', 'diff_threshold_all_makers', 'tests_lint_typecheck', 'security_checker_verdict']) {
     expect(gate(gates, name)).toBe('skipped');
@@ -152,6 +152,9 @@ it('non-applicable → skipped: a PR review (synthetic maker, no worktree) does 
   expect(run.status).toBe('running'); // never ready_for_human_merge: the PR review service settles it
   // a rejected review is still a recorded failure of the review
   loops.updateWorkerLeaseStatus('pr-checker', 'completed', { verdict: 'rejected' });
+  expect(gate(loops.verifyLoopRun('pr').gates, 'checker_verdict')).toBe('fail');
+  // P0-4/P0-5: the webhook heuristic is never a human attestation — an accepted heuristic review fails the checker gate
+  loops.updateWorkerLeaseStatus('pr-checker', 'completed', { verdict: 'accepted', manual_review_attestation: { reviewer: 'roborev-webhook', reason: 'fixture', reviewer_type: 'heuristic' } });
   expect(gate(loops.verifyLoopRun('pr').gates, 'checker_verdict')).toBe('fail');
 });
 

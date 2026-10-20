@@ -53,6 +53,7 @@ import type {
   RuntimeManifestAction,
   StartDocDriftLoopInput,
   CheckerVerdictInput,
+  VerdictActor,
 } from './loop-types';
 import type { LoopFinding } from './loop-discovery-service';
 import type { GoalRecord, GoalCreateInput, GoalUpdateInput, DecomposedLoopCandidate } from './goal-service';
@@ -359,6 +360,21 @@ export const CHECKER_INSTRUCTIONS = {
 };
 
 const VALID_CHECKER_VERDICTS: string[] = ['accepted', 'needs_revision', 'rejected', 'insufficient_evidence'];
+
+/**
+ * P0-4: the attestation recorded on a manual verdict. With an authenticated actor the reviewer IS that user (the body's
+ * reviewer string is ignored) and it is the only way to record reviewer_type 'human'. Without an actor (in-process machine
+ * callers such as the PR-review webhook) the body attestation is kept as-is, but can never claim 'human' or a user id.
+ */
+function recordedAttestation(input: CheckerVerdictInput, actor?: VerdictActor): Record<string, unknown> | undefined {
+  const reason = input.manual_attestation?.reason;
+  if (actor?.id) {
+    return { reviewer: actor.email || actor.id, reviewer_user_id: actor.id, reviewer_type: 'human', reason: reason ?? '' };
+  }
+  if (!input.manual_attestation) return undefined;
+  const { reviewer, reviewer_type } = input.manual_attestation;
+  return { reviewer, reason, ...(reviewer_type === 'heuristic' ? { reviewer_type } : {}) };
+}
 
 export class LoopService {
 
@@ -977,7 +993,7 @@ export class LoopService {
     return true;
   }
 
-  submitCheckerVerdict(id: string, input: CheckerVerdictInput): { run: LoopRunRecord; checker: WorkerLeaseRecord } {
+  submitCheckerVerdict(id: string, input: CheckerVerdictInput, actor?: VerdictActor): { run: LoopRunRecord; checker: WorkerLeaseRecord } {
     if (!input.verdict) {
       throw new Error('CHECKER_VERDICT_REQUIRED');
     }
@@ -1007,7 +1023,8 @@ export class LoopService {
       throw new Error('CHECKER_MAKER_NOT_COMPLETED');
     }
 
-    if (checker.runtime === 'manual' && (!input.manual_attestation?.reviewer || !input.manual_attestation?.reason)) {
+    const attestation = recordedAttestation(input, actor);
+    if (checker.runtime === 'manual' && (!attestation?.reviewer || !attestation?.reason)) {
       throw new Error('MANUAL_VERDICT_ATTESTATION_REQUIRED');
     }
 
@@ -1016,7 +1033,7 @@ export class LoopService {
       notes: input.notes || '',
       maker_lease_id: makerLeaseId,
       completed_at: new Date().toISOString(),
-      ...(input.manual_attestation ? { manual_review_attestation: input.manual_attestation } : {}),
+      ...(attestation ? { manual_review_attestation: attestation } : {}),
     });
 
     this.recordLoopEvent(run.id, 'checker_verdict_submitted', input.verdict === 'accepted' ? 'info' : 'warning', `Checker verdict submitted: ${input.verdict}.`, {
@@ -1035,7 +1052,7 @@ export class LoopService {
     };
   }
 
-  submitSecurityVerdict(id: string, input: CheckerVerdictInput): { run: LoopRunRecord; security_checker: WorkerLeaseRecord } {
+  submitSecurityVerdict(id: string, input: CheckerVerdictInput, actor?: VerdictActor): { run: LoopRunRecord; security_checker: WorkerLeaseRecord } {
     if (!input.verdict) {
       throw new Error('CHECKER_VERDICT_REQUIRED');
     }
@@ -1065,7 +1082,8 @@ export class LoopService {
       throw new Error('CHECKER_MAKER_NOT_COMPLETED');
     }
 
-    if (securityChecker.runtime === 'manual' && (!input.manual_attestation?.reviewer || !input.manual_attestation?.reason)) {
+    const attestation = recordedAttestation(input, actor);
+    if (securityChecker.runtime === 'manual' && (!attestation?.reviewer || !attestation?.reason)) {
       throw new Error('MANUAL_VERDICT_ATTESTATION_REQUIRED');
     }
 
@@ -1074,7 +1092,7 @@ export class LoopService {
       notes: input.notes || '',
       maker_lease_id: makerLeaseId,
       completed_at: new Date().toISOString(),
-      ...(input.manual_attestation ? { manual_review_attestation: input.manual_attestation } : {}),
+      ...(attestation ? { manual_review_attestation: attestation } : {}),
     });
 
     this.recordLoopEvent(run.id, 'security_checker_verdict_submitted', input.verdict === 'accepted' ? 'info' : 'warning', `Security checker verdict submitted: ${input.verdict}.`, {

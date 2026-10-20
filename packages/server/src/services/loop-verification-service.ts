@@ -284,9 +284,11 @@ export class LoopVerificationService {
     // P1a: require attestation — a named reviewer + a recorded reason. Without it, the
     // manual bypass would silently skip all runtime evidence checks (G-audit P3.3).
     if (lease.runtime === 'manual') {
-      const att = lease.metadata.manual_review_attestation as { reviewer?: unknown; reason?: unknown } | undefined;
-      return typeof att?.reviewer === 'string' && att.reviewer.length > 0
-        && typeof att?.reason === 'string' && att.reason.length > 0 ? 'pass' : 'fail';
+      // P0-4: only an authenticated human (reviewer_type 'human' + the user id the route took from req.user) attests;
+      // a free-text reviewer name, a heuristic, or a legacy attestation without a user id never passes.
+      const att = lease.metadata.manual_review_attestation as { reviewer_type?: unknown; reviewer_user_id?: unknown; reason?: unknown } | undefined;
+      return att?.reviewer_type === 'human' && typeof att.reviewer_user_id === 'string' && att.reviewer_user_id.length > 0
+        && typeof att.reason === 'string' && att.reason.length > 0 ? 'pass' : 'fail';
     }
     const proof = lease.metadata;
     const contract = proof.runtime_contract as { available?: unknown; status?: unknown } | undefined;

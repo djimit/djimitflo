@@ -48,11 +48,18 @@ it('rejects manual verdict submission with empty attestation fields', () => {
     .not.toThrow('MANUAL_VERDICT_ATTESTATION_REQUIRED');
 });
 
-it('accepts manual verdict with attestation and persists it on the lease', () => {
-  loops.submitCheckerVerdict('run', { lease_id: 'checker', verdict: 'accepted', manual_attestation: { reviewer: 'op', reason: 'documented manual review' } });
+it('accepts manual verdict from an authenticated actor and persists the actor as reviewer', () => {
+  loops.submitCheckerVerdict('run', { lease_id: 'checker', verdict: 'accepted', manual_attestation: { reviewer: 'op', reason: 'documented manual review' } }, { id: 'user-1', email: 'op@example.test' });
   expect(gate('checker_verdict')?.status).toBe('pass');
   const lease = loops.getWorkerLease('checker');
-  expect(lease.metadata.manual_review_attestation).toEqual({ reviewer: 'op', reason: 'documented manual review' });
+  expect(lease.metadata.manual_review_attestation).toEqual({ reviewer: 'op@example.test', reviewer_user_id: 'user-1', reviewer_type: 'human', reason: 'documented manual review' });
+});
+
+it('P0-4: a reviewer string without an authenticated actor (or a legacy attestation) fails the gate', () => {
+  loops.submitCheckerVerdict('run', { lease_id: 'checker', verdict: 'accepted', manual_attestation: { reviewer: 'op', reason: 'documented manual review', reviewer_type: 'human' } });
+  expect(gate('checker_verdict')?.status).toBe('fail');
+  loops.updateWorkerLeaseStatus('checker', 'completed', { verdict: 'accepted', manual_review_attestation: { reviewer: 'op', reason: 'legacy' } });
+  expect(gate('checker_verdict')?.status).toBe('fail');
 });
 
 it('direct lease update with manual runtime + accepted verdict but no attestation fails the gate', () => {
