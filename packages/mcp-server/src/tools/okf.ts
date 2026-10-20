@@ -30,6 +30,22 @@ export function resolveOkfBase(): string {
   throw new Error('OKF bundle not found. Set OKF_BASE env var or ensure djimitflo-knowledge/okf/ exists.');
 }
 
+/**
+ * P0-2: resolve a caller-supplied concept path inside the OKF base. Rejects absolute input, `..` escapes and symlinks
+ * that resolve outside the base. Returns null when the concept does not exist; throws when the path escapes.
+ */
+export function resolveOkfConceptPath(baseDir: string, conceptPath: string): string | null {
+  if (path.isAbsolute(conceptPath)) throw new Error('Invalid concept path: absolute paths are not allowed');
+  const base = path.resolve(baseDir);
+  const candidate = path.resolve(base, conceptPath);
+  if (!candidate.startsWith(base + path.sep)) throw new Error('Invalid concept path: outside the OKF bundle');
+  if (!fs.existsSync(candidate)) return null;
+  const realBase = fs.realpathSync(base);
+  const real = fs.realpathSync(candidate);
+  if (!real.startsWith(realBase + path.sep)) throw new Error('Invalid concept path: outside the OKF bundle');
+  return real;
+}
+
 function extractFrontmatter(content: string): Record<string, string | string[]> | null {
   const match = content.match(/^---\n([\s\S]*?)\n---/);
   if (!match) return null;
@@ -158,9 +174,9 @@ export function registerOkfTools(server: McpServer) {
     async ({ conceptPath }) => {
       try {
         const baseDir = resolveOkfBase();
-        const filePath = path.join(baseDir, conceptPath);
+        const filePath = resolveOkfConceptPath(baseDir, conceptPath);
 
-        if (!fs.existsSync(filePath)) {
+        if (!filePath || !fs.statSync(filePath).isFile()) {
           return {
             content: [{ type: 'text' as const, text: 'Concept not found: ' + conceptPath }],
             isError: true,

@@ -10,6 +10,14 @@
     "nvidia": "unknown",
     "local_workstation": "unknown"
   },
+  "monthly_eur_note": "Operator-filled EUR (G0.3, packages/server/src/services/unit-economics.ts): monthly EUR per account and the VPS, pro-rated to the cockpit's 30 d window; workstation_kwh_eur = EUR per kWh, multiplied by the measured GPU kWh (host_power_samples). null = not given = unknown (never 0); the cockpit then reports unknown_share.",
+  "monthly_eur": {
+    "ollama_cloud": null,
+    "claude_max": null,
+    "chatgpt_pro": null,
+    "vps": null,
+    "workstation_kwh_eur": null
+  },
   "provider_plan_limits": [
     {
       "account": "ollama_cloud",

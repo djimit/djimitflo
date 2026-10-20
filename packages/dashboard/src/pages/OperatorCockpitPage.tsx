@@ -318,6 +318,10 @@ export function OperatorCockpitPage() {
             <SubtractionSection kpi={data.subtraction} />
           </Disclose>
 
+          <Disclose id="unit-economics" title="Cost per change (30 d)">
+            <UnitEconomicsSection ue={data.unit_economics} />
+          </Disclose>
+
           <Disclose id="scorecard" title="Scorecard">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {Object.entries(data.scorecard).map(([k, v]) => (
@@ -464,6 +468,23 @@ export function SubtractionSection({ kpi }: { kpi: OperatorCockpit['subtraction'
       { key: 'files', label: 'Files +/−', render: (w) => `+${w.files_added} / −${w.files_deleted}` },
       { key: 'routes', label: 'Routes Δ', render: (w) => signed(w.routes_delta) },
     ]} />
+  );
+}
+
+/** G0.3/G0.4: € and operator minutes per verified / surviving change; unknown prices stay unknown (never shown as €0). */
+export function UnitEconomicsSection({ ue }: { ue: OperatorCockpit['unit_economics'] }) {
+  if (!ue) return <p className="text-sm text-foreground-secondary">Not reported by this server.</p>;
+  const eur = (v: number | null) => (v === null ? 'unknown' : `€${v.toFixed(2)}`);
+  const min = (v: number | null) => (v === null ? 'unknown' : `${v.toFixed(1)} min`);
+  const m = ue.operator_minutes;
+  return (
+    <ul className="space-y-1 text-sm">
+      <li>€ per verified change: <strong>{eur(ue.eur.per_verified)}</strong> · per surviving change: <strong>{eur(ue.eur.per_surviving)}</strong>
+        {' '}({ue.counts.verified ?? '?'} verified, {ue.counts.surviving ?? '?'} surviving) — unknown share {(ue.eur.unknown_share * 100).toFixed(0)} %
+        {ue.eur.reason ? <span className="text-status-warning"> · {ue.eur.reason === 'no_prices' ? 'no € prices filled in docs/usage-plan-limits.json' : ue.eur.reason}</span> : null}</li>
+      <li>Operator minutes per surviving change: waiting <strong>{min(m.per_surviving.waiting_minutes)}</strong> · handling <strong>{min(m.per_surviving.handling_minutes_estimate)}</strong> (estimate, {m.handling_minutes_per_item} min per item)
+        {m.reason ? <span className="text-foreground-secondary"> · {m.reason.replace(/_/g, ' ')}</span> : null}</li>
+    </ul>
   );
 }
 

@@ -677,8 +677,16 @@ export class ExecutionEngine {
       this.activeSessions.set(task.id, session);
       const leaseId = task.metadata.lease_id;
       if (typeof leaseId === 'string') {
-        const lease = this.db.prepare("SELECT id FROM worker_leases WHERE id = ? AND json_extract(metadata, '$.execution_task_id') = ?").get(leaseId, task.id);
+        const lease = this.db.prepare("SELECT id, runtime FROM worker_leases WHERE id = ? AND json_extract(metadata, '$.execution_task_id') = ?").get(leaseId, task.id) as { id: string; runtime: string } | undefined;
         if (lease) {
+          // P0-7: a fallback (circuit open or failed attempt) switches the executor without touching the lease, so learners
+          // attributed the run to the requested runtime. Record what actually started; requested_runtime keeps the ask.
+          // A switched runtime's model is unknown (the requested model belongs to the requested runtime): null, not a guess.
+          const switched = executorKind !== lease.runtime;
+          try { this.db.prepare(`UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'),
+            '$.requested_runtime', COALESCE(json_extract(NULLIF(metadata, ''), '$.requested_runtime'), json_extract(NULLIF(metadata, ''), '$.runtime_fallback.from'), ?),
+            '$.effective_runtime', ?, '$.effective_model', ?) WHERE id = ?`)
+            .run(lease.runtime, executorKind, !switched && typeof executionMetadata.model === 'string' ? executionMetadata.model : null, lease.id); } catch { /* provenance must never fail a started session */ }
           const unregister = RuntimeLeaseRegistry.register(leaseId, async () => {
             if (this.activeSessions.get(task.id) === session) await this.cancelTask(task.id);
           });

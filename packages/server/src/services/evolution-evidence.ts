@@ -38,8 +38,10 @@ import { dreamSourcesEvidence } from './dream-evidence-sources';
 import { playbookGeneEvidence } from './lane-playbook';
 import type { ForecasterScoreV2 } from './forecast-scoring';
 import { extraRepos } from './repo-registry';
+import { allGatesPassed } from './loop-types';
 import { BASELINE_GENOME, holdoutEpoch } from './genome-registry';
 import { experimentsReport } from './experiment-registry';
+import { learningLedger } from './learning-ledger';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -92,6 +94,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'DREAM_PLAYBOOK_GENE', acting: false },
   { name: 'TRAINING_DATASET_EXPORT', acting: false },
   { name: 'VALUE_ALLOCATOR_MODE', acting: false },
+  { name: 'VALUE_ANOMALY_ALARM', acting: false },
   { name: 'EXTRA_REPOS_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_REPOS', acting: true },
 ];
 
@@ -212,6 +215,25 @@ export function memoryHoldoutEvidence(db: Database, since: string, env: NodeJS.P
   return { rate: env.MEMORY_HOLDOUT_RATE ?? null, rules: withRules, holdout: heldOut,
     fisher_p: +fisherExact(withRules.verified, withRules.regressed, heldOut.verified, heldOut.regressed).toPrecision(4),
     note: 'runs with a settled proposal (verified or regressed); rules = ≥ 1 rule in the assignment, holdout = rules withheld by MEMORY_HOLDOUT_RATE. Two-sided Fisher exact.' };
+}
+
+/**
+ * P0-8 (read-only): loop runs since `since` whose recorded gates the old daemon rule (every gate 'pass') and certification's
+ * rule (a skipped security review passes) judge differently — before the fix such a run was 'regressed' for the bandit and
+ * skill_outcomes but 'verified' in outcome_credits. null when loop_runs cannot be read (unknown, never 0).
+ */
+export function gateRuleDisagreements(db: Database, since: string): number | null {
+  let rows: Array<{ gates_json: string | null }>;
+  try { rows = db.prepare("SELECT gates_json FROM loop_runs WHERE created_at >= ? AND gates_json LIKE '%security_checker_verdict%'").all(since) as typeof rows; } catch { return null; }
+  let n = 0;
+  for (const r of rows) {
+    let gates: Array<{ name: string; status: string }>;
+    try { gates = JSON.parse(r.gates_json || '[]'); } catch { continue; }
+    if (!Array.isArray(gates)) continue;
+    const strict = gates.length > 0 && gates.every((g) => g.status === 'pass');
+    if (strict !== allGatesPassed(gates as Parameters<typeof allGatesPassed>[0])) n++;
+  }
+  return n;
 }
 
 export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = process.env, now = Date.now(), days = 30) {
@@ -394,6 +416,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   const memory_holdout = memoryHoldoutEvidence(db, since, env);
   const effort_x1 = effortX1Evidence(db, since, env, fisherExact);
   const holdout_exposure = holdoutExposure(db, env);
+  const experiments = experimentsReport(db, env, now);
   return { at: new Date(now).toISOString(), window_days: window, flags, outcomes, outcomes_tagged, merge, drafts, genomes, gym, gym_prod_gates, gym_diffs, trials, models, oracle, commons, forecasts_v2, hacks,
     // S7: hack-detector flag rate per genome and gym task kind (14 d) and canary passes, Wilson 95 %
     hack_rate: hackRateEvidence(db, env, now), estimates, ope,
@@ -451,6 +474,10 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     knowledge_gaps: knowledgeGapEvidence(db, env, now),
     // JEV-114 (JEV_CHALLENGER_MODEL, shadow): paired challenger vs pinned jev — agreement and accuracy vs ground truth; null below 20 pairs
     jev_challenger: jevChallengerEvidence(db, env),
+    // P0-8: runs the old daemon pass rule and certification would have judged differently (skipped security review), 30 d
+    gate_rule_disagreements: gateRuleDisagreements(db, since),
     // Know when to stop (SOUL.md): running experiments, target n, registered stop date, n per arm, overdue (report-only)
-    experiments: experimentsReport(db, env, now) };
+    experiments,
+    // G3.5: per learning mechanism the effect + CI its experiment's evidence already computes, status, 'loops closed k/N' (read-only)
+    learning_ledger: learningLedger(db, experiments.experiments, ope) };
 }

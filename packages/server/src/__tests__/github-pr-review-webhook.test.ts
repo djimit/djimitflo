@@ -111,6 +111,17 @@ describe('GitHub pull_request review webhook', () => {
     db.close();
   });
 
+  it('P0-5: the heuristic verdict is recorded as an automated heuristic reviewer, never as a human/manual review', async () => {
+    const db = await setup();
+    mockGh({ additions: 5, deletions: 2, changedFiles: 1, files: ['src/index.ts'] });
+    await post(prBody(), 'delivery-pr-p05');
+    const checker = db.prepare("SELECT metadata FROM worker_leases WHERE role = 'checker'").get() as { metadata: string };
+    const meta = JSON.parse(checker.metadata);
+    expect(meta.reviewer_type).toBe('heuristic');
+    expect(meta.manual_review_attestation).toMatchObject({ reviewer: 'roborev-webhook', reviewer_type: 'heuristic' });
+    db.close();
+  });
+
   it('settling a review also completes the goals of already-settled review runs (prod 2026-09-27: 42 stayed running)', async () => {
     const db = await setup();
     mockGh({ additions: 5, deletions: 2, changedFiles: 1, files: ['src/index.ts'] });

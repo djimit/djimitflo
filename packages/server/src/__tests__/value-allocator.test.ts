@@ -26,15 +26,15 @@ afterEach(() => { vi.unstubAllEnvs(); db.close(); });
 const call = (purpose: string, opts: { tin?: number | null; tout?: number | null; shadow?: number; consumer?: string; model?: string } = {}) =>
   db.prepare(`INSERT INTO llm_model_calls (consumer, model, ok, provider, shadow, tokens_in, tokens_out, purpose, created_at) VALUES (?, ?, 1, 'litellm', ?, ?, ?, ?, ?)`)
     .run(opts.consumer ?? 'svc', opts.model ?? 'gpt-x', opts.shadow ?? 0, opts.tin === undefined ? 100 : opts.tin, opts.tout === undefined ? 50 : opts.tout, purpose, iso(NOW - DAY));
-const judgment = (name: string, mode: string, opts: { model?: string | null; tin?: number; tout?: number; decision?: string } = {}) =>
-  db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, input_tokens, output_tokens, model, created_at) VALUES (?, ?, 's', ?, 'h', ?, ?, ?, ?, ?, ?)`)
-    .run(`j-${++seq}`, name, `sub-${seq}`, mode, opts.decision ?? 'yes', opts.tin ?? 0, opts.tout ?? 0, opts.model === undefined ? 'jev-model' : opts.model, iso(NOW - DAY));
-function makerRun(opts: { tokens?: number | null; credited?: boolean; survived?: boolean; model?: string } = {}) {
+const judgment = (name: string, mode: string, opts: { model?: string | null; tin?: number; tout?: number; decision?: string; subjectType?: string } = {}) =>
+  db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, input_tokens, output_tokens, model, created_at) VALUES (?, ?, ?, ?, 'h', ?, ?, ?, ?, ?, ?)`)
+    .run(`j-${++seq}`, name, opts.subjectType ?? 's', `sub-${seq}`, mode, opts.decision ?? 'yes', opts.tin ?? 0, opts.tout ?? 0, opts.model === undefined ? 'jev-model' : opts.model, iso(NOW - DAY));
+function makerRun(opts: { tokens?: number | null; credited?: boolean; survived?: boolean; model?: string; meta?: Record<string, unknown> } = {}) {
   const run = `run-${++seq}`;
   const meta = opts.survived ? { pr_url: `https://github.com/djimit/djimitflo/pull/${seq}`, pr_outcome: { state: 'merged', merged_at: iso(NOW - 20 * DAY), settled_at: iso(NOW - 2 * DAY), survived: true } } : {};
   db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, metadata, created_at, updated_at) VALUES (?, 'test-gap', 'closed', 'completed', ?, ?, ?)")
     .run(run, JSON.stringify(meta), iso(NOW - 25 * DAY), iso(NOW - DAY));
-  const leaseMeta = { model: opts.model ?? 'm1', ...(opts.tokens === null ? {} : { token_accounting: { total_tokens: opts.tokens ?? 1000 } }) };
+  const leaseMeta = { model: opts.model ?? 'm1', ...(opts.tokens === null ? {} : { token_accounting: { total_tokens: opts.tokens ?? 1000 } }), ...opts.meta };
   db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES (?, ?, 'maker', 'opencode', 'completed', ?, ?, ?)")
     .run(`l-${seq}`, run, JSON.stringify(leaseMeta), iso(NOW - DAY), iso(NOW - DAY));
   db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at) VALUES (?, 'outcome_attribution', 'loop_run', ?, 'h', 'annotation', ?, 'x', ?)`)
@@ -61,6 +61,14 @@ describe('value allocator: resources', () => {
     expect(maker.w7.tokens.cloud).toBeNull();
     expect(maker.w7.tokens.unknown_calls).toBe(2);
     expect(maker.w7.class).toBe('UNKNOWN_COST');
+  });
+
+  it('P0-7: a maker lease the engine ran on a fallback runtime is the effective runtime\'s consumer, not the requested one', () => {
+    makerRun({ meta: { requested_runtime: 'opencode', effective_runtime: 'claude', effective_model: null } });
+    makerRun({ meta: { effective_runtime: 'opencode', effective_model: 'm1' } }); // no switch: unchanged
+    const v = buildValueAllocation(db, NOW, {}, []);
+    expect(row(v, 'maker:opencode@m1').w7.runs).toBe(1);
+    expect(v.consumers.filter((c) => c.consumer.startsWith('maker:claude')).map((c) => c.w7.runs)).toEqual([1]);
   });
 
   it('a judgment model row with 0 + 0 tokens is unknown; a row without a model made no model call', () => {
@@ -134,6 +142,20 @@ describe('value allocator: value and class', () => {
     const r = row(buildValueAllocation(db, NOW, {}, []), 'judgment:outcome_review');
     expect(r.w7.value.units).toBeNull();
     expect(r.w7.class).toBe('INSUFFICIENT');
+  });
+
+  it('P0-11: consumption comes from the gate registry, not the mode label', () => {
+    for (let i = 0; i < 3; i++) judgment('telegram_access', 'enforce', { model: null }); // audit of the gate's own decision
+    for (let i = 0; i < 3; i++) judgment('content_safety', 'shadow', { subjectType: 'kb_page', decision: 'no', model: 'nemotron' }); // KB ingest deletes on these
+    for (let i = 0; i < 3; i++) judgment('content_safety', 'shadow', { subjectType: 'social_reply', model: 'nemotron' }); // record-only
+    for (let i = 0; i < 3; i++) judgment('commons_contribution', 'shadow');
+    const v = buildValueAllocation(db, NOW, {}, []);
+    expect(row(v, 'judgment:telegram_access').consumer_status).not.toBe('decision_consumed');
+    expect(row(v, 'judgment:content_safety').consumer_status).toBe('decision_consumed');
+    expect(row(v, 'judgment:content_safety').w7.value.decision_consumed).toBe(3); // only the KB rows
+    expect(row(v, 'judgment:commons_contribution').consumer_status).toBe('no_consumer'); // thread gate off
+    const on = buildValueAllocation(db, NOW, { COMMONS_THREAD_GATE_ENABLED: 'true' }, []);
+    expect(row(on, 'judgment:commons_contribution').consumer_status).toBe('decision_consumed'); // threadGated reads shadow rows
   });
 
   it('an enforce-mode judgment is decision-consumed: VALUE_PROVEN and a hard floor', () => {

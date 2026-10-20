@@ -94,6 +94,8 @@ export class LoopDraftPrService {
       const title = `loop: ${proposal?.title ?? `run ${runId.slice(0, 8)}`}`.slice(0, 120);
       git('add', '--', ...files);
       execFileSync('git', ['-C', wt, '-c', 'user.name=djimitflo-loop', '-c', 'user.email=loop@djimitflo.invalid', 'commit', '-q', '-m', `${title}\n\nLoop run ${runId}, maker lease ${maker.id}.`], { stdio: 'ignore' });
+      // P0-6: the commit of the checked worktree is the verified head; auto-merge only ever merges this sha.
+      const verifiedHead = git('rev-parse', 'HEAD');
       // Token only as a one-off header: never written to the remote URL or git config.
       const auth = Buffer.from(`x-access-token:${token}`).toString('base64');
       execFileSync('git', ['-C', wt, '-c', `http.extraheader=AUTHORIZATION: basic ${auth}`, 'push', '-q', this.env.LOOP_DRAFT_PR_REMOTE || 'origin', `HEAD:refs/heads/${maker.branch_name}`], { stdio: 'ignore' });
@@ -109,7 +111,7 @@ export class LoopDraftPrService {
       });
       if (!res.ok) return fail(`GitHub ${res.status}`);
       const prUrl = String(((await res.json()) as { html_url?: string }).html_url ?? '');
-      this.db.prepare(`UPDATE loop_runs SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.pr_url', ?) WHERE id = ?`).run(prUrl, runId);
+      this.db.prepare(`UPDATE loop_runs SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.pr_url', ?, '$.verified_head_sha', ?) WHERE id = ?`).run(prUrl, verifiedHead, runId);
       events.recordEvent(runId, 'draft_pr_opened', 'info', `Draft PR opened: ${prUrl}`, { pr_url: prUrl, files });
       return prUrl;
     } catch (error) {

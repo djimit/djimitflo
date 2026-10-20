@@ -256,6 +256,8 @@ export interface EvolutionEvidence {
   };
   /** KE-3: mutant genomes written from injected knowledge units, and proposals citing a unit or claim */
   knowledge_links: { genomes_with_refs: number | null; genomes_total: number | null; proposals_with_refs: number | null };
+  /** P0-8: runs in the window where the strict daemon rule and the certification rule disagree (null = unreadable). */
+  gate_rule_disagreements: number | null;
   /** §16 step 1: read-only status per metric contract (METRIC_CONTRACTS.yaml); no composite score */
   /** §16 step 7: per frozen holdout epoch, distinct candidates run or decided on it; reuse_risk above the contract limit (read-only) */
   holdout_exposure: {
@@ -282,10 +284,27 @@ export interface EvolutionEvidence {
   jev_challenger?: JevChallengerEvidence;
   /** Know when to stop (services/experiment-registry.ts): running experiments, target n, registered stop date, overdue (report-only) */
   experiments?: ExperimentsEvidence;
+  /** G3.5 (services/learning-ledger.ts): per learning mechanism effect + CI from its experiment's evidence, status, loops closed k/N (read-only) */
+  learning_ledger?: LearningLedger;
 }
+export type ExperimentEffect = { metric: string; estimate: number | null; ci: [number, number] | null; p: number | null };
+/** G1.5 power left; null = unknown, never 0 */
+export type ExperimentPower = { n_so_far: number | null; target_per_arm: number | null; days_to_stop: number | null; accrual_window_days: number | null;
+  accrual_per_day: Record<string, number> | null; projected_min_arm_n: number | null; projected_reaches_target: boolean | null };
 export type ExperimentRow = { id: string; flag: string; protocol: string; started_at: string; target_n: number | null; stop_by: string | null; stop_note: string; stop_source: string;
-  n_per_arm: Record<string, number> | null; min_arm_n: number | null; verdict: string | null; overdue: boolean; overdue_reason: string | null; error?: string };
-export type ExperimentsEvidence = { experiments: ExperimentRow[]; overdue: string[]; no_stop_date: string[]; note: string };
+  population: 'oracle_goals' | 'gym_tasks' | 'prescreen_proposals' | 'judgments'; approved_over_limit?: string;
+  n_per_arm: Record<string, number> | null; min_arm_n: number | null; verdict: string | null; effects?: Record<string, ExperimentEffect>;
+  overdue: boolean; overdue_reason: string | null; power: ExperimentPower; error?: string };
+export type ExperimentsEvidence = { experiments: ExperimentRow[]; overdue: string[]; no_stop_date: string[]; note: string;
+  /** G1.5 WIP limit on the oracle-goal population (report-only) */
+  wip: { population: 'oracle_goals'; limit: number; active: string[]; active_count: number; over_wip_limit: boolean; counted: string[];
+    approved_over_limit: Array<{ id: string; reason: string }>; guard_ok: boolean } };
+export type LearningStatus = 'ADOPTED' | 'REJECTED' | 'RUNNING' | 'INSUFFICIENT' | 'NOT_MEASURED';
+export type LearningLedger = {
+  loops_closed: { k: number; n: number; headline: string }; by_status: Record<LearningStatus, number>; note: string;
+  mechanisms: Array<{ mechanism: string; name: string; data_source: string; experiment: string | null; metric: string | null; estimate: number | null;
+    ci: [number, number] | null; p: number | null; status: LearningStatus; closed: boolean; note: string }>;
+};
 
 export interface JevChallengerRate { k: number; n: number; rate: number | null; ci_low: number | null; ci_high: number | null; status: 'ok' | 'insufficient' }
 export interface JevChallengerTruth { primary: JevChallengerRate; challenger: JevChallengerRate; abstained?: { primary: number; challenger: number } }
@@ -455,6 +474,24 @@ export type OperatorCockpit = {
   capabilities?: CapabilityVerdict[];
   /** SOUL.md subtraction KPI per ISO week, last 8 (services/subtraction-kpi.ts); weeks null + reason without git — never 0 */
   subtraction?: SubtractionKpi;
+  /** G0.3/G0.4 (services/unit-economics.ts): € and operator minutes per verified / surviving change over 30 d; null = unknown, never 0 */
+  unit_economics?: UnitEconomics | null;
+};
+export type EurPrices = { ollama_cloud: number | null; claude_max: number | null; chatgpt_pro: number | null; vps: number | null; workstation_kwh_eur: number | null };
+export type UnitEconomics = {
+  window_days: number;
+  counts: { verified: number | null; surviving: number | null; superseded_excluded: number | null };
+  eur: { prices: EurPrices; source: string; source_error: string | null;
+    components: Array<{ key: string; eur: number | null; reason: string | null; kwh?: number | null; coverage_pct?: number | null }>;
+    known_cost: number | null; unknown_share: number; reason: string | null; per_verified: number | null; per_surviving: number | null };
+  operator_minutes: {
+    approvals: { human: number; excluded_automated: number; unknown_actor: number; waiting_minutes: number; handling_minutes_estimate: number } | null;
+    human_merges: { count: number; handling_minutes_estimate: number } | null;
+    waiting_minutes: number | null; handling_minutes_estimate: number | null;
+    per_surviving: { waiting_minutes: number | null; handling_minutes_estimate: number | null };
+    handling_minutes_per_item: number; reason: string | null };
+  errors: string[];
+  notes: string[];
 };
 export type SubtractionWeek = { week: string; start: string; end: string; commits: number; lines_added: number; lines_removed: number; files_added: number; files_deleted: number;
   ratio_removed_added: number | null; routes_start: number | null; routes_end: number | null; routes_delta: number | null };
