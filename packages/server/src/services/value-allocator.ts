@@ -1,7 +1,9 @@
 import { createHash } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { exclusiveWh, gpuJobs, hostSamples, isLocalModel, leaseConsumer, valuePer, type Interval, type Job } from './resource-ledger';
-import { loopPrSettlements } from './merge-survival';
+import { supersededMergeOutcomeSql } from './merge-superseded';
+import { leaseRanOn } from './outcome-attribution';
+import { experimentDefs } from './experiment-registry';
 import { insertJudgmentRow } from './judgment-service';
 import { listSchedulers, markRun } from './scheduler-registry';
 
@@ -20,8 +22,11 @@ import { listSchedulers, markRun } from './scheduler-registry';
  * a model made no model call (basis no_model_call). Local GPU Wh from host_power_samples over the consumer's job windows
  * (resource-ledger exclusiveWh); not measured over ≥ 90 % of the job time = null (unknown), never an invented figure.
  *
- * Value: verified runs credited to the consumer in outcome_credits (E2 attribution) weighted 1, plus 3 for each of those runs
- * whose loop PR SETTLED_SURVIVED (fitness-view weights: production 1, merge 3). Judgments a gate actually reads
+ * Value: verified runs credited to the consumer in outcome_credits (E2 attribution) weighted 1, plus 3 for each loop PR that
+ * survived 14 d on main and settled in the window (skill_outcomes domain 'merge' success 1, superseded closes left out), credited
+ * to the maker that made the change (the run's maker lease, leaseRanOn) and the judgments/reviewers credited on that run
+ * (fitness-view weights: production 1, merge 3). A remote maker (runtime remote) runs a local model: its cloud tokens are 0 by
+ * construction, so its cost is known on the cloud side even when energy is not measured. Judgments a gate actually reads
  * (GATE_READ_JUDGMENTS, P0-11) carry `decision_consumed`. A consumer whose output nobody reads (only shadow rows, `<judgment>@<model>` challenger/local
  * rows, llm rows all shadow = 1) is NO_CONSUMER: value 0 BY DESIGN, distinct from unknown. Without any attribution recorded in
  * the window, value is unknown (null), never 0.
@@ -34,7 +39,7 @@ export const valueAllocatorMode = (env: NodeJS.ProcessEnv = process.env): ValueA
 
 export type ConsumerKind = 'scheduler' | 'judgment' | 'llm_purpose' | 'maker';
 export type ConsumerStatus = 'decision_consumed' | 'consumed' | 'no_consumer' | 'unknown';
-export type ValueClass = 'VALUE_PROVEN' | 'NO_VALUE' | 'NO_CONSUMER' | 'INSUFFICIENT' | 'UNKNOWN_COST';
+export type ValueClass = 'VALUE_PROVEN' | 'NO_VALUE' | 'NO_CONSUMER' | 'INSUFFICIENT' | 'UNKNOWN_COST' | 'EXPERIMENT';
 export type ProposedAction = 'keep' | 'reduce_cap' | 'pause' | 'raise_share';
 
 export const VALUE_WEIGHTS = { verified: 1, survived: 3 } as const;
@@ -77,6 +82,8 @@ export interface WindowStats {
 export interface AllocationRow {
   consumer: string; kind: ConsumerKind; consumer_status: ConsumerStatus; hard_floor: string | null;
   w7: WindowStats; w30: WindowStats;
+  /** arm of a running registry experiment (class EXPERIMENT, exempt until stop_by), else null */
+  experiment: { id: string; stop_by: string | null } | null;
   proposal: { action: ProposedAction; share: number; reason: string };
 }
 export interface ValueAllocation {
@@ -87,10 +94,14 @@ export interface ValueAllocation {
 
 interface Acc {
   kind: ConsumerKind; runs: number; runIds: Set<string>; cloud: number; local: number; known: number; unknown: number; noModel: number;
+  /** remote-maker runs without a token report: cloud tokens 0 by construction (a local model), local tokens unknown */
+  cloudZero: number;
+  /** judgment rows a learner reads (LEARNER_READ_JUDGMENTS) */
+  learnerRows: number;
   shadowRows: number; enforceRows: number; enforceConsumed: number; otherRows: number;
   gpuS: number; coveredS: number; wh: number;
 }
-const newAcc = (kind: ConsumerKind): Acc => ({ kind, runs: 0, runIds: new Set(), cloud: 0, local: 0, known: 0, unknown: 0, noModel: 0,
+const newAcc = (kind: ConsumerKind): Acc => ({ kind, runs: 0, runIds: new Set(), cloud: 0, local: 0, known: 0, unknown: 0, noModel: 0, cloudZero: 0, learnerRows: 0,
   shadowRows: 0, enforceRows: 0, enforceConsumed: 0, otherRows: 0, gpuS: 0, coveredS: 0, wh: 0 });
 
 function safeAll<T>(db: Database, sql: string, ...args: unknown[]): T[] { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } }
@@ -100,7 +111,7 @@ const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFi
 const energyOwner = (jobConsumer: string): string =>
   jobConsumer.startsWith('gym:') ? 'scheduler:evolution_gym' : jobConsumer === 'committee' ? 'scheduler:committee_evolution' : jobConsumer;
 
-type JudgmentRow = { mode: string; subject_type: string };
+type JudgmentRow = { mode: string; subject_type: string; decision?: string };
 /**
  * P0-11: the judgments a gate actually reads, and when a row was read — not the row's mode label. Found by the call sites that
  * branch on a judgment's decision (verified in code 2026-10-20). A row outside this registry is never decision-consumed, even
@@ -124,6 +135,40 @@ export const GATE_READ_JUDGMENTS: Record<string, (row: JudgmentRow, env: NodeJS.
 };
 const gateReads = (judgment: string, row: JudgmentRow, env: NodeJS.ProcessEnv): boolean =>
   !judgment.includes('@') && Boolean(GATE_READ_JUDGMENTS[judgment]?.(row, env));
+/**
+ * Judgments a learner (not a gate) reads: consumed, never decision-consumed, no hard floor. Verified in code 2026-10-20.
+ */
+export const LEARNER_READ_JUDGMENTS: Record<string, (row: JudgmentRow, env: NodeJS.ProcessEnv) => boolean> = {
+  // dream-state-service consolidate(): confident failure_cause rows (any mode) recurring ≥ 2× become memory candidates; it runs in
+  // replay(), scheduled only under DREAM_STATE_ENABLED
+  failure_cause: (r, env) => env.DREAM_STATE_ENABLED === 'true' && r.decision !== 'uncertain',
+};
+const learnerReads = (judgment: string, row: JudgmentRow, env: NodeJS.ProcessEnv): boolean =>
+  !judgment.includes('@') && Boolean(LEARNER_READ_JUDGMENTS[judgment]?.(row, env));
+
+/**
+ * (d) Consumers that are arms of a registry experiment: class EXPERIMENT (exempt, keep) while the experiment runs (started,
+ * before stop_by, and — when `flag` — its flag on). A row a gate reads (decision_consumed) is production, never exempt.
+ * `<judgment>@<model>` rows are the JEV-114 paired challenger; `<judgment>@local` (T1 workstation) is not a registry experiment.
+ */
+const EXPERIMENT_ARMS: Array<{ id: string; flag: boolean; match: (consumer: string) => boolean }> = [
+  { id: 'JEV-114', flag: false, match: (c) => (/^judgment:[^@]+@/.test(c) && !c.endsWith('@local')) || c === 'llm:jev:challenger' },
+  // the prescreen's own rows are D5-NO's measurement (TYPESAFE_PROPOSAL_PRESCREEN_MODE)
+  { id: 'D5-NO', flag: true, match: (c) => c === 'judgment:proposal_prescreen' },
+];
+const flagOn = (v: string | undefined): boolean => !!v && !['off', 'false', '0'].includes(v.trim().toLowerCase());
+export function experimentOf(consumer: string, now: number, env: NodeJS.ProcessEnv): { id: string; stop_by: string | null } | null {
+  let defs: ReturnType<typeof experimentDefs> = [];
+  try { defs = experimentDefs(); } catch { return null; }
+  for (const arm of EXPERIMENT_ARMS) {
+    if (!arm.match(consumer)) continue;
+    const d = defs.find((x) => x.id === arm.id);
+    if (!d || Date.parse(d.started_at) > now || (d.stop_by !== null && now >= Date.parse(d.stop_by))) continue;
+    if (arm.flag && !flagOn(env[d.flag])) continue;
+    return { id: d.id, stop_by: d.stop_by };
+  }
+  return null;
+}
 
 /** Resources and consumer evidence per consumer key over [since, until). */
 function collect(db: Database, since: string, until: string, schedulers: string[], env: NodeJS.ProcessEnv = process.env): Map<string, Acc> {
@@ -148,6 +193,7 @@ function collect(db: Database, since: string, until: string, schedulers: string[
     const a = acc(`judgment:${r.judgment}`, 'judgment'); a.runs++;
     // P0-11: consumption is whether a gate read the row (registry), not its mode label — a shadow-labelled row a gate acts on counts
     if (gateReads(r.judgment, r, env)) { a.enforceRows++; if (r.decision !== 'error') a.enforceConsumed++; }
+    else if (learnerReads(r.judgment, r, env)) a.learnerRows++;
     else if (r.judgment.includes('@') || r.mode === 'shadow') a.shadowRows++;
     else a.otherRows++;
     if (!r.model) { a.noModel++; continue; } // deterministic: no model call was made
@@ -165,7 +211,10 @@ function collect(db: Database, since: string, until: string, schedulers: string[
       WHERE role = 'maker' AND runtime != 'manual' AND created_at >= ? AND created_at < ?`, since, until)) {
     const a = acc(leaseConsumer('maker', r.runtime, typeof r.model === 'string' ? r.model : null), 'maker');
     a.runs++; a.runIds.add(r.run);
-    tokens(a, num(r.ta) ?? num(r.ru), r.runtime === 'remote');
+    const t = num(r.ta) ?? num(r.ru);
+    // (c) a remote maker runs a local model on the claiming host: no cloud tokens, whatever it reports locally
+    if (t === null && r.runtime === 'remote') a.cloudZero++;
+    else tokens(a, t, r.runtime === 'remote');
   }
 
   for (const s of schedulers) { const a = acc(`scheduler:${s}`, 'scheduler'); a.otherRows++; }
@@ -184,37 +233,66 @@ function collect(db: Database, since: string, until: string, schedulers: string[
   return out;
 }
 
-/** Verified runs credited per consumer (outcome_credits kind maker / judgment) and which of them survived on main. */
-function credits(db: Database, since: string, until: string, survivedRuns: Set<string>): { recorded: boolean; byConsumer: Map<string, { verified: number; survived: number }> } {
+/** Verified runs credited per consumer (outcome_credits kind maker / judgment) in the window. */
+function credits(db: Database, since: string, until: string): { recorded: boolean; byConsumer: Map<string, number> } {
   const recorded = safeAll<{ n: number }>(db, "SELECT COUNT(*) AS n FROM judgments WHERE judgment = 'outcome_attribution' AND created_at >= ? AND created_at < ?", since, until)[0]?.n > 0;
-  const byConsumer = new Map<string, { verified: number; survived: number }>();
+  const byConsumer = new Map<string, number>();
   const seen = new Set<string>();
   for (const c of safeAll<{ run_id: string; kind: string; ref: string }>(db,
     "SELECT run_id, kind, ref FROM outcome_credits WHERE kind IN ('maker', 'judgment') AND created_at >= ? AND created_at < ?", since, until)) {
     const key = `${c.kind}:${c.ref}`;
     if (seen.has(`${key}|${c.run_id}`)) continue;
     seen.add(`${key}|${c.run_id}`);
-    const v = byConsumer.get(key) ?? { verified: 0, survived: 0 };
-    v.verified++; if (survivedRuns.has(c.run_id)) v.survived++;
-    byConsumer.set(key, v);
+    byConsumer.set(key, (byConsumer.get(key) ?? 0) + 1);
   }
   return { recorded, byConsumer };
 }
 
+/**
+ * (b) Loop PRs that survived on main, settled in [since, until): merge outcomes (skill_outcomes domain 'merge', success 1;
+ * superseded closes left out, merge-superseded.ts). A PR settles ≥ 14 d after its run, so the join is by settlement time and
+ * not by the credit window. Each survival credits the consumer that made the change — the run's maker lease (leaseRanOn: the
+ * runtime that ran) — and the judgments / reviewers outcome_credits names on that run (any date). recorded = any merge
+ * verdict settled in the window (success 0 or 1); without one, survival is unknown (null), never 0.
+ */
+function survivals(db: Database, since: string, until: string): { recorded: boolean; byConsumer: Map<string, number> } {
+  const rows = safeAll<{ run: string; success: number }>(db, `SELECT o.task_id AS run, MAX(o.success) AS success FROM skill_outcomes o
+    WHERE o.domain = 'merge' AND o.task_id IS NOT NULL AND o.created_at >= ? AND o.created_at < ? AND NOT ${supersededMergeOutcomeSql('o')} GROUP BY o.task_id`, since, until);
+  const byConsumer = new Map<string, number>();
+  for (const { run } of rows.filter((r) => r.success === 1)) {
+    const keys = new Set<string>();
+    const lease = safeAll<{ runtime: string; metadata: string | null }>(db,
+      "SELECT runtime, metadata FROM worker_leases WHERE loop_run_id = ? AND role = 'maker' ORDER BY created_at DESC, id DESC LIMIT 1", run)[0];
+    if (lease) {
+      let meta: Record<string, unknown> = {};
+      try { meta = JSON.parse(lease.metadata || '{}') as Record<string, unknown>; } catch { /* malformed: requested runtime, no model */ }
+      const ran = leaseRanOn(lease.runtime, meta);
+      keys.add(leaseConsumer('maker', ran.runtime, ran.model));
+    }
+    for (const c of safeAll<{ kind: string; ref: string }>(db, "SELECT kind, ref FROM outcome_credits WHERE run_id = ? AND kind IN ('judgment', 'reviewer')", run)) keys.add(`${c.kind}:${c.ref}`);
+    for (const k of keys) byConsumer.set(k, (byConsumer.get(k) ?? 0) + 1);
+  }
+  return { recorded: rows.length > 0, byConsumer };
+}
+
 export function consumerStatus(a: Acc): ConsumerStatus {
   if (a.enforceConsumed > 0) return 'decision_consumed';
-  if (a.kind === 'maker') return 'consumed'; // a maker's change goes through the gates and to a PR
+  if (a.kind === 'maker' || a.learnerRows > 0) return 'consumed'; // a maker's change goes through the gates and to a PR
   if (a.runs > 0 && a.shadowRows === a.runs) return 'no_consumer';
   return 'unknown';
 }
 
-function windowStats(a: Acc, status: ConsumerStatus, windowDays: number, credit: { recorded: boolean; v: { verified: number; survived: number } | undefined }): WindowStats {
+type Credit = { recorded: boolean; verified: number | undefined };
+type Survival = { recorded: boolean; n: number | undefined };
+function windowStats(a: Acc, status: ConsumerStatus, windowDays: number, credit: Credit, surv: Survival = { recorded: false, n: undefined }): WindowStats {
   const calls = a.known + a.unknown;
   const coverage = calls ? +(a.known / calls).toFixed(3) : null;
-  const basis: WindowStats['tokens']['basis'] = calls ? 'reported' : a.noModel > 0 ? 'no_model_call' : 'not_recorded';
+  const basis: WindowStats['tokens']['basis'] = calls || a.cloudZero ? 'reported' : a.noModel > 0 ? 'no_model_call' : 'not_recorded';
+  // (c) every run either reported its tokens or is a remote (local-model) maker: the cloud side is known
+  const cloudKnownAll = a.cloudZero > 0 && a.unknown === 0;
   const tokens = {
-    cloud: basis === 'no_model_call' ? 0 : a.known > 0 ? a.cloud : null,
-    local: basis === 'no_model_call' ? 0 : a.known > 0 ? a.local : null,
+    cloud: basis === 'no_model_call' ? 0 : a.known > 0 || cloudKnownAll ? a.cloud : null,
+    local: basis === 'no_model_call' ? 0 : a.known > 0 && a.cloudZero === 0 ? a.local : null,
     known_calls: a.known, unknown_calls: a.unknown, coverage, basis,
   };
   const cov = a.gpuS > 0 ? a.coveredS / a.gpuS : null;
@@ -224,22 +302,31 @@ function windowStats(a: Acc, status: ConsumerStatus, windowDays: number, credit:
   const n = a.kind === 'maker' ? a.runIds.size : a.runs;
 
   let value: WindowStats['value'];
+  const creditable = a.kind === 'maker' || status === 'decision_consumed';
+  // (b) survived: null = no merge verdict settled in the window (unknown, never 0); units then count verified only (a lower bound)
+  const survived = surv.recorded ? surv.n ?? 0 : null;
   if (status === 'no_consumer') value = { verified: 0, survived: 0, units: 0, decision_consumed: 0, basis: 'no_consumer (by design: shadow output nobody reads)' };
   // creditedContributors credits a judgment only when it gated the run in enforce mode: any other judgment has no credit path
-  else if (credit.recorded && (a.kind === 'maker' || status === 'decision_consumed')) {
-    const v = credit.v ?? { verified: 0, survived: 0 };
-    value = { verified: v.verified, survived: v.survived, units: v.verified * VALUE_WEIGHTS.verified + v.survived * VALUE_WEIGHTS.survived,
-      decision_consumed: a.kind === 'judgment' ? a.enforceConsumed : null, basis: 'outcome_credits' };
+  else if (credit.recorded && creditable) {
+    const verified = credit.verified ?? 0;
+    value = { verified, survived, units: verified * VALUE_WEIGHTS.verified + (survived ?? 0) * VALUE_WEIGHTS.survived,
+      decision_consumed: a.kind === 'judgment' ? a.enforceConsumed : null,
+      basis: survived === null ? 'outcome_credits (survived unknown: no merge verdict settled in the window)' : 'outcome_credits + merge survival' };
+  } else if (creditable && survived) {
+    value = { verified: null, survived, units: survived * VALUE_WEIGHTS.survived, decision_consumed: a.kind === 'judgment' ? a.enforceConsumed : null,
+      basis: 'merge survival (verified unknown: no outcome attribution recorded in the window)' };
   } else if (status === 'decision_consumed') value = { verified: null, survived: null, units: null, decision_consumed: a.enforceConsumed, basis: 'decision_consumed' };
   else value = { verified: null, survived: null, units: null, decision_consumed: a.kind === 'judgment' ? a.enforceConsumed : null,
     basis: a.kind === 'maker' ? 'unknown: no outcome attribution recorded in the window'
-      : a.kind === 'judgment' ? 'unknown: only enforce-mode judgments are credited' : 'unknown: no attribution path for this consumer kind' };
+      : a.kind === 'judgment' ? (a.learnerRows > 0 ? 'unknown: read by a learner, which has no credit path' : 'unknown: only enforce-mode judgments are credited')
+        : 'unknown: no attribution path for this consumer kind' };
 
   const cloudKnown = tokens.cloud !== null && tokens.cloud > 0 && (coverage ?? 0) >= MIN_TOKEN_COVERAGE;
   const per_m_tokens = value.verified !== null && cloudKnown ? valuePer(value.verified, n, tokens.cloud! / 1e6) : null;
   const per_kwh = value.verified !== null && energy.wh ? valuePer(value.verified, n, energy.wh / 1000) : null;
 
-  const costKnown = basis === 'no_model_call' || (calls > 0 && (coverage ?? 0) >= MIN_TOKEN_COVERAGE) || energy.status === 'measured';
+  const costKnown = basis === 'no_model_call' || (calls > 0 && (coverage ?? 0) >= MIN_TOKEN_COVERAGE) || energy.status === 'measured' || cloudKnownAll;
+  const energyNote = cloudKnownAll && energy.wh === null && energy.gpu_seconds > 0 ? `; 0 cloud tokens, energy unknown (${energy.status})` : '';
   let cls: ValueClass; let reason: string;
   if (status === 'no_consumer') { cls = 'NO_CONSUMER'; reason = 'only shadow output: no gate, learner or operator reads it'; }
   else if (!costKnown) {
@@ -249,7 +336,7 @@ function windowStats(a: Acc, status: ConsumerStatus, windowDays: number, credit:
     cls = 'VALUE_PROVEN'; reason = `${a.enforceConsumed} decision(s) read by a gate${value.verified ? `; ${value.verified} credited verified run(s)` : ''}`;
   }
   else if (value.units === null) { cls = 'INSUFFICIENT'; reason = value.basis; }
-  else if (value.units > 0 && n >= MIN_PROVEN_N) { cls = 'VALUE_PROVEN'; reason = `${value.verified} verified (${value.survived} survived) of ${n}`; }
+  else if (value.units > 0 && n >= MIN_PROVEN_N) { cls = 'VALUE_PROVEN'; reason = `${value.verified ?? 'unknown'} verified (${value.survived ?? 'unknown'} survived) of ${n}${energyNote}`; }
   else if (value.units === 0 && n >= MIN_VOLUME) { cls = 'NO_VALUE'; reason = `0 credited verified runs over ${n} (≥ ${MIN_VOLUME})`; }
   else { cls = 'INSUFFICIENT'; reason = `n = ${n} (VALUE_PROVEN needs ≥ ${MIN_PROVEN_N} with value, NO_VALUE ≥ ${MIN_VOLUME} without)`; }
   return { window_days: windowDays, runs: n, tokens, energy, value, per_m_tokens, per_kwh, class: cls, reason };
@@ -257,11 +344,12 @@ function windowStats(a: Acc, status: ConsumerStatus, windowDays: number, credit:
 
 /**
  * The shadow proposal for one consumer. share = proposed fraction of current volume (1 = unchanged). Hard floors are always
- * 'keep' at ≥ 1; VALUE_PROVEN and INSUFFICIENT never go below EXPLORATION_FLOOR. `peerMedian` = median verified per M tokens
+ * 'keep' at ≥ 1; a VALUE_PROVEN consumer (in either window) is only ever kept or raised, never reduced or paused; INSUFFICIENT
+ * never goes below EXPLORATION_FLOOR; an EXPERIMENT arm is kept until its stop_by. `peerMedian` = median verified per M tokens
  * over the VALUE_PROVEN consumers (null when fewer than two have one).
  */
-export function proposeAction(r: { consumer_status: ConsumerStatus; hard_floor: string | null; w7: Pick<WindowStats, 'class' | 'per_m_tokens' | 'tokens' | 'energy'> },
-  peerMedian: number | null): AllocationRow['proposal'] {
+export function proposeAction(r: { consumer_status: ConsumerStatus; hard_floor: string | null; w7: Pick<WindowStats, 'class' | 'per_m_tokens' | 'tokens' | 'energy'>;
+  w30?: Pick<WindowStats, 'class'>; experiment?: { id: string; stop_by: string | null } | null }, peerMedian: number | null): AllocationRow['proposal'] {
   const { w7 } = r;
   let p: AllocationRow['proposal'];
   const measuredCost = (w7.tokens.cloud ?? 0) + (w7.tokens.local ?? 0) > 0 || (w7.energy.wh ?? 0) > 0;
@@ -270,15 +358,20 @@ export function proposeAction(r: { consumer_status: ConsumerStatus; hard_floor: 
     case 'NO_VALUE': p = measuredCost ? { action: 'reduce_cap', share: 0.25, reason: 'enough volume, zero credited value' } : { action: 'keep', share: 1, reason: 'zero credited value, but no measured cost to reclaim' }; break;
     case 'UNKNOWN_COST': p = { action: 'keep', share: 1, reason: 'cost unknown: nothing to weigh' }; break;
     case 'INSUFFICIENT': p = { action: 'keep', share: 1, reason: 'insufficient evidence: keep exploring' }; break;
+    case 'EXPERIMENT': p = { action: 'keep', share: 1, reason: `experiment ${r.experiment?.id ?? ''}: exempt until its stop date ${r.experiment?.stop_by ?? '(none registered)'}`.replace('  ', ' ') }; break;
     default: {
       const v = w7.per_m_tokens;
       if (!v || peerMedian === null || peerMedian <= 0) p = { action: 'keep', share: 1, reason: 'value proven; no peer comparison per M tokens' };
       else if ((v.low ?? v.value) > peerMedian) p = { action: 'raise_share', share: 1.25, reason: `value per M tokens ${v.value} above the peer median ${peerMedian}` };
-      else if (v.high !== null && v.high < peerMedian) p = { action: 'reduce_cap', share: +(v.high / peerMedian).toFixed(3), reason: `value per M tokens (upper ${v.high}) below the peer median ${peerMedian}` };
+      else if (v.high !== null && v.high < peerMedian) p = { action: 'keep', share: 1, reason: `value proven; value per M tokens (upper ${v.high}) below the peer median ${peerMedian}, never reduced` };
       else p = { action: 'keep', share: 1, reason: 'value proven, interval overlaps the peer median' };
     }
   }
-  if ((w7.class === 'VALUE_PROVEN' || w7.class === 'INSUFFICIENT') && p.share < EXPLORATION_FLOOR) p = { ...p, share: EXPLORATION_FLOOR, reason: `${p.reason}; exploration floor ${EXPLORATION_FLOOR * 100} %` };
+  if (w7.class === 'INSUFFICIENT' && p.share < EXPLORATION_FLOOR) p = { ...p, share: EXPLORATION_FLOOR, reason: `${p.reason}; exploration floor ${EXPLORATION_FLOOR * 100} %` };
+  // (a) invariant: a consumer with proven value in either window is kept or raised, never reduced or paused
+  if ((w7.class === 'VALUE_PROVEN' || r.w30?.class === 'VALUE_PROVEN') && (p.action === 'reduce_cap' || p.action === 'pause' || p.share < 1)) {
+    p = { action: 'keep', share: 1, reason: `value proven (${w7.class === 'VALUE_PROVEN' ? '7' : '30'}-day window): never reduced or paused (7-day: ${p.reason})` };
+  }
   if (r.hard_floor && (p.action === 'reduce_cap' || p.action === 'pause' || p.share < 1)) p = { action: 'keep', share: 1, reason: `hard floor (${r.hard_floor}): never reduced` };
   return p;
 }
@@ -293,22 +386,28 @@ export function buildValueAllocation(db: Database, now = Date.now(), env: NodeJS
   const until = new Date(now).toISOString();
   const since7 = new Date(now - 7 * DAY).toISOString(); const since30 = new Date(now - 30 * DAY).toISOString();
   const scheds = schedulerNames ?? listSchedulers(now).schedulers.filter((s) => s.armed || s.last_run).map((s) => s.name);
-  let survived = new Set<string>();
-  try { survived = new Set(loopPrSettlements(db, now, undefined, env).filter((p) => p.settlement.state === 'SETTLED_SURVIVED').map((p) => p.run_id)); } catch { /* loop_runs absent */ }
   const a7 = collect(db, since7, until, scheds, env); const a30 = collect(db, since30, until, scheds, env);
-  const c7 = credits(db, since7, until, survived); const c30 = credits(db, since30, until, survived);
+  const c7 = credits(db, since7, until); const c30 = credits(db, since30, until);
+  const s7 = survivals(db, since7, until); const s30 = survivals(db, since30, until);
 
   const rows = [...a7.entries()].map(([consumer, acc]) => {
     const status = consumerStatus(acc);
     const acc30 = a30.get(consumer) ?? acc;
-    return { consumer, kind: acc.kind, consumer_status: status, hard_floor: hardFloor(consumer, status),
-      w7: windowStats(acc, status, 7, { recorded: c7.recorded, v: c7.byConsumer.get(consumer) }),
-      w30: windowStats(acc30, consumerStatus(acc30), 30, { recorded: c30.recorded, v: c30.byConsumer.get(consumer) }) };
+    const status30 = consumerStatus(acc30);
+    const w7 = windowStats(acc, status, 7, { recorded: c7.recorded, verified: c7.byConsumer.get(consumer) }, { recorded: s7.recorded, n: s7.byConsumer.get(consumer) });
+    const w30 = windowStats(acc30, status30, 30, { recorded: c30.recorded, verified: c30.byConsumer.get(consumer) }, { recorded: s30.recorded, n: s30.byConsumer.get(consumer) });
+    // (d) an arm of a running experiment is exempt — unless a gate reads it (production, never exempt)
+    const experiment = status === 'decision_consumed' ? null : experimentOf(consumer, now, env);
+    if (experiment) {
+      const why = `arm of running experiment ${experiment.id} (stop_by ${experiment.stop_by ?? 'none registered'}): exempt`;
+      for (const w of [w7, w30]) { w.reason = `${why}; would be ${w.class}: ${w.reason}`; w.class = 'EXPERIMENT'; }
+    }
+    return { consumer, kind: acc.kind, consumer_status: status, hard_floor: hardFloor(consumer, status), experiment, w7, w30 };
   });
   const peer = median(rows.filter((r) => r.w7.class === 'VALUE_PROVEN' && r.w7.per_m_tokens).map((r) => r.w7.per_m_tokens!.value));
   const consumers: AllocationRow[] = rows.map((r) => ({ ...r, proposal: proposeAction(r, peer) }))
     .sort((a, b) => a.kind.localeCompare(b.kind) || a.consumer.localeCompare(b.consumer));
-  const by_class: Record<ValueClass, number> = { VALUE_PROVEN: 0, NO_VALUE: 0, NO_CONSUMER: 0, INSUFFICIENT: 0, UNKNOWN_COST: 0 };
+  const by_class: Record<ValueClass, number> = { VALUE_PROVEN: 0, NO_VALUE: 0, NO_CONSUMER: 0, INSUFFICIENT: 0, UNKNOWN_COST: 0, EXPERIMENT: 0 };
   const by_action: Record<ProposedAction, number> = { keep: 0, reduce_cap: 0, pause: 0, raise_share: 0 };
   for (const c of consumers) { by_class[c.w7.class]++; by_action[c.proposal.action]++; }
   return {
@@ -316,7 +415,8 @@ export function buildValueAllocation(db: Database, now = Date.now(), env: NodeJS
     notes: [
       'SHADOW: proposals are never applied; class and proposal come from the 7-day window, the 30-day window is context.',
       'NULL token counts are unknown, never 0; energy without ≥ 90 % sampled job time is unknown (null).',
-      `value units = verified × ${VALUE_WEIGHTS.verified} + survived on main × ${VALUE_WEIGHTS.survived} (outcome_credits; fitness-view weights). NO_CONSUMER = 0 by design, not unknown.`,
+      `value units = verified × ${VALUE_WEIGHTS.verified} + survived on main × ${VALUE_WEIGHTS.survived} (outcome_credits; merge outcomes settled in the window, credited to the run's maker lease and credited judgments/reviewers; fitness-view weights). NO_CONSUMER = 0 by design, not unknown.`,
+      'VALUE_PROVEN (either window) is only kept or raised; EXPERIMENT rows (arms of a running registry experiment) are exempt until stop_by.',
       'Schedulers come from this process\'s registry (rebuilt at boot); per-scheduler tokens are not recorded, so most are UNKNOWN_COST.',
       `Hard floors (gates, security checker, safety, human merge, auth/deploy/secrets, merge survival, stall watch) are never proposed for reduction; VALUE_PROVEN / INSUFFICIENT never below ${EXPLORATION_FLOOR * 100} %.`,
     ],

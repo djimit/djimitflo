@@ -10,8 +10,10 @@ import { AuthService } from '../services/auth-service';
 import { createHealthRoutes } from '../routes/health';
 import { EVOLUTION_FLAGS } from '../services/evolution-evidence';
 import { ensureCreditTable } from '../services/outcome-attribution';
+import { ensurePowerTable } from '../services/resource-ledger';
+import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 import {
-  buildValueAllocation, EXPLORATION_FLOOR, proposeAction, runValueAllocation, valueAllocatorMode, type AllocationRow, type WindowStats,
+  buildValueAllocation, EXPLORATION_FLOOR, LEARNER_READ_JUDGMENTS, proposeAction, runValueAllocation, valueAllocatorMode, type AllocationRow, type WindowStats,
 } from '../services/value-allocator';
 
 const NOW = Date.parse('2026-10-19T12:00:00Z');
@@ -20,27 +22,33 @@ const iso = (ms: number) => new Date(ms).toISOString();
 let db: Database.Database;
 let seq = 0;
 
-beforeEach(() => { db = new Database(':memory:'); db.pragma('foreign_keys = OFF'); db.exec(schema); runMigrations(db); ensureCreditTable(db); seq = 0; });
+beforeEach(() => { db = new Database(':memory:'); db.pragma('foreign_keys = OFF'); db.exec(schema); runMigrations(db); ensureCreditTable(db); new SkillEvolutionEngine(db); seq = 0; });
 afterEach(() => { vi.unstubAllEnvs(); db.close(); });
 
 const call = (purpose: string, opts: { tin?: number | null; tout?: number | null; shadow?: number; consumer?: string; model?: string } = {}) =>
   db.prepare(`INSERT INTO llm_model_calls (consumer, model, ok, provider, shadow, tokens_in, tokens_out, purpose, created_at) VALUES (?, ?, 1, 'litellm', ?, ?, ?, ?, ?)`)
     .run(opts.consumer ?? 'svc', opts.model ?? 'gpt-x', opts.shadow ?? 0, opts.tin === undefined ? 100 : opts.tin, opts.tout === undefined ? 50 : opts.tout, purpose, iso(NOW - DAY));
-const judgment = (name: string, mode: string, opts: { model?: string | null; tin?: number; tout?: number; decision?: string; subjectType?: string } = {}) =>
+const judgment = (name: string, mode: string, opts: { model?: string | null; tin?: number; tout?: number; decision?: string; subjectType?: string; at?: number } = {}) =>
   db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, input_tokens, output_tokens, model, created_at) VALUES (?, ?, ?, ?, 'h', ?, ?, ?, ?, ?, ?)`)
-    .run(`j-${++seq}`, name, opts.subjectType ?? 's', `sub-${seq}`, mode, opts.decision ?? 'yes', opts.tin ?? 0, opts.tout ?? 0, opts.model === undefined ? 'jev-model' : opts.model, iso(NOW - DAY));
-function makerRun(opts: { tokens?: number | null; credited?: boolean; survived?: boolean; model?: string; meta?: Record<string, unknown> } = {}) {
+    .run(`j-${++seq}`, name, opts.subjectType ?? 's', `sub-${seq}`, mode, opts.decision ?? 'yes', opts.tin ?? 0, opts.tout ?? 0, opts.model === undefined ? 'jev-model' : opts.model, iso(opts.at ?? NOW - DAY));
+/** survived: a merge outcome settled 2 days ago (the PR merged ≥ 14 d before); credited: an outcome_credits maker row now */
+function makerRun(opts: { tokens?: number | null; credited?: boolean; survived?: boolean; model?: string; runtime?: string; meta?: Record<string, unknown> } = {}) {
   const run = `run-${++seq}`;
   const meta = opts.survived ? { pr_url: `https://github.com/djimit/djimitflo/pull/${seq}`, pr_outcome: { state: 'merged', merged_at: iso(NOW - 20 * DAY), settled_at: iso(NOW - 2 * DAY), survived: true } } : {};
   db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, metadata, created_at, updated_at) VALUES (?, 'test-gap', 'closed', 'completed', ?, ?, ?)")
     .run(run, JSON.stringify(meta), iso(NOW - 25 * DAY), iso(NOW - DAY));
   const leaseMeta = { model: opts.model ?? 'm1', ...(opts.tokens === null ? {} : { token_accounting: { total_tokens: opts.tokens ?? 1000 } }), ...opts.meta };
-  db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES (?, ?, 'maker', 'opencode', 'completed', ?, ?, ?)")
-    .run(`l-${seq}`, run, JSON.stringify(leaseMeta), iso(NOW - DAY), iso(NOW - DAY));
+  db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES (?, ?, 'maker', ?, 'completed', ?, ?, ?)")
+    .run(`l-${seq}`, run, opts.runtime ?? 'opencode', JSON.stringify(leaseMeta), iso(NOW - DAY), iso(NOW - DAY));
+  if (opts.survived) mergeOutcome(run, 1);
   db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at) VALUES (?, 'outcome_attribution', 'loop_run', ?, 'h', 'annotation', ?, 'x', ?)`)
     .run(`oa-${seq}`, run, opts.credited ? 'verified' : 'maker_failure', iso(NOW - DAY));
-  if (opts.credited) db.prepare("INSERT INTO outcome_credits (run_id, kind, ref, created_at) VALUES (?, 'maker', ?, ?)").run(run, `opencode@${opts.model ?? 'm1'}`, iso(NOW - DAY));
+  if (opts.credited) db.prepare("INSERT INTO outcome_credits (run_id, kind, ref, created_at) VALUES (?, 'maker', ?, ?)").run(run, `${opts.runtime ?? 'opencode'}@${opts.model ?? 'm1'}`, iso(NOW - DAY));
   return run;
+}
+function mergeOutcome(run: string, success: 0 | 1, at = NOW - 2 * DAY) {
+  db.prepare(`INSERT INTO skill_outcomes (id, skill_id, agent_id, task_id, success, tokens_used, duration_ms, domain, evidence_refs_json, created_at)
+    VALUES (?, 'loop-maker:merge:opencode', 'a', ?, ?, 0, 0, 'merge', '[]', ?)`).run(`so-${++seq}`, run, success, iso(at));
 }
 const row = (v: ReturnType<typeof buildValueAllocation>, consumer: string) => {
   const r = v.consumers.find((c) => c.consumer === consumer);
@@ -97,7 +105,7 @@ describe('value allocator: value and class', () => {
     expect(shadow.w7.class).toBe('NO_CONSUMER');
     expect(shadow.w7.value).toMatchObject({ units: 0, verified: 0 });
     expect(shadow.proposal.action).toBe('pause');
-    expect(row(v, 'judgment:proposal_prescreen@qwen').w7.class).toBe('NO_CONSUMER');
+    expect(row(v, 'judgment:proposal_prescreen@qwen').w7.class).toBe('EXPERIMENT'); // JEV-114 challenger (d)
     const annotation = row(v, 'judgment:reflection_triage');
     expect(annotation.w7.class).not.toBe('NO_CONSUMER');
     expect(annotation.w7.value.units).toBeNull(); // unknown, not 0
@@ -191,8 +199,7 @@ describe('value allocator: proposals', () => {
 
   it('never proposes below the exploration floor for VALUE_PROVEN or INSUFFICIENT', () => {
     const p = proposeAction({ consumer_status: 'consumed', hard_floor: null, w7: stats('VALUE_PROVEN', { per_m_tokens: { value: 0.001, low: 0.0001, high: 0.002, n: 40 } }) }, 10);
-    expect(p.action).toBe('reduce_cap');
-    expect(p.share).toBe(EXPLORATION_FLOOR);
+    expect(p).toMatchObject({ action: 'keep', share: 1 }); // (a) VALUE_PROVEN below the peer median is kept, never reduced
     const better = proposeAction({ consumer_status: 'consumed', hard_floor: null, w7: stats('VALUE_PROVEN', { per_m_tokens: { value: 30, low: 20, high: 40, n: 40 } }) }, 10);
     expect(better.action).toBe('raise_share');
     const insufficient = proposeAction({ consumer_status: 'unknown', hard_floor: null, w7: stats('INSUFFICIENT') }, 10);
@@ -242,5 +249,117 @@ describe('value allocator: daily judgment and endpoint', () => {
 
   it('VALUE_ALLOCATOR_MODE is a non-acting evolution flag', () => {
     expect(EVOLUTION_FLAGS).toContainEqual({ name: 'VALUE_ALLOCATOR_MODE', acting: false });
+  });
+});
+
+describe('value allocator: prod 20-10 defects', () => {
+  const stats = (cls: WindowStats['class']): Pick<WindowStats, 'class' | 'per_m_tokens' | 'tokens' | 'energy'> => ({
+    class: cls, per_m_tokens: null, tokens: { cloud: 1e6, local: 0, known_calls: 10, unknown_calls: 0, coverage: 1, basis: 'reported' },
+    energy: { wh: null, status: 'no_local_jobs', gpu_seconds: 0 } });
+
+  it('(a) a consumer VALUE_PROVEN in either window is never paused or reduced (keep or raise only)', () => {
+    // prescreen read by the gate (enforce) 20 days ago, shadow-only in the last 7 days, with measured tokens
+    for (let i = 0; i < 6; i++) judgment('proposal_prescreen', 'enforce', { tin: 400, tout: 30, at: NOW - 20 * DAY });
+    for (let i = 0; i < 6; i++) judgment('proposal_prescreen', 'shadow', { tin: 400, tout: 30 });
+    const r = row(buildValueAllocation(db, NOW, {}, []), 'judgment:proposal_prescreen');
+    expect(r.w30.class).toBe('VALUE_PROVEN');
+    expect(['keep', 'raise_share']).toContain(r.proposal.action);
+    expect(r.proposal.share).toBeGreaterThanOrEqual(1);
+    for (const w7 of ['NO_CONSUMER', 'NO_VALUE', 'VALUE_PROVEN'] as const) {
+      const p = proposeAction({ consumer_status: 'unknown', hard_floor: null, w7: { ...stats(w7), per_m_tokens: { value: 0.001, low: 0, high: 0.002, n: 50 } }, w30: { class: 'VALUE_PROVEN' } }, 10);
+      expect(['keep', 'raise_share']).toContain(p.action);
+    }
+  });
+
+  it('(b) a merged PR that survived 14 d credits ×3 to the maker that made it (lease, effective runtime) and its credited judgments, superseded closes left out', () => {
+    for (let i = 0; i < 5; i++) makerRun({ credited: true, survived: true });
+    const fallback = makerRun({ survived: true, meta: { effective_runtime: 'claude', effective_model: 'sonnet' } });
+    db.prepare("INSERT INTO outcome_credits (run_id, kind, ref, created_at) VALUES (?, 'judgment', 'proposal_prescreen', ?)").run(fallback, iso(NOW - 20 * DAY));
+    for (let i = 0; i < 3; i++) judgment('proposal_prescreen', 'enforce', { tin: 400, tout: 30 });
+    const v = buildValueAllocation(db, NOW, {}, []);
+    const m1 = row(v, 'maker:opencode@m1');
+    expect(m1.w7.value).toMatchObject({ verified: 5, survived: 5, units: 5 + 5 * 3 });
+    expect(m1.w7.class).toBe('VALUE_PROVEN');
+    expect(row(v, 'maker:claude@sonnet').w7.value.survived).toBe(1);
+    expect(row(v, 'judgment:proposal_prescreen').w7.value.survived).toBe(1);
+    // without any merge verdict settled in the window, survived is unknown (null), never 0
+    db.prepare("DELETE FROM skill_outcomes WHERE domain = 'merge'").run();
+    expect(row(buildValueAllocation(db, NOW, {}, []), 'maker:opencode@m1').w7.value).toMatchObject({ verified: 5, survived: null, units: 5 });
+  });
+
+  it('(b) a superseded closed-unmerged merge outcome is no verdict', () => {
+    const run = makerRun({ credited: true });
+    const prop = db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, evidence_refs_json, created_at, updated_at)
+      VALUES (?, 'test', 't', 'd', 'r', 'gap_analysis', ?, ?, ?, ?)`);
+    prop.run('p-o', 'proposed', '[]', iso(NOW), iso(NOW));
+    prop.run('p-c', 'verified', JSON.stringify(['requeue-of:p-o']), iso(NOW), iso(NOW));
+    db.prepare("INSERT INTO goals (id, objective, risk_class, status, metadata, improvement_id, created_at, updated_at) VALUES ('g-o', 'o', 'low', 'completed', '{}', 'p-o', ?, ?)").run(iso(NOW), iso(NOW));
+    db.prepare("UPDATE loop_runs SET goal_id = 'g-o', metadata = ? WHERE id = ?").run(JSON.stringify({ pr_outcome: { state: 'closed_unmerged' } }), run);
+    mergeOutcome(run, 0);
+    expect(row(buildValueAllocation(db, NOW, {}, []), 'maker:opencode@m1').w7.value.survived).toBeNull(); // no verdict settled
+    db.prepare("DELETE FROM self_improvements WHERE id = 'p-c'").run(); // no successor: a genuine rejection, a scored 0
+    expect(row(buildValueAllocation(db, NOW, {}, []), 'maker:opencode@m1').w7.value.survived).toBe(0);
+  });
+
+  it('(c) a remote maker: energy from its claimed→finished window on the claiming host; < 90 % sampled = null energy, classified on 0 cloud tokens', () => {
+    const model = 'workstation/atomic@llama-router';
+    const runs = Array.from({ length: 6 }, () => makerRun({ runtime: 'remote', model, tokens: null, credited: true }));
+    db.exec(`CREATE TABLE IF NOT EXISTS remote_maker_jobs (id TEXT PRIMARY KEY, host TEXT NOT NULL, species TEXT NOT NULL, base_commit TEXT NOT NULL, prompt TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'queued', patch TEXT, reason TEXT, created_at TEXT NOT NULL, claimed_at TEXT, finished_at TEXT)`);
+    ensurePowerTable(db);
+    const start = NOW - 2 * DAY;
+    runs.forEach((_r, k) => db.prepare("INSERT INTO remote_maker_jobs (id, host, species, base_commit, prompt, status, created_at, claimed_at, finished_at) VALUES (?, 'workstation', 'atomic@llama-router', 'b', 'p', 'done', ?, ?, ?)")
+      .run(`job-${k}`, iso(start + k * 3_600_000), iso(start + k * 3_600_000), iso(start + k * 3_600_000 + 600_000)));
+    // samples every 30 s over the first job only: 1 of 6 jobs measured (< 90 %)
+    for (let t = start - 60_000; t <= start + 660_000; t += 30_000) db.prepare("INSERT INTO host_power_samples (host, at, gpu_watts) VALUES ('workstation', ?, 200)").run(iso(t));
+    const partial = row(buildValueAllocation(db, NOW, {}, []), `maker:remote@${model}`);
+    expect(partial.w7.tokens.cloud).toBe(0);
+    expect(partial.w7.tokens.local).toBeNull();
+    expect(partial.w7.energy.wh).toBeNull();
+    expect(partial.w7.energy.gpu_seconds).toBe(6 * 600);
+    expect(partial.w7.class).toBe('VALUE_PROVEN'); // not UNKNOWN_COST
+    expect(partial.w7.reason).toMatch(/energy unknown/);
+    // every job sampled: energy measured over the job windows on the claiming host
+    for (let k = 1; k < 6; k++) for (let t = start + k * 3_600_000 - 60_000; t <= start + k * 3_600_000 + 660_000; t += 30_000) db.prepare("INSERT INTO host_power_samples (host, at, gpu_watts) VALUES ('workstation', ?, 200)").run(iso(t));
+    const full = row(buildValueAllocation(db, NOW, {}, []), `maker:remote@${model}`);
+    expect(full.w7.energy.status).toBe('measured');
+    expect(full.w7.energy.wh).toBeCloseTo(6 * 200 * (600 / 3600), 0);
+  });
+
+  it('(d) challenger rows and arms of a running registry experiment are EXPERIMENT: exempt, keep, stop_by from the registry', () => {
+    for (let i = 0; i < 3; i++) judgment('failure_cause@jev-1.14.0', 'shadow', { tin: 300, tout: 20 });
+    for (let i = 0; i < 3; i++) call('jev:challenger', { shadow: 1 });
+    for (let i = 0; i < 3; i++) judgment('proposal_prescreen', 'shadow', { tin: 300, tout: 20 });
+    for (let i = 0; i < 3; i++) judgment('risk_atomic@local', 'shadow', { tin: 300, tout: 20 });
+    const env = { TYPESAFE_PROPOSAL_PRESCREEN_MODE: 'shadow' };
+    const v = buildValueAllocation(db, NOW, env, []);
+    for (const c of ['judgment:failure_cause@jev-1.14.0', 'llm:jev:challenger']) {
+      const r = row(v, c);
+      expect(r.w7.class).toBe('EXPERIMENT');
+      expect(r.experiment).toEqual({ id: 'JEV-114', stop_by: '2027-01-14T00:00:00.000Z' });
+      expect(r.proposal).toMatchObject({ action: 'keep', share: 1 });
+    }
+    expect(row(v, 'judgment:proposal_prescreen').experiment).toEqual({ id: 'D5-NO', stop_by: '2027-01-09T21:00:00.000Z' });
+    expect(row(v, 'judgment:proposal_prescreen').proposal.action).toBe('keep');
+    expect(row(v, 'judgment:risk_atomic@local').w7.class).toBe('NO_CONSUMER'); // T1 local shadow: not a registry experiment
+    expect(v.by_class.EXPERIMENT).toBe(3);
+    // flag off → the prescreen is no arm; past stop_by → the challenger is no longer exempt
+    expect(row(buildValueAllocation(db, NOW, {}, []), 'judgment:proposal_prescreen').experiment).toBeNull();
+    const late = Date.parse('2027-01-20T00:00:00Z');
+    for (let i = 0; i < 2; i++) judgment('failure_cause@jev-1.14.0', 'shadow', { tin: 300, tout: 20, at: late - DAY });
+    expect(row(buildValueAllocation(db, late, {}, []), 'judgment:failure_cause@jev-1.14.0').w7.class).toBe('NO_CONSUMER');
+  });
+
+  it('(e) failure_cause is consumed (dream-state consolidation → memory candidates) only when DREAM_STATE is on', () => {
+    for (let i = 0; i < 3; i++) judgment('failure_cause', 'shadow', { tin: 300, tout: 20, decision: 'yes' });
+    expect(LEARNER_READ_JUDGMENTS).toHaveProperty('failure_cause');
+    const off = row(buildValueAllocation(db, NOW, {}, []), 'judgment:failure_cause');
+    expect(off.consumer_status).toBe('no_consumer');
+    const on = row(buildValueAllocation(db, NOW, { DREAM_STATE_ENABLED: 'true' }, []), 'judgment:failure_cause');
+    expect(on.consumer_status).toBe('consumed');
+    expect(on.w7.class).not.toBe('NO_CONSUMER');
+    expect(on.w7.value.units).toBeNull(); // a learner has no credit path: unknown, not 0
+    expect(on.proposal.action).toBe('keep');
+    expect(on.hard_floor).toBeNull();
   });
 });
