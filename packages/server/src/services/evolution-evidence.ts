@@ -19,6 +19,7 @@ import { budgetEvidence } from './inference-budget';
 import { effortX1Evidence } from './effort-controller';
 import { checkerFamilyEvidence } from './checker-family';
 import { gradedEvidence } from './graded-fitness';
+import { failBeforePassAfterEvidence } from './fail-before-pass-after';
 import { wilson } from './evolution-estimators';
 import { subscriptionGymEvidence } from './subscription-gym';
 import { evolutionLineage } from './evolution-lineage';
@@ -42,6 +43,7 @@ import { allGatesPassed } from './loop-types';
 import { BASELINE_GENOME, holdoutEpoch } from './genome-registry';
 import { experimentsReport } from './experiment-registry';
 import { learningLedger } from './learning-ledger';
+import { fleetSignatureEvidence } from './fleet-event-signatures';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -76,7 +78,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'EFFORT_SIBLING_RANDOMISE', acting: true },
   { name: 'GRADED_FITNESS_MODE', acting: false }, { name: 'GRADED_CONTEST_MODE', acting: true },
   { name: 'SHIPPED_CODE_SCAN_MODE', acting: false },
-  { name: 'GYM_STORE_DIFFS', acting: false }, { name: 'WEAK_ASSERTION_CHECK_MODE', acting: true },
+  { name: 'GYM_STORE_DIFFS', acting: false }, { name: 'WEAK_ASSERTION_CHECK_MODE', acting: true }, { name: 'FAIL_BEFORE_PASS_AFTER_MODE', acting: false },
   { name: 'MAKER_DIFF_CAPTURE', acting: false },
   { name: 'POLICY_VIOLATION_LOG', acting: false },
   { name: 'CHECKER_FAMILY_RANDOMISE', acting: true }, { name: 'CHECKER_CROSS_MODEL', acting: true }, { name: 'CHECKER_FAMILY_TARGET_PER_ARM', acting: false },
@@ -95,6 +97,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'TRAINING_DATASET_EXPORT', acting: false },
   { name: 'VALUE_ALLOCATOR_MODE', acting: false },
   { name: 'VALUE_ANOMALY_ALARM', acting: false },
+  { name: 'FLEET_EVENT_SIGNATURES', acting: true },
   { name: 'EXTRA_REPOS_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_REPOS', acting: true },
 ];
 
@@ -439,6 +442,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     checker_family: checkerFamilyEvidence(db, since, env, fisherExact, now),
     // SI-A/SI-B: graded executed fitness per pool (n, mean, share at 1.0) and graded-contest agreement with the current rule
     graded: gradedEvidence(db, since, env),
+    // R2 (FAIL_BEFORE_PASS_AFTER_MODE, shadow): check verdict counts per run and 14-d survival per arm (decision at n >= 40 settled)
+    fail_before_pass_after: failBeforePassAfterEvidence(db, env, fisherExact, now),
     // ACE-001 (ACE_001_MODE): oracle-lane maker outcomes per retrieval × example-selection arm (pre-registered, collecting until target)
     ace_001: ace001Evidence(db, since, env),
     ste_001: ste001Evidence(db, since, env),
@@ -479,5 +484,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // Know when to stop (SOUL.md): running experiments, target n, registered stop date, n per arm, overdue (report-only)
     experiments,
     // G3.5: per learning mechanism the effect + CI its experiment's evidence already computes, status, 'loops closed k/N' (read-only)
-    learning_ledger: learningLedger(db, experiments.experiments, ope) };
+    learning_ledger: learningLedger(db, experiments.experiments, ope),
+    // P0-3 (FLEET_EVENT_SIGNATURES): agent.outcome signature verdicts per host (window) and the host key list, no secrets (read-only)
+    fleet_signatures: fleetSignatureEvidence(db, env, since) };
 }

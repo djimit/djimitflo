@@ -1,5 +1,6 @@
 import { mutationCheckEnv } from './test-gap-source-service';
 import { assertionStrengthCheck } from './test-assertion-strength';
+import { withoutHiddenChecks } from './fail-before-pass-after';
 import { deadCodeCheckEnv } from './dead-code-source-service';
 import { findingFixCheck, findingFixCheckEnv } from './finding-fix-source';
 import fs from 'fs';
@@ -2534,7 +2535,8 @@ export class LoopService {
 
   /** The maker's deterministic checks for a reviewer: name, status, exit and the ANSI-stripped tail of each log (capped). */
   private checkResultsForReviewer(raw: unknown): string {
-    const checks = Array.isArray(raw) ? raw as Array<Record<string, unknown>> : [];
+    // R2: a shadow-experiment check is never shown to a reviewer
+    const checks = Array.isArray(raw) ? withoutHiddenChecks(raw as Array<Record<string, unknown>>) : [];
     if (!checks.length) return 'No deterministic checks recorded.';
     const tail = (file: unknown, max: number): string => {
       if (typeof file !== 'string' || !file) return '';
