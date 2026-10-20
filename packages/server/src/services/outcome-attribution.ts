@@ -192,6 +192,18 @@ export function recordOutcomeAttribution(db: Database, runId: string, makerLease
 
 // ---- contributor credit (E2, first version) ----
 
+/**
+ * P0-7: the runtime (and model) a lease actually ran on. The execution engine records `effective_runtime` when it starts a
+ * session; when that differs from the lease runtime (an engine fallback), it wins and its model is `effective_model`
+ * (null = unknown, never the requested runtime's model). Otherwise the lease runtime and model stand.
+ */
+export function leaseRanOn(runtime: string, meta: { model?: unknown; effective_runtime?: unknown; effective_model?: unknown }): { runtime: string; model: string | null } {
+  if (typeof meta.effective_runtime === 'string' && meta.effective_runtime && meta.effective_runtime !== runtime) {
+    return { runtime: meta.effective_runtime, model: typeof meta.effective_model === 'string' ? meta.effective_model : null };
+  }
+  return { runtime, model: typeof meta.model === 'string' ? meta.model : null };
+}
+
 export type CreditKind = 'maker' | 'reviewer' | 'model' | 'genome' | 'memory_rule' | 'example' | 'knowledge' | 'judgment';
 export function ensureCreditTable(db: Database): void {
   db.exec(`CREATE TABLE IF NOT EXISTS outcome_credits (run_id TEXT NOT NULL, kind TEXT NOT NULL, ref TEXT NOT NULL, created_at TEXT NOT NULL,
@@ -206,9 +218,10 @@ export function creditedContributors(db: Database, runId: string, makerLeaseId: 
   const leases = db.prepare('SELECT id, role, runtime, status, metadata FROM worker_leases WHERE loop_run_id = ?').all(runId) as Array<{ id: string; role: string; runtime: string; status: string; metadata: string }>;
   const maker = leases.find((l) => l.id === makerLeaseId) ?? leases.filter((l) => l.role === 'maker').pop();
   if (maker) {
-    const m = parse(maker.metadata) as { model?: unknown; genome?: { id?: unknown }; genome_id?: unknown };
-    const model = typeof m.model === 'string' ? m.model : '';
-    out.push({ kind: 'maker', ref: model ? `${maker.runtime}@${model}` : maker.runtime });
+    const m = parse(maker.metadata) as { model?: unknown; effective_runtime?: unknown; effective_model?: unknown; genome?: { id?: unknown }; genome_id?: unknown };
+    const ran = leaseRanOn(maker.runtime, m); // P0-7: credit the runtime that ran, not the one requested
+    const model = ran.model ?? '';
+    out.push({ kind: 'maker', ref: model ? `${ran.runtime}@${model}` : ran.runtime });
     if (model) out.push({ kind: 'model', ref: model });
     if (typeof m.genome?.id === 'string') out.push({ kind: 'genome', ref: m.genome.id });
     if (typeof m.genome_id === 'string') out.push({ kind: 'genome', ref: `strategy:${m.genome_id}` });
@@ -216,7 +229,8 @@ export function creditedContributors(db: Database, runId: string, makerLeaseId: 
   for (const l of leases.filter((x) => (x.role === 'checker' || x.role === 'security_checker') && x.status === 'completed')) {
     const m = parse(l.metadata) as { verdict?: unknown; model?: unknown; maker_lease_id?: unknown };
     if (m.verdict !== 'accepted' || (maker && m.maker_lease_id !== undefined && m.maker_lease_id !== maker.id)) continue;
-    out.push({ kind: 'reviewer', ref: `${l.role}:${l.runtime}${typeof m.model === 'string' ? `@${m.model}` : ''}` });
+    const ranR = leaseRanOn(l.runtime, m as { model?: unknown; effective_runtime?: unknown; effective_model?: unknown });
+    out.push({ kind: 'reviewer', ref: `${l.role}:${ranR.runtime}${ranR.model ? `@${ranR.model}` : ''}` });
   }
   try {
     const ev = db.prepare("SELECT metadata FROM loop_events WHERE loop_run_id = ? AND event_type = 'assignment_context' ORDER BY created_at DESC LIMIT 1").get(runId) as { metadata: string } | undefined;

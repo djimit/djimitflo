@@ -5,7 +5,7 @@ import { LoopEventService } from './loop-event-service';
 import { testOnlyChange, TEST_ONLY_DIFF_MAX } from './loop-worker-executor-service';
 import { pushNotice } from './operator-push';
 import { settlementState, SURVIVAL_DAYS, type SettlementOutcome } from './merge-survival';
-import { autoMergeMaxPerDay, autoMergeMode, isAuditSample, readClassState, revokeClass } from './loop-auto-merge-state';
+import { autoMergeMaxPerDay, autoMergeMode, isAuditSample, PR_REVIEW_STATUS_CONTEXT, readClassState, revokeClass } from './loop-auto-merge-state';
 import { markRun } from './scheduler-registry';
 import { assertionStrengthVerdict } from './test-assertion-strength';
 import { autoMergeAllowed, parsePrUrl } from './repo-registry';
@@ -60,11 +60,13 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
   const events = new LoopEventService(db);
   const checks = async (slug: string, sha: string): Promise<Checks> => {
     const runs = (await json<{ check_runs?: Array<{ status?: string; conclusion?: string | null }> }>(slug, `commits/${sha}/check-runs?per_page=100`))?.check_runs;
-    const status = await json<{ state?: string; total_count?: number }>(slug, `commits/${sha}/status`);
+    const status = await json<{ state?: string; total_count?: number; statuses?: Array<{ context?: string; state?: string }> }>(slug, `commits/${sha}/status`);
     if (!runs) return 'pending';
     if (runs.some((c) => c.status === 'completed' && RED.has(String(c.conclusion))) || status?.state === 'failure' || status?.state === 'error') return 'red';
+    // P0-5: the PR-review heuristic's status is not a check — it can hold a PR (pending / failure) but never makes it green
+    const independent = (status?.statuses ?? []).filter((st) => st.context !== PR_REVIEW_STATUS_CONTEXT);
     if (runs.some((c) => c.status !== 'completed' || c.conclusion === 'cancelled' || c.conclusion === 'stale') || (status?.total_count && status.state === 'pending')) return 'pending';
-    return runs.length || status?.total_count ? 'green' : 'pending'; // no check reported yet = not green
+    return runs.length || independent.length ? 'green' : 'pending'; // no check reported yet = not green
   };
 
   // P0-6: true when `head` is only GitHub update-branch merges (web-flow, verified signature) stacked on `verified`.

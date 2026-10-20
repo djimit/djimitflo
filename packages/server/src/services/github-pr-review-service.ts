@@ -7,6 +7,7 @@ import type { Database } from 'better-sqlite3';
 import { LoopService } from './loop-service';
 import { ComplianceAuditService } from './compliance-audit-service';
 import { RoborevFindingsService } from './roborev-findings-service';
+import { PR_REVIEW_STATUS_CONTEXT } from './loop-auto-merge-state';
 
 export interface StartReviewInput {
   owner: string;
@@ -162,7 +163,8 @@ export class GithubPrReviewService {
     const checkerLeaseId = randomUUID();
     this.loops.insertWorkerLease({
       id: checkerLeaseId, loopRunId: input.loopRunId, role: 'checker', runtime: 'manual', findingId,
-      worktreePath: null, branchName: null, metadata: { maker_lease_id: makerLeaseId },
+      // P0-5: an automated diff-size heuristic, never a human or independent review
+      worktreePath: null, branchName: null, metadata: { maker_lease_id: makerLeaseId, reviewer_type: 'heuristic' },
       now,
     });
 
@@ -170,7 +172,7 @@ export class GithubPrReviewService {
     const { verdict, notes } = this.computeVerdict(stat);
     this.loops.submitCheckerVerdict(input.loopRunId, {
       lease_id: checkerLeaseId, verdict, notes,
-      manual_attestation: { reviewer: 'roborev-webhook', reason: 'automated pull_request review webhook verdict' },
+      manual_attestation: { reviewer: 'roborev-webhook', reason: 'automated pull_request review webhook verdict', reviewer_type: 'heuristic' },
     });
 
     return { verdict, checkerLeaseId };
@@ -362,7 +364,7 @@ export class GithubPrReviewService {
     const state = verdict === 'accepted' ? 'success' : verdict === 'rejected' ? 'failure' : 'pending';
     const statusPayload = {
       state,
-      context: 'djimitflo-review',
+      context: PR_REVIEW_STATUS_CONTEXT,
       description: (verdict === 'accepted' ? 'No blocking issues found' : verdict === 'rejected' ? 'Blocking issues found' : 'Needs a closer look').slice(0, 140),
     };
     const raw = execFileSync('gh', [
