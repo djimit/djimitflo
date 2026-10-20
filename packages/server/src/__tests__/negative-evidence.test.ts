@@ -106,3 +106,26 @@ it('B29: the guard also catches forbidden patterns in package manifests, lockfil
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+it('B29: NE-012 (ruvnet agent ecosystem) guards unpinned ruflo/claude-flow execution, its hook family and the cognitum remote MCP', () => {
+  const ne12 = registry().entries.find((e) => e.id === 'NE-012');
+  expect(ne12?.verdict).toBe('REJECT');
+  const patterns = ne12?.forbidden_code_patterns ?? [];
+  expect(patterns).toEqual(expect.arrayContaining(['claude-flow@alpha', '@claude-flow/cli@latest', 'ruflo@latest', 'hook-handler.cjs', 'cognitum.one/mcpSse']));
+  expect(patterns).not.toContain('agentic-flow@alpha'); // owned by NE-009, not duplicated
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ne12-guard-'));
+  try {
+    fs.mkdirSync(path.join(tmp, '.claude'));
+    fs.writeFileSync(path.join(tmp, '.claude/settings.json'), JSON.stringify({ hooks: { PreToolUse: [{ command: 'node .claude/helpers/hook-handler.cjs pre-bash' }] } }));
+    fs.writeFileSync(path.join(tmp, '.mcp.json'), JSON.stringify({ mcpServers: { cognitum: { url: 'https://cognitum.one/mcpSse' } } }));
+    const hits = forbiddenHits(tmp);
+    expect(hits).toContain(`NE-012: hook-handler.cjs in ${path.join('.claude', 'settings.json')}`);
+    expect(hits).toContain('NE-012: cognitum.one/mcpSse in .mcp.json');
+    // the federation adapter's OAuth issuer is a different host path and must not match
+    fs.writeFileSync(path.join(tmp, '.mcp.json'), JSON.stringify({ authorization_servers: ['https://auth.cognitum.one'] }));
+    fs.rmSync(path.join(tmp, '.claude'), { recursive: true });
+    expect(forbiddenHits(tmp)).toEqual([]);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

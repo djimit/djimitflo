@@ -35,3 +35,4 @@ them so that no agent rediscovers a rejected approach and silently retries it.
 | NE-009 | RuVector (ruvnet/RuVector), whole repository, as dependency or tooling — [details](NE-009-ruvector.md) | REJECT |
 | NE-010 | MiroFish (LLM social simulation) as prediction or evolution substrate — [details](NE-010-mirofish.md) | REJECT |
 | NE-011 | Unvalidated agent-ecosystem claims (ChrisRoyse repositories) — [details](NE-011-agent-ecosystem-claims.md) | REJECT |
+| NE-012 | ruvnet agent ecosystem (ruflo/claude-flow, agentic-flow, agentdb, autogenous, ruClip, dream-machine) as dependencies, hooks or MCP servers — [details](NE-012-ruvnet-ecosystem.md) | REJECT |
