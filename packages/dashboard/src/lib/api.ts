@@ -254,6 +254,16 @@ export interface EvolutionEvidence {
     pools: Array<{ pool: string; n: number; mean: number | null; share_full: number | null }>;
     contest: { contests: number; agree: number; agreement_rate: number | null };
   };
+  /** R2 (FAIL_BEFORE_PASS_AFTER_MODE, shadow): fail-before/pass-after verdicts per run, 14-d survival per arm; rates only from 40 settled */
+  fail_before_pass_after: {
+    experiment: 'R2'; protocol: string; mode: 'off' | 'shadow'; runs: number;
+    counts: { pass: number; fail: number; skipped: number; fail_before_violated: number; pass_after_violated: number; pass_to_pass_violated: number };
+    arms: Record<'pass' | 'fail', { runs: number; with_pr: number; settled: number; pending: number }>;
+    settled_runs: number; min_settled: number;
+    primary: { n: number; pass: { survived: number; regressed: number; rate: number | null }; fail: { survived: number; regressed: number; rate: number | null };
+      difference_pt: number | null; fisher_p: number | null } | null;
+    verdict: 'INSUFFICIENT' | 'FALSIFIED' | 'SUPPORTED'; note: string;
+  };
   /** KE-3: mutant genomes written from injected knowledge units, and proposals citing a unit or claim */
   knowledge_links: { genomes_with_refs: number | null; genomes_total: number | null; proposals_with_refs: number | null };
   /** P0-8: runs in the window where the strict daemon rule and the certification rule disagree (null = unreadable). */

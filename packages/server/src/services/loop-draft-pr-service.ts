@@ -4,6 +4,7 @@ import { execFileSync } from 'child_process';
 import type { Database } from 'better-sqlite3';
 import { LoopEventService } from './loop-event-service';
 import { redactSecrets } from './secret-patterns';
+import { withoutHiddenChecks } from './fail-before-pass-after';
 import { freshnessMode, staleAgainst, type ReadSet } from './evidence-freshness';
 import { emptySettlementCounts, parseOutcome, settlementState, type SettlementState } from './merge-survival';
 import { extraRepoBySlug, goalRepoSlug, isExtraRepoPr, slugFromRemote } from './repo-registry';
@@ -130,7 +131,7 @@ export class LoopDraftPrService {
     const parse = <T>(text: string | null | undefined, fallback: T): T => { try { return text ? JSON.parse(text) as T : fallback; } catch { return fallback; } };
     const name = (v: unknown) => String(v ?? '').replace(/[^\w:.-]/g, '').slice(0, 60);
     const gates = parse<Array<{ name?: string; status?: string }>>(run?.gates_json, []);
-    const checks = parse<{ deterministic_checks?: Array<{ name?: string; status?: string; stdout_path?: string }> }>(maker?.metadata, {}).deterministic_checks ?? [];
+    const checks = withoutHiddenChecks(parse<{ deterministic_checks?: Array<{ name?: string; status?: string; stdout_path?: string }> }>(maker?.metadata, {}).deterministic_checks ?? []);
     const rows = numstat.split('\n').filter(Boolean).map((l) => l.split('\t'));
     const added = rows.reduce((a, r) => a + (Number(r[0]) || 0), 0); const removed = rows.reduce((a, r) => a + (Number(r[1]) || 0), 0);
     const lines = [`Lane: \`${name(run?.loop_name)}\``];
