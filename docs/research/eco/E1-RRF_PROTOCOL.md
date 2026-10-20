@@ -60,3 +60,8 @@ Inventory at registration (repo and fixtures; prod not accessed):
   exists only in the harness. Default unchanged.
 - ACE-001 arms and every prod retrieval path are not touched. No network calls; the prod DB is never opened from this branch.
 - Scoring script: `scripts/e1-rrf-score.mjs <export.json>` (exported labelled set, read-only export done by the operator).
+
+## Registration
+
+Registered in commit `dcad1ed9e47edb6016ae4ece353dab32347db1fe` (this file only), before the RRF arm, the scoring
+function or the scoring script existed. Nothing above this section has changed since.
