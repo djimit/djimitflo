@@ -48,6 +48,11 @@ export interface MemoryPromotionInput {
   human_approved?: boolean;
   /** F5: the session user who pressed promote — recorded as promoted_by; unlike approved_by it never satisfies a review gate */
   actor?: string;
+  /**
+   * P0-9: the authenticated user id (route layer: req.user.sub). Only human_approved + this id satisfies a human_required
+   * gate; an approved_by string (machine callers such as proof-run or the review scheduler) never does.
+   */
+  approver_user_id?: string;
 }
 
 const VALID_TYPES: MemoryType[] = ['operational_memory', 'engineering_rule', 'policy_rule'];
@@ -221,7 +226,8 @@ export class MemoryCandidateService {
     if (candidate.promotion_status === 'rejected' || candidate.status === 'rejected') {
       throw new Error('MEMORY_PROMOTION_REJECTED_CANDIDATE');
     }
-    if (candidate.human_required && !input.human_approved && !input.approved_by) {
+    const humanApproval = input.human_approved === true && typeof input.approver_user_id === 'string' && input.approver_user_id.length > 0;
+    if (candidate.human_required && !humanApproval) {
       throw new Error('MEMORY_PROMOTION_HUMAN_APPROVAL_REQUIRED');
     }
     if (candidate.status === 'review_required' && candidate.memory_type !== 'policy_rule' && !input.approved_by) {
@@ -240,6 +246,9 @@ export class MemoryCandidateService {
       ...candidate.metadata,
       promoted_at: now,
       promoted_by: input.approved_by || input.actor || 'system',
+      // P0-9: who approved, by kind — a machine approved_by string is never recorded as a human approval
+      approver_type: humanApproval ? 'human' : 'machine',
+      ...(humanApproval ? { approver_user_id: input.approver_user_id } : {}),
       promoted_sinks: results,
       trust_level: 'validated',
       candidate_only: false,
