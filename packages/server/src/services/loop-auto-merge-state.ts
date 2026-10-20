@@ -21,6 +21,11 @@ export const autoMergeMaxPerDay = (env: NodeJS.ProcessEnv = process.env): number
 };
 
 /** A deterministic 10 % of eligible PRs stays with the human: the audit sample that keeps the class honest. */
+/**
+ * P0-5: the commit status the PR-review webhook posts from its diff-size heuristic (github-pr-review-service). It is an
+ * automated heuristic, never a human or independent review: auto-merge never counts it toward green (a 'failure' still blocks).
+ */
+export const PR_REVIEW_STATUS_CONTEXT = 'djimitflo-review';
 export const AUDIT_SAMPLE_PCT = 10;
 export const isAuditSample = (prNumber: number): boolean =>
   createHash('sha256').update(`loop-auto-merge:${prNumber}`).digest().readUInt32BE(0) % 100 < AUDIT_SAMPLE_PCT;

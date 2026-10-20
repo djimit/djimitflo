@@ -36,7 +36,8 @@ export async function ingestKbPages(db: Database, host: string, pages: unknown, 
     // an unchanged page is free unless it never got a safety verdict (prod 2026-09-27: 429s left 1 241 pages unchecked)
     const verdicted = () => Boolean(db.prepare("SELECT 1 FROM judgments WHERE judgment = 'content_safety' AND subject_type = 'kb_page' AND subject_id = ? AND decision IN ('yes', 'no') LIMIT 1").get(path));
     if (unchanged && (!contentSafetyApplies('kb_page') || verdicted())) { out.accepted.push(path); continue; }
-    if (await checkContentSafety(db, { type: 'kb_page', id: path }, `${title}\n${body}`.slice(0, 4_000), fetchFn) === 'unsafe') {
+    // P0-11: this path acts on the verdict in every mode (an unsafe page is deleted), so its row is recorded as mode 'enforce'
+    if (await checkContentSafety(db, { type: 'kb_page', id: path }, `${title}\n${body}`.slice(0, 4_000), fetchFn, false, true) === 'unsafe') {
       db.prepare('DELETE FROM kb_pages WHERE path = ?').run(path);
       out.unsafe.push(path); continue;
     }

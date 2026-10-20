@@ -48,6 +48,22 @@ function readDeployLog(file: string): DeployEvent[] | null {
   return text.trim().split('\n').map((l) => { try { return JSON.parse(l) as DeployEvent; } catch { return null; } }).filter((e): e is DeployEvent => Boolean(e?.event));
 }
 
+/**
+ * G0.2 value-anomaly alarm (prod 17–19 Oct: claude makers exited 0 with a diff ten times and every lease failed
+ * maker_gate_failed:token_budget against a 1000-token cap — nothing alarmed, because nothing was idle). Report-only.
+ * VALUE_ANOMALY_ALARM: off (default) | shadow (findings in the detector detail only) | on (stall events).
+ */
+export const VALUE_ANOMALY_WINDOW_H = 24;
+/** zero_success: a consumer with at least this many finished attempts in the window and none succeeded */
+export const ZERO_SUCCESS_MIN_ATTEMPTS = 5;
+/** gate_always_fails: at least this many maker leases of one runtime that exited 0, every one failed by the same gate */
+export const GATE_ALWAYS_FAILS_MIN_LEASES = 3;
+export type ValueAnomalyMode = 'off' | 'shadow' | 'on';
+export function valueAnomalyMode(env: NodeJS.ProcessEnv = process.env): ValueAnomalyMode {
+  const v = (env.VALUE_ANOMALY_ALARM || '').trim().toLowerCase();
+  return v === 'on' || v === 'shadow' ? v : 'off';
+}
+
 /** Health from detectors + stalls: BREACHED on any stall, UNKNOWN when a detector errored and nothing stalled. */
 export function stallHealth(stalls: Stall[], detectors: DetectorHealth[]): StallHealth {
   if (stalls.length) return 'BREACHED';
@@ -183,6 +199,41 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
   run('schedulers', true, () => {
     for (const name of quarantinedSchedulers()) out.push({ subsystem: `scheduler:${name}`, since: null, detail: `scheduler '${name}' is armed but not ticking and was quarantined (see scheduler_recovery judgments); needs the operator` });
   });
+  // G0.2 value anomalies: work that runs but never yields (see VALUE_ANOMALY_ALARM above); shadow keeps them out of the stalls
+  const vaMode = valueAnomalyMode(env); const vaShadow: Stall[] = []; const vaSink = vaMode === 'on' ? out : vaShadow;
+  run('zero_success', vaMode !== 'off', () => {
+    const since = ago(now, VALUE_ANOMALY_WINDOW_H);
+    for (const m of all<{ runtime: string; model: string | null; n: number; first: string }>(`SELECT runtime, json_extract(metadata, '$.model') AS model,
+        COUNT(*) AS n, MIN(created_at) AS first FROM worker_leases WHERE role = 'maker' AND runtime != 'manual' AND status IN ('completed', 'failed')
+        AND created_at >= ? GROUP BY runtime, model HAVING n >= ? AND SUM(status = 'completed') = 0`, since, ZERO_SUCCESS_MIN_ATTEMPTS)) {
+      const species = m.model ? `${m.runtime}@${m.model}` : m.runtime;
+      vaSink.push({ subsystem: `zero_success:maker:${species}`, since: m.first, detail: `0/${m.n} maker leases of ${species} completed in ${VALUE_ANOMALY_WINDOW_H} h — it runs but never yields; check its failure_reason` });
+    }
+    for (const c of all<{ consumer: string; n: number; first: string }>(`SELECT consumer, COUNT(*) AS n, MIN(created_at) AS first FROM llm_model_calls
+        WHERE shadow = 0 AND created_at >= ? GROUP BY consumer HAVING n >= ? AND SUM(ok = 1) = 0`, since, ZERO_SUCCESS_MIN_ATTEMPTS)) {
+      vaSink.push({ subsystem: `zero_success:llm:${c.consumer}`, since: c.first, detail: `0/${c.n} model calls of purpose ${c.consumer} succeeded in ${VALUE_ANOMALY_WINDOW_H} h` });
+    }
+  });
+  run('gate_always_fails', vaMode !== 'off', () => {
+    const rows = all<{ runtime: string; reason: string | null; created_at: string }>(`SELECT runtime, json_extract(metadata, '$.failure_reason') AS reason, created_at
+      FROM worker_leases WHERE role = 'maker' AND runtime != 'manual' AND status IN ('completed', 'failed') AND created_at >= ?
+        AND json_extract(metadata, '$.exit_status') = 0 ORDER BY created_at`, ago(now, VALUE_ANOMALY_WINDOW_H));
+    const byRuntime = new Map<string, typeof rows>();
+    for (const r of rows) byRuntime.set(r.runtime, [...(byRuntime.get(r.runtime) ?? []), r]);
+    for (const [runtime, leases] of byRuntime) {
+      if (leases.length < GATE_ALWAYS_FAILS_MIN_LEASES) continue;
+      const gatesOf = (reason: string | null) => /^maker_gate_failed:([^;]*)/.exec(reason ?? '')?.[1].split(',').filter(Boolean) ?? [];
+      for (const gate of gatesOf(leases[0].reason)) {
+        if (leases.every((l) => gatesOf(l.reason).includes(gate))) vaSink.push({ subsystem: `gate_always_fails:${gate}:${runtime}`, since: leases[0].created_at,
+          detail: `maker gate ${gate} failed ${leases.length}/${leases.length} ${runtime} leases that exited 0 in ${VALUE_ANOMALY_WINDOW_H} h — a gate rejecting every clean exit is likely misconfigured (e.g. a budget cap)` });
+      }
+    }
+  });
+  for (const name of ['zero_success', 'gate_always_fails']) {
+    const d = detectors.find((x) => x.name === name && x.status === 'ok');
+    const mine = vaShadow.filter((s) => s.subsystem.startsWith(`${name}:`));
+    if (d && mine.length) d.detail = `shadow (VALUE_ANOMALY_ALARM=shadow, not raised): ${mine.map((s) => s.subsystem).join(', ')}`.slice(0, 500);
+  }
   // Workstream B: the capability chain — an enabled capability with a disabled dependency, a misconfigured path, a ticking
   // scheduler without outcomes, or pending work without progress is a stall; idle by design (flag off, cap, no input) is not
   let capabilities: CapabilityVerdict[] = [];

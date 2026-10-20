@@ -177,6 +177,34 @@ describe('LoopDaemon checker dispatch', () => {
     expect(JSON.parse(row.refs)).toEqual(expect.arrayContaining(['graded:0.667', 'graded_kind:mutant_kill', 'graded_lane:test-gap']));
   });
 
+  it('P0-8: a non-high-risk run whose only non-pass gate is the skipped security review is a verified maker outcome (certification rule); completion unchanged', async () => {
+    const goal = seedQualifyingGoal();
+    stubLoops.verifyLoopRun.mockImplementation(() => ({ gates: [
+      { name: 'checker_verdict', status: 'pass', evidence: '' }, { name: 'tests_lint_typecheck', status: 'pass', evidence: '' },
+      { name: 'security_checker_verdict', status: 'skipped', evidence: 'Run is not high-risk.' }] }));
+    const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+    await runOneTick(daemon);
+    const row = db.prepare('SELECT success, evidence_refs_json AS refs FROM skill_outcomes').get() as { success: number; refs: string };
+    expect(row.success).toBe(1);
+    expect(JSON.parse(row.refs).some((r: string) => r.startsWith('outcome_class:'))).toBe(false);
+    // completion authorization keeps the strict every-gate-'pass' rule (operator decision, not changed here)
+    expect((db.prepare('SELECT status FROM goals WHERE id = ?').get(goal.id) as { status: string }).status).toBe('failed');
+  });
+
+  it('P0-7: an engine fallback (effective_runtime on the lease) is the maker skill of the runtime that ran, tagged with the requested one', async () => {
+    seedQualifyingGoal();
+    db.pragma('foreign_keys = OFF');
+    const now = new Date().toISOString();
+    db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES ('maker-1', 'run-1', 'maker', 'codex', 'completed', ?, ?, ?)`)
+      .run(JSON.stringify({ model: 'gpt-x', requested_runtime: 'codex', effective_runtime: 'claude', effective_model: null }), now, now);
+    const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+    await runOneTick(daemon);
+    const row = db.prepare('SELECT skill_id, model, evidence_refs_json AS refs FROM skill_outcomes').get() as { skill_id: string; model: string | null; refs: string };
+    expect(row.skill_id).toBe('loop-maker:doc-drift-and-small-fix-loop:claude');
+    expect(row.model ?? null).toBeNull(); // the requested runtime's model is not the fallback's
+    expect(JSON.parse(row.refs)).toContain('requested_runtime:codex');
+  });
+
   it('RX-3: a failed run tags its maker outcome with why it failed (here: the maker never ran → infra), success unchanged', async () => {
     seedQualifyingGoal();
     const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });

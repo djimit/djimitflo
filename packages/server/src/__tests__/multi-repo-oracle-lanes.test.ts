@@ -214,6 +214,48 @@ describe('EXTRA_REPOS_ENABLED', () => {
     ]);
   });
 
+  /** A security-review-commons-like repo: ESM `.js` sources, tests in `tests/` as `*.test.js`. */
+  function esmJsFixture(root: string, pkg: Record<string, unknown> | null): string {
+    const repo = path.join(root, 'commons');
+    const filler = '// line\n'.repeat(35);
+    if (pkg) write(repo, 'package.json', JSON.stringify(pkg));
+    write(repo, 'src/scan.js', `export function scan(t) { return [t]; }\nexport function dedupeFindings(f) { return f; }\n${filler}`);
+    write(repo, 'src/report/summary.js', `export function summarize(f) { return f.length; }\n${filler}`);
+    write(repo, 'src/legacy.cjs', `module.exports = { x: 1 };\nexport function notEsm() {}\n${filler}`);
+    write(repo, 'tests/scan.test.js', "import { test } from 'node:test';\nimport { scan } from '../src/scan.js';\ntest('x', () => { scan('a'); });\n");
+    return repo;
+  }
+
+  it('node:test lane: a tests/ dir with ESM .js sources when package.json has "type":"module" (command = node --test on the new file)', () => {
+    const repo = esmJsFixture(tmp, { name: 'commons', type: 'module', scripts: { test: 'node --test' } });
+    expect(discoverNodeTestGaps(repo)).toEqual([
+      { service: 'summary', sourcePath: 'src/report/summary.js', testPath: 'tests/summary.test.js', exports: ['summarize'], loc: 37, command: 'node --test tests/summary.test.js' },
+      { service: 'scan', sourcePath: 'src/scan.js', testPath: 'tests/scan.exports.test.js', exports: ['dedupeFindings'], loc: 38, kind: 'exports', command: 'node --test tests/scan.exports.test.js' },
+    ]);
+  });
+
+  it('node:test lane: CommonJS .js stays out (no "type":"module", or no package.json); .mjs in tests/ still counts, .cjs never', () => {
+    const mjsOnly = (pkg: Record<string, unknown> | null) => {
+      fs.rmSync(path.join(tmp, 'commons'), { recursive: true, force: true });
+      const repo = esmJsFixture(tmp, pkg);
+      write(repo, 'src/util.mjs', `export const pick = (o) => o;\n${'// line\n'.repeat(35)}`);
+      return discoverNodeTestGaps(repo).map((g) => g.sourcePath);
+    };
+    expect(mjsOnly({ name: 'commons', type: 'commonjs' })).toEqual(['src/util.mjs']);
+    expect(mjsOnly({ name: 'commons' })).toEqual(['src/util.mjs']);
+    expect(mjsOnly(null)).toEqual(['src/util.mjs']);
+  });
+
+  it('node:test lane: a .mjs module in a tests/ repo keeps its .mjs test; an existing <name>.exports.test.js suppresses the exports gap', () => {
+    const repo = esmJsFixture(tmp, { name: 'commons', type: 'module' });
+    write(repo, 'src/util.mjs', `export const pick = (o) => o;\n${'// line\n'.repeat(35)}`);
+    write(repo, 'tests/scan.exports.test.js', "import { test } from 'node:test';\ntest('x', () => {});\n");
+    expect(discoverNodeTestGaps(repo).map((g) => [g.sourcePath, g.testPath, g.command])).toEqual([
+      ['src/report/summary.js', 'tests/summary.test.js', 'node --test tests/summary.test.js'],
+      ['src/util.mjs', 'tests/util.test.mjs', 'node --test tests/util.test.mjs'],
+    ]);
+  });
+
   it('shadow records what it would propose and creates nothing; on creates grounded repo-tagged proposals', () => {
     const repo = roborevFixture(tmp);
     vi.stubEnv('GITHUB_REPOSITORY', 'o/r'); vi.stubEnv('GITHUB_REPOSITORY_PATHS', JSON.stringify({ 'djimit/roborev': repo }));

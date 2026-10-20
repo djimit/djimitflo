@@ -36,6 +36,7 @@ import { QueueHygieneService, queueHygieneEnabled } from '../services/queue-hygi
 import { startSchedulerWatchdog, startStallWatch } from '../services/stall-watch';
 import { startInterestFeedback } from '../services/interest-feedback';
 import { startEvolutionFeedback } from '../services/evolution-feedback';
+import { startValueAllocator } from '../services/value-allocator';
 import { startDreamEvolution } from '../services/dream-evolution';
 import { startEvolutionEstimators } from '../services/evolution-estimators';
 import { startMergeSurvival } from '../services/merge-survival';
@@ -217,6 +218,16 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     if (stopEvolutionFeedback) { lifecycleManager.register({ serviceName: 'EvolutionFeedback', stop: stopEvolutionFeedback }); console.log('📣 Evolution feedback on (daily).'); }
   } catch (error) {
     console.warn('⚠️  Evolution feedback failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // E4: shadow value allocator — one value_allocation judgment per UTC day (6-hourly tick); proposals never applied. VALUE_ALLOCATOR_MODE=shadow.
+  try {
+    let stopValueAllocator = startValueAllocator(db);
+    registerRestart('value_allocator', () => { stopValueAllocator?.(); stopValueAllocator = startValueAllocator(db); });
+    noteScheduler('value_allocator', 'VALUE_ALLOCATOR_MODE', !!stopValueAllocator, 6 * 3_600_000);
+    if (stopValueAllocator) { lifecycleManager.register({ serviceName: 'ValueAllocator', stop: () => stopValueAllocator?.() }); console.log('⚖️  Value allocator on (shadow, daily).'); }
+  } catch (error) {
+    console.warn('⚠️  Value allocator failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // Y3: dreaming as mutation — daily mutants of the maker genome, judged on the frozen gym holdout. DREAM_EVOLUTION_ENABLED=true.

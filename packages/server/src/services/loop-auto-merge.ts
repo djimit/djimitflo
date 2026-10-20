@@ -5,7 +5,7 @@ import { LoopEventService } from './loop-event-service';
 import { testOnlyChange, TEST_ONLY_DIFF_MAX } from './loop-worker-executor-service';
 import { pushNotice } from './operator-push';
 import { settlementState, SURVIVAL_DAYS, type SettlementOutcome } from './merge-survival';
-import { autoMergeMaxPerDay, autoMergeMode, isAuditSample, readClassState, revokeClass } from './loop-auto-merge-state';
+import { autoMergeMaxPerDay, autoMergeMode, isAuditSample, PR_REVIEW_STATUS_CONTEXT, readClassState, revokeClass } from './loop-auto-merge-state';
 import { markRun } from './scheduler-registry';
 import { assertionStrengthVerdict } from './test-assertion-strength';
 import { autoMergeAllowed, parsePrUrl } from './repo-registry';
@@ -23,6 +23,11 @@ import { autoMergeAllowed, parsePrUrl } from './repo-registry';
  * to be green → squash-merge with the token the draft-PR service uses. Every step is one tick (15 min); nothing blocks.
  * Shadow re-evaluates its would_merge PRs every tick, incl. the merge-conflict check act runs (10-10: #658 went conflicting
  * and stayed 'would_merge'); a decision is rewritten only when it changes.
+ * Head binding (P0-6): only the commit the loop verified is merged. The draft-PR service records it as
+ * metadata.verified_head_sha when it commits the checked worktree; a run without it is ineligible ('no_verified_head'). The PR
+ * head must equal it, or be GitHub's own update-branch merge on top of it (web-flow, signature verified, first parent = the
+ * verified head, at most 5 deep); anything else is 'head_moved'. The merge call passes that head as `sha`, so a push between
+ * this read and the merge is rejected by GitHub.
  * Cap: LOOP_AUTO_MERGE_MAX_PER_DAY (default 10, rolling 24 h).
  * Revert window: an auto-merged PR that is reverted on main (a commit within 14 d whose message says revert and names the
  * PR or its merge commit), whose added lines merge survival marks removed, or whose merge commit's checks fail on main
@@ -55,11 +60,25 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
   const events = new LoopEventService(db);
   const checks = async (slug: string, sha: string): Promise<Checks> => {
     const runs = (await json<{ check_runs?: Array<{ status?: string; conclusion?: string | null }> }>(slug, `commits/${sha}/check-runs?per_page=100`))?.check_runs;
-    const status = await json<{ state?: string; total_count?: number }>(slug, `commits/${sha}/status`);
+    const status = await json<{ state?: string; total_count?: number; statuses?: Array<{ context?: string; state?: string }> }>(slug, `commits/${sha}/status`);
     if (!runs) return 'pending';
     if (runs.some((c) => c.status === 'completed' && RED.has(String(c.conclusion))) || status?.state === 'failure' || status?.state === 'error') return 'red';
+    // P0-5: the PR-review heuristic's status is not a check — it can hold a PR (pending / failure) but never makes it green
+    const independent = (status?.statuses ?? []).filter((st) => st.context !== PR_REVIEW_STATUS_CONTEXT);
     if (runs.some((c) => c.status !== 'completed' || c.conclusion === 'cancelled' || c.conclusion === 'stale') || (status?.total_count && status.state === 'pending')) return 'pending';
-    return runs.length || status?.total_count ? 'green' : 'pending'; // no check reported yet = not green
+    return runs.length || independent.length ? 'green' : 'pending'; // no check reported yet = not green
+  };
+
+  // P0-6: true when `head` is only GitHub update-branch merges (web-flow, verified signature) stacked on `verified`.
+  const updateBranchOnly = async (slug: string, head: string, verified: string): Promise<boolean> => {
+    let current = head;
+    for (let depth = 0; depth < 5; depth++) {
+      const c = await json<{ parents?: Array<{ sha?: string }>; committer?: { login?: string } | null; commit?: { verification?: { verified?: boolean } } }>(slug, `commits/${current}`);
+      if (!c || c.parents?.length !== 2 || c.committer?.login !== 'web-flow' || c.commit?.verification?.verified !== true) return false;
+      current = String(c.parents[0].sha ?? '');
+      if (current === verified) return true;
+    }
+    return false;
   };
 
   // 1. Revert window over earlier auto-merges (act only produces them; shadow has nothing to revoke).
@@ -73,7 +92,7 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
   const cap = autoMergeMaxPerDay(env);
   let evaluated = 0; let merged = 0;
   for (const run of runs) {
-    const meta = JSON.parse(run.metadata || '{}') as { pr_url: string; auto_merge?: AutoMergeRecord };
+    const meta = JSON.parse(run.metadata || '{}') as { pr_url: string; auto_merge?: AutoMergeRecord; verified_head_sha?: string };
     const prev = meta.auto_merge;
     if (prev && ['merged', 'audit_sample', 'ineligible'].includes(prev.decision)) continue;
     const ref = parsePrUrl(meta.pr_url);
@@ -109,6 +128,10 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
       || pr.head?.repo?.full_name !== slug || !maker?.branch_name || pr.head?.ref !== maker.branch_name || pr.base?.ref !== base) {
       record('ineligible', 'not_loop_pr: title, author, head repo, branch or base does not match the loop run'); continue;
     }
+    const sha = String(pr.head?.sha ?? '');
+    const verifiedHead = typeof meta.verified_head_sha === 'string' ? meta.verified_head_sha : '';
+    if (!verifiedHead) { record('ineligible', 'no_verified_head'); continue; }
+    if (!sha || (sha !== verifiedHead && !await updateBranchOnly(slug, sha, verifiedHead))) { record('ineligible', 'head_moved', { steps: [`verified ${verifiedHead.slice(0, 12)} ≠ head ${sha.slice(0, 12)}`] }); continue; }
     const files: Array<{ filename: string; status?: string; additions?: number; deletions?: number }> = [];
     for (let page = 1; page <= 10; page++) {
       const batch = await json<typeof files>(slug, `pulls/${number}/files?per_page=100&page=${page}`);
@@ -140,7 +163,6 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     const today = (db.prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE json_extract(metadata, '$.auto_merge.decision') = ? AND json_extract(metadata, '$.auto_merge.at') >= ?`)
       .get(mode === 'act' ? 'merged' : 'would_merge', new Date(now.getTime() - DAY).toISOString()) as { n: number }).n;
     if (today - counted >= cap) { record('capped', `${today} ${mode === 'act' ? 'merged' : 'would merge'} in 24 h ≥ cap ${cap}`); continue; }
-    const sha = String(pr.head?.sha ?? '');
     const state = await checks(slug, sha);
     if (state === 'red') { record('ineligible', 'checks_failed'); continue; }
     if (pr.mergeable === false || pr.mergeable_state === 'dirty') { record('ineligible', 'merge_conflict'); continue; }

@@ -30,6 +30,7 @@ import { skillCardsView } from '../services/skill-distillation';
 import { evolutionFeedbackMode, latestEvolutionDigest } from '../services/evolution-feedback';
 import { expertUnitDedupe } from '../services/expert-unit-dedupe';
 import { buildTrainingDataset, trainingDatasetMode, trainingDatasetSummary } from '../services/training-dataset';
+import { buildValueAllocation, latestValueAllocation, valueAllocatorMode } from '../services/value-allocator';
 
 export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -225,6 +226,12 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   router.get('/training-dataset', requireAuth, requirePermission('manage:config'), (_req, res) => {
     if (trainingDatasetMode() !== 'shadow') { res.status(404).json({ error: 'disabled', flag: 'TRAINING_DATASET_EXPORT' }); return; }
     res.json({ mode: 'shadow', ...trainingDatasetSummary(buildTrainingDataset(db)) });
+  });
+
+  // E4 (VALUE_ALLOCATOR_MODE=shadow): per consumer 7 d / 30 d resources, credited value, class and the allocation it WOULD propose (never applied)
+  router.get('/value-allocation', requireAuth, requirePermission('manage:config'), (_req, res) => {
+    if (valueAllocatorMode() !== 'shadow') { res.status(404).json({ error: 'disabled', flag: 'VALUE_ALLOCATOR_MODE' }); return; }
+    res.json({ ...buildValueAllocation(db), latest_judgment: latestValueAllocation(db) });
   });
 
   // E3: provenance DAG with edge evidence (read-only); ?days= limits to proposals of the window (default: all history)
