@@ -369,7 +369,10 @@ const VALID_CHECKER_VERDICTS: string[] = ['accepted', 'needs_revision', 'rejecte
 function recordedAttestation(input: CheckerVerdictInput, actor?: VerdictActor): Record<string, unknown> | undefined {
   const reason = input.manual_attestation?.reason;
   if (actor?.id) {
-    return { reviewer: actor.email || actor.id, reviewer_user_id: actor.id, reviewer_type: 'human', reason: reason ?? '' };
+    // P0-4 decision 2: for the authenticated reviewer the request notes are the reason when none is sent (trimmed, 1-2000 chars)
+    const notes = typeof input.notes === 'string' ? input.notes.trim() : '';
+    const fallback = notes.length > 0 && notes.length <= 2000 ? notes : '';
+    return { reviewer: actor.email || actor.id, reviewer_user_id: actor.id, reviewer_type: 'human', reason: reason || fallback };
   }
   if (!input.manual_attestation) return undefined;
   const { reviewer, reviewer_type } = input.manual_attestation;

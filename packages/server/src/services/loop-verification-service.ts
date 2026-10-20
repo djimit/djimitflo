@@ -26,6 +26,19 @@ const combine = (statuses: GateStatus[]): GateStatus =>
   statuses.includes('fail') ? 'fail' : statuses.includes('unknown') ? 'unknown' : 'pass';
 
 /** Change-loop artifact gates (worktree, assignment, diff, checks, security review, auto-approval scope). */
+/**
+ * P0-4 decision 1 (no retroactive flips): manual attestations recorded before this instant predate the identity rule and
+ * carry no reviewer_user_id. They keep their old evaluation (a non-empty reviewer + reason) and are labelled
+ * legacy_unverified_identity in the gate evidence; anything recorded from this instant on needs the full identity.
+ */
+export const MANUAL_ATTESTATION_IDENTITY_SINCE = '2026-10-21T00:00:00Z';
+const LEGACY_IDENTITY_LABEL = 'legacy_unverified_identity';
+const instant = (value: unknown): number => {
+  if (typeof value !== 'string' || !value) return NaN;
+  const iso = value.includes('T') ? value : value.replace(' ', 'T');
+  return Date.parse(/Z|[+-]\d\d:?\d\d$/.test(iso) ? iso : `${iso}Z`);
+};
+
 const CHANGE_LOOP_ARTIFACT_GATES = new Set(['worktree_isolation', 'assignment_file_present', 'diff_threshold_all_makers',
   'tests_lint_typecheck', 'security_checker_verdict', 'auto_approved_scope']);
 /** A gym run is graded by its own oracle (gym_result): none of the change-loop maker/checker gates apply. */
@@ -110,7 +123,7 @@ export class LoopVerificationService {
         status: completedMakerLeases.length === 0 ? 'skipped' : combine(completedMakerLeases.map((lease) => this.reviewObservation(lease.id, checkerLeases))),
         evidence: completedMakerLeases.length === 0
           ? 'No completed maker leases yet.'
-          : 'Every completed maker lease requires an accepted checker verdict.',
+          : `Every completed maker lease requires an accepted checker verdict.${this.legacyIdentityNote(completedMakerLeases, checkerLeases)}`,
       },
       {
         name: 'tests_lint_typecheck',
@@ -128,7 +141,7 @@ export class LoopVerificationService {
             : combine(completedMakerLeases.map((lease) => this.reviewObservation(lease.id, securityCheckerLeases))),
         evidence: !highRisk
           ? 'Run is not high-risk.'
-          : `${securityCheckerLeases.length} active security checker lease(s); high-risk completion requires accepted security verdict for every completed maker.`,
+          : `${securityCheckerLeases.length} active security checker lease(s); high-risk completion requires accepted security verdict for every completed maker.${this.legacyIdentityNote(completedMakerLeases, securityCheckerLeases)}`,
       },
       {
         // J5: an auto-approved maker may only have written the one test file its approval covered.
@@ -285,10 +298,11 @@ export class LoopVerificationService {
     // manual bypass would silently skip all runtime evidence checks (G-audit P3.3).
     if (lease.runtime === 'manual') {
       // P0-4: only an authenticated human (reviewer_type 'human' + the user id the route took from req.user) attests;
-      // a free-text reviewer name, a heuristic, or a legacy attestation without a user id never passes.
+      // a free-text reviewer name or a heuristic never passes — except a legacy attestation (decision 1, see below).
       const att = lease.metadata.manual_review_attestation as { reviewer_type?: unknown; reviewer_user_id?: unknown; reason?: unknown } | undefined;
-      return att?.reviewer_type === 'human' && typeof att.reviewer_user_id === 'string' && att.reviewer_user_id.length > 0
-        && typeof att.reason === 'string' && att.reason.length > 0 ? 'pass' : 'fail';
+      if (att?.reviewer_type === 'human' && typeof att.reviewer_user_id === 'string' && att.reviewer_user_id.length > 0
+        && typeof att.reason === 'string' && att.reason.length > 0) return 'pass';
+      return this.legacyIdentityPass(lease) ? 'pass' : 'fail';
     }
     const proof = lease.metadata;
     const contract = proof.runtime_contract as { available?: unknown; status?: unknown } | undefined;
@@ -301,6 +315,28 @@ export class LoopVerificationService {
       && typeof proof.stdout_path === 'string';
     if (!proven) return 'fail';
     return fs.existsSync(proof.stdout_path as string) ? 'pass' : 'unknown';
+  }
+
+  /**
+   * P0-4 decision 1: an attestation without a user id recorded before MANUAL_ATTESTATION_IDENTITY_SINCE keeps its old
+   * evaluation (non-empty reviewer + reason). Both the lease's creation and the verdict's completed_at (when recorded) must
+   * predate the cutoff, so a pre-cutoff lease attested later never qualifies.
+   */
+  private legacyIdentityPass(lease: WorkerLeaseRecord): boolean {
+    const att = lease.metadata.manual_review_attestation as { reviewer?: unknown; reviewer_user_id?: unknown; reason?: unknown } | undefined;
+    if (!att || (typeof att.reviewer_user_id === 'string' && att.reviewer_user_id.length > 0)) return false;
+    const cutoff = Date.parse(MANUAL_ATTESTATION_IDENTITY_SINCE);
+    const created = instant(lease.created_at);
+    const completed = lease.metadata.completed_at === undefined ? created : instant(lease.metadata.completed_at);
+    if (!(created < cutoff) || !(completed < cutoff)) return false;
+    return typeof att.reviewer === 'string' && att.reviewer.length > 0 && typeof att.reason === 'string' && att.reason.length > 0;
+  }
+
+  private legacyIdentityNote(makers: WorkerLeaseRecord[], reviewers: WorkerLeaseRecord[]): string {
+    const ids = new Set(makers.map((m) => m.id));
+    const legacy = reviewers.filter((l) => l.runtime === 'manual' && l.status === 'completed' && l.metadata.verdict === 'accepted'
+      && ids.has(String(l.metadata.maker_lease_id)) && this.legacyIdentityPass(l)).length;
+    return legacy ? ` ${LEGACY_IDENTITY_LABEL}: ${legacy} manual attestation(s) recorded before ${MANUAL_ATTESTATION_IDENTITY_SINCE} without a user id keep their old evaluation.` : '';
   }
 
   private leaseChecksPassed(lease: WorkerLeaseRecord): boolean {

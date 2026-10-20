@@ -27,6 +27,7 @@ const ids: Record<string, string> = {};
 const savedSecret = process.env.JWT_SECRET;
 
 beforeEach(async () => {
+  vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-01T12:00:00Z') }); // after MANUAL_ATTESTATION_IDENTITY_SINCE
   vi.spyOn(ExperienceRetrievalService.prototype, 'indexRun').mockResolvedValue();
   process.env.JWT_SECRET = 'loop-verdict-identity-secret-'.repeat(3);
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-verdict-identity-'));
@@ -60,7 +61,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
-  vi.restoreAllMocks(); db.close(); fs.rmSync(root, { recursive: true, force: true });
+  vi.useRealTimers(); vi.restoreAllMocks(); db.close(); fs.rmSync(root, { recursive: true, force: true });
   if (savedSecret === undefined) delete process.env.JWT_SECRET; else process.env.JWT_SECRET = savedSecret;
 });
 
