@@ -1,4 +1,5 @@
 import express from 'express';
+import { rateLimit } from 'express-rate-limit';
 import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -52,7 +53,7 @@ beforeEach(async () => {
   fs.writeFileSync(path.join(root, 'LOOP_WORK.md'), 'Synthetic assignment');
   loops.updateWorkerLeaseStatus('maker', 'completed', {});
   const auth = createAuthMiddleware(authService);
-  const app = express(); app.use(express.json());
+  const app = express(); app.use(express.json()); app.use(rateLimit({ windowMs: 60_000, limit: 600 }));
   app.use('/loops', auth.requireAuth, createLoopRoutes(db, auth, path.join(root, 'evidence')));
   app.use(errorHandler);
   server = await new Promise((resolve) => { const l = app.listen(0, '127.0.0.1', () => resolve(l)); });
