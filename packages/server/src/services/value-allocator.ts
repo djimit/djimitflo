@@ -345,31 +345,45 @@ function windowStats(a: Acc, status: ConsumerStatus, windowDays: number, credit:
 /**
  * The shadow proposal for one consumer. share = proposed fraction of current volume (1 = unchanged). Hard floors are always
  * 'keep' at ≥ 1; a VALUE_PROVEN consumer (in either window) is only ever kept or raised, never reduced or paused; INSUFFICIENT
- * never goes below EXPLORATION_FLOOR; an EXPERIMENT arm is kept until its stop_by. `peerMedian` = median verified per M tokens
- * over the VALUE_PROVEN consumers (null when fewer than two have one).
+ * never goes below EXPLORATION_FLOOR; an EXPERIMENT arm is kept until its stop_by. The raise/keep decision of a proven consumer
+ * uses the 7-day window, or the 30-day window when the 7-day one is INSUFFICIENT / UNKNOWN_COST and the 30-day one proves value.
+ * A proven consumer with known cloud tokens = 0 and value > 0 dominates every peer on value per cloud token (raise_share);
+ * its energy is reported, unknown energy as unknown (never 0). `peerMedian` / `peerMedian30` = median verified per M tokens over
+ * the VALUE_PROVEN consumers OF THE SAME KIND in that window (peerMedians; null when fewer than two have one).
  */
-export function proposeAction(r: { consumer_status: ConsumerStatus; hard_floor: string | null; w7: Pick<WindowStats, 'class' | 'per_m_tokens' | 'tokens' | 'energy'>;
-  w30?: Pick<WindowStats, 'class'>; experiment?: { id: string; stop_by: string | null } | null }, peerMedian: number | null): AllocationRow['proposal'] {
+type DecisionWindow = Pick<WindowStats, 'class' | 'per_m_tokens' | 'tokens' | 'energy'> & { value?: Pick<WindowStats['value'], 'units'> };
+export function proposeAction(r: { consumer_status: ConsumerStatus; hard_floor: string | null; w7: DecisionWindow;
+  w30?: Pick<WindowStats, 'class'> & Partial<DecisionWindow>; experiment?: { id: string; stop_by: string | null } | null },
+peerMedian: number | null, peerMedian30: number | null = peerMedian): AllocationRow['proposal'] {
   const { w7 } = r;
   let p: AllocationRow['proposal'];
   const measuredCost = (w7.tokens.cloud ?? 0) + (w7.tokens.local ?? 0) > 0 || (w7.energy.wh ?? 0) > 0;
-  switch (w7.class) {
+  const w30 = r.w30;
+  const use30 = (w7.class === 'INSUFFICIENT' || w7.class === 'UNKNOWN_COST') && w30?.class === 'VALUE_PROVEN' && !!w30.tokens && !!w30.energy;
+  switch (use30 ? 'VALUE_PROVEN' : w7.class) {
     case 'NO_CONSUMER': p = measuredCost ? { action: 'pause', share: 0, reason: 'measured cost, output read by nobody' } : { action: 'keep', share: 1, reason: 'no consumer, but no measured cost to reclaim' }; break;
     case 'NO_VALUE': p = measuredCost ? { action: 'reduce_cap', share: 0.25, reason: 'enough volume, zero credited value' } : { action: 'keep', share: 1, reason: 'zero credited value, but no measured cost to reclaim' }; break;
     case 'UNKNOWN_COST': p = { action: 'keep', share: 1, reason: 'cost unknown: nothing to weigh' }; break;
     case 'INSUFFICIENT': p = { action: 'keep', share: 1, reason: 'insufficient evidence: keep exploring' }; break;
     case 'EXPERIMENT': p = { action: 'keep', share: 1, reason: `experiment ${r.experiment?.id ?? ''}: exempt until its stop date ${r.experiment?.stop_by ?? '(none registered)'}`.replace('  ', ' ') }; break;
     default: {
-      const v = w7.per_m_tokens;
-      if (!v || peerMedian === null || peerMedian <= 0) p = { action: 'keep', share: 1, reason: 'value proven; no peer comparison per M tokens' };
-      else if ((v.low ?? v.value) > peerMedian) p = { action: 'raise_share', share: 1.25, reason: `value per M tokens ${v.value} above the peer median ${peerMedian}` };
-      else if (v.high !== null && v.high < peerMedian) p = { action: 'keep', share: 1, reason: `value proven; value per M tokens (upper ${v.high}) below the peer median ${peerMedian}, never reduced` };
-      else p = { action: 'keep', share: 1, reason: 'value proven, interval overlaps the peer median' };
+      const ws: DecisionWindow = use30 ? (w30 as DecisionWindow) : w7;
+      const peer = use30 ? peerMedian30 : peerMedian;
+      const win = use30 ? `30-day window (7-day ${w7.class})` : '7-day window';
+      const v = ws.per_m_tokens;
+      // a model ran (basis reported) at 0 known cloud tokens: a deterministic check (no_model_call) has no compute share to raise
+      if (ws.tokens.basis === 'reported' && ws.tokens.cloud === 0 && (ws.value?.units ?? 0) > 0) {
+        const energy = ws.energy.wh !== null ? `energy ${ws.energy.wh} Wh (${ws.energy.status})` : `energy unknown (${ws.energy.status}), not counted as 0`;
+        p = { action: 'raise_share', share: 1.25, reason: `proven value at zero cloud tokens (${ws.value!.units} value units; ${energy}; ${win})` };
+      } else if (!v || peer === null || peer <= 0) p = { action: 'keep', share: 1, reason: `value proven; no peer comparison per M tokens (${win})` };
+      else if ((v.low ?? v.value) > peer) p = { action: 'raise_share', share: 1.25, reason: `value per M tokens ${v.value} above the same-kind peer median ${peer} (${win})` };
+      else if (v.high !== null && v.high < peer) p = { action: 'keep', share: 1, reason: `value proven; value per M tokens (upper ${v.high}) below the same-kind peer median ${peer}, never reduced (${win})` };
+      else p = { action: 'keep', share: 1, reason: `value proven, interval overlaps the same-kind peer median (${win})` };
     }
   }
   if (w7.class === 'INSUFFICIENT' && p.share < EXPLORATION_FLOOR) p = { ...p, share: EXPLORATION_FLOOR, reason: `${p.reason}; exploration floor ${EXPLORATION_FLOOR * 100} %` };
   // (a) invariant: a consumer with proven value in either window is kept or raised, never reduced or paused
-  if ((w7.class === 'VALUE_PROVEN' || r.w30?.class === 'VALUE_PROVEN') && (p.action === 'reduce_cap' || p.action === 'pause' || p.share < 1)) {
+  if ((w7.class === 'VALUE_PROVEN' || w30?.class === 'VALUE_PROVEN') && (p.action === 'reduce_cap' || p.action === 'pause' || p.share < 1)) {
     p = { action: 'keep', share: 1, reason: `value proven (${w7.class === 'VALUE_PROVEN' ? '7' : '30'}-day window): never reduced or paused (7-day: ${p.reason})` };
   }
   if (r.hard_floor && (p.action === 'reduce_cap' || p.action === 'pause' || p.share < 1)) p = { action: 'keep', share: 1, reason: `hard floor (${r.hard_floor}): never reduced` };
@@ -381,6 +395,13 @@ const median = (xs: number[]): number | null => {
   const s = [...xs].sort((a, b) => a - b); const m = Math.floor(s.length / 2);
   return +(s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2).toFixed(4);
 };
+
+/** Peer median verified per M tokens per consumer kind and window: makers against makers, judgments against judgments. */
+export function peerMedians(rows: Array<{ kind: ConsumerKind; w7: Pick<WindowStats, 'class' | 'per_m_tokens'>; w30: Pick<WindowStats, 'class' | 'per_m_tokens'> }>):
+  Map<ConsumerKind, { w7: number | null; w30: number | null }> {
+  const of = (kind: ConsumerKind, w: 'w7' | 'w30') => median(rows.filter((r) => r.kind === kind && r[w].class === 'VALUE_PROVEN' && r[w].per_m_tokens).map((r) => r[w].per_m_tokens!.value));
+  return new Map([...new Set(rows.map((r) => r.kind))].map((k) => [k, { w7: of(k, 'w7'), w30: of(k, 'w30') }]));
+}
 
 export function buildValueAllocation(db: Database, now = Date.now(), env: NodeJS.ProcessEnv = process.env, schedulerNames?: string[]): ValueAllocation {
   const until = new Date(now).toISOString();
@@ -404,8 +425,8 @@ export function buildValueAllocation(db: Database, now = Date.now(), env: NodeJS
     }
     return { consumer, kind: acc.kind, consumer_status: status, hard_floor: hardFloor(consumer, status), experiment, w7, w30 };
   });
-  const peer = median(rows.filter((r) => r.w7.class === 'VALUE_PROVEN' && r.w7.per_m_tokens).map((r) => r.w7.per_m_tokens!.value));
-  const consumers: AllocationRow[] = rows.map((r) => ({ ...r, proposal: proposeAction(r, peer) }))
+  const peers = peerMedians(rows);
+  const consumers: AllocationRow[] = rows.map((r) => ({ ...r, proposal: proposeAction(r, peers.get(r.kind)?.w7 ?? null, peers.get(r.kind)?.w30 ?? null) }))
     .sort((a, b) => a.kind.localeCompare(b.kind) || a.consumer.localeCompare(b.consumer));
   const by_class: Record<ValueClass, number> = { VALUE_PROVEN: 0, NO_VALUE: 0, NO_CONSUMER: 0, INSUFFICIENT: 0, UNKNOWN_COST: 0, EXPERIMENT: 0 };
   const by_action: Record<ProposedAction, number> = { keep: 0, reduce_cap: 0, pause: 0, raise_share: 0 };
@@ -413,7 +434,8 @@ export function buildValueAllocation(db: Database, now = Date.now(), env: NodeJS
   return {
     at: until, mode: valueAllocatorMode(env), attribution_recorded: { w7: c7.recorded, w30: c30.recorded }, by_class, by_action, consumers,
     notes: [
-      'SHADOW: proposals are never applied; class and proposal come from the 7-day window, the 30-day window is context.',
+      'SHADOW: proposals are never applied; class and proposal come from the 7-day window; the 30-day window decides raise/keep when the 7-day one is INSUFFICIENT / UNKNOWN_COST and the 30-day one is VALUE_PROVEN (the reason names the window).',
+      'Peer medians (value per M cloud tokens) compare like with like: makers with makers, judgments with judgments. Proven value at 0 known cloud tokens is raise_share (dominates on value per cloud token); unknown energy is reported as unknown, never 0.',
       'NULL token counts are unknown, never 0; energy without ≥ 90 % sampled job time is unknown (null).',
       `value units = verified × ${VALUE_WEIGHTS.verified} + survived on main × ${VALUE_WEIGHTS.survived} (outcome_credits; merge outcomes settled in the window, credited to the run's maker lease and credited judgments/reviewers; fitness-view weights). NO_CONSUMER = 0 by design, not unknown.`,
       'VALUE_PROVEN (either window) is only kept or raised; EXPERIMENT rows (arms of a running registry experiment) are exempt until stop_by.',

@@ -363,3 +363,63 @@ describe('value allocator: prod 20-10 defects', () => {
     expect(on.hard_floor).toBeNull();
   });
 });
+
+describe('value allocator: zero-token raise, 30-day decision window, like-with-like peers', () => {
+  const w = (cls: WindowStats['class'], extra: Partial<WindowStats> = {}): Pick<WindowStats, 'class' | 'per_m_tokens' | 'tokens' | 'energy' | 'value'> => ({
+    class: cls, per_m_tokens: null, tokens: { cloud: 1e6, local: 0, known_calls: 10, unknown_calls: 0, coverage: 1, basis: 'reported' },
+    energy: { wh: null, status: 'no_local_jobs', gpu_seconds: 0 }, value: { verified: 5, survived: 0, units: 5, decision_consumed: null, basis: 'x' }, ...extra });
+  const zeroCloud = { cloud: 0, local: null, known_calls: 0, unknown_calls: 0, coverage: null, basis: 'reported' as const };
+
+  it('(1) proven value at zero cloud tokens is raise_share, also without any peer; energy reported, unknown energy never 0', () => {
+    // prod 20-10: maker:remote@workstation/atomic@llama-router 21 verified / 16 survived in 30 d at 0 cloud tokens
+    const model = 'workstation/atomic@llama-router';
+    for (let i = 0; i < 6; i++) makerRun({ runtime: 'remote', model, tokens: null, credited: true });
+    const r = row(buildValueAllocation(db, NOW, {}, []), `maker:remote@${model}`);
+    expect(r.w7.tokens.cloud).toBe(0);
+    expect(r.w7.class).toBe('VALUE_PROVEN');
+    expect(r.proposal).toMatchObject({ action: 'raise_share', share: 1.25 });
+    expect(r.proposal.reason).toMatch(/proven value at zero cloud tokens/);
+    expect(r.proposal.reason).toMatch(/energy unknown \(no_local_jobs\), not counted as 0/);
+    const measured = proposeAction({ consumer_status: 'consumed', hard_floor: null,
+      w7: w('VALUE_PROVEN', { tokens: zeroCloud, energy: { wh: 12.5, status: 'measured', gpu_seconds: 300 } }) }, 10);
+    expect(measured).toMatchObject({ action: 'raise_share', share: 1.25 });
+    expect(measured.reason).toMatch(/energy 12.5 Wh \(measured\)/);
+    // value 0 at 0 cloud tokens, or no model call at all (deterministic): no raise
+    expect(proposeAction({ consumer_status: 'consumed', hard_floor: null, w7: w('VALUE_PROVEN', { tokens: zeroCloud, value: { verified: 0, survived: 0, units: 0, decision_consumed: null, basis: 'x' } }) }, null).action).toBe('keep');
+    expect(proposeAction({ consumer_status: 'decision_consumed', hard_floor: 'gate', w7: w('VALUE_PROVEN', { tokens: { ...zeroCloud, basis: 'no_model_call' } }) }, null).action).toBe('keep');
+  });
+
+  it('(2) 7-day INSUFFICIENT / UNKNOWN_COST with a VALUE_PROVEN 30-day window decides on the 30-day window and says so', () => {
+    for (const cls of ['INSUFFICIENT', 'UNKNOWN_COST'] as const) {
+      const byPeer = proposeAction({ consumer_status: 'consumed', hard_floor: null, w7: w(cls),
+        w30: w('VALUE_PROVEN', { per_m_tokens: { value: 30, low: 20, high: 40, n: 40 } }) }, null, 10);
+      expect(byPeer).toMatchObject({ action: 'raise_share', share: 1.25 });
+      expect(byPeer.reason).toMatch(new RegExp(`30-day window \\(7-day ${cls}\\)`));
+      const zero = proposeAction({ consumer_status: 'consumed', hard_floor: null, w7: w(cls), w30: w('VALUE_PROVEN', { tokens: zeroCloud }) }, null, null);
+      expect(zero.action).toBe('raise_share');
+      expect(zero.reason).toMatch(/zero cloud tokens.*30-day window/);
+      const below = proposeAction({ consumer_status: 'consumed', hard_floor: null, w7: w(cls),
+        w30: w('VALUE_PROVEN', { per_m_tokens: { value: 1, low: 0.5, high: 2, n: 40 } }) }, null, 10);
+      expect(below).toMatchObject({ action: 'keep', share: 1 });
+      expect(below.reason).toMatch(/30-day window/);
+    }
+  });
+
+  it('(3) the peer median compares makers with makers and judgments with judgments', () => {
+    // maker m1: 10/10 verified at 1000 tokens each (1000 per M), m2: 2/10 (200 per M) → maker median 600, m1 lower bound above it
+    for (let i = 0; i < 10; i++) makerRun({ credited: true, model: 'm1' });
+    for (let i = 0; i < 10; i++) makerRun({ credited: i < 2, model: 'm2' });
+    // two gate-read judgments at 10 tokens a row: ~83 000 verified per M — pooled, they would lift the median above every maker
+    for (const j of ['proposal_prescreen', 'decision_context']) {
+      for (let i = 0; i < 6; i++) judgment(j, 'enforce', { tin: 10, tout: 0 });
+      for (let i = 0; i < 5; i++) db.prepare("INSERT INTO outcome_credits (run_id, kind, ref, created_at) VALUES (?, 'judgment', ?, ?)").run(`jr-${j}-${i}`, j, iso(NOW - DAY));
+    }
+    const v = buildValueAllocation(db, NOW, {}, []);
+    const m1 = row(v, 'maker:opencode@m1');
+    expect(row(v, 'judgment:proposal_prescreen').w7.class).toBe('VALUE_PROVEN');
+    expect(row(v, 'judgment:proposal_prescreen').w7.per_m_tokens!.value).toBeGreaterThan(10_000);
+    expect(m1.w7.per_m_tokens!.value).toBe(1000);
+    expect(m1.proposal.action).toBe('raise_share');
+    expect(m1.proposal.reason).toMatch(/same-kind peer median 600/);
+  });
+});
