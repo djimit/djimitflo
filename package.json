@@ -20,6 +20,7 @@
     "test:mutation": "stryker run",
     "test:mutation:grounded": "node scripts/mutation-gain.mjs",
     "test:dead-code:grounded": "node scripts/dead-code-gate.mjs",
+    "test:finding-fix:grounded": "node scripts/finding-fix-gate.mjs",
     "audit:ci": "node scripts/ci-audit.mjs",
     "assurance:truth": "node scripts/assurance-truth.mjs",
     "assurance:contracts": "node scripts/contract-inventory.mjs",

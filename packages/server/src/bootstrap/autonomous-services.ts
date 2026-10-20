@@ -28,6 +28,7 @@ import { EventOutboxService, bridgeGoalEvents, eventPublishEnabled } from '../se
 import { AgentRegistrySyncService, registryUrl } from '../services/agent-registry-sync-service';
 import { TestGapSourceService, testGapSourceEnabled } from '../services/test-gap-source-service';
 import { DeadCodeSourceService, deadCodeLaneEnabled } from '../services/dead-code-source-service';
+import { FindingFixSourceService, findingFixMode } from '../services/finding-fix-source';
 import { EvolutionGymService, gymArmed } from '../services/evolution-gym-service';
 import { DreamStateService, dreamStateEnabled } from '../services/dream-state-service';
 import { NeedsGroundingTriageService, needsGroundingTriageEnabled } from '../services/needs-grounding-triage-service';
@@ -152,6 +153,19 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     }
   } catch (error) {
     console.warn('⚠️  Dead-code lane failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // Finding-fix lane (G2.2): one ESLint pack-v1 finding per proposal; shadow records only; human approval and merge. Default off.
+  try {
+    if (noteScheduler('finding_fix_lane', 'FINDING_FIX_LANE', findingFixMode() !== 'off', 12 * 3_600_000)) {
+      const findingFix = new FindingFixSourceService(db);
+      findingFix.start();
+      registerRestart('finding_fix_lane', () => { findingFix.stop(); findingFix.start(); });
+      lifecycleManager.register({ serviceName: 'FindingFixSource', stop: () => findingFix.stop() });
+      console.log(`🔧 Finding-fix lane ${findingFixMode()} (max ${Number(process.env.FINDING_FIX_MAX_PER_DAY) || 2} proposals/day, 1 in flight).`);
+    }
+  } catch (error) {
+    console.warn('⚠️  Finding-fix lane failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // C2 evolution gym: sandbox replay tasks from our own history; outcomes feed species selection. Default off.

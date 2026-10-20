@@ -137,6 +137,13 @@ COPY packages/server/corpus packages/server/corpus
 COPY docs/research/negative-evidence/NEGATIVE_EVIDENCE.yaml docs/research/negative-evidence/NEGATIVE_EVIDENCE.yaml
 # /usage plan limits (operator-filled) read relative to dist (packages/server/dist/services → /app/docs)
 COPY docs/usage-plan-limits.json docs/usage-plan-limits.json
+# Finding-fix lane oracle (Djimitflo-held; the daemon runs this copy, never the maker worktree's)
+COPY scripts/finding-fix-gate.mjs scripts/finding-fix-gate.mjs
+# ESLint toolchain for that gate (operator-approved 20-10): same versions as the root lockfile's dev deps (every package
+# pinned to the root lock, 0 new versions), ~45 MB, scripts disabled; the gate finds it via FINDING_FIX_ESLINT_FROM.
+COPY tools/finding-fix-eslint/package.json tools/finding-fix-eslint/package-lock.json /opt/finding-fix-eslint/
+RUN cd /opt/finding-fix-eslint && npm ci --ignore-scripts --omit=dev --no-audit --no-fund
+ENV FINDING_FIX_ESLINT_FROM=/opt/finding-fix-eslint
 
 # Copy entrypoint
 COPY docker-entrypoint.sh ./docker-entrypoint.sh

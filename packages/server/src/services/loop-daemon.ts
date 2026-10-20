@@ -2,6 +2,7 @@ import type { Database } from 'better-sqlite3';
 import { recordAutoApproveShadow, testGapAutoApproveScope } from './autonomy-shadow-service';
 import { mutationCheckEnv } from './test-gap-source-service';
 import { deadCodeCheckEnv } from './dead-code-source-service';
+import { FINDING_FIX_DIFF_MAX, findingFixCheckEnv } from './finding-fix-source';
 import { LoopService } from './loop-service';
 import { randomUUID } from 'node:crypto';
 import { WorkerLeaseRepo } from './loop-worker-lease-repo';
@@ -629,7 +630,9 @@ export class LoopDaemon {
       const makerTimeout = daemonMakerTimeoutMs(mutationLane);
       // strengthening a thin test to kill surviving mutants legitimately adds more lines (prod: 23-line test → 276 diff lines)
       // a dead-code removal is mostly deleted lines (units are <= 1 500); its gate checks adds <= 10 % of removed
-      const makerDiffMax = mutationLane ? 400 : Object.keys(deadCodeCheckEnv(this.db, goal.id)).length ? 2_000 : 200;
+      // a finding fix is one file, <= 30 changed lines (its gate); 60 leaves room for diff headers
+      const makerDiffMax = mutationLane ? 400 : Object.keys(deadCodeCheckEnv(this.db, goal.id)).length ? 2_000
+        : Object.keys(findingFixCheckEnv(this.db, goal.id)).length ? FINDING_FIX_DIFF_MAX : 200;
       if (!makerAlreadyDone) await this.loops.executeWorker(run.id, {
         lease_id: makerLease.id,
         timeout_ms: makerTimeout,
