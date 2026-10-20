@@ -11,6 +11,7 @@ import { nonMakerRunSql, outcomeAttributionEnabled } from './outcome-attribution
 import { supersededMergeOutcomeSql } from './merge-superseded';
 import { evolutionLineage, postVerificationRegressions } from './evolution-lineage';
 import { panelAttemptMetrics, type PanelAttemptMetrics } from './panel-attempt-metrics';
+import { unitEconomics, type UnitEconomics } from './unit-economics';
 
 /**
  * S1 (operator 2026-09-28): one read-only snapshot of what the operator otherwise measures by hand over SSH —
@@ -74,6 +75,8 @@ export interface CockpitSnapshot {
   capabilities: CapabilityVerdict[];
   /** SOUL.md subtraction KPI: lines/files/routes added vs removed per ISO week, last 8 (report-only; null weeks + reason without git) */
   subtraction: SubtractionKpi;
+  /** G0.3/G0.4: € and operator minutes per verified / surviving change (30 d); null prices = unknown, never 0 */
+  unit_economics: UnitEconomics | null;
 }
 
 export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.ProcessEnv = process.env): CockpitSnapshot {
@@ -226,6 +229,8 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
   section = 'evolution';
   let evolution: CockpitSnapshot['evolution'] = null;
   try { evolution = evolutionLineage(db, now, env); for (const m of evolution.errors) fail('evolution', new Error(m)); } catch (e) { fail('evolution', e); }
+  let unit_economics: UnitEconomics | null = null;
+  try { unit_economics = unitEconomics(db, now); for (const m of unit_economics.errors) fail('unit_economics', new Error(m)); } catch (e) { fail('unit_economics', e); }
   const { armed, off, by_status, health: schedulersHealth } = listSchedulers(now);
   const health = worstState([...guardrails.map((g) => g.state), errors.length || stalls.length ? 'DEGRADED' : 'HEALTHY',
     // a failed detector leaves its subsystem unwatched; a scheduler that stopped ticking or fails is work that silently stopped
@@ -234,7 +239,7 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
     at: new Date(now).toISOString(), snapshot_id: randomUUID(), health, errors,
     build: { commit: process.env.DJIMITFLO_BUILD_COMMIT ?? null, build_time: process.env.DJIMITFLO_BUILD_TIME ?? null },
     scorecard, guardrails, stalls, gym, remote_workers, maker_usage_7d, judgments_7d, needs_you, schedulers: { armed, off, by_status, health: schedulersHealth }, detectors, genomes, deploys: recentDeploys(), evolution, capabilities,
-    subtraction: subtractionKpi(env, now),
+    subtraction: subtractionKpi(env, now), unit_economics,
   };
 }
 
