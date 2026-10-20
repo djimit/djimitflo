@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 
 /**
@@ -40,14 +41,68 @@ it('B29: every negative-evidence entry has an id, hypothesis, verdict, evidence 
   expect(ne1?.evidence.join(' ')).toContain('fbc9c5d180929c43844ec8beca26bd5fbd7a62ca43b472c3efc369c0b08bbab1');
 });
 
-it('B29: a rejected approach cannot be rebuilt — forbidden code patterns of closed entries are absent from the source', () => {
-  const files = [...sourceFiles(path.join(repo, 'packages/server/src')), ...sourceFiles(path.join(repo, 'packages/dashboard/src')), path.join(repo, 'docs/runbooks/self-improvement-loop-operations.md')]
-    .filter((f) => fs.existsSync(f));
+/** Dependency names in a package-lock.json (keys only; integrity/resolved blobs are not scanned). */
+function lockNames(lock: Record<string, unknown>): string[] {
+  const names: string[] = [];
+  const walk = (node: unknown) => {
+    if (!node || typeof node !== 'object') return;
+    const n = node as Record<string, unknown>;
+    for (const field of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
+      const deps = n[field];
+      if (!deps || typeof deps !== 'object') continue;
+      for (const [name, sub] of Object.entries(deps as Record<string, unknown>)) { names.push(name); walk(sub); }
+    }
+  };
+  for (const [key, pkg] of Object.entries((lock.packages ?? {}) as Record<string, unknown>)) { names.push(key); walk(pkg); }
+  walk(lock);
+  return names;
+}
+
+/** Where a forbidden dependency, hook command or MCP entry would land: package manifests, lockfile names, MCP and agent settings. */
+function configTexts(root: string): { file: string; text: string }[] {
+  const ls = (dir: string, re: RegExp) => (fs.existsSync(path.join(root, dir)) ? fs.readdirSync(path.join(root, dir)).filter((f) => re.test(f)).map((f) => path.join(dir, f)) : []);
+  const pkgDirs = fs.existsSync(path.join(root, 'packages')) ? fs.readdirSync(path.join(root, 'packages')).map((d) => path.join('packages', d, 'package.json')) : [];
+  const files = ['package.json', ...pkgDirs, '.mcp.json', path.join('.vscode', 'mcp.json'), ...ls('.claude', /^settings.*\.json$/), ...ls('.opencode', /\.json$/)];
+  const out = files.filter((f) => fs.existsSync(path.join(root, f))).map((f) => ({ file: f, text: fs.readFileSync(path.join(root, f), 'utf8') }));
+  const lock = path.join(root, 'package-lock.json');
+  if (fs.existsSync(lock)) out.push({ file: 'package-lock.json', text: lockNames(JSON.parse(fs.readFileSync(lock, 'utf8'))).join('\n') });
+  return out;
+}
+
+function forbiddenHits(root: string): string[] {
+  const srcDirs = ['packages/server/src', 'packages/dashboard/src'].map((d) => path.join(root, d)).filter((d) => fs.existsSync(d));
+  const sources = [...srcDirs.flatMap(sourceFiles), path.join(root, 'docs/runbooks/self-improvement-loop-operations.md')]
+    .filter((f) => fs.existsSync(f)).map((f) => ({ file: path.relative(root, f), text: fs.readFileSync(f, 'utf8') }));
+  const targets = [...sources, ...configTexts(root)];
   const hits: string[] = [];
   for (const e of registry().entries.filter((x) => CLOSED.includes(x.verdict))) {
     for (const pattern of e.forbidden_code_patterns ?? []) {
-      for (const f of files) if (fs.readFileSync(f, 'utf8').includes(pattern)) hits.push(`${e.id}: ${pattern} in ${path.relative(repo, f)}`);
+      for (const t of targets) if (t.text.includes(pattern)) hits.push(`${e.id}: ${pattern} in ${t.file}`);
     }
   }
-  expect(hits).toEqual([]);
+  return hits;
+}
+
+it('B29: a rejected approach cannot be rebuilt — forbidden code patterns of closed entries are absent from source and config', () => {
+  expect(forbiddenHits(repo)).toEqual([]);
+});
+
+it('B29: the guard also catches forbidden patterns in package manifests, lockfile names and agent/MCP settings', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ne-guard-'));
+  try {
+    fs.mkdirSync(path.join(tmp, 'packages/x'), { recursive: true });
+    fs.mkdirSync(path.join(tmp, '.claude'));
+    fs.writeFileSync(path.join(tmp, 'packages/x/package.json'), JSON.stringify({ name: 'x', dependencies: { '@ruvector/core': '^2.4.0' } }));
+    fs.writeFileSync(path.join(tmp, '.claude/settings.json'), JSON.stringify({ hooks: { PostToolUse: [{ command: 'npx ruvector@latest hooks post' }] } }));
+    // keys only: a pattern inside an integrity/resolved blob is not a dependency name
+    fs.writeFileSync(path.join(tmp, 'package-lock.json'), JSON.stringify({ packages: { 'node_modules/left-pad': { resolved: 'https://x/agentic-flow@alpha.tgz' } } }));
+    const hits = forbiddenHits(tmp);
+    expect(hits).toContain(`NE-009: @ruvector/ in ${path.join('packages', 'x', 'package.json')}`);
+    expect(hits).toContain(`NE-009: ruvector@latest in ${path.join('.claude', 'settings.json')}`);
+    expect(hits.some((h) => h.includes('package-lock.json'))).toBe(false);
+    fs.writeFileSync(path.join(tmp, 'package-lock.json'), JSON.stringify({ packages: { 'node_modules/@ruvector/core': {} } }));
+    expect(forbiddenHits(tmp)).toContain('NE-009: @ruvector/ in package-lock.json');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
