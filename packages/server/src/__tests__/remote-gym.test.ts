@@ -23,17 +23,17 @@ it('claim hands out an untried task per species and never repeats it; record sco
   const first = svc.claim('workstation', ['atomic@llama-router']);
   expect(first).toMatchObject({ species: 'atomic@llama-router', task: { commit: 'c1' } });
   const runId = (first as { runId: string }).runId;
-  svc.record(runId, 'workstation', { status: 'success', reason: 'tests green, source only', tokens: 1200, durationMs: 40_000 });
+  svc.record(runId, 'workstation', { status: 'success', changed_files: ['packages/server/src/services/fixed.ts'], diff: '+fixed', reason: 'tests green, source only', tokens: 1200, durationMs: 40_000 });
   expect(db.prepare("SELECT skill_id, success, model, tokens_used FROM skill_outcomes").get()).toEqual({ skill_id: 'loop-maker:gym:atomic', success: 1, model: 'llama-router', tokens_used: 1200 });
   expect(db.prepare("SELECT evidence_refs_json AS e FROM skill_outcomes").get()).toMatchObject({ e: expect.stringContaining('remote:workstation') });
   expect(svc.claim('workstation', ['atomic@llama-router'])).toMatchObject({ task: { commit: 'c2' } });
-  expect(() => svc.record(runId, 'workstation', { status: 'success', reason: 'again' })).toThrow('GYM_RUN_ALREADY_SETTLED');
+  expect(() => svc.record(runId, 'workstation', { status: 'success', changed_files: ['packages/server/src/services/fixed.ts'], diff: '+fixed', reason: 'again' })).toThrow('GYM_RUN_ALREADY_SETTLED');
 });
 
 it('a result from another host is refused; a discard records no outcome; the daily cap holds', () => {
   const svc = new RemoteGymService(db, () => [TASK('c1'), TASK('c2'), TASK('c3')]);
   const { runId } = svc.claim('workstation', ['atomic']) as { runId: string };
-  expect(() => svc.record(runId, 'nas', { status: 'success', reason: 'x' })).toThrow('GYM_RUN_NOT_FOUND');
+  expect(() => svc.record(runId, 'nas', { status: 'success', changed_files: ['packages/server/src/services/fixed.ts'], diff: '+fixed', reason: 'x' })).toThrow('GYM_RUN_NOT_FOUND');
   svc.record(runId, 'workstation', { status: 'discarded', reason: 'infra: npm ci failed' });
   expect(db.prepare('SELECT COUNT(*) n FROM skill_outcomes').get()).toEqual({ n: 0 });
   vi.stubEnv('EVOLUTION_GYM_REMOTE_MAX_PER_DAY', '1');
@@ -129,7 +129,7 @@ it('GYM_PROD_GATES: the claim carries production\'s gate config only when on and
   // off (default): no config even for a capable worker, and a sent prod_gates field is not stored
   const off = svc.claim('workstation', ['atomic'], new Date(), { capabilities: ['prod_gates'] }) as { runId: string; prod_gates?: unknown };
   expect(off.prod_gates).toBeUndefined();
-  svc.record(off.runId, 'workstation', { status: 'success', reason: 'tests green, source only', prod_gates: { lint: 'pass' } });
+  svc.record(off.runId, 'workstation', { status: 'success', changed_files: ['packages/server/src/services/fixed.ts'], diff: '+fixed', reason: 'tests green, source only', prod_gates: { lint: 'pass' } });
   expect(JSON.parse((db.prepare("SELECT json_extract(metadata, '$.gym_result') AS r FROM loop_runs WHERE id = ?").get(off.runId) as { r: string }).r).prod_gates).toBeUndefined();
   vi.stubEnv('GYM_PROD_GATES', 'true'); vi.stubEnv('LOOP_DAEMON_CHECK_SCRIPTS', 'test:changed,lint,type-check,test:mutation:grounded'); vi.stubEnv('LOOP_DAEMON_CHECK_TIMEOUT_MS', '300000');
   // on, but the worker did not announce the capability: nothing (an old worker would ignore it and report a proxy score)
@@ -163,17 +163,17 @@ it('GENOME_FIRE_CHECK: a trial result without proof that the genome lines reache
   const trial = svc.claim('workstation', ['atomic@llama-router']) as { runId: string; task: { commit: string }; genome: { id: string } };
   expect(trial.genome.id).toBe('g1');
   await request(app).post(`/gym-worker/runs/${trial.runId}/result`).set('X-Gym-Host', 'workstation').set('X-Gym-Worker-Token', token)
-    .send({ status: 'success', reason: 'tests green, source only', fire_check: { goal_sha256: 'a'.repeat(64), genome_lines: 1, genome_lines_found: 0 } }).expect(200);
+    .send({ status: 'success', changed_files: ['packages/server/src/services/fixed.ts'], diff: '+fixed', reason: 'tests green, source only', fire_check: { goal_sha256: 'a'.repeat(64), genome_lines: 1, genome_lines_found: 0 } }).expect(200);
   const meta = (id: string) => JSON.parse((db.prepare('SELECT metadata FROM loop_runs WHERE id = ?').get(id) as { metadata: string }).metadata).gym_result;
   expect(meta(trial.runId).void).toBe('fire_check: 0 of 1 genome lines in the maker prompt');
   expect(db.prepare("SELECT COUNT(*) AS n FROM skill_outcomes WHERE evidence_refs_json LIKE '%genome:g1%'").get()).toEqual({ n: 0 });
   const again = svc.claim('workstation', ['atomic@llama-router']) as { runId: string; task: { commit: string }; genome: { id: string } };
   expect(again).toMatchObject({ task: { commit: trial.task.commit }, genome: { id: 'g1' } }); // a VOID attempt is not an attempt
-  svc.record(again.runId, 'workstation', { status: 'success', reason: 'tests green, source only' }); // no evidence at all
+  svc.record(again.runId, 'workstation', { status: 'success', changed_files: ['packages/server/src/services/fixed.ts'], diff: '+fixed', reason: 'tests green, source only' }); // no evidence at all
   expect(meta(again.runId).void).toBe('fire_check: no evidence that the genome lines reached the maker');
   const proven = svc.claim('workstation', ['atomic@llama-router']) as { runId: string; task: { commit: string } };
   expect(proven.task.commit).toBe(trial.task.commit);
-  svc.record(proven.runId, 'workstation', { status: 'success', reason: 'tests green, source only', fire_check: { goal_sha256: 'b'.repeat(64), genome_lines: 1, genome_lines_found: 1 } });
+  svc.record(proven.runId, 'workstation', { status: 'success', changed_files: ['packages/server/src/services/fixed.ts'], diff: '+fixed', reason: 'tests green, source only', fire_check: { goal_sha256: 'b'.repeat(64), genome_lines: 1, genome_lines_found: 1 } });
   expect(meta(proven.runId)).toMatchObject({ status: 'success', fire_check: { genome_lines_found: 1 } });
   expect(meta(proven.runId).void).toBeUndefined();
   expect(db.prepare("SELECT COUNT(*) AS n FROM skill_outcomes WHERE evidence_refs_json LIKE '%genome:g1%'").get()).toEqual({ n: 1 });
@@ -188,7 +188,7 @@ it('GENOME_FIRE_CHECK off: a trial result without evidence scores as before', ()
   const base = svc.claim('workstation', ['atomic@llama-router']) as { runId: string };
   svc.record(base.runId, 'workstation', { status: 'failure', reason: 'tests still red' });
   const trial = svc.claim('workstation', ['atomic@llama-router']) as { runId: string };
-  svc.record(trial.runId, 'workstation', { status: 'success', reason: 'tests green, source only' });
+  svc.record(trial.runId, 'workstation', { status: 'success', changed_files: ['packages/server/src/services/fixed.ts'], diff: '+fixed', reason: 'tests green, source only' });
   expect(JSON.parse((db.prepare('SELECT metadata FROM loop_runs WHERE id = ?').get(trial.runId) as { metadata: string }).metadata).gym_result.void).toBeUndefined();
   expect(db.prepare("SELECT COUNT(*) AS n FROM skill_outcomes WHERE evidence_refs_json LIKE '%genome:g1%'").get()).toEqual({ n: 1 });
 });
@@ -201,12 +201,12 @@ it('SI-A gym (GRADED_FITNESS_MODE=shadow): write_test outcomes carry graded = ki
   const wt = { commit: 'fail:r1', kind: 'write_test', mutant_keys: ['mut:a:t:1:1', 'mut:a:t:1:2', 'mut:a:t:1:3'] };
   // off: nothing new on the outcome
   run('w0', wt);
-  svc.record('w0', 'workstation', { status: 'success', reason: 'kills 2/3', killed_mutants: ['mut:a:t:1:1', 'mut:a:t:1:2'], graded: 0.667, graded_kind: 'mutant_kill' });
+  svc.record('w0', 'workstation', { status: 'success', changed_files: ['packages/server/src/services/fixed.ts'], diff: '+fixed', reason: 'kills 2/3', killed_mutants: ['mut:a:t:1:1', 'mut:a:t:1:2'], graded: 0.667, graded_kind: 'mutant_kill' });
   expect(refs('w0').some((r) => r.startsWith('graded'))).toBe(false);
   vi.stubEnv('GRADED_FITNESS_MODE', 'shadow');
   // write_test: the server counts the served keys itself (a worker cannot claim kills it was not handed)
   run('w1', wt);
-  svc.record('w1', 'workstation', { status: 'success', reason: 'kills 2/3', killed_mutants: ['mut:a:t:1:1', 'mut:a:t:1:2', 'mut:forged'], graded: 1, graded_kind: 'mutant_kill' });
+  svc.record('w1', 'workstation', { status: 'success', changed_files: ['packages/server/src/services/fixed.ts'], diff: '+fixed', reason: 'kills 2/3', killed_mutants: ['mut:a:t:1:1', 'mut:a:t:1:2', 'mut:forged'], graded: 1, graded_kind: 'mutant_kill' });
   expect(refs('w1')).toEqual(expect.arrayContaining(['gym:fail', 'graded:0.667', 'graded_kind:mutant_kill']));
   run('w2', wt);
   svc.record('w2', 'workstation', { status: 'failure', reason: 'tests still red' });
@@ -216,7 +216,7 @@ it('SI-A gym (GRADED_FITNESS_MODE=shadow): write_test outcomes carry graded = ki
   svc.record('r1', 'workstation', { status: 'failure', reason: 'tests still red', graded: 0.5, graded_kind: 'tests_green' });
   expect(refs('r1')).toEqual(expect.arrayContaining(['graded:0.500', 'graded_kind:tests_green']));
   run('r2', { commit: 'c1' });
-  svc.record('r2', 'workstation', { status: 'success', reason: 'tests green', graded: 1, graded_kind: 'binary' });
+  svc.record('r2', 'workstation', { status: 'success', changed_files: ['packages/server/src/services/fixed.ts'], diff: '+fixed', reason: 'tests green', graded: 1, graded_kind: 'binary' });
   expect(refs('r2')).toEqual(expect.arrayContaining(['graded:1.000', 'graded_kind:binary']));
   // an older worker without graded: binary from the verdict; nonsense is ignored the same way
   run('r3', { commit: 'c2' });

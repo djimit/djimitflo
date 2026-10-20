@@ -31,7 +31,7 @@ it('1. reviewers see the assertion-strength shadow verdict, not the gate status 
 it('2. remote gym outcomes carry skill_content_hash: same genome + kind → same hash, another genome → another', () => {
   const svc = new RemoteGymService(db, () => [TASK('c1'), TASK('c2')]);
   const a = svc.claim('workstation', ['atomic@llama-router']) as { runId: string };
-  svc.record(a.runId, 'workstation', { status: 'success', reason: 'tests green, source only' });
+  svc.record(a.runId, 'workstation', { status: 'success', changed_files: ['packages/server/src/services/fixed.ts'], diff: '+fixed', reason: 'tests green, source only' });
   const row = db.prepare('SELECT skill_content_hash AS h FROM skill_outcomes').get() as { h: string | null };
   expect(row.h).toBe(gymSkillContentHash(undefined, null));
   expect(gymSkillContentHash(undefined, null)).toBe(gymSkillContentHash('repair', null));
