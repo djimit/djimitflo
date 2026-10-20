@@ -50,3 +50,14 @@ it('calibration-role tasks never decide, even with eligible gated attempts after
   const e = gatedEvidence(db, SPECIES, BASELINE_GENOME, deciding);
   expect(e.byKey.size).toBe(0); expect(e.classes).toEqual({});
 });
+
+it('P0-12: a quarantined attempt (hack-flagged success) is never a trial win', () => {
+  db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
+    VALUES ('q', 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`).run(JSON.stringify({
+    gym: { commit: 'c03', species: SPECIES, genome: BASELINE_GENOME, prod_gates: 1 },
+    gym_result: { status: 'quarantined', reason: 'tests green, source only', hack_flags: ['tests_touched'], prod_gates: { lint: 'pass' } } }), '2026-10-14T11:00:00Z', '2026-10-14T11:00:00Z');
+  const e = gatedEvidence(db, SPECIES, BASELINE_GENOME, frozenHoldoutCommits(db));
+  // neither pass nor fail: the task stays UNKNOWN for the trial (E2), so a hack can never decide a promotion
+  expect(e.byKey.has('c03')).toBe(false);
+  expect(e.classes).toEqual({ INELIGIBLE: 1 });
+});
