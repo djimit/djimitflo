@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import type { Database } from 'better-sqlite3';
-import { laneOf, targetMutants } from './gym-failure-tasks';
+import { laneOf, targetMutants, type TargetMutant } from './gym-failure-tasks';
 
 /**
  * SI-A graded executed fitness (operator Phase SI, prod 08-10): pass/fail saturates — gym 83.6 % success, failure-derived
@@ -54,15 +54,48 @@ export function mutationScoreOf(checks: Array<{ name?: string; stdout_path?: str
 
 /** One vitest run of the maker's test file in packages/server: pass | fail | timeout. Injectable for tests. */
 export type KillRunner = (cwd: string, test: string, timeoutMs: number) => 'pass' | 'fail' | 'timeout';
-const vitestRunner: KillRunner = (cwd, test, timeoutMs) => {
+export const vitestRunner: KillRunner = (cwd, test, timeoutMs) => {
   const r = spawnSync('npx', ['vitest', 'run', test], { cwd, timeout: timeoutMs, encoding: 'utf8', stdio: 'ignore', env: process.env });
   if (r.error || r.signal) return 'timeout';
   return r.status === 0 ? 'pass' : 'fail';
 };
 /** Whole kill-share step per maker: baseline + up to 3 mutants share this budget. */
 export const GRADED_KILL_BUDGET_MS = 120_000;
-const TEST = /^packages\/server\/src\/__tests__\/([\w-]+)(?:\.[\w-]+)?\.test\.ts$/;
+export const GRADED_TEST = /^packages\/server\/src\/__tests__\/([\w-]+)(?:\.[\w-]+)?\.test\.ts$/;
+const TEST = GRADED_TEST;
 const TARGET = /^packages\/server\/src\/services\/[\w-]+\.ts$/;
+/** The service a graded test measures: the proposal's grounding target when it is a service file, else the test's namesake. */
+export const gradedTarget = (test: string, groundingTarget: string | null | undefined): string =>
+  (groundingTarget && TARGET.test(groundingTarget) ? groundingTarget : `packages/server/src/services/${TEST.exec(test)![1]}.ts`);
+
+/**
+ * The kill-share step shared by the maker-time score and the settlement re-score (settlement-execution.ts): run the test
+ * once green (baseline), then once per mutant written over `file`, all within `budgetMs`; `file` is restored afterwards.
+ * A timeout, a red baseline or an error is a skip reason, never a score.
+ */
+export function killShare(cwd: string, rel: string, file: string, original: string, mutants: TargetMutant[], run: KillRunner, budgetMs: number):
+  { killed: number; total: number } | { skipped: string } {
+  const started = Date.now();
+  const left = () => budgetMs - (Date.now() - started);
+  let killed = 0;
+  try {
+    const base = run(cwd, rel, left());
+    if (base === 'timeout') return { skipped: 'timeout' };
+    if (base !== 'pass') return { skipped: 'baseline red' };
+    for (const m of mutants) {
+      if (left() <= 0) return { skipped: 'timeout' };
+      fs.writeFileSync(file, m.content);
+      const r = run(cwd, rel, left());
+      if (r === 'timeout') return { skipped: 'timeout' };
+      if (r === 'fail') killed++;
+    }
+  } catch (error) {
+    return { skipped: `error: ${(error instanceof Error ? error.message : String(error)).slice(0, 80)}` };
+  } finally {
+    try { fs.writeFileSync(file, original); } catch { /* the reviewers see a broken target; nothing more can be done */ }
+  }
+  return { killed, total: mutants.length };
+}
 
 /**
  * SI-A prod (GRADED_FITNESS_MODE=shadow): a gate-passing test-gap / exports maker whose diff adds or changes a test file
@@ -99,33 +132,16 @@ export function recordMakerGraded(db: Database, runId: string, leaseId: string, 
   const test = proposal?.artifact && changed.includes(proposal.artifact) && TEST.test(proposal.artifact) ? proposal.artifact : changed.find((f) => TEST.test(f));
   if (!test) return;
   const wt = lease.worktree_path;
-  const target = proposal?.target && TARGET.test(proposal.target) ? proposal.target : `packages/server/src/services/${TEST.exec(test)![1]}.ts`;
+  const target = gradedTarget(test, proposal?.target);
   const file = path.join(wt, target);
   let original: string;
   try { original = fs.readFileSync(file, 'utf8'); } catch { return store({ skipped: 'target missing' }); }
   const mutants = targetMutants(original, runId, target);
   if (!mutants.length) return store({ skipped: 'no mutant' });
-  const run = opts.run ?? vitestRunner; const budget = opts.budgetMs ?? GRADED_KILL_BUDGET_MS;
-  const cwd = path.join(wt, 'packages/server'); const rel = test.replace(/^packages\/server\//, '');
-  const left = () => budget - (Date.now() - started);
-  let killed = 0;
-  try {
-    const base = run(cwd, rel, left());
-    if (base === 'timeout') return store({ skipped: 'timeout' });
-    if (base !== 'pass') return store({ skipped: 'baseline red' });
-    for (const m of mutants) {
-      if (left() <= 0) return store({ skipped: 'timeout' });
-      fs.writeFileSync(file, m.content);
-      const r = run(cwd, rel, left());
-      if (r === 'timeout') return store({ skipped: 'timeout' });
-      if (r === 'fail') killed++;
-    }
-  } catch (error) {
-    return store({ skipped: `error: ${(error instanceof Error ? error.message : String(error)).slice(0, 80)}` });
-  } finally {
-    try { fs.writeFileSync(file, original); } catch { /* the reviewers see a broken target; nothing more can be done */ }
-  }
-  store({ score: roundGraded(killed / mutants.length), kind: 'mutant_kill', lane, killed, total: mutants.length });
+  const budget = (opts.budgetMs ?? GRADED_KILL_BUDGET_MS) - (Date.now() - started);
+  const k = killShare(path.join(wt, 'packages/server'), test.replace(/^packages\/server\//, ''), file, original, mutants, opts.run ?? vitestRunner, budget);
+  if ('skipped' in k) return store({ skipped: k.skipped });
+  store({ score: roundGraded(k.killed / k.total), kind: 'mutant_kill', lane, killed: k.killed, total: k.total });
 }
 
 /** SI-A/SI-B evidence: graded outcomes per pool and how often the graded contest winner agrees with the current rule. */

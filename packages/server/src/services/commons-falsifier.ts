@@ -274,7 +274,7 @@ export function defaultFalsifierDeps(db: Database, loops: Pick<LoopService, 'pre
 }
 
 /** Async child with a minimal environment: agent-written code never sees model keys, tokens or the database path. */
-function runChild(cmd: string, args: string[], cwd: string, timeoutMs: number): Promise<{ code: number | null; timedOut: boolean }> {
+export function runChild(cmd: string, args: string[], cwd: string, timeoutMs: number): Promise<{ code: number | null; timedOut: boolean }> {
   return new Promise((resolve) => {
     const env: NodeJS.ProcessEnv = { PATH: process.env.PATH, HOME: process.env.HOME, NODE_ENV: 'test', CI: 'true', TZ: 'UTC', RUNTIME_SANDBOX: '1', DJIMITFLO_RUNTIME_CHILD: '1' };
     const child = spawn(cmd, args, { cwd, env, stdio: 'ignore' });
