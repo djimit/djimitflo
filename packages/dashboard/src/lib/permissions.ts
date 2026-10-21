@@ -14,6 +14,7 @@ export const ACTION_PERMISSIONS = {
   dismissRequeue: 'write:governance', // POST /self-improve/proposals/:id/requeue-dismiss
   auditAttribution: 'write:governance', // POST /self-improve/attribution-audit/:runId
   labelDiscoveryRelevance: 'write:governance', // POST /self-improve/discovery-labels
+  labelE1Retrieval: 'write:governance', // POST /self-improve/e1-labels
   memoryReview: 'approve:task', // POST /swarms/memory/candidates/:id/promote|reject
   telegramIdentity: 'manage:config', // PUT|DELETE /self-improve/telegram-identities/:id
   mcpCreateServer: 'manage:config', // POST /mcp/servers

@@ -302,6 +302,13 @@ export interface EvolutionEvidence {
     by_host: Array<{ host: string; verdict: 'verified' | 'unsigned' | 'bad_signature' | 'replay' | 'unknown_host' | 'revoked'; n: number }> | null;
     keys: Array<{ host: string; key_id: string; alg: string; status: string; created_at: string; revoked_at: string | null }> | null;
   };
+  /** AR5 (COMMONS_FALSIFIER_MODE, shadow): evidence-room tests red at base → green on a later main (services/commons-falsifier.ts); nulls while off */
+  falsifier?: FalsifierEvidence;
+}
+export type FalsifierCounts = { submitted: number; rejected: number; red_at_base: number; green_at_base: number; unknown: number; settled_green: number; expired: number; pending: number };
+export interface FalsifierEvidence {
+  mode: 'off' | 'shadow'; status: 'insufficient' | 'ok'; min_n: number; window_days: number; cap_per_day: number; executions_24h: number | null;
+  totals: FalsifierCounts | null; settle_rate: number | null; by_agent: Array<FalsifierCounts & { agent: string }> | null; note: string;
 }
 export type ExperimentEffect = { metric: string; estimate: number | null; ci: [number, number] | null; p: number | null };
 /** G1.5 power left; null = unknown, never 0 */
@@ -454,6 +461,9 @@ export type RelevanceQueue = {
   progress: { protected: { labelled: number; total: number }; relabel: { labelled: number; total: number; due: number }; al: { labelled: number; total: number } };
   today: { day: string; labels: number; seconds: number; median_seconds: number | null; target_seconds: number; remaining_seconds: number; est_cards_left: number | null };
 };
+/** E1: one blind query-level retrieval task — query plus opaque candidates (no source, score or trust tier is sent). */
+export type E1BlindTask = { task_id: string; query: string; candidates: Array<{ handle: string; title: string; excerpt: string }> };
+export type E1LabelQueue = { task: E1BlindTask | null; progress: { labelled: number; tasks: number; target: number; max_tasks: number } };
 export type D5Tally = { cases: number; false_rejection: number; correct_rejection: number; pending: number; censored: number; verified_rate: number | null; ci: [number, number] | null };
 export type OperatorCockpit = {
   at: string;
@@ -1891,6 +1901,16 @@ class ApiClient {
 
   async labelDiscoveryRelevance(ref: string, pass: RelevancePass, label: RelevanceLabel, seconds: number): Promise<{ recorded: boolean }> {
     return this.request('/self-improve/discovery-labels', { method: 'POST', body: JSON.stringify({ ref, pass, label, seconds }) });
+  }
+
+  /** E1: the next blind query-level retrieval task and the n/30 progress */
+  async getE1LabelQueue(): Promise<E1LabelQueue> {
+    return this.request('/self-improve/e1-labels/next');
+  }
+
+  /** E1: one label per task — the relevant candidate handles, or none_relevant with an empty list */
+  async labelE1Retrieval(taskId: string, relevant: string[], seconds: number): Promise<{ recorded: boolean }> {
+    return this.request('/self-improve/e1-labels', { method: 'POST', body: JSON.stringify({ task_id: taskId, relevant, none_relevant: relevant.length === 0, seconds }) });
   }
 
   async setTelegramIdentity(telegramId: string, userId: string, note?: string): Promise<void> {

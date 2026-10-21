@@ -37,6 +37,8 @@ import { QueueHygieneService, queueHygieneEnabled } from '../services/queue-hygi
 import { startSchedulerWatchdog, startStallWatch } from '../services/stall-watch';
 import { startInterestFeedback } from '../services/interest-feedback';
 import { startEvolutionFeedback } from '../services/evolution-feedback';
+import { startEvidenceRoom } from '../services/commons-evidence-room';
+import { startCommonsFalsifier } from '../services/commons-falsifier';
 import { startValueAllocator } from '../services/value-allocator';
 import { startDreamEvolution } from '../services/dream-evolution';
 import { startEvolutionEstimators } from '../services/evolution-estimators';
@@ -232,6 +234,22 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     if (stopEvolutionFeedback) { lifecycleManager.register({ serviceName: 'EvolutionFeedback', stop: stopEvolutionFeedback }); console.log('📣 Evolution feedback on (daily).'); }
   } catch (error) {
     console.warn('⚠️  Evolution feedback failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // Commons evidence room: one read-only thread per verified / regressed loop run + its survival follow-up. COMMONS_EVIDENCE_ROOM_MODE=on.
+  try {
+    const stopEvidenceRoom = startEvidenceRoom(db);
+    if (stopEvidenceRoom) { lifecycleManager.register({ serviceName: 'EvidenceRoom', stop: stopEvidenceRoom }); console.log('🧾 Commons evidence room on (15 min sweep).'); }
+  } catch (error) {
+    console.warn('⚠️  Evidence room failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // AR5 Commons falsifier niche (shadow): evidence-room tests run red at base → green on a later main; ≤ 5 runs / 24 h. COMMONS_FALSIFIER_MODE=shadow.
+  try {
+    const stopFalsifier = startCommonsFalsifier(db, recoverySvc);
+    if (stopFalsifier) { lifecycleManager.register({ serviceName: 'CommonsFalsifier', stop: stopFalsifier }); console.log('🧪 Commons falsifier on (shadow, hourly).'); }
+  } catch (error) {
+    console.warn('⚠️  Commons falsifier failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // E4: shadow value allocator — one value_allocation judgment per UTC day (6-hourly tick); proposals never applied. VALUE_ALLOCATOR_MODE=shadow.
