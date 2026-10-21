@@ -304,11 +304,23 @@ export interface EvolutionEvidence {
   };
   /** AR5 (COMMONS_FALSIFIER_MODE, shadow): evidence-room tests red at base → green on a later main (services/commons-falsifier.ts); nulls while off */
   falsifier?: FalsifierEvidence;
+  /** L3-v2 §5.1–2 (SETTLEMENT_EXECUTION_MODE, shadow): merged loop PRs ≥ 14 d — tests re-run at origin/main, fresh-mutant kill share vs maker time; graded vs labels (services/settlement-execution.ts) */
+  settlement_execution?: SettlementExecutionEvidence;
 }
 export type FalsifierCounts = { submitted: number; rejected: number; red_at_base: number; green_at_base: number; unknown: number; settled_green: number; expired: number; pending: number };
 export interface FalsifierEvidence {
   mode: 'off' | 'shadow'; status: 'insufficient' | 'ok'; min_n: number; window_days: number; cap_per_day: number; executions_24h: number | null;
   totals: FalsifierCounts | null; settle_rate: number | null; by_agent: Array<FalsifierCounts & { agent: string }> | null; note: string;
+}
+export type GradedLabelStat = { n: number; mean: number | null; zero_share: number | null };
+export interface SettlementExecutionEvidence {
+  mode: 'off' | 'shadow'; status: 'insufficient' | 'ok'; min_n: number; cap_per_tick: number; n: number;
+  counts: { pass: number; fail: number; removed: number; unknown: number; no_test_files: number }; pending: number | null; pass_rate: number | null;
+  kill_share: { n_now: number; mean_now: number | null; n_paired: number; mean_maker: number | null; mean_drift: number | null };
+  last_run_at: string | null;
+  graded_vs_labels: { n: number | null; note: string;
+    by_kind: Array<{ kind: string; verified: GradedLabelStat; not_verified: GradedLabelStat; survived: GradedLabelStat; regressed: GradedLabelStat; unsettled: GradedLabelStat }> | null };
+  note: string;
 }
 export type ExperimentEffect = { metric: string; estimate: number | null; ci: [number, number] | null; p: number | null };
 /** G1.5 power left; null = unknown, never 0 */
