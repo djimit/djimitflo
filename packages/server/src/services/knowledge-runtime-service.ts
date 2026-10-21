@@ -218,7 +218,7 @@ export class KnowledgeRuntimeService {
     if (makers.some(maker => !activeLeases.some(lease => lease.role === 'checker'
       && lease.metadata.maker_lease_id === maker.id && review.hasAcceptedReviewEvidence(lease)))) blockedReasons.push('checker_not_accepted');
     if (activeLeases.some(lease => (lease.role === 'checker' || lease.role === 'security_checker') && !review.hasAcceptedReviewEvidence(lease))) blockedReasons.push('review_evidence_invalid');
-    if ((loops.isHighRiskRun(bundle.run) || makers.some(maker => Boolean(loops.changedFilesRiskReason(maker.metadata.changed_files)))) && makers.some(maker => !activeLeases.some(lease => lease.role === 'security_checker'
+    if ((loops.isHighRiskRun(bundle.run) || makers.some(maker => Boolean(loops.leaseChangedFilesRisk(maker)))) && makers.some(maker => !activeLeases.some(lease => lease.role === 'security_checker'
       && lease.metadata.maker_lease_id === maker.id && review.hasAcceptedReviewEvidence(lease)))) blockedReasons.push('security_checker_not_accepted');
     if (bundle.run.gates.length === 0 || !bundle.run.gates.some(gate => gate.status === 'pass')) blockedReasons.push('gates_missing');
     if (bundle.run.gates.some(gate => gate.status !== 'pass' && gate.status !== 'skipped')) blockedReasons.push('gate_not_passed');

@@ -1792,6 +1792,15 @@ export class LoopService {
   }
 
   /**
+   * §3d P0 #1, grandfathered by evidence presence: only a maker lease that carries `risk_inputs` (written by runMaker since
+   * this rule exists) is classified by its changed files; an older lease keeps the text-only risk, so re-verifying a
+   * historical run (daemon step 9, Verify, certification, backlog sync) never flips it.
+   */
+  public leaseChangedFilesRisk(lease: WorkerLeaseRecord): string | null {
+    return lease.metadata?.risk_inputs ? this.changedFilesRiskReason(lease.metadata.changed_files) : null;
+  }
+
+  /**
    * §3d P0 #1: a completed maker whose changed files are sensitive gets a security checker when its finding text did not
    * already give it one (the lifecycle creates them before the maker runs, from the text alone). Same lease shape as there.
    */

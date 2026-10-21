@@ -84,7 +84,10 @@ export class LoopVerificationService {
     const completedMakerLeases = activeMakerLeases.filter((lease) => lease.status === 'completed');
     // §3d P0 #1: effective risk = max(finding/proposal text, the files every completed maker actually changed)
     const highRisk = this.loopService.isHighRiskRun(run)
-      || completedMakerLeases.some((lease) => Boolean(this.loopService.changedFilesRiskReason(lease.metadata?.changed_files)));
+      || completedMakerLeases.some((lease) => Boolean(this.loopService.leaseChangedFilesRisk(lease)));
+    // grandfathered by evidence presence: a run none of whose completed makers carries risk_inputs gets no objective_scope gate
+    const legacyEvaluation = completedMakerLeases.length > 0 && !completedMakerLeases.some((lease) => lease.metadata?.risk_inputs)
+      ? { objective_scope: 'skipped (legacy, no risk_inputs)' } : null;
     const notApplicable = this.inapplicableGates(run, activeMakerLeases);
 
     const computedGates: LoopGate[] = [
@@ -151,12 +154,13 @@ export class LoopVerificationService {
         status: completedMakerLeases.every((lease) => !lease.metadata?.auto_approved_scope || this.leaseWithinScope(lease)) ? 'pass' : 'fail',
         evidence: 'An auto-approved maker lease may change only its approved test file (human-approved makers pass).',
       },
-      {
-        // §3d P0 #4: the objective assignment says "Change only this file"; without this only auto-approved makers were held to it
+      // §3d P0 #4: the objective assignment says "Change only this file"; without this only auto-approved makers were held to it.
+      // Absent (not 'skipped') on a legacy run: a skipped gate fails the daemon's every-gate-pass rule and certification.
+      ...(legacyEvaluation ? [] : [{
         name: 'objective_scope',
         status: combine(completedMakerLeases.map((lease) => this.objectiveScopeObservation(run, lease))),
-        evidence: 'An objective-mode maker (not auto-approved) may change only its finding file; a missing changed-files record is insufficient evidence.',
-      },
+        evidence: 'An objective-mode maker (not auto-approved) may change only its finding file; a missing changed-files record is insufficient evidence; a maker lease without risk_inputs (legacy) is not evaluated.',
+      } satisfies LoopGate]),
       {
         name: 'no_automatic_merge',
         status: 'pass',
@@ -232,7 +236,7 @@ export class LoopVerificationService {
 
     this.loopService.recordLoopEvent(run.id, 'loop_verified', failedGates.length + unknownGates.length > 0 ? 'warning' : 'info',
       `Verification status: ${status}; ${failedGates.length} gate(s) incomplete or failed${unknownGates.length ? `; ${unknownGates.length} gate(s) with insufficient evidence` : ''}.`,
-      { gates, block_metadata: blockMetadata });
+      { gates, block_metadata: blockMetadata, ...(legacyEvaluation ? { legacy_evaluation: legacyEvaluation } : {}) });
 
     return { run: this.loopService.getLoopRun(run.id), gates, leases };
   }
@@ -268,7 +272,7 @@ export class LoopVerificationService {
 
   private objectiveScopeObservation(run: LoopRunRecord, lease: WorkerLeaseRecord): GateStatus {
     const scope = this.objectiveScopeFile(run, lease);
-    if (!scope) return 'pass';
+    if (!scope || !lease.metadata?.risk_inputs) return 'pass'; // no scope, or a legacy lease (not evaluated)
     const files = lease.metadata?.changed_files;
     if (!Array.isArray(files)) return 'unknown';
     return files.every((file) => file === scope) ? 'pass' : 'fail';

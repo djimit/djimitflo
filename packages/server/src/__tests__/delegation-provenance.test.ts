@@ -147,7 +147,8 @@ describe('P0 #4: objective-mode makers are held to their finding file', () => {
   function maker(changed: unknown, extra: Record<string, unknown> = {}, finding: Record<string, unknown> = OBJECTIVE) {
     seedRun([finding]);
     loops.insertWorkerLease({ id: 'maker', loopRunId: 'run', role: 'maker', runtime: 'opencode', findingId: 'finding', worktreePath: repo, branchName: null,
-      now: new Date().toISOString(), metadata: { ...(changed === undefined ? {} : { changed_files: changed }), ...extra } });
+      now: new Date().toISOString(), metadata: { risk_inputs: { text_risk_reason: null, changed_files_risk_reason: null, effective_risk: 'low' },
+        ...(changed === undefined ? {} : { changed_files: changed }), ...extra } });
     loops.updateWorkerLeaseStatus('maker', 'completed', {});
   }
 
@@ -176,6 +177,41 @@ describe('P0 #4: objective-mode makers are held to their finding file', () => {
   it('a missing changed-files record is insufficient evidence, not a pass', () => {
     maker(undefined);
     expect(gate('objective_scope')?.status).toBe('unknown');
+  });
+});
+
+describe('grandfathering: re-verifying a historical run never flips it', () => {
+  // an old run that was ready_for_human_merge: its maker touched a CI workflow (and an extra file), no security verdict exists
+  function historicalRun(withRiskInputs: boolean) {
+    seedRun([{ ...README_FINDING, file: 'README.md', metadata: { objective_mode: true } }]);
+    const assignment = path.join(root, 'assignment.md'); fs.writeFileSync(assignment, 'Fixture assignment');
+    loops.insertWorkerLease({ id: 'maker', loopRunId: 'run', role: 'maker', runtime: 'opencode', findingId: 'finding', worktreePath: repo, branchName: null,
+      now: new Date().toISOString(), metadata: { assignment_file: assignment, diff_lines: 2, diff_max_lines: 200, changed_files: ['README.md', '.github/workflows/ci.yml'],
+        deterministic_checks: [{ name: 'fixture', status: 'pass' }],
+        ...(withRiskInputs ? { risk_inputs: { text_risk_reason: null, changed_files_risk_reason: 'sensitive_changed_file:.github/workflows/ci.yml', effective_risk: 'high' } } : {}) } });
+    loops.updateWorkerLeaseStatus('maker', 'completed', {});
+    loops.insertWorkerLease({ id: 'checker', loopRunId: 'run', role: 'checker', runtime: 'manual', findingId: 'finding', worktreePath: null, branchName: null,
+      now: new Date().toISOString(), metadata: { maker_lease_id: 'maker' } });
+    loops.submitCheckerVerdict('run', { lease_id: 'checker', verdict: 'accepted', manual_attestation: { reviewer: 'test-operator', reason: 'fixture manual review' } }, { id: 'test-operator' });
+    db.prepare("UPDATE loop_runs SET status = 'ready_for_human_merge' WHERE id = 'run'").run();
+  }
+
+  it('without risk_inputs: stays ready_for_human_merge with text-only risk and no objective_scope gate (legacy recorded)', () => {
+    historicalRun(false);
+    const result = loops.verifyLoopRun('run');
+    expect(result.run.status).toBe('ready_for_human_merge');
+    expect(result.gates.find((g) => g.name === 'security_checker_verdict')?.status).toBe('skipped');
+    expect(result.gates.map((g) => g.name)).not.toContain('objective_scope');
+    const event = db.prepare("SELECT metadata FROM loop_events WHERE loop_run_id = 'run' AND event_type = 'loop_verified' ORDER BY rowid DESC LIMIT 1").get() as { metadata: string };
+    expect(JSON.parse(event.metadata).legacy_evaluation).toEqual({ objective_scope: 'skipped (legacy, no risk_inputs)' });
+  });
+
+  it('the same run with risk_inputs blocks on the security verdict and the objective scope', () => {
+    historicalRun(true);
+    const result = loops.verifyLoopRun('run');
+    expect(result.run.status).toBe('blocked');
+    expect(result.gates.find((g) => g.name === 'security_checker_verdict')?.status).toBe('fail');
+    expect(result.gates.find((g) => g.name === 'objective_scope')?.status).toBe('fail');
   });
 });
 
