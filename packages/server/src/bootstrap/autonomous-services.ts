@@ -39,6 +39,7 @@ import { startInterestFeedback } from '../services/interest-feedback';
 import { startEvolutionFeedback } from '../services/evolution-feedback';
 import { startEvidenceRoom } from '../services/commons-evidence-room';
 import { startCommonsFalsifier } from '../services/commons-falsifier';
+import { startSettlementExecution } from '../services/settlement-execution';
 import { startValueAllocator } from '../services/value-allocator';
 import { startDreamEvolution } from '../services/dream-evolution';
 import { startEvolutionEstimators } from '../services/evolution-estimators';
@@ -250,6 +251,14 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     if (stopFalsifier) { lifecycleManager.register({ serviceName: 'CommonsFalsifier', stop: stopFalsifier }); console.log('🧪 Commons falsifier on (shadow, hourly).'); }
   } catch (error) {
     console.warn('⚠️  Commons falsifier failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // L3-v2 §5.1–2 execution-based settlement (shadow): merged loop PRs ≥ 14 d re-run their tests at origin/main; ≤ 4 PRs / day. SETTLEMENT_EXECUTION_MODE=shadow.
+  try {
+    const stopSettlementExec = startSettlementExecution(db, recoverySvc);
+    if (stopSettlementExec) { lifecycleManager.register({ serviceName: 'SettlementExecution', stop: stopSettlementExec }); console.log('🧪 Settlement execution on (shadow, daily).'); }
+  } catch (error) {
+    console.warn('⚠️  Settlement execution failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // E4: shadow value allocator — one value_allocation judgment per UTC day (6-hourly tick); proposals never applied. VALUE_ALLOCATOR_MODE=shadow.
