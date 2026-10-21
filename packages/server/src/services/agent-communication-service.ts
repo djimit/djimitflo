@@ -112,6 +112,9 @@ export interface SocialMessage {
   improvement_status: string | null;
   runtime_run_id: string | null;
   provenance_status: string | null;
+  /** evidence-room replies only (commons-evidence-room.ts): 'artefact' when an executable artefact is attached, else 'unverified' */
+  evidence_status?: 'artefact' | 'unverified';
+  artefact?: unknown;
 }
 
 export interface SocialThread {
@@ -197,7 +200,7 @@ export class AgentCommunicationService {
     const recent = this.db.prepare(`
       SELECT payload_json FROM agent_messages
       WHERE json_extract(payload_json, '$.action') = 'social.question' AND timestamp >= ? AND status <> 'expired'
-        AND from_agent <> 'djimitflo:evolution-digest' -- K5: the daily digest thread (evolution-feedback.ts) never delays a round
+        AND from_agent NOT IN ('djimitflo:evolution-digest', 'djimitflo:evidence-room') -- K5 digest / evidence room threads never delay a round
         AND (? IS NULL OR to_agent IN (SELECT value FROM json_each(?)))
       ORDER BY timestamp DESC LIMIT 1
     `).get(cutoff, participantScope, participantScope) as { payload_json: string } | undefined;
@@ -246,7 +249,7 @@ export class AgentCommunicationService {
     const failureTopic = () => (process.env.COMMONS_AGENDA_FROM_FAILURES === 'true' ? this.pickFailureTopic() : null);
     const groundingTopic = () => (commonsGroundingAgendaEnabled() ? pickGroundingTopic(this.db) : null);
     const lastWasFailure = String((this.db.prepare(`SELECT json_extract(payload_json, '$.params.topic_ref') AS r FROM agent_messages
-      WHERE json_extract(payload_json, '$.action') = 'social.question' AND from_agent <> 'djimitflo:evolution-digest' ORDER BY timestamp DESC, rowid DESC LIMIT 1`).get() as { r: string | null } | undefined)?.r ?? '').startsWith('run:');
+      WHERE json_extract(payload_json, '$.action') = 'social.question' AND from_agent NOT IN ('djimitflo:evolution-digest', 'djimitflo:evidence-room') ORDER BY timestamp DESC, rowid DESC LIMIT 1`).get() as { r: string | null } | undefined)?.r ?? '').startsWith('run:');
     const failure = lastWasFailure ? (groundingTopic() ?? failureTopic()) : (failureTopic() ?? groundingTopic());
     // Agent interests are messages, not a second task queue. Discuss each once before recycling gaps.
     const interest = failure ? undefined : this.db.prepare(`
@@ -381,6 +384,7 @@ export class AgentCommunicationService {
         proposed_improvement: clip(this.string(params.proposed_improvement)) || null, improvement_id: this.string(params.improvement_id) || null,
         improvement_status: improvement?.status || null, runtime_run_id: this.string(params.runtime_run_id) || null,
         provenance_status: this.string(params.provenance_status) || null,
+        ...(params.evidence_status === 'artefact' || params.evidence_status === 'unverified' ? { evidence_status: params.evidence_status, artefact: params.artefact ?? null } : {}),
       });
       threads.set(threadId, thread);
     }
@@ -412,6 +416,7 @@ export class AgentCommunicationService {
         FROM agent_messages
         WHERE json_extract(payload_json, '$.action') IN ('social.question', 'social.response', 'social.learning')
           AND json_type(payload_json, '$.thread_id') = 'text' AND timestamp >= ?
+          AND json_extract(payload_json, '$.thread_id') NOT LIKE 'evidence-room:%' -- read-only run records, not discussions
         GROUP BY tid)
     `).get(since) as { threads: number; open: number | null; learnings: number; lessons: number | null };
     const p = this.db.prepare(`

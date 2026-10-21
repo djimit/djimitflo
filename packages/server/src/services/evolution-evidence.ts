@@ -91,6 +91,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'NE_GENERATOR_CHECK_MODE', acting: false },
   { name: 'KNOWLEDGE_GAP_MODE', acting: false },
   { name: 'EVOLUTION_FEEDBACK_MODE', acting: false },
+  { name: 'COMMONS_EVIDENCE_ROOM_MODE', acting: false },
   { name: 'JEV_CHALLENGER_MODEL', acting: false },
   { name: 'DREAM_EVIDENCE_SOURCES', acting: false },
   { name: 'DREAM_PLAYBOOK_GENE', acting: false },

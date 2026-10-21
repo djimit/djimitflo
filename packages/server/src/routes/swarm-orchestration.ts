@@ -18,6 +18,7 @@ import { AgentCommonsOpenDoorService } from '../services/agent-commons-open-door
 import { AgentReputationService } from '../services/agent-reputation-service';
 import { AuditService } from '../services/audit-service';
 import { AuditEventType } from '@djimitflo/shared';
+import { replyToEvidenceRoom } from '../services/commons-evidence-room';
 
 function boundedLimit(value: unknown): number {
   if (value === undefined) return 10;
@@ -197,6 +198,15 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
     res.json(comms.listSocialCommons(Math.min(200, Math.max(1, Math.trunc(Number(req.query.limit)) || 50))));
   });
 
+  // POST /api/swarm-v2/social/evidence-room/:threadId/replies — operator reply on an evidence-room thread (COMMONS_EVIDENCE_ROOM_MODE=on).
+  // Evidence only with { artefact: { kind: 'test', test_file, command } | { kind: 'repro', command } }; plain text is stored as unverified.
+  router.post('/social/evidence-room/:threadId/replies', requirePermission('write:swarm_action'), (req: any, res) => {
+    try {
+      const author = `operator:${String(req.user?.sub || 'unknown').slice(0, 100)}`;
+      res.status(201).json(replyToEvidenceRoom(db, String(req.params.threadId), author, req.body || {}));
+    } catch (error) { evidenceRoomFail(res, error); }
+  });
+
   // Agent Commons honeypot: cast a lure (invite absent agents, issue runtime tokens once) and read bites/probes.
   const lure = new AgentLureService(db, comms);
   const audit = new AuditService(db);
@@ -308,6 +318,13 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
   return router;
 }
 
+function evidenceRoomFail(res: any, error: unknown): void {
+  const code = error instanceof Error ? error.message : 'EVIDENCE_ROOM_ERROR';
+  const status = code === 'EVIDENCE_ROOM_OFF' || code === 'EVIDENCE_ROOM_THREAD_NOT_FOUND' ? 404 : code.startsWith('EVIDENCE_') || code.startsWith('BOARD_') ? 400 : 500;
+  const safe = status === 500 ? 'EVIDENCE_ROOM_ERROR' : code;
+  res.status(status).json({ error: { code: safe, message: safe } });
+}
+
 /**
  * C6: the URL handed to external agents (agent card, join status, lure invitations). It came from the request's Host header,
  * so a spoofed Host on the public card pointed agents at another server. DJIMITFLO_PUBLIC_URL (http(s) origin) wins; the
@@ -391,6 +408,12 @@ export function createAgentSocialRuntimeRoutes(db: Database, runtimeGovernance =
     if (!authorized(req, res)) return;
     // Invites are informational and come on top of the social work limit, so a poller with limit=1 still gets its question.
     try { res.json({ messages: [...lure.deliverInvites(req.params.agentId), ...comms.receiveSocial(req.params.agentId, Number(req.query.limit) || 4)] }); } catch (error) { fail(res, error); }
+  });
+
+  // Evidence-room reply by a runtime agent (same token check); typed artefact or flagged unverified.
+  router.post('/:agentId/evidence-room/:threadId/replies', (req, res) => {
+    if (!authorized(req, res)) return;
+    try { res.status(201).json(replyToEvidenceRoom(db, String(req.params.threadId), String(req.params.agentId), req.body || {})); } catch (error) { evidenceRoomFail(res, error); }
   });
 
   router.post('/:agentId/messages/:messageId/respond', (req, res) => {

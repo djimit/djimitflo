@@ -37,6 +37,7 @@ import { QueueHygieneService, queueHygieneEnabled } from '../services/queue-hygi
 import { startSchedulerWatchdog, startStallWatch } from '../services/stall-watch';
 import { startInterestFeedback } from '../services/interest-feedback';
 import { startEvolutionFeedback } from '../services/evolution-feedback';
+import { startEvidenceRoom } from '../services/commons-evidence-room';
 import { startValueAllocator } from '../services/value-allocator';
 import { startDreamEvolution } from '../services/dream-evolution';
 import { startEvolutionEstimators } from '../services/evolution-estimators';
@@ -232,6 +233,14 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     if (stopEvolutionFeedback) { lifecycleManager.register({ serviceName: 'EvolutionFeedback', stop: stopEvolutionFeedback }); console.log('📣 Evolution feedback on (daily).'); }
   } catch (error) {
     console.warn('⚠️  Evolution feedback failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // Commons evidence room: one read-only thread per verified / regressed loop run + its survival follow-up. COMMONS_EVIDENCE_ROOM_MODE=on.
+  try {
+    const stopEvidenceRoom = startEvidenceRoom(db);
+    if (stopEvidenceRoom) { lifecycleManager.register({ serviceName: 'EvidenceRoom', stop: stopEvidenceRoom }); console.log('🧾 Commons evidence room on (15 min sweep).'); }
+  } catch (error) {
+    console.warn('⚠️  Evidence room failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // E4: shadow value allocator — one value_allocation judgment per UTC day (6-hourly tick); proposals never applied. VALUE_ALLOCATOR_MODE=shadow.
