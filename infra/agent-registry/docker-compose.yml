@@ -1,0 +1,13 @@
+services:
+  agent-registry:
+    build: .
+    container_name: agent-registry
+    ports:
+      - "100.86.47.122:8088:8088"
+    volumes:
+      - ./runtime:/app/registry:ro
+    environment:
+      LIVE_AGENTS_FILE: /app/registry/live_agents.json
+      REGISTRY_STATE_FILE: /app/registry/registry_state.json
+    env_file: /etc/djimit-agents/agents.env
+    restart: unless-stopped

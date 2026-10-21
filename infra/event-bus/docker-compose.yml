@@ -1,0 +1,22 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: event-bus-redis
+    restart: unless-stopped
+    env_file: /etc/djimit-agents/agents.env
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    volumes:
+      - event-bus-data:/data
+
+  event-bus:
+    build: .
+    container_name: event-bus
+    ports:
+      - "100.86.47.122:8083:8000"
+    env_file: /etc/djimit-agents/agents.env
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+volumes:
+  event-bus-data:
