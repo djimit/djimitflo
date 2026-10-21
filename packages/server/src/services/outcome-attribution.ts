@@ -56,7 +56,7 @@ export function makerFailureClass(meta: MakerMeta): 'regressed' | 'infra_failed'
   return 'regressed';
 }
 
-const MAKER_GATES = new Set(['tests_lint_typecheck', 'diff_threshold_all_makers', 'auto_approved_scope']);
+const MAKER_GATES = new Set(['tests_lint_typecheck', 'diff_threshold_all_makers', 'auto_approved_scope', 'objective_scope']);
 const REVIEW_GATES: Record<string, string> = { checker_verdict: 'checker', security_checker_verdict: 'security_checker', maker_checker_separation: 'checker' };
 const ENV_GATES = new Set(['worktree_isolation', 'assignment_file_present', 'run_not_cancelled']);
 const REJECTING = new Set(['rejected', 'needs_revision']);

@@ -58,7 +58,9 @@ export class RemoteMakerExecutor implements TaskExecutor {
         base = execFileSync('git', ['-C', cwd, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
         execFileSync('git', ['-C', cwd, 'merge-base', '--is-ancestor', base, 'origin/main'], { stdio: 'ignore' });
       } catch { return finish(1, '', 'infra: base commit is not on origin/main, the remote host cannot fetch it'); }
-      jobId = this.queue.enqueue(target.host, target.species, base, task.description);
+      const meta = (task.metadata || {}) as Record<string, unknown>;
+      jobId = this.queue.enqueue(target.host, target.species, base, task.description, {
+        loopRunId: typeof meta.loop_run_id === 'string' ? meta.loop_run_id : null, leaseId: typeof meta.lease_id === 'string' ? meta.lease_id : null });
       emitter.emit('log', `queued remote maker job ${jobId} for ${target.host} (${target.species}) at ${base.slice(0, 8)}`);
       const deadline = Date.now() + remoteMakerWaitMs(workMs); // backstop only: expire() fails the job first
       const poll = () => {
