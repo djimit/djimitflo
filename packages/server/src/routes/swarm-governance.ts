@@ -203,6 +203,8 @@ export function createGovernanceRoutes(db: Database, auth?: AuthMiddleware, wsSe
         human_approved: req.body?.human_approved === true && Boolean(approvedBy),
         approved_by: req.body?.human_approved === true ? approvedBy : undefined,
         actor: approvedBy,
+        // P0-9: the human gate is satisfied only by the authenticated user id, never by a body or machine string
+        approver_user_id: req.body?.human_approved === true ? req.user?.sub : undefined,
       });
       audit.record({ event_type: AuditEventType.POLICY_UPDATED, action: 'memory_candidate_promoted', resource_type: 'memory_candidate', resource_id: req.params.id,
         user_id: approvedBy, risk_level: RiskLevel.MEDIUM, metadata: { human_approved: req.body?.human_approved === true, sinks: req.body?.sinks ?? null } });

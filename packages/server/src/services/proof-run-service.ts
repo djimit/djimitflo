@@ -8,6 +8,7 @@ import { LoopService } from './loop-service';
 import { NestedSpawnService } from './nested-spawn-service';
 import fs from 'fs';
 import { ContextInjectionService } from './context-injection-service';
+import { withoutHiddenChecks } from './fail-before-pass-after';
 
 type ProofRunStatus = 'completed' | 'rolled_back';
 type ProofRunRuntime = 'mock' | 'codex' | 'opencode';
@@ -1355,7 +1356,7 @@ export class ProofRunService {
     const maker = rows.find((candidate) => candidate.role === 'maker' && candidate.status === 'completed');
     if (!maker) return false;
     const metadata = this.parseJson(String(maker.metadata || '{}'));
-    const checks = Array.isArray(metadata.deterministic_checks) ? metadata.deterministic_checks : [];
+    const checks = Array.isArray(metadata.deterministic_checks) ? withoutHiddenChecks(metadata.deterministic_checks) : [];
     return checks.length > 0 && checks.every((check) => {
       return typeof check === 'object' && check !== null && (check as { status?: unknown }).status === 'pass';
     });

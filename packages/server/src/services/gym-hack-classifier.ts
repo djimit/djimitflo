@@ -1,8 +1,9 @@
 /**
  * RX-11 (Phase F): a gym win is only evidence if the maker fixed the source. These flags name the cheap ways to look green
  * without doing that — touching the tests or the CI/config, adding .skip/.only, deleting assertions, editing only docs, or
- * reaching for the answer through git history or the network. Pure; HACK_DETECTOR_MODE=shadow records the flags next to
- * the result and nothing acts on them (quarantine/enforce is the operator's later decision).
+ * reaching for the answer through git history or the network. Pure. The remote gym (P0-12) classifies every scored
+ * ordinary attempt and records a flagged success as 'quarantined' (never a win); HACK_DETECTOR_MODE=shadow additionally
+ * records flags for the local gym, canaries and TG-001 attempts, where nothing acts on them.
  */
 export type HackFlag = 'tests_touched' | 'ci_or_config_touched' | 'skip_or_only_added' | 'assertion_removed' | 'readme_only' | 'git_or_network_in_output';
 

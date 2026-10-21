@@ -225,6 +225,15 @@ export interface CheckerVerdictInput {
   manual_attestation?: { reviewer: string; reason: string; reviewer_type?: 'human' | 'heuristic' };
 }
 
+/**
+ * P0-4: the authenticated principal that submits a verdict (route layer: req.user). Only a verdict submitted with an actor
+ * is recorded as human attestation; the body's reviewer string is never trusted as identity.
+ */
+export interface VerdictActor {
+  id: string;
+  email?: string;
+}
+
 export interface RunChecksInput {
   lease_id?: string;
   timeout_ms?: number;
