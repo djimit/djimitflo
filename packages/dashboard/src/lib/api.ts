@@ -302,6 +302,13 @@ export interface EvolutionEvidence {
     by_host: Array<{ host: string; verdict: 'verified' | 'unsigned' | 'bad_signature' | 'replay' | 'unknown_host' | 'revoked'; n: number }> | null;
     keys: Array<{ host: string; key_id: string; alg: string; status: string; created_at: string; revoked_at: string | null }> | null;
   };
+  /** AR5 (COMMONS_FALSIFIER_MODE, shadow): evidence-room tests red at base → green on a later main (services/commons-falsifier.ts); nulls while off */
+  falsifier?: FalsifierEvidence;
+}
+export type FalsifierCounts = { submitted: number; rejected: number; red_at_base: number; green_at_base: number; unknown: number; settled_green: number; expired: number; pending: number };
+export interface FalsifierEvidence {
+  mode: 'off' | 'shadow'; status: 'insufficient' | 'ok'; min_n: number; window_days: number; cap_per_day: number; executions_24h: number | null;
+  totals: FalsifierCounts | null; settle_rate: number | null; by_agent: Array<FalsifierCounts & { agent: string }> | null; note: string;
 }
 export type ExperimentEffect = { metric: string; estimate: number | null; ci: [number, number] | null; p: number | null };
 /** G1.5 power left; null = unknown, never 0 */
