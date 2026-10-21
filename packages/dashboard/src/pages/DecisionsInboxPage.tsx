@@ -6,6 +6,7 @@ import { api, type DecisionsInbox, type DependencyLane, type DraftPrs } from '..
 import { usePendingApprovals } from '../hooks/usePendingApprovals';
 import { ApprovalQueuePage } from './ApprovalQueuePage';
 import { DiscoveryRelevanceSection } from './DiscoveryRelevanceSection';
+import { E1RetrievalLabelSection } from './E1RetrievalLabelSection';
 import { ACTION_PERMISSIONS as P, useCan } from '../lib/permissions';
 import { Button, DataTable, Section } from '../components/ui';
 
@@ -239,6 +240,8 @@ export function DecisionsInboxPage() {
           </Section>
 
           <DiscoveryRelevanceSection />
+
+          <E1RetrievalLabelSection />
 
           <Section id="telegram" title="Telegram allowlist (D3)" headingClassName="text-lg font-semibold mb-1">
             <p className="text-xs text-foreground-tertiary mb-2">Only listed Telegram user ids are recognised; the mapped user&apos;s role decides what they may do. Chat or group membership grants nothing. Needs manage:config.</p>
