@@ -10,7 +10,9 @@ import type { Database } from 'better-sqlite3';
 export const remoteMakerEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.REMOTE_MAKER_ENABLED === 'true';
 export const MAX_PATCH_BYTES = 2 * 1024 * 1024;
 
-export interface RemoteMakerJob { id: string; host: string; species: string; base_commit: string; prompt: string; status: string; patch: string | null; reason: string | null; created_at: string; claimed_at: string | null }
+export interface RemoteMakerJob { id: string; host: string; species: string; base_commit: string; prompt: string; status: string; patch: string | null; reason: string | null; created_at: string; claimed_at: string | null; loop_run_id: string | null; lease_id: string | null }
+/** §3d P1 #5: the loop run and maker lease a job belongs to (null for a job enqueued without one, e.g. before this field existed). */
+export interface RemoteMakerIdentity { loopRunId?: string | null; leaseId?: string | null }
 export type RemoteMakerExpiry = 'queue_timeout' | 'work_timeout';
 
 export class RemoteMakerQueue {
@@ -19,27 +21,30 @@ export class RemoteMakerQueue {
       id TEXT PRIMARY KEY, host TEXT NOT NULL, species TEXT NOT NULL, base_commit TEXT NOT NULL, prompt TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'queued', patch TEXT, reason TEXT,
       created_at TEXT NOT NULL, claimed_at TEXT, finished_at TEXT)`);
+    // additive migration: existing rows keep NULL (unattributed), the installed worker ignores the extra claim fields
+    const columns = new Set((db.prepare('PRAGMA table_info(remote_maker_jobs)').all() as Array<{ name: string }>).map((c) => c.name));
+    for (const column of ['loop_run_id', 'lease_id']) if (!columns.has(column)) db.exec(`ALTER TABLE remote_maker_jobs ADD COLUMN ${column} TEXT`);
   }
 
-  enqueue(host: string, species: string, baseCommit: string, prompt: string): string {
+  enqueue(host: string, species: string, baseCommit: string, prompt: string, identity: RemoteMakerIdentity = {}): string {
     const id = randomUUID();
-    this.db.prepare('INSERT INTO remote_maker_jobs (id, host, species, base_commit, prompt, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(id, host, species, baseCommit, prompt, new Date().toISOString());
+    this.db.prepare('INSERT INTO remote_maker_jobs (id, host, species, base_commit, prompt, created_at, loop_run_id, lease_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(id, host, species, baseCommit, prompt, new Date().toISOString(), identity.loopRunId ?? null, identity.leaseId ?? null);
     return id;
   }
 
   /** The host's oldest queued job for one of the species it runs; marks it claimed. */
-  claim(host: string, species: string[]): Pick<RemoteMakerJob, 'id' | 'species' | 'base_commit' | 'prompt'> | null {
+  claim(host: string, species: string[]): Pick<RemoteMakerJob, 'id' | 'species' | 'base_commit' | 'prompt' | 'loop_run_id' | 'lease_id'> | null {
     if (!species.length) return null;
-    const job = this.db.prepare(`SELECT id, species, base_commit, prompt FROM remote_maker_jobs WHERE host = ? AND status = 'queued'
-      AND species IN (${species.map(() => '?').join(', ')}) ORDER BY created_at LIMIT 1`).get(host, ...species) as Pick<RemoteMakerJob, 'id' | 'species' | 'base_commit' | 'prompt'> | undefined;
+    const job = this.db.prepare(`SELECT id, species, base_commit, prompt, loop_run_id, lease_id FROM remote_maker_jobs WHERE host = ? AND status = 'queued'
+      AND species IN (${species.map(() => '?').join(', ')}) ORDER BY created_at LIMIT 1`).get(host, ...species) as Pick<RemoteMakerJob, 'id' | 'species' | 'base_commit' | 'prompt' | 'loop_run_id' | 'lease_id'> | undefined;
     if (!job) return null;
     const claimed = this.db.prepare("UPDATE remote_maker_jobs SET status = 'claimed', claimed_at = ? WHERE id = ? AND status = 'queued'").run(new Date().toISOString(), job.id).changes;
     return claimed ? job : null;
   }
 
   record(id: string, host: string, result: { status: 'done' | 'failed'; patch?: string; reason?: string }): void {
-    const job = this.db.prepare('SELECT host, status FROM remote_maker_jobs WHERE id = ?').get(id) as { host: string; status: string } | undefined;
+    const job = this.db.prepare('SELECT host, status, loop_run_id, lease_id FROM remote_maker_jobs WHERE id = ?').get(id) as { host: string; status: string; loop_run_id: string | null; lease_id: string | null } | undefined;
     if (!job || job.host !== host) throw new Error('MAKER_JOB_NOT_FOUND');
     if (job.status === 'cancelled') {
       // the executor already gave up and failed its lease, so the result has nobody to apply it; still rejected, but a
@@ -47,6 +52,11 @@ export class RemoteMakerQueue {
       this.db.prepare("UPDATE remote_maker_jobs SET reason = COALESCE(reason, 'cancelled') || ';late_result' WHERE id = ? AND COALESCE(reason, '') NOT LIKE '%late_result%'").run(id);
     }
     if (job.status !== 'claimed') throw new Error('MAKER_JOB_NOT_CLAIMED');
+    // §3d P1 #5: a result is applied only while its lease is still the run's running, non-superseded maker lease
+    if (job.lease_id && !this.leaseActive(job.loop_run_id, job.lease_id)) {
+      this.cancel(id, 'lease_not_active;late_result', ['claimed']);
+      throw new Error('MAKER_JOB_LEASE_NOT_ACTIVE');
+    }
     if (result.status !== 'done' && result.status !== 'failed') throw new Error('MAKER_RESULT_INVALID');
     const patch = typeof result.patch === 'string' ? result.patch : '';
     if (Buffer.byteLength(patch) > MAX_PATCH_BYTES) throw new Error('MAKER_PATCH_TOO_LARGE');
@@ -55,7 +65,15 @@ export class RemoteMakerQueue {
   }
 
   get(id: string): RemoteMakerJob | undefined {
-    return this.db.prepare('SELECT id, host, species, base_commit, prompt, status, patch, reason, created_at, claimed_at FROM remote_maker_jobs WHERE id = ?').get(id) as RemoteMakerJob | undefined;
+    return this.db.prepare('SELECT id, host, species, base_commit, prompt, status, patch, reason, created_at, claimed_at, loop_run_id, lease_id FROM remote_maker_jobs WHERE id = ?').get(id) as RemoteMakerJob | undefined;
+  }
+
+  private leaseActive(loopRunId: string | null, leaseId: string): boolean {
+    try {
+      const lease = this.db.prepare(`SELECT loop_run_id, status, json_extract(metadata, '$.superseded_by_maker_lease_id') AS superseded FROM worker_leases WHERE id = ?`)
+        .get(leaseId) as { loop_run_id: string; status: string; superseded: string | null } | undefined;
+      return Boolean(lease && lease.loop_run_id === loopRunId && lease.status === 'running' && !lease.superseded);
+    } catch { return false; } // no worker_leases table: the lease cannot be shown active
   }
 
   /** Every cancel records why; `statuses` guards against a claim/result landing between the read and the cancel. */

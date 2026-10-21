@@ -37,6 +37,8 @@ import { MAKER_TEMPLATE_RULES_STE, steRulesFor } from './ste-001';
 import { extraRepoByPath, extraRepoChecks } from './repo-registry';
 import { assignmentContext, assignmentContextMarkdown, type AssignmentContext } from './assignment-context';
 import { firstJsonObject } from './model-json';
+import { isHighRiskPath } from './diff-capture';
+import { recordPolicyViolation } from './policy-violations';
 import type {
   LoopName,
   WorkerRole,
@@ -152,6 +154,8 @@ const CONTROL_DIR = '.djimitflo';
 const LOOP_WORK_FILE = 'LOOP_WORK.md';
 const ASSIGNMENT_PACKET_FILE = 'ASSIGNMENT_PACKET.json';
 const ASSIGNMENT_CONTEXT_FILE = 'ASSIGNMENT_CONTEXT.json';
+/** The sensitive-content rule of highRiskReason (finding file + text); also applied to a maker's changed file paths. */
+const SENSITIVE_CONTENT = /(auth|oauth|oidc|secret|token|password|credential|infra|terraform|docker|deploy|production|policy|ci\/cd|github actions)/;
 
 const LOOP_CONTRACTS: LoopContract[] = [
   {
@@ -1771,10 +1775,37 @@ export class LoopService {
       finding.evidence,
       finding.suggested_fix,
     ].join(' ').toLowerCase();
-    if (/(auth|oauth|oidc|secret|token|password|credential|infra|terraform|docker|deploy|production|policy|ci\/cd|github actions)/.test(haystack)) {
+    if (SENSITIVE_CONTENT.test(haystack)) {
       return 'sensitive_finding_content';
     }
     return null;
+  }
+
+  /**
+   * §3d P0 #1: the risk the maker's actual diff carries — the first changed path that matches the finding-content rule
+   * above or diff-capture's high/critical path list (CI workflows, Dockerfiles, .env, keys, migrations, lockfiles).
+   * Effective risk is the max of this and highRiskReason: it can only raise a run to high, never lower it.
+   */
+  public changedFilesRiskReason(files: unknown): string | null {
+    const hit = (Array.isArray(files) ? files.map(String) : []).find((file) => SENSITIVE_CONTENT.test(file.toLowerCase()) || isHighRiskPath(file));
+    return hit ? `sensitive_changed_file:${hit}` : null;
+  }
+
+  /**
+   * §3d P0 #1: a completed maker whose changed files are sensitive gets a security checker when its finding text did not
+   * already give it one (the lifecycle creates them before the maker runs, from the text alone). Same lease shape as there.
+   */
+  public ensureChangedFilesSecurityChecker(run: LoopRunRecord, maker: WorkerLeaseRecord, reason: string): string | null {
+    const existing = this.listWorkerLeases(run.id).find((lease) => lease.role === 'security_checker' && lease.metadata.maker_lease_id === maker.id);
+    if (existing) return null;
+    const id = randomUUID();
+    this.insertWorkerLease({
+      id, loopRunId: run.id, role: 'security_checker', runtime: 'manual', findingId: maker.finding_id ?? '', worktreePath: null, branchName: null,
+      metadata: { maker_lease_id: maker.id, requires_security_review: true, high_risk_reason: reason, risk_source: 'changed_files' }, now: new Date().toISOString(),
+    });
+    this.recordLoopEvent(run.id, 'security_checker_required', 'warning', `Maker ${maker.id} changed a sensitive file (${reason}); a security checker is required.`,
+      { maker_lease_id: maker.id, security_checker_lease_id: id, high_risk_reason: reason });
+    return id;
   }
 
   discoverLoopFindings(loopName: LoopName, repositoryPath: string, maxFindings: number): LoopFinding[] {
@@ -2499,9 +2530,7 @@ export class LoopService {
   public buildCheckerPrompt(run: LoopRunRecord, maker: WorkerLeaseRecord, checker: WorkerLeaseRecord): string {
     const worktreePath = maker.worktree_path || '';
     const diff = worktreePath ? this.workingTreeDiff(worktreePath) : '';
-    const assignmentPacket = typeof maker.metadata.assignment_packet_file === 'string' && fs.existsSync(maker.metadata.assignment_packet_file)
-      ? fs.readFileSync(maker.metadata.assignment_packet_file, 'utf8').slice(0, 20_000)
-      : '';
+    const assignmentPacket = this.checkerAssignmentPacket(run, maker, checker).slice(0, 20_000);
     const stdoutPath = typeof maker.metadata.stdout_path === 'string' ? maker.metadata.stdout_path : '';
     const stderrPath = typeof maker.metadata.stderr_path === 'string' ? maker.metadata.stderr_path : '';
     const checks = this.checkResultsForReviewer(maker.metadata.deterministic_checks);
@@ -2531,6 +2560,33 @@ export class LoopService {
       `stderr_path: ${stderrPath || 'missing'}`,
       '',
     ].join('\n');
+  }
+
+  /**
+   * §3d P0 #2: the packet a reviewer reads lives in the maker's worktree (.djimitflo/, outside changed_files), so the maker
+   * could rewrite it unseen. It is used only while it still hashes to the sha256 recorded at lease creation; otherwise the
+   * reviewer gets the daemon's copy (or, without one, a withheld notice) and the mismatch is recorded as a loop event and a
+   * POLICY_VIOLATION_LOG row. A lease from before the sha256 was recorded reads the file as before.
+   */
+  private checkerAssignmentPacket(run: LoopRunRecord, maker: WorkerLeaseRecord, checker: WorkerLeaseRecord): string {
+    const file = typeof maker.metadata.assignment_packet_file === 'string' ? maker.metadata.assignment_packet_file : '';
+    const current = file && fs.existsSync(file) ? fs.readFileSync(file) : null;
+    const expected = typeof maker.metadata.assignment_packet_sha256 === 'string' ? maker.metadata.assignment_packet_sha256 : null;
+    if (!expected) return current ? current.toString('utf8') : '';
+    const sha256 = (content: Buffer) => createHash('sha256').update(content).digest('hex');
+    if (current && sha256(current) === expected) return current.toString('utf8');
+    const copyPath = typeof maker.metadata.assignment_packet_copy === 'string' ? maker.metadata.assignment_packet_copy : '';
+    const copy = copyPath && fs.existsSync(copyPath) ? fs.readFileSync(copyPath) : null;
+    const restored = copy && sha256(copy) === expected ? copy.toString('utf8') : null;
+    const observed = current ? sha256(current) : null;
+    const evidenceRef = `loop_run:${run.id}/lease:${maker.id}/assignment_packet`;
+    const description = `assignment packet of maker ${maker.id} changed after it was written (expected sha256 ${expected}, found ${observed ?? 'missing'}); reviewer given ${restored ? 'the daemon copy' : 'no packet'}`;
+    this.patchWorkerLeaseMetadata(checker.id, { assignment_packet_integrity: restored ? 'restored_from_daemon_copy' : 'withheld', assignment_packet_evidence_ref: evidenceRef });
+    this.recordLoopEvent(run.id, 'assignment_packet_tampered', 'warning', description,
+      { maker_lease_id: maker.id, checker_lease_id: checker.id, expected_sha256: expected, observed_sha256: observed, restored_from_daemon_copy: Boolean(restored), evidence_ref: evidenceRef });
+    recordPolicyViolation(this.db, { kind: 'assignment_packet_tampered', actor: `maker:${maker.runtime}`, severity: 'high', dedupe_key: maker.id,
+      run_id: run.id, lease_id: maker.id, evidence_ref: evidenceRef, description });
+    return restored ?? `Assignment packet withheld: the maker's copy no longer matches the sha256 recorded before the maker ran (${expected}) and the daemon copy is unavailable.`;
   }
 
   /** The maker's deterministic checks for a reviewer: name, status, exit and the ANSI-stripped tail of each log (capped). */
@@ -2666,7 +2722,26 @@ export class LoopService {
   }
 
   public insertWorkerLease(input: Parameters<WorkerLeaseRepo['insert']>[0]): void {
-    this.workerLeases.insert(input);
+    this.workerLeases.insert(this.withAssignmentPacketProvenance(input));
+  }
+
+  /**
+   * §3d P0 #2: a lease is created right after its packet is written and before its maker runs, so this is the packet's
+   * sha256 as the daemon wrote it, plus a content-addressed daemon copy outside the worktree (checkerAssignmentPacket).
+   */
+  private withAssignmentPacketProvenance(input: Parameters<WorkerLeaseRepo['insert']>[0]): Parameters<WorkerLeaseRepo['insert']>[0] {
+    const file = input.metadata.assignment_packet_file;
+    if (typeof file !== 'string' || input.metadata.assignment_packet_sha256 !== undefined || !fs.existsSync(file)) return input;
+    try {
+      const content = fs.readFileSync(file);
+      const sha256 = createHash('sha256').update(content).digest('hex');
+      const copy = path.join(this.evidenceRoot, input.loopRunId, 'assignment-packets', `${sha256}.json`);
+      fs.mkdirSync(path.dirname(copy), { recursive: true });
+      fs.writeFileSync(copy, content);
+      return { ...input, metadata: { ...input.metadata, assignment_packet_sha256: sha256, assignment_packet_copy: copy } };
+    } catch {
+      return input; // unreadable packet: the lease is recorded without provenance and the checker reads the file as before
+    }
   }
 
   public updateWorkerLeaseStatus(id: string, status: WorkerLeaseRecord['status'], metadataPatch: Record<string, unknown> = {}): void {

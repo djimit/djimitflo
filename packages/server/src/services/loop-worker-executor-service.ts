@@ -241,7 +241,12 @@ export class LoopWorkerExecutorService {
     const wasCancelled = this.loopService.isWorkerLeaseCancelled(makerLease.id);
     const remoteCancel = makerLease.runtime === 'remote' ? remoteMakerCancelReason(result.stderr) : null;
 
+    // §3d P0 #1: both risk inputs, recorded; the effective risk is their max (verifyLoopRun recomputes it from changed_files)
+    const leaseFinding = run.findings.find((candidate) => candidate.id === makerLease.finding_id);
+    const textRisk = this.loopService.highRiskReason(run, leaseFinding) ?? (this.loopService.isHighRiskRun(run) ? 'run_findings_text' : null);
+    const changedFilesRisk = this.loopService.changedFilesRiskReason(changedFiles);
     const metadataPatch: Record<string, unknown> = {
+      risk_inputs: { text_risk_reason: textRisk, changed_files_risk_reason: changedFilesRisk, effective_risk: textRisk || changedFilesRisk ? 'high' : 'low' },
       completed_at: new Date().toISOString(), stdout_path: stdoutPath, stderr_path: stderrPath,
       diff_lines: diffLines, diff_max_lines: diffMaxLines, changed_files: changedFiles, exit_status: exitStatus, timed_out: timedOut,
       runtime_adapter: makerLease.runtime, runtime_contract: runtimeContract, runtime_pid: result.runtimePid,
@@ -257,6 +262,7 @@ export class LoopWorkerExecutorService {
       this.loopService.patchWorkerLeaseMetadata(makerLease.id, { ...metadataPatch, runtime_was_cancelled: true });
     } else {
       this.loopService.updateWorkerLeaseStatus(makerLease.id, completionStatus, metadataPatch);
+      if (completionStatus === 'completed' && changedFilesRisk) this.loopService.ensureChangedFilesSecurityChecker(run, makerLease, changedFilesRisk);
     }
 
     const budgetRisk = tokenBudget.efficiencyExceeded
