@@ -19,6 +19,7 @@ import { createError } from '../middleware/error-handler';
 import type { WorkerLeaseRecord } from './loop-types';
 import { LoopEventService } from './loop-event-service';
 import { SelfImprovementService } from './self-improvement-service';
+import { CANCEL_LEASE_METADATA_SQL, cancelLeaseBind } from './lease-failure';
 
 export interface RecoveryResult {
   interruptedRuns: number;
@@ -133,9 +134,8 @@ export class LoopRecoveryService {
     if (last?.t == null || boot == null || last.t >= boot) return false;
     const goal = run.goal_id ? one("SELECT id, improvement_id FROM goals WHERE id = ? AND status IN ('running', 'blocked')", run.goal_id) as { id: string; improvement_id: string | null } | undefined : undefined;
     this.db.transaction(() => {
-      this.db.prepare(`UPDATE worker_leases SET status = 'cancelled', updated_at = ?,
-        metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.cancellation_reason', 'deploy_restart', '$.cancelled_at', ?)
-        WHERE loop_run_id = ? AND status = 'prepared'`).run(now, now, run.id);
+      this.db.prepare(`UPDATE worker_leases SET status = 'cancelled', updated_at = ?, ${CANCEL_LEASE_METADATA_SQL}
+        WHERE loop_run_id = ? AND status = 'prepared'`).run(now, ...cancelLeaseBind('deploy_restart', now), run.id);
       this.mutations.updateStatus(run.id, 'interrupted', { interrupted_reason: 'server_restart', interrupted_at: now, settled: 'deploy_restart', settled_goal_id: goal?.id ?? null });
       if (goal) {
         this.db.prepare(`UPDATE goals SET status = 'failed', updated_at = ?,

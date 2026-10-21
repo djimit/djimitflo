@@ -1,4 +1,5 @@
 import type { Database } from 'better-sqlite3';
+import { CANCEL_LEASE_METADATA_SQL, cancelLeaseBind } from './lease-failure';
 
 /**
  * Gives queues an exit. Production (2026-09-20): 858 agent-board work items sat `blocked`
@@ -126,8 +127,8 @@ export class QueueHygieneService {
     // A run whose goal already ended (e.g. its approval expired: the daemon fails the goal and re-schedules the proposal)
     // keeps its prepared leases, so the orphan rule above never sees it. Prod 2026-09-25: 84bc044b/4c11f3f5 stayed 'running'.
     const goalEnded = `status = 'running' AND updated_at < ? AND goal_id IN (SELECT id FROM goals WHERE status IN ('failed', 'cancelled', 'completed'))`;
-    this.db.prepare(`UPDATE worker_leases SET status = 'cancelled', updated_at = ? WHERE status = 'prepared' AND loop_run_id IN (SELECT id FROM loop_runs WHERE ${goalEnded})`)
-      .run(iso, ago(H));
+    this.db.prepare(`UPDATE worker_leases SET status = 'cancelled', updated_at = ?, ${CANCEL_LEASE_METADATA_SQL} WHERE status = 'prepared' AND loop_run_id IN (SELECT id FROM loop_runs WHERE ${goalEnded})`)
+      .run(iso, ...cancelLeaseBind('goal_ended', iso), ago(H));
     const runsOfEndedGoals = this.db.prepare(`UPDATE loop_runs SET status = 'cancelled', metadata = ${tag('goal_ended')}, updated_at = ? WHERE ${goalEnded}`)
       .run(iso, iso, ago(H)).changes;
     return { goalsReaped: goalsRunning + goalsBlocked, runsReaped: runsInterrupted + runsPlanning + runsOrphaned + runsOfEndedGoals };
