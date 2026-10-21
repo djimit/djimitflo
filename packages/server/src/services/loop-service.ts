@@ -61,6 +61,8 @@ import type {
 import type { LoopFinding } from './loop-discovery-service';
 import type { GoalRecord, GoalCreateInput, GoalUpdateInput, DecomposedLoopCandidate } from './goal-service';
 import { captureReadSet, freshnessMode, type ReadSet } from './evidence-freshness';
+import { provisionWarmDeps, type WarmDepsResult } from './maker-warm-deps';
+import { checksFailureHint } from './lease-failure';
 
 export type {
   LoopName,
@@ -818,7 +820,7 @@ export class LoopService {
     }
 
     for (const lease of this.listWorkerLeases(id).filter(lease => ['prepared', 'running'].includes(lease.status))) {
-      this.updateWorkerLeaseStatus(lease.id, 'cancelled', { stopped_by_runner: true, stopped_at: new Date().toISOString() });
+      this.updateWorkerLeaseStatus(lease.id, 'cancelled', { stopped_by_runner: true, stopped_at: new Date().toISOString(), cancellation_reason: 'operator_stop' });
       if (!await RuntimeLeaseRegistry.stop(lease.id)) this.runtimeCommand.stopWorkerLeaseRuntime(lease.id);
     }
     void this.experience.indexRun(id);
@@ -1218,7 +1220,8 @@ export class LoopService {
     this.updateWorkerLeaseStatus(makerLease.id, failed ? 'failed' : 'completed', {
       deterministic_checks: checks,
       checks_completed_at: new Date().toISOString(),
-      ...(failed ? { failure_reason: `deterministic_checks_failed:${checks.filter((check) => check.status === 'fail').map((check) => `${check.name}${check.reason ? `(${check.reason})` : check.timed_out ? '(timed_out)' : `(exit=${check.exit_status ?? 'signal'})`}`).join(',')}` } : {}),
+      ...(failed ? { failure_reason: `deterministic_checks_failed:${checks.filter((check) => check.status === 'fail').map((check) => `${check.name}${check.reason ? `(${check.reason})` : check.timed_out ? '(timed_out)' : `(exit=${check.exit_status ?? 'signal'})`}`).join(',')}`,
+        failure: checksFailureHint(checks) } : {}),
       ...(evidenceReadSet ? { evidence_read_set: evidenceReadSet } : {}),
     });
 
@@ -1735,6 +1738,7 @@ export class LoopService {
         exit_status: reason,
         failure_reason: details,
         failed_at: new Date().toISOString(),
+        failure: { stage: 'prepare' }, // only called before the runtime starts (missing worktree, manual runtime)
       });
       this.recordLoopEvent(runId, 'maker_execution_failed', 'warning', `Maker lease ${leaseId} failed: ${reason}`, {
         lease_id: leaseId,
@@ -2049,7 +2053,7 @@ export class LoopService {
    * test:changed runs first (dist absent). Provenance: lockfile sha256, npm version, command, exit + duration. No registry, no
    * script approval; the lockfile's integrity hashes are the only supply-chain control. Never throws.
    */
-  public prepareMakerWorktree(runId: string, leaseId: string, worktree: string) {
+  public prepareMakerWorktree(runId: string, leaseId: string, worktree: string, opts: { warmDepsRoot?: string } = {}) {
     const started = Date.now();
     const outputDir = path.join(this.evidenceRoot, runId, 'maker-prepare', leaseId);
     const run = (args: readonly string[], timeout: number) => {
@@ -2059,18 +2063,34 @@ export class LoopService {
     };
     const out = { command: `npm ${LoopService.WORKTREE_INSTALL_ARGS.join(' ')}`, npm_version: null as string | null, lockfile_sha256: null as string | null,
       installed: false, install_exit: null as number | null, install_ms: 0, install_failed: false,
-      shared_built: false, shared_exit: null as number | null, shared_ms: 0, shared_failed: false, duration_ms: 0 };
+      shared_built: false, shared_exit: null as number | null, shared_ms: 0, shared_failed: false, duration_ms: 0,
+      // MAKER_WARM_DEPS only (never set for MAKER-DEPS-001 arm B): where node_modules came from
+      warm_deps: undefined as WarmDepsResult | undefined };
     try {
       fs.mkdirSync(outputDir, { recursive: true });
       const lock = path.join(worktree, 'package-lock.json');
       if (fs.existsSync(lock)) out.lockfile_sha256 = createHash('sha256').update(fs.readFileSync(lock)).digest('hex');
       const v = run(['--version'], 30_000); out.npm_version = v.exit === 0 ? v.stdout.trim() || null : null;
       if (out.lockfile_sha256 && !fs.existsSync(path.join(worktree, 'node_modules'))) {
-        const r = run(LoopService.WORKTREE_INSTALL_ARGS, 600_000);
-        out.install_exit = r.exit; out.install_ms = r.ms; out.install_failed = r.exit !== 0;
+        const install = () => {
+          const r = run(LoopService.WORKTREE_INSTALL_ARGS, 600_000);
+          out.install_exit = r.exit; out.install_ms = r.ms;
+          fs.writeFileSync(path.join(outputDir, 'install.stdout.log'), r.stdout, 'utf8');
+          fs.writeFileSync(path.join(outputDir, 'install.stderr.log'), r.stderr, 'utf8');
+          return { exit: r.exit };
+        };
+        if (opts.warmDepsRoot) {
+          try {
+            out.warm_deps = provisionWarmDeps(worktree, install, { root: opts.warmDepsRoot }) ?? undefined;
+          } catch (err) { // cache bookkeeping failed: the normal path, recorded as such
+            if (out.install_exit === null) install();
+            out.warm_deps = { deps_source: out.install_exit === 0 ? 'fresh' : 'failed', lockfile_sha256: out.lockfile_sha256, cache_hit: false, cache_stored: false,
+              cache_error: `provision_error: ${(err instanceof Error ? err.message : String(err)).slice(0, 200)}`, paths: [], ms: 0 };
+          }
+          if (out.warm_deps?.deps_source === 'cache') out.install_exit = 0;
+        } else install();
+        out.install_failed = out.install_exit !== 0;
         out.installed = !out.install_failed && fs.existsSync(path.join(worktree, 'node_modules'));
-        fs.writeFileSync(path.join(outputDir, 'install.stdout.log'), r.stdout, 'utf8');
-        fs.writeFileSync(path.join(outputDir, 'install.stderr.log'), r.stderr, 'utf8');
       }
       const shared = path.join(worktree, 'packages', 'shared');
       if (!out.install_failed && fs.existsSync(path.join(shared, 'package.json')) && !fs.existsSync(path.join(shared, 'dist', 'index.js'))) {
