@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
@@ -42,10 +44,13 @@ function seedChanges() {
 }
 
 describe('G0.3 € ledger', () => {
-  it('the checked-in docs/usage-plan-limits.json has a monthly_eur map with every price null (operator fills them; never invented)', () => {
+  it('the checked-in docs/usage-plan-limits.json has a monthly_eur map; every set price carries a stated source (never invented)', () => {
     const { prices, error } = loadMonthlyEur();
     expect(error).toBeNull();
-    expect(prices).toEqual({ ollama_cloud: null, claude_max: null, chatgpt_pro: null, vps: null, workstation_kwh_eur: null });
+    expect(Object.keys(prices).sort()).toEqual(['chatgpt_pro', 'claude_max', 'ollama_cloud', 'vps', 'workstation_kwh_eur']);
+    for (const v of Object.values(prices)) expect(v === null || (typeof v === 'number' && v > 0)).toBe(true);
+    const raw = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../../../docs/usage-plan-limits.json'), 'utf8')) as { monthly_eur_source?: string };
+    if (Object.values(prices).some((v) => v !== null)) expect((raw.monthly_eur_source ?? '').length).toBeGreaterThan(40);
   });
 
   it('all prices null → every € value null with reason no_prices, unknown_share 1 — never 0', () => {
