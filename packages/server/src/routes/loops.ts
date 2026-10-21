@@ -303,9 +303,11 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
     }
   });
 
-  router.post('/runs/:id/checker-verdict', requirePermission('create:task'), (req, res, next) => {
+  // P0-4: a verdict is an approval — approve:task, and the reviewer is the authenticated user, never a body string
+  router.post('/runs/:id/checker-verdict', requirePermission('approve:task'), (req, res, next) => {
     try {
-      res.json(loopService.submitCheckerVerdict(req.params.id, req.body || {}));
+      if (!req.user?.sub) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
+      res.json(loopService.submitCheckerVerdict(req.params.id, req.body || {}, { id: req.user.sub, email: req.user.email }));
     } catch (error) {
       try {
         mapLoopServiceError(error);
@@ -315,9 +317,11 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
     }
   });
 
-  router.post('/runs/:id/security-verdict', requirePermission('create:task'), (req, res, next) => {
+  // P0-4: a verdict is an approval — approve:task, and the reviewer is the authenticated user, never a body string
+  router.post('/runs/:id/security-verdict', requirePermission('approve:task'), (req, res, next) => {
     try {
-      res.json(loopService.submitSecurityVerdict(req.params.id, req.body || {}));
+      if (!req.user?.sub) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
+      res.json(loopService.submitSecurityVerdict(req.params.id, req.body || {}, { id: req.user.sub, email: req.user.email }));
     } catch (error) {
       try {
         mapLoopServiceError(error);

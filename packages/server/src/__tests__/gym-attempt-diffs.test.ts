@@ -20,7 +20,7 @@ const claim = () => (svc.claim('workstation', ['atomic']) as { runId: string }).
 const rows = () => db.prepare('SELECT run_id, task_key, status, sha256, diff, redacted FROM gym_attempt_diffs ORDER BY created_at, task_key').all() as Array<{ run_id: string; task_key: string; status: string; sha256: string; diff: string; redacted: number }>;
 
 it('stores the diff of a scored attempt (success and failure) with its sha256 and a diff_ref on the run', () => {
-  const a = claim(); svc.record(a, 'workstation', { status: 'success', reason: 'tests green, source only', diff: DIFF });
+  const a = claim(); svc.record(a, 'workstation', { status: 'success', changed_files: ['packages/server/src/services/fixed.ts'], reason: 'tests green, source only', diff: DIFF });
   const b = claim(); svc.record(b, 'workstation', { status: 'failure', reason: 'tests still red', diff: `${DIFF}+// more\n` });
   const stored = rows();
   expect(stored.map((r) => [r.run_id, r.task_key, r.status])).toEqual([[a, 'c1', 'success'], [b, 'c2', 'failure']]);
@@ -47,13 +47,14 @@ it('a discarded attempt, an attempt without a diff and the flag off store nothin
   svc.record(claim(), 'workstation', { status: 'discarded', reason: 'infra: npm ci failed', diff: DIFF });
   svc.record(claim(), 'workstation', { status: 'failure', reason: 'no change' });
   vi.stubEnv('GYM_STORE_DIFFS', 'false');
-  svc.record(claim(), 'workstation', { status: 'success', reason: 'tests green, source only', diff: DIFF });
+  svc.record(claim(), 'workstation', { status: 'success', changed_files: ['packages/server/src/services/fixed.ts'], reason: 'tests green, source only', diff: DIFF });
   expect(rows()).toEqual([]);
-  expect(db.prepare("SELECT COUNT(*) AS n FROM loop_runs WHERE json_extract(metadata, '$.gym_result.diff_ref') IS NOT NULL").get()).toEqual({ n: 0 });
+  // P0-12: a success always carries the server-side sha256 of its diff (the diff itself is still not stored with the flag off)
+  expect(db.prepare("SELECT json_extract(metadata, '$.gym_result.status') AS s FROM loop_runs WHERE json_extract(metadata, '$.gym_result.diff_ref') IS NOT NULL").all()).toEqual([{ s: 'success' }]);
 });
 
 it('evolution evidence counts the stored pairs; GYM_STORE_DIFFS is a documented non-acting flag', () => {
-  svc.record(claim(), 'workstation', { status: 'success', reason: 'tests green, source only', diff: DIFF });
+  svc.record(claim(), 'workstation', { status: 'success', changed_files: ['packages/server/src/services/fixed.ts'], reason: 'tests green, source only', diff: DIFF });
   svc.record(claim(), 'workstation', { status: 'failure', reason: 'tests still red', diff: DIFF });
   svc.record(claim(), 'workstation', { status: 'failure', reason: 'tests still red', diff: `${DIFF}+y\n` });
   expect(buildEvolutionEvidence(db, process.env).gym_diffs).toEqual({ enabled: true, stored: 3, distinct_tasks: 3, successes: 1, failures: 2, redacted_attempts: 0 });

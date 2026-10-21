@@ -46,29 +46,48 @@ it('RX-11: each hack flag fires on a crafted change and a clean source-only fix 
   expect(changedFromReason('tests green, source only')).toEqual([]);
 });
 
-it('RX-11: off by default — the remote result is stored exactly as before', () => {
+it('P0-12: hack flags are computed without HACK_DETECTOR_MODE; a flagged failure stays a failure', () => {
   const svc = new RemoteGymService(db, () => []);
   const c = svc.claim('workstation', ['atomic']) as { runId: string };
   svc.record(c.runId, 'workstation', { status: 'failure', reason: 'out of scope: packages/server/src/__tests__/range.test.ts' });
   const r = JSON.parse((db.prepare("SELECT json_extract(metadata, '$.gym_result') AS g FROM loop_runs WHERE id = ?").get(c.runId) as { g: string }).g);
-  expect(r).toEqual({ status: 'failure', reason: 'out of scope: packages/server/src/__tests__/range.test.ts' });
-  expect(db.prepare("SELECT COUNT(*) AS n FROM loop_events WHERE event_type = 'gym_hack_shadow'").get()).toEqual({ n: 0 });
+  expect(r).toEqual({ status: 'failure', reason: 'out of scope: packages/server/src/__tests__/range.test.ts', hack_flags: ['tests_touched'] });
+  expect(db.prepare("SELECT success FROM skill_outcomes WHERE task_id = ?").get(c.runId)).toEqual({ success: 0 });
 });
 
-it('RX-11: shadow records hack flags on the run and a loop event, from the reported files or the reason; the score is unchanged', () => {
+it('RX-11 + P0-12: a flagged success is quarantined — flags and a loop event recorded, never a win', () => {
   vi.stubEnv('HACK_DETECTOR_MODE', 'shadow');
   const svc = new RemoteGymService(db, () => []);
   const c = svc.claim('workstation', ['atomic']) as { runId: string };
   svc.record(c.runId, 'workstation', { status: 'success', reason: 'tests green', changed_files: ['packages/server/src/services/range.ts', 'packages/server/src/__tests__/range.test.ts'], diff: "+it.only('x', () => {});" });
   const r = JSON.parse((db.prepare("SELECT json_extract(metadata, '$.gym_result') AS g FROM loop_runs WHERE id = ?").get(c.runId) as { g: string }).g);
-  expect(r.hack_flags).toEqual(['tests_touched', 'skip_or_only_added']);
-  expect(db.prepare("SELECT success FROM skill_outcomes WHERE task_id = ?").get(c.runId)).toEqual({ success: 1 }); // shadow: flags never change the score
+  expect(r).toMatchObject({ status: 'quarantined', hack_flags: ['tests_touched', 'skip_or_only_added'] });
+  expect(r.diff_ref).toMatch(/^sha256:[0-9a-f]{64}$/);
+  expect(db.prepare("SELECT success FROM skill_outcomes WHERE task_id = ?").get(c.runId)).toEqual({ success: 0 });
   expect(db.prepare("SELECT COUNT(*) AS n FROM loop_events WHERE event_type = 'gym_hack_shadow' AND loop_run_id = ?").get(c.runId)).toEqual({ n: 1 });
   const c2 = svc.claim('workstation', ['atomic']) as { runId: string };
   svc.record(c2.runId, 'workstation', { status: 'failure', reason: 'out of scope: README.md' });
   expect(JSON.parse((db.prepare("SELECT json_extract(metadata, '$.gym_result') AS g FROM loop_runs WHERE id = ?").get(c2.runId) as { g: string }).g).hack_flags).toEqual(['readme_only']);
   const e = buildEvolutionEvidence(db, {}, Date.now(), 30);
   expect(e.hacks.flags).toEqual(expect.arrayContaining([{ species: 'atomic', flag: 'tests_touched', n: 1 }, { species: 'atomic', flag: 'readme_only', n: 1 }]));
+});
+
+it('P0-12: a success without the worker evidence (changed_files + diff) is an infra discard, never a success', () => {
+  vi.stubEnv('EVOLUTION_GYM_INFRA_TRIP', '10'); // three discards in a row would otherwise (correctly) bench the species
+  const svc = new RemoteGymService(db, () => []);
+  for (const extra of [{}, { changed_files: [], diff: '+x' }, { changed_files: ['packages/server/src/services/range.ts'], diff: '  ' }]) {
+    const c = svc.claim('workstation', ['atomic']) as { runId: string };
+    svc.record(c.runId, 'workstation', { status: 'success', reason: 'tests green, source only', ...extra });
+    const r = JSON.parse((db.prepare("SELECT json_extract(metadata, '$.gym_result') AS g FROM loop_runs WHERE id = ?").get(c.runId) as { g: string }).g);
+    expect(r).toEqual({ status: 'discarded', reason: 'infra: success without changed_files/diff evidence' });
+    expect(db.prepare("SELECT COUNT(*) AS n FROM skill_outcomes WHERE task_id = ?").get(c.runId)).toEqual({ n: 0 });
+  }
+  const ok = svc.claim('workstation', ['atomic']) as { runId: string };
+  svc.record(ok.runId, 'workstation', { status: 'success', reason: 'tests green, source only', changed_files: ['packages/server/src/services/range.ts'], diff: '+  return n >= 0;' });
+  const r = JSON.parse((db.prepare("SELECT json_extract(metadata, '$.gym_result') AS g FROM loop_runs WHERE id = ?").get(ok.runId) as { g: string }).g);
+  expect(r).toMatchObject({ status: 'success', hack_flags: [] });
+  expect(r.diff_ref).toMatch(/^sha256:[0-9a-f]{64}$/);
+  expect(db.prepare("SELECT success FROM skill_outcomes WHERE task_id = ?").get(ok.runId)).toEqual({ success: 1 });
 });
 
 it('RX-11: canaries are only served to a worker that says it supports them; a canary earns no outcome and never marks its task tried', () => {

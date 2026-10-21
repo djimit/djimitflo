@@ -19,6 +19,7 @@ import { SelfImprovementService } from './self-improvement-service';
 import { LoopDraftPrService } from './loop-draft-pr-service';
 import { evolveEligible, evolveSpecies, selectEvolveWinner } from './evolve-selection';
 import { leaseGradedRefs, recordMakerGraded } from './graded-fitness';
+import { recordFailBeforePassAfter } from './fail-before-pass-after';
 import { assignSiblingArm, recordEffortSibling, siblingRandomiseEnabled } from './effort-controller';
 import { assignCheckerFamily, checkerFamilyEnabled } from './checker-family';
 import { runAce001, runGenome, skillContentHash } from './maker-genome';
@@ -672,7 +673,11 @@ export class LoopDaemon {
       } catch { /* best-effort: checks are not fatal for the daemon */ }
 
       // SI-A: graded executed fitness of a maker (shadow, idempotent, never throws; off = no-op)
-      const grade = (leaseId: string) => { try { recordMakerGraded(this.db, run.id, leaseId); } catch { /* evidence only */ } };
+      // R2 (FAIL_BEFORE_PASS_AFTER_MODE=shadow): then the fail-before/pass-after check, reusing the graded mutant kills
+      const grade = (leaseId: string) => {
+        try { recordMakerGraded(this.db, run.id, leaseId); } catch { /* evidence only */ }
+        try { recordFailBeforePassAfter(this.db, run.id, leaseId); } catch { /* evidence only */ }
+      };
       grade(activeMakerLease.id); // right after its checks, while the worktree is the maker's
 
       // 8a. Evolve (E13, LOOP_EVOLVE_ENABLED, test-gap goals only): sibling makers of other species on the same objective;
