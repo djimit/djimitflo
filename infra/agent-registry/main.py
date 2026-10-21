@@ -3,11 +3,13 @@ from datetime import datetime, timezone
 from typing import Optional
 import json
 import os
+import re
 from pathlib import Path
 
 from models import Agent, HeartbeatRequest, HealthResponse, TopologyResponse, CompatWarning
 from seed_data import SEED_AGENTS
 from memory import write_memory, search_memories, list_memories, delete_memory
+from fleet_auth import FleetAuth, WRITE_METHODS
 
 try:
     import httpx
@@ -16,6 +18,22 @@ except ImportError:
     HAS_HTTPX = False
 
 app = FastAPI(title="Agent Registry Service", version="1.1.0")
+
+# Reads that hand out shared-memory contents (or forwarded context) are protected like writes.
+MEMORY_READS = re.compile(r"^/(memory/list|knowledge/search|context/receive/[^/]+)/?$")
+
+
+def protected(method: str, path: str):
+    """S3: every write (heartbeat, memory write/search/delete, source register, context forward) needs a fleet host
+    token, and so does every read that returns memory contents. Agent/topology/health reads stay open in this step."""
+    if method in WRITE_METHODS:
+        return "write"
+    if method in ("GET", "HEAD") and MEMORY_READS.match(path):
+        return "memory_read"
+    return None
+
+
+app.add_middleware(FleetAuth, service="agent-registry", protected=protected)
 
 registry: dict[str, Agent] = {a.name: a for a in SEED_AGENTS}
 LIVE_AGENTS_FILE = Path(os.getenv("LIVE_AGENTS_FILE", "/app/registry/live_agents.json"))

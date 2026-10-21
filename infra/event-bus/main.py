@@ -1,9 +1,18 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from bus import EventBus
+from fleet_auth import FleetAuth, WRITE_METHODS
 
 app = FastAPI(title="Event Bus")
 bus = EventBus()
+
+
+def protected(method: str, path: str):
+    """S3: every write (publish, consumer groups) needs a fleet host token; reads stay open in this step."""
+    return "write" if method in WRITE_METHODS else None
+
+
+app.add_middleware(FleetAuth, service="event-bus", protected=protected)
 
 class EventPayload(BaseModel):
     data: dict
