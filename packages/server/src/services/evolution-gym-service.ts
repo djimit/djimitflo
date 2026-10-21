@@ -12,6 +12,7 @@ import { gymSkillContentHash } from './gym-skill-hash';
 import { recordModelCall } from './model-selector';
 import { AUTH_MISSING, LIMIT_HIT, inLimitBackoff, isSubscriptionLimit, subscriptionAttemptsToday, subscriptionAuthPresent, subscriptionGymMaxPerDay,
   subscriptionGymSpecies, type SubscriptionRuntime } from './subscription-gym';
+import { CANCEL_LEASE_METADATA_SQL, cancelLeaseBind } from './lease-failure';
 
 const speciesKey = (s: Species): string => (s.model ? `${s.runtime}@${s.model}` : s.runtime);
 
@@ -277,7 +278,7 @@ export class EvolutionGymService {
     const now = new Date().toISOString();
     this.db.prepare(`UPDATE loop_runs SET status = 'completed', updated_at = ?, metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.gym_result', json(?)) WHERE id = ?`)
       .run(now, JSON.stringify({ status: result.status, reason: result.reason, ...(result.hack_flags ? { hack_flags: result.hack_flags } : {}) }), runId);
-    this.db.prepare("UPDATE worker_leases SET status = 'cancelled', updated_at = ? WHERE loop_run_id = ? AND status = 'prepared'").run(now, runId);
+    this.db.prepare(`UPDATE worker_leases SET status = 'cancelled', updated_at = ?, ${CANCEL_LEASE_METADATA_SQL} WHERE loop_run_id = ? AND status = 'prepared'`).run(now, ...cancelLeaseBind('gym_run_settled', now), runId);
     if (worktree) { try { git(repo, ['worktree', 'remove', '--force', worktree]); } catch { fs.rmSync(worktree, { recursive: true, force: true }); } }
   }
 }

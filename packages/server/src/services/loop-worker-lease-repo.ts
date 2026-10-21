@@ -12,6 +12,7 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import type { WorkerLeaseRecord, WorkerRole } from './loop-types';
+import { buildLeaseFailure, cancellationReasonOf, FAILED_OR_CANCELLED, type LeaseFailure } from './lease-failure';
 
 export interface InsertLeaseInput {
   id: string;
@@ -75,11 +76,13 @@ export class WorkerLeaseRepo {
    * Update lease status with metadata merge.
    */
   updateStatus(id: string, status: WorkerLeaseRecord['status'], metadataPatch: Record<string, unknown> = {}): void {
-    const existing = this.db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(id) as { metadata?: string } | undefined;
+    const existing = this.db.prepare('SELECT role, metadata FROM worker_leases WHERE id = ?').get(id) as { role?: string; metadata?: string } | undefined;
     const metadata: Record<string, unknown> = {
       ...(existing ? JSON.parse(existing.metadata || '{}') : {}),
       ...metadataPatch,
     };
+    // L3 v2 P2: 50/56 maker cancels had no reason — a cancel always names one (the stated, else derived, else 'unspecified')
+    if (status === 'cancelled' && !metadata.cancellation_reason) metadata.cancellation_reason = cancellationReasonOf(metadata);
     // 136 production leases failed with no stored reason: never record a failure without one.
     if (status === 'failed' && !metadata.failure_reason && !metadata.failed_reason) {
       metadata.failure_reason = String(metadata.execution_denied_reason ?? metadata.notes
@@ -88,6 +91,9 @@ export class WorkerLeaseRepo {
         ?? (typeof metadata.exit_status === 'number' && metadata.exit_status !== 0 ? `runtime_exit_status_${metadata.exit_status}` : null)
         ?? 'unspecified: caller supplied no reason');
     }
+    // structured failure capture (lease-failure.ts): every failed/cancelled lease carries one; a lease that goes on drops a stale one
+    if (FAILED_OR_CANCELLED.has(status)) metadata.failure = buildLeaseFailure(existing?.role ?? '', status, metadata, metadataPatch.failure as Partial<LeaseFailure> | undefined);
+    else delete metadata.failure;
     this.db.prepare('UPDATE worker_leases SET status = ?, metadata = ?, updated_at = ? WHERE id = ?')
       .run(status, JSON.stringify(metadata), new Date().toISOString(), id);
   }
@@ -109,14 +115,19 @@ export class WorkerLeaseRepo {
    * Patch lease metadata (merge with existing).
    */
   patchMetadata(id: string, metadataPatch: Record<string, unknown>): void {
-    const existing = this.db.prepare('SELECT status, metadata FROM worker_leases WHERE id = ?').get(id) as { status?: WorkerLeaseRecord['status']; metadata?: string } | undefined;
+    const existing = this.db.prepare('SELECT status, role, metadata FROM worker_leases WHERE id = ?').get(id) as { status?: WorkerLeaseRecord['status']; role?: string; metadata?: string } | undefined;
     if (!existing?.status) {
       throw new Error('MAKER_LEASE_NOT_FOUND');
     }
-    const metadata = {
+    const metadata: Record<string, unknown> = {
       ...JSON.parse(existing.metadata || '{}'),
       ...metadataPatch,
     };
+    // a runtime that finished after its lease was cancelled adds what it observed; the stage and reason stay the cancel's
+    if (metadataPatch.failure !== undefined) {
+      if (FAILED_OR_CANCELLED.has(existing.status)) metadata.failure = buildLeaseFailure(existing.role ?? '', existing.status, metadata, metadataPatch.failure as Partial<LeaseFailure>);
+      else delete metadata.failure;
+    }
     this.db.prepare('UPDATE worker_leases SET metadata = ?, updated_at = ? WHERE id = ?')
       .run(JSON.stringify(metadata), new Date().toISOString(), id);
   }

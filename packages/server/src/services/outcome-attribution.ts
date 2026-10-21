@@ -285,11 +285,35 @@ export function attributionSummary(db: Database, now = Date.now(), days = 30, en
   }
   const top = all<{ kind: string; ref: string; credits: number }>(`SELECT kind, ref, COUNT(*) AS credits FROM outcome_credits WHERE created_at >= ?
     GROUP BY 1, 2 ORDER BY credits DESC, kind, ref LIMIT 30`, since);
+  // structured failure capture (lease-failure.ts, L3 v2 §5 #4): failed/cancelled leases by stage × stderr class; record-only,
+  // the classes above never read it. Leases that ended before the capture existed are counted apart, never as a class.
+  const ended = all<{ role: string; status: string; stage: string | null; cls: string | null; observed: number | null; signal: number; reason: number }>(`SELECT role, status,
+      json_extract(metadata, '$.failure.stage') AS stage, json_extract(metadata, '$.failure.stderr_class') AS cls,
+      json_extract(metadata, '$.failure.exit_observed') AS observed, json_extract(metadata, '$.failure.signal') IS NOT NULL AS signal,
+      json_extract(metadata, '$.cancellation_reason') IS NOT NULL AND json_extract(metadata, '$.cancellation_reason') NOT LIKE 'unspecified%' AS reason
+    FROM worker_leases WHERE status IN ('failed', 'cancelled') AND updated_at >= ?`, since);
+  const cells = new Map<string, { stage: string; stderr_class: string; n: number }>();
+  for (const r of ended) {
+    if (!r.stage) continue;
+    const key = `${r.stage}|${r.cls ?? 'unknown'}`;
+    const cell = cells.get(key) ?? { stage: r.stage, stderr_class: r.cls ?? 'unknown', n: 0 };
+    cell.n += 1; cells.set(key, cell);
+  }
+  const cancels = ended.filter((r) => r.status === 'cancelled');
+  const failure_capture = {
+    leases: ended.length,
+    without_failure: ended.filter((r) => !r.stage).length,
+    by_stage_stderr: [...cells.values()].sort((a, b) => b.n - a.n || a.stage.localeCompare(b.stage) || a.stderr_class.localeCompare(b.stderr_class)),
+    exit_observed: ended.filter((r) => r.stage && r.observed === 1).length,
+    with_signal: ended.filter((r) => r.signal === 1).length,
+    cancels: { total: cancels.length, with_reason: cancels.filter((r) => r.reason === 1).length, maker: cancels.filter((r) => r.role === 'maker').length,
+      maker_with_reason: cancels.filter((r) => r.role === 'maker' && r.reason === 1).length },
+  };
   return {
     at: new Date(now).toISOString(), enabled: outcomeAttributionEnabled(env), since, classes, reviewer_sub_reasons: reviewerSubReasons, by_source: by,
     survived: { yes: sc.survived, no: sc.regressed },
     credited_runs: all<{ n: number }>('SELECT COUNT(DISTINCT run_id) AS n FROM outcome_credits WHERE created_at >= ?', since)[0]?.n ?? 0,
-    top_contributors: top,
+    top_contributors: top, failure_capture,
     note: 'learners count only maker_failure as a failure when OUTCOME_ATTRIBUTION_ENABLED=true; reviewer/environment failures are neither success nor failure',
   };
 }
