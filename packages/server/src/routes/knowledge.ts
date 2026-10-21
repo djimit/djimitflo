@@ -21,7 +21,9 @@ export function createKnowledgeRoutes(auth: AuthMiddleware, db?: Database): Rout
 
   // G15: POST /api/knowledge/publish — publish a claim to the knowledge bus.
   // Used by remote DjimFlo instances to join the authenticated bus transport.
-  router.post('/publish', requireAuth, (req: Request, res: Response, next: NextFunction) => {
+  // A claim acts: `capability_gap` creates a candidate capability and `help_request` asks for a nested maker spawn
+  // (capability-acquisition.ts, negotiation-coordinator.ts), so publishing needs write:claim like /api/memory/store.
+  router.post('/publish', requireAuth, auth.requirePermission('write:claim'), (req: Request, res: Response, next: NextFunction) => {
     try {
       const { claim_id, capability_id, predicate, subject_ref, confidence, status, trust, provenance_run, evidence_refs, created_from } = req.body;
       const isOptionalString = (value: unknown): boolean => value === undefined || value === null || typeof value === 'string';
