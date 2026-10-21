@@ -1,0 +1,32 @@
+diff --git a/src/types/core/v1/persistentvolume.ts b/src/types/core/v1/persistentvolume.ts
+index 468a090..7825b26 100644
+--- a/src/types/core/v1/persistentvolume.ts
++++ b/src/types/core/v1/persistentvolume.ts
+@@ -1,4 +1,5 @@
+ import {MetadataObject, ResourceList} from "../../meta";
++import {LocalObjectReference} from "./localobjectreference";
+ 
+ export type AccessMode = "ReadWriteOnce"|"ReadOnlyMany"|"ReadWriteMany";
+ 
+@@ -34,11 +35,20 @@ export interface QuobyteVolumeSource {
+     volume: string;
+ }
+ 
++export interface FlexVolumeSource {
++    driver: string;
++    fsType?: string;
++    secretRef?: LocalObjectReference;
++    readOnly?: boolean;
++    options?: {[name: string]: string};
++}
++
+ export type PersistentVolumeSource =
+     {awsElasticBlockStore: AWSElasticBlockStoreVolumeSource} |
+     {hostPath: HostPathVolumeSource} |
+     {nfs: NFSVolumeSource} |
+-    {quobyte: QuobyteVolumeSource};
++    {quobyte: QuobyteVolumeSource} |
++    {flexVolume: FlexVolumeSource};
+ 
+ export type PersistentVolumeSpec = PersistentVolumeSpecBase & PersistentVolumeSource;
+ 
