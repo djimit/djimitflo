@@ -454,6 +454,9 @@ export type RelevanceQueue = {
   progress: { protected: { labelled: number; total: number }; relabel: { labelled: number; total: number; due: number }; al: { labelled: number; total: number } };
   today: { day: string; labels: number; seconds: number; median_seconds: number | null; target_seconds: number; remaining_seconds: number; est_cards_left: number | null };
 };
+/** E1: one blind query-level retrieval task — query plus opaque candidates (no source, score or trust tier is sent). */
+export type E1BlindTask = { task_id: string; query: string; candidates: Array<{ handle: string; title: string; excerpt: string }> };
+export type E1LabelQueue = { task: E1BlindTask | null; progress: { labelled: number; tasks: number; target: number; max_tasks: number } };
 export type D5Tally = { cases: number; false_rejection: number; correct_rejection: number; pending: number; censored: number; verified_rate: number | null; ci: [number, number] | null };
 export type OperatorCockpit = {
   at: string;
@@ -1891,6 +1894,16 @@ class ApiClient {
 
   async labelDiscoveryRelevance(ref: string, pass: RelevancePass, label: RelevanceLabel, seconds: number): Promise<{ recorded: boolean }> {
     return this.request('/self-improve/discovery-labels', { method: 'POST', body: JSON.stringify({ ref, pass, label, seconds }) });
+  }
+
+  /** E1: the next blind query-level retrieval task and the n/30 progress */
+  async getE1LabelQueue(): Promise<E1LabelQueue> {
+    return this.request('/self-improve/e1-labels/next');
+  }
+
+  /** E1: one label per task — the relevant candidate handles, or none_relevant with an empty list */
+  async labelE1Retrieval(taskId: string, relevant: string[], seconds: number): Promise<{ recorded: boolean }> {
+    return this.request('/self-improve/e1-labels', { method: 'POST', body: JSON.stringify({ task_id: taskId, relevant, none_relevant: relevant.length === 0, seconds }) });
   }
 
   async setTelegramIdentity(telegramId: string, userId: string, note?: string): Promise<void> {
