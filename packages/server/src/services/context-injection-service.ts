@@ -93,28 +93,7 @@ export class ContextInjectionService {
   async injectContextSnapshot(taskDescription: string, useSwarmContext: boolean = true, storeFilter?: MemoryStore): Promise<ContextSnapshot> {
     if (!useSwarmContext) return { text: '', sha256: createHash('sha256').update('').digest('hex'), sources: [], advisory: true, independently_reviewed: false };
 
-    const results: ContextResult[] = [];
-
-    const searches: Promise<unknown>[] = [
-      this.searchQdrantSwarm(taskDescription, storeFilter).then((r) => results.push(...r)),
-      this.searchOkfMcp(taskDescription).then((r) => results.push(...r)),
-      this.searchDjimitKB(taskDescription).then((r) => results.push(...r)),
-    ];
-    if (this.experienceRetrieval) {
-      searches.push(this.experienceRetrieval.retrieveRelevantRuns(taskDescription, 5).then((expResults) => {
-        if (expResults.length > 0) {
-          results.push({
-            source: 'experience_retrieval',
-            excerpt: this.experienceRetrieval!.formatExperienceContext(expResults),
-            score: expResults[0].similarity,
-            store: 'episodic',
-          });
-        }
-      }));
-    }
-
-    await Promise.allSettled(searches);
-
+    const results = await this.collectCandidates(taskDescription, storeFilter);
     const ranked = this.rankByTrust(results);
     const truncated = this.truncateToTokenBudget(ranked, MAX_CONTEXT_TOKENS);
 
@@ -147,6 +126,35 @@ export class ContextInjectionService {
       advisory: true,
       independently_reviewed: false,
     };
+  }
+
+  /**
+   * The merged, unranked candidate list from every source (raw scores, trust tiers), exactly what injectContextSnapshot ranks.
+   * E1 (docs/research/eco/E1-RRF_PROTOCOL.md) snapshots it for blind query-level labelling; no ranking or prod read changes.
+   */
+  async collectCandidates(taskDescription: string, storeFilter?: MemoryStore): Promise<ContextResult[]> {
+    const results: ContextResult[] = [];
+
+    const searches: Promise<unknown>[] = [
+      this.searchQdrantSwarm(taskDescription, storeFilter).then((r) => results.push(...r)),
+      this.searchOkfMcp(taskDescription).then((r) => results.push(...r)),
+      this.searchDjimitKB(taskDescription).then((r) => results.push(...r)),
+    ];
+    if (this.experienceRetrieval) {
+      searches.push(this.experienceRetrieval.retrieveRelevantRuns(taskDescription, 5).then((expResults) => {
+        if (expResults.length > 0) {
+          results.push({
+            source: 'experience_retrieval',
+            excerpt: this.experienceRetrieval!.formatExperienceContext(expResults),
+            score: expResults[0].similarity,
+            store: 'episodic',
+          });
+        }
+      }));
+    }
+
+    await Promise.allSettled(searches);
+    return results;
   }
 
   private async searchQdrantSwarm(query: string, storeFilter?: MemoryStore): Promise<ContextResult[]> {
