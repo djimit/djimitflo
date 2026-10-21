@@ -1,10 +1,11 @@
 /**
- * Read-only governance and evidence MCP tools.
+ * Governance and evidence MCP tools. Read-only except the three `apply: true` catalog writers (live data + manage:config).
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { databaseProvenance, requireLiveMode, type DbHandle } from '../db.js';
+import { requireMcpPermission } from '../auth-context.js';
 
 type OpenApiToolRow = {
   id: string;
@@ -315,6 +316,8 @@ export function registerGovernanceTools(server: McpServer, dbHandle: DbHandle) {
         });
       }
       requireLiveMode(dbHandle);
+      // Writes the catalog the /mcp-permissions page shows; the HTTP twins (POST /mcp/servers, PATCH /mcp/permissions) need manage:config.
+      requireMcpPermission('manage:config');
 
       const write = dbHandle.db.transaction(() => {
         dbHandle.db.prepare(`
@@ -470,6 +473,8 @@ export function registerGovernanceTools(server: McpServer, dbHandle: DbHandle) {
         });
       }
       requireLiveMode(dbHandle);
+      // Writes the catalog the /mcp-permissions page shows; the HTTP twins (POST /mcp/servers, PATCH /mcp/permissions) need manage:config.
+      requireMcpPermission('manage:config');
 
       const write = dbHandle.db.transaction(() => {
         const upsertTool = dbHandle.db.prepare(`
@@ -565,6 +570,8 @@ export function registerGovernanceTools(server: McpServer, dbHandle: DbHandle) {
         });
       }
       requireLiveMode(dbHandle);
+      // Writes the catalog the /mcp-permissions page shows; the HTTP twins (POST /mcp/servers, PATCH /mcp/permissions) need manage:config.
+      requireMcpPermission('manage:config');
 
       const results = [];
       for (const target of targets) {
