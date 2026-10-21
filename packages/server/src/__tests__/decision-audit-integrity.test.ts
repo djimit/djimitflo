@@ -111,6 +111,15 @@ describe('decision audit integrity', () => {
     expect(auditUser('memory_candidate_rejected', rule.id)).toBe(approver);
   });
 
+  it('P0-9: a human_required policy rule is promoted by an authenticated admin, with the session user id as approver', async () => {
+    const mem = new MemoryCandidateService(db);
+    const policy = mem.create({ title: 'policy', content: 'Never auto-merge without a green check.', memory_type: 'policy_rule', source_ref: 'test' } as never);
+    expect((await call(UserRole.ADMIN, `/swarms/memory/candidates/${policy.id}/promote`, 'POST', { approved_by: 'someone-else' })).status).not.toBe(200);
+    expect((await call(UserRole.ADMIN, `/swarms/memory/candidates/${policy.id}/promote`, 'POST', { human_approved: true, approver_user_id: 'forged' })).status).toBe(200);
+    const meta = JSON.parse((db.prepare('SELECT metadata, status FROM memory_candidates WHERE id = ?').get(policy.id) as { metadata: string }).metadata);
+    expect(meta).toMatchObject({ approver_type: 'human', approver_user_id: ids.get(UserRole.ADMIN) });
+  });
+
   it('F2: a self-approved root command is allowed but explicit in the audit trail and on /fleet', async () => {
     const admin = ids.get(UserRole.ADMIN)!;
     const c = new FleetCommands(db).request('workstation', 'id -u', admin);

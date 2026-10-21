@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { OutcomeLearningService } from './outcome-learning-service';
 import { ExpertSourceUnitsService, sourceUnitsEnabled } from './expert-source-units-service';
 import { checkContentSafety, contentSafetyApplies } from './content-safety';
+import { ensureFleetSignatureTables, fleetSignatureMode, pruneFleetNonces, recordFleetVerdict, verifyFleetEvent, type FleetVerification } from './fleet-event-signatures';
 
 const nonBlank = z.string().trim().min(1);
 const decodeField = (value: unknown): unknown => {
@@ -35,13 +36,21 @@ const agentOutcomeSchema = z.object({
   ref: z.string().max(300).optional(),
 });
 
-/** N2: score every stored agent.outcome that has no fleet skill outcome yet (idempotent; also catches up earlier events). */
-export function scoreAgentOutcomes(db: Database): number {
+/**
+ * N2: score every stored agent.outcome that has no fleet skill outcome yet (idempotent; also catches up earlier events).
+ * P0-3: under FLEET_EVENT_SIGNATURES=enforce only `verified` events score; an event refused under enforce is never scored,
+ * also not by a later catch-up in off/shadow.
+ */
+export function scoreAgentOutcomes(db: Database, env: NodeJS.ProcessEnv = process.env): number {
   const engine = new SkillEvolutionEngine(db); let n = 0;
   let rows: Array<{ id: string; payload: string }> = [];
+  const signatureClause = fleetSignatureMode(env) === 'enforce'
+    ? `AND EXISTS (SELECT 1 FROM fleet_event_signatures f WHERE f.event_id = e.id AND f.verdict = 'verified')`
+    : `AND NOT EXISTS (SELECT 1 FROM fleet_event_signatures f WHERE f.event_id = e.id AND f.mode = 'enforce' AND f.verdict <> 'verified')`;
   try {
+    ensureFleetSignatureTables(db);
     rows = db.prepare(`SELECT e.id, e.payload FROM external_events e WHERE e.event_type = 'agent.outcome'
-      AND NOT EXISTS (SELECT 1 FROM skill_outcomes s WHERE s.domain = 'fleet' AND s.task_id = e.id) LIMIT 500`).all() as typeof rows;
+      AND NOT EXISTS (SELECT 1 FROM skill_outcomes s WHERE s.domain = 'fleet' AND s.task_id = e.id) ${signatureClause} LIMIT 500`).all() as typeof rows;
   } catch { return 0; } // skill_outcomes not created yet
   for (const row of rows) {
     const o = agentOutcomeSchema.safeParse(JSON.parse(row.payload));
@@ -164,6 +173,10 @@ export class ExternalEventIngestService {
     let inserted = 0;
     // JEV-BURST: one service per batch, so its fleet-source gate (~0.7 s per evaluation on prod) runs once per source, not per event
     const sourceUnits = sourceUnitsEnabled() ? new ExpertSourceUnitsService(this.db) : null;
+    // P0-3 (FLEET_EVENT_SIGNATURES shadow|enforce): verify each NEW agent.outcome against the server-side host key registry
+    const signatureMode = fleetSignatureMode();
+    if (signatureMode !== 'off') ensureFleetSignatureTables(this.db);
+    const known = this.db.prepare('SELECT 1 FROM external_events WHERE id = ?');
     const transaction = this.db.transaction(() => {
       for (const event of events) {
         if (!event || typeof event !== 'object' || Array.isArray(event)) continue;
@@ -184,6 +197,11 @@ export class ExternalEventIngestService {
         }
         const aggregateVersion = Number(normalizedEvent.aggregate_version);
         if (eventType === 'roborev.finding') this.materializeRoborevFinding(normalizedEvent);
+        // a redelivered event is ignored by the insert below, so it keeps its first verdict (and does not burn a nonce)
+        let verification: FleetVerification | null = null;
+        if (eventType === 'agent.outcome' && signatureMode !== 'off' && !known.get(id)) {
+          verification = verifyFleetEvent(this.db, normalizedEvent);
+        }
         // K1 (shadow): untrusted text from fleet agents is checked before it can reach any prompt
         if (eventType.startsWith('discovery.') && contentSafetyApplies('external_event')) {
           void checkContentSafety(this.db, { type: 'external_event', id }, [normalizedEvent.title, normalizedEvent.note].filter((v) => typeof v === 'string').join('\n')).catch(() => undefined);
@@ -210,8 +228,10 @@ export class ExternalEventIngestService {
           JSON.stringify(normalizedEvent),
         ).changes;
         inserted += added;
+        if (added && verification) recordFleetVerdict(this.db, id, verification, signatureMode);
 
       }
+      if (signatureMode !== 'off') pruneFleetNonces(this.db);
       scoreAgentOutcomes(this.db);
       // Close the existing ingestion seam before advancing its cursor. Replay
       // also materializes historical observations left by older deployments.

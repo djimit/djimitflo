@@ -254,6 +254,16 @@ export interface EvolutionEvidence {
     pools: Array<{ pool: string; n: number; mean: number | null; share_full: number | null }>;
     contest: { contests: number; agree: number; agreement_rate: number | null };
   };
+  /** R2 (FAIL_BEFORE_PASS_AFTER_MODE, shadow): fail-before/pass-after verdicts per run, 14-d survival per arm; rates only from 40 settled */
+  fail_before_pass_after: {
+    experiment: 'R2'; protocol: string; mode: 'off' | 'shadow'; runs: number;
+    counts: { pass: number; fail: number; skipped: number; fail_before_violated: number; pass_after_violated: number; pass_to_pass_violated: number };
+    arms: Record<'pass' | 'fail', { runs: number; with_pr: number; settled: number; pending: number }>;
+    settled_runs: number; min_settled: number;
+    primary: { n: number; pass: { survived: number; regressed: number; rate: number | null }; fail: { survived: number; regressed: number; rate: number | null };
+      difference_pt: number | null; fisher_p: number | null } | null;
+    verdict: 'INSUFFICIENT' | 'FALSIFIED' | 'SUPPORTED'; note: string;
+  };
   /** KE-3: mutant genomes written from injected knowledge units, and proposals citing a unit or claim */
   knowledge_links: { genomes_with_refs: number | null; genomes_total: number | null; proposals_with_refs: number | null };
   /** P0-8: runs in the window where the strict daemon rule and the certification rule disagree (null = unreadable). */
@@ -286,6 +296,12 @@ export interface EvolutionEvidence {
   experiments?: ExperimentsEvidence;
   /** G3.5 (services/learning-ledger.ts): per learning mechanism effect + CI from its experiment's evidence, status, loops closed k/N (read-only) */
   learning_ledger?: LearningLedger;
+  /** P0-3 (FLEET_EVENT_SIGNATURES): agent.outcome signature verdicts per host and the host key list (services/fleet-event-signatures.ts); null = table absent */
+  fleet_signatures?: {
+    mode: 'off' | 'shadow' | 'enforce';
+    by_host: Array<{ host: string; verdict: 'verified' | 'unsigned' | 'bad_signature' | 'replay' | 'unknown_host' | 'revoked'; n: number }> | null;
+    keys: Array<{ host: string; key_id: string; alg: string; status: string; created_at: string; revoked_at: string | null }> | null;
+  };
 }
 export type ExperimentEffect = { metric: string; estimate: number | null; ci: [number, number] | null; p: number | null };
 /** G1.5 power left; null = unknown, never 0 */

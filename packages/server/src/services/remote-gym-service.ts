@@ -229,31 +229,42 @@ export class RemoteGymService {
     // TG-001 generations: a result for a run claimed under another generation (e.g. before a restore) is never accepted
     if (gym.tg && gym.tg.experiment !== TG_ID) throw new Error('GYM_RUN_STALE_GENERATION');
     if (!['success', 'failure', 'discarded'].includes(result.status)) throw new Error('GYM_RESULT_INVALID');
-    const reason = String(result.reason || '').slice(0, 200);
-    // GENOME_FIRE_CHECK: a trial attempt without proof that the genome's lines reached the maker is VOID (genome-registry)
-    const fire_check = genomeFireCheck() ? parseFireCheck(result.fire_check) : null;
-    const voided = genomeFireCheck() ? fireCheckVoid(this.db, gym.genome, result.status, fire_check) : null;
-    // B8: which of the served mutants the write_test maker's test killed (only keys the server handed out)
-    const killed_mutants = Array.isArray(gym.mutant_keys) && Array.isArray(result.killed_mutants) ? result.killed_mutants.map(String).filter((k) => gym.mutant_keys!.includes(k)) : undefined;
-    const graded = result.status !== 'discarded' && gradedFitnessMode() === 'shadow' ? gymGraded(gym, result, killed_mutants) : null;
-    // TG-001 attempts are an experiment on the prompt, not gym fitness: no skill outcome (the attempt row keeps the result)
-    if (result.status !== 'discarded' && !gym.canary && !voided && !gym.tg) {
-      const [species] = parseSpecies(gym.species, 1);
-      this.outcomes.recordOutcome(`loop-maker:gym:${species.runtime}`, {
-        success: result.status === 'success', tokensUsed: Math.max(0, Number(result.tokens) || 0), durationMs: Math.max(0, Number(result.durationMs) || 0), domain: 'gym', taskId: runId,
-        skillContentHash: gymSkillContentHash((gym as { kind?: string }).kind, gym.genome),
-        ...(species.model ? { model: species.model } : {}), evidenceRefs: [`gym:${gym.commit}`, `loop_run:${runId}`, `gym_result:${reason}`, `remote:${host}`, ...(gym.genome ? [`genome:${gym.genome}`] : []), ...(gym.probe ? ['gym:probe'] : []), ...((gym as { kind?: string }).kind === 'write_test' ? ['gym:fail'] : []), ...(graded ? gradedRefs(graded.graded, graded.graded_kind) : [])],
-      });
+    // P0-12: the worker's verdict is not taken unchecked. For an ordinary gym run (not a canary — its solved status is the
+    // compromise alarm — and not a TG-001 attempt, frozen protocol) a success needs the evidence the worker sends with every
+    // scored attempt (changed files + a diff, hashed here); without it the result is an infra discard, never a success.
+    // A success the hack classifier flags is 'quarantined': not a win for fitness, gym statistics or genome trials.
+    const canonical = !gym.canary && !gym.tg;
+    const changedFiles = Array.isArray(result.changed_files) ? result.changed_files.map(String).slice(0, 50) : null;
+    const diffText = typeof result.diff === 'string' ? result.diff : '';
+    let status: RemoteGymResult['status'] | 'quarantined' = result.status;
+    let reason = String(result.reason || '').slice(0, 200);
+    if (canonical && status === 'success' && (!changedFiles?.length || !diffText.trim())) {
+      status = 'discarded'; reason = 'infra: success without changed_files/diff evidence';
     }
     let hack_flags: string[] | undefined;
-    if (hackDetectorShadow() && result.status !== 'discarded') {
-      const files = Array.isArray(result.changed_files) ? result.changed_files.map(String).slice(0, 50) : changedFromReason(reason);
-      hack_flags = classifyHack({ changedFiles: files, diffText: typeof result.diff === 'string' ? result.diff.slice(0, 50_000) : '', reason });
+    if (status !== 'discarded' && (canonical || hackDetectorShadow())) {
+      hack_flags = classifyHack({ changedFiles: changedFiles ?? changedFromReason(reason), diffText: diffText.slice(0, 50_000), reason });
       // a 'write_test' task asks the maker to write the test file: touching it is the task, not a hack
       if ((gym as { kind?: string }).kind === 'write_test') hack_flags = hack_flags.filter((f) => f !== 'tests_touched');
       if (hack_flags.length) {
         try { new LoopEventService(this.db).recordEvent(runId, 'gym_hack_shadow', 'warning', `Gym hack flags (shadow): ${hack_flags.join(', ')}`, { species: gym.species, flags: hack_flags, status: result.status }); } catch { /* never break the report */ }
       }
+      if (canonical && status === 'success' && hack_flags.length) status = 'quarantined';
+    }
+    // GENOME_FIRE_CHECK: a trial attempt without proof that the genome's lines reached the maker is VOID (genome-registry)
+    const fire_check = genomeFireCheck() ? parseFireCheck(result.fire_check) : null;
+    const voided = genomeFireCheck() ? fireCheckVoid(this.db, gym.genome, status === 'quarantined' ? 'success' : status, fire_check) : null;
+    // B8: which of the served mutants the write_test maker's test killed (only keys the server handed out)
+    const killed_mutants = Array.isArray(gym.mutant_keys) && Array.isArray(result.killed_mutants) ? result.killed_mutants.map(String).filter((k) => gym.mutant_keys!.includes(k)) : undefined;
+    const graded = (status === 'success' || status === 'failure') && gradedFitnessMode() === 'shadow' ? gymGraded(gym, { ...result, status }, killed_mutants) : null;
+    // TG-001 attempts are an experiment on the prompt, not gym fitness: no skill outcome (the attempt row keeps the result)
+    if (status !== 'discarded' && !gym.canary && !voided && !gym.tg) {
+      const [species] = parseSpecies(gym.species, 1);
+      this.outcomes.recordOutcome(`loop-maker:gym:${species.runtime}`, {
+        success: status === 'success', tokensUsed: Math.max(0, Number(result.tokens) || 0), durationMs: Math.max(0, Number(result.durationMs) || 0), domain: 'gym', taskId: runId,
+        skillContentHash: gymSkillContentHash((gym as { kind?: string }).kind, gym.genome),
+        ...(species.model ? { model: species.model } : {}), evidenceRefs: [`gym:${gym.commit}`, `loop_run:${runId}`, `gym_result:${reason}`, `remote:${host}`, ...(gym.genome ? [`genome:${gym.genome}`] : []), ...(gym.probe ? ['gym:probe'] : []), ...((gym as { kind?: string }).kind === 'write_test' ? ['gym:fail'] : []), ...(status === 'quarantined' ? ['gym:quarantined'] : []), ...(graded ? gradedRefs(graded.graded, graded.graded_kind) : [])],
+      });
     }
     // gym gold agreement: the per-check production gate results of a proxy success (only on a run claimed with the gates)
     const prod_gates = gym.prod_gates ? sanitizeProdGates(result.prod_gates) : undefined;
@@ -261,16 +272,18 @@ export class RemoteGymService {
     let diff_ref: string | undefined;
     // a TG-001 diff stays out of the gym training dataset (a copy would lose the experiment's provenance); its sha256 is kept on the run
     if (gym.tg && typeof result.diff === 'string' && result.diff.trim()) diff_ref = `sha256:${prepareGymDiff(result.diff).sha256}`;
-    else if (gymStoreDiffs() && result.status !== 'discarded' && typeof result.diff === 'string' && result.diff.trim()) {
+    else if (gymStoreDiffs() && status !== 'discarded' && typeof result.diff === 'string' && result.diff.trim()) {
       try {
         const d = prepareGymDiff(result.diff);
         this.db.prepare('INSERT OR REPLACE INTO gym_attempt_diffs (run_id, task_key, status, species, sha256, diff, redacted, truncated, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-          .run(runId, String(gym.commit), result.status, gym.species, d.sha256, d.diff, d.redacted, d.truncated ? 1 : 0, now);
+          .run(runId, String(gym.commit), status, gym.species, d.sha256, d.diff, d.redacted, d.truncated ? 1 : 0, now);
         diff_ref = `sha256:${d.sha256}`;
       } catch { /* training data only: never break the report */ }
     }
+    // P0-12: every recorded success / quarantine carries the server-side hash of the diff it rests on
+    if (!diff_ref && canonical && (status === 'success' || status === 'quarantined')) diff_ref = `sha256:${prepareGymDiff(diffText).sha256}`;
     this.db.prepare("UPDATE loop_runs SET status = 'completed', updated_at = ?, metadata = json_set(metadata, '$.gym_result', json(?)) WHERE id = ?")
-      .run(now, JSON.stringify({ status: result.status, reason, ...(hack_flags ? { hack_flags } : {}), ...(killed_mutants ? { killed_mutants } : {}),
+      .run(now, JSON.stringify({ status, reason, ...(hack_flags ? { hack_flags } : {}), ...(killed_mutants ? { killed_mutants } : {}),
         ...(prod_gates ? { prod_gates } : {}), ...(graded ?? {}), ...(diff_ref ? { diff_ref } : {}),
         ...(fire_check ? { fire_check } : {}), ...(voided ? { void: voided } : {}) }), runId);
     if (gym.tg?.attempt_id) { try { recordTg001(this.db, gym.tg.attempt_id, runId, { status: result.status, reason, durationMs: result.durationMs, tg_metrics: result.tg_metrics }, now); } catch { /* experiment bookkeeping never breaks the report */ } }

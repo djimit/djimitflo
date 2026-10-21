@@ -140,6 +140,22 @@
       "reopen_condition": "A concrete question the shipped-code scan cannot answer, plus operator approval of an isolated host."
     },
     {
+      "id": "NE-009",
+      "title": "RuVector (ruvnet/RuVector), whole repository, as Djimitflo dependency or tooling",
+      "hypothesis": "Adopting any RuVector crate, npm package, MCP server or Claude Code hook improves Djimitflo's vector memory, retrieval, skill/memory selection or local inference.",
+      "verdict": "REJECT",
+      "decided_on": "2026-10-20",
+      "conditions": "github.com/ruvnet/RuVector@46d816ddc4c2a8a06cd3613534a79b1d557d858b (remote main HEAD on 2026-10-20), whole repository; sparse-attention crate 0.1.1 also reviewed at 75653afa (unchanged since). Shallow clone with hooks disabled, source read only; nothing installed, built or run.",
+      "result": "Benchmark recall hardcoded 1.0 and a Python baseline simulated as Rust x15; sota-bench labels synthetic Gaussian data with real ANN-Benchmarks dataset names; GNN 'improves with use' and SONA 'LoRA learning' have no training or feedback path; sparse-attention gate untrained, no SIMD, O(T) decode, accuracy only tested where window >= sequence (NO_GO at 75653afa stands); Claude Code hooks post commit messages and diff stats to pi.ruv.io with a shared committed token (server auth accepts any 8-character string) and spawn unpinned npx @claude-flow/cli with the full env; MCP server is allow-all by default despite a 'default-deny' claim, runs npx agentic-flow@alpha and has an SSRF-capable decompile_url; CI-built .node/.wasm binaries committed without provenance.",
+      "why": "No component addresses Djimitflo's real blockers (missing embedding model, three embedding spaces, cross-source score fusion, trust-tier ranking); at ~1.4k vectors exact SQLite cosine is the recall ceiling; no ROCm/Vulkan backend for the R9700; the exfiltration and unpinned-execution risks exceed any benefit.",
+      "evidence": ["docs/research/negative-evidence/NE-009-ruvector.md", "github.com/ruvnet/RuVector@46d816ddc4c2a8a06cd3613534a79b1d557d858b", "crates/ruvector-bench/src/bin/comparison_benchmark.rs:130-132,177-179,208-213,230-232,288-290 (recall = 1.0 hardcoded; baseline = rust_latency * 15)", ".claude/settings.json:46,90,197-198 (hooks POST to https://pi.ruv.io/v1/pipeline/inject; BRAIN_API_KEY committed)", ".claude/helpers/hook-handler.cjs:80-95,150-165 (detached unpinned npx @claude-flow/cli, env: process.env)", "npm/packages/ruvector/bin/mcp-policy.js:2-17 and bin/mcp-server.js:172,3278-3478,4124-4131 (allow-all default; npx agentic-flow@alpha; arbitrary URL fetch)", "crates/ruvllm_sparse_attention@75653afa (NO_GO, unchanged at 46d816dd)"],
+      "allowed_follow_up": "In-house re-implementation of public techniques seen there (reciprocal rank fusion; a hashed embedding-space identity with prefix policy), evaluated on Djimitflo's own labelled data; not covered by this entry and uses no RuVector code.",
+      "forbidden_reuse": ["installing ruvector / @ruvector/* packages or their MCP server", "running RuVector Claude Code hooks or 'ruvector hooks init'", "opening a RuVector checkout as a Claude Code / IDE project with hooks active on trusted infrastructure", "citing RuVector benchmark numbers as evidence"],
+      "forbidden_code_patterns": ["pi.ruv.io", "@ruvector/", "ruvector-crawl-2026", "agentic-flow@alpha", "ruvector@latest"],
+      "match_terms": ["RuVector", "ruvllm", "pi.ruv.io"],
+      "reopen_condition": "All of: a benchmark independently reproduced on Djimitflo's own data in our own harness (recall computed against exact search, no simulated baselines); hooks and MCP server removed or default-deny with no network calls by default; pinned releases with build provenance tying binaries to source; plus a concrete need that SQLite cosine / Qdrant / llama.cpp cannot meet. Permits a new pre-registered evaluation, not adoption."
+    },
+    {
       "id": "NE-010",
       "title": "MiroFish (LLM social simulation) as prediction or evolution substrate",
       "hypothesis": "Running MiroFish-style LLM social simulations, or adopting its mechanisms directly, improves Djimitflo's prediction, capability discovery or evolutionary selection.",
@@ -170,6 +186,22 @@
       "forbidden_code_patterns": [],
       "match_terms": ["ChrisRoyse", "Pheromind", "NeuralShrink", "Cognitive-Triangulation-Pipeline"],
       "reopen_condition": "A pinned release with a reproducible evaluation against a simple baseline on real outcomes, an acceptable licence and no committed secrets or dependencies; permits a new pre-registered evaluation, not adoption."
+    },
+    {
+      "id": "NE-012",
+      "title": "ruvnet agent-ecosystem packages (ruflo/claude-flow, agentic-flow, agentdb, autogenous, ruClip, dream-machine) as Djimitflo dependencies, hooks or MCP servers",
+      "hypothesis": "Installing or running packages, Claude Code hooks, plugins or MCP servers from the ruvnet agent ecosystem improves Djimitflo's routing, memory, provenance or evolution.",
+      "verdict": "REJECT",
+      "decided_on": "2026-10-20",
+      "conditions": "Org-wide read-only review of 227 github.com/ruvnet repositories; deep at agentic-flow a2f6c1cf, agentdb c5cc03a2, autogenous 905aa6cb, ruClip 6e73a8f0, dream-machine 3fc3222d, reflective-engineer 3822d736, readme-proof d2dd66f9; ruflo re-checked at 9271be48 via the API. Shallow clones with hooks disabled; nothing installed, built or run.",
+      "result": "Headline numbers without a measuring harness (agentic-flow 60 % router savings from a synthetic simulation; agentdb +36 % citing a throughput-only test file); install-time code incl. a postinstall that rewrites another package's dist; unpinned npx @latest/@alpha execution in hooks, MCP setup and runtime code across ruflo, agentic-flow, agentdb, RuView; one Claude Code hook family (hook-handler.cjs) copied across repos; committed binaries without provenance; autogenous verifies signatures against the embedded issuer key, takes trust roots from the request and falls back to public dev seeds; ruflo MCP bridge auth is a no-op without MCP_TOKEN.",
+      "why": "No component meets a Djimitflo need better than existing code (runtime-bandit, unit-economics, deep-agent Ed25519 contracts, SQLite retrieval); Djimitflo is already the control plane ruClip reimplements; the supply-chain and trust defects exceed any benefit.",
+      "evidence": ["docs/research/negative-evidence/NE-012-ruvnet-ecosystem.md", "agentic-flow@a2f6c1cf agentic-flow/scripts/postinstall.js:86 (patches agentdb/dist/controllers/index.js)", "agentic-flow@a2f6c1cf agentic-flow/src/config/claudeFlow.ts:67 (execSync npx claude-flow@alpha)", "agentic-flow@a2f6c1cf agentic-flow/benchmarks/cost-optimal-router-benchmark.mjs:4,12 (synthetic 3-tier simulation behind README 60 % claim)", "agentdb@c5cc03a2 README.md:163 vs benchmarks/ruvector-performance.test.ts:73-386 (throughput floors only)", "autogenous@905aa6cb crates/witness/src/lib.rs:167-189, crates/service/src/main.rs:307-332,396-401,472", "ruflo@9271be48 ruflo/src/mcp-bridge/index.js:948-950 (auth no-op without MCP_TOKEN), plugin/scripts/ruflo-hook.sh:34 (npx ruflo@latest)"],
+      "allowed_follow_up": "In-house re-implementation of public ideas, each evaluated on Djimitflo's own data and using no ruvnet code: credit a verified change once per artifact (diff) hash; a fail-before/pass-after discrimination gate plus a PASS_TO_PASS regression set for test-writing and finding-fix lanes; Ed25519 verification against a pinned issuer (never the embedded key or a caller-supplied trust root) with audience-bound single-use nonces, expiry and revocation; halt-on-unknown-outcome after restart with operator reconciliation, never auto-retry a side-effecting action. metaharness keeps its ADAPT-IDEA-ONLY status; NE-009 covers RuVector separately.",
+      "forbidden_reuse": ["installing ruflo, claude-flow, @claude-flow/*, agentic-flow, agentdb, radio-moe or ruclip packages", "registering their MCP servers or the cognitum.one remote MCP", "running their Claude Code hooks/plugins or opening their checkouts as Claude Code / IDE projects on trusted infrastructure", "citing their benchmark numbers as evidence"],
+      "forbidden_code_patterns": ["claude-flow@alpha", "@claude-flow/cli@latest", "ruflo@latest", "hook-handler.cjs", "cognitum.one/mcpSse"],
+      "match_terms": ["ruflo", "claude-flow", "agentic-flow", "agentdb", "ruClip"],
+      "reopen_condition": "All of: a benchmark independently reproduced on Djimitflo's own data in our own harness against the current baseline (no simulated or hardcoded baselines); no install scripts and no unpinned npx @latest/@alpha execution; hooks and MCP servers off by default with authentication on and no network calls by default; pinned releases with build provenance tying binaries to source; plus a concrete need that existing Djimitflo code cannot meet. Permits a new pre-registered evaluation, not adoption."
     }
   ]
 }
