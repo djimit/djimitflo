@@ -199,7 +199,8 @@ export class OpenCodeExecutor implements TaskExecutor {
         emitter.emit('output', text, 'stderr');
       });
 
-      child.on('close', (code) => {
+      child.on('close', (code, signal) => {
+        session.exit = { code, signal };
         clearTimeout(timeoutHandle);
         if (metricsBuffer.trim()) {
           this.collectMetricsFromLine(metricsBuffer, metrics, outcome);

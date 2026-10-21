@@ -535,7 +535,8 @@ export class ExecutionEngine {
       const maxRetries = this.executionModePolicy.getConfig(mode).maxRetries;
       const session = await this.startExecutionAttempt(parsedTask, executorKind, mode, 0, maxRetries, workingDirectory, riskAssessmentText);
       const completion = session.closed ? session.result.then(
-        async result => { await session.closed; return result; },
+        // the child's exit is known only once it closed: a timeout or brake resolves the result first (L3 v2 P7: runtime_signal was null on every failed maker)
+        async result => { await session.closed; return session.exit ? { ...result, exitCode: session.exit.code, signal: session.exit.signal } : result; },
         async error => { await session.closed; throw error; },
       ) : session.result;
       return { status: 'started', completion };

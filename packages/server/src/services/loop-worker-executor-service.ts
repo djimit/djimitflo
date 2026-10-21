@@ -26,6 +26,8 @@ import { assignMakerDepsArm, makerDeps001On, makerDepsEligible } from './maker-d
 import { applyOutageFallback, fallbackRefusal, isFallbackLease } from './ollama-outage-fallback';
 import { noteOllamaOutput } from './inference-failover';
 import { isSubscriptionLimit, LIMIT_HIT } from './subscription-gym';
+import { classifyStderr, STDERR_TAIL_CHARS, type FailureStage, type LeaseFailure } from './lease-failure';
+import { makerWarmDepsBlocked, warmDepsCacheRoot, warmDepsState } from './maker-warm-deps';
 import type {
   LoopRunRecord,
   WorkerLeaseRecord,
@@ -75,6 +77,27 @@ export function shouldRecordSecondOpinion(runtime: string, reviewRole: string, m
   return runtime !== 'mock' && reviewRole === 'checker' && mode !== 'off';
 }
 
+/**
+ * What the runtime itself showed, as the hint for the lease's structured failure (lease-failure.ts); WorkerLeaseRepo fills the
+ * rest (a cancel's stage and reason, the reason-text class). The engine path reports the child's exit apart from the gate's
+ * 0/1; a direct runtime command's exitCode is the child's own.
+ */
+export function runtimeFailureHint(result: RuntimeExecutionResult, stage: FailureStage, tokenBudgetGateFailed = false): Partial<LeaseFailure> {
+  const stderr = (result.stderr || '').slice(-STDERR_TAIL_CHARS);
+  const message = result.runtimeMessage ?? '';
+  const observed = result.exitObserved ?? true;
+  return {
+    stage,
+    exit_observed: observed,
+    exit_code: !observed ? null : result.exitObserved === undefined ? result.exitCode : result.processExitCode ?? null,
+    signal: result.signal ?? null,
+    timed_out: result.timedOut === true,
+    token_budget_hit: result.tokenBudgetHit === true || tokenBudgetGateFailed,
+    stderr_class: classifyStderr(`${stderr}\n${message}`),
+    stderr_source: stderr.trim() ? 'stderr' : message.trim() ? 'reason' : 'none',
+  };
+}
+
 export class LoopWorkerExecutorService {
   constructor(
     private db: any,
@@ -95,7 +118,9 @@ export class LoopWorkerExecutorService {
     } catch (err) {
       const stuck = this.db.prepare("SELECT id FROM worker_leases WHERE loop_run_id = ? AND role = 'maker' AND status = 'running' AND json_extract(metadata, '$.started_at') >= ?")
         .all(id, since) as Array<{ id: string }>;
-      for (const lease of stuck) this.loopService.updateWorkerLeaseStatus(lease.id, 'failed', { failure_reason: `maker_execution_error: ${(err instanceof Error ? err.message : String(err)).slice(0, 200)}`, failed_at: new Date().toISOString() });
+      const message = (err instanceof Error ? err.message : String(err)).slice(0, 200);
+      for (const lease of stuck) this.loopService.updateWorkerLeaseStatus(lease.id, 'failed', { failure_reason: `maker_execution_error: ${message}`, failed_at: new Date().toISOString(),
+        failure: { stderr_class: classifyStderr(message), stderr_source: 'reason' } });
       throw err;
     }
   }
@@ -167,7 +192,7 @@ export class LoopWorkerExecutorService {
         gateRefs: ['runtime_contract'], blockedReasons: ['runtime_contract_drift'],
         metadata: { worker_role: makerLease.role, worker_runtime: makerLease.runtime, reason: 'runtime_contract_unavailable_or_drifted', started_from: 'executeMaker' },
       });
-      this.loopService.updateWorkerLeaseStatus(makerLease.id, 'failed', { runtime_adapter: makerLease.runtime, runtime_contract: runtimeContract, runtime_contract_failed_at: new Date().toISOString(), failure_reason: 'runtime_contract_unavailable_or_drifted' });
+      this.loopService.updateWorkerLeaseStatus(makerLease.id, 'failed', { runtime_adapter: makerLease.runtime, runtime_contract: runtimeContract, runtime_contract_failed_at: new Date().toISOString(), failure_reason: 'runtime_contract_unavailable_or_drifted', failure: { stage: 'prepare' } });
       throw new Error('RUNTIME_CONTRACT_DRIFTED');
     }
 
@@ -178,6 +203,9 @@ export class LoopWorkerExecutorService {
     }
     // MAKER-DEPS-001 (pre-registered, MAKER_DEPS_001_MODE): the arm is recorded before the maker starts; arm B gets the checks'
     // own install first. Local opencode makers of goal runs only (never TG-001, the gym or remote); caps and prompt are the same.
+    // MAKER_WARM_DEPS (default off) refuses to act while MAKER-DEPS-001 runs: both arms stay exactly as pre-registered
+    const warm = warmDepsState();
+    if (warm === 'blocked_by_experiment') makerWarmDepsBlocked();
     if (makerDeps001On() && run.goal_id && makerDepsEligible({ runtime: makerLease.runtime, role: makerLease.role, goal_id: run.goal_id, loop_name: run.loop_name })) {
       const assigned = assignMakerDepsArm(this.db, run.id, makerLease, run.goal_id);
       if (assigned.arm === 'B') {
@@ -186,6 +214,13 @@ export class LoopWorkerExecutorService {
           `MAKER-DEPS-001 arm B: dependencies prepared before the maker started (installed=${prep.installed}, shared_built=${prep.shared_built}${prep.install_failed || prep.shared_failed ? '; failed, the maker runs as in arm A' : ''}).`,
           { maker_lease_id: makerLease.id, arm: assigned.arm, experiment: assigned.experiment, version: assigned.version, ...prep });
       }
+    } else if (warm === 'on' && run.goal_id && makerDepsEligible({ runtime: makerLease.runtime, role: makerLease.role, goal_id: run.goal_id, loop_name: run.loop_name })) {
+      // arm B's preparation, with node_modules from a lockfile-keyed cache: the candidate default once MAKER-DEPS-001 reads out
+      const prep = this.loopService.prepareMakerWorktree(run.id, makerLease.id, makerLease.worktree_path!, { warmDepsRoot: warmDepsCacheRoot() });
+      if (prep.warm_deps) this.loopService.patchWorkerLeaseMetadata(makerLease.id, { deps_source: prep.warm_deps.deps_source, warm_deps: prep.warm_deps });
+      this.loopService.recordLoopEvent(run.id, 'maker_warm_deps', prep.install_failed || prep.shared_failed ? 'warning' : 'info',
+        `MAKER_WARM_DEPS: dependencies ${prep.warm_deps ? `from ${prep.warm_deps.deps_source}` : 'already present'} before the maker started (shared_built=${prep.shared_built}${prep.install_failed || prep.shared_failed ? '; failed, the maker runs without them' : ''}).`,
+        { maker_lease_id: makerLease.id, ...prep });
     }
     const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
     const prompt = fs.readFileSync(this.loopService.resolveWorkAssignmentPath(makerLease), 'utf8');
@@ -256,6 +291,8 @@ export class LoopWorkerExecutorService {
       // MAKER_DIFF_CAPTURE=on: the redacted, capped diff diff_lines was counted from (record-only; an error leaves only diff_capture_error)
       ...captureMakerDiff(diff),
       ...(fallbackLimited ? { failure_reason: LIMIT_HIT, subscription_limit_hit_at: new Date().toISOString() } : failed ? { failure_reason: `maker_gate_failed:${gates.filter((gate) => gate.status === 'fail').map((gate) => gate.name).join(',')}${remoteCancel ? `;remote_maker_cancelled:${remoteCancel}` : ''}` } : {}),
+      // structured failure capture (record-only; the gates above already decided)
+      ...(failed || wasCancelled ? { failure: runtimeFailureHint(result, 'maker', tokenBudget.gate.status === 'fail') } : {}),
     };
 
     if (wasCancelled) {
@@ -333,7 +370,7 @@ export class LoopWorkerExecutorService {
         gateRefs: ['runtime_contract'], blockedReasons: ['runtime_contract_drift'],
         metadata: { worker_role: checker.role, worker_runtime: runtime, maker_lease_id: checker.metadata.maker_lease_id, reason: 'runtime_contract_unavailable_or_drifted', started_from: 'executeChecker' },
       });
-      this.loopService.updateWorkerLeaseStatus(checker.id, 'failed', { runtime_contract: runtimeContract, runtime_contract_failed_at: new Date().toISOString(), failure_reason: 'runtime_contract_unavailable_or_drifted' });
+      this.loopService.updateWorkerLeaseStatus(checker.id, 'failed', { runtime_contract: runtimeContract, runtime_contract_failed_at: new Date().toISOString(), failure_reason: 'runtime_contract_unavailable_or_drifted', failure: { stage: 'checker' } });
       throw new Error('RUNTIME_CONTRACT_DRIFTED');
     }
 
@@ -369,7 +406,7 @@ export class LoopWorkerExecutorService {
 
     const { stdoutPath, stderrPath } = this.writeOutput(run.id, checker.id, 'checker-output', result.stdout || '', result.stderr || '');
     if (this.loopService.isWorkerLeaseCancelled(checker.id)) {
-      this.loopService.patchWorkerLeaseMetadata(checker.id, { stdout_path: stdoutPath, stderr_path: stderrPath, runtime_was_cancelled: true });
+      this.loopService.patchWorkerLeaseMetadata(checker.id, { stdout_path: stdoutPath, stderr_path: stderrPath, runtime_was_cancelled: true, failure: runtimeFailureHint(result, 'checker') });
       return { run: this.loopService.getLoopRun(run.id), lease: this.loopService.getWorkerLease(checker.id), gates: [], stdout_path: stdoutPath, stderr_path: stderrPath };
     }
     const exitStatus = result.exitCode;
@@ -404,6 +441,7 @@ export class LoopWorkerExecutorService {
       verdict_parsed: exitStatus === 0 && !timedOut && this.loopService.checkerVerdictParsed(result.stdout || ''),
       // without it the lease repo fell back to the reviewer's notes, so 'failed' leases carried prose (or a raw event line) as their reason
       ...(fallbackLimited ? { failure_reason: LIMIT_HIT, subscription_limit_hit_at: new Date().toISOString() } : exitStatus === 0 && !timedOut ? {} : { failure_reason: `${reviewRole}_runtime_failed:exit=${exitStatus ?? 'signal'},timed_out=${timedOut}: ${(result.stderr || '').split('\n').map((line) => line.trim()).filter((line) => line && !line.startsWith('at ')).pop()?.slice(0, 200) ?? ''}` }),
+      ...(exitStatus === 0 && !timedOut ? {} : { failure: runtimeFailureHint(result, 'checker') }),
     });
 
     const gates: LoopGate[] = [
@@ -454,7 +492,8 @@ export class LoopWorkerExecutorService {
     if (!isFallbackLease(lease)) return;
     const refusal = fallbackRefusal(this.db);
     if (!refusal) return;
-    this.loopService.updateWorkerLeaseStatus(lease.id, 'failed', { failure_reason: refusal, failed_at: new Date().toISOString(), runtime_fallback_refused: true });
+    this.loopService.updateWorkerLeaseStatus(lease.id, 'failed', { failure_reason: refusal, failed_at: new Date().toISOString(), runtime_fallback_refused: true,
+      failure: { stage: lease.role === 'maker' ? 'prepare' : 'checker' } });
     this.loopService.recordLoopEvent(run.id, 'runtime_fallback_refused', 'warning', `${lease.role} lease ${lease.id} not spawned on the outage fallback: ${refusal}.`, { lease_id: lease.id, role: lease.role, reason: refusal });
     throw new Error(refusal === LIMIT_HIT ? 'SUBSCRIPTION_LIMIT_BACKOFF' : 'SUBSCRIPTION_AUTH_MISSING');
   }
@@ -569,7 +608,10 @@ export class LoopWorkerExecutorService {
       throw new Error('LOOP_WORKER_APPROVAL_REQUIRED');
     }
     if (execution.status === 'denied' || !execution.completion) {
-      this.loopService.updateWorkerLeaseStatus(lease.id, 'failed', { execution_task_id: taskId, execution_denied_reason: execution.reason });
+      // a denial without a stated reason fell through to 'unspecified: caller supplied no reason' (the repo reads execution_denied_reason)
+      const denied = execution.reason || (execution.status === 'denied' ? 'execution_denied_without_reason' : `execution_${execution.status}_without_completion`);
+      this.loopService.updateWorkerLeaseStatus(lease.id, 'failed', { execution_task_id: taskId, execution_denied_reason: denied,
+        failure: { stage: lease.role === 'maker' ? 'prepare' : 'checker', stderr_class: classifyStderr(denied), stderr_source: 'reason' } });
       throw new Error('LOOP_WORKER_EXECUTION_DENIED');
     }
 
@@ -618,10 +660,17 @@ export class LoopWorkerExecutorService {
   }
 
   private toRuntimeResult(completed: ExecutionResult): RuntimeExecutionResult {
-    const timedOut = /timed out/i.test(`${completed.message}\n${completed.error || ''}`);
+    const message = `${completed.message}\n${completed.error || ''}`;
+    const timedOut = /timed out/i.test(message);
+    // exitCode stays the status-derived 0/1 the gates have always read; the child's own exit and signal are recorded beside it
+    const exitObserved = completed.exitCode !== undefined || completed.signal !== undefined;
     return {
       exitCode: completed.status === 'completed' ? 0 : 1,
-      signal: null,
+      signal: completed.signal ?? null,
+      processExitCode: exitObserved ? completed.exitCode ?? null : null,
+      exitObserved,
+      tokenBudgetHit: /token budget exceeded/i.test(message),
+      runtimeMessage: completed.status === 'completed' ? '' : `${completed.message || ''}${completed.error ? `\n${completed.error.split('\n')[0]}` : ''}`.slice(0, 1_000),
       timedOut,
       ...(timedOut ? { timedOutAt: new Date().toISOString() } : {}),
       stdout: completed.stdout || '',

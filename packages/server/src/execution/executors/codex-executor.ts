@@ -148,7 +148,8 @@ export class CodexExecutor implements TaskExecutor {
         emitter.emit('output', data.toString(), 'stderr');
       });
 
-      child.on('close', (code) => {
+      child.on('close', (code, signal) => {
+        session.exit = { code, signal };
         clearTimeout(timeoutHandle);
         emitter.emit('exit', code);
       });

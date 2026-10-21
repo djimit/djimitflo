@@ -16,6 +16,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { WorktreeManager } from './worktree-manager';
+import { CANCEL_LEASE_METADATA_SQL, cancelLeaseBind } from './lease-failure';
 
 interface HealthCheck {
   name: string;
@@ -225,11 +226,12 @@ export class SelfHealingService {
       case 'stale_leases':
         action.action = 'cancel_stale_leases';
         try {
+          const now = new Date().toISOString();
           const result = this.db.prepare(`
-            UPDATE worker_leases SET status = 'cancelled', updated_at = datetime('now')
+            UPDATE worker_leases SET status = 'cancelled', updated_at = datetime('now'), ${CANCEL_LEASE_METADATA_SQL}
             WHERE status IN ('running', 'prepared')
             AND updated_at < datetime('now', '-1 hour')
-          `).run();
+          `).run(...cancelLeaseBind('self_healing_stale_lease', now));
           action.output = `Cancelled ${result.changes} stale leases`;
           action.result = 'success';
         } catch (error) {

@@ -224,7 +224,9 @@ export interface EvolutionEvidence {
     diff: number | null; diff_ci_descriptive: [number, number] | null;
     arms: Record<'A' | 'B', { goals: number; terminal: number; verified: number; regressed: number; censored: number; verified_rate: number | null;
       preparations: number; preparation_failed: number; maker_leases: number; maker_failed: number; maker_timed_out: number; tokens_mean: number | null }>;
-    note: string };
+    note: string;
+    /** MAKER_WARM_DEPS: state ('blocked_by_experiment' while MAKER_DEPS_001_MODE=on) and maker leases per deps_source */
+    warm_deps?: { mode: string | null; state: 'off' | 'on' | 'blocked_by_experiment'; keep: number; by_source: Record<'cache' | 'fresh' | 'failed', number>; note: string } };
   /** H-D5NO: prospective false-rejection risk of jev confident-NO on proposal_prescreen (shadow); confident_yes is descriptive only */
   d5_no: { status: 'collecting' | 'ready' | 'rejected' | 'insufficient_evidence' | 'unavailable'; cutoff: string; prereg_sha256?: string; analysis_n?: number; max_risk?: number;
     excluded?: { pre_cutoff_cluster: number; oracle_lane: number };

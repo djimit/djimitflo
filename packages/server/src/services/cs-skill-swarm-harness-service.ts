@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { promisify } from 'util';
 import type { Database } from 'better-sqlite3';
 import { AgentAssuranceService } from './agent-assurance-service';
+import { buildLeaseFailure } from './lease-failure';
 
 const execFileAsync = promisify(execFile);
 
@@ -813,15 +814,16 @@ export class CsSkillSwarmHarnessService {
   }
 
   private updateWorkerLease(leaseId: string, status: 'running' | 'completed' | 'failed', patch: Record<string, unknown>): void {
-    const row = this.db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(leaseId) as { metadata?: string } | undefined;
+    const row = this.db.prepare('SELECT role, metadata FROM worker_leases WHERE id = ?').get(leaseId) as { role?: string; metadata?: string } | undefined;
     if (!row) throw new Error('CS_SKILL_SWARM_LEASE_MISSING');
+    const metadata: Record<string, unknown> = { ...JSON.parse(row.metadata || '{}'), ...patch, completed_by_harness: status === 'completed' };
+    if (status === 'failed') { // structured failure capture: the harness's spawn error is the reason (lease-failure.ts)
+      metadata.failure_reason ??= `harness_spawn_failed: ${String(metadata.error ?? 'unknown').slice(0, 200)}`;
+      metadata.failure = buildLeaseFailure(row.role ?? '', status, metadata, { stage: 'prepare' });
+    }
     this.db.prepare('UPDATE worker_leases SET status = ?, metadata = ?, updated_at = ? WHERE id = ?').run(
       status,
-      JSON.stringify({
-        ...JSON.parse(row.metadata || '{}'),
-        ...patch,
-        completed_by_harness: status === 'completed',
-      }),
+      JSON.stringify(metadata),
       new Date().toISOString(),
       leaseId
     );
