@@ -22,6 +22,7 @@ const commitAll = (cwd, msg) => { rawGit(cwd, ['add', '-A']); rawGit(cwd, ['-c',
 
 test('runner args: no host network, none by default, non-root, caps dropped, read-only, capped, pinned', () => {
   const args = runnerArgs('vol-w', 'true', { name: 'gym-t-1' });
+  assert.ok(args.includes('vol-w:/w:nocopy'), 'the work volume mounts with nocopy (copy-up would reset its owner to root)');
   const joined = args.join(' ');
   assert.ok(!joined.includes('--network host') && !args.includes('host'), 'never the host network');
   assert.equal(flag(args, '--network'), 'none');
@@ -35,7 +36,7 @@ test('runner args: no host network, none by default, non-root, caps dropped, rea
   assert.deepEqual(tmpfs, ['/tmp', flag(args, '-e').replace(/^HOME=/, '')], 'tmpfs for /tmp and HOME');
   for (const f of ['--pids-limit', '--memory', '--cpus']) assert.ok(flag(args, f), `${f} set`);
   assert.equal(flag(args, '--memory-swap'), flag(args, '--memory'), 'no swap beyond the memory cap');
-  assert.equal(flag(args, '-v'), 'vol-w:/w', 'the tree is a volume, not a host directory');
+  assert.equal(flag(args, '-v'), 'vol-w:/w:nocopy', 'the tree is a volume, not a host directory');
   assert.ok(args.includes(PINNED) && args.at(-4) === PINNED);
   assert.equal(flag(runnerArgs('v', 'npm ci', { network: 'bridge' }), '--network'), 'bridge');
 });
@@ -52,6 +53,7 @@ test('runner args refuse a tag, the host network and privilege-raising or writab
 
 test('volume init is the only root step: CHOWN only, no network, a fixed command', () => {
   const args = volumeInitArgs({ w: 'a-w', state: 'a-state' }, { name: 'init' });
+  for (const m of ['a-w:/w:nocopy', 'a-state:/state:nocopy']) assert.ok(args.includes(m), `${m}: an empty named volume must not be re-owned by the image's copy-up`);
   assert.equal(flag(args, '--user'), '0:0');
   assert.equal(flag(args, '--cap-drop'), 'ALL');
   assert.deepEqual(args.flatMap((a, i) => (a === '--cap-add' ? [args[i + 1]] : [])), ['CHOWN']);

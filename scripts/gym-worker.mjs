@@ -297,16 +297,21 @@ export function runnerArgs(vol, cmd, { network = 'none', extra = [], name = runn
     '--user', RUNNER_USER, '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--read-only',
     '--tmpfs', '/tmp:rw,exec,nosuid,nodev,size=4g', '--tmpfs', `${RUNNER_HOME}:rw,exec,nosuid,nodev,size=1g`, '-e', `HOME=${RUNNER_HOME}`,
     '--cpus', RUNNER_LIMITS.cpus, '--memory', RUNNER_LIMITS.memory, '--memory-swap', RUNNER_LIMITS.memory, '--pids-limit', RUNNER_LIMITS.pids,
-    '-v', `${vol}:/w`, '-w', '/w', ...extra, image, 'sh', '-c', cmd];
+    '-v', `${vol}:/w:nocopy`, '-w', '/w', ...extra, image, 'sh', '-c', cmd];
 }
 /**
  * D9: a fresh named volume belongs to container root; this one fixed command (no repo or agent input, CHOWN only, no
  * network) hands the attempt's volumes and the npm cache to the runner uid. It is the only step that runs as root.
  */
+/**
+ * Named volumes mount with :nocopy. Without it Docker copies the image's mount-point directory (root-owned, and /w exists via
+ * -w /w) into an EMPTY volume on every mount, resetting its owner to root and undoing the init chown — the first live D9 run
+ * failed copy-in with "tar: .: Cannot change mode … Operation not permitted" (22-10).
+ */
 export function volumeInitArgs(sbx, { name = runnerName(), image = IMAGE } = {}) {
   if (!DIGEST_PINNED.test(image)) throw new Error(`runner image ${image} is not pinned by digest`);
   return ['run', '--rm', '--name', name, '--label', hostLabel(), '--network', 'none', '--user', '0:0', '--cap-drop', 'ALL', '--cap-add', 'CHOWN',
-    '--security-opt', 'no-new-privileges', '--read-only', '--pids-limit', '64', '-v', `${sbx.w}:/w`, '-v', `${sbx.state}:/state`, '-v', `${NPM_CACHE_VOLUME}:/npm`,
+    '--security-opt', 'no-new-privileges', '--read-only', '--pids-limit', '64', '-v', `${sbx.w}:/w:nocopy`, '-v', `${sbx.state}:/state:nocopy`, '-v', `${NPM_CACHE_VOLUME}:/npm:nocopy`,
     image, 'chown', RUNNER_USER, '/w', '/state', '/npm'];
 }
 function inRunner(sbx, cmd, { input, timeoutMs = 900_000, extra = [], network = 'none' } = {}) {
@@ -333,8 +338,8 @@ function openSandbox(repo, wt, tag) {
 function closeSandbox(sbx) {
   if (sbx) docker(['volume', 'rm', '-f', sbx.w, sbx.state], undefined, 60_000);
 }
-const NPM_CACHE = ['-v', `${NPM_CACHE_VOLUME}:/npm`, '-e', 'npm_config_cache=/npm'];
-const stateMount = (sbx) => ['-v', `${sbx.state}:/state`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'];
+const NPM_CACHE = ['-v', `${NPM_CACHE_VOLUME}:/npm:nocopy`, '-e', 'npm_config_cache=/npm'];
+const stateMount = (sbx) => ['-v', `${sbx.state}:/state:nocopy`, '-e', 'ATOMIC_AGENT_STATE_DIR=/state'];
 // the runner uid does not own the worker's gitdir: git (vitest --changed, mutation-gain) needs safe.directory, given as
 // command-line-scope config so a repo cannot set it
 export const RUNNER_SAFE_DIRECTORY = ['-e', 'GIT_CONFIG_COUNT=1', '-e', 'GIT_CONFIG_KEY_0=safe.directory', '-e', 'GIT_CONFIG_VALUE_0=*'];
