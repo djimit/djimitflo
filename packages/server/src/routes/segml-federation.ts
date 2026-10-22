@@ -43,7 +43,8 @@ export function createSegmlFederationRoutes(db: Database, auth?: AuthMiddleware)
   });
 
   // POST /api/segml/federation/receive — receive patterns from a peer
-  router.post('/receive', requireAuth('read:evidence'), (req, res, next) => {
+  // AUTHZ-F6 (S19): a write into fleet-wide memory needs a write permission, not read:evidence (any VIEWER)
+  router.post('/receive', requireAuth('manage:config'), (req, res, next) => {
     try {
       const bridge = new SegmlFederatedGovernanceBridge(db);
       const { peerId, patterns } = req.body;
