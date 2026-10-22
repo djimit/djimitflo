@@ -159,10 +159,9 @@ describe('swarm intelligence layer', () => {
         eval_score: 0.4,
       }),
     });
-    expect(validatedResponse.status).toBe(201);
-    const validated = await validatedResponse.json() as any;
-    expect(validated.live_route_allowed).toBe(false);
-    expect(validated.blocked_reasons).toContain('eval_score_below_threshold');
+    // AUTHZ-F5 (D1): registration never sets the live status; validation goes through /promote and its gates
+    expect(validatedResponse.status).toBe(409);
+    expect((await validatedResponse.json() as any).error.code).toBe('SWARM_CAPABILITY_PROMOTION_REQUIRED');
 
     const evalResponse = await fetch(`${baseUrl}/swarms/intelligence/capabilities/skill-quality-loop/evaluate`, { method: 'POST' });
     expect(evalResponse.status).toBe(200);
