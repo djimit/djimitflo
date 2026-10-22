@@ -194,6 +194,12 @@ export interface RuntimeExecutionResult {
   stderr: string;
   runtimePid?: number;
   events?: import('@djimitflo/shared').ExecutionEventCreateInput[];
+  /** the engine path: `exitCode` is the gate's status-derived 0/1; these are what the OS child itself reported (absent = it equals exitCode) */
+  processExitCode?: number | null;
+  exitObserved?: boolean;
+  tokenBudgetHit?: boolean;
+  /** the executor's own failure message (e.g. 'spawn opencode ENOENT'), classified with the stderr tail */
+  runtimeMessage?: string;
 }
 
 export interface RuntimeStopResult {

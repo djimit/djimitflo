@@ -83,7 +83,7 @@ export class AtomicExecutor implements TaskExecutor {
       timeout.unref();
       proc.stdout?.on('data', data => emitter.emit('output', data.toString(), 'stdout'));
       proc.stderr?.on('data', data => emitter.emit('output', data.toString(), 'stderr'));
-      proc.on('close', code => { clearTimeout(timeout); emitter.emit('exit', code); });
+      proc.on('close', (code, signal) => { session.exit = { code, signal }; clearTimeout(timeout); emitter.emit('exit', code); });
       proc.on('error', error => emitter.emit('error', error));
     };
 

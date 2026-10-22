@@ -25,6 +25,7 @@ unknown …) is `GET /api/health/schedulers` (admins). Armed is intent, not exec
 | scheduled_proposal_goals | `(always on with autonomy)` | `Number(process.env.SCHEDULED_PROPOSAL_GOALS_INTERVAL_MS) \|\| 3_600_0…` | `packages/server/src/bootstrap/autonomous-services.ts` |
 | self_healing | `SELF_HEALING_SCHEDULER_ENABLED` | `selfHealingSched.intervalMinutes()` min | `packages/server/src/index.ts` |
 | self_improvement_auto_review | `SELF_IMPROVEMENT_AUTO_REVIEW_ENABLED` | `selfImprovementAutoReviewSched.intervalMinutes()` min | `packages/server/src/index.ts` |
+| settlement_execution | `SETTLEMENT_EXECUTION_MODE` | 24 h | `packages/server/src/services/settlement-execution.ts` |
 | shipped_code_scan | `SHIPPED_CODE_SCAN_MODE` | 24 h | `packages/server/src/index.ts` |
 | skill_distillation | `SKILL_DISTILLATION_MODE` | 24 h | `packages/server/src/index.ts` |
 | specialist_panel_backlog | `SPECIALIST_PANEL_BACKLOG_ENABLED` | `specialistPanelBacklogSched.intervalMinutes()` min | `packages/server/src/index.ts` |
