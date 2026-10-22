@@ -117,8 +117,14 @@ it('kbPendingSafety lists the host\'s pages without a yes/no verdict for their c
   await ingestKbPages(db, 'workstation', [RETRY], fake);
   await ingestKbPages(db, 'workstation', [RETRY2, { path: 'concepts/c.md', title: 'c', body: 'c' }, { path: 'concepts/d.md', title: 'd', body: 'd' }], http500);
   await ingestKbPages(db, 'nas', [{ path: 'concepts/e.md', title: 'e', body: 'e' }], http500);
-  expect(kbPendingSafety(db, 'workstation')).toEqual({ pending: ['concepts/c.md', 'concepts/d.md', RETRY2.path], total: 3 });
-  expect(kbPendingSafety(db, 'workstation', 2)).toEqual({ pending: ['concepts/c.md', 'concepts/d.md'], total: 3 });
+  // oldest first by updated_at; rows of one batch may straddle a second, so compare as sets (CI flake 22-10)
+  const all = kbPendingSafety(db, 'workstation');
+  expect(all.total).toBe(3);
+  expect([...all.pending].sort()).toEqual(['concepts/c.md', 'concepts/d.md', RETRY2.path].sort());
+  const two = kbPendingSafety(db, 'workstation', 2);
+  expect(two.total).toBe(3);
+  expect(two.pending).toHaveLength(2);
+  for (const p of two.pending) expect(all.pending).toContain(p);
   expect(kbPendingSafety(db, 'workstation', 10_000).pending).toHaveLength(3); // the limit is capped, never unbounded
   // a verdict for an older text of the page does not count for the current text
   db.prepare("UPDATE kb_pages SET title = 'Retry budgets v2' WHERE path = ?").run(RETRY.path);
