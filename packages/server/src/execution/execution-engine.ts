@@ -1558,10 +1558,16 @@ export class ExecutionEngine {
     if (process.env.LOOP_REVIEWER_APPROVAL_INHERIT !== 'true') return false;
     const task = this.db.prepare('SELECT tags, metadata FROM tasks WHERE id = ?').get(taskId) as { tags: string; metadata: string } | undefined;
     if (!task) return false;
-    let tags: unknown; let meta: { loop_run_id?: unknown };
+    let tags: unknown; let meta: { loop_run_id?: unknown; lease_id?: unknown };
     try { tags = JSON.parse(task.tags || '[]'); meta = JSON.parse(task.metadata || '{}'); } catch { return false; }
     const runId = typeof meta.loop_run_id === 'string' ? meta.loop_run_id : '';
     if (!runId || !Array.isArray(tags) || !(tags.includes('checker') || tags.includes('security_checker')) || tags.includes('maker')) return false;
+    // AUTHZ-F4: tags and metadata are free input on POST/PATCH /tasks (create:task). Only a task the loop itself created for a
+    // reviewer lease of this run inherits: the lease names this task as its execution task (written server-side only).
+    const leaseId = typeof meta.lease_id === 'string' ? meta.lease_id : '';
+    const bound = leaseId && this.db.prepare(`SELECT 1 FROM worker_leases WHERE id = ? AND loop_run_id = ? AND role IN ('checker', 'security_checker')
+      AND json_valid(COALESCE(metadata, '{}')) = 1 AND json_extract(metadata, '$.execution_task_id') = ?`).get(leaseId, runId, taskId);
+    if (!bound) return false;
     const grant = this.db.prepare(`
       SELECT a.id FROM approvals a JOIN tasks t ON t.id = a.task_id
       WHERE a.status = 'approved' AND a.decided_by IS NOT NULL AND a.decided_by NOT IN ('system', 'auto')

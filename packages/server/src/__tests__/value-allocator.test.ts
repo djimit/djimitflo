@@ -162,8 +162,22 @@ describe('value allocator: value and class', () => {
     expect(row(v, 'judgment:content_safety').consumer_status).toBe('decision_consumed');
     expect(row(v, 'judgment:content_safety').w7.value.decision_consumed).toBe(3); // only the KB rows
     expect(row(v, 'judgment:commons_contribution').consumer_status).toBe('no_consumer'); // thread gate off
-    const on = buildValueAllocation(db, NOW, { COMMONS_THREAD_GATE_ENABLED: 'true' }, []);
+    const on = buildValueAllocation(db, NOW, { COMMONS_THREAD_GATE_ENABLED: 'true', TYPESAFE_COMMONS_CONTRIBUTION_MODE: 'shadow' }, []);
     expect(row(on, 'judgment:commons_contribution').consumer_status).toBe('decision_consumed'); // threadGated reads shadow rows
+  });
+
+  it('AUTHZ-F3: a judgment switched off is not decision-consumed even with its gate flag on (threadGated ignores stale rows)', () => {
+    for (let i = 0; i < 3; i++) judgment('commons_contribution', 'shadow');
+    const v = buildValueAllocation(db, NOW, { COMMONS_THREAD_GATE_ENABLED: 'true' }, []);
+    expect(row(v, 'judgment:commons_contribution').consumer_status).not.toBe('decision_consumed');
+  });
+
+  it('AUTHZ-F2: discovery_relevance rows decide expert-unit creation under FRONTIER_UNITS_REQUIRE_RELEVANCE — decision-consumed, hard floor', () => {
+    for (let i = 0; i < 3; i++) judgment('discovery_relevance', 'shadow', { subjectType: 'expert_unit' });
+    expect(row(buildValueAllocation(db, NOW, {}, []), 'judgment:discovery_relevance').consumer_status).not.toBe('decision_consumed');
+    const r = row(buildValueAllocation(db, NOW, { FRONTIER_UNITS_REQUIRE_RELEVANCE: 'true' }, []), 'judgment:discovery_relevance');
+    expect(r.consumer_status).toBe('decision_consumed');
+    expect(r.hard_floor).toMatch(/gate/);
   });
 
   it('an enforce-mode judgment is decision-consumed: VALUE_PROVEN and a hard floor', () => {
