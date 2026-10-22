@@ -29,6 +29,12 @@ export interface JudgmentProvenance {
   uncertainty: { abstained: boolean; reason: string | null; min_confidence: number | null } | null;
   missing?: Record<string, string>;
   error?: string;
+  /**
+   * AUTHZ-F2: set when a writer re-points the row at another subject after the decision (a discovery verdict re-pointed at the
+   * expert unit it created). `evidence_reference` keeps naming what was judged; this names the move, so the row's current
+   * subject and its provenance never disagree silently.
+   */
+  subject_rewrite?: { from: { type: string; id: string }; to: { type: string; id: string }; at: string; reason: string };
 }
 export type ProvenanceRead = JudgmentProvenance | { status: 'unrecorded' };
 
