@@ -159,7 +159,7 @@ const runNode = (args) => new Promise((resolve) => {
 });
 
 test('llama route: runner 127.0.0.1:<port> → unix socket → host router; the maker exit code passes through', async () => {
-  const router = http.createServer((req, res) => res.end(`router saw ${req.url}`)).listen(0, '127.0.0.1');
+  const router = http.createServer((req, res) => { res.writeHead(200, { 'content-type': 'text/plain' }); res.end(`router saw ${req.url}`); }).listen(0, '127.0.0.1');
   await new Promise((r) => router.once('listening', r));
   const dir = tmp('gymr-'); const sock = path.join(dir, 's.sock');
   const write = process.stdout.write; process.stdout.write = () => true; // udsProxy announces 'ready' on stdout
