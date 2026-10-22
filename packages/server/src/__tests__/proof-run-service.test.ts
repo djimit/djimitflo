@@ -300,6 +300,15 @@ describeOrSkip('swarm proof runs', { hookTimeout: 30_000, testTimeout: 30_000 },
       expect(res.status).toBe(503);
       const body = await res.json() as any;
       expect(body.error.code).toBe('PROOF_RUN_RUNTIME_FAILED');
+      // AUTHZ-F1: the distilled failure rule (it embeds the raw error text) is proposed, never self-promoted into the
+      // engineering rules that assignment-context injects into maker prompts; only the operator's promote route can do that.
+      const rules = db.prepare("SELECT status, promotion_status, metadata FROM memory_candidates WHERE memory_type = 'engineering_rule'").all() as Array<{ status: string; promotion_status: string; metadata: string }>;
+      expect(rules.length).toBeGreaterThan(0);
+      for (const rule of rules) {
+        expect([rule.status, rule.promotion_status]).toEqual(['review_required', 'blocked_pending_review']);
+        expect(JSON.parse(rule.metadata)).toMatchObject({ awaiting_human_review: true });
+      }
+      expect(db.prepare("SELECT COUNT(*) AS n FROM memory_candidates WHERE status = 'promoted' AND memory_type = 'engineering_rule'").get()).toEqual({ n: 0 });
     } finally {
       process.env.PROOF_RUN_REPOSITORY_PATH = tempRepoDir;
       fs.rmSync(nonGitDir, { recursive: true, force: true });
