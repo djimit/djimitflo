@@ -405,7 +405,7 @@
         "kind": "unenforced_control_display",
         "severity": "LOW",
         "status": "fixed_doc",
-        "pr": "docs PR",
+        "pr": "#970",
         "detail": "mcp_tool_permissions is a catalog; the dashboard now says \"Catalog only — not enforced\""
       },
       "notes": "no enforcement layer added (no caller to enforce at)"
