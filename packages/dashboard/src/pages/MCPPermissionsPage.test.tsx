@@ -37,5 +37,7 @@ it('shows effective status and unfiltered server tool counts', async () => {
   expect(await screen.findByText('Catalog synced')).toBeTruthy();
   expect(screen.getByText(/Catalog synced: /)).toBeTruthy();
   expect(screen.getByText(/Registered tools: 44/)).toBeTruthy();
-  expect(screen.getByText(/Approval gates: 3/)).toBeTruthy();
+  expect(screen.getByText(/Marked requires approval \(not enforced\): 3/)).toBeTruthy();
+  // AUTHZ-F7: the page says the decisions are a catalog, not an enforced control
+  expect(screen.getByRole('note').textContent).toMatch(/Catalog only — not enforced/);
 });
