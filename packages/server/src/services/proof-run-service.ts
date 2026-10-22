@@ -821,11 +821,12 @@ export class ProofRunService {
         base.memory_flywheel_reason = memResult.reason || 'unknown';
       }
       // G12: distill an actionable rule from this run's evidence (procedural memory).
-      // This closes the self-improvement loop: the distilled rule is stored in the
-      // procedural store and retrievable by future runs via ContextInjectionService
-      // with storeFilter='procedural'. Best-effort — never fail the proof on distillation.
+      // AUTHZ-F1: the rule is an engineering_rule (review_required) and is only PROPOSED here. Promotion — which puts it
+      // into maker prompts (assignment-context) — needs the operator through the memory promote route (approve:task +
+      // human_approved); this service has proposal authority only and never approves its own output.
+      // Best-effort — never fail the proof on distillation.
       try {
-        const distilled = this.memory.distillFromRun({
+        this.memory.distillFromRun({
           loopRunId,
           capabilityId: '',
           runtime,
@@ -833,14 +834,8 @@ export class ProofRunService {
           makerLeaseId: '',
           checkerLeaseId: '',
           keyLearning: `Runtime ${runtime} proof run succeeded with ${makerLease ? 'maker' : 'no'} lease. The approach (codex headless, sandboxed, --ignore-user-config) is effective for this capability.`,
-          metadata: base,
+          metadata: { ...base, awaiting_human_review: true },
         });
-        this.memory.promote(distilled.id, { sinks: ['qdrant'], approved_by: 'proof-run-service' });
-        const distilledResult = await this.memory.upsertToSwarmMemory(distilled.id);
-        if (!distilledResult.ok) {
-          base.memory_flywheel_degraded = true;
-          base.memory_flywheel_reason = distilledResult.reason || 'unknown';
-        }
       } catch { /* best-effort: never fail the proof on distillation */ }
       const nestedProof = this.createNestedSpawnProof(loopRunId, proofRunId, runtime, base);
       await this.executeNestedSpawnProof(loopRunId, nestedProof, skipPermissions);
@@ -849,9 +844,10 @@ export class ProofRunService {
       try { this.intelligence.autoPromoteFromEvidence(makerCapId); } catch { /* best-effort */ }
     } catch (error) {
       proofRunError = error instanceof Error ? error : new Error(String(error));
-      // G12: distill a failure rule — learn what NOT to do next time.
+      // G12: distill a failure rule — learn what NOT to do next time. AUTHZ-F1: proposed only (it embeds raw error text);
+      // the operator promotes it, or not, through the memory promote route.
       try {
-        const failureRule = this.memory.distillFromRun({
+        this.memory.distillFromRun({
           loopRunId,
           capabilityId: '',
           runtime,
@@ -859,14 +855,8 @@ export class ProofRunService {
           makerLeaseId: '',
           checkerLeaseId: '',
           keyLearning: `Runtime ${runtime} proof run FAILED: ${proofRunError.message}. Consider a different runtime, splitting the finding, or checking the worktree state before retrying.`,
-          metadata: { ...base, error: proofRunError.message },
+          metadata: { ...base, error: proofRunError.message, awaiting_human_review: true },
         });
-        this.memory.promote(failureRule.id, { sinks: ['qdrant'], approved_by: 'proof-run-service' });
-        const failureResult = await this.memory.upsertToSwarmMemory(failureRule.id);
-        if (!failureResult.ok) {
-          base.memory_flywheel_degraded = true;
-          base.memory_flywheel_reason = failureResult.reason || 'unknown';
-        }
       } catch { /* best-effort */ }
       if (proofRunError.message.startsWith('PROOF_RUN_RUNTIME_') || proofRunError.message === 'PROOF_RUN_VERIFICATION_BLOCKED' || proofRunError.message === 'PROOF_RUN_COMPLETE_FAILED') {
         throw proofRunError;
@@ -1236,12 +1226,12 @@ export class ProofRunService {
     // G30: the memory_curator is the active curator — after the nested spawn completes,
     // the curator distills a rule from the run's evidence (not the proof-run-service
     // inline call). This makes the curator the active distiller, not a placeholder.
+    // AUTHZ-F1: the curator proposes; it does not promote (the rule is review_required until the operator approves it).
     try {
       const curatorLeaseId = nested.child_lease_id;
       const curatorResult = results.find((r) => r.lease.id === curatorLeaseId);
       if (curatorResult && curatorResult.lease.status === 'completed') {
-        
-        const distilled = this.memory.distillFromRun({
+        this.memory.distillFromRun({
           loopRunId,
           capabilityId: '',
           runtime: String(curatorResult.lease.runtime || ''),
@@ -1249,14 +1239,8 @@ export class ProofRunService {
           makerLeaseId: String(nested.root_lease_id),
           checkerLeaseId: String(curatorLeaseId),
           keyLearning: `Memory curator distilled: runtime ${curatorResult.lease.runtime} succeeded. The nested specialist approach (planner + curator, parallel, sandboxed) is effective.`,
-          metadata: { curator_active: true, curator_lease_id: curatorLeaseId },
+          metadata: { curator_active: true, curator_lease_id: curatorLeaseId, awaiting_human_review: true },
         });
-        this.memory.promote(distilled.id, { sinks: ['qdrant'], approved_by: 'memory_curator' });
-        const curatedResult = await this.memory.upsertToSwarmMemory(distilled.id);
-        if (!curatedResult.ok) {
-          // memory flywheel degraded — proof still succeeds, but flag it in metadata for observability
-          // (no throw: curator distillation is best-effort; the flag surfaces in run metadata)
-        }
       }
     } catch { /* best-effort: never fail the proof on curator distillation */ }
   }

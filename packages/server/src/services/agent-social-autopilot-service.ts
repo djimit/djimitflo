@@ -383,9 +383,13 @@ export class AgentSocialAutopilotService {
   }
 }
 
-/** Q2: true when COMMONS_THREAD_GATE_ENABLED and the thread's two most recent contribution verdicts are both 'no'. */
+/**
+ * Q2: true when COMMONS_THREAD_GATE_ENABLED and the thread's two most recent contribution verdicts are both 'no'.
+ * AUTHZ-F3: only while the commons_contribution judgment itself is on — the rows of a judgment that was switched off are
+ * stale and must not gate anything (prod: off since 09-30 while the gate kept reading pre-09-30 verdicts).
+ */
 export function threadGated(db: Database, message: AgentMessage, env: NodeJS.ProcessEnv = process.env): boolean {
-  if (env.COMMONS_THREAD_GATE_ENABLED !== 'true') return false;
+  if (env.COMMONS_THREAD_GATE_ENABLED !== 'true' || judgmentMode(commonsContribution.id, env) === 'off') return false;
   const threadId = String(message.payload?.thread_id || '');
   if (!threadId) return false;
   try {
