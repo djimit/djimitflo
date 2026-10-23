@@ -250,9 +250,10 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
     res.json(runtimeConfigView());
   });
 
-  // service map: reachability of the endpoints this server is configured to use (env only, no credentials sent)
+  // service map: reachability of the endpoints this server is configured to use (env only, no credentials sent),
+  // plus the DF-07 state ladder from durable business evidence in this db
   router.get('/services', requireAuth, requirePermission('read:evidence'), async (_req, res, next) => {
-    try { res.json({ services: await serviceMap() }); } catch (error) { next(error); }
+    try { res.json({ services: await serviceMap(process.env, fetch, Date.now(), db) }); } catch (error) { next(error); }
   });
 
   router.get('/metrics', requireAuth, requirePermission('read:evidence'), (_req, res) => {
