@@ -1,5 +1,6 @@
 import { swarmEventBus } from './swarm-event-bus';
 import { randomUUID } from 'crypto';
+import { fleetBusAuthHeaders } from './fleet-bus-auth';
 import type { Database } from 'better-sqlite3';
 
 /**
@@ -40,7 +41,6 @@ export class EventOutboxService {
     const bus = process.env.DJIMIT_EVENT_BUS_URL?.replace(/\/$/, '');
     if (!bus) return { attempted: 0, published: 0, failed: 0, status: 'DISABLED' };
     const stream = process.env.DJIMIT_EVENT_STREAM || 'djimit.events';
-    const token = process.env.DJIMIT_EVENT_BUS_TOKEN;
     const rows = this.db.prepare(`SELECT event_id, event_type, aggregate_id, correlation_id, payload_json, created_at FROM event_outbox
       WHERE status IN ('pending', 'failed') AND attempts < 10 ORDER BY created_at ASC LIMIT ?`).all(Math.max(1, Math.min(limit, 500))) as Array<{
       event_id: string; event_type: string; aggregate_id: string; correlation_id: string; payload_json: string; created_at: string }>;
@@ -50,7 +50,7 @@ export class EventOutboxService {
       try {
         const response = await this.fetchFn(`${bus}/events/${encodeURIComponent(stream)}`, {
           method: 'POST', signal: AbortSignal.timeout(10_000),
-          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          headers: { 'Content-Type': 'application/json', ...fleetBusAuthHeaders() },
           body: JSON.stringify({
             event_id: `djimitflo:${row.event_id}`, event_type: row.event_type, source: 'djimitflo', occurred_at: row.created_at,
             aggregate_id: row.aggregate_id, correlation_id: row.correlation_id, dedupe_key: `djimitflo:${row.event_id}`, ...JSON.parse(row.payload_json || '{}'),

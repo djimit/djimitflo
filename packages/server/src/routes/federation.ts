@@ -3,6 +3,7 @@ import { rateLimit } from 'express-rate-limit';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { swarmEventBus } from '../services/swarm-event-bus';
+import { agentRegistryAuthHeaders } from '../services/fleet-bus-auth';
 import { LoopService } from '../services/loop-service';
 import { runtimeConcurrencyLimit, runtimeConcurrencySemaphore } from '../services/concurrency-semaphore';
 import { resolveRepositoryRoot } from '../utils/repository-root';
@@ -58,7 +59,7 @@ export type FleetAgentsResult =
 export async function fetchFleetAgents(registryUrl = resolveAgentRegistryUrl()): Promise<FleetAgentsResult> {
   try {
     const response = await fetch(`${registryUrl}/agents`, {
-      headers: { accept: 'application/json' },
+      headers: { accept: 'application/json', ...agentRegistryAuthHeaders() },
       signal: AbortSignal.timeout(5_000),
     });
     if (!response.ok) return { ok: false, registry_url: registryUrl, reason: `registry_http_${response.status}`, agents: [] };
