@@ -21,6 +21,19 @@ KEY_FILE = os.environ.get('DJIMIT_FLEET_EVENT_KEY_FILE', os.path.expanduser('~/.
 PAYLOAD_FIELDS = ('duration_ms', 'model', 'ref', 'tokens')
 
 
+def bus_headers():
+    """S3 (docs/runbooks/fleet-bus-auth.md): Content-Type plus this host's fleet bus bearer token when it has one
+    (DJIMIT_EVENT_BUS_TOKEN, else the file DJIMIT_FLEET_BUS_TOKEN_FILE, default ~/.djimit/fleet-bus.token, mode 600)."""
+    token = os.environ.get('DJIMIT_EVENT_BUS_TOKEN', '').strip()
+    if not token:
+        try:
+            with open(os.environ.get('DJIMIT_FLEET_BUS_TOKEN_FILE', os.path.expanduser('~/.djimit/fleet-bus.token'))) as f:
+                token = f.read().strip()
+        except OSError:
+            token = ''
+    return {'Content-Type': 'application/json', **({'Authorization': 'Bearer ' + token} if token else {})}
+
+
 def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
 
@@ -90,7 +103,7 @@ def main():
     if a.dry_run:
         print(json.dumps(event)); return
     try:
-        req = urllib.request.Request(a.bus.rstrip('/') + '/events/' + a.stream, json.dumps(event).encode(), {'Content-Type': 'application/json'})
+        req = urllib.request.Request(a.bus.rstrip('/') + '/events/' + a.stream, json.dumps(event).encode(), bus_headers())
         urllib.request.urlopen(req, timeout=10).read()
     except Exception as err:  # reporting must never break the agent's own work
         print('agent.outcome not sent: ' + str(err), file=sys.stderr)
