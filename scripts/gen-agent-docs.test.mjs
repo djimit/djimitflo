@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { BUDGETS, check, humanMs, lineCount, parseAdmissions, parseEvolutionFlags, parseRunbookDefaults, parseSchedulers, renderHeartbeat, renderTools } from './gen-agent-docs.mjs';
+import { BUDGETS, check, humanMs, lineCount, parseAdmissions, parseEvolutionFlags, parseRunbookDefaultTables, parseRunbookDefaults, parseSchedulers, renderConfigDefaults, renderHeartbeat, renderTools } from './gen-agent-docs.mjs';
 
 // EVOLUTION_FLAGS literal → names in order, acting parsed
 const flagsSrc = `export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
@@ -15,6 +15,12 @@ assert.throws(() => parseEvolutionFlags('const x = 1;'), /EVOLUTION_FLAGS not fo
 // runbook table rows → default column; first occurrence wins
 const md = '| Flag | Code default |\n|---|---|\n| `OLLAMA_THROTTLE_AT` | 0.7 | yes |\n| `OLLAMA_THROTTLE_AT` | later | no |\n';
 assert.equal(parseRunbookDefaults(md).get('OLLAMA_THROTTLE_AT'), '0.7');
+
+// DF-08: only tables whose second header cell is a default column; escaped pipes are text; `NAME` (+ …) cells count
+const md2 = ['| Flag | Effect |', '|---|---|', '| `EFFECT_ONLY` | prose, not a default |', '',
+  '| Flag | Code default | Acting |', '|---|---|---|', '| `A_MODE` | off (`a\\|b`) | yes |', '| `B_MODE` (+ `B_EXTRA`) | 5 | no |', '',
+  '| Flag | Default | What |', '|---|---|---|', '| `A_MODE` | later | x |', '| `C_HOUR` | 7 | y |'].join('\n');
+assert.deepEqual([...parseRunbookDefaultTables(md2)], [['A_MODE', 'off (`a|b`)'], ['B_MODE', '5'], ['C_HOUR', '7']]);
 
 // admission ledger: legacy(...) calls get LEGACY_EXPIRY, object literals their own expires_at; null = not bound
 const admSrc = `const LEGACY_EXPIRY = '2026-12-31T00:00:00Z';
@@ -54,6 +60,8 @@ assert.equal(lineCount('a\nb'), 2);
 // the repo itself: generated files are fresh and every workspace file is within budget
 assert.deepEqual(check(), []);
 assert.ok(renderTools().startsWith('<!-- generated — do not edit.'));
+assert.ok(renderConfigDefaults().includes("  LOOP_BANDIT_MAX_SHARE: '0.1',"));
+assert.ok(renderConfigDefaults().includes("  'OLLAMA_AUTO_FAILOVER',"));
 assert.ok(renderHeartbeat().includes('| inference_failover_probe | `OLLAMA_AUTO_FAILOVER` | 30 min |'));
 
 // --check detects a stale file and a budget breach (temp copy of the sources)
@@ -67,6 +75,7 @@ for (const rel of ['docs/usage-plan-limits.json', 'docs/runbooks/self-improvemen
 for (const f of Object.keys(BUDGETS)) fs.writeFileSync(path.join(tmp, f), 'x\n');
 fs.writeFileSync(path.join(tmp, 'TOOLS.md'), renderTools(tmp));
 fs.writeFileSync(path.join(tmp, 'HEARTBEAT.md'), renderHeartbeat(tmp));
+fs.writeFileSync(path.join(tmp, 'packages/server/src/services/config-defaults.generated.ts'), renderConfigDefaults(tmp));
 assert.deepEqual(check(tmp), []);
 fs.writeFileSync(path.join(tmp, 'HEARTBEAT.md'), 'hand edit\n');
 fs.writeFileSync(path.join(tmp, 'SOUL.md'), 'x\n'.repeat(BUDGETS['SOUL.md'] + 1));
