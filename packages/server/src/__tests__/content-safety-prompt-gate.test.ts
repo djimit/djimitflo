@@ -138,14 +138,16 @@ it('committee recipes: enforce drops unsafe expert claims and discovery titles f
   expect(gateRows()).toMatchObject([{ subject_type: 'expert_claim', subject_id: 'c2', mode: 'enforce' }, { subject_type: 'expert_unit', subject_id: 'u2', mode: 'enforce' }]);
 });
 
-it('kbContext: enforce does not show a page without a safe verdict (ingest check errored), shadow does', async () => {
+it('kbContext: a page without a safe verdict (ingest check errored) is not shown under shadow or enforce, until a re-send verdicts it', async () => {
   vi.stubEnv('CONTENT_SAFETY_MODE', 'shadow');
-  await ingestKbPages(db, 'workstation', [{ path: 'concepts/retry-budgets.md', title: 'Retry budgets', body: 'Bounded retry with backoff' }],
-    vi.fn(async (url: string, init: { body: string }) => String(url).endsWith('/embeddings') ? fake(url, init) : failing()) as unknown as typeof fetch);
-  vi.stubEnv('KB_CONTEXT_ENABLED', 'true');
   const errored = vi.fn(async (url: string, init: { body: string }) => String(url).endsWith('/embeddings') ? fake(url, init) : failing()) as unknown as typeof fetch;
-  expect(await kbContext(db, { type: 'committee', id: 'p1' }, 'add a retry to the worker', 3, errored)).toContain('[kb:concepts/retry-budgets.md]');
+  const page = { path: 'concepts/retry-budgets.md', title: 'Retry budgets', body: 'Bounded retry with backoff' };
+  expect((await ingestKbPages(db, 'workstation', [page], errored)).pending).toEqual([page.path]);
+  vi.stubEnv('KB_CONTEXT_ENABLED', 'true');
+  // E2: shadow used to serve it (an error counted as a pass); now unknown is never served, in either mode
+  expect(await kbContext(db, { type: 'committee', id: 'p1' }, 'add a retry to the worker', 3, fake as unknown as typeof fetch)).toBeNull();
   vi.stubEnv('CONTENT_SAFETY_MODE', 'enforce');
-  expect(await kbContext(db, { type: 'committee', id: 'p1' }, 'add a retry to the worker', 3, errored)).toBeNull();
-  expect(await kbContext(db, { type: 'committee', id: 'p1' }, 'add a retry to the worker', 3, fake as unknown as typeof fetch)).toContain('[kb:concepts/retry-budgets.md]');
+  expect(await kbContext(db, { type: 'committee', id: 'p1' }, 'add a retry to the worker', 3, fake as unknown as typeof fetch)).toBeNull();
+  expect((await ingestKbPages(db, 'workstation', [page], fake as unknown as typeof fetch)).accepted).toEqual([page.path]); // the pusher re-sends it
+  expect(await kbContext(db, { type: 'committee', id: 'p1' }, 'add a retry to the worker', 3, errored)).toContain('[kb:concepts/retry-budgets.md]'); // verdict reused, no call
 });
