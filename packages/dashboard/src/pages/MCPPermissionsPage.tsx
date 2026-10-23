@@ -103,7 +103,13 @@ export function MCPPermissionsPage() {
       <div>
         <h1 className="text-3xl font-bold text-foreground">MCP Permissions</h1>
         <p className="text-foreground-secondary mt-2">
-          MCP server status and effective tool decisions.
+          MCP server status and catalogued tool decisions.
+        </p>
+        {/* AUTHZ-F7: verified 2026-10-22 — no live code path calls an external MCP tool and the djimitflo MCP server checks
+            roles, not this table, so these decisions are a catalog. Do not read them as an enforced control. */}
+        <p role="note" className="mt-3 text-sm text-foreground-secondary border border-border rounded-md px-3 py-2">
+          Catalog only — not enforced. Djimitflo does not call external MCP tools, and its own MCP server checks user roles,
+          not these decisions. &quot;Allowed&quot;, &quot;Requires approval&quot; and &quot;Denied&quot; are recorded here but gate no call.
         </p>
       </div>
 
@@ -211,7 +217,7 @@ export function MCPPermissionsPage() {
                   <div className="text-xs text-foreground-tertiary mt-2">
                     Registered tools: {server.tool_count || 0}
                     <span className="mx-1">·</span>
-                    Approval gates: {server.approval_gate_count || 0}
+                    Marked requires approval (not enforced): {server.approval_gate_count || 0}
                   </div>
                   {server.metadata?.catalog_only === true && (
                     <div className="text-xs text-foreground-tertiary mt-1">Service dependency — no direct MCP tools</div>
