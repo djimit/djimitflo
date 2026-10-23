@@ -17,6 +17,16 @@
 import type { Database } from 'better-sqlite3';
 import { WorktreeManager } from './worktree-manager';
 import { CANCEL_LEASE_METADATA_SQL, cancelLeaseBind } from './lease-failure';
+import { RuntimeLeaseRegistry } from './loop-recovery-service';
+
+const HOUR_MS = 60 * 60 * 1000;
+const STALE_LEASE_MS = HOUR_MS;
+/** Loop-run states in which a prepared/running lease may still be legitimately waiting or working. */
+const ACTIVE_RUN_STATUSES = new Set(['created', 'planning', 'running', 'verifying', 'blocked', 'interrupted']);
+const TERMINAL_TASK_STATUSES = new Set(['completed', 'failed', 'cancelled']);
+
+/** `datetime(x)`'s text form ('YYYY-MM-DD HH:MM:SS', UTC) of an instant — what the pre-DF-02 repair compared against. */
+const sqliteText = (d: Date) => d.toISOString().slice(0, 19).replace('T', ' ');
 
 interface HealthCheck {
   name: string;
@@ -49,24 +59,28 @@ export class SelfHealingService {
   private incidents: Incident[] = [];
   private actions: HealingAction[] = [];
 
-  constructor(private db: Database) {}
+  /** `now` is injectable for tests; every time predicate is evaluated against it, never against SQLite's own clock. */
+  constructor(private db: Database, private now: () => Date = () => new Date()) {}
 
   /**
    * Run full system health check.
    */
   checkHealth(): HealthCheck[] {
     const checks: HealthCheck[] = [];
-    const now = new Date().toISOString();
+    const clock = this.now();
+    const now = clock.toISOString();
 
     // Check 1: Failed loop rate
+    // DF-02: julianday() on both sides. Stored timestamps mix ISO-8601 ('...T...Z') and SQLite ('... ...') text, and a raw
+    // text comparison sorts 'T' after ' ', so ISO rows from earlier on the cutoff day were counted inside the window.
     const loopStats = this.db.prepare(`
       SELECT
         COUNT(*) as total,
         SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
         SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END) as blocked
       FROM loop_runs
-      WHERE created_at > datetime('now', '-24 hours')
-    `).get() as any;
+      WHERE julianday(created_at) > julianday(?)
+    `).get(new Date(clock.getTime() - 24 * HOUR_MS).toISOString()) as any;
 
     const failureRate = loopStats.total > 0 ? (loopStats.failed || 0) / loopStats.total : 0;
     checks.push({
@@ -76,12 +90,12 @@ export class SelfHealingService {
       lastChecked: now,
     });
 
-    // Check 2: Stale worker leases
+    // Check 2: Stale worker leases (DF-02: same-day ISO rows were never counted). NULL/unparseable updated_at → not counted.
     const staleLeases = this.db.prepare(`
       SELECT COUNT(*) as c FROM worker_leases
       WHERE status IN ('running', 'prepared')
-      AND updated_at < datetime('now', '-1 hour')
-    `).get() as any;
+      AND julianday(updated_at) < julianday(?)
+    `).get(new Date(clock.getTime() - STALE_LEASE_MS).toISOString()) as any;
 
     checks.push({
       name: 'stale_leases',
@@ -206,6 +220,55 @@ export class SelfHealingService {
     return incident;
   }
 
+  /**
+   * The automatic stale-lease repair (DF-02). Detection was fixed to julianday(); fixing this predicate the same way would
+   * have started cancelling work the old one never touched: approved makers run inside the execution engine while their
+   * lease stays 'prepared', and remote makers run up to ~77 min. So a lease is cancelled only when ALL hold:
+   *  1. the pre-DF-02 text predicate (`updated_at < datetime(now, '-1 hour')`) matches — an upper bound: never more than
+   *     before. For ISO rows it only matches previous-UTC-day rows, so same-day stale leases are detected but not cancelled;
+   *  2. julianday(updated_at) is really older than 1 h (drops the old just-after-midnight false positives);
+   *  3. no live work can own it: not a remote lease, not live in this process (RuntimeLeaseRegistry), no bound
+   *     execution-engine task that is non-terminal or missing, and its loop run is absent or finished (and not a remote gym run).
+   * ponytail: (1) keeps the legacy text bound on purpose. Drop it only after a stale-lease policy review proves (3) covers
+   * every live-work shape (upgrade trigger: lease heartbeats, or same-day abandoned leases piling up in the health check).
+   */
+  private cancelAbandonedLeases(): { cancelled: number; kept: number } {
+    const clock = this.now();
+    const cutoff = new Date(clock.getTime() - STALE_LEASE_MS);
+    const candidates = this.db.prepare(`
+      SELECT l.id, l.runtime, l.metadata, r.status AS run_status, r.metadata AS run_metadata
+      FROM worker_leases l LEFT JOIN loop_runs r ON r.id = l.loop_run_id
+      WHERE l.status IN ('running', 'prepared')
+      AND julianday(l.updated_at) < julianday(?)
+    `).all(cutoff.toISOString()) as Array<{ id: string; runtime: string | null; metadata: string | null; run_status: string | null; run_metadata: string | null }>;
+    const legacyCutoff = sqliteText(cutoff);
+    const legacyMatch = this.db.prepare('SELECT 1 FROM worker_leases WHERE id = ? AND updated_at < ?');
+    const hasTasks = Boolean(this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").get());
+    const taskStatus = hasTasks ? this.db.prepare('SELECT status FROM tasks WHERE id = ?') : null;
+    const parse = (s: string | null): Record<string, any> => { try { const v = JSON.parse(s || '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; } };
+
+    const abandoned = candidates.filter((l) => {
+      if (!legacyMatch.get(l.id, legacyCutoff)) return false;
+      if (l.runtime === 'remote' || RuntimeLeaseRegistry.isLive(l.id)) return false;
+      if (l.run_status && ACTIVE_RUN_STATUSES.has(l.run_status)) return false;
+      if (parse(l.run_metadata).gym?.remote_host) return false;
+      const taskId = parse(l.metadata).execution_task_id;
+      if (taskId !== undefined && taskId !== null) {
+        const task = taskStatus?.get(String(taskId)) as { status: string } | undefined;
+        if (!task || !TERMINAL_TASK_STATUSES.has(task.status)) return false; // unknown → keep
+      }
+      return true;
+    });
+
+    const now = clock.toISOString();
+    const cancel = this.db.prepare(`
+      UPDATE worker_leases SET status = 'cancelled', updated_at = ?, ${CANCEL_LEASE_METADATA_SQL}
+      WHERE id = ? AND status IN ('running', 'prepared')
+    `);
+    const cancelled = this.db.transaction(() => abandoned.reduce((n, l) => n + cancel.run(now, ...cancelLeaseBind('self_healing_stale_lease', now), l.id).changes, 0))();
+    return { cancelled, kept: candidates.length - cancelled };
+  }
+
   private attemptFix(incident: Incident): HealingAction {
     const action: HealingAction = {
       id: `action-${Date.now()}`,
@@ -226,13 +289,8 @@ export class SelfHealingService {
       case 'stale_leases':
         action.action = 'cancel_stale_leases';
         try {
-          const now = new Date().toISOString();
-          const result = this.db.prepare(`
-            UPDATE worker_leases SET status = 'cancelled', updated_at = datetime('now'), ${CANCEL_LEASE_METADATA_SQL}
-            WHERE status IN ('running', 'prepared')
-            AND updated_at < datetime('now', '-1 hour')
-          `).run(...cancelLeaseBind('self_healing_stale_lease', now));
-          action.output = `Cancelled ${result.changes} stale leases`;
+          const { cancelled, kept } = this.cancelAbandonedLeases();
+          action.output = `Cancelled ${cancelled} stale leases` + (kept ? `; kept ${kept} (live/remote/active work or same-day guard)` : '');
           action.result = 'success';
         } catch (error) {
           action.output = `Failed: ${error instanceof Error ? error.message : String(error)}`;
