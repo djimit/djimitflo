@@ -1,0 +1,172 @@
+{
+ "source": "probes/p6-contest-graded.js, prod 2026-10-22; loop_events contest_graded (GRADED_CONTEST_MODE=shadow)",
+ "contests": [
+  {
+   "at": "2026-10-10T13:55:17.227Z",
+   "agree": true,
+   "current_winner_score": 0.333,
+   "graded_winner_score": 0.333,
+   "scores": [
+    0.333,
+    0.333
+   ]
+  },
+  {
+   "at": "2026-10-10T14:18:42.078Z",
+   "agree": true,
+   "current_winner_score": null,
+   "graded_winner_score": null,
+   "scores": []
+  },
+  {
+   "at": "2026-10-12T17:25:52.620Z",
+   "agree": true,
+   "current_winner_score": 0.849,
+   "graded_winner_score": 0.849,
+   "scores": [
+    0.802,
+    0.849
+   ]
+  },
+  {
+   "at": "2026-10-12T18:02:39.662Z",
+   "agree": true,
+   "current_winner_score": 0,
+   "graded_winner_score": 0,
+   "scores": [
+    0,
+    0
+   ]
+  },
+  {
+   "at": "2026-10-13T18:29:10.901Z",
+   "agree": true,
+   "current_winner_score": 0.774,
+   "graded_winner_score": 0.774,
+   "scores": [
+    0.736,
+    0.774
+   ]
+  },
+  {
+   "at": "2026-10-14T00:38:07.957Z",
+   "agree": true,
+   "current_winner_score": 1,
+   "graded_winner_score": 1,
+   "scores": [
+    1,
+    1
+   ]
+  },
+  {
+   "at": "2026-10-14T19:39:54.960Z",
+   "agree": false,
+   "current_winner_score": 0,
+   "graded_winner_score": 0.333,
+   "scores": [
+    0,
+    0.333
+   ]
+  },
+  {
+   "at": "2026-10-14T19:47:41.670Z",
+   "agree": true,
+   "current_winner_score": 0.333,
+   "graded_winner_score": 0.333,
+   "scores": [
+    0.333,
+    0.333
+   ]
+  },
+  {
+   "at": "2026-10-14T19:54:28.952Z",
+   "agree": true,
+   "current_winner_score": 0,
+   "graded_winner_score": 0,
+   "scores": [
+    0,
+    0
+   ]
+  },
+  {
+   "at": "2026-10-14T23:02:15.493Z",
+   "agree": true,
+   "current_winner_score": 0,
+   "graded_winner_score": 0,
+   "scores": [
+    0,
+    0
+   ]
+  },
+  {
+   "at": "2026-10-15T19:39:57.816Z",
+   "agree": true,
+   "current_winner_score": 1,
+   "graded_winner_score": 1,
+   "scores": [
+    1,
+    1
+   ]
+  },
+  {
+   "at": "2026-10-16T22:14:20.587Z",
+   "agree": false,
+   "current_winner_score": 0.667,
+   "graded_winner_score": 1,
+   "scores": [
+    0.667,
+    1
+   ]
+  },
+  {
+   "at": "2026-10-18T04:56:42.840Z",
+   "agree": true,
+   "current_winner_score": 0.333,
+   "graded_winner_score": 0.333,
+   "scores": [
+    0.333,
+    0.333
+   ]
+  },
+  {
+   "at": "2026-10-19T19:08:26.586Z",
+   "agree": true,
+   "current_winner_score": 1,
+   "graded_winner_score": 1,
+   "scores": [
+    1,
+    1
+   ]
+  },
+  {
+   "at": "2026-10-19T19:16:34.555Z",
+   "agree": true,
+   "current_winner_score": 0,
+   "graded_winner_score": 0,
+   "scores": [
+    0,
+    0
+   ]
+  },
+  {
+   "at": "2026-10-19T22:52:42.184Z",
+   "agree": true,
+   "current_winner_score": 1,
+   "graded_winner_score": 1,
+   "scores": [
+    1,
+    1
+   ]
+  },
+  {
+   "at": "2026-10-20T22:20:31.159Z",
+   "agree": true,
+   "current_winner_score": 0,
+   "graded_winner_score": 0,
+   "scores": [
+    0,
+    0
+   ]
+  }
+ ]
+}
