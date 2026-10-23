@@ -1,8 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { PlugZap, Circle } from 'lucide-react';
 import type { MCPServer } from '@djimitflo/shared';
-import { api } from '../lib/api';
-import { ACTION_PERMISSIONS as P, needsText, useCan } from '../lib/permissions';
+import { api, type MCPRefreshScope } from '../lib/api';
+import { ACTION_PERMISSIONS as P, needsText, permissionError, useCan } from '../lib/permissions';
 
 type MCPServerView = MCPServer & {
   effective_status?: MCPServer['status'] | 'catalog' | 'stale' | 'policy_blocked';
@@ -38,6 +38,7 @@ const STATUS_TEXT: Record<string, string> = {
 
 export function MCPPermissionsPage() {
   const canAdd = useCan(P.mcpCreateServer);
+  const canRefresh = useCan(P.mcpRefreshServers);
   const [servers, setServers] = useState<MCPServerView[]>([]);
   const [permissions, setPermissions] = useState<Array<Record<string, unknown>>>([]);
   const [serverId, setServerId] = useState('');
@@ -52,11 +53,15 @@ export function MCPPermissionsPage() {
   const [newServerDescription, setNewServerDescription] = useState('');
   const [addServerError, setAddServerError] = useState<string | null>(null);
   const [addingServer, setAddingServer] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshScope, setRefreshScope] = useState<MCPRefreshScope | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  // L6-08: opening the page only reads stored status; probing is the explicit Refresh status button.
   useEffect(() => {
-    refreshServers();
+    loadServers();
   }, []);
 
-  function refreshServers() {
+  function loadServers() {
     setServersLoading(true);
     return api.getMCPServers()
       .then((serversResult) => {
@@ -78,13 +83,27 @@ export function MCPPermissionsPage() {
         setNewServerUrl('');
         setNewServerDescription('');
         setShowAddServer(false);
-        return refreshServers();
+        return loadServers();
       })
       .catch((error) => {
         setAddServerError(error instanceof Error ? error.message : 'Failed to add server');
       })
       .finally(() => setAddingServer(false));
   }
+
+  function probeServers() {
+    setRefreshing(true);
+    setRefreshError(null);
+    api.refreshMCPServers()
+      .then((result) => {
+        setServers(result.servers);
+        setRefreshScope(result.refresh);
+      })
+      .catch((error) => setRefreshError(permissionError(error, P.mcpRefreshServers, 'Refresh failed')))
+      .finally(() => setRefreshing(false));
+  }
+
+  const asOf = servers.map((server) => server.last_ping_at).filter((value): value is string => Boolean(value)).sort().pop();
 
   useEffect(() => {
     setPermissionsLoading(true);
@@ -122,16 +141,39 @@ export function MCPPermissionsPage() {
               ({servers.length})
             </span>
           </h2>
-          <button
-            type="button"
-            onClick={() => setShowAddServer((value) => !value)}
-            disabled={!canAdd}
-            title={canAdd ? undefined : needsText(P.mcpCreateServer)}
-            className="text-sm px-3 py-1.5 rounded-md border border-border text-foreground-secondary hover:text-foreground hover:border-accent"
-          >
-            {showAddServer ? 'Cancel' : 'Add server'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={probeServers}
+              disabled={!canRefresh || refreshing}
+              title={canRefresh ? 'Probe every registered server URL now' : needsText(P.mcpRefreshServers)}
+              className="text-sm px-3 py-1.5 rounded-md border border-border text-foreground-secondary hover:text-foreground hover:border-accent disabled:opacity-50"
+            >
+              Refresh status
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowAddServer((value) => !value)}
+              disabled={!canAdd}
+              title={canAdd ? undefined : needsText(P.mcpCreateServer)}
+              className="text-sm px-3 py-1.5 rounded-md border border-border text-foreground-secondary hover:text-foreground hover:border-accent"
+            >
+              {showAddServer ? 'Cancel' : 'Add server'}
+            </button>
+          </div>
         </div>
+
+        <p className="text-xs text-foreground-tertiary">
+          Stored status, as of {asOf ? `the latest recorded check (${new Date(asOf).toLocaleString()})` : 'no recorded check'}. Opening this page does not probe.
+        </p>
+        {refreshScope && (
+          <p className="text-xs text-foreground-secondary">
+            Probed {refreshScope.probed.length} server{refreshScope.probed.length === 1 ? '' : 's'}, skipped {refreshScope.skipped.length}
+            {refreshScope.skipped.length > 0 && ` (${refreshScope.skipped.map((entry) => `${entry.id}: ${entry.reason.replace('_', ' ')}`).join(', ')})`}
+            {' '}at {new Date(refreshScope.refreshed_at).toLocaleTimeString()}.
+          </p>
+        )}
+        {refreshError && <p className="text-xs text-red-400">{refreshError}</p>}
 
         {showAddServer && (
           <form onSubmit={handleAddServer} className="bg-background-secondary border border-border rounded-lg p-4 space-y-3">

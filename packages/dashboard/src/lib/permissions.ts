@@ -18,6 +18,7 @@ export const ACTION_PERMISSIONS = {
   memoryReview: 'approve:task', // POST /swarms/memory/candidates/:id/promote|reject
   telegramIdentity: 'manage:config', // PUT|DELETE /self-improve/telegram-identities/:id
   mcpCreateServer: 'manage:config', // POST /mcp/servers
+  mcpRefreshServers: 'manage:config', // POST /mcp/servers/refresh
   policyUpdate: 'manage:config', // PATCH /policies/:id
   runtimeConfig: 'manage:config', // GET /health/config
 } as const;

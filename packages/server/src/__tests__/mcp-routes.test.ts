@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import express from 'express';
+import http from 'http';
+import { ROLE_PERMISSIONS, type UserRole } from '@djimitflo/shared';
 import { createMCPRoutes } from '../routes/mcp';
 import { installOutboundGuard } from '../utils/outbound-guard';
 
@@ -61,9 +63,12 @@ describe('MCP routes', () => {
 
     const app = express();
     app.use(express.json());
+    // role comes from an x-role header (default admin); permissions are the real ROLE_PERMISSIONS table
+    const roleOf = (req: any): UserRole => (req.user?.role ?? req.headers['x-role'] ?? 'admin') as UserRole;
     app.use(createMCPRoutes(db, {
-      requireAuth: (req: any, _res: any, next: any) => { req.user = { role: 'admin' }; next(); },
-      requirePermission: () => (_req: any, _res: any, next: any) => next(),
+      requireAuth: (req: any, _res: any, next: any) => { req.user = { role: roleOf(req) }; next(); },
+      requirePermission: (permission: string) => (req: any, res: any, next: any) =>
+        ROLE_PERMISSIONS[roleOf(req)]?.includes(permission) ? next() : res.status(403).json({ error: { code: 'FORBIDDEN' } }),
     } as any));
     await new Promise<void>((resolve) => {
       server = app.listen(0, resolve);
@@ -148,7 +153,7 @@ describe('MCP routes', () => {
   it('skips the health probe and reports a calm status for a known_unreachable server', async () => {
     db.prepare("INSERT INTO mcp_servers VALUES ('s3', 'offline-tool', '', 'unknown', '', '[]', '{}', null, null, 'http://192.168.1.28:9', null, null, ?, 'now', 'now')")
       .run(JSON.stringify({ known_unreachable: true, known_unreachable_reason: 'Firewalled from this deployment.' }));
-    const response = await fetch(`${baseUrl}/servers?refresh=true`);
+    const response = await fetch(`${baseUrl}/servers/refresh`, { method: 'POST' });
     const body = await response.json() as { servers: Array<Record<string, unknown>> };
     const offline = body.servers.find((s) => s.name === 'offline-tool');
     expect(offline).toMatchObject({ status: 'stopped', error_message: 'Firewalled from this deployment.' });
@@ -159,7 +164,7 @@ describe('MCP routes', () => {
     installOutboundGuard({ OUTBOUND_DENY_HOSTS: 'blocked.invalid' }, () => undefined);
     try {
       db.prepare("INSERT INTO mcp_servers VALUES ('s4', 'workstation-tool', '', 'unknown', '', '[]', '{}', null, null, 'http://blocked.invalid:9', null, null, '{}', 'now', 'now')").run();
-      const body = await (await fetch(`${baseUrl}/servers?refresh=true`)).json() as { servers: Array<Record<string, unknown>> };
+      const body = await (await fetch(`${baseUrl}/servers/refresh`, { method: 'POST' })).json() as { servers: Array<Record<string, unknown>> };
       const ws = body.servers.find((s) => s.name === 'workstation-tool');
       expect(ws?.status).toBe('stopped');
       expect(String(ws?.error_message)).toContain('Blocked by policy');
@@ -181,5 +186,69 @@ describe('MCP routes', () => {
 
     const body = await (await fetch(`${baseUrl}/servers`)).json() as { servers: Array<Record<string, unknown>> };
     expect(body.servers[0]).toMatchObject({ status: 'stopped', effective_status: 'policy_blocked' });
+  });
+
+  describe('L6-08: reads are passive, refresh is an explicit manage:config action', () => {
+    let upstream: http.Server;
+    let upstreamHits = 0;
+    const writes = () => (db.prepare('SELECT total_changes() AS n').get() as { n: number }).n;
+
+    beforeEach(async () => {
+      upstreamHits = 0;
+      upstream = http.createServer((_req, res) => { upstreamHits += 1; res.end('ok'); });
+      await new Promise<void>((resolve) => upstream.listen(0, '127.0.0.1', resolve));
+      const port = (upstream.address() as { port: number }).port;
+      db.prepare("INSERT INTO mcp_servers VALUES ('s5', 'probed-tool', '', 'unknown', '', '[]', '{}', null, null, ?, null, null, '{}', 'now', 'now')")
+        .run(`http://127.0.0.1:${port}/`);
+      db.prepare("INSERT INTO mcp_servers VALUES ('s6', 'offline-tool', '', 'unknown', '', '[]', '{}', null, null, 'http://192.168.1.28:9', null, null, ?, 'now', 'now')")
+        .run(JSON.stringify({ known_unreachable: true }));
+    });
+
+    afterEach(async () => {
+      await new Promise<void>((resolve) => upstream.close(() => resolve()));
+    });
+
+    it('repeated page-load GETs write 0 rows and probe nothing, even when asked to refresh', async () => {
+      const before = writes();
+      for (let i = 0; i < 3; i += 1) {
+        for (const path of ['/servers', '/servers?refresh=true']) {
+          const response = await fetch(`${baseUrl}${path}`);
+          expect(response.status).toBe(200);
+          const body = await response.json() as { servers: Array<Record<string, unknown>> };
+          expect(body.servers.find((s) => s.id === 's5')).toMatchObject({ status: 'unknown', last_verified_at: null });
+        }
+      }
+      expect(writes() - before).toBe(0);
+      expect(upstreamHits).toBe(0);
+    });
+
+    it('explicit POST /servers/refresh probes, persists and reports its scope', async () => {
+      const response = await fetch(`${baseUrl}/servers/refresh`, { method: 'POST' });
+      expect(response.status).toBe(200);
+      const body = await response.json() as {
+        servers: Array<Record<string, unknown>>;
+        refresh: { refreshed_at: string; probed: string[]; skipped: Array<{ id: string; reason: string }> };
+      };
+      expect(upstreamHits).toBe(1);
+      expect(body.refresh.probed).toEqual(['s5']);
+      expect(body.refresh.skipped).toEqual(expect.arrayContaining([
+        { id: 's1', reason: 'no_url' },
+        { id: 's2', reason: 'no_url' },
+        { id: 's6', reason: 'known_unreachable' },
+      ]));
+      expect(Number.isFinite(Date.parse(body.refresh.refreshed_at))).toBe(true);
+      expect(body.servers.find((s) => s.id === 's5')).toMatchObject({ status: 'running', last_verified_at: body.refresh.refreshed_at });
+      expect((db.prepare("SELECT status FROM mcp_servers WHERE id = 's5'").get() as { status: string }).status).toBe('running');
+    });
+
+    it('explicit refresh needs manage:config (the POST /servers write permission); a viewer can still read', async () => {
+      const before = writes();
+      const denied = await fetch(`${baseUrl}/servers/refresh`, { method: 'POST', headers: { 'x-role': 'viewer' } });
+      expect(denied.status).toBe(403);
+      expect(upstreamHits).toBe(0);
+      expect(writes() - before).toBe(0);
+      const read = await fetch(`${baseUrl}/servers`, { headers: { 'x-role': 'viewer' } });
+      expect(read.status).toBe(200);
+    });
   });
 });

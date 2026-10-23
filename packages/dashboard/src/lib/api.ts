@@ -1604,6 +1604,12 @@ export type CatalogSearchResult = {
   agents: CatalogAgent[];
 };
 
+export interface MCPRefreshScope {
+  refreshed_at: string;
+  probed: string[];
+  skipped: Array<{ id: string; reason: 'no_url' | 'known_unreachable' }>;
+}
+
 class ApiClient {
   async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const response = await authenticatedFetch(endpoint, options);
@@ -1689,8 +1695,14 @@ class ApiClient {
   }
 
   // MCP
+  /** Passive: stored status only, no probe (L6-08). */
   async getMCPServers(): Promise<{ servers: MCPServer[] }> {
-    return this.request('/mcp/servers?refresh=true');
+    return this.request('/mcp/servers');
+  }
+
+  /** Explicit probe of every registered server URL; needs manage:config. */
+  async refreshMCPServers(): Promise<{ servers: MCPServer[]; refresh: MCPRefreshScope }> {
+    return this.request('/mcp/servers/refresh', { method: 'POST' });
   }
 
   async createMCPServer(input: MCPServerCreateInput): Promise<{ server: MCPServer }> {
