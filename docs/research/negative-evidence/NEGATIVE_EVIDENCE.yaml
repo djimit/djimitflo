@@ -202,6 +202,36 @@
       "forbidden_code_patterns": ["claude-flow@alpha", "@claude-flow/cli@latest", "ruflo@latest", "hook-handler.cjs", "cognitum.one/mcpSse", "create-sparc", "mcp.composio.dev/"],
       "match_terms": ["ruflo", "claude-flow", "agentic-flow", "agentdb", "ruClip", "create-sparc"],
       "reopen_condition": "All of: a benchmark independently reproduced on Djimitflo's own data in our own harness against the current baseline (no simulated or hardcoded baselines); no install scripts and no unpinned npx @latest/@alpha execution; hooks and MCP servers off by default with authentication on and no network calls by default; pinned releases with build provenance tying binaries to source; plus a concrete need that existing Djimitflo code cannot meet. Permits a new pre-registered evaluation, not adoption."
+    },
+    {
+      "id": "NE-013",
+      "title": "Mutant-kill feedback retry for exports-lane test makers (MFR-001)",
+      "hypothesis": "Showing a test maker the seeded mutants its exports-lane test failed to kill (file, line, mutation) makes a single retried test kill at least +0.15 more held-out mutants than a same-budget 'strengthen the assertions of this test' retry.",
+      "verdict": "FALSIFIED",
+      "decided_on": "2026-10-22",
+      "conditions": "Offline, workstation only: 42 production exports-lane maker leases with graded score < 1 (30 d to 21-10), rebuilt at their base commit; 40 eligible, each retried under both arms (paired, parity-ordered); maker atomic-agent 0.6.5 on the local llama-router (qwen38-27b), --max-steps 40, 900 s; 3 shown + 3 held-out fresh targetMutants per target, disjoint from the 3 production mutants; 0 cloud tokens, 0 prod writes.",
+      "result": "Held-out kill FEEDBACK 0.325 vs CONTROL 0.467: paired delta -0.142, bootstrap 95 % CI [-0.250, -0.033], one-sided permutation p 0.996 (n 40 pairs). Shown-mutant kill 0.81 vs 0.53 (the feedback was used). Baseline-red 0.000 vs 0.025. Both-ok pairs (n 32): delta -0.146.",
+      "why": "The feedback made the maker write narrow assertions aimed at the listed mutations (median 90 vs 206 added lines) and stop: it killed the shown mutants and generalised worse to unseen ones than a generic strengthening. Mutant lists teach to the oracle.",
+      "evidence": [
+        "docs/research/eco/MFR-001_PROTOCOL.md (sha256 2b98fae11aabd04b4864ac6e1d1b841ca4973b6edf825eab92fb428ff233c742, commit eeadf691, before any scored item)",
+        "docs/research/eco/MFR-001_RESULT.md",
+        "docs/research/eco/mfr-001/results.json",
+        "docs/research/eco/mfr-001/items.json"
+      ],
+      "allowed_follow_up": "A held-out mutant set remains a usable oracle for test-writing lanes (it measured a clear difference here). A different feedback form (e.g. the mutated behaviour described without line-level diffs, or feedback plus a breadth instruction) needs its own pre-registration and fresh held-out mutants.",
+      "forbidden_reuse": [
+        "a production retry path that feeds surviving mutant diffs to the maker on the strength of MFR-001",
+        "citing the shown-mutant kill gain as evidence of better tests"
+      ],
+      "forbidden_code_patterns": [
+        "MFR_001_MODE"
+      ],
+      "match_terms": [
+        "MFR-001",
+        "mutant-kill feedback",
+        "surviving mutants feedback"
+      ],
+      "reopen_condition": "A new pre-registered study with a different feedback design or maker species, fresh held-out mutants disjoint from anything shown, and its own SUPPORTED criteria met; this entry does not permit MFR_001_MODE."
     }
   ]
 }

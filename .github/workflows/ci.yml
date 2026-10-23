@@ -47,6 +47,22 @@ jobs:
       - name: Security audit
         run: npm run audit:ci
 
+  fleet-auth-infra:
+    # S3: the event bus / agent registry sources in infra/ (installed on the VPS by docs/runbooks/fleet-bus-auth.md)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Test event bus and agent registry auth
+        run: |
+          cmp infra/event-bus/fleet_auth.py infra/agent-registry/fleet_auth.py
+          for svc in event-bus agent-registry; do
+            python3 -m venv "$RUNNER_TEMP/venv-$svc"
+            "$RUNNER_TEMP/venv-$svc/bin/pip" install -q -r "infra/$svc/requirements.txt"
+            (cd "infra/$svc" && "$RUNNER_TEMP/venv-$svc/bin/python" -m unittest discover -s tests -v)
+          done
+
   security-scan:
     runs-on: ubuntu-latest
     needs: build-and-test
