@@ -314,7 +314,7 @@ export function OperatorCockpitPage() {
           <Disclose id="stalls" open title="Silent stalls">
             {data.stalls.length === 0 ? <p className="text-sm text-foreground-secondary">None — every watched subsystem produced output recently.</p> : (
               <ul className="space-y-1 text-sm">
-                {data.stalls.map((s) => <li key={s.subsystem} className="text-status-warning"><strong>{s.subsystem}</strong> — {s.detail} (since {since(s.since)})</li>)}
+                {data.stalls.map((s) => <li key={s.subsystem} className="text-status-warning"><strong>{s.subsystem}</strong> — {s.detail}{s.since ? ` (since ${since(s.since)})` : ''}</li>)}
               </ul>
             )}
           </Disclose>

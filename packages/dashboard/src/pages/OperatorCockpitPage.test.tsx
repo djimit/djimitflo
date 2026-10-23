@@ -28,6 +28,7 @@ it('shows breached guardrails, stalls and gym species from the cockpit endpoint'
   expect(await screen.findByText('breached · limit <= verified/5 (2.2)')).toBeTruthy();
   expect(screen.getByText('maker 2 · reviewer 3 · environment 0')).toBeTruthy(); // funnel phase 3: whose regressions
   expect(screen.getAllByText('gym:atomic@llama-router').length).toBeGreaterThan(0); // command strip + stalls section
+  expect(screen.queryByText(/since never/)).toBeNull(); // DF-05: a stall without a start time says nothing about elapsed time
   expect(screen.getByText('89%')).toBeTruthy();
   expect(screen.getByText('No remote host has claimed work.')).toBeTruthy();
   expect(screen.getByText('verdict ok')).toBeTruthy();
