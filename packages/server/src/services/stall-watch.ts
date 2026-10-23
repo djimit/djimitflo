@@ -191,7 +191,11 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
   let noStopDate: string[] = [];
   run('experiment_overdue', true, () => {
     const r = experimentsReport(db, env, now); noStopDate = r.no_stop_date;
-    for (const e of r.experiments.filter((x) => x.overdue)) out.push({ subsystem: `experiment:${e.id}`, since: e.stop_by ?? e.started_at, detail: `${e.overdue_reason}; record a verdict or stop it (${e.protocol})`.slice(0, 300) });
+    // DF-05: overdue at target n before stop_by leaves stop_by in the future — a since is never in the future, so none then
+    for (const e of r.experiments.filter((x) => x.overdue)) {
+      const since = e.stop_by ?? e.started_at;
+      out.push({ subsystem: `experiment:${e.id}`, since: Date.parse(since) > now ? null : since, detail: `${e.overdue_reason}; record a verdict or stop it (${e.protocol})`.slice(0, 300) });
+    }
   });
   const expDetector = detectors.find((d) => d.name === 'experiment_overdue' && d.status === 'ok');
   if (expDetector && noStopDate.length) expDetector.detail = `no stop date — violates know-when-to-stop: ${noStopDate.join(', ')}`;

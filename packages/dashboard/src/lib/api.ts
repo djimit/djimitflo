@@ -585,11 +585,13 @@ export type ImprovementFunnel = {
   generatedAt: string;
   proposals: { total: number; byStatus: Record<string, number> };
   bySource: Array<{ source: string; total: number; parked: number; archived: number; needsGrounding: number; reachedGoal: number; verified: number; failed: number }>;
-  panel: { decisions: Record<string, number>; goalRate: number | null };
-  refinement: { originals: number; children: number; childOutcomes: Record<string, number> };
+  /** goalRate: goal decisions over the panels a proposal points at (linkedDecided); decisions covers every panel */
+  panel: { decisions: Record<string, number>; goalRate: number | null; linkedPanels: number; linkedDecided: number; linkedDecisions: Record<string, number> };
+  /** childGoals: refined children with a goal and how it ended; childOutcomes is the children's own status */
+  refinement: { originals: number; children: number; childOutcomes: Record<string, number>; childGoals: { reachedGoal: number; completed: number; failed: number; other: number } };
   goals: { fromSelfImprovement: Record<string, number> };
   learning: { cognitiveEpisodes: number; cognitivePatterns: number; cognitiveStrategies: number; learningClosures: number; memoryCandidates: Record<string, number> };
-  kpi: { windowDays: number; verified: number; regressed: number; regressionRate: number | null; panels24h: number; panels7d: number; panelsPerVerified: number | null; medianHoursToVerified: number | null; approvalsPerRun: number | null };
+  kpi: { windowDays: number; verified: number; regressed: number; regressionRate: number | null; panels24h: number; panels7d: number; reviews24h: number; reviews7d: number; panelsPerVerified: number | null; medianHoursToVerified: number | null; approvalsPerRun: number | null };
   hygiene: { zombieGoals: number; staleRuns: number; blockedBoardItems: number };
   queues: { openWorkItems: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
 };
