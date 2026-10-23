@@ -613,7 +613,16 @@ export type SpecialistCalibration = {
   bins: Array<{ from: number; to: number; n: number; observed: number }>;
 };
 
-export type AgentGovernanceScore = {
+export type GovernanceScoreScale = '0-5' | '0-100' | 'unknown';
+
+/** Benchmark/scale a score belongs to; optional because older servers did not send it. */
+export type GovernanceScoreCohort = {
+  benchmark?: string;
+  scale?: GovernanceScoreScale;
+  cohort?: string;
+};
+
+export type AgentGovernanceScore = GovernanceScoreCohort & {
   agentId: string;
   overallScore: number;
   categoryScores: Record<string, number>;
@@ -622,7 +631,12 @@ export type AgentGovernanceScore = {
   trend: 'improving' | 'stable' | 'declining';
 };
 
-export type OpenMythosRun = {
+export type GovernanceOtherCohort = Required<GovernanceScoreCohort> & {
+  ranked: boolean;
+  scores: AgentGovernanceScore[];
+};
+
+export type OpenMythosRun = GovernanceScoreCohort & {
   id: string;
   agentId: string;
   status: string;
@@ -1824,7 +1838,7 @@ class ApiClient {
   }
 
   // OpenMythos governance
-  async getOpenMythosLeaderboard(): Promise<{ leaderboard: AgentGovernanceScore[] }> {
+  async getOpenMythosLeaderboard(): Promise<{ leaderboard: AgentGovernanceScore[]; otherCohorts?: GovernanceOtherCohort[] }> {
     return this.request('/openmythos/leaderboard');
   }
 
