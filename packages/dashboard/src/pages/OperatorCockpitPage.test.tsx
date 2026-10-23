@@ -6,8 +6,12 @@ import { CommandStrip, EfficiencySection, EvolutionFunnel, NeedsYou, OperatorCoc
 import { api } from '../lib/api';
 
 beforeEach(() => { vi.restoreAllMocks(); vi.spyOn(api, 'getServiceMap').mockResolvedValue({ services: [
-  { names: ['event bus'], endpoint: 'http://100.86.47.122:8083', status: 'up', http: 404, ms: 12, error: null },
-  { names: ['LiteLLM'], endpoint: 'http://192.168.1.28:4000', status: 'down', http: null, ms: null, error: 'timeout' },
+  { names: ['event bus'], endpoint: 'http://100.86.47.122:8083', status: 'reachable', http: 404, ms: 12, error: null, state: 'CONFIGURED',
+    state_evidence: 'probe HTTP 404; last business success 2026-09-28T19:00:00.000Z (event_outbox)', last_success_at: '2026-09-28T19:00:00.000Z', last_failure_at: null, evidence_source: 'event_outbox' },
+  { names: ['LiteLLM'], endpoint: 'http://192.168.1.28:4000', status: 'down', http: null, ms: null, error: 'timeout', state: 'FAILED',
+    state_evidence: 'probe failed (timeout); no business operation in 7 d (llm_model_calls)', last_success_at: null, last_failure_at: null, evidence_source: 'llm_model_calls' },
+  // a row from an older server carries no state: the reader says UNKNOWN, never a transport-derived health
+  { names: ['UAMS'], endpoint: 'http://u:8000', status: 'up', http: 200, ms: 3, error: null } as never,
 ] }); });
 
 it('shows breached guardrails, stalls and gym species from the cockpit endpoint', async () => {
@@ -28,7 +32,8 @@ it('shows breached guardrails, stalls and gym species from the cockpit endpoint'
   expect(screen.getByText('89%')).toBeTruthy();
   expect(screen.getByText('No remote host has claimed work.')).toBeTruthy();
   expect(screen.getByText('verdict ok')).toBeTruthy();
-  expect(await screen.findByText('down (timeout)')).toBeTruthy();
+  expect(await screen.findByText('probe failed (timeout); no business operation in 7 d (llm_model_calls)')).toBeTruthy();
+  expect(screen.getByText('— (timeout)')).toBeTruthy();
 });
 
 it('UX-2: shows real-maker outcomes per strategy genome with n, and an honest empty state', async () => {
@@ -110,7 +115,14 @@ it('honest cockpit: tokens per verified change, stale gym species, gym vs produc
   const gym = screen.getByRole('table', { name: 'Gym-maker outcomes per strategy genome' });
   expect(production.textContent).toContain('g-prod'); expect(production.textContent).not.toContain('g-gym');
   expect(gym.textContent).toContain('g-gym'); expect(gym.textContent).not.toContain('g-prod');
-  expect(await screen.findByText('reachable (404)')).toBeTruthy();
+  // DF-07: the service map shows the state ladder with its evidence, never transport reachability as health
+  const servicesTable = await screen.findByRole('table', { name: 'Service endpoints and their integration state' });
+  expect(servicesTable.textContent).toContain('CONFIGURED');
+  expect(servicesTable.textContent).toContain('probe HTTP 404; last business success 2026-09-28T19:00:00.000Z (event_outbox)');
+  expect(servicesTable.textContent).toContain('FAILED');
+  expect(servicesTable.textContent).toContain('UNKNOWN');
+  expect(servicesTable.textContent).not.toContain('HEALTHY');
+  expect(servicesTable.textContent).not.toContain('reachable');
   expect(screen.queryByText('up')).toBeNull();
 });
 

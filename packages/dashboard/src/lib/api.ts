@@ -34,7 +34,10 @@ import type {
 import { API_BASE, authenticatedFetch } from './auth-store';
 export { API_BASE } from './auth-store';
 
-export type ServiceStatus = { names: string[]; endpoint: string; status: 'up' | 'reachable' | 'degraded' | 'down'; http: number | null; ms: number | null; error: string | null };
+/** DF-07: `status` is transport only; `state` is the integration ladder justified by `state_evidence` (absent on an older server = UNKNOWN). */
+export type IntegrationState = 'CONFIGURED' | 'CONNECTED' | 'HEALTHY' | 'DEGRADED' | 'FAILED' | 'DISABLED' | 'UNKNOWN';
+export type ServiceStatus = { names: string[]; endpoint: string; status: 'up' | 'reachable' | 'degraded' | 'down'; http: number | null; ms: number | null; error: string | null;
+  state?: IntegrationState; state_evidence?: string; last_success_at?: string | null; last_failure_at?: string | null; evidence_source?: string | null };
 
 export type FleetHost = { host: string; last_seen: string; seconds_ago: number; live: boolean; agent_version: string | null; info: Record<string, unknown> };
 export type FleetCommand = { id: string; host: string; kind: 'diagnostic' | 'shell'; command: string; command_sha256: string; status: string; requested_by: string;
