@@ -34,7 +34,19 @@ import type {
 import { API_BASE, authenticatedFetch } from './auth-store';
 export { API_BASE } from './auth-store';
 
-export type ServiceStatus = { names: string[]; endpoint: string; status: 'up' | 'reachable' | 'degraded' | 'down'; http: number | null; ms: number | null; error: string | null };
+/** DF-07: `status` is transport only; `state` is the integration ladder justified by `state_evidence` (absent on an older server = UNKNOWN). */
+export type IntegrationState = 'CONFIGURED' | 'CONNECTED' | 'HEALTHY' | 'DEGRADED' | 'FAILED' | 'DISABLED' | 'UNKNOWN';
+export type ServiceStatus = { names: string[]; endpoint: string; status: 'up' | 'reachable' | 'degraded' | 'down'; http: number | null; ms: number | null; error: string | null;
+  state?: IntegrationState; state_evidence?: string; last_success_at?: string | null; last_failure_at?: string | null; evidence_source?: string | null };
+/** GET /api/health/config (DF-08): per key value (null = unset), source, documented default, override and activation; plus the running build. */
+export interface RuntimeConfigEntry {
+  name: string; value: string | null; masked: boolean; group: string; area: string;
+  source: 'env' | 'default' | 'unset'; default: string | null; overridden: boolean | null; takes_effect: 'restart'; stale?: boolean | null;
+}
+export interface RuntimeConfig {
+  entries: RuntimeConfigEntry[]; masked: number;
+  build: { commit: string | null; built_commit: string | null; build_source: string | null; build_time: string | null; instance_id: string | null; commit_matches_build: boolean };
+}
 
 export type FleetHost = { host: string; last_seen: string; seconds_ago: number; live: boolean; agent_version: string | null; info: Record<string, unknown> };
 export type FleetCommand = { id: string; host: string; kind: 'diagnostic' | 'shell'; command: string; command_sha256: string; status: string; requested_by: string;
@@ -585,11 +597,13 @@ export type ImprovementFunnel = {
   generatedAt: string;
   proposals: { total: number; byStatus: Record<string, number> };
   bySource: Array<{ source: string; total: number; parked: number; archived: number; needsGrounding: number; reachedGoal: number; verified: number; failed: number }>;
-  panel: { decisions: Record<string, number>; goalRate: number | null };
-  refinement: { originals: number; children: number; childOutcomes: Record<string, number> };
+  /** goalRate: goal decisions over the panels a proposal points at (linkedDecided); decisions covers every panel */
+  panel: { decisions: Record<string, number>; goalRate: number | null; linkedPanels: number; linkedDecided: number; linkedDecisions: Record<string, number> };
+  /** childGoals: refined children with a goal and how it ended; childOutcomes is the children's own status */
+  refinement: { originals: number; children: number; childOutcomes: Record<string, number>; childGoals: { reachedGoal: number; completed: number; failed: number; other: number } };
   goals: { fromSelfImprovement: Record<string, number> };
   learning: { cognitiveEpisodes: number; cognitivePatterns: number; cognitiveStrategies: number; learningClosures: number; memoryCandidates: Record<string, number> };
-  kpi: { windowDays: number; verified: number; regressed: number; regressionRate: number | null; panels24h: number; panels7d: number; panelsPerVerified: number | null; medianHoursToVerified: number | null; approvalsPerRun: number | null };
+  kpi: { windowDays: number; verified: number; regressed: number; regressionRate: number | null; panels24h: number; panels7d: number; reviews24h: number; reviews7d: number; panelsPerVerified: number | null; medianHoursToVerified: number | null; approvalsPerRun: number | null };
   hygiene: { zombieGoals: number; staleRuns: number; blockedBoardItems: number };
   queues: { openWorkItems: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
 };
@@ -1936,7 +1950,7 @@ class ApiClient {
   }
 
   // S3 runtime configuration (read-only, manage:config)
-  async getRuntimeConfig(): Promise<{ entries: Array<{ name: string; value: string; masked: boolean; group: string }>; masked: number }> {
+  async getRuntimeConfig(): Promise<RuntimeConfig> {
     return this.request('/health/config');
   }
 

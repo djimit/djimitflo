@@ -3,7 +3,7 @@ import { WebSocketEventType } from '@djimitflo/shared';
 import { useWsSubscribe } from '../components/WebSocketProvider';
 import { Link } from 'react-router-dom';
 import { Activity, RefreshCw } from 'lucide-react';
-import { api, type EfficiencyConsumer, type EfficiencyView, type EvolutionLineage, type OperatorCockpit, type ServiceStatus, type ValueInterval } from '../lib/api';
+import { api, type EfficiencyConsumer, type EfficiencyView, type EvolutionLineage, type IntegrationState, type OperatorCockpit, type ServiceStatus, type ValueInterval } from '../lib/api';
 import { fmt, since } from '../lib/format';
 import { DataTable, Section, StatusPill } from '../components/ui';
 
@@ -67,6 +67,9 @@ export function overallHealth(d: CockpitView, now = Date.now()): { state: Health
   return { state: worst(states), reasons };
 }
 
+const STATE_TONE: Record<IntegrationState, 'ok' | 'warn' | 'error' | 'paused' | 'neutral'> = {
+  HEALTHY: 'ok', CONNECTED: 'neutral', CONFIGURED: 'neutral', UNKNOWN: 'neutral', DEGRADED: 'warn', FAILED: 'error', DISABLED: 'paused',
+};
 const num = (v: number | null | undefined) => (v === null || v === undefined ? 'unknown' : fmt(v));
 
 /** Level 1: the four questions the operator must answer in seconds. */
@@ -282,14 +285,16 @@ export function OperatorCockpitPage() {
 
           <Disclose id="services" open title="Services">
             {services === null ? <p className="text-sm text-foreground-secondary">Probing…</p> : (
-              <DataTable caption="Service endpoints and their status" rows={services} rowKey={(s) => s.endpoint}
+              <DataTable caption="Service endpoints and their integration state" rows={services} rowKey={(s) => s.endpoint}
                 empty="No service endpoints configured or the probe failed." columns={[
                   { key: 'service', label: 'Service', render: (s) => s.names.join(' · ') },
                   { key: 'endpoint', label: 'Endpoint', render: (s) => s.endpoint, cellClassName: () => 'font-mono text-xs' },
-                  // a 404 says something listens, not that it is healthy: 'reachable (404)', never 'up'
-                  { key: 'status', label: 'Status', render: (s) => `${s.status === 'up' && s.http === 404 ? 'reachable' : s.status}${s.error ? ` (${s.error})` : s.http === 404 ? ' (404)' : ''}`,
-                    cellClassName: (s) => (s.status === 'up' && s.http !== 404 ? 'text-status-completed' : s.status === 'down' ? 'text-status-error' : 'text-status-warning') },
-                  { key: 'http', label: 'HTTP', render: (s) => s.http ?? '—' },
+                  // DF-07: HTTP proves transport only; the state comes from the server's business evidence, never from the probe here
+                  { key: 'state', label: 'State', render: (s) => <StatusPill tone={STATE_TONE[s.state ?? 'UNKNOWN']} label={s.state ?? 'UNKNOWN'} title={s.state_evidence} /> },
+                  { key: 'evidence', label: 'Evidence', render: (s) => s.state_evidence ?? 'no state from the server', cellClassName: () => 'text-xs' },
+                  { key: 'success', label: 'Last success', render: (s) => (s.evidence_source ? since(s.last_success_at) : '—') },
+                  { key: 'failure', label: 'Last failure', render: (s) => (s.evidence_source ? since(s.last_failure_at) : '—') },
+                  { key: 'http', label: 'HTTP', render: (s) => s.http ?? (s.error ? `— (${s.error})` : '—') },
                   { key: 'ms', label: 'Latency', render: (s) => (s.ms === null ? '—' : `${s.ms} ms`) },
                 ]} />
             )}
@@ -309,7 +314,7 @@ export function OperatorCockpitPage() {
           <Disclose id="stalls" open title="Silent stalls">
             {data.stalls.length === 0 ? <p className="text-sm text-foreground-secondary">None — every watched subsystem produced output recently.</p> : (
               <ul className="space-y-1 text-sm">
-                {data.stalls.map((s) => <li key={s.subsystem} className="text-status-warning"><strong>{s.subsystem}</strong> — {s.detail} (since {since(s.since)})</li>)}
+                {data.stalls.map((s) => <li key={s.subsystem} className="text-status-warning"><strong>{s.subsystem}</strong> — {s.detail}{s.since ? ` (since ${since(s.since)})` : ''}</li>)}
               </ul>
             )}
           </Disclose>
