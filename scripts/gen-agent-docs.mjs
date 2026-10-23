@@ -6,7 +6,9 @@
  *                  (inference/failover flags) and a fixed section.
  *   HEARTBEAT.md ← every noteScheduler(name, flag, armed, interval) call in packages/server/src (the registry behind
  *                  GET /api/health/schedulers) and a fixed list of operator tasks.
- * `node scripts/gen-agent-docs.mjs` writes both; `--check` writes nothing and exits 1 when either is stale or any of the five
+ *   packages/server/src/services/config-defaults.generated.ts ← the runbook tables with a default column + the noteScheduler
+ *                  gating flags; read by GET /api/health/config (DF-08) so the Configuration page shows defaults/overrides.
+ * `node scripts/gen-agent-docs.mjs` writes all three; `--check` writes nothing and exits 1 when one is stale or any of the five
  * workspace files exceeds its line budget. Static parsing only: no server code runs, nothing is fetched. Output is
  * deterministic (no clock), so --check is stable in CI.
  */
@@ -22,6 +24,7 @@ const SOURCES = {
   flags: `${SERVER_SRC}/services/evolution-evidence.ts`,
   runbook: 'docs/runbooks/self-improvement-loop-operations.md',
 };
+const CONFIG_DEFAULTS_FILE = `${SERVER_SRC}/services/config-defaults.generated.ts`;
 export const BUDGETS = { 'AGENTS.md': 150, 'SOUL.md': 80, 'USER.md': 60, 'TOOLS.md': 120, 'HEARTBEAT.md': 100 };
 export const INFERENCE_FLAG = /^(OLLAMA_|PANEL_FALLBACK_|INFERENCE_|SUBSCRIPTION_GYM_|MODEL_SELECTOR_)/;
 const HEADER = (sources) => `<!-- generated — do not edit. Source: ${sources}. Regenerate: node scripts/gen-agent-docs.mjs -->`;
@@ -39,6 +42,25 @@ export function parseEvolutionFlags(src) {
 export function parseRunbookDefaults(md) {
   const out = new Map();
   for (const m of md.matchAll(/^\| `([A-Z0-9_]+)` \| ([^|\n]*)\|/gm)) if (!out.has(m[1])) out.set(m[1], m[2].trim());
+  return out;
+}
+
+/**
+ * DF-08: rows of the runbook tables whose header is `| Flag | <…default…> |` (`Code default`, `Default`) → name → default
+ * cell (escaped pipes kept as text, whitespace collapsed, clipped to 120). First occurrence wins; other tables are skipped.
+ */
+export function parseRunbookDefaultTables(md) {
+  const out = new Map();
+  let inTable = false;
+  for (const line of md.split('\n')) {
+    if (!line.startsWith('|')) { inTable = false; continue; }
+    const cells = line.split(/(?<!\\)\|/).slice(1, -1).map((c) => c.trim());
+    if (/^flag$/i.test(cells[0] ?? '')) { inTable = /default/i.test(cells[1] ?? ''); continue; }
+    const name = cells[0]?.match(/^`([A-Z0-9_]+)`/)?.[1];
+    if (!inTable || !name || out.has(name)) continue;
+    const text = String(cells[1] ?? '').replace(/\\\|/g, '|').replace(/\s+/g, ' ').trim();
+    out.set(name, text.length > 120 ? `${text.slice(0, 119)}…` : text);
+  }
   return out;
 }
 
@@ -161,12 +183,26 @@ export function renderHeartbeat(root = ROOT) {
   return L.join('\n');
 }
 
+/** DF-08: the runbook defaults and scheduler gating flags as a TS module the server imports (docs/ is not in the image). */
+export function renderConfigDefaults(root = ROOT) {
+  const defaults = [...parseRunbookDefaultTables(read(root, SOURCES.runbook))].sort(([a], [b]) => a.localeCompare(b));
+  const flags = [...new Set(parseSchedulers(walkTs(path.join(root, SERVER_SRC), root)).map((s) => s.flag).filter((f) => /^[A-Z][A-Z0-9_]+$/.test(f)))].sort();
+  const q = (s) => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+  return [`// generated — do not edit. Source: ${SOURCES.runbook} (flag tables with a default column) and the gating flags of the`,
+    `// scheduler registry calls in ${SERVER_SRC}. Regenerate: node scripts/gen-agent-docs.mjs`, '',
+    '/** Flag → its documented code default (runbook prose, clipped). Read by runtime-config-view (GET /api/health/config). */',
+    'export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {',
+    ...defaults.map(([k, v]) => `  ${k}: ${q(v)},`), '};', '',
+    '/** Env flags that arm a background scheduler at boot (HEARTBEAT.md). */',
+    'export const SCHEDULER_FLAGS: readonly string[] = [', ...flags.map((f) => `  ${q(f)},`), '];', ''].join('\n');
+}
+
 export function lineCount(text) { return text.endsWith('\n') ? text.split('\n').length - 1 : text.split('\n').length; }
 
 /** Problems for --check: stale generated files and line budgets of the five workspace files. */
 export function check(root = ROOT) {
   const problems = [];
-  for (const [file, render] of [['TOOLS.md', renderTools], ['HEARTBEAT.md', renderHeartbeat]]) {
+  for (const [file, render] of [['TOOLS.md', renderTools], ['HEARTBEAT.md', renderHeartbeat], [CONFIG_DEFAULTS_FILE, renderConfigDefaults]]) {
     const p = path.join(root, file);
     if (!fs.existsSync(p) || fs.readFileSync(p, 'utf8') !== render(root)) problems.push(`${file} is stale: run node scripts/gen-agent-docs.mjs`);
   }
@@ -184,10 +220,11 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     const problems = check();
     for (const p of problems) console.error(`gen-agent-docs: ${p}`);
     if (problems.length) process.exit(1);
-    console.log('gen-agent-docs: TOOLS.md and HEARTBEAT.md fresh; line budgets ok');
+    console.log('gen-agent-docs: TOOLS.md, HEARTBEAT.md and config defaults fresh; line budgets ok');
   } else {
     fs.writeFileSync(path.join(ROOT, 'TOOLS.md'), renderTools());
     fs.writeFileSync(path.join(ROOT, 'HEARTBEAT.md'), renderHeartbeat());
-    console.log('gen-agent-docs: wrote TOOLS.md, HEARTBEAT.md');
+    fs.writeFileSync(path.join(ROOT, CONFIG_DEFAULTS_FILE), renderConfigDefaults());
+    console.log(`gen-agent-docs: wrote TOOLS.md, HEARTBEAT.md, ${CONFIG_DEFAULTS_FILE}`);
   }
 }
