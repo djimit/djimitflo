@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { GovernanceScorecardPage } from './GovernanceScorecardPage';
+import { api } from '../lib/api';
 
 vi.mock('../lib/api', () => ({
   api: {
@@ -54,5 +55,26 @@ describe('GovernanceScorecardPage', () => {
     expect(await screen.findByText('llama3.1:8b')).toBeTruthy();
     expect(screen.getByText('completed')).toBeTruthy();
     expect(screen.getByText(/78 oracle/)).toBeTruthy();
+  });
+
+  it('DF-01: never ranks a 0-100 critic score together with 0-5 model scores', async () => {
+    vi.mocked(api.getOpenMythosLeaderboard).mockResolvedValueOnce({
+      // An older server returned the critic row inside the 0-5 leaderboard.
+      leaderboard: [
+        { agentId: 'explainer-critic', overallScore: 93, categoryScores: {}, totalCases: 6, lastEvalAt: '2026-07-16T10:00:00.000Z', trend: 'stable' },
+        { agentId: 'agent-model', overallScore: 4.2, categoryScores: {}, totalCases: 78, lastEvalAt: '2026-07-15T10:05:00.000Z', trend: 'stable', scale: '0-5', benchmark: 'openmythos-governance', cohort: 'openmythos-governance:0-5' },
+      ],
+    } as any);
+    render(<GovernanceScorecardPage />);
+
+    const ranking = await screen.findByRole('list', { name: 'Governance ranking (0–5)' });
+    expect(ranking.textContent).toContain('#1');
+    expect(ranking.textContent).toContain('agent-model');
+    expect(ranking.textContent).not.toContain('explainer-critic');
+    expect(ranking.textContent).not.toContain('93');
+    const other = screen.getByRole('list', { name: 'Other score scales' });
+    expect(other.textContent).toContain('explainer-critic');
+    expect(other.textContent).not.toContain('#');
+    expect(screen.queryByText('93.00')).toBeNull();
   });
 });
