@@ -3,9 +3,6 @@ type: testing-strategy
 title: Test Strategy, Assurance Scripts & Mutation Gate
 description: How DjimFlo verifies correctness — layered vitest workspace suites, supertest HTTP contract tests, route-inventory and permission contract tests that keep the mount table honest, integration spine suites, root-level selftest scripts gating npm test, the targeted Stryker mutation gate plus the M2 mutation-gain lane that scores one service against one test, and the assurance:* audit scripts — plus the README discipline that green tests are necessary but not sufficient for production assurance.
 tags: [testing, vitest, supertest, http-contract, route-inventory, integration-spine, stryker, mutation-testing, assurance, ci, selftest]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
 sources:
   - id: openwiki-source-164e2da859b5277df81c7d94
     resource: repo://.github/workflows/ci.yml

@@ -3,9 +3,6 @@ type: workflow
 title: "Autonomous Goal → Daemon → Earned-Autonomy Pipeline"
 description: The flagship autonomy pipeline of the baseline window — the ParallelLoopDaemon's always-on goal queue (risk-sorted, concurrency-capped), objective-mode gating, bandit/evolve maker selection, test-gap auto-approval (J5/M2), approval parking/resume, verification and draft-PR handoff, and the CI-gated systemd auto-deploy loop that ships merged improvements to the VPS.
 tags: [loop-daemon, autonomous-improvement, goal-queue, objective-mode, runtime-bandit, evolve-mutation, test-gap, auto-approve, approval-wait, draft-pr, auto-deploy, earned-autonomy]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
 sources:
   - id: openwiki-source-a3dbc9f5e2ba428a00a1f6a5
     resource: repo://packages/server/src/__tests__/auto-deploy.test.ts

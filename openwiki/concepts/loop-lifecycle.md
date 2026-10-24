@@ -8,8 +8,6 @@ sources:
     resource: repo://packages/server/src/bootstrap/recovery.ts
   - id: openwiki-source-34dcb5fad537d29b30c58bda
     resource: repo://packages/server/src/database/migrate.ts
-  - id: openwiki-source-13e7bffe2fd4d8b2a22e195d
-    resource: repo://packages/server/src/routes/index.ts
   - id: openwiki-source-e150fad964217ff0c31e33c3
     resource: repo://packages/server/src/routes/loops.ts
   - id: openwiki-source-321744d0862fe1b7a0899d80
@@ -36,10 +34,10 @@ sources:
     resource: repo://packages/server/src/services/worktree-manager.ts
   - id: openwiki-source-cc57a9eb4496f91fdc73afb9
     resource: repo://packages/shared/src/loop-catalog.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-10-24T12:32:22.727Z" }
 verified:
   - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
+    at: 2026-10-24T12:32:22.727Z
 ---
 
 # Loop Domain Model: Runs, Leases, Worktrees & Recovery
@@ -57,8 +55,8 @@ logs under the evidence root (`LOOP_EVIDENCE_ROOT`, default
 `<monorepo>/.data/agent-evidence/agentic-control-loop-fleet`).
 
 The public API is HTTP under `/api/loops` (`packages/server/src/routes/loops.ts`,
-mounted in `packages/server/src/routes/index.ts`), and every route handler talks to
-a single `LoopService` instance.
+mounted in `packages/server/src/routes/index.ts`), and every route handler talks
+to a single `LoopService` instance.
 
 ## Loop catalog and contracts
 
@@ -87,31 +85,34 @@ at start so a run's rules survive server restarts, and its `stop_conditions` /
 
 ## LoopService: the facade and its delegation map
 
-`LoopService` (`packages/server/src/services/loop-service.ts`) is a ~107 KB
-facade: it keeps the externally used method surface stable while delegating
-substantive work to focused services constructed in its constructor. Use this
+`LoopService` (`packages/server/src/services/loop-service.ts`, ~137 KB) is a
+**facade**: it keeps the externally used method surface stable while delegating
+substantive work to focused services constructed in its constructor
+(`this.db` plus `this.*` sub-services, `loop-service.ts` L403–L457). Use this
 map when choosing which file to edit:
 
 | Responsibility | Delegate (file) | Facade entrypoints |
 |---|---|---|
-| Continue / retry / split a run; lease preparation | `LoopLifecycleService` (loop-lifecycle-service.ts) | `continueLoopRun`, `retryLoopRun`, `splitLoopFinding` via `this.lifecycle` |
-| Maker/checker process execution, per-execution gates, ExecutionEngine dispatch | `LoopWorkerExecutorService` (loop-worker-executor-service.ts) | `executeMaker`, `executeChecker`, `executeWorker` via `this.workerExecutor` |
+| Continue / retry / split a run; lease preparation | `LoopLifecycleService` (loop-lifecycle-service.ts) | `continueLoopRun`, `splitLoopFinding`, `retryLoopRun` via `this.lifecycle` |
+| Maker/checker process execution, per-execution gates, ExecutionEngine dispatch | `LoopWorkerExecutorService` (loop-worker-executor-service.ts) | `executeMaker`, `executeWorker`, `executeChecker` via `this.workerExecutor` |
 | Completion + certification gates | `LoopVerificationService` (loop-verification-service.ts) | `verifyLoopRun`, `certifyLoopRun` via `this.verification` |
 | Finding scanners per loop | `LoopDiscoveryService` (loop-discovery-service.ts) | `discoverLoopFindings` via `this.discovery` |
-| Token/wall/worker/retry budgets, failure-threshold escalation, cost | `LoopBudgetService` (loop-budget-service.ts) | `getTokenBudget`, `evaluateTokenBudget`, `getMakerLeaseBudget`, `adjustConcurrency`, `computeDollarCost` via `this.budget` |
-| Git worktree create/snapshot/prune, branch naming, path safety | `WorktreeManager` (worktree-manager.ts) | `createWorktree`, `branchNameFor`, `pruneOrphanedWorktrees` via `this.worktree` |
-| `worker_leases` persistence and lineage reads | `WorkerLeaseRepo` (loop-worker-lease-repo.ts) | `insertWorkerLease`, `updateWorkerLeaseStatus`, `getWorkerLease`, `listWorkerLeases` via `this.workerLeases` |
+| Token/wall/worker/retry budgets, failure-threshold escalation, cost | `LoopBudgetService` (loop-budget-service.ts) | `getTokenBudget`, `evaluateTokenBudget`, `getMakerLeaseBudget`, `getRetryBudget`, `adjustConcurrency`, `computeDollarCost`, `computeEfficiencyMetric`, `allocateDollarBudget`, `escalateIfFailureThresholdExceeded` via `this.budget` |
+| Git worktree create/repair/snapshot/prune, branch naming, path safety | `WorktreeManager` (worktree-manager.ts) | `createWorktree`, `repairWorktree`, `pruneOrphanedWorktrees`, `branchNameFor`, `isPathAllowed`, `validateWorktreeSafety`, `sanitizeFindingId` via `this.worktree` |
+| `worker_leases` persistence and lineage reads | `WorkerLeaseRepo` (loop-worker-lease-repo.ts) | `insertWorkerLease`, `updateWorkerLeaseStatus`, `updateWorkerLeaseRuntime`, `updateWorkerLeaseWorktree`, `patchWorkerLeaseMetadata`, `getWorkerLease`, `listWorkerLeases` via `this.workerLeases` |
 | `loop_events` record/query | `LoopEventService` (loop-event-service.ts) | `recordLoopEvent`, `listLoopEvents` via `this.events` |
-| `loop_runs` reads and writes | `LoopRunQueryService` / `LoopRunMutationService` (loop-run-query-service.ts, loop-run-mutation-service.ts) | `getLoopRun`, `listLoopRuns` via `this.queries`; mutations used by lifecycle/recovery |
-| Crash/restart recovery and resume | `LoopRecoveryService` (loop-recovery-service.ts) | `recoverInterruptedRuns`, `resumeInterruptedRun(s)` via `this.recovery` |
-| Runtime contract probing, command building, process spawn/stop | `RuntimeCommandService` (runtime-command-service.ts) | `getRuntimeContract`, `buildRuntimeCommand`, `assertRuntimeAvailable` via `this.runtimeCommand` |
+| `loop_runs` reads and writes | `LoopRunQueryService` (loop-run-query-service.ts) / `LoopRunMutationService` (loop-run-mutation-service.ts) | `getLoopRun`, `listLoopRuns` via `this.queries`; mutations used by lifecycle/recovery |
+| Crash/restart recovery and resume | `LoopRecoveryService` (loop-recovery-service.ts) | `recoverInterruptedRuns`, `resumeInterruptedRun(s)`, `isWorkerLeaseCancelled` via `this.recovery` |
+| Runtime contract probing, command building, process spawn/stop | `RuntimeCommandService` (runtime-command-service.ts) | `getRuntimeContract`, `getRuntimeContracts`, `buildRuntimeCommand`, `buildMockCheckerCommand`, `assertRuntimeAvailable` via `this.runtimeCommand` |
 | `LOOP_STATE.md`, working-tree diff, evidence dir | `LoopPersistenceService` (loop-persistence-service.ts) | `writeLoopState`, `workingTreeDiff`, `git` via `this.persistence` |
 
 The facade still directly owns the cross-cutting policy that every sub-service
 reuses: run start (`startLoop`, `startObjectiveLoop`,
 `startDocDriftAndSmallFixLoop`), guard predicates (`assertOperatorNotPaused`,
 `assertLoopNotEscalated`, `assertTokenBudgetAvailable`,
-`assertWallClockBudgetAvailable`, `assertNoFailedGates`), completion
+`assertWallClockBudgetAvailable`, `assertNoFailedGates`, `assertRuntimeAvailable`),
+risk classification (`isHighRiskRun`, `highRiskReason`, `changedFilesRiskReason`,
+`leaseChangedFilesRisk`, `ensureChangedFilesSecurityChecker`), completion
 (`completeLoopRun`), verdict submission (`submitCheckerVerdict`,
 `submitSecurityVerdict`), deterministic checks (`runDeterministicChecks`),
 assignment files (`writeWorkAssignment`, `writeAssignmentPacket`,
@@ -125,9 +126,8 @@ it holds the `db` handle and passes itself to `LoopLifecycleService`,
 
 ```mermaid
 stateDiagram-v2
-    [*] --> created
-    created --> planning: startLoop with findings
-    created --> completed: startLoop with no findings
+    [*] --> planning: startLoop with findings
+    [*] --> completed: startLoop with no findings
     planning --> running: continueLoopRun prepares maker and checker leases
     running --> verifying: maker completed, checks or verdict pending
     running --> blocked: execution or check gate failed
@@ -137,20 +137,26 @@ stateDiagram-v2
     blocked --> planning: splitLoopFinding decomposed finding
     running --> escalated: failure threshold exceeded
     verifying --> escalated: checker verdict counted against threshold
-    escalated --> blocked
     ready_for_human_merge --> completed: completeLoopRun with human approval ref
-    planning --> interrupted: server restart recovery
+    blocked --> completed: completeLoopRun after gates re-verify
     running --> interrupted: server restart recovery
     verifying --> interrupted: server restart recovery
     interrupted --> running: resumeInterruptedRun within max attempts
-    interrupted --> failed: resume attempts exhausted
-    [*] --> cancelled: stopLoopRun from any active state
+    interrupted --> failed: resume attempts exhausted (boundedFail)
+    planning --> cancelled: stopLoopRun
+    running --> cancelled: stopLoopRun
+    verifying --> cancelled: stopLoopRun
+    ready_for_human_merge --> cancelled: stopLoopRun
+    blocked --> cancelled: stopLoopRun
+    escalated --> cancelled: stopLoopRun
 ```
 
-_A loop run moves from discovery/planning into maker execution, then through
-verification gates to `ready_for_human_merge`; any gate failure blocks,
-repeated failures escalate, a crash interrupts, and only `completeLoopRun` with
-a `human_approval_ref` marks `completed`._
+_A loop run moves from planning into maker execution, then through verification
+gates to `ready_for_human_merge`; any gate failure blocks, repeated failures
+escalate, a crash interrupts, and only `completeLoopRun` with a
+`human_approval_ref` marks `completed`. `startLoop` inserts the run directly in
+`planning` (findings discovered) or `completed` (none found); the schema CHECK
+also admits `created`, the default inserted by `LoopRunMutationService.create`._
 
 The transitions are owned by specific delegates: `LoopService.startLoop`
 inserts the run; `LoopLifecycleService.continueLoopRun/retryLoopRun` flip it to
@@ -170,19 +176,24 @@ than in-memory handles, so state survives process restarts:
 ```mermaid
 stateDiagram-v2
     [*] --> prepared: insertWorkerLease
-    prepared --> running: executeMaker or executeChecker dispatch
-    prepared --> cancelled: stopLoopRun before spawn
+    prepared --> running: executeMaker / executeChecker dispatch
+    prepared --> cancelled: stopLoopRun or deploy-restart settle
     running --> completed: runtime exit zero and role gates pass
     running --> failed: gate failed, runtime drifted, timeout, or crash recovery
     running --> cancelled: operator stop or runtime cancelled
-    completed --> completed: superseded by retry maker while recorded
-    failed --> failed: superseded_by_maker_lease_id marked when retry prepares
+    prepared --> pending_approval: ExecutionEngine needs a human decision
+    pending_approval --> prepared: approval granted, lease re-dispatched
+    pending_approval --> failed: approval denied (LOOP_WORKER_EXECUTION_DENIED)
+    completed --> completed: superseded_by_maker_lease_id recorded on retry
+    failed --> failed: superseded_by_maker_lease_id recorded on retry
 ```
 
 _A worker lease is inserted as `prepared`, moves to `running` only while a
 runtime child process is live, and ends `completed`, `failed`, or `cancelled`.
-Retries never rewrite history: they mint a fresh maker/checker pair and mark
-the prior maker with `superseded_by_maker_lease_id`._
+`pending_approval` is a metadata-level wait (the lease stays `prepared` on disk
+while the engine holds a pending approval). Retries never rewrite history: they
+mint a fresh maker/checker pair and mark the prior maker with
+`superseded_by_maker_lease_id`._
 
 `continueLoopRun` never assigns the same finding to two makers, skips split
 parents (`LOOP_FINDING_ALREADY_SPLIT`), validates explicit `model` /
@@ -243,7 +254,7 @@ Makers never edit the primary checkout. `WorktreeManager.createWorktree`:
    with an explicit `-c user.name=djimitflo` identity so a dirty source tree is
    reproducible for the checker.
 3. Symlinks `node_modules` (root and per-workspace `packages/*/node_modules`)
-   into the worktree so runtimes can execute without reinstalling, unless
+   into the worktree so the runtime can execute without reinstalling, unless
    `linkDependencies` is disabled (as it is for checker worktrees, which are
    cut from the maker worktree).
 
@@ -293,10 +304,11 @@ paths:
   stdout JSON lines for a `usage`/`token_usage` object with normalized aliases.
   Usage is never guessed: absent usage data simply "skips" the gate.
 - **Dollar cost** — `computeDollarCost` prices tokens per runtime
-  (`codex` ≈ $2/Mtok, `opencode` $0.5, `claude` $3, `gemini` $1, `pi`/`editor`/
-  `mock` $0). `computeEfficiencyMetric` reports verified artifacts per dollar,
-  and `allocateDollarBudget` ranks candidate findings by
-  competence-per-p50-dollar before allocating.
+  (`codex` $2/Mtok, `opencode` $0.5, `claude` $3, `gemini` $1, `pi`/`editor`/
+  `mock` $0). `computeEfficiencyMetric` reports verified artifacts (completed
+  maker leases) per dollar of recorded runtime usage, and
+  `allocateDollarBudget` ranks candidate findings by competence-per-p50-dollar
+  before greedily allocating a budget.
 
 Concurrency is layered. At the process-spawn layer, every runtime child routes
 through `RuntimeCommandService.executeRuntimeCommand`, which is bounded by the
@@ -311,25 +323,30 @@ via the same registry, so a stopped lease never hangs the queue.
 
 ## Verification gates and certification
 
-`LoopVerificationService.verifyLoopRun` evaluates eleven gates against the live
+`LoopVerificationService.verifyLoopRun` evaluates gates against the live
 lease set (excluding superseded makers and their linked reviewers):
 `run_not_cancelled`, `maker_completion`, `maker_checker_separation`,
 `worktree_isolation`, `assignment_file_present` (`.djimitflo/LOOP_WORK.md` or a
 historical `LOOP_WORK.md`), `diff_threshold_all_makers`, `checker_verdict`,
 `tests_lint_typecheck`, `security_checker_verdict` (skipped for non-high-risk
 runs), `auto_approved_scope` (J5: a maker carrying `metadata.auto_approved_scope`
-may have changed only that one approved test file), and a policy
-`no_automatic_merge` gate that always passes — it exists to prove the loop
-never merged, pushed, or deployed. A failed gate records a structured block
+may have changed only that one approved test file), `objective_scope` (an
+objective-mode maker may change only its finding's file; skipped when no
+completed maker carries `risk_inputs`), plus a policy `no_automatic_merge` gate
+that always passes — it exists to prove the loop never merged, pushed, or
+deployed. For a gym run or GitHub PR review the change-loop artifact gates are
+skipped outright (`inapplicableGates`). A failed gate records a structured block
 reason (`block_reason=gate_failed`, failed gate evidence, recommendations) on
-run metadata and flips the run to `blocked`. One deliberate exception keeps a
-mid-flight run out of the blocked lane: when some makers are still `prepared`
-or `running` and none has `failed`/`cancelled` (the `waitingForMakers`
-condition), a failing `maker_completion` gate does not block. When all makers
-complete and no gate fails, the run lands at `ready_for_human_merge`;
-otherwise (makers still working, no hard block) it stays in `verifying`. A
+run metadata and flips the run to `blocked`; a missing-evidence gate instead
+records `block_reason=insufficient_evidence` with an `unknown_gates` list.
+One deliberate exception keeps a mid-flight run out of the blocked lane: when
+some makers are still `prepared` or `running` and none has
+`failed`/`cancelled` (the `waitingForMakers` condition), a failing
+`maker_completion` gate does not block. When all makers complete and no gate
+fails, the run lands at `ready_for_human_merge`; otherwise (makers still
+working, no hard block) it stays in `verifying`. A
 `cancelled`/`completed` run keeps its status, and clearing the block removes
-the `gate_failed` block metadata.
+the `gate_failed`/`insufficient_evidence` block metadata.
 
 "Accepted" is deliberately strict. `hasAcceptedReviewEvidence` requires the
 checker lease to be `completed` with `verdict=accepted` **and** either a manual
@@ -337,11 +354,20 @@ attestation naming reviewer + reason (`manual_review_attestation`) or full
 runtime proof: exit status 0, no timeout or cancellation, `runtime_verdict`
 accepted, `read_only_contract_passed`, `runtime_adapter` equal to the lease
 runtime, an available `runtime_contract` in `ok` status, and an existing
-stdout log. `certifyLoopRun` only emits a `certified` convergence event when
+stdout log. Since the P0-4 identity cutoff
+(`MANUAL_ATTESTATION_IDENTITY_SINCE` = 2026-10-21) a manual attestation also
+needs `reviewer_type: 'human'` plus a non-empty `reviewer_user_id`; a legacy
+attestation that predates the cutoff keeps its old non-empty reviewer+reason
+evaluation and is labelled `legacy_unverified_identity` in the gate evidence.
+`certifyLoopRun` only emits a `certified` convergence event when
 the run is `ready_for_human_merge`/`completed` with every gate pass (the
 security gate may be skipped), and `completeLoopRun` re-verifies and refuses
-`HIGH_RISK_SECURITY_CHECK_REQUIRED`, `LOOP_COMPLETION_BLOCKED:<gate>`, or
-`LOOP_HUMAN_APPROVAL_REQUIRED` failures instead of trusting cached state.
+`HIGH_RISK_SECURITY_CHECK_REQUIRED`, `LOOP_COMPLETION_BLOCKED:<gate>`,
+`LOOP_COMPLETION_INSUFFICIENT_EVIDENCE:<gate>`,
+`LOOP_COMPLETION_LEASES_INCOMPLETE`, or `LOOP_HUMAN_APPROVAL_REQUIRED`
+failures instead of trusting cached state. The `/runs/:id/complete` route uses
+the `approve:task` permission and passes a `human_approval_ref` of
+`operator:<actor>` whenever the authenticated actor supplied one.
 
 ## Crash recovery and start-up invariants
 
@@ -352,23 +378,32 @@ loop daemon is described separately in the swarm goal lifecycle page). On boot:
 
 1. `LoopRecoveryService.recoverInterruptedRuns` fails every `worker_leases`
    row still marked `running` whose lease id is absent from the in-memory
-   `RuntimeLeaseRegistry` (reason `server_restart`), then marks any active
-   (`planning`/`running`/`verifying`) run with no live lease `interrupted` —
-   **except** `planning` runs and runs whose goal is blocked on
-   `awaiting_approval`, which are idle rather than orphaned.
-2. `LoopService.recoverInterruptedRuns` additionally prunes orphaned
-   worktrees, so disk state converges with the lease table.
+   `RuntimeLeaseRegistry` (reason `server_restart`), then marks any affected
+   active (`planning`/`running`/`verifying`) run `interrupted` — **except**
+   `planning` runs, runs whose goal is blocked on `awaiting_approval`, and
+   runs with a remote (`gym.remote_host`) maker, which are idle rather than
+   orphaned.
+2. `LoopRecoveryService` also **settles deploy-restart zombie runs**
+   (`settleRuns`): a `running` run with no live lease whose last activity
+   predates this boot has its prepared leases cancelled
+   (`cancellation_reason: deploy_restart`), the run marked `interrupted` with
+   `settled: deploy_restart`, its blocked/running goal failed, and its
+   in-flight proposal recorded `infra_failed` — so a killed deploy does not
+   leave runs, goals, and proposals waiting forever.
+3. `LoopService.recoverInterruptedRuns` additionally prunes orphaned
+   worktrees via `WorktreeManager.pruneOrphanedWorktrees`.
 
-`resumeInterruptedRun` moves an interrupted run back to `running` only while
-`resume_attempts <= maxResumeAttempts` (default 3); once exhausted it marks the
-run terminally `failed` (`boundedFail`). Resume replays the plan rather than
-history: findings whose maker leases already completed are skipped, everything
-else is requeued, and an `recovery` event is emitted on the swarm event bus.
+`resumeInterruptedRun` replays the plan rather than history: findings whose
+maker leases already completed are skipped, everything else is requeued, the
+run flips back to `running`, and a `recovery` event is emitted on the swarm
+event bus. Resume is bounded by `resume_attempts <= maxResumeAttempts`
+(default 3); once exhausted the run is terminally `failed` (`boundedFail`).
 Operator-paused runs are never auto-resumed (`LOOP_OPERATOR_PAUSED`), and a
-single durable failure reason is enforced everywhere — `WorkerLeaseRepo.updateStatus`
-refuses to persist `failed` without deriving one (`failure_reason`), defaulting
-to `unspecified: caller supplied no reason` so post-mortems never see a
-silent failure.
+single durable failure reason is enforced everywhere —
+`WorkerLeaseRepo.updateStatus` refuses to persist `failed` without deriving
+one (`failure_reason` from `execution_denied_reason`, notes, runtime-contract
+failure, timeout, or exit status), defaulting to `unspecified: caller supplied
+no reason` so post-mortems never see a silent failure.
 
 ## Focused tests
 

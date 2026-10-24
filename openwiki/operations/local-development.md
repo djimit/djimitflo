@@ -22,6 +22,8 @@ sources:
     resource: repo://packages/server/.env.example
   - id: openwiki-source-be80b8bb0c3f3a4106e1484a
     resource: repo://packages/server/package.json
+  - id: openwiki-source-f956a217f399178312d10ca3
+    resource: repo://packages/server/src/config/env.ts
   - id: openwiki-source-34dcb5fad537d29b30c58bda
     resource: repo://packages/server/src/database/migrate.ts
   - id: openwiki-source-6872443c65c75a44eb429150
@@ -30,20 +32,24 @@ sources:
     resource: repo://packages/server/src/database/seed.ts
   - id: openwiki-source-922486a2b03bd894d1e9f283
     resource: repo://packages/server/src/index.ts
+  - id: openwiki-source-bafa824370e2b0da2c9a92e8
+    resource: repo://packages/server/src/services/auth-service.ts
   - id: openwiki-source-c83ceec2d47257f066951051
     resource: repo://packages/shared/package.json
   - id: openwiki-source-799e7191e1567795c17e1e46
     resource: repo://scripts/deploy-vps.selftest.sh
-  - id: openwiki-source-6ca3f66d80046a53b657fb35
-    resource: repo://scripts/deploy-vps.sh
+  - id: openwiki-source-db13bbfb3807dbd13b37848e
+    resource: repo://scripts/gen-agent-docs.mjs
+  - id: openwiki-source-afd8e1b25b90e986856ba93a
+    resource: repo://scripts/gym-worker.test.mjs
   - id: openwiki-source-4e9cb0ebdb9a9943a148029e
     resource: repo://scripts/integration-probes.test.mjs
+  - id: openwiki-source-12018e1dbd871360ce95f8e2
+    resource: repo://scripts/kb-sync.test.mjs
   - id: openwiki-source-35f18adcb52dc5682aa3f7d0
     resource: repo://scripts/live-identity-evidence.test.mjs
   - id: openwiki-source-468f882d40bb8c52d27a2b9f
     resource: repo://scripts/mutation-gain.mjs
-  - id: openwiki-source-29c2506c65adc0de528f9094
-    resource: repo://scripts/paperclip-archive-export.py
   - id: openwiki-source-411dd1fcf68de6a41850c6fc
     resource: repo://scripts/wiki-delta-emitter.selftest.sh
   - id: openwiki-source-78f33dbc13edb0630c5e1cd3
@@ -56,10 +62,10 @@ sources:
     resource: repo://vitest.mutation.config.ts
   - id: openwiki-source-ecc4c6c168f7ce5ad8ec280e
     resource: repo://vitest.service-mutation.config.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-10-24T12:32:22.727Z" }
 verified:
   - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
+    at: 2026-10-24T12:32:22.727Z
 ---
 
 # Local Development, Build & Test Commands
@@ -77,7 +83,7 @@ operating the container build.
 | Node.js | `>=22.0.0 <25.0.0` | Enforced via root `engines`; the Dockerfile uses `node:22-bookworm-slim` |
 | npm | `>=9.0.0` | Enforced via root `engines` |
 | Python 3 + `make` + `g++` | any recent | Required when `better-sqlite3` has no prebuilt binary and must compile its native addon during `npm install` |
-| bash + Python 3 | any recent | Required to run the root `npm test` pipeline (script selftests) even for Node-only changes |
+| bash | any recent | Required to run the root `npm test` pipeline (script selftests) even for Node-only changes |
 | Docker | any recent | Only needed for sandboxed execution and the container workflow |
 
 `.npmrc` sets `legacy-peer-deps=true`, so installs already account for legacy
@@ -121,14 +127,17 @@ npm run dev:dashboard  # frontend only
   the local backend without extra config.
 
 Server configuration lives in `packages/server/.env.example` (copy to `.env`
-and adjust). Key dev-time variables: `DB_PATH` (defaults to
+and adjust); the full set of variables is enumerated in the
+[Configuration Reference](/openwiki/operations/configuration-reference.md).
+Key dev-time variables: `DB_PATH` (defaults to
 `<repo>/.data/djimitflo.sqlite`, resolved by `resolveDbPath`),
 `JWT_SECRET` (dev falls back to a built-in secret with a warning; production
-refuses to start without it), `AUTH_BOOTSTRAP_ADMIN_EMAIL` /
-`AUTH_BOOTSTRAP_ADMIN_PASSWORD` (first-run admin bootstrap, only when the
-users table is empty), and `DJIMITFLO_RUNTIME_PROFILE` (`api` default;
+refuses to start without it — enforced in `config/env.ts`'s `validateEnv`),
+`AUTH_BOOTSTRAP_ADMIN_EMAIL` / `AUTH_BOOTSTRAP_ADMIN_PASSWORD`
+(`AuthService.bootstrapAdmin()` creates the admin only when the users table is
+empty), and `DJIMITFLO_RUNTIME_PROFILE` (`api` default;
 `operator` and `autonomous` additionally enable maintenance loops, the loop
-daemon, and self-modification services).
+daemon, and self-modification services — resolved in `main()` at startup).
 
 ## Building
 
@@ -162,17 +171,23 @@ server.
 
 ## Testing
 
+See [Test Strategy](/openwiki/testing/test-strategy.md) for the testing
+philosophy, gates, and coverage expectations behind these commands; run the
+relevant lane below to satisfy them.
+
 ```bash
 npm run test                # full pipeline, see below
-npm run test:changed        # server vitest --changed
+npm run test:changed        # build shared/agent-catalog, then vitest --changed across core workspaces
 npm run test:mutation           # Stryker mutation run over curated critical spans
 npm run test:mutation:grounded  # mutation-gain check for one file/test pair (env-driven)
+npm run test:dead-code:grounded # dead-code gate for one file/test pair (env-driven)
+npm run test:finding-fix:grounded # finding-fix lane gate (env-driven)
 npm run test --workspace=@djimitflo/server -- <file>   # single server test file
 npx vitest run              # inside any one workspace: that workspace's suite
 ```
 
 The root `npm run test` is broader than "run vitest everywhere". Its exact
-pipeline is:
+pipeline is a single chained `&&` script:
 
 1. `bash scripts/deploy-vps.selftest.sh` — pure-function checks of the VPS
    deployer (`scripts/deploy-vps.sh`) against fixture compose files: the
@@ -182,27 +197,44 @@ pipeline is:
    that the wiki delta emitter baselines on first run, stays silent when
    unchanged, honors `--dry-run`, and publishes one `wiki.page.changed` event
    listing only changed `.md` pages.
-3. `python3 scripts/paperclip-archive-export.py --selftest` and
-   `python3 scripts/paperclip-readonly-monitor.py --selftest` — the Paperclip
-   exporter parses pg_dump `COPY` blocks for an allowlist of work-history
-   tables (never secrets/credentials tables) into JSONL with a sha256
-   `MANIFEST.json`.
-4. `node scripts/live-identity-evidence.test.mjs` — identity/provenance
+3. `node scripts/live-identity-evidence.test.mjs` — identity/provenance
    verification logic used by `assurance:live` (commit, instance ID, loopback
    vs configured database identity).
-5. `node scripts/integration-probes.test.mjs` — stubbed-`fetch` tests of the
+4. `node scripts/integration-probes.test.mjs` — stubbed-`fetch` tests of the
    external integration probes (e.g. Context7 MCP discovery
    contract/version checks).
-6. `npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog`
+5. `node scripts/gen-agent-docs.mjs --check` and `node scripts/gen-agent-docs.test.mjs`
+   — the generated agent docs (`TOOLS.md`, `HEARTBEAT.md`, and
+   `config-defaults.generated.ts`) must be up to date with their sources, and
+   the generator's parsers must pass their unit tests.
+6. `node scripts/gym-worker.mjs --selfcheck` and `node scripts/gym-worker.test.mjs`
+   — the D9 gym worker's runner flags and git safety, exercised against a fake
+   `docker` on `PATH` that records every call.
+7. `node scripts/kb-sync.test.mjs` — the knowledge-base sync reconciles a page
+   the server reports `pending` (no safety verdict) against a fake Djimitflo.
+8. `npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog`
    — prerequisites compiled before workspace tests run.
    `tsx`-executed server code is type-stripped at runtime, so these built
    `dist/` outputs are what the test imports actually resolve.
-7. `npm run test --workspaces --if-present` — vitest per workspace.
+9. `npm run test --workspaces --if-present` — vitest per workspace.
 
 Vitest configuration: the root `vitest.config.mts` selects the `jsdom`
 environment with no setup files (tests stub `localStorage`/`fetch`
 themselves); the dashboard's `vite.config.ts` also sets `jsdom` + `globals`.
 Dashboard and shared use `vitest run --passWithNoTests`.
+
+`npm run test:changed` (root `package.json` `test:changed` script) first builds `@djimitflo/shared` and
+`@djimitflo/agent-catalog`, then runs `vitest --changed` across the four core
+workspaces (`@djimitflo/server`, `@djimitflo/shared`,
+`@djimitflo/agent-catalog`, `@djimitflo/mcp-server`) so only tests affected by
+uncommitted changes run.
+
+Additional audit/assurance scripts wired into the root pipeline:
+`audit:ci` (`scripts/ci-audit.mjs`), `audit:tables`
+(`scripts/table-reachability.mjs`), `docs:agents` (`scripts/gen-agent-docs.mjs`),
+and the `assurance:*` lanes (`assurance:truth`, `assurance:contracts`,
+`assurance:route-contracts`, `assurance:openmythos`, `assurance:integrations`,
+`assurance:live`).
 
 ### Mutation testing
 
@@ -281,12 +313,17 @@ The `Dockerfile` is a two-stage build:
   `npm install` (with devDependencies), copies sources, then runs the same
   `npm run build` chain used locally.
 - **Runner** (`node:22-bookworm-slim`): upgrades the base image and installs
-  exactly `ca-certificates git python3-minimal curl procps` via apt. It then
-  pins and installs the `gh` CLI as a static `.deb` from the GitHub CLI release
-  (`ARG GH_CLI_VERSION=2.100.0`, downloaded per `dpkg --print-architecture`,
-  verified with `gh --version`) — the server's own PR-review service shells
-  out to it for PR comments and Check Runs. Next it pins the global agent-cli
-  runtimes to keep the production worker surface equal to what
+  exactly `ca-certificates git python3-minimal curl procps libatomic1` via
+  apt. It then pins and installs the `gh` CLI as a static `.deb` from the
+  GitHub CLI release (`ARG GH_CLI_VERSION=2.102.1`, downloaded per
+  `dpkg --print-architecture`, verified with `gh --version`) — the server's own
+  PR-review service (`GithubPrReviewService`) shells out to it for PR comments
+  and Check Runs. It also installs the Atomic Agent gym-only maker
+  (plan C5, `AtomicExecutor`) as a release tarball pinned by version **and**
+  per-arch sha256 (`ARG ATOMIC_AGENT_VERSION=0.6.5`,
+  `ATOMIC_AGENT_SHA256_X64` / `ATOMIC_AGENT_SHA256_ARM64`, verified with
+  `sha256sum -c` then `atomic-agent --version`). Next it pins the global
+  agent-cli runtimes to keep the production worker surface equal to what
   `/swarms/runtime-readiness` accepts: `npm install --global
   @openai/codex@0.146.0 opencode-ai@1.18.10 @anthropic-ai/claude-code@2.1.282`,
   immediately probed with `git --version && codex --version && opencode
@@ -360,9 +397,9 @@ configuration.
   prerequisite packages themselves for this reason.
 - **Production container without `JWT_SECRET`** — `docker-entrypoint.sh`
   exits 1 before node starts.
-- **Root `npm run test` requires Python 3 and bash** even for pure Node work,
-  because the Paperclip selftests and the bash script selftests run before any
-  vitest suite.
+- **Root `npm run test` requires bash** even for pure Node work,
+  because the bash script selftests (`deploy-vps`, `wiki-delta-emitter`) run
+  before any vitest suite, alongside the Node script tests.
 - **`test:mutation:grounded` without env vars is a silent no-op** — it must be
   invoked with both `MUTATE_FILE` and `MUTATE_TEST` set (or via a loop-daemon
   check harness that sets them), otherwise it skips and exits 0.

@@ -10,6 +10,8 @@ sources:
     resource: repo://packages/mcp-server/src/__tests__/authority-tools.test.ts
   - id: openwiki-source-98839c85310f2361920fdde1
     resource: repo://packages/mcp-server/src/__tests__/db.test.ts
+  - id: openwiki-source-6200567cdc34e1718c3313d0
+    resource: repo://packages/mcp-server/src/__tests__/expert-tools.test.ts
   - id: openwiki-source-c611658bc71229073f0e22d4
     resource: repo://packages/mcp-server/src/__tests__/explainer-tools.test.ts
   - id: openwiki-source-f32a88438a95fd9c406f31ef
@@ -18,6 +20,10 @@ sources:
     resource: repo://packages/mcp-server/src/__tests__/knowledge-tools.test.ts
   - id: openwiki-source-3df4070bfd72dd7e20c8c996
     resource: repo://packages/mcp-server/src/__tests__/mcp-server.test.ts
+  - id: openwiki-source-9dfe4947b9bd3626878b7069
+    resource: repo://packages/mcp-server/src/__tests__/mcp-write-permissions.test.ts
+  - id: openwiki-source-76c13c8f1ab7259ccec3d305
+    resource: repo://packages/mcp-server/src/__tests__/mission-control.test.ts
   - id: openwiki-source-f12bef0d948ec2e5776ac453
     resource: repo://packages/mcp-server/src/__tests__/orchestration-registration.test.ts
   - id: openwiki-source-26dce71b79faec29409362d1
@@ -56,11 +62,20 @@ sources:
     resource: repo://packages/mcp-server/src/tools/platform.ts
   - id: openwiki-source-efa7465e9bd745fbb057fbd3
     resource: repo://packages/mcp-server/src/transports/http.ts
+  - id: openwiki-source-d00259be35083160b9e2c775
+    resource: repo://packages/server/src/__tests__/seed-mcp-servers.test.ts
+  - id: openwiki-source-baf2da50da44e229e8bb6daf
+    resource: repo://packages/server/src/database/seed-mcp-servers.ts
+  - id: openwiki-source-432dd950fb697e04f9ac8978
+    resource: repo://packages/server/src/routes/mcp.ts
   - id: openwiki-source-4c98ee5915bd44e7aae4fb1d
     resource: repo://packages/shared/src/jwt.ts
   - id: openwiki-source-f873c20d1298723efcbc88e6
     resource: repo://packages/shared/src/types/auth.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-10-24T12:32:22.727Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-10-24T12:32:22.727Z
 ---
 
 # MCP Server Package
@@ -102,7 +117,11 @@ context that all tool handlers read.*
 
 The entrypoint `src/index.ts` parses `--transport`, `--port` (default `3002`), and
 `--db`, opens the database once via `createDatabase`, and builds a `createServer`
-factory that registers all tool families on each new `McpServer` instance.
+factory that registers all tool families on each new `McpServer` instance. The
+package is published (workspace-private) as `@djimitflo/mcp-server` with the
+`djimitflo-mcp` bin pointing at `dist/index.js`; it depends on
+`@djimitflo/shared` for `ROLE_PERMISSIONS`, `UserRole`, and `verifyHs256Jwt`,
+and on `better-sqlite3` for direct database access.
 
 **stdio (default).** A host IDE launches the binary as a child process; the server
 connects to `StdioServerTransport` inside `runWithMcpAuth` with a synthetic
@@ -176,13 +195,21 @@ at a copied snapshot safe.
 `src/auth-context.ts` stores `{ payload, token }` in `AsyncLocalStorage`
 (`runWithMcpAuth`/`currentMcpAuth`); `currentMcpAuth` throws
 `MCP_AUTH_CONTEXT_REQUIRED` when a handler runs outside it, which makes anonymous
-mutation impossible regardless of transport. Orchestration and authority tools add
-a `requirePermission` helper that checks the principal's role against
+mutation impossible regardless of transport. It also exports
+`requireMcpPermission(permission)`, which checks the principal's role against
 `ROLE_PERMISSIONS` from `@djimitflo/shared` and throws
-`MCP_PERMISSION_DENIED: <permission>`. The platform tools (`council`, exports) and
-orchestration `approve_action` forward `currentMcpAuth().token` as a Bearer header
-to `DJIMITFLO_API_URL` (default `http://127.0.0.1:3001/api`), so the API re-applies
-its own authorization to those calls.
+`MCP_PERMISSION_DENIED: <permission>`; orchestration and authority tools define an
+identical local `requirePermission` helper. The contract — tested in
+`__tests__/mcp-write-permissions.test.ts` and noted in the source comments — is
+that a writing MCP tool must ask for the **same permission as its HTTP route
+twin**, so the MCP surface is never a wider door than the API: the governance
+write tools require `manage:config` (their twins are `POST /api/mcp/servers` and
+`PATCH /api/mcp/permissions/:toolId`) and the explainer write tools require
+`write:governance` (twins: `POST /api/explainer/tasks[/:id/run]`). The platform
+tools (`council`, exports) and orchestration `approve_action` forward
+`currentMcpAuth().token` as a Bearer header to `DJIMITFLO_API_URL` (default
+`http://127.0.0.1:3001/api`), so the API re-applies its own authorization to
+those calls.
 
 ## Tool family map
 
@@ -192,20 +219,28 @@ each tool name is listed with its mutating posture. A second registrar,
 (`djimitflo_expert_search`, `djimitflo_expert_get`,
 `djimitflo_expert_capabilities`, `djimitflo_expert_claims` — read-only provenance
 views over the `expert_*` tables) but is not imported by the binary's `main`, so
-those tools only appear where that module is wired in explicitly.
+those tools only appear where that module is wired in explicitly (its own
+`__tests__/expert-tools.test.ts` registers `registerExpertTools` directly). The
+expert tools are §35 "Frontier Expert Intelligence" views: tentative lifecycle
+states such as `DISCOVERED` (a signature match, never verified expertise) are
+returned verbatim rather than promoted, person-kind identities are hidden unless
+`FRONTIER_EXPERT_PERSONS_ENABLED=true`, and when the `expert_*` tables are
+missing the tools return an explicit "not present" error instead of guessing.
+Resolution and council dispatch stay on the governed HTTP routes
+(`/api/swarms/expert/*`); these tools never write.
 
 | Family | Tools | Posture |
 | --- | --- | --- |
 | loops | `djimitflo_list_loop_runs`, `djimitflo_get_loop_status`, `djimitflo_get_loop_catalog` | Read-only SQL over `loop_runs`/`worker_leases`/`loop_events`; loop starts happen elsewhere |
 | goals | `djimitflo_list_goals`, `djimitflo_get_goal` | Read-only over `goals` plus linked runs |
 | agents | `djimitflo_list_agents`, `djimitflo_get_agent_status` | Read-only over `agents` and active leases |
-| mission-control | `djimitflo_get_mission_control`, `djimitflo_get_system_health` | Read-only aggregate counts, table stats, recent errors, always including database provenance |
+| mission-control | `djimitflo_get_mission_control`, `djimitflo_get_system_health` | Read-only aggregate counts (status-bucket: `running`/`verifying` loop runs, `created` goals, `active` agents, `running` worker leases), table stats, recent error/critical events — always including database provenance |
 | orchestration | `djimitflo_spawn_agent`, `djimitflo_handoff_agent`, `djimitflo_approve_action` (mutating), `djimitflo_list_orchestration_agents` (read) | All three mutators require live mode; spawn/handoff need `write:swarm_action`, approve needs `create:task` and POSTs `/approvals` through the API |
 | okf | `okf_search`, `okf_get`, `okf_related`, `okf_validate`, `okf_status` | Read-only over the file-based OKF bundle, no database involved |
 | openmythos | `djimitflo_openmythos_leaderboard`, `djimitflo_openmythos_score` | Read-only over `openmythos_eval_runs`; evals are started via the REST API, not MCP |
 | governance | `djimitflo_get_data_provenance`, `djimitflo_mcp_doctor`, `djimitflo_list_mcp_servers`, `djimitflo_list_mcp_tools`, `djimitflo_get_mcp_permissions`, `djimitflo_get_cost_summary`, `djimitflo_get_evidence_chain`, `djimitflo_list_openmythos_runs`, `djimitflo_list_skill_outcomes` (read) and `djimitflo_sync_mcp_catalog`, `djimitflo_sync_http_sidecar_catalog`, `djimitflo_probe_mcp_sidecars` (mutating with `apply=true`) | The three sync/probe tools default to `apply=false` dry-run previews and gate the write path behind `requireLiveMode` |
 | notebooks | `notebook_list`, `notebook_create`, `notebook_delete`, `notebook_add_source`, `notebook_ask`, `notebook_generate`, `notebook_research`, `notebook_notes`, `notebook_download` | No Djimitflo DB access; all shell out to a NotebookLM bridge subprocess (see below) — create/delete/add/notes mutate the external service |
-| explainer | `explainer_create_task`, `explainer_run_task` (write queue rows), `explainer_list_tasks`, `explainer_get_task`, `explainer_list_bundles`, `explainer_ask`, `explainer_search_repo`, `explainer_get_fact`, `explainer_compare_repos` (read) | Not gated by `requireLiveMode`; `explainer_ask`/`explainer_run_task` delegate to `EXPLAINER_SERVER_URL` when set, otherwise fall back to local chunk search / job enqueue |
+| explainer | `explainer_create_task`, `explainer_run_task` (write queue rows), `explainer_list_tasks`, `explainer_get_task`, `explainer_list_bundles`, `explainer_ask`, `explainer_search_repo`, `explainer_get_fact`, `explainer_compare_repos` (read) | The two writers gate on `requireMcpPermission('write:governance')` (their HTTP-twins' permission) and are caught into `isError` results; they do **not** call `requireLiveMode`. `explainer_ask`/`explainer_run_task` delegate to `EXPLAINER_SERVER_URL` when set, otherwise fall back to local chunk search / job enqueue |
 | authority | `djimitflo_authority_trace`, `djimitflo_authority_stats` (`read:audit`), `djimitflo_authority_emit` (mutating, `write:evidence` + live mode) | `authority_emit` refuses `policyDecision: 'ALLOW'` — actionable authority requires the external producer — and stamps the authenticated principal as actor |
 | platform | `djimitflo_council_ask`, `djimitflo_generate_export` (API-forwarded), `djimitflo_memory_search` (read-only SQL over `memory_candidates`) | Council/export calls carry the session Bearer token so the API's own auth applies |
 
@@ -218,10 +253,59 @@ creates a *pending* approval record and explicitly does not execute the action; 
 `djimitflo_handoff_agent` writes a pending `fleet_handoffs` control-plane row rather
 than transferring a live process.
 
-The governance sync tools classify discovered tools with simple heuristics — tool
-names matching `approve|spawn|handoff` become `requires_approval/high`, and HTTP
+The governance sync tools classify discovered tools with simple heuristics —
+runtime tool names matching `approve|spawn|handoff` become
+`requires_approval/high`, names matching `evidence|cost|permission|mcp_` become
+`allowed/medium`, everything else `allowed/low`; for HTTP sidecars,
 GET/HEAD/OPTIONS operations become `allowed/low` while other methods become
 `requires_approval/medium` — so freshly synced permissions start conservative.
+All three sync/probe tools also gate the write path on
+`requireMcpPermission('manage:config')` after `requireLiveMode`, mirroring the
+server-side `manage:config` routes that own the same `mcp_servers`/`mcp_tools`/
+`mcp_tool_permissions` tables. The sidecar catalog sync additionally **deletes**
+stale previously-synced tool rows (and their permission rows) that no longer
+appear in a reachable sidecar's OpenAPI spec; the server-side twin logic for
+that import lives in `packages/server/src/services/mcp-openapi-catalog.ts`,
+which also refuses to overwrite a server that already has tool rows so an
+operator's curated decisions survive refreshes.
+
+## Client registration, seeded catalog, and the in-server `/api/mcp` routes
+
+IDE/agent clients register **with this standalone package** by launching or
+connecting to the `djimitflo-mcp` binary directly (stdio child process from the
+IDE's MCP configuration, or an HTTP client hitting `:3002/mcp` with a Bearer
+JWT); there is no discovery handshake through the Djimitflo REST API. The
+standalone server and the Djimitflo server are **direct SQLite peers**: both read
+and write the same `mcp_servers`, `mcp_tools`, and `mcp_tool_permissions` tables
+(see `/openwiki/architecture/data-model.md`), and this page's governance family
+and the server's `packages/server/src/routes/mcp.ts` expose parallel surfaces
+over them:
+
+- `djimitflo-mcp` registers its runtime tools under a synthetic server row
+  `djimitflo-runtime` (via `djimitflo_sync_mcp_catalog`), and its
+  `djimitflo_list_mcp_servers` marks that row `effective_status: 'catalog'`
+  because a catalog entry has no liveness to probe.
+- The **seeded fleet defaults** live server-side in
+  `packages/server/src/database/seed-mcp-servers.ts`, which upserts eight
+  sidecar server rows (research-agent, deerflow, context7, qdrant, searxng,
+  litellm-mgmt, uams-read, knowledge-mcp-bridge) on migration, keyed by name with
+  metadata **merged** into existing rows so operator-set fields survive reseeds.
+  Probe configuration comes from row metadata (`probe_path`/`probe_url`/
+  `openapi_path`/`probe_accept_statuses`), and both this package's
+  `djimitflo_probe_mcp_sidecars` and `POST /api/mcp/servers/refresh` honor the
+  same `probeSpec` semantics. Workstation-only sidecars are seeded with
+  `known_unreachable` metadata (operator rule 2026-09-29: the control plane never
+  calls the workstation), which both surfaces render as a calm `stopped`/
+  `policy_blocked`-style status instead of an alarming `error`.
+- The in-server routes (`GET /api/mcp/servers|tools|permissions`,
+  `POST /api/mcp/servers[/refresh]`, `PATCH /api/mcp/permissions/:toolId`) are
+  how the dashboard and operators manage the same registry; the write routes are
+  rate-limited and gated behind `manage:config`, non-admin callers get
+  command/args/env/url stripped. The standalone MCP server never calls those
+  routes — it writes the same tables under its own `manage:config` permission
+  check, keeping the enforcement point at the database for both boundaries (see
+  `/openwiki/concepts/governance-pipeline.md` and
+  `/openwiki/concepts/roles-and-permissions.md`).
 
 ## External integrations
 
@@ -243,10 +327,15 @@ raises `OKF bundle not found` and is returned as an error result. See
 
 **Explainer server.** Without `EXPLAINER_SERVER_URL`, `explainer_ask` refuses to
 fabricate answers: it returns extractive citations from published knowledge chunks
-or a `NOT_ENOUGH_EVIDENCE` refusal, and `explainer_create_task`/`explainer_run_task`
-guarantee a pending `explainer_jobs` row so the server's `ExplainerFleetWorker`
-later picks the task up. With the URL set, both delegate over HTTP (optionally with
-`DJIMITFLO_API_TOKEN`).
+or a `NOT_ENOUGH_EVIDENCE` refusal, and `explainer_create_task`/
+`explainer_run_task` — after the `write:governance` permission check — guarantee a
+pending `explainer_jobs` row so the server's `ExplainerFleetWorker` later picks
+the task up (`createTask` always inserts the job row; `runPipeline` re-enqueues
+only when no pending/queued/running row exists). With the URL set, both delegate
+over HTTP (optionally with `DJIMITFLO_API_TOKEN`). The local fallback chunks are
+rebuilt on each call from the bundle's `facts_path`/`sections_path`/
+`markdown_path` files, and chunk `valid_until` is anchored to bundle creation
+(+7 days) rather than recomputed per call, so stale bundles stay stale.
 
 ## Testing
 
@@ -263,6 +352,23 @@ Focused contracts live in `src/__tests__/`:
 - `mcp-server.test.ts` — registration of the full tool inventory, read-only tool
   execution in one pass, `DJIMITFLO_LIVE_DATA_REQUIRED` for every mutating apply
   path on a snapshot handle, and exact API URL forwarding for council/export tools.
+- `mcp-write-permissions.test.ts` — the write-permission parity contract: a
+  viewer/maker/checker `apply=true` catalog sync/probe is refused with
+  `MCP_PERMISSION_DENIED: manage:config` while the operator's stored permission
+  decision survives, the `apply=false` preview stays open to a viewer, and
+  explainer `create_task`/`run_task` refuse every role without
+  `write:governance` while writing no `explainer_tasks`/`explainer_jobs` rows.
+- `explainer-tools.test.ts` — task creation inserts the row, and
+  `explainer_run_task` without `EXPLAINER_SERVER_URL` reports `status: 'queued'`
+  for the server-side worker instead of running locally.
+- `expert-tools.test.ts` — the read-only experts family: missing `expert_*`
+  tables return an explicit error, search/get/capabilities/claims round-trip
+  with verbatim `DISCOVERED` states and `unresolved_contradictions` counts, and
+  person-kind experts disappear unless `FRONTIER_EXPERT_PERSONS_ENABLED=true`.
+- `mission-control.test.ts` — provenance is always included in mission-control
+  payloads and summary fields count only the matching status buckets
+  (running/verifying loans, created goals, active agents, running workers),
+  with the five most recent events/errors ordered descending.
 - `authority-tools.test.ts` — emit/trace/stats round-trip with sequence numbering
   and payload digests, `ALLOW`-forgery refusal for every role, and snapshot/anonymous
   write rejection.
@@ -279,6 +385,7 @@ Focused contracts live in `src/__tests__/`:
 | `JWT_SECRET` | Required for `--transport http`; verifies Bearer JWTs |
 | `DJIMITFLO_API_URL` | Base URL for council/approval/export forwarding (default `http://127.0.0.1:3001/api`) |
 | `OKF_BASE`, `NOTEBOOKLM_PYTHON`, `NOTEBOOKLM_BRIDGE_PATH`, `EXPLAINER_SERVER_URL`, `DJIMITFLO_API_TOKEN`, `MCP_STATUS_TTL_MS` | Knowledge-bundle, NotebookLM bridge, explainer delegation, and stale-server classification tuning |
+| `FRONTIER_EXPERT_PERSONS_ENABLED` | `true` reveals person-kind expert identities in the read-only experts tools; unset/hidden by default (§35 FE-AREAS) |
 
 See `/openwiki/operations/configuration-reference.md` for the fleet-wide view of
 these variables and `/openwiki/architecture/monorepo-layout.md` for where this

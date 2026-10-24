@@ -1,7 +1,7 @@
 ---
 type: subsystem-interface-map
 title: HTTP/WebSocket API Surface & Route Inventory
-description: The server's public network surface — the declarative /api route mount table with per-prefix auth, the derived /api/openapi.json, METRICS_TOKEN-armed /metrics, build-attributable /health endpoints, public /explore pages, global rate/body limits, and the WebSocket `/ws` event protocol to the dashboard.
+description: The server's public network surface — the declarative /api route mount table with per-prefix auth, the derived /api/openapi.json and its machine-checked inventory tests, METRICS_TOKEN-armed /metrics, build-attributable /health endpoints, public /explore pages, global rate/body limits, the MCP HTTP bridge, and the WebSocket `/ws` event protocol to the dashboard.
 tags: [http-api, openapi, route-inventory, websocket, rate-limiting, metrics, health, explore-pages]
 sources:
   - id: openwiki-source-5b54a58d1b51cd490b0e7162
@@ -26,12 +26,26 @@ sources:
     resource: repo://packages/server/src/routes/explore-public.ts
   - id: openwiki-source-7896dda6652bd02503b56b0e
     resource: repo://packages/server/src/routes/health.ts
+  - id: openwiki-source-71021f8dd8ee22ee3952bea0
+    resource: repo://packages/server/src/routes/host-agent.ts
   - id: openwiki-source-13e7bffe2fd4d8b2a22e195d
     resource: repo://packages/server/src/routes/index.ts
+  - id: openwiki-source-432dd950fb697e04f9ac8978
+    resource: repo://packages/server/src/routes/mcp.ts
   - id: openwiki-source-e5c4c6f6bbbf9092efac4c9a
     resource: repo://packages/server/src/routes/metrics.ts
+  - id: openwiki-source-5ae743f194dee8dcc975b1df
+    resource: repo://packages/server/src/routes/remote-gym.ts
+  - id: openwiki-source-d1ad81b770ebea131df09b62
+    resource: repo://packages/server/src/routes/spawns.ts
+  - id: openwiki-source-4522b4262783bc8de13b2b3e
+    resource: repo://packages/server/src/services/mcp-openapi-catalog.ts
+  - id: openwiki-source-9f91c8fd7c8efed80db6be05
+    resource: repo://packages/server/src/services/usage-telemetry.ts
   - id: openwiki-source-fa568b0862f0b0b901ecfc19
     resource: repo://packages/server/src/services/websocket-service.ts
+  - id: openwiki-source-172fe84a7170736aa2f97fd6
+    resource: repo://packages/server/src/utils/build-provenance.ts
   - id: openwiki-source-a3695f6a34078796ab87072d
     resource: repo://packages/server/src/utils/route-inventory.ts
   - id: openwiki-source-0dfefeca89a6d1280d92409c
@@ -40,7 +54,10 @@ sources:
     resource: repo://scripts/contract-inventory.mjs
   - id: openwiki-source-1d9734c69d8b750a412da9f0
     resource: repo://scripts/route-source-inventory.mjs
-generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-10-24T12:32:22.727Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-10-24T12:32:22.727Z
 ---
 
 # HTTP/WebSocket API Surface & Route Inventory
@@ -52,7 +69,10 @@ unauthenticated `/explore` explainer pages, and the authenticated WebSocket
 protocol feeding the dashboard. The runtime bootstrap that wires all of these
 together is covered in `/openwiki/architecture/server-runtime.md`; role and
 permission semantics are covered in
-`/openwiki/concepts/roles-and-permissions.md`.
+`/openwiki/concepts/roles-and-permissions.md`. Throughout this page, "public"
+means reachable without a user JWT — it does not mean production-hardened;
+`/openwiki/quickstart.md` carries the research-prototype epistemic status for
+the whole deployment.
 
 ## The declarative RouteMount table
 
@@ -66,6 +86,19 @@ route inventory: `mountRoutes` records each layer's prefix and an
 `requiresAuth: true` brand attached in
 `packages/server/src/middleware/auth.ts`) in a `WeakMap` keyed by the Express
 layer, because Express 5 hides mount prefixes inside matcher closures.
+
+The current table (index.ts L136-L219) mounts, by guard:
+
+- **Empty middleware** (special-cased surface): `/auth` (public login, self-protecting rest), `/` (self-authenticating diff routes), `/swarm-v2/social-runtime` (signed runtime callbacks), `/health`, `/gym-worker`, `/host-agent`, `/telegram` (secret webhook).
+- **`requireAuthOrSpawnToken`**: `/swarms/spawns`.
+- **30-per-minute `rateLimit` + `requireAuth`**: `/traceability`.
+- **`requireAuth`** on everything else: `/catalog`, `/mcp`, `/approvals`, `/policies`, `/risk`, `/evidence`, `/observability`, `/knowledge`, `/federation`, `/intervention`, `/goals`, `/loops`, `/work-items`, `/swarms`, `/repositories`, `/audit`, `/authority`, `/discussions`, `/usage`, `/learning`, `/backups`, `/exports`, `/memory`, `/skills`, `/openmythos`, `/gym`, `/fleet-hosts`, `/runtime-governance`, `/cognitive`, `/models`, `/compliance`, `/retirement`, `/red-team`, `/platform`, `/research`, `/apex`, `/swarm-v2`, `/swarm`, `/self-improve`, `/agi`, `/intelligence`, `/meta`, `/sbom`, `/explainer`, `/council`, `/segml/federation`, `/organizations`, `/audit-logs`.
+
+Four routes are registered directly on the API router beside the table — the
+public `GET /api/version`, the `requireAuth`-guarded `GET /api/openapi.json`,
+and `GET /api/telemetry/usage` plus `POST /api/telemetry/pageview` (both
+`requireAuth`; page-view paths are normalized to `:id` segments and
+shape-validated before counting).
 
 Order in the table is load-bearing. Express matches in registration order, so
 `/swarms/spawns` (guarded by `requireAuthOrSpawnToken`) must be mounted before
@@ -100,6 +133,11 @@ exceptions are explicit:
   `requireAuth` + `requirePermission('read:evidence')`).
 - `/telegram` mounts with empty middleware so its secret webhook endpoint
   remains reachable without a user session.
+- `/gym-worker` and `/host-agent` mount with empty middleware but are not open:
+  their pull endpoints validate per-host HMAC tokens (`X-Gym-Host` +
+  `X-Gym-Worker-Token`, scope `gym-worker`; `X-Host` + `X-Host-Token`, scope
+  `host-agent`), and minting those tokens requires an operator with
+  `manage:tokens`. `/host-agent` adds its own 600-per-minute limiter.
 - `GET /api/version` is a public direct route reporting `{ version, name: 'Djimitflo API' }`.
 
 Within authenticated prefixes, individual handlers add
@@ -117,7 +155,12 @@ Before any route matches, the API router applies:
   `express-rate-limit` (`standardHeaders: 'draft-8'`). The server sets
   `trust proxy` to 1 hop so this limiter keys on the real client IP behind the
   nginx hop; the `/traceability` prefix additionally tightens itself to
-  30 requests/minute, and `/openapi.json` has its own 100-per-15-minute limiter.
+  30 requests/minute, `/api/health` carries a per-router 600-per-minute
+  limiter, and `/openapi.json` has its own 100-per-15-minute limiter.
+- **Usage telemetry** — `UsageTelemetry.middleware()` records route-pattern and
+  page-view counts into SQLite (dormant-surface measurement, plan S4), feeding
+  the authenticated `GET /api/telemetry/usage` and `POST /api/telemetry/pageview`
+  routes.
 
 ## /api/openapi.json — derived, not handwritten
 
@@ -133,9 +176,15 @@ upgrade path). `collectRoutes` fails closed: it throws `Route inventory
 incomplete` on any nested router that `mountRoutes` did not record, and rejects
 non-string paths, so `openapi.json` can never silently omit routes.
 
-Two sibling startup routes outside the `/api` table feed the same surface:
-`GET /workstation/urls` (authenticated, enumerates the host's listening ports
-via `netstat`/`ss` best-effort) and `GET /version`.
+One related registry lives on the authenticated side: the `/api/mcp` server
+registry feeds an HTTP bridge to sidecars. `POST /servers/refresh`
+(`requireAuth` + `manage:config`) probes each registered sidecar's declared URL
+and, on first contact with a reachable server that exposes an
+`openapi_url`/`openapi_path`, bulk-imports its operations via
+`services/mcp-openapi-catalog.syncOpenApiCatalog` as `mcp_tools` rows — GET/HEAD/
+OPTIONS classified `allowed/low`, everything else `requires_approval/medium`,
+capped at `MAX_OPERATIONS = 100` operations per spec. See
+`/openwiki/integrations/mcp-server.md` for the consumer side of this catalog.
 
 ## /metrics — default-off Prometheus exposition
 
@@ -155,18 +204,29 @@ multi-node deploys need no extra state.
 ## /health and /api/health — attributable liveness
 
 `GET /health` (app-level, public) and `GET /api/health` (in the mount table,
-public) both report `status`, a timestamp, and a **build identity** drawn from
-build-time environment variables: `DJIMITFLO_COMMIT_SHA` (runtime commit),
-`DJIMITFLO_BUILD_COMMIT`, `DJIMITFLO_BUILD_SOURCE`, `DJIMITFLO_BUILD_TIME`,
-`DJIMITFLO_INSTANCE_ID`, and a `commit_matches_build` boolean that is true only
-when the running revision equals the baked build revision — making a deployed
-artifact attributable only when runtime and artifact agree. `/api/health/deep`
-(requires `read:evidence`) probes the database, memory pressure, active worker
-leases, the knowledge runtime, and the configured LiteLLM/Ollama/Qdrant
-dependencies, returning 503 when any check errors. `packages/server/src/routes/health.ts`
-also implements the authenticated in-band `/api/metrics` and
-`/api/metrics/json` endpoints (`read:evidence`), which are distinct from the
-token-armed root `/metrics`.
+public, behind a per-router 600-per-minute limiter) both report `status`, a
+timestamp, and a **build identity** drawn from build-time environment variables
+(`utils/build-provenance.buildProvenance`): `commit` (`DJIMITFLO_COMMIT_SHA`,
+the runtime commit, from compose/runtime env and so driftable), `built_commit`
+(`DJIMITFLO_BUILD_COMMIT`, baked into the image via Docker build args and
+treated as what was actually built), `build_source` (`DJIMITFLO_BUILD_SOURCE`),
+`build_time` (`DJIMITFLO_BUILD_TIME`), `instance_id` (`DJIMITFLO_INSTANCE_ID`),
+and a `commit_matches_build` boolean that is true only when the running
+revision equals the baked build revision — so a deployed artifact is
+attributable only when runtime and artifact agree.
+
+`/api/health/deep` (`requireAuth` + `read:evidence`) probes the database
+(`SELECT 1`), heap memory (error above 500 MB), active worker leases, the
+knowledge runtime (OKF validation pass), and the configured LiteLLM (`LITELLM_URL`/
+`LITELLM_BASE_URL`), Ollama (`OLLAMA_URL`) and Qdrant (`QDRANT_URL`) dependencies
+with a 2-second fetch timeout (unconfigured → `disabled`), returning 503 when any
+check errors and including `getDatabaseProvenance(db)` in the body. The same
+`health.ts` router implements the authenticated in-band `/api/metrics`
+(Prometheus text) and `/api/metrics/json` snapshot endpoints (`read:evidence`),
+which are distinct from the token-armed root `/metrics`, plus read-only operator
+views such as `/stalls`, `/cockpit`, `/schedulers`, `/runtimes`, `/scorecards`,
+`/forecasts`, `/config` (`manage:config`) and `/services` (the service-map
+successor to the retired `/workstation/urls`).
 
 ## /explore — public explainer pages
 

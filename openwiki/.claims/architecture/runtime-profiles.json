@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7782fbdc9e0ebb4cf37e955fca376cf52dd02a403eedbc62f21c20f23c666864",
+  "pageVersion": "sha256:99d0c9bed155cd8332cc2b43227a49e1b70ebebe1b8b460ff65a7d56ba8e5c8e",
   "claims": [
     {
       "id": "claim_87dd0ef408de474698e13c5c108f7e24",
@@ -39,8 +39,8 @@
           "version": "repo-lines-v1:sha256:0767de284f18ff5d56c3defdbbc5e8fb3e8acfd1f3508f4219a09103ac2c87e6:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjg5MzFjYWQwZTZmNDM4YmJjMjRhMGJmNmEwOTQ0NzJhOTlmMTRhNTlkYjQ2OGYwMGVhYmZhYzVmZGViOTdlZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmI1ODBlOTY0ZjgzYTQ3M2Y0M2Q0NDM4NDYyOTQ5ZDY4YjU2MDBmZGE3ODdmMTYzNzQ1ZDAwZGU4OWNiZjM2YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
         },
         {
-          "resource": "repo://packages/server/src/index.ts#L75-L115",
-          "version": "repo-lines-v1:sha256:7b27aa2ac1e8c0602d194322c477680169bbe1af574b0968660a4635678a3c55:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlODIwMGViZDE3MDliNmE2NzViZWNiM2JlOWYzOWU1M2JiYWMwMmNjOTI3MjM0NjJjMDU0NjhlYjBkYTZhMTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3YTQwZjE0ZTI0OGVmYmU1NzVkYmQwZDJlNjExYzczYzFiNDQ1NjMzYzZkNDI0ZGU4YTM5OGE1Yzg4NTJmOTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkNjFlNmRhZTk1NTRhMzgwYTZiMmY2N2Q3M2JiZGM2MzYyZGYwNjYyMzMwOWNjNzEwNDUyNTc3NmUzMGMzNTEifQ"
+          "resource": "repo://packages/server/src/index.ts#L88-L131",
+          "version": "repo-lines-v1:sha256:6004e78a6dd89091c0ff537ee123f8e6449848c06e725c7e4d0a779ea0760f69:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlODIwMGViZDE3MDliNmE2NzViZWNiM2JlOWYzOWU1M2JiYWMwMmNjOTI3MjM0NjJjMDU0NjhlYjBkYTZhMTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3YTQwZjE0ZTI0OGVmYmU1NzVkYmQwZDJlNjExYzczYzFiNDQ1NjMzYzZkNDI0ZGU4YTM5OGE1Yzg4NTJmOTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkNjFlNmRhZTk1NTRhMzgwYTZiMmY2N2Q3M2JiZGM2MzYyZGYwNjYyMzMwOWNjNzEwNDUyNTc3NmUzMGMzNTEifQ"
         }
       ]
     },
@@ -100,19 +100,19 @@
     },
     {
       "id": "claim_6daf349396b7485a9bb001612fdaf767",
-      "statement": "initAutonomousServices constructs the autonomy core by default (BoardHandoffService with its own DJIMITFLO_BOARD_HANDOFF_AUTONOMY=false opt-out, ContinuousLearningLoop with TrajectoryStore, SwarmIntelligenceService, NestedSpawnService, NegotiationCoordinator, CapabilityAcquisitionService, MetaEvolutionService, CuriosityService + AutonomousGoalGenerator, the RSI trio RsiSafetyGuard/ServiceRefactoringAnalyzer/EmergentSpecializationService, and ExpertSwarmOrchestrator + WorkerPool + OkfKnowledgeUpdater), while peripheral services (CommonsProposalReview, AgentRegistrySync, EventOutbox, TestGapSource, DreamState, NeedsGroundingTriage, DiskGuard, QueueHygiene, KnowledgeMaintenance) are each default-off behind their own env-gated helper functions.",
+      "statement": "initAutonomousServices constructs the autonomy core by default in the autonomous profile (BoardHandoffService with its own DJIMITFLO_BOARD_HANDOFF_AUTONOMY=false opt-out, ContinuousLearningLoop with TrajectoryStore, SwarmIntelligenceService, NestedSpawnService, NegotiationCoordinator, CapabilityAcquisitionService, MetaEvolutionService, CuriosityService + AutonomousGoalGenerator with an always-on hourly scheduled_proposal_goals interval, the RSI trio RsiSafetyGuard/ServiceRefactoringAnalyzer/EmergentSpecializationService, AgentSocialAutopilotService unless its config resolves runtime 'off', and ExpertSwarmOrchestrator + WorkerPool + OkfKnowledgeUpdater), while a larger peripheral lane set (CommonsProposalReview, AgentRegistrySync, EventOutbox, TestGapSource, DeadCodeSource, FindingFixSource, EvolutionGym, DreamState, NeedsGroundingTriage, DiskGuard, QueueHygiene, KnowledgeMaintenance, plus start* helper loops for interest/evolution feedback, evidence room, Commons falsifier, settlement execution, value allocator, dream evolution, evolution estimators, committee evolution, merge survival, loop auto-merge, and the stall-watch/scheduler watchdogs) is each default-off behind its own env-gated helper.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/bootstrap/autonomous-services.ts#L191-L257",
-          "version": "repo-lines-v1:sha256:c2fa31ea50a1bbf1405665f29f19f1d18e9bf890f4b46f52eeda2cb8fb1beaae:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNhMGU2NGMzOTBhNDMxZGMwZmExYzViOTYxY2JiNTVkMTMxODY2YjA0MDUwMjU3OWE4YTgzOTFkMmJjYmVlOWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdkMTQ2NjQzOWM4MGM4YWM4MmYwMTE3MTNiNGQxM2VkM2I3ZTM0MmRkY2FmMjIxOGJkYTE3YjkyOTY1MDNiOTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwNGY4OWZjMGVjOThjOTgyNDE4M2U3OTVkM2VkZDE5ZTkzMGY3YmM0NzFmOTAxMmFhM2Q1MDNiZTJmODk3NGIifQ"
+          "resource": "repo://packages/server/src/bootstrap/autonomous-services.ts#L122-L365",
+          "version": "repo-lines-v1:sha256:8dbb448aa5c2c8322042fc3f468f46b7b2aa70c47297246811c5ecd56244e411:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQ0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJlOGU3MGJjOWJmMjAyNjNhMmY1YTJiNjk5YzZhN2JmMTQ3MTE2YmYyNDdkZGIzNTY3YzQ0MTA2ZGMxYTEyYjAyIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjMjJkMTgzYTNlNjU5MjhhODMzMWU1ZmYzNTM0OGYwOTU2MDllZjUyNjE4M2IzNDJiZDUxZGI5Y2FkYmM4MDFhIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIyNTZjMTUwODIyNjU5NGRiYWM3ZDgzZGE2ZjY3OWRhZmMzNTExNWYzNjMzYTRkY2VkNWEzNzI0YTdkNjg1YzU1In0"
         },
         {
-          "resource": "repo://packages/server/src/bootstrap/autonomous-services.ts#L35-L64",
-          "version": "repo-lines-v1:sha256:477401b24133fced697689e6854195cbb1a135bb965a02db14307974c170d792:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNhMTYxYmE2NTE3MjEzNzRlY2Q4ZTY2ODBiM2VmMTE2OTM5ZDE0MWRjYWQ5Njg4MTRkYmE4M2Y5OTIzYzk0NjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExMGU1OTUxMGUyM2E3ZmQxZjRmMmJhNTQwNDNiNTg2ZmI4ZTE4NmZhMmI1Njg3ZDkxNDM4N2FhZDg3NTUzMTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwNDAxNmZhY2E1MWE1MGE5NTgxN2ZjYmI4N2VkYWEwNjQ1NDBjMjIwYjkzODg4NDI4ODBjYTBjMGQ4NzdiZmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk3YWQzZmRmYTNlYTZjMGEwNjQ1OTYzMGY5YjYyMTk3YWY4ZmYwZTRhNWY0ZTY3MGI2ZmE5NTY0MjFlMzc5ZWMifQ"
+          "resource": "repo://packages/server/src/bootstrap/autonomous-services.ts#L367-L450",
+          "version": "repo-lines-v1:sha256:ed2aed8665825ac87090a1feeccbf75cc173fff724c22b7ddde5a0ceb9982fdf:eyJzZWxlY3RlZExpbmVDb3VudCI6ODQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNhMGU2NGMzOTBhNDMxZGMwZmExYzViOTYxY2JiNTVkMTMxODY2YjA0MDUwMjU3OWE4YTgzOTFkMmJjYmVlOWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdkMTQ2NjQzOWM4MGM4YWM4MmYwMTE3MTNiNGQxM2VkM2I3ZTM0MmRkY2FmMjIxOGJkYTE3YjkyOTY1MDNiOTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         },
         {
-          "resource": "repo://packages/server/src/bootstrap/autonomous-services.ts#L83-L189",
-          "version": "repo-lines-v1:sha256:fdfc82365d5b0ba3cdb9dfab91b005d8e785c3fb46dcada64fbc42e1d00c6282:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJkZGE4MGNkYTkyZWU1YWEyNDM4YzgyNDkxZDVlNzYwYmQ4YzExYTQ2YTU5Nzk0ODI2ZTg0NGQ1NWY5NWM4YzkwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMGRjNzhlNDk1ZGRhOTdkYmIwYWZkODcwMDhlZmY3NjNiMThlNDZkMjRlZDYzOTdiZjFmZTdkMzVmYjI2OTdmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIyNTZjMTUwODIyNjU5NGRiYWM3ZDgzZGE2ZjY3OWRhZmMzNTExNWYzNjMzYTRkY2VkNWEzNzI0YTdkNjg1YzU1In0"
+          "resource": "repo://packages/server/src/bootstrap/autonomous-services.ts#L51-L120",
+          "version": "repo-lines-v1:sha256:2a55a148374e12ad6888b73d32a45bd05a336fa83586f0cd08c4e8ce8cc74208:eyJzZWxlY3RlZExpbmVDb3VudCI6NzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNhMTYxYmE2NTE3MjEzNzRlY2Q4ZTY2ODBiM2VmMTE2OTM5ZDE0MWRjYWQ5Njg4MTRkYmE4M2Y5OTIzYzk0NjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNjYjc1NTVlMDU2NGRiOTE2ZWZhNDM3MjI2Zjk0MDE1NjU1OGRmZjg0YjIzZjNiZTNlNjgwMjVmZTFkMzlmYTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZmZjg2NzcwM2QwNDljNDI4ODFkZTA4MjI4YTUzNjc0NmUxYzAzM2FlYjFjMWQzNGZmZGZmOWM5MDUwZjUyZGMifQ"
         }
       ]
     },
@@ -180,27 +180,27 @@
     },
     {
       "id": "claim_208e6faef651425cbdc8839cf04c9aea",
-      "statement": "Several schedulers are constructed in every profile but self-disarm via boolean start() unless individually armed: ComplianceReportScheduler, SelfHealingScheduler, SelfImprovementAutoReviewScheduler, FrontierExpertScheduler, SpecialistPanelBacklogScheduler, and MemoryCandidateReviewScheduler are all default-off regardless of profile; FrontierExpertScheduler additionally requires the secondary base gate DJIMITFLO_FRONTIER_EXPERTS_ENABLED=true plus FRONTIER_EXPERTS_SCHEDULER_ENABLED=true, and the same base flag is enforced by the expert-swarm orchestrator's expert selection and by the swarms API (409 FRONTIER_EXPERTS_DISABLED).",
+      "statement": "Several schedulers are constructed in every profile but self-disarm via boolean start() unless individually armed through noteScheduler(...): ComplianceReportScheduler, SelfHealingScheduler, SelfImprovementAutoReviewScheduler, FrontierExpertScheduler, SpecialistPanelBacklogScheduler, and MemoryCandidateReviewScheduler are all default-off regardless of profile; FrontierExpertScheduler additionally requires the secondary base gate frontierExpertsEnabled (DJIMITFLO_FRONTIER_EXPERTS_ENABLED=true) plus FRONTIER_EXPERTS_SCHEDULER_ENABLED=true, and the same base flag is enforced by the expert-swarm orchestrator's expert selection and by the swarms API (409 FRONTIER_EXPERTS_DISABLED).",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/index.ts#L266-L300",
-          "version": "repo-lines-v1:sha256:48f5de7f174e5814366400caab44d1ef957d73aec204ce81cc2392f39f20932b:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUyOTQ1ZjhmOGVlNTAzMGFmOTg4MmE2N2I5ZDhlNmY0Zjg1MDlmMjA0YWQ1ZmI3Nzc1NmVlOGVmZGU4OWY5NTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE5MjU1OTJmZTdhNjJjYzIyYzBlZDUwODE1ZWRhMWQ0NjU0ZDRjN2EzMmJhMmQ1NTQzZGY2ZTdiNzJiMTRmNmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVmYzhmNTlhYjliNWE4ZTI0ZjBiMjUxMWQ0OWE2MDUzYTFmMDcwYzYyZWM3NjIxMTA0NTNlZmIzZjUyOWZkMzYifQ"
+          "resource": "repo://packages/server/src/index.ts#L267-L318",
+          "version": "repo-lines-v1:sha256:bb8637a0ccdd3b615077702560007edf3640d8ecac55256a7abc0a5807e3dd74:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1YWQwZjdkNGVjZjcwYWQ3ZDYzYjhlZGZmYjI5Njc1N2VhZTI3YTFiZjU2YzExMTgwNzJiMzU0ODYxY2NjNmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcxMTc0ZjljMmJiYTg3NTdhYTllMmU0ZDFmNDQ0YWY1MDc3YjZjOTZkODYzMzRhMWMyMmFlNzM2MTI1YTc3MjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVmNWZlZjZmOTM5NmJkN2U3MTIxZmZiMTg2YTg3ODA2YjQyZTM2MjFmNDgwNzI3MGVlOWIzYTZkMWQ4NGIyOWUifQ"
         },
         {
-          "resource": "repo://packages/server/src/routes/swarms.ts#L306-L306",
-          "version": "repo-lines-v1:sha256:c80500eb3dc986ee8ac95356603cbf56f77f59bcc2d531859ef4ebb70627f69f:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzgwNTAwZWIzZGM5ODZlZThhYzk1MzU2NjAzY2JmNTZmNzdmNTliY2MyZDUzMTg1OWVmNGViYjcwNjI3ZjY5ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzgwNTAwZWIzZGM5ODZlZThhYzk1MzU2NjAzY2JmNTZmNzdmNTliY2MyZDUzMTg1OWVmNGViYjcwNjI3ZjY5ZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNWNhZDZkNzlmZTU3Zjk0MGE4NzQwZmEzY2QxN2ZkODAwYTRkNDRmNjcwMWY2OGMzNGYxMjhlMDJiMmJhOTQ2YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWQxYTAxZWExZDYzNDdiM2ZmZDM5ZWJmNjNhNzQ0YmFkMDhjNGUwOTI4YTczZDI1ZTJlMzg3ZmZhOWUxODFjNSJ9"
+          "resource": "repo://packages/server/src/routes/swarms.ts#L313-L321",
+          "version": "repo-lines-v1:sha256:a605754f09aafb9bd0668bbb31189b7fce7666febcdd2a77186a3104bcbcbe5e:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzdkMWRlNzYwMjdmNTY4NzUzMjU1ZGMzYzViYmE2ZDUyNDRjN2NkYmZmMTEzMDk1OTEyYmUxMjI4YmNjYTRlNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzgwNTAwZWIzZGM5ODZlZThhYzk1MzU2NjAzY2JmNTZmNzdmNTliY2MyZDUzMTg1OWVmNGViYjcwNjI3ZjY5ZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTAyZWYxZmVjNWUwNjhhM2M1MzBjYjQ2YmM1YzE2ODVjN2MzNTk3NDk2OTVjY2YxNmQ3M2E1N2VlZWNhMWYwNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWQxYTAxZWExZDYzNDdiM2ZmZDM5ZWJmNjNhNzQ0YmFkMDhjNGUwOTI4YTczZDI1ZTJlMzg3ZmZhOWUxODFjNSJ9"
         },
         {
           "resource": "repo://packages/server/src/services/expert-swarm-orchestrator.ts#L93-L93",
           "version": "repo-lines-v1:sha256:8186c612f04965dd81e40b4f5fb030c45c5f0a1cff6748e0d00880a497313f65:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODE4NmM2MTJmMDQ5NjVkZDgxZTQwYjRmNWZiMDMwYzQ1YzVmMGExY2ZmNjc0OGUwZDAwODgwYTQ5NzMxM2Y2NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODE4NmM2MTJmMDQ5NjVkZDgxZTQwYjRmNWZiMDMwYzQ1YzVmMGExY2ZmNjc0OGUwZDAwODgwYTQ5NzMxM2Y2NSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDZiOTdkZjA2ZjU4MmQwZjUxNWFhMmJiMzVjNjBiMzU2MGMzNmMwZDgxZGFhZWEzMzJhOTcxNTRkMDFlODI0NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTFkYzA2NmUzZDRmOTUwMTU5ODk0Y2QyZjUxMDUzMTIxYzEyMWQyMGM0MTQzMThhZTVhNjI5NjJjODI4ZmQxOSJ9"
         },
         {
-          "resource": "repo://packages/server/src/services/frontier-expert-registry-service.ts#L85-L87",
+          "resource": "repo://packages/server/src/services/frontier-expert-registry-service.ts#L94-L96",
           "version": "repo-lines-v1:sha256:7143a402c85df9f27b1ce4a9a88d4016659d9d897fa27b295b12e0a37c36dc6d:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWQwMTQwMTJlNzNiOTVmNzkzNzU2ZmJlNGIzZDJmMGU2MmFmMjUyMjA0NjcyODk1YmZjZGZmN2MyYzhjNDEwMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTdlMTBlNDc5MGVjYWQ1NjgyYzYwNTE2YmVlYWI3ZWRlY2IyZmY1NTY5MzNmYTkyMzk4ZGVhMzkwMWMzM2EwZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWRkZjJlMjZmMWZlNWRhZDQwZDUwMGM5NTgzYmM3Nzg5NGY0ZjNjNGFkNzRlM2M2Y2RmY2I2ZGVjNjAwOTkxMiJ9"
         },
         {
-          "resource": "repo://packages/server/src/services/frontier-expert-scheduler.ts#L64-L73",
-          "version": "repo-lines-v1:sha256:4721064fde7bc4772b12249241c06e1532f3abb2d051dfbd9479ade5212eb5f8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM0MDk4MGYyZjk1NzRkODM5YjBlNGNhZGE2NWMwMjEyOThlNGJhZmI4MmY4ODVjMjJlYjJmZjg2OTJjYTA3YTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyZTdiMTcxMWNhOTk5Y2FiNzRjZDQ4NWRhNjM2NjU3OWQ4Mjc4ZGVhNmVmNGY2ZTNmMmRlNjc4MjI4NDJjNWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNiYTUzMjllODNjOGE1MzY0MjVlZmYxY2FiMWUzOGE1MzM4NTRiNzZmZjU2NzAyZmFlOTE5YTMxYmIyYWE1MmMifQ"
+          "resource": "repo://packages/server/src/services/frontier-expert-scheduler.ts#L69-L78",
+          "version": "repo-lines-v1:sha256:89892ed5b359071c12718110436cd4b60ed057e107061e2a8190c40b3dfbae14:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM0MDk4MGYyZjk1NzRkODM5YjBlNGNhZGE2NWMwMjEyOThlNGJhZmI4MmY4ODVjMjJlYjJmZjg2OTJjYTA3YTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyZTdiMTcxMWNhOTk5Y2FiNzRjZDQ4NWRhNjM2NjU3OWQ4Mjc4ZGVhNmVmNGY2ZTNmMmRlNjc4MjI4NDJjNWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI0MTQxYTIyZDg3MTdmOTliN2FkMDVkMzlhMGEyOWY2NmU0Mzc3NmQ0MTRkZTczNmIzYTk3OWI1M2FiYzVjZGEifQ"
         }
       ]
     },
@@ -217,10 +217,96 @@
           "version": "repo-lines-v1:sha256:6f8fe818398643b79a87ae9d4d87d32fcc91f85e8f9a3ebea2de48bebca1042d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5ZmRlZDg1N2FiMzk5ZjQ0ZWRiOTc3MDJiNjcwODUyYTA3NDI0N2UyNTk5OGE4NmM5MTBiNDA5MTNlODhlZmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0ZDY3Njk4ZjkyYjVlYTIzOTAwZDBjYTc4MGE2MmZkYjA4ZjIzMzNiNmUyMDQyNGUxZGQ0ZDhmMWRmYmVmYmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU0YzEzZTIzMDZjZTNjZGE4OWZiMGNhZDE2ZGNmYWVjNzRjOWI4ZjFlZTQ4ZjhiOTc4OWRkZGExZTRiMzc0NDcifQ"
         }
       ]
+    },
+    {
+      "id": "claim_28f7bd2c11e348238faa63d68bd7df81",
+      "statement": "Armed-scheduler state is observable and self-healing: every noteScheduler() call records name/arming-flag/armed-state/interval into an in-process registry whose listSchedulers() derives per-scheduler status (executing, failing, armed_pending, armed_not_ticking, quarantined) and fleet health, registerRestart() stores each scheduler's bounded re-arm handler, and the autonomous profile runs a scheduler self-heal watchdog (SCHEDULER_SELF_HEAL_MODE=shadow|act|off) that diagnoses armed-but-not-ticking schedulers, attempts at most one restart per scheduler per 6 h, then quarantines and escalates.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/bootstrap/autonomous-services.ts#L324-L331",
+          "version": "repo-lines-v1:sha256:675e73f70f06301a01693ea64bb7357ab32025f989dff9e144706a167082c8cf:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2Q2MDNjMDg0MTAwZjU1NWRiOWUyMDliNDBhZjllNjQ4MDE2YmYzMTcwMjM2YmVmNDZiNDE2NzUwOTA0ZTIyMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzI2NjM3NGFiYzE2NmJhZWI0MWM5YTY0ZDIyZjg5YTE4MmZiNzA5NGRmNGQ0Yzc2OTMxZGNlNDQ4MjRlZGUyYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTUxZDIzMmI4Y2I5ZmMwMjM4MDIxMjRjNDM4YWI2MmNjODA3NGQzOGQ0MjcwNGQ3ZmUxZDIzZmRlMWMwYzcwOSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L273-L318",
+          "version": "repo-lines-v1:sha256:11c936ecf2400d70f8b287f89ce33149e4eae795c9471aa2c59eac888f54d2cc:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJiZjJkNTIzODQyODExMDRmMmMxMmVhYWZmMzY3YTZhOTk5Yjc5NWFkZmU0YWJkZjY5ZjIxMGFhYWIwZGJlNTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNjNWM4NmQ0NDg0MDc4NmMxNzMyZmUxZmJiMWUyNDM1ZWEyYWU0NmMyZmExZGUxMTA5NWUwNTc1MDIxNDI2ZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVmNWZlZjZmOTM5NmJkN2U3MTIxZmZiMTg2YTg3ODA2YjQyZTM2MjFmNDgwNzI3MGVlOWIzYTZkMWQ4NGIyOWUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/scheduler-registry.ts#L26-L30",
+          "version": "repo-lines-v1:sha256:604a7a9c30bfd1e36b9f7f23d94c9cc88e06d9bfe0d0b71ea45a035ec32867e2:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTk5MjcyMjhlMzBmZWZlMDI3YTQ3NTE0MzJhYzFjYTVlMmIyZDU5NDhjMmM0NDAzNjg5MDQ3ZWJiNzA2MzhmNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiN2I4NzcwMTBjNDNkNjc4YzdjYzYzMGViODEzNDU0MjQ3YzJmZWFhZGU5NTI5ZGY1ZDViMTkxNDljMDYzOTEwMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjljMDE1Njk0NWM5MGM0ZDc2NGIzMjMwNjJjMzc5ODJmMThjMzQ1MjNlZGIyMzk3ZjVhZWU3OTY1Yjk1MTQwOSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/scheduler-registry.ts#L55-L82",
+          "version": "repo-lines-v1:sha256:7232f137bba8ad50b15955f80111be86ad05eca54c8ef636b481908ef3fc0fd2:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3ZmJkN2Y0ODU2Njg4MDdmZjA0OTAwZmNjZjAxNWJlNmI1NGRjZTIwMTA3YTc2OWQyMTM3ZGE3YTAxYjdkNDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkyMDQwZTA5NWE5NGUyYWRhNzRlNDIxZjM3MTg3NTFhOTFhODEwYmZkNjZmNDhmNGU5MzljN2I3NDgwZWI2NzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcyNjlkYjgzMDMwNWQ4MzY1OTU2MjY5MjdiMDI4YjJkZDA4ZTNkNzlmMmNmZjQ5YzM1MDYxYjAyZmM0YWRiYjgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/scheduler-registry.ts#L84-L136",
+          "version": "repo-lines-v1:sha256:92137367d015fd8d4d59527c249c997138d9dca4746a1179a7ad7ffa0eb54a50:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkzMTIyMDg1ZDE4OTVkYmRjOTU5NjI4ZGVlZDhjOGQwZTAwNDc5NGJlZGVhZDM3NmRlOWViYmExOTI3OTY1ZWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY1YzJlZWI0YmVlMzZjNzkyMWE4Y2RlMWYzOTc1ODA2YTFjY2JkOTBjMjVkMGZmNGIzY2NhMGM4OWIyODkwYTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_215ed65aab214c1594c9b734f27cba78",
+      "statement": "Beyond the six boolean-start() schedulers, main() unconditionally invokes four start* helper lanes in every profile — the dependency lane (DEPENDENCY_LANE_MODE), the Ollama auto-failover probe (OLLAMA_AUTO_FAILOVER), the shipped-code scan (SHIPPED_CODE_SCAN_MODE), and skill distillation (SKILL_DISTILLATION_MODE) — which return a stop function only when their own mode flag arms them and are likewise reported through noteScheduler() with registerRestart() handlers.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/index.ts#L320-L346",
+          "version": "repo-lines-v1:sha256:d43e7158ed9331f4a644bc1176c67f6091b8445fae482493a72391c21dbd156d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhNWI5YWM3NWMzNmEzMWNiNmIyOWY4ZThhN2EwNDI3NzAwZDY4OGMyMjQ0MmNjYWYxMjJlNzQ2ZTg3YjVhY2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU1Yjg2OWU4MzMxMDJkNzNlMjIyM2I4MDE1MWI2NzM2MWQ2ZDZiMjFmMmNiZmZmMWJmZDdiNmFiYWVmMzJmMGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVmYzhmNTlhYjliNWE4ZTI0ZjBiMjUxMWQ0OWE2MDUzYTFmMDcwYzYyZWM3NjIxMTA0NTNlZmIzZjUyOWZkMzYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2d36d8d5924d48879ac1ad2f42cd558e",
+      "statement": "FrontierExpertScheduler automates exactly three stages of the expert lifecycle — discovery (PacingFrontierIngestionService.ingest), evidence enrichment (ExpertEvidenceEnrichmentService.enrichBatch, with FRONTIER_EXPERTS_RETRY_DAYS-based retry), and peer cross-review (ExpertCouncilService.reviewExpert) — and deliberately stops below FrontierExpertRegistryService.transition()'s hard-coded actor guard on the CHECKED→APPROVED→ACTIVE transitions, which remain a human step via POST /expert/experts/:id/transition.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/frontier-expert-scheduler.ts#L1-L27",
+          "version": "repo-lines-v1:sha256:25c8b3c174252fc0010571f4f75402980d0e8ad5200c917ce11d33be678bd29f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3MmE0MjkzODJiMmUxNDcxOGUwZTM3YjA1NzBhOGExNzAyOTkxZmNkODQ5OGNkODQwNjBhOGJmNGYwNTAxN2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIxZjU4N2E1YjUwNDYyZjQyMTIzOWZiOGZkNTZlYTY4MjY0ZjlmM2RkMzhjZDgwZTY2ZmY1YjY4YzE2NDAyYmEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/frontier-expert-scheduler.ts#L104-L123",
+          "version": "repo-lines-v1:sha256:42b7d8306261399bd131c7e72d5d054a4fa788536db7ba3e7198d08396ee4068:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4NTM4YTZkMzQxNDBjMGI2MWNlMDcwNzhlYmIxZTk3NTY4NGYzYWNiZmRiN2QwODRkMzRmNzRmNzlhNThiOTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcxNzlkM2M0M2I1MjVjZjI3Y2M1YjM4ODhkNmY0MzNmZGM4MjI0ZjJlMzZiMTIzM2JkNjE1MGQ4YzY1NWQ3NDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRjZDA0ZmJhMjFlMzQ0YjljYjFkZGNmM2U2YWFiZTcyNDk3NTZiNTBhZDljYWEwYjU1ZTc2YzRiMTNjMDEzY2UifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/frontier-expert-scheduler.ts#L168-L200",
+          "version": "repo-lines-v1:sha256:65800f62ee671b3fb449cd062b68f25c7f153c155a33c0e79e4e7e1b4b366498:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBjZjNlNzEzNGM1ZWM3ZTZiNzU2NmVmZjExMWM0YTYxMDllYWQ4MWZlOTdhNzNiNTBiZTJjMGEwZjg4NGY5NWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY3NWI4YjU4OWVhNTgxNDlmM2YwNTViZGQwNjMzNDEzMmVmMzEzNzU5ZWVjNWJjZjhhZjQyY2RkZWExOWEzOGIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c48ad82fa5d8434380afa00ca11fb947",
+      "statement": "Within an armed frontier-experts tick, subordinate stages cascade under their own gates — source-unit materialization (default off) plus paused/errored relevance re-judging, technique-card extraction (default off, skipped while inference-budget throttled), idempotent field-of-interest sync every tick, and person peer review (FRONTIER_EXPERTS_PERSONS_ENABLED-gated, idempotent against durable audit_events rows) — with each stage's failures collected into the tick result rather than aborting the tick and idle ticks with backlog logged at most once a day.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/frontier-expert-scheduler.ts#L125-L165",
+          "version": "repo-lines-v1:sha256:0e6e0274b705de2556d8169e0f2cb0f140551078cce8b7be5dc86223841ecf35:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE5NTQ2NWYzOWZjYTMyN2RkYWUzY2YzZWMxYWE2MjYyMjdhYTU2MGY5NzhkOGU4OTA4NjVmOTJkYjcyNDc3MzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlYmRiMzY1YmMwYjU3OWE3NzI2OGE2YTY3YjYwZTQwYzAwYWYxMDM3ODBlYzFlNzU2MjNhMTRlZGYzN2ZmYWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY5OTdjMzg5OTc4NGU1ZDBiZjFlYzI2Y2U5ODU5NzU1Y2IxODkwY2VkOGFiODQ5ODI3MDNhOGNmZGQwNmYxODIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVhOTI5M2ZkODA1NGI2ZTQ3MjQ4MzczZjM5ZjRkZDc3ODAwMTA1ZWI3NTgzNDg2ODcyNTQyODVjZDEyODJiNzgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/frontier-expert-scheduler.ts#L206-L219",
+          "version": "repo-lines-v1:sha256:1fb6b5988ea4cbc473c42d184725e09414f274aaade0bd3d65e26da1ef590b87:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQzMTNlMjYyMzg0MzFmNDdjZTQxZGRmZWI5MWI5ZjM2YmRiNzJhNzRmMmE3NzgzNTg1ZDJiN2JjZWFjMTY0MzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI5MWIxYzVlYjY3NDE5NWUxYTU3MDdlZTc5MTE3Njc2NWI3Zjk0NDk5NTllZmEyY2VjZDVkNmZiOWZjYTllYzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/frontier-expert-scheduler.ts#L82-L97",
+          "version": "repo-lines-v1:sha256:f24dc0d5636795efcd7278e5881759460ab6ed53d966bb5ded86072d9ec9e5d7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRjNzBjMDIxNThjM2YzOTIxYWMzYTY5OTEyNTM0OGJlM2E5NjQ2MDM3MWNkMmJhNDMwMDIyZGFhNGYxOTNkZDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI0MTQxYTIyZDg3MTdmOTliN2FkMDVkMzlhMGEyOWY2NmU0Mzc3NmQ0MTRkZTczNmIzYTk3OWI1M2FiYzVjZGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFiOWVmMTY0MjUxOWQzNWFjNDc2MDJjYjBlOWE0Zjk1ZWZlNWRlMzA3MWRlZjA2ZjY0MDkzY2ZhNWVmZGIxNDAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_db1779620e674d85b6090b47cf327b4f",
+      "statement": "Interval callbacks wrapped in guardTick() report each tick to the scheduler registry and can never throw into their own timer: a sync throw or rejected promise is recorded as the scheduler's last_error (status 'failing') and the interval keeps running, which is what the self-heal watchdog later keys on.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/bootstrap/autonomous-services.ts#L413-L422",
+          "version": "repo-lines-v1:sha256:c76ffe0db125f06b873ad17ba519926d15aa4f9da636fa60d5c1fa16235eda22:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM0NmFkMGRhN2Y3MzA0MjBlMjBkNWQ5NzZmYzlhMDYxMjI1OTI5MGU1Njg5YmEzYTNkNDU1OTAzZTcxODgzNjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkyZjk4YjA1ODVhZjIwMzZkYjRjZDBjYjM5NjgwYTdiOWY1MTU4M2FiYjIwOWQ4MzQzYzFjZGNjZjA3YWNiNTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYzYTA2YTEwMjkwZDI0ZjgyMzljN2VhMjRkZDg5NmJkODA5ZjhmNzcyNWE5YjNiODMzMGU0YWEwNzVkMzFiMDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUzNWMwMWY5MGMwNTEyMjY1ZTc1YzQxOWM5OTc5MDk4OTBmMzlmNTllNGM3NDBmOGE2OGM2OGYwNmExMjE2ZDMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/scheduler-registry.ts#L32-L53",
+          "version": "repo-lines-v1:sha256:71db27e5bc1f47f55840b3b55b204210d7f24cd987a266c971402944244c4b15:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhN2IyMmFjZmUzNWI2NmMzMjQ0ZGNkZjcyYThiM2VjNmQ5NmQ0Mzg1NjIyNTIwYWZlYjY2M2QzZTdhNmM4NTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5OWE3ZTJiN2EyMTIxMThhM2JhNWYyZmMwNGZjNmRiMTE0YjhlODRlNDVlZjJjZmM3YTVjNGUzZmJkNWY0MzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBkNzY0NDg4MDAyNzAxOGRiYjhkZjdmNDJkMTlkOTdmOTY0OTFjNmYwZDZiODk0OTliY2FiMGE4YTYxNDE5NWQifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-25T13:29:02.244Z"
+    "at": "2026-10-24T12:32:22.727Z"
   }
 }
