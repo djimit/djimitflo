@@ -28,6 +28,8 @@ import { noteOllamaOutput } from './inference-failover';
 import { isSubscriptionLimit, LIMIT_HIT } from './subscription-gym';
 import { classifyStderr, STDERR_TAIL_CHARS, type FailureStage, type LeaseFailure } from './lease-failure';
 import { makerWarmDepsBlocked, warmDepsCacheRoot, warmDepsState } from './maker-warm-deps';
+import { asgAfterMaker, asgBeforeMaker, type AsgMakerOutcome } from './asg/oracle-lane';
+import { asgMode } from './asg/mode';
 import type {
   LoopRunRecord,
   WorkerLeaseRecord,
@@ -225,6 +227,16 @@ export class LoopWorkerExecutorService {
     const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
     const prompt = fs.readFileSync(this.loopService.resolveWorkAssignmentPath(makerLease), 'utf8');
     const skipPermissions = this.loopService.resolveSkipPermissions(input.skip_permissions);
+    // ASG-001 (ASG_MODE, default off; docs/research/asg-001): oracle-lane makers only. off = this block never runs.
+    const asg = asgMode() === 'off' ? null : asgBeforeMaker(this.db, run, makerLease, (cwd, args) => this.loopService.git(cwd, args));
+    if (asg) {
+      this.loopService.patchWorkerLeaseMetadata(makerLease.id, { asg: { mode: asg.mode, requested: asg.requested, blocked_by: asg.blocked_by, attempt_id: asg.attempt_id, lane: asg.lane,
+        decision: asg.decision, route_executed: asg.route_executed, base: asg.base, spec: { targets: asg.spec.targets, declared_writes: asg.spec.declared_writes, capability: asg.spec.capability } } });
+      this.loopService.recordLoopEvent(run.id, 'asg_route', 'info',
+        `ASG ${asg.mode}: route ${asg.decision.route} (${asg.decision.reason_codes.join(',')}), executed ${asg.route_executed}; policy ${asg.decision.policy.hash}.`,
+        { maker_lease_id: makerLease.id, mode: asg.mode, blocked_by: asg.blocked_by, route: asg.decision.route, route_executed: asg.route_executed, reason_codes: asg.decision.reason_codes,
+          policy: asg.decision.policy, feature_schema_hash: asg.decision.feature_schema_hash, features: asg.decision.features, alternatives: asg.decision.alternatives });
+    }
     const makerStartedAt = Date.now();
     const result = makerLease.runtime === 'mock'
       ? await this.executeMockWorker(makerLease, prompt, timeoutMs, skipPermissions)
@@ -259,6 +271,8 @@ export class LoopWorkerExecutorService {
     const tokenBudget = this.loopService.evaluateTokenBudget(run, runtimeUsage, makerLease.id, diffLines);
     const efficiency = this.loopService.calculateWorkerEfficiency(runtimeUsage, diffLines);
 
+    // ASG-001: expected vs observed effects; in `on`, a bounded timeout/brake whose declared test passes is succeeded_with_incident
+    const asgOutcome: AsgMakerOutcome | null = asg ? asgAfterMaker(asg, { exitCode: result.exitCode, timedOut: result.timedOut, tokenBudgetHit: result.tokenBudgetHit }, changedFiles, makerLease.worktree_path!, skipPermissions) : null;
     const gates: LoopGate[] = [
       { name: 'maker_runtime_exit_zero', status: exitStatus === 0 && !timedOut ? 'pass' : 'fail', evidence: `runtime=${makerLease.runtime}, exit=${exitStatus ?? 'signal'}, timed_out=${timedOut}, skip_permissions=${skipPermissions}` },
       { name: 'diff_under_threshold', status: diffLines <= diffMaxLines ? 'pass' : 'fail', evidence: `${diffLines} changed diff line(s), threshold ${diffMaxLines}.` },
@@ -266,12 +280,14 @@ export class LoopWorkerExecutorService {
       { name: 'runtime_warning_gate', status: this.loopService.runtimeWarningsBlockCompletion(runtimeWarnings, run) ? 'fail' : 'pass', evidence: this.loopService.runtimeWarningsEvidence(runtimeWarnings, run) },
       { name: 'no_automatic_merge', status: 'pass', evidence: 'Maker execution did not merge, push, or deploy.' },
     ];
+    if (asgOutcome?.rescued) gates.push({ name: 'asg_end_state_verified', status: 'pass', evidence: `ASG on: runtime stopped (${asgOutcome.incident?.timed_out ? 'timeout' : 'token brake'}), effects ${asgOutcome.effects.observed.join(', ')} inside the declared write set, ${asgOutcome.verifier?.command} exit 0; incident recorded, maker_runtime_exit_zero kept as evidence.` });
 
     // §16 step 8 (shadow, POLICY_VIOLATION_LOG): the diff gate above already decided; this only counts the breach
     if (diffLines > diffMaxLines) recordPolicyViolation(this.db, { kind: 'diff_limit', actor: `maker:${makerLease.runtime}`, severity: 'medium', dedupe_key: makerLease.id,
       run_id: run.id, lease_id: makerLease.id, evidence_ref: `loop_run:${run.id}/lease:${makerLease.id}/gate:diff_under_threshold`,
       description: `${diffLines} changed diff line(s) over threshold ${diffMaxLines}` });
-    const failed = gates.some((gate) => gate.status === 'fail');
+    // ASG on: only the runtime-exit gate is answered by the verified end state; every other gate still decides
+    const failed = gates.some((gate) => gate.status === 'fail' && !(asgOutcome?.rescued && gate.name === 'maker_runtime_exit_zero'));
     const completionStatus = failed ? 'failed' : 'completed';
     const wasCancelled = this.loopService.isWorkerLeaseCancelled(makerLease.id);
     const remoteCancel = makerLease.runtime === 'remote' ? remoteMakerCancelReason(result.stderr) : null;
@@ -293,6 +309,9 @@ export class LoopWorkerExecutorService {
       ...(fallbackLimited ? { failure_reason: LIMIT_HIT, subscription_limit_hit_at: new Date().toISOString() } : failed ? { failure_reason: `maker_gate_failed:${gates.filter((gate) => gate.status === 'fail').map((gate) => gate.name).join(',')}${remoteCancel ? `;remote_maker_cancelled:${remoteCancel}` : ''}` } : {}),
       // structured failure capture (record-only; the gates above already decided)
       ...(failed || wasCancelled ? { failure: runtimeFailureHint(result, 'maker', tokenBudget.gate.status === 'fail') } : {}),
+      // ASG-001: execution, verification and incident kept apart (the decision recorded before the runtime stays as written)
+      ...(asg && asgOutcome ? { asg: { ...(this.loopService.getWorkerLease(makerLease.id).metadata.asg as Record<string, unknown> ?? {}), outcome: asgOutcome,
+        ...(asgOutcome.rescued ? { incident_failure: runtimeFailureHint(result, 'maker', tokenBudget.gate.status === 'fail') } : {}) } } : {}),
     };
 
     if (wasCancelled) {
