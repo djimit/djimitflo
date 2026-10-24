@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Compass, Copy, DoorOpen, Eye, EyeOff, Lightbulb, Magnet, MessageCircle, RefreshCw, ShieldAlert, Sparkles, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { api, type AgentReputation, type CommonsChildOutcomes, type CommonsRuntimeReadiness, type CommonsThreadKind, type JoinInvite, type JoinRequest, type LureCast, type LureInvitee, type LureStatus, type SocialAgentPresence, type SocialCommons, type SocialMessage, type SocialThread } from '../lib/api';
+import { api, type AgentReputation, type CommonsChildOutcomes, type CommonsProposalDisposition, type CommonsProposalPolicy, type CommonsRuntimeReadiness, type CommonsThreadKind, type JoinInvite, type JoinRequest, type LureCast, type LureInvitee, type LureStatus, type SocialAgentPresence, type SocialCommons, type SocialMessage, type SocialThread } from '../lib/api';
 import { fmtDate } from '../lib/format';
 
 export type ConstellationNode = { id: string; name: string; x: number; y: number; present: boolean; lured: boolean; threads: number; hue: number };
@@ -285,6 +285,8 @@ export function AgentCommonsPage() {
           <AlertTriangle className="h-4 w-4" /> Residents idle: no resident has written in 24 h (autopilot off). Last activity {stats.residents?.[0]?.last?.slice(0, 16).replace('T', ' ') ?? 'unknown'}.
         </div>
       )}
+
+      {commons.proposal_policy && <ProposalPolicyBanner policy={commons.proposal_policy} />}
 
       {stats && (
         <section className="rounded-xl border border-border bg-background-secondary p-4" aria-label="Yield for Djimitflo">
@@ -661,7 +663,8 @@ function Bubble({ message, name }: { message: SocialMessage; name: (id: string) 
             <Facet label="Improvement proposal" value={message.proposed_improvement || null} color={STAGE.learned.color} />
             <Facet label="Stop condition" value={message.stop_condition} color="rgb(239 68 68)" />
           </div>
-          {message.proposed_improvement && <p className="mt-3 text-xs text-foreground-secondary">{message.improvement_id ? <>Registered proposal <code>{message.improvement_id}</code> · {message.improvement_status || 'status unknown'}{message.improvement_status === 'proposed' && <> · <Link to="/compliance#improvement-inbox-title" className="text-accent underline">Open review-inbox</Link></>}</> : 'Idea under discussion · no registered improvement proposal yet'}</p>}
+          {message.proposed_improvement && (message.improvement_id || !message.proposal_disposition) && <p className="mt-3 text-xs text-foreground-secondary">{message.improvement_id ? <>Registered proposal <code>{message.improvement_id}</code> · {message.improvement_status || 'status unknown'}{message.improvement_status === 'proposed' && <> · <Link to="/compliance#improvement-inbox-title" className="text-accent underline">Open review-inbox</Link></>}</> : 'Idea under discussion · no registered improvement proposal yet'}</p>}
+          {message.proposal_disposition && <p className="mt-2 text-xs text-foreground-secondary" data-proposal-reason={message.proposal_disposition.reason}>{proposalDispositionText(message.proposal_disposition)}</p>}
           {message.action === 'social.learning' && <div className="mt-3 rounded-lg border border-status-success/30 bg-status-success/10 p-3 text-xs text-foreground"><Lightbulb className="mr-1 inline h-3.5 w-3.5 text-status-success" /> Recorded as a reflection candidate{message.reflection_id && <> <code className="text-foreground-secondary">{message.reflection_id}</code></>}{message.reflection_status && <> · {message.reflection_status}</>} · not promoted without review</div>}
         </>}
       <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-foreground-tertiary"><span>{time(message.timestamp)}</span>{message.runtime && <span>{message.runtime}{message.model_id ? ` · ${message.model_id}` : ''}</span>}{message.runtime_run_id && <span className="break-all">run {message.runtime_run_id}</span>}{message.evidence.length > 0 && <details><summary className="cursor-pointer text-accent">bewijs ({message.evidence.length})</summary><div className="mt-1 space-y-0.5 font-mono">{message.evidence.map((reference) => <div key={reference} className="break-all">{reference}</div>)}</div></details>}</div>
@@ -672,4 +675,42 @@ function Bubble({ message, name }: { message: SocialMessage; name: (id: string) 
 function Facet({ label, value, color }: { label: string; value: string | null; color: string }) {
   if (!value) return null;
   return <div className="rounded-lg border border-border bg-background-elevated p-2.5"><div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color }}>{label}</div><p className="mt-1 text-xs text-foreground-secondary">{value}</p></div>;
+}
+
+const WORKER_LABEL: Record<string, string> = { commons_proposal_review: 'Commons proposal review', grounding_agenda: 'grounding agenda', grounding_apply: 'grounding apply', failure_agenda: 'failure agenda' };
+const POLICY_HEADLINE: Record<CommonsProposalPolicy['state'], string> = {
+  disabled: 'Reflection recorded; proposal generation disabled by policy',
+  exhausted: 'Reflection proposals: rate limit reached for the rolling window',
+  open: 'Reflection proposals admitted up to the cap',
+  uncapped: 'Reflection proposals: no cap set',
+};
+
+/** AC-10: the effective admission policy, read from the server — not a claim about why any one historical message has no proposal. */
+export function ProposalPolicyBanner({ policy }: { policy: CommonsProposalPolicy }) {
+  const stopped = policy.state === 'disabled' || policy.state === 'exhausted';
+  return (
+    <section role="status" aria-label="Proposal admission policy" className={`rounded-xl border p-4 text-sm ${stopped ? 'border-status-warning/30 bg-status-warning/10' : 'border-border bg-background-secondary'}`}>
+      <p className="flex items-center gap-2 font-semibold text-foreground">{stopped && <ShieldAlert className="h-4 w-4 text-status-warning" />}{POLICY_HEADLINE[policy.state]}</p>
+      <p className="mt-1 text-xs text-foreground-secondary"><code>{policy.env}={policy.cap ?? 'unset'}</code> · scope {policy.scope} · source {policy.source} · window rolling {policy.window_hours} h · {policy.created_in_window} created in the window{policy.remaining !== null && policy.state !== 'disabled' ? ` · ${policy.remaining} remaining` : ''}</p>
+      {policy.state === 'disabled' && <p className="mt-1 text-xs text-foreground-secondary">Conversations still record reflections, but ordinary ideas cannot currently enter the proposal queue through this route.</p>}
+      <p className="mt-1 text-xs text-foreground-tertiary">The cap is shared by every reflection producer ({policy.shared_producers.join(', ')}); raising it is not a Commons-only change.</p>
+      {!!policy.workers.length && <div className="mt-2 flex flex-wrap gap-2 text-xs text-foreground-secondary" aria-label="Commons workers">{policy.workers.map((w) => <span key={w.id} className="rounded border border-border px-2 py-0.5" title={w.env}>{WORKER_LABEL[w.id] ?? w.id} <strong>{w.enabled ? 'on' : 'off'}</strong></span>)}</div>}
+    </section>
+  );
+}
+
+/** AC-10: the reason recorded for this message; 'unknown' is shown as unknown, never inferred from the current cap. */
+export function proposalDispositionText(d: CommonsProposalDisposition): string {
+  const window = `scope ${d.scope ?? 'global'} · source ${d.source ?? 'reflection'} · window rolling 24 h`;
+  switch (d.reason) {
+    case 'policy_disabled': return `Reflection recorded; proposal generation disabled by policy (REFLECTION_PROPOSALS_MAX_PER_DAY=0 · ${window})`;
+    case 'rate_limited': return `Reflection recorded; no proposal — rate limit reached (${d.created_in_window ?? '?'} of cap ${d.cap ?? '?'} in the rolling 24 h, shared by all reflection producers)`;
+    case 'duplicate': return d.proposal_id ? `Same idea as an active proposal: linked to existing proposal ${d.proposal_id}` : 'Same idea as an active proposal (not linked)';
+    case 'pending_grounding': return `Proposal ${d.proposal_id ?? ''} registered, parked until grounded (target file + test)`;
+    case 'created': return `Proposal ${d.proposal_id ?? ''} created; it goes to specialist-panel review`;
+    case 'runtime_failure': return `Proposal step failed at runtime (${d.error_code ?? 'unknown error'}); the reply to this message was rolled back`;
+    case 'not_applicable': return d.detail === 'grounding_thread' ? 'Grounding thread: the result grounds the existing proposal, no new proposal'
+      : d.detail === 'proposal_review_thread' ? 'Proposal-review thread: no proposals about proposals' : 'No improvement proposed in this reply';
+    default: return 'Proposal reason unknown: recorded before per-message reasons were kept';
+  }
 }

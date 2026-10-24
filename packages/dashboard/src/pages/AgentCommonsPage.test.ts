@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { renderToStaticMarkup } from 'react-dom/server';
-import type { SocialMessage, SocialAgentPresence, SocialThread } from '../lib/api';
-import { agentHue, Conversation, GroundedChildOutcomes, layoutConstellation, luredAgents, ReadinessTable, resolveActiveThread, runtimeParticipation } from './AgentCommonsPage';
+import type { CommonsProposalDisposition, CommonsProposalPolicy, SocialAgentPresence, SocialMessage, SocialThread } from '../lib/api';
+import { agentHue, Conversation, GroundedChildOutcomes, layoutConstellation, luredAgents, ProposalPolicyBanner, ReadinessTable, resolveActiveThread, runtimeParticipation } from './AgentCommonsPage';
 
 const agents: SocialAgentPresence[] = [
   { id: 'a', name: 'A', status: 'active', capabilities: [], model: 'm', runtime: 'codex', last_heartbeat_at: null, present: true, activity: [] },
@@ -135,4 +135,42 @@ describe('AC-01 runtime readiness', () => {
     expect(html).toContain('unknown');
     expect(html).not.toContain('>ready<');
   });
+});
+
+const policy = (over: Partial<CommonsProposalPolicy> = {}): CommonsProposalPolicy => ({
+  env: 'REFLECTION_PROPOSALS_MAX_PER_DAY', cap: 0, state: 'disabled', created_in_window: 0, remaining: 0, window: 'rolling_24h', window_hours: 24,
+  scope: 'global', source: 'reflection', shared_producers: ['commons_social_learning', 'continuous_learning_loop', 'memory_candidate_review'],
+  workers: [{ id: 'commons_proposal_review', env: 'COMMONS_PROPOSAL_REVIEW_ENABLED', enabled: false }, { id: 'grounding_agenda', env: 'COMMONS_AGENDA_GROUNDING', enabled: true }], ...over,
+});
+
+it('AC-10: shows the effective policy — cap 0 disables proposal generation, with scope, source, window, shared producers and workers', () => {
+  const html = renderToStaticMarkup(createElement(ProposalPolicyBanner, { policy: policy() }));
+  for (const text of ['Reflection recorded; proposal generation disabled by policy', 'REFLECTION_PROPOSALS_MAX_PER_DAY=0', 'scope global', 'source reflection',
+    'rolling 24 h', 'continuous_learning_loop', 'memory_candidate_review', 'ordinary ideas cannot currently enter the proposal queue through this route',
+    'Commons proposal review <strong>off</strong>', 'grounding agenda <strong>on</strong>']) expect(html).toContain(text);
+  const exhausted = renderToStaticMarkup(createElement(ProposalPolicyBanner, { policy: policy({ cap: 5, state: 'exhausted', created_in_window: 5, remaining: 0 }) }));
+  expect(exhausted).toContain('rate limit reached');
+  expect(exhausted).toContain('5 created in the window');
+  expect(exhausted).not.toContain('disabled by policy');
+  expect(renderToStaticMarkup(createElement(ProposalPolicyBanner, { policy: policy({ cap: null, state: 'uncapped', remaining: null }) }))).toContain('REFLECTION_PROPOSALS_MAX_PER_DAY=unset');
+});
+
+it('AC-10: renders the recorded reason on the message, links a duplicate, and says unknown for a historical learning', () => {
+  const base: CommonsProposalDisposition = { reason: 'policy_disabled', proposal_id: null, detail: null, cap: 0, created_in_window: 0, window: 'rolling_24h', scope: 'global', source: 'reflection', error_code: null, decided_at: '2026-10-24T19:00:00Z' };
+  const render = (d: CommonsProposalDisposition) => renderToStaticMarkup(createElement(MemoryRouter, null, createElement(Conversation, {
+    thread: { ...thread('1', 'learned', ['a', 'b']), messages: [{ ...reply, improvement_id: null, improvement_status: null, proposal_disposition: d }] }, agents })));
+  const disabled = render(base);
+  expect(disabled).toContain('Reflection recorded; proposal generation disabled by policy');
+  expect(disabled).toContain('scope global · source reflection · window rolling 24 h');
+  expect(disabled).not.toContain('no registered improvement proposal yet');
+  expect(render({ ...base, reason: 'rate_limited', cap: 3, created_in_window: 3 })).toContain('rate limit reached (3 of cap 3 in the rolling 24 h');
+  const dup = render({ ...base, reason: 'duplicate', proposal_id: 'existing-7' });
+  expect(dup).toContain('linked to existing proposal');
+  expect(dup).toContain('existing-7');
+  expect(render({ ...base, reason: 'duplicate', proposal_id: null })).toContain('not linked');
+  expect(render({ ...base, reason: 'pending_grounding', proposal_id: 'p-9' })).toContain('parked until grounded');
+  expect(render({ ...base, reason: 'runtime_failure', error_code: 'SQLITE_BUSY' })).toContain('failed at runtime (SQLITE_BUSY)');
+  const unknown = render({ ...base, reason: 'unknown', cap: null, window: null, scope: null, source: null, decided_at: null });
+  expect(unknown).toContain('Proposal reason unknown');
+  expect(unknown).not.toContain('disabled by policy');
 });

@@ -71,6 +71,8 @@ it('off and unset produce the same round, delivery, replies, rows and agent card
   const unset = scenario();
   db.prepare("DELETE FROM agent_messages").run(); db.prepare("DELETE FROM board_idempotency_keys").run();
   db.prepare("DELETE FROM reflection_candidates").run(); db.prepare("DELETE FROM self_improvements WHERE id <> 'si-1'").run();
+  // AC-10: each new learning records one reflection_proposal_disposition judgment; clear it with the rest of the first run
+  db.prepare("DELETE FROM judgments WHERE judgment = 'reflection_proposal_disposition'").run();
   process.env.COMMONS_INVESTIGATION_MODE = 'off';
   expect(scenario()).toEqual(unset);
   expect(unset).toMatchInlineSnapshot(`
@@ -130,7 +132,7 @@ it('off and unset produce the same round, delivery, replies, rows and agent card
       },
       "counts": {
         "agent_messages": 4,
-        "judgments": 1,
+        "judgments": 2,
         "reflection_candidates": 1,
         "self_improvements": 2,
       },

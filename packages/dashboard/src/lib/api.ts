@@ -1328,6 +1328,25 @@ export type SocialMessage = {
   interest?: string | null; ecosystem_component?: string | null; proposed_improvement?: string | null; improvement_id?: string | null; improvement_status?: string | null;
   runtime_run_id?: string | null; provenance_status?: string | null;
   runtime: string | null; model_id: string | null; reflection_id: string | null; reflection_status: string | null;
+  /** AC-10: why this learning did (not) become a proposal; 'unknown' = recorded before reasons were kept (never inferred) */
+  proposal_disposition?: CommonsProposalDisposition;
+};
+
+/** AC-10 (services/agent-communication-service.ts CommonsProposalDisposition) */
+export type CommonsProposalDisposition = {
+  reason: 'created' | 'pending_grounding' | 'duplicate' | 'policy_disabled' | 'rate_limited' | 'runtime_failure' | 'not_applicable' | 'unknown';
+  proposal_id: string | null;
+  detail: 'no_proposed_improvement' | 'grounding_thread' | 'proposal_review_thread' | null;
+  cap: number | null; created_in_window: number | null;
+  window: 'rolling_24h' | null; scope: 'global' | null; source: 'reflection' | null;
+  error_code: string | null; decided_at: string | null;
+};
+
+/** AC-10: effective reflection-proposal admission policy (REFLECTION_PROPOSALS_MAX_PER_DAY) plus the Commons workers' flags */
+export type CommonsProposalPolicy = {
+  env: 'REFLECTION_PROPOSALS_MAX_PER_DAY'; cap: number | null; state: 'disabled' | 'exhausted' | 'open' | 'uncapped';
+  created_in_window: number; remaining: number | null; window: 'rolling_24h'; window_hours: number; scope: 'global'; source: 'reflection';
+  shared_producers: string[]; workers: Array<{ id: string; env: string; enabled: boolean }>;
 };
 
 export type SocialThread = {
@@ -1369,7 +1388,9 @@ export type CommonsStats = { threads_7d: number; open_7d: number; learnings_7d: 
   child_outcomes?: CommonsChildOutcomes | null; residents?: Array<{ agent: string; last: string }>; autopilot_idle?: boolean; guild?: Array<{ agent: string; groundings: number; valid: number; verified: number }> };
 export type SocialCommons = { agents: SocialAgentPresence[]; threads: SocialThread[]; total_threads?: number; stats?: CommonsStats;
   thread_counts?: Record<CommonsThreadKind, number>;
-  page?: { kind: CommonsThreadKind | 'all'; limit: number; offset: number; total: number; has_more: boolean } };
+  page?: { kind: CommonsThreadKind | 'all'; limit: number; offset: number; total: number; has_more: boolean };
+  /** AC-10: null = could not be read on this server */
+  proposal_policy?: CommonsProposalPolicy | null };
 
 // Frontier Expert Intelligence (§36): states other than ACTIVE are tentative and shown as such.
 export type ExpertLifecycleState = 'DISCOVERED' | 'IDENTITY_RESOLVED' | 'EVIDENCE_COLLECTED' | 'CAPABILITY_INFERRED' | 'CHECKED' | 'APPROVED' | 'ACTIVE' | 'AMBIGUOUS' | 'INSUFFICIENT_EVIDENCE' | 'CONTRADICTED' | 'STALE' | 'REJECTED' | 'REVOKED';
