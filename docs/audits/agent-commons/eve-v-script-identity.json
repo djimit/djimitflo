@@ -1,0 +1,16 @@
+{
+  "at": "2026-10-24T15:03:03.680442+00:00",
+  "host": "eve-v",
+  "service": "djimitflo-social.service",
+  "entry_scripts": [
+    {
+      "path": "/usr/local/lib/djimitflo/agent-social-poller.py",
+      "sha256": "09980e0247e6151d4535733115b79452258b60bd70b9c9797a7540d4b05e5ac3",
+      "has_limit1": false,
+      "has_limit4": true,
+      "logs_child_stderr": true,
+      "lines": 160
+    }
+  ],
+  "pinned_repository_script_sha256": "cd3be8b1ebfe25d2a7ebfb64b8b272baeee328d4f67669f1d1b0043e0535ca2b"
+}
