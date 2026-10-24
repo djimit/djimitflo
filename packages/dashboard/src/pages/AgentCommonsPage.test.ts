@@ -3,14 +3,14 @@ import { createElement } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { SocialMessage, SocialAgentPresence, SocialThread } from '../lib/api';
-import { agentHue, Conversation, layoutConstellation, luredAgents, runtimeParticipation } from './AgentCommonsPage';
+import { agentHue, Conversation, GroundedChildOutcomes, layoutConstellation, luredAgents, ReadinessTable, resolveActiveThread, runtimeParticipation } from './AgentCommonsPage';
 
 const agents: SocialAgentPresence[] = [
   { id: 'a', name: 'A', status: 'active', capabilities: [], model: 'm', runtime: 'codex', last_heartbeat_at: null, present: true, activity: [] },
   { id: 'b', name: 'B', status: 'active', capabilities: [], model: 'm', runtime: null, last_heartbeat_at: null, present: false, activity: [] },
 ];
 const thread = (id: string, stage: SocialThread['stage'], participants: string[]): SocialThread => ({
-  id, topic: 't', topic_ref: null, participants, stage, started_at: '2026-09-13T10:00:00Z', last_activity_at: '2026-09-13T10:00:00Z', learnings: 0, messages: [],
+  id, topic: 't', topic_ref: null, participants, stage, started_at: '2026-09-13T10:00:00Z', last_activity_at: '2026-09-13T10:00:00Z', learnings: 0, messages: [], kind: 'discussion',
 });
 
 describe('agent commons constellation', () => {
@@ -78,4 +78,61 @@ it('renders agent interests and live proposal status without claiming proven lea
   expect(suggestion).not.toContain('Open review-inbox');
   const approved = renderToStaticMarkup(createElement(Conversation, { thread: { ...discussion, messages: [{ ...reply, improvement_status: 'approved' }] }, agents }));
   expect(approved).not.toContain('Open review-inbox');
+});
+
+it('AC-03: shows the 18 → 0 denominator and keeps technical review failures apart from idea rejections', () => {
+  const html = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(GroundedChildOutcomes, { outcomes: {
+    grounded_proposals: 24, no_refinement: 6, children: 18, legacy_fallback_reviews: 20, note: '',
+    outcomes: { technical_failure: 10, needs_evidence: 3, blocked: 2, backlog: 3, goal: 0, pending: 0 },
+  } })));
+  expect(html).toContain('<strong>18</strong> grounded children → <strong>0</strong> goals');
+  expect(html).toContain('technical review failure <strong>10</strong>');
+  expect(html).toContain('missing evidence <strong>3</strong>');
+  expect(html).toContain('opposed / blocked <strong>2</strong>');
+  expect(html).toContain('backlog <strong>3</strong>');
+  expect(html).toContain('not a rejected idea');
+  expect(html).toContain('href="/#guardrails"');
+});
+
+describe('AC-02 record-only rooms and a stable selection', () => {
+  it('a record-only evidence room never implies a scheduled reply; an open discussion still waits for a turn', () => {
+    const room = { ...thread('evidence-room:r1', 'asked', ['djimitflo:evidence-room', 'commons']), kind: 'record' as const };
+    const html = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(Conversation, { thread: room, agents })));
+    expect(html).not.toContain('Waiting for the next runtime turn');
+    expect(html).toContain('Record-only evidence room');
+    expect(html).toContain('no runtime reply is scheduled');
+    const open = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(Conversation, { thread: thread('social:1', 'asked', ['a', 'b']), agents })));
+    expect(open).toContain('Waiting for the next runtime turn');
+  });
+
+  it('keeps the selected thread across a refresh even when it drops off the loaded page', () => {
+    const selected = thread('social:old', 'responding', ['a', 'b']);
+    const fresh = [thread('social:new', 'asked', ['a', 'b'])];
+    expect(resolveActiveThread([selected, ...fresh], 'social:old', null)?.id).toBe('social:old');
+    expect(resolveActiveThread(fresh, 'social:old', selected)).toBe(selected);
+    expect(resolveActiveThread(fresh, null, selected)?.id).toBe('social:new');
+    expect(resolveActiveThread(fresh, 'social:gone', null)).toBeNull();
+  });
+});
+
+describe('AC-01 runtime readiness', () => {
+  const readiness = (state: 'ready' | 'degraded' | 'offline' | 'unknown', extra: Partial<NonNullable<SocialAgentPresence['readiness']>> = {}) => ({
+    state, reason: `${state} because`, last_heartbeat_at: '2026-10-24T10:00:00Z', last_successful_reply_at: null,
+    last_failed_attempt: null, runtime_failures_reported: false as const, ...extra,
+  });
+
+  it('shows heartbeat, last successful reply and last failed attempt separately, and never invents a runtime error', () => {
+    const html = renderToStaticMarkup(createElement(ReadinessTable, { agents: [
+      { ...agents[0], readiness: readiness('degraded', { last_failed_attempt: { at: '2026-10-24T09:00:00Z', message_id: 'm-1', observed: 'claim_lapsed_without_reply' } }) },
+      { ...agents[1], readiness: readiness('ready', { last_successful_reply_at: '2026-10-24T09:30:00Z' }) },
+    ] }));
+    for (const text of ['degraded', 'ready', 'degraded because', 'claim lapsed without reply', 'failures not reported']) expect(html).toContain(text);
+    expect(html).toContain('none recorded');
+  });
+
+  it('says unknown when the server sent no readiness instead of treating a heartbeat as ready', () => {
+    const html = renderToStaticMarkup(createElement(ReadinessTable, { agents: [{ ...agents[0], present: true }] }));
+    expect(html).toContain('unknown');
+    expect(html).not.toContain('>ready<');
+  });
 });
