@@ -12,7 +12,7 @@
  * 5. TTL expiration — stale messages auto-expire
  */
 
-import { commonsChildren, commonsGroundingStops, type GroundingStop } from './honest-numbers';
+import { commonsChildOutcomes, commonsChildren, commonsGroundingStops, type CommonsChildOutcomes, type GroundingStop } from './honest-numbers';
 import { NOT_PROOF_FIXTURE_SQL } from './proof-fixture';
 import { buildEvidencePack, evidencePackEnabled } from './commons-evidence-pack';
 import { randomUUID } from 'crypto';
@@ -154,6 +154,8 @@ export interface CommonsStats {
   children_by_period?: { before_2026_09_29: { attempted: number; verified: number }; from_2026_09_29: { attempted: number; verified: number } };
   /** ECO item 4: per validly grounded proposal, the furthest stage its refinement reached (null = could not be read) */
   grounding_stops?: Record<GroundingStop, number> | null;
+  /** AC-03: per grounded child, what its panel said — technical review failure apart from substantive needs-evidence / blocked / backlog */
+  child_outcomes?: CommonsChildOutcomes | null;
 }
 
 export interface SocialCommons {
@@ -451,7 +453,8 @@ export class AgentCommunicationService {
     } catch { /* no judgments table yet */ }
     return { threads_7d: t.threads, open_7d: t.open ?? 0, learnings_7d: t.learnings, lessons_7d: t.lessons ?? 0, proposals: p.n, proposals_grounded: grounded, proposals_verified: p.verified ?? 0, proposals_archived: p.archived ?? 0,
       proposals_by_status: byStatus, residents, autopilot_idle: residents.length > 0 && residents.every((r) => r.last < dayAgo),
-      guild: guild.map((g) => ({ ...g, valid: g.valid ?? 0, verified: g.verified ?? 0 })), ...commonsChildren(this.db), grounding_stops: commonsGroundingStops(this.db) };
+      guild: guild.map((g) => ({ ...g, valid: g.valid ?? 0, verified: g.verified ?? 0 })), ...commonsChildren(this.db), grounding_stops: commonsGroundingStops(this.db),
+      child_outcomes: commonsChildOutcomes(this.db) };
     } catch { return null; } // minimal schemas (no self_improvements) still get the overview
   }
 
