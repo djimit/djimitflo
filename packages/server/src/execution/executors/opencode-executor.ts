@@ -23,9 +23,9 @@
 import { Task, ExecutionEventType, LogLevel, ExecutionEventCreateInput } from '@djimitflo/shared';
 import { TaskExecutor, ExecutionSession, ExecutionResult, ExecutorOptions, ExecutorKind } from '../types';
 import { buildExecutorEnv } from './executor-env';
-import { runtimeProcessClosed, stopRuntimeProcess } from './runtime-process';
+import { runtimeProcessClosed, spawnRuntime, stopRuntimeProcess } from './runtime-process';
 import { randomUUID } from 'crypto';
-import { spawn, ChildProcess } from 'child_process';
+import type { ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import { captureExecutorOutput } from '../executor-output';
 
@@ -180,7 +180,7 @@ export class OpenCodeExecutor implements TaskExecutor {
       const env = buildExecutorEnv(options?.environment, this.kind);
       const timeoutMs = options?.timeout ?? this.executionTimeoutMs;
 
-      const child = spawn(this.opencodePath, args, {
+      const child = spawnRuntime(this.opencodePath, args, {
         cwd,
         env,
         stdio: ['ignore', 'pipe', 'pipe'],
