@@ -194,7 +194,7 @@ def run_cli(runtime, prompt):
     return parse_cli_output(runtime, output)
 
 def run_hermes(prompt):
-    output = bounded_process([os.environ.get('HERMES_BIN', 'hermes'), 'chat', '--query-file', '-', '--oneshot', '--quiet', '--toolsets', '', '--max-turns', '1', '--run-budget', '90', '--source', 'djimitflo-social'], prompt,
+    output = bounded_process([os.environ.get('HERMES_BIN', 'hermes'), 'chat', '--query-file', '-', '--oneshot', '--quiet', '--toolsets', '', '--max-turns', '1', '--run-budget', '90', '--source', os.environ.get('HERMES_SOURCE', 'tool')], prompt,
                              os.environ.get('HERMES_HOME', os.path.expanduser('~/.hermes')), runtime_env('hermes'))
     sessions = re.findall(r'session_id:\s*([^\s]+)', output)
     return output, sessions[-1] if sessions else '', {}
