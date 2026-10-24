@@ -3,7 +3,7 @@ import { createElement } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { SocialMessage, SocialAgentPresence, SocialThread } from '../lib/api';
-import { agentHue, Conversation, layoutConstellation, luredAgents, runtimeParticipation } from './AgentCommonsPage';
+import { agentHue, Conversation, GroundedChildOutcomes, layoutConstellation, luredAgents, runtimeParticipation } from './AgentCommonsPage';
 
 const agents: SocialAgentPresence[] = [
   { id: 'a', name: 'A', status: 'active', capabilities: [], model: 'm', runtime: 'codex', last_heartbeat_at: null, present: true, activity: [] },
@@ -78,4 +78,18 @@ it('renders agent interests and live proposal status without claiming proven lea
   expect(suggestion).not.toContain('Open review-inbox');
   const approved = renderToStaticMarkup(createElement(Conversation, { thread: { ...discussion, messages: [{ ...reply, improvement_status: 'approved' }] }, agents }));
   expect(approved).not.toContain('Open review-inbox');
+});
+
+it('AC-03: shows the 18 → 0 denominator and keeps technical review failures apart from idea rejections', () => {
+  const html = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(GroundedChildOutcomes, { outcomes: {
+    grounded_proposals: 24, no_refinement: 6, children: 18, legacy_fallback_reviews: 20, note: '',
+    outcomes: { technical_failure: 10, needs_evidence: 3, blocked: 2, backlog: 3, goal: 0, pending: 0 },
+  } })));
+  expect(html).toContain('<strong>18</strong> grounded children → <strong>0</strong> goals');
+  expect(html).toContain('technical review failure <strong>10</strong>');
+  expect(html).toContain('missing evidence <strong>3</strong>');
+  expect(html).toContain('opposed / blocked <strong>2</strong>');
+  expect(html).toContain('backlog <strong>3</strong>');
+  expect(html).toContain('not a rejected idea');
+  expect(html).toContain('href="/#guardrails"');
 });

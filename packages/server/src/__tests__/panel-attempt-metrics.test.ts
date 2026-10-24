@@ -5,6 +5,7 @@ import { runMigrations } from '../database/migrate';
 import { SpecialistPanelService } from '../services/specialist-panel-service';
 import { SelfImprovementAgentReviewService } from '../services/self-improvement-agent-review-service';
 import { panelAttemptMetrics, MIN_SEMANTIC_N } from '../services/panel-attempt-metrics';
+import { commonsChildOutcomes } from '../services/honest-numbers';
 
 // E4: attempt-level panel metrics — operational reliability (P(valid | model, prompt, provider)) apart from semantic quality
 let db: Database.Database;
@@ -113,4 +114,25 @@ it('the writer records parse vs schema on the ledger row (invalid_parse / invali
   const m = panelAttemptMetrics(db, { days: 7 });
   expect(m.seat_attempts.totals.states).toMatchObject({ PARSE_FAILED: 1, SCHEMA_INVALID: 1 });
   expect(m.model_calls.groups[0].states).toMatchObject({ PARSE_FAILED: 1, SCHEMA_INVALID: 1 });
+});
+
+it('AC-03: the Commons projection reads the same legacy rows as a technical review failure; a quarantine-only panel is one too', () => {
+  fixture(); // P1: valid reviews next to one legacy coerced row
+  const grounded = (n: string, panelId: string) => {
+    db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, panel_id) VALUES (?, 'x', 't', 'd', 'r', 'refinement', 'archived', ?)`).run(`kid-${n}`, panelId);
+    db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at)
+      VALUES (?, 'commons_grounding', 'self_improvement', ?, 'h', 'enforce', 'yes', 'r', ?, ?)`).run(`g-${n}`, `parent-${n}`, JSON.stringify({ refinement_id: `kid-${n}` }), at);
+  };
+  panel('P2', 'needs_more_evidence'); // pre-#784: both seats coerced
+  for (const s of ['a', 'b']) review('P2', s, { model: null, attempt: null, stance: 'needs_evidence', confidence: 0, findings: ['Model response could not be parsed: x'] });
+  panel('P3', 'needs_more_evidence'); // current contract: both seats quarantined and closed, no review row
+  for (const s of ['a', 'b']) db.prepare(`INSERT INTO specialist_review_quarantine (id, panel_id, specialist_id, model, error, attempt, closes_seat, created_at)
+    VALUES (?, 'P3', ?, 'm1', 'answer is not valid JSON', 2, 1, ?)`).run(`P3:${s}`, s, at);
+  grounded('1', 'P1'); grounded('2', 'P2'); grounded('3', 'P3');
+  const m = panelAttemptMetrics(db, { days: 7, now });
+  const c = commonsChildOutcomes(db)!;
+  expect(m.legacy.coerced_unparseable).toBe(3);
+  expect(c.legacy_fallback_reviews).toBe(3);
+  // P1 had valid reviews (its stored decision is 'goal' but no goal row exists): not a technical failure
+  expect(c.outcomes).toMatchObject({ technical_failure: 2, pending: 1 });
 });

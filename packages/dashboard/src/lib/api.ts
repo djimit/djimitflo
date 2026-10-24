@@ -1344,10 +1344,16 @@ export type SocialAgentPresence = {
   activity: CommonsAgentActivity[];
 };
 
+export type CommonsChildOutcomes = {
+  grounded_proposals: number; no_refinement: number; children: number; legacy_fallback_reviews: number; note: string;
+  outcomes: Record<'technical_failure' | 'needs_evidence' | 'blocked' | 'backlog' | 'goal' | 'pending', number>;
+};
 export type CommonsStats = { threads_7d: number; open_7d: number; learnings_7d: number; lessons_7d?: number; proposals: number; proposals_grounded: number; proposals_verified: number; proposals_archived: number;
   proposals_by_status?: Record<string, number>;
   /** where validly grounded proposals stopped (furthest stage of their refinement); null = could not be read */
-  grounding_stops?: Record<'no_refinement' | 'pending_panel' | 'panel_failed' | 'panel_backlog' | 'rejected' | 'goal' | 'maker' | 'outcome', number> | null; residents?: Array<{ agent: string; last: string }>; autopilot_idle?: boolean; guild?: Array<{ agent: string; groundings: number; valid: number; verified: number }> };
+  grounding_stops?: Record<'no_refinement' | 'pending_panel' | 'panel_failed' | 'panel_backlog' | 'rejected' | 'goal' | 'maker' | 'outcome', number> | null;
+  /** AC-03: per grounded child, what its panel said (services/honest-numbers.ts commonsChildOutcomes); null = could not be read */
+  child_outcomes?: CommonsChildOutcomes | null; residents?: Array<{ agent: string; last: string }>; autopilot_idle?: boolean; guild?: Array<{ agent: string; groundings: number; valid: number; verified: number }> };
 export type SocialCommons = { agents: SocialAgentPresence[]; threads: SocialThread[]; total_threads?: number; stats?: CommonsStats };
 
 // Frontier Expert Intelligence (§36): states other than ACTIVE are tentative and shown as such.

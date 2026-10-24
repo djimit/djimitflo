@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Compass, Copy, DoorOpen, Eye, EyeOff, Lightbulb, Magnet, MessageCircle, RefreshCw, ShieldAlert, Sparkles, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { api, type AgentReputation, type JoinInvite, type JoinRequest, type LureCast, type LureInvitee, type LureStatus, type SocialAgentPresence, type SocialCommons, type SocialMessage, type SocialThread } from '../lib/api';
+import { api, type AgentReputation, type CommonsChildOutcomes, type JoinInvite, type JoinRequest, type LureCast, type LureInvitee, type LureStatus, type SocialAgentPresence, type SocialCommons, type SocialMessage, type SocialThread } from '../lib/api';
 import { fmtDate } from '../lib/format';
 
 export type ConstellationNode = { id: string; name: string; x: number; y: number; present: boolean; lured: boolean; threads: number; hue: number };
@@ -249,6 +249,7 @@ export function AgentCommonsPage() {
               {Object.entries(stats.grounding_stops).filter(([, n]) => n > 0).map(([stage, n]) => <span key={stage} className="rounded border border-border px-2 py-0.5">{stage.replace(/_/g, ' ')} <strong>{n}</strong></span>)}
             </div>
           )}
+          {stats.child_outcomes && <GroundedChildOutcomes outcomes={stats.child_outcomes} />}
           {!!stats.guild?.length && (
             <table className="mt-3 w-full text-xs" aria-label="Groundings per agent">
               <thead><tr className="text-left text-foreground-tertiary"><th className="py-1">Agent</th><th>Groundings</th><th>Valid</th><th>Verified</th></tr></thead>
@@ -469,6 +470,24 @@ function ReputationBadge({ reputation }: { reputation: AgentReputation | 'error'
     <span className={`rounded-full border px-2 py-0.5 text-[10px] ${color}`} title="Advisory score from task history and lure/probe behaviour; never an automatic decision.">
       reputatie {reputation.score.toFixed(2)}{lowConfidence ? ' (weinig data)' : ''}
     </span>
+  );
+}
+
+const CHILD_OUTCOME_LABELS: Array<[keyof CommonsChildOutcomes['outcomes'], string]> = [
+  ['technical_failure', 'technical review failure'], ['needs_evidence', 'missing evidence'], ['blocked', 'opposed / blocked'],
+  ['backlog', 'backlog'], ['pending', 'pending panel'], ['goal', 'goal'],
+];
+
+/** AC-03: grounded children → goals with the panel outcome split; a technical review failure is not an idea rejection. */
+export function GroundedChildOutcomes({ outcomes: o }: { outcomes: CommonsChildOutcomes }) {
+  return (
+    <div className="mt-2 space-y-1 text-xs text-foreground-secondary" aria-label="What the panels of grounded children said">
+      <p><strong>{o.grounded_proposals}</strong> grounded proposals ({o.no_refinement} no refinement) → <strong>{o.children}</strong> grounded children → <strong>{o.outcomes.goal}</strong> goals</p>
+      <div className="flex flex-wrap gap-2">
+        {CHILD_OUTCOME_LABELS.map(([key, label]) => <span key={key} className="rounded border border-border px-2 py-0.5">{label} <strong>{o.outcomes[key]}</strong></span>)}
+      </div>
+      {o.outcomes.technical_failure > 0 && <p>{o.outcomes.technical_failure} of {o.children} panels hold only model-failure fallbacks ({o.legacy_fallback_reviews} legacy unparseable reviews): a technical failure, not a rejected idea. Current panel reliability: <Link to="/#guardrails" className="text-accent underline">panel attempt metrics</Link>.</p>}
+    </div>
   );
 }
 
