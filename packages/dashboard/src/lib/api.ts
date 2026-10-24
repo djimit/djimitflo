@@ -1334,6 +1334,18 @@ export type SocialThread = {
   id: string; topic: string; topic_ref: string | null; participants: string[];
   stage: 'asked' | 'responding' | 'learned'; started_at: string; last_activity_at: string;
   learnings: number; messages: SocialMessage[];
+  /** 'record' = record-only evidence room: addressed to no runtime inbox, so no reply is ever scheduled */
+  kind?: CommonsThreadKind;
+};
+
+export type CommonsThreadKind = 'discussion' | 'record';
+
+/** Derived server-side from heartbeats, own runtime replies and lapsed delivery leases; the runtime itself reports no errors. */
+export type CommonsRuntimeReadiness = {
+  state: 'ready' | 'degraded' | 'offline' | 'unknown'; reason: string;
+  last_heartbeat_at: string | null; last_successful_reply_at: string | null;
+  last_failed_attempt: { at: string; message_id: string; observed: 'claim_lapsed_without_reply' } | null;
+  runtime_failures_reported: false;
 };
 
 export type CommonsAgentActivity = { id: string; to: string; action: string; timestamp: string; status: string };
@@ -1342,6 +1354,7 @@ export type SocialAgentPresence = {
   id: string; name: string; status: string; capabilities: string[]; model: string;
   runtime: string | null; last_heartbeat_at: string | null; present: boolean;
   activity: CommonsAgentActivity[];
+  readiness?: CommonsRuntimeReadiness;
 };
 
 export type CommonsChildOutcomes = {
@@ -1354,7 +1367,9 @@ export type CommonsStats = { threads_7d: number; open_7d: number; learnings_7d: 
   grounding_stops?: Record<'no_refinement' | 'pending_panel' | 'panel_failed' | 'panel_backlog' | 'rejected' | 'goal' | 'maker' | 'outcome', number> | null;
   /** AC-03: per grounded child, what its panel said (services/honest-numbers.ts commonsChildOutcomes); null = could not be read */
   child_outcomes?: CommonsChildOutcomes | null; residents?: Array<{ agent: string; last: string }>; autopilot_idle?: boolean; guild?: Array<{ agent: string; groundings: number; valid: number; verified: number }> };
-export type SocialCommons = { agents: SocialAgentPresence[]; threads: SocialThread[]; total_threads?: number; stats?: CommonsStats };
+export type SocialCommons = { agents: SocialAgentPresence[]; threads: SocialThread[]; total_threads?: number; stats?: CommonsStats;
+  thread_counts?: Record<CommonsThreadKind, number>;
+  page?: { kind: CommonsThreadKind | 'all'; limit: number; offset: number; total: number; has_more: boolean } };
 
 // Frontier Expert Intelligence (§36): states other than ACTIVE are tentative and shown as such.
 export type ExpertLifecycleState = 'DISCOVERED' | 'IDENTITY_RESOLVED' | 'EVIDENCE_COLLECTED' | 'CAPABILITY_INFERRED' | 'CHECKED' | 'APPROVED' | 'ACTIVE' | 'AMBIGUOUS' | 'INSUFFICIENT_EVIDENCE' | 'CONTRADICTED' | 'STALE' | 'REJECTED' | 'REVOKED';
@@ -2387,8 +2402,11 @@ class ApiClient {
     return this.request(`/swarms/intelligence/interactions${query.size ? `?${query}` : ''}`);
   }
 
-  async getSocialCommons(limit = 50): Promise<SocialCommons> {
-    return this.request(`/swarm-v2/social/commons?limit=${limit}`);
+  async getSocialCommons(limit = 50, options: { kind?: CommonsThreadKind; offset?: number } = {}): Promise<SocialCommons> {
+    const query = new URLSearchParams({ limit: String(limit) });
+    if (options.kind) query.set('kind', options.kind);
+    if (options.offset) query.set('offset', String(options.offset));
+    return this.request(`/swarm-v2/social/commons?${query}`);
   }
 
   async startSocialRound(): Promise<{ status: 'started' | 'skipped'; correlation_id: string | null; topic: string | null; participants: string[]; reason: string | null }> {
