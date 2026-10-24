@@ -1,0 +1,92 @@
+{
+  "experiment": "ASG-001",
+  "kind": "mechanism_pilot",
+  "note": "scripted/mock agents, no model call; validates the mechanism, not an effect estimate",
+  "harness_version": 1,
+  "seed": 20261024,
+  "repetitions": 3,
+  "started_at": "2026-10-24T21:40:41.234Z",
+  "finished_at": "2026-10-24T21:42:50.731Z",
+  "node": "v22.23.2",
+  "policy_hash": "04ca63d0770d6532",
+  "feature_schema_hash": "eba7c63aa5d6cdb6",
+  "cost_table": {
+    "micro_action": 1,
+    "macro_call": 1,
+    "invalid_action": 1
+  },
+  "cost_table_hash": "cc06b21bc724d89c",
+  "budget_units": 12,
+  "contracts": [
+    {
+      "skill_id": "asg:inspect_target_module",
+      "version": 1,
+      "digest": "2dc2f5ff19dea918b8c97eeedf4cc537ffd131e28d4b6de7082a17dcb60380e7"
+    },
+    {
+      "skill_id": "asg:write_test_file_and_verify",
+      "version": 1,
+      "digest": "6118f6056ac065814a33ebac83b47f93a3ad6722a0a30363026a82706fbb5e67"
+    },
+    {
+      "skill_id": "asg:replace_in_test_and_verify",
+      "version": 1,
+      "digest": "b73bd7bee6e06d404a84c488fb4bfbd031eaec82136cd340452e079785b40f73"
+    }
+  ],
+  "fixtures_digest": "dc9ce654ee0483c8520fef5bc87648a2f9be1ca9593d42a0d1a7e582ed384cd0",
+  "tasks": 15,
+  "families": [
+    {
+      "family": "slug",
+      "split": "train"
+    },
+    {
+      "family": "money",
+      "split": "test"
+    },
+    {
+      "family": "clamp",
+      "split": "train"
+    },
+    {
+      "family": "csvsplit",
+      "split": "train"
+    },
+    {
+      "family": "dirty",
+      "split": "dev"
+    },
+    {
+      "family": "pair",
+      "split": "test"
+    },
+    {
+      "family": "config",
+      "split": "test"
+    }
+  ],
+  "arms": [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E"
+  ],
+  "conditions": [
+    "natural",
+    "precondition_mismatch",
+    "partial_change",
+    "after_completion",
+    "invalid_tool_schema",
+    "timeout_uncertain",
+    "crash",
+    "duplicate_delivery",
+    "concurrent_execution"
+  ],
+  "rows": 1395,
+  "git_head": "0189c373dd284e15407c85cafbf6e2d9ecadf036",
+  "git_dirty": false,
+  "prereg_sha256": "5c8e4cb6d0019ded6f82c830b36e71ff9b4418074da8b8ace77891869bb5128a",
+  "command": "npx tsx packages/server/src/scripts/asg-001-pilot.ts --seed 20261024 --repetitions 3"
+}
