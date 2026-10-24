@@ -3,9 +3,6 @@ type: security-architecture
 title: "AuthN/AuthZ: Roles, JWT Sessions & WebSocket Auth"
 description: The seven-role RBAC model and ROLE_PERMISSIONS table, AuthService JWT issuance with revocable session-bound access tokens and 30-day refresh-cookie rotation, requireAuth/requirePermission middleware that re-reads role and organization membership from the DB on every request, and bearer-subprotocol WebSocket authentication with close-code-driven client re-auth.
 tags: [authentication, authorization, rbac, jwt, refresh-token-rotation, sessions, websocket, middleware, separation-of-duties, tenancy]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-24T19:59:50.419Z
 sources:
   - id: openwiki-source-a43d7cc8a5a9d2a77f3767e3
     resource: repo://packages/dashboard/src/hooks/useWebSocket.ts

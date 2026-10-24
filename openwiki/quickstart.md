@@ -3,12 +3,11 @@ type: guide
 title: DjimFlo Wiki Quickstart
 description: Entry point to the DjimFlo wiki. Explains what DjimFlo is (a research-grade agent orchestration control plane with governance guardrails), how the wiki is organized, and routes you to the right page for your task.
 tags: [quickstart, orientation, governance, agent-orchestration, wiki]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-25T13:29:02.244Z
 sources:
   - id: openwiki-source-5b54a58d1b51cd490b0e7162
     resource: repo://package.json
+  - id: openwiki-source-be80b8bb0c3f3a4106e1484a
+    resource: repo://packages/server/package.json
   - id: openwiki-source-e57612dc55cb1fe7d7373bd5
     resource: repo://packages/server/src/config/runtime-profile.ts
   - id: openwiki-source-922486a2b03bd894d1e9f283
@@ -17,9 +16,14 @@ sources:
     resource: repo://packages/server/src/routes/index.ts
   - id: openwiki-source-c83ceec2d47257f066951051
     resource: repo://packages/shared/package.json
+  - id: openwiki-source-03ff56e13d2508b0e43d5df4
+    resource: repo://packages/telegram/package.json
   - id: openwiki-source-23775c3de52f3ab95a13cb8b
     resource: repo://README.md
-generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-10-24T12:32:22.727Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-10-24T12:32:22.727Z
 ---
 
 # DjimFlo Wiki Quickstart
@@ -33,8 +37,8 @@ DjimFlo is a **research-grade agentic governance laboratory**: a TypeScript
 npm-workspaces monorepo — a Node.js/Express + SQLite backend with a React
 dashboard — for orchestrating AI coding agents, managing tasks across multiple
 agent runtimes, and governing agent behavior with approval workflows, policy
-enforcement, and audit trails. The root `package.json` describes it as a
-"Codex-native agent orchestration control plane."
+enforcement, and audit trails. The root `package.json` (v0.5.8) describes it as
+a "Codex-native agent orchestration control plane for serious engineering teams."
 
 > **Status: research prototype.** DjimFlo is not production-ready for sensitive
 > data. Adapter registration, rendered screens, and passing unit tests do not
@@ -47,19 +51,31 @@ and task crash recovery, wires services, mounts the API, and attaches the
 WebSocket server. Behavior varies by runtime profile (`api`, `operator`,
 `autonomous`) resolved from `DJIMITFLO_RUNTIME_PROFILE`.
 
-Around this spine orbit several satellite surfaces:
+### Package map
+
+Monorepo orientation lives here and in
+[Server Runtime & Startup Composition](architecture/server-runtime.md). The
+repository holds seven npm workspaces under `packages/*` plus a
+runtime-generated knowledge directory. Around the server spine orbit these
+satellite surfaces:
 
 - **Dashboard** (`packages/dashboard`) — React 19 + Vite frontend, served
   statically by the server in production.
-- **MCP server** (`packages/mcp-server`) — exposes DjimFlo tools to Claude Code,
-  Cursor, and VS Code.
-- **Telegram bot** (`packages/telegram`) — mobile task creation and approval.
-- **Agent catalog** (`packages/agent-catalog`) — agent import from catalog files.
-- **Shared types** (`packages/shared`) — role definitions, auth, shared types.
-- **Ransomware module** (`packages/ransomware-module`) — private anti-ransomware
-  detection.
+- **MCP server** (`packages/mcp-server`, `@djimitflo/mcp-server`) — exposes
+  DjimFlo tools to Claude Code, Cursor, and VS Code.
+- **Telegram** (`packages/telegram`, `@djimitflo/telegram`) — a standalone
+  grammy-based gateway package (not just a bot service inside the server); the
+  server imports and starts it in-process under operator/autonomous profiles
+  when `TELEGRAM_BOTS_CONFIG` is set, providing mobile task creation and
+  approval.
+- **Agent catalog** (`packages/agent-catalog`, `@djimitflo/agent-catalog`) —
+  agent import from catalog files.
+- **Shared types** (`packages/shared`, `@djimitflo/shared`) — role definitions,
+  auth, shared types.
+- **Ransomware module** (`packages/ransomware-module`) — private
+  anti-ransomware detection.
 - **Knowledge runtime directory** (`packages/knowledge`) — runtime-generated
-  knowledge storage.
+  knowledge storage root (skills catalog and related bundle data).
 
 ## Reading discipline
 
@@ -81,8 +97,8 @@ tests are necessary but not sufficient for production assurance.
 
 The wiki mirrors the system's architecture. Pages are grouped into domains:
 
-- **`/openwiki/architecture/`** — structural maps: monorepo layout, runtime
-  profiles, server startup composition, and the SQLite data model.
+- **`/openwiki/architecture/`** — structural maps: runtime profiles, server
+  startup composition, and the SQLite data model.
 - **`/openwiki/concepts/`** — invariants and domain models: the governance
   pipeline, roles/permissions, executor adapters, loop lifecycle, and nested
   spawn/swarm trees.
@@ -99,8 +115,7 @@ The wiki mirrors the system's architecture. Pages are grouped into domains:
 
 | You want to… | Go to |
 |---|---|
-<!-- openwiki: broken internal link [architecture/monorepo-layout.md] file "architecture/monorepo-layout.md" does not exist. Fix the href or restore the target, then delete this comment. -->
-| Understand the repo structure and which package owns what | [Monorepo Layout & Package Boundaries](architecture/monorepo-layout.md) |
+| Understand the repo structure and which package owns what | The [package map](#package-map) above and [Server Runtime & Startup Composition](architecture/server-runtime.md) |
 | Understand the `api` / `operator` / `autonomous` runtime profiles | [Runtime Profiles](architecture/runtime-profiles.md) |
 | See how the server boots, wires services, and shuts down | [Server Runtime & Startup Composition](architecture/server-runtime.md) |
 | Understand the SQLite schema, migrations, and provenance | [SQLite Data Model, Migrations & Provenance](architecture/data-model.md) |
@@ -111,7 +126,6 @@ The wiki mirrors the system's architecture. Pages are grouped into domains:
 | Understand loop runs, leases, worktrees, and crash recovery | [Loop Domain Model](concepts/loop-lifecycle.md) |
 | Understand nested spawning, swarm trees, and spawn budgets | [Nested Spawn & Swarm Trees](concepts/nested-spawn-hierarchy.md) |
 | Understand memory sync, learning, and evolution subsystems | [Knowledge Runtime & OKF Bundle Operations](operations/knowledge-runtime.md) |
-<!-- openwiki: broken internal link [workflows/task-execution-lifecycle.md] file "workflows/task-execution-lifecycle.md" does not exist. Fix the href or restore the target, then delete this comment. -->
 | Trace a task from API call through execution to audit | [Task Execution Lifecycle](workflows/task-execution-lifecycle.md) |
 | Understand the approval lifecycle across REST / WS / dashboard / Telegram | [Approval Request & Decision Flow](workflows/approval-decision-flow.md) |
 | Understand doc-drift / self-improvement / issue loops end to end | [Maker–Checker Loop Execution](workflows/maker-checker-loop.md) |
@@ -129,18 +143,15 @@ The wiki mirrors the system's architecture. Pages are grouped into domains:
 
 ## Where to start
 
-- **New to the codebase?** Start with
-<!-- openwiki: broken internal link [architecture/monorepo-layout.md] file "architecture/monorepo-layout.md" does not exist. Fix the href or restore the target, then delete this comment. -->
-  [Monorepo Layout & Package Boundaries](architecture/monorepo-layout.md), then
-  [Server Runtime & Startup Composition](architecture/server-runtime.md), then
-  [Local Development](operations/local-development.md).
+- **New to the codebase?** Start with the [package map](#package-map) above,
+  then [Server Runtime & Startup Composition](architecture/server-runtime.md),
+  then [Local Development](operations/local-development.md).
 - **Operating a deployment?** Start with
   [Configuration & Environment Variable Reference](operations/configuration-reference.md)
   and [Backup, Restore & Data Retention](operations/backup-restore.md).
 - **Making a change to execution or governance?** Read the
   [Governance Pipeline](concepts/governance-pipeline.md) and
   [Roles & Permissions](concepts/roles-and-permissions.md) first, then the
-<!-- openwiki: broken internal link [workflows/task-execution-lifecycle.md] file "workflows/task-execution-lifecycle.md" does not exist. Fix the href or restore the target, then delete this comment. -->
   [Task Execution Lifecycle](workflows/task-execution-lifecycle.md).
 - **Working on autonomous operation?** Read the
   [Autonomous Goal → Daemon → Earned-Autonomy Pipeline](workflows/autonomous-improvement-pipeline.md)

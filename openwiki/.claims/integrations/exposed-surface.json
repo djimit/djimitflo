@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:8d59d4f395f57457a6c7d69fcc2e21679b301b855a54fb4f9c2f21af00a6f9da",
+  "pageVersion": "sha256:86b5e4a910b94eb3d9202bd46b63d985cb9d75d506181e97873829d4397ff5ea",
   "claims": [
     {
       "id": "claim_9322479b019a4fac92ccbf3bd6a66406",
@@ -50,19 +50,27 @@
     },
     {
       "id": "claim_0516a09a43da4c51b656955ff8eef6f3",
-      "statement": "Nearly all /api prefixes mount requireAuth; the exceptions are /auth (empty middleware, public login), /swarms/spawns (requireAuthOrSpawnToken admits either a user JWT or scoped X-Spawn-Token, while POST /spawns/root still requires write:swarm_action so token-only children cannot create roots), /swarm-v2/social-runtime, /api/health, /telegram (secret webhook), and the public GET /api/version direct route.",
+      "statement": "Nearly all /api prefixes mount requireAuth; the exceptions are /auth (empty middleware, public login), /swarms/spawns (requireAuthOrSpawnToken admits either a user JWT or scoped X-Spawn-Token, while POST /spawns/root still requires write:swarm_action so token-only children cannot create roots), /swarm-v2/social-runtime (empty middleware, signed runtime callbacks), /api/health (empty middleware with self-authenticating deep/metrics variants), /telegram (empty middleware, secret webhook), /gym-worker and /host-agent (empty middleware but per-host HMAC token validation, minting requires manage:tokens), and the public GET /api/version direct route.",
       "evidence": [
         {
           "resource": "repo://packages/server/src/middleware/auth.ts#L107-L135",
           "version": "repo-lines-v1:sha256:fcab29234722836050f9fd0aed997a3fd36f496469a34e4556bf84642d3f0dce:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzNmFjMDUxODFhM2Q2Y2IxNDM0NzFjNjZmNTgwZjkwNWQ4ZWI5MzQ2MDBkMzVjMTEwYmU2YWZlYWRkOWIxMDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ5MGVmZGM2OWEwYzc5ODA1YWJkNzdiNDZlNjNlM2VlODFkMTNiMmVmZjZkMzk2MzliMGRlMzY2YWY0ZmZmZjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdmNTgyMjU4NzRiNGY3MWMyM2ZhNjUxZDg5NzQyNTdjOThjMWRjYTk0ZjViM2YzNjUxNGRlZmY1MjMyODVhMjcifQ"
         },
         {
-          "resource": "repo://packages/server/src/routes/index.ts#L132-L137",
-          "version": "repo-lines-v1:sha256:26ac54d853db6f471aeaa7e47d06e62a23bab2189dd125952facbcc9c9835d79:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODA1MDg0NmExNTJhMjg0Mzg0NzU5YWNjNzJiYWMwMTFmZWJkMzZiZTgyMDNlMTdhZjE3YWNlOTAwMzkzMjY5NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2EzZTQ2Zjk0Mjc2YjZmNmY0ZWQxZjAyYWY3OGJlZjZhMmVlMWM0MzlkZDU1ODRiOTczOTQ4MzEzMjE0ZDJiNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDU5ODk2MjU4MDdmYzZhNjEyZTQ0MTQzMmE1YThjMWYzZmY2YzkzNjVhMzhkZWQyYmUzYWM2YTlhM2U3ZmJjYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTA1MWQ1OTFkOGRkODUyYTJlZDU2ODBjNjFhNjc5YzZlZTlkMGQ2NTczNGIzMDVjNTY5YTQ2OGZmYjJlMmU2YSJ9"
+          "resource": "repo://packages/server/src/routes/host-agent.ts#L21-L44",
+          "version": "repo-lines-v1:sha256:fd09b4b991618d3549fd45d014957080eb079ab1e7e7bf66a6d95873bee979c6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3M2NlNzY0ZTIxYzU3NTM3NzE1M2I0MGMzNzZhZTE5ODQ4MjQ2ZDhlY2IzOTEyYjMxOWNiOWU3MjM5MmYyMDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVkYWRkYThkNWViNzhlOTBkZjQzMGMwZWQwYTliZmUwY2U5MzcxZDdkZDE5MTliZWU1ZGMxMGUzMmQxYTk0YzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFjNDdhZTM1NTJjMmFmNThlNzM1NDA3ZTk5ZjEyMmRkZjcxYmFlNjY1OGJiMTk1OGEzODA4NjM3ZGMyZmY5YWYifQ"
         },
         {
-          "resource": "repo://packages/server/src/routes/index.ts#L142-L249",
-          "version": "repo-lines-v1:sha256:46820b867e351422a271eee8b636f89a413a6e317fd2a8dcd62f6f1c960c8c64:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiMzNmNjRmZGVkYTIzNjNlZTM4MGIwMDY5OGQ3NWQ4OGIxNjIzODYzNGNhMTE0ZmMzNzM3MmNlM2E4OTM4NDA4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI5NWVmMDFiYzA4ZGJjM2I2M2U0ZTc1ZWEzZDI2YTViOTQxODkxODc3ZTI3YWQ4OTEzMjljODQxMWQ3ZDhkYzRkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhNjZhYWJhM2JhNThiZDQ4MGU3YjY2ZjA4OWQ2Mjc1MDJhZWU2OTg3NjY2OWRjOGI2MTYwZDEyYzZjNjVhZjY4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlZDMxYjdjNTBkMzBiMmU3ZWNlOGRiOWFkNTNjODYxNGUzYjM2ZTIzMGI3YmEyOWQwNWE1MWEwYThiYjgwYzZjIn0"
+          "resource": "repo://packages/server/src/routes/index.ts#L133-L219",
+          "version": "repo-lines-v1:sha256:939180fd4245b02c52839b37c1a55cb184404bf24c50f77abe514cf8d9cabab1:eyJzZWxlY3RlZExpbmVDb3VudCI6ODcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwOGM2ZTdmYTZkOWFmMGMwOWRlY2FmMGZkNzFmYTQzOTM2ZTc0NDYzMGJlMzJmNTM0ODQyMGUxYmVjMzcyMGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1ZWYwMWJjMDhkYmMzYjYzZTRlNzVlYTNkMjZhNWI5NDE4OTE4NzdlMjdhZDg5MTMyOWM4NDExZDdkOGRjNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIxNjQ4YmMyYWEyODlkNmM2YzcwZmQ2ZjIxMmY1OGQwMDU5YmYzMjUzMWU0YTQ1M2RlNzc2NjMyOTZmZDE1MzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVkMzFiN2M1MGQzMGIyZTdlY2U4ZGI5YWQ1M2M4NjE0ZTNiMzZlMjMwYjdiYTI5ZDA1YTUxYTBhOGJiODBjNmMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/remote-gym.ts#L15-L44",
+          "version": "repo-lines-v1:sha256:0590fcbbb6c49f294628556eda165bf4ed341c90eacb23b7d90838c17596e05b:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1MWNjYWI3ZjE4OTRiYTNkNTFhYTJjNGQ0YzU1ZWQwNWJkMWVhOTY5YTk2Y2FjZmYxZTgxNTk0MDdhYjllYTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBlYmQzZWVlZjZjM2I3ZTBjNTQ2MjEzNDI3OGExZTEzMTQwYmUwZTRlYzczYTZiNmNiMTgyYWNiYWM2NjhjZTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI5MzMwMTAzYmM0NzQyNGVmOGQxNWZkODgyMzg3OGNlZDg5MzM1MjZhNzM1ZDQzZDRjMjZkNTAwMWM4N2UzNDUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/spawns.ts#L50-L110",
+          "version": "repo-lines-v1:sha256:51cb11f0850bc7cbd090130327f41fa7b96d2787e415ea4c5a441226b83c2cdd:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU3YTUxNmRhZDU1YTYwY2ViOWU0MTRiNGIyOWZkYzZjOGM1NDhjOGRjZGM3NzZmMmM5MDU5ZmI2MjQ3YWQyZGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNjNjMxNGE1YjVlZTMwMmQyZTA2MGM5YmRlMmYxMmJjY2I1ZTBmNzkyNTAzOWY2ZGM5YWQ5NWZjMmY1NWExMzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNmN2IzNjg2ZDBiZjhlMGY3YmI1ODFjOWI4ZTkzNTBlMzQ0MDEwMDFmZmNkODZhODNjYTg2ZTFjOTVlODM2YTMifQ"
         }
       ]
     },
@@ -112,19 +120,19 @@
     },
     {
       "id": "claim_b09e81970bdb4caa9ea259019f7f19d0",
-      "statement": "GET /health (app-level) and GET /api/health are public liveness endpoints exposing a build identity block (DJIMITFLO_COMMIT_SHA, DJIMITFLO_BUILD_COMMIT, DJIMITFLO_BUILD_SOURCE, DJIMITFLO_BUILD_TIME, DJIMITFLO_INSTANCE_ID) whose commit_matches_build flag is true only when the runtime commit equals the baked build commit; /api/health/deep requires read:evidence and probes database, memory, worker leases, knowledge runtime, and LiteLLM/Ollama/Qdrant, returning 503 on any error, while authenticated /api/metrics and /api/metrics/json (read:evidence) are distinct from the root /metrics scrape endpoint.",
+      "statement": "GET /health (app-level) and GET /api/health are public liveness endpoints exposing a build identity block (commit, built_commit, build_source, build_time, instance_id) via buildProvenance(); built_commit reflects the baked build and commit_matches_build is true only when the runtime commit equals the baked build commit; /api/health/deep requires read:evidence and probes database, memory, worker leases, knowledge runtime, and LiteLLM/Ollama/Qdrant, returning 503 on any error, while authenticated /api/metrics and /api/metrics/json (read:evidence) are distinct from the root /metrics scrape endpoint.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/index.ts#L140-L161",
-          "version": "repo-lines-v1:sha256:7ef0b1ef6bad4862f0518e299a7a0f92a337b53ed98b9b6c98d40d9df58bf27c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBiMTc0YzU2ZDI4M2YzMzY1YmFlOTA1MTU1NGNlNmQzNWZmYTRjYzE1YmFlZGZjYTg1MmEyZmU3NmI5ODQyNjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQyYmFhMjEwZmU0ZWQzNGQ0ZDM0ODUxZGE2OWJmMTY1ZjQ2M2FlN2E2NzE3M2RjNjllZGMzODM3Yjk2MGM4MjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNmNzQ1ZjFmODIwZGIwMGNjOWRmZmM3MDViN2Y5ZGY4ZTc4NTEwNTAyOGM2YjMwYWFjNmNhNTIzMzAwMDAzOGYifQ"
+          "resource": "repo://packages/server/src/index.ts#L156-L167",
+          "version": "repo-lines-v1:sha256:5277682852049fa9ff115ab99df192bd35ce60d143c83d4361267884e9ed8762:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBiMTc0YzU2ZDI4M2YzMzY1YmFlOTA1MTU1NGNlNmQzNWZmYTRjYzE1YmFlZGZjYTg1MmEyZmU3NmI5ODQyNjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQyYmFhMjEwZmU0ZWQzNGQ0ZDM0ODUxZGE2OWJmMTY1ZjQ2M2FlN2E2NzE3M2RjNjllZGMzODM3Yjk2MGM4MjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNmNzQ1ZjFmODIwZGIwMGNjOWRmZmM3MDViN2Y5ZGY4ZTc4NTEwNTAyOGM2YjMwYWFjNmNhNTIzMzAwMDAzOGYifQ"
         },
         {
-          "resource": "repo://packages/server/src/routes/health.ts#L23-L51",
-          "version": "repo-lines-v1:sha256:e586c58279abf2506f46edc5b96442e16c9c94327c3d89b35d7ec975a0e51cd6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhYTY5MmYzODYwNjg2NTMxZGVlNzNjMGFmNTc4ZmIzNzU4ZTU4Njc2ZmNhMWI2NDgzOTFmMjQ3Mzg5ODYyOTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVlNmMzYTM1MjEwMTMxNmUxNGM1MjQxYTk4MTI0M2RkNmQyZDdhMzY1NWI0ODRiYjU3MjBjN2Q3N2RlYzAwYjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMxMWEyZDRlNmFmOTYxODBhZmE0YmFiZGE1OTRmZTc5NGI2NjI1MzVhYzg0M2Y1MzhlZmI3NGQwYTQzZjA2N2UifQ"
+          "resource": "repo://packages/server/src/routes/health.ts#L38-L118",
+          "version": "repo-lines-v1:sha256:bb4850aba3db9a810b488510d7c89172cf4913ee2fbf43bc7320bc081215cd9a:eyJzZWxlY3RlZExpbmVDb3VudCI6ODEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2Njc3ZDRkZjY2ODczZGJmZGEyYWRiMmI5NGI0OTNhNThjZjI3Njc4YmQ5YzQ3Mjc3MmY0NGY0ZWYzNWY4N2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQwZWU3NmIzZjA4YWQwMWUwMGQwOGFiY2FkN2I0NWRhN2U5ZjhiNjJkNzVmNGVhMmU0MWE0ZmQwN2RmNmU1ZjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIzNDAxM2Q3Y2U2ZjBhODI2Y2MwZjA1NzA5MWE5YzMzMDI2NDUzOTdlZTNhMGZkZTQxODYzNGZiYWI0NzMxNDQifQ"
         },
         {
-          "resource": "repo://packages/server/src/routes/health.ts#L54-L129",
-          "version": "repo-lines-v1:sha256:b1ff4aa4a54435437fefffa8772bbf49688cb15aa53bff488751aa255803455a:eyJzZWxlY3RlZExpbmVDb3VudCI6NzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2OWQ4ZmE0OGRjZTc1N2JiZjM2OWU0MDczNTVkYWMzZWQ2MGM5MzI5ZWZlMjk2M2RjMDY1ZGEzMzY2YWQ2MzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcxOGI0NjA0NjdhNzQ5ODNkOTg4MTgyM2NiNzY5ZTFjZWUyOTM4YjQ1MDM3ZDI5MmQyYzhmODc2YzJmOTRhNDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwZWNlNzdkNjU0OTRmMTUxZDg1ZjQwNzgxMWY0N2JiMDYzN2U3NGY1MDk1YzVhMjFjNWJkMDJjZTg3NGMwMzAifQ"
+          "resource": "repo://packages/server/src/utils/build-provenance.ts#L16-L28",
+          "version": "repo-lines-v1:sha256:36932395a07dded6bf6d1306126f7c9174eb559322bfa9f0ffc4bc10636b9b48:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY4YmFmNTUwNjk3ZjgxN2I4MzA4MWM1MDY0OTk5NDc3MDcxMGI5ZmUzYjEzMzU3NDMwOGUyZDI4NjFhNjlmZDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYxOTZmNjEyYzk1ZTBiNWMwODRiY2U5ZWQ3ODE3NzU1MmQxODIzNWI5OGU0YmY2OTg1Y2JjMDAxYWE0ZjAwMGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
     },
@@ -224,15 +232,15 @@
     },
     {
       "id": "claim_b78839495e734ca4a02ec1044d70c26e",
-      "statement": "The route table is verified rather than trusted: scripts/route-source-inventory.mjs statically parses createXRoutes factories and expands the mount graph from index:createRoutes at /api with a SHA-256 source fingerprint; the route-inventory.test.ts aggregator test asserts zero drift between source declarations and the instantiated router, HTTP-probes every authenticated route anonymously requiring 401, and checks the openapi.json operation count equals inventory size; scripts/contract-inventory.mjs (assurance:contracts) cross-references routes against test evidence, flags critical unclassified routes, validates the runtime inventory fingerprint, and exits nonzero on drift.",
+      "statement": "The route table is verified rather than trusted: scripts/route-source-inventory.mjs statically parses createXRoutes factories and expands the mount graph from index:createRoutes at /api with a SHA-256 source fingerprint; packages/server/src/__tests__/route-inventory.test.ts instantiates the real aggregator, asserts zero drift between source declarations and the instantiated router via compareRuntimeRoutes, HTTP-probes every authenticated route anonymously requiring 401, and checks the openapi.json operation count equals inventory size; scripts/contract-inventory.mjs (assurance:contracts) cross-references routes against test evidence, flags critical unclassified routes, validates the runtime inventory fingerprint, and exits nonzero on drift.",
       "evidence": [
         {
-          "resource": "repo://package.json#L23-L24",
-          "version": "repo-lines-v1:sha256:3d6121d1e0b20d7a693f6c5f2896ebfa420935725c95de0b4ae45df71172be4c:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTA5NDg5YzVmZDJiMzI1MDljNWQ2YzU4ZjRiOWQzOWQyOTU4YjgwMWI0OTMzZDkyZmY3MmVmZTIzNmUyZGYzNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGEwYzMwZjk0MGUzNGEyZTQzNGZjN2Q0ODJhZWRhNWJjMmFhYmIxYWY4MjRkNjVhZDI0MmQ0NWZmNjYxZDc1NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzdiNjRlODdmM2NhYWVjYmExZmFiOTJhZGE4MzhiMTBiNWE3OWRmNDVlOWE4OTIzZjAyYTEwYWZlOGE0MWUwNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2YwOThlN2U0OTE2MjJkYmUxZmZmMjM4NjQzODlmMDQzZTI2MjgzMDEwNDA4NTZlMTcyOGYyZDUxM2EzMmZlZCJ9"
+          "resource": "repo://package.json#L26-L27",
+          "version": "repo-lines-v1:sha256:3d6121d1e0b20d7a693f6c5f2896ebfa420935725c95de0b4ae45df71172be4c:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTA5NDg5YzVmZDJiMzI1MDljNWQ2YzU4ZjRiOWQzOWQyOTU4YjgwMWI0OTMzZDkyZmY3MmVmZTIzNmUyZGYzNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGEwYzMwZjk0MGUzNGEyZTQzNGZjN2Q0ODJhZWRhNWJjMmFhYmIxYWY4MjRkNjVhZDI0MmQ0NWZmNjYxZDc1NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMGFjMDllZjA1ZTFjYWM4ZGIzMGJmZGQyZWNkMjAwNzVkMGNjMzliZDBkMTFjYTMzYTkzM2RhNWE4NzYzOGEyZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2YwOThlN2U0OTE2MjJkYmUxZmZmMjM4NjQzODlmMDQzZTI2MjgzMDEwNDA4NTZlMTcyOGYyZDUxM2EzMmZlZCJ9"
         },
         {
-          "resource": "repo://packages/server/src/__tests__/route-inventory.test.ts#L72-L138",
-          "version": "repo-lines-v1:sha256:667a6e55ef7edef37a3d68a9572034b186329c0059700fb3c7ce0c4d0b3f7daf:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkOTNlY2VmYWVlZmVhMzQyMTI4NWE2YjFhYjVkZmZiYjgzYmY5Yjk5ZjZjMTg1NGFhNGU3ZmRlMTc5NDA5MWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhMTY1NTgyZTIwMmQxZTYzMmYwZDdlNDNhMWRjNTliMWMyNWZkMGNkNTc5ODNjMGViNGE3MDI1MjdiNjEzNmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3NzlkMTE4ZDZlM2NiZjQ1MDUzOTc0OGRlZTdhNDMwN2FjYmU2NDQ2Y2JhMjk3ZjI3NjBmYTVkMGJiYTFiYzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI2MThjZGVmYTYzNmE5MWJiZjI4ODlmZDBkNDM3Y2FlY2EzMzAwZjdkN2I4MWY4ZjQ5MWI5M2JiMWJhNzVhZDkifQ"
+          "resource": "repo://packages/server/src/__tests__/route-inventory.test.ts#L72-L168",
+          "version": "repo-lines-v1:sha256:48eb69eb436960f0496eda7b269c72d1aa7b3a30c01ae38baa8cc88246054dad:eyJzZWxlY3RlZExpbmVDb3VudCI6OTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkOTNlY2VmYWVlZmVhMzQyMTI4NWE2YjFhYjVkZmZiYjgzYmY5Yjk5ZjZjMTg1NGFhNGU3ZmRlMTc5NDA5MWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3NzlkMTE4ZDZlM2NiZjQ1MDUzOTc0OGRlZTdhNDMwN2FjYmU2NDQ2Y2JhMjk3ZjI3NjBmYTVkMGJiYTFiYzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIifQ"
         },
         {
           "resource": "repo://scripts/contract-inventory.mjs#L154-L173",
@@ -265,10 +273,172 @@
           "version": "repo-lines-v1:sha256:9ad6c77b061299f7988dbb18573b5f6a65ecc230ccdaffc34b94d78939085c05:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlMjk3NzQ3MDM1ZTJjZjg5Mjk1NTA1YTU0ZjgxNTJiZjU3OWJhNTlkOGRmMjllMzFkYzE4ZDc4YzQ3MjQ2ZTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYwZTNmYzI4YzlmY2VlYmNjNmJhNTAxNTM4NjNhODgzYzg3YjQ5NjBmYWU1YzhmMGY5NzA2ZTY0NmZjNzg3YmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMzNTI1OGE2NGM5NTJhYzZkMWRhYzI4NzFhNDI0ZWI4MzViOGI0MGU0ZjA4MGExNjMzNzY4MjU4YTA2Mjc5MWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQwNmY1ODQzYmZjNDQ1ZjJiYmViNWUxZDBkNjNhNzc4MmZhYjJiNTcyYmNhNDBmZDkxZWNhYThkMGM5NzZiOGIifQ"
         }
       ]
+    },
+    {
+      "id": "claim_eda5d975580b46ecbab1b414b7a1de74",
+      "statement": "The declarative mounts table in packages/server/src/routes/index.ts (L136-L219) is the single source for both runtime mounting and the machine-readable route inventory: mountRoutes records each layer's prefix and an authenticated flag (derived from the requiresAuth brand on mount middleware) in a WeakMap keyed by the Express layer, because Express 5 hides mount prefixes inside matcher closures; besides per-prefix mounts, four routes are registered directly on the API router (public GET /api/version, requireAuth GET /api/openapi.json, and requireAuth telemetry usage/pageview routes).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L111-L131",
+          "version": "repo-lines-v1:sha256:96cdb8d567ef8aba222816fe656e259d2e92db233a41235dd7f467c1ac6363d4:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxZDQ0NjBkYmY3NjU5MDMyZmU0ZjgzNWNkNzg2ZTk0OWExYzYyNmZlZGU4ZDMzOGZkNzgzYTBjMWUyYjY3ZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA5NThkNTlmZWY0NDkxMzE2MDc2ZjE0MDM2ZGU5ZTdlZWY0NGRiODEzMzVhNDFiMmJmZDUyNTViMTI1ZmNlMWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEwNTFkNTkxZDhkZDg1MmEyZWQ1NjgwYzYxYTY3OWM2ZWU5ZDBkNjU3MzRiMzA1YzU2OWE0NjhmZmIyZTJlNmEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L136-L219",
+          "version": "repo-lines-v1:sha256:771cf44ee3d70c69243c4a16e3e440c9ac27ab16a3d98f8b5e044d349787cbdd:eyJzZWxlY3RlZExpbmVDb3VudCI6ODQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzM2Y2NGZkZWRhMjM2M2VlMzgwYjAwNjk4ZDc1ZDg4YjE2MjM4NjM0Y2ExMTRmYzM3MzcyY2UzYTg5Mzg0MDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1ZWYwMWJjMDhkYmMzYjYzZTRlNzVlYTNkMjZhNWI5NDE4OTE4NzdlMjdhZDg5MTMyOWM4NDExZDdkOGRjNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2NmFhYmEzYmE1OGJkNDgwZTdiNjZmMDg5ZDYyNzUwMmFlZTY5ODc2NjY5ZGM4YjYxNjBkMTJjNmM2NWFmNjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVkMzFiN2M1MGQzMGIyZTdlY2U4ZGI5YWQ1M2M4NjE0ZTNiMzZlMjMwYjdiYTI5ZDA1YTUxYTBhOGJiODBjNmMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/utils/route-inventory.ts#L34-L51",
+          "version": "repo-lines-v1:sha256:ad104bd9fa3b72957e61c662213d4cae44f8ffb1e6d726f1a712b4ce9dae4033:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRiNjI0ZTQ2M2JhMjdlYTVhNGM0NzU0MzEyZWFmODgwNzJkYmU3NWZkNjA0YjA0YmIxNmEwNmJhNjEwOWYxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiZTJlZDljODRhN2U3OWNlYTZlNDkxYzRmZDk5NzgwZWE4MGFkYmU1YzJlMTUyY2FlMjRkOGViNTA2YWQ3MWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEzNmIwMTUyOWQzMzBmYzRlZGY0OWE2YTZlMTI4YjhhYjEzYTc4ZTZmNDY1ZmQ4MWJjMzAwNTJmMWE4NDA2OTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFiMTM0NGVjYWMzYjdlOWZiMTc2MzZkYjdlOWZkNDQ3NzZlYWExYzFjYTZmNTcwOTI1ZDBiZmRiMjBkMjUyMDQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_aaf082d839f44bd09c4a3e34f84798bd",
+      "statement": "Before any route matches, the API router applies in order: a 1 MB body-size cap (limitBodySize, 413 PAYLOAD_TOO_LARGE), securityHeaders, a global 300 requests/minute per-IP express-rate-limit keyed on the real client IP (trust proxy = 1), and UsageTelemetry.middleware() which records matched route patterns and page-view counts into SQLite once a minute; additional limiters are layered per prefix (/traceability 30/min, /openapi.json 100/15min, /api/health 600/min).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/health.ts#L38-L40",
+          "version": "repo-lines-v1:sha256:b2032b1ccd98be412e365bc21a45dd125bb764e43e5c6ea50856c03cce5e1ad4:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTY2NzdkNGRmNjY4NzNkYmZkYTJhZGIyYjk0YjQ5M2E1OGNmMjc2NzhiZDljNDcyNzcyZjQ0ZjRlZjM1Zjg3ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjFlZTI4YmE1NTI5YWE2OWE4MjVhNTgwYzBjNGNhY2Y2NGU1NDg3ZDZmYjEwMmRhMjJmNjhmM2MxNzZmMjViZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDBlZTc2YjNmMDhhZDAxZTAwZDA4YWJjYWQ3YjQ1ZGE3ZTlmOGI2MmQ3NWY0ZWEyZTQxYTRmZDA3ZGY2ZTVmNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmIyYzM2NzNiNDJlMTdjMjIwMmVlNjQ5NGNiZjA4OGNjMjBhNGVlM2IwOTNmYTliOTAxOWE2MGQxODhhNTllNiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L155-L162",
+          "version": "repo-lines-v1:sha256:7e24676ba4d8160da8b3ce4fdd89f17d57c3c2a310702bb0e6995d1eb7c5c1ab:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDE0Y2YwZmQ4YmRkMjRkMTg5ZjJjOGYxOGNmODk0YzQ5NGM5ZDlmNzhlZDc4YTE1YmJmMWEwYmQxNTdlMjY3YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2EzZTQ2Zjk0Mjc2YjZmNmY0ZWQxZjAyYWY3OGJlZjZhMmVlMWM0MzlkZDU1ODRiOTczOTQ4MzEzMjE0ZDJiNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWM2NTg2OThlMmMyYjZlZTBjN2MxNDgyNTM4NDEwYTM1YjM1N2YyODM2ODRmNmQxYWQwN2Q5NGQ2YjYwZDc5YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjk1ODIzYjA1NGU3OWViODk0Y2M0OTA1ZjE4ZTQ2YWI2YzhjMmI1YjFlYmJhZmM1MjczOGQ1OTYyZjVjNzlkMCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L89-L113",
+          "version": "repo-lines-v1:sha256:72de3e6dd304b5ffa00c41e81ed6c78608f31b5240ea70855782916b7dcb7a26:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3MjhkNjgzYmRhYmUyOGIyYTRmYmM2NWUwY2Q1NDcyOTcxMzdiOGRhY2MxOTllYzEwNjZkMDI3Y2NkODQ3ODIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdhNzQ0MWEwODE4ZmRkZDVhODU4MzA3YTIwMGQxMzYyMDE0YWM3OWViNjc5NTRlNGYxMTc1M2NmZDYyN2FmNDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVmMTcwOTkwZDVhNWM2Y2NlYzA0ZDdkNWU5ODJiYTM4MGQ2OTJhZmZjYmVmZWE2MDE5YWFmY2YyYmRlNTg5ZmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI3ZjQ1OWVlZDcwYmQ0MDUxZGRjZjI2ZTkwNzdmYThkNjdiZjE0NmIwMGI0YWVmMmQxZDIyOWI5NGM4MmEwYmIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/usage-telemetry.ts#L26-L35",
+          "version": "repo-lines-v1:sha256:dce0dfc8c62a4541908efd0a710d0f00a25c8cfb9bee8ab15a330fe3eda9dc7f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlMjBlM2M3ZDdlYmU4ZGQ3ZDNkZWEyMmZkMTYwZDVkZTM4ZDc2Mzg1YTg1ZDQxN2RjNDJmYzIyMDA3OTRiNTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk1N2RiNGYyZTAyNmIwNzAyYWI0NDc2Yjc0NDZmNGUyZDU3NGVjODI5ZjFkYmQ3MmQyYWIyYmVmNDUxYjhiZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE3NjQxODFlODg2ZmMyNjdkYWI3MWVkM2IwNTU1ZDYzNGU4N2RmOTUyNGFjZjQ0ODQ0MzRhNDJmYWJkZGQzYWUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_67f9dfd73ef44137a2dc485d2b843c41",
+      "statement": "GET /api/openapi.json is requireAuth-guarded and lazily builds (then caches per process) an OpenAPI 3.1 skeleton from the live router stack via collectRoutes(router): prefixes are joined with route paths, Express :param segments become {param} templates, and authenticated routes get a bearerAuth security requirement; the spec is paths+methods+auth-flag only (no request/response schemas), and collectRoutes fails closed by throwing 'Route inventory incomplete' on any nested router mountRoutes did not record.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L155-L162",
+          "version": "repo-lines-v1:sha256:7e24676ba4d8160da8b3ce4fdd89f17d57c3c2a310702bb0e6995d1eb7c5c1ab:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDE0Y2YwZmQ4YmRkMjRkMTg5ZjJjOGYxOGNmODk0YzQ5NGM5ZDlmNzhlZDc4YTE1YmJmMWEwYmQxNTdlMjY3YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2EzZTQ2Zjk0Mjc2YjZmNmY0ZWQxZjAyYWY3OGJlZjZhMmVlMWM0MzlkZDU1ODRiOTczOTQ4MzEzMjE0ZDJiNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWM2NTg2OThlMmMyYjZlZTBjN2MxNDgyNTM4NDEwYTM1YjM1N2YyODM2ODRmNmQxYWQwN2Q5NGQ2YjYwZDc5YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjk1ODIzYjA1NGU3OWViODk0Y2M0OTA1ZjE4ZTQ2YWI2YzhjMmI1YjFlYmJhZmM1MjczOGQ1OTYyZjVjNzlkMCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/utils/route-inventory.ts#L56-L107",
+          "version": "repo-lines-v1:sha256:c2f99f74d656e34845215e2320d5d160226bfce418e156c13ba9beefbc8800c3:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ0YjYxNjRjNjBiMDk2MTg4OGEzMzBjOTA0MWQ4M2M2ODNkN2U3Nzc2ZmYzZmVjZTViOWQwMDllN2Q2MzU5NjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQwYzVmYjA1MzNmZTc3NWQxNWM0YzY1NjIyM2I0ODliYzJjZDg1NGM4OGU2YzcwOGIxYWE3NDA3NmFkYjM0NzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8c439b1714f246518513a1b1e65f5a10",
+      "statement": "GET /metrics is mounted directly on the app (outside /api), armed only when METRICS_TOKEN is set (404 otherwise, so the endpoint is invisible); when armed it requires Authorization: Bearer <METRICS_TOKEN> compared with timingSafeEqual and is rate-limited to 300 scrapes per 15 minutes per IP via metricsRateLimiter, and all gauges (task/agent/loop/lease/approval/work-item counts by status, latest OpenMythos scores per agent, WebSocket client count, process uptime and RSS) are computed per scrape directly from SQLite so no in-process counters exist.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/index.ts#L206-L207",
+          "version": "repo-lines-v1:sha256:5b94e0ad120324a2d4e3fee43d160ca49f3dbf8a163c3f8cde5dcaf01efd5307:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODk0NGNjMzRhOWVmMjk0MWFiZTI3MDI0ZDc5NjU1NDc1MzU4ZmYwMDg1M2U4MjI0NTY2MjFhMTUyMGY0ODAxNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGFiZTQxYzg5ODFjMTRiNzJjMDJjYzYwMzc4MDMxOTBjZTRmYzNhZGM4YjE1Yjg0MzQwYmM3NDFlMTRiMDFiYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjJjNTVkMDQ3YzdmZDI5ODRhZjM2OGNhYThmZmJkMGZlZGRiZTBiZGQ4YTZhZTU5YTIzMTJlZGU1YTdhNmZkZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWU3ZDAwZTk1ZmIyMzA5ZTVmZTJkNTU4YjIxNGY3ZmVmZjg5ZjUwM2Q2ZWMyZDZhZjNmNmI2YjEyMjg1MWI1MCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/metrics.ts#L38-L100",
+          "version": "repo-lines-v1:sha256:9ccdac0ebb341652ccadc2f0e53510054efd5c8c9d7279d984df3c057e4bf4fd:eyJzZWxlY3RlZExpbmVDb3VudCI6NjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQyYTJjYjI1YTEyMmI0NDIyMWE2MjM0ZWM2NjBhN2I1ZmI3ZjliZGU3YjNiOWUyYjNjNTU5YTBkOTZmYWM3MzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMwYWE0MTg4NDlmMWM5NDQxYTE3MjJhMDcyNTYxYTdhZWFmZDRmZTFhNTY5NGRiMjRhNmU1YzcwZTE4Mzk5YWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6924f313040441b997876fe67df34b82",
+      "statement": "GET /health (app-level, public) and GET /api/health (in the mount table, public, behind a per-router 600-per-minute limiter) both report status, a timestamp, and a build identity drawn from buildProvenance(): commit (DJIMITFLO_COMMIT_SHA runtime commit), built_commit (DJIMITFLO_BUILD_COMMIT baked via Docker build args), build_source, build_time, instance_id, and commit_matches_build true only when built_commit is set and equals the runtime commit; /api/health/deep (requireAuth + read:evidence) probes database, heap memory, active worker leases, knowledge runtime validation, and configured LiteLLM/Ollama/Qdrant dependencies with a 2-second timeout, returning 503 when any check errors, while /api/metrics and /api/metrics/json (read:evidence) are distinct from the token-armed root /metrics.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/index.ts#L156-L167",
+          "version": "repo-lines-v1:sha256:5277682852049fa9ff115ab99df192bd35ce60d143c83d4361267884e9ed8762:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBiMTc0YzU2ZDI4M2YzMzY1YmFlOTA1MTU1NGNlNmQzNWZmYTRjYzE1YmFlZGZjYTg1MmEyZmU3NmI5ODQyNjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQyYmFhMjEwZmU0ZWQzNGQ0ZDM0ODUxZGE2OWJmMTY1ZjQ2M2FlN2E2NzE3M2RjNjllZGMzODM3Yjk2MGM4MjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNmNzQ1ZjFmODIwZGIwMGNjOWRmZmM3MDViN2Y5ZGY4ZTc4NTEwNTAyOGM2YjMwYWFjNmNhNTIzMzAwMDAzOGYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/health.ts#L238-L249",
+          "version": "repo-lines-v1:sha256:3a0064c7710f40b15c3ae46fe345bfca583538c916feb739deca2a0713ad9570:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5NTFiNDM5MWI5MDhmYTQ0NjhhZDc0YjNhYjgyMDllZTZhZmE3NjhhMjYwNTlkODM5ZDY4MDEzZWVkZjFhMzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRmMWU5ZjMyNmEzZGYyZGEwM2EzNGE4ZmM5ZTg3YWI0OWY0MGY3MDkxZDAzMGU0ZGU5Yzg5MDk2MTg4YWEwZTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZlMmVjYjQ4MjI1Y2E1MDBmOGY5MTMyMWI1NTlmMjc1NTQ2ZTg0NWNlOTkxMDk0Mjg4NWU1YmNkYTRhNzkzY2QifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/health.ts#L38-L118",
+          "version": "repo-lines-v1:sha256:bb4850aba3db9a810b488510d7c89172cf4913ee2fbf43bc7320bc081215cd9a:eyJzZWxlY3RlZExpbmVDb3VudCI6ODEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2Njc3ZDRkZjY2ODczZGJmZGEyYWRiMmI5NGI0OTNhNThjZjI3Njc4YmQ5YzQ3Mjc3MmY0NGY0ZWYzNWY4N2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQwZWU3NmIzZjA4YWQwMWUwMGQwOGFiY2FkN2I0NWRhN2U5ZjhiNjJkNzVmNGVhMmU0MWE0ZmQwN2RmNmU1ZjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIzNDAxM2Q3Y2U2ZjBhODI2Y2MwZjA1NzA5MWE5YzMzMDI2NDUzOTdlZTNhMGZkZTQxODYzNGZiYWI0NzMxNDQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/utils/build-provenance.ts#L16-L28",
+          "version": "repo-lines-v1:sha256:36932395a07dded6bf6d1306126f7c9174eb559322bfa9f0ffc4bc10636b9b48:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY4YmFmNTUwNjk3ZjgxN2I4MzA4MWM1MDY0OTk5NDc3MDcxMGI5ZmUzYjEzMzU3NDMwOGUyZDI4NjFhNjlmZDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYxOTZmNjEyYzk1ZTBiNWMwODRiY2U5ZWQ3ODE3NzU1MmQxODIzNWI5OGU0YmY2OTg1Y2JjMDAxYWE0ZjAwMGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8b120c36eb144450b13f06ce666d95f4",
+      "statement": "The /api/mcp server registry feeds an HTTP bridge to sidecar MCP servers: POST /servers/refresh (requireAuth + manage:config) probes each registered sidecar's declared URL and, on first contact with a reachable server that exposes an openapi_url/openapi_path, bulk-imports its OpenAPI operations via services/mcp-openapi-catalog.syncOpenApiCatalog as mcp_tools rows, classifying GET/HEAD/OPTIONS as allowed/low and everything else as requires_approval/medium, capped at MAX_OPERATIONS = 100 operations per spec.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/mcp.ts#L123-L175",
+          "version": "repo-lines-v1:sha256:b4cb6ab895b12be0046b004e8ef707ee0824f7c5c9d63c128d27655d5adf8270:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzZDJlNDE2NDZjNWE3MmM0ZDE0YTQxOThlMmNhNjAxYTYxNTIyN2YwMzMyZWQ2ZjFhNTljNmRkOTA3OTA2NTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI3ZDNlYzQ1NzJkNjEyOTBmZmE0MTRlZWVkOWJlYTM2MTkyYjk1MDdkNzEyYThjNzRiNTJjNTdmMzUwNDYxNjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUxOGM5MGE3NTE2MGYwMDc2ZTNlODMxN2Q3NWMwY2EyYjcyOTQ4NjdmMGQ0YTdmNDk5ZTI0NTg1MTE0YWZlNzEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/mcp-openapi-catalog.ts#L9-L52",
+          "version": "repo-lines-v1:sha256:de4d2459db05872cb8addba08d6e4b875db6a0f4d9e9f66d8ec0882eb06e781f:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyYWJiNTFhZWY0YjgyNTA5ODI1ZDc4YzRlZjNhZGJlY2UwNmY1YTQ1MGUxMWQ1ZThjMWFjM2EzMzJiNzk0MTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJjZDI3NTYwNmJiNTEyNTJhYjFhYzZiN2QxM2IyZDIwOTFiZWQ1YzgxMDVjY2U4MDQyYTE3MzdhNjUyNTA2OTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f716433c84ec4affa4e6a199f27e76e9",
+      "statement": "The WebSocket server shares the HTTP server at path /ws; the dashboard's useWebSocket hook sends the session token as a bearer.<token> subprotocol (not a query string, to avoid leaking into access logs/browser history/referrer headers), and the server's handleProtocols callback echoes the offered bearer.* protocol back to satisfy RFC 6455 §4.2.2; WebSocketService authenticates from that header (or a ?token= query fallback), closing with 4001 (missing), 4002 (invalid/disabled), or 4003 (expired).",
+      "evidence": [
+        {
+          "resource": "repo://packages/dashboard/src/hooks/useWebSocket.ts#L50-L57",
+          "version": "repo-lines-v1:sha256:39d600d04befac3656d8d73d67c30947e6c1aac7d3e8b57b76c38b89adf85945:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTViYmJmZGI5NjY2OWQ5ZmE3Y2ViODczNmVlYjc0ODllNTJiM2UxZGFhYWFlNzQ5NmI1ZDNkZWQzODQyYTJiNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTAwMzhlOGUyYTYzYjJjNjY5MzdkMGZlNjQ2N2MzNWI2Nzc0MzM5YmE4YjBmYjI0MzlmZWRkMzFhMzcyZjg0ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWQyNTkzODJhN2Q2ZDA3MTFlZGVmZTM5ZTE0NjM2ZTBlZDA0OGNhY2ViZjM2ZTU0YzU0NDMyMjQyZjViNGQxNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzY0ZDk2ZTk1MDRiNWJlMmVhYjcwNjFlNWU5YzliMjRlYjMxNmEyMjk3M2IxYjkzYmNmYmJmZjQ5NGM3OWM3MyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L172-L187",
+          "version": "repo-lines-v1:sha256:f674b5c30f1ad225c53e781226c604f921bcf648be5b5f1e6c8a31d5ba25dc96:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxZWFmNGFiOGEzZDZhMTlmNjM5NjQxNmVkYjg3MGNkNWYxMDYxNmI0ZjczOTcyMzExNTgzY2I5MDY2YTI3OTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzZmQ3NmU1N2JjYmM3YmEwOTY5OTA5NGVkZmYyODc4MWRlZDY4ZThmYWE2YWRkYTFiNDgxNmViMTdkMmI3MGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkZDc4NjA4M2U3OGVkMTI3ZWU2NzE5Yjk4Y2MyYzA1MGUzODVhZTkyYzg3YWE5NGYzNTExMGU2Zjg3MjliNzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQyMmYzYmI3OGViNTUyMzI1NjMyZmUzZjNlNTc2NWVkNmUxNjY1NDU4NmNlM2U4MWY4MTY1NTcwOGM1MmY3ZmYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/websocket-service.ts#L62-L99",
+          "version": "repo-lines-v1:sha256:307cd1546434251f88646139f700daded36246774fb2bba0a76fe1e09e058de6:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxYjY4NWRiYjE0NGNmZTk4ZjQ0YjBiZjFiZTdmNDJmNjU0YjFhZmU2NmUzYWU1ZDNkMzE4OTIwMjhjNTM0NjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVlMTJiNjExODk0M2UzMGMwMDY4MzNlNzgxNjMwYTUzYjMyZjQxN2VmNWY5Nzk1YzNmMTJmMzMwODAyNGM1ZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjllZmI2YWQwODQwZjgxNDdlOWE2OWM2MmFhNmU0ZTBiNmYwNTdkMmU4NDYyOTMwZmM0MjMxZDliZmUzYmU0OWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f1ffe4964edc402ba4065b39576aabf8",
+      "statement": "WebSocket authentication is not handshake-only: every broadcast routes through getAuthenticatedClient, which closes the socket if the token has since expired (4003), the user was disabled or their role/email/organization changed (4002), or their session was revoked (4002), so authority changes force clients to rebind through a fresh connection and stale privileges are never used; slow consumers whose bufferedAmount exceeds WS_MAX_BUFFERED_AMOUNT_BYTES (default 1 MiB) are skipped rather than buffered.",
+      "evidence": [
+        {
+          "resource": "repo://packages/dashboard/src/hooks/useWebSocket.ts#L94-L109",
+          "version": "repo-lines-v1:sha256:a89ad7c2e4ffd53b112d7a988ba552b1817106286348b79cc3d413ca842b09f0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjNTM4OWZiYTcwN2Y4ODcyYjJjZWU2NmJmNTI4ZmFiNTIzNTIzYjczNmVkNjY0ZjM0ZDJlYWQyYzUwMjVlNjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2YjA0NDkxNDY5NzIyZTgzNjNhOTRlNDA0NDUzOGUwMTNhMmEyMTdlMzZiMWU1NjhiYTYwYWNiN2I0YzhmMmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAxOTNlNjBhMzhmY2I5NWQ2NjVhMTgyNzllOGE5Y2NhMjMzZmUwZGU5M2Q4ODg3YWI4NDhlMDY0YTc3MThlMTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZlNWJmYjRhYTMyOTZhYzdjYTFiNDE3M2ZmOGQ4MDlhNjhhOGY5NzVkMDQ2MGFmMjZmYWI4ZTZmNTQ4ZjA1MTAifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/websocket-service.ts#L123-L199",
+          "version": "repo-lines-v1:sha256:ebfb8e662021963164710ac31716bd0fbb58c637bf0cc30a8e1b9f1ba9a68946:eyJzZWxlY3RlZExpbmVDb3VudCI6NzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhN2JkY2FkOTQxZThkNjY0ZDY2NWM5ZDk3ZmUzMDFlMzExODg1OGY1YWYyNGE3ZjY5MWQ1YTdlZjlkZTYzMDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYzYjQzMTUxNmRjOWNiZmQ0Zjk1M2JlMzQ3NTcxOGYzNWM5NmM5NTI5ZDA0YWY2MzRiOWNiZjBjMGE2NjRjNzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjYmRhODQ4ZDg5MTMzZTk0OTNhYWIyNmIzYTNjNmEzNjIzNTkyMTM0MTc1OGI1NWI4M2IyZGE1ZDlkZjg5NjQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3211d7f8b5624c6480eb3495b60e09e6",
+      "statement": "The mount table is verified end-to-end rather than trusted: scripts/route-source-inventory.mjs statically parses every createXRoutes factory (literal router.<method> calls only), expands the mount graph from index:createRoutes at base /api (detecting cyclic mounts), and fingerprints all route/auth sources via SHA-256; the route-inventory.test.ts aggregator test instantiates the real router, asserts zero drift between source declarations and the live router (compareRuntimeRoutes), HTTP-probes every authenticated route anonymously requiring 401, and asserts the openapi.json operation count equals the inventory size; scripts/contract-inventory.mjs (assurance:contracts) cross-references declarations against test files, flags critical unclassified routes, validates the runtime artifact's source fingerprint as anti-staleness, and exits nonzero on drift.",
+      "evidence": [
+        {
+          "resource": "repo://package.json#L26-L27",
+          "version": "repo-lines-v1:sha256:3d6121d1e0b20d7a693f6c5f2896ebfa420935725c95de0b4ae45df71172be4c:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTA5NDg5YzVmZDJiMzI1MDljNWQ2YzU4ZjRiOWQzOWQyOTU4YjgwMWI0OTMzZDkyZmY3MmVmZTIzNmUyZGYzNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGEwYzMwZjk0MGUzNGEyZTQzNGZjN2Q0ODJhZWRhNWJjMmFhYmIxYWY4MjRkNjVhZDI0MmQ0NWZmNjYxZDc1NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMGFjMDllZjA1ZTFjYWM4ZGIzMGJmZGQyZWNkMjAwNzVkMGNjMzliZDBkMTFjYTMzYTkzM2RhNWE4NzYzOGEyZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2YwOThlN2U0OTE2MjJkYmUxZmZmMjM4NjQzODlmMDQzZTI2MjgzMDEwNDA4NTZlMTcyOGYyZDUxM2EzMmZlZCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/__tests__/route-inventory.test.ts#L72-L168",
+          "version": "repo-lines-v1:sha256:48eb69eb436960f0496eda7b269c72d1aa7b3a30c01ae38baa8cc88246054dad:eyJzZWxlY3RlZExpbmVDb3VudCI6OTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkOTNlY2VmYWVlZmVhMzQyMTI4NWE2YjFhYjVkZmZiYjgzYmY5Yjk5ZjZjMTg1NGFhNGU3ZmRlMTc5NDA5MWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3NzlkMTE4ZDZlM2NiZjQ1MDUzOTc0OGRlZTdhNDMwN2FjYmU2NDQ2Y2JhMjk3ZjI3NjBmYTVkMGJiYTFiYzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIifQ"
+        },
+        {
+          "resource": "repo://scripts/contract-inventory.mjs#L154-L173",
+          "version": "repo-lines-v1:sha256:4bf49e201afcac5843db810c6738a53cee0169f0b01e2fa16a055aa57c3c80f1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5M2VlMWFjNGRlYzQzNTY4OTNhZjk2MjJjNmEyNWMwMmQ1MTVlNmU3MTk1NzJiOTFhYzcwNjIxOTA0YzA1ZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3ODEwZTliNTAxYTEzY2ZiNWEwNzc4MzVlZDlkNGY0ODFkMTQwZGMzNTQ5MTUwMTdiNmVkMzFlMjAwNDc0NDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJhMzhlZTljYzczYzlmMWYyYzhmOGM1NmQwMGJkMDBkZTViMDczNjlmMTJlMDgwYWJiZDc5YzhjNDM3NTZjMTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://scripts/contract-inventory.mjs#L76-L105",
+          "version": "repo-lines-v1:sha256:ff5dafa17e3828e0f3297a9569813f97c15600e1d06c88ca31c9276142b0740a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0OWMwNWEzMDllMThhOTE2MDNjMDc3YjFmMWE0N2I0NDIwMzNhYmIxY2QyM2IzNWNjODE1OGNmMTUwNzdjN2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJiNDE2M2ZiZmU4ZGNiOTZmZDdmZDU3OWJiZDYyMjExZDBiNTE4N2Q5N2IzZTEzMzZkNzdhMTM4MDEzYmJlZGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE3MDllYThjMjk2NjA0M2U3NDgzNjRiMjdkYjYzZWQ0NWRlNGNmYjA3NGYyMzYwN2JmN2U4MmRiMTUxMzY2YTUifQ"
+        },
+        {
+          "resource": "repo://scripts/route-source-inventory.mjs#L12-L99",
+          "version": "repo-lines-v1:sha256:89efad8df57a800dcf04a790ad117ff2f181dcbad165249d4d79b0dae17cb737:eyJzZWxlY3RlZExpbmVDb3VudCI6ODgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM5YWIzYTE5NWExYzMwZDJiNTMzZDgyNzkyM2NhMDMxMWEyMTYyZDBlZTRkZWQ1MTlhOGQ0ZDU4MTc2YjcwOGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ3OGVjMjBjODQ4ZjEyMTc0OGVjNzA5YjYzOWUxN2IwN2E2ZjJiYmFiNTFkZjI0OWI4NTA5ZDVkZGEwMGMwZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxZDRiZTRlMGY5MmNiZTFhMDA0ZDVlNTIxMGJhZGQ2NzI1ZDgyNzkxYzIzMmQ0NWNmOWE4MWE1MzAzOWVjMDYifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-24T19:59:50.419Z"
+    "at": "2026-10-24T12:32:22.727Z"
   }
 }
