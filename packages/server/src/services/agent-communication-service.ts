@@ -127,6 +127,44 @@ export interface SocialThread {
   last_activity_at: string;
   learnings: number;
   messages: SocialMessage[];
+  /** AC-02: 'record' = a record-only evidence room (`evidence-room:*`, addressed to `commons`, no resident inbox, so no runtime turn is ever scheduled). */
+  kind: CommonsThreadKind;
+}
+
+export type CommonsThreadKind = 'discussion' | 'record';
+export interface CommonsListOptions { kind?: CommonsThreadKind | 'all'; offset?: number }
+/** Record-only evidence rooms (commons-evidence-room.ts EVIDENCE_ROOM_PREFIX; not imported: that module imports this one). */
+const RECORD_THREAD_SQL = "LIKE 'evidence-room:%'";
+export const COMMONS_MAX_OFFSET = 100_000;
+const HEARTBEAT_FRESH_MS = 20 * 60_000;
+/** AC-01: ready needs a successful runtime reply this recent; older is degraded even with a fresh heartbeat. */
+export const READY_REPLY_WINDOW_MS = 24 * 3_600_000;
+
+/**
+ * AC-01 readiness, derived only from what the server already stores: the heartbeat (agents.metadata.social_runtime), the
+ * agent's own runtime replies (respondSocial, response_kind actual_runtime) and delivery leases it claimed but let lapse
+ * without a reply. Pollers do not report their own errors to the server, so there is no runtime error class here.
+ */
+export interface CommonsRuntimeReadiness {
+  state: 'ready' | 'degraded' | 'offline' | 'unknown';
+  reason: string;
+  last_heartbeat_at: string | null;
+  last_successful_reply_at: string | null;
+  /** newest claimed social message whose lease lapsed (or that expired) without a reply from this agent */
+  last_failed_attempt: { at: string; message_id: string; observed: 'claim_lapsed_without_reply' } | null;
+  /** always false today: the poller logs child failures locally and never sends them to the server */
+  runtime_failures_reported: false;
+}
+
+export function deriveRuntimeReadiness(input: { lastHeartbeatAt: string | null; lastSuccessAt: string | null; lastFailureAt: string | null; now?: number }): Pick<CommonsRuntimeReadiness, 'state' | 'reason'> {
+  const now = input.now ?? Date.now();
+  const heartbeat = input.lastHeartbeatAt ? Date.parse(input.lastHeartbeatAt) : NaN;
+  if (!Number.isFinite(heartbeat)) return { state: 'unknown', reason: 'no heartbeat recorded' };
+  if (now - heartbeat > HEARTBEAT_FRESH_MS) return { state: 'offline', reason: 'heartbeat older than 20 min' };
+  const success = input.lastSuccessAt ? Date.parse(input.lastSuccessAt) : NaN;
+  if (!Number.isFinite(success) || now - success > READY_REPLY_WINDOW_MS) return { state: 'degraded', reason: 'heartbeat fresh, no successful reply in 24 h' };
+  if (input.lastFailureAt && Date.parse(input.lastFailureAt) > success) return { state: 'degraded', reason: 'a claimed message lapsed without a reply after the last successful reply' };
+  return { state: 'ready', reason: 'heartbeat fresh and a successful reply in 24 h' };
 }
 
 export interface CommonsAgentActivity {
@@ -161,6 +199,10 @@ export interface CommonsStats {
 export interface SocialCommons {
   /** Threads that exist in total; `threads` only carries the newest ones. */
   total_threads?: number;
+  /** AC-02: lifetime thread totals per kind (discussion vs record-only evidence room). */
+  thread_counts?: Record<CommonsThreadKind, number>;
+  /** AC-02: which slice `threads` is — filtered by kind before the limit, offset-paged. */
+  page?: { kind: CommonsThreadKind | 'all'; limit: number; offset: number; total: number; has_more: boolean };
   /**
    * Totals over all threads of the last 7 days, not over the loaded page (prod 2026-09-24: the page summed learnings over the
    * newest 40 threads, so "Reflecties 40" and "Open vragen 0" were artefacts of the page size). The funnel shows what Commons
@@ -170,6 +212,7 @@ export interface SocialCommons {
   agents: Array<{
     id: string; name: string; status: string; capabilities: string[]; model: string;
     runtime: string | null; last_heartbeat_at: string | null; present: boolean;
+    readiness: CommonsRuntimeReadiness;
     // ponytail: activity = recent non-social agent_messages flow. Covers the Board-vs-Commons
     // gap for messages. Lease/spawn/reflection events stay on the Interaction Board — upgrade
     // to AgentInteractionLedgerService only if operators need those sources here too.
@@ -298,8 +341,9 @@ export class AgentCommunicationService {
    * social thread (question -> response -> learning) grouped by thread_id.
    * Content was redacted on write, so this is a plain projection.
    */
-  listSocialCommons(limit = 50): SocialCommons {
-    const heartbeatCutoff = Date.now() - 20 * 60_000;
+  listSocialCommons(limit = 50, options: CommonsListOptions = {}): SocialCommons {
+    const now = Date.now();
+    const heartbeatCutoff = now - HEARTBEAT_FRESH_MS;
     const activityByAgent = new Map<string, CommonsAgentActivity[]>();
     const activityRows = this.db.prepare(`
       SELECT id, from_agent, to_agent, status, timestamp, json_extract(payload_json, '$.action') AS action
@@ -315,38 +359,50 @@ export class AgentCommunicationService {
       const list = activityByAgent.get(row.from_agent) || [];
       if (list.length < 20) activityByAgent.set(row.from_agent, [...list, entry]);
     }
-    const agents = (this.db.prepare(`
+    const agentRows = this.db.prepare(`
       SELECT * FROM agents
       WHERE json_extract(COALESCE(metadata, '{}'), '$.social_runtime.enabled') = 1
       ORDER BY id ASC
-    `).all() as Array<Record<string, unknown>>).map((row) => {
+    `).all() as Array<Record<string, unknown>>;
+    const { successes, failures } = this.readinessEvidence(agentRows.map((row) => String(row.id)), now);
+    const agents = agentRows.map((row) => {
       const social = this.object(this.object(row.metadata).social_runtime);
       const lastHeartbeat = this.string(social.last_heartbeat_at) || null;
+      const lastSuccess = successes.get(String(row.id)) ?? null;
+      const lastFailure = failures.get(String(row.id)) ?? null;
       return {
         id: String(row.id), name: String(row.name || row.id), status: String(row.status),
         capabilities: this.capabilities(row), model: this.string(social.model_id) || this.string(row.model),
         runtime: this.string(social.runtime) || null, last_heartbeat_at: lastHeartbeat,
         present: !!lastHeartbeat && Date.parse(lastHeartbeat) >= heartbeatCutoff,
+        readiness: {
+          ...deriveRuntimeReadiness({ lastHeartbeatAt: lastHeartbeat, lastSuccessAt: lastSuccess, lastFailureAt: lastFailure?.at ?? null, now }),
+          last_heartbeat_at: lastHeartbeat, last_successful_reply_at: lastSuccess, last_failed_attempt: lastFailure, runtime_failures_reported: false as const,
+        },
         activity: activityByAgent.get(String(row.id)) || [],
       };
     });
 
     // Only load the messages of the newest `limit` threads (this used to read every social message
     // ever sent and slice afterwards: ~1.5 MB per page load in production).
+    // AC-02: filter by kind BEFORE the limit (prod 24-10: 42 of the newest 50 threads were record-only rooms).
     const threadLimit = Math.max(1, limit);
+    const kind: CommonsThreadKind | 'all' = options.kind === 'discussion' || options.kind === 'record' ? options.kind : 'all';
+    const offset = Math.min(COMMONS_MAX_OFFSET, Math.max(0, Math.trunc(Number(options.offset)) || 0));
+    const kindFilter = kind === 'all' ? '' : `AND json_extract(payload_json, '$.thread_id') ${kind === 'record' ? '' : 'NOT '}${RECORD_THREAD_SQL}`;
     const rows = this.db.prepare(`
       WITH recent AS (
         SELECT json_extract(payload_json, '$.thread_id') AS tid, MAX(timestamp) AS last_ts
         FROM agent_messages
         WHERE json_extract(payload_json, '$.action') IN ('social.question', 'social.response', 'social.learning')
-          AND json_type(payload_json, '$.thread_id') = 'text'
-        GROUP BY tid ORDER BY last_ts DESC LIMIT ?
+          AND json_type(payload_json, '$.thread_id') = 'text' ${kindFilter}
+        GROUP BY tid ORDER BY last_ts DESC, tid DESC LIMIT ? OFFSET ?
       )
       SELECT * FROM agent_messages
       WHERE json_extract(payload_json, '$.action') IN ('social.question', 'social.response', 'social.learning')
         AND json_extract(payload_json, '$.thread_id') IN (SELECT tid FROM recent)
       ORDER BY timestamp ASC
-    `).all(threadLimit) as Array<Record<string, unknown>>;
+    `).all(threadLimit, offset) as Array<Record<string, unknown>>;
     const reflections = new Map((this.db.prepare(`
       SELECT id, source_ref, status FROM reflection_candidates WHERE source_type = 'trace' AND source_ref LIKE 'message:%'
     `).all() as Array<{ id: string; source_ref: string; status: string }>).map((row) => [row.source_ref, row]));
@@ -365,7 +421,7 @@ export class AgentCommunicationService {
       const thread = threads.get(threadId) || {
         id: threadId, topic: this.string(params.topic) || 'cross-agent learning', topic_ref: this.string(params.topic_ref) || null,
         participants: [], stage: 'asked' as SocialThread['stage'], started_at: message.timestamp, last_activity_at: message.timestamp,
-        learnings: 0, messages: [],
+        learnings: 0, messages: [], kind: threadId.startsWith('evidence-room:') ? 'record' as const : 'discussion' as const,
       };
       const messageStage: SocialThread['stage'] = message.payload.action === 'social.learning' ? 'learned' : message.payload.action === 'social.response' ? 'responding' : 'asked';
       if (stageRank[messageStage] > stageRank[thread.stage]) thread.stage = messageStage;
@@ -390,18 +446,57 @@ export class AgentCommunicationService {
       });
       threads.set(threadId, thread);
     }
-    const totalThreads = (this.db.prepare(`
-      SELECT COUNT(DISTINCT json_extract(payload_json, '$.thread_id')) AS n FROM agent_messages
-      WHERE json_extract(payload_json, '$.action') IN ('social.question', 'social.response', 'social.learning')
-        AND json_type(payload_json, '$.thread_id') = 'text'
-    `).get() as { n: number }).n;
+    const counts = this.db.prepare(`
+      SELECT COALESCE(SUM(tid ${RECORD_THREAD_SQL}), 0) AS record, COALESCE(SUM(tid NOT ${RECORD_THREAD_SQL}), 0) AS discussion FROM (
+        SELECT DISTINCT json_extract(payload_json, '$.thread_id') AS tid FROM agent_messages
+        WHERE json_extract(payload_json, '$.action') IN ('social.question', 'social.response', 'social.learning')
+          AND json_type(payload_json, '$.thread_id') = 'text')
+    `).get() as Record<CommonsThreadKind, number>;
+    const totalThreads = counts.discussion + counts.record;
+    const kindTotal = kind === 'all' ? totalThreads : counts[kind];
     return {
       agents,
       total_threads: totalThreads,
+      thread_counts: { discussion: counts.discussion, record: counts.record },
+      page: { kind, limit: threadLimit, offset, total: kindTotal, has_more: offset + threads.size < kindTotal },
       stats: this.commonsStats() ?? undefined,
       threads: [...threads.values()].sort((left, right) => right.last_activity_at.localeCompare(left.last_activity_at)).slice(0, Math.max(1, limit))
         .map((thread) => ({ ...thread, messages: thread.messages.map((m) => applyPiiPass(m, FEDERATION_PII_MODE).payload as SocialMessage) })),
     };
+  }
+
+  /**
+   * AC-01 evidence per agent: newest own runtime reply (respondSocial writes response_kind 'actual_runtime' on both
+   * social.response and social.learning) and newest claimed-but-unanswered social message. A claim leaves a lease token;
+   * a reply acknowledges it (status 'read', token cleared). So 'delivered' with a lapsed lease, or 'expired' with a token
+   * still set, means the agent took the message and never answered. Its time is the lease end, else the TTL expiry.
+   */
+  private readinessEvidence(agentIds: string[], now: number): { successes: Map<string, string>; failures: Map<string, NonNullable<CommonsRuntimeReadiness['last_failed_attempt']>> } {
+    const successes = new Map<string, string>();
+    const failures = new Map<string, NonNullable<CommonsRuntimeReadiness['last_failed_attempt']>>();
+    if (!agentIds.length) return { successes, failures };
+    const ids = JSON.stringify(agentIds);
+    for (const row of this.db.prepare(`
+      SELECT from_agent AS agent, MAX(timestamp) AS last FROM agent_messages
+      WHERE from_agent IN (SELECT value FROM json_each(?))
+        AND json_extract(payload_json, '$.action') IN ('social.response', 'social.learning')
+        AND json_extract(payload_json, '$.params.response_kind') = 'actual_runtime'
+      GROUP BY from_agent
+    `).all(ids) as Array<{ agent: string; last: string }>) successes.set(row.agent, row.last);
+    for (const row of this.db.prepare(`
+      SELECT id, to_agent AS agent, timestamp, ttl, delivery_lease_until AS lease FROM agent_messages
+      WHERE to_agent IN (SELECT value FROM json_each(?))
+        AND json_extract(payload_json, '$.action') IN ('social.question', 'social.response')
+        AND delivery_lease_token IS NOT NULL
+        AND (status = 'expired' OR (status = 'delivered' AND delivery_lease_until <= ?))
+      ORDER BY timestamp DESC LIMIT 200
+    `).all(ids, now) as Array<{ id: string; agent: string; timestamp: string; ttl: number; lease: number | null }>) {
+      const atMs = row.lease ?? Date.parse(row.timestamp) + Number(row.ttl) * 1000;
+      if (!Number.isFinite(atMs)) continue;
+      const previous = failures.get(row.agent);
+      if (!previous || Date.parse(previous.at) < atMs) failures.set(row.agent, { at: new Date(atMs).toISOString(), message_id: String(row.id), observed: 'claim_lapsed_without_reply' });
+    }
+    return { successes, failures };
   }
 
   /**
