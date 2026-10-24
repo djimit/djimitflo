@@ -20,6 +20,7 @@ import type { Database } from 'better-sqlite3';
 import { boardMessageFingerprint, boardProtocolError, boardReplyTargetError, type BoardEpistemicRole } from './board-protocol';
 import { SelfImprovementService } from './self-improvement-service';
 import { commonsGroundingAgendaEnabled, pickGroundingTopic, recordCommonsGrounding } from './commons-grounding';
+import { buildInvestigationEvidence, classifyInvestigationReply, investigationArtefactRef, investigationBrief, investigationMode, investigationReplyParams, recordInvestigationEvidence, recordInvestigationReply, type InvestigationEvidence } from './commons-investigation';
 import { AgentAssuranceService } from './agent-assurance-service';
 import { redactSecrets } from './secret-patterns';
 import { applyPiiPass } from './federation/pii-pass';
@@ -78,6 +79,8 @@ export interface SocialRuntimeReply {
   runtime_run_id?: string;
   usage?: Record<string, unknown>;
   delivery_lease_token?: string;
+  /** AC-06: typed artefact on a Commons investigation thread (COMMONS_INVESTIGATION_MODE); ignored everywhere else. */
+  artefact?: unknown;
 }
 
 export interface SocialReplyResult {
@@ -321,10 +324,17 @@ export class AgentCommunicationService {
     const firstPerspective = this.uniquePerspective(first, second);
     const secondPerspective = this.uniquePerspective(second, first);
     const evidencePack = evidencePackEnabled() ? buildEvidencePack(this.db) : null;
+    // AC-04 (COMMONS_INVESTIGATION_MODE): run/proposal topics get repository + run evidence; shadow records it, on delivers it
+    const invMode = investigationMode();
+    let investigation: InvestigationEvidence | null = null;
+    if (invMode !== 'off') { try { investigation = buildInvestigationEvidence(this.db, { topicRef, topic }); } catch { investigation = null; } }
+    const invBrief = investigation ? investigationBrief(investigation) : '';
+    const deliver = invMode === 'on' && investigation ? { investigation, investigation_brief: invBrief } : null;
+    const questionEvidence = deliver ? [...new Set([...evidence, ...deliver.investigation.refs.map((r) => r.ref)])].slice(0, 20) : evidence;
     const question = (from: string, to: string, context: string) => this.send({
-      from, to, type: 'question', action: 'social.question', context, evidence, threadId: correlationId,
+      from, to, type: 'question', action: 'social.question', context, evidence: questionEvidence, threadId: correlationId,
       epistemicRole: 'question', ttl: 86_400,
-      params: { topic, topic_ref: topicRef, ...(picked && 'signature' in picked ? { failure_signature: (picked as { signature: string }).signature } : {}), ecosystem_component: ecosystemComponent, ecosystem_context: ecosystemContext, ...(evidencePack ? { evidence_pack: evidencePack } : {}), effect_scope: 'isolated', facilitated_by: facilitatorTrigger === 'operator' ? 'operator-socialize-route' : 'continuous-learning-loop', board_summary: context },
+      params: { topic, topic_ref: topicRef, ...(picked && 'signature' in picked ? { failure_signature: (picked as { signature: string }).signature } : {}), ecosystem_component: ecosystemComponent, ecosystem_context: ecosystemContext, ...(evidencePack ? { evidence_pack: evidencePack } : {}), effect_scope: 'isolated', facilitated_by: facilitatorTrigger === 'operator' ? 'operator-socialize-route' : 'continuous-learning-loop', board_summary: context, ...(deliver ?? {}) },
       facilitatorCommit: process.env.DJIMITFLO_COMMIT_SHA || '',
       facilitatorTrigger,
     });
@@ -333,6 +343,7 @@ export class AgentCommunicationService {
       question(firstId, secondId, contexts?.[0] ?? `How can your ${secondPerspective} perspective challenge "${topic}"? Share evidence, one uncertainty and a falsifiable next step.`),
       question(secondId, firstId, contexts?.[1] ?? `What creative alternative would your ${firstPerspective} perspective test for "${topic}"? Build on or dispute the peer idea, suggest an interest for a future round, and include evidence and a stop condition.`),
     ])();
+    if (investigation) recordInvestigationEvidence(this.db, correlationId, invMode, investigation, invBrief);
     return { status: 'started', correlation_id: correlationId, topic, participants: [firstId, secondId], messages, reason: null };
   }
 
@@ -716,9 +727,14 @@ export class AgentCommunicationService {
     const evidence = [...new Set([...citedEvidence, `message:${original.id}`, `runtime:${agentId}:${runtime}`])];
     const summary = action === 'social.response' ? `${answer} Uncertainty: ${uncertainty} Test: ${nextStep}` : `${answer} Peer challenge: ${alternative} Next test: ${nextStep}`;
     const usage = Object.fromEntries(Object.entries(input.usage || {}).filter(([, value]) => typeof value === 'number' && Number.isFinite(value)));
+    // AC-06: on an investigation thread a typed artefact makes the reply evidence; plain text stays unverified (null = untouched)
+    const investigation = classifyInvestigationReply(this.db, threadId, input.artefact);
+    const invOn = investigation && investigationMode() === 'on' ? investigation : null;
+    const replyEvidence = invOn?.artefact ? [...evidence, investigationArtefactRef(invOn.artefact)] : evidence;
     return this.db.transaction(() => {
-      const message = this.send({ from: agentId, to: original.from, type: action === 'social.response' ? 'result' : 'knowledge', action, context: summary.slice(0, 500), evidence, threadId, replyTo: original.id, epistemicRole: action === 'social.response' ? 'proposal' : 'outcome', ttl: 86_400,
-        params: { topic: this.string(original.payload.params?.topic), topic_ref: this.string(original.payload.params?.topic_ref), ecosystem_context: this.string(original.payload.params?.ecosystem_context), interest, ecosystem_component: ecosystemComponent, proposed_improvement: improvement, answer, uncertainty, falsifiable_next_step: nextStep, creative_alternative: alternative, stop_condition: stopCondition, runtime, model_id: modelId, runtime_run_id: runtimeRunId, usage, response_kind: 'actual_runtime', provenance_status: 'runtime_reported', external_side_effects: false, effect_scope: 'isolated', board_summary: summary.slice(0, 500) } });
+      const message = this.send({ from: agentId, to: original.from, type: action === 'social.response' ? 'result' : 'knowledge', action, context: summary.slice(0, 500), evidence: replyEvidence, threadId, replyTo: original.id, epistemicRole: action === 'social.response' ? 'proposal' : 'outcome', ttl: 86_400,
+        params: { topic: this.string(original.payload.params?.topic), topic_ref: this.string(original.payload.params?.topic_ref), ecosystem_context: this.string(original.payload.params?.ecosystem_context), interest, ecosystem_component: ecosystemComponent, proposed_improvement: improvement, answer, uncertainty, falsifiable_next_step: nextStep, creative_alternative: alternative, stop_condition: stopCondition, runtime, model_id: modelId, runtime_run_id: runtimeRunId, usage, response_kind: 'actual_runtime', provenance_status: 'runtime_reported', external_side_effects: false, effect_scope: 'isolated', board_summary: summary.slice(0, 500), ...(invOn ? investigationReplyParams(invOn) : {}) } });
+      if (investigation) recordInvestigationReply(this.db, message.id, investigationMode(), investigation);
       this.acknowledge(original.id, agentId, this.cleanRequired(input.delivery_lease_token, 'SOCIAL_LEASE_REQUIRED', 200));
       let reflectionId: string | null = null;
       if (action === 'social.learning') {
@@ -1116,14 +1132,14 @@ export class AgentCommunicationService {
 
   private runtimeSafeMessage(message: AgentMessage): AgentMessage {
     const params = message.payload.params || {};
-    const allowedParams = ['interest', 'ecosystem_component', 'ecosystem_context', 'proposed_improvement', 'topic', 'topic_ref', 'answer', 'uncertainty', 'falsifiable_next_step', 'creative_alternative', 'stop_condition', 'runtime', 'model_id', 'runtime_run_id', 'facilitator_commit', 'facilitator_trigger'];
+    const allowedParams = ['interest', 'ecosystem_component', 'ecosystem_context', 'proposed_improvement', 'topic', 'topic_ref', 'answer', 'uncertainty', 'falsifiable_next_step', 'creative_alternative', 'stop_condition', 'runtime', 'model_id', 'runtime_run_id', 'facilitator_commit', 'facilitator_trigger', 'investigation_brief'];
     return { ...message, payload: {
       action: message.payload.action,
       context: this.cleanOptional(message.payload.context, 4_000),
       evidence: this.stringArray(message.payload.evidence).map((item) => this.cleanOptional(item, 200)).filter(Boolean).slice(0, 20),
       thread_id: this.cleanOptional(message.payload.thread_id, 200), reply_to: this.cleanOptional(message.payload.reply_to, 200),
       epistemic_role: message.payload.epistemic_role,
-      params: Object.fromEntries(allowedParams.filter((key) => typeof params[key] === 'string').map((key) => [key, key === 'facilitator_commit' && /^[0-9a-f]{40}$/i.test(String(params[key])) ? params[key] : this.cleanOptional(params[key], key === 'answer' ? 3_000 : 1_000)])),
+      params: Object.fromEntries(allowedParams.filter((key) => typeof params[key] === 'string').map((key) => [key, key === 'facilitator_commit' && /^[0-9a-f]{40}$/i.test(String(params[key])) ? params[key] : this.cleanOptional(params[key], key === 'answer' || key === 'investigation_brief' ? 3_000 : 1_000)])),
     } };
   }
 

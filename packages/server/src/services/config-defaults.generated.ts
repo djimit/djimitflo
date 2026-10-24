@@ -14,6 +14,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   COMMONS_EVIDENCE_ROOM_MODE: 'off (`on`)',
   COMMONS_FALSIFIER_MODE: 'off (`shadow`)',
   COMMONS_GROUNDING_APPLY: 'off',
+  COMMONS_INVESTIGATION_MODE: 'off (`shadow`, `on`)',
   DEAD_CODE_LANE_ENABLED: 'off',
   DEAD_CODE_MAX_PER_DAY: '2 (also the in-flight cap)',
   DEPENDENCY_LANE_MAX_PER_DAY: '4 (lane merges per UTC day; tick every `DEPENDENCY_LANE_INTERVAL_MS`, default 3 h)',
@@ -121,6 +122,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
 export const SCHEDULER_FLAGS: readonly string[] = [
   'COMMITTEE_SWARM_ENABLED',
   'COMMONS_FALSIFIER_MODE',
+  'COMMONS_INVESTIGATION_MODE',
   'COMPLIANCE_REPORT_SCHEDULER_ENABLED',
   'DEAD_CODE_LANE_ENABLED',
   'DEPENDENCY_LANE_MODE',

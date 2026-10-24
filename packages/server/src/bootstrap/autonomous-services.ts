@@ -38,6 +38,7 @@ import { startSchedulerWatchdog, startStallWatch } from '../services/stall-watch
 import { startInterestFeedback } from '../services/interest-feedback';
 import { startEvolutionFeedback } from '../services/evolution-feedback';
 import { startEvidenceRoom } from '../services/commons-evidence-room';
+import { startInvestigationOutcomes } from '../services/commons-investigation';
 import { startCommonsFalsifier } from '../services/commons-falsifier';
 import { startSettlementExecution } from '../services/settlement-execution';
 import { startValueAllocator } from '../services/value-allocator';
@@ -243,6 +244,15 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     if (stopEvidenceRoom) { lifecycleManager.register({ serviceName: 'EvidenceRoom', stop: stopEvidenceRoom }); console.log('🧾 Commons evidence room on (15 min sweep).'); }
   } catch (error) {
     console.warn('⚠️  Evidence room failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // AC-07 Commons investigation outcomes: panel/goal/run/verification/survival of a Commons-originated proposal back into its
+  // thread (shadow: judgment rows only). COMMONS_INVESTIGATION_MODE=shadow|on.
+  try {
+    const stopInvestigationOutcomes = startInvestigationOutcomes(db);
+    if (stopInvestigationOutcomes) { lifecycleManager.register({ serviceName: 'CommonsInvestigationOutcomes', stop: stopInvestigationOutcomes }); console.log('🔁 Commons investigation outcomes on (15 min sweep).'); }
+  } catch (error) {
+    console.warn('⚠️  Commons investigation outcomes failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // AR5 Commons falsifier niche (shadow): evidence-room tests run red at base → green on a later main; ≤ 5 runs / 24 h. COMMONS_FALSIFIER_MODE=shadow.
