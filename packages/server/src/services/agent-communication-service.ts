@@ -18,7 +18,7 @@ import { buildEvidencePack, evidencePackEnabled } from './commons-evidence-pack'
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { boardMessageFingerprint, boardProtocolError, boardReplyTargetError, type BoardEpistemicRole } from './board-protocol';
-import { SelfImprovementService } from './self-improvement-service';
+import { REFLECTION_PROPOSAL_DISPOSITION, reflectionProposalPolicy, SelfImprovementService, type ReflectionProposalDecision, type ReflectionProposalPolicy, type ReflectionProposalReason } from './self-improvement-service';
 import { commonsGroundingAgendaEnabled, pickGroundingTopic, recordCommonsGrounding } from './commons-grounding';
 import { buildInvestigationEvidence, classifyInvestigationReply, investigationArtefactRef, investigationBrief, investigationMode, investigationReplyParams, recordInvestigationEvidence, recordInvestigationReply, type InvestigationEvidence } from './commons-investigation';
 import { AgentAssuranceService } from './agent-assurance-service';
@@ -118,7 +118,35 @@ export interface SocialMessage {
   /** evidence-room replies only (commons-evidence-room.ts): 'artefact' when an executable artefact is attached, else 'unverified' */
   evidence_status?: 'artefact' | 'unverified';
   artefact?: unknown;
+  /** AC-10: why this learning did (not) become a proposal; 'unknown' for learnings recorded before reasons were kept. */
+  proposal_disposition?: CommonsProposalDisposition;
 }
+
+/**
+ * AC-10: one recorded reflection→proposal decision. not_applicable = the path did not run (no improvement text, or a
+ * grounding / proposal-review thread). unknown = no decision was recorded (historical) — never inferred from today's cap.
+ */
+export interface CommonsProposalDisposition {
+  reason: ReflectionProposalReason | 'not_applicable' | 'unknown';
+  proposal_id: string | null;
+  detail: 'no_proposed_improvement' | 'grounding_thread' | 'proposal_review_thread' | null;
+  cap: number | null; created_in_window: number | null;
+  window: 'rolling_24h' | null; scope: 'global' | null; source: 'reflection' | null;
+  error_code: string | null;
+  decided_at: string | null;
+}
+
+/** AC-10: the effective admission policy plus the Commons workers that would move a candidate further (env flags only). */
+export interface CommonsProposalPolicy extends ReflectionProposalPolicy {
+  workers: Array<{ id: string; env: string; enabled: boolean }>;
+}
+
+const COMMONS_WORKERS = [
+  ['commons_proposal_review', 'COMMONS_PROPOSAL_REVIEW_ENABLED'], ['grounding_agenda', 'COMMONS_AGENDA_GROUNDING'],
+  ['grounding_apply', 'COMMONS_GROUNDING_APPLY'], ['failure_agenda', 'COMMONS_AGENDA_FROM_FAILURES'],
+] as const;
+
+const UNKNOWN_DISPOSITION: CommonsProposalDisposition = { reason: 'unknown', proposal_id: null, detail: null, cap: null, created_in_window: null, window: null, scope: null, source: null, error_code: null, decided_at: null };
 
 export interface SocialThread {
   id: string;
@@ -212,6 +240,8 @@ export interface SocialCommons {
    * ideas became: proposal → out of needs_grounding → verified.
    */
   stats?: CommonsStats;
+  /** AC-10: current effective reflection-proposal policy (null when it cannot be read on this schema). */
+  proposal_policy?: CommonsProposalPolicy | null;
   agents: Array<{
     id: string; name: string; status: string; capabilities: string[]; model: string;
     runtime: string | null; last_heartbeat_at: string | null; present: boolean;
@@ -231,6 +261,11 @@ interface CommunicationStats {
   expiredMessages: number;
   avgDeliveryTimeMs: number;
 }
+
+const notApplicable = (detail: NonNullable<CommonsProposalDisposition['detail']>): Omit<CommonsProposalDisposition, 'decided_at'> => ({ ...UNKNOWN_DISPOSITION, reason: 'not_applicable', detail });
+const fromDecision = (d: ReflectionProposalDecision): Omit<CommonsProposalDisposition, 'decided_at'> => ({
+  reason: d.reason, proposal_id: d.proposal_id, detail: null, cap: d.cap, created_in_window: d.created_in_window, window: d.window, scope: d.scope, source: d.source, error_code: d.error_code ?? null,
+});
 
 export class AgentCommunicationService {
   private messageQueue: AgentMessage[] = [];
@@ -418,6 +453,8 @@ export class AgentCommunicationService {
       SELECT id, source_ref, status FROM reflection_candidates WHERE source_type = 'trace' AND source_ref LIKE 'message:%'
     `).all() as Array<{ id: string; source_ref: string; status: string }>).map((row) => [row.source_ref, row]));
 
+    const dispositions = this.proposalDispositions(rows.map((row) => String(row.id)));
+
     const clip = (value: string, max = 300) => (value.length > max ? `${value.slice(0, max)}…` : value);
     const stageRank = { asked: 0, responding: 1, learned: 2 } as const;
     const threads = new Map<string, SocialThread>();
@@ -454,6 +491,7 @@ export class AgentCommunicationService {
         improvement_status: improvement?.status || null, runtime_run_id: this.string(params.runtime_run_id) || null,
         provenance_status: this.string(params.provenance_status) || null,
         ...(params.evidence_status === 'artefact' || params.evidence_status === 'unverified' ? { evidence_status: params.evidence_status, artefact: params.artefact ?? null } : {}),
+        ...(dispositions.has(message.id) ? { proposal_disposition: dispositions.get(message.id) } : message.payload.action === 'social.learning' ? { proposal_disposition: UNKNOWN_DISPOSITION } : {}),
       });
       threads.set(threadId, thread);
     }
@@ -471,9 +509,43 @@ export class AgentCommunicationService {
       thread_counts: { discussion: counts.discussion, record: counts.record },
       page: { kind, limit: threadLimit, offset, total: kindTotal, has_more: offset + threads.size < kindTotal },
       stats: this.commonsStats() ?? undefined,
+      proposal_policy: this.commonsProposalPolicy(),
       threads: [...threads.values()].sort((left, right) => right.last_activity_at.localeCompare(left.last_activity_at)).slice(0, Math.max(1, limit))
         .map((thread) => ({ ...thread, messages: thread.messages.map((m) => applyPiiPass(m, FEDERATION_PII_MODE).payload as SocialMessage) })),
     };
+  }
+
+  /** AC-10: effective policy for the read model; env flags are reported as booleans only. */
+  private commonsProposalPolicy(): CommonsProposalPolicy | null {
+    try {
+      return { ...reflectionProposalPolicy(this.db), workers: COMMONS_WORKERS.map(([id, env]) => ({ id, env, enabled: process.env[env] === 'true' })) };
+    } catch { return null; } // minimal schemas without self_improvements
+  }
+
+  /** AC-10: recorded dispositions for these messages (subject = the learning, or the replied-to message on a runtime failure). */
+  private proposalDispositions(messageIds: string[]): Map<string, CommonsProposalDisposition> {
+    const out = new Map<string, CommonsProposalDisposition>();
+    if (!messageIds.length) return out;
+    try {
+      const rows = this.db.prepare(`SELECT subject_id, answers_json, created_at FROM judgments
+        WHERE judgment = ? AND subject_type = 'agent_message' AND subject_id IN (SELECT value FROM json_each(?))`)
+        .all(REFLECTION_PROPOSAL_DISPOSITION, JSON.stringify(messageIds)) as Array<{ subject_id: string; answers_json: string | null; created_at: string }>;
+      for (const row of rows) {
+        const { thread_id: _threadId, ...saved } = this.object(row.answers_json ? JSON.parse(row.answers_json) : {}) as Partial<CommonsProposalDisposition> & { thread_id?: string };
+        out.set(row.subject_id, { ...UNKNOWN_DISPOSITION, ...saved, decided_at: row.created_at });
+      }
+    } catch { /* no judgments table yet: every learning reads unknown */ }
+    return out;
+  }
+
+  /** AC-10: one disposition row per NEW decision (deterministic id → a retry cannot add a second one). Fail-open. */
+  private recordProposalDisposition(subjectId: string, threadId: string, disposition: Omit<CommonsProposalDisposition, 'decided_at'>): void {
+    try {
+      this.db.prepare(`INSERT OR IGNORE INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at)
+        VALUES (?, ?, 'agent_message', ?, ?, 'shadow', ?, ?, ?, ?)`).run(
+        `${REFLECTION_PROPOSAL_DISPOSITION}:${subjectId}`, REFLECTION_PROPOSAL_DISPOSITION, subjectId, `cap:${disposition.cap ?? 'unset'}`,
+        disposition.reason, `${disposition.reason}${disposition.detail ? `: ${disposition.detail}` : ''}`, JSON.stringify({ ...disposition, thread_id: threadId }), new Date().toISOString());
+    } catch { /* best-effort: never lose the learning over its disposition */ }
   }
 
   /**
@@ -731,7 +803,9 @@ export class AgentCommunicationService {
     const investigation = classifyInvestigationReply(this.db, threadId, input.artefact);
     const invOn = investigation && investigationMode() === 'on' ? investigation : null;
     const replyEvidence = invOn?.artefact ? [...evidence, investigationArtefactRef(invOn.artefact)] : evidence;
-    return this.db.transaction(() => {
+    // AC-10: a runtime failure of the proposal step still rolls the whole reply back; its reason is kept on the replied-to message
+    const proposalFailure: { decision?: ReflectionProposalDecision } = {};
+    const reply = this.db.transaction((): SocialReplyResult => {
       const message = this.send({ from: agentId, to: original.from, type: action === 'social.response' ? 'result' : 'knowledge', action, context: summary.slice(0, 500), evidence: replyEvidence, threadId, replyTo: original.id, epistemicRole: action === 'social.response' ? 'proposal' : 'outcome', ttl: 86_400,
         params: { topic: this.string(original.payload.params?.topic), topic_ref: this.string(original.payload.params?.topic_ref), ecosystem_context: this.string(original.payload.params?.ecosystem_context), interest, ecosystem_component: ecosystemComponent, proposed_improvement: improvement, answer, uncertainty, falsifiable_next_step: nextStep, creative_alternative: alternative, stop_condition: stopCondition, runtime, model_id: modelId, runtime_run_id: runtimeRunId, usage, response_kind: 'actual_runtime', provenance_status: 'runtime_reported', external_side_effects: false, effect_scope: 'isolated', board_summary: summary.slice(0, 500), ...(invOn ? investigationReplyParams(invOn) : {}) } });
       if (investigation) recordInvestigationReply(this.db, message.id, investigationMode(), investigation);
@@ -757,21 +831,32 @@ export class AgentCommunicationService {
           try { ({ refinementId } = recordCommonsGrounding(this.db, parkedId, message.id, `${threadText}\n${answer}\n${nextStep}\n${improvement}`)); } catch { /* best-effort: never lose the learning */ }
           message.payload.params.improvement_id = refinementId ?? parkedId;
           this.db.prepare('UPDATE agent_messages SET payload_json = ? WHERE id = ?').run(JSON.stringify(message.payload), message.id);
+          this.recordProposalDisposition(message.id, threadId, notApplicable('grounding_thread'));
         } else if (improvement && !topicRef.startsWith('improvement:')) {
           // Proposal-review threads must not spawn proposals about proposals.
-          const [proposal] = new SelfImprovementService(this.db).generateFromReflection({
+          const outcome = new SelfImprovementService(this.db).decideFromReflection({
             whatFailed: [], lessonsLearned: [`Unverified peer proposal: ${answer}`, `Uncertainty: ${uncertainty}`],
             proposedImprovements: [`${ecosystemComponent}: ${improvement}\nTest: ${nextStep}\nStop condition: ${stopCondition}`],
             reflectionId: reflectionId ?? undefined,
           }, true);
+          if (outcome.failed) { proposalFailure.decision = outcome.decisions.at(-1); throw outcome.error; }
+          const [proposal] = outcome.proposals;
           if (proposal) {
             message.payload.params.improvement_id = proposal.id;
             this.db.prepare('UPDATE agent_messages SET payload_json = ? WHERE id = ?').run(JSON.stringify(message.payload), message.id);
           }
+          const [decision] = outcome.decisions;
+          if (decision) this.recordProposalDisposition(message.id, threadId, fromDecision(decision));
+        } else {
+          this.recordProposalDisposition(message.id, threadId, notApplicable(improvement ? 'proposal_review_thread' : 'no_proposed_improvement'));
         }
       }
       return { message, reflection_id: reflectionId, duplicate: false };
-    })();
+    });
+    try { return reply(); } catch (error) {
+      if (proposalFailure.decision) this.recordProposalDisposition(original.id, threadId, fromDecision(proposalFailure.decision));
+      throw error;
+    }
   }
 
   /**
