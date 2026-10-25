@@ -232,6 +232,35 @@
         "surviving mutants feedback"
       ],
       "reopen_condition": "A new pre-registered study with a different feedback design or maker species, fresh held-out mutants disjoint from anything shown, and its own SUPPORTED criteria met; this entry does not permit MFR_001_MODE."
+    },
+    {
+      "id": "NE-014",
+      "title": "AW-0 checkpoint / joint model reuse for software agents",
+      "hypothesis": "Reusing the AW-0 (Agentic World Action Models) checkpoint, code or its jointly trained generative architecture (MoT over plan code, predicted video and actions) improves Djimitflo's software-agent orchestration (maker planning, outcome prediction or action choice).",
+      "verdict": "REJECT",
+      "decided_on": "2026-10-24",
+      "conditions": "arXiv:2610.30136v1; code ZhuoyangLiu2005/agentic-wam @ 7ad228be; checkpoint miniFranka/agentic-wam-pretrain-yamego3k-soup-e1 @ 603c59fd. Source, paper and Hugging Face metadata read only (PR #998); nothing downloaded, installed or run.",
+      "result": "Action space is 64-D robot joints and observations are video frames: no mapping to software traces or diffs. The full inference stack is about 21 GB on disk (9.96 GB pickled checkpoint + Wan2.2 VAE + SDAR-1.7B + Qwen3-VL-2B), CUDA-only, H100-class training (48 H100, 115,213 steps); no Djimitflo host fits it. The video expert derives from NVIDIA Cosmos-Predict2.5-2B (NVIDIA Open Model License) but is relabelled BSD-2-Clause: licence chain unresolved. Data scale: about 192 completed maker leases per 30 d (PR #998; H0 census 2026-10-24: 364 terminal maker leases with a check or runtime outcome in 30 d) against 2.08 M training subtask slices. The paper has no modular (separate predictor + planner) baseline, so 'joint is necessary' is unsupported even in robotics.",
+      "why": "Weights, code and the joint architecture solve a different problem (robot manipulation) at a data and hardware scale Djimitflo does not have by four orders of magnitude; the one transferable idea (a calibrated pre-action outcome predictor used for arbitration) needs no AW-0 artefact and is pursued as the code-only H1 predictor (docs/research/aw0/H0_CENSUS.md).",
+      "evidence": [
+        "PR #998 (docs/research/aw0/DECISION.md, FEASIBILITY.md, SOURCE_FORENSICS.md, TRANSFERABILITY.md)",
+        "docs/research/negative-evidence/NE-014-aw0-joint-model.md",
+        "docs/research/aw0/H0_CENSUS.md"
+      ],
+      "allowed_follow_up": "AW-0 principles only, built in-house with no AW-0 code or weights: the code-only per-lease outcome predictor (H1, docs/research/aw0/H0_CENSUS.md) and plan -> predict -> act ordering as a design rule. jev is never used for it (NE-001 scope).",
+      "forbidden_reuse": [
+        "downloading, loading or fine-tuning the AW-0 checkpoint or its Cosmos-derived weights",
+        "installing, vendoring or running the agentic-wam code",
+        "a jointly trained plan + outcome + action model for makers on the strength of AW-0's robotics results"
+      ],
+      "forbidden_code_patterns": [
+        "miniFranka/agentic-wam",
+        "ZhuoyangLiu2005/agentic-wam"
+      ],
+      "match_terms": [
+        "agentic-wam"
+      ],
+      "reopen_condition": "Either (a) a pre-registered comparison on Djimitflo tasks in which a joint model beats a modular predictor + planner at a matched compute and token budget, with a frozen holdout; or (b) a software-domain world-action-model checkpoint (actions = code edits or tool calls, observations = repository / check state) under a permissive licence with a resolved licence chain. Permits a new pre-registered evaluation, not adoption."
     }
   ]
 }
