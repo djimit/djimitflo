@@ -1,5 +1,6 @@
 import express from 'express';
 import request from 'supertest';
+import { rateLimit } from 'express-rate-limit';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { UserRole } from '@djimitflo/shared';
 import { createTestDb } from './helpers/test-db';
@@ -126,7 +127,7 @@ describe('POST /usage/accounts/:account/snapshot', () => {
     const service = new AuthService(d);
     const token = (role: UserRole) => service.generateToken(service.createUser(`${role}@example.test`, 'disposable-fixture-only', role));
     const auth = createAuthMiddleware(service);
-    const a = express().use(express.json()).use('/usage', auth.requireAuth, createUsageRoutes(d, auth, { ollamaAccountUsage: async () => null as never })).use(errorHandler);
+    const a = express().use(rateLimit({ windowMs: 60_000, limit: 600 })).use(express.json()).use('/usage', auth.requireAuth, createUsageRoutes(d, auth, { ollamaAccountUsage: async () => null as never })).use(errorHandler);
     return { d, a, admin: token(UserRole.ADMIN), viewer: token(UserRole.VIEWER) };
   }
   it('403 without manage:config; 201 with it; two posts keep both rows and show the latest', async () => {
