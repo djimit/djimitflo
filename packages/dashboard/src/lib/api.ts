@@ -677,13 +677,28 @@ export type UsageLimitView = {
   confidence: string | null; note: string | null; exceed_behaviour: string | null;
   measured_window: UsageWindowId; measured_unit: 'tokens' | 'calls'; used: number | null; comparable: boolean; used_pct: number | null; unit_note: string | null;
   active: boolean | null;
+  /** set when used_pct is the vendor's own percent (Ollama balance API, account-wide) */
+  pct_source?: 'ollama_balance_api'; resets_at?: string | null;
+};
+export type UsagePctWindow = { used_pct: number; resets_at: string | null };
+/** Ollama balance API (OLLAMA_BALANCE_MODE); null = not returned / unknown, never 0 */
+export type UsageAccountWide = {
+  source: 'ollama_balance_api'; mode: 'off' | 'on'; fetched_at: string | null;
+  session: UsagePctWindow | null; weekly: UsagePctWindow | null;
+  credits: { balance_usd?: number; included_balance_usd?: number; included_allowance_usd?: number; included_period?: { from: string | null; until: string | null } } | null;
+  week: { request_count: number | null; usage_value_usd: number | null; from: string | null; until: string | null } | null;
+  error?: string;
 };
 export type UsageEventBrief = { at: string; message: string; consumer: string; model: string | null } | null;
 export type UsageAccount = {
-  id: string; label: string; windows: Record<UsageWindowId, UsageWindowSum>;
+  id: string; label: string;
+  /** windows are Djimitflo's share, as recorded (a CLI lease counts once) */
+  scope: 'djimitflo_ledger'; windows: Record<UsageWindowId, UsageWindowSum>; lease_sessions: Record<UsageWindowId, number>;
+  /** ollama_cloud only */
+  account_usage?: UsageAccountWide;
   consumers_7d: Array<{ consumer: string; calls: number; tokens: number | null; calls_without_tokens: number }>;
   providers_seen: string[]; last_error: UsageEventBrief; last_limit_hit: UsageEventBrief;
-  state: { state: 'limited' | 'backoff' | 'no_limit_recorded'; since: string | null; until: string | null; reason: string | null };
+  state: { state: 'limit_reached' | 'limited' | 'backoff' | 'no_limit_recorded'; since: string | null; until: string | null; reason: string | null };
   cost: { basis: string; observed_bases: string[]; list_price_usd_month: number | null; calls_without_list_price_month: number };
   plan: string;
   limits: UsageLimitView[];

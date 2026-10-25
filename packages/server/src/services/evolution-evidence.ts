@@ -73,6 +73,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'SUBSCRIPTION_GYM_SPECIES', acting: true }, { name: 'SUBSCRIPTION_GYM_MAX_PER_DAY', acting: true }, { name: 'SUBSCRIPTION_GYM_LIMIT_BACKOFF_MS', acting: true }, { name: 'OLLAMA_OUTAGE_FALLBACK_RUNTIME', acting: true },
   { name: 'OLLAMA_AUTO_FAILOVER', acting: true }, { name: 'OLLAMA_FAILOVER_PROBE_MODEL', acting: true }, { name: 'PANEL_FALLBACK_RUNTIME', acting: true }, { name: 'PANEL_FALLBACK_MODEL', acting: true },
   { name: 'INFERENCE_BUDGET_THROTTLE', acting: true }, { name: 'OLLAMA_WEEKLY_TOKEN_BUDGET', acting: true }, { name: 'OLLAMA_THROTTLE_AT', acting: true },
+  { name: 'OLLAMA_BALANCE_MODE', acting: false }, { name: 'OLLAMA_ACCOUNT_KEY_ENV', acting: false },
   { name: 'GENOME_FIRE_CHECK', acting: true }, { name: 'MEMORY_HOLDOUT_RATE', acting: true },
   { name: 'TYPESAFE_PROPOSAL_PRESCREEN_MODE', acting: true },
   { name: 'RESOURCE_LEDGER_ENABLED', acting: false },
