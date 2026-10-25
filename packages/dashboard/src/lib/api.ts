@@ -504,7 +504,7 @@ export type OperatorCockpit = {
   /** split (regressions): by attributed class — reviewer/environment failures are not the maker's */
   guardrails: Array<{ name: string; ok: boolean; state?: HealthState; value: number | null; limit: string; split?: { maker: number; reviewer: number; environment: number; unknown?: number; post_verification?: number | null }; attempts?: PanelAttemptMetrics['seat_attempts']['totals'] & { legacy: PanelAttemptMetrics['legacy'] } }>;
   stalls: Array<{ subsystem: string; since: string | null; detail: string }>;
-  gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string; benched?: boolean; stale?: boolean }>;
+  gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number | null; last: string; benched?: boolean; stale?: boolean }>;
   /** null = that count could not be read; total = distinct things waiting (server-side dedupe) */
   needs_you?: { approvals: number | null; requeue: number | null; labels: number | null; memory_review: number | null;
     proposals?: number | null; draft_prs?: number | null; open_prs?: number | null; stalls?: number | null; approvals_expiring?: number | null;
