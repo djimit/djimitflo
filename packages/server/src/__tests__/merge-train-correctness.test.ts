@@ -61,6 +61,42 @@ const run = (s: Sim, args: string[], over: Record<string, string> = {}, timeout 
 const train = (s: Sim, prs: string[], flags: string[] = [], over: Record<string, string> = {}) => run(s, ['run', ...flags, path.join(s.S, 'log'), ...prs], over);
 const counter = (file: string, first: string, rest: string) => `n=$(cat ${file} 2>/dev/null || echo 0); echo $((n+1)) > ${file}; if [ "$n" = 0 ]; then echo ${first}; else echo ${rest}; fi`;
 
+describe('audit consistency regressions', () => {
+  it('a failed diff download with a usable partial patch holds before mutation', () => {
+    const s = sim({ behind: false, ciNew: 'pass' });
+    const r = train(s, ['778'], [], { MT_PR_DIFF: `cat ${s.diff}; exit 1` });
+    expect(r.status).toBe(7);
+    expect(s.calls()).toEqual([]);
+  });
+
+  it('a head changed during diff download is superseded before any mutation', () => {
+    const s = sim({ behind: false, ciNew: 'pass' });
+    const r = train(s, ['778'], [], { MT_PR_DIFF: `cat ${s.diff}; echo bbbb2222 > ${s.S}/head` });
+    expect(r.status).toBe(5);
+    expect(s.calls()).toEqual([]);
+  });
+
+  it('an accepted update without an observed new head holds without reusing old CI', () => {
+    const s = sim({ ci: { aaaa1111: 'pass' } });
+    const r = train(s, ['778'], [], { MT_UPDATE: 'echo accepted', MT_HEAD_SETTLE_S: '1', MT_HEAD_SETTLE_POLL_S: '1' });
+    expect(r.status).toBe(7);
+    expect(r.out).toContain('new head');
+    expect(s.calls()).toEqual([]);
+  });
+
+  for (const failingFetch of [1, 2, 3]) {
+    it(`a failed main refresh at stage ${failingFetch} never reports verified completion`, () => {
+      const s = sim({ behind: false, ciNew: 'pass' });
+      const n = path.join(s.S, 'fetch-count');
+      const r = train(s, ['778'], [], { MT_FETCH: `n=$(cat ${n} 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > ${n}; [ "$n" != ${failingFetch} ]` });
+      expect(r.status).toBe(7);
+      expect(events(s.ledger).map((e) => e.event)).not.toContain('merged');
+      if (failingFetch < 3) expect(s.calls().some((c) => c.startsWith('merge'))).toBe(false);
+      else expect(read(path.join(s.S, 'state')).trim()).toBe('MERGED');
+    });
+  }
+});
+
 describe('Defect A — drafts', () => {
   it('a draft without --mark-ready is HELD with the ready transition proposed; draft state, branch and merge untouched', () => {
     const s = sim({ draft: true, ciNew: 'pass' });

@@ -1,0 +1,125 @@
+{
+  "baseline_sha": "6951dba16a32dc8e90971bfe6711033293129eab",
+  "integrated_main_sha": "0a4a3f4e64a1051a3d32ab2232b68cd33f509dbe",
+  "captured_at": "2026-10-25T12:12:16.649186+00:00",
+  "scope": "local isolated source verification; not GitHub CI or production",
+  "environment": {
+    "node": "v22.23.2",
+    "npm": "10.9.8"
+  },
+  "code_content": [
+    {
+      "path": "packages/server/src/__tests__/evolution-evidence.test.ts",
+      "sha256": "c06f4121cdfa64b940a31307f5aa458943f23ebdfcc5a3fc9b78b63802024653"
+    },
+    {
+      "path": "packages/server/src/__tests__/merge-train-correctness.test.ts",
+      "sha256": "0debc1ddbbe35b1d144d45453022b1764dfcbafcbf19bb69d22269d84ff6bdd3"
+    },
+    {
+      "path": "packages/server/src/__tests__/merge-train.test.ts",
+      "sha256": "0aa42615bfbfcc1bf74a2a2b7b8849f5bc5e310730a9265ebedc7bf711fd5608"
+    },
+    {
+      "path": "packages/server/src/__tests__/okf-knowledge-updater.test.ts",
+      "sha256": "487df9fd2e323f77951a8f7026de884c8347cfd8258c73baf66fca327461a76e"
+    },
+    {
+      "path": "packages/server/src/__tests__/reflection-proposal-disposition.test.ts",
+      "sha256": "effbf07372a4365f7ea3da6fc735c641475ff3cbb9ebf815db7993b90575cf29"
+    },
+    {
+      "path": "packages/server/src/__tests__/tg-001.test.ts",
+      "sha256": "31c8cdab980abfb889da1a92fd456bf732fc28fd61a8c183e6d2747f387f169b"
+    },
+    {
+      "path": "packages/server/src/__tests__/value-allocator.test.ts",
+      "sha256": "b62d2ff5d73197897b0644433aed9fa914ee35446e658f6f8719f9700738305e"
+    },
+    {
+      "path": "packages/server/src/services/evolution-evidence.ts",
+      "sha256": "f4f0d5fcb7c14f032d6ba3321182203749fa051cdc29215e69f6cb893cacd3ef"
+    },
+    {
+      "path": "packages/server/src/services/self-improvement-service.ts",
+      "sha256": "7b435d5720c14a8439611da8b845a7653a9c20406bb7a6473276ef9d5f51a7c5"
+    },
+    {
+      "path": "scripts/merge-train.sh",
+      "sha256": "6a361f72192b596a142edd7b421d2117af3c46f30914f2bdfef39f5ef0c70bd1"
+    }
+  ],
+  "checks": [
+    {
+      "command": [
+        "npm",
+        "run",
+        "type-check"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 1.43,
+      "log": "type-check.log"
+    },
+    {
+      "command": [
+        "npm",
+        "run",
+        "lint"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 8.39,
+      "log": "lint.log"
+    },
+    {
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "exit_code": 0,
+      "log": "build.log",
+      "note": "Read successful process result; built before final shell-only and test-fixture changes; application TS unchanged afterward"
+    },
+    {
+      "command": [
+        "npm",
+        "run",
+        "test",
+        "--",
+        "--reporter=verbose"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 89.17,
+      "log": "full-test.log"
+    },
+    {
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts",
+        "-p",
+        "test_*poller.py"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 0.28,
+      "log": "poller.log"
+    },
+    {
+      "command": [
+        "npm",
+        "run",
+        "audit:ci"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 0.82,
+      "log": "audit-ci.log"
+    }
+  ],
+  "preexisting_warnings": [
+    "lint: one unused eslint-disable in github-pr-review-llm.test.ts"
+  ],
+  "github_ci": "Check exact final PR head separately; not represented as passed here"
+}

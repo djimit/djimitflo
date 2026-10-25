@@ -12,14 +12,15 @@
  * 5. TTL expiration — stale messages auto-expire
  */
 
-import { commonsChildren, commonsGroundingStops, type GroundingStop } from './honest-numbers';
+import { commonsChildOutcomes, commonsChildren, commonsGroundingStops, type CommonsChildOutcomes, type GroundingStop } from './honest-numbers';
 import { NOT_PROOF_FIXTURE_SQL } from './proof-fixture';
 import { buildEvidencePack, evidencePackEnabled } from './commons-evidence-pack';
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { boardMessageFingerprint, boardProtocolError, boardReplyTargetError, type BoardEpistemicRole } from './board-protocol';
-import { SelfImprovementService } from './self-improvement-service';
+import { REFLECTION_PROPOSAL_DISPOSITION, reflectionProposalPolicy, SelfImprovementService, type ReflectionProposalDecision, type ReflectionProposalPolicy, type ReflectionProposalReason } from './self-improvement-service';
 import { commonsGroundingAgendaEnabled, pickGroundingTopic, recordCommonsGrounding } from './commons-grounding';
+import { buildInvestigationEvidence, classifyInvestigationReply, investigationArtefactRef, investigationBrief, investigationMode, investigationReplyParams, recordInvestigationEvidence, recordInvestigationReply, type InvestigationEvidence } from './commons-investigation';
 import { AgentAssuranceService } from './agent-assurance-service';
 import { redactSecrets } from './secret-patterns';
 import { applyPiiPass } from './federation/pii-pass';
@@ -78,6 +79,8 @@ export interface SocialRuntimeReply {
   runtime_run_id?: string;
   usage?: Record<string, unknown>;
   delivery_lease_token?: string;
+  /** AC-06: typed artefact on a Commons investigation thread (COMMONS_INVESTIGATION_MODE); ignored everywhere else. */
+  artefact?: unknown;
 }
 
 export interface SocialReplyResult {
@@ -115,7 +118,35 @@ export interface SocialMessage {
   /** evidence-room replies only (commons-evidence-room.ts): 'artefact' when an executable artefact is attached, else 'unverified' */
   evidence_status?: 'artefact' | 'unverified';
   artefact?: unknown;
+  /** AC-10: why this learning did (not) become a proposal; 'unknown' for learnings recorded before reasons were kept. */
+  proposal_disposition?: CommonsProposalDisposition;
 }
+
+/**
+ * AC-10: one recorded reflection→proposal decision. not_applicable = the path did not run (no improvement text, or a
+ * grounding / proposal-review thread). unknown = no decision was recorded (historical) — never inferred from today's cap.
+ */
+export interface CommonsProposalDisposition {
+  reason: ReflectionProposalReason | 'not_applicable' | 'unknown';
+  proposal_id: string | null;
+  detail: 'no_proposed_improvement' | 'grounding_thread' | 'proposal_review_thread' | null;
+  cap: number | null; created_in_window: number | null;
+  window: 'rolling_24h' | null; scope: 'global' | null; source: 'reflection' | null;
+  error_code: string | null;
+  decided_at: string | null;
+}
+
+/** AC-10: the effective admission policy plus the Commons workers that would move a candidate further (env flags only). */
+export interface CommonsProposalPolicy extends ReflectionProposalPolicy {
+  workers: Array<{ id: string; env: string; enabled: boolean }>;
+}
+
+const COMMONS_WORKERS = [
+  ['commons_proposal_review', 'COMMONS_PROPOSAL_REVIEW_ENABLED'], ['grounding_agenda', 'COMMONS_AGENDA_GROUNDING'],
+  ['grounding_apply', 'COMMONS_GROUNDING_APPLY'], ['failure_agenda', 'COMMONS_AGENDA_FROM_FAILURES'],
+] as const;
+
+const UNKNOWN_DISPOSITION: CommonsProposalDisposition = { reason: 'unknown', proposal_id: null, detail: null, cap: null, created_in_window: null, window: null, scope: null, source: null, error_code: null, decided_at: null };
 
 export interface SocialThread {
   id: string;
@@ -127,6 +158,44 @@ export interface SocialThread {
   last_activity_at: string;
   learnings: number;
   messages: SocialMessage[];
+  /** AC-02: 'record' = a record-only evidence room (`evidence-room:*`, addressed to `commons`, no resident inbox, so no runtime turn is ever scheduled). */
+  kind: CommonsThreadKind;
+}
+
+export type CommonsThreadKind = 'discussion' | 'record';
+export interface CommonsListOptions { kind?: CommonsThreadKind | 'all'; offset?: number }
+/** Record-only evidence rooms (commons-evidence-room.ts EVIDENCE_ROOM_PREFIX; not imported: that module imports this one). */
+const RECORD_THREAD_SQL = "LIKE 'evidence-room:%'";
+export const COMMONS_MAX_OFFSET = 100_000;
+const HEARTBEAT_FRESH_MS = 20 * 60_000;
+/** AC-01: ready needs a successful runtime reply this recent; older is degraded even with a fresh heartbeat. */
+export const READY_REPLY_WINDOW_MS = 24 * 3_600_000;
+
+/**
+ * AC-01 readiness, derived only from what the server already stores: the heartbeat (agents.metadata.social_runtime), the
+ * agent's own runtime replies (respondSocial, response_kind actual_runtime) and delivery leases it claimed but let lapse
+ * without a reply. Pollers do not report their own errors to the server, so there is no runtime error class here.
+ */
+export interface CommonsRuntimeReadiness {
+  state: 'ready' | 'degraded' | 'offline' | 'unknown';
+  reason: string;
+  last_heartbeat_at: string | null;
+  last_successful_reply_at: string | null;
+  /** newest claimed social message whose lease lapsed (or that expired) without a reply from this agent */
+  last_failed_attempt: { at: string; message_id: string; observed: 'claim_lapsed_without_reply' } | null;
+  /** always false today: the poller logs child failures locally and never sends them to the server */
+  runtime_failures_reported: false;
+}
+
+export function deriveRuntimeReadiness(input: { lastHeartbeatAt: string | null; lastSuccessAt: string | null; lastFailureAt: string | null; now?: number }): Pick<CommonsRuntimeReadiness, 'state' | 'reason'> {
+  const now = input.now ?? Date.now();
+  const heartbeat = input.lastHeartbeatAt ? Date.parse(input.lastHeartbeatAt) : NaN;
+  if (!Number.isFinite(heartbeat)) return { state: 'unknown', reason: 'no heartbeat recorded' };
+  if (now - heartbeat > HEARTBEAT_FRESH_MS) return { state: 'offline', reason: 'heartbeat older than 20 min' };
+  const success = input.lastSuccessAt ? Date.parse(input.lastSuccessAt) : NaN;
+  if (!Number.isFinite(success) || now - success > READY_REPLY_WINDOW_MS) return { state: 'degraded', reason: 'heartbeat fresh, no successful reply in 24 h' };
+  if (input.lastFailureAt && Date.parse(input.lastFailureAt) > success) return { state: 'degraded', reason: 'a claimed message lapsed without a reply after the last successful reply' };
+  return { state: 'ready', reason: 'heartbeat fresh and a successful reply in 24 h' };
 }
 
 export interface CommonsAgentActivity {
@@ -154,20 +223,29 @@ export interface CommonsStats {
   children_by_period?: { before_2026_09_29: { attempted: number; verified: number }; from_2026_09_29: { attempted: number; verified: number } };
   /** ECO item 4: per validly grounded proposal, the furthest stage its refinement reached (null = could not be read) */
   grounding_stops?: Record<GroundingStop, number> | null;
+  /** AC-03: per grounded child, what its panel said — technical review failure apart from substantive needs-evidence / blocked / backlog */
+  child_outcomes?: CommonsChildOutcomes | null;
 }
 
 export interface SocialCommons {
   /** Threads that exist in total; `threads` only carries the newest ones. */
   total_threads?: number;
+  /** AC-02: lifetime thread totals per kind (discussion vs record-only evidence room). */
+  thread_counts?: Record<CommonsThreadKind, number>;
+  /** AC-02: which slice `threads` is — filtered by kind before the limit, offset-paged. */
+  page?: { kind: CommonsThreadKind | 'all'; limit: number; offset: number; total: number; has_more: boolean };
   /**
    * Totals over all threads of the last 7 days, not over the loaded page (prod 2026-09-24: the page summed learnings over the
    * newest 40 threads, so "Reflecties 40" and "Open vragen 0" were artefacts of the page size). The funnel shows what Commons
    * ideas became: proposal → out of needs_grounding → verified.
    */
   stats?: CommonsStats;
+  /** AC-10: current effective reflection-proposal policy (null when it cannot be read on this schema). */
+  proposal_policy?: CommonsProposalPolicy | null;
   agents: Array<{
     id: string; name: string; status: string; capabilities: string[]; model: string;
     runtime: string | null; last_heartbeat_at: string | null; present: boolean;
+    readiness: CommonsRuntimeReadiness;
     // ponytail: activity = recent non-social agent_messages flow. Covers the Board-vs-Commons
     // gap for messages. Lease/spawn/reflection events stay on the Interaction Board — upgrade
     // to AgentInteractionLedgerService only if operators need those sources here too.
@@ -183,6 +261,11 @@ interface CommunicationStats {
   expiredMessages: number;
   avgDeliveryTimeMs: number;
 }
+
+const notApplicable = (detail: NonNullable<CommonsProposalDisposition['detail']>): Omit<CommonsProposalDisposition, 'decided_at'> => ({ ...UNKNOWN_DISPOSITION, reason: 'not_applicable', detail });
+const fromDecision = (d: ReflectionProposalDecision): Omit<CommonsProposalDisposition, 'decided_at'> => ({
+  reason: d.reason, proposal_id: d.proposal_id, detail: null, cap: d.cap, created_in_window: d.created_in_window, window: d.window, scope: d.scope, source: d.source, error_code: d.error_code ?? null,
+});
 
 export class AgentCommunicationService {
   private messageQueue: AgentMessage[] = [];
@@ -276,10 +359,17 @@ export class AgentCommunicationService {
     const firstPerspective = this.uniquePerspective(first, second);
     const secondPerspective = this.uniquePerspective(second, first);
     const evidencePack = evidencePackEnabled() ? buildEvidencePack(this.db) : null;
+    // AC-04 (COMMONS_INVESTIGATION_MODE): run/proposal topics get repository + run evidence; shadow records it, on delivers it
+    const invMode = investigationMode();
+    let investigation: InvestigationEvidence | null = null;
+    if (invMode !== 'off') { try { investigation = buildInvestigationEvidence(this.db, { topicRef, topic }); } catch { investigation = null; } }
+    const invBrief = investigation ? investigationBrief(investigation) : '';
+    const deliver = invMode === 'on' && investigation ? { investigation, investigation_brief: invBrief } : null;
+    const questionEvidence = deliver ? [...new Set([...evidence, ...deliver.investigation.refs.map((r) => r.ref)])].slice(0, 20) : evidence;
     const question = (from: string, to: string, context: string) => this.send({
-      from, to, type: 'question', action: 'social.question', context, evidence, threadId: correlationId,
+      from, to, type: 'question', action: 'social.question', context, evidence: questionEvidence, threadId: correlationId,
       epistemicRole: 'question', ttl: 86_400,
-      params: { topic, topic_ref: topicRef, ...(picked && 'signature' in picked ? { failure_signature: (picked as { signature: string }).signature } : {}), ecosystem_component: ecosystemComponent, ecosystem_context: ecosystemContext, ...(evidencePack ? { evidence_pack: evidencePack } : {}), effect_scope: 'isolated', facilitated_by: facilitatorTrigger === 'operator' ? 'operator-socialize-route' : 'continuous-learning-loop', board_summary: context },
+      params: { topic, topic_ref: topicRef, ...(picked && 'signature' in picked ? { failure_signature: (picked as { signature: string }).signature } : {}), ecosystem_component: ecosystemComponent, ecosystem_context: ecosystemContext, ...(evidencePack ? { evidence_pack: evidencePack } : {}), effect_scope: 'isolated', facilitated_by: facilitatorTrigger === 'operator' ? 'operator-socialize-route' : 'continuous-learning-loop', board_summary: context, ...(deliver ?? {}) },
       facilitatorCommit: process.env.DJIMITFLO_COMMIT_SHA || '',
       facilitatorTrigger,
     });
@@ -288,6 +378,7 @@ export class AgentCommunicationService {
       question(firstId, secondId, contexts?.[0] ?? `How can your ${secondPerspective} perspective challenge "${topic}"? Share evidence, one uncertainty and a falsifiable next step.`),
       question(secondId, firstId, contexts?.[1] ?? `What creative alternative would your ${firstPerspective} perspective test for "${topic}"? Build on or dispute the peer idea, suggest an interest for a future round, and include evidence and a stop condition.`),
     ])();
+    if (investigation) recordInvestigationEvidence(this.db, correlationId, invMode, investigation, invBrief);
     return { status: 'started', correlation_id: correlationId, topic, participants: [firstId, secondId], messages, reason: null };
   }
 
@@ -296,8 +387,9 @@ export class AgentCommunicationService {
    * social thread (question -> response -> learning) grouped by thread_id.
    * Content was redacted on write, so this is a plain projection.
    */
-  listSocialCommons(limit = 50): SocialCommons {
-    const heartbeatCutoff = Date.now() - 20 * 60_000;
+  listSocialCommons(limit = 50, options: CommonsListOptions = {}): SocialCommons {
+    const now = Date.now();
+    const heartbeatCutoff = now - HEARTBEAT_FRESH_MS;
     const activityByAgent = new Map<string, CommonsAgentActivity[]>();
     const activityRows = this.db.prepare(`
       SELECT id, from_agent, to_agent, status, timestamp, json_extract(payload_json, '$.action') AS action
@@ -313,41 +405,55 @@ export class AgentCommunicationService {
       const list = activityByAgent.get(row.from_agent) || [];
       if (list.length < 20) activityByAgent.set(row.from_agent, [...list, entry]);
     }
-    const agents = (this.db.prepare(`
+    const agentRows = this.db.prepare(`
       SELECT * FROM agents
       WHERE json_extract(COALESCE(metadata, '{}'), '$.social_runtime.enabled') = 1
       ORDER BY id ASC
-    `).all() as Array<Record<string, unknown>>).map((row) => {
+    `).all() as Array<Record<string, unknown>>;
+    const { successes, failures } = this.readinessEvidence(agentRows.map((row) => String(row.id)), now);
+    const agents = agentRows.map((row) => {
       const social = this.object(this.object(row.metadata).social_runtime);
       const lastHeartbeat = this.string(social.last_heartbeat_at) || null;
+      const lastSuccess = successes.get(String(row.id)) ?? null;
+      const lastFailure = failures.get(String(row.id)) ?? null;
       return {
         id: String(row.id), name: String(row.name || row.id), status: String(row.status),
         capabilities: this.capabilities(row), model: this.string(social.model_id) || this.string(row.model),
         runtime: this.string(social.runtime) || null, last_heartbeat_at: lastHeartbeat,
         present: !!lastHeartbeat && Date.parse(lastHeartbeat) >= heartbeatCutoff,
+        readiness: {
+          ...deriveRuntimeReadiness({ lastHeartbeatAt: lastHeartbeat, lastSuccessAt: lastSuccess, lastFailureAt: lastFailure?.at ?? null, now }),
+          last_heartbeat_at: lastHeartbeat, last_successful_reply_at: lastSuccess, last_failed_attempt: lastFailure, runtime_failures_reported: false as const,
+        },
         activity: activityByAgent.get(String(row.id)) || [],
       };
     });
 
     // Only load the messages of the newest `limit` threads (this used to read every social message
     // ever sent and slice afterwards: ~1.5 MB per page load in production).
+    // AC-02: filter by kind BEFORE the limit (prod 24-10: 42 of the newest 50 threads were record-only rooms).
     const threadLimit = Math.max(1, limit);
+    const kind: CommonsThreadKind | 'all' = options.kind === 'discussion' || options.kind === 'record' ? options.kind : 'all';
+    const offset = Math.min(COMMONS_MAX_OFFSET, Math.max(0, Math.trunc(Number(options.offset)) || 0));
+    const kindFilter = kind === 'all' ? '' : `AND json_extract(payload_json, '$.thread_id') ${kind === 'record' ? '' : 'NOT '}${RECORD_THREAD_SQL}`;
     const rows = this.db.prepare(`
       WITH recent AS (
         SELECT json_extract(payload_json, '$.thread_id') AS tid, MAX(timestamp) AS last_ts
         FROM agent_messages
         WHERE json_extract(payload_json, '$.action') IN ('social.question', 'social.response', 'social.learning')
-          AND json_type(payload_json, '$.thread_id') = 'text'
-        GROUP BY tid ORDER BY last_ts DESC LIMIT ?
+          AND json_type(payload_json, '$.thread_id') = 'text' ${kindFilter}
+        GROUP BY tid ORDER BY last_ts DESC, tid DESC LIMIT ? OFFSET ?
       )
       SELECT * FROM agent_messages
       WHERE json_extract(payload_json, '$.action') IN ('social.question', 'social.response', 'social.learning')
         AND json_extract(payload_json, '$.thread_id') IN (SELECT tid FROM recent)
       ORDER BY timestamp ASC
-    `).all(threadLimit) as Array<Record<string, unknown>>;
+    `).all(threadLimit, offset) as Array<Record<string, unknown>>;
     const reflections = new Map((this.db.prepare(`
       SELECT id, source_ref, status FROM reflection_candidates WHERE source_type = 'trace' AND source_ref LIKE 'message:%'
     `).all() as Array<{ id: string; source_ref: string; status: string }>).map((row) => [row.source_ref, row]));
+
+    const dispositions = this.proposalDispositions(rows.map((row) => String(row.id)));
 
     const clip = (value: string, max = 300) => (value.length > max ? `${value.slice(0, max)}…` : value);
     const stageRank = { asked: 0, responding: 1, learned: 2 } as const;
@@ -363,7 +469,7 @@ export class AgentCommunicationService {
       const thread = threads.get(threadId) || {
         id: threadId, topic: this.string(params.topic) || 'cross-agent learning', topic_ref: this.string(params.topic_ref) || null,
         participants: [], stage: 'asked' as SocialThread['stage'], started_at: message.timestamp, last_activity_at: message.timestamp,
-        learnings: 0, messages: [],
+        learnings: 0, messages: [], kind: threadId.startsWith('evidence-room:') ? 'record' as const : 'discussion' as const,
       };
       const messageStage: SocialThread['stage'] = message.payload.action === 'social.learning' ? 'learned' : message.payload.action === 'social.response' ? 'responding' : 'asked';
       if (stageRank[messageStage] > stageRank[thread.stage]) thread.stage = messageStage;
@@ -385,21 +491,95 @@ export class AgentCommunicationService {
         improvement_status: improvement?.status || null, runtime_run_id: this.string(params.runtime_run_id) || null,
         provenance_status: this.string(params.provenance_status) || null,
         ...(params.evidence_status === 'artefact' || params.evidence_status === 'unverified' ? { evidence_status: params.evidence_status, artefact: params.artefact ?? null } : {}),
+        ...(dispositions.has(message.id) ? { proposal_disposition: dispositions.get(message.id) } : message.payload.action === 'social.learning' ? { proposal_disposition: UNKNOWN_DISPOSITION } : {}),
       });
       threads.set(threadId, thread);
     }
-    const totalThreads = (this.db.prepare(`
-      SELECT COUNT(DISTINCT json_extract(payload_json, '$.thread_id')) AS n FROM agent_messages
-      WHERE json_extract(payload_json, '$.action') IN ('social.question', 'social.response', 'social.learning')
-        AND json_type(payload_json, '$.thread_id') = 'text'
-    `).get() as { n: number }).n;
+    const counts = this.db.prepare(`
+      SELECT COALESCE(SUM(tid ${RECORD_THREAD_SQL}), 0) AS record, COALESCE(SUM(tid NOT ${RECORD_THREAD_SQL}), 0) AS discussion FROM (
+        SELECT DISTINCT json_extract(payload_json, '$.thread_id') AS tid FROM agent_messages
+        WHERE json_extract(payload_json, '$.action') IN ('social.question', 'social.response', 'social.learning')
+          AND json_type(payload_json, '$.thread_id') = 'text')
+    `).get() as Record<CommonsThreadKind, number>;
+    const totalThreads = counts.discussion + counts.record;
+    const kindTotal = kind === 'all' ? totalThreads : counts[kind];
     return {
       agents,
       total_threads: totalThreads,
+      thread_counts: { discussion: counts.discussion, record: counts.record },
+      page: { kind, limit: threadLimit, offset, total: kindTotal, has_more: offset + threads.size < kindTotal },
       stats: this.commonsStats() ?? undefined,
+      proposal_policy: this.commonsProposalPolicy(),
       threads: [...threads.values()].sort((left, right) => right.last_activity_at.localeCompare(left.last_activity_at)).slice(0, Math.max(1, limit))
         .map((thread) => ({ ...thread, messages: thread.messages.map((m) => applyPiiPass(m, FEDERATION_PII_MODE).payload as SocialMessage) })),
     };
+  }
+
+  /** AC-10: effective policy for the read model; env flags are reported as booleans only. */
+  private commonsProposalPolicy(): CommonsProposalPolicy | null {
+    try {
+      return { ...reflectionProposalPolicy(this.db), workers: COMMONS_WORKERS.map(([id, env]) => ({ id, env, enabled: process.env[env] === 'true' })) };
+    } catch { return null; } // minimal schemas without self_improvements
+  }
+
+  /** AC-10: recorded dispositions for these messages (subject = the learning, or the replied-to message on a runtime failure). */
+  private proposalDispositions(messageIds: string[]): Map<string, CommonsProposalDisposition> {
+    const out = new Map<string, CommonsProposalDisposition>();
+    if (!messageIds.length) return out;
+    try {
+      const rows = this.db.prepare(`SELECT subject_id, answers_json, created_at FROM judgments
+        WHERE judgment = ? AND subject_type = 'agent_message' AND subject_id IN (SELECT value FROM json_each(?))`)
+        .all(REFLECTION_PROPOSAL_DISPOSITION, JSON.stringify(messageIds)) as Array<{ subject_id: string; answers_json: string | null; created_at: string }>;
+      for (const row of rows) {
+        const { thread_id: _threadId, ...saved } = this.object(row.answers_json ? JSON.parse(row.answers_json) : {}) as Partial<CommonsProposalDisposition> & { thread_id?: string };
+        out.set(row.subject_id, { ...UNKNOWN_DISPOSITION, ...saved, decided_at: row.created_at });
+      }
+    } catch { /* no judgments table yet: every learning reads unknown */ }
+    return out;
+  }
+
+  /** AC-10: one disposition row per NEW decision (deterministic id → a retry cannot add a second one). Fail-open. */
+  private recordProposalDisposition(subjectId: string, threadId: string, disposition: Omit<CommonsProposalDisposition, 'decided_at'>): void {
+    try {
+      this.db.prepare(`INSERT OR IGNORE INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at)
+        VALUES (?, ?, 'agent_message', ?, ?, 'shadow', ?, ?, ?, ?)`).run(
+        `${REFLECTION_PROPOSAL_DISPOSITION}:${subjectId}`, REFLECTION_PROPOSAL_DISPOSITION, subjectId, `cap:${disposition.cap ?? 'unset'}`,
+        disposition.reason, `${disposition.reason}${disposition.detail ? `: ${disposition.detail}` : ''}`, JSON.stringify({ ...disposition, thread_id: threadId }), new Date().toISOString());
+    } catch { /* best-effort: never lose the learning over its disposition */ }
+  }
+
+  /**
+   * AC-01 evidence per agent: newest own runtime reply (respondSocial writes response_kind 'actual_runtime' on both
+   * social.response and social.learning) and newest claimed-but-unanswered social message. A claim leaves a lease token;
+   * a reply acknowledges it (status 'read', token cleared). So 'delivered' with a lapsed lease, or 'expired' with a token
+   * still set, means the agent took the message and never answered. Its time is the lease end, else the TTL expiry.
+   */
+  private readinessEvidence(agentIds: string[], now: number): { successes: Map<string, string>; failures: Map<string, NonNullable<CommonsRuntimeReadiness['last_failed_attempt']>> } {
+    const successes = new Map<string, string>();
+    const failures = new Map<string, NonNullable<CommonsRuntimeReadiness['last_failed_attempt']>>();
+    if (!agentIds.length) return { successes, failures };
+    const ids = JSON.stringify(agentIds);
+    for (const row of this.db.prepare(`
+      SELECT from_agent AS agent, MAX(timestamp) AS last FROM agent_messages
+      WHERE from_agent IN (SELECT value FROM json_each(?))
+        AND json_extract(payload_json, '$.action') IN ('social.response', 'social.learning')
+        AND json_extract(payload_json, '$.params.response_kind') = 'actual_runtime'
+      GROUP BY from_agent
+    `).all(ids) as Array<{ agent: string; last: string }>) successes.set(row.agent, row.last);
+    for (const row of this.db.prepare(`
+      SELECT id, to_agent AS agent, timestamp, ttl, delivery_lease_until AS lease FROM agent_messages
+      WHERE to_agent IN (SELECT value FROM json_each(?))
+        AND json_extract(payload_json, '$.action') IN ('social.question', 'social.response')
+        AND delivery_lease_token IS NOT NULL
+        AND (status = 'expired' OR (status = 'delivered' AND delivery_lease_until <= ?))
+      ORDER BY timestamp DESC LIMIT 200
+    `).all(ids, now) as Array<{ id: string; agent: string; timestamp: string; ttl: number; lease: number | null }>) {
+      const atMs = row.lease ?? Date.parse(row.timestamp) + Number(row.ttl) * 1000;
+      if (!Number.isFinite(atMs)) continue;
+      const previous = failures.get(row.agent);
+      if (!previous || Date.parse(previous.at) < atMs) failures.set(row.agent, { at: new Date(atMs).toISOString(), message_id: String(row.id), observed: 'claim_lapsed_without_reply' });
+    }
+    return { successes, failures };
   }
 
   /**
@@ -451,7 +631,8 @@ export class AgentCommunicationService {
     } catch { /* no judgments table yet */ }
     return { threads_7d: t.threads, open_7d: t.open ?? 0, learnings_7d: t.learnings, lessons_7d: t.lessons ?? 0, proposals: p.n, proposals_grounded: grounded, proposals_verified: p.verified ?? 0, proposals_archived: p.archived ?? 0,
       proposals_by_status: byStatus, residents, autopilot_idle: residents.length > 0 && residents.every((r) => r.last < dayAgo),
-      guild: guild.map((g) => ({ ...g, valid: g.valid ?? 0, verified: g.verified ?? 0 })), ...commonsChildren(this.db), grounding_stops: commonsGroundingStops(this.db) };
+      guild: guild.map((g) => ({ ...g, valid: g.valid ?? 0, verified: g.verified ?? 0 })), ...commonsChildren(this.db), grounding_stops: commonsGroundingStops(this.db),
+      child_outcomes: commonsChildOutcomes(this.db) };
     } catch { return null; } // minimal schemas (no self_improvements) still get the overview
   }
 
@@ -618,9 +799,16 @@ export class AgentCommunicationService {
     const evidence = [...new Set([...citedEvidence, `message:${original.id}`, `runtime:${agentId}:${runtime}`])];
     const summary = action === 'social.response' ? `${answer} Uncertainty: ${uncertainty} Test: ${nextStep}` : `${answer} Peer challenge: ${alternative} Next test: ${nextStep}`;
     const usage = Object.fromEntries(Object.entries(input.usage || {}).filter(([, value]) => typeof value === 'number' && Number.isFinite(value)));
-    return this.db.transaction(() => {
-      const message = this.send({ from: agentId, to: original.from, type: action === 'social.response' ? 'result' : 'knowledge', action, context: summary.slice(0, 500), evidence, threadId, replyTo: original.id, epistemicRole: action === 'social.response' ? 'proposal' : 'outcome', ttl: 86_400,
-        params: { topic: this.string(original.payload.params?.topic), topic_ref: this.string(original.payload.params?.topic_ref), ecosystem_context: this.string(original.payload.params?.ecosystem_context), interest, ecosystem_component: ecosystemComponent, proposed_improvement: improvement, answer, uncertainty, falsifiable_next_step: nextStep, creative_alternative: alternative, stop_condition: stopCondition, runtime, model_id: modelId, runtime_run_id: runtimeRunId, usage, response_kind: 'actual_runtime', provenance_status: 'runtime_reported', external_side_effects: false, effect_scope: 'isolated', board_summary: summary.slice(0, 500) } });
+    // AC-06: on an investigation thread a typed artefact makes the reply evidence; plain text stays unverified (null = untouched)
+    const investigation = classifyInvestigationReply(this.db, threadId, input.artefact);
+    const invOn = investigation && investigationMode() === 'on' ? investigation : null;
+    const replyEvidence = invOn?.artefact ? [...evidence, investigationArtefactRef(invOn.artefact)] : evidence;
+    // AC-10: a runtime failure of the proposal step still rolls the whole reply back; its reason is kept on the replied-to message
+    const proposalFailure: { decision?: ReflectionProposalDecision } = {};
+    const reply = this.db.transaction((): SocialReplyResult => {
+      const message = this.send({ from: agentId, to: original.from, type: action === 'social.response' ? 'result' : 'knowledge', action, context: summary.slice(0, 500), evidence: replyEvidence, threadId, replyTo: original.id, epistemicRole: action === 'social.response' ? 'proposal' : 'outcome', ttl: 86_400,
+        params: { topic: this.string(original.payload.params?.topic), topic_ref: this.string(original.payload.params?.topic_ref), ecosystem_context: this.string(original.payload.params?.ecosystem_context), interest, ecosystem_component: ecosystemComponent, proposed_improvement: improvement, answer, uncertainty, falsifiable_next_step: nextStep, creative_alternative: alternative, stop_condition: stopCondition, runtime, model_id: modelId, runtime_run_id: runtimeRunId, usage, response_kind: 'actual_runtime', provenance_status: 'runtime_reported', external_side_effects: false, effect_scope: 'isolated', board_summary: summary.slice(0, 500), ...(invOn ? investigationReplyParams(invOn) : {}) } });
+      if (investigation) recordInvestigationReply(this.db, message.id, investigationMode(), investigation);
       this.acknowledge(original.id, agentId, this.cleanRequired(input.delivery_lease_token, 'SOCIAL_LEASE_REQUIRED', 200));
       let reflectionId: string | null = null;
       if (action === 'social.learning') {
@@ -643,21 +831,32 @@ export class AgentCommunicationService {
           try { ({ refinementId } = recordCommonsGrounding(this.db, parkedId, message.id, `${threadText}\n${answer}\n${nextStep}\n${improvement}`)); } catch { /* best-effort: never lose the learning */ }
           message.payload.params.improvement_id = refinementId ?? parkedId;
           this.db.prepare('UPDATE agent_messages SET payload_json = ? WHERE id = ?').run(JSON.stringify(message.payload), message.id);
+          this.recordProposalDisposition(message.id, threadId, notApplicable('grounding_thread'));
         } else if (improvement && !topicRef.startsWith('improvement:')) {
           // Proposal-review threads must not spawn proposals about proposals.
-          const [proposal] = new SelfImprovementService(this.db).generateFromReflection({
+          const outcome = new SelfImprovementService(this.db).decideFromReflection({
             whatFailed: [], lessonsLearned: [`Unverified peer proposal: ${answer}`, `Uncertainty: ${uncertainty}`],
             proposedImprovements: [`${ecosystemComponent}: ${improvement}\nTest: ${nextStep}\nStop condition: ${stopCondition}`],
             reflectionId: reflectionId ?? undefined,
           }, true);
+          if (outcome.failed) { proposalFailure.decision = outcome.decisions.at(-1); throw outcome.error; }
+          const [proposal] = outcome.proposals;
           if (proposal) {
             message.payload.params.improvement_id = proposal.id;
             this.db.prepare('UPDATE agent_messages SET payload_json = ? WHERE id = ?').run(JSON.stringify(message.payload), message.id);
           }
+          const [decision] = outcome.decisions;
+          if (decision) this.recordProposalDisposition(message.id, threadId, fromDecision(decision));
+        } else {
+          this.recordProposalDisposition(message.id, threadId, notApplicable(improvement ? 'proposal_review_thread' : 'no_proposed_improvement'));
         }
       }
       return { message, reflection_id: reflectionId, duplicate: false };
-    })();
+    });
+    try { return reply(); } catch (error) {
+      if (proposalFailure.decision) this.recordProposalDisposition(original.id, threadId, fromDecision(proposalFailure.decision));
+      throw error;
+    }
   }
 
   /**
@@ -1018,14 +1217,14 @@ export class AgentCommunicationService {
 
   private runtimeSafeMessage(message: AgentMessage): AgentMessage {
     const params = message.payload.params || {};
-    const allowedParams = ['interest', 'ecosystem_component', 'ecosystem_context', 'proposed_improvement', 'topic', 'topic_ref', 'answer', 'uncertainty', 'falsifiable_next_step', 'creative_alternative', 'stop_condition', 'runtime', 'model_id', 'runtime_run_id', 'facilitator_commit', 'facilitator_trigger'];
+    const allowedParams = ['interest', 'ecosystem_component', 'ecosystem_context', 'proposed_improvement', 'topic', 'topic_ref', 'answer', 'uncertainty', 'falsifiable_next_step', 'creative_alternative', 'stop_condition', 'runtime', 'model_id', 'runtime_run_id', 'facilitator_commit', 'facilitator_trigger', 'investigation_brief'];
     return { ...message, payload: {
       action: message.payload.action,
       context: this.cleanOptional(message.payload.context, 4_000),
       evidence: this.stringArray(message.payload.evidence).map((item) => this.cleanOptional(item, 200)).filter(Boolean).slice(0, 20),
       thread_id: this.cleanOptional(message.payload.thread_id, 200), reply_to: this.cleanOptional(message.payload.reply_to, 200),
       epistemic_role: message.payload.epistemic_role,
-      params: Object.fromEntries(allowedParams.filter((key) => typeof params[key] === 'string').map((key) => [key, key === 'facilitator_commit' && /^[0-9a-f]{40}$/i.test(String(params[key])) ? params[key] : this.cleanOptional(params[key], key === 'answer' ? 3_000 : 1_000)])),
+      params: Object.fromEntries(allowedParams.filter((key) => typeof params[key] === 'string').map((key) => [key, key === 'facilitator_commit' && /^[0-9a-f]{40}$/i.test(String(params[key])) ? params[key] : this.cleanOptional(params[key], key === 'answer' || key === 'investigation_brief' ? 3_000 : 1_000)])),
     } };
   }
 

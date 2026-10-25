@@ -3,6 +3,7 @@ import { Dna } from 'lucide-react';
 import { api, type EvolutionEvidence, type GateState } from '../lib/api';
 import { useResource } from '../hooks/useResource';
 import { LoadErrorNotice } from '../components/LoadErrorNotice';
+import { ExperimentsSection } from './EvolutionExperiments';
 
 const fetchEvidence = () => api.getEvolutionEvidence();
 const pct = (v: number | null | undefined) => (v === null || v === undefined ? '—' : `${Math.round(v * 100)} %`);
@@ -76,6 +77,10 @@ export function EvolutionBody({ data }: { data: EvolutionEvidence }) {
           ))}
         </ul>
       </section>
+
+      <Section title="Experiments">
+        <ExperimentsSection data={data} />
+      </Section>
 
       <Section title="Genome trials">
         <p className="text-sm text-foreground-secondary">Holdouts: mined {data.genomes.holdout.mined ?? '—'}, mutant {data.genomes.holdout.mutant ?? '—'} tasks.</p>
