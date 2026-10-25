@@ -54,6 +54,12 @@ export const gatePasses = (gate: Pick<LoopGate, 'name' | 'status'>): boolean =>
   gate.status === 'pass' || (gate.name === 'security_checker_verdict' && gate.status === 'skipped');
 /** P0-8: every gate passed under {@link gatePasses}; no gates is not a pass. */
 export const allGatesPassed = (gates: ReadonlyArray<Pick<LoopGate, 'name' | 'status'>>): boolean => gates.length > 0 && gates.every(gatePasses);
+/** Certification's rule (certifyLoopRun): the run reached ready_for_human_merge/completed and every recorded gate passed. */
+export const runCertified = (run: { status: string; gates: ReadonlyArray<Pick<LoopGate, 'name' | 'status'>> }): boolean =>
+  (run.status === 'ready_for_human_merge' || run.status === 'completed') && allGatesPassed(run.gates);
+/** A maker lease replaced by a retry; verification leaves it out of the run's active makers. */
+export const isSupersededMaker = (lease: { role: string; metadata: Record<string, unknown> }): boolean =>
+  lease.role === 'maker' && typeof lease.metadata.superseded_by_maker_lease_id === 'string';
 
 export interface LoopRunRecord {
   id: string;
