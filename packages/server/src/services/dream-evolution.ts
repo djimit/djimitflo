@@ -7,7 +7,7 @@ import { firstJsonObject } from './expert-council-service';
 import { BASELINE_GENOME, dreamEvolutionEnabled, ELIGIBLE_GATED, ensureBaseline, frozenHoldoutCommits, genome, holdoutEpoch, mutantHoldoutKeys, mutantHoldoutTiers, mutantTrialsEnabled, NOT_VOID, trialHeadroomPrecheck, unscorable, writeTestHoldoutEnabled, writeTestHoldoutKeys } from './genome-registry';
 import { markRun } from './scheduler-registry';
 import { type DecidingHoldout, holdoutValidity, promoteGenome } from './genome-promotion';
-import { prodGatesConfig } from './remote-gym-service';
+import { prodGatesConfig, sweepOrphanedGymRuns } from './remote-gym-service';
 import { recordNegativeEvidenceMatches } from './negative-evidence-check';
 import { buildSourcePack, CITED_FORMAT, citedLines, dreamEvidenceSources, genomeSourceColumns, type PackItem, recordDreamPack, type SourcePack, sourcePrompt } from './dream-evidence-sources';
 import { dreamPlaybookGene, playbookFor, playbookLanes, playbookNote } from './lane-playbook';
@@ -715,6 +715,11 @@ export function startDreamEvolution(db: Database, intervalMs = 3_600_000): (() =
   const species = process.env.DREAM_EVOLUTION_SPECIES || 'atomic@llama-router';
   const tick = () => {
     markRun('dream_evolution');
+    // GYM_ORPHAN_SWEEP: settle remote gym runs whose host never reported (before trials are evaluated: an orphan keeps its item pending)
+    try {
+      const swept = sweepOrphanedGymRuns(db);
+      if (swept.mode !== 'off') { markRun('gym_orphan_sweep'); if (swept.candidates.length) console.log(`🧹 gym orphan sweep (${swept.mode}): ${swept.candidates.length} stale remote run(s), ${swept.settled.length} settled`); }
+    } catch (e) { markRun('gym_orphan_sweep', e); }
     try {
       const commits = frozenHoldoutCommits(db); // RX-12: the current epoch's mined holdout
       const mutants = mutantTrialsEnabled() ? mutantHoldoutKeys(db) : [];

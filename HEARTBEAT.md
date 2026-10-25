@@ -19,6 +19,7 @@ unknown …) is `GET /api/health/schedulers` (admins). Armed is intent, not exec
 | evolution_gym | `EVOLUTION_GYM_ENABLED` | 1 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | finding_fix_lane | `FINDING_FIX_LANE` | 12 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | frontier_experts | `FRONTIER_EXPERTS_SCHEDULER_ENABLED` | `frontierExpertsSched.intervalMinutes()` min | `packages/server/src/index.ts` |
+| gym_orphan_sweep | `GYM_ORPHAN_SWEEP` | 1 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | inference_failover_probe | `OLLAMA_AUTO_FAILOVER` | 30 min | `packages/server/src/index.ts` |
 | loop_auto_merge | `LOOP_AUTO_MERGE_TEST_ONLY` | 15 min | `packages/server/src/bootstrap/autonomous-services.ts` |
 | memory_candidate_review | `MEMORY_CANDIDATE_REVIEW_ENABLED` | `memoryCandidateReviewSched.intervalMinutes()` min | `packages/server/src/index.ts` |

@@ -122,6 +122,12 @@ export function tokensFrom(out) {
   const m = /"total_tokens"\s*:\s*(\d+)/.exec(String(out ?? ''));
   return m ? Number(m[1]) : null;
 }
+/**
+ * The result body sent to /gym-worker/runs/:id/result. tokens = the count the maker printed for this attempt (every attempt,
+ * not only TG-001), or null when it printed none or never ran: unknown, never 0 (the server stores it as unknown).
+ */
+export const resultPayload = (r, { fire = null, tgm = null, tokens = null, durationMs }) =>
+  ({ ...r, ...(fire ? { fire_check: fire } : {}), ...(tgm ? { tg_metrics: tgm } : {}), tokens: Number.isFinite(tokens) ? tokens : null, durationMs });
 /** The model id(s) the local router actually serves right now (best effort, 3 s); null when it cannot be read. */
 async function routerModel() {
   try {
@@ -539,10 +545,10 @@ async function main() {
   if (claim.skipped) { console.log(`skipped: ${claim.skipped}`); return; }
   const { runId, species, task } = claim;
   const started = Date.now();
-  let fire = null;
+  let fire = null; let tokens = null;
   // TG-001: per-attempt measurements, filled as the attempt runs; anything not observed stays null
   const tgm = claim.tg ? { prompt_sha256: null, prompt_chars: null, tokens: null, tool_calls: null, failed_tool_calls: null, files_inspected: null, files_modified: null, retries: 0, termination: null, model: null, oracle_green: null, maker_ms: null } : null;
-  const report = async (r) => { await api(`/gym-worker/runs/${runId}/result`, { ...r, ...(fire ? { fire_check: fire } : {}), ...(tgm ? { tg_metrics: tgm } : {}), tokens: tgm?.tokens ?? 0, durationMs: Date.now() - started }); console.log(`${species} ${task.commit.slice(0, 8)} ${claim.tg ? `tg ${claim.tg.arm} ` : ''}${r.status}: ${r.reason}`); };
+  const report = async (r) => { await api(`/gym-worker/runs/${runId}/result`, resultPayload(r, { fire, tgm, tokens, durationMs: Date.now() - started })); console.log(`${species} ${task.commit.slice(0, 8)} ${claim.tg ? `tg ${claim.tg.arm} ` : ''}${r.status}: ${r.reason}`); };
   fs.mkdirSync(WORK, { recursive: true });
   // D9: the runner image is pinned by digest, so the worker no longer builds it (a build would not match the pin)
   if (spawnSync('docker', ['image', 'inspect', IMAGE], { stdio: 'ignore' }).status !== 0) return report({ status: 'discarded', reason: `infra: runner image ${IMAGE.slice(0, 40)}… missing` });
@@ -583,8 +589,9 @@ async function main() {
     const makerStarted = Date.now();
     const run = await runMaker(sbx, 'atomic-agent run --cwd /w --max-steps 40 --no-approval', input, Number(env.GYM_MAKER_TIMEOUT_MS) || 900_000);
     const makerOk = run.status === 0 && !run.error;
+    tokens = tokensFrom(run.stdout);
     const changed = changedFrom(gitInRunner(sbx, GIT_NAMES), gitInRunner(sbx, GIT_UNTRACKED));
-    if (tgm) { tgm.termination = termination(run); tgm.tokens = tokensFrom(run.stdout); tgm.files_modified = changed; tgm.maker_ms = Date.now() - makerStarted; }
+    if (tgm) { tgm.termination = termination(run); tgm.tokens = tokens; tgm.files_modified = changed; tgm.maker_ms = Date.now() - makerStarted; }
     const scoped = changed.length > 0 && changed.every((f) => f === task.source);
     const gap = writeTest && scoped ? writeTestGap(task, readInRunner(sbx, task.source)) : null;
     const green = scoped && !gap && oracle(sbx, task, writeTest ? undefined : 'after');
@@ -784,6 +791,11 @@ function selfcheck() {
   assert(makerInput({}, ovTask, true) === `${gymGoal(ovTask, true, [])}\n` && makerInput({ prompt_override: '  ' }, ovTask, true) === `${gymGoal(ovTask, true, [])}\n`, 'TG-001: no (or a blank) override = the ordinary gym goal');
   assert(termination({ status: 0 }) === 'exit:0' && termination({ status: null, signal: 'SIGTERM' }) === 'timeout' && termination({ error: { code: 'ETIMEDOUT' } }) === 'timeout' && termination(null) === null, 'TG-001: termination reason');
   assert(tokensFrom('x {"total_tokens": 1234} y') === 1234 && tokensFrom('no usage printed') === null, 'TG-001: tokens only when printed');
+  const noUsage = resultPayload({ status: 'failure', reason: 'tests still red' }, { tokens: tokensFrom('no usage printed'), durationMs: 5 });
+  assert(noUsage.tokens === null && 'tokens' in noUsage && JSON.parse(JSON.stringify(noUsage)).tokens === null, 'a result without reported usage carries tokens: null (unknown), never 0');
+  assert(resultPayload({ status: 'discarded', reason: 'infra: npm ci failed' }, { durationMs: 1 }).tokens === null, 'an attempt whose maker never ran carries tokens: null');
+  assert(resultPayload({ status: 'success', reason: 'tests green, source only' }, { tokens: tokensFrom('{"total_tokens": 4321}'), durationMs: 5 }).tokens === 4321, 'a printed count is sent as is');
+  assert(JSON.stringify(Object.keys(resultPayload({ status: 'success', reason: 'r' }, { fire: { goal_sha256: 'x' }, tgm: { tokens: null }, tokens: null, durationMs: 1 }))) === '["status","reason","fire_check","tg_metrics","tokens","durationMs"]', 'result body keeps fire_check and tg_metrics');
   const wTask = { commit: 'fail:r1', kind: 'write_test', base: 'a'.repeat(40), source: 'packages/server/src/__tests__/widget.test.ts', tests: ['packages/server/src/__tests__/widget.test.ts'], target: 'packages/server/src/services/widget.ts',
     mutants: [{ key: 'mut:aaaaaaaaaaaa:packages/server/src/services/widget.ts:1:1', content: 'export const widget = () => 2;\n' }] };
   assert(isWriteTest(wTask) && !isWriteTest(task) && writeTestValid(wTask), 'write_test task recognised and valid');

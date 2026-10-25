@@ -123,7 +123,69 @@ export function prepareGymDiff(raw: string): { diff: string; sha256: string; red
 }
 
 export type RemoteGymClaim = { runId: string; species: string; task: GymTask; genome?: { id: string; lines: string[] }; prod_gates?: ProdGatesConfig; prompt_override?: string; tg?: { experiment: string; generation: string; arm: string } } | { skipped: string };
-export interface RemoteGymResult { status: 'success' | 'failure' | 'discarded'; reason: string; tokens?: number; durationMs?: number; changed_files?: unknown; diff?: unknown; killed_mutants?: unknown; prod_gates?: unknown; fire_check?: unknown; graded?: unknown; graded_kind?: unknown; tg_metrics?: unknown }
+export interface RemoteGymResult { status: 'success' | 'failure' | 'discarded'; reason: string; tokens?: number | null; durationMs?: number; changed_files?: unknown; diff?: unknown; killed_mutants?: unknown; prod_gates?: unknown; fire_check?: unknown; graded?: unknown; graded_kind?: unknown; tg_metrics?: unknown }
+
+/**
+ * Tokens the worker reported: a positive count, or null = unknown. gym-worker.mjs before this change sent 0 for every attempt
+ * outside TG-001 (it never read the usage), and atomic prints no count when it has none, so a 0 or a missing value is unknown.
+ */
+export function reportedTokens(value: unknown): number | null {
+  const n = typeof value === 'number' || typeof value === 'string' ? Number(value) : NaN;
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+}
+
+/** The two settlements the server makes itself (no report from the worker). A report arriving after either is a late result. */
+export const LOST_AT_CLAIM = 'infra: worker lost the result (no report before its next claim)';
+export const ORPHANED_NO_RESULT = 'infra: orphaned_no_result';
+const SERVER_SETTLED = new Set([LOST_AT_CLAIM, ORPHANED_NO_RESULT]);
+
+/** A report for a run that is no longer running (HTTP 409); `existing` is the result the run was settled with. */
+export class GymRunSettledError extends Error {
+  constructor(readonly existing: { status: string; reason: string } | null) { super('GYM_RUN_ALREADY_SETTLED'); }
+}
+
+/**
+ * The infra discard for a remote gym run that will never report (claim time: its host claimed again; sweep: no report in time).
+ * The task stays untried (an 'infra:' reason), no skill outcome is written, and a TG-001 attempt is settled the same way.
+ * A run that already carries a result is never touched. Returns the ids it settled.
+ */
+function settleLostRuns(db: Database, runs: Array<{ id: string; tg: string | null }>, reason: string, now: string): string[] {
+  const settle = db.prepare(`UPDATE loop_runs SET status = 'completed', updated_at = ?,
+      metadata = json_set(metadata, '$.gym_result', json_object('status', 'discarded', 'reason', ?))
+      WHERE id = ? AND status = 'running' AND json_extract(metadata, '$.gym_result') IS NULL`);
+  const settled: string[] = [];
+  for (const r of runs) {
+    if (!settle.run(now, reason, r.id).changes) continue;
+    settled.push(r.id);
+    if (r.tg) { try { recordTg001(db, r.tg, r.id, { status: 'discarded', reason }, now); } catch { /* bookkeeping */ } }
+  }
+  return settled;
+}
+
+/**
+ * GYM_ORPHAN_SWEEP=off (default) | shadow | on. A remote gym run is otherwise settled only by its own host's next claim, so a
+ * host that never claims again leaves it 'running' for good (and its task taken). The sweep settles every remote gym run still
+ * running without a result GYM_MAKER_TIMEOUT_MS (the worker's maker budget, default 15 min) + 90 min after its claim — the
+ * margin covers npm ci, both oracle runs, mutant kills and the production gates — as ORPHANED_NO_RESULT, through the same
+ * infra-discard path as the claim. shadow only lists them. At most 50 per tick; called from the hourly dream-evolution tick.
+ */
+export const GYM_ORPHAN_MARGIN_MS = 90 * 60_000;
+export type GymOrphanSweepMode = 'off' | 'shadow' | 'on';
+export const gymOrphanSweepMode = (env: NodeJS.ProcessEnv = process.env): GymOrphanSweepMode => (env.GYM_ORPHAN_SWEEP === 'on' || env.GYM_ORPHAN_SWEEP === 'shadow' ? env.GYM_ORPHAN_SWEEP : 'off');
+export function gymOrphanAfterMs(env: NodeJS.ProcessEnv = process.env): number {
+  const maker = Number(env.GYM_MAKER_TIMEOUT_MS);
+  return (Number.isFinite(maker) && maker > 0 ? maker : 900_000) + GYM_ORPHAN_MARGIN_MS;
+}
+export function sweepOrphanedGymRuns(db: Database, now = new Date(), env: NodeJS.ProcessEnv = process.env): { mode: GymOrphanSweepMode; candidates: string[]; settled: string[] } {
+  const mode = gymOrphanSweepMode(env);
+  if (mode === 'off') return { mode, candidates: [], settled: [] };
+  const before = new Date(now.getTime() - gymOrphanAfterMs(env)).toISOString();
+  const runs = db.prepare(`SELECT id, json_extract(metadata, '$.gym.tg.attempt_id') AS tg FROM loop_runs
+    WHERE loop_name IN ('evolution-gym', '${TG_LOOP}') AND status = 'running' AND json_extract(metadata, '$.gym.remote_host') IS NOT NULL
+      AND json_extract(metadata, '$.gym_result') IS NULL AND created_at < ? ORDER BY created_at LIMIT 50`).all(before) as Array<{ id: string; tg: string | null }>;
+  const settled = mode === 'on' ? settleLostRuns(db, runs, ORPHANED_NO_RESULT, now.toISOString()) : [];
+  return { mode, candidates: runs.map((r) => r.id), settled };
+}
 
 export class RemoteGymService {
   private readonly outcomes: SkillEvolutionEngine;
@@ -144,10 +206,7 @@ export class RemoteGymService {
     // TG-001 runs too: their attempt is settled as an infra discard (re-queued or INFRA_CENSORED), never left 'claimed'
     const lost = this.db.prepare(`SELECT id, json_extract(metadata, '$.gym.tg.attempt_id') AS tg FROM loop_runs
       WHERE loop_name IN ('evolution-gym', '${TG_LOOP}') AND status = 'running' AND json_extract(metadata, '$.gym.remote_host') = ?`).all(host) as Array<{ id: string; tg: string | null }>;
-    this.db.prepare(`UPDATE loop_runs SET status = 'completed', updated_at = ?,
-      metadata = json_set(metadata, '$.gym_result', json_object('status', 'discarded', 'reason', 'infra: worker lost the result (no report before its next claim)'))
-      WHERE loop_name IN ('evolution-gym', '${TG_LOOP}') AND status = 'running' AND json_extract(metadata, '$.gym.remote_host') = ?`).run(now.toISOString(), host);
-    for (const r of lost) if (r.tg) { try { recordTg001(this.db, r.tg, r.id, { status: 'discarded', reason: 'infra: worker lost the result (no report before its next claim)' }, now.toISOString()); } catch { /* bookkeeping */ } }
+    settleLostRuns(this.db, lost, LOST_AT_CLAIM, now.toISOString());
     const since = new Date(now.getTime() - 86_400_000).toISOString();
     if (remoteGymCap(this.db, now.getTime()).capped) return { skipped: 'daily cap reached' };
     // the offered species with the fewest gym outcomes goes next
@@ -250,7 +309,7 @@ export class RemoteGymService {
     const row = this.db.prepare("SELECT status, json_extract(metadata, '$.gym') AS gym FROM loop_runs WHERE id = ?").get(runId) as { status: string; gym: string | null } | undefined;
     const gym = row?.gym ? JSON.parse(row.gym) as GymTask & { species: string; remote_host?: string; genome?: string; probe?: number; canary?: number; mutant_keys?: string[]; prod_gates?: number; tg?: { attempt_id: string; experiment?: string } } : null;
     if (!row || !gym || gym.remote_host !== host) throw new Error('GYM_RUN_NOT_FOUND');
-    if (row.status !== 'running') throw new Error('GYM_RUN_ALREADY_SETTLED');
+    if (row.status !== 'running') throw this.settled(runId);
     // TG-001 generations: a result for a run claimed under another generation (e.g. before a restore) is never accepted
     if (gym.tg && gym.tg.experiment !== TG_ID) throw new Error('GYM_RUN_STALE_GENERATION');
     if (!['success', 'failure', 'discarded'].includes(result.status)) throw new Error('GYM_RESULT_INVALID');
@@ -282,35 +341,55 @@ export class RemoteGymService {
     // B8: which of the served mutants the write_test maker's test killed (only keys the server handed out)
     const killed_mutants = Array.isArray(gym.mutant_keys) && Array.isArray(result.killed_mutants) ? result.killed_mutants.map(String).filter((k) => gym.mutant_keys!.includes(k)) : undefined;
     const graded = (status === 'success' || status === 'failure') && gradedFitnessMode() === 'shadow' ? gymGraded(gym, { ...result, status }, killed_mutants) : null;
-    // TG-001 attempts are an experiment on the prompt, not gym fitness: no skill outcome (the attempt row keeps the result)
-    if (status !== 'discarded' && !gym.canary && !voided && !gym.tg) {
-      const [species] = parseSpecies(gym.species, 1);
-      this.outcomes.recordOutcome(`loop-maker:gym:${species.runtime}`, {
-        success: status === 'success', tokensUsed: Math.max(0, Number(result.tokens) || 0), durationMs: Math.max(0, Number(result.durationMs) || 0), domain: 'gym', taskId: runId,
-        skillContentHash: gymSkillContentHash((gym as { kind?: string }).kind, gym.genome),
-        ...(species.model ? { model: species.model } : {}), evidenceRefs: [`gym:${gym.commit}`, `loop_run:${runId}`, `gym_result:${reason}`, `remote:${host}`, ...(gym.genome ? [`genome:${gym.genome}`] : []), ...(gym.probe ? ['gym:probe'] : []), ...((gym as { kind?: string }).kind === 'write_test' ? ['gym:fail'] : []), ...(status === 'quarantined' ? ['gym:quarantined'] : []), ...(graded ? gradedRefs(graded.graded, graded.graded_kind) : [])],
-      });
+    const tokens = reportedTokens(result.tokens);
+    // one transaction: the outcome, the stored diff, the run settlement and the TG-001 attempt land together or not at all
+    // (a kill between the outcome and the settlement left an outcome on a run the next claim then discarded: counted twice)
+    const write = this.db.transaction(() => {
+      // TG-001 attempts are an experiment on the prompt, not gym fitness: no skill outcome (the attempt row keeps the result)
+      if (status !== 'discarded' && !gym.canary && !voided && !gym.tg) {
+        const [species] = parseSpecies(gym.species, 1);
+        this.outcomes.recordOutcome(`loop-maker:gym:${species.runtime}`, {
+          success: status === 'success', tokensUsed: tokens, durationMs: Math.max(0, Number(result.durationMs) || 0), domain: 'gym', taskId: runId,
+          skillContentHash: gymSkillContentHash((gym as { kind?: string }).kind, gym.genome),
+          ...(species.model ? { model: species.model } : {}), evidenceRefs: [`gym:${gym.commit}`, `loop_run:${runId}`, `gym_result:${reason}`, `remote:${host}`, ...(gym.genome ? [`genome:${gym.genome}`] : []), ...(gym.probe ? ['gym:probe'] : []), ...((gym as { kind?: string }).kind === 'write_test' ? ['gym:fail'] : []), ...(status === 'quarantined' ? ['gym:quarantined'] : []), ...(graded ? gradedRefs(graded.graded, graded.graded_kind) : [])],
+        });
+      }
+      // gym gold agreement: the per-check production gate results of a proxy success (only on a run claimed with the gates)
+      const prod_gates = gym.prod_gates ? sanitizeProdGates(result.prod_gates) : undefined;
+      const now = new Date().toISOString();
+      let diff_ref: string | undefined;
+      // a TG-001 diff stays out of the gym training dataset (a copy would lose the experiment's provenance); its sha256 is kept on the run
+      if (gym.tg && typeof result.diff === 'string' && result.diff.trim()) diff_ref = `sha256:${prepareGymDiff(result.diff).sha256}`;
+      else if (gymStoreDiffs() && status !== 'discarded' && typeof result.diff === 'string' && result.diff.trim()) {
+        try {
+          const d = prepareGymDiff(result.diff);
+          this.db.prepare('INSERT OR REPLACE INTO gym_attempt_diffs (run_id, task_key, status, species, sha256, diff, redacted, truncated, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .run(runId, String(gym.commit), status, gym.species, d.sha256, d.diff, d.redacted, d.truncated ? 1 : 0, now);
+          diff_ref = `sha256:${d.sha256}`;
+        } catch { /* training data only: never break the report */ }
+      }
+      // P0-12: every recorded success / quarantine carries the server-side hash of the diff it rests on
+      if (!diff_ref && canonical && (status === 'success' || status === 'quarantined')) diff_ref = `sha256:${prepareGymDiff(diffText).sha256}`;
+      const settled = this.db.prepare("UPDATE loop_runs SET status = 'completed', updated_at = ?, metadata = json_set(metadata, '$.gym_result', json(?)) WHERE id = ? AND status = 'running'")
+        .run(now, JSON.stringify({ status, reason, tokens, ...(hack_flags ? { hack_flags } : {}), ...(killed_mutants ? { killed_mutants } : {}),
+          ...(prod_gates ? { prod_gates } : {}), ...(graded ?? {}), ...(diff_ref ? { diff_ref } : {}),
+          ...(fire_check ? { fire_check } : {}), ...(voided ? { void: voided } : {}) }), runId).changes;
+      if (!settled) throw new GymRunSettledError(null); // settled since the read above: the outcome is rolled back
+      if (gym.tg?.attempt_id) { try { recordTg001(this.db, gym.tg.attempt_id, runId, { status: result.status, reason, durationMs: result.durationMs, tg_metrics: result.tg_metrics }, now); } catch { /* experiment bookkeeping never breaks the report */ } }
+    });
+    try { write(); } catch (error) { throw error instanceof GymRunSettledError ? this.settled(runId) : error; }
+  }
+
+  /**
+   * Idempotent report: a run that is no longer running gets no second outcome; the 409 carries the result it was settled with.
+   * When the server settled it itself (lost at the next claim, or orphaned), the arrival is recorded once as gym_result.late_result.
+   */
+  private settled(runId: string): GymRunSettledError {
+    let existing: { status: string; reason: string } | null = null;
+    try { existing = JSON.parse((this.db.prepare("SELECT json_extract(metadata, '$.gym_result') AS r FROM loop_runs WHERE id = ?").get(runId) as { r: string | null } | undefined)?.r ?? 'null'); } catch { /* unreadable: no existing result to show */ }
+    if (existing && SERVER_SETTLED.has(existing.reason)) {
+      try { this.db.prepare("UPDATE loop_runs SET metadata = json_set(metadata, '$.gym_result.late_result', 1) WHERE id = ? AND json_extract(metadata, '$.gym_result.late_result') IS NULL").run(runId); } catch { /* bookkeeping */ }
     }
-    // gym gold agreement: the per-check production gate results of a proxy success (only on a run claimed with the gates)
-    const prod_gates = gym.prod_gates ? sanitizeProdGates(result.prod_gates) : undefined;
-    const now = new Date().toISOString();
-    let diff_ref: string | undefined;
-    // a TG-001 diff stays out of the gym training dataset (a copy would lose the experiment's provenance); its sha256 is kept on the run
-    if (gym.tg && typeof result.diff === 'string' && result.diff.trim()) diff_ref = `sha256:${prepareGymDiff(result.diff).sha256}`;
-    else if (gymStoreDiffs() && status !== 'discarded' && typeof result.diff === 'string' && result.diff.trim()) {
-      try {
-        const d = prepareGymDiff(result.diff);
-        this.db.prepare('INSERT OR REPLACE INTO gym_attempt_diffs (run_id, task_key, status, species, sha256, diff, redacted, truncated, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-          .run(runId, String(gym.commit), status, gym.species, d.sha256, d.diff, d.redacted, d.truncated ? 1 : 0, now);
-        diff_ref = `sha256:${d.sha256}`;
-      } catch { /* training data only: never break the report */ }
-    }
-    // P0-12: every recorded success / quarantine carries the server-side hash of the diff it rests on
-    if (!diff_ref && canonical && (status === 'success' || status === 'quarantined')) diff_ref = `sha256:${prepareGymDiff(diffText).sha256}`;
-    this.db.prepare("UPDATE loop_runs SET status = 'completed', updated_at = ?, metadata = json_set(metadata, '$.gym_result', json(?)) WHERE id = ?")
-      .run(now, JSON.stringify({ status, reason, ...(hack_flags ? { hack_flags } : {}), ...(killed_mutants ? { killed_mutants } : {}),
-        ...(prod_gates ? { prod_gates } : {}), ...(graded ?? {}), ...(diff_ref ? { diff_ref } : {}),
-        ...(fire_check ? { fire_check } : {}), ...(voided ? { void: voided } : {}) }), runId);
-    if (gym.tg?.attempt_id) { try { recordTg001(this.db, gym.tg.attempt_id, runId, { status: result.status, reason, durationMs: result.durationMs, tg_metrics: result.tg_metrics }, now); } catch { /* experiment bookkeeping never breaks the report */ } }
+    return new GymRunSettledError(existing ? { status: existing.status, reason: existing.reason } : null);
   }
 }

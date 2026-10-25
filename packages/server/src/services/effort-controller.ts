@@ -125,10 +125,13 @@ export function recordEffortGym(db: Database, runId: string, species: string, co
         AND json_extract(metadata, '$.gym.canary') IS NULL`).get(commit) as { n: number; ok: number };
     const q = betaMean(hist.ok, hist.n);
     const [s] = parseSpecies(species, 1);
-    const tokens = s && cloudSpecies(s) ? Number((db.prepare("SELECT AVG(tokens_used) AS t FROM skill_outcomes WHERE domain = 'gym' AND skill_id = ? AND COALESCE(model, '') = ?")
-      .get(`loop-maker:gym:${s.runtime}`, s.model ?? '') as { t: number | null }).t) || 0 : 0;
+    // a local species burns no cloud tokens (0 by construction); a cloud species' mean leaves unreported counts out, and with
+    // none reported the cost is unknown: 0 in the option (no penalty), flagged in the decision context
+    const cloudMean = s && cloudSpecies(s) ? (db.prepare(`SELECT AVG(tokens_used) AS t FROM skill_outcomes WHERE domain = 'gym' AND skill_id = ? AND COALESCE(model, '') = ?`)
+      .get(`loop-maker:gym:${s.runtime}`, s.model ?? '') as { t: number | null }).t : 0;
+    const tokens = Number(cloudMean ?? 0);
     const options: EffortOption[] = [{ name: 'serve', p: 0, v: 1, voi: +(q * (1 - q)).toFixed(6), tokens: Math.round(tokens), kwh: 0 }, { name: 'skip', p: 0, v: 1, voi: 0, tokens: 0, kwh: 0 }];
-    const d = decide(db, env, rng, now, 'remote_gym_claim', 'serve', options, { species, commit, task_pass: { n: hist.n, ok: hist.ok, q: +q.toFixed(4) } });
+    const d = decide(db, env, rng, now, 'remote_gym_claim', 'serve', options, { species, commit, task_pass: { n: hist.n, ok: hist.ok, q: +q.toFixed(4) }, ...(cloudMean === null ? { tokens: 'unknown' } : {}) });
     new LoopEventService(db).recordEvent(runId, 'effort_decision', 'info', message(d), d);
   } catch { /* shadow: never affects the claim */ }
 }
