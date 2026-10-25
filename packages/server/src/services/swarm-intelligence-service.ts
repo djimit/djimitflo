@@ -150,6 +150,24 @@ export interface RunnerManifestRecord {
 /** SW-02: Mission Control reads this many capabilities (latest by updated_at); capability_health also reports the whole registry */
 export const MISSION_CONTROL_CAPABILITY_LIMIT = 100;
 
+const MISSION_EXECUTION_SELECT = `SELECT m.id, m.title, m.status, m.goal_id, m.created_at, g.id AS goal_found, g.status AS goal_status
+  FROM swarm_missions m LEFT JOIN goals g ON g.id = m.goal_id`;
+type MissionExecutionSource = { id: string; title: string; status: string; goal_id: string | null; created_at: string; goal_found: string | null; goal_status: string | null };
+type Stmt = { all: (...params: unknown[]) => unknown[]; get: (...params: unknown[]) => unknown };
+
+/** SW-02: one mission's planning status next to its goal, the goal's unique loop runs and closures (missing lineage is not a failure). */
+function missionExecutionRow(m: MissionExecutionSource, runsOf: Stmt, closedOf: Stmt | null) {
+  const lineage = !m.goal_id ? 'no_goal' as const : m.goal_found ? 'linked' as const : 'goal_missing' as const;
+  if (lineage !== 'linked') return { mission_id: m.id, title: m.title, planning_status: m.status, created_at: m.created_at, goal_id: m.goal_id, lineage, goal_status: null, execution: null };
+  const runs = runsOf.all(m.goal_id) as Array<{ id: string; loop_name: string; status: string; created_at: string }>;
+  const byStatus: Record<string, number> = {};
+  for (const r of runs) byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
+  return {
+    mission_id: m.id, title: m.title, planning_status: m.status, created_at: m.created_at, goal_id: m.goal_id, lineage, goal_status: m.goal_status,
+    execution: { loop_runs: runs.length, by_status: byStatus, latest_run: runs[0] ?? null, closed_runs: closedOf ? (closedOf.get(m.goal_id) as { n: number }).n : null },
+  };
+}
+
 export class SwarmIntelligenceService {
   private panels: SpecialistPanelService;
   readonly evidence: SwarmEvidenceService;
@@ -597,9 +615,7 @@ export class SwarmIntelligenceService {
     const count = <T>(sql: string): T[] => { try { return this.db.prepare(sql).all() as T[]; } catch { return []; } };
     const byPlanning = count<{ k: string; n: number }>('SELECT status AS k, COUNT(*) AS n FROM swarm_missions GROUP BY status');
     const byGoal = count<{ k: string; n: number }>("SELECT COALESCE(g.status, 'unknown') AS k, COUNT(*) AS n FROM swarm_missions m LEFT JOIN goals g ON g.id = m.goal_id GROUP BY 1");
-    const rows = this.db.prepare(`SELECT m.id, m.title, m.status, m.goal_id, m.created_at, g.id AS goal_found, g.status AS goal_status
-      FROM swarm_missions m LEFT JOIN goals g ON g.id = m.goal_id ORDER BY m.created_at DESC LIMIT ?`).all(this.limit(limit)) as Array<{
-      id: string; title: string; status: string; goal_id: string | null; created_at: string; goal_found: string | null; goal_status: string | null }>;
+    const rows = this.db.prepare(`${MISSION_EXECUTION_SELECT} ORDER BY m.created_at DESC LIMIT ?`).all(this.limit(limit)) as MissionExecutionSource[];
     const runsOf = this.db.prepare('SELECT id, loop_name, status, created_at FROM loop_runs WHERE goal_id = ? ORDER BY created_at DESC, id DESC');
     const closedOf = (() => { try { return this.db.prepare('SELECT COUNT(DISTINCT c.loop_run_id) AS n FROM loop_learning_closures c JOIN loop_runs r ON r.id = c.loop_run_id WHERE r.goal_id = ?'); } catch { return null; } })();
     return {
@@ -608,19 +624,18 @@ export class SwarmIntelligenceService {
         by_planning_status: Object.fromEntries(byPlanning.map((r) => [r.k, r.n])),
         by_goal_status: Object.fromEntries(byGoal.map((r) => [r.k, r.n])),
       },
-      missions: rows.map((m) => {
-        const lineage = !m.goal_id ? 'no_goal' as const : m.goal_found ? 'linked' as const : 'goal_missing' as const;
-        if (lineage !== 'linked') return { mission_id: m.id, title: m.title, planning_status: m.status, created_at: m.created_at, goal_id: m.goal_id, lineage, goal_status: null, execution: null };
-        const runs = runsOf.all(m.goal_id) as Array<{ id: string; loop_name: string; status: string; created_at: string }>;
-        const byStatus: Record<string, number> = {};
-        for (const r of runs) byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
-        return {
-          mission_id: m.id, title: m.title, planning_status: m.status, created_at: m.created_at, goal_id: m.goal_id, lineage, goal_status: m.goal_status,
-          execution: { loop_runs: runs.length, by_status: byStatus, latest_run: runs[0] ?? null, closed_runs: closedOf ? (closedOf.get(m.goal_id) as { n: number }).n : null },
-        };
-      }),
+      missions: rows.map((m) => missionExecutionRow(m, runsOf, closedOf)),
       note: 'planning_status is the advisory mission projection; goal_status and execution are the canonical goal/loop records. Missions are never transitioned from here.',
     };
+  }
+
+  /** SW-02 for one mission: the same read-only join as missionExecutions, independent of the list's newest-N window. */
+  missionExecution(id: string) {
+    const row = this.db.prepare(`${MISSION_EXECUTION_SELECT} WHERE m.id = ?`).get(id) as MissionExecutionSource | undefined;
+    if (!row) throw new Error('SWARM_MISSION_NOT_FOUND');
+    const runsOf = this.db.prepare('SELECT id, loop_name, status, created_at FROM loop_runs WHERE goal_id = ? ORDER BY created_at DESC, id DESC');
+    const closedOf = (() => { try { return this.db.prepare('SELECT COUNT(DISTINCT c.loop_run_id) AS n FROM loop_learning_closures c JOIN loop_runs r ON r.id = c.loop_run_id WHERE r.goal_id = ?'); } catch { return null; } })();
+    return missionExecutionRow(row, runsOf, closedOf);
   }
 
   listCapabilities(limit = 100): SwarmCapabilityRecord[] {
