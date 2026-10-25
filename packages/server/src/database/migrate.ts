@@ -1447,6 +1447,9 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   for (const t of ['gym_holdout', 'gym_mutant_holdout', 'gym_write_test_holdout']) addMissingColumns(db, t, [{ name: 'role', definition: "TEXT NOT NULL DEFAULT 'deciding'" }]);
   db.exec(`CREATE TABLE IF NOT EXISTS gym_holdout_freezes (epoch INTEGER PRIMARY KEY, manifest_sha256 TEXT NOT NULL, frozen_at TEXT NOT NULL, origin_sha TEXT, version TEXT,
     holdout_size INTEGER NOT NULL, counts_json TEXT NOT NULL, operator TEXT, manifest_json TEXT NOT NULL)`);
+  // prod 25-10: a pending trial item no claim could be given a task for (remote-gym-service trialBlocked; stall 'gym:trial_blocked')
+  db.exec(`CREATE TABLE IF NOT EXISTS gym_trial_blocked (genome_id TEXT NOT NULL, task_key TEXT NOT NULL, reason TEXT NOT NULL, first_seen TEXT NOT NULL,
+    last_seen TEXT NOT NULL, PRIMARY KEY (genome_id, task_key))`);
   // B8: the failure clusters a dream mutant cites (evidence-or-no-op, DREAM_EVIDENCE_MUTATIONS)
   addMissingColumns(db, 'maker_genomes', [{ name: 'evidence_clusters', definition: 'TEXT' }]);
   // KE-3: the knowledge units (expert_identities ids) whose titles the dream that wrote this mutant injected; null = none
