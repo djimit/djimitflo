@@ -1,0 +1,37 @@
+{
+  "status": "PASS",
+  "source_sha": "e8d0de33bbae8736d7ab0b4f9195292a2e9f56aa",
+  "read_queries": 31,
+  "existing_tests_passed": 85,
+  "existing_tests_skipped": 2,
+  "audit_http_reproductions_passed": 1,
+  "source_anchors": 29,
+  "local_links": 42,
+  "application_changes": 0,
+  "production_mutations": 0,
+  "recorded_tokens_7d": {
+    "cloud": 27131480,
+    "local": 1895721,
+    "complete_ecosystem_coverage": false
+  },
+  "gpu_7d": {
+    "host": "workstation",
+    "kwh": 10.955,
+    "coverage_pct": 99.9,
+    "gym_wh": 5871.645,
+    "remote_maker_wh": 575.72,
+    "gym_to_maker_ratio": 10.2,
+    "unattributed_wh": 4433.163,
+    "whole_host_or_cloud_energy": false
+  },
+  "latest100_run_mix": {
+    "evolution-gym": 42,
+    "repo-maintenance-loop": 50,
+    "doc-drift-and-small-fix-loop": 8
+  },
+  "completed_repair_runs_7d": 41,
+  "closures_for_these_runs": 29,
+  "missing_closure_eligibility_not_proven": 12,
+  "memory_holdout_readout_due": true,
+  "limits": "Snapshot/source/isolated tests, not full CI, independent meter calibration, a new native trial, causal improvement or universal swarm coverage."
+}
