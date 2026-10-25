@@ -114,6 +114,14 @@ The original legacy test stubs said “updated” without changing a head. They 
 
 These are correctness/visibility repairs, not new autonomous capabilities. No additional rollout subsystem or flags were added for the repairs themselves.
 
+### D5 — P1: calendar-dependent fixtures started failing during verification
+
+**Verified after the audit window:** the initial PR's Node 24 [CI run](https://github.com/djimit/djimitflo/actions/runs/40191121973) failed existing TG-001 and value-allocator tests. Both independently reproduce on unchanged baseline after **2026-10-25 12:00 UTC**: TG-001 seeds a rule at October 11 noon but asks the real wall clock for a 14-day freshness cutoff; the allocation endpoint seeds a judgment at October 18 noon but aggregates the real seven-day window. The assertions were correct for the intended fixture date and became false as the calendar advanced. This is distinct from the earlier smoke startup timeout.
+
+**Correction:** pin Date in these two test suites to their existing fixture reference dates, leaving timeout/I/O timers real and restoring Date afterward. Existing assertions now pass: **34 related tests**, after two failures on unchanged main. No production freshness rule, prompt, frozen experimental implementation or selection criterion changes. Complexity XS; Vitest already provides the clock. Risk: Date-only mocking must be restored and must not accidentally fake HTTP timers; related suites and full CI verify this. Acceptance: meaningful assertions remain unchanged and fixtures stay inside their intended reporting/freshness windows on later calendar dates.
+
+Main advanced to test-only [#1005](https://github.com/djimit/djimitflo/pull/1005) while this PR was prepared. That change was integrated into the topic branch, its 14 tests passed, and the PR's final-head CI is separate from the historical audit capture.
+
 ## Important unresolved findings and implementation backlog
 
 Every item below is a separate implementable follow-up. Effort: XS < half day, S about a day, M several days; estimates are planning assumptions. Proposed benefits are targets, not measured gains.

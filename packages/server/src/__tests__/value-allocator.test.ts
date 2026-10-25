@@ -22,8 +22,12 @@ const iso = (ms: number) => new Date(ms).toISOString();
 let db: Database.Database;
 let seq = 0;
 
-beforeEach(() => { db = new Database(':memory:'); db.pragma('foreign_keys = OFF'); db.exec(schema); runMigrations(db); ensureCreditTable(db); new SkillEvolutionEngine(db); seq = 0; });
-afterEach(() => { vi.unstubAllEnvs(); db.close(); });
+beforeEach(() => {
+  // HTTP aggregation uses the wall clock too; keep it aligned with the seeded reporting window.
+  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(NOW);
+  db = new Database(':memory:'); db.pragma('foreign_keys = OFF'); db.exec(schema); runMigrations(db); ensureCreditTable(db); new SkillEvolutionEngine(db); seq = 0;
+});
+afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); db.close(); });
 
 const call = (purpose: string, opts: { tin?: number | null; tout?: number | null; shadow?: number; consumer?: string; model?: string } = {}) =>
   db.prepare(`INSERT INTO llm_model_calls (consumer, model, ok, provider, shadow, tokens_in, tokens_out, purpose, created_at) VALUES (?, ?, 1, 'litellm', ?, ?, ?, ?, ?)`)

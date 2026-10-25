@@ -1,7 +1,12 @@
 {
   "baseline_sha": "6951dba16a32dc8e90971bfe6711033293129eab",
-  "captured_at": "2026-10-25T11:53:00.557695+00:00",
+  "integrated_main_sha": "0a4a3f4e64a1051a3d32ab2232b68cd33f509dbe",
+  "captured_at": "2026-10-25T12:12:16.649186+00:00",
   "scope": "local isolated source verification; not GitHub CI or production",
+  "environment": {
+    "node": "v22.23.2",
+    "npm": "10.9.8"
+  },
   "code_content": [
     {
       "path": "packages/server/src/__tests__/evolution-evidence.test.ts",
@@ -16,8 +21,20 @@
       "sha256": "0aa42615bfbfcc1bf74a2a2b7b8849f5bc5e310730a9265ebedc7bf711fd5608"
     },
     {
+      "path": "packages/server/src/__tests__/okf-knowledge-updater.test.ts",
+      "sha256": "487df9fd2e323f77951a8f7026de884c8347cfd8258c73baf66fca327461a76e"
+    },
+    {
       "path": "packages/server/src/__tests__/reflection-proposal-disposition.test.ts",
       "sha256": "effbf07372a4365f7ea3da6fc735c641475ff3cbb9ebf815db7993b90575cf29"
+    },
+    {
+      "path": "packages/server/src/__tests__/tg-001.test.ts",
+      "sha256": "31c8cdab980abfb889da1a92fd456bf732fc28fd61a8c183e6d2747f387f169b"
+    },
+    {
+      "path": "packages/server/src/__tests__/value-allocator.test.ts",
+      "sha256": "b62d2ff5d73197897b0644433aed9fa914ee35446e658f6f8719f9700738305e"
     },
     {
       "path": "packages/server/src/services/evolution-evidence.ts",
@@ -40,7 +57,7 @@
         "type-check"
       ],
       "exit_code": 0,
-      "duration_seconds": 1.51,
+      "duration_seconds": 1.43,
       "log": "type-check.log"
     },
     {
@@ -50,7 +67,7 @@
         "lint"
       ],
       "exit_code": 0,
-      "duration_seconds": 8.36,
+      "duration_seconds": 8.39,
       "log": "lint.log"
     },
     {
@@ -61,7 +78,7 @@
       ],
       "exit_code": 0,
       "log": "build.log",
-      "note": "Read successful process result; built before final shell-only/test-fixture changes; application TS unchanged afterward"
+      "note": "Read successful process result; built before final shell-only and test-fixture changes; application TS unchanged afterward"
     },
     {
       "command": [
@@ -72,7 +89,7 @@
         "--reporter=verbose"
       ],
       "exit_code": 0,
-      "duration_seconds": 84.89,
+      "duration_seconds": 89.17,
       "log": "full-test.log"
     },
     {
@@ -87,7 +104,7 @@
         "test_*poller.py"
       ],
       "exit_code": 0,
-      "duration_seconds": 0.24,
+      "duration_seconds": 0.28,
       "log": "poller.log"
     },
     {
@@ -97,7 +114,7 @@
         "audit:ci"
       ],
       "exit_code": 0,
-      "duration_seconds": 0.65,
+      "duration_seconds": 0.82,
       "log": "audit-ci.log"
     }
   ],
