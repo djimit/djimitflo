@@ -11,6 +11,7 @@ import { TG_ARMS, armAGoal, classifyTgFailure, freezeTg001, mcnemarExact, oneLin
 
 let db: Database.Database;
 const NOW = '2026-10-11T12:00:00.000Z';
+const RULE_AT = new Date().toISOString(); // the recent-rules window reads the wall clock
 const FINDING = { id: 'f1', type: 'test_gap', severity: 'low', file: 'packages/server/src/services/w1.ts', message: 'w1.ts exports parse() without a unit test.',
   evidence: 'test-gap scan: 0 tests import w1.ts', suggested_fix: 'Write packages/server/src/__tests__/w1.test.ts covering parse().', metadata: { objective_mode: true } };
 
@@ -38,7 +39,7 @@ it('TG-001 arm A is exactly the worker\'s gym goal; arms B/C/D differ as specifi
   expect(armAGoal(task)).toBe(worker.gymGoal(task, true, []));
   vi.stubEnv('LOOP_MEMORY_RULES_ENABLED', 'true');
   db.prepare(`INSERT INTO memory_candidates (id, title, content, memory_type, status, promotion_status, human_required, sensitivity, metadata, created_at, updated_at, store)
-    VALUES ('r1', 't', 'Run the named test before you hand off.', 'engineering_rule', 'promoted', 'promoted', 0, 'normal', '{}', ?, ?, 'procedural')`).run(NOW, NOW);
+    VALUES ('r1', 't', 'Run the named test before you hand off.', 'engineering_rule', 'promoted', 'promoted', 0, 'normal', '{}', ?, ?, 'procedural')`).run(RULE_AT, RULE_AT);
   const arms = productionArms(db, task, '/repo-that-does-not-exist')!;
   expect(arms).not.toBeNull();
   // B = the production LOOP_WORK.md: ids, advisory past experience, the memory rule and the fixed rules template

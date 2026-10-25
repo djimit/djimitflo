@@ -249,7 +249,7 @@ describe('value allocator: daily judgment and endpoint', () => {
     const admin = auth.generateToken(auth.createUser('va-admin@example.test', 'disposable-password', UserRole.ADMIN));
     const viewer = auth.generateToken(auth.createUser('va-viewer@example.test', 'disposable-password', UserRole.VIEWER));
     const http = express().use('/api/health', createHealthRoutes(db, createAuthMiddleware(auth)));
-    judgment('commons_idea', 'shadow', { tin: 300, tout: 20 });
+    judgment('commons_idea', 'shadow', { tin: 300, tout: 20, at: Date.now() - DAY }); // the endpoint reads the wall clock
     vi.stubEnv('VALUE_ALLOCATOR_MODE', 'off');
     expect((await request(http).get('/api/health/value-allocation').set('Authorization', `Bearer ${admin}`)).status).toBe(404);
     vi.stubEnv('VALUE_ALLOCATOR_MODE', 'shadow');
