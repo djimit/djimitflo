@@ -320,6 +320,7 @@ export interface EvolutionEvidence {
   falsifier?: FalsifierEvidence;
   /** L3-v2 §5.1–2 (SETTLEMENT_EXECUTION_MODE, shadow): merged loop PRs ≥ 14 d — tests re-run at origin/main, fresh-mutant kill share vs maker time; graded vs labels (services/settlement-execution.ts) */
   settlement_execution?: SettlementExecutionEvidence;
+  scheduler_capacity?: { mode: string; would_defer_24h: number | null; would_defer_7d: number | null; would_schedule_7d: number | null; latest: { at: string; goal_id: string; would_defer: boolean; observed: Record<string, unknown> } | null; observed_now: Record<string, unknown> | null };
 }
 export type FalsifierCounts = { submitted: number; rejected: number; red_at_base: number; green_at_base: number; unknown: number; settled_green: number; expired: number; pending: number };
 export interface FalsifierEvidence {
