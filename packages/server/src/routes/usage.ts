@@ -4,6 +4,7 @@ import type { AuthMiddleware } from '../middleware/auth';
 import { UsageService } from '../services/usage-service';
 import { createError } from '../middleware/error-handler';
 import { usageAccounts } from '../services/usage-accounts';
+import { fetchOllamaAccountUsage, type OllamaAccountUsage } from '../services/ollama-balance';
 
 function boundedLimit(value: unknown, fallback = 20): number {
   if (value === undefined) return fallback;
@@ -14,14 +15,17 @@ function boundedLimit(value: unknown, fallback = 20): number {
   return limit;
 }
 
-export function createUsageRoutes(db: Database, auth?: AuthMiddleware): Router {
+export function createUsageRoutes(db: Database, auth?: AuthMiddleware,
+  opts: { ollamaAccountUsage?: () => Promise<OllamaAccountUsage> } = {}): Router {
   const router = Router();
   const usageService = new UsageService(db);
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
 
-  // GET /api/usage/accounts — read-only usage per provider account (llm_model_calls + worker_leases + inference state + plan limits)
-  router.get('/accounts', requirePermission('manage:config'), (_req, res, next) => {
-    try { res.json(usageAccounts(db)); } catch (err) { next(err); }
+  // GET /api/usage/accounts — read-only usage per provider account (llm_model_calls + worker_leases + inference state + plan limits,
+  // plus the Ollama balance API when OLLAMA_BALANCE_MODE=on: cached 5 min, fail-soft, never throws)
+  const accountUsage = opts.ollamaAccountUsage ?? (() => fetchOllamaAccountUsage());
+  router.get('/accounts', requirePermission('manage:config'), async (_req, res, next) => {
+    try { res.json(usageAccounts(db, { ollamaAccountUsage: await accountUsage() })); } catch (err) { next(err); }
   });
 
   // GET /api/usage/tokens — query token usage

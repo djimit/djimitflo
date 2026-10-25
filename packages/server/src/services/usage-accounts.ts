@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { Database } from 'better-sqlite3';
 import { ollamaLimitClass, readOllamaLimit } from './inference-failover';
 import { LIMIT_HIT, subscriptionLimitBackoffMs } from './subscription-gym';
+import type { OllamaAccountUsage } from './ollama-balance';
 
 /**
  * /usage per provider ACCOUNT (operator 18-10: the page read token_usage_log, 0 rows in prod). Read-only over the records
@@ -155,6 +156,16 @@ export interface LimitView extends PlanLimit {
   comparable: boolean; used_pct: number | null; unit_note: string | null;
   /** true = the account's configured plan, false = another plan (reference), null = account_plan unknown */
   active: boolean | null;
+  /** set when used_pct is the vendor's own percent (Ollama balance API, account-wide) instead of our ledger */
+  pct_source?: 'ollama_balance_api'; resets_at?: string | null;
+}
+
+/** The Ollama balance API percent fills the session / weekly rows of the active (or unknown) plan: same unit (percent of the account limit). */
+export function withAccountPct(v: LimitView, au: OllamaAccountUsage | null | undefined): LimitView {
+  const w = v.window === 'session' ? au?.session : v.window === 'weekly' ? au?.weekly : null;
+  if (!w || v.active === false) return v;
+  return { ...v, comparable: true, used_pct: w.used_pct, pct_source: 'ollama_balance_api', resets_at: w.resets_at,
+    unit_note: "percent of the account limit as reported by the Ollama balance API (account-wide, every client); the calls / tokens above are Djimitflo's share only" };
 }
 
 /** A plan limit against what we measured. Tokens vs tokens compare; requests vs calls compare with a caveat; the rest do not. */
@@ -220,10 +231,19 @@ export function loadRecords(db: Database, since: string): { records: UsageRecord
   return { records, sources };
 }
 
-export interface AccountState { state: 'limited' | 'backoff' | 'no_limit_recorded'; since: string | null; until: string | null; reason: string | null }
+export interface AccountState { state: 'limit_reached' | 'limited' | 'backoff' | 'no_limit_recorded'; since: string | null; until: string | null; reason: string | null }
 
-export function accountState(db: Database, account: AccountId, records: UsageRecord[], now: number, env: NodeJS.ProcessEnv = process.env): AccountState {
+export function accountState(db: Database, account: AccountId, records: UsageRecord[], now: number, env: NodeJS.ProcessEnv = process.env,
+  accountUsage?: OllamaAccountUsage | null): AccountState {
   if (account === 'ollama_cloud') {
+    // first-party, account-wide: a window at >= 100 % is reached whatever Djimitflo's own ledger shows
+    const full = (['session', 'weekly'] as const).filter((w) => (accountUsage?.[w]?.used_pct ?? 0) >= 100);
+    if (full.length) {
+      const resets = full.map((w) => accountUsage![w]!.resets_at).filter((r): r is string => Boolean(r)).sort();
+      const credits = accountUsage!.credits?.balance_usd;
+      return { state: 'limit_reached', since: accountUsage!.fetched_at, until: resets.at(-1) ?? null,
+        reason: `Ollama balance API: ${full.map((w) => `${w} ${accountUsage![w]!.used_pct} % used`).join(', ')}${credits !== undefined ? `; purchased usage credits left: $${credits.toFixed(2)}` : ''}` };
+    }
     const s = readOllamaLimit(db);
     if (s) return { state: 'limited', since: s.detected_at, until: null, reason: `${s.error_class} usage limit (${s.excerpt}); cleared when the 30-min probe succeeds` };
   }
@@ -237,8 +257,11 @@ export function accountState(db: Database, account: AccountId, records: UsageRec
   return { state: 'no_limit_recorded', since: null, until: null, reason: null };
 }
 
-/** The full per-account view. */
-export function usageAccounts(db: Database, opts: { now?: number; env?: NodeJS.ProcessEnv; planLimits?: ReturnType<typeof loadPlanLimits> } = {}) {
+const NOT_QUERIED: OllamaAccountUsage = { source: 'ollama_balance_api', mode: 'off', fetched_at: null, session: null, weekly: null, credits: null, week: null,
+  error: 'not queried' };
+
+/** The full per-account view. ollamaAccountUsage: the Ollama balance API result (routes/usage.ts fetches it; absent = not queried). */
+export function usageAccounts(db: Database, opts: { now?: number; env?: NodeJS.ProcessEnv; planLimits?: ReturnType<typeof loadPlanLimits>; ollamaAccountUsage?: OllamaAccountUsage | null } = {}) {
   const now = opts.now ?? Date.now(); const env = opts.env ?? process.env;
   const starts = windowStarts(now);
   const since = new Date(Math.min(starts.month, starts['7d']) - 86_400_000).toISOString().slice(0, 10); // date prefix: both timestamp formats compare
@@ -258,19 +281,24 @@ export function usageAccounts(db: Database, opts: { now?: number; env?: NodeJS.P
     const priced = month.filter((r) => r.list_price_cost !== null);
     const lastError = rs.filter((r) => r.error).sort((x, y) => y.at - x.at)[0];
     const lastLimit = rs.filter((r) => r.limit_hit).sort((x, y) => y.at - x.at)[0];
+    // a CLI lease session counts once although it makes many requests (we never see them); counted apart so the page can say so
+    const lease_sessions = Object.fromEntries((Object.keys(starts) as WindowId[]).map((w) =>
+      [w, rs.filter((r) => !r.mirror && r.provider.startsWith('lease:') && r.at >= starts[w] && r.at <= now).length])) as Record<WindowId, number>;
+    const accountUsage = a.id === 'ollama_cloud' ? (opts.ollamaAccountUsage ?? NOT_QUERIED) : undefined;
     const brief = (r: UsageRecord | undefined) => r ? { at: new Date(r.at).toISOString(), message: r.error ?? 'limit', consumer: r.consumer, model: r.model } : null;
     return {
-      id: a.id, label: a.label, windows: sums,
+      id: a.id, label: a.label, scope: 'djimitflo_ledger' as const, windows: sums, lease_sessions,
+      ...(accountUsage ? { account_usage: accountUsage } : {}),
       consumers_7d: [...consumers.values()].map((c) => ({ ...c, tokens: c.calls === c.calls_without_tokens ? null : c.tokens })).sort((x, y) => y.calls - x.calls),
       providers_seen: [...new Set(rs.map((r) => r.provider))].sort(),
-      last_error: brief(lastError), last_limit_hit: brief(lastLimit), state: accountState(db, a.id, records, now, env),
+      last_error: brief(lastError), last_limit_hit: brief(lastLimit), state: accountState(db, a.id, records, now, env, accountUsage),
       cost: { basis: a.cost_basis, observed_bases: [...new Set(month.map((r) => r.cost_basis).filter((b): b is string => Boolean(b)))].sort(),
         list_price_usd_month: priced.length ? +priced.reduce((s, r) => s + (r.list_price_cost ?? 0), 0).toFixed(6) : null, calls_without_list_price_month: month.length - priced.length },
       plan: plan.account_plan[a.id] ?? 'unknown',
-      limits: plan.limits.filter((l) => l.account === a.id).map((l) => limitView(l, sums, plan.account_plan)),
+      limits: plan.limits.filter((l) => l.account === a.id).map((l) => withAccountPct(limitView(l, sums, plan.account_plan), accountUsage)),
     };
   }).filter((a) => a.id !== 'other' || a.providers_seen.length > 0);
   return { generated_at: new Date(now).toISOString(), window_starts: Object.fromEntries(Object.entries(starts).map(([k, v]) => [k, new Date(v).toISOString()])),
     sources, plan_limits: { source: plan.source, entries: plan.limits.length, invalid: plan.invalid, error: plan.error }, accounts,
-    note: 'Calls = llm_model_calls rows + worker_leases CLI sessions (one per lease); ledger mirrors of a lease are not counted twice. tokens null = calls without reported tokens. today/month are UTC; a vendor weekly limit is compared with our rolling 7 d.' };
+    note: "Calls and tokens are Djimitflo's share, as recorded (scope djimitflo_ledger): llm_model_calls rows + worker_leases CLI sessions. A lease counts once although the CLI makes many requests; ledger mirrors of a lease are not counted twice; other services on the same vendor account are not in it. tokens null = calls without reported tokens. today/month are UTC; a vendor weekly limit is compared with our rolling 7 d. Account-wide Ollama figures come only from the Ollama balance API (OLLAMA_BALANCE_MODE=on)." };
 }
