@@ -57,7 +57,7 @@ describe('G18: Economy endpoint logic (ship gate)', () => {
   });
 
   it('computes per-run efficiency for the economy endpoint', () => {
-    db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, repository_path, findings_json, plan_json, gates_json, next_actions_json, metadata) VALUES ('run-eco', 'test', 'closed', 'completed', '/tmp', '[]', '[]', '[]', '[]', '{}')`).run();
+    db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, repository_path, findings_json, plan_json, gates_json, next_actions_json, metadata) VALUES ('run-eco', 'test', 'closed', 'completed', '/tmp', '[]', '[]', '[{"name":"maker_completion","status":"pass","evidence":""}]', '[]', '{}')`).run();
 
     db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, finding_id, worktree_path, metadata) VALUES ('lease-m', 'run-eco', 'maker', 'codex', 'completed', 'f1', '/tmp', ?)`).run(JSON.stringify({ runtime_usage: { total_tokens: 500000 } }));
     db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, finding_id, worktree_path, metadata) VALUES ('lease-c', 'run-eco', 'checker', 'codex', 'completed', 'f1', '/tmp', ?)`).run(JSON.stringify({ runtime_usage: { total_tokens: 100000 } }));
@@ -66,6 +66,7 @@ describe('G18: Economy endpoint logic (ship gate)', () => {
     expect(metric.verifiedArtifacts).toBe(1);
     expect(metric.dollarsSpent).toBeGreaterThan(0);
     expect(metric.efficiency).toBeGreaterThan(0);
+    expect(metric.runVerified).toBe(true);
   });
 
   it('computes summary totals across capabilities and runs', () => {
@@ -84,7 +85,7 @@ describe('G18: Economy endpoint logic (ship gate)', () => {
     }, 0);
     const totalDollarsSpent = recentRuns.reduce((s, r) => {
       const m = loops.computeEfficiencyMetric(r.id);
-      return s + m.dollarsSpent;
+      return s + (m.dollarsSpent ?? 0);
     }, 0);
 
     expect(totalVerifiedArtifacts).toBeDefined();
