@@ -505,6 +505,8 @@ export class LoopDaemon {
       const currentStatus = this.db.prepare('SELECT status FROM goals WHERE id = ?').get(goal.id) as { status: string } | undefined;
       if (currentStatus?.status === 'created') {
         const canSchedule = this.scheduler.canSchedule(goal.metadata);
+        // RESOURCE_SCHEDULER_MODE=shadow: record what the observed capacity would decide; never changes canSchedule.
+        this.scheduler.recordShadow(this.db, goal.id, goal.metadata);
         if (!canSchedule.canSchedule) {
           swarmEventBus.emit('convergence', {
             daemon: 'goal_deferred',

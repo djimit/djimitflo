@@ -97,6 +97,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   PANEL_FALLBACK_RUNTIME: 'off (`claude`)',
   POLICY_VIOLATION_LOG: 'off (`shadow`: §16 step 8 — every gate that already detects a policy breach also writes one `policy_violations` row (`a…',
   RESOURCE_LEDGER_ENABLED: 'off (on: every host-agent poll that carries `info.power.gpu_watts` — rocm-smi / nvidia-smi package power, absent on hos…',
+  RESOURCE_SCHEDULER_MODE: 'off (`shadow`)',
   SCHEDULER_SELF_HEAL_MODE: 'shadow',
   SETTLEMENT_EXECUTION_MODE: 'off (`shadow`)',
   SHIPPED_CODE_SCAN_MODE: 'off (`shadow`: once a day (first run 15 min after boot) the installed runtime packages — `<node prefix>/lib/node_module…',
