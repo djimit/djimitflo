@@ -56,6 +56,8 @@ From EVOLUTION_FLAGS; default as in the runbook flag table (docs/runbooks/self-i
 | `INFERENCE_BUDGET_THROTTLE` | yes | `shadow` (`off`, `on`) |
 | `OLLAMA_WEEKLY_TOKEN_BUDGET` | yes | unset = no budget (never throttles) |
 | `OLLAMA_THROTTLE_AT` | yes | 0.7 |
+| `OLLAMA_BALANCE_MODE` | no | off (`on`) |
+| `OLLAMA_ACCOUNT_KEY_ENV` | no | `SOCIAL_COMPAT_API_KEY` |
 
 ## Fixed rules
 
