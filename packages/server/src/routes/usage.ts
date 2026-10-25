@@ -1,9 +1,11 @@
 import { Router } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { UsageService } from '../services/usage-service';
 import { createError } from '../middleware/error-handler';
-import { usageAccounts } from '../services/usage-accounts';
+import { ACCOUNTS, usageAccounts, type AccountId } from '../services/usage-accounts';
+import { parseSnapshotPayload, recordSnapshot } from '../services/usage-snapshots';
 import { fetchOllamaAccountUsage, type OllamaAccountUsage } from '../services/ollama-balance';
 
 function boundedLimit(value: unknown, fallback = 20): number {
@@ -26,6 +28,21 @@ export function createUsageRoutes(db: Database, auth?: AuthMiddleware,
   const accountUsage = opts.ollamaAccountUsage ?? (() => fetchOllamaAccountUsage());
   router.get('/accounts', requirePermission('manage:config'), async (_req, res, next) => {
     try { res.json(usageAccounts(db, { ollamaAccountUsage: await accountUsage() })); } catch (err) { next(err); }
+  });
+
+  // POST /api/usage/accounts/:account/snapshot — append an operator-reported snapshot of the vendor's usage page (claude_max /
+  // chatgpt_pro have no account-wide API). Validated, secret-looking values refused; the latest one shows in GET /accounts.
+  const snapshotLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false }); // per-router limiter CodeQL can see
+  router.post('/accounts/:account/snapshot', snapshotLimiter, requirePermission('manage:config'), (req, res, next) => {
+    try {
+      const account = ACCOUNTS.find((a) => a.id === req.params.account && a.id !== 'other')?.id as AccountId | undefined;
+      if (!account) throw createError(400, `account must be one of ${ACCOUNTS.filter((a) => a.id !== 'other').map((a) => a.id).join(', ')}`, 'VALIDATION_ERROR');
+      const parsed = parseSnapshotPayload(req.body);
+      if (!parsed.ok) throw createError(400, parsed.error, 'VALIDATION_ERROR');
+      const reportedBy = String(req.user?.sub ?? '').trim();
+      if (!reportedBy) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
+      res.status(201).json(recordSnapshot(db, account, reportedBy, parsed.payload));
+    } catch (err) { next(err); }
   });
 
   // GET /api/usage/tokens — query token usage

@@ -1,8 +1,9 @@
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { UsagePage } from './UsagePage';
+import { useAuthStore } from '../lib/auth-store';
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); useAuthStore.setState({ user: null, token: null, isAuthenticated: false }); });
 
 const win = (calls: number, tokens: number | null, unknown = 0) => ({ calls, tokens, calls_without_tokens: unknown });
 const limit = (o: Record<string, unknown>) => ({ account: 'x', plan: 'P', window: 'weekly', unit: 'unknown', limit: null, limit_text: '', source_url: null, checked_at: null,
@@ -87,4 +88,66 @@ it('shows unknown with the reason when the balance API is off or failed, never 0
   render(<UsagePage />);
   const o2 = await screen.findByRole('region', { name: 'Ollama Cloud (subscription)' });
   expect(within(o2).getByText(/unknown — balance API unavailable \(balance: HTTP 503; usage: timeout\)/)).toBeTruthy();
+});
+
+const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+const hoursAhead = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString();
+
+it('shows the operator snapshot with its age and a stale badge after 24 h; unreported fields stay unknown, never 0', async () => {
+  stub([account({ id: 'claude_max', label: 'Claude Max (subscription via Claude Code)', plan: 'Max 5x',
+    operator_snapshot: { reported_at: hoursAgo(30), age_hours: 30, stale: true, plan: 'Max 5x', session: { used_pct: 42, resets_at: hoursAhead(2) },
+      model_weekly: [{ model: 'Opus', used_pct: 80, cap_note: 'separate cap' }], credits: [{ label: 'extra usage', remaining: 12.5, total: 50, currency: 'USD' }],
+      spend_limit: { spent: 37.5, limit: 50, currency: 'USD', period: 'monthly', auto_reload: false }, by_product: [{ product: 'Claude Code', share_pct: 90 }], note: 'from the usage page' },
+    limits: [limit({ plan: 'Max 5x', window: '5h', active: true, comparable: true, used_pct: 42, pct_source: 'operator_snapshot', reported_at: hoursAgo(30), resets_at: hoursAhead(2) })] })]);
+  render(<UsagePage />);
+  const c = await screen.findByRole('region', { name: 'Claude Max (subscription via Claude Code)' });
+  const snap = within(c).getByRole('group', { name: 'Operator snapshot' });
+  expect(within(snap).getByText(/^operator-reported 30 h ago/)).toBeTruthy();
+  expect(within(snap).getByText('stale')).toBeTruthy();
+  expect(within(snap).getByRole('meter', { name: 'operator snapshot · session' }).getAttribute('aria-valuenow')).toBe('42');
+  expect(within(snap).getByText('weekly: unknown (not reported)')).toBeTruthy();
+  expect(within(snap).getByText(/^Opus \(weekly\): 80 % used · separate cap/)).toBeTruthy();
+  expect(within(snap).getByText(/extra usage: US\$12\.50 of US\$50\.00 left/)).toBeTruthy();
+  expect(within(snap).getByText('spend limit: US$37.50 of US$50.00 (monthly) · auto-reload off')).toBeTruthy();
+  expect(within(snap).getByText('Claude Code: 90 %')).toBeTruthy();
+  expect(within(snap).queryByText(/\b0 %/)).toBeNull();
+  expect(within(c).getByText(/42 % used \(operator-reported 30 h ago\)/)).toBeTruthy(); // plan row filled from the snapshot, labelled
+});
+
+it('a fresh snapshot has no stale badge; an account without one says so', async () => {
+  stub([account({ id: 'claude_max', label: 'Claude Max (subscription via Claude Code)', operator_snapshot: { reported_at: hoursAgo(2), age_hours: 2, stale: false, weekly: { used_pct: 55 } } }),
+    account({ id: 'chatgpt_pro', label: 'ChatGPT Pro (Codex)', operator_snapshot: null })]);
+  render(<UsagePage />);
+  const c = await screen.findByRole('region', { name: 'Claude Max (subscription via Claude Code)' });
+  expect(within(c).getByText(/^operator-reported 2 h ago/)).toBeTruthy();
+  expect(within(c).queryByText('stale')).toBeNull();
+  expect(within(c).getByText('session: unknown (not reported)')).toBeTruthy();
+  expect(within(screen.getByRole('region', { name: 'ChatGPT Pro (Codex)' })).getByText('Operator snapshot: none reported')).toBeTruthy();
+});
+
+it('the snapshot form is hidden without manage:config and posts the reported figures with it', async () => {
+  stub([account({ id: 'claude_max', label: 'Claude Max (subscription via Claude Code)', operator_snapshot: null })]);
+  render(<UsagePage />);
+  const c = await screen.findByRole('region', { name: 'Claude Max (subscription via Claude Code)' });
+  expect(within(c).queryByText('Report a usage snapshot')).toBeNull();
+  expect(within(c).queryByRole('button', { name: /save snapshot/i })).toBeNull();
+  cleanup();
+
+  useAuthStore.setState({ user: { id: 'fixture-admin', role: 'admin' } as never, token: 'fixture-token', isAuthenticated: true });
+  const fetch = vi.fn(async (url: string, init?: RequestInit) => (String(url).includes('/snapshot')
+    ? { ok: true, status: 201, json: async () => ({ id: 's1', account: 'claude_max', reported_at: hoursAgo(0), source: 'operator_snapshot', payload: JSON.parse(String(init?.body)) }) }
+    : String(url).includes('/usage/accounts')
+      ? { ok: true, status: 200, json: async () => ({ ...body, accounts: [account({ id: 'claude_max', label: 'Claude Max (subscription via Claude Code)', operator_snapshot: null })] }) }
+      : { ok: true, status: 200, json: async () => ({ total_tokens: 0, total_cost: 0, breakdown: [] }) }));
+  vi.stubGlobal('fetch', fetch);
+  render(<UsagePage />);
+  const c2 = await screen.findByRole('region', { name: 'Claude Max (subscription via Claude Code)' });
+  fireEvent.click(within(c2).getByText('Report a usage snapshot'));
+  fireEvent.change(within(c2).getByLabelText('weekly % used'), { target: { value: '55' } });
+  fireEvent.change(within(c2).getByLabelText('note'), { target: { value: 'from the usage page' } });
+  fireEvent.click(within(c2).getByRole('button', { name: /save snapshot/i }));
+  await waitFor(() => expect(fetch.mock.calls.some(([u]) => String(u).includes('/usage/accounts/claude_max/snapshot'))).toBe(true));
+  const [, init] = fetch.mock.calls.find(([u]) => String(u).includes('/snapshot'))!;
+  expect(init?.method).toBe('POST');
+  expect(JSON.parse(String(init?.body))).toEqual({ weekly: { used_pct: 55 }, note: 'from the usage page' });
 });
