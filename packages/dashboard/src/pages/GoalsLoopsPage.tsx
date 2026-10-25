@@ -478,6 +478,7 @@ export function GoalsLoopsPage() {
                       onExecuteChecker={() => void runAction(`execute-checker-${lease.id}`, () => executeChecker(lease))}
                       selectedRuntime={runtime}
                       makerCompleted={selectedBundle.leases.some((maker) => maker.id === lease.metadata.maker_lease_id && maker.role === 'maker' && maker.status === 'completed')}
+                      runMakerCost={makerCost(selectedBundle.leases)}
                       busy={actionId !== null || loading || runLocked}
                     />
                   )) : (
@@ -586,6 +587,7 @@ function LeaseRow({
   selectedRuntime,
   makerCompleted,
   busy,
+  runMakerCost,
 }: {
   lease: WorkerLeaseRecord;
   onExecute: () => void;
@@ -596,6 +598,7 @@ function LeaseRow({
   selectedRuntime: 'manual' | 'codex' | 'opencode';
   makerCompleted: boolean;
   busy: boolean;
+  runMakerCost?: MakerCost;
 }) {
   const isReviewer = lease.role === 'checker' || lease.role === 'security_checker';
   const canVerdict = isReviewer && lease.status === 'prepared' && lease.runtime === 'manual' && !lease.metadata.execution_task_id;
@@ -628,6 +631,7 @@ function LeaseRow({
           <span className="truncate">Artifacts: {hasArtifacts ? 'yes' : 'no'}</span>
         </div>
       )}
+      {lease.role === 'maker' && isAsgRecord(lease.metadata.asg) && <AsgPanel asg={lease.metadata.asg} cost={runMakerCost} />}
       {(canExecute || canExecuteChecker || canVerdict || canRetry) && (
         <div className="mt-3 flex flex-wrap gap-2">
           {canExecute && (
@@ -653,6 +657,57 @@ function LeaseRow({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+interface MakerCost { tokens: number; leases: number; failed: number; unknown: number }
+/** Every maker attempt of the run, failed ones included; tokens the runtime did not report stay unknown (never 0). */
+function makerCost(leases: WorkerLeaseRecord[]): MakerCost {
+  const makers = leases.filter((l) => l.role === 'maker');
+  const known = makers.map((l) => (l.metadata.runtime_usage as { total_tokens?: number } | undefined)?.total_tokens).filter((t): t is number => typeof t === 'number');
+  return { tokens: known.reduce((a, b) => a + b, 0), leases: makers.length, failed: makers.filter((l) => l.status === 'failed').length, unknown: makers.length - known.length };
+}
+
+interface AsgSkillRef { skill_id: string; version: number; digest: string; state: string }
+interface AsgRecord {
+  mode: string; requested?: string; blocked_by?: string[]; lane?: string; route_executed?: string;
+  decision: { route: string; reason_codes: string[]; policy: { id: string; version: number; hash: string }; feature_schema_hash: string; skill: AsgSkillRef | null; prefix?: AsgSkillRef | null; alternatives: Array<{ route: string; skill: string | null; reason: string }> };
+  outcome?: {
+    execution_status: string; verification_status: string; result: string; rescued: boolean;
+    incident: { class: string; timed_out: boolean; token_budget_hit: boolean } | null; failure: { class: string; recoverable: boolean } | null;
+    effects: { expected: string[]; observed: string[]; out_of_scope: string[]; declared_untouched: string[]; bounded: boolean };
+    verifier: { command: string | null; exit: number | null } | null;
+  };
+}
+const isAsgRecord = (v: unknown): v is AsgRecord => Boolean(v && typeof v === 'object' && (v as AsgRecord).decision && typeof (v as AsgRecord).decision.route === 'string');
+const skillLabel = (s: AsgSkillRef | null | undefined) => (s ? `${s.skill_id}@${s.version} · ${s.digest.slice(0, 12)} · ${s.state}` : 'none');
+
+/** ASG-001 (ASG_MODE): route, execution error and task result are shown apart, never merged into one status. */
+function AsgPanel({ asg, cost }: { asg: AsgRecord; cost?: MakerCost }) {
+  const d = asg.decision; const o = asg.outcome;
+  return (
+    <div className="mt-2 rounded border border-border p-2 text-xs text-foreground-secondary space-y-1" data-testid="asg-panel">
+      <div className="font-medium text-foreground">Skill granularity (ASG {asg.mode}{asg.blocked_by?.length ? `, on blocked by ${asg.blocked_by.join(', ')}` : ''})</div>
+      <div>Route: <span className="text-foreground">{d.route}</span> ({d.reason_codes.join(', ')}) · executed {asg.route_executed ?? d.route}</div>
+      <div>Policy: {d.policy.id} v{d.policy.version} · {d.policy.hash} · features {d.feature_schema_hash}</div>
+      <div>Skill: {skillLabel(d.skill)}{d.prefix ? ` · prefix ${skillLabel(d.prefix)}` : ''}</div>
+      {d.alternatives.length > 0 && <div>Alternatives: {d.alternatives.map((a) => `${a.route}${a.skill ? ` ${a.skill}` : ''} (${a.reason})`).join('; ')}</div>}
+      {o ? (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <span>Execution: <span className="text-foreground">{o.execution_status}</span></span>
+            <span>Verification: <span className="text-foreground">{o.verification_status}</span>{o.verifier?.command ? ` (${o.verifier.command}, exit ${o.verifier.exit ?? '?'})` : ''}</span>
+            <span>Result: <span className="text-foreground">{o.result}</span></span>
+          </div>
+          <div>Effects: expected {o.effects.expected.join(', ') || 'none'} · observed {o.effects.observed.join(', ') || 'none'}{o.effects.out_of_scope.length ? ` · out of scope ${o.effects.out_of_scope.join(', ')}` : ''} · {o.effects.bounded ? 'bounded to the worktree' : 'external effects unknown'}</div>
+          {o.incident && <div>Incident: {o.incident.class}{o.incident.timed_out ? ' (timeout)' : ''}{o.incident.token_budget_hit ? ' (token brake)' : ''}</div>}
+          {o.failure && <div>Failure: {o.failure.class} · {o.failure.recoverable ? 'recoverable' : 'not recoverable'}</div>}
+          <div>Recovery: {o.rescued ? 'end state verified after the exception (no re-run)' : 'none (v1: no macro adapter, so no macro → micro recovery on this runtime)'}</div>
+        </>
+      ) : <div>Outcome: pending</div>}
+      {cost && <div>Cost, every maker attempt of this run: {cost.tokens.toLocaleString('en-US')} tokens over {cost.leases} lease(s), {cost.failed} failed{cost.unknown ? `, ${cost.unknown} with unknown usage` : ''}</div>}
+      {d.skill && <div>Lineage/admission: lifecycle {d.skill.state}; executes only when eligible or active</div>}
     </div>
   );
 }

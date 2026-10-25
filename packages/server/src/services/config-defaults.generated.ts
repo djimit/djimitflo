@@ -5,6 +5,7 @@
 export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   ACE_001_MODE: 'off (`on`)',
   ARENA_GATE_ENABLED: 'off',
+  ASG_MODE: 'off (`shadow`, `on`)',
   AUTONOMOUS_LURES_ENABLED: 'off',
   CHECKER_CROSS_MODEL: '`ollama/kimi-k3:cloud` (rule: registered in prod\'s opencode provider config, another family than the maker, already a p…',
   CHECKER_FAMILY_RANDOMISE: 'off (`on`)',
