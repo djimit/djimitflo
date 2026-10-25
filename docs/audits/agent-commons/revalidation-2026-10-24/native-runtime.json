@@ -1,0 +1,189 @@
+{
+  "captured_at": "2026-10-24T19:05:39.481793+00:00",
+  "mode": "read-only selected service metadata and bounded sanitized journal counters; no inference triggered",
+  "service": {
+    "Result": "success",
+    "ExecMainStartTimestamp": "Sat 2026-10-24 20:49:44 CEST",
+    "ExecMainExitTimestamp": "Sat 2026-10-24 20:49:44 CEST",
+    "ExecMainStatus": "0",
+    "ActiveState": "inactive",
+    "SubState": "dead"
+  },
+  "timer": {
+    "NextElapseUSecRealtime": "",
+    "LastTriggerUSec": "Sat 2026-10-24 20:49:44 CEST"
+  },
+  "script": {
+    "path": "/usr/local/lib/djimitflo/agent-social-poller.py",
+    "sha256": "5f50a4ac3b60ba1970deb71141b6fa991cfbde56cc9e6f6d71059e7c1fa5eb13",
+    "lines": 243,
+    "accepts_hermes_source_tool_default": true,
+    "old_source_tag_present": false
+  },
+  "poll_summaries": [
+    {
+      "at": "2026-10-24T15:24:50.306250+00:00",
+      "processed": 0,
+      "failures": 4
+    },
+    {
+      "at": "2026-10-24T15:30:12.791186+00:00",
+      "processed": 0,
+      "failures": 4
+    },
+    {
+      "at": "2026-10-24T15:35:18.808651+00:00",
+      "processed": 0,
+      "failures": 4
+    },
+    {
+      "at": "2026-10-24T15:40:40.756245+00:00",
+      "processed": 0,
+      "failures": 4
+    },
+    {
+      "at": "2026-10-24T15:46:08.905687+00:00",
+      "processed": 0,
+      "failures": 4
+    },
+    {
+      "at": "2026-10-24T15:51:16.142496+00:00",
+      "processed": 0,
+      "failures": 4
+    },
+    {
+      "at": "2026-10-24T15:56:02.835604+00:00",
+      "processed": 0,
+      "failures": 4
+    },
+    {
+      "at": "2026-10-24T16:01:33.395035+00:00",
+      "processed": 0,
+      "failures": 4
+    },
+    {
+      "at": "2026-10-24T16:06:40.752062+00:00",
+      "processed": 0,
+      "failures": 4
+    },
+    {
+      "at": "2026-10-24T16:11:51.125455+00:00",
+      "processed": 0,
+      "failures": 4
+    },
+    {
+      "at": "2026-10-24T16:17:21.481687+00:00",
+      "processed": 0,
+      "failures": 4
+    },
+    {
+      "at": "2026-10-24T16:22:31.489479+00:00",
+      "processed": 0,
+      "failures": 4
+    },
+    {
+      "at": "2026-10-24T16:27:50.303292+00:00",
+      "processed": 0,
+      "failures": 4
+    },
+    {
+      "at": "2026-10-24T16:33:05.406012+00:00",
+      "processed": 0,
+      "failures": 4
+    },
+    {
+      "at": "2026-10-24T16:38:25.729541+00:00",
+      "processed": 0,
+      "failures": 4
+    },
+    {
+      "at": "2026-10-24T16:43:51.593432+00:00",
+      "processed": 0,
+      "failures": 4
+    },
+    {
+      "at": "2026-10-24T16:49:10.231686+00:00",
+      "processed": 0,
+      "failures": 4
+    },
+    {
+      "at": "2026-10-24T16:54:04.126776+00:00",
+      "processed": 0,
+      "failures": 4
+    },
+    {
+      "at": "2026-10-24T16:57:11.859136+00:00",
+      "processed": 1,
+      "failures": 0
+    },
+    {
+      "at": "2026-10-24T17:02:18.901399+00:00",
+      "processed": 1,
+      "failures": 0
+    },
+    {
+      "at": "2026-10-24T17:07:48.674047+00:00",
+      "processed": 0,
+      "failures": 1
+    },
+    {
+      "at": "2026-10-24T17:12:59.822254+00:00",
+      "processed": 1,
+      "failures": 0
+    },
+    {
+      "at": "2026-10-24T17:17:56.766456+00:00",
+      "processed": 1,
+      "failures": 0
+    },
+    {
+      "at": "2026-10-24T17:23:44.102280+00:00",
+      "processed": 1,
+      "failures": 0
+    },
+    {
+      "at": "2026-10-24T17:29:00.033490+00:00",
+      "processed": 1,
+      "failures": 0
+    },
+    {
+      "at": "2026-10-24T17:33:59.486415+00:00",
+      "processed": 1,
+      "failures": 0
+    },
+    {
+      "at": "2026-10-24T17:38:35.226619+00:00",
+      "processed": 0,
+      "failures": 0
+    },
+    {
+      "at": "2026-10-24T17:44:02.039064+00:00",
+      "processed": 0,
+      "failures": 0
+    },
+    {
+      "at": "2026-10-24T17:49:10.481714+00:00",
+      "processed": 0,
+      "failures": 0
+    },
+    {
+      "at": "2026-10-24T18:20:00.739235+00:00",
+      "processed": 1,
+      "failures": 0
+    },
+    {
+      "at": "2026-10-24T18:49:44.484043+00:00",
+      "processed": 0,
+      "failures": 0
+    }
+  ],
+  "timer_recheck": {
+    "captured_at": "2026-10-24T19:05:47.375451+00:00",
+    "NextElapseUSecRealtime": "",
+    "LastTriggerUSec": "Sat 2026-10-24 20:49:44 CEST",
+    "Result": "success",
+    "ActiveState": "active",
+    "SubState": "waiting",
+    "UnitFileState": "enabled"
+  }
+}

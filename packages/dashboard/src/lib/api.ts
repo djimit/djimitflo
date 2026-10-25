@@ -677,9 +677,21 @@ export type UsageLimitView = {
   confidence: string | null; note: string | null; exceed_behaviour: string | null;
   measured_window: UsageWindowId; measured_unit: 'tokens' | 'calls'; used: number | null; comparable: boolean; used_pct: number | null; unit_note: string | null;
   active: boolean | null;
-  /** set when used_pct is the vendor's own percent (Ollama balance API, account-wide) */
-  pct_source?: 'ollama_balance_api'; resets_at?: string | null;
+  /** set when used_pct is the vendor's own percent (Ollama balance API, account-wide) or an operator snapshot of the vendor's usage page */
+  pct_source?: 'ollama_balance_api' | 'operator_snapshot'; resets_at?: string | null; reported_at?: string;
 };
+/** What the operator copied from the vendor's usage page (POST /usage/accounts/:account/snapshot). Every field optional: absent = not reported. */
+export type UsageSnapshotPayload = {
+  plan?: string;
+  session?: { used_pct?: number; resets_at?: string };
+  weekly?: { used_pct?: number; resets_at?: string };
+  model_weekly?: Array<{ model: string; used_pct?: number; resets_at?: string; cap_note?: string }>;
+  credits?: Array<{ label: string; remaining?: number; total?: number; currency?: string; expires_at?: string }>;
+  spend_limit?: { spent?: number; limit?: number; currency?: string; period?: 'daily' | 'weekly' | 'monthly'; auto_reload?: boolean };
+  by_product?: Array<{ product: string; share_pct: number }>;
+  note?: string;
+};
+export type UsageOperatorSnapshot = UsageSnapshotPayload & { reported_at: string; age_hours: number; stale: boolean };
 export type UsagePctWindow = { used_pct: number; resets_at: string | null };
 /** Ollama balance API (OLLAMA_BALANCE_MODE); null = not returned / unknown, never 0 */
 export type UsageAccountWide = {
@@ -702,6 +714,8 @@ export type UsageAccount = {
   cost: { basis: string; observed_bases: string[]; list_price_usd_month: number | null; calls_without_list_price_month: number };
   plan: string;
   limits: UsageLimitView[];
+  /** latest operator-reported snapshot; null = none reported */
+  operator_snapshot?: UsageOperatorSnapshot | null;
 };
 export type UsageAccountsResponse = {
   generated_at: string; window_starts: Record<UsageWindowId, string>;
@@ -2160,6 +2174,10 @@ class ApiClient {
   // Usage
   async getUsageAccounts(): Promise<UsageAccountsResponse> {
     return this.request('/usage/accounts');
+  }
+
+  async postUsageSnapshot(account: string, payload: UsageSnapshotPayload): Promise<{ id: string; account: string; reported_at: string; source: 'operator_snapshot'; payload: UsageSnapshotPayload }> {
+    return this.request(`/usage/accounts/${encodeURIComponent(account)}/snapshot`, { method: 'POST', body: JSON.stringify(payload) });
   }
 
   async getUsageQuotas(): Promise<{ quotas: UsageQuota[] }> {
