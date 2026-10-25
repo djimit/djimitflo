@@ -43,6 +43,7 @@ import { startCommonsFalsifier } from '../services/commons-falsifier';
 import { startSettlementExecution } from '../services/settlement-execution';
 import { startValueAllocator } from '../services/value-allocator';
 import { startDreamEvolution } from '../services/dream-evolution';
+import { gymOrphanSweepMode } from '../services/remote-gym-service';
 import { startEvolutionEstimators } from '../services/evolution-estimators';
 import { startMergeSurvival } from '../services/merge-survival';
 import { startLoopAutoMerge } from '../services/loop-auto-merge';
@@ -286,6 +287,8 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     let stopDream = startDreamEvolution(db);
     registerRestart('dream_evolution', () => { stopDream?.(); stopDream = startDreamEvolution(db); });
     noteScheduler('dream_evolution', 'DREAM_EVOLUTION_ENABLED', !!stopDream, 3_600_000);
+    // the orphaned remote gym run sweep rides the dream-evolution tick (GYM_ORPHAN_SWEEP=shadow|on, default off)
+    noteScheduler('gym_orphan_sweep', 'GYM_ORPHAN_SWEEP', !!stopDream && gymOrphanSweepMode() !== 'off', 3_600_000);
     if (stopDream) { lifecycleManager.register({ serviceName: 'DreamEvolution', stop: () => stopDream?.() }); console.log('🧬 Dream evolution on (hourly tick, one dream a day).'); }
   } catch (error) {
     console.warn('⚠️  Dream evolution failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
