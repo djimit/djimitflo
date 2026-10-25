@@ -147,6 +147,9 @@ export interface RunnerManifestRecord {
   created_at: string;
 }
 
+/** SW-02: Mission Control reads this many capabilities (latest by updated_at); capability_health also reports the whole registry */
+export const MISSION_CONTROL_CAPABILITY_LIMIT = 100;
+
 export class SwarmIntelligenceService {
   private panels: SpecialistPanelService;
   readonly evidence: SwarmEvidenceService;
@@ -169,7 +172,8 @@ export class SwarmIntelligenceService {
     // G15.9: Avoid duplicate runtime status probes — cache the status snapshot
     const statusService = this.swarmStatus();
     const status = statusService.getStatus();
-    const capabilities = this.listCapabilities(100);
+    const capabilities = this.listCapabilities(MISSION_CONTROL_CAPABILITY_LIMIT);
+    const registry = this.capabilityRegistryCounts();
     const claims = this.listClaims(100);
     // Pass the already-fetched status to avoid a duplicate probe inside planCapacityV2
     const capacity = this.planCapacityV2({}, statusService);
@@ -194,9 +198,15 @@ export class SwarmIntelligenceService {
         running_leases: status.fleet_pools.reduce((sum, pool) => sum + pool.running_leases, 0),
         active_execution_count: status.active_execution_count,
         registry_is_not_execution: true,
+        current_executions: this.currentExecutions(),
       },
       capability_health: {
+        /** the loaded slice (latest MISSION_CONTROL_CAPABILITY_LIMIT by updated_at); kept for compatibility — see registry_total */
         total: capabilities.length,
+        loaded: capabilities.length,
+        load_limit: MISSION_CONTROL_CAPABILITY_LIMIT,
+        registry_total: registry.total,
+        registry_by_status: registry.by_status,
         validated: capabilities.filter((capability) => capability.status === 'validated').length,
         routable: capabilities.filter((capability) => capability.live_route_allowed).length,
         blocked: capabilities.filter((capability) => capability.blocked_reasons.length > 0).length,
@@ -561,6 +571,55 @@ export class SwarmIntelligenceService {
       candidate_median_duration_ms: candidateDuration,
       baseline_median_duration_ms: baselineDuration,
       openmythos_run_id: evalRun.id,
+    };
+  }
+
+  /** SW-02: the whole registry, not a loaded slice — total rows and rows per status. */
+  capabilityRegistryCounts(): { total: number; by_status: Record<string, number> } {
+    const rows = this.db.prepare('SELECT status, COUNT(*) AS n FROM swarm_capabilities GROUP BY status').all() as Array<{ status: string; n: number }>;
+    return { total: rows.reduce((s, r) => s + r.n, 0), by_status: Object.fromEntries(rows.map((r) => [r.status, r.n])) };
+  }
+
+  /** SW-02: the leases executing or waiting to execute right now, with their run — links a runtime identity to its executions. */
+  currentExecutions(limit = 20): Array<{ lease_id: string; loop_run_id: string; loop_name: string | null; runtime: string; role: string; status: string; updated_at: string }> {
+    try {
+      return this.db.prepare(`SELECT l.id AS lease_id, l.loop_run_id, r.loop_name, l.runtime, l.role, l.status, l.updated_at FROM worker_leases l
+        LEFT JOIN loop_runs r ON r.id = l.loop_run_id WHERE l.status IN ('running', 'prepared') ORDER BY l.status = 'running' DESC, l.updated_at DESC LIMIT ?`).all(limit) as any[];
+    } catch { return []; }
+  }
+
+  /**
+   * SW-02: each mission's planning status (GoalDecomposer writes advisory 'observed' rows) next to its linked goal and the
+   * goal's loop runs (unique run grain, not leases) and learning closures. Read-only: a finished goal never transitions
+   * its mission. Missing lineage is 'unknown', not a failure.
+   */
+  missionExecutions(limit = 50) {
+    const count = <T>(sql: string): T[] => { try { return this.db.prepare(sql).all() as T[]; } catch { return []; } };
+    const byPlanning = count<{ k: string; n: number }>('SELECT status AS k, COUNT(*) AS n FROM swarm_missions GROUP BY status');
+    const byGoal = count<{ k: string; n: number }>("SELECT COALESCE(g.status, 'unknown') AS k, COUNT(*) AS n FROM swarm_missions m LEFT JOIN goals g ON g.id = m.goal_id GROUP BY 1");
+    const rows = this.db.prepare(`SELECT m.id, m.title, m.status, m.goal_id, m.created_at, g.id AS goal_found, g.status AS goal_status
+      FROM swarm_missions m LEFT JOIN goals g ON g.id = m.goal_id ORDER BY m.created_at DESC LIMIT ?`).all(this.limit(limit)) as Array<{
+      id: string; title: string; status: string; goal_id: string | null; created_at: string; goal_found: string | null; goal_status: string | null }>;
+    const runsOf = this.db.prepare('SELECT id, loop_name, status, created_at FROM loop_runs WHERE goal_id = ? ORDER BY created_at DESC, id DESC');
+    const closedOf = (() => { try { return this.db.prepare('SELECT COUNT(DISTINCT c.loop_run_id) AS n FROM loop_learning_closures c JOIN loop_runs r ON r.id = c.loop_run_id WHERE r.goal_id = ?'); } catch { return null; } })();
+    return {
+      totals: {
+        registered: byPlanning.reduce((s, r) => s + r.n, 0), loaded: rows.length,
+        by_planning_status: Object.fromEntries(byPlanning.map((r) => [r.k, r.n])),
+        by_goal_status: Object.fromEntries(byGoal.map((r) => [r.k, r.n])),
+      },
+      missions: rows.map((m) => {
+        const lineage = !m.goal_id ? 'no_goal' as const : m.goal_found ? 'linked' as const : 'goal_missing' as const;
+        if (lineage !== 'linked') return { mission_id: m.id, title: m.title, planning_status: m.status, created_at: m.created_at, goal_id: m.goal_id, lineage, goal_status: null, execution: null };
+        const runs = runsOf.all(m.goal_id) as Array<{ id: string; loop_name: string; status: string; created_at: string }>;
+        const byStatus: Record<string, number> = {};
+        for (const r of runs) byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
+        return {
+          mission_id: m.id, title: m.title, planning_status: m.status, created_at: m.created_at, goal_id: m.goal_id, lineage, goal_status: m.goal_status,
+          execution: { loop_runs: runs.length, by_status: byStatus, latest_run: runs[0] ?? null, closed_runs: closedOf ? (closedOf.get(m.goal_id) as { n: number }).n : null },
+        };
+      }),
+      note: 'planning_status is the advisory mission projection; goal_status and execution are the canonical goal/loop records. Missions are never transitioned from here.',
     };
   }
 
