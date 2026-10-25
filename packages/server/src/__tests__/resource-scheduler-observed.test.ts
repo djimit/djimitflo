@@ -15,7 +15,14 @@ const host = (o: Partial<{ cpus: number; load1: number; free: number; total: num
   cpus: () => o.cpus ?? 2, loadavg: () => [o.load1 ?? 0.5, 0, 0], freemem: () => o.free ?? 3 * GiB, totalmem: () => o.total ?? 7 * GiB,
 });
 const files = (m: Record<string, string>) => (p: string) => { if (p in m) return m[p]; throw new Error(`ENOENT ${p}`); };
-const short: ObservedCapacity = { cpus: 2, cpu_source: 'host', load1: 1.8, cpu_available: 0.2, mem_total_mb: 7168, mem_available_mb: 300, mem_source: 'host' };
+const short: ObservedCapacity = {
+  cpus: 2, cpu_source: 'host', load1: 1.8, cpu_used: 1.8, cpu_used_source: 'host_loadavg', cpu_used_window_ms: null, cpu_available: 0.2, cpu_available_reason: null,
+  mem_total_mb: 7168, mem_available_mb: 300, mem_source: 'host',
+};
+const unknown: ObservedCapacity = {
+  cpus: null, cpu_source: null, load1: null, cpu_used: null, cpu_used_source: null, cpu_used_window_ms: null, cpu_available: null, cpu_available_reason: 'cpu_count_unreadable',
+  mem_total_mb: null, mem_available_mb: null, mem_source: null,
+};
 
 describe('observed capacity parsing', () => {
   it('cgroup v2 cpu.max: quota / period is the cpu count, "max" is no limit, garbage is null', () => {
@@ -34,13 +41,17 @@ describe('observed capacity parsing', () => {
   });
 
   it('a cgroup cpu limit of "200000 100000" wins over the host count', () => {
-    const c = observeCapacity(files({ '/sys/fs/cgroup/cpu.max': '200000 100000' }), host({ cpus: 16, load1: 0.5 }));
-    expect(c).toMatchObject({ cpus: 2, cpu_source: 'cgroup', load1: 0.5, cpu_available: 1.5 });
+    const c = observeCapacity(files({ '/sys/fs/cgroup/cpu.max': '200000 100000' }), host({ cpus: 16, load1: 0.5 }), 0, {});
+    // no cgroup usage readable: unknown, not 2 − the host load
+    expect(c).toMatchObject({ cpus: 2, cpu_source: 'cgroup', load1: 0.5, cpu_available: null, cpu_available_reason: 'cgroup_cpu_usage_unreadable' });
   });
 
   it('"max 100000" and memory.max "max" fall back to host numbers', () => {
     const c = observeCapacity(files({ '/sys/fs/cgroup/cpu.max': 'max 100000', '/sys/fs/cgroup/memory.max': 'max', '/sys/fs/cgroup/memory.current': '1' }), host());
-    expect(c).toEqual({ cpus: 2, cpu_source: 'host', load1: 0.5, cpu_available: 1.5, mem_total_mb: 7168, mem_available_mb: 3072, mem_source: 'host' });
+    expect(c).toEqual({
+      cpus: 2, cpu_source: 'host', load1: 0.5, cpu_used: 0.5, cpu_used_source: 'host_loadavg', cpu_used_window_ms: null, cpu_available: 1.5, cpu_available_reason: null,
+      mem_total_mb: 7168, mem_available_mb: 3072, mem_source: 'host',
+    });
   });
 
   it('a cgroup memory limit wins: available = limit − current, never above host free', () => {
@@ -54,16 +65,67 @@ describe('observed capacity parsing', () => {
     const c = observeCapacity(files({
       '/sys/fs/cgroup/cpu/cpu.cfs_quota_us': '100000', '/sys/fs/cgroup/cpu/cpu.cfs_period_us': '100000',
       '/sys/fs/cgroup/memory/memory.limit_in_bytes': String(GiB), '/sys/fs/cgroup/memory/memory.usage_in_bytes': String(GiB / 4),
-    }), host({ cpus: 8, load1: 0 }));
-    expect(c).toMatchObject({ cpus: 1, cpu_source: 'cgroup', cpu_available: 1, mem_total_mb: 1024, mem_available_mb: 768, mem_source: 'cgroup' });
+    }), host({ cpus: 8, load1: 0 }), 0, {});
+    expect(c).toMatchObject({ cpus: 1, cpu_source: 'cgroup', cpu_available: null, mem_total_mb: 1024, mem_available_mb: 768, mem_source: 'cgroup' });
     expect(observeCapacity(files({ '/sys/fs/cgroup/cpu/cpu.cfs_quota_us': '-1', '/sys/fs/cgroup/cpu/cpu.cfs_period_us': '100000' }), host()).cpu_source).toBe('host');
   });
 
   it('unreadable is null, never a made-up number', () => {
     const none = { cpus: () => 0, loadavg: () => { throw new Error('no'); }, freemem: () => { throw new Error('no'); }, totalmem: () => 0 };
-    expect(observeCapacity(files({}), none)).toEqual({ cpus: null, cpu_source: null, load1: null, cpu_available: null, mem_total_mb: null, mem_available_mb: null, mem_source: null });
+    expect(observeCapacity(files({}), none)).toEqual(unknown);
     // a cgroup memory limit without a readable usage gives no available number
     expect(observeCapacity(files({ '/sys/fs/cgroup/memory.max': String(GiB) }), host()).mem_available_mb).toBeNull();
+  });
+});
+
+describe('observed cpu scope: a cgroup limit is never combined with the host-wide load', () => {
+  const stat = (usec: number) => `usage_usec ${usec}\nuser_usec 1\nsystem_usec 1\n`;
+
+  it('cgroup limit 2 with host load 8: available = limit − container cores used (cpu.stat delta), not limit − host load', () => {
+    const samples = {};
+    const h = host({ cpus: 16, load1: 8 });
+    const first = observeCapacity(files({ '/sys/fs/cgroup/cpu.max': '200000 100000', '/sys/fs/cgroup/cpu.stat': stat(10_000_000) }), h, 1_000, samples);
+    expect(first).toMatchObject({ cpus: 2, cpu_source: 'cgroup', load1: 8, cpu_used: null, cpu_available: null, cpu_used_source: 'cgroup_v2_cpu_stat', cpu_available_reason: 'cgroup_cpu_usage_no_baseline' });
+    // 5 s later the container used 2.5 s of cpu: 0.5 cores
+    const c = observeCapacity(files({ '/sys/fs/cgroup/cpu.max': '200000 100000', '/sys/fs/cgroup/cpu.stat': stat(12_500_000) }), h, 6_000, samples);
+    expect(c).toMatchObject({ cpus: 2, cpu_source: 'cgroup', load1: 8, cpu_used: 0.5, cpu_used_source: 'cgroup_v2_cpu_stat', cpu_used_window_ms: 5_000, cpu_available: 1.5, cpu_available_reason: null });
+    // a second observation in the same tick reuses the last window instead of a sub-second one
+    expect(observeCapacity(files({ '/sys/fs/cgroup/cpu.max': '200000 100000', '/sys/fs/cgroup/cpu.stat': stat(12_500_100) }), h, 6_010, samples)).toMatchObject({ cpu_used: 0.5, cpu_available: 1.5 });
+  });
+
+  it('a container using more than its limit reads 0 available, never negative', () => {
+    const samples = {};
+    const f = (usec: number) => files({ '/sys/fs/cgroup/cpu.max': '100000 100000', '/sys/fs/cgroup/cpu.stat': stat(usec) });
+    observeCapacity(f(0), host({ cpus: 16, load1: 8 }), 0, samples);
+    expect(observeCapacity(f(3_000_000), host({ cpus: 16, load1: 8 }), 2_000, samples)).toMatchObject({ cpu_used: 1.5, cpu_available: 0 });
+  });
+
+  it('cgroup v1 fallback: cpuacct.usage nanoseconds', () => {
+    const samples = {};
+    const f = (ns: number) => files({ '/sys/fs/cgroup/cpu/cpu.cfs_quota_us': '400000', '/sys/fs/cgroup/cpu/cpu.cfs_period_us': '100000', '/sys/fs/cgroup/cpuacct/cpuacct.usage': String(ns) });
+    observeCapacity(f(1e9), host({ cpus: 16, load1: 12 }), 0, samples);
+    expect(observeCapacity(f(4e9), host({ cpus: 16, load1: 12 }), 1_000, samples)).toMatchObject({ cpus: 4, cpu_source: 'cgroup', cpu_used: 3, cpu_used_source: 'cgroup_v1_cpuacct', cpu_available: 1 });
+  });
+
+  it('cgroup limit with unreadable usage: cpu_available null with a reason, never the host load', () => {
+    const c = observeCapacity(files({ '/sys/fs/cgroup/cpu.max': '200000 100000' }), host({ cpus: 16, load1: 0.5 }), 0, {});
+    expect(c).toMatchObject({ cpus: 2, cpu_source: 'cgroup', load1: 0.5, cpu_used: null, cpu_used_source: null, cpu_available: null, cpu_available_reason: 'cgroup_cpu_usage_unreadable' });
+    const garbage = observeCapacity(files({ '/sys/fs/cgroup/cpu.max': '200000 100000', '/sys/fs/cgroup/cpu.stat': 'nr_periods 3\n' }), host(), 0, {});
+    expect(garbage).toMatchObject({ cpu_available: null, cpu_available_reason: 'cgroup_cpu_usage_unreadable' });
+  });
+
+  it('a usage counter that goes backwards restarts the baseline (null with a reason)', () => {
+    const samples = {};
+    const f = (usec: number) => files({ '/sys/fs/cgroup/cpu.max': '200000 100000', '/sys/fs/cgroup/cpu.stat': stat(usec) });
+    observeCapacity(f(5_000_000), host(), 0, samples);
+    expect(observeCapacity(f(1_000), host(), 2_000, samples)).toMatchObject({ cpu_available: null, cpu_available_reason: 'cgroup_cpu_usage_no_baseline' });
+    expect(observeCapacity(f(1_001_000), host(), 4_000, samples)).toMatchObject({ cpu_used: 0.5, cpu_available: 1.5 });
+  });
+
+  it('host mode is unchanged: host cpus − host load1', () => {
+    expect(observeCapacity(files({}), host({ cpus: 4, load1: 1 }), 0, {})).toMatchObject({
+      cpus: 4, cpu_source: 'host', load1: 1, cpu_used: 1, cpu_used_source: 'host_loadavg', cpu_used_window_ms: null, cpu_available: 3, cpu_available_reason: null,
+    });
   });
 });
 
@@ -123,7 +185,7 @@ describe('RESOURCE_SCHEDULER_MODE', () => {
 
   it('unknown observed capacity never counts as short', () => {
     const s = new ResourceScheduler();
-    vi.spyOn(s, 'observe').mockReturnValue({ cpus: null, cpu_source: null, load1: null, cpu_available: null, mem_total_mb: null, mem_available_mb: null, mem_source: null });
+    vi.spyOn(s, 'observe').mockReturnValue(unknown);
     s.recordShadow(db, 'g1', {}, { RESOURCE_SCHEDULER_MODE: 'shadow' });
     expect(rows()).toEqual([]);
   });

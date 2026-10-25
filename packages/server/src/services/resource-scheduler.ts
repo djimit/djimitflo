@@ -12,7 +12,8 @@ import type { Database } from 'better-sqlite3';
  * RESOURCE_SCHEDULER_MODE (off | shadow, default off): the decision always comes from the simplified constants below.
  * In shadow, the decision the observed capacity (host os numbers, a container cgroup limit wins) would give is computed
  * too and, when the two differ, recorded as one `scheduler_capacity` judgments row (mode shadow, subject goal),
- * at most one per goal per 10 min. Nothing reads it for a decision.
+ * at most one per goal per 10 min. Nothing reads it for a decision. CPU available is count − used in one scope: under a
+ * cgroup limit the cgroup's own cpu accounting, otherwise the host load; never a cgroup limit minus the host-wide load.
  */
 
 interface ResourceRequirement {
@@ -30,22 +31,36 @@ interface ResourceAvailability {
 /** What this process can see. null = unknown (unreadable), never a made-up number. */
 export interface ObservedCapacity {
   cpus: number | null;
+  /** Scope of cpus, cpu_used and cpu_available alike: a cgroup limit is never combined with the host-wide load. */
   cpu_source: 'cgroup' | 'host' | null;
-  /** 1-min load average. Host-wide on Linux (not namespaced per container). */
+  /** 1-min load average. Host-wide on Linux (not namespaced per container); informational under a cgroup limit. */
   load1: number | null;
-  /** max(0, cpus − load1). */
+  /** Cores in use in the cpu_source scope: cgroup cpu accounting (Δusage / Δtime between observations) or host load1. */
+  cpu_used: number | null;
+  cpu_used_source: CpuUsedSource | null;
+  /** Window of the cgroup usage delta; null for host load1 (the kernel's 1-min average). */
+  cpu_used_window_ms: number | null;
+  /** max(0, cpus − cpu_used). */
   cpu_available: number | null;
+  /** Why cpu_available is null (null when it is known). */
+  cpu_available_reason: string | null;
   mem_total_mb: number | null;
   mem_available_mb: number | null;
   mem_source: 'cgroup' | 'host' | null;
 }
 
 type Decision = { canSchedule: boolean; reason: string };
+type CpuUsedSource = 'cgroup_v2_cpu_stat' | 'cgroup_v1_cpuacct' | 'host_loadavg';
+/** The previous cgroup cpu usage reading and the last measured window (module state between observations). */
+export interface CpuUsageSamples { base?: { path: string; usec: number; at: number }; last?: { used: number; window_ms: number } }
 type HostOs = Pick<typeof os, 'loadavg' | 'freemem' | 'totalmem'> & { cpus: () => number };
 
 const MB = 1024 * 1024;
 const SHADOW_BOUND_MS = 10 * 60_000;
 const round2 = (n: number) => Math.round(n * 100) / 100;
+/** A shorter window than this reuses the last measured one (several goals in one tick). */
+const MIN_CPU_WINDOW_MS = 1000;
+const cpuSamples: CpuUsageSamples = {};
 
 export const schedulerMode = (env: NodeJS.ProcessEnv = process.env): 'off' | 'shadow' => (env.RESOURCE_SCHEDULER_MODE === 'shadow' ? 'shadow' : 'off');
 
@@ -61,9 +76,28 @@ export function parseMemLimitMb(text: string): number | null {
   return Number.isFinite(bytes) && bytes > 0 && bytes < 2 ** 62 ? Math.floor(bytes / MB) : null;
 }
 
+/** cgroup v2 cpu.stat → usage_usec; absent or unparseable → null. */
+export function parseCpuStatUsageUsec(text: string): number | null {
+  const m = /^usage_usec\s+(\d+)\s*$/m.exec(text);
+  return m ? Number(m[1]) : null;
+}
+
+/** Container cores used = Δusage / Δtime against the previous reading of the same file; the first reading only sets the baseline. */
+function cgroupCpuUsed(path: string, usec: number | null, now: number, s: CpuUsageSamples): { used: number; window_ms: number } | { reason: string } {
+  if (usec === null) return { reason: 'cgroup_cpu_usage_unreadable' };
+  const b = s.base;
+  if (!b || b.path !== path || now < b.at || usec < b.usec) { s.base = { path, usec, at: now }; s.last = undefined; return { reason: 'cgroup_cpu_usage_no_baseline' }; }
+  if (now - b.at < MIN_CPU_WINDOW_MS) return s.last ?? { reason: 'cgroup_cpu_usage_window_too_short' };
+  s.last = { used: round2((usec - b.usec) / 1000 / (now - b.at)), window_ms: now - b.at };
+  s.base = { path, usec, at: now };
+  return s.last;
+}
+
 const hostOs: HostOs = { cpus: () => os.cpus().length, loadavg: os.loadavg, freemem: os.freemem, totalmem: os.totalmem };
 
-export function observeCapacity(read: (path: string) => string = (p) => fs.readFileSync(p, 'utf8'), host: HostOs = hostOs): ObservedCapacity {
+export function observeCapacity(
+  read: (path: string) => string = (p) => fs.readFileSync(p, 'utf8'), host: HostOs = hostOs, now = performance.now(), samples: CpuUsageSamples = cpuSamples,
+): ObservedCapacity {
   const tryRead = (p: string): string | null => { try { return read(p); } catch { return null; } };
   const tryNum = (f: () => number): number | null => { try { const n = f(); return Number.isFinite(n) && n > 0 ? n : null; } catch { return null; } };
   const bytes = (p: string): number | null => { const t = tryRead(p); const n = t === null ? NaN : Number(t.trim()); return Number.isFinite(n) && n >= 0 ? n : null; };
@@ -76,6 +110,23 @@ export function observeCapacity(read: (path: string) => string = (p) => fs.readF
   const cpus = cgCpus !== null ? (hostCpus !== null ? Math.min(cgCpus, hostCpus) : cgCpus) : hostCpus;
   let load1: number | null = null;
   try { const l = host.loadavg()[0]; load1 = Number.isFinite(l) && l >= 0 ? round2(l) : null; } catch { /* unknown */ }
+  // Used cores in the same scope as the count: under a cgroup limit the cgroup's cpu accounting (v2 cpu.stat usage_usec,
+  // v1 cpuacct.usage ns), never the host-wide load; otherwise host load1.
+  let cpu_used: number | null = null; let cpu_used_source: CpuUsedSource | null = null; let cpu_used_window_ms: number | null = null;
+  let cpu_available_reason: string | null = null;
+  if (cgCpus !== null) {
+    const v2Stat = v2Cpu !== null;
+    const path = v2Stat ? '/sys/fs/cgroup/cpu.stat' : '/sys/fs/cgroup/cpuacct/cpuacct.usage';
+    const text = tryRead(path);
+    const ns = text === null || v2Stat ? NaN : Number(text.trim());
+    const usec = text === null ? null : v2Stat ? parseCpuStatUsageUsec(text) : Number.isFinite(ns) && ns >= 0 ? ns / 1000 : null;
+    const r = cgroupCpuUsed(path, usec, now, samples);
+    if ('used' in r) { cpu_used = r.used; cpu_used_window_ms = r.window_ms; } else cpu_available_reason = r.reason;
+    if (usec !== null) cpu_used_source = v2Stat ? 'cgroup_v2_cpu_stat' : 'cgroup_v1_cpuacct';
+  } else if (cpus !== null) {
+    cpu_used = load1;
+    if (load1 !== null) cpu_used_source = 'host_loadavg'; else cpu_available_reason = 'host_loadavg_unreadable';
+  } else cpu_available_reason = 'cpu_count_unreadable';
 
   // Memory: cgroup v2 memory.max + memory.current, else v1 limit_in_bytes + usage_in_bytes; available = limit − usage,
   // never above host free. Without a readable usage under a limit the available number is unknown.
@@ -92,8 +143,8 @@ export function observeCapacity(read: (path: string) => string = (p) => fs.readF
   }
 
   return {
-    cpus, cpu_source: cgCpus !== null ? 'cgroup' : cpus !== null ? 'host' : null, load1,
-    cpu_available: cpus !== null && load1 !== null ? round2(Math.max(0, cpus - load1)) : null,
+    cpus, cpu_source: cgCpus !== null ? 'cgroup' : cpus !== null ? 'host' : null, load1, cpu_used, cpu_used_source, cpu_used_window_ms,
+    cpu_available: cpus !== null && cpu_used !== null ? round2(Math.max(0, cpus - cpu_used)) : null, cpu_available_reason,
     mem_total_mb: limited ? cgLimit : hostTotalMb, mem_available_mb, mem_source: limited ? 'cgroup' : hostTotalMb !== null || hostFreeMb !== null ? 'host' : null,
   };
 }
