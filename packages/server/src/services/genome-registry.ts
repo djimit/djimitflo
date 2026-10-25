@@ -183,13 +183,17 @@ export function writeTestHoldout(db: Database, make: () => FailureTask[], now = 
   return read();
 }
 
+/** B8: TRIAL_HEADROOM_PRECHECK (default off) — score the parent first and skip trials no mutant could win (dream-evolution). */
+export const trialHeadroomPrecheck = (env: NodeJS.ProcessEnv = process.env): boolean => env.TRIAL_HEADROOM_PRECHECK === 'true';
 /**
  * The next paired trial attempt for a species: each trial genome and its parent need one non-infra attempt on every
  * holdout task. Parents first per task, so a comparison is never waiting on the parent.
+ * `canServe` (prod 25-10): a pending item this claim cannot serve is skipped, not returned — returning it starved the whole
+ * trial, since every later claim hit the same item. It is asked per task, so a task skipped for the parent is skipped for its
+ * trial genome too (paired order holds); the caller reports what it rejected. Which tasks are pending or deciding is unchanged.
  */
-/** B8: TRIAL_HEADROOM_PRECHECK (default off) — score the parent first and skip trials no mutant could win (dream-evolution). */
-export const trialHeadroomPrecheck = (env: NodeJS.ProcessEnv = process.env): boolean => env.TRIAL_HEADROOM_PRECHECK === 'true';
-export function nextTrialAttempt(db: Database, speciesKey: string, holdoutCommits: string[]): { genomeId: string; commit: string } | null {
+export function nextTrialAttempt(db: Database, speciesKey: string, holdoutCommits: string[],
+  canServe: (commit: string, genomeId: string) => boolean = () => true): { genomeId: string; commit: string } | null {
   const trials = db.prepare("SELECT id, COALESCE(parent_id, ?) AS parent FROM maker_genomes WHERE status = 'trial' ORDER BY created_at").all(BASELINE_GENOME) as Array<{ id: string; parent: string }>;
   if (!trials.length || !holdoutCommits.length) return null;
   const attempts = db.prepare(`SELECT COALESCE(SUM(status = 'running'), 0) AS running,
@@ -206,13 +210,14 @@ export function nextTrialAttempt(db: Database, speciesKey: string, holdoutCommit
     const a = attempts.get(species, genomeId, commit) as { running: number; scored: number; eligible: number };
     return a.running > 0 || (gates ? a.eligible > 0 || a.scored >= INFRA_GIVE_UP : a.scored > 0);
   } };
+  const pending = (genomeId: string, commit: string) => !done.get(speciesKey, genomeId, commit) && !unscorable(db, speciesKey, genomeId, commit) && canServe(commit, genomeId);
   // B8: with the precheck on, the parent's whole holdout comes first, so headroom is known before any mutant attempt is spent
   if (trialHeadroomPrecheck()) {
-    for (const trial of trials) for (const commit of holdoutCommits) if (!done.get(speciesKey, trial.parent, commit) && !unscorable(db, speciesKey, trial.parent, commit)) return { genomeId: trial.parent, commit };
+    for (const trial of trials) for (const commit of holdoutCommits) if (pending(trial.parent, commit)) return { genomeId: trial.parent, commit };
   }
   for (const trial of trials) {
     for (const commit of holdoutCommits) {
-      for (const genomeId of [trial.parent, trial.id]) if (!done.get(speciesKey, genomeId, commit) && !unscorable(db, speciesKey, genomeId, commit)) return { genomeId, commit };
+      for (const genomeId of [trial.parent, trial.id]) if (pending(genomeId, commit)) return { genomeId, commit };
     }
   }
   return null;

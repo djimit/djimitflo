@@ -3,7 +3,7 @@ import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import type { Database } from 'better-sqlite3';
-import { mineGymTasks, type GymTask } from './gym-task-miner';
+import { mineGymTasks, minedTaskAt, type GymTask } from './gym-task-miner';
 import { parseSpecies } from './evolve-selection';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { infraFailing, triedTasks } from './evolution-gym-service';
@@ -127,7 +127,8 @@ export interface RemoteGymResult { status: 'success' | 'failure' | 'discarded'; 
 
 export class RemoteGymService {
   private readonly outcomes: SkillEvolutionEngine;
-  constructor(private readonly db: Database, private readonly mine: (repo: string) => GymTask[] = mineGymTasks) {
+  constructor(private readonly db: Database, private readonly mine: (repo: string) => GymTask[] = mineGymTasks,
+    private readonly mineAt: (repo: string, commit: string) => GymTask | null = minedTaskAt) {
     this.outcomes = new SkillEvolutionEngine(db); // also ensures skill_outcomes exists before claim() counts it
   }
 
@@ -190,8 +191,17 @@ export class RemoteGymService {
       const writeTests = writeTestHoldoutEnabled() ? writeTestHoldout(this.db, () => this.failureTasks(repo), now.toISOString()) : [];
       const servable = (opts.capabilities ?? []).map(String).includes(FAILURE_TASK_CAPABILITY) ? writeTests : [];
       settleNoHeadroom(this.db, key, frozen, mutants.map((m) => m.commit), now.getTime(), writeTests.map((t) => t.commit)); // B8: no mutant attempt on a trial nothing could win
-      const next = nextTrialAttempt(this.db, key, [...frozen, ...mutants.map((m) => m.commit), ...servable.map((t) => t.commit)]);
-      if (next) { task = tasks.find((t) => t.commit === next.commit) ?? mutants.find((m) => m.commit === next.commit) ?? servable.find((t) => t.commit === next.commit); trialGenome = task ? genome(this.db, next.genomeId) : null; }
+      // prod 25-10: a frozen mined commit that aged out of the miner's window is rebuilt from its own commit; an item still
+      // without a task is skipped for this claim (never returned: that starved the trial) and reported (trialBlocked)
+      const frozenMined = new Set(frozen); const resolved = new Map<string, GymTask | undefined>(); const blocked: Array<{ genomeId: string; commit: string }> = [];
+      const materialise = (c: string): GymTask | undefined => {
+        if (!resolved.has(c)) resolved.set(c, tasks.find((t) => t.commit === c) ?? mutants.find((m) => m.commit === c) ?? servable.find((t) => t.commit === c) ?? (frozenMined.has(c) ? this.mineAt(repo, c) ?? undefined : undefined));
+        return resolved.get(c);
+      };
+      const next = nextTrialAttempt(this.db, key, [...frozen, ...mutants.map((m) => m.commit), ...servable.map((t) => t.commit)],
+        (c, genomeId) => { if (materialise(c)) return true; blocked.push({ genomeId, commit: c }); return false; });
+      this.trialBlocked(blocked, [...resolved].filter(([, t]) => t).map(([c]) => c), now.toISOString());
+      if (next) { task = materialise(next.commit); trialGenome = task ? genome(this.db, next.genomeId) : null; }
       if (!trialGenome) task = undefined;
     }
     // Batch-8: a failure-derived 'write_test' task (real production failure) — only for a worker that can run one
@@ -216,6 +226,21 @@ export class RemoteGymService {
     if (!tg) recordEffortGym(this.db, runId, key, task.commit); // EVC effort controller: shadow only (serve vs skip), changes nothing
     return { runId, species: key, task, ...(trialGenome ? { genome: { id: trialGenome.id, lines: trialGenome.lines } } : {}), ...(gates ? { prod_gates: gates } : {}),
       ...(tg ? { prompt_override: promptOverride, tg: { experiment: tg.experiment, generation: tg.generation, arm: tg.arm } } : {}) };
+  }
+
+  /**
+   * A pending trial item no claim can be given a task for (a frozen mined commit neither in the miner list nor rebuildable from
+   * this checkout's history) keeps the trial from completing: one row per (genome, task) in gym_trial_blocked, refreshed while
+   * it lasts and cleared once the task can be served again; the stall watch raises 'gym:trial_blocked'. Bookkeeping only.
+   */
+  private trialBlocked(blocked: Array<{ genomeId: string; commit: string }>, served: string[], now: string): void {
+    try {
+      const clear = this.db.prepare('DELETE FROM gym_trial_blocked WHERE task_key = ?');
+      for (const c of served) clear.run(c);
+      const upsert = this.db.prepare(`INSERT INTO gym_trial_blocked (genome_id, task_key, reason, first_seen, last_seen) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(genome_id, task_key) DO UPDATE SET reason = excluded.reason, last_seen = excluded.last_seen`);
+      for (const b of blocked) upsert.run(b.genomeId, b.commit, 'frozen mined commit is not in the miner task list and cannot be rebuilt from the deploy checkout history', now, now);
+    } catch { /* never break a claim */ }
   }
 
   /** Injectable for tests; production reads the deploy checkout's git history. */
