@@ -517,7 +517,7 @@ export class SwarmIntelligenceService {
       throw new Error('CAPABILITY_PROMOTION_SKILL_OUTCOMES_REQUIRED:candidate=0:baseline=0:minimum=30');
     }
 
-    type OutcomeRow = { id: string; success: number; tokens_used: number; duration_ms: number };
+    type OutcomeRow = { id: string; success: number; tokens_used: number | null; duration_ms: number };
     const outcomes = (hash: string) => this.db.prepare(`
       SELECT id, success, tokens_used, duration_ms FROM skill_outcomes
       WHERE skill_id = ? AND skill_content_hash = ?
@@ -531,8 +531,10 @@ export class SwarmIntelligenceService {
     }
 
     const successRate = (rows: OutcomeRow[]) => rows.filter((row) => row.success === 1).length / rows.length;
-    const median = (rows: OutcomeRow[], field: 'tokens_used' | 'duration_ms') => {
-      const values = rows.map((row) => Number(row[field]) || 0).sort((a, b) => a - b);
+    // median over reported values only: an unknown token count (NULL) is left out, never read as 0; none known = null
+    const median = (rows: OutcomeRow[], field: 'tokens_used' | 'duration_ms'): number | null => {
+      const values = rows.map((row) => row[field]).filter((v): v is number => typeof v === 'number' && Number.isFinite(v)).sort((a, b) => a - b);
+      if (!values.length) return null;
       const middle = Math.floor(values.length / 2);
       return values.length % 2 ? values[middle] : (values[middle - 1] + values[middle]) / 2;
     };
@@ -544,8 +546,8 @@ export class SwarmIntelligenceService {
     const candidateDuration = median(candidate, 'duration_ms');
     const improved = candidateSuccess >= baselineSuccess + 0.1
       || (candidateSuccess >= baselineSuccess && (
-        (baselineTokens > 0 && candidateTokens <= baselineTokens * 0.85)
-        || (baselineDuration > 0 && candidateDuration <= baselineDuration * 0.85)
+        (baselineTokens !== null && candidateTokens !== null && baselineTokens > 0 && candidateTokens <= baselineTokens * 0.85)
+        || (baselineDuration !== null && candidateDuration !== null && baselineDuration > 0 && candidateDuration <= baselineDuration * 0.85)
       ));
     if (!improved) throw new Error('CAPABILITY_PROMOTION_SKILL_NO_MEASURABLE_IMPROVEMENT');
 

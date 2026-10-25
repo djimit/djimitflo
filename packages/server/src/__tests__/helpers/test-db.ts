@@ -401,7 +401,7 @@ const SCHEMA = `
     id TEXT PRIMARY KEY,
     skill_id TEXT NOT NULL,
     success INTEGER NOT NULL DEFAULT 0,
-    tokens_used INTEGER NOT NULL DEFAULT 0,
+    tokens_used INTEGER DEFAULT 0,
     duration_ms INTEGER NOT NULL DEFAULT 0,
     domain TEXT NOT NULL DEFAULT '',
     task_id TEXT,
