@@ -7,13 +7,13 @@
  */
 
 import { randomUUID } from 'crypto';
-import { spawn, spawnSync, type ChildProcess } from 'child_process';
+import { spawnSync, type ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import { Task, ExecutionEventType, LogLevel, type ExecutionEventCreateInput } from '@djimitflo/shared';
 import { captureExecutorOutput } from '../executor-output';
 import type { ExecutionResult, ExecutionSession, ExecutorKind, ExecutorOptions, TaskExecutor } from '../types';
 import { buildExecutorEnv } from './executor-env';
-import { runtimeProcessClosed, stopRuntimeProcess } from './runtime-process';
+import { runtimeProcessClosed, spawnRuntime, stopRuntimeProcess } from './runtime-process';
 
 export class HermesExecutor implements TaskExecutor {
   readonly kind: ExecutorKind = 'hermes';
@@ -49,7 +49,7 @@ export class HermesExecutor implements TaskExecutor {
 
     const spawnProcess = () => {
       if (session.status === 'cancelled') { resolveClosed(); emitter.emit('exit', null); return; }
-      const child = spawn(this.hermesPath, args, {
+      const child = spawnRuntime(this.hermesPath, args, {
         cwd: options?.workingDirectory || process.cwd(),
         env: buildExecutorEnv(options?.environment),
         stdio: ['ignore', 'pipe', 'pipe'],

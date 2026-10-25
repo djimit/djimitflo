@@ -682,7 +682,7 @@ export class SpecialistPanelService {
   }
 
   /** Model-failure fallbacks written by SelfImprovementAgentReviewService (confidence 0, fixed finding text). */
-  private static machineFailed(review: SpecialistReviewRecord): boolean {
+  static machineFailed(review: SpecialistReviewRecord): boolean {
     return review.confidence === 0 && review.findings.some((f) => f.startsWith('Model response could not be parsed') || f.startsWith('Review generation failed'));
   }
 

@@ -1,0 +1,11 @@
+{
+  "captured_at": "2026-10-23T20:18:53.362Z",
+  "db_mode": "readonly + query_only",
+  "sql": "SELECT COUNT(*) unreviewed_goal_panels,SUM(CASE WHEN EXISTS(SELECT 1 FROM self_improvements s WHERE s.panel_id=p.id AND s.approved_by LIKE '%oracle-lane%') THEN 1 ELSE 0 END) with_oracle_lane_approver FROM specialist_panels p WHERE p.status='goal_created' AND NOT EXISTS(SELECT 1 FROM specialist_reviews r WHERE r.panel_id=p.id)",
+  "rows": [
+    {
+      "unreviewed_goal_panels": 192,
+      "with_oracle_lane_approver": 192
+    }
+  ]
+}

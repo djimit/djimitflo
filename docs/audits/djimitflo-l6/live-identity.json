@@ -1,0 +1,23 @@
+{
+  "captured_at": "2026-10-23T23:10:35.130054+00:00",
+  "container": "/djimitflo-live",
+  "image": "sha256:2c4a818db67d7be473888efa25e9c78e0d0ee641deb8842cb7da6cf841d6b12f",
+  "tag": "djimitflo:main-f957b55",
+  "state": "running",
+  "docker_health": "healthy",
+  "restart_count": 0,
+  "health": {
+    "status": "healthy",
+    "commit": "f957b552c9f02ffc5fb25c45d24431610e57f278",
+    "build": {
+      "commit": "f957b552c9f02ffc5fb25c45d24431610e57f278",
+      "built_commit": "f957b552c9f02ffc5fb25c45d24431610e57f278",
+      "build_source": "deploy-vps.sh",
+      "build_time": "2026-10-23T21:35:20Z",
+      "instance_id": "vps-agentical-production",
+      "commit_matches_build": true
+    },
+    "timestamp": "2026-10-23T23:10:35.117Z",
+    "uptime": 5527.456015722
+  }
+}
