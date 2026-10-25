@@ -677,13 +677,28 @@ export type UsageLimitView = {
   confidence: string | null; note: string | null; exceed_behaviour: string | null;
   measured_window: UsageWindowId; measured_unit: 'tokens' | 'calls'; used: number | null; comparable: boolean; used_pct: number | null; unit_note: string | null;
   active: boolean | null;
+  /** set when used_pct is the vendor's own percent (Ollama balance API, account-wide) */
+  pct_source?: 'ollama_balance_api'; resets_at?: string | null;
+};
+export type UsagePctWindow = { used_pct: number; resets_at: string | null };
+/** Ollama balance API (OLLAMA_BALANCE_MODE); null = not returned / unknown, never 0 */
+export type UsageAccountWide = {
+  source: 'ollama_balance_api'; mode: 'off' | 'on'; fetched_at: string | null;
+  session: UsagePctWindow | null; weekly: UsagePctWindow | null;
+  credits: { balance_usd?: number; included_balance_usd?: number; included_allowance_usd?: number; included_period?: { from: string | null; until: string | null } } | null;
+  week: { request_count: number | null; usage_value_usd: number | null; from: string | null; until: string | null } | null;
+  error?: string;
 };
 export type UsageEventBrief = { at: string; message: string; consumer: string; model: string | null } | null;
 export type UsageAccount = {
-  id: string; label: string; windows: Record<UsageWindowId, UsageWindowSum>;
+  id: string; label: string;
+  /** windows are Djimitflo's share, as recorded (a CLI lease counts once) */
+  scope: 'djimitflo_ledger'; windows: Record<UsageWindowId, UsageWindowSum>; lease_sessions: Record<UsageWindowId, number>;
+  /** ollama_cloud only */
+  account_usage?: UsageAccountWide;
   consumers_7d: Array<{ consumer: string; calls: number; tokens: number | null; calls_without_tokens: number }>;
   providers_seen: string[]; last_error: UsageEventBrief; last_limit_hit: UsageEventBrief;
-  state: { state: 'limited' | 'backoff' | 'no_limit_recorded'; since: string | null; until: string | null; reason: string | null };
+  state: { state: 'limit_reached' | 'limited' | 'backoff' | 'no_limit_recorded'; since: string | null; until: string | null; reason: string | null };
   cost: { basis: string; observed_bases: string[]; list_price_usd_month: number | null; calls_without_list_price_month: number };
   plan: string;
   limits: UsageLimitView[];
@@ -1300,6 +1315,23 @@ export type MissionExecutionRow = { mission_id: string; title: string; planning_
   goal_status: string | null; created_at?: string;
   execution: { loop_runs: number; by_status: Record<string, number>; latest_run: { id: string; loop_name: string; status: string; created_at: string } | null; closed_runs: number | null } | null };
 export type MissionExecutions = { totals: { registered: number; loaded: number; by_planning_status: Record<string, number>; by_goal_status: Record<string, number> }; missions: MissionExecutionRow[]; note?: string };
+/** GET /api/swarms/intelligence/missions/:id/execution — server services/mission-detail.ts missionDetail (read-only) */
+export type MissionDetail = {
+  mission: { id: string; title: string; description: string; risk_class: string; planning_status: string; goal_id: string | null; panel_id: string | null; evidence_refs: string[]; created_at: string; updated_at: string };
+  execution: MissionExecutionRow;
+  goal: { id: string; objective: string; status: string; updated_at: string } | null;
+  runs: Array<{ id: string; loop_name: string; status: string; created_at: string; updated_at: string; completed_at: string | null; failed_gates: string[]; next_actions: string[];
+    closure: { eval_run_id: string; score_delta: number | null; created_at: string } | null;
+    attribution: { outcome: string; reason: string | null; created_at: string; judgment_id: string } | null }>;
+  leases: Array<{ id: string; loop_run_id: string; role: string; runtime: string; status: string; created_at: string; verdict: string | null; maker_lease_id: string | null }>;
+  tasks: Array<{ id: string; title: string; status: string; assigned_lease_id: string | null; capability_id: string | null }>;
+  decisions: Array<{ id: string; task_id: string | null; decision_type: string; decision: string; reason: string; actor: string; blocked_reasons: string[]; created_at: string }>;
+  blocker: { text: string; source: string } | null;
+  next_action: { items: string[]; source: string } | null;
+  tokens: UsageTokens | null;
+  provenance: Array<{ edge_type: string; source: { kind: string; id: string }; target: { kind: string; id: string }; created_at: string | null; evidence_ref: string; origin: string }>;
+  note?: string;
+};
 
 export type SwarmMissionControl = {
   execution_node: {
