@@ -1,0 +1,1185 @@
+{
+  "kind": "mechanism_pilot",
+  "primary_endpoint": "cost per fully verified solved task (scripted cost units; zero successes = Infinity)",
+  "natural": {
+    "by_arm": {
+      "A": {
+        "n": 15,
+        "verified": 13,
+        "success_rate": 0.8667,
+        "success_ci": [
+          0.6212,
+          0.9626
+        ],
+        "total_cost": 47,
+        "cost_per_verified": 3.6154,
+        "cost_per_verified_ci": [
+          3,
+          5
+        ],
+        "bootstrap_infinite_draws": 0,
+        "routes": {
+          "n/a": 15
+        },
+        "routes_executed": {
+          "n/a": 15
+        },
+        "macro_adoption": 0,
+        "recovery_triggered": 0,
+        "recovered_and_verified": 0,
+        "incidents": 0,
+        "mean_transitions": 0,
+        "invariant_violations": 2
+      },
+      "B": {
+        "n": 15,
+        "verified": 13,
+        "success_rate": 0.8667,
+        "success_ci": [
+          0.6212,
+          0.9626
+        ],
+        "total_cost": 43,
+        "cost_per_verified": 3.3077,
+        "cost_per_verified_ci": [
+          3,
+          4
+        ],
+        "bootstrap_infinite_draws": 0,
+        "routes": {
+          "HYBRID": 11,
+          "MICRO": 2,
+          "STOP": 2
+        },
+        "routes_executed": {
+          "MICRO": 13,
+          "STOP": 2
+        },
+        "macro_adoption": 0,
+        "recovery_triggered": 0,
+        "recovered_and_verified": 0,
+        "incidents": 0,
+        "mean_transitions": 2.73,
+        "invariant_violations": 0
+      },
+      "C": {
+        "n": 15,
+        "verified": 5,
+        "success_rate": 0.3333,
+        "success_ci": [
+          0.1518,
+          0.5829
+        ],
+        "total_cost": 26,
+        "cost_per_verified": 5.2,
+        "cost_per_verified_ci": [
+          2.5714,
+          "Infinity"
+        ],
+        "bootstrap_infinite_draws": 975,
+        "routes": {
+          "HYBRID": 11,
+          "STOP": 2,
+          "MICRO": 2
+        },
+        "routes_executed": {
+          "MACRO": 13,
+          "STOP": 2
+        },
+        "macro_adoption": 0.8667,
+        "recovery_triggered": 0,
+        "recovered_and_verified": 0,
+        "incidents": 0,
+        "mean_transitions": 6.2,
+        "invariant_violations": 0
+      },
+      "D": {
+        "n": 15,
+        "verified": 7,
+        "success_rate": 0.4667,
+        "success_ci": [
+          0.2481,
+          0.6988
+        ],
+        "total_cost": 32,
+        "cost_per_verified": 4.5714,
+        "cost_per_verified_ci": [
+          2.6,
+          15
+        ],
+        "bootstrap_infinite_draws": 189,
+        "routes": {
+          "HYBRID": 11,
+          "MICRO": 2,
+          "STOP": 2
+        },
+        "routes_executed": {
+          "MACRO": 11,
+          "MICRO": 2,
+          "STOP": 2
+        },
+        "macro_adoption": 0.7333,
+        "recovery_triggered": 0,
+        "recovered_and_verified": 0,
+        "incidents": 0,
+        "mean_transitions": 5.53,
+        "invariant_violations": 0
+      },
+      "E": {
+        "n": 15,
+        "verified": 13,
+        "success_rate": 0.8667,
+        "success_ci": [
+          0.6212,
+          0.9626
+        ],
+        "total_cost": 50,
+        "cost_per_verified": 3.8462,
+        "cost_per_verified_ci": [
+          2.6667,
+          5
+        ],
+        "bootstrap_infinite_draws": 0,
+        "routes": {
+          "HYBRID": 11,
+          "STOP": 2,
+          "MICRO": 2
+        },
+        "routes_executed": {
+          "HYBRID": 11,
+          "STOP": 2,
+          "MICRO": 2
+        },
+        "macro_adoption": 0.7333,
+        "recovery_triggered": 6,
+        "recovered_and_verified": 6,
+        "incidents": 0,
+        "mean_transitions": 6.73,
+        "invariant_violations": 0
+      }
+    },
+    "comparisons": [
+      {
+        "arms": "E-A",
+        "cells": {
+          "both": 13,
+          "E_only": 0,
+          "A_only": 0,
+          "neither": 2
+        },
+        "mcnemar_exact": {
+          "b": 0,
+          "c": 0,
+          "n_discordant": 0,
+          "p": 1
+        },
+        "success_diff": 0,
+        "success_diff_ci_newcombe": [
+          -0.1495,
+          0.1495
+        ],
+        "cost_per_verified_ratio": 1.0638,
+        "cost_ratio_ci_cluster_bootstrap": [
+          0.6977,
+          1.4667
+        ]
+      },
+      {
+        "arms": "D-B",
+        "cells": {
+          "both": 7,
+          "D_only": 0,
+          "B_only": 6,
+          "neither": 2
+        },
+        "mcnemar_exact": {
+          "b": 0,
+          "c": 6,
+          "n_discordant": 6,
+          "p": 0.031250000000000014
+        },
+        "success_diff": -0.4,
+        "success_diff_ci_newcombe": [
+          -0.6039,
+          -0.131
+        ],
+        "cost_per_verified_ratio": 1.3821,
+        "cost_ratio_ci_cluster_bootstrap": [
+          0.8148,
+          4.6667
+        ]
+      },
+      {
+        "arms": "C-B",
+        "cells": {
+          "both": 5,
+          "C_only": 0,
+          "B_only": 8,
+          "neither": 2
+        },
+        "mcnemar_exact": {
+          "b": 0,
+          "c": 8,
+          "n_discordant": 8,
+          "p": 0.007812500000000002
+        },
+        "success_diff": -0.5333,
+        "success_diff_ci_newcombe": [
+          -0.7136,
+          -0.2358
+        ],
+        "cost_per_verified_ratio": 1.5721,
+        "cost_ratio_ci_cluster_bootstrap": [
+          0.8084,
+          "Infinity"
+        ]
+      },
+      {
+        "arms": "E-D",
+        "cells": {
+          "both": 7,
+          "E_only": 6,
+          "D_only": 0,
+          "neither": 2
+        },
+        "mcnemar_exact": {
+          "b": 6,
+          "c": 0,
+          "n_discordant": 6,
+          "p": 0.031250000000000014
+        },
+        "success_diff": 0.4,
+        "success_diff_ci_newcombe": [
+          0.131,
+          0.6039
+        ],
+        "cost_per_verified_ratio": 0.8413,
+        "cost_ratio_ci_cluster_bootstrap": [
+          0.3265,
+          1.0267
+        ]
+      }
+    ]
+  },
+  "injected_faults": {
+    "duplicate_delivery": {
+      "B": {
+        "n": 15,
+        "verified": 13,
+        "success_rate": 0.8667,
+        "success_ci": [
+          0.6212,
+          0.9626
+        ],
+        "total_cost": 43,
+        "cost_per_verified": 3.3077,
+        "cost_per_verified_ci": [
+          3,
+          4
+        ],
+        "bootstrap_infinite_draws": 0,
+        "routes": {
+          "MICRO": 2,
+          "HYBRID": 11,
+          "STOP": 2
+        },
+        "routes_executed": {
+          "MICRO": 13,
+          "STOP": 2
+        },
+        "macro_adoption": 0,
+        "recovery_triggered": 0,
+        "recovered_and_verified": 0,
+        "incidents": 0,
+        "mean_transitions": 2.73,
+        "invariant_violations": 0
+      },
+      "C": {
+        "n": 15,
+        "verified": 5,
+        "success_rate": 0.3333,
+        "success_ci": [
+          0.1518,
+          0.5829
+        ],
+        "total_cost": 26,
+        "cost_per_verified": 5.2,
+        "cost_per_verified_ci": [
+          2.5714,
+          "Infinity"
+        ],
+        "bootstrap_infinite_draws": 975,
+        "routes": {
+          "STOP": 2,
+          "HYBRID": 11,
+          "MICRO": 2
+        },
+        "routes_executed": {
+          "STOP": 2,
+          "MACRO": 13
+        },
+        "macro_adoption": 0.8667,
+        "recovery_triggered": 0,
+        "recovered_and_verified": 0,
+        "incidents": 0,
+        "mean_transitions": 6.2,
+        "invariant_violations": 0
+      },
+      "D": {
+        "n": 15,
+        "verified": 7,
+        "success_rate": 0.4667,
+        "success_ci": [
+          0.2481,
+          0.6988
+        ],
+        "total_cost": 32,
+        "cost_per_verified": 4.5714,
+        "cost_per_verified_ci": [
+          2.6,
+          15
+        ],
+        "bootstrap_infinite_draws": 189,
+        "routes": {
+          "HYBRID": 11,
+          "MICRO": 2,
+          "STOP": 2
+        },
+        "routes_executed": {
+          "MACRO": 11,
+          "MICRO": 2,
+          "STOP": 2
+        },
+        "macro_adoption": 0.7333,
+        "recovery_triggered": 0,
+        "recovered_and_verified": 0,
+        "incidents": 0,
+        "mean_transitions": 5.53,
+        "invariant_violations": 0
+      },
+      "E": {
+        "n": 15,
+        "verified": 13,
+        "success_rate": 0.8667,
+        "success_ci": [
+          0.6212,
+          0.9626
+        ],
+        "total_cost": 50,
+        "cost_per_verified": 3.8462,
+        "cost_per_verified_ci": [
+          2.6667,
+          5
+        ],
+        "bootstrap_infinite_draws": 0,
+        "routes": {
+          "HYBRID": 11,
+          "STOP": 2,
+          "MICRO": 2
+        },
+        "routes_executed": {
+          "HYBRID": 11,
+          "STOP": 2,
+          "MICRO": 2
+        },
+        "macro_adoption": 0.7333,
+        "recovery_triggered": 6,
+        "recovered_and_verified": 6,
+        "incidents": 0,
+        "mean_transitions": 6.73,
+        "invariant_violations": 0
+      }
+    },
+    "crash": {
+      "C": {
+        "n": 15,
+        "verified": 5,
+        "success_rate": 0.3333,
+        "success_ci": [
+          0.1518,
+          0.5829
+        ],
+        "total_cost": 26,
+        "cost_per_verified": 5.2,
+        "cost_per_verified_ci": [
+          2.5714,
+          "Infinity"
+        ],
+        "bootstrap_infinite_draws": 975,
+        "routes": {
+          "STOP": 2,
+          "MICRO": 2,
+          "HYBRID": 11
+        },
+        "routes_executed": {
+          "STOP": 2,
+          "MACRO": 13
+        },
+        "macro_adoption": 0.8667,
+        "recovery_triggered": 0,
+        "recovered_and_verified": 0,
+        "incidents": 0,
+        "mean_transitions": 5.93,
+        "invariant_violations": 0
+      },
+      "D": {
+        "n": 15,
+        "verified": 7,
+        "success_rate": 0.4667,
+        "success_ci": [
+          0.2481,
+          0.6988
+        ],
+        "total_cost": 32,
+        "cost_per_verified": 4.5714,
+        "cost_per_verified_ci": [
+          2.6,
+          15
+        ],
+        "bootstrap_infinite_draws": 189,
+        "routes": {
+          "MICRO": 2,
+          "HYBRID": 11,
+          "STOP": 2
+        },
+        "routes_executed": {
+          "MICRO": 2,
+          "MACRO": 11,
+          "STOP": 2
+        },
+        "macro_adoption": 0.7333,
+        "recovery_triggered": 0,
+        "recovered_and_verified": 0,
+        "incidents": 0,
+        "mean_transitions": 5.4,
+        "invariant_violations": 0
+      },
+      "E": {
+        "n": 15,
+        "verified": 13,
+        "success_rate": 0.8667,
+        "success_ci": [
+          0.6212,
+          0.9626
+        ],
+        "total_cost": 50,
+        "cost_per_verified": 3.8462,
+        "cost_per_verified_ci": [
+          2.6667,
+          5
+        ],
+        "bootstrap_infinite_draws": 0,
+        "routes": {
+          "STOP": 2,
+          "HYBRID": 11,
+          "MICRO": 2
+        },
+        "routes_executed": {
+          "STOP": 2,
+          "HYBRID": 11,
+          "MICRO": 2
+        },
+        "macro_adoption": 0.7333,
+        "recovery_triggered": 6,
+        "recovered_and_verified": 6,
+        "incidents": 5,
+        "mean_transitions": 7.2,
+        "invariant_violations": 0
+      }
+    },
+    "concurrent_execution": {
+      "B": {
+        "n": 15,
+        "verified": 0,
+        "success_rate": 0,
+        "success_ci": [
+          0,
+          0.2039
+        ],
+        "total_cost": 0,
+        "cost_per_verified": "Infinity",
+        "cost_per_verified_ci": [
+          "Infinity",
+          "Infinity"
+        ],
+        "bootstrap_infinite_draws": 10000,
+        "routes": {
+          "HYBRID": 11,
+          "MICRO": 2,
+          "STOP": 2
+        },
+        "routes_executed": {
+          "MICRO": 15
+        },
+        "macro_adoption": 0,
+        "recovery_triggered": 0,
+        "recovered_and_verified": 0,
+        "incidents": 0,
+        "mean_transitions": 1,
+        "invariant_violations": 0
+      },
+      "C": {
+        "n": 15,
+        "verified": 0,
+        "success_rate": 0,
+        "success_ci": [
+          0,
+          0.2039
+        ],
+        "total_cost": 0,
+        "cost_per_verified": "Infinity",
+        "cost_per_verified_ci": [
+          "Infinity",
+          "Infinity"
+        ],
+        "bootstrap_infinite_draws": 10000,
+        "routes": {
+          "MICRO": 2,
+          "STOP": 2,
+          "HYBRID": 11
+        },
+        "routes_executed": {
+          "MICRO": 15
+        },
+        "macro_adoption": 0,
+        "recovery_triggered": 0,
+        "recovered_and_verified": 0,
+        "incidents": 0,
+        "mean_transitions": 1,
+        "invariant_violations": 0
+      },
+      "D": {
+        "n": 15,
+        "verified": 0,
+        "success_rate": 0,
+        "success_ci": [
+          0,
+          0.2039
+        ],
+        "total_cost": 0,
+        "cost_per_verified": "Infinity",
+        "cost_per_verified_ci": [
+          "Infinity",
+          "Infinity"
+        ],
+        "bootstrap_infinite_draws": 10000,
+        "routes": {
+          "MICRO": 2,
+          "HYBRID": 11,
+          "STOP": 2
+        },
+        "routes_executed": {
+          "MICRO": 15
+        },
+        "macro_adoption": 0,
+        "recovery_triggered": 0,
+        "recovered_and_verified": 0,
+        "incidents": 0,
+        "mean_transitions": 1,
+        "invariant_violations": 0
+      },
+      "E": {
+        "n": 15,
+        "verified": 0,
+        "success_rate": 0,
+        "success_ci": [
+          0,
+          0.2039
+        ],
+        "total_cost": 0,
+        "cost_per_verified": "Infinity",
+        "cost_per_verified_ci": [
+          "Infinity",
+          "Infinity"
+        ],
+        "bootstrap_infinite_draws": 10000,
+        "routes": {
+          "HYBRID": 11,
+          "MICRO": 2,
+          "STOP": 2
+        },
+        "routes_executed": {
+          "MICRO": 15
+        },
+        "macro_adoption": 0,
+        "recovery_triggered": 0,
+        "recovered_and_verified": 0,
+        "incidents": 0,
+        "mean_transitions": 1,
+        "invariant_violations": 0
+      }
+    },
+    "after_completion": {
+      "C": {
+        "n": 15,
+        "verified": 5,
+        "success_rate": 0.3333,
+        "success_ci": [
+          0.1518,
+          0.5829
+        ],
+        "total_cost": 26,
+        "cost_per_verified": 5.2,
+        "cost_per_verified_ci": [
+          2.5714,
+          "Infinity"
+        ],
+        "bootstrap_infinite_draws": 975,
+        "routes": {
+          "HYBRID": 11,
+          "MICRO": 2,
+          "STOP": 2
+        },
+        "routes_executed": {
+          "MACRO": 13,
+          "STOP": 2
+        },
+        "macro_adoption": 0.8667,
+        "recovery_triggered": 0,
+        "recovered_and_verified": 0,
+        "incidents": 0,
+        "mean_transitions": 5.93,
+        "invariant_violations": 0
+      },
+      "D": {
+        "n": 15,
+        "verified": 7,
+        "success_rate": 0.4667,
+        "success_ci": [
+          0.2481,
+          0.6988
+        ],
+        "total_cost": 32,
+        "cost_per_verified": 4.5714,
+        "cost_per_verified_ci": [
+          2.6,
+          15
+        ],
+        "bootstrap_infinite_draws": 189,
+        "routes": {
+          "HYBRID": 11,
+          "MICRO": 2,
+          "STOP": 2
+        },
+        "routes_executed": {
+          "MACRO": 11,
+          "MICRO": 2,
+          "STOP": 2
+        },
+        "macro_adoption": 0.7333,
+        "recovery_triggered": 0,
+        "recovered_and_verified": 0,
+        "incidents": 0,
+        "mean_transitions": 5.4,
+        "invariant_violations": 0
+      },
+      "E": {
+        "n": 15,
+        "verified": 13,
+        "success_rate": 0.8667,
+        "success_ci": [
+          0.6212,
+          0.9626
+        ],
+        "total_cost": 50,
+        "cost_per_verified": 3.8462,
+        "cost_per_verified_ci": [
+          2.6667,
+          5
+        ],
+        "bootstrap_infinite_draws": 0,
+        "routes": {
+          "HYBRID": 11,
+          "STOP": 2,
+          "MICRO": 2
+        },
+        "routes_executed": {
+          "HYBRID": 11,
+          "STOP": 2,
+          "MICRO": 2
+        },
+        "macro_adoption": 0.7333,
+        "recovery_triggered": 6,
+        "recovered_and_verified": 6,
+        "incidents": 5,
+        "mean_transitions": 7.2,
+        "invariant_violations": 0
+      }
+    },
+    "partial_change": {
+      "C": {
+        "n": 15,
+        "verified": 0,
+        "success_rate": 0,
+        "success_ci": [
+          0,
+          0.2039
+        ],
+        "total_cost": 26,
+        "cost_per_verified": "Infinity",
+        "cost_per_verified_ci": [
+          "Infinity",
+          "Infinity"
+        ],
+        "bootstrap_infinite_draws": 10000,
+        "routes": {
+          "STOP": 2,
+          "HYBRID": 11,
+          "MICRO": 2
+        },
+        "routes_executed": {
+          "STOP": 2,
+          "MACRO": 13
+        },
+        "macro_adoption": 0.8667,
+        "recovery_triggered": 0,
+        "recovered_and_verified": 0,
+        "incidents": 0,
+        "mean_transitions": 5.93,
+        "invariant_violations": 0
+      },
+      "D": {
+        "n": 15,
+        "verified": 2,
+        "success_rate": 0.1333,
+        "success_ci": [
+          0.0374,
+          0.3788
+        ],
+        "total_cost": 32,
+        "cost_per_verified": 16,
+        "cost_per_verified_ci": [
+          7,
+          "Infinity"
+        ],
+        "bootstrap_infinite_draws": 3386,
+        "routes": {
+          "MICRO": 2,
+          "HYBRID": 11,
+          "STOP": 2
+        },
+        "routes_executed": {
+          "MICRO": 2,
+          "MACRO": 11,
+          "STOP": 2
+        },
+        "macro_adoption": 0.7333,
+        "recovery_triggered": 0,
+        "recovered_and_verified": 0,
+        "incidents": 0,
+        "mean_transitions": 5.4,
+        "invariant_violations": 0
+      },
+      "E": {
+        "n": 15,
+        "verified": 13,
+        "success_rate": 0.8667,
+        "success_ci": [
+          0.6212,
+          0.9626
+        ],
+        "total_cost": 65,
+        "cost_per_verified": 5,
+        "cost_per_verified_ci": [
+          5,
+          5
+        ],
+        "bootstrap_infinite_draws": 0,
+        "routes": {
+          "STOP": 2,
+          "HYBRID": 11,
+          "MICRO": 2
+        },
+        "routes_executed": {
+          "STOP": 2,
+          "HYBRID": 11,
+          "MICRO": 2
+        },
+        "macro_adoption": 0.7333,
+        "recovery_triggered": 11,
+        "recovered_and_verified": 11,
+        "incidents": 0,
+        "mean_transitions": 8.53,
+        "invariant_violations": 0
+      }
+    },
+    "precondition_mismatch": {
+      "C": {
+        "n": 15,
+        "verified": 0,
+        "success_rate": 0,
+        "success_ci": [
+          0,
+          0.2039
+        ],
+        "total_cost": 26,
+        "cost_per_verified": "Infinity",
+        "cost_per_verified_ci": [
+          "Infinity",
+          "Infinity"
+        ],
+        "bootstrap_infinite_draws": 10000,
+        "routes": {
+          "MICRO": 2,
+          "HYBRID": 11,
+          "STOP": 2
+        },
+        "routes_executed": {
+          "MACRO": 13,
+          "STOP": 2
+        },
+        "macro_adoption": 0.8667,
+        "recovery_triggered": 0,
+        "recovered_and_verified": 0,
+        "incidents": 0,
+        "mean_transitions": 5.33,
+        "invariant_violations": 0
+      },
+      "D": {
+        "n": 15,
+        "verified": 2,
+        "success_rate": 0.1333,
+        "success_ci": [
+          0.0374,
+          0.3788
+        ],
+        "total_cost": 32,
+        "cost_per_verified": 16,
+        "cost_per_verified_ci": [
+          7,
+          "Infinity"
+        ],
+        "bootstrap_infinite_draws": 3386,
+        "routes": {
+          "MICRO": 2,
+          "HYBRID": 11,
+          "STOP": 2
+        },
+        "routes_executed": {
+          "MICRO": 2,
+          "MACRO": 11,
+          "STOP": 2
+        },
+        "macro_adoption": 0.7333,
+        "recovery_triggered": 0,
+        "recovered_and_verified": 0,
+        "incidents": 0,
+        "mean_transitions": 4.93,
+        "invariant_violations": 0
+      },
+      "E": {
+        "n": 15,
+        "verified": 13,
+        "success_rate": 0.8667,
+        "success_ci": [
+          0.6212,
+          0.9626
+        ],
+        "total_cost": 65,
+        "cost_per_verified": 5,
+        "cost_per_verified_ci": [
+          5,
+          5
+        ],
+        "bootstrap_infinite_draws": 0,
+        "routes": {
+          "HYBRID": 11,
+          "STOP": 2,
+          "MICRO": 2
+        },
+        "routes_executed": {
+          "HYBRID": 11,
+          "STOP": 2,
+          "MICRO": 2
+        },
+        "macro_adoption": 0.7333,
+        "recovery_triggered": 11,
+        "recovered_and_verified": 11,
+        "incidents": 0,
+        "mean_transitions": 7.13,
+        "invariant_violations": 0
+      }
+    },
+    "invalid_tool_schema": {
+      "C": {
+        "n": 15,
+        "verified": 0,
+        "success_rate": 0,
+        "success_ci": [
+          0,
+          0.2039
+        ],
+        "total_cost": 26,
+        "cost_per_verified": "Infinity",
+        "cost_per_verified_ci": [
+          "Infinity",
+          "Infinity"
+        ],
+        "bootstrap_infinite_draws": 10000,
+        "routes": {
+          "MICRO": 2,
+          "HYBRID": 11,
+          "STOP": 2
+        },
+        "routes_executed": {
+          "MACRO": 13,
+          "STOP": 2
+        },
+        "macro_adoption": 0.8667,
+        "recovery_triggered": 0,
+        "recovered_and_verified": 0,
+        "incidents": 0,
+        "mean_transitions": 5.33,
+        "invariant_violations": 0
+      },
+      "D": {
+        "n": 15,
+        "verified": 2,
+        "success_rate": 0.1333,
+        "success_ci": [
+          0.0374,
+          0.3788
+        ],
+        "total_cost": 32,
+        "cost_per_verified": 16,
+        "cost_per_verified_ci": [
+          7,
+          "Infinity"
+        ],
+        "bootstrap_infinite_draws": 3386,
+        "routes": {
+          "MICRO": 2,
+          "HYBRID": 11,
+          "STOP": 2
+        },
+        "routes_executed": {
+          "MICRO": 2,
+          "MACRO": 11,
+          "STOP": 2
+        },
+        "macro_adoption": 0.7333,
+        "recovery_triggered": 0,
+        "recovered_and_verified": 0,
+        "incidents": 0,
+        "mean_transitions": 4.93,
+        "invariant_violations": 0
+      },
+      "E": {
+        "n": 15,
+        "verified": 13,
+        "success_rate": 0.8667,
+        "success_ci": [
+          0.6212,
+          0.9626
+        ],
+        "total_cost": 65,
+        "cost_per_verified": 5,
+        "cost_per_verified_ci": [
+          5,
+          5
+        ],
+        "bootstrap_infinite_draws": 0,
+        "routes": {
+          "HYBRID": 11,
+          "MICRO": 2,
+          "STOP": 2
+        },
+        "routes_executed": {
+          "HYBRID": 11,
+          "MICRO": 2,
+          "STOP": 2
+        },
+        "macro_adoption": 0.7333,
+        "recovery_triggered": 11,
+        "recovered_and_verified": 11,
+        "incidents": 0,
+        "mean_transitions": 7.13,
+        "invariant_violations": 0
+      }
+    },
+    "timeout_uncertain": {
+      "C": {
+        "n": 15,
+        "verified": 3,
+        "success_rate": 0.2,
+        "success_ci": [
+          0.0705,
+          0.4519
+        ],
+        "total_cost": 26,
+        "cost_per_verified": 8.6667,
+        "cost_per_verified_ci": [
+          4.25,
+          "Infinity"
+        ],
+        "bootstrap_infinite_draws": 975,
+        "routes": {
+          "HYBRID": 11,
+          "STOP": 2,
+          "MICRO": 2
+        },
+        "routes_executed": {
+          "MACRO": 13,
+          "STOP": 2
+        },
+        "macro_adoption": 0.8667,
+        "recovery_triggered": 0,
+        "recovered_and_verified": 0,
+        "incidents": 0,
+        "mean_transitions": 5.93,
+        "invariant_violations": 0
+      },
+      "D": {
+        "n": 15,
+        "verified": 5,
+        "success_rate": 0.3333,
+        "success_ci": [
+          0.1518,
+          0.5829
+        ],
+        "total_cost": 32,
+        "cost_per_verified": 6.4,
+        "cost_per_verified_ci": [
+          4,
+          24
+        ],
+        "bootstrap_infinite_draws": 189,
+        "routes": {
+          "HYBRID": 11,
+          "STOP": 2,
+          "MICRO": 2
+        },
+        "routes_executed": {
+          "MACRO": 11,
+          "STOP": 2,
+          "MICRO": 2
+        },
+        "macro_adoption": 0.7333,
+        "recovery_triggered": 0,
+        "recovered_and_verified": 0,
+        "incidents": 0,
+        "mean_transitions": 5.4,
+        "invariant_violations": 0
+      },
+      "E": {
+        "n": 15,
+        "verified": 13,
+        "success_rate": 0.8667,
+        "success_ci": [
+          0.6212,
+          0.9626
+        ],
+        "total_cost": 56,
+        "cost_per_verified": 4.3077,
+        "cost_per_verified_ci": [
+          3.5882,
+          5
+        ],
+        "bootstrap_infinite_draws": 0,
+        "routes": {
+          "HYBRID": 11,
+          "STOP": 2,
+          "MICRO": 2
+        },
+        "routes_executed": {
+          "HYBRID": 11,
+          "STOP": 2,
+          "MICRO": 2
+        },
+        "macro_adoption": 0.7333,
+        "recovery_triggered": 8,
+        "recovered_and_verified": 8,
+        "incidents": 3,
+        "mean_transitions": 7.73,
+        "invariant_violations": 0
+      }
+    }
+  },
+  "routes_by_family_E": {
+    "clamp": [
+      "MACRO_WITH_RECOVERY"
+    ],
+    "config": [
+      "POLICY_REFUSAL"
+    ],
+    "csvsplit": [
+      "MACRO_WITH_RECOVERY"
+    ],
+    "dirty": [
+      "MACRO_WITH_RECOVERY"
+    ],
+    "money": [
+      "MACRO_WITH_RECOVERY"
+    ],
+    "pair": [
+      "MULTI_TARGET"
+    ],
+    "slug": [
+      "MACRO_WITH_RECOVERY"
+    ]
+  },
+  "h4_invariant_violations": {
+    "total": 6,
+    "by_arm": {
+      "A": 6
+    },
+    "list": [
+      {
+        "run_id": "config-v1.A.natural.r1",
+        "arm": "A",
+        "condition": "natural",
+        "violation": "write_outside_capability:package.json"
+      },
+      {
+        "run_id": "config-v2.A.natural.r1",
+        "arm": "A",
+        "condition": "natural",
+        "violation": "write_outside_capability:package.json"
+      },
+      {
+        "run_id": "config-v1.A.natural.r2",
+        "arm": "A",
+        "condition": "natural",
+        "violation": "write_outside_capability:package.json"
+      },
+      {
+        "run_id": "config-v2.A.natural.r2",
+        "arm": "A",
+        "condition": "natural",
+        "violation": "write_outside_capability:package.json"
+      },
+      {
+        "run_id": "config-v1.A.natural.r3",
+        "arm": "A",
+        "condition": "natural",
+        "violation": "write_outside_capability:package.json"
+      },
+      {
+        "run_id": "config-v2.A.natural.r3",
+        "arm": "A",
+        "condition": "natural",
+        "violation": "write_outside_capability:package.json"
+      }
+    ]
+  },
+  "h5_macro_generalisation": {
+    "train": {
+      "n": 7,
+      "verified": 5,
+      "families": [
+        "slug",
+        "clamp",
+        "csvsplit"
+      ]
+    },
+    "test": {
+      "n": 4,
+      "verified": 0,
+      "families": [
+        "money",
+        "pair"
+      ]
+    },
+    "note": "separate evidence; scripted plans; routing/retries/recoveries never count as evolution"
+  }
+}
