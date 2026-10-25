@@ -8,6 +8,7 @@ import { AuthService } from '../services/auth-service';
 import { createLoopRoutes } from '../routes/loops';
 import { errorHandler } from '../middleware/error-handler';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
+import { rateLimit } from 'express-rate-limit';
 
 const PATH = '/runs/:id/gym-outcome';
 
@@ -28,7 +29,7 @@ function seed() {
 
 it('gym panel: GET /api/loops/runs/:id/gym-outcome returns the stored skill outcome to a reader, unknown tokens as null', async () => {
   const { db, authService, viewer } = seed();
-  const app = express().use(express.json()).use('/api/loops', createAuthMiddleware(authService).requireAuth, createLoopRoutes(db, createAuthMiddleware(authService))).use(errorHandler);
+  const app = express().use(rateLimit({ windowMs: 60_000, limit: 600 })).use(express.json()).use('/api/loops', createAuthMiddleware(authService).requireAuth, createLoopRoutes(db, createAuthMiddleware(authService))).use(errorHandler);
   expect((await request(app).get('/api/loops/runs/gym-scored/gym-outcome')).status).toBe(401);
 
   const scored = await request(app).get('/api/loops/runs/gym-scored/gym-outcome').set('Authorization', `Bearer ${viewer}`);
@@ -58,11 +59,11 @@ it('gym panel: the gym-outcome route is GET-only behind read:evidence and writes
   expect(layers[0].route!.stack[0].handle.permission).toBe('read:evidence');
 
   // a principal whose role lacks read:evidence is refused
-  const noRole = express().use((req, _res, next) => { (req as unknown as { user: unknown }).user = { id: 'x', role: 'no-such-role' }; next(); })
+  const noRole = express().use(rateLimit({ windowMs: 60_000, limit: 600 })).use((req, _res, next) => { (req as unknown as { user: unknown }).user = { id: 'x', role: 'no-such-role' }; next(); })
     .use('/api/loops', createLoopRoutes(db, auth)).use(errorHandler);
   expect((await request(noRole).get('/api/loops/runs/gym-scored/gym-outcome')).status).toBe(403);
 
-  const app = express().use(express.json()).use('/api/loops', auth.requireAuth, createLoopRoutes(db, auth)).use(errorHandler);
+  const app = express().use(rateLimit({ windowMs: 60_000, limit: 600 })).use(express.json()).use('/api/loops', auth.requireAuth, createLoopRoutes(db, auth)).use(errorHandler);
   const snapshot = () => JSON.stringify([db.prepare('SELECT * FROM loop_runs ORDER BY id').all(), db.prepare('SELECT * FROM skill_outcomes ORDER BY id').all()]);
   const before = snapshot();
   for (const method of ['post', 'put', 'patch', 'delete'] as const) {
