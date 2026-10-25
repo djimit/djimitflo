@@ -1,0 +1,114 @@
+Sanitized excerpts of local commands. Full logs are retained locally and are not distributed.
+Failing-first runs intentionally exit nonzero on unchanged baseline; green results belong to repaired source.
+
+--- merge-train-red.log ---
+sha256 74cb0b041918c9dd9a6597a2ac16eef7ceb5dc6d41fa7ea55fd1d9030a26973f
+> vitest run --passWithNoTests src/__tests__/merge-train.test.ts -t preserves a concurrent remote update
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/__tests__/merge-train.test.ts > preserves a concurrent remote update while rebuilding a published branch
+AssertionError: expected '5f68a67b1877a9f4670ae576d262a9d8c25d7…' to be '7886412022e499cd5ad4e741858830414b7a5…' // Object.is equality
+ Test Files  1 failed (1)
+      Tests  1 failed | 17 skipped (18)
+   Duration  819ms (transform 21ms, setup 54ms, import 17ms, tests 675ms, environment 0ms)
+npm error Lifecycle script `test` failed with error:
+npm error command sh -c vitest run --passWithNoTests src/__tests__/merge-train.test.ts -t 'preserves a concurrent remote update'
+
+--- merge-consistency-red.log ---
+sha256 57639be0b2d9e6f2dfb27a65579d02dfa1f3ecb48d80a9d3f9526629cc125114
+> vitest run --passWithNoTests src/__tests__/merge-train-correctness.test.ts -t audit consistency regressions
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/__tests__/merge-train-correctness.test.ts > audit consistency regressions > a failed diff download with a usable partial patch holds before mutation
+AssertionError: expected +0 to be 7 // Object.is equality
+ FAIL  src/__tests__/merge-train-correctness.test.ts > audit consistency regressions > a head changed during diff download is superseded before any mutation
+AssertionError: expected +0 to be 5 // Object.is equality
+ FAIL  src/__tests__/merge-train-correctness.test.ts > audit consistency regressions > an accepted update without an observed new head holds without reusing old CI
+AssertionError: expected +0 to be 7 // Object.is equality
+ FAIL  src/__tests__/merge-train-correctness.test.ts > audit consistency regressions > a failed main refresh at stage 1 never reports verified completion
+ FAIL  src/__tests__/merge-train-correctness.test.ts > audit consistency regressions > a failed main refresh at stage 2 never reports verified completion
+ FAIL  src/__tests__/merge-train-correctness.test.ts > audit consistency regressions > a failed main refresh at stage 3 never reports verified completion
+AssertionError: expected +0 to be 7 // Object.is equality
+ Test Files  1 failed (1)
+      Tests  6 failed | 23 skipped (29)
+   Duration  2.25s (transform 22ms, setup 32ms, import 20ms, tests 2.14s, environment 0ms)
+npm error Lifecycle script `test` failed with error:
+npm error command sh -c vitest run --passWithNoTests src/__tests__/merge-train-correctness.test.ts -t 'audit consistency regressions'
+
+--- evidence-fixes-red.log ---
+sha256 2364c8d4faf31355a088076d584149ebccd437690a87e1bb3d4a109c360da701
+> vitest run --passWithNoTests src/__tests__/reflection-proposal-disposition.test.ts src/__tests__/evolution-evidence.test.ts -t keeps the quota count unknown|reports the process-group
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/__tests__/evolution-evidence.test.ts > reports the process-group termination mode without changing runtime admission
+AssertionError: expected undefined to deeply equal { …(3) }
+ FAIL  src/__tests__/reflection-proposal-disposition.test.ts > typed reflection→proposal decision (SelfImprovementService) > keeps the quota count unknown when its query fails
+AssertionError: expected { proposals: [], …(3) } to match object { failed: true, proposals: [], …(1) }
+ Test Files  2 failed (2)
+      Tests  2 failed | 31 skipped (33)
+   Duration  848ms (transform 1.01s, setup 70ms, import 1.36s, tests 84ms, environment 0ms)
+npm error Lifecycle script `test` failed with error:
+npm error command sh -c vitest run --passWithNoTests src/__tests__/reflection-proposal-disposition.test.ts src/__tests__/evolution-evidence.test.ts -t 'keeps the quota count unknown|reports the process-group'
+
+--- merge-train-green.log ---
+sha256 7c1373a7d3a565d661a420388002341b5d3a3d87ba3b6fd251a7a4126336ae65
+> vitest run --passWithNoTests src/__tests__/merge-train.test.ts src/__tests__/merge-train-correctness.test.ts
+ Test Files  2 passed (2)
+      Tests  47 passed (47)
+   Duration  12.44s (transform 62ms, setup 66ms, import 61ms, tests 20.77s, environment 0ms)
+
+--- evidence-fixes-green.log ---
+sha256 c6cfc0cadd6beed2c315eaa208301797b38125e5630202fae02ea23dc8e75af0
+> vitest run --passWithNoTests src/__tests__/reflection-proposal-disposition.test.ts src/__tests__/self-improvement-service.test.ts src/__tests__/evolution-evidence.test.ts src/__tests__/runbook-flags-drift.test.ts
+ Test Files  4 passed (4)
+      Tests  66 passed (66)
+   Duration  2.32s (transform 1.83s, setup 219ms, import 2.62s, tests 3.01s, environment 0ms)
+
+--- type-check.log ---
+sha256 c8fcbd87467c6ec584ffce547a463892f6ac35f0af3e6bd64aefa5ff504a2ec9
+
+--- lint.log ---
+sha256 85096c0b5089c1841f90493d27f455a24518f68eeea6c4df3aae43651c108ccb
+  122:7  warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+
+--- build.log ---
+sha256 2185f31bb6b39dafd28c2d5f2d1921849e3fdfaa9bdb78e37efd315c11476cd0
+✓ built in 201ms
+
+--- full-test.log ---
+sha256 48290b0fca6b3c09c0db2eb3bd3c14f6a3f5b5c512a8b3e00c44dc47cc95d05b
+ Test Files  3 passed (3)
+      Tests  42 passed (42)
+   Duration  149ms (transform 115ms, setup 0ms, import 168ms, tests 45ms, environment 0ms)
+ Test Files  56 passed (56)
+      Tests  301 passed (301)
+   Duration  12.12s (transform 3.82s, setup 0ms, import 12.73s, tests 25.83s, environment 24.75s)
+ Test Files  11 passed (11)
+      Tests  55 passed (55)
+   Duration  799ms (transform 384ms, setup 0ms, import 1.28s, tests 426ms, environment 3.95s)
+ Test Files  6 passed (6)
+      Tests  40 passed (40)
+   Duration  113ms (transform 162ms, setup 0ms, import 205ms, tests 24ms, environment 0ms)
+ Test Files  703 passed | 2 skipped (705)
+      Tests  5664 passed | 1 expected fail | 22 skipped (5687)
+   Duration  65.83s (transform 15.65s, setup 25.12s, import 151.85s, tests 617.01s, environment 37ms)
+ Test Files  2 passed (2)
+      Tests  3 passed (3)
+   Duration  513ms (transform 32ms, setup 0ms, import 43ms, tests 4ms, environment 850ms)
+ Test Files  4 passed (4)
+      Tests  30 passed (30)
+   Duration  385ms (transform 102ms, setup 0ms, import 173ms, tests 23ms, environment 1.08s)
+
+--- poller.log ---
+sha256 ed86351dd6acb6c82e33f8433ad3da70ce2164bc6c7d4b97d10a197c838495e6
+Ran 23 tests in 0.157s
+
+--- audit-ci.log ---
+sha256 2e2a1c8d9bdd6fe72851acbabc73a9850168366cece534a044c6a6788ea0296a
+No unaccepted high/critical production advisories.
+
+--- smoke-baseline.log ---
+sha256 8be4bf00914a76b332c314b06c03912df8230e7345b32780c1594091919a5462
+> vitest run --passWithNoTests src/__tests__/e2e-smoke.test.ts
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Duration  14.45s (transform 15ms, setup 52ms, import 20ms, tests 14.32s, environment 0ms)

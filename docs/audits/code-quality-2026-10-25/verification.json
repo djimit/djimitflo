@@ -1,0 +1,108 @@
+{
+  "baseline_sha": "6951dba16a32dc8e90971bfe6711033293129eab",
+  "captured_at": "2026-10-25T11:53:00.557695+00:00",
+  "scope": "local isolated source verification; not GitHub CI or production",
+  "code_content": [
+    {
+      "path": "packages/server/src/__tests__/evolution-evidence.test.ts",
+      "sha256": "c06f4121cdfa64b940a31307f5aa458943f23ebdfcc5a3fc9b78b63802024653"
+    },
+    {
+      "path": "packages/server/src/__tests__/merge-train-correctness.test.ts",
+      "sha256": "0debc1ddbbe35b1d144d45453022b1764dfcbafcbf19bb69d22269d84ff6bdd3"
+    },
+    {
+      "path": "packages/server/src/__tests__/merge-train.test.ts",
+      "sha256": "0aa42615bfbfcc1bf74a2a2b7b8849f5bc5e310730a9265ebedc7bf711fd5608"
+    },
+    {
+      "path": "packages/server/src/__tests__/reflection-proposal-disposition.test.ts",
+      "sha256": "effbf07372a4365f7ea3da6fc735c641475ff3cbb9ebf815db7993b90575cf29"
+    },
+    {
+      "path": "packages/server/src/services/evolution-evidence.ts",
+      "sha256": "f4f0d5fcb7c14f032d6ba3321182203749fa051cdc29215e69f6cb893cacd3ef"
+    },
+    {
+      "path": "packages/server/src/services/self-improvement-service.ts",
+      "sha256": "7b435d5720c14a8439611da8b845a7653a9c20406bb7a6473276ef9d5f51a7c5"
+    },
+    {
+      "path": "scripts/merge-train.sh",
+      "sha256": "6a361f72192b596a142edd7b421d2117af3c46f30914f2bdfef39f5ef0c70bd1"
+    }
+  ],
+  "checks": [
+    {
+      "command": [
+        "npm",
+        "run",
+        "type-check"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 1.51,
+      "log": "type-check.log"
+    },
+    {
+      "command": [
+        "npm",
+        "run",
+        "lint"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 8.36,
+      "log": "lint.log"
+    },
+    {
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "exit_code": 0,
+      "log": "build.log",
+      "note": "Read successful process result; built before final shell-only/test-fixture changes; application TS unchanged afterward"
+    },
+    {
+      "command": [
+        "npm",
+        "run",
+        "test",
+        "--",
+        "--reporter=verbose"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 84.89,
+      "log": "full-test.log"
+    },
+    {
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "scripts",
+        "-p",
+        "test_*poller.py"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 0.24,
+      "log": "poller.log"
+    },
+    {
+      "command": [
+        "npm",
+        "run",
+        "audit:ci"
+      ],
+      "exit_code": 0,
+      "duration_seconds": 0.65,
+      "log": "audit-ci.log"
+    }
+  ],
+  "preexisting_warnings": [
+    "lint: one unused eslint-disable in github-pr-review-llm.test.ts"
+  ],
+  "github_ci": "Check exact final PR head separately; not represented as passed here"
+}
