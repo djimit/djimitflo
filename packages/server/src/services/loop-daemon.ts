@@ -121,7 +121,8 @@ const DECISIVE_VERDICTS = ['accepted', 'needs_revision', 'rejected'];
  * queue at GOAL_QUEUE_POLL_MS (default 5000ms).
  *
  * The daemon runs in-process, using the existing continueLoopRun machinery. It
- * starts on server boot (after recoverInterruptedRuns + resumeInterruptedRuns).
+ * starts on server boot, after recoverInterruptedRuns (bootstrap/recovery.ts, index.ts). resumeInterruptedRuns
+ * (loop-recovery-service.ts) has no caller outside tests: interrupted runs are not resumed at boot.
  */
 
 /**
@@ -1052,8 +1053,8 @@ export class LoopDaemon {
 
   /**
    * G19: Restore active goals from system_state on restart.
-   * The goals themselves are recovered by G10 resumeInterruptedRuns; this just
-   * restores the daemon's tracking set so it doesn't double-start them.
+   * The goals' runs are only marked interrupted at boot (recoverInterruptedRuns; G10 resumeInterruptedRuns has no caller
+   * outside tests); this just restores the daemon's tracking set so it doesn't double-start them.
    */
   private restoreActiveGoals(): void {
     try {

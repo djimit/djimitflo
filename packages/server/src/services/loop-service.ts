@@ -17,7 +17,7 @@ import { AgentAssuranceService } from './agent-assurance-service';
 import { SwarmIntelligenceService, type SwarmCapabilityRecord } from './swarm-intelligence-service';
 import { mintSpawnToken, resolveSpawnTokenSecret } from './spawn-token';
 import { swarmEventBus } from './swarm-event-bus';
-import { LoopBudgetService } from './loop-budget-service';
+import { LoopBudgetService, type EfficiencyMetric } from './loop-budget-service';
 import { WorktreeManager } from './worktree-manager';
 import { GoalService } from './goal-service';
 import { LoopWorkerExecutorService } from './loop-worker-executor-service';
@@ -58,6 +58,7 @@ import type {
   CheckerVerdictInput,
   VerdictActor,
 } from './loop-types';
+import { isSupersededMaker } from './loop-types';
 import type { LoopFinding } from './loop-discovery-service';
 import type { GoalRecord, GoalCreateInput, GoalUpdateInput, DecomposedLoopCandidate } from './goal-service';
 import { captureReadSet, freshnessMode, type ReadSet } from './evidence-freshness';
@@ -791,7 +792,7 @@ export class LoopService {
     return this.budget.allocateDollarBudget(findings, budget);
   }
 
-  computeEfficiencyMetric(runId: string): { verifiedArtifacts: number; dollarsSpent: number; efficiency: number } {
+  computeEfficiencyMetric(runId: string): EfficiencyMetric {
     return this.budget.computeEfficiencyMetric(runId);
   }
 
@@ -2348,7 +2349,7 @@ export class LoopService {
   }
 
   public isSupersededMakerLease(lease: WorkerLeaseRecord): boolean {
-    return lease.role === 'maker' && typeof lease.metadata.superseded_by_maker_lease_id === 'string';
+    return isSupersededMaker(lease);
   }
 
   public retryRootFor(maker: WorkerLeaseRecord): string {

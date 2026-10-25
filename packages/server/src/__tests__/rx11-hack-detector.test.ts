@@ -51,7 +51,7 @@ it('P0-12: hack flags are computed without HACK_DETECTOR_MODE; a flagged failure
   const c = svc.claim('workstation', ['atomic']) as { runId: string };
   svc.record(c.runId, 'workstation', { status: 'failure', reason: 'out of scope: packages/server/src/__tests__/range.test.ts' });
   const r = JSON.parse((db.prepare("SELECT json_extract(metadata, '$.gym_result') AS g FROM loop_runs WHERE id = ?").get(c.runId) as { g: string }).g);
-  expect(r).toEqual({ status: 'failure', reason: 'out of scope: packages/server/src/__tests__/range.test.ts', hack_flags: ['tests_touched'] });
+  expect(r).toEqual({ status: 'failure', reason: 'out of scope: packages/server/src/__tests__/range.test.ts', tokens: null, hack_flags: ['tests_touched'] });
   expect(db.prepare("SELECT success FROM skill_outcomes WHERE task_id = ?").get(c.runId)).toEqual({ success: 0 });
 });
 
@@ -79,7 +79,7 @@ it('P0-12: a success without the worker evidence (changed_files + diff) is an in
     const c = svc.claim('workstation', ['atomic']) as { runId: string };
     svc.record(c.runId, 'workstation', { status: 'success', reason: 'tests green, source only', ...extra });
     const r = JSON.parse((db.prepare("SELECT json_extract(metadata, '$.gym_result') AS g FROM loop_runs WHERE id = ?").get(c.runId) as { g: string }).g);
-    expect(r).toEqual({ status: 'discarded', reason: 'infra: success without changed_files/diff evidence' });
+    expect(r).toEqual({ status: 'discarded', reason: 'infra: success without changed_files/diff evidence', tokens: null });
     expect(db.prepare("SELECT COUNT(*) AS n FROM skill_outcomes WHERE task_id = ?").get(c.runId)).toEqual({ n: 0 });
   }
   const ok = svc.claim('workstation', ['atomic']) as { runId: string };
