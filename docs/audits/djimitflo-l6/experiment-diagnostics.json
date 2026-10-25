@@ -1,0 +1,1447 @@
+{
+  "captured_at": "2026-10-23T22:45:01.114Z",
+  "source_sha": "f957b552c9f02ffc5fb25c45d24431610e57f278",
+  "mode": "readonly + query_only; consistent read transaction",
+  "results": {
+    "assigned_population": {
+      "sql": "WITH ctx AS (SELECT e.loop_run_id,e.created_at,e.metadata,ROW_NUMBER() OVER (PARTITION BY e.loop_run_id ORDER BY e.created_at DESC,e.rowid DESC) ord FROM loop_events e WHERE e.event_type='assignment_context' AND julianday(e.created_at)>=julianday(?)), eligible AS (SELECT e.loop_run_id,r.goal_id,r.loop_name,r.status run_status,s.status proposal_status,e.metadata,\nCASE WHEN json_extract(e.metadata,'$.memory_holdout')=1 THEN 'holdout' ELSE 'rules' END arm,\nEXISTS (SELECT 1 FROM judgments oa WHERE oa.judgment = 'outcome_attribution' AND oa.decision IN ('reviewer_failure', 'environment_failure')\n    AND ((oa.subject_type = 'loop_run' AND oa.subject_id = e.loop_run_id)\n      OR (oa.subject_type = 'self_improvement' AND EXISTS (SELECT 1 FROM loop_runs oar JOIN goals oag ON oag.id = oar.goal_id\n        WHERE oar.id = e.loop_run_id AND oag.improvement_id = oa.subject_id AND oar.created_at <= oa.created_at)))) non_maker,\nCASE WHEN NOT EXISTS (SELECT 1 FROM worker_leases fl\n  WHERE fl.loop_run_id = e.loop_run_id AND json_extract(fl.metadata, '$.runtime_fallback') IS NOT NULL) THEN 0 ELSE 1 END fallback\nFROM ctx e JOIN loop_runs r ON r.id=e.loop_run_id JOIN goals g ON g.id=r.goal_id JOIN self_improvements s ON s.id=g.improvement_id\nWHERE e.ord=1 AND (json_extract(e.metadata,'$.memory_holdout')=1 OR json_array_length(json_extract(e.metadata,'$.rule_ids'))>0)) SELECT arm,proposal_status,non_maker,fallback,COUNT(*) runs,COUNT(DISTINCT goal_id) goals FROM eligible GROUP BY 1,2,3,4",
+      "params": [
+        "2026-10-08T00:00:00.000Z"
+      ],
+      "rows": [
+        {
+          "arm": "holdout",
+          "proposal_status": "infra_failed",
+          "non_maker": 1,
+          "fallback": 0,
+          "runs": 7,
+          "goals": 7
+        },
+        {
+          "arm": "holdout",
+          "proposal_status": "regressed",
+          "non_maker": 0,
+          "fallback": 0,
+          "runs": 3,
+          "goals": 3
+        },
+        {
+          "arm": "holdout",
+          "proposal_status": "regressed",
+          "non_maker": 1,
+          "fallback": 0,
+          "runs": 5,
+          "goals": 5
+        },
+        {
+          "arm": "holdout",
+          "proposal_status": "verified",
+          "non_maker": 0,
+          "fallback": 0,
+          "runs": 28,
+          "goals": 28
+        },
+        {
+          "arm": "rules",
+          "proposal_status": "infra_failed",
+          "non_maker": 1,
+          "fallback": 0,
+          "runs": 9,
+          "goals": 9
+        },
+        {
+          "arm": "rules",
+          "proposal_status": "needs_more_evidence",
+          "non_maker": 0,
+          "fallback": 0,
+          "runs": 1,
+          "goals": 1
+        },
+        {
+          "arm": "rules",
+          "proposal_status": "no_change",
+          "non_maker": 1,
+          "fallback": 0,
+          "runs": 2,
+          "goals": 2
+        },
+        {
+          "arm": "rules",
+          "proposal_status": "no_change",
+          "non_maker": 1,
+          "fallback": 1,
+          "runs": 1,
+          "goals": 1
+        },
+        {
+          "arm": "rules",
+          "proposal_status": "regressed",
+          "non_maker": 0,
+          "fallback": 0,
+          "runs": 18,
+          "goals": 18
+        },
+        {
+          "arm": "rules",
+          "proposal_status": "regressed",
+          "non_maker": 0,
+          "fallback": 1,
+          "runs": 1,
+          "goals": 1
+        },
+        {
+          "arm": "rules",
+          "proposal_status": "regressed",
+          "non_maker": 1,
+          "fallback": 0,
+          "runs": 6,
+          "goals": 6
+        },
+        {
+          "arm": "rules",
+          "proposal_status": "verified",
+          "non_maker": 0,
+          "fallback": 0,
+          "runs": 55,
+          "goals": 55
+        },
+        {
+          "arm": "rules",
+          "proposal_status": "verified",
+          "non_maker": 0,
+          "fallback": 1,
+          "runs": 2,
+          "goals": 2
+        }
+      ]
+    },
+    "analysed_cluster_sizes": {
+      "sql": "WITH ctx AS (SELECT e.loop_run_id,e.created_at,e.metadata,ROW_NUMBER() OVER (PARTITION BY e.loop_run_id ORDER BY e.created_at DESC,e.rowid DESC) ord FROM loop_events e WHERE e.event_type='assignment_context' AND julianday(e.created_at)>=julianday(?)), eligible AS (SELECT e.loop_run_id,r.goal_id,r.loop_name,r.status run_status,s.status proposal_status,e.metadata,\nCASE WHEN json_extract(e.metadata,'$.memory_holdout')=1 THEN 'holdout' ELSE 'rules' END arm,\nEXISTS (SELECT 1 FROM judgments oa WHERE oa.judgment = 'outcome_attribution' AND oa.decision IN ('reviewer_failure', 'environment_failure')\n    AND ((oa.subject_type = 'loop_run' AND oa.subject_id = e.loop_run_id)\n      OR (oa.subject_type = 'self_improvement' AND EXISTS (SELECT 1 FROM loop_runs oar JOIN goals oag ON oag.id = oar.goal_id\n        WHERE oar.id = e.loop_run_id AND oag.improvement_id = oa.subject_id AND oar.created_at <= oa.created_at)))) non_maker,\nCASE WHEN NOT EXISTS (SELECT 1 FROM worker_leases fl\n  WHERE fl.loop_run_id = e.loop_run_id AND json_extract(fl.metadata, '$.runtime_fallback') IS NOT NULL) THEN 0 ELSE 1 END fallback\nFROM ctx e JOIN loop_runs r ON r.id=e.loop_run_id JOIN goals g ON g.id=r.goal_id JOIN self_improvements s ON s.id=g.improvement_id\nWHERE e.ord=1 AND (json_extract(e.metadata,'$.memory_holdout')=1 OR json_array_length(json_extract(e.metadata,'$.rule_ids'))>0)) SELECT arm,COUNT(*) runs,COUNT(DISTINCT goal_id) goals,SUM(proposal_status='verified') verified,SUM(run_status NOT IN ('completed','ready_for_human_merge') AND proposal_status='verified') verified_proposal_noncompleted_runs FROM eligible WHERE proposal_status IN ('verified','regressed') AND NOT(proposal_status='regressed' AND non_maker=1) AND fallback=0 GROUP BY arm",
+      "params": [
+        "2026-10-08T00:00:00.000Z"
+      ],
+      "rows": [
+        {
+          "arm": "holdout",
+          "runs": 31,
+          "goals": 31,
+          "verified": 28,
+          "verified_proposal_noncompleted_runs": 0
+        },
+        {
+          "arm": "rules",
+          "runs": 73,
+          "goals": 73,
+          "verified": 55,
+          "verified_proposal_noncompleted_runs": 0
+        }
+      ]
+    },
+    "memory_by_lane": {
+      "sql": "WITH ctx AS (SELECT e.loop_run_id,e.created_at,e.metadata,ROW_NUMBER() OVER (PARTITION BY e.loop_run_id ORDER BY e.created_at DESC,e.rowid DESC) ord FROM loop_events e WHERE e.event_type='assignment_context' AND julianday(e.created_at)>=julianday(?)), eligible AS (SELECT e.loop_run_id,r.goal_id,r.loop_name,r.status run_status,s.status proposal_status,e.metadata,\nCASE WHEN json_extract(e.metadata,'$.memory_holdout')=1 THEN 'holdout' ELSE 'rules' END arm,\nEXISTS (SELECT 1 FROM judgments oa WHERE oa.judgment = 'outcome_attribution' AND oa.decision IN ('reviewer_failure', 'environment_failure')\n    AND ((oa.subject_type = 'loop_run' AND oa.subject_id = e.loop_run_id)\n      OR (oa.subject_type = 'self_improvement' AND EXISTS (SELECT 1 FROM loop_runs oar JOIN goals oag ON oag.id = oar.goal_id\n        WHERE oar.id = e.loop_run_id AND oag.improvement_id = oa.subject_id AND oar.created_at <= oa.created_at)))) non_maker,\nCASE WHEN NOT EXISTS (SELECT 1 FROM worker_leases fl\n  WHERE fl.loop_run_id = e.loop_run_id AND json_extract(fl.metadata, '$.runtime_fallback') IS NOT NULL) THEN 0 ELSE 1 END fallback\nFROM ctx e JOIN loop_runs r ON r.id=e.loop_run_id JOIN goals g ON g.id=r.goal_id JOIN self_improvements s ON s.id=g.improvement_id\nWHERE e.ord=1 AND (json_extract(e.metadata,'$.memory_holdout')=1 OR json_array_length(json_extract(e.metadata,'$.rule_ids'))>0)) SELECT arm,loop_name,COUNT(*) n,SUM(proposal_status='verified') verified,COUNT(DISTINCT goal_id) goals FROM eligible WHERE proposal_status IN ('verified','regressed') AND NOT(proposal_status='regressed' AND non_maker=1) AND fallback=0 GROUP BY 1,2",
+      "params": [
+        "2026-10-08T00:00:00.000Z"
+      ],
+      "rows": [
+        {
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "n": 31,
+          "verified": 28,
+          "goals": 31
+        },
+        {
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "n": 73,
+          "verified": 55,
+          "goals": 73
+        }
+      ]
+    },
+    "memory_goal_rows": {
+      "sql": "WITH ctx AS (SELECT e.loop_run_id,e.created_at,e.metadata,ROW_NUMBER() OVER (PARTITION BY e.loop_run_id ORDER BY e.created_at DESC,e.rowid DESC) ord FROM loop_events e WHERE e.event_type='assignment_context' AND julianday(e.created_at)>=julianday(?)), eligible AS (SELECT e.loop_run_id,r.goal_id,r.loop_name,r.status run_status,s.status proposal_status,e.metadata,\nCASE WHEN json_extract(e.metadata,'$.memory_holdout')=1 THEN 'holdout' ELSE 'rules' END arm,\nEXISTS (SELECT 1 FROM judgments oa WHERE oa.judgment = 'outcome_attribution' AND oa.decision IN ('reviewer_failure', 'environment_failure')\n    AND ((oa.subject_type = 'loop_run' AND oa.subject_id = e.loop_run_id)\n      OR (oa.subject_type = 'self_improvement' AND EXISTS (SELECT 1 FROM loop_runs oar JOIN goals oag ON oag.id = oar.goal_id\n        WHERE oar.id = e.loop_run_id AND oag.improvement_id = oa.subject_id AND oar.created_at <= oa.created_at)))) non_maker,\nCASE WHEN NOT EXISTS (SELECT 1 FROM worker_leases fl\n  WHERE fl.loop_run_id = e.loop_run_id AND json_extract(fl.metadata, '$.runtime_fallback') IS NOT NULL) THEN 0 ELSE 1 END fallback\nFROM ctx e JOIN loop_runs r ON r.id=e.loop_run_id JOIN goals g ON g.id=r.goal_id JOIN self_improvements s ON s.id=g.improvement_id\nWHERE e.ord=1 AND (json_extract(e.metadata,'$.memory_holdout')=1 OR json_array_length(json_extract(e.metadata,'$.rule_ids'))>0)) SELECT goal_id,arm,loop_name,COUNT(*) runs,MAX(proposal_status='verified') verified FROM eligible WHERE proposal_status IN ('verified','regressed') AND NOT(proposal_status='regressed' AND non_maker=1) AND fallback=0 GROUP BY 1,2,3",
+      "params": [
+        "2026-10-08T00:00:00.000Z"
+      ],
+      "rows": [
+        {
+          "goal_id": "018704cd-e5a1-4ece-9b37-979f84b618f0",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "03ea6c15-4b15-4774-b96d-4543ea2a0957",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "0424ba5d-e4ab-4eb4-a52f-5381ab3290f1",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "06a34601-fbb8-4755-ab3f-e8842f2f2f95",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "092e8b3d-a0df-4cb9-bed2-7260073047e8",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 0
+        },
+        {
+          "goal_id": "0b5d68b7-ed3f-4fdc-a414-efd57b1a108e",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 0
+        },
+        {
+          "goal_id": "0bf648e1-a2e9-4a34-aafa-b203e6455105",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 0
+        },
+        {
+          "goal_id": "0e6b0902-0261-49f3-9f0a-0b445d68e5d2",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "140a601b-b123-47fb-ade5-80cb9387374d",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "1a6a1490-4106-4c59-a537-5debbba217d6",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "1f06f244-f7bf-4380-88d7-4720f429f4fd",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "1fa27a5b-9c5b-441d-882a-dd55201d4fff",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "21e477ff-7e10-4946-bcd4-7bd80d41cb2d",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "21fdd8ed-c73c-4654-abc5-9ed623867f40",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "266b22c2-b8fe-49e6-a2e3-fc787805947e",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "26ed7d5a-a981-462f-bb0c-4d4a19d6a932",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "2afb0fc9-b16c-4cd5-8531-e6ca984c477f",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "2c7c11d8-1075-4fb9-8bd3-c11c36c5d84d",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "3070d989-ba13-49e1-9d36-cb69833cd0aa",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 0
+        },
+        {
+          "goal_id": "31ad6ddc-de7d-4a0b-b8c7-a292b9b38132",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "33b1643b-6719-410b-9bbe-a27bee214130",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "3c667d69-3b02-4acf-8d04-ded811fb9987",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "3cf54707-a1f8-4d60-a5b9-34753ce4bddc",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 0
+        },
+        {
+          "goal_id": "400f115b-da21-4287-aec5-821d1a45edb2",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 0
+        },
+        {
+          "goal_id": "40118cef-3396-4b4f-93bf-9d8cd72230b8",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "415c9cd1-54e7-4c69-81db-e106df56e516",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 0
+        },
+        {
+          "goal_id": "43eceae2-11ee-4edd-9bb6-39883142b744",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "44d41945-06f5-4839-a35d-84a5d5c91d0f",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 0
+        },
+        {
+          "goal_id": "455a193c-f576-4058-92c1-8fe17b5ab329",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "483587bd-25e8-4217-b164-18fa7904c866",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "5a081777-c4c6-45ea-b4db-9913d2288efb",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "5c5b77b0-d685-403a-90b6-a8b4c1f3bd95",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "5e0232fa-4f04-4899-afa0-3510b3112096",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "60cf9f43-6fd1-4ea2-a280-67faed901000",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "65f9e15e-7b95-4f1b-b880-2c48bbd23883",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "66a1e60f-5f28-47d4-870b-6fffd86c1d9f",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "66b1be7c-142f-4b4e-b4df-dde3596c3a53",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "6782e694-8a94-49e9-af69-f8932bec4838",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "6bcda517-f5ec-4c98-abfc-11a898fbf543",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "766d3489-3fff-4c6f-acb5-c8626d37f20f",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "777cfcf8-918d-4e3b-8827-6dccc699462a",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "77d43cf1-c5d7-4dc7-b694-2d4055b879b7",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "77fd7641-00a2-45c4-8edf-d487e16e944b",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 0
+        },
+        {
+          "goal_id": "79289e8e-1fb6-4d4d-8dfd-fe9260363c0d",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "7af9cc48-2d56-44c9-a224-0440fbd0de3c",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "7b3e58d8-c8a7-45f1-bd33-b5edbf4a43df",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "7c691d06-b3b9-48e3-9957-f8e550e1a669",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 0
+        },
+        {
+          "goal_id": "7d23dad0-1461-448b-a3b9-8b85aea4d7e6",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "7f08dd5a-2451-4e5d-bd3f-16399b3e1f10",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "80be88a2-31ce-412a-88ab-fa0655572010",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 0
+        },
+        {
+          "goal_id": "83974ef4-29f0-471e-8a84-9b7739164c9d",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "8451a1d3-9b85-498e-aea9-e1e3e274c2d0",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "87e6dc0c-85f2-473b-82cf-3e81b2ee56e8",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "89f2fcc9-0fc3-4ca0-8ca4-8ba21e48fc62",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "8c0e49e1-0918-4db8-88eb-d52c9067ca23",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "8cf7e8d0-66b1-474a-aa3d-0dde43e7f988",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "8e2baeed-c6ec-45eb-9c9d-3b7b596b5da7",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "90387041-3473-42e4-93f8-faa9b17dc1a1",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "90f311c7-923c-47f0-9e47-9c4b63433630",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "99b91a66-a18a-4336-817c-31da2b5abbc1",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "99ead62e-a8e5-46ad-a092-14b3d4184a18",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 0
+        },
+        {
+          "goal_id": "9ab987c7-7803-433b-bd03-643fbb704a3f",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 0
+        },
+        {
+          "goal_id": "9c3b8723-cc95-4670-8702-bd1390cc21dd",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "9d9fb274-67c0-4add-857a-611689bf62f6",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "9daa9b56-9cd3-4ca7-95cc-34cb8325b698",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "a1eebfd7-4a2f-4332-a813-1c06dbe95ede",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "a26c2744-752f-4a3e-9375-36f7efba8e0a",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "a69c3003-4bdd-48b5-8bc8-c187e2148445",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "a9e215b3-9332-4392-957a-10927c0a3f14",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "ad25a484-56b9-4071-b9f9-4526ac7d606f",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "af5c4234-3439-4f41-8b1e-94f300b0e074",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "b267b6ad-72f9-47b7-9e96-9ae886435757",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "b608efb8-cfcd-4b5b-9ebf-75a03b364bc2",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "b6751507-8ac7-40a0-80e0-ea198315e36e",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 0
+        },
+        {
+          "goal_id": "b6e364af-7185-4934-b985-5b6afcc96851",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "b6fc8542-36dc-4eb8-b5ca-02ab0383f40d",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "b87321ee-2f8c-4f1d-98cd-f17744e7a961",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 0
+        },
+        {
+          "goal_id": "ba4489d7-833a-4141-a7bf-98ec7432c409",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "bd2669f4-f0bf-4125-b432-c7e3803fb6da",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "bd848c8a-44d6-4aaf-9820-a4fe750b62b4",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "be65b44e-482a-4c16-bc9a-1e77a436b8eb",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 0
+        },
+        {
+          "goal_id": "c0094299-ea80-4a02-bace-fef1b3a3e7ac",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "c5885177-a784-4eea-99b6-7de93f5da022",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "c7c9afb5-9ac1-4f16-bba6-3dbb86e9e2fc",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "ca84f833-aef4-467e-be61-1fe27dbf750b",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "da03eaf8-eb67-46ca-abae-92d8ac6059bf",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "dd68d8e9-d067-474b-b9a6-ca6941c60849",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 0
+        },
+        {
+          "goal_id": "ddb72cb6-0bbf-4379-93ac-5dc846dee31d",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 0
+        },
+        {
+          "goal_id": "e317ed4e-fff0-40ec-b196-bd1f7f868c24",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 0
+        },
+        {
+          "goal_id": "e3952a97-61da-43f9-9a38-d978ce9c98ea",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 0
+        },
+        {
+          "goal_id": "e549f8d0-fba1-49ff-aea8-88a9493f67a0",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "e54c259c-8a43-4574-908b-f41e7a7ece18",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "e705a689-ede2-4e73-b199-e079aded6330",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "ea7f0dcc-58cb-44c9-88ae-06bb849c19f6",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "ebc2eb1f-3b7e-492e-b8ce-cf016699e77d",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "ec05d21a-06db-44be-8ebc-e3df0f46008c",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "f1feb7ba-a296-4ef8-8d5a-266ef2873916",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "f49ff844-11f9-4a5f-92b0-36b0a56432a5",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "f744daa9-4390-4c6a-95b6-30e822e051b1",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "f9406493-de8a-4080-97c0-6230673f00e8",
+          "arm": "holdout",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "faa02b14-b0f8-4e1f-9609-0d6882978017",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "fbcf66b2-8456-4578-98a1-42d5659b8cbd",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "fe6101b4-dc97-488d-ac9a-f3c4028424e7",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 1
+        },
+        {
+          "goal_id": "ff54f2b4-5a57-4866-bb5c-e7b8bf98ac7e",
+          "arm": "rules",
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "runs": 1,
+          "verified": 0
+        }
+      ]
+    },
+    "context_crossover": {
+      "sql": "SELECT COUNT(*) runs_with_both_arms FROM (SELECT loop_run_id FROM loop_events WHERE event_type='assignment_context' AND julianday(created_at)>=julianday(?) GROUP BY loop_run_id HAVING MAX(json_extract(metadata,'$.memory_holdout')=1)=1 AND MAX(COALESCE(json_array_length(json_extract(metadata,'$.rule_ids')),0)>0)=1)",
+      "params": [
+        "2026-10-08T00:00:00.000Z"
+      ],
+      "rows": [
+        {
+          "runs_with_both_arms": 0
+        }
+      ]
+    },
+    "ace_units": {
+      "sql": "SELECT substr(j.value,13) arm,COUNT(*) outcome_rows,COUNT(DISTINCT o.task_id) task_ids,COUNT(DISTINCT r.goal_id) goals FROM skill_outcomes o JOIN json_each(o.evidence_refs_json) j LEFT JOIN loop_runs r ON r.id=o.task_id WHERE j.value LIKE 'ace-001-arm:%' AND o.skill_id LIKE 'loop-maker:%' AND julianday(o.created_at)>=julianday('2026-10-12') GROUP BY 1",
+      "params": [],
+      "rows": [
+        {
+          "arm": "00",
+          "outcome_rows": 31,
+          "task_ids": 31,
+          "goals": 31
+        },
+        {
+          "arm": "01",
+          "outcome_rows": 21,
+          "task_ids": 21,
+          "goals": 21
+        },
+        {
+          "arm": "10",
+          "outcome_rows": 28,
+          "task_ids": 28,
+          "goals": 28
+        },
+        {
+          "arm": "11",
+          "outcome_rows": 26,
+          "task_ids": 26,
+          "goals": 26
+        }
+      ]
+    },
+    "skill_card_survival": {
+      "sql": "SELECT c.status,CASE WHEN json_extract(r.metadata,'$.pr_outcome.settled_at') IS NULL THEN 'not_recorded_settled' ELSE 'recorded_settled' END settlement,COUNT(*) n FROM skill_cards c JOIN loop_runs r ON r.id=c.run_id GROUP BY 1,2",
+      "params": [],
+      "rows": [
+        {
+          "status": "candidate",
+          "settlement": "not_recorded_settled",
+          "n": 106
+        }
+      ]
+    },
+    "rule_selection_concentration": {
+      "sql": "SELECT candidate_id,COUNT(*) reads,COUNT(DISTINCT agent_id) caller_runs,MAX(accessed_at) last_at FROM memory_access_log GROUP BY 1 ORDER BY reads DESC",
+      "params": [],
+      "rows": [
+        {
+          "candidate_id": "95a34322-a41d-476d-a5ce-f3be4e180653",
+          "reads": 250,
+          "caller_runs": 157,
+          "last_at": "2026-10-23T21:56:12.424Z"
+        },
+        {
+          "candidate_id": "62031529-ef91-4c57-a355-dc640df9a93b",
+          "reads": 247,
+          "caller_runs": 155,
+          "last_at": "2026-10-23T21:56:12.424Z"
+        },
+        {
+          "candidate_id": "aa2a9224-c44e-4d84-b0ba-d5c6709f5542",
+          "reads": 240,
+          "caller_runs": 151,
+          "last_at": "2026-10-23T21:56:12.424Z"
+        },
+        {
+          "candidate_id": "5cabbb35-0aa0-4d83-a2dc-aee697f55f1f",
+          "reads": 54,
+          "caller_runs": 40,
+          "last_at": "2026-09-28T12:43:49.257Z"
+        },
+        {
+          "candidate_id": "882db32d-f68a-4081-8f12-b36491029390",
+          "reads": 54,
+          "caller_runs": 40,
+          "last_at": "2026-09-28T12:43:49.257Z"
+        },
+        {
+          "candidate_id": "ee6d1f4d-57ef-43e0-ab01-7e90aee4d601",
+          "reads": 29,
+          "caller_runs": 15,
+          "last_at": "2026-10-07T12:50:35.589Z"
+        },
+        {
+          "candidate_id": "a8ec063f-f480-410b-8d24-69a056613276",
+          "reads": 22,
+          "caller_runs": 11,
+          "last_at": "2026-10-06T08:02:56.586Z"
+        },
+        {
+          "candidate_id": "146f8708-59f5-499d-982c-f85222d7891c",
+          "reads": 15,
+          "caller_runs": 11,
+          "last_at": "2026-10-01T15:13:16.911Z"
+        },
+        {
+          "candidate_id": "a9f4609a-0976-42c5-90f4-aab1fb675a3f",
+          "reads": 13,
+          "caller_runs": 9,
+          "last_at": "2026-10-01T15:13:16.911Z"
+        },
+        {
+          "candidate_id": "d89390b0-bc5b-4f08-9649-f4c02c0c4d01",
+          "reads": 11,
+          "caller_runs": 7,
+          "last_at": "2026-10-01T15:13:16.911Z"
+        },
+        {
+          "candidate_id": "05053a96-a30b-4825-857e-349611d51133",
+          "reads": 10,
+          "caller_runs": 5,
+          "last_at": "2026-10-06T08:02:56.586Z"
+        },
+        {
+          "candidate_id": "f4302290-55cd-4283-92f5-2792fa310b0e",
+          "reads": 10,
+          "caller_runs": 5,
+          "last_at": "2026-10-06T08:02:56.586Z"
+        },
+        {
+          "candidate_id": "1b4bf2e4-8059-4673-8267-dd9ec167d21d",
+          "reads": 1,
+          "caller_runs": 1,
+          "last_at": "2026-10-16T15:42:09.378Z"
+        },
+        {
+          "candidate_id": "2ebb9d6b-456e-455a-8d7f-8626adb8df31",
+          "reads": 1,
+          "caller_runs": 1,
+          "last_at": "2026-10-15T19:34:23.050Z"
+        },
+        {
+          "candidate_id": "5249dde6-8d89-42e6-8579-5a92492e3536",
+          "reads": 1,
+          "caller_runs": 1,
+          "last_at": "2026-10-23T00:41:56.353Z"
+        },
+        {
+          "candidate_id": "57572661-5cc5-4670-99c9-ea6051af58e9",
+          "reads": 1,
+          "caller_runs": 1,
+          "last_at": "2026-10-09T08:08:05.745Z"
+        },
+        {
+          "candidate_id": "62b10a66-221c-4df2-9f9f-63d175751c5d",
+          "reads": 1,
+          "caller_runs": 1,
+          "last_at": "2026-10-09T08:07:50.610Z"
+        },
+        {
+          "candidate_id": "73addb92-9353-453e-a092-66743b07c97e",
+          "reads": 1,
+          "caller_runs": 1,
+          "last_at": "2026-10-09T08:08:19.762Z"
+        },
+        {
+          "candidate_id": "bd95f12d-13fb-4984-859c-8ee52cbb3ea8",
+          "reads": 1,
+          "caller_runs": 1,
+          "last_at": "2026-10-15T19:34:29.778Z"
+        },
+        {
+          "candidate_id": "c5e40024-256f-44a2-9516-ba468754b596",
+          "reads": 1,
+          "caller_runs": 1,
+          "last_at": "2026-10-23T06:26:55.995Z"
+        },
+        {
+          "candidate_id": "d820d09b-38a7-4cb8-b350-569ca18ac7a4",
+          "reads": 1,
+          "caller_runs": 1,
+          "last_at": "2026-10-15T19:34:36.809Z"
+        }
+      ]
+    },
+    "fleet_signatures": {
+      "sql": "SELECT mode,verdict,COUNT(*) n,MAX(at) last_at FROM fleet_event_signatures GROUP BY 1,2",
+      "params": [],
+      "rows": [
+        {
+          "mode": "enforce",
+          "verdict": "verified",
+          "n": 12,
+          "last_at": "2026-10-23T08:15:11.660Z"
+        },
+        {
+          "mode": "shadow",
+          "verdict": "verified",
+          "n": 6,
+          "last_at": "2026-10-21T12:00:20.370Z"
+        }
+      ]
+    },
+    "fleet_evidence_coverage": {
+      "sql": "SELECT COUNT(*) n,SUM(json_array_length(evidence_refs_json)>0) evidence_refs,SUM(model IS NOT NULL) model,SUM(tokens_used>0) measured_tokens FROM skill_outcomes WHERE domain='fleet'",
+      "params": [],
+      "rows": [
+        {
+          "n": 139,
+          "evidence_refs": 0,
+          "model": 0,
+          "measured_tokens": 0
+        }
+      ]
+    }
+  },
+  "tg": {
+    "mode": "on",
+    "experiment_id": "tg-001-r2",
+    "generation": "r2",
+    "prior_generations": [
+      {
+        "generation": "r1",
+        "experiment_id": "tg-001",
+        "status": "ABORTED_DATA_LOSS",
+        "frozen_at": "2026-10-11T23:04:15.146Z",
+        "first_attempt_at": "2026-10-11T23:25:18.735Z",
+        "attempts_executed": "~5 UNKNOWN/LOST",
+        "cause": "provider snapshot rollback to ~2026-10-11T04:11Z",
+        "pooled": false,
+        "record_at": "2026-10-11T23:20:22Z",
+        "analysis_fingerprint": "ff29c34441f68804b0177b0599f673f369386e139234662eeb33f23d234e70ec",
+        "task_set_fingerprint": "d0eee603a3afa4fbf1988f9bd9a26c4bc0564ae1d98e08d02755a578a57e1594",
+        "prompt_fingerprints": {
+          "A": "1ca310dc176dcf2a0658857dd03f157f7cd7fd7d9a6b9f4bbae9a1dd7bf33ca0",
+          "B": "fa7fdcc1238f085e84e161f5c04f92db630115e22e123aca1f64bafc711df5f5",
+          "C": "5a8270f5f6833182166ed7ef5dc1c0d77057b297e3672c0667e09fa968dfa4c4",
+          "D": "8736acc0038db7db96a13bfb2d0e7cf9856bdfc1076cb84eb275c10313ddb671"
+        },
+        "seed": 11102026,
+        "gate_version": "633dd7a096aba028eebff3228fd4a0cd23ec044cf089cd6caad95c4890a6ba47",
+        "classifier_version": "tg-classifier-v2",
+        "step_budget": 40,
+        "model_router": "atomic@llama-router",
+        "worker_version": "scripts/gym-worker.mjs@sha256:409ef06ef0de45c091cd2705538b04ef1dafcc6940f9b9707f45d0bdb3f8a7d1",
+        "git_commit": "a4f241c1a381bb4217f98450bdc83705520fbf19"
+      }
+    ],
+    "status": "complete",
+    "label": "diagnostic: prompt sensitivity under the gym harness (max-steps 40) — not a generalization benchmark, not a promotion holdout",
+    "frozen_at": "2026-10-12T20:29:49.123Z",
+    "commit": "3f94fa65365ce5234ca054c8413d62257980939b",
+    "species": "atomic@llama-router",
+    "harness": "scripts/gym-worker.mjs@sha256:409ef06ef0de45c091cd2705538b04ef1dafcc6940f9b9707f45d0bdb3f8a7d1",
+    "tasks": 20,
+    "skipped": 0,
+    "mde": 0.2,
+    "alpha": 0.05,
+    "interpretation_rules": [
+      "A − B ≥ 0.2 with exact McNemar p < 0.05: assignment representation is a supported contributor (within the gym harness) → next: prompt-component ablation (C vs B, D vs B) before any gym redesign",
+      "upper 95 % bound of A − B < 0.2: representation rejected as the dominant explanation within this environment → next: 40 vs 60 max-steps with task, prompt, model, worker, runtime and evaluator fixed",
+      "otherwise inconclusive → extend to 40 tasks (protocol stopping rule); never change arms, prompts or the primary comparison after outcomes"
+    ],
+    "arms": [
+      {
+        "arm": "A",
+        "name": "MINIMAL_GYM",
+        "n": 19,
+        "success": 14,
+        "failure": 5,
+        "rate": 0.737,
+        "ci95": [
+          0.5121,
+          0.8819
+        ],
+        "failures": {
+          "TIMEOUT": 3,
+          "TEST_FAILURE": 1,
+          "IMPLEMENTATION_FAILURE": 1
+        },
+        "tokens_mean": "UNKNOWN",
+        "tokens_known": 0,
+        "duration_ms_mean": 587449,
+        "tool_calls": "UNKNOWN",
+        "files_inspected": "UNKNOWN",
+        "infra_censored": 1,
+        "pending": 0,
+        "invalid": 0
+      },
+      {
+        "arm": "B",
+        "name": "FULL_PRODUCTION",
+        "n": 20,
+        "success": 11,
+        "failure": 9,
+        "rate": 0.55,
+        "ci95": [
+          0.3421,
+          0.7418
+        ],
+        "failures": {
+          "TEST_FAILURE": 8,
+          "CONTEXT_FAILURE": 1
+        },
+        "tokens_mean": "UNKNOWN",
+        "tokens_known": 0,
+        "duration_ms_mean": 285854,
+        "tool_calls": "UNKNOWN",
+        "files_inspected": "UNKNOWN",
+        "infra_censored": 0,
+        "pending": 0,
+        "invalid": 0
+      },
+      {
+        "arm": "C",
+        "name": "CONTROLLED_PRODUCTION",
+        "n": 20,
+        "success": 10,
+        "failure": 10,
+        "rate": 0.5,
+        "ci95": [
+          0.2993,
+          0.7007
+        ],
+        "failures": {
+          "TEST_FAILURE": 9,
+          "IMPLEMENTATION_FAILURE": 1
+        },
+        "tokens_mean": "UNKNOWN",
+        "tokens_known": 0,
+        "duration_ms_mean": 258177,
+        "tool_calls": "UNKNOWN",
+        "files_inspected": "UNKNOWN",
+        "infra_censored": 0,
+        "pending": 0,
+        "invalid": 0
+      },
+      {
+        "arm": "D",
+        "name": "STRUCTURED_MINIMAL",
+        "n": 18,
+        "success": 11,
+        "failure": 7,
+        "rate": 0.611,
+        "ci95": [
+          0.3862,
+          0.797
+        ],
+        "failures": {
+          "IMPLEMENTATION_FAILURE": 3,
+          "TEST_FAILURE": 3,
+          "TIMEOUT": 1
+        },
+        "tokens_mean": "UNKNOWN",
+        "tokens_known": 0,
+        "duration_ms_mean": 599949,
+        "tool_calls": "UNKNOWN",
+        "files_inspected": "UNKNOWN",
+        "infra_censored": 2,
+        "pending": 0,
+        "invalid": 0
+      }
+    ],
+    "paired": [
+      {
+        "arms": "A vs B",
+        "n_pairs": 19,
+        "both_pass": 9,
+        "A_only": 5,
+        "B_only": 2,
+        "both_fail": 3,
+        "effect": 0.158,
+        "ci95": [
+          -0.128,
+          0.422
+        ],
+        "ci_method": "tango score (paired)",
+        "mcnemar_exact_p": 0.4531,
+        "raw": {
+          "effect": 0.15789473684210525,
+          "ci95": [
+            -0.12807318144115437,
+            0.42188270642061565
+          ],
+          "mcnemar_exact_p": 0.453125
+        },
+        "discordant": 7,
+        "excluded_tasks": 1,
+        "infra_censored": 1
+      },
+      {
+        "arms": "C vs B",
+        "n_pairs": 20,
+        "both_pass": 9,
+        "C_only": 1,
+        "B_only": 2,
+        "both_fail": 8,
+        "effect": -0.05,
+        "ci95": [
+          -0.266,
+          0.161
+        ],
+        "ci_method": "tango score (paired)",
+        "mcnemar_exact_p": 1,
+        "raw": {
+          "effect": -0.05,
+          "ci95": [
+            -0.2656353484793038,
+            0.1613985872981863
+          ],
+          "mcnemar_exact_p": 1
+        },
+        "discordant": 3,
+        "excluded_tasks": 0,
+        "infra_censored": 0
+      },
+      {
+        "arms": "D vs B",
+        "n_pairs": 18,
+        "both_pass": 8,
+        "D_only": 3,
+        "B_only": 2,
+        "both_fail": 5,
+        "effect": 0.056,
+        "ci95": [
+          -0.213,
+          0.319
+        ],
+        "ci_method": "tango score (paired)",
+        "mcnemar_exact_p": 1,
+        "raw": {
+          "effect": 0.05555555555555555,
+          "ci95": [
+            -0.21266053414458214,
+            0.3187299129939858
+          ],
+          "mcnemar_exact_p": 1
+        },
+        "discordant": 5,
+        "excluded_tasks": 2,
+        "infra_censored": 2
+      }
+    ],
+    "omnibus_cochran_q": {
+      "k": 4,
+      "n_blocks": 17,
+      "q": 4.941,
+      "df": 3,
+      "p": 0.1762,
+      "method": "chi-square approximation, df = k − 1"
+    },
+    "order_effects": {
+      "positions": [
+        {
+          "position": 1,
+          "n": 19,
+          "success": 10,
+          "rate": 0.526,
+          "infra_censored": 1
+        },
+        {
+          "position": 2,
+          "n": 19,
+          "success": 11,
+          "rate": 0.579,
+          "infra_censored": 1
+        },
+        {
+          "position": 3,
+          "n": 20,
+          "success": 11,
+          "rate": 0.55,
+          "infra_censored": 0
+        },
+        {
+          "position": 4,
+          "n": 19,
+          "success": 14,
+          "rate": 0.737,
+          "infra_censored": 1
+        }
+      ],
+      "cochran_q": {
+        "k": 4,
+        "n_blocks": 17,
+        "q": 4.941,
+        "df": 3,
+        "p": 0.1762,
+        "method": "chi-square approximation, df = k − 1"
+      }
+    },
+    "censoring": [
+      {
+        "arm": "A",
+        "by_position": [
+          1,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "arm": "B",
+        "by_position": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "arm": "C",
+        "by_position": [
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "arm": "D",
+        "by_position": [
+          0,
+          1,
+          0,
+          1
+        ]
+      }
+    ],
+    "prior_exposure": {
+      "exposed": 19,
+      "unexposed": 1,
+      "prior_attempts": 22
+    },
+    "result": {
+      "verdict": "inconclusive",
+      "falsified": null,
+      "supported": null,
+      "not_tested": [
+        "step budget (gym max-steps 40 vs production 60)",
+        "production harness, runtime, tools and checker",
+        "unseen-task generalization (most tasks have prior arm-A exposure)",
+        "model routing",
+        "task distribution"
+      ],
+      "next_experiment": "extend to 40 tasks (protocol stopping rule); arms and primary comparison unchanged"
+    },
+    "transfer_gap": "gym 78.8 % vs production 7.0 % (workstation species, 30 d, CODEX_REPORT); TG-001 can only attribute the part due to assignment representation under the gym harness — the rest stays UNKNOWN",
+    "note": "unit = (task, arm), task = block; retries collapsed (first non-infra result); primary = A vs B exact McNemar; Cochran's Q omnibus, then only C vs B and D vs B. All arms run the gym harness (max-steps 40); production remote makers run with 60 — the next experiment, not this one."
+  }
+}
