@@ -15,6 +15,7 @@
  */
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import { mountRoutes } from '../utils/route-inventory';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
@@ -46,6 +47,7 @@ import { createKnowledgeRoutes } from './swarm-knowledge';
 import { recordAbstentionGap } from '../services/knowledge-gaps';
 import { gapDemandByCapability } from '../services/evolution-feedback';
 import { learningCurveView, usageWindow } from '../services/swarm-learning-curve';
+import { missionDetail } from '../services/mission-detail';
 
 type RouteHandler = (req: Request, res: Response, next: NextFunction) => void | Promise<void>;
 
@@ -217,6 +219,13 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   router.get('/intelligence/missions/execution', requirePermission('read:evidence'), route((req, res) => {
     res.json(missionsSvc().missionExecutions(boundedLimit(req.query.limit, 50)));
   }));
+  // mission detail page: the same join for one mission plus its runs, leases, tasks, decisions, tokens and provenance (read-only)
+  const missionDetailLimiter = rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: 'draft-8', legacyHeaders: false }); // per-route limiter CodeQL can see; /api also caps 300/min
+  router.get('/intelligence/missions/:id/execution', missionDetailLimiter, requirePermission('read:evidence'), (req, res, next) => {
+    try { res.json(missionDetail(db, req.params.id)); } catch (error) {
+      try { mapSwarmIntelligenceError(error); } catch (mapped) { next(mapped); }
+    }
+  });
   router.get('/intelligence/missions/:id', requirePermission('read:evidence'), (req, res, next) => {
     try { res.json(missionsSvc().getMission(req.params.id)); } catch (error) {
       try { mapSwarmIntelligenceError(error); } catch (mapped) { next(mapped); }

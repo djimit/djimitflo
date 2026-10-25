@@ -1271,7 +1271,7 @@ export function MissionExecutionPanel({ data }: { data: MissionExecutions }) {
           <tbody>
             {missions.map((m) => (
               <tr key={m.mission_id} data-testid={`mission-${m.mission_id}`} className="border-t border-border">
-                <td className="py-2 pr-4"><div className="font-medium text-foreground">{m.title}</div><div className="font-mono text-xs text-foreground-tertiary">{m.mission_id.slice(0, 12)}</div></td>
+                <td className="py-2 pr-4"><Link to={`/swarm-mission-control/missions/${encodeURIComponent(m.mission_id)}`} className="font-medium text-foreground underline">{m.title}</Link><div className="font-mono text-xs text-foreground-tertiary">{m.mission_id.slice(0, 12)}</div></td>
                 <td className="py-2 pr-4"><StatusBadge status={m.planning_status} /></td>
                 <td className="py-2 pr-4">{m.lineage === 'linked' ? `goal ${m.goal_status}` : `lineage unknown (${m.lineage === 'no_goal' ? 'no goal' : 'goal missing'})`}</td>
                 <td className="py-2 pr-4">{m.execution ? `${m.execution.loop_runs} runs (${counts(m.execution.by_status)}) · ${m.execution.closed_runs === null ? 'closures unknown' : `${m.execution.closed_runs} closed`}` : '—'}</td>
