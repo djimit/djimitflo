@@ -1994,7 +1994,29 @@ export function runMigrations(db: BetterSqlite3Database) {
   createOutcomeLearningTables(db);
   createFrontierExpertTables(db);
   new FrontierExpertRegistryService(db).seedTaxonomy();
+  createAccountUsageSnapshotTables(db);
   createPerformanceIndexes(db);
+}
+
+/**
+ * Operator-reported usage snapshots (/usage): for accounts without an account-wide source (claude_max, chatgpt_pro) the
+ * operator copies session / weekly %, credits and spend limit from the vendor's own usage page. Append-only: the route only
+ * inserts, the latest row per account is shown. services/usage-snapshots.ts validates payload_json.
+ */
+export function createAccountUsageSnapshotTables(db: BetterSqlite3Database) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS account_usage_snapshots (
+      id TEXT PRIMARY KEY,
+      account TEXT NOT NULL,
+      reported_at TEXT NOT NULL,
+      reported_by TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'operator_snapshot' CHECK(source IN ('operator_snapshot')),
+      payload_json TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_account_usage_snapshots_account ON account_usage_snapshots(account, reported_at);
+  `);
 }
 
 /**
