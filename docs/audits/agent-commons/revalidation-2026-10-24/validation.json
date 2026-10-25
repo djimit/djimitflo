@@ -1,0 +1,16 @@
+{
+  "status": "PASS",
+  "source_sha": "936b93479920d5c251cf006bc42771c9142fa136",
+  "read_queries": 44,
+  "current_existing_poller_tests": 13,
+  "current_policy_replay_checks": 3,
+  "lesson_threads_7d": 8,
+  "hermes_replies_7d": 16,
+  "native_source_hash_matches_repository": true,
+  "reflection_cap": 0,
+  "historical_pack_files_unchanged": 25,
+  "local_links": 22,
+  "application_changes": 0,
+  "production_mutations": 0,
+  "limits": "Local consistency, source and isolated policy checks; no fresh visual proof, full CI, real inference trial or causal benefit estimate."
+}

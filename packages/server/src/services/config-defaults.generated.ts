@@ -5,6 +5,7 @@
 export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   ACE_001_MODE: 'off (`on`)',
   ARENA_GATE_ENABLED: 'off',
+  ASG_MODE: 'off (`shadow`, `on`)',
   AUTONOMOUS_LURES_ENABLED: 'off',
   CHECKER_CROSS_MODEL: '`ollama/kimi-k3:cloud` (rule: registered in prod\'s opencode provider config, another family than the maker, already a p…',
   CHECKER_FAMILY_RANDOMISE: 'off (`on`)',
@@ -81,7 +82,9 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   MERGE_SURVIVAL_V2: 'off',
   MODEL_SELECTOR_MODE: 'off (`shadow` samples a cheaper candidate per panel review and discards it; `enforce` uses the cheapest qualified model)',
   NE_GENERATOR_CHECK_MODE: 'off (`shadow`)',
+  OLLAMA_ACCOUNT_KEY_ENV: '`SOCIAL_COMPAT_API_KEY`',
   OLLAMA_AUTO_FAILOVER: 'off (`on`)',
+  OLLAMA_BALANCE_MODE: 'off (`on`)',
   OLLAMA_FAILOVER_PROBE_MODEL: 'unset = cheapest `MODEL_COST_WEIGHTS` name + `:cloud` (default `glm-5.3-flash:cloud`)',
   OLLAMA_OUTAGE_FALLBACK_RUNTIME: 'unset = off (`claude`)',
   OLLAMA_THROTTLE_AT: '0.7',

@@ -10,6 +10,12 @@ const ago = (d: number) => new Date(NOW - d * 86_400_000).toISOString();
 let db: Database.Database;
 afterEach(() => db?.close());
 
+it('reports the process-group termination mode without changing runtime admission', () => {
+  db = new Database(':memory:');
+  const e = buildEvolutionEvidence(db, { RUNTIME_PROCESS_GROUP_KILL: 'on' }, NOW);
+  expect(e.flags.find((flag) => flag.name === 'RUNTIME_PROCESS_GROUP_KILL')).toEqual({ name: 'RUNTIME_PROCESS_GROUP_KILL', acting: true, value: 'on' });
+});
+
 it('RX-1: an empty or partial schema returns every section and never throws', () => {
   db = new Database(':memory:');
   const e = buildEvolutionEvidence(db, {}, NOW);

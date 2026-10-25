@@ -68,6 +68,13 @@ describe('effective reflection-proposal policy (read model)', () => {
 });
 
 describe('typed reflection→proposal decision (SelfImprovementService)', () => {
+  it('keeps the quota count unknown when its query fails', () => {
+    const service = new SelfImprovementService(db);
+    db.exec('DROP TABLE self_improvements');
+    const failed = service.decideFromReflection(input());
+    expect(failed).toMatchObject({ failed: true, proposals: [], decisions: [{ reason: 'runtime_failure', created_in_window: null }] });
+  });
+
   it('cap 0 → policy_disabled; positive cap → created; exhausted → rate_limited; unset → created with cap null', () => {
     const service = new SelfImprovementService(db);
     vi.stubEnv('REFLECTION_PROPOSALS_MAX_PER_DAY', '0');

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useStore } from "../lib/store";
 import { useWsSubscribe } from '../components/WebSocketProvider';
 import { WebSocketEventType } from "@djimitflo/shared";
@@ -21,6 +21,26 @@ interface Learning {
   title: string;
   category: string;
   description: string;
+  created_at?: string;
+}
+
+/** GET /api/swarms/usage-window — cost-ledger usage events of a stated window; null = unknown (SW-01) */
+export interface UsageWindow {
+  window_days: number;
+  events: number;
+  known_events: number;
+  total_tokens: number | null;
+  coverage: number | null;
+  status: 'measured' | 'partial' | 'UNKNOWN';
+}
+
+/** SW-01: "active" is current activity (liveness from heartbeat/registry), not the never-decaying agents.status */
+export function swarmActivity(agents: Array<Pick<Agent, 'status'> & { liveness?: string | null }>, fleetPools: Array<{ running_leases?: number }>) {
+  return {
+    live: agents.filter((a) => a.liveness === 'live').length,
+    registeredActive: agents.filter((a) => a.status === 'active').length,
+    runningLeases: fleetPools.reduce((sum, pool) => sum + (Number(pool.running_leases) || 0), 0),
+  };
 }
 
 export function asArray<T>(value: unknown): T[] {
@@ -73,6 +93,8 @@ function getLearningCategoryColor(category: string) {
 export function SwarmOverviewPage() {
   const [swarmStatus, setSwarmStatus] = useState<any>(null);
   const [capabilities, setCapabilities] = useState<any[]>([]);
+  const [capabilityRegistry, setCapabilityRegistry] = useState<{ total: number; loaded: number } | null>(null);
+  const [usage, setUsage] = useState<UsageWindow | null>(null);
   const [loadErrors, setLoadErrors] = useState<string[]>([]);
 
   useEffect(() => {
@@ -80,10 +102,13 @@ export function SwarmOverviewPage() {
     Promise.all([
       api.getSwarmStatus().catch(softFail(failed, 'swarm status', null)),
       api.getSwarmCapabilities().catch(softFail(failed, 'capabilities', { capabilities: [] })),
-    ]).then(([status, caps]: any) => {
+      api.request<UsageWindow>('/swarms/usage-window?days=7').catch(softFail(failed, 'usage window', null)),
+    ]).then(([status, caps, usageWindow]: any) => {
       setLoadErrors(failed);
       setSwarmStatus(status);
       setCapabilities(pickList(caps, ["capabilities"]));
+      setCapabilityRegistry(caps && typeof caps.registry_total === 'number' ? { total: caps.registry_total, loaded: Number(caps.loaded) || 0 } : null);
+      setUsage(usageWindow && typeof usageWindow === 'object' ? usageWindow : null);
     });
   }, []);
   const navigate = useNavigate();
@@ -121,7 +146,7 @@ export function SwarmOverviewPage() {
 
   const fetchLearnings = useCallback(async () => {
     try {
-      // NOTE: /learning endpoint does not exist yet — backend TBD
+      // GET /api/learning reads the curated swarm_learning notes (newest first); closures/experiments live in /evolution
       const res = await api.request<any>("/learning?limit=5");
       setLearnings(pickList<Learning>(res, ["learnings", "data"]));
     } catch (err) {
@@ -214,15 +239,14 @@ export function SwarmOverviewPage() {
     setLocalTasks(tasks);
   }, [tasks]);
 
-  const activeAgents = localAgents.filter(a => a.status === "active");
   const idleAgents = localAgents.filter(a => a.status === "idle");
   const errorAgents = localAgents.filter(a => a.status === "error");
   const totalTasks = localTasks.length;
-  const totalTokens = localAgents.reduce((sum, a) => sum + (a.total_token_usage || 0), 0);
-  const totalExecTime = localAgents.reduce((sum, a) => sum + (a.total_execution_time_ms || 0), 0);
   const completedTasks = localTasks.filter(t => t.status === "completed");
   const failedTasks = localTasks.filter(t => t.status === "failed");
   const fleetPools = asArray<any>(swarmStatus?.fleet_pools);
+  // SW-01: agents.total_token_usage / total_execution_time_ms are not written by the execution path — never summed here
+  const activity = swarmActivity(localAgents, fleetPools);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -260,10 +284,10 @@ export function SwarmOverviewPage() {
         <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-2">
             <Users className="w-5 h-5 text-indigo-600" />
-            <span className="text-sm font-medium text-slate-600">Active Agents</span>
+            <span className="text-sm font-medium text-slate-600">Live Agents</span>
           </div>
-          <div className="text-3xl font-bold text-slate-900">{activeAgents.length}</div>
-          <div className="text-xs text-slate-500 mt-1">{idleAgents.length} idle · {errorAgents.length} error</div>
+          <div data-testid="swarm-live-agents" className="text-3xl font-bold text-slate-900">{activity.live}</div>
+          <div className="text-xs text-slate-500 mt-1">seen &lt; 24 h · {activity.registeredActive} registered active · {activity.runningLeases} running leases · {idleAgents.length} idle · {errorAgents.length} error</div>
         </div>
 
         <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-sm">
@@ -280,8 +304,8 @@ export function SwarmOverviewPage() {
             <Zap className="w-5 h-5 text-amber-600" />
             <span className="text-sm font-medium text-slate-600">Token Usage</span>
           </div>
-          <div className="text-3xl font-bold text-slate-900">{formatNumber(totalTokens)}</div>
-          <div className="text-xs text-slate-500 mt-1">Cumulative across all agents</div>
+          <div data-testid="swarm-tokens" className="text-3xl font-bold text-slate-900">{usage?.total_tokens == null ? 'unknown' : formatNumber(usage.total_tokens)}</div>
+          <div className="text-xs text-slate-500 mt-1">{usage ? `last ${usage.window_days} d · ${usage.known_events}/${usage.events} usage records reported${usage.coverage == null ? '' : ` (${Math.round(usage.coverage * 100)} %)`}` : 'usage ledger unavailable'}</div>
         </div>
 
         <div className="bg-white rounded-lg border border-slate-200 p-4 shadow-sm">
@@ -289,8 +313,8 @@ export function SwarmOverviewPage() {
             <Clock className="w-5 h-5 text-blue-600" />
             <span className="text-sm font-medium text-slate-600">Exec Time</span>
           </div>
-          <div className="text-3xl font-bold text-slate-900">{formatDuration(totalExecTime)}</div>
-          <div className="text-xs text-slate-500 mt-1">Total execution time</div>
+          <div data-testid="swarm-exec-time" className="text-3xl font-bold text-slate-900">not recorded</div>
+          <div className="text-xs text-slate-500 mt-1">agent duration counters are not written; see task rows</div>
         </div>
       </div>
 
@@ -319,17 +343,18 @@ export function SwarmOverviewPage() {
                     {agent.status}
                   </span>
                 </div>
+                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Lifetime reported (agents table)</div>
                 <div className="grid grid-cols-3 gap-2 text-center">
                   <div>
                     <div className="text-lg font-bold text-slate-900">{agent.total_tasks || 0}</div>
                     <div className="text-xs text-slate-500 uppercase tracking-wider">Tasks</div>
                   </div>
                   <div>
-                    <div className="text-lg font-bold text-slate-900">{formatNumber(agent.total_token_usage || 0)}</div>
+                    <div className="text-lg font-bold text-slate-900">{agent.total_token_usage ? formatNumber(agent.total_token_usage) : 'not reported'}</div>
                     <div className="text-xs text-slate-500 uppercase tracking-wider">Tokens</div>
                   </div>
                   <div>
-                    <div className="text-lg font-bold text-slate-900">{formatDuration(agent.total_execution_time_ms || 0)}</div>
+                    <div className="text-lg font-bold text-slate-900">{agent.total_execution_time_ms ? formatDuration(agent.total_execution_time_ms) : 'not reported'}</div>
                     <div className="text-xs text-slate-500 uppercase tracking-wider">Time</div>
                   </div>
                 </div>
@@ -426,6 +451,7 @@ export function SwarmOverviewPage() {
           <Lightbulb className="w-5 h-5" />
           Learning Feed ({learnings.length})
         </h2>
+        <p className="text-xs text-slate-500 mb-2">Source: swarm_learning · curated notes (newest first). Loop closures, experiments and readouts: <Link to="/evolution" className="underline">Evolution</Link>.</p>
         <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
           {learnings.length === 0 ? (
             <div className="text-center py-8 text-slate-500 text-sm">No learnings yet</div>
@@ -439,6 +465,7 @@ export function SwarmOverviewPage() {
                       {l.category}
                     </span>
                   </div>
+                  <div className="text-xs text-slate-400 mb-1">{l.created_at ? l.created_at.slice(0, 10) : 'undated'}</div>
                   <p className="text-sm text-slate-600 line-clamp-2">{l.description}</p>
                 </div>
               ))}
@@ -495,7 +522,8 @@ export function SwarmOverviewPage() {
       )}
       {capabilities.length > 0 && (
         <div className="bg-background-secondary border border-border rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-foreground mb-4">Capabilities ({capabilities.length})</h2>
+          <h2 className="text-xl font-semibold text-foreground mb-1">Capabilities ({capabilities.length})</h2>
+          <p className="text-xs text-foreground-tertiary mb-4">{capabilityRegistry ? `${capabilityRegistry.loaded} loaded of ${capabilityRegistry.total} in the registry (latest by update)` : `${capabilities.length} loaded; registry total unknown`} · first {Math.min(12, capabilities.length)} shown</p>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {capabilities.slice(0, 12).map((cap: any) => (
               <div key={cap.id} className="p-4 bg-background-elevated rounded-lg border border-border">
