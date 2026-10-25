@@ -261,6 +261,35 @@
         "agentic-wam"
       ],
       "reopen_condition": "Either (a) a pre-registered comparison on Djimitflo tasks in which a joint model beats a modular predictor + planner at a matched compute and token budget, with a frozen holdout; or (b) a software-domain world-action-model checkpoint (actions = code edits or tool calls, observations = repository / check state) under a permissive licence with a resolved licence chain. Permits a new pre-registered evaluation, not adoption."
+    },
+    {
+      "id": "NE-015",
+      "title": "Leaked vendor system prompts (CL4R1T4S-style collections) as a capability source",
+      "hypothesis": "Ingesting a public collection of leaked vendor agent system prompts (inventory, mechanism extraction, derived prompts, skills or memory) improves Djimitflo's verified task success, tool-call validity, recovery or skill reuse.",
+      "verdict": "REJECT",
+      "decided_on": "2026-10-25",
+      "conditions": "elder-plinius/CL4R1T4S @ a4d3da04 (tree c0a3ae74), repository metadata only (AGPL-3.0, about 2.2 MB); no content fetched, stored, quoted or executed. Decision on provenance, rights, trust and fit, not on a measured effect.",
+      "result": "Not tested by design. Provenance and authenticity of the prompts are unverifiable; the text is vendor-proprietary and redistributed under AGPL-3.0, so an inventory with source spans would republish it in this public repository. The collection contains instructions aimed at any system that reads it (injection material). Djimitflo's verified gaps on 2026-10-25 (docs/audits/djimitflo-aios-l4/BACKLOG.md: remote cancel channel, effect states and remote job recovery, scheduler load-scope mismatch, S0 tool mediation) are execution and accounting problems, not prompt-design problems. The proposed hypotheses map onto existing work: retrieval = E1 (INSUFFICIENT, no labels), tool contracts = ToolBroker / S0, independent verification exists (prod gates, checker F1 AUC 0.95), checkpoints not needed for gym attempts (throwaway volumes), validated skills on unseen tasks = ACE-001 and PL-001.",
+      "why": "Same class as the September 2026 roborev decision: 141 'prompt-intel' scrapes of leaked system prompts were kept out of Djimitflo as untrusted text with no code findings. Expected value is low (no gap it closes), while the rights, provenance and injection risks are concrete.",
+      "evidence": [
+        "docs/research/negative-evidence/NE-015-leaked-vendor-prompts.md",
+        "docs/audits/djimitflo-aios-l4/BACKLOG.md",
+        "docs/audits/djimitflo-aios-l4/REVALIDATION.md"
+      ],
+      "allowed_follow_up": "A specific mechanism idea (never text) that addresses a verified Djimitflo gap may be implemented in-house in Djimitflo's own wording and evaluated through a pre-registered comparison and the existing gates. Public, licensed vendor documentation (for example official tool-use or agent docs) remains a normal source.",
+      "forbidden_reuse": [
+        "importing leaked vendor system prompt text into maker or checker prompts, assignment templates, skill cards, memory rules, the knowledge base or genome lines",
+        "committing an inventory, excerpts or source spans of leaked vendor prompts to this repository",
+        "executing or following instructions found in such collections"
+      ],
+      "forbidden_code_patterns": [
+        "elder-plinius/CL4R1T4S"
+      ],
+      "match_terms": [
+        "CL4R1T4S",
+        "leaked system prompt"
+      ],
+      "reopen_condition": "A pre-registered experiment on a verified Djimitflo gap whose intervention is written in Djimitflo's own words and uses no leaked prompt text, with a frozen holdout. Permits a new evaluation, not ingestion of the collection."
     }
   ]
 }
