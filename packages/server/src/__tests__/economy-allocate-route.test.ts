@@ -97,3 +97,40 @@ describe('GET /swarms/economy/allocate', () => {
     expect(negative.status).toBe(400);
   });
 });
+
+describe('GET /swarms/economy (null-safe run economy)', () => {
+  const insertRun = (id: string, status: string, gates: unknown[]) => db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, repository_path, findings_json, plan_json, gates_json, next_actions_json, metadata)
+    VALUES (?, 'test', 'closed', ?, '/tmp', '[]', '[]', ?, '[]', '{}')`).run(id, status, JSON.stringify(gates));
+  const insertLease = (id: string, runId: string, role: string, meta: Record<string, unknown>) => db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, finding_id, worktree_path, metadata)
+    VALUES (?, ?, ?, 'codex', 'completed', 'f1', '/tmp', ?)`).run(id, runId, role, JSON.stringify(meta));
+
+  it('returns null rather than 0 for unknown dollars and efficiency, and separates completed_unverified', async () => {
+    insertRun('run-unknown', 'completed', [{ name: 'maker_completion', status: 'pass', evidence: '' }]);
+    insertLease('m-unknown', 'run-unknown', 'maker', {});
+    insertRun('run-unverified', 'completed', []);
+    insertLease('m-unverified', 'run-unverified', 'maker', { runtime_usage: { total_tokens: 500_000 } });
+
+    const response = await fetch(`${baseUrl}/swarms/economy`);
+    expect(response.status).toBe(200);
+    const body = await response.json() as { recent_runs: Array<Record<string, unknown>>; summary: Record<string, unknown> };
+    const unknown = body.recent_runs.find((r) => r.run_id === 'run-unknown')!;
+    expect(unknown).toMatchObject({ verified_artifacts: 1, completed_unverified: 0, dollars_spent: null, efficiency: null, efficiency_reason: 'no_usage_reported',
+      usage_coverage: { reported: 0, total: 1, ratio: 0 }, dollars_lower_bound: false, run_verified: true });
+    const unverified = body.recent_runs.find((r) => r.run_id === 'run-unverified')!;
+    expect(unverified).toMatchObject({ verified_artifacts: 0, completed_unverified: 1, run_verified: false });
+    expect(unverified.dollars_spent).toBeCloseTo(1.0, 6);
+    // keys kept for backward compatibility; the dollar total sums only runs whose dollars are known
+    expect(body.summary).toMatchObject({ total_capabilities: 0, total_verified_artifacts: 1, total_completed_unverified: 1,
+      runs_with_unknown_dollars: 1, total_dollars_lower_bound: true });
+    expect(body.summary.total_dollars_spent).toBeCloseTo(1.0, 6);
+  });
+
+  it('total_dollars_spent is null when no run reported usage', async () => {
+    insertRun('run-a', 'completed', []);
+    insertLease('m-a', 'run-a', 'maker', {});
+    const body = await (await fetch(`${baseUrl}/swarms/economy`)).json() as { summary: Record<string, unknown> };
+    expect(body.summary.total_dollars_spent).toBeNull();
+    expect(body.summary.total_verified_artifacts).toBe(0);
+    expect(body.summary.total_completed_unverified).toBe(1);
+  });
+});

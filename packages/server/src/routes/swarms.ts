@@ -408,18 +408,29 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
         run_id: run.id,
         loop_name: run.loop_name,
         status: run.status,
+        // verified = the run passed certification; unknown dollars/efficiency are null, never 0
         verified_artifacts: metric.verifiedArtifacts,
+        completed_unverified: metric.completedUnverified,
+        run_verified: metric.runVerified,
         dollars_spent: metric.dollarsSpent,
+        dollars_lower_bound: metric.dollarsLowerBound,
+        usage_coverage: metric.usageCoverage,
         efficiency: metric.efficiency,
+        efficiency_reason: metric.efficiencyReason,
       };
     });
+    const knownDollars = recentRuns.filter((run) => run.dollars_spent !== null);
     res.json({
       capabilities,
       recent_runs: recentRuns,
       summary: {
         total_capabilities: capabilities.length,
         total_verified_artifacts: recentRuns.reduce((sum, run) => sum + run.verified_artifacts, 0),
-        total_dollars_spent: recentRuns.reduce((sum, run) => sum + run.dollars_spent, 0),
+        total_completed_unverified: recentRuns.reduce((sum, run) => sum + run.completed_unverified, 0),
+        // sum over runs whose dollars are known; null when none are; a lower bound when any run is unknown or partial
+        total_dollars_spent: knownDollars.length > 0 ? knownDollars.reduce((sum, run) => sum + (run.dollars_spent ?? 0), 0) : null,
+        total_dollars_lower_bound: knownDollars.length > 0 && recentRuns.some((run) => run.dollars_spent === null || run.dollars_lower_bound),
+        runs_with_unknown_dollars: recentRuns.length - knownDollars.length,
       },
     });
   }));
