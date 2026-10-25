@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, GitBranch, Play, Plus, RefreshCw, ShieldCh
 import { api, type GoalRecord, type LoopCatalogItem, type LoopGate, type LoopReviewBundle, type LoopRunRecord, type WorkerLeaseRecord } from '../lib/api';
 import { useAuthStore } from '../lib/auth-store';
 import { useDialog } from '../components/ConfirmDialog';
+import { GymRunPanel, isGymRun } from '../components/GymRunPanel';
 
 export function GoalsLoopsPage() {
   const dialog = useDialog();
@@ -449,6 +450,9 @@ export function GoalsLoopsPage() {
                   </div>
                 </div>
               </div>
+
+              {/* gym runs have no worker leases: their claim, result and outcome are read from the run itself */}
+              {isGymRun(selectedRun) && <GymRunPanel key={selectedRun.id} run={selectedBundle?.run ?? selectedRun} />}
 
               <section className="bg-background-secondary border border-border rounded-lg p-5">
                 <h3 className="text-lg font-semibold text-foreground mb-3">Gates</h3>
