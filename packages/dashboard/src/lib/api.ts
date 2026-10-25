@@ -1265,6 +1265,42 @@ export type ProofRunSummary = {
   narrative: string[];
 };
 
+/** SW-02: `total` is the loaded slice (kept for compatibility); registry_total is the whole registry (absent on an older server) */
+export type SwarmCapabilityHealth = {
+  total: number;
+  validated: number;
+  routable: number;
+  blocked: number;
+  loaded?: number;
+  load_limit?: number;
+  registry_total?: number;
+  registry_by_status?: Record<string, number>;
+};
+export type SwarmCurrentExecution = { lease_id: string; loop_run_id: string; loop_name: string | null; runtime: string; role: string; status: string; updated_at: string };
+/** SW-01: GET /api/swarms/learning-curve — server services/swarm-learning-curve.ts learningCurveView */
+export type UsageTokens = { value: number | null; events: number; known: number; coverage: number | null; status: 'measured' | 'partial' | 'UNKNOWN' };
+export type CohortWindow = { n: number; completed: number; rate: number | null; ci: [number, number] | null; censored: number; mean_retries?: number | null;
+  tokens: UsageTokens; usd: { value: number | null; reason: string | null } };
+export type LearningCohort = { loop_name: string; run_class: 'gym' | 'maintenance' | 'production' | string; windows: { prior: CohortWindow; recent: CohortWindow };
+  comparison: { status: 'compared' | 'insufficient'; delta: number | null; reason: string | null } };
+export type RegisteredReadout = { id: string; stop_by: string | null; analysis: string; causal_conclusion: null; protocol?: string; note?: string };
+export type LearningCurve = {
+  runs: Array<{ run_id: string; created_at: string; success: boolean; retries: number; dollars: number | null; loop_name?: string; status?: string; run_class?: string;
+    tokens?: number | null; cost_status?: 'UNKNOWN' | 'inferred' }>;
+  first_vs_last: Record<string, unknown>;
+  cohorts?: LearningCohort[];
+  window?: { days: number; prior?: { since: string; until: string }; recent?: { since: string; until: string } };
+  min_n_per_window?: number;
+  pooled?: false;
+  definition?: string;
+  registered_readouts?: RegisteredReadout[];
+};
+/** SW-02: GET /api/swarms/intelligence/missions/execution */
+export type MissionExecutionRow = { mission_id: string; title: string; planning_status: string; goal_id: string | null; lineage: 'linked' | 'no_goal' | 'goal_missing';
+  goal_status: string | null; created_at?: string;
+  execution: { loop_runs: number; by_status: Record<string, number>; latest_run: { id: string; loop_name: string; status: string; created_at: string } | null; closed_runs: number | null } | null };
+export type MissionExecutions = { totals: { registered: number; loaded: number; by_planning_status: Record<string, number>; by_goal_status: Record<string, number> }; missions: MissionExecutionRow[]; note?: string };
+
 export type SwarmMissionControl = {
   execution_node: {
     cockpit: string;
@@ -1278,13 +1314,10 @@ export type SwarmMissionControl = {
     running_leases: number;
     active_execution_count: number;
     registry_is_not_execution: boolean;
+    /** SW-02: prepared/running leases with their run (absent on an older server) */
+    current_executions?: SwarmCurrentExecution[];
   };
-  capability_health: {
-    total: number;
-    validated: number;
-    routable: number;
-    blocked: number;
-  };
+  capability_health: SwarmCapabilityHealth;
   claim_health: {
     total: number;
     proposed: number;
@@ -2520,7 +2553,7 @@ class ApiClient {
     return this.request(`/swarms/proof-runs/${id}/rollback`, { method: 'POST' });
   }
 
-  async getSwarmCapabilities(limit?: number): Promise<{ capabilities: SwarmCapabilityRecord[] }> {
+  async getSwarmCapabilities(limit?: number): Promise<{ capabilities: SwarmCapabilityRecord[]; registry_total?: number; registry_by_status?: Record<string, number>; loaded?: number; limit?: number }> {
     const query = limit ? `?limit=${limit}` : '';
     return this.request(`/swarms/intelligence/capabilities${query}`);
   }
