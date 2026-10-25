@@ -59,6 +59,7 @@ export function AgentsPage() {
                 connectionReason={agent.connection_reason ?? null}
                 telegramBot={agent.telegram_bot_name ?? null}
                 currentTask={currentTask?.title || null}
+                currentTaskId={currentTask?.id ?? null}
                 totalTasks={agent.total_tasks}
                 completedTasks={agent.completed_tasks}
                 failedTasks={agent.failed_tasks}
@@ -90,6 +91,7 @@ interface AgentCardProps {
   retiredAt?: string | null;
   retirementReason?: string | null;
   currentTask: string | null;
+  currentTaskId?: string | null;
   totalTasks: number;
   completedTasks: number;
   failedTasks: number;
@@ -103,6 +105,7 @@ function AgentCard({
   description,
   status,
   currentTask,
+  currentTaskId,
   totalTasks,
   completedTasks,
   failedTasks,
@@ -151,7 +154,7 @@ function AgentCard({
   };
   const appearance = statusConfig[status] ?? statusConfig.offline;
   
-  const successRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+  const successRate = agentSuccessRate(totalTasks, completedTasks);
   
   return (
     <div className="bg-background-secondary border border-border rounded-lg p-6 hover:border-accent/30 transition-colors">
@@ -180,11 +183,12 @@ function AgentCard({
       {currentTask && (
         <div className="mb-4 p-3 bg-background-elevated border border-border rounded-lg">
           <div className="text-xs text-foreground-tertiary mb-1">Current Task</div>
-          <div className="text-sm text-foreground font-medium">{currentTask}</div>
+          <div className="text-sm text-foreground font-medium">{currentTaskId ? <Link to={`/tasks/${currentTaskId}`} className="underline">{currentTask}</Link> : currentTask}</div>
         </div>
       )}
       
-      {/* Stats */}
+      {/* Stats — SW-01: the agents-table lifetime counters, not readiness (status/connection above) and not a windowed cohort */}
+      <div className="text-xs text-foreground-tertiary mb-2">Lifetime reported counters (agents table)</div>
       <div className="grid grid-cols-3 gap-4 mb-4">
         <div>
           <div className="text-2xl font-bold text-foreground">{totalTasks}</div>
@@ -203,15 +207,17 @@ function AgentCard({
       {/* Success Rate */}
       <div className="mb-4">
         <div className="flex items-center justify-between text-sm mb-2">
-          <span className="text-foreground-secondary">Success Rate</span>
-          <span className="text-foreground font-semibold">{successRate}%</span>
+          <span className="text-foreground-secondary">Lifetime completion</span>
+          <span data-testid="agent-success-rate" className="text-foreground font-semibold">{successRate === null ? 'insufficient — no tasks' : `${successRate} % (${completedTasks}/${totalTasks})`}</span>
         </div>
-        <div className="w-full bg-background-elevated rounded-full h-2">
-          <div
-            className="bg-status-completed h-2 rounded-full transition-all"
-            style={{ width: `${successRate}%` }}
-          />
-        </div>
+        {successRate !== null && (
+          <div className="w-full bg-background-elevated rounded-full h-2">
+            <div
+              className="bg-status-completed h-2 rounded-full transition-all"
+              style={{ width: `${successRate}%` }}
+            />
+          </div>
+        )}
       </div>
 
       {showGovernance && <RuntimeGovernancePanel agentId={agentId} />}
@@ -320,6 +326,12 @@ function RuntimeGovernancePanel({ agentId }: { agentId: string }) {
       )}
     </section>
   );
+}
+
+/** SW-01: completed ÷ total lifetime tasks; null (insufficient) without a task — a 0 % is never shown for no observation */
+export function agentSuccessRate(totalTasks: number | null | undefined, completedTasks: number | null | undefined): number | null {
+  const n = Number(totalTasks) || 0;
+  return n > 0 ? Math.round(((Number(completedTasks) || 0) / n) * 100) : null;
 }
 
 function formatCapability(cap: string): string {

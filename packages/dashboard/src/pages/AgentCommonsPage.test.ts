@@ -3,7 +3,7 @@ import { createElement } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { CommonsProposalDisposition, CommonsProposalPolicy, SocialAgentPresence, SocialMessage, SocialThread } from '../lib/api';
-import { agentHue, Conversation, GroundedChildOutcomes, layoutConstellation, luredAgents, ProposalPolicyBanner, ReadinessTable, resolveActiveThread, runtimeParticipation } from './AgentCommonsPage';
+import { agentHue, Constellation, CONSTELLATION_LEGEND, ConstellationEdgeTable, Conversation, GroundedChildOutcomes, layoutConstellation, luredAgents, ProposalPolicyBanner, ReadinessTable, resolveActiveThread, runtimeParticipation } from './AgentCommonsPage';
 
 const agents: SocialAgentPresence[] = [
   { id: 'a', name: 'A', status: 'active', capabilities: [], model: 'm', runtime: 'codex', last_heartbeat_at: null, present: true, activity: [] },
@@ -36,6 +36,19 @@ describe('agent commons constellation', () => {
     const { nodes } = layoutConstellation(agents, [], 320, lured);
     expect(nodes.map((node) => [node.id, node.lured])).toEqual([['a', false], ['b', true], ['d', true]]);
     expect(nodes.find((node) => node.id === 'd')?.name).toBe('D');
+  });
+
+  it('labels edges as same-thread co-participation and lists one row per pair with its shared-thread count', () => {
+    const { nodes, edges } = layoutConstellation(agents, [thread('1', 'asked', ['a', 'b']), thread('2', 'learned', ['a', 'b']), thread('3', 'responding', ['b', 'c'])]);
+    const table = renderToStaticMarkup(createElement(ConstellationEdgeTable, { nodes, edges }));
+    const rows = [...table.matchAll(/<tr[^>]*data-testid="constellation-pair"[^>]*>(.*?)<\/tr>/g)].map((m) => m[1].replace(/<[^>]+>/g, '|').split('|').filter(Boolean));
+    expect(rows).toEqual([['A', 'B', '2', 'Reflection'], ['B', 'c', '1', 'In conversation']]);
+    expect(table).toContain('Same-thread pairs as a table (2)');
+    expect(table).toContain('Shared threads');
+    const svg = renderToStaticMarkup(createElement(Constellation, { nodes, edges, focus: null, highlight: [], onSelect: () => undefined }));
+    expect(svg).toContain('<title>A and B: same thread, 2 shared threads, furthest stage Reflection</title>');
+    expect(svg).toContain('3 agents, 2 same-thread pairs');
+    expect(CONSTELLATION_LEGEND).toMatch(/same thread \(co-participation\), not proof that they communicated or learned/);
   });
 
   it('gives agents a stable hue', () => {

@@ -232,7 +232,11 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
 
   // ─── Capabilities ──────────────────────────────────────────────────
   router.get('/intelligence/capabilities', requirePermission('read:evidence'), (req, res) => {
-    res.json({ capabilities: intelligence.listCapabilities(boundedLimit(req.query.limit, 100, 500)) });
+    const limit = boundedLimit(req.query.limit, 100, 500);
+    const capabilities = intelligence.listCapabilities(limit);
+    // SW-02: the loaded slice next to the whole registry (latest `limit` by updated_at is not the registry)
+    const registry = intelligence.capabilityRegistryCounts();
+    res.json({ capabilities, registry_total: registry.total, registry_by_status: registry.by_status, loaded: capabilities.length, limit });
   });
 
   router.post('/intelligence/capabilities', requirePermission('write:capability'), (req, res, next) => {
