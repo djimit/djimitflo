@@ -19,6 +19,7 @@ import { remoteGymCap } from './stall-watch';
 import { gymSkillContentHash } from './gym-skill-hash';
 import { gradedFitnessMode, gradedRefs, roundGraded, type GradedKind } from './graded-fitness';
 import { TG_CAPABILITY, TG_GENERATION, TG_ID, TG_LOOP, claimTg001, freezeTg001, recordTg001, tg001On, tgManifest } from './tg-001';
+import { procedureSelectorMode, recordProcedureSelection } from './procedure-selector';
 import { dreamEvolutionEnabled, ensureBaseline, fireCheckVoid, genome, genomeFireCheck, holdout, mutantHoldout, mutantTrialsEnabled, nextTrialAttempt, parseFireCheck, writeTestHoldout, writeTestHoldoutEnabled, type Genome } from './genome-registry';
 
 /**
@@ -283,6 +284,11 @@ export class RemoteGymService {
     this.db.prepare('INSERT INTO loop_runs (id, loop_name, mode, status, repository_path, metadata, created_at, updated_at) VALUES (?, ?, \'closed\', \'running\', ?, ?, ?, ?)')
       .run(runId, tg ? TG_LOOP : 'evolution-gym', repo, JSON.stringify({ gym: gymMeta }), now.toISOString(), now.toISOString());
     if (!tg) recordEffortGym(this.db, runId, key, task.commit); // EVC effort controller: shadow only (serve vs skip), changes nothing
+    // PL-001 (PROCEDURE_SELECTOR_MODE=shadow): an ordinary claim — not TG-001, a trial (either arm), a canary or a holdout task —
+    // records whether the procedure applies to its task; nothing is sent, so the payload below is the same as with the mode off
+    if (procedureSelectorMode() === 'shadow' && !tg && !trialGenome && !canary && !holdoutKeys(this.db).includes(task.commit)) {
+      recordProcedureSelection(this.db, runId, task, caps, key, now.toISOString());
+    }
     return { runId, species: key, task, ...(trialGenome ? { genome: { id: trialGenome.id, lines: trialGenome.lines } } : {}), ...(gates ? { prod_gates: gates } : {}),
       ...(tg ? { prompt_override: promptOverride, tg: { experiment: tg.experiment, generation: tg.generation, arm: tg.arm } } : {}) };
   }

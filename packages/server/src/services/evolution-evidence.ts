@@ -48,6 +48,7 @@ import { makerWarmDepsEvidence } from './maker-warm-deps';
 import { falsifierEvidence } from './commons-falsifier';
 import { settlementExecutionEvidence } from './settlement-execution';
 import { schedulerCapacityEvidence } from './resource-scheduler';
+import { procedureSelectionEvidence } from './procedure-selector';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -84,7 +85,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'EFFORT_SIBLING_RANDOMISE', acting: true },
   { name: 'GRADED_FITNESS_MODE', acting: false }, { name: 'GRADED_CONTEST_MODE', acting: true },
   { name: 'SHIPPED_CODE_SCAN_MODE', acting: false },
-  { name: 'GYM_ORPHAN_SWEEP', acting: true }, { name: 'GYM_STORE_DIFFS', acting: false }, { name: 'WEAK_ASSERTION_CHECK_MODE', acting: true }, { name: 'FAIL_BEFORE_PASS_AFTER_MODE', acting: false },
+  { name: 'GYM_ORPHAN_SWEEP', acting: true }, { name: 'PROCEDURE_SELECTOR_MODE', acting: false }, { name: 'GYM_STORE_DIFFS', acting: false }, { name: 'WEAK_ASSERTION_CHECK_MODE', acting: true }, { name: 'FAIL_BEFORE_PASS_AFTER_MODE', acting: false },
   { name: 'MAKER_DIFF_CAPTURE', acting: false }, { name: 'MAKER_WARM_DEPS', acting: true },
   { name: 'POLICY_VIOLATION_LOG', acting: false },
   { name: 'CHECKER_FAMILY_RANDOMISE', acting: true }, { name: 'CHECKER_CROSS_MODEL', acting: true }, { name: 'CHECKER_FAMILY_TARGET_PER_ARM', acting: false },
@@ -504,5 +505,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // L3-v2 §5.1–2 (SETTLEMENT_EXECUTION_MODE, shadow): settled loop PRs' tests re-run at origin/main + fresh-mutant kill share; graded vs verified/survived (report only)
     settlement_execution: settlementExecutionEvidence(db, env, now),
     // RESOURCE_SCHEDULER_MODE (shadow): observed-capacity would-defer counts 24 h / 7 d + latest observed capacity (report only)
-    scheduler_capacity: schedulerCapacityEvidence(db, env, now) };
+    scheduler_capacity: schedulerCapacityEvidence(db, env, now),
+    // PL-001 (PROCEDURE_SELECTOR_MODE, shadow): applies / does_not_apply per ordinary gym claim 24 h / 7 d + top failed clauses (nothing delivered)
+    procedure_selection: procedureSelectionEvidence(db, env, now) };
 }
