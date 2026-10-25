@@ -1,16 +1,64 @@
 import { useState, useEffect } from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { api, type UsageAccount, type UsageAccountsResponse, type UsageLimitView, type UsageWindowId } from '../lib/api';
+import { api, type UsageAccount, type UsageAccountWide, type UsageAccountsResponse, type UsageLimitView, type UsagePctWindow, type UsageWindowId } from '../lib/api';
+import { fmtDate, LOCALE } from '../lib/format';
 
 /**
  * Usage per provider account (llm_model_calls + worker_leases CLI sessions + inference state), read-only.
  * Plan limits come from docs/usage-plan-limits.json: a bar only when a number exists and the units compare.
+ * The windows are Djimitflo's share, as recorded; account-wide Ollama figures come from the Ollama balance API
+ * (OLLAMA_BALANCE_MODE), and are shown as unknown with the reason when it is off or failed — never 0.
  */
 const WINDOWS: Array<{ id: UsageWindowId; label: string }> = [
   { id: '5h', label: 'last 5 h' }, { id: 'today', label: 'today (UTC)' }, { id: '7d', label: 'rolling 7 d' }, { id: 'month', label: 'month (UTC)' },
 ];
-const fmt = (n: number | null) => (n === null ? 'unknown' : n.toLocaleString());
-const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '—');
+const fmt = (n: number | null) => (n === null ? 'unknown' : n.toLocaleString(LOCALE));
+const when = (iso: string | null) => fmtDate(iso, { fallback: '—' });
+const usd = (n: number) => `$${n.toFixed(2)}`;
+
+function Bar({ pct, label }: { pct: number; label: string }) {
+  const p = Math.min(pct, 100);
+  const color = p < 50 ? 'bg-green-500' : p < 80 ? 'bg-yellow-500' : 'bg-red-500';
+  return (
+    <div className="h-2 bg-background-elevated rounded-full overflow-hidden" role="meter" aria-valuenow={p} aria-valuemin={0} aria-valuemax={100} aria-label={label}>
+      <div className={`h-full ${color} rounded-full`} style={{ width: `${p}%` }} />
+    </div>
+  );
+}
+
+/** Ollama balance API figures (account-wide, every client on the account) next to Djimitflo's own 7 d share. */
+function AccountWide({ u, a }: { u: UsageAccountWide; a: UsageAccount }) {
+  if (!u.session && !u.weekly && !u.credits && !u.week) {
+    return (
+      <div className="text-xs text-foreground-secondary" role="status">
+        Account-wide (Ollama): unknown — balance API {u.mode === 'off' ? 'off' : 'unavailable'} ({u.error ?? 'no data returned'})
+      </div>
+    );
+  }
+  const pct = (name: string, w: UsagePctWindow | null) => (
+    <div>{w ? `${name}: ${fmt(w.used_pct)} % used · resets ${when(w.resets_at)}` : `${name}: unknown (not returned by the API)`}</div>
+  );
+  const c = u.credits;
+  const share = a.windows['7d'].calls; const leases = a.lease_sessions?.['7d'] ?? 0;
+  return (
+    <div className="text-xs text-foreground space-y-0.5">
+      <div className="text-foreground-secondary">Account-wide (Ollama balance API, fetched {when(u.fetched_at)})</div>
+      {pct('session', u.session)}
+      {pct('weekly', u.weekly)}
+      <div>
+        {c?.balance_usd !== undefined ? `purchased usage credits: ${usd(c.balance_usd)} left` : 'purchased usage credits: unknown (not returned by the API)'}
+        {c?.included_balance_usd !== undefined ? ` · included credits: ${usd(c.included_balance_usd)}${c.included_allowance_usd !== undefined ? ` of ${usd(c.included_allowance_usd)}` : ''} left` : ''}
+        {c?.included_period?.until ? ` (until ${when(c.included_period.until)})` : ''}
+      </div>
+      <div>
+        account requests (7 d): {u.week?.request_count != null ? fmt(u.week.request_count) : 'unknown'}
+        {' · '}Djimitflo's share: {fmt(share)} calls{leases ? ` (${fmt(leases)} of them CLI lease sessions, each many requests)` : ''}
+        {u.week?.usage_value_usd != null ? ` · value of account requests at list rates: ${usd(u.week.usage_value_usd)}` : ''}
+      </div>
+      {u.error && <div className="text-yellow-600">partly unavailable: {u.error}</div>}
+    </div>
+  );
+}
 
 interface LegacyData {
   total_tokens: number; total_cost: number;
@@ -18,6 +66,7 @@ interface LegacyData {
 }
 
 function StateBadge({ s }: { s: UsageAccount['state'] }) {
+  if (s.state === 'limit_reached') return <span className="text-xs px-2 py-0.5 rounded bg-red-500/15 text-red-500">account limit reached{s.until ? ` until ${when(s.until)}` : ''}</span>;
   if (s.state === 'limited') return <span className="text-xs px-2 py-0.5 rounded bg-red-500/15 text-red-500">limited since {when(s.since)}{s.until ? ` until ${when(s.until)}` : ''}</span>;
   if (s.state === 'backoff') return <span className="text-xs px-2 py-0.5 rounded bg-yellow-500/15 text-yellow-600">backoff until {when(s.until)}</span>;
   return <span className="text-xs px-2 py-0.5 rounded bg-green-500/15 text-green-600">no limit recorded</span>;
@@ -38,6 +87,19 @@ function LimitMeta({ l }: { l: UsageLimitView }) {
 
 function LimitRow({ l }: { l: UsageLimitView }) {
   const head = `${l.plan} · ${l.window}`;
+  if (l.pct_source === 'ollama_balance_api' && l.used_pct !== null) {
+    return (
+      <div className="mb-2">
+        <div className="flex justify-between text-xs text-foreground-secondary mb-1">
+          <span>{head}</span>
+          <span>{fmt(l.used_pct)} % used (account-wide){l.resets_at ? ` · resets ${when(l.resets_at)}` : ''}</span>
+        </div>
+        <Bar pct={l.used_pct} label={head} />
+        {l.unit_note && <div className="text-xs text-foreground-secondary italic mt-1">{l.unit_note}</div>}
+        <div className="text-xs"><LimitMeta l={l} /></div>
+      </div>
+    );
+  }
   if (l.limit === null) {
     return (
       <div className="text-xs mb-2">
@@ -56,17 +118,13 @@ function LimitRow({ l }: { l: UsageLimitView }) {
       </div>
     );
   }
-  const pct = Math.min(l.used_pct ?? 0, 100);
-  const color = pct < 50 ? 'bg-green-500' : pct < 80 ? 'bg-yellow-500' : 'bg-red-500';
   return (
     <div className="mb-2">
       <div className="flex justify-between text-xs text-foreground-secondary mb-1">
         <span>{head}</span>
-        <span>{fmt(l.used)} / {l.limit.toLocaleString()} {l.unit} ({l.used_pct}%)</span>
+        <span>{fmt(l.used)} / {l.limit.toLocaleString(LOCALE)} {l.unit} ({l.used_pct}%)</span>
       </div>
-      <div className="h-2 bg-background-elevated rounded-full overflow-hidden" role="meter" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={head}>
-        <div className={`h-full ${color} rounded-full`} style={{ width: `${pct}%` }} />
-      </div>
+      <Bar pct={l.used_pct ?? 0} label={head} />
       {l.unit_note && <div className="text-xs text-foreground-secondary italic mt-1">{l.unit_note}</div>}
       <div className="text-xs"><LimitMeta l={l} /></div>
     </div>
@@ -101,15 +159,17 @@ function AccountCard({ a }: { a: UsageAccount }) {
         <StateBadge s={a.state} />
       </div>
       {a.state.reason && <p className="text-xs text-foreground-secondary">{a.state.reason}</p>}
+      {a.account_usage && <AccountWide u={a.account_usage} a={a} />}
       <table className="w-full text-xs">
+        <caption className="text-left text-foreground-secondary mb-1">Djimitflo&apos;s share, as recorded — a CLI lease (e.g. opencode) counts once, although it makes many requests</caption>
         <thead><tr className="text-foreground-secondary"><th className="text-left">window</th><th className="text-right">calls</th><th className="text-right">tokens</th></tr></thead>
         <tbody>
           {WINDOWS.map((w) => {
-            const s = a.windows[w.id];
+            const s = a.windows[w.id]; const leases = a.lease_sessions?.[w.id] ?? 0;
             return (
               <tr key={w.id}>
                 <td className="text-foreground-secondary">{w.label}</td>
-                <td className="text-right text-foreground">{s.calls}</td>
+                <td className="text-right text-foreground">{s.calls}{leases ? <span className="text-foreground-secondary"> ({leases} lease)</span> : null}</td>
                 <td className="text-right text-foreground">{fmt(s.tokens)}{s.calls_without_tokens ? <span className="text-foreground-secondary"> (+{s.calls_without_tokens} unreported)</span> : null}</td>
               </tr>
             );

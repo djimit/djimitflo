@@ -1,0 +1,61 @@
+{
+  "scope": {
+    "repository": "djimit/djimitflo",
+    "window_start": "2026-10-04T11:20:24Z",
+    "window_end": "2026-10-25T11:20:24Z",
+    "baseline_sha": "6951dba16a32dc8e90971bfe6711033293129eab",
+    "authority": "current GitHub main, isolated checkout; original dirty work preserved"
+  },
+  "mainline_commits": 329,
+  "reachable_commits": 329,
+  "changed_paths": 1041,
+  "path_touches": 2215,
+  "pr_states": {
+    "OPEN": 74,
+    "MERGED": 329,
+    "CLOSED": 14
+  },
+  "merged_in_window": 329,
+  "open_drafts": 42,
+  "median_merge_hours": 0.8052777777777778,
+  "median_merged_diff_lines": 190,
+  "median_merged_files": 5,
+  "review_states": {
+    "COMMENTED": 255
+  },
+  "review_threads": 468,
+  "unresolved_threads": 457,
+  "unresolved_not_outdated_threads": 444,
+  "workflows": 4417,
+  "workflow_conclusions": {
+    "success": 3406,
+    "skipped": 757,
+    "action_required": 75,
+    "cancelled": 1,
+    "failure": 177,
+    "in_progress": 1
+  },
+  "ci_main_conclusions": {
+    "success": 320,
+    "failure": 8
+  },
+  "ci_pr_conclusions": {
+    "success": 729,
+    "action_required": 25,
+    "cancelled": 1,
+    "failure": 84,
+    "in_progress": 1
+  },
+  "changed_path_categories": {
+    "tests": 400,
+    "application_source": 343,
+    "documentation_and_evidence": 218,
+    "configuration_and_other": 20,
+    "automation_and_infra": 60
+  },
+  "captured_heads_with_current_required_success_before_merge": 329,
+  "main_commits_without_indexed_main_push_ci": [
+    "6c3e507bda0fe900e885f85b8169915812289b5b"
+  ],
+  "checks_head_mismatches": []
+}
