@@ -55,6 +55,7 @@ import { settlementExecutionEvidence } from './settlement-execution';
  * Aggregates only: no prompts, diffs, tokens or hosts.
  */
 export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
+  { name: 'RUNTIME_PROCESS_GROUP_KILL', acting: true },
   { name: 'LOOP_BANDIT_ENABLED', acting: true }, { name: 'LOOP_BANDIT_SPECIES', acting: true }, { name: 'LOOP_BANDIT_MAX_SHARE', acting: true },
   { name: 'LOOP_EVOLVE_ENABLED', acting: true }, { name: 'LOOP_EVOLVE_SPECIES', acting: true },
   { name: 'FITNESS_SHADOW_ENABLED', acting: false }, { name: 'MERGE_SURVIVAL_ENABLED', acting: false }, { name: 'MERGE_SURVIVAL_V2', acting: false }, { name: 'LOOP_EVIDENCE_FRESHNESS_MODE', acting: true },

@@ -112,7 +112,7 @@ export interface ReflectionProposalDecision {
   reason: ReflectionProposalReason;
   /** created/pending_grounding: the new proposal; duplicate: the existing one, only when includeExisting (else null) */
   proposal_id: string | null;
-  cap: number | null; created_in_window: number;
+  cap: number | null; created_in_window: number | null;
   window: 'rolling_24h'; scope: 'global'; source: 'reflection';
   /** runtime_failure only: an error code (UPPER_SNAKE message) or the error class name — never a free-text message */
   error_code?: string;
@@ -153,7 +153,7 @@ export class SelfImprovementService {
     const cap = reflectionProposalCap();
     const outcome: ReflectionProposalOutcome = { proposals: [], decisions: [], failed: false };
     for (const description of reflection.proposedImprovements) {
-      let createdInWindow = 0;
+      let createdInWindow: number | null = null;
       const decide = (reason: ReflectionProposalReason, proposalId: string | null, extra: Partial<ReflectionProposalDecision> = {}) =>
         outcome.decisions.push({ reason, proposal_id: proposalId, cap, created_in_window: createdInWindow, window: 'rolling_24h', scope: 'global', source: 'reflection', ...extra });
       try {
