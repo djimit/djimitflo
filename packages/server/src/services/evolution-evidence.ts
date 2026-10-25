@@ -47,6 +47,7 @@ import { fleetSignatureEvidence } from './fleet-event-signatures';
 import { makerWarmDepsEvidence } from './maker-warm-deps';
 import { falsifierEvidence } from './commons-falsifier';
 import { settlementExecutionEvidence } from './settlement-execution';
+import { schedulerCapacityEvidence } from './resource-scheduler';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -77,7 +78,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'OLLAMA_BALANCE_MODE', acting: false }, { name: 'OLLAMA_ACCOUNT_KEY_ENV', acting: false },
   { name: 'GENOME_FIRE_CHECK', acting: true }, { name: 'MEMORY_HOLDOUT_RATE', acting: true },
   { name: 'TYPESAFE_PROPOSAL_PRESCREEN_MODE', acting: true },
-  { name: 'RESOURCE_LEDGER_ENABLED', acting: false },
+  { name: 'RESOURCE_LEDGER_ENABLED', acting: false }, { name: 'RESOURCE_SCHEDULER_MODE', acting: false },
   { name: 'OUTCOME_ATTRIBUTION_ENABLED', acting: true },
   { name: 'EFFORT_CONTROLLER_MODE', acting: false }, { name: 'EFFORT_LAMBDA_TOK', acting: false }, { name: 'EFFORT_LAMBDA_KWH', acting: false }, { name: 'EFFORT_EXPLORATION', acting: false },
   { name: 'EFFORT_SIBLING_RANDOMISE', acting: true },
@@ -501,5 +502,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // AR5 (COMMONS_FALSIFIER_MODE, shadow): evidence-room tests red at base → green on a later main, per agent; insufficient below n 5
     falsifier: falsifierEvidence(db, env, now),
     // L3-v2 §5.1–2 (SETTLEMENT_EXECUTION_MODE, shadow): settled loop PRs' tests re-run at origin/main + fresh-mutant kill share; graded vs verified/survived (report only)
-    settlement_execution: settlementExecutionEvidence(db, env, now) };
+    settlement_execution: settlementExecutionEvidence(db, env, now),
+    // RESOURCE_SCHEDULER_MODE (shadow): observed-capacity would-defer counts 24 h / 7 d + latest observed capacity (report only)
+    scheduler_capacity: schedulerCapacityEvidence(db, env, now) };
 }
