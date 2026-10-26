@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -22,12 +22,29 @@ export interface StartReviewInput {
 }
 
 interface PrStat {
-  title: string;
-  url: string;
   additions: number;
   deletions: number;
   changedFiles: number;
   files: string[];
+}
+
+/** The material a verdict is computed from, read by exact SHA — never by the PR's (moving) number. */
+interface ReviewPacket {
+  stat: PrStat;
+  mergeBaseSha: string;
+  sha256: string;
+}
+
+type HoldStage = 'before_packet' | 'after_evaluation' | 'before_status';
+
+/**
+ * CODE-005: the PR head moved away from the SHA under review. Not a failure — the newer head gets its own
+ * `synchronize` delivery and review — but nothing is published for the old SHA's material.
+ */
+class PrHeadMovedError extends Error {
+  constructor(readonly stage: HoldStage, readonly observedHeadSha: string) {
+    super(`PR_HEAD_MOVED at ${stage}: head is now ${observedHeadSha}`);
+  }
 }
 
 type Verdict = 'accepted' | 'needs_revision' | 'rejected' | 'insufficient_evidence';
@@ -39,6 +56,8 @@ const LARGE_PR_LINES = 1500;
 const SENSITIVE_PATH_PATTERN = /\.env|secret|credential/i;
 const LLM_RUNTIMES: LlmRuntime[] = ['codex', 'opencode', 'claude', 'gemini', 'editor', 'mock'];
 const LLM_CHECKER_TIMEOUT_MS = 480_000;
+const DIFF_MAX_BUFFER = 64 * 1024 * 1024;
+const sha256 = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex');
 
 /**
  * Djimitflo's own Kilo Code Bot replacement, posted back to GitHub via the
@@ -90,7 +109,7 @@ export class GithubPrReviewService {
    * table and returned, since djimitflo's own DB state must stay
    * authoritative even when the GitHub-posting step fails transiently.
    */
-  startReview(input: StartReviewInput): { status: 'commented' | 'pending' | 'failed'; verdict?: Verdict } {
+  startReview(input: StartReviewInput): { status: 'commented' | 'pending' | 'failed' | 'superseded'; verdict?: Verdict } {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db.prepare(`
@@ -104,24 +123,32 @@ export class GithubPrReviewService {
       return { status: 'pending' };
     }
 
+    let packet: ReviewPacket | undefined;
     try {
-      const { verdict, checkerLeaseId } = this.runCheckerVerdict(input);
-      const stat = this.fetchPrStat(input.owner, input.repo, input.number);
-      const body = this.buildComment(input, stat, verdict);
+      this.assertHeadUnchanged(input, 'before_packet');
+      packet = this.fetchExactShaPacket(input);
+      const { verdict, checkerLeaseId } = this.runCheckerVerdict(input, packet.stat);
+      this.assertHeadUnchanged(input, 'after_evaluation');
+      const body = this.buildComment(input, packet, verdict);
       const checkRunId = this.postToGithub(input, verdict, body);
 
       this.db.prepare("UPDATE github_pull_request_reviews SET status='commented', check_run_id=?, metadata=?, updated_at=? WHERE id=?")
-        .run(checkRunId, JSON.stringify({ verdict, checker_lease_id: checkerLeaseId }), new Date().toISOString(), id);
+        .run(checkRunId, JSON.stringify({ verdict, checker_lease_id: checkerLeaseId, ...this.binding(input, packet) }), new Date().toISOString(), id);
+      this.recordRunBinding(input, packet, 'published');
       this.settleReviewRun(input.loopRunId);
 
       this.audit.appendEntry({
         actor: 'github-pr-review', action: 'github_pr_reviewed', resource: input.loopRunId, outcome: 'success',
-        evidence: { owner: input.owner, repo: input.repo, number: input.number, head_sha: input.headSha, verdict },
+        evidence: { owner: input.owner, repo: input.repo, number: input.number, head_sha: input.headSha, verdict, packet_sha256: packet.sha256 },
         event: { eventType: 'integration.reviewed', resourceType: 'loop_run', riskLevel: 'low' },
       });
 
       return { status: 'commented', verdict };
     } catch (error) {
+      if (error instanceof PrHeadMovedError) {
+        this.recordSuperseded(id, input, error, packet);
+        return { status: 'superseded' };
+      }
       const message = error instanceof Error ? error.message : String(error);
       this.db.prepare("UPDATE github_pull_request_reviews SET status='failed', metadata=?, updated_at=? WHERE id=?")
         .run(JSON.stringify({ error: message }), new Date().toISOString(), id);
@@ -141,9 +168,9 @@ export class GithubPrReviewService {
    * LoopVerificationService marks the change-loop artifact gates (worktree,
    * assignment, diff, checks) 'skipped' — not applicable (E2) — and leaves
    * the run's status for settleReviewRun. The verdict posted to GitHub below
-   * is computed independently from the PR's own diff stats.
+   * is computed independently from the PR's own diff stats, read by the exact head SHA (CODE-005).
    */
-  private runCheckerVerdict(input: StartReviewInput): { verdict: Verdict; checkerLeaseId: string } {
+  private runCheckerVerdict(input: StartReviewInput, stat: PrStat): { verdict: Verdict; checkerLeaseId: string } {
     const run = this.loops.getLoopRun(input.loopRunId);
     const findingId = run.findings[0]?.id;
     if (!findingId) throw new Error('PR_REVIEW_FINDING_MISSING');
@@ -168,7 +195,6 @@ export class GithubPrReviewService {
       now,
     });
 
-    const stat = this.fetchPrStat(input.owner, input.repo, input.number);
     const { verdict, notes } = this.computeVerdict(stat);
     this.loops.submitCheckerVerdict(input.loopRunId, {
       lease_id: checkerLeaseId, verdict, notes,
@@ -206,13 +232,16 @@ export class GithubPrReviewService {
    * failure paths update the review row and audit log directly.
    */
   private async runLlmReview(reviewId: string, input: StartReviewInput, runtime: LlmRuntime): Promise<void> {
+    let packet: ReviewPacket | undefined;
     try {
       const run = this.loops.getLoopRun(input.loopRunId);
       const findingId = run.findings[0]?.id;
       if (!findingId) throw new Error('PR_REVIEW_FINDING_MISSING');
       const now = new Date().toISOString();
 
+      const baseTipSha = this.fetchBaseTip(input);
       execFileSync('git', ['fetch', 'origin', `pull/${input.number}/head`], { cwd: input.repositoryPath, timeout: GH_TIMEOUT_MS });
+      this.ensureCommit(input.repositoryPath, input.headSha);
 
       const makerLeaseId = randomUUID();
       const makerBranch = `djimitflo/pr-review-${input.number}-${makerLeaseId.slice(0, 8)}`;
@@ -231,15 +260,21 @@ export class GithubPrReviewService {
       // uncommitted) — so the actual diff goes in the assignment packet
       // instead, which the prompt surfaces first. Wrapped as untrusted
       // external content: this is the first point a real LLM reads PR data.
-      const diffText = execFileSync('gh', ['pr', 'diff', String(input.number), '--repo', `${input.owner}/${input.repo}`], { encoding: 'utf8', timeout: GH_TIMEOUT_MS });
-      const packetPath = path.join(worktreePath, '.djimitflo', 'PR_REVIEW_PACKET.md');
-      fs.mkdirSync(path.dirname(packetPath), { recursive: true });
-      fs.writeFileSync(packetPath, [
+      // CODE-005: the diff comes from git, merge-base..headSha in this worktree,
+      // never from `gh pr diff <number>` (whatever head the PR has now).
+      this.assertHeadUnchanged(input, 'before_packet');
+      const mergeBaseSha = execFileSync('git', ['merge-base', baseTipSha, input.headSha], { cwd: worktreePath, encoding: 'utf8', timeout: GH_TIMEOUT_MS }).trim();
+      const diffText = execFileSync('git', ['diff', '--no-color', '--no-ext-diff', mergeBaseSha, input.headSha], { cwd: worktreePath, encoding: 'utf8', timeout: GH_TIMEOUT_MS, maxBuffer: DIFF_MAX_BUFFER });
+      const packetText = [
         'BEGIN_EXTERNAL_CONTENT source=github_pull_request_diff trust=untrusted',
-        `PR #${input.number} (${input.owner}/${input.repo}) at ${input.headSha}`,
+        `PR #${input.number} (${input.owner}/${input.repo}) at ${input.headSha} (merge base ${mergeBaseSha})`,
         diffText,
         'END_EXTERNAL_CONTENT',
-      ].join('\n'), 'utf8');
+      ].join('\n');
+      packet = { stat: this.gitStat(worktreePath, mergeBaseSha, input.headSha), mergeBaseSha, sha256: sha256(packetText) };
+      const packetPath = path.join(worktreePath, '.djimitflo', 'PR_REVIEW_PACKET.md');
+      fs.mkdirSync(path.dirname(packetPath), { recursive: true });
+      fs.writeFileSync(packetPath, packetText, 'utf8');
 
       this.loops.updateWorkerLeaseStatus(makerLeaseId, 'completed', {
         notes: 'Maker output is the PR head commit, fetched and checked out for review.',
@@ -259,19 +294,24 @@ export class GithubPrReviewService {
       const verdict = (execResult.lease.metadata.verdict as Verdict | undefined) || 'insufficient_evidence';
       const notes = typeof execResult.lease.metadata.notes === 'string' ? execResult.lease.metadata.notes : '';
 
-      const stat = this.fetchPrStat(input.owner, input.repo, input.number);
-      const body = this.buildComment(input, stat, verdict, notes);
+      this.assertHeadUnchanged(input, 'after_evaluation');
+      const body = this.buildComment(input, packet, verdict, notes);
       const checkRunId = this.postToGithub(input, verdict, body);
 
       this.db.prepare("UPDATE github_pull_request_reviews SET status='commented', check_run_id=?, metadata=?, updated_at=? WHERE id=?")
-        .run(checkRunId, JSON.stringify({ verdict, checker_lease_id: checkerLeaseId, runtime }), new Date().toISOString(), reviewId);
+        .run(checkRunId, JSON.stringify({ verdict, checker_lease_id: checkerLeaseId, runtime, ...this.binding(input, packet) }), new Date().toISOString(), reviewId);
+      this.recordRunBinding(input, packet, 'published');
       this.settleReviewRun(input.loopRunId);
       this.audit.appendEntry({
         actor: 'github-pr-review', action: 'github_pr_reviewed', resource: input.loopRunId, outcome: 'success',
-        evidence: { owner: input.owner, repo: input.repo, number: input.number, head_sha: input.headSha, verdict, runtime },
+        evidence: { owner: input.owner, repo: input.repo, number: input.number, head_sha: input.headSha, verdict, runtime, packet_sha256: packet.sha256 },
         event: { eventType: 'integration.reviewed', resourceType: 'loop_run', riskLevel: 'low' },
       });
     } catch (error) {
+      if (error instanceof PrHeadMovedError) {
+        this.recordSuperseded(reviewId, input, error, packet, { runtime });
+        return;
+      }
       const message = error instanceof Error ? error.message : String(error);
       this.db.prepare("UPDATE github_pull_request_reviews SET status='failed', metadata=?, updated_at=? WHERE id=?")
         .run(JSON.stringify({ error: message, runtime }), new Date().toISOString(), reviewId);
@@ -283,17 +323,97 @@ export class GithubPrReviewService {
     }
   }
 
-  private fetchPrStat(owner: string, repo: string, number: number): PrStat {
+  /**
+   * CODE-005: the PR's head as GitHub sees it now. Another head means the material under review was superseded:
+   * throw PrHeadMovedError (hold). An unreadable head throws as a failure — never publish on an unverified head.
+   */
+  private assertHeadUnchanged(input: StartReviewInput, stage: HoldStage): void {
     const raw = execFileSync('gh', [
-      'pr', 'view', String(number), '--repo', `${owner}/${repo}`,
-      '--json', 'title,url,additions,deletions,changedFiles,files',
+      'pr', 'view', String(input.number), '--repo', `${input.owner}/${input.repo}`, '--json', 'headRefOid',
     ], { encoding: 'utf8', timeout: GH_TIMEOUT_MS });
-    const parsed = JSON.parse(raw) as { title: string; url: string; additions: number; deletions: number; changedFiles: number; files: Array<{ path: string }> };
+    const head = (JSON.parse(raw) as { headRefOid?: unknown }).headRefOid;
+    if (typeof head !== 'string' || !/^[0-9a-f]{40,64}$/.test(head)) throw new Error('PR_HEAD_UNREADABLE');
+    if (head !== input.headSha) throw new PrHeadMovedError(stage, head);
+  }
+
+  /**
+   * Phase 1 packet (no worktree): file stats from the compare API addressed by the exact head SHA, which is immutable —
+   * not `gh pr view <number>`, which reads whatever head the PR has now. GitHub resolves the merge base with the base branch.
+   */
+  private fetchExactShaPacket(input: StartReviewInput): ReviewPacket {
+    const raw = execFileSync('gh', [
+      'api', `repos/${input.owner}/${input.repo}/compare/${input.baseRef}...${input.headSha}`,
+      '--jq', '{merge_base: .merge_base_commit.sha, files: [.files[] | {filename, additions, deletions}]}',
+    ], { encoding: 'utf8', timeout: GH_TIMEOUT_MS, maxBuffer: DIFF_MAX_BUFFER });
+    const parsed = JSON.parse(raw) as { merge_base?: unknown; files?: Array<{ filename: string; additions: number; deletions: number }> };
+    if (typeof parsed.merge_base !== 'string' || !Array.isArray(parsed.files)) throw new Error('PR_COMPARE_UNREADABLE');
+    const files = parsed.files;
     return {
-      title: parsed.title, url: parsed.url,
-      additions: parsed.additions, deletions: parsed.deletions, changedFiles: parsed.changedFiles,
-      files: (parsed.files || []).map((f) => f.path),
+      stat: {
+        additions: files.reduce((sum, f) => sum + (f.additions || 0), 0),
+        deletions: files.reduce((sum, f) => sum + (f.deletions || 0), 0),
+        changedFiles: files.length,
+        files: files.map((f) => f.filename),
+      },
+      mergeBaseSha: parsed.merge_base,
+      sha256: sha256(JSON.stringify({ repo: `${input.owner}/${input.repo}`, number: input.number, head_sha: input.headSha, merge_base: parsed.merge_base, files })),
     };
+  }
+
+  /** Fetches the base branch and resolves it to a SHA once, so the merge base is computed against one fixed commit. */
+  private fetchBaseTip(input: StartReviewInput): string {
+    const tracking = `refs/remotes/origin/${input.baseRef}`;
+    execFileSync('git', ['fetch', 'origin', `+refs/heads/${input.baseRef}:${tracking}`], { cwd: input.repositoryPath, timeout: GH_TIMEOUT_MS });
+    return execFileSync('git', ['rev-parse', '--verify', `${tracking}^{commit}`], { cwd: input.repositoryPath, encoding: 'utf8', timeout: GH_TIMEOUT_MS }).trim();
+  }
+
+  /** pull/<n>/head may already point past (or after a force-push away from) headSha: fetch the exact commit when missing. */
+  private ensureCommit(repositoryPath: string, sha: string): void {
+    try {
+      execFileSync('git', ['cat-file', '-e', `${sha}^{commit}`], { cwd: repositoryPath, timeout: GH_TIMEOUT_MS, stdio: 'ignore' });
+    } catch {
+      execFileSync('git', ['fetch', 'origin', sha], { cwd: repositoryPath, timeout: GH_TIMEOUT_MS });
+    }
+  }
+
+  private gitStat(cwd: string, baseSha: string, headSha: string): PrStat {
+    const raw = execFileSync('git', ['diff', '--numstat', '--no-renames', baseSha, headSha], { cwd, encoding: 'utf8', timeout: GH_TIMEOUT_MS, maxBuffer: DIFF_MAX_BUFFER });
+    const rows = raw.split('\n').filter(Boolean).map((line) => line.split('\t'));
+    return {
+      additions: rows.reduce((sum, [added]) => sum + (Number(added) || 0), 0), // binary files report '-'
+      deletions: rows.reduce((sum, [, deleted]) => sum + (Number(deleted) || 0), 0),
+      changedFiles: rows.length,
+      files: rows.map((row) => row.slice(2).join('\t')),
+    };
+  }
+
+  private binding(input: StartReviewInput, packet: ReviewPacket): { reviewed_sha: string; merge_base_sha: string; packet_sha256: string } {
+    return { reviewed_sha: input.headSha, merge_base_sha: packet.mergeBaseSha, packet_sha256: packet.sha256 };
+  }
+
+  /** Records the reviewed SHA and packet hash on the bookkeeping loop run. */
+  private recordRunBinding(input: StartReviewInput, packet: ReviewPacket | undefined, outcome: 'published' | 'superseded', extra: Record<string, unknown> = {}): void {
+    const value = { reviewed_sha: input.headSha, merge_base_sha: packet?.mergeBaseSha ?? null, packet_sha256: packet?.sha256 ?? null, outcome, ...extra };
+    this.db.prepare(`UPDATE loop_runs SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.pr_review', json(?)), updated_at = ? WHERE id = ?`)
+      .run(JSON.stringify(value), new Date().toISOString(), input.loopRunId);
+  }
+
+  /**
+   * Hold: the head moved, so nothing (more) is published for this SHA. The row closes as 'completed' with outcome
+   * 'superseded' (the table CHECK has no 'superseded'; 'completed' was otherwise unused) and the bookkeeping run is
+   * settled. The newer head's own `synchronize` delivery reviews the new material.
+   */
+  private recordSuperseded(reviewId: string, input: StartReviewInput, error: PrHeadMovedError, packet: ReviewPacket | undefined, extra: Record<string, unknown> = {}): void {
+    const hold = { outcome: 'superseded', reviewed_sha: input.headSha, observed_head_sha: error.observedHeadSha, stage: error.stage, packet_sha256: packet?.sha256 ?? null, ...extra };
+    this.db.prepare("UPDATE github_pull_request_reviews SET status='completed', metadata=?, updated_at=? WHERE id=?")
+      .run(JSON.stringify(hold), new Date().toISOString(), reviewId);
+    this.recordRunBinding(input, packet, 'superseded', { observed_head_sha: error.observedHeadSha, stage: error.stage });
+    this.settleReviewRun(input.loopRunId);
+    this.audit.appendEntry({
+      actor: 'github-pr-review', action: 'github_pr_review_superseded', resource: input.loopRunId, outcome: 'success',
+      evidence: { owner: input.owner, repo: input.repo, number: input.number, ...hold },
+      event: { eventType: 'integration.review_superseded', resourceType: 'loop_run', riskLevel: 'low' },
+    });
   }
 
   /** Deliberately simple, explicitly labeled as a stub — see class docstring. */
@@ -311,7 +431,8 @@ export class GithubPrReviewService {
     return { verdict, notes: reasons.length > 0 ? `${stub} ${reasons.join(' ')}` : stub };
   }
 
-  private buildComment(input: StartReviewInput, stat: PrStat, verdict: Verdict, llmNotes = ''): string {
+  private buildComment(input: StartReviewInput, packet: ReviewPacket, verdict: Verdict, llmNotes = ''): string {
+    const { stat } = packet;
     const isStub = !llmNotes;
     const verdictLine = verdict === 'accepted' ? `✅ No blocking issues found${isStub ? ' by the automated stub check' : ''}.`
       : verdict === 'rejected' ? '❌ Blocking issues found.'
@@ -325,6 +446,7 @@ export class GithubPrReviewService {
       `- Changed files: ${stat.changedFiles}`,
       `- Lines changed: +${stat.additions} / -${stat.deletions}`,
       `- Loop run: ${input.loopRunId}`,
+      `- Reviewed commit: ${input.headSha} (merge base ${packet.mergeBaseSha}, packet sha256 ${packet.sha256})`,
       '',
     ];
     if (llmNotes) lines.push(llmNotes, '');
@@ -367,6 +489,8 @@ export class GithubPrReviewService {
       context: PR_REVIEW_STATUS_CONTEXT,
       description: (verdict === 'accepted' ? 'No blocking issues found' : verdict === 'rejected' ? 'Blocking issues found' : 'Needs a closer look').slice(0, 140),
     };
+    // CODE-005: re-read the head immediately before publishing; a moved head gets no status on the old SHA.
+    this.assertHeadUnchanged(input, 'before_status');
     const raw = execFileSync('gh', [
       'api', `repos/${input.owner}/${input.repo}/statuses/${input.headSha}`, '--input', '-',
     ], { input: JSON.stringify(statusPayload), encoding: 'utf8', timeout: GH_TIMEOUT_MS });
