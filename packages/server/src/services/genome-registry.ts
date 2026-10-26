@@ -113,11 +113,33 @@ export const mutantHoldoutTiers = (env: NodeJS.ProcessEnv = process.env): number
   const tiers = (env.DREAM_TRIAL_MUTANT_TIERS || '2,3').split(',').map(Number).filter((t) => Number.isInteger(t) && t >= 1 && t <= 8);
   return tiers.length ? tiers : [2, 3];
 };
-export function mutantHoldoutKeys(db: Database, tiers = mutantHoldoutTiers()): string[] {
+/**
+ * prod 26-10 (operator "Fix trial headroom"): an epoch frozen from a manifest pre-registers its deciding mutants (epoch 1:
+ * tiers 3–6, 40 tasks) — that whole set decides. Filtering it by DREAM_TRIAL_MUTANT_TIERS (unset in prod until 22-10 → 2,3)
+ * silently shrank epoch 1 to its 10 tier-3 tasks, where the parent fails ~3 of 10: "no headroom" for a parent that passes
+ * 60 % of the deciding set. DREAM_TRIAL_MUTANT_TIERS still picks the tier set of a claim-time epoch (epoch 0: unchanged).
+ */
+export function mutantDecidingTiers(db: Database, env: NodeJS.ProcessEnv = process.env): number[] {
+  const configured = mutantHoldoutTiers(env);
+  const epoch = holdoutEpoch(db, 'gym_mutant_holdout', env);
+  if (!manifestFrozen(db, epoch)) return configured;
+  let frozen: number[] = [];
+  try {
+    frozen = [...new Set((db.prepare(`SELECT task_json FROM gym_mutant_holdout WHERE epoch = ? AND ${DECIDING}`).all(epoch) as Array<{ task_json: string }>)
+      .map((r) => { try { return Number((JSON.parse(r.task_json) as MutantTask).tier); } catch { return NaN; } }))].filter(Number.isInteger).sort((a, b) => a - b);
+  } catch { return configured; }
+  if (!frozen.length) return configured;
+  const key = `tiers:${epoch}:${configured.join(',')}`;
+  if ([...configured].sort((a, b) => a - b).join(',') !== frozen.join(',') && !warned.has(key)) {
+    warned.add(key); console.warn(`🧬 gym_mutant_holdout: epoch ${epoch} was frozen from a manifest with tiers ${frozen.join(',')}; DREAM_TRIAL_MUTANT_TIERS=${configured.join(',')} is ignored for it`);
+  }
+  return frozen;
+}
+export function mutantHoldoutKeys(db: Database, tiers = mutantDecidingTiers(db)): string[] {
   return (db.prepare(`SELECT key, task_json FROM gym_mutant_holdout WHERE epoch = ? AND ${DECIDING} ORDER BY key`).all(holdoutEpoch(db, 'gym_mutant_holdout')) as Array<{ key: string; task_json: string }>)
     .filter((r) => tiers.includes(Number((JSON.parse(r.task_json) as MutantTask).tier))).map((r) => r.key);
 }
-export function mutantHoldout(db: Database, make: (tier: number, tried: Set<string | null>) => MutantTask | null, now = new Date().toISOString(), tiers = mutantHoldoutTiers()): MutantTask[] {
+export function mutantHoldout(db: Database, make: (tier: number, tried: Set<string | null>) => MutantTask | null, now = new Date().toISOString(), tiers = mutantDecidingTiers(db)): MutantTask[] {
   const epoch = holdoutEpoch(db, 'gym_mutant_holdout');
   const read = () => (db.prepare(`SELECT task_json FROM gym_mutant_holdout WHERE epoch = ? AND ${DECIDING} ORDER BY key`).all(epoch) as Array<{ task_json: string }>)
     .map((r) => JSON.parse(r.task_json) as MutantTask).filter((t) => tiers.includes(Number(t.tier)));

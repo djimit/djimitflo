@@ -27,6 +27,8 @@ import { CommonsProposalReviewService, commonsReviewEnabled } from '../services/
 import { EventOutboxService, bridgeGoalEvents, eventPublishEnabled } from '../services/event-outbox-service';
 import { AgentRegistrySyncService, registryUrl } from '../services/agent-registry-sync-service';
 import { TestGapSourceService, testGapSourceEnabled } from '../services/test-gap-source-service';
+import { startAutoRequeue } from '../services/auto-requeue';
+import { autoRequeueMaxPerTick, autoRequeueMode } from '../services/requeue-policy';
 import { DeadCodeSourceService, deadCodeLaneEnabled } from '../services/dead-code-source-service';
 import { FindingFixSourceService, findingFixMode } from '../services/finding-fix-source';
 import { EvolutionGymService, gymArmed } from '../services/evolution-gym-service';
@@ -171,6 +173,19 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     }
   } catch (error) {
     console.warn('⚠️  Finding-fix lane failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // Auto-requeue (REQUEUE_AUTO_MODE, requeue-policy.ts): requeues retryable failures once and dismisses the rest after 14 d,
+  // so routine requeue rows leave the operator's /decisions queue. Default off; shadow records judgments only.
+  try {
+    if (noteScheduler('auto_requeue', 'REQUEUE_AUTO_MODE', autoRequeueMode() !== 'off', 3_600_000)) {
+      let stopAutoRequeue = startAutoRequeue(db);
+      registerRestart('auto_requeue', () => { stopAutoRequeue?.(); stopAutoRequeue = startAutoRequeue(db); });
+      lifecycleManager.register({ serviceName: 'AutoRequeue', stop: () => stopAutoRequeue?.() });
+      console.log(`🔁 Auto-requeue ${autoRequeueMode()} (max ${autoRequeueMaxPerTick()} requeues/tick, hourly).`);
+    }
+  } catch (error) {
+    console.warn('⚠️  Auto-requeue failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // C2 evolution gym: sandbox replay tasks from our own history; outcomes feed species selection. Default off.
