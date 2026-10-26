@@ -16,7 +16,9 @@ done) · 143 cancelled by a signal.
 
 Knobs: `MT_CI_TIMEOUT_S` (3600) / `MT_CI_POLL_S` (45) bound the CI wait; `MT_HEAD_SETTLE_S` (30) / `MT_HEAD_SETTLE_POLL_S` (5)
 bound the read-back of the new head after update-branch; `MT_GH_TIMEOUT_S` (60) bounds every gh call; `MT_REQUIRED_CHECKS`
-overrides the required contexts (default: branch protection of `main`, fallback the 2026-10-12 list).
+overrides the required contexts (default: branch protection of `main`; unreadable protection is HOLD
+`required_checks_unavailable`, never a remembered list). A required context is green only on `success` of its newest run on
+the exact sha — `skipped`, `neutral`, `cancelled`, `stale` is red (`required_not_success:<name>=<conclusion>`).
 
 ## Apply flow (per PR, per attempt)
 
@@ -59,15 +61,17 @@ A PR without an entry is ASSERTION_BLOCKED (and `run_verified` unknown); the dry
 | Rule | How |
 |---|---|
 | Live state before every action | PR state + head and main are re-read before acting, before the merge call and after it |
+| Evidence binding | The PR head is read before downloading its diff and compared again afterward. A changed head exits SUPERSEDED. A failed main refresh exits HOLD; cached main is never accepted as current proof. |
 | SATISFIED needs proof on main | the PR's net diff reverse-applies on current main and does not forward-apply, and every file the PR adds exists there; a ledger entry or patch-id alone is never proof; anything else ⇒ FAIL_CLOSED |
 | Idempotency | intent key = sha256(repo \| PR \| `git patch-id --stable` of the PR diff); ledger `MT_LEDGER` (default `~/.djimit/merge-train.ledger.jsonl`), states CLAIMED → RUNNING → MERGED \| SATISFIED \| FAIL_CLOSED \| ESCALATED \| SUPERSEDED |
 | Concurrency | each intent is claimed with an atomic `mkdir` under `merge-train.claims/`; a live claim (owner pid alive, within `MT_CLAIM_TTL_S`, default 2 h) makes another worker exit 6; a stale claim is reclaimed and live state re-verified |
 | Stale jobs | `PR@HEAD` jobs exit SUPERSEDED when the head moved; a PR closed/reopened/re-headed during execution aborts before the merge call; a rebuilt branch marks its old head superseded |
 | Merge outcome | decided from live state (PR MERGED and change on main), never from the CLI exit code; a merged PR never gets `update-branch`; the merge is pinned to the validated head (`sha=`) |
-| Stale head | the head after update-branch is read back and becomes the expected head; CI, mergeability and policy are re-read for it; pre-update CI is never reused |
+| Stale head | the head after update-branch is read back and becomes the expected head; CI, mergeability and policy are re-read for it; pre-update CI is never reused; an accepted update without a new head within the settle window exits HOLD |
 | Bounded | CI wait, head read-back and every gh call are bounded; TIMEOUT ⇒ HOLD; signals ⇒ `cancelled` + claim released |
 | Main moved | if main changed between the CI wait and the merge call, the attempt is redone |
 | Rebuild | `rebase` classifies each own commit (present / absent / ambiguous), rebuilds by cherry-picking the absent ones onto main, and pushes only if the rebuilt diff equals the original change hunk for hunk; never an empty branch; ambiguous ⇒ FAIL_CLOSED, cherry-pick conflict ⇒ ESCALATE (branch restored) |
+| Rebuild publication | The push leases the exact original remote head; a concurrent update is preserved. A push that does not report success restores the local branch and exits FAIL_CLOSED without marking the old head superseded. Inspect the live remote before retrying: a transport error can occur after the server accepted a push. The branch must already be published at the original head. |
 
 Every external call is a probe overridable with `MT_<NAME>` (tests: `packages/server/src/__tests__/merge-train.test.ts`,
 `merge-train-correctness.test.ts`).

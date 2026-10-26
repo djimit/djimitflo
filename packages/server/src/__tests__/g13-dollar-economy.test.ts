@@ -94,10 +94,29 @@ describe('G13: Dollar economy', () => {
       VALUES (?, ?, 'checker', 'codex', 'completed', 'f1', '/tmp/wt', ?)
     `).run('lease-c1', run.id, JSON.stringify({ runtime_usage: { total_tokens: 100_000 } }));
 
+    // the run passed certification (every recorded gate passed): its completed maker is a verified artifact
+    db.prepare("UPDATE loop_runs SET status = 'ready_for_human_merge', gates_json = ? WHERE id = ?")
+      .run(JSON.stringify([{ name: 'maker_completion', status: 'pass', evidence: '' }, { name: 'checker_verdict', status: 'pass', evidence: '' }]), run.id);
+
     const metric = loops.computeEfficiencyMetric(run.id);
     // 1 verified artifact, $1.2 spent (600K tokens × $2/Mtok)
     expect(metric.verifiedArtifacts).toBe(1);
     expect(metric.dollarsSpent).toBeCloseTo(1.2, 2);
     expect(metric.efficiency).toBeCloseTo(1 / 1.2, 2);
+    expect(metric.completedUnverified).toBe(0);
+    expect(metric.usageCoverage).toEqual({ reported: 2, total: 2, ratio: 1 });
+  });
+
+  it('a completed maker of an uncertified run is completed_unverified, not a verified artifact', () => {
+    const run = loops.startDocDriftAndSmallFixLoop({ repository_path: tempDir });
+    db.prepare(`
+      INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, finding_id, worktree_path, metadata)
+      VALUES (?, ?, 'maker', 'codex', 'completed', 'f1', '/tmp/wt', ?)
+    `).run('lease-m2', run.id, JSON.stringify({ runtime_usage: { total_tokens: 500_000 } }));
+    const metric = loops.computeEfficiencyMetric(run.id);
+    expect(metric.verifiedArtifacts).toBe(0);
+    expect(metric.completedUnverified).toBe(1);
+    expect(metric.dollarsSpent).toBeCloseTo(1.0, 2); // tariff unchanged: 500K × $2/Mtok
+    expect(metric.efficiency).toBe(0);
   });
 });

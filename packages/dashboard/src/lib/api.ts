@@ -34,7 +34,19 @@ import type {
 import { API_BASE, authenticatedFetch } from './auth-store';
 export { API_BASE } from './auth-store';
 
-export type ServiceStatus = { names: string[]; endpoint: string; status: 'up' | 'reachable' | 'degraded' | 'down'; http: number | null; ms: number | null; error: string | null };
+/** DF-07: `status` is transport only; `state` is the integration ladder justified by `state_evidence` (absent on an older server = UNKNOWN). */
+export type IntegrationState = 'CONFIGURED' | 'CONNECTED' | 'HEALTHY' | 'DEGRADED' | 'FAILED' | 'DISABLED' | 'UNKNOWN';
+export type ServiceStatus = { names: string[]; endpoint: string; status: 'up' | 'reachable' | 'degraded' | 'down'; http: number | null; ms: number | null; error: string | null;
+  state?: IntegrationState; state_evidence?: string; last_success_at?: string | null; last_failure_at?: string | null; evidence_source?: string | null };
+/** GET /api/health/config (DF-08): per key value (null = unset), source, documented default, override and activation; plus the running build. */
+export interface RuntimeConfigEntry {
+  name: string; value: string | null; masked: boolean; group: string; area: string;
+  source: 'env' | 'default' | 'unset'; default: string | null; overridden: boolean | null; takes_effect: 'restart'; stale?: boolean | null;
+}
+export interface RuntimeConfig {
+  entries: RuntimeConfigEntry[]; masked: number;
+  build: { commit: string | null; built_commit: string | null; build_source: string | null; build_time: string | null; instance_id: string | null; commit_matches_build: boolean };
+}
 
 export type FleetHost = { host: string; last_seen: string; seconds_ago: number; live: boolean; agent_version: string | null; info: Record<string, unknown> };
 export type FleetCommand = { id: string; host: string; kind: 'diagnostic' | 'shell'; command: string; command_sha256: string; status: string; requested_by: string;
@@ -183,7 +195,10 @@ export interface EvolutionEvidence {
   auto_merge: { mode: 'off' | 'shadow' | 'act'; max_per_day: number; audit_sample_pct: number;
     class: { state: 'active' | 'revoked'; reason?: string; pr_url?: string; revoked_at?: string; re_enabled_by?: string; re_enabled_at?: string; re_enable_reason?: string };
     counts: { merged: number; merged_24h: number; would_merge: number; audit_samples: number; audit_samples_open: number; waiting: number; ineligible: number };
-    ineligible_by_reason: Record<string, number> };
+    ineligible_by_reason: Record<string, number>;
+    /** LOOP_AUTO_MERGE_RECHECK: latest decision × reason code, ineligible permanent vs transient, PRs re-checked in the last 24 h */
+    recheck?: { enabled: boolean; window_hours: number; per_tick: number; ineligible_by_class: { permanent: number; transient: number };
+      by_decision_reason: Record<string, Record<string, number>>; rechecked_24h: number; rechecked_24h_by_decision: Record<string, number> } };
   /** MEMORY_HOLDOUT_RATE: proposal outcome of maker runs with rules vs runs held out, two-sided Fisher exact p */
   memory_holdout: { rate: string | null; rules: MemoryArm; holdout: MemoryArm; fisher_p: number; note: string };
   /** OLLAMA_OUTAGE_FALLBACK_RUNTIME: opencode production leases run on claude (subscription); by_role null = table missing */
@@ -224,7 +239,9 @@ export interface EvolutionEvidence {
     diff: number | null; diff_ci_descriptive: [number, number] | null;
     arms: Record<'A' | 'B', { goals: number; terminal: number; verified: number; regressed: number; censored: number; verified_rate: number | null;
       preparations: number; preparation_failed: number; maker_leases: number; maker_failed: number; maker_timed_out: number; tokens_mean: number | null }>;
-    note: string };
+    note: string;
+    /** MAKER_WARM_DEPS: state ('blocked_by_experiment' while MAKER_DEPS_001_MODE=on) and maker leases per deps_source */
+    warm_deps?: { mode: string | null; state: 'off' | 'on' | 'blocked_by_experiment'; keep: number; by_source: Record<'cache' | 'fresh' | 'failed', number>; note: string } };
   /** H-D5NO: prospective false-rejection risk of jev confident-NO on proposal_prescreen (shadow); confident_yes is descriptive only */
   d5_no: { status: 'collecting' | 'ready' | 'rejected' | 'insufficient_evidence' | 'unavailable'; cutoff: string; prereg_sha256?: string; analysis_n?: number; max_risk?: number;
     excluded?: { pre_cutoff_cluster: number; oracle_lane: number };
@@ -302,6 +319,30 @@ export interface EvolutionEvidence {
     by_host: Array<{ host: string; verdict: 'verified' | 'unsigned' | 'bad_signature' | 'replay' | 'unknown_host' | 'revoked'; n: number }> | null;
     keys: Array<{ host: string; key_id: string; alg: string; status: string; created_at: string; revoked_at: string | null }> | null;
   };
+  /** AR5 (COMMONS_FALSIFIER_MODE, shadow): evidence-room tests red at base → green on a later main (services/commons-falsifier.ts); nulls while off */
+  falsifier?: FalsifierEvidence;
+  /** L3-v2 §5.1–2 (SETTLEMENT_EXECUTION_MODE, shadow): merged loop PRs ≥ 14 d — tests re-run at origin/main, fresh-mutant kill share vs maker time; graded vs labels (services/settlement-execution.ts) */
+  settlement_execution?: SettlementExecutionEvidence;
+  scheduler_capacity?: { mode: string; would_defer_24h: number | null; would_defer_7d: number | null; would_schedule_7d: number | null; latest: { at: string; goal_id: string; would_defer: boolean; observed: Record<string, unknown> } | null; observed_now: Record<string, unknown> | null };
+  /** PL-001 (PROCEDURE_SELECTOR_MODE, shadow): procedure applies / does_not_apply per ordinary gym claim; a window without a decision is null (services/procedure-selector.ts) */
+  procedure_selection?: { mode: string; delivered: false; procedure: { id: string; version: number; lines_sha256: string } | null;
+    window_24h: { applies: number | null; does_not_apply: number | null }; window_7d: { applies: number | null; does_not_apply: number | null };
+    top_failed_clauses_7d: Array<{ clause: string; n: number }> | null };
+}
+export type FalsifierCounts = { submitted: number; rejected: number; red_at_base: number; green_at_base: number; unknown: number; settled_green: number; expired: number; pending: number };
+export interface FalsifierEvidence {
+  mode: 'off' | 'shadow'; status: 'insufficient' | 'ok'; min_n: number; window_days: number; cap_per_day: number; executions_24h: number | null;
+  totals: FalsifierCounts | null; settle_rate: number | null; by_agent: Array<FalsifierCounts & { agent: string }> | null; note: string;
+}
+export type GradedLabelStat = { n: number; mean: number | null; zero_share: number | null };
+export interface SettlementExecutionEvidence {
+  mode: 'off' | 'shadow'; status: 'insufficient' | 'ok'; min_n: number; cap_per_tick: number; n: number;
+  counts: { pass: number; fail: number; removed: number; unknown: number; no_test_files: number }; pending: number | null; pass_rate: number | null;
+  kill_share: { n_now: number; mean_now: number | null; n_paired: number; mean_maker: number | null; mean_drift: number | null };
+  last_run_at: string | null;
+  graded_vs_labels: { n: number | null; note: string;
+    by_kind: Array<{ kind: string; verified: GradedLabelStat; not_verified: GradedLabelStat; survived: GradedLabelStat; regressed: GradedLabelStat; unsettled: GradedLabelStat }> | null };
+  note: string;
 }
 export type ExperimentEffect = { metric: string; estimate: number | null; ci: [number, number] | null; p: number | null };
 /** G1.5 power left; null = unknown, never 0 */
@@ -454,6 +495,9 @@ export type RelevanceQueue = {
   progress: { protected: { labelled: number; total: number }; relabel: { labelled: number; total: number; due: number }; al: { labelled: number; total: number } };
   today: { day: string; labels: number; seconds: number; median_seconds: number | null; target_seconds: number; remaining_seconds: number; est_cards_left: number | null };
 };
+/** E1: one blind query-level retrieval task — query plus opaque candidates (no source, score or trust tier is sent). */
+export type E1BlindTask = { task_id: string; query: string; candidates: Array<{ handle: string; title: string; excerpt: string }> };
+export type E1LabelQueue = { task: E1BlindTask | null; progress: { labelled: number; tasks: number; target: number; max_tasks: number } };
 export type D5Tally = { cases: number; false_rejection: number; correct_rejection: number; pending: number; censored: number; verified_rate: number | null; ci: [number, number] | null };
 export type OperatorCockpit = {
   at: string;
@@ -467,7 +511,7 @@ export type OperatorCockpit = {
   /** split (regressions): by attributed class — reviewer/environment failures are not the maker's */
   guardrails: Array<{ name: string; ok: boolean; state?: HealthState; value: number | null; limit: string; split?: { maker: number; reviewer: number; environment: number; unknown?: number; post_verification?: number | null }; attempts?: PanelAttemptMetrics['seat_attempts']['totals'] & { legacy: PanelAttemptMetrics['legacy'] } }>;
   stalls: Array<{ subsystem: string; since: string | null; detail: string }>;
-  gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string; benched?: boolean; stale?: boolean }>;
+  gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number | null; last: string; benched?: boolean; stale?: boolean }>;
   /** null = that count could not be read; total = distinct things waiting (server-side dedupe) */
   needs_you?: { approvals: number | null; requeue: number | null; labels: number | null; memory_review: number | null;
     proposals?: number | null; draft_prs?: number | null; open_prs?: number | null; stalls?: number | null; approvals_expiring?: number | null;
@@ -561,11 +605,13 @@ export type ImprovementFunnel = {
   generatedAt: string;
   proposals: { total: number; byStatus: Record<string, number> };
   bySource: Array<{ source: string; total: number; parked: number; archived: number; needsGrounding: number; reachedGoal: number; verified: number; failed: number }>;
-  panel: { decisions: Record<string, number>; goalRate: number | null };
-  refinement: { originals: number; children: number; childOutcomes: Record<string, number> };
+  /** goalRate: goal decisions over the panels a proposal points at (linkedDecided); decisions covers every panel */
+  panel: { decisions: Record<string, number>; goalRate: number | null; linkedPanels: number; linkedDecided: number; linkedDecisions: Record<string, number> };
+  /** childGoals: refined children with a goal and how it ended; childOutcomes is the children's own status */
+  refinement: { originals: number; children: number; childOutcomes: Record<string, number>; childGoals: { reachedGoal: number; completed: number; failed: number; other: number } };
   goals: { fromSelfImprovement: Record<string, number> };
   learning: { cognitiveEpisodes: number; cognitivePatterns: number; cognitiveStrategies: number; learningClosures: number; memoryCandidates: Record<string, number> };
-  kpi: { windowDays: number; verified: number; regressed: number; regressionRate: number | null; panels24h: number; panels7d: number; panelsPerVerified: number | null; medianHoursToVerified: number | null; approvalsPerRun: number | null };
+  kpi: { windowDays: number; verified: number; regressed: number; regressionRate: number | null; panels24h: number; panels7d: number; reviews24h: number; reviews7d: number; panelsPerVerified: number | null; medianHoursToVerified: number | null; approvalsPerRun: number | null };
   hygiene: { zombieGoals: number; staleRuns: number; blockedBoardItems: number };
   queues: { openWorkItems: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
 };
@@ -575,7 +621,16 @@ export type SpecialistCalibration = {
   bins: Array<{ from: number; to: number; n: number; observed: number }>;
 };
 
-export type AgentGovernanceScore = {
+export type GovernanceScoreScale = '0-5' | '0-100' | 'unknown';
+
+/** Benchmark/scale a score belongs to; optional because older servers did not send it. */
+export type GovernanceScoreCohort = {
+  benchmark?: string;
+  scale?: GovernanceScoreScale;
+  cohort?: string;
+};
+
+export type AgentGovernanceScore = GovernanceScoreCohort & {
   agentId: string;
   overallScore: number;
   categoryScores: Record<string, number>;
@@ -584,7 +639,12 @@ export type AgentGovernanceScore = {
   trend: 'improving' | 'stable' | 'declining';
 };
 
-export type OpenMythosRun = {
+export type GovernanceOtherCohort = Required<GovernanceScoreCohort> & {
+  ranked: boolean;
+  scores: AgentGovernanceScore[];
+};
+
+export type OpenMythosRun = GovernanceScoreCohort & {
   id: string;
   agentId: string;
   status: string;
@@ -625,16 +685,45 @@ export type UsageLimitView = {
   confidence: string | null; note: string | null; exceed_behaviour: string | null;
   measured_window: UsageWindowId; measured_unit: 'tokens' | 'calls'; used: number | null; comparable: boolean; used_pct: number | null; unit_note: string | null;
   active: boolean | null;
+  /** set when used_pct is the vendor's own percent (Ollama balance API, account-wide) or an operator snapshot of the vendor's usage page */
+  pct_source?: 'ollama_balance_api' | 'operator_snapshot'; resets_at?: string | null; reported_at?: string;
+};
+/** What the operator copied from the vendor's usage page (POST /usage/accounts/:account/snapshot). Every field optional: absent = not reported. */
+export type UsageSnapshotPayload = {
+  plan?: string;
+  session?: { used_pct?: number; resets_at?: string };
+  weekly?: { used_pct?: number; resets_at?: string };
+  model_weekly?: Array<{ model: string; used_pct?: number; resets_at?: string; cap_note?: string }>;
+  credits?: Array<{ label: string; remaining?: number; total?: number; currency?: string; expires_at?: string }>;
+  spend_limit?: { spent?: number; limit?: number; currency?: string; period?: 'daily' | 'weekly' | 'monthly'; auto_reload?: boolean };
+  by_product?: Array<{ product: string; share_pct: number }>;
+  note?: string;
+};
+export type UsageOperatorSnapshot = UsageSnapshotPayload & { reported_at: string; age_hours: number; stale: boolean };
+export type UsagePctWindow = { used_pct: number; resets_at: string | null };
+/** Ollama balance API (OLLAMA_BALANCE_MODE); null = not returned / unknown, never 0 */
+export type UsageAccountWide = {
+  source: 'ollama_balance_api'; mode: 'off' | 'on'; fetched_at: string | null;
+  session: UsagePctWindow | null; weekly: UsagePctWindow | null;
+  credits: { balance_usd?: number; included_balance_usd?: number; included_allowance_usd?: number; included_period?: { from: string | null; until: string | null } } | null;
+  week: { request_count: number | null; usage_value_usd: number | null; from: string | null; until: string | null } | null;
+  error?: string;
 };
 export type UsageEventBrief = { at: string; message: string; consumer: string; model: string | null } | null;
 export type UsageAccount = {
-  id: string; label: string; windows: Record<UsageWindowId, UsageWindowSum>;
+  id: string; label: string;
+  /** windows are Djimitflo's share, as recorded (a CLI lease counts once) */
+  scope: 'djimitflo_ledger'; windows: Record<UsageWindowId, UsageWindowSum>; lease_sessions: Record<UsageWindowId, number>;
+  /** ollama_cloud only */
+  account_usage?: UsageAccountWide;
   consumers_7d: Array<{ consumer: string; calls: number; tokens: number | null; calls_without_tokens: number }>;
   providers_seen: string[]; last_error: UsageEventBrief; last_limit_hit: UsageEventBrief;
-  state: { state: 'limited' | 'backoff' | 'no_limit_recorded'; since: string | null; until: string | null; reason: string | null };
+  state: { state: 'limit_reached' | 'limited' | 'backoff' | 'no_limit_recorded'; since: string | null; until: string | null; reason: string | null };
   cost: { basis: string; observed_bases: string[]; list_price_usd_month: number | null; calls_without_list_price_month: number };
   plan: string;
   limits: UsageLimitView[];
+  /** latest operator-reported snapshot; null = none reported */
+  operator_snapshot?: UsageOperatorSnapshot | null;
 };
 export type UsageAccountsResponse = {
   generated_at: string; window_starts: Record<UsageWindowId, string>;
@@ -723,6 +812,21 @@ export type LoopRunRecord = {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+};
+
+/** GET /loops/runs/:id/gym-outcome: the skill outcome remote-gym-service record() wrote for a gym run (null = none written). */
+export type GymSkillOutcome = {
+  id: string;
+  skill_id: string;
+  success: boolean;
+  /** null = not reported (unknown); a legacy 0 is unknown too */
+  tokens_used: number | null;
+  /** 0 = the worker sent no duration (unknown) */
+  duration_ms: number;
+  model: string | null;
+  skill_content_hash: string | null;
+  evidence_refs: string[];
+  created_at: string;
 };
 
 export type LoopCatalogItem = {
@@ -1213,6 +1317,59 @@ export type ProofRunSummary = {
   narrative: string[];
 };
 
+/** SW-02: `total` is the loaded slice (kept for compatibility); registry_total is the whole registry (absent on an older server) */
+export type SwarmCapabilityHealth = {
+  total: number;
+  validated: number;
+  routable: number;
+  blocked: number;
+  loaded?: number;
+  load_limit?: number;
+  registry_total?: number;
+  registry_by_status?: Record<string, number>;
+};
+export type SwarmCurrentExecution = { lease_id: string; loop_run_id: string; loop_name: string | null; runtime: string; role: string; status: string; updated_at: string };
+/** SW-01: GET /api/swarms/learning-curve — server services/swarm-learning-curve.ts learningCurveView */
+export type UsageTokens = { value: number | null; events: number; known: number; coverage: number | null; status: 'measured' | 'partial' | 'UNKNOWN' };
+export type CohortWindow = { n: number; completed: number; rate: number | null; ci: [number, number] | null; censored: number; mean_retries?: number | null;
+  tokens: UsageTokens; usd: { value: number | null; reason: string | null } };
+export type LearningCohort = { loop_name: string; run_class: 'gym' | 'maintenance' | 'production' | string; windows: { prior: CohortWindow; recent: CohortWindow };
+  comparison: { status: 'compared' | 'insufficient'; delta: number | null; reason: string | null } };
+export type RegisteredReadout = { id: string; stop_by: string | null; analysis: string; causal_conclusion: null; protocol?: string; note?: string };
+export type LearningCurve = {
+  runs: Array<{ run_id: string; created_at: string; success: boolean; retries: number; dollars: number | null; loop_name?: string; status?: string; run_class?: string;
+    tokens?: number | null; cost_status?: 'UNKNOWN' | 'inferred' }>;
+  first_vs_last: Record<string, unknown>;
+  cohorts?: LearningCohort[];
+  window?: { days: number; prior?: { since: string; until: string }; recent?: { since: string; until: string } };
+  min_n_per_window?: number;
+  pooled?: false;
+  definition?: string;
+  registered_readouts?: RegisteredReadout[];
+};
+/** SW-02: GET /api/swarms/intelligence/missions/execution */
+export type MissionExecutionRow = { mission_id: string; title: string; planning_status: string; goal_id: string | null; lineage: 'linked' | 'no_goal' | 'goal_missing';
+  goal_status: string | null; created_at?: string;
+  execution: { loop_runs: number; by_status: Record<string, number>; latest_run: { id: string; loop_name: string; status: string; created_at: string } | null; closed_runs: number | null } | null };
+export type MissionExecutions = { totals: { registered: number; loaded: number; by_planning_status: Record<string, number>; by_goal_status: Record<string, number> }; missions: MissionExecutionRow[]; note?: string };
+/** GET /api/swarms/intelligence/missions/:id/execution — server services/mission-detail.ts missionDetail (read-only) */
+export type MissionDetail = {
+  mission: { id: string; title: string; description: string; risk_class: string; planning_status: string; goal_id: string | null; panel_id: string | null; evidence_refs: string[]; created_at: string; updated_at: string };
+  execution: MissionExecutionRow;
+  goal: { id: string; objective: string; status: string; updated_at: string } | null;
+  runs: Array<{ id: string; loop_name: string; status: string; created_at: string; updated_at: string; completed_at: string | null; failed_gates: string[]; next_actions: string[];
+    closure: { eval_run_id: string; score_delta: number | null; created_at: string } | null;
+    attribution: { outcome: string; reason: string | null; created_at: string; judgment_id: string } | null }>;
+  leases: Array<{ id: string; loop_run_id: string; role: string; runtime: string; status: string; created_at: string; verdict: string | null; maker_lease_id: string | null }>;
+  tasks: Array<{ id: string; title: string; status: string; assigned_lease_id: string | null; capability_id: string | null }>;
+  decisions: Array<{ id: string; task_id: string | null; decision_type: string; decision: string; reason: string; actor: string; blocked_reasons: string[]; created_at: string }>;
+  blocker: { text: string; source: string } | null;
+  next_action: { items: string[]; source: string } | null;
+  tokens: UsageTokens | null;
+  provenance: Array<{ edge_type: string; source: { kind: string; id: string }; target: { kind: string; id: string }; created_at: string | null; evidence_ref: string; origin: string }>;
+  note?: string;
+};
+
 export type SwarmMissionControl = {
   execution_node: {
     cockpit: string;
@@ -1226,13 +1383,10 @@ export type SwarmMissionControl = {
     running_leases: number;
     active_execution_count: number;
     registry_is_not_execution: boolean;
+    /** SW-02: prepared/running leases with their run (absent on an older server) */
+    current_executions?: SwarmCurrentExecution[];
   };
-  capability_health: {
-    total: number;
-    validated: number;
-    routable: number;
-    blocked: number;
-  };
+  capability_health: SwarmCapabilityHealth;
   claim_health: {
     total: number;
     proposed: number;
@@ -1276,12 +1430,43 @@ export type SocialMessage = {
   interest?: string | null; ecosystem_component?: string | null; proposed_improvement?: string | null; improvement_id?: string | null; improvement_status?: string | null;
   runtime_run_id?: string | null; provenance_status?: string | null;
   runtime: string | null; model_id: string | null; reflection_id: string | null; reflection_status: string | null;
+  /** AC-10: why this learning did (not) become a proposal; 'unknown' = recorded before reasons were kept (never inferred) */
+  proposal_disposition?: CommonsProposalDisposition;
+};
+
+/** AC-10 (services/agent-communication-service.ts CommonsProposalDisposition) */
+export type CommonsProposalDisposition = {
+  reason: 'created' | 'pending_grounding' | 'duplicate' | 'policy_disabled' | 'rate_limited' | 'runtime_failure' | 'not_applicable' | 'unknown';
+  proposal_id: string | null;
+  detail: 'no_proposed_improvement' | 'grounding_thread' | 'proposal_review_thread' | null;
+  cap: number | null; created_in_window: number | null;
+  window: 'rolling_24h' | null; scope: 'global' | null; source: 'reflection' | null;
+  error_code: string | null; decided_at: string | null;
+};
+
+/** AC-10: effective reflection-proposal admission policy (REFLECTION_PROPOSALS_MAX_PER_DAY) plus the Commons workers' flags */
+export type CommonsProposalPolicy = {
+  env: 'REFLECTION_PROPOSALS_MAX_PER_DAY'; cap: number | null; state: 'disabled' | 'exhausted' | 'open' | 'uncapped';
+  created_in_window: number; remaining: number | null; window: 'rolling_24h'; window_hours: number; scope: 'global'; source: 'reflection';
+  shared_producers: string[]; workers: Array<{ id: string; env: string; enabled: boolean }>;
 };
 
 export type SocialThread = {
   id: string; topic: string; topic_ref: string | null; participants: string[];
   stage: 'asked' | 'responding' | 'learned'; started_at: string; last_activity_at: string;
   learnings: number; messages: SocialMessage[];
+  /** 'record' = record-only evidence room: addressed to no runtime inbox, so no reply is ever scheduled */
+  kind?: CommonsThreadKind;
+};
+
+export type CommonsThreadKind = 'discussion' | 'record';
+
+/** Derived server-side from heartbeats, own runtime replies and lapsed delivery leases; the runtime itself reports no errors. */
+export type CommonsRuntimeReadiness = {
+  state: 'ready' | 'degraded' | 'offline' | 'unknown'; reason: string;
+  last_heartbeat_at: string | null; last_successful_reply_at: string | null;
+  last_failed_attempt: { at: string; message_id: string; observed: 'claim_lapsed_without_reply' } | null;
+  runtime_failures_reported: false;
 };
 
 export type CommonsAgentActivity = { id: string; to: string; action: string; timestamp: string; status: string };
@@ -1290,13 +1475,24 @@ export type SocialAgentPresence = {
   id: string; name: string; status: string; capabilities: string[]; model: string;
   runtime: string | null; last_heartbeat_at: string | null; present: boolean;
   activity: CommonsAgentActivity[];
+  readiness?: CommonsRuntimeReadiness;
 };
 
+export type CommonsChildOutcomes = {
+  grounded_proposals: number; no_refinement: number; children: number; legacy_fallback_reviews: number; note: string;
+  outcomes: Record<'technical_failure' | 'needs_evidence' | 'blocked' | 'backlog' | 'goal' | 'pending', number>;
+};
 export type CommonsStats = { threads_7d: number; open_7d: number; learnings_7d: number; lessons_7d?: number; proposals: number; proposals_grounded: number; proposals_verified: number; proposals_archived: number;
   proposals_by_status?: Record<string, number>;
   /** where validly grounded proposals stopped (furthest stage of their refinement); null = could not be read */
-  grounding_stops?: Record<'no_refinement' | 'pending_panel' | 'panel_failed' | 'panel_backlog' | 'rejected' | 'goal' | 'maker' | 'outcome', number> | null; residents?: Array<{ agent: string; last: string }>; autopilot_idle?: boolean; guild?: Array<{ agent: string; groundings: number; valid: number; verified: number }> };
-export type SocialCommons = { agents: SocialAgentPresence[]; threads: SocialThread[]; total_threads?: number; stats?: CommonsStats };
+  grounding_stops?: Record<'no_refinement' | 'pending_panel' | 'panel_failed' | 'panel_backlog' | 'rejected' | 'goal' | 'maker' | 'outcome', number> | null;
+  /** AC-03: per grounded child, what its panel said (services/honest-numbers.ts commonsChildOutcomes); null = could not be read */
+  child_outcomes?: CommonsChildOutcomes | null; residents?: Array<{ agent: string; last: string }>; autopilot_idle?: boolean; guild?: Array<{ agent: string; groundings: number; valid: number; verified: number }> };
+export type SocialCommons = { agents: SocialAgentPresence[]; threads: SocialThread[]; total_threads?: number; stats?: CommonsStats;
+  thread_counts?: Record<CommonsThreadKind, number>;
+  page?: { kind: CommonsThreadKind | 'all'; limit: number; offset: number; total: number; has_more: boolean };
+  /** AC-10: null = could not be read on this server */
+  proposal_policy?: CommonsProposalPolicy | null };
 
 // Frontier Expert Intelligence (§36): states other than ACTIVE are tentative and shown as such.
 export type ExpertLifecycleState = 'DISCOVERED' | 'IDENTITY_RESOLVED' | 'EVIDENCE_COLLECTED' | 'CAPABILITY_INFERRED' | 'CHECKED' | 'APPROVED' | 'ACTIVE' | 'AMBIGUOUS' | 'INSUFFICIENT_EVIDENCE' | 'CONTRADICTED' | 'STALE' | 'REJECTED' | 'REVOKED';
@@ -1552,6 +1748,12 @@ export type CatalogSearchResult = {
   agents: CatalogAgent[];
 };
 
+export interface MCPRefreshScope {
+  refreshed_at: string;
+  probed: string[];
+  skipped: Array<{ id: string; reason: 'no_url' | 'known_unreachable' }>;
+}
+
 class ApiClient {
   async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const response = await authenticatedFetch(endpoint, options);
@@ -1637,8 +1839,14 @@ class ApiClient {
   }
 
   // MCP
+  /** Passive: stored status only, no probe (L6-08). */
   async getMCPServers(): Promise<{ servers: MCPServer[] }> {
-    return this.request('/mcp/servers?refresh=true');
+    return this.request('/mcp/servers');
+  }
+
+  /** Explicit probe of every registered server URL; needs manage:config. */
+  async refreshMCPServers(): Promise<{ servers: MCPServer[]; refresh: MCPRefreshScope }> {
+    return this.request('/mcp/servers/refresh', { method: 'POST' });
   }
 
   async createMCPServer(input: MCPServerCreateInput): Promise<{ server: MCPServer }> {
@@ -1786,7 +1994,7 @@ class ApiClient {
   }
 
   // OpenMythos governance
-  async getOpenMythosLeaderboard(): Promise<{ leaderboard: AgentGovernanceScore[] }> {
+  async getOpenMythosLeaderboard(): Promise<{ leaderboard: AgentGovernanceScore[]; otherCohorts?: GovernanceOtherCohort[] }> {
     return this.request('/openmythos/leaderboard');
   }
 
@@ -1893,6 +2101,16 @@ class ApiClient {
     return this.request('/self-improve/discovery-labels', { method: 'POST', body: JSON.stringify({ ref, pass, label, seconds }) });
   }
 
+  /** E1: the next blind query-level retrieval task and the n/30 progress */
+  async getE1LabelQueue(): Promise<E1LabelQueue> {
+    return this.request('/self-improve/e1-labels/next');
+  }
+
+  /** E1: one label per task — the relevant candidate handles, or none_relevant with an empty list */
+  async labelE1Retrieval(taskId: string, relevant: string[], seconds: number): Promise<{ recorded: boolean }> {
+    return this.request('/self-improve/e1-labels', { method: 'POST', body: JSON.stringify({ task_id: taskId, relevant, none_relevant: relevant.length === 0, seconds }) });
+  }
+
   async setTelegramIdentity(telegramId: string, userId: string, note?: string): Promise<void> {
     await this.request<void>(`/self-improve/telegram-identities/${encodeURIComponent(telegramId)}`, { method: 'PUT', body: JSON.stringify({ user_id: userId, note }) });
   }
@@ -1902,7 +2120,7 @@ class ApiClient {
   }
 
   // S3 runtime configuration (read-only, manage:config)
-  async getRuntimeConfig(): Promise<{ entries: Array<{ name: string; value: string; masked: boolean; group: string }>; masked: number }> {
+  async getRuntimeConfig(): Promise<RuntimeConfig> {
     return this.request('/health/config');
   }
 
@@ -1981,6 +2199,10 @@ class ApiClient {
     return this.request('/usage/accounts');
   }
 
+  async postUsageSnapshot(account: string, payload: UsageSnapshotPayload): Promise<{ id: string; account: string; reported_at: string; source: 'operator_snapshot'; payload: UsageSnapshotPayload }> {
+    return this.request(`/usage/accounts/${encodeURIComponent(account)}/snapshot`, { method: 'POST', body: JSON.stringify(payload) });
+  }
+
   async getUsageQuotas(): Promise<{ quotas: UsageQuota[] }> {
     return this.request('/usage/quotas');
   }
@@ -2044,6 +2266,10 @@ class ApiClient {
 
   async getRuntimeContracts(): Promise<{ runtimes: Record<string, RuntimeContract> }> {
     return this.request('/loops/runtime-contracts');
+  }
+
+  async getGymOutcome(runId: string): Promise<{ run_id: string; skill_outcome: GymSkillOutcome | null }> {
+    return this.request(`/loops/runs/${encodeURIComponent(runId)}/gym-outcome`);
   }
 
   async getLoopReviewBundle(runId: string): Promise<LoopReviewBundle> {
@@ -2307,8 +2533,11 @@ class ApiClient {
     return this.request(`/swarms/intelligence/interactions${query.size ? `?${query}` : ''}`);
   }
 
-  async getSocialCommons(limit = 50): Promise<SocialCommons> {
-    return this.request(`/swarm-v2/social/commons?limit=${limit}`);
+  async getSocialCommons(limit = 50, options: { kind?: CommonsThreadKind; offset?: number } = {}): Promise<SocialCommons> {
+    const query = new URLSearchParams({ limit: String(limit) });
+    if (options.kind) query.set('kind', options.kind);
+    if (options.offset) query.set('offset', String(options.offset));
+    return this.request(`/swarm-v2/social/commons?${query}`);
   }
 
   async startSocialRound(): Promise<{ status: 'started' | 'skipped'; correlation_id: string | null; topic: string | null; participants: string[]; reason: string | null }> {
@@ -2401,7 +2630,7 @@ class ApiClient {
     return this.request(`/swarms/proof-runs/${id}/rollback`, { method: 'POST' });
   }
 
-  async getSwarmCapabilities(limit?: number): Promise<{ capabilities: SwarmCapabilityRecord[] }> {
+  async getSwarmCapabilities(limit?: number): Promise<{ capabilities: SwarmCapabilityRecord[]; registry_total?: number; registry_by_status?: Record<string, number>; loaded?: number; limit?: number }> {
     const query = limit ? `?limit=${limit}` : '';
     return this.request(`/swarms/intelligence/capabilities${query}`);
   }

@@ -12,9 +12,9 @@
   },
   "monthly_eur_note": "Operator-filled EUR (G0.3, packages/server/src/services/unit-economics.ts): monthly EUR per account and the VPS, pro-rated to the cockpit's 30 d window; workstation_kwh_eur = EUR per kWh, multiplied by the measured GPU kWh (host_power_samples). null = not given = unknown (never 0); the cockpit then reports unknown_share.",
   "monthly_eur": {
-    "ollama_cloud": null,
-    "claude_max": null,
-    "chatgpt_pro": null,
+    "ollama_cloud": 89.02,
+    "claude_max": 89.02,
+    "chatgpt_pro": 89.02,
     "vps": null,
     "workstation_kwh_eur": null
   },
@@ -147,7 +147,7 @@
       "checked_at": "2026-10-18",
       "confidence": "first_party",
       "exceed_behaviour": "active turn may finish; then buy credits or use API key at API rates",
-      "note": "Pro 100 reportedly 5x Plus, Pro 200 20x Plus \u2014 search snippet only: snippet, verify. Codex signed in with ChatGPT shares one pool; Codex with an API key is billed at API rates. Operator plan 2026-10-18: Pro $100 (help-center snippet: \"5x Plus\"; verify)."
+      "note": "Pro 100 reportedly 5x Plus, Pro 200 20x Plus — search snippet only: snippet, verify. Codex signed in with ChatGPT shares one pool; Codex with an API key is billed at API rates. Operator plan 2026-10-18: Pro $100 (help-center snippet: \"5x Plus\"; verify)."
     },
     {
       "account": "opencode_free",
@@ -160,7 +160,7 @@
       "checked_at": "2026-10-18",
       "confidence": "first_party",
       "exceed_behaviour": "not published",
-      "note": "No free-tier rate limits or quotas published. Not used for automation: the ToS (https://opencode.ai/legal/terms-of-service, effective 2026-08-15) prohibit use that \"automatically or programmatically extracts data or Output\"; no explicit permission for agent loops found \u2014 unclear. Do not send confidential data."
+      "note": "No free-tier rate limits or quotas published. Not used for automation: the ToS (https://opencode.ai/legal/terms-of-service, effective 2026-08-15) prohibit use that \"automatically or programmatically extracts data or Output\"; no explicit permission for agent loops found — unclear. Do not send confidential data."
     },
     {
       "account": "opencode_free",
@@ -221,5 +221,6 @@
       "source_url": null,
       "checked_at": null
     }
-  ]
+  ],
+  "monthly_eur_source": "2026-10-22: ollama_cloud / claude_max / chatgpt_pro = list price USD 100/month each (plans confirmed by the operator 2026-10-18: Ollama Legacy Max, Claude Max 5x, ChatGPT Pro $100), converted at the ECB reference rate of 2026-10-21 (1 EUR = 1.1234 USD), excl. VAT. Replace with invoiced EUR amounts when known. vps and workstation_kwh_eur stay null until the mijn.host invoice and the electricity tariff are known."
 }

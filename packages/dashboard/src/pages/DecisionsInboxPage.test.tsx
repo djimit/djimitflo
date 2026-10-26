@@ -31,6 +31,7 @@ beforeEach(() => {
   vi.spyOn(api, 'getDecisionsInbox').mockResolvedValue(inbox as never);
   vi.spyOn(api, 'getAllApprovals').mockResolvedValue({ approvals: [] }); // the approval queue is embedded (W2)
   vi.spyOn(api, 'getDraftPrs').mockResolvedValue({ total: 0, unsettled: 0, by_settlement: null, closed_unmerged: 0, rows: [] });
+  vi.spyOn(api, 'getE1LabelQueue').mockResolvedValue({ task: null, progress: { labelled: 0, tasks: 0, target: 30, max_tasks: 40 } });
   vi.spyOn(api, 'getRelevanceQueue').mockResolvedValue({ cards: [], progress: { protected: { labelled: 0, total: 340 }, relabel: { labelled: 0, total: 68, due: 0 }, al: { labelled: 0, total: 150 } }, today: { day: '2026-10-14', labels: 0, seconds: 0, median_seconds: null, target_seconds: 1800, remaining_seconds: 1800, est_cards_left: null } });
   vi.spyOn(api, 'getDependencyLane').mockResolvedValue({ mode: 'off', effective_mode: 'off', revoked_at: null, revoked_reason: null, max_per_day: 4, merged_24h: 0, open: 0, rows: [] });
 });

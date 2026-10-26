@@ -20,6 +20,31 @@ export const autoMergeMaxPerDay = (env: NodeJS.ProcessEnv = process.env): number
   return raw !== undefined && raw.trim() !== '' && Number.isFinite(n) && n >= 0 ? Math.floor(n) : 10;
 };
 
+/**
+ * Re-evaluation of ineligible PRs (26-10: 20 of 40 open loop PRs were 'checks_failed' from days main CI was red for every PR,
+ * and an ineligible decision was final). One explicit split of the ineligible reason codes (the text before ':'):
+ * PERMANENT — the PR itself (or a human) must change; never re-checked. Unknown codes count as permanent (fail closed).
+ * TRANSIENT — the cause can pass without the PR changing (main CI recovered, a GitHub hiccup, the proposal status, a verdict
+ * not yet in the lease metadata); re-checked under LOOP_AUTO_MERGE_RECHECK=on. 'audit_sample' is a decision, not a reason:
+ * it stays final (human by design). 'assertion_strength_missing' is re-read from the maker lease only — the offline
+ * assertion_strength_retroactive judgments are never a runtime verdict (that evidence class is not merge authorization).
+ */
+export const PERMANENT_INELIGIBLE_REASONS = ['non_test_file', 'removes_test', 'diff_over_limit', 'changes_requested', 'not_loop_pr', 'repo_not_allowed',
+  'assertion_strength_fail', 'assertion_strength_skipped', 'not_open', 'no_verified_head', 'merge_conflict'] as const;
+export const TRANSIENT_INELIGIBLE_REASONS = ['checks_failed', 'head_moved', 'not_verified', 'files_unavailable', 'reviews_unavailable', 'github_unavailable',
+  'assertion_strength_missing'] as const;
+export const reasonCode = (reason: string | null | undefined): string => String(reason ?? '').split(':')[0].trim();
+export const isTransientReason = (reason: string | null | undefined): boolean => (TRANSIENT_INELIGIBLE_REASONS as readonly string[]).includes(reasonCode(reason));
+/** LOOP_AUTO_MERGE_RECHECK = off (default) | on. */
+export const autoMergeRecheck = (env: NodeJS.ProcessEnv = process.env): boolean => String(env.LOOP_AUTO_MERGE_RECHECK ?? '').trim().toLowerCase() === 'on';
+/** LOOP_AUTO_MERGE_RECHECK_HOURS (default 6): a transient ineligible PR is re-checked at most once per window. */
+export const autoMergeRecheckHours = (env: NodeJS.ProcessEnv = process.env): number => {
+  const raw = env.LOOP_AUTO_MERGE_RECHECK_HOURS; const n = Number(raw);
+  return raw !== undefined && raw.trim() !== '' && Number.isFinite(n) && n > 0 ? n : 6;
+};
+/** At most this many re-checks per tick (each is a handful of GitHub calls). */
+export const RECHECK_PER_TICK = 5;
+
 /** A deterministic 10 % of eligible PRs stays with the human: the audit sample that keeps the class honest. */
 /**
  * P0-5: the commit status the PR-review webhook posts from its diff-size heuristic (github-pr-review-service). It is an
@@ -79,16 +104,25 @@ export function reEnableClass(db: Database, actor: string, reason: string, now =
 
 /** Class state + counts for the cockpit, the evolution evidence and the digest. Fail-soft on a partial schema. */
 export function autoMergeEvidence(db: Database, env: NodeJS.ProcessEnv = process.env, now = Date.now()) {
-  let rows: Array<{ decision: string; mode: string; at: string | null; reason: string | null; settled: string | null }> = [];
+  let rows: Array<{ decision: string; mode: string; at: string | null; reason: string | null; settled: string | null; rechecked_at: string | null }> = [];
   try {
     rows = db.prepare(`SELECT json_extract(metadata, '$.auto_merge.decision') AS decision, json_extract(metadata, '$.auto_merge.mode') AS mode,
-      json_extract(metadata, '$.auto_merge.at') AS at, json_extract(metadata, '$.auto_merge.reason') AS reason, json_extract(metadata, '$.pr_outcome.settled_at') AS settled
+      json_extract(metadata, '$.auto_merge.at') AS at, json_extract(metadata, '$.auto_merge.reason') AS reason, json_extract(metadata, '$.pr_outcome.settled_at') AS settled,
+      json_extract(metadata, '$.auto_merge.rechecked_at') AS rechecked_at
       FROM loop_runs WHERE json_extract(metadata, '$.auto_merge.decision') IS NOT NULL`).all() as typeof rows;
   } catch { /* loop_runs absent */ }
   const d1 = new Date(now - 86_400_000).toISOString();
   const count = (decision: string) => rows.filter((r) => r.decision === decision).length;
   const reasons: Record<string, number> = {};
   for (const r of rows.filter((x) => x.decision === 'ineligible')) { const k = String(r.reason ?? '').split(':')[0]; reasons[k] = (reasons[k] ?? 0) + 1; }
+  // latest decision × reason code, the ineligible split permanent vs transient, and the PRs re-checked in the last 24 h
+  const byDecisionReason: Record<string, Record<string, number>> = {};
+  for (const r of rows) { const d = (byDecisionReason[r.decision] ??= {}); const k = reasonCode(r.reason); d[k] = (d[k] ?? 0) + 1; }
+  const ineligible = rows.filter((r) => r.decision === 'ineligible');
+  const transient = ineligible.filter((r) => isTransientReason(r.reason)).length;
+  const rechecked = rows.filter((r) => (r.rechecked_at ?? '') >= d1);
+  const recheckedByDecision: Record<string, number> = {};
+  for (const r of rechecked) recheckedByDecision[r.decision] = (recheckedByDecision[r.decision] ?? 0) + 1;
   return {
     mode: autoMergeMode(env), max_per_day: autoMergeMaxPerDay(env), audit_sample_pct: AUDIT_SAMPLE_PCT, class: readClassState(db),
     counts: {
@@ -98,5 +132,11 @@ export function autoMergeEvidence(db: Database, env: NodeJS.ProcessEnv = process
       waiting: count('waiting') + count('capped') + count('revoked_hold'), ineligible: count('ineligible'),
     },
     ineligible_by_reason: reasons,
+    recheck: {
+      enabled: autoMergeRecheck(env), window_hours: autoMergeRecheckHours(env), per_tick: RECHECK_PER_TICK,
+      ineligible_by_class: { permanent: ineligible.length - transient, transient },
+      by_decision_reason: byDecisionReason,
+      rechecked_24h: rechecked.length, rechecked_24h_by_decision: recheckedByDecision,
+    },
   };
 }

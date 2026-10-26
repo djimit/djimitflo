@@ -21,7 +21,11 @@ describe('SelfHealingScheduler', () => {
     }
     db.prepare(`
       INSERT INTO loop_runs (id, loop_name, mode, status)
-      VALUES ('fixture-run', 'doc-drift-and-small-fix-loop', 'closed', 'running')
+      VALUES ('fixture-run', 'doc-drift-and-small-fix-loop', 'closed', 'failed')
+    `).run();
+    db.prepare(`
+      INSERT INTO loop_runs (id, loop_name, mode, status)
+      VALUES ('active-run', 'doc-drift-and-small-fix-loop', 'closed', 'running')
     `).run();
   });
 
@@ -34,11 +38,11 @@ describe('SelfHealingScheduler', () => {
     }
   });
 
-  function insertStaleLease(id: string) {
+  function insertStaleLease(id: string, runId = 'fixture-run') {
     db.prepare(`
       INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, updated_at)
-      VALUES (?, 'fixture-run', 'maker', 'mock', 'running', datetime('now', '-2 hours'))
-    `).run(id);
+      VALUES (?, ?, 'maker', 'mock', 'running', datetime('now', '-2 hours'))
+    `).run(id, runId);
   }
 
   it('does not arm when disabled (default off)', () => {
@@ -50,10 +54,12 @@ describe('SelfHealingScheduler', () => {
 
   it('arms and cancels a stale worker lease on the catch-up tick when enabled', () => {
     insertStaleLease('lease-1');
+    insertStaleLease('lease-of-active-run', 'active-run'); // DF-02: a run still in flight may own it — never auto-cancelled
     process.env.SELF_HEALING_SCHEDULER_ENABLED = 'true';
     expect(scheduler.start()).toBe(true);
-    const status = (db.prepare("SELECT status FROM worker_leases WHERE id = 'lease-1'").get() as { status: string }).status;
-    expect(status).toBe('cancelled');
+    const status = (id: string) => (db.prepare('SELECT status FROM worker_leases WHERE id = ?').get(id) as { status: string }).status;
+    expect(status('lease-1')).toBe('cancelled');
+    expect(status('lease-of-active-run')).toBe('running');
   });
 
   it('leaves a fresh (non-stale) worker lease alone', () => {

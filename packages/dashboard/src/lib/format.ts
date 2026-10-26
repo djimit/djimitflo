@@ -12,8 +12,14 @@ export function fmtDate(value: string | null | undefined, opts: { fallback?: str
   return new Date(value).toLocaleString(LOCALE, { dateStyle: 'short', timeStyle: 'short', ...(opts.timeZone ? { timeZone: opts.timeZone } : {}) });
 }
 
+/** a timestamp up to this far ahead of the browser clock still reads as just now */
+const CLOCK_SKEW_MS = 5 * 60_000;
+
 export function since(iso: string | null | undefined, now = Date.now()): string {
   if (!iso) return 'never';
-  const h = Math.round((now - Date.parse(iso)) / 3_600_000);
-  return h < 1 ? '< 1 h ago' : h < 48 ? `${h} h ago` : `${Math.round(h / 24)} d ago`;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return 'unknown';
+  const age = (h: number) => (h < 1 ? '< 1 h' : h < 48 ? `${h} h` : `${Math.round(h / 24)} d`);
+  // DF-05: a future timestamp is a schedule, never elapsed time (a few minutes ahead is clock skew between server and browser)
+  return t > now + CLOCK_SKEW_MS ? `scheduled in ${age(Math.round((t - now) / 3_600_000))}` : `${age(Math.round((now - t) / 3_600_000))} ago`;
 }

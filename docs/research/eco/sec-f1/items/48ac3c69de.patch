@@ -1,0 +1,15 @@
+diff --git a/lib/tasks/db.js b/lib/tasks/db.js
+index 6fbeb99..ec8a5cc 100644
+--- a/lib/tasks/db.js
++++ b/lib/tasks/db.js
+@@ -113,7 +113,9 @@ module.exports = {
+ 
+     task: function () {
+       return getMigrator('seeder').then(function (migrator) {
+-        return migrator.pending()
++        return (
++          helpers.umzug.getStorage('seeder') === 'none' ? migrator.pending() : migrator.executed()
++        )
+         .then(function (seeders) {
+           if (seeders.length === 0) {
+             console.log('No seeders found.');

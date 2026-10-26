@@ -36,6 +36,23 @@ decision for the operator, to be made with recall/MRR numbers from a real labell
 3. Store them as `{ id, source, relevant: [...] }` plus either the query embedding or the query text.
 4. Do not commit production content to this public repo: keep the labelled set outside git, or commit ids only.
 
+### E1 query labels on /decisions
+
+The E1 set (`docs/research/eco/E1-RRF_PROTOCOL.md`) is labelled in the dashboard, not by hand-written files
+(`services/e1-retrieval-labels.ts`):
+
+1. `POST /api/self-improve/e1-labels/generate` (manage:config, optional `{ "seed": <int> }`, default 20261021) samples
+   logged queries — task intake context requests and panel KB lookups (`kb_retrieval` judgments) — in a seeded hash order,
+   runs `ContextInjectionService.collectCandidates` once per query and freezes the merged list (source, raw score, trust
+   tier, sha256-pinned). Snapshots with fewer than 2 sources are skipped. At most 40 tasks; the first seed is binding.
+2. `/decisions` → "Retrieval relevance labels (E1)": the query and the candidates, shuffled, title and excerpt only. Tick
+   the relevant ones or answer "None relevant" (write:governance). One label per task; progress n/30.
+3. `GET /api/self-improve/e1-labels/export` (manage:config) returns exactly the scorer input with opaque ids
+   (`label_source: operator_e1_query_labels`): save it outside git and run `node scripts/e1-rrf-score.mjs <file>`.
+
+Rows: tasks are `judgments` `e1_retrieval_task` (mode `frozen`), labels `operator_label` / state_hash `e1_retrieval`.
+No prod decision path reads either.
+
 ## Running against prod (read-only)
 
 Export embeddings and the labelled set read-only from the prod database (open it with `{ readonly: true }` inside the

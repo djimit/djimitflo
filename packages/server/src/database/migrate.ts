@@ -1447,6 +1447,9 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   for (const t of ['gym_holdout', 'gym_mutant_holdout', 'gym_write_test_holdout']) addMissingColumns(db, t, [{ name: 'role', definition: "TEXT NOT NULL DEFAULT 'deciding'" }]);
   db.exec(`CREATE TABLE IF NOT EXISTS gym_holdout_freezes (epoch INTEGER PRIMARY KEY, manifest_sha256 TEXT NOT NULL, frozen_at TEXT NOT NULL, origin_sha TEXT, version TEXT,
     holdout_size INTEGER NOT NULL, counts_json TEXT NOT NULL, operator TEXT, manifest_json TEXT NOT NULL)`);
+  // prod 25-10: a pending trial item no claim could be given a task for (remote-gym-service trialBlocked; stall 'gym:trial_blocked')
+  db.exec(`CREATE TABLE IF NOT EXISTS gym_trial_blocked (genome_id TEXT NOT NULL, task_key TEXT NOT NULL, reason TEXT NOT NULL, first_seen TEXT NOT NULL,
+    last_seen TEXT NOT NULL, PRIMARY KEY (genome_id, task_key))`);
   // B8: the failure clusters a dream mutant cites (evidence-or-no-op, DREAM_EVIDENCE_MUTATIONS)
   addMissingColumns(db, 'maker_genomes', [{ name: 'evidence_clusters', definition: 'TEXT' }]);
   // KE-3: the knowledge units (expert_identities ids) whose titles the dream that wrote this mutant injected; null = none
@@ -1991,7 +1994,29 @@ export function runMigrations(db: BetterSqlite3Database) {
   createOutcomeLearningTables(db);
   createFrontierExpertTables(db);
   new FrontierExpertRegistryService(db).seedTaxonomy();
+  createAccountUsageSnapshotTables(db);
   createPerformanceIndexes(db);
+}
+
+/**
+ * Operator-reported usage snapshots (/usage): for accounts without an account-wide source (claude_max, chatgpt_pro) the
+ * operator copies session / weekly %, credits and spend limit from the vendor's own usage page. Append-only: the route only
+ * inserts, the latest row per account is shown. services/usage-snapshots.ts validates payload_json.
+ */
+export function createAccountUsageSnapshotTables(db: BetterSqlite3Database) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS account_usage_snapshots (
+      id TEXT PRIMARY KEY,
+      account TEXT NOT NULL,
+      reported_at TEXT NOT NULL,
+      reported_by TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'operator_snapshot' CHECK(source IN ('operator_snapshot')),
+      payload_json TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_account_usage_snapshots_account ON account_usage_snapshots(account, reported_at);
+  `);
 }
 
 /**

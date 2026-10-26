@@ -8,12 +8,22 @@ export interface ImprovementFunnel {
   generatedAt: string;
   proposals: { total: number; byStatus: Record<string, number> };
   bySource: Array<{ source: string; total: number; parked: number; archived: number; needsGrounding: number; reachedGoal: number; verified: number; failed: number }>;
-  panel: { decisions: Record<string, number>; goalRate: number | null };
-  refinement: { originals: number; children: number; childOutcomes: Record<string, number> };
+  /**
+   * decisions: every panel's consensus. goalRate (DF-02): goal decisions over the decided panels a proposal points at
+   * (self_improvements.panel_id, each panel once) — linkedDecided is its denominator, linkedDecisions its breakdown.
+   */
+  panel: { decisions: Record<string, number>; goalRate: number | null; linkedPanels: number; linkedDecided: number; linkedDecisions: Record<string, number> };
+  /**
+   * childOutcomes: the children's own status, which stays archived/no_change when a goal ran (DF-01). childGoals: children with a
+   * goal (goals.improvement_id) and how those goals ended — the conversion a refinement actually made.
+   */
+  refinement: { originals: number; children: number; childOutcomes: Record<string, number>; childGoals: { reachedGoal: number; completed: number; failed: number; other: number } };
   goals: { fromSelfImprovement: Record<string, number> };
   learning: { cognitiveEpisodes: number; cognitivePatterns: number; cognitiveStrategies: number; learningClosures: number; memoryCandidates: Record<string, number> };
   kpi: {
-    windowDays: number; verified: number; regressed: number; regressionRate: number | null; panels24h: number; panels7d: number;
+    windowDays: number; verified: number; regressed: number; regressionRate: number | null;
+    /** panels24h/7d count panels created; reviews24h/7d count submitted specialist reviews (DF-03) */
+    panels24h: number; panels7d: number; reviews24h: number; reviews7d: number;
     panelsPerVerified: number | null; medianHoursToVerified: number | null; approvalsPerRun: number | null;
     /** J6: what a verified change costs — maker tokens and runs over the window (skill_outcomes, one row per run). */
     runs: number; runSuccessRate: number | null; tokensPerVerified: number | null;
@@ -104,6 +114,14 @@ export class ImprovementFunnelService {
     });
   }
 
+  /** DF-01: refined children that got a goal (goals.improvement_id is unique), by how the goal ended. */
+  private childGoals(): ImprovementFunnel['refinement']['childGoals'] {
+    const by = this.counts('SELECT g.status AS k, COUNT(*) AS n FROM goals g JOIN self_improvements s ON s.id = g.improvement_id WHERE s.refined_from_id IS NOT NULL GROUP BY g.status');
+    const reachedGoal = Object.values(by).reduce((a, b) => a + b, 0);
+    const completed = by.completed ?? 0; const failed = by.failed ?? 0;
+    return { reachedGoal, completed, failed, other: reachedGoal - completed - failed };
+  }
+
   compute(): ImprovementFunnel {
     const byStatus = this.counts('SELECT status AS k, COUNT(*) AS n FROM self_improvements GROUP BY status');
     const total = Object.values(byStatus).reduce((a, b) => a + b, 0);
@@ -121,7 +139,9 @@ export class ImprovementFunnelService {
       perSource.set(r.source, s);
     }
     const decisions = this.counts("SELECT json_extract(consensus_json, '$.decision') AS k, COUNT(*) AS n FROM specialist_panels WHERE consensus_json IS NOT NULL GROUP BY k");
-    const decided = Object.values(decisions).reduce((a, b) => a + b, 0);
+    const linkedPanelSql = 'SELECT DISTINCT panel_id FROM self_improvements WHERE panel_id IS NOT NULL';
+    const linkedDecisions = this.counts(`SELECT json_extract(consensus_json, '$.decision') AS k, COUNT(*) AS n FROM specialist_panels WHERE consensus_json IS NOT NULL AND id IN (${linkedPanelSql}) GROUP BY k`);
+    const linkedDecided = Object.values(linkedDecisions).reduce((a, b) => a + b, 0);
     const one = (sql: string) => this.rows<{ n: number }>(sql)[0]?.n ?? 0;
     const workItemsByLoop = this.rows<{ loop: string; status: string; n: number }>(
       "SELECT COALESCE(recommended_loop, 'none') AS loop, status, COUNT(*) AS n FROM work_items WHERE status IN ('candidate','triaged','planned','leased','blocked') GROUP BY 1, 2 ORDER BY n DESC LIMIT 12");
@@ -130,6 +150,7 @@ export class ImprovementFunnelService {
     const DAY = 86_400_000;
     const verified7 = one(`SELECT COUNT(*) AS n FROM self_improvements WHERE status IN ('verified', 'evaluating', 'applied') AND updated_at >= '${iso(7 * DAY)}'`);
     const regressed7 = one(`SELECT COUNT(*) AS n FROM self_improvements WHERE status = 'regressed' AND updated_at >= '${iso(7 * DAY)}'`);
+    const reviews = (ms: number) => one(`SELECT COUNT(*) AS n FROM specialist_reviews WHERE status = 'submitted' AND julianday(created_at) >= julianday('${iso(ms)}')`);
     const panels7 = one(`SELECT COUNT(*) AS n FROM specialist_panels WHERE created_at >= '${iso(7 * DAY)}'`);
     const hours = this.rows<{ h: number }>(`SELECT (julianday(updated_at) - julianday(created_at)) * 24 AS h FROM self_improvements WHERE status IN ('verified', 'evaluating', 'applied') AND updated_at >= '${iso(30 * DAY)}' AND updated_at > created_at ORDER BY h`).map((r) => r.h);
     const approvals = this.rows<{ approvals: number; runs: number }>(`
@@ -139,6 +160,7 @@ export class ImprovementFunnelService {
       windowDays: 7, verified: verified7, regressed: regressed7,
       regressionRate: verified7 + regressed7 ? regressed7 / (verified7 + regressed7) : null,
       panels24h: one(`SELECT COUNT(*) AS n FROM specialist_panels WHERE created_at >= '${iso(DAY)}'`), panels7d: panels7,
+      reviews24h: reviews(DAY), reviews7d: reviews(7 * DAY),
       panelsPerVerified: verified7 ? Math.round(panels7 / verified7) : null,
       medianHoursToVerified: hours.length ? Math.round(hours[Math.floor(hours.length / 2)] * 10) / 10 : null,
       approvalsPerRun: approvals?.runs ? Math.round((approvals.approvals / approvals.runs) * 10) / 10 : null,
@@ -157,11 +179,12 @@ export class ImprovementFunnelService {
       generatedAt: new Date().toISOString(),
       proposals: { total, byStatus },
       bySource: [...perSource.values()].sort((a, b) => b.total - a.total),
-      panel: { decisions, goalRate: decided ? (decisions.goal ?? 0) / decided : null },
+      panel: { decisions, goalRate: linkedDecided ? (linkedDecisions.goal ?? 0) / linkedDecided : null, linkedPanels: one(`SELECT COUNT(*) AS n FROM (${linkedPanelSql})`), linkedDecided, linkedDecisions },
       refinement: {
         originals: one('SELECT COUNT(*) AS n FROM self_improvements WHERE refined_at IS NOT NULL'),
         children: one('SELECT COUNT(*) AS n FROM self_improvements WHERE refined_from_id IS NOT NULL'),
         childOutcomes: this.counts('SELECT status AS k, COUNT(*) AS n FROM self_improvements WHERE refined_from_id IS NOT NULL GROUP BY status'),
+        childGoals: this.childGoals(),
       },
       goals: { fromSelfImprovement: this.counts("SELECT status AS k, COUNT(*) AS n FROM goals WHERE improvement_id IS NOT NULL GROUP BY status") },
       learning: {

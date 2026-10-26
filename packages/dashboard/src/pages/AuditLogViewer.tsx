@@ -10,6 +10,23 @@ interface AuditLog {
   timestamp: string;
 }
 
+// Values are the resource_type strings writers actually store (DF-04: `loop`
+// never matched; loop events are recorded as `loop_run`).
+const ENTITY_TYPES = [
+  { value: 'agent', label: 'Agent' },
+  { value: 'loop_run', label: 'Loop' },
+  { value: 'approval', label: 'Approval' },
+  { value: 'task', label: 'Task' },
+];
+
+// One scope for list and export, so an export never covers different rows than the view.
+function filterParams(entityType: string, action: string): URLSearchParams {
+  const params = new URLSearchParams();
+  if (entityType) params.append('resource_type', entityType);
+  if (action) params.append('action', action);
+  return params;
+}
+
 export const AuditLogViewer: React.FC = () => {
   const { token } = useAuthStore();
   const [logs, setLogs] = useState<AuditLog[]>([]);
@@ -18,43 +35,58 @@ export const AuditLogViewer: React.FC = () => {
   const [entityType, setEntityType] = useState<string>('');
   const [action, setAction] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState<number | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  const filtered = Boolean(entityType || action);
 
   useEffect(() => {
     if (!token) return;
     const fetchLogs = async () => {
-      const params = new URLSearchParams({
-        limit: limit.toString(),
-        offset: offset.toString(),
-      });
-      if (entityType) params.append('resource_type', entityType);
-      if (action) params.append('action', action);
+      const params = filterParams(entityType, action);
+      params.set('limit', limit.toString());
+      params.set('offset', offset.toString());
 
       try {
         const res = await authenticatedFetch(`/audit-logs?${params.toString()}`);
         if (res.ok) {
           setError(null);
           const data = await res.json();
-          if (Array.isArray(data)) {
-            setLogs(data);
-          }
+          const rows: AuditLog[] = Array.isArray(data) ? data : [];
+          setLogs(rows);
+          const moreHeader = res.headers?.get('x-has-more');
+          const totalHeader = res.headers?.get('x-total-count');
+          // Older servers send no paging headers: a short page means nothing more.
+          setHasMore(moreHeader === null || moreHeader === undefined ? rows.length >= limit : moreHeader === 'true');
+          setTotal(totalHeader ? Number(totalHeader) : null);
         } else throw new Error(`Audit request failed (${res.status})`);
       } catch (error) {
+        setLogs([]);
+        setHasMore(false);
         setError(error instanceof Error ? error.message : 'Audit request failed');
+      } finally {
+        setLoaded(true);
       }
     };
     fetchLogs();
   }, [token, limit, offset, entityType, action]);
 
+  const changeEntityType = (value: string) => { setEntityType(value); setOffset(0); };
+  const changeAction = (value: string) => { setAction(value); setOffset(0); };
+
   const handleExport = async (format: 'json' | 'csv') => {
     if (!token) return;
     try {
-      const res = await authenticatedFetch(`/audit-logs/export?format=${format}`);
+      const params = filterParams(entityType, action);
+      params.set('format', format);
+      const res = await authenticatedFetch(`/audit-logs/export?${params.toString()}`);
       if (res.ok) {
         const blob = await res.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `audit-logs.${format}`;
+        a.download = `audit-logs${filtered ? '-filtered' : ''}.${format}`;
         a.click();
         URL.revokeObjectURL(url);
       } else throw new Error(`Audit export failed (${res.status})`);
@@ -70,19 +102,19 @@ export const AuditLogViewer: React.FC = () => {
 
       <div className="mb-4 flex gap-4">
         <select
+          aria-label="Entity type"
           value={entityType}
-          onChange={(e) => setEntityType(e.target.value)}
+          onChange={(e) => changeEntityType(e.target.value)}
           className="px-3 py-1 border rounded-md"
         >
           <option value="">All Entity Types</option>
-          <option value="agent">Agent</option>
-          <option value="loop">Loop</option>
-          <option value="approval">Approval</option>
+          {ENTITY_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
         </select>
 
         <select
+          aria-label="Action"
           value={action}
-          onChange={(e) => setAction(e.target.value)}
+          onChange={(e) => changeAction(e.target.value)}
           className="px-3 py-1 border rounded-md"
         >
           <option value="">All Actions</option>
@@ -93,13 +125,13 @@ export const AuditLogViewer: React.FC = () => {
           onClick={() => handleExport('json')}
           className="px-4 py-1 bg-blue-500 text-white rounded-md"
         >
-          Export JSON
+          {filtered ? 'Export filtered JSON' : 'Export all JSON'}
         </button>
         <button
           onClick={() => handleExport('csv')}
           className="px-4 py-1 bg-green-500 text-white rounded-md"
         >
-          Export CSV
+          {filtered ? 'Export filtered CSV' : 'Export all CSV'}
         </button>
       </div>
 
@@ -130,6 +162,9 @@ export const AuditLogViewer: React.FC = () => {
             ))}
           </tbody>
         </table>
+        {loaded && !error && logs.length === 0 && (
+          <p className="py-4 text-sm text-gray-500">No audit events match these filters.</p>
+        )}
       </div>
 
       <div className="mt-4 flex gap-4">
@@ -142,10 +177,16 @@ export const AuditLogViewer: React.FC = () => {
         </button>
         <button
           onClick={() => setOffset(offset + limit)}
-          className="px-4 py-1 bg-gray-200 rounded-md"
+          disabled={!hasMore}
+          className="px-4 py-1 bg-gray-200 rounded-md disabled:opacity-50"
         >
           Next
         </button>
+        {total !== null && (
+          <span className="self-center text-sm text-gray-500">
+            {logs.length === 0 ? `0 of ${total}` : `${offset + 1}–${offset + logs.length} of ${total}`}
+          </span>
+        )}
       </div>
     </div>
   );

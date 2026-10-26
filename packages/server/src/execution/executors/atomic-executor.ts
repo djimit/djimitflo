@@ -8,14 +8,14 @@
  */
 
 import { randomUUID } from 'crypto';
-import { spawn, spawnSync, type ChildProcess } from 'child_process';
+import { spawnSync, type ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import { mkdirSync } from 'fs';
 import { Task, ExecutionEventType, LogLevel, type ExecutionEventCreateInput } from '@djimitflo/shared';
 import { captureExecutorOutput } from '../executor-output';
 import type { ExecutionResult, ExecutionSession, ExecutorKind, ExecutorOptions, TaskExecutor } from '../types';
 import { buildExecutorEnv } from './executor-env';
-import { runtimeProcessClosed, stopRuntimeProcess } from './runtime-process';
+import { runtimeProcessClosed, spawnRuntime, stopRuntimeProcess } from './runtime-process';
 
 /**
  * Which env var holds the provider key (prod 2026-09-26: OLLAMA_API_KEY was not set in the container, so atomic sent an
@@ -73,7 +73,7 @@ export class AtomicExecutor implements TaskExecutor {
       // idempotent: the provider/model this run uses (a species may name its own model)
       const configured = spawnSync(this.bin, ['config', 'set', atomicConfig(process.env, options?.model)], { env, encoding: 'utf8', timeout: 15_000 });
       if (configured.status !== 0) { emitter.emit('error', new Error(`atomic-agent config failed: ${(configured.stderr || configured.error?.message || '').slice(0, 300)}`)); emitter.emit('exit', 1); resolveClosed(); return; }
-      const proc = spawn(this.bin, args, { cwd: options?.workingDirectory || process.cwd(), env, stdio: ['pipe', 'pipe', 'pipe'] });
+      const proc = spawnRuntime(this.bin, args, { cwd: options?.workingDirectory || process.cwd(), env, stdio: ['pipe', 'pipe', 'pipe'] });
       child = proc;
       void runtimeProcessClosed(proc).then(resolveClosed);
       // a child that exits before reading stdin makes the write fail with EPIPE; unhandled that would crash the server
@@ -83,7 +83,7 @@ export class AtomicExecutor implements TaskExecutor {
       timeout.unref();
       proc.stdout?.on('data', data => emitter.emit('output', data.toString(), 'stdout'));
       proc.stderr?.on('data', data => emitter.emit('output', data.toString(), 'stderr'));
-      proc.on('close', code => { clearTimeout(timeout); emitter.emit('exit', code); });
+      proc.on('close', (code, signal) => { session.exit = { code, signal }; clearTimeout(timeout); emitter.emit('exit', code); });
       proc.on('error', error => emitter.emit('error', error));
     };
 

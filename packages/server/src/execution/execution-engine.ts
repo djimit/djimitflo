@@ -51,7 +51,7 @@ import { ReasoningBankService } from '../services/reasoning-bank-service';
 import { RuntimeLeaseRegistry } from '../services/loop-recovery-service';
 import { TrajectoryStore } from '../services/trajectory-store';
 import { MetaOrchestrationService } from '../services/meta-orchestration-service';
-import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
+import { SkillEvolutionEngine, COMPLETED_UNVERIFIED_REF } from '../services/skill-evolution-engine';
 import { SkillLoaderService, type SkillDefinition } from '../services/skill-loader-service';
 import { runtimeConcurrencySemaphore } from '../services/concurrency-semaphore';
 import { RuntimeGovernanceService } from '../services/runtime-governance-service';
@@ -80,6 +80,10 @@ export interface ExecuteTaskResult {
 export function resolveExecutorSkipPermissions(requested: unknown): boolean {
   return requested === true && process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS === 'true';
 }
+
+/** A reported token count, or null when the runtime reported none (0 / absent is unknown, as for tasks.token_usage). */
+const reportedTokens = (tokens: number | null | undefined): number | null =>
+  typeof tokens === 'number' && Number.isFinite(tokens) && tokens > 0 ? tokens : null;
 
 const RETRYABLE_PROVIDER_ERROR = /(timeout|timed out|ECONN|ENOTFOUND|EAI_AGAIN|429|5\d\d|rate limit|temporar|unavailable|process exited|exit code)/i;
 
@@ -535,7 +539,8 @@ export class ExecutionEngine {
       const maxRetries = this.executionModePolicy.getConfig(mode).maxRetries;
       const session = await this.startExecutionAttempt(parsedTask, executorKind, mode, 0, maxRetries, workingDirectory, riskAssessmentText);
       const completion = session.closed ? session.result.then(
-        async result => { await session.closed; return result; },
+        // the child's exit is known only once it closed: a timeout or brake resolves the result first (L3 v2 P7: runtime_signal was null on every failed maker)
+        async result => { await session.closed; return session.exit ? { ...result, exitCode: session.exit.code, signal: session.exit.signal } : result; },
         async error => { await session.closed; throw error; },
       ) : session.result;
       return { status: 'started', completion };
@@ -1179,7 +1184,7 @@ export class ExecutionEngine {
           console.warn(`Reasoning bank failed for task ${taskId}:`, err?.message || err);
         });
       }
-      this.recordSkillOutcome(taskId, session, true, executionTimeMs, result.metrics?.tokenUsage || 0);
+      this.recordSkillOutcome(taskId, session, true, executionTimeMs, reportedTokens(result.metrics?.tokenUsage));
     } else if (result.status === 'failed') {
       this.updateTaskStatus(taskId, TaskStatus.FAILED, {
         failed_at: completedAt,
@@ -1201,7 +1206,7 @@ export class ExecutionEngine {
         payload: { task: this.getTask(taskId) },
         timestamp: new Date().toISOString(),
       });
-      this.recordSkillOutcome(taskId, session, false, executionTimeMs, result.metrics?.tokenUsage || 0);
+      this.recordSkillOutcome(taskId, session, false, executionTimeMs, reportedTokens(result.metrics?.tokenUsage));
     }
 
     // Meta-orchestration: record outcome for learning
@@ -1256,7 +1261,7 @@ export class ExecutionEngine {
 
     const task = this.getTask(taskId);
     const startedAt = task.started_at ? new Date(task.started_at).getTime() : Date.now();
-    this.recordSkillOutcome(taskId, undefined, false, Math.max(0, Date.now() - startedAt), task.token_usage || 0);
+    this.recordSkillOutcome(taskId, session, false, Math.max(0, Date.now() - startedAt), reportedTokens(task.token_usage));
   }
   
   /**
@@ -1375,12 +1380,50 @@ export class ExecutionEngine {
     };
   }
 
+  /**
+   * The task's own independent verification: its `test_result` evidence (the verification evidence the execution-mode
+   * policy requires). 'failed' when any is error/critical, 'passed' when there is at least one and all are info, else
+   * null (none recorded, or only warnings) — unknown is not PASS and not FAIL. Process exit is never verification.
+   */
+  private taskVerification(taskId: string): 'passed' | 'failed' | null {
+    const severities = (this.db.prepare(
+      "SELECT severity FROM execution_evidence WHERE task_id = ? AND evidence_type = 'test_result'",
+    ).all(taskId) as Array<{ severity: string }>).map((row) => row.severity);
+    if (severities.some((s) => s === EvidenceSeverity.ERROR || s === EvidenceSeverity.CRITICAL)) return 'failed';
+    if (severities.length && severities.every((s) => s === EvidenceSeverity.INFO)) return 'passed';
+    return null;
+  }
+
+  /**
+   * The model that ran, never the runtime: a bound lease's effective_model when the engine recorded one (null there = a
+   * fallback runtime whose model is unknown, P0-7), else the task's requested metadata.model, else null.
+   */
+  private effectiveModel(task: Task): string | null {
+    const leaseId = task.metadata?.lease_id;
+    if (typeof leaseId === 'string') {
+      try {
+        const lease = this.db.prepare(`SELECT json_type(metadata, '$.effective_model') AS kind, json_extract(metadata, '$.effective_model') AS model
+          FROM worker_leases WHERE id = ? AND json_valid(metadata) = 1 AND json_extract(metadata, '$.execution_task_id') = ?`)
+          .get(leaseId, task.id) as { kind: string | null; model: unknown } | undefined;
+        if (lease?.kind) return typeof lease.model === 'string' && lease.model.trim() ? lease.model : null;
+      } catch { /* no lease table: fall back to the task's own metadata */ }
+    }
+    const model = task.metadata?.model;
+    return typeof model === 'string' && model.trim() ? model.trim() : null;
+  }
+
+  /**
+   * A skill outcome is a verification verdict, not a process exit. A completed process counts as success only with a
+   * passed independent verification (taskVerification); without one it is `outcome_class:completed_unverified`, which
+   * skill fitness leaves out. The runtime is its own `runtime:<kind>` ref (skill_outcomes has no runtime column) and
+   * `model` is the model or null; unknown token usage stays null. The loop daemon's outcomes are a separate path.
+   */
   private recordSkillOutcome(
     taskId: string,
     session: ExecutionSession | undefined,
-    success: boolean,
+    processCompleted: boolean,
     durationMs: number,
-    tokensUsed: number,
+    tokensUsed: number | null,
   ): void {
     const task = this.getTask(taskId);
     const explicitSkillId = typeof task.metadata?.skillId === 'string'
@@ -1402,7 +1445,7 @@ export class ExecutionEngine {
           summary: 'Multiple skills are assigned to the agent; set task metadata.skillId to attribute this outcome.',
           details: {
             assignedSkillIds: assigned.map((candidate) => candidate.id),
-            success,
+            processCompleted,
             tokensUsed,
             durationMs,
           },
@@ -1417,17 +1460,27 @@ export class ExecutionEngine {
       'SELECT id FROM execution_evidence WHERE task_id = ? ORDER BY captured_at ASC',
     ).all(taskId) as Array<{ id: string }>).map((row) => row.id);
 
+    const verification = processCompleted ? this.taskVerification(taskId) : null;
+    const outcomeClass = !processCompleted ? null
+      : verification === 'passed' ? null
+        : verification === 'failed' ? 'outcome_class:regressed' : COMPLETED_UNVERIFIED_REF;
+    const model = this.effectiveModel(task);
     this.skillEvolution.recordOutcome(skill.id, {
       taskId,
       agentId: task.agent_id || undefined,
       skillVersion: skill.version,
       skillContentHash: skill.contentHash,
-      model: session?.executorKind || String(task.metadata?.model || 'unknown'),
-      success,
+      ...(model ? { model } : {}),
+      success: verification === 'passed',
       tokensUsed,
       durationMs,
       domain: task.execution_mode || 'coding',
-      evidenceRefs,
+      evidenceRefs: [
+        ...evidenceRefs,
+        ...(session?.executorKind ? [`runtime:${session.executorKind}`] : []),
+        ...(verification ? [`verification:test_result:${verification}`] : []),
+        ...(outcomeClass ? [outcomeClass] : []),
+      ],
     });
   }
 
@@ -1557,10 +1610,16 @@ export class ExecutionEngine {
     if (process.env.LOOP_REVIEWER_APPROVAL_INHERIT !== 'true') return false;
     const task = this.db.prepare('SELECT tags, metadata FROM tasks WHERE id = ?').get(taskId) as { tags: string; metadata: string } | undefined;
     if (!task) return false;
-    let tags: unknown; let meta: { loop_run_id?: unknown };
+    let tags: unknown; let meta: { loop_run_id?: unknown; lease_id?: unknown };
     try { tags = JSON.parse(task.tags || '[]'); meta = JSON.parse(task.metadata || '{}'); } catch { return false; }
     const runId = typeof meta.loop_run_id === 'string' ? meta.loop_run_id : '';
     if (!runId || !Array.isArray(tags) || !(tags.includes('checker') || tags.includes('security_checker')) || tags.includes('maker')) return false;
+    // AUTHZ-F4: tags and metadata are free input on POST/PATCH /tasks (create:task). Only a task the loop itself created for a
+    // reviewer lease of this run inherits: the lease names this task as its execution task (written server-side only).
+    const leaseId = typeof meta.lease_id === 'string' ? meta.lease_id : '';
+    const bound = leaseId && this.db.prepare(`SELECT 1 FROM worker_leases WHERE id = ? AND loop_run_id = ? AND role IN ('checker', 'security_checker')
+      AND json_valid(COALESCE(metadata, '{}')) = 1 AND json_extract(metadata, '$.execution_task_id') = ?`).get(leaseId, runId, taskId);
+    if (!bound) return false;
     const grant = this.db.prepare(`
       SELECT a.id FROM approvals a JOIN tasks t ON t.id = a.task_id
       WHERE a.status = 'approved' AND a.decided_by IS NOT NULL AND a.decided_by NOT IN ('system', 'auto')

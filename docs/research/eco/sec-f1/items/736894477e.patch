@@ -1,0 +1,13 @@
+diff --git a/src/serve-static.ts b/src/serve-static.ts
+index 9daa4c8..b1dd127 100644
+--- a/src/serve-static.ts
++++ b/src/serve-static.ts
+@@ -78,7 +78,7 @@ export const serveStatic = <E extends Env = any>(
+     } else {
+       try {
+         filename = tryDecodeURI(c.req.path)
+-        if (/(?:^|[\/\\])\.{1,2}(?:$|[\/\\])|[\/\\]{2,}|\\/.test(filename)) {
++        if (/(?:^|[\/\\])\.{1,2}(?:$|[\/\\])|[\/\\]{2,}/.test(filename)) {
+           throw new Error()
+         }
+       } catch {

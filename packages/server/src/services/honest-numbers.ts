@@ -1,6 +1,7 @@
 import type { Database } from 'better-sqlite3';
 import { rng } from './gym-mutants';
 import { OUTCOME_SQL } from './improvement-funnel-service';
+import { SpecialistPanelService, type SpecialistPanelRecord } from './specialist-panel-service';
 
 /**
  * RX-9 / RX-8 (Phase F): honest numbers for two signals that were quoted as headlines. Read-only, fail-soft.
@@ -144,16 +145,19 @@ export function commonsGroundingStops(db: Database): Record<GroundingStop, numbe
           AND json_extract(x.answers_json, '$.refinement_id') IS NOT NULL ORDER BY x.created_at DESC LIMIT 1) AS kid
       FROM judgments g WHERE g.judgment = 'commons_grounding' AND g.decision = 'yes' GROUP BY g.subject_id`).all() as Array<{ parent: string; kid: string | null }>;
     const one = (sql: string, ...a: unknown[]) => { try { return db.prepare(sql).get(...a) as Record<string, unknown> | undefined; } catch { return undefined; } };
+    const panels = new SpecialistPanelService(db);
     const out = Object.fromEntries(STOPS.map((k) => [k, 0])) as Record<GroundingStop, number>;
     for (const r of rows) {
-      const kid = r.kid ? one('SELECT s.status, p.consensus_json FROM self_improvements s LEFT JOIN specialist_panels p ON p.id = s.panel_id WHERE s.id = ?', r.kid) : undefined;
+      const kid = r.kid ? one('SELECT s.status, s.panel_id, p.consensus_json FROM self_improvements s LEFT JOIN specialist_panels p ON p.id = s.panel_id WHERE s.id = ?', r.kid) : undefined;
       let stop: GroundingStop;
       if (!kid) stop = 'no_refinement';
       else if (['verified', 'regressed', 'infra_failed', 'no_change', 'applied'].includes(String(kid.status))) stop = 'outcome';
       else if (one(`SELECT 1 FROM worker_leases l JOIN loop_runs lr ON lr.id = l.loop_run_id JOIN goals go ON go.id = lr.goal_id
           WHERE go.improvement_id = ? AND l.role = 'maker' LIMIT 1`, r.kid)) stop = 'maker';
       else if (one('SELECT 1 FROM goals WHERE improvement_id = ? LIMIT 1', r.kid)) stop = 'goal';
-      else if (one("SELECT 1 FROM judgments WHERE judgment = 'panel_failed' AND subject_id = ? LIMIT 1", r.kid)) stop = 'panel_failed';
+      // AC-03: a panel whose every review is a (legacy) model failure is a failed panel, not a rejection — same contract as the approver
+      else if (one("SELECT 1 FROM judgments WHERE judgment = 'panel_failed' AND subject_id = ? LIMIT 1", r.kid)
+        || (kid.panel_id && machineFailedPanel(panels, String(kid.panel_id)))) stop = 'panel_failed';
       else {
         let decision: string | undefined;
         try { decision = JSON.parse(String(kid.consensus_json ?? '{}')).decision; } catch { /* no consensus yet */ }
@@ -162,6 +166,67 @@ export function commonsGroundingStops(db: Database): Record<GroundingStop, numbe
       out[stop]++;
     }
     return out;
+  } catch { return null; }
+}
+
+const machineFailedPanel = (panels: SpecialistPanelService, panelId: string) => { try { return panels.allReviewsMachineFailed(panelId); } catch { return false; } };
+
+export type ChildOutcome = 'technical_failure' | 'needs_evidence' | 'blocked' | 'backlog' | 'goal' | 'pending';
+const CHILD_OUTCOMES: ChildOutcome[] = ['technical_failure', 'needs_evidence', 'blocked', 'backlog', 'goal', 'pending'];
+const EXECUTED = ['verified', 'regressed', 'no_change', 'applied'];
+export interface CommonsChildOutcomes {
+  /** distinct proposals with a valid Commons grounding */
+  grounded_proposals: number;
+  /** of those, grounded without any refinement child */
+  no_refinement: number;
+  /** the like-for-like denominator: distinct refinement children of valid groundings (= children_attempted) */
+  children: number;
+  outcomes: Record<ChildOutcome, number>;
+  /** pre-#784 coerced fallback reviews on these children's panels (the legacy class of panelAttemptMetrics) */
+  legacy_fallback_reviews: number;
+  note: string;
+}
+
+/** One grounded child's panel outcome under the current review contract (SpecialistPanelService.allReviewsMachineFailed). */
+function childOutcome(db: Database, panels: SpecialistPanelService, id: string, status: string | null, panel: SpecialistPanelRecord | null): ChildOutcome {
+  const has = (sql: string) => { try { return !!db.prepare(sql).get(id); } catch { return false; } };
+  if ((status && EXECUTED.includes(status)) || has('SELECT 1 FROM goals WHERE improvement_id = ? LIMIT 1')) return 'goal';
+  if (status === 'infra_failed' || has("SELECT 1 FROM judgments WHERE judgment = 'panel_failed' AND subject_id = ? LIMIT 1")
+    || (panel && machineFailedPanel(panels, panel.id))) return 'technical_failure';
+  if (!panel || (panel.status !== 'consensus_ready' && panel.status !== 'backlog_created')) return 'pending';
+  const decision = panel.consensus.decision;
+  if (decision === 'blocked') return 'blocked';
+  if (decision === 'backlog') return 'backlog';
+  // substantive only with a real review (no legacy fallback, confidence > 0) that asks for evidence or is uncertain
+  const asks = (panel.reviews ?? []).some((r) => !SpecialistPanelService.machineFailed(r) && r.confidence > 0 && (r.stance === 'needs_evidence' || r.stance === 'uncertain'));
+  return decision === 'needs_more_evidence' && asks ? 'needs_evidence' : 'pending'; // 'goal' decided but no goal row yet = pending
+}
+
+/**
+ * AC-03 (audit 24-10): what each grounded Commons child's panel actually said. 10 of 18 grounded children on prod had panels of
+ * only pre-#784 'could not be parsed' fallback reviews and were shown as idea rejections. Read-only: no status change, no
+ * reopening, no re-parse — the stored reviews and the current contract's machine-failure predicate decide.
+ */
+export function commonsChildOutcomes(db: Database): CommonsChildOutcomes | null {
+  try {
+    const parents = db.prepare(`SELECT subject_id, MAX(json_extract(answers_json, '$.refinement_id') IS NOT NULL) AS refined FROM judgments
+      WHERE judgment = 'commons_grounding' AND decision = 'yes' GROUP BY subject_id`).all() as Array<{ refined: number }>;
+    const kids = db.prepare(`SELECT DISTINCT json_extract(answers_json, '$.refinement_id') AS id FROM judgments
+      WHERE judgment = 'commons_grounding' AND decision = 'yes' AND json_extract(answers_json, '$.refinement_id') IS NOT NULL`).all() as Array<{ id: string }>;
+    const panels = new SpecialistPanelService(db);
+    const outcomes = Object.fromEntries(CHILD_OUTCOMES.map((k) => [k, 0])) as Record<ChildOutcome, number>;
+    let legacy = 0;
+    for (const { id } of kids) {
+      const row = db.prepare('SELECT status, panel_id FROM self_improvements WHERE id = ?').get(id) as { status: string; panel_id: string | null } | undefined;
+      let panel: SpecialistPanelRecord | null = null;
+      if (row?.panel_id) { try { panel = panels.getPanel(row.panel_id); } catch { /* panel row gone */ } }
+      legacy += (panel?.reviews ?? []).filter((r) => SpecialistPanelService.machineFailed(r)).length;
+      outcomes[childOutcome(db, panels, id, row?.status ?? null, panel)]++;
+    }
+    return { grounded_proposals: parents.length, no_refinement: parents.filter((p) => !p.refined).length, children: kids.length, outcomes,
+      legacy_fallback_reviews: legacy,
+      note: 'technical_failure = every review a model-failure fallback (legacy coerced or quarantined) or a panel_failed record — not an idea rejection; '
+        + 'needs_evidence = a real review (confidence > 0) asks for evidence; goal = a linked goal or an executed outcome. Archive status is never used as a label.' };
   } catch { return null; }
 }
 

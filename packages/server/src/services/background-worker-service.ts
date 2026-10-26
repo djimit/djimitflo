@@ -13,6 +13,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
+import { buildLeaseFailure, CANCEL_LEASE_METADATA_SQL, cancelLeaseBind } from './lease-failure';
 
 type WorkerStatus = 'idle' | 'running' | 'completed' | 'failed';
 
@@ -253,24 +254,27 @@ export class BackgroundWorkerService {
       const runningThreshold = Number(process.env.DJIMFLO_STALE_RUNNING_THRESHOLD_HOURS ?? 2);
 
       // Cancel stale prepared leases
+      const now = new Date().toISOString();
       const prepared = this.db.prepare(`
         UPDATE worker_leases
         SET status = 'cancelled',
-            metadata = json_set(COALESCE(metadata, '{}'), '$.cancellation_reason', 'stale_timeout', '$.cancelled_at', datetime('now')),
+            ${CANCEL_LEASE_METADATA_SQL},
             updated_at = datetime('now')
         WHERE status = 'prepared'
         AND created_at < datetime('now', '-' || ? || ' hours')
-      `).run(preparedThreshold);
+      `).run(...cancelLeaseBind('stale_timeout', now), preparedThreshold);
 
-      // Mark hung running leases as failed
+      // Mark hung running leases as failed (no exit was observed: the structured failure says so)
+      const hung = (role: string) => JSON.stringify(buildLeaseFailure(role, 'failed', { failure_reason: 'stale_timeout' }));
       const running = this.db.prepare(`
         UPDATE worker_leases
         SET status = 'failed',
-            metadata = json_set(COALESCE(metadata, '{}'), '$.failure_reason', 'stale_timeout', '$.failed_at', datetime('now')),
+            metadata = json_set(COALESCE(metadata, '{}'), '$.failure_reason', 'stale_timeout', '$.failed_at', datetime('now'),
+              '$.failure', json(CASE WHEN role IN ('checker', 'security_checker') THEN ? ELSE ? END)),
             updated_at = datetime('now')
         WHERE status = 'running'
         AND updated_at < datetime('now', '-' || ? || ' hours')
-      `).run(runningThreshold);
+      `).run(hung('checker'), hung('maker'), runningThreshold);
 
       return `Cleaned: ${prepared.changes} stale prepared, ${running.changes} hung running leases`;
     } catch { return 'Orphan lease cleanup skipped (no worker_leases table)'; }

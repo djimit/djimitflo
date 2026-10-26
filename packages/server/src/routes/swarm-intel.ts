@@ -4,6 +4,7 @@
 
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
+import { ROLE_PERMISSIONS, type UserRole } from '@djimitflo/shared';
 import type { AuthMiddleware } from '../middleware/auth';
 import { createError } from '../middleware/error-handler';
 import { SwarmTaskDecomposer } from '../services/swarm-task-decomposer';
@@ -231,11 +232,24 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
 
   // ─── Capabilities ──────────────────────────────────────────────────
   router.get('/intelligence/capabilities', requirePermission('read:evidence'), (req, res) => {
-    res.json({ capabilities: intelligence.listCapabilities(boundedLimit(req.query.limit, 100, 500)) });
+    const limit = boundedLimit(req.query.limit, 100, 500);
+    const capabilities = intelligence.listCapabilities(limit);
+    // SW-02: the loaded slice next to the whole registry (latest `limit` by updated_at is not the registry)
+    const registry = intelligence.capabilityRegistryCounts();
+    res.json({ capabilities, registry_total: registry.total, registry_by_status: registry.by_status, loaded: capabilities.length, limit });
   });
 
   router.post('/intelligence/capabilities', requirePermission('write:capability'), (req, res, next) => {
     try {
+      // AUTHZ-F5 (D1): HTTP registration proposes a capability, it never makes one live. 'validated' (the only routable
+      // status) is reached through /promote and its gates; and an existing validated or outcome-held capability is not
+      // overwritten here (the upsert replaced status, risk_ceiling and metadata, which also dropped an outcome_hold).
+      if (req.body?.status === 'validated') throw createError(409, 'Use /intelligence/capabilities/:id/promote to validate a capability', 'SWARM_CAPABILITY_PROMOTION_REQUIRED');
+      const id = typeof req.body?.id === 'string' ? req.body.id.trim() : '';
+      const existing = id ? (() => { try { return intelligence.getCapability(id); } catch { return null; } })() : null;
+      if (existing && (existing.status === 'validated' || existing.metadata.outcome_hold)) {
+        throw createError(409, 'A validated or outcome-held capability is not re-registered over HTTP', 'SWARM_CAPABILITY_LOCKED');
+      }
       const capability = intelligence.registerCapability(req.body);
       res.status(201).json(capability);
     } catch (err: any) {
@@ -262,7 +276,16 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
 
   router.post('/intelligence/capabilities/:id/promote', requirePermission('write:capability'), (req, res, next) => {
     try {
-      res.json(intelligence.promoteCapability(req.params.id, req.body || {}));
+      // AUTHZ-F5 (S17): the high/critical human gate is satisfied only by the authenticated caller when that caller holds
+      // approve:task — never by a body string. A write:capability-only principal (MAKER) can register and promote
+      // low/medium capabilities as before, but cannot self-approve a high/critical one (same rule as POST /loops/runs/:id/complete).
+      const body = (req.body || {}) as Record<string, unknown>;
+      const actor = req.user?.sub || req.user?.email;
+      const role = req.user?.role as UserRole | undefined;
+      const mayApprove = Boolean(actor && role && ROLE_PERMISSIONS[role]?.includes('approve:task'));
+      const requestedRef = typeof body.human_approval_ref === 'string' ? body.human_approval_ref.trim() : '';
+      const human_approval_ref = mayApprove && requestedRef ? `operator:${actor}` : undefined;
+      res.json(intelligence.promoteCapability(req.params.id, { ...body, human_approval_ref } as Parameters<typeof intelligence.promoteCapability>[1]));
     } catch (err: any) {
       if (err.message?.startsWith('CAPABILITY_') || err.message === 'SWARM_CAPABILITY_NOT_FOUND') {
         next(createError(409, err.message, err.message.split(':')[0]));

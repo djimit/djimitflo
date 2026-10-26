@@ -79,11 +79,14 @@ it('UX-4: the permission map mirrors the server routes (hand list from packages/
     dismissRequeue: 'write:governance', // self-improvement.ts POST /proposals/:id/requeue-dismiss
     auditAttribution: 'write:governance', // self-improvement.ts POST /attribution-audit/:runId
     labelDiscoveryRelevance: 'write:governance', // self-improvement.ts POST /discovery-labels
+    labelE1Retrieval: 'write:governance', // self-improvement.ts POST /e1-labels
     memoryReview: 'approve:task', // swarm-governance.ts POST /memory/candidates/:id/promote|reject
     telegramIdentity: 'manage:config', // self-improvement.ts PUT|DELETE /telegram-identities/:telegramId
     mcpCreateServer: 'manage:config', // mcp.ts POST /servers
+    mcpRefreshServers: 'manage:config', // mcp.ts POST /servers/refresh
     policyUpdate: 'manage:config', // policies.ts PATCH /:id
     runtimeConfig: 'manage:config', // health.ts GET /config
+    usageSnapshot: 'manage:config', // usage.ts POST /accounts/:account/snapshot
   });
   expect(NAV_PERMISSIONS).toEqual({ '/configuration': 'manage:config', '/audit': 'read:audit' }); // audit.ts GET / read:audit
 });

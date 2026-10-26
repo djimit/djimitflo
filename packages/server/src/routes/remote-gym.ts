@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
-import { RemoteGymService, REMOTE_GYM_SCOPE } from '../services/remote-gym-service';
+import { GymRunSettledError, RemoteGymService, REMOTE_GYM_SCOPE } from '../services/remote-gym-service';
 import { mintSpawnToken, resolveSpawnTokenSecret, spawnTokenRejection } from '../services/spawn-token';
 import { RemoteMakerQueue } from '../services/remote-maker-queue';
-import { ingestKbPages } from '../services/kb-corpus';
+import { ingestKbPages, kbPendingSafety } from '../services/kb-corpus';
 import { claimCommittee, recordCommittee } from '../services/committee-swarm';
 
 /**
@@ -29,7 +29,8 @@ export function createRemoteGymRoutes(db: Database, auth: AuthMiddleware): Route
   }
   const fail = (res: any, error: unknown) => {
     const code = error instanceof Error ? error.message : 'GYM_WORKER_ERROR';
-    res.status(/^GYM_(HOST|SPECIES|RESULT)_|^MAKER_(RESULT|PATCH)_/.test(code) ? 400 : /_NOT_FOUND$/.test(code) ? 404 : code === 'GYM_RUN_ALREADY_SETTLED' || code === 'GYM_RUN_STALE_GENERATION' || code === 'MAKER_JOB_NOT_CLAIMED' ? 409 : 500).json({ error: { code, message: code } });
+    res.status(/^GYM_(HOST|SPECIES|RESULT)_|^MAKER_(RESULT|PATCH)_/.test(code) ? 400 : /_NOT_FOUND$/.test(code) ? 404 : code === 'GYM_RUN_ALREADY_SETTLED' || code === 'GYM_RUN_STALE_GENERATION' || code === 'MAKER_JOB_NOT_CLAIMED' || code === 'MAKER_JOB_LEASE_NOT_ACTIVE' ? 409 : 500)
+      .json({ error: { code, message: code }, ...(error instanceof GymRunSettledError && error.existing ? { gym_result: error.existing } : {}) });
   };
 
   router.post('/claim', (req, res) => {
@@ -63,10 +64,16 @@ export function createRemoteGymRoutes(db: Database, auth: AuthMiddleware): Route
     try { res.json({ recorded: recordCommittee(db, String(req.params.jobId), h, req.body?.answers) }); } catch (error) { fail(res, error); }
   });
 
-  // plan L2: the workstation pushes changed DjimitKBWiki pages; stored only after a safety check and an embedding
+  // plan L2: the workstation pushes changed DjimitKBWiki pages; stored after an embedding, unsafe deleted, unverdicted reported 'pending'
   router.post('/kb', async (req, res) => {
     const h = host(req, res); if (!h) return;
     try { res.json(await ingestKbPages(db, h, req.body?.pages)); } catch (error) { const code = error instanceof Error ? error.message : 'KB_ERROR'; res.status(code.startsWith('KB_PAGES_INVALID') ? 400 : 500).json({ error: { code, message: code } }); }
+  });
+
+  // E2: the host's stored pages whose safety verdict is unknown, so kb-sync re-sends them (bounded; read-only)
+  router.get('/kb/pending', (req, res) => {
+    const h = host(req, res); if (!h) return;
+    try { res.json(kbPendingSafety(db, h, Number(req.query.limit) || 50)); } catch (error) { fail(res, error); }
   });
 
   router.post('/tokens', auth.requireAuth, auth.requirePermission('manage:tokens'), (req, res) => {
