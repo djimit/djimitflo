@@ -152,6 +152,9 @@ export function EvolutionBody({ data }: { data: EvolutionEvidence }) {
             {data.auto_merge.class.state === 'revoked' && <> — {data.auto_merge.class.reason ?? 'no reason recorded'}; an operator re-enables it</>}
           </p>
           <p className="text-sm">n = {data.auto_merge.counts.merged} merged ({data.auto_merge.counts.merged_24h} in 24 h, cap {data.auto_merge.max_per_day}) · {data.auto_merge.counts.would_merge} would merge (shadow) · {data.auto_merge.counts.audit_samples_open} audit sample(s) open · {data.auto_merge.counts.ineligible} ineligible</p>
+          {data.auto_merge.recheck && (
+            <p className="text-sm">Re-check {data.auto_merge.recheck.enabled ? 'on' : 'off'} ({data.auto_merge.recheck.window_hours} h window, ≤ {data.auto_merge.recheck.per_tick} per tick) · ineligible {data.auto_merge.recheck.ineligible_by_class.transient} transient / {data.auto_merge.recheck.ineligible_by_class.permanent} permanent · {data.auto_merge.recheck.rechecked_24h} re-checked in 24 h</p>
+          )}
         </Section>
       )}
 

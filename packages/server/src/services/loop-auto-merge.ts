@@ -5,7 +5,8 @@ import { LoopEventService } from './loop-event-service';
 import { testOnlyChange, TEST_ONLY_DIFF_MAX } from './loop-worker-executor-service';
 import { pushNotice } from './operator-push';
 import { settlementState, SURVIVAL_DAYS, type SettlementOutcome } from './merge-survival';
-import { autoMergeMaxPerDay, autoMergeMode, isAuditSample, PR_REVIEW_STATUS_CONTEXT, readClassState, revokeClass } from './loop-auto-merge-state';
+import { autoMergeMaxPerDay, autoMergeMode, autoMergeRecheck, autoMergeRecheckHours, isAuditSample, isTransientReason, PR_REVIEW_STATUS_CONTEXT, readClassState,
+  RECHECK_PER_TICK, revokeClass } from './loop-auto-merge-state';
 import { markRun } from './scheduler-registry';
 import { assertionStrengthVerdict } from './test-assertion-strength';
 import { autoMergeAllowed, parsePrUrl } from './repo-registry';
@@ -32,11 +33,19 @@ import { autoMergeAllowed, parsePrUrl } from './repo-registry';
  * Revert window: an auto-merged PR that is reverted on main (a commit within 14 d whose message says revert and names the
  * PR or its merge commit), whose added lines merge survival marks removed, or whose merge commit's checks fail on main
  * revokes the class (system_state). It then stops acting (decisions become 'revoked_hold') until an operator re-enables it.
+ * Re-check (LOOP_AUTO_MERGE_RECHECK=on, default off = 'ineligible' is final): an ineligible PR whose reason is TRANSIENT
+ * (loop-auto-merge-state) is evaluated again at most once per LOOP_AUTO_MERGE_RECHECK_HOURS (default 6), at most
+ * RECHECK_PER_TICK per tick, through every gate above. In act, a re-checked PR whose head checks are still red and that is
+ * behind the base gets GitHub's update-branch (expected head = the PR head; the head binding accepts that web-flow merge)
+ * and waits as 'rechecking_after_update' while the new CI runs; red again is 'checks_failed' again. Permanent reasons
+ * and 'audit_sample' are never re-checked.
  */
 type Decision = 'merged' | 'would_merge' | 'audit_sample' | 'ineligible' | 'waiting' | 'capped' | 'revoked_hold';
 export interface AutoMergeRecord {
   mode: 'shadow' | 'act'; decision: Decision; reason: string; at: string; pr_number: number;
   steps?: string[]; merge_commit_sha?: string; merged_at?: string; window_closed?: boolean; revoked?: string;
+  /** LOOP_AUTO_MERGE_RECHECK: when this PR was last re-checked after a transient ineligible decision, and how often */
+  rechecked_at?: string; rechecks?: number;
 }
 interface Pr {
   number: number; state: string; draft?: boolean; title?: string; node_id?: string; mergeable?: boolean | null; mergeable_state?: string;
@@ -81,6 +90,13 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     return false;
   };
 
+  // behind the base: GitHub says so, or (a draft reports mergeable_state 'draft') the compare of base...head does
+  const behind = async (slug: string, pr: Pr, head: string): Promise<boolean> => {
+    if (pr.mergeable_state === 'behind') return true;
+    const cmp = await json<{ behind_by?: number }>(slug, `compare/${encodeURIComponent(base)}...${head}`);
+    return Number(cmp?.behind_by) > 0;
+  };
+
   // 1. Revert window over earlier auto-merges (act only produces them; shadow has nothing to revoke).
   const revoked = await checkRevocations(db, json, checks, events, base, now, env);
 
@@ -90,19 +106,36 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     WHERE json_extract(r.metadata, '$.pr_url') IS NOT NULL AND r.created_at >= ? ORDER BY r.created_at`)
     .all(new Date(now.getTime() - 60 * DAY).toISOString()) as Array<{ id: string; status: string; gates_json: string | null; metadata: string; improvement_status: string | null }>;
   const cap = autoMergeMaxPerDay(env);
-  let evaluated = 0; let merged = 0;
+  const recheckOn = autoMergeRecheck(env); const recheckMs = autoMergeRecheckHours(env) * 3_600_000;
+  let evaluated = 0; let merged = 0; let rechecks = 0;
   for (const run of runs) {
     const meta = JSON.parse(run.metadata || '{}') as { pr_url: string; auto_merge?: AutoMergeRecord; verified_head_sha?: string };
     const prev = meta.auto_merge;
-    if (prev && ['merged', 'audit_sample', 'ineligible'].includes(prev.decision)) continue;
+    let rechecking = false;
+    if (prev && ['merged', 'audit_sample', 'ineligible'].includes(prev.decision)) {
+      // final, unless re-check is on and the ineligible reason is transient, its window has passed and this tick has room
+      if (!recheckOn || prev.decision !== 'ineligible' || !isTransientReason(prev.reason) || rechecks >= RECHECK_PER_TICK) continue;
+      const last = Date.parse(prev.rechecked_at ?? prev.at);
+      if (Number.isFinite(last) && now.getTime() - last < recheckMs) continue;
+      rechecking = true;
+    }
     const ref = parsePrUrl(meta.pr_url);
     if (!ref) continue;
     const { slug, number } = ref;
+    if (rechecking && prev) {
+      rechecks++;
+      // stamped before the evaluation: an unchanged outcome keeps its record, so the window must not hang on a rewrite
+      prev.rechecked_at = now.toISOString(); prev.rechecks = (prev.rechecks ?? 0) + 1;
+      db.prepare("UPDATE loop_runs SET metadata = json_set(metadata, '$.auto_merge.rechecked_at', ?, '$.auto_merge.rechecks', ?) WHERE id = ?")
+        .run(prev.rechecked_at, prev.rechecks, run.id);
+    }
     evaluated++;
     const record = (decision: Decision, reason: string, extra: Partial<AutoMergeRecord> = {}): AutoMergeRecord => {
       // unchanged decision (shadow re-checks every tick): keep the first record, so `at` stays when it was first decided
       if (prev && prev.mode === mode && prev.decision === decision && prev.reason === reason) return prev;
-      const rec: AutoMergeRecord = { mode, decision, reason, at: now.toISOString(), pr_number: number, ...extra };
+      // a PR that was ever re-checked keeps its re-check stamp (evidence: re-checks per 24 h); absent otherwise
+      const stamp = prev?.rechecked_at ? { rechecked_at: prev.rechecked_at, rechecks: prev.rechecks } : {};
+      const rec: AutoMergeRecord = { mode, decision, reason, at: now.toISOString(), pr_number: number, ...stamp, ...extra };
       db.prepare("UPDATE loop_runs SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.auto_merge', json(?)) WHERE id = ?").run(JSON.stringify(rec), run.id);
       if (!prev || prev.decision !== decision || prev.reason !== reason) {
         events.recordEvent(run.id, decision === 'merged' ? 'auto_merged' : `auto_merge_${decision}`, 'info', `Auto-merge (${mode}) PR #${number}: ${decision} — ${reason}`,
@@ -164,7 +197,14 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
       .get(mode === 'act' ? 'merged' : 'would_merge', new Date(now.getTime() - DAY).toISOString()) as { n: number }).n;
     if (today - counted >= cap) { record('capped', `${today} ${mode === 'act' ? 'merged' : 'would merge'} in 24 h ≥ cap ${cap}`); continue; }
     const state = await checks(slug, sha);
-    if (state === 'red') { record('ineligible', 'checks_failed'); continue; }
+    if (state === 'red') {
+      // re-check in act: red checks on a head that is behind the base (main was red then) — update the branch so CI reruns
+      if (rechecking && mode === 'act' && pr.mergeable !== false && pr.mergeable_state !== 'dirty' && await behind(slug, pr, sha)) {
+        const r = await gh(slug, `pulls/${number}/update-branch`, 'PUT', { expected_head_sha: sha });
+        record('waiting', r.ok ? 'rechecking_after_update' : `update_branch_failed: ${r.status}`, { steps: ['update_branch'] }); continue;
+      }
+      record('ineligible', 'checks_failed'); continue;
+    }
     if (pr.mergeable === false || pr.mergeable_state === 'dirty') { record('ineligible', 'merge_conflict'); continue; }
 
     if (mode === 'shadow') {
@@ -173,6 +213,8 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
       continue;
     }
     // act — one step per tick
+    // the CI that the re-check's update-branch started is still running: nothing else happens until it settles
+    if (state === 'pending' && prev?.decision === 'waiting' && prev.reason === 'rechecking_after_update') { record('waiting', 'rechecking_after_update'); continue; }
     if (pr.draft) {
       const r = await gh(slug, 'https://api.github.com/graphql', 'POST', { query: 'mutation($id: ID!) { markPullRequestReadyForReview(input: { pullRequestId: $id }) { pullRequest { isDraft } } }', variables: { id: pr.node_id } });
       const body = r.ok ? await r.json().catch(() => null) as { errors?: unknown[] } | null : null;

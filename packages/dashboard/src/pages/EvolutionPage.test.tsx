@@ -78,6 +78,15 @@ it('earned auto-merge: shows the class state, why it was revoked, and the counts
   expect(renderToStaticMarkup(<EvolutionBody data={{ ...FULL, auto_merge: { ...auto_merge, mode: 'off' } }} />)).not.toContain('Test-only auto-merge');
 });
 
+it('earned auto-merge: shows the re-check split (transient vs permanent) and the re-checks in 24 h when reported', () => {
+  const auto_merge: EvolutionEvidence['auto_merge'] = { mode: 'act', max_per_day: 10, audit_sample_pct: 10, class: { state: 'active' },
+    counts: { merged: 0, merged_24h: 0, would_merge: 0, audit_samples: 13, audit_samples_open: 13, waiting: 0, ineligible: 31 }, ineligible_by_reason: { checks_failed: 20, assertion_strength_missing: 11 },
+    recheck: { enabled: true, window_hours: 6, per_tick: 5, ineligible_by_class: { permanent: 0, transient: 31 }, by_decision_reason: {}, rechecked_24h: 5, rechecked_24h_by_decision: { waiting: 5 } } };
+  const html = renderToStaticMarkup(<EvolutionBody data={{ ...FULL, auto_merge }} />);
+  for (const text of ['Re-check on (6 h window, ≤ 5 per tick)', 'ineligible 31 transient / 0 permanent', '5 re-checked in 24 h']) expect(html).toContain(text);
+  expect(renderToStaticMarkup(<EvolutionBody data={{ ...FULL, auto_merge: { ...auto_merge, recheck: undefined } }} />)).not.toContain('Re-check');
+});
+
 it('§16 step 7: holdout exposure per epoch is shown with n and a reuse-risk flag; absent evidence renders nothing', () => {
   const html = renderToStaticMarkup(<EvolutionBody data={FULL} />);
   expect(html).toContain('mined epoch 0: 11 candidates (limit 10) — reuse risk, introduce a fresh epoch');

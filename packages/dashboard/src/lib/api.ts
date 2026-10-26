@@ -195,7 +195,10 @@ export interface EvolutionEvidence {
   auto_merge: { mode: 'off' | 'shadow' | 'act'; max_per_day: number; audit_sample_pct: number;
     class: { state: 'active' | 'revoked'; reason?: string; pr_url?: string; revoked_at?: string; re_enabled_by?: string; re_enabled_at?: string; re_enable_reason?: string };
     counts: { merged: number; merged_24h: number; would_merge: number; audit_samples: number; audit_samples_open: number; waiting: number; ineligible: number };
-    ineligible_by_reason: Record<string, number> };
+    ineligible_by_reason: Record<string, number>;
+    /** LOOP_AUTO_MERGE_RECHECK: latest decision × reason code, ineligible permanent vs transient, PRs re-checked in the last 24 h */
+    recheck?: { enabled: boolean; window_hours: number; per_tick: number; ineligible_by_class: { permanent: number; transient: number };
+      by_decision_reason: Record<string, Record<string, number>>; rechecked_24h: number; rechecked_24h_by_decision: Record<string, number> } };
   /** MEMORY_HOLDOUT_RATE: proposal outcome of maker runs with rules vs runs held out, two-sided Fisher exact p */
   memory_holdout: { rate: string | null; rules: MemoryArm; holdout: MemoryArm; fisher_p: number; note: string };
   /** OLLAMA_OUTAGE_FALLBACK_RUNTIME: opencode production leases run on claude (subscription); by_role null = table missing */
