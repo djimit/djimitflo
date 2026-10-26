@@ -22,6 +22,9 @@ import { autoMergeAllowed, parsePrUrl } from './repo-registry';
  * failed is ineligible: F1 09-10, the checker accepted toBeDefined-only tests). A deterministic 10 % (hash of the PR number) stays for the human as an audit sample.
  * Act: mark ready → update the branch when behind (branch protection wants up to date) → wait for every check on the head
  * to be green → squash-merge with the token the draft-PR service uses. Every step is one tick (15 min); nothing blocks.
+ * Green (10-26, no false green): the newest run per name decides, and every required context of the base's branch protection
+ * needs a success on the head — skipped/neutral/cancelled/stale is 'checks_failed: required_not_success:<name>=<conclusion>';
+ * unreadable protection is 'waiting: required_checks_unavailable', never a merge (scripts/merge-train.sh mirrors this).
  * Shadow re-evaluates its would_merge PRs every tick, incl. the merge-conflict check act runs (10-10: #658 went conflicting
  * and stayed 'would_merge'); a decision is rewritten only when it changes.
  * Head binding (P0-6): only the commit the loop verified is merged. The draft-PR service records it as
@@ -54,6 +57,9 @@ interface Pr {
 type Checks = 'green' | 'pending' | 'red';
 const DAY = 86_400_000;
 const RED = new Set(['failure', 'timed_out', 'action_required', 'startup_failure']);
+/** The newest item per name (by id, then time): a rerun replaces the run it re-ran, an old green never outvotes a newer red. */
+const newest = <T extends { id?: number }>(items: T[], name: (t: T) => string, at: (t: T) => string): T[] =>
+  [...new Map([...items].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0) || at(a).localeCompare(at(b))).map((t) => [name(t), t] as const)).values()];
 
 export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = fetch, env: NodeJS.ProcessEnv = process.env, now = new Date()):
   Promise<{ evaluated: number; merged: number; revoked: boolean }> {
@@ -67,15 +73,37 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   const json = async <T>(slug: string, p: string): Promise<T | null> => { try { const r = await gh(slug, p); return r.ok ? await r.json() as T : null; } catch { return null; } };
   const events = new LoopEventService(db);
-  const checks = async (slug: string, sha: string): Promise<Checks> => {
-    const runs = (await json<{ check_runs?: Array<{ status?: string; conclusion?: string | null }> }>(slug, `commits/${sha}/check-runs?per_page=100`))?.check_runs;
-    const status = await json<{ state?: string; total_count?: number; statuses?: Array<{ context?: string; state?: string }> }>(slug, `commits/${sha}/status`);
-    if (!runs) return 'pending';
-    if (runs.some((c) => c.status === 'completed' && RED.has(String(c.conclusion))) || status?.state === 'failure' || status?.state === 'error') return 'red';
+  // `required` (branch protection's contexts of the PR head's gate): each needs a success of its newest run on this sha —
+  // skipped, neutral, cancelled, stale is red ('required_not_success'), running or not reported is pending. Without it (the
+  // revert window on main) only a failing newest run is red.
+  const checks = async (slug: string, sha: string, required: string[] = []): Promise<{ state: Checks; reason?: string }> => {
+    const all = (await json<{ check_runs?: Array<{ id?: number; name?: string; status?: string; conclusion?: string | null; completed_at?: string | null }> }>(slug, `commits/${sha}/check-runs?per_page=100`))?.check_runs;
+    const status = await json<{ state?: string; total_count?: number; statuses?: Array<{ id?: number; context?: string; state?: string; updated_at?: string }> }>(slug, `commits/${sha}/status`);
+    if (!all) return { state: 'pending' };
+    const runs = newest(all, (c) => String(c.name ?? ''), (c) => String(c.completed_at ?? ''));
+    const statuses = newest(status?.statuses ?? [], (s) => String(s.context ?? ''), (s) => String(s.updated_at ?? ''));
+    if (runs.some((c) => c.status === 'completed' && RED.has(String(c.conclusion))) || status?.state === 'failure' || status?.state === 'error') return { state: 'red' };
+    const notSuccess = required.flatMap((r) => [...runs.filter((c) => c.name === r && c.status === 'completed' && c.conclusion !== 'success').map((c) => `${r}=${c.conclusion}`),
+      ...statuses.filter((s) => s.context === r && s.state !== 'success' && s.state !== 'pending').map((s) => `${r}=${s.state}`)]);
+    if (notSuccess.length) return { state: 'red', reason: `required_not_success:${notSuccess.join(',')}` };
     // P0-5: the PR-review heuristic's status is not a check — it can hold a PR (pending / failure) but never makes it green
-    const independent = (status?.statuses ?? []).filter((st) => st.context !== PR_REVIEW_STATUS_CONTEXT);
-    if (runs.some((c) => c.status !== 'completed' || c.conclusion === 'cancelled' || c.conclusion === 'stale') || (status?.total_count && status.state === 'pending')) return 'pending';
-    return runs.length || independent.length ? 'green' : 'pending'; // no check reported yet = not green
+    const independent = statuses.filter((st) => st.context !== PR_REVIEW_STATUS_CONTEXT);
+    if (runs.some((c) => c.status !== 'completed' || c.conclusion === 'cancelled' || c.conclusion === 'stale') || (status?.total_count && status.state === 'pending')) return { state: 'pending' };
+    if (required.some((r) => !runs.some((c) => c.name === r) && !statuses.some((s) => s.context === r))) return { state: 'pending' };
+    return { state: runs.length || independent.length ? 'green' : 'pending' }; // no check reported yet = not green
+  };
+  // branch protection's required contexts per repo, read once per tick; null = unreadable (never a remembered list)
+  const requiredBySlug = new Map<string, string[] | null>();
+  const requiredContexts = async (slug: string): Promise<string[] | null> => {
+    if (!requiredBySlug.has(slug)) {
+      type Rsc = { contexts?: string[]; checks?: Array<{ context?: string }> } | null | undefined;
+      const names = (r: Rsc) => [...new Set([...(r?.contexts ?? []), ...(r?.checks ?? []).map((c) => String(c.context ?? ''))].filter(Boolean))];
+      let ctx = names(await json<Rsc>(slug, `branches/${encodeURIComponent(base)}/protection/required_status_checks`));
+      // the branch summary carries the same contexts and needs read access only
+      if (!ctx.length) ctx = names((await json<{ protection?: { required_status_checks?: Rsc } }>(slug, `branches/${encodeURIComponent(base)}`))?.protection?.required_status_checks);
+      requiredBySlug.set(slug, ctx.length ? ctx : null);
+    }
+    return requiredBySlug.get(slug) ?? null;
   };
 
   // P0-6: true when `head` is only GitHub update-branch merges (web-flow, verified signature) stacked on `verified`.
@@ -196,14 +224,16 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     const today = (db.prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE json_extract(metadata, '$.auto_merge.decision') = ? AND json_extract(metadata, '$.auto_merge.at') >= ?`)
       .get(mode === 'act' ? 'merged' : 'would_merge', new Date(now.getTime() - DAY).toISOString()) as { n: number }).n;
     if (today - counted >= cap) { record('capped', `${today} ${mode === 'act' ? 'merged' : 'would merge'} in 24 h ≥ cap ${cap}`); continue; }
-    const state = await checks(slug, sha);
+    const required = await requiredContexts(slug);
+    if (!required) { record('waiting', 'required_checks_unavailable'); continue; }
+    const { state, reason: checksReason } = await checks(slug, sha, required);
     if (state === 'red') {
       // re-check in act: red checks on a head that is behind the base (main was red then) — update the branch so CI reruns
       if (rechecking && mode === 'act' && pr.mergeable !== false && pr.mergeable_state !== 'dirty' && await behind(slug, pr, sha)) {
         const r = await gh(slug, `pulls/${number}/update-branch`, 'PUT', { expected_head_sha: sha });
         record('waiting', r.ok ? 'rechecking_after_update' : `update_branch_failed: ${r.status}`, { steps: ['update_branch'] }); continue;
       }
-      record('ineligible', 'checks_failed'); continue;
+      record('ineligible', checksReason ? `checks_failed: ${checksReason}` : 'checks_failed'); continue;
     }
     if (pr.mergeable === false || pr.mergeable_state === 'dirty') { record('ineligible', 'merge_conflict'); continue; }
 
@@ -240,7 +270,7 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
 }
 
 /** The revert window: true when this tick revoked the class. Closes a PR's window after 14 d once merge survival settled it (or 30 d). */
-async function checkRevocations(db: Database, json: <T>(slug: string, p: string) => Promise<T | null>, checks: (slug: string, sha: string) => Promise<Checks>,
+async function checkRevocations(db: Database, json: <T>(slug: string, p: string) => Promise<T | null>, checks: (slug: string, sha: string) => Promise<{ state: Checks }>,
   events: LoopEventService, base: string, now: Date, env: NodeJS.ProcessEnv): Promise<boolean> {
   const merged = db.prepare(`SELECT id, created_at, metadata FROM loop_runs WHERE json_extract(metadata, '$.auto_merge.decision') = 'merged'
     AND json_extract(metadata, '$.auto_merge.window_closed') IS NULL`).all() as Array<{ id: string; created_at: string; metadata: string }>;
@@ -260,7 +290,7 @@ async function checkRevocations(db: Database, json: <T>(slug: string, p: string)
       const revert = (commits ?? []).find((c) => c.sha !== sha && /revert/i.test(c.commit?.message ?? '')
         && (ref.test(c.commit?.message ?? '') || (sha.length >= 7 && (c.commit?.message ?? '').includes(sha.slice(0, 7)))));
       if (revert) reasons.push(`reverted on ${base} by ${String(revert.sha).slice(0, 8)}`);
-      if (sha && await checks(slug, sha) === 'red') reasons.push(`checks failing on ${base} at merge commit ${sha.slice(0, 8)}`);
+      if (sha && (await checks(slug, sha)).state === 'red') reasons.push(`checks failing on ${base} at merge commit ${sha.slice(0, 8)}`);
     }
     if (reasons.length && !am.revoked) {
       const reason = `PR #${am.pr_number}: ${reasons.join('; ')}`;

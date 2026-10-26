@@ -16,7 +16,9 @@ done) · 143 cancelled by a signal.
 
 Knobs: `MT_CI_TIMEOUT_S` (3600) / `MT_CI_POLL_S` (45) bound the CI wait; `MT_HEAD_SETTLE_S` (30) / `MT_HEAD_SETTLE_POLL_S` (5)
 bound the read-back of the new head after update-branch; `MT_GH_TIMEOUT_S` (60) bounds every gh call; `MT_REQUIRED_CHECKS`
-overrides the required contexts (default: branch protection of `main`, fallback the 2026-10-12 list).
+overrides the required contexts (default: branch protection of `main`; unreadable protection is HOLD
+`required_checks_unavailable`, never a remembered list). A required context is green only on `success` of its newest run on
+the exact sha — `skipped`, `neutral`, `cancelled`, `stale` is red (`required_not_success:<name>=<conclusion>`).
 
 ## Apply flow (per PR, per attempt)
 
