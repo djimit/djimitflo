@@ -8,7 +8,7 @@ import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { createError } from '../middleware/error-handler';
-import { OpenMythosEvalService } from '../services/openmythos-eval-service';
+import { GOVERNANCE_COHORT, OpenMythosEvalService } from '../services/openmythos-eval-service';
 import { OpenMythosAttestationService } from '../services/openmythos-attestation-service';
 import { WorldLabEvidenceService } from '../services/worldlab-evidence-service';
 import { GovernanceGuardService } from '../services/governance-guard-service';
@@ -115,10 +115,17 @@ export function createOpenMythosRoutes(db: Database, auth?: AuthMiddleware): Rou
     }
   });
 
-  // GET /api/openmythos/leaderboard — latest score per agent, best first
+  // GET /api/openmythos/leaderboard — latest 0–5 governance score per agent, best first.
+  // Scores on another scale (0–100 critic grades, unknown) come back separately in
+  // otherCohorts and are never ranked against the 0–5 leaderboard (DF-01).
   router.get('/leaderboard', requirePermission('read:evidence'), (_req, res, next) => {
     try {
-      res.json({ leaderboard: evalService.getLeaderboard() });
+      res.json({
+        leaderboard: evalService.getLeaderboard(),
+        cohort: GOVERNANCE_COHORT,
+        scale: '0-5',
+        otherCohorts: evalService.getOtherScoreCohorts(),
+      });
     } catch (error) {
       next(error);
     }

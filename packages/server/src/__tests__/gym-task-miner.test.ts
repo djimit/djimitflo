@@ -1,7 +1,9 @@
 import { expect, it } from 'vitest';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { mineGymTasks, parseNumstat, selectGymTasks } from '../services/gym-task-miner';
+import fs from 'node:fs';
+import os from 'node:os';
+import { mineGymTasks, minedTaskAt, parseNumstat, selectGymTasks } from '../services/gym-task-miner';
 
 const log = [
   '@aaa', '10\t2\tpackages/server/src/services/queue-hygiene-service.ts', '30\t0\tpackages/server/src/__tests__/queue-hygiene.test.ts',
@@ -29,4 +31,24 @@ it.skipIf(shallow)('mines real replay tasks from this repository', () => {
   for (const t of tasks) expect(t.source).toMatch(/^packages\/server\/src\/services\//);
   // the parent must have the source to restore (prod 2026-09-27: 584cbadb added agent-liveness.ts; every attempt failed)
   for (const t of tasks) expect(() => execFileSync('git', ['-C', repo, 'cat-file', '-e', `${t.commit}^:${t.source}`], { stdio: 'ignore' })).not.toThrow();
+});
+
+it('minedTaskAt rebuilds a frozen task from its own commit, outside the mining window and the live-service check', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gym-task-at-'));
+  const git = (...args: string[]) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  const write = (file: string, text: string) => { fs.mkdirSync(path.join(dir, path.dirname(file)), { recursive: true }); fs.writeFileSync(path.join(dir, file), text); };
+  try {
+    git('init', '-q'); git('config', 'user.email', 'gym@example.invalid'); git('config', 'user.name', 'Gym Test');
+    const src = 'packages/server/src/services/widget.ts'; const test = 'packages/server/src/__tests__/widget.test.ts';
+    write(src, 'export const w = 1;\n'); write(test, 'it.todo("w");\n'); git('add', '.'); git('commit', '-qm', 'add widget');
+    const added = git('rev-parse', 'HEAD');
+    write(src, 'export const w = 2;\n'); write(test, 'it.todo("w = 2");\n'); git('add', '.'); git('commit', '-qm', 'fix widget');
+    const fix = git('rev-parse', 'HEAD');
+    // imported nowhere (not live): the miner drops it, the frozen task is still rebuilt as it was mined
+    expect(mineGymTasks(dir)).toEqual([]);
+    expect(minedTaskAt(dir, fix)).toEqual({ commit: fix, source: src, tests: [test], sourceLines: 2 });
+    expect(minedTaskAt(dir, added)).toBeNull(); // the commit added its source: no parent version to restore
+    expect(minedTaskAt(dir, 'f'.repeat(40))).toBeNull(); // not in this checkout
+    expect(minedTaskAt(dir, '--all')).toBeNull(); // never an option
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

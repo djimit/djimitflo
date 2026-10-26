@@ -27,6 +27,8 @@ import { CommonsProposalReviewService, commonsReviewEnabled } from '../services/
 import { EventOutboxService, bridgeGoalEvents, eventPublishEnabled } from '../services/event-outbox-service';
 import { AgentRegistrySyncService, registryUrl } from '../services/agent-registry-sync-service';
 import { TestGapSourceService, testGapSourceEnabled } from '../services/test-gap-source-service';
+import { startAutoRequeue } from '../services/auto-requeue';
+import { autoRequeueMaxPerTick, autoRequeueMode } from '../services/requeue-policy';
 import { DeadCodeSourceService, deadCodeLaneEnabled } from '../services/dead-code-source-service';
 import { FindingFixSourceService, findingFixMode } from '../services/finding-fix-source';
 import { EvolutionGymService, gymArmed } from '../services/evolution-gym-service';
@@ -37,8 +39,13 @@ import { QueueHygieneService, queueHygieneEnabled } from '../services/queue-hygi
 import { startSchedulerWatchdog, startStallWatch } from '../services/stall-watch';
 import { startInterestFeedback } from '../services/interest-feedback';
 import { startEvolutionFeedback } from '../services/evolution-feedback';
+import { startEvidenceRoom } from '../services/commons-evidence-room';
+import { startInvestigationOutcomes } from '../services/commons-investigation';
+import { startCommonsFalsifier } from '../services/commons-falsifier';
+import { startSettlementExecution } from '../services/settlement-execution';
 import { startValueAllocator } from '../services/value-allocator';
 import { startDreamEvolution } from '../services/dream-evolution';
+import { gymOrphanSweepMode } from '../services/remote-gym-service';
 import { startEvolutionEstimators } from '../services/evolution-estimators';
 import { startMergeSurvival } from '../services/merge-survival';
 import { startLoopAutoMerge } from '../services/loop-auto-merge';
@@ -168,6 +175,19 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     console.warn('⚠️  Finding-fix lane failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
+  // Auto-requeue (REQUEUE_AUTO_MODE, requeue-policy.ts): requeues retryable failures once and dismisses the rest after 14 d,
+  // so routine requeue rows leave the operator's /decisions queue. Default off; shadow records judgments only.
+  try {
+    if (noteScheduler('auto_requeue', 'REQUEUE_AUTO_MODE', autoRequeueMode() !== 'off', 3_600_000)) {
+      let stopAutoRequeue = startAutoRequeue(db);
+      registerRestart('auto_requeue', () => { stopAutoRequeue?.(); stopAutoRequeue = startAutoRequeue(db); });
+      lifecycleManager.register({ serviceName: 'AutoRequeue', stop: () => stopAutoRequeue?.() });
+      console.log(`🔁 Auto-requeue ${autoRequeueMode()} (max ${autoRequeueMaxPerTick()} requeues/tick, hourly).`);
+    }
+  } catch (error) {
+    console.warn('⚠️  Auto-requeue failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
   // C2 evolution gym: sandbox replay tasks from our own history; outcomes feed species selection. Default off.
   try {
     if (noteScheduler('evolution_gym', 'EVOLUTION_GYM_ENABLED', gymArmed(), 3_600_000)) {
@@ -234,6 +254,39 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     console.warn('⚠️  Evolution feedback failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
+  // Commons evidence room: one read-only thread per verified / regressed loop run + its survival follow-up. COMMONS_EVIDENCE_ROOM_MODE=on.
+  try {
+    const stopEvidenceRoom = startEvidenceRoom(db);
+    if (stopEvidenceRoom) { lifecycleManager.register({ serviceName: 'EvidenceRoom', stop: stopEvidenceRoom }); console.log('🧾 Commons evidence room on (15 min sweep).'); }
+  } catch (error) {
+    console.warn('⚠️  Evidence room failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // AC-07 Commons investigation outcomes: panel/goal/run/verification/survival of a Commons-originated proposal back into its
+  // thread (shadow: judgment rows only). COMMONS_INVESTIGATION_MODE=shadow|on.
+  try {
+    const stopInvestigationOutcomes = startInvestigationOutcomes(db);
+    if (stopInvestigationOutcomes) { lifecycleManager.register({ serviceName: 'CommonsInvestigationOutcomes', stop: stopInvestigationOutcomes }); console.log('🔁 Commons investigation outcomes on (15 min sweep).'); }
+  } catch (error) {
+    console.warn('⚠️  Commons investigation outcomes failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // AR5 Commons falsifier niche (shadow): evidence-room tests run red at base → green on a later main; ≤ 5 runs / 24 h. COMMONS_FALSIFIER_MODE=shadow.
+  try {
+    const stopFalsifier = startCommonsFalsifier(db, recoverySvc);
+    if (stopFalsifier) { lifecycleManager.register({ serviceName: 'CommonsFalsifier', stop: stopFalsifier }); console.log('🧪 Commons falsifier on (shadow, hourly).'); }
+  } catch (error) {
+    console.warn('⚠️  Commons falsifier failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // L3-v2 §5.1–2 execution-based settlement (shadow): merged loop PRs ≥ 14 d re-run their tests at origin/main; ≤ 4 PRs / day. SETTLEMENT_EXECUTION_MODE=shadow.
+  try {
+    const stopSettlementExec = startSettlementExecution(db, recoverySvc);
+    if (stopSettlementExec) { lifecycleManager.register({ serviceName: 'SettlementExecution', stop: stopSettlementExec }); console.log('🧪 Settlement execution on (shadow, daily).'); }
+  } catch (error) {
+    console.warn('⚠️  Settlement execution failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
   // E4: shadow value allocator — one value_allocation judgment per UTC day (6-hourly tick); proposals never applied. VALUE_ALLOCATOR_MODE=shadow.
   try {
     let stopValueAllocator = startValueAllocator(db);
@@ -249,6 +302,8 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     let stopDream = startDreamEvolution(db);
     registerRestart('dream_evolution', () => { stopDream?.(); stopDream = startDreamEvolution(db); });
     noteScheduler('dream_evolution', 'DREAM_EVOLUTION_ENABLED', !!stopDream, 3_600_000);
+    // the orphaned remote gym run sweep rides the dream-evolution tick (GYM_ORPHAN_SWEEP=shadow|on, default off)
+    noteScheduler('gym_orphan_sweep', 'GYM_ORPHAN_SWEEP', !!stopDream && gymOrphanSweepMode() !== 'off', 3_600_000);
     if (stopDream) { lifecycleManager.register({ serviceName: 'DreamEvolution', stop: () => stopDream?.() }); console.log('🧬 Dream evolution on (hourly tick, one dream a day).'); }
   } catch (error) {
     console.warn('⚠️  Dream evolution failed to start (non-fatal):', error instanceof Error ? error.message : String(error));

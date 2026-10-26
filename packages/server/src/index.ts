@@ -57,6 +57,7 @@ import { laneIntervalMs, startDependencyLane } from './services/dependency-lane'
 import { PROBE_INTERVAL_MS, startOllamaProbe } from './services/inference-failover';
 import { SHIPPED_CODE_SCAN_INTERVAL_MS, startShippedCodeScan } from './services/shipped-code-scan';
 import { SKILL_DISTILLATION_INTERVAL_MS, startSkillDistillation } from './services/skill-distillation';
+import { buildProvenance } from './utils/build-provenance';
 
 // Operator rule (2026-09-29): this server never calls the hosts in OUTBOUND_DENY_HOSTS (the workstation only pulls).
 // §16 step 8: refusals are also counted in policy_violations (POLICY_VIOLATION_LOG=shadow) once the database is open.
@@ -154,22 +155,12 @@ async function main() {
   
   // Health check (public)
   app.get('/health', (_req, res) => {
-    const runtimeCommit = process.env.DJIMITFLO_COMMIT_SHA || null;
-    const builtCommit = process.env.DJIMITFLO_BUILD_COMMIT && process.env.DJIMITFLO_BUILD_COMMIT !== 'unknown'
-      ? process.env.DJIMITFLO_BUILD_COMMIT
-      : null;
+    const build = buildProvenance();
     res.json({
       status: 'healthy',
-      commit: runtimeCommit,
+      commit: build.commit,
       // Same build identity as /api/health so both liveness endpoints are attributable.
-      build: {
-        commit: runtimeCommit,
-        built_commit: builtCommit,
-        build_source: process.env.DJIMITFLO_BUILD_SOURCE || null,
-        build_time: process.env.DJIMITFLO_BUILD_TIME || null,
-        instance_id: process.env.DJIMITFLO_INSTANCE_ID || null,
-        commit_matches_build: !!(runtimeCommit && builtCommit && runtimeCommit === builtCommit),
-      },
+      build,
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
     });

@@ -1,0 +1,1348 @@
+{
+  "schema_version": 1,
+  "amendment": 1,
+  "items": [
+    {
+      "id": "01457fcbb1",
+      "source": "TryGhost/Ghost@f466c300191a",
+      "repo": "TryGhost/Ghost",
+      "license": "MIT",
+      "upstream_commit": "f466c300191a609ed36c8d7c5d1e33ccd440786b",
+      "ghsa": "GHSA-cj62-hvv2-2q5h",
+      "cve": "CVE-2026-70592",
+      "cwe": "CWE-22",
+      "files": [
+        "ghost/core/core/server/api/endpoints/db.js",
+        "ghost/core/core/server/data/exporter/export-filename.js"
+      ],
+      "variant": "benign_fix",
+      "class": null,
+      "base_sha": "ad50490a27797c00cb5d6eb4a1998415aeb54a52",
+      "changed_lines": 9,
+      "security_wording": false,
+      "patch_sha256": "014df455aa65245b6c1b20fbad726119c288252dd80b6b2099030d08ab0324ae",
+      "finding": {
+        "id": "secf1-4a58c3af",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "ghost/core/core/server/api/endpoints/db.js",
+        "message": "Review the change to ghost/core/core/server/api/endpoints/db.js, ghost/core/core/server/data/exporter/export-filename.js",
+        "evidence": "Upstream diff, 2 file(s), 9 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "a0c03c407e22c953f19b4131d4645a89f213ce18da066abdaaa9357e7ee9609a"
+    },
+    {
+      "id": "06466e0328",
+      "source": "yaronn/xml-crypto@3d9db712e623",
+      "repo": "yaronn/xml-crypto",
+      "license": "MIT",
+      "upstream_commit": "3d9db712e6232c765cd2ad6bd2902b88a0d22100",
+      "ghsa": "GHSA-c27r-x354-4m68",
+      "cve": null,
+      "cwe": "CWE-287",
+      "files": [
+        "lib/signed-xml.js"
+      ],
+      "variant": "benign_fix",
+      "class": null,
+      "base_sha": "d295ecca4d28d8827c761a636d69067ed8d36466",
+      "changed_lines": 14,
+      "security_wording": false,
+      "patch_sha256": "a62e52a7c1482f771b29f545c62cdc962f8d9537ea482608098dd94dffea14d8",
+      "finding": {
+        "id": "secf1-50ff42e2",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "lib/signed-xml.js",
+        "message": "Review the change to lib/signed-xml.js",
+        "evidence": "Upstream diff, 1 file(s), 14 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "790bb734253965f8e45e9da0b9be6636e7953d8362c83ced504567151d77c2f1"
+    },
+    {
+      "id": "06e851791d",
+      "source": "mittwald/node-kubernetes@04f6809fd438",
+      "repo": "mittwald/node-kubernetes",
+      "license": "MIT",
+      "upstream_commit": "04f6809fd438417c343d541e57f76f0040e069cd",
+      "ghsa": "GHSA-g35x-j6jj-8g7j",
+      "cve": null,
+      "cwe": "CWE-532",
+      "files": [
+        "src/client.ts",
+        "src/security.ts"
+      ],
+      "variant": "benign_fix",
+      "class": null,
+      "base_sha": "642ff0bd45cc4ff12800e95fe0beeadc71df7f14",
+      "changed_lines": 16,
+      "security_wording": true,
+      "patch_sha256": "cfce16f9b7dfeef8c92f819bc2399804c69b212a3e32d2376bf370e386a7c5e1",
+      "finding": {
+        "id": "secf1-8f21679a",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "src/client.ts",
+        "message": "Review the change to src/client.ts, src/security.ts",
+        "evidence": "Upstream diff, 2 file(s), 16 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "ec9e05f1571f8a80517308f7bd42211ea36e35d91456eaeea7febb77d6083111"
+    },
+    {
+      "id": "088cf93d78",
+      "source": "JPeer264/node-git-commit-info@f7c491ede51f",
+      "repo": "JPeer264/node-git-commit-info",
+      "license": "MIT",
+      "upstream_commit": "f7c491ede51f886a988af9b266797cb24591d18c",
+      "ghsa": "GHSA-h42j-mrmp-9369",
+      "cve": "CVE-2023-26134",
+      "cwe": "CWE-77",
+      "files": [
+        "index.ts"
+      ],
+      "variant": "vulnerable",
+      "class": "command_injection",
+      "base_sha": "f7c491ede51f886a988af9b266797cb24591d18c",
+      "changed_lines": 5,
+      "security_wording": false,
+      "patch_sha256": "a45063aa6f99f01c8da1c01bc181787a6a5c8ddb45aaeea9f06d2e7ddc5d267e",
+      "finding": {
+        "id": "secf1-2c53cdef",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "index.ts",
+        "message": "Review the change to index.ts",
+        "evidence": "Upstream diff, 1 file(s), 5 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "fc6b02c42f64bf2f60495c3a8cf9ed733c323069d7b87d468a6e6ca227bee99c"
+    },
+    {
+      "id": "240c03009c",
+      "source": "microsoft/prompty@c27402da2487",
+      "repo": "microsoft/prompty",
+      "license": "MIT",
+      "upstream_commit": "c27402da2487075be577f06aa79df627fb9d6853",
+      "ghsa": "GHSA-c4gh-rv8h-q9vw",
+      "cve": "CVE-2026-53597",
+      "cwe": "CWE-94",
+      "files": [
+        "runtime/typescript/packages/core/src/core/loader.ts"
+      ],
+      "variant": "vulnerable",
+      "class": "unsafe_eval",
+      "base_sha": "c27402da2487075be577f06aa79df627fb9d6853",
+      "changed_lines": 11,
+      "security_wording": false,
+      "patch_sha256": "307b883ba44a7aaf3bded387675a47c8ed6d8c699c218a44254c1d0c98867fb0",
+      "finding": {
+        "id": "secf1-e86b8329",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "runtime/typescript/packages/core/src/core/loader.ts",
+        "message": "Review the change to runtime/typescript/packages/core/src/core/loader.ts",
+        "evidence": "Upstream diff, 1 file(s), 11 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "000b6c49d6723ee148f4b9e26a27ed64513329c39d4b58d8f60491c0a6da44e7"
+    },
+    {
+      "id": "2a3de35b51",
+      "source": "asymmetric-effort/NogginLessDom@785e6ac6e124",
+      "repo": "asymmetric-effort/NogginLessDom",
+      "license": "MIT",
+      "upstream_commit": "785e6ac6e124d1a89b3ccf40bbd75fc8e4cb215d",
+      "ghsa": "GHSA-322x-v876-g883",
+      "cve": null,
+      "cwe": "CWE-22",
+      "files": [
+        "src/assertions/snapshots.ts"
+      ],
+      "variant": "benign_fix",
+      "class": null,
+      "base_sha": "7cd241350fb7669b006fed46b81436925d1bb55c",
+      "changed_lines": 24,
+      "security_wording": false,
+      "patch_sha256": "1573a2b7637a2a4d7cde48c89cd356f73d66e2256b09dab469d5b7d9582e736c",
+      "finding": {
+        "id": "secf1-90949d70",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "src/assertions/snapshots.ts",
+        "message": "Review the change to src/assertions/snapshots.ts",
+        "evidence": "Upstream diff, 1 file(s), 24 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "04d4552109ef9beced0c3ee881cb3ff2925530e2e9066a0d7f2f0e59bdc4a7dc"
+    },
+    {
+      "id": "2ec73b66d5",
+      "source": "JPeer264/node-git-commit-info@f7c491ede51f",
+      "repo": "JPeer264/node-git-commit-info",
+      "license": "MIT",
+      "upstream_commit": "f7c491ede51f886a988af9b266797cb24591d18c",
+      "ghsa": "GHSA-h42j-mrmp-9369",
+      "cve": "CVE-2023-26134",
+      "cwe": "CWE-77",
+      "files": [
+        "index.ts"
+      ],
+      "variant": "benign_fix",
+      "class": null,
+      "base_sha": "8b456acbc919e98a9f04b399c1581bbf213d83bd",
+      "changed_lines": 5,
+      "security_wording": false,
+      "patch_sha256": "ad90ed46e30e81071c4e6bcff2c63c453faddcfa9a6380ec1ac9b0c8d9759a6d",
+      "finding": {
+        "id": "secf1-2c53cdef",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "index.ts",
+        "message": "Review the change to index.ts",
+        "evidence": "Upstream diff, 1 file(s), 5 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "fc6b02c42f64bf2f60495c3a8cf9ed733c323069d7b87d468a6e6ca227bee99c"
+    },
+    {
+      "id": "2ef18345a3",
+      "source": "mittwald/node-kubernetes@04f6809fd438",
+      "repo": "mittwald/node-kubernetes",
+      "license": "MIT",
+      "upstream_commit": "04f6809fd438417c343d541e57f76f0040e069cd",
+      "ghsa": "GHSA-g35x-j6jj-8g7j",
+      "cve": null,
+      "cwe": "CWE-532",
+      "files": [
+        "src/client.ts",
+        "src/security.ts"
+      ],
+      "variant": "vulnerable",
+      "class": "secret_exposure",
+      "base_sha": "04f6809fd438417c343d541e57f76f0040e069cd",
+      "changed_lines": 16,
+      "security_wording": true,
+      "patch_sha256": "31542b7e6097548691044f9d5f00bf38583dab451ae41c84ea2f85d5c1511118",
+      "finding": {
+        "id": "secf1-8f21679a",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "src/client.ts",
+        "message": "Review the change to src/client.ts, src/security.ts",
+        "evidence": "Upstream diff, 2 file(s), 16 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "ec9e05f1571f8a80517308f7bd42211ea36e35d91456eaeea7febb77d6083111"
+    },
+    {
+      "id": "33c82f6f90",
+      "source": "TryGhost/Ghost@f466c300191a",
+      "repo": "TryGhost/Ghost",
+      "license": "MIT",
+      "upstream_commit": "f466c300191a609ed36c8d7c5d1e33ccd440786b",
+      "ghsa": "GHSA-cj62-hvv2-2q5h",
+      "cve": "CVE-2026-70592",
+      "cwe": "CWE-22",
+      "files": [
+        "ghost/core/core/server/api/endpoints/db.js",
+        "ghost/core/core/server/data/exporter/export-filename.js"
+      ],
+      "variant": "vulnerable",
+      "class": "path_traversal",
+      "base_sha": "f466c300191a609ed36c8d7c5d1e33ccd440786b",
+      "changed_lines": 9,
+      "security_wording": false,
+      "patch_sha256": "eaa3f18795a3fa70ba4ac518066bfb7ada46cc7d51752bd1e4c29c068a0cf0e9",
+      "finding": {
+        "id": "secf1-4a58c3af",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "ghost/core/core/server/api/endpoints/db.js",
+        "message": "Review the change to ghost/core/core/server/api/endpoints/db.js, ghost/core/core/server/data/exporter/export-filename.js",
+        "evidence": "Upstream diff, 2 file(s), 9 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "a0c03c407e22c953f19b4131d4645a89f213ce18da066abdaaa9357e7ee9609a"
+    },
+    {
+      "id": "345d62bcba",
+      "source": "jsonata-js/jsonata@79c21fe56fbe",
+      "repo": "jsonata-js/jsonata",
+      "license": "MIT",
+      "upstream_commit": "79c21fe56fbebb49c6b06e11da76d6a02b437551",
+      "ghsa": null,
+      "cve": null,
+      "cwe": null,
+      "files": [
+        "jsonata.js"
+      ],
+      "variant": "decoy",
+      "class": null,
+      "base_sha": "2580086c1abc5620d47d4a345df4df2ff4ce1a1c",
+      "changed_lines": 11,
+      "security_wording": false,
+      "patch_sha256": "efd4187ebc4438427228d06db329dbfd516ce1c3a6cd6ef2f8135b854cec6c95",
+      "finding": {
+        "id": "secf1-3df53b00",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "jsonata.js",
+        "message": "Review the change to jsonata.js",
+        "evidence": "Upstream diff, 1 file(s), 11 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "f98d2883d33fec648a5a79ddf95e9b0f2d181da4cd0ad869edc6813d414052b1"
+    },
+    {
+      "id": "36844de3bf",
+      "source": "elwerene/libreoffice-convert@b78f17df9b91",
+      "repo": "elwerene/libreoffice-convert",
+      "license": "MIT",
+      "upstream_commit": "b78f17df9b9183bd503fc4635fc8b3df6705047b",
+      "ghsa": "GHSA-gmxc-r82q-347r",
+      "cve": "CVE-2026-54732",
+      "cwe": "CWE-22",
+      "files": [
+        "index.js"
+      ],
+      "variant": "benign_fix",
+      "class": null,
+      "base_sha": "b358581adf6310b519841b275559b201bd4009f1",
+      "changed_lines": 2,
+      "security_wording": false,
+      "patch_sha256": "b1cc4a9095e9ee5749c3338d58a3f9eba9c9c2b3787971399680dff3e2924d88",
+      "finding": {
+        "id": "secf1-65542819",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "index.js",
+        "message": "Review the change to index.js",
+        "evidence": "Upstream diff, 1 file(s), 2 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "c7bd54d154cf0ab9f4a6d0f3de3fc3916580dab6722391c3951094b354408658"
+    },
+    {
+      "id": "41d79df397",
+      "source": "mittwald/node-kubernetes@8c956deb3f5c",
+      "repo": "mittwald/node-kubernetes",
+      "license": "MIT",
+      "upstream_commit": "8c956deb3f5c2575106a9c5b6d2a6fca97607a12",
+      "ghsa": null,
+      "cve": null,
+      "cwe": null,
+      "files": [
+        "src/types/core/v1/persistentvolume.ts"
+      ],
+      "variant": "decoy",
+      "class": null,
+      "base_sha": "10977ef9fb80b13f440224e7a5497e5624cee053",
+      "changed_lines": 12,
+      "security_wording": false,
+      "patch_sha256": "50fdec4b8e5c7534517ded339bc920103e1cf553e652d08dda0cf715aa900869",
+      "finding": {
+        "id": "secf1-f5294f4d",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "src/types/core/v1/persistentvolume.ts",
+        "message": "Review the change to src/types/core/v1/persistentvolume.ts",
+        "evidence": "Upstream diff, 1 file(s), 12 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "8eb97d0ebe571388c9fa86d92e49367dd3478b55ff1be675443395d446355268"
+    },
+    {
+      "id": "45f6f1c546",
+      "source": "stellar/js-stellar-sdk@e211e3d3800c",
+      "repo": "stellar/js-stellar-sdk",
+      "license": "Apache-2.0",
+      "upstream_commit": "e211e3d3800c0fc5420b38028868696bfbd5ba1e",
+      "ghsa": null,
+      "cve": null,
+      "cwe": null,
+      "files": [
+        "src/contract/client.ts"
+      ],
+      "variant": "decoy",
+      "class": null,
+      "base_sha": "bb6a32ea2a7069f83d2d3bafa57262dc5d856980",
+      "changed_lines": 4,
+      "security_wording": false,
+      "patch_sha256": "0b1bda91ef5dcd50fccb0cf49445d1c0ba2f5ad64a25d93c4776c4f20cffdb80",
+      "finding": {
+        "id": "secf1-24e720f8",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "src/contract/client.ts",
+        "message": "Review the change to src/contract/client.ts",
+        "evidence": "Upstream diff, 1 file(s), 4 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "93eb8308a081d1163fd74d7b6c39f797c1bd2f7d6947f3b55e2dde8415297389"
+    },
+    {
+      "id": "48ac3c69de",
+      "source": "sequelize/cli@24a7ba9eb90c",
+      "repo": "sequelize/cli",
+      "license": "MIT",
+      "upstream_commit": "24a7ba9eb90cc04d86c3ee20d69216d3e565eb91",
+      "ghsa": null,
+      "cve": null,
+      "cwe": null,
+      "files": [
+        "lib/tasks/db.js"
+      ],
+      "variant": "decoy",
+      "class": null,
+      "base_sha": "85b844645994f3c0d22543f38bbac51b3d3ea12e",
+      "changed_lines": 4,
+      "security_wording": false,
+      "patch_sha256": "39c2cfe59edcab7d021096da7c3509b00e785093dc8db525c43d7ac0c5595064",
+      "finding": {
+        "id": "secf1-4119c707",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "lib/tasks/db.js",
+        "message": "Review the change to lib/tasks/db.js",
+        "evidence": "Upstream diff, 1 file(s), 4 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "39a4df5bdd1bc7105ea85fd8889fd04b855854d39b9cdf534398fc2dd4c6459e"
+    },
+    {
+      "id": "48fd3bb566",
+      "source": "danger/danger-js@087a7290264c",
+      "repo": "danger/danger-js",
+      "license": "MIT",
+      "upstream_commit": "087a7290264cc6fb7154ea8c2552a7b2cb8b33a3",
+      "ghsa": "GHSA-3x93-p86w-5jvh",
+      "cve": "CVE-2026-16629",
+      "cwe": "CWE-77",
+      "files": [
+        "source/platforms/git/localGetFileAtSHA.ts"
+      ],
+      "variant": "vulnerable",
+      "class": "command_injection",
+      "base_sha": "087a7290264cc6fb7154ea8c2552a7b2cb8b33a3",
+      "changed_lines": 10,
+      "security_wording": true,
+      "patch_sha256": "cf725afd7c70306fef95615e9093fbec1ccd33c8d92f2efa4f8fd9b284c80ae1",
+      "finding": {
+        "id": "secf1-6e33a0d8",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "source/platforms/git/localGetFileAtSHA.ts",
+        "message": "Review the change to source/platforms/git/localGetFileAtSHA.ts",
+        "evidence": "Upstream diff, 1 file(s), 10 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "d9f0725c40efdf2efdc12d063903189eb865007cb7dacae33d1f4420f0b0f8fc"
+    },
+    {
+      "id": "5370eca7c4",
+      "source": "jsonata-js/jsonata@47c0e5854220",
+      "repo": "jsonata-js/jsonata",
+      "license": "MIT",
+      "upstream_commit": "47c0e58542202c705726663166dbee5fcae47d06",
+      "ghsa": "GHSA-66mm-25pp-rfff",
+      "cve": "CVE-2026-77415",
+      "cwe": "CWE-94",
+      "files": [
+        "src/jsonata.js"
+      ],
+      "variant": "vulnerable",
+      "class": "unsafe_eval",
+      "base_sha": "47c0e58542202c705726663166dbee5fcae47d06",
+      "changed_lines": 4,
+      "security_wording": false,
+      "patch_sha256": "c696b50e2a41837b024cc4f2e943373d301927865f1b5fb011453665f23a7c6e",
+      "finding": {
+        "id": "secf1-9cf20549",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "src/jsonata.js",
+        "message": "Review the change to src/jsonata.js",
+        "evidence": "Upstream diff, 1 file(s), 4 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "6e1de0986b7c799e4cb0e436419063c9e5aa364af5069cd150ae014f73f6565c"
+    },
+    {
+      "id": "59ac5d98b1",
+      "source": "nyariv/SandboxJS@826865251232",
+      "repo": "nyariv/SandboxJS",
+      "license": "MIT",
+      "upstream_commit": "826865251232611ec94078bab5a18ec875dad4a5",
+      "ghsa": "GHSA-g8f2-4f4f-5jqw",
+      "cve": "CVE-2026-43898",
+      "cwe": "CWE-94",
+      "files": [
+        "src/executor/ops/prop.ts"
+      ],
+      "variant": "vulnerable",
+      "class": "unsafe_eval",
+      "base_sha": "826865251232611ec94078bab5a18ec875dad4a5",
+      "changed_lines": 5,
+      "security_wording": false,
+      "patch_sha256": "7545d54a8192ba35b94e3f8846af56ce389507d6065a2845b0381abfebf9eca9",
+      "finding": {
+        "id": "secf1-757a55da",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "src/executor/ops/prop.ts",
+        "message": "Review the change to src/executor/ops/prop.ts",
+        "evidence": "Upstream diff, 1 file(s), 5 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "986b87e2bf73263fe532ccb68432cbe71c4fa1c7c857a687793b7303ff7405b3"
+    },
+    {
+      "id": "5bbeccd540",
+      "source": "sequelize/cli@da59652c061a",
+      "repo": "sequelize/cli",
+      "license": "MIT",
+      "upstream_commit": "da59652c061a798282e18efad0b6d0afefa15465",
+      "ghsa": "GHSA-3xc7-xg67-pw99",
+      "cve": null,
+      "cwe": "CWE-532",
+      "files": [
+        "src/helpers/config-helper.js"
+      ],
+      "variant": "benign_fix",
+      "class": null,
+      "base_sha": "139f854f05b76367a0bb5bfcc5a9cf549879f432",
+      "changed_lines": 2,
+      "security_wording": false,
+      "patch_sha256": "46a96e55637071f52fc3da0a0a7954637a1461a32dc1d9a05d093265770d5c99",
+      "finding": {
+        "id": "secf1-731ba4ce",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "src/helpers/config-helper.js",
+        "message": "Review the change to src/helpers/config-helper.js",
+        "evidence": "Upstream diff, 1 file(s), 2 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "614f7ca8acf26d17dcf1583c986f5c5cf5af68c6946b7b2f49abb8dcc1f3046b"
+    },
+    {
+      "id": "5f85dc953e",
+      "source": "nyariv/SandboxJS@826865251232",
+      "repo": "nyariv/SandboxJS",
+      "license": "MIT",
+      "upstream_commit": "826865251232611ec94078bab5a18ec875dad4a5",
+      "ghsa": "GHSA-g8f2-4f4f-5jqw",
+      "cve": "CVE-2026-43898",
+      "cwe": "CWE-94",
+      "files": [
+        "src/executor/ops/prop.ts"
+      ],
+      "variant": "benign_fix",
+      "class": null,
+      "base_sha": "1e6785658c94f5f2fb8e4a02cfcf1e7821b8be7f",
+      "changed_lines": 5,
+      "security_wording": false,
+      "patch_sha256": "3aeb969b2077fe71465e94b9191659a4c8baa833703e9ef830eca5cce94c2004",
+      "finding": {
+        "id": "secf1-757a55da",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "src/executor/ops/prop.ts",
+        "message": "Review the change to src/executor/ops/prop.ts",
+        "evidence": "Upstream diff, 1 file(s), 5 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "986b87e2bf73263fe532ccb68432cbe71c4fa1c7c857a687793b7303ff7405b3"
+    },
+    {
+      "id": "66d6eeffb9",
+      "source": "matrix-org/matrix-appservice-bridge@4c6723a5e7be",
+      "repo": "matrix-org/matrix-appservice-bridge",
+      "license": "Apache-2.0",
+      "upstream_commit": "4c6723a5e7beda65cdf1ae5dbb882e8beaac8552",
+      "ghsa": "GHSA-vc7j-h8xg-fv5x",
+      "cve": "CVE-2023-38691",
+      "cwe": "CWE-287",
+      "files": [
+        "src/provisioning/api.ts"
+      ],
+      "variant": "vulnerable",
+      "class": "auth_bypass",
+      "base_sha": "4c6723a5e7beda65cdf1ae5dbb882e8beaac8552",
+      "changed_lines": 10,
+      "security_wording": false,
+      "patch_sha256": "b594191ea4ff80628fb039f8f39122b238aadd1bc6d901bb870d649fd94af04a",
+      "finding": {
+        "id": "secf1-3a0543e6",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "src/provisioning/api.ts",
+        "message": "Review the change to src/provisioning/api.ts",
+        "evidence": "Upstream diff, 1 file(s), 10 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "543f54467bd6c2bf6512020d018bac632fc52c7605a4553e6a2b6c5035b7678a"
+    },
+    {
+      "id": "729bba800d",
+      "source": "honojs/hono@5463db273547",
+      "repo": "honojs/hono",
+      "license": "MIT",
+      "upstream_commit": "5463db2735476959b8af67756f4e513f4fe19115",
+      "ghsa": "GHSA-f577-qrjj-4474",
+      "cve": "CVE-2026-47673",
+      "cwe": "CWE-285",
+      "files": [
+        "src/middleware/jwk/jwk.ts",
+        "src/middleware/jwt/jwt.ts"
+      ],
+      "variant": "vulnerable",
+      "class": "auth_bypass",
+      "base_sha": "5463db2735476959b8af67756f4e513f4fe19115",
+      "changed_lines": 4,
+      "security_wording": false,
+      "patch_sha256": "88d23aed8a7b2fd9eb02293c9db8be6edc0c500ab959dce84ef3f1310587f535",
+      "finding": {
+        "id": "secf1-df688d9e",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "src/middleware/jwk/jwk.ts",
+        "message": "Review the change to src/middleware/jwk/jwk.ts, src/middleware/jwt/jwt.ts",
+        "evidence": "Upstream diff, 2 file(s), 4 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "47694c0eefec6e89ae9a33d87b5d4ead39dde4cb5abd4c91df7c4640e60b9b8c"
+    },
+    {
+      "id": "736894477e",
+      "source": "honojs/node-server@cd076e117cfe",
+      "repo": "honojs/node-server",
+      "license": "MIT",
+      "upstream_commit": "cd076e117cfe4cb8d31f9eb11d2e8f38a6cb8faf",
+      "ghsa": "GHSA-frvp-7c67-39w9",
+      "cve": null,
+      "cwe": "CWE-22",
+      "files": [
+        "src/serve-static.ts"
+      ],
+      "variant": "vulnerable",
+      "class": "path_traversal",
+      "base_sha": "cd076e117cfe4cb8d31f9eb11d2e8f38a6cb8faf",
+      "changed_lines": 2,
+      "security_wording": false,
+      "patch_sha256": "edcb188960f5b3ff277e36cc8e6dabc7b9873bc2b884ad54ed96650c29c82958",
+      "finding": {
+        "id": "secf1-252aa817",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "src/serve-static.ts",
+        "message": "Review the change to src/serve-static.ts",
+        "evidence": "Upstream diff, 1 file(s), 2 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "ba8831907003f22ba248cce59f6c87b13f49444cbbf5a762d9547191076148b9"
+    },
+    {
+      "id": "76f1e66ab0",
+      "source": "follow-redirects/follow-redirects@9865ca45490e",
+      "repo": "follow-redirects/follow-redirects",
+      "license": "MIT",
+      "upstream_commit": "9865ca45490e4d0f7b6944870318408344570aff",
+      "ghsa": "GHSA-q3jh-wrc6-jgq8",
+      "cve": "CVE-2026-111756",
+      "cwe": "CWE-200",
+      "files": [
+        "index.js"
+      ],
+      "variant": "benign_fix",
+      "class": null,
+      "base_sha": "080a76d0e125b37bf81717368a61d5dc37aa56c8",
+      "changed_lines": 9,
+      "security_wording": false,
+      "patch_sha256": "e1308874a80c38dab1557709ec66013a74296571a7b84bfedfe600fbf972b936",
+      "finding": {
+        "id": "secf1-9a4f8b03",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "index.js",
+        "message": "Review the change to index.js",
+        "evidence": "Upstream diff, 1 file(s), 9 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "bd62f753d56e581b583afee0b0141545b84aeea63f27c12b23fbe9abdca90ec6"
+    },
+    {
+      "id": "7f3100edd4",
+      "source": "mongodb/js-bson@3809c1313a7b",
+      "repo": "mongodb/js-bson",
+      "license": "Apache-2.0",
+      "upstream_commit": "3809c1313a7b2a8001065f0271199df9fa3d16a8",
+      "ghsa": "GHSA-v8w9-2789-6hhr",
+      "cve": "CVE-2020-7610",
+      "cwe": "CWE-502",
+      "files": [
+        "lib/bson/parser/serializer.js"
+      ],
+      "variant": "vulnerable",
+      "class": "unsafe_eval",
+      "base_sha": "3809c1313a7b2a8001065f0271199df9fa3d16a8",
+      "changed_lines": 6,
+      "security_wording": false,
+      "patch_sha256": "d1b0d1fb07d396d9376181b3ebca8e3a0e9ba76f4c23e77cc1d2e0c721da085e",
+      "finding": {
+        "id": "secf1-a55a26c8",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "lib/bson/parser/serializer.js",
+        "message": "Review the change to lib/bson/parser/serializer.js",
+        "evidence": "Upstream diff, 1 file(s), 6 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "9156423ec65baa00c8e606fa7a29aa0ba22b57db9e3c5be64da4ba1648852201"
+    },
+    {
+      "id": "807c516109",
+      "source": "stellar/js-stellar-sdk@6f0bb889c2d1",
+      "repo": "stellar/js-stellar-sdk",
+      "license": "Apache-2.0",
+      "upstream_commit": "6f0bb889c2d10b431ddd5f4a1bcdd519c80430b3",
+      "ghsa": "GHSA-6cgh-hjpw-q3gq",
+      "cve": "CVE-2021-32738",
+      "cwe": "CWE-287",
+      "files": [
+        "src/utils.ts"
+      ],
+      "variant": "vulnerable",
+      "class": "auth_bypass",
+      "base_sha": "6f0bb889c2d10b431ddd5f4a1bcdd519c80430b3",
+      "changed_lines": 6,
+      "security_wording": false,
+      "patch_sha256": "bccc99b534be3245d9fac4e00404d6c7a151460ce83532507967b95e7de61d12",
+      "finding": {
+        "id": "secf1-7db4c52a",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "src/utils.ts",
+        "message": "Review the change to src/utils.ts",
+        "evidence": "Upstream diff, 1 file(s), 6 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "787d4d7aa341c4e1c55f3ae1d241ed9cd748811fbf6ebdc3f756dbf12cfbbe4d"
+    },
+    {
+      "id": "8fa2a85868",
+      "source": "matrix-org/matrix-appservice-bridge@4c6723a5e7be",
+      "repo": "matrix-org/matrix-appservice-bridge",
+      "license": "Apache-2.0",
+      "upstream_commit": "4c6723a5e7beda65cdf1ae5dbb882e8beaac8552",
+      "ghsa": "GHSA-vc7j-h8xg-fv5x",
+      "cve": "CVE-2023-38691",
+      "cwe": "CWE-287",
+      "files": [
+        "src/provisioning/api.ts"
+      ],
+      "variant": "benign_fix",
+      "class": null,
+      "base_sha": "cfc6358c8c80276862cfae5071d74999c6b144e0",
+      "changed_lines": 10,
+      "security_wording": false,
+      "patch_sha256": "661f141cad395c97e36b26a360a2adf67b550609e4576ff4036a7d41bebe48ed",
+      "finding": {
+        "id": "secf1-3a0543e6",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "src/provisioning/api.ts",
+        "message": "Review the change to src/provisioning/api.ts",
+        "evidence": "Upstream diff, 1 file(s), 10 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "543f54467bd6c2bf6512020d018bac632fc52c7605a4553e6a2b6c5035b7678a"
+    },
+    {
+      "id": "9319345457",
+      "source": "honojs/node-server@cd076e117cfe",
+      "repo": "honojs/node-server",
+      "license": "MIT",
+      "upstream_commit": "cd076e117cfe4cb8d31f9eb11d2e8f38a6cb8faf",
+      "ghsa": "GHSA-frvp-7c67-39w9",
+      "cve": null,
+      "cwe": "CWE-22",
+      "files": [
+        "src/serve-static.ts"
+      ],
+      "variant": "benign_fix",
+      "class": null,
+      "base_sha": "9e1cdee836baeb13f33e857a582b29546185c324",
+      "changed_lines": 2,
+      "security_wording": false,
+      "patch_sha256": "8122cb54a61a9169fbecf0356dc59a06c955e9c6fdd488a714f059ea36ce4e1f",
+      "finding": {
+        "id": "secf1-252aa817",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "src/serve-static.ts",
+        "message": "Review the change to src/serve-static.ts",
+        "evidence": "Upstream diff, 1 file(s), 2 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "ba8831907003f22ba248cce59f6c87b13f49444cbbf5a762d9547191076148b9"
+    },
+    {
+      "id": "9783840c8d",
+      "source": "bruno-robert/window-control@075c854534a7",
+      "repo": "bruno-robert/window-control",
+      "license": "MIT",
+      "upstream_commit": "075c854534a749d887655a906759f5a7eee95173",
+      "ghsa": "GHSA-9mjx-wfqp-j5ph",
+      "cve": "CVE-2022-25926",
+      "cwe": "CWE-77",
+      "files": [
+        "index.js"
+      ],
+      "variant": "benign_fix",
+      "class": null,
+      "base_sha": "3954822ef3f0307745cdbff21a965278dd0a357b",
+      "changed_lines": 14,
+      "security_wording": false,
+      "patch_sha256": "a056f443a00663c4152afacf1211a74e30550aef989810ca15e89ba45ad358cc",
+      "finding": {
+        "id": "secf1-e750a846",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "index.js",
+        "message": "Review the change to index.js",
+        "evidence": "Upstream diff, 1 file(s), 14 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "b1edb632ddae9e37bb4c6616066152f2fdc3ffaab8a8d6c50d7d0ca8b3757013"
+    },
+    {
+      "id": "9841d88f06",
+      "source": "workos/authkit-nextjs@15a332632f75",
+      "repo": "workos/authkit-nextjs",
+      "license": "MIT",
+      "upstream_commit": "15a332632f7560b03cc6d8cc8da24fd2ac931da7",
+      "ghsa": "GHSA-5wmg-9cvh-qw25",
+      "cve": "CVE-2024-51752",
+      "cwe": "CWE-532",
+      "files": [
+        "src/session.ts",
+        "src/workos.ts"
+      ],
+      "variant": "benign_fix",
+      "class": null,
+      "base_sha": "1468ef931c5990f7a00a2b0b57767d29fa98408e",
+      "changed_lines": 6,
+      "security_wording": false,
+      "patch_sha256": "41041e41fb59247a5d64927db4c837f1b108f86e5a3ad6bea977cc10136c39c7",
+      "finding": {
+        "id": "secf1-4cbf6741",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "src/session.ts",
+        "message": "Review the change to src/session.ts, src/workos.ts",
+        "evidence": "Upstream diff, 2 file(s), 6 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "455c49ed3b2d85b3bef728c91a4b9ce74caf42719f07dc837e20ce412482139f"
+    },
+    {
+      "id": "a40fd39f02",
+      "source": "elwerene/libreoffice-convert@b78f17df9b91",
+      "repo": "elwerene/libreoffice-convert",
+      "license": "MIT",
+      "upstream_commit": "b78f17df9b9183bd503fc4635fc8b3df6705047b",
+      "ghsa": "GHSA-gmxc-r82q-347r",
+      "cve": "CVE-2026-54732",
+      "cwe": "CWE-22",
+      "files": [
+        "index.js"
+      ],
+      "variant": "vulnerable",
+      "class": "path_traversal",
+      "base_sha": "b78f17df9b9183bd503fc4635fc8b3df6705047b",
+      "changed_lines": 2,
+      "security_wording": false,
+      "patch_sha256": "8f61828b0a7365f34b7b3d4826bed49deda62f78e672cbb4aa46370dbfd27aa0",
+      "finding": {
+        "id": "secf1-65542819",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "index.js",
+        "message": "Review the change to index.js",
+        "evidence": "Upstream diff, 1 file(s), 2 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "c7bd54d154cf0ab9f4a6d0f3de3fc3916580dab6722391c3951094b354408658"
+    },
+    {
+      "id": "ac6895b962",
+      "source": "jsonata-js/jsonata@47c0e5854220",
+      "repo": "jsonata-js/jsonata",
+      "license": "MIT",
+      "upstream_commit": "47c0e58542202c705726663166dbee5fcae47d06",
+      "ghsa": "GHSA-66mm-25pp-rfff",
+      "cve": "CVE-2026-77415",
+      "cwe": "CWE-94",
+      "files": [
+        "src/jsonata.js"
+      ],
+      "variant": "benign_fix",
+      "class": null,
+      "base_sha": "59e25144fc3b7125f6befd71b8a6e14e1fa610d2",
+      "changed_lines": 4,
+      "security_wording": false,
+      "patch_sha256": "5e0c83343cc3a64e410b1a4e3fe7d9f5deb50dd0da337aa8c4826630bec1078d",
+      "finding": {
+        "id": "secf1-9cf20549",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "src/jsonata.js",
+        "message": "Review the change to src/jsonata.js",
+        "evidence": "Upstream diff, 1 file(s), 4 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "6e1de0986b7c799e4cb0e436419063c9e5aa364af5069cd150ae014f73f6565c"
+    },
+    {
+      "id": "b379839d24",
+      "source": "microsoft/prompty@c27402da2487",
+      "repo": "microsoft/prompty",
+      "license": "MIT",
+      "upstream_commit": "c27402da2487075be577f06aa79df627fb9d6853",
+      "ghsa": "GHSA-c4gh-rv8h-q9vw",
+      "cve": "CVE-2026-53597",
+      "cwe": "CWE-94",
+      "files": [
+        "runtime/typescript/packages/core/src/core/loader.ts"
+      ],
+      "variant": "benign_fix",
+      "class": null,
+      "base_sha": "b4fd3608116d8b1c42319d060d49eb6da85f25e7",
+      "changed_lines": 11,
+      "security_wording": false,
+      "patch_sha256": "c8c41cc7cbe28e13f44ecffec6ad7e94b1fe1fd7291d4ce20cce740f6e81fc80",
+      "finding": {
+        "id": "secf1-e86b8329",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "runtime/typescript/packages/core/src/core/loader.ts",
+        "message": "Review the change to runtime/typescript/packages/core/src/core/loader.ts",
+        "evidence": "Upstream diff, 1 file(s), 11 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "000b6c49d6723ee148f4b9e26a27ed64513329c39d4b58d8f60491c0a6da44e7"
+    },
+    {
+      "id": "b4ed22e38b",
+      "source": "asymmetric-effort/NogginLessDom@785e6ac6e124",
+      "repo": "asymmetric-effort/NogginLessDom",
+      "license": "MIT",
+      "upstream_commit": "785e6ac6e124d1a89b3ccf40bbd75fc8e4cb215d",
+      "ghsa": "GHSA-322x-v876-g883",
+      "cve": null,
+      "cwe": "CWE-22",
+      "files": [
+        "src/assertions/snapshots.ts"
+      ],
+      "variant": "vulnerable",
+      "class": "path_traversal",
+      "base_sha": "785e6ac6e124d1a89b3ccf40bbd75fc8e4cb215d",
+      "changed_lines": 24,
+      "security_wording": false,
+      "patch_sha256": "59f5b696cdbcad4079bfe139758b19f443bb8dcd5d32d0b6665be6464509a39e",
+      "finding": {
+        "id": "secf1-90949d70",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "src/assertions/snapshots.ts",
+        "message": "Review the change to src/assertions/snapshots.ts",
+        "evidence": "Upstream diff, 1 file(s), 24 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "04d4552109ef9beced0c3ee881cb3ff2925530e2e9066a0d7f2f0e59bdc4a7dc"
+    },
+    {
+      "id": "b7485f0ae8",
+      "source": "argos-ci/argos-javascript@8355f3af3be3",
+      "repo": "argos-ci/argos-javascript",
+      "license": "MIT",
+      "upstream_commit": "8355f3af3be3f4fe361d58a688d21535cf672717",
+      "ghsa": "GHSA-4x45-gxvp-6283",
+      "cve": "CVE-2026-59960",
+      "cwe": "CWE-78",
+      "files": [
+        "packages/core/src/ci-environment/git.ts"
+      ],
+      "variant": "vulnerable",
+      "class": "command_injection",
+      "base_sha": "8355f3af3be3f4fe361d58a688d21535cf672717",
+      "changed_lines": 26,
+      "security_wording": false,
+      "patch_sha256": "67d1d3cf8284d5a79a3f72c7cd00cc794d959a150e9f055c1a67167c04d4e4c7",
+      "finding": {
+        "id": "secf1-e2354695",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "packages/core/src/ci-environment/git.ts",
+        "message": "Review the change to packages/core/src/ci-environment/git.ts",
+        "evidence": "Upstream diff, 1 file(s), 26 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "2932225af5f1d1d77ec53767036fb378b8f11da3217e3720e05cc8458a5636a2"
+    },
+    {
+      "id": "b9ef54a262",
+      "source": "honojs/hono@5463db273547",
+      "repo": "honojs/hono",
+      "license": "MIT",
+      "upstream_commit": "5463db2735476959b8af67756f4e513f4fe19115",
+      "ghsa": "GHSA-f577-qrjj-4474",
+      "cve": "CVE-2026-47673",
+      "cwe": "CWE-285",
+      "files": [
+        "src/middleware/jwk/jwk.ts",
+        "src/middleware/jwt/jwt.ts"
+      ],
+      "variant": "benign_fix",
+      "class": null,
+      "base_sha": "c657a39ccc8d3194d345d9e82c8587bd25b5b6e8",
+      "changed_lines": 4,
+      "security_wording": false,
+      "patch_sha256": "76696a50066be16f9e8fafd42c4aa58eb4098a7c388747ac5ad4d0445b0cdf8d",
+      "finding": {
+        "id": "secf1-df688d9e",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "src/middleware/jwk/jwk.ts",
+        "message": "Review the change to src/middleware/jwk/jwk.ts, src/middleware/jwt/jwt.ts",
+        "evidence": "Upstream diff, 2 file(s), 4 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "47694c0eefec6e89ae9a33d87b5d4ead39dde4cb5abd4c91df7c4640e60b9b8c"
+    },
+    {
+      "id": "c33da7a01e",
+      "source": "stellar/js-stellar-sdk@6f0bb889c2d1",
+      "repo": "stellar/js-stellar-sdk",
+      "license": "Apache-2.0",
+      "upstream_commit": "6f0bb889c2d10b431ddd5f4a1bcdd519c80430b3",
+      "ghsa": "GHSA-6cgh-hjpw-q3gq",
+      "cve": "CVE-2021-32738",
+      "cwe": "CWE-287",
+      "files": [
+        "src/utils.ts"
+      ],
+      "variant": "benign_fix",
+      "class": null,
+      "base_sha": "ac46a8d23ce1c29fed287fffcba86441064fe001",
+      "changed_lines": 6,
+      "security_wording": false,
+      "patch_sha256": "a07755cb60448dece69d7aaa573dfa39fd18ed9a0d98f5d3316cd0f5ee24f346",
+      "finding": {
+        "id": "secf1-7db4c52a",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "src/utils.ts",
+        "message": "Review the change to src/utils.ts",
+        "evidence": "Upstream diff, 1 file(s), 6 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "787d4d7aa341c4e1c55f3ae1d241ed9cd748811fbf6ebdc3f756dbf12cfbbe4d"
+    },
+    {
+      "id": "c3c31208ae",
+      "source": "yaronn/xml-crypto@3d9db712e623",
+      "repo": "yaronn/xml-crypto",
+      "license": "MIT",
+      "upstream_commit": "3d9db712e6232c765cd2ad6bd2902b88a0d22100",
+      "ghsa": "GHSA-c27r-x354-4m68",
+      "cve": null,
+      "cwe": "CWE-287",
+      "files": [
+        "lib/signed-xml.js"
+      ],
+      "variant": "vulnerable",
+      "class": "auth_bypass",
+      "base_sha": "3d9db712e6232c765cd2ad6bd2902b88a0d22100",
+      "changed_lines": 14,
+      "security_wording": false,
+      "patch_sha256": "87d33194ae6d677084384cf78466151fa68b13a5fe5e6ca94df1af93c8c64c15",
+      "finding": {
+        "id": "secf1-50ff42e2",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "lib/signed-xml.js",
+        "message": "Review the change to lib/signed-xml.js",
+        "evidence": "Upstream diff, 1 file(s), 14 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "790bb734253965f8e45e9da0b9be6636e7953d8362c83ced504567151d77c2f1"
+    },
+    {
+      "id": "c8567b97f7",
+      "source": "workos/authkit-nextjs@15a332632f75",
+      "repo": "workos/authkit-nextjs",
+      "license": "MIT",
+      "upstream_commit": "15a332632f7560b03cc6d8cc8da24fd2ac931da7",
+      "ghsa": "GHSA-5wmg-9cvh-qw25",
+      "cve": "CVE-2024-51752",
+      "cwe": "CWE-532",
+      "files": [
+        "src/session.ts",
+        "src/workos.ts"
+      ],
+      "variant": "vulnerable",
+      "class": "secret_exposure",
+      "base_sha": "15a332632f7560b03cc6d8cc8da24fd2ac931da7",
+      "changed_lines": 6,
+      "security_wording": false,
+      "patch_sha256": "e87bbca7762a3363c513379139c0683763a628c559962e5a3d7e4126c6f710c9",
+      "finding": {
+        "id": "secf1-4cbf6741",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "src/session.ts",
+        "message": "Review the change to src/session.ts, src/workos.ts",
+        "evidence": "Upstream diff, 2 file(s), 6 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "455c49ed3b2d85b3bef728c91a4b9ce74caf42719f07dc837e20ce412482139f"
+    },
+    {
+      "id": "c972209251",
+      "source": "honojs/hono@640b756ffa94",
+      "repo": "honojs/hono",
+      "license": "MIT",
+      "upstream_commit": "640b756ffa94731b4296793ad0d02a05e317bc87",
+      "ghsa": null,
+      "cve": null,
+      "cwe": null,
+      "files": [
+        "src/hono-base.ts"
+      ],
+      "variant": "decoy",
+      "class": null,
+      "base_sha": "734755ace341607628219ea1dd8ca17f01bf1a5c",
+      "changed_lines": 10,
+      "security_wording": false,
+      "patch_sha256": "ed3d68247ad19c96de0c8d40e0e1fded25b6865a0994bcce2bd8da0f6798f7e9",
+      "finding": {
+        "id": "secf1-ccbbf380",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "src/hono-base.ts",
+        "message": "Review the change to src/hono-base.ts",
+        "evidence": "Upstream diff, 1 file(s), 10 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "8718fad7fedc34a4786dd52ab71afa8bea49e39210233fb69c6943aab36c1c48"
+    },
+    {
+      "id": "d32321c77f",
+      "source": "sequelize/cli@da59652c061a",
+      "repo": "sequelize/cli",
+      "license": "MIT",
+      "upstream_commit": "da59652c061a798282e18efad0b6d0afefa15465",
+      "ghsa": "GHSA-3xc7-xg67-pw99",
+      "cve": null,
+      "cwe": "CWE-532",
+      "files": [
+        "src/helpers/config-helper.js"
+      ],
+      "variant": "vulnerable",
+      "class": "secret_exposure",
+      "base_sha": "da59652c061a798282e18efad0b6d0afefa15465",
+      "changed_lines": 2,
+      "security_wording": false,
+      "patch_sha256": "12bef1fd1287c3bfc9050b39bb51ace7b43586d4c693853bc2bd0723aec7c11d",
+      "finding": {
+        "id": "secf1-731ba4ce",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "src/helpers/config-helper.js",
+        "message": "Review the change to src/helpers/config-helper.js",
+        "evidence": "Upstream diff, 1 file(s), 2 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "614f7ca8acf26d17dcf1583c986f5c5cf5af68c6946b7b2f49abb8dcc1f3046b"
+    },
+    {
+      "id": "df17d3eff9",
+      "source": "mongodb/js-bson@3809c1313a7b",
+      "repo": "mongodb/js-bson",
+      "license": "Apache-2.0",
+      "upstream_commit": "3809c1313a7b2a8001065f0271199df9fa3d16a8",
+      "ghsa": "GHSA-v8w9-2789-6hhr",
+      "cve": "CVE-2020-7610",
+      "cwe": "CWE-502",
+      "files": [
+        "lib/bson/parser/serializer.js"
+      ],
+      "variant": "benign_fix",
+      "class": null,
+      "base_sha": "e4de7b565a4278b63d4fc04b1955644827c70cbb",
+      "changed_lines": 6,
+      "security_wording": false,
+      "patch_sha256": "189b338f936ce999067a2a8f37c7e0982ac77911f6134484079944dca9063b91",
+      "finding": {
+        "id": "secf1-a55a26c8",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "lib/bson/parser/serializer.js",
+        "message": "Review the change to lib/bson/parser/serializer.js",
+        "evidence": "Upstream diff, 1 file(s), 6 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "9156423ec65baa00c8e606fa7a29aa0ba22b57db9e3c5be64da4ba1648852201"
+    },
+    {
+      "id": "e2b952d5be",
+      "source": "danger/danger-js@087a7290264c",
+      "repo": "danger/danger-js",
+      "license": "MIT",
+      "upstream_commit": "087a7290264cc6fb7154ea8c2552a7b2cb8b33a3",
+      "ghsa": "GHSA-3x93-p86w-5jvh",
+      "cve": "CVE-2026-16629",
+      "cwe": "CWE-77",
+      "files": [
+        "source/platforms/git/localGetFileAtSHA.ts"
+      ],
+      "variant": "benign_fix",
+      "class": null,
+      "base_sha": "a9f198a96ac593c4b6968b91e4591d8931dc9861",
+      "changed_lines": 10,
+      "security_wording": true,
+      "patch_sha256": "6ae7dec6734f6829a3a7787da1a91ae05d88a3b9b27e3d0d6af996ff5ca8c3c3",
+      "finding": {
+        "id": "secf1-6e33a0d8",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "source/platforms/git/localGetFileAtSHA.ts",
+        "message": "Review the change to source/platforms/git/localGetFileAtSHA.ts",
+        "evidence": "Upstream diff, 1 file(s), 10 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "d9f0725c40efdf2efdc12d063903189eb865007cb7dacae33d1f4420f0b0f8fc"
+    },
+    {
+      "id": "ed8babc541",
+      "source": "danger/danger-js@8e179207d773",
+      "repo": "danger/danger-js",
+      "license": "MIT",
+      "upstream_commit": "8e179207d7733c9fc0c4fbd060bdb1d217e5bfc4",
+      "ghsa": null,
+      "cve": null,
+      "cwe": null,
+      "files": [
+        "source/ci_source/providers/GitHubActions.ts"
+      ],
+      "variant": "decoy",
+      "class": null,
+      "base_sha": "bb0f4c2c40c9ab70b0f099c26a56f96bfaffeddb",
+      "changed_lines": 9,
+      "security_wording": false,
+      "patch_sha256": "52b4fee78f37184686330639f1c2659f5951b99632cc3ea475a491e257b228c9",
+      "finding": {
+        "id": "secf1-cdde5056",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "source/ci_source/providers/GitHubActions.ts",
+        "message": "Review the change to source/ci_source/providers/GitHubActions.ts",
+        "evidence": "Upstream diff, 1 file(s), 9 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "cc7bd3f1179156395cc3bef97555d2e7c83da77fbd02524a9759661dd8ef0148"
+    },
+    {
+      "id": "f34afbd701",
+      "source": "argos-ci/argos-javascript@8355f3af3be3",
+      "repo": "argos-ci/argos-javascript",
+      "license": "MIT",
+      "upstream_commit": "8355f3af3be3f4fe361d58a688d21535cf672717",
+      "ghsa": "GHSA-4x45-gxvp-6283",
+      "cve": "CVE-2026-59960",
+      "cwe": "CWE-78",
+      "files": [
+        "packages/core/src/ci-environment/git.ts"
+      ],
+      "variant": "benign_fix",
+      "class": null,
+      "base_sha": "1787fe78cba46f408493e02114150f2d73f47fa4",
+      "changed_lines": 26,
+      "security_wording": false,
+      "patch_sha256": "2966ff5384d8cdf087b5cec527083d73e758cd83fc3f051c1900fa1a8c0c9f35",
+      "finding": {
+        "id": "secf1-e2354695",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "packages/core/src/ci-environment/git.ts",
+        "message": "Review the change to packages/core/src/ci-environment/git.ts",
+        "evidence": "Upstream diff, 1 file(s), 26 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "2932225af5f1d1d77ec53767036fb378b8f11da3217e3720e05cc8458a5636a2"
+    },
+    {
+      "id": "fb3ae3d050",
+      "source": "bruno-robert/window-control@075c854534a7",
+      "repo": "bruno-robert/window-control",
+      "license": "MIT",
+      "upstream_commit": "075c854534a749d887655a906759f5a7eee95173",
+      "ghsa": "GHSA-9mjx-wfqp-j5ph",
+      "cve": "CVE-2022-25926",
+      "cwe": "CWE-77",
+      "files": [
+        "index.js"
+      ],
+      "variant": "vulnerable",
+      "class": "command_injection",
+      "base_sha": "075c854534a749d887655a906759f5a7eee95173",
+      "changed_lines": 14,
+      "security_wording": false,
+      "patch_sha256": "087dc2f625979e6432439f5157909797290163870c67fd65518b3e552d78d85d",
+      "finding": {
+        "id": "secf1-e750a846",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "index.js",
+        "message": "Review the change to index.js",
+        "evidence": "Upstream diff, 1 file(s), 14 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "b1edb632ddae9e37bb4c6616066152f2fdc3ffaab8a8d6c50d7d0ca8b3757013"
+    },
+    {
+      "id": "fd2e470df7",
+      "source": "follow-redirects/follow-redirects@9865ca45490e",
+      "repo": "follow-redirects/follow-redirects",
+      "license": "MIT",
+      "upstream_commit": "9865ca45490e4d0f7b6944870318408344570aff",
+      "ghsa": "GHSA-q3jh-wrc6-jgq8",
+      "cve": "CVE-2026-111756",
+      "cwe": "CWE-200",
+      "files": [
+        "index.js"
+      ],
+      "variant": "vulnerable",
+      "class": "secret_exposure",
+      "base_sha": "9865ca45490e4d0f7b6944870318408344570aff",
+      "changed_lines": 9,
+      "security_wording": false,
+      "patch_sha256": "cf78f6029dc6aeba161a5d422a647b9cdc5a1b9f55f8611b085e038de14ca56b",
+      "finding": {
+        "id": "secf1-9a4f8b03",
+        "type": "small_fix",
+        "severity": "info",
+        "file": "index.js",
+        "message": "Review the change to index.js",
+        "evidence": "Upstream diff, 1 file(s), 9 changed lines",
+        "suggested_fix": "Keep the change if it is correct and safe."
+      },
+      "finding_sha256": "bd62f753d56e581b583afee0b0141545b84aeea63f27c12b23fbe9abdca90ec6"
+    }
+  ]
+}

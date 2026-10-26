@@ -85,13 +85,79 @@ export interface EvalRunResult {
   finishedAt: string;
 }
 
-export interface AgentScore {
+export type ScoreScale = '0-5' | '0-100' | 'unknown';
+
+/** Which benchmark/scale a stored score belongs to. Scores are only ranked or trended within one cohort. */
+export interface ScoreCohort {
+  benchmark: string;
+  scale: ScoreScale;
+  /** `${benchmark}:${scale}` */
+  cohort: string;
+}
+
+export interface AgentScore extends ScoreCohort {
   agentId: string;
   overallScore: number;
   categoryScores: Record<string, number>;
   totalCases: number;
   lastEvalAt: string;
   trend: 'improving' | 'stable' | 'declining';
+}
+
+export const GOVERNANCE_BENCHMARK = 'openmythos-governance';
+export const GOVERNANCE_COHORT = `${GOVERNANCE_BENCHMARK}:0-5`;
+const CRITIC_BENCHMARK = 'explainer-critic';
+
+interface StoredRun {
+  id?: string;
+  agent_id?: string;
+  judge_model?: string | null;
+  overall_score: number | null;
+  completed_cases?: number;
+  finished_at?: string;
+  metadata?: string | null;
+}
+
+function parseMetadata(raw: string | null | undefined): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(raw || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch { return {}; }
+}
+
+function inRange(score: unknown, max: number): boolean {
+  return typeof score === 'number' && Number.isFinite(score) && score >= 0 && score <= max;
+}
+
+/**
+ * DF-01: openmythos_eval_runs holds two writers with different scales —
+ * OpenMythos benchmark runs (0–5 judge/oracle mean) and ExplainerGenerationService
+ * critic grades (0–100, threshold 85). Scale is not stored on legacy rows, so it is
+ * derived conservatively from the score source: positively identified critic rows
+ * are 0–100; everything else is the governance benchmark, valid as 0–5 only when the
+ * value actually lies in 0–5, otherwise `unknown`. No numeric normalisation.
+ */
+export function classifyEvalRun(run: StoredRun): ScoreCohort {
+  const metadata = parseMetadata(run.metadata);
+  const score = run.overall_score;
+  const critic = metadata.benchmark === CRITIC_BENCHMARK
+    || run.agent_id === CRITIC_BENCHMARK
+    || run.judge_model === 'judge-service-4factor'
+    || typeof metadata.bundle_id === 'string'
+    || (run.id ?? '').startsWith('explcrit-');
+  const benchmark = critic ? CRITIC_BENCHMARK : GOVERNANCE_BENCHMARK;
+  const scale: ScoreScale = critic
+    ? (inRange(score, 100) ? '0-100' : 'unknown')
+    : (inRange(score, 5) ? '0-5' : 'unknown');
+  return { benchmark, scale, cohort: `${benchmark}:${scale}` };
+}
+
+function trendOf(runs: StoredRun[]): AgentScore['trend'] {
+  if (runs.length < 2) return 'stable';
+  const diff = Number(runs[0].overall_score) - Number(runs[1].overall_score);
+  if (diff > 0.1) return 'improving';
+  if (diff < -0.1) return 'declining';
+  return 'stable';
 }
 
 function getOllamaUrl(): string { return process.env.OLLAMA_URL || 'http://192.168.1.28:11434'; }
@@ -589,55 +655,53 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
    * Get the latest governance scores for an agent.
    */
   getAgentScore(agentId: string): AgentScore | null {
-    const run = this.db.prepare(`
-      SELECT id, overall_score, completed_cases, finished_at, metadata
+    const runs = this.completedRuns(agentId);
+    if (runs.length === 0) return null;
+    return this.scoreInCohort(agentId, runs, classifyEvalRun(runs[0]).cohort);
+  }
+
+  // ponytail: newest 200 completed runs per agent bound the cohort scan; raise or push the
+  // classification into SQL if an agent ever has >200 runs of another cohort after its last 0-5 run.
+  private completedRuns(agentId: string): StoredRun[] {
+    return this.db.prepare(`
+      SELECT id, agent_id, judge_model, overall_score, completed_cases, finished_at, metadata
       FROM openmythos_eval_runs
       WHERE agent_id = ? AND status = 'completed'
       ORDER BY finished_at DESC
-      LIMIT 1
-    `).get(agentId) as any;
+      LIMIT 200
+    `).all(agentId) as StoredRun[];
+  }
 
-    if (!run) return null;
-
-    const prevRuns = this.db.prepare(`
-      SELECT overall_score FROM openmythos_eval_runs
-      WHERE agent_id = ? AND status = 'completed'
-      ORDER BY finished_at DESC
-      LIMIT 5
-    `).all(agentId) as Array<{ overall_score: number }>;
-
-    let trend: 'improving' | 'stable' | 'declining' = 'stable';
-    if (prevRuns.length >= 2) {
-      const diff = prevRuns[0].overall_score - prevRuns[1].overall_score;
-      if (diff > 0.1) trend = 'improving';
-      else if (diff < -0.1) trend = 'declining';
-    }
-
-    let metadata: { category_scores?: Record<string, number> } = {};
-    try { metadata = JSON.parse(run.metadata || '{}'); } catch { /* malformed metadata must not sink the score */ }
+  /** Latest score + trend using only runs of one cohort; null when the agent has none. */
+  private scoreInCohort(agentId: string, runs: StoredRun[], cohort: string): AgentScore | null {
+    const same = runs.filter((run) => classifyEvalRun(run).cohort === cohort);
+    if (same.length === 0) return null;
+    const latest = same[0];
+    const metadata = parseMetadata(latest.metadata) as { category_scores?: Record<string, number> };
     return {
       agentId,
-      overallScore: run.overall_score,
+      overallScore: latest.overall_score as number,
       categoryScores: metadata.category_scores || {},
-      totalCases: run.completed_cases,
-      lastEvalAt: run.finished_at,
-      trend,
+      totalCases: latest.completed_cases as number,
+      lastEvalAt: latest.finished_at as string,
+      trend: trendOf(same),
+      ...classifyEvalRun(latest),
     };
   }
 
   /**
-   * Get governance trend for an agent over time.
+   * Get governance trend for an agent over time — only runs in the cohort of the
+   * agent's latest run, so a different scale never appears as a trend step.
    */
   getGovernanceTrend(agentId: string, limit = 10): Array<{ date: string; score: number }> {
-    const runs = this.db.prepare(`
-      SELECT overall_score, finished_at
-      FROM openmythos_eval_runs
-      WHERE agent_id = ? AND status = 'completed'
-      ORDER BY finished_at DESC
-      LIMIT ?
-    `).all(agentId, limit) as Array<{ overall_score: number; finished_at: string }>;
-
-    return runs.map((r) => ({ date: r.finished_at, score: r.overall_score })).reverse();
+    const runs = this.completedRuns(agentId);
+    if (runs.length === 0) return [];
+    const cohort = classifyEvalRun(runs[0]).cohort;
+    return runs
+      .filter((run) => classifyEvalRun(run).cohort === cohort)
+      .slice(0, limit)
+      .map((r) => ({ date: r.finished_at as string, score: r.overall_score as number }))
+      .reverse();
   }
 
   /**
@@ -699,9 +763,9 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
     judgeCases: number | null;
     startedAt: string | null;
     finishedAt: string | null;
-  }> {
+  } & ScoreCohort> {
     const rows = this.db.prepare(`
-      SELECT id, agent_id, status, total_cases, completed_cases, overall_score, started_at, finished_at, metadata
+      SELECT id, agent_id, judge_model, status, total_cases, completed_cases, overall_score, started_at, finished_at, metadata
       FROM openmythos_eval_runs
       ORDER BY started_at DESC
       LIMIT ?
@@ -722,23 +786,56 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
         judgeCases: metadata.judge_cases ?? null,
         startedAt: (r.started_at as string) ?? null,
         finishedAt: (r.finished_at as string) ?? null,
+        ...classifyEvalRun(r as unknown as StoredRun),
       };
     });
   }
 
   /**
-   * Governance leaderboard: latest score per agent, best first.
+   * Governance leaderboard: latest 0–5 OpenMythos score per agent, best first.
+   * Other cohorts (0–100 critic grades, out-of-range/unknown scale) never enter
+   * this ranking; see getOtherScoreCohorts().
    */
   getLeaderboard(): AgentScore[] {
-    const agents = this.db.prepare(`
-      SELECT DISTINCT agent_id FROM openmythos_eval_runs WHERE status = 'completed'
-    `).all() as Array<{ agent_id: string }>;
-
-    // ponytail: one getAgentScore query per agent — fine at fleet sizes, batch when agents > ~1k
-    return agents
-      .map((a) => this.getAgentScore(a.agent_id))
+    // ponytail: one query per agent — fine at fleet sizes, batch when agents > ~1k
+    return this.completedAgents()
+      .map((agentId) => this.scoreInCohort(agentId, this.completedRuns(agentId), GOVERNANCE_COHORT))
       .filter((s): s is AgentScore => s !== null)
       .sort((a, b) => b.overallScore - a.overallScore);
+  }
+
+  /**
+   * Every non-0–5 cohort, each kept separate. A cohort with a known scale is ranked
+   * within itself; an `unknown` scale is listed newest first and never ranked.
+   */
+  getOtherScoreCohorts(): Array<ScoreCohort & { ranked: boolean; scores: AgentScore[] }> {
+    const cohorts = new Map<string, ScoreCohort & { ranked: boolean; scores: AgentScore[] }>();
+    for (const agentId of this.completedAgents()) {
+      const runs = this.completedRuns(agentId);
+      const seen = new Set<string>();
+      for (const run of runs) {
+        const meta = classifyEvalRun(run);
+        if (meta.cohort === GOVERNANCE_COHORT || seen.has(meta.cohort)) continue;
+        seen.add(meta.cohort);
+        const score = this.scoreInCohort(agentId, runs, meta.cohort);
+        if (!score) continue;
+        const entry = cohorts.get(meta.cohort) ?? { ...meta, ranked: meta.scale !== 'unknown', scores: [] };
+        entry.scores.push(score);
+        cohorts.set(meta.cohort, entry);
+      }
+    }
+    return [...cohorts.values()].map((entry) => ({
+      ...entry,
+      scores: entry.ranked
+        ? entry.scores.sort((a, b) => b.overallScore - a.overallScore)
+        : entry.scores.sort((a, b) => String(b.lastEvalAt).localeCompare(String(a.lastEvalAt))),
+    }));
+  }
+
+  private completedAgents(): string[] {
+    return (this.db.prepare(`
+      SELECT DISTINCT agent_id FROM openmythos_eval_runs WHERE status = 'completed'
+    `).all() as Array<{ agent_id: string }>).map((row) => row.agent_id);
   }
 
   /**
@@ -816,6 +913,7 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
       totalCases: latest.completed_cases,
       lastEvalAt: latest.finished_at,
       trend,
+      ...classifyEvalRun(latest),
     };
   }
 

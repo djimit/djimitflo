@@ -1,0 +1,1700 @@
+{
+  "schema": "djimitflo.authority-graph/v1",
+  "as_of": "2026-10-22",
+  "base_commit": "5dfc6cdb (origin/main)",
+  "directive": "CAUSAL-EVOLUTION-003 workstream F",
+  "rule": "never use probabilistic model judgments as substitutes for deterministic authorization; jev never decides approval, promotion, code, risk or fitness",
+  "tags": {
+    "VERIFIED": "the code path was read end to end (file:line) and, for fixed findings, a test fails on main",
+    "SUPPORTED": "strong partial evidence: the cited lines were read, the full path or prod state was not",
+    "HYPOTHESIS": "plausible from the code, not traced end to end",
+    "UNKNOWN": "evidence missing; never read as safe"
+  },
+  "roles": "packages/shared/src/types/auth.ts:15-83 (MAKER: create:task, execute:task, write:agents, write:skills, write:capability, write:claim, write:swarm_action, write:evidence; approve:task: ADMIN, APPROVER; write:governance: ADMIN only)",
+  "prod_note": "all four prod users are admin (SECURITY_GAPS S12), so least-role escalations are latent until service accounts exist",
+  "policy_version_note": "no promotion or approval edge records a policy version except autonomy rule ids, judgment policyVersion, OKF/skill content hashes and approval_policies.version (not bound to decisions); null means not recorded",
+  "edges": [
+    {
+      "id": "EXE-01",
+      "class": "execute",
+      "principal": "HTTP user with execute:task (MAKER, ADMIN)",
+      "capability": "run a task on an executor",
+      "enforcement": [
+        "packages/server/src/routes/tasks.ts:434",
+        "packages/server/src/routes/tasks.ts:441 (canExecuteTask)",
+        "packages/server/src/execution/execution-engine.ts:252",
+        "packages/server/src/execution/execution-engine.ts:320 (runtime admission)",
+        "packages/server/src/execution/execution-engine.ts:328 (CommandRiskClassifier)",
+        "packages/server/src/execution/execution-engine.ts:329 (policy decision)",
+        "packages/server/src/execution/execution-engine.ts:389 (approval)"
+      ],
+      "delegation": "dispatcher recorded as approvals.requested_by (execution-engine.ts:407); approval_policies decide allow / require_approval",
+      "policy_version": {
+        "value": null,
+        "reason": "approval_policies.version is bumped on PATCH (routes/policies.ts:113) but a decision does not record which version it used"
+      },
+      "audit": [
+        "packages/server/src/execution/execution-engine.ts:372 (audit.record)",
+        "packages/server/src/execution/execution-engine.ts:423 (audit.record)",
+        "risk_assessments"
+      ],
+      "tag": "SUPPORTED",
+      "finding": {
+        "kind": "design_gap",
+        "severity": "MEDIUM",
+        "status": "operator_decision",
+        "pr": null,
+        "detail": "the caller sets risk_level / execution_mode (routes/tasks.ts:148-149,226) and sandbox metadata (execution-engine.ts:533, 629-641); approval then depends on the keyword classifier"
+      },
+      "notes": "RUNTIME_ADMISSION_MODE=shadow; seeded policy-low-task-allow (database/migrate.ts:246)"
+    },
+    {
+      "id": "EXE-02",
+      "class": "approve_execution",
+      "principal": "HTTP user with approve:task (ADMIN, APPROVER)",
+      "capability": "approve an execution; the run resumes",
+      "enforcement": [
+        "packages/server/src/routes/approvals.ts:160",
+        "packages/server/src/routes/approvals.ts:195",
+        "packages/server/src/execution/execution-engine.ts:891-963",
+        "packages/server/src/services/approval-service.ts:180",
+        "packages/server/src/services/approval-service.ts:200-202 (requested_by != decided_by)"
+      ],
+      "delegation": "decided_by = req.user.sub",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "packages/server/src/services/approval-service.ts:234 (audit)",
+        "packages/server/src/services/approval-service.ts:159-165 (outbox, authority ledger)"
+      ],
+      "tag": "VERIFIED",
+      "finding": null,
+      "notes": "APPROVAL_TTL_MS; prod 30 d: 104 approved, 0 denied (#961 §6.1)"
+    },
+    {
+      "id": "EXE-03",
+      "class": "approve_execution",
+      "principal": "loop-daemon (no user)",
+      "capability": "auto-approve maker execution in rule-scoped lanes",
+      "enforcement": [
+        "packages/server/src/services/loop-daemon.ts:386-393",
+        "packages/server/src/services/autonomy-shadow-service.ts:58-71",
+        "packages/server/src/services/loop-verification-service.ts:153-155"
+      ],
+      "delegation": "approvals.decided_by = autonomy:<rule>",
+      "policy_version": {
+        "value": "autonomy:test-gap-rule-v1 | autonomy:oracle-lane-v1",
+        "reason": null
+      },
+      "audit": [
+        "judgments (autonomy shadow)",
+        "audit.record with user_id autonomy:*",
+        "worker_leases.metadata.auto_approved_scope"
+      ],
+      "tag": "SUPPORTED",
+      "finding": null,
+      "notes": "deterministic rule, not a model; LOOP_AUTO_APPROVE_TEST_GAP, LOOP_AUTO_APPROVE_MUTATION_GAP, ORACLE_LANES_AUTO_APPROVE"
+    },
+    {
+      "id": "EXE-04",
+      "class": "approve_execution",
+      "principal": "evolution gym (no user)",
+      "capability": "approve a gym worker",
+      "enforcement": [
+        "packages/server/src/services/evolution-gym-service.ts:271"
+      ],
+      "delegation": "decided_by = autonomy:gym-rule-v1",
+      "policy_version": {
+        "value": "autonomy:gym-rule-v1",
+        "reason": null
+      },
+      "audit": [
+        "decideApproval audit"
+      ],
+      "tag": "SUPPORTED",
+      "finding": null,
+      "notes": null
+    },
+    {
+      "id": "EXE-05",
+      "class": "approve_execution",
+      "principal": "loop-daemon",
+      "capability": "approve a retry maker by inheritance (D4)",
+      "enforcement": [
+        "packages/server/src/services/approval-inheritance.ts:24-44",
+        "packages/server/src/services/loop-daemon.ts:417-427"
+      ],
+      "delegation": "decided_by = inherit:<approval id>; same action hash, <= risk, TTL; machine deciders excluded (approval-inheritance.ts:35)",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "loop_events",
+        "decideApproval audit"
+      ],
+      "tag": "SUPPORTED",
+      "finding": null,
+      "notes": "APPROVAL_INHERIT_ENABLED=true"
+    },
+    {
+      "id": "EXE-06",
+      "class": "approve_execution",
+      "principal": "any create:task principal (MAKER, APPROVER) via a task tagged checker",
+      "capability": "execute without its own approval under the run's maker approval",
+      "enforcement": [
+        "packages/server/src/execution/execution-engine.ts:1535-1549 (hasApprovedStart)",
+        "packages/server/src/execution/execution-engine.ts:1557-1580 (reviewerInheritsRunApproval)"
+      ],
+      "delegation": "tags + metadata.loop_run_id (free input on POST/PATCH /tasks, routes/tasks.ts:154-155, 268)",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "packages/server/src/execution/execution-engine.ts:1575 (audit reviewer_inherited_run_approval)"
+      ],
+      "tag": "VERIFIED",
+      "finding": {
+        "kind": "bypass",
+        "severity": "MEDIUM",
+        "status": "fixed",
+        "pr": "#967",
+        "residual": "the grant query counts machine deciders (autonomy:*, inherit:*) as the human maker approval (execution-engine.ts:1567), contrary to its docstring: operator decision"
+      },
+      "notes": "LOOP_REVIEWER_APPROVAL_INHERIT (prod value UNKNOWN here)"
+    },
+    {
+      "id": "EXE-07",
+      "class": "execute",
+      "principal": "HTTP user with create:task",
+      "capability": "start a loop run and run maker / checker workers",
+      "enforcement": [
+        "packages/server/src/routes/loops.ts:183",
+        "packages/server/src/routes/loops.ts:270",
+        "packages/server/src/routes/loops.ts:282",
+        "packages/server/src/routes/loops.ts:294",
+        "packages/server/src/services/loop-worker-executor-service.ts:581-604"
+      ],
+      "delegation": "worker tasks are inserted without created_by / owner, so approvals.requested_by = system (approval-service.ts:123) and the self-approval check never matches a person",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "loop_events"
+      ],
+      "tag": "SUPPORTED",
+      "finding": {
+        "kind": "separation_of_duties",
+        "severity": "LOW",
+        "status": "operator_decision",
+        "pr": null,
+        "detail": "one APPROVER can start a run, approve its maker, give the checker verdict and complete it; maker_checker_separation only counts leases (loop-verification-service.ts:105-107)"
+      },
+      "notes": null
+    },
+    {
+      "id": "EXE-08",
+      "class": "approve_execution",
+      "principal": "HTTP user with approve:task",
+      "capability": "manual checker / security verdict",
+      "enforcement": [
+        "packages/server/src/routes/loops.ts:307",
+        "packages/server/src/routes/loops.ts:321",
+        "packages/server/src/services/loop-service.ts:376-383",
+        "packages/server/src/services/loop-service.ts:1006"
+      ],
+      "delegation": "attestation = JWT user (P0-4)",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "loop_events only (loop-service.ts:1049); no audit.record"
+      ],
+      "tag": "SUPPORTED",
+      "finding": {
+        "kind": "audit_gap",
+        "severity": "LOW",
+        "status": "documented",
+        "pr": null
+      },
+      "notes": null
+    },
+    {
+      "id": "EXE-09",
+      "class": "approve_execution",
+      "principal": "HTTP user with approve:task",
+      "capability": "complete a loop run (marks the proposal verified)",
+      "enforcement": [
+        "packages/server/src/routes/loops.ts:346-352",
+        "packages/server/src/services/loop-service.ts:896"
+      ],
+      "delegation": "human_approval_ref = operator:<sub> (bound in the route)",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "loop_events (loop-service.ts:915); no audit.record"
+      ],
+      "tag": "VERIFIED",
+      "finding": null,
+      "notes": null
+    },
+    {
+      "id": "EXE-10",
+      "class": "approve_code",
+      "principal": "loop-daemon automated checker (LLM, hermes runtime)",
+      "capability": "an LLM verdict satisfies the checker_verdict gate",
+      "enforcement": [
+        "packages/server/src/services/loop-daemon.ts:771-831",
+        "packages/server/src/services/loop-verification-service.ts:343-353",
+        "packages/server/src/services/loop-worker-executor-service.ts:418"
+      ],
+      "delegation": "runtime verdict accepted / needs_revision / rejected",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version; model family randomised by F2 v2"
+      },
+      "audit": [
+        "worker_leases.metadata.verdict",
+        "loop_runs.gates_json"
+      ],
+      "tag": "SUPPORTED",
+      "finding": {
+        "kind": "model_as_authorization",
+        "severity": "MEDIUM",
+        "status": "operator_decision",
+        "pr": null,
+        "detail": "a probabilistic verdict is a code-class gate input; calibration: kappa(checker, outcome) 0.318, seeded F1 AUC 0.95 (#961 §6.1)"
+      },
+      "notes": "LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED=true, ..._SECURITY_CHECKER_ENABLED=true; F2 v2 running, not touched"
+    },
+    {
+      "id": "EXE-11",
+      "class": "approve_execution",
+      "principal": "HTTP user with write:governance",
+      "capability": "a proof run completes its loop run",
+      "enforcement": [
+        "packages/server/src/routes/swarm-governance.ts:107",
+        "packages/server/src/services/proof-run-service.ts:142",
+        "packages/server/src/services/proof-run-service.ts:737"
+      ],
+      "delegation": "body.human_approval_ref passed to completeLoopRun (any non-empty string)",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "none found"
+      ],
+      "tag": "VERIFIED",
+      "finding": {
+        "kind": "string_gate",
+        "severity": "LOW",
+        "status": "fixed",
+        "pr": "#963"
+      },
+      "notes": null
+    },
+    {
+      "id": "EXE-12",
+      "class": "execute",
+      "principal": "HTTP user with write:swarm_action (MAKER)",
+      "capability": "worker pool start/drain, spawn roots, swarm session execute",
+      "enforcement": [
+        "packages/server/src/routes/swarm-workers.ts:43-80",
+        "packages/server/src/routes/spawns.ts:51",
+        "packages/server/src/routes/swarm-orchestration.ts:62",
+        "packages/server/src/services/nested-spawn-service.ts:163"
+      ],
+      "delegation": "spawn tokens for children; execution still passes the engine approval",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "loop_events",
+        "spawn audit row"
+      ],
+      "tag": "SUPPORTED",
+      "finding": null,
+      "notes": "SPAWN_DEPTH_BUDGET default 0"
+    },
+    {
+      "id": "EXE-13",
+      "class": "execute",
+      "principal": "manage:config requester + approve:task approver",
+      "capability": "root shell command on a fleet host",
+      "enforcement": [
+        "packages/server/src/routes/host-agent.ts:80",
+        "packages/server/src/routes/host-agent.ts:83",
+        "packages/server/src/services/fleet-commands.ts:43-54"
+      ],
+      "delegation": "sha256-bound approval, 15 min window; self-approval recorded, not blocked",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "packages/server/src/services/fleet-commands.ts:53 (audit on approve, self_approved flag)"
+      ],
+      "tag": "VERIFIED",
+      "finding": {
+        "kind": "separation_of_duties",
+        "severity": "LOW",
+        "status": "operator_decision",
+        "pr": null,
+        "detail": "ponytail note: no separation with a single operator (operator decision 10-10)"
+      },
+      "notes": null
+    },
+    {
+      "id": "EXE-14",
+      "class": "execute",
+      "principal": "HTTP user with create:task",
+      "capability": "a goal that qualifies for an objective-mode maker run, skipping proposal governance",
+      "enforcement": [
+        "packages/server/src/services/goal-service.ts:307 (only operator_pause* reserved)",
+        "packages/server/src/services/objective-loop-gate.ts:39-46",
+        "packages/server/src/services/loop-daemon.ts:313",
+        "packages/server/src/services/loop-daemon.ts:531"
+      ],
+      "delegation": "goal.metadata.source = self-improvement and risk_class = low",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "none at goal creation"
+      ],
+      "tag": "SUPPORTED",
+      "finding": {
+        "kind": "proposal_bypass",
+        "severity": "LOW",
+        "status": "operator_decision",
+        "pr": null,
+        "detail": "skips the panel / write:governance proposal approval; the objective-mode maker still needs an execution approval (not auto-approved)"
+      },
+      "notes": null
+    },
+    {
+      "id": "EXE-15",
+      "class": "execute_tools",
+      "principal": "any",
+      "capability": "execute an external MCP tool",
+      "enforcement": [
+        "packages/server/src/services/tool-broker.ts:184 (evaluateToolCall, no caller)",
+        "packages/server/src/execution/execution-engine.ts:129,154 (getToolBroker, no caller)",
+        "packages/server/src/routes/mcp.ts:93,219,290,312,334,340 (display / writer only)"
+      ],
+      "delegation": "none: no live code path is an MCP client (only tools/list discovery in services/federation/adapter.ts:55, test-only)",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "none"
+      ],
+      "tag": "VERIFIED",
+      "finding": {
+        "kind": "unenforced_control_display",
+        "severity": "LOW",
+        "status": "fixed_doc",
+        "pr": "#970",
+        "detail": "mcp_tool_permissions is a catalog; the dashboard now says \"Catalog only — not enforced\""
+      },
+      "notes": "no enforcement layer added (no caller to enforce at)"
+    },
+    {
+      "id": "EXE-16",
+      "class": "execute",
+      "principal": "GitHub webhook (HMAC)",
+      "capability": "start a PR-review loop with a heuristic checker verdict",
+      "enforcement": [
+        "packages/server/src/routes/github-webhooks.ts:76-189",
+        "packages/server/src/services/github-pr-review-service.ts:173"
+      ],
+      "delegation": "reviewer_type 'heuristic' (cannot pass the human gate)",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "deliveries table"
+      ],
+      "tag": "SUPPORTED",
+      "finding": null,
+      "notes": null
+    },
+    {
+      "id": "MRG-01",
+      "class": "merge_pr",
+      "principal": "loop-auto-merge (GITHUB_TOKEN)",
+      "capability": "squash-merge a test-only loop PR to main",
+      "enforcement": [
+        "packages/server/src/services/loop-auto-merge.ts:49-198",
+        "packages/server/src/services/loop-auto-merge.ts:118 (eligibility: proposal verified, run completed | ready_for_human_merge)",
+        "packages/server/src/services/loop-auto-merge.ts:201-236 (revocation)"
+      ],
+      "delegation": "rule + CI + 10 % human audit sample; head bound to the verified SHA",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "packages/server/src/services/loop-auto-merge.ts:192 (audit loop_pr_auto_merged)",
+        "loop_runs.metadata.auto_merge"
+      ],
+      "tag": "VERIFIED",
+      "finding": {
+        "kind": "no_human_chain",
+        "severity": "MEDIUM",
+        "status": "operator_decision",
+        "pr": null,
+        "detail": "autonomy auto-approve (EXE-03) -> LLM checker (EXE-10) -> verified -> auto-merge -> auto-deploy (DEP-01): a test-only change can reach prod with no human; the no_automatic_merge gate is hard-coded pass (loop-verification-service.ts:164-168), wrong evidence once auto-merge acts"
+      },
+      "notes": "LOOP_AUTO_MERGE_TEST_ONLY=act (prod, #961)"
+    },
+    {
+      "id": "MRG-02",
+      "class": "merge_pr",
+      "principal": "dependency-lane (GITHUB_TOKEN)",
+      "capability": "squash-merge Dependabot patch/minor PRs",
+      "enforcement": [
+        "packages/server/src/services/dependency-lane.ts:148-256",
+        "packages/server/src/services/dependency-lane.ts:110 (author check)",
+        "packages/server/src/services/dependency-lane.ts:118-121 (green on any status context)"
+      ],
+      "delegation": "rule + CI",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "packages/server/src/services/dependency-lane.ts:230 (audit)",
+        "packages/server/src/services/dependency-lane.ts:167 (revoke)"
+      ],
+      "tag": "SUPPORTED",
+      "finding": null,
+      "notes": "DEPENDENCY_LANE_MODE=shadow (prod, #961)"
+    },
+    {
+      "id": "MRG-03",
+      "class": "modify_config",
+      "principal": "HTTP user with manage:config",
+      "capability": "re-enable auto-merge / dependency-lane act mode",
+      "enforcement": [
+        "packages/server/src/routes/loops.ts:113",
+        "packages/server/src/routes/loops.ts:133"
+      ],
+      "delegation": "actor = sub",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "packages/server/src/services/dependency-lane.ts:251",
+        "packages/server/src/services/loop-auto-merge-state.ts:74"
+      ],
+      "tag": "SUPPORTED",
+      "finding": null,
+      "notes": null
+    },
+    {
+      "id": "DEP-01",
+      "class": "deploy",
+      "principal": "systemd timer on the VPS (root)",
+      "capability": "deploy green main",
+      "enforcement": [
+        "scripts/auto-deploy.sh:60-70 (fetches scripts/deploy-vps.sh from the commit being deployed and runs it)",
+        "scripts/deploy-vps.sh"
+      ],
+      "delegation": "green CI, settle time, no running leases; kill switch AUTO_DEPLOY_DISABLED",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "deploy-log.jsonl"
+      ],
+      "tag": "VERIFIED",
+      "finding": {
+        "kind": "merge_equals_root",
+        "severity": "MEDIUM",
+        "status": "operator_decision",
+        "pr": null,
+        "detail": "whoever can merge to main (incl. MRG-01/02 bots) controls the root deploy script"
+      },
+      "notes": null
+    },
+    {
+      "id": "DEP-02",
+      "class": "deploy",
+      "principal": "operator with SSH key",
+      "capability": "manual deploy",
+      "enforcement": [
+        "scripts/deploy-vps.sh:96-109"
+      ],
+      "delegation": "none",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "none"
+      ],
+      "tag": "SUPPORTED",
+      "finding": null,
+      "notes": null
+    },
+    {
+      "id": "MEM-01",
+      "class": "promote_memory",
+      "principal": "HTTP user with approve:task",
+      "capability": "promote a memory candidate",
+      "enforcement": [
+        "packages/server/src/routes/swarm-governance.ts:198-213",
+        "packages/server/src/services/memory-candidate-service.ts:221-258",
+        "packages/server/src/services/memory-candidate-service.ts:229-231 (P0-9: human_required needs approver_user_id)",
+        "packages/server/src/services/memory-candidate-service.ts:233 (review_required: any approved_by)"
+      ],
+      "delegation": "human_approved + req.user.sub",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "packages/server/src/routes/swarm-governance.ts:208 (audit memory_candidate_promoted)",
+        "memory_candidates.metadata.approver_type"
+      ],
+      "tag": "VERIFIED",
+      "finding": null,
+      "notes": null
+    },
+    {
+      "id": "MEM-02",
+      "class": "promote_memory",
+      "principal": "memory-candidate-review-scheduler (no user)",
+      "capability": "promote non-sensitive operational memory on LLM panel consensus",
+      "enforcement": [
+        "packages/server/src/services/memory-candidate-review-scheduler.ts:135-149",
+        "packages/server/src/services/memory-candidate-service.ts:166-178 (only candidate/proposed rows)",
+        "packages/server/src/services/specialist-panel-service.ts:390-408 (independence enforced only for independent panels)"
+      ],
+      "delegation": "approved_by = agent:memory-approver:<run>; panel risk low, not independent (scheduler :157-163)",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "memory_candidates.metadata approver_type machine"
+      ],
+      "tag": "SUPPORTED",
+      "finding": {
+        "kind": "model_as_authorization",
+        "severity": "LOW",
+        "status": "operator_decision",
+        "pr": null,
+        "detail": "an LLM panel filters an unattended-eligible class; a MAKER can fill the panel seats via POST /swarms/specialist-panels/:id/reviews (routes/swarms.ts:169) — not exercised by a test"
+      },
+      "notes": "MEMORY_CANDIDATE_REVIEW_ENABLED=true"
+    },
+    {
+      "id": "MEM-03",
+      "class": "promote_memory",
+      "principal": "HTTP user with write:governance via ProofRunService",
+      "capability": "promote distilled engineering rules (success, failure with raw error text, curator)",
+      "enforcement": [
+        "packages/server/src/services/proof-run-service.ts:838",
+        "packages/server/src/services/proof-run-service.ts:864",
+        "packages/server/src/services/proof-run-service.ts:1254",
+        "packages/server/src/services/memory-candidate-service.ts:233"
+      ],
+      "delegation": "approved_by = 'proof-run-service' | 'memory_curator' (a string satisfies review_required)",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "none"
+      ],
+      "tag": "VERIFIED",
+      "finding": {
+        "kind": "bypass",
+        "severity": "MEDIUM",
+        "status": "fixed",
+        "pr": "#963",
+        "detail": "proposal authority exercised promotion authority; promoted engineering rules reach maker prompts (MEM-05)"
+      },
+      "notes": "PROOF_RUN_MEMORY_FLYWHEEL unset = on (memory-candidate-service.ts:330) only governs the Qdrant write-back"
+    },
+    {
+      "id": "MEM-04",
+      "class": "promote_memory",
+      "principal": "ProofRunService",
+      "capability": "promote the proof-chain operational memory + Qdrant write-back",
+      "enforcement": [
+        "packages/server/src/services/proof-run-service.ts:481",
+        "packages/server/src/services/proof-run-service.ts:817-818",
+        "packages/server/src/services/memory-candidate-service.ts:330"
+      ],
+      "delegation": "classify() allows unattended promotion of non-sensitive operational_memory",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "trace span memory"
+      ],
+      "tag": "VERIFIED",
+      "finding": null,
+      "notes": "fixed template text; unchanged"
+    },
+    {
+      "id": "MEM-05",
+      "class": "inject_prompt",
+      "principal": "loop assignment (assignment-context)",
+      "capability": "promoted engineering rules are written into maker prompts (LOOP_WORK.md)",
+      "enforcement": [
+        "packages/server/src/services/assignment-context.ts:78-108",
+        "packages/server/src/services/assignment-context.ts:110-123 (sha256 seal)"
+      ],
+      "delegation": "any promoted engineering_rule; approver_type is not checked",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "memory_access_log",
+        "judgments artifact_integrity"
+      ],
+      "tag": "VERIFIED",
+      "finding": {
+        "kind": "read_side_trust",
+        "severity": "MEDIUM",
+        "status": "operator_decision",
+        "pr": null,
+        "detail": "S14: require approver_type human on the read side; not changed here because the memory holdout experiment samples this pool"
+      },
+      "notes": "LOOP_MEMORY_RULES_ENABLED; memory holdout running"
+    },
+    {
+      "id": "MEM-06",
+      "class": "propose_memory",
+      "principal": "HTTP user with write:claim",
+      "capability": "create a memory candidate",
+      "enforcement": [
+        "packages/server/src/routes/swarm-governance.ts:188",
+        "packages/server/src/services/memory-candidate-service.ts:116-139"
+      ],
+      "delegation": "regex classification (:269-298)",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "none"
+      ],
+      "tag": "SUPPORTED",
+      "finding": null,
+      "notes": null
+    },
+    {
+      "id": "MEM-07",
+      "class": "propose_memory",
+      "principal": "dream-state consolidate",
+      "capability": "failure_cause judgments recurring >= 2x become engineering-rule candidates",
+      "enforcement": [
+        "packages/server/src/services/value-allocator.ts (LEARNER_READ_JUDGMENTS)"
+      ],
+      "delegation": "candidates only (review_required)",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "memory_candidates"
+      ],
+      "tag": "SUPPORTED",
+      "finding": null,
+      "notes": "DREAM_STATE_ENABLED"
+    },
+    {
+      "id": "KNW-01",
+      "class": "admit_knowledge",
+      "principal": "HTTP user (requireAuth; write:claim after #948)",
+      "capability": "publish a knowledge claim that creates candidate capabilities / spawn requests",
+      "enforcement": [
+        "packages/server/src/routes/knowledge.ts:24",
+        "packages/server/src/services/capability-acquisition.ts:27-75",
+        "packages/server/src/services/negotiation-coordinator.ts:52-110"
+      ],
+      "delegation": "bus subscribers (bootstrap/autonomous-services.ts:360-375)",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "event bus only"
+      ],
+      "tag": "SUPPORTED",
+      "finding": {
+        "kind": "permission_gap",
+        "severity": "MEDIUM",
+        "status": "fixed_elsewhere",
+        "pr": "#948"
+      },
+      "notes": "spawns held back by SPAWN_DEPTH_BUDGET=0"
+    },
+    {
+      "id": "KNW-02",
+      "class": "admit_knowledge",
+      "principal": "HTTP user with write:claim",
+      "capability": "vote a knowledge claim to confirmed",
+      "enforcement": [
+        "packages/server/src/routes/swarm-intel.ts:107",
+        "packages/server/src/services/knowledge-sharing-service.ts:102-120"
+      ],
+      "delegation": "agentId from the body, no dedupe: 3 calls by one principal confirm a claim",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "none"
+      ],
+      "tag": "SUPPORTED",
+      "finding": {
+        "kind": "ballot_stuffing",
+        "severity": "LOW",
+        "status": "documented",
+        "pr": null,
+        "detail": "downstream consumers of confirmed claims: UNKNOWN"
+      },
+      "notes": null
+    },
+    {
+      "id": "KNW-03",
+      "class": "admit_knowledge",
+      "principal": "anyone on the tailnet via the event bus",
+      "capability": "external events -> work items, discoveries, skill_outcomes, outcome learning",
+      "enforcement": [
+        "packages/server/src/services/external-event-ingest-service.ts:147-150",
+        "packages/server/src/services/external-event-ingest-service.ts:175",
+        "packages/server/src/services/external-event-ingest-service.ts:218-248",
+        "packages/server/src/services/fleet-event-signatures.ts:32-33"
+      ],
+      "delegation": "FLEET_EVENT_SIGNATURES default off; self-declared source",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "external_events rows"
+      ],
+      "tag": "SUPPORTED",
+      "finding": {
+        "kind": "unauthenticated_input",
+        "severity": "HIGH (ecosystem)",
+        "status": "fixed_elsewhere",
+        "pr": "#954 (prepared, log mode)",
+        "detail": "SECURITY_GAPS S3"
+      },
+      "notes": null
+    },
+    {
+      "id": "KNW-04",
+      "class": "change_capability",
+      "principal": "HTTP user with write:swarm_action (MAKER)",
+      "capability": "OKF sync apply marks frontmatter-complete skill/agent capabilities validated (eval 0.8)",
+      "enforcement": [
+        "packages/server/src/routes/swarm-knowledge.ts:62",
+        "packages/server/src/services/knowledge-runtime-service.ts:152-180",
+        "packages/server/src/services/knowledge-runtime-service.ts:498",
+        "packages/server/src/services/knowledge-runtime-service.ts:506"
+      ],
+      "delegation": "frontmatter completeness; risk_ceiling and eval_threshold come from the file",
+      "policy_version": {
+        "value": "OKF file hash",
+        "reason": null
+      },
+      "audit": [
+        "none"
+      ],
+      "tag": "SUPPORTED",
+      "finding": {
+        "kind": "gate_skip",
+        "severity": "MEDIUM",
+        "status": "operator_decision",
+        "pr": null,
+        "detail": "skips the skill training gate, OpenMythos and the high/critical human requirement; authority sits with whoever writes the OKF files"
+      },
+      "notes": null
+    },
+    {
+      "id": "KNW-05",
+      "class": "admit_knowledge",
+      "principal": "any HTTP user with read:evidence (VIEWER)",
+      "capability": "write fleet-wide federated peer patterns",
+      "enforcement": [
+        "packages/server/src/routes/segml-federation.ts:46",
+        "packages/server/src/services/segml-federated-governance-bridge.ts:149-196"
+      ],
+      "delegation": "caller-chosen peerId; peer must exist",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "sync log only"
+      ],
+      "tag": "VERIFIED",
+      "finding": {
+        "kind": "permission_gap",
+        "severity": "LOW",
+        "status": "fixed",
+        "pr": "#968",
+        "detail": "table absent in prod (route errors)"
+      },
+      "notes": null
+    },
+    {
+      "id": "KNW-06",
+      "class": "admit_knowledge",
+      "principal": "kb-corpus ingest",
+      "capability": "content-safety classifier deletes / skips KB pages in every mode",
+      "enforcement": [
+        "packages/server/src/services/content-safety.ts:58-94",
+        "packages/server/src/services/kb-corpus.ts:40-41"
+      ],
+      "delegation": "LLM classifier (nemotron), safety class",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "judgments content_safety"
+      ],
+      "tag": "SUPPORTED",
+      "finding": null,
+      "notes": "CONTENT_SAFETY_MODE=shadow; safety, not promotion"
+    },
+    {
+      "id": "EXP-01",
+      "class": "create_expert_unit",
+      "principal": "discovery_relevance judgment (jev, rows labelled shadow)",
+      "capability": "create an expert unit (a promotion, DI-001 B)",
+      "enforcement": [
+        "packages/server/src/services/expert-source-units-service.ts:111-129 (R3 / KE-2 override)",
+        "packages/server/src/services/expert-source-units-service.ts:131-149 (FE2)",
+        "packages/server/src/services/expert-source-units-service.ts:300-313 (backlog re-judge)",
+        "packages/server/src/services/value-allocator.ts:120-133 (GATE_READ_JUDGMENTS)"
+      ],
+      "delegation": "jev verdict yes / open_problem | lane_technique with recorded provenance",
+      "policy_version": {
+        "value": "discovery_relevance policyVersion 1",
+        "reason": null
+      },
+      "audit": [
+        "judgments.provenance_json",
+        "expert lifecycle events"
+      ],
+      "tag": "VERIFIED",
+      "finding": {
+        "kind": "jev_rule_conflict",
+        "severity": "MEDIUM",
+        "status": "accounted",
+        "pr": "#964",
+        "detail": "jev decides a promotion under FRONTIER_UNITS_REQUIRE_RELEVANCE=true; not in GATE_READ_JUDGMENTS; backlog path lacked the provenance check. Paused (DISCOVERY_RELEVANCE_PAUSED=true, #825); not unpaused. Operator must classify it against the jev rule before any reopen"
+      },
+      "notes": "FRONTIER_UNITS_REQUIRE_RELEVANCE=true"
+    },
+    {
+      "id": "EXP-02",
+      "class": "create_expert_unit",
+      "principal": "ExpertSourceUnitsService",
+      "capability": "re-point a verdict at the unit it created",
+      "enforcement": [
+        "packages/server/src/services/expert-source-units-service.ts:146",
+        "packages/server/src/services/expert-source-units-service.ts:178",
+        "packages/server/src/services/expert-source-units-service.ts:310"
+      ],
+      "delegation": "UPDATE judgments SET subject_type/subject_id after insert",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "judgments.provenance_json (evidence_reference still named the discovery)"
+      ],
+      "tag": "VERIFIED",
+      "finding": {
+        "kind": "provenance_inconsistency",
+        "severity": "LOW",
+        "status": "fixed",
+        "pr": "#964"
+      },
+      "notes": null
+    },
+    {
+      "id": "EXP-03",
+      "class": "create_expert_unit",
+      "principal": "ingestion:source-units",
+      "capability": "expert unit lifecycle DISCOVERED -> CAPABILITY_INFERRED",
+      "enforcement": [
+        "packages/server/src/services/expert-source-units-service.ts:73",
+        "packages/server/src/services/expert-source-units-service.ts:353-362",
+        "packages/server/src/services/frontier-expert-registry-service.ts:185-201"
+      ],
+      "delegation": "evidence must exist",
+      "policy_version": {
+        "value": "DISCOVERY_RELEVANCE_POLICY hash",
+        "reason": null
+      },
+      "audit": [
+        "lifecycle events",
+        "packages/server/src/services/frontier-expert-registry-service.ts:259 (audit)"
+      ],
+      "tag": "SUPPORTED",
+      "finding": null,
+      "notes": null
+    },
+    {
+      "id": "EXP-04",
+      "class": "promote_expert",
+      "principal": "human session with write:swarm_action",
+      "capability": "expert CHECKED / APPROVED / ACTIVE; capability review approved",
+      "enforcement": [
+        "packages/server/src/routes/swarms.ts:240-243 (operatorActor rejects agent tokens)",
+        "packages/server/src/routes/swarms.ts:279",
+        "packages/server/src/routes/swarms.ts:286",
+        "packages/server/src/services/frontier-expert-registry-service.ts:237-265",
+        "packages/server/src/services/frontier-expert-registry-service.ts:314-332"
+      ],
+      "delegation": "checker != approver string compare (:250, :325); denylist regex on actor (:251, :319)",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "packages/server/src/services/frontier-expert-registry-service.ts:259 (transitions)",
+        "reviewCapability: event + snapshot only"
+      ],
+      "tag": "SUPPORTED",
+      "finding": {
+        "kind": "permission_level",
+        "severity": "LOW",
+        "status": "operator_decision",
+        "pr": null,
+        "detail": "promotion needs write:swarm_action, not approve:task; ACTIVE has no checker != actor check"
+      },
+      "notes": null
+    },
+    {
+      "id": "CAP-01",
+      "class": "change_capability",
+      "principal": "HTTP user with write:capability (MAKER)",
+      "capability": "register a capability directly as validated (live_route_allowed) or overwrite a validated / outcome-held one",
+      "enforcement": [
+        "packages/server/src/routes/swarm-intel.ts:237-240",
+        "packages/server/src/services/swarm-intelligence-service.ts:230-316",
+        "packages/server/src/services/swarm-intelligence-service.ts:1740-1752 (blocked reasons)"
+      ],
+      "delegation": "body status + eval_score; upsert ON CONFLICT replaces status, risk, metadata",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "none"
+      ],
+      "tag": "VERIFIED",
+      "finding": {
+        "kind": "bypass",
+        "severity": "MEDIUM (HIGH for least-role MAKER accounts)",
+        "status": "fixed",
+        "pr": "#965",
+        "detail": "live capabilities are routed by planLoopRun (loop-service.ts:726) and nested spawns (nested-spawn-service.ts:561); the upsert also dropped outcome_hold"
+      },
+      "notes": null
+    },
+    {
+      "id": "CAP-02",
+      "class": "change_capability",
+      "principal": "HTTP user with write:capability (MAKER)",
+      "capability": "promote a high/critical capability with a string human_approval_ref",
+      "enforcement": [
+        "packages/server/src/routes/swarm-intel.ts:263-265",
+        "packages/server/src/services/swarm-intelligence-service.ts:364-372"
+      ],
+      "delegation": "any non-empty human_approval_ref / security_checker_ref",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "metadata.promotion_human_approval_ref only"
+      ],
+      "tag": "VERIFIED",
+      "finding": {
+        "kind": "string_gate",
+        "severity": "MEDIUM",
+        "status": "fixed",
+        "pr": "#965",
+        "detail": "SECURITY_GAPS S17"
+      },
+      "notes": null
+    },
+    {
+      "id": "CAP-03",
+      "class": "change_capability",
+      "principal": "HTTP user with write:capability",
+      "capability": "promote a low/medium capability",
+      "enforcement": [
+        "packages/server/src/services/swarm-intelligence-service.ts:354",
+        "packages/server/src/services/swarm-intelligence-service.ts:360"
+      ],
+      "delegation": "caller-asserted eval_score and evidence_refs",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "none"
+      ],
+      "tag": "VERIFIED",
+      "finding": {
+        "kind": "self_asserted_evidence",
+        "severity": "MEDIUM",
+        "status": "operator_decision",
+        "pr": null,
+        "detail": "skill-kind capabilities additionally need DB-checked evidence (swarm-intelligence-service.ts:474-565, skill-training-promotion-gate.ts:16-55)"
+      },
+      "notes": null
+    },
+    {
+      "id": "CAP-04",
+      "class": "change_capability",
+      "principal": "ProofRunService (machine)",
+      "capability": "autoPromoteFromEvidence of the proof maker capability",
+      "enforcement": [
+        "packages/server/src/services/proof-run-service.ts:849",
+        "packages/server/src/services/swarm-intelligence-service.ts:727-772"
+      ],
+      "delegation": ">= 3 completed worker_leases with capability_id, success_rate >= 0.6",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "swarmEventBus capability_transition only"
+      ],
+      "tag": "SUPPORTED",
+      "finding": null,
+      "notes": "no production writer of worker_leases.capability_id found: dead in practice"
+    },
+    {
+      "id": "CAP-05",
+      "class": "change_capability",
+      "principal": "HTTP user with write:governance via ProofRunService",
+      "capability": "write six proof capabilities as validated (eval 0.95)",
+      "enforcement": [
+        "packages/server/src/routes/swarm-governance.ts:107",
+        "packages/server/src/services/proof-run-service.ts:980-1012"
+      ],
+      "delegation": "hardcoded",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "none"
+      ],
+      "tag": "SUPPORTED",
+      "finding": null,
+      "notes": "admin-only initiator; demo capabilities"
+    },
+    {
+      "id": "CAP-06",
+      "class": "change_capability",
+      "principal": "HTTP user with write:capability",
+      "capability": "release an outcome_hold",
+      "enforcement": [
+        "packages/server/src/routes/swarm-intel.ts:212",
+        "packages/server/src/services/outcome-learning-service.ts:260-300"
+      ],
+      "delegation": "approvals row with decided_by != requested_by + OpenMythos + worldlab refs; released_by from the body",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "metadata outcome_hold_history"
+      ],
+      "tag": "SUPPORTED",
+      "finding": {
+        "kind": "string_actor",
+        "severity": "LOW",
+        "status": "documented",
+        "pr": null
+      },
+      "notes": null
+    },
+    {
+      "id": "CAP-07",
+      "class": "change_skills",
+      "principal": "HTTP user with write:skills + write:agents",
+      "capability": "assign an operator-admitted skill to an agent",
+      "enforcement": [
+        "packages/server/src/routes/skills.ts:49",
+        "packages/server/src/services/skill-loader-service.ts:146-165",
+        "packages/server/src/services/skill-loader-service.ts:50-56 (DJIMITFLO_SKILLS_DIR + allowlist)"
+      ],
+      "delegation": "admission by env allowlist; install / enable return 503",
+      "policy_version": {
+        "value": "skill content hash (recorded, not pinned)",
+        "reason": null
+      },
+      "audit": [
+        "none"
+      ],
+      "tag": "SUPPORTED",
+      "finding": null,
+      "notes": "no code found that injects SKILL.md instructions into maker prompts"
+    },
+    {
+      "id": "CAP-08",
+      "class": "change_agents",
+      "principal": "HTTP user with manage:config",
+      "capability": "create an agent (body status may be idle) or NL-create and approve it",
+      "enforcement": [
+        "packages/server/src/routes/agents.ts:66-110",
+        "packages/server/src/routes/agents.ts:282",
+        "packages/server/src/routes/agents.ts:301",
+        "packages/server/src/services/nl-agent-factory.ts:162-170"
+      ],
+      "delegation": "none; approver not recorded",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "none"
+      ],
+      "tag": "SUPPORTED",
+      "finding": {
+        "kind": "audit_gap",
+        "severity": "LOW",
+        "status": "documented",
+        "pr": null
+      },
+      "notes": null
+    },
+    {
+      "id": "CAP-09",
+      "class": "change_routing",
+      "principal": "HTTP user with write:swarm_action (MAKER)",
+      "capability": "register model capabilities / outcomes that reorder council model selection",
+      "enforcement": [
+        "packages/server/src/routes/multi-model.ts:31",
+        "packages/server/src/routes/multi-model.ts:64",
+        "packages/server/src/services/council-orchestrator.ts:467"
+      ],
+      "delegation": "none",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "none"
+      ],
+      "tag": "SUPPORTED",
+      "finding": {
+        "kind": "permission_level",
+        "severity": "LOW",
+        "status": "documented",
+        "pr": null
+      },
+      "notes": null
+    },
+    {
+      "id": "CAP-10",
+      "class": "change_capability",
+      "principal": "none found",
+      "capability": "promote a composed skill",
+      "enforcement": [
+        "packages/server/src/services/swarm-intelligence-service.ts:834-872"
+      ],
+      "delegation": "all atomic capabilities validated + >= 3 chain runs",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "none"
+      ],
+      "tag": "SUPPORTED",
+      "finding": null,
+      "notes": "no caller"
+    },
+    {
+      "id": "CFG-01",
+      "class": "modify_config",
+      "principal": "HTTP user with manage:config (ADMIN, PLATFORM_ADMIN)",
+      "capability": "create / update / delete approval_policies (can turn require_approval into allow)",
+      "enforcement": [
+        "packages/server/src/routes/policies.ts:55",
+        "packages/server/src/routes/policies.ts:100",
+        "packages/server/src/routes/policies.ts:156"
+      ],
+      "delegation": "none",
+      "policy_version": {
+        "value": "approval_policies.version (+1 on PATCH, policies.ts:113)",
+        "reason": "decisions do not record the version they used"
+      },
+      "audit": [
+        "packages/server/src/routes/policies.ts:138 (PATCH)",
+        "packages/server/src/routes/policies.ts:164 (DELETE)",
+        "POST create: none"
+      ],
+      "tag": "SUPPORTED",
+      "finding": {
+        "kind": "config_reaches_execution",
+        "severity": "MEDIUM",
+        "status": "operator_decision",
+        "pr": null,
+        "detail": "PLATFORM_ADMIN holds manage:config but not approve:task, yet can loosen the policy that requires approval"
+      },
+      "notes": null
+    },
+    {
+      "id": "CFG-02",
+      "class": "modify_config",
+      "principal": "HTTP user with manage:config",
+      "capability": "PATCH an MCP tool decision",
+      "enforcement": [
+        "packages/server/src/routes/mcp.ts:302-340"
+      ],
+      "delegation": "decision string not validated; policy_id from the caller",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "none"
+      ],
+      "tag": "SUPPORTED",
+      "finding": null,
+      "notes": "catalog only (EXE-15)"
+    },
+    {
+      "id": "CFG-03",
+      "class": "modify_config",
+      "principal": "any authenticated user",
+      "capability": "GET /mcp/servers?refresh=true probes and seeds catalog rows",
+      "enforcement": [
+        "packages/server/src/routes/mcp.ts:85",
+        "packages/server/src/routes/mcp.ts:99-125"
+      ],
+      "delegation": "requireAuth only",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "none"
+      ],
+      "tag": "SUPPORTED",
+      "finding": {
+        "kind": "write_on_read",
+        "severity": "LOW",
+        "status": "documented",
+        "pr": null
+      },
+      "notes": null
+    },
+    {
+      "id": "CFG-04",
+      "class": "delegate_identity",
+      "principal": "HTTP user with manage:config (PLATFORM_ADMIN)",
+      "capability": "map a Telegram id to ANY user; the bot then acts as that user (approve:task)",
+      "enforcement": [
+        "packages/server/src/routes/self-improvement.ts:203-215",
+        "packages/server/src/services/decisions-inbox.ts:230-240",
+        "packages/server/src/services/telegram-api-service.ts:20-24 (mints the mapped user's JWT)"
+      ],
+      "delegation": "telegram_identities row; env Telegram allowlist still applies",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "judgments telegram_access"
+      ],
+      "tag": "VERIFIED",
+      "finding": {
+        "kind": "bypass",
+        "severity": "LOW-MEDIUM",
+        "status": "fixed",
+        "pr": "#968",
+        "detail": "manage:config reached approve:task; no PLATFORM_ADMIN accounts in prod today"
+      },
+      "notes": null
+    },
+    {
+      "id": "CFG-05",
+      "class": "modify_config",
+      "principal": "HTTP user with manage:config",
+      "capability": "RSI mutation kill switch",
+      "enforcement": [
+        "packages/server/src/routes/swarms.ts:337"
+      ],
+      "delegation": "actor recorded",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "packages/server/src/services/rsi-safety-guard.ts:52"
+      ],
+      "tag": "SUPPORTED",
+      "finding": null,
+      "notes": null
+    },
+    {
+      "id": "CFG-06",
+      "class": "modify_config",
+      "principal": "HTTP user with write:governance",
+      "capability": "release quarantine / reset circuit breaker (feeds the execution gate, execution-engine.ts:292)",
+      "enforcement": [
+        "packages/server/src/routes/runtime-governance.ts:74",
+        "packages/server/src/routes/runtime-governance.ts:93",
+        "packages/server/src/services/runtime-governance-service.ts:164"
+      ],
+      "delegation": "single action, free-text reason",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "emitAlert only (runtime-governance-service.ts:171); no actor"
+      ],
+      "tag": "SUPPORTED",
+      "finding": {
+        "kind": "audit_gap",
+        "severity": "LOW",
+        "status": "documented",
+        "pr": null
+      },
+      "notes": null
+    },
+    {
+      "id": "CFG-07",
+      "class": "modify_config",
+      "principal": "env bootstrap only",
+      "capability": "users and roles",
+      "enforcement": [
+        "packages/server/src/services/auth-service.ts:290-315"
+      ],
+      "delegation": "no runtime route; manage:users / manage:policies are never checked",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "none"
+      ],
+      "tag": "SUPPORTED",
+      "finding": null,
+      "notes": "all 4 prod users are admin (SECURITY_GAPS S12)"
+    },
+    {
+      "id": "CFG-08",
+      "class": "modify_config",
+      "principal": "HTTP user with manage:backups (incl. PLATFORM_ADMIN)",
+      "capability": "create a backup / stage a restore",
+      "enforcement": [
+        "packages/server/src/routes/backup.ts:16",
+        "packages/server/src/routes/backup.ts:78",
+        "packages/server/src/services/backup-service.ts:328"
+      ],
+      "delegation": "confirmation is the literal string RESTORE from the caller",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "packages/server/src/services/backup-service.ts:352",
+        "packages/server/src/services/backup-service.ts:387"
+      ],
+      "tag": "SUPPORTED",
+      "finding": null,
+      "notes": null
+    },
+    {
+      "id": "SCH-01",
+      "class": "gate_on_judgment",
+      "principal": "agent-social-autopilot",
+      "capability": "threadGated acknowledges a Commons thread without inference on the last two commons_contribution verdicts",
+      "enforcement": [
+        "packages/server/src/services/agent-social-autopilot-service.ts:292",
+        "packages/server/src/services/agent-social-autopilot-service.ts:386-398",
+        "packages/server/src/services/value-allocator.ts:131-132"
+      ],
+      "delegation": "COMMONS_THREAD_GATE_ENABLED; read the rows even when the judgment was switched off",
+      "policy_version": {
+        "value": "commons_contribution policyVersion 1",
+        "reason": null
+      },
+      "audit": [
+        "result.gated count"
+      ],
+      "tag": "VERIFIED",
+      "finding": {
+        "kind": "stale_judgment_gate",
+        "severity": "LOW",
+        "status": "fixed",
+        "pr": "#964"
+      },
+      "notes": null
+    },
+    {
+      "id": "MCP-01",
+      "class": "execute_tools",
+      "principal": "any MCP principal (stdio default VIEWER)",
+      "capability": "notebook_* tools: upload any local file, write any local path",
+      "enforcement": [
+        "packages/mcp-server/src/tools/notebooks.ts:40-170"
+      ],
+      "delegation": "none",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "none"
+      ],
+      "tag": "SUPPORTED",
+      "finding": {
+        "kind": "permission_gap",
+        "severity": "MEDIUM (operator laptop)",
+        "status": "operator_decision",
+        "pr": null,
+        "detail": "SECURITY_GAPS S6 (#948, design)"
+      },
+      "notes": null
+    },
+    {
+      "id": "MCP-02",
+      "class": "modify_config",
+      "principal": "any MCP principal",
+      "capability": "catalog sync writers overwrite mcp_tool_permissions",
+      "enforcement": [
+        "packages/mcp-server/src/tools/governance.ts:317",
+        "packages/mcp-server/src/tools/governance.ts:472",
+        "packages/mcp-server/src/tools/governance.ts:567"
+      ],
+      "delegation": "live mode only",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "none"
+      ],
+      "tag": "SUPPORTED",
+      "finding": {
+        "kind": "permission_gap",
+        "severity": "MEDIUM",
+        "status": "fixed_elsewhere",
+        "pr": "#948 (S1)"
+      },
+      "notes": null
+    },
+    {
+      "id": "MCP-03",
+      "class": "execute",
+      "principal": "any MCP principal",
+      "capability": "explainer_create_task / explainer_run_task (scans any local_path; run uses the server token)",
+      "enforcement": [
+        "packages/mcp-server/src/tools/explainer.ts:191-198",
+        "packages/mcp-server/src/tools/explainer.ts:235-242",
+        "packages/mcp-server/src/tools/explainer.ts:55-63"
+      ],
+      "delegation": "none",
+      "policy_version": {
+        "value": null,
+        "reason": "no policy version is recorded on this edge"
+      },
+      "audit": [
+        "none"
+      ],
+      "tag": "SUPPORTED",
+      "finding": {
+        "kind": "confused_deputy",
+        "severity": "MEDIUM",
+        "status": "fixed_elsewhere",
+        "pr": "#948 (S2)"
+      },
+      "notes": null
+    }
+  ],
+  "indirect_paths": [
+    {
+      "id": "IP-01",
+      "from": "write:governance (proof run, proposal authority)",
+      "to": "memory promotion into maker prompts",
+      "edges": [
+        "MEM-03",
+        "MEM-05"
+      ],
+      "result": "CONFIRMED",
+      "tag": "VERIFIED",
+      "pr": "#963",
+      "test": "packages/server/src/__tests__/proof-run-service.test.ts (failure rule promoted on main)"
+    },
+    {
+      "id": "IP-02",
+      "from": "write:capability (MAKER, proposal authority)",
+      "to": "live capability routing for spawn_runtime_worker",
+      "edges": [
+        "CAP-01",
+        "CAP-02"
+      ],
+      "result": "CONFIRMED",
+      "tag": "VERIFIED",
+      "pr": "#965",
+      "test": "packages/server/src/__tests__/capability-promotion-human-gate.test.ts"
+    },
+    {
+      "id": "IP-03",
+      "from": "create:task (MAKER)",
+      "to": "execution without its own approval",
+      "edges": [
+        "EXE-06"
+      ],
+      "result": "CONFIRMED (needs LOOP_REVIEWER_APPROVAL_INHERIT=true)",
+      "tag": "VERIFIED",
+      "pr": "#967",
+      "test": "packages/server/src/__tests__/reviewer-inherits-run-approval.test.ts"
+    },
+    {
+      "id": "IP-04",
+      "from": "manage:config (PLATFORM_ADMIN)",
+      "to": "approve:task through the Telegram bot",
+      "edges": [
+        "CFG-04"
+      ],
+      "result": "CONFIRMED (needs an allowlisted Telegram account)",
+      "tag": "VERIFIED",
+      "pr": "#968",
+      "test": "packages/server/src/__tests__/write-door-escalation.test.ts"
+    },
+    {
+      "id": "IP-05",
+      "from": "jev relevance verdict (classification)",
+      "to": "expert-unit creation (promotion)",
+      "edges": [
+        "EXP-01",
+        "EXP-02"
+      ],
+      "result": "CONFIRMED in code; paused in prod",
+      "tag": "VERIFIED",
+      "pr": "#964 (accounting only)",
+      "test": "packages/server/src/__tests__/value-allocator.test.ts, discovery-relevance*.test.ts"
+    },
+    {
+      "id": "IP-06",
+      "from": "manage:config (PLATFORM_ADMIN)",
+      "to": "execution without approval via approval_policies allow",
+      "edges": [
+        "CFG-01",
+        "EXE-01"
+      ],
+      "result": "SUPPORTED, not fixed",
+      "tag": "SUPPORTED",
+      "pr": null,
+      "test": null
+    },
+    {
+      "id": "IP-07",
+      "from": "write:claim / MAKER panel reviews",
+      "to": "operational memory promotion by the review scheduler",
+      "edges": [
+        "MEM-02"
+      ],
+      "result": "SUPPORTED, not exercised",
+      "tag": "HYPOTHESIS",
+      "pr": null,
+      "test": null
+    },
+    {
+      "id": "IP-08",
+      "from": "autonomy rule + LLM checker",
+      "to": "merge to main and root deploy with no human",
+      "edges": [
+        "EXE-03",
+        "EXE-10",
+        "MRG-01",
+        "DEP-01"
+      ],
+      "result": "SUPPORTED; operator-configured",
+      "tag": "SUPPORTED",
+      "pr": null,
+      "test": null
+    },
+    {
+      "id": "IP-09",
+      "from": "create:task",
+      "to": "objective-mode maker run without proposal approval (execution approval still human)",
+      "edges": [
+        "EXE-14"
+      ],
+      "result": "SUPPORTED",
+      "tag": "SUPPORTED",
+      "pr": null,
+      "test": null
+    },
+    {
+      "id": "IP-10",
+      "from": "tailnet (unauthenticated event bus)",
+      "to": "work items, discoveries, skill outcomes",
+      "edges": [
+        "KNW-03"
+      ],
+      "result": "SUPPORTED",
+      "tag": "SUPPORTED",
+      "pr": "#954 (prepared)",
+      "test": null
+    },
+    {
+      "id": "IP-11",
+      "from": "write:swarm_action (OKF sync)",
+      "to": "validated skill/agent capabilities without the skill gates",
+      "edges": [
+        "KNW-04"
+      ],
+      "result": "SUPPORTED",
+      "tag": "SUPPORTED",
+      "pr": null,
+      "test": null
+    },
+    {
+      "id": "IP-12",
+      "from": "write:claim (vote)",
+      "to": "confirmed knowledge claim",
+      "edges": [
+        "KNW-02"
+      ],
+      "result": "SUPPORTED; consumer UNKNOWN",
+      "tag": "UNKNOWN",
+      "pr": null,
+      "test": null
+    }
+  ]
+}

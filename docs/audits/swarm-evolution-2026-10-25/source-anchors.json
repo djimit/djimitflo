@@ -1,0 +1,179 @@
+{
+  "source_sha": "e8d0de33bbae8736d7ab0b4f9195292a2e9f56aa",
+  "anchors": [
+    {
+      "file": "packages/dashboard/src/pages/AgentsPage.tsx",
+      "line": 154,
+      "needle": "const successRate",
+      "claim": "Zero-task card semantics"
+    },
+    {
+      "file": "packages/dashboard/src/pages/SwarmOverviewPage.tsx",
+      "line": 217,
+      "needle": "const activeAgents",
+      "claim": "Raw active status and stale agent resource counters"
+    },
+    {
+      "file": "packages/dashboard/src/pages/SwarmOverviewPage.tsx",
+      "line": 122,
+      "needle": "const fetchLearnings",
+      "claim": "Manual learning feed"
+    },
+    {
+      "file": "packages/dashboard/src/pages/SwarmMissionControlPage.tsx",
+      "line": 564,
+      "needle": "Learning Curve (",
+      "claim": "First/last rendering and zero fallbacks"
+    },
+    {
+      "file": "packages/server/src/routes/swarms.ts",
+      "line": 349,
+      "needle": "router.get('/learning-curve'",
+      "claim": "Binary first/last statuses and costs"
+    },
+    {
+      "file": "packages/server/src/services/loop-run-query-service.ts",
+      "line": 58,
+      "needle": "const limit = filter.limit || 100",
+      "claim": "Bounded latest run cohort"
+    },
+    {
+      "file": "packages/server/src/services/loop-budget-service.ts",
+      "line": 127,
+      "needle": "computeEfficiencyMetric(runId",
+      "claim": "Fallback runtime tariffs and completed maker counting"
+    },
+    {
+      "file": "packages/server/src/services/scorecards.ts",
+      "line": 36,
+      "needle": "export function runtimeScorecards",
+      "claim": "Existing cohort/interval/unknown-price read model"
+    },
+    {
+      "file": "packages/server/src/services/swarm-intelligence-service.ts",
+      "line": 168,
+      "needle": "missionControl()",
+      "claim": "Latest-100 health and execution truth"
+    },
+    {
+      "file": "packages/server/src/services/goal-decomposer.ts",
+      "line": 132,
+      "needle": "private registerMission",
+      "claim": "Advisory observed mission projection"
+    },
+    {
+      "file": "packages/server/src/services/swarm-orchestration-service.ts",
+      "line": 93,
+      "needle": "executeSession(sessionId",
+      "claim": "Generic session executor explicitly unavailable"
+    },
+    {
+      "file": "packages/server/src/services/continuous-learning-loop.ts",
+      "line": 80,
+      "needle": "async runCycle",
+      "claim": "Existing periodic memory/reflection/outcome cycle"
+    },
+    {
+      "file": "packages/server/src/bootstrap/autonomous-services.ts",
+      "line": 79,
+      "needle": "const learningLoop",
+      "claim": "Learning service starts and initial tick"
+    },
+    {
+      "file": "packages/server/src/services/knowledge-runtime-service.ts",
+      "line": 198,
+      "needle": "private closeLoopInTransaction",
+      "claim": "Guarded successful assurance closure and same-run delta"
+    },
+    {
+      "file": "packages/server/src/services/agent-assurance-service.ts",
+      "line": 530,
+      "needle": "suiteName === 'loop-learning'",
+      "claim": "Evidence-completeness scoring"
+    },
+    {
+      "file": "packages/server/src/services/loop-daemon.ts",
+      "line": 939,
+      "needle": "// 9b. Close learning loop",
+      "claim": "Successful closure dispatch"
+    },
+    {
+      "file": "packages/server/src/services/assignment-context.ts",
+      "line": 49,
+      "needle": "export function assignmentContext",
+      "claim": "Acting examples, rules, holdout and read logging"
+    },
+    {
+      "file": "packages/server/src/services/runtime-bandit.ts",
+      "line": 35,
+      "needle": "export function chooseSpecies",
+      "claim": "Acting outcome-based runtime choice"
+    },
+    {
+      "file": "packages/server/src/services/fitness-view.ts",
+      "line": 43,
+      "needle": "export function fitnessPosterior",
+      "claim": "Weighted sources and capped gym prior"
+    },
+    {
+      "file": "packages/server/src/services/resource-ledger.ts",
+      "line": 197,
+      "needle": "export function efficiencyView",
+      "claim": "Read-only resource aggregation"
+    },
+    {
+      "file": "packages/server/src/services/resource-ledger.ts",
+      "line": 82,
+      "needle": "export function exclusiveWh",
+      "claim": "Shared-window energy accounting"
+    },
+    {
+      "file": "packages/server/src/services/cost-ledger.ts",
+      "line": 104,
+      "needle": "export function usageEvents",
+      "claim": "Canonical usage ownership and mirrors"
+    },
+    {
+      "file": "packages/server/src/services/effort-controller.ts",
+      "line": 75,
+      "needle": "const LOCAL_KW",
+      "claim": "Shadow rough-energy estimate"
+    },
+    {
+      "file": "packages/server/src/services/value-allocator.ts",
+      "line": 410,
+      "needle": "export function buildValueAllocation",
+      "claim": "Shadow allocation, safety floors and outcome credits"
+    },
+    {
+      "file": "packages/server/src/services/experiment-registry.ts",
+      "line": 162,
+      "needle": "export function experimentsReport",
+      "claim": "Registered target/stop/WIP readouts"
+    },
+    {
+      "file": "packages/server/src/services/evolution-evidence.ts",
+      "line": 210,
+      "needle": "export function memoryHoldoutEvidence",
+      "claim": "Settled-only rule comparison"
+    },
+    {
+      "file": "packages/server/src/services/outcome-learning-service.ts",
+      "line": 362,
+      "needle": "const causalSupport = false",
+      "claim": "Reported observations cannot authorize causal promotion"
+    },
+    {
+      "file": "packages/server/src/services/genome-promotion.ts",
+      "line": 44,
+      "needle": "export function promoteGenome",
+      "claim": "Existing protected holdout/promotion boundary"
+    },
+    {
+      "file": "packages/server/src/services/memory-template-dedup.ts",
+      "line": 86,
+      "needle": "export function memoryTemplateAnalysis",
+      "claim": "Existing read-only consolidation mechanism"
+    }
+  ]
+}

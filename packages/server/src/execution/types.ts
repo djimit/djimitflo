@@ -48,6 +48,9 @@ export interface ExecutionResult {
   failure?: ExecutionFailure;
   artifacts?: ExecutionArtifact[];
   metrics?: ExecutionMetrics;
+  /** the OS child's own exit, set once it closed (ExecutionSession.exit); absent = no process exit was observed */
+  exitCode?: number | null;
+  signal?: string | null;
 }
 
 /**
@@ -84,6 +87,8 @@ export interface ExecutionSession {
   completedAt?: Date;
   /** Resolves only after the owned OS child and its streams close, when applicable. */
   closed?: Promise<void>;
+  /** The owned OS child's exit code and signal, set on its 'close' (before `closed` resolves); absent when no child ran. */
+  exit?: { code: number | null; signal: string | null };
   
   /**
    * Stream of execution events (AsyncIterable for streaming)

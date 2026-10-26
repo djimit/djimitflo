@@ -1,13 +1,13 @@
 # Default owner for everything
-* @dlandman
+* @djimit
 
 # CI/CD
-.github/workflows/ @dlandman
+.github/workflows/ @djimit
 
 # Core services
-packages/server/src/services/ @dlandman
-packages/server/src/execution/ @dlandman
+packages/server/src/services/ @djimit
+packages/server/src/execution/ @djimit
 
 # Documentation
-docs/ @dlandman
-*.md @dlandman
+docs/ @djimit
+*.md @djimit

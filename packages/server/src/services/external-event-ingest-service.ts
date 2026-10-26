@@ -6,6 +6,7 @@ import { OutcomeLearningService } from './outcome-learning-service';
 import { ExpertSourceUnitsService, sourceUnitsEnabled } from './expert-source-units-service';
 import { checkContentSafety, contentSafetyApplies } from './content-safety';
 import { ensureFleetSignatureTables, fleetSignatureMode, pruneFleetNonces, recordFleetVerdict, verifyFleetEvent, type FleetVerification } from './fleet-event-signatures';
+import { fleetBusAuthHeaders } from './fleet-bus-auth';
 
 const nonBlank = z.string().trim().min(1);
 const decodeField = (value: unknown): unknown => {
@@ -147,7 +148,7 @@ export class ExternalEventIngestService {
     let newestCursor: string | undefined;
     while (true) {
       const url = `${this.busUrl.replace(/\/$/, '')}/events/${encodeURIComponent(this.stream)}?count=${count}`;
-      const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+      const response = await fetch(url, { headers: fleetBusAuthHeaders(), signal: AbortSignal.timeout(10_000) });
       if (!response.ok) throw new Error(`event bus returned ${response.status}`);
       const body = await response.json() as { events?: unknown };
       if (!Array.isArray(body.events)) throw new Error('event bus returned an invalid events contract');

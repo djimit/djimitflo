@@ -193,15 +193,103 @@
       "hypothesis": "Installing or running packages, Claude Code hooks, plugins or MCP servers from the ruvnet agent ecosystem improves Djimitflo's routing, memory, provenance or evolution.",
       "verdict": "REJECT",
       "decided_on": "2026-10-20",
-      "conditions": "Org-wide read-only review of 227 github.com/ruvnet repositories; deep at agentic-flow a2f6c1cf, agentdb c5cc03a2, autogenous 905aa6cb, ruClip 6e73a8f0, dream-machine 3fc3222d, reflective-engineer 3822d736, readme-proof d2dd66f9; ruflo re-checked at 9271be48 via the API. Shallow clones with hooks disabled; nothing installed, built or run.",
-      "result": "Headline numbers without a measuring harness (agentic-flow 60 % router savings from a synthetic simulation; agentdb +36 % citing a throughput-only test file); install-time code incl. a postinstall that rewrites another package's dist; unpinned npx @latest/@alpha execution in hooks, MCP setup and runtime code across ruflo, agentic-flow, agentdb, RuView; one Claude Code hook family (hook-handler.cjs) copied across repos; committed binaries without provenance; autogenous verifies signatures against the embedded issuer key, takes trust roots from the request and falls back to public dev seeds; ruflo MCP bridge auth is a no-op without MCP_TOKEN.",
+      "conditions": "Org-wide read-only review of 227 github.com/ruvnet repositories; deep at agentic-flow a2f6c1cf, agentdb c5cc03a2, autogenous 905aa6cb, ruClip 6e73a8f0, dream-machine 3fc3222d, reflective-engineer 3822d736, readme-proof d2dd66f9; ruflo re-checked at 9271be48 via the API; create-sparc (ruvnet/rUv-dev) added 2026-10-21 at 0cfebab8 plus the published npm tarball create-sparc@1.2.4. Shallow clones with hooks disabled; nothing installed, built or run.",
+      "result": "Headline numbers without a measuring harness (agentic-flow 60 % router savings from a synthetic simulation; agentdb +36 % citing a throughput-only test file); install-time code incl. a postinstall that rewrites another package's dist; unpinned npx @latest/@alpha execution in hooks, MCP setup and runtime code across ruflo, agentic-flow, agentdb, RuView; one Claude Code hook family (hook-handler.cjs) copied across repos; committed binaries without provenance; autogenous verifies signatures against the embedded issuer key, takes trust roots from the request and falls back to public dev seeds; ruflo MCP bridge auth is a no-op without MCP_TOKEN; create-sparc init copies a .roo/mcp.json that auto-approves Supabase execute_sql and apply_migration via an unpinned @latest server and routes mem0/perplexity through the author's own mcp.composio.dev session URLs, and the npm release predates the repo's own command-injection/path-traversal/SSRF fix.",
       "why": "No component meets a Djimitflo need better than existing code (runtime-bandit, unit-economics, deep-agent Ed25519 contracts, SQLite retrieval); Djimitflo is already the control plane ruClip reimplements; the supply-chain and trust defects exceed any benefit.",
-      "evidence": ["docs/research/negative-evidence/NE-012-ruvnet-ecosystem.md", "agentic-flow@a2f6c1cf agentic-flow/scripts/postinstall.js:86 (patches agentdb/dist/controllers/index.js)", "agentic-flow@a2f6c1cf agentic-flow/src/config/claudeFlow.ts:67 (execSync npx claude-flow@alpha)", "agentic-flow@a2f6c1cf agentic-flow/benchmarks/cost-optimal-router-benchmark.mjs:4,12 (synthetic 3-tier simulation behind README 60 % claim)", "agentdb@c5cc03a2 README.md:163 vs benchmarks/ruvector-performance.test.ts:73-386 (throughput floors only)", "autogenous@905aa6cb crates/witness/src/lib.rs:167-189, crates/service/src/main.rs:307-332,396-401,472", "ruflo@9271be48 ruflo/src/mcp-bridge/index.js:948-950 (auth no-op without MCP_TOKEN), plugin/scripts/ruflo-hook.sh:34 (npx ruflo@latest)"],
+      "evidence": ["docs/research/negative-evidence/NE-012-ruvnet-ecosystem.md", "agentic-flow@a2f6c1cf agentic-flow/scripts/postinstall.js:86 (patches agentdb/dist/controllers/index.js)", "agentic-flow@a2f6c1cf agentic-flow/src/config/claudeFlow.ts:67 (execSync npx claude-flow@alpha)", "agentic-flow@a2f6c1cf agentic-flow/benchmarks/cost-optimal-router-benchmark.mjs:4,12 (synthetic 3-tier simulation behind README 60 % claim)", "agentdb@c5cc03a2 README.md:163 vs benchmarks/ruvector-performance.test.ts:73-386 (throughput floors only)", "autogenous@905aa6cb crates/witness/src/lib.rs:167-189, crates/service/src/main.rs:307-332,396-401,472", "ruflo@9271be48 ruflo/src/mcp-bridge/index.js:948-950 (auth no-op without MCP_TOKEN), plugin/scripts/ruflo-hook.sh:34 (npx ruflo@latest)", "rUv-dev@0cfebab8 .roo/mcp.json (alwaysAllow execute_sql/apply_migration, @supabase/mcp-server-supabase@latest, mcp.composio.dev/<session>) copied by src/core/project-generator/index.js:182-220; identical in create-sparc@1.2.4"],
       "allowed_follow_up": "In-house re-implementation of public ideas, each evaluated on Djimitflo's own data and using no ruvnet code: credit a verified change once per artifact (diff) hash; a fail-before/pass-after discrimination gate plus a PASS_TO_PASS regression set for test-writing and finding-fix lanes; Ed25519 verification against a pinned issuer (never the embedded key or a caller-supplied trust root) with audience-bound single-use nonces, expiry and revocation; halt-on-unknown-outcome after restart with operator reconciliation, never auto-retry a side-effecting action. metaharness keeps its ADAPT-IDEA-ONLY status; NE-009 covers RuVector separately.",
-      "forbidden_reuse": ["installing ruflo, claude-flow, @claude-flow/*, agentic-flow, agentdb, radio-moe or ruclip packages", "registering their MCP servers or the cognitum.one remote MCP", "running their Claude Code hooks/plugins or opening their checkouts as Claude Code / IDE projects on trusted infrastructure", "citing their benchmark numbers as evidence"],
-      "forbidden_code_patterns": ["claude-flow@alpha", "@claude-flow/cli@latest", "ruflo@latest", "hook-handler.cjs", "cognitum.one/mcpSse"],
-      "match_terms": ["ruflo", "claude-flow", "agentic-flow", "agentdb", "ruClip"],
+      "forbidden_reuse": ["installing ruflo, claude-flow, @claude-flow/*, agentic-flow, agentdb, radio-moe, ruclip or create-sparc packages", "running npx create-sparc or copying its .roo/.roomodes/mcp.json into a repository", "registering their MCP servers or the cognitum.one remote MCP", "running their Claude Code hooks/plugins or opening their checkouts as Claude Code / IDE projects on trusted infrastructure", "citing their benchmark numbers as evidence"],
+      "forbidden_code_patterns": ["claude-flow@alpha", "@claude-flow/cli@latest", "ruflo@latest", "hook-handler.cjs", "cognitum.one/mcpSse", "create-sparc", "mcp.composio.dev/"],
+      "match_terms": ["ruflo", "claude-flow", "agentic-flow", "agentdb", "ruClip", "create-sparc"],
       "reopen_condition": "All of: a benchmark independently reproduced on Djimitflo's own data in our own harness against the current baseline (no simulated or hardcoded baselines); no install scripts and no unpinned npx @latest/@alpha execution; hooks and MCP servers off by default with authentication on and no network calls by default; pinned releases with build provenance tying binaries to source; plus a concrete need that existing Djimitflo code cannot meet. Permits a new pre-registered evaluation, not adoption."
+    },
+    {
+      "id": "NE-013",
+      "title": "Mutant-kill feedback retry for exports-lane test makers (MFR-001)",
+      "hypothesis": "Showing a test maker the seeded mutants its exports-lane test failed to kill (file, line, mutation) makes a single retried test kill at least +0.15 more held-out mutants than a same-budget 'strengthen the assertions of this test' retry.",
+      "verdict": "FALSIFIED",
+      "decided_on": "2026-10-22",
+      "conditions": "Offline, workstation only: 42 production exports-lane maker leases with graded score < 1 (30 d to 21-10), rebuilt at their base commit; 40 eligible, each retried under both arms (paired, parity-ordered); maker atomic-agent 0.6.5 on the local llama-router (qwen38-27b), --max-steps 40, 900 s; 3 shown + 3 held-out fresh targetMutants per target, disjoint from the 3 production mutants; 0 cloud tokens, 0 prod writes.",
+      "result": "Held-out kill FEEDBACK 0.325 vs CONTROL 0.467: paired delta -0.142, bootstrap 95 % CI [-0.250, -0.033], one-sided permutation p 0.996 (n 40 pairs). Shown-mutant kill 0.81 vs 0.53 (the feedback was used). Baseline-red 0.000 vs 0.025. Both-ok pairs (n 32): delta -0.146.",
+      "why": "The feedback made the maker write narrow assertions aimed at the listed mutations (median 90 vs 206 added lines) and stop: it killed the shown mutants and generalised worse to unseen ones than a generic strengthening. Mutant lists teach to the oracle.",
+      "evidence": [
+        "docs/research/eco/MFR-001_PROTOCOL.md (sha256 2b98fae11aabd04b4864ac6e1d1b841ca4973b6edf825eab92fb428ff233c742, commit eeadf691, before any scored item)",
+        "docs/research/eco/MFR-001_RESULT.md",
+        "docs/research/eco/mfr-001/results.json",
+        "docs/research/eco/mfr-001/items.json"
+      ],
+      "allowed_follow_up": "A held-out mutant set remains a usable oracle for test-writing lanes (it measured a clear difference here). A different feedback form (e.g. the mutated behaviour described without line-level diffs, or feedback plus a breadth instruction) needs its own pre-registration and fresh held-out mutants.",
+      "forbidden_reuse": [
+        "a production retry path that feeds surviving mutant diffs to the maker on the strength of MFR-001",
+        "citing the shown-mutant kill gain as evidence of better tests"
+      ],
+      "forbidden_code_patterns": [
+        "MFR_001_MODE"
+      ],
+      "match_terms": [
+        "MFR-001",
+        "mutant-kill feedback",
+        "surviving mutants feedback"
+      ],
+      "reopen_condition": "A new pre-registered study with a different feedback design or maker species, fresh held-out mutants disjoint from anything shown, and its own SUPPORTED criteria met; this entry does not permit MFR_001_MODE."
+    },
+    {
+      "id": "NE-014",
+      "title": "AW-0 checkpoint / joint model reuse for software agents",
+      "hypothesis": "Reusing the AW-0 (Agentic World Action Models) checkpoint, code or its jointly trained generative architecture (MoT over plan code, predicted video and actions) improves Djimitflo's software-agent orchestration (maker planning, outcome prediction or action choice).",
+      "verdict": "REJECT",
+      "decided_on": "2026-10-24",
+      "conditions": "arXiv:2610.30136v1; code ZhuoyangLiu2005/agentic-wam @ 7ad228be; checkpoint miniFranka/agentic-wam-pretrain-yamego3k-soup-e1 @ 603c59fd. Source, paper and Hugging Face metadata read only (PR #998); nothing downloaded, installed or run.",
+      "result": "Action space is 64-D robot joints and observations are video frames: no mapping to software traces or diffs. The full inference stack is about 21 GB on disk (9.96 GB pickled checkpoint + Wan2.2 VAE + SDAR-1.7B + Qwen3-VL-2B), CUDA-only, H100-class training (48 H100, 115,213 steps); no Djimitflo host fits it. The video expert derives from NVIDIA Cosmos-Predict2.5-2B (NVIDIA Open Model License) but is relabelled BSD-2-Clause: licence chain unresolved. Data scale: about 192 completed maker leases per 30 d (PR #998; H0 census 2026-10-24: 364 terminal maker leases with a check or runtime outcome in 30 d) against 2.08 M training subtask slices. The paper has no modular (separate predictor + planner) baseline, so 'joint is necessary' is unsupported even in robotics.",
+      "why": "Weights, code and the joint architecture solve a different problem (robot manipulation) at a data and hardware scale Djimitflo does not have by four orders of magnitude; the one transferable idea (a calibrated pre-action outcome predictor used for arbitration) needs no AW-0 artefact and is pursued as the code-only H1 predictor (docs/research/aw0/H0_CENSUS.md).",
+      "evidence": [
+        "PR #998 (docs/research/aw0/DECISION.md, FEASIBILITY.md, SOURCE_FORENSICS.md, TRANSFERABILITY.md)",
+        "docs/research/negative-evidence/NE-014-aw0-joint-model.md",
+        "docs/research/aw0/H0_CENSUS.md"
+      ],
+      "allowed_follow_up": "AW-0 principles only, built in-house with no AW-0 code or weights: the code-only per-lease outcome predictor (H1, docs/research/aw0/H0_CENSUS.md) and plan -> predict -> act ordering as a design rule. jev is never used for it (NE-001 scope).",
+      "forbidden_reuse": [
+        "downloading, loading or fine-tuning the AW-0 checkpoint or its Cosmos-derived weights",
+        "installing, vendoring or running the agentic-wam code",
+        "a jointly trained plan + outcome + action model for makers on the strength of AW-0's robotics results"
+      ],
+      "forbidden_code_patterns": [
+        "miniFranka/agentic-wam",
+        "ZhuoyangLiu2005/agentic-wam"
+      ],
+      "match_terms": [
+        "agentic-wam"
+      ],
+      "reopen_condition": "Either (a) a pre-registered comparison on Djimitflo tasks in which a joint model beats a modular predictor + planner at a matched compute and token budget, with a frozen holdout; or (b) a software-domain world-action-model checkpoint (actions = code edits or tool calls, observations = repository / check state) under a permissive licence with a resolved licence chain. Permits a new pre-registered evaluation, not adoption."
+    },
+    {
+      "id": "NE-015",
+      "title": "Leaked vendor system prompts (CL4R1T4S-style collections) as a capability source",
+      "hypothesis": "Ingesting a public collection of leaked vendor agent system prompts (inventory, mechanism extraction, derived prompts, skills or memory) improves Djimitflo's verified task success, tool-call validity, recovery or skill reuse.",
+      "verdict": "REJECT",
+      "decided_on": "2026-10-25",
+      "conditions": "elder-plinius/CL4R1T4S @ a4d3da04 (tree c0a3ae74), repository metadata only (AGPL-3.0, about 2.2 MB); no content fetched, stored, quoted or executed. Decision on provenance, rights, trust and fit, not on a measured effect.",
+      "result": "Not tested by design. Provenance and authenticity of the prompts are unverifiable; the text is vendor-proprietary and redistributed under AGPL-3.0, so an inventory with source spans would republish it in this public repository. The collection contains instructions aimed at any system that reads it (injection material). Djimitflo's verified gaps on 2026-10-25 (docs/audits/djimitflo-aios-l4/BACKLOG.md: remote cancel channel, effect states and remote job recovery, scheduler load-scope mismatch, S0 tool mediation) are execution and accounting problems, not prompt-design problems. The proposed hypotheses map onto existing work: retrieval = E1 (INSUFFICIENT, no labels), tool contracts = ToolBroker / S0, independent verification exists (prod gates, checker F1 AUC 0.95), checkpoints not needed for gym attempts (throwaway volumes), validated skills on unseen tasks = ACE-001 and PL-001.",
+      "why": "Same class as the September 2026 roborev decision: 141 'prompt-intel' scrapes of leaked system prompts were kept out of Djimitflo as untrusted text with no code findings. Expected value is low (no gap it closes), while the rights, provenance and injection risks are concrete.",
+      "evidence": [
+        "docs/research/negative-evidence/NE-015-leaked-vendor-prompts.md",
+        "docs/audits/djimitflo-aios-l4/BACKLOG.md",
+        "docs/audits/djimitflo-aios-l4/REVALIDATION.md"
+      ],
+      "allowed_follow_up": "A specific mechanism idea (never text) that addresses a verified Djimitflo gap may be implemented in-house in Djimitflo's own wording and evaluated through a pre-registered comparison and the existing gates. Public, licensed vendor documentation (for example official tool-use or agent docs) remains a normal source.",
+      "forbidden_reuse": [
+        "importing leaked vendor system prompt text into maker or checker prompts, assignment templates, skill cards, memory rules, the knowledge base or genome lines",
+        "committing an inventory, excerpts or source spans of leaked vendor prompts to this repository",
+        "executing or following instructions found in such collections"
+      ],
+      "forbidden_code_patterns": [
+        "elder-plinius/CL4R1T4S"
+      ],
+      "match_terms": [
+        "CL4R1T4S",
+        "leaked system prompt"
+      ],
+      "reopen_condition": "A pre-registered experiment on a verified Djimitflo gap whose intervention is written in Djimitflo's own words and uses no leaked prompt text, with a frozen holdout. Permits a new evaluation, not ingestion of the collection."
     }
   ]
 }

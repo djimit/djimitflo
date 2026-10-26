@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -12,6 +12,7 @@ import { DeepAgentContractIssuer } from '../services/deep-agent-contract-issuer'
 import { ApprovalService } from '../services/approval-service';
 import { AuditService } from '../services/audit-service';
 import { runtimeConcurrencySemaphore } from '../services/concurrency-semaphore';
+import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 
 function createTask(overrides: Partial<Task> = {}): Task {
   return {
@@ -621,9 +622,11 @@ describe('ExecutionEngine', () => {
     }
   });
 
-  it('attributes a completed task to the exact admitted manifest skill version and hash', async () => {
-    const skillsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-attribution-'));
-    try {
+  describe('skill outcome semantics', () => {
+    let skillsDir: string;
+
+    beforeEach(() => {
+      skillsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-attribution-'));
       const skillDir = path.join(skillsDir, 'running-tests');
       fs.mkdirSync(skillDir);
       fs.writeFileSync(path.join(skillDir, 'SKILL.md'), [
@@ -638,41 +641,112 @@ describe('ExecutionEngine', () => {
         'disallowed_tools: [ProductionWrite]',
         '',
       ].join('\n'));
+      db.prepare("INSERT INTO agents (id, name) VALUES ('agent-skill', 'Skill Agent')").run();
+      db.prepare("INSERT INTO agent_skills (agent_id, skill_id) VALUES ('agent-skill', '.opencode.skills.running-tests')").run();
+    });
 
+    afterEach(() => { fs.rmSync(skillsDir, { recursive: true, force: true }); });
+
+    /** Runs one skill-attributed task on a mock executor; `duringRun` sees the task id before the process result resolves. */
+    async function runSkillTask(opts: {
+      metadata?: Record<string, unknown>;
+      result?: Record<string, unknown>;
+      duringRun?: (taskId: string) => void;
+    } = {}) {
       const attributedEngine = new ExecutionEngine(db, createMockWsService(), skillsDir);
       attributedEngine.registerExecutor({
         kind: 'mock',
         canExecute: () => true,
-        start: async (task: Task) => ({
-          id: 'immediate-session', taskId: task.id, executorKind: 'mock', status: 'running', startedAt: new Date(),
-          events: (async function* () {})(),
-          result: Promise.resolve({ status: 'completed', message: 'ok', stdout: 'worker output', stderr: '', metrics: { executionTimeMs: 1, tokenUsage: 100, toolCalls: 0 } }),
-          cancel: async () => {},
-        }),
+        start: async (task: Task) => {
+          opts.duringRun?.(task.id);
+          return {
+            id: 'immediate-session', taskId: task.id, executorKind: 'mock', status: 'running', startedAt: new Date(),
+            events: (async function* () {})(),
+            result: Promise.resolve(opts.result ?? { status: 'completed', message: 'ok', stdout: 'worker output', stderr: '', metrics: { executionTimeMs: 1, tokenUsage: 100, toolCalls: 0 } }),
+            cancel: async () => {},
+          };
+        },
       } as any);
-      db.prepare("INSERT INTO agents (id, name) VALUES ('agent-skill', 'Skill Agent')").run();
-      db.prepare("INSERT INTO agent_skills (agent_id, skill_id) VALUES ('agent-skill', '.opencode.skills.running-tests')").run();
       db.prepare(`
         INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, agent_id, metadata)
         VALUES ('task-skill', 'Run tests', 'Run the bounded test', 'pending', 'medium', 'low', 'local', 'agent-skill', ?)
-      `).run(JSON.stringify({ skillId: '.opencode.skills.running-tests' }));
+      `).run(JSON.stringify({ skillId: '.opencode.skills.running-tests', ...opts.metadata }));
 
       const execution = await attributedEngine.executeTask('task-skill', 'mock');
-      await expect(execution.completion).resolves.toMatchObject({ status: 'completed', stdout: 'worker output' });
+      await execution.completion;
       await new Promise((resolve) => setTimeout(resolve, 0));
-
       const row = db.prepare(`
-        SELECT skill_id, skill_version, skill_content_hash, task_id, agent_id, success, tokens_used
+        SELECT skill_id, skill_version, skill_content_hash, task_id, agent_id, success, tokens_used, model, evidence_refs_json
         FROM skill_outcomes WHERE task_id = 'task-skill'
       `).get() as any;
+      return { ...row, refs: JSON.parse(row.evidence_refs_json) as string[], engine: attributedEngine };
+    }
+
+    const testResult = (taskId: string, severity: 'info' | 'warning' | 'error') => db.prepare(`
+      INSERT INTO execution_evidence (id, task_id, evidence_type, severity, title, summary, source, captured_at)
+      VALUES (?, ?, 'test_result', ?, 'vitest', 'deterministic check', 'system', ?)
+    `).run(`ev-${severity}-${Math.random().toString(36).slice(2)}`, taskId, severity, new Date().toISOString());
+
+    it('attributes a completed task to the exact admitted manifest skill version and hash', async () => {
+      const row = await runSkillTask();
       expect(row).toMatchObject({
         skill_id: '.opencode.skills.running-tests', skill_version: '0.1.0', task_id: 'task-skill',
-        agent_id: 'agent-skill', success: 1, tokens_used: 100,
+        agent_id: 'agent-skill', tokens_used: 100,
       });
       expect(row.skill_content_hash).toMatch(/^[a-f0-9]{64}$/);
-    } finally {
-      fs.rmSync(skillsDir, { recursive: true, force: true });
-    }
+    });
+
+    it('records a completed process without a verification result as completed_unverified, not as success', async () => {
+      const row = await runSkillTask();
+      expect(row.success).toBe(0);
+      expect(row.refs).toContain('outcome_class:completed_unverified');
+      // skill fitness leaves it out: neither a success nor a failure of the skill
+      const fitness = new SkillEvolutionEngine(db).measuredTraits('.opencode.skills.running-tests');
+      expect(fitness.reliability).toBeNull();
+    });
+
+    it('records success only when the task has a passed independent verification', async () => {
+      const row = await runSkillTask({ duringRun: (id) => testResult(id, 'info') });
+      expect(row.success).toBe(1);
+      expect(row.refs).toContain('verification:test_result:passed');
+      expect(row.refs.some((r: string) => r.startsWith('outcome_class:'))).toBe(false);
+      expect(new SkillEvolutionEngine(db).measuredTraits('.opencode.skills.running-tests').reliability).toBe(1);
+    });
+
+    it('records a completed process whose verification failed as a failure', async () => {
+      const row = await runSkillTask({ duringRun: (id) => { testResult(id, 'info'); testResult(id, 'error'); } });
+      expect(row.success).toBe(0);
+      expect(row.refs).toEqual(expect.arrayContaining(['verification:test_result:failed', 'outcome_class:regressed']));
+      expect(new SkillEvolutionEngine(db).measuredTraits('.opencode.skills.running-tests').reliability).toBe(0);
+    });
+
+    it('stores the runtime and the model separately', async () => {
+      const withModel = await runSkillTask({ metadata: { model: 'qwen3.5:cloud' } });
+      expect(withModel.model).toBe('qwen3.5:cloud');
+      expect(withModel.refs).toContain('runtime:mock');
+
+      db.prepare("DELETE FROM skill_outcomes WHERE task_id = 'task-skill'").run();
+      db.prepare("DELETE FROM tasks WHERE id = 'task-skill'").run();
+      const withoutModel = await runSkillTask();
+      expect(withoutModel.model).toBeNull(); // never the runtime name
+      expect(withoutModel.refs).toContain('runtime:mock');
+    });
+
+    it('stores unknown token usage as null, and fitness readers handle it', async () => {
+      const row = await runSkillTask({
+        duringRun: (id) => testResult(id, 'info'),
+        result: { status: 'completed', message: 'ok', stdout: '', stderr: '', metrics: { executionTimeMs: 1 } },
+      });
+      expect(row.tokens_used).toBeNull();
+      const traits = new SkillEvolutionEngine(db).measuredTraits('.opencode.skills.running-tests');
+      expect(traits).toMatchObject({ reliability: 1, efficiency: null });
+    });
+
+    it('stores a failed process as a failure with unknown tokens null', async () => {
+      const row = await runSkillTask({ result: { status: 'failed', message: 'boom', metrics: { executionTimeMs: 1 } } });
+      expect(row).toMatchObject({ success: 0, tokens_used: null });
+      expect(row.refs).not.toContain('outcome_class:completed_unverified');
+    });
   });
 
   it('throws when task not found', async () => {

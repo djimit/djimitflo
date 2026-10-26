@@ -10,7 +10,7 @@ import type { Database } from 'better-sqlite3';
  * Row: action_type = kind, risk_level = severity, status = 'shadow', description = what was refused, created_at = when;
  * metadata = { actor, run_id, lease_id, task_id, evidence_ref, dedupe_key, source }. task_id is only set for a real task.
  */
-export const POLICY_VIOLATION_KINDS = ['scope_gate', 'reviewer_read_only', 'diff_limit', 'runtime_admission', 'outbound_denied', 'content_unsafe', 'token_rejected'] as const;
+export const POLICY_VIOLATION_KINDS = ['scope_gate', 'reviewer_read_only', 'diff_limit', 'runtime_admission', 'outbound_denied', 'content_unsafe', 'token_rejected', 'assignment_packet_tampered'] as const;
 export type PolicyViolationKind = (typeof POLICY_VIOLATION_KINDS)[number];
 export type PolicyViolationSeverity = 'low' | 'medium' | 'high' | 'critical';
 
