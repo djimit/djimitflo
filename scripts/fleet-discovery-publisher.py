@@ -21,6 +21,21 @@ LINK_TITLE = re.compile(r'\[([^\]]{8,300})\]\((?:https?://)?(?:www\.)?arxiv')
 TITLES = [re.compile(r'"([^"]{8,300})"'), re.compile(r'\*\*([^*]{8,300})\*\*'), re.compile(r'^[\s\d.\u2022*-]*([^\[\]()]{8,300}?)\s+[\u2013\u2014-]\s')]
 URL_LIKE = re.compile(r'https?://|arxiv\.org|github\.com|^\S+/\S+$|^arxiv[\s:]*\d', re.I)
 LEAD_IN = re.compile(r'^(?:nieuwe?\s+)?(?:paper|artikel|studie|onderzoek|publicatie|preprint|new paper|bron|link)\s*:\s*', re.I)
+
+
+def bus_headers():
+    """S3 (docs/runbooks/fleet-bus-auth.md): Content-Type plus this host's fleet bus bearer token when it has one
+    (DJIMIT_EVENT_BUS_TOKEN, else the file DJIMIT_FLEET_BUS_TOKEN_FILE, default ~/.djimit/fleet-bus.token, mode 600)."""
+    token = os.environ.get('DJIMIT_EVENT_BUS_TOKEN', '').strip()
+    if not token:
+        try:
+            with open(os.environ.get('DJIMIT_FLEET_BUS_TOKEN_FILE', os.path.expanduser('~/.djimit/fleet-bus.token'))) as f:
+                token = f.read().strip()
+        except OSError:
+            token = ''
+    return {'Content-Type': 'application/json', **({'Authorization': 'Bearer ' + token} if token else {})}
+
+
 FIRST_LINK = re.compile(r'\[[^\]]*\]\(|https?://|(?:www\.)?(?:arxiv\.org|github\.com)/')
 
 
@@ -122,7 +137,7 @@ def main():
     interests = list(INTERESTS)
     if args.interests_from_bus:
         try:
-            body = json.loads(urllib.request.urlopen(f"{args.bus.rstrip('/')}/events/{args.stream}?count=5000", timeout=20).read())
+            body = json.loads(urllib.request.urlopen(urllib.request.Request(f"{args.bus.rstrip('/')}/events/{args.stream}?count=5000", headers=bus_headers()), timeout=20).read())
             extra = [t for t in feedback_terms(body.get('events') or []) if t not in interests]
             interests += extra
             print(f'interest profile: +{len(extra)} terms {extra}', file=sys.stderr)
@@ -162,7 +177,7 @@ def main():
     for ref, event in new.items():
         if args.dry_run:
             print(json.dumps(event)); continue
-        req = urllib.request.Request(f"{args.bus.rstrip('/')}/events/{args.stream}", json.dumps(event).encode(), {'Content-Type': 'application/json'})
+        req = urllib.request.Request(f"{args.bus.rstrip('/')}/events/{args.stream}", json.dumps(event).encode(), bus_headers())
         try:
             urllib.request.urlopen(req, timeout=10).read()
         except Exception as exc:  # keep what was sent; retry the rest next run

@@ -67,6 +67,42 @@ it('#778 regression: a raw rebase stops with HEAD at main (a push would empty th
   expect(fs.readFileSync(ledger, 'utf8')).toMatch(/"event":"superseded","pr":"778"/);
 });
 
+it('preserves a concurrent remote update while rebuilding a published branch', () => {
+  const { dir, c3 } = incidentRepo();
+  const remote = tmp('mt-remote-');
+  git(remote, 'init -q --bare');
+  git(dir, `remote add origin ${remote}`);
+  git(dir, 'push -q origin feat');
+  git(dir, 'checkout -q -b peer');
+  write(dir, 'peer.txt', 'another writer\n');
+  const peerHead = commit(dir, 'concurrent peer work');
+  git(dir, 'push -q origin peer');
+  git(dir, 'checkout -q feat');
+  const ledger = path.join(tmp('mt-led-'), 'ledger.jsonl');
+  const r = runScript(dir, ['rebase', 'feat', '1', '778'], {
+    MT_BASE: 'main', MT_LEDGER: ledger,
+    MT_POST_REBUILD: `git --git-dir=${remote} update-ref refs/heads/feat ${peerHead} ${c3}`,
+  });
+  expect(git(remote, 'rev-parse refs/heads/feat')).toBe(peerHead);
+  expect(r.status).toBe(3);
+  expect(git(dir, 'rev-parse feat')).toBe(c3);
+  expect(fs.readFileSync(ledger, 'utf8')).toContain('reconstruct_push_unconfirmed');
+  expect(fs.readFileSync(ledger, 'utf8')).not.toMatch(/"event":"superseded"/);
+});
+
+it('publishes a reconstructed branch when the remote still equals the original head', () => {
+  const { dir, c3 } = incidentRepo();
+  const remote = tmp('mt-remote-');
+  git(remote, 'init -q --bare');
+  git(dir, `remote add origin ${remote}`);
+  git(dir, 'push -q origin feat');
+  const r = runScript(dir, ['rebase', 'feat', '1', '778'], { MT_BASE: 'main', MT_LEDGER: path.join(tmp('mt-led-'), 'ledger.jsonl') });
+  expect(r.status).toBe(0);
+  expect(git(remote, 'rev-parse refs/heads/feat')).toBe(git(dir, 'rev-parse feat'));
+  expect(git(dir, 'rev-parse feat')).not.toBe(c3);
+  expect(git(dir, 'diff --name-only main feat')).toBe('c.txt');
+});
+
 it('Linux CI regression: without a git committer identity the rebuild fails closed up front — branch untouched, nothing pushed', () => {
   // ubuntu runners have no user.email: the cherry-pick used to die silently and surface as a misleading ESCALATE (4)
   const { dir } = incidentRepo();
@@ -130,7 +166,7 @@ const train = (over: Record<string, string>, opts: { merged?: boolean; withTestF
   // a simulated squash merge really lands the change on main and flips the PR to MERGED (the outcome is read back live)
   const land = `echo x >> ${merges}; touch ${state}; git apply ${diff} && git add -A && git -c user.email=t@t -c user.name=t commit -q -m squash`;
   const env = { MT_LEDGER: ledger, MT_BASE: 'main', MT_FETCH: 'true', MT_PR_VIEW: `if [ -f ${state} ]; then echo MERGED aaaa1111 false; else echo OPEN aaaa1111 false; fi`,
-    MT_PR_DIFF: `cat ${diff}`, MT_UPDATE: 'echo updated', MT_CHECKS: 'echo pass', MT_SLEEP: 'true', MT_MERGE: land, ...over };
+    MT_PR_DIFF: `cat ${diff}`, MT_UPDATE: 'echo up-to-date', MT_CHECKS: 'echo pass', MT_SLEEP: 'true', MT_MERGE: land, ...over };
   const r = runScript(dir, ['run', log, opts.pr ?? '778'], env);
   return { ...r, merges: fs.existsSync(merges) ? fs.readFileSync(merges, 'utf8').split('\n').filter(Boolean).length : 0, ledger, dir };
 };
@@ -177,7 +213,7 @@ it('two workers claiming the same intent: only one acts', async () => {
   // realistic GitHub: after the merge the PR reads MERGED; the first worker holds its claim for ~3 s
   const env = { ...process.env, MT_LEDGER: ledger, MT_BASE: 'main', MT_FETCH: 'true', MT_PR_DIFF: `cat ${diff}`,
     MT_PR_VIEW: `if [ -f ${state} ]; then echo MERGED aaaa1111 false; else echo OPEN aaaa1111 false; fi`,
-    MT_UPDATE: 'echo updated', MT_CHECKS: 'echo pass', MT_SLEEP: 'sleep 1', MT_MERGE: `echo x >> ${merges}; git apply ${diff} && git add -A && git -c user.email=t@t -c user.name=t commit -q -m squash; touch ${state}` };
+    MT_UPDATE: 'sleep 1; echo up-to-date', MT_CHECKS: 'echo pass', MT_SLEEP: 'sleep 1', MT_MERGE: `echo x >> ${merges}; git apply ${diff} && git add -A && git -c user.email=t@t -c user.name=t commit -q -m squash; touch ${state}` };
   const { spawn } = await import('child_process');
   const go = () => new Promise<{ code: number | null; out: string }>((resolve) => {
     const c = spawn('bash', [script, 'run', path.join(dir, '..', `log-${Math.random()}`), '778'], { cwd: dir, env });
@@ -247,7 +283,7 @@ it('11-10 #778 regression: the merge lands but branch cleanup fails — MERGED f
     MT_LEDGER: path.join(own, 'ledger'), MT_BASE: 'main', MT_FETCH: 'true', MT_CHECKS: 'echo pass', MT_SLEEP: 'true',
     MT_PR_DIFF: `cat ${own}/pr$4.diff`,
     MT_PR_VIEW: `if [ -f ${own}/merged$4 ]; then echo MERGED h$4 false; else echo OPEN h$4 false; fi`,
-    MT_UPDATE: `echo $4 >> ${own}/updates; echo updated`,
+    MT_UPDATE: `echo $4 >> ${own}/updates; echo up-to-date`,
     MT_MERGE: `echo $4 >> ${own}/merges; git apply ${own}/pr$4.diff && git add -A && git -c user.email=t@t -c user.name=t commit -q -m sq$4; touch ${own}/merged$4; echo "failed to delete local branch: used by worktree" >&2; exit 1`,
   });
   expect(r.status).toBe(0);

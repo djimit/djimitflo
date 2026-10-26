@@ -1,0 +1,26 @@
+diff --git a/src/middleware/jwk/jwk.ts b/src/middleware/jwk/jwk.ts
+index 80ac635..aa425ee 100644
+--- a/src/middleware/jwk/jwk.ts
++++ b/src/middleware/jwk/jwk.ts
+@@ -79,7 +79,7 @@ export const jwk = (
+     let token
+     if (credentials) {
+       const parts = credentials.split(/\s+/)
+-      if (parts.length !== 2 || parts[0].toLowerCase() !== 'bearer') {
++      if (parts.length !== 2) {
+         const errDescription = 'invalid credentials structure'
+         throw new HTTPException(401, {
+           message: errDescription,
+diff --git a/src/middleware/jwt/jwt.ts b/src/middleware/jwt/jwt.ts
+index 9827231..c7d88da 100644
+--- a/src/middleware/jwt/jwt.ts
++++ b/src/middleware/jwt/jwt.ts
+@@ -80,7 +80,7 @@ export const jwt = (options: {
+     let token
+     if (credentials) {
+       const parts = credentials.split(/\s+/)
+-      if (parts.length !== 2 || parts[0].toLowerCase() !== 'bearer') {
++      if (parts.length !== 2) {
+         const errDescription = 'invalid credentials structure'
+         throw new HTTPException(401, {
+           message: errDescription,

@@ -69,7 +69,7 @@ RUN apt-get update && \
 # gh CLI: djimitflo's own PR review service shells out to it for PR
 # comments and Check Runs (see GithubPrReviewService). Static .deb, no
 # third-party apt repo needed; pinned like the other global installs below.
-ARG GH_CLI_VERSION=2.100.0
+ARG GH_CLI_VERSION=2.102.1
 RUN ARCH="$(dpkg --print-architecture)" && \
     curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 -o /tmp/gh.deb "https://github.com/cli/cli/releases/download/v${GH_CLI_VERSION}/gh_${GH_CLI_VERSION}_linux_${ARCH}.deb" && \
     dpkg -i /tmp/gh.deb && \
@@ -118,7 +118,7 @@ RUN apt-get update && \
 
 RUN npm install --global npm@12.0.2 && \
     npm install --global --prefix /tmp/npm-patches \
-      brace-expansion@5.0.11 ip-address@10.3.1 tar@7.5.21 undici@7.29.1 && \
+      brace-expansion@5.0.11 ip-address@10.3.1 tar@7.5.21 undici@7.30.1 && \
     cp -a /tmp/npm-patches/lib/node_modules/. /usr/local/lib/node_modules/npm/node_modules/ && \
     rm -rf /tmp/npm-patches
 

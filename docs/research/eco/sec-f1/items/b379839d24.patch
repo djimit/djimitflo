@@ -1,0 +1,29 @@
+diff --git a/runtime/typescript/packages/core/src/core/loader.ts b/runtime/typescript/packages/core/src/core/loader.ts
+index 0f58866..6a0e3b6 100644
+--- a/runtime/typescript/packages/core/src/core/loader.ts
++++ b/runtime/typescript/packages/core/src/core/loader.ts
+@@ -79,7 +79,12 @@ export function defaultSaveContext(
+ 
+ function buildAgent(raw: string, filePath: string, options: LoadOptions): Prompty {
+   // 1. Split frontmatter + body
+-  const { data, content } = matter(raw);
++  const { data, content } = matter(raw, {
++    engines: {
++      js: { parse: rejectExecutableFrontmatter },
++      javascript: { parse: rejectExecutableFrontmatter },
++    },
++  });
+ 
+   // If there's a body (instructions), merge it in
+   const frontmatter: Record<string, unknown> = data ?? {};
+@@ -102,6 +107,10 @@ function buildAgent(raw: string, filePath: string, options: LoadOptions): Prompt
+   return agent;
+ }
+ 
++function rejectExecutableFrontmatter(): never {
++  throw new Error("JavaScript frontmatter is not supported in .prompty files");
++}
++
+ // ---------------------------------------------------------------------------
+ // Reference resolution via preProcess
+ // ---------------------------------------------------------------------------

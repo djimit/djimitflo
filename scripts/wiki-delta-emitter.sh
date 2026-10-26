@@ -8,6 +8,8 @@
 # Env: WIKI_DIR (/home/djimit/djimit/DjimitKBWiki)  DJIMIT_EVENT_BUS_URL (http://100.86.47.122:8083)
 #      DJIMIT_EVENT_STREAM (djimit.events)  WIKI_EMITTER_STATE (~/.local/state/wiki-delta-emitter/last-commit)
 #      CURL_BIN (curl)  --dry-run prints the event instead of posting it.
+#      Fleet bus token (S3, docs/runbooks/fleet-bus-auth.md): DJIMIT_EVENT_BUS_TOKEN, else the file
+#      DJIMIT_FLEET_BUS_TOKEN_FILE (~/.djimit/fleet-bus.token, mode 600). Passed to curl on stdin, never on argv.
 # ponytail: git-commit granularity, one event per run listing up to 200 pages; add per-page events if consumers need them.
 set -euo pipefail
 
@@ -16,6 +18,7 @@ BUS_URL="${DJIMIT_EVENT_BUS_URL:-http://100.86.47.122:8083}"
 STREAM="${DJIMIT_EVENT_STREAM:-djimit.events}"
 STATE="${WIKI_EMITTER_STATE:-$HOME/.local/state/wiki-delta-emitter/last-commit}"
 CURL_BIN="${CURL_BIN:-curl}"
+TOKEN_FILE="${DJIMIT_FLEET_BUS_TOKEN_FILE:-$HOME/.djimit/fleet-bus.token}"
 DRY_RUN=false
 [ "${1:-}" = "--dry-run" ] && DRY_RUN=true
 
@@ -43,6 +46,9 @@ print(json.dumps({
 PY
 )"
 if $DRY_RUN; then echo "$payload"; exit 0; fi
-"$CURL_BIN" -sf --max-time 15 -X POST -H 'Content-Type: application/json' -d "$payload" "${BUS_URL%/}/events/${STREAM}" >/dev/null
+token="${DJIMIT_EVENT_BUS_TOKEN:-}"
+[ -n "$token" ] || { [ -r "$TOKEN_FILE" ] && token="$(tr -d '[:space:]' < "$TOKEN_FILE")"; } || true
+{ [ -z "$token" ] || printf 'header = "Authorization: Bearer %s"\n' "$token"; } \
+  | "$CURL_BIN" -sf --max-time 15 --config - -X POST -H 'Content-Type: application/json' -d "$payload" "${BUS_URL%/}/events/${STREAM}" >/dev/null
 echo "$head" > "$STATE"
 echo "published wiki.page.changed for $(echo "$pages" | wc -l | tr -d ' ') page(s)"

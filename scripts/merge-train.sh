@@ -24,7 +24,8 @@
 #    shows the new head came from this intent's own update-branch (resume after a worker restart).
 #  - --dry-run is read-only by construction: every gh call goes through ghx, which refuses anything but GET in that mode,
 #    and the mutating wrappers refuse before reaching a probe.
-#  - a rebuilt branch is pushed only if it reproduces the original change hunk for hunk; never an empty branch.
+#  - a rebuilt branch is pushed only if it reproduces the original change hunk for hunk and the remote still equals
+#    its original head; a concurrent push is never overwritten and a refused push restores the local branch.
 # Every external probe is overridable (MT_<NAME>, evaluated) so the logic is testable without GitHub
 # (merge-train.test.ts, merge-train-correctness.test.ts).
 set -euo pipefail
@@ -39,7 +40,6 @@ SETTLE="${MT_HEAD_SETTLE_S:-30}"; SETTLE_POLL="${MT_HEAD_SETTLE_POLL_S:-5}"
 GH_TIMEOUT="${MT_GH_TIMEOUT_S:-60}"
 ASSERTIONS="${MT_ASSERTIONS:-}"
 TEST_ONLY_DIFF_MAX=400                                     # loop-worker-executor-service.ts TEST_ONLY_DIFF_MAX
-DEFAULT_REQUIRED='build-and-test (22),build-and-test (24),security-scan,sbom,gitleaks'   # main protection, 2026-10-12
 MARK_READY=0
 READONLY=0
 CUR_PR=""; CUR_HEAD=""; CUR_KEY=""
@@ -79,7 +79,7 @@ pr_merge()  { mutating "merge $1" || return 99; probe MERGE mt_gh pr merge-at "$
 policy()    { probe POLICY policy_default "$1" "$2"; }
 fetch_main(){ probe FETCH git fetch -q origin; }
 main_sha()  { probe MAIN_SHA git rev-parse "$BASE"; }
-push()      { mutating "git push $1" || return 99; probe PUSH git push -f -q origin "$1"; }
+push()      { mutating "git push $1" || return 99; probe PUSH git push --force-with-lease="refs/heads/$1:$2" -q origin "refs/heads/$1:refs/heads/$1"; }
 pause()     { if [ -n "${MT_SLEEP:-}" ]; then probe SLEEP sleep "$1"; else sleep "$1" & wait $!; fi; }   # interruptible by a signal
 post_rebuild() { probe POST_REBUILD true; }   # test hook only
 
@@ -88,7 +88,7 @@ mt_gh() {   # mt_gh pr <verb> N --flag VALUE: REST calls that gh has no pinned-s
   case "$verb" in
     update-branch) ghx api -X PUT "repos/$REPO_SLUG/pulls/$n/update-branch" -f "expected_head_sha=$v" ;;
     merge-at)      ghx api -X PUT "repos/$REPO_SLUG/pulls/$n/merge" -f merge_method=squash -f "sha=$v" ;;
-    checks-at)     checks_verdict "$v" | jq -r 'if .verdict == "green" then "pass" elif .verdict == "red" then "fail red:\(.red|join(","))"
+    checks-at)     checks_verdict "$v" | jq -r 'if .verdict == "green" then "pass" elif .verdict == "red" then "fail red:\(.red|join(","))\(if .reason then " " + .reason else "" end)"
                      else "pending missing:\(.missing|join(",")) pending:\(.pending|join(","))\(if .reason then " " + .reason else "" end)" end' ;;
     *) echo "mt_gh: unknown verb $verb" >&2; return 64 ;;
   esac
@@ -106,14 +106,17 @@ superseded() { grep -q "\"event\":\"superseded\",\"pr\":\"$1\",\"head\":\"$2\"" 
 own_update() { grep -q "\"event\":\"branch_updated\",\"pr\":\"$1\",\"head\":\"$2\",\"key\":\"$3\"" "$LEDGER"; }
 
 # --- CI on one exact sha (mirrors loop-auto-merge.ts checks() + the required contexts of branch protection) -----------
-required_json() {
+required_json() {   # unreadable protection is never replaced by a remembered list: source unavailable ⇒ HOLD, re-read next call
   local f="$MT_TMP/required.json"
   if [ ! -s "$f" ]; then
-    local src ctx
+    local src ctx q='[(.contexts // [])[], ((.checks // [])[] | .context)] | unique | join(",")'
     if [ -n "${MT_REQUIRED_CHECKS:-}" ]; then src=env; ctx="$MT_REQUIRED_CHECKS"
-    elif ctx="$(ghx api "repos/$REPO_SLUG/branches/$BASE_BRANCH/protection/required_status_checks" -q '[(.contexts // [])[], ((.checks // [])[] | .context)] | unique | join(",")' 2>/dev/null)" && [ -n "$ctx" ]; then src=branch_protection
-    else src=default_20261012_assessment; ctx="$DEFAULT_REQUIRED"; fi
-    jq -cn --arg c "$ctx" --arg s "$src" '{source: $s, contexts: ($c | split(",") | map(select(length > 0)))}' > "$f"
+    elif ctx="$(ghx api "repos/$REPO_SLUG/branches/$BASE_BRANCH/protection/required_status_checks" -q "$q" 2>/dev/null)" && [ -n "$ctx" ]; then src=branch_protection
+    elif ctx="$(ghx api "repos/$REPO_SLUG/branches/$BASE_BRANCH" -q ".protection.required_status_checks // {} | $q" 2>/dev/null)" && [ -n "$ctx" ]; then src=branch_protection   # read access suffices
+    else src=unavailable; ctx=""; fi
+    jq -cn --arg c "$ctx" --arg s "$src" '{source: $s, contexts: ($c | split(",") | map(select(length > 0)))}' > "$f.new"
+    if [ "$src" = unavailable ]; then cat "$f.new"; return 0; fi
+    mv "$f.new" "$f"
   fi
   cat "$f"
 }
@@ -125,18 +128,24 @@ checks_verdict() {   # → {verdict: green|pending|red, red, pending, missing, r
   st="$(ghx api "repos/$REPO_SLUG/commits/$sha/status" 2>/dev/null || true)"
   json_or_null "$runs" > "$d/runs.json"; json_or_null "$st" > "$d/status.json"   # files, not argv: responses can be large
   jq -cn --slurpfile R "$d/runs.json" --slurpfile S "$d/status.json" --argjson req "$(required_json)" '
+    def newest(k): group_by(k) | map(max_by([(.id // 0), (.completed_at // .updated_at // "")]));   # a rerun replaces the run it re-ran
     $R[0] as $runs | $S[0] as $st |
-    if $runs == null then {verdict: "pending", red: [], pending: [], missing: $req.contexts, reason: "check_runs_unavailable"} else
-    ($runs.check_runs // []) as $cr | (($st // {}).statuses // []) as $ss | (($st // {}).state // "") as $state |
+    if $req.source == "unavailable" then {verdict: "pending", red: [], pending: [], missing: [], reason: "required_checks_unavailable"}
+    elif $runs == null then {verdict: "pending", red: [], pending: [], missing: $req.contexts, reason: "check_runs_unavailable"} else
+    ($runs.check_runs // [] | newest(.name)) as $cr | (($st // {}).statuses // [] | newest(.context)) as $ss | (($st // {}).state // "") as $state |
+    # a REQUIRED context is green only on success: skipped, neutral, cancelled, stale (any other completed conclusion) is red
+    ([$cr[] | select(.status == "completed" and .conclusion != "success" and (.name | IN($req.contexts[]))) | {n: .name, c: .conclusion}]
+      + [$ss[] | select((.state | IN("success", "pending") | not) and (.context | IN($req.contexts[]))) | {n: .context, c: .state}]) as $reqbad |
     ([$cr[] | select(.status == "completed" and (.conclusion | IN("failure", "timed_out", "action_required", "startup_failure"))) | .name]
-      + [$ss[] | select(.state == "failure" or .state == "error") | .context]) as $red |
+      + [$ss[] | select(.state == "failure" or .state == "error") | .context] + [$reqbad[].n] | unique) as $red |
     ([$cr[] | select(.status != "completed" or .conclusion == "cancelled" or .conclusion == "stale") | .name]
       + [$ss[] | select(.state == "pending") | .context]) as $pend |
     ([$cr[].name] + [$ss[].context]) as $seen |
     [$req.contexts[] | . as $r | select(($seen | index($r)) == null)] as $missing |
     {verdict: (if ($red | length) > 0 or $state == "failure" or $state == "error" then "red"
                elif ($pend | length) > 0 or ($missing | length) > 0 or (($cr | length) + ($ss | length)) == 0 then "pending"
-               else "green" end), red: $red, pending: $pend, missing: $missing} end'
+               else "green" end), red: $red, pending: $pend, missing: $missing}
+    + (if ($reqbad | length) > 0 then {reason: ("required_not_success:" + ([$reqbad[] | "\(.n)=\(.c)"] | join(",")))} else {} end) end'
 }
 
 # --- eligibility (mirrors the #754 shadow: loop-auto-merge.ts runAutoMergeTick, applied to the CURRENT head) ---------
@@ -294,14 +303,17 @@ run_train() {
   trap 'on_signal TERM' TERM; trap 'on_signal INT' INT
   for spec in "$@"; do
     local pr="${spec%@*}" want=""; [ "$spec" != "$pr" ] && want="${spec#*@}"
-    local p; p="$(mktemp)"; pr_diff "$pr" > "$p" || true
+    live "$pr" || { hold "$pr" "" "PR head unavailable before diff download"; exit 7; }
+    local diff_head="$L_HEAD"
+    local p; p="$(mktemp)"
+    pr_diff "$pr" > "$p" || { rm -f "$p"; hold "$pr" "$diff_head" "diff download failed — partial patch is not evidence"; exit 7; }
     local pid; pid="$(git patch-id --stable < "$p" | cut -d' ' -f1)"
     [ -n "$pid" ] || { say "#$pr EMPTY DIFF — FAIL_CLOSED"; record fail_closed "$pr" "" "" empty_diff; exit 3; }
     local key; key="$(intent_key "$pr" "$pid")"
     if ! claim "$key"; then say "#$pr CLAIMED by another worker — exiting without acting"; exit 6; fi
     CUR_PR="$pr"; CUR_KEY="$key"; CUR_HEAD=""   # the EXIT trap (main) releases CUR_KEY on any exit
     record claimed "$pr" "" "$key"
-    act_on "$pr" "$want" "$p" "$key" || { local rc=$?; release "$key"; CUR_KEY=""; exit $rc; }
+    act_on "$pr" "$want" "$p" "$key" "$diff_head" || { local rc=$?; release "$key"; CUR_KEY=""; exit $rc; }
     release "$key"; CUR_KEY=""; rm -f "$p"
   done
   say "TRAIN DONE"
@@ -310,10 +322,13 @@ run_train() {
 hold() { say "#$1 HOLD ($3)"; record hold "$1" "$2" "$CUR_KEY" "$3"; return 7; }
 
 act_on() {
-  local pr="$1" want="$2" p="$3" key="$4" head
-  fetch_main || true
+  local pr="$1" want="$2" p="$3" key="$4" diff_head="$5" head
+  fetch_main || { hold "$pr" "" "main refresh failed — cached main is not evidence"; return 7; }
   live "$pr" || { hold "$pr" "" "live PR state unavailable (GitHub timeout/network) — nothing done"; return 7; }
   head="$L_HEAD"; CUR_HEAD="$head"
+  if [ "$head" != "$diff_head" ]; then
+    say "#$pr SUPERSEDED (head changed during diff download)"; record superseded "$pr" "$diff_head" "$key" "diff_head_changed:$head"; return 5
+  fi
   # live state first; the ledger and the patch-id are not proof
   if [ "$L_STATE" = MERGED ]; then
     case "$(diff_state "$p")" in
@@ -368,6 +383,8 @@ act_on() {
         say "#$pr head ${head:0:8} → ${new:0:8} after update-branch — CI eligibility of ${head:0:8} discarded"
         record branch_updated "$pr" "$new" "$key" "from:$head"
         head="$new"; CUR_HEAD="$head"
+      else
+        hold "$pr" "$head" "update accepted but new head not observed — old CI is not evidence"; return 7
       fi
     fi
     local base0; base0="$(main_sha)"
@@ -382,7 +399,7 @@ act_on() {
       *) return 7 ;;
     esac
     # 5. re-verify right before the merge call: same head, open, not draft, main unchanged since CI, policy still READY
-    fetch_main || true
+    fetch_main || { hold "$pr" "$head" "main refresh failed before merge — not merged"; return 7; }
     live "$pr" || { hold "$pr" "$head" "live PR state unavailable before merge — not merged"; return 7; }
     if [ "$L_STATE" = MERGED ]; then act_on_merged_meanwhile "$pr" "$L_HEAD" "$p" "$key"; return $?; fi
     if [ "$L_STATE" != OPEN ] || [ "$L_HEAD" != "$head" ]; then say "#$pr SUPERSEDED during execution ($L_STATE ${L_HEAD:0:8})"; record superseded "$pr" "$head" "$key" "during:$L_STATE"; return 5; fi
@@ -399,7 +416,7 @@ act_on() {
     # merge succeeded but branch cleanup failed; the old train retried update-branch on a merged PR)
     record merge_intent "$pr" "$head" "$key"
     local mrc=0; pr_merge "$pr" "$head" >> "$log" 2>&1 || mrc=$?
-    fetch_main || true
+    fetch_main || { hold "$pr" "$head" "main refresh failed after merge request — inspect live outcome before retry"; return 7; }
     if live "$pr" && [ "$L_STATE" = MERGED ]; then
       [ "$mrc" -eq 0 ] || say "#$pr merge CLI exited $mrc after merging (branch cleanup) — logged, not fatal"
       if [ "$(diff_state "$p")" = present ] || [ "${MT_SKIP_MAIN_CHECK_AFTER_MERGE:-}" = 1 ]; then say "#$pr MERGED"; record merged "$pr" "$L_HEAD" "$key" "cli_exit=$mrc sha=$head"; return 0; fi
@@ -521,8 +538,14 @@ rebase_onto_main() {
   # reproduce the original change only: hunk for hunk, else fail closed and escalate
   if [ "$(hunks "$BASE" "$branch")" != "$want" ]; then restore; echo "FAIL_CLOSED: rebuilt $branch differs from the original change — nothing pushed, escalate"; record fail_closed "$pr" "$old_head" "" reconstruct_mismatch; exit 3; fi
   echo "RECONSTRUCT: $branch rebuilt on $BASE with ${#absent[@]} own commit(s), change identical to the original"
+  record reconstruct_push "$pr" "$old_head" "" "reconstructed as $(git rev-parse "$branch"); expected remote $old_head"
+  if ! push "$branch" "$old_head"; then
+    restore
+    echo "FAIL_CLOSED: push did not report success — local branch restored; inspect remote before retry"
+    record fail_closed "$pr" "$old_head" "" reconstruct_push_unconfirmed
+    exit 3
+  fi
   record superseded "$pr" "$old_head" "" "reconstructed as $(git rev-parse "$branch")"
-  push "$branch"
 }
 
 main() {

@@ -13,7 +13,7 @@ import { recordPolicyViolation } from './policy-violations';
 import type {
   LoopService,
 } from './loop-service';
-import { allGatesPassed } from './loop-types';
+import { runCertified } from './loop-types';
 import type {
   LoopRunRecord,
   WorkerLeaseRecord,
@@ -40,7 +40,7 @@ const instant = (value: unknown): number => {
 };
 
 const CHANGE_LOOP_ARTIFACT_GATES = new Set(['worktree_isolation', 'assignment_file_present', 'diff_threshold_all_makers',
-  'tests_lint_typecheck', 'security_checker_verdict', 'auto_approved_scope']);
+  'tests_lint_typecheck', 'security_checker_verdict', 'auto_approved_scope', 'objective_scope']);
 /** A gym run is graded by its own oracle (gym_result): none of the change-loop maker/checker gates apply. */
 const GYM_INAPPLICABLE_GATES = new Set([...CHANGE_LOOP_ARTIFACT_GATES, 'maker_completion', 'maker_checker_separation', 'checker_verdict']);
 
@@ -82,7 +82,12 @@ export class LoopVerificationService {
         return typeof makerLeaseId !== 'string' || !supersededMakerIds.has(makerLeaseId);
       });
     const completedMakerLeases = activeMakerLeases.filter((lease) => lease.status === 'completed');
-    const highRisk = this.loopService.isHighRiskRun(run);
+    // §3d P0 #1: effective risk = max(finding/proposal text, the files every completed maker actually changed)
+    const highRisk = this.loopService.isHighRiskRun(run)
+      || completedMakerLeases.some((lease) => Boolean(this.loopService.leaseChangedFilesRisk(lease)));
+    // grandfathered by evidence presence: a run none of whose completed makers carries risk_inputs gets no objective_scope gate
+    const legacyEvaluation = completedMakerLeases.length > 0 && !completedMakerLeases.some((lease) => lease.metadata?.risk_inputs)
+      ? { objective_scope: 'skipped (legacy, no risk_inputs)' } : null;
     const notApplicable = this.inapplicableGates(run, activeMakerLeases);
 
     const computedGates: LoopGate[] = [
@@ -149,6 +154,13 @@ export class LoopVerificationService {
         status: completedMakerLeases.every((lease) => !lease.metadata?.auto_approved_scope || this.leaseWithinScope(lease)) ? 'pass' : 'fail',
         evidence: 'An auto-approved maker lease may change only its approved test file (human-approved makers pass).',
       },
+      // §3d P0 #4: the objective assignment says "Change only this file"; without this only auto-approved makers were held to it.
+      // Absent (not 'skipped') on a legacy run: a skipped gate fails the daemon's every-gate-pass rule and certification.
+      ...(legacyEvaluation ? [] : [{
+        name: 'objective_scope',
+        status: combine(completedMakerLeases.map((lease) => this.objectiveScopeObservation(run, lease))),
+        evidence: 'An objective-mode maker (not auto-approved) may change only its finding file; a missing changed-files record is insufficient evidence; a maker lease without risk_inputs (legacy) is not evaluated.',
+      } satisfies LoopGate]),
       {
         name: 'no_automatic_merge',
         status: 'pass',
@@ -208,6 +220,14 @@ export class LoopVerificationService {
         evidence_ref: `loop_run:${run.id}/lease:${lease.id}`,
         description: `auto-approved maker changed files outside ${String(lease.metadata.auto_approved_scope)}: ${files.filter((f: string) => f !== lease.metadata.auto_approved_scope).join(', ') || '(none listed)'}` });
     }
+    for (const lease of completedMakerLeases) {
+      if (notApplicable.gates.has('objective_scope') || this.objectiveScopeObservation(run, lease) !== 'fail') continue;
+      const scope = this.objectiveScopeFile(run, lease)!;
+      const files = (lease.metadata.changed_files as unknown[]).map(String);
+      recordPolicyViolation(db, { kind: 'scope_gate', actor: `maker:${lease.runtime}`, severity: 'high', dedupe_key: `${lease.id}:objective_scope`, run_id: run.id, lease_id: lease.id,
+        evidence_ref: `loop_run:${run.id}/lease:${lease.id}/gate:objective_scope`,
+        description: `objective-mode maker changed files outside ${scope}: ${files.filter((f) => f !== scope).join(', ')}` });
+    }
     db.prepare(`
       UPDATE loop_runs
       SET status = ?, gates_json = ?, updated_at = ?, metadata = ?
@@ -216,7 +236,7 @@ export class LoopVerificationService {
 
     this.loopService.recordLoopEvent(run.id, 'loop_verified', failedGates.length + unknownGates.length > 0 ? 'warning' : 'info',
       `Verification status: ${status}; ${failedGates.length} gate(s) incomplete or failed${unknownGates.length ? `; ${unknownGates.length} gate(s) with insufficient evidence` : ''}.`,
-      { gates, block_metadata: blockMetadata });
+      { gates, block_metadata: blockMetadata, ...(legacyEvaluation ? { legacy_evaluation: legacyEvaluation } : {}) });
 
     return { run: this.loopService.getLoopRun(run.id), gates, leases };
   }
@@ -226,7 +246,7 @@ export class LoopVerificationService {
    */
   certifyLoopRun(id: string): CertificationResult {
     const result = this.verifyLoopRun(id);
-    const allPass = (result.run.status === 'ready_for_human_merge' || result.run.status === 'completed') && allGatesPassed(result.gates);
+    const allPass = runCertified({ status: result.run.status, gates: result.gates });
     swarmEventBus.emit('convergence', {
       run_id: id,
       certified: allPass,
@@ -240,6 +260,22 @@ export class LoopVerificationService {
   private leaseWithinScope(lease: WorkerLeaseRecord): boolean {
     const files = lease.metadata?.changed_files;
     return Array.isArray(files) && files.length === 1 && files[0] === lease.metadata.auto_approved_scope;
+  }
+
+  /** The one file an objective-mode maker may change (its finding's file), or null when no such scope applies. */
+  private objectiveScopeFile(run: LoopRunRecord, lease: WorkerLeaseRecord): string | null {
+    if (lease.metadata?.auto_approved_scope) return null; // held to its approved file by auto_approved_scope
+    const finding = run.findings.find((candidate) => candidate.id === lease.finding_id);
+    if (!finding?.metadata?.objective_mode || !finding.file || finding.file.startsWith('(')) return null;
+    return finding.file;
+  }
+
+  private objectiveScopeObservation(run: LoopRunRecord, lease: WorkerLeaseRecord): GateStatus {
+    const scope = this.objectiveScopeFile(run, lease);
+    if (!scope || !lease.metadata?.risk_inputs) return 'pass'; // no scope, or a legacy lease (not evaluated)
+    const files = lease.metadata?.changed_files;
+    if (!Array.isArray(files)) return 'unknown';
+    return files.every((file) => file === scope) ? 'pass' : 'fail';
   }
 
   private leaseDiffWithinThreshold(lease: WorkerLeaseRecord): boolean {

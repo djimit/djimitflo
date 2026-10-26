@@ -119,5 +119,38 @@ describe('OpenMythos scorecard queries', () => {
       expect(board.map((s) => s.agentId)).toEqual(['agent-good', 'agent-bad']);
       expect(board[1].categoryScores).toEqual({});
     });
+
+    it('DF-01: a 0-100 explainer-critic score never enters the 0-5 ranking or trend', () => {
+      insertRun(db, { id: 'model-1', agentId: 'agent-model', overallScore: 4.2, finishedAt: '2026-07-15T10:00:00.000Z' });
+      // Exactly what ExplainerGenerationService persists for a critic grade (0-100, threshold 85).
+      db.prepare(`
+        INSERT INTO openmythos_eval_runs (id, agent_id, started_at, finished_at, total_cases, completed_cases, overall_score, status, categories_json, judge_model, metadata)
+        VALUES ('explcrit-b1-0', 'explainer-critic', '2026-07-16T10:00:00.000Z', '2026-07-16T10:00:01.000Z', 6, 6, 93, 'completed', '[]', 'judge-service-4factor', ?)
+      `).run(JSON.stringify({ bundle_id: 'b1', passed: true, threshold: 85 }));
+      // Unattributed row whose value is outside 0-5: scale unknown, never a valid 0-5 score.
+      insertRun(db, { id: 'odd-1', agentId: 'agent-odd', overallScore: 7, finishedAt: '2026-07-16T11:00:00.000Z' });
+      // Same agent: an out-of-range row must not drive the 0-5 trend.
+      insertRun(db, { id: 'mix-1', agentId: 'agent-mix', overallScore: 40, finishedAt: '2026-07-14T10:00:00.000Z' });
+      insertRun(db, { id: 'mix-2', agentId: 'agent-mix', overallScore: 3.0, finishedAt: '2026-07-15T10:00:00.000Z' });
+
+      const board = service.getLeaderboard();
+      expect(board.map((s) => s.agentId)).toEqual(['agent-model', 'agent-mix']);
+      for (const row of board) {
+        expect(row.scale).toBe('0-5');
+        expect(row.overallScore).toBeGreaterThanOrEqual(0);
+        expect(row.overallScore).toBeLessThanOrEqual(5);
+      }
+      expect(board.find((s) => s.agentId === 'agent-mix')?.trend).toBe('stable');
+
+      const critic = service.getAgentScore('explainer-critic');
+      expect(critic).toMatchObject({ overallScore: 93, benchmark: 'explainer-critic', scale: '0-100' });
+      expect(service.getAgentScore('agent-odd')?.scale).toBe('unknown');
+
+      const others = service.getOtherScoreCohorts();
+      expect(others.map((c) => c.cohort).sort()).toEqual(['explainer-critic:0-100', 'openmythos-governance:unknown']);
+      expect(others.find((c) => c.scale === '0-100')?.scores.map((s) => s.agentId)).toEqual(['explainer-critic']);
+      expect(service.getGovernanceTrend('agent-mix').map((p) => p.score)).toEqual([3.0]);
+      expect(service.listRuns().find((r) => r.id === 'explcrit-b1-0')?.scale).toBe('0-100');
+    });
   });
 });

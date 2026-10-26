@@ -219,3 +219,24 @@ it('KE-5: errored discovery_relevance judgments are retried once by the tick (bo
   await vi.waitFor(() => expect(errors()).toBe(5));
   expect(svc.retryErroredRelevance(50)).toEqual({ retried: 0 });
 });
+
+it('AUTHZ-F2: a verdict re-pointed at the unit it created keeps provenance consistent: evidence_reference names the judged discovery, subject_rewrite names the move', async () => {
+  vi.stubEnv('TYPESAFE_API_KEY', 'k');
+  vi.stubEnv('TYPESAFE_DISCOVERY_RELEVANCE_MODE', 'shadow');
+  vi.stubEnv('FRONTIER_UNITS_REQUIRE_RELEVANCE', 'true');
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ model: 'jev-test', answers: ans('lane_technique', 0.9, 0.7) }) }));
+  const svc = new ExpertSourceUnitsService(db);
+  expect(svc.ingestDiscovery({ event_type: 'discovery.paper', ref: 'arxiv:2610.63001', title: 'Mutation-guided test generation for coding agents', agent: 'djimitflo-scout' })).toBe('pending');
+  expect(svc.ingestDiscovery({ event_type: 'discovery.paper', ref: 'arxiv:2610.63002', title: 'Trapped-ion qubit calibration III', agent: 'djimitflo-scout' })).toBe('irrelevant'); // KE-2 override
+  await vi.waitFor(() => expect((db.prepare("SELECT COUNT(*) n FROM expert_identities WHERE kind = 'paper'").get() as { n: number }).n).toBe(2));
+  const rows = db.prepare("SELECT subject_type, subject_id, provenance_json FROM judgments WHERE judgment = 'discovery_relevance' ORDER BY created_at, rowid").all() as Array<{ subject_type: string; subject_id: string; provenance_json: string }>;
+  expect(rows).toHaveLength(2);
+  const from = ['discovery_pending:arxiv:2610.63001', 'discovery_rejected:arxiv:2610.63002'];
+  rows.forEach((row, i) => {
+    expect(row.subject_type).toBe('expert_unit');
+    const p = JSON.parse(row.provenance_json);
+    expect(p.status).toBe('recorded');
+    expect(p.evidence_reference.startsWith(`${from[i]}#state=`)).toBe(true);
+    expect(p.subject_rewrite).toMatchObject({ from: { type: from[i].split(':')[0], id: from[i].slice(from[i].indexOf(':') + 1) }, to: { type: 'expert_unit', id: row.subject_id }, reason: 'expert_unit_created' });
+  });
+});

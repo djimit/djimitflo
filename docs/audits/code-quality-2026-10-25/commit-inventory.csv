@@ -1,0 +1,330 @@
+sha,pr,committed_at,subject,changed_files
+6951dba16a32dc8e90971bfe6711033293129eab,1003,2026-10-25T09:48:22+01:00,fix(gym): a frozen trial item without a task no longer starves the trial (#1003),7
+e8d0de33bbae8736d7ab0b4f9195292a2e9f56aa,1002,2026-10-25T00:19:13+02:00,feat(runtime): ORCA-PG process-group termination behind RUNTIME_PROCESS_GROUP_KILL + Orca assimilation research (#1002),19
+06437c3f50232952a6cb774b702ad004d8c2085b,1000,2026-10-25T00:06:42+02:00,loop: Test untested exports of services/commons-investigation.ts (#1000),1
+2a0bff5b9aec8b2b910f039a11b1d31d1af8cd8d,997,2026-10-24T22:48:21+02:00,feat(commons): AC-10 show why a reflection stays a reflection (policy + per-message reason) (#997),7
+7574f2ce5aa7910e134e5524bb8d2b50067dcaf6,994,2026-10-24T22:32:38+02:00,feat(commons): investigation loop behind COMMONS_INVESTIGATION_MODE (AC-04/06/07) (#994),13
+12ff1ce158bd94813ddbf41ed0f5272523e1bb64,993,2026-10-24T22:19:49+02:00,"feat(commons): honest runtime readiness and discussion-first feed (AC-01, AC-02) (#993)",6
+8fcb9b2e3bbcca75089474b3a475b68ed2fa5060,996,2026-10-24T22:06:59+02:00,fix(deps): undici 7.30.1 for CVE-2026-109869 (high) in the image npm patch and the app lock (#996),2
+e3dd61ec6587db28c8fbd7b7fea69d08bca9baa9,992,2026-10-24T21:03:05+02:00,"feat(commons): AC-03 classify grounded child panel outcomes, technical review failure apart from rejection (#992)",9
+936b93479920d5c251cf006bc42771c9142fa136,990,2026-10-24T17:47:40+02:00,fix(commons): Hermes poller uses --source tool (Hermes 2026.10 rejects unknown source tags) (#990),2
+bf6f647c49b70a65ab795b113f512b9c84ca08a1,987,2026-10-24T02:05:37+02:00,feat(dashboard): L6-04 read-only Experiments table on the Evolution page (#987),3
+c7c8aad6146f7a43bbc6191fad3fbfba56fe8fa2,988,2026-10-24T01:52:49+02:00,"fix(mcp): passive MCP server reads, explicit refresh under manage:config (L6-08) (#988)",7
+266b31ace5159246af87a6fcdffbdec545f7bb25,985,2026-10-24T01:27:57+02:00,"fix(deps): body-parser 2.3.0 -> 2.4.0 (GHSA-27r3-jxmh-p828, high) + qs 6.16.1 — lock only (#985)",1
+cf739513794b559025d0932b2b87807a0e32162b,980,2026-10-24T00:20:53+02:00,"fix(audit,governance): DF-04 audit filter/paging/export scope, DF-01 score-scale cohorts (#980)",11
+44bd49c3072d4d63ca49ab6213d63a9702149989,979,2026-10-24T00:08:02+02:00,"fix(opencode): step_finish is step progress, not a terminal task outcome (DF-03) (#979)",3
+80f28758ab1d1ebfae68218f92fddd1f4a5d0fb7,978,2026-10-23T23:56:00+02:00,fix(self-healing): DF-02 compare lease/run timestamps with julianday; keep the auto-repair no wider (#978),3
+f957b552c9f02ffc5fb25c45d24431610e57f278,981,2026-10-23T23:12:03+02:00,"fix(deps): zod 4.4.3 -> 4.6.7 (GHSA-mrhx-c7xc-m3w5, high) — lock only (#981)",1
+cdbf0cd960ae818fd061ac4b471b93ad773ab681,976,2026-10-23T22:48:14+02:00,feat(config): DF-08 provenance and activation semantics on the Configuration page (#976),11
+c4a998a15d2519dac821f85ba7188f1cc16562f8,975,2026-10-23T22:34:55+02:00,fix(cockpit): DF-07 integration state ladder from durable business evidence (#975),6
+6421adfc74ddca383c8c3a87c895ad32c233068f,974,2026-10-23T22:16:15+02:00,"fix(funnel): truthful refinement, panel-goal-rate, review and stall-time metrics (DF-01/02/03/05) (#974)",11
+41a8b641a18b3996005c852826d0396e6af164c2,973,2026-10-23T22:02:38+02:00,docs(audit): DjimitFlo UX/platform forensic audit (2026-10-23) + verification note (#973),10
+be0b3ab05b8f2cd2e676ea6ceddf4f2140ae6fb6,970,2026-10-23T10:42:52+02:00,docs(authz): authority graph + MCP permissions page marked catalog only (#970),4
+c4592031e0d2c6f58c23cc2f23399613195c7bea,966,2026-10-23T10:29:59+02:00,"exp(str-001): Stage A — strengthen-retry vs independent mutants (offline re-scoring, pre-registered) (#966)",13
+519c7da3f4597232a17dc2b99e24ceafee890bae,959,2026-10-23T10:17:05+02:00,"exp(mfr-001): mutant-kill feedback retry — FALSIFIED (protocol 2b98fae1, NE-013) (#959)",15
+b7631bb31450f0b756981eb81b26994e8ba64235,954,2026-10-23T10:04:57+02:00,"feat(fleet): per-host bearer auth for the event bus and agent registry (S3, prepared, log mode) (#954)",31
+a9979610ce60ff337be15d60a4f3b684d57aca6b,972,2026-10-23T01:54:50+02:00,"fix(kb): content_safety error is not a pass; unverdicted KB pages pending, not served, re-sent (bounded) (#972)",8
+eae0c9017df74eee7395ea694d8d5ca626572167,968,2026-10-22T23:46:03+02:00,fix(authz): Telegram identity mapping cannot delegate authority the caller lacks; federation receive needs manage:config (#968),3
+893caaab64ed71dbb76bd4b4ab75c7064bfd1c2e,967,2026-10-22T23:33:13+02:00,fix(authz): a reviewer inherits the run's maker approval only for a loop-created reviewer lease task (#967),2
+4f4ad607766f57bb45cbd779be8b4537c1a4baa0,965,2026-10-22T23:20:22+02:00,"fix(authz): capabilities reach the live status only through promotion, and its human gate needs approve:task (#965)",3
+5be7d7389608a55391e3d15cc56de2c6c4f6164f,964,2026-10-22T23:09:02+02:00,fix(authz): honest gate accounting for discovery_relevance; stale commons verdicts gate nothing (#964),10
+8613989a1e0ba0fd2ac944bccc5525730c112488,963,2026-10-22T22:56:10+02:00,fix(authz): proof runs propose memory rules and never self-promote; completion ref is the authenticated approver (#963),4
+4a9cbdf44d28c69e1b635d398d70cdb99ab0dda2,962,2026-10-22T22:19:32+02:00,"docs(evolution-001): pre-register the epoch-1 genome trial readout (tiers 3-6, all 40 mutant tasks) (#962)",1
+5dfc6cdbb29422e9d40f571c8adde30dcfab51d9,958,2026-10-22T05:20:59+02:00,fix(gym-worker): mount named volumes with :nocopy so the init chown survives (D9 copy-in failure) (#958),2
+582a684878fe1e86db2a983a4410b915de5e9154,955,2026-10-22T03:25:00+02:00,"fix(gym-worker): D9 runner hardening — no host network, non-root, read-only, no host git on agent trees (#955)",3
+9bba697bb2bfc41eca10e94ba186905d2cd91ccf,956,2026-10-22T03:01:54+02:00,loop: Test untested exports of services/maker-warm-deps.ts (#956),1
+4f48891a700740bd6fee68caa983306b113cc9d2,957,2026-10-22T02:46:58+02:00,loop: Test untested exports of services/lease-failure.ts (#957),1
+5196a1f23d467e62f3b1eb3d43d49133c159fb30,953,2026-10-22T01:40:39+02:00,loop: Raise the mutation score of services/retrieval-eval.ts (#953),1
+d77f2430f0d245c7a8cdd50eeb76dadbeca89a9b,952,2026-10-22T01:16:02+02:00,fix(loops): structured failure capture per lease + MAKER_WARM_DEPS (blocked while MAKER-DEPS-001 runs) (#952),28
+342909feb6fa9c8e26b7c987a7479b18a6732f04,949,2026-10-22T01:05:12+02:00,feat(settlement): SETTLEMENT_EXECUTION_MODE shadow — re-run settled loop PRs' tests at main + fresh-mutant kill share (#949),11
+616e86d29915423b3cfe437a83a268e54a8ca422,951,2026-10-22T00:52:12+02:00,"chore(economics): monthly EUR for the three subscriptions (list price, ECB rate, sourced) (#951)",2
+93d23685a48f50383424f2045e11e597e5bec80c,946,2026-10-22T00:42:39+02:00,"docs(l3-forensics): L3 ecosystem forensic reports 20-10 and refresh 21-10 (INCOMPLETE, MFR-001 proposed) (#946)",6
+7ecf471e438e49d1e1b42f51473540117884aef7,948,2026-10-22T00:31:49+02:00,docs(research): MCP/A2A surface review + permission fixes for three write doors (#948),13
+fc29222c8e2c1521d983a7ec02f740887ef71c94,947,2026-10-21T23:52:22+02:00,"fix(loops): delegation provenance — changed-files risk, packet integrity, objective scope, remote job identity (§3d) (#947)",12
+f08b13b2455e09f19db7f01eacec7e1930a340a2,945,2026-10-21T22:58:27+02:00,docs(negative-evidence): NE-012 covers create-sparc (ruvnet/rUv-dev); guard scans Roo Code config (#945),3
+816f17e28e38d5245affcb1b00bbd7c8522b6520,943,2026-10-21T22:33:46+02:00,fix(dashboard): reload once when a lazy chunk from a previous deploy is gone (#943),4
+b3cc830d99dcd6361bb04d9e18e336ffd61f4ad4,941,2026-10-21T22:08:57+02:00,"docs(sec-f1): result — KEEP (19/20 caught, 0/26 false rejects, AUC 0.975, 2.0 M tokens) (#941)",4
+5a8d1b9cc448d8ff8e3b0beaafa8d2ab5becdd31,939,2026-10-21T21:22:38+02:00,"exp(sec-f1): security-checker discrimination experiment (protocol, items, offline harness) (#939)",57
+0c5b931d7ae836c76d3b9ac5c2376643b6a2a23c,940,2026-10-21T20:34:31+02:00,loop: Test untested exports of services/commons-falsifier.ts (#940),1
+b6219a657f809447352f29e6cc378d73125b9bc0,938,2026-10-21T19:23:18+02:00,"feat(commons): falsifier niche — evidence-room tests red at base → green on a later main earn fitness (COMMONS_FALSIFIER_MODE, default off) (AR5) (#938)",10
+0ee038fa4ee42460878a4a4cf78aef5a9bf26c4f,936,2026-10-21T17:59:28+02:00,"feat(commons): evidence room — one read-only thread per verified/regressed run (COMMONS_EVIDENCE_ROOM_MODE, default off) (#936)",7
+ea241ed381024fc9d78d663c6cd73511258a597c,934,2026-10-21T17:45:48+02:00,fix(social): autonomous lures off by default (AUTONOMOUS_LURES_ENABLED) (#934),4
+26bd20d5d1c50f3087de596f0b15f7411f7739b4,933,2026-10-21T17:32:31+02:00,feat(e1): blind query-level retrieval labelling on /decisions (#933),12
+4e545b00986aa36abfc6617af07f2b9837206abf,935,2026-10-21T17:00:14+02:00,test(finding-fix): real clock + lock-only vite bump + gh 2.102.1 (unblocks CI) (#935),4
+89db35c6da8cd7bda33cb98d4db963d5b089e7a3,925,2026-10-20T23:20:51+02:00,docs(negative-evidence): add NE-012 ruvnet agent ecosystem org-level REJECT (#925),4
+8e050ff1fa264dbb26c610720d3db4cc584c461c,924,2026-10-20T23:09:32+02:00,exp(R2): shadow test:fail-before-pass-after check (FAIL_BEFORE_PASS_AFTER_MODE) (#924),13
+a5c1d314166d2833a5a3f348bfa28d2ebf6b69bc,923,2026-10-20T22:55:56+02:00,feat(fleet): P0-3 signed agent.outcome events (FLEET_EVENT_SIGNATURES off|shadow|enforce) (#923),10
+cf957833d593f2b4ca782686e284f3e8cb9019db,922,2026-10-20T22:43:43+02:00,"exp(e1): RRF vs raw vs min-max retrieval ranking — pre-registered, INSUFFICIENT (#922)",5
+b0b968149e53ced9467ebdb2fe0ef8aa569c78ce,921,2026-10-20T22:30:51+02:00,docs(negative-evidence): NE-009 RuVector (whole repo) REJECT (#921),5
+875cfca4720ae152bfe41a602f5601a92e523471,919,2026-10-20T22:09:07+02:00,"fix(value-allocator): raise proven value at zero cloud tokens, decide on 30 d when 7 d is thin, same-kind peers (#919)",2
+efbf0386347480cf4c4db369f0102b9b1337554d,920,2026-10-20T16:56:25+02:00,loop: Test untested exports of services/loop-types.ts (#920),1
+f8b3928ca7a7eba3ea08d19135c9688fc4fde176,918,2026-10-20T10:02:33+02:00,"fix(security): P0 reviewer/approver identity from auth, gym verdict hack-flag quarantine (#918)",23
+2d7d76bf0e772ccde5159708dd0616058991d1ce,917,2026-10-20T09:47:18+02:00,fix(value-allocator): prod 20-10 shadow-table defects (a-e) (#917),3
+3d4ace80329dd2be2a7dd0c6156ccb909f68094e,909,2026-10-20T08:33:21+02:00,"feat(lanes): finding-fix lane G2.2 (ESLint pack v1, shadow-first, human merge) (#909)",13
+03019b446ff147fbe21d39422c8a0633a8c16ae7,907,2026-10-20T08:21:18+02:00,feat(experiments): G1.5 oracle-population WIP limit + power left; G3.5 learning ledger (#907),8
+570640c7ed66012035f38e66603bd4b1b190dc70,906,2026-10-20T08:08:23+02:00,"feat(cockpit): € ledger + operator minutes per verified / surviving change (G0.3, G0.4) (#906)",7
+82a01135a6a1004cb72de8d04820017eaa3cdea8,905,2026-10-20T07:56:20+02:00,feat(stall-watch): G0.2 value-anomaly alarm — zero_success + gate_always_fails (#905),4
+3878599b5358020735a84d9e0b07ebf26a93ff10,915,2026-10-20T07:44:18+02:00,"fix(attribution): P0 gate-rule agreement, fallback runtime attribution, shadow labels, heuristic reviewer provenance (#915)",24
+f7c304eefa3a89fba0c7f658467697c7cbefe128,914,2026-10-20T07:29:45+02:00,"fix(security): P0 federation secret forwarding, okf_get traversal, auto-merge head binding (#914)",11
+03bb2ca6e908d0b860c58035ad3a160f7ff08599,916,2026-10-20T02:13:41+02:00,loop: Test untested exports of services/training-dataset.ts (#916),1
+681c6cd67b5b3926e680c3f69eb4106eccff3038,913,2026-10-20T01:58:35+02:00,loop: Raise the mutation score of services/merge-superseded.ts (#913),1
+6c3e507bda0fe900e885f85b8169915812289b5b,912,2026-10-20T01:29:01+02:00,loop: Test untested exports of services/inference-failover.ts (#912),1
+38c2d7ace87ba6e1eb860ce757f8bcddb0abfa59,911,2026-10-20T00:51:28+02:00,loop: Test untested exports of services/model-selector.ts (#911),1
+7072c94b98c3b2309929bf27f3e0ceb20e3be4b6,900,2026-10-19T23:34:41+02:00,"feat(e4): shadow value allocator (VALUE_ALLOCATOR_MODE, off|shadow) (#900)",7
+6886362141605b1f29c09bbb0cb029bdee2403c0,899,2026-10-19T23:24:46+02:00,feat(test-gap): node:test lane accepts tests/ and ESM .js (type:module) (#899),2
+fef3720af3003331a5f3c2e58c1394bc047533a3,908,2026-10-19T23:12:37+02:00,fix(scripts): uams.sh requires RESEARCH_AGENT_API_KEY instead of a hardcoded fallback key (#908),1
+9735daeafb81f5371445482a1969d495bcf37fbd,910,2026-10-19T23:00:30+02:00,test(model-selector): pin the clock in the MS-1 enforce test (#910),1
+6ca03d557b449ef44f4f0684a25fff54290add4f,898,2026-10-19T14:35:11+02:00,"fix(meta): token-less episodes are UNKNOWN, not 0 — no invented 1000-token meta cap (#898)",3
+4228e86ac167f4bf8878f836aeeba52236c805e2,896,2026-10-19T14:23:05+02:00,fix(merge-survival): a loop PR closed as superseded by a requeue is not a merge verdict (#896),8
+a1b5805bd9c6e1c90100aa86fb57bdcd448bc19c,895,2026-10-19T14:13:18+02:00,"feat(loop): MAKER_DIFF_CAPTURE stores the redacted, capped maker diff in lease metadata (#895)",5
+75cbee2738e1680bc6e10dfe4cc51a85c0a3200a,894,2026-10-19T14:00:23+02:00,"feat(training-dataset): read-only maker fine-tune dataset exporter (TRAINING_DATASET_EXPORT, off|shadow) (#894)",6
+0b81a8f1ad541a8d474607373a84a56bfbea8c69,897,2026-10-19T08:06:48+02:00,loop: Raise the mutation score of services/subtraction-kpi.ts (#897),1
+8beff1a277f679a42141a3b57eedc8b64ee91e1c,893,2026-10-19T00:49:46+02:00,docs(experiments): stop dates for the 7 open-ended experiments + two doctrine lines (#893),11
+169514034b42a5b27b3ccc11ed6d959f2473c7b7,891,2026-10-18T23:27:04+02:00,loop: Raise the mutation score of services/lifecycle-manager.ts (#891),1
+12b885fbf6739cb95f275ab8a42d4567beaa6eae,892,2026-10-18T22:45:09+02:00,feat(soul): Way of Code controls — experiment stop registry + subtraction KPI (#892),14
+da8ae185ee50fa4c98f7f33e198cb79abd746070,890,2026-10-18T22:27:15+02:00,docs(workspace): five agent workspace files + generated TOOLS/HEARTBEAT with CI check (#890),11
+a966486d5080e711251d4393cbee88cbb0cb03e4,889,2026-10-18T21:48:08+02:00,feat(usage): /usage per provider account from real usage records + plan limits file (#889),8
+f6e3c37434cc488380aef449a00f465d8b5ad6d0,888,2026-10-18T21:33:28+02:00,fix(panel): shared Claude subscription backoff for PANEL_FALLBACK_RUNTIME seats (#888),8
+70e6bf588e0988d9588d42916532a86f0a9a82d4,887,2026-10-18T21:18:05+02:00,"feat(inference): Ollama auto-failover, panel fallback on claude, Ollama token budget throttle (#887)",22
+9bf688c1ba100e87d34eb793b4bfcf9e2fc22d10,886,2026-10-18T18:23:51+02:00,feat(runtime): OLLAMA_OUTAGE_FALLBACK_RUNTIME=claude — opencode production leases on the Max subscription during an Ollama outage (#886),16
+c3b96349b75da532f21bc9b4ec780236d66feb6a,883,2026-10-18T00:25:50+02:00,fix(gym): least-privilege edit permissions for subscription gym makers (#883),7
+3f2d6ed12d0dc48731f2138ff2e3ca93568af4c8,882,2026-10-17T21:30:49+02:00,"feat(gym): opencode-free:<model> subscription gym species (OpenCode Zen free tier, -free models only) (#882)",8
+0d499edda3f6ba014ff977372b80cb1e23e52165,881,2026-10-17T17:57:47+02:00,"feat(gym): subscription CLI maker species (claude Max / codex Pro), gym-only, never API-billed (#881)",12
+618f54951553a7fc4789f2be961c9000a687df16,880,2026-10-17T17:21:01+02:00,fix(recovery): settle deploy-restart zombie runs at boot + stuck_executing stall detector (#880),7
+bb33bdd42d6e9744410fb11e4c24793e345aac88,878,2026-10-17T16:15:41+02:00,loop: Test untested exports of services/gym-failure-tasks.ts (#878),1
+c02808cdf0e24db1f527c00a129a746557fa89f0,876,2026-10-17T15:32:46+02:00,"feat(f2): CHECKER_FAMILY_VERSION — F2 v2 re-randomises with its own salt, evidence per version (#876)",8
+2ba0e2406ef7f855c65068cf008eadd52419548a,875,2026-10-17T13:13:12+02:00,docs(openspec): core-invariants living spec + archive two stale changes (#875),32
+84789fd173b12075956de2408b7e01187a5f3a17,874,2026-10-17T13:03:25+02:00,feat(gym): SPEC_GAP_LANE — OpenSpec scenarios without a test as write_test tasks (shadow; pool hook unwired) (#874),5
+07081f32e2b0ca12d3546ff7b578579e93fef00d,873,2026-10-17T11:22:08+02:00,feat(loop): repo-aware oracle lanes behind EXTRA_REPOS_ENABLED + fix three integrity bugs (#873),18
+e171f4f0cf63afe955eeac035ca5cc872a5bee4e,870,2026-10-17T02:06:19+02:00,loop: Test untested exports of services/negative-evidence-check.ts (#870),1
+d20346b1cc7d8d02ce973ae555db3663b9521e03,860,2026-10-17T01:42:29+02:00,loop: Raise the mutation score of services/goal-dependency-gate.ts (#860),1
+1e0f67babf0c65dd7d2ad08f7d86f33b0dab9c23,872,2026-10-17T01:04:23+02:00,feat(experts): read-only duplicate-unit report for Frontier Experts (#872),6
+79eb67fdb970aa7151522c9d4612d249d1bec4e5,871,2026-10-17T00:52:54+02:00,"feat(dream): DREAM_PLAYBOOK_GENE — deterministic lane playbook as a trial genome gene (EVO-K inheritance, default off) (#871)",6
+d1701a54d68a47815b4eb936f6cd635f9b0ddb22,859,2026-10-17T00:37:22+02:00,loop: Raise the mutation score of services/message_bus.ts (#859),1
+81e60f01ec68b57492d14f99f14d863ff1decdca,857,2026-10-17T00:22:21+02:00,loop: Test untested exports of services/expert-source-units-service.ts (#857),1
+e13e7a32529c0731c824decdd640b56d5d88fcab,858,2026-10-17T00:07:20+02:00,loop: Test untested exports of services/tg-001.ts (#858),1
+75295d33ea12806d66f19494ec94ba0abc6f1c99,868,2026-10-16T23:36:37+02:00,"feat(dream): DREAM_EVIDENCE_SOURCES — evidence-seeded trial genomes (EVO-K Darwinian step, default off) (#868)",7
+1ce66cb1bd3174609530eddd37c474e1126e11a0,855,2026-10-16T23:09:51+02:00,loop: Test untested exports of services/intelligence-metrics.ts (#855),1
+74798adebcd2ff7d44d7f46482cebeceeccd0be5,856,2026-10-16T22:54:51+02:00,loop: Test untested exports of services/self-improvement-agent-review-service.ts (#856),1
+e1e10a854b79fc75b460016e172badfc9eec071d,867,2026-10-16T22:33:08+02:00,feat(jev): JEV-114 paired shadow of a challenger model next to pinned jev-1.13.0 (#867),10
+97d3fc20dc291ebc4bc74a80e142a706bd346480,866,2026-10-16T19:38:23+02:00,feat(test-gap): TEST_GAP_REQUEUE_RESERVE keeps daily slots for requeues (#866),2
+4264de0600ee8f11bfbd64172d5ae501fd30b652,865,2026-10-16T16:55:25+02:00,"feat(evolution): K5 evolution digest outward (EVOLUTION_FEEDBACK_MODE, default off) (#865)",10
+6d1c9eeefdd42af70a0a148b6a1bfb16dd20217f,864,2026-10-16T16:42:42+02:00,"feat(knowledge-gaps): failures and expert abstentions → knowledge gaps (KNOWLEDGE_GAP_MODE, shadow) (#864)",12
+5b0fd09c518fecc7f6598c8b27d53062e66575f9,861,2026-10-16T16:30:29+02:00,feat(evolution): NE_GENERATOR_CHECK_MODE — shadow negative-evidence check in generators (K3) (#861),13
+a2ffc52350ecb5fd0374ff877d2df42bfc75ef72,863,2026-10-16T16:17:53+02:00,feat(knowledge): K1 knowledge fitness from maker-attributable outcomes (read-only) (#863),6
+32b5f0172a9c6fe0c9d87cd30dfcbf34f1b752a2,862,2026-10-16T16:07:07+02:00,"feat(skills): K4 record-only skill distillation from attributed runs (SKILL_DISTILLATION_MODE, default off) (#862)",9
+2fd0922286bd3ec2593ab2eedb97d6622932a6a6,854,2026-10-16T01:14:38+02:00,loop: Test untested exports of services/approval-service.ts (#854),1
+a6e9f8b421a3f99cfc10482ee72129da35a4ace1,852,2026-10-16T00:59:35+02:00,loop: Test untested exports of services/provenance-dag.ts (#852),1
+cb0c93dfe61966a9d4ee11766ac16de68dc62fe2,850,2026-10-16T00:44:34+02:00,loop: Raise the mutation score of services/fleet-commands.ts (#850),1
+c1fc106d536022b7e1ea7f03f1e1f55a75bca4e3,849,2026-10-16T00:29:33+02:00,loop: Raise the mutation score of services/rsi-safety-guard.ts (#849),1
+148384036fe1cdfea0468f03733fcc9d180d913e,848,2026-10-16T00:14:33+02:00,loop: Add unit tests for services/goal-dependency-gate.ts (#848),1
+4f613e8021c1a488f6865dba53bd2bbf122af7f4,843,2026-10-15T23:59:31+02:00,loop: Test untested exports of services/holdout-manifest.ts (#843),1
+45713b9b8c32e1ba2f22ebb35ea6cd391a71520a,844,2026-10-15T23:44:31+02:00,loop: Test untested exports of services/content-safety.ts (#844),1
+6a31ce35ea2ef30f6613fb6ae338e6d46a4a8cab,842,2026-10-15T23:29:31+02:00,loop: Test untested exports of services/memory-template-dedup.ts (#842),1
+5bd4dd9d79c85bad78c6f5a6ae743731bb9a6f9b,841,2026-10-15T22:49:29+02:00,loop: Test untested exports of services/holdout-exposure.ts (#841),1
+9354007d53fcf549b6650084203842b733f0b035,853,2026-10-15T22:12:55+02:00,loop: Add unit tests for services/message_bus.ts (#853),1
+b4f5931e4e41616a16617790c8f69fc92b54a944,840,2026-10-15T09:03:58+02:00,chore: W8 retirement tranche — remove dormant route groups (#840),70
+31e97f074be98c6c540ae5be8603562ad4ae5843,830,2026-10-15T08:10:28+02:00,fix(reviewers): cut no-verdict reviewer spend (#830),9
+ad985c41a22096b4fb48fadb04d30286ccf8af4f,835,2026-10-15T07:58:13+02:00,feat(decisions): blind discovery-relevance labelling (#835),11
+f84190edc4530adcef196452ef9745c430471e7e,829,2026-10-15T07:46:54+02:00,docs(di-001): relevance benchmark preregistration and evolution design (#829),9
+44d8fdb6c20b2e171c6a84cd8e4fed4ce47c6443,847,2026-10-15T00:31:33+02:00,fix(skills): explicit DISABLED_BY_POLICY / UNCONFIGURED instead of implicit defaults (#847),7
+89143d9e5ddfe203bf9265d3e1a7388a77671818,846,2026-10-15T00:01:57+02:00,feat(health): capability-chain stall watch (configured → outcome) (#846),13
+3bb40093a4846126a5957fa4771ea08098b0e4f7,845,2026-10-14T23:49:50+02:00,fix(goals): unmet dependencies become an explicit blocked state with an event (#845),4
+a2b7968dda0cf1ad186878f9b8a5aad8eea1693b,839,2026-10-14T21:40:22+02:00,fix(makers): root cause of failed maker leases (#839),11
+6be9fe9c92e57375526e1dc126f2726fa25a8e6c,838,2026-10-14T21:28:05+02:00,fix(security): content_safety before untrusted knowledge enters prompts (#838),8
+d417f058c5a377dcc477487155089582e926f2da,837,2026-10-14T21:16:37+02:00,loop: Raise the mutation score of services/frontier-expert-skills.ts (#837),1
+b74c157d17d6701e93c0811270f2d2f0f6b52317,836,2026-10-14T21:05:05+02:00,loop: Raise the mutation score of services/swarm-concurrency-service.ts (#836),1
+2d89754580f9dde540431281d81cafd660e8a0ff,834,2026-10-14T20:54:17+02:00,loop: Raise the mutation score of services/memory-curator.ts (#834),1
+3f2c1bda96638e49cb828d0b6d9f398b02202b60,826,2026-10-14T20:42:44+02:00,loop: Raise the mutation score of services/specialist-panel-backlog-scheduler.ts (#826),1
+86eae08e35db6ca0a2bf5fadaf6caec112825d11,817,2026-10-14T20:31:07+02:00,loop: Add unit tests for agent-catalog/src/static-gate.ts (#817),1
+7322ef1f0c75d0bb3dc7cfccbe68d2f551cd9506,814,2026-10-14T20:20:23+02:00,loop: Test untested exports of services/genome-registry.ts (#814),1
+53eb51f37b5266d93bd1c050184e4302334d713c,813,2026-10-14T20:08:49+02:00,loop: Test untested exports of services/runtime-bandit.ts (#813),1
+0c27f497f8e6a713f8c6ed195008131a468cee30,812,2026-10-14T19:57:12+02:00,loop: Test untested exports of services/operator-push.ts (#812),1
+955f3f41ea9a161da3093053417b790dc4cf54d2,811,2026-10-14T19:44:47+02:00,loop: Test untested exports of services/embedding-dims.ts (#811),1
+bf4325b68cf93fc9b8e6493c93cde52ba528eb65,810,2026-10-14T19:34:46+02:00,loop: Test untested exports of services/operator-cockpit.ts (#810),1
+ff28e504251b592487de4a043f4dee03f0c405bf,809,2026-10-14T19:22:35+02:00,loop: Raise the mutation score of services/worldlab-evidence-service.ts (#809),1
+44dd558ffdd2c8c51d1b4c9b6a565b7bf5c9e8fb,823,2026-10-14T09:09:12+02:00,feat(holdout): manifest-driven freeze with exposure exclusion and configurable size (no auto freeze) (#823),15
+1c888d67016034a549d3b1470301299a998234bd,833,2026-10-14T08:39:05+02:00,feat(measurement): committee context_at and proposal-selection propensity (#833),7
+934dd5ac70e41c082f762e4819b408606ece8211,825,2026-10-14T08:24:54+02:00,feat(discovery): reversible pause for discovery_relevance inference (#825),12
+8de077fceb22e97c0cca6b8be75b3c6b2b24df09,832,2026-10-14T03:29:06+02:00,feat(efficiency): verified cost-per-task ledger with coverage and double-count fix (#832),9
+1b387ca3c6d327141a816beafd8ca6ef56896596,827,2026-10-14T02:43:21+02:00,"docs(di-001): preregistered decision scoring, labels, loss and committee evaluation (#827)",13
+e27720b85eeee4abb477c8d1ac9517e1979bb603,824,2026-10-14T01:32:26+02:00,feat(judgments): versioned decision provenance on every new judgment (#824),20
+4ff9f6aa9801deb19d3c030bf72d2fbd536f39a9,818,2026-10-14T01:21:54+02:00,"feat(leases): maker token accounting — measured vs estimated, never fabricated (#818)",8
+190a33374a535bfcf5a0a868ad3a34dba26528a7,821,2026-10-14T01:10:39+02:00,feat(requeue): re-run makers of verified proposals without a runtime assertion verdict (#821),2
+458c44079fcd3cc92cef536df48377a8ec0f2c3c,820,2026-10-14T01:00:54+02:00,docs(negative-evidence): NE-011 unvalidated agent-ecosystem claims (#820),3
+3b2e00322f89a5c190f3fffd4ca21f05d522279b,819,2026-10-14T00:51:38+02:00,"fix(gate-a): parent evidence must be production-gated, same epoch and contract (#819)",13
+bb02a7311ac56d216d1cffbfeb0c5a9ba04ced9c,815,2026-10-14T00:20:07+02:00,feat(memory): template-duplicate candidates in shadow + offline consolidation analysis (#815),7
+52297adeaea4562010d352c252b91d7902879707,816,2026-10-13T23:48:28+02:00,feat(attribution): reviewer_failure sub-reason from stored lease fields (#816),2
+e4d7c5f8b4ab9030592d8a09a1f51bc09b7891bd,805,2026-10-13T23:36:32+02:00,loop: Raise the mutation score of services/ste-001.ts (#805),1
+568907f413bcdf485b96cb51f9cc2d8cb5bd5e8e,804,2026-10-13T23:25:26+02:00,loop: Test untested exports of services/d5-no.ts (#804),1
+3987cd0db0bd3904f44836dd5f724fceb1e743c1,802,2026-10-13T23:14:22+02:00,loop: Test untested exports of services/panel-attempt-metrics.ts (#802),1
+696da8852d61ca13ced4e165cebc57d71d2df00d,799,2026-10-13T23:02:31+02:00,loop: Test untested exports of services/ste-001.ts (#799),1
+b5272b828c62b9ea2ff58b1030ae7e5e6dfeb960,798,2026-10-13T22:51:25+02:00,loop: Test untested exports of services/model-call-ledger.ts (#798),1
+b372e6ee1561066e6971ce9a0f4e3045a9c6740d,797,2026-10-13T22:40:21+02:00,loop: Raise the mutation score of services/explore-opengraph-service.ts (#797),1
+ff6377baad43b2a0a79faaa50e901585459c4272,765,2026-10-13T22:29:19+02:00,loop: Test untested exports of services/typesafe-client.ts (#765),1
+f85e7c2ab2a8ddd7b49afdbdfd66735bdcf25a62,764,2026-10-13T22:17:28+02:00,loop: Test untested exports of services/ace-001.ts (#764),1
+017d322fc53b52eb4368193e0e7f9f3d1ebcd671,761,2026-10-13T22:07:11+02:00,loop: Test untested exports of services/policy-violations.ts (#761),1
+74149cf7700b6a365bd43fe64efcf4cd3474ce0c,760,2026-10-13T21:56:05+02:00,loop: Test untested exports of services/maker-genome.ts (#760),1
+443c1e5818eae6c57597f854fd23e81abee65b30,759,2026-10-13T21:44:12+02:00,loop: Test untested exports of services/scheduler-registry.ts (#759),1
+b382e3621b0d150dee38d3cf5080c05773addb16,752,2026-10-13T21:33:09+02:00,loop: Raise the mutation score of services/agent-reputation-service.ts (#752),1
+9dbe4b72d040b345b3b29833a146109557ff06f3,747,2026-10-13T21:21:19+02:00,loop: Add unit tests for mcp-server/src/tools/mission-control.ts (#747),1
+b891ad74a9559d1da4f1dd9c6aef6e80c1053d66,746,2026-10-13T21:10:26+02:00,loop: Test untested exports of services/evidence-freshness.ts (#746),1
+b2ae8e4d9f7a2f1290094211098645acceaaed56,745,2026-10-13T21:00:54+02:00,loop: Test untested exports of services/gym-irt.ts (#745),1
+46e44329c4636e69137b10952f08445c71e6122b,737,2026-10-13T07:35:03+02:00,loop: Raise the mutation score of services/policy-violations.ts (#737),1
+ddca3c66131ba9cde31dbcccc2cec3fd8b6fbb81,807,2026-10-13T07:22:20+02:00,"fix(ops): merge-train correctness — drafts, stale head after update, bounded CI wait, read-only --dry-run (#807)",4
+d95d1261994eebd624ac926e7da8dd6620ba555b,806,2026-10-13T07:00:00+02:00,docs(negative-evidence): NE-010 MiroFish REJECT (docs only) (#806),3
+bdec563df42405b05bb4bae9be8c8edf29852faa,803,2026-10-12T22:38:06+02:00,fix(ledger): tag every LLM call with its caller purpose (#803),8
+3f94fa65365ce5234ca054c8413d62257980939b,801,2026-10-12T21:03:20+02:00,"docs(recovery): data-loss window, protocol notes for ACE-001/D5-NO, TG-001 r1 provenance limitation (#801)",2
+deda38545748e07e5b3c6c0568176d3dab7e1595,800,2026-10-12T20:20:58+02:00,feat(tg-001): r2 generation after provider data loss — r1 ABORTED_DATA_LOSS (#800),8
+4e136f4f903b896ffbe5cada2e87d86d2a6bac83,792,2026-10-12T03:27:28+02:00,feat(e4): panel attempt metrics — reliability vs conditional quality (#792),8
+e442c47564417b776088376675fffaa429e4ea37,793,2026-10-12T03:15:17+02:00,feat(e3): provenance DAG with edge evidence — unknown is never inferred (#793),8
+f88bb7118fad65b304f0bc921ac1e0bc8dd785b3,794,2026-10-12T03:03:28+02:00,feat(e2): observation validity — unknown is never a negative verdict (#794),28
+d38412ee598ed9892ae2fe22edb1cad3fe14fb35,795,2026-10-12T02:51:41+02:00,feat(e1): evolutionary settlement states + merge-survival poll counts (#795),19
+356b51acf855c055df2aa4663b01c24b30240c9e,791,2026-10-12T02:04:04+02:00,"fix(cockpit): panel unparseable counts #784 quarantined attempts, unknown when unreadable (#791)",2
+6241ef405819750cb2c42c5b041dce3ed4d792a0,784,2026-10-12T01:52:19+02:00,"fix(panel): schema-validated reviews, bounded retry, quarantine — no silent coercion (#784)",8
+4675e324ffa33df78c9da6824dd950e9ba203787,783,2026-10-12T01:43:15+02:00,"feat(evolution): lineage funnel, 4-way regression split, survival-adjusted NEV (#783)",10
+c3fcc6197d0ea60f7b415d6a3906ef74a38c09bd,782,2026-10-12T01:31:33+02:00,fix(schedulers): armed-but-not-ticking root cause + bounded self-heal with quarantine (#782),14
+a4f241c1a381bb4217f98450bdc83705520fbf19,787,2026-10-11T22:36:21+02:00,fix(deps): resolve current npm audit findings (#787),2
+b633a9548eb3a40937c70483d767c40bb49ca9a1,681,2026-10-11T22:06:45+02:00,deps(deps-dev): Bump shell-quote from 1.10.0 to 1.12.0 (#681),1
+0c1649f6898afe4711072ebd8ba3d2b3651f7a88,781,2026-10-11T21:38:41+02:00,feat(experiment): D5 confident-NO prospective evaluation (prescreen in shadow) (#781),7
+829bd50e798d2e5607775179aedb9208d94ce61a,780,2026-10-11T21:28:17+02:00,feat: model-call ledger with tokens/purpose/experiment/marginal cost; permanent negative-evidence registry (#780),13
+312b9760c4bb349b4664588b80f7d35dc3e6dc12,779,2026-10-11T21:17:57+02:00,docs(eco): jev cascade calibration study — selective risk on Djimitflo's own labels (#779),1
+483f92b485e3caf16d39b7ff0286f3f8f39cbb7b,778,2026-10-11T21:08:01+02:00,"test(experiment): TG-001 pre-run integrity — decision surface, provenance isolation, censoring by position (#778)",8
+a36363ada480fd76108e3989931a3d7013766851,777,2026-10-11T20:39:07+02:00,"fix(experiment): TG-001 integrity addendum — censoring, frozen analysis manifest, Cochran's Q, prior exposure (#777)",7
+108ce3752931e79d07919a0a057d10769a76e3b2,776,2026-10-11T20:29:39+02:00,"feat(experiment): TG-001 gym→production transfer gap, paired prompt-representation arms (#776)",12
+6dde26abdd10641bd9611df87481ce7ecbb32a45,775,2026-10-11T20:20:01+02:00,fix(experiment): ACE-001 treatment delivery + control parity; protocol amendment 1 (#775),8
+bacea830bff9be4c54a2abe369af8292235ac615,774,2026-10-11T20:03:36+02:00,docs(eco): CODEX directive report (13 deliverables) (#774),1
+8fd0a17e381e13443bdf7e728ca50a9be770d159,773,2026-10-11T19:53:38+02:00,"fix(skills): skill genome traits are measured phenotype, not mutable genotype (#773)",2
+72f8f0b4a167815b7efb2142c8c38128b6f6a339,771,2026-10-11T19:43:37+02:00,fix(fitness): proxy metrics renamed or recomputed from observed outcomes (#771),6
+dea81f4950704a841f84b2b1b1bf9e30bf408ba7,772,2026-10-11T19:33:15+02:00,fix(evolution): holdout validity enforced at the single promotion boundary; fail-safe on unknown (#772),3
+04510d0116fab8fe497572f47e50f0d9745657f0,769,2026-10-11T15:28:44+02:00,feat(experiment): STE-001 Simplified Technical English maker template + prompt lint (#769),14
+2dfbff843d43fe97891547bf82730dd2eabff808,768,2026-10-11T14:29:44+02:00,feat(knowledge): fetch abstracts for doi:/expert: units (#768),4
+a58dcf51e7fb61e4c385875e84cf7a2042921973,767,2026-10-11T14:20:07+02:00,fix: gym skill hash; gym worker token rejection reasons; strict token fields (#767),6
+118e47f1ab13a2e8168ac77d862561ef153aa78d,763,2026-10-10T22:37:01+02:00,feat(eco): failure gaps steer discovery; Commons funnel shows where groundings stop (#763),7
+e844baf70915d4aefc729257ebef773c740dc5bf,762,2026-10-10T22:28:59+02:00,docs(eco): phase-0 audit and phase plan (#762),2
+2ca592592a48acfce335bb48bf36700768b40f4e,758,2026-10-10T21:29:50+02:00,fix(commons): grounded target reaches the pre-screen; unparseable panel is not a verdict (#758),3
+7c9679314f5330885ea4b30d0f74989a7046bc9c,757,2026-10-10T20:41:30+02:00,feat(experiment): ACE-001 retrieval x skill-selection factorial (ACE_001_MODE) (#757),12
+38868856307df4eaba4c90384da1c4f8a5e8eb3a,756,2026-10-10T20:31:54+02:00,"docs(ace): current state, gap analysis, REA feasibility (#756)",3
+892b10b6ebfe61b195ae05294026ece496c0cd06,755,2026-10-10T20:21:19+02:00,feat(decisions): shadow EV ranking of needs-you; scenario 6/11 tests (#755),7
+418d7788dbdf0fa11938ddb846f478b0a713a41e,754,2026-10-10T20:11:39+02:00,fix(auto-merge): shadow re-checks each tick; assertion strength required (#754),3
+fb597f45dcdf81dee1848f7f928b8ac6fc9359bc,753,2026-10-10T20:02:02+02:00,fix(evolution): no promotion on an exhausted holdout epoch (#753),2
+d69d145115cd8f4031dcf3230b6478643d6e3ddc,751,2026-10-10T18:36:15+02:00,docs: Operator Cockpit 3.0 deliverables (#751),8
+958d35f7fc9df2da42277da26039b730f9253067,750,2026-10-10T18:26:23+02:00,fix(stall-watch): a gym at its daily cap is not stalled (#750),3
+6b5bd78aca64758402d4033842744802039ded18,749,2026-10-10T18:18:16+02:00,feat(cockpit): detector and scheduler health in the cockpit; null-not-zero in digest (#749),20
+da864adf434417dd5fd9116d82ca7d6634eeda58,748,2026-10-10T16:57:57+02:00,fix(auto-deploy): the scheduled OpenWiki update check does not gate deploys (#748),2
+4fa234358cd1bdead22c2dcf06b9e9e7321f7bd6,744,2026-10-10T15:46:01+02:00,ci(security): ignore gh client CVE-2026-78669 (HTTP/2 SETTINGS DoS; no fixed gh release) (#744),1
+4d4f8b2a8569a6180dea88816fbb1cd723ad3823,743,2026-10-10T15:04:26+02:00,fix(audit): decisions record the human actor; approval input validation (#743),10
+96c8ffa97c946750db92807bcc98adcee637e8d6,742,2026-10-10T14:55:31+02:00,"feat(cockpit): explicit states, unknown attribution, untruncated decision counts (#742)",12
+b26fedebdd852181b400d6c2c6f30e76041a82dc,740,2026-10-10T14:45:06+02:00,test(authz): cockpit and decisions route permission tests (#740),1
+6e7302a28a7cfde9697b60d116342783fd316fda,738,2026-10-10T14:35:21+02:00,feat(cockpit): command view with explicit health states (#738),3
+aa4648c2c3996e81ffef299ea5b7bf0c73916eed,741,2026-10-10T14:25:43+02:00,fix(efficiency): coverage-gated per-kWh and exclusive energy attribution (#741),5
+9feb5c7306e8f873e0c45d42301701a30fc49945,739,2026-10-10T14:16:09+02:00,"feat(health): detector health, scheduler execution, deploy readiness (#739)",13
+22f7fcf76ecaa713414bc9da1863d3229413815b,734,2026-10-10T11:19:25+02:00,feat(experiment): F2 cross-family checker randomisation (CHECKER_FAMILY_RANDOMISE) (#734),10
+07a277136ffce4c1c8b0324a26cf0d0f2c100dfd,736,2026-10-10T11:07:15+02:00,"feat(metrics): attribution backfill report, CAR audit sampler, holdout exposure (§16 steps 3/4/7) (#736)",19
+f3840751c53e1f64b678bd13386ee60de9a15a13,735,2026-10-10T10:46:32+02:00,feat(metrics): shadow policy_violations log + skill content hash on outcomes (§16 steps 8/9) (#735),20
+f9c34b8b1ac10a05a2c5d93974164c4d401f8fca,733,2026-10-10T10:36:59+02:00,fix(knowledge): interest profile keeps only terms with measured yield + exploration cap (N4) (#733),2
+cf363981ab9df2394d3b4f4d867154fc14a4d4e1,732,2026-10-10T00:57:25+02:00,"feat(metrics): read-only intelligence section, approval→goal link, failure signatures (§16 step 1) (#732)",8
+3f92dcddb3c62e1ed2046b162b21e7f2e00be18b,731,2026-10-10T00:35:59+02:00,docs(research): intelligence metrics baseline + metric contracts (§16) (#731),9
+44af0a5bd460e9622f5c4c8c3baf3c74abb844b9,730,2026-10-10T00:26:25+02:00,feat(learning): store gym attempt diffs (redacted) + deterministic test assertion-strength check (shadow) (#730),11
+46fcc64a1e5f0353519e33ac4f2beaa527330074,727,2026-10-10T00:16:10+02:00,"feat(knowledge): unblock discovery→claim (abstracts, jev-yes overrides, provenance refs, Eve-V titles, jev retry) (#727)",17
+9bde79b2d5a7f618a4118f5a993b7ae303980d12,726,2026-10-10T00:06:36+02:00,feat(supply-chain): ship a TS-6 parser so the shipped-code scan reports JS findings in prod (#726),4
+d815c525ba59b78eb67484e21ac0da24efb2ee5d,725,2026-10-09T22:44:44+02:00,"fix(evidence,identity): honest actor types, deliverable lure invites with causal bite events, real heartbeat provenance and reasons (#725)",25
+db228a1891fdccbd68095e488187cddcc93079a9,724,2026-10-09T22:35:09+02:00,docs(research): cognitive runtime forensic baseline + falsification table (Phase CR step 1) (#724),1
+dd63341d5cf02afa4eec6c854fb9a49fa36a5c54,723,2026-10-09T22:26:53+02:00,feat(supply-chain): deterministic shipped-code scan for runtime admission (shadow) (#723),8
+7a8202a9d261bfc36703ffff55959b139239077e,722,2026-10-09T22:16:19+02:00,docs(research): ruDevolution capability evaluation — NO_GO (#722),7
+3eebe3bb052790cda0034f4dd49cbf79383fcf5b,719,2026-10-09T19:40:36+02:00,fix(evolve): supersede still-prepared makers when the evolve winner is chosen (#719),2
+4b64ad5d23cca45a04c7afd553a32067a02e599a,716,2026-10-09T19:31:01+02:00,fix(reviewers): stop budget blow-ups on oracle lanes + parse completed reviewer verdicts; graded mutation score (#716),8
+05b5fee6736ac8296100a14fc0adec17aa3e3bac,717,2026-10-09T19:21:26+02:00,ci(trivy): ignore two Go stdlib DoS CVEs in the gh CLI binary (client-only use; no fixed gh release yet) (#717),1
+696aade0cf3fad8ae1a8a17d4c522fd4f88137db,712,2026-10-09T13:14:14+02:00,feat(evolution): write_test holdout for graded trials + graded after-report on red runs (#712),11
+20940149384d553f9cf5c3af65494dbf37d4018b,711,2026-10-09T01:24:34+02:00,feat(guards): hack rate per genome/task kind + effort-controller floor invariant (S7) (#711),7
+cb0260750f9012309be82a663ef6da15735cbf1f,709,2026-10-08T23:37:13+02:00,"feat(evolution): graded genome trials — paired permutation test on graded scores (SI-C, rule off by default) (#709)",7
+f95fde464ad2c7fe73bafebd298df65472fc7113,710,2026-10-08T23:27:38+02:00,"feat(evolution): graded executed fitness + honest contest labels (SI-A/SI-B, shadow) (#710)",15
+3a4bf10e4a8a3e3421aa6f8a6b6df3704aecef2d,708,2026-10-08T23:17:27+02:00,feat(effort): EVC effort controller (shadow) + X1 sibling randomisation (#708),11
+1635dba161aa7b4a4b49e4c10a8a0d0ad4ab1fd1,707,2026-10-08T23:02:08+02:00,feat(learning): attributable outcomes — learners ignore reviewer/env failures; contributor credit (flag off) (#707),14
+05d6f523bf286f3a7e5e5478ccb6f10f1dd5bbb6,706,2026-10-08T21:23:02+02:00,feat(efficiency): resource ledger with measured GPU energy and value-per-resource view (Phase E1/E3) (#706),13
+79006a7724ffc8c804751ac113de7ded0fe7303f,705,2026-10-08T20:38:27+02:00,fix(jev): event-loop-blocking discovery ingest overflows the jev queue + DISCOVERY_RELEVANCE_SOURCES (#705),8
+42db18215426768e46834a6b734de7e8bfec06e2,704,2026-10-08T19:40:30+02:00,"feat(self-improve): BUILD_ERROR_PROPOSALS_ENABLED — stop build-failure proposals, keep security findings (#704)",3
+6ce72169656231a0bc897445102f33b51e8ffa74,703,2026-10-08T19:11:23+02:00,"fix: reviewer retry on timeout/budget, content_safety on decision inputs, honest cockpit numbers (#703)",17
+fc31f31907b70e9500951aa202066f108afa0c15,702,2026-10-08T18:54:06+02:00,feat(self-improve): D5 — prescreen enforce parks confident 'no' before the panel (#702),9
+7be1d4d898edab91cfd44dc79c5f4e889399d80f,699,2026-10-08T14:19:32+02:00,"fix(remote-maker): time out from claim, not creation; record cancel reasons (#699)",6
+5cb826e2dd27855560129f9c5feb629139a28e1b,695,2026-10-08T10:58:09+02:00,feat(evolution): genome fire-check (VOID trials) and memory holdout (flags off) (#695),15
+1e09d77350e984f30e3426ac536800adce54bfa5,694,2026-10-08T10:48:01+02:00,"feat(gym): score gym successes against the production gates (GYM_PROD_GATES, off) (#694)",9
+5c4a6f1690e68c4776ed52f5ac1d23459fb3cee4,692,2026-10-08T03:21:15+02:00,"feat(loop): dead-code lane — proposals to remove unused code, oracle-verified (flag off) (#692)",10
+499d38b0cc35c4c3ba7cf90231798b4bd5c57b46,691,2026-10-08T03:03:50+02:00,"feat(loop): earned auto-merge for verified test-only loop PRs (shadow/act, self-revoking) (#691)",18
+148d9cd4c52edab9b95372a94656d7b51f2e2ba8,690,2026-10-07T23:51:40+02:00,feat(loop): dependency lane — verified Dependabot patch/minor merges (shadow/act) (#690),10
+271790c1cb5b8d0aaf657a604bb461010874d487,693,2026-10-07T21:19:38+02:00,"fix: resident forecast-only mode, commons judgments respect off, roborev list fields (#693)",9
+09efc409a44080ac1515fd02a6d4214a7856dc74,688,2026-10-07T21:10:49+02:00,"feat(operator): one-tap Telegram triage for D5 labels and memory, honest Needs-you, digest counts (#688)",21
+53898bb0d2ec088e57fe133b0682c058fe5c1129,687,2026-10-07T21:01:57+02:00,fix(loop): every failed lease names its reason; reviewers follow the maker that goes on (#687),5
+6a5c522a91b71944beb262a340aaa017a7b4a950,689,2026-10-07T20:43:12+02:00,feat(gym): write_test success requires killing a seeded mutant of the target (B8) (#689),5
+867633daa566582c0e3dee0670319190c931f15f,682,2026-10-07T19:46:09+02:00,feat(gym-worker): write_test task kind for failure-derived tasks (B8 follow-up) (#682),1
+9af97f71c0b186ace2b38977477ebc18f1078f2c,678,2026-10-06T19:54:57+02:00,feat(loop): evidence freshness before opening a loop draft PR (B8) (#678),9
+713f634a698a169fdfd19092379afd9007fb753f,677,2026-10-06T19:44:48+02:00,feat(gym): B8-FAIL — failure-derived write_test tasks from regressed prod oracle-lane runs (flag off) (#677),9
+3658f448402afc78a3fa73eea92d5c4a8f033dd1,676,2026-10-06T19:34:48+02:00,feat(gym): B8 2PL IRT calibration of gym tasks + GYM_IRT_SELECTION holdout freeze (#676),6
+c1fcdf5bdc1ca6f77085ee601de81240ef8a4b34,680,2026-10-06T19:25:56+02:00,fix(deps): @modelcontextprotocol/sdk 1.32.1 (GHSA-6qxp-vccf-f47h) (#680),2
+77f7b8573c647b6d5f273c8758e49790710633c5,675,2026-10-06T19:08:09+02:00,feat(dream): evidence-or-no-op mutations behind DREAM_EVIDENCE_MUTATIONS (#675),5
+c2823579435f428d500ed68377af79b701edc0d9,674,2026-10-06T18:57:32+02:00,feat(dream): B8 — headroom precheck: skip genome trials no mutant could win (#674),6
+bf2ba9adebdbb380f9c4fb3f7fafbb7e2f10268d,679,2026-10-06T18:48:12+02:00,"fix(jev): bound TypeSafe concurrency, one ledger row per call (#679)",5
+af7c98203b72db99f69f0afc231c69031fa4b7a5,673,2026-10-06T14:45:45+02:00,fix(approvals): TG-3 — already-decided approval is 409; Telegram names the decider (#673),3
+f37730fbd264a59e7c3c608b259c24bf1d041002,672,2026-10-06T13:31:11+02:00,"fix(telegram): TG-2 — status requires a D3 approver identity; approval pushes carry lane, proposal, file, run and risk reason; decided approvals are not pushed (#672)",4
+83f6f2d418d656072ccda70f09edf7366f220311,669,2026-10-06T11:34:06+02:00,"feat(experts): FE-AREAS — Frontier Experts become fields of interest; no person identities, plus a migration that removes the people and their history (#669)",21
+82c5e12f623ca18f29efd0f0a6949b3d7699f1ad,665,2026-10-06T09:05:10+02:00,"feat(a11y): UX-25 part 2 — WAI-ARIA tabs, muted text to WCAG AA, global focus ring, last window.prompt gone (#665)",8
+c51fdcfb79c6cf9b13e37c05d987c5aaf0761618,667,2026-10-06T08:56:37+02:00,"feat(dashboard): UX-26 — shared UI kit (DataTable, Button, StatusPill, Section); Cockpit + Decisions migrated (#667)",4
+ca54515af3714a1013b6ee235402d71e10a01d72,666,2026-10-06T08:47:18+02:00,"feat(contracts): UX-2b — one shared key list per operator endpoint, pinned by server tests and dashboard types (#666)",5
+c2cb75f446eadd8c90645fbfb42b4f1c04492163,668,2026-10-06T08:39:31+02:00,feat(scorecards): UX-17 — per-runtime and per-fleet-agent scorecards (read-only) (#668),7
+89c6e9da19695df4ca7c7d817b5a76d71e315da0,664,2026-10-06T08:30:07+02:00,feat(retrieval): UX-24 — offline recall@k / MRR harness; RETRIEVAL_NORMALISE_SCORES (off) for per-source score scales (#664),5
+8d877042f4ef81da4619b4e9388556c360e62393,659,2026-10-06T07:36:22+02:00,fix: harden the UX-3 one-socket test; RX-16b — lure bait skips proof-run fixture gaps (shared predicate) (#659),5
+bbf623dc0f3e11120c9aedae9c207632783c6951,663,2026-10-06T07:27:51+02:00,feat(runtimes): UX-16 — runtime health read model + section on Fleet hosts (read-only) (#663),8
+b4bc97b2efd80c3c8d2514479727ef72f5e653fb,662,2026-10-06T07:18:33+02:00,feat(embeddings): UX-21 — record model + dim on every vector write; count cross-dimension comparisons; VECTOR_STRICT_DIM (#662),13
+9f5409afff2a34c1279545c3c19e6c3fa4752857,661,2026-10-06T07:07:47+02:00,"feat(llm): UX-19 — shared model JSON parsing with one repair retry (LLM_JSON_REPAIR_ENABLED, default off) (#661)",5
+c65b606383e7931c29bcc444fd8dd99a32827a9d,660,2026-10-06T06:59:12+02:00,"feat(egress): UX-20 — shadow report of where model calls send data, and what a stricter rule would block (#660)",5
+6eeccde4ad24ae9d6bdef2b757756c18c0b58be8,656,2026-10-06T05:52:12+02:00,"feat(dashboard): UX-5 + UX-25 — one locale and shared formatters, English-only UI, accessible dialogs, skip link (#656)",18
+803a9166e1c80cccab1e00096e900293eb67da79,654,2026-10-06T05:37:14+02:00,"feat(loop): UX-10 — richer, safe draft-PR body behind LOOP_PR_BODY_V2 (default off) (#654)",4
+0ae6949e8bd7ff21f30aa42d525c4ab7a041b696,653,2026-10-06T05:27:55+02:00,"feat(bandit): RX-15 — report-only off-policy replay of the maker bandit (propensities, SNIPS, ESS) (#653)",5
+9515d1e04cb63c60c8222997c743e30d74ddd822,655,2026-10-06T05:19:23+02:00,feat(llm): UX-18 — every server-side LLM call is logged in the model-call ledger (#655),13
+6f63b6323b2e156403f255e9baea69d343f96512,645,2026-10-06T04:01:56+02:00,"feat(gym-worker): RX-11 — announce canaries, commit the canary test with the task, report changed files + diff (#645)",1
+a7e54203ea5efabc6faf58f4bac09dfc27af8454,648,2026-10-06T03:53:24+02:00,feat(agents): UX-14 — connection state per agent with the evidence for it (read model) (#648),6
+49d454442f1cf2a469ff29029dae4a613c8fe3b9,649,2026-10-06T03:44:50+02:00,feat(operator): UX-12/13 — Telegram approval push with one-tap buttons and a daily digest (both off by default) (#649),9
+b330a36b17065005cd1fb6a86f149c7c0b3f7bf9,647,2026-10-06T03:36:17+02:00,feat(dream): RX-12 holdout epochs + RX-13 anytime-valid e-process promotion rule (shadow) (#647),6
+a2971dacc417452d29654e7c68ed45e88219f08d,650,2026-10-06T03:27:44+02:00,fix(deps): bump proxy-addr 2.0.8 and source-map-js 1.2.2 (new critical/high advisories block CI) (#650),1
+9e1cd85cee73ecaa8d47554a6837b4ee92505994,646,2026-10-06T03:11:18+02:00,"feat(evolution): RX-14 — nightly evolution estimates (thermometer), flag off (#646)",8
+74661d8b88356877fe7c82d47d2f37c32c6ad5e9,644,2026-10-06T02:12:35+02:00,feat(dashboard): UX-4 — permission-aware UI: no dead-end approve/deny/admin buttons (#644),14
+7aea4a5b880f5cea570821bd5cdbfbeeab0f735b,641,2026-10-06T02:04:02+02:00,feat(dashboard): UX-9 — Evolution page: Realm Gates and every measured evolution signal with its n (#641),5
+7f0aba8ead2c0b87d976802affc410b3ed384d10,643,2026-10-06T01:55:28+02:00,feat(cockpit): UX-6 + UX-8 — complete Needs-you and a scheduler registry (read-only) (#643),9
+3e975d53e3a7381cdd04525cbf31443f358e32f8,642,2026-10-06T01:47:41+02:00,feat(gym): RX-11 — gym hack flags in shadow + canary plumbing (server side) (#642),12
+0539e75102951e87ef3798959d8c20502a3eded2,640,2026-10-06T01:39:08+02:00,feat(merge): RX-10 — merge-survival measurement v2 behind MERGE_SURVIVAL_V2 (default off) (#640),4
+c388b1e034e7ddc26d3e3ee6c30e692043b57752,638,2026-10-06T00:46:16+02:00,"feat(dashboard): UX-3 — one socket per session, live cockpit/decisions, connection banner, 404 (#638)",12
+f865c413484d45cafb285ac547810d2bc3dbe898,639,2026-10-06T00:37:42+02:00,"feat(arena): RX-7 — forecast scoring V2 (shadow): out-of-sample baseline, bootstrap CIs, decision_grade (#639)",6
+4be33e4ccb01a3fc2617bcb7a45e13f57a694155,637,2026-10-06T00:28:20+02:00,feat(llm): MS-2 — cost-aware model selector for Frontier Experts (shadow first) (#637),6
+69804d8f63b173509b1d85f2a19a3aa63e1e3262,636,2026-10-06T00:19:07+02:00,feat(evidence): RX-9 + RX-8 — honest oracle agreement and Commons yield (#636),6
+6547146f3c4db95275c88a2c94305033692d14d7,635,2026-10-05T20:45:25+02:00,"feat(llm): MS-1 — cost-aware model selector, shadow first (panel review) (#635)",7
+36ea8c1e70d7e6dec47056fa2362decd0c290536,634,2026-10-05T20:36:13+02:00,feat(loop): RX-6 + UX-7 — draft-PR throttle (shadow-first) + read-only draft-PR queue (#634),9
+bd7335b2c93fca507586478054c1a69788f98273,633,2026-10-05T20:22:51+02:00,feat(fitness): RX-3 — tag maker zeros that are not the species' fault; shadow mean_clean (#633),8
+30abb7703eedad03522cae53d2c3b5b6c2801f8d,631,2026-10-05T20:13:34+02:00,feat(evolution): RX-4 — blind-trial diagnostics + Gate A (#631),6
+daa5b459cf9ed62fe8339d38dd2bec7bc422af88,632,2026-10-05T19:59:40+02:00,feat(docs): UX-0 route-to-UI coverage baseline + RX-2 runbook evolution-flag table with drift test (#632),6
+2ac01c5eeea5fbb2e370ba7bd38c3c417febc65e,630,2026-10-05T19:51:10+02:00,docs(runtime): UX-16 — admission readiness before the 2026-12-31 legacy expiry (#630),1
+5a9d46d5a25e4c9828ddfaf238226b88d5c626ae,628,2026-10-05T10:24:18+02:00,"fix(safety): a content_safety timeout burst writes one row and pauses, like a 429 burst (#628)",2
+c1c290458b1b0f4abd45cfc3a8b1e718bb807638,627,2026-10-05T05:08:11+02:00,fix(gym): RX-5 — the tier probe takes its share while genome trials run (#627),2
+c7bec59e3ecb62a2aa61844b5fdb6e24416feb0c,616,2026-10-05T02:46:29+02:00,loop: Raise the mutation score of services/roborev-findings-service.ts (#616),1
+db14757895e0dbddb317bc2de1290b721e5e885c,612,2026-10-05T02:37:59+02:00,loop: Test untested exports of services/test-gap-source-service.ts (#612),1
+2d803a2b0e89109a216b8939405c0a0106659617,611,2026-10-05T02:29:31+02:00,loop: Test untested exports of services/expert-evidence-enrichment-service.ts (#611),1
+6cd18043ff667bdd4a450b677e9ddfab11ae7b4d,610,2026-10-05T02:20:17+02:00,loop: Test untested exports of services/goal-service.ts (#610),1
+d3f09ddc4c378e10b1d9b38e7bdcadaa3c452ed5,606,2026-10-05T02:11:50+02:00,loop: Raise the mutation score of services/service-map.ts (#606),1
+c5d13f043da5edada4b3739234a5478dd9bc7a90,605,2026-10-05T02:02:34+02:00,loop: Test untested exports of services/agent-lure-service.ts (#605),1
+8ff784f3a74ee71bf11357baa6faee06e9ecd618,594,2026-10-05T01:54:06+02:00,loop: Raise the mutation score of services/skill-training-promotion-gate.ts (#594),1
+f82d204896224a97bf5db27e4a2c8e94aaee822d,593,2026-10-05T01:46:24+02:00,loop: Test untested exports of services/commons-grounding.ts (#593),1
+ef21255e590e07e9b5535a589a04acdecd4e1e72,592,2026-10-05T01:37:56+02:00,loop: Test untested exports of services/commons-proposal-review-service.ts (#592),1
+fbe3978d965c3b9ba130457661831af4dd470da4,591,2026-10-05T01:28:42+02:00,loop: Test untested exports of services/queue-hygiene-service.ts (#591),1
+033c023492e50d17086f833d136fb6e358866446,590,2026-10-05T01:21:00+02:00,loop: Test untested exports of services/judgment-service.ts (#590),1
+961f965142f93b4a3a4d9d6288995671a4772e18,588,2026-10-05T01:12:32+02:00,loop: Test untested exports of services/llm-fallback.ts (#588),1
+da94d80e13e67cf30949e735bcf9327028544120,587,2026-10-05T01:04:04+02:00,loop: Test untested exports of services/spawn-token.ts (#587),1
+257f32a12fc3405efe11f425b3f7ebb95676e326,582,2026-10-05T00:55:35+02:00,loop: Test untested exports of services/decision-context-service.ts (#582),1
+4de6c80b43fdd5f187eaa9165de24746b887ffa2,574,2026-10-05T00:47:07+02:00,loop: Test untested exports of services/frontier-expert-skills.ts (#574),1
+1e84fed99e3580ab8efafeed9a442c1d1271aa19,571,2026-10-05T00:38:39+02:00,loop: Test untested exports of services/local-shadow-queue.ts (#571),1
+012f8d40f5ab263e0d3e73e3313868ab7a47c26e,552,2026-10-05T00:30:10+02:00,loop: Add unit tests for services/swarm-task-decomposer.ts (#552),1
+2ffae63a8177c726c6dbedf4e6113d3751218c3f,537,2026-10-05T00:22:28+02:00,loop: Add unit tests for services/repo-evidence-packet.ts (#537),1
+727a5bfedaba8a0cdae57069bfcf3b2ee846e629,475,2026-10-05T00:14:02+02:00,loop: Add unit tests for services/command-risk-classifier.ts (#475),1
+a5be844daa10b93b72a5ac7895d55416a2e49fe2,474,2026-10-05T00:05:35+02:00,loop: Add unit tests for services/memory-store.ts (#474),1
+2f9ea3b5ac56304ac9cc8c7ff0fc7b394dbbb3ac,625,2026-10-04T23:56:28+02:00,"feat(cockpit): UX-2 — show strategy genomes on real makers (the server sent them, the dashboard type dropped them) (#625)",3
+aeb818e7747e1afa765ad747cc8fb3e3bd5e438a,624,2026-10-04T23:48:11+02:00,fix(ws): UX-1 — proof-run updates use the enum event type the dashboard subscribes to (#624),3
+7ffa78d6883b7a50832691103e0f8e7b8c76fb5d,623,2026-10-04T23:39:53+02:00,feat(gym): RX-5 — tier probe measures mutant-repair pass rate per tier before the trial tiers change (#623),3
+7ebba08e814213f15b23c2f22161e792dc9bcc63,622,2026-10-04T23:32:04+02:00,"feat(evidence): RX-1 — one read-only evolution evidence endpoint (flags, outcomes per source, loop PRs, genomes, gym tiers, Realm Gates) (#622)",4

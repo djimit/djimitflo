@@ -8,6 +8,8 @@ unknown …) is `GET /api/health/schedulers` (admins). Armed is intent, not exec
 | Scheduler | Gating flag | Interval | Owner |
 |---|---|---|---|
 | committee_evolution | `COMMITTEE_SWARM_ENABLED` | 1 h | `packages/server/src/bootstrap/autonomous-services.ts` |
+| commons_falsifier | `COMMONS_FALSIFIER_MODE` | 1 h | `packages/server/src/services/commons-falsifier.ts` |
+| commons_investigation_outcomes | `COMMONS_INVESTIGATION_MODE` | 15 min | `packages/server/src/services/commons-investigation.ts` |
 | compliance_report | `COMPLIANCE_REPORT_SCHEDULER_ENABLED` | `complianceReportSched.intervalHours()` h | `packages/server/src/index.ts` |
 | dead_code_lane | `DEAD_CODE_LANE_ENABLED` | 12 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | dependency_lane | `DEPENDENCY_LANE_MODE` | `laneIntervalMs()` | `packages/server/src/index.ts` |
@@ -17,6 +19,7 @@ unknown …) is `GET /api/health/schedulers` (admins). Armed is intent, not exec
 | evolution_gym | `EVOLUTION_GYM_ENABLED` | 1 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | finding_fix_lane | `FINDING_FIX_LANE` | 12 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | frontier_experts | `FRONTIER_EXPERTS_SCHEDULER_ENABLED` | `frontierExpertsSched.intervalMinutes()` min | `packages/server/src/index.ts` |
+| gym_orphan_sweep | `GYM_ORPHAN_SWEEP` | 1 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | inference_failover_probe | `OLLAMA_AUTO_FAILOVER` | 30 min | `packages/server/src/index.ts` |
 | loop_auto_merge | `LOOP_AUTO_MERGE_TEST_ONLY` | 15 min | `packages/server/src/bootstrap/autonomous-services.ts` |
 | memory_candidate_review | `MEMORY_CANDIDATE_REVIEW_ENABLED` | `memoryCandidateReviewSched.intervalMinutes()` min | `packages/server/src/index.ts` |
@@ -24,6 +27,7 @@ unknown …) is `GET /api/health/schedulers` (admins). Armed is intent, not exec
 | scheduled_proposal_goals | `(always on with autonomy)` | `Number(process.env.SCHEDULED_PROPOSAL_GOALS_INTERVAL_MS) \|\| 3_600_0…` | `packages/server/src/bootstrap/autonomous-services.ts` |
 | self_healing | `SELF_HEALING_SCHEDULER_ENABLED` | `selfHealingSched.intervalMinutes()` min | `packages/server/src/index.ts` |
 | self_improvement_auto_review | `SELF_IMPROVEMENT_AUTO_REVIEW_ENABLED` | `selfImprovementAutoReviewSched.intervalMinutes()` min | `packages/server/src/index.ts` |
+| settlement_execution | `SETTLEMENT_EXECUTION_MODE` | 24 h | `packages/server/src/services/settlement-execution.ts` |
 | shipped_code_scan | `SHIPPED_CODE_SCAN_MODE` | 24 h | `packages/server/src/index.ts` |
 | skill_distillation | `SKILL_DISTILLATION_MODE` | 24 h | `packages/server/src/index.ts` |
 | specialist_panel_backlog | `SPECIALIST_PANEL_BACKLOG_ENABLED` | `specialistPanelBacklogSched.intervalMinutes()` min | `packages/server/src/index.ts` |

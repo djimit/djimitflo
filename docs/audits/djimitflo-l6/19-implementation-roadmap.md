@@ -1,0 +1,20 @@
+# Implementation roadmap and Phase D boundary
+
+Phases A/B discovered and verified actual frontend/source/runtime/data; PhaseC artifacts specify improvements and tests. PhaseD in this audit delivers the documentation, reproducible read-only collectors/analyzer and implementation-ready specifications. No application patch/PR/deployment/configuration change, skill activation or experiment launch was made. The earlier explicit no-speculative-change/audit boundary and active frozen protocols remain respected. Preparing speculative implementation for unresolved causes would weaken the evidence-led mandate.
+
+| Sequence / independently reviewable work | Dependencies and release verification | Exit criterion |
+|---|---|---|
+| 1. Measurement/monitoring truth | L6-01governance andL6-02health as separate changes; exact current source + reproduced isolated fixture; existing tests/typecheck/lint/CI. Review read vs cancellation policy before any heal change | Correct cohort ranking; UTC reference counts match; scan read-only; production adoption only under existing separately authorized deploy process |
+| 2. Diagnostic contract fixes | Split L6-03executor/audit; L6-08passiveMCP separate. Enumerate consumers; preserve raw history/auth | No false terminal handoffs, Looprows/paging/export correct, passive mount writes0 |
+| 3. Existing evidence in current UI | L6-04read-only Evolution, L6-09truthfullabels, L6-12overflow/loading improvements; no protocol mutation | Operator sees protocol/cohort/CI/null/decision and can reach existing evidence; task/keyboard checks pass |
+| 4. Effective config and provenance | L6-07consumer resolution + typed entity links; native versions L6-06gradually nullable/advisory then adopted via current admission | New eligible executions trace identity/config→evidence without invented history; credentials masked |
+| 5. Experiment decision closure | L6-05registered analysis/authority; current trials not contaminated; independent review at protected boundary | Due experiments have reproducible supported/falsified/inconclusive/extend decision with frozen cohort and next action |
+| 6. Reconcile central ownership | L6-10investigation, not replay; isolate retired/manual/current pipelines | Pending rows explained and current owner/action documented; any recovery separately authorized/tested/rollbackable |
+| 7. Resource and transfer measurement | L6-11coverage, then one approved E1/E3 after WIP capacity; existing adapters | Measured independent task/resource effect, negative findings retained; no activation based on count/point estimate |
+| 8. Conditional broader autonomy | Fresh task replication, survival, rollback and bounded resource/error controls | Existing exact artifact/policy authorization plus independently supported practical gain; no gate bypass |
+
+Estimates should be refined by the implementing owner after reproducing current head; no timeline inferred from S/M/L. Production advanced during investigation, so source/health/artifact identity must be rechecked before each fix. Maintain selected entity links/redirects and backwards-compatible API fields. New behavioral features follow current AGENTS default-off/shadow/test rules; bug fixes must retain security/error handling and explicit unavailability.
+
+For each PR: describe concrete current defect, smallest intervention, affected callers/fixtures/contracts, targeted tests and remaining uncertainty. Review only exact artifact; don't merge user work or deploy from the dirty authoring tree. Rollback must restore executable/config identity and evidence compatibility without deleting outcomes. A passed unit test is implementation correctness; post-release browser/runtime observation proves adoption; controlled outcomes establish benefit. Keep these proofs separate.
+
+Do not schedule all proposed experiments at once or build more configuration/registry/log dashboards. Removing duplicate navigation/package content requires usage/ownership evidence and preserved workflows, not aesthetic preference. Follow-up ideas outside the current audit remain backlog proposals rather than active work.

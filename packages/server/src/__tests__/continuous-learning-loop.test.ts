@@ -3,6 +3,7 @@ import Database from 'better-sqlite3';
 import { ContinuousLearningLoop } from '../services/continuous-learning-loop';
 import { createTestDb } from './helpers/test-db';
 import { AgentCommunicationService } from '../services/agent-communication-service';
+import { AgentLureService } from '../services/agent-lure-service';
 
 
 let db: Database.Database;
@@ -36,9 +37,10 @@ describe('G127: Continuous Learning Loop', () => {
     expect(db.prepare("SELECT COUNT(*) AS count FROM agent_messages WHERE json_extract(payload_json, '$.action') = 'social.question'").get()).toEqual({ count: 2 });
   });
 
-  it('casts one autonomous lure when the commons is empty and does not repeat while it is open', async () => {
+  it('casts one autonomous lure when the commons is empty and does not repeat while it is open (AUTONOMOUS_LURES_ENABLED=true)', async () => {
     const pending = `${process.env.TMPDIR || '/tmp'}/lure-loop-${Date.now()}.jsonl`;
     process.env.DENNIS_AGENT_PAPERCLIP_PENDING = pending;
+    process.env.AUTONOMOUS_LURES_ENABLED = 'true';
     try {
       // lapsed Commons members (had a social runtime); never-connected agents are not lured autonomously
       const lapsed = JSON.stringify({ social_runtime: { enabled: true, last_heartbeat_at: '2026-09-13T19:33:37.041Z' } });
@@ -51,6 +53,29 @@ describe('G127: Continuous Learning Loop', () => {
       const second = await loop.runCycle();
       expect(second.luresCast).toBe(0);
       expect(db.prepare('SELECT COUNT(*) AS n FROM social_lures').get()).toEqual({ n: 1 });
+    } finally {
+      delete process.env.DENNIS_AGENT_PAPERCLIP_PENDING;
+      delete process.env.AUTONOMOUS_LURES_ENABLED;
+    }
+  });
+
+  it('casts no autonomous lure on an empty commons when AUTONOMOUS_LURES_ENABLED is unset, but still sweeps expiries', async () => {
+    const pending = `${process.env.TMPDIR || '/tmp'}/lure-loop-off-${Date.now()}.jsonl`;
+    process.env.DENNIS_AGENT_PAPERCLIP_PENDING = pending;
+    delete process.env.AUTONOMOUS_LURES_ENABLED;
+    try {
+      const lapsed = JSON.stringify({ social_runtime: { enabled: true, last_heartbeat_at: '2026-09-13T19:33:37.041Z' } });
+      db.prepare("INSERT INTO agents (id, name, description, status, metadata) VALUES ('quiet-a', 'Quiet A', '', 'active', ?), ('quiet-b', 'Quiet B', '', 'idle', ?)").run(lapsed, lapsed);
+      // an older lure (e.g. a manual dashboard cast) whose window has closed
+      const lure = new AgentLureService(db, new AgentCommunicationService(db));
+      lure.castLure({ by: 'operator', baseUrl: 'http://127.0.0.1:3001', mintTokens: false, reach: 'lapsed' });
+      db.prepare("UPDATE social_lures SET expires_at = '2026-01-01T00:00:00.000Z'").run();
+      const result = await loop.runCycle();
+      expect(result.socialExchangesStarted).toBe(0);
+      expect(result.luresCast).toBe(0);
+      expect(db.prepare('SELECT COUNT(*) AS n FROM social_lures').get()).toEqual({ n: 1 });
+      const expired = db.prepare("SELECT COUNT(*) AS n FROM lure_events WHERE transition IN ('expired_undelivered', 'expired_delivered_no_response')").get() as { n: number };
+      expect(expired.n).toBe(2);
     } finally {
       delete process.env.DENNIS_AGENT_PAPERCLIP_PENDING;
     }

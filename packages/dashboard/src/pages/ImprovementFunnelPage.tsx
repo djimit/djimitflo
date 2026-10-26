@@ -24,8 +24,9 @@ export function ImprovementFunnelPage() {
   const funnel = data?.funnel ?? null;
   const calibration = data?.calibration ?? [];
 
-  const decisions = funnel?.panel.decisions ?? {};
-  const decided = Object.values(decisions).reduce((a, b) => a + b, 0);
+  const decided = Object.values(funnel?.panel.decisions ?? {}).reduce((a, b) => a + b, 0);
+  const linkedGoal = funnel?.panel.linkedDecisions.goal ?? 0;
+  const childGoals = funnel?.refinement.childGoals;
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
@@ -45,16 +46,17 @@ export function ImprovementFunnelPage() {
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Stat label="Proposals" value={funnel.proposals.total} />
-            <Stat label="Panel goal rate" value={funnel.panel.goalRate === null ? '—' : pct(decisions.goal ?? 0, decided)} hint={`${decisions.goal ?? 0} of ${decided} decisions`} />
-            <Stat label="Refinement converted" value={pct(Object.entries(funnel.refinement.childOutcomes).filter(([s]) => ['scheduled', 'executing', 'verified', 'evaluating', 'applied'].includes(s)).reduce((a, [, n]) => a + n, 0), funnel.refinement.children)} hint={`${funnel.refinement.children} refinements`} />
+            <Stat label="Panel goal rate" value={funnel.panel.goalRate === null ? '—' : pct(linkedGoal, funnel.panel.linkedDecided)} hint={`${linkedGoal} of ${funnel.panel.linkedDecided} proposal-linked panel decisions (${decided} panels in total)`} />
+            <Stat label="Refinement reached goal" value={pct(childGoals?.reachedGoal ?? 0, funnel.refinement.children)} hint={`${childGoals?.reachedGoal ?? 0} of ${funnel.refinement.children} refinements · ${childGoals?.completed ?? 0} completed · ${childGoals?.failed ?? 0} failed`} />
             <Stat label="Cognitive episodes" value={funnel.learning.cognitiveEpisodes} hint={`${funnel.learning.cognitiveStrategies} strategies`} />
           </div>
 
           <section>
             <h2 className="text-lg font-semibold mb-2">Yield (last {funnel.kpi.windowDays} days)</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               <Stat label="Verified" value={funnel.kpi.verified} hint={`${funnel.kpi.regressed} regressed${funnel.kpi.regressionRate === null ? '' : ` (${Math.round(funnel.kpi.regressionRate * 100)}%)`}`} />
-              <Stat label="Panel reviews" value={funnel.kpi.panels24h} hint={`24 h · ${funnel.kpi.panels7d} in 7 d${funnel.kpi.panelsPerVerified === null ? '' : ` · ${funnel.kpi.panelsPerVerified} per verified`}`} />
+              <Stat label="Panels created" value={funnel.kpi.panels24h} hint={`24 h · ${funnel.kpi.panels7d} in 7 d${funnel.kpi.panelsPerVerified === null ? '' : ` · ${funnel.kpi.panelsPerVerified} per verified`}`} />
+              <Stat label="Specialist reviews" value={funnel.kpi.reviews24h} hint={`submitted in 24 h · ${funnel.kpi.reviews7d} in 7 d`} />
               <Stat label="Median hours to verified" value={funnel.kpi.medianHoursToVerified ?? '—'} />
               <Stat label="Approvals per run" value={funnel.kpi.approvalsPerRun ?? '—'} />
             </div>

@@ -1,0 +1,1347 @@
+{
+  "captured_at": "2026-10-23T19:57:52.820Z",
+  "db_mode": "readonly + query_only",
+  "results": {
+    "proposal_statuses": {
+      "sql": "SELECT status, COUNT(*) n FROM self_improvements GROUP BY status",
+      "params": [],
+      "rows": [
+        {
+          "status": "archived",
+          "n": 1171
+        },
+        {
+          "status": "infra_failed",
+          "n": 32
+        },
+        {
+          "status": "needs_more_evidence",
+          "n": 1
+        },
+        {
+          "status": "no_change",
+          "n": 18
+        },
+        {
+          "status": "regressed",
+          "n": 78
+        },
+        {
+          "status": "verified",
+          "n": 121
+        }
+      ]
+    },
+    "panel_decisions": {
+      "sql": "SELECT json_extract(consensus_json, '$.decision') decision,COUNT(*) n FROM specialist_panels WHERE consensus_json IS NOT NULL GROUP BY 1",
+      "params": [],
+      "rows": [
+        {
+          "decision": "backlog",
+          "n": 68
+        },
+        {
+          "decision": "blocked",
+          "n": 57
+        },
+        {
+          "decision": "goal",
+          "n": 55
+        },
+        {
+          "decision": "needs_more_evidence",
+          "n": 1401
+        }
+      ]
+    },
+    "panel_links": {
+      "sql": "SELECT COUNT(panel_id) proposal_links,COUNT(DISTINCT panel_id) distinct_panels FROM self_improvements",
+      "params": [],
+      "rows": [
+        {
+          "proposal_links": 1105,
+          "distinct_panels": 1076
+        }
+      ]
+    },
+    "unreferenced_panels": {
+      "sql": "SELECT json_extract(p.consensus_json, '$.decision') decision,COUNT(*) n FROM specialist_panels p WHERE NOT EXISTS (SELECT 1 FROM self_improvements s WHERE s.panel_id=p.id) GROUP BY 1",
+      "params": [],
+      "rows": [
+        {
+          "decision": "backlog",
+          "n": 56
+        },
+        {
+          "decision": "blocked",
+          "n": 23
+        },
+        {
+          "decision": "goal",
+          "n": 7
+        },
+        {
+          "decision": "needs_more_evidence",
+          "n": 419
+        }
+      ]
+    },
+    "refinement_statuses": {
+      "sql": "SELECT status,COUNT(*) n FROM self_improvements WHERE refined_from_id IS NOT NULL GROUP BY status",
+      "params": [],
+      "rows": [
+        {
+          "status": "archived",
+          "n": 292
+        },
+        {
+          "status": "no_change",
+          "n": 14
+        },
+        {
+          "status": "regressed",
+          "n": 1
+        }
+      ]
+    },
+    "refinement_goal_links": {
+      "sql": "SELECT g.status,COUNT(*) goals,COUNT(DISTINCT s.id) children FROM goals g JOIN self_improvements s ON s.id=g.improvement_id WHERE s.refined_from_id IS NOT NULL GROUP BY g.status",
+      "params": [],
+      "rows": [
+        {
+          "status": "completed",
+          "goals": 14,
+          "children": 14
+        },
+        {
+          "status": "failed",
+          "goals": 4,
+          "children": 4
+        }
+      ]
+    },
+    "refinement_links_all": {
+      "sql": "SELECT COUNT(*) goals,COUNT(DISTINCT s.id) children FROM goals g JOIN self_improvements s ON s.id=g.improvement_id WHERE s.refined_from_id IS NOT NULL",
+      "params": [],
+      "rows": [
+        {
+          "goals": 18,
+          "children": 18
+        }
+      ]
+    },
+    "funnel_yield_exact_iso": {
+      "sql": "SELECT status,COUNT(*) n FROM self_improvements WHERE updated_at>=? GROUP BY status",
+      "params": [
+        "2026-10-16T19:57:52.820Z"
+      ],
+      "rows": [
+        {
+          "status": "archived",
+          "n": 24
+        },
+        {
+          "status": "infra_failed",
+          "n": 10
+        },
+        {
+          "status": "needs_more_evidence",
+          "n": 1
+        },
+        {
+          "status": "no_change",
+          "n": 2
+        },
+        {
+          "status": "regressed",
+          "n": 17
+        },
+        {
+          "status": "verified",
+          "n": 28
+        }
+      ]
+    },
+    "panel_created_24h_exact_iso": {
+      "sql": "SELECT COUNT(*) n FROM specialist_panels WHERE created_at>=?",
+      "params": [
+        "2026-10-22T19:57:52.820Z"
+      ],
+      "rows": [
+        {
+          "n": 3
+        }
+      ]
+    },
+    "reviews_24h_exact_iso": {
+      "sql": "SELECT COUNT(*) n,COUNT(DISTINCT panel_id) panels FROM specialist_reviews WHERE created_at>=?",
+      "params": [
+        "2026-10-22T19:57:52.820Z"
+      ],
+      "rows": [
+        {
+          "n": 0,
+          "panels": 0
+        }
+      ]
+    },
+    "panel_created_7d_exact_iso": {
+      "sql": "SELECT COUNT(*) n FROM specialist_panels WHERE created_at>=?",
+      "params": [
+        "2026-10-16T19:57:52.820Z"
+      ],
+      "rows": [
+        {
+          "n": 76
+        }
+      ]
+    },
+    "verification_hours": {
+      "sql": "SELECT (julianday(updated_at)-julianday(created_at))*24 hours FROM self_improvements WHERE status IN ('verified','evaluating','applied') AND updated_at>=? AND updated_at>created_at ORDER BY hours",
+      "params": [
+        "2026-09-23T19:57:52.820Z"
+      ],
+      "rows": [
+        {
+          "hours": 0.03649860620498657
+        },
+        {
+          "hours": 0.06184360384941101
+        },
+        {
+          "hours": 0.06209888309240341
+        },
+        {
+          "hours": 0.06720665842294693
+        },
+        {
+          "hours": 0.07308583706617355
+        },
+        {
+          "hours": 0.08522916957736015
+        },
+        {
+          "hours": 0.08838167041540146
+        },
+        {
+          "hours": 0.10745222121477127
+        },
+        {
+          "hours": 0.11865750700235367
+        },
+        {
+          "hours": 0.13785749673843384
+        },
+        {
+          "hours": 0.1503852792084217
+        },
+        {
+          "hours": 0.16608193516731262
+        },
+        {
+          "hours": 0.17190305516123772
+        },
+        {
+          "hours": 0.18895944580435753
+        },
+        {
+          "hours": 0.1927177794277668
+        },
+        {
+          "hours": 0.20957611128687859
+        },
+        {
+          "hours": 0.22801805287599564
+        },
+        {
+          "hours": 0.2440863847732544
+        },
+        {
+          "hours": 0.24456777423620224
+        },
+        {
+          "hours": 0.25630833953619003
+        },
+        {
+          "hours": 0.2574044466018677
+        },
+        {
+          "hours": 0.26547805219888687
+        },
+        {
+          "hours": 0.2693222276866436
+        },
+        {
+          "hours": 0.27408332750201225
+        },
+        {
+          "hours": 0.2785002775490284
+        },
+        {
+          "hours": 0.2840677835047245
+        },
+        {
+          "hours": 0.28730084002017975
+        },
+        {
+          "hours": 0.2879866696894169
+        },
+        {
+          "hours": 0.2904127836227417
+        },
+        {
+          "hours": 0.29783305898308754
+        },
+        {
+          "hours": 0.3023236021399498
+        },
+        {
+          "hours": 0.3067580536007881
+        },
+        {
+          "hours": 0.3077433295547962
+        },
+        {
+          "hours": 0.3112533241510391
+        },
+        {
+          "hours": 0.31328610330820084
+        },
+        {
+          "hours": 0.3140541650354862
+        },
+        {
+          "hours": 0.316063329577446
+        },
+        {
+          "hours": 0.31932471692562103
+        },
+        {
+          "hours": 0.3205644451081753
+        },
+        {
+          "hours": 0.3216363899409771
+        },
+        {
+          "hours": 0.3223777860403061
+        },
+        {
+          "hours": 0.32395055517554283
+        },
+        {
+          "hours": 0.3268405571579933
+        },
+        {
+          "hours": 0.33093637973070145
+        },
+        {
+          "hours": 0.33608805388212204
+        },
+        {
+          "hours": 0.3395861126482487
+        },
+        {
+          "hours": 0.3410422280430794
+        },
+        {
+          "hours": 0.3445633426308632
+        },
+        {
+          "hours": 0.35939667373895645
+        },
+        {
+          "hours": 0.3617425002157688
+        },
+        {
+          "hours": 0.3630327768623829
+        },
+        {
+          "hours": 0.3699772283434868
+        },
+        {
+          "hours": 0.3775661028921604
+        },
+        {
+          "hours": 0.3870397210121155
+        },
+        {
+          "hours": 0.3938641771674156
+        },
+        {
+          "hours": 0.4162036143243313
+        },
+        {
+          "hours": 0.42020333558321
+        },
+        {
+          "hours": 0.42898278683423996
+        },
+        {
+          "hours": 0.43165888264775276
+        },
+        {
+          "hours": 0.4454163797199726
+        },
+        {
+          "hours": 0.448072224855423
+        },
+        {
+          "hours": 0.45174694061279297
+        },
+        {
+          "hours": 0.45429805666208267
+        },
+        {
+          "hours": 0.4650227800011635
+        },
+        {
+          "hours": 0.46938083320856094
+        },
+        {
+          "hours": 0.47584861144423485
+        },
+        {
+          "hours": 0.48708806186914444
+        },
+        {
+          "hours": 0.48878833651542664
+        },
+        {
+          "hours": 0.4943694435060024
+        },
+        {
+          "hours": 0.49852610751986504
+        },
+        {
+          "hours": 0.5012752823531628
+        },
+        {
+          "hours": 0.5052147209644318
+        },
+        {
+          "hours": 0.5153536051511765
+        },
+        {
+          "hours": 0.5182563923299313
+        },
+        {
+          "hours": 0.5231066644191742
+        },
+        {
+          "hours": 0.5244266577064991
+        },
+        {
+          "hours": 0.5504130609333515
+        },
+        {
+          "hours": 0.5507499910891056
+        },
+        {
+          "hours": 0.555590283125639
+        },
+        {
+          "hours": 0.5649858266115189
+        },
+        {
+          "hours": 0.574033610522747
+        },
+        {
+          "hours": 0.5926972255110741
+        },
+        {
+          "hours": 0.5982011072337627
+        },
+        {
+          "hours": 0.6044205576181412
+        },
+        {
+          "hours": 0.6119869463145733
+        },
+        {
+          "hours": 0.6296522207558155
+        },
+        {
+          "hours": 0.6303094513714314
+        },
+        {
+          "hours": 0.6382461078464985
+        },
+        {
+          "hours": 0.6391422227025032
+        },
+        {
+          "hours": 0.6439625099301338
+        },
+        {
+          "hours": 0.6468777805566788
+        },
+        {
+          "hours": 0.6564297303557396
+        },
+        {
+          "hours": 0.6644288934767246
+        },
+        {
+          "hours": 0.6728483363986015
+        },
+        {
+          "hours": 0.676143329590559
+        },
+        {
+          "hours": 0.6871708296239376
+        },
+        {
+          "hours": 0.698341391980648
+        },
+        {
+          "hours": 0.7589105553925037
+        },
+        {
+          "hours": 0.7609950006008148
+        },
+        {
+          "hours": 0.8084791637957096
+        },
+        {
+          "hours": 0.8126216679811478
+        },
+        {
+          "hours": 1.0150930546224117
+        },
+        {
+          "hours": 1.0348655506968498
+        },
+        {
+          "hours": 1.0365194343030453
+        },
+        {
+          "hours": 1.1089055500924587
+        },
+        {
+          "hours": 1.1325680539011955
+        },
+        {
+          "hours": 1.2096105627715588
+        },
+        {
+          "hours": 1.2420486062765121
+        },
+        {
+          "hours": 1.3104952834546566
+        },
+        {
+          "hours": 1.3176166601479053
+        },
+        {
+          "hours": 1.3875602781772614
+        },
+        {
+          "hours": 4.037402775138617
+        },
+        {
+          "hours": 4.0682905577123165
+        },
+        {
+          "hours": 5.748170826584101
+        },
+        {
+          "hours": 6.305348340421915
+        },
+        {
+          "hours": 14.06168833002448
+        },
+        {
+          "hours": 14.141440283507109
+        },
+        {
+          "hours": 40.21479721739888
+        },
+        {
+          "hours": 40.2147980555892
+        }
+      ],
+      "summary": {
+        "n": 119,
+        "median_upper": 0.4454163797199726
+      }
+    },
+    "episodes": {
+      "sql": "SELECT COUNT(*) rows,COUNT(DISTINCT loop_run_id) unique_runs FROM cognitive_episodes",
+      "params": [],
+      "rows": [
+        {
+          "rows": 282,
+          "unique_runs": 282
+        }
+      ]
+    },
+    "open_work": {
+      "sql": "SELECT status,COUNT(*) n FROM work_items WHERE status IN ('candidate','triaged','planned','leased','blocked') GROUP BY status",
+      "params": [],
+      "rows": [
+        {
+          "status": "blocked",
+          "n": 8
+        },
+        {
+          "status": "candidate",
+          "n": 142
+        },
+        {
+          "status": "leased",
+          "n": 3
+        },
+        {
+          "status": "planned",
+          "n": 3
+        },
+        {
+          "status": "triaged",
+          "n": 2
+        }
+      ]
+    },
+    "open_work_groups": {
+      "sql": "SELECT COALESCE(recommended_loop,'none') loop,status,COUNT(*) n FROM work_items WHERE status IN ('candidate','triaged','planned','leased','blocked') GROUP BY 1,2 ORDER BY n DESC",
+      "params": [],
+      "rows": [
+        {
+          "loop": "repo-maintenance-loop",
+          "status": "candidate",
+          "n": 94
+        },
+        {
+          "loop": "skill-quality-loop",
+          "status": "candidate",
+          "n": 21
+        },
+        {
+          "loop": "doc-drift-and-small-fix-loop",
+          "status": "candidate",
+          "n": 15
+        },
+        {
+          "loop": "none",
+          "status": "candidate",
+          "n": 12
+        },
+        {
+          "loop": "research-loop",
+          "status": "blocked",
+          "n": 5
+        },
+        {
+          "loop": "doc-drift-and-small-fix-loop",
+          "status": "leased",
+          "n": 3
+        },
+        {
+          "loop": "repo-maintenance-loop",
+          "status": "planned",
+          "n": 3
+        },
+        {
+          "loop": "none",
+          "status": "triaged",
+          "n": 2
+        },
+        {
+          "loop": "outcome-learning-loop",
+          "status": "blocked",
+          "n": 1
+        },
+        {
+          "loop": "repo-maintenance-loop",
+          "status": "blocked",
+          "n": 1
+        },
+        {
+          "loop": "security-regression-loop",
+          "status": "blocked",
+          "n": 1
+        }
+      ]
+    },
+    "goal_statuses": {
+      "sql": "SELECT status,COUNT(*) n FROM goals GROUP BY status",
+      "params": [],
+      "rows": [
+        {
+          "status": "cancelled",
+          "n": 21
+        },
+        {
+          "status": "completed",
+          "n": 1211
+        },
+        {
+          "status": "failed",
+          "n": 344
+        }
+      ]
+    },
+    "run_statuses": {
+      "sql": "SELECT status,COUNT(*) n FROM loop_runs GROUP BY status",
+      "params": [],
+      "rows": [
+        {
+          "status": "blocked",
+          "n": 135
+        },
+        {
+          "status": "cancelled",
+          "n": 341
+        },
+        {
+          "status": "completed",
+          "n": 2370
+        },
+        {
+          "status": "failed",
+          "n": 69
+        },
+        {
+          "status": "ready_for_human_merge",
+          "n": 3
+        }
+      ]
+    },
+    "future_proposals": {
+      "sql": "SELECT COUNT(*) n FROM self_improvements WHERE julianday(created_at)>julianday(?)",
+      "params": [
+        "2026-10-23T19:57:52.820Z"
+      ],
+      "rows": [
+        {
+          "n": 0
+        }
+      ]
+    },
+    "future_runs": {
+      "sql": "SELECT COUNT(*) n FROM loop_runs WHERE julianday(created_at)>julianday(?)",
+      "params": [
+        "2026-10-23T19:57:52.820Z"
+      ],
+      "rows": [
+        {
+          "n": 0
+        }
+      ]
+    },
+    "event_semantics": {
+      "sql": "SELECT event_type,COUNT(*) n FROM execution_events WHERE message LIKE '%step finished: tool-calls%' GROUP BY event_type",
+      "params": [],
+      "rows": [
+        {
+          "event_type": "log",
+          "n": 90
+        },
+        {
+          "event_type": "task.failed",
+          "n": 6722
+        }
+      ]
+    },
+    "governance_scales": {
+      "sql": "SELECT agent_id,COUNT(*) runs,MIN(overall_score) min_score,MAX(overall_score) max_score,MAX(finished_at) last_finished FROM openmythos_eval_runs WHERE status=? GROUP BY agent_id ORDER BY max_score DESC",
+      "params": [
+        "completed"
+      ],
+      "rows": [
+        {
+          "agent_id": "explainer-critic",
+          "runs": 91,
+          "min_score": 92.9,
+          "max_score": 95.2,
+          "last_finished": "2026-10-09T19:56:56.037Z"
+        },
+        {
+          "agent_id": "rechtspraak-ai",
+          "runs": 31,
+          "min_score": 0,
+          "max_score": 4.205000000000001,
+          "last_finished": "2026-07-11T22:54:07.658Z"
+        },
+        {
+          "agent_id": "opencode-glm-5.2-cloud-heldout",
+          "runs": 1,
+          "min_score": 4.2,
+          "max_score": 4.2,
+          "last_finished": "2026-08-01T19:16:13.299Z"
+        },
+        {
+          "agent_id": "opencode-qwen3.5-cloud-heldout",
+          "runs": 1,
+          "min_score": 3.933333333333333,
+          "max_score": 3.933333333333333,
+          "last_finished": "2026-08-01T19:15:23.954Z"
+        },
+        {
+          "agent_id": "nightly:qwen2.5-coder:3b",
+          "runs": 52,
+          "min_score": 2.6923076923076925,
+          "max_score": 3.3157894736842106,
+          "last_finished": "2026-10-23T03:46:36.618Z"
+        },
+        {
+          "agent_id": "r26-32b-canary-screen",
+          "runs": 1,
+          "min_score": 3,
+          "max_score": 3,
+          "last_finished": "2026-07-12T21:55:17.258Z"
+        },
+        {
+          "agent_id": "r22-injection-regression-vps",
+          "runs": 3,
+          "min_score": 3,
+          "max_score": 3,
+          "last_finished": "2026-08-01T07:43:49.841Z"
+        },
+        {
+          "agent_id": "juraregel-judicial-ai-assurance-deepseek",
+          "runs": 1,
+          "min_score": 2.966666666666667,
+          "max_score": 2.966666666666667,
+          "last_finished": "2026-07-16T08:04:06.880Z"
+        },
+        {
+          "agent_id": "nightly:qwen2.5:3b",
+          "runs": 51,
+          "min_score": 2.3333333333333335,
+          "max_score": 2.789473684210526,
+          "last_finished": "2026-10-23T03:35:47.143Z"
+        },
+        {
+          "agent_id": "r25-production-14b-development",
+          "runs": 1,
+          "min_score": 2.7,
+          "max_score": 2.7,
+          "last_finished": "2026-07-12T21:47:54.147Z"
+        },
+        {
+          "agent_id": "r32-deterministic-production-baseline",
+          "runs": 1,
+          "min_score": 2.55,
+          "max_score": 2.55,
+          "last_finished": "2026-07-14T21:24:55.103Z"
+        },
+        {
+          "agent_id": "juraregel-judicial-ai-assurance-kimi",
+          "runs": 1,
+          "min_score": 2.466666666666667,
+          "max_score": 2.466666666666667,
+          "last_finished": "2026-07-16T08:07:23.716Z"
+        },
+        {
+          "agent_id": "r21-calibration-llm-full",
+          "runs": 1,
+          "min_score": 2.12,
+          "max_score": 2.12,
+          "last_finished": "2026-07-12T11:50:58.875Z"
+        },
+        {
+          "agent_id": "r21-calibration-json-full",
+          "runs": 1,
+          "min_score": 2.12,
+          "max_score": 2.12,
+          "last_finished": "2026-07-12T11:56:05.941Z"
+        },
+        {
+          "agent_id": "opencode-qwen2.5-coder-3b-heldout",
+          "runs": 1,
+          "min_score": 2.066666666666667,
+          "max_score": 2.066666666666667,
+          "last_finished": "2026-08-01T18:45:42.655Z"
+        },
+        {
+          "agent_id": "r21-production",
+          "runs": 1,
+          "min_score": 1.96,
+          "max_score": 1.96,
+          "last_finished": "2026-07-12T10:43:38.349Z"
+        },
+        {
+          "agent_id": "r21-calibration-schema-full",
+          "runs": 1,
+          "min_score": 1.96,
+          "max_score": 1.96,
+          "last_finished": "2026-07-12T11:59:48.603Z"
+        },
+        {
+          "agent_id": "nightly:llama3.2:1b",
+          "runs": 53,
+          "min_score": 1.9230769230769231,
+          "max_score": 1.9473684210526316,
+          "last_finished": "2026-10-23T03:41:03.473Z"
+        },
+        {
+          "agent_id": "r21-calibration-llm",
+          "runs": 1,
+          "min_score": 1,
+          "max_score": 1,
+          "last_finished": "2026-07-12T11:49:15.174Z"
+        }
+      ]
+    },
+    "governance_critic_latest": {
+      "sql": "SELECT id,agent_id,overall_score,total_cases,completed_cases,judge_model,finished_at FROM openmythos_eval_runs WHERE agent_id=? ORDER BY finished_at DESC LIMIT 1",
+      "params": [
+        "explainer-critic"
+      ],
+      "rows": [
+        {
+          "id": "explcrit-04629b43-486b-4984-a4db-0420110ea266-0",
+          "agent_id": "explainer-critic",
+          "overall_score": 93,
+          "total_cases": 7,
+          "completed_cases": 7,
+          "judge_model": "judge-service-4factor",
+          "finished_at": "2026-10-09T19:56:56.037Z"
+        }
+      ]
+    },
+    "audit_resource_types": {
+      "sql": "SELECT resource_type,COUNT(*) n FROM audit_events GROUP BY resource_type ORDER BY n DESC",
+      "params": [],
+      "rows": [
+        {
+          "resource_type": "expert",
+          "n": 18045
+        },
+        {
+          "resource_type": "task",
+          "n": 2598
+        },
+        {
+          "resource_type": "loop_run",
+          "n": 1082
+        },
+        {
+          "resource_type": "approval",
+          "n": 1027
+        },
+        {
+          "resource_type": "compliance",
+          "n": 894
+        },
+        {
+          "resource_type": "user",
+          "n": 535
+        },
+        {
+          "resource_type": "agent",
+          "n": 393
+        },
+        {
+          "resource_type": "memory_candidate",
+          "n": 79
+        },
+        {
+          "resource_type": "pull_request",
+          "n": 28
+        },
+        {
+          "resource_type": "backup",
+          "n": 10
+        },
+        {
+          "resource_type": "repository",
+          "n": 9
+        },
+        {
+          "resource_type": "approval_policy",
+          "n": 8
+        },
+        {
+          "resource_type": "goal",
+          "n": 2
+        },
+        {
+          "resource_type": "gym_holdout",
+          "n": 1
+        }
+      ]
+    },
+    "health_window_source": {
+      "sql": "SELECT status,COUNT(*) n FROM loop_runs WHERE created_at>datetime('now','-24 hours') GROUP BY status",
+      "params": [],
+      "rows": [
+        {
+          "status": "blocked",
+          "n": 7
+        },
+        {
+          "status": "completed",
+          "n": 128
+        }
+      ]
+    },
+    "health_window_normalized": {
+      "sql": "SELECT status,COUNT(*) n FROM loop_runs WHERE julianday(created_at)>julianday(?) GROUP BY status",
+      "params": [
+        "2026-10-22T19:57:52.820Z"
+      ],
+      "rows": [
+        {
+          "status": "blocked",
+          "n": 3
+        },
+        {
+          "status": "completed",
+          "n": 70
+        }
+      ]
+    },
+    "stale_leases_source": {
+      "sql": "SELECT COUNT(*) n FROM worker_leases WHERE status IN ('running','prepared') AND updated_at<datetime('now','-1 hour')",
+      "params": [],
+      "rows": [
+        {
+          "n": 0
+        }
+      ]
+    },
+    "stale_leases_normalized": {
+      "sql": "SELECT COUNT(*) n FROM worker_leases WHERE status IN ('running','prepared') AND julianday(updated_at)<julianday(?)",
+      "params": [
+        "2026-10-23T18:57:52.820Z"
+      ],
+      "rows": [
+        {
+          "n": 11
+        }
+      ]
+    },
+    "model_activity": {
+      "sql": "SELECT consumer,provider,model,COUNT(*) calls,SUM(ok) ok,ROUND(AVG(latency_ms)) mean_latency_ms,MAX(created_at) last_activity,MAX(CASE WHEN ok=1 THEN created_at END) last_success,MAX(CASE WHEN ok=0 THEN created_at END) last_failure FROM llm_model_calls WHERE created_at>=? GROUP BY consumer,provider,model ORDER BY calls DESC",
+      "params": [
+        "2026-10-16T19:57:52.820Z"
+      ],
+      "rows": [
+        {
+          "consumer": "jev",
+          "provider": "typesafe",
+          "model": "jev-1.13.0",
+          "calls": 241,
+          "ok": 240,
+          "mean_latency_ms": 936,
+          "last_activity": "2026-10-23T15:10:17.503Z",
+          "last_success": "2026-10-23T15:10:17.503Z",
+          "last_failure": "2026-10-17T14:04:07.937Z"
+        },
+        {
+          "consumer": "content_safety",
+          "provider": "nvidia",
+          "model": "nvidia/nemotron-3.5-content-safety",
+          "calls": 136,
+          "ok": 136,
+          "mean_latency_ms": 602,
+          "last_activity": "2026-10-23T15:22:16.004Z",
+          "last_success": "2026-10-23T15:22:16.004Z",
+          "last_failure": null
+        },
+        {
+          "consumer": "embeddings",
+          "provider": "nvidia",
+          "model": "nvidia/nemotron-3-embed-1b",
+          "calls": 92,
+          "ok": 92,
+          "mean_latency_ms": 507,
+          "last_activity": "2026-10-23T15:09:49.011Z",
+          "last_success": "2026-10-23T15:09:49.011Z",
+          "last_failure": null
+        },
+        {
+          "consumer": "fallback",
+          "provider": "ollama:http://100.77.58.72:11434",
+          "model": "gemma4:31b:cloud",
+          "calls": 48,
+          "ok": 48,
+          "mean_latency_ms": 1880,
+          "last_activity": "2026-10-22T00:29:53.640Z",
+          "last_success": "2026-10-22T00:29:53.640Z",
+          "last_failure": null
+        },
+        {
+          "consumer": "panel_review",
+          "provider": "ollama:http://100.77.58.72:11434",
+          "model": "gemma4:31b:cloud",
+          "calls": 48,
+          "ok": 48,
+          "mean_latency_ms": 1881,
+          "last_activity": "2026-10-22T00:29:53.640Z",
+          "last_success": "2026-10-22T00:29:53.640Z",
+          "last_failure": null
+        },
+        {
+          "consumer": "jev",
+          "provider": "typesafe",
+          "model": "jev-1.14.0",
+          "calls": 45,
+          "ok": 45,
+          "mean_latency_ms": 263,
+          "last_activity": "2026-10-23T15:10:13.633Z",
+          "last_success": "2026-10-23T15:10:13.633Z",
+          "last_failure": null
+        },
+        {
+          "consumer": "maker",
+          "provider": "opencode",
+          "model": "opencode",
+          "calls": 40,
+          "ok": 17,
+          "mean_latency_ms": 253510,
+          "last_activity": "2026-10-23T15:21:19.082Z",
+          "last_success": "2026-10-22T00:25:21.638Z",
+          "last_failure": "2026-10-23T15:21:19.082Z"
+        },
+        {
+          "consumer": "maker",
+          "provider": "remote",
+          "model": "workstation/atomic@llama-router",
+          "calls": 14,
+          "ok": 11,
+          "mean_latency_ms": 933886,
+          "last_activity": "2026-10-21T11:35:39.873Z",
+          "last_success": "2026-10-21T11:35:39.873Z",
+          "last_failure": "2026-10-18T14:50:18.501Z"
+        },
+        {
+          "consumer": "evolution_gym",
+          "provider": "subscription-cli:claude",
+          "model": "claude-sonnet-5",
+          "calls": 10,
+          "ok": 10,
+          "mean_latency_ms": 242107,
+          "last_activity": "2026-10-19T05:22:59.427Z",
+          "last_success": "2026-10-19T05:22:59.427Z",
+          "last_failure": null
+        },
+        {
+          "consumer": "evolution_gym",
+          "provider": "subscription-cli:codex",
+          "model": "codex-cli",
+          "calls": 5,
+          "ok": 5,
+          "mean_latency_ms": 25920,
+          "last_activity": "2026-10-18T05:48:23.824Z",
+          "last_success": "2026-10-18T05:48:23.824Z",
+          "last_failure": null
+        },
+        {
+          "consumer": "fallback",
+          "provider": "ollama:http://100.77.58.72:11434",
+          "model": "kimi-k3:cloud",
+          "calls": 5,
+          "ok": 5,
+          "mean_latency_ms": 7104,
+          "last_activity": "2026-10-16T23:50:41.625Z",
+          "last_success": "2026-10-16T23:50:41.625Z",
+          "last_failure": null
+        },
+        {
+          "consumer": "panel_review",
+          "provider": "ollama:http://100.77.58.72:11434",
+          "model": "kimi-k3:cloud",
+          "calls": 4,
+          "ok": 4,
+          "mean_latency_ms": 6654,
+          "last_activity": "2026-10-16T22:22:18.208Z",
+          "last_success": "2026-10-16T22:22:18.208Z",
+          "last_failure": null
+        },
+        {
+          "consumer": "panel_review",
+          "provider": "subscription-cli:claude",
+          "model": "claude:haiku",
+          "calls": 4,
+          "ok": 4,
+          "mean_latency_ms": 23679,
+          "last_activity": "2026-10-19T05:52:16.515Z",
+          "last_success": "2026-10-19T05:52:16.515Z",
+          "last_failure": null
+        }
+      ]
+    },
+    "count_agents": {
+      "sql": "SELECT COUNT(*) n FROM agents",
+      "params": [],
+      "rows": [
+        {
+          "n": 32
+        }
+      ]
+    },
+    "count_registry_agents": {
+      "sql": "SELECT COUNT(*) n FROM registry_agents",
+      "params": [],
+      "rows": [
+        {
+          "n": 5
+        }
+      ]
+    },
+    "count_agent_skills": {
+      "sql": "SELECT COUNT(*) n FROM agent_skills",
+      "params": [],
+      "rows": [
+        {
+          "n": 0
+        }
+      ]
+    },
+    "count_skill_cards": {
+      "sql": "SELECT COUNT(*) n FROM skill_cards",
+      "params": [],
+      "rows": [
+        {
+          "n": 104
+        }
+      ]
+    },
+    "count_sub_agent_spawns": {
+      "sql": "SELECT COUNT(*) n FROM sub_agent_spawns",
+      "params": [],
+      "rows": [
+        {
+          "n": 52
+        }
+      ]
+    },
+    "count_workflows": {
+      "sql": "SELECT COUNT(*) n FROM workflows",
+      "params": [],
+      "rows": [
+        {
+          "n": 0
+        }
+      ]
+    },
+    "count_workflow_nodes": {
+      "sql": "SELECT COUNT(*) n FROM workflow_nodes",
+      "params": [],
+      "rows": [
+        {
+          "n": 0
+        }
+      ]
+    },
+    "count_federation_peers": {
+      "sql": "SELECT COUNT(*) n FROM federation_peers",
+      "params": [],
+      "rows": [
+        {
+          "n": 0
+        }
+      ]
+    },
+    "count_external_events": {
+      "sql": "SELECT COUNT(*) n FROM external_events",
+      "params": [],
+      "rows": [
+        {
+          "n": 12550
+        }
+      ]
+    },
+    "count_event_outbox": {
+      "sql": "SELECT COUNT(*) n FROM event_outbox",
+      "params": [],
+      "rows": [
+        {
+          "n": 2691
+        }
+      ]
+    },
+    "count_runtime_contract_probes": {
+      "sql": "SELECT COUNT(*) n FROM runtime_contract_probes",
+      "params": [],
+      "rows": [
+        {
+          "n": 19
+        }
+      ]
+    },
+    "count_fleet_hosts": {
+      "sql": "SELECT COUNT(*) n FROM fleet_hosts",
+      "params": [],
+      "rows": [
+        {
+          "n": 7
+        }
+      ]
+    },
+    "count_mcp_servers": {
+      "sql": "SELECT COUNT(*) n FROM mcp_servers",
+      "params": [],
+      "rows": [
+        {
+          "n": 10
+        }
+      ]
+    },
+    "count_mcp_tools": {
+      "sql": "SELECT COUNT(*) n FROM mcp_tools",
+      "params": [],
+      "rows": [
+        {
+          "n": 148
+        }
+      ]
+    },
+    "count_audit_events": {
+      "sql": "SELECT COUNT(*) n FROM audit_events",
+      "params": [],
+      "rows": [
+        {
+          "n": 24711
+        }
+      ]
+    },
+    "count_authority_events": {
+      "sql": "SELECT COUNT(*) n FROM authority_events",
+      "params": [],
+      "rows": [
+        {
+          "n": 1259
+        }
+      ]
+    },
+    "count_genome_trial_results": {
+      "sql": "SELECT COUNT(*) n FROM genome_trial_results",
+      "params": [],
+      "rows": [
+        {
+          "n": 8
+        }
+      ]
+    },
+    "count_tg_experiments": {
+      "sql": "SELECT COUNT(*) n FROM tg_experiments",
+      "params": [],
+      "rows": [
+        {
+          "n": 1
+        }
+      ]
+    },
+    "count_knowledge_claims": {
+      "sql": "SELECT COUNT(*) n FROM knowledge_claims",
+      "params": [],
+      "rows": [
+        {
+          "n": 5
+        }
+      ]
+    },
+    "count_vector_memories": {
+      "sql": "SELECT COUNT(*) n FROM vector_memories",
+      "params": [],
+      "rows": [
+        {
+          "n": 0
+        }
+      ]
+    }
+  }
+}
