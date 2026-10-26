@@ -95,7 +95,7 @@ missing here. **Acting** = changes what the loop does; acting flags are switched
 | `LOOP_EVIDENCE_FRESHNESS_MODE` | off | enforce: yes (a loop draft PR whose read set — lockfile, configs, imports — changed on main is not opened and the run is marked for a re-check); shadow: records `evidence_stale_shadow` | shadow | operator |
 | `DREAM_EVOLUTION_ENABLED` | off | yes | act | operator |
 | `DREAM_TRIAL_MUTANTS` | off | yes | act | operator |
-| `DREAM_TRIAL_MUTANT_TIERS` | `2,3` | yes | act (freezes a new holdout) | operator, after the RX-5 tier probe |
+| `DREAM_TRIAL_MUTANT_TIERS` | `2,3` | yes | act (freezes a new holdout; claim-time epochs only — a manifest-frozen epoch decides on all its frozen tiers) | operator, after the RX-5 tier probe |
 | `DREAM_PROMOTION_ALPHA` | 0.05 | yes | act | operator |
 | `TRIAL_DIAGNOSTICS_ENABLED` | off | no (records per-trial blindness/power; never changes promotion) | measure | operator |
 | `TRIAL_HEADROOM_PRECHECK` | off | yes (scores the parent first; settles a trial `inconclusive` / `no_headroom` before any mutant attempt when the parent fails fewer deciding tasks than the promotion rule needs) | act | operator |
@@ -236,7 +236,7 @@ Never automatic. Nothing sets `DREAM_EVOLUTION_ENABLED` or `GYM_HOLDOUT_EPOCH`, 
 6. Verify (read-only):
    - `SELECT epoch, role, COUNT(*) FROM gym_holdout / gym_mutant_holdout / gym_write_test_holdout GROUP BY 1, 2`;
    - `SELECT * FROM gym_holdout_freezes`.
-7. Only then, and as a separate decision, switch trials to it. Set `GYM_HOLDOUT_EPOCH=<n>`, and set `DREAM_TRIAL_MUTANT_TIERS` to the manifest tiers so the mutant reader sees them.
+7. Only then, and as a separate decision, switch trials to it. Set `GYM_HOLDOUT_EPOCH=<n>`. The deciding mutants are every mutant the manifest froze (all its tiers); `DREAM_TRIAL_MUTANT_TIERS` is ignored for a manifest epoch (a warning names a mismatch).
 
 ## Negative evidence
 
