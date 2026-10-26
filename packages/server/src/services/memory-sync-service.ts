@@ -4,6 +4,7 @@ import fs from 'fs';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import { pointIdForTask as qdrantPointIdForTask } from '../utils/qdrant-point-id';
 import { yamlScalar } from '../utils/yaml-scalar';
+import { ensureCollection, memoryEmbedModel, SWARM_MEMORY_COLLECTION } from './memory-embedding-contract';
 
 // Resolved per call so operators/tests can override without a rebuild.
 const DEFAULT_UAMS_URL = 'http://192.168.1.28:8000';
@@ -22,7 +23,6 @@ function authHeaders(apiKey: string | undefined, scheme: 'bearer' | 'api-key'): 
   return headers;
 }
 
-const EMBED_MODEL = process.env.DJIMITFLO_EMBED_MODEL || process.env.OLLAMA_EMBED_MODEL || 'snowflake-arctic-embed:s';
 const EMBED_TIMEOUT_MS = Number(process.env.EMBEDDING_TIMEOUT_MS) || 10_000;
 
 /**
@@ -36,7 +36,7 @@ const pointIdForTask = qdrantPointIdForTask;
  * Returns null (never throws) so a missing embedding model degrades the Qdrant
  * leg only; UAMS/OKF are unaffected.
  */
-async function embedText(text: string): Promise<number[] | null> {
+async function embedText(text: string, model: string): Promise<number[] | null> {
   const base = (process.env.OLLAMA_URL || process.env.OLLAMA_HOST || 'http://127.0.0.1:11434').replace(/\/$/, '');
   const call = async (path: string, body: Record<string, unknown>): Promise<Response> =>
     fetch(`${base}${path}`, {
@@ -46,8 +46,8 @@ async function embedText(text: string): Promise<number[] | null> {
       signal: AbortSignal.timeout(EMBED_TIMEOUT_MS),
     });
   try {
-    let res = await call('/api/embed', { model: EMBED_MODEL, input: text });
-    if (res.status === 404) res = await call('/api/embeddings', { model: EMBED_MODEL, prompt: text });
+    let res = await call('/api/embed', { model, input: text });
+    if (res.status === 404) res = await call('/api/embeddings', { model, prompt: text });
     if (!res.ok) return null;
     const payload = (await res.json()) as { embedding?: number[]; embeddings?: number[][] };
     const vector = payload.embedding || payload.embeddings?.[0];
@@ -135,46 +135,20 @@ export class MemorySyncService {
     const apiKey = qdrantWriteApiKey();
     const headers = authHeaders(apiKey, 'api-key');
     const base = qdrantWriteUrl();
-    const collection = 'djimitflo_swarm';
+    const collection = SWARM_MEMORY_COLLECTION;
+    const model = memoryEmbedModel();
 
     try {
-      const vector = await embedText(`${taskId} ${content}`);
+      const vector = await embedText(`${taskId} ${content}`, model);
       if (!vector) {
         console.warn(`Qdrant sync skipped for task ${taskId}: embedding unavailable (set DJIMITFLO_EMBED_MODEL to a served model)`);
         return;
       }
 
-      // Check if collection exists; only recreate an EMPTY mismatched collection
-      // (never destroy populated data at a different dimension).
-      const checkRes = await fetch(`${base}/collections/${collection}`, { headers });
-      if (checkRes.status === 404) {
-        const createRes = await fetch(`${base}/collections/${collection}`, {
-          method: 'PUT',
-          headers,
-          body: JSON.stringify({ vectors: { size: vector.length, distance: 'Cosine' } }),
-        });
-        if (!createRes.ok) {
-          console.warn(`Qdrant sync failed for task ${taskId}: create ${createRes.status}`);
-          return;
-        }
-      } else if (checkRes.ok) {
-        const info = (await checkRes.json()) as { result?: { config?: { params?: { vectors?: { size?: number } } }; points_count?: number } };
-        const size = info.result?.config?.params?.vectors?.size;
-        const count = info.result?.points_count ?? 0;
-        if (typeof size === 'number' && size !== vector.length) {
-          if (count > 0) {
-            console.warn(`Qdrant sync skipped for task ${taskId}: collection is ${size}-dim but embedding is ${vector.length}-dim (not recreating populated data)`);
-            return;
-          }
-          await fetch(`${base}/collections/${collection}`, { method: 'DELETE', headers });
-          await fetch(`${base}/collections/${collection}`, {
-            method: 'PUT',
-            headers,
-            body: JSON.stringify({ vectors: { size: vector.length, distance: 'Cosine' } }),
-          });
-        }
-      } else {
-        console.warn(`Qdrant sync failed for task ${taskId}: collection check ${checkRes.status}`);
+      // CODE-001: never DELETE/recreate an existing collection from the task path; only a 404 is created.
+      const state = await ensureCollection(base, collection, headers, vector.length, model);
+      if (state.status !== 'ready') {
+        console.warn(`Qdrant sync skipped for task ${taskId}: unavailable, ${state.reason}`);
         return;
       }
 
@@ -183,7 +157,7 @@ export class MemorySyncService {
           {
             id: pointIdForTask(taskId),
             vector,
-            payload: { task_id: taskId, machine_id: machineId, agent_type: agentType, timestamp: new Date().toISOString(), content_excerpt: excerpt, embedding_model: EMBED_MODEL, embedding_dim: vector.length },
+            payload: { task_id: taskId, machine_id: machineId, agent_type: agentType, timestamp: new Date().toISOString(), content_excerpt: excerpt, embedding_model: model, embedding_dim: vector.length },
           },
         ],
       };
