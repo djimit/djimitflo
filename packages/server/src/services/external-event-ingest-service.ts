@@ -35,6 +35,10 @@ const agentOutcomeSchema = z.object({
   tokens: z.coerce.number().int().nonnegative().optional(),
   duration_ms: z.coerce.number().int().nonnegative().optional(),
   ref: z.string().max(300).optional(),
+  // Skill identity (skill inventory 2026-10-26, intervention 1): the skill that ran and the sha256 of its installed SKILL.md.
+  // A malformed value is dropped (stays NULL), never repaired or invented; the outcome itself still scores.
+  skill: z.string().regex(/^[A-Za-z0-9][\w.-]{0,63}$/).optional().catch(undefined),
+  skill_sha: z.string().regex(/^[a-f0-9]{64}$/).optional().catch(undefined),
 });
 
 /**
@@ -56,9 +60,13 @@ export function scoreAgentOutcomes(db: Database, env: NodeJS.ProcessEnv = proces
   for (const row of rows) {
     const o = agentOutcomeSchema.safeParse(JSON.parse(row.payload));
     if (!o.success) continue;
+    // the name is a `skill:<name>` evidence ref; the hash only counts next to a name (a bare hash identifies nothing)
+    const { skill, skill_sha: skillSha } = o.data;
+    const evidenceRefs = [...(o.data.ref ? [o.data.ref] : []), ...(skill ? [`skill:${skill}`] : [])];
     engine.recordOutcome(`agent:${o.data.agent}:${o.data.task_kind}`, {
       success: o.data.success, tokensUsed: o.data.tokens ?? 0, durationMs: o.data.duration_ms ?? 0, domain: 'fleet',
-      agentId: o.data.agent, taskId: row.id, ...(o.data.model ? { model: o.data.model } : {}), ...(o.data.ref ? { evidenceRefs: [o.data.ref] } : {}),
+      agentId: o.data.agent, taskId: row.id, ...(o.data.model ? { model: o.data.model } : {}), ...(evidenceRefs.length ? { evidenceRefs } : {}),
+      ...(skill && skillSha ? { skillContentHash: skillSha } : {}),
     }); n += 1;
   }
   return n;
