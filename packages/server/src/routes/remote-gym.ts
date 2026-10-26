@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
-import { RemoteGymService, REMOTE_GYM_SCOPE } from '../services/remote-gym-service';
+import { GymRunSettledError, RemoteGymService, REMOTE_GYM_SCOPE } from '../services/remote-gym-service';
 import { mintSpawnToken, resolveSpawnTokenSecret, spawnTokenRejection } from '../services/spawn-token';
 import { RemoteMakerQueue } from '../services/remote-maker-queue';
 import { ingestKbPages, kbPendingSafety } from '../services/kb-corpus';
@@ -29,7 +29,8 @@ export function createRemoteGymRoutes(db: Database, auth: AuthMiddleware): Route
   }
   const fail = (res: any, error: unknown) => {
     const code = error instanceof Error ? error.message : 'GYM_WORKER_ERROR';
-    res.status(/^GYM_(HOST|SPECIES|RESULT)_|^MAKER_(RESULT|PATCH)_/.test(code) ? 400 : /_NOT_FOUND$/.test(code) ? 404 : code === 'GYM_RUN_ALREADY_SETTLED' || code === 'GYM_RUN_STALE_GENERATION' || code === 'MAKER_JOB_NOT_CLAIMED' || code === 'MAKER_JOB_LEASE_NOT_ACTIVE' ? 409 : 500).json({ error: { code, message: code } });
+    res.status(/^GYM_(HOST|SPECIES|RESULT)_|^MAKER_(RESULT|PATCH)_/.test(code) ? 400 : /_NOT_FOUND$/.test(code) ? 404 : code === 'GYM_RUN_ALREADY_SETTLED' || code === 'GYM_RUN_STALE_GENERATION' || code === 'MAKER_JOB_NOT_CLAIMED' || code === 'MAKER_JOB_LEASE_NOT_ACTIVE' ? 409 : 500)
+      .json({ error: { code, message: code }, ...(error instanceof GymRunSettledError && error.existing ? { gym_result: error.existing } : {}) });
   };
 
   router.post('/claim', (req, res) => {

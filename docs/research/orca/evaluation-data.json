@@ -1,0 +1,218 @@
+{
+  "note": "ORCA-PG measurements on a MacBook (darwin), local vitest, node v22.23.2. pre_change = runtime-process.ts as on origin/main 2a0bff5b, grandchild lifetime 6 s (that probe wrote the grandchild pid from the parent; irrelevant for the unsignalled grandchild of the legacy path). arms = final code of research/orca-assimilation with RUNTIME_PROCESS_GROUP_KILL off/on; grandchild ignores SIGTERM, holds stdout, writes its own pid after installing the handler, lifetime 8 s; production graces (stop 5 s, exit 2 s).",
+  "pre_change": {
+    "results": [
+      {
+        "trial": 0,
+        "rootExitMs": 1,
+        "stopResolvedMs": 6003,
+        "grandchildAliveAt1sAfterStop": null
+      },
+      {
+        "trial": 1,
+        "rootExitMs": 1,
+        "stopResolvedMs": 6002,
+        "grandchildAliveAt1sAfterStop": null
+      },
+      {
+        "trial": 2,
+        "rootExitMs": 1,
+        "stopResolvedMs": 6004,
+        "grandchildAliveAt1sAfterStop": null
+      },
+      {
+        "trial": 3,
+        "rootExitMs": 1,
+        "stopResolvedMs": 6002,
+        "grandchildAliveAt1sAfterStop": null
+      },
+      {
+        "trial": 4,
+        "rootExitMs": 1,
+        "stopResolvedMs": 6002,
+        "grandchildAliveAt1sAfterStop": null
+      }
+    ],
+    "rootAlive1s": false,
+    "gcAlive1s": true
+  },
+  "arms": {
+    "gc_lifetime_ms": 8000,
+    "platform": "darwin",
+    "node": "v22.23.2",
+    "stop_grace_ms": 5000,
+    "exit_grace_ms": 2000,
+    "stop": {
+      "off": [
+        {
+          "stop_resolved_ms": 7998,
+          "grandchild_alive_1s_after_stop": true,
+          "grandchild_alive_after_resolve": false
+        },
+        {
+          "stop_resolved_ms": 7998,
+          "grandchild_alive_1s_after_stop": true,
+          "grandchild_alive_after_resolve": false
+        },
+        {
+          "stop_resolved_ms": 7996,
+          "grandchild_alive_1s_after_stop": true,
+          "grandchild_alive_after_resolve": false
+        },
+        {
+          "stop_resolved_ms": 7994,
+          "grandchild_alive_1s_after_stop": true,
+          "grandchild_alive_after_resolve": false
+        },
+        {
+          "stop_resolved_ms": 7999,
+          "grandchild_alive_1s_after_stop": true,
+          "grandchild_alive_after_resolve": false
+        },
+        {
+          "stop_resolved_ms": 7992,
+          "grandchild_alive_1s_after_stop": true,
+          "grandchild_alive_after_resolve": false
+        },
+        {
+          "stop_resolved_ms": 7997,
+          "grandchild_alive_1s_after_stop": true,
+          "grandchild_alive_after_resolve": false
+        },
+        {
+          "stop_resolved_ms": 7998,
+          "grandchild_alive_1s_after_stop": true,
+          "grandchild_alive_after_resolve": false
+        },
+        {
+          "stop_resolved_ms": 7998,
+          "grandchild_alive_1s_after_stop": true,
+          "grandchild_alive_after_resolve": false
+        },
+        {
+          "stop_resolved_ms": 7994,
+          "grandchild_alive_1s_after_stop": true,
+          "grandchild_alive_after_resolve": false
+        }
+      ],
+      "on": [
+        {
+          "stop_resolved_ms": 2005,
+          "grandchild_alive_1s_after_stop": true,
+          "grandchild_alive_after_resolve": false
+        },
+        {
+          "stop_resolved_ms": 2004,
+          "grandchild_alive_1s_after_stop": true,
+          "grandchild_alive_after_resolve": false
+        },
+        {
+          "stop_resolved_ms": 2003,
+          "grandchild_alive_1s_after_stop": true,
+          "grandchild_alive_after_resolve": false
+        },
+        {
+          "stop_resolved_ms": 2003,
+          "grandchild_alive_1s_after_stop": true,
+          "grandchild_alive_after_resolve": false
+        },
+        {
+          "stop_resolved_ms": 2004,
+          "grandchild_alive_1s_after_stop": true,
+          "grandchild_alive_after_resolve": false
+        },
+        {
+          "stop_resolved_ms": 2004,
+          "grandchild_alive_1s_after_stop": true,
+          "grandchild_alive_after_resolve": false
+        },
+        {
+          "stop_resolved_ms": 2003,
+          "grandchild_alive_1s_after_stop": true,
+          "grandchild_alive_after_resolve": false
+        },
+        {
+          "stop_resolved_ms": 2004,
+          "grandchild_alive_1s_after_stop": true,
+          "grandchild_alive_after_resolve": false
+        },
+        {
+          "stop_resolved_ms": 2004,
+          "grandchild_alive_1s_after_stop": true,
+          "grandchild_alive_after_resolve": false
+        },
+        {
+          "stop_resolved_ms": 2004,
+          "grandchild_alive_1s_after_stop": true,
+          "grandchild_alive_after_resolve": false
+        }
+      ]
+    },
+    "runtime_command_timeout_1000ms": {
+      "off": [
+        {
+          "finalised_ms": 8046,
+          "timed_out": true,
+          "permit_held_at_2000ms": 1,
+          "grandchild_alive_at_2000ms": true
+        },
+        {
+          "finalised_ms": 8047,
+          "timed_out": true,
+          "permit_held_at_2000ms": 1,
+          "grandchild_alive_at_2000ms": true
+        },
+        {
+          "finalised_ms": 8046,
+          "timed_out": true,
+          "permit_held_at_2000ms": 1,
+          "grandchild_alive_at_2000ms": true
+        },
+        {
+          "finalised_ms": 8044,
+          "timed_out": true,
+          "permit_held_at_2000ms": 1,
+          "grandchild_alive_at_2000ms": true
+        },
+        {
+          "finalised_ms": 8047,
+          "timed_out": true,
+          "permit_held_at_2000ms": 1,
+          "grandchild_alive_at_2000ms": true
+        }
+      ],
+      "on": [
+        {
+          "finalised_ms": 1004,
+          "timed_out": true,
+          "permit_held_at_2000ms": 0,
+          "grandchild_alive_at_2000ms": false
+        },
+        {
+          "finalised_ms": 1004,
+          "timed_out": true,
+          "permit_held_at_2000ms": 0,
+          "grandchild_alive_at_2000ms": false
+        },
+        {
+          "finalised_ms": 1003,
+          "timed_out": true,
+          "permit_held_at_2000ms": 0,
+          "grandchild_alive_at_2000ms": false
+        },
+        {
+          "finalised_ms": 1004,
+          "timed_out": true,
+          "permit_held_at_2000ms": 0,
+          "grandchild_alive_at_2000ms": false
+        },
+        {
+          "finalised_ms": 1004,
+          "timed_out": true,
+          "permit_held_at_2000ms": 0,
+          "grandchild_alive_at_2000ms": false
+        }
+      ]
+    }
+  }
+}

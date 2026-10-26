@@ -1,0 +1,51 @@
+{
+  "captured_at": "2026-10-24T14:58:59.105051+00:00",
+  "host": "eve-v",
+  "scope": "last250 journal records",
+  "error_classes": {
+    "unclassified error withheld": 100
+  },
+  "recent_poll_summaries": [
+    {
+      "processed": 0,
+      "failures": 4,
+      "time": "1792851381927886"
+    },
+    {
+      "processed": 0,
+      "failures": 4,
+      "time": "1792851706898100"
+    },
+    {
+      "processed": 0,
+      "failures": 4,
+      "time": "1792852013485240"
+    },
+    {
+      "processed": 0,
+      "failures": 4,
+      "time": "1792852337910564"
+    },
+    {
+      "processed": 0,
+      "failures": 4,
+      "time": "1792852664466163"
+    },
+    {
+      "processed": 0,
+      "failures": 4,
+      "time": "1792852984094267"
+    },
+    {
+      "processed": 0,
+      "failures": 4,
+      "time": "1792853299558785"
+    },
+    {
+      "processed": 0,
+      "failures": 4,
+      "time": "1792853615664178"
+    }
+  ],
+  "limits": "Child stderr and underlying provider cause unavailable in these bounded logs."
+}

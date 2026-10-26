@@ -1,0 +1,45 @@
+BEGIN
+{"read_only" : "on", "at" : "2026-10-23T22:48:58.316954+00:00", "database" : "langgraph", "version" : "16.15 (Debian 16.15-1.pgdg12+2)"}
+{"schema" : "ag2", "table" : "conversations", "estimated_rows" : 33}
+{"schema" : "ag2", "table" : "overwatch_cycles", "estimated_rows" : -1}
+{"schema" : "ag2", "table" : "overwatch_goals", "estimated_rows" : -1}
+{"schema" : "ag2", "table" : "participants", "estimated_rows" : -1}
+{"schema" : "ag2", "table" : "turns", "estimated_rows" : 37}
+{"schema" : "djimit_agent_runtime", "table" : "agent_runs", "estimated_rows" : 4}
+{"schema" : "djimit_agent_runtime", "table" : "episodes", "estimated_rows" : 4}
+{"schema" : "djimit_agent_runtime", "table" : "memories", "estimated_rows" : 6}
+{"schema" : "djimit_agent_runtime", "table" : "memory_usage_events", "estimated_rows" : 18}
+{"schema" : "djimit_agent_runtime", "table" : "runtime_events", "estimated_rows" : -1}
+{"schema" : "djimit_agent_runtime", "table" : "skill_evaluations", "estimated_rows" : 15}
+{"schema" : "djimit_agent_runtime", "table" : "skill_usage_events", "estimated_rows" : 6}
+{"schema" : "djimit_agent_runtime", "table" : "skills", "estimated_rows" : 2}
+{"schema" : "djimit_agent_runtime", "table" : "specialist_agents", "estimated_rows" : 4}
+{"schema" : "djimit_agent_runtime", "table" : "swarm_runs", "estimated_rows" : 1}
+{"schema" : "djimit_central_memory", "table" : "episodes", "estimated_rows" : 1553}
+{"schema" : "djimit_central_memory", "table" : "memories", "estimated_rows" : 157}
+{"schema" : "djimit_central_memory", "table" : "memory_relations", "estimated_rows" : 175}
+{"schema" : "djimit_central_memory", "table" : "memory_versions", "estimated_rows" : 358}
+{"schema" : "djimit_central_memory", "table" : "profiles", "estimated_rows" : 2}
+{"schema" : "djimit_central_memory", "table" : "projection_outbox", "estimated_rows" : 694}
+{"schema" : "djimit_central_memory", "table" : "projection_status", "estimated_rows" : 162}
+{"schema" : "djimit_central_memory", "table" : "relation_projection", "estimated_rows" : 19}
+{"schema" : "djimit_central_memory", "table" : "runtime_artifact_governance_decisions", "estimated_rows" : 35}
+{"schema" : "djimit_central_memory", "table" : "runtime_artifact_links", "estimated_rows" : 17}
+{"schema" : "djimit_central_memory", "table" : "runtime_episode_hook_review_queue", "estimated_rows" : 586}
+{"schema" : "djimit_central_memory", "table" : "runtime_hook_repair_review_queue", "estimated_rows" : 506}
+{"schema" : "djimit_central_memory", "table" : "runtime_link_closure_approval_ledger", "estimated_rows" : 50}
+{"schema" : "djimit_central_memory", "table" : "runtime_link_repair_review_queue", "estimated_rows" : 250}
+{"schema" : "djimit_central_memory", "table" : "runtime_memory_link_repair_review_queue", "estimated_rows" : 605}
+{"schema" : "djimit_central_memory", "table" : "runtime_residual_governance_review_queue", "estimated_rows" : 180}
+{"schema" : "djimit_central_memory", "table" : "schema_migrations", "estimated_rows" : 1}
+{"schema" : "djimit_central_memory", "table" : "skill_evaluations", "estimated_rows" : 101}
+{"schema" : "djimit_central_memory", "table" : "skill_usage", "estimated_rows" : 62}
+{"schema" : "djimit_central_memory", "table" : "skill_versions", "estimated_rows" : 32}
+{"schema" : "djimit_central_memory", "table" : "skills", "estimated_rows" : 32}
+{"schema" : "djimit_central_memory", "table" : "trace_references", "estimated_rows" : 49}
+{"schema" : "djimit_central_memory", "table" : "worker_registry", "estimated_rows" : 8}
+{"schema" : "djimit_central_memory", "table" : "working_memory", "estimated_rows" : 1381}
+{"schema" : "public", "table" : "overwatch_episodes", "estimated_rows" : 2848}
+{"schema" : "public", "table" : "overwatch_memory", "estimated_rows" : 3}
+{"schema" : "public", "table" : "overwatch_tasks", "estimated_rows" : -1}
+ROLLBACK

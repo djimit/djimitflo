@@ -1,0 +1,373 @@
+{
+  "source_sha": "f957b552c9f02ffc5fb25c45d24431610e57f278",
+  "skills": {
+    "macmini": {
+      "instances": 133,
+      "unique_bodies": 133,
+      "duplicate_body_instances": 0,
+      "canonical_name_and_body_matches": 0,
+      "same_name_different_body": [
+        {
+          "name": "agentic-os-routing",
+          "root": "/Users/home/.hermes/skills",
+          "path": "agentic-os-routing/SKILL.md",
+          "body_sha256": "5790ca880bec0af525797d7b2057cc55a5a8ae3913ddc45e52092d7794079727"
+        },
+        {
+          "name": "test-driven-development",
+          "root": "/Users/home/.hermes/skills",
+          "path": ".archive/test-driven-development/SKILL.md",
+          "body_sha256": "b5d5f7bfd8a746726948c372bbaa3da3063fe182bf8b2754ff6245ba49fa656b"
+        },
+        {
+          "name": null,
+          "root": "/Users/home/.hermes/skills",
+          "path": ".archive/macos-disk-leak-diagnosis/SKILL.md",
+          "body_sha256": "2ed57bb4d9e3fca1f011f0093ff0653541299851a3a7102a7c80a21e55003765"
+        },
+        {
+          "name": "plan",
+          "root": "/Users/home/.hermes/skills",
+          "path": "software-development/plan/SKILL.md",
+          "body_sha256": "379e4d04011d80c90482c408b34bf1d6d203e5436bf0d1afde2c3781036eb226"
+        },
+        {
+          "name": "fine-tuning-with-trl",
+          "root": "/Users/home/.hermes/skills",
+          "path": "mlops/training/trl-fine-tuning/SKILL.md",
+          "body_sha256": "3b119f4218d0b81b9e66cefc6927f91f580365481cdc9b57dc7308e4d4ded21b"
+        },
+        {
+          "name": "axolotl",
+          "root": "/Users/home/.hermes/skills",
+          "path": "mlops/training/axolotl/SKILL.md",
+          "body_sha256": "ac0722969c333ba199aad46a017058d65f04a715f11d3cf74a4025d5e57f740b"
+        },
+        {
+          "name": "unsloth",
+          "root": "/Users/home/.hermes/skills",
+          "path": "mlops/training/unsloth/SKILL.md",
+          "body_sha256": "47da646815bd4e3c4065b92e3a826b7e9ce9cf6f85f68f7f6a86336e5c9a75b8"
+        },
+        {
+          "name": "outlines",
+          "root": "/Users/home/.hermes/skills",
+          "path": "mlops/inference/outlines/SKILL.md",
+          "body_sha256": "eb0185928112533ae2bc5a7cc3d7f1b3b51bb1e64660e2e39bcbe5587aa43f07"
+        }
+      ],
+      "outside_canonical_names": 125,
+      "meaning": "Installation/body identity only; scripts, manifests, invocation and transfer benefit not established by this comparison."
+    },
+    "eve-v": {
+      "instances": 151,
+      "unique_bodies": 150,
+      "duplicate_body_instances": 1,
+      "canonical_name_and_body_matches": 0,
+      "same_name_different_body": [
+        {
+          "name": "parallel-cli",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "parallel-cli/SKILL.md",
+          "body_sha256": "70219a79d952f0e40470919bf55bbde4d972a6502c071a4f15c3689f647211f3"
+        },
+        {
+          "name": "test-driven-development",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "software-development/test-driven-development/SKILL.md",
+          "body_sha256": "441f065dde5850a9b0a57ec801d15b67d5fe3cb104eba54ebfb1c1472264f056"
+        },
+        {
+          "name": "plan",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "software-development/plan/SKILL.md",
+          "body_sha256": "883f88f2d080efb6c6925377acf1b5a11a6f974d0b2ba65519aa68297708cce5"
+        },
+        {
+          "name": "watchers",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "watchers/SKILL.md",
+          "body_sha256": "9aa366bd1ffed5313af26fe2e9bf591fbb193cf5f9be22a48c9267751bc25a68"
+        },
+        {
+          "name": "djimit-shared-memory",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "djimit-shared-memory/SKILL.md",
+          "body_sha256": "acbbf89403eb890902b8e84e98d4e7e1a8b32a7275542e411d8ec6b1f0449931"
+        },
+        {
+          "name": "meme-generation",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "meme-generation/SKILL.md",
+          "body_sha256": "87d851b04ee04d73e62ac367cb50f16988ef6487ca2d6f72039b5fa02f92c40a"
+        },
+        {
+          "name": "agentmail",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "agentmail/SKILL.md",
+          "body_sha256": "dcf352451f922c0f99fa81e42a6b0d6b5bf0341096db8be5c8bfd81d03091afe"
+        },
+        {
+          "name": "djimit-newsletter",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "djimit-newsletter/SKILL.md",
+          "body_sha256": "d94608ae33788db35e4121ec7723d296d51ba7d675b048e365d422c48bb0a1e3"
+        },
+        {
+          "name": "osint-investigation",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "osint-investigation/SKILL.md",
+          "body_sha256": "505fb525342b99a383667eb775992432f1118d417e37e44682d27d255720a2da"
+        },
+        {
+          "name": "one-three-one-rule",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "one-three-one-rule/SKILL.md",
+          "body_sha256": "3b439099c8717dd7b9d37a7c161cf0ec8f60bd48323e51df77cc098654afa655"
+        },
+        {
+          "name": "djimit-action-items",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "djimit-action-items/SKILL.md",
+          "body_sha256": "8a4f08e6336c79e60f2d3919840513d83b4107acb3be1b71f2c526c39965002f"
+        },
+        {
+          "name": "scrapling",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "scrapling/SKILL.md",
+          "body_sha256": "cbcf13f252ad8f107e1ec7dcb3f6b46f9c9d6ddad52e321b8b59892421c20dcf"
+        },
+        {
+          "name": "djimit-multisource-publish",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "djimit-multisource-publish/SKILL.md",
+          "body_sha256": "18215ab3a5ea2806ae41ae33dd487a6b6dba927d65297399992ca18711506fa6"
+        },
+        {
+          "name": "dcf-model",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "dcf-model/SKILL.md",
+          "body_sha256": "14161e22256d35057523e1cb39d7100251807737d9aefe924325d45362784b9a"
+        },
+        {
+          "name": "duckduckgo-search",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "duckduckgo-search/SKILL.md",
+          "body_sha256": "11bf42b4270cc9d91c64d915e438b068dcf244f7d02bf4d4a1a9c85662fa4307"
+        },
+        {
+          "name": "darwinian-evolver",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "darwinian-evolver/SKILL.md",
+          "body_sha256": "42059ec208f5b83ab7107fdd74ddabc24530699c5f1b32598cbfdfbb75a74006"
+        },
+        {
+          "name": "excel-author",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "excel-author/SKILL.md",
+          "body_sha256": "c70936da113c97e705fff99993b5d58a1ce9c551a2e376bd2716306fad8dbeb7"
+        },
+        {
+          "name": "domain-intel",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "domain-intel/SKILL.md",
+          "body_sha256": "d1586869a32d81b9b4556a86f189ae306ea3fac90a847fc830a673b3b732861c"
+        },
+        {
+          "name": "searxng-search",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "searxng-search/SKILL.md",
+          "body_sha256": "f7984451774d9d038fa6d1a3e1a0a56d406873980c0a43a692d495693237d164"
+        },
+        {
+          "name": "blackbox",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "blackbox/SKILL.md",
+          "body_sha256": "cb14e9283eaecb220413ac250a118b4335228c9db93d445b9a55983f4c3e8541"
+        },
+        {
+          "name": "concept-diagrams",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "concept-diagrams/SKILL.md",
+          "body_sha256": "bd462006a4076f24eb56db1c2da610b96200d6cf3c938ab899864cd7ef340ab5"
+        },
+        {
+          "name": "pinggy-tunnel",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "pinggy-tunnel/SKILL.md",
+          "body_sha256": "5516bfb97ad4288f2df9de1fce81190d89606d240e9e6e8ae5873dcd9c97ceb1"
+        }
+      ],
+      "outside_canonical_names": 129,
+      "meaning": "Installation/body identity only; scripts, manifests, invocation and transfer benefit not established by this comparison."
+    },
+    "workstation": {
+      "instances": 347,
+      "unique_bodies": 204,
+      "duplicate_body_instances": 143,
+      "canonical_name_and_body_matches": 0,
+      "same_name_different_body": [
+        {
+          "name": "test-driven-development",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "software-development/test-driven-development/SKILL.md",
+          "body_sha256": "b5d5f7bfd8a746726948c372bbaa3da3063fe182bf8b2754ff6245ba49fa656b"
+        },
+        {
+          "name": "plan",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "software-development/plan/SKILL.md",
+          "body_sha256": "379e4d04011d80c90482c408b34bf1d6d203e5436bf0d1afde2c3781036eb226"
+        },
+        {
+          "name": null,
+          "root": "/home/djimit/.hermes/skills",
+          "path": "devops/task-type-auto-router/SKILL.md",
+          "body_sha256": "b4dc8e77a33a9433ca196de7589a356c6e6c8ce7f0b34ca439f802fb4761d170"
+        },
+        {
+          "name": "hermes-maintenance",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "devops/hermes-maintenance/SKILL.md",
+          "body_sha256": "a48d42118ba7821aa3e41c0e663fd2da192ce98ba49d1ebcc2d215742e171614"
+        },
+        {
+          "name": "agent-discovery-mesh",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "devops/agent-discovery-mesh/SKILL.md",
+          "body_sha256": "4889dba068ccc589e6491b88a0730910730542c9661b5be27a4d6c304aa1d959"
+        },
+        {
+          "name": "unsloth",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "mlops/training/unsloth/SKILL.md",
+          "body_sha256": "47da646815bd4e3c4065b92e3a826b7e9ce9cf6f85f68f7f6a86336e5c9a75b8"
+        },
+        {
+          "name": "fine-tuning-with-trl",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "mlops/training/trl-fine-tuning/SKILL.md",
+          "body_sha256": "3b119f4218d0b81b9e66cefc6927f91f580365481cdc9b57dc7308e4d4ded21b"
+        },
+        {
+          "name": "axolotl",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "mlops/training/axolotl/SKILL.md",
+          "body_sha256": "ac0722969c333ba199aad46a017058d65f04a715f11d3cf74a4025d5e57f740b"
+        },
+        {
+          "name": "outlines",
+          "root": "/home/djimit/.hermes/skills",
+          "path": "mlops/inference/outlines/SKILL.md",
+          "body_sha256": "eb0185928112533ae2bc5a7cc3d7f1b3b51bb1e64660e2e39bcbe5587aa43f07"
+        },
+        {
+          "name": "test-driven-development",
+          "root": "/home/djimit/.hermes/profiles/djimit2-bot/skills",
+          "path": "software-development/test-driven-development/SKILL.md",
+          "body_sha256": "441f065dde5850a9b0a57ec801d15b67d5fe3cb104eba54ebfb1c1472264f056"
+        },
+        {
+          "name": "plan",
+          "root": "/home/djimit/.hermes/profiles/djimit2-bot/skills",
+          "path": "software-development/plan/SKILL.md",
+          "body_sha256": "379e4d04011d80c90482c408b34bf1d6d203e5436bf0d1afde2c3781036eb226"
+        },
+        {
+          "name": null,
+          "root": "/home/djimit/.hermes/profiles/djimit2-bot/skills",
+          "path": "devops/task-type-auto-router/SKILL.md",
+          "body_sha256": "b4dc8e77a33a9433ca196de7589a356c6e6c8ce7f0b34ca439f802fb4761d170"
+        },
+        {
+          "name": "hermes-maintenance",
+          "root": "/home/djimit/.hermes/profiles/djimit2-bot/skills",
+          "path": "devops/hermes-maintenance/SKILL.md",
+          "body_sha256": "1a10c530a879ce0fe85ab19c3729bf166c03c80b11c73097786ab146788ff355"
+        },
+        {
+          "name": "unsloth",
+          "root": "/home/djimit/.hermes/profiles/djimit2-bot/skills",
+          "path": "mlops/training/unsloth/SKILL.md",
+          "body_sha256": "47da646815bd4e3c4065b92e3a826b7e9ce9cf6f85f68f7f6a86336e5c9a75b8"
+        },
+        {
+          "name": "fine-tuning-with-trl",
+          "root": "/home/djimit/.hermes/profiles/djimit2-bot/skills",
+          "path": "mlops/training/trl-fine-tuning/SKILL.md",
+          "body_sha256": "3b119f4218d0b81b9e66cefc6927f91f580365481cdc9b57dc7308e4d4ded21b"
+        },
+        {
+          "name": "axolotl",
+          "root": "/home/djimit/.hermes/profiles/djimit2-bot/skills",
+          "path": "mlops/training/axolotl/SKILL.md",
+          "body_sha256": "ac0722969c333ba199aad46a017058d65f04a715f11d3cf74a4025d5e57f740b"
+        },
+        {
+          "name": "outlines",
+          "root": "/home/djimit/.hermes/profiles/djimit2-bot/skills",
+          "path": "mlops/inference/outlines/SKILL.md",
+          "body_sha256": "eb0185928112533ae2bc5a7cc3d7f1b3b51bb1e64660e2e39bcbe5587aa43f07"
+        },
+        {
+          "name": "test-driven-development",
+          "root": "/home/djimit/.hermes/profiles/djimit2-bot/skills",
+          "path": ".archive/test-driven-development/SKILL.md",
+          "body_sha256": "441f065dde5850a9b0a57ec801d15b67d5fe3cb104eba54ebfb1c1472264f056"
+        },
+        {
+          "name": "test-driven-development",
+          "root": "/home/djimit/.hermes/profiles/djimit2-bot/skills",
+          "path": ".archive/test-driven-development-20260926235833/SKILL.md",
+          "body_sha256": "441f065dde5850a9b0a57ec801d15b67d5fe3cb104eba54ebfb1c1472264f056"
+        },
+        {
+          "name": "agent-discovery-mesh",
+          "root": "/home/djimit/.hermes/profiles/djimit2-bot/skills",
+          "path": ".archive/agent-discovery-mesh/SKILL.md",
+          "body_sha256": "f682d3e6fd24ba76ae47026f2eef336033c6247313cf018c1813ff4ce2f09020"
+        }
+      ],
+      "outside_canonical_names": 327,
+      "meaning": "Installation/body identity only; scripts, manifests, invocation and transfer benefit not established by this comparison."
+    }
+  },
+  "memory": {
+    "rules": {
+      "n": 73,
+      "verified": 55,
+      "regressed": 18,
+      "verified_rate": 0.753
+    },
+    "holdout": {
+      "n": 31,
+      "verified": 28,
+      "regressed": 3,
+      "verified_rate": 0.903
+    },
+    "two_sided_fisher_recomputed": 0.11019773732120691,
+    "risk_difference": -0.1498011489173663,
+    "interpretation": "Interim descriptive estimate; does not establish benefit or harm; see registered protocol and exclusions."
+  },
+  "capabilities": {
+    "rows": 511,
+    "statuses": {
+      "deprecated": 477,
+      "candidate": 34
+    },
+    "with_lease_history": 11,
+    "with_lease_history_7d": 0
+  },
+  "economics": {
+    "window_days": 7,
+    "recorded_cloud_tokens": 27029717,
+    "metered_local_wh": 5930.799999999999,
+    "gym_share_of_metered_local_wh": 0.8879889728198557,
+    "missing_cloud_energy_consumers": 13,
+    "interpretation": "Recorded tokens and metered local energy; excludes unknown cloud energy, prices, host idle power and uninstrumented operations. No ROI claim."
+  },
+  "routes": {
+    "declarations": 50,
+    "unique_patterns": 49
+  }
+}

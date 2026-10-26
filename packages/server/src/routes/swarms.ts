@@ -15,6 +15,7 @@
  */
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import { mountRoutes } from '../utils/route-inventory';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
@@ -45,6 +46,8 @@ import { createGovernanceRoutes } from './swarm-governance';
 import { createKnowledgeRoutes } from './swarm-knowledge';
 import { recordAbstentionGap } from '../services/knowledge-gaps';
 import { gapDemandByCapability } from '../services/evolution-feedback';
+import { learningCurveView, usageWindow } from '../services/swarm-learning-curve';
+import { missionDetail } from '../services/mission-detail';
 
 type RouteHandler = (req: Request, res: Response, next: NextFunction) => void | Promise<void>;
 
@@ -68,6 +71,13 @@ function boundedLimit(value: unknown, fallback = 100): number {
     throw createError(400, 'limit must be an integer between 1 and 500', 'VALIDATION_ERROR');
   }
   return limit;
+}
+
+function boundedDays(value: unknown, fallback = 7): number {
+  if (value === undefined) return fallback;
+  const days = Number(value);
+  if (!Number.isInteger(days) || days < 1 || days > 90) throw createError(400, 'days must be an integer between 1 and 90', 'VALIDATION_ERROR');
+  return days;
 }
 
 function boundedParallel(value: unknown, fallback = 3): number {
@@ -202,6 +212,17 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   router.get('/intelligence/missions', requirePermission('read:evidence'), (req, res) => { res.json({ missions: missionsSvc().listMissions(boundedLimit(req.query.limit)) }); });
   router.post('/intelligence/missions', requirePermission('write:swarm_action'), (req, res, next) => {
     try { res.status(201).json(missionsSvc().createMission(req.body)); } catch (error) {
+      try { mapSwarmIntelligenceError(error); } catch (mapped) { next(mapped); }
+    }
+  });
+  // SW-02: advisory planning status next to the linked goal/loop execution and outcome — a read-only join, never a transition
+  router.get('/intelligence/missions/execution', requirePermission('read:evidence'), route((req, res) => {
+    res.json(missionsSvc().missionExecutions(boundedLimit(req.query.limit, 50)));
+  }));
+  // mission detail page: the same join for one mission plus its runs, leases, tasks, decisions, tokens and provenance (read-only)
+  const missionDetailLimiter = rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: 'draft-8', legacyHeaders: false }); // per-route limiter CodeQL can see; /api also caps 300/min
+  router.get('/intelligence/missions/:id/execution', missionDetailLimiter, requirePermission('read:evidence'), (req, res, next) => {
+    try { res.json(missionDetail(db, req.params.id)); } catch (error) {
       try { mapSwarmIntelligenceError(error); } catch (mapped) { next(mapped); }
     }
   });
@@ -346,30 +367,13 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   router.post('/learning/cycle', requirePermission('write:swarm_action'), route(async (_req, res) => { res.json(await new ContinuousLearningLoop(db, { intervalMs: 999999999 }).runCycle()); }));
   router.get('/learning/history', requirePermission('read:evidence'), route((_req, res) => { res.json(new ContinuousLearningLoop(db, { intervalMs: 999999999 }).getHistory(20)); }));
   router.get('/learning/last', requirePermission('read:evidence'), route((_req, res) => { res.json(new ContinuousLearningLoop(db, { intervalMs: 999999999 }).getLastCycle()); }));
-  router.get('/learning-curve', requirePermission('read:evidence'), route((_req, res) => {
-    const loops = new LoopService(db);
-    const runs = loops.listLoopRuns().slice().reverse().map((run) => {
-      const metric = loops.computeEfficiencyMetric(run.id);
-      return {
-        run_id: run.id,
-        created_at: run.created_at,
-        success: run.status === 'completed',
-        retries: Number(run.metadata.retry_count) || 0,
-        dollars: metric.dollarsSpent,
-      };
-    });
-    const first = runs[0];
-    const last = runs[runs.length - 1];
-    res.json({
-      runs,
-      first_vs_last: {
-        first_success_rate: first ? Number(first.success) : 0,
-        last_success_rate: last ? Number(last.success) : 0,
-        first_cost: first?.dollars || 0,
-        last_cost: last?.dollars || 0,
-      },
-      trend: { retries_decreasing: runs.length > 1 && last.retries < first.retries },
-    });
+  // SW-01: per-cohort completion rates over equal windows with their denominators; unknown usage/cost stays null (read-only)
+  router.get('/learning-curve', requirePermission('read:evidence'), route((req, res) => {
+    res.json(learningCurveView(db, Date.now(), boundedDays(req.query.days)));
+  }));
+  // SW-01: recorded token usage for a stated window with its coverage (cost-ledger usage events), for /swarm
+  router.get('/usage-window', requirePermission('read:evidence'), route((req, res) => {
+    res.json(usageWindow(db, Date.now(), boundedDays(req.query.days)));
   }));
 
   const computeCapabilityEconomy = () => intelligence.listCapabilities(500)
@@ -404,18 +408,29 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
         run_id: run.id,
         loop_name: run.loop_name,
         status: run.status,
+        // verified = the run passed certification; unknown dollars/efficiency are null, never 0
         verified_artifacts: metric.verifiedArtifacts,
+        completed_unverified: metric.completedUnverified,
+        run_verified: metric.runVerified,
         dollars_spent: metric.dollarsSpent,
+        dollars_lower_bound: metric.dollarsLowerBound,
+        usage_coverage: metric.usageCoverage,
         efficiency: metric.efficiency,
+        efficiency_reason: metric.efficiencyReason,
       };
     });
+    const knownDollars = recentRuns.filter((run) => run.dollars_spent !== null);
     res.json({
       capabilities,
       recent_runs: recentRuns,
       summary: {
         total_capabilities: capabilities.length,
         total_verified_artifacts: recentRuns.reduce((sum, run) => sum + run.verified_artifacts, 0),
-        total_dollars_spent: recentRuns.reduce((sum, run) => sum + run.dollars_spent, 0),
+        total_completed_unverified: recentRuns.reduce((sum, run) => sum + run.completed_unverified, 0),
+        // sum over runs whose dollars are known; null when none are; a lower bound when any run is unknown or partial
+        total_dollars_spent: knownDollars.length > 0 ? knownDollars.reduce((sum, run) => sum + (run.dollars_spent ?? 0), 0) : null,
+        total_dollars_lower_bound: knownDollars.length > 0 && recentRuns.some((run) => run.dollars_spent === null || run.dollars_lower_bound),
+        runs_with_unknown_dollars: recentRuns.length - knownDollars.length,
       },
     });
   }));

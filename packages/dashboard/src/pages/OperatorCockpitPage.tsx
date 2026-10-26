@@ -349,7 +349,7 @@ export function OperatorCockpitPage() {
                 { key: 'outcomes', label: 'Outcomes', render: (g) => g.outcomes },
                 { key: 'success', label: 'Success', render: (g) => `${g.success_pct}%` },
                 { key: 'secs', label: 'Avg s', render: (g) => fmt(g.avg_seconds) },
-                { key: 'tokens', label: 'Avg tokens', render: (g) => fmt(g.avg_tokens) },
+                { key: 'tokens', label: 'Avg tokens', render: (g) => num(g.avg_tokens) },
                 { key: 'last', label: 'Last', render: (g) => since(g.last) },
               ]} />
             </Disclose>
