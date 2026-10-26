@@ -811,6 +811,21 @@ export type LoopRunRecord = {
   completed_at: string | null;
 };
 
+/** GET /loops/runs/:id/gym-outcome: the skill outcome remote-gym-service record() wrote for a gym run (null = none written). */
+export type GymSkillOutcome = {
+  id: string;
+  skill_id: string;
+  success: boolean;
+  /** null = not reported (unknown); a legacy 0 is unknown too */
+  tokens_used: number | null;
+  /** 0 = the worker sent no duration (unknown) */
+  duration_ms: number;
+  model: string | null;
+  skill_content_hash: string | null;
+  evidence_refs: string[];
+  created_at: string;
+};
+
 export type LoopCatalogItem = {
   name: string;
   title: string;
@@ -2248,6 +2263,10 @@ class ApiClient {
 
   async getRuntimeContracts(): Promise<{ runtimes: Record<string, RuntimeContract> }> {
     return this.request('/loops/runtime-contracts');
+  }
+
+  async getGymOutcome(runId: string): Promise<{ run_id: string; skill_outcome: GymSkillOutcome | null }> {
+    return this.request(`/loops/runs/${encodeURIComponent(runId)}/gym-outcome`);
   }
 
   async getLoopReviewBundle(runId: string): Promise<LoopReviewBundle> {

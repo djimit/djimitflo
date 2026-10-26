@@ -292,3 +292,26 @@ it('ASG-001: shows route, execution, verification and result apart, with policy,
   expect(text).toContain('2,000 tokens over 2 lease(s), 1 failed');
   expect(screen.getAllByTestId('asg-panel')).toHaveLength(1); // the retry lease has no ASG record
 });
+
+it('gym run panel: an evolution-gym run shows why it stopped, what is proven and what happens next; other runs do not', async () => {
+  run.loop_name = 'evolution-gym'; run.status = 'completed'; run.findings = [];
+  run.metadata = { gym: { commit: 'abc1234', species: 'atomic@llama-router', remote_host: 'ws1', prod_gates: 1 }, gym_result: { status: 'failure', reason: 'tests still red', tokens: null, hack_flags: [] } };
+  leases = [];
+  const baseline = requests.getMockImplementation()!;
+  requests.mockImplementation((url: string, init?: RequestInit) => url === '/api/loops/runs/fixture-run/gym-outcome'
+    ? Promise.resolve(response({ run_id: 'fixture-run', skill_outcome: null }))
+    : baseline(url, init));
+  render(<GoalsLoopsPage />);
+  const panel = await screen.findByTestId('gym-run-panel');
+  expect(panel.textContent).toContain("Stopped: tests still red after the maker's change (worker report)");
+  expect(panel.textContent).toContain('Next: counted');
+  expect(screen.getByTestId('gym-claimed').textContent).toContain('unknown (not reported)');
+  expect(posts()).toHaveLength(0); // read-only
+  cleanup();
+
+  run.loop_name = 'doc-drift-and-small-fix-loop';
+  render(<GoalsLoopsPage />);
+  await screen.findByText('No worker leases for this run.');
+  expect(screen.queryByTestId('gym-run-panel')).toBeNull();
+  expect(requests.mock.calls.filter(([url]) => String(url).endsWith('/gym-outcome'))).toHaveLength(1);
+});
