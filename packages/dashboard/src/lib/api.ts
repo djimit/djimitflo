@@ -321,6 +321,10 @@ export interface EvolutionEvidence {
   /** L3-v2 §5.1–2 (SETTLEMENT_EXECUTION_MODE, shadow): merged loop PRs ≥ 14 d — tests re-run at origin/main, fresh-mutant kill share vs maker time; graded vs labels (services/settlement-execution.ts) */
   settlement_execution?: SettlementExecutionEvidence;
   scheduler_capacity?: { mode: string; would_defer_24h: number | null; would_defer_7d: number | null; would_schedule_7d: number | null; latest: { at: string; goal_id: string; would_defer: boolean; observed: Record<string, unknown> } | null; observed_now: Record<string, unknown> | null };
+  /** PL-001 (PROCEDURE_SELECTOR_MODE, shadow): procedure applies / does_not_apply per ordinary gym claim; a window without a decision is null (services/procedure-selector.ts) */
+  procedure_selection?: { mode: string; delivered: false; procedure: { id: string; version: number; lines_sha256: string } | null;
+    window_24h: { applies: number | null; does_not_apply: number | null }; window_7d: { applies: number | null; does_not_apply: number | null };
+    top_failed_clauses_7d: Array<{ clause: string; n: number }> | null };
 }
 export type FalsifierCounts = { submitted: number; rejected: number; red_at_base: number; green_at_base: number; unknown: number; settled_green: number; expired: number; pending: number };
 export interface FalsifierEvidence {
@@ -805,6 +809,21 @@ export type LoopRunRecord = {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+};
+
+/** GET /loops/runs/:id/gym-outcome: the skill outcome remote-gym-service record() wrote for a gym run (null = none written). */
+export type GymSkillOutcome = {
+  id: string;
+  skill_id: string;
+  success: boolean;
+  /** null = not reported (unknown); a legacy 0 is unknown too */
+  tokens_used: number | null;
+  /** 0 = the worker sent no duration (unknown) */
+  duration_ms: number;
+  model: string | null;
+  skill_content_hash: string | null;
+  evidence_refs: string[];
+  created_at: string;
 };
 
 export type LoopCatalogItem = {
@@ -2244,6 +2263,10 @@ class ApiClient {
 
   async getRuntimeContracts(): Promise<{ runtimes: Record<string, RuntimeContract> }> {
     return this.request('/loops/runtime-contracts');
+  }
+
+  async getGymOutcome(runId: string): Promise<{ run_id: string; skill_outcome: GymSkillOutcome | null }> {
+    return this.request(`/loops/runs/${encodeURIComponent(runId)}/gym-outcome`);
   }
 
   async getLoopReviewBundle(runId: string): Promise<LoopReviewBundle> {
