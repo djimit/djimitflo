@@ -49,6 +49,7 @@ import { falsifierEvidence } from './commons-falsifier';
 import { settlementExecutionEvidence } from './settlement-execution';
 import { schedulerCapacityEvidence } from './resource-scheduler';
 import { procedureSelectionEvidence } from './procedure-selector';
+import { pl001Evidence } from './pl-001';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -94,6 +95,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'ACE_001_MODE', acting: true },
   { name: 'STE_001_MODE', acting: true },
   { name: 'TG_001_MODE', acting: true },
+  { name: 'PL_001_MODE', acting: true }, { name: 'PL_001_CAP_SHARE', acting: true },
   { name: 'MEMORY_TEMPLATE_DEDUP_MODE', acting: true },
   { name: 'SKILL_DISTILLATION_MODE', acting: false },
   { name: 'NE_GENERATOR_CHECK_MODE', acting: false },
@@ -508,5 +510,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // RESOURCE_SCHEDULER_MODE (shadow): observed-capacity would-defer counts 24 h / 7 d + latest observed capacity (report only)
     scheduler_capacity: schedulerCapacityEvidence(db, env, now),
     // PL-001 (PROCEDURE_SELECTOR_MODE, shadow): applies / does_not_apply per ordinary gym claim 24 h / 7 d + top failed clauses (nothing delivered)
-    procedure_selection: procedureSelectionEvidence(db, env, now) };
+    procedure_selection: procedureSelectionEvidence(db, env, now),
+    // PL-001 (PL_001_MODE): with vs without the procedure lines on a frozen set of applicable repair tasks — pairs, per-arm
+    // gated verified outcomes, one-sided exact McNemar, harm / stop rule, verdict and the procedure's lifecycle state
+    pl_001: pl001Evidence(db, env, now) };
 }

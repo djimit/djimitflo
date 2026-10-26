@@ -16,7 +16,7 @@ afterEach(() => db.close());
 
 it('lists every running experiment with its registered target and stop date; none without one is hidden', () => {
   const r = experimentsReport(db, {}, NOW);
-  expect(r.experiments.map((e) => e.id)).toEqual(['ACE-001', 'STE-001', 'MAKER-DEPS-001', 'X1', 'F2', 'TG-001', 'D5-NO', 'JEV-114', 'memory-holdout']);
+  expect(r.experiments.map((e) => e.id)).toEqual(['ACE-001', 'STE-001', 'MAKER-DEPS-001', 'X1', 'F2', 'TG-001', 'PL-001', 'D5-NO', 'JEV-114', 'memory-holdout']);
   expect(r.experiments.every((e) => !e.error)).toBe(true);
   expect(r.overdue).toEqual([]);
   // X1 (4 weeks) and D5-NO (cutoff + 90 d) were registered with a stop date; the other seven got one by the 2026-10-19 amendments
@@ -33,7 +33,7 @@ it('lists every running experiment with its registered target and stop date; non
     expect(Date.parse(e.stop_by as string) - Date.parse(e.started_at), e.id).toBeLessThanOrEqual(90 * 86_400_000);
   }
   // the amended stops cite the amendment, and the amendment text exists in that document
-  for (const e of r.experiments.filter((x) => !['X1', 'D5-NO'].includes(x.id))) {
+  for (const e of r.experiments.filter((x) => !['X1', 'D5-NO', 'PL-001'].includes(x.id))) {
     const [file, anchor] = e.stop_source.split('#');
     const doc = readFileSync(join(__dirname, '../../../..', file), 'utf8');
     expect(doc, e.id).toContain('2026-10-19');
@@ -158,4 +158,20 @@ it("power left: n so far vs target, days to stop_by, projected n at stop_by from
   const real = experimentsReport(db, {}, NOW).experiments;
   for (const e of real) expect(e.power.target_per_arm, e.id).toBe(e.target_n);
   expect(real.find((e) => e.id === 'TG-001')?.power.accrual_per_day).toBeNull();
+});
+
+it('PL-001: registered with the protocol stop rule — a decide-start date before the first attempt, first attempt + 14 d after it', () => {
+  const pl = experimentsReport(db, {}, NOW).experiments.find((e) => e.id === 'PL-001')!;
+  expect(pl).toMatchObject({ flag: 'PL_001_MODE', target_n: 60, population: 'gym_tasks', started_at: '2026-10-26T00:00:00.000Z', stop_by: '2026-11-25T00:00:00.000Z', n_per_arm: null, verdict: null, overdue: false });
+  const [file, anchor] = pl.stop_source.split('#');
+  const doc = readFileSync(join(__dirname, '../../../..', file), 'utf8');
+  const heading = doc.split('\n').find((l) => l.startsWith('## ') && l.slice(3).toLowerCase().replace(/[^a-z0-9 -]/g, '').replace(/ /g, '-') === anchor);
+  expect(heading).toBe('## Amendment 2026-10-26: runner');
+  expect(doc).toContain('2026-11-25');
+  expect(doc).toContain('verdict rules unchanged');
+  // with a first attempt the stop date is the frozen rule: first attempt + 14 days
+  db.prepare("INSERT INTO pl_attempts (id, experiment_id, task_key, arm, seq, status, retries, first_claimed_at, updated_at) VALUES ('a', 'pl-001', 'k', 'A', 0, 'claimed', 0, '2026-11-01T10:00:00.000Z', 'x')").run();
+  const started = experimentsReport(db, {}, NOW).experiments.find((e) => e.id === 'PL-001')!;
+  expect(started).toMatchObject({ started_at: '2026-11-01T10:00:00.000Z', stop_by: '2026-11-15T10:00:00.000Z' });
+  expect(experimentDefs().find((d) => d.id === 'PL-001')!.stop_by).toBe('2026-11-25T00:00:00.000Z'); // the registered date is unchanged
 });
