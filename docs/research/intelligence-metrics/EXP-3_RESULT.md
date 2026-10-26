@@ -32,7 +32,7 @@ goal had runs in both arms. So the run-level analysis is not inflated in this wi
 
 - **Falsifier met:** at the horizon the rules arm is not above the withheld arm (0.75 vs 0.81, OR 0.60). The registration
   says: stop injecting rules and keep the simpler baseline.
-- **Not a harm finding:** the harm stop needs one-sided p < 0.01 for the withheld arm; p is about 0.20, so this is not
+- **Not a harm finding:** the harm stop needs one-sided p < 0.01 for the withheld arm; here p ≈ 0.14 (1 − 0.86), so this is not
   evidence that rules hurt.
 - **Not evidence of "no effect":** at about 30–90 per arm the power for a 15-point effect is low (amendment 2026-10-19).
   The result is: no measured benefit, point estimate against rules.
