@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, BrainCircuit, CheckCircle2, ChevronDown, Database, Gauge, GitBranch, Network, PlayCircle, RefreshCw, RotateCcw, Route, ShieldCheck, Workflow } from 'lucide-react';
@@ -81,55 +81,68 @@ export function SwarmMissionControlPage() {
   const [learningCurve, setLearningCurve] = useState<LearningCurve | null>(null);
   const [missionExecutions, setMissionExecutions] = useState<MissionExecutions | null>(null);
   const [loadErrors, setLoadErrors] = useState<string[]>([]);
+  const refreshSequence = useRef(0);
 
   // D12: Knowledge bus events
   const [knowledgeEvents, setKnowledgeEvents] = useState<any[]>([]);
-  useEffect(() => {
-    api.request('/knowledge/events?limit=20').then((res: any) => setKnowledgeEvents(Array.isArray(res.events) ? res.events : [])).catch((err) => setLoadErrors((prev) => [...prev, `knowledge events: ${err instanceof Error ? err.message : String(err)}`]));
-  }, []);
-
-  // D11: Learning curve
-  useEffect(() => {
-    api.request<LearningCurve>('/swarms/learning-curve').then((res) => setLearningCurve(res && typeof res === 'object' ? res : null)).catch((err) => setLoadErrors((prev) => [...prev, `learning curve: ${err instanceof Error ? err.message : String(err)}`]));
-    // SW-02: mission planning status next to its linked goal/loop execution (read-only)
-    api.request<MissionExecutions>('/swarms/intelligence/missions/execution?limit=20').then((res) => setMissionExecutions(res && typeof res === 'object' ? res : null)).catch((err) => setLoadErrors((prev) => [...prev, `mission executions: ${err instanceof Error ? err.message : String(err)}`]));
-  }, []);
   const [expandedClaim, setExpandedClaim] = useState<string | null>(null);
 
   useEffect(() => {
     void refresh();
+    return () => { refreshSequence.current += 1; };
   }, []);
 
   async function refresh() {
+    const sequence = ++refreshSequence.current;
     setLoading(true);
     setError(null);
     try {
-      const [missionResult, capabilitiesResult, claimsResult, knowledgeResult] = await Promise.allSettled([
-        api.getSwarmMissionControl(),
-        api.getSwarmCapabilities(50),
-        api.getSwarmClaims(50),
-        api.getKnowledgeRuntime(),
-      ]);
-      if (missionResult.status === 'fulfilled') {
-        setMission(missionResult.value);
-        setCapacity(missionResult.value.capacity);
-      }
-      if (capabilitiesResult.status === 'fulfilled') {
-        const value = capabilitiesResult.value;
-        setCapabilities(asArray<SwarmCapabilityRecord>(value.capabilities));
-        const loaded = asArray(value.capabilities).length;
-        setCapabilityCounts({ total: loaded, loaded, load_limit: value.limit, registry_total: value.registry_total, registry_by_status: value.registry_by_status, validated: 0, routable: 0, blocked: 0 });
-      }
-      if (claimsResult.status === 'fulfilled') setClaims(asArray<ClaimLedgerRecord>(claimsResult.value.claims));
-      if (knowledgeResult.status === 'fulfilled') setKnowledge(knowledgeResult.value);
-      const failures = [missionResult, capabilitiesResult, claimsResult, knowledgeResult]
-        .filter((result) => result.status === 'rejected') as PromiseRejectedResult[];
-      if (failures.length === 4) throw failures[0].reason;
-      if (failures.length > 0) setError(`${failures.length} data source${failures.length === 1 ? '' : 's'} unavailable`);
+      const reads = [
+        api.getSwarmMissionControl().then((value) => {
+          if (sequence !== refreshSequence.current) return;
+          setMission(value);
+          setCapacity(value.capacity);
+        }),
+        api.getSwarmCapabilities(50).then((value) => {
+          if (sequence !== refreshSequence.current) return;
+          setCapabilities(asArray<SwarmCapabilityRecord>(value.capabilities));
+          const loaded = asArray(value.capabilities).length;
+          setCapabilityCounts({ total: loaded, loaded, load_limit: value.limit, registry_total: value.registry_total, registry_by_status: value.registry_by_status, validated: 0, routable: 0, blocked: 0 });
+        }),
+        api.getSwarmClaims(50).then((value) => {
+          if (sequence === refreshSequence.current) setClaims(asArray<ClaimLedgerRecord>(value.claims));
+        }),
+        api.getKnowledgeRuntime().then((value) => {
+          if (sequence === refreshSequence.current) setKnowledge(value);
+        }),
+        api.request<{ events: unknown[] }>('/knowledge/events?limit=20').then((value) => {
+          if (sequence === refreshSequence.current) setKnowledgeEvents(asArray(value.events));
+        }),
+        api.request<LearningCurve>('/swarms/learning-curve').then((value) => {
+          if (sequence === refreshSequence.current) setLearningCurve(value);
+        }),
+        api.request<MissionExecutions>('/swarms/intelligence/missions/execution?limit=20').then((value) => {
+          if (sequence === refreshSequence.current) setMissionExecutions(value);
+        }),
+      ];
+      const names = ['mission control', 'capabilities', 'claims', 'knowledge runtime', 'knowledge events', 'learning curve', 'mission executions'];
+      const observed = reads.map((read, index) => read.then(
+        () => {
+          if (sequence === refreshSequence.current) setLoadErrors((previous) => previous.filter((line) => !line.startsWith(`${names[index]}: `)));
+        },
+        (reason: unknown) => {
+          if (sequence === refreshSequence.current) setLoadErrors((previous) => [
+            ...previous.filter((line) => !line.startsWith(`${names[index]}: `)),
+            `${names[index]}: ${reason instanceof Error ? reason.message : String(reason)}`,
+          ]);
+        },
+      ));
+      // Optional evidence must not keep Refresh or a completed operator action waiting.
+      await Promise.all(observed.slice(0, 4));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load swarm mission control');
+      if (sequence === refreshSequence.current) setError(err instanceof Error ? err.message : 'Failed to load swarm mission control');
     } finally {
-      setLoading(false);
+      if (sequence === refreshSequence.current) setLoading(false);
     }
   }
 
@@ -294,11 +307,11 @@ export function SwarmMissionControlPage() {
       )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <Metric icon={<Network className="h-5 w-5" />} label="Registry" value={mission?.swarm_truth.registry_agent_count ?? 0} />
-        <Metric icon={<CheckCircle2 className="h-5 w-5" />} label="Live Agents" value={mission?.swarm_truth.live_agent_count ?? 0} />
-        <Metric icon={<Workflow className="h-5 w-5" />} label="Prepared" value={mission?.swarm_truth.prepared_leases ?? 0} />
-        <Metric icon={<Gauge className="h-5 w-5" />} label="Running" value={mission?.swarm_truth.running_leases ?? 0} />
-        <Metric icon={<BrainCircuit className="h-5 w-5" />} label="Active Exec" value={mission?.swarm_truth.active_execution_count ?? 0} />
+        <Metric icon={<Network className="h-5 w-5" />} label="Registry" value={mission?.swarm_truth.registry_agent_count ?? 'unknown'} />
+        <Metric icon={<CheckCircle2 className="h-5 w-5" />} label="Live Agents" value={mission?.swarm_truth.live_agent_count ?? 'unknown'} />
+        <Metric icon={<Workflow className="h-5 w-5" />} label="Prepared" value={mission?.swarm_truth.prepared_leases ?? 'unknown'} />
+        <Metric icon={<Gauge className="h-5 w-5" />} label="Running" value={mission?.swarm_truth.running_leases ?? 'unknown'} />
+        <Metric icon={<BrainCircuit className="h-5 w-5" />} label="Active Exec" value={mission?.swarm_truth.active_execution_count ?? 'unknown'} />
       </div>
 
       <ProofRunPanel
@@ -343,21 +356,21 @@ export function SwarmMissionControlPage() {
         <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
           <HealthStrip label="Capability Health" values={[
             `registry ${mission?.capability_health.registry_total ?? 'unknown'}`,
-            `loaded ${mission?.capability_health.loaded ?? mission?.capability_health.total ?? 0}`,
-            `validated ${mission?.capability_health.validated ?? 0}`,
-            `routable ${mission?.capability_health.routable ?? 0}`,
-            `blocked ${mission?.capability_health.blocked ?? 0}`,
+            `loaded ${mission?.capability_health.loaded ?? mission?.capability_health.total ?? 'unknown'}`,
+            `validated ${mission?.capability_health.validated ?? 'unknown'}`,
+            `routable ${mission?.capability_health.routable ?? 'unknown'}`,
+            `blocked ${mission?.capability_health.blocked ?? 'unknown'}`,
           ]} />
           <HealthStrip label="Claim Health" values={[
-            `total ${mission?.claim_health.total ?? 0}`,
-            `supported ${mission?.claim_health.supported ?? 0}`,
-            `proposed ${mission?.claim_health.proposed ?? 0}`,
-            `contradicted ${mission?.claim_health.contradicted ?? 0}`,
+            `total ${mission?.claim_health.total ?? 'unknown'}`,
+            `supported ${mission?.claim_health.supported ?? 'unknown'}`,
+            `proposed ${mission?.claim_health.proposed ?? 'unknown'}`,
+            `contradicted ${mission?.claim_health.contradicted ?? 'unknown'}`,
           ]} />
           <HealthStrip label="Specialist Panels" values={[
-            `total ${mission?.specialist_panels.total ?? 0}`,
-            `ready ${mission?.specialist_panels.consensus_ready ?? 0}`,
-            `blocked/evidence ${mission?.specialist_panels.blocked_or_needs_evidence ?? 0}`,
+            `total ${mission?.specialist_panels.total ?? 'unknown'}`,
+            `ready ${mission?.specialist_panels.consensus_ready ?? 'unknown'}`,
+            `blocked/evidence ${mission?.specialist_panels.blocked_or_needs_evidence ?? 'unknown'}`,
           ]} />
         </div>
         <CurrentExecutions executions={asArray<SwarmCurrentExecution>(mission?.swarm_truth.current_executions)} />

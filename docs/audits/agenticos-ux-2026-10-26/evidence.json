@@ -1,0 +1,91 @@
+{
+  "date": "2026-10-26",
+  "source_base_sha": "38be63d520bb5fef89be99458cf3b562098224c3",
+  "new_main_observed_during_work": {
+    "sha": "56ba33953ba33224b937fcf1b567d8412304bcbd",
+    "change": "Only server resource-scheduler export tests; no overlapping changed file. Audit remains pinned to original source base."
+  },
+  "evidence_levels": {
+    "public_http": "document and entry JS read only; see http-evidence.json",
+    "browser": "unavailable; no screenshots or authenticated visual audit",
+    "cua_inventory": "apps [], browsers []; native pipe startup failed; iab create returned unavailable",
+    "playwright": "permission requested; not run without response",
+    "mcp_health": {
+      "mode": "snapshot",
+      "commit_sha": null,
+      "not_used_as_live_data": true
+    },
+    "repository": "50 static route declarations including redirects, detail routes, login and fallback; direct-page API extraction is incomplete",
+    "tests": "local React/jsdom; not production E2E"
+  },
+  "regression_comparison": {
+    "baseline": {
+      "numTotalTests": 26,
+      "numPassedTests": 20,
+      "numFailedTests": 6,
+      "success": false,
+      "failed_tests": [
+        "TabbedPage keeps repeated entity filters across click, keyboard selection and browser history",
+        "renders agent interests and live proposal status without claiming proven learning",
+        "does not report absent execution or health readings as measured zero",
+        "reports a failed core source even when optional evidence has not settled",
+        "does not let an obsolete request overwrite a newer refresh",
+        "refresh retries all seven read sources and clears recovered source errors"
+      ]
+    },
+    "patch": {
+      "numTotalTests": 26,
+      "numPassedTests": 26,
+      "numFailedTests": 0,
+      "success": true,
+      "failed_tests": []
+    }
+  },
+  "validation": {
+    "dashboard": {
+      "files": 61,
+      "passed": 332
+    },
+    "independent_checker": {
+      "files": 6,
+      "passed": 46
+    },
+    "type_check": "PASS - full repository rechecked after final functional change",
+    "dashboard_final_type_check": "PASS",
+    "dashboard_final_build": "PASS",
+    "repository_lint": "0 errors; 1 existing unused-eslint-disable warning in unchanged server test",
+    "dashboard_final_lint": "PASS",
+    "full_server_suite": "not run locally",
+    "production_mutations": false,
+    "merge_or_deployment": false,
+    "github_ci": "not yet submitted at evidence creation; consult PR exact head"
+  },
+  "uncertainties": [
+    "No authenticated route rendering or safe browser interaction verification",
+    "No real operator times, mobile geometry, screenreader, zoom or measured contrast",
+    "No live integration readiness or complete execution trace coverage",
+    "No measured causal memory benefit, swarm advantage or durable capability gain",
+    "Other existing false-empty/zero defaults remain explicitly backlogged",
+    "Core HTTP requests have no observed timeout; optional requests do not block Refresh after this patch",
+    "Partial source observations are not atomic snapshots"
+  ],
+  "sha256": {
+    "docs/audits/agenticos-ux-2026-10-26/ASSESSMENT.md": "2b52d050ee5eb4b21f0990932c39925a8163161c8c4b714b34c491345b9fe04e",
+    "docs/audits/agenticos-ux-2026-10-26/BACKLOG.md": "04ced2e9fe8d27d2a64f23f843655495337d3a44f2bb6719cf58ca12c0cabb4c",
+    "docs/audits/agenticos-ux-2026-10-26/README.md": "74b45a769912fbe30219d59877d63649d8ab5386c7e124431696ef6a70bd1310",
+    "docs/audits/agenticos-ux-2026-10-26/ROUTES.md": "053524bfe21ce0d5d423ba464ad31dd5bf43a369d9dd74a9f1bc739e8bff3352",
+    "docs/audits/agenticos-ux-2026-10-26/VERIFICATION.md": "830f806ebfb14b7ee9755027618d9477f65231c7baece2514e77863a26fc851c",
+    "docs/audits/agenticos-ux-2026-10-26/committee-checker.md": "4dd92dafa9f454c1588a034c0bd70aacf9816d77ce0f466c713daf7965e94dd3",
+    "docs/audits/agenticos-ux-2026-10-26/committee-evidence.md": "277d0164e3620ee44600d8cfbb766a8b7229949abfaa0c2776b214cc954ed235",
+    "docs/audits/agenticos-ux-2026-10-26/committee-navigation.md": "a5e6c1f702c0fd34576f3dec1f5fcca5444e8a58245cb534bf5c43c9dec71c4f",
+    "docs/audits/agenticos-ux-2026-10-26/http-evidence.json": "c83c4d273a52379ee70cca1647630fb48bb52408337f47a105eff94101e50e8a",
+    "docs/audits/agenticos-ux-2026-10-26/regression-comparison.json": "bba5772463c05486f9d957f272a46012723619f96d16a0a3ef8b30a9476a1136",
+    "docs/audits/agenticos-ux-2026-10-26/route-inventory.json": "3954908c337edfb604da50c1ec6eb9fd11547299e451df4c217c9166b2e73d31",
+    "packages/dashboard/src/components/AppShell.test.tsx": "236cdf6de6d9d8605d1d3d39ab7db7f3930a667fcbc0ad4fc92438f198709926",
+    "packages/dashboard/src/components/TabbedPage.tsx": "424f4075edc09ef9c5e235117cc7636f593f1f136e2ad8fafb9065b6444b969d",
+    "packages/dashboard/src/pages/AgentCommonsPage.test.ts": "a4a20b1bf33caf2e7a6af919feba0756f8f6c8df3b95c2fa453ed43851ee1031",
+    "packages/dashboard/src/pages/AgentCommonsPage.tsx": "e2074269924995a0b90714a2c2e1f6cacb0bdc134f69a32cdacdddb892499023",
+    "packages/dashboard/src/pages/SwarmMissionControlPage.tsx": "c6e06dc3fe24fca2d035c5c2f2e20ca53cf50b4554954ad5bf03aa0a0b3feb7b",
+    "packages/dashboard/src/pages/SwarmMissionControlRefresh.test.tsx": "2d585831ba21c95547a7a89aef1051005b5a6ac3e2e0239da93a3e2c5092a77f"
+  }
+}

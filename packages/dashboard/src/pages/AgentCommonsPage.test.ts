@@ -84,7 +84,7 @@ it('renders agent interests and live proposal status without claiming proven lea
   const html = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(Conversation, { thread: discussion, agents })));
   for (const text of ['Topic raised by an agent', 'Explore retrieval', 'Djimitflo', 'proposal-1', 'proposed', 'reflection candidate', 'run-1']) expect(html).toContain(text);
   expect(html).not.toContain('Learned');
-  expect(html).toContain('href="/compliance#improvement-inbox-title"');
+  expect(html).toContain('href="/governance?tab=assurance#improvement-inbox-title"');
   expect(html).toContain('Open review-inbox');
   const suggestion = renderToStaticMarkup(createElement(Conversation, { thread: { ...discussion, messages: [{ ...reply, improvement_id: null }] }, agents }));
   expect(suggestion).toContain('no registered improvement proposal yet');
