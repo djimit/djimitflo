@@ -43,6 +43,8 @@ export interface ModelCall {
  * B29: what a call costs. cost_basis says how the provider is paid; marginal_cost is what one more call costs —
  * 0 only for a known flat subscription / local host / free tier, null when unknown (never invented). list_price_cost
  * uses LLM_PRICE_PER_MTOK when the model has a price and the tokens are known, else null.
+ * L-F04 (forensic audit 2026-10-26): a side with unknown tokens and a non-zero price makes the price partial — list and
+ * metered marginal cost are then null and list_price_lower_bound carries the known side only; it is never a complete price.
  * LLM_COST_BASIS=<provider-or-model substring>=<basis>,… overrides the defaults below (first match wins).
  */
 export type CostBasis = 'flat_subscription' | 'local' | 'free_tier' | 'metered' | 'unknown';
@@ -56,13 +58,18 @@ export function costBasis(provider: string | null | undefined, model: string, en
   return 'unknown';
 }
 export function callCost(c: { model: string; provider?: string | null; tokensIn?: number | null; tokensOut?: number | null }, env: NodeJS.ProcessEnv = process.env):
-  { cost_basis: CostBasis; list_price_cost: number | null; marginal_cost: number | null } {
+  { cost_basis: CostBasis; list_price_cost: number | null; marginal_cost: number | null; price_completeness: 'complete' | 'partial' | null; list_price_lower_bound: number | null } {
   const basis = costBasis(c.provider, c.model, env);
   const price = modelPrice(c.model, env);
-  const known = typeof c.tokensIn === 'number' || typeof c.tokensOut === 'number';
-  const list = price && known ? +(((c.tokensIn ?? 0) * price.input + (c.tokensOut ?? 0) * price.output) / 1_000_000).toFixed(6) : null;
+  const tin = typeof c.tokensIn === 'number' ? c.tokensIn : null;
+  const tout = typeof c.tokensOut === 'number' ? c.tokensOut : null;
+  const priced = price && (tin !== null || tout !== null) ? +(((tin ?? 0) * price.input + (tout ?? 0) * price.output) / 1_000_000).toFixed(6) : null;
+  // a side priced at 0 costs 0 whatever its count; any other unknown side leaves only a lower bound
+  const partial = priced !== null && ((tin === null && price!.input > 0) || (tout === null && price!.output > 0));
+  const list = partial ? null : priced;
   const marginal = basis === 'flat_subscription' || basis === 'local' || basis === 'free_tier' ? 0 : basis === 'metered' ? list : null;
-  return { cost_basis: basis, list_price_cost: list, marginal_cost: marginal };
+  return { cost_basis: basis, list_price_cost: list, marginal_cost: marginal, price_completeness: priced === null ? null : partial ? 'partial' : 'complete',
+    list_price_lower_bound: partial ? priced : null };
 }
 const int = (v: number | null | undefined): number | null => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : null);
 export function recordModelCall(db: Database, c: ModelCall, at = new Date()): void {

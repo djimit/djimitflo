@@ -126,8 +126,8 @@ describe('LoopBudgetService', () => {
       expect(service.computeDollarCost('pi', 1_000_000)).toBe(0);
     });
 
-    it('defaults unknown runtimes to $2/Mtok', () => {
-      expect(service.computeDollarCost('unknown-runtime', 1_000_000)).toBe(2.0);
+    it('has no tariff for an unknown runtime (L-F04: no invented $2/Mtok fallback)', () => {
+      expect(service.computeDollarCost('unknown-runtime', 1_000_000)).toBeNull();
     });
 
     it('handles zero tokens', () => {
@@ -220,8 +220,11 @@ describe('LoopBudgetService', () => {
       expect(result.runVerified).toBe(true);
       expect(result.verifiedArtifacts).toBe(1);
       expect(result.completedUnverified).toBe(1); // the superseded maker is not the verified artifact
-      expect(result.dollarsSpent).toBeCloseTo(2.0, 6); // 1M tokens × $2/Mtok codex
-      expect(result.efficiency).toBeCloseTo(0.5, 6);
+      // CODE-007: runtime total tokens × tariff is no dollar figure; it stays as the labelled estimate (1M tokens × $2/Mtok codex)
+      expect(result.dollarsSpent).toBeNull();
+      expect(result.dollarsReason).toBe('no_dated_model_price');
+      expect(result.efficiency).toBeNull();
+      expect(result.runtimeTariffEstimate.usd).toBeCloseTo(2.0, 6);
       expect(result.usageCoverage).toEqual({ reported: 3, total: 3, ratio: 1 });
       expect(result.dollarsLowerBound).toBe(false);
     });
@@ -245,12 +248,14 @@ describe('LoopBudgetService', () => {
       expect(result.usageCoverage).toEqual({ reported: 0, total: 0, ratio: null });
     });
 
-    it('partial usage is flagged as a lower bound with coverage < 1', () => {
+    it('partial pricing is flagged as a lower bound with coverage < 1', () => {
       insertRun('rp', 'completed', PASSING_GATES);
-      insertLease('m1', 'rp', 'maker', 'completed', { runtime_usage: { total_tokens: 1_000_000 } });
+      insertLease('m1', 'rp', 'maker', 'completed', { runtime_usage: { total_tokens: 1_000_000 },
+        token_accounting: { version: 1, estimated_cost_usd: 2, cost_completeness: 'complete', price_version: 'v1' } });
       insertLease('c1', 'rp', 'checker', 'completed', {});
       const result = service.computeEfficiencyMetric('rp');
       expect(result.usageCoverage).toEqual({ reported: 1, total: 2, ratio: 0.5 });
+      expect(result.priceCoverage).toEqual({ priced: 1, partial: 0, total: 2, ratio: 0.5 });
       expect(result.dollarsLowerBound).toBe(true);
       expect(result.dollarsSpent).toBeCloseTo(2.0, 6);
       expect(result.efficiency).toBeCloseTo(0.5, 6);

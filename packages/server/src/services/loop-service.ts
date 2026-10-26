@@ -781,7 +781,7 @@ export class LoopService {
     return 'manual';
   }
 
-  computeDollarCost(runtime: string, totalTokens: number): number {
+  computeDollarCost(runtime: string, totalTokens: number): number | null {
     return this.budget.computeDollarCost(runtime, totalTokens);
   }
 
