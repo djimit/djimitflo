@@ -46,9 +46,16 @@ export interface ExperimentDef {
   /** n counted from `since` (started_at for the whole experiment; later for the accrual window). A status that cannot window
    *  returns n_per_arm null for since ≠ started_at — its accrual is unknown, never 0 */
   status: (db: Database, env: NodeJS.ProcessEnv, now: number, since: string) => ExperimentStatus;
+  /** an explicit operator close recorded in the protocol (dated amendment); its verdict is the experiment's verdict */
+  closed?: ExperimentClose;
 }
+export interface ExperimentClose { verdict: string; decided_on: string; source: string }
 
 const AMENDED = 'stop condition added 2026-10-19; verdict rules unchanged';
+/** TG-001 closed by the operator: INCONCLUSIVE at 20 tasks, no extension to 40 (task supply). INCONCLUSIVE from the evidence
+ *  alone is not a closing verdict (the stopping rule extends once to 40); this explicit operator close is what makes it one. */
+export const TG_001_CLOSED: ExperimentClose = { verdict: 'INCONCLUSIVE', decided_on: '2026-10-26',
+  source: 'docs/research/ace/TG-001_PROTOCOL.md#amendment-2026-10-26-closed-inconclusive-at-20-tasks' };
 const X1_STARTED = '2026-10-09T00:00:00.000Z';
 
 /** Literal dates (pinned against their source constants in experiment-registry.test.ts): X1 = start + 28 d, D5-NO = cutoff + 90 d.
@@ -91,14 +98,13 @@ export const experimentDefs = (): ExperimentDef[] => [
   { id: 'TG-001', flag: 'TG_001_MODE', protocol: 'docs/research/ace/TG-001_PROTOCOL.md', started_at: '2026-10-11T23:20:22.000Z',
     target_n: TG_TASKS, stop_by: '2026-11-18T00:00:00.000Z',
     stop_note: `${AMENDED}: 20-task result INCONCLUSIVE, the extension to 40 waits on task supply (accrual ~0) → today + 30 d: decide extend or close INCONCLUSIVE`,
-    stop_source: 'docs/research/ace/TG-001_PROTOCOL.md#amendment-2026-10-19-stop-condition', population: 'gym_tasks',
-    status: (db, env, _now, since) => { if (since !== '2026-10-11T23:20:22.000Z') return { n_per_arm: null, verdict: null }; // cannot window
+    stop_source: 'docs/research/ace/TG-001_PROTOCOL.md#amendment-2026-10-19-stop-condition', population: 'gym_tasks', closed: TG_001_CLOSED,
+    // INCONCLUSIVE at 20 tasks is not a closing verdict by itself (the stopping rule extends once to 40); the explicit operator
+    // close (TG_001_CLOSED, amendment 2026-10-26) is what makes it one, so the stop date no longer applies
+    status: (db, env, _now, since) => { if (since !== '2026-10-11T23:20:22.000Z') return { n_per_arm: null, verdict: TG_001_CLOSED.verdict }; // cannot window
       const e = tg001Evidence(db, env);
       const arms = 'arms' in e && Array.isArray(e.arms) ? e.arms as Array<{ arm: string; n: number }> : [];
-      const result = 'result' in e ? (e as { result?: { verdict?: string } }).result : undefined;
-      // INCONCLUSIVE at 20 tasks is not a closing verdict: the stopping rule extends once to 40, so the stop date still applies
-      const verdict = e.status === 'complete' ? result?.verdict ?? null : null;
-      return { n_per_arm: arms.length ? Object.fromEntries(arms.map((a) => [a.arm, a.n])) : null, verdict: verdict === 'inconclusive' ? null : verdict }; } },
+      return { n_per_arm: arms.length ? Object.fromEntries(arms.map((a) => [a.arm, a.n])) : null, verdict: TG_001_CLOSED.verdict }; } },
   { id: 'D5-NO', flag: 'TYPESAFE_PROPOSAL_PRESCREEN_MODE', protocol: 'docs/research/eco/D5NO_PROTOCOL.md', started_at: '2026-10-11T21:00:00.000Z',
     target_n: D5NO_ANALYSIS_N, stop_by: '2027-01-09T21:00:00.000Z', stop_note: 'cutoff + 90 days → INSUFFICIENT_EVIDENCE', stop_source: 'docs/research/eco/D5NO_PROTOCOL.md', population: 'prescreen_proposals',
     status: (db, _env, now, since) => { if (since !== '2026-10-11T21:00:00.000Z') return { n_per_arm: null, verdict: null }; // cannot window
