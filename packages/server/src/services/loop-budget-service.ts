@@ -12,6 +12,7 @@
 import type { Database } from 'better-sqlite3';
 import { swarmEventBus } from './swarm-event-bus';
 import type { LoopRunRecord, WorkerLeaseRecord } from './loop-service';
+import { isSupersededMaker, runCertified, type GateStatus } from './loop-types';
 
 export interface RuntimeUsage {
   prompt_tokens?: number;
@@ -19,6 +20,26 @@ export interface RuntimeUsage {
   total_tokens: number;
   usage_source?: string;
 }
+
+/** Per-run economy: verified = certified run's active completed makers; null = unknown, never 0. */
+export interface EfficiencyMetric {
+  verifiedArtifacts: number;
+  /** completed maker leases that are not verified artifacts (run not certified, or superseded by a retry) */
+  completedUnverified: number;
+  runVerified: boolean;
+  /** null when no lease of the run reported runtime_usage */
+  dollarsSpent: number | null;
+  /** true when only some leases reported usage: dollarsSpent is a lower bound */
+  dollarsLowerBound: boolean;
+  usageCoverage: { reported: number; total: number; ratio: number | null };
+  /** verified artifacts per dollar; null when dollars are unknown or $0 */
+  efficiency: number | null;
+  efficiencyReason: 'no_usage_reported' | 'zero_dollars' | 'partial_usage_upper_bound' | null;
+}
+
+const parseJsonArray = (value: string | null | undefined): unknown[] => {
+  try { const parsed: unknown = JSON.parse(value || '[]'); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
+};
 
 export interface TokenBudgetResult {
   gate: { name: string; status: 'pass' | 'fail' | 'skipped'; evidence: string };
@@ -124,26 +145,55 @@ export class LoopBudgetService {
     return { allocated, deferred, budgetInsufficient: allocated.length === 0 };
   }
 
-  computeEfficiencyMetric(runId: string): { verifiedArtifacts: number; dollarsSpent: number; efficiency: number } {
-    const leases = this.db.prepare('SELECT metadata FROM worker_leases WHERE loop_run_id = ?').all(runId) as Array<{ metadata: string }>;
-    let totalTokens = 0;
-    let runtime = 'codex';
+  /**
+   * Verified artifacts per dollar for one run. Verified means certified: the persisted run passes certification's rule
+   * (runCertified — certifyLoopRun's), and only its active (non-superseded) completed makers count. Every other completed
+   * maker is completed_unverified. Unknown usage stays unknown: no lease reporting runtime_usage gives null dollars and
+   * null efficiency; partial reporting makes the dollar figure a lower bound (usageCoverage < 1).
+   */
+  computeEfficiencyMetric(runId: string): EfficiencyMetric {
+    const run = this.db.prepare('SELECT status, gates_json FROM loop_runs WHERE id = ?').get(runId) as { status: string; gates_json: string | null } | undefined;
+    const gates = parseJsonArray(run?.gates_json) as Array<{ name: string; status: GateStatus }>;
+    const runVerified = run ? runCertified({ status: run.status, gates }) : false;
+
+    const leases = this.db.prepare('SELECT role, runtime, status, metadata FROM worker_leases WHERE loop_run_id = ?')
+      .all(runId) as Array<{ role: string; runtime: string | null; status: string; metadata: string | null }>;
+    let dollars = 0;
+    let reported = 0;
+    let verifiedArtifacts = 0;
+    let completedUnverified = 0;
     for (const lease of leases) {
-      try {
-        const meta = JSON.parse(lease.metadata || '{}');
-        const usage = meta.runtime_usage as { total_tokens?: number } | undefined;
-        if (usage?.total_tokens) totalTokens += usage.total_tokens;
-        if (meta.runtime) runtime = meta.runtime as string;
-      } catch { /* skip */ }
+      let meta: Record<string, unknown> = {};
+      try { meta = JSON.parse(lease.metadata || '{}') as Record<string, unknown>; } catch { /* unreadable metadata: no usage, not superseded */ }
+      const tokens = (meta.runtime_usage as { total_tokens?: unknown } | undefined)?.total_tokens;
+      if (typeof tokens === 'number' && Number.isFinite(tokens) && tokens >= 0) {
+        reported++;
+        dollars += this.computeDollarCost(typeof meta.runtime === 'string' ? meta.runtime : lease.runtime || 'codex', tokens);
+      }
+      if (lease.role !== 'maker' || lease.status !== 'completed') continue;
+      if (runVerified && !isSupersededMaker({ role: lease.role, metadata: meta })) verifiedArtifacts++;
+      else completedUnverified++;
     }
-    const dollarsSpent = this.computeDollarCost(runtime, totalTokens);
-    const verifiedArtifacts = this.db.prepare(
-      "SELECT COUNT(*) as c FROM worker_leases WHERE loop_run_id = ? AND role = 'maker' AND status = 'completed'"
-    ).get(runId) as { c: number };
+
+    const dollarsSpent = reported > 0 ? dollars : null;
+    const dollarsLowerBound = reported > 0 && reported < leases.length;
+    let efficiency: number | null = null;
+    let efficiencyReason: EfficiencyMetric['efficiencyReason'] = null;
+    if (dollarsSpent === null) efficiencyReason = 'no_usage_reported';
+    else if (dollarsSpent === 0) efficiencyReason = 'zero_dollars';
+    else {
+      efficiency = verifiedArtifacts / dollarsSpent;
+      if (dollarsLowerBound) efficiencyReason = 'partial_usage_upper_bound';
+    }
     return {
-      verifiedArtifacts: verifiedArtifacts.c,
+      verifiedArtifacts,
+      completedUnverified,
+      runVerified,
       dollarsSpent,
-      efficiency: dollarsSpent > 0 ? verifiedArtifacts.c / dollarsSpent : 0,
+      dollarsLowerBound,
+      usageCoverage: { reported, total: leases.length, ratio: leases.length > 0 ? reported / leases.length : null },
+      efficiency,
+      efficiencyReason,
     };
   }
 

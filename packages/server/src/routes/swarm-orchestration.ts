@@ -195,7 +195,9 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
   // GET /api/swarm-v2/social/commons — operator read-model for the Agent Commons UI
   router.get('/social/commons', requirePermission('read:evidence'), (req, res) => {
     // C6: bounded — an unbounded ?limit= let any viewer pull the whole message table
-    res.json(comms.listSocialCommons(Math.min(200, Math.max(1, Math.trunc(Number(req.query.limit)) || 50))));
+    // AC-02: ?kind=discussion|record filters before the limit; ?offset= pages (bounded in the service). No kind = all (compatible).
+    const kind = req.query.kind === 'discussion' || req.query.kind === 'record' ? req.query.kind : 'all';
+    res.json(comms.listSocialCommons(Math.min(200, Math.max(1, Math.trunc(Number(req.query.limit)) || 50)), { kind, offset: Number(req.query.offset) || 0 }));
   });
 
   // POST /api/swarm-v2/social/evidence-room/:threadId/replies — operator reply on an evidence-room thread (COMMONS_EVIDENCE_ROOM_MODE=on).
