@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, BrainCircuit, CheckCircle2, ChevronDown, Database, Gauge, GitBranch, Network, PlayCircle, RefreshCw, RotateCcw, Route, ShieldCheck, Workflow } from 'lucide-react';
-import { api, type CapacityPlanV2Result, type ClaimLedgerRecord, type GoalBatchPreviewResult, type IntegrationSpineChain, type KnowledgeRuntimeHealth, type KnowledgeSyncResult, type ProofRunSummary, type SwarmCapabilityRecord, type SwarmMissionControl, type WorkerPoolPlanResult } from '../lib/api';
+import { api, type CohortWindow, type LearningCohort, type LearningCurve, type MissionExecutions, type RegisteredReadout, type SwarmCapabilityHealth, type SwarmCurrentExecution, type CapacityPlanV2Result, type ClaimLedgerRecord, type GoalBatchPreviewResult, type IntegrationSpineChain, type KnowledgeRuntimeHealth, type KnowledgeSyncResult, type ProofRunSummary, type SwarmCapabilityRecord, type SwarmMissionControl, type WorkerPoolPlanResult } from '../lib/api';
 import { LoadErrorNotice } from '../components/LoadErrorNotice';
 import { useDialog } from '../components/ConfirmDialog';
 
@@ -64,6 +64,7 @@ export function productionPilotPanelModel(pilot: SwarmMissionControl['production
 export function SwarmMissionControlPage() {
   const [mission, setMission] = useState<SwarmMissionControl | null>(null);
   const [capabilities, setCapabilities] = useState<SwarmCapabilityRecord[]>([]);
+  const [capabilityCounts, setCapabilityCounts] = useState<SwarmCapabilityHealth | null>(null);
   const [claims, setClaims] = useState<ClaimLedgerRecord[]>([]);
   const [capacity, setCapacity] = useState<CapacityPlanV2Result | null>(null);
   const [knowledge, setKnowledge] = useState<KnowledgeRuntimeHealth | null>(null);
@@ -77,7 +78,8 @@ export function SwarmMissionControlPage() {
   const [error, setError] = useState<string | null>(null);
   const [proofRuntime, setProofRuntime] = useState<'mock' | 'codex' | 'opencode'>('opencode'); // a proof run on 'mock' proves nothing (W1)
   const [expandedCapability, setExpandedCapability] = useState<string | null>(null);
-  const [learningCurve, setLearningCurve] = useState<any>(null);
+  const [learningCurve, setLearningCurve] = useState<LearningCurve | null>(null);
+  const [missionExecutions, setMissionExecutions] = useState<MissionExecutions | null>(null);
   const [loadErrors, setLoadErrors] = useState<string[]>([]);
 
   // D12: Knowledge bus events
@@ -88,7 +90,9 @@ export function SwarmMissionControlPage() {
 
   // D11: Learning curve
   useEffect(() => {
-    api.request('/swarms/learning-curve').then((res: any) => setLearningCurve(res && typeof res === 'object' ? res : null)).catch((err) => setLoadErrors((prev) => [...prev, `learning curve: ${err instanceof Error ? err.message : String(err)}`]));
+    api.request<LearningCurve>('/swarms/learning-curve').then((res) => setLearningCurve(res && typeof res === 'object' ? res : null)).catch((err) => setLoadErrors((prev) => [...prev, `learning curve: ${err instanceof Error ? err.message : String(err)}`]));
+    // SW-02: mission planning status next to its linked goal/loop execution (read-only)
+    api.request<MissionExecutions>('/swarms/intelligence/missions/execution?limit=20').then((res) => setMissionExecutions(res && typeof res === 'object' ? res : null)).catch((err) => setLoadErrors((prev) => [...prev, `mission executions: ${err instanceof Error ? err.message : String(err)}`]));
   }, []);
   const [expandedClaim, setExpandedClaim] = useState<string | null>(null);
 
@@ -110,7 +114,12 @@ export function SwarmMissionControlPage() {
         setMission(missionResult.value);
         setCapacity(missionResult.value.capacity);
       }
-      if (capabilitiesResult.status === 'fulfilled') setCapabilities(asArray<SwarmCapabilityRecord>(capabilitiesResult.value.capabilities));
+      if (capabilitiesResult.status === 'fulfilled') {
+        const value = capabilitiesResult.value;
+        setCapabilities(asArray<SwarmCapabilityRecord>(value.capabilities));
+        const loaded = asArray(value.capabilities).length;
+        setCapabilityCounts({ total: loaded, loaded, load_limit: value.limit, registry_total: value.registry_total, registry_by_status: value.registry_by_status, validated: 0, routable: 0, blocked: 0 });
+      }
       if (claimsResult.status === 'fulfilled') setClaims(asArray<ClaimLedgerRecord>(claimsResult.value.claims));
       if (knowledgeResult.status === 'fulfilled') setKnowledge(knowledgeResult.value);
       const failures = [missionResult, capabilitiesResult, claimsResult, knowledgeResult]
@@ -232,7 +241,6 @@ export function SwarmMissionControlPage() {
 
   const blockedCapabilities = useMemo(() => capabilities.filter((capability) => !capability.live_route_allowed), [capabilities]);
   const importantClaims = useMemo(() => claims.filter((claim) => ['contradicted', 'review_required', 'proposed'].includes(claim.status)).slice(0, 8), [claims]);
-  const learningRuns = asArray<any>(learningCurve?.runs);
   const knowledgeEventList = asArray<any>(knowledgeEvents);
   const fairShareOrder = asArray<string>(capacity?.fair_share_order);
   const auditManifestPreview = asArray<any>(capacity?.audit_manifest_preview);
@@ -334,7 +342,8 @@ export function SwarmMissionControlPage() {
         </div>
         <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
           <HealthStrip label="Capability Health" values={[
-            `total ${mission?.capability_health.total ?? 0}`,
+            `registry ${mission?.capability_health.registry_total ?? 'unknown'}`,
+            `loaded ${mission?.capability_health.loaded ?? mission?.capability_health.total ?? 0}`,
             `validated ${mission?.capability_health.validated ?? 0}`,
             `routable ${mission?.capability_health.routable ?? 0}`,
             `blocked ${mission?.capability_health.blocked ?? 0}`,
@@ -351,7 +360,10 @@ export function SwarmMissionControlPage() {
             `blocked/evidence ${mission?.specialist_panels.blocked_or_needs_evidence ?? 0}`,
           ]} />
         </div>
+        <CurrentExecutions executions={asArray<SwarmCurrentExecution>(mission?.swarm_truth.current_executions)} />
       </section>
+
+      {missionExecutions && <MissionExecutionPanel data={missionExecutions} />}
 
       <section className="rounded-lg border border-border bg-background-secondary p-5">
         <div>
@@ -462,6 +474,7 @@ export function SwarmMissionControlPage() {
             <ShieldCheck className="h-5 w-5 text-accent" />
             <h2 className="text-lg font-semibold text-foreground">Capability Registry</h2>
           </div>
+          {capabilityCounts && <CapabilityCountsLine health={capabilityCounts} shown={Math.min(8, (blockedCapabilities.length ? blockedCapabilities : capabilities).length)} />}
           <div className="mt-4 space-y-3">
             {(blockedCapabilities.length ? blockedCapabilities : capabilities).slice(0, 8).map((capability) => (
               <div key={capability.id} className="rounded border border-border bg-background p-3">
@@ -559,40 +572,8 @@ export function SwarmMissionControlPage() {
         </div>
       </section>
 
-      {learningRuns.length > 0 && (
-        <section className="rounded-lg border border-border bg-background-secondary p-5">
-          <h2 className="text-lg font-semibold text-foreground">Learning Curve ({learningRuns.length} runs)</h2>
-          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
-            <SmallStat label="Success Rate" value={`${((learningCurve?.first_vs_last?.first_success_rate || 0) * 100).toFixed(0)}% -> ${((learningCurve?.first_vs_last?.last_success_rate || 0) * 100).toFixed(0)}%`} />
-            <SmallStat label="Cost" value={`$${(learningCurve?.first_vs_last?.first_cost || 0).toFixed(4)} -> $${(learningCurve?.first_vs_last?.last_cost || 0).toFixed(4)}`} />
-            <SmallStat label="Retries" value={learningCurve?.trend?.retries_decreasing ? 'decreasing' : 'not decreasing'} />
-          </div>
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="text-xs uppercase text-foreground-tertiary">
-                <tr>
-                  <th className="py-2 pr-4">Run</th>
-                  <th className="py-2 pr-4">Date</th>
-                  <th className="py-2 pr-4">Success</th>
-                  <th className="py-2 pr-4">Retries</th>
-                  <th className="py-2 pr-4">$ Spent</th>
-                </tr>
-              </thead>
-              <tbody>
-                {learningRuns.slice(-10).map((run: any) => (
-                  <tr key={run.run_id} className="border-t border-border">
-                    <td className="py-2 pr-4 font-mono text-xs">{String(run.run_id || '').slice(0, 8)}</td>
-                    <td className="py-2 pr-4 text-xs text-foreground-tertiary">{run.created_at ? new Date(run.created_at).toLocaleDateString() : '-'}</td>
-                    <td className="py-2 pr-4">{run.success ? 'yes' : 'no'}</td>
-                    <td className="py-2 pr-4">{run.retries ?? 0}</td>
-                    <td className="py-2 pr-4">${Number(run.dollars || 0).toFixed(4)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
+      {learningCurve && <LearningCurvePanel curve={learningCurve} />}
+      <EvidenceStrip readouts={asArray<RegisteredReadout>(learningCurve?.registered_readouts)} />
 
       {knowledgeEventList.length > 0 && (
         <section className="rounded-lg border border-border bg-background-secondary p-5">
@@ -1149,5 +1130,172 @@ function FieldList({ label, values }: { label: string; values: string[] }) {
         {list.map((value) => <span key={value} className="rounded border border-border px-1.5 py-0.5 text-foreground-secondary">{value}</span>)}
       </div>
     </div>
+  );
+}
+
+const pct = (rate: number | null) => (rate === null ? null : `${Math.round(rate * 100)} %`);
+function windowCell(w: CohortWindow) {
+  return w.n ? `${w.completed}/${w.n} (${pct(w.rate)}) · n = ${w.n}` : `— · n = 0`;
+}
+function tokenCell(t: CohortWindow['tokens']) {
+  return t.value === null ? 'unknown' : `${t.value.toLocaleString()} (${t.known}/${t.events} records)`;
+}
+
+/**
+ * SW-01: completion rates per exact cohort (one loop) over two equal windows, with their denominators; the binary run
+ * status stays a per-run column. Unknown usage/cost is 'unknown', never $0.
+ */
+export function LearningCurvePanel({ curve }: { curve: LearningCurve }) {
+  const cohorts = asArray<LearningCohort>(curve.cohorts);
+  const runs = asArray<LearningCurve['runs'][number]>(curve.runs);
+  const days = curve.window?.days ?? 7;
+  return (
+    <section className="rounded-lg border border-border bg-background-secondary p-5">
+      <h2 className="text-lg font-semibold text-foreground">Run completion by loop</h2>
+      <p className="mt-1 text-sm text-foreground-secondary">
+        Completed ÷ terminal runs per loop, previous {days} d vs last {days} d (by creation). Loops are never pooled; a window comparison needs ≥ {curve.min_n_per_window ?? 10} terminal runs in each. Run completion is not verified task success. Tokens are the recorded usage of those runs; cost is unknown without a dated price.
+      </p>
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead className="text-xs uppercase text-foreground-tertiary">
+            <tr>
+              <th className="py-2 pr-4">Loop</th>
+              <th className="py-2 pr-4">Class</th>
+              <th className="py-2 pr-4">Previous {days} d</th>
+              <th className="py-2 pr-4">Last {days} d</th>
+              <th className="py-2 pr-4">Comparison</th>
+              <th className="py-2 pr-4">Tokens (last {days} d)</th>
+              <th className="py-2 pr-4">Cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cohorts.map((c) => (
+              <tr key={c.loop_name} data-testid={`cohort-${c.loop_name}`} className="border-t border-border">
+                <td className="py-2 pr-4 font-mono text-xs">{c.loop_name}</td>
+                <td className="py-2 pr-4">{c.run_class}</td>
+                <td className="py-2 pr-4">{windowCell(c.windows.prior)}</td>
+                <td className="py-2 pr-4">{windowCell(c.windows.recent)}{c.windows.recent.censored ? ` · ${c.windows.recent.censored} in flight` : ''}</td>
+                <td className="py-2 pr-4" title={c.comparison.reason ?? undefined}>{c.comparison.status === 'compared' && c.comparison.delta !== null ? `${c.comparison.delta >= 0 ? '+' : ''}${Math.round(c.comparison.delta * 100)} pp` : 'insufficient'}</td>
+                <td className="py-2 pr-4">{tokenCell(c.windows.recent.tokens)}</td>
+                <td className="py-2 pr-4" title={c.windows.recent.usd.reason ?? undefined}>{c.windows.recent.usd.value === null ? 'unknown' : `$${c.windows.recent.usd.value.toFixed(4)} (inferred)`}</td>
+              </tr>
+            ))}
+            {!cohorts.length && <tr><td className="py-3 text-foreground-tertiary" colSpan={7}>No runs in the last {2 * days} days.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      {runs.length > 0 && (
+        <div className="mt-4 overflow-x-auto">
+          <div className="text-xs uppercase text-foreground-tertiary">Latest runs (binary status per run)</div>
+          <table className="mt-1 w-full text-left text-sm">
+            <thead className="text-xs uppercase text-foreground-tertiary">
+              <tr>
+                <th className="py-2 pr-4">Run</th>
+                <th className="py-2 pr-4">Loop</th>
+                <th className="py-2 pr-4">Date</th>
+                <th className="py-2 pr-4">Run status</th>
+                <th className="py-2 pr-4">Retries</th>
+                <th className="py-2 pr-4">Tokens</th>
+                <th className="py-2 pr-4">Cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              {runs.slice(-10).map((run) => (
+                <tr key={run.run_id} className="border-t border-border">
+                  <td className="py-2 pr-4 font-mono text-xs"><Link to={`/goals-loops?run=${encodeURIComponent(run.run_id)}`} className="underline">{String(run.run_id || '').slice(0, 8)}</Link></td>
+                  <td className="py-2 pr-4 font-mono text-xs">{run.loop_name ?? '-'}</td>
+                  <td className="py-2 pr-4 text-xs text-foreground-tertiary">{run.created_at ? run.created_at.slice(0, 10) : '-'}</td>
+                  <td className="py-2 pr-4" data-testid="run-status">{run.status ?? (run.success ? 'completed' : 'not completed')}</td>
+                  <td className="py-2 pr-4">{run.retries ?? 0}</td>
+                  <td className="py-2 pr-4">{run.tokens == null ? 'unknown' : run.tokens.toLocaleString()}</td>
+                  <td className="py-2 pr-4">{run.dollars == null ? 'unknown' : `$${run.dollars.toFixed(4)} (inferred)`}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** SW-02: the whole registry, the loaded slice and what the list shows — never one number for all three */
+export function CapabilityCountsLine({ health, shown }: { health: SwarmCapabilityHealth; shown: number }) {
+  const byStatus = Object.entries(health.registry_by_status ?? {}).sort(([a], [b]) => a.localeCompare(b)).map(([k, n]) => `${k} ${n}`).join(' · ');
+  const registry = health.registry_total === undefined ? 'registry unknown' : `registry ${health.registry_total}${byStatus ? ` (${byStatus})` : ''}`;
+  const loaded = health.loaded ?? health.total;
+  return <p data-testid="capability-counts" className="mt-2 text-xs text-foreground-tertiary">{`${registry} · loaded ${loaded}${health.load_limit ? ` (latest ${health.load_limit} by update)` : ''} · shown ${shown}`}</p>;
+}
+
+/** SW-02: links the runtime identity to the leases it is executing or about to execute */
+function CurrentExecutions({ executions }: { executions: SwarmCurrentExecution[] }) {
+  if (!executions.length) return null;
+  return (
+    <div className="mt-4">
+      <div className="text-sm font-semibold text-foreground">Current executions (prepared / running leases)</div>
+      <ul className="mt-2 space-y-1 text-xs text-foreground-secondary">
+        {executions.map((e) => (
+          <li key={e.lease_id}>
+            <span className="font-mono">{e.runtime}</span> · {e.role} · {e.status} · <Link to={`/goals-loops?run=${encodeURIComponent(e.loop_run_id)}`} className="underline">{e.loop_name ?? 'run'} {e.loop_run_id.slice(0, 8)}</Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * SW-02: a mission's planning status (advisory projection) next to its linked goal and loop execution. Read-only — a
+ * finished goal does not transition its mission; missing lineage is unknown.
+ */
+export function MissionExecutionPanel({ data }: { data: MissionExecutions }) {
+  const counts = (r: Record<string, number>) => Object.entries(r).map(([k, n]) => `${k} ${n}`).join(' · ') || 'none';
+  const missions = asArray<MissionExecutions['missions'][number]>(data.missions);
+  return (
+    <section className="rounded-lg border border-border bg-background-secondary p-5">
+      <h2 className="text-lg font-semibold text-foreground">Missions: planning vs execution</h2>
+      <p className="mt-1 text-sm text-foreground-secondary">
+        Registered {data.totals.registered} (showing {data.totals.loaded}) · planning: {counts(data.totals.by_planning_status)} · linked goal: {counts(data.totals.by_goal_status)}. Planning status is advisory and never auto-transitioned; the goal and its loop runs are the execution record.
+      </p>
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead className="text-xs uppercase text-foreground-tertiary">
+            <tr>
+              <th className="py-2 pr-4">Mission</th>
+              <th className="py-2 pr-4">Planning</th>
+              <th className="py-2 pr-4">Linked goal</th>
+              <th className="py-2 pr-4">Loop execution</th>
+              <th className="py-2 pr-4">Latest run</th>
+            </tr>
+          </thead>
+          <tbody>
+            {missions.map((m) => (
+              <tr key={m.mission_id} data-testid={`mission-${m.mission_id}`} className="border-t border-border">
+                <td className="py-2 pr-4"><Link to={`/swarm-mission-control/missions/${encodeURIComponent(m.mission_id)}`} className="font-medium text-foreground underline">{m.title}</Link><div className="font-mono text-xs text-foreground-tertiary">{m.mission_id.slice(0, 12)}</div></td>
+                <td className="py-2 pr-4"><StatusBadge status={m.planning_status} /></td>
+                <td className="py-2 pr-4">{m.lineage === 'linked' ? `goal ${m.goal_status}` : `lineage unknown (${m.lineage === 'no_goal' ? 'no goal' : 'goal missing'})`}</td>
+                <td className="py-2 pr-4">{m.execution ? `${m.execution.loop_runs} runs (${counts(m.execution.by_status)}) · ${m.execution.closed_runs === null ? 'closures unknown' : `${m.execution.closed_runs} closed`}` : '—'}</td>
+                <td className="py-2 pr-4">{m.execution?.latest_run ? <Link to={`/goals-loops?run=${encodeURIComponent(m.execution.latest_run.id)}`} className="font-mono text-xs underline">{m.execution.latest_run.id} · {m.execution.latest_run.status}</Link> : '—'}</td>
+              </tr>
+            ))}
+            {!missions.length && <tr><td className="py-3 text-foreground-tertiary" colSpan={5}>No missions registered.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+/** SW-08 (minimal): where the learning/experiment and resource evidence already lives; registered readouts are named, never estimated here */
+export function EvidenceStrip({ readouts }: { readouts: RegisteredReadout[] }) {
+  return (
+    <section aria-label="Learning and resource evidence" className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-border bg-background-secondary px-5 py-3 text-sm text-foreground-secondary">
+      <Link to="/evolution" className="underline">Experiments &amp; readouts</Link>
+      <Link to="/usage" className="underline">Resource coverage</Link>
+      <Link to="/goals-loops" className="underline">Loop runs &amp; closures</Link>
+      {readouts.map((r) => (
+        <span key={r.id}>{r.id}: readout due {r.stop_by ? r.stop_by.slice(0, 10) : 'unregistered'} ({r.analysis}); no causal conclusion</span>
+      ))}
+    </section>
   );
 }

@@ -20,6 +20,7 @@
  * touch them: changing a number is not changing behaviour. fitness = measured reliability (success share).
  * generality/complexity/adaptability have no measurement and stay null. Retirement is for the W8 operator review (14-10).
  * recordOutcome() and the skill_outcomes table are live (bandit, gym, attribution) and unchanged.
+ * tokens_used is nullable: null = the runtime reported no usage (unknown, never 0); efficiency averages known rows only.
  */
 
 import { createHash, randomUUID } from 'crypto';
@@ -45,6 +46,12 @@ interface SkillGenome {
   mutations: string[];
   createdAt: string;
 }
+
+/**
+ * Evidence ref on a zero whose process completed but that no independent verification judged (execution engine). It is no
+ * observation of the skill — neither a success nor a failure — so reliability leaves it out, as UNFAIR_ZERO_SQL does for infra.
+ */
+export const COMPLETED_UNVERIFIED_REF = 'outcome_class:completed_unverified';
 
 function seededRandom(seed?: string): () => number {
   if (!seed) return Math.random;
@@ -131,7 +138,8 @@ export class SkillEvolutionEngine {
    */
   recordOutcome(skillId: string, outcome: {
     success: boolean;
-    tokensUsed: number;
+    /** null = not reported by the runtime (unknown), stored as NULL, never as 0 */
+    tokensUsed: number | null;
     durationMs: number;
     domain: string;
     taskId?: string;
@@ -150,7 +158,7 @@ export class SkillEvolutionEngine {
       randomUUID(),
       skillId,
       outcome.success ? 1 : 0,
-      outcome.tokensUsed,
+      typeof outcome.tokensUsed === 'number' && Number.isFinite(outcome.tokensUsed) ? outcome.tokensUsed : null,
       outcome.durationMs,
       outcome.domain,
       outcome.taskId || null,
@@ -200,10 +208,11 @@ export class SkillEvolutionEngine {
 
   /** Phenotype measured from this skill's recorded outcomes only. */
   measuredTraits(skillId: string): SkillGenome['traits'] {
-    // E2: an infra / no-change zero is no observation of the skill (left out, never a 0)
+    // E2: an infra / no-change / completed-unverified zero is no observation of the skill (left out, never a 0).
+    // Unknown tokens: MAX(1, NULL) is NULL in SQLite, so the row drops out of the efficiency AVG instead of scoring 1.
     const r = this.db.prepare(`SELECT COUNT(*) AS n, AVG(success) AS rel,
         AVG(MIN(1.0, 1000.0 / MAX(1, tokens_used))) AS eff FROM skill_outcomes WHERE skill_id = ?
-        AND NOT (success = 0 AND ${UNFAIR_ZERO_SQL})${skillId.includes('loop-maker:merge:') ? ` AND NOT ${supersededMergeOutcomeSql('skill_outcomes')}` : ''}`).get(skillId) as { n: number; rel: number | null; eff: number | null };
+        AND NOT (success = 0 AND ${UNFAIR_ZERO_SQL}) AND NOT (success = 0 AND evidence_refs_json LIKE '%"${COMPLETED_UNVERIFIED_REF}"%')${skillId.includes('loop-maker:merge:') ? ` AND NOT ${supersededMergeOutcomeSql('skill_outcomes')}` : ''}`).get(skillId) as { n: number; rel: number | null; eff: number | null };
     const has = r.n > 0;
     return { efficiency: has ? r.eff : null, reliability: has ? r.rel : null, generality: null, complexity: null, adaptability: null };
   }
@@ -272,7 +281,7 @@ export class SkillEvolutionEngine {
         id TEXT PRIMARY KEY,
         skill_id TEXT NOT NULL,
         success INTEGER NOT NULL DEFAULT 0,
-        tokens_used INTEGER NOT NULL DEFAULT 0,
+        tokens_used INTEGER DEFAULT 0,
         duration_ms INTEGER NOT NULL DEFAULT 0,
         domain TEXT NOT NULL DEFAULT '',
         task_id TEXT,
@@ -283,10 +292,6 @@ export class SkillEvolutionEngine {
         evidence_refs_json TEXT NOT NULL DEFAULT '[]',
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
-
-      CREATE INDEX IF NOT EXISTS idx_skill_genomes_skill_id ON skill_genomes(skill_id);
-      CREATE INDEX IF NOT EXISTS idx_skill_genomes_generation ON skill_genomes(generation);
-      CREATE INDEX IF NOT EXISTS idx_skill_outcomes_skill_id ON skill_outcomes(skill_id);
     `);
     for (const [name, ddl] of [
       ['task_id', 'TEXT'],
@@ -299,6 +304,42 @@ export class SkillEvolutionEngine {
       const exists = (this.db.prepare('PRAGMA table_info(skill_outcomes)').all() as Array<{ name: string }>)
         .some((column) => column.name === name);
       if (!exists) this.db.exec(`ALTER TABLE skill_outcomes ADD COLUMN ${name} ${ddl}`);
+    }
+    this.relaxTokensNotNull();
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_skill_genomes_skill_id ON skill_genomes(skill_id);
+      CREATE INDEX IF NOT EXISTS idx_skill_genomes_generation ON skill_genomes(generation);
+      CREATE INDEX IF NOT EXISTS idx_skill_outcomes_skill_id ON skill_outcomes(skill_id);
+    `);
+  }
+
+  /**
+   * One-time, idempotent widening of a skill_outcomes table created with `tokens_used INTEGER NOT NULL` so an unknown
+   * count can be NULL. SQLite cannot drop NOT NULL in place (same pattern as migrate.ts rebuildLoopTables): the stored DDL
+   * is copied with only that constraint removed (ALTER-added columns keep their order), every row is copied unchanged,
+   * and the copy is checked before the old table is dropped. The index is recreated by the caller. A table whose DDL does
+   * not match, or a failed rebuild (rolled back), is left as it was; existing writers that pass a number are unaffected.
+   */
+  private relaxTokensNotNull(): void {
+    const tokens = (this.db.prepare('PRAGMA table_info(skill_outcomes)').all() as Array<{ name: string; notnull: number }>)
+      .find((column) => column.name === 'tokens_used');
+    if (!tokens?.notnull) return;
+    const ddl = (this.db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'skill_outcomes'").get() as { sql: string } | undefined)?.sql ?? '';
+    const relaxed = ddl.replace(/\btokens_used\s+INTEGER\s+NOT\s+NULL\b/i, 'tokens_used INTEGER');
+    const copy = relaxed.replace(/^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["`]?skill_outcomes["`]?(?=\s*\()/i, 'CREATE TABLE skill_outcomes_nullable_tokens');
+    if (relaxed === ddl || copy === relaxed) return;
+    try {
+      this.db.transaction(() => {
+        this.db.exec('DROP TABLE IF EXISTS skill_outcomes_nullable_tokens');
+        this.db.exec(copy);
+        this.db.exec('INSERT INTO skill_outcomes_nullable_tokens SELECT * FROM skill_outcomes');
+        const count = (table: string) => (this.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
+        if (count('skill_outcomes_nullable_tokens') !== count('skill_outcomes')) throw new Error('skill_outcomes copy row count mismatch');
+        this.db.exec('DROP TABLE skill_outcomes');
+        this.db.exec('ALTER TABLE skill_outcomes_nullable_tokens RENAME TO skill_outcomes');
+      })();
+    } catch (err) {
+      console.warn('skill_outcomes: tokens_used NOT NULL not relaxed:', (err as Error)?.message || err);
     }
   }
 }

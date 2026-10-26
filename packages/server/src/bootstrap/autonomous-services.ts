@@ -38,10 +38,12 @@ import { startSchedulerWatchdog, startStallWatch } from '../services/stall-watch
 import { startInterestFeedback } from '../services/interest-feedback';
 import { startEvolutionFeedback } from '../services/evolution-feedback';
 import { startEvidenceRoom } from '../services/commons-evidence-room';
+import { startInvestigationOutcomes } from '../services/commons-investigation';
 import { startCommonsFalsifier } from '../services/commons-falsifier';
 import { startSettlementExecution } from '../services/settlement-execution';
 import { startValueAllocator } from '../services/value-allocator';
 import { startDreamEvolution } from '../services/dream-evolution';
+import { gymOrphanSweepMode } from '../services/remote-gym-service';
 import { startEvolutionEstimators } from '../services/evolution-estimators';
 import { startMergeSurvival } from '../services/merge-survival';
 import { startLoopAutoMerge } from '../services/loop-auto-merge';
@@ -245,6 +247,15 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     console.warn('⚠️  Evidence room failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
+  // AC-07 Commons investigation outcomes: panel/goal/run/verification/survival of a Commons-originated proposal back into its
+  // thread (shadow: judgment rows only). COMMONS_INVESTIGATION_MODE=shadow|on.
+  try {
+    const stopInvestigationOutcomes = startInvestigationOutcomes(db);
+    if (stopInvestigationOutcomes) { lifecycleManager.register({ serviceName: 'CommonsInvestigationOutcomes', stop: stopInvestigationOutcomes }); console.log('🔁 Commons investigation outcomes on (15 min sweep).'); }
+  } catch (error) {
+    console.warn('⚠️  Commons investigation outcomes failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
   // AR5 Commons falsifier niche (shadow): evidence-room tests run red at base → green on a later main; ≤ 5 runs / 24 h. COMMONS_FALSIFIER_MODE=shadow.
   try {
     const stopFalsifier = startCommonsFalsifier(db, recoverySvc);
@@ -276,6 +287,8 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     let stopDream = startDreamEvolution(db);
     registerRestart('dream_evolution', () => { stopDream?.(); stopDream = startDreamEvolution(db); });
     noteScheduler('dream_evolution', 'DREAM_EVOLUTION_ENABLED', !!stopDream, 3_600_000);
+    // the orphaned remote gym run sweep rides the dream-evolution tick (GYM_ORPHAN_SWEEP=shadow|on, default off)
+    noteScheduler('gym_orphan_sweep', 'GYM_ORPHAN_SWEEP', !!stopDream && gymOrphanSweepMode() !== 'off', 3_600_000);
     if (stopDream) { lifecycleManager.register({ serviceName: 'DreamEvolution', stop: () => stopDream?.() }); console.log('🧬 Dream evolution on (hourly tick, one dream a day).'); }
   } catch (error) {
     console.warn('⚠️  Dream evolution failed to start (non-fatal):', error instanceof Error ? error.message : String(error));

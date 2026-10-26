@@ -1,0 +1,35 @@
+{
+  "captured_at": "2026-10-24T19:05:29.322Z",
+  "source_sha": "936b93479920d5c251cf006bc42771c9142fa136",
+  "mode": "readonly/query_only",
+  "flags": {
+    "REFLECTION_PROPOSALS_MAX_PER_DAY": "0",
+    "PROPOSAL_DEDUPE_MODE": "shadow",
+    "TYPESAFE_PROPOSAL_PRESCREEN_MODE": "shadow",
+    "COMMONS_AGENDA_FROM_FAILURES": "false",
+    "COMMONS_AGENDA_GROUNDING": "false",
+    "COMMONS_GROUNDING_APPLY": "false"
+  },
+  "reflection_proposals_24h": {
+    "sql": "SELECT COUNT(*) AS n FROM self_improvements WHERE source='reflection' AND julianday(created_at)>=julianday('now','-1 day')",
+    "rows": [
+      {
+        "n": 0
+      }
+    ]
+  },
+  "health": {
+    "status": "healthy",
+    "commit": "936b93479920d5c251cf006bc42771c9142fa136",
+    "build": {
+      "commit": "936b93479920d5c251cf006bc42771c9142fa136",
+      "built_commit": "936b93479920d5c251cf006bc42771c9142fa136",
+      "build_source": "deploy-vps.sh",
+      "build_time": "2026-10-24T16:17:07Z",
+      "instance_id": "vps-agentical-production",
+      "commit_matches_build": true
+    },
+    "timestamp": "2026-10-24T19:05:29.347Z",
+    "uptime": 5626.624276335
+  }
+}

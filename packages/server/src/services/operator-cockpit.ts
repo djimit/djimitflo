@@ -44,7 +44,8 @@ export interface CockpitSnapshot {
   guardrails: Guardrail[];
   stalls: Stall[];
   /** stale: no outcome for 72 h — the species is not running, whatever its success rate says (sorted after the active ones) */
-  gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string; benched: boolean; stale: boolean }>;
+  /** avg_tokens: mean over the outcomes whose runtime reported a count; null = none did (unknown, not 0) */
+  gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number | null; last: string; benched: boolean; stale: boolean }>;
   /** W3: what waits for the operator right now (the /decisions sections). */
   /** null = that count could not be read (see errors) — never shown as 'nothing waiting' */
   needs_you: { approvals: number | null; requeue: number | null; labels: number | null; memory_review: number | null;
@@ -160,7 +161,7 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
       state: scorecard.approvals_decided_7d === null ? 'UNKNOWN' : state(scorecard.approvals_expired_7d, expiredBad) }),
   ];
   section = 'gym';
-  const gym = (all<{ species: string; outcomes: number; successes: number; avg_seconds: number; avg_tokens: number; last: string }>(
+  const gym = (all<{ species: string; outcomes: number; successes: number; avg_seconds: number; avg_tokens: number | null; last: string }>(
     // per runtime@model (prod 2026-09-30: atomic@llama-router and atomic@qwen36-2060 were merged into one 'atomic' row)
     `SELECT replace(skill_id, 'loop-maker:gym:', '') || COALESCE('@' || model, '') AS species, COUNT(*) AS outcomes, SUM(success) AS successes,
        ROUND(AVG(duration_ms) / 1000) AS avg_seconds, ROUND(AVG(tokens_used)) AS avg_tokens, MAX(created_at) AS last

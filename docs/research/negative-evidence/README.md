@@ -36,3 +36,6 @@ them so that no agent rediscovers a rejected approach and silently retries it.
 | NE-010 | MiroFish (LLM social simulation) as prediction or evolution substrate — [details](NE-010-mirofish.md) | REJECT |
 | NE-011 | Unvalidated agent-ecosystem claims (ChrisRoyse repositories) — [details](NE-011-agent-ecosystem-claims.md) | REJECT |
 | NE-012 | ruvnet agent ecosystem (ruflo/claude-flow, agentic-flow, agentdb, autogenous, ruClip, dream-machine) as dependencies, hooks or MCP servers — [details](NE-012-ruvnet-ecosystem.md) | REJECT |
+| NE-013 | Mutant-kill feedback retry for exports-lane test makers (MFR-001) | FALSIFIED |
+| NE-014 | AW-0 checkpoint / joint model reuse for software agents (PR #998) — [details](NE-014-aw0-joint-model.md) | REJECT |
+| NE-015 | Leaked vendor system prompts (CL4R1T4S-style) as a capability source — [details](NE-015-leaked-vendor-prompts.md) | REJECT |
