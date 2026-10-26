@@ -95,7 +95,7 @@ missing here. **Acting** = changes what the loop does; acting flags are switched
 | `LOOP_EVIDENCE_FRESHNESS_MODE` | off | enforce: yes (a loop draft PR whose read set — lockfile, configs, imports — changed on main is not opened and the run is marked for a re-check); shadow: records `evidence_stale_shadow` | shadow | operator |
 | `DREAM_EVOLUTION_ENABLED` | off | yes | act | operator |
 | `DREAM_TRIAL_MUTANTS` | off | yes | act | operator |
-| `DREAM_TRIAL_MUTANT_TIERS` | `2,3` | yes | act (freezes a new holdout) | operator, after the RX-5 tier probe |
+| `DREAM_TRIAL_MUTANT_TIERS` | `2,3` | yes | act (freezes a new holdout; claim-time epochs only — a manifest-frozen epoch decides on all its frozen tiers) | operator, after the RX-5 tier probe |
 | `DREAM_PROMOTION_ALPHA` | 0.05 | yes | act | operator |
 | `TRIAL_DIAGNOSTICS_ENABLED` | off | no (records per-trial blindness/power; never changes promotion) | measure | operator |
 | `TRIAL_HEADROOM_PRECHECK` | off | yes (scores the parent first; settles a trial `inconclusive` / `no_headroom` before any mutant attempt when the parent fails fewer deciding tasks than the promotion rule needs) | act | operator |
@@ -154,6 +154,8 @@ missing here. **Acting** = changes what the loop does; acting flags are switched
 | `DEAD_CODE_MAX_PER_DAY` | 2 (also the in-flight cap) | yes | act (budget) | operator |
 | `FINDING_FIX_LANE` | off | shadow: no (one judgments row per tick); on: yes (proposes one-finding fixes; each needs the panel, a human maker approval and a human merge) | shadow | operator |
 | `FINDING_FIX_MAX_PER_DAY` | 2 (in flight: 1) | yes | act (budget) | operator |
+| `REQUEUE_AUTO_MODE` | off (`shadow`: one `auto_requeue` judgment per requeue candidate — `would_requeue` / `would_dismiss` — bounded per tick, nothing acts; `on`: hourly, requeues a retryable failure ONCE through the #515 requeue service as `system:auto-requeue` — infra_failed, environment_failure or reviewer_failure original, no copy yet, lane budget allows it, target file still on main; maker_failure only while the measured requeue success rate of maker_failure originals is ≥ 40 % with n ≥ 10; never no_change, a failed requeue copy or a dismissed row — and dismisses an ineligible row older than 14 d with reason `auto:not_requeue_eligible:<class>` (audited `requeue_dismiss`, nothing deleted). With `on`, /decisions shows those rows as "system will handle" and needs-you counts only held rows (escalated, target unverifiable); `requeue-policy.ts`) | on: yes (creates linked attempts, dismisses rows) | shadow → on | operator |
+| `REQUEUE_AUTO_MAX_PER_TICK` | 3 (clamped 1..20; dismisses: at most 10 per tick) | yes (automatic requeues per hourly tick, on top of the lane budget) | act (budget) | operator |
 | `GENOME_FIRE_CHECK` | off | yes (a scored gym attempt of a non-baseline genome must carry the worker's `fire_check` — sha256 of the goal sent to the maker and the number of genome lines found in it; without it, or with fewer lines than the genome has, the attempt is VOID: `gym_result.void`, no outcome, served again, never paired in McNemar / the e-process, unscorable after 3; counted in `evolution-evidence` `trials.void` and the genome note). Needs a gym worker that reports `fire_check` — an older worker voids every trial attempt | act | operator |
 | `MEMORY_HOLDOUT_RATE` | 0 (off; clamped to [0, 1]) | yes (with `LOOP_MEMORY_RULES_ENABLED`, that deterministic fraction of maker runs — sha256 of the goal id, else run id — gets no engineering rules and logs `memory_holdout: true` on its `assignment_context` event; `evolution-evidence` `memory_holdout` compares verified/regressed per arm with a two-sided Fisher exact p) | measure (withholds rules) | operator |
 | `RESOURCE_LEDGER_ENABLED` | off (on: every host-agent poll that carries `info.power.gpu_watts` — rocm-smi / nvidia-smi package power, absent on hosts without either — is stored in `host_power_samples`, kept 63 d; `GET /api/health/efficiency` (read:evidence) integrates it into Wh per gym / remote-maker / committee job window and per host; without samples energy reads 'not measured'. Tokens per consumer and the value view are computed from existing tables whatever the flag) | no (stores samples; read-only view) | measure | operator |
@@ -236,7 +238,7 @@ Never automatic. Nothing sets `DREAM_EVOLUTION_ENABLED` or `GYM_HOLDOUT_EPOCH`, 
 6. Verify (read-only):
    - `SELECT epoch, role, COUNT(*) FROM gym_holdout / gym_mutant_holdout / gym_write_test_holdout GROUP BY 1, 2`;
    - `SELECT * FROM gym_holdout_freezes`.
-7. Only then, and as a separate decision, switch trials to it. Set `GYM_HOLDOUT_EPOCH=<n>`, and set `DREAM_TRIAL_MUTANT_TIERS` to the manifest tiers so the mutant reader sees them.
+7. Only then, and as a separate decision, switch trials to it. Set `GYM_HOLDOUT_EPOCH=<n>`. The deciding mutants are every mutant the manifest froze (all its tiers); `DREAM_TRIAL_MUTANT_TIERS` is ignored for a manifest epoch (a warning names a mismatch).
 
 ## Negative evidence
 

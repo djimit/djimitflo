@@ -12,6 +12,7 @@ import { supersededMergeOutcomeSql } from './merge-superseded';
 import { evolutionLineage, postVerificationRegressions } from './evolution-lineage';
 import { panelAttemptMetrics, type PanelAttemptMetrics } from './panel-attempt-metrics';
 import { unitEconomics, type UnitEconomics } from './unit-economics';
+import { dependencyHuman, openLoopPrSplit, optionalLabelling, type OptionalLabelling } from './needs-you-classes';
 
 /**
  * S1 (operator 2026-09-28): one read-only snapshot of what the operator otherwise measures by hand over SSH —
@@ -55,8 +56,21 @@ export interface CockpitSnapshot {
     join_requests: number | null; shell_requests: number | null;
     /** proposals listed in two sections (operator requeue + unlabelled pre-screen) — subtracted once from total */
     shared_subjects: number | null;
-    /** distinct things waiting: blocking counts (not approvals_expiring ⊂ approvals, not draft_prs) minus shared_subjects; null if any is unknown */
+    /**
+     * HUMAN_DECISION items only (needs-you-classes.ts): approvals + join + shell requests, requeue rows no system handles,
+     * memory reviews (not template duplicates), the audit batch, flagged loop PRs, Dependabot PRs the lane leaves to a human
+     * (when the lane is tracked) and proposals when no auto-review panel runs. Not: labels (optional_labelling), stalls and
+     * panel-reviewed proposals (system). null if any of its parts is unknown.
+     */
     total: number | null;
+    /** open_prs split: audit-sample PRs (one weekly batch) and the rest (flagged: the auto-merge lane did not take them) */
+    audit_batch: number | null; flagged_prs: number | null;
+    /** open Dependabot PRs the dependency lane leaves to a human; null + dependency_tracked false when the lane is off */
+    dependency_human: number | null; dependency_tracked: boolean;
+    /** ground-truth labelling (D5, CAR, E1, DI-001): optional, its own count, never in total */
+    optional_labelling: OptionalLabelling | null;
+    /** what the system handles (shown, not in total): auto-requeue rows, stalls, panel-reviewed proposals */
+    system: { requeue_will_handle: number | null; requeue_mode: string | null; proposals_auto_reviewed: boolean };
     /** requeue candidates that are system work, not decisions (counted, never hidden) */
     system_requeue: Partial<Record<'budgeted_requeue' | 'infra_failed' | 'attribution_unknown' | 'not_actionable', number>> | null };
   /** UX-8: armed/off = intent; by_status + health = execution (Cockpit 3.0: armed_not_ticking / failing degrade the snapshot) */
@@ -206,15 +220,23 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
     approvals_expiring: one("SELECT COUNT(*) FROM approvals WHERE status = 'pending' AND expires_at IS NOT NULL AND expires_at <= ?", in60),
     join_requests: one("SELECT COUNT(*) FROM social_join_requests WHERE status = 'pending'"),
     shell_requests: one("SELECT COUNT(*) FROM fleet_commands WHERE status = 'pending_approval'"),
-    shared_subjects: null, total: null, system_requeue: null };
+    shared_subjects: null, total: null, system_requeue: null, ...openLoopPrSplit(db),
+    dependency_human: null, dependency_tracked: false, optional_labelling: null,
+    system: { requeue_will_handle: null, requeue_mode: null, proposals_auto_reviewed: env.SELF_IMPROVEMENT_AUTO_REVIEW_ENABLED === 'true' } };
+  const dep = dependencyHuman(db, env, now);
+  needs_you.dependency_human = dep.count; needs_you.dependency_tracked = dep.tracked;
+  let inbox: ReturnType<typeof decisionsInbox> | null = null;
   try {
-    const inbox = decisionsInbox(db, now, env);
+    inbox = decisionsInbox(db, now, env);
     const counts = openDecisionCounts(inbox);
     needs_you = { ...needs_you, ...counts };
+    const auto = inbox.totals.requeue_auto;
+    needs_you.system = { ...needs_you.system, requeue_mode: auto?.mode ?? null, requeue_will_handle: auto ? (auto.mode === 'on' ? auto.will_handle : 0) : null };
     const c = inbox.totals.requeue_classes;
     needs_you.system_requeue = c ? { budgeted_requeue: c.budgeted_requeue ?? 0, infra_failed: c.infra_failed ?? 0, attribution_unknown: c.attribution_unknown ?? 0, not_actionable: c.not_actionable ?? 0 } : null;
     if (Object.values(counts).some((c) => c === null)) fail('decisions', new Error('a decisions inbox count query failed'));
   } catch (e) { fail('decisions', e); }
+  needs_you.optional_labelling = optionalLabelling(db, inbox, now);
   let stalls: Stall[] = [];
   // an empty list from a failed detector is not 'no stalls': stalls stays [] but needs_you.stalls null + an error
   let detectors: DetectorHealth[] = [];
@@ -223,10 +245,13 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
     const report = detectStallsWithHealth(db, now, env); stalls = report.stalls; detectors = report.detectors; capabilities = report.capabilities; needs_you.stalls = stalls.length;
     for (const d of detectors) if (d.status === 'error') fail(`detector:${d.name}`, new Error(d.error ?? 'detector query failed'));
   } catch (e) { fail('stalls', e); }
-  const blocking = [needs_you.approvals, needs_you.requeue, needs_you.labels, needs_you.memory_review, needs_you.open_prs, needs_you.proposals,
-    needs_you.stalls, needs_you.join_requests, needs_you.shell_requests];
-  needs_you.total = blocking.some((x) => x === null) || needs_you.shared_subjects === null ? null
-    : (blocking as number[]).reduce((a, b) => a + b, 0) - (needs_you.shared_subjects as number);
+  // human decisions only; labels are optional_labelling and stalls are system health, so shared_subjects (a requeue row that
+  // is also an unlabelled pre-screen rejection) no longer double-counts and is not subtracted
+  const human = [needs_you.approvals, needs_you.join_requests, needs_you.shell_requests, needs_you.requeue, needs_you.memory_review,
+    needs_you.audit_batch, needs_you.flagged_prs,
+    ...(needs_you.dependency_tracked ? [needs_you.dependency_human] : []),
+    ...(needs_you.system.proposals_auto_reviewed ? [] : [needs_you.proposals])];
+  needs_you.total = human.some((x) => x === null) ? null : (human as number[]).reduce((a, b) => a + b, 0);
   section = 'evolution';
   let evolution: CockpitSnapshot['evolution'] = null;
   try { evolution = evolutionLineage(db, now, env); for (const m of evolution.errors) fail('evolution', new Error(m)); } catch (e) { fail('evolution', e); }
