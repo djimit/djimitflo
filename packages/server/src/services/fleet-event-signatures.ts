@@ -16,8 +16,9 @@ import { constTimeEq, resolveSpawnTokenSecret } from './spawn-token';
  *    HMAC(master, 'fleet-event-key|v1|<host>|<key_id>'). Rotating that master invalidates every fleet key.
  *  - ed25519 (Node's built-in crypto; for emitters that have it): the registry stores the host's public key (PEM).
  * Signed body: canonical JSON (sorted keys, no whitespace) of {agent, event_id, host, payload_sha256, success, task_kind,
- * ts}; payload_sha256 = sha256 hex of canonical JSON of the present optional fields (duration_ms, model, ref, tokens) as
- * strings — the Redis bus hands every field back as a string, so strings are the stable form.
+ * ts}; payload_sha256 = sha256 hex of canonical JSON of the present optional fields (duration_ms, model, ref, skill, skill_sha,
+ * tokens) as strings — the Redis bus hands every field back as a string, so strings are the stable form. An absent field is
+ * left out, so events without skill/skill_sha sign exactly as before.
  * Replay: the event_id is a single-use nonce (fleet_event_nonces, pruned after 2 × window) and ts must lie within 24 h.
  */
 export type FleetSignatureMode = 'off' | 'shadow' | 'enforce';
@@ -27,7 +28,7 @@ export type FleetSignatureAlg = 'hmac-sha256' | 'ed25519';
 export const FLEET_EVENT_WINDOW_MS = 24 * 3_600_000;
 const HOST_RE = /^[A-Za-z0-9._:-]{1,80}$/;
 const KEY_ID_RE = /^[a-f0-9]{8,32}$/;
-const PAYLOAD_FIELDS = ['duration_ms', 'model', 'ref', 'tokens'] as const;
+const PAYLOAD_FIELDS = ['duration_ms', 'model', 'ref', 'skill', 'skill_sha', 'tokens'] as const;
 
 export const fleetSignatureMode = (env: NodeJS.ProcessEnv = process.env): FleetSignatureMode =>
   env.FLEET_EVENT_SIGNATURES === 'shadow' ? 'shadow' : env.FLEET_EVENT_SIGNATURES === 'enforce' ? 'enforce' : 'off';
