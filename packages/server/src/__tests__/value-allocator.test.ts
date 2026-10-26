@@ -22,8 +22,12 @@ const iso = (ms: number) => new Date(ms).toISOString();
 let db: Database.Database;
 let seq = 0;
 
-beforeEach(() => { db = new Database(':memory:'); db.pragma('foreign_keys = OFF'); db.exec(schema); runMigrations(db); ensureCreditTable(db); new SkillEvolutionEngine(db); seq = 0; });
-afterEach(() => { vi.unstubAllEnvs(); db.close(); });
+beforeEach(() => {
+  // HTTP aggregation uses the wall clock too; keep it aligned with the seeded reporting window.
+  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(NOW);
+  db = new Database(':memory:'); db.pragma('foreign_keys = OFF'); db.exec(schema); runMigrations(db); ensureCreditTable(db); new SkillEvolutionEngine(db); seq = 0;
+});
+afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); db.close(); });
 
 const call = (purpose: string, opts: { tin?: number | null; tout?: number | null; shadow?: number; consumer?: string; model?: string } = {}) =>
   db.prepare(`INSERT INTO llm_model_calls (consumer, model, ok, provider, shadow, tokens_in, tokens_out, purpose, created_at) VALUES (?, ?, 1, 'litellm', ?, ?, ?, ?, ?)`)
@@ -162,8 +166,22 @@ describe('value allocator: value and class', () => {
     expect(row(v, 'judgment:content_safety').consumer_status).toBe('decision_consumed');
     expect(row(v, 'judgment:content_safety').w7.value.decision_consumed).toBe(3); // only the KB rows
     expect(row(v, 'judgment:commons_contribution').consumer_status).toBe('no_consumer'); // thread gate off
-    const on = buildValueAllocation(db, NOW, { COMMONS_THREAD_GATE_ENABLED: 'true' }, []);
+    const on = buildValueAllocation(db, NOW, { COMMONS_THREAD_GATE_ENABLED: 'true', TYPESAFE_COMMONS_CONTRIBUTION_MODE: 'shadow' }, []);
     expect(row(on, 'judgment:commons_contribution').consumer_status).toBe('decision_consumed'); // threadGated reads shadow rows
+  });
+
+  it('AUTHZ-F3: a judgment switched off is not decision-consumed even with its gate flag on (threadGated ignores stale rows)', () => {
+    for (let i = 0; i < 3; i++) judgment('commons_contribution', 'shadow');
+    const v = buildValueAllocation(db, NOW, { COMMONS_THREAD_GATE_ENABLED: 'true' }, []);
+    expect(row(v, 'judgment:commons_contribution').consumer_status).not.toBe('decision_consumed');
+  });
+
+  it('AUTHZ-F2: discovery_relevance rows decide expert-unit creation under FRONTIER_UNITS_REQUIRE_RELEVANCE — decision-consumed, hard floor', () => {
+    for (let i = 0; i < 3; i++) judgment('discovery_relevance', 'shadow', { subjectType: 'expert_unit' });
+    expect(row(buildValueAllocation(db, NOW, {}, []), 'judgment:discovery_relevance').consumer_status).not.toBe('decision_consumed');
+    const r = row(buildValueAllocation(db, NOW, { FRONTIER_UNITS_REQUIRE_RELEVANCE: 'true' }, []), 'judgment:discovery_relevance');
+    expect(r.consumer_status).toBe('decision_consumed');
+    expect(r.hard_floor).toMatch(/gate/);
   });
 
   it('an enforce-mode judgment is decision-consumed: VALUE_PROVEN and a hard floor', () => {

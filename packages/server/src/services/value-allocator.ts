@@ -4,7 +4,7 @@ import { exclusiveWh, gpuJobs, hostSamples, isLocalModel, leaseConsumer, valuePe
 import { supersededMergeOutcomeSql } from './merge-superseded';
 import { leaseRanOn } from './outcome-attribution';
 import { experimentDefs } from './experiment-registry';
-import { insertJudgmentRow } from './judgment-service';
+import { insertJudgmentRow, judgmentMode } from './judgment-service';
 import { listSchedulers, markRun } from './scheduler-registry';
 
 /**
@@ -128,8 +128,12 @@ export const GATE_READ_JUDGMENTS: Record<string, (row: JudgmentRow, env: NodeJS.
   content_safety: (r) => r.subject_type === 'kb_page' || r.mode === 'enforce',
   // content-safety gateUntrustedForPrompt: an enforce row is an exclusion that happened
   content_safety_prompt_gate: (r) => r.mode === 'enforce',
-  // agent-social-autopilot threadGated: reads the last two verdicts of a thread (shadow rows) when the gate is on
-  commons_contribution: (_r, env) => env.COMMONS_THREAD_GATE_ENABLED === 'true',
+  // agent-social-autopilot threadGated: reads the last two verdicts of a thread (shadow rows) when the gate AND the judgment are on
+  commons_contribution: (_r, env) => env.COMMONS_THREAD_GATE_ENABLED === 'true' && judgmentMode('commons_contribution', env) !== 'off',
+  // AUTHZ-F2: expert-source-units ingestDiscovery/rejudgeOne create an expert unit (a promotion, DI-001 B) only on a jev 'yes' /
+  // open_problem|lane_technique verdict under FRONTIER_UNITS_REQUIRE_RELEVANCE — every row then decides unit creation, whatever
+  // its 'shadow' label. A promotion-bearing jev decision: the operator classifies it against the jev rule before any reopen.
+  discovery_relevance: (_r, env) => env.FRONTIER_UNITS_REQUIRE_RELEVANCE === 'true',
   // needs-grounding-triage-service: moves/archives proposals on the latest (shadow) verdict when enabled
   reflection_triage: (_r, env) => env.NEEDS_GROUNDING_TRIAGE_ENABLED === 'true',
 };

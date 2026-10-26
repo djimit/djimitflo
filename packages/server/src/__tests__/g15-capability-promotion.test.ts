@@ -19,7 +19,8 @@ function writeRunner(name: string, source: string) {
   return file;
 }
 
-function seedSkillEvidence(skillId: string, candidateHash = 'candidate-hash', baselineHash = 'baseline-hash', candidateSuccesses = 30) {
+function seedSkillEvidence(skillId: string, candidateHash = 'candidate-hash', baselineHash = 'baseline-hash', candidateSuccesses = 30,
+  candidateTokens: number | null = 800, candidateDurationMs = 800) {
   const insert = db.prepare(`
     INSERT INTO skill_outcomes (
       id, skill_id, success, tokens_used, duration_ms, domain, skill_version, skill_content_hash, evidence_refs_json
@@ -27,7 +28,7 @@ function seedSkillEvidence(skillId: string, candidateHash = 'candidate-hash', ba
   `);
   for (let i = 0; i < 30; i += 1) {
     insert.run(`baseline-${skillId}-${i}`, skillId, i < 24 ? 1 : 0, 1_000, 1_000, baselineHash);
-    insert.run(`candidate-${skillId}-${i}`, skillId, i < candidateSuccesses ? 1 : 0, 800, 800, candidateHash);
+    insert.run(`candidate-${skillId}-${i}`, skillId, i < candidateSuccesses ? 1 : 0, candidateTokens, candidateDurationMs, candidateHash);
   }
   db.prepare(`
     INSERT INTO openmythos_eval_runs (
@@ -190,6 +191,21 @@ describe('G15.2 capability promotion', () => {
       evidence_ready: false,
       blocked_reasons: ['CAPABILITY_PROMOTION_SKILL_NO_MEASURABLE_IMPROVEMENT'],
     });
+  });
+
+  it('does not read unknown (null) token usage as a token saving', () => {
+    svc.createCandidate({
+      id: 'unknown-tokens-skill', kind: 'skill', owner: 'test', version: '0.1.0', risk_ceiling: 'low',
+      input_schema_ref: 'none', output_schema_ref: 'none', allowed_actions: ['maker:mock'],
+      forbidden_actions: ['deploy'], required_evidence: ['worker_lease'], eval_threshold: 0.75,
+      removal_strategy: 'disable',
+      metadata: { agent_skill_id: 'unknown-tokens-skill', agent_skill_version: '0.1.0', agent_skill_content_hash: 'candidate-hash' },
+    });
+    // same success share and duration as the baseline; only the (unreported) token count could look like an improvement
+    const evidence = seedSkillEvidence('unknown-tokens-skill', 'candidate-hash', 'baseline-hash', 24, null, 1_000);
+
+    expect(() => svc.promoteCapability('unknown-tokens-skill', { eval_score: 0.9, ...evidence }))
+      .toThrow('CAPABILITY_PROMOTION_SKILL_NO_MEASURABLE_IMPROVEMENT');
   });
 
   it('blocks skill promotion without exact skill attribution', () => {

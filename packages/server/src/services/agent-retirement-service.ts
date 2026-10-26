@@ -4,6 +4,7 @@ import type { Database } from 'better-sqlite3';
 import { ComplianceAuditService } from './compliance-audit-service';
 import { RuntimeLeaseRegistry } from './loop-recovery-service';
 import { createError } from '../middleware/error-handler';
+import { CANCEL_LEASE_METADATA_SQL, cancelLeaseBind } from './lease-failure';
 
 interface RetirementPlan {
   agentId: string;
@@ -68,9 +69,9 @@ export class AgentRetirementService {
       this.db.prepare(`INSERT INTO agent_archives(id,agent_id,archived_at,evidence_json,metadata_json)
         VALUES(?,?,?,?,?)`).run(archiveId, agentId, now,
           JSON.stringify({ agent, tasks, leases }), JSON.stringify({ reason: reason.trim(), archived_by: actor, knowledge_promoted: false }));
-      const cancel = this.db.prepare("UPDATE worker_leases SET status='cancelled',updated_at=? WHERE id=? AND status='prepared'");
+      const cancel = this.db.prepare(`UPDATE worker_leases SET status='cancelled',updated_at=?, ${CANCEL_LEASE_METADATA_SQL} WHERE id=? AND status='prepared'`);
       let cancelled = 0;
-      for (const lease of leases) cancelled += cancel.run(now, lease.id).changes;
+      for (const lease of leases) cancelled += cancel.run(now, ...cancelLeaseBind('agent_retired', now), lease.id).changes;
       // Existing schema deliberately has no retired status. The durable tombstone
       // owns retirement; offline preserves the existing non-dispatchable state.
       this.db.prepare("UPDATE agents SET status='offline',retired_at=?,retirement_reason=?,updated_at=? WHERE id=?")

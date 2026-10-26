@@ -43,3 +43,37 @@ it('property: fitness never changes across random evolution without new outcomes
   }
   expect(engine.getStats().avgFitness).toBe(before);
 });
+
+it('unknown token usage is stored as null and drops out of efficiency instead of scoring 1', () => {
+  const engine = new SkillEvolutionEngine(db);
+  engine.recordOutcome('s', { success: true, tokensUsed: null, durationMs: 1, domain: 'd' });
+  expect((db.prepare("SELECT tokens_used FROM skill_outcomes WHERE skill_id = 's'").get() as { tokens_used: number | null }).tokens_used).toBeNull();
+  expect(engine.measuredTraits('s')).toMatchObject({ reliability: 1, efficiency: null });
+  engine.recordOutcome('s', { success: true, tokensUsed: 2000, durationMs: 1, domain: 'd' });
+  expect(engine.measuredTraits('s').efficiency).toBe(0.5); // the known row only
+});
+
+it('a completed_unverified zero is neither a success nor a failure of the skill', () => {
+  const engine = new SkillEvolutionEngine(db);
+  engine.recordOutcome('s', { success: false, tokensUsed: 10, durationMs: 1, domain: 'd', evidenceRefs: ['outcome_class:completed_unverified'] });
+  expect(engine.measuredTraits('s').reliability).toBeNull();
+  engine.recordOutcome('s', { success: true, tokensUsed: 10, durationMs: 1, domain: 'd' });
+  expect(engine.measuredTraits('s').reliability).toBe(1);
+});
+
+it('widens a legacy NOT NULL tokens_used column once, keeping every row and ALTER-added column', () => {
+  db.exec(`CREATE TABLE skill_outcomes (id TEXT PRIMARY KEY, skill_id TEXT NOT NULL, success INTEGER NOT NULL DEFAULT 0,
+    tokens_used INTEGER NOT NULL DEFAULT 0, duration_ms INTEGER NOT NULL DEFAULT 0, domain TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')))`);
+  db.prepare("INSERT INTO skill_outcomes (id, skill_id, success, tokens_used, duration_ms, domain) VALUES ('old', 'loop-maker:x:opencode', 1, 0, 5, 'x')").run();
+  const engine = new SkillEvolutionEngine(db);
+  const cols = db.prepare('PRAGMA table_info(skill_outcomes)').all() as Array<{ name: string; notnull: number }>;
+  expect(cols.find((c) => c.name === 'tokens_used')?.notnull).toBe(0);
+  expect(cols.map((c) => c.name)).toEqual(expect.arrayContaining(['model', 'evidence_refs_json', 'skill_content_hash']));
+  expect(db.prepare('SELECT id, success, tokens_used, duration_ms, model, evidence_refs_json FROM skill_outcomes').all())
+    .toEqual([{ id: 'old', success: 1, tokens_used: 0, duration_ms: 5, model: null, evidence_refs_json: '[]' }]);
+  expect(db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_skill_outcomes_skill_id'").get()).toBeTruthy();
+  engine.recordOutcome('s', { success: true, tokensUsed: null, durationMs: 1, domain: 'd' });
+  new SkillEvolutionEngine(db); // idempotent: a second construction leaves the widened table and its rows alone
+  expect((db.prepare('SELECT COUNT(*) AS n FROM skill_outcomes').get() as { n: number }).n).toBe(2);
+});

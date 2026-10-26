@@ -4,6 +4,12 @@ import { LoopBudgetService, type LoopBudgetDataAccess } from '../services/loop-b
 import type { LoopRunRecord, WorkerLeaseRecord } from '../services/loop-service';
 import { swarmEventBus } from '../services/swarm-event-bus';
 
+const PASSING_GATES = JSON.stringify([
+  { name: 'maker_completion', status: 'pass', evidence: '' },
+  { name: 'checker_verdict', status: 'pass', evidence: '' },
+  { name: 'security_checker_verdict', status: 'skipped', evidence: 'not high-risk' },
+]);
+
 describe('LoopBudgetService', () => {
   let db: Database.Database;
   let dataAccess: LoopBudgetDataAccess;
@@ -161,22 +167,94 @@ describe('LoopBudgetService', () => {
   });
 
   describe('computeEfficiencyMetric', () => {
-    it('returns zero for run with no leases', () => {
+    it('returns no verified artifacts and unknown dollars for a run with no leases', () => {
       const result = service.computeEfficiencyMetric('nonexistent');
       expect(result.verifiedArtifacts).toBe(0);
-      expect(result.dollarsSpent).toBe(0);
-      expect(result.efficiency).toBe(0);
+      expect(result.dollarsSpent).toBeNull();
+      expect(result.efficiency).toBeNull();
     });
 
-    it('computes efficiency from completed maker leases', () => {
-      db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, created_at, updated_at) VALUES ('r1', 'test', 'closed', 'completed', datetime('now'), datetime('now'))`).run();
+    it('computes efficiency from the completed maker leases of a verified run', () => {
+      db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, gates_json, created_at, updated_at) VALUES ('r1', 'test', 'closed', 'completed', ?, datetime('now'), datetime('now'))`).run(PASSING_GATES);
       db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES ('l1', 'r1', 'maker', 'mock', 'completed', '{"runtime_usage":{"total_tokens":1000},"runtime":"mock"}', datetime('now'), datetime('now'))`).run();
       db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES ('l2', 'r1', 'maker', 'mock', 'completed', '{"runtime_usage":{"total_tokens":2000},"runtime":"mock"}', datetime('now'), datetime('now'))`).run();
 
       const result = service.computeEfficiencyMetric('r1');
       expect(result.verifiedArtifacts).toBe(2);
-      expect(result.dollarsSpent).toBe(0); // mock is free
-      expect(result.efficiency).toBe(0);
+      expect(result.dollarsSpent).toBe(0); // mock is free: a known $0
+      // per-dollar is undefined at $0 — null with a reason, never 0
+      expect(result.efficiency).toBeNull();
+      expect(result.efficiencyReason).toBe('zero_dollars');
+    });
+  });
+
+  describe('computeEfficiencyMetric truth (verified means verified, unknown stays unknown)', () => {
+    const insertRun = (id: string, status: string, gates: string) =>
+      db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, gates_json, created_at, updated_at) VALUES (?, 'test', 'closed', ?, ?, datetime('now'), datetime('now'))`).run(id, status, gates);
+    const insertLease = (id: string, runId: string, role: string, status: string, meta: Record<string, unknown>) =>
+      db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES (?, ?, ?, 'codex', ?, ?, datetime('now'), datetime('now'))`).run(id, runId, role, status, JSON.stringify(meta));
+
+    it('does not count a completed maker of an unverified run as verified; reports it as completed_unverified', () => {
+      insertRun('ru', 'completed', '[]'); // no recorded gates: never verified
+      insertLease('m1', 'ru', 'maker', 'completed', { runtime_usage: { total_tokens: 500_000 } });
+      const result = service.computeEfficiencyMetric('ru');
+      expect(result.runVerified).toBe(false);
+      expect(result.verifiedArtifacts).toBe(0);
+      expect(result.completedUnverified).toBe(1);
+    });
+
+    it('does not count a completed maker whose run failed a gate', () => {
+      insertRun('rf', 'blocked', JSON.stringify([{ name: 'checker_verdict', status: 'fail', evidence: '' }, { name: 'maker_completion', status: 'pass', evidence: '' }]));
+      insertLease('m1', 'rf', 'maker', 'completed', { runtime_usage: { total_tokens: 1 } });
+      const result = service.computeEfficiencyMetric('rf');
+      expect(result.verifiedArtifacts).toBe(0);
+      expect(result.completedUnverified).toBe(1);
+    });
+
+    it('counts the completed makers of a certified run (status ready_for_human_merge, every gate passed)', () => {
+      insertRun('rv', 'ready_for_human_merge', PASSING_GATES);
+      insertLease('m1', 'rv', 'maker', 'completed', { runtime_usage: { total_tokens: 500_000 } });
+      insertLease('m0', 'rv', 'maker', 'completed', { superseded_by_maker_lease_id: 'm1', runtime_usage: { total_tokens: 100_000 } });
+      insertLease('c1', 'rv', 'checker', 'completed', { runtime_usage: { total_tokens: 400_000 } });
+      const result = service.computeEfficiencyMetric('rv');
+      expect(result.runVerified).toBe(true);
+      expect(result.verifiedArtifacts).toBe(1);
+      expect(result.completedUnverified).toBe(1); // the superseded maker is not the verified artifact
+      expect(result.dollarsSpent).toBeCloseTo(2.0, 6); // 1M tokens × $2/Mtok codex
+      expect(result.efficiency).toBeCloseTo(0.5, 6);
+      expect(result.usageCoverage).toEqual({ reported: 3, total: 3, ratio: 1 });
+      expect(result.dollarsLowerBound).toBe(false);
+    });
+
+    it('no reported usage gives dollars null and efficiency null, not 0', () => {
+      insertRun('rn', 'completed', PASSING_GATES);
+      insertLease('m1', 'rn', 'maker', 'completed', {});
+      insertLease('c1', 'rn', 'checker', 'completed', {});
+      const result = service.computeEfficiencyMetric('rn');
+      expect(result.verifiedArtifacts).toBe(1);
+      expect(result.dollarsSpent).toBeNull();
+      expect(result.efficiency).toBeNull();
+      expect(result.efficiencyReason).toBe('no_usage_reported');
+      expect(result.usageCoverage).toEqual({ reported: 0, total: 2, ratio: 0 });
+    });
+
+    it('a run with no leases has unknown dollars and a null coverage ratio', () => {
+      const result = service.computeEfficiencyMetric('nonexistent');
+      expect(result.dollarsSpent).toBeNull();
+      expect(result.efficiency).toBeNull();
+      expect(result.usageCoverage).toEqual({ reported: 0, total: 0, ratio: null });
+    });
+
+    it('partial usage is flagged as a lower bound with coverage < 1', () => {
+      insertRun('rp', 'completed', PASSING_GATES);
+      insertLease('m1', 'rp', 'maker', 'completed', { runtime_usage: { total_tokens: 1_000_000 } });
+      insertLease('c1', 'rp', 'checker', 'completed', {});
+      const result = service.computeEfficiencyMetric('rp');
+      expect(result.usageCoverage).toEqual({ reported: 1, total: 2, ratio: 0.5 });
+      expect(result.dollarsLowerBound).toBe(true);
+      expect(result.dollarsSpent).toBeCloseTo(2.0, 6);
+      expect(result.efficiency).toBeCloseTo(0.5, 6);
+      expect(result.efficiencyReason).toBe('partial_usage_upper_bound');
     });
   });
 

@@ -9,6 +9,7 @@ import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { messageBus, type SwarmMessage } from './message_bus';
 import { MemoryCandidateService, type MemoryCandidateRecord } from './memory-candidate-service';
 import { RuntimeLeaseRegistry } from './loop-recovery-service';
+import { cancelFailure } from './lease-failure';
 
 type BacklogStatus = 'candidate' | 'triaged' | 'planned' | 'leased' | 'blocked' | 'done' | 'discarded';
 type WorkerRuntime = 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'mock' | 'manual';
@@ -1159,6 +1160,8 @@ export class SwarmStatusService {
       stopped_by_runner: true,
       stopped_at: now,
       stop_mode: row.status === 'running' ? 'best_effort_no_process_handle' : 'cancel_prepared',
+      cancellation_reason: 'operator_lease_stop',
+      failure: cancelFailure('operator_lease_stop'),
     };
     let stopResult: { stopMode: 'kill' | 'stop' | 'best_effort_no_process_handle'; killAttempted: boolean } | null = null;
     if (row.status === 'running') {

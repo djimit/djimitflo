@@ -1,0 +1,18 @@
+services:
+  agent-registry:
+    build: .
+    container_name: agent-registry
+    ports:
+      - "100.86.47.122:8088:8088"
+    volumes:
+      - ./runtime:/app/registry:ro
+      # S3 fleet auth: "<host> <sha256 of token>" lines (runbook docs/runbooks/fleet-bus-auth.md)
+      - /etc/djimit-agents/fleet-auth:/run/fleet:ro
+    environment:
+      LIVE_AGENTS_FILE: /app/registry/live_agents.json
+      REGISTRY_STATE_FILE: /app/registry/registry_state.json
+      # off | log | enforce. Override in /srv/agent-registry/.env.
+      AUTH_MODE: ${AUTH_MODE:-log}
+      FLEET_TOKENS_FILE: /run/fleet/tokens
+    env_file: /etc/djimit-agents/agents.env
+    restart: unless-stopped

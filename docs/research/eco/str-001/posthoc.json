@@ -1,0 +1,104 @@
+{
+ "registered": false,
+ "added_after_scoring_started": true,
+ "timeout_counts": {
+  "stryker": {
+   "mutant_runs_original": 10912,
+   "timeouts_original": 8,
+   "mutant_runs_strengthen": 10453,
+   "timeouts_strengthen": 42,
+   "timeout_share_original": 0.0007,
+   "timeout_share_strengthen": 0.004
+  },
+  "gym": {
+   "mutant_runs_original": 423,
+   "timeouts_original": 0,
+   "mutant_runs_strengthen": 396,
+   "timeouts_strengthen": 4,
+   "timeout_share_original": 0,
+   "timeout_share_strengthen": 0.0101
+  }
+ },
+ "baseline_timeouts": {
+  "original": 0,
+  "strengthen": 0
+ },
+ "variants": {
+  "stryker": {
+   "v1_per_mutant_exclusion": {
+    "n": 40,
+    "original": 0.1565,
+    "strengthen": 0.4716,
+    "delta": 0.315,
+    "ci": [
+     0.23,
+     0.401
+    ],
+    "sign": {
+     "up": 36,
+     "down": 3,
+     "same": 1,
+     "p": 1.80444e-8
+    },
+    "p_holm": 1.80444e-8
+   }
+  },
+  "gym": {
+   "v1_per_mutant_exclusion": {
+    "n": 40,
+    "original": 0.166,
+    "strengthen": 0.5054,
+    "delta": 0.3393,
+    "ci": [
+     0.2468,
+     0.4333
+    ],
+    "sign": {
+     "up": 31,
+     "down": 1,
+     "same": 8,
+     "p": 7.68341e-9
+    },
+    "p_holm": 1.53668e-8
+   },
+   "v2_prod_like_unit_skip": {
+    "n": 37,
+    "original": 0.1654,
+    "strengthen": 0.4967,
+    "delta": 0.3314,
+    "ci": [
+     0.2336,
+     0.4294
+    ],
+    "sign": {
+     "up": 28,
+     "down": 1,
+     "same": 8,
+     "p": 5.58794e-8
+    }
+   }
+  }
+ },
+ "stryker_transitions_ok_units": {
+  "units": 37,
+  "mutants": 10453,
+  "killed_by_original": 1427,
+  "gained_from_nocoverage": 2257,
+  "gained_from_survived": 561,
+  "lost": 1,
+  "share_of_gain_from_new_coverage": 0.8009,
+  "table": {
+   "NoCoverage->NoCoverage": 4684,
+   "Survived->Survived": 761,
+   "Killed->Killed": 1411,
+   "Timeout->Timeout": 8,
+   "NoCoverage->Killed": 2233,
+   "NoCoverage->Survived": 763,
+   "Survived->Killed": 558,
+   "NoCoverage->Timeout": 24,
+   "Killed->NoCoverage": 1,
+   "Survived->Timeout": 3,
+   "Killed->Timeout": 7
+  }
+ }
+}

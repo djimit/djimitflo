@@ -61,6 +61,42 @@ const run = (s: Sim, args: string[], over: Record<string, string> = {}, timeout 
 const train = (s: Sim, prs: string[], flags: string[] = [], over: Record<string, string> = {}) => run(s, ['run', ...flags, path.join(s.S, 'log'), ...prs], over);
 const counter = (file: string, first: string, rest: string) => `n=$(cat ${file} 2>/dev/null || echo 0); echo $((n+1)) > ${file}; if [ "$n" = 0 ]; then echo ${first}; else echo ${rest}; fi`;
 
+describe('audit consistency regressions', () => {
+  it('a failed diff download with a usable partial patch holds before mutation', () => {
+    const s = sim({ behind: false, ciNew: 'pass' });
+    const r = train(s, ['778'], [], { MT_PR_DIFF: `cat ${s.diff}; exit 1` });
+    expect(r.status).toBe(7);
+    expect(s.calls()).toEqual([]);
+  });
+
+  it('a head changed during diff download is superseded before any mutation', () => {
+    const s = sim({ behind: false, ciNew: 'pass' });
+    const r = train(s, ['778'], [], { MT_PR_DIFF: `cat ${s.diff}; echo bbbb2222 > ${s.S}/head` });
+    expect(r.status).toBe(5);
+    expect(s.calls()).toEqual([]);
+  });
+
+  it('an accepted update without an observed new head holds without reusing old CI', () => {
+    const s = sim({ ci: { aaaa1111: 'pass' } });
+    const r = train(s, ['778'], [], { MT_UPDATE: 'echo accepted', MT_HEAD_SETTLE_S: '1', MT_HEAD_SETTLE_POLL_S: '1' });
+    expect(r.status).toBe(7);
+    expect(r.out).toContain('new head');
+    expect(s.calls()).toEqual([]);
+  });
+
+  for (const failingFetch of [1, 2, 3]) {
+    it(`a failed main refresh at stage ${failingFetch} never reports verified completion`, () => {
+      const s = sim({ behind: false, ciNew: 'pass' });
+      const n = path.join(s.S, 'fetch-count');
+      const r = train(s, ['778'], [], { MT_FETCH: `n=$(cat ${n} 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > ${n}; [ "$n" != ${failingFetch} ]` });
+      expect(r.status).toBe(7);
+      expect(events(s.ledger).map((e) => e.event)).not.toContain('merged');
+      if (failingFetch < 3) expect(s.calls().some((c) => c.startsWith('merge'))).toBe(false);
+      else expect(read(path.join(s.S, 'state')).trim()).toBe('MERGED');
+    });
+  }
+});
+
 describe('Defect A — drafts', () => {
   it('a draft without --mark-ready is HELD with the ready transition proposed; draft state, branch and merge untouched', () => {
     const s = sim({ draft: true, ciNew: 'pass' });
@@ -278,6 +314,71 @@ describe('failure modes', () => {
     expect(r.status).toBe(7);
     expect(r.out).toContain('security-scan');
     expect(s.calls().some((c) => c.startsWith('merge'))).toBe(false);
+  });
+});
+
+// No false green (10-26): every REQUIRED context needs a success on the exact sha, the newest run per name decides, and
+// unreadable branch protection is HOLD — never a remembered list.
+describe('checks_verdict — no false green', () => {
+  const C = 'repos/djimit/djimitflo/commits/s1';
+  const verdict = (runs: unknown[], o: { statuses?: unknown[]; required?: string | null; protection?: unknown; summary?: unknown } = {}) => {
+    const f: Record<string, unknown> = { [`${C}/check-runs?per_page=100`]: { check_runs: runs }, [`${C}/status`]: { state: 'success', statuses: o.statuses ?? [] } };
+    if (o.protection !== undefined) f['repos/djimit/djimitflo/branches/main/protection/required_status_checks'] = o.protection;
+    if (o.summary !== undefined) f['repos/djimit/djimitflo/branches/main'] = o.summary;
+    const gh = stubGh(f);
+    const req = o.required === undefined ? 'build,sbom' : o.required;
+    const r = spawnSync('bash', ['-c', `source ${script}; checks_verdict s1; echo; mt_gh pr checks-at 1 --sha s1`], { encoding: 'utf8',
+      env: { ...process.env, PATH: gh.PATH, MT_LEDGER: path.join(tmp('mtc-led-'), 'l'), MT_REQUIRED_CHECKS: req ?? '' } });
+    const [json, line] = r.stdout.split('\n').filter(Boolean);
+    return { ...(JSON.parse(json) as { verdict: string; red: string[]; reason?: string }), line };
+  };
+  const ok = (name: string, id = 1) => ({ id, name, status: 'completed', conclusion: 'success', completed_at: `2026-10-26T0${id}:00:00Z` });
+  const done = (name: string, conclusion: string, id = 1) => ({ ...ok(name, id), conclusion });
+
+  it('all required success: green (control)', () => {
+    expect(verdict([ok('build'), ok('sbom')]).verdict).toBe('green');
+  });
+  for (const c of ['skipped', 'neutral', 'cancelled', 'stale']) {
+    it(`a required check with ${c} is not green: red required_not_success`, () => {
+      const v = verdict([ok('build'), done('sbom', c)]);
+      expect(v.verdict).toBe('red');
+      expect(v.reason).toBe(`required_not_success:sbom=${c}`);
+      expect(v.line).toMatch(/^fail red:sbom/);
+    });
+  }
+  it('a newer red run next to an older green run of the same name is red (newest per name decides)', () => {
+    expect(verdict([ok('build', 1), ok('sbom', 2), done('sbom', 'failure', 3)]).verdict).toBe('red');
+    // newer green rerun of an older red run: green — the rerun replaced it
+    expect(verdict([ok('build', 1), done('sbom', 'failure', 2), ok('sbom', 3)]).verdict).toBe('green');
+    // newer skipped next to older success: not green
+    expect(verdict([ok('build', 1), ok('sbom', 2), done('sbom', 'skipped', 3)]).verdict).toBe('red');
+  });
+  it('a required check still running is pending, not red', () => {
+    expect(verdict([ok('build'), { id: 2, name: 'sbom', status: 'in_progress', conclusion: null, completed_at: null }]).verdict).toBe('pending');
+  });
+  it('a non-required skipped or neutral check is still fine', () => {
+    expect(verdict([ok('build'), ok('sbom'), done('docs', 'skipped', 2), done('lint-optional', 'neutral', 3)]).verdict).toBe('green');
+    // a non-required failure stays red
+    expect(verdict([ok('build'), ok('sbom'), done('docs', 'failure', 2)]).verdict).toBe('red');
+  });
+  it('unreadable branch protection without MT_REQUIRED_CHECKS: HOLD (pending required_checks_unavailable), never the old default list', () => {
+    const v = verdict([ok('build'), ok('sbom')], { required: null });
+    expect(v.verdict).toBe('pending');
+    expect(v.reason).toBe('required_checks_unavailable');
+    expect(v.line).toContain('required_checks_unavailable');
+    const r = spawnSync('bash', ['-c', `source ${script}; required_json`], { encoding: 'utf8',
+      env: { ...process.env, PATH: stubGh().PATH, MT_LEDGER: path.join(tmp('mtc-led-'), 'l'), MT_REQUIRED_CHECKS: '' } });
+    expect(JSON.parse(r.stdout)).toEqual({ source: 'unavailable', contexts: [] });
+  });
+  it('readable branch protection is the source of the required contexts', () => {
+    const v = verdict([ok('build'), done('gitleaks', 'skipped', 2)], { required: null, protection: { contexts: ['build'], checks: [{ context: 'gitleaks' }] } });
+    expect(v).toMatchObject({ verdict: 'red', reason: 'required_not_success:gitleaks=skipped' });
+    // protection endpoint unreadable (no admin read): the branch summary's protection block is the same live source
+    const summary = { protection: { enabled: true, required_status_checks: { contexts: ['build', 'gitleaks'] } } };
+    expect(verdict([ok('build'), ok('gitleaks', 2)], { required: null, summary }).verdict).toBe('green');
+    expect(verdict([ok('build')], { required: null, summary }).verdict).toBe('pending');
+    // a branch without protection: unavailable, not "no required checks"
+    expect(verdict([ok('build')], { required: null, summary: { protection: { enabled: false, required_status_checks: { contexts: [] } } } }).reason).toBe('required_checks_unavailable');
   });
 });
 

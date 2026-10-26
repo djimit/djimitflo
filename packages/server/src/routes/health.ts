@@ -21,6 +21,7 @@ import { buildEvolutionEvidence } from '../services/evolution-evidence';
 import { provenanceDag } from '../services/provenance-dag';
 import { attributionSummary } from '../services/outcome-attribution';
 import { runtimeConfigView } from '../services/runtime-config-view';
+import { buildProvenance } from '../utils/build-provenance';
 import { buildDigest } from '../services/operator-push';
 import { getDatabaseProvenance } from '../database/provenance';
 import { efficiencyWithCost } from '../services/cost-ledger';
@@ -37,28 +38,6 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   router.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false })); // per-router limiter CodeQL can see; /api also caps 300/min
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
   const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
-
-  /**
-   * Build provenance from the image itself (build args), independent of the
-   * runtime environment. Runtime env can drift or be duplicated across files;
-   * this reflects what was actually baked into the artifact.
-   */
-  function buildProvenance() {
-    const runtimeCommit = process.env.DJIMITFLO_COMMIT_SHA || null;
-    const builtCommit = process.env.DJIMITFLO_BUILD_COMMIT && process.env.DJIMITFLO_BUILD_COMMIT !== 'unknown'
-      ? process.env.DJIMITFLO_BUILD_COMMIT
-      : null;
-    return {
-      commit: runtimeCommit,
-      built_commit: builtCommit,
-      build_source: process.env.DJIMITFLO_BUILD_SOURCE || null,
-      build_time: process.env.DJIMITFLO_BUILD_TIME || null,
-      instance_id: process.env.DJIMITFLO_INSTANCE_ID || null,
-      // A deployed artifact is only attributable when the running revision and the
-      // baked build revision agree.
-      commit_matches_build: !!(runtimeCommit && builtCommit && runtimeCommit === builtCommit),
-    };
-  }
 
   // GET /api/health — basic health check (public)
   router.get('/', (_req, res) => {
@@ -250,9 +229,10 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
     res.json(runtimeConfigView());
   });
 
-  // service map: reachability of the endpoints this server is configured to use (env only, no credentials sent)
+  // service map: reachability of the endpoints this server is configured to use (env only, no credentials sent),
+  // plus the DF-07 state ladder from durable business evidence in this db
   router.get('/services', requireAuth, requirePermission('read:evidence'), async (_req, res, next) => {
-    try { res.json({ services: await serviceMap() }); } catch (error) { next(error); }
+    try { res.json({ services: await serviceMap(process.env, fetch, Date.now(), db) }); } catch (error) { next(error); }
   });
 
   router.get('/metrics', requireAuth, requirePermission('read:evidence'), (_req, res) => {

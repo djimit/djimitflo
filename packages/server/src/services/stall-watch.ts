@@ -154,6 +154,13 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
     const solved = one<{ n: number; first: string | null }>("SELECT COUNT(*) AS n, MIN(created_at) AS first FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.canary') = 1 AND json_extract(metadata, '$.gym_result.status') = 'success' AND created_at >= ?", ago(now, 24 * 30));
     if (solved && solved.n > 0) out.push({ subsystem: 'gym:canary', since: solved.first, detail: `${solved.n} gym canary run(s) reported success — a canary cannot be solved from the source file: check the oracle and the worker sandbox` });
   });
+  // 7b. prod 25-10: a pending trial item no claim could be given a task for (gym_trial_blocked, refreshed by every remote claim
+  // that meets it) keeps that trial from ever completing — reported while a trial runs and the block was seen in the last 24 h
+  run('trial_blocked', env.DREAM_EVOLUTION_ENABLED === 'true', () => {
+    const rows = all<{ task_key: string; genomes: string; reason: string; first_seen: string }>(`SELECT task_key, group_concat(genome_id, ', ') AS genomes, MAX(reason) AS reason,
+      MIN(first_seen) AS first_seen FROM gym_trial_blocked WHERE last_seen >= ? AND EXISTS (SELECT 1 FROM maker_genomes WHERE status = 'trial') GROUP BY task_key ORDER BY task_key`, ago(now, 24));
+    for (const r of rows) out.push({ subsystem: 'gym:trial_blocked', since: r.first_seen, detail: `trial task ${r.task_key} cannot be served for ${r.genomes}: ${r.reason}; the trial cannot complete until it is served or settled by the operator`.slice(0, 300) });
+  });
   // 8. RX-14: the nightly thermometer is on but wrote nothing for 36 h (trends cannot be backfilled)
   run('estimates', env.EVOLUTION_ESTIMATORS_ENABLED === 'true', () => {
     const last = one<{ t: string | null }>('SELECT MAX(computed_at) AS t FROM evolution_estimates')?.t ?? null;
@@ -191,7 +198,11 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
   let noStopDate: string[] = [];
   run('experiment_overdue', true, () => {
     const r = experimentsReport(db, env, now); noStopDate = r.no_stop_date;
-    for (const e of r.experiments.filter((x) => x.overdue)) out.push({ subsystem: `experiment:${e.id}`, since: e.stop_by ?? e.started_at, detail: `${e.overdue_reason}; record a verdict or stop it (${e.protocol})`.slice(0, 300) });
+    // DF-05: overdue at target n before stop_by leaves stop_by in the future — a since is never in the future, so none then
+    for (const e of r.experiments.filter((x) => x.overdue)) {
+      const since = e.stop_by ?? e.started_at;
+      out.push({ subsystem: `experiment:${e.id}`, since: Date.parse(since) > now ? null : since, detail: `${e.overdue_reason}; record a verdict or stop it (${e.protocol})`.slice(0, 300) });
+    }
   });
   const expDetector = detectors.find((d) => d.name === 'experiment_overdue' && d.status === 'ok');
   if (expDetector && noStopDate.length) expDetector.detail = `no stop date — violates know-when-to-stop: ${noStopDate.join(', ')}`;

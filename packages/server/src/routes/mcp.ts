@@ -17,6 +17,13 @@ const createServerRateLimiter = rateLimit({
   standardHeaders: false,
   legacyHeaders: false,
 });
+// Same budget for the explicit probe (POST /servers/refresh), counted separately from creates.
+const refreshServersRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: false,
+  legacyHeaders: false,
+});
 
 function sanitizeMCPServer(server: any, isAdmin: boolean): any {
   if (isAdmin) return server;
@@ -81,71 +88,87 @@ export function createMCPRoutes(db: Database, auth?: AuthMiddleware): Router {
     return (req as any).user;
   }
 
-  // GET /api/mcp/servers - List all MCP servers
-  router.get('/servers', requireAuth, async (req, res, next) => {
+  const selectServers = () => db.prepare(`
+    SELECT s.*,
+      (SELECT COUNT(*) FROM mcp_tools t WHERE t.server_id = s.id) AS tool_count,
+      (SELECT COUNT(*) FROM mcp_tools t
+        JOIN mcp_tool_permissions p ON p.tool_id = t.id
+        WHERE t.server_id = s.id AND p.decision = 'requires_approval') AS approval_gate_count
+    FROM mcp_servers s
+    ORDER BY s.created_at DESC
+  `).all() as any[];
+
+  const serverList = (servers: any[], isAdmin: boolean) => servers.map((server: any) => {
+    const result = {
+      ...server,
+      args: JSON.parse(server.args || '[]'),
+      env: JSON.parse(server.env || '{}'),
+      metadata: JSON.parse(server.metadata || '{}'),
+    };
+    return sanitizeMCPServer(withEffectiveStatus(result), isAdmin);
+  });
+
+  // GET /api/mcp/servers - List all MCP servers. Passive (L6-08): reads stored state only — no probe, no write —
+  // whatever the query string says; `last_verified_at` is the as-of time. Probing is POST /servers/refresh.
+  router.get('/servers', requireAuth, (req, res, next) => {
     try {
-      const user = getUser(req);
-      const isAdmin = AuthorizationService.isAdmin(user);
-      const selectServers = () => db.prepare(`
-        SELECT s.*,
-          (SELECT COUNT(*) FROM mcp_tools t WHERE t.server_id = s.id) AS tool_count,
-          (SELECT COUNT(*) FROM mcp_tools t
-            JOIN mcp_tool_permissions p ON p.tool_id = t.id
-            WHERE t.server_id = s.id AND p.decision = 'requires_approval') AS approval_gate_count
-        FROM mcp_servers s
-        ORDER BY s.created_at DESC
-      `).all() as any[];
-      let servers = selectServers();
-      if (req.query.refresh === 'true') {
-        await Promise.all(servers.map(async (server) => {
-          if (!server.url) return;
-          const now = new Date().toISOString();
-          const meta = metadata(server);
-          // Some servers are known-unreachable from this deployment (e.g. a port
-          // that's firewalled even over the network path that otherwise works) —
-          // probing them every page load just repaints the same alarming 'error'
-          // state forever. Skip the probe and surface the documented reason as a
-          // calmer 'stopped' status instead.
-          if (meta.known_unreachable) {
-            db.prepare('UPDATE mcp_servers SET status = ?, error_message = ?, updated_at = ? WHERE id = ?')
-              .run('stopped', String(meta.known_unreachable_reason || 'Known unreachable from this deployment.'), now, server.id);
-            return;
-          }
-          const probe = probeSpec(server);
-          try {
-            const response = await fetch(probe.url, { signal: AbortSignal.timeout(1_500) });
-            const running = probe.accepts(response.status);
-            db.prepare('UPDATE mcp_servers SET status = ?, last_ping_at = ?, error_message = ?, updated_at = ? WHERE id = ?')
-              .run(running ? 'running' : 'error', now, running ? null : `HTTP ${response.status} from ${probe.url}`, now, server.id);
-            // First import of a reachable sidecar's OpenAPI operations. Only while it has no tools, so an operator's
-            // permission changes are never overwritten by a later refresh.
-            if (running && openApiUrl(server.url, meta) && !db.prepare('SELECT 1 FROM mcp_tools WHERE server_id = ? LIMIT 1').get(server.id)) {
-              const synced = await syncOpenApiCatalog(db, { id: server.id, url: server.url, metadata: meta });
-              if (typeof synced === 'string') db.prepare('UPDATE mcp_servers SET error_message = ? WHERE id = ?').run(`tool catalog not synced: ${synced}`, server.id);
-            }
-          } catch (error) {
-            // the outbound guard refused the host (e.g. a sidecar registered on the workstation): policy, not an outage
-            const denied = (error as { cause?: { code?: string } })?.cause?.code === 'OUTBOUND_DENIED';
-            db.prepare('UPDATE mcp_servers SET status = ?, last_ping_at = ?, error_message = ?, updated_at = ? WHERE id = ?')
-              .run(denied ? 'stopped' : 'error', now, denied
-                ? 'Blocked by policy: the control plane never calls this host (OUTBOUND_DENY_HOSTS). Point it at a reachable host or use it from that host.'
-                : error instanceof Error ? error.message : 'Health probe failed', now, server.id);
-          }
-        }));
-        servers = selectServers();
-      }
+      res.json({ servers: serverList(selectServers(), AuthorizationService.isAdmin(getUser(req))) });
+    } catch (error) {
+      next(error);
+    }
+  });
 
-      const parsed = servers.map((server: any) => {
-        const result = {
-          ...server,
-          args: JSON.parse(server.args || '[]'),
-          env: JSON.parse(server.env || '{}'),
-          metadata: JSON.parse(server.metadata || '{}'),
-        };
-        return sanitizeMCPServer(withEffectiveStatus(result), isAdmin);
+  // POST /api/mcp/servers/refresh - explicit probe of every registered server URL; persists status/last_ping_at and
+  // a first OpenAPI tool import. It writes the same table as POST /servers, so it needs the same manage:config.
+  router.post('/servers/refresh', refreshServersRateLimiter, requireAuth, requirePermission('manage:config'), async (req, res, next) => {
+    try {
+      const servers = selectServers();
+      const refreshedAt = new Date().toISOString();
+      const probed: string[] = [];
+      const skipped: Array<{ id: string; reason: 'no_url' | 'known_unreachable' }> = [];
+      await Promise.all(servers.map(async (server) => {
+        if (!server.url) {
+          skipped.push({ id: server.id, reason: 'no_url' });
+          return;
+        }
+        const now = refreshedAt;
+        const meta = metadata(server);
+        // Some servers are known-unreachable from this deployment (e.g. a port
+        // that's firewalled even over the network path that otherwise works) —
+        // probing them just repaints the same alarming 'error' state forever.
+        // Skip the probe and surface the documented reason as a calmer 'stopped' status instead.
+        if (meta.known_unreachable) {
+          skipped.push({ id: server.id, reason: 'known_unreachable' });
+          db.prepare('UPDATE mcp_servers SET status = ?, error_message = ?, updated_at = ? WHERE id = ?')
+            .run('stopped', String(meta.known_unreachable_reason || 'Known unreachable from this deployment.'), now, server.id);
+          return;
+        }
+        probed.push(server.id);
+        const probe = probeSpec(server);
+        try {
+          const response = await fetch(probe.url, { signal: AbortSignal.timeout(1_500) });
+          const running = probe.accepts(response.status);
+          db.prepare('UPDATE mcp_servers SET status = ?, last_ping_at = ?, error_message = ?, updated_at = ? WHERE id = ?')
+            .run(running ? 'running' : 'error', now, running ? null : `HTTP ${response.status} from ${probe.url}`, now, server.id);
+          // First import of a reachable sidecar's OpenAPI operations. Only while it has no tools, so an operator's
+          // permission changes are never overwritten by a later refresh.
+          if (running && openApiUrl(server.url, meta) && !db.prepare('SELECT 1 FROM mcp_tools WHERE server_id = ? LIMIT 1').get(server.id)) {
+            const synced = await syncOpenApiCatalog(db, { id: server.id, url: server.url, metadata: meta });
+            if (typeof synced === 'string') db.prepare('UPDATE mcp_servers SET error_message = ? WHERE id = ?').run(`tool catalog not synced: ${synced}`, server.id);
+          }
+        } catch (error) {
+          // the outbound guard refused the host (e.g. a sidecar registered on the workstation): policy, not an outage
+          const denied = (error as { cause?: { code?: string } })?.cause?.code === 'OUTBOUND_DENIED';
+          db.prepare('UPDATE mcp_servers SET status = ?, last_ping_at = ?, error_message = ?, updated_at = ? WHERE id = ?')
+            .run(denied ? 'stopped' : 'error', now, denied
+              ? 'Blocked by policy: the control plane never calls this host (OUTBOUND_DENY_HOSTS). Point it at a reachable host or use it from that host.'
+              : error instanceof Error ? error.message : 'Health probe failed', now, server.id);
+        }
+      }));
+      res.json({
+        servers: serverList(selectServers(), AuthorizationService.isAdmin(getUser(req))),
+        refresh: { refreshed_at: refreshedAt, probed: probed.sort(), skipped: skipped.sort((a, b) => a.id.localeCompare(b.id)) },
       });
-
-      res.json({ servers: parsed });
     } catch (error) {
       next(error);
     }

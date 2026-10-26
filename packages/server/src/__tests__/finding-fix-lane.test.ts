@@ -212,7 +212,8 @@ describe('finding-fix lane source', () => {
   });
 
   it('on: one in flight, two per day, a finding never proposed twice; the run gets the gate env and the 60-line diff cap', () => {
-    const now = new Date('2026-10-20T12:00:00Z');
+    // rows get the real creation time (datetime('now')), so the lane's daily window must use the real clock too (pinned dates expired on 2026-10-21)
+    const now = new Date();
     const e = env({ FINDING_FIX_LANE: 'on' });
     expect(lane().run(now, e)).toMatchObject({ created: 1, found: 3 });
     expect(lane().run(now, e)).toMatchObject({ created: 0, skipped: 'one in flight' });
