@@ -4,6 +4,7 @@ import { api, type EvolutionEvidence, type GateState } from '../lib/api';
 import { useResource } from '../hooks/useResource';
 import { LoadErrorNotice } from '../components/LoadErrorNotice';
 import { ExperimentsSection } from './EvolutionExperiments';
+import { Pl001Card } from './EvolutionPl001';
 
 const fetchEvidence = () => api.getEvolutionEvidence();
 const pct = (v: number | null | undefined) => (v === null || v === undefined ? '—' : `${Math.round(v * 100)} %`);
@@ -81,6 +82,12 @@ export function EvolutionBody({ data }: { data: EvolutionEvidence }) {
       <Section title="Experiments">
         <ExperimentsSection data={data} />
       </Section>
+
+      {data.pl_001 && (
+        <Section title="PL-001 — procedure with vs without (gym repair)">
+          <Pl001Card data={data.pl_001} />
+        </Section>
+      )}
 
       <Section title="Genome trials">
         <p className="text-sm text-foreground-secondary">Holdouts: mined {data.genomes.holdout.mined ?? '—'}, mutant {data.genomes.holdout.mutant ?? '—'} tasks.</p>

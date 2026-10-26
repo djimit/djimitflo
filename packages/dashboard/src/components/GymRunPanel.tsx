@@ -10,7 +10,7 @@ import { StatusPill } from './ui';
  * server's own settlement wrote) and the skill outcome record() wrote (GET /loops/runs/:id/gym-outcome).
  * Server-side checks and worker claims are kept in separate groups; a value no record holds reads "unknown", never 0.
  */
-export const GYM_LOOP_NAMES: readonly string[] = ['evolution-gym', 'tg-001'];
+export const GYM_LOOP_NAMES: readonly string[] = ['evolution-gym', 'tg-001', 'pl-001'];
 export const isGymRun = (run: Pick<LoopRunRecord, 'loop_name'>): boolean => GYM_LOOP_NAMES.includes(run.loop_name);
 
 /** Mirrors remote-gym-service.ts: the two settlements the server makes itself, and the P0-12 evidence discard. */
@@ -36,11 +36,12 @@ export type OutcomeState = { state: 'loading' } | { state: 'error' } | { state: 
 interface GymMeta {
   commit?: string; kind?: string; species?: string; remote_host?: string; genome?: string; probe?: number; canary?: number;
   prod_gates?: number; mutant_keys?: string[]; tier?: number; tg?: { experiment?: string; arm?: string; attempt_id?: string };
+  pl?: { experiment?: string; arm?: string; attempt_id?: string; delivered_lines?: number; delivered_lines_sha256?: string };
 }
 interface GymResultMeta {
   status?: string; reason?: string; tokens?: number | null; hack_flags?: string[]; killed_mutants?: string[];
   prod_gates?: Record<string, string>; graded?: number; graded_kind?: string; diff_ref?: string; void?: string; late_result?: number;
-  fire_check?: { goal_sha256?: string; genome_lines?: number; genome_lines_found?: number };
+  fire_check?: { goal_sha256?: string; genome_lines?: number; genome_lines_found?: number; lines_sha256?: string };
 }
 
 const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : null);
@@ -68,14 +69,15 @@ export function describeReason(reason: string | undefined): string {
 export function gymRunView(run: Pick<LoopRunRecord, 'status' | 'loop_name' | 'metadata'>, outcome: OutcomeState): GymRunView {
   const gymRaw = obj(run.metadata?.gym) ?? {};
   const resRaw = obj(run.metadata?.gym_result);
-  const gym: GymMeta = { ...gymRaw, mutant_keys: strings(gymRaw.mutant_keys), tg: obj(gymRaw.tg) as GymMeta['tg'] ?? undefined };
+  const gym: GymMeta = { ...gymRaw, mutant_keys: strings(gymRaw.mutant_keys), tg: obj(gymRaw.tg) as GymMeta['tg'] ?? undefined, pl: obj(gymRaw.pl) as GymMeta['pl'] ?? undefined };
   const res: GymResultMeta | null = resRaw ? { ...resRaw, hack_flags: strings(resRaw.hack_flags), killed_mutants: strings(resRaw.killed_mutants),
     prod_gates: obj(resRaw.prod_gates) as Record<string, string> | undefined ?? undefined, fire_check: obj(resRaw.fire_check) as GymResultMeta['fire_check'] ?? undefined } : null;
   const reason = typeof res?.reason === 'string' ? res.reason : undefined;
   const status = typeof res?.status === 'string' ? res.status : undefined;
   const isInfra = !!reason?.startsWith('infra:');
   const serverSettled = reason === LOST_AT_CLAIM || reason === ORPHANED_NO_RESULT;
-  const isTg = run.loop_name === 'tg-001' || !!gym.tg;
+  const isPl = run.loop_name === 'pl-001' || !!gym.pl;
+  const isTg = run.loop_name === 'tg-001' || !!gym.tg || isPl;
   const isCanary = gym.canary === 1;
   const gated = gym.prod_gates === 1;
   const gateMap = res?.prod_gates && Object.keys(res.prod_gates).length ? res.prod_gates : undefined;
@@ -88,7 +90,8 @@ export function gymRunView(run: Pick<LoopRunRecord, 'status' | 'loop_name' | 'me
     { label: 'Species', value: gym.species || 'unknown', source: 'gym.species' },
     { label: 'Worker host', value: gym.remote_host || 'local gym (no remote host)', source: 'gym.remote_host' },
     { label: 'Genome', value: gym.genome || 'none on this claim', source: 'gym.genome' },
-    ...(isTg ? [{ label: 'Experiment', value: `${gym.tg?.experiment ?? 'TG-001'}${gym.tg?.arm ? `, arm ${gym.tg.arm}` : ''}`, source: 'gym.tg' }] : []),
+    ...(isPl ? [{ label: 'Experiment', value: `PL-001${gym.pl?.arm ? `, arm ${gym.pl.arm} (${gym.pl.arm === 'B' ? 'procedure lines' : 'no lines'})` : ''}`, source: 'gym.pl' }]
+      : isTg ? [{ label: 'Experiment', value: `${gym.tg?.experiment ?? 'TG-001'}${gym.tg?.arm ? `, arm ${gym.tg.arm}` : ''}`, source: 'gym.tg' }] : []),
     ...(gym.probe === 1 || isCanary ? [{ label: 'Claim type', value: [gym.probe === 1 ? 'tier probe' : '', isCanary ? 'canary' : ''].filter(Boolean).join(', '), source: 'gym.probe, gym.canary' }] : []),
   ];
 
@@ -126,7 +129,15 @@ export function gymRunView(run: Pick<LoopRunRecord, 'status' | 'loop_name' | 'me
     source: 'gym_result.diff_ref (server-side sha256)',
   });
   const fc = res?.fire_check;
-  proven.push({
+  // pl-001.ts plVoid: both arms are fire-checked against the delivered lines digest and the expected goal sha256
+  if (isPl) proven.push({
+    label: 'Procedure fire check',
+    value: typeof res?.void === 'string' ? `VOID: ${res.void}`
+      : fc && typeof fc.goal_sha256 === 'string' ? `${fc.genome_lines_found ?? 'unknown'}/${fc.genome_lines ?? 'unknown'} lines in the prompt, received digest ${fc.lines_sha256 ? `${fc.lines_sha256.slice(0, 12)}…` : 'unknown'}; delivered ${gym.pl?.delivered_lines_sha256 ? `${gym.pl.delivered_lines_sha256.slice(0, 12)}…` : 'unknown'}`
+        : res ? 'unknown (no fire check recorded)' : 'not reported yet',
+    source: 'gym.pl.delivered_lines_sha256, gym_result.fire_check, gym_result.void (pl-001.ts plVoid)',
+  });
+  if (!isPl) proven.push({
     label: 'Genome fire check',
     value: !gym.genome ? 'no genome on this claim'
       : gym.genome === BASELINE_GENOME ? 'baseline genome (no check needed)'
@@ -166,7 +177,9 @@ export function gymRunView(run: Pick<LoopRunRecord, 'status' | 'loop_name' | 'me
   let stop: GymStopClass; let answer: string; let next: GymRunView['next'];
   const reServed = isTg
     // tg-001.ts: an infra discard of a TG attempt is re-queued, or INFRA_CENSORED once every permitted attempt was one
-    ? { label: 'experiment record' as const, short: 'attempt re-queued or censored', detail: 'TG-001 attempt: no skill outcome; the tg_attempts row holds the result, and an infra discard is re-queued or INFRA_CENSORED (tg-001.ts).' }
+    ? isPl
+      ? { label: 'experiment record' as const, short: 'arm re-served or censored', detail: 'PL-001 attempt: no skill outcome; the pl_attempts row holds the result, and an infra discard or a VOID attempt is re-served at most twice, then INFRA_CENSORED (pl-001.ts).' }
+      : { label: 'experiment record' as const, short: 'attempt re-queued or censored', detail: 'TG-001 attempt: no skill outcome; the tg_attempts row holds the result, and an infra discard is re-queued or INFRA_CENSORED (tg-001.ts).' }
     : isCanary
       // remote-gym-service.ts RX-11: a canary earns no outcome and never marks its task tried
       ? { label: 'not counted' as const, short: 'canary, not counted', detail: 'Canary: earns no outcome and never marks its task tried (remote-gym-service.ts RX-11).' }
@@ -184,12 +197,14 @@ export function gymRunView(run: Pick<LoopRunRecord, 'status' | 'loop_name' | 'me
     stop = 'void';
     answer = `VOID: ${res.void} — the attempt does not count`;
     // genome-registry.ts GENOME_FIRE_CHECK: a VOID attempt is served again, never paired, earns no outcome; INFRA_GIVE_UP = 3
-    next = { label: 'served again', detail: 'Served again: a VOID attempt earns no outcome and is never paired; after 3 (INFRA_GIVE_UP) the task is unscorable for this genome (genome-registry.ts).' };
+    next = isPl ? { label: reServed.label, detail: reServed.detail }
+      : { label: 'served again', detail: 'Served again: a VOID attempt earns no outcome and is never paired; after 3 (INFRA_GIVE_UP) the task is unscorable for this genome (genome-registry.ts).' };
   } else if (status === 'quarantined') {
     stop = 'quarantined';
     answer = `Quarantined: the worker reported success, the hack classifier flagged ${res.hack_flags?.join(', ') || 'it'}`;
     // remote-gym-service.ts record(): a flagged success is 'quarantined', recorded as a non-win tagged gym:quarantined
-    next = { label: 'quarantined', detail: 'Quarantined: recorded as a non-win outcome tagged gym:quarantined; not a win for fitness, gym statistics or genome trials (remote-gym-service.ts record).' };
+    next = isPl ? { label: 'experiment record', detail: 'PL-001 attempt: a quarantined success is an observation of "not verified" and counts toward the harm rule; no skill outcome (pl-001.ts).' }
+      : { label: 'quarantined', detail: 'Quarantined: recorded as a non-win outcome tagged gym:quarantined; not a win for fitness, gym statistics or genome trials (remote-gym-service.ts record).' };
   } else if (status === 'discarded' && isInfra) {
     stop = serverSettled ? 'lost' : 'infra-discarded';
     answer = `Infra discard: ${reason!.replace(/^infra:\s*/, '')} — ${reServed.short}`;

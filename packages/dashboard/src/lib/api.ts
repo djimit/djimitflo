@@ -328,6 +328,33 @@ export interface EvolutionEvidence {
   procedure_selection?: { mode: string; delivered: false; procedure: { id: string; version: number; lines_sha256: string } | null;
     window_24h: { applies: number | null; does_not_apply: number | null }; window_7d: { applies: number | null; does_not_apply: number | null };
     top_failed_clauses_7d: Array<{ clause: string; n: number }> | null };
+  /** PL-001 (PL_001_MODE): with vs without the procedure lines on a frozen set of applicable repair tasks (services/pl-001.ts); unknown is null, never 0 */
+  pl_001?: Pl001Evidence;
+}
+export type Pl001Verdict = 'SUPPORTED' | 'NOT_SUPPORTED' | 'INCONCLUSIVE' | 'STOPPED_FOR_HARM';
+export interface Pl001Paired { n_pairs: number; both_verified: number; b_only_B: number; c_only_A: number; neither: number; verified_A: number | null; verified_B: number | null;
+  rate_A: number | null; rate_B: number | null; p_one_sided: number | null; supported: boolean | null }
+export interface Pl001Evidence {
+  mode: 'on' | 'off'; experiment_id: string; protocol: string; prereg_sha256: string; loop_name: string;
+  status: 'not_frozen' | 'invalid_manifest' | 'waiting_start' | 'collecting' | 'exhausted' | 'stopped';
+  procedure: { id: string; version: number | null; lines_sha256: string | null; protocol_lines_sha256: string; digest_matches: boolean | null; status: string | null;
+    lifecycle: { verdict?: string; status?: string; reason?: string; decided_at?: string; promoted?: boolean; negative_evidence?: string } | null };
+  start_condition: { genomes: Array<{ id: string; status: string | null }>; settled: boolean; cap_share: number; open: boolean; rule: 'settled' | 'cap_share' | 'waiting' };
+  selector_check: { n: number; does_not_apply: number; applies: string[]; ok: boolean } | null;
+  targets: { pairs: number; tasks: number; max_days: number; alpha: number };
+  freeze_refused: { reason: string; at: string } | null;
+  manifest: { frozen_at: string; sha256: string; tasks: number; species: string; step_budget: number; by_kind: { mutant: number; mined: number }; by_tier: Record<string, number>;
+    first_arm: { A: number; B: number }; valid: boolean; reason: string | null } | null;
+  pairs: { done: number; analysed: number; target: number; invalid_tasks: number; tasks: number } | null;
+  arms: Array<{ arm: 'A' | 'B'; name: string; observations: number; verified: number; not_verified: number; infra_censored: number; invalid: number; pending: number;
+    physical_attempts: number; infra_attempts: number; void_attempts: number; infra_rate: number | null; tokens: { known: number; unknown: number; mean_known: number | null };
+    graded_mean: number | null; maker_ms_median: number | null; out_of_scope_or_hack: number }>;
+  primary: Pl001Paired | null; sensitivity: Pl001Paired | null;
+  secondary: { graded_mean_diff_B_minus_A: number | null; graded_pairs: number; maker_ms_median_diff_B_minus_A: number | null; maker_ms_pairs: number; note: string } | null;
+  harm: { e_value: number | null; threshold: number; canary_solved: number | null; scope_hack: { A: number; B: number }; margin: number; triggered: boolean; reason: string | null } | null;
+  stop: { first_attempt_at: string | null; day_limit_at: string | null; stopped: boolean; reason: string | null } | null;
+  verdict: Pl001Verdict | null;
+  runs: Array<{ task_key: string; arm: 'A' | 'B'; run_id: string; status: string; reason: string; void: string | null; verified: boolean; at: string }>;
 }
 export type FalsifierCounts = { submitted: number; rejected: number; red_at_base: number; green_at_base: number; unknown: number; settled_green: number; expired: number; pending: number };
 export interface FalsifierEvidence {
