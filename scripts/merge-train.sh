@@ -40,7 +40,6 @@ SETTLE="${MT_HEAD_SETTLE_S:-30}"; SETTLE_POLL="${MT_HEAD_SETTLE_POLL_S:-5}"
 GH_TIMEOUT="${MT_GH_TIMEOUT_S:-60}"
 ASSERTIONS="${MT_ASSERTIONS:-}"
 TEST_ONLY_DIFF_MAX=400                                     # loop-worker-executor-service.ts TEST_ONLY_DIFF_MAX
-DEFAULT_REQUIRED='build-and-test (22),build-and-test (24),security-scan,sbom,gitleaks'   # main protection, 2026-10-12
 MARK_READY=0
 READONLY=0
 CUR_PR=""; CUR_HEAD=""; CUR_KEY=""
@@ -89,7 +88,7 @@ mt_gh() {   # mt_gh pr <verb> N --flag VALUE: REST calls that gh has no pinned-s
   case "$verb" in
     update-branch) ghx api -X PUT "repos/$REPO_SLUG/pulls/$n/update-branch" -f "expected_head_sha=$v" ;;
     merge-at)      ghx api -X PUT "repos/$REPO_SLUG/pulls/$n/merge" -f merge_method=squash -f "sha=$v" ;;
-    checks-at)     checks_verdict "$v" | jq -r 'if .verdict == "green" then "pass" elif .verdict == "red" then "fail red:\(.red|join(","))"
+    checks-at)     checks_verdict "$v" | jq -r 'if .verdict == "green" then "pass" elif .verdict == "red" then "fail red:\(.red|join(","))\(if .reason then " " + .reason else "" end)"
                      else "pending missing:\(.missing|join(",")) pending:\(.pending|join(","))\(if .reason then " " + .reason else "" end)" end' ;;
     *) echo "mt_gh: unknown verb $verb" >&2; return 64 ;;
   esac
@@ -107,14 +106,17 @@ superseded() { grep -q "\"event\":\"superseded\",\"pr\":\"$1\",\"head\":\"$2\"" 
 own_update() { grep -q "\"event\":\"branch_updated\",\"pr\":\"$1\",\"head\":\"$2\",\"key\":\"$3\"" "$LEDGER"; }
 
 # --- CI on one exact sha (mirrors loop-auto-merge.ts checks() + the required contexts of branch protection) -----------
-required_json() {
+required_json() {   # unreadable protection is never replaced by a remembered list: source unavailable ⇒ HOLD, re-read next call
   local f="$MT_TMP/required.json"
   if [ ! -s "$f" ]; then
-    local src ctx
+    local src ctx q='[(.contexts // [])[], ((.checks // [])[] | .context)] | unique | join(",")'
     if [ -n "${MT_REQUIRED_CHECKS:-}" ]; then src=env; ctx="$MT_REQUIRED_CHECKS"
-    elif ctx="$(ghx api "repos/$REPO_SLUG/branches/$BASE_BRANCH/protection/required_status_checks" -q '[(.contexts // [])[], ((.checks // [])[] | .context)] | unique | join(",")' 2>/dev/null)" && [ -n "$ctx" ]; then src=branch_protection
-    else src=default_20261012_assessment; ctx="$DEFAULT_REQUIRED"; fi
-    jq -cn --arg c "$ctx" --arg s "$src" '{source: $s, contexts: ($c | split(",") | map(select(length > 0)))}' > "$f"
+    elif ctx="$(ghx api "repos/$REPO_SLUG/branches/$BASE_BRANCH/protection/required_status_checks" -q "$q" 2>/dev/null)" && [ -n "$ctx" ]; then src=branch_protection
+    elif ctx="$(ghx api "repos/$REPO_SLUG/branches/$BASE_BRANCH" -q ".protection.required_status_checks // {} | $q" 2>/dev/null)" && [ -n "$ctx" ]; then src=branch_protection   # read access suffices
+    else src=unavailable; ctx=""; fi
+    jq -cn --arg c "$ctx" --arg s "$src" '{source: $s, contexts: ($c | split(",") | map(select(length > 0)))}' > "$f.new"
+    if [ "$src" = unavailable ]; then cat "$f.new"; return 0; fi
+    mv "$f.new" "$f"
   fi
   cat "$f"
 }
@@ -126,18 +128,24 @@ checks_verdict() {   # → {verdict: green|pending|red, red, pending, missing, r
   st="$(ghx api "repos/$REPO_SLUG/commits/$sha/status" 2>/dev/null || true)"
   json_or_null "$runs" > "$d/runs.json"; json_or_null "$st" > "$d/status.json"   # files, not argv: responses can be large
   jq -cn --slurpfile R "$d/runs.json" --slurpfile S "$d/status.json" --argjson req "$(required_json)" '
+    def newest(k): group_by(k) | map(max_by([(.id // 0), (.completed_at // .updated_at // "")]));   # a rerun replaces the run it re-ran
     $R[0] as $runs | $S[0] as $st |
-    if $runs == null then {verdict: "pending", red: [], pending: [], missing: $req.contexts, reason: "check_runs_unavailable"} else
-    ($runs.check_runs // []) as $cr | (($st // {}).statuses // []) as $ss | (($st // {}).state // "") as $state |
+    if $req.source == "unavailable" then {verdict: "pending", red: [], pending: [], missing: [], reason: "required_checks_unavailable"}
+    elif $runs == null then {verdict: "pending", red: [], pending: [], missing: $req.contexts, reason: "check_runs_unavailable"} else
+    ($runs.check_runs // [] | newest(.name)) as $cr | (($st // {}).statuses // [] | newest(.context)) as $ss | (($st // {}).state // "") as $state |
+    # a REQUIRED context is green only on success: skipped, neutral, cancelled, stale (any other completed conclusion) is red
+    ([$cr[] | select(.status == "completed" and .conclusion != "success" and (.name | IN($req.contexts[]))) | {n: .name, c: .conclusion}]
+      + [$ss[] | select((.state | IN("success", "pending") | not) and (.context | IN($req.contexts[]))) | {n: .context, c: .state}]) as $reqbad |
     ([$cr[] | select(.status == "completed" and (.conclusion | IN("failure", "timed_out", "action_required", "startup_failure"))) | .name]
-      + [$ss[] | select(.state == "failure" or .state == "error") | .context]) as $red |
+      + [$ss[] | select(.state == "failure" or .state == "error") | .context] + [$reqbad[].n] | unique) as $red |
     ([$cr[] | select(.status != "completed" or .conclusion == "cancelled" or .conclusion == "stale") | .name]
       + [$ss[] | select(.state == "pending") | .context]) as $pend |
     ([$cr[].name] + [$ss[].context]) as $seen |
     [$req.contexts[] | . as $r | select(($seen | index($r)) == null)] as $missing |
     {verdict: (if ($red | length) > 0 or $state == "failure" or $state == "error" then "red"
                elif ($pend | length) > 0 or ($missing | length) > 0 or (($cr | length) + ($ss | length)) == 0 then "pending"
-               else "green" end), red: $red, pending: $pend, missing: $missing} end'
+               else "green" end), red: $red, pending: $pend, missing: $missing}
+    + (if ($reqbad | length) > 0 then {reason: ("required_not_success:" + ([$reqbad[] | "\(.n)=\(.c)"] | join(",")))} else {} end) end'
 }
 
 # --- eligibility (mirrors the #754 shadow: loop-auto-merge.ts runAutoMergeTick, applied to the CURRENT head) ---------

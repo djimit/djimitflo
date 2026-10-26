@@ -29,6 +29,8 @@ let prs: Map<number, FakePr>; let checks: Map<string, 'green' | 'pending' | 'red
 let calls: Array<{ method: string; url: string; body?: unknown }>;
 let commitsBySha: Map<string, { parents: Array<{ sha: string }>; committer: { login: string }; commit: { verification: { verified: boolean } } }>;
 let commitStatus: Map<string, unknown>; let behindBy: Map<string, number>;
+// branch protection's required contexts (null = unreadable) and explicit check runs per sha (override the `checks` shorthand)
+let required: string[] | null; let runsBySha: Map<string, unknown[]>; let summaryRequired: string[] | null;
 const NOW = new Date('2026-10-07T12:00:00Z');
 const env = (mode: string, extra: Record<string, string> = {}) => ({ LOOP_AUTO_MERGE_TEST_ONLY: mode, GITHUB_REPOSITORY: 'o/r', GITHUB_TOKEN: 't0ken', ...extra }) as NodeJS.ProcessEnv;
 const res = (status: number, body: unknown) => ({ ok: status < 300, status, json: async () => body }) as Response;
@@ -47,9 +49,12 @@ const fakeFetch = vi.fn(async (url: string, init?: { method?: string; body?: str
   if ((m = /^pulls\/(\d+)\/reviews$/.exec(path))) return res(200, prs.get(Number(m[1]))?.reviews ?? []);
   if ((m = /^pulls\/(\d+)\/update-branch$/.exec(path))) { prs.get(Number(m[1]))!.mergeable_state = 'clean'; return res(202, {}); }
   if ((m = /^pulls\/(\d+)\/merge$/.exec(path))) { const p = prs.get(Number(m[1]))!; p.state = 'closed'; return res(200, { sha: `merge${p.number}`, merged: true }); }
+  if (path === 'branches/main/protection/required_status_checks') return required ? res(200, { contexts: required, checks: [] }) : res(404, {});
+  if (path === 'branches/main') return summaryRequired ? res(200, { protection: { enabled: true, required_status_checks: { checks: summaryRequired.map((context) => ({ context })) } } }) : res(404, {});
   if ((m = /^commits\/([^/]+)\/check-runs$/.exec(path))) {
+    const explicit = runsBySha.get(m[1]); if (explicit) return res(200, { check_runs: explicit });
     const s = checks.get(m[1]); if (!s) return res(200, { check_runs: [] });
-    return res(200, { check_runs: [{ status: s === 'pending' ? 'in_progress' : 'completed', conclusion: s === 'red' ? 'failure' : s === 'green' ? 'success' : null }] });
+    return res(200, { check_runs: [{ id: 1, name: 'build', status: s === 'pending' ? 'in_progress' : 'completed', conclusion: s === 'red' ? 'failure' : s === 'green' ? 'success' : null }] });
   }
   if ((m = /^commits\/([^/]+)\/status$/.exec(path))) return res(200, commitStatus.get(m[1]) ?? { state: 'pending', total_count: 0 });
   if ((m = /^commits\/([^/]+)$/.exec(path))) { const c = commitsBySha.get(m[1]); return c ? res(200, c) : res(404, {}); }
@@ -81,6 +86,7 @@ const decision = (number: number) => JSON.parse((db.prepare('SELECT metadata FRO
 beforeEach(() => {
   db = new Database(':memory:'); db.exec(schema); runMigrations(db);
   prs = new Map(); checks = new Map(); mainCommits = []; commitsBySha = new Map(); calls = []; commitStatus = new Map(); behindBy = new Map(); fakeFetch.mockClear();
+  required = ['build']; runsBySha = new Map(); summaryRequired = null;
 });
 afterEach(() => { setPushSender(null); db.close(); });
 
@@ -168,6 +174,7 @@ it('act: ready → update branch → wait for checks → squash-merge, with a lo
 
 it('P0-5: the PR-review heuristic status (djimitflo-review) never makes a PR green; an independent check does', async () => {
   seedPr(700, { draft: false }); checks.delete('sha700'); // no check runs: only the heuristic reported
+  required = ['ci/test']; // the required context is a commit status here
   commitStatus.set('sha700', { state: 'success', total_count: 1, statuses: [{ context: 'djimitflo-review', state: 'success' }] });
   await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), NOW);
   expect(decision(700)).toMatchObject({ decision: 'waiting', reason: 'checks_pending' });
@@ -182,6 +189,70 @@ it('act: red checks make the PR ineligible and it is never merged', async () => 
   await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), NOW);
   expect(decision(700)).toMatchObject({ decision: 'ineligible', reason: 'checks_failed' });
   expect(writes()).toEqual([]);
+});
+
+// No false green (10-26): a required context is green only on success of its newest run on the exact head; unreadable
+// branch protection is 'waiting', never a merge.
+const run = (id: number, name: string, conclusion: string | null, status = 'completed') => ({ id, name, status, conclusion, completed_at: conclusion ? `2026-10-07T0${id}:00:00Z` : null });
+for (const c of ['skipped', 'neutral']) {
+  it(`act: a required check with ${c} is not green — ineligible checks_failed with required_not_success, never merged`, async () => {
+    seedPr(700, { draft: false }); required = ['build', 'sbom'];
+    runsBySha.set('sha700', [run(1, 'build', 'success'), run(2, 'sbom', c)]);
+    await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), NOW);
+    expect(decision(700)).toMatchObject({ decision: 'ineligible', reason: `checks_failed: required_not_success:sbom=${c}` });
+    expect(isTransientReason(decision(700).reason)).toBe(true);
+    expect(writes()).toEqual([]);
+  });
+}
+
+it('act: a newer red run next to an older green run of the same name is red; a newer green rerun of a red run is green', async () => {
+  seedPr(700, { draft: false });
+  runsBySha.set('sha700', [run(1, 'build', 'success'), run(2, 'build', 'failure')]);
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), NOW);
+  expect(decision(700)).toMatchObject({ decision: 'ineligible', reason: 'checks_failed' });
+  seedPr(702, { draft: false });
+  runsBySha.set('sha702', [run(1, 'build', 'failure'), run(2, 'build', 'success')]);
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), NOW);
+  expect(decision(702)).toMatchObject({ decision: 'merged' });
+  seedPr(703, { draft: false }); // a newer skipped run hides nothing: not green
+  runsBySha.set('sha703', [run(1, 'build', 'success'), run(2, 'build', 'skipped')]);
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), NOW);
+  expect(decision(703)).toMatchObject({ decision: 'ineligible', reason: 'checks_failed: required_not_success:build=skipped' });
+  expect(writes().filter((c) => c.url.endsWith('/merge')).map((c) => c.url)).toEqual(['https://api.github.com/repos/o/r/pulls/702/merge']);
+});
+
+it('act: a required check still running or not reported is waiting checks_pending', async () => {
+  seedPr(700, { draft: false }); required = ['build', 'sbom'];
+  runsBySha.set('sha700', [run(1, 'build', 'success'), run(2, 'sbom', null, 'in_progress')]);
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), NOW);
+  expect(decision(700)).toMatchObject({ decision: 'waiting', reason: 'checks_pending' });
+  runsBySha.set('sha700', [run(1, 'build', 'success')]); // sbom missing
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), NOW);
+  expect(decision(700)).toMatchObject({ decision: 'waiting', reason: 'checks_pending' });
+  expect(writes()).toEqual([]);
+});
+
+it('act: unreadable branch protection is waiting required_checks_unavailable, never a merge', async () => {
+  seedPr(700, { draft: false }); required = null;
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), NOW);
+  expect(decision(700)).toMatchObject({ decision: 'waiting', reason: 'required_checks_unavailable' });
+  expect(writes()).toEqual([]);
+  seedPr(702); // shadow does not claim would_merge either
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('shadow'), NOW);
+  expect(decision(702)).toMatchObject({ decision: 'waiting', reason: 'required_checks_unavailable' });
+  summaryRequired = ['build', 'sbom']; // the branch summary (read access) is the same live source; sbom not reported yet
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), NOW);
+  expect(decision(700)).toMatchObject({ decision: 'waiting', reason: 'checks_pending' });
+  summaryRequired = null; required = ['build']; // readable again: merges on the next tick
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), NOW);
+  expect(decision(700)).toMatchObject({ decision: 'merged' });
+});
+
+it('act: a non-required skipped or neutral check is still fine', async () => {
+  seedPr(700, { draft: false });
+  runsBySha.set('sha700', [run(1, 'build', 'success'), run(2, 'docs', 'skipped'), run(3, 'optional', 'neutral')]);
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), NOW);
+  expect(decision(700)).toMatchObject({ decision: 'merged' });
 });
 
 it('cap: LOOP_AUTO_MERGE_MAX_PER_DAY bounds merges in a rolling 24 h', async () => {
