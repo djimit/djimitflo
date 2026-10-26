@@ -515,7 +515,17 @@ export type OperatorCockpit = {
   /** null = that count could not be read; total = distinct things waiting (server-side dedupe) */
   needs_you?: { approvals: number | null; requeue: number | null; labels: number | null; memory_review: number | null;
     proposals?: number | null; draft_prs?: number | null; open_prs?: number | null; stalls?: number | null; approvals_expiring?: number | null;
-    join_requests?: number | null; shell_requests?: number | null; shared_subjects?: number | null; total?: number | null;
+    join_requests?: number | null; shell_requests?: number | null; shared_subjects?: number | null;
+    /** human decisions only (server-side); labels, stalls and panel-reviewed proposals are not in it */
+    total?: number | null;
+    /** open loop PRs: audit-sample PRs (one weekly batch) and flagged PRs the auto-merge lane did not take */
+    audit_batch?: number | null; flagged_prs?: number | null;
+    /** Dependabot PRs the dependency lane leaves to a human; dependency_tracked false = lane off, not tracked */
+    dependency_human?: number | null; dependency_tracked?: boolean;
+    /** ground-truth labelling: optional, its own count, never a decision */
+    optional_labelling?: { d5: number | null; car: number | null; e1: number | null; di001: number | null; total: number | null } | null;
+    /** what the system handles (shown, never counted) */
+    system?: { requeue_will_handle: number | null; requeue_mode: string | null; proposals_auto_reviewed: boolean };
     system_requeue?: Partial<Record<'budgeted_requeue' | 'attribution_unknown' | 'not_actionable', number>> | null };
   /** UX-8: schedulers this server armed at boot vs off */
   schedulers?: { armed: number; off: number;
@@ -577,9 +587,12 @@ export type DependencyLane = { mode: 'off' | 'shadow' | 'act'; effective_mode: '
 
 export type DecisionsInbox = {
   requeue: Array<{ id: string; title: string; status: string; updated_at: string; requeued_as: string | null;
-    queue_class?: 'operator' | 'budgeted_requeue' | 'attribution_unknown' | 'not_actionable' | 'requeued' | 'no_change' }>;
+    queue_class?: 'operator' | 'budgeted_requeue' | 'attribution_unknown' | 'not_actionable' | 'requeued' | 'no_change';
+    /** REQUEUE_AUTO_MODE policy verdict (absent when off): requeue / dismiss / wait = system will handle; hold = needs you */
+    auto?: { mode: 'shadow' | 'on'; action: 'requeue' | 'dismiss' | 'wait' | 'hold'; cls: string; reason: string } | null }>;
   /** untruncated counts over the same filters as the paginated lists; null = the count failed */
-  totals?: Record<string, number | null | Record<string, number>>;
+  totals?: { [count: string]: unknown;
+    requeue_auto?: { mode: 'off' | 'shadow' | 'on'; will_handle: number; held: number; by_action: Partial<Record<'requeue' | 'dismiss' | 'wait' | 'hold', number>> } | null };
   /** Cockpit 3.0 Phase 3 shadow ranking: score = expected_gain × reversibility / operator_minutes; null = insufficient evidence */
   ranking?: Array<{ kind: 'requeue' | 'loop_pr' | 'label' | 'memory_review'; id: string; title: string; expected_gain: number | null;
     reversibility: number; operator_minutes: number; score: number | null; evidence: string[] }>;
@@ -588,7 +601,8 @@ export type DecisionsInbox = {
     labelled: number; wrong: number; false_rejection_pct: number | null; enforce_threshold: string;
   };
   telegram: Array<{ telegram_user_id: string; user_id: string; email: string | null; role: string | null; added_by: string; created_at: string }>;
-  memory: Array<{ id: string; title: string; content: string; memory_type: string; status: string; created_at: string }>;
+  /** template_duplicate: system dedup work (a memory_template_duplicate judgment), not counted as a human decision */
+  memory: Array<{ id: string; title: string; content: string; memory_type: string; status: string; created_at: string; template_duplicate?: number | boolean }>;
   autonomy: Array<{ cls: string; human_approved: number; auto_approved: number; denied: number; expired: number; verified: number; regressed: number; infra: number; pending: number; earned: boolean; why: string }>;
   /** §16 step 4: this week's seeded CAR audit sample of computed attributions; the operator labels, the system never does */
   attribution_audit: {
