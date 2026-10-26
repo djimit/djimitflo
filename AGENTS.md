@@ -71,8 +71,8 @@ Agents do not modify these without an explicit operator OK in the task or plan. 
 - Deploy and merge: `scripts/deploy-vps.sh`, `scripts/auto-deploy.sh`, `scripts/merge-train.sh`, `scripts/systemd/`,
   `Dockerfile`, `docker-entrypoint.sh`, `.github/workflows/`.
 - Secrets: `.env*`, `runtime.env`, any token or key file. Never print, log or commit a secret value.
-- Frozen experiment surface (TG-001 r2): `packages/server/src/services/tg-001.ts`, `remote-gym-service.ts`,
-  `scripts/gym-worker.mjs`.
+- Frozen experiment surface: none. TG-001 closed INCONCLUSIVE on 2026-10-26 (`docs/research/ace/TG-001_PROTOCOL.md`), so
+  `packages/server/src/services/tg-001.ts`, `remote-gym-service.ts` and `scripts/gym-worker.mjs` are no longer frozen.
 - Evidence registries: `docs/research/negative-evidence/NEGATIVE_EVIDENCE.yaml`, `openspec/specs/core-invariants/`.
 - Workspace doctrine: `SOUL.md`, `USER.md`. Generated files (`TOOLS.md`, `HEARTBEAT.md`, `openwiki/`): change the source.
 - Anything a maker/checker/panel sees while an experiment runs (assignments, `LOOP_WORK.md`, prompts, examples, memory rules).
