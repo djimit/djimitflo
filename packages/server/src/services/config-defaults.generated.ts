@@ -98,6 +98,8 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   OUTCOME_ATTRIBUTION_ENABLED: 'off',
   PANEL_FALLBACK_MODEL: '`haiku`',
   PANEL_FALLBACK_RUNTIME: 'off (`claude`)',
+  PL_001_CAP_SHARE: '0 (0–1)',
+  PL_001_MODE: 'off (`on`)',
   POLICY_VIOLATION_LOG: 'off (`shadow`: §16 step 8 — every gate that already detects a policy breach also writes one `policy_violations` row (`a…',
   PROCEDURE_SELECTOR_MODE: 'off (`shadow`)',
   REQUEUE_AUTO_MAX_PER_TICK: '3 (clamped 1..20; dismisses: at most 10 per tick)',

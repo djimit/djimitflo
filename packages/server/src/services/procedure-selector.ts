@@ -56,7 +56,7 @@ export const linesSha256 = (lines: readonly string[]): string => createHash('sha
 export function ensureProcedures(db: Database, now = new Date().toISOString()): void {
   db.prepare(`INSERT OR IGNORE INTO maker_genomes (id, parent_id, gene, lines_json, origin, status, note, created_at, updated_at, evidence_sources_json)
     VALUES (?, NULL, 'procedure', ?, 'procedure', 'candidate', ?, ?, ?, ?)`).run(PROCEDURE_ID, JSON.stringify(PROCEDURE_LINES),
-    'PL-001 procedure: shadow selection only (PROCEDURE_SELECTOR_MODE), never served to a maker', now, now,
+    'PL-001 procedure: shadow selection (PROCEDURE_SELECTOR_MODE); its lines reach only PL-001 gym arm B (PL_001_MODE), never a production maker', now, now,
     JSON.stringify({ procedure: { version: PROCEDURE_VERSION, applicability: PROCEDURE_CONTRACT, sources: PROCEDURE_SOURCES } }));
 }
 
