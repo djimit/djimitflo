@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { EXPERIMENT_WIP_LIMIT, experimentDefs, experimentsReport, wipCheck, type ExperimentDef } from '../services/experiment-registry';
+import { EXPERIMENT_WIP_LIMIT, TG_001_CLOSED, experimentDefs, experimentsReport, wipCheck, type ExperimentDef } from '../services/experiment-registry';
 import { detectStallsWithHealth } from '../services/stall-watch';
 import { buildEvolutionEvidence } from '../services/evolution-evidence';
 import { readFileSync } from 'fs';
@@ -71,6 +71,33 @@ it("stall watch 'experiment_overdue' fires after a registered stop date and name
   expect(det?.detail ?? '').not.toContain('no stop date');
   const after = detectStallsWithHealth(db, Date.parse('2026-11-07T00:00:00Z'), {});
   expect(after.stalls.find((s) => s.subsystem === 'experiment:X1')?.detail).toContain('past stop_by 2026-11-06');
+});
+
+it('TG-001 is closed INCONCLUSIVE at 20 tasks by the operator (amendment 2026-10-26); the stall watch no longer reports it after stop_by', () => {
+  expect(TG_001_CLOSED).toEqual({ verdict: 'INCONCLUSIVE', decided_on: '2026-10-26', source: 'docs/research/ace/TG-001_PROTOCOL.md#amendment-2026-10-26-closed-inconclusive-at-20-tasks' });
+  // the close cites a protocol amendment that exists and records the same decision
+  const [file, anchor] = TG_001_CLOSED.source.split('#');
+  const doc = readFileSync(join(__dirname, '../../../..', file), 'utf8');
+  const heading = doc.split('\n').find((l) => l.startsWith('## ') && l.slice(3).toLowerCase().replace(/[^a-z0-9 -]/g, '').replace(/ /g, '-') === anchor);
+  expect(heading).toBe('## Amendment 2026-10-26: closed INCONCLUSIVE at 20 tasks');
+  const tg = experimentDefs().find((d) => d.id === 'TG-001')!;
+  expect(tg.closed).toBe(TG_001_CLOSED);
+  // status() carries the closing verdict whether or not the evidence can be read or windowed
+  expect(tg.status(db, {}, NOW, tg.started_at).verdict).toBe('INCONCLUSIVE');
+  expect(tg.status(db, {}, NOW, '2026-10-20T00:00:00.000Z')).toEqual({ n_per_arm: null, verdict: 'INCONCLUSIVE' });
+  // past stop_by (2026-11-18): the registry and the stall watch's experiment_overdue no longer name TG-001
+  const late = Date.parse('2026-11-19T00:00:00Z');
+  const row = experimentsReport(db, {}, late).experiments.find((e) => e.id === 'TG-001')!;
+  expect(row).toMatchObject({ verdict: 'INCONCLUSIVE', overdue: false, overdue_reason: null, closed: TG_001_CLOSED });
+  expect(experimentsReport(db, {}, late).overdue).not.toContain('TG-001');
+  const stalls = detectStallsWithHealth(db, late, {}).stalls.map((s) => s.subsystem);
+  expect(stalls).not.toContain('experiment:TG-001');
+  // the same definition without the close is reported past stop_by: the close is what stops it, not the stop date passing
+  const open: ExperimentDef = { ...tg, closed: undefined, status: () => ({ n_per_arm: null, verdict: null }) };
+  expect(experimentsReport(db, {}, late, [open]).overdue).toEqual(['TG-001']);
+  // other experiments are unchanged: none carries a close, and an open one past its stop date is still overdue
+  expect(experimentDefs().filter((d) => d.closed).map((d) => d.id)).toEqual(['TG-001']);
+  expect(stalls).toContain('experiment:X1');
 });
 
 it('evolution-evidence carries the registry as the experiments section', () => {

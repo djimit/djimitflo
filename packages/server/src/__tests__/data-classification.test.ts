@@ -31,12 +31,14 @@ describe('DataClassification', () => {
       const rule = getClassificationRule(DataClassification.CONFIDENTIAL);
       expect(rule.encryption_required).toBe(true);
       expect(rule.redaction_required).toBe(true);
+      expect(rule.audit_required).toBe(true);
       expect(rule.provider_routing).toBe('private_only');
     });
 
     it('INTERNAL requires audit but no encryption', () => {
       const rule = getClassificationRule(DataClassification.INTERNAL);
       expect(rule.encryption_required).toBe(false);
+      expect(rule.redaction_required).toBe(false);
       expect(rule.audit_required).toBe(true);
       expect(rule.retention_days).toBe(730);
     });
