@@ -97,7 +97,7 @@ it('UX-13: the digest reports a seeded day and says so honestly on an empty one;
   expect(alerts).toHaveLength(1);
 });
 
-it('digest: counts and a /decisions deep link per section (approvals, D5 labels, memory, requeue, open loop PRs)', () => {
+it('digest: human decisions only in "Waiting for you", a deep link per section; labelling on its own optional line', () => {
   db.pragma('foreign_keys = OFF');
   const ins = db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, created_at, updated_at) VALUES (?, 'test', 't', 'd', 'r', 'gap_analysis', ?, ?, ?)`);
   ins.run('l1', 'needs_more_evidence', '2026-10-06T08:00:00Z', '2026-10-06T09:00:00Z');
@@ -109,8 +109,15 @@ it('digest: counts and a /decisions deep link per section (approvals, D5 labels,
   db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
     VALUES ('o1', 'test-gap', 'closed', 'completed', '[]', '{}', '[]', '[]', '{"pr_url":"https://github.com/o/r/pull/1"}', '2026-10-05T00:00:00Z', '2026-10-05T00:00:00Z')`).run();
   const d = buildDigest(db, NOON.getTime(), { DJIMITFLO_PUBLIC_URL: 'https://djimitflo.example' });
-  for (const line of ['Waiting for you: 3', '- 0 approvals: https://djimitflo.example/decisions#approvals', '- 1 pre-screen labels (D5): https://djimitflo.example/decisions#prescreen',
-    '- 0 memory reviews: https://djimitflo.example/decisions#memory', '- 1 requeue candidates: https://djimitflo.example/decisions#requeue', '- 1 open loop PRs: https://djimitflo.example/decisions#draft-prs']) expect(d.text).toContain(line);
-  expect(d.data.needs_you).toMatchObject({ labels: { count: 1, link: 'https://djimitflo.example/decisions#prescreen' }, open_prs: { count: 1 } });
-  expect(buildDigest(db, NOON.getTime(), {}).text).toContain('- 1 requeue candidates: /decisions#requeue'); // no public URL: path only
+  // the D5 label is optional labelling, not a decision: 0 approvals + 0 memory + 1 requeue + 0 audit batch + 1 flagged loop PR
+  for (const line of ['Waiting for you: 2', '- 0 approvals: https://djimitflo.example/decisions#approvals',
+    '- 0 memory reviews: https://djimitflo.example/decisions#memory', '- 1 requeue candidates no system handles: https://djimitflo.example/decisions#requeue',
+    '- 0 PRs in the weekly audit batch: https://djimitflo.example/decisions#audit-batch', '- 1 flagged loop PRs: https://djimitflo.example/decisions#draft-prs']) expect(d.text).toContain(line);
+  expect(d.text).toMatch(/Optional labelling \(not decisions\): D5 1, CAR 0, E1 0, DI-001 (\d+|unknown) — https:\/\/djimitflo\.example\/decisions#prescreen/);
+  expect(d.text).not.toContain('pre-screen labels (D5):');
+  expect(d.data.needs_you).toMatchObject({ open_prs: { count: 1 }, audit_batch: { count: 0 } });
+  expect(d.data.needs_you).not.toHaveProperty('labels');
+  expect(d.data.optional_labelling).toMatchObject({ labels: { count: 1, link: 'https://djimitflo.example/decisions#prescreen' } });
+  expect(d.data.needs_you).not.toHaveProperty('dependency_human'); // lane off: not tracked, so not a calm 0 either
+  expect(buildDigest(db, NOON.getTime(), {}).text).toContain('- 1 requeue candidates no system handles: /decisions#requeue'); // no public URL: path only
 });
