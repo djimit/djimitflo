@@ -79,6 +79,18 @@ describe('L-F06: vector memory TTL and deletion', () => {
     expect(service.getMemory(mem.id)).toBeNull();
   });
 
+  it('drops a row deleted through another instance from search, clusters and stats', async () => {
+    const a = await service.storeMemory({ content: 'typescript deleted elsewhere one' });
+    const b = await service.storeMemory({ content: 'typescript deleted elsewhere two' });
+    const other = new VectorMemoryService(db, new TestEmbeddingProvider());
+    expect(other.deleteMemory(a.id)).toBe(true);
+    expect(other.deleteMemory(b.id)).toBe(true);
+    // no getMemory() first: that path reconciles on its own and would hide a stale cache
+    expect(service.getStats().totalMemories).toBe(0);
+    expect(await service.getClusters(0)).toEqual([]);
+    expect(await service.search('typescript', 10, 0)).toEqual([]);
+  });
+
   it('deletes a memory that has feedback rows and a restart does not revive it', async () => {
     const mem = await service.storeMemory({ content: 'typescript with feedback' });
     service.recordFeedback(mem.id, 1);
@@ -135,11 +147,23 @@ describe('L-F07: duplicate unconfirmed evidence', () => {
     expect(JSON.parse(row.metadata_json).episodeIds).toEqual(['ep-1', 'ep-2', 'ep-3', 'ep-4', 'ep-5', 'ep-6']);
   });
 
-  it('still raises confidence for a new verified episode', () => {
+  it('does not raise confidence for identical fresh-id replays from a verified-labelled source', () => {
     const initial = curator.curate(episode('v-1', 'verified:audit')).record;
-    const merged = curator.curate(episode('v-2', 'verified:audit')).record;
-    expect(merged.confidence).toBeGreaterThan(initial.confidence);
-    const again = curator.curate(episode('v-2', 'verified:audit')).record;
-    expect(again.confidence).toBe(merged.confidence);
+    let latest = initial;
+    for (let i = 2; i <= 4; i++) latest = curator.curate(episode(`v-${i}`, 'verified:audit')).record;
+    expect(latest.id).toBe(initial.id);
+    expect(latest.confidence).toBe(initial.confidence);
+    expect(latest.content).toBe(initial.content);
+  });
+
+  it('keeps a contradictory update visible without changing confidence', () => {
+    const initial = curator.curate(episode('c-1', 'verified:audit')).record;
+    // same source, high word overlap, one statement negated
+    const contradiction = content.replace('unverified-statement-0', 'NOT-unverified-statement-0');
+    const merged = curator.curate({ ...episode('c-2', 'verified:audit'), content: contradiction }).record;
+    expect(merged.id).toBe(initial.id);
+    expect(merged.content).toContain(initial.content);
+    expect(merged.content).toContain('NOT-unverified-statement-0');
+    expect(merged.confidence).toBe(initial.confidence);
   });
 });

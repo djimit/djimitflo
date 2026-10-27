@@ -254,8 +254,15 @@ export class VectorMemoryService {
     return (Date.now() - new Date(vector.createdAt).getTime()) / 1000 > vector.ttl;
   }
 
-  /** Cached memories whose TTL has not elapsed. Expired durable rows are left for the explicit TTL purge worker. */
+  /**
+   * Cached memories that still have a durable row and whose TTL has not elapsed. Rows deleted elsewhere (another
+   * instance, the TTL purge worker, retention) are dropped from this cache; expired rows are left for the purge worker.
+   */
   private liveEntries(): Array<[string, MemoryVector]> {
+    const durable = new Set(this.db.prepare('SELECT id FROM vector_memories').pluck().all() as string[]);
+    for (const id of Array.from(this.index.keys())) {
+      if (!durable.has(id)) this.forget(id);
+    }
     return Array.from(this.index.entries()).filter(([, vector]) => !this.isExpired(vector));
   }
 
