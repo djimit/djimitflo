@@ -89,7 +89,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'SHIPPED_CODE_SCAN_MODE', acting: false },
   { name: 'GYM_ORPHAN_SWEEP', acting: true }, { name: 'PROCEDURE_SELECTOR_MODE', acting: false }, { name: 'GYM_STORE_DIFFS', acting: false }, { name: 'WEAK_ASSERTION_CHECK_MODE', acting: true }, { name: 'FAIL_BEFORE_PASS_AFTER_MODE', acting: false },
   { name: 'MAKER_DIFF_CAPTURE', acting: false }, { name: 'MAKER_WARM_DEPS', acting: true },
-  { name: 'POLICY_VIOLATION_LOG', acting: false },
+  { name: 'POLICY_VIOLATION_LOG', acting: false }, { name: 'HOST_TOKEN_WATCH_MODE', acting: false },
   { name: 'CHECKER_FAMILY_RANDOMISE', acting: true }, { name: 'CHECKER_CROSS_MODEL', acting: true }, { name: 'CHECKER_FAMILY_TARGET_PER_ARM', acting: false },
   { name: 'CHECKER_FAMILY_VERSION', acting: true },
   { name: 'ACE_001_MODE', acting: true },
