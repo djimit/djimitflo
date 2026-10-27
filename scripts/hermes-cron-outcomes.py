@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Skill inventory 2026-10-26, intervention 1: one signed `agent.outcome` per finished Hermes cron run x declared skill.
+"""Skill inventory 2026-10-26, intervention 1: one signed `agent.outcome` per finished Hermes cron run, naming every skill
+the job declares (one skill: `skill`/`skill_sha`; several: one `skills` list of {name, sha?}, at most 8). One event per run, not
+per run x skill, so the agent/job n counts runs (audit L-F05).
 
 Run on a Hermes host every 15 min (user crontab). Reads, never writes, the Hermes cron state:
   <hermes-home>/cron/jobs.json       job id -> name and declared skills (`skills`, else `skill`)
@@ -12,7 +14,7 @@ The skill hash is taken when this script runs, not when the run started. Hermes 
 changed after the run started (mtime > started_at) the installed file is not the one the run used: the event then carries
 the skill name without skill_sha (null, never a guess). A missing or ambiguous SKILL.md also gives no skill_sha.
 
-Idempotent twice over: the event_id is deterministic (agent-outcome:hermes-cron:<agent>:<execution id>:<skill>, so the
+Idempotent twice over: the event_id is deterministic (agent-outcome:hermes-cron:<agent>:<execution id>, so the
 Djimitflo ingest's INSERT OR IGNORE drops a re-post), and the state file remembers emitted execution ids (kept 7 days).
 Only runs that finished within --max-age-h (default 20) are emitted: a signed event is verified within 24 h of occurred_at
 (= the run's finished_at), anything older would be refused under FLEET_EVENT_SIGNATURES=enforce.
@@ -151,6 +153,7 @@ def collect(home, agent, emitter, state, now, max_age_s, key=None):
         if now - done > max_age_s:
             report['too_old'] += 1; continue
         name, skills = jobs[job_id]
+        pairs = []
         for skill in skills:
             path, why = files[skill]
             sha = None
@@ -166,14 +169,16 @@ def collect(home, agent, emitter, state, now, max_age_s, key=None):
                     why = None if sha else 'unreadable'
             if why:
                 report['unhashed'][skill + ':' + why] = report['unhashed'].get(skill + ':' + why, 0) + 1
-            e = emitter.build(agent, task_kind(name, job_id), status == 'completed', ref='hermes-cron:%s:%s' % (job_id, exec_id),
-                              duration_ms=int((done - start) * 1000) if start is not None and done >= start else None,
-                              skill=skill, skill_sha=sha)
-            e['event_id'] = 'agent-outcome:hermes-cron:%s:%s:%s' % (agent, exec_id, skill)
-            e['occurred_at'] = utc_z(done)
-            if key:
-                emitter.sign(e, *key)
-            out.append((exec_id, e))
+            pairs.append((skill, sha))
+        # one run = one outcome: a single skill keeps the original skill/skill_sha fields, several go in one `skills` list
+        named = dict(skill=pairs[0][0], skill_sha=pairs[0][1]) if len(pairs) == 1 else dict(skills=pairs)
+        e = emitter.build(agent, task_kind(name, job_id), status == 'completed', ref='hermes-cron:%s:%s' % (job_id, exec_id),
+                          duration_ms=int((done - start) * 1000) if start is not None and done >= start else None, **named)
+        e['event_id'] = 'agent-outcome:hermes-cron:%s:%s' % (agent, exec_id)
+        e['occurred_at'] = utc_z(done)
+        if key:
+            emitter.sign(e, *key)
+        out.append((exec_id, e))
         report['jobs'][job_id]['emit'] += 1
     report['events'] = len(out)
     return out, report
@@ -243,15 +248,18 @@ def selfcheck(emitter):
     state = {'emitted': {}}
     events, rep = collect(home, 'hermes-eve-v', emitter, state, now, 20 * 3600, ('eve-v', '0123456789abcdef', 'fixture-secret'))
     by_id = dict((e['event_id'], e) for _, e in events)
-    assert sorted(by_id) == sorted('agent-outcome:hermes-cron:hermes-eve-v:%s' % k for k in (
-        'e-ok:eve-daily-content-intelligence', 'e-ok:blog-publisher', 'e-fail:eve-daily-content-intelligence',
-        'e-fail:blog-publisher', 'e-dup:dup')), sorted(by_id)
-    ok = by_id['agent-outcome:hermes-cron:hermes-eve-v:e-ok:blog-publisher']
-    assert ok['success'] is True and ok['task_kind'] == 'cron:content-intelligence-briefing' and ok['skill'] == 'blog-publisher'
-    assert ok['skill_sha'] == emitter.skill_sha256(os.path.join(home, 'skills', 'productivity', 'blog-publisher', 'SKILL.md'))
+    # one event per run, whatever the number of declared skills (the agent's n counts runs, not run x skill)
+    assert sorted(by_id) == sorted('agent-outcome:hermes-cron:hermes-eve-v:%s' % k for k in ('e-ok', 'e-fail', 'e-dup')), sorted(by_id)
+    ok = by_id['agent-outcome:hermes-cron:hermes-eve-v:e-ok']
+    sha_of = lambda rel: emitter.skill_sha256(os.path.join(home, 'skills', rel, 'SKILL.md'))
+    assert ok['success'] is True and ok['task_kind'] == 'cron:content-intelligence-briefing' and 'skill' not in ok
+    assert ok['skills'] == [{'name': 'eve-daily-content-intelligence', 'sha': sha_of('consulting/eve-daily-content-intelligence')},
+                            {'name': 'blog-publisher', 'sha': sha_of('productivity/blog-publisher')}], ok['skills']
     assert ok['duration_ms'] == 100000 and ok['sig'] and ok['host'] == 'eve-v' and ok['occurred_at'].endswith('Z')
-    assert by_id['agent-outcome:hermes-cron:hermes-eve-v:e-fail:blog-publisher']['success'] is False
-    assert 'skill_sha' not in by_id['agent-outcome:hermes-cron:hermes-eve-v:e-dup:dup']  # two installed copies: no guess
+    assert ok['ref'] == 'hermes-cron:j1:e-ok'
+    assert by_id['agent-outcome:hermes-cron:hermes-eve-v:e-fail']['success'] is False
+    dup = by_id['agent-outcome:hermes-cron:hermes-eve-v:e-dup']  # a one-skill job keeps the single skill field
+    assert dup['skill'] == 'dup' and 'skill_sha' not in dup and 'skills' not in dup  # two installed copies: no guess
     assert rep['no_status'] == 2 and rep['too_old'] == 1 and rep['unhashed'] == {'dup:ambiguous': 1}, rep
     assert rep['jobs']['j1']['emit'] == 2 and 'j3' not in rep['jobs']
     # second pass after the first was recorded: nothing new
@@ -262,8 +270,9 @@ def selfcheck(emitter):
     # a skill patched after the run started: name kept, hash withheld
     os.utime(os.path.join(home, 'skills', 'productivity', 'blog-publisher', 'SKILL.md'), None)
     fresh, rep3 = collect(home, 'hermes-eve-v', emitter, {'emitted': {}}, now, 20 * 3600)
-    patched = [e for _, e in fresh if e['skill'] == 'blog-publisher']
-    assert patched and all('skill_sha' not in e for e in patched) and rep3['unhashed']['blog-publisher:changed-since-run'] == 2, rep3
+    patched = [s for _, e in fresh for s in e.get('skills', []) if s['name'] == 'blog-publisher']
+    assert len(patched) == 2 and all('sha' not in s for s in patched) and rep3['unhashed']['blog-publisher:changed-since-run'] == 2, rep3
+    assert all('sha' in s for _, e in fresh for s in e.get('skills', []) if s['name'] != 'blog-publisher')
     # state round trip prunes entries older than 7 days
     sp = os.path.join(d, 'state', 's.json')
     save_state(sp, {'emitted': {'keep': now, 'drop': now - 8 * 86400}}, now)
