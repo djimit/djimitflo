@@ -7,7 +7,9 @@ const fetchFunnel = async () => {
   return { funnel, calibration: calibration.specialists };
 };
 
-const pct = (n: number, d: number) => (d > 0 ? `${Math.round((n / d) * 100)}%` : '—');
+const pct = (n: number | null, d: number | null) => (n !== null && d !== null && d > 0 ? `${Math.round((n / d) * 100)}%` : '—');
+/** UX-004: a failed or absent read is unknown, never 0 */
+const known = (value: number | null | undefined) => (value === null || value === undefined ? 'unknown' : value);
 
 function Stat({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
   return (
@@ -27,6 +29,14 @@ export function ImprovementFunnelPage() {
   const decided = Object.values(funnel?.panel.decisions ?? {}).reduce((a, b) => a + b, 0);
   const linkedGoal = funnel?.panel.linkedDecisions.goal ?? 0;
   const childGoals = funnel?.refinement.childGoals;
+  const unavailable = funnel?.unavailable ?? {};
+  /** hint text with the read failure appended, so an unknown value says why */
+  const why = (metric: string, hint?: string) => [hint, unavailable[metric] && `unavailable — ${unavailable[metric]}`].filter(Boolean).join(' · ') || undefined;
+  const queues = funnel?.queues;
+  const listed = queues?.workItemsByLoop.reduce((a, w) => a + w.n, 0) ?? 0;
+  const groups = queues?.workItemGroups ?? null;
+  const notListed = queues?.openWorkItems == null ? null : queues.openWorkItems - listed;
+  const medianWindow = funnel?.kpi.medianHoursWindowDays;
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
@@ -45,25 +55,27 @@ export function ImprovementFunnelPage() {
       {funnel && (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Stat label="Proposals" value={funnel.proposals.total} />
+            <Stat label="Proposals" value={unavailable.proposals ? 'unknown' : funnel.proposals.total} hint={why('proposals', 'all time, every status')} />
             <Stat label="Panel goal rate" value={funnel.panel.goalRate === null ? '—' : pct(linkedGoal, funnel.panel.linkedDecided)} hint={`${linkedGoal} of ${funnel.panel.linkedDecided} proposal-linked panel decisions (${decided} panels in total)`} />
-            <Stat label="Refinement reached goal" value={pct(childGoals?.reachedGoal ?? 0, funnel.refinement.children)} hint={`${childGoals?.reachedGoal ?? 0} of ${funnel.refinement.children} refinements · ${childGoals?.completed ?? 0} completed · ${childGoals?.failed ?? 0} failed`} />
-            <Stat label="Cognitive episodes" value={funnel.learning.cognitiveEpisodes} hint={`${funnel.learning.cognitiveStrategies} strategies`} />
+            <Stat label="Refinement reached goal" value={pct(childGoals?.reachedGoal ?? 0, funnel.refinement.children)} hint={why('refinementChildren', `${childGoals?.reachedGoal ?? 0} of ${known(funnel.refinement.children)} refinements · ${childGoals?.completed ?? 0} completed · ${childGoals?.failed ?? 0} failed`)} />
+            <Stat label="Cognitive episodes" value={known(funnel.learning.cognitiveEpisodes)} hint={why('cognitiveEpisodes', `${known(funnel.learning.cognitiveStrategies)} strategies`)} />
           </div>
 
           <section>
-            <h2 className="text-lg font-semibold mb-2">Yield (last {funnel.kpi.windowDays} days)</h2>
+            {/* UX-003: each stat names its own window; the median does not share the 7-day window */}
+            <h2 className="text-lg font-semibold mb-2">Yield</h2>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-              <Stat label="Verified" value={funnel.kpi.verified} hint={`${funnel.kpi.regressed} regressed${funnel.kpi.regressionRate === null ? '' : ` (${Math.round(funnel.kpi.regressionRate * 100)}%)`}`} />
-              <Stat label="Panels created" value={funnel.kpi.panels24h} hint={`24 h · ${funnel.kpi.panels7d} in 7 d${funnel.kpi.panelsPerVerified === null ? '' : ` · ${funnel.kpi.panelsPerVerified} per verified`}`} />
-              <Stat label="Specialist reviews" value={funnel.kpi.reviews24h} hint={`submitted in 24 h · ${funnel.kpi.reviews7d} in 7 d`} />
-              <Stat label="Median hours to verified" value={funnel.kpi.medianHoursToVerified ?? '—'} />
-              <Stat label="Approvals per run" value={funnel.kpi.approvalsPerRun ?? '—'} />
+              <Stat label="Verified" value={known(funnel.kpi.verified)} hint={why('verified', `current status verified/evaluating/applied, updated in last ${funnel.kpi.windowDays} d · ${known(funnel.kpi.regressed)} regressed${funnel.kpi.regressionRate === null ? '' : ` (${Math.round(funnel.kpi.regressionRate * 100)}% of verified + regressed)`}`)} />
+              <Stat label="Panels created" value={known(funnel.kpi.panels24h)} hint={why('panels24h', `24 h · ${known(funnel.kpi.panels7d)} in 7 d${funnel.kpi.panelsPerVerified === null ? '' : ` · ${funnel.kpi.panelsPerVerified} per verified`}`)} />
+              <Stat label="Specialist reviews" value={known(funnel.kpi.reviews24h)} hint={why('reviews24h', `submitted in 24 h · ${known(funnel.kpi.reviews7d)} in 7 d`)} />
+              <Stat label="Median hours created → last update" value={funnel.kpi.medianHoursToVerified ?? '—'}
+                hint={why('medianHoursToVerified', `currently verified/evaluating/applied · updated in last ${medianWindow ?? '?'} d · n=${known(funnel.kpi.medianHoursN)} · not first-verification latency (no verification timestamp is stored)`)} />
+              <Stat label="Approvals per run" value={funnel.kpi.approvalsPerRun ?? '—'} hint={`approved rows / distinct linked loop runs, last ${funnel.kpi.windowDays} d`} />
             </div>
             <div className="grid grid-cols-3 gap-3 mt-3">
-              <Stat label="Zombie goals" value={funnel.hygiene.zombieGoals} hint="running >24 h / blocked >7 d without a wait reason" />
-              <Stat label="Stale runs" value={funnel.hygiene.staleRuns} hint="interrupted >48 h / planning >24 h" />
-              <Stat label="Blocked board items" value={funnel.hygiene.blockedBoardItems} hint="expire after 14 d" />
+              <Stat label="Zombie goals" value={known(funnel.hygiene.zombieGoals)} hint={why('zombieGoals', 'running >24 h / blocked >7 d without a wait reason')} />
+              <Stat label="Stale runs" value={known(funnel.hygiene.staleRuns)} hint={why('staleRuns', 'interrupted >48 h / planning >24 h')} />
+              <Stat label="Blocked board items" value={known(funnel.hygiene.blockedBoardItems)} hint={why('blockedBoardItems', 'expire after 14 d')} />
             </div>
           </section>
 
@@ -109,7 +121,14 @@ export function ImprovementFunnelPage() {
               <ul className="text-sm">{Object.entries(funnel.queues.commonsReviews).map(([k, n]) => <li key={k}>{k}: {n}</li>)}</ul>
             </div>
             <div>
-              <h2 className="text-lg font-semibold mb-2">Open work items ({funnel.queues.openWorkItems})</h2>
+              {/* UX-002: the total is an independent COUNT, stated before the truncated breakdown */}
+              <h2 className="text-lg font-semibold mb-2">Open work items ({known(funnel.queues.openWorkItems)})</h2>
+              <p className="text-xs text-foreground-muted mb-1">
+                {why('openWorkItems', 'candidate/triaged/planned/leased/blocked, all time')}
+                {groups !== null && groups > funnel.queues.workItemsByLoop.length
+                  ? ` · largest ${funnel.queues.workItemsByLoop.length} of ${groups} loop/status groups${notListed !== null && notListed > 0 ? ` · ${notListed} item${notListed === 1 ? '' : 's'} in groups not listed` : ''}`
+                  : groups !== null ? ` · ${groups} loop/status group${groups === 1 ? '' : 's'}` : ''}
+              </p>
               <ul className="text-sm">{funnel.queues.workItemsByLoop.map((w) => <li key={`${w.loop}-${w.status}`}>{w.loop} · {w.status}: {w.n}</li>)}</ul>
             </div>
           </section>

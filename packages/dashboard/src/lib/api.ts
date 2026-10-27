@@ -649,12 +649,20 @@ export type ImprovementFunnel = {
   /** goalRate: goal decisions over the panels a proposal points at (linkedDecided); decisions covers every panel */
   panel: { decisions: Record<string, number>; goalRate: number | null; linkedPanels: number; linkedDecided: number; linkedDecisions: Record<string, number> };
   /** childGoals: refined children with a goal and how it ended; childOutcomes is the children's own status */
-  refinement: { originals: number; children: number; childOutcomes: Record<string, number>; childGoals: { reachedGoal: number; completed: number; failed: number; other: number } };
+  refinement: { originals: number | null; children: number | null; childOutcomes: Record<string, number>; childGoals: { reachedGoal: number; completed: number; failed: number; other: number } };
   goals: { fromSelfImprovement: Record<string, number> };
-  learning: { cognitiveEpisodes: number; cognitivePatterns: number; cognitiveStrategies: number; learningClosures: number; memoryCandidates: Record<string, number> };
-  kpi: { windowDays: number; verified: number; regressed: number; regressionRate: number | null; panels24h: number; panels7d: number; reviews24h: number; reviews7d: number; panelsPerVerified: number | null; medianHoursToVerified: number | null; approvalsPerRun: number | null };
-  hygiene: { zombieGoals: number; staleRuns: number; blockedBoardItems: number };
-  queues: { openWorkItems: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
+  learning: { cognitiveEpisodes: number | null; cognitivePatterns: number | null; cognitiveStrategies: number | null; learningClosures: number | null; memoryCandidates: Record<string, number> };
+  /**
+   * verified/regressed: current status with updated_at in windowDays (not first verifications). The median has its own window
+   * (medianHoursWindowDays, n = medianHoursN): created_at → current updated_at, not first-verification latency.
+   */
+  kpi: { windowDays: number; verified: number | null; regressed: number | null; regressionRate: number | null; panels24h: number | null; panels7d: number | null; reviews24h: number | null; reviews7d: number | null; panelsPerVerified: number | null; medianHoursToVerified: number | null; medianHoursWindowDays?: number; medianHoursN?: number | null; approvalsPerRun: number | null };
+  /** null = unavailable (reason in `unavailable`), never a healthy 0 */
+  hygiene: { zombieGoals: number | null; staleRuns: number | null; blockedBoardItems: number | null };
+  /** openWorkItems: COUNT over every open row; workItemsByLoop: only the largest workItemsByLoopLimit of workItemGroups groups */
+  queues: { openWorkItems: number | null; workItemGroups?: number | null; workItemsByLoopLimit?: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
+  /** metric → `missing_schema: …` | `query_failed: …` */
+  unavailable?: Record<string, string>;
 };
 
 export type SpecialistCalibration = {

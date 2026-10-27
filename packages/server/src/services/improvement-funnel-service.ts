@@ -17,19 +17,31 @@ export interface ImprovementFunnel {
    * childOutcomes: the children's own status, which stays archived/no_change when a goal ran (DF-01). childGoals: children with a
    * goal (goals.improvement_id) and how those goals ended — the conversion a refinement actually made.
    */
-  refinement: { originals: number; children: number; childOutcomes: Record<string, number>; childGoals: { reachedGoal: number; completed: number; failed: number; other: number } };
+  refinement: { originals: number | null; children: number | null; childOutcomes: Record<string, number>; childGoals: { reachedGoal: number; completed: number; failed: number; other: number } };
   goals: { fromSelfImprovement: Record<string, number> };
-  learning: { cognitiveEpisodes: number; cognitivePatterns: number; cognitiveStrategies: number; learningClosures: number; memoryCandidates: Record<string, number> };
+  learning: { cognitiveEpisodes: number | null; cognitivePatterns: number | null; cognitiveStrategies: number | null; learningClosures: number | null; memoryCandidates: Record<string, number> };
   kpi: {
-    windowDays: number; verified: number; regressed: number; regressionRate: number | null;
+    /** verified/regressed: proposals whose CURRENT status is positive/regressed and whose updated_at falls in the window — not first verifications. */
+    windowDays: number; verified: number | null; regressed: number | null; regressionRate: number | null;
     /** panels24h/7d count panels created; reviews24h/7d count submitted specialist reviews (DF-03) */
-    panels24h: number; panels7d: number; reviews24h: number; reviews7d: number;
-    panelsPerVerified: number | null; medianHoursToVerified: number | null; approvalsPerRun: number | null;
+    panels24h: number | null; panels7d: number | null; reviews24h: number | null; reviews7d: number | null;
+    /**
+     * UX-003: median of created_at → current updated_at over proposals currently verified/evaluating/applied and updated within
+     * medianHoursWindowDays (n = medianHoursN). No first-verification timestamp is stored, so this is NOT first-verification latency.
+     */
+    panelsPerVerified: number | null; medianHoursToVerified: number | null; medianHoursWindowDays: number; medianHoursN: number | null; approvalsPerRun: number | null;
     /** J6: what a verified change costs — maker tokens and runs over the window (skill_outcomes, one row per run). */
     runs: number; runSuccessRate: number | null; tokensPerVerified: number | null;
   };
-  hygiene: { zombieGoals: number; staleRuns: number; blockedBoardItems: number };
-  queues: { openWorkItems: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
+  /** UX-004: null = the read failed or its table is absent (reason in `unavailable`), never a healthy 0. */
+  hygiene: { zombieGoals: number | null; staleRuns: number | null; blockedBoardItems: number | null };
+  /**
+   * UX-002: openWorkItems is COUNT(*) over every open row; workItemsByLoop is only the largest workItemsByLoopLimit
+   * (loop, status) groups of workItemGroups.
+   */
+  queues: { openWorkItems: number | null; workItemGroups: number | null; workItemsByLoopLimit: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
+  /** UX-004: metric → why it could not be read (`missing_schema: …` for an absent table/column, `query_failed: …` otherwise). */
+  unavailable: Record<string, string>;
   /** TypeSafe judgments (ADR 0002): volume, latency and agreement with the final outcome where one exists (plan E7/E10). */
   judgments: Array<{ judgment: string; total: number; byDecision: Record<string, number>; medianLatencyMs: number | null; withOutcome: number; agreement: number | null }>;
   /**
@@ -56,16 +68,42 @@ export const OUTCOME_SQL: Record<string, string> = {
 const EXCLUDE_BEFORE: Record<string, string> = { checker_second_opinion: '2026-09-23T18:30:00Z' };
 
 const REACHED_GOAL = ['scheduled', 'executing', 'verified', 'evaluating', 'applied', 'no_change', 'regressed', 'infra_failed'];
+const OPEN_WORK = "status IN ('candidate','triaged','planned','leased','blocked')";
+const WORK_GROUP_LIMIT = 12;
+const MEDIAN_WINDOW_DAYS = 30;
+
+const median = (sorted: number[]) => {
+  if (!sorted.length) return null;
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+};
 
 export class ImprovementFunnelService {
+  private unavailable: Record<string, string> = {};
+
   constructor(private readonly db: Database) {}
 
   private rows<T>(sql: string, ...params: unknown[]): T[] {
     try { return this.db.prepare(sql).all(...params) as T[]; } catch { return []; } // optional tables may not exist on older instances
   }
 
-  private counts(sql: string): Record<string, number> {
-    return Object.fromEntries(this.rows<{ k: string | null; n: number }>(sql).map((r) => [r.k ?? 'unknown', r.n]));
+  /** UX-004: a read that records why it failed instead of turning into [] → 0. */
+  private tryRows<T>(metric: string, sql: string): T[] | null {
+    try { return this.db.prepare(sql).all() as T[]; } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.unavailable[metric] = `${/no such (table|column)/i.test(message) ? 'missing_schema' : 'query_failed'}: ${message}`;
+      return null;
+    }
+  }
+
+  private one(metric: string, sql: string): number | null {
+    const rows = this.tryRows<{ n: number }>(metric, sql);
+    return rows === null ? null : rows[0]?.n ?? 0;
+  }
+
+  private counts(sql: string, metric?: string): Record<string, number> {
+    const rows = metric ? this.tryRows<{ k: string | null; n: number }>(metric, sql) ?? [] : this.rows<{ k: string | null; n: number }>(sql);
+    return Object.fromEntries(rows.map((r) => [r.k ?? 'unknown', r.n]));
   }
 
   private runCost(since: string, verified: number): { runs: number; runSuccessRate: number | null; tokensPerVerified: number | null } {
@@ -123,7 +161,8 @@ export class ImprovementFunnelService {
   }
 
   compute(): ImprovementFunnel {
-    const byStatus = this.counts('SELECT status AS k, COUNT(*) AS n FROM self_improvements GROUP BY status');
+    this.unavailable = {};
+    const byStatus = this.counts('SELECT status AS k, COUNT(*) AS n FROM self_improvements GROUP BY status', 'proposals');
     const total = Object.values(byStatus).reduce((a, b) => a + b, 0);
     const bySource = this.rows<{ source: string; status: string; n: number }>('SELECT source, status, COUNT(*) AS n FROM self_improvements GROUP BY source, status');
     const perSource = new Map<string, ImprovementFunnel['bySource'][number]>();
@@ -142,35 +181,39 @@ export class ImprovementFunnelService {
     const linkedPanelSql = 'SELECT DISTINCT panel_id FROM self_improvements WHERE panel_id IS NOT NULL';
     const linkedDecisions = this.counts(`SELECT json_extract(consensus_json, '$.decision') AS k, COUNT(*) AS n FROM specialist_panels WHERE consensus_json IS NOT NULL AND id IN (${linkedPanelSql}) GROUP BY k`);
     const linkedDecided = Object.values(linkedDecisions).reduce((a, b) => a + b, 0);
-    const one = (sql: string) => this.rows<{ n: number }>(sql)[0]?.n ?? 0;
-    const workItemsByLoop = this.rows<{ loop: string; status: string; n: number }>(
-      "SELECT COALESCE(recommended_loop, 'none') AS loop, status, COUNT(*) AS n FROM work_items WHERE status IN ('candidate','triaged','planned','leased','blocked') GROUP BY 1, 2 ORDER BY n DESC LIMIT 12");
+    const one = (metric: string, sql: string) => this.one(metric, sql);
+    const workItemsByLoop = this.tryRows<{ loop: string; status: string; n: number }>('workItemsByLoop',
+      `SELECT COALESCE(recommended_loop, 'none') AS loop, status, COUNT(*) AS n FROM work_items WHERE ${OPEN_WORK} GROUP BY 1, 2 ORDER BY n DESC LIMIT ${WORK_GROUP_LIMIT}`) ?? [];
+    const openWorkItems = one('openWorkItems', `SELECT COUNT(*) AS n FROM work_items WHERE ${OPEN_WORK}`);
+    const workItemGroups = one('workItemGroups', `SELECT COUNT(*) AS n FROM (SELECT 1 FROM work_items WHERE ${OPEN_WORK} GROUP BY COALESCE(recommended_loop, 'none'), status)`);
     const now = Date.now();
     const iso = (ms: number) => new Date(now - ms).toISOString();
     const DAY = 86_400_000;
-    const verified7 = one(`SELECT COUNT(*) AS n FROM self_improvements WHERE status IN ('verified', 'evaluating', 'applied') AND updated_at >= '${iso(7 * DAY)}'`);
-    const regressed7 = one(`SELECT COUNT(*) AS n FROM self_improvements WHERE status = 'regressed' AND updated_at >= '${iso(7 * DAY)}'`);
-    const reviews = (ms: number) => one(`SELECT COUNT(*) AS n FROM specialist_reviews WHERE status = 'submitted' AND julianday(created_at) >= julianday('${iso(ms)}')`);
-    const panels7 = one(`SELECT COUNT(*) AS n FROM specialist_panels WHERE created_at >= '${iso(7 * DAY)}'`);
-    const hours = this.rows<{ h: number }>(`SELECT (julianday(updated_at) - julianday(created_at)) * 24 AS h FROM self_improvements WHERE status IN ('verified', 'evaluating', 'applied') AND updated_at >= '${iso(30 * DAY)}' AND updated_at > created_at ORDER BY h`).map((r) => r.h);
+    const verified7 = one('verified', `SELECT COUNT(*) AS n FROM self_improvements WHERE status IN ('verified', 'evaluating', 'applied') AND updated_at >= '${iso(7 * DAY)}'`);
+    const regressed7 = one('regressed', `SELECT COUNT(*) AS n FROM self_improvements WHERE status = 'regressed' AND updated_at >= '${iso(7 * DAY)}'`);
+    const reviews = (metric: string, ms: number) => one(metric, `SELECT COUNT(*) AS n FROM specialist_reviews WHERE status = 'submitted' AND julianday(created_at) >= julianday('${iso(ms)}')`);
+    const panels7 = one('panels7d', `SELECT COUNT(*) AS n FROM specialist_panels WHERE created_at >= '${iso(7 * DAY)}'`);
+    const hours = this.tryRows<{ h: number }>('medianHoursToVerified', `SELECT (julianday(updated_at) - julianday(created_at)) * 24 AS h FROM self_improvements WHERE status IN ('verified', 'evaluating', 'applied') AND updated_at >= '${iso(MEDIAN_WINDOW_DAYS * DAY)}' AND updated_at > created_at ORDER BY h`)?.map((r) => r.h) ?? null;
+    const medianHours = hours === null ? null : median(hours);
     const approvals = this.rows<{ approvals: number; runs: number }>(`
       SELECT COUNT(*) AS approvals, COUNT(DISTINCT json_extract(t.metadata, '$.loop_run_id')) AS runs FROM approvals a JOIN tasks t ON t.id = a.task_id
       WHERE a.status = 'approved' AND a.created_at >= '${iso(7 * DAY)}' AND json_valid(COALESCE(t.metadata, '{}')) = 1 AND json_extract(t.metadata, '$.loop_run_id') IS NOT NULL`)[0];
     const kpi: ImprovementFunnel['kpi'] = {
       windowDays: 7, verified: verified7, regressed: regressed7,
-      regressionRate: verified7 + regressed7 ? regressed7 / (verified7 + regressed7) : null,
-      panels24h: one(`SELECT COUNT(*) AS n FROM specialist_panels WHERE created_at >= '${iso(DAY)}'`), panels7d: panels7,
-      reviews24h: reviews(DAY), reviews7d: reviews(7 * DAY),
-      panelsPerVerified: verified7 ? Math.round(panels7 / verified7) : null,
-      medianHoursToVerified: hours.length ? Math.round(hours[Math.floor(hours.length / 2)] * 10) / 10 : null,
+      regressionRate: verified7 !== null && regressed7 !== null && verified7 + regressed7 ? regressed7 / (verified7 + regressed7) : null,
+      panels24h: one('panels24h', `SELECT COUNT(*) AS n FROM specialist_panels WHERE created_at >= '${iso(DAY)}'`), panels7d: panels7,
+      reviews24h: reviews('reviews24h', DAY), reviews7d: reviews('reviews7d', 7 * DAY),
+      panelsPerVerified: verified7 && panels7 !== null ? Math.round(panels7 / verified7) : null,
+      medianHoursToVerified: medianHours === null ? null : Math.round(medianHours * 10) / 10,
+      medianHoursWindowDays: MEDIAN_WINDOW_DAYS, medianHoursN: hours === null ? null : hours.length,
       approvalsPerRun: approvals?.runs ? Math.round((approvals.approvals / approvals.runs) * 10) / 10 : null,
-      ...this.runCost(iso(7 * DAY), verified7),
+      ...this.runCost(iso(7 * DAY), verified7 ?? 0),
     };
     const hygiene: ImprovementFunnel['hygiene'] = {
-      zombieGoals: one(`SELECT COUNT(*) AS n FROM goals WHERE (status = 'running' AND updated_at < '${iso(DAY)}' AND NOT EXISTS (SELECT 1 FROM loop_runs r WHERE r.goal_id = goals.id AND r.status IN ('running', 'planning', 'verifying') AND r.updated_at >= '${iso(DAY)}'))
+      zombieGoals: one('zombieGoals', `SELECT COUNT(*) AS n FROM goals WHERE (status = 'running' AND updated_at < '${iso(DAY)}' AND NOT EXISTS (SELECT 1 FROM loop_runs r WHERE r.goal_id = goals.id AND r.status IN ('running', 'planning', 'verifying') AND r.updated_at >= '${iso(DAY)}'))
         OR (status = 'blocked' AND updated_at < '${iso(7 * DAY)}' AND json_extract(COALESCE(NULLIF(metadata, ''), '{}'), '$.awaiting_approval') IS NULL)`),
-      staleRuns: one(`SELECT COUNT(*) AS n FROM loop_runs WHERE (status = 'interrupted' AND updated_at < '${iso(2 * DAY)}') OR (status = 'planning' AND updated_at < '${iso(DAY)}')`),
-      blockedBoardItems: one("SELECT COUNT(*) AS n FROM work_items WHERE source = 'agent_board' AND status = 'blocked'"),
+      staleRuns: one('staleRuns', `SELECT COUNT(*) AS n FROM loop_runs WHERE (status = 'interrupted' AND updated_at < '${iso(2 * DAY)}') OR (status = 'planning' AND updated_at < '${iso(DAY)}')`),
+      blockedBoardItems: one('blockedBoardItems', "SELECT COUNT(*) AS n FROM work_items WHERE source = 'agent_board' AND status = 'blocked'"),
     };
     return {
       judgments: this.judgmentAgreement(),
@@ -179,27 +222,27 @@ export class ImprovementFunnelService {
       generatedAt: new Date().toISOString(),
       proposals: { total, byStatus },
       bySource: [...perSource.values()].sort((a, b) => b.total - a.total),
-      panel: { decisions, goalRate: linkedDecided ? (linkedDecisions.goal ?? 0) / linkedDecided : null, linkedPanels: one(`SELECT COUNT(*) AS n FROM (${linkedPanelSql})`), linkedDecided, linkedDecisions },
+      panel: { decisions, goalRate: linkedDecided ? (linkedDecisions.goal ?? 0) / linkedDecided : null, linkedPanels: one('linkedPanels', `SELECT COUNT(*) AS n FROM (${linkedPanelSql})`) ?? 0, linkedDecided, linkedDecisions },
       refinement: {
-        originals: one('SELECT COUNT(*) AS n FROM self_improvements WHERE refined_at IS NOT NULL'),
-        children: one('SELECT COUNT(*) AS n FROM self_improvements WHERE refined_from_id IS NOT NULL'),
+        originals: one('refinementOriginals', 'SELECT COUNT(*) AS n FROM self_improvements WHERE refined_at IS NOT NULL'),
+        children: one('refinementChildren', 'SELECT COUNT(*) AS n FROM self_improvements WHERE refined_from_id IS NOT NULL'),
         childOutcomes: this.counts('SELECT status AS k, COUNT(*) AS n FROM self_improvements WHERE refined_from_id IS NOT NULL GROUP BY status'),
         childGoals: this.childGoals(),
       },
       goals: { fromSelfImprovement: this.counts("SELECT status AS k, COUNT(*) AS n FROM goals WHERE improvement_id IS NOT NULL GROUP BY status") },
       learning: {
-        cognitiveEpisodes: one('SELECT COUNT(*) AS n FROM cognitive_episodes'),
-        cognitivePatterns: one('SELECT COUNT(*) AS n FROM cognitive_patterns'),
-        cognitiveStrategies: one('SELECT COUNT(*) AS n FROM cognitive_strategies'),
-        learningClosures: one('SELECT COUNT(*) AS n FROM loop_learning_closures'),
+        cognitiveEpisodes: one('cognitiveEpisodes', 'SELECT COUNT(*) AS n FROM cognitive_episodes'),
+        cognitivePatterns: one('cognitivePatterns', 'SELECT COUNT(*) AS n FROM cognitive_patterns'),
+        cognitiveStrategies: one('cognitiveStrategies', 'SELECT COUNT(*) AS n FROM cognitive_strategies'),
+        learningClosures: one('learningClosures', 'SELECT COUNT(*) AS n FROM loop_learning_closures'),
         memoryCandidates: this.counts('SELECT status AS k, COUNT(*) AS n FROM memory_candidates GROUP BY status'),
       },
       kpi, hygiene,
       queues: {
-        openWorkItems: workItemsByLoop.reduce((a, r) => a + r.n, 0),
-        workItemsByLoop,
-        commonsReviews: this.counts('SELECT status AS k, COUNT(*) AS n FROM commons_proposal_reviews GROUP BY status'),
+        openWorkItems, workItemGroups, workItemsByLoopLimit: WORK_GROUP_LIMIT, workItemsByLoop,
+        commonsReviews: this.counts('SELECT status AS k, COUNT(*) AS n FROM commons_proposal_reviews GROUP BY status', 'commonsReviews'),
       },
+      unavailable: { ...this.unavailable },
     };
   }
 }
