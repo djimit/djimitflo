@@ -39,3 +39,14 @@ goal had runs in both arms. So the run-level analysis is not inflated in this wi
 
 Acting on the falsifier (turning `LOOP_MEMORY_RULES_ENABLED` off) changes what every maker receives and therefore adds a
 period boundary to ACE-001, STE-001, MAKER-DEPS-001 and F2 v2. That is an operator decision, recorded separately.
+
+## Action taken (operator decision, 2026-10-27)
+
+The operator chose the registered action. `LOOP_MEMORY_RULES_ENABLED=false` (runtime.env.bak-20261027T055228Z,
+sha dff98072 → 246066ff), live after an idle recreate at **2026-10-27T05:52:42Z** (0 running leases, runs, gym runs or remote jobs).
+Rules stay stored; nothing was deleted. `MEMORY_HOLDOUT_RATE` is unchanged, so the arm label still exists but no longer changes
+what a maker receives.
+
+**Period boundary for running experiments:** from 2026-10-27T05:52:42Z no maker receives memory rules. ACE-001, STE-001, MAKER-DEPS-001 and
+F2 v2 analyses must treat outcomes before and after this time as two periods (a period term, or the post-boundary period
+only); they are never pooled without one. Rollback: restore the backup and recreate when idle.
