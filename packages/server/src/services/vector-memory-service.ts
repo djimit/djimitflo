@@ -255,15 +255,16 @@ export class VectorMemoryService {
   }
 
   /**
-   * Cached memories that still have a durable row and whose TTL has not elapsed. Rows deleted elsewhere (another
-   * instance, the TTL purge worker, retention) are dropped from this cache; expired rows are left for the purge worker.
+   * Cached memories that still have a durable row and whose TTL has not elapsed. Deleted rows (another instance, the
+   * TTL purge worker, retention) and expired entries are evicted from this cache, so corpus stats such as the BM25
+   * index size only count live memories. Expired durable rows are left for the explicit TTL purge worker.
    */
   private liveEntries(): Array<[string, MemoryVector]> {
     const durable = new Set(this.db.prepare('SELECT id FROM vector_memories').pluck().all() as string[]);
-    for (const id of Array.from(this.index.keys())) {
-      if (!durable.has(id)) this.forget(id);
+    for (const [id, vector] of Array.from(this.index.entries())) {
+      if (!durable.has(id) || this.isExpired(vector)) this.forget(id);
     }
-    return Array.from(this.index.entries()).filter(([, vector]) => !this.isExpired(vector));
+    return Array.from(this.index.entries());
   }
 
   private forget(id: string): boolean {

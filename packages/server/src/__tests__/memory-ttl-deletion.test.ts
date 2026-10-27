@@ -57,6 +57,24 @@ describe('L-F06: vector memory TTL and deletion', () => {
     expect((await service.search('typescript', 10, 0)).map((r) => r.id)).toEqual([live.id]);
   });
 
+  it('does not let expired memories inflate the BM25 corpus size of a live result', async () => {
+    await storeExpired('typescript expired one');
+    await storeExpired('typescript expired two');
+    const live = await service.storeMemory({ content: 'typescript live memory' });
+    const [result] = await service.search('typescript live memory', 10, 0);
+
+    const cleanDb = new Database(':memory:');
+    const clean = new VectorMemoryService(cleanDb, new TestEmbeddingProvider());
+    await clean.storeMemory({ content: 'typescript live memory' });
+    const [baseline] = await clean.search('typescript live memory', 10, 0);
+    cleanDb.close();
+
+    expect(result.id).toBe(live.id);
+    // same score as a corpus that only ever held the live memory, so a 0.85 cutoff is not crossed by expired rows
+    expect(result.score).toBeCloseTo(baseline.score, 10);
+    expect((await service.search('typescript live memory', 10, 0.85)).length).toBe(baseline.score >= 0.85 ? 1 : 0);
+  });
+
   it('still returns a memory whose TTL has not elapsed', async () => {
     const mem = await service.storeMemory({ content: 'typescript fresh', ttl: 3600 });
     expect(service.getMemory(mem.id)?.content).toBe('typescript fresh');
