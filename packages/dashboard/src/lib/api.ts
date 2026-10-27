@@ -330,6 +330,9 @@ export interface EvolutionEvidence {
     top_failed_clauses_7d: Array<{ clause: string; n: number }> | null };
   /** PL-001 (PL_001_MODE): with vs without the procedure lines on a frozen set of applicable repair tasks (services/pl-001.ts); unknown is null, never 0 */
   pl_001?: Pl001Evidence;
+  /** CODE-004 (MEMORY_DELIVERY_RECEIPTS): memory-sync receipts per target × status; by_target null = no receipts table (services/memory-delivery-receipts.ts) */
+  memory_delivery?: { mode: 'off' | 'shadow' | 'on'; max_attempts: number; oldest_unknown: string | null; note: string;
+    by_target: Record<'uams' | 'qdrant' | 'okf', { idempotent: boolean; delivered: number; failed: number; unknown: number; exhausted: number | null }> | null };
 }
 export type Pl001Verdict = 'SUPPORTED' | 'NOT_SUPPORTED' | 'INCONCLUSIVE' | 'STOPPED_FOR_HARM';
 export interface Pl001Paired { n_pairs: number; both_verified: number; b_only_B: number; c_only_A: number; neither: number; verified_A: number | null; verified_B: number | null;
