@@ -76,25 +76,40 @@ A PR without an entry is ASSERTION_BLOCKED (and `run_verified` unknown); the dry
 Every external call is a probe overridable with `MT_<NAME>` (tests: `packages/server/src/__tests__/merge-train.test.ts`,
 `merge-train-correctness.test.ts`).
 
-## Incident 1 — #778 emptied by a queued rebase (2026-10-11 ~20:29–20:39 UTC+2)
+## Merge paths and release enforcement (forensic 2026-10-26 rank 9)
 
-1. #778 was stacked on #776 and #777. #776 and #777 squash-merged; #777's squash included a later CI fix, so the original
-   #777 commit on #778's branch no longer matched main.
-2. A queued job ran `git rebase --onto origin/main HEAD~3 | tail -1 && git push -f origin HEAD:test/tg-001-prerun`.
-   The rebase stopped on the original #777 commit with HEAD at main; `| tail -1` hid the failure (pipe status = tail's).
-3. The job force-pushed HEAD = main: the PR branch had no commits; GitHub auto-closed #778 ("no commit found").
-4. A second queued train then ran on the stale state ("branch already up-to-date").
-5. Recovery: `git reset --hard origin/main && git cherry-pick 30711ef6` (#778's own commit), force-push, `gh pr reopen 778`,
-   stop the two stale chained jobs, run one train 778 → 779 → 780.
+Every client that merges to main or deploys from it applies one rule to the exact head (or main) commit: **each required
+check of main's branch protection needs a success of the newest run from its required producer (`checks[].app_id`;
+-1 = any source) — another app's run of the same name never stands in for it; skipped, neutral, cancelled or stale is
+not a pass; not reported by that producer is pending; unreadable protection is HOLD, never a remembered list.** GitHub
+itself counts a skipped required check as passed, so the workflows must not let a required job be skipped
+(`scripts/ci-workflows.test.mjs`). TypeScript gates share `services/required-checks.ts`.
 
-Classification under the new script: `rebase feat 1 778` ⇒ **RECONSTRUCT** (the #776 copy is present, #778's own commit
-absent, rebuilt diff equals the original); `rebase feat 3` ⇒ **FAIL_CLOSED** (the original #777 commit is partly on main),
-nothing pushed. Regression test: "#778 regression: a raw rebase stops with HEAD at main …".
+| Path | Who arms it | Class | Where the rule lives |
+|---|---|---|---|
+| `scripts/merge-train.sh run` | operator, PR list with pinned heads | any PR | `checks_verdict`, `ci_wait` (only the verdict `pass` is green) |
+| loop auto-merge | operator, `LOOP_AUTO_MERGE_TEST_ONLY` | earned exception: test-only loop PRs, capped, 10 % sample, self-revoking (core-invariants FR-004) | `loop-auto-merge.ts` `checks()` |
+| dependency lane | operator, `DEPENDENCY_LANE_MODE` | earned exception: npm patch/minor Dependabot PRs, capped, revoked by red main | `dependency-lane.ts` `checkState()` |
+| auto-deploy | operator, systemd timer on the VPS | deploys main | `scripts/auto-deploy.sh` (required contexts from the public branch summary) |
+| `dependabot-auto-merge.yml` | operator decision (kept on #1061) | Dependabot patch/minor, same-repo, author and actor `dependabot[bot]` | `scripts/dependabot-merge.sh`: merge-train `checks_verdict` on the exact head (run from main), then a merge pinned to that head — not GitHub-native auto-merge, which counts a skipped required check as passed |
 
-## Incident 2 — merged PR treated as refused (2026-10-11 21:08)
+No workflow arms GitHub-native auto-merge (`scripts/ci-workflows.test.mjs` fails on `gh pr merge --auto`): Dependabot
+auto-merge waits up to an hour for the gate and leaves the PR open on red, pending, a moved head or a refused (behind)
+merge. Its own running job (`auto-merge`) is excluded via `MT_IGNORE_CHECKS`, which never excludes a required check.
 
-`gh pr merge 778 --squash --delete-branch` merged on GitHub but exited non-zero: the local branch could not be deleted
-because a worktree had it checked out. The old train read the exit code as "merge refused", retried `update-branch` on
-the merged PR (→ "conflicts") and stopped, so #779 and #780 never ran. Under the new script the outcome is read from live
-state (MERGED + change on main ⇒ MERGED, cleanup error logged). Regression test: "11-10 #778 regression: the merge lands but
-branch cleanup fails …".
+CI tests the commit protection reads: every job checks out `github.event.pull_request.head.sha` (not the synthetic merge
+commit), required jobs have no job-level or step-level `if:` and no `continue-on-error`, their triggers have no path
+filters, and every action is pinned to a commit sha.
+
+**Build receipt.** `scripts/deploy-vps.sh` resolves the Dockerfile's `ARG NODE_IMAGE` tag to its registry digest
+(`node@sha256:…`; pulled only when the tag is absent, as before) and builds with that digest, so both stages use exactly
+the base the receipt records; no digest means no build. After the build it writes
+`/srv/djimitflo/build-receipts/<image id>.json` (write-once, mode 0444): commit, image tag, image id, `package-lock.json`
+sha256, Dockerfile sha256, base image digest, build time (each verified: a missing or different lockfile or Dockerfile hash refuses the switch). The image declares commit, lock hash and base
+(`DJIMITFLO_BUILD_COMMIT`, `DJIMITFLO_BUILD_LOCK_SHA256`, `DJIMITFLO_BUILD_BASE_IMAGE`); both stages install with `npm ci`
+(the runtime `npm install --omit=dev` rewrote the lock inside the image). Before the switch the deploy verifies all of
+it against the receipt. After the compose rewrite every failure — a failing `docker compose up`, an unhealthy start, a
+running image that is not the receipt's — restores the previous compose.yml, recreates the previous container and waits
+for it to be healthy again (or says the rollback is NOT healthy). Housekeeping after a healthy deploy never fails it.
+To check by hand: `docker inspect -f '{{.Image}}' djimitflo-live` and
+`cat /srv/djimitflo/build-receipts/<that id without sha256:>.json`.
