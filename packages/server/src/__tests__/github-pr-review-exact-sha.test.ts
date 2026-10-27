@@ -17,12 +17,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
  */
 let ghHandler: (args: string[]) => string = () => '';
 const ghCalls: string[][] = [];
+const statusStates: string[] = [];
 vi.mock('child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('child_process')>();
   return {
     ...actual,
     execFileSync: vi.fn((command: string, args: string[] = [], options?: any) => {
-      if (command === 'gh') { ghCalls.push(args); return ghHandler(args); }
+      if (command === 'gh') {
+        ghCalls.push(args);
+        if (args[0] === 'api' && /\/statuses\//.test(args[1])) statusStates.push(JSON.parse(String(options?.input ?? '{}')).state);
+        return ghHandler(args);
+      }
       return (actual as any).execFileSync(command, args, options);
     }),
   };
@@ -30,6 +35,16 @@ vi.mock('child_process', async (importOriginal) => {
 
 import { createTestDb } from './helpers/test-db';
 import { createGitHubWebhookRoutes } from '../routes/github-webhooks';
+import { LoopService } from '../services/loop-service';
+
+/** The real checker input: every prompt LoopService builds for a checker runtime. */
+const checkerPrompts: string[] = [];
+const buildCheckerPrompt = LoopService.prototype.buildCheckerPrompt;
+vi.spyOn(LoopService.prototype, 'buildCheckerPrompt').mockImplementation(function (this: LoopService, ...args) {
+  const prompt = buildCheckerPrompt.apply(this, args);
+  checkerPrompts.push(prompt);
+  return prompt;
+});
 
 const SHA_A = 'a'.repeat(40);
 const SHA_B = 'b'.repeat(40);
@@ -67,6 +82,8 @@ describe('CODE-005: PR review is bound to the exact head SHA', () => {
     for (const key of ['GITHUB_WEBHOOK_SECRET', 'GITHUB_REPOSITORY_PATHS', 'GITHUB_PR_REVIEW_RUNTIME', 'LOOP_WORKTREE_ROOT']) delete process.env[key];
     ghHandler = () => '';
     ghCalls.length = 0;
+    statusStates.length = 0;
+    checkerPrompts.length = 0;
   });
 
   async function serve(repoPath: string) {
@@ -148,7 +165,7 @@ describe('CODE-005: PR review is bound to the exact head SHA', () => {
      * origin: main has `init` then (after the PR branched) `main-only`; the PR branch has commit A (feature.txt) and a later
      * commit B (late.txt). refs/pull/9/head already points at B — the head moved after the webhook named A.
      */
-    function setupRepos() {
+    function setupRepos(featureContent = 'reviewed change at A\n') {
       const origin = mkdtempSync(join(tmpdir(), 'djimitflo-pr-sha-origin-'));
       dirs.push(origin);
       git(origin, ['init', '-b', 'main']);
@@ -158,7 +175,7 @@ describe('CODE-005: PR review is bound to the exact head SHA', () => {
       git(origin, ['add', 'package.json']);
       git(origin, ['commit', '-m', 'init']);
       git(origin, ['checkout', '-b', 'feature']);
-      writeFileSync(join(origin, 'feature.txt'), 'reviewed change at A\n');
+      writeFileSync(join(origin, 'feature.txt'), featureContent);
       git(origin, ['add', 'feature.txt']);
       git(origin, ['commit', '-m', 'A']);
       const shaA = git(origin, ['rev-parse', 'HEAD']);
@@ -213,6 +230,29 @@ describe('CODE-005: PR review is bound to the exact head SHA', () => {
       expect(meta.packet_sha256).toBe(createHash('sha256').update(packet).digest('hex'));
       expect(ghCalls.some((a) => a[0] === 'pr' && a[1] === 'diff')).toBe(false);
       expect(statusCalls().map((a) => a[1])).toEqual([`repos/owner/repo/statuses/${shaA}`]);
+      // the real checker input carries the whole hashed packet, not a truncated prefix of it
+      expect(checkerPrompts).toHaveLength(1);
+      expect(checkerPrompts[0]).toContain(packet);
+      db.close();
+    }, 30_000);
+
+    it('a packet beyond the checker input limit is never reviewed or published green: insufficient_evidence, no LLM call', async () => {
+      // sentinel sits past the 20,000-character boundary at which the checker prompt cuts the assignment packet
+      const SENTINEL = 'SENTINEL_BEYOND_CHECKER_PACKET_LIMIT';
+      const { clone, shaA } = setupRepos(`${'x'.repeat(100)}\n`.repeat(250) + `${SENTINEL}\n`);
+      const db = await serve(clone);
+      fakeGh([shaA]);
+      await post(9, shaA, 'delivery-p2-oversized');
+      const row = await settled(db);
+
+      // either the checker saw the sentinel, or nothing it saw can publish: here it must be the latter
+      expect(checkerPrompts.some((p) => p.includes(SENTINEL))).toBe(false);
+      expect(checkerPrompts).toEqual([]);
+      const meta = JSON.parse(row.metadata);
+      expect(meta).toMatchObject({ verdict: 'insufficient_evidence', reason: 'packet_exceeds_checker_input', reviewed_sha: shaA });
+      expect(meta.packet_chars).toBeGreaterThan(20_000);
+      expect(statusStates).not.toContain('success');
+      expect(db.prepare("SELECT COUNT(*) AS n FROM worker_leases WHERE role = 'checker' AND loop_run_id = ?").get(row.loop_run_id)).toEqual({ n: 0 });
       db.close();
     }, 30_000);
 

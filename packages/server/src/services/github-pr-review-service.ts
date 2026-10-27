@@ -4,7 +4,7 @@ import os from 'os';
 import path from 'path';
 import { execFileSync } from 'child_process';
 import type { Database } from 'better-sqlite3';
-import { LoopService } from './loop-service';
+import { CHECKER_PACKET_MAX_CHARS, LoopService } from './loop-service';
 import { ComplianceAuditService } from './compliance-audit-service';
 import { RoborevFindingsService } from './roborev-findings-service';
 import { PR_REVIEW_STATUS_CONTEXT } from './loop-auto-merge-state';
@@ -279,27 +279,39 @@ export class GithubPrReviewService {
       this.loops.updateWorkerLeaseStatus(makerLeaseId, 'completed', {
         notes: 'Maker output is the PR head commit, fetched and checked out for review.',
         assignment_packet_file: packetPath,
+        // the checker reads the packet only while it still hashes to this (LoopService.checkerAssignmentPacket)
+        assignment_packet_sha256: packet.sha256,
       });
 
-      const checkerLeaseId = randomUUID();
-      this.loops.insertWorkerLease({
-        id: checkerLeaseId, loopRunId: input.loopRunId, role: 'checker', runtime, findingId,
-        worktreePath: null, branchName: null, metadata: { maker_lease_id: makerLeaseId },
-        now,
-      });
-
-      const execResult = await this.loops.executeChecker(input.loopRunId, {
-        lease_id: checkerLeaseId, runtime, timeout_ms: LLM_CHECKER_TIMEOUT_MS,
-      });
-      const verdict = (execResult.lease.metadata.verdict as Verdict | undefined) || 'insufficient_evidence';
-      const notes = typeof execResult.lease.metadata.notes === 'string' ? execResult.lease.metadata.notes : '';
+      // The checker prompt cuts the assignment packet at CHECKER_PACKET_MAX_CHARS, so a larger packet's hash would not prove
+      // what the checker read. Such a review is not run: it is published as insufficient_evidence (pending, never green).
+      let verdict: Verdict = 'insufficient_evidence';
+      let notes = '';
+      let checkerLeaseId: string | null = null;
+      const oversized = packetText.length > CHECKER_PACKET_MAX_CHARS;
+      if (oversized) {
+        notes = `Review packet is ${packetText.length} characters, above the ${CHECKER_PACKET_MAX_CHARS}-character checker input limit; not reviewed — needs a manual review.`;
+      } else {
+        checkerLeaseId = randomUUID();
+        this.loops.insertWorkerLease({
+          id: checkerLeaseId, loopRunId: input.loopRunId, role: 'checker', runtime, findingId,
+          worktreePath: null, branchName: null, metadata: { maker_lease_id: makerLeaseId },
+          now,
+        });
+        const execResult = await this.loops.executeChecker(input.loopRunId, {
+          lease_id: checkerLeaseId, runtime, timeout_ms: LLM_CHECKER_TIMEOUT_MS,
+        });
+        verdict = (execResult.lease.metadata.verdict as Verdict | undefined) || 'insufficient_evidence';
+        notes = typeof execResult.lease.metadata.notes === 'string' ? execResult.lease.metadata.notes : '';
+      }
 
       this.assertHeadUnchanged(input, 'after_evaluation');
       const body = this.buildComment(input, packet, verdict, notes);
       const checkRunId = this.postToGithub(input, verdict, body);
 
+      const oversizedMeta = oversized ? { reason: 'packet_exceeds_checker_input', packet_chars: packetText.length } : {};
       this.db.prepare("UPDATE github_pull_request_reviews SET status='commented', check_run_id=?, metadata=?, updated_at=? WHERE id=?")
-        .run(checkRunId, JSON.stringify({ verdict, checker_lease_id: checkerLeaseId, runtime, ...this.binding(input, packet) }), new Date().toISOString(), reviewId);
+        .run(checkRunId, JSON.stringify({ verdict, checker_lease_id: checkerLeaseId, runtime, ...oversizedMeta, ...this.binding(input, packet) }), new Date().toISOString(), reviewId);
       this.recordRunBinding(input, packet, 'published');
       this.settleReviewRun(input.loopRunId);
       this.audit.appendEntry({
