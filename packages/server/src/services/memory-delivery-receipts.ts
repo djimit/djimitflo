@@ -4,10 +4,12 @@ import type { Database } from 'better-sqlite3';
  * CODE-004 follow-up to #1056 (forensic audit 2026-10-26): per-task, per-target delivery receipts for the memory fan-out
  * (memory-sync-service). MEMORY_DELIVERY_RECEIPTS:
  * - off (default): nothing is recorded, no table is created; the fan-out behaves exactly as before.
- * - shadow: every leg writes a receipt ahead (`unknown`, detail `in_flight`) and its outcome after; nothing is replayed.
- * - on: shadow + a bounded reconciliation pass at boot and on a tick (MemorySyncService.reconcile).
- * Status: delivered | failed (a definite non-delivery: an error response, no embedding, refused connection) | unknown
- * (a timeout, or the process died mid-leg: the target may or may not have applied it).
+ * - shadow: every leg claims its receipt atomically before sending (`unknown`, detail `in_flight`; a leg that already has a
+ *   receipt is not sent again) and records its outcome after; nothing is replayed. A failing receipt store sends untracked.
+ * - on: shadow, but no leg is sent without a durable intent row; plus a bounded reconciliation pass at boot and on a tick
+ *   (MemorySyncService.reconcile).
+ * Status: delivered | failed (proven non-delivery: a 4xx, no embedding, no connection made, a file write error) | unknown
+ * (ambiguous: a timeout, a UAMS 5xx or connection reset, or the process died mid-leg — the target may have applied it).
  */
 export type ReceiptMode = 'off' | 'shadow' | 'on';
 export type DeliveryTarget = 'uams' | 'qdrant' | 'okf';
@@ -51,25 +53,39 @@ export function ensureReceiptsTable(db: Database): void {
   )`);
 }
 
-/** Write-ahead before a send: the leg is `unknown` until its outcome is recorded, so a crash mid-leg leaves `unknown`. */
-export function recordAttempt(db: Database, taskId: string, target: DeliveryTarget, now = Date.now()): void {
-  db.prepare(`INSERT INTO memory_sync_receipts (task_id, target, status, detail, attempts, updated_at) VALUES (?, ?, 'unknown', 'in_flight', 1, ?)
-    ON CONFLICT (task_id, target) DO UPDATE SET status = 'unknown', detail = 'in_flight', attempts = attempts + 1, updated_at = excluded.updated_at`)
-    .run(taskId, target, new Date(now).toISOString());
+/**
+ * Durable intent before the first send, claimed atomically: the leg is `unknown` until its outcome is recorded, so a crash
+ * mid-leg leaves `unknown`. Returns false when a receipt already exists (a repeated or concurrent completion — another
+ * caller owns this leg and nothing is sent). Throws when the store fails; the caller decides whether to send untracked.
+ */
+export function claimInitial(db: Database, taskId: string, target: DeliveryTarget, detail = 'in_flight', now = Date.now()): boolean {
+  return db.prepare(`INSERT INTO memory_sync_receipts (task_id, target, status, detail, attempts, updated_at) VALUES (?, ?, 'unknown', ?, 1, ?)
+    ON CONFLICT (task_id, target) DO NOTHING`).run(taskId, target, detail, new Date(now).toISOString()).changes === 1;
 }
 
+/** Compare-and-set claim of a resend: wins only if the receipt is still in the state the pass read (status + attempts). */
+export function claimRetry(db: Database, row: ReceiptRow, detail = 'in_flight', now = Date.now()): boolean {
+  return db.prepare(`UPDATE memory_sync_receipts SET status = 'unknown', detail = ?, attempts = attempts + 1, updated_at = ?
+    WHERE task_id = ? AND target = ? AND status = ? AND attempts = ?`).run(detail, new Date(now).toISOString(), row.task_id, row.target, row.status, row.attempts).changes === 1;
+}
+
+/** Compare-and-set: an `unknown` receipt whose effect a read-back found at the target becomes delivered. */
+export function settleReadBack(db: Database, row: ReceiptRow, now = Date.now()): boolean {
+  return db.prepare(`UPDATE memory_sync_receipts SET status = 'delivered', detail = 'read_back', updated_at = ?
+    WHERE task_id = ? AND target = ? AND status = 'unknown' AND attempts = ?`).run(new Date(now).toISOString(), row.task_id, row.target, row.attempts).changes === 1;
+}
+
+/** The outcome of a leg this caller claimed. */
 export function recordOutcome(db: Database, taskId: string, target: DeliveryTarget, outcome: LegOutcome, now = Date.now()): void {
-  db.prepare(`INSERT INTO memory_sync_receipts (task_id, target, status, detail, attempts, updated_at) VALUES (?, ?, ?, ?, 0, ?)
-    ON CONFLICT (task_id, target) DO UPDATE SET status = excluded.status, detail = excluded.detail, updated_at = excluded.updated_at`)
-    .run(taskId, target, outcome.status, outcome.detail.slice(0, 300), new Date(now).toISOString());
+  db.prepare('UPDATE memory_sync_receipts SET status = ?, detail = ?, updated_at = ? WHERE task_id = ? AND target = ?')
+    .run(outcome.status, outcome.detail.slice(0, 300), new Date(now).toISOString(), taskId, target);
 }
 
-/** A leg with nothing to deliver (e.g. empty content) keeps no receipt. */
-export function dropReceipt(db: Database, taskId: string, target: DeliveryTarget): void {
-  db.prepare('DELETE FROM memory_sync_receipts WHERE task_id = ? AND target = ?').run(taskId, target);
-}
+/** OKF intent detail: the sha256 of the exact bytes about to be written, so a read-back can tell a whole file from a torn one. */
+export const okfIntent = (sha256: string): string => `in_flight sha256:${sha256}`;
+export const okfIntentHash = (detail: string | null): string | null => detail?.match(/sha256:([0-9a-f]{64})/)?.[1] ?? null;
 
-export interface ReceiptRow { task_id: string; target: DeliveryTarget; status: DeliveryStatus; attempts: number }
+export interface ReceiptRow { task_id: string; target: DeliveryTarget; status: DeliveryStatus; attempts: number; detail: string | null }
 
 /**
  * The bounded work of one pass: idempotent targets only, `failed` with attempts left or `unknown`, settled (written
@@ -77,7 +93,7 @@ export interface ReceiptRow { task_id: string; target: DeliveryTarget; status: D
  */
 export function reconcileCandidates(db: Database, now: number, bootIso: string, limit = RECONCILE_BATCH): ReceiptRow[] {
   const settled = new Date(now - IN_FLIGHT_GRACE_MS).toISOString();
-  return db.prepare(`SELECT task_id, target, status, attempts FROM memory_sync_receipts
+  return db.prepare(`SELECT task_id, target, status, attempts, detail FROM memory_sync_receipts
     WHERE target IN (${IDEMPOTENT.map(() => '?').join(', ')})
       AND ((status = 'failed' AND attempts < ?) OR status = 'unknown')
       AND (updated_at <= ? OR updated_at <= ?)

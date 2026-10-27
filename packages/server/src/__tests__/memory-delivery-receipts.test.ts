@@ -3,6 +3,7 @@ import Database from 'better-sqlite3';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { createHash } from 'crypto';
 import { MemorySyncService } from '../services/memory-sync-service';
 import { memoryDeliveryEvidence } from '../services/memory-delivery-receipts';
 import { pointIdForTask } from '../utils/qdrant-point-id';
@@ -28,15 +29,23 @@ type Call = { url: string; method: string; body?: string };
 const timeoutError = () => Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' });
 
 /** A fake UAMS + Ollama + Qdrant. `qdrantPoints` is the set of stored point ids (read-back reads it). */
-function fakeTargets(opts: { uams?: 'ok' | 'timeout' | 401; upsert?: 'ok' | 503 } = {}) {
+type UamsBehaviour = 'ok' | 'timeout' | 401 | 503 | 'reset' | 'refused';
+const transportError = (code: string) => Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error(code), { code }) });
+
+function fakeTargets(opts: { uams?: UamsBehaviour; upsert?: 'ok' | 503 } = {}) {
   const calls: Call[] = [];
   const qdrantPoints = new Set<string>();
-  const state = { uams: opts.uams ?? 'ok', upsert: opts.upsert ?? 'ok' };
+  /** UAMS entries the server applied (a reset/5xx after commit still counts) */
+  const uamsCommitted: string[] = [];
+  const state: { uams: UamsBehaviour; upsert: 'ok' | 503 } = { uams: opts.uams ?? 'ok', upsert: opts.upsert ?? 'ok' };
   const fetchFn = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method || 'GET';
     calls.push({ url, method, body: init?.body as string | undefined });
     if (url.endsWith('/memory/entry')) {
+      if (state.uams === 'refused') throw transportError('ECONNREFUSED');
+      uamsCommitted.push(String(init?.body));
       if (state.uams === 'timeout') throw timeoutError();
+      if (state.uams === 'reset') throw transportError('ECONNRESET'); // committed, then the connection dropped
       return new Response('{}', { status: state.uams === 'ok' ? 201 : state.uams });
     }
     if (url.includes('/api/embed')) return new Response(JSON.stringify({ embeddings: [[0.1, 0.2, 0.3]] }));
@@ -55,7 +64,7 @@ function fakeTargets(opts: { uams?: 'ok' | 'timeout' | 401; upsert?: 'ok' | 503 
     return new Response('{}', { status: 404 });
   });
   vi.stubGlobal('fetch', fetchFn);
-  return { calls, qdrantPoints, state };
+  return { calls, qdrantPoints, state, uamsCommitted };
 }
 
 const receipts = (db: Database.Database) =>
@@ -172,19 +181,11 @@ describe('CODE-004: memory delivery receipts', () => {
     expect(statusOf(db, 'task-1', 'qdrant')).toBe('failed');
   });
 
-  it('off (default) does not change behaviour: same calls, no table, no reconciliation', async () => {
-    const run = async (mode: string | undefined) => {
-      if (mode) process.env.MEMORY_DELIVERY_RECEIPTS = mode; else delete process.env.MEMORY_DELIVERY_RECEIPTS;
-      const db = taskDb();
-      const t = fakeTargets({ uams: 'timeout', upsert: 503 });
-      const svc = new MemorySyncService(db);
-      await expect(svc.onTaskCompleted('task-1')).resolves.toBeUndefined();
-      return { db, t, svc };
-    };
-    const off = await run(undefined);
-    const explicit = await run('off');
-    const strip = (calls: Call[]) => calls.map((c) => `${c.method} ${c.url}`);
-    expect(strip(off.t.calls)).toEqual(strip(explicit.t.calls));
+  // byte-identity of off with origin/main is pinned in memory-sync-off-pinned.test.ts
+  it('off (default) records nothing and arms nothing', async () => {
+    const off = { db: taskDb(), t: fakeTargets({ uams: 'timeout', upsert: 503 }), svc: null as unknown as MemorySyncService };
+    off.svc = new MemorySyncService(off.db);
+    await expect(off.svc.onTaskCompleted('task-1')).resolves.toBeUndefined();
     expect(posts(off.t.calls)).toHaveLength(1);
     expect(upserts(off.t.calls, 'task-1')).toHaveLength(1);
     expect(off.db.prepare("SELECT name FROM sqlite_master WHERE name = 'memory_sync_receipts'").get()).toBeUndefined();
@@ -195,5 +196,115 @@ describe('CODE-004: memory delivery receipts', () => {
     expect(off.t.calls).toHaveLength(0);
     expect(off.db.prepare("SELECT name FROM sqlite_master WHERE name = 'memory_sync_receipts'").get()).toBeUndefined();
     expect(memoryDeliveryEvidence(off.db, process.env)).toMatchObject({ mode: 'off', by_target: null });
+  });
+});
+
+describe('CODE-004 review (#1058): ambiguous UAMS writes, duplicate completion, durable intent, crash-safe OKF', () => {
+  it('UAMS committed then reset: one POST, receipt unknown (not a misleading failed)', async () => {
+    process.env.MEMORY_DELIVERY_RECEIPTS = 'on';
+    const db = taskDb();
+    const t = fakeTargets({ uams: 'reset' });
+    await new MemorySyncService(db).onTaskCompleted('task-1');
+    expect(posts(t.calls)).toHaveLength(1);
+    expect(t.uamsCommitted).toHaveLength(1);
+    expect(statusOf(db, 'task-1', 'uams')).toBe('unknown');
+  });
+
+  it('UAMS 5xx is ambiguous in tracked modes: one POST, unknown', async () => {
+    process.env.MEMORY_DELIVERY_RECEIPTS = 'shadow';
+    const db = taskDb();
+    const t = fakeTargets({ uams: 503 });
+    await new MemorySyncService(db).onTaskCompleted('task-1');
+    expect(posts(t.calls)).toHaveLength(1);
+    expect(statusOf(db, 'task-1', 'uams')).toBe('unknown');
+  });
+
+  it('UAMS refused connection is proven non-delivery: retried, then failed', async () => {
+    process.env.MEMORY_DELIVERY_RECEIPTS = 'on';
+    const db = taskDb();
+    const t = fakeTargets({ uams: 'refused' });
+    await new MemorySyncService(db).onTaskCompleted('task-1');
+    expect(posts(t.calls)).toHaveLength(3);
+    expect(t.uamsCommitted).toHaveLength(0);
+    expect(statusOf(db, 'task-1', 'uams')).toBe('failed');
+  }, 10_000);
+
+  it('repeated completion across two service instances sends each leg once (sequential and concurrent)', async () => {
+    process.env.MEMORY_DELIVERY_RECEIPTS = 'on';
+    const db = taskDb();
+    const t = fakeTargets({ uams: 'timeout' });
+    const a = new MemorySyncService(db);
+    const b = new MemorySyncService(db);
+    await a.onTaskCompleted('task-1');
+    await b.onTaskCompleted('task-1');
+    await Promise.all([a.onTaskCompleted('task-2'), b.onTaskCompleted('task-2')]);
+    for (const task of ['task-1', 'task-2']) {
+      expect(t.calls.filter((c) => c.url.endsWith('/memory/entry') && JSON.parse(c.body || '{}').topic === `task:${task}`)).toHaveLength(1);
+      expect(upserts(t.calls, task)).toHaveLength(1);
+    }
+    expect(statusOf(db, 'task-1', 'uams')).toBe('unknown'); // the second completion did not overwrite the receipt
+    expect(receipts(db).every((r) => r.attempts === 1)).toBe(true);
+  });
+
+  it('on: a failed intent insert prevents every external write; shadow still sends untracked', async () => {
+    for (const mode of ['on', 'shadow'] as const) {
+      process.env.MEMORY_DELIVERY_RECEIPTS = mode;
+      const db = taskDb();
+      db.exec(`CREATE TABLE memory_sync_receipts (task_id TEXT NOT NULL, target TEXT NOT NULL, status TEXT NOT NULL, detail TEXT,
+          attempts INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL, PRIMARY KEY (task_id, target));
+        CREATE TRIGGER no_receipts BEFORE INSERT ON memory_sync_receipts BEGIN SELECT RAISE(ABORT, 'disk I/O error'); END;`);
+      const t = fakeTargets();
+      await new MemorySyncService(db).onTaskCompleted('task-1');
+      const okf = fs.existsSync(path.join(tmpOkf, 'tasks', 'task-1.md'));
+      if (mode === 'on') {
+        expect(posts(t.calls)).toHaveLength(0);
+        expect(upserts(t.calls, 'task-1')).toHaveLength(0);
+        expect(okf).toBe(false);
+      } else {
+        expect(posts(t.calls)).toHaveLength(1);
+        expect(upserts(t.calls, 'task-1')).toHaveLength(1);
+        expect(okf).toBe(true);
+      }
+      fs.rmSync(path.join(tmpOkf, 'tasks'), { recursive: true, force: true });
+    }
+  });
+
+  it('a truncated OKF file from an interrupted write is not read back as delivered; it is rewritten whole', async () => {
+    process.env.MEMORY_DELIVERY_RECEIPTS = 'on';
+    const db = taskDb();
+    fakeTargets();
+    const file = path.join(tmpOkf, 'tasks', 'task-1.md');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, '---\ntype: Compl'); // the process died mid-write
+    db.exec(`CREATE TABLE IF NOT EXISTS memory_sync_receipts (task_id TEXT NOT NULL, target TEXT NOT NULL, status TEXT NOT NULL, detail TEXT,
+      attempts INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL, PRIMARY KEY (task_id, target))`);
+    db.prepare(`INSERT INTO memory_sync_receipts VALUES ('task-1', 'okf', 'unknown', 'in_flight', 1, '2026-01-01T00:00:00.000Z')`).run();
+
+    const report = await new MemorySyncService(db).reconcile();
+
+    expect(report).toMatchObject({ read_back_delivered: 0, retried: 1, delivered: 1 });
+    expect(statusOf(db, 'task-1', 'okf')).toBe('delivered');
+    const text = fs.readFileSync(file, 'utf8');
+    expect(text).toMatch(/^---\ntype: CompletedTask\n[\s\S]*## Description\n\ndo the thing\n\n$/);
+    expect(fs.readdirSync(path.dirname(file))).toEqual(['task-1.md']); // no temp file left behind
+  });
+
+  it('a complete OKF file matching the recorded intent hash is read back without a rewrite', async () => {
+    process.env.MEMORY_DELIVERY_RECEIPTS = 'on';
+    const db = taskDb();
+    fakeTargets();
+    await new MemorySyncService(db).onTaskCompleted('task-1');
+    const file = path.join(tmpOkf, 'tasks', 'task-1.md');
+    const written = fs.readFileSync(file, 'utf8');
+    // simulate: the write completed but the outcome was never recorded
+    db.prepare(`UPDATE memory_sync_receipts SET status = 'unknown', detail = 'in_flight sha256:' || ?, updated_at = '2026-01-01T00:00:00.000Z' WHERE target = 'okf'`)
+      .run(createHash('sha256').update(written).digest('hex'));
+    const before = fs.statSync(file).mtimeMs;
+
+    const report = await new MemorySyncService(db).reconcile();
+
+    expect(report).toMatchObject({ read_back_delivered: 1, retried: 0 });
+    expect(statusOf(db, 'task-1', 'okf')).toBe('delivered');
+    expect(fs.statSync(file).mtimeMs).toBe(before);
   });
 });

@@ -1,13 +1,14 @@
 import type { Database } from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import { createHash } from 'crypto';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import { pointIdForTask as qdrantPointIdForTask } from '../utils/qdrant-point-id';
 import { yamlScalar } from '../utils/yaml-scalar';
 import { ensureCollection, memoryEmbedModel, SWARM_MEMORY_COLLECTION } from './memory-embedding-contract';
 import {
-  dropReceipt, ensureReceiptsTable, reconcileCandidates, recordAttempt, recordOutcome, receiptMode, touchReceipt, unreconcilableUnknown,
-  MAX_DELIVERY_ATTEMPTS, type DeliveryTarget, type LegOutcome, type ReceiptMode,
+  claimInitial, claimRetry, ensureReceiptsTable, okfIntent, okfIntentHash, reconcileCandidates, recordOutcome, receiptMode, settleReadBack,
+  touchReceipt, unreconcilableUnknown, MAX_DELIVERY_ATTEMPTS, type DeliveryTarget, type LegOutcome, type ReceiptMode, type ReceiptRow,
 } from './memory-delivery-receipts';
 import { guardTick, markRun } from './scheduler-registry';
 
@@ -32,6 +33,17 @@ const EMBED_TIMEOUT_MS = Number(process.env.EMBEDDING_TIMEOUT_MS) || 10_000;
 // CODE-004: every leg has a per-request deadline, so the whole fan-out is bounded in elapsed time, not just in attempts.
 const WRITE_TIMEOUT_MS = 10_000;
 const isTimeout = (e: unknown): boolean => (e as { name?: string })?.name === 'TimeoutError' || (e as { name?: string })?.name === 'AbortError';
+/**
+ * A transport error that proves the request never reached the server (no connection was made). Anything else — a reset,
+ * a socket hang-up — may have happened after the server committed the write.
+ */
+const NOT_SENT_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'EHOSTUNREACH', 'ENETUNREACH']);
+const provenNotSent = (e: unknown): boolean => {
+  const cause = (e as { cause?: { code?: string; errors?: Array<{ code?: string }> } })?.cause;
+  if (cause?.code && NOT_SENT_CODES.has(cause.code)) return true;
+  return !!cause?.errors?.length && cause.errors.every((x) => !!x?.code && NOT_SENT_CODES.has(x.code));
+};
+const sha256 = (text: string | Buffer): string => createHash('sha256').update(text).digest('hex');
 const errText = (e: unknown): string => (e instanceof Error ? `${e.name}: ${e.message}` : String(e));
 const delivered = (detail: string): LegOutcome => ({ status: 'delivered', detail });
 const failed = (detail: string): LegOutcome => ({ status: 'failed', detail });
@@ -118,31 +130,70 @@ export class MemorySyncService {
     if (!ctx) return;
     const { task, content, machineId, agentType } = ctx;
 
-    // CODE-004: with MEMORY_DELIVERY_RECEIPTS off the legs run untracked, exactly as before.
-    const tracked = receiptMode() !== 'off';
-    const leg = (target: DeliveryTarget, run: () => Promise<LegOutcome | null>): Promise<unknown> => (tracked ? this.tracked(taskId, target, run) : run());
+    const mode = receiptMode();
+    if (mode === 'off') {
+      // CODE-004: with MEMORY_DELIVERY_RECEIPTS off the legs run untracked, exactly as before (pinned: memory-sync-off-pinned.test.ts).
+      await Promise.allSettled([
+        this.syncToUAMS(taskId, content, machineId, agentType, false),
+        this.syncToQdrant(taskId, content, machineId, agentType),
+        Promise.resolve(this.writeOKFConcept(task, machineId, agentType)),
+      ]);
+      return;
+    }
+    let okfText = '';
     await Promise.allSettled([
-      leg('uams', () => this.syncToUAMS(taskId, content, machineId, agentType)),
-      leg('qdrant', () => this.syncToQdrant(taskId, content, machineId, agentType)),
-      leg('okf', () => Promise.resolve(this.writeOKFConcept(task, machineId, agentType))),
+      // nothing to deliver → no receipt (the leg logs the skip)
+      content.trim()
+        ? this.tracked(mode, taskId, 'uams', () => claimInitial(this.db, taskId, 'uams'), () => this.syncToUAMS(taskId, content, machineId, agentType, true))
+        : this.syncToUAMS(taskId, content, machineId, agentType, true),
+      this.tracked(mode, taskId, 'qdrant', () => claimInitial(this.db, taskId, 'qdrant'), () => this.syncToQdrant(taskId, content, machineId, agentType)),
+      this.tracked(mode, taskId, 'okf', () => {
+        okfText = this.renderOKFConcept(task, machineId, agentType);
+        return claimInitial(this.db, taskId, 'okf', okfIntent(sha256(okfText)));
+      }, async () => this.writeOKFConcept(task, machineId, agentType, okfText)),
     ]);
   }
 
-  /** Receipt writes never break a sync: a failing store is logged and the leg proceeds untracked. */
+  /** Receipt reads/writes after a claim never break a sync: a failing store is logged (the receipt stays `unknown`). */
   private receipt(fn: () => void): void {
     try {
-      if (!this.receiptsTableReady) { ensureReceiptsTable(this.db); this.receiptsTableReady = true; }
+      this.ensureTable();
       fn();
     } catch (e) {
       console.warn('Memory delivery receipt write failed:', errText(e));
     }
   }
 
-  private async tracked(taskId: string, target: DeliveryTarget, run: () => Promise<LegOutcome | null>): Promise<LegOutcome | null> {
-    this.receipt(() => recordAttempt(this.db, taskId, target));
+  private ensureTable(): void {
+    if (!this.receiptsTableReady) { ensureReceiptsTable(this.db); this.receiptsTableReady = true; }
+  }
+
+  /**
+   * One tracked leg: claim the durable intent atomically, then send, then record the outcome.
+   * - claim lost (a receipt exists: repeated or concurrent completion, or another pass): nothing is sent.
+   * - claim store fails: `on` sends nothing (no send without a durable intent); `shadow` sends untracked.
+   */
+  private async tracked(mode: ReceiptMode, taskId: string, target: DeliveryTarget, claim: () => boolean, run: () => Promise<LegOutcome | null>): Promise<LegOutcome | null> {
+    let won: boolean;
+    try {
+      this.ensureTable();
+      won = claim();
+    } catch (e) {
+      if (mode === 'on') {
+        console.warn(`Memory sync ${target} for task ${taskId} not sent: no durable intent (${errText(e)})`);
+        return null;
+      }
+      console.warn(`Memory delivery receipt for ${target} task ${taskId} failed (shadow, sending untracked):`, errText(e));
+      return run();
+    }
+    if (!won) {
+      console.log(`Memory sync ${target} for task ${taskId} skipped: a delivery receipt already exists`);
+      return null;
+    }
     let outcome: LegOutcome | null;
     try { outcome = await run(); } catch (e) { outcome = failed(errText(e)); }
-    this.receipt(() => (outcome ? recordOutcome(this.db, taskId, target, outcome) : dropReceipt(this.db, taskId, target)));
+    const settled = outcome ?? unknown('no outcome');
+    this.receipt(() => recordOutcome(this.db, taskId, target, settled));
     return outcome;
   }
 
@@ -193,10 +244,11 @@ export class MemorySyncService {
     });
     for (const row of rows) {
       if (row.status === 'unknown') {
-        const seen = await this.readBack(row.task_id, row.target);
+        const seen = await this.readBack(row);
         if (seen === 'present') {
-          this.receipt(() => recordOutcome(this.db, row.task_id, row.target, delivered('read_back')));
-          report.read_back_delivered++;
+          let won = false;
+          this.receipt(() => { won = settleReadBack(this.db, row); });
+          if (won) report.read_back_delivered++;
           continue;
         }
         if (seen === 'inconclusive') {
@@ -204,25 +256,39 @@ export class MemorySyncService {
           report.read_back_inconclusive++;
           continue;
         }
-        this.receipt(() => recordOutcome(this.db, row.task_id, row.target, failed('read_back: absent')));
+        // absent: proven not delivered → resend below (the claim moves it from this exact unknown state)
       }
-      if (row.attempts >= MAX_DELIVERY_ATTEMPTS) continue;
+      if (row.attempts >= MAX_DELIVERY_ATTEMPTS) {
+        if (row.status === 'unknown') this.receipt(() => recordOutcome(this.db, row.task_id, row.target, failed('read_back: absent')));
+        continue;
+      }
       const ctx = this.loadTask(row.task_id);
-      report.retried++;
-      const outcome = await this.tracked(row.task_id, row.target, async () => {
+      let okfText = '';
+      const outcome = await this.tracked('on', row.task_id, row.target, () => {
+        if (row.target === 'okf' && ctx) okfText = this.renderOKFConcept(ctx.task, ctx.machineId, ctx.agentType);
+        return claimRetry(this.db, row, okfText ? okfIntent(sha256(okfText)) : 'in_flight');
+      }, async () => {
         if (!ctx) return failed('task missing');
         return row.target === 'qdrant'
           ? this.syncToQdrant(row.task_id, ctx.content, ctx.machineId, ctx.agentType)
-          : this.writeOKFConcept(ctx.task, ctx.machineId, ctx.agentType);
+          : this.writeOKFConcept(ctx.task, ctx.machineId, ctx.agentType, okfText);
       });
+      if (outcome) report.retried++;
       if (outcome?.status === 'delivered') report.delivered++;
     }
     return report;
   }
 
-  /** Is the leg's effect visible at the target? Only targets with a read-back: the Qdrant point by id, the OKF file. */
-  private async readBack(taskId: string, target: DeliveryTarget): Promise<'present' | 'absent' | 'inconclusive'> {
-    if (target === 'okf') return fs.existsSync(path.join(this.okfTasksDir, `${taskId}.md`)) ? 'present' : 'absent';
+  /**
+   * Is the leg's effect visible at the target? Qdrant: the point by its stable id. OKF: the file's sha256 equals the
+   * intent hash recorded before the write (a torn or stale file is absent). UAMS has no read-back.
+   */
+  private async readBack(row: ReceiptRow): Promise<'present' | 'absent' | 'inconclusive'> {
+    const { task_id: taskId, target } = row;
+    if (target === 'okf') {
+      const want = okfIntentHash(row.detail);
+      try { return want && sha256(fs.readFileSync(path.join(this.okfTasksDir, `${taskId}.md`))) === want ? 'present' : 'absent'; } catch { return 'absent'; }
+    }
     if (target !== 'qdrant') return 'inconclusive';
     try {
       const res = await fetch(`${qdrantWriteUrl()}/collections/${SWARM_MEMORY_COLLECTION}/points/${pointIdForTask(taskId)}`, {
@@ -238,7 +304,12 @@ export class MemorySyncService {
     }
   }
 
-  private async syncToUAMS(taskId: string, content: string, machineId: string, agentType: string): Promise<LegOutcome | null> {
+  /**
+   * tracked (receipts shadow/on): a write whose delivery is ambiguous — 5xx, timeout, a transport error after the request
+   * may have reached the server — is `unknown` and never re-sent (/memory/entry is not proven idempotent). Only proven
+   * non-delivery (no connection made) is retried. Untracked (off): the pre-receipts behaviour, unchanged.
+   */
+  private async syncToUAMS(taskId: string, content: string, machineId: string, agentType: string, tracked: boolean): Promise<LegOutcome | null> {
     if (!content.trim()) {
       console.warn(`UAMS sync skipped for task ${taskId}: empty content`);
       return null;
@@ -267,6 +338,10 @@ export class MemorySyncService {
           console.warn(`UAMS sync rejected for task ${taskId}: ${res.status} (check UAMS_API_KEY)`);
           return failed(`rejected ${res.status}`);
         }
+        if (res.status >= 500 && tracked) {
+          console.warn(`UAMS sync for task ${taskId}: ${res.status}; outcome unknown, not retried`);
+          return unknown(`status ${res.status}`);
+        }
         if (res.status >= 500 && attempt < 2) {
           await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
           continue;
@@ -279,6 +354,10 @@ export class MemorySyncService {
         if (isTimeout(e)) {
           console.warn(`UAMS sync for task ${taskId} timed out after ${WRITE_TIMEOUT_MS}ms; outcome unknown, not retried`);
           return unknown(`timeout ${WRITE_TIMEOUT_MS}ms`);
+        }
+        if (tracked && !provenNotSent(e)) {
+          console.warn(`UAMS sync for task ${taskId}: ${errText(e)}; may have been applied, outcome unknown, not retried`);
+          return unknown(errText(e));
         }
         if (attempt < 2) {
           await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
@@ -342,42 +421,60 @@ export class MemorySyncService {
     }
   }
 
-  private writeOKFConcept(task: any, machineId: string, agentType: string): LegOutcome {
+  private renderOKFConcept(task: any, machineId: string, agentType: string): string {
+    const description = (task.description || task.title || '').slice(0, 200);
+    const frontmatter = [
+      '---',
+      `type: CompletedTask`,
+      `title: ${yamlScalar(task.title || '')}`,
+      `description: ${yamlScalar(description)}`,
+      `resource: http://192.168.1.28:3001/api/tasks/${task.id}`,
+      `tags: [${machineId}, ${agentType}, ${task.status}]`,
+      `timestamp: ${new Date().toISOString()}`,
+      `trust_level: agent_generated`,
+      '---',
+    ].join('\n');
+
+    const body = [
+      `# ${task.title || task.id}`,
+      '',
+      `**Status**: ${task.status}`,
+      `**Machine**: ${machineId}`,
+      `**Agent type**: ${agentType}`,
+      `**Created**: ${task.created_at}`,
+      `**Completed**: ${task.completed_at || 'N/A'}`,
+      '',
+      '## Description',
+      '',
+      task.description || '_No description_',
+      '',
+    ].join('\n');
+
+    return `${frontmatter}\n\n${body}\n`;
+  }
+
+  /**
+   * `rendered` (tracked modes): the exact bytes whose hash the intent recorded, published crash-safely (temp file + rename,
+   * so the destination is never torn). Untracked (off): rendered and written in place, as before.
+   */
+  private writeOKFConcept(task: any, machineId: string, agentType: string, rendered?: string): LegOutcome {
     // OKF is a rebuildable projection: a missing/dangling knowledge base must not
     // fail the whole sync (this is synchronous, so an uncaught throw would reject
     // onTaskCompleted before Promise.allSettled can isolate it).
     try {
       fs.mkdirSync(this.okfTasksDir, { recursive: true });
       const filePath = path.join(this.okfTasksDir, `${task.id}.md`);
-      const description = (task.description || task.title || '').slice(0, 200);
-      const frontmatter = [
-        '---',
-        `type: CompletedTask`,
-        `title: ${yamlScalar(task.title || '')}`,
-        `description: ${yamlScalar(description)}`,
-        `resource: http://192.168.1.28:3001/api/tasks/${task.id}`,
-        `tags: [${machineId}, ${agentType}, ${task.status}]`,
-        `timestamp: ${new Date().toISOString()}`,
-        `trust_level: agent_generated`,
-        '---',
-      ].join('\n');
-
-      const body = [
-        `# ${task.title || task.id}`,
-        '',
-        `**Status**: ${task.status}`,
-        `**Machine**: ${machineId}`,
-        `**Agent type**: ${agentType}`,
-        `**Created**: ${task.created_at}`,
-        `**Completed**: ${task.completed_at || 'N/A'}`,
-        '',
-        '## Description',
-        '',
-        task.description || '_No description_',
-        '',
-      ].join('\n');
-
-      fs.writeFileSync(filePath, `${frontmatter}\n\n${body}\n`, 'utf8');
+      if (rendered === undefined) {
+        fs.writeFileSync(filePath, this.renderOKFConcept(task, machineId, agentType), 'utf8');
+      } else {
+        const tmp = `${filePath}.${process.pid}.tmp`;
+        try {
+          fs.writeFileSync(tmp, rendered, 'utf8');
+          fs.renameSync(tmp, filePath);
+        } finally {
+          fs.rmSync(tmp, { force: true });
+        }
+      }
       console.log(`OKF concept written: tasks/${task.id}.md`);
       return delivered('written');
     } catch (e) {
