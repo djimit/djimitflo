@@ -97,6 +97,53 @@ describe('reconciliation: evidence comment applied, response lost', () => {
     expect(posts).toBe(1);
   });
 
+  describe('paginated comments (marker past the first 100)', () => {
+    /** 150 comments; the evidence comment from the lost POST is #121, so it is on page 2. */
+    function busyIssue(opts: { failPage?: number } = {}) {
+      const others = Array.from({ length: 150 }, (_, i) => ({ body: `comment ${i}` }));
+      let posts = 0;
+      let open = true;
+      const fetchImpl = async (url: string, init?: RequestInit) => {
+        const method = init?.method ?? 'GET';
+        if (method === 'GET' && url.includes('/issues?')) return { ok: true, status: 200, json: async () => (open ? [STALE] : []) };
+        if (method === 'GET' && url.includes('/issues/37/comments')) {
+          const u = new URL(url);
+          const page = Number(u.searchParams.get('page') ?? '1');
+          const perPage = Number(u.searchParams.get('per_page') ?? '30');
+          if (page === opts.failPage) return { ok: false, status: 502, json: async () => ({}) };
+          return { ok: true, status: 200, json: async () => others.slice((page - 1) * perPage, page * perPage) };
+        }
+        if (method === 'POST') {
+          posts++;
+          others.splice(120, 0, { body: JSON.parse(String(init!.body)).body });
+          if (posts === 1) throw timeoutError();
+          return { ok: true, status: 201, json: async () => ({}) };
+        }
+        if (method === 'PATCH') { open = false; return { ok: true, status: 200, json: async () => ({}) }; }
+        throw new Error(`unexpected ${method} ${url}`);
+      };
+      return { fetchImpl, get posts() { return posts; }, get open() { return open; } };
+    }
+
+    it('finds the marker on a later page and does not repost', async () => {
+      const gh = busyIssue();
+      const svc = new ReconciliationService(db, repoRoot, gh.fetchImpl as any);
+      await svc.reconcileGitHub({ apply: true });
+      expect((await svc.reconcileGitHub({ apply: true })).closedIssues).toEqual([37]);
+      expect(gh.posts).toBe(1);
+    });
+
+    it('keeps unknown and does not post when a later page fails', async () => {
+      const gh = busyIssue({ failPage: 2 });
+      const svc = new ReconciliationService(db, repoRoot, gh.fetchImpl as any);
+      await svc.reconcileGitHub({ apply: true });
+      expect((await svc.reconcileGitHub({ apply: true })).closedIssues).toEqual([]);
+      expect(gh.posts).toBe(1);
+      expect(gh.open).toBe(true);
+      expect(db.prepare('SELECT status FROM reconciliation_issue_comments WHERE issue_number = 37').get()).toEqual({ status: 'unknown' });
+    });
+  });
+
   it('when the comments cannot be read, an unknown outcome is left alone (no repost, no close)', async () => {
     const gh = fakeGitHub();
     const svc = new ReconciliationService(db, repoRoot, gh.fetchImpl as any);

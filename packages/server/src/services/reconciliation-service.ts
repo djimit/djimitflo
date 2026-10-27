@@ -57,6 +57,7 @@ export interface ReconciliationReport {
 /** Marks our evidence comment, so an unknown POST outcome can be reconciled against the issue's comments. */
 const COMMENT_MARKER = 'Closed automatically by the DjimFlo reconciliation service.';
 const GITHUB_TIMEOUT_MS = 15_000;
+const MAX_COMMENT_PAGES = 50; // 5 000 comments; beyond that absence stays unproven (no repost)
 /**
  * Per-issue evidence-comment outcome. 'unknown' is written before the POST (write-ahead) and stays when the response
  * is lost (timeout, crash, 5xx); 'failed' only for a definite 4xx rejection. 'unknown' is reconciled before a repost.
@@ -266,6 +267,23 @@ export class ReconciliationService {
   }
 
   /**
+   * Reads every page of the issue's comments for the marker: true found, false absent on all pages, null when any page
+   * could not be read or the page cap was reached (absence is then unproven).
+   */
+  private async hasEvidenceComment(repo: string, issue: number, headers: Record<string, string>): Promise<boolean | null> {
+    const perPage = 100;
+    for (let page = 1; page <= MAX_COMMENT_PAGES; page++) {
+      const res = await this.fetchImpl(`https://api.github.com/repos/${repo}/issues/${issue}/comments?per_page=${perPage}&page=${page}`, { headers, signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS) });
+      if (!res.ok) return null;
+      const comments = await res.json() as Array<{ body?: string }>;
+      if (!Array.isArray(comments)) return null;
+      if (comments.some((c) => c.body?.includes(COMMENT_MARKER))) return true;
+      if (comments.length < perPage) return false;
+    }
+    return null;
+  }
+
+  /**
    * True once the evidence comment is known to be on the issue. A comment is posted at most once per unknown outcome:
    * an earlier unknown POST is first reconciled against the issue's comments; when they cannot be read, nothing is sent.
    */
@@ -273,10 +291,9 @@ export class ReconciliationService {
     const status = this.commentStatus(repo, issue);
     if (status === 'posted') return true;
     if (status === 'unknown') {
-      const res = await this.fetchImpl(`https://api.github.com/repos/${repo}/issues/${issue}/comments?per_page=100`, { headers, signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS) });
-      if (!res.ok) return false; // still unknown: neither repost nor close
-      const comments = await res.json() as Array<{ body?: string }>;
-      if (comments.some((c) => c.body?.includes(COMMENT_MARKER))) { this.setCommentStatus(repo, issue, 'posted'); return true; }
+      const found = await this.hasEvidenceComment(repo, issue, headers);
+      if (found === null) return false; // still unknown: neither repost nor close
+      if (found) { this.setCommentStatus(repo, issue, 'posted'); return true; }
     }
     const body = `Reconciliation (${new Date().toISOString().slice(0, 10)}): this claim no longer holds against current source.\n\n**Evidence:** ${verdict.evidence}\n\n${COMMENT_MARKER}`;
     this.setCommentStatus(repo, issue, 'unknown'); // write-ahead: a lost response or crash leaves it to reconcile
