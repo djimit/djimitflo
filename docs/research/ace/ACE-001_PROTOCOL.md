@@ -127,3 +127,14 @@ This is a correction to a secondary reading. Verdict rules are unchanged. The te
   shown next to it.
 - **Unchanged:** the primary endpoint (`verified`), n, verified rate, Wilson CI, graded mean, main effects, arm assignment
   (`sha256('ace-001:' + goal id) mod 4`), analysis window, target, stop_by, and the safety/harm stops.
+
+## Amendment 4 (2026-10-27): period boundary
+
+This adds a period boundary to the analysis. Verdict rules are unchanged. The text above is frozen and is not edited.
+
+- **Period boundary: 2026-10-27T05:52:42Z.** Memory rules were switched off in production at this instant
+  (`LOOP_MEMORY_RULES_ENABLED=false`, following the EXP-3 memory-holdout result). From then on no maker in any arm receives
+  memory rules, so the maker context changed for every arm at once. The analysis reports outcomes created before and from
+  this instant as two periods next to the registered whole-window analysis; the periods are never pooled silently.
+- **Unchanged:** the primary endpoint (`verified`), the secondary token reading as amended in Amendment 3, arm assignment
+  (`sha256('ace-001:' + goal id) mod 4`), analysis window, target, stop_by, and the safety/harm stops.

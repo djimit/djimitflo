@@ -52,6 +52,30 @@ describe('AI correctness regressions', () => {
     expect(prediction.recommendations).toContain('Expected success rate: 100%');
   });
 
+  it('prices unknown usage as unknown, never at an invented $2/Mtok; dollars only from a dated lease price', () => {
+    const database = db();
+    const run = (id: string, leaseMeta: Record<string, unknown>) => {
+      database.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, metadata, created_at, completed_at) VALUES (?, 'test', 'closed', 'completed', ?, datetime('now', '-1 hour'), datetime('now'))`)
+        .run(id, JSON.stringify({ goal_type: 'docs' }));
+      database.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, finding_id, worktree_path, metadata) VALUES (?, ?, 'maker', 'codex', 'completed', 'f', '/tmp', ?)`)
+        .run(`lease-${id}`, id, JSON.stringify(leaseMeta));
+    };
+    run('tokens-no-price', { runtime_usage: { total_tokens: 1_000_000 } });
+    const svc = new PredictiveAnalyticsService(database);
+    const unpriced = svc.predict({ goalType: 'docs', runtime: 'codex', mode: 'closed' });
+    expect(unpriced.expectedCostDollars).toBeNull();
+    expect(unpriced.expectedCostReason).toBe('no_dated_model_price');
+    expect(unpriced.costCoverage).toEqual({ priced: 0, total: 1 });
+    run('priced', { runtime_usage: { total_tokens: 500_000 }, token_accounting: { estimated_cost_usd: 0.4, price_version: '2026-10-01' } });
+    const priced = svc.predict({ goalType: 'docs', runtime: 'codex', mode: 'closed' });
+    expect(priced.expectedCostDollars).toBe(0.4); // the unpriced run is left out, not counted as $0 or $2
+    expect(priced.expectedCostReason).toBeNull();
+    expect(priced.costCoverage).toEqual({ priced: 1, total: 2 });
+    const none = new PredictiveAnalyticsService(db()).predict({ goalType: 'docs', runtime: 'codex', mode: 'closed' });
+    expect(none.expectedCostDollars).toBeNull();
+    expect(none.expectedCostReason).toBe('no_history');
+  });
+
   it('supports reproducible skill evolution', () => {
     const evolve = () => {
       const values = [0.1, 0.9, 0.2, 0.8, 0.3, 0.1, 0.4];
