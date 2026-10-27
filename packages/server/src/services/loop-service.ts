@@ -352,6 +352,9 @@ export function renderWorkAssignment(run: { id: string; loop_name: string }, fin
 export const objectiveScopeLine = (file: string): string => `Change only this file: ${file}. Do not edit README.md, CONTRIBUTING.md or any other file.`;
 
 /** The fixed instruction lines of every checker / security-checker assignment (exported for the STE prompt lint). */
+/** The checker prompt carries at most this many characters of the assignment packet (buildCheckerPrompt). */
+export const CHECKER_PACKET_MAX_CHARS = 20_000;
+
 export const CHECKER_INSTRUCTIONS = {
   common: [
     'You are an independent checker. Do not edit files, merge, push, deploy, modify secrets or change policy.',
@@ -2560,7 +2563,7 @@ export class LoopService {
   public buildCheckerPrompt(run: LoopRunRecord, maker: WorkerLeaseRecord, checker: WorkerLeaseRecord): string {
     const worktreePath = maker.worktree_path || '';
     const diff = worktreePath ? this.workingTreeDiff(worktreePath) : '';
-    const assignmentPacket = this.checkerAssignmentPacket(run, maker, checker).slice(0, 20_000);
+    const assignmentPacket = this.checkerAssignmentPacket(run, maker, checker).slice(0, CHECKER_PACKET_MAX_CHARS);
     const stdoutPath = typeof maker.metadata.stdout_path === 'string' ? maker.metadata.stdout_path : '';
     const stderrPath = typeof maker.metadata.stderr_path === 'string' ? maker.metadata.stderr_path : '';
     const checks = this.checkResultsForReviewer(maker.metadata.deterministic_checks);
