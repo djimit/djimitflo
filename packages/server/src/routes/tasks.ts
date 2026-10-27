@@ -185,6 +185,12 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
         context_retrieval_reason = error instanceof Error ? error.message : String(error);
         contextSnapshot = await contextInjector.injectContextSnapshot('', false);
       }
+      // A skipped/incompatible source (e.g. embedding dimension mismatch) is degraded retrieval,
+      // not "no matching memory" (CODE-002).
+      if (!context_retrieval_degraded && contextSnapshot.unavailable?.length) {
+        context_retrieval_degraded = true;
+        context_retrieval_reason = contextSnapshot.unavailable.map((u) => `${u.source}: ${u.reason}`).join('; ');
+      }
       // Context retrieval is advisory. A failed source must not prevent task
       // creation, but successful context must be part of the immutable input
       // before approvals and execution fingerprints are created.
