@@ -21,20 +21,34 @@ export interface RuntimeUsage {
   usage_source?: string;
 }
 
-/** Per-run economy: verified = certified run's active completed makers; null = unknown, never 0. */
+/**
+ * Per-run economy: verified = certified run's active completed makers; null = unknown, never 0.
+ * CODE-007 / L-F04 (forensic audit 2026-10-26): dollars come only from a dated model price — the lease's token_accounting cost,
+ * stored with its price_version when the lease's usage was recorded (dated by the lease's updated_at). A runtime tariff × total
+ * tokens is no dollar figure: it stays apart as runtimeTariffEstimate (the old baseline, kept for comparison).
+ */
 export interface EfficiencyMetric {
   verifiedArtifacts: number;
   /** completed maker leases that are not verified artifacts (run not certified, or superseded by a retry) */
   completedUnverified: number;
   runVerified: boolean;
-  /** null when no lease of the run reported runtime_usage */
+  /** null when no lease carries a dated model price (token_accounting cost with a price_version) */
   dollarsSpent: number | null;
-  /** true when only some leases reported usage: dollarsSpent is a lower bound */
+  /** true when some leases are unpriced or only partially priced: dollarsSpent is a lower bound */
   dollarsLowerBound: boolean;
+  /** why dollarsSpent is null: no lease reported usage, or usage without a dated model price */
+  dollarsReason: 'no_usage_reported' | 'no_dated_model_price' | null;
+  /** leases whose runtime_usage reported total tokens */
   usageCoverage: { reported: number; total: number; ratio: number | null };
+  /** leases with a dated model price (partial = cache tokens unpriced, a lower bound) */
+  priceCoverage: { priced: number; partial: number; total: number; ratio: number | null };
+  /** the price_version(s) behind dollarsSpent and the latest lease time they were recorded at; null without a price */
+  priceBasis: { source: 'token_accounting'; price_versions: string[]; priced_at: string | null } | null;
   /** verified artifacts per dollar; null when dollars are unknown or $0 */
   efficiency: number | null;
-  efficiencyReason: 'no_usage_reported' | 'zero_dollars' | 'partial_usage_upper_bound' | null;
+  efficiencyReason: 'no_usage_reported' | 'no_dated_model_price' | 'zero_dollars' | 'partial_usage_upper_bound' | null;
+  /** shadow/baseline only, never dollarsSpent: per-runtime tariff × total tokens; unknown runtimes are left out (lower bound) */
+  runtimeTariffEstimate: { usd: number | null; lower_bound: boolean; basis: 'runtime_tariff_per_mtok_total'; unpriced_runtimes: string[] };
 }
 
 const parseJsonArray = (value: string | null | undefined): unknown[] => {
@@ -82,9 +96,12 @@ export interface LoopBudgetDataAccess {
   recordLoopEvent(runId: string, eventType: string, severity: string, message: string, metadata: Record<string, unknown>): void;
 }
 
+/** Runtime tariff (USD per million total tokens): an undated estimate, kept as a baseline; never an actual dollar figure. */
 const PRICE_PER_MTOK: Record<string, number> = {
   codex: 2.0, opencode: 0.5, claude: 3.0, gemini: 1.0, pi: 0, editor: 0, mock: 0,
 };
+/** runtimes without a model: a known $0, no price needed */
+const NO_MODEL_RUNTIMES = new Set(['mock']);
 
 /**
  * UX-18: per-model input/output prices as configuration — LLM_PRICE_PER_MTOK="model=in/out,..." in USD per million tokens
@@ -120,9 +137,10 @@ export class LoopBudgetService {
     private data: LoopBudgetDataAccess,
   ) {}
 
-  computeDollarCost(runtime: string, totalTokens: number): number {
-    const price = PRICE_PER_MTOK[runtime] ?? 2.0;
-    return (totalTokens / 1_000_000) * price;
+  /** Runtime tariff estimate; null for a runtime without a tariff (L-F04: no invented $2/Mtok fallback). */
+  computeDollarCost(runtime: string, totalTokens: number): number | null {
+    const price = PRICE_PER_MTOK[runtime];
+    return price === undefined ? null : (totalTokens / 1_000_000) * price;
   }
 
   allocateDollarBudget(
@@ -148,38 +166,58 @@ export class LoopBudgetService {
   /**
    * Verified artifacts per dollar for one run. Verified means certified: the persisted run passes certification's rule
    * (runCertified — certifyLoopRun's), and only its active (non-superseded) completed makers count. Every other completed
-   * maker is completed_unverified. Unknown usage stays unknown: no lease reporting runtime_usage gives null dollars and
-   * null efficiency; partial reporting makes the dollar figure a lower bound (usageCoverage < 1).
+   * maker is completed_unverified. Unknown usage stays unknown: dollars sum only leases with a dated model price
+   * (token_accounting.estimated_cost_usd with a price_version; a mock lease is a known $0); no such lease gives null dollars
+   * and null efficiency with the reason; unpriced or partially priced leases make the figure a lower bound (priceCoverage < 1).
    */
   computeEfficiencyMetric(runId: string): EfficiencyMetric {
     const run = this.db.prepare('SELECT status, gates_json FROM loop_runs WHERE id = ?').get(runId) as { status: string; gates_json: string | null } | undefined;
     const gates = parseJsonArray(run?.gates_json) as Array<{ name: string; status: GateStatus }>;
     const runVerified = run ? runCertified({ status: run.status, gates }) : false;
 
-    const leases = this.db.prepare('SELECT role, runtime, status, metadata FROM worker_leases WHERE loop_run_id = ?')
-      .all(runId) as Array<{ role: string; runtime: string | null; status: string; metadata: string | null }>;
+    const leases = this.db.prepare('SELECT role, runtime, status, metadata, updated_at FROM worker_leases WHERE loop_run_id = ?')
+      .all(runId) as Array<{ role: string; runtime: string | null; status: string; metadata: string | null; updated_at: string | null }>;
     let dollars = 0;
     let reported = 0;
+    let priced = 0;
+    let partial = 0;
+    const versions = new Set<string>();
+    let pricedAt: string | null = null;
+    let tariffUsd = 0;
+    let tariffPriced = 0;
+    const unpricedRuntimes = new Set<string>();
     let verifiedArtifacts = 0;
     let completedUnverified = 0;
     for (const lease of leases) {
       let meta: Record<string, unknown> = {};
       try { meta = JSON.parse(lease.metadata || '{}') as Record<string, unknown>; } catch { /* unreadable metadata: no usage, not superseded */ }
+      const runtime = typeof meta.runtime === 'string' ? meta.runtime : lease.runtime || 'codex';
       const tokens = (meta.runtime_usage as { total_tokens?: unknown } | undefined)?.total_tokens;
       if (typeof tokens === 'number' && Number.isFinite(tokens) && tokens >= 0) {
         reported++;
-        dollars += this.computeDollarCost(typeof meta.runtime === 'string' ? meta.runtime : lease.runtime || 'codex', tokens);
+        const tariff = this.computeDollarCost(runtime, tokens);
+        if (tariff === null) unpricedRuntimes.add(runtime); else { tariffUsd += tariff; tariffPriced++; }
+      }
+      const acc = meta.token_accounting as { estimated_cost_usd?: unknown; cost_completeness?: unknown; price_version?: unknown } | undefined;
+      if (NO_MODEL_RUNTIMES.has(runtime)) priced++;
+      else if (typeof acc?.estimated_cost_usd === 'number' && Number.isFinite(acc.estimated_cost_usd) && typeof acc.price_version === 'string' && acc.price_version) {
+        priced++;
+        dollars += acc.estimated_cost_usd;
+        versions.add(acc.price_version);
+        if (acc.cost_completeness !== 'complete') partial++;
+        if (lease.updated_at && (!pricedAt || lease.updated_at > pricedAt)) pricedAt = lease.updated_at;
       }
       if (lease.role !== 'maker' || lease.status !== 'completed') continue;
       if (runVerified && !isSupersededMaker({ role: lease.role, metadata: meta })) verifiedArtifacts++;
       else completedUnverified++;
     }
 
-    const dollarsSpent = reported > 0 ? dollars : null;
-    const dollarsLowerBound = reported > 0 && reported < leases.length;
+    const dollarsSpent = priced > 0 ? +dollars.toFixed(6) : null;
+    const dollarsLowerBound = priced > 0 && (priced < leases.length || partial > 0);
+    const dollarsReason: EfficiencyMetric['dollarsReason'] = dollarsSpent !== null ? null : reported > 0 ? 'no_dated_model_price' : 'no_usage_reported';
     let efficiency: number | null = null;
     let efficiencyReason: EfficiencyMetric['efficiencyReason'] = null;
-    if (dollarsSpent === null) efficiencyReason = 'no_usage_reported';
+    if (dollarsSpent === null) efficiencyReason = dollarsReason;
     else if (dollarsSpent === 0) efficiencyReason = 'zero_dollars';
     else {
       efficiency = verifiedArtifacts / dollarsSpent;
@@ -191,9 +229,14 @@ export class LoopBudgetService {
       runVerified,
       dollarsSpent,
       dollarsLowerBound,
+      dollarsReason,
       usageCoverage: { reported, total: leases.length, ratio: leases.length > 0 ? reported / leases.length : null },
+      priceCoverage: { priced, partial, total: leases.length, ratio: leases.length > 0 ? priced / leases.length : null },
+      priceBasis: versions.size ? { source: 'token_accounting', price_versions: [...versions].sort(), priced_at: pricedAt } : null,
       efficiency,
       efficiencyReason,
+      runtimeTariffEstimate: { usd: tariffPriced > 0 ? tariffUsd : null, lower_bound: tariffPriced > 0 && tariffPriced < leases.length,
+        basis: 'runtime_tariff_per_mtok_total', unpriced_runtimes: [...unpricedRuntimes].sort() },
     };
   }
 
