@@ -24,6 +24,7 @@ unknown …) is `GET /api/health/schedulers` (admins). Armed is intent, not exec
 | inference_failover_probe | `OLLAMA_AUTO_FAILOVER` | 30 min | `packages/server/src/index.ts` |
 | loop_auto_merge | `LOOP_AUTO_MERGE_TEST_ONLY` | 15 min | `packages/server/src/bootstrap/autonomous-services.ts` |
 | memory_candidate_review | `MEMORY_CANDIDATE_REVIEW_ENABLED` | `memoryCandidateReviewSched.intervalMinutes()` min | `packages/server/src/index.ts` |
+| memory_delivery_reconcile | `MEMORY_DELIVERY_RECEIPTS` | 10 min | `packages/server/src/index.ts` |
 | merge_survival | `MERGE_SURVIVAL_ENABLED` | 6 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | retention | `RETENTION_ENABLED` | `this.intervalMs` | `packages/server/src/services/retention-service.ts` |
 | scheduled_proposal_goals | `(always on with autonomy)` | `Number(process.env.SCHEDULED_PROPOSAL_GOALS_INTERVAL_MS) \|\| 3_600_0…` | `packages/server/src/bootstrap/autonomous-services.ts` |

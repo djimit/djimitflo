@@ -50,6 +50,7 @@ import { settlementExecutionEvidence } from './settlement-execution';
 import { schedulerCapacityEvidence } from './resource-scheduler';
 import { procedureSelectionEvidence } from './procedure-selector';
 import { pl001Evidence } from './pl-001';
+import { memoryDeliveryEvidence } from './memory-delivery-receipts';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -114,6 +115,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'VALUE_ANOMALY_ALARM', acting: false },
   { name: 'FLEET_EVENT_SIGNATURES', acting: true },
   { name: 'EXTRA_REPOS_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_REPOS', acting: true },
+  { name: 'MEMORY_DELIVERY_RECEIPTS', acting: true },
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */
@@ -513,5 +515,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     procedure_selection: procedureSelectionEvidence(db, env, now),
     // PL-001 (PL_001_MODE): with vs without the procedure lines on a frozen set of applicable repair tasks — pairs, per-arm
     // gated verified outcomes, one-sided exact McNemar, harm / stop rule, verdict and the procedure's lifecycle state
-    pl_001: pl001Evidence(db, env, now) };
+    pl_001: pl001Evidence(db, env, now),
+    // CODE-004 (MEMORY_DELIVERY_RECEIPTS): memory-sync receipts per target × status (delivered / failed / unknown); null = no table (off)
+    memory_delivery: memoryDeliveryEvidence(db, env) };
 }

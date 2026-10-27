@@ -23,7 +23,7 @@ import { createGitHubWebhookRoutes } from './routes/github-webhooks';
 import { createMetricsHandler, metricsRateLimiter } from './routes/metrics';
 import { WebSocketService } from './services/websocket-service';
 import { ExecutionEngine } from './execution/execution-engine';
-import { MemorySyncService } from './services/memory-sync-service';
+import { MEMORY_DELIVERY_RECONCILE_MS, MemorySyncService } from './services/memory-sync-service';
 import { ReasoningBankService } from './services/reasoning-bank-service';
 import { VectorMemoryService } from './services/vector-memory-service';
 import { TrajectoryStore } from './services/trajectory-store';
@@ -218,6 +218,9 @@ async function main() {
 
   const memorySync = new MemorySyncService(db);
   executionEngine.setMemorySyncService(memorySync);
+  // CODE-004 (MEMORY_DELIVERY_RECEIPTS=on): bounded reconciliation of failed/unknown memory legs at boot and on a tick
+  registerRestart('memory_delivery_reconcile', () => { memorySync.stop(); memorySync.start(); });
+  noteScheduler('memory_delivery_reconcile', 'MEMORY_DELIVERY_RECEIPTS', memorySync.start(), MEMORY_DELIVERY_RECONCILE_MS);
 
   const reasoningBank = new ReasoningBankService(db);
   executionEngine.setReasoningBankService(reasoningBank);
