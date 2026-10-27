@@ -31,6 +31,8 @@ let commitsBySha: Map<string, { parents: Array<{ sha: string }>; committer: { lo
 let commitStatus: Map<string, unknown>; let behindBy: Map<string, number>;
 // branch protection's required contexts (null = unreadable) and explicit check runs per sha (override the `checks` shorthand)
 let required: string[] | null; let runsBySha: Map<string, unknown[]>; let summaryRequired: string[] | null;
+// required contexts with their producer app (branch protection's `checks`); overrides `required` when set
+let requiredChecks: Array<{ context: string; app_id: number | null }> | null;
 const NOW = new Date('2026-10-07T12:00:00Z');
 const env = (mode: string, extra: Record<string, string> = {}) => ({ LOOP_AUTO_MERGE_TEST_ONLY: mode, GITHUB_REPOSITORY: 'o/r', GITHUB_TOKEN: 't0ken', ...extra }) as NodeJS.ProcessEnv;
 const res = (status: number, body: unknown) => ({ ok: status < 300, status, json: async () => body }) as Response;
@@ -49,7 +51,10 @@ const fakeFetch = vi.fn(async (url: string, init?: { method?: string; body?: str
   if ((m = /^pulls\/(\d+)\/reviews$/.exec(path))) return res(200, prs.get(Number(m[1]))?.reviews ?? []);
   if ((m = /^pulls\/(\d+)\/update-branch$/.exec(path))) { prs.get(Number(m[1]))!.mergeable_state = 'clean'; return res(202, {}); }
   if ((m = /^pulls\/(\d+)\/merge$/.exec(path))) { const p = prs.get(Number(m[1]))!; p.state = 'closed'; return res(200, { sha: `merge${p.number}`, merged: true }); }
-  if (path === 'branches/main/protection/required_status_checks') return required ? res(200, { contexts: required, checks: [] }) : res(404, {});
+  if (path === 'branches/main/protection/required_status_checks') {
+    if (requiredChecks) return res(200, { contexts: requiredChecks.map((c) => c.context), checks: requiredChecks });
+    return required ? res(200, { contexts: required, checks: [] }) : res(404, {});
+  }
   if (path === 'branches/main') return summaryRequired ? res(200, { protection: { enabled: true, required_status_checks: { checks: summaryRequired.map((context) => ({ context })) } } }) : res(404, {});
   if ((m = /^commits\/([^/]+)\/check-runs$/.exec(path))) {
     const explicit = runsBySha.get(m[1]); if (explicit) return res(200, { check_runs: explicit });
@@ -86,7 +91,7 @@ const decision = (number: number) => JSON.parse((db.prepare('SELECT metadata FRO
 beforeEach(() => {
   db = new Database(':memory:'); db.exec(schema); runMigrations(db);
   prs = new Map(); checks = new Map(); mainCommits = []; commitsBySha = new Map(); calls = []; commitStatus = new Map(); behindBy = new Map(); fakeFetch.mockClear();
-  required = ['build']; runsBySha = new Map(); summaryRequired = null;
+  required = ['build']; runsBySha = new Map(); summaryRequired = null; requiredChecks = null;
 });
 afterEach(() => { setPushSender(null); db.close(); });
 
@@ -569,4 +574,24 @@ it('recheck: assertion_strength_missing stays ineligible until the maker lease c
   db.prepare("UPDATE worker_leases SET metadata = json_set(metadata, '$.deterministic_checks', json(?)) WHERE id = 'm-704'")
     .run(JSON.stringify([{ name: 'test:assertion-strength', mode: 'shadow', status: 'skipped', shadow_status: 'pass' }]));
   expect(await tickAt(14)).toMatchObject({ merged: 1 });
+});
+
+// Codex review of #1061: the required check's producer (app_id) is part of its identity. A skipped GitHub Actions `sbom`
+// next to a successful `sbom` from another app is NOT a pass.
+it('act: a skipped required Actions check is not replaced by a same-named success from another app', async () => {
+  const app = (id: number, name: string, conclusion: string | null, appId: number) => ({ ...run(id, name, conclusion), app: { id: appId } });
+  requiredChecks = [{ context: 'build', app_id: 15368 }, { context: 'sbom', app_id: 15368 }];
+  seedPr(700, { draft: false });
+  runsBySha.set('sha700', [app(1, 'build', 'success', 15368), app(2, 'sbom', 'skipped', 15368), app(3, 'sbom', 'success', 999)]);
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), NOW);
+  expect(decision(700)).toMatchObject({ decision: 'ineligible', reason: 'checks_failed: required_not_success:sbom=skipped' });
+  seedPr(703, { draft: false }); // only the other app reported sbom: the required producer is missing → waiting
+  runsBySha.set('sha703', [app(1, 'build', 'success', 15368), app(3, 'sbom', 'success', 999)]);
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), NOW);
+  expect(decision(703)).toMatchObject({ decision: 'waiting', reason: 'checks_pending' });
+  seedPr(702, { draft: false }); // control: the required producer succeeded
+  runsBySha.set('sha702', [app(1, 'build', 'success', 15368), app(2, 'sbom', 'success', 15368), app(3, 'sbom', 'skipped', 999)]);
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), NOW);
+  expect(decision(702)).toMatchObject({ decision: 'merged' });
+  expect(writes().filter((c) => c.url.endsWith('/merge')).map((c) => c.url)).toEqual(['https://api.github.com/repos/o/r/pulls/702/merge']);
 });

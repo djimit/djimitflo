@@ -304,6 +304,15 @@ describe('failure modes', () => {
     expect(s.calls()).toEqual(['update aaaa1111', 'checks aaaa1111-u', 'merge aaaa1111-u']);
   });
 
+  it('skip is not pass: a checks verdict that mentions skipping is never green → TIMEOUT HOLD, no merge (forensic rank 9)', () => {
+    for (const v of ['pass,skipping', 'skipping,pass', 'skipping']) {
+      const s = sim({ behind: false, ciNew: v });
+      const r = train(s, ['778'], [], { MT_CI_TIMEOUT_S: '90', MT_CI_POLL_S: '45' });
+      expect(r.status).toBe(7);
+      expect(s.calls().some((c) => c.startsWith('merge'))).toBe(false);
+    }
+  });
+
   it('required check missing on the head (real checks path, stub gh): never green → TIMEOUT HOLD', () => {
     const s = sim({ behind: false });
     const gh = stubGh({
@@ -368,7 +377,7 @@ describe('checks_verdict — no false green', () => {
     expect(v.line).toContain('required_checks_unavailable');
     const r = spawnSync('bash', ['-c', `source ${script}; required_json`], { encoding: 'utf8',
       env: { ...process.env, PATH: stubGh().PATH, MT_LEDGER: path.join(tmp('mtc-led-'), 'l'), MT_REQUIRED_CHECKS: '' } });
-    expect(JSON.parse(r.stdout)).toEqual({ source: 'unavailable', contexts: [] });
+    expect(JSON.parse(r.stdout)).toEqual({ source: 'unavailable', contexts: [], checks: [] });
   });
   it('readable branch protection is the source of the required contexts', () => {
     const v = verdict([ok('build'), done('gitleaks', 'skipped', 2)], { required: null, protection: { contexts: ['build'], checks: [{ context: 'gitleaks' }] } });
@@ -379,6 +388,31 @@ describe('checks_verdict — no false green', () => {
     expect(verdict([ok('build')], { required: null, summary }).verdict).toBe('pending');
     // a branch without protection: unavailable, not "no required checks"
     expect(verdict([ok('build')], { required: null, summary: { protection: { enabled: false, required_status_checks: { contexts: [] } } } }).reason).toBe('required_checks_unavailable');
+  });
+});
+
+// Codex review of #1061: the required producer (app_id) is part of the check identity.
+describe('checks_verdict — required producer identity', () => {
+  const C = 'repos/djimit/djimitflo/commits/s1';
+  const protection = { contexts: ['build', 'sbom'], checks: [{ context: 'build', app_id: 15368 }, { context: 'sbom', app_id: 15368 }] };
+  const verdict = (runs: unknown[], prot: unknown = protection) => {
+    const gh = stubGh({ [`${C}/check-runs?per_page=100`]: { check_runs: runs }, [`${C}/status`]: { state: 'pending', statuses: [] },
+      'repos/djimit/djimitflo/branches/main/protection/required_status_checks': prot });
+    const r = spawnSync('bash', ['-c', `source ${script}; checks_verdict s1`], { encoding: 'utf8',
+      env: { ...process.env, PATH: gh.PATH, MT_LEDGER: path.join(tmp('mtc-led-'), 'l'), MT_REQUIRED_CHECKS: '' } });
+    return JSON.parse(r.stdout) as { verdict: string; reason?: string; missing: string[] };
+  };
+  const r = (id: number, name: string, conclusion: string, app: number) => ({ id, name, status: 'completed', conclusion, app: { id: app }, completed_at: `2026-10-26T0${id}:00:00Z` });
+  it('Actions sbom=skipped then another app sbom=success is red, not green', () => {
+    expect(verdict([r(1, 'build', 'success', 15368), r(2, 'sbom', 'skipped', 15368), r(3, 'sbom', 'success', 999)]))
+      .toMatchObject({ verdict: 'red', reason: 'required_not_success:sbom=skipped' });
+  });
+  it('only another app reported the required context: pending, missing', () => {
+    expect(verdict([r(1, 'build', 'success', 15368), r(3, 'sbom', 'success', 999)])).toMatchObject({ verdict: 'pending', missing: ['sbom'] });
+  });
+  it('control: required producer success is green; app_id -1 accepts any producer', () => {
+    expect(verdict([r(1, 'build', 'success', 15368), r(2, 'sbom', 'success', 15368)]).verdict).toBe('green');
+    expect(verdict([r(1, 'build', 'success', 7), r(2, 'sbom', 'success', 999)], { checks: [{ context: 'build', app_id: -1 }, { context: 'sbom', app_id: -1 }] }).verdict).toBe('green');
   });
 });
 

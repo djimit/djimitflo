@@ -10,6 +10,7 @@ import { autoMergeMaxPerDay, autoMergeMode, autoMergeRecheck, autoMergeRecheckHo
 import { markRun } from './scheduler-registry';
 import { assertionStrengthVerdict } from './test-assertion-strength';
 import { autoMergeAllowed, parsePrUrl } from './repo-registry';
+import { newestRuns, requiredChecksOf, requiredRun, type ProtectionChecks, type RequiredCheck } from './required-checks';
 
 /**
  * Earned auto-merge for verified test-only loop PRs (operator-approved 2026-10-07: 30 loop PRs, 22 merged by the human,
@@ -25,6 +26,7 @@ import { autoMergeAllowed, parsePrUrl } from './repo-registry';
  * Green (10-26, no false green): the newest run per name decides, and every required context of the base's branch protection
  * needs a success on the head — skipped/neutral/cancelled/stale is 'checks_failed: required_not_success:<name>=<conclusion>';
  * unreadable protection is 'waiting: required_checks_unavailable', never a merge (scripts/merge-train.sh mirrors this).
+ * The required producer (protection's app_id) is part of the identity: another app's same-named run never stands in for it.
  * Shadow re-evaluates its would_merge PRs every tick, incl. the merge-conflict check act runs (10-10: #658 went conflicting
  * and stayed 'would_merge'); a decision is rewritten only when it changes.
  * Head binding (P0-6): only the commit the loop verified is merged. The draft-PR service records it as
@@ -73,34 +75,37 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   const json = async <T>(slug: string, p: string): Promise<T | null> => { try { const r = await gh(slug, p); return r.ok ? await r.json() as T : null; } catch { return null; } };
   const events = new LoopEventService(db);
-  // `required` (branch protection's contexts of the PR head's gate): each needs a success of its newest run on this sha —
-  // skipped, neutral, cancelled, stale is red ('required_not_success'), running or not reported is pending. Without it (the
-  // revert window on main) only a failing newest run is red.
-  const checks = async (slug: string, sha: string, required: string[] = []): Promise<{ state: Checks; reason?: string }> => {
-    const all = (await json<{ check_runs?: Array<{ id?: number; name?: string; status?: string; conclusion?: string | null; completed_at?: string | null }> }>(slug, `commits/${sha}/check-runs?per_page=100`))?.check_runs;
+  // `required` (branch protection's checks of the PR head's gate): each needs a success of the newest run from its required
+  // producer on this sha — skipped, neutral, cancelled, stale is red ('required_not_success'), running or not reported (by
+  // that producer) is pending. Without it (the revert window on main) only a failing newest run is red.
+  const checks = async (slug: string, sha: string, required: RequiredCheck[] = []): Promise<{ state: Checks; reason?: string }> => {
+    const all = (await json<{ check_runs?: Array<{ id?: number; name?: string; status?: string; conclusion?: string | null; completed_at?: string | null; app?: { id?: number } | null }> }>(slug, `commits/${sha}/check-runs?per_page=100`))?.check_runs;
     const status = await json<{ state?: string; total_count?: number; statuses?: Array<{ id?: number; context?: string; state?: string; updated_at?: string }> }>(slug, `commits/${sha}/status`);
     if (!all) return { state: 'pending' };
-    const runs = newest(all, (c) => String(c.name ?? ''), (c) => String(c.completed_at ?? ''));
+    const runs = newestRuns(all);
     const statuses = newest(status?.statuses ?? [], (s) => String(s.context ?? ''), (s) => String(s.updated_at ?? ''));
     if (runs.some((c) => c.status === 'completed' && RED.has(String(c.conclusion))) || status?.state === 'failure' || status?.state === 'error') return { state: 'red' };
-    const notSuccess = required.flatMap((r) => [...runs.filter((c) => c.name === r && c.status === 'completed' && c.conclusion !== 'success').map((c) => `${r}=${c.conclusion}`),
-      ...statuses.filter((s) => s.context === r && s.state !== 'success' && s.state !== 'pending').map((s) => `${r}=${s.state}`)]);
+    // a commit status has no app: it can satisfy only a context required from any source
+    const statusesFor = (r: RequiredCheck) => (r.app_id === null ? statuses.filter((s) => s.context === r.context) : []);
+    const notSuccess = required.flatMap((r) => {
+      const c = requiredRun(all, r);
+      return [...(c && c.status === 'completed' && c.conclusion !== 'success' ? [`${r.context}=${c.conclusion}`] : []),
+        ...statusesFor(r).filter((s) => s.state !== 'success' && s.state !== 'pending').map((s) => `${r.context}=${s.state}`)];
+    });
     if (notSuccess.length) return { state: 'red', reason: `required_not_success:${notSuccess.join(',')}` };
     // P0-5: the PR-review heuristic's status is not a check — it can hold a PR (pending / failure) but never makes it green
     const independent = statuses.filter((st) => st.context !== PR_REVIEW_STATUS_CONTEXT);
     if (runs.some((c) => c.status !== 'completed' || c.conclusion === 'cancelled' || c.conclusion === 'stale') || (status?.total_count && status.state === 'pending')) return { state: 'pending' };
-    if (required.some((r) => !runs.some((c) => c.name === r) && !statuses.some((s) => s.context === r))) return { state: 'pending' };
+    if (required.some((r) => !requiredRun(all, r) && !statusesFor(r).length)) return { state: 'pending' };
     return { state: runs.length || independent.length ? 'green' : 'pending' }; // no check reported yet = not green
   };
-  // branch protection's required contexts per repo, read once per tick; null = unreadable (never a remembered list)
-  const requiredBySlug = new Map<string, string[] | null>();
-  const requiredContexts = async (slug: string): Promise<string[] | null> => {
+  // branch protection's required checks per repo, read once per tick; null = unreadable (never a remembered list)
+  const requiredBySlug = new Map<string, RequiredCheck[] | null>();
+  const requiredContexts = async (slug: string): Promise<RequiredCheck[] | null> => {
     if (!requiredBySlug.has(slug)) {
-      type Rsc = { contexts?: string[]; checks?: Array<{ context?: string }> } | null | undefined;
-      const names = (r: Rsc) => [...new Set([...(r?.contexts ?? []), ...(r?.checks ?? []).map((c) => String(c.context ?? ''))].filter(Boolean))];
-      let ctx = names(await json<Rsc>(slug, `branches/${encodeURIComponent(base)}/protection/required_status_checks`));
-      // the branch summary carries the same contexts and needs read access only
-      if (!ctx.length) ctx = names((await json<{ protection?: { required_status_checks?: Rsc } }>(slug, `branches/${encodeURIComponent(base)}`))?.protection?.required_status_checks);
+      let ctx = requiredChecksOf(await json<ProtectionChecks>(slug, `branches/${encodeURIComponent(base)}/protection/required_status_checks`));
+      // the branch summary carries the same checks and needs read access only
+      if (!ctx.length) ctx = requiredChecksOf((await json<{ protection?: { required_status_checks?: ProtectionChecks } }>(slug, `branches/${encodeURIComponent(base)}`))?.protection?.required_status_checks);
       requiredBySlug.set(slug, ctx.length ? ctx : null);
     }
     return requiredBySlug.get(slug) ?? null;
