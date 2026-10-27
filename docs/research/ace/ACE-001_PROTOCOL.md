@@ -112,3 +112,18 @@ Stop condition added; verdict rules unchanged. Operator-approved 2026-10-19. The
 - **Unchanged:** arms, endpoints, safety/harm stops, analysis and decision rules. Only a stop condition is added.
 - **Recorded:** `experiment-registry.ts` (`stop_by`, `stop_source`); the stall watch `experiment_overdue` reports the experiment
   after this date while it has no verdict.
+
+## Amendment 3 (2026-10-27): tokens reading excludes unknown usage
+
+This is a correction to a secondary reading. Verdict rules are unchanged. The text above is frozen and is not edited.
+
+- **Defect (forensic audit 2026-10-26, L-F05).** `ace001Evidence` computed `tokens_mean` as the sum of `tokens_used || 0`
+  divided by every outcome of the arm. A maker run without a usage report (`tokens_used` NULL, or a legacy 0) therefore counted
+  as a 0-token run. That pulled the arm's mean down, so the arm looked cheaper.
+- **Fix.** `tokens_mean` now averages only runs with known tokens (> 0). The new field `tokens_n` reports how many runs that
+  is. An arm with no known tokens reads `null`, not 0.
+- **Scope.** The change touches only the secondary "tokens per maker run" endpoint, which is also the input to the "mean
+  tokens per run rise ≤ 20 %" promotion condition. That condition is now evaluated on runs with known tokens, with `tokens_n`
+  shown next to it.
+- **Unchanged:** the primary endpoint (`verified`), n, verified rate, Wilson CI, graded mean, main effects, arm assignment
+  (`sha256('ace-001:' + goal id) mod 4`), analysis window, target, stop_by, and the safety/harm stops.

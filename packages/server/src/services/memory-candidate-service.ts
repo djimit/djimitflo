@@ -5,6 +5,7 @@ import path from 'path';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import { yamlScalar } from '../utils/yaml-scalar';
 import { findTemplateMatches, memoryTemplateDedupMode, recordTemplateDedupError, recordTemplateDuplicate, templateFingerprint } from './memory-template-dedup';
+import { ensureCollection, memoryEmbedModel, SWARM_MEMORY_COLLECTION } from './memory-embedding-contract';
 
 type MemoryType = 'operational_memory' | 'engineering_rule' | 'policy_rule';
 
@@ -319,12 +320,12 @@ export class MemoryCandidateService {
   }
 
   /**
-   * Learning flywheel write-back: embed a PROMOTED memory candidate (ollama nomic-embed-text,
-   * 768d) and upsert it into the Qdrant swarm-memory collection so future runs RETRIEVE the
-   * swarm's own accumulated memory via ContextInjectionService.searchQdrantSwarm (same model/
-   * dimension). Best-effort + non-fatal: no key / ollama or qdrant down / dimension mismatch just
-   * skips — never fails the proof. Ensures the collection is 768d Cosine; recreates it ONLY if it
-   * exists at a different dimension AND is empty (never destroys populated data).
+   * Learning flywheel write-back: embed a PROMOTED memory candidate with the shared memory
+   * embedding contract (memory-embedding-contract.ts) and upsert it into the Qdrant swarm-memory
+   * collection so future runs RETRIEVE the swarm's own accumulated memory via
+   * ContextInjectionService.searchQdrantSwarm (same model/dimension). Best-effort + non-fatal: no
+   * key / ollama or qdrant down / dimension mismatch just skips — never fails the proof. Creates
+   * the collection only when it is absent (404); never deletes or recreates one (CODE-001).
    */
   async upsertToSwarmMemory(candidateId: string): Promise<{ ok: boolean; reason?: string }> {
     if (process.env.PROOF_RUN_MEMORY_FLYWHEEL === 'false') return { ok: false, reason: 'flywheel_disabled_by_env' };
@@ -346,35 +347,22 @@ export class MemoryCandidateService {
         }
       };
       const auth: Record<string, string> = qdrantApiKey ? { 'api-key': qdrantApiKey } : {};
-      const COLLECTION = 'djimitflo_swarm';
-      const DIM = 768;
+      const COLLECTION = SWARM_MEMORY_COLLECTION;
+      const model = memoryEmbedModel(); // CODE-002: same model as memory-sync writes and context injection reads
       const json = { 'Content-Type': 'application/json' };
 
       const embedRes = await fetchTO(`${OLLAMA_URL}/api/embeddings`, {
         method: 'POST',
         headers: json,
-        body: JSON.stringify({ model: 'nomic-embed-text:latest', prompt: `${candidate.title}. ${candidate.content}` }),
+        body: JSON.stringify({ model, prompt: `${candidate.title}. ${candidate.content}` }),
       });
       if (!embedRes.ok) return { ok: false, reason: `ollama_embed_failed:${embedRes.status}` };
       const vector = (await embedRes.json() as { embedding?: number[] }).embedding;
-      if (!vector || vector.length !== DIM) return { ok: false, reason: 'ollama_dimension_mismatch' };
+      if (!vector?.length) return { ok: false, reason: 'ollama_embedding_empty' };
 
-      const infoRes = await fetchTO(`${QDRANT_URL}/collections/${COLLECTION}`, { headers: auth });
-      if (infoRes.status === 404) {
-        await fetchTO(`${QDRANT_URL}/collections/${COLLECTION}`, { method: 'PUT', headers: { ...json, ...auth }, body: JSON.stringify({ vectors: { size: DIM, distance: 'Cosine' } }) });
-      } else if (infoRes.ok) {
-        const info = (await infoRes.json() as { result?: { config?: { params?: { vectors?: { size?: number } }; }; points_count?: number } }).result;
-        const size = info?.config?.params?.vectors?.size;
-        const count = info?.points_count ?? 0;
-        if (typeof size === 'number' && size !== DIM && count === 0) {
-          await fetchTO(`${QDRANT_URL}/collections/${COLLECTION}`, { method: 'DELETE', headers: auth });
-          await fetchTO(`${QDRANT_URL}/collections/${COLLECTION}`, { method: 'PUT', headers: { ...json, ...auth }, body: JSON.stringify({ vectors: { size: DIM, distance: 'Cosine' } }) });
-        } else if (typeof size === 'number' && size !== DIM) {
-          return { ok: false, reason: 'qdrant_dimension_mismatch_populated' };
-        }
-      } else if (!infoRes.ok) {
-        return { ok: false, reason: `qdrant_info_failed:${infoRes.status}` };
-      }
+      // CODE-001: never DELETE/recreate an existing collection; only a 404 is created.
+      const state = await ensureCollection(QDRANT_URL, COLLECTION, { ...json, ...auth }, vector.length, model);
+      if (state.status !== 'ready') return { ok: false, reason: `qdrant_unavailable:${state.reason}` };
 
       const upsertRes = await fetchTO(`${QDRANT_URL}/collections/${COLLECTION}/points`, {
         method: 'PUT',
@@ -388,7 +376,7 @@ export class MemoryCandidateService {
               content_excerpt: candidate.content.slice(0, 500),
               agent_type: 'memory_curator',
               trust_level: 'validated',
-              embedding_model: 'nomic-embed-text:latest', embedding_dim: vector.length, // UX-21
+              embedding_model: model, embedding_dim: vector.length, // UX-21
               // G8: cognitive store label — enables typed retrieval (procedural rules,
               // semantic claims, episodic logs) instead of a mixed-context bag.
               store: candidate.store,

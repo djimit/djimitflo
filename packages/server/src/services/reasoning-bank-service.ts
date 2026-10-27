@@ -6,13 +6,13 @@ import { VectorMemoryService } from './vector-memory-service';
 import { TrajectoryStore } from './trajectory-store';
 import { pointIdForTask } from '../utils/qdrant-point-id';
 import { yamlScalar } from '../utils/yaml-scalar';
+import { ensureCollection, memoryEmbedModel } from './memory-embedding-contract';
 
 const qdrantUrl = (): string => (process.env.QDRANT_WRITE_URL || process.env.QDRANT_URL || 'http://192.168.1.28:6333').replace(/\/$/, '');
 const OLLAMA_URL = (process.env.OLLAMA_URL || process.env.OLLAMA_HOST || 'http://localhost:11434').replace(/\/$/, '');
 const COLLECTION_REASONING = 'djimitflo_reasoning';
-// Same served model as the rest of the memory fan-out; the dimension is derived
-// from the actual embedding (never guessed from the model name).
-const EMBED_MODEL = process.env.DJIMITFLO_EMBED_MODEL || process.env.OLLAMA_EMBED_MODEL || 'snowflake-arctic-embed:s';
+// Same served model as the rest of the memory fan-out (memory-embedding-contract); the
+// dimension is derived from the actual embedding (never guessed from the model name).
 
 function qdrantHeaders(): Record<string, string> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -22,7 +22,7 @@ function qdrantHeaders(): Record<string, string> {
 }
 
 /** Embed with the served model; supports both Ollama embed endpoints. */
-async function embed(text: string): Promise<number[] | null> {
+async function embed(text: string, model: string): Promise<number[] | null> {
   const call = (path: string, body: Record<string, unknown>) => fetch(`${OLLAMA_URL}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -30,8 +30,8 @@ async function embed(text: string): Promise<number[] | null> {
     signal: AbortSignal.timeout(Number(process.env.EMBEDDING_TIMEOUT_MS) || 10_000),
   });
   try {
-    let response = await call('/api/embeddings', { model: EMBED_MODEL, prompt: text });
-    if (response.status === 404) response = await call('/api/embed', { model: EMBED_MODEL, input: text });
+    let response = await call('/api/embeddings', { model, prompt: text });
+    if (response.status === 404) response = await call('/api/embed', { model, input: text });
     if (!response.ok) return null;
     const payload = (await response.json()) as { embedding?: number[]; embeddings?: number[][] };
     const vector = payload.embedding || payload.embeddings?.[0];
@@ -122,38 +122,19 @@ export class ReasoningBankService {
     fs.writeFileSync(reasoningPath, `${frontmatter}\n\n${body}\n`, 'utf8');
 
     // Upsert to Qdrant djimitflo_reasoning collection
+    const model = memoryEmbedModel();
     try {
-      const vector = await embed(`${task.title} ${task.description}`);
+      const vector = await embed(`${task.title} ${task.description}`, model);
       if (!vector) {
-        console.warn(`ReasoningBank skipped for ${taskId}: embedding unavailable (model ${EMBED_MODEL})`);
+        console.warn(`ReasoningBank skipped for ${taskId}: embedding unavailable (model ${model})`);
         return;
       }
 
-      const check = await fetch(`${qdrantUrl()}/collections/${COLLECTION_REASONING}`, { headers: qdrantHeaders() });
-      if (check.status === 404) {
-        await fetch(`${qdrantUrl()}/collections/${COLLECTION_REASONING}`, {
-          method: 'PUT',
-          headers: qdrantHeaders(),
-          body: JSON.stringify({ vectors: { size: vector.length, distance: 'Cosine' } }),
-        });
-      } else if (check.ok) {
-        // Verify dimension matches; if not, recreate ONLY when the collection is empty
-        // (never destroy populated data at a different dimension).
-        const existing = (await check.json()) as any;
-        const existingDim = existing?.result?.config?.params?.vectors?.size;
-        const count = existing?.result?.points_count ?? 0;
-        if (existingDim && existingDim !== vector.length) {
-          if (count > 0) {
-            console.warn(`ReasoningBank Qdrant skipped for ${taskId}: collection is ${existingDim}-dim but embedding is ${vector.length}-dim (not recreating populated data)`);
-            return;
-          }
-          await fetch(`${qdrantUrl()}/collections/${COLLECTION_REASONING}`, { method: 'DELETE', headers: qdrantHeaders() });
-          await fetch(`${qdrantUrl()}/collections/${COLLECTION_REASONING}`, {
-            method: 'PUT',
-            headers: qdrantHeaders(),
-            body: JSON.stringify({ vectors: { size: vector.length, distance: 'Cosine' } }),
-          });
-        }
+      // CODE-001: never DELETE/recreate an existing collection from the task path; only a 404 is created.
+      const state = await ensureCollection(qdrantUrl(), COLLECTION_REASONING, qdrantHeaders(), vector.length, model);
+      if (state.status !== 'ready') {
+        console.warn(`ReasoningBank Qdrant skipped for ${taskId}: unavailable, ${state.reason}`);
+        return;
       }
 
       const upsert = await fetch(`${qdrantUrl()}/collections/${COLLECTION_REASONING}/points`, {
@@ -171,7 +152,7 @@ export class ReasoningBankService {
               denial_reason: approval?.denial_reason || null,
               machine_id: task.created_by || 'unknown',
               agent_type: agent?.agent_type || 'unknown',
-              embedding_model: EMBED_MODEL,
+              embedding_model: model,
               embedding_dim: vector.length,
               timestamp: new Date().toISOString(),
             },
@@ -222,7 +203,7 @@ export class ReasoningBankService {
       const embedRes = await fetch(`${OLLAMA_URL}/api/embeddings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: EMBED_MODEL, prompt: query }),
+        body: JSON.stringify({ model: memoryEmbedModel(), prompt: query }),
       });
       if (!embedRes.ok) return [];
       const vector = ((await embedRes.json()) as { embedding: number[] }).embedding;

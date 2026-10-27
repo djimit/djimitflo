@@ -37,11 +37,22 @@ export interface SkillReading {
 export function skillSelectionReading(db: Database): SkillReading[] | null {
   let rows: Array<{ skill: string; n: number; k: number; hashes: number; unhashed: number }>;
   try {
-    rows = db.prepare(`SELECT substr(j.value, 7) AS skill, COUNT(*) AS n, SUM(o.success = 1) AS k,
-        COUNT(DISTINCT o.skill_content_hash) AS hashes, SUM(o.skill_content_hash IS NULL) AS unhashed
-      FROM skill_outcomes o, json_each(CASE WHEN json_valid(o.evidence_refs_json) THEN o.evidence_refs_json ELSE '[]' END) j
-      WHERE o.domain = 'fleet' AND j.type = 'text' AND substr(j.value, 1, 6) = 'skill:' AND length(j.value) > 6
-      GROUP BY 1 ORDER BY n DESC, skill`).all() as typeof rows;
+    // One observation per distinct (outcome, skill): a skill named twice in one outcome counts once (audit L-F01). The hash of
+    // that skill in that outcome is its `skill-sha:<name>@<sha64>` ref, else skill_content_hash when the outcome names exactly
+    // one skill (rows written before the skill-sha refs).
+    rows = db.prepare(`WITH refs AS (
+        SELECT o.id, o.success, o.skill_content_hash AS col, j.value AS v FROM skill_outcomes o,
+          json_each(CASE WHEN json_valid(o.evidence_refs_json) THEN o.evidence_refs_json ELSE '[]' END) j
+        WHERE o.domain = 'fleet' AND j.type = 'text'),
+      named AS (SELECT id, MAX(success) AS success, MAX(col) AS col, substr(v, 7) AS skill FROM refs
+        WHERE substr(v, 1, 6) = 'skill:' AND length(v) > 6 GROUP BY id, skill),
+      hashed AS (SELECT id, substr(v, 11, length(v) - 75) AS skill, CASE WHEN COUNT(DISTINCT substr(v, -64)) = 1 THEN MAX(substr(v, -64)) END AS sha
+        FROM refs WHERE substr(v, 1, 10) = 'skill-sha:' AND length(v) > 75 AND substr(v, -65, 1) = '@' GROUP BY id, skill),
+      obs AS (SELECT s.skill, s.success, COALESCE(h.sha, CASE WHEN (SELECT COUNT(*) FROM named x WHERE x.id = s.id) = 1
+          AND NOT EXISTS (SELECT 1 FROM hashed y WHERE y.id = s.id) THEN s.col END) AS sha
+        FROM named s LEFT JOIN hashed h ON h.id = s.id AND h.skill = s.skill)
+      SELECT skill, COUNT(*) AS n, SUM(success = 1) AS k, COUNT(DISTINCT sha) AS hashes, SUM(sha IS NULL) AS unhashed
+      FROM obs GROUP BY skill ORDER BY n DESC, skill`).all() as typeof rows;
   } catch { return null; } // skill_outcomes absent: unknown
   const r4 = (x: number) => +x.toFixed(4);
   return rows.map(({ skill, n, k, hashes, unhashed }) => {
@@ -58,7 +69,7 @@ const MECHANISMS: Array<{ mechanism: string; name: string; data_source: string; 
   { mechanism: 'memory_rules', name: 'Memory rules', data_source: "loop_events 'assignment_context' memory_holdout × proposal status (memoryHoldoutEvidence)", experiment: 'memory-holdout' },
   { mechanism: 'kb_retrieval', name: 'KB retrieval', data_source: "skill_outcomes 'ace-001-arm' R factor (ace001Evidence)", experiment: 'ACE-001' },
   { mechanism: 'example_selection', name: 'Similar-example selection', data_source: "skill_outcomes 'ace-001-arm' S factor (ace001Evidence)", experiment: 'ACE-001' },
-  { mechanism: 'skill_selection', name: 'Skill selection', data_source: "skill_outcomes domain 'fleet' per 'skill:<name>' evidence ref + skill_content_hash (agent.outcome skill / skill_sha); skill_cards (SKILL_DISTILLATION_MODE, shadow, never injected)" },
+  { mechanism: 'skill_selection', name: 'Skill selection', data_source: "skill_outcomes domain 'fleet' per distinct outcome × 'skill:<name>' evidence ref + 'skill-sha:<name>@<sha>' ref (agent.outcome skill / skill_sha / skills);skill_cards (SKILL_DISTILLATION_MODE, shadow, never injected)" },
   { mechanism: 'maker_template', name: 'Maker template (STE)', data_source: "skill_outcomes 'ste-001-arm' (ste001Evidence)", experiment: 'STE-001' },
   { mechanism: 'deps_prep', name: 'Maker dependency preparation', data_source: "loop_events 'maker_deps_arm' × proposal status (makerDeps001Evidence)", experiment: 'MAKER-DEPS-001' },
   { mechanism: 'requeue', name: 'Requeue', data_source: "self_improvements evidence ref 'requeue-of:' + 'requeue' judgments (improvement-requeue.ts)" },

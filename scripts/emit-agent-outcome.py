@@ -12,20 +12,24 @@ Skill identity (skill inventory 2026-10-26, intervention 1): --skill names the s
 SKILL.md, sent as skill_sha = sha256 hex of the file's bytes with trailing newlines (\n) removed, so a file saved with or
 without a final newline hashes the same. Nothing else is normalised (no BOM/CRLF/whitespace rewriting): any other byte change
 is a different skill. An unreadable file sends no skill_sha (never a guessed one) and does not fail; a name outside
-[A-Za-z0-9][A-Za-z0-9_.-]{0,63} is dropped with a warning.
+[A-Za-z0-9][A-Za-z0-9_.-]{0,63} is dropped with a warning. A run that used several skills is still ONE event (build(skills=...)):
+an optional `skills` list of {name, sha?}, at most 8, same name/hash validation; the server books each name once per outcome.
 
 P0-3 signing: when the key file exists (DJIMIT_FLEET_EVENT_KEY_FILE, default ~/.djimit/fleet-event.key, mode 600; one line
 `<host> <key_id> <secret>`, minted by the operator inside the Djimitflo container) the event gets host, key_id,
 sig_alg=hmac-sha256 and sig. HMAC-SHA256, not Ed25519: Python's stdlib has no Ed25519 and this script stays stdlib-only;
 the server verifier accepts both. Signed bytes: canonical JSON (sorted keys, no spaces) of {agent, event_id, host,
 payload_sha256, success, task_kind, ts}, payload_sha256 = sha256 hex of canonical JSON of the present optional fields
-(duration_ms, model, ref, skill, skill_sha, tokens) as strings. No key file -> the event is sent unsigned, exactly as before.
+(duration_ms, model, ref, skill, skill_sha, skills, tokens) as strings; `skills` as the canonical JSON string of the list. An
+absent field is left out, so older events sign unchanged. No key file -> the event is sent unsigned, exactly as before.
 """
 import argparse, base64, hashlib, hmac, json, os, re, sys, tempfile, time, urllib.request, uuid
 
 KEY_FILE = os.environ.get('DJIMIT_FLEET_EVENT_KEY_FILE', os.path.expanduser('~/.djimit/fleet-event.key'))
-PAYLOAD_FIELDS = ('duration_ms', 'model', 'ref', 'skill', 'skill_sha', 'tokens')
+PAYLOAD_FIELDS = ('duration_ms', 'model', 'ref', 'skill', 'skill_sha', 'skills', 'tokens')
 SKILL_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$')  # mirrors agentOutcomeSchema.skill on the server
+SHA_RE = re.compile(r'^[a-f0-9]{64}$')
+MAX_SKILLS = 8  # mirrors MAX_OUTCOME_SKILLS: the server drops a longer `skills` list whole
 SKILL_FILE_MAX = 4 * 1024 * 1024
 
 
@@ -42,6 +46,7 @@ def skill_sha256(path):
 
 
 SKILL_VECTOR = 'CtEQsJJJDMtJV--q2gRaCWzhUsMXHz5LyyJQFE8TBqA'
+SKILLS_VECTOR = 'G4hXPhCDQD9pt5y6H8n1OHGuHlXzXZPHJd6h2TQTRek'
 
 
 def bus_headers():
@@ -62,7 +67,8 @@ def canonical(value):
 
 
 def signed_body(event):
-    payload = {f: str(event[f]) for f in PAYLOAD_FIELDS if event.get(f) is not None}
+    # `skills` is a list: signed as its canonical JSON string (the server does the same with the list or the bus's string of it)
+    payload = {f: canonical(event[f]) if f == 'skills' else str(event[f]) for f in PAYLOAD_FIELDS if event.get(f) is not None}
     return canonical({'agent': event['agent'], 'event_id': event['event_id'], 'host': event['host'],
                       'payload_sha256': hashlib.sha256(canonical(payload).encode('utf-8')).hexdigest(),
                       'success': event['success'], 'task_kind': event['task_kind'], 'ts': event['occurred_at']})
@@ -89,7 +95,26 @@ def load_key(path=KEY_FILE):
     return tuple(parts)
 
 
-def build(agent, task_kind, success, model=None, tokens=None, duration_ms=None, ref=None, skill=None, skill_sha=None):
+def skills_field(skills):
+    """[(name, sha|None)] -> the `skills` list [{name, sha?}] (bad names dropped, bad hashes left out, deduped by name; a name
+    seen with two different hashes gets none), or None when nothing is left or there are more than MAX_SKILLS."""
+    out, conflict = {}, set()
+    for name, sha in skills:
+        if not (isinstance(name, str) and SKILL_RE.match(name)):
+            print('skill name %r not accepted; sent without it' % str(name)[:80], file=sys.stderr); continue
+        h = sha if isinstance(sha, str) and SHA_RE.match(sha) else None
+        if out.get(name) is None:
+            out[name] = h
+        elif h and h != out[name]:
+            conflict.add(name)
+    if len(out) > MAX_SKILLS:
+        print('%d skills is more than %d; sent without skills' % (len(out), MAX_SKILLS), file=sys.stderr); return None
+    return [dict(name=n, **({'sha': h} if h and n not in conflict else {})) for n, h in out.items()] or None
+
+
+def build(agent, task_kind, success, model=None, tokens=None, duration_ms=None, ref=None, skill=None, skill_sha=None, skills=None):
+    """skill/skill_sha: one skill (the original fields). skills: [(name, sha|None)] for a run that used several; one event
+    either way, so a run counts once for the agent whatever the number of skills."""
     event = {'event_id': 'agent-outcome:' + str(uuid.uuid4()), 'event_type': 'agent.outcome', 'source': agent, 'agent': agent,
              'task_kind': task_kind, 'success': bool(success), 'occurred_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}
     if model: event['model'] = model
@@ -102,6 +127,8 @@ def build(agent, task_kind, success, model=None, tokens=None, duration_ms=None, 
     if skill:
         event['skill'] = skill
         if skill_sha: event['skill_sha'] = skill_sha
+    listed = skills_field(skills) if skills else None
+    if listed: event['skills'] = listed
     return event
 
 
@@ -152,6 +179,18 @@ def main():
                   'task_kind': 'briefing', 'success': True, 'occurred_at': '2026-10-20T08:00:00Z', 'skill': 'blog-publisher', 'skill_sha': 'a' * 64},
                  'macmini', '0123456789abcdef', 'fixture-secret')
         assert w['sig'] == SKILL_VECTOR, w['sig']
+        # several skills in one event: one `skills` list, validated like the single field
+        m = build('x', 'y', True, skills=[('eve-daily-content-intelligence', h), ('blog-publisher', None), ('../etc', h),
+                                          ('eve-daily-content-intelligence', h), ('djimit-newsletter', 'XYZ')])
+        assert m['skills'] == [{'name': 'eve-daily-content-intelligence', 'sha': h}, {'name': 'blog-publisher'}, {'name': 'djimit-newsletter'}], m
+        assert 'skill' not in m and 'skills' not in build('x', 'y', True, skills=[('s%d' % i, None) for i in range(9)])
+        assert build('x', 'y', True, skills=[('s', 'a' * 64), ('s', 'b' * 64)])['skills'] == [{'name': 's'}]
+        # fixed multi-skill vector shared with packages/server/src/__tests__/fleet-skill-identity.test.ts
+        z = sign({'event_id': 'agent-outcome:fixture-3', 'event_type': 'agent.outcome', 'source': 'hermes', 'agent': 'hermes',
+                  'task_kind': 'briefing', 'success': True, 'occurred_at': '2026-10-20T08:00:00Z',
+                  'skills': [{'name': 'blog-publisher', 'sha': 'a' * 64}, {'name': 'eve-daily-content-intelligence'}]},
+                 'macmini', '0123456789abcdef', 'fixture-secret')
+        assert z['sig'] == SKILLS_VECTOR, z['sig']
         print('selfcheck ok (signing ' + ('configured' if load_key() else 'not configured') + ')'); return
     if not (a.agent and a.task_kind and a.success in ('true', 'false')):
         ap.error('--agent, --task-kind and --success true|false are required')

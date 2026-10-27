@@ -19,7 +19,13 @@ export const listField = (value: unknown): string[] => {
   if (typeof v === 'string' && v.trim().startsWith('[')) { try { v = JSON.parse(v); } catch { return []; } }
   return Array.isArray(v) ? v.filter((x) => x !== null && x !== undefined).map(String) : [];
 };
-const SIGNAL_PREFIXES = ['paperclip.', 'outcome.', 'roborev.', 'discovery.', 'wiki.', 'agent.', 'eve-v.', 'work.', 'content.', 'authority.'];
+const SKILL_NAME_RE = /^[A-Za-z0-9][\w.-]{0,63}$/;
+const SKILL_SHA_RE = /^[a-f0-9]{64}$/;
+export const MAX_OUTCOME_SKILLS = 8;
+// z.coerce turns null / '' / '  ' into 0: those (and the bus's 'null') are unknown, so they become undefined before coercing
+const optionalCount = z.preprocess((v) => (v === null || (typeof v === 'string' && (v.trim() === '' || v.trim() === 'null')) ? undefined : v),
+  z.coerce.number().int().nonnegative().optional());
+const SIGNAL_PREFIXES =['paperclip.', 'outcome.', 'roborev.', 'discovery.', 'wiki.', 'agent.', 'eve-v.', 'work.', 'content.', 'authority.'];
 
 /**
  * Plan N2: one light outcome contract for every agent in the fleet (Hermes, Eve-V, maintainer, DeerFlow, Scallop, workers).
@@ -32,14 +38,34 @@ const agentOutcomeSchema = z.object({
   // the Redis-backed bus hands every field back as a string (prod 2026-09-28: success "true" matched no event)
   success: z.preprocess((v) => (v === 'true' ? true : v === 'false' ? false : v), z.boolean()),
   model: z.string().max(120).optional(),
-  tokens: z.coerce.number().int().nonnegative().optional(),
-  duration_ms: z.coerce.number().int().nonnegative().optional(),
+  tokens: optionalCount,
+  duration_ms: optionalCount,
   ref: z.string().max(300).optional(),
   // Skill identity (skill inventory 2026-10-26, intervention 1): the skill that ran and the sha256 of its installed SKILL.md.
   // A malformed value is dropped (stays NULL), never repaired or invented; the outcome itself still scores.
-  skill: z.string().regex(/^[A-Za-z0-9][\w.-]{0,63}$/).optional().catch(undefined),
-  skill_sha: z.string().regex(/^[a-f0-9]{64}$/).optional().catch(undefined),
+  skill: z.string().regex(SKILL_NAME_RE).optional().catch(undefined),
+  skill_sha: z.string().regex(SKILL_SHA_RE).optional().catch(undefined),
+  // One run = one outcome, carrying every declared skill (audit L-F05). More than 8 entries, or not a list, is dropped whole.
+  skills: z.preprocess(decodeField, z.array(z.unknown()).max(MAX_OUTCOME_SKILLS)).optional().catch(undefined),
 });
+
+/**
+ * The skills one outcome names: `skills` entries, then the single `skill`/`skill_sha`, deduped by name. A malformed name is
+ * dropped; a malformed hash, or two different hashes for one name, leaves that skill unhashed (null, never a guess).
+ */
+export function declaredSkills(o: { skill?: string; skill_sha?: string; skills?: unknown[] }): Array<{ name: string; sha: string | null }> {
+  const entries = [...(o.skills ?? []), ...(o.skill ? [{ name: o.skill, sha: o.skill_sha }] : [])];
+  const out = new Map<string, string | null | undefined>(); // undefined = no hash seen yet
+  for (const e of entries) {
+    const { name, sha } = (e && typeof e === 'object' ? e : {}) as { name?: unknown; sha?: unknown };
+    if (typeof name !== 'string' || !SKILL_NAME_RE.test(name)) continue;
+    const h = typeof sha === 'string' && SKILL_SHA_RE.test(sha) ? sha : undefined;
+    const seen = out.get(name);
+    if (seen === undefined) out.set(name, h);
+    else if (h !== undefined && h !== seen) out.set(name, null);
+  }
+  return [...out].map(([name, sha]) => ({ name, sha: sha ?? null }));
+}
 
 /**
  * N2: score every stored agent.outcome that has no fleet skill outcome yet (idempotent; also catches up earlier events).
@@ -60,13 +86,18 @@ export function scoreAgentOutcomes(db: Database, env: NodeJS.ProcessEnv = proces
   for (const row of rows) {
     const o = agentOutcomeSchema.safeParse(JSON.parse(row.payload));
     if (!o.success) continue;
-    // the name is a `skill:<name>` evidence ref; the hash only counts next to a name (a bare hash identifies nothing)
-    const { skill, skill_sha: skillSha } = o.data;
-    const evidenceRefs = [...(o.data.ref ? [o.data.ref] : []), ...(skill ? [`skill:${skill}`] : [])];
+    // Each named skill is one `skill:<name>` ref and, when hashed, one `skill-sha:<name>@<sha>` ref (the ledger counts distinct
+    // hashes per skill from these). skill_content_hash is one column, so it is set only when the run names exactly one skill.
+    // A bare hash identifies nothing.
+    const skills = declaredSkills(o.data);
+    const evidenceRefs = [...new Set([...(o.data.ref ? [o.data.ref] : []), ...skills.map((s) => `skill:${s.name}`),
+      ...skills.filter((s) => s.sha).map((s) => `skill-sha:${s.name}@${s.sha}`)])];
+    const only = skills.length === 1 ? skills[0].sha : null;
     engine.recordOutcome(`agent:${o.data.agent}:${o.data.task_kind}`, {
-      success: o.data.success, tokensUsed: o.data.tokens ?? 0, durationMs: o.data.duration_ms ?? 0, domain: 'fleet',
+      // unknown tokens stay NULL (#1015). duration_ms is NOT NULL DEFAULT 0 in skill_outcomes, so an absent one is still 0 there.
+      success: o.data.success, tokensUsed: o.data.tokens ?? null, durationMs: o.data.duration_ms ?? 0, domain: 'fleet',
       agentId: o.data.agent, taskId: row.id, ...(o.data.model ? { model: o.data.model } : {}), ...(evidenceRefs.length ? { evidenceRefs } : {}),
-      ...(skill && skillSha ? { skillContentHash: skillSha } : {}),
+      ...(only ? { skillContentHash: only } : {}),
     }); n += 1;
   }
   return n;
