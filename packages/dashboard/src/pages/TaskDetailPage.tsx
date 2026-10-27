@@ -437,9 +437,9 @@ export function TaskDetailPage() {
           {/* Execution Timeline */}
           <div className="bg-background-secondary border border-border rounded-lg p-6">
             <h2 className="text-lg font-semibold text-foreground mb-4">Execution Timeline</h2>
-            {loadErrors.events && executionEvents.length === 0
-              ? <p role="alert" className="text-sm text-status-error">Execution events could not be loaded: {loadErrors.events}. The timeline is unknown, not empty.</p>
-              : <ExecutionTimeline events={executionEvents} />}
+            {/* the history read failure stays visible even after live events arrive: those are only events since page load */}
+            {loadErrors.events && <p role="alert" className="mb-4 text-sm text-status-error">Execution events could not be loaded: {loadErrors.events}. Earlier history is unknown{executionEvents.length ? '; only live events received since this page opened are shown' : ', not empty'}.</p>}
+            {(!loadErrors.events || executionEvents.length > 0) && <ExecutionTimeline events={executionEvents} />}
           </div>
         </div>
       </div>

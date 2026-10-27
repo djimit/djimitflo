@@ -57,7 +57,10 @@ export function ImprovementFunnelPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Stat label="Proposals" value={unavailable.proposals ? 'unknown' : funnel.proposals.total} hint={why('proposals', 'all time, every status')} />
             <Stat label="Panel goal rate" value={funnel.panel.goalRate === null ? '—' : pct(linkedGoal, funnel.panel.linkedDecided)} hint={`${linkedGoal} of ${funnel.panel.linkedDecided} proposal-linked panel decisions (${decided} panels in total)`} />
-            <Stat label="Refinement reached goal" value={pct(childGoals?.reachedGoal ?? 0, funnel.refinement.children)} hint={why('refinementChildren', `${childGoals?.reachedGoal ?? 0} of ${known(funnel.refinement.children)} refinements · ${childGoals?.completed ?? 0} completed · ${childGoals?.failed ?? 0} failed`)} />
+            <Stat label="Refinement reached goal" value={childGoals ? pct(childGoals.reachedGoal, funnel.refinement.children) : 'unknown'}
+              hint={childGoals
+                ? why('refinementChildren', `${childGoals.reachedGoal} of ${known(funnel.refinement.children)} refinements · ${childGoals.completed} completed · ${childGoals.failed} failed`)
+                : why('refinementChildGoals', `${known(funnel.refinement.children)} refinements · goal outcomes unknown`)} />
             <Stat label="Cognitive episodes" value={known(funnel.learning.cognitiveEpisodes)} hint={why('cognitiveEpisodes', `${known(funnel.learning.cognitiveStrategies)} strategies`)} />
           </div>
 

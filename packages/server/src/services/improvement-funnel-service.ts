@@ -17,7 +17,7 @@ export interface ImprovementFunnel {
    * childOutcomes: the children's own status, which stays archived/no_change when a goal ran (DF-01). childGoals: children with a
    * goal (goals.improvement_id) and how those goals ended — the conversion a refinement actually made.
    */
-  refinement: { originals: number | null; children: number | null; childOutcomes: Record<string, number>; childGoals: { reachedGoal: number; completed: number; failed: number; other: number } };
+  refinement: { originals: number | null; children: number | null; childOutcomes: Record<string, number>; childGoals: { reachedGoal: number; completed: number; failed: number; other: number } | null };
   goals: { fromSelfImprovement: Record<string, number> };
   learning: { cognitiveEpisodes: number | null; cognitivePatterns: number | null; cognitiveStrategies: number | null; learningClosures: number | null; memoryCandidates: Record<string, number> };
   kpi: {
@@ -154,7 +154,9 @@ export class ImprovementFunnelService {
 
   /** DF-01: refined children that got a goal (goals.improvement_id is unique), by how the goal ended. */
   private childGoals(): ImprovementFunnel['refinement']['childGoals'] {
-    const by = this.counts('SELECT g.status AS k, COUNT(*) AS n FROM goals g JOIN self_improvements s ON s.id = g.improvement_id WHERE s.refined_from_id IS NOT NULL GROUP BY g.status');
+    const rows = this.tryRows<{ k: string | null; n: number }>('refinementChildGoals', 'SELECT g.status AS k, COUNT(*) AS n FROM goals g JOIN self_improvements s ON s.id = g.improvement_id WHERE s.refined_from_id IS NOT NULL GROUP BY g.status');
+    if (rows === null) return null; // UX-004: unknown, never "0 reached goal"
+    const by: Record<string, number> = Object.fromEntries(rows.map((r) => [r.k ?? 'unknown', r.n]));
     const reachedGoal = Object.values(by).reduce((a, b) => a + b, 0);
     const completed = by.completed ?? 0; const failed = by.failed ?? 0;
     return { reachedGoal, completed, failed, other: reachedGoal - completed - failed };

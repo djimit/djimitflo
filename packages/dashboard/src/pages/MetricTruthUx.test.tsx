@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import type { ExecutionEvent } from '@djimitflo/shared';
+import { WebSocketEventType } from '@djimitflo/shared';
+import type { ExecutionEvent, WebSocketMessage } from '@djimitflo/shared';
+import { WsContext } from '../components/WebSocketProvider';
+import { GoalsLoopsPage } from './GoalsLoopsPage';
+import { useAuthStore } from '../lib/auth-store';
 import { api, type ImprovementFunnel } from '../lib/api';
 import { useStore } from '../lib/store';
 import { ImprovementFunnelPage } from './ImprovementFunnelPage';
@@ -70,6 +74,18 @@ describe('UX-002/003/004 improvement funnel', () => {
     const episodes = screen.getByText('Cognitive episodes').parentElement!;
     expect(within(episodes).getByText('unknown')).toBeTruthy();
   });
+
+  it('UX-004: refinements present but their goal read failed is unknown, not "0%" reached goal', async () => {
+    vi.spyOn(api, 'getImprovementFunnel').mockResolvedValue({ ...funnel,
+      refinement: { originals: 5, children: 5, childOutcomes: { archived: 5 }, childGoals: null },
+      unavailable: { refinementChildGoals: 'query_failed: database is locked' } });
+    vi.spyOn(api, 'getPanelCalibration').mockResolvedValue({ specialists: [] });
+    render(<ImprovementFunnelPage />);
+    const stat = (await screen.findByText('Refinement reached goal')).parentElement!;
+    expect(within(stat).getByText('unknown')).toBeTruthy();
+    expect(stat.textContent).not.toContain('0%');
+    expect(stat.textContent).toContain('query_failed: database is locked');
+  });
 });
 
 describe('UX-005 execution evidence journey', () => {
@@ -111,6 +127,22 @@ describe('UX-005 execution evidence journey', () => {
     await screen.findByText('Loop maker task');
     expect(await screen.findByText(/Execution events could not be loaded/)).toBeTruthy();
     expect(screen.queryByText('No execution events yet')).toBeNull();
+  });
+
+  it('a failed history read stays reported next to live events that did arrive', async () => {
+    taskStub({ task, events: 'fail' });
+    const handlers: Array<(message: WebSocketMessage) => void> = [];
+    const subscribeAll = (type: unknown, handler: (message: WebSocketMessage) => void) => {
+      if (type === WebSocketEventType.EXECUTION_EVENT) handlers.push(handler);
+      return () => undefined;
+    };
+    render(<WsContext.Provider value={{ subscribe: subscribeAll as never, isConnected: true }}>
+      <MemoryRouter initialEntries={['/tasks/t1']}><Routes><Route path="/tasks/:taskId" element={<TaskDetailPage />} /></Routes></MemoryRouter>
+    </WsContext.Provider>);
+    expect(await screen.findByText(/Execution events could not be loaded/)).toBeTruthy();
+    act(() => { for (const h of handlers) h({ type: WebSocketEventType.EXECUTION_EVENT, payload: { event: event({ id: 'live-1', message: 'live tool call', artifact_id: null }) } } as never); });
+    expect(await screen.findByText('live tool call')).toBeTruthy();
+    expect(screen.getByText(/Execution events could not be loaded/)).toBeTruthy();
   });
 
   it('a failed task read is an error, not "Task Not Found"', async () => {
@@ -168,5 +200,50 @@ describe('UX-007 loading, keyboard and mobile navigation', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(aside.className).toMatch(/(^|\s)invisible(\s|$)/);
     expect(document.activeElement).toBe(opener);
+  });
+});
+
+describe('UX-005 exact run deep link (/goals-loops?run=)', () => {
+  const loopRun = (id: string, finding: string) => ({ id, loop_name: `loop-${id}`, status: 'completed', mode: 'closed', repository_path: `/tmp/${id}`,
+    created_at: '2026-10-01T00:00:00Z', metadata: {}, gates: [], next_actions: [], findings: [{ id: `f-${id}`, message: finding, file: 'README.md' }] });
+  const newest = loopRun('newest-run', 'Newest run finding');
+  const older = loopRun('older-run', 'Older run finding');
+  const stubLoops = (olderLookup: 'found' | 'missing') => {
+    const fetch = vi.fn(async (url: string) => {
+      const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
+      if (url === '/api/goals') return ok({ goals: [] });
+      if (url === '/api/loops/runs') return ok({ runs: [newest] }); // the list holds only the newest runs; the linked run is older
+      if (url === '/api/loops/catalog') return ok({ loops: [] });
+      if (url === '/api/loops/runs/older-run') return olderLookup === 'found' ? ok(older) : { ok: false, status: 404, json: async () => ({ error: 'not found' }) };
+      if (url === '/api/loops/runs/older-run/review-bundle') return ok({ run: older, leases: [], events: [] });
+      if (url === '/api/loops/runs/newest-run/review-bundle') return ok({ run: newest, leases: [], events: [] });
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetch);
+    return fetch;
+  };
+  const bundleCalls = (fetch: ReturnType<typeof vi.fn>, id: string) => fetch.mock.calls.filter(([url]) => url === `/api/loops/runs/${id}/review-bundle`).length;
+  const openRun = () => {
+    useAuthStore.setState({ user: { id: 'fixture-admin', role: 'admin' } as never });
+    window.history.pushState({}, '', '/goals-loops?run=older-run');
+    render(<GoalsLoopsPage />);
+  };
+  afterEach(() => { window.history.pushState({}, '', '/'); useAuthStore.setState({ user: null }); });
+
+  it('loads a linked run outside the newest list by id and shows its own evidence', async () => {
+    const fetch = stubLoops('found');
+    openRun();
+    expect(await screen.findByRole('heading', { name: 'loop-older-run' })).toBeTruthy();
+    await waitFor(() => expect(bundleCalls(fetch, 'older-run')).toBe(1));
+    expect(bundleCalls(fetch, 'newest-run')).toBe(0);
+    expect(screen.queryByRole('heading', { name: 'loop-newest-run' })).toBeNull();
+  });
+
+  it('a linked run that cannot be read is unavailable, never replaced by another run', async () => {
+    const fetch = stubLoops('missing');
+    openRun();
+    expect(await screen.findByText(/Run older-run is unavailable/)).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'loop-newest-run' })).toBeNull();
+    expect(bundleCalls(fetch, 'newest-run')).toBe(0);
   });
 });

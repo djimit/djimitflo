@@ -72,4 +72,22 @@ describe('ImprovementFunnelService metric truth', () => {
     expect(funnel.unavailable.openWorkItems).toBe('query_failed: database is locked');
     expect(funnel.hygiene.zombieGoals).toBe(0);
   });
+
+  it('UX-004: a failed refinement-goal read is unknown with a reason, not zero goals reached', () => {
+    db.prepare("INSERT INTO self_improvements (id, type, title, description, rationale, source, status, priority, refined_from_id, created_at, updated_at) VALUES ('child', 'feature', 't', 'd', 'r', 'test', 'archived', 0.5, 'parent', datetime('now'), datetime('now'))").run();
+    const failing = new Proxy(db, {
+      get(target, prop) {
+        if (prop === 'prepare') return (sql: string) => {
+          if (/FROM goals g JOIN self_improvements s ON s.id = g.improvement_id/.test(sql)) throw new Error('database is locked');
+          return target.prepare(sql);
+        };
+        const value = Reflect.get(target, prop, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const { refinement, unavailable } = new ImprovementFunnelService(failing).compute();
+    expect(refinement.children).toBe(1);
+    expect(refinement.childGoals).toBeNull();
+    expect(unavailable.refinementChildGoals).toBe('query_failed: database is locked');
+  });
 });

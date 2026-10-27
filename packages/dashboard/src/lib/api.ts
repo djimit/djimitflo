@@ -649,7 +649,7 @@ export type ImprovementFunnel = {
   /** goalRate: goal decisions over the panels a proposal points at (linkedDecided); decisions covers every panel */
   panel: { decisions: Record<string, number>; goalRate: number | null; linkedPanels: number; linkedDecided: number; linkedDecisions: Record<string, number> };
   /** childGoals: refined children with a goal and how it ended; childOutcomes is the children's own status */
-  refinement: { originals: number | null; children: number | null; childOutcomes: Record<string, number>; childGoals: { reachedGoal: number; completed: number; failed: number; other: number } };
+  refinement: { originals: number | null; children: number | null; childOutcomes: Record<string, number>; childGoals: { reachedGoal: number; completed: number; failed: number; other: number } | null };
   goals: { fromSelfImprovement: Record<string, number> };
   learning: { cognitiveEpisodes: number | null; cognitivePatterns: number | null; cognitiveStrategies: number | null; learningClosures: number | null; memoryCandidates: Record<string, number> };
   /**
@@ -2307,6 +2307,10 @@ class ApiClient {
 
   async getLoopRuns(): Promise<{ runs: LoopRunRecord[] }> {
     return this.request('/loops/runs');
+  }
+
+  async getLoopRun(runId: string): Promise<LoopRunRecord> {
+    return this.request(`/loops/runs/${encodeURIComponent(runId)}`);
   }
 
   async getLoopCatalog(): Promise<{ loops: LoopCatalogItem[] }> {
