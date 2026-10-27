@@ -4,6 +4,8 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { createHash } from 'crypto';
+import http from 'http';
+import type { AddressInfo } from 'net';
 import { MemorySyncService } from '../services/memory-sync-service';
 import { memoryDeliveryEvidence } from '../services/memory-delivery-receipts';
 import { pointIdForTask } from '../utils/qdrant-point-id';
@@ -306,5 +308,47 @@ describe('CODE-004 review (#1058): ambiguous UAMS writes, duplicate completion, 
     expect(report).toMatchObject({ read_back_delivered: 1, retried: 0 });
     expect(statusOf(db, 'task-1', 'okf')).toBe('delivered');
     expect(fs.statSync(file).mtimeMs).toBe(before);
+  });
+});
+
+describe('CODE-004 review round 2 (#1058): redirects and shadow OKF fallback', () => {
+  it('UAMS POST → 307 → refused is not proven non-delivery: one POST to the origin, unknown (native fetch)', async () => {
+    process.env.MEMORY_DELIVERY_RECEIPTS = 'on';
+    // a port nothing listens on: the redirect target refuses the connection
+    const closed = http.createServer();
+    await new Promise<void>((r) => closed.listen(0, '127.0.0.1', () => r()));
+    const deadPort = (closed.address() as AddressInfo).port;
+    await new Promise<void>((r) => closed.close(() => r()));
+    let originPosts = 0;
+    const origin = http.createServer((req, res) => {
+      if (req.method === 'POST') originPosts++;
+      req.resume();
+      res.writeHead(307, { Location: `http://127.0.0.1:${deadPort}/memory/entry` }).end();
+    });
+    await new Promise<void>((r) => origin.listen(0, '127.0.0.1', () => r()));
+    process.env.UAMS_URL = `http://127.0.0.1:${(origin.address() as AddressInfo).port}`;
+    process.env.OLLAMA_URL = `http://127.0.0.1:${deadPort}`; // Qdrant leg fails fast (no embedding)
+    const db = taskDb();
+    try {
+      await new MemorySyncService(db).onTaskCompleted('task-1');
+    } finally {
+      await new Promise<void>((r) => origin.close(() => r()));
+    }
+    expect(originPosts).toBe(1);
+    expect(statusOf(db, 'task-1', 'uams')).toBe('unknown');
+  }, 10_000);
+
+  it('shadow: a failing receipt table never publishes an empty OKF file over an existing one', async () => {
+    process.env.MEMORY_DELIVERY_RECEIPTS = 'shadow';
+    const db = taskDb();
+    fakeTargets();
+    (db as unknown as { exec: () => never }).exec = () => { throw new Error('disk I/O error'); };
+    const file = path.join(tmpOkf, 'tasks', 'task-1.md');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, '---\ntype: CompletedTask\nold but whole\n');
+    await new MemorySyncService(db).onTaskCompleted('task-1');
+    const text = fs.readFileSync(file, 'utf8');
+    expect(text.length).toBeGreaterThan(0);
+    expect(text).toMatch(/^---\ntype: CompletedTask\n[\s\S]*## Description\n\ndo the thing\n\n$/); // sent untracked, whole
   });
 });

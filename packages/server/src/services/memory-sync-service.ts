@@ -140,17 +140,16 @@ export class MemorySyncService {
       ]);
       return;
     }
-    let okfText = '';
+    // rendered before (and independent of) any receipt work, so no path can publish an unrendered file
+    const okfText = this.renderOKFConcept(task, machineId, agentType);
     await Promise.allSettled([
       // nothing to deliver → no receipt (the leg logs the skip)
       content.trim()
         ? this.tracked(mode, taskId, 'uams', () => claimInitial(this.db, taskId, 'uams'), () => this.syncToUAMS(taskId, content, machineId, agentType, true))
         : this.syncToUAMS(taskId, content, machineId, agentType, true),
       this.tracked(mode, taskId, 'qdrant', () => claimInitial(this.db, taskId, 'qdrant'), () => this.syncToQdrant(taskId, content, machineId, agentType)),
-      this.tracked(mode, taskId, 'okf', () => {
-        okfText = this.renderOKFConcept(task, machineId, agentType);
-        return claimInitial(this.db, taskId, 'okf', okfIntent(sha256(okfText)));
-      }, async () => this.writeOKFConcept(task, machineId, agentType, okfText)),
+      this.tracked(mode, taskId, 'okf', () => claimInitial(this.db, taskId, 'okf', okfIntent(sha256(okfText))),
+        async () => this.writeOKFConcept(task, machineId, agentType, okfText)),
     ]);
   }
 
@@ -263,11 +262,8 @@ export class MemorySyncService {
         continue;
       }
       const ctx = this.loadTask(row.task_id);
-      let okfText = '';
-      const outcome = await this.tracked('on', row.task_id, row.target, () => {
-        if (row.target === 'okf' && ctx) okfText = this.renderOKFConcept(ctx.task, ctx.machineId, ctx.agentType);
-        return claimRetry(this.db, row, okfText ? okfIntent(sha256(okfText)) : 'in_flight');
-      }, async () => {
+      const okfText = row.target === 'okf' && ctx ? this.renderOKFConcept(ctx.task, ctx.machineId, ctx.agentType) : '';
+      const outcome = await this.tracked('on', row.task_id, row.target, () => claimRetry(this.db, row, okfText ? okfIntent(sha256(okfText)) : 'in_flight'), async () => {
         if (!ctx) return failed('task missing');
         return row.target === 'qdrant'
           ? this.syncToQdrant(row.task_id, ctx.content, ctx.machineId, ctx.agentType)
@@ -329,6 +325,8 @@ export class MemorySyncService {
             metadata: { task_id: taskId, machine_id: machineId, agent_type: agentType },
           }),
           signal: AbortSignal.timeout(WRITE_TIMEOUT_MS),
+          // tracked: never follow a redirect — the origin received the request, so a later transport error proves nothing
+          ...(tracked ? { redirect: 'manual' as const } : {}),
         });
         if (res.ok) {
           console.log(`Memory synced: task ${taskId} → UAMS`);
@@ -338,7 +336,7 @@ export class MemorySyncService {
           console.warn(`UAMS sync rejected for task ${taskId}: ${res.status} (check UAMS_API_KEY)`);
           return failed(`rejected ${res.status}`);
         }
-        if (res.status >= 500 && tracked) {
+        if (tracked && (res.status >= 500 || (res.status >= 300 && res.status < 400) || res.type === 'opaqueredirect')) {
           console.warn(`UAMS sync for task ${taskId}: ${res.status}; outcome unknown, not retried`);
           return unknown(`status ${res.status}`);
         }
@@ -464,6 +462,7 @@ export class MemorySyncService {
     try {
       fs.mkdirSync(this.okfTasksDir, { recursive: true });
       const filePath = path.join(this.okfTasksDir, `${task.id}.md`);
+      if (rendered === '') return failed('empty render, not written'); // never publish an empty/unrendered file
       if (rendered === undefined) {
         fs.writeFileSync(filePath, this.renderOKFConcept(task, machineId, agentType), 'utf8');
       } else {
