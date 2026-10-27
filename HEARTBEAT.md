@@ -25,6 +25,7 @@ unknown …) is `GET /api/health/schedulers` (admins). Armed is intent, not exec
 | loop_auto_merge | `LOOP_AUTO_MERGE_TEST_ONLY` | 15 min | `packages/server/src/bootstrap/autonomous-services.ts` |
 | memory_candidate_review | `MEMORY_CANDIDATE_REVIEW_ENABLED` | `memoryCandidateReviewSched.intervalMinutes()` min | `packages/server/src/index.ts` |
 | merge_survival | `MERGE_SURVIVAL_ENABLED` | 6 h | `packages/server/src/bootstrap/autonomous-services.ts` |
+| retention | `RETENTION_ENABLED` | `this.intervalMs` | `packages/server/src/services/retention-service.ts` |
 | scheduled_proposal_goals | `(always on with autonomy)` | `Number(process.env.SCHEDULED_PROPOSAL_GOALS_INTERVAL_MS) \|\| 3_600_0…` | `packages/server/src/bootstrap/autonomous-services.ts` |
 | self_healing | `SELF_HEALING_SCHEDULER_ENABLED` | `selfHealingSched.intervalMinutes()` min | `packages/server/src/index.ts` |
 | self_improvement_auto_review | `SELF_IMPROVEMENT_AUTO_REVIEW_ENABLED` | `selfImprovementAutoReviewSched.intervalMinutes()` min | `packages/server/src/index.ts` |

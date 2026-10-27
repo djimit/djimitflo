@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Activity, AlertTriangle, CheckCircle, XCircle, Clock, Shield, BarChart3 } from 'lucide-react';
 import type { ObservabilityMetrics } from '@djimitflo/shared';
 import { api } from '../lib/api';
@@ -16,32 +16,46 @@ function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
+/**
+ * OBS-004: the feed has an explicit lifecycle. A clean EOF or an error is never shown as a quiet healthy stream:
+ * it reconnects with backoff, at most MAX_RECONNECTS times per flapping episode, then shows 'closed'.
+ * Live events are not replayed across a reconnect; the durable record is the audit log.
+ */
+type StreamState = 'connecting' | 'open' | 'reconnecting' | 'closed';
+const MAX_RECONNECTS = 5;
+const STABLE_STREAM_MS = 60_000; // a stream that stayed open this long resets the reconnect budget
+const reconnectDelay = (attempt: number) => Math.min(1_000 * 2 ** (attempt - 1), 15_000);
+
 export function ObservabilityPage() {
   const [metrics, setMetrics] = useState<ObservabilityMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [sseEvents, setSseEvents] = useState<LiveEvent[]>([]);
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [streamState, setStreamState] = useState<StreamState>('connecting');
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
+  const [streamGeneration, setStreamGeneration] = useState(0);
   const [metricsError, setMetricsError] = useState<string | null>(null);
-  const streamActive = useRef(false);
   const token = useAuthStore((state) => state.token);
 
   // D10: SSE live event feed
   useEffect(() => {
     if (!token) return;
     const controller = new AbortController();
-    streamActive.current = true;
-    void (async () => {
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let attempt = 0;
+
+    const connect = async (): Promise<void> => {
+      let openedAt: number | null = null;
+      setStreamState(attempt === 0 ? 'connecting' : 'reconnecting');
       try {
-        const response = await authenticatedFetch('/observability/stream', {
-          signal: controller.signal,
-        });
+        const response = await authenticatedFetch('/observability/stream', { signal: controller.signal });
         if (!response.ok || !response.body) throw new Error(`Stream unavailable (${response.status})`);
         setStreamError(null);
         const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
         let buffer = '';
-        while (streamActive.current) {
+        for (;;) {
           const { value, done } = await reader.read();
-          if (done) break;
+          if (done || controller.signal.aborted) break;
           buffer += value;
           const messages = buffer.split('\n\n');
           buffer = messages.pop() || '';
@@ -50,19 +64,31 @@ export function ObservabilityPage() {
             if (!data) continue;
             try {
               const event = JSON.parse(data) as LiveEvent;
+              // the handshake is a lifecycle marker, not an event
+              if (event.type === 'connected') { openedAt = Date.now(); setStreamState('open'); continue; }
               setSseEvents((previous) => [...previous.slice(-99), event]);
             } catch { /* Ignore malformed external events. */ }
           }
         }
+        if (!controller.signal.aborted) setStreamError('Stream ended by the server');
       } catch (error) {
         if (!controller.signal.aborted) setStreamError(error instanceof Error ? error.message : 'Stream unavailable');
       }
-    })();
-    return () => {
-      streamActive.current = false;
-      controller.abort();
+      if (controller.signal.aborted) return;
+      if (openedAt !== null && Date.now() - openedAt >= STABLE_STREAM_MS) attempt = 0;
+      if (attempt >= MAX_RECONNECTS) { setStreamState('closed'); return; }
+      attempt += 1;
+      setReconnectAttempt(attempt);
+      setStreamState('reconnecting');
+      retry = setTimeout(() => { void connect(); }, reconnectDelay(attempt));
     };
-  }, [token]);
+
+    void connect();
+    return () => {
+      controller.abort();
+      clearTimeout(retry);
+    };
+  }, [token, streamGeneration]);
 
   useEffect(() => {
     api.getObservabilityMetrics().then(setMetrics)
@@ -154,12 +180,30 @@ export function ObservabilityPage() {
       )}
 
       <div className="bg-background-secondary border border-border rounded-lg p-6">
-        <h2 className="text-xl font-semibold text-foreground mb-4">Live Event Feed (SSE)</h2>
+        <h2 className="text-xl font-semibold text-foreground mb-2 flex items-center gap-3">
+          Live Event Feed (SSE)
+          <span data-testid="stream-status" className={`text-xs font-mono px-2 py-0.5 rounded border ${streamState === 'open' ? 'text-status-completed border-status-completed/30' : streamState === 'closed' ? 'text-status-error border-status-error/30' : 'text-status-paused border-status-paused/30'}`}>{streamState}</span>
+        </h2>
+        <p className="text-xs text-foreground-muted mb-4">
+          Live only: the last 100 events while connected. Events during a disconnect are not replayed; the durable record is the <a href="/audit" className="underline">Audit log</a>.
+        </p>
+        {streamState !== 'open' && streamState !== 'connecting' && (
+          <div role="status" className="mb-3 p-3 rounded border border-status-error/20 bg-status-error/5 text-sm text-status-error flex items-center justify-between gap-3">
+            <span>
+              {streamState === 'closed'
+                ? `Live stream closed after ${reconnectAttempt} reconnect attempts${streamError ? ` (${streamError})` : ''}.`
+                : `${streamError ?? 'Stream ended'}. Reconnecting (attempt ${reconnectAttempt}/${MAX_RECONNECTS})...`}
+            </span>
+            {streamState === 'closed' && (
+              <button type="button" className="underline shrink-0" onClick={() => setStreamGeneration((g) => g + 1)}>Reconnect</button>
+            )}
+          </div>
+        )}
         <div className="space-y-2 max-h-96 overflow-y-auto">
-          {streamError ? (
-            <div className="text-center py-8 text-status-error">{streamError}</div>
-          ) : sseEvents.length === 0 ? (
-            <div className="text-center py-8 text-foreground-muted">Connected. Waiting for events...</div>
+          {sseEvents.length === 0 ? (
+            <div className="text-center py-8 text-foreground-muted">
+              {streamState === 'open' ? 'Connected. Waiting for events...' : streamState === 'connecting' ? 'Connecting to live stream...' : 'No live events received.'}
+            </div>
           ) : (
             sseEvents.slice().reverse().map((event, i) => (
               <div key={i} className="flex items-start gap-3 p-3 bg-background-elevated rounded-lg border border-border text-sm">
