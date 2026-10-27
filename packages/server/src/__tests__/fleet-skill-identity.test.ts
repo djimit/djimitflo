@@ -58,6 +58,20 @@ describe('agent.outcome skill identity (server)', () => {
     expect(row(zero).tokens_used).toBe(0);
   });
 
+  it('explicit null, blank or "null" tokens are unknown (NULL, no efficiency credit); only a genuine 0 is stored as 0', () => {
+    const cases: Array<[string, Record<string, unknown>, number | null]> = [
+      ['omitted', {}, null], ['null', { tokens: null, duration_ms: null }, null], ['empty', { tokens: '', duration_ms: '' }, null],
+      ['blank', { tokens: '  ' }, null], ['null-string', { tokens: 'null' }, null], ['zero', { tokens: 0 }, 0], ['zero-string', { tokens: '0' }, 0],
+    ];
+    const ids = cases.map(([kind, over]) => store({ task_kind: `cron:${kind}`, ...over }));
+    expect(scoreAgentOutcomes(db, {})).toBe(cases.length);
+    const engine = new SkillEvolutionEngine(db);
+    cases.forEach(([kind, , want], i) => {
+      expect(row(ids[i]).tokens_used, kind).toBe(want);
+      expect(engine.measuredTraits(`agent:hermes-eve-v:cron:${kind}`).efficiency, kind).toBe(want === null ? null : 1);
+    });
+  });
+
   it('a multi-skill run is ONE outcome: each declared skill once as skill:<name>, each hash as skill-sha:<name>@<sha>', () => {
     const id = store({ ref: 'hermes-cron:j1:e1', skills: JSON.stringify([{ name: 'eve-daily-content-intelligence', sha: SHA }, { name: 'blog-publisher' },
       { name: 'eve-daily-content-intelligence', sha: SHA }, { name: '../etc', sha: SHA }, { name: 'djimit-newsletter', sha: 'XYZ' }]) });

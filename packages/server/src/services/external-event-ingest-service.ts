@@ -22,6 +22,9 @@ export const listField = (value: unknown): string[] => {
 const SKILL_NAME_RE = /^[A-Za-z0-9][\w.-]{0,63}$/;
 const SKILL_SHA_RE = /^[a-f0-9]{64}$/;
 export const MAX_OUTCOME_SKILLS = 8;
+// z.coerce turns null / '' / '  ' into 0: those (and the bus's 'null') are unknown, so they become undefined before coercing
+const optionalCount = z.preprocess((v) => (v === null || (typeof v === 'string' && (v.trim() === '' || v.trim() === 'null')) ? undefined : v),
+  z.coerce.number().int().nonnegative().optional());
 const SIGNAL_PREFIXES =['paperclip.', 'outcome.', 'roborev.', 'discovery.', 'wiki.', 'agent.', 'eve-v.', 'work.', 'content.', 'authority.'];
 
 /**
@@ -35,8 +38,8 @@ const agentOutcomeSchema = z.object({
   // the Redis-backed bus hands every field back as a string (prod 2026-09-28: success "true" matched no event)
   success: z.preprocess((v) => (v === 'true' ? true : v === 'false' ? false : v), z.boolean()),
   model: z.string().max(120).optional(),
-  tokens: z.coerce.number().int().nonnegative().optional(),
-  duration_ms: z.coerce.number().int().nonnegative().optional(),
+  tokens: optionalCount,
+  duration_ms: optionalCount,
   ref: z.string().max(300).optional(),
   // Skill identity (skill inventory 2026-10-26, intervention 1): the skill that ran and the sha256 of its installed SKILL.md.
   // A malformed value is dropped (stays NULL), never repaired or invented; the outcome itself still scores.
