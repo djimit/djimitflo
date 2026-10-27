@@ -70,15 +70,16 @@ write_build_receipt() {   # write_build_receipt <dir> <src> <sha> <image> <base 
     "$sha" "$image" "$id" "$lock" "$dfile" "$base" "$built" > "$f.tmp.$$" && chmod 0444 "$f.tmp.$$" && mv "$f.tmp.$$" "$f" && echo "$f"
 }
 verify_build_receipt() {   # verify_build_receipt <receipt> <src> <sha> <image>: the image and source still are what was built
-  local f="$1" src="$2" sha="$3" image="$4" id lock envs base
+  local f="$1" src="$2" sha="$3" image="$4" id lock dfile envs base
   [ -f "$f" ] || { echo "no build receipt at $f" >&2; return 1; }
   id="$(docker image inspect -f '{{.Id}}' "$image")" || return 1
   envs="$(docker image inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$image")" || return 1
-  lock="$(sha256_file "$src/package-lock.json")" || return 1
+  lock="$(sha256_file "$src/package-lock.json")" && dfile="$(sha256_file "$src/Dockerfile")" || return 1
   base="$(sed -n 's/.*"base_image":"\([^"]*\)".*/\1/p' "$f")"
   grep -qF "\"commit\":\"$sha\"" "$f" || { echo "receipt is not for commit $sha" >&2; return 1; }
   grep -qF "\"image_id\":\"$id\"" "$f" || { echo "$image is $id, not the receipt's image" >&2; return 1; }
   grep -qF "\"lockfile_sha256\":\"$lock\"" "$f" || { echo "package-lock.json changed since the build" >&2; return 1; }
+  grep -qF "\"dockerfile_sha256\":\"$dfile\"" "$f" || { echo "Dockerfile hash missing from the receipt or changed since the build" >&2; return 1; }
   [[ "$base" == *@sha256:* ]] || { echo "receipt has no base image digest" >&2; return 1; }
   printf '%s\n' "$envs" | grep -qxF "DJIMITFLO_BUILD_COMMIT=$sha" || { echo "$image does not declare commit $sha" >&2; return 1; }
   printf '%s\n' "$envs" | grep -qxF "DJIMITFLO_BUILD_LOCK_SHA256=$lock" || { echo "$image does not declare the receipt's lockfile" >&2; return 1; }

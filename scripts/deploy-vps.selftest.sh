@@ -75,6 +75,14 @@ if FAKE_ENV="$(drop DJIMITFLO_BUILD_BASE_IMAGE; echo "DJIMITFLO_BUILD_BASE_IMAGE
 if verify_build_receipt "$RCPT/missing.json" "$SRC" "$NEW_FULL" "djimitflo:main-$NEW" 2>/dev/null; then fail "missing receipt accepted"; fi
 sed 's/"base_image":"[^"]*"/"base_image":"unknown"/' "$receipt" > "$TMP/nobase.json"
 if FAKE_ENV="$(drop DJIMITFLO_BUILD_BASE_IMAGE; echo DJIMITFLO_BUILD_BASE_IMAGE=unknown)" verify_build_receipt "$TMP/nobase.json" "$SRC" "$NEW_FULL" "djimitflo:main-$NEW" 2>/dev/null; then fail "receipt without a base digest accepted"; fi
+# the Dockerfile hash binds the recipe: a receipt without it, or with another one, is refused (Codex re-review of #1061)
+sed 's/"dockerfile_sha256":"[^"]*",//' "$receipt" > "$TMP/nodf.json"
+if verify_build_receipt "$TMP/nodf.json" "$SRC" "$NEW_FULL" "djimitflo:main-$NEW" 2>/dev/null; then fail "receipt without a Dockerfile hash accepted"; fi
+sed 's/"dockerfile_sha256":"[^"]*"/"dockerfile_sha256":"0000"/' "$receipt" > "$TMP/wrongdf.json"
+if verify_build_receipt "$TMP/wrongdf.json" "$SRC" "$NEW_FULL" "djimitflo:main-$NEW" 2>/dev/null; then fail "receipt with a wrong Dockerfile hash accepted"; fi
+cp "$SRC/Dockerfile" "$TMP/Dockerfile.orig"; echo 'RUN true' >> "$SRC/Dockerfile"
+if verify_build_receipt "$receipt" "$SRC" "$NEW_FULL" "djimitflo:main-$NEW" 2>/dev/null; then fail "changed Dockerfile accepted"; fi
+cp "$TMP/Dockerfile.orig" "$SRC/Dockerfile"
 echo '{"lockfileVersion":3,"x":1}' > "$SRC/package-lock.json"
 if verify_build_receipt "$receipt" "$SRC" "$NEW_FULL" "djimitflo:main-$NEW" 2>/dev/null; then fail "changed lockfile accepted"; fi
 unset -f docker drop

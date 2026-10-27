@@ -105,7 +105,7 @@ filters, and every action is pinned to a commit sha.
 (`node@sha256:…`; pulled only when the tag is absent, as before) and builds with that digest, so both stages use exactly
 the base the receipt records; no digest means no build. After the build it writes
 `/srv/djimitflo/build-receipts/<image id>.json` (write-once, mode 0444): commit, image tag, image id, `package-lock.json`
-sha256, Dockerfile sha256, base image digest, build time. The image declares commit, lock hash and base
+sha256, Dockerfile sha256, base image digest, build time (each verified: a missing or different lockfile or Dockerfile hash refuses the switch). The image declares commit, lock hash and base
 (`DJIMITFLO_BUILD_COMMIT`, `DJIMITFLO_BUILD_LOCK_SHA256`, `DJIMITFLO_BUILD_BASE_IMAGE`); both stages install with `npm ci`
 (the runtime `npm install --omit=dev` rewrote the lock inside the image). Before the switch the deploy verifies all of
 it against the receipt. After the compose rewrite every failure — a failing `docker compose up`, an unhealthy start, a
