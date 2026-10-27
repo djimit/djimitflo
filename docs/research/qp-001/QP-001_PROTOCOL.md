@@ -1,4 +1,4 @@
-# QP-001 — does the maker's learned context stack earn its place? (quality-preserving comparison, pre-registration)
+# QP-001 — does the maker's retrieved context earn its place? (quality-preserving comparison, pre-registration)
 
 Status: **pre-registered, frozen in the PR that adds this file** (2026-10-27). Nothing has been executed: no runner, no
 manifest, no attempt, no flag, no production write. This is preparation, not results. QP-001 starts only after PL-001 has
@@ -11,38 +11,60 @@ and the common contract plus E1–E3 of `23_EXPERIMENT_PROTOCOLS.md`. All file:l
 
 ## 1. The comparison, and why this one
 
-**Current maker setup:** a production maker gets `LOOP_WORK.md` from `renderWorkAssignment` (loop-service.ts:317-349). Besides
-the task (file, finding, evidence, suggested fix) and the fixed maker policy template, it carries three learned, retrieved
-blocks — the **context stack**:
+**What a production maker receives now.** `LOOP_WORK.md` from `renderWorkAssignment` (loop-service.ts:317-349): the task
+(file, finding, evidence, suggested fix), the fixed maker policy template, and retrieved context. Since
+**2026-10-27T05:52:42Z** `LOOP_MEMORY_RULES_ENABLED=false` in production (EXP-3 readout, PR #1052: rules arm 66/88 = 0.75 vs
+withheld 34/42 = 0.81, falsifier met, operator acted), so the Engineering Rules block is no longer delivered. What remains of
+the retrieved context — here called the **retrieved context** — is two blocks:
 
-| Block | Source | Rendered at |
-|---|---|---|
-| Advisory Past Experience | `retrieveLocalRelevantRuns(loop_name + message + suggested fix, 3)` (loop-service.ts:2425-2429) | loop-service.ts:339 |
-| Proven Examples | verified test-gap artifacts, `LOOP_SKILL_CARDS_ENABLED` (assignment-context.ts:52-56) | assignment-context.ts:127 |
-| Engineering Rules | promoted memory rules, up to 3, `LOOP_MEMORY_RULES_ENABLED` (assignment-context.ts:83-112) | assignment-context.ts:128 |
+| Block | Source | Rendered at | Reaches |
+|---|---|---|---|
+| Advisory Past Experience | `retrieveLocalRelevantRuns(loop_name + message + suggested fix, 3)` (loop-service.ts:2425-2429) | loop-service.ts:339 | every maker assignment; no experiment has ever withheld it |
+| Proven Examples (K1) | the 2 most recent verified test-gap artifacts present in the checkout, `LOOP_SKILL_CARDS_ENABLED` (assignment-context.ts:52-56) | assignment-context.ts:127 | test-gap lanes only; often empty (ACE-001 amendment 1: recent artifacts are unmerged loop PRs) |
 
 **Matched simpler baseline:** the same assignment, rendered by the same function from the same finding, with the same ids
-lines and the same policy template, **without the three blocks**. Same worker, species, model, step budget, timeout, tools,
-delivery path and oracle. The only difference between the arms is the context stack.
+lines and the same policy template, **without both blocks**. Engineering Rules are absent from both arms (as in production
+now). Same worker, species, model, step budget, timeout, tools, delivery path and oracle. The only difference between the
+arms is the retrieved context.
+
+**How QP-001 differs from EXP-3 and ACE-001 (no duplication):**
+
+| | EXP-3 (memory holdout) | ACE-001 (retrieval × skill selection) | QP-001 |
+|---|---|---|---|
+| Factor | Engineering Rules injected vs withheld | example **source** (similarity vs K1) × KB pages added (R) | Advisory Past Experience + K1 examples **present vs absent** |
+| Advisory Past Experience | delivered in both arms | delivered in all four arms | the treatment |
+| Engineering Rules | the treatment | independent third factor | absent in both arms (off in prod since 05:52:42Z) |
+| Similarity examples, KB pages | not used | the treatment | never (ACE-001 control context, `ACE_001_MODE=off`) |
+| Population | production maker runs | production oracle-lane goals | frozen gym tasks, loop `qp-001` |
+| Oracle | production settlement | production oracle + checkers | prod-gated gym oracle, paired by task |
+| State | read out 2026-10-27, closed | running, stop_by 2026-11-15 | not started |
+
+QP-001 does not retest rules (EXP-3 decided them) and does not touch the factors ACE-001 randomises. It runs in the gym only,
+so it writes nothing to production goals and adds no period boundary to ACE-001, STE-001, MAKER-DEPS-001 or F2 v2. Its
+question — does the context every maker still receives earn its place at all — is one neither experiment asks: in both,
+Advisory Past Experience is part of every arm.
 
 **Why this comparison** (candidates from the audit protocols, one chosen):
 
-- **Chosen — the context stack as one bundle (E1 + E2 at bundle level).** It is the largest learned complexity that reaches
-  every production maker (rules were read in 121 of 122 maker runs, assignment-context.ts:28), it is maintained by its own
-  pipelines (memory promotion, retrieval, skill cards), and no controlled readout shows it helps (plan, Phase G: "memory and
-  knowledge show no measured effect"; learning ledger 0/11 loops closed). The only paired evidence is TG-001, which pointed
-  the other way but proved nothing: minimal gym goal 14/19 vs full production assignment 11/20, A − B +0.158, Tango 95 % CI
-  [−0.128, 0.422], 19 of 20 tasks previously exposed, write_test only. TG-001 never isolated the stack: its arm C removed ids,
-  advisory and policy together and kept rules and examples. A bundle verdict answers the operator's KEEP/SIMPLIFY question
-  in one experiment under the WIP limit (G1.5). Per-component ablations are only worth their cost after a KEEP.
+- **Chosen — the retrieved context that remains (E2 at bundle level).** Advisory Past Experience reaches every production
+  maker and has never been withheld; the only paired evidence touching it is TG-001, which pointed against the full
+  production assignment but proved nothing: minimal gym goal 14/19 vs full production assignment 11/20, A − B +0.158, Tango
+  95 % CI [−0.128, 0.422], 19 of 20 tasks previously exposed, write_test only, and its arm C removed ids, advisory and policy
+  together. EXP-3 removed a sibling block of the same kind with no measured loss. A quality-preserving verdict on what is left
+  closes the last unmeasured retrieved input to the maker, in one experiment under the WIP limit (G1.5).
+- Not chosen — memory rules (E2): EXP-3 read out and the operator acted; rules are off.
+- Not chosen — example source or KB retrieval (E1/E2): ACE-001 randomises both on production goals.
 - Not chosen — step budget 40 vs 60 (TG-001's named next experiment): it changes the budget, so it is not a matched-budget
   comparison; it needs its own pre-registration.
 - Not chosen — committee or swarm vs single agent (E3): the current maker is a single agent; a committee arm would test added
   complexity, not the existing setup.
-- Not chosen — memory rules alone (E2): the production memory holdout already randomises that factor (readout 27-10); a second
-  runner for the same factor duplicates it (audit E1: "no second runner").
 - Not chosen — instruction lines (E1): PL-001 and PL-002 cover them.
 - Not chosen — router vs a fixed model: violates "same model".
+
+**Honest scope.** In the gym, K1 examples can only appear on failure-derived `write_test` tasks from a test-gap goal, and
+production K1 is mostly empty; repair tasks get none (`lane()` is null without a test-gap goal, assignment-context.ts:43-47).
+In practice QP-001 is mostly a test of Advisory Past Experience. Per task the manifest records which blocks were present, and
+the readout reports the split; no separate claim is made for examples.
 
 **Hypotheses** (d = p_C − p_S, the paired difference in gated verified completion, arm C minus arm S):
 
@@ -62,8 +84,8 @@ instead of a point estimate. It does not change promotion code; that fix is sepa
 
 | Arm | Prompt (rendered once at freeze, stored verbatim) |
 |---|---|
-| C — current | `renderWorkAssignment(run, finding, 'remote', advisory, ctx)` with production's control context: `assignmentContext` run inside a rolled-back transaction with `ACE_001_MODE=off`, `STE_001_MODE=off`, `MEMORY_HOLDOUT_RATE=0`, and `LOOP_MEMORY_RULES_ENABLED` / `LOOP_SKILL_CARDS_ENABLED` as production has them at freeze (recorded); advisory from the production retrieval call. This is the TG-001 `productionArms` pattern (tg-001.ts:105-126). |
-| S — simpler | `renderWorkAssignment(run, finding, 'remote', '', { examples: [], rules: [] }, { omit: ['advisory'] })`: the same run, finding, ids lines and policy template; no Advisory, no Proven Examples, no Engineering Rules. |
+| C — current | `renderWorkAssignment(run, finding, 'remote', advisory, ctx)` with production's control context: `assignmentContext` run inside a rolled-back transaction with `ACE_001_MODE=off`, `STE_001_MODE=off` (ACE-001 control arm 00), `LOOP_MEMORY_RULES_ENABLED=false` (as production since 2026-10-27T05:52:42Z) and `LOOP_SKILL_CARDS_ENABLED` as production has it at freeze (recorded); advisory from the production retrieval call. If production turns rules back on before the freeze, the protocol is amended before freezing; rules never enter either arm. This is the TG-001 `productionArms` pattern (tg-001.ts:105-126). |
+| S — simpler | `renderWorkAssignment(run, finding, 'remote', '', { examples: [], rules: [] }, { omit: ['advisory'] })`: the same run, finding, ids lines and policy template; no Advisory Past Experience, no Proven Examples. |
 
 - **Same for both arms:** worker host and worker version (`scripts/gym-worker.mjs` sha256), runner image digest, species
   atomic@llama-router, the router model (recorded per attempt), `--max-steps 40` (gym-worker.mjs:593), `GYM_MAKER_TIMEOUT_MS`,
@@ -75,13 +97,13 @@ instead of a point estimate. It does not change promotion code; that fix is sepa
   output); suggested fix = "change only `task.source` so that the named tests pass; do not edit the tests"; loop name
   `doc-drift-and-small-fix-loop` (production's small-fix lane, used for the header and the advisory query). The adapter is the
   same in both arms, so it cannot create a difference between them.
-- **Eligibility (treatment must exist):** a task is eligible only if arm C's stack is non-empty (≥ 1 retrieved advisory
-  episode, rule or example). Otherwise C and S differ by nothing, and the task is excluded before the freeze and counted.
+- **Eligibility (treatment must exist):** a task is eligible only if arm C's retrieved context is non-empty (≥ 1 retrieved
+  advisory episode or K1 example). Otherwise C and S differ by nothing, and the task is excluded before the freeze and counted.
 - **Arm order:** per task, C runs first when the first byte of `sha256('qp-001:20261026:' + task_key)` is even, else S first
   (seed 20261026, the audit's proposed pre-registration seed).
 - **Delivery proof:** the manifest stores, per task and arm, the prompt and `goal_sha256 = sha256(oneLine(prompt) + '\n')`.
-  The worker's `fire_check.goal_sha256` (gym-worker.mjs:87-90) must equal it. For arm C the stack lines must all be found in
-  the sent input; for arm S none of them. Anything else is VOID and re-served.
+  The worker's `fire_check.goal_sha256` (gym-worker.mjs:87-90) must equal it. For arm C the retrieved-context lines must all be found
+  in the sent input; for arm S none of them. Anything else is VOID and re-served.
 
 ## 3. Data: a versioned task set, frozen before any attempt
 
@@ -96,9 +118,11 @@ instead of a point estimate. It does not change promotion code; that fix is sepa
 - **Size:** 180 tasks (150 pairs plus a margin of 30 for INVALID tasks), served in order of `sha256('qp-001:20261026:' +
   task_key)`. Fewer than 180 eligible tasks → nothing is frozen and the shortfall is recorded.
 - **Manifest (immutable, sha256 stored at freeze):** task keys, kind, base commit, task bytes (mutant content, test list) and
-  their sha256, the finding, both prompts and their goal digests, the stack content per task (advisory episode ids, rule ids
-  and hashes, example paths), the production flags read at freeze, worker sha256, runner image digest, oracle and gate config,
+  their sha256, the finding, both prompts and their goal digests, the retrieved context per task (advisory episode ids and
+  text sha256, example paths, which blocks are present), the production flags read at freeze, worker sha256, runner image digest, oracle and gate config,
   hack classifier version, the arm-order seed, and this protocol's PREREG_SHA256. The freeze is the operator's.
+- A `write_test` task whose source goal is in an ACE-001 arm is allowed: arm C is rendered with the ACE-001 control context
+  (arm 00), and QP-001 writes nothing to that goal, its proposal or its outcomes.
 - Frozen tasks are reserved: never served as ordinary gym work and never frozen into a later holdout.
 
 ## 4. Isolation
@@ -156,8 +180,8 @@ Per arm, over **all physical attempts** (verified, failed, infra, VOID and censo
 
 **Unknown stays unknown** (reported as unknown, never 0 or estimated): tool calls (atomic prints none), files inspected, input
 tokens of the prompt unless the maker prints them, GPU Wh (no sampler on the gym), € per verified completion (workstation kWh
-price not in the ledger), the render cost of arm C, and the maintenance cost of the stack's pipelines (memory promotion,
-retrieval, skill cards). A SIMPLIFY or KEEP verdict is a quality verdict; it does not claim a € saving.
+price not in the ledger), the render cost of arm C, and the maintenance cost of the experience retrieval and K1 example
+pipelines. A SIMPLIFY or KEEP verdict is a quality verdict; it does not claim a € saving.
 
 ## 9. Missing data and infra
 
@@ -179,8 +203,8 @@ the readout.
 
 | Verdict | Rule (all on the primary interval [L, U]) | What follows (each an operator decision; nothing is automatic) |
 |---|---|---|
-| **KEEP** | L > 0, and arm C has at most 2 more non-survivors than arm S | The stack stays: it earns its place under the gym harness. Next, only if wanted: per-block ablation under a new pre-registration. A KEEP is not a licence to grow the stack. |
-| **SIMPLIFY** | not KEEP; U < 0.10; arm S has at most 2 more non-survivors and at most 2 more out-of-scope or hack-flagged results than arm C | The data rule out a loss of 10 points or more from removing the stack (smaller losses are not ruled out). Proposal: stop delivering the stack to production makers, confirmed first by a production holdout under its own pre-registration (gym → production transfer is unproven, TG-001), with a permanent 10 % holdout (G3.2); freeze growth of the stack's pipelines (G3.3). Retire nothing before its consumers and rollback are shown (audit 20). |
+| **KEEP** | L > 0, and arm C has at most 2 more non-survivors than arm S | The retrieved context stays: it earns its place under the gym harness. A KEEP is not a licence to add rules, KB pages or more retrieval. |
+| **SIMPLIFY** | not KEEP; U < 0.10; arm S has at most 2 more non-survivors and at most 2 more out-of-scope or hack-flagged results than arm C | The data rule out a loss of 10 points or more from removing the retrieved context (smaller losses are not ruled out). Proposal: stop delivering Advisory Past Experience (and K1 examples) to production makers, confirmed first by a production holdout under its own pre-registration (gym → production transfer is unproven, TG-001), with a permanent 10 % holdout (G3.2). Not before ACE-001 has closed: removing K1 examples changes its control arm, and any production change is a period boundary for running experiments. Retire nothing before its consumers and rollback are shown (audit 20). |
 | **INCONCLUSIVE** | neither of the above, or < 100 pairs | No change. Not a win and not a proven no-effect. No re-run until significant; a new attempt needs a new pre-registration and new tasks. |
 | **STOPPED_FOR_HARM** | a harm rule fired (§11) | As named in §11. |
 
@@ -210,7 +234,10 @@ the readout.
   on mutant tasks; mutant tiers 3–6 gated 0.35–0.39. TG-001 (`write_test`, prod gates, exposed tasks): minimal 14/19, full
   production 11/20, discordance 7/19 = 0.37. Planning range for arm S 0.37–0.46; discordance ψ 0.30–0.44 (as PL-002). The
   interval depends only on (b, c, n), so the decision probabilities depend only on ψ and d. TG-001 is a planning input, not a
-  prior.
+  prior (its arm B still carried rules).
+- **Endpoint unchanged by the retrieved-context scope:** the primary endpoint, test, margin and n do not depend on which
+  blocks form the treatment, and the decision probabilities depend only on ψ and d, so the table below holds for the
+  advisory + K1 contrast. Tasks where arm C carries advisory only are expected to dominate.
 - **Exact decision probabilities** at n = 150 pairs, Δ 0.10, full enumeration of the paired trinomial (computed for this
   protocol):
 
@@ -220,13 +247,13 @@ the readout.
   | 0.36 | SIMPLIFY 0.984 | SIMPLIFY 0.863 | SIMPLIFY 0.527 · KEEP 0.025 | KEEP 0.171 · SIMPLIFY 0.172 | KEEP 0.536 · SIMPLIFY 0.025 | KEEP 0.880 |
   | 0.44 | SIMPLIFY 0.960 | SIMPLIFY 0.790 | SIMPLIFY 0.453 · KEEP 0.025 | KEEP 0.149 · SIMPLIFY 0.150 | KEEP 0.458 · SIMPLIFY 0.025 | KEEP 0.803 |
 
-  Error rates hold: false SIMPLIFY at a true 10-point loss is 0.025; false KEEP at a neutral stack is 0.025.
+  Error rates hold: false SIMPLIFY at a true 10-point loss is 0.025; false KEEP at a neutral context is 0.025.
 - **With the harm stop** (Monte Carlo, 20 000 runs per cell, mulberry32 seed 20261026): at d 0 the harm stop fires 0.023–0.028
   and KEEP-or-harm totals 0.038–0.044 (bound 0.025 + 0.05 by Ville's inequality); SIMPLIFY 0.447–0.603 (unchanged). At d +0.10
   KEEP-or-harm is 0.49–0.64 and SIMPLIFY 0.023–0.026; at d +0.15 KEEP-or-harm is 0.82–0.94.
-- **n = 150 complete pairs, because:** a stack worth +15 points gives KEEP with power 0.80–0.94; a stack that costs 5 points
-  gives SIMPLIFY with power 0.79–0.92; a stack worth 10 points is wrongly simplified at most 2.5 % of the time.
-  **Limitation:** if the stack is exactly neutral, SIMPLIFY has power 0.45–0.60 only; INCONCLUSIVE is then likely. n = 200
+- **n = 150 complete pairs, because:** a context worth +15 points gives KEEP with power 0.80–0.94; a context that costs 5
+  points gives SIMPLIFY with power 0.79–0.92; a context worth 10 points is wrongly simplified at most 2.5 % of the time.
+  **Limitation:** if the context is exactly neutral, SIMPLIFY has power 0.45–0.60 only; INCONCLUSIVE is then likely. n = 200
   would raise that to 0.57–0.72 for about 6 more days at 20 claims a day; not chosen because the cap is shared with trials
   and PL-002. A tighter margin (5 points) would need about 1 100 pairs (ψ 0.36, power 0.8 at d 0).
 - **Volume:** about 340 maker claims (300 observations plus about 12 % infra) and about 120 oracle-only replays — about 17
@@ -242,13 +269,14 @@ the readout.
   neither, and is recorded in the manifest.
 - **Gym capacity per operator decision:** a cap share (default 0) and a WIP slot under the experiment limit (G1.5).
 - It also needs: the QP-001 runner (a separate PR: flag `QP_001_MODE=off|on`, default off; loop name; manifest freeze;
-  rendering both arms; goal-digest and stack-line checks; diff storage for the replay; `maker_ms` and tokens on its claims),
+  rendering both arms; goal-digest and retrieved-context line checks; diff storage for the replay; `maker_ms` and tokens on its claims),
   the workstation worker reinstalled from `main`, and the operator's freeze. Building the runner, freezing, the flag in
   `runtime.env` with a backup, the cap share and the GPU budget are all operator decisions.
 
 ## 14. Kept separate
 
-QP-001 tests the context stack only. The policy template, the ids lines, the task information, instruction lines (PL-001,
+QP-001 tests the retrieved context only. Memory rules (EXP-3; absent in both arms), similarity examples and KB pages
+(ACE-001; never used) are out of scope. The policy template, the ids lines, the task information, instruction lines (PL-001,
 PL-002), step budget, model routing and the evaluator are held fixed. Whether the gym result transfers to production is not
 tested here.
 
@@ -261,4 +289,4 @@ The runner's flag goes off; claims are then byte-identical to claims without QP-
 Amendments are appended below the fingerprint line, dated, with a reason. They never change the text above it.
 
 ---
-PREREG_SHA256: 60428ab207008ba6b6fa5f2b743c435cee24cc46cdb2fc601aa3ac5b534f2e11 (sha256 of everything above this line; computed 2026-10-27 before any QP-001 runner, manifest or attempt existed)
+PREREG_SHA256: 62102a9ed217e4f9efdd7c0acf7672d2781176df5b2bfc56f3383167e37515e7 (sha256 of everything above this line; computed 2026-10-27 before any QP-001 runner, manifest or attempt existed)
