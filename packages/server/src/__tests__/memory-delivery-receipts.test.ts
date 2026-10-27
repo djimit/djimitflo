@@ -7,7 +7,18 @@ import { createHash } from 'crypto';
 import http from 'http';
 import type { AddressInfo } from 'net';
 import { MemorySyncService } from '../services/memory-sync-service';
-import { memoryDeliveryEvidence } from '../services/memory-delivery-receipts';
+import {
+  memoryDeliveryEvidence,
+  receiptMode,
+  ensureReceiptsTable,
+  claimInitial,
+  recordOutcome,
+  touchReceipt,
+  reconcileCandidates,
+  unreconcilableUnknown,
+  okfIntent,
+  okfIntentHash,
+} from '../services/memory-delivery-receipts';
 import { pointIdForTask } from '../utils/qdrant-point-id';
 
 /**
@@ -350,5 +361,92 @@ describe('CODE-004 review round 2 (#1058): redirects and shadow OKF fallback', (
     const text = fs.readFileSync(file, 'utf8');
     expect(text.length).toBeGreaterThan(0);
     expect(text).toMatch(/^---\ntype: CompletedTask\n[\s\S]*## Description\n\ndo the thing\n\n$/); // sent untracked, whole
+  });
+});
+
+describe('CODE-004: pure receipt helpers (mutation hardening)', () => {
+  it('receiptMode normalises whitespace and case; unset/empty/unknown default to off', () => {
+    expect(receiptMode({ MEMORY_DELIVERY_RECEIPTS: '  Shadow  ' })).toBe('shadow');
+    expect(receiptMode({ MEMORY_DELIVERY_RECEIPTS: 'ON' })).toBe('on');
+    expect(receiptMode({})).toBe('off');
+    expect(receiptMode({ MEMORY_DELIVERY_RECEIPTS: '  ' })).toBe('off');
+    expect(receiptMode({ MEMORY_DELIVERY_RECEIPTS: 'bogus' })).toBe('off');
+  });
+
+  it('okfIntent formats the sha256 intent and okfIntentHash parses it back (null-safe)', () => {
+    const sha = '0'.repeat(64);
+    expect(okfIntent(sha)).toBe(`in_flight sha256:${sha}`);
+    expect(okfIntentHash(okfIntent(sha))).toBe(sha);
+    expect(okfIntentHash(null)).toBeNull();
+    expect(okfIntentHash('in_flight')).toBeNull();
+    expect(okfIntentHash('in_flight sha256:deadbeef')).toBeNull(); // too short — not 64 hex chars
+  });
+
+  it('recordOutcome truncates detail to 300 chars', () => {
+    const db = taskDb();
+    ensureReceiptsTable(db);
+    expect(claimInitial(db, 'task-1', 'qdrant')).toBe(true);
+    recordOutcome(db, 'task-1', 'qdrant', { status: 'failed', detail: 'x'.repeat(400) });
+    const row = db.prepare('SELECT detail FROM memory_sync_receipts WHERE task_id = ? AND target = ?').get('task-1', 'qdrant') as { detail: string };
+    expect(row.detail).toHaveLength(300);
+    expect(row.detail).toBe('x'.repeat(300));
+  });
+
+  it('touchReceipt moves the row to the back of the queue and truncates detail', () => {
+    const db = taskDb();
+    ensureReceiptsTable(db);
+    const now = Date.parse('2026-10-27T10:00:00.000Z');
+    claimInitial(db, 'task-1', 'okf', 'in_flight', now);
+    touchReceipt(db, 'task-1', 'okf', 'y'.repeat(400), now + 5_000);
+    const row = db.prepare('SELECT detail, updated_at, status FROM memory_sync_receipts WHERE task_id = ? AND target = ?').get('task-1', 'okf') as { detail: string; updated_at: string; status: string };
+    expect(row.detail).toHaveLength(300);
+    expect(row.detail).toBe('y'.repeat(300));
+    expect(row.updated_at).toBe(new Date(now + 5_000).toISOString());
+    expect(row.status).toBe('unknown'); // touchReceipt leaves the status alone
+  });
+
+  it('reconcileCandidates excludes in-flight unknowns younger than the grace window and never returns non-idempotent targets', () => {
+    const db = taskDb();
+    ensureReceiptsTable(db);
+    const now = Date.parse('2026-10-27T10:00:00.000Z');
+    const bootIso = '2026-10-27T09:00:00.000Z'; // this process started at 09:00
+
+    // a failed qdrant leg with attempts left — candidate
+    db.prepare(`INSERT INTO memory_sync_receipts VALUES ('task-failed', 'qdrant', 'failed', 'oops', 2, '2026-10-27T09:30:00.000Z')`).run();
+    // an unknown qdrant leg written by this process, younger than grace — NOT a candidate (may still be in flight)
+    db.prepare(`INSERT INTO memory_sync_receipts VALUES ('task-young', 'qdrant', 'unknown', 'in_flight', 1, ?)`).run(new Date(now).toISOString());
+    // an unknown okf leg older than grace, written by an earlier process — candidate
+    db.prepare(`INSERT INTO memory_sync_receipts VALUES ('task-old', 'okf', 'unknown', 'in_flight', 1, '2026-10-27T08:00:00.000Z')`).run();
+    // a failed uams leg (non-idempotent) — NOT a candidate (never retried)
+    db.prepare(`INSERT INTO memory_sync_receipts VALUES ('task-uams', 'uams', 'failed', 'no', 1, '2026-10-27T09:30:00.000Z')`).run();
+
+    const candidates = reconcileCandidates(db, now, bootIso);
+    const ids = candidates.map((r) => r.task_id);
+    expect(ids).toContain('task-failed');
+    expect(ids).toContain('task-old');
+    expect(ids).not.toContain('task-young');
+    expect(ids).not.toContain('task-uams');
+  });
+
+  it('unreconcilableUnknown counts only unknown legs on non-idempotent targets', () => {
+    const db = taskDb();
+    ensureReceiptsTable(db);
+    db.prepare(`INSERT INTO memory_sync_receipts VALUES ('t1', 'uams', 'unknown', 'in_flight', 1, '2026-10-27T09:00:00.000Z')`).run();
+    db.prepare(`INSERT INTO memory_sync_receipts VALUES ('t2', 'uams', 'unknown', 'in_flight', 1, '2026-10-27T09:00:00.000Z')`).run();
+    db.prepare(`INSERT INTO memory_sync_receipts VALUES ('t3', 'qdrant', 'unknown', 'in_flight', 1, '2026-10-27T09:00:00.000Z')`).run();
+    db.prepare(`INSERT INTO memory_sync_receipts VALUES ('t4', 'uams', 'delivered', 'ok', 1, '2026-10-27T09:00:00.000Z')`).run();
+    expect(unreconcilableUnknown(db)).toBe(2);
+  });
+
+  it('memoryDeliveryEvidence reports by_target null when the receipts query fails mid-way', () => {
+    const fakeDb = {
+      prepare: vi.fn((sql: string) => {
+        if (sql.includes('MIN(updated_at)')) return { get: () => { throw new Error('boom'); } };
+        return { all: () => [{ target: 'qdrant', status: 'delivered', n: 1, exhausted: 0 }] };
+      }),
+    };
+    const ev = memoryDeliveryEvidence(fakeDb as unknown as Database, { MEMORY_DELIVERY_RECEIPTS: 'on' });
+    expect(ev.mode).toBe('on');
+    expect(ev.by_target).toBeNull();
   });
 });
