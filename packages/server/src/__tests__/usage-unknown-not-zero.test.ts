@@ -5,7 +5,7 @@ import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 import { ace001Evidence } from '../services/ace-001';
-import { callCost } from '../services/model-selector';
+import { callCost, modelEvidence, recordModelCall } from '../services/model-selector';
 import { LoopBudgetService } from '../services/loop-budget-service';
 
 // Forensic audit 2026-10-26: L-F04 (partial/fallback prices), L-F05 (missing usage → 0), CODE-007 (economy dollars without a dated price).
@@ -67,6 +67,36 @@ describe('L-F04: a partial or fallback price is unknown or an explicit lower bou
     const budget = new LoopBudgetService(db, {} as never);
     expect(budget.computeDollarCost('never-configured', 1_000_000)).toBeNull();
     expect(budget.computeDollarCost('codex', 1_000_000)).toBe(2); // the tariff baseline itself is kept
+  });
+});
+
+describe('L-F04: the 7-day usage aggregate keeps missing token sides as coverage, never priced as 0', () => {
+  const env = { LLM_PRICE_PER_MTOK: 'audit-model=2/10,free-out=1/0', LLM_COST_BASIS: 'audit-metered=metered' } as NodeJS.ProcessEnv;
+  const call = (consumer: string, model: string, tokensIn: number | null, tokensOut: number | null) => recordModelCall(db,
+    { consumer, model, provider: 'audit-metered', ok: true, latencyMs: 1, outChars: 1, shadow: 0, agree: null, tokensIn, tokensOut });
+
+  it('a call with unknown output (priced 10/Mtok) leaves the cost unknown with a labelled lower bound (was est_cost_usd 2)', () => {
+    call('c', 'audit-model', 1_000_000, null);
+    const row = modelEvidence(db, {}, env).usage_7d.find((u) => u.consumer === 'c')!;
+    expect(row).toMatchObject({ calls: 1, tokens_in: 1_000_000, tokens_out: 0, calls_tokens_in_unknown: 0, calls_tokens_out_unknown: 1,
+      est_cost_usd: null, est_cost_lower_bound_usd: 2, cost_completeness: 'partial' });
+  });
+
+  it('complete sides give a complete cost; a missing side priced at 0 stays complete', () => {
+    call('full', 'audit-model', 1_000_000, 100_000);
+    call('free', 'free-out', 1_000_000, null);
+    const ev = modelEvidence(db, {}, env).usage_7d;
+    expect(ev.find((u) => u.consumer === 'full')).toMatchObject({ est_cost_usd: 3, est_cost_lower_bound_usd: null, cost_completeness: 'complete' });
+    expect(ev.find((u) => u.consumer === 'free')).toMatchObject({ est_cost_usd: 1, cost_completeness: 'complete', calls_tokens_out_unknown: 1 });
+  });
+
+  it('one partial call makes the consumer total partial; a model without a price leaves no cost at all', () => {
+    call('mix', 'audit-model', 1_000_000, 100_000); call('mix', 'audit-model', null, null);
+    call('none', 'no-price-model', 1000, 1000);
+    const ev = modelEvidence(db, {}, env).usage_7d;
+    expect(ev.find((u) => u.consumer === 'mix')).toMatchObject({ calls: 2, calls_tokens_in_unknown: 1, calls_tokens_out_unknown: 1,
+      est_cost_usd: null, est_cost_lower_bound_usd: 3, cost_completeness: 'partial' });
+    expect(ev.find((u) => u.consumer === 'none')).toMatchObject({ est_cost_usd: null, est_cost_lower_bound_usd: null, cost_completeness: null });
   });
 });
 

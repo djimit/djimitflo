@@ -161,21 +161,37 @@ export function modelEvidence(db: Database, incumbents: Record<string, string | 
     });
   } catch { /* table absent on an old schema */ }
   const would_pick = Object.fromEntries(Object.entries(incumbents).map(([c, inc]) => [c, inc ? chooseModel(db, c, inc, env, now) : null]));
-  // UX-18: every server-side LLM call per consumer over 7 d — calls, ok, tokens, and a cost only when every model has a configured price
-  let usage_7d: Array<{ consumer: string; calls: number; ok: number; tokens_in: number; tokens_out: number; est_cost_usd: number | null }> = [];
+  // UX-18: every server-side LLM call per consumer over 7 d — calls, ok, tokens, and a cost only when every model has a configured price.
+  // L-F04: tokens_in/out sum the known sides; calls_tokens_*_unknown count the calls that did not report one. A call with an unknown
+  // side whose price is > 0 makes the cost partial: est_cost_usd null, est_cost_lower_bound_usd the priced known sides.
+  type Usage = { consumer: string; calls: number; ok: number; tokens_in: number; tokens_out: number; calls_tokens_in_unknown: number; calls_tokens_out_unknown: number;
+    est_cost_usd: number | null; est_cost_lower_bound_usd: number | null; cost_completeness: 'complete' | 'partial' | null };
+  let usage_7d: Usage[] = [];
   try {
-    const per = db.prepare(`SELECT consumer, model, COUNT(*) AS calls, COALESCE(SUM(ok), 0) AS ok, COALESCE(SUM(tokens_in), 0) AS tin, COALESCE(SUM(tokens_out), 0) AS tout
-      FROM llm_model_calls WHERE created_at >= ? GROUP BY 1, 2`).all(new Date(now - 7 * 86_400_000).toISOString()) as Array<{ consumer: string; model: string; calls: number; ok: number; tin: number; tout: number }>;
-    const by = new Map<string, { consumer: string; calls: number; ok: number; tokens_in: number; tokens_out: number; est_cost_usd: number | null }>();
+    const per = db.prepare(`SELECT consumer, model, COUNT(*) AS calls, COALESCE(SUM(ok), 0) AS ok, COALESCE(SUM(tokens_in), 0) AS tin, COALESCE(SUM(tokens_out), 0) AS tout,
+        COALESCE(SUM(tokens_in IS NULL), 0) AS miss_in, COALESCE(SUM(tokens_out IS NULL), 0) AS miss_out
+      FROM llm_model_calls WHERE created_at >= ? GROUP BY 1, 2`).all(new Date(now - 7 * 86_400_000).toISOString()) as Array<{ consumer: string; model: string; calls: number; ok: number; tin: number; tout: number; miss_in: number; miss_out: number }>;
+    const by = new Map<string, Usage & { cost: number; unpriced: boolean; partial: boolean }>();
     for (const r of per) {
       const key = r.consumer.startsWith('resident:') ? 'resident' : r.consumer;
-      const cur = by.get(key) ?? { consumer: key, calls: 0, ok: 0, tokens_in: 0, tokens_out: 0, est_cost_usd: 0 };
+      const cur = by.get(key) ?? { consumer: key, calls: 0, ok: 0, tokens_in: 0, tokens_out: 0, calls_tokens_in_unknown: 0, calls_tokens_out_unknown: 0,
+        est_cost_usd: null, est_cost_lower_bound_usd: null, cost_completeness: null, cost: 0, unpriced: false, partial: false };
       const price = modelPrice(r.model, env);
       cur.calls += r.calls; cur.ok += r.ok; cur.tokens_in += r.tin; cur.tokens_out += r.tout;
-      cur.est_cost_usd = price && cur.est_cost_usd !== null ? +(cur.est_cost_usd + (r.tin * price.input + r.tout * price.output) / 1_000_000).toFixed(4) : null;
+      cur.calls_tokens_in_unknown += r.miss_in; cur.calls_tokens_out_unknown += r.miss_out;
+      if (!price) cur.unpriced = true;
+      else {
+        cur.cost += (r.tin * price.input + r.tout * price.output) / 1_000_000;
+        if ((r.miss_in > 0 && price.input > 0) || (r.miss_out > 0 && price.output > 0)) cur.partial = true;
+      }
       by.set(key, cur);
     }
-    usage_7d = [...by.values()].sort((a, b) => b.calls - a.calls);
+    usage_7d = [...by.values()].map(({ cost, unpriced, partial, ...u }) => {
+      const usd = +cost.toFixed(4);
+      // an unpriced model leaves no cost at all (unchanged); a partial priced one leaves a labelled lower bound
+      return { ...u, est_cost_usd: unpriced || partial ? null : usd, est_cost_lower_bound_usd: !unpriced && partial ? usd : null,
+        cost_completeness: unpriced ? null : partial ? 'partial' as const : 'complete' as const };
+    }).sort((a, b) => b.calls - a.calls);
   } catch { /* table absent on an old schema */ }
   return { mode: modelSelectorMode(env), rows, would_pick, usage_7d };
 }
