@@ -416,6 +416,44 @@ describe('checks_verdict — required producer identity', () => {
   });
 });
 
+// Operator decision (#1061): Dependabot auto-merge stays, but through the corrected gate. GitHub's native auto-merge counts a
+// skipped required check as passed, so dependabot-auto-merge.yml runs scripts/dependabot-merge.sh: merge-train's
+// checks_verdict on the exact head, then the REST merge pinned to that head.
+describe('dependabot-merge.sh — the Dependabot auto-merge path uses the corrected gate', () => {
+  const dm = path.resolve(__dirname, '../../../../scripts/dependabot-merge.sh');
+  const R = 'repos/djimitflo-test/r'; const HEAD = 'dep1';
+  const protection = { contexts: ['build', 'sbom'], checks: [{ context: 'build', app_id: 15368 }, { context: 'sbom', app_id: 15368 }] };
+  const r = (id: number, name: string, conclusion: string | null, app = 15368, status = 'completed') => ({ id, name, status, conclusion, app: { id: app } });
+  const attempt = (runs: unknown[], o: { head?: string } = {}) => {
+    const gh = stubGh({ [`${R}/pulls/504`]: { number: 504, head: { sha: o.head ?? HEAD } }, [`${R}/commits/${HEAD}/check-runs?per_page=100`]: { check_runs: runs },
+      [`${R}/commits/${HEAD}/status`]: { state: 'pending', statuses: [] }, [`${R}/branches/main/protection/required_status_checks`]: protection },
+      `case "$*" in *"-X PUT"*/pulls/504/merge*) echo '{"merged":true}'; exit 0 ;; esac`);
+    const out = spawnSync('bash', [dm, '504', HEAD], { encoding: 'utf8', env: { ...process.env, PATH: gh.PATH, MERGE_TRAIN_REPO: 'djimitflo-test/r',
+      MT_LEDGER: path.join(tmp('dm-led-'), 'l'), MT_REQUIRED_CHECKS: '', DM_TRIES: '1', DM_POLL_S: '0' } });
+    const merges = read(gh.log).split('\n').filter((l) => l.includes('-X PUT') && l.includes('/merge'));
+    return { status: out.status, out: `${out.stdout}${out.stderr}`, merges };
+  };
+  it('a Dependabot PR whose required check was skipped is not merged', () => {
+    const a = attempt([r(1, 'build', 'success'), r(2, 'sbom', 'skipped')]);
+    expect(a.status).toBe(0); expect(a.merges).toEqual([]); expect(a.out).toContain('required_not_success:sbom=skipped');
+  });
+  it('a skipped required Actions check next to another app reporting success is not merged', () => {
+    expect(attempt([r(1, 'build', 'success'), r(2, 'sbom', 'skipped'), r(3, 'sbom', 'success', 999)]).merges).toEqual([]);
+  });
+  it('a required check that has not reported (or is still running) is not merged', () => {
+    expect(attempt([r(1, 'build', 'success')]).merges).toEqual([]);
+    expect(attempt([r(1, 'build', 'success'), r(2, 'sbom', null, 15368, 'in_progress')]).merges).toEqual([]);
+  });
+  it('a head that moved is not merged', () => {
+    expect(attempt([r(1, 'build', 'success'), r(2, 'sbom', 'success')], { head: 'dep2' }).merges).toEqual([]);
+  });
+  it('green on the exact head: merged with sha pinned to that head; its own running auto-merge job does not block it', () => {
+    const a = attempt([r(1, 'build', 'success'), r(2, 'sbom', 'success'), r(3, 'auto-merge', null, 15368, 'in_progress')]);
+    expect(a.merges).toHaveLength(1);
+    expect(a.merges[0]).toContain(`sha=${HEAD}`);
+  });
+});
+
 describe('--dry-run (read-only plan)', () => {
   const R = 'repos/o/r';
   // pick PR numbers: non-audit-sample ones for normal cases, one audit sample

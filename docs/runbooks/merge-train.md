@@ -91,7 +91,11 @@ itself counts a skipped required check as passed, so the workflows must not let 
 | loop auto-merge | operator, `LOOP_AUTO_MERGE_TEST_ONLY` | earned exception: test-only loop PRs, capped, 10 % sample, self-revoking (core-invariants FR-004) | `loop-auto-merge.ts` `checks()` |
 | dependency lane | operator, `DEPENDENCY_LANE_MODE` | earned exception: npm patch/minor Dependabot PRs, capped, revoked by red main | `dependency-lane.ts` `checkState()` |
 | auto-deploy | operator, systemd timer on the VPS | deploys main | `scripts/auto-deploy.sh` (required contexts from the public branch summary) |
-| `dependabot-auto-merge.yml` | operator decision + repo setting "Allow auto-merge" | Dependabot patch/minor | GitHub's own required-check rule only: a skipped required check counts as passed, no cap/audit/revocation |
+| `dependabot-auto-merge.yml` | operator decision (kept on #1061) | Dependabot patch/minor, same-repo, author and actor `dependabot[bot]` | `scripts/dependabot-merge.sh`: merge-train `checks_verdict` on the exact head (run from main), then a merge pinned to that head — not GitHub-native auto-merge, which counts a skipped required check as passed |
+
+No workflow arms GitHub-native auto-merge (`scripts/ci-workflows.test.mjs` fails on `gh pr merge --auto`): Dependabot
+auto-merge waits up to an hour for the gate and leaves the PR open on red, pending, a moved head or a refused (behind)
+merge. Its own running job (`auto-merge`) is excluded via `MT_IGNORE_CHECKS`, which never excludes a required check.
 
 CI tests the commit protection reads: every job checks out `github.event.pull_request.head.sha` (not the synthetic merge
 commit), required jobs have no job-level or step-level `if:` and no `continue-on-error`, their triggers have no path

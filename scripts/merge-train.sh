@@ -136,7 +136,9 @@ checks_verdict() {   # → {verdict: green|pending|red, red, pending, missing, r
     if $req.source == "unavailable" then {verdict: "pending", red: [], pending: [], missing: [], reason: "required_checks_unavailable"}
     elif $runs == null then {verdict: "pending", red: [], pending: [], missing: $req.contexts, reason: "check_runs_unavailable"} else
     # newest per producer AND name: a same-named run of another app never hides (or stands in for) a required one
-    ($runs.check_runs // [] | newest([(.app.id // ""), .name])) as $cr | (($st // {}).statuses // [] | newest(.context)) as $ss | (($st // {}).state // "") as $state |
+    # MT_IGNORE_CHECKS: non-required runs a caller cannot wait for (its own job); a required check is never ignored
+    ($ENV.MT_IGNORE_CHECKS // "" | split(",") | map(select(length > 0)) - $req.contexts) as $ign |
+    ($runs.check_runs // [] | map(select(.name | IN($ign[]) | not)) | newest([(.app.id // ""), .name])) as $cr | (($st // {}).statuses // [] | newest(.context)) as $ss | (($st // {}).state // "") as $state |
     ($req.checks // [$req.contexts[] | {context: ., app_id: null}]) as $rq |
     # the newest run of each required check from its required producer (app_id null = any source; only then a status counts)
     [$rq[] | . as $r | {r: $r, run: ([$runs.check_runs[]? | select(.name == $r.context and ($r.app_id == null or .app.id == $r.app_id))] | newest(.name) | first),

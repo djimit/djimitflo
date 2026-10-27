@@ -116,3 +116,14 @@ test('every third-party action is pinned to a full commit sha (a moved tag chang
     .map((m) => m[1]).filter((u) => !u.startsWith('./') && !/@[0-9a-f]{40}$/.test(u)).map((u) => `${file}: ${u}`));
   assert.deepEqual(loose, []);
 });
+
+test('Dependabot auto-merge goes through the corrected gate, never GitHub-native auto-merge', () => {
+  // GitHub-native auto-merge counts a skipped required check as passed; the Dependabot path calls scripts/dependabot-merge.sh
+  // (merge-train checks_verdict on the exact head, then a sha-pinned merge) instead (operator decision on #1061).
+  const native = loadWorkflows().filter(({ text }) => /gh pr merge[^\n]*--auto|enablePullRequestAutoMerge/.test(text)).map((w) => w.file);
+  assert.deepEqual(native, []);
+  const dep = loadWorkflows().find((w) => w.file === 'dependabot-auto-merge.yml');
+  assert.ok(dep, 'dependabot-auto-merge.yml is kept (operator decision)');
+  assert.match(dep.text, /bash scripts\/dependabot-merge\.sh /);
+  assert.match(dep.text, /ref: \$\{\{ github\.event\.repository\.default_branch \}\}/, 'the gate runs from main, never from the PR');
+});
