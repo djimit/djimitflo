@@ -4,8 +4,8 @@
  * - write() returning false means the client is not keeping up: from then on events are dropped (counted, never
  *   queued) until 'drain'. Retained bytes per client stay below the socket's writable high-water mark plus one frame
  *   (frames larger than MAX_EVENT_BYTES are dropped, not written).
- * - a drain sends one `stream_dropped` event with the count lost since the last notice, so the client knows its view
- *   has a gap. Live events are not replayed: durable records (audit log, evidence, outbox) are the replay source.
+ * - the client learns of every gap through a `stream_dropped` event ({ dropped, reason }): after a backpressure loss
+ *   it is sent on 'drain'; an oversized frame on a healthy socket is reported at once (no drain may ever come). Live events are not replayed: durable records (audit log, evidence, outbox) are the replay source.
  * - a client that does not drain within SSE_STALL_TIMEOUT_MS (default 30 s) is disconnected: the stream ends finitely.
  * - every end path (client close, stall, socket error) runs the close hooks exactly once (unsubscribe, timers).
  */
@@ -58,13 +58,16 @@ export function openSseStream(req: Request, res: Response, opts: { onDrop?: (cou
     return false;
   };
 
+  /** Sends the pending loss notice when the socket accepts writes; otherwise it waits for 'drain'. */
+  const notifyLoss = (reason: 'backpressure' | 'oversize'): void => {
+    if (dropped === 0) return;
+    const count = dropped;
+    if (write(`data: ${JSON.stringify({ type: 'stream_dropped', timestamp: new Date().toISOString(), data: { dropped: count, reason } })}\n\n`)) dropped = 0;
+  };
+
   res.on('drain', () => {
     if (stall) { clearTimeout(stall); stall = null; }
-    if (dropped > 0) {
-      const count = dropped;
-      dropped = 0;
-      write(`data: ${JSON.stringify({ type: 'stream_dropped', timestamp: new Date().toISOString(), data: { dropped: count } })}\n\n`);
-    }
+    notifyLoss('backpressure');
   });
   req.on('close', close);
   res.on('close', close);
@@ -76,7 +79,7 @@ export function openSseStream(req: Request, res: Response, opts: { onDrop?: (cou
     send(event: unknown): boolean {
       if (closed) return false;
       const frame = `data: ${JSON.stringify(event)}\n\n`;
-      if (Buffer.byteLength(frame) > MAX_EVENT_BYTES) return drop();
+      if (Buffer.byteLength(frame) > MAX_EVENT_BYTES) { drop(); notifyLoss('oversize'); return false; }
       return write(frame) || drop();
     },
     onClose(hook: () => void): void {

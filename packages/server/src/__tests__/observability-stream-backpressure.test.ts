@@ -107,6 +107,24 @@ describe('observability SSE backpressure (OBS-001)', () => {
     }
   });
 
+  it('reports an oversized-event drop to a healthy client without waiting for a drain', async () => {
+    const socket = await slowClient();
+    let received = '';
+    socket.on('data', (chunk) => { received += chunk.toString('utf8'); });
+    socket.resume(); // healthy reader: the socket never backs up, so no 'drain' will ever fire
+    const droppedBefore = swarmEventBus.getDroppedEvents();
+    try {
+      swarmEventBus.emit('budget_burn', { blob: 'x'.repeat(100 * 1024) }); // > MAX_EVENT_BYTES
+      await until(() => /"type":"stream_dropped"/.test(received), 2_000);
+      const notice = received.split('\n').find((l) => l.includes('"stream_dropped"'))!;
+      expect(JSON.parse(notice.slice(notice.indexOf('{'))).data).toMatchObject({ dropped: 1, reason: 'oversize' });
+      expect(swarmEventBus.getDroppedEvents() - droppedBefore).toBe(1);
+      expect(received).not.toContain('x'.repeat(1024));
+    } finally {
+      socket.destroy();
+    }
+  });
+
   it('unsubscribes when the client disconnects', async () => {
     const socket = await slowClient();
     socket.destroy();

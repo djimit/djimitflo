@@ -54,6 +54,15 @@ export interface ReconciliationReport {
   createdAt: string;
 }
 
+/** Marks our evidence comment, so an unknown POST outcome can be reconciled against the issue's comments. */
+const COMMENT_MARKER = 'Closed automatically by the DjimFlo reconciliation service.';
+const GITHUB_TIMEOUT_MS = 15_000;
+/**
+ * Per-issue evidence-comment outcome. 'unknown' is written before the POST (write-ahead) and stays when the response
+ * is lost (timeout, crash, 5xx); 'failed' only for a definite 4xx rejection. 'unknown' is reconciled before a repost.
+ */
+type CommentStatus = 'unknown' | 'posted' | 'failed';
+
 type FetchLike = (url: string, init?: RequestInit) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
 
 export class ReconciliationService {
@@ -75,6 +84,13 @@ export class ReconciliationService {
         closed_issues_json TEXT NOT NULL DEFAULT '[]',
         verdicts_json TEXT NOT NULL DEFAULT '[]',
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS reconciliation_issue_comments (
+        repo TEXT NOT NULL,
+        issue_number INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (repo, issue_number)
       )
     `);
   }
@@ -221,18 +237,55 @@ export class ReconciliationService {
     if (options.apply) {
       for (const verdict of verdicts) {
         if (verdict.stillValid !== false || verdict.issueNumber === null) continue;
-        const body = `Reconciliation (${new Date().toISOString().slice(0, 10)}): this claim no longer holds against current source.\n\n**Evidence:** ${verdict.evidence}\n\nClosed automatically by the DjimFlo reconciliation service.`;
-        await this.fetchImpl(`https://api.github.com/repos/${repo}/issues/${verdict.issueNumber}/comments`, {
-          method: 'POST', headers, body: JSON.stringify({ body }), signal: AbortSignal.timeout(15_000),
-        });
-        const closeResponse = await this.fetchImpl(`https://api.github.com/repos/${repo}/issues/${verdict.issueNumber}`, {
-          method: 'PATCH', headers, body: JSON.stringify({ state: 'closed', state_reason: 'not_planned' }), signal: AbortSignal.timeout(15_000),
-        });
-        if (closeResponse.ok) closed.push(verdict.issueNumber);
+        const issue = verdict.issueNumber;
+        // one issue's failure never drops the run report (that would re-run the whole set on the next tick)
+        try {
+          if (!(await this.ensureEvidenceComment(repo, issue, verdict, headers))) continue;
+          // closing is idempotent (sets a state), so it may simply be repeated on a later run
+          const closeResponse = await this.fetchImpl(`https://api.github.com/repos/${repo}/issues/${issue}`, {
+            method: 'PATCH', headers, body: JSON.stringify({ state: 'closed', state_reason: 'not_planned' }), signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
+          });
+          if (closeResponse.ok) closed.push(issue);
+        } catch (error) {
+          console.warn(`Reconciliation: issue #${issue} not closed this run —`, error instanceof Error ? error.message : error);
+        }
       }
     }
 
     return this.persistReport(verdicts, `github:${repo}`, Boolean(options.apply), closed);
+  }
+
+  private commentStatus(repo: string, issue: number): CommentStatus | null {
+    const row = this.db.prepare('SELECT status FROM reconciliation_issue_comments WHERE repo = ? AND issue_number = ?').get(repo, issue) as { status: CommentStatus } | undefined;
+    return row?.status ?? null;
+  }
+
+  private setCommentStatus(repo: string, issue: number, status: CommentStatus): void {
+    this.db.prepare(`INSERT INTO reconciliation_issue_comments (repo, issue_number, status, updated_at) VALUES (?, ?, ?, ?)
+      ON CONFLICT(repo, issue_number) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at`).run(repo, issue, status, new Date().toISOString());
+  }
+
+  /**
+   * True once the evidence comment is known to be on the issue. A comment is posted at most once per unknown outcome:
+   * an earlier unknown POST is first reconciled against the issue's comments; when they cannot be read, nothing is sent.
+   */
+  private async ensureEvidenceComment(repo: string, issue: number, verdict: ClaimVerdict, headers: Record<string, string>): Promise<boolean> {
+    const status = this.commentStatus(repo, issue);
+    if (status === 'posted') return true;
+    if (status === 'unknown') {
+      const res = await this.fetchImpl(`https://api.github.com/repos/${repo}/issues/${issue}/comments?per_page=100`, { headers, signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS) });
+      if (!res.ok) return false; // still unknown: neither repost nor close
+      const comments = await res.json() as Array<{ body?: string }>;
+      if (comments.some((c) => c.body?.includes(COMMENT_MARKER))) { this.setCommentStatus(repo, issue, 'posted'); return true; }
+    }
+    const body = `Reconciliation (${new Date().toISOString().slice(0, 10)}): this claim no longer holds against current source.\n\n**Evidence:** ${verdict.evidence}\n\n${COMMENT_MARKER}`;
+    this.setCommentStatus(repo, issue, 'unknown'); // write-ahead: a lost response or crash leaves it to reconcile
+    const res = await this.fetchImpl(`https://api.github.com/repos/${repo}/issues/${issue}/comments`, {
+      method: 'POST', headers, body: JSON.stringify({ body }), signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
+    });
+    if (res.ok) { this.setCommentStatus(repo, issue, 'posted'); return true; }
+    if (res.status >= 400 && res.status < 500) this.setCommentStatus(repo, issue, 'failed'); // definite rejection, nothing created
+    return false;
   }
 
   private persistReport(verdicts: ClaimVerdict[], source: string, applied: boolean, closedIssues: number[]): ReconciliationReport {
