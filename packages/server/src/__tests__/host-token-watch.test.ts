@@ -5,13 +5,17 @@ import request from 'supertest';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { detectStallsWithHealth } from '../services/stall-watch';
-import { hostTokenStalls, recordHostTokenOk, recordHostTokenRejection } from '../services/host-token-watch';
+import { hostTokenStalls, hostTokenWatchMode, recordHostTokenOk as ok0, recordHostTokenRejection as rej0 } from '../services/host-token-watch';
 import { createRemoteGymRoutes } from '../routes/remote-gym';
+import { EVOLUTION_FLAGS } from '../services/evolution-evidence';
 import { REMOTE_GYM_SCOPE } from '../services/remote-gym-service';
 import { mintSpawnToken, resolveSpawnTokenSecret, spawnTokenExpiresAt } from '../services/spawn-token';
 
 /** capability chain (stall-watch): a configured environment, so these tests see only the detectors they assert on */
-const C = { DJIMITFLO_SKILLS_DIR: __dirname, DJIMIT_SKILL_TRAINING_EVAL_RUNNER: __filename };
+const C = { DJIMITFLO_SKILLS_DIR: __dirname, DJIMIT_SKILL_TRAINING_EVAL_RUNNER: __filename, HOST_TOKEN_WATCH_MODE: 'shadow' };
+const ON = { HOST_TOKEN_WATCH_MODE: 'shadow' };
+const recordHostTokenOk = (d: Database.Database, h: string, s: string, exp: number | null, now: number) => ok0(d, h, s, exp, now, ON);
+const recordHostTokenRejection = (d: Database.Database, h: string, s: string, r: string, now: number) => rej0(d, h, s, r, now, ON);
 const EXPIRY = Date.parse('2026-10-27T00:24:00Z');
 const min = 60_000;
 const day = 86_400_000;
@@ -77,7 +81,7 @@ it('spawnTokenExpiresAt reads the expiry from the payload; garbage is null', () 
 });
 
 it('the gym-worker route records a valid claim and each rejection (host, scope, reason; no token)', async () => {
-  vi.stubEnv('JWT_SECRET', 'host-token-watch-secret'); vi.stubEnv('EVOLUTION_GYM_REMOTE_ENABLED', 'false');
+  vi.stubEnv('JWT_SECRET', 'host-token-watch-secret'); vi.stubEnv('EVOLUTION_GYM_REMOTE_ENABLED', 'false'); vi.stubEnv('HOST_TOKEN_WATCH_MODE', 'shadow');
   const pass = (_r: unknown, _s: unknown, n: () => void) => n();
   const app = express(); app.use(express.json());
   app.use('/gym-worker', createRemoteGymRoutes(db, { requireAuth: pass, requirePermission: () => pass } as never));
@@ -89,4 +93,42 @@ it('the gym-worker route records a valid claim and each rejection (host, scope, 
   expect(row).toMatchObject({ scope: REMOTE_GYM_SCOPE, rejected_count: 3, last_reason: 'expired' });
   expect(JSON.stringify(row)).not.toContain(expired.split('.')[1]);
   expect(hostTokenStalls(db, Date.now() + 1_000).map((s) => s.subsystem)).toEqual([`host_token:${REMOTE_GYM_SCOPE}:ws-route`]);
+});
+
+it('a streak whose first rejection shares the millisecond of the last success is still a streak; a success ends it', () => {
+  const T = EXPIRY;
+  recordHostTokenOk(db, 'same-ms', REMOTE_GYM_SCOPE, T + 30 * day, T);
+  for (let i = 0; i < 3; i++) recordHostTokenRejection(db, 'same-ms', REMOTE_GYM_SCOPE, 'expired', T);
+  expect(hostTokenStalls(db, T).map((s) => s.subsystem)).toEqual([`host_token:${REMOTE_GYM_SCOPE}:same-ms`]);
+  // recovery in that same millisecond: the success resets the streak explicitly
+  recordHostTokenOk(db, 'same-ms', REMOTE_GYM_SCOPE, T + 30 * day, T);
+  expect(hostTokenStalls(db, T)).toEqual([]);
+  expect(db.prepare('SELECT rejected_count, first_rejected_at FROM host_token_auth WHERE host = ?').get('same-ms')).toEqual({ rejected_count: 0, first_rejected_at: null });
+  recordHostTokenRejection(db, 'same-ms', REMOTE_GYM_SCOPE, 'expired', T);
+  recordHostTokenRejection(db, 'same-ms', REMOTE_GYM_SCOPE, 'expired', T);
+  expect(hostTokenStalls(db, T)).toEqual([]);
+});
+
+it('HOST_TOKEN_WATCH_MODE: off (default) records nothing and raises nothing; shadow records and reports', async () => {
+  expect(hostTokenWatchMode({})).toBe('off');
+  expect(hostTokenWatchMode({ HOST_TOKEN_WATCH_MODE: 'shadow' })).toBe('shadow');
+  expect(hostTokenWatchMode({ HOST_TOKEN_WATCH_MODE: 'on' })).toBe('off');
+  expect(EVOLUTION_FLAGS).toContainEqual({ name: 'HOST_TOKEN_WATCH_MODE', acting: false });
+  ok0(db, 'quiet', REMOTE_GYM_SCOPE, EXPIRY, EXPIRY - day, {});
+  for (let i = 0; i < 5; i++) rej0(db, 'quiet', REMOTE_GYM_SCOPE, 'expired', EXPIRY + i * min, {});
+  expect(db.prepare('SELECT COUNT(*) AS n FROM host_token_auth').get()).toEqual({ n: 0 });
+  // a row recorded while on is not reported once the flag is off
+  recordHostTokenOk(db, 'loud', REMOTE_GYM_SCOPE, EXPIRY, EXPIRY - day);
+  for (let i = 0; i < 3; i++) recordHostTokenRejection(db, 'loud', REMOTE_GYM_SCOPE, 'expired', EXPIRY + i * min);
+  const off = detectStallsWithHealth(db, EXPIRY + 5 * min, { ...C, HOST_TOKEN_WATCH_MODE: '' });
+  expect(off.detectors.find((d) => d.name === 'host_tokens')?.status).toBe('not_applicable');
+  expect(off.stalls.filter((s) => s.subsystem.startsWith('host_token'))).toEqual([]);
+  expect(hostStalls(EXPIRY + 5 * min).map((s) => s.subsystem)).toEqual([`host_token:${REMOTE_GYM_SCOPE}:loud`]);
+  // the route records nothing with the flag off
+  vi.stubEnv('JWT_SECRET', 'host-token-watch-secret'); vi.stubEnv('HOST_TOKEN_WATCH_MODE', '');
+  const pass = (_r: unknown, _s: unknown, n: () => void) => n();
+  const app = express(); app.use(express.json());
+  app.use('/gym-worker', createRemoteGymRoutes(db, { requireAuth: pass, requirePermission: () => pass } as never));
+  await request(app).get('/gym-worker/kb/pending').set('X-Gym-Host', 'ws-off').set('X-Gym-Worker-Token', mintSpawnToken(resolveSpawnTokenSecret(), 'ws-off', REMOTE_GYM_SCOPE, day));
+  expect(db.prepare('SELECT COUNT(*) AS n FROM host_token_auth WHERE host = ?').get('ws-off')).toEqual({ n: 0 });
 });

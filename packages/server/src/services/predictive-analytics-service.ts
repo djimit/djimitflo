@@ -19,8 +19,9 @@ interface Prediction {
   expectedDurationMs: number;
   /** mean dated-price cost of matching completed runs; null when none has one (L-F04: never an invented $/Mtok) */
   expectedCostDollars: number | null;
-  expectedCostReason: 'no_history' | 'no_usage_reported' | 'no_dated_model_price' | null;
-  /** completed matching runs with a dated price, of all completed matching runs */
+  /** partial_price: a dated cost exists but some lease of each run is unpriced or only partially priced (cache tokens) */
+  expectedCostReason: 'no_history' | 'no_usage_reported' | 'no_dated_model_price' | 'partial_price' | null;
+  /** completed matching runs whose every lease has a complete dated price, of all completed matching runs */
   costCoverage: { priced: number; total: number };
   riskFactors: string[];
   recommendations: string[];
@@ -59,12 +60,13 @@ export class PredictiveAnalyticsService {
       ? completedRuns.reduce((sum, h) => sum + h.durationMs, 0) / completedRuns.length
       : 600000; // Default 10 minutes
 
-    // Expected cost: only runs whose leases carry a dated model price; unknown usage stays unknown (#1051, L-F04)
+    // Expected cost: only runs whose every lease carries a complete dated model price; unknown or partial stays unknown (#1051, L-F04)
     const completed = historical.filter((h) => h.status === 'completed');
     const priced = completed.filter((h): h is typeof h & { totalCost: number } => h.totalCost !== null);
     const avgCost = priced.length ? priced.reduce((sum, h) => sum + h.totalCost, 0) / priced.length : null;
     const expectedCostReason: Prediction['expectedCostReason'] = avgCost !== null ? null
-      : completed.length === 0 ? 'no_history' : completed.some((h) => h.tokensReported) ? 'no_dated_model_price' : 'no_usage_reported';
+      : completed.length === 0 ? 'no_history' : completed.some((h) => h.anyDatedPrice) ? 'partial_price'
+        : completed.some((h) => h.tokensReported) ? 'no_dated_model_price' : 'no_usage_reported';
 
     // Identify risk factors
     const riskFactors = this.identifyRiskFactors(input, historical);
@@ -173,9 +175,10 @@ export class PredictiveAnalyticsService {
   private getHistoricalData(goalType: string, runtime: string, mode: string): Array<{
     status: string;
     durationMs: number;
-    /** sum of the leases' dated token_accounting cost (a mock lease is a known $0); null unless every lease has one */
+    /** sum of the leases' complete dated token_accounting cost (a mock lease is a known $0); null unless every lease has one */
     totalCost: number | null;
     tokensReported: boolean;
+    anyDatedPrice: boolean;
   }> {
     // Get historical loops with similar characteristics
     const runs = this.db.prepare(`
@@ -185,10 +188,13 @@ export class PredictiveAnalyticsService {
           THEN (julianday(lr.completed_at) - julianday(lr.created_at)) * 86400000
           ELSE NULL END as duration_ms,
         (SELECT CASE WHEN SUM(c IS NULL) = 0 THEN SUM(c) END FROM (SELECT CASE WHEN wl.runtime = 'mock' THEN 0
-            WHEN json_extract(wl.metadata, '$.token_accounting.price_version') IS NOT NULL THEN json_extract(wl.metadata, '$.token_accounting.estimated_cost_usd') END AS c
+            WHEN json_extract(wl.metadata, '$.token_accounting.price_version') IS NOT NULL
+              AND json_extract(wl.metadata, '$.token_accounting.cost_completeness') = 'complete' THEN json_extract(wl.metadata, '$.token_accounting.estimated_cost_usd') END AS c
           FROM worker_leases wl WHERE wl.loop_run_id = lr.id)) as total_cost,
         EXISTS (SELECT 1 FROM worker_leases wl WHERE wl.loop_run_id = lr.id
-          AND COALESCE(json_extract(wl.metadata, '$.runtime_usage.total_tokens'), json_extract(wl.metadata, '$.total_tokens')) IS NOT NULL) as tokens_reported
+          AND COALESCE(json_extract(wl.metadata, '$.runtime_usage.total_tokens'), json_extract(wl.metadata, '$.total_tokens')) IS NOT NULL) as tokens_reported,
+        EXISTS (SELECT 1 FROM worker_leases wl WHERE wl.loop_run_id = lr.id
+          AND json_extract(wl.metadata, '$.token_accounting.price_version') IS NOT NULL) as any_dated_price
       FROM loop_runs lr
       WHERE (? = '' OR json_extract(lr.metadata, '$.goal_type') = ?)
         AND (? = '' OR lr.mode = ?)
@@ -207,6 +213,7 @@ export class PredictiveAnalyticsService {
       durationMs: r.duration_ms || 0,
       totalCost: typeof r.total_cost === 'number' ? r.total_cost : null,
       tokensReported: r.tokens_reported === 1,
+      anyDatedPrice: r.any_dated_price === 1,
     }));
   }
 

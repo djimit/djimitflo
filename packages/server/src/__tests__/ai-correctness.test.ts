@@ -66,7 +66,7 @@ describe('AI correctness regressions', () => {
     expect(unpriced.expectedCostDollars).toBeNull();
     expect(unpriced.expectedCostReason).toBe('no_dated_model_price');
     expect(unpriced.costCoverage).toEqual({ priced: 0, total: 1 });
-    run('priced', { runtime_usage: { total_tokens: 500_000 }, token_accounting: { estimated_cost_usd: 0.4, price_version: '2026-10-01' } });
+    run('priced', { runtime_usage: { total_tokens: 500_000 }, token_accounting: { estimated_cost_usd: 0.4, cost_completeness: 'complete', price_version: '2026-10-01' } });
     const priced = svc.predict({ goalType: 'docs', runtime: 'codex', mode: 'closed' });
     expect(priced.expectedCostDollars).toBe(0.4); // the unpriced run is left out, not counted as $0 or $2
     expect(priced.expectedCostReason).toBeNull();
@@ -74,6 +74,33 @@ describe('AI correctness regressions', () => {
     const none = new PredictiveAnalyticsService(db()).predict({ goalType: 'docs', runtime: 'codex', mode: 'closed' });
     expect(none.expectedCostDollars).toBeNull();
     expect(none.expectedCostReason).toBe('no_history');
+  });
+
+  it('a dated but partial or mixed-lease cost is no prediction (L-F04 review): unknown with reason partial_price', () => {
+    const database = db();
+    const run = (id: string, leases: Array<Record<string, unknown>>) => {
+      database.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, metadata, created_at, completed_at) VALUES (?, 'test', 'closed', 'completed', ?, datetime('now', '-1 hour'), datetime('now'))`)
+        .run(id, JSON.stringify({ goal_type: 'docs' }));
+      leases.forEach((meta, i) => database.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, finding_id, worktree_path, metadata) VALUES (?, ?, 'maker', 'codex', 'completed', 'f', '/tmp', ?)`)
+        .run(`lease-${id}-${i}`, id, JSON.stringify(meta)));
+    };
+    const dated = (usd: number, completeness: string | undefined) => ({ runtime_usage: { total_tokens: 1000 },
+      token_accounting: { estimated_cost_usd: usd, price_version: 'v1', ...(completeness ? { cost_completeness: completeness } : {}) } });
+    // cache tokens not priced: maker-token-accounting emits a dated cost with cost_completeness 'partial'
+    run('partial-cache', [dated(0.3, 'partial')]);
+    // one lease completely priced, its sibling reported tokens without a price
+    run('mixed', [dated(0.2, 'complete'), { runtime_usage: { total_tokens: 1000 } }]);
+    // a dated cost without completeness is not known to be complete
+    run('no-completeness', [dated(0.5, undefined)]);
+    const svc = new PredictiveAnalyticsService(database);
+    const p = svc.predict({ goalType: 'docs', runtime: 'codex', mode: 'closed' });
+    expect(p.expectedCostDollars).toBeNull();
+    expect(p.expectedCostReason).toBe('partial_price');
+    expect(p.costCoverage).toEqual({ priced: 0, total: 3 });
+    run('complete', [dated(0.1, 'complete'), dated(0.3, 'complete')]);
+    const q = svc.predict({ goalType: 'docs', runtime: 'codex', mode: 'closed' });
+    expect(q.expectedCostDollars).toBe(0.4);
+    expect(q.costCoverage).toEqual({ priced: 1, total: 4 });
   });
 
   it('supports reproducible skill evolution', () => {
