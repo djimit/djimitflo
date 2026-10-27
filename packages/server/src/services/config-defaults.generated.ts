@@ -60,6 +60,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   GYM_TIER_PROBE_TIERS: '`4,5,6`',
   HACK_DETECTOR_MODE: 'off (`shadow` records gym hack flags on local-gym, canary and TG-001 results; nothing acts. Since P0-12 the remote gym …',
   HOLDOUT_SIZE: '20 (integer in [10, 200]; invalid = HOLD, nothing frozen)',
+  HOST_TOKEN_WATCH_MODE: 'off (`shadow`: prod 27-10, the workstation\'s 30-day gym-worker token expired at 00:24Z and 7 h of 401s went unnoticed. …',
   INFERENCE_BUDGET_THROTTLE: '`shadow` (`off`, `on`)',
   JEV_CHALLENGER_MODEL: 'unset = off (e.g. `jev-1.14.0` = shadow)',
   KNOWLEDGE_GAP_MODE: 'off (`shadow`)',

@@ -77,3 +77,20 @@ Stop condition added; verdict rules unchanged. Operator-approved 2026-10-19. The
 - **Unchanged:** arms, endpoints, safety/harm stops, analysis and decision rules. Only a stop condition is added.
 - **Recorded:** `experiment-registry.ts` (`stop_by`, `stop_source`); the stall watch `experiment_overdue` reports the experiment
   after this date while it has no verdict.
+
+## Amendment 2 (2026-10-27): tokens reading excludes unknown usage; period boundary
+
+This is a correction to a secondary reading plus a period boundary. Verdict rules are unchanged. The text above is frozen and
+is not edited.
+
+- **Defect (forensic audit 2026-10-26, L-F05; the same defect ACE-001 Amendment 3 fixed).** `ste001Evidence` computed
+  `tokens_mean` as the sum of `tokens_used || 0` divided by every outcome of the arm. A maker run without a usage report
+  (`tokens_used` NULL, or a legacy 0) therefore counted as a 0-token run, which made the arm look cheaper.
+- **Fix.** `tokens_mean` now averages only runs with known tokens (> 0). `tokens_n` reports how many runs that is and
+  `tokens_coverage` the share of the arm's outcomes. An arm with no known tokens reads `null`, not 0.
+- **Only the secondary token reading changed.** The primary endpoint (verified rate, intent to treat), the out-of-scope
+  share, the arms (parity of sha256(`ste-001:` + goal id)), target, stop_by and the harm stop are unchanged.
+- **Period boundary: 2026-10-27T05:52:42Z.** Memory rules were switched off in production at this instant
+  (`LOOP_MEMORY_RULES_ENABLED=false`, following the EXP-3 memory-holdout result). From then on no maker in either arm receives
+  memory rules, so the maker context changed for both arms at once. The analysis reports outcomes created before and from
+  this instant as two periods next to the registered whole-window analysis; the periods are never pooled silently.
