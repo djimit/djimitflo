@@ -24,6 +24,9 @@ function authHeaders(apiKey: string | undefined, scheme: 'bearer' | 'api-key'): 
 }
 
 const EMBED_TIMEOUT_MS = Number(process.env.EMBEDDING_TIMEOUT_MS) || 10_000;
+// CODE-004: every leg has a per-request deadline, so the whole fan-out is bounded in elapsed time, not just in attempts.
+const WRITE_TIMEOUT_MS = 10_000;
+const isTimeout = (e: unknown): boolean => (e as { name?: string })?.name === 'TimeoutError' || (e as { name?: string })?.name === 'AbortError';
 
 /**
  * Task ids are not valid Qdrant point ids: they are UUIDs or composite strings
@@ -104,6 +107,7 @@ export class MemorySyncService {
             content: content.slice(0, 2000),
             metadata: { task_id: taskId, machine_id: machineId, agent_type: agentType },
           }),
+          signal: AbortSignal.timeout(WRITE_TIMEOUT_MS),
         });
         if (res.ok) {
           console.log(`Memory synced: task ${taskId} → UAMS`);
@@ -120,6 +124,12 @@ export class MemorySyncService {
         console.warn(`UAMS sync failed for task ${taskId}: ${res.status}`);
         return;
       } catch (e) {
+        // A timed-out POST may have been applied: the outcome is unknown and /memory/entry is not known to be
+        // idempotent, so it is not re-sent. Only a failure before a response (e.g. connection refused) is retried.
+        if (isTimeout(e)) {
+          console.warn(`UAMS sync for task ${taskId} timed out after ${WRITE_TIMEOUT_MS}ms; outcome unknown, not retried`);
+          return;
+        }
         if (attempt < 2) {
           await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
           continue;
@@ -165,6 +175,7 @@ export class MemorySyncService {
         method: 'PUT',
         headers,
         body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(WRITE_TIMEOUT_MS),
       });
       if (!upsertRes.ok) {
         console.warn(`Qdrant sync failed for task ${taskId}: upsert ${upsertRes.status}`);

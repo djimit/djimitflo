@@ -242,6 +242,7 @@ export class AuditAnchoringService {
         timestamp: anchor.anchored_at,
         source: 'djimitflo',
       }),
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!response.ok) {
@@ -306,6 +307,7 @@ export class AuditAnchoringService {
         ...(this.siemConfig.api_key ? { Authorization: `Bearer ${this.siemConfig.api_key}` } : {}),
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!response.ok) {

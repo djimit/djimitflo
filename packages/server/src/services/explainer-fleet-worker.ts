@@ -41,6 +41,7 @@ async function publishDriftAlert(drift: string[]): Promise<void> {
       method: "POST",
       headers: uamsEntryHeaders(),
       body: uamsEntryBody(content, "explainer:drift-alert", { source: "djimitflo-explainer", count: drift.length }),
+      signal: AbortSignal.timeout(10_000),
     });
   } catch {
     // non-fatal by design
@@ -65,6 +66,7 @@ async function publishExplainerMemory(bundleId: string, repoFullName: string, sc
         source: "djimitflo-explainer",
         kind: "explainer_published",
       }),
+      signal: AbortSignal.timeout(10_000),
     });
     if (res.ok) {
       console.log(`🧠 Explainer memory published → UAMS: ${repoFullName}`);

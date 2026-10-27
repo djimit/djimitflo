@@ -208,7 +208,7 @@ export class ReconciliationService {
     };
     const listResponse = await this.fetchImpl(
       `https://api.github.com/repos/${repo}/issues?state=open&labels=${encodeURIComponent(label)}&per_page=100`,
-      { headers },
+      { headers, signal: AbortSignal.timeout(15_000) },
     );
     if (!listResponse.ok) throw new Error(`GITHUB_LIST_FAILED:${listResponse.status}`);
     const issues = await listResponse.json() as Array<{ number: number; title: string; pull_request?: unknown }>;
@@ -223,10 +223,10 @@ export class ReconciliationService {
         if (verdict.stillValid !== false || verdict.issueNumber === null) continue;
         const body = `Reconciliation (${new Date().toISOString().slice(0, 10)}): this claim no longer holds against current source.\n\n**Evidence:** ${verdict.evidence}\n\nClosed automatically by the DjimFlo reconciliation service.`;
         await this.fetchImpl(`https://api.github.com/repos/${repo}/issues/${verdict.issueNumber}/comments`, {
-          method: 'POST', headers, body: JSON.stringify({ body }),
+          method: 'POST', headers, body: JSON.stringify({ body }), signal: AbortSignal.timeout(15_000),
         });
         const closeResponse = await this.fetchImpl(`https://api.github.com/repos/${repo}/issues/${verdict.issueNumber}`, {
-          method: 'PATCH', headers, body: JSON.stringify({ state: 'closed', state_reason: 'not_planned' }),
+          method: 'PATCH', headers, body: JSON.stringify({ state: 'closed', state_reason: 'not_planned' }), signal: AbortSignal.timeout(15_000),
         });
         if (closeResponse.ok) closed.push(verdict.issueNumber);
       }

@@ -67,6 +67,7 @@ async function runPipeline(db: DbLike, id: string): Promise<any> {
       ...(process.env.DJIMITFLO_API_TOKEN ? { Authorization: `Bearer ${process.env.DJIMITFLO_API_TOKEN}` } : {}),
     },
     body: JSON.stringify({}),
+    signal: AbortSignal.timeout(300_000),
   });
   if (!res.ok) {
     throw new Error(`Pipeline run failed via server: ${res.status} ${res.statusText}`);
@@ -308,6 +309,7 @@ export function registerExplainerTools(server: McpServer, db: DbLike): void {
             ...(process.env.DJIMITFLO_API_TOKEN ? { Authorization: `Bearer ${process.env.DJIMITFLO_API_TOKEN}` } : {}),
           },
           body: JSON.stringify({ question: args?.question, repo: args?.repo }),
+          signal: AbortSignal.timeout(120_000),
         });
         if (!res.ok) {
           return { content: [{ type: "text" as const, text: `Ask failed: ${res.status} ${res.statusText}` }], isError: true };
