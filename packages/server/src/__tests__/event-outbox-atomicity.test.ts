@@ -10,6 +10,7 @@ import { ApprovalService } from '../services/approval-service';
 import { AuditService } from '../services/audit-service';
 import { AutonomousGoalGenerator } from '../services/autonomous-goal-generator';
 import { EventOutboxService, enqueueRequiredEvent } from '../services/event-outbox-service';
+import { ExternalEventIngestService } from '../services/external-event-ingest-service';
 import { WorkItemService } from '../services/work-item-service';
 
 let db: Database.Database;
@@ -135,27 +136,57 @@ describe('required enqueue contract', () => {
   });
 });
 
-describe('after the commit: dispatcher retry + dedupe deliver exactly once', () => {
-  it('a bus outage is retried with the same dedupe key, and a published event is never re-sent', async () => {
+describe('roborev intake: an outbox failure is retried, not skipped', () => {
+  const finding = (id: string, extra: Record<string, unknown> = {}) => ({ _id: id, event_id: `roborev:${id}`, event_type: 'roborev.finding', source: 'roborev',
+    task_title: `Fix ${id}`, context: 'ctx', severity: 'high', task_type: 'review_fix', dedupe_key: `roborev:dk:${id}`, ...extra });
+  const serve = (events: unknown[]) => vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({ events }), { status: 200 })));
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('rolls the whole poll back (no event stored, cursor not advanced) and the next poll creates the work item and its event', async () => {
+    serve([finding('1-0')]);
+    const ingest = new ExternalEventIngestService(db, 'http://bus', 'djimit.events');
+    failOutboxInserts();
+    await expect(ingest.pollOnce()).rejects.toThrow(/injected outbox fault/);
+    expect(count('SELECT COUNT(*) AS n FROM work_items')).toBe(0);
+    expect(count('SELECT COUNT(*) AS n FROM external_events')).toBe(0);
+    expect(count("SELECT COUNT(*) AS n FROM system_state WHERE key = 'external_event_ingest_cursor:djimit.events'")).toBe(0);
+    healOutbox();
+    expect(await ingest.pollOnce()).toBe(1);
+    expect(count(`SELECT COUNT(*) AS n FROM work_items w JOIN event_outbox o ON o.aggregate_id = w.id AND o.event_type = 'djimitflo.work_item.created'
+      WHERE w.source = 'roborev' AND w.source_ref = 'roborev:dk:1-0'`)).toBe(1);
+  });
+
+  it('still skips a malformed finding without blocking the rest of the batch', async () => {
+    serve([finding('2-0'), finding('1-0', { task_title: '  ' })]);
+    expect(await new ExternalEventIngestService(db, 'http://bus', 'djimit.events').pollOnce()).toBe(2);
+    expect(count("SELECT COUNT(*) AS n FROM work_items WHERE source = 'roborev'")).toBe(1);
+  });
+});
+
+describe('after the commit: dispatcher retry + bus dedupe', () => {
+  it('delivers at least once with a stable dedupe key; a bus that dedupes on it records the event once even when an ack is lost', async () => {
     process.env.DJIMIT_EVENT_BUS_URL = 'http://bus:8083';
     const created = new WorkItemService(db).create(item('a'));
-    const delivered = new Map<string, number>(); // the bus dedupes on dedupe_key
-    const fetchFn = vi.fn()
-      .mockRejectedValueOnce(new Error('ECONNREFUSED'))
-      .mockResolvedValueOnce({ ok: false, status: 503 })
-      .mockImplementation(async (_url: string, init: RequestInit) => {
-        const key = JSON.parse(init.body as string).dedupe_key as string;
-        delivered.set(key, (delivered.get(key) ?? 0) + 1);
-        return { ok: true, status: 200 };
-      });
+    const stored = new Set<string>(); let arrivals = 0; // the bus stores each dedupe_key once
+    let posts = 0;
+    const fetchFn = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+      posts++;
+      if (posts === 1) throw new Error('ECONNREFUSED'); // outage: never reached the bus
+      if (posts === 2) return { ok: false, status: 503 }; // bus refused it
+      const key = JSON.parse(init.body as string).dedupe_key as string;
+      arrivals++; stored.add(key);
+      if (posts === 3) throw new Error('socket hang up'); // accepted, but the ack was lost
+      return { ok: true, status: 200 };
+    });
     const svc = new EventOutboxService(db, fetchFn as unknown as typeof fetch);
-    expect(await svc.publishPending()).toMatchObject({ attempted: 1, failed: 1 });
-    expect(await svc.publishPending()).toMatchObject({ attempted: 1, failed: 1 });
-    expect(await svc.publishPending()).toMatchObject({ attempted: 1, published: 1 });
-    expect(await svc.publishPending()).toMatchObject({ attempted: 0, published: 0 });
+    for (let i = 0; i < 3; i++) expect(await svc.publishPending()).toMatchObject({ attempted: 1, failed: 1 });
+    expect(await svc.publishPending()).toMatchObject({ attempted: 1, published: 1 }); // the redelivery of an accepted event
+    expect(await svc.publishPending()).toMatchObject({ attempted: 0, published: 0 }); // a published row is never re-sent
     const keys = fetchFn.mock.calls.map(([, init]) => JSON.parse((init as RequestInit).body as string).dedupe_key);
+    expect(keys).toHaveLength(4);
     expect(new Set(keys).size).toBe(1); // every retry carries the same key
-    expect([...delivered.values()]).toEqual([1]);
-    expect(db.prepare('SELECT aggregate_id, status, attempts FROM event_outbox').get()).toEqual({ aggregate_id: created.id, status: 'published', attempts: 3 });
+    expect(arrivals).toBe(2); // at least once: the accepted-but-unacked event arrived again
+    expect(stored.size).toBe(1); // the bus's dedupe made it one stored event
+    expect(db.prepare('SELECT aggregate_id, status, attempts FROM event_outbox').get()).toEqual({ aggregate_id: created.id, status: 'published', attempts: 4 });
   });
 });
