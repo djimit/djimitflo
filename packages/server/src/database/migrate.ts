@@ -1456,6 +1456,10 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   // prod 25-10: a pending trial item no claim could be given a task for (remote-gym-service trialBlocked; stall 'gym:trial_blocked')
   db.exec(`CREATE TABLE IF NOT EXISTS gym_trial_blocked (genome_id TEXT NOT NULL, task_key TEXT NOT NULL, reason TEXT NOT NULL, first_seen TEXT NOT NULL,
     last_seen TEXT NOT NULL, PRIMARY KEY (genome_id, task_key))`);
+  // prod 27-10: per host × token scope, the last valid authentication, the expiry its token states and the current rejection
+  // streak (host-token-watch.ts; stall 'host_token'). Never the token.
+  db.exec(`CREATE TABLE IF NOT EXISTS host_token_auth (host TEXT NOT NULL, scope TEXT NOT NULL, last_ok_at TEXT NOT NULL, token_expires_at TEXT,
+    first_rejected_at TEXT, last_rejected_at TEXT, rejected_count INTEGER NOT NULL DEFAULT 0, last_reason TEXT, PRIMARY KEY (host, scope))`);
   // B8: the failure clusters a dream mutant cites (evidence-or-no-op, DREAM_EVIDENCE_MUTATIONS)
   addMissingColumns(db, 'maker_genomes', [{ name: 'evidence_clusters', definition: 'TEXT' }]);
   // KE-3: the knowledge units (expert_identities ids) whose titles the dream that wrote this mutant injected; null = none

@@ -109,6 +109,7 @@ export class LoopDraftPrService {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, head: maker.branch_name, base: this.env.LOOP_DRAFT_PR_BASE || 'main', draft: true, body }),
+        signal: AbortSignal.timeout(15_000),
       });
       if (!res.ok) return fail(`GitHub ${res.status}`);
       const prUrl = String(((await res.json()) as { html_url?: string }).html_url ?? '');
@@ -155,6 +156,7 @@ export class LoopDraftPrService {
     try {
       const res = await this.fetchImpl(`https://api.github.com/repos/${repo}/pulls?state=open&per_page=100`, {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
+        signal: AbortSignal.timeout(15_000),
       });
       if (!res.ok) return null;
       const pulls = (await res.json()) as Array<{ title?: string }>;
