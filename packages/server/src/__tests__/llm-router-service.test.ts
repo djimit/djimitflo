@@ -97,6 +97,39 @@ describe("LlmRouterService eligibility (INT-001/INT-002)", () => {
     expect(service.route({ taskType: "embedding", prompt: "p" })).toMatchObject({ available: true, provider: "litellm" });
   });
 
+  it("excludes a keyless provider after a success report even without a health refresh", () => {
+    const service = new LlmRouterService(db());
+    // The success report marks litellm active; only the credential clause keeps it out.
+    service.recordPerformance({ provider: "litellm", taskType: "embedding", latencyMs: 100, success: true });
+    expect(service.route({ taskType: "embedding", prompt: "p" })).toMatchObject({ available: false });
+  });
+
+  it("does not return a degraded provider named in a cascade hint", async () => {
+    const service = new LlmRouterService(db());
+    service.recordPerformance({ provider: "ollama", taskType: "coding", latencyMs: 100, success: true });
+    stubHealth(503);
+    await service.refreshProviderHealth();
+    const decision = service.route({ taskType: "coding", prompt: "p" }, { modelId: "ollama", escalationLevel: 1 });
+    expect(decision).toMatchObject({ available: false });
+    expect(decision.reason).not.toContain("Cascade");
+  });
+
+  it("does not return a keyless provider named in a cascade hint", () => {
+    const service = new LlmRouterService(db());
+    service.recordPerformance({ provider: "litellm", taskType: "coding", latencyMs: 100, success: true });
+    const decision = service.route({ taskType: "coding", prompt: "p" }, { modelId: "litellm", escalationLevel: 1 });
+    expect(decision).toMatchObject({ available: false });
+    expect(decision.reason).not.toContain("Cascade");
+  });
+
+  it("does not return a cascade-hinted provider that lacks the task capability", () => {
+    const service = new LlmRouterService(db());
+    service.recordPerformance({ provider: "ollama", taskType: "coding", latencyMs: 100, success: true });
+    const decision = service.route({ taskType: "embedding", prompt: "p" }, { modelId: "ollama", escalationLevel: 1 });
+    expect(decision).toMatchObject({ available: false });
+    expect(decision.reason).not.toContain("Cascade");
+  });
+
   it("never recommends a model that lacks the declared task capability", () => {
     const service = new LlmRouterService(db());
     service.recordPerformance({ provider: "ollama", taskType: "coding", latencyMs: 100, success: true });
