@@ -10,8 +10,15 @@ const ensure = (db: Database) => db.exec(`CREATE TABLE IF NOT EXISTS usage_count
   day TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, method TEXT NOT NULL DEFAULT '', status_class TEXT NOT NULL DEFAULT '', count INTEGER NOT NULL,
   PRIMARY KEY (day, kind, name, method, status_class))`);
 
+/**
+ * OPS-003: distinct buffered (day, kind, name, method, status) keys held while the database refuses writes. A rolled-back
+ * flush is re-queued; a count that would need a new key past this cap is dropped and counted, so memory stays bounded.
+ */
+export const MAX_BUFFERED_KEYS = 10_000;
+
 export class UsageTelemetry {
   private buffer = new Map<string, number>();
+  private dropped = 0;
   private timer: NodeJS.Timeout | null = null;
   constructor(private readonly db: Database, flushMs = 60_000) {
     ensure(db);
@@ -19,8 +26,12 @@ export class UsageTelemetry {
   }
 
   count(kind: 'api' | 'page', name: string, method = '', statusClass = ''): void {
-    const key = JSON.stringify([new Date().toISOString().slice(0, 10), kind, name.slice(0, 200), method, statusClass]);
-    this.buffer.set(key, (this.buffer.get(key) ?? 0) + 1);
+    this.add(JSON.stringify([new Date().toISOString().slice(0, 10), kind, name.slice(0, 200), method, statusClass]), 1);
+  }
+
+  private add(key: string, n: number): void {
+    if (!this.buffer.has(key) && this.buffer.size >= MAX_BUFFERED_KEYS) { this.dropped += n; return; }
+    this.buffer.set(key, (this.buffer.get(key) ?? 0) + n);
   }
 
   /** Express middleware: counts the matched route pattern once the response is finished. */
@@ -41,7 +52,19 @@ export class UsageTelemetry {
       const up = this.db.prepare(`INSERT INTO usage_counts (day, kind, name, method, status_class, count) VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(day, kind, name, method, status_class) DO UPDATE SET count = count + excluded.count`);
       this.db.transaction(() => { for (const [k, n] of rows) up.run(...(JSON.parse(k) as [string, string, string, string, string]), n); })();
-    } catch { /* telemetry must never break a request */ }
+    } catch {
+      // Telemetry must never break a request. The transaction rolled back as a whole, so re-queue the batch: it lands
+      // exactly once on the next successful flush (or is counted in `dropped` past the cap).
+      for (const [k, n] of rows) this.add(k, n);
+    }
+  }
+
+  /**
+   * Whether the persisted summary is the whole story: `dropped_count` counts lost to the buffer cap since process start,
+   * `incomplete` is true while any count is dropped or still buffered (not yet written). Read it after `summary()`.
+   */
+  coverage(): { dropped_count: number; incomplete: boolean } {
+    return { dropped_count: this.dropped, incomplete: this.dropped > 0 || this.buffer.size > 0 };
   }
 
   summary(days = 14): Array<{ kind: string; name: string; method: string; hits: number; errors: number; last_day: string }> {
