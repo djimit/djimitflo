@@ -148,10 +148,16 @@ describe('ledger controls', () => {
     expect(checkAdmission('opencode', '1.19.0', NOW).allowed).toBe(false);
   });
 
-  it('every executor the engine registers has an admission record (enforcement changes no current behaviour)', () => {
+  it('incumbent executors retain admission and the new fixed scanner requires its observed pinned version', () => {
     const db = new Database(':memory:'); db.exec(schema); runMigrations(db);
     const engine = new ExecutionEngine(db, { broadcastTaskEvent: vi.fn(), broadcastTaskEventById: vi.fn() } as any);
-    for (const kind of [...(engine as any).executors.keys()]) expect(checkAdmission(kind, null, NOW).allowed, kind).toBe(true);
+    for (const kind of [...(engine as any).executors.keys()]) {
+      if (kind === 'djimitsec') {
+        expect(checkAdmission(kind, null, NOW).allowed).toBe(false);
+        expect(checkAdmission(kind, '1.0.0', Date.parse('2026-10-28T14:00:00Z'))).toMatchObject({ allowed: true, version_bound: true });
+        expect(checkAdmission(kind, '1.0.1', NOW).allowed).toBe(false);
+      } else expect(checkAdmission(kind, null, NOW).allowed, kind).toBe(true);
+    }
     db.close();
   });
 });
