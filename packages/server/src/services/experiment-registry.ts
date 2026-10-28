@@ -7,6 +7,7 @@ import { checkerFamilyEvidence, CHECKER_FAMILY_TARGET_DEFAULT } from './checker-
 import { tg001Evidence, TG_TASKS } from './tg-001';
 import { d5NoEvidence, D5NO_ANALYSIS_N } from './d5-no';
 import { jevChallengerEvidence } from './jev-challenger';
+import { PL_MAX_DAYS, PL_PAIRS, PL_PROTOCOL, plFirstAttempt, plManifest, plManifestValidity, plState } from './pl-001';
 import { fisherExact, memoryHoldoutEvidence } from './evolution-evidence';
 
 /**
@@ -48,6 +49,9 @@ export interface ExperimentDef {
   status: (db: Database, env: NodeJS.ProcessEnv, now: number, since: string) => ExperimentStatus;
   /** an explicit operator close recorded in the protocol (dated amendment); its verdict is the experiment's verdict */
   closed?: ExperimentClose;
+  /** a stop rule relative to the experiment's own data (PL-001: day 14 after the first attempt). A value replaces started_at and
+   *  stop_by in the report; null (not started) keeps the registered dates */
+  schedule?: (db: Database) => { started_at: string; stop_by: string } | null;
 }
 export interface ExperimentClose { verdict: string; decided_on: string; source: string }
 
@@ -56,7 +60,16 @@ const AMENDED = 'stop condition added 2026-10-19; verdict rules unchanged';
  *  alone is not a closing verdict (the stopping rule extends once to 40); this explicit operator close is what makes it one. */
 export const TG_001_CLOSED: ExperimentClose = { verdict: 'INCONCLUSIVE', decided_on: '2026-10-26',
   source: 'docs/research/ace/TG-001_PROTOCOL.md#amendment-2026-10-26-closed-inconclusive-at-20-tasks' };
+/** EXP-3 (memory-holdout) read out once at its registered horizon (2026-10-27): falsifier met. Rules arm 66/88 = 0.75 vs
+ *  withheld 34/42 = 0.81; CMH by lane OR 0.60, two-sided p 0.40 (not a harm finding, not evidence of no effect). Action
+ *  taken: LOOP_MEMORY_RULES_ENABLED=false since 2026-10-27T05:52:42Z. A verdict the evidence function does not compute
+ *  (it is a single registered readout), so this close is what records it. */
+export const MEMORY_HOLDOUT_CLOSED: ExperimentClose = { verdict: 'FALSIFIED (rules not above withheld)', decided_on: '2026-10-27',
+  source: 'docs/research/intelligence-metrics/EXP-3_RESULT.md#decision-under-the-registered-rules' };
 const X1_STARTED = '2026-10-09T00:00:00.000Z';
+/** PL-001 runner amendment (2026-10-26): registered, not started; decide start or close by PL_DECIDE_START_BY (registered + 30 d) */
+const PL_REGISTERED_AT = '2026-10-26T00:00:00.000Z';
+const PL_DECIDE_START_BY = '2026-11-25T00:00:00.000Z';
 
 /** Literal dates (pinned against their source constants in experiment-registry.test.ts): X1 = start + 28 d, D5-NO = cutoff + 90 d.
  *  A function, not a constant: the imported targets are read at call time (stall-watch ↔ d5-no import cycle). */
@@ -105,6 +118,18 @@ export const experimentDefs = (): ExperimentDef[] => [
       const e = tg001Evidence(db, env);
       const arms = 'arms' in e && Array.isArray(e.arms) ? e.arms as Array<{ arm: string; n: number }> : [];
       return { n_per_arm: arms.length ? Object.fromEntries(arms.map((a) => [a.arm, a.n])) : null, verdict: TG_001_CLOSED.verdict }; } },
+  { id: 'PL-001', flag: 'PL_001_MODE', protocol: PL_PROTOCOL, started_at: PL_REGISTERED_AT,
+    target_n: PL_PAIRS, stop_by: PL_DECIDE_START_BY,
+    stop_note: `protocol stop rule: ${PL_PAIRS} completed pairs or day ${PL_MAX_DAYS} after the first attempt (stop_by = first attempt + ${PL_MAX_DAYS} d once one exists); before the first attempt the runner amendment registers a decide-start-or-close date; verdict rules unchanged`,
+    stop_source: 'docs/research/procedure-loop/PL-001_PROTOCOL.md#amendment-2026-10-26-runner', population: 'gym_tasks',
+    schedule: (db) => { const f = plFirstAttempt(db); return f ? { started_at: f, stop_by: new Date(Date.parse(f) + PL_MAX_DAYS * 86_400_000).toISOString() } : null; },
+    // n = completed pairs (both arms observed or censored), counted over the whole experiment; it cannot window
+    status: (db, _env, now, since) => {
+      const m = plManifest(db); const first = plFirstAttempt(db);
+      if (!m || !plManifestValidity(db, m).valid) return { n_per_arm: null, verdict: null };
+      const s = plState(db, m, now);
+      if (since !== (first ?? PL_REGISTERED_AT)) return { n_per_arm: null, verdict: s.verdict };
+      return { n_per_arm: { pairs: s.completed.length }, verdict: s.verdict }; } },
   { id: 'D5-NO', flag: 'TYPESAFE_PROPOSAL_PRESCREEN_MODE', protocol: 'docs/research/eco/D5NO_PROTOCOL.md', started_at: '2026-10-11T21:00:00.000Z',
     target_n: D5NO_ANALYSIS_N, stop_by: '2027-01-09T21:00:00.000Z', stop_note: 'cutoff + 90 days → INSUFFICIENT_EVIDENCE', stop_source: 'docs/research/eco/D5NO_PROTOCOL.md', population: 'prescreen_proposals',
     status: (db, _env, now, since) => { if (since !== '2026-10-11T21:00:00.000Z') return { n_per_arm: null, verdict: null }; // cannot window
@@ -125,8 +150,9 @@ export const experimentDefs = (): ExperimentDef[] => [
     target_n: 30, stop_by: '2026-10-27T00:00:00.000Z',
     stop_note: `${AMENDED}: target 30 outcomes per arm (operator default); start + 1.25 × 30 ÷ 2.01/day (holdout arm, 22 in 10.9 d)`,
     stop_source: 'docs/research/intelligence-metrics/EXPERIMENT_PROTOCOL.md#amendment-2026-10-19-stop-conditions', population: 'oracle_goals',
+    closed: MEMORY_HOLDOUT_CLOSED,
     status: (db, env, _now, since) => { const e = memoryHoldoutEvidence(db, since, env);
-      return { n_per_arm: { rules: e.rules.n, holdout: e.holdout.n }, verdict: null,
+      return { n_per_arm: { rules: e.rules.n, holdout: e.holdout.n }, verdict: MEMORY_HOLDOUT_CLOSED.verdict,
         effects: { memory_rules: { metric: 'verified / settled, rules vs held out (Fisher exact; no effect size computed)', estimate: null, ci: null, p: e.fisher_p } } }; } },
 ];
 
@@ -137,7 +163,7 @@ export interface ExperimentPower {
   accrual_window_days: number | null; accrual_per_day: Record<string, number> | null;
   projected_min_arm_n: number | null; projected_reaches_target: boolean | null;
 }
-export interface ExperimentRow extends Omit<ExperimentDef, 'status'> {
+export interface ExperimentRow extends Omit<ExperimentDef, 'status' | 'schedule'> {
   n_per_arm: Record<string, number> | null; min_arm_n: number | null; verdict: string | null; effects?: Record<string, ExperimentEffect>;
   /** past stop_by, or every arm at the target, and no verdict recorded */
   overdue: boolean; overdue_reason: string | null; power: ExperimentPower; error?: string;
@@ -166,7 +192,9 @@ export function wipCheck(defs: Array<Pick<ExperimentDef, 'id' | 'population' | '
 }
 
 export function experimentsReport(db: Database, env: NodeJS.ProcessEnv = process.env, now = Date.now(), defs: ExperimentDef[] = experimentDefs()) {
-  const experiments: ExperimentRow[] = defs.map(({ status, ...d }) => {
+  const experiments: ExperimentRow[] = defs.map(({ status, schedule, ...registered }) => {
+    let d = registered;
+    try { const at = schedule?.(db); if (at) d = { ...registered, ...at }; } catch { /* unreadable: the registered dates stand */ }
     let s: ExperimentStatus = { n_per_arm: null, verdict: null }; let error: string | undefined;
     try { s = status(db, env, now, d.started_at); } catch (e) { error = (e instanceof Error ? e.message : String(e)).slice(0, 200); }
     const recentSince = new Date(Math.max(Date.parse(d.started_at), now - ACCRUAL_WINDOW_DAYS * DAY)).toISOString();

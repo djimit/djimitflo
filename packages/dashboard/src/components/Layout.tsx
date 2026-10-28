@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ConnectionBanner } from './WebSocketProvider';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
@@ -69,8 +69,22 @@ export function Layout() {
   const location = useLocation();
   const { user, logout, hasPermission } = useAuthStore();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const openButton = useRef<HTMLButtonElement>(null);
+  const closeButton = useRef<HTMLButtonElement>(null);
 
   useEffect(() => setMobileNavOpen(false), [location.pathname]);
+  // UX-007: an open drawer takes focus; Escape closes it and returns focus to the menu button
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    closeButton.current?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setMobileNavOpen(false);
+      openButton.current?.focus();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [mobileNavOpen]);
   // S4: count page views locally (route path only, ids masked server-side) — which pages are used at all
   useEffect(() => {
     void api.request('/telemetry/pageview', { method: 'POST', body: JSON.stringify({ path: location.pathname }) }).catch(() => undefined);
@@ -109,8 +123,8 @@ export function Layout() {
           onClick={() => setMobileNavOpen(false)}
         />
       )}
-      {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col border-r border-border bg-background-secondary transition-transform md:static md:translate-x-0 ${mobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      {/* Sidebar — UX-007: closed below md it is visibility:hidden (out of tab order and the a11y tree), not only translated off-screen */}
+      <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col border-r border-border bg-background-secondary transition-[transform,visibility] md:visible md:static md:translate-x-0 ${mobileNavOpen ? 'visible translate-x-0' : 'invisible -translate-x-full'}`}>
         {/* Logo */}
         <div className="flex items-start justify-between border-b border-border p-6">
            <div className="flex min-w-0 w-full flex-col gap-2">
@@ -127,7 +141,7 @@ export function Layout() {
                <OrganizationSelector />
              </div>
            </div>
-          <button type="button" aria-label="Close navigation" className="p-1 text-foreground-secondary md:hidden" onClick={() => setMobileNavOpen(false)}>
+          <button ref={closeButton} type="button" aria-label="Close navigation" className="p-1 text-foreground-secondary md:hidden" onClick={() => { setMobileNavOpen(false); openButton.current?.focus(); }}>
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -188,7 +202,7 @@ export function Layout() {
       {/* Main content */}
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 shrink-0 items-center border-b border-border bg-background-secondary px-4 md:hidden">
-          <button type="button" aria-label="Open navigation" className="p-2 text-foreground" onClick={() => setMobileNavOpen(true)}>
+          <button ref={openButton} type="button" aria-label="Open navigation" aria-expanded={mobileNavOpen} className="p-2 text-foreground" onClick={() => setMobileNavOpen(true)}>
             <Menu className="h-5 w-5" />
           </button>
           <span className="ml-2 font-semibold text-foreground">Djimitflo</span>

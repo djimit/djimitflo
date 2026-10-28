@@ -32,6 +32,7 @@ import { GeminiExecutor } from './executors/gemini-executor';
 import { EditorExecutor } from './executors/editor-executor';
 import { PiExecutor } from './executors/pi-executor';
 import { DeepAgentExecutor } from './executors/deep-agent-executor';
+import { DjimitSecExecutor } from './executors/djimitsec-executor';
 import { DockerSandboxExecutor, DEFAULT_SANDBOX_CONFIG } from './executors/docker-sandbox-executor';
 import { CircuitBreakerService } from '../services/circuit-breaker-service';
 import { FallbackChainService, ExecutionMode } from '../services/fallback-chain-service';
@@ -164,6 +165,7 @@ export class ExecutionEngine {
     this.runtimeGovernance = runtimeGovernance;
     
     // Register default executors
+    this.registerExecutor(new DjimitSecExecutor(db));
     this.registerExecutor(new MockExecutor());
     this.registerExecutor(new OpenCodeExecutor());
     this.registerExecutor(new CodexExecutor());
@@ -279,6 +281,9 @@ export class ExecutionEngine {
       tags: JSON.parse(task.tags || '[]'),
       metadata: JSON.parse(task.metadata || '{}'),
     };
+    if (parsedTask.metadata.djimitsecScan !== undefined && executorKind !== 'djimitsec') {
+      throw createError(409, 'Repository scan tasks require the fixed DjimitSec executor', 'DJIMITSEC_EXECUTOR_REQUIRED');
+    }
 
     if (parsedTask.metadata.execution_recovery_hold === true) {
       throw createError(409, 'EXECUTION_RECOVERY_REQUIRED: External execution outcome must be reconciled before redispatch', 'EXECUTION_RECOVERY_REQUIRED');
@@ -319,6 +324,7 @@ export class ExecutionEngine {
     if (!executor) {
       throw new Error(`Executor not found: ${executorKind}`);
     }
+    if (executor instanceof DjimitSecExecutor) await executor.prepare(parsedTask);
 
     // Registered is not admitted: the runtime@version needs an admission record before any policy work is spent on it.
     const admission = this.admitRuntime(taskId, executorKind);
@@ -618,7 +624,7 @@ export class ExecutionEngine {
       throw new Error(`Executor ${executorKind} cannot execute this task`);
     }
     if (!this.circuitBreaker.canExecute(executorKind)) {
-      if (executorKind === 'deep-agent') throw new Error('Deep Agent circuit breaker is open; fallback is forbidden');
+      if (executorKind === 'deep-agent' || executorKind === 'djimitsec') throw new Error('Fixed runtime circuit breaker is open; fallback is forbidden');
       const fallback = this.fallbackChain.getNextAvailable(executorKind, mode, this.circuitBreaker);
       if (!fallback || attempt >= maxRetries) throw new Error(`No fallback available for ${executorKind}`);
       return this.startExecutionAttempt(task, fallback, mode, attempt + 1, maxRetries, workingDirectory, riskAssessmentText);
@@ -627,6 +633,7 @@ export class ExecutionEngine {
       throw new Error(`Fallback executor ${executorKind} was not admitted by policy`);
     }
     // every attempt, including fallbacks, passes runtime admission (a fallback chain is not a bypass)
+    if (executor instanceof DjimitSecExecutor) await executor.prepare(task);
     const admission = this.admitRuntime(task.id, executorKind);
     if (!admission.allowed) throw new Error(`RUNTIME_NOT_ADMITTED: ${executorKind}: ${admission.reasons[0]}`);
 
@@ -977,7 +984,18 @@ export class ExecutionEngine {
     }
     
     session.status = 'cancelled';
-    await session.cancel();
+    try { await session.cancel(); }
+    catch (error) {
+      if (session.executorKind === 'djimitsec') {
+        if (session.closed) await session.closed;
+        this.db.prepare(`UPDATE tasks SET status='paused', metadata=json_set(COALESCE(metadata,'{}'), '$.execution_recovery_hold', json('true'), '$.execution_recovery_outcome', 'djimitsec_cancellation_unconfirmed'), updated_at=? WHERE id=?`).run(new Date().toISOString(), taskId);
+        this.persistEvent({ task_id: taskId, event_type: ExecutionEventType.TASK_PAUSED, level: LogLevel.WARNING, message: 'Scanner cancellation unconfirmed; reconcile the existing remote identity', metadata: { automaticReplay: false, externalProcessTerminationConfirmed: false } });
+        this.activeSessions.delete(taskId);
+        runtimeConcurrencySemaphore.release(`execution:${taskId}`);
+        this.diffContexts.delete(taskId);
+      }
+      throw error;
+    }
     if (session.closed) await session.closed;
     if (this.activeSessions.get(taskId) !== session) return;
     this.activeSessions.delete(taskId);
