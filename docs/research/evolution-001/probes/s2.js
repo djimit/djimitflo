@@ -1,0 +1,14 @@
+const D=require("better-sqlite3");const d=new D("/data/djimitflo.sqlite",{readonly:true,fileMustExist:true});
+const out={};const q=(k,s,...a)=>{try{out[k]=d.prepare(s).all(...a)}catch(e){out[k]="ERR "+String(e).slice(0,200)}};
+q("trial_runs","select r.created_at, json_extract(r.metadata,'$.gym.genome') genome, json_extract(r.metadata,'$.gym.commit') c, json_extract(r.metadata,'$.gym.prod_gates') pg, json_extract(r.metadata,'$.gym_result.status') st, substr(json_extract(r.metadata,'$.gym_result.reason'),1,90) reason, (select epoch from gym_holdout h where h.commit_sha=json_extract(r.metadata,'$.gym.commit')) mined_epoch, (select epoch from gym_mutant_holdout m where m.key=json_extract(r.metadata,'$.gym.commit')) mut_epoch from loop_runs r where r.loop_name='evolution-gym' and json_extract(r.metadata,'$.gym.genome') is not null and r.created_at>='2026-10-16' order by r.created_at");
+q("judg_settle","select decision,mode,count(*) n,max(created_at) last from judgments where judgment='settlement_execution' group by 1,2");
+q("judg_kinds7","select judgment,mode,count(*) n from judgments where created_at>=datetime('now','-7 days') group by 1,2 order by n desc limit 40");
+q("settle_detail","select substr(answers_json,1,600) a from judgments where judgment='settlement_execution' order by created_at desc limit 3");
+q("evroom_replies","select count(*) n from judgments where judgment like '%evidence_room%'");
+q("fbpa","select decision,count(*) n from judgments where judgment like '%fail_before%' group by 1");
+q("memory_rules_in_ctx30","select count(distinct candidate_id) n from memory_access_log where accessed_at>=datetime('now','-30 days')");
+q("cards_by_status","select status,count(*) from skill_cards group by 1");
+q("ola_sup","select candidate_id,capability_id,metric,mean_value,baseline_value,confidence_low,confidence_high,replications,signal_status,status from outcome_learning_assessments where signal_status='SUPPORTED' limit 12");
+q("committee_g","select * from committee_genomes limit 3");
+q("species30","select coalesce(json_extract(metadata,'$.effective_runtime'),runtime) rt, coalesce(json_extract(metadata,'$.effective_model'),model,'') m, status, count(*) n from worker_leases where role='maker' and created_at>=datetime('now','-30 days') and runtime!='manual' group by 1,2,3 order by n desc limit 30");
+console.log(JSON.stringify(out));
