@@ -8,6 +8,10 @@
  *
  * A confirmed delivery means HTTP acceptance, not independent WORM retention or
  * remote Merkle verification. Construction does not restart pending deliveries.
+ *
+ * A send that times out may have been applied by the receiver (response lost): its status is 'unknown'.
+ * Unknown deliveries are never re-sent automatically or by retryDeadLetters; an operator checks the receiver
+ * and calls reconcileUnknown ('received' → confirmed, 'not_received' → dead_letter, replayable).
  */
 
 import { createHash, randomUUID } from 'crypto';
@@ -22,7 +26,7 @@ export interface AuditAnchor {
   anchored_at: string;
   anchor_type: 'local' | 'webhook' | 'siem';
   destination?: string;
-  status: 'pending' | 'confirmed' | 'failed' | 'dead_letter';
+  status: 'pending' | 'confirmed' | 'failed' | 'dead_letter' | 'unknown';
   retry_count: number;
   next_retry_at?: string;
   last_error?: string;
@@ -60,6 +64,8 @@ export interface AuditEvent {
   hash: string;
   previous_hash: string;
 }
+
+const isTimeout = (e: unknown): boolean => ['TimeoutError', 'AbortError'].includes((e as { name?: string })?.name ?? '');
 
 export class AuditAnchoringService {
   private retryConfig: RetryConfig;
@@ -150,7 +156,12 @@ export class AuditAnchoringService {
       anchor.last_error = error instanceof Error ? error.message : String(error);
       anchor.retry_count++;
 
-      if (anchor.retry_count > this.retryConfig.max_retries) {
+      if (isTimeout(error)) {
+        // the request was sent and may have been applied: replaying it could duplicate the anchor downstream
+        anchor.status = 'unknown';
+        anchor.last_error = `outcome unknown: ${anchor.last_error} (reconcile against the receiver before any replay)`;
+        delete anchor.next_retry_at;
+      } else if (anchor.retry_count > this.retryConfig.max_retries) {
         anchor.status = 'dead_letter';
         delete anchor.next_retry_at;
       } else {
@@ -210,6 +221,29 @@ export class AuditAnchoringService {
     return this.getAnchors().filter(anchor => anchor.status === 'dead_letter');
   }
 
+  /** Deliveries whose outcome is unknown (sent, response lost); they wait for reconcileUnknown. */
+  getUnknownDeliveries(): AuditAnchor[] {
+    return this.getAnchors().filter(anchor => anchor.status === 'unknown');
+  }
+
+  /**
+   * Record the operator's check of the receiver for an unknown delivery. 'received' confirms it; 'not_received'
+   * makes it a dead letter, which retryDeadLetters may then send again. Nothing is sent here.
+   */
+  reconcileUnknown(anchorId: string, outcome: 'received' | 'not_received'): AuditAnchor {
+    const anchor = this.getUnknownDeliveries().find(a => a.anchor_id === anchorId);
+    if (!anchor) throw new Error(`${anchorId} is not an unknown delivery`);
+    if (outcome === 'received') {
+      anchor.status = 'confirmed';
+      delete anchor.last_error;
+    } else {
+      anchor.status = 'dead_letter';
+      anchor.last_error = `reconciled: not received by the receiver (${anchor.last_error ?? 'unknown'})`;
+    }
+    this.persistAnchor(anchor);
+    return { ...anchor };
+  }
+
   /**
    * Clear pending retry timers (for graceful shutdown).
    */
@@ -242,6 +276,7 @@ export class AuditAnchoringService {
         timestamp: anchor.anchored_at,
         source: 'djimitflo',
       }),
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!response.ok) {
@@ -306,6 +341,7 @@ export class AuditAnchoringService {
         ...(this.siemConfig.api_key ? { Authorization: `Bearer ${this.siemConfig.api_key}` } : {}),
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!response.ok) {

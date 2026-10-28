@@ -1,13 +1,15 @@
 import { EventEmitter } from 'events';
 
 /**
- * G14: SwarmEventBus — a bounded event bus for live observability.
+ * G14: SwarmEventBus — in-process fan-out for live observability.
  * LoopService + SwarmIntelligenceService emit events here; the SSE route
  * subscribes and streams them to the operator in real-time.
  *
- * Bounded buffer: if the client can't keep up, events are dropped (not queued
- * infinitely). A dropped_events counter is reported so the operator knows data
- * was lost.
+ * The bus itself is a synchronous EventEmitter and never buffers. Bounding happens
+ * at the SSE transport (utils/sse.ts, OBS-001): a client that can't keep up has
+ * events dropped, not queued, and each drop is recorded here via recordDropped, so
+ * getDroppedEvents is the process-wide count of events lost to slow clients.
+ * Nothing here is durable: replay comes from persisted records, not this bus.
  */
 
 export type SwarmEventType =
@@ -100,6 +102,10 @@ class SwarmEventBus extends EventEmitter {
   subscribe(callback: (event: SwarmEvent) => void): () => void {
     super.on('event', callback);
     return () => super.off('event', callback);
+  }
+
+  recordDropped(count = 1): void {
+    this.droppedEvents += count;
   }
 
   getDroppedEvents(): number {

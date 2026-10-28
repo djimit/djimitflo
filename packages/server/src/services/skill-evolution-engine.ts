@@ -21,6 +21,8 @@
  * generality/complexity/adaptability have no measurement and stay null. Retirement is for the W8 operator review (14-10).
  * recordOutcome() and the skill_outcomes table are live (bandit, gym, attribution) and unchanged.
  * tokens_used is nullable: null = the runtime reported no usage (unknown, never 0); efficiency averages known rows only.
+ * A stored 0 is read as unknown too (L-F05, forensic audit 2026-10-26): legacy rows and producers that coalesce a missing
+ * report to 0 would otherwise score maximal efficiency. efficiency_coverage reports known/total rows.
  */
 
 import { createHash, randomUUID } from 'crypto';
@@ -40,6 +42,8 @@ interface SkillGenome {
     generality: number | null;    // no measurement → null
     complexity: number | null;    // no measurement → null
     adaptability: number | null;  // no measurement → null
+    /** rows with known (> 0) tokens behind efficiency, of all measured outcomes */
+    efficiency_coverage?: { known: number; total: number };
   };
   /** = traits.reliability; null = INSUFFICIENT_EVIDENCE */
   fitness: number | null;
@@ -209,12 +213,13 @@ export class SkillEvolutionEngine {
   /** Phenotype measured from this skill's recorded outcomes only. */
   measuredTraits(skillId: string): SkillGenome['traits'] {
     // E2: an infra / no-change / completed-unverified zero is no observation of the skill (left out, never a 0).
-    // Unknown tokens: MAX(1, NULL) is NULL in SQLite, so the row drops out of the efficiency AVG instead of scoring 1.
+    // Unknown tokens (NULL, or a 0 that stands for a missing report) drop out of the efficiency AVG instead of scoring 1.
     const r = this.db.prepare(`SELECT COUNT(*) AS n, AVG(success) AS rel,
-        AVG(MIN(1.0, 1000.0 / MAX(1, tokens_used))) AS eff FROM skill_outcomes WHERE skill_id = ?
-        AND NOT (success = 0 AND ${UNFAIR_ZERO_SQL}) AND NOT (success = 0 AND evidence_refs_json LIKE '%"${COMPLETED_UNVERIFIED_REF}"%')${skillId.includes('loop-maker:merge:') ? ` AND NOT ${supersededMergeOutcomeSql('skill_outcomes')}` : ''}`).get(skillId) as { n: number; rel: number | null; eff: number | null };
+        AVG(CASE WHEN tokens_used > 0 THEN MIN(1.0, 1000.0 / tokens_used) END) AS eff, COALESCE(SUM(tokens_used > 0), 0) AS eff_n FROM skill_outcomes WHERE skill_id = ?
+        AND NOT (success = 0 AND ${UNFAIR_ZERO_SQL}) AND NOT (success = 0 AND evidence_refs_json LIKE '%"${COMPLETED_UNVERIFIED_REF}"%')${skillId.includes('loop-maker:merge:') ? ` AND NOT ${supersededMergeOutcomeSql('skill_outcomes')}` : ''}`).get(skillId) as { n: number; rel: number | null; eff: number | null; eff_n: number };
     const has = r.n > 0;
-    return { efficiency: has ? r.eff : null, reliability: has ? r.rel : null, generality: null, complexity: null, adaptability: null };
+    return { efficiency: has ? r.eff : null, reliability: has ? r.rel : null, generality: null, complexity: null, adaptability: null,
+      efficiency_coverage: { known: r.eff_n, total: r.n } };
   }
 
   private persist(genome: SkillGenome): void {

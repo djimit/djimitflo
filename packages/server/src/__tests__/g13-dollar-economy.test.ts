@@ -87,21 +87,22 @@ describe('G13: Dollar economy', () => {
     db.prepare(`
       INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, finding_id, worktree_path, metadata)
       VALUES (?, ?, 'maker', 'codex', 'completed', 'f1', '/tmp/wt', ?)
-    `).run('lease-m1', run.id, JSON.stringify({ runtime_usage: { total_tokens: 500_000 } }));
+    `).run('lease-m1', run.id, JSON.stringify({ runtime_usage: { total_tokens: 500_000 }, token_accounting: { version: 1, estimated_cost_usd: 0.9, cost_completeness: 'complete', price_version: 'v1' } }));
 
     db.prepare(`
       INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, finding_id, worktree_path, metadata)
       VALUES (?, ?, 'checker', 'codex', 'completed', 'f1', '/tmp/wt', ?)
-    `).run('lease-c1', run.id, JSON.stringify({ runtime_usage: { total_tokens: 100_000 } }));
+    `).run('lease-c1', run.id, JSON.stringify({ runtime_usage: { total_tokens: 100_000 }, token_accounting: { version: 1, estimated_cost_usd: 0.3, cost_completeness: 'complete', price_version: 'v1' } }));
 
     // the run passed certification (every recorded gate passed): its completed maker is a verified artifact
     db.prepare("UPDATE loop_runs SET status = 'ready_for_human_merge', gates_json = ? WHERE id = ?")
       .run(JSON.stringify([{ name: 'maker_completion', status: 'pass', evidence: '' }, { name: 'checker_verdict', status: 'pass', evidence: '' }]), run.id);
 
     const metric = loops.computeEfficiencyMetric(run.id);
-    // 1 verified artifact, $1.2 spent (600K tokens × $2/Mtok)
+    // 1 verified artifact, $1.2 spent from the leases' dated model prices (CODE-007); the 600K × $2/Mtok tariff stays an estimate
     expect(metric.verifiedArtifacts).toBe(1);
     expect(metric.dollarsSpent).toBeCloseTo(1.2, 2);
+    expect(metric.runtimeTariffEstimate.usd).toBeCloseTo(1.2, 2);
     expect(metric.efficiency).toBeCloseTo(1 / 1.2, 2);
     expect(metric.completedUnverified).toBe(0);
     expect(metric.usageCoverage).toEqual({ reported: 2, total: 2, ratio: 1 });
@@ -116,7 +117,10 @@ describe('G13: Dollar economy', () => {
     const metric = loops.computeEfficiencyMetric(run.id);
     expect(metric.verifiedArtifacts).toBe(0);
     expect(metric.completedUnverified).toBe(1);
-    expect(metric.dollarsSpent).toBeCloseTo(1.0, 2); // tariff unchanged: 500K × $2/Mtok
-    expect(metric.efficiency).toBe(0);
+    // CODE-007: runtime usage without a dated model price is no dollar figure; the tariff stays as an estimate (500K × $2/Mtok)
+    expect(metric.dollarsSpent).toBeNull();
+    expect(metric.runtimeTariffEstimate.usd).toBeCloseTo(1.0, 2);
+    expect(metric.efficiency).toBeNull();
+    expect(metric.efficiencyReason).toBe('no_dated_model_price');
   });
 });
