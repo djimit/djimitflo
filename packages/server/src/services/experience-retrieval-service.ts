@@ -164,15 +164,13 @@ export class ExperienceRetrievalService {
     const embedding = await this.embedText(objective);
     if (!embedding) return [];
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 2000);
+      // STATE-03: AbortSignal.timeout bounds the body read too (a timer cleared after headers did not).
       const response = await fetch(this.qdrantUrl + '/collections/' + this.collectionName + '/points/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ vector: embedding, limit, with_payload: true }),
-        signal: controller.signal,
+        signal: AbortSignal.timeout(2000),
       });
-      clearTimeout(timeout);
       if (!response.ok) return [];
       const data = await response.json() as { result?: Array<{ id: string; score: number }> };
       if (!data.result) return [];
@@ -195,15 +193,13 @@ export class ExperienceRetrievalService {
   private async embedText(text: string): Promise<number[] | null> {
     try {
       const ollamaUrl = process.env.OLLAMA_URL || 'http://192.168.1.28:11434';
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 2000);
+      // STATE-03: AbortSignal.timeout bounds the body read too (a timer cleared after headers did not).
       const response = await fetch(ollamaUrl + '/api/embeddings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: 'nomic-embed-text', prompt: text }),
-        signal: controller.signal,
+        signal: AbortSignal.timeout(2000),
       });
-      clearTimeout(timeout);
       if (!response.ok) return null;
       const data = await response.json() as { embedding?: number[] };
       return data.embedding || null;
