@@ -15,16 +15,27 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { markRun, noteScheduler } from './scheduler-registry';
+
+/**
+ * OBS-003: each table's outcome is explicit. 'missing' (no such table yet) is a known no-op; 'error' (lock, I/O,
+ * schema) has deleted: null — never a zero that reads as "nothing to purge".
+ */
+type PurgeStatus = 'ok' | 'missing' | 'error';
 
 interface PurgeResult {
   table: string;
-  deleted: number;
+  status: PurgeStatus;
+  deleted: number | null;
   cutoff: string;
+  error?: string;
 }
 
 interface RetentionStats {
   retentionDays: number;
   lastRun: string | null;
+  /** 'error' when any table failed; null when disabled. */
+  status: 'ok' | 'error' | null;
   totalPurged: number;
   results: PurgeResult[];
 }
@@ -37,6 +48,8 @@ export class RetentionService {
   private intervalMs: number;
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastRun: string | null = null;
+  private lastStatus: 'ok' | 'error' | null = null;
+  private lastErrors: Array<{ table: string; error: string }> = [];
   private totalPurged = 0;
 
   constructor(private db: Database) {
@@ -50,15 +63,19 @@ export class RetentionService {
    * then schedules recurring purges.
    */
   start(): void {
-    if (!this.enabled) return;
+    if (!noteScheduler('retention', 'RETENTION_ENABLED', this.enabled, this.intervalMs)) return;
 
-    if (process.env.RETENTION_RUN_ON_STARTUP !== 'false') {
-      this.purge().catch(() => { /* best effort */ });
-    }
-
-    this.timer = setInterval(() => {
-      this.purge().catch(() => { /* best effort */ });
-    }, this.intervalMs);
+    // a failed table or a thrown purge reaches the scheduler registry as last_error (status 'failing'), not silence
+    const tick = (): void => {
+      this.purge().then(
+        (r) => markRun('retention', r.status === 'error'
+          ? new Error(`purge failed: ${this.lastErrors.map((e) => `${e.table}: ${e.error}`).join('; ')}`)
+          : undefined),
+        (e) => markRun('retention', e),
+      );
+    };
+    if (process.env.RETENTION_RUN_ON_STARTUP !== 'false') tick();
+    this.timer = setInterval(tick, this.intervalMs);
   }
 
   /**
@@ -76,76 +93,34 @@ export class RetentionService {
    */
   async purge(): Promise<RetentionStats> {
     if (!this.enabled) {
-      return { retentionDays: this.retentionDays, lastRun: this.lastRun, totalPurged: this.totalPurged, results: [] };
+      return { retentionDays: this.retentionDays, lastRun: this.lastRun, status: null, totalPurged: this.totalPurged, results: [] };
     }
 
     const cutoff = new Date(Date.now() - this.retentionDays * 86400_000).toISOString();
-    const results: PurgeResult[] = [];
-
-    // Experience embeddings
-    results.push({
-      table: 'experience_embeddings',
-      deleted: this.deleteOlderThan('experience_embeddings', 'created_at', cutoff),
-      cutoff,
-    });
-
-    // Trajectory steps
-    results.push({
-      table: 'trajectory_steps',
-      deleted: this.deleteOlderThan('trajectory_steps', 'created_at', cutoff),
-      cutoff,
-    });
-
-    // Vector memories (only those without explicit TTL)
-    results.push({
-      table: 'vector_memories',
-      deleted: this.deleteOlderThan('vector_memories', 'created_at', cutoff, 'ttl IS NULL'),
-      cutoff,
-    });
-
-    // Cognitive episodes
-    results.push({
-      table: 'cognitive_episodes',
-      deleted: this.deleteOlderThan('cognitive_episodes', 'recorded_at', cutoff),
-      cutoff,
-    });
-
-    // Cognitive patterns
-    results.push({
-      table: 'cognitive_patterns',
-      deleted: this.deleteOlderThan('cognitive_patterns', 'last_seen_at', cutoff),
-      cutoff,
-    });
-
-    // LLM provider metrics (keep shorter — 30 days)
+    // LLM provider metrics, routing decisions and execution outcomes are kept shorter — 30 days
     const metricsCutoff = new Date(Date.now() - 30 * 86400_000).toISOString();
-    results.push({
-      table: 'llm_provider_metrics',
-      deleted: this.deleteOlderThan('llm_provider_metrics', 'created_at', metricsCutoff),
-      cutoff: metricsCutoff,
-    });
 
-    // Model routing decisions (keep shorter — 30 days)
-    results.push({
-      table: 'model_routing_decisions',
-      deleted: this.deleteOlderThan('model_routing_decisions', 'created_at', metricsCutoff),
-      cutoff: metricsCutoff,
-    });
+    const results: PurgeResult[] = [
+      this.deleteOlderThan('experience_embeddings', 'created_at', cutoff),
+      this.deleteOlderThan('trajectory_steps', 'created_at', cutoff),
+      // Vector memories (only those without explicit TTL)
+      this.deleteOlderThan('vector_memories', 'created_at', cutoff, 'ttl IS NULL'),
+      this.deleteOlderThan('cognitive_episodes', 'recorded_at', cutoff),
+      this.deleteOlderThan('cognitive_patterns', 'last_seen_at', cutoff),
+      this.deleteOlderThan('llm_provider_metrics', 'created_at', metricsCutoff),
+      this.deleteOlderThan('model_routing_decisions', 'created_at', metricsCutoff),
+      this.deleteOlderThan('model_execution_outcomes', 'created_at', metricsCutoff),
+    ];
 
-    // Model execution outcomes (keep shorter — 30 days)
-    results.push({
-      table: 'model_execution_outcomes',
-      deleted: this.deleteOlderThan('model_execution_outcomes', 'created_at', metricsCutoff),
-      cutoff: metricsCutoff,
-    });
-
-    const totalDeleted = results.reduce((sum, r) => sum + r.deleted, 0);
-    this.totalPurged += totalDeleted;
+    this.totalPurged += results.reduce((sum, r) => sum + (r.deleted ?? 0), 0);
     this.lastRun = new Date().toISOString();
+    this.lastErrors = results.filter((r) => r.status === 'error').map((r) => ({ table: r.table, error: r.error ?? 'unknown' }));
+    this.lastStatus = this.lastErrors.length ? 'error' : 'ok';
 
     return {
       retentionDays: this.retentionDays,
       lastRun: this.lastRun,
+      status: this.lastStatus,
       totalPurged: this.totalPurged,
       results,
     };
@@ -159,6 +134,8 @@ export class RetentionService {
     retentionDays: number;
     intervalHours: number;
     lastRun: string | null;
+    lastStatus: 'ok' | 'error' | null;
+    lastErrors: Array<{ table: string; error: string }>;
     totalPurged: number;
     nextRun: string | null;
   } {
@@ -167,6 +144,8 @@ export class RetentionService {
       retentionDays: this.retentionDays,
       intervalHours: this.intervalMs / 3600_000,
       lastRun: this.lastRun,
+      lastStatus: this.lastStatus,
+      lastErrors: this.lastErrors,
       totalPurged: this.totalPurged,
       nextRun: this.lastRun
         ? new Date(new Date(this.lastRun).getTime() + this.intervalMs).toISOString()
@@ -176,16 +155,18 @@ export class RetentionService {
 
   // ─── Private ──────────────────────────────────────────────────────────
 
-  private deleteOlderThan(table: string, column: string, cutoff: string, extraWhere?: string): number {
+  private deleteOlderThan(table: string, column: string, cutoff: string, extraWhere?: string): PurgeResult {
     try {
       const where = extraWhere
         ? `WHERE ${column} < ? AND ${extraWhere}`
         : `WHERE ${column} < ?`;
       const result = this.db.prepare(`DELETE FROM ${table} ${where}`).run(cutoff);
-      return result.changes;
-    } catch {
-      // Table may not exist yet
-      return 0;
+      return { table, status: 'ok', deleted: result.changes, cutoff };
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      // only "no such table" is the known no-op (its owning service has not created it yet)
+      if (/^no such table/i.test(error)) return { table, status: 'missing', deleted: 0, cutoff };
+      return { table, status: 'error', deleted: null, cutoff, error: error.slice(0, 200) };
     }
   }
 }

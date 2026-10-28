@@ -376,12 +376,13 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     res.json(usageWindow(db, Date.now(), boundedDays(req.query.days)));
   }));
 
+  // CODE-007: a capability cost model is a runtime tariff × tokens (or a declared figure), never a dated model price, so its
+  // dollars are null with the reason; the figure stays as a labelled estimate (the allocation baseline).
+  const estimate = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null);
   const computeCapabilityEconomy = () => intelligence.listCapabilities(500)
     .filter((capability) => capability.status === 'validated' || capability.status === 'candidate')
     .map((capability) => {
       const competence = intelligence.measureCompetence(capability.id);
-      const p50Dollars = Number(capability.cost_model.p50_dollars) || 0;
-      const p95Dollars = Number(capability.cost_model.p95_dollars) || 0;
       return {
         capability_id: capability.id,
         capability_kind: capability.kind,
@@ -391,11 +392,13 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
         success_rate: competence.success_rate,
         p50_tokens: competence.p50_cost,
         p95_tokens: competence.p95_cost,
-        p50_dollars: p50Dollars,
-        p95_dollars: p95Dollars,
-        verified_artifacts_per_dollar: competence.n_completed > 0 && p50Dollars > 0
-          ? competence.n_completed / p50Dollars
-          : null,
+        p50_dollars: null,
+        p95_dollars: null,
+        verified_artifacts_per_dollar: null,
+        dollars_reason: 'no_dated_model_price' as const,
+        p50_dollars_estimate: estimate(capability.cost_model.p50_dollars),
+        p95_dollars_estimate: estimate(capability.cost_model.p95_dollars),
+        estimate_basis: 'runtime_tariff_or_declared' as const,
       };
     });
 
@@ -412,11 +415,17 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
         verified_artifacts: metric.verifiedArtifacts,
         completed_unverified: metric.completedUnverified,
         run_verified: metric.runVerified,
+        // CODE-007: dollars only from a dated model price (lease token_accounting + price_version), else null + reason
         dollars_spent: metric.dollarsSpent,
         dollars_lower_bound: metric.dollarsLowerBound,
+        dollars_reason: metric.dollarsReason,
         usage_coverage: metric.usageCoverage,
+        price_coverage: metric.priceCoverage,
+        price_basis: metric.priceBasis,
         efficiency: metric.efficiency,
         efficiency_reason: metric.efficiencyReason,
+        // the old runtime-tariff figure, kept as a labelled estimate for comparison; never dollars_spent
+        runtime_tariff_estimate: metric.runtimeTariffEstimate,
       };
     });
     const knownDollars = recentRuns.filter((run) => run.dollars_spent !== null);
@@ -445,13 +454,14 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     if (!Number.isFinite(budget) || budget < 0) {
       throw createError(400, 'budget query param must be a non-negative number', 'ECONOMY_ALLOCATE_BUDGET_INVALID');
     }
-    const capabilities = computeCapabilityEconomy().filter((capability) => capability.p50_dollars > 0);
+    // allocation plans on the labelled estimate (no dated capability price exists); the response says so
+    const capabilities = computeCapabilityEconomy().filter((capability) => (capability.p50_dollars_estimate ?? 0) > 0);
     const loops = new LoopService(db);
     const result = loops.allocateDollarBudget(
       capabilities.map((capability) => ({
         finding_id: capability.capability_id,
         capability_id: capability.capability_id,
-        p50_dollars: capability.p50_dollars,
+        p50_dollars: capability.p50_dollars_estimate as number,
         competence: capability.success_rate,
       })),
       budget
@@ -459,6 +469,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     const byId = new Map(capabilities.map((capability) => [capability.capability_id, capability]));
     res.json({
       budget,
+      cost_basis: 'estimate' as const,
       budget_insufficient: result.budgetInsufficient,
       allocated: result.allocated.map((id) => byId.get(id)),
       deferred: result.deferred.map((id) => byId.get(id)),
