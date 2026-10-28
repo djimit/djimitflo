@@ -45,7 +45,7 @@ describe('loop worker trace span', () => {
   /** Stub the runtime step under the shared maker path (span ownership stays in the real executeMaker). */
   const stubRunMaker = () => vi.spyOn(loops.workerExecutor as any, 'runMaker');
   const workerSpans = (leaseId: string) => (db.prepare("SELECT * FROM agent_trace_spans WHERE span_type = 'worker' AND json_extract(metadata, '$.worker_lease_id') = ?")
-    .all(leaseId) as Array<{ status: string; started_at: string; ended_at: string | null; parent_span_id: string | null }>);
+    .all(leaseId) as Array<{ status: string; started_at: string; ended_at: string | null; parent_span_id: string | null; metadata: string }>);
 
   it('success yields one closed worker span with a run->worker edge', async () => {
     const { runId, maker } = prepareMaker();
@@ -140,6 +140,32 @@ describe('loop worker trace span', () => {
     expect(spans[0]).toMatchObject({ status: 'ok', started_at: dispatched.toISOString(), ended_at: settled.toISOString() });
     const trace = traceOf(runId, maker.id);
     expect(trace.edges).toEqual([{ from: trace.roots[0].id, to: trace.spans.find((s) => s.span_type === 'worker')!.id }]);
+  });
+
+  it('approval -> stop run settles the open span: one worker span, error / cancelled, with an end time', async () => {
+    const { runId, maker } = prepareMaker();
+    stubRunMaker().mockImplementationOnce(async () => { throw new Error('LOOP_WORKER_APPROVAL_REQUIRED'); });
+    await expect(loops.executeWorker(runId, { lease_id: maker.id })).rejects.toThrow('LOOP_WORKER_APPROVAL_REQUIRED');
+    await loops.stopLoopRun(runId); // cancels the still-prepared lease outside executeMaker
+
+    expect(loops.listWorkerLeases(runId).find((l) => l.id === maker.id)!.status).toBe('cancelled');
+    const spans = workerSpans(maker.id);
+    expect(spans).toHaveLength(1);
+    expect(spans[0]).toMatchObject({ status: 'error', ended_at: expect.any(String) });
+    expect(JSON.parse(spans[0].metadata)).toMatchObject({ terminal_status: 'cancelled', lease_status: 'cancelled' });
+    expect(traceOf(runId, maker.id).spans.filter((s) => !s.ended_at)).toEqual([]); // the run span too
+  });
+
+  it('a raw SQL settle of a prepared lease (stale / superseded / hygiene sweeps) closes its open span', async () => {
+    const { runId, maker } = prepareMaker();
+    stubRunMaker().mockImplementationOnce(async () => { throw new Error('LOOP_WORKER_EXECUTION_IN_PROGRESS'); });
+    await expect(loops.executeWorker(runId, { lease_id: maker.id })).rejects.toThrow('LOOP_WORKER_EXECUTION_IN_PROGRESS');
+    const settledAt = '2026-10-29T08:00:00.000Z';
+    db.prepare("UPDATE worker_leases SET status = 'cancelled', updated_at = ? WHERE id = ? AND status = 'prepared'").run(settledAt, maker.id);
+
+    const [span] = workerSpans(maker.id);
+    expect(span).toMatchObject({ status: 'error', ended_at: settledAt });
+    expect(traceOf(runId, maker.id).spans.filter((s) => !s.ended_at)).toEqual([]);
   });
 
   it('executeMaker called directly (execute-maker route) records the same closed span', async () => {
