@@ -89,15 +89,14 @@ class BusDedupeTest(unittest.TestCase):
         self.assertEqual(len(self.redis.streams['djimit.events']), 1)
 
     def test_dedupe_window_is_per_stream_and_has_a_ttl(self):
-        a = self.bus.publish('djimit.events', EVENT)
-        b = self.bus.publish('other.stream', EVENT)
-        self.assertNotEqual(a, b)
+        self.bus.publish('djimit.events', EVENT)
+        self.bus.publish('other.stream', EVENT)
+        self.assertEqual((len(self.redis.streams['djimit.events']), len(self.redis.streams['other.stream'])), (1, 1))
         self.assertEqual(set(self.redis.ttls.values()), {7 * 24 * 3600})
 
     def test_stream_and_key_pairs_that_concatenate_alike_do_not_collide(self):
-        a = self.bus.publish('a:b', {**EVENT, 'dedupe_key': 'c'})
-        b = self.bus.publish('a', {**EVENT, 'dedupe_key': 'b:c'})
-        self.assertNotEqual(a, b)
+        self.bus.publish('a:b', {**EVENT, 'dedupe_key': 'c'})
+        self.bus.publish('a', {**EVENT, 'dedupe_key': 'b:c'})
         self.assertEqual((len(self.redis.streams['a:b']), len(self.redis.streams['a'])), (1, 1))
 
     def test_dict_and_list_fields_are_still_flattened_to_json(self):  # DJI-724
@@ -166,9 +165,8 @@ class RealRedisDedupeTest(unittest.TestCase):
 
     def test_stream_and_key_pairs_that_concatenate_alike_both_get_an_entry(self):
         left, right = f'{self.stream}:b', self.stream
-        a = self.bus.publish(left, {**EVENT, 'dedupe_key': 'c'})
-        b = self.bus.publish(right, {**EVENT, 'dedupe_key': 'b:c'})
-        self.assertNotEqual(a, b)
+        self.bus.publish(left, {**EVENT, 'dedupe_key': 'c'})  # entry ids are stream-local and may coincide: check lengths
+        self.bus.publish(right, {**EVENT, 'dedupe_key': 'b:c'})
         self.assertEqual((self.r.xlen(left), self.r.xlen(right)), (1, 1))
 
     def test_without_dedupe_key_appends_every_time(self):

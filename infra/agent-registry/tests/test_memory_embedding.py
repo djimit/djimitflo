@@ -66,16 +66,23 @@ def tags(digest):
                        {'name': f'{memory.EMBED_MODEL}:latest', 'model': f'{memory.EMBED_MODEL}:latest', 'digest': digest}]}
 
 
-def ollama(embedding=None, tags_body=None, embed_down=False, tags_down=False):
-    """Fake Ollama: POST /api/embeddings and GET /api/tags. Any other GET (the knowledge MCP proxy) is unreachable."""
+def ollama(embedding=None, tags_body=None, embed_down=False, tags_down=False, log=None):
+    """Fake Ollama: POST /api/embeddings and GET /api/tags. Any other GET (the knowledge MCP proxy) is unreachable.
+    tags_body may be a list: one body per /api/tags call, in order (the last one repeats). `log` records the call order."""
+    bodies = list(tags_body) if isinstance(tags_body, list) else [tags_body if tags_body is not None else tags('sha-a')]
+
     def post(url, *a, **k):
+        if log is not None:
+            log.append('embed')
         if embed_down:
             raise httpx.ConnectError('connection refused')
         return FakeResponse({'embedding': embedding})
 
     def get(url, *a, **k):
         if url.endswith('/api/tags') and not tags_down:
-            return FakeResponse(tags_body if tags_body is not None else tags('sha-a'))
+            if log is not None:
+                log.append('tags')
+            return FakeResponse(bodies.pop(0) if len(bodies) > 1 else bodies[0])
         raise httpx.ConnectError('connection refused')
 
     patches = (mock.patch.object(httpx, 'post', post), mock.patch.object(httpx, 'get', get))
@@ -142,7 +149,6 @@ class MemoryEmbeddingTest(unittest.TestCase):
         main.write_memory, main.search_memories = memory.write_memory, memory.search_memories
         main.context_queue.clear()
         self.qdrant = FakeQdrant()
-        getattr(memory, '_digest_cache', {}).clear()  # the resolved model digest is cached per process
         self._get_client = memory.get_client
         memory.get_client = lambda: self.qdrant
 
@@ -209,7 +215,6 @@ class MemoryEmbeddingTest(unittest.TestCase):
     def test_same_model_name_with_another_digest_does_not_match(self):
         with ollama(embedding=GOOD, tags_body=tags('sha-a')):
             self.assertEqual(call('POST', '/memory/write', {'text': 't'})[0], 200)
-        getattr(memory, '_digest_cache', {}).clear()  # a new process after `ollama pull` moved the tag to another build
         with ollama(embedding=GOOD, tags_body=tags('sha-b')):
             status, body = call('POST', '/memory/search', {'query': 'q'})
         self.assertEqual((status, body['count']), (200, 0))
@@ -229,12 +234,21 @@ class MemoryEmbeddingTest(unittest.TestCase):
                 self.assert_unavailable(*call('POST', '/memory/search', {'query': 'q'}))
         self.assertEqual((self.qdrant.upserts, self.qdrant.queries), ([], []))
 
-    def test_the_digest_is_resolved_once_per_process(self):
-        calls = []
-        with ollama(embedding=GOOD), mock.patch.object(httpx, 'get', lambda url, *a, **k: calls.append(url) or FakeResponse(tags('sha-a'))):
-            for _ in range(3):
-                self.assertEqual(call('POST', '/memory/write', {'text': 't'})[0], 200)
-        self.assertEqual(len(calls), 1)
+    def test_the_digest_is_resolved_before_and_after_every_embed_call(self):
+        log = []
+        with ollama(embedding=GOOD, log=log):
+            self.assertEqual(call('POST', '/memory/write', {'text': 't'})[0], 200)
+            self.assertEqual(call('POST', '/memory/search', {'query': 'q'})[0], 200)
+        self.assertEqual(log, ['tags', 'embed', 'tags'] * 2)
+
+    def test_a_model_replaced_during_the_embed_call_refuses_write_and_search(self):
+        # The tag moves to another build between the before and after resolution (or vanishes): the vector's build is unknown.
+        for name, after in {'digest changed': tags('sha-b'), 'gone after': {'models': []}}.items():
+            for method, path, body in (('POST', '/memory/write', {'text': 't'}), ('POST', '/memory/search', {'query': 'q'})):
+                with self.subTest(name, path=path), ollama(embedding=GOOD, tags_body=[tags('sha-a'), after]):
+                    self.assert_unavailable(*call(method, path, body))
+        self.assertEqual((self.qdrant.upserts, self.qdrant.queries), ([], []))
+
 
 if __name__ == '__main__':
     unittest.main()
