@@ -41,7 +41,14 @@ export function receiptMode(env: NodeJS.ProcessEnv = process.env): ReceiptMode {
   return v === 'shadow' || v === 'on' ? v : 'off';
 }
 
-/** Additive and idempotent. */
+/**
+ * STATE-02: the intent of the latest attempt (Qdrant: qdrantIntentHash + embed model), recorded with the claim before the
+ * send in its own columns, so an outcome or read-back `detail` never erases it. NULL: none recorded (other targets, or a
+ * receipt from before these columns existed).
+ */
+const INTENT_COLUMNS = ['intent_sha256', 'embed_model'] as const;
+
+/** Additive and idempotent (a table from before the intent columns gains them, nullable; its rows are kept). */
 export function ensureReceiptsTable(db: Database): void {
   db.exec(`CREATE TABLE IF NOT EXISTS memory_sync_receipts (
     task_id TEXT NOT NULL,
@@ -50,24 +57,38 @@ export function ensureReceiptsTable(db: Database): void {
     detail TEXT,
     attempts INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL,
+    intent_sha256 TEXT,
+    embed_model TEXT,
     PRIMARY KEY (task_id, target)
   )`);
+  const have = new Set((db.prepare('PRAGMA table_info(memory_sync_receipts)').all() as Array<{ name: string }>).map((c) => c.name));
+  for (const col of INTENT_COLUMNS) if (!have.has(col)) db.exec(`ALTER TABLE memory_sync_receipts ADD COLUMN ${col} TEXT`);
 }
+
+/** What a Qdrant attempt sends: the hash of its content/labels and the embed model it embeds with. */
+export interface QdrantIntent { sha256: string; model: string }
 
 /**
  * Durable intent before the first send, claimed atomically: the leg is `unknown` until its outcome is recorded, so a crash
  * mid-leg leaves `unknown`. Returns false when a receipt already exists (a repeated or concurrent completion — another
  * caller owns this leg and nothing is sent). Throws when the store fails; the caller decides whether to send untracked.
  */
-export function claimInitial(db: Database, taskId: string, target: DeliveryTarget, detail = 'in_flight', now = Date.now()): boolean {
-  return db.prepare(`INSERT INTO memory_sync_receipts (task_id, target, status, detail, attempts, updated_at) VALUES (?, ?, 'unknown', ?, 1, ?)
-    ON CONFLICT (task_id, target) DO NOTHING`).run(taskId, target, detail, new Date(now).toISOString()).changes === 1;
+export function claimInitial(db: Database, taskId: string, target: DeliveryTarget, detail = 'in_flight', now = Date.now(), intent?: QdrantIntent): boolean {
+  return db.prepare(`INSERT INTO memory_sync_receipts (task_id, target, status, detail, attempts, updated_at, intent_sha256, embed_model)
+    VALUES (?, ?, 'unknown', ?, 1, ?, ?, ?)
+    ON CONFLICT (task_id, target) DO NOTHING`).run(taskId, target, detail, new Date(now).toISOString(), intent?.sha256 ?? null, intent?.model ?? null).changes === 1;
 }
 
-/** Compare-and-set claim of a resend: wins only if the receipt is still in the state the pass read (status + attempts). */
-export function claimRetry(db: Database, row: ReceiptRow, detail = 'in_flight', now = Date.now()): boolean {
-  return db.prepare(`UPDATE memory_sync_receipts SET status = 'unknown', detail = ?, attempts = attempts + 1, updated_at = ?
-    WHERE task_id = ? AND target = ? AND status = ? AND attempts = ?`).run(detail, new Date(now).toISOString(), row.task_id, row.target, row.status, row.attempts).changes === 1;
+/**
+ * Compare-and-set claim of a resend: wins only if the receipt is still in the state the pass read (status + attempts).
+ * `intent` (Qdrant): replaces the recorded intent with this attempt's; without one the recorded intent is left as is.
+ */
+export function claimRetry(db: Database, row: ReceiptRow, detail = 'in_flight', now = Date.now(), intent?: QdrantIntent): boolean {
+  return db.prepare(`UPDATE memory_sync_receipts SET status = 'unknown', detail = ?, attempts = attempts + 1, updated_at = ?,
+      intent_sha256 = CASE WHEN ? THEN ? ELSE intent_sha256 END, embed_model = CASE WHEN ? THEN ? ELSE embed_model END
+    WHERE task_id = ? AND target = ? AND status = ? AND attempts = ?`)
+    .run(detail, new Date(now).toISOString(), intent ? 1 : 0, intent?.sha256 ?? null, intent ? 1 : 0, intent?.model ?? null,
+      row.task_id, row.target, row.status, row.attempts).changes === 1;
 }
 
 /** Compare-and-set: an `unknown` receipt whose effect a read-back found at the target becomes delivered. */
@@ -94,7 +115,10 @@ export const okfIntentHash = (detail: string | null): string | null => detail?.m
 export const qdrantIntentHash = (taskId: string, content: string, machineId: string, agentType: string, model: string): string =>
   createHash('sha256').update(JSON.stringify([taskId, content, machineId, agentType, model])).digest('hex');
 
-export interface ReceiptRow { task_id: string; target: DeliveryTarget; status: DeliveryStatus; attempts: number; detail: string | null }
+export interface ReceiptRow {
+  task_id: string; target: DeliveryTarget; status: DeliveryStatus; attempts: number; detail: string | null;
+  intent_sha256?: string | null; embed_model?: string | null;
+}
 
 /**
  * The bounded work of one pass: idempotent targets only, `failed` with attempts left or `unknown`, settled (written
@@ -102,7 +126,7 @@ export interface ReceiptRow { task_id: string; target: DeliveryTarget; status: D
  */
 export function reconcileCandidates(db: Database, now: number, bootIso: string, limit = RECONCILE_BATCH): ReceiptRow[] {
   const settled = new Date(now - IN_FLIGHT_GRACE_MS).toISOString();
-  return db.prepare(`SELECT task_id, target, status, attempts, detail FROM memory_sync_receipts
+  return db.prepare(`SELECT task_id, target, status, attempts, detail, intent_sha256, embed_model FROM memory_sync_receipts
     WHERE target IN (${IDEMPOTENT.map(() => '?').join(', ')})
       AND ((status = 'failed' AND attempts < ?) OR status = 'unknown')
       AND (updated_at <= ? OR updated_at <= ?)

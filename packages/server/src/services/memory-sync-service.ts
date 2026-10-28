@@ -8,7 +8,7 @@ import { yamlScalar } from '../utils/yaml-scalar';
 import { ensureCollection, memoryEmbedModel, SWARM_MEMORY_COLLECTION } from './memory-embedding-contract';
 import {
   claimInitial, claimRetry, ensureReceiptsTable, okfIntent, okfIntentHash, qdrantIntentHash, reconcileCandidates, recordOutcome, receiptMode, settleReadBack,
-  touchReceipt, unreconcilableUnknown, MAX_DELIVERY_ATTEMPTS, type DeliveryTarget, type LegOutcome, type ReceiptMode, type ReceiptRow,
+  touchReceipt, unreconcilableUnknown, MAX_DELIVERY_ATTEMPTS, type DeliveryTarget, type LegOutcome, type QdrantIntent, type ReceiptMode, type ReceiptRow,
 } from './memory-delivery-receipts';
 import { guardTick, markRun } from './scheduler-registry';
 
@@ -74,6 +74,12 @@ type TaskContext = { task: any; content: string; machineId: string; agentType: s
  * like `loop-worker-<uuid>-<hex>`. Derived id is stable => upserts are idempotent.
  */
 const pointIdForTask = qdrantPointIdForTask;
+
+/** STATE-02: the intent of one tracked Qdrant attempt, captured once: recorded on the receipt before the send, and sent. */
+const qdrantIntentOf = ({ task, content, machineId, agentType }: TaskContext): QdrantIntent => {
+  const model = memoryEmbedModel();
+  return { model, sha256: qdrantIntentHash(task.id, content, machineId, agentType, model) };
+};
 
 /**
  * Embed via Ollama using the same endpoint fallback as OllamaEmbeddingProvider.
@@ -144,12 +150,14 @@ export class MemorySyncService {
     }
     // rendered before (and independent of) any receipt work, so no path can publish an unrendered file
     const okfText = this.renderOKFConcept(task, machineId, agentType);
+    const qIntent = qdrantIntentOf(ctx);
     await Promise.allSettled([
       // nothing to deliver → no receipt (the leg logs the skip)
       content.trim()
         ? this.tracked(mode, taskId, 'uams', () => claimInitial(this.db, taskId, 'uams'), () => this.syncToUAMS(taskId, content, machineId, agentType, true))
         : this.syncToUAMS(taskId, content, machineId, agentType, true),
-      this.tracked(mode, taskId, 'qdrant', () => claimInitial(this.db, taskId, 'qdrant'), () => this.syncToQdrant(taskId, content, machineId, agentType, true)),
+      this.tracked(mode, taskId, 'qdrant', () => claimInitial(this.db, taskId, 'qdrant', 'in_flight', Date.now(), qIntent),
+        () => this.syncToQdrant(taskId, content, machineId, agentType, qIntent)),
       this.tracked(mode, taskId, 'okf', () => claimInitial(this.db, taskId, 'okf', okfIntent(sha256(okfText))),
         async () => this.writeOKFConcept(task, machineId, agentType, okfText)),
     ]);
@@ -269,10 +277,12 @@ export class MemorySyncService {
       }
       const ctx = this.loadTask(row.task_id);
       const okfText = row.target === 'okf' && ctx ? this.renderOKFConcept(ctx.task, ctx.machineId, ctx.agentType) : '';
-      const outcome = await this.tracked('on', row.task_id, row.target, () => claimRetry(this.db, row, okfText ? okfIntent(sha256(okfText)) : 'in_flight'), async () => {
+      const qIntent = row.target === 'qdrant' && ctx ? qdrantIntentOf(ctx) : undefined;
+      const outcome = await this.tracked('on', row.task_id, row.target,
+        () => claimRetry(this.db, row, okfText ? okfIntent(sha256(okfText)) : 'in_flight', Date.now(), qIntent), async () => {
         if (!ctx) return failed('task missing');
         return row.target === 'qdrant'
-          ? this.syncToQdrant(row.task_id, ctx.content, ctx.machineId, ctx.agentType, true)
+          ? this.syncToQdrant(row.task_id, ctx.content, ctx.machineId, ctx.agentType, qIntent)
           : this.writeOKFConcept(ctx.task, ctx.machineId, ctx.agentType, okfText);
       });
       if (outcome) report.retried++;
@@ -283,9 +293,9 @@ export class MemorySyncService {
 
   /**
    * Is the leg's effect visible at the target? Qdrant: the point by its stable id, present only when its payload carries the
-   * intent hash of the delivery a resend would make now and that embed model (STATE-02: an older point at the same id —
-   * other content or model, or no hash — is stale, never delivered; its task row missing is inconclusive). OKF: the file's sha256 equals the intent hash
-   * recorded before the write (a torn or stale file is absent). UAMS has no read-back.
+   * intent hash and embed model this receipt recorded before its latest send (STATE-02). Any other point at that id — other
+   * content or model, no hash — is stale, as is a receipt that recorded no intent (legacy): never delivered, resent. OKF:
+   * the file's sha256 equals the intent hash recorded before the write (a torn or stale file is absent). UAMS has no read-back.
    */
   private async readBack(row: ReceiptRow): Promise<'present' | 'absent' | 'stale' | 'inconclusive'> {
     const { task_id: taskId, target } = row;
@@ -294,6 +304,7 @@ export class MemorySyncService {
       try { return want && sha256(fs.readFileSync(path.join(this.okfTasksDir, `${taskId}.md`))) === want ? 'present' : 'absent'; } catch { return 'absent'; }
     }
     if (target !== 'qdrant') return 'inconclusive';
+    if (!row.intent_sha256 || !row.embed_model) return 'stale'; // no recorded intent, nothing to certify against
     try {
       const res = await fetch(`${qdrantWriteUrl()}/collections/${SWARM_MEMORY_COLLECTION}/points/${pointIdForTask(taskId)}`, {
         headers: authHeaders(qdrantWriteApiKey(), 'api-key'),
@@ -303,12 +314,8 @@ export class MemorySyncService {
       if (!res.ok) return 'inconclusive';
       const body = (await res.json()) as { result?: { payload?: { intent_sha256?: unknown; embedding_model?: unknown } | null } | null };
       if (!body.result) return 'absent';
-      const ctx = this.loadTask(taskId);
-      if (!ctx) return 'inconclusive';
-      const model = memoryEmbedModel();
       const got = body.result.payload;
-      return got?.embedding_model === model && got.intent_sha256 === qdrantIntentHash(taskId, ctx.content, ctx.machineId, ctx.agentType, model)
-        ? 'present' : 'stale';
+      return got?.embedding_model === row.embed_model && got.intent_sha256 === row.intent_sha256 ? 'present' : 'stale';
     } catch {
       return 'inconclusive';
     }
@@ -382,15 +389,18 @@ export class MemorySyncService {
     return failed('no attempt');
   }
 
-  /** tracked (receipts shadow/on): the payload also carries the intent hash a read-back compares. Untracked (off): unchanged. */
-  private async syncToQdrant(taskId: string, content: string, machineId: string, agentType: string, tracked = false): Promise<LegOutcome> {
+  /**
+   * tracked (receipts shadow/on): `intent` is the attempt recorded on the receipt — it embeds with that model and the payload
+   * carries that hash, which a read-back compares. Untracked (off): unchanged.
+   */
+  private async syncToQdrant(taskId: string, content: string, machineId: string, agentType: string, intent?: QdrantIntent): Promise<LegOutcome> {
     const excerpt = content.slice(0, 500);
 
     const apiKey = qdrantWriteApiKey();
     const headers = authHeaders(apiKey, 'api-key');
     const base = qdrantWriteUrl();
     const collection = SWARM_MEMORY_COLLECTION;
-    const model = memoryEmbedModel();
+    const model = intent?.model ?? memoryEmbedModel();
 
     try {
       const vector = await embedText(`${taskId} ${content}`, model);
@@ -413,7 +423,7 @@ export class MemorySyncService {
             vector,
             payload: {
               task_id: taskId, machine_id: machineId, agent_type: agentType, timestamp: new Date().toISOString(), content_excerpt: excerpt, embedding_model: model, embedding_dim: vector.length,
-              ...(tracked ? { intent_sha256: qdrantIntentHash(taskId, content, machineId, agentType, model) } : {}),
+              ...(intent ? { intent_sha256: intent.sha256 } : {}),
             },
           },
         ],

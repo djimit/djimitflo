@@ -95,7 +95,8 @@ const LEGACY_RECEIPTS_DDL = `CREATE TABLE IF NOT EXISTS memory_sync_receipts (ta
 const unknownQdrantReceipt = (db: Database.Database, task: string, intent: { content?: string; model?: string } | 'legacy' = {}) => {
   db.exec(LEGACY_RECEIPTS_DDL);
   if (intent === 'legacy') {
-    db.prepare(`INSERT INTO memory_sync_receipts VALUES (?, 'qdrant', 'unknown', 'timeout 10000ms', 1, '2026-01-01T00:00:00.000Z')`).run(task);
+    db.prepare(`INSERT INTO memory_sync_receipts (task_id, target, status, detail, attempts, updated_at)
+      VALUES (?, 'qdrant', 'unknown', 'timeout 10000ms', 1, '2026-01-01T00:00:00.000Z')`).run(task);
     return;
   }
   ensureReceiptsTable(db);
