@@ -62,6 +62,8 @@ export interface ReconcileReport {
   read_back_delivered: number;
   /** unknown legs whose read-back was inconclusive (left unknown) */
   read_back_inconclusive: number;
+  /** unknown Qdrant legs whose point is an older version (other intent hash or embed model): not delivered, resent */
+  read_back_stale: number;
   /** unknown legs on a non-idempotent target without a read-back (UAMS): never resent, reported */
   unknown_unreconcilable: number;
 }
@@ -206,9 +208,9 @@ export class MemorySyncService {
     const tick = guardTick('memory_delivery_reconcile', async () => {
       const r = await this.reconcile();
       markRun('memory_delivery_reconcile');
-      if (r.retried || r.read_back_delivered || r.read_back_inconclusive || r.unknown_unreconcilable) {
+      if (r.retried || r.read_back_delivered || r.read_back_inconclusive || r.read_back_stale || r.unknown_unreconcilable) {
         console.log(`Memory delivery reconcile: ${r.retried} retried (${r.delivered} delivered), ${r.read_back_delivered} read back, `
-          + `${r.read_back_inconclusive} inconclusive, ${r.unknown_unreconcilable} UAMS unknown (not resent)`);
+          + `${r.read_back_inconclusive} inconclusive, ${r.read_back_stale} stale, ${r.unknown_unreconcilable} UAMS unknown (not resent)`);
       }
     });
     tick();
@@ -224,7 +226,7 @@ export class MemorySyncService {
 
   /**
    * One bounded pass (MEMORY_DELIVERY_RECEIPTS=on; off/shadow do nothing). Only idempotent targets are touched:
-   * an `unknown` leg is first read back (present → delivered without a resend; absent → failed); a `failed` leg with
+   * an `unknown` leg is first read back (present → delivered without a resend; absent or a stale Qdrant point → resent); a `failed` leg with
    * attempts left is resent once per pass. UAMS legs are never resent: its `unknown` legs are counted and reported.
    */
   reconcile(now = Date.now()): Promise<ReconcileReport> {
@@ -234,7 +236,7 @@ export class MemorySyncService {
 
   private async reconcilePass(now: number): Promise<ReconcileReport> {
     const mode = receiptMode();
-    const report: ReconcileReport = { mode, retried: 0, delivered: 0, read_back_delivered: 0, read_back_inconclusive: 0, unknown_unreconcilable: 0 };
+    const report: ReconcileReport = { mode, retried: 0, delivered: 0, read_back_delivered: 0, read_back_inconclusive: 0, read_back_stale: 0, unknown_unreconcilable: 0 };
     if (mode !== 'on') return report;
     let rows: ReturnType<typeof reconcileCandidates> = [];
     this.receipt(() => {
@@ -242,6 +244,7 @@ export class MemorySyncService {
       report.unknown_unreconcilable = unreconcilableUnknown(this.db);
     });
     for (const row of rows) {
+      let staleOrAbsent: 'stale' | 'absent' = 'absent';
       if (row.status === 'unknown') {
         const seen = await this.readBack(row);
         if (seen === 'present') {
@@ -255,10 +258,13 @@ export class MemorySyncService {
           report.read_back_inconclusive++;
           continue;
         }
-        // absent: proven not delivered → resend below (the claim moves it from this exact unknown state)
+        // absent, or stale (an older point at the same id; the upsert is idempotent and overwrites it): not delivered →
+        // resend below (the claim moves it from this exact unknown state)
+        if (seen === 'stale') report.read_back_stale++;
+        staleOrAbsent = seen;
       }
       if (row.attempts >= MAX_DELIVERY_ATTEMPTS) {
-        if (row.status === 'unknown') this.receipt(() => recordOutcome(this.db, row.task_id, row.target, failed('read_back: absent')));
+        if (row.status === 'unknown') this.receipt(() => recordOutcome(this.db, row.task_id, row.target, failed(`read_back: ${staleOrAbsent}`)));
         continue;
       }
       const ctx = this.loadTask(row.task_id);
@@ -278,10 +284,10 @@ export class MemorySyncService {
   /**
    * Is the leg's effect visible at the target? Qdrant: the point by its stable id, present only when its payload carries the
    * intent hash of the delivery a resend would make now and that embed model (STATE-02: an older point at the same id —
-   * other content or model, or no hash — is inconclusive, never delivered). OKF: the file's sha256 equals the intent hash
+   * other content or model, or no hash — is stale, never delivered; its task row missing is inconclusive). OKF: the file's sha256 equals the intent hash
    * recorded before the write (a torn or stale file is absent). UAMS has no read-back.
    */
-  private async readBack(row: ReceiptRow): Promise<'present' | 'absent' | 'inconclusive'> {
+  private async readBack(row: ReceiptRow): Promise<'present' | 'absent' | 'stale' | 'inconclusive'> {
     const { task_id: taskId, target } = row;
     if (target === 'okf') {
       const want = okfIntentHash(row.detail);
@@ -302,7 +308,7 @@ export class MemorySyncService {
       const model = memoryEmbedModel();
       const got = body.result.payload;
       return got?.embedding_model === model && got.intent_sha256 === qdrantIntentHash(taskId, ctx.content, ctx.machineId, ctx.agentType, model)
-        ? 'present' : 'inconclusive';
+        ? 'present' : 'stale';
     } catch {
       return 'inconclusive';
     }
