@@ -5,7 +5,7 @@ import { runMigrations } from '../database/migrate';
 import { EXPERIMENT_WIP_LIMIT, MEMORY_HOLDOUT_CLOSED, TG_001_CLOSED, experimentDefs, experimentsReport, wipCheck, type ExperimentDef } from '../services/experiment-registry';
 import { detectStallsWithHealth } from '../services/stall-watch';
 import { buildEvolutionEvidence } from '../services/evolution-evidence';
-import { existsSync, readFileSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
 import { D5NO_CUTOFF, D5NO_DEADLINE_DAYS } from '../services/d5-no';
 
@@ -120,8 +120,7 @@ it('EXP-3 memory-holdout is closed FALSIFIED at its single registered readout (2
   expect(experimentsReport(db, {}, late, [open]).overdue).toEqual(['memory-holdout']);
 });
 
-// the result document arrives with PR #1052; once it is on the branch the close must cite a heading that exists
-it.skipIf(!existsSync(join(__dirname, '../../../..', MEMORY_HOLDOUT_CLOSED.source.split('#')[0])))('EXP-3 close cites an existing result heading', () => {
+it('EXP-3 close cites the result document and a heading that exists in it', () => {
   const [file, anchor] = MEMORY_HOLDOUT_CLOSED.source.split('#');
   const doc = readFileSync(join(__dirname, '../../../..', file), 'utf8');
   const heading = doc.split('\n').find((l) => l.startsWith('## ') && l.slice(3).toLowerCase().replace(/[^a-z0-9 -]/g, '').replace(/ /g, '-') === anchor);
