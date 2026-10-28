@@ -73,3 +73,14 @@ it('a persistent failure keeps the buffer bounded, counts what it dropped, and l
   expect(totalHits(t)).toBe(MAX_BUFFERED_KEYS + 2); // stored + dropped = every count, none twice
   expect(t.coverage()).toEqual({ dropped_count: extra, incomplete: true }); // a known loss stays labelled
 });
+
+it('a known loss survives a restart: a new service on the same database still labels that window incomplete', () => {
+  const t = new UsageTelemetry(db, 0);
+  for (let i = 0; i < MAX_BUFFERED_KEYS + 1; i++) t.count('page', `/p${i}`); // one count over the cap, database healthy
+  t.flush();
+  expect(t.coverage()).toEqual({ dropped_count: 1, incomplete: true });
+  const restarted = new UsageTelemetry(db, 0);
+  expect(totalHits(restarted)).toBe(MAX_BUFFERED_KEYS);
+  expect(restarted.coverage()).toEqual({ dropped_count: 1, incomplete: true });
+  expect(restarted.coverage(14)).toEqual({ dropped_count: 1, incomplete: true });
+});
