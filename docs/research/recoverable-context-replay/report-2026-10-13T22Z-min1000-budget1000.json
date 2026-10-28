@@ -1,0 +1,274 @@
+{
+  "label": "ESTIMATE: tokens = chars/4; saving = chars saved × later steps of the run; upper bound if the runtime prunes old tool output",
+  "evidence_root": "/data/agent-evidence/agentic-control-loop-fleet",
+  "min_chars": 1000,
+  "budgets": [
+    1000
+  ],
+  "until": "2026-10-13T22:00:00.000Z",
+  "streams": 788,
+  "window": [
+    "2026-06-26T14:37:03.000Z",
+    "2026-10-13T19:58:35.996Z"
+  ],
+  "manifest": {
+    "files": 2890,
+    "bytes": 45525135,
+    "sha256": "a92ad37dbadde12b61af73e48df19387f6323e64181d416a2826d4644c61094a",
+    "canonical": "JSON.stringify of [{path,bytes,sha256}] sorted by path"
+  },
+  "coverage": {
+    "worker-output": {
+      "streams": 534,
+      "opencode_json": 172,
+      "with_step_tokens": 172,
+      "with_tool_output": 172,
+      "steps": 3383,
+      "measured_context_tokens": 92910547,
+      "per_run_context_tokens": {
+        "runs": 172,
+        "p10": 165783,
+        "median": 483792,
+        "p90": 994594,
+        "sd_log": 0.716
+      }
+    },
+    "checker-output": {
+      "streams": 254,
+      "opencode_json": 191,
+      "with_step_tokens": 191,
+      "with_tool_output": 188,
+      "steps": 1450,
+      "measured_context_tokens": 39486986,
+      "per_run_context_tokens": {
+        "runs": 191,
+        "p10": 36988,
+        "median": 108837,
+        "p90": 589137,
+        "sd_log": 1.003
+      }
+    }
+  },
+  "tool_outputs_by_tool": {
+    "read": {
+      "outputs": 1136,
+      "chars": 7991335,
+      "over_min_chars": 1083
+    },
+    "bash": {
+      "outputs": 3425,
+      "chars": 2189325,
+      "over_min_chars": 587
+    },
+    "glob": {
+      "outputs": 65,
+      "chars": 198386,
+      "over_min_chars": 16
+    },
+    "grep": {
+      "outputs": 179,
+      "chars": 799720,
+      "over_min_chars": 85
+    },
+    "todowrite": {
+      "outputs": 15,
+      "chars": 8031,
+      "over_min_chars": 0
+    },
+    "edit": {
+      "outputs": 165,
+      "chars": 4290,
+      "over_min_chars": 0
+    },
+    "write": {
+      "outputs": 130,
+      "chars": 3120,
+      "over_min_chars": 0
+    }
+  },
+  "replay": {
+    "bash/budget=1000/worker-output": {
+      "runs_with_tokens": 172,
+      "runs_affected": 94,
+      "share_affected": 0.547,
+      "outputs_compressed": 220,
+      "estimated_saved_tokens": 1218942,
+      "measured_context_tokens": 92910547,
+      "pooled_reduction": 0.013,
+      "per_run_reduction": {
+        "p10": 0,
+        "median": 0.001,
+        "p90": 0.027,
+        "max": 0.378
+      },
+      "per_affected_run_reduction_median": 0.006,
+      "structured_pass_through": 20,
+      "integrity": {
+        "recovery_failures": 0,
+        "preserved_lines": {
+          "error": {
+            "seen": 858,
+            "dropped": 0
+          },
+          "security": {
+            "seen": 25,
+            "dropped": 0
+          },
+          "injection": {
+            "seen": 0,
+            "dropped": 0
+          },
+          "sourceRef": {
+            "seen": 331,
+            "dropped": 0
+          }
+        }
+      }
+    },
+    "bash/budget=1000/checker-output": {
+      "runs_with_tokens": 191,
+      "runs_affected": 39,
+      "share_affected": 0.204,
+      "outputs_compressed": 70,
+      "estimated_saved_tokens": 174233,
+      "measured_context_tokens": 39486986,
+      "pooled_reduction": 0.004,
+      "per_run_reduction": {
+        "p10": 0,
+        "median": 0,
+        "p90": 0.003,
+        "max": 0.117
+      },
+      "per_affected_run_reduction_median": 0.003,
+      "structured_pass_through": 11,
+      "integrity": {
+        "recovery_failures": 0,
+        "preserved_lines": {
+          "error": {
+            "seen": 206,
+            "dropped": 0
+          },
+          "security": {
+            "seen": 10,
+            "dropped": 0
+          },
+          "injection": {
+            "seen": 0,
+            "dropped": 0
+          },
+          "sourceRef": {
+            "seen": 141,
+            "dropped": 0
+          }
+        }
+      }
+    },
+    "all_tools_upper_bound/budget=1000/worker-output": {
+      "runs_with_tokens": 172,
+      "runs_affected": 169,
+      "share_affected": 0.983,
+      "outputs_compressed": 1000,
+      "estimated_saved_tokens": 21704347,
+      "measured_context_tokens": 92910547,
+      "pooled_reduction": 0.234,
+      "per_run_reduction": {
+        "p10": 0.072,
+        "median": 0.173,
+        "p90": 0.407,
+        "max": 0.595
+      },
+      "per_affected_run_reduction_median": 0.177,
+      "structured_pass_through": 20,
+      "integrity": {
+        "recovery_failures": 0,
+        "preserved_lines": {
+          "error": {
+            "seen": 4897,
+            "dropped": 0
+          },
+          "security": {
+            "seen": 493,
+            "dropped": 0
+          },
+          "injection": {
+            "seen": 15,
+            "dropped": 0
+          },
+          "sourceRef": {
+            "seen": 346,
+            "dropped": 0
+          }
+        }
+      }
+    },
+    "all_tools_upper_bound/budget=1000/checker-output": {
+      "runs_with_tokens": 191,
+      "runs_affected": 180,
+      "share_affected": 0.942,
+      "outputs_compressed": 419,
+      "estimated_saved_tokens": 3950321,
+      "measured_context_tokens": 39486986,
+      "pooled_reduction": 0.1,
+      "per_run_reduction": {
+        "p10": 0.02,
+        "median": 0.072,
+        "p90": 0.161,
+        "max": 0.415
+      },
+      "per_affected_run_reduction_median": 0.078,
+      "structured_pass_through": 11,
+      "integrity": {
+        "recovery_failures": 0,
+        "preserved_lines": {
+          "error": {
+            "seen": 2343,
+            "dropped": 0
+          },
+          "security": {
+            "seen": 193,
+            "dropped": 0
+          },
+          "injection": {
+            "seen": 12,
+            "dropped": 0
+          },
+          "sourceRef": {
+            "seen": 149,
+            "dropped": 0
+          }
+        }
+      }
+    }
+  },
+  "check_logs": {
+    "note": "deterministic-check logs; not re-sent per step, so ratio only",
+    "budget": 1000,
+    "files": 2102,
+    "over_min_chars": 532,
+    "compressed": 266,
+    "chars": 6428704,
+    "compressed_chars": 3409862,
+    "files_with_failing_assertion_lines": 412,
+    "integrity": {
+      "recovery_failures": 0,
+      "preserved_lines": {
+        "error": {
+          "seen": 11053,
+          "dropped": 0
+        },
+        "security": {
+          "seen": 1702,
+          "dropped": 0
+        },
+        "injection": {
+          "seen": 0,
+          "dropped": 0
+        },
+        "sourceRef": {
+          "seen": 8289,
+          "dropped": 0
+        }
+      }
+    }
+  }
+}
