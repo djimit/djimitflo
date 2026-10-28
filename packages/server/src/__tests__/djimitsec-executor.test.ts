@@ -132,6 +132,7 @@ it('uses native admission, task state, shared capacity and immutable tool events
 });
 
 import express from 'express';
+import { rateLimit } from 'express-rate-limit';
 import supertest from 'supertest';
 import { UserRole } from '@djimitflo/shared';
 import { AuthService } from '../services/auth-service';
@@ -170,7 +171,7 @@ it.each(['cancelled', 'held'])('native authenticated cancel preserves the observ
     const authService = new AuthService(f.db), owner = authService.createUser('owner@fixture.test', 'Disposable-fixture-only-123!', UserRole.MAKER), foreign = authService.createUser('foreign@fixture.test', 'Disposable-fixture-only-123!', UserRole.MAKER);
     const token = authService.generateToken(owner), otherToken = authService.generateToken(foreign), auth = createAuthMiddleware(authService);
     f.db.prepare('INSERT INTO tasks(id,title,description,status,priority,risk_level,execution_mode,metadata,created_by,owner_user_id) VALUES(?,?,?,?,?,?,?,?,?,?)').run(taskId, 'Fixed scan', 'Inspect fixed owned source', 'pending', 'low', 'low', 'local', JSON.stringify(scanTask().metadata), owner.id, owner.id);
-    const engine = new ExecutionEngine(f.db), app = express(); app.use(express.json()); app.use('/api/tasks', auth.requireAuth, createTaskRoutes(f.db, engine, auth)); app.use(errorHandler);
+    const engine = new ExecutionEngine(f.db), app = express(); app.use(express.json()); app.use('/api/tasks', rateLimit({ windowMs: 60000, limit: 300 }), auth.requireAuth, createTaskRoutes(f.db, engine, auth)); app.use(errorHandler);
     const execute = await supertest(app).post(`/api/tasks/${taskId}/execute`).set('authorization', `Bearer ${token}`).send({ executor: 'djimitsec' });
     expect(execute.status).toBe(200); await pending;
     expect((await supertest(app).post(`/api/tasks/${taskId}/cancel`).set('authorization', `Bearer ${otherToken}`).send({})).status).toBe(404);

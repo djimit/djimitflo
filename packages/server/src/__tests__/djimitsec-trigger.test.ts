@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import express from 'express';
+import { rateLimit } from 'express-rate-limit';
 import request from 'supertest';
 import { createHmac } from 'crypto';
 import { mkdtempSync, writeFileSync, rmSync, existsSync } from 'fs';
@@ -95,11 +96,19 @@ it('uses canonical creation audit/notifications and prevents task edits from era
   expect(broadcast).toHaveBeenCalledTimes(1);
   expect(db.prepare("SELECT COUNT(*) n FROM audit_events WHERE task_id=? AND action='task_created'").get(queued.taskId)).toEqual({ n: 1 });
   const authService = new AuthService(db), auth = createAuthMiddleware(authService), token = authService.generateToken(authService.findUserById(actor)!);
-  const app = express(); app.use(express.json()); app.use('/api/tasks', auth.requireAuth, createTaskRoutes(db, engine, auth)); app.use(errorHandler);
+  const app = express(); app.use(express.json()); app.use('/api/tasks', rateLimit({ windowMs: 60000, limit: 300 }), auth.requireAuth, createTaskRoutes(db, engine, auth)); app.use(errorHandler);
   const before = JSON.parse((db.prepare('SELECT metadata FROM tasks WHERE id=?').get(queued.taskId) as { metadata: string }).metadata);
   const changed = await request(app).patch(`/api/tasks/${queued.taskId}`).set('authorization', `Bearer ${token}`).send({ metadata: { executor: 'codex', djimitsecScan: { repositoryId: 'foreign/repo', commit: 'b'.repeat(40) }, djimitsecScanTrigger: { dedupeKey: 'forged' } } });
   expect(changed.status).toBe(200); expect(changed.body.metadata.djimitsecScanTrigger).toEqual(before.djimitsecScanTrigger); expect(changed.body.metadata.djimitsecScan).toEqual(before.djimitsecScan); expect(changed.body.metadata.executor).toBe('djimitsec');
   const created = await request(app).post('/api/tasks').set('authorization', `Bearer ${token}`).send({ title: 'Unprivileged task', description: 'No scan', use_swarm_context: false, metadata: { djimitsecScanTrigger: { dedupeKey: 'forged-budget' } } });
   expect(created.status).toBe(201); expect(created.body.metadata.djimitsecScanTrigger).toBeUndefined();
   expect(service.webhook('push', 'new-delivery-same-scan', push(), now)?.taskId).toBe(queued.taskId); expect(engine.executeTask).toHaveBeenCalledTimes(1);
+  let limited = false;
+  for (let attempt = 0; attempt < 305; attempt++) {
+    const observed = await request(app).get(`/api/tasks/${queued.taskId}`).set('authorization', `Bearer ${token}`);
+    if (observed.status === 429) { limited = true; break; }
+    expect(observed.status).toBe(200);
+  }
+  expect(limited).toBe(true);
+  expect((await request(app).get(`/api/tasks/${queued.taskId}`)).status).toBe(429);
 });
