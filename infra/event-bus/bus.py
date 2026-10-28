@@ -4,6 +4,18 @@ import os
 from typing import Callable
 
 REDIS_PASSWORD = os.environ["REDIS_PASSWORD"]
+DEDUPE_TTL_SECONDS = 7 * 24 * 3600
+
+# STATE-NEW-02: one atomic step per event that carries a dedupe_key. KEYS = (stream, dedupe:<stream>:<key>),
+# ARGV = (ttl, field, value, ...). A known key returns the entry id it was first appended under; otherwise XADD and
+# remember the new id. The key is only written after a successful XADD, so a failed append never blocks a retry.
+DEDUPE_PUBLISH_LUA = """
+local existing = redis.call('GET', KEYS[2])
+if existing then return existing end
+local id = redis.call('XADD', KEYS[1], '*', unpack(ARGV, 2))
+redis.call('SET', KEYS[2], id, 'EX', ARGV[1])
+return id
+"""
 
 class EventBus:
     def __init__(self, host=None, port=6379, db=0, password=REDIS_PASSWORD):
@@ -18,7 +30,11 @@ class EventBus:
             k: (v if isinstance(v, (str, bytes, int, float)) and not isinstance(v, bool) else json.dumps(v))
             for k, v in event.items()
         }
-        return self.r.xadd(stream, flat_event)
+        dedupe_key = event.get("dedupe_key")
+        if dedupe_key is None or dedupe_key == "":
+            return self.r.xadd(stream, flat_event)
+        fields = [x for pair in flat_event.items() for x in pair]
+        return self.r.eval(DEDUPE_PUBLISH_LUA, 2, stream, f"dedupe:{stream}:{dedupe_key}", DEDUPE_TTL_SECONDS, *fields)
 
     def read(self, stream: str, count: int = 10) -> list:
         entries = self.r.xrevrange(stream, count=count)
