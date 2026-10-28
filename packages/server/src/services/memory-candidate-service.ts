@@ -337,15 +337,9 @@ export class MemoryCandidateService {
       const qdrantApiKey = process.env.QDRANT_API_KEY ?? '';
       // Best-effort + bounded: never let a slow/unreachable ollama or qdrant hang the proof or
       // the proof-run-service tests. Fail fast (<=5s) and skip the write-back on any timeout/error.
-      const fetchTO = async (url: string, init: RequestInit, ms = 5_000): Promise<Response> => {
-        const ctrl = new AbortController();
-        const t = setTimeout(() => ctrl.abort(), ms);
-        try {
-          return await fetch(url, { ...init, signal: ctrl.signal });
-        } finally {
-          clearTimeout(t);
-        }
-      };
+      // STATE-03: AbortSignal.timeout keeps the deadline on the body read too (a cleared timer did not).
+      const fetchTO = (url: string, init: RequestInit, ms = 5_000): Promise<Response> =>
+        fetch(url, { ...init, signal: AbortSignal.timeout(ms) });
       const auth: Record<string, string> = qdrantApiKey ? { 'api-key': qdrantApiKey } : {};
       const COLLECTION = SWARM_MEMORY_COLLECTION;
       const model = memoryEmbedModel(); // CODE-002: same model as memory-sync writes and context injection reads
