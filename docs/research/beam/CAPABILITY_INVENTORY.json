@@ -1,0 +1,1336 @@
+{
+ "directive": "BEAM-001",
+ "generated": "2026-10-21",
+ "origin_main": "816f17e2",
+ "prod_snapshot": "2026-10-21T20:34Z djimitflo-live (read-only), deploy 5a8d1b9c",
+ "prior_audits_reused": [
+  "ecosystem/capability-graph.json (20-10, 137 nodes)",
+  "ecosystem/bottlenecks.md (20-10)",
+  "ecosystem/L3-REPORT.md (20-10)",
+  "unit-economics.md (17-10)",
+  "docs/research/di-001/{MAKER_FAILURES,REVIEWER_NO_VERDICT}.md"
+ ],
+ "prior_audits_missing": [
+  "evolution-connectivity.md",
+  "evolution-spine-C-H.md",
+  "fabric-inventory.md",
+  "learning-fabric-7.md",
+  "integrated-evidence-report-20261012.md",
+  "decision-intelligence-audit-20261014.md",
+  "causal-self-model-audit.md"
+ ],
+ "level_definitions": {
+  "implemented": "code on origin/main",
+  "configured": "flag/env/config set in prod",
+  "runtime_active": "prod rows in the window",
+  "exercised": "completed its own contract in prod (counts given)",
+  "independently_verified": "executed oracle, planted-defect replay or merge survival, not self-report",
+  "production_value": "verified outcome reaches a merged/surviving change or a decision that is read"
+ },
+ "classes": [
+  "EXISTS",
+  "PARTIAL",
+  "MISSING",
+  "SUPERSEDED",
+  "UNKNOWN"
+ ],
+ "decisions": [
+  "ADOPT",
+  "ADOPT_CONDITIONALLY",
+  "HOLD",
+  "REJECT",
+  "INSUFFICIENT_EVIDENCE"
+ ],
+ "capabilities": [
+  {
+   "id": "maker.opencode",
+   "name": "Oracle-lane maker on opencode",
+   "graph_node": "runtime.opencode",
+   "model_or_runtime": "ollama/glm-5.2:cloud via agenticservices proxy 100.77.58.72",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "runtime-command-service.ts:101-107",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "yes",
+     "evidence": "ENV DJIMITFLO_OPENCODE_MODEL=ollama/glm-5.2:cloud; LOOP_MAKER_RUNTIME=opencode",
+     "confidence": "high"
+    },
+    "runtime_active": {
+     "value": "yes",
+     "evidence": "P7 74 maker leases",
+     "confidence": "high"
+    },
+    "exercised": {
+     "value": "yes",
+     "evidence": "P7 41 completed / 26 failed / 7 cancelled; P30 206 leases glm-5.2",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "yes",
+     "evidence": "P7 skill_outcomes loop-maker:doc-drift:opencode 26/70 verified by executed oracle gates",
+     "confidence": "high"
+    },
+    "production_value": {
+     "value": "partial",
+     "evidence": "merge survival 22 settled survivors (all makers, 30 d); EUR per change UNKNOWN (prices null)",
+     "confidence": "medium"
+    }
+   },
+   "class": "EXISTS",
+   "beam_intervention": "A: model swap glm-5.2 -> beam:cloud (needs opencode.json registration)",
+   "beam_decision": "INSUFFICIENT_EVIDENCE",
+   "tag": "FACT (levels) / HYPOTHESIS (Beam effect)",
+   "note": ""
+  },
+  {
+   "id": "maker.remote_workstation",
+   "name": "Workstation maker atomic@llama-router (local, 0 cloud tokens)",
+   "graph_node": "runtime.remote_workstation",
+   "model_or_runtime": "workstation/atomic@llama-router",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "remote-maker-queue.ts",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "yes",
+     "evidence": "ENV REMOTE_MAKER_ENABLED=true, LOOP_BANDIT_MAX_SHARE=0.8",
+     "confidence": "high"
+    },
+    "runtime_active": {
+     "value": "yes",
+     "evidence": "P7 32 leases",
+     "confidence": "high"
+    },
+    "exercised": {
+     "value": "yes",
+     "evidence": "P7 24 completed / 8 failed",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "yes",
+     "evidence": "P7 18/26 verified (69 %) by oracle gates",
+     "confidence": "high"
+    },
+    "production_value": {
+     "value": "partial",
+     "evidence": "plan 20-10: 21 verified / 16 survived at 0 cloud tokens (30 d)",
+     "confidence": "medium"
+    }
+   },
+   "class": "EXISTS",
+   "beam_intervention": "None: Beam (501B) cannot run on R9700 32 GB + RTX 2060; VPS must not call workstation",
+   "beam_decision": "REJECT",
+   "tag": "FACT",
+   "note": "Beam local is infeasible: BF16 weights 1.00 TB (HF usedStorage), NVFP4 ~0.25-0.3 TB"
+  },
+  {
+   "id": "maker.claude_fallback",
+   "name": "Claude subscription maker / outage fallback",
+   "graph_node": "runtime.claude",
+   "model_or_runtime": "claude:default (Max 5x OAuth)",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "claude executor",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "partial",
+     "evidence": "ENV OLLAMA_AUTO_FAILOVER=on, OLLAMA_OUTAGE_FALLBACK_RUNTIME empty, PANEL_FALLBACK_RUNTIME=claude",
+     "confidence": "high"
+    },
+    "runtime_active": {
+     "value": "partial",
+     "evidence": "P7 13 maker leases (outage 18-10)",
+     "confidence": "high"
+    },
+    "exercised": {
+     "value": "yes",
+     "evidence": "P7 0/13 completed, 23.06 M tokens",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "no",
+     "evidence": "no verified outcome",
+     "confidence": "high"
+    },
+    "production_value": {
+     "value": "no",
+     "evidence": "0 verified",
+     "confidence": "high"
+    }
+   },
+   "class": "PARTIAL",
+   "beam_intervention": "Beam is on the same Ollama account -> no failover diversity",
+   "beam_decision": "REJECT",
+   "tag": "FACT",
+   "note": ""
+  },
+  {
+   "id": "maker.codex",
+   "name": "Codex maker",
+   "graph_node": "runtime.codex",
+   "model_or_runtime": "codex:default",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "codex-executor.ts",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "partial",
+     "evidence": "gym only",
+     "confidence": "medium"
+    },
+    "runtime_active": {
+     "value": "partial",
+     "evidence": "P7 5 leases",
+     "confidence": "high"
+    },
+    "exercised": {
+     "value": "yes",
+     "evidence": "P7 0/5",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "no",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "production_value": {
+     "value": "no",
+     "evidence": "-",
+     "confidence": "high"
+    }
+   },
+   "class": "PARTIAL",
+   "beam_intervention": "none",
+   "beam_decision": "REJECT",
+   "tag": "FACT",
+   "note": "sandbox blocker (plan 18-10), not model"
+  },
+  {
+   "id": "maker.atomic_local",
+   "name": "Local atomic maker on VPS",
+   "graph_node": "runtime.atomic",
+   "model_or_runtime": "atomic",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "partial",
+     "evidence": "-",
+     "confidence": "medium"
+    },
+    "runtime_active": {
+     "value": "no",
+     "evidence": "P7 0 leases",
+     "confidence": "high"
+    },
+    "exercised": {
+     "value": "yes",
+     "evidence": "P30 0/16, 15 timed out",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "no",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "production_value": {
+     "value": "no",
+     "evidence": "-",
+     "confidence": "high"
+    }
+   },
+   "class": "SUPERSEDED",
+   "beam_intervention": "none",
+   "beam_decision": "REJECT",
+   "tag": "FACT",
+   "note": ""
+  },
+  {
+   "id": "verify.deterministic_checks",
+   "name": "Deterministic checks (tests/lint/type/mutation gates)",
+   "graph_node": "verify.deterministic_checks",
+   "model_or_runtime": "none (no LLM)",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "loop-verification-service.ts",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "runtime_active": {
+     "value": "yes",
+     "evidence": "every maker run",
+     "confidence": "high"
+    },
+    "exercised": {
+     "value": "yes",
+     "evidence": "P7 110 maker leases",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "yes",
+     "evidence": "executed oracle",
+     "confidence": "high"
+    },
+    "production_value": {
+     "value": "yes",
+     "evidence": "source of all verified work",
+     "confidence": "high"
+    }
+   },
+   "class": "EXISTS",
+   "beam_intervention": "none; must never be replaced by a model",
+   "beam_decision": "REJECT",
+   "tag": "FACT",
+   "note": ""
+  },
+  {
+   "id": "verify.llm_checker",
+   "name": "LLM checker (independent review)",
+   "graph_node": "verify.llm_checker",
+   "model_or_runtime": "glm-5.2 (same arm) / gemma4:31b (F2 v2 cross arm)",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "checker-family.ts",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "yes",
+     "evidence": "ENV CHECKER_FAMILY_VERSION=v2, CHECKER_CROSS_MODEL=ollama/gemma4:31b:cloud, RANDOMISE=on",
+     "confidence": "high"
+    },
+    "runtime_active": {
+     "value": "yes",
+     "evidence": "P7 52 opencode checker leases",
+     "confidence": "high"
+    },
+    "exercised": {
+     "value": "yes",
+     "evidence": "P30 verdicts accepted 137 / insufficient_evidence 20 / needs_revision 4 / rejected 1 / null 5",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "yes",
+     "evidence": "F1 14-10: glm-5.2 19/20 good accepted, 1/20 defective accepted, AUC 0.95",
+     "confidence": "high"
+    },
+    "production_value": {
+     "value": "partial",
+     "evidence": "no regressions caught in prod measured; checker cost 27 % of uncached tokens (unit-economics 17-10)",
+     "confidence": "medium"
+    }
+   },
+   "class": "EXISTS",
+   "beam_intervention": "A: Beam as checker model (non-inferiority on frozen slice); never removes the checker",
+   "beam_decision": "HOLD",
+   "tag": "FACT (levels) / HYPOTHESIS (Beam)",
+   "note": "F2 v2 is a running experiment; swapping the cross model invalidates it -> HOLD until F2 reads out"
+  },
+  {
+   "id": "verify.security_checker",
+   "name": "LLM security checker",
+   "graph_node": "verify.security_checker",
+   "model_or_runtime": "glm-5.2",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "runtime_active": {
+     "value": "yes",
+     "evidence": "P7 48 opencode leases",
+     "confidence": "high"
+    },
+    "exercised": {
+     "value": "yes",
+     "evidence": "P30 accepted 135 / insufficient 19 / rejected 3 / needs_revision 2",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "yes",
+     "evidence": "SEC-F1 21-10: 19/20 vulnerable caught, 0/26 false rejects, AUC 0.975, 17 beyond baseline",
+     "confidence": "high"
+    },
+    "production_value": {
+     "value": "partial",
+     "evidence": "value = catches; real-world catches n small",
+     "confidence": "medium"
+    }
+   },
+   "class": "EXISTS",
+   "beam_intervention": "A: Beam as challenger on SEC-F1 slice (cost, verdict-parse rate); headroom 1/20 only",
+   "beam_decision": "HOLD",
+   "tag": "FACT",
+   "note": ""
+  },
+  {
+   "id": "verify.security_checker_manual",
+   "name": "Manual security_checker lease",
+   "graph_node": "verify.security_checker",
+   "model_or_runtime": "human",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "loop-lifecycle-service.ts:96-103",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "partial",
+     "evidence": "LOOP_DAEMON_AUTOMATED_SECURITY_CHECKER_ENABLED path",
+     "confidence": "medium"
+    },
+    "runtime_active": {
+     "value": "yes",
+     "evidence": "P7 62 created",
+     "confidence": "high"
+    },
+    "exercised": {
+     "value": "no",
+     "evidence": "P7 0 completed / 61 cancelled; P30 0/263",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "no",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "production_value": {
+     "value": "no",
+     "evidence": "-",
+     "confidence": "high"
+    }
+   },
+   "class": "PARTIAL",
+   "beam_intervention": "none (orchestration defect, bottlenecks.md P1-5)",
+   "beam_decision": "REJECT",
+   "tag": "FACT",
+   "note": ""
+  },
+  {
+   "id": "verify.r2_fail_before_pass_after",
+   "name": "R2 fail-before/pass-after + PASS_TO_PASS (shadow)",
+   "graph_node": null,
+   "model_or_runtime": "none (executed)",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "#924",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "yes",
+     "evidence": "FAIL_BEFORE_PASS_AFTER_MODE=shadow (plan 21-10)",
+     "confidence": "high"
+    },
+    "runtime_active": {
+     "value": "yes",
+     "evidence": "first shadow record 21-10",
+     "confidence": "medium"
+    },
+    "exercised": {
+     "value": "partial",
+     "evidence": "n<40",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "no",
+     "evidence": "verdict at n>=40",
+     "confidence": "high"
+    },
+    "production_value": {
+     "value": "no",
+     "evidence": "shadow",
+     "confidence": "high"
+    }
+   },
+   "class": "PARTIAL",
+   "beam_intervention": "none",
+   "beam_decision": "REJECT",
+   "tag": "FACT",
+   "note": ""
+  },
+  {
+   "id": "decision.auto_merge",
+   "name": "Auto-merge test-only (act) with 10 % audit sample",
+   "graph_node": "decision.auto_merge",
+   "model_or_runtime": "none",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "loop-auto-merge.ts",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "yes",
+     "evidence": "ENV LOOP_AUTO_MERGE_TEST_ONLY=act",
+     "confidence": "high"
+    },
+    "runtime_active": {
+     "value": "yes",
+     "evidence": "P7 42 PRs mode act",
+     "confidence": "high"
+    },
+    "exercised": {
+     "value": "yes",
+     "evidence": "P7 25 merged, avg 12.5 h",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "partial",
+     "evidence": "merge survival settles at 14 d; 22 survived so far",
+     "confidence": "medium"
+    },
+    "production_value": {
+     "value": "yes",
+     "evidence": "cuts human merge load for eligible PRs",
+     "confidence": "high"
+    }
+   },
+   "class": "EXISTS",
+   "beam_intervention": "none",
+   "beam_decision": "REJECT",
+   "tag": "FACT",
+   "note": ""
+  },
+  {
+   "id": "human.merge_review",
+   "name": "Human merge of ineligible / audit-sample loop PRs",
+   "graph_node": null,
+   "model_or_runtime": "operator",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "runtime_active": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "exercised": {
+     "value": "yes",
+     "evidence": "P7 3 human merges; 16 open (5 audit sample, 11 ineligible); 35 open now, mean age 193 h",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "yes",
+     "evidence": "human",
+     "confidence": "high"
+    },
+    "production_value": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    }
+   },
+   "class": "EXISTS",
+   "beam_intervention": "none (bottleneck is human time, not model)",
+   "beam_decision": "REJECT",
+   "tag": "FACT",
+   "note": ""
+  },
+  {
+   "id": "settle.merge_survival",
+   "name": "Merge survival settlement (14 d)",
+   "graph_node": "settle.merge_survival",
+   "model_or_runtime": "none",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "merge-survival.ts",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "runtime_active": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "exercised": {
+     "value": "yes",
+     "evidence": "P30 skill_outcomes merge 22/26",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "partial",
+     "evidence": "line-presence heuristic (bottlenecks P2-1)",
+     "confidence": "medium"
+    },
+    "production_value": {
+     "value": "yes",
+     "evidence": "north-star input",
+     "confidence": "medium"
+    }
+   },
+   "class": "EXISTS",
+   "beam_intervention": "none",
+   "beam_decision": "REJECT",
+   "tag": "FACT",
+   "note": ""
+  },
+  {
+   "id": "supply.test_gap_mutation",
+   "name": "Task supply: test-gap + mutation-gap sources",
+   "graph_node": "lane.oracle_test",
+   "model_or_runtime": "none",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "test-gap-source-service.ts",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "yes",
+     "evidence": "ENV TEST_GAP_MAX_PER_DAY=8, MUTATION_GAP_MAX_PER_DAY=4, TEST_GAP_MAX_IN_FLIGHT=3",
+     "confidence": "high"
+    },
+    "runtime_active": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "exercised": {
+     "value": "yes",
+     "evidence": "P7 74 proposals, all gap_analysis (cap 84/7 d -> 88 %)",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "yes",
+     "evidence": "verified by oracle",
+     "confidence": "high"
+    },
+    "production_value": {
+     "value": "yes",
+     "evidence": "P7 44 verified",
+     "confidence": "high"
+    }
+   },
+   "class": "EXISTS",
+   "beam_intervention": "none (cap-bound, one repo)",
+   "beam_decision": "REJECT",
+   "tag": "FACT (counts) / INFERENCE (cap-bound)",
+   "note": ""
+  },
+  {
+   "id": "supply.llm_originated",
+   "name": "LLM-originated proposals (reflection, refinement, feedback)",
+   "graph_node": "decision.panel_review",
+   "model_or_runtime": "gemma4:31b (refinement), panel gemma4 + kimi-k3",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "partial",
+     "evidence": "ENV SELF_IMPROVEMENT_REFINEMENT_MODEL=gemma4:31b:cloud",
+     "confidence": "high"
+    },
+    "runtime_active": {
+     "value": "partial",
+     "evidence": "P7 0 such proposals",
+     "confidence": "high"
+    },
+    "exercised": {
+     "value": "yes",
+     "evidence": "P30 reflection 1 verified / 319, refinement 0 / 57, feedback 0 / 32",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "no",
+     "evidence": "no executable verifier for these proposals",
+     "confidence": "high"
+    },
+    "production_value": {
+     "value": "no",
+     "evidence": "1 verified in 30 d",
+     "confidence": "high"
+    }
+   },
+   "class": "PARTIAL",
+   "beam_intervention": "A rejected: no verifier, model quality not the binding constraint",
+   "beam_decision": "REJECT",
+   "tag": "FACT (counts) / INFERENCE (cause)",
+   "note": ""
+  },
+  {
+   "id": "panel.review",
+   "name": "Specialist panel review",
+   "graph_node": "decision.panel_review",
+   "model_or_runtime": "gemma4:31b:cloud (+ kimi-k3:cloud 42 calls / 7 d)",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "self-improvement-agent-review-service.ts",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "yes",
+     "evidence": "ENV SELF_IMPROVEMENT_REVIEW_MODEL=gemma4:31b:cloud, MODEL_CANDIDATES_PANEL_REVIEW=gemma4:31b:cloud",
+     "confidence": "high"
+    },
+    "runtime_active": {
+     "value": "yes",
+     "evidence": "P7 llm_model_calls panel_review gemma4 42, kimi-k3 42",
+     "confidence": "high"
+    },
+    "exercised": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "no",
+     "evidence": "Brier 0.33, predicted 0.89 vs observed 0.57 (plan 17-10)",
+     "confidence": "high"
+    },
+    "production_value": {
+     "value": "no",
+     "evidence": "oracle lanes skip it",
+     "confidence": "high"
+    }
+   },
+   "class": "PARTIAL",
+   "beam_intervention": "B (simplify) beats A (swap): panel shows no discrimination",
+   "beam_decision": "REJECT",
+   "tag": "FACT",
+   "note": "kimi-k3 still answers 42 panel calls / 7 d although the configured candidate is gemma4 only -> UNKNOWN source; check"
+  },
+  {
+   "id": "commons.residents",
+   "name": "Agent Commons residents",
+   "graph_node": "commons.residents",
+   "model_or_runtime": "qwen2.5:3b (autopilot), residents off",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "partial",
+     "evidence": "residents off by design (plan 21-10)",
+     "confidence": "high"
+    },
+    "runtime_active": {
+     "value": "no",
+     "evidence": "-",
+     "confidence": "medium"
+    },
+    "exercised": {
+     "value": "partial",
+     "evidence": "-",
+     "confidence": "medium"
+    },
+    "independently_verified": {
+     "value": "no",
+     "evidence": "0 verified",
+     "confidence": "high"
+    },
+    "production_value": {
+     "value": "no",
+     "evidence": "-",
+     "confidence": "high"
+    }
+   },
+   "class": "PARTIAL",
+   "beam_intervention": "none",
+   "beam_decision": "REJECT",
+   "tag": "FACT",
+   "note": ""
+  },
+  {
+   "id": "frontier.experts",
+   "name": "Frontier Experts",
+   "graph_node": "frontier.expert_council",
+   "model_or_runtime": "gemma4:31b, glm-5.3-flash",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "yes",
+     "evidence": "ENV MODEL_CANDIDATES_FRONTIER_EXPERTS",
+     "confidence": "high"
+    },
+    "runtime_active": {
+     "value": "partial",
+     "evidence": "-",
+     "confidence": "medium"
+    },
+    "exercised": {
+     "value": "partial",
+     "evidence": "-",
+     "confidence": "medium"
+    },
+    "independently_verified": {
+     "value": "no",
+     "evidence": "0 proposals cite knowledge (bottlenecks P1-8)",
+     "confidence": "medium"
+    },
+    "production_value": {
+     "value": "no",
+     "evidence": "-",
+     "confidence": "medium"
+    }
+   },
+   "class": "PARTIAL",
+   "beam_intervention": "none",
+   "beam_decision": "REJECT",
+   "tag": "FACT",
+   "note": ""
+  },
+  {
+   "id": "judgment.jev",
+   "name": "jev (TypeSafe) shadow judgments",
+   "graph_node": "judgment.jev_engine",
+   "model_or_runtime": "jev-1.13.0 / 1.14.0 challenger",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "runtime_active": {
+     "value": "yes",
+     "evidence": "P7 534 + 37 calls",
+     "confidence": "high"
+    },
+    "exercised": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "no",
+     "evidence": "NE-001 for approval/promotion",
+     "confidence": "high"
+    },
+    "production_value": {
+     "value": "no",
+     "evidence": "96 % shadow without consumer",
+     "confidence": "high"
+    }
+   },
+   "class": "PARTIAL",
+   "beam_intervention": "none (different model class; NE-001)",
+   "beam_decision": "REJECT",
+   "tag": "FACT",
+   "note": ""
+  },
+  {
+   "id": "guard.content_safety",
+   "name": "NVIDIA content safety + embeddings",
+   "graph_node": "judgment.content_safety",
+   "model_or_runtime": "nemotron-3.5-content-safety, nemotron-3-embed-1b",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "runtime_active": {
+     "value": "yes",
+     "evidence": "P7 96 + 144 calls",
+     "confidence": "high"
+    },
+    "exercised": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "unknown",
+     "evidence": "-",
+     "confidence": "low"
+    },
+    "production_value": {
+     "value": "unknown",
+     "evidence": "-",
+     "confidence": "low"
+    }
+   },
+   "class": "EXISTS",
+   "beam_intervention": "none (Beam is text-gen only, no embeddings, not a safety classifier)",
+   "beam_decision": "REJECT",
+   "tag": "FACT",
+   "note": ""
+  },
+  {
+   "id": "inference.failover",
+   "name": "Ollama auto-failover + budget throttle",
+   "graph_node": "fallback.ollama_outage",
+   "model_or_runtime": "claude subscription",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "#887",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "yes",
+     "evidence": "OLLAMA_AUTO_FAILOVER=on, INFERENCE_BUDGET_THROTTLE=shadow",
+     "confidence": "high"
+    },
+    "runtime_active": {
+     "value": "yes",
+     "evidence": "probe armed",
+     "confidence": "medium"
+    },
+    "exercised": {
+     "value": "yes",
+     "evidence": "18-10 outage",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "no",
+     "evidence": "-",
+     "confidence": "medium"
+    },
+    "production_value": {
+     "value": "partial",
+     "evidence": "kept prod alive 18-10",
+     "confidence": "medium"
+    }
+   },
+   "class": "EXISTS",
+   "beam_intervention": "Beam adds no diversity (same account, same weekly limit)",
+   "beam_decision": "REJECT",
+   "tag": "FACT",
+   "note": ""
+  },
+  {
+   "id": "inference.ollama_cloud_account",
+   "name": "Ollama Cloud account (legacy Max plan, weekly limit)",
+   "graph_node": "model.glm_5_2",
+   "model_or_runtime": "all :cloud models",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "yes",
+     "evidence": "SOCIAL_COMPAT_BASE_URL=https://ollama.com/v1; proxy OLLAMA_URL",
+     "confidence": "high"
+    },
+    "runtime_active": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "exercised": {
+     "value": "yes",
+     "evidence": "weekly limit hit 18-10 ~14:00Z",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "no",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "production_value": {
+     "value": "partial",
+     "evidence": "carries ~all cloud load",
+     "confidence": "high"
+    }
+   },
+   "class": "EXISTS",
+   "beam_intervention": "Beam listed as \"Low Usage\" on ollama.com (VENDOR_CLAIM, meaning UNKNOWN); not in the Ollama price table",
+   "beam_decision": "INSUFFICIENT_EVIDENCE",
+   "tag": "FACT / UNKNOWN (Beam rate)",
+   "note": ""
+  },
+  {
+   "id": "gym.remote",
+   "name": "Evolution gym (remote, workstation)",
+   "graph_node": "gym.remote",
+   "model_or_runtime": "atomic@llama-router",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "runtime_active": {
+     "value": "yes",
+     "evidence": "P7 89 gym runs",
+     "confidence": "high"
+    },
+    "exercised": {
+     "value": "yes",
+     "evidence": "P30 905 runs, 36 distinct tasks",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "partial",
+     "evidence": "worker-reported (bottlenecks P0-12, fixed #918)",
+     "confidence": "medium"
+    },
+    "production_value": {
+     "value": "no",
+     "evidence": "gym 78.8 % vs prod 7 % (P1-7)",
+     "confidence": "medium"
+    }
+   },
+   "class": "PARTIAL",
+   "beam_intervention": "none",
+   "beam_decision": "REJECT",
+   "tag": "FACT",
+   "note": ""
+  },
+  {
+   "id": "evo.dream_evolution",
+   "name": "Dream evolution",
+   "graph_node": "evo.dream_genomes",
+   "model_or_runtime": "kimi-k3:cloud (1 call / 7 d)",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "no",
+     "evidence": "ENV DREAM_EVOLUTION_ENABLED=false",
+     "confidence": "high"
+    },
+    "runtime_active": {
+     "value": "no",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "exercised": {
+     "value": "partial",
+     "evidence": "0 promotions ever",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "no",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "production_value": {
+     "value": "no",
+     "evidence": "-",
+     "confidence": "high"
+    }
+   },
+   "class": "PARTIAL",
+   "beam_intervention": "none",
+   "beam_decision": "REJECT",
+   "tag": "FACT",
+   "note": ""
+  },
+  {
+   "id": "lane.finding_fix",
+   "name": "Finding-fix lane (shadow)",
+   "graph_node": "lane.finding_fix",
+   "model_or_runtime": "opencode maker (would be)",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "#909",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "yes",
+     "evidence": "FINDING_FIX_LANE=shadow",
+     "confidence": "high"
+    },
+    "runtime_active": {
+     "value": "yes",
+     "evidence": "43 findings scanned 20-10",
+     "confidence": "high"
+    },
+    "exercised": {
+     "value": "no",
+     "evidence": "shadow, no proposals",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "no",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "production_value": {
+     "value": "no",
+     "evidence": "-",
+     "confidence": "high"
+    }
+   },
+   "class": "PARTIAL",
+   "beam_intervention": "future maker-model slot; same experiment as maker.opencode",
+   "beam_decision": "HOLD",
+   "tag": "FACT",
+   "note": ""
+  },
+  {
+   "id": "lane.extra_repos",
+   "name": "Second / third repo oracle lanes",
+   "graph_node": "lane.extra_repo_nodetest",
+   "model_or_runtime": "opencode maker",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "#899",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "no",
+     "evidence": "EXTRA_REPOS not set in ENV listing",
+     "confidence": "medium"
+    },
+    "runtime_active": {
+     "value": "no",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "exercised": {
+     "value": "no",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "no",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "production_value": {
+     "value": "no",
+     "evidence": "-",
+     "confidence": "high"
+    }
+   },
+   "class": "PARTIAL",
+   "beam_intervention": "none (operator token missing)",
+   "beam_decision": "REJECT",
+   "tag": "FACT",
+   "note": ""
+  },
+  {
+   "id": "exp.tg001",
+   "name": "TG-001 prompt/template experiment",
+   "graph_node": null,
+   "model_or_runtime": "opencode",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "runtime_active": {
+     "value": "no",
+     "evidence": "complete r2",
+     "confidence": "high"
+    },
+    "exercised": {
+     "value": "yes",
+     "evidence": "P30 90 runs",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "yes",
+     "evidence": "INCONCLUSIVE (A-B +0.158, CI [-0.128, 0.422])",
+     "confidence": "high"
+    },
+    "production_value": {
+     "value": "no",
+     "evidence": "-",
+     "confidence": "high"
+    }
+   },
+   "class": "EXISTS",
+   "beam_intervention": "OUT OF SCOPE (operator: do not touch TG-001)",
+   "beam_decision": "HOLD",
+   "tag": "FACT",
+   "note": ""
+  },
+  {
+   "id": "exp.sec_f1_harness",
+   "name": "SEC-F1 harness + 46 frozen items",
+   "graph_node": null,
+   "model_or_runtime": "glm-5.2 checker",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "#939",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "runtime_active": {
+     "value": "no",
+     "evidence": "offline",
+     "confidence": "high"
+    },
+    "exercised": {
+     "value": "yes",
+     "evidence": "21-10 run 2.00 M tokens",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "yes",
+     "evidence": "pre-registered",
+     "confidence": "high"
+    },
+    "production_value": {
+     "value": "partial",
+     "evidence": "checker KEEP decision",
+     "confidence": "high"
+    }
+   },
+   "class": "EXISTS",
+   "beam_intervention": "reuse read-only as paired slice for a Beam checker challenger",
+   "beam_decision": "ADOPT_CONDITIONALLY",
+   "tag": "FACT",
+   "note": "adopt only as an evaluation harness, not Beam itself"
+  },
+  {
+   "id": "model.beam",
+   "name": "Reflection Beam (beam:cloud)",
+   "graph_node": null,
+   "model_or_runtime": "beam:cloud (Ollama Cloud), tag digest 84a1b11bb377",
+   "levels": {
+    "implemented": {
+     "value": "no",
+     "evidence": "not in opencode.json, not in any env",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "no",
+     "evidence": "opencode: ProviderModelNotFoundError",
+     "confidence": "high"
+    },
+    "runtime_active": {
+     "value": "no",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "exercised": {
+     "value": "partial",
+     "evidence": "9 synthetic probe calls 21-10",
+     "confidence": "high"
+    },
+    "independently_verified": {
+     "value": "no",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "production_value": {
+     "value": "no",
+     "evidence": "-",
+     "confidence": "high"
+    }
+   },
+   "class": "MISSING",
+   "beam_intervention": "subject of this study",
+   "beam_decision": "INSUFFICIENT_EVIDENCE",
+   "tag": "FACT",
+   "note": ""
+  },
+  {
+   "id": "ledger.cost",
+   "name": "EUR ledger / unit economics",
+   "graph_node": null,
+   "model_or_runtime": "-",
+   "levels": {
+    "implemented": {
+     "value": "yes",
+     "evidence": "#906",
+     "confidence": "high"
+    },
+    "configured": {
+     "value": "partial",
+     "evidence": "docs/usage-plan-limits.json monthly_eur all null",
+     "confidence": "high"
+    },
+    "runtime_active": {
+     "value": "yes",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "exercised": {
+     "value": "partial",
+     "evidence": "-",
+     "confidence": "medium"
+    },
+    "independently_verified": {
+     "value": "no",
+     "evidence": "-",
+     "confidence": "high"
+    },
+    "production_value": {
+     "value": "no",
+     "evidence": "EUR per surviving change UNKNOWN",
+     "confidence": "high"
+    }
+   },
+   "class": "PARTIAL",
+   "beam_intervention": "blocks any EUR claim for Beam; only tokens can be compared",
+   "beam_decision": "INSUFFICIENT_EVIDENCE",
+   "tag": "FACT",
+   "note": ""
+  }
+ ]
+}
