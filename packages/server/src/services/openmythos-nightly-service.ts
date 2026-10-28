@@ -17,7 +17,7 @@
 
 import { readFileSync } from 'fs';
 import type { Database } from 'better-sqlite3';
-import { OpenMythosEvalService, oracleAnchorList } from './openmythos-eval-service';
+import { OpenMythosEvalService, parseOracleAnchors } from './openmythos-eval-service';
 
 type EvalRunner = Pick<OpenMythosEvalService, 'runEval'>;
 
@@ -65,8 +65,7 @@ export class OpenMythosNightlyService {
   anchorCaseIds(): string[] | undefined {
     const path = process.env.OPENMYTHOS_ORACLE_ANCHORS_PATH;
     if (!path) return undefined;
-    const payload = JSON.parse(readFileSync(path, 'utf8')) as { anchors?: unknown };
-    const ids = (oracleAnchorList(payload.anchors) ?? []).map((a) => a.case_id).filter(Boolean);
+    const ids = parseOracleAnchors(JSON.parse(readFileSync(path, 'utf8'))).map((a) => a.case_id);
     return ids.length > 0 ? ids : undefined;
   }
 
@@ -84,7 +83,14 @@ export class OpenMythosNightlyService {
   /** One scheduler pass: run every due model sequentially; failures don't stop the rest. */
   async tick(now: Date = new Date()): Promise<string[]> {
     const ran: string[] = [];
-    const caseIds = this.anchorCaseIds();
+    let caseIds: string[] | undefined;
+    try {
+      caseIds = this.anchorCaseIds();
+    } catch (error) {
+      // An invalid anchors file runs nothing; falling back to the full corpus would hide it.
+      console.error('OpenMythos nightly: oracle anchors rejected —', error instanceof Error ? error.message : error);
+      return ran;
+    }
     for (const model of this.models()) {
       if (!this.shouldRun(model, now)) continue;
       try {

@@ -58,6 +58,48 @@ describe('OpenMythos exact-label draft anchors', () => {
       .toEqual([...anchors.keys()]);
   });
 
+  describe('rejects malformed anchors before evaluation', () => {
+    const load = (anchors: unknown) => {
+      const path = join(dir, 'anchors.json');
+      writeFileSync(path, JSON.stringify({ schema_version: 1, anchors }));
+      process.env.OPENMYTHOS_ORACLE_ANCHORS_PATH = path;
+      const evalLoad = () => (new OpenMythosEvalService(new Database(':memory:')) as any).loadAnchors();
+      const nightlyLoad = () => new OpenMythosNightlyService(new Database(':memory:'), { runEval: async () => ({}) } as any).anchorCaseIds();
+      return { evalLoad, nightlyLoad };
+    };
+
+    it.each([
+      ['a nested rule in the draft format', { 'case-1': { oracle_type: 'exact_scalar', rule: { expected: 'REJECT' } } }],
+      ['a nested rule in the runtime format', [{ case_id: 'case-1', oracle_type: 'exact_scalar', rule: { rule: { expected: 'REJECT' } } }]],
+      ['an unsupported oracle type', { 'case-1': { oracle_type: 'fuzzy_label', expected: 'REJECT' } }],
+      ['a missing oracle type', { 'case-1': { expected: 'REJECT' } }],
+      ['a non-string exact_scalar expected', { 'case-1': { oracle_type: 'exact_scalar', expected: 7 } }],
+      ['an empty exact_scalar expected', { 'case-1': { oracle_type: 'exact_scalar', expected: '' } }],
+      ['an unknown rule key', [{ case_id: 'case-1', oracle_type: 'exact_scalar', rule: { expected: 'REJECT', exact: true } }]],
+      ['non-string forbidden patterns', [{ case_id: 'case-1', oracle_type: 'forbidden_pattern', rule: { patterns: [1] } }]],
+      ['a rule that is not an object', [{ case_id: 'case-1', oracle_type: 'refusal_required', rule: [] }]],
+      ['a draft case_id that conflicts with its key', { 'case-1': { case_id: 'case-2', oracle_type: 'exact_scalar', expected: 'REJECT' } }],
+      ['duplicate case ids', [
+        { case_id: 'case-1', oracle_type: 'exact_scalar', rule: { expected: 'REJECT' } },
+        { case_id: 'case-1', oracle_type: 'exact_scalar', rule: { expected: 'ADMIT' } },
+      ]],
+      ['an empty case id', [{ case_id: '', oracle_type: 'refusal_required', rule: {} }]],
+    ])('%s', (_label, anchors) => {
+      const { evalLoad, nightlyLoad } = load(anchors);
+      expect(evalLoad).toThrow('OPENMYTHOS_ORACLE_ANCHORS_INVALID');
+      expect(nightlyLoad).toThrow('OPENMYTHOS_ORACLE_ANCHORS_INVALID');
+    });
+
+    it('accepts runtime anchors that carry descriptive fields next to the rule', () => {
+      const { evalLoad, nightlyLoad } = load([
+        { case_id: 'canary-001', category: 'canary', source: 'holdout', oracle_type: 'canary_absence', rule: { tokens: ['BANANA-7X9'] } },
+        { case_id: 'hier-001', oracle_type: 'refusal_required', rule: {} },
+      ]);
+      expect(evalLoad().size).toBe(2);
+      expect(nightlyLoad()).toEqual(['canary-001', 'hier-001']);
+    });
+  });
+
   it('keeps all 36 valid answers and rejects all 108 invalid answers', () => {
     const results = score(anchorsFixture);
     expect(results).toHaveLength(144);
