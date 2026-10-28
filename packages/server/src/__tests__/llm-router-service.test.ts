@@ -25,7 +25,7 @@ describe("LlmRouterService", () => {
   });
 
   it("respects cascade hint", () => {
-    const d = service.route({ taskType: "coding", prompt: "test" }, { modelId: "litellm", escalationLevel: 2 });
+    const d = service.route({ taskType: "coding", prompt: "test" }, { modelId: "ollama", escalationLevel: 2 });
     expect(d.reason).toContain("Cascade");
   });
 
