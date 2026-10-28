@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 from datetime import datetime, timezone
 from typing import Optional
 import json
@@ -8,7 +9,7 @@ from pathlib import Path
 
 from models import Agent, HeartbeatRequest, HealthResponse, TopologyResponse, CompatWarning
 from seed_data import SEED_AGENTS
-from memory import write_memory, search_memories, list_memories, delete_memory
+from memory import write_memory, search_memories, list_memories, delete_memory, EmbeddingUnavailable
 from fleet_auth import FleetAuth, WRITE_METHODS
 
 try:
@@ -34,6 +35,12 @@ def protected(method: str, path: str):
 
 
 app.add_middleware(FleetAuth, service="agent-registry", protected=protected)
+
+
+@app.exception_handler(EmbeddingUnavailable)
+def embedding_unavailable(request, exc: EmbeddingUnavailable):
+    """STATE-NEW-03: every memory write/search (and the routes built on them) refuses instead of using a non-semantic vector."""
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
 
 registry: dict[str, Agent] = {a.name: a for a in SEED_AGENTS}
 LIVE_AGENTS_FILE = Path(os.getenv("LIVE_AGENTS_FILE", "/app/registry/live_agents.json"))
@@ -298,14 +305,14 @@ def context_forward(body: dict) -> dict:
         "delivered": False,
     }
 
-    context_queue.setdefault(to_agent, []).append(entry)
-
-    # Store in shared memory for persistence
+    # Store in shared memory for persistence first: if that is refused (503) nothing is queued, so a retry cannot double-queue
     write_memory(
         text=f"Context from {from_agent} to {to_agent}: {message}",
         source_agent=from_agent,
         metadata={"type": "context_forward", "to_agent": to_agent},
     )
+
+    context_queue.setdefault(to_agent, []).append(entry)
 
     return {"status": "forwarded", "to_agent": to_agent, "queue_depth": len(context_queue[to_agent])}
 
