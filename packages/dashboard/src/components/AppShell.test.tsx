@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import type { ApprovalRequest } from '@djimitflo/shared';
 import { Layout } from './Layout';
 import { ApprovalCard } from './ApprovalCard';
@@ -69,6 +69,11 @@ describe('ApprovalCard execution context', () => {
 
 describe('TabbedPage', () => {
   const tabs = [{ id: 'one', label: 'One', element: <p>first</p> }, { id: 'two', label: 'Two', element: <p>second</p> }];
+  function History() {
+    const location = useLocation();
+    const navigate = useNavigate();
+    return <><output data-testid="query">{location.search}</output><button onClick={() => navigate(-1)}>Back</button></>;
+  }
   it('defaults to the first tab and honours ?tab= for deep links', () => {
     render(<MemoryRouter initialEntries={['/x']}><Routes><Route path="/x" element={<TabbedPage tabs={tabs} />} /></Routes></MemoryRouter>);
     expect(screen.getByText('first')).toBeTruthy();
@@ -76,5 +81,25 @@ describe('TabbedPage', () => {
     render(<MemoryRouter initialEntries={['/x?tab=two']}><Routes><Route path="/x" element={<TabbedPage tabs={tabs} />} /></Routes></MemoryRouter>);
     expect(screen.getByText('second')).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Two' }).getAttribute('aria-selected')).toBe('true');
+  });
+  it('keeps repeated entity filters across click, keyboard selection and browser history', () => {
+    const initial = '?run=r1&tag=failed&tag=slow&tab=one';
+    render(<MemoryRouter initialEntries={[`/x${initial}`]}><TabbedPage tabs={tabs} /><History /></MemoryRouter>);
+    const query = () => new URLSearchParams(screen.getByTestId('query').textContent ?? '');
+    const expectContext = (tab: string) => {
+      expect(query().get('tab')).toBe(tab);
+      expect(query().get('run')).toBe('r1');
+      expect(query().getAll('tag')).toEqual(['failed', 'slow']);
+    };
+    fireEvent.click(screen.getByRole('tab', { name: 'Two' }));
+    expectContext('two');
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Two' }), { key: 'Home' });
+    expectContext('one');
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'One' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expectContext('two');
+    expect(screen.getByRole('tabpanel').textContent).toBe('second');
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.getByTestId('query').textContent).toBe(initial);
   });
 });
