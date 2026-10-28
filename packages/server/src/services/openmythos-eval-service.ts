@@ -2,13 +2,14 @@
  * OpenMythosEvalService — runs OpenMythos Governance Benchmark cases against agents.
  *
  * Loads cases from corpus.jsonl, runs them via workstation Ollama, and scores
- * responses using JudgeService (4-dim scoring) with LLM-as-judge fallback.
+ * responses with a deterministic oracle anchor when one exists, else an LLM judge
+ * called directly on Ollama /api/generate. There is no JudgeService judge path;
+ * OPENMYTHOS_USE_JUDGE_SERVICE does not change which judge runs.
  *
- * Judge model: qwen2.5:14b-instruct-q4_K_M (available on workstation Ollama)
- * Ollama endpoint: http://192.168.1.28:11434
+ * Judge model: OPENMYTHOS_JUDGE_MODEL (default qwen2.5:14b-instruct-q4_K_M)
+ * Ollama endpoint: OLLAMA_URL (default http://192.168.1.28:11434)
  *
  * Wave 1 features:
- * - JudgeService integration (4-dim scoring with contradiction detection)
  * - WorkerPool parallel execution (concurrency env-configurable, default 2, timeout=120s)
  * - SwarmEventBus real-time events (eval:case:complete, eval:run:complete)
  */
@@ -161,6 +162,10 @@ function trendOf(runs: StoredRun[]): AgentScore['trend'] {
 }
 
 function getOllamaUrl(): string { return process.env.OLLAMA_URL || 'http://192.168.1.28:11434'; }
+/** Host[:port] of the Ollama endpoint, without scheme, credentials or path; null when unparseable. */
+function getOllamaHost(): string | null {
+  try { return new URL(getOllamaUrl()).host || null; } catch { return null; }
+}
 function getJudgeModel(): string { return process.env.OPENMYTHOS_JUDGE_MODEL || 'qwen2.5:14b-instruct-q4_K_M'; }
 function getCorpusPath(): string {
   if (!process.env.OPENMYTHOS_CORPUS_PATH?.trim()) throw new Error('OPENMYTHOS_CORPUS_PATH_REQUIRED');
@@ -179,6 +184,20 @@ async function getOllamaModelDigest(model: string, override?: string): Promise<s
   const match = payload.models?.find((item) => wanted.has(item.name || '') || wanted.has(item.model || ''));
   if (!match?.digest) throw new Error(`OPENMYTHOS_MODEL_DIGEST_NOT_FOUND:${model}`);
   return match.digest;
+}
+
+/**
+ * Anchor format adapter. Runtime format: `anchors: [{ case_id, oracle_type, rule }]`.
+ * Benchmark draft format (cases/drafts/*-oracle-anchors.json): `anchors: { <case_id>: { oracle_type, ...rule } }`.
+ * Both map to the runtime list; the stored anchor hash stays the hash of the file as read.
+ */
+export function oracleAnchorList(anchors: unknown): OracleAnchor[] | null {
+  if (Array.isArray(anchors)) return anchors as OracleAnchor[];
+  if (!anchors || typeof anchors !== 'object') return null;
+  return Object.entries(anchors as Record<string, Record<string, unknown> | null>).map(([caseId, entry]) => {
+    const { oracle_type: oracleType, ...rule } = entry ?? {};
+    return { case_id: caseId, oracle_type: oracleType as string, rule };
+  });
 }
 
 export class OpenMythosEvalService {
@@ -272,10 +291,17 @@ export class OpenMythosEvalService {
   async runEval(agentId: string, categories?: string[], requestedModel?: string, caseIds?: string[], subject?: EvalSkillSubject): Promise<EvalRunResult> {
     const subjectModel = this.resolveSubjectModel(agentId, requestedModel);
     const subjectModelDigest = await getOllamaModelDigest(subjectModel, process.env.OPENMYTHOS_SUBJECT_MODEL_DIGEST);
-    const directOllamaJudge = process.env.OPENMYTHOS_USE_JUDGE_SERVICE === 'false';
-    const judgeModelDigest = directOllamaJudge
-      ? await getOllamaModelDigest(getJudgeModel(), process.env.OPENMYTHOS_JUDGE_MODEL_DIGEST)
-      : process.env.DJIMITFLO_BUILD_SHA?.trim() || null;
+    // E01: judgeWithLlm() is the only judge path — direct Ollama /api/generate with getJudgeModel().
+    // There is no JudgeService branch, whatever OPENMYTHOS_USE_JUDGE_SERVICE says, so the receipt names
+    // that judge. A digest lookup failure is recorded as null plus the reason, never filled in.
+    const judgeModel = getJudgeModel();
+    let judgeModelDigest: string | null = null;
+    let judgeModelDigestError: string | null = null;
+    try {
+      judgeModelDigest = await getOllamaModelDigest(judgeModel, process.env.OPENMYTHOS_JUDGE_MODEL_DIGEST);
+    } catch (error) {
+      judgeModelDigestError = error instanceof Error ? error.message : String(error);
+    }
     let cases = this.loadCases(categories);
     if (cases.length === 0) throw new Error('OPENMYTHOS_NO_CASES');
     const discriminationGateEnabled = !caseIds?.length && process.env.OPENMYTHOS_DISCRIMINATION_GATE_ENABLED !== 'false';
@@ -300,9 +326,11 @@ export class OpenMythosEvalService {
     const baseMetadata = {
       subject_model: subjectModel,
       subject_model_digest: subjectModelDigest,
-      judge_backend: process.env.OPENMYTHOS_USE_JUDGE_SERVICE === 'false' ? 'ollama' : 'judge_service',
-      judge_model: process.env.OPENMYTHOS_USE_JUDGE_SERVICE === 'false' ? getJudgeModel() : 'djimitflo-judge-service',
+      judge_backend: 'ollama',
+      judge_model: judgeModel,
       judge_model_digest: judgeModelDigest,
+      judge_model_digest_error: judgeModelDigestError,
+      judge_endpoint_host: getOllamaHost(),
       corpus_sha256: this.corpusSha256,
       corpus_version: this.corpusManifest?.corpus_version,
       corpus_certification_ready: this.corpusManifest?.certification_ready === true,
@@ -533,11 +561,12 @@ export class OpenMythosEvalService {
       return anchors;
     }
     const content = readFileSync(path);
-    const payload = JSON.parse(content.toString('utf8')) as { schema_version?: number; anchors?: OracleAnchor[] };
-    if (payload.schema_version !== 1 || !Array.isArray(payload.anchors)) {
+    const payload = JSON.parse(content.toString('utf8')) as { schema_version?: number; anchors?: unknown };
+    const list = oracleAnchorList(payload.anchors);
+    if (payload.schema_version !== 1 || !list) {
       throw new Error('OPENMYTHOS_ORACLE_ANCHORS_INVALID');
     }
-    for (const anchor of payload.anchors) {
+    for (const anchor of list) {
       if (!anchor?.case_id || !anchor.oracle_type || !anchor.rule || anchors.has(anchor.case_id)) {
         throw new Error('OPENMYTHOS_ORACLE_ANCHORS_INVALID');
       }

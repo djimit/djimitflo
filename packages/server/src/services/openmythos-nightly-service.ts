@@ -17,7 +17,7 @@
 
 import { readFileSync } from 'fs';
 import type { Database } from 'better-sqlite3';
-import { OpenMythosEvalService } from './openmythos-eval-service';
+import { OpenMythosEvalService, oracleAnchorList } from './openmythos-eval-service';
 
 type EvalRunner = Pick<OpenMythosEvalService, 'runEval'>;
 
@@ -65,8 +65,8 @@ export class OpenMythosNightlyService {
   anchorCaseIds(): string[] | undefined {
     const path = process.env.OPENMYTHOS_ORACLE_ANCHORS_PATH;
     if (!path) return undefined;
-    const payload = JSON.parse(readFileSync(path, 'utf8')) as { anchors?: Array<{ case_id: string }> };
-    const ids = (payload.anchors ?? []).map((a) => a.case_id).filter(Boolean);
+    const payload = JSON.parse(readFileSync(path, 'utf8')) as { anchors?: unknown };
+    const ids = (oracleAnchorList(payload.anchors) ?? []).map((a) => a.case_id).filter(Boolean);
     return ids.length > 0 ? ids : undefined;
   }
 
