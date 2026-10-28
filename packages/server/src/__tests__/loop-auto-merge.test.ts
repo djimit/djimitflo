@@ -329,10 +329,63 @@ it('revocation: merge survival marking the lines removed, or red checks on the m
 
   db.prepare("DELETE FROM system_state WHERE key = 'loop_auto_merge_test_only'").run();
   await mergeOne(702);
-  checks.set('merge702', 'red');
+  checks.set('merge702', 'red'); // 'build' is the required check: red on two reads, one tick apart
   await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), new Date(NOW.getTime() + 3_600_000));
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), new Date(NOW.getTime() + 3_600_000 + 15 * 60_000));
   expect(readClassState(db)).toMatchObject({ state: 'revoked' });
   expect(readClassState(db).reason).toContain('checks failing on main at merge commit merge702');
+});
+
+// 2026-10-26: #931 (test-only, llm-fallback.test.ts) revoked the class because CodeQL `Analyze (javascript-typescript)`, not a
+// required check, failed on its merge commit d088425f; the next commit was green. Only a required check, red on two reads, revokes.
+const tickAfter = (min: number) => runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), new Date(NOW.getTime() + 3_600_000 + min * 60_000));
+const revokeEvents = (type: string) => (db.prepare('SELECT COUNT(*) AS n FROM loop_events WHERE event_type = ?').get(type) as { n: number }).n;
+it('revocation (#931 replay): a non-required check failing on the merge commit never revokes — it is an event only', async () => {
+  await mergeOne(931);
+  runsBySha.set('merge931', [run(1, 'build', 'success'), run(2, 'Analyze (javascript-typescript)', 'failure')]);
+  for (const min of [0, 15, 30]) expect(await tickAfter(min)).toMatchObject({ revoked: false });
+  expect(readClassState(db).state).toBe('active');
+  expect(decision(931).revoked).toBeUndefined();
+  expect(revokeEvents('auto_merge_non_required_check_failed')).toBe(1); // recorded once, not every tick
+  seedPr(932, { draft: false }); // the class keeps acting
+  await tickAfter(45);
+  expect(decision(932).decision).toBe('merged');
+});
+
+it('revocation: a required check failing on two consecutive reads revokes; one read only marks it pending', async () => {
+  await mergeOne(700);
+  runsBySha.set('merge700', [run(1, 'build', 'failure'), run(2, 'Analyze (javascript-typescript)', 'success')]);
+  expect(await tickAfter(0)).toMatchObject({ revoked: false });
+  expect(readClassState(db).state).toBe('active');
+  expect(decision(700).checks_red_pending).toMatchObject({ reason: 'build=failure' });
+  expect(revokeEvents('auto_merge_revoke_pending')).toBe(1);
+  expect(await tickAfter(15)).toMatchObject({ revoked: true });
+  expect(readClassState(db)).toMatchObject({ state: 'revoked', pr_url: 'https://github.com/o/r/pull/700' });
+  expect(readClassState(db).reason).toContain('required checks failing on main at merge commit merge700 (build=failure)');
+});
+
+it('revocation: a required check failing once, then passing on the rerun, never revokes', async () => {
+  await mergeOne(700);
+  runsBySha.set('merge700', [run(1, 'build', 'failure')]);
+  await tickAfter(0);
+  expect(decision(700).checks_red_pending).toBeDefined();
+  runsBySha.set('merge700', [run(1, 'build', 'failure'), run(2, 'build', 'success')]); // the newest run per name decides
+  await tickAfter(15);
+  expect(decision(700).checks_red_pending).toBeUndefined();
+  runsBySha.set('merge700', [run(1, 'build', 'failure'), run(2, 'build', 'success'), run(3, 'build', 'failure')]); // a new red starts over
+  await tickAfter(30);
+  expect(readClassState(db).state).toBe('active');
+  expect(decision(700).checks_red_pending).toBeDefined();
+});
+
+it('revocation: required checks still running, or not reported, are not red — nothing is marked or revoked', async () => {
+  await mergeOne(700);
+  runsBySha.set('merge700', [run(1, 'build', null, 'in_progress'), run(2, 'Analyze (javascript-typescript)', 'failure')]);
+  await tickAfter(0); await tickAfter(15);
+  runsBySha.set('merge700', [run(2, 'Analyze (javascript-typescript)', 'failure')]); // required 'build' missing
+  await tickAfter(30);
+  expect(readClassState(db).state).toBe('active');
+  expect(decision(700).checks_red_pending).toBeUndefined();
 });
 
 it('E1: an anomalous or pending survival outcome is neither a removal (no revocation) nor a settlement (window stays open)', async () => {
