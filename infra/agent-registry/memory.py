@@ -51,14 +51,9 @@ def _ollama_name(name: str) -> str:
     return name if ":" in name else f"{name}:latest"
 
 
-_digest_cache: dict[str, str] = {}
-
-
 def _model_digest() -> str:
-    """Immutable identity of EMBED_MODEL (its Ollama digest), resolved once per process; failures are not cached.
-    The same name can point at another build after `ollama pull`, so name alone does not identify the vector space."""
-    if EMBED_MODEL in _digest_cache:
-        return _digest_cache[EMBED_MODEL]
+    """Immutable identity of EMBED_MODEL (its Ollama digest). The same name can point at another build after `ollama pull`,
+    so the name alone does not identify the vector space. Not cached: see _embed_with_identity."""
     try:
         resp = httpx.get(
             f"{OLLAMA_URL}/api/tags",
@@ -73,8 +68,17 @@ def _model_digest() -> str:
         raise EmbeddingUnavailable(f"embedding unavailable: {EMBED_MODEL} digest not resolvable ({type(e).__name__})") from e
     if not isinstance(digest, str) or not digest:
         raise EmbeddingUnavailable(f"embedding unavailable: {EMBED_MODEL} has no digest in /api/tags")
-    _digest_cache[EMBED_MODEL] = digest
     return digest
+
+
+def _embed_with_identity(text: str) -> tuple[list[float], str]:
+    """The vector and the digest of the build that produced it. Ollama embeds by (mutable) name, so the digest is resolved
+    right before and right after the call; a change in between means the build is unknown and the vector is refused."""
+    before = _model_digest()
+    vector = _embed(text)
+    if _model_digest() != before:
+        raise EmbeddingUnavailable(f"embedding unavailable: {EMBED_MODEL} changed build during the embedding call")
+    return vector, before
 
 
 def _embed(text: str) -> list[float]:
@@ -92,8 +96,7 @@ def _embed(text: str) -> list[float]:
 
 
 def write_memory(text: str, source_agent: str, metadata: Optional[dict] = None) -> dict:
-    digest = _model_digest()
-    vector = _embed(text)
+    vector, digest = _embed_with_identity(text)
     client = get_client()
     ensure_collection(client)
     point_id = str(uuid.uuid4())
@@ -115,8 +118,7 @@ def write_memory(text: str, source_agent: str, metadata: Optional[dict] = None) 
 
 
 def search_memories(query: str, source_agent: Optional[str] = None, limit: int = 10) -> list[dict]:
-    digest = _model_digest()
-    vector = _embed(query)
+    vector, digest = _embed_with_identity(query)
     client = get_client()
     ensure_collection(client)
     # Only points embedded by the current model build; older points without this identity are "unknown" and stay out.
