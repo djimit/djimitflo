@@ -94,11 +94,15 @@ export function similarKbPages(db: Database, improvementId: string, k = 3, min =
     .filter((h) => h.score >= min).sort((a, b) => b.score - a.score).slice(0, k);
 }
 
-/** Per-arm evidence (production maker outcomes carrying `ace-001-arm:<RS>`): n, verified, graded mean, tokens, Wilson 95 %. */
+/**
+ * Per-arm evidence (production maker outcomes carrying `ace-001-arm:<RS>`): n, verified, graded mean, tokens, Wilson 95 %.
+ * Amendment 3 (2026-10-27, L-F05): tokens_mean averages runs with known tokens (> 0) only and tokens_n reports how many;
+ * a run without a usage report is not a 0-token run. Secondary reading only: n, verified and the arm assignment are unchanged.
+ */
 export function ace001Evidence(db: Database, windowSince: string, env: NodeJS.ProcessEnv = process.env) {
   const analysisSince = aceAnalysisSince(env);
   const since = windowSince > analysisSince ? windowSince : analysisSince;
-  let rows: Array<{ arm: string; success: number; tokens: number; graded: number | null }> = [];
+  let rows: Array<{ arm: string; success: number; tokens: number | null; graded: number | null }> = [];
   let deliveryInvalid = 0;
   try {
     deliveryInvalid = (db.prepare(`SELECT COUNT(*) AS n FROM skill_outcomes o, json_each(o.evidence_refs_json) r
@@ -113,10 +117,11 @@ export function ace001Evidence(db: Database, windowSince: string, env: NodeJS.Pr
   const arms = Object.fromEntries(ACE_ARMS.map((a) => {
     const r = rows.filter((x) => x.arm === a); const v = r.filter((x) => x.success).length;
     const g = r.map((x) => x.graded).filter((x): x is number => x !== null && Number.isFinite(x));
+    const t = r.map((x) => x.tokens).filter((x): x is number => typeof x === 'number' && x > 0);
     return [a, { n: r.length, verified: v, verified_rate: r.length ? +(v / r.length).toFixed(3) : null, ci: r.length ? wilson(v, r.length) : null,
       graded_n: g.length, graded_mean: g.length ? +(g.reduce((s, x) => s + x, 0) / g.length).toFixed(3) : null,
-      tokens_mean: r.length ? Math.round(r.reduce((s, x) => s + (x.tokens || 0), 0) / r.length) : null }];
-  })) as Record<AceArm, { n: number; verified: number; verified_rate: number | null; ci: [number, number] | null; graded_n: number; graded_mean: number | null; tokens_mean: number | null }>;
+      tokens_n: t.length, tokens_mean: t.length ? Math.round(t.reduce((s, x) => s + x, 0) / t.length) : null }];
+  })) as Record<AceArm, { n: number; verified: number; verified_rate: number | null; ci: [number, number] | null; graded_n: number; graded_mean: number | null; tokens_n: number; tokens_mean: number | null }>;
   const reached = ACE_ARMS.every((a) => arms[a].n >= ACE_001_TARGET_PER_ARM);
   const main = (pick: (a: AceArm) => boolean) => {
     const on = ACE_ARMS.filter(pick); const off = ACE_ARMS.filter((a) => !pick(a));

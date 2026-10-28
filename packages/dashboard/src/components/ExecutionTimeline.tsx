@@ -119,13 +119,13 @@ function TimelineItem({ event, isLast }: TimelineItemProps) {
             </div>
           )}
 
-          {/* Artifact Link */}
+          {/* UX-005: no route serves task_artifacts yet, so name the artifact instead of an inert "View Artifact" control */}
           {event.artifact_id && (
             <div className="mt-3 pt-3 border-t border-border">
-              <div className="flex items-center gap-2 text-sm text-accent hover:text-accent-secondary cursor-pointer">
-                <FileText className="w-4 h-4" />
-                <span>View Artifact</span>
-              </div>
+              <p className="flex items-center gap-2 text-sm text-foreground-secondary">
+                <FileText className="w-4 h-4 shrink-0" aria-hidden="true" />
+                <span>Artifact <code className="px-1.5 py-0.5 bg-background rounded">{event.artifact_id}</code> recorded · no retrieval endpoint, content is not viewable here</span>
+              </p>
             </div>
           )}
         </div>

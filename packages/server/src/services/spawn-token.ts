@@ -91,3 +91,10 @@ export function spawnTokenRejection(secret: string, token: string, expectedLease
 export function validateSpawnToken(secret: string, token: string, expectedLeaseId: string, expectedTreeId: string): boolean {
   return spawnTokenRejection(secret, token, expectedLeaseId, expectedTreeId) === null;
 }
+
+/** The expiry (ms) a token's payload states, for the host-token watch; read it only after spawnTokenRejection returned null. */
+export function spawnTokenExpiresAt(token: string): number | null {
+  const fields = Buffer.from(token.split('.')[0] ?? '', 'base64url').toString('utf8').split('|');
+  const expiresAt = fields.length === 3 ? Number(fields[2]) : NaN;
+  return Number.isFinite(expiresAt) ? expiresAt : null;
+}

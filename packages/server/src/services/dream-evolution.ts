@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { redactSecrets } from './secret-patterns';
+import { eValue, mcnemarOneSided } from './paired-stats';
 import { generateText, llmEndpoints } from './llm-fallback';
 import { budgetPause } from './inference-budget';
 import { firstJsonObject } from './expert-council-service';
@@ -28,13 +29,7 @@ export const MAX_MUTANTS = 3;
  * typically 3 vs 1 discordant pairs — exact one-sided McNemar p ≈ 0.31, i.e. noise. Only discordant pairs (one genome
  * green, the other not) carry information: P(X ≥ b | n = b + c, ½) < DREAM_PROMOTION_ALPHA (default 0.05) promotes.
  */
-export function mcnemarOneSided(b: number, c: number): number {
-  const n = b + c;
-  if (n === 0) return 1;
-  let p = 0; let coef = 1; // C(n, 0)
-  for (let k = 0; k <= n; k++) { if (k >= b) p += coef; coef = coef * (n - k) / (k + 1); }
-  return p / 2 ** n;
-}
+export { mcnemarOneSided } from './paired-stats';
 const promotionAlpha = () => Number(process.env.DREAM_PROMOTION_ALPHA) || 0.05;
 
 /**
@@ -56,15 +51,7 @@ const binom = (n: number, p: number): number[] => {
  * among n discordant pairs. Promote iff E ≥ 1/alpha; by Ville's inequality that stays valid when looked at after every pair
  * (McNemar does not). It is exchangeable, so the final value does not depend on the pair order.
  */
-const logFact = (n: number): number => { let s = 0; for (let i = 2; i <= n; i++) s += Math.log(i); return s; };
-export function eValue(n: number, k: number): number {
-  if (n <= 0) return 1;
-  const terms = Array.from({ length: k + 1 }, (_, i) => logFact(n + 1) - logFact(i) - logFact(n + 1 - i));
-  const max = Math.max(...terms);
-  const logCdf = max + Math.log(terms.reduce((a, t) => a + Math.exp(t - max), 0)) - (n + 1) * Math.LN2;
-  return Math.exp((n + 1) * Math.LN2 + logFact(k) + logFact(n - k) - logFact(n + 1) + logCdf);
-}
-export const ePaired = (pairs: Array<1 | -1>): number => eValue(pairs.length, pairs.filter((p) => p === 1).length);
+export { eValue, ePaired } from './paired-stats';
 export type PromotionRule = 'mcnemar' | 'both' | 'graded';
 export const promotionRule = (env: NodeJS.ProcessEnv = process.env): PromotionRule =>
   (env.DREAM_PROMOTION_RULE === 'both' ? 'both' : env.DREAM_PROMOTION_RULE === 'graded' ? 'graded' : 'mcnemar');

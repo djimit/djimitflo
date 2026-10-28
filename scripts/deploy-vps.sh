@@ -38,8 +38,57 @@ rewrite_compose() {
   grep -q "image: djimitflo:main-${new_short}" "$file" && grep -q "runtime-source-${new_short}:/workspace/djimitflo" "$file"
 }
 
+# --- build receipt (forensic 2026-10-26 ROOT-001) ---------------------------------------------------------------------
+# One immutable JSON per built image in $DEPLOY_ROOT/build-receipts/<image id>.json (write-once, read-only): the commit,
+# the build inputs (lockfile, Dockerfile, the base image DIGEST the build was given) and the content-addressed image id.
+# The image itself declares the commit, lockfile hash and base (DJIMITFLO_BUILD_COMMIT / _LOCK_SHA256 / _BASE_IMAGE). The
+# deploy verifies the receipt before switching and the running container's image against it after the health wait.
+# ponytail: local images, no registry — the image id is the digest; add signing/attestation if images ever get pushed.
+sha256_file() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
+resolve_base_image() {   # resolve_base_image <tag> → <repo>@sha256:… of the local image under that tag (pulled when absent)
+  local tag="$1" repo d
+  [ -n "$tag" ] || { echo "no base image tag (ARG NODE_IMAGE) in the Dockerfile" >&2; return 1; }
+  repo="${tag%:*}"
+  for _ in 1 2; do
+    d="$(docker image inspect -f '{{range .RepoDigests}}{{println .}}{{end}}' "$tag" 2>/dev/null | grep -m 1 "^$repo@sha256:" || true)"
+    [ -n "$d" ] && { echo "$d"; return 0; }
+    docker pull -q "$tag" >/dev/null 2>&1 || true   # same as the old behaviour: the local tag, pulled only when absent
+  done
+  echo "base image $tag has no registry digest — not building an unbound image" >&2; return 1
+}
+write_build_receipt() {   # write_build_receipt <dir> <src> <sha> <image> <base ref> <build_time> → prints the receipt path
+  local dir="$1" src="$2" sha="$3" image="$4" base="$5" built="$6" id lock dfile f
+  [[ "$base" == *@sha256:* ]] || { echo "base image $base is not a digest" >&2; return 1; }
+  id="$(docker image inspect -f '{{.Id}}' "$image")" && [ -n "$id" ] || { echo "cannot read the image id of $image" >&2; return 1; }
+  lock="$(sha256_file "$src/package-lock.json")" && dfile="$(sha256_file "$src/Dockerfile")" || return 1
+  mkdir -p "$dir"; f="$dir/${id#sha256:}.json"
+  if [ -e "$f" ]; then   # write-once: the same image keeps its receipt; another commit claiming it is refused
+    grep -qF "\"commit\":\"$sha\"" "$f" || { echo "receipt $f belongs to another commit — refusing" >&2; return 1; }
+    echo "$f"; return 0
+  fi
+  printf '{"schema":"djimitflo.build-receipt/v1","commit":"%s","image":"%s","image_id":"%s","lockfile_sha256":"%s","dockerfile_sha256":"%s","base_image":"%s","build_time":"%s","build_source":"deploy-vps.sh"}\n' \
+    "$sha" "$image" "$id" "$lock" "$dfile" "$base" "$built" > "$f.tmp.$$" && chmod 0444 "$f.tmp.$$" && mv "$f.tmp.$$" "$f" && echo "$f"
+}
+verify_build_receipt() {   # verify_build_receipt <receipt> <src> <sha> <image>: the image and source still are what was built
+  local f="$1" src="$2" sha="$3" image="$4" id lock dfile envs base
+  [ -f "$f" ] || { echo "no build receipt at $f" >&2; return 1; }
+  id="$(docker image inspect -f '{{.Id}}' "$image")" || return 1
+  envs="$(docker image inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$image")" || return 1
+  lock="$(sha256_file "$src/package-lock.json")" && dfile="$(sha256_file "$src/Dockerfile")" || return 1
+  base="$(sed -n 's/.*"base_image":"\([^"]*\)".*/\1/p' "$f")"
+  grep -qF "\"commit\":\"$sha\"" "$f" || { echo "receipt is not for commit $sha" >&2; return 1; }
+  grep -qF "\"image_id\":\"$id\"" "$f" || { echo "$image is $id, not the receipt's image" >&2; return 1; }
+  grep -qF "\"lockfile_sha256\":\"$lock\"" "$f" || { echo "package-lock.json changed since the build" >&2; return 1; }
+  grep -qF "\"dockerfile_sha256\":\"$dfile\"" "$f" || { echo "Dockerfile hash missing from the receipt or changed since the build" >&2; return 1; }
+  [[ "$base" == *@sha256:* ]] || { echo "receipt has no base image digest" >&2; return 1; }
+  printf '%s\n' "$envs" | grep -qxF "DJIMITFLO_BUILD_COMMIT=$sha" || { echo "$image does not declare commit $sha" >&2; return 1; }
+  printf '%s\n' "$envs" | grep -qxF "DJIMITFLO_BUILD_LOCK_SHA256=$lock" || { echo "$image does not declare the receipt's lockfile" >&2; return 1; }
+  printf '%s\n' "$envs" | grep -qxF "DJIMITFLO_BUILD_BASE_IMAGE=$base" || { echo "$image was not built from the receipt's base $base" >&2; return 1; }
+}
+
 # The script that runs on the VPS. Values are passed as positional args ($1..$4).
 remote_script() {
+  declare -f rewrite_compose sha256_file resolve_base_image write_build_receipt verify_build_receipt
   cat <<'REMOTE'
 set -euo pipefail
 ROOT="$1"; SHA="$2"; REPO="$3"; SHORT="${SHA:0:7}"
@@ -70,25 +119,47 @@ if [ ! -d "runtime-source-$SHORT" ]; then git clone -q "$REPO" "runtime-source-$
 (cd "runtime-source-$SHORT" && git checkout -q "$SHA" && git log -1 --oneline)
 # a hung build (0% CPU for 17-20 min, 2026-09-25 and 26) blocked every deploy until killed by hand: bound it.
 # --network host: on this VPS the docker bridge network stalls apt (g++ install: bridge timed out at 349 s, host 10 s)
-(cd "runtime-source-$SHORT" && timeout "${DEPLOY_BUILD_TIMEOUT_S:-1200}" docker build --network host --build-arg VCS_REF="$SHA" --build-arg BUILD_SOURCE=deploy-vps.sh --build-arg BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" -t "djimitflo:main-$SHORT" . 2>&1 | tail -n 2)
+BUILT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"; LOCK="$(sha256_file "runtime-source-$SHORT/package-lock.json")"
+# the base image is pinned to the digest its tag resolves to here; the build gets that digest, the receipt records it
+BASE="$(resolve_base_image "$(sed -n 's/^ARG NODE_IMAGE=//p' "runtime-source-$SHORT/Dockerfile" | head -n 1)")" || { echo "base image unresolved — not deploying" >&2; exit 1; }
+(cd "runtime-source-$SHORT" && timeout "${DEPLOY_BUILD_TIMEOUT_S:-1200}" docker build --network host --build-arg NODE_IMAGE="$BASE" --build-arg VCS_REF="$SHA" --build-arg BUILD_SOURCE=deploy-vps.sh --build-arg BUILD_TIME="$BUILT" --build-arg LOCKFILE_SHA256="$LOCK" -t "djimitflo:main-$SHORT" . 2>&1 | tail -n 2)
+# the build receipt binds commit, inputs and image id; no receipt or a mismatch means no switch
+RECEIPT="$(write_build_receipt "$ROOT/build-receipts" "runtime-source-$SHORT" "$SHA" "djimitflo:main-$SHORT" "$BASE" "$BUILT")" || { echo "build receipt failed — not deploying" >&2; exit 1; }
 # The container runs as uid 1001; objective-mode needs a writable .git for git worktrees.
 chown -R 1001:1001 "runtime-source-$SHORT"
+verify_build_receipt "$RECEIPT" "runtime-source-$SHORT" "$SHA" "djimitflo:main-$SHORT" || { echo "build receipt does not match the image — not deploying" >&2; exit 1; }
+echo "build receipt $RECEIPT"
 cp compose.yml "compose.yml.bak-$SHORT"
-sed -i \
-  -e "s|image: djimitflo:main-$PREV_SHORT|image: djimitflo:main-$SHORT|" \
-  -e "s|DJIMITFLO_COMMIT_SHA: $PREV_FULL|DJIMITFLO_COMMIT_SHA: $SHA|" \
-  -e "s|runtime-source-$PREV_SHORT:/workspace/djimitflo|runtime-source-$SHORT:/workspace/djimitflo|" compose.yml
-grep -q "runtime-source-$SHORT:/workspace/djimitflo" compose.yml || { cp "compose.yml.bak-$SHORT" compose.yml; echo "compose rewrite failed" >&2; exit 1; }
-docker compose up -d --force-recreate djimitflo 2>&1 | tail -n 1
+rewrite_compose compose.yml "$PREV_SHORT" "$PREV_FULL" "$SHORT" "$SHA" || { cp "compose.yml.bak-$SHORT" compose.yml; echo "compose rewrite failed" >&2; exit 1; }
+# From here on compose.yml selects the new build: EVERY failure (a failing compose call under set -e included) restores the
+# previous compose.yml, recreates the previous container and waits until it is healthy again.
+rollback() {
+  trap - ERR; set +e
+  echo "$1; rolling back to $PREV_SHORT" >&2
+  cp "compose.yml.bak-$SHORT" compose.yml
+  docker compose up -d --force-recreate djimitflo 2>&1 | tail -n 1
+  for _ in $(seq 1 12); do
+    sleep 5
+    [ "$(docker inspect -f '{{.State.Health.Status}}' djimitflo-live 2>/dev/null)" = healthy ] && { echo "rolled back to $PREV_SHORT (healthy)" >&2; exit 1; }
+  done
+  echo "ROLLBACK to $PREV_SHORT NOT healthy after 60s — operator action needed" >&2; exit 1
+}
+set -E; trap 'rollback "command failed after the compose rewrite (exit $?, line $LINENO)"' ERR
+docker compose up -d --force-recreate djimitflo 2>&1 | tail -n 1 || rollback "docker compose up failed for $SHORT"
 for _ in $(seq 1 12); do
   sleep 5
   STATE="$(docker inspect -f '{{.State.Health.Status}}' djimitflo-live 2>/dev/null || true)"
-  [ "$STATE" = "healthy" ] && { prune_old_builds; echo "deployed $SHORT (healthy)"; exit 0; }
+  if [ "$STATE" = "healthy" ]; then
+    # healthy is not enough: the container must run the image the receipt was written for
+    RUNNING_ID="$(docker inspect -f '{{.Image}}' djimitflo-live 2>/dev/null || true)"
+    if [ -n "$RUNNING_ID" ] && grep -qF "\"image_id\":\"$RUNNING_ID\"" "$RECEIPT"; then
+      trap - ERR; prune_old_builds || true   # housekeeping never fails a healthy deploy
+      echo "deployed $SHORT (healthy, receipt $RECEIPT)"; exit 0
+    fi
+    rollback "healthy, but running image ${RUNNING_ID:-unknown} is not the receipt's"
+  fi
 done
-echo "NOT healthy after 60s (state: ${STATE:-unknown}); rolling back to $PREV_SHORT" >&2
-cp "compose.yml.bak-$SHORT" compose.yml
-docker compose up -d --force-recreate djimitflo 2>&1 | tail -n 1
-exit 1
+rollback "NOT healthy after 60s (state: ${STATE:-unknown})"
 REMOTE
 }
 

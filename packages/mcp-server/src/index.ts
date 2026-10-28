@@ -27,6 +27,7 @@ import { registerNotebookTools } from './tools/notebooks.js';
 import { registerExplainerTools } from './tools/explainer.js';
 import { registerAuthorityTools } from './tools/authority.js';
 import { registerPlatformTools } from './tools/platform.js';
+import { registerDjimitSecTools } from './tools/djimitsec.js';
 import { runWithMcpAuth } from './auth-context.js';
 import { UserRole } from '@djimitflo/shared';
 import type { DbHandle } from './db.js';
@@ -91,6 +92,7 @@ export function registerTools(server: McpServer, db: DbHandle): void {
   registerExplainerTools(server, db.db);
   registerAuthorityTools(server, db);
   registerPlatformTools(server, db);
+  registerDjimitSecTools(server, db);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
