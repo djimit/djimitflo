@@ -134,6 +134,19 @@ export class AgentAssuranceService {
     return this.parseTraceSpan(this.db.prepare('SELECT * FROM agent_trace_spans WHERE id = ?').get(id));
   }
 
+  /** Close an open span in place: terminal status, end time, metadata merged. A closed span is never reopened. */
+  finishTraceSpan(id: string, input: { status: Exclude<TraceSpanStatus, 'running'>; ended_at?: string; metadata?: Record<string, unknown> }): TraceSpanRecord {
+    if (!SPAN_STATUSES.includes(input.status) || (input.status as TraceSpanStatus) === 'running') throw new Error('ASSURANCE_SPAN_STATUS_INVALID');
+    this.rejectSecretLike(input.metadata);
+    const row = this.db.prepare('SELECT * FROM agent_trace_spans WHERE id = ?').get(id);
+    if (!row) throw new Error('ASSURANCE_SPAN_NOT_FOUND');
+    const span = this.parseTraceSpan(row);
+    if (span.ended_at) return span;
+    this.db.prepare('UPDATE agent_trace_spans SET status = ?, ended_at = ?, metadata = ? WHERE id = ?')
+      .run(input.status, input.ended_at || new Date().toISOString(), JSON.stringify({ ...span.metadata, ...(input.metadata || {}) }), id);
+    return this.parseTraceSpan(this.db.prepare('SELECT * FROM agent_trace_spans WHERE id = ?').get(id));
+  }
+
   getTrace(traceId: string): { trace_id: string; spans: TraceSpanRecord[]; edges: Array<{ from: string; to: string }>; roots: TraceSpanRecord[] } {
     const spans = (this.db.prepare(`
       SELECT * FROM agent_trace_spans
