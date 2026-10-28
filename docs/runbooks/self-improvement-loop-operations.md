@@ -84,6 +84,8 @@ missing here. **Acting** = changes what the loop does; acting flags are switched
 
 | Flag | Code default | Acting | Stage | Decides |
 |---|---|---|---|---|
+| `DJIMITSEC_SCAN_MODE` | off | `shadow` probes the pinned worker only; `execute` dispatches a fixed repository scan through native task admission, policy, approval, shared concurrency and audit. No prompt/shell/fallback; operator-owned `DJIMITSEC_SCAN_CONFIG` pins origin, token file, repository allowlist, implementation digest and timeout. Scan completion is never a verified security PASS. | bounded capability | operator |
+| `DJIMITSEC_SCAN_TRIGGERS` | off | `shadow` selects without queuing; `execute` uses the existing signed GitHub webhook and existing 60-second operator tick. Private `DJIMITSEC_SCAN_TRIGGER_CONFIG` pins a current maker principal, exact repository/base branch/interval and rolling daily cap. Same commit/profile/window and delivery IDs dedupe durably; forks are refused. Scheduled source is the configured local branch, not proof of current GitHub head. No extra timer, scheduler, LLM or approval authority. | bounded intake | operator |
 | `LOOP_BANDIT_ENABLED` | off | yes | act | operator |
 | `LOOP_BANDIT_SPECIES` | unset | yes | act | operator |
 | `LOOP_BANDIT_MAX_SHARE` | 0.1 | yes | act | operator |
