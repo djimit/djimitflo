@@ -114,7 +114,7 @@ export function createRoutes(
   router.get('/telemetry/usage', requireAuth, (req, res) => {
     const days = Math.min(90, Math.max(1, Number(req.query.days) || 14));
     const rows = telemetry.summary(days);
-    res.json({ days, rows, ...telemetry.coverage() }); // OPS-003: never imply complete usage when counts were lost
+    res.json({ days, rows, ...telemetry.coverage(days) }); // OPS-003: never imply complete usage when counts were lost
   });
   router.post('/telemetry/pageview', requireAuth, (req, res) => {
     const page = typeof req.body?.path === 'string' ? req.body.path.replace(/\/[0-9a-f-]{8,}(?=\/|$)/gi, '/:id').slice(0, 120) : '';
