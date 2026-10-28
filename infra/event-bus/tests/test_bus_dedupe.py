@@ -94,6 +94,12 @@ class BusDedupeTest(unittest.TestCase):
         self.assertNotEqual(a, b)
         self.assertEqual(set(self.redis.ttls.values()), {7 * 24 * 3600})
 
+    def test_stream_and_key_pairs_that_concatenate_alike_do_not_collide(self):
+        a = self.bus.publish('a:b', {**EVENT, 'dedupe_key': 'c'})
+        b = self.bus.publish('a', {**EVENT, 'dedupe_key': 'b:c'})
+        self.assertNotEqual(a, b)
+        self.assertEqual((len(self.redis.streams['a:b']), len(self.redis.streams['a'])), (1, 1))
+
     def test_dict_and_list_fields_are_still_flattened_to_json(self):  # DJI-724
         self.bus.publish('djimit.events', EVENT)
         _, fields = self.redis.streams['djimit.events'][0]
@@ -135,11 +141,14 @@ class RealRedisDedupeTest(unittest.TestCase):
         import redis
         self.r = redis.Redis.from_url(os.environ['REDIS_TEST_URL'], decode_responses=True)
         self.stream = f'test.dedupe.{os.getpid()}'
-        self.r.delete(self.stream, f'dedupe:{self.stream}:djimitflo:e1')
+        self.before = set(self.r.keys('dedupe:*'))
         self.bus = make_bus(self.r)
 
-    def tearDown(self):
-        self.r.delete(self.stream, f'dedupe:{self.stream}:djimitflo:e1')
+    def created_dedupe_keys(self):
+        return set(self.r.keys('dedupe:*')) - self.before
+
+    def tearDown(self):  # remove only what this test created
+        self.r.delete(self.stream, f'{self.stream}:b', *self.created_dedupe_keys())
 
     def test_script_appends_once_returns_stable_id_and_sets_ttl(self):
         first = self.bus.publish(self.stream, EVENT)
@@ -150,8 +159,17 @@ class RealRedisDedupeTest(unittest.TestCase):
         self.assertEqual(entries[0][0], first)
         self.assertEqual(json.loads(entries[0][1]['payload']), EVENT['payload'])
         self.assertEqual(entries[0][1]['attempt'], '1')
-        ttl = self.r.ttl(f'dedupe:{self.stream}:djimitflo:e1')
+        [dedupe_key] = self.created_dedupe_keys()
+        ttl = self.r.ttl(dedupe_key)
         self.assertTrue(0 < ttl <= 7 * 24 * 3600, ttl)
+        self.assertEqual(self.r.get(dedupe_key), first)
+
+    def test_stream_and_key_pairs_that_concatenate_alike_both_get_an_entry(self):
+        left, right = f'{self.stream}:b', self.stream
+        a = self.bus.publish(left, {**EVENT, 'dedupe_key': 'c'})
+        b = self.bus.publish(right, {**EVENT, 'dedupe_key': 'b:c'})
+        self.assertNotEqual(a, b)
+        self.assertEqual((self.r.xlen(left), self.r.xlen(right)), (1, 1))
 
     def test_without_dedupe_key_appends_every_time(self):
         event = {k: v for k, v in EVENT.items() if k != 'dedupe_key'}
