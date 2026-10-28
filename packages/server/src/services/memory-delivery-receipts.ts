@@ -1,4 +1,5 @@
 import type { Database } from 'better-sqlite3';
+import { createHash } from 'crypto';
 
 /**
  * CODE-004 follow-up to #1056 (forensic audit 2026-10-26): per-task, per-target delivery receipts for the memory fan-out
@@ -84,6 +85,14 @@ export function recordOutcome(db: Database, taskId: string, target: DeliveryTarg
 /** OKF intent detail: the sha256 of the exact bytes about to be written, so a read-back can tell a whole file from a torn one. */
 export const okfIntent = (sha256: string): string => `in_flight sha256:${sha256}`;
 export const okfIntentHash = (detail: string | null): string | null => detail?.match(/sha256:([0-9a-f]{64})/)?.[1] ?? null;
+
+/**
+ * STATE-02: Qdrant intent — sha256 of what a tracked upsert embeds and labels (task id, content, machine, agent type, embed
+ * model). Stored in the point payload (`intent_sha256`); a read-back settles only a point carrying exactly this hash, so an
+ * older point at the same stable id (other content or model) is never certified as this delivery.
+ */
+export const qdrantIntentHash = (taskId: string, content: string, machineId: string, agentType: string, model: string): string =>
+  createHash('sha256').update(JSON.stringify([taskId, content, machineId, agentType, model])).digest('hex');
 
 export interface ReceiptRow { task_id: string; target: DeliveryTarget; status: DeliveryStatus; attempts: number; detail: string | null }
 
