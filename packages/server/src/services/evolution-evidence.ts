@@ -59,6 +59,8 @@ import { memoryDeliveryEvidence } from './memory-delivery-receipts';
  * Aggregates only: no prompts, diffs, tokens or hosts.
  */
 export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
+  { name: 'DJIMITSEC_SCAN_MODE', acting: true },
+  { name: 'DJIMITSEC_SCAN_TRIGGERS', acting: true },
   { name: 'RUNTIME_PROCESS_GROUP_KILL', acting: true },
   { name: 'LOOP_BANDIT_ENABLED', acting: true }, { name: 'LOOP_BANDIT_SPECIES', acting: true }, { name: 'LOOP_BANDIT_MAX_SHARE', acting: true },
   { name: 'LOOP_EVOLVE_ENABLED', acting: true }, { name: 'LOOP_EVOLVE_SPECIES', acting: true },
