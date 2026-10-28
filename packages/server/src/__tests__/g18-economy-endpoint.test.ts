@@ -59,7 +59,7 @@ describe('G18: Economy endpoint logic (ship gate)', () => {
   it('computes per-run efficiency for the economy endpoint', () => {
     db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, repository_path, findings_json, plan_json, gates_json, next_actions_json, metadata) VALUES ('run-eco', 'test', 'closed', 'completed', '/tmp', '[]', '[]', '[{"name":"maker_completion","status":"pass","evidence":""}]', '[]', '{}')`).run();
 
-    db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, finding_id, worktree_path, metadata) VALUES ('lease-m', 'run-eco', 'maker', 'codex', 'completed', 'f1', '/tmp', ?)`).run(JSON.stringify({ runtime_usage: { total_tokens: 500000 } }));
+    db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, finding_id, worktree_path, metadata) VALUES ('lease-m', 'run-eco', 'maker', 'codex', 'completed', 'f1', '/tmp', ?)`).run(JSON.stringify({ runtime_usage: { total_tokens: 500000 }, token_accounting: { version: 1, estimated_cost_usd: 1, cost_completeness: 'complete', price_version: 'v1' } }));
     db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, finding_id, worktree_path, metadata) VALUES ('lease-c', 'run-eco', 'checker', 'codex', 'completed', 'f1', '/tmp', ?)`).run(JSON.stringify({ runtime_usage: { total_tokens: 100000 } }));
 
     const metric = loops.computeEfficiencyMetric('run-eco');

@@ -159,7 +159,9 @@ export class ExternalEventIngestService {
 
   /**
    * Native work intake for roborev review findings (they used to be shipped to Paperclip as issues).
-   * Idempotent on the event's dedupe_key; a malformed finding is skipped, never thrown.
+   * Idempotent on the event's dedupe_key; a malformed finding is skipped, never thrown. A storage failure (SQLite, including
+   * the required work_item.created outbox insert, CODE-003) is rethrown: the poll transaction rolls back without advancing
+   * the cursor, so the next poll retries the finding instead of skipping it.
    */
   private materializeRoborevFinding(event: Record<string, unknown>): void {
     try {
@@ -176,7 +178,10 @@ export class ExternalEventIngestService {
         recommended_loop: event.task_type === 'review_fix' ? 'repo-maintenance-loop' : 'research-loop',
         metadata: { repo: event.repo ?? null, sha: event.sha ?? null, finding_class: event.finding_class ?? null, affected_files: listField(event.affected_files), labels: listField(event.labels), blocked_by: listField(event.blocked_by), task_type: event.task_type ?? null },
       });
-    } catch { /* never let one finding break event ingestion */ }
+    } catch (error) {
+      if (isStorageError(error)) throw error;
+      /* a malformed finding (a validation error) never breaks event ingestion */
+    }
   }
 
   async pollOnce(): Promise<number> {
@@ -301,4 +306,10 @@ export class ExternalEventIngestService {
       if (this.running) this.timer = setTimeout(() => void this.poll(), this.pollMs);
     }
   }
+}
+
+/** better-sqlite3 errors carry a SQLITE_* code; validation errors from the services do not. */
+function isStorageError(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === 'string' && code.startsWith('SQLITE_');
 }

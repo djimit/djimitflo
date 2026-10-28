@@ -158,6 +158,7 @@ export class ReasoningBankService {
             },
           }],
         }),
+        signal: AbortSignal.timeout(10_000),
       });
       if (!upsert.ok) {
         console.warn(`ReasoningBank Qdrant write failed for ${taskId}: upsert ${upsert.status}`);
@@ -204,6 +205,7 @@ export class ReasoningBankService {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: memoryEmbedModel(), prompt: query }),
+        signal: AbortSignal.timeout(10_000),
       });
       if (!embedRes.ok) return [];
       const vector = ((await embedRes.json()) as { embedding: number[] }).embedding;
@@ -212,6 +214,7 @@ export class ReasoningBankService {
         method: 'POST',
         headers: qdrantHeaders(),
         body: JSON.stringify({ vector, limit, with_payload: true, score_threshold: 0.5 }),
+        signal: AbortSignal.timeout(5_000),
       });
       if (!searchRes.ok) return [];
       const searchJson = (await searchRes.json()) as { result: any[] };

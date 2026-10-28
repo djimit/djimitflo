@@ -1,8 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { SelfHealingScheduler } from '../services/self-healing-scheduler';
+import { listSchedulers, noteScheduler, resetSchedulers } from '../services/scheduler-registry';
 
 describe('SelfHealingScheduler', () => {
   let db: Database.Database;
@@ -84,5 +85,124 @@ describe('SelfHealingScheduler', () => {
     expect(scheduler.intervalMinutes()).toBe(30);
     process.env.SELF_HEALING_INTERVAL_MINUTES = '-5';
     expect(scheduler.intervalMinutes()).toBe(30);
+  });
+
+  it('defaults to a 30-minute interval when the env var is unset', () => {
+    expect(scheduler.intervalMinutes()).toBe(30);
+  });
+
+  it('uses a custom interval in minutes when configured', () => {
+    process.env.SELF_HEALING_INTERVAL_MINUTES = '7';
+    expect(scheduler.intervalMinutes()).toBe(7);
+  });
+
+  it('falls back to a 30-minute interval for a zero interval', () => {
+    process.env.SELF_HEALING_INTERVAL_MINUTES = '0';
+    expect(scheduler.intervalMinutes()).toBe(30);
+  });
+
+  it('returns the heal() result on tick', () => {
+    const sentinel = { incidents: 0, actions: [] };
+    const withStub = new SelfHealingScheduler(db, { heal: () => sentinel });
+    expect(withStub.tick()).toBe(sentinel);
+  });
+
+  it('returns null and warns when heal() throws an Error', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const failing = new SelfHealingScheduler(db, { heal: () => { throw new Error('boom'); } });
+    expect(failing.tick()).toBeNull();
+    expect(warn).toHaveBeenCalled();
+    expect(warn.mock.calls[0][0]).toContain('SelfHealingScheduler');
+    warn.mockRestore();
+  });
+
+  it('returns null when heal() throws a non-Error value', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const failing = new SelfHealingScheduler(db, { heal: () => { throw 'string-error'; } });
+    expect(failing.tick()).toBeNull();
+    warn.mockRestore();
+  });
+
+  it('records its tick in the scheduler registry via markRun', () => {
+    resetSchedulers();
+    noteScheduler('self_healing', 'SELF_HEALING_SCHEDULER_ENABLED', true, 30 * 60_000);
+    scheduler.tick();
+    const info = listSchedulers().schedulers.find((s) => s.name === 'self_healing');
+    expect(info?.last_run).not.toBeNull();
+    resetSchedulers();
+  });
+
+  it('schedules the interval at intervalMinutes()*MINUTE_MS and unrefs the timer', () => {
+    process.env.SELF_HEALING_SCHEDULER_ENABLED = 'true';
+    process.env.SELF_HEALING_INTERVAL_MINUTES = '5';
+    const delays: number[] = [];
+    const captured: (() => void)[] = [];
+    const unref = vi.fn();
+    const fakeTimer = { unref, ref() { return fakeTimer; }, hasRef() { return true; } };
+    const origSetInterval = global.setInterval;
+    const origClearInterval = global.clearInterval;
+    global.setInterval = ((fn: () => void, delay: number) => { delays.push(delay); captured.push(fn); return fakeTimer; }) as typeof global.setInterval;
+    global.clearInterval = (() => {}) as typeof global.clearInterval;
+    try {
+      expect(scheduler.start()).toBe(true);
+    } finally {
+      global.setInterval = origSetInterval;
+      global.clearInterval = origClearInterval;
+    }
+    expect(delays).toEqual([5 * 60 * 1000]);
+    expect(unref).toHaveBeenCalledTimes(1);
+    scheduler.stop();
+  });
+
+  it('the armed interval callback invokes heal() (not a no-op)', () => {
+    let healCalls = 0;
+    const withStub = new SelfHealingScheduler(db, { heal: () => { healCalls++; return null; } });
+    process.env.SELF_HEALING_SCHEDULER_ENABLED = 'true';
+    const captured: (() => void)[] = [];
+    const fakeTimer = { unref() {}, ref() { return fakeTimer; }, hasRef() { return true; } };
+    const origSetInterval = global.setInterval;
+    const origClearInterval = global.clearInterval;
+    global.setInterval = ((fn: () => void) => { captured.push(fn); return fakeTimer; }) as typeof global.setInterval;
+    global.clearInterval = (() => {}) as typeof global.clearInterval;
+    try {
+      withStub.start();
+    } finally {
+      global.setInterval = origSetInterval;
+      global.clearInterval = origClearInterval;
+    }
+    expect(healCalls).toBe(1); // catch-up tick on boot
+    captured[0]();
+    expect(healCalls).toBe(2); // the armed interval callback actually ran heal()
+    withStub.stop();
+  });
+
+  it('stop() clears the armed interval timer', () => {
+    process.env.SELF_HEALING_SCHEDULER_ENABLED = 'true';
+    const cleared: unknown[] = [];
+    const fakeTimer = { unref() {}, ref() { return fakeTimer; }, hasRef() { return true; } };
+    const origSetInterval = global.setInterval;
+    const origClearInterval = global.clearInterval;
+    global.setInterval = (() => fakeTimer) as typeof global.setInterval;
+    global.clearInterval = ((t: unknown) => { cleared.push(t); }) as typeof global.clearInterval;
+    try {
+      scheduler.start();
+      scheduler.stop();
+    } finally {
+      global.setInterval = origSetInterval;
+      global.clearInterval = origClearInterval;
+    }
+    expect(cleared).toEqual([fakeTimer]);
+  });
+
+  it('stop() is a no-op when the scheduler was never started', () => {
+    const cleared: unknown[] = [];
+    const origClearInterval = global.clearInterval;
+    global.clearInterval = ((t: unknown) => { cleared.push(t); }) as typeof global.clearInterval;
+    try {
+      scheduler.stop();
+    } finally {
+      global.clearInterval = origClearInterval;
+    }
+    expect(cleared).toHaveLength(0);
   });
 });

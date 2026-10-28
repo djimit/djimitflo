@@ -43,6 +43,8 @@ export interface ModelCall {
  * B29: what a call costs. cost_basis says how the provider is paid; marginal_cost is what one more call costs —
  * 0 only for a known flat subscription / local host / free tier, null when unknown (never invented). list_price_cost
  * uses LLM_PRICE_PER_MTOK when the model has a price and the tokens are known, else null.
+ * L-F04 (forensic audit 2026-10-26): a side with unknown tokens and a non-zero price makes the price partial — list and
+ * metered marginal cost are then null and list_price_lower_bound carries the known side only; it is never a complete price.
  * LLM_COST_BASIS=<provider-or-model substring>=<basis>,… overrides the defaults below (first match wins).
  */
 export type CostBasis = 'flat_subscription' | 'local' | 'free_tier' | 'metered' | 'unknown';
@@ -56,13 +58,18 @@ export function costBasis(provider: string | null | undefined, model: string, en
   return 'unknown';
 }
 export function callCost(c: { model: string; provider?: string | null; tokensIn?: number | null; tokensOut?: number | null }, env: NodeJS.ProcessEnv = process.env):
-  { cost_basis: CostBasis; list_price_cost: number | null; marginal_cost: number | null } {
+  { cost_basis: CostBasis; list_price_cost: number | null; marginal_cost: number | null; price_completeness: 'complete' | 'partial' | null; list_price_lower_bound: number | null } {
   const basis = costBasis(c.provider, c.model, env);
   const price = modelPrice(c.model, env);
-  const known = typeof c.tokensIn === 'number' || typeof c.tokensOut === 'number';
-  const list = price && known ? +(((c.tokensIn ?? 0) * price.input + (c.tokensOut ?? 0) * price.output) / 1_000_000).toFixed(6) : null;
+  const tin = typeof c.tokensIn === 'number' ? c.tokensIn : null;
+  const tout = typeof c.tokensOut === 'number' ? c.tokensOut : null;
+  const priced = price && (tin !== null || tout !== null) ? +(((tin ?? 0) * price.input + (tout ?? 0) * price.output) / 1_000_000).toFixed(6) : null;
+  // a side priced at 0 costs 0 whatever its count; any other unknown side leaves only a lower bound
+  const partial = priced !== null && ((tin === null && price!.input > 0) || (tout === null && price!.output > 0));
+  const list = partial ? null : priced;
   const marginal = basis === 'flat_subscription' || basis === 'local' || basis === 'free_tier' ? 0 : basis === 'metered' ? list : null;
-  return { cost_basis: basis, list_price_cost: list, marginal_cost: marginal };
+  return { cost_basis: basis, list_price_cost: list, marginal_cost: marginal, price_completeness: priced === null ? null : partial ? 'partial' : 'complete',
+    list_price_lower_bound: partial ? priced : null };
 }
 const int = (v: number | null | undefined): number | null => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : null);
 export function recordModelCall(db: Database, c: ModelCall, at = new Date()): void {
@@ -154,21 +161,37 @@ export function modelEvidence(db: Database, incumbents: Record<string, string | 
     });
   } catch { /* table absent on an old schema */ }
   const would_pick = Object.fromEntries(Object.entries(incumbents).map(([c, inc]) => [c, inc ? chooseModel(db, c, inc, env, now) : null]));
-  // UX-18: every server-side LLM call per consumer over 7 d — calls, ok, tokens, and a cost only when every model has a configured price
-  let usage_7d: Array<{ consumer: string; calls: number; ok: number; tokens_in: number; tokens_out: number; est_cost_usd: number | null }> = [];
+  // UX-18: every server-side LLM call per consumer over 7 d — calls, ok, tokens, and a cost only when every model has a configured price.
+  // L-F04: tokens_in/out sum the known sides; calls_tokens_*_unknown count the calls that did not report one. A call with an unknown
+  // side whose price is > 0 makes the cost partial: est_cost_usd null, est_cost_lower_bound_usd the priced known sides.
+  type Usage = { consumer: string; calls: number; ok: number; tokens_in: number; tokens_out: number; calls_tokens_in_unknown: number; calls_tokens_out_unknown: number;
+    est_cost_usd: number | null; est_cost_lower_bound_usd: number | null; cost_completeness: 'complete' | 'partial' | null };
+  let usage_7d: Usage[] = [];
   try {
-    const per = db.prepare(`SELECT consumer, model, COUNT(*) AS calls, COALESCE(SUM(ok), 0) AS ok, COALESCE(SUM(tokens_in), 0) AS tin, COALESCE(SUM(tokens_out), 0) AS tout
-      FROM llm_model_calls WHERE created_at >= ? GROUP BY 1, 2`).all(new Date(now - 7 * 86_400_000).toISOString()) as Array<{ consumer: string; model: string; calls: number; ok: number; tin: number; tout: number }>;
-    const by = new Map<string, { consumer: string; calls: number; ok: number; tokens_in: number; tokens_out: number; est_cost_usd: number | null }>();
+    const per = db.prepare(`SELECT consumer, model, COUNT(*) AS calls, COALESCE(SUM(ok), 0) AS ok, COALESCE(SUM(tokens_in), 0) AS tin, COALESCE(SUM(tokens_out), 0) AS tout,
+        COALESCE(SUM(tokens_in IS NULL), 0) AS miss_in, COALESCE(SUM(tokens_out IS NULL), 0) AS miss_out
+      FROM llm_model_calls WHERE created_at >= ? GROUP BY 1, 2`).all(new Date(now - 7 * 86_400_000).toISOString()) as Array<{ consumer: string; model: string; calls: number; ok: number; tin: number; tout: number; miss_in: number; miss_out: number }>;
+    const by = new Map<string, Usage & { cost: number; unpriced: boolean; partial: boolean }>();
     for (const r of per) {
       const key = r.consumer.startsWith('resident:') ? 'resident' : r.consumer;
-      const cur = by.get(key) ?? { consumer: key, calls: 0, ok: 0, tokens_in: 0, tokens_out: 0, est_cost_usd: 0 };
+      const cur = by.get(key) ?? { consumer: key, calls: 0, ok: 0, tokens_in: 0, tokens_out: 0, calls_tokens_in_unknown: 0, calls_tokens_out_unknown: 0,
+        est_cost_usd: null, est_cost_lower_bound_usd: null, cost_completeness: null, cost: 0, unpriced: false, partial: false };
       const price = modelPrice(r.model, env);
       cur.calls += r.calls; cur.ok += r.ok; cur.tokens_in += r.tin; cur.tokens_out += r.tout;
-      cur.est_cost_usd = price && cur.est_cost_usd !== null ? +(cur.est_cost_usd + (r.tin * price.input + r.tout * price.output) / 1_000_000).toFixed(4) : null;
+      cur.calls_tokens_in_unknown += r.miss_in; cur.calls_tokens_out_unknown += r.miss_out;
+      if (!price) cur.unpriced = true;
+      else {
+        cur.cost += (r.tin * price.input + r.tout * price.output) / 1_000_000;
+        if ((r.miss_in > 0 && price.input > 0) || (r.miss_out > 0 && price.output > 0)) cur.partial = true;
+      }
       by.set(key, cur);
     }
-    usage_7d = [...by.values()].sort((a, b) => b.calls - a.calls);
+    usage_7d = [...by.values()].map(({ cost, unpriced, partial, ...u }) => {
+      const usd = +cost.toFixed(4);
+      // an unpriced model leaves no cost at all (unchanged); a partial priced one leaves a labelled lower bound
+      return { ...u, est_cost_usd: unpriced || partial ? null : usd, est_cost_lower_bound_usd: !unpriced && partial ? usd : null,
+        cost_completeness: unpriced ? null : partial ? 'partial' as const : 'complete' as const };
+    }).sort((a, b) => b.calls - a.calls);
   } catch { /* table absent on an old schema */ }
   return { mode: modelSelectorMode(env), rows, would_pick, usage_7d };
 }

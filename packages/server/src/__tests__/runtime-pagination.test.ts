@@ -45,7 +45,7 @@ describe('runtime pagination', () => {
 
     const valid = await request(app).post('/intelligence/predict').send({ goalType: 'docs', runtime: 'mock', mode: 'closed', estimatedFindings: 0 });
     expect(valid.status).toBe(200);
-    expect(valid.body).toMatchObject({ successProbability: 0.5, expectedCostDollars: 0.05 });
+    expect(valid.body).toMatchObject({ successProbability: 0.5, expectedCostDollars: null, expectedCostReason: 'no_history' });
     expect((await request(app).get('/api/intelligence/patterns')).status).toBe(200);
     expect((await request(app).get('/api/intelligence/predictive/stats')).status).toBe(200);
     expect((await request(app).get('/api/intelligence/data-quality')).status).toBe(200);

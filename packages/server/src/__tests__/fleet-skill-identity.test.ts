@@ -68,7 +68,11 @@ describe('agent.outcome skill identity (server)', () => {
     const engine = new SkillEvolutionEngine(db);
     cases.forEach(([kind, , want], i) => {
       expect(row(ids[i]).tokens_used, kind).toBe(want);
-      expect(engine.measuredTraits(`agent:hermes-eve-v:cron:${kind}`).efficiency, kind).toBe(want === null ? null : 1);
+      // Storage keeps a genuine 0 as 0 (#1048). Efficiency is still null for it (L-F05, #1051): min(1, 1000/tokens) has no
+      // meaning at 0 tokens, and legacy producers wrote 0 for a missing report, so a stored 0 must never score maximal (1).
+      const traits = engine.measuredTraits(`agent:hermes-eve-v:cron:${kind}`);
+      expect(traits.efficiency, kind).toBeNull();
+      expect(traits.efficiency_coverage, kind).toEqual({ known: 0, total: 1 });
     });
   });
 

@@ -330,6 +330,9 @@ export interface EvolutionEvidence {
     top_failed_clauses_7d: Array<{ clause: string; n: number }> | null };
   /** PL-001 (PL_001_MODE): with vs without the procedure lines on a frozen set of applicable repair tasks (services/pl-001.ts); unknown is null, never 0 */
   pl_001?: Pl001Evidence;
+  /** CODE-004 (MEMORY_DELIVERY_RECEIPTS): memory-sync receipts per target × status; by_target null = no receipts table (services/memory-delivery-receipts.ts) */
+  memory_delivery?: { mode: 'off' | 'shadow' | 'on'; max_attempts: number; oldest_unknown: string | null; note: string;
+    by_target: Record<'uams' | 'qdrant' | 'okf', { idempotent: boolean; delivered: number; failed: number; unknown: number; exhausted: number | null }> | null };
 }
 export type Pl001Verdict = 'SUPPORTED' | 'NOT_SUPPORTED' | 'INCONCLUSIVE' | 'STOPPED_FOR_HARM';
 export interface Pl001Paired { n_pairs: number; both_verified: number; b_only_B: number; c_only_A: number; neither: number; verified_A: number | null; verified_B: number | null;
@@ -649,12 +652,20 @@ export type ImprovementFunnel = {
   /** goalRate: goal decisions over the panels a proposal points at (linkedDecided); decisions covers every panel */
   panel: { decisions: Record<string, number>; goalRate: number | null; linkedPanels: number; linkedDecided: number; linkedDecisions: Record<string, number> };
   /** childGoals: refined children with a goal and how it ended; childOutcomes is the children's own status */
-  refinement: { originals: number; children: number; childOutcomes: Record<string, number>; childGoals: { reachedGoal: number; completed: number; failed: number; other: number } };
+  refinement: { originals: number | null; children: number | null; childOutcomes: Record<string, number>; childGoals: { reachedGoal: number; completed: number; failed: number; other: number } | null };
   goals: { fromSelfImprovement: Record<string, number> };
-  learning: { cognitiveEpisodes: number; cognitivePatterns: number; cognitiveStrategies: number; learningClosures: number; memoryCandidates: Record<string, number> };
-  kpi: { windowDays: number; verified: number; regressed: number; regressionRate: number | null; panels24h: number; panels7d: number; reviews24h: number; reviews7d: number; panelsPerVerified: number | null; medianHoursToVerified: number | null; approvalsPerRun: number | null };
-  hygiene: { zombieGoals: number; staleRuns: number; blockedBoardItems: number };
-  queues: { openWorkItems: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
+  learning: { cognitiveEpisodes: number | null; cognitivePatterns: number | null; cognitiveStrategies: number | null; learningClosures: number | null; memoryCandidates: Record<string, number> };
+  /**
+   * verified/regressed: current status with updated_at in windowDays (not first verifications). The median has its own window
+   * (medianHoursWindowDays, n = medianHoursN): created_at → current updated_at, not first-verification latency.
+   */
+  kpi: { windowDays: number; verified: number | null; regressed: number | null; regressionRate: number | null; panels24h: number | null; panels7d: number | null; reviews24h: number | null; reviews7d: number | null; panelsPerVerified: number | null; medianHoursToVerified: number | null; medianHoursWindowDays?: number; medianHoursN?: number | null; approvalsPerRun: number | null };
+  /** null = unavailable (reason in `unavailable`), never a healthy 0 */
+  hygiene: { zombieGoals: number | null; staleRuns: number | null; blockedBoardItems: number | null };
+  /** openWorkItems: COUNT over every open row; workItemsByLoop: only the largest workItemsByLoopLimit of workItemGroups groups */
+  queues: { openWorkItems: number | null; workItemGroups?: number | null; workItemsByLoopLimit?: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
+  /** metric → `missing_schema: …` | `query_failed: …` */
+  unavailable?: Record<string, string>;
 };
 
 export type SpecialistCalibration = {
@@ -2299,6 +2310,10 @@ class ApiClient {
 
   async getLoopRuns(): Promise<{ runs: LoopRunRecord[] }> {
     return this.request('/loops/runs');
+  }
+
+  async getLoopRun(runId: string): Promise<LoopRunRecord> {
+    return this.request(`/loops/runs/${encodeURIComponent(runId)}`);
   }
 
   async getLoopCatalog(): Promise<{ loops: LoopCatalogItem[] }> {

@@ -1,0 +1,58 @@
+{
+  "calls": [
+    {
+      "method": "POST",
+      "url": "http://ollama.test:11434/api/embed",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": "{\"model\":\"snowflake-arctic-embed:s\",\"input\":\"task-1 do the thing\"}"
+    },
+    {
+      "method": "GET",
+      "url": "http://qdrant.test:6333/collections/djimitflo_swarm",
+      "headers": {
+        "Content-Type": "application/json",
+        "api-key": "qdrant-key"
+      },
+      "body": null
+    },
+    {
+      "method": "PUT",
+      "url": "http://qdrant.test:6333/collections/djimitflo_swarm/points",
+      "headers": {
+        "Content-Type": "application/json",
+        "api-key": "qdrant-key"
+      },
+      "body": "{\"points\":[{\"id\":\"7afaa346-b4bf-52bf-9dc2-1e9ae8098874\",\"vector\":[0.1,0.2,0.3],\"payload\":{\"task_id\":\"task-1\",\"machine_id\":\"macbook\",\"agent_type\":\"maker\",\"timestamp\":\"2026-10-27T12:00:00.000Z\",\"content_excerpt\":\"do the thing\",\"embedding_model\":\"snowflake-arctic-embed:s\",\"embedding_dim\":3}}]}"
+    },
+    {
+      "method": "POST",
+      "url": "http://uams.test:8000/memory/entry",
+      "headers": {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer uams-key"
+      },
+      "body": "{\"memory_type\":\"active\",\"scope\":\"system\",\"agent_id\":\"macbook\",\"topic\":\"task:task-1\",\"content\":\"do the thing\",\"metadata\":{\"task_id\":\"task-1\",\"machine_id\":\"macbook\",\"agent_type\":\"maker\"}}"
+    },
+    {
+      "method": "POST",
+      "url": "http://uams.test:8000/memory/entry",
+      "headers": {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer uams-key"
+      },
+      "body": "{\"memory_type\":\"active\",\"scope\":\"system\",\"agent_id\":\"macbook\",\"topic\":\"task:task-1\",\"content\":\"do the thing\",\"metadata\":{\"task_id\":\"task-1\",\"machine_id\":\"macbook\",\"agent_type\":\"maker\"}}"
+    },
+    {
+      "method": "POST",
+      "url": "http://uams.test:8000/memory/entry",
+      "headers": {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer uams-key"
+      },
+      "body": "{\"memory_type\":\"active\",\"scope\":\"system\",\"agent_id\":\"macbook\",\"topic\":\"task:task-1\",\"content\":\"do the thing\",\"metadata\":{\"task_id\":\"task-1\",\"machine_id\":\"macbook\",\"agent_type\":\"maker\"}}"
+    }
+  ],
+  "okf": "---\ntype: CompletedTask\ntitle: \"T\"\ndescription: \"do the thing\"\nresource: http://192.168.1.28:3001/api/tasks/task-1\ntags: [macbook, maker, completed]\ntimestamp: 2026-10-27T12:00:00.000Z\ntrust_level: agent_generated\n---\n\n# T\n\n**Status**: completed\n**Machine**: macbook\n**Agent type**: maker\n**Created**: 2026-10-27T00:00:00Z\n**Completed**: 2026-10-27T00:01:00Z\n\n## Description\n\ndo the thing\n\n"
+}

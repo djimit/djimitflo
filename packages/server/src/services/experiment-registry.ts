@@ -60,6 +60,12 @@ const AMENDED = 'stop condition added 2026-10-19; verdict rules unchanged';
  *  alone is not a closing verdict (the stopping rule extends once to 40); this explicit operator close is what makes it one. */
 export const TG_001_CLOSED: ExperimentClose = { verdict: 'INCONCLUSIVE', decided_on: '2026-10-26',
   source: 'docs/research/ace/TG-001_PROTOCOL.md#amendment-2026-10-26-closed-inconclusive-at-20-tasks' };
+/** EXP-3 (memory-holdout) read out once at its registered horizon (2026-10-27): falsifier met. Rules arm 66/88 = 0.75 vs
+ *  withheld 34/42 = 0.81; CMH by lane OR 0.60, two-sided p 0.40 (not a harm finding, not evidence of no effect). Action
+ *  taken: LOOP_MEMORY_RULES_ENABLED=false since 2026-10-27T05:52:42Z. A verdict the evidence function does not compute
+ *  (it is a single registered readout), so this close is what records it. */
+export const MEMORY_HOLDOUT_CLOSED: ExperimentClose = { verdict: 'FALSIFIED (rules not above withheld)', decided_on: '2026-10-27',
+  source: 'docs/research/intelligence-metrics/EXP-3_RESULT.md#decision-under-the-registered-rules' };
 const X1_STARTED = '2026-10-09T00:00:00.000Z';
 /** PL-001 runner amendment (2026-10-26): registered, not started; decide start or close by PL_DECIDE_START_BY (registered + 30 d) */
 const PL_REGISTERED_AT = '2026-10-26T00:00:00.000Z';
@@ -144,8 +150,9 @@ export const experimentDefs = (): ExperimentDef[] => [
     target_n: 30, stop_by: '2026-10-27T00:00:00.000Z',
     stop_note: `${AMENDED}: target 30 outcomes per arm (operator default); start + 1.25 × 30 ÷ 2.01/day (holdout arm, 22 in 10.9 d)`,
     stop_source: 'docs/research/intelligence-metrics/EXPERIMENT_PROTOCOL.md#amendment-2026-10-19-stop-conditions', population: 'oracle_goals',
+    closed: MEMORY_HOLDOUT_CLOSED,
     status: (db, env, _now, since) => { const e = memoryHoldoutEvidence(db, since, env);
-      return { n_per_arm: { rules: e.rules.n, holdout: e.holdout.n }, verdict: null,
+      return { n_per_arm: { rules: e.rules.n, holdout: e.holdout.n }, verdict: MEMORY_HOLDOUT_CLOSED.verdict,
         effects: { memory_rules: { metric: 'verified / settled, rules vs held out (Fisher exact; no effect size computed)', estimate: null, ci: null, p: e.fisher_p } } }; } },
 ];
 
