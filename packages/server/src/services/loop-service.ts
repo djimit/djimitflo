@@ -1310,53 +1310,8 @@ export class LoopService {
       runtime_adapter: lease.runtime,
     });
 
-    // OPS-004: one worker span, child of the run's span in this trace, closed when the maker settles — not a spawn row
-    // plus a separate post-hoc completion row (two roots, no edge, no end time, nothing at all on a throw).
-    const runSpan = this.assurance.createTraceSpan({
-      trace_id: traceId,
-      loop_run_id: run.id,
-      span_type: 'loop',
-      name: `loop_run:${run.id}`,
-      status: 'running',
-      evidence_ref: `loop:${run.id}`,
-      metadata: { loop_name: run.loop_name, scope: 'worker_trace', worker_lease_id: lease.id },
-    });
-    const workerSpan = this.assurance.createTraceSpan({
-      trace_id: traceId,
-      parent_span_id: runSpan.id,
-      loop_run_id: run.id,
-      span_type: 'worker',
-      name: `${lease.role}:${lease.runtime}`,
-      status: 'running',
-      evidence_ref: `loop:${run.id}/worker:${lease.id}`,
-      metadata: { worker_lease_id: lease.id, role: lease.role, runtime: lease.runtime, checkpoint_before_id: checkpointBefore.id },
-    });
-
-    let execution: ExecuteWorkerResult | undefined;
-    let errorMessage: string | undefined;
-    try {
-      execution = await this.executeMaker(id, input);
-    } catch (error) {
-      errorMessage = (error instanceof Error ? error.message : String(error)).slice(0, 500);
-      throw error;
-    } finally {
-      const endedAt = new Date().toISOString(); // the settle time, before any bookkeeping below
-      const leaseStatus = execution?.lease.status ?? this.listWorkerLeases(run.id).find((candidate) => candidate.id === lease.id)?.status;
-      const terminal = execution?.lease.status === 'completed' ? 'ok' : leaseStatus === 'cancelled' ? 'cancelled' : 'error';
-      const status = terminal === 'ok' ? 'ok' : 'error'; // the span schema has no 'cancelled': a cancel is a terminal failure
-      const closed = { terminal_status: terminal, lease_status: leaseStatus ?? null };
-      try {
-        this.assurance.finishTraceSpan(workerSpan.id, { status, ended_at: endedAt, metadata: {
-          ...closed,
-          ...(errorMessage ? { error: errorMessage } : {}),
-          ...(execution ? { stdout_path: execution.stdout_path, stderr_path: execution.stderr_path, gates: execution.gates } : {}),
-        } });
-      } catch {
-        // secret-like detail is refused; the span still closes, and the maker's own outcome/error is never masked
-        this.assurance.finishTraceSpan(workerSpan.id, { status, ended_at: endedAt, metadata: { ...closed, detail_withheld: true } });
-      }
-      this.assurance.finishTraceSpan(runSpan.id, { status, ended_at: endedAt, metadata: { terminal_status: terminal } });
-    }
+    // OPS-004: the worker span (one per maker lease, closed at settlement) is owned by the shared executeMaker path
+    const execution = await this.executeMaker(id, input);
 
     const checkpointAfter = this.assurance.createCheckpoint({
       loop_run_id: run.id,

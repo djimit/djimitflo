@@ -154,6 +154,7 @@ describe('loop worker trace span', () => {
     vi.spyOn(RsiSafetyGuard.prototype, 'canMutate').mockReturnValue({ allowed: true });
     const result = await new FixLoopService(db as any, loops).fixFile({ repositoryPath: tmp, filePath: 'README.md', description: 'Improve wording', category: 'refactor', runtime: 'mock' });
     const maker = loops.listWorkerLeases(result.loopRunId!).find((l) => l.role === 'maker')!;
-    expect(workerSpans(maker.id)).toEqual([expect.objectContaining({ status: maker.status === 'completed' ? 'ok' : 'error', ended_at: expect.any(String) })]);
+    // the mock maker completes; later checker/verify steps may move the lease on, the span keeps the settlement
+    expect(workerSpans(maker.id)).toEqual([expect.objectContaining({ status: 'ok', ended_at: expect.any(String), parent_span_id: expect.any(String) })]);
   });
 });

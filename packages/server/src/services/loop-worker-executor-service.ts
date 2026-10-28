@@ -115,16 +115,76 @@ export class LoopWorkerExecutorService {
    */
   async executeMaker(id: string, input: ExecuteMakerInput = {}): Promise<ExecuteWorkerResult> {
     const since = new Date().toISOString();
+    const span = this.openMakerSpan(id, input);
+    let execution: ExecuteWorkerResult | undefined;
+    let errorMessage: string | undefined;
     try {
-      return await this.runMaker(id, input);
+      execution = await this.runMaker(id, input);
+      return execution;
     } catch (err) {
       const stuck = this.db.prepare("SELECT id FROM worker_leases WHERE loop_run_id = ? AND role = 'maker' AND status = 'running' AND json_extract(metadata, '$.started_at') >= ?")
         .all(id, since) as Array<{ id: string }>;
       const message = (err instanceof Error ? err.message : String(err)).slice(0, 200);
+      errorMessage = message;
       for (const lease of stuck) this.loopService.updateWorkerLeaseStatus(lease.id, 'failed', { failure_reason: `maker_execution_error: ${message}`, failed_at: new Date().toISOString(),
         failure: { stderr_class: classifyStderr(message), stderr_source: 'reason' } });
       throw err;
+    } finally {
+      if (span) this.closeMakerSpan(span, execution, errorMessage);
     }
+  }
+
+  /**
+   * OPS-004: one lifecycle span per maker lease — a worker span, child of a run span, in `loop-<run>-worker-<lease>`.
+   * Opened at the first dispatch of a prepared lease; a resumed call (after an approval / in-progress exit, which leaves the
+   * lease 'prepared') reuses the lease's open span (found by its trace id) instead of opening a second one. Lease metadata
+   * is not touched. Never throws.
+   */
+  private openMakerSpan(runId: string, input: ExecuteMakerInput): { runSpanId: string; workerSpanId: string; leaseId: string; endedAt?: string } | null {
+    try {
+      const run = this.loopService.getLoopRun(runId);
+      const leases = this.loopService.listWorkerLeases(run.id);
+      const lease = input.lease_id ? leases.find((l) => l.id === input.lease_id) : leases.find((l) => l.role === 'maker' && l.status === 'prepared');
+      if (!lease) return null;
+      const assurance = this.loopService.assurance;
+      const traceId = `loop-${run.id}-worker-${lease.id}`;
+      const open = this.db.prepare(`SELECT id, parent_span_id FROM agent_trace_spans WHERE trace_id = ? AND span_type = 'worker'
+        AND ended_at IS NULL AND parent_span_id IS NOT NULL ORDER BY created_at DESC LIMIT 1`).get(traceId) as { id: string; parent_span_id: string } | undefined;
+      if (open) return { runSpanId: open.parent_span_id, workerSpanId: open.id, leaseId: lease.id };
+      if (lease.status !== 'prepared') return null; // nothing to dispatch: runMaker refuses it, no span for a refusal
+      const runSpan = assurance.createTraceSpan({ trace_id: traceId, loop_run_id: run.id, span_type: 'loop', name: `loop_run:${run.id}`, status: 'running',
+        evidence_ref: `loop:${run.id}`, metadata: { loop_name: run.loop_name, scope: 'worker_trace', worker_lease_id: lease.id } });
+      const workerSpan = assurance.createTraceSpan({ trace_id: traceId, parent_span_id: runSpan.id, loop_run_id: run.id, span_type: 'worker',
+        name: `${lease.role}:${lease.runtime}`, status: 'running', evidence_ref: `loop:${run.id}/worker:${lease.id}`,
+        metadata: { worker_lease_id: lease.id, role: lease.role, runtime: lease.runtime } });
+      return { runSpanId: runSpan.id, workerSpanId: workerSpan.id, leaseId: lease.id };
+    } catch {
+      return null; // tracing never blocks a maker
+    }
+  }
+
+  /** Close the span only when the maker settled (completed / failed / cancelled); an approval / in-progress exit keeps it open. */
+  private closeMakerSpan(span: { runSpanId: string; workerSpanId: string; leaseId: string }, execution: ExecuteWorkerResult | undefined, errorMessage: string | undefined): void {
+    const endedAt = new Date().toISOString(); // the settle time, before the caller's bookkeeping
+    try {
+      const leaseStatus = (this.db.prepare('SELECT status FROM worker_leases WHERE id = ?').get(span.leaseId) as { status: string } | undefined)?.status;
+      if (leaseStatus !== 'completed' && leaseStatus !== 'failed' && leaseStatus !== 'cancelled') return;
+      const terminal = leaseStatus === 'completed' && !errorMessage ? 'ok' : leaseStatus === 'cancelled' ? 'cancelled' : 'error';
+      const status = terminal === 'ok' ? 'ok' : 'error'; // the span schema has no 'cancelled': a cancel is a terminal failure
+      const assurance = this.loopService.assurance;
+      const closed = { terminal_status: terminal, lease_status: leaseStatus };
+      try {
+        assurance.finishTraceSpan(span.workerSpanId, { status, ended_at: endedAt, metadata: {
+          ...closed,
+          ...(errorMessage ? { error: errorMessage } : {}),
+          ...(execution ? { stdout_path: execution.stdout_path, stderr_path: execution.stderr_path, gates: execution.gates } : {}),
+        } });
+      } catch {
+        // secret-like detail is refused; the span still closes
+        assurance.finishTraceSpan(span.workerSpanId, { status, ended_at: endedAt, metadata: { ...closed, detail_withheld: true } });
+      }
+      assurance.finishTraceSpan(span.runSpanId, { status, ended_at: endedAt, metadata: { terminal_status: terminal } });
+    } catch { /* tracing never masks the maker's outcome */ }
   }
 
   private async runMaker(id: string, input: ExecuteMakerInput = {}): Promise<ExecuteWorkerResult> {
