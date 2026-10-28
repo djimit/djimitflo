@@ -7,7 +7,7 @@ import { createHash } from 'crypto';
 import http from 'http';
 import type { AddressInfo } from 'net';
 import { MemorySyncService } from '../services/memory-sync-service';
-import { memoryDeliveryEvidence } from '../services/memory-delivery-receipts';
+import { memoryDeliveryEvidence, qdrantIntentHash } from '../services/memory-delivery-receipts';
 import { pointIdForTask } from '../utils/qdrant-point-id';
 
 /**
@@ -30,13 +30,13 @@ function taskDb(): Database.Database {
 type Call = { url: string; method: string; body?: string };
 const timeoutError = () => Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' });
 
-/** A fake UAMS + Ollama + Qdrant. `qdrantPoints` is the set of stored point ids (read-back reads it). */
+/** A fake UAMS + Ollama + Qdrant. `qdrantPoints` maps stored point ids to their payloads (read-back reads it). */
 type UamsBehaviour = 'ok' | 'timeout' | 401 | 503 | 'reset' | 'refused';
 const transportError = (code: string) => Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error(code), { code }) });
 
 function fakeTargets(opts: { uams?: UamsBehaviour; upsert?: 'ok' | 503 } = {}) {
   const calls: Call[] = [];
-  const qdrantPoints = new Set<string>();
+  const qdrantPoints = new Map<string, Record<string, unknown>>();
   /** UAMS entries the server applied (a reset/5xx after commit still counts) */
   const uamsCommitted: string[] = [];
   const state: { uams: UamsBehaviour; upsert: 'ok' | 503 } = { uams: opts.uams ?? 'ok', upsert: opts.upsert ?? 'ok' };
@@ -53,13 +53,13 @@ function fakeTargets(opts: { uams?: UamsBehaviour; upsert?: 'ok' | 503 } = {}) {
     if (url.includes('/api/embed')) return new Response(JSON.stringify({ embeddings: [[0.1, 0.2, 0.3]] }));
     if (url.endsWith('/collections/djimitflo_swarm/points') && method === 'PUT') {
       if (state.upsert !== 'ok') return new Response('{}', { status: state.upsert });
-      for (const p of JSON.parse(String(init?.body)).points) qdrantPoints.add(String(p.id));
+      for (const p of JSON.parse(String(init?.body)).points) qdrantPoints.set(String(p.id), p.payload);
       return new Response('{}');
     }
     const point = url.match(/\/collections\/djimitflo_swarm\/points\/([^/?]+)$/);
     if (point) {
       return qdrantPoints.has(point[1])
-        ? new Response(JSON.stringify({ result: { id: point[1], payload: {} } }))
+        ? new Response(JSON.stringify({ result: { id: point[1], payload: qdrantPoints.get(point[1]) } }))
         : new Response(JSON.stringify({ status: { error: 'Not found' } }), { status: 404 });
     }
     if (url.endsWith('/collections/djimitflo_swarm')) return new Response(JSON.stringify({ result: { config: { params: { vectors: { size: 3 } } } } }));
@@ -75,6 +75,18 @@ const statusOf = (db: Database.Database, task: string, target: string) => receip
 const posts = (calls: Call[]) => calls.filter((c) => c.url.endsWith('/memory/entry'));
 const upserts = (calls: Call[], task: string) =>
   calls.filter((c) => c.method === 'PUT' && c.url.endsWith('/points') && JSON.parse(c.body || '{}').points?.[0]?.id === pointIdForTask(task));
+
+/** The payload a tracked upsert of a taskDb() task writes (intent hash over the current content and embed model). */
+const EMBED_MODEL = 'snowflake-arctic-embed:s';
+const landedPayload = (task: string, over: { content?: string; model?: string } = {}) => ({
+  task_id: task, machine_id: 'macbook', agent_type: 'maker', content_excerpt: over.content ?? 'do the thing', embedding_model: over.model ?? EMBED_MODEL,
+  embedding_dim: 3, intent_sha256: qdrantIntentHash(task, over.content ?? 'do the thing', 'macbook', 'maker', over.model ?? EMBED_MODEL),
+});
+const unknownQdrantReceipt = (db: Database.Database, task: string) => {
+  db.exec(`CREATE TABLE IF NOT EXISTS memory_sync_receipts (task_id TEXT NOT NULL, target TEXT NOT NULL, status TEXT NOT NULL, detail TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL, PRIMARY KEY (task_id, target))`);
+  db.prepare(`INSERT INTO memory_sync_receipts VALUES (?, 'qdrant', 'unknown', 'timeout 10000ms', 1, '2026-01-01T00:00:00.000Z')`).run(task);
+};
 
 beforeEach(() => {
   tmpOkf = fs.mkdtempSync(path.join(os.tmpdir(), 'okf-receipts-'));
@@ -106,7 +118,7 @@ describe('CODE-004: memory delivery receipts', () => {
 
     // task-2: the process died with the Qdrant upsert in flight (write-ahead receipt, no outcome) — but the point landed
     db.prepare(`INSERT INTO memory_sync_receipts (task_id, target, status, detail, attempts, updated_at) VALUES ('task-2', 'qdrant', 'unknown', 'in_flight', 1, '2026-01-01T00:00:00.000Z')`).run();
-    t.qdrantPoints.add(pointIdForTask('task-2'));
+    t.qdrantPoints.set(pointIdForTask('task-2'), landedPayload('task-2'));
 
     t.state.uams = 'ok';
     t.state.upsert = 'ok';
@@ -351,4 +363,86 @@ describe('CODE-004 review round 2 (#1058): redirects and shadow OKF fallback', (
     expect(text.length).toBeGreaterThan(0);
     expect(text).toMatch(/^---\ntype: CompletedTask\n[\s\S]*## Description\n\ndo the thing\n\n$/); // sent untracked, whole
   });
+});
+
+describe('STATE-02: a Qdrant read-back settles only the exact intended point', () => {
+  const qdrantReceipt = (db: Database.Database) =>
+    db.prepare(`SELECT status, detail, attempts FROM memory_sync_receipts WHERE task_id = 'task-1' AND target = 'qdrant'`).get() as { status: string; detail: string; attempts: number };
+
+  it('a tracked upsert stores the intent hash of what it embeds in the point payload', async () => {
+    process.env.MEMORY_DELIVERY_RECEIPTS = 'on';
+    const db = taskDb();
+    const t = fakeTargets();
+    await new MemorySyncService(db).onTaskCompleted('task-1');
+    expect(t.qdrantPoints.get(pointIdForTask('task-1'))).toMatchObject({ intent_sha256: qdrantIntentHash('task-1', 'do the thing', 'macbook', 'maker', EMBED_MODEL) });
+  });
+
+  for (const [name, stale] of [
+    ['an older payload without an intent hash', () => ({ task_id: 'task-1', content_excerpt: 'old', embedding_model: EMBED_MODEL, embedding_dim: 3 })],
+    ['an older content version', () => landedPayload('task-1', { content: 'an earlier description' })],
+    ['an older embed model', () => landedPayload('task-1', { model: 'nomic-embed-text' })],
+    ['the intended hash but another embed model label', () => ({ ...landedPayload('task-1'), embedding_model: 'nomic-embed-text' })],
+  ] as const) {
+    it(`same task id with ${name}: not delivered, left unknown, not resent`, async () => {
+      process.env.MEMORY_DELIVERY_RECEIPTS = 'on';
+      const db = taskDb();
+      const t = fakeTargets();
+      unknownQdrantReceipt(db, 'task-1');
+      t.qdrantPoints.set(pointIdForTask('task-1'), stale());
+
+      const report = await new MemorySyncService(db).reconcile();
+
+      expect(report).toMatchObject({ read_back_delivered: 0, read_back_inconclusive: 1, retried: 0 });
+      expect(qdrantReceipt(db)).toMatchObject({ status: 'unknown', attempts: 1 });
+      expect(upserts(t.calls, 'task-1')).toHaveLength(0);
+    });
+  }
+
+  it('the exact intended point is read back as delivered without a resend', async () => {
+    process.env.MEMORY_DELIVERY_RECEIPTS = 'on';
+    const db = taskDb();
+    const t = fakeTargets();
+    unknownQdrantReceipt(db, 'task-1');
+    t.qdrantPoints.set(pointIdForTask('task-1'), landedPayload('task-1'));
+
+    const report = await new MemorySyncService(db).reconcile();
+
+    expect(report).toMatchObject({ read_back_delivered: 1, retried: 0 });
+    expect(qdrantReceipt(db)).toMatchObject({ status: 'delivered', detail: 'read_back' });
+    expect(upserts(t.calls, 'task-1')).toHaveLength(0);
+  });
+
+  it('absent point (unchanged): proven not delivered, resent once, delivered', async () => {
+    process.env.MEMORY_DELIVERY_RECEIPTS = 'on';
+    const db = taskDb();
+    const t = fakeTargets();
+    unknownQdrantReceipt(db, 'task-1');
+
+    const report = await new MemorySyncService(db).reconcile();
+
+    expect(report).toMatchObject({ read_back_delivered: 0, retried: 1, delivered: 1 });
+    expect(qdrantReceipt(db)).toMatchObject({ status: 'delivered', attempts: 2 });
+    expect(upserts(t.calls, 'task-1')).toHaveLength(1);
+  });
+
+  for (const [name, respond] of [
+    ['HTTP 500', async () => new Response('{}', { status: 500 })],
+    ['a transport error', async () => { throw transportError('ECONNRESET'); }],
+  ] as const) {
+    it(`read-back ${name} (unchanged): inconclusive, left unknown, not resent`, async () => {
+      process.env.MEMORY_DELIVERY_RECEIPTS = 'on';
+      const db = taskDb();
+      const t = fakeTargets();
+      unknownQdrantReceipt(db, 'task-1');
+      const fake = globalThis.fetch as unknown as (url: string, init?: RequestInit) => Promise<Response>;
+      vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) =>
+        (/\/points\/[^/?]+$/.test(url) && !init?.method ? respond() : fake(url, init))));
+
+      const report = await new MemorySyncService(db).reconcile();
+
+      expect(report).toMatchObject({ read_back_delivered: 0, read_back_inconclusive: 1, retried: 0 });
+      expect(qdrantReceipt(db)).toMatchObject({ status: 'unknown', detail: 'read_back_inconclusive', attempts: 1 });
+      expect(upserts(t.calls, 'task-1')).toHaveLength(0);
+    });
+  }
 });
