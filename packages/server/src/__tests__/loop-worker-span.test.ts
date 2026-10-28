@@ -7,11 +7,15 @@ import { execFileSync } from 'node:child_process';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { LoopService } from '../services/loop-service';
+import { FixLoopService } from '../services/fix-loop-service';
+import { RsiSafetyGuard } from '../services/rsi-safety-guard';
 
 /**
  * OPS-004: executeWorker wrote a 'running' spawn row and a separate completion row — two roots, no parent edge, both
- * ended_at null — and a rejected executeMaker left only the 'running' row. A worker is one span, child of the run, closed
- * when the maker settles (ok / error / cancelled) with the time it settled.
+ * ended_at null — and a rejected executeMaker left only the 'running' row. A maker lease has one span, child of the run,
+ * opened at first dispatch and closed only when the maker settles (ok / error / cancelled) with the time it settled; an
+ * approval / in-progress exit leaves it open for the resumed call. Every maker entry point (executeWorker, executeMaker
+ * as used by the execute-maker route and FixLoopService) goes through it.
  */
 describe('loop worker trace span', () => {
   let db: Database.Database; let loops: LoopService; let tmp: string;
@@ -38,6 +42,10 @@ describe('loop worker trace span', () => {
     run: loops.getLoopRun(runId), lease: loops.listWorkerLeases(runId).find((l) => l.id === leaseId)!,
     gates: [], stdout_path: '/dev/null', stderr_path: '/dev/null',
   });
+  /** Stub the runtime step under the shared maker path (span ownership stays in the real executeMaker). */
+  const stubRunMaker = () => vi.spyOn(loops.workerExecutor as any, 'runMaker');
+  const workerSpans = (leaseId: string) => (db.prepare("SELECT * FROM agent_trace_spans WHERE span_type = 'worker' AND json_extract(metadata, '$.worker_lease_id') = ?")
+    .all(leaseId) as Array<{ status: string; started_at: string; ended_at: string | null; parent_span_id: string | null }>);
 
   it('success yields one closed worker span with a run->worker edge', async () => {
     const { runId, maker } = prepareMaker();
@@ -60,7 +68,10 @@ describe('loop worker trace span', () => {
 
   it('a thrown executeMaker closes the worker span as an error with an end time', async () => {
     const { runId, maker } = prepareMaker();
-    vi.spyOn(loops, 'executeMaker').mockRejectedValue(new Error('MAKER_EXPLODED'));
+    stubRunMaker().mockImplementation(async () => {
+      loops.updateWorkerLeaseStatus(maker.id, 'running', { started_at: new Date().toISOString() });
+      throw new Error('MAKER_EXPLODED');
+    });
     await expect(loops.executeWorker(runId, { lease_id: maker.id })).rejects.toThrow('MAKER_EXPLODED');
 
     const trace = traceOf(runId, maker.id);
@@ -72,7 +83,7 @@ describe('loop worker trace span', () => {
 
   it('a cancelled maker closes the worker span as a terminal failure with an end time', async () => {
     const { runId, maker } = prepareMaker();
-    vi.spyOn(loops, 'executeMaker').mockImplementation(async () => {
+    stubRunMaker().mockImplementation(async () => {
       loops.updateWorkerLeaseStatus(maker.id, 'cancelled', { cancellation_reason: 'operator_stop' });
       return fakeExecution(runId, maker.id);
     });
@@ -88,8 +99,9 @@ describe('loop worker trace span', () => {
     const start = new Date('2026-10-28T10:00:00.000Z');
     const settled = new Date('2026-10-28T10:05:00.000Z');
     vi.setSystemTime(start);
-    vi.spyOn(loops, 'executeMaker').mockImplementation(async () => {
+    stubRunMaker().mockImplementation(async () => {
       vi.setSystemTime(settled);
+      loops.updateWorkerLeaseStatus(maker.id, 'completed', {});
       return fakeExecution(runId, maker.id);
     });
     const createCheckpoint = loops.assurance.createCheckpoint.bind(loops.assurance);
@@ -102,5 +114,46 @@ describe('loop worker trace span', () => {
     const worker = traceOf(runId, maker.id).spans.find((s) => s.span_type === 'worker')!;
     expect(worker.started_at).toBe(start.toISOString());
     expect(worker.ended_at).toBe(settled.toISOString());
+  });
+
+  it('approval -> execution -> resumed collection is one worker span: start at first dispatch, end at settlement', async () => {
+    const { runId, maker } = prepareMaker();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const dispatched = new Date('2026-10-28T10:00:00.000Z');
+    const resumed = new Date('2026-10-28T10:30:00.000Z');
+    const settled = new Date('2026-10-28T10:31:00.000Z');
+    vi.setSystemTime(dispatched);
+    stubRunMaker()
+      .mockImplementationOnce(async () => { throw new Error('LOOP_WORKER_APPROVAL_REQUIRED'); }) // the lease stays 'prepared'
+      .mockImplementationOnce(async () => {
+        vi.setSystemTime(settled);
+        loops.updateWorkerLeaseStatus(maker.id, 'completed', {});
+        return fakeExecution(runId, maker.id);
+      });
+    await expect(loops.executeWorker(runId, { lease_id: maker.id })).rejects.toThrow('LOOP_WORKER_APPROVAL_REQUIRED');
+    expect(workerSpans(maker.id)).toEqual([expect.objectContaining({ status: 'running', ended_at: null })]); // open, not an error
+
+    vi.setSystemTime(resumed);
+    await loops.executeWorker(runId, { lease_id: maker.id });
+    const spans = workerSpans(maker.id);
+    expect(spans).toHaveLength(1);
+    expect(spans[0]).toMatchObject({ status: 'ok', started_at: dispatched.toISOString(), ended_at: settled.toISOString() });
+    const trace = traceOf(runId, maker.id);
+    expect(trace.edges).toEqual([{ from: trace.roots[0].id, to: trace.spans.find((s) => s.span_type === 'worker')!.id }]);
+  });
+
+  it('executeMaker called directly (execute-maker route) records the same closed span', async () => {
+    const { runId, maker } = prepareMaker();
+    const executed = await loops.executeMaker(runId, { lease_id: maker.id, timeout_ms: 10_000 });
+    expect(executed.lease.status).toBe('completed');
+    expect(workerSpans(maker.id)).toEqual([expect.objectContaining({ status: 'ok', ended_at: expect.any(String), parent_span_id: expect.any(String) })]);
+    expect(traceOf(runId, maker.id).edges).toHaveLength(1);
+  });
+
+  it('FixLoopService (executeMaker entry point) records the maker span', async () => {
+    vi.spyOn(RsiSafetyGuard.prototype, 'canMutate').mockReturnValue({ allowed: true });
+    const result = await new FixLoopService(db as any, loops).fixFile({ repositoryPath: tmp, filePath: 'README.md', description: 'Improve wording', category: 'refactor', runtime: 'mock' });
+    const maker = loops.listWorkerLeases(result.loopRunId!).find((l) => l.role === 'maker')!;
+    expect(workerSpans(maker.id)).toEqual([expect.objectContaining({ status: maker.status === 'completed' ? 'ok' : 'error', ended_at: expect.any(String) })]);
   });
 });
