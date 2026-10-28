@@ -193,7 +193,14 @@ export function buildDigest(db: Database, now = Date.now(), env: NodeJS.ProcessE
   const one = (sql: string, ...args: unknown[]): number | null => { try { const v = Object.values(db.prepare(sql).get(...args) as Record<string, unknown>)[0]; return v === null || v === undefined ? null : Number(v); } catch { return null; } };
   const evidence = (() => { try { return buildEvolutionEvidence(db, env, now, 30); } catch { return null; } })();
   const stalls = (() => { try { return detectStalls(db, now, env); } catch { return null; } })();
-  const sched = listSchedulers();
+  const sched = listSchedulers(now);
+  // off by flag = not armed and the registry names the env flag that arms it (an operator choice, not a fault);
+  // off unexpectedly = armed but not ticking, quarantined or failing (last_error outranks tick age, so a stale failed tick
+  // reads 'failing', never 'armed_not_ticking'), or not armed with no flag that explains it
+  const FLAG = /^[A-Z][A-Z0-9_]*$/;
+  const BROKEN = new Set(['armed_not_ticking', 'quarantined', 'failing']);
+  const offByFlag = sched.schedulers.filter((s) => !s.armed && FLAG.test(s.flag));
+  const offUnexpected = sched.schedulers.filter((s) => (s.armed ? BROKEN.has(s.status) : !FLAG.test(s.flag)));
   const inbox = (() => { try { return decisionsInbox(db, now, env); } catch { return null; } })();
   const open: { requeue: number | null; labels: number | null; memory_review: number | null } = inbox ? openDecisionCounts(inbox) : { requeue: null, labels: null, memory_review: null };
   const base = publicBase(env);
@@ -229,7 +236,8 @@ export function buildDigest(db: Database, now = Date.now(), env: NodeJS.ProcessE
     drafts_age_max_days: evidence?.drafts.age_days_max ?? null,
     gates: evidence ? Object.fromEntries(Object.entries(evidence.gates).map(([k, g]) => [k, (g as { state: string }).state])) : {},
     stalls: stalls ? stalls.map((s) => s.subsystem) : null,
-    schedulers_off: sched.schedulers.filter((s) => !s.armed).map((s) => s.name),
+    schedulers_off_by_flag: offByFlag.map((s) => ({ name: s.name, flag: s.flag })),
+    schedulers_off_unexpected: offUnexpected.map((s) => ({ name: s.name, status: s.status })),
     needs_you: Object.fromEntries(sections.map((x) => [x.key, { count: x.count, link: x.link }])),
     optional_labelling: Object.fromEntries(optional.map((x) => [x.key, { count: x.count, link: x.link }])),
     dependency_lane: lane ? { mode: lane.effective_mode, open: lane.open, merged_24h: lane.merged_24h, revoked: !!lane.revoked_at } : null,
@@ -249,7 +257,8 @@ export function buildDigest(db: Database, now = Date.now(), env: NodeJS.ProcessE
     `Loop PRs settled: ${data.loop_prs_settled} (${data.loop_prs_survived} survived)`,
     `Realm gates: ${gates}`,
     data.stalls === null ? 'Stalls: unknown (stall watch failed)' : data.stalls.length ? `Stalls: ${data.stalls.join(', ')}` : 'Stalls: none',
-    data.schedulers_off.length ? `Schedulers off: ${data.schedulers_off.length}` : null,
+    data.schedulers_off_unexpected.length ? `Schedulers off unexpectedly: ${data.schedulers_off_unexpected.length} (${data.schedulers_off_unexpected.map((s) => `${s.name} ${s.status}`).join(', ')})` : null,
+    data.schedulers_off_by_flag.length ? `Schedulers off by flag: ${data.schedulers_off_by_flag.length} (${data.schedulers_off_by_flag.map((s) => s.name).join(', ')})` : null,
     data.dependency_lane ? `Dependency lane (${data.dependency_lane.mode}${data.dependency_lane.revoked ? ', act revoked' : ''}): ${data.dependency_lane.open} Dependabot PRs open, ${data.dependency_lane.merged_24h} merged in 24 h` : null,
     data.auto_merge ? `Test-only auto-merge (${data.auto_merge.mode}): class ${data.auto_merge.class}, ${data.auto_merge.merged_24h} merged in 24 h, ${data.auto_merge.audit_samples_open} audit sample(s) waiting for you` : null,
   ].filter(Boolean).join('\n');

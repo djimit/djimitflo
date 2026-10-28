@@ -2,6 +2,7 @@ import type { Database } from 'better-sqlite3';
 import type { ExperimentEffect, ExperimentRow } from './experiment-registry';
 import type { OpeResult } from './bandit-propensity';
 import { BASELINE_GENOME } from './genome-registry';
+import { wilson } from './asg/harness/stats';
 
 /**
  * G3.5 learning ledger (Phase G, operator 2026-10-19), read-only: per learning mechanism its data source, the effect estimate and
@@ -18,6 +19,47 @@ export interface LedgerRow {
   mechanism: string; name: string; data_source: string; experiment: string | null;
   metric: string | null; estimate: number | null; ci: [number, number] | null; p: number | null;
   status: LearningStatus; closed: boolean; note: string;
+  /** skill_selection only: one reading per named skill */
+  skills?: SkillReading[];
+}
+
+/**
+ * skill_selection reading (skill inventory 2026-10-26, intervention 1): per named skill — the `skill:<name>` evidence ref that
+ * fleet agent.outcome events carry — n, successes and, from SKILL_MIN_N outcomes on, the success rate with a Wilson 95 % CI.
+ * Below SKILL_MIN_N the rate and CI are null (INSUFFICIENT), never 0. hashes = distinct SKILL.md hashes seen, unhashed = outcomes
+ * without one. A success rate per skill is descriptive, not a skill effect, so the mechanism never carries an estimate.
+ */
+export const SKILL_MIN_N = 30;
+export interface SkillReading {
+  skill: string; n: number; successes: number; rate: number | null; ci: [number, number] | null;
+  status: 'RUNNING' | 'INSUFFICIENT'; hashes: number; unhashed: number;
+}
+export function skillSelectionReading(db: Database): SkillReading[] | null {
+  let rows: Array<{ skill: string; n: number; k: number; hashes: number; unhashed: number }>;
+  try {
+    // One observation per distinct (outcome, skill): a skill named twice in one outcome counts once (audit L-F01). The hash of
+    // that skill in that outcome is its `skill-sha:<name>@<sha64>` ref, else skill_content_hash when the outcome names exactly
+    // one skill (rows written before the skill-sha refs).
+    rows = db.prepare(`WITH refs AS (
+        SELECT o.id, o.success, o.skill_content_hash AS col, j.value AS v FROM skill_outcomes o,
+          json_each(CASE WHEN json_valid(o.evidence_refs_json) THEN o.evidence_refs_json ELSE '[]' END) j
+        WHERE o.domain = 'fleet' AND j.type = 'text'),
+      named AS (SELECT id, MAX(success) AS success, MAX(col) AS col, substr(v, 7) AS skill FROM refs
+        WHERE substr(v, 1, 6) = 'skill:' AND length(v) > 6 GROUP BY id, skill),
+      hashed AS (SELECT id, substr(v, 11, length(v) - 75) AS skill, CASE WHEN COUNT(DISTINCT substr(v, -64)) = 1 THEN MAX(substr(v, -64)) END AS sha
+        FROM refs WHERE substr(v, 1, 10) = 'skill-sha:' AND length(v) > 75 AND substr(v, -65, 1) = '@' GROUP BY id, skill),
+      obs AS (SELECT s.skill, s.success, COALESCE(h.sha, CASE WHEN (SELECT COUNT(*) FROM named x WHERE x.id = s.id) = 1
+          AND NOT EXISTS (SELECT 1 FROM hashed y WHERE y.id = s.id) THEN s.col END) AS sha
+        FROM named s LEFT JOIN hashed h ON h.id = s.id AND h.skill = s.skill)
+      SELECT skill, COUNT(*) AS n, SUM(success = 1) AS k, COUNT(DISTINCT sha) AS hashes, SUM(sha IS NULL) AS unhashed
+      FROM obs GROUP BY skill ORDER BY n DESC, skill`).all() as typeof rows;
+  } catch { return null; } // skill_outcomes absent: unknown
+  const r4 = (x: number) => +x.toFixed(4);
+  return rows.map(({ skill, n, k, hashes, unhashed }) => {
+    const enough = n >= SKILL_MIN_N; const ci = enough ? wilson(k, n) : null;
+    return { skill, n, successes: k, rate: enough ? r4(k / n) : null, ci: ci ? [r4(ci[0]), r4(ci[1])] : null,
+      status: enough ? 'RUNNING' : 'INSUFFICIENT', hashes, unhashed };
+  });
 }
 
 const MECHANISMS: Array<{ mechanism: string; name: string; data_source: string; experiment?: string }> = [
@@ -27,7 +69,7 @@ const MECHANISMS: Array<{ mechanism: string; name: string; data_source: string; 
   { mechanism: 'memory_rules', name: 'Memory rules', data_source: "loop_events 'assignment_context' memory_holdout × proposal status (memoryHoldoutEvidence)", experiment: 'memory-holdout' },
   { mechanism: 'kb_retrieval', name: 'KB retrieval', data_source: "skill_outcomes 'ace-001-arm' R factor (ace001Evidence)", experiment: 'ACE-001' },
   { mechanism: 'example_selection', name: 'Similar-example selection', data_source: "skill_outcomes 'ace-001-arm' S factor (ace001Evidence)", experiment: 'ACE-001' },
-  { mechanism: 'skill_selection', name: 'Skill selection', data_source: 'skill_outcomes per skill; skill_cards (SKILL_DISTILLATION_MODE, shadow, never injected)' },
+  { mechanism: 'skill_selection', name: 'Skill selection', data_source: "skill_outcomes domain 'fleet' per distinct outcome × 'skill:<name>' evidence ref + 'skill-sha:<name>@<sha>' ref (agent.outcome skill / skill_sha / skills);skill_cards (SKILL_DISTILLATION_MODE, shadow, never injected)" },
   { mechanism: 'maker_template', name: 'Maker template (STE)', data_source: "skill_outcomes 'ste-001-arm' (ste001Evidence)", experiment: 'STE-001' },
   { mechanism: 'deps_prep', name: 'Maker dependency preparation', data_source: "loop_events 'maker_deps_arm' × proposal status (makerDeps001Evidence)", experiment: 'MAKER-DEPS-001' },
   { mechanism: 'requeue', name: 'Requeue', data_source: "self_improvements evidence ref 'requeue-of:' + 'requeue' judgments (improvement-requeue.ts)" },
@@ -35,7 +77,9 @@ const MECHANISMS: Array<{ mechanism: string; name: string; data_source: string; 
 ];
 
 const excludesZero = (ci: [number, number] | null) => ci !== null && (ci[0] > 0 || ci[1] < 0);
-const fromVerdict = (v: string | null): LearningStatus => (v === null ? 'RUNNING' : v === 'supported' ? 'ADOPTED' : v === 'falsified' || v === 'reversed' ? 'REJECTED' : 'INSUFFICIENT');
+/** the verdict's leading word, case-insensitive: an operator close such as 'FALSIFIED (rules not above withheld)' reads as 'falsified' */
+const fromVerdict = (v: string | null): LearningStatus => { const k = v?.trim().split(/[\s(]/)[0].toLowerCase() ?? null;
+  return k === null ? 'RUNNING' : k === 'supported' ? 'ADOPTED' : k === 'falsified' || k === 'reversed' ? 'REJECTED' : 'INSUFFICIENT'; };
 
 export function learningLedger(db: Database, experiments: ExperimentRow[], ope: OpeResult | null) {
   const rows: LedgerRow[] = MECHANISMS.map((m) => {
@@ -64,6 +108,14 @@ export function learningLedger(db: Database, experiments: ExperimentRow[], ope: 
     if (m.mechanism === 'species_selection') {
       return { ...base, status: 'NOT_MEASURED' as const, closed: false,
         note: `no estimate of the bandit vs no bandit. Related: off-policy value of the fitness-view policy − the logged bandit = ${ope ? `${ope.difference ?? 'null'} (95 % CI ${ope.ci ? `[${ope.ci.join(', ')}]` : 'null'}, ESS ${ope.ess}, ${ope.status})` : 'unknown'} — a different policy, not this mechanism's effect` };
+    }
+    if (m.mechanism === 'skill_selection') {
+      const skills = skillSelectionReading(db);
+      if (!skills?.length) return { ...base, status: 'NOT_MEASURED' as const, closed: false, skills: skills ?? [], note: skills ? 'no fleet outcome names a skill yet' : 'skill_outcomes unreadable' };
+      const ready = skills.filter((s) => s.status === 'RUNNING').length;
+      return { ...base, metric: `success rate per named skill, Wilson 95 % CI from n ≥ ${SKILL_MIN_N} (descriptive, no effect estimate)`,
+        status: ready > 0 ? 'RUNNING' as const : 'INSUFFICIENT' as const, closed: false, skills,
+        note: `${skills.length} named skill(s), ${ready} with ≥ ${SKILL_MIN_N} outcomes, ${skills.reduce((a, s) => a + s.n, 0)} outcomes` };
     }
     return { ...base, status: 'NOT_MEASURED' as const, closed: false, note: 'no evidence function estimates this mechanism\'s effect on outcomes' };
   });

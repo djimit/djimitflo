@@ -208,7 +208,7 @@ export async function checkLoopPrs(db: Database, fetchImpl: typeof fetch = fetch
   // B3 (17-10): a PR is identified by owner/repo + number from its full URL, never by the number alone (a number in another
   // repo used to be settled with the primary repo's PR of the same number).
   const get = async (slug: string, p: string, gone404 = false) => {
-    const res = await fetchImpl(`https://api.github.com/repos/${slug}/${p}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' } });
+    const res = await fetchImpl(`https://api.github.com/repos/${slug}/${p}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(15_000) });
     if (!res.ok && !(gone404 && res.status === 404)) fail(String(res.status));
     return res;
   };

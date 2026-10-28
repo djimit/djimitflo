@@ -1,0 +1,93 @@
+{
+ "window": [
+  "2026-10-08T00:00:00.000Z",
+  "2026-10-27T00:00:00.000Z"
+ ],
+ "raw_rows": 144,
+ "excluded": {
+  "nonmaker_regressed": 11,
+  "fallback": 3
+ },
+ "registered_run_level": {
+  "totals": {
+   "rules": [
+    66,
+    22
+   ],
+   "holdout": [
+    34,
+    8
+   ]
+  },
+  "by_lane": {
+   "mutation": {
+    "rules": [
+     16,
+     15
+    ],
+    "holdout": [
+     13,
+     5
+    ]
+   },
+   "test-gap": {
+    "rules": [
+     50,
+     7
+    ],
+    "holdout": [
+     21,
+     3
+    ]
+   }
+  },
+  "cmh": {
+   "mh_or": 0.601,
+   "chi2_cc": 0.703,
+   "p_two_sided": 0.4017,
+   "p_one_sided_rules_better": 0.8577
+  }
+ },
+ "sensitivity_goal_level": {
+  "goals": 130,
+  "mixed_arm_goals": 0,
+  "totals": {
+   "rules": [
+    66,
+    22
+   ],
+   "holdout": [
+    34,
+    8
+   ]
+  },
+  "by_lane": {
+   "mutation": {
+    "rules": [
+     16,
+     15
+    ],
+    "holdout": [
+     13,
+     5
+    ]
+   },
+   "test-gap": {
+    "rules": [
+     50,
+     7
+    ],
+    "holdout": [
+     21,
+     3
+    ]
+   }
+  },
+  "cmh": {
+   "mh_or": 0.601,
+   "chi2_cc": 0.703,
+   "p_two_sided": 0.4017,
+   "p_one_sided_rules_better": 0.8577
+  }
+ }
+}

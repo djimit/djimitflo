@@ -136,7 +136,7 @@ describe('MemorySyncService', () => {
 
     expect(methods.some((m) => m.method === 'DELETE')).toBe(false);
     expect(methods.some((m) => m.url.endsWith('/collections/djimitflo_swarm/points'))).toBe(false);
-    expect(warn.mock.calls.map((c) => String(c[0])).join('\n')).toContain('not recreating populated data');
+    expect(warn.mock.calls.map((c) => String(c[0])).join('\n')).toMatch(/unavailable, dimension mismatch/);
   });
 
   it('skips Qdrant without failing when no embedding model is available', async () => {

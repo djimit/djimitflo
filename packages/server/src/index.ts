@@ -20,10 +20,11 @@ import { AuthService } from './services/auth-service';
 import { createRoutes } from './routes';
 import { createExplorePublicRoutes } from './routes/explore-public';
 import { createGitHubWebhookRoutes } from './routes/github-webhooks';
+import { DjimitSecTriggerService } from './services/djimitsec-trigger-service';
 import { createMetricsHandler, metricsRateLimiter } from './routes/metrics';
 import { WebSocketService } from './services/websocket-service';
 import { ExecutionEngine } from './execution/execution-engine';
-import { MemorySyncService } from './services/memory-sync-service';
+import { MEMORY_DELIVERY_RECONCILE_MS, MemorySyncService } from './services/memory-sync-service';
 import { ReasoningBankService } from './services/reasoning-bank-service';
 import { VectorMemoryService } from './services/vector-memory-service';
 import { TrajectoryStore } from './services/trajectory-store';
@@ -52,7 +53,7 @@ import { initAutonomousServices } from './bootstrap/autonomous-services';
 import { DennisAgentService } from './services/dennis-agent-service';
 import { TelegramApiService } from './services/telegram-api-service';
 import { parseTelegramAllowedUsers, parseTelegramUserMap } from './routes/telegram';
-import { noteScheduler, registerRestart } from './services/scheduler-registry';
+import { noteScheduler, registerRestart, markRun } from './services/scheduler-registry';
 import { laneIntervalMs, startDependencyLane } from './services/dependency-lane';
 import { PROBE_INTERVAL_MS, startOllamaProbe } from './services/inference-failover';
 import { SHIPPED_CODE_SCAN_INTERVAL_MS, startShippedCodeScan } from './services/shipped-code-scan';
@@ -148,8 +149,9 @@ async function main() {
     credentials: true,
   }));
   // Exact GitHub signature bytes must be consumed before the general JSON parser.
-  // This connector imports work items only; it never starts goals/loops/workers.
-  app.use('/github/webhook', createGitHubWebhookRoutes(db));
+  // Existing intake is retained; explicitly configured scan-only repositories use the fixed native executor.
+  const scanRuntime: { triggers?: DjimitSecTriggerService } = {};
+  app.use('/github/webhook', createGitHubWebhookRoutes(db, () => scanRuntime.triggers));
   app.use(express.json());
   app.use(requestLogger);
   
@@ -197,6 +199,8 @@ async function main() {
       } catch (error) {
         console.warn('⚠️ Dennis governed queue failed:', error instanceof Error ? error.message : String(error));
       }
+      try { if (scanRuntime.triggers) void scanRuntime.triggers.tick().then(() => markRun('djimitsec_repository_scan'), error => { markRun('djimitsec_repository_scan', error); console.warn('DjimitSec trigger tick held:', error instanceof Error ? error.message : String(error)); }); }
+      catch (error) { markRun('djimitsec_repository_scan', error); console.warn('DjimitSec trigger tick held:', error instanceof Error ? error.message : String(error)); }
     };
     processDennisQueue();
     dennisQueueTimer = setInterval(processDennisQueue, 60_000);
@@ -210,6 +214,8 @@ async function main() {
   const runtimeGovernance = new RuntimeGovernanceService(db);
   runtimeGovernance.start();
   const executionEngine = new ExecutionEngine(db, wsService, undefined, runtimeGovernance);
+  scanRuntime.triggers = new DjimitSecTriggerService(db, executionEngine, wsService);
+  noteScheduler('djimitsec_repository_scan', 'DJIMITSEC_SCAN_TRIGGERS', operatorRuntime && ['shadow', 'execute'].includes(process.env.DJIMITSEC_SCAN_TRIGGERS || ''), 60_000);
   const taskRecovery = executionEngine.recoverInterruptedTasks();
   if (taskRecovery.failedMockTasks || taskRecovery.heldTasks) {
     console.log(`🔄 Reconciled ${taskRecovery.failedMockTasks} interrupted mock task(s); ${taskRecovery.heldTasks} task(s) held for operator outcome reconciliation.`);
@@ -218,6 +224,9 @@ async function main() {
 
   const memorySync = new MemorySyncService(db);
   executionEngine.setMemorySyncService(memorySync);
+  // CODE-004 (MEMORY_DELIVERY_RECEIPTS=on): bounded reconciliation of failed/unknown memory legs at boot and on a tick
+  registerRestart('memory_delivery_reconcile', () => { memorySync.stop(); memorySync.start(); });
+  noteScheduler('memory_delivery_reconcile', 'MEMORY_DELIVERY_RECEIPTS', memorySync.start(), MEMORY_DELIVERY_RECONCILE_MS);
 
   const reasoningBank = new ReasoningBankService(db);
   executionEngine.setReasoningBankService(reasoningBank);
