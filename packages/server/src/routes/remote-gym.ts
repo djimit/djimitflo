@@ -2,7 +2,8 @@ import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { GymRunSettledError, RemoteGymService, REMOTE_GYM_SCOPE } from '../services/remote-gym-service';
-import { mintSpawnToken, resolveSpawnTokenSecret, spawnTokenRejection } from '../services/spawn-token';
+import { mintSpawnToken, resolveSpawnTokenSecret, spawnTokenExpiresAt, spawnTokenRejection } from '../services/spawn-token';
+import { recordHostTokenOk, recordHostTokenRejection } from '../services/host-token-watch';
 import { RemoteMakerQueue } from '../services/remote-maker-queue';
 import { ingestKbPages, kbPendingSafety } from '../services/kb-corpus';
 import { claimCommittee, recordCommittee } from '../services/committee-swarm';
@@ -19,12 +20,15 @@ export function createRemoteGymRoutes(db: Database, auth: AuthMiddleware): Route
 
   function host(req: any, res: any): string | null {
     const h = String(req.get('X-Gym-Host') || '');
-    const rejection = h ? spawnTokenRejection(resolveSpawnTokenSecret(), String(req.get('X-Gym-Worker-Token') || ''), h, REMOTE_GYM_SCOPE) : 'wrong_subject';
+    const token = String(req.get('X-Gym-Worker-Token') || '');
+    const rejection = h ? spawnTokenRejection(resolveSpawnTokenSecret(), token, h, REMOTE_GYM_SCOPE) : 'wrong_subject';
     if (rejection) {
       console.warn(`[gym-worker] token rejected host=${JSON.stringify(h.slice(0, 100))} reason=${rejection}`);
+      if (h) recordHostTokenRejection(db, h, REMOTE_GYM_SCOPE, rejection);
       res.status(401).json({ error: { code: 'GYM_WORKER_TOKEN_INVALID', message: 'Gym worker token is invalid, expired, or scoped to another host' } });
       return null;
     }
+    recordHostTokenOk(db, h, REMOTE_GYM_SCOPE, spawnTokenExpiresAt(token));
     return h;
   }
   const fail = (res: any, error: unknown) => {

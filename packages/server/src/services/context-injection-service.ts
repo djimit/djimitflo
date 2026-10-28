@@ -6,10 +6,10 @@ import type { Database } from 'better-sqlite3';
 import type { MemoryStore } from './memory-candidate-service';
 import { ContextSanitizer } from './context-sanitizer';
 import { ExperienceRetrievalService } from './experience-retrieval-service';
+import { checkCollection, memoryEmbedModel, SWARM_MEMORY_COLLECTION } from './memory-embedding-contract';
 
 const QDRANT_URL = process.env.QDRANT_URL || 'http://192.168.1.28:6333';
 const OLLAMA_URL = (process.env.OLLAMA_URL || process.env.OLLAMA_HOST || 'http://localhost:11434').replace(/\/$/, '');
-const QDRANT_COLLECTION = 'djimitflo_swarm';
 const OKF_COLLECTION = 'djimit_okf';
 const qdrantApiKey = process.env.QDRANT_API_KEY ?? '';
 // Qdrant enforces auth (QDRANT__SERVICE__API_KEY). Without the key, both retrieval
@@ -72,6 +72,8 @@ export interface ContextSnapshot {
   sources: string[];
   advisory: true;
   independently_reviewed: false;
+  /** Sources skipped because they are incompatible/unreachable — distinct from "no matching memory" (CODE-002). */
+  unavailable?: Array<{ source: ContextResult['source']; reason: string }>;
 }
 
 export class ContextInjectionService {
@@ -93,11 +95,12 @@ export class ContextInjectionService {
   async injectContextSnapshot(taskDescription: string, useSwarmContext: boolean = true, storeFilter?: MemoryStore): Promise<ContextSnapshot> {
     if (!useSwarmContext) return { text: '', sha256: createHash('sha256').update('').digest('hex'), sources: [], advisory: true, independently_reviewed: false };
 
-    const results = await this.collectCandidates(taskDescription, storeFilter);
+    const { results, unavailable } = await this.collect(taskDescription, storeFilter);
     const ranked = this.rankByTrust(results);
     const truncated = this.truncateToTokenBudget(ranked, MAX_CONTEXT_TOKENS);
 
-    if (truncated.length === 0) return { text: '', sha256: createHash('sha256').update('').digest('hex'), sources: [], advisory: true, independently_reviewed: false };
+    const unavailableField = unavailable.length > 0 ? { unavailable } : {};
+    if (truncated.length === 0) return { text: '', sha256: createHash('sha256').update('').digest('hex'), sources: [], advisory: true, independently_reviewed: false, ...unavailableField };
 
     const lines = ['## Context (Swarm + Knowledge)', ''];
     for (const r of truncated) {
@@ -125,6 +128,7 @@ export class ContextInjectionService {
       sources: [...new Set(truncated.map((result) => result.source))],
       advisory: true,
       independently_reviewed: false,
+      ...unavailableField,
     };
   }
 
@@ -133,10 +137,18 @@ export class ContextInjectionService {
    * E1 (docs/research/eco/E1-RRF_PROTOCOL.md) snapshots it for blind query-level labelling; no ranking or prod read changes.
    */
   async collectCandidates(taskDescription: string, storeFilter?: MemoryStore): Promise<ContextResult[]> {
+    return (await this.collect(taskDescription, storeFilter)).results;
+  }
+
+  private async collect(taskDescription: string, storeFilter?: MemoryStore): Promise<{ results: ContextResult[]; unavailable: NonNullable<ContextSnapshot['unavailable']> }> {
     const results: ContextResult[] = [];
+    const unavailable: NonNullable<ContextSnapshot['unavailable']> = [];
 
     const searches: Promise<unknown>[] = [
-      this.searchQdrantSwarm(taskDescription, storeFilter).then((r) => results.push(...r)),
+      this.searchQdrantSwarm(taskDescription, storeFilter).then((r) => {
+        results.push(...r.results);
+        if (r.unavailable) unavailable.push({ source: 'qdrant_swarm', reason: r.unavailable });
+      }),
       this.searchOkfMcp(taskDescription).then((r) => results.push(...r)),
       this.searchDjimitKB(taskDescription).then((r) => results.push(...r)),
     ];
@@ -154,31 +166,43 @@ export class ContextInjectionService {
     }
 
     await Promise.allSettled(searches);
-    return results;
+    return { results, unavailable };
   }
 
-  private async searchQdrantSwarm(query: string, storeFilter?: MemoryStore): Promise<ContextResult[]> {
+  /**
+   * CODE-002: query with the same embedding contract the swarm-memory writers use, verify the
+   * collection's dimension first, and only match points written with that model. An incompatible
+   * collection is reported as unavailable, never queried with a foreign vector space.
+   */
+  private async searchQdrantSwarm(query: string, storeFilter?: MemoryStore): Promise<{ results: ContextResult[]; unavailable?: string }> {
     try {
+      const model = memoryEmbedModel();
       const embedRes = await fetchWithTimeout(`${OLLAMA_URL}/api/embeddings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'nomic-embed-text:latest', prompt: query }),
+        body: JSON.stringify({ model, prompt: query }),
       });
-      if (!embedRes.ok) return [];
-      const embedJson = (await embedRes.json()) as { embedding: number[] };
+      if (!embedRes.ok) return { results: [], unavailable: `embedding ${model} failed: ${embedRes.status}` };
+      const embedJson = (await embedRes.json()) as { embedding?: number[] };
       const vector = embedJson.embedding;
+      if (!vector?.length) return { results: [], unavailable: `embedding ${model} returned no vector` };
 
-      const searchRes = await fetchWithTimeout(`${QDRANT_URL}/collections/${QDRANT_COLLECTION}/points/search`, {
+      const state = await checkCollection(QDRANT_URL, SWARM_MEMORY_COLLECTION, qdrantHeaders(), vector.length, model);
+      if (state.status === 'missing') return { results: [], unavailable: `${SWARM_MEMORY_COLLECTION} collection missing` };
+      if (state.status === 'unavailable') return { results: [], unavailable: state.reason };
+
+      const must: unknown[] = [{ key: 'embedding_model', match: { value: model } }];
+      if (storeFilter) must.push({ key: 'store', match: { value: storeFilter } });
+      const searchRes = await fetchWithTimeout(`${QDRANT_URL}/collections/${SWARM_MEMORY_COLLECTION}/points/search`, {
         method: 'POST',
         headers: qdrantHeaders(),
-        body: JSON.stringify({ vector, limit: 3, with_payload: true, score_threshold: MIN_SCORE,
-          ...(storeFilter ? { filter: { must: [{ key: 'store', match: { value: storeFilter } }] } } : {}) }),
+        body: JSON.stringify({ vector, limit: 3, with_payload: true, score_threshold: MIN_SCORE, filter: { must } }),
       });
-      if (!searchRes.ok) return [];
+      if (!searchRes.ok) return { results: [], unavailable: `search ${searchRes.status}` };
       const searchJson = (await searchRes.json()) as { result: any[] };
       const hits = searchJson.result || [];
 
-      return hits.map((h: any) => {
+      return { results: hits.map((h: any) => {
         // G2.3: trust decay — unvalidated/old memory loses trust on a 30-day half-life.
         const baseTrust = h.payload?.trust_level === 'validated' ? 1.0 : 0.5;
         const ts = h.payload?.timestamp ? new Date(h.payload.timestamp).getTime() : Date.now();
@@ -203,9 +227,9 @@ export class ContextInjectionService {
           trust_score,
           store: h.payload?.store as MemoryStore | undefined,
         };
-      });
-    } catch {
-      return [];
+      }) };
+    } catch (e) {
+      return { results: [], unavailable: e instanceof Error ? e.message : String(e) };
     }
   }
 

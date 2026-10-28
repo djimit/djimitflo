@@ -23,8 +23,15 @@ let lastCommentBody: string | undefined;
 function mockGh(prStat: { additions: number; deletions: number; changedFiles: number; files: string[] }, options: { commentFails?: boolean } = {}) {
   lastCommentBody = undefined;
   vi.mocked(execFileSync).mockImplementation(((command: string, args: string[] = []) => {
-    if (args[0] === 'pr' && args[1] === 'view') {
-      return JSON.stringify({ title: 'Test PR', url: 'https://github.com/owner/repo/pull/7', ...prStat, files: prStat.files.map((path) => ({ path })) });
+    if (args[0] === 'pr' && args[1] === 'view' && args.includes('headRefOid')) return JSON.stringify({ headRefOid: HEAD_SHA });
+    if (args[0] === 'api' && args[1] === `repos/owner/repo/compare/main...${HEAD_SHA}`) {
+      // the diff stats are read by the exact head SHA (CODE-005); spread over files so the totals match prStat
+      const files = prStat.files.map((filename, i) => ({
+        filename,
+        additions: i === 0 ? prStat.additions : 0,
+        deletions: i === 0 ? prStat.deletions : 0,
+      }));
+      return JSON.stringify({ merge_base: 'c'.repeat(40), files });
     }
     if (args[0] === 'pr' && args[1] === 'comment') {
       if (options.commentFails) throw new Error('gh: authentication required');
@@ -32,7 +39,7 @@ function mockGh(prStat: { additions: number; deletions: number; changedFiles: nu
       if (bodyFileIndex !== -1) lastCommentBody = readFileSync(args[bodyFileIndex + 1], 'utf8');
       return '';
     }
-    if (args[0] === 'api') {
+    if (args[0] === 'api' && args[1] === `repos/owner/repo/statuses/${HEAD_SHA}`) {
       return JSON.stringify({ id: 123456 });
     }
     throw new Error(`unexpected gh invocation: ${command} ${args.join(' ')}`);

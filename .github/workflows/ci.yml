@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+# Every job checks out the PR head commit itself, not GitHub's synthetic merge commit, so the required checks that branch
+# protection reads on that head tested exactly that head (strict up-to-date protection makes it contain main). Required
+# jobs have no job-level `if:` — a skipped required check counts as passed on GitHub. scripts/ci-workflows.test.mjs
+# enforces both (forensic 2026-10-26 rank 9).
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
@@ -19,6 +24,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -53,6 +60,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Test event bus and agent registry auth
         run: |
@@ -69,6 +78,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -79,13 +90,13 @@ jobs:
           exit-code: '1'
 
       - name: Build container image
-        run: docker build --tag djimitflo-ci:${{ github.sha }} .
+        run: docker build --tag djimitflo-ci:${{ github.event.pull_request.head.sha || github.sha }} .
 
       - name: Scan container image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: 'image'
-          image-ref: 'djimitflo-ci:${{ github.sha }}'
+          image-ref: 'djimitflo-ci:${{ github.event.pull_request.head.sha || github.sha }}'
           severity: 'CRITICAL,HIGH'
           ignore-unfixed: true
           exit-code: '1'
@@ -96,6 +107,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup Node.js 24
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -118,9 +131,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Generate SBOM
-        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           path: .
           format: cyclonedx-json

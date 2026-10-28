@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # auto-deploy.sh — runs ON the VPS (systemd timer, scripts/systemd/) and deploys main when it is safe (plan WS-J / J2).
 #
-# Deploys only when ALL hold: main differs from what runs; every CI check on that commit completed successfully;
+# Deploys only when ALL hold: main differs from what runs; every required context of main's branch protection has a
+# success of its newest run on that commit (skipped/neutral/missing is not a pass) and no other check failed or runs;
 # main has not moved for AUTO_DEPLOY_SETTLE_MIN minutes (a merge train becomes one deploy); no loop worker is running;
 # no kill switch file. The deploy itself is deploy-vps.sh of THAT commit (--local), with its health wait + rollback.
 #   kill switch: touch /srv/djimitflo/AUTO_DEPLOY_DISABLED
@@ -24,6 +25,17 @@ main_sha()       { probe MAIN_SHA git ls-remote "https://github.com/$REPO_SLUG.g
 current_sha()    { probe CURRENT_SHA sed -n 's/^ *DJIMITFLO_COMMIT_SHA: \([0-9a-f]*\).*/\1/p' "$ROOT/compose.yml" | head -n 1; }
 check_runs()     { probe CHECKS curl -fsS "https://api.github.com/repos/$REPO_SLUG/commits/$1/check-runs?per_page=100"; }
 commit_json()    { probe COMMIT curl -fsS "https://api.github.com/repos/$REPO_SLUG/commits/$1"; }
+# required checks of main, one `context<TAB>app_id` per line (app_id empty = any source), from the public branch summary
+# (no token needed); unreadable = empty = no deploy
+required_from_github() {
+  curl -fsS "https://api.github.com/repos/$REPO_SLUG/branches/main" | node -e '
+    const r = JSON.parse(require("fs").readFileSync(0, "utf8")).protection?.required_status_checks ?? {};
+    const out = new Map();
+    for (const c of r.checks ?? []) if (c.context) out.set(c.context, typeof c.app_id === "number" && c.app_id >= 0 ? c.app_id : "");
+    for (const n of r.contexts ?? []) if (n && !out.has(n)) out.set(n, "");
+    console.log([...out].map(([c, a]) => `${c}\t${a}`).join("\n"));'
+}
+required_checks() { probe REQUIRED required_from_github; }
 # an approved maker resumes inside the execution engine while its lease still says 'prepared' (prod 2026-09-25),
 # so running loop-worker tasks count as busy too
 running_leases() {
@@ -74,13 +86,31 @@ SHA="$(main_sha)"; CUR="$(current_sha)"
 [ "$SHA" = "$CUR" ] && { log "up to date ($SHA)"; exit 0; }
 
 CHECKS="$(check_runs "$SHA")"
-node -e '
+# forensic 2026-10-26 rank 9: a required check that was skipped never ran, so it is not a pass (it used to be: any
+# success/skipped/neutral set deployed, even with a required check absent). Mirrors loop-auto-merge.ts / merge-train.sh.
+REQUIRED="$(required_checks 2>/dev/null || true)"
+[ -n "$REQUIRED" ] || { log "required checks unavailable for main — not deploying $SHA"; exit 0; }
+WHY="$(REQUIRED="$REQUIRED" node -e '
   // checks that gate no code (the scheduled OpenWiki `update` job runs on main HEAD daily; prod 10-10 it held the deploy
   // of #738-#744 for its whole run, and when it fails — as on 08-10 and 09-10 — it would block every deploy until main moved)
   const ignore = new Set((process.env.AUTO_DEPLOY_IGNORE_CHECKS ?? "update").split(",").map((s) => s.trim()).filter(Boolean));
-  const r = (JSON.parse(require("fs").readFileSync(0, "utf8")).check_runs || []).filter((c) => !ignore.has(c.name));
+  // `context<TAB>app_id`: the required producer is part of the identity (a same-named run of another app never stands in)
+  const required = process.env.REQUIRED.split("\n").filter((l) => l.trim()).map((l) => { const [context, app] = l.split("\t");
+    return { context: context.trim(), app: /^\d+$/.test((app ?? "").trim()) ? Number(app) : null }; });
+  const all = (JSON.parse(require("fs").readFileSync(0, "utf8")).check_runs || []).sort((a, b) => (a.id || 0) - (b.id || 0));
+  // the newest run per producer and name decides (a rerun replaces the run it re-ran)
+  const newest = new Map();
+  for (const c of all) newest.set(`${c.app?.id ?? ""}\u0000${c.name}`, c);
+  const of = (q) => all.filter((c) => c.name === q.context && (q.app === null || c.app?.id === q.app)).at(-1);
+  const names = required.map((q) => q.context);
+  const r = [...newest.values()].filter((c) => !ignore.has(c.name) || names.includes(c.name));
+  const notSuccess = required.filter((q) => of(q) && of(q).status === "completed" && of(q).conclusion !== "success");
+  const missing = required.filter((q) => !of(q)).map((q) => q.context);
   const bad = r.filter((c) => c.status !== "completed" || !["success", "skipped", "neutral"].includes(c.conclusion));
-  process.exit(r.length > 0 && bad.length === 0 ? 0 : 1);' <<<"$CHECKS" || { log "CI not green (yet) for $SHA"; exit 0; }
+  const why = [notSuccess.length ? "required_not_success:" + notSuccess.map((q) => q.context + "=" + of(q).conclusion).join(",") : "",
+    missing.length ? "required_missing:" + missing.join(",") : "", bad.length ? "not_green:" + bad.map((c) => c.name).join(",") : ""].filter(Boolean);
+  console.log(why.join(" "));
+  process.exit(why.length ? 1 : 0);' <<<"$CHECKS")" || { log "CI not green (yet) for $SHA: $WHY"; exit 0; }
 
 AGE_MIN="$(commit_json "$SHA" | node -e 'const c=JSON.parse(require("fs").readFileSync(0,"utf8")); console.log(Math.floor((Date.now()-Date.parse(c.commit.committer.date))/60000))')"
 [ "$AGE_MIN" -ge "$SETTLE_MIN" ] || { log "main is ${AGE_MIN} min old, settling until ${SETTLE_MIN}"; exit 0; }

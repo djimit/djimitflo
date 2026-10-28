@@ -8,19 +8,42 @@ import type { Database } from 'better-sqlite3';
  * so the rest of the ecosystem (EVE-V, roborev, agents) can follow Djimitflo instead of a second work ledger.
  * Events are written to `event_outbox` first and delivered by a small drain (same shape as board_handoff_outbox):
  * a bus outage delays delivery but never loses or blocks the action. Default off: EVENT_PUBLISH_ENABLED=true.
+ *
+ * Two producer classes (CODE-003, forensic audit 2026-10-26):
+ * - REQUIRED (`enqueueRequiredEvent`): work_item.created, approval.requested/approved/denied/expired, goal.created. The
+ *   outbox row is written inside the same SQLite transaction as the state change it describes, so they commit or roll
+ *   back together; an outbox insert failure rolls back the domain change and surfaces as an error.
+ * - BEST-EFFORT (`enqueueEvent`): telemetry, digests, alerts and the goal-lifecycle mirror (`bridgeGoalEvents`). These
+ *   either restate a state change that is durable elsewhere or are recomputed and re-offered on the next tick; a failed
+ *   insert is swallowed and that event can be lost.
+ * Delivery after the commit is the same for both: `publishPending` retries (attempts < 10) and the bus dedupes on
+ * `dedupe_key = djimitflo:<event_id>`, which is stable across retries.
  */
 
 export function eventPublishEnabled(): boolean { return process.env.EVENT_PUBLISH_ENABLED === 'true'; }
 
 export interface DomainEvent { type: string; aggregateId: string; payload?: Record<string, unknown>; correlationId?: string }
 
+function insertOutboxRow(db: Database, event: DomainEvent): void {
+  db.prepare(`INSERT OR IGNORE INTO event_outbox (event_id, event_type, aggregate_id, correlation_id, payload_json, status, attempts, created_at)
+    VALUES (?, ?, ?, ?, ?, 'pending', 0, ?)`)
+    .run(randomUUID(), event.type, event.aggregateId, event.correlationId ?? event.aggregateId, JSON.stringify(event.payload ?? {}), new Date().toISOString());
+}
+
+/**
+ * Required domain event: call it inside the `db.transaction()` that performs the state change. It throws on failure so that
+ * transaction rolls back: a committed domain row always has its outbox row. No-op while publishing is off (no event promised).
+ */
+export function enqueueRequiredEvent(db: Database, event: DomainEvent): void {
+  if (db.inTransaction === false) throw new Error(`REQUIRED_EVENT_OUTSIDE_TRANSACTION: ${event.type} must be enqueued in the transaction of its state change`);
+  if (!eventPublishEnabled()) return;
+  insertOutboxRow(db, event);
+}
+
+/** Best-effort event: a failed insert is swallowed and the event is lost. Only for events no contract requires (see header). */
 export function enqueueEvent(db: Database, event: DomainEvent): void {
   if (!eventPublishEnabled()) return;
-  try {
-    db.prepare(`INSERT OR IGNORE INTO event_outbox (event_id, event_type, aggregate_id, correlation_id, payload_json, status, attempts, created_at)
-      VALUES (?, ?, ?, ?, ?, 'pending', 0, ?)`)
-      .run(randomUUID(), event.type, event.aggregateId, event.correlationId ?? event.aggregateId, JSON.stringify(event.payload ?? {}), new Date().toISOString());
-  } catch { /* the outbox is a convenience: never break the action being described */ }
+  try { insertOutboxRow(db, event); } catch { /* best-effort by design: never break the action being described */ }
 }
 
 export interface PublishResult { attempted: number; published: number; failed: number; status: 'DISABLED' | 'OK' }
@@ -73,7 +96,12 @@ const GOAL_EVENTS: Record<string, string> = {
   goal_awaiting_approval: 'djimitflo.goal.awaiting_approval', goal_started: 'djimitflo.goal.started',
 };
 
-/** Mirrors the daemon's goal lifecycle (convergence events on the in-process bus) into the outbox. Returns the unsubscribe. */
+/**
+ * Mirrors the daemon's goal lifecycle (convergence events on the in-process bus) into the outbox. Returns the unsubscribe.
+ * BEST-EFFORT: the goal state change is committed by the loop daemon before the bus event fires, so this mirror is not atomic
+ * with it; the goal row (and its runs) stay the source of truth. ponytail: making these required means enqueueing inside the
+ * loop-daemon status transactions; do that when a consumer depends on goal.started/completed/failed being complete.
+ */
 export function bridgeGoalEvents(db: Database): () => void {
   return swarmEventBus.subscribe((event) => {
     const data = (event.data ?? {}) as Record<string, unknown>;
