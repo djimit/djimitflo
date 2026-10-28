@@ -10,6 +10,7 @@ import { ComplianceAuditService } from '../services/compliance-audit-service';
 import { GithubPrReviewService } from '../services/github-pr-review-service';
 import { LoopService } from '../services/loop-service';
 import { createError } from '../middleware/error-handler';
+import type { DjimitSecTriggerService } from '../services/djimitsec-trigger-service';
 
 const issuePayload = z.object({
   action: z.enum(['opened', 'labeled']),
@@ -60,7 +61,7 @@ function validSignature(body: Buffer, signature: string | undefined, secret: str
 }
 
 /** Mount before express.json(): signatures authenticate exact wire bytes, never reserialized JSON. */
-export function createGitHubWebhookRoutes(db: Database): Router {
+export function createGitHubWebhookRoutes(db: Database, scanTriggers?: () => DjimitSecTriggerService | undefined): Router {
   const router = Router();
   router.use(rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false }));
   router.use(raw({ type: 'application/json', limit: '256kb', inflate: false }));
@@ -81,6 +82,10 @@ export function createGitHubWebhookRoutes(db: Database): Router {
       const body: Buffer = req.body;
       if (!validSignature(body, req.get('X-Hub-Signature-256'), secret)) throw createError(401, 'Invalid GitHub webhook signature', 'GITHUB_WEBHOOK_SIGNATURE_INVALID');
       const githubEvent = req.get('X-GitHub-Event');
+      if (githubEvent === 'push') {
+        const scan = scanTriggers?.()?.webhook(githubEvent, req.get('X-GitHub-Delivery') || '', body);
+        if (scan) return void res.status(scan.status === 'duplicate' ? 200 : 202).json(scan);
+      }
       if (githubEvent === 'pull_request') return void handlePullRequest(req, res, next, body);
       if (githubEvent !== 'issues') return void res.status(202).json({ status: 'ignored', reason: 'unsupported_event' });
       let json: unknown;
@@ -176,8 +181,12 @@ export function createGitHubWebhookRoutes(db: Database): Router {
         return { duplicate: false as const, body: response, loopRunId: run.id };
       }).immediate();
 
+      // Additional observation only: the existing PR intake/review always retains its own delivery and lifecycle.
+      let repositoryScan: ReturnType<DjimitSecTriggerService['webhook']>;
+      try { repositoryScan = scanTriggers?.()?.webhook('pull_request', deliveryId, body) ?? null; }
+      catch { repositoryScan = { status: 'held', taskId: null, executionStarted: false, verified: false, reason: 'scan_intake_unavailable' }; }
       if (prepared.duplicate) {
-        res.status(200).json(prepared.body);
+        res.status(200).json({ ...prepared.body, ...(repositoryScan ? { repository_scan: repositoryScan } : {}) });
         return;
       }
 
@@ -186,7 +195,7 @@ export function createGitHubWebhookRoutes(db: Database): Router {
         owner, repo, number: pr.number, headSha: pr.head.sha, baseRef: pr.base.ref, headRef: pr.head.ref,
         repositoryPath, loopRunId: prepared.loopRunId, deliveryId,
       });
-      res.status(202).json({ ...prepared.body, review });
+      res.status(202).json({ ...prepared.body, review, ...(repositoryScan ? { repository_scan: repositoryScan } : {}) });
     } catch (error) { next(error); }
   }
 

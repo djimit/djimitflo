@@ -7,11 +7,11 @@ import { expect, it } from 'vitest';
 // scripts/auto-deploy.sh (plan J2) with every probe simulated: which conditions let main deploy on its own.
 const script = path.resolve(__dirname, '../../../../scripts/auto-deploy.sh');
 const NEW = 'b'.repeat(40); const OLD = 'a'.repeat(40);
-const green = JSON.stringify({ check_runs: [{ status: 'completed', conclusion: 'success' }, { status: 'completed', conclusion: 'skipped' }] });
+const green = JSON.stringify({ check_runs: [{ id: 1, name: 'build-and-test (22)', status: 'completed', conclusion: 'success' }, { id: 2, name: 'optional', status: 'completed', conclusion: 'skipped' }] });
 const minutesAgo = (m: number) => JSON.stringify({ commit: { committer: { date: new Date(Date.now() - m * 60_000).toISOString() } } });
 const run = (over: Record<string, string> = {}, root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'))) => {
   const env = { ...process.env, DEPLOY_ROOT: root, AD_MAIN_SHA: `printf '${NEW}\\trefs/heads/main\\n'`, AD_CURRENT_SHA: `echo ${OLD}`,
-    AD_CHECKS: `echo '${green}'`, AD_COMMIT: `echo '${minutesAgo(30)}'`, AD_LEASES: 'echo 0', AD_DEPLOY: 'echo DEPLOYED', ...over };
+    AD_CHECKS: `echo '${green}'`, AD_REQUIRED: `echo 'build-and-test (22)'`, AD_COMMIT: `echo '${minutesAgo(30)}'`, AD_LEASES: 'echo 0', AD_DEPLOY: 'echo DEPLOYED', ...over };
   const r = spawnSync('bash', [script], { env, encoding: 'utf8' });
   return `${r.stdout}${r.stderr}`;
 };
@@ -33,6 +33,58 @@ it('holds for every unsafe condition, and says why', () => {
   expect(run({ AD_COMMIT: `echo '${minutesAgo(5)}'` })).toContain('settling until 20');
   expect(run({ AD_LEASES: 'echo 2' })).toContain('2 loop worker(s) running');
   for (const out of [run({ AD_CURRENT_SHA: `echo ${NEW}` }), run({ AD_LEASES: 'echo 1' })]) expect(out).not.toContain('DEPLOYED');
+});
+
+it('skip is not pass: every required context needs a success of its newest run on the commit (forensic 2026-10-26 rank 9)', () => {
+  const checks = (runs: object[]) => ({ AD_CHECKS: `echo '${JSON.stringify({ check_runs: runs })}'` });
+  const run_ = (id: number, name: string, conclusion: string | null, status = 'completed') => ({ id, name, status, conclusion });
+  const req = { AD_REQUIRED: `printf 'build-and-test (22)\\nsbom\\n'` };
+  const both = [run_(1, 'build-and-test (22)', 'success'), run_(2, 'sbom', 'success')];
+  expect(run({ ...req, ...checks(both) })).toContain('DEPLOYED');
+  // a required check that was skipped (or neutral) never ran: no deploy
+  for (const c of ['skipped', 'neutral']) {
+    const out = run({ ...req, ...checks([run_(1, 'build-and-test (22)', 'success'), run_(2, 'sbom', c)]) });
+    expect(out).toContain(`required_not_success:sbom=${c}`); expect(out).not.toContain('DEPLOYED');
+  }
+  // a required check that has not reported yet, while everything else is green: no deploy
+  const missing = run({ ...req, ...checks([run_(1, 'build-and-test (22)', 'success'), run_(3, 'gitleaks', 'success')]) });
+  expect(missing).toContain('required_missing:sbom'); expect(missing).not.toContain('DEPLOYED');
+  // a non-required check may still be skipped (e.g. a job gated on the event)
+  expect(run({ ...req, ...checks([...both, run_(4, 'optional', 'skipped')]) })).toContain('DEPLOYED');
+  // the newest run per name decides: a red rerun beats an older green, a green rerun replaces an older red
+  expect(run({ ...req, ...checks([...both, run_(9, 'sbom', 'failure')]) })).not.toContain('DEPLOYED');
+  expect(run({ ...req, ...checks([run_(1, 'build-and-test (22)', 'success'), run_(2, 'sbom', 'failure'), run_(9, 'sbom', 'success')]) })).toContain('DEPLOYED');
+  // required contexts unreadable: never a remembered list, never a deploy
+  const unreadable = run({ AD_REQUIRED: 'true', ...checks(both) });
+  expect(unreadable).toContain('required checks unavailable'); expect(unreadable).not.toContain('DEPLOYED');
+});
+
+it('reads the required contexts from the public branch summary of main', () => {
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-bin-'));
+  const summary = JSON.stringify({ protection: { required_status_checks: { contexts: ['build-and-test (22)'], checks: [{ context: 'sbom', app_id: 15368 }] } } });
+  fs.writeFileSync(path.join(bin, 'curl'), `#!/usr/bin/env bash\ncase "$*" in *branches/main*) echo '${summary}' ;; *) exit 22 ;; esac\n`, { mode: 0o755 });
+  const runs = JSON.stringify({ check_runs: [{ id: 1, name: 'build-and-test (22)', status: 'completed', conclusion: 'success', app: { id: 15368 } }, { id: 2, name: 'sbom', status: 'completed', conclusion: 'skipped', app: { id: 15368 } }] });
+  const out = run({ AD_REQUIRED: '', AD_CHECKS: `echo '${runs}'`, PATH: `${bin}:${process.env.PATH}` });
+  expect(out).toContain('required_not_success:sbom=skipped'); expect(out).not.toContain('DEPLOYED');
+});
+
+// Codex review of #1061: the required producer (app_id) is part of the check identity — Actions `sbom` skipped and another
+// app's `sbom` success must not deploy.
+it('a skipped required Actions check is not replaced by a same-named success from another app', () => {
+  const r = (id: number, name: string, conclusion: string, app: number) => ({ id, name, status: 'completed', conclusion, app: { id: app } });
+  const checks = (runs: object[]) => ({ AD_CHECKS: `echo '${JSON.stringify({ check_runs: runs })}'` });
+  const req = { AD_REQUIRED: `printf 'build-and-test (22)\\t15368\\nsbom\\t15368\\n'` };
+  const counter = run({ ...req, ...checks([r(1, 'build-and-test (22)', 'success', 15368), r(2, 'sbom', 'skipped', 15368), r(3, 'sbom', 'success', 999)]) });
+  expect(counter).toContain('required_not_success:sbom=skipped'); expect(counter).not.toContain('DEPLOYED');
+  const other = run({ ...req, ...checks([r(1, 'build-and-test (22)', 'success', 15368), r(3, 'sbom', 'success', 999)]) });
+  expect(other).toContain('required_missing:sbom'); expect(other).not.toContain('DEPLOYED');
+  expect(run({ ...req, ...checks([r(1, 'build-and-test (22)', 'success', 15368), r(2, 'sbom', 'success', 15368)]) })).toContain('DEPLOYED');
+  // the real reader keeps the app id from the public branch summary
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-bin-'));
+  const summary = JSON.stringify({ protection: { required_status_checks: { contexts: ['sbom'], checks: [{ context: 'sbom', app_id: 15368 }] } } });
+  fs.writeFileSync(path.join(bin, 'curl'), `#!/usr/bin/env bash\ncase "$*" in *branches/main*) echo '${summary}' ;; *) exit 22 ;; esac\n`, { mode: 0o755 });
+  const viaSummary = run({ AD_REQUIRED: '', PATH: `${bin}:${process.env.PATH}`, ...checks([r(2, 'sbom', 'skipped', 15368), r(3, 'sbom', 'success', 999)]) });
+  expect(viaSummary).toContain('required_not_success:sbom=skipped'); expect(viaSummary).not.toContain('DEPLOYED');
 });
 
 it('the kill switch file stops everything', () => {

@@ -5,8 +5,12 @@
 # Run:   docker run -p 3001:3001 -v djimitflo-data:/data djimitflo:latest
 # =============================================================================
 
+# The base image of both stages. scripts/deploy-vps.sh passes the digest it resolved this tag to (node@sha256:…), so the
+# build uses exactly the base its receipt records; a plain `docker build` (CI) uses the tag.
+ARG NODE_IMAGE=node:22-bookworm-slim
+
 # Stage 1: Build all workspaces from source
-FROM node:22-bookworm-slim AS builder
+FROM ${NODE_IMAGE} AS builder
 # apt downloads from the Debian mirror stalled forever three times (2026-09-25/26, apt http method at 0% CPU):
 # bound every request, retry, and use IPv4 (the host reaches deb.debian.org in 25 ms; inside the build apt hung)
 RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\nAcquire::ForceIPv4 "true";\n' > /etc/apt/apt.conf.d/80-djimitflo-retries
@@ -35,8 +39,9 @@ COPY packages/mcp-server/tsconfig.json packages/mcp-server/
 COPY packages/ransomware-module/package.json packages/ransomware-module/
 COPY packages/ransomware-module/tsconfig.json packages/ransomware-module/
 
-# Install ALL dependencies (including dev) for building
-RUN npm install
+# Install ALL dependencies (including dev) for building — strictly from package-lock.json, so the lockfile hash in the
+# build receipt (scripts/deploy-vps.sh) describes what was built; a lock out of sync with package.json fails the build
+RUN npm ci
 
 # Copy source code
 COPY packages/shared/src packages/shared/src
@@ -53,7 +58,7 @@ COPY packages/ransomware-module/src packages/ransomware-module/src
 RUN npm run build
 
 # Stage 2: Production runtime
-FROM node:22-bookworm-slim AS runner
+FROM ${NODE_IMAGE} AS runner
 # apt downloads from the Debian mirror stalled forever three times (2026-09-25/26, apt http method at 0% CPU):
 # bound every request, retry, and use IPv4 (the host reaches deb.debian.org in 25 ms; inside the build apt hung)
 RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\nAcquire::ForceIPv4 "true";\n' > /etc/apt/apt.conf.d/80-djimitflo-retries
@@ -111,7 +116,7 @@ COPY packages/mcp-server/package.json packages/mcp-server/
 # Install production dependencies only
 RUN apt-get update && \
     apt-get install -y --no-install-recommends python3 make g++ && \
-    npm install --omit=dev && \
+    npm ci --omit=dev && \
     node -e "new (require('better-sqlite3'))(':memory:').close()" && \
     apt-get purge -y --auto-remove make g++ && \
     rm -rf /var/lib/apt/lists/*
@@ -165,12 +170,18 @@ ENV BACKUP_DIR=/data/backups
 ARG VCS_REF=unknown
 ARG BUILD_TIME=unknown
 ARG BUILD_SOURCE=unknown
+ARG LOCKFILE_SHA256=unknown
+ARG NODE_IMAGE
 ENV DJIMITFLO_COMMIT_SHA=$VCS_REF
 # Baked-at-build provenance so /health can distinguish the running revision from
 # the built artifact instead of trusting a runtime env that may be stale.
 ENV DJIMITFLO_BUILD_COMMIT=$VCS_REF
 ENV DJIMITFLO_BUILD_TIME=$BUILD_TIME
 ENV DJIMITFLO_BUILD_SOURCE=$BUILD_SOURCE
+# sha256 of the package-lock.json the image was built from; deploy-vps.sh checks it against the build receipt
+ENV DJIMITFLO_BUILD_LOCK_SHA256=$LOCKFILE_SHA256
+# the base image reference the build used (a digest when built by deploy-vps.sh)
+ENV DJIMITFLO_BUILD_BASE_IMAGE=$NODE_IMAGE
 
 EXPOSE 3001
 
