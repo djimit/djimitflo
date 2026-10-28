@@ -383,20 +383,53 @@ describe('STATE-02: a Qdrant read-back settles only the exact intended point', (
     ['an older embed model', () => landedPayload('task-1', { model: 'nomic-embed-text' })],
     ['the intended hash but another embed model label', () => ({ ...landedPayload('task-1'), embedding_model: 'nomic-embed-text' })],
   ] as const) {
-    it(`same task id with ${name}: not delivered, left unknown, not resent`, async () => {
+    it(`same task id with ${name}: stale, not read back as delivered; overwritten by one resend carrying the intent hash`, async () => {
       process.env.MEMORY_DELIVERY_RECEIPTS = 'on';
       const db = taskDb();
       const t = fakeTargets();
       unknownQdrantReceipt(db, 'task-1');
       t.qdrantPoints.set(pointIdForTask('task-1'), stale());
 
-      const report = await new MemorySyncService(db).reconcile();
+      const svc = new MemorySyncService(db);
+      const report = await svc.reconcile();
+      await svc.reconcile(Date.now() + 3_600_000); // a later tick: settled, nothing resent
 
-      expect(report).toMatchObject({ read_back_delivered: 0, read_back_inconclusive: 1, retried: 0 });
-      expect(qdrantReceipt(db)).toMatchObject({ status: 'unknown', attempts: 1 });
-      expect(upserts(t.calls, 'task-1')).toHaveLength(0);
+      expect(report).toMatchObject({ read_back_delivered: 0, read_back_inconclusive: 0, read_back_stale: 1, retried: 1, delivered: 1 });
+      expect(qdrantReceipt(db)).toMatchObject({ status: 'delivered', attempts: 2 });
+      expect(upserts(t.calls, 'task-1')).toHaveLength(1);
+      expect(t.qdrantPoints.get(pointIdForTask('task-1'))).toMatchObject({ embedding_model: EMBED_MODEL, intent_sha256: landedPayload('task-1').intent_sha256 });
     });
   }
+
+  it('a stale point on a receipt out of attempts is failed with a distinct detail (read_back: stale), not resent', async () => {
+    process.env.MEMORY_DELIVERY_RECEIPTS = 'on';
+    const db = taskDb();
+    const t = fakeTargets();
+    unknownQdrantReceipt(db, 'task-1');
+    db.prepare(`UPDATE memory_sync_receipts SET attempts = 5 WHERE task_id = 'task-1'`).run();
+    t.qdrantPoints.set(pointIdForTask('task-1'), landedPayload('task-1', { content: 'an earlier description' }));
+
+    const report = await new MemorySyncService(db).reconcile();
+
+    expect(report).toMatchObject({ read_back_delivered: 0, read_back_stale: 1, retried: 0 });
+    expect(qdrantReceipt(db)).toMatchObject({ status: 'failed', detail: 'read_back: stale', attempts: 5 });
+    expect(upserts(t.calls, 'task-1')).toHaveLength(0);
+  });
+
+  it('a present point whose task row is gone is inconclusive (unchanged): unknown, not resent', async () => {
+    process.env.MEMORY_DELIVERY_RECEIPTS = 'on';
+    const db = taskDb();
+    const t = fakeTargets();
+    unknownQdrantReceipt(db, 'task-1');
+    t.qdrantPoints.set(pointIdForTask('task-1'), landedPayload('task-1'));
+    db.prepare(`DELETE FROM tasks WHERE id = 'task-1'`).run();
+
+    const report = await new MemorySyncService(db).reconcile();
+
+    expect(report).toMatchObject({ read_back_delivered: 0, read_back_inconclusive: 1, retried: 0 });
+    expect(qdrantReceipt(db)).toMatchObject({ status: 'unknown', detail: 'read_back_inconclusive', attempts: 1 });
+    expect(upserts(t.calls, 'task-1')).toHaveLength(0);
+  });
 
   it('the exact intended point is read back as delivered without a resend', async () => {
     process.env.MEMORY_DELIVERY_RECEIPTS = 'on';
