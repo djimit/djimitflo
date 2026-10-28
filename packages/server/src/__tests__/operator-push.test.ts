@@ -5,7 +5,7 @@ import { runMigrations } from '../database/migrate';
 import { approvalMessage, buildDigest, inQuietHours, maybeSendDigest, pushApproval, setPushSender } from '../services/operator-push';
 import { TelegramBotService } from '../services/telegram-bot-service';
 import { SECRET_PATTERNS } from '../services/secret-patterns';
-import { noteScheduler, resetSchedulers } from '../services/scheduler-registry';
+import { listSchedulers, markRun, noteScheduler, resetSchedulers } from '../services/scheduler-registry';
 /** capability chain (stall-watch): a configured environment, so the digest's stall line sees only seeded stalls */
 const C = { DJIMITFLO_SKILLS_DIR: __dirname, DJIMIT_SKILL_TRAINING_EVAL_RUNNER: __filename };
 
@@ -117,6 +117,20 @@ it('digest: schedulers off by their flag are named as such; only an armed schedu
     expect(bad).toBeGreaterThan(-1);
     expect(lines[bad + 1]).toBe('Schedulers off by flag: 2 (dream_state, evolution_gym)');
   } finally { resetSchedulers(); }
+});
+
+it('digest: an armed scheduler whose last tick failed an hour ago (status failing, health BREACHED) is off unexpectedly', () => {
+  resetSchedulers(NOON.getTime() - 2 * 3_600_000);
+  try {
+    noteScheduler('stall_watch', 'STALL_WATCH_ENABLED', true, 60_000);
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(NOON.getTime() - 3_600_000);
+    markRun('stall_watch', new Error('boom'));
+    vi.useRealTimers();
+    expect(listSchedulers(NOON.getTime())).toMatchObject({ health: 'BREACHED', schedulers: [{ name: 'stall_watch', status: 'failing' }] });
+    const d = buildDigest(db, NOON.getTime(), C);
+    expect(d.text.split('\n')).toContain('Schedulers off unexpectedly: 1 (stall_watch failing)');
+    expect(d.data).toMatchObject({ schedulers_off_unexpected: [{ name: 'stall_watch', status: 'failing' }], schedulers_off_by_flag: [] });
+  } finally { vi.useRealTimers(); resetSchedulers(); }
 });
 
 it('digest: human decisions only in "Waiting for you", a deep link per section; labelling on its own optional line', () => {

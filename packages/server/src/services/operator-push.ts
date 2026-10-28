@@ -195,10 +195,12 @@ export function buildDigest(db: Database, now = Date.now(), env: NodeJS.ProcessE
   const stalls = (() => { try { return detectStalls(db, now, env); } catch { return null; } })();
   const sched = listSchedulers(now);
   // off by flag = not armed and the registry names the env flag that arms it (an operator choice, not a fault);
-  // off unexpectedly = armed but not ticking (or quarantined), or not armed with no flag that explains it
+  // off unexpectedly = armed but not ticking, quarantined or failing (last_error outranks tick age, so a stale failed tick
+  // reads 'failing', never 'armed_not_ticking'), or not armed with no flag that explains it
   const FLAG = /^[A-Z][A-Z0-9_]*$/;
+  const BROKEN = new Set(['armed_not_ticking', 'quarantined', 'failing']);
   const offByFlag = sched.schedulers.filter((s) => !s.armed && FLAG.test(s.flag));
-  const offUnexpected = sched.schedulers.filter((s) => (s.armed ? s.status === 'armed_not_ticking' || s.status === 'quarantined' : !FLAG.test(s.flag)));
+  const offUnexpected = sched.schedulers.filter((s) => (s.armed ? BROKEN.has(s.status) : !FLAG.test(s.flag)));
   const inbox = (() => { try { return decisionsInbox(db, now, env); } catch { return null; } })();
   const open: { requeue: number | null; labels: number | null; memory_review: number | null } = inbox ? openDecisionCounts(inbox) : { requeue: null, labels: null, memory_review: null };
   const base = publicBase(env);
