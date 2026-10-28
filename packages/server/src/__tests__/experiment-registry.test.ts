@@ -2,10 +2,10 @@ import { afterEach, beforeEach, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { EXPERIMENT_WIP_LIMIT, TG_001_CLOSED, experimentDefs, experimentsReport, wipCheck, type ExperimentDef } from '../services/experiment-registry';
+import { EXPERIMENT_WIP_LIMIT, MEMORY_HOLDOUT_CLOSED, TG_001_CLOSED, experimentDefs, experimentsReport, wipCheck, type ExperimentDef } from '../services/experiment-registry';
 import { detectStallsWithHealth } from '../services/stall-watch';
 import { buildEvolutionEvidence } from '../services/evolution-evidence';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { D5NO_CUTOFF, D5NO_DEADLINE_DAYS } from '../services/d5-no';
 
@@ -95,9 +95,37 @@ it('TG-001 is closed INCONCLUSIVE at 20 tasks by the operator (amendment 2026-10
   // the same definition without the close is reported past stop_by: the close is what stops it, not the stop date passing
   const open: ExperimentDef = { ...tg, closed: undefined, status: () => ({ n_per_arm: null, verdict: null }) };
   expect(experimentsReport(db, {}, late, [open]).overdue).toEqual(['TG-001']);
-  // other experiments are unchanged: none carries a close, and an open one past its stop date is still overdue
-  expect(experimentDefs().filter((d) => d.closed).map((d) => d.id)).toEqual(['TG-001']);
+  // other experiments are unchanged: only TG-001 and memory-holdout carry a close, and an open one past its stop date is still overdue
+  expect(experimentDefs().filter((d) => d.closed).map((d) => d.id)).toEqual(['TG-001', 'memory-holdout']);
   expect(stalls).toContain('experiment:X1');
+});
+
+it('EXP-3 memory-holdout is closed FALSIFIED at its single registered readout (2026-10-27); experiment_overdue no longer raises it', () => {
+  expect(MEMORY_HOLDOUT_CLOSED).toEqual({ verdict: 'FALSIFIED (rules not above withheld)', decided_on: '2026-10-27',
+    source: 'docs/research/intelligence-metrics/EXP-3_RESULT.md#decision-under-the-registered-rules' });
+  const mh = experimentDefs().find((d) => d.id === 'memory-holdout')!;
+  expect(mh.closed).toBe(MEMORY_HOLDOUT_CLOSED);
+  expect(mh.status(db, {}, NOW, mh.started_at).verdict).toBe('FALSIFIED (rules not above withheld)');
+  // past stop_by (2026-10-27): reported closed with the verdict, not overdue, no stall
+  const late = Date.parse('2026-10-28T12:00:00Z');
+  const r = experimentsReport(db, {}, late);
+  expect(r.experiments.find((e) => e.id === 'memory-holdout')).toMatchObject({ verdict: 'FALSIFIED (rules not above withheld)', overdue: false, overdue_reason: null,
+    closed: MEMORY_HOLDOUT_CLOSED });
+  expect(r.overdue).not.toContain('memory-holdout');
+  // a read-out experiment no longer counts as active on the oracle-goal population
+  expect(r.wip.active).not.toContain('memory-holdout');
+  expect(detectStallsWithHealth(db, late, {}).stalls.map((s) => s.subsystem)).not.toContain('experiment:memory-holdout');
+  // the same definition without the close is overdue: the close is what stops it
+  const open: ExperimentDef = { ...mh, closed: undefined, status: () => ({ n_per_arm: null, verdict: null }) };
+  expect(experimentsReport(db, {}, late, [open]).overdue).toEqual(['memory-holdout']);
+});
+
+// the result document arrives with PR #1052; once it is on the branch the close must cite a heading that exists
+it.skipIf(!existsSync(join(__dirname, '../../../..', MEMORY_HOLDOUT_CLOSED.source.split('#')[0])))('EXP-3 close cites an existing result heading', () => {
+  const [file, anchor] = MEMORY_HOLDOUT_CLOSED.source.split('#');
+  const doc = readFileSync(join(__dirname, '../../../..', file), 'utf8');
+  const heading = doc.split('\n').find((l) => l.startsWith('## ') && l.slice(3).toLowerCase().replace(/[^a-z0-9 -]/g, '').replace(/ /g, '-') === anchor);
+  expect(heading).toBe('## Decision under the registered rules');
 });
 
 it('evolution-evidence carries the registry as the experiments section', () => {
@@ -129,8 +157,9 @@ it('CI guard: the registered oracle-population experiments fit the WIP limit; a 
 
 it('reports active vs the limit and over_wip_limit; a read-out experiment is no longer active', () => {
   const r = experimentsReport(db, {}, NOW);
-  expect(r.wip).toMatchObject({ limit: 4, active_count: 6, over_wip_limit: true, guard_ok: true });
-  expect(r.wip.counted).toEqual(['ACE-001', 'STE-001', 'X1', 'memory-holdout']);
+  // memory-holdout read out (closed FALSIFIED 2026-10-27): five active, three counted against the limit
+  expect(r.wip).toMatchObject({ limit: 4, active_count: 5, over_wip_limit: true, guard_ok: true });
+  expect(r.wip.counted).toEqual(['ACE-001', 'STE-001', 'X1']);
   const def = (id: string, verdict: string | null): ExperimentDef => ({ id, flag: 'T', protocol: 'p.md', started_at: '2026-10-01T00:00:00.000Z', target_n: 10, stop_by: null,
     stop_note: '', stop_source: 's', population: 'oracle_goals', status: () => ({ n_per_arm: { a: 1 }, verdict }) });
   const five = ['A', 'B', 'C', 'D', 'E'].map((id) => def(id, null));
