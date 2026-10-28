@@ -2006,6 +2006,30 @@ export function runMigrations(db: BetterSqlite3Database) {
   new FrontierExpertRegistryService(db).seedTaxonomy();
   createAccountUsageSnapshotTables(db);
   createPerformanceIndexes(db);
+  ensureMakerSpanSettlement(db);
+}
+
+/**
+ * OPS-004: a maker lease's trace (`loop-<run>-worker-<lease>`: run span + worker span, opened by executeMaker) closes when
+ * the lease settles — on every path, not only executeMaker's finally: stop run, superseded evolve siblings, stale/zombie/
+ * hygiene sweeps and boot recovery settle prepared leases with their own UPDATEs. End time = the lease's updated_at
+ * (normalised to ISO), so the span ends at the settlement. Only still-open spans of that one lease are touched; invalid
+ * span metadata is left as is, so the trigger cannot fail a lease update. Created last: a worker_leases rebuild drops it.
+ * Down: DROP TRIGGER IF EXISTS trg_worker_lease_settles_trace;
+ */
+export function ensureMakerSpanSettlement(db: BetterSqlite3Database): void {
+  if (!tableSql(db, 'worker_leases') || !tableSql(db, 'agent_trace_spans')) return;
+  db.exec(`CREATE TRIGGER IF NOT EXISTS trg_worker_lease_settles_trace AFTER UPDATE OF status ON worker_leases
+    WHEN NEW.status IN ('completed', 'failed', 'cancelled')
+    BEGIN
+      UPDATE agent_trace_spans
+      SET status = CASE NEW.status WHEN 'completed' THEN 'ok' ELSE 'error' END,
+          ended_at = COALESCE(strftime('%Y-%m-%dT%H:%M:%fZ', NEW.updated_at), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+          metadata = CASE WHEN json_valid(metadata) THEN json_set(metadata,
+            '$.terminal_status', CASE NEW.status WHEN 'completed' THEN 'ok' WHEN 'cancelled' THEN 'cancelled' ELSE 'error' END,
+            '$.lease_status', NEW.status) ELSE metadata END
+      WHERE trace_id = 'loop-' || NEW.loop_run_id || '-worker-' || NEW.id AND ended_at IS NULL;
+    END;`);
 }
 
 /**
