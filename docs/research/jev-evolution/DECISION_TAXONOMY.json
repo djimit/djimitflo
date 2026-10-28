@@ -1,0 +1,1116 @@
+{
+  "schema": "djimitflo.decision_taxonomy/v1",
+  "directive": "DJIMIT-JEV-EVOLUTION-L3-001",
+  "status": "DRAFT (design only)",
+  "snapshot_utc": "2026-10-22T19:50:00Z",
+  "source_commit": "5dfc6cdb (origin/main = prod build)",
+  "binding_rules": {
+    "jev_only_system_one_backend": true,
+    "jev_allowed_for": "narrow, objectively verifiable, text-grounded judgments with ground truth",
+    "jev_never_for": [
+      "approval",
+      "promotion",
+      "code",
+      "risk",
+      "fitness"
+    ],
+    "directive_domains_without_jev_authority": [
+      "D tool_execution_safety",
+      "E model_routing",
+      "P6 strategy_selection"
+    ],
+    "negative_evidence": [
+      "NE-001 (no prescreen cascade / confidence routing)"
+    ],
+    "untouched_running_experiments": [
+      "D5-NO",
+      "JEV-114",
+      "ACE-001",
+      "STE-001",
+      "MAKER-DEPS-001",
+      "F2 v2",
+      "memory holdout",
+      "genome trials"
+    ],
+    "discovery_relevance_pause": "#825 stays"
+  },
+  "status_levels": {
+    "L0": "not built",
+    "L1": "implemented",
+    "L2": "enabled in prod",
+    "L3": "invoked (last 7 d)",
+    "L4": "producing decisions",
+    "L5": "producing outcome-linked / verified outcomes",
+    "L6": "demonstrably improving outcomes"
+  },
+  "risk_classes": {
+    "R0": "advisory / measurement; a wrong decision costs tokens only",
+    "R1": "shapes inputs or routing of later decisions; reversible",
+    "R2": "changes state that gates code, approval or promotion; reversible with effort",
+    "R3": "security, execution, merge to main or production; hard to reverse"
+  },
+  "mechanism_vocabulary": [
+    "deterministic_rule",
+    "executed_checks",
+    "statistical_test",
+    "human",
+    "llm",
+    "llm_panel",
+    "llm_checker",
+    "llm_security_checker",
+    "dedicated_safety_classifier",
+    "embedding_cosine",
+    "thompson_bandit",
+    "randomised_experiment",
+    "jev",
+    "local_small",
+    "large_reasoning",
+    "hybrid",
+    "measurement_only"
+  ],
+  "classes": [
+    {
+      "id": "C01",
+      "name": "Proposal approval (before the maker)",
+      "decision_class": "approval",
+      "jev_forbidden_by_rule": true,
+      "risk_class": "R2",
+      "decision_points": [
+        {
+          "name": "panel consensus -> agent approval",
+          "where": "specialist-panel-service.ts:603-627; self-improvement-service.ts:221-277",
+          "current_mechanism": "llm_panel+rule",
+          "prod_state": "SELF_IMPROVEMENT_AUTO_REVIEW_ENABLED=true",
+          "status_level": "L5",
+          "volume_30d": {
+            "panels": 415
+          }
+        },
+        {
+          "name": "oracle-lane bypass",
+          "where": "self-improvement-service.ts:53-54,224,265-268",
+          "current_mechanism": "rule",
+          "prod_state": "ORACLE_LANES_SKIP_PANEL=true",
+          "status_level": "L5",
+          "volume_30d": {
+            "proposals": 189
+          }
+        },
+        {
+          "name": "prescreen park (D5 enforce)",
+          "where": "self-improvement-auto-review-scheduler.ts:161-164; self-improvement-service.ts:248-257",
+          "current_mechanism": "jev+rule",
+          "prod_state": "TYPESAFE_PROPOSAL_PRESCREEN_MODE=shadow (D5-NO frozen)",
+          "status_level": "L3",
+          "volume_30d": {
+            "parks_ever": 0
+          }
+        },
+        {
+          "name": "human approve/reject/requeue",
+          "where": "routes/self-improvement.ts:65,81,228; improvement-requeue.ts:24-67",
+          "current_mechanism": "human",
+          "prod_state": "on",
+          "status_level": "L5",
+          "volume_30d": null
+        }
+      ],
+      "ground_truth": {
+        "exists": true,
+        "source": "self_improvements.status (proxy; DI-001: regressed is mostly ENV/NO_VERDICT)",
+        "quality": "proxy"
+      },
+      "allowed_candidate_mechanisms": [
+        "deterministic_rule",
+        "llm_panel",
+        "human",
+        "hybrid(rule gate + human)"
+      ],
+      "forbidden_mechanisms": [
+        "jev_authority",
+        "jev_confidence_routing (NE-001)"
+      ],
+      "jev_role_allowed": "study_only_D5NO",
+      "recommendation": "RETAIN",
+      "notes": "jev only inside the pre-registered D5-NO study; READY there only allows proposing enforce to the operator."
+    },
+    {
+      "id": "C02",
+      "name": "Execution / maker approval",
+      "decision_class": "approval",
+      "jev_forbidden_by_rule": true,
+      "risk_class": "R3",
+      "decision_points": [
+        {
+          "name": "human execution approval",
+          "where": "approval-service.ts:180-259",
+          "current_mechanism": "human",
+          "prod_state": "APPROVAL_TTL_MS=43200000",
+          "status_level": "L5",
+          "volume_30d": {
+            "approved_by_operator": 104,
+            "denied": 0,
+            "expired": 7
+          }
+        },
+        {
+          "name": "J5 test-gap / mutation-gap / oracle-lane maker auto-approve",
+          "where": "loop-daemon.ts:386-393; autonomy-shadow-service.ts:58-71; loop-verification-service.ts:153-155",
+          "current_mechanism": "rule",
+          "prod_state": "LOOP_AUTO_APPROVE_TEST_GAP=true, LOOP_AUTO_APPROVE_MUTATION_GAP=true, ORACLE_LANES_AUTO_APPROVE=true",
+          "status_level": "L5",
+          "volume_30d": {
+            "autonomy_approvals": 351
+          }
+        },
+        {
+          "name": "approval inheritance",
+          "where": "approval-inheritance.ts:24-44",
+          "current_mechanism": "rule",
+          "prod_state": "APPROVAL_INHERIT_ENABLED=true",
+          "status_level": "L4",
+          "volume_30d": null
+        },
+        {
+          "name": "auto_approve_shadow rule-v1",
+          "where": "autonomy-shadow-service.ts:19-50",
+          "current_mechanism": "rule",
+          "prod_state": "AUTONOMY_SHADOW_ENABLED=true (shadow)",
+          "status_level": "L3",
+          "volume_30d": {
+            "rows": 268
+          }
+        }
+      ],
+      "ground_truth": {
+        "exists": true,
+        "source": "approvals.status + earned-autonomy join to self_improvements.status; no denials in 30 d",
+        "quality": "weak (no negatives)"
+      },
+      "allowed_candidate_mechanisms": [
+        "deterministic_rule",
+        "human"
+      ],
+      "forbidden_mechanisms": [
+        "jev_any_role"
+      ],
+      "jev_role_allowed": "none",
+      "recommendation": "RETAIN",
+      "notes": "No denials in 30 d: the human gate's false-accept rate is unmeasurable."
+    },
+    {
+      "id": "C03",
+      "name": "Risk classification",
+      "decision_class": "risk",
+      "jev_forbidden_by_rule": true,
+      "risk_class": "R3",
+      "decision_points": [
+        {
+          "name": "CommandRiskClassifier",
+          "where": "command-risk-classifier.ts:33-135",
+          "current_mechanism": "keyword_regex",
+          "prod_state": "always on",
+          "status_level": "L4",
+          "volume_30d": {
+            "assessments": 2166,
+            "high": 2038
+          }
+        },
+        {
+          "name": "risk_atomic (jev, shadow)",
+          "where": "autonomy-shadow-service.ts:33; judgments/risk-atomic.ts",
+          "current_mechanism": "jev",
+          "prod_state": "TYPESAFE_RISK_ATOMIC_MODE=shadow",
+          "status_level": "L3",
+          "volume_30d": {
+            "rows": 218
+          }
+        },
+        {
+          "name": "security checker",
+          "where": "loop-verification-service.ts:141-150",
+          "current_mechanism": "llm",
+          "prod_state": "LOOP_DAEMON_AUTOMATED_SECURITY_CHECKER_ENABLED=true",
+          "status_level": "L5",
+          "volume_30d": {
+            "leases": 430
+          }
+        }
+      ],
+      "ground_truth": {
+        "exists": "partial",
+        "source": "SEC-F1 seeded set (security checker); none for keyword classifier or risk_atomic",
+        "quality": "seeded"
+      },
+      "allowed_candidate_mechanisms": [
+        "deterministic_rule",
+        "llm_security_checker",
+        "human"
+      ],
+      "forbidden_mechanisms": [
+        "jev_any_role"
+      ],
+      "jev_role_allowed": "none",
+      "recommendation": "RETIRE jev (risk_atomic); RETAIN others",
+      "notes": "risk_atomic: 213/216 rows agree with keywords on a test-only population; JEV-114 has 12 pairs on it (timing = operator)."
+    },
+    {
+      "id": "C04",
+      "name": "Code review verdict",
+      "decision_class": "code",
+      "jev_forbidden_by_rule": true,
+      "risk_class": "R2",
+      "decision_points": [
+        {
+          "name": "LLM checker",
+          "where": "loop-worker-executor-service.ts:418; loop-service.ts:2655-2675",
+          "current_mechanism": "llm",
+          "prod_state": "LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED=true; CHECKER_FAMILY_RANDOMISE=on (F2 v2)",
+          "status_level": "L5",
+          "volume_30d": {
+            "checker_leases": 1556
+          }
+        },
+        {
+          "name": "checker_second_opinion (jev, shadow)",
+          "where": "loop-worker-executor-service.ts:716-727",
+          "current_mechanism": "jev",
+          "prod_state": "TYPESAFE_CHECKER_SECOND_OPINION_MODE=shadow",
+          "status_level": "L3",
+          "volume_30d": {
+            "rows": 203
+          }
+        },
+        {
+          "name": "run verification gates",
+          "where": "loop-verification-service.ts:100-188",
+          "current_mechanism": "rule+executed_checks",
+          "prod_state": "always on",
+          "status_level": "L5",
+          "volume_30d": {
+            "runs": 2430
+          }
+        },
+        {
+          "name": "PR-review checker",
+          "where": "github-pr-review-service.ts:101-104,300-311",
+          "current_mechanism": "rule_stub",
+          "prod_state": "GITHUB_PR_REVIEW_RUNTIME unset",
+          "status_level": "L2",
+          "volume_30d": null
+        }
+      ],
+      "ground_truth": {
+        "exists": true,
+        "source": "executed tests, merge survival (ceiling: 22/22 survived), seeded F1 AUC 0.95",
+        "quality": "executed + seeded"
+      },
+      "allowed_candidate_mechanisms": [
+        "executed_checks",
+        "llm_checker",
+        "human"
+      ],
+      "forbidden_mechanisms": [
+        "jev_any_role"
+      ],
+      "jev_role_allowed": "none",
+      "recommendation": "RETIRE jev (checker_second_opinion); RETAIN others",
+      "notes": "kappa(jev,outcome) 0.381 [0.17,0.58], not enforce-eligible; F2 v2 is the running experiment for checker family."
+    },
+    {
+      "id": "C05",
+      "name": "Merge / promotion to main",
+      "decision_class": "promotion",
+      "jev_forbidden_by_rule": true,
+      "risk_class": "R3",
+      "decision_points": [
+        {
+          "name": "test-only auto-merge",
+          "where": "loop-auto-merge.ts:49-236",
+          "current_mechanism": "rule+CI+10% human audit",
+          "prod_state": "LOOP_AUTO_MERGE_TEST_ONLY=act",
+          "status_level": "L5",
+          "volume_30d": {
+            "merged": 28,
+            "audit_sample": 10,
+            "ineligible": 79
+          }
+        },
+        {
+          "name": "dependency lane",
+          "where": "dependency-lane.ts:148-256",
+          "current_mechanism": "rule+CI",
+          "prod_state": "DEPENDENCY_LANE_MODE=shadow",
+          "status_level": "L3",
+          "volume_30d": {
+            "decisions": 21
+          }
+        },
+        {
+          "name": "human merge",
+          "where": "GitHub",
+          "current_mechanism": "human",
+          "prod_state": "on",
+          "status_level": "L5",
+          "volume_30d": null
+        }
+      ],
+      "ground_truth": {
+        "exists": true,
+        "source": "reverts, main CI, merge survival, audit sample",
+        "quality": "executed (survival oracle cannot fail: 22/22)"
+      },
+      "allowed_candidate_mechanisms": [
+        "deterministic_rule",
+        "executed_checks",
+        "human"
+      ],
+      "forbidden_mechanisms": [
+        "jev_any_role",
+        "llm_authority"
+      ],
+      "jev_role_allowed": "none",
+      "recommendation": "RETAIN",
+      "notes": "Settlement oracle ceiling is an L3 v2 P0 (not jev)."
+    },
+    {
+      "id": "C06",
+      "name": "Genome promotion and evolve selection",
+      "decision_class": "fitness",
+      "jev_forbidden_by_rule": true,
+      "risk_class": "R2",
+      "decision_points": [
+        {
+          "name": "genome trial settle/promote",
+          "where": "dream-evolution.ts:588-711; genome-promotion.ts:44-52",
+          "current_mechanism": "mcnemar/graded rule",
+          "prod_state": "DREAM_EVOLUTION_ENABLED=true; DREAM_PROMOTION_RULE=both; GYM_PROD_GATES=true",
+          "status_level": "L5",
+          "volume_30d": {
+            "genomes": {
+              "active": 1,
+              "trial": 2,
+              "inconclusive": 6,
+              "retired": 10
+            }
+          }
+        },
+        {
+          "name": "Gate A gated evidence (#819)",
+          "where": "dream-evolution.ts:455-475; evolution-evidence.ts:379-384",
+          "current_mechanism": "rule",
+          "prod_state": "merged+deployed",
+          "status_level": "L4",
+          "volume_30d": null
+        },
+        {
+          "name": "gate-policy identity (#822)",
+          "where": "PR #822 (open)",
+          "current_mechanism": "rule",
+          "prod_state": "not merged",
+          "status_level": "L0",
+          "volume_30d": null
+        },
+        {
+          "name": "evolve on-target gate + ranking",
+          "where": "evolve-selection.ts:58-64; evolve-fitness-service.ts:20-41",
+          "current_mechanism": "rule",
+          "prod_state": "LOOP_EVOLVE_ENABLED=true",
+          "status_level": "L4",
+          "volume_30d": null
+        },
+        {
+          "name": "gym hack classifier",
+          "where": "gym-hack-classifier.ts:18-30; remote-gym-service.ts:241-253",
+          "current_mechanism": "regex",
+          "prod_state": "acts in remote gym",
+          "status_level": "L4",
+          "volume_30d": null
+        }
+      ],
+      "ground_truth": {
+        "exists": true,
+        "source": "gym tests on frozen holdout epochs",
+        "quality": "executed"
+      },
+      "allowed_candidate_mechanisms": [
+        "deterministic_rule",
+        "statistical_test"
+      ],
+      "forbidden_mechanisms": [
+        "jev_any_role",
+        "llm_authority"
+      ],
+      "jev_role_allowed": "none",
+      "recommendation": "RETAIN",
+      "notes": "Directive P6 collision: jev REJECT."
+    },
+    {
+      "id": "C07",
+      "name": "Maker / model routing",
+      "decision_class": "routing_authority",
+      "jev_forbidden_by_rule": true,
+      "risk_class": "R1",
+      "decision_points": [
+        {
+          "name": "maker-species Thompson bandit",
+          "where": "runtime-bandit.ts:35-52; loop-daemon.ts:598-616",
+          "current_mechanism": "thompson",
+          "prod_state": "LOOP_BANDIT_ENABLED=true; LOOP_BANDIT_MAX_SHARE=0.8",
+          "status_level": "L5",
+          "volume_30d": {
+            "selections": 443
+          }
+        },
+        {
+          "name": "model selector",
+          "where": "model-selector.ts:121-140",
+          "current_mechanism": "rule(cheapest qualified)",
+          "prod_state": "MODEL_SELECTOR_MODE=shadow",
+          "status_level": "L3",
+          "volume_30d": null
+        },
+        {
+          "name": "ollama failover",
+          "where": "inference-failover.ts:85-98",
+          "current_mechanism": "rule",
+          "prod_state": "OLLAMA_AUTO_FAILOVER=on",
+          "status_level": "L4",
+          "volume_30d": null
+        },
+        {
+          "name": "F2 checker family arm",
+          "where": "checker-family.ts:53-82",
+          "current_mechanism": "hash randomisation",
+          "prod_state": "CHECKER_FAMILY_RANDOMISE=on",
+          "status_level": "L4",
+          "volume_30d": null
+        }
+      ],
+      "ground_truth": {
+        "exists": "proxy",
+        "source": "skill_outcomes.success (gate verdict), merge survival",
+        "quality": "proxy"
+      },
+      "allowed_candidate_mechanisms": [
+        "thompson_bandit",
+        "deterministic_rule",
+        "randomised_experiment"
+      ],
+      "forbidden_mechanisms": [
+        "jev_authority"
+      ],
+      "jev_role_allowed": "feature_only_if_labelled",
+      "recommendation": "RETAIN; jev REJECT as authority",
+      "notes": "Directive E collision: jev at most a text feature to a deterministic router once a routed-outcome label exists (none today)."
+    },
+    {
+      "id": "C08",
+      "name": "Memory promotion",
+      "decision_class": "promotion",
+      "jev_forbidden_by_rule": true,
+      "risk_class": "R2",
+      "decision_points": [
+        {
+          "name": "human promote/reject",
+          "where": "routes/swarm-governance.ts:187-213",
+          "current_mechanism": "human",
+          "prod_state": "on",
+          "status_level": "L4",
+          "volume_30d": {
+            "promoted": 150
+          }
+        },
+        {
+          "name": "LLM memory panel",
+          "where": "memory-candidate-review-scheduler.ts:135-149",
+          "current_mechanism": "llm_panel",
+          "prod_state": "MEMORY_CANDIDATE_REVIEW_ENABLED=true",
+          "status_level": "L4",
+          "volume_30d": null
+        },
+        {
+          "name": "proof-run-service machine promotion",
+          "where": "proof-run-service.ts:481,817,838,864,1254; memory-candidate-service.ts:229-233",
+          "current_mechanism": "code",
+          "prod_state": "PROOF_RUN_MEMORY_FLYWHEEL unset (=on)",
+          "status_level": "L4",
+          "volume_30d": {
+            "rejections": 26
+          }
+        }
+      ],
+      "ground_truth": {
+        "exists": "pending",
+        "source": "memory holdout EXP-3 (readout 2026-10-27)",
+        "quality": "randomised"
+      },
+      "allowed_candidate_mechanisms": [
+        "human",
+        "llm_panel",
+        "deterministic_rule"
+      ],
+      "forbidden_mechanisms": [
+        "jev_any_role"
+      ],
+      "jev_role_allowed": "none",
+      "recommendation": "RETAIN",
+      "notes": "machine engineering_rule promotion bypasses human review (non-jev finding)."
+    },
+    {
+      "id": "C09",
+      "name": "Tool execution safety",
+      "decision_class": "tool_execution_safety",
+      "jev_forbidden_by_rule": true,
+      "risk_class": "R3",
+      "decision_points": [
+        {
+          "name": "runtime admission",
+          "where": "execution/runtime-admission.ts:48-107",
+          "current_mechanism": "rule",
+          "prod_state": "enforced (RUNTIME_ADMISSION_MODE unset)",
+          "status_level": "L4",
+          "volume_30d": null
+        },
+        {
+          "name": "MCP tool permissions",
+          "where": "routes/mcp.ts:93,302-341",
+          "current_mechanism": "rule (catalogued only)",
+          "prod_state": "NOT enforced at call time",
+          "status_level": "L1",
+          "volume_30d": null
+        },
+        {
+          "name": "ToolBroker",
+          "where": "tool-broker.ts:184",
+          "current_mechanism": "rule",
+          "prod_state": "dead (no caller)",
+          "status_level": "L1",
+          "volume_30d": null
+        },
+        {
+          "name": "spawn depth budget",
+          "where": "spawn-token.ts:66-83; nested-spawn-service.ts:273-338",
+          "current_mechanism": "rule",
+          "prod_state": "SPAWN_DEPTH_BUDGET unset (=0, deny)",
+          "status_level": "L4",
+          "volume_30d": null
+        },
+        {
+          "name": "outbound deny list",
+          "where": "utils/outbound-guard.ts:35-41",
+          "current_mechanism": "rule",
+          "prod_state": "OUTBOUND_DENY_HOSTS set",
+          "status_level": "L4",
+          "volume_30d": null
+        }
+      ],
+      "ground_truth": {
+        "exists": false,
+        "source": "none",
+        "quality": "none"
+      },
+      "allowed_candidate_mechanisms": [
+        "deterministic_rule",
+        "sandbox",
+        "human"
+      ],
+      "forbidden_mechanisms": [
+        "jev_any_role",
+        "llm_authority"
+      ],
+      "jev_role_allowed": "none",
+      "recommendation": "REJECT jev",
+      "notes": "Directive D collision. jev is not a security boundary (typesafe-client.ts:6-7)."
+    },
+    {
+      "id": "C10",
+      "name": "Untrusted-content safety",
+      "decision_class": "risk",
+      "jev_forbidden_by_rule": true,
+      "risk_class": "R2",
+      "decision_points": [
+        {
+          "name": "content_safety (NVIDIA nemotron)",
+          "where": "content-safety.ts:58-135; kb-corpus.ts:40-41",
+          "current_mechanism": "llm_classifier",
+          "prod_state": "CONTENT_SAFETY_MODE=shadow; SCOPE=decision",
+          "status_level": "L4",
+          "volume_30d": {
+            "rows_total": 6096
+          }
+        }
+      ],
+      "ground_truth": {
+        "exists": false,
+        "source": "none (no labels)",
+        "quality": "none"
+      },
+      "allowed_candidate_mechanisms": [
+        "dedicated_safety_classifier",
+        "deterministic_rule"
+      ],
+      "forbidden_mechanisms": [
+        "jev_any_role"
+      ],
+      "jev_role_allowed": "none",
+      "recommendation": "RETAIN (non-jev)",
+      "notes": "KB ingest deletes on unsafe in every mode (P0-11)."
+    },
+    {
+      "id": "C11",
+      "name": "KB passage relevance for panel prompts",
+      "decision_class": "relevance",
+      "jev_forbidden_by_rule": false,
+      "risk_class": "R1",
+      "decision_points": [
+        {
+          "name": "kb_passage_relevance (jev, enforce)",
+          "where": "kb-corpus.ts:98-112",
+          "current_mechanism": "jev",
+          "prod_state": "TYPESAFE_KB_PASSAGE_RELEVANCE_MODE=enforce",
+          "status_level": "L4",
+          "volume_30d": {
+            "rows": 170,
+            "page_verdicts": 452,
+            "dropped": 88
+          }
+        }
+      ],
+      "ground_truth": {
+        "exists": false,
+        "source": "obtainable: blind operator labels (E-KB)",
+        "quality": "obtainable"
+      },
+      "allowed_candidate_mechanisms": [
+        "jev",
+        "embedding_cosine",
+        "keep_all",
+        "hybrid",
+        "local_small",
+        "large_reasoning"
+      ],
+      "forbidden_mechanisms": [],
+      "jev_role_allowed": "allowed_text_grounded",
+      "recommendation": "EXPERIMENT (E-KB)",
+      "notes": "The only acting jev path; allocator VALUE_PROVEN is decision_consumed, not outcome."
+    },
+    {
+      "id": "C12",
+      "name": "Discovery relevance / expert-unit creation",
+      "decision_class": "relevance",
+      "jev_forbidden_by_rule": false,
+      "risk_class": "R1",
+      "decision_points": [
+        {
+          "name": "discovery_relevance (jev)",
+          "where": "expert-source-units-service.ts:118-155,303-313",
+          "current_mechanism": "jev",
+          "prod_state": "shadow label but acting via FRONTIER_UNITS_REQUIRE_RELEVANCE=true; DISCOVERY_RELEVANCE_PAUSED=true",
+          "status_level": "L4 until 10-14",
+          "volume_30d": {
+            "rows": 3930,
+            "backlog_unjudged": 1638
+          }
+        }
+      ],
+      "ground_truth": {
+        "exists": "insufficient",
+        "source": "DI-001 relevance: 7 offline labels; 0 blind labels in prod",
+        "quality": "insufficient"
+      },
+      "allowed_candidate_mechanisms": [
+        "deterministic_taxonomy_gate",
+        "jev(rank only)",
+        "human"
+      ],
+      "forbidden_mechanisms": [
+        "jev_promotion_authority (if unit creation is promotion)"
+      ],
+      "jev_role_allowed": "allowed_if_classified_relevance",
+      "recommendation": "RETAIN pause",
+      "notes": "Code calls unit creation 'a promotion' (expert-source-units-service.ts:123,143): operator decides the class; reopen only via RELEVANCE_EVOLUTION.md §8."
+    },
+    {
+      "id": "C13",
+      "name": "Memory selection for decisions",
+      "decision_class": "relevance",
+      "jev_forbidden_by_rule": false,
+      "risk_class": "R1",
+      "decision_points": [
+        {
+          "name": "decision_context (jev, shadow)",
+          "where": "decision-context-service.ts:60-82",
+          "current_mechanism": "jev",
+          "prod_state": "TYPESAFE_DECISION_CONTEXT_MODE=shadow",
+          "status_level": "L3",
+          "volume_30d": {
+            "rows": 276
+          }
+        }
+      ],
+      "ground_truth": {
+        "exists": false,
+        "source": "obtainable: labels",
+        "quality": "obtainable"
+      },
+      "allowed_candidate_mechanisms": [
+        "jev",
+        "word_overlap_prefilter",
+        "embedding"
+      ],
+      "forbidden_mechanisms": [],
+      "jev_role_allowed": "allowed_text_grounded",
+      "recommendation": "RETAIN shadow until EXP-3 readout",
+      "notes": "Largest jev token consumer (≈ 779 k / 30 d), no consumer."
+    },
+    {
+      "id": "C14",
+      "name": "Failure-cause diagnosis",
+      "decision_class": "classification",
+      "jev_forbidden_by_rule": false,
+      "risk_class": "R0",
+      "decision_points": [
+        {
+          "name": "failure_cause (jev, shadow, learner)",
+          "where": "dream-state-service.ts:133-185",
+          "current_mechanism": "jev",
+          "prod_state": "TYPESAFE_FAILURE_CAUSE_MODE=shadow",
+          "status_level": "L4 (learner)",
+          "volume_30d": {
+            "rows": 274
+          }
+        }
+      ],
+      "ground_truth": {
+        "exists": "partial",
+        "source": "DI-001 MAKER_FAILURES.md hand classes",
+        "quality": "hand labels (mapping needed)"
+      },
+      "allowed_candidate_mechanisms": [
+        "deterministic_pattern_classifier",
+        "jev",
+        "hybrid",
+        "large_reasoning"
+      ],
+      "forbidden_mechanisms": [],
+      "jev_role_allowed": "allowed_text_grounded",
+      "recommendation": "EXPERIMENT (E-FC)",
+      "notes": "72 % below confidence floor; 72 identical-state re-rolls."
+    },
+    {
+      "id": "C15",
+      "name": "Proposal text properties",
+      "decision_class": "classification",
+      "jev_forbidden_by_rule": false,
+      "risk_class": "R0",
+      "decision_points": [
+        {
+          "name": "names_file / concrete / verifiable (jev prescreen questions)",
+          "where": "judgments/proposal-prescreen.ts:11-28",
+          "current_mechanism": "jev",
+          "prod_state": "shadow (D5-NO frozen)",
+          "status_level": "L3",
+          "volume_30d": null
+        },
+        {
+          "name": "namedPathsExist",
+          "where": "judgments/proposal-prescreen.ts:33-38",
+          "current_mechanism": "deterministic",
+          "prod_state": "on when LOOP_REPOSITORY_PATH set",
+          "status_level": "L4",
+          "volume_30d": null
+        }
+      ],
+      "ground_truth": {
+        "exists": true,
+        "source": "PATH_RE regex on description (names_file)",
+        "quality": "deterministic"
+      },
+      "allowed_candidate_mechanisms": [
+        "deterministic_rule",
+        "jev(shadow, D5-NO only)"
+      ],
+      "forbidden_mechanisms": [
+        "jev_confidence_routing (NE-001)"
+      ],
+      "jev_role_allowed": "allowed_text_grounded",
+      "recommendation": "RETIRE jev names_file after D5-NO; RETAIN until then",
+      "notes": "jev names_file ECE 0.079 / AUROC 0.959 reproduces a regex."
+    },
+    {
+      "id": "C16",
+      "name": "Intake / Commons triage",
+      "decision_class": "classification",
+      "jev_forbidden_by_rule": false,
+      "risk_class": "R0",
+      "decision_points": [
+        {
+          "name": "reflection_triage",
+          "where": "self-improvement-service.ts:344",
+          "current_mechanism": "jev",
+          "prod_state": "shadow, no input since 09-30",
+          "status_level": "L2",
+          "volume_30d": {
+            "rows": 169
+          }
+        },
+        {
+          "name": "commons_contribution / commons_idea",
+          "where": "agent-social-autopilot-service.ts:340-352",
+          "current_mechanism": "jev",
+          "prod_state": "off",
+          "status_level": "L1",
+          "volume_30d": {
+            "rows": 2695
+          }
+        },
+        {
+          "name": "threadGated (reads commons_contribution)",
+          "where": "agent-social-autopilot-service.ts:387-397",
+          "current_mechanism": "rule on jev rows",
+          "prod_state": "COMMONS_THREAD_GATE_ENABLED=true",
+          "status_level": "L4 (stale input)",
+          "volume_30d": null
+        }
+      ],
+      "ground_truth": {
+        "exists": false,
+        "source": "none",
+        "quality": "none"
+      },
+      "allowed_candidate_mechanisms": [
+        "deterministic_rule",
+        "none"
+      ],
+      "forbidden_mechanisms": [],
+      "jev_role_allowed": "none",
+      "recommendation": "RETIRE",
+      "notes": "Close the threadGated side door first (JE-1)."
+    },
+    {
+      "id": "C17",
+      "name": "Proposal outcome forecasting",
+      "decision_class": "fitness",
+      "jev_forbidden_by_rule": true,
+      "risk_class": "R1",
+      "decision_points": [
+        {
+          "name": "forecast:base_rate / forecast:jev_calibrated",
+          "where": "forecasters.ts:18-53",
+          "current_mechanism": "code (on jev answers)",
+          "prod_state": "ARENA_FORECASTS_ENABLED=true",
+          "status_level": "L5",
+          "volume_30d": {
+            "paired_resolved": 175
+          }
+        },
+        {
+          "name": "committee / resident forecasts",
+          "where": "committee-swarm.ts:57-221",
+          "current_mechanism": "local llm members",
+          "prod_state": "COMMITTEE_SWARM_ENABLED=false",
+          "status_level": "L3",
+          "volume_30d": null
+        }
+      ],
+      "ground_truth": {
+        "exists": true,
+        "source": "self_improvements.status",
+        "quality": "proxy"
+      },
+      "allowed_candidate_mechanisms": [
+        "statistical_forecaster",
+        "measurement_only"
+      ],
+      "forbidden_mechanisms": [
+        "jev_decision_authority"
+      ],
+      "jev_role_allowed": "none",
+      "recommendation": "RETAIN as measurement; never a gate",
+      "notes": "jev_calibrated Brier 0.250 = constant prevalence 0.2496 (no skill)."
+    },
+    {
+      "id": "C18",
+      "name": "Strategy / effort / value allocation",
+      "decision_class": "strategy_selection",
+      "jev_forbidden_by_rule": true,
+      "risk_class": "R1",
+      "decision_points": [
+        {
+          "name": "EVC effort controller",
+          "where": "effort-controller.ts:45-176",
+          "current_mechanism": "argmax+epsilon",
+          "prod_state": "EFFORT_CONTROLLER_MODE=shadow",
+          "status_level": "L3",
+          "volume_30d": {
+            "effort_decisions": 1197
+          }
+        },
+        {
+          "name": "value allocator",
+          "where": "value-allocator.ts:355-398",
+          "current_mechanism": "rule",
+          "prod_state": "VALUE_ALLOCATOR_MODE=shadow",
+          "status_level": "L3",
+          "volume_30d": null
+        },
+        {
+          "name": "gym tier controller / species order",
+          "where": "gym-mutants.ts:59; evolution-gym-service.ts:146-150",
+          "current_mechanism": "rule",
+          "prod_state": "on",
+          "status_level": "L4",
+          "volume_30d": null
+        },
+        {
+          "name": "committee evolution",
+          "where": "committee-swarm.ts:190-221",
+          "current_mechanism": "rule on Brier",
+          "prod_state": "COMMITTEE_SWARM_ENABLED=false",
+          "status_level": "L1",
+          "volume_30d": null
+        }
+      ],
+      "ground_truth": {
+        "exists": "proxy",
+        "source": "verified runs, merge survival",
+        "quality": "proxy"
+      },
+      "allowed_candidate_mechanisms": [
+        "deterministic_rule",
+        "bandit",
+        "randomised_experiment"
+      ],
+      "forbidden_mechanisms": [
+        "jev_any_role"
+      ],
+      "jev_role_allowed": "none",
+      "recommendation": "RETAIN; jev REJECT",
+      "notes": "Directive P6 collision."
+    },
+    {
+      "id": "C19",
+      "name": "Scheduling and queue hygiene",
+      "decision_class": "scheduling",
+      "jev_forbidden_by_rule": false,
+      "risk_class": "R1",
+      "decision_points": [
+        {
+          "name": "proposal-priority Thompson (theta not logged)",
+          "where": "self-improvement-service.ts:457-474",
+          "current_mechanism": "thompson",
+          "prod_state": "always on",
+          "status_level": "L4",
+          "volume_30d": null
+        },
+        {
+          "name": "goal queue order",
+          "where": "loop-daemon.ts:469-480",
+          "current_mechanism": "rule",
+          "prod_state": "on",
+          "status_level": "L4",
+          "volume_30d": null
+        },
+        {
+          "name": "queue hygiene / recovery / self-heal",
+          "where": "queue-hygiene-service.ts:56-136; loop-recovery-service.ts:122-150; scheduler-registry.ts:104-130",
+          "current_mechanism": "rule",
+          "prod_state": "QUEUE_HYGIENE_ENABLED=true",
+          "status_level": "L4",
+          "volume_30d": null
+        }
+      ],
+      "ground_truth": {
+        "exists": "partial",
+        "source": "scheduler ticks, status",
+        "quality": "operational"
+      },
+      "allowed_candidate_mechanisms": [
+        "deterministic_rule",
+        "bandit"
+      ],
+      "forbidden_mechanisms": [
+        "jev_any_role"
+      ],
+      "jev_role_allowed": "none",
+      "recommendation": "RETAIN",
+      "notes": "Log theta/propensity for the priority Thompson (non-jev)."
+    },
+    {
+      "id": "C20",
+      "name": "Duplicate detection",
+      "decision_class": "classification",
+      "jev_forbidden_by_rule": false,
+      "risk_class": "R0",
+      "decision_points": [
+        {
+          "name": "proposal_near_duplicate",
+          "where": "proposal-dedupe.ts:80-84",
+          "current_mechanism": "embedding_cosine",
+          "prod_state": "PROPOSAL_DEDUPE_MODE=shadow",
+          "status_level": "L3",
+          "volume_30d": {
+            "rows": 63
+          }
+        },
+        {
+          "name": "memory_template_duplicate",
+          "where": "memory-candidate-service.ts:91-108",
+          "current_mechanism": "sha fingerprint",
+          "prod_state": "MEMORY_TEMPLATE_DEDUP_MODE=shadow",
+          "status_level": "L3",
+          "volume_30d": {
+            "rows": 37
+          }
+        }
+      ],
+      "ground_truth": {
+        "exists": false,
+        "source": "obtainable: pair labels",
+        "quality": "obtainable"
+      },
+      "allowed_candidate_mechanisms": [
+        "embedding_cosine",
+        "deterministic_hash"
+      ],
+      "forbidden_mechanisms": [],
+      "jev_role_allowed": "none",
+      "recommendation": "RETAIN (no jev needed)",
+      "notes": ""
+    },
+    {
+      "id": "C21",
+      "name": "Visual UI error check",
+      "decision_class": "classification",
+      "jev_forbidden_by_rule": false,
+      "risk_class": "R0",
+      "decision_points": [
+        {
+          "name": "IMG-001 error-noul (offline only)",
+          "where": "plan L1538-1541",
+          "current_mechanism": "jev",
+          "prod_state": "not built",
+          "status_level": "L0",
+          "volume_30d": {
+            "offline_n": 34
+          }
+        }
+      ],
+      "ground_truth": {
+        "exists": true,
+        "source": "seeded broken pages",
+        "quality": "constructed"
+      },
+      "allowed_candidate_mechanisms": [
+        "deterministic_dom_check",
+        "jev",
+        "hybrid"
+      ],
+      "forbidden_mechanisms": [],
+      "jev_role_allowed": "allowed_text_grounded",
+      "recommendation": "EXPERIMENT (E-IMG)",
+      "notes": "CI shadow only; needs CI secret and egress decision."
+    }
+  ]
+}
