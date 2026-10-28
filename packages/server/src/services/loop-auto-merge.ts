@@ -40,7 +40,9 @@ import { newestRuns, requiredChecksOf, requiredRun, type CheckRun, type Protecti
  * main revokes the class (system_state). It then stops acting (decisions become 'revoked_hold') until an operator re-enables it.
  * Required = the merge gate's rule (required-checks.ts: protection context + producer app, newest run per name per app,
  * skipped/neutral is not success, running or missing is not red). A required red must still be red on a later tick's read
- * (auto_merge.checks_red_pending marks the first read; green clears it). A non-required failure (10-26: CodeQL Analyze on
+ * (auto_merge.checks_red_pending marks the first read; green clears it). A marker set inside the 14 d window is still
+ * confirmed after it, and the window does not close while it is unresolved; an unparseable or future marker is re-initialised
+ * (never a permanent block). A red first read after the window is not a revocation. A non-required failure (10-26: CodeQL Analyze on
  * #931's merge commit revoked the class; the next commit was green) never revokes: it is an event only.
  * Re-check (LOOP_AUTO_MERGE_RECHECK=on, default off = 'ineligible' is final): an ineligible PR whose reason is TRANSIENT
  * (loop-auto-merge-state) is evaluated again at most once per LOOP_AUTO_MERGE_RECHECK_HOURS (default 6), at most
@@ -323,36 +325,44 @@ async function checkRevocations(db: Database, json: <T>(slug: string, p: string)
     const am = meta.auto_merge; const mergedAt = Date.parse(am.merged_at ?? am.at); const age = now.getTime() - mergedAt;
     const reasons: string[] = [];
     if (settled === 'SETTLED_REGRESSED') reasons.push('merge survival: its added lines were removed from main');
-    if (age <= SURVIVAL_DAYS * DAY) {
+    const inWindow = age <= SURVIVAL_DAYS * DAY;
+    // a confirmation started inside the window stays live after it (Codex review of #1066: day 14 - 1 min, then closed)
+    let marker = am.checks_red_pending;
+    const sha = am.merge_commit_sha ?? '';
+    if (inWindow) {
       const commits = await json<Array<{ sha?: string; commit?: { message?: string } }>>(slug, `commits?sha=${encodeURIComponent(base)}&since=${encodeURIComponent(new Date(mergedAt).toISOString())}&per_page=100`);
       const ref = new RegExp(`#${am.pr_number}\\b`);
-      const sha = am.merge_commit_sha ?? '';
       const revert = (commits ?? []).find((c) => c.sha !== sha && /revert/i.test(c.commit?.message ?? '')
         && (ref.test(c.commit?.message ?? '') || (sha.length >= 7 && (c.commit?.message ?? '').includes(sha.slice(0, 7)))));
       if (revert) reasons.push(`reverted on ${base} by ${String(revert.sha).slice(0, 8)}`);
-      if (sha) {
-        const mc = await mergeCommitChecks(slug, sha);
-        const setMeta = (path: string, value: unknown) => (value === undefined
-          ? db.prepare('UPDATE loop_runs SET metadata = json_remove(metadata, ?) WHERE id = ?').run(path, run.id)
-          : db.prepare('UPDATE loop_runs SET metadata = json_set(metadata, ?, json(?)) WHERE id = ?').run(path, JSON.stringify(value), run.id));
-        const at8 = `on ${base} at merge commit ${sha.slice(0, 8)}`;
-        const nonRequired = mc.nonRequired.join(',');
-        if (nonRequired !== (am.non_required_red ?? '')) {
-          setMeta('$.auto_merge.non_required_red', nonRequired || undefined);
-          if (nonRequired) events.recordEvent(run.id, 'auto_merge_non_required_check_failed', 'info', `PR #${am.pr_number}: non-required check(s) failing ${at8} (${nonRequired}) — not a revocation`,
-            { pr_url: meta.pr_url, merge_commit_sha: sha, checks: mc.nonRequired });
-        }
-        const pending = am.checks_red_pending;
-        if (mc.state === 'red' && pending && Date.parse(pending.at) < now.getTime()) {
-          reasons.push(`required checks failing ${at8} (${mc.reason})`);
-        } else if (mc.state === 'red' && !pending && !am.revoked) {
-          setMeta('$.auto_merge.checks_red_pending', { at: now.toISOString(), reason: mc.reason });
-          events.recordEvent(run.id, 'auto_merge_revoke_pending', 'warning', `PR #${am.pr_number}: required check(s) failing ${at8} (${mc.reason}) — revokes if still red on the next tick`,
-            { pr_url: meta.pr_url, merge_commit_sha: sha, reason: mc.reason });
-        } else if (mc.state === 'green' && pending) {
-          setMeta('$.auto_merge.checks_red_pending', undefined);
-          events.recordEvent(run.id, 'auto_merge_revoke_cleared', 'info', `PR #${am.pr_number}: required checks green ${at8} — no revocation`, { pr_url: meta.pr_url, merge_commit_sha: sha, was: pending });
-        }
+    }
+    if (sha && (inWindow || (marker && !am.revoked))) {
+      const mc = await mergeCommitChecks(slug, sha);
+      const setMeta = (path: string, value: unknown) => (value === undefined
+        ? db.prepare('UPDATE loop_runs SET metadata = json_remove(metadata, ?) WHERE id = ?').run(path, run.id)
+        : db.prepare('UPDATE loop_runs SET metadata = json_set(metadata, ?, json(?)) WHERE id = ?').run(path, JSON.stringify(value), run.id));
+      const at8 = `on ${base} at merge commit ${sha.slice(0, 8)}`;
+      const nonRequired = mc.nonRequired.join(',');
+      if (nonRequired !== (am.non_required_red ?? '')) {
+        setMeta('$.auto_merge.non_required_red', nonRequired || undefined);
+        if (nonRequired) events.recordEvent(run.id, 'auto_merge_non_required_check_failed', 'info', `PR #${am.pr_number}: non-required check(s) failing ${at8} (${nonRequired}) — not a revocation`,
+          { pr_url: meta.pr_url, merge_commit_sha: sha, checks: mc.nonRequired });
+      }
+      // an unparseable or future first-read time can never confirm: treat it as absent so this read re-initialises it
+      const markedAt = Date.parse(String(marker?.at ?? ''));
+      const pending = marker && Number.isFinite(markedAt) && markedAt <= now.getTime() ? marker : undefined;
+      if (mc.state === 'red' && pending && markedAt < now.getTime()) {
+        reasons.push(`required checks failing ${at8} (${mc.reason})`);
+        marker = undefined; // resolved: it revokes below
+      } else if (mc.state === 'red' && !pending && !am.revoked) {
+        marker = { at: now.toISOString(), reason: String(mc.reason) };
+        setMeta('$.auto_merge.checks_red_pending', marker);
+        events.recordEvent(run.id, 'auto_merge_revoke_pending', 'warning', `PR #${am.pr_number}: required check(s) failing ${at8} (${mc.reason}) — revokes if still red on the next tick`,
+          { pr_url: meta.pr_url, merge_commit_sha: sha, reason: mc.reason });
+      } else if (mc.state === 'green' && marker) {
+        setMeta('$.auto_merge.checks_red_pending', undefined);
+        events.recordEvent(run.id, 'auto_merge_revoke_cleared', 'info', `PR #${am.pr_number}: required checks green ${at8} — no revocation`, { pr_url: meta.pr_url, merge_commit_sha: sha, was: marker });
+        marker = undefined;
       }
     }
     if (reasons.length && !am.revoked) {
@@ -363,7 +373,8 @@ async function checkRevocations(db: Database, json: <T>(slug: string, p: string)
       events.recordEvent(run.id, 'auto_merge_revoked', 'warning', `Auto-merge class revoked — ${reason}`, { pr_url: meta.pr_url, reasons, newly_revoked: fresh });
       if (fresh) await pushNotice(`Auto-merge for test-only loop PRs REVOKED — ${reason}. Re-enable needs an operator: ${meta.pr_url}`, env);
     }
-    if (age > SURVIVAL_DAYS * DAY && (settled === 'SETTLED_SURVIVED' || settled === 'SETTLED_REGRESSED' || age > 30 * DAY)) {
+    // never closed while a required-check confirmation is unresolved (an already revoked PR has nothing left to confirm)
+    if (age > SURVIVAL_DAYS * DAY && !(marker && !am.revoked) && (settled === 'SETTLED_SURVIVED' || settled === 'SETTLED_REGRESSED' || age > 30 * DAY)) {
       db.prepare("UPDATE loop_runs SET metadata = json_set(metadata, '$.auto_merge.window_closed', json('true')) WHERE id = ?").run(run.id);
     }
   }

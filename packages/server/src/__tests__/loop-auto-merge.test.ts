@@ -378,6 +378,63 @@ it('revocation: a required check failing once, then passing on the rerun, never 
   expect(decision(700).checks_red_pending).toBeDefined();
 });
 
+// Codex review of #1066: a confirmation first observed inside the 14-day window is still confirmed after it, and the window
+// does not close (settled survived) while it is unresolved.
+it('revocation: a required red first read just before the window edge is still confirmed after it', async () => {
+  await mergeOne(700);
+  db.prepare("UPDATE loop_runs SET metadata = json_set(metadata, '$.pr_outcome', json(?)) WHERE id = 'run-700'")
+    .run(JSON.stringify({ state: 'merged', merged_at: NOW.toISOString(), survived: true, settled_at: new Date(NOW.getTime() + 14 * 86_400_000).toISOString() }));
+  runsBySha.set('merge700', [run(1, 'build', 'failure')]);
+  const edge = NOW.getTime() + 14 * 86_400_000;
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), new Date(edge - 60_000));
+  expect(decision(700).checks_red_pending).toBeDefined();
+  expect(decision(700).window_closed).toBeUndefined();
+  expect(await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), new Date(edge + 14 * 60_000))).toMatchObject({ revoked: true });
+  expect(readClassState(db).reason).toContain('required checks failing on main at merge commit merge700');
+  expect(decision(700).window_closed).toBe(true);
+});
+
+it('revocation: an unresolved confirmation keeps the window open; green after the edge clears it and closes the window', async () => {
+  await mergeOne(700);
+  db.prepare("UPDATE loop_runs SET metadata = json_set(metadata, '$.pr_outcome', json(?)) WHERE id = 'run-700'")
+    .run(JSON.stringify({ state: 'merged', merged_at: NOW.toISOString(), survived: true, settled_at: new Date(NOW.getTime() + 14 * 86_400_000).toISOString() }));
+  runsBySha.set('merge700', [run(1, 'build', 'failure')]);
+  const edge = NOW.getTime() + 14 * 86_400_000;
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), new Date(edge - 60_000));
+  runsBySha.set('merge700', [run(1, 'build', 'failure'), run(2, 'build', null, 'in_progress')]); // rerun running: unresolved
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), new Date(edge + 14 * 60_000));
+  expect(decision(700).window_closed).toBeUndefined();
+  runsBySha.set('merge700', [run(1, 'build', 'failure'), run(2, 'build', 'success')]);
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), new Date(edge + 29 * 60_000));
+  expect(readClassState(db).state).toBe('active');
+  expect(decision(700).checks_red_pending).toBeUndefined();
+  expect(decision(700).window_closed).toBe(true);
+});
+
+it('revocation: a red read first seen after the window edge is not a revocation', async () => {
+  await mergeOne(700);
+  db.prepare("UPDATE loop_runs SET metadata = json_set(metadata, '$.pr_outcome', json(?)) WHERE id = 'run-700'")
+    .run(JSON.stringify({ state: 'merged', merged_at: NOW.toISOString(), survived: true, settled_at: new Date(NOW.getTime() + 14 * 86_400_000).toISOString() }));
+  runsBySha.set('merge700', [run(1, 'build', 'failure')]);
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), new Date(NOW.getTime() + 14 * 86_400_000 + 60_000));
+  expect(decision(700).checks_red_pending).toBeUndefined();
+  expect(decision(700).window_closed).toBe(true);
+  expect(readClassState(db).state).toBe('active');
+});
+
+// Codex review of #1066: an unparseable or future marker must not block confirmation for good — it is re-initialised.
+for (const [label, at] of [['an unparseable', 'not-a-date'], ['a future', '2027-10-07T12:00:00.000Z']] as const) {
+  it(`revocation: ${label} pending marker is re-initialised, and the next red read revokes`, async () => {
+    await mergeOne(700);
+    db.prepare("UPDATE loop_runs SET metadata = json_set(metadata, '$.auto_merge.checks_red_pending', json(?)) WHERE id = 'run-700'").run(JSON.stringify({ at, reason: 'build=failure' }));
+    runsBySha.set('merge700', [run(1, 'build', 'failure')]);
+    expect(await tickAfter(0)).toMatchObject({ revoked: false });
+    expect(decision(700).checks_red_pending.at).toBe(new Date(NOW.getTime() + 3_600_000).toISOString());
+    expect(await tickAfter(15)).toMatchObject({ revoked: true });
+    expect(readClassState(db).reason).toContain('required checks failing on main at merge commit merge700');
+  });
+}
+
 it('revocation: required checks still running, or not reported, are not red — nothing is marked or revoked', async () => {
   await mergeOne(700);
   runsBySha.set('merge700', [run(1, 'build', null, 'in_progress'), run(2, 'Analyze (javascript-typescript)', 'failure')]);
