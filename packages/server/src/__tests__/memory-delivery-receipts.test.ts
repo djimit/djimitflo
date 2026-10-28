@@ -7,7 +7,7 @@ import { createHash } from 'crypto';
 import http from 'http';
 import type { AddressInfo } from 'net';
 import { MemorySyncService } from '../services/memory-sync-service';
-import { memoryDeliveryEvidence, qdrantIntentHash } from '../services/memory-delivery-receipts';
+import { ensureReceiptsTable, memoryDeliveryEvidence, qdrantIntentHash } from '../services/memory-delivery-receipts';
 import { pointIdForTask } from '../utils/qdrant-point-id';
 
 /**
@@ -34,12 +34,14 @@ const timeoutError = () => Object.assign(new Error('The operation was aborted du
 type UamsBehaviour = 'ok' | 'timeout' | 401 | 503 | 'reset' | 'refused';
 const transportError = (code: string) => Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error(code), { code }) });
 
-function fakeTargets(opts: { uams?: UamsBehaviour; upsert?: 'ok' | 503 } = {}) {
+/** upsert 'timeout': no response, nothing stored; 'timeout_landed': stored, then no response (the ambiguous case). */
+type UpsertBehaviour = 'ok' | 503 | 'timeout' | 'timeout_landed';
+function fakeTargets(opts: { uams?: UamsBehaviour; upsert?: UpsertBehaviour } = {}) {
   const calls: Call[] = [];
   const qdrantPoints = new Map<string, Record<string, unknown>>();
   /** UAMS entries the server applied (a reset/5xx after commit still counts) */
   const uamsCommitted: string[] = [];
-  const state: { uams: UamsBehaviour; upsert: 'ok' | 503 } = { uams: opts.uams ?? 'ok', upsert: opts.upsert ?? 'ok' };
+  const state: { uams: UamsBehaviour; upsert: UpsertBehaviour } = { uams: opts.uams ?? 'ok', upsert: opts.upsert ?? 'ok' };
   const fetchFn = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method || 'GET';
     calls.push({ url, method, body: init?.body as string | undefined });
@@ -52,8 +54,10 @@ function fakeTargets(opts: { uams?: UamsBehaviour; upsert?: 'ok' | 503 } = {}) {
     }
     if (url.includes('/api/embed')) return new Response(JSON.stringify({ embeddings: [[0.1, 0.2, 0.3]] }));
     if (url.endsWith('/collections/djimitflo_swarm/points') && method === 'PUT') {
-      if (state.upsert !== 'ok') return new Response('{}', { status: state.upsert });
+      if (typeof state.upsert === 'number') return new Response('{}', { status: state.upsert });
+      if (state.upsert === 'timeout') throw timeoutError();
       for (const p of JSON.parse(String(init?.body)).points) qdrantPoints.set(String(p.id), p.payload);
+      if (state.upsert === 'timeout_landed') throw timeoutError();
       return new Response('{}');
     }
     const point = url.match(/\/collections\/djimitflo_swarm\/points\/([^/?]+)$/);
@@ -82,10 +86,21 @@ const landedPayload = (task: string, over: { content?: string; model?: string } 
   task_id: task, machine_id: 'macbook', agent_type: 'maker', content_excerpt: over.content ?? 'do the thing', embedding_model: over.model ?? EMBED_MODEL,
   embedding_dim: 3, intent_sha256: qdrantIntentHash(task, over.content ?? 'do the thing', 'macbook', 'maker', over.model ?? EMBED_MODEL),
 });
-const unknownQdrantReceipt = (db: Database.Database, task: string) => {
-  db.exec(`CREATE TABLE IF NOT EXISTS memory_sync_receipts (task_id TEXT NOT NULL, target TEXT NOT NULL, status TEXT NOT NULL, detail TEXT,
-    attempts INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL, PRIMARY KEY (task_id, target))`);
-  db.prepare(`INSERT INTO memory_sync_receipts VALUES (?, 'qdrant', 'unknown', 'timeout 10000ms', 1, '2026-01-01T00:00:00.000Z')`).run(task);
+const LEGACY_RECEIPTS_DDL = `CREATE TABLE IF NOT EXISTS memory_sync_receipts (task_id TEXT NOT NULL, target TEXT NOT NULL, status TEXT NOT NULL, detail TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL, PRIMARY KEY (task_id, target))`;
+/**
+ * An unknown Qdrant receipt left by an ambiguous send. Default: it recorded the intent of the attempt (content/model as given,
+ * defaulting to the task's current ones). 'legacy': a receipt from before intents were recorded (pre-STATE-02 schema).
+ */
+const unknownQdrantReceipt = (db: Database.Database, task: string, intent: { content?: string; model?: string } | 'legacy' = {}) => {
+  db.exec(LEGACY_RECEIPTS_DDL);
+  if (intent === 'legacy') {
+    db.prepare(`INSERT INTO memory_sync_receipts VALUES (?, 'qdrant', 'unknown', 'timeout 10000ms', 1, '2026-01-01T00:00:00.000Z')`).run(task);
+    return;
+  }
+  ensureReceiptsTable(db);
+  db.prepare(`INSERT INTO memory_sync_receipts (task_id, target, status, detail, attempts, updated_at, intent_sha256, embed_model)
+    VALUES (?, 'qdrant', 'unknown', 'timeout 10000ms', 1, '2026-01-01T00:00:00.000Z', ?, ?)`).run(task, landedPayload(task, intent).intent_sha256, intent.model ?? EMBED_MODEL);
 };
 
 beforeEach(() => {
@@ -101,7 +116,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
-  for (const k of ['OKF_BASE', 'UAMS_URL', 'QDRANT_URL', 'OLLAMA_URL', 'MEMORY_DELIVERY_RECEIPTS']) delete process.env[k];
+  for (const k of ['OKF_BASE', 'UAMS_URL', 'QDRANT_URL', 'OLLAMA_URL', 'MEMORY_DELIVERY_RECEIPTS', 'DJIMITFLO_EMBED_MODEL']) delete process.env[k];
   fs.rmSync(tmpOkf, { recursive: true, force: true });
 });
 
@@ -117,7 +132,8 @@ describe('CODE-004: memory delivery receipts', () => {
     ]);
 
     // task-2: the process died with the Qdrant upsert in flight (write-ahead receipt, no outcome) — but the point landed
-    db.prepare(`INSERT INTO memory_sync_receipts (task_id, target, status, detail, attempts, updated_at) VALUES ('task-2', 'qdrant', 'unknown', 'in_flight', 1, '2026-01-01T00:00:00.000Z')`).run();
+    db.prepare(`INSERT INTO memory_sync_receipts (task_id, target, status, detail, attempts, updated_at, intent_sha256, embed_model)
+      VALUES ('task-2', 'qdrant', 'unknown', 'in_flight', 1, '2026-01-01T00:00:00.000Z', ?, ?)`).run(landedPayload('task-2').intent_sha256, EMBED_MODEL);
     t.qdrantPoints.set(pointIdForTask('task-2'), landedPayload('task-2'));
 
     t.state.uams = 'ok';
@@ -367,14 +383,91 @@ describe('CODE-004 review round 2 (#1058): redirects and shadow OKF fallback', (
 
 describe('STATE-02: a Qdrant read-back settles only the exact intended point', () => {
   const qdrantReceipt = (db: Database.Database) =>
-    db.prepare(`SELECT status, detail, attempts FROM memory_sync_receipts WHERE task_id = 'task-1' AND target = 'qdrant'`).get() as { status: string; detail: string; attempts: number };
+    db.prepare(`SELECT status, detail, attempts, intent_sha256, embed_model FROM memory_sync_receipts WHERE task_id = 'task-1' AND target = 'qdrant'`)
+      .get() as { status: string; detail: string; attempts: number; intent_sha256: string | null; embed_model: string | null };
+  const setContent = (db: Database.Database, content: string) => db.prepare(`UPDATE tasks SET description = ? WHERE id = 'task-1'`).run(content);
+  const hashOf = (content: string, model = EMBED_MODEL) => qdrantIntentHash('task-1', content, 'macbook', 'maker', model);
+  const pointOf = (t: ReturnType<typeof fakeTargets>) => t.qdrantPoints.get(pointIdForTask('task-1'));
 
-  it('a tracked upsert stores the intent hash of what it embeds in the point payload', async () => {
+  it('the receipt records the intent hash and embed model before the send; the point payload carries the same hash', async () => {
     process.env.MEMORY_DELIVERY_RECEIPTS = 'on';
     const db = taskDb();
     const t = fakeTargets();
+    const fake = globalThis.fetch as unknown as (url: string, init?: RequestInit) => Promise<Response>;
+    let atSend: unknown;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'PUT' && url.endsWith('/points')) atSend = qdrantReceipt(db);
+      return fake(url, init);
+    }));
     await new MemorySyncService(db).onTaskCompleted('task-1');
-    expect(t.qdrantPoints.get(pointIdForTask('task-1'))).toMatchObject({ intent_sha256: qdrantIntentHash('task-1', 'do the thing', 'macbook', 'maker', EMBED_MODEL) });
+    expect(atSend).toMatchObject({ status: 'unknown', intent_sha256: hashOf('do the thing'), embed_model: EMBED_MODEL });
+    expect(pointOf(t)).toMatchObject({ intent_sha256: hashOf('do the thing'), embedding_model: EMBED_MODEL });
+    expect(qdrantReceipt(db)).toMatchObject({ status: 'delivered', intent_sha256: hashOf('do the thing'), embed_model: EMBED_MODEL });
+  });
+
+  it('a timed-out upsert keeps the recorded intent in its own columns (detail holds the timeout)', async () => {
+    process.env.MEMORY_DELIVERY_RECEIPTS = 'on';
+    const db = taskDb();
+    fakeTargets({ upsert: 'timeout' });
+    await new MemorySyncService(db).onTaskCompleted('task-1');
+    expect(qdrantReceipt(db)).toMatchObject({ status: 'unknown', detail: 'timeout 10000ms', intent_sha256: hashOf('do the thing'), embed_model: EMBED_MODEL });
+  });
+
+  it('a landed ambiguous send is certified against the recorded intent, not overwritten after a later content and model change', async () => {
+    process.env.MEMORY_DELIVERY_RECEIPTS = 'on';
+    const db = taskDb();
+    const t = fakeTargets({ upsert: 'timeout_landed' });
+    setContent(db, 'version B');
+    await new MemorySyncService(db).onTaskCompleted('task-1');
+    expect(qdrantReceipt(db)).toMatchObject({ status: 'unknown', intent_sha256: hashOf('version B') });
+    db.prepare(`UPDATE memory_sync_receipts SET updated_at = '2026-01-01T00:00:00.000Z'`).run(); // settled, eligible for this pass
+    setContent(db, 'version C');
+    process.env.DJIMITFLO_EMBED_MODEL = 'nomic-embed-text';
+    t.state.upsert = 'ok';
+    t.calls.length = 0;
+
+    const report = await new MemorySyncService(db).reconcile();
+
+    expect(report).toMatchObject({ read_back_delivered: 1, read_back_stale: 0, retried: 0 });
+    expect(qdrantReceipt(db)).toMatchObject({ status: 'delivered', detail: 'read_back', intent_sha256: hashOf('version B'), embed_model: EMBED_MODEL });
+    expect(upserts(t.calls, 'task-1')).toHaveLength(0);
+    expect(pointOf(t)).toMatchObject({ intent_sha256: hashOf('version B'), embedding_model: EMBED_MODEL });
+  });
+
+  it('A→B→A: an unlanded attempt B is not certified by an older point A that matches the current config; resent once as A', async () => {
+    process.env.MEMORY_DELIVERY_RECEIPTS = 'on';
+    const db = taskDb();
+    const t = fakeTargets({ upsert: 'timeout' });
+    t.qdrantPoints.set(pointIdForTask('task-1'), landedPayload('task-1')); // A landed earlier
+    setContent(db, 'version B');
+    await new MemorySyncService(db).onTaskCompleted('task-1'); // attempt B: timed out, never landed
+    expect(qdrantReceipt(db)).toMatchObject({ status: 'unknown', intent_sha256: hashOf('version B') });
+    db.prepare(`UPDATE memory_sync_receipts SET updated_at = '2026-01-01T00:00:00.000Z'`).run();
+    setContent(db, 'do the thing'); // back to A
+    t.state.upsert = 'ok';
+    t.calls.length = 0;
+
+    const report = await new MemorySyncService(db).reconcile();
+
+    expect(report).toMatchObject({ read_back_delivered: 0, read_back_stale: 1, retried: 1, delivered: 1 });
+    expect(upserts(t.calls, 'task-1')).toHaveLength(1);
+    expect(qdrantReceipt(db)).toMatchObject({ status: 'delivered', attempts: 2, intent_sha256: hashOf('do the thing'), embed_model: EMBED_MODEL });
+  });
+
+  it('content changed after an unlanded ambiguous send: absent, resent with the current content, which the receipt records', async () => {
+    process.env.MEMORY_DELIVERY_RECEIPTS = 'on';
+    const db = taskDb();
+    const t = fakeTargets({ upsert: 'timeout' });
+    await new MemorySyncService(db).onTaskCompleted('task-1');
+    db.prepare(`UPDATE memory_sync_receipts SET updated_at = '2026-01-01T00:00:00.000Z'`).run();
+    setContent(db, 'version B');
+    t.state.upsert = 'ok';
+
+    const report = await new MemorySyncService(db).reconcile();
+
+    expect(report).toMatchObject({ read_back_stale: 0, retried: 1, delivered: 1 });
+    expect(qdrantReceipt(db)).toMatchObject({ status: 'delivered', intent_sha256: hashOf('version B') });
+    expect(pointOf(t)).toMatchObject({ intent_sha256: hashOf('version B') });
   });
 
   for (const [name, stale] of [
@@ -395,11 +488,27 @@ describe('STATE-02: a Qdrant read-back settles only the exact intended point', (
       await svc.reconcile(Date.now() + 3_600_000); // a later tick: settled, nothing resent
 
       expect(report).toMatchObject({ read_back_delivered: 0, read_back_inconclusive: 0, read_back_stale: 1, retried: 1, delivered: 1 });
-      expect(qdrantReceipt(db)).toMatchObject({ status: 'delivered', attempts: 2 });
+      expect(qdrantReceipt(db)).toMatchObject({ status: 'delivered', attempts: 2, intent_sha256: hashOf('do the thing'), embed_model: EMBED_MODEL });
       expect(upserts(t.calls, 'task-1')).toHaveLength(1);
-      expect(t.qdrantPoints.get(pointIdForTask('task-1'))).toMatchObject({ embedding_model: EMBED_MODEL, intent_sha256: landedPayload('task-1').intent_sha256 });
+      expect(pointOf(t)).toMatchObject({ embedding_model: EMBED_MODEL, intent_sha256: hashOf('do the thing') });
     });
   }
+
+  it('a legacy receipt without a recorded intent is never certified: stale, one resend that records the intent', async () => {
+    process.env.MEMORY_DELIVERY_RECEIPTS = 'on';
+    const db = taskDb();
+    const t = fakeTargets();
+    unknownQdrantReceipt(db, 'task-1', 'legacy');
+    t.qdrantPoints.set(pointIdForTask('task-1'), landedPayload('task-1')); // even a point matching the current config
+
+    const svc = new MemorySyncService(db);
+    const report = await svc.reconcile();
+    await svc.reconcile(Date.now() + 3_600_000);
+
+    expect(report).toMatchObject({ read_back_delivered: 0, read_back_stale: 1, retried: 1, delivered: 1 });
+    expect(upserts(t.calls, 'task-1')).toHaveLength(1);
+    expect(qdrantReceipt(db)).toMatchObject({ status: 'delivered', attempts: 2, intent_sha256: hashOf('do the thing'), embed_model: EMBED_MODEL });
+  });
 
   it('a stale point on a receipt out of attempts is failed with a distinct detail (read_back: stale), not resent', async () => {
     process.env.MEMORY_DELIVERY_RECEIPTS = 'on';
@@ -416,19 +525,22 @@ describe('STATE-02: a Qdrant read-back settles only the exact intended point', (
     expect(upserts(t.calls, 'task-1')).toHaveLength(0);
   });
 
-  it('a present point whose task row is gone is inconclusive (unchanged): unknown, not resent', async () => {
+  it('task row gone: the recorded intent still certifies its own landed point; a legacy receipt is not certified (no send)', async () => {
     process.env.MEMORY_DELIVERY_RECEIPTS = 'on';
     const db = taskDb();
     const t = fakeTargets();
     unknownQdrantReceipt(db, 'task-1');
+    unknownQdrantReceipt(db, 'task-2', 'legacy');
     t.qdrantPoints.set(pointIdForTask('task-1'), landedPayload('task-1'));
-    db.prepare(`DELETE FROM tasks WHERE id = 'task-1'`).run();
+    t.qdrantPoints.set(pointIdForTask('task-2'), landedPayload('task-2'));
+    db.prepare(`DELETE FROM tasks`).run();
 
     const report = await new MemorySyncService(db).reconcile();
 
-    expect(report).toMatchObject({ read_back_delivered: 0, read_back_inconclusive: 1, retried: 0 });
-    expect(qdrantReceipt(db)).toMatchObject({ status: 'unknown', detail: 'read_back_inconclusive', attempts: 1 });
-    expect(upserts(t.calls, 'task-1')).toHaveLength(0);
+    expect(report).toMatchObject({ read_back_delivered: 1, read_back_stale: 1 });
+    expect(qdrantReceipt(db)).toMatchObject({ status: 'delivered', detail: 'read_back' });
+    expect(statusOf(db, 'task-2', 'qdrant')).toBe('failed');
+    expect(t.calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
   });
 
   it('the exact intended point is read back as delivered without a resend', async () => {
@@ -462,7 +574,7 @@ describe('STATE-02: a Qdrant read-back settles only the exact intended point', (
     ['HTTP 500', async () => new Response('{}', { status: 500 })],
     ['a transport error', async () => { throw transportError('ECONNRESET'); }],
   ] as const) {
-    it(`read-back ${name} (unchanged): inconclusive, left unknown, not resent`, async () => {
+    it(`read-back ${name} (unchanged): inconclusive, left unknown with its recorded intent, not resent`, async () => {
       process.env.MEMORY_DELIVERY_RECEIPTS = 'on';
       const db = taskDb();
       const t = fakeTargets();
@@ -474,8 +586,22 @@ describe('STATE-02: a Qdrant read-back settles only the exact intended point', (
       const report = await new MemorySyncService(db).reconcile();
 
       expect(report).toMatchObject({ read_back_delivered: 0, read_back_inconclusive: 1, retried: 0 });
-      expect(qdrantReceipt(db)).toMatchObject({ status: 'unknown', detail: 'read_back_inconclusive', attempts: 1 });
+      expect(qdrantReceipt(db)).toMatchObject({ status: 'unknown', detail: 'read_back_inconclusive', attempts: 1, intent_sha256: hashOf('do the thing'), embed_model: EMBED_MODEL });
       expect(upserts(t.calls, 'task-1')).toHaveLength(0);
     });
   }
+
+  it('the intent columns are an additive migration: a pre-STATE-02 receipts table keeps its rows, gains nullable columns, idempotently', () => {
+    const db = taskDb();
+    db.exec(LEGACY_RECEIPTS_DDL);
+    db.prepare(`INSERT INTO memory_sync_receipts VALUES ('task-1', 'okf', 'delivered', 'written', 1, '2026-01-01T00:00:00.000Z')`).run();
+    ensureReceiptsTable(db);
+    ensureReceiptsTable(db);
+    const cols = (db.prepare('PRAGMA table_info(memory_sync_receipts)').all() as Array<{ name: string; notnull: number }>);
+    expect(cols.filter((c) => c.name === 'intent_sha256' || c.name === 'embed_model')).toEqual([
+      expect.objectContaining({ name: 'intent_sha256', notnull: 0 }), expect.objectContaining({ name: 'embed_model', notnull: 0 }),
+    ]);
+    expect(db.prepare('SELECT task_id, target, status, intent_sha256, embed_model FROM memory_sync_receipts').all())
+      .toEqual([{ task_id: 'task-1', target: 'okf', status: 'delivered', intent_sha256: null, embed_model: null }]);
+  });
 });
