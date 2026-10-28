@@ -1,6 +1,6 @@
 import express from 'express';
 import request from 'supertest';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createTestDb } from './helpers/test-db';
 import { createApexRoutes } from '../routes/apex';
 import { errorHandler } from '../middleware/error-handler';
@@ -47,5 +47,23 @@ describe('Apex vector-memory route validation', () => {
       provider: 'openai', taskType: 'coding', success: true, latencyMs: 12, costDollars: 0.01,
     })).status).toBe(200);
     expect((await request(app).get('/api/apex/llm/stats')).status).toBe(200);
+  });
+
+  it('answers an explicit 503 unavailable when no provider is eligible (INT-001)', async () => {
+    const db = createTestDb();
+    dbs.push(db);
+    for (const key of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GOOGLE_API_KEY', 'LITELLM_API_KEY']) vi.stubEnv(key, undefined);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 503 })));
+    try {
+      const passthroughAuth = { requirePermission: () => (_req: any, _res: any, next: any) => next() } as any;
+      const app = express().use(express.json()).use('/api/apex', createApexRoutes(db, passthroughAuth, false)).use(errorHandler);
+      await request(app).post('/api/apex/llm/performance').send({ provider: 'ollama', taskType: 'coding', success: true, latencyMs: 5 });
+      const response = await request(app).post('/api/apex/llm/route').send({ taskType: 'coding', prompt: 'p' });
+      expect(response.status).toBe(503);
+      expect(response.body).toMatchObject({ available: false, taskType: 'coding' });
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
   });
 });
