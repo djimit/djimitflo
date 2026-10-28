@@ -47,6 +47,36 @@ class EmbeddingUnavailable(Exception):
     """STATE-NEW-03: no semantic vector for this text. Callers refuse (HTTP 503); there is no lexical stand-in in this collection."""
 
 
+def _ollama_name(name: str) -> str:
+    return name if ":" in name else f"{name}:latest"
+
+
+_digest_cache: dict[str, str] = {}
+
+
+def _model_digest() -> str:
+    """Immutable identity of EMBED_MODEL (its Ollama digest), resolved once per process; failures are not cached.
+    The same name can point at another build after `ollama pull`, so name alone does not identify the vector space."""
+    if EMBED_MODEL in _digest_cache:
+        return _digest_cache[EMBED_MODEL]
+    try:
+        resp = httpx.get(
+            f"{OLLAMA_URL}/api/tags",
+            headers={"Authorization": f"Bearer {OLLAMA_API_KEY}"} if OLLAMA_API_KEY else {},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        wanted = _ollama_name(EMBED_MODEL)
+        digest = next(m.get("digest") for m in resp.json()["models"]
+                      if wanted in (_ollama_name(str(m.get("name", ""))), _ollama_name(str(m.get("model", "")))))
+    except Exception as e:
+        raise EmbeddingUnavailable(f"embedding unavailable: {EMBED_MODEL} digest not resolvable ({type(e).__name__})") from e
+    if not isinstance(digest, str) or not digest:
+        raise EmbeddingUnavailable(f"embedding unavailable: {EMBED_MODEL} has no digest in /api/tags")
+    _digest_cache[EMBED_MODEL] = digest
+    return digest
+
+
 def _embed(text: str) -> list[float]:
     """The Ollama embedding, or EmbeddingUnavailable. Anything but VECTOR_SIZE finite numbers is refused."""
     try:
@@ -62,6 +92,7 @@ def _embed(text: str) -> list[float]:
 
 
 def write_memory(text: str, source_agent: str, metadata: Optional[dict] = None) -> dict:
+    digest = _model_digest()
     vector = _embed(text)
     client = get_client()
     ensure_collection(client)
@@ -71,6 +102,7 @@ def write_memory(text: str, source_agent: str, metadata: Optional[dict] = None) 
         "source_agent": source_agent,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "embed_model": EMBED_MODEL,
+        "embed_model_digest": digest,
         "embed_dim": VECTOR_SIZE,
     }
     if metadata:
@@ -83,11 +115,13 @@ def write_memory(text: str, source_agent: str, metadata: Optional[dict] = None) 
 
 
 def search_memories(query: str, source_agent: Optional[str] = None, limit: int = 10) -> list[dict]:
+    digest = _model_digest()
     vector = _embed(query)
     client = get_client()
     ensure_collection(client)
-    # Only points embedded by the current model; older points without embed_model are "unknown" and stay out of the search.
-    must = [FieldCondition(key="embed_model", match=MatchValue(value=EMBED_MODEL))]
+    # Only points embedded by the current model build; older points without this identity are "unknown" and stay out.
+    must = [FieldCondition(key="embed_model", match=MatchValue(value=EMBED_MODEL)),
+            FieldCondition(key="embed_model_digest", match=MatchValue(value=digest))]
     if source_agent:
         must.append(FieldCondition(key="source_agent", match=MatchText(text=source_agent)))
     results = client.query_points(
