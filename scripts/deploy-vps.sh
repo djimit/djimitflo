@@ -3,7 +3,7 @@
 #
 # Replaces a 4-step manual procedure whose easiest-to-forget step (chown of the fresh
 # checkout to the container user, needed for objective-mode git worktrees) silently
-# broke autonomy once. Steps, all on the VPS: clone -> checkout -> docker build ->
+# broke autonomy once. Steps, all on the VPS: clone -> checkout -> git archive of the exact commit -> docker build ->
 # chown 1001 -> back up compose.yml -> rewrite image/commit/mount -> recreate ->
 # wait for healthy; if the new container is not healthy, roll compose.yml back and
 # recreate the previous one.
@@ -40,7 +40,8 @@ rewrite_compose() {
 
 # --- build receipt (forensic 2026-10-26 ROOT-001) ---------------------------------------------------------------------
 # One immutable JSON per built image in $DEPLOY_ROOT/build-receipts/<image id>.json (write-once, read-only): the commit,
-# the build inputs (lockfile, Dockerfile, the base image DIGEST the build was given) and the content-addressed image id.
+# the build inputs (lockfile, Dockerfile, the base image DIGEST the build was given, the commit's git tree the context was
+# exported from) and the content-addressed image id.
 # The image itself declares the commit, lockfile hash and base (DJIMITFLO_BUILD_COMMIT / _LOCK_SHA256 / _BASE_IMAGE). The
 # deploy verifies the receipt before switching and the running container's image against it after the health wait.
 # ponytail: local images, no registry — the image id is the digest; add signing/attestation if images ever get pushed.
@@ -56,8 +57,8 @@ resolve_base_image() {   # resolve_base_image <tag> → <repo>@sha256:… of the
   done
   echo "base image $tag has no registry digest — not building an unbound image" >&2; return 1
 }
-write_build_receipt() {   # write_build_receipt <dir> <src> <sha> <image> <base ref> <build_time> → prints the receipt path
-  local dir="$1" src="$2" sha="$3" image="$4" base="$5" built="$6" id lock dfile f
+write_build_receipt() {   # write_build_receipt <dir> <src> <sha> <image> <base ref> <build_time> [tree id] → prints the receipt path
+  local dir="$1" src="$2" sha="$3" image="$4" base="$5" built="$6" tree="${7:-}" id lock dfile f tree_field=""
   [[ "$base" == *@sha256:* ]] || { echo "base image $base is not a digest" >&2; return 1; }
   id="$(docker image inspect -f '{{.Id}}' "$image")" && [ -n "$id" ] || { echo "cannot read the image id of $image" >&2; return 1; }
   lock="$(sha256_file "$src/package-lock.json")" && dfile="$(sha256_file "$src/Dockerfile")" || return 1
@@ -66,17 +67,20 @@ write_build_receipt() {   # write_build_receipt <dir> <src> <sha> <image> <base 
     grep -qF "\"commit\":\"$sha\"" "$f" || { echo "receipt $f belongs to another commit — refusing" >&2; return 1; }
     echo "$f"; return 0
   fi
-  printf '{"schema":"djimitflo.build-receipt/v1","commit":"%s","image":"%s","image_id":"%s","lockfile_sha256":"%s","dockerfile_sha256":"%s","base_image":"%s","build_time":"%s","build_source":"deploy-vps.sh"}\n' \
-    "$sha" "$image" "$id" "$lock" "$dfile" "$base" "$built" > "$f.tmp.$$" && chmod 0444 "$f.tmp.$$" && mv "$f.tmp.$$" "$f" && echo "$f"
+  [ -z "$tree" ] || tree_field=",\"source_tree\":\"$tree\""   # OPS-002: the git tree the build context was exported from
+  printf '{"schema":"djimitflo.build-receipt/v1","commit":"%s"%s,"image":"%s","image_id":"%s","lockfile_sha256":"%s","dockerfile_sha256":"%s","base_image":"%s","build_time":"%s","build_source":"deploy-vps.sh"}\n' \
+    "$sha" "$tree_field" "$image" "$id" "$lock" "$dfile" "$base" "$built" > "$f.tmp.$$" && chmod 0444 "$f.tmp.$$" && mv "$f.tmp.$$" "$f" && echo "$f"
 }
-verify_build_receipt() {   # verify_build_receipt <receipt> <src> <sha> <image>: the image and source still are what was built
-  local f="$1" src="$2" sha="$3" image="$4" id lock dfile envs base
+verify_build_receipt() {   # verify_build_receipt <receipt> <src> <sha> <image> [tree id]: the image and source still are what was built
+  # Without a tree id an old receipt (no source_tree) verifies as before; with one, the receipt must carry exactly that tree.
+  local f="$1" src="$2" sha="$3" image="$4" tree="${5:-}" id lock dfile envs base
   [ -f "$f" ] || { echo "no build receipt at $f" >&2; return 1; }
   id="$(docker image inspect -f '{{.Id}}' "$image")" || return 1
   envs="$(docker image inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$image")" || return 1
   lock="$(sha256_file "$src/package-lock.json")" && dfile="$(sha256_file "$src/Dockerfile")" || return 1
   base="$(sed -n 's/.*"base_image":"\([^"]*\)".*/\1/p' "$f")"
   grep -qF "\"commit\":\"$sha\"" "$f" || { echo "receipt is not for commit $sha" >&2; return 1; }
+  [ -z "$tree" ] || grep -qF "\"source_tree\":\"$tree\"" "$f" || { echo "receipt does not bind source tree $tree" >&2; return 1; }
   grep -qF "\"image_id\":\"$id\"" "$f" || { echo "$image is $id, not the receipt's image" >&2; return 1; }
   grep -qF "\"lockfile_sha256\":\"$lock\"" "$f" || { echo "package-lock.json changed since the build" >&2; return 1; }
   grep -qF "\"dockerfile_sha256\":\"$dfile\"" "$f" || { echo "Dockerfile hash missing from the receipt or changed since the build" >&2; return 1; }
@@ -117,18 +121,26 @@ if [ "$AVAIL_KB" -lt 8000000 ]; then prune_old_builds all; AVAIL_KB="$(df --outp
 [ "$AVAIL_KB" -ge 6000000 ] || { echo "not enough free disk to build (${AVAIL_KB} KB free); free space first" >&2; exit 1; }
 if [ ! -d "runtime-source-$SHORT" ]; then git clone -q "$REPO" "runtime-source-$SHORT"; fi
 (cd "runtime-source-$SHORT" && git checkout -q "$SHA" && git log -1 --oneline)
+# OPS-002: runtime-source-$SHORT is reused on a retry and is the container's (writable) /workspace mount, and `git checkout`
+# keeps local edits and untracked files. Build from an export of exactly $SHA instead; the checkout stays as it is (mount).
+DIRTY="$(git -C "runtime-source-$SHORT" status --porcelain --untracked-files=all 2>&1)" || DIRTY="git status failed: $DIRTY"
+[ -z "$DIRTY" ] || echo "WARNING: runtime-source-$SHORT has local changes; it is not used for the build (exported $SHA instead)" >&2
+TREE="$(git -C "runtime-source-$SHORT" rev-parse --verify "$SHA^{tree}")"
+CTX="$(mktemp -d "$ROOT/build-context-$SHORT.XXXXXX")"; trap 'rm -rf "$CTX"' EXIT
+git -C "runtime-source-$SHORT" archive "$SHA" | tar -x -C "$CTX"
 # a hung build (0% CPU for 17-20 min, 2026-09-25 and 26) blocked every deploy until killed by hand: bound it.
 # --network host: on this VPS the docker bridge network stalls apt (g++ install: bridge timed out at 349 s, host 10 s)
-BUILT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"; LOCK="$(sha256_file "runtime-source-$SHORT/package-lock.json")"
+BUILT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"; LOCK="$(sha256_file "$CTX/package-lock.json")"
 # the base image is pinned to the digest its tag resolves to here; the build gets that digest, the receipt records it
-BASE="$(resolve_base_image "$(sed -n 's/^ARG NODE_IMAGE=//p' "runtime-source-$SHORT/Dockerfile" | head -n 1)")" || { echo "base image unresolved — not deploying" >&2; exit 1; }
-(cd "runtime-source-$SHORT" && timeout "${DEPLOY_BUILD_TIMEOUT_S:-1200}" docker build --network host --build-arg NODE_IMAGE="$BASE" --build-arg VCS_REF="$SHA" --build-arg BUILD_SOURCE=deploy-vps.sh --build-arg BUILD_TIME="$BUILT" --build-arg LOCKFILE_SHA256="$LOCK" -t "djimitflo:main-$SHORT" . 2>&1 | tail -n 2)
+BASE="$(resolve_base_image "$(sed -n 's/^ARG NODE_IMAGE=//p' "$CTX/Dockerfile" | head -n 1)")" || { echo "base image unresolved — not deploying" >&2; exit 1; }
+(cd "$CTX" && timeout "${DEPLOY_BUILD_TIMEOUT_S:-1200}" docker build --network host --build-arg NODE_IMAGE="$BASE" --build-arg VCS_REF="$SHA" --build-arg BUILD_SOURCE=deploy-vps.sh --build-arg BUILD_TIME="$BUILT" --build-arg LOCKFILE_SHA256="$LOCK" -t "djimitflo:main-$SHORT" . 2>&1 | tail -n 2)
 # the build receipt binds commit, inputs and image id; no receipt or a mismatch means no switch
-RECEIPT="$(write_build_receipt "$ROOT/build-receipts" "runtime-source-$SHORT" "$SHA" "djimitflo:main-$SHORT" "$BASE" "$BUILT")" || { echo "build receipt failed — not deploying" >&2; exit 1; }
+RECEIPT="$(write_build_receipt "$ROOT/build-receipts" "$CTX" "$SHA" "djimitflo:main-$SHORT" "$BASE" "$BUILT" "$TREE")" || { echo "build receipt failed — not deploying" >&2; exit 1; }
 # The container runs as uid 1001; objective-mode needs a writable .git for git worktrees.
 chown -R 1001:1001 "runtime-source-$SHORT"
-verify_build_receipt "$RECEIPT" "runtime-source-$SHORT" "$SHA" "djimitflo:main-$SHORT" || { echo "build receipt does not match the image — not deploying" >&2; exit 1; }
+verify_build_receipt "$RECEIPT" "$CTX" "$SHA" "djimitflo:main-$SHORT" "$TREE" || { echo "build receipt does not match the image — not deploying" >&2; exit 1; }
 echo "build receipt $RECEIPT"
+rm -rf "$CTX"
 cp compose.yml "compose.yml.bak-$SHORT"
 rewrite_compose compose.yml "$PREV_SHORT" "$PREV_FULL" "$SHORT" "$SHA" || { cp "compose.yml.bak-$SHORT" compose.yml; echo "compose rewrite failed" >&2; exit 1; }
 # From here on compose.yml selects the new build: EVERY failure (a failing compose call under set -e included) restores the
