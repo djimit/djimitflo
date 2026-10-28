@@ -328,6 +328,36 @@ export interface EvolutionEvidence {
   procedure_selection?: { mode: string; delivered: false; procedure: { id: string; version: number; lines_sha256: string } | null;
     window_24h: { applies: number | null; does_not_apply: number | null }; window_7d: { applies: number | null; does_not_apply: number | null };
     top_failed_clauses_7d: Array<{ clause: string; n: number }> | null };
+  /** PL-001 (PL_001_MODE): with vs without the procedure lines on a frozen set of applicable repair tasks (services/pl-001.ts); unknown is null, never 0 */
+  pl_001?: Pl001Evidence;
+  /** CODE-004 (MEMORY_DELIVERY_RECEIPTS): memory-sync receipts per target × status; by_target null = no receipts table (services/memory-delivery-receipts.ts) */
+  memory_delivery?: { mode: 'off' | 'shadow' | 'on'; max_attempts: number; oldest_unknown: string | null; note: string;
+    by_target: Record<'uams' | 'qdrant' | 'okf', { idempotent: boolean; delivered: number; failed: number; unknown: number; exhausted: number | null }> | null };
+}
+export type Pl001Verdict = 'SUPPORTED' | 'NOT_SUPPORTED' | 'INCONCLUSIVE' | 'STOPPED_FOR_HARM';
+export interface Pl001Paired { n_pairs: number; both_verified: number; b_only_B: number; c_only_A: number; neither: number; verified_A: number | null; verified_B: number | null;
+  rate_A: number | null; rate_B: number | null; p_one_sided: number | null; supported: boolean | null }
+export interface Pl001Evidence {
+  mode: 'on' | 'off'; experiment_id: string; protocol: string; prereg_sha256: string; loop_name: string;
+  status: 'not_frozen' | 'invalid_manifest' | 'waiting_start' | 'collecting' | 'exhausted' | 'stopped';
+  procedure: { id: string; version: number | null; lines_sha256: string | null; protocol_lines_sha256: string; digest_matches: boolean | null; status: string | null;
+    lifecycle: { verdict?: string; status?: string; reason?: string; decided_at?: string; promoted?: boolean; negative_evidence?: string } | null };
+  start_condition: { genomes: Array<{ id: string; status: string | null }>; settled: boolean; cap_share: number; open: boolean; rule: 'settled' | 'cap_share' | 'waiting' };
+  selector_check: { n: number; does_not_apply: number; applies: string[]; ok: boolean } | null;
+  targets: { pairs: number; tasks: number; max_days: number; alpha: number };
+  freeze_refused: { reason: string; at: string } | null;
+  manifest: { frozen_at: string; sha256: string; tasks: number; species: string; step_budget: number; by_kind: { mutant: number; mined: number }; by_tier: Record<string, number>;
+    first_arm: { A: number; B: number }; valid: boolean; reason: string | null } | null;
+  pairs: { done: number; analysed: number; target: number; invalid_tasks: number; tasks: number } | null;
+  arms: Array<{ arm: 'A' | 'B'; name: string; observations: number; verified: number; not_verified: number; infra_censored: number; invalid: number; pending: number;
+    physical_attempts: number; infra_attempts: number; void_attempts: number; infra_rate: number | null; tokens: { known: number; unknown: number; mean_known: number | null };
+    graded_mean: number | null; maker_ms_median: number | null; out_of_scope_or_hack: number }>;
+  primary: Pl001Paired | null; sensitivity: Pl001Paired | null;
+  secondary: { graded_mean_diff_B_minus_A: number | null; graded_pairs: number; maker_ms_median_diff_B_minus_A: number | null; maker_ms_pairs: number; note: string } | null;
+  harm: { e_value: number | null; threshold: number; canary_solved: number | null; scope_hack: { A: number; B: number }; margin: number; triggered: boolean; reason: string | null } | null;
+  stop: { first_attempt_at: string | null; day_limit_at: string | null; stopped: boolean; reason: string | null } | null;
+  verdict: Pl001Verdict | null;
+  runs: Array<{ task_key: string; arm: 'A' | 'B'; run_id: string; status: string; reason: string; void: string | null; verified: boolean; at: string }>;
 }
 export type FalsifierCounts = { submitted: number; rejected: number; red_at_base: number; green_at_base: number; unknown: number; settled_green: number; expired: number; pending: number };
 export interface FalsifierEvidence {
@@ -515,7 +545,17 @@ export type OperatorCockpit = {
   /** null = that count could not be read; total = distinct things waiting (server-side dedupe) */
   needs_you?: { approvals: number | null; requeue: number | null; labels: number | null; memory_review: number | null;
     proposals?: number | null; draft_prs?: number | null; open_prs?: number | null; stalls?: number | null; approvals_expiring?: number | null;
-    join_requests?: number | null; shell_requests?: number | null; shared_subjects?: number | null; total?: number | null;
+    join_requests?: number | null; shell_requests?: number | null; shared_subjects?: number | null;
+    /** human decisions only (server-side); labels, stalls and panel-reviewed proposals are not in it */
+    total?: number | null;
+    /** open loop PRs: audit-sample PRs (one weekly batch) and flagged PRs the auto-merge lane did not take */
+    audit_batch?: number | null; flagged_prs?: number | null;
+    /** Dependabot PRs the dependency lane leaves to a human; dependency_tracked false = lane off, not tracked */
+    dependency_human?: number | null; dependency_tracked?: boolean;
+    /** ground-truth labelling: optional, its own count, never a decision */
+    optional_labelling?: { d5: number | null; car: number | null; e1: number | null; di001: number | null; total: number | null } | null;
+    /** what the system handles (shown, never counted) */
+    system?: { requeue_will_handle: number | null; requeue_mode: string | null; proposals_auto_reviewed: boolean };
     system_requeue?: Partial<Record<'budgeted_requeue' | 'attribution_unknown' | 'not_actionable', number>> | null };
   /** UX-8: schedulers this server armed at boot vs off */
   schedulers?: { armed: number; off: number;
@@ -577,9 +617,12 @@ export type DependencyLane = { mode: 'off' | 'shadow' | 'act'; effective_mode: '
 
 export type DecisionsInbox = {
   requeue: Array<{ id: string; title: string; status: string; updated_at: string; requeued_as: string | null;
-    queue_class?: 'operator' | 'budgeted_requeue' | 'attribution_unknown' | 'not_actionable' | 'requeued' | 'no_change' }>;
+    queue_class?: 'operator' | 'budgeted_requeue' | 'attribution_unknown' | 'not_actionable' | 'requeued' | 'no_change';
+    /** REQUEUE_AUTO_MODE policy verdict (absent when off): requeue / dismiss / wait = system will handle; hold = needs you */
+    auto?: { mode: 'shadow' | 'on'; action: 'requeue' | 'dismiss' | 'wait' | 'hold'; cls: string; reason: string } | null }>;
   /** untruncated counts over the same filters as the paginated lists; null = the count failed */
-  totals?: Record<string, number | null | Record<string, number>>;
+  totals?: { [count: string]: unknown;
+    requeue_auto?: { mode: 'off' | 'shadow' | 'on'; will_handle: number; held: number; by_action: Partial<Record<'requeue' | 'dismiss' | 'wait' | 'hold', number>> } | null };
   /** Cockpit 3.0 Phase 3 shadow ranking: score = expected_gain × reversibility / operator_minutes; null = insufficient evidence */
   ranking?: Array<{ kind: 'requeue' | 'loop_pr' | 'label' | 'memory_review'; id: string; title: string; expected_gain: number | null;
     reversibility: number; operator_minutes: number; score: number | null; evidence: string[] }>;
@@ -588,7 +631,8 @@ export type DecisionsInbox = {
     labelled: number; wrong: number; false_rejection_pct: number | null; enforce_threshold: string;
   };
   telegram: Array<{ telegram_user_id: string; user_id: string; email: string | null; role: string | null; added_by: string; created_at: string }>;
-  memory: Array<{ id: string; title: string; content: string; memory_type: string; status: string; created_at: string }>;
+  /** template_duplicate: system dedup work (a memory_template_duplicate judgment), not counted as a human decision */
+  memory: Array<{ id: string; title: string; content: string; memory_type: string; status: string; created_at: string; template_duplicate?: number | boolean }>;
   autonomy: Array<{ cls: string; human_approved: number; auto_approved: number; denied: number; expired: number; verified: number; regressed: number; infra: number; pending: number; earned: boolean; why: string }>;
   /** §16 step 4: this week's seeded CAR audit sample of computed attributions; the operator labels, the system never does */
   attribution_audit: {
@@ -608,12 +652,20 @@ export type ImprovementFunnel = {
   /** goalRate: goal decisions over the panels a proposal points at (linkedDecided); decisions covers every panel */
   panel: { decisions: Record<string, number>; goalRate: number | null; linkedPanels: number; linkedDecided: number; linkedDecisions: Record<string, number> };
   /** childGoals: refined children with a goal and how it ended; childOutcomes is the children's own status */
-  refinement: { originals: number; children: number; childOutcomes: Record<string, number>; childGoals: { reachedGoal: number; completed: number; failed: number; other: number } };
+  refinement: { originals: number | null; children: number | null; childOutcomes: Record<string, number>; childGoals: { reachedGoal: number; completed: number; failed: number; other: number } | null };
   goals: { fromSelfImprovement: Record<string, number> };
-  learning: { cognitiveEpisodes: number; cognitivePatterns: number; cognitiveStrategies: number; learningClosures: number; memoryCandidates: Record<string, number> };
-  kpi: { windowDays: number; verified: number; regressed: number; regressionRate: number | null; panels24h: number; panels7d: number; reviews24h: number; reviews7d: number; panelsPerVerified: number | null; medianHoursToVerified: number | null; approvalsPerRun: number | null };
-  hygiene: { zombieGoals: number; staleRuns: number; blockedBoardItems: number };
-  queues: { openWorkItems: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
+  learning: { cognitiveEpisodes: number | null; cognitivePatterns: number | null; cognitiveStrategies: number | null; learningClosures: number | null; memoryCandidates: Record<string, number> };
+  /**
+   * verified/regressed: current status with updated_at in windowDays (not first verifications). The median has its own window
+   * (medianHoursWindowDays, n = medianHoursN): created_at → current updated_at, not first-verification latency.
+   */
+  kpi: { windowDays: number; verified: number | null; regressed: number | null; regressionRate: number | null; panels24h: number | null; panels7d: number | null; reviews24h: number | null; reviews7d: number | null; panelsPerVerified: number | null; medianHoursToVerified: number | null; medianHoursWindowDays?: number; medianHoursN?: number | null; approvalsPerRun: number | null };
+  /** null = unavailable (reason in `unavailable`), never a healthy 0 */
+  hygiene: { zombieGoals: number | null; staleRuns: number | null; blockedBoardItems: number | null };
+  /** openWorkItems: COUNT over every open row; workItemsByLoop: only the largest workItemsByLoopLimit of workItemGroups groups */
+  queues: { openWorkItems: number | null; workItemGroups?: number | null; workItemsByLoopLimit?: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
+  /** metric → `missing_schema: …` | `query_failed: …` */
+  unavailable?: Record<string, string>;
 };
 
 export type SpecialistCalibration = {
@@ -2258,6 +2310,10 @@ class ApiClient {
 
   async getLoopRuns(): Promise<{ runs: LoopRunRecord[] }> {
     return this.request('/loops/runs');
+  }
+
+  async getLoopRun(runId: string): Promise<LoopRunRecord> {
+    return this.request(`/loops/runs/${encodeURIComponent(runId)}`);
   }
 
   async getLoopCatalog(): Promise<{ loops: LoopCatalogItem[] }> {

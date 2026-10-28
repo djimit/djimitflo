@@ -167,9 +167,12 @@ function getCorpusPath(): string {
   return process.env.OPENMYTHOS_CORPUS_PATH.trim();
 }
 
+// CODE-004: the worker pool abandons a task after OPENMYTHOS_WORKER_TIMEOUT_MS; the request itself now ends then too.
+const generateTimeoutMs = (): number => Number(process.env.OPENMYTHOS_WORKER_TIMEOUT_MS || '120000');
+
 async function getOllamaModelDigest(model: string, override?: string): Promise<string> {
   if (override?.trim()) return override.trim();
-  const response = await fetch(`${getOllamaUrl()}/api/tags`);
+  const response = await fetch(`${getOllamaUrl()}/api/tags`, { signal: AbortSignal.timeout(10_000) });
   if (!response.ok) throw new Error(`OPENMYTHOS_MODEL_INVENTORY_UNAVAILABLE:${response.status}`);
   const payload = await response.json() as { models?: Array<{ name?: string; model?: string; digest?: string }> };
   const wanted = new Set([model, `${model}:latest`]);
@@ -490,6 +493,7 @@ export class OpenMythosEvalService {
         stream: false,
         options: { temperature: 0, seed: 0, num_predict: 1024 },
       }),
+      signal: AbortSignal.timeout(generateTimeoutMs()),
     });
 
     if (!response.ok) {
@@ -629,6 +633,7 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
         },
         options: { temperature: 0, seed: 0, num_predict: 512 },
       }),
+      signal: AbortSignal.timeout(generateTimeoutMs()),
     });
 
     if (!response.ok) {

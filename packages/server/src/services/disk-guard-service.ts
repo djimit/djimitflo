@@ -43,6 +43,7 @@ export class DiskGuardService {
       source: 'disk_guard', source_ref: `${day}:${st.level}`, risk_class: st.level === 'critical' ? 'high' : 'medium', status: 'candidate',
       metadata: { disk: st },
     });
+    // Best-effort alert (CODE-003): the work item above is the durable record and carries its own required work_item.created.
     if (created) enqueueEvent(this.db, { type: 'djimitflo.alert.disk', aggregateId: `disk:${day}:${st.level}`, payload: { ...st } });
     return st;
   }

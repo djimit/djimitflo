@@ -7,12 +7,14 @@ unknown …) is `GET /api/health/schedulers` (admins). Armed is intent, not exec
 
 | Scheduler | Gating flag | Interval | Owner |
 |---|---|---|---|
+| auto_requeue | `REQUEUE_AUTO_MODE` | 1 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | committee_evolution | `COMMITTEE_SWARM_ENABLED` | 1 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | commons_falsifier | `COMMONS_FALSIFIER_MODE` | 1 h | `packages/server/src/services/commons-falsifier.ts` |
 | commons_investigation_outcomes | `COMMONS_INVESTIGATION_MODE` | 15 min | `packages/server/src/services/commons-investigation.ts` |
 | compliance_report | `COMPLIANCE_REPORT_SCHEDULER_ENABLED` | `complianceReportSched.intervalHours()` h | `packages/server/src/index.ts` |
 | dead_code_lane | `DEAD_CODE_LANE_ENABLED` | 12 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | dependency_lane | `DEPENDENCY_LANE_MODE` | `laneIntervalMs()` | `packages/server/src/index.ts` |
+| djimitsec_repository_scan | `DJIMITSEC_SCAN_TRIGGERS` | 1 min | `packages/server/src/index.ts` |
 | dream_evolution | `DREAM_EVOLUTION_ENABLED` | 1 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | dream_state | `DREAM_STATE_ENABLED` | 6 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | evolution_estimators | `EVOLUTION_ESTIMATORS_ENABLED` | 1 h | `packages/server/src/bootstrap/autonomous-services.ts` |
@@ -23,7 +25,9 @@ unknown …) is `GET /api/health/schedulers` (admins). Armed is intent, not exec
 | inference_failover_probe | `OLLAMA_AUTO_FAILOVER` | 30 min | `packages/server/src/index.ts` |
 | loop_auto_merge | `LOOP_AUTO_MERGE_TEST_ONLY` | 15 min | `packages/server/src/bootstrap/autonomous-services.ts` |
 | memory_candidate_review | `MEMORY_CANDIDATE_REVIEW_ENABLED` | `memoryCandidateReviewSched.intervalMinutes()` min | `packages/server/src/index.ts` |
+| memory_delivery_reconcile | `MEMORY_DELIVERY_RECEIPTS` | 10 min | `packages/server/src/index.ts` |
 | merge_survival | `MERGE_SURVIVAL_ENABLED` | 6 h | `packages/server/src/bootstrap/autonomous-services.ts` |
+| retention | `RETENTION_ENABLED` | `this.intervalMs` | `packages/server/src/services/retention-service.ts` |
 | scheduled_proposal_goals | `(always on with autonomy)` | `Number(process.env.SCHEDULED_PROPOSAL_GOALS_INTERVAL_MS) \|\| 3_600_0…` | `packages/server/src/bootstrap/autonomous-services.ts` |
 | self_healing | `SELF_HEALING_SCHEDULER_ENABLED` | `selfHealingSched.intervalMinutes()` min | `packages/server/src/index.ts` |
 | self_improvement_auto_review | `SELF_IMPROVEMENT_AUTO_REVIEW_ENABLED` | `selfImprovementAutoReviewSched.intervalMinutes()` min | `packages/server/src/index.ts` |

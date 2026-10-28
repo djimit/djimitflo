@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { EXPERIMENT_WIP_LIMIT, experimentDefs, experimentsReport, wipCheck, type ExperimentDef } from '../services/experiment-registry';
+import { EXPERIMENT_WIP_LIMIT, MEMORY_HOLDOUT_CLOSED, TG_001_CLOSED, experimentDefs, experimentsReport, wipCheck, type ExperimentDef } from '../services/experiment-registry';
 import { detectStallsWithHealth } from '../services/stall-watch';
 import { buildEvolutionEvidence } from '../services/evolution-evidence';
 import { readFileSync } from 'fs';
@@ -16,7 +16,7 @@ afterEach(() => db.close());
 
 it('lists every running experiment with its registered target and stop date; none without one is hidden', () => {
   const r = experimentsReport(db, {}, NOW);
-  expect(r.experiments.map((e) => e.id)).toEqual(['ACE-001', 'STE-001', 'MAKER-DEPS-001', 'X1', 'F2', 'TG-001', 'D5-NO', 'JEV-114', 'memory-holdout']);
+  expect(r.experiments.map((e) => e.id)).toEqual(['ACE-001', 'STE-001', 'MAKER-DEPS-001', 'X1', 'F2', 'TG-001', 'PL-001', 'D5-NO', 'JEV-114', 'memory-holdout']);
   expect(r.experiments.every((e) => !e.error)).toBe(true);
   expect(r.overdue).toEqual([]);
   // X1 (4 weeks) and D5-NO (cutoff + 90 d) were registered with a stop date; the other seven got one by the 2026-10-19 amendments
@@ -33,7 +33,7 @@ it('lists every running experiment with its registered target and stop date; non
     expect(Date.parse(e.stop_by as string) - Date.parse(e.started_at), e.id).toBeLessThanOrEqual(90 * 86_400_000);
   }
   // the amended stops cite the amendment, and the amendment text exists in that document
-  for (const e of r.experiments.filter((x) => !['X1', 'D5-NO'].includes(x.id))) {
+  for (const e of r.experiments.filter((x) => !['X1', 'D5-NO', 'PL-001'].includes(x.id))) {
     const [file, anchor] = e.stop_source.split('#');
     const doc = readFileSync(join(__dirname, '../../../..', file), 'utf8');
     expect(doc, e.id).toContain('2026-10-19');
@@ -73,6 +73,60 @@ it("stall watch 'experiment_overdue' fires after a registered stop date and name
   expect(after.stalls.find((s) => s.subsystem === 'experiment:X1')?.detail).toContain('past stop_by 2026-11-06');
 });
 
+it('TG-001 is closed INCONCLUSIVE at 20 tasks by the operator (amendment 2026-10-26); the stall watch no longer reports it after stop_by', () => {
+  expect(TG_001_CLOSED).toEqual({ verdict: 'INCONCLUSIVE', decided_on: '2026-10-26', source: 'docs/research/ace/TG-001_PROTOCOL.md#amendment-2026-10-26-closed-inconclusive-at-20-tasks' });
+  // the close cites a protocol amendment that exists and records the same decision
+  const [file, anchor] = TG_001_CLOSED.source.split('#');
+  const doc = readFileSync(join(__dirname, '../../../..', file), 'utf8');
+  const heading = doc.split('\n').find((l) => l.startsWith('## ') && l.slice(3).toLowerCase().replace(/[^a-z0-9 -]/g, '').replace(/ /g, '-') === anchor);
+  expect(heading).toBe('## Amendment 2026-10-26: closed INCONCLUSIVE at 20 tasks');
+  const tg = experimentDefs().find((d) => d.id === 'TG-001')!;
+  expect(tg.closed).toBe(TG_001_CLOSED);
+  // status() carries the closing verdict whether or not the evidence can be read or windowed
+  expect(tg.status(db, {}, NOW, tg.started_at).verdict).toBe('INCONCLUSIVE');
+  expect(tg.status(db, {}, NOW, '2026-10-20T00:00:00.000Z')).toEqual({ n_per_arm: null, verdict: 'INCONCLUSIVE' });
+  // past stop_by (2026-11-18): the registry and the stall watch's experiment_overdue no longer name TG-001
+  const late = Date.parse('2026-11-19T00:00:00Z');
+  const row = experimentsReport(db, {}, late).experiments.find((e) => e.id === 'TG-001')!;
+  expect(row).toMatchObject({ verdict: 'INCONCLUSIVE', overdue: false, overdue_reason: null, closed: TG_001_CLOSED });
+  expect(experimentsReport(db, {}, late).overdue).not.toContain('TG-001');
+  const stalls = detectStallsWithHealth(db, late, {}).stalls.map((s) => s.subsystem);
+  expect(stalls).not.toContain('experiment:TG-001');
+  // the same definition without the close is reported past stop_by: the close is what stops it, not the stop date passing
+  const open: ExperimentDef = { ...tg, closed: undefined, status: () => ({ n_per_arm: null, verdict: null }) };
+  expect(experimentsReport(db, {}, late, [open]).overdue).toEqual(['TG-001']);
+  // other experiments are unchanged: only TG-001 and memory-holdout carry a close, and an open one past its stop date is still overdue
+  expect(experimentDefs().filter((d) => d.closed).map((d) => d.id)).toEqual(['TG-001', 'memory-holdout']);
+  expect(stalls).toContain('experiment:X1');
+});
+
+it('EXP-3 memory-holdout is closed FALSIFIED at its single registered readout (2026-10-27); experiment_overdue no longer raises it', () => {
+  expect(MEMORY_HOLDOUT_CLOSED).toEqual({ verdict: 'FALSIFIED (rules not above withheld)', decided_on: '2026-10-27',
+    source: 'docs/research/intelligence-metrics/EXP-3_RESULT.md#decision-under-the-registered-rules' });
+  const mh = experimentDefs().find((d) => d.id === 'memory-holdout')!;
+  expect(mh.closed).toBe(MEMORY_HOLDOUT_CLOSED);
+  expect(mh.status(db, {}, NOW, mh.started_at).verdict).toBe('FALSIFIED (rules not above withheld)');
+  // past stop_by (2026-10-27): reported closed with the verdict, not overdue, no stall
+  const late = Date.parse('2026-10-28T12:00:00Z');
+  const r = experimentsReport(db, {}, late);
+  expect(r.experiments.find((e) => e.id === 'memory-holdout')).toMatchObject({ verdict: 'FALSIFIED (rules not above withheld)', overdue: false, overdue_reason: null,
+    closed: MEMORY_HOLDOUT_CLOSED });
+  expect(r.overdue).not.toContain('memory-holdout');
+  // a read-out experiment no longer counts as active on the oracle-goal population
+  expect(r.wip.active).not.toContain('memory-holdout');
+  expect(detectStallsWithHealth(db, late, {}).stalls.map((s) => s.subsystem)).not.toContain('experiment:memory-holdout');
+  // the same definition without the close is overdue: the close is what stops it
+  const open: ExperimentDef = { ...mh, closed: undefined, status: () => ({ n_per_arm: null, verdict: null }) };
+  expect(experimentsReport(db, {}, late, [open]).overdue).toEqual(['memory-holdout']);
+});
+
+it('EXP-3 close cites the result document and a heading that exists in it', () => {
+  const [file, anchor] = MEMORY_HOLDOUT_CLOSED.source.split('#');
+  const doc = readFileSync(join(__dirname, '../../../..', file), 'utf8');
+  const heading = doc.split('\n').find((l) => l.startsWith('## ') && l.slice(3).toLowerCase().replace(/[^a-z0-9 -]/g, '').replace(/ /g, '-') === anchor);
+  expect(heading).toBe('## Decision under the registered rules');
+});
+
 it('evolution-evidence carries the registry as the experiments section', () => {
   const e = buildEvolutionEvidence(db, {}, NOW);
   expect(e.experiments.experiments).toHaveLength(experimentDefs().length);
@@ -102,8 +156,9 @@ it('CI guard: the registered oracle-population experiments fit the WIP limit; a 
 
 it('reports active vs the limit and over_wip_limit; a read-out experiment is no longer active', () => {
   const r = experimentsReport(db, {}, NOW);
-  expect(r.wip).toMatchObject({ limit: 4, active_count: 6, over_wip_limit: true, guard_ok: true });
-  expect(r.wip.counted).toEqual(['ACE-001', 'STE-001', 'X1', 'memory-holdout']);
+  // memory-holdout read out (closed FALSIFIED 2026-10-27): five active, three counted against the limit
+  expect(r.wip).toMatchObject({ limit: 4, active_count: 5, over_wip_limit: true, guard_ok: true });
+  expect(r.wip.counted).toEqual(['ACE-001', 'STE-001', 'X1']);
   const def = (id: string, verdict: string | null): ExperimentDef => ({ id, flag: 'T', protocol: 'p.md', started_at: '2026-10-01T00:00:00.000Z', target_n: 10, stop_by: null,
     stop_note: '', stop_source: 's', population: 'oracle_goals', status: () => ({ n_per_arm: { a: 1 }, verdict }) });
   const five = ['A', 'B', 'C', 'D', 'E'].map((id) => def(id, null));
@@ -131,4 +186,20 @@ it("power left: n so far vs target, days to stop_by, projected n at stop_by from
   const real = experimentsReport(db, {}, NOW).experiments;
   for (const e of real) expect(e.power.target_per_arm, e.id).toBe(e.target_n);
   expect(real.find((e) => e.id === 'TG-001')?.power.accrual_per_day).toBeNull();
+});
+
+it('PL-001: registered with the protocol stop rule — a decide-start date before the first attempt, first attempt + 14 d after it', () => {
+  const pl = experimentsReport(db, {}, NOW).experiments.find((e) => e.id === 'PL-001')!;
+  expect(pl).toMatchObject({ flag: 'PL_001_MODE', target_n: 60, population: 'gym_tasks', started_at: '2026-10-26T00:00:00.000Z', stop_by: '2026-11-25T00:00:00.000Z', n_per_arm: null, verdict: null, overdue: false });
+  const [file, anchor] = pl.stop_source.split('#');
+  const doc = readFileSync(join(__dirname, '../../../..', file), 'utf8');
+  const heading = doc.split('\n').find((l) => l.startsWith('## ') && l.slice(3).toLowerCase().replace(/[^a-z0-9 -]/g, '').replace(/ /g, '-') === anchor);
+  expect(heading).toBe('## Amendment 2026-10-26: runner');
+  expect(doc).toContain('2026-11-25');
+  expect(doc).toContain('verdict rules unchanged');
+  // with a first attempt the stop date is the frozen rule: first attempt + 14 days
+  db.prepare("INSERT INTO pl_attempts (id, experiment_id, task_key, arm, seq, status, retries, first_claimed_at, updated_at) VALUES ('a', 'pl-001', 'k', 'A', 0, 'claimed', 0, '2026-11-01T10:00:00.000Z', 'x')").run();
+  const started = experimentsReport(db, {}, NOW).experiments.find((e) => e.id === 'PL-001')!;
+  expect(started).toMatchObject({ started_at: '2026-11-01T10:00:00.000Z', stop_by: '2026-11-15T10:00:00.000Z' });
+  expect(experimentDefs().find((d) => d.id === 'PL-001')!.stop_by).toBe('2026-11-25T00:00:00.000Z'); // the registered date is unchanged
 });

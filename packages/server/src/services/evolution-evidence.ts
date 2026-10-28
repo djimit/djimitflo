@@ -49,6 +49,8 @@ import { falsifierEvidence } from './commons-falsifier';
 import { settlementExecutionEvidence } from './settlement-execution';
 import { schedulerCapacityEvidence } from './resource-scheduler';
 import { procedureSelectionEvidence } from './procedure-selector';
+import { pl001Evidence } from './pl-001';
+import { memoryDeliveryEvidence } from './memory-delivery-receipts';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -57,6 +59,8 @@ import { procedureSelectionEvidence } from './procedure-selector';
  * Aggregates only: no prompts, diffs, tokens or hosts.
  */
 export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
+  { name: 'DJIMITSEC_SCAN_MODE', acting: true },
+  { name: 'DJIMITSEC_SCAN_TRIGGERS', acting: true },
   { name: 'RUNTIME_PROCESS_GROUP_KILL', acting: true },
   { name: 'LOOP_BANDIT_ENABLED', acting: true }, { name: 'LOOP_BANDIT_SPECIES', acting: true }, { name: 'LOOP_BANDIT_MAX_SHARE', acting: true },
   { name: 'LOOP_EVOLVE_ENABLED', acting: true }, { name: 'LOOP_EVOLVE_SPECIES', acting: true },
@@ -72,6 +76,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'DEPENDENCY_LANE_MODE', acting: true }, { name: 'DEPENDENCY_LANE_MAX_PER_DAY', acting: true },
   { name: 'DEAD_CODE_LANE_ENABLED', acting: true }, { name: 'DEAD_CODE_MAX_PER_DAY', acting: true },
   { name: 'FINDING_FIX_LANE', acting: true }, { name: 'FINDING_FIX_MAX_PER_DAY', acting: true },
+  { name: 'REQUEUE_AUTO_MODE', acting: true }, { name: 'REQUEUE_AUTO_MAX_PER_TICK', acting: true },
   { name: 'GYM_PROD_GATES', acting: false },
   { name: 'SUBSCRIPTION_GYM_SPECIES', acting: true }, { name: 'SUBSCRIPTION_GYM_MAX_PER_DAY', acting: true }, { name: 'SUBSCRIPTION_GYM_LIMIT_BACKOFF_MS', acting: true }, { name: 'OLLAMA_OUTAGE_FALLBACK_RUNTIME', acting: true },
   { name: 'OLLAMA_AUTO_FAILOVER', acting: true }, { name: 'OLLAMA_FAILOVER_PROBE_MODEL', acting: true }, { name: 'PANEL_FALLBACK_RUNTIME', acting: true }, { name: 'PANEL_FALLBACK_MODEL', acting: true },
@@ -87,12 +92,13 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'SHIPPED_CODE_SCAN_MODE', acting: false },
   { name: 'GYM_ORPHAN_SWEEP', acting: true }, { name: 'PROCEDURE_SELECTOR_MODE', acting: false }, { name: 'GYM_STORE_DIFFS', acting: false }, { name: 'WEAK_ASSERTION_CHECK_MODE', acting: true }, { name: 'FAIL_BEFORE_PASS_AFTER_MODE', acting: false },
   { name: 'MAKER_DIFF_CAPTURE', acting: false }, { name: 'MAKER_WARM_DEPS', acting: true },
-  { name: 'POLICY_VIOLATION_LOG', acting: false },
+  { name: 'POLICY_VIOLATION_LOG', acting: false }, { name: 'HOST_TOKEN_WATCH_MODE', acting: false },
   { name: 'CHECKER_FAMILY_RANDOMISE', acting: true }, { name: 'CHECKER_CROSS_MODEL', acting: true }, { name: 'CHECKER_FAMILY_TARGET_PER_ARM', acting: false },
   { name: 'CHECKER_FAMILY_VERSION', acting: true },
   { name: 'ACE_001_MODE', acting: true },
   { name: 'STE_001_MODE', acting: true },
   { name: 'TG_001_MODE', acting: true },
+  { name: 'PL_001_MODE', acting: true }, { name: 'PL_001_CAP_SHARE', acting: true },
   { name: 'MEMORY_TEMPLATE_DEDUP_MODE', acting: true },
   { name: 'SKILL_DISTILLATION_MODE', acting: false },
   { name: 'NE_GENERATOR_CHECK_MODE', acting: false },
@@ -111,6 +117,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'VALUE_ANOMALY_ALARM', acting: false },
   { name: 'FLEET_EVENT_SIGNATURES', acting: true },
   { name: 'EXTRA_REPOS_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_REPOS', acting: true },
+  { name: 'MEMORY_DELIVERY_RECEIPTS', acting: true },
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */
@@ -507,5 +514,10 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // RESOURCE_SCHEDULER_MODE (shadow): observed-capacity would-defer counts 24 h / 7 d + latest observed capacity (report only)
     scheduler_capacity: schedulerCapacityEvidence(db, env, now),
     // PL-001 (PROCEDURE_SELECTOR_MODE, shadow): applies / does_not_apply per ordinary gym claim 24 h / 7 d + top failed clauses (nothing delivered)
-    procedure_selection: procedureSelectionEvidence(db, env, now) };
+    procedure_selection: procedureSelectionEvidence(db, env, now),
+    // PL-001 (PL_001_MODE): with vs without the procedure lines on a frozen set of applicable repair tasks — pairs, per-arm
+    // gated verified outcomes, one-sided exact McNemar, harm / stop rule, verdict and the procedure's lifecycle state
+    pl_001: pl001Evidence(db, env, now),
+    // CODE-004 (MEMORY_DELIVERY_RECEIPTS): memory-sync receipts per target × status (delivered / failed / unknown); null = no table (off)
+    memory_delivery: memoryDeliveryEvidence(db, env) };
 }

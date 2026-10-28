@@ -5,6 +5,7 @@ import { runMigrations } from '../database/migrate';
 import { approvalMessage, buildDigest, inQuietHours, maybeSendDigest, pushApproval, setPushSender } from '../services/operator-push';
 import { TelegramBotService } from '../services/telegram-bot-service';
 import { SECRET_PATTERNS } from '../services/secret-patterns';
+import { listSchedulers, markRun, noteScheduler, resetSchedulers } from '../services/scheduler-registry';
 /** capability chain (stall-watch): a configured environment, so the digest's stall line sees only seeded stalls */
 const C = { DJIMITFLO_SKILLS_DIR: __dirname, DJIMIT_SKILL_TRAINING_EVAL_RUNNER: __filename };
 
@@ -97,7 +98,42 @@ it('UX-13: the digest reports a seeded day and says so honestly on an empty one;
   expect(alerts).toHaveLength(1);
 });
 
-it('digest: counts and a /decisions deep link per section (approvals, D5 labels, memory, requeue, open loop PRs)', () => {
+it('digest: schedulers off by their flag are named as such; only an armed scheduler that stopped ticking reads as a problem', () => {
+  resetSchedulers(NOON.getTime() - 3_600_000);
+  try {
+    noteScheduler('dream_state', 'DREAM_STATE_ENABLED', false, 6 * 3_600_000);
+    noteScheduler('evolution_gym', 'EVOLUTION_GYM_ENABLED', false, 3_600_000);
+    noteScheduler('opaque', 'OPAQUE_ENABLED', true, null); // armed, execution unproven: not 'off'
+    const calm = buildDigest(db, NOON.getTime(), C);
+    expect(calm.text).toContain('Schedulers off by flag: 2 (dream_state, evolution_gym)');
+    expect(calm.text).not.toContain('off unexpectedly');
+    expect(calm.text).not.toMatch(/^Schedulers off: /m);
+    expect(calm.data).toMatchObject({ schedulers_off_by_flag: [{ name: 'dream_state', flag: 'DREAM_STATE_ENABLED' }, { name: 'evolution_gym', flag: 'EVOLUTION_GYM_ENABLED' }],
+      schedulers_off_unexpected: [] });
+    // armed with a 1-min interval, no tick in the hour since boot: off unexpectedly, listed before the by-flag line
+    noteScheduler('stall_watch', 'STALL_WATCH_ENABLED', true, 60_000);
+    const lines = buildDigest(db, NOON.getTime(), C).text.split('\n');
+    const bad = lines.indexOf('Schedulers off unexpectedly: 1 (stall_watch armed_not_ticking)');
+    expect(bad).toBeGreaterThan(-1);
+    expect(lines[bad + 1]).toBe('Schedulers off by flag: 2 (dream_state, evolution_gym)');
+  } finally { resetSchedulers(); }
+});
+
+it('digest: an armed scheduler whose last tick failed an hour ago (status failing, health BREACHED) is off unexpectedly', () => {
+  resetSchedulers(NOON.getTime() - 2 * 3_600_000);
+  try {
+    noteScheduler('stall_watch', 'STALL_WATCH_ENABLED', true, 60_000);
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(NOON.getTime() - 3_600_000);
+    markRun('stall_watch', new Error('boom'));
+    vi.useRealTimers();
+    expect(listSchedulers(NOON.getTime())).toMatchObject({ health: 'BREACHED', schedulers: [{ name: 'stall_watch', status: 'failing' }] });
+    const d = buildDigest(db, NOON.getTime(), C);
+    expect(d.text.split('\n')).toContain('Schedulers off unexpectedly: 1 (stall_watch failing)');
+    expect(d.data).toMatchObject({ schedulers_off_unexpected: [{ name: 'stall_watch', status: 'failing' }], schedulers_off_by_flag: [] });
+  } finally { vi.useRealTimers(); resetSchedulers(); }
+});
+
+it('digest: human decisions only in "Waiting for you", a deep link per section; labelling on its own optional line', () => {
   db.pragma('foreign_keys = OFF');
   const ins = db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, created_at, updated_at) VALUES (?, 'test', 't', 'd', 'r', 'gap_analysis', ?, ?, ?)`);
   ins.run('l1', 'needs_more_evidence', '2026-10-06T08:00:00Z', '2026-10-06T09:00:00Z');
@@ -109,8 +145,15 @@ it('digest: counts and a /decisions deep link per section (approvals, D5 labels,
   db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
     VALUES ('o1', 'test-gap', 'closed', 'completed', '[]', '{}', '[]', '[]', '{"pr_url":"https://github.com/o/r/pull/1"}', '2026-10-05T00:00:00Z', '2026-10-05T00:00:00Z')`).run();
   const d = buildDigest(db, NOON.getTime(), { DJIMITFLO_PUBLIC_URL: 'https://djimitflo.example' });
-  for (const line of ['Waiting for you: 3', '- 0 approvals: https://djimitflo.example/decisions#approvals', '- 1 pre-screen labels (D5): https://djimitflo.example/decisions#prescreen',
-    '- 0 memory reviews: https://djimitflo.example/decisions#memory', '- 1 requeue candidates: https://djimitflo.example/decisions#requeue', '- 1 open loop PRs: https://djimitflo.example/decisions#draft-prs']) expect(d.text).toContain(line);
-  expect(d.data.needs_you).toMatchObject({ labels: { count: 1, link: 'https://djimitflo.example/decisions#prescreen' }, open_prs: { count: 1 } });
-  expect(buildDigest(db, NOON.getTime(), {}).text).toContain('- 1 requeue candidates: /decisions#requeue'); // no public URL: path only
+  // the D5 label is optional labelling, not a decision: 0 approvals + 0 memory + 1 requeue + 0 audit batch + 1 flagged loop PR
+  for (const line of ['Waiting for you: 2', '- 0 approvals: https://djimitflo.example/decisions#approvals',
+    '- 0 memory reviews: https://djimitflo.example/decisions#memory', '- 1 requeue candidates no system handles: https://djimitflo.example/decisions#requeue',
+    '- 0 PRs in the weekly audit batch: https://djimitflo.example/decisions#audit-batch', '- 1 flagged loop PRs: https://djimitflo.example/decisions#draft-prs']) expect(d.text).toContain(line);
+  expect(d.text).toMatch(/Optional labelling \(not decisions\): D5 1, CAR 0, E1 0, DI-001 (\d+|unknown) — https:\/\/djimitflo\.example\/decisions#prescreen/);
+  expect(d.text).not.toContain('pre-screen labels (D5):');
+  expect(d.data.needs_you).toMatchObject({ open_prs: { count: 1 }, audit_batch: { count: 0 } });
+  expect(d.data.needs_you).not.toHaveProperty('labels');
+  expect(d.data.optional_labelling).toMatchObject({ labels: { count: 1, link: 'https://djimitflo.example/decisions#prescreen' } });
+  expect(d.data.needs_you).not.toHaveProperty('dependency_human'); // lane off: not tracked, so not a calm 0 either
+  expect(buildDigest(db, NOON.getTime(), {}).text).toContain('- 1 requeue candidates no system handles: /decisions#requeue'); // no public URL: path only
 });

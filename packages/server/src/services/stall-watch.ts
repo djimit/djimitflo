@@ -7,6 +7,7 @@ import { capabilityChain, isAnomaly, type CapabilityVerdict, type ObserveOptions
 import { autoFailoverMode, panelFallbackRuntime, readOllamaLimit } from './inference-failover';
 import { panelInferenceStatus } from './ollama-outage-fallback';
 import { experimentsReport } from './experiment-registry';
+import { hostTokenStalls, hostTokenWatchMode } from './host-token-watch';
 
 /**
  * Plan M10: Djimitflo noticed none of its own silent failures on 2026-09-27 — the workstation gym benched for 9 h, NVIDIA
@@ -166,6 +167,9 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
     const last = one<{ t: string | null }>('SELECT MAX(computed_at) AS t FROM evolution_estimates')?.t ?? null;
     if (!last || last < ago(now, 36)) out.push({ subsystem: 'estimates', since: last, detail: 'EVOLUTION_ESTIMATORS_ENABLED is on but no evolution estimate was written for > 36 h' });
   });
+  // 6b. prod 27-10: an active host's token refused again and again (it expired at 00:24Z; 7 h of 401s went unnoticed), or a
+  // host token that expires within 7 days (host-token-watch.ts; HOST_TOKEN_WATCH_MODE=shadow)
+  run('host_tokens', hostTokenWatchMode(env) === 'shadow', () => { out.push(...hostTokenStalls(db, now)); });
   // 6. a runtime admission expires within 30 days: at expiry the engine stops dispatching to that runtime
   run('runtime_admission', true, () => {
     for (const a of expiringAdmissions(now)) out.push({ subsystem: `runtime_admission:${a.runtime_id}`, since: a.expires_at, detail: `admission ${decide(a).decision} expires ${a.expires_at}; reassess (execution/runtime-admission.ts) before then` });
