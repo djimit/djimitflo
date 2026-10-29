@@ -70,6 +70,17 @@ describe('dead-code candidates', () => {
     expect(skipped).toContainEqual({ id: 'route-groups', reason: 'usage telemetry covers 9 day(s) < 14' });
   });
 
+  it('reads a telemetry loss in its window as insufficient evidence, never as zero hits (OPS-003 follow-up)', () => {
+    db.prepare("INSERT INTO usage_loss (day, dropped) VALUES ('2026-09-01', 7)").run(); // before the window: no effect
+    expect(discoverDeadCode(repo, db, NOW).units.map((u) => u.id)).toContain('routes:cold');
+
+    db.prepare("INSERT INTO usage_loss (day, dropped) VALUES ('2026-10-10', 3)").run();
+    const { units, skipped } = discoverDeadCode(repo, db, NOW);
+    expect(units.map((u) => u.id)).toEqual([`${S}/services/orphan.ts`]);
+    expect(skipped).toContainEqual({ id: 'routes:cold', reason: 'insufficient_evidence: usage telemetry incomplete since 2026-09-28 (3 count(s) dropped)' });
+    expect(skipped).toContainEqual({ id: 'routes:hot', reason: expect.stringContaining('5 hit(s)') }); // a hit is still a hit
+  });
+
   it('skips a route group whose API path the server itself names (a self-call the import graph cannot see)', () => {
     write(`${S}/services/live.ts`, "import { loader } from './loader';\nexport const live = () => loader() && fetch('http://127.0.0.1/api/cold/a');\n");
     const { units, skipped } = discoverDeadCode(repo, db, NOW);
