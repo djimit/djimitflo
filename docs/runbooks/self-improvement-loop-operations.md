@@ -124,6 +124,11 @@ missing here. **Acting** = changes what the loop does; acting flags are switched
 | `LOOP_AUTO_MERGE_VALUE_GATE` | off (`shadow`, `on`) | yes in on (U2: a test-only loop PR must also carry a value signal on its maker lease — the `test:fail-before-pass-after` shadow verdict `pass` (needs `FAIL_BEFORE_PASS_AFTER_MODE=shadow`) or a graded mutant kill share ≥ 0.2 (`metadata.graded` kind `mutant_kill`, test-gap / exports; needs `GRADED_FITNESS_MODE=shadow`). `shadow`: the decision is unchanged and carries `would_block_value: value_signal_missing \| value_signal_low`; `on`: `ineligible: value_signal_missing` (neither signal measured — unknown is never a pass) or `value_signal_low` (FBPA fail / kill share below), both final. Mutation-gap PRs have no kill share (`mutation_score` does not count) and need FBPA pass. Evidence `auto_merge.value_gate`. Note: under `on` the R2 FBPA arms are no longer independent of merging) | shadow → on | operator |
 | `LOOP_AUTO_APPROVE_TEST_GAP` | off | yes | act | operator |
 | `ORACLE_LANES_AUTO_APPROVE` | off | yes | act | operator |
+| `FRONTIER_UNITS_REQUIRE_RELEVANCE` | off | yes (`true`: an expert source unit is created only after jev classifies the discovery as relevant; a jev `yes` overrides the keyword gate) | act | operator |
+| `APPROVAL_INHERIT_ENABLED` | off | yes (`true`: a re-run inherits the original approval within `APPROVAL_INHERIT_TTL_MS`, decided_by `inherit:<id>`) | act | operator |
+| `KB_CONTEXT_ENABLED` | off | yes (`true` + `NVIDIA_API_KEY`: KB corpus context is added to prompts) | act | operator |
+| `COMMONS_THREAD_GATE_ENABLED` | off | yes (`true`: the social autopilot skips a thread whose two latest contribution verdicts are `no`) | act | operator |
+| `LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED` | off | yes (`true`: the daemon dispatches automated reviewers after the maker) | act | operator |
 | `LOOP_MEMORY_RULES_ENABLED` | off | yes | act | operator |
 | `EVOLUTION_GYM_REMOTE_MAX_PER_DAY` | 24 | yes | act (budget) | operator |
 | `DJIMITFLO_PUBLIC_URL` | unset (Host header) | no | config | operator |
