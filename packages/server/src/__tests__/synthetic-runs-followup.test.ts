@@ -3,6 +3,7 @@ import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { SwarmStatusService } from '../services/swarm-status-service';
+import { ContinuousLearningLoop } from '../services/continuous-learning-loop';
 
 /**
  * Functional follow-ups to U3 (#1090): a completed synthetic PR-review run (marked, or historical: repo-maintenance-loop + a
@@ -33,5 +34,11 @@ describe('synthetic PR-review runs: functional follow-ups', () => {
     const result = new SwarmStatusService(db).tickScheduler();
     expect(result.created_work_items.map((w) => w.source_ref)).toEqual(['r-real:f-r-real']);
     expect((db.prepare("SELECT COUNT(*) AS n FROM work_items WHERE source = 'loop_finding' AND description LIKE 'Automated review%'").get() as { n: number }).n).toBe(0);
+  });
+
+  it('the continuous learning loop reflects on real completed runs only', async () => {
+    const loop = new ContinuousLearningLoop(db, { intervalMs: 999_999_999 });
+    try { await loop.runCycle(); } finally { loop.stop(); }
+    expect((db.prepare('SELECT loop_run_id FROM reflections ORDER BY loop_run_id').all() as Array<{ loop_run_id: string }>).map((r) => r.loop_run_id)).toEqual(['r-real']);
   });
 });
