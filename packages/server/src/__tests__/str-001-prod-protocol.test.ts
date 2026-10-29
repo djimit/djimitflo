@@ -21,7 +21,7 @@ import { checkerFamilyArm } from '../services/checker-family';
  * reproduce), its independence from the real assignment functions of the other experiments, its stability along a real
  * requeue / refinement lineage, and that nothing is activated before the start PR.
  */
-const STR_PROD_PREREG_SHA256 = '9871413067c0c53888b84b5a44c0029813a1970fe24433fbc86a98d98280f187';
+const STR_PROD_PREREG_SHA256 = '0b5d6ea568b5afedfb6581da5fd48a91b648354928972eee72a349877f736cc8';
 const STR_TEXT_SHA256 = '1a7cc5b85ae01a9f0d92ef434e9917406cd46984e4ed7e5126ed2491e2c8710f';
 const STR_RENDERED_SHA256 = '2747d68433ce41602af0b0ab7193f3680c9b227b4aa00bcbaac7c028d5b8a0aa';
 const STR_TEXT = 'Retry of a test-writing task: the vitest test file {test} already exists and covers {target}, but it is too weak: a subtly broken {target} can still pass it. Edit {test} so that it still passes against the real {target} and fails when {target} is subtly broken. Keep importing {target} with a relative import, do not mock it, skip nothing, and make it pass with: cd packages/server && npx vitest run {test_rel}. Change only {test}; do not edit {target} or any other file. Strengthen the assertions of this test.';
@@ -76,6 +76,12 @@ it('the STR-001-PROD protocol fingerprint matches its body', () => {
   expect(b).toContain('### Primary: fresh-mutant kill share at verification (merge-independent, all triggered roots)');
   expect(b).toContain('**Worst-case (Manski) bound.**');
   expect(b).toContain('**A single readout and no extension.**');
+  // r3: period weights by eligible triggered roots, nothing dropped; lifetime holdout budget with epoch-relative looks
+  expect(b).toContain('**Analysis by period. No period and no eligible triggered root is ever dropped.**');
+  expect(b).toContain('w_p = eligible triggered roots in p ÷ all eligible triggered roots');
+  expect(b).toContain('**At most 2 epochs.**');
+  expect(b).toContain('E_k + 28 d, E_k + 56 d, E_k + 84 d and E_k + 112 d');
+  expect(b).toContain('α_H / 24 = 0.025 / 24');
 });
 
 it('the protocol carries the frozen strengthen text verbatim, and its hash', () => {
