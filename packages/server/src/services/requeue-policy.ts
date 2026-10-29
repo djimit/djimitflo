@@ -20,8 +20,9 @@ import { requeueBudgetAllows } from './improvement-requeue';
  *   (MAKER_FAILURE_GATE): the maker was wrong, a retry mostly repeats the same work;
  * - no_change; a copy that itself failed (never requeue a requeue); a row a human dismissed (it is no candidate anymore);
  * - a not_actionable row (lane switched off, or a later proposal with the same title verified).
- * A row that is not eligible and older than 14 days gets an audited automatic dismiss (`auto:not_requeue_eligible:<class>`);
- * an escalated original (needs explicit human approval) or an unverifiable target is held for the human, never dismissed.
+ * An escalated row (needs explicit human approval) is held for the human first, whatever its class or age, never dismissed;
+ * an unverifiable target is held too. Any other row that is not eligible and older than 14 days gets an audited automatic
+ * dismiss (`auto:not_requeue_eligible:<class>`).
  *
  * Measurement behind the maker_failure gate (read-only, requeueOutcomesByClass): settled requeue copies, stratified by the
  * ORIGINAL's class. The production numbers at the time of writing are in the PR that introduced this policy (#auto-requeue);
@@ -118,14 +119,16 @@ export function requeueVerdict(c: PolicyCandidate, ctx: PolicyContext): PolicyVe
   const ineligible = (cls: string, why: string): PolicyVerdict => ageDays > AUTO_DISMISS_AFTER_DAYS
     ? { action: 'dismiss', cls, reason: `auto:not_requeue_eligible:${cls}` }
     : { action: 'wait', cls, reason: `${why}; auto-dismiss after ${AUTO_DISMISS_AFTER_DAYS} d` };
-  if (refs.some((r) => r.startsWith('requeue-of:'))) return ineligible('requeue_copy', 'a requeue that failed again is never requeued');
+  const isCopy = refs.some((r) => r.startsWith('requeue-of:'));
   const cls = policyClass(c.status, c.attribution);
+  const eligibleCls = c.status === 'infra_failed' && cls === 'unknown' ? 'infra_failed' : cls;
+  // an escalated row is the operator's decision whatever its class or age: hold it before any automatic dismiss (ROOT-001)
+  if (c.escalated) return { action: 'hold', cls: isCopy ? 'requeue_copy' : eligibleCls, reason: 'escalated: a requeue needs explicit human approval' };
+  if (isCopy) return ineligible('requeue_copy', 'a requeue that failed again is never requeued');
   if (cls === 'no_change') return ineligible('no_change', 'nothing changed; a retry repeats it');
   if (c.queue_class === 'not_actionable') return ineligible('not_actionable', 'lane off or a later proposal verified');
   const eligible = c.status === 'infra_failed' || cls === 'environment_failure' || cls === 'reviewer_failure' || (cls === 'maker_failure' && ctx.makerGate);
   if (!eligible) return ineligible(cls, cls === 'maker_failure' ? `maker_failure below the measured gate (≥ ${MAKER_FAILURE_GATE.min_rate * 100} %, n ≥ ${MAKER_FAILURE_GATE.min_n})` : `${cls}: not a retryable failure`);
-  const eligibleCls = c.status === 'infra_failed' && cls === 'unknown' ? 'infra_failed' : cls;
-  if (c.escalated) return { action: 'hold', cls: eligibleCls, reason: 'escalated: a requeue needs explicit human approval' };
   const file = targetFile(c.grounding_json);
   if (file) {
     const onMain = ctx.targetOnMain(file);

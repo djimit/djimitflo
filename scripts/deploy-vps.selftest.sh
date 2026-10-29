@@ -85,6 +85,16 @@ if verify_build_receipt "$receipt" "$SRC" "$NEW_FULL" "djimitflo:main-$NEW" 2>/d
 cp "$TMP/Dockerfile.orig" "$SRC/Dockerfile"
 echo '{"lockfileVersion":3,"x":1}' > "$SRC/package-lock.json"
 if verify_build_receipt "$receipt" "$SRC" "$NEW_FULL" "djimitflo:main-$NEW" 2>/dev/null; then fail "changed lockfile accepted"; fi
+echo '{"lockfileVersion":3}' > "$SRC/package-lock.json"
+# OPS-002: the receipt binds the commit's tree id; a wrong or missing tree fails when the caller states the expected tree
+TREE_OK="$(printf 'e%.0s' $(seq 1 40))"; TREE_BAD="$(printf 'f%.0s' $(seq 1 40))"
+RCPT2="$TMP/receipts-tree"
+treercpt="$(write_build_receipt "$RCPT2" "$SRC" "$NEW_FULL" "djimitflo:main-$NEW" "$BASE" 2026-10-27T00:00:00Z "$TREE_OK")" || fail "write_build_receipt with a tree failed"
+grep -qF "\"source_tree\":\"$TREE_OK\"" "$treercpt" || fail "receipt lacks the source tree id"
+verify_build_receipt "$treercpt" "$SRC" "$NEW_FULL" "djimitflo:main-$NEW" "$TREE_OK" 2>/dev/null || fail "matching tree id rejected"
+if verify_build_receipt "$treercpt" "$SRC" "$NEW_FULL" "djimitflo:main-$NEW" "$TREE_BAD" 2>/dev/null; then fail "receipt with a wrong tree id accepted"; fi
+if verify_build_receipt "$receipt" "$SRC" "$NEW_FULL" "djimitflo:main-$NEW" "$TREE_OK" 2>/dev/null; then fail "receipt without a tree id accepted when a tree is expected"; fi
+verify_build_receipt "$receipt" "$SRC" "$NEW_FULL" "djimitflo:main-$NEW" 2>/dev/null || fail "an old receipt (no tree id) must still verify without one"
 unset -f docker drop
 bash -n <<<"$remote" || fail "the remote script (with the receipt functions) does not parse"
 verify_line="$(echo "$remote" | grep -n 'verify_build_receipt "$RECEIPT"' | head -n 1 | cut -d: -f1)"
@@ -96,22 +106,26 @@ grep -q 'npm install --omit=dev' "$SCRIPT_DIR/../Dockerfile" && fail "runtime st
 grep -qF 'ENV DJIMITFLO_BUILD_LOCK_SHA256=$LOCKFILE_SHA256' "$SCRIPT_DIR/../Dockerfile" || fail "Dockerfile must bake the lockfile hash"
 grep -qF 'ENV DJIMITFLO_BUILD_BASE_IMAGE=$NODE_IMAGE' "$SCRIPT_DIR/../Dockerfile" || fail "Dockerfile must bake the base image reference"
 
-# --- the remote script end to end against a stub host (no real docker/git): healthy deploys, every failure rolls back
+# --- the remote script end to end against a stub host (stub docker, real git on a temp repo): healthy deploys, every
+# failure rolls back
+REPO_DIR="$TMP/repo"; mkdir -p "$REPO_DIR/packages/server/src"
+cp "$SRC/Dockerfile" "$REPO_DIR/"; echo '{"lockfileVersion":3}' > "$REPO_DIR/package-lock.json"
+echo 'export const v = "committed";' > "$REPO_DIR/packages/server/src/index.ts"
+G() { git -C "$REPO_DIR" -c user.name=t -c user.email=t@t -c commit.gpgsign=false "$@"; }
+G init -q && G add -A && G commit -q -m init
+NEW_FULL="$(G rev-parse HEAD)"; NEW="${NEW_FULL:0:7}"; NEW_TREE="$(G rev-parse "HEAD^{tree}")"
 STUB="$TMP/stub"; BIN="$STUB/bin"; mkdir -p "$BIN"
 printf '#!/usr/bin/env bash\nshift; exec "$@"\n' > "$BIN/timeout"
 printf '#!/usr/bin/env bash\nprintf "Avail\\n99999999\\n"\n' > "$BIN/df"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$BIN/chown"; cp "$BIN/chown" "$BIN/sleep"
-cat > "$BIN/git" <<EOF
-#!/usr/bin/env bash
-case "\$1" in clone) mkdir -p "\$4"; cp "$SRC/Dockerfile" "\$4/"; echo '{"lockfileVersion":3}' > "\$4/package-lock.json" ;; log) echo "$NEW stub" ;; esac
-EOF
 # docker: build records its build args; the env of the built image is what was passed; compose/inspect consult the live
 # compose.yml (cwd) and the knobs in \$STUB/{fail-compose-new,unhealthy-new,unhealthy-old,running-id}
 cat > "$BIN/docker" <<EOF
 #!/usr/bin/env bash
 new() { grep -q "image: djimitflo:main-$NEW" compose.yml; }
 case "\$1" in
-  build) shift; for a in "\$@"; do case "\$a" in *=*) echo "\$a" >> "$STUB/build-args" ;; esac; done; echo built ;;
+  build) shift; for a in "\$@"; do case "\$a" in *=*) echo "\$a" >> "$STUB/build-args" ;; esac; done
+    rm -rf "$STUB/ctx"; cp -R . "$STUB/ctx"; echo built ;;   # snapshot of the build context (cwd) as docker got it
   pull) exit 0 ;;
   images|rmi) exit 0 ;;
   image) case "\$2 \$4" in
@@ -128,11 +142,12 @@ EOF
 chmod +x "$BIN"/*
 host() {   # host [knob...] → runs the remote script on a fresh stub host; sets OUT, RC, HOST
   HOST="$(mktemp -d "$TMP/host.XXXX")"; rm -f "$STUB"/build-args "$STUB"/compose-calls "$STUB"/fail-compose-new "$STUB"/unhealthy-* "$STUB"/running-id
+  rm -rf "$STUB/ctx"; "${HOST_PREP:-true}" "$HOST"
   for k in "$@"; do case "$k" in running-id) echo "sha256:other" > "$STUB/running-id" ;; *) touch "$STUB/$k" ;; esac; done
   printf 'services:\n  djimitflo:\n    image: djimitflo:main-%s\n    environment:\n      DJIMITFLO_COMMIT_SHA: %s\n    volumes:\n      - %s/runtime-source-%s:/workspace/djimitflo\n' \
     "$PREV" "$PREV_FULL" "$HOST" "$PREV" > "$HOST/compose.yml"
   cp "$HOST/compose.yml" "$TMP/compose.before"
-  RC=0; OUT="$(remote_script | PATH="$BIN:$PATH" bash -s -- "$HOST" "$NEW_FULL" repo 2>&1)" || RC=$?
+  RC=0; OUT="$(remote_script | PATH="$BIN:$PATH" bash -s -- "$HOST" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
 }
 host
 [ "$RC" = 0 ] || fail "healthy deploy failed ($RC): $OUT"
@@ -154,4 +169,32 @@ host
 [ "$RC" != 0 ] && echo "$OUT" | grep -q "base image unresolved" || fail "unresolved base was not refused: $OUT"
 cmp -s "$HOST/compose.yml" "$TMP/compose.before" && [ ! -e "$STUB/compose-calls" ] || fail "unresolved base touched compose"
 printf '%s\n' "$FAKE_SAVE" > "$BIN/docker"
+
+# --- OPS-002: the build context is an export of exactly $SHA, never the reused runtime-source checkout
+SRC_FILE=packages/server/src/index.ts
+committed() { cmp -s "$STUB/ctx/$SRC_FILE" "$REPO_DIR/$SRC_FILE"; }
+# (3) clean exact-SHA checkout: accepted, the receipt carries the commit's tree id, no warning, the context is removed
+host
+[ "$RC" = 0 ] || fail "clean deploy failed ($RC): $OUT"
+[ -d "$STUB/ctx" ] && committed || fail "clean deploy did not build the committed source"
+grep -qF "\"source_tree\":\"$NEW_TREE\"" "$HOST/build-receipts/"*.json || fail "receipt lacks the commit tree id $NEW_TREE"
+echo "$OUT" | grep -q "not used for the build" && fail "clean checkout reported as dirty: $OUT"
+[ -z "$(ls -d "$HOST"/build-context-* 2>/dev/null)" ] || fail "build context left behind"
+[ ! -e "$STUB/ctx/.git" ] || fail "build context contains .git"
+# a reused runtime-source-$SHORT (retry after a build timeout, or written to by a container) with local changes
+reused() { git clone -q "$REPO_DIR" "$1/runtime-source-$NEW"; }
+tracked_mod() { reused "$1"; echo 'export const v = "TAMPERED";' > "$1/runtime-source-$NEW/$SRC_FILE"; }
+untracked() { reused "$1"; echo 'export const evil = 1;' > "$1/runtime-source-$NEW/packages/server/src/evil.ts"; }
+# (1) a modified tracked file in the reused checkout is not built; the checkout is warned about and left as it is
+HOST_PREP=tracked_mod host
+[ "$RC" = 0 ] || fail "tracked-mod deploy failed ($RC): $OUT"
+committed || fail "a modified tracked file in the reused checkout reached the build context"
+grep -q TAMPERED "$HOST/runtime-source-$NEW/$SRC_FILE" || fail "the reused checkout was reset (user data must stay)"
+echo "$OUT" | grep -q "runtime-source-$NEW .*not used for the build" || fail "dirty checkout not warned about: $OUT"
+# (2) an untracked compilable file in the reused checkout is not in the build context
+HOST_PREP=untracked host
+[ "$RC" = 0 ] || fail "untracked deploy failed ($RC): $OUT"
+[ ! -e "$STUB/ctx/packages/server/src/evil.ts" ] || fail "an untracked file in the reused checkout reached the build context"
+[ -e "$HOST/runtime-source-$NEW/packages/server/src/evil.ts" ] || fail "the untracked file was deleted (user data must stay)"
+echo "$OUT" | grep -q "not used for the build" || fail "untracked file not warned about: $OUT"
 echo "deploy-vps selftest OK"
