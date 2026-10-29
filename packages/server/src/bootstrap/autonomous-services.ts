@@ -36,7 +36,8 @@ import { DreamStateService, dreamStateEnabled } from '../services/dream-state-se
 import { NeedsGroundingTriageService, needsGroundingTriageEnabled } from '../services/needs-grounding-triage-service';
 import { DiskGuardService, diskGuardEnabled } from '../services/disk-guard-service';
 import { QueueHygieneService, queueHygieneEnabled } from '../services/queue-hygiene-service';
-import { startSchedulerWatchdog, startStallWatch } from '../services/stall-watch';
+import { startSchedulerWatchdog, startStallWatch, type Stall } from '../services/stall-watch';
+import { pushStall } from '../services/operator-push';
 import { startInterestFeedback } from '../services/interest-feedback';
 import { startEvolutionFeedback } from '../services/evolution-feedback';
 import { startEvidenceRoom } from '../services/commons-evidence-room';
@@ -360,8 +361,10 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
 
   // Stall watch (M10): hourly log line per silent stall. STALL_WATCH_ENABLED=true (default off).
   try {
-    let stopStallWatch = startStallWatch(db);
-    registerRestart('stall_watch', () => { stopStallWatch?.(); stopStallWatch = startStallWatch(db); });
+    // O1a: a new stall is persisted (judgments 'stall') and pushed once through the operator push path (TELEGRAM_PUSH_ENABLED)
+    const notifyStall = (s: Stall) => pushStall(db, s);
+    let stopStallWatch = startStallWatch(db, undefined, notifyStall);
+    registerRestart('stall_watch', () => { stopStallWatch?.(); stopStallWatch = startStallWatch(db, undefined, notifyStall); });
     noteScheduler('stall_watch', 'STALL_WATCH_ENABLED', !!stopStallWatch, 3_600_000);
     if (stopStallWatch) { lifecycleManager.register({ serviceName: 'StallWatch', stop: () => stopStallWatch?.() }); console.log('🚨 Stall watch on (hourly).'); }
   } catch (error) {

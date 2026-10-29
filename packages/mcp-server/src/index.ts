@@ -14,7 +14,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { createDatabase } from './db.js';
+import { createDatabase, labelDbTools } from './db.js';
 import { registerLoopTools } from './tools/loops.js';
 import { registerGoalTools } from './tools/goals.js';
 import { registerAgentTools } from './tools/agents.js';
@@ -80,19 +80,21 @@ async function main() {
 }
 
 export function registerTools(server: McpServer, db: DbHandle): void {
-  registerLoopTools(server, db);
-  registerGoalTools(server, db);
-  registerAgentTools(server, db);
-  registerMissionControlTools(server, db);
-  registerOrchestrationTools(server, db);
+  // O2c: every DB-backed tool answers with data_as_of / is_production (OKF and notebooks read no DB)
+  const dbServer = labelDbTools(server, db);
+  registerLoopTools(dbServer, db);
+  registerGoalTools(dbServer, db);
+  registerAgentTools(dbServer, db);
+  registerMissionControlTools(dbServer, db);
+  registerOrchestrationTools(dbServer, db);
   registerOkfTools(server);
-  registerOpenMythosTools(server, db);
-  registerGovernanceTools(server, db);
+  registerOpenMythosTools(dbServer, db);
+  registerGovernanceTools(dbServer, db);
   registerNotebookTools(server);
-  registerExplainerTools(server, db.db);
-  registerAuthorityTools(server, db);
-  registerPlatformTools(server, db);
-  registerDjimitSecTools(server, db);
+  registerExplainerTools(dbServer, db.db);
+  registerAuthorityTools(dbServer, db);
+  registerPlatformTools(dbServer, db);
+  registerDjimitSecTools(dbServer, db);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
