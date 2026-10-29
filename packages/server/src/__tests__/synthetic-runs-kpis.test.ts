@@ -119,6 +119,8 @@ const CASES: Array<[string, (db: Database.Database) => unknown]> = [
     .map((p) => [p.runtime, p.completed_24h, p.failed_24h, p.failure_rate_24h, p.tokens_per_successful_worker])],
   ['self-healing loop failure rate', (db) => new SelfHealingService(db).checkHealth().find((c) => c.name === 'loop_failure_rate')!.message],
   ['runtime-health 30 d lease outcomes', (db) => runtimeHealth(db, now).map((r) => [r.runtime, r.leases_30d])],
+  // a synthetic review checker's completion is no evidence that the runtime succeeds at loop work
+  ['runtime-health last_success_at', (db) => runtimeHealth(db, now).map((r) => [r.runtime, r.last_success_at])],
   ['meta-evolution maker completion rate', (db) => new MetaEvolutionService(db, new SwarmIntelligenceService(db)).evaluate().maker_lease_completion_rate],
   ['swarm-learning-curve runs and cohorts', (db) => { const v = learningCurveView(db, now); return [v.runs.map((r) => r.run_id), v.cohorts.map((c) => [c.loop_name, c.windows.recent.n])]; }],
   ['knowledge-fitness runs in window', (db) => knowledgeFitness(db, now).runs],

@@ -4,6 +4,7 @@ import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { SwarmStatusService } from '../services/swarm-status-service';
 import { ContinuousLearningLoop } from '../services/continuous-learning-loop';
+import { runtimeHealth } from '../services/runtime-health';
 
 /**
  * Functional follow-ups to U3 (#1090): a completed synthetic PR-review run (marked, or historical: repo-maintenance-loop + a
@@ -50,5 +51,13 @@ describe('synthetic PR-review runs: functional follow-ups', () => {
     const pools = (new SwarmStatusService(db) as any).fleetPools({ load_average: [0], total_memory_bytes: 1, free_memory_bytes: 1, cpu_threads: 8 }) as any[];
     const codex = pools.find((p) => p.runtime === 'codex');
     expect(codex).toMatchObject({ completed_24h: 1, tokens_per_successful_worker: 300, tokens_used_24h: 5300 });
+  });
+
+  it('runtime-health last_success_at: a synthetic review checker\'s later completion does not advertise success', () => {
+    const checker = (id: string, run: string, at: number) => db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, created_at, updated_at)
+      VALUES (?, ?, 'checker', 'codex', 'completed', ?, ?)`).run(id, run, iso(at), iso(at));
+    checker('c-real', 'r-real', now - 3 * 3_600_000);
+    checker('c-syn', 'r-syn', now - 60_000);
+    expect(runtimeHealth(db, now).find((r) => r.runtime === 'codex')!.last_success_at).toBe(iso(now - 3 * 3_600_000));
   });
 });
