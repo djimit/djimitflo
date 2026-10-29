@@ -1,5 +1,5 @@
 import os from 'os';
-import { syntheticRunSql } from './synthetic-runs';
+import { realRunSql, syntheticRunSql } from './synthetic-runs';
 import { randomUUID } from 'crypto';
 import { execFileSync } from 'child_process';
 import type { Database } from 'better-sqlite3';
@@ -1220,6 +1220,8 @@ export class SwarmStatusService {
     const rows = this.db.prepare(`
       SELECT * FROM loop_runs
       WHERE status = 'completed'
+        -- a synthetic PR-review run's finding ("Automated review for PR #N") is bookkeeping, not work
+        AND ${realRunSql()}
       ORDER BY completed_at DESC, created_at DESC
       LIMIT 100
     `).all() as any[];
