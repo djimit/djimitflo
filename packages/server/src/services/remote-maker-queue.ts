@@ -68,12 +68,21 @@ export class RemoteMakerQueue {
     return this.db.prepare('SELECT id, host, species, base_commit, prompt, status, patch, reason, created_at, claimed_at, loop_run_id, lease_id FROM remote_maker_jobs WHERE id = ?').get(id) as RemoteMakerJob | undefined;
   }
 
+  /**
+   * Prod 2026-10-22..29 (22/22 remote makers failed): a maker that needed an approval (every remote maker) is resumed by the
+   * engine while its lease stays 'prepared' until the daemon reads the result back, so 'running' alone refused every result.
+   * A prepared lease counts as active only while its own engine task (execution_task_id) is running.
+   */
   private leaseActive(loopRunId: string | null, leaseId: string): boolean {
     try {
-      const lease = this.db.prepare(`SELECT loop_run_id, status, json_extract(metadata, '$.superseded_by_maker_lease_id') AS superseded FROM worker_leases WHERE id = ?`)
-        .get(leaseId) as { loop_run_id: string; status: string; superseded: string | null } | undefined;
-      return Boolean(lease && lease.loop_run_id === loopRunId && lease.status === 'running' && !lease.superseded);
-    } catch { return false; } // no worker_leases table: the lease cannot be shown active
+      const lease = this.db.prepare(`SELECT loop_run_id, status, json_extract(metadata, '$.superseded_by_maker_lease_id') AS superseded,
+        json_extract(metadata, '$.execution_task_id') AS task_id FROM worker_leases WHERE id = ?`)
+        .get(leaseId) as { loop_run_id: string; status: string; superseded: string | null; task_id: string | null } | undefined;
+      if (!lease || lease.loop_run_id !== loopRunId || lease.superseded) return false;
+      if (lease.status === 'running') return true;
+      if (lease.status !== 'prepared' || !lease.task_id) return false;
+      return (this.db.prepare('SELECT status FROM tasks WHERE id = ?').get(lease.task_id) as { status: string } | undefined)?.status === 'running';
+    } catch { return false; } // no worker_leases/tasks table: the lease cannot be shown active
   }
 
   /** Every cancel records why; `statuses` guards against a claim/result landing between the read and the cancel. */
