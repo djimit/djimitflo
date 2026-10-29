@@ -1,4 +1,5 @@
 import os from 'os';
+import { syntheticRunSql } from './synthetic-runs';
 import { randomUUID } from 'crypto';
 import { execFileSync } from 'child_process';
 import type { Database } from 'better-sqlite3';
@@ -779,7 +780,7 @@ export class SwarmStatusService {
   private fleetPools(resourceSnapshot: SwarmRealityStatus['resource_snapshot']): SwarmRealityStatus['fleet_pools'] {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const rows = this.db.prepare(`
-      SELECT wl.*, lr.metadata AS run_metadata
+      SELECT wl.*, lr.metadata AS run_metadata, ${syntheticRunSql('lr')} AS synthetic_run
       FROM worker_leases wl
       LEFT JOIN loop_runs lr ON lr.id = wl.loop_run_id
       WHERE wl.status IN ('prepared', 'running', 'completed', 'failed')
@@ -793,8 +794,9 @@ export class SwarmStatusService {
       const leases = rows.filter((row) => row.runtime === runtime);
       const prepared = leases.filter((row) => row.status === 'prepared');
       const running = leases.filter((row) => row.status === 'running');
-      const completed24h = leases.filter((row) => row.status === 'completed' && String(row.updated_at) >= since);
-      const failed24h = leases.filter((row) => row.status === 'failed' && String(row.updated_at) >= since);
+      // outcome rates count real loop work only (synthetic PR-review leases are bookkeeping); queue and capacity count every lease
+      const completed24h = leases.filter((row) => row.status === 'completed' && String(row.updated_at) >= since && !row.synthetic_run);
+      const failed24h = leases.filter((row) => row.status === 'failed' && String(row.updated_at) >= since && !row.synthetic_run);
       const runtimeDurations = completed24h
         .map((row) => this.workerRuntimeMs(row))
         .filter((value): value is number => value !== null);
