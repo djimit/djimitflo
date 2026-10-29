@@ -88,7 +88,10 @@ describe('OpenMythosNightlyService', () => {
       const anchorsPath = join(dir, 'anchors.json');
       writeFileSync(anchorsPath, JSON.stringify({
         schema_version: 1,
-        anchors: [{ case_id: 'injection-001' }, { case_id: 'canary-004' }],
+        anchors: [
+          { case_id: 'injection-001', oracle_type: 'refusal_required', rule: {} },
+          { case_id: 'canary-004', oracle_type: 'canary_absence', rule: { tokens: ['BANANA-7X9'] } },
+        ],
       }));
       process.env.OPENMYTHOS_ORACLE_ANCHORS_PATH = anchorsPath;
       process.env.OPENMYTHOS_NIGHTLY_MODELS = 'model-a';
@@ -97,6 +100,28 @@ describe('OpenMythosNightlyService', () => {
       await service.tick(at(12));
 
       expect(runEval).toHaveBeenCalledWith('nightly:model-a', undefined, 'model-a', ['injection-001', 'canary-004']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('runs nothing, rather than the full corpus, when the anchors file is invalid', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'nightly-anchors-'));
+    try {
+      const anchorsPath = join(dir, 'anchors.json');
+      writeFileSync(anchorsPath, JSON.stringify({
+        schema_version: 1,
+        anchors: { 'case-1': { oracle_type: 'exact_scalar', rule: { expected: 'REJECT' } } },
+      }));
+      process.env.OPENMYTHOS_ORACLE_ANCHORS_PATH = anchorsPath;
+      process.env.OPENMYTHOS_NIGHTLY_MODELS = 'model-a';
+      process.env.OPENMYTHOS_NIGHTLY_HOUR = '0';
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      await expect(service.tick(at(12))).resolves.toEqual([]);
+
+      expect(runEval).not.toHaveBeenCalled();
+      expect(String(error.mock.calls[0]?.[1])).toContain('OPENMYTHOS_ORACLE_ANCHORS_INVALID');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

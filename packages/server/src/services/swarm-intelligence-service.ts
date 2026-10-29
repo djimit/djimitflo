@@ -15,6 +15,7 @@ import { SkillTrainingPromotionGate } from './skill-training-promotion-gate';
 import { AgentInteractionLedgerService, type AgentInteractionRecord } from './agent-interaction-ledger-service';
 import { OutcomeLearningService, type OutcomeLearningAssessment } from './outcome-learning-service';
 import { ReviewerIndependenceService, type ReviewerIndependenceAssessment } from './reviewer-independence-service';
+import { DELIVERED_ATTRIBUTION_SQL } from './skill-evolution-engine';
 
 type CapabilityKind = 'skill' | 'specialist_agent' | 'runtime_adapter' | 'deterministic_harness' | 'memory_source' | 'dashboard_action' | 'openai_agents_sdk' | 'openai_skill' | 'openai_mcp_connector';
 type CapabilityStatus = 'draft' | 'candidate' | 'validated' | 'deprecated' | 'disabled';
@@ -437,7 +438,7 @@ export class SwarmIntelligenceService {
         const outcomeRows = skillId && candidateHash
           ? this.db.prepare(`
               SELECT skill_content_hash AS hash, COUNT(*) AS count
-              FROM skill_outcomes WHERE skill_id = ? AND skill_content_hash IS NOT NULL
+              FROM skill_outcomes WHERE skill_id = ? AND skill_content_hash IS NOT NULL AND ${DELIVERED_ATTRIBUTION_SQL}
               GROUP BY skill_content_hash ORDER BY MAX(created_at) DESC
             `).all(skillId) as Array<{ hash: string; count: number }>
           : [];
@@ -520,7 +521,7 @@ export class SwarmIntelligenceService {
     type OutcomeRow = { id: string; success: number; tokens_used: number | null; duration_ms: number };
     const outcomes = (hash: string) => this.db.prepare(`
       SELECT id, success, tokens_used, duration_ms FROM skill_outcomes
-      WHERE skill_id = ? AND skill_content_hash = ?
+      WHERE skill_id = ? AND skill_content_hash = ? AND ${DELIVERED_ATTRIBUTION_SQL}
       ORDER BY created_at ASC, id ASC
     `).all(skillId, hash) as OutcomeRow[];
     const candidate = outcomes(candidateHash);

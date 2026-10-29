@@ -6,8 +6,8 @@ import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { ensureJudgmentProvenance, runMigrations } from '../database/migrate';
 import { insertJudgmentRow, runJudgment, runJudgments, type JudgmentDef } from '../services/judgment-service';
-import { buildProvenance, canonicalize, hasMandatoryProvenance, inputDigest, promptVersion, readProvenance, type JudgmentProvenance } from '../services/judgment-provenance';
-import type { TypeSafeClient } from '../services/typesafe-client';
+import { buildProvenance, canonicalize, hasMandatoryProvenance, inputDigest, promptVersion, provenanceJson, readProvenance, type JudgmentProvenance } from '../services/judgment-provenance';
+import type { TypeSafeClient, TsAnswer } from '../services/typesafe-client';
 
 // DI-001 B: versioned decision provenance on every new judgment row
 let db: Database.Database; const env = { ...process.env };
@@ -218,4 +218,121 @@ it('micro-benchmark: write latency and storage overhead of provenance (reported,
   process.stderr.write(`[provenance-bench] ${JSON.stringify({ N, base, withP, overhead_us_per_write: Math.round((withP.us_per_write - base.us_per_write) * 10) / 10, trigger_floor_bytes: floorBytes })}\n`);
   expect(withP.provenance_bytes_per_row).toBeLessThan(1_000);
   expect(withP.us_per_write - base.us_per_write).toBeLessThan(2_000); // far below a jev call (~400 ms); loose to stay stable on CI
+});
+
+const bp = (model: string | null, decision?: string, answers?: Record<string, TsAnswer>, defOverride?: JudgmentDef) =>
+  buildProvenance({ writer: 'w', def: defOverride ?? def(), mode: 'shadow', state: {}, subject: { type: 's', id: 'x' }, stateHash: 'h', at: 'now', model, decision, answers });
+
+it('canonicalize edge rules: toJSON, boolean, bigint, function, symbol, cycle and shared object (canon/v1)', () => {
+  expect(canonicalize({ d: { toJSON: () => 42 } })).toBe('{"d":42}');
+  expect(canonicalize(true)).toBe('true');
+  expect(canonicalize(false)).toBe('false');
+  expect(() => canonicalize(1n)).toThrow('CANON_BIGINT');
+  expect(canonicalize({ f: () => 1, s: Symbol('x'), k: 'keep' })).toBe('{"k":"keep"}');
+  expect(canonicalize(() => 1)).toBe('null');
+  expect(canonicalize(Symbol('x'))).toBe('null');
+  const cyclic: Record<string, unknown> = {}; cyclic.self = cyclic;
+  expect(() => canonicalize(cyclic)).toThrow('CANON_CYCLE');
+  const shared = { x: 1 };
+  expect(canonicalize({ a: shared, b: shared })).toBe('{"a":{"x":1},"b":{"x":1}}');
+});
+
+it('promptVersion is a 16-char sha256 slice, stable and distinct', () => {
+  expect(promptVersion(def())).toHaveLength(16);
+  expect(promptVersion(def())).toMatch(/^[0-9a-f]{16}$/);
+  expect(promptVersion(def())).toBe(promptVersion(def()));
+});
+
+it('versionOf (via model_version) matches major.minor[.patch] with multi-digit parts and optional patch', () => {
+  expect(bp('jev-10.5.0').model_version).toBe('10.5.0');
+  expect(bp('model-2.0').model_version).toBe('2.0');
+  expect(bp('jev-1.2.10').model_version).toBe('1.2.10');
+  expect(bp('nomodel').model_version).toBeNull();
+});
+
+it('buildProvenance (direct, no DB round-trip): missing reasons, uncertainty and min_confidence are exact', () => {
+  const full = bp('jev-1.13.0', 'yes', { x: { type: 'noul', noul: 0.9, confidence: 0.8 } });
+  expect(full.status).toBe('recorded');
+  expect(full.missing).toBeUndefined();
+  expect(full.uncertainty).toEqual({ abstained: false, reason: null, min_confidence: 0.8 });
+
+  const emptyPolicy = bp('jev-1.13.0', 'yes', undefined, { ...def(), policyVersion: '' });
+  expect(emptyPolicy.policy_version).toBeNull();
+  expect(emptyPolicy.missing?.policy_version).toBe('policy_version_undeclared_on_def');
+
+  const numPolicy = bp('jev-1.13.0', 'yes', undefined, { ...def(), policyVersion: 5 as unknown as string });
+  expect(numPolicy.policy_version).toBeNull();
+  expect(numPolicy.missing?.policy_version).toBe('policy_version_undeclared_on_def');
+
+  const noModel = bp(null, 'yes');
+  expect(noModel.model_id).toBeNull();
+  expect(noModel.missing?.model_id).toBe('model_not_reported');
+  const noModelError = bp(null, 'error');
+  expect(noModelError.missing?.model_id).toBe('no_model_response');
+
+  expect(bp('local').missing?.model_version).toBe('model_name_has_no_version');
+
+  const noDecision = bp('jev-1.13.0');
+  expect(noDecision.uncertainty).toBeNull();
+
+  const uncertainNoReason = bp('jev-1.13.0', 'uncertain');
+  expect(uncertainNoReason.uncertainty).toEqual({ abstained: true, reason: 'banded_uncertain', min_confidence: null });
+  const uncertainInsuf = buildProvenance({ writer: 'w', def: def(), mode: 'shadow', state: {}, subject: { type: 's', id: 'x' }, stateHash: 'h', at: 'now', model: 'jev-1.13.0', decision: 'uncertain', reason: 'insufficient_evidence: none' });
+  expect(uncertainInsuf.uncertainty?.reason).toBe('insufficient_evidence');
+
+  const multi = bp('jev-1.13.0', 'yes', { x: { type: 'noul', noul: 0.9, confidence: 0.5 }, y: { type: 'noul', noul: 0.9, confidence: 0.9 } });
+  expect(multi.uncertainty?.min_confidence).toBe(0.5);
+
+  const noConf = bp('jev-1.13.0', 'yes', { x: { type: 'noul', noul: 0.9 } });
+  expect(noConf.uncertainty?.min_confidence).toBeNull();
+
+  const nullAnswer = bp('jev-1.13.0', 'yes', { x: null as unknown as Record<string, never> });
+  expect(nullAnswer.status).toBe('recorded');
+  expect(nullAnswer.uncertainty?.min_confidence).toBeNull();
+});
+
+it('buildProvenance: a long error message is sliced to 200 chars and still fail-open', () => {
+  const broken = def();
+  Object.defineProperty(broken, 'policyVersion', { get() { throw new Error('X'.repeat(300)); } });
+  const p = buildProvenance({ writer: 'w', def: broken, mode: 'shadow', state: {}, subject: { type: 's', id: 'x' }, stateHash: 'h', at: 'now', model: 'jev-1.13.0', decision: 'yes' });
+  expect(p.status).toBe('error');
+  expect(p.missing).toEqual({ all: 'provenance_compute_failed' });
+  expect(p.error).toHaveLength(200);
+  expect(p.error).toBe('X'.repeat(200));
+});
+
+it('provenanceJson + readProvenance: serialise, round-trip, unrecorded and error markers', () => {
+  const p = bp('jev-1.13.0', 'yes', { x: { type: 'noul', noul: 0.9, confidence: 0.8 } });
+  expect(provenanceJson(p)).toBe(JSON.stringify(p));
+  expect(readProvenance({ provenance_json: JSON.stringify(p) })).toEqual(p);
+
+  expect(readProvenance(null)).toEqual({ status: 'unrecorded' });
+  expect(readProvenance(undefined)).toEqual({ status: 'unrecorded' });
+  expect(readProvenance({ provenance_json: undefined })).toEqual({ status: 'unrecorded' });
+  expect(readProvenance({ provenance_json: null })).toEqual({ status: 'unrecorded' });
+
+  expect(readProvenance({ provenance_json: '"hello"' })).toEqual({ status: 'unrecorded' });
+  expect(readProvenance({ provenance_json: '42' })).toEqual({ status: 'unrecorded' });
+  expect(readProvenance({ provenance_json: '{}' })).toEqual({ status: 'unrecorded' });
+  expect(readProvenance({ provenance_json: '{"status":5}' })).toEqual({ status: 'unrecorded' });
+
+  const err = readProvenance({ provenance_json: '{bad' }) as JudgmentProvenance;
+  expect(err.status).toBe('error');
+  expect(err.error).toBe('unparseable');
+});
+
+it('hasMandatoryProvenance: null, non-recorded, missing/empty/null mandatory and bad digest all return false', () => {
+  expect(hasMandatoryProvenance(null)).toBe(false);
+  expect(hasMandatoryProvenance(undefined)).toBe(false);
+  expect(hasMandatoryProvenance({ provenance: null })).toBe(false);
+
+  const base = { v: 1 as const, writer: 'w', policy_id: 'p', policy_version: '1', prompt_id: 'p/questions', prompt_version: 'pv',
+    input_digest: 'canon/v1:sha256:abc', evaluator_version: 'decideObserved/v1', execution_mode: 'enforce', decision_timestamp: 'now',
+    evidence_reference: 's:x#state=h', uncertainty: null };
+
+  expect(hasMandatoryProvenance({ provenance: { ...base, status: 'partial' } })).toBe(false);
+  expect(hasMandatoryProvenance({ provenance: { ...base, status: 'recorded', policy_id: '' } })).toBe(false);
+  expect(hasMandatoryProvenance({ provenance: { ...base, status: 'recorded', policy_id: null } })).toBe(false);
+  expect(hasMandatoryProvenance({ provenance: { ...base, status: 'recorded', input_digest: 'wrong:sha256:abc' } })).toBe(false);
+  expect(hasMandatoryProvenance({ provenance: { ...base, status: 'recorded' } })).toBe(true);
 });
