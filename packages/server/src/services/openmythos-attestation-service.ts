@@ -35,6 +35,28 @@ export interface OpenMythosAttestationRecord {
   created_at: string;
 }
 
+/** The producer's default minimum (OpenMythos scripts/r21_calibrate_djimitflo.py --minimum-agreement). */
+const DEFAULT_MINIMUM_AGREEMENT = 0.8;
+const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+
+/**
+ * M1 (B §5): the producer's `calibrated` only means "complete and enough cases"; it stays true at any agreement. A calibration
+ * artifact may not claim calibrated when its own agreement is below its own minimum (`minimum_agreement_rate`, default 0.8;
+ * `minimum_category_agreement_rate`), or when the lowest category rate exceeds the overall rate (an overall rate is a weighted
+ * mean of the category rates, so that is impossible). Returns why, or null when the claim holds. Missing rates: no claim to check.
+ */
+export function calibrationRefusal(report: Record<string, unknown>): string | null {
+  if (report.calibrated !== true) return 'not calibrated';
+  const agreement = num(report.agreement_rate);
+  const lowest = num(report.lowest_category_agreement_rate);
+  const minimum = num(report.minimum_agreement_rate) ?? DEFAULT_MINIMUM_AGREEMENT;
+  const categoryMinimum = num(report.minimum_category_agreement_rate) ?? 0;
+  if (agreement !== null && agreement < minimum) return `agreement ${agreement} < minimum ${minimum}`;
+  if (lowest !== null && lowest < categoryMinimum) return `lowest category agreement ${lowest} < minimum ${categoryMinimum}`;
+  if (agreement !== null && lowest !== null && lowest > agreement + 1e-9) return `lowest category agreement ${lowest} > overall ${agreement} (inconsistent)`;
+  return null;
+}
+
 export class OpenMythosAttestationService {
   constructor(private readonly db: Database) {}
 
@@ -57,7 +79,9 @@ export class OpenMythosAttestationService {
     }
     const metadata = this.object(run.metadata);
     if (metadata.corpus_sha256 !== artifact.corpus_sha256) throw new Error('OPENMYTHOS_ATTESTATION_CORPUS_MISMATCH');
-    const certificationEligible = artifact.certification_eligible && artifact.calibrated && artifact.corpus_certification_ready;
+    const refusal = artifact.calibrated ? calibrationRefusal(artifact) : null;
+    const calibrated = artifact.calibrated && refusal === null;
+    const certificationEligible = artifact.certification_eligible && calibrated && artifact.corpus_certification_ready;
     const transaction = this.db.transaction(() => {
       this.db.prepare(`
         INSERT OR IGNORE INTO openmythos_attestations (
@@ -72,6 +96,8 @@ export class OpenMythosAttestationService {
       this.db.prepare('UPDATE openmythos_eval_runs SET metadata = ? WHERE id = ?').run(JSON.stringify({
         ...metadata,
         corpus_certification_ready: artifact.corpus_certification_ready,
+        calibrated,
+        calibration_refusal: refusal,
         certification_eligible: certificationEligible,
         openmythos_attestation: {
           id: artifact.attestation_hash,
@@ -91,6 +117,13 @@ export class OpenMythosAttestationService {
     const row = this.db.prepare('SELECT * FROM openmythos_attestations WHERE id = ?').get(id);
     if (!row) throw new Error('OPENMYTHOS_ATTESTATION_NOT_FOUND');
     return this.parse(row as any);
+  }
+
+  /** Certifying evidence: stored eligible + corpus ready, and its payload still passes calibrationRefusal (rows imported before M1). */
+  certifies(id: string): boolean {
+    const row = this.db.prepare('SELECT payload FROM openmythos_attestations WHERE id = ? AND certification_eligible = 1 AND corpus_certification_ready = 1')
+      .get(id) as { payload: string } | undefined;
+    return Boolean(row) && calibrationRefusal(this.object(row!.payload)) === null;
   }
 
   list(limit = 50): OpenMythosAttestationRecord[] {
