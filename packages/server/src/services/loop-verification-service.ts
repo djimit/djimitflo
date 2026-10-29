@@ -119,10 +119,10 @@ export class LoopVerificationService {
       },
       {
         name: 'diff_threshold_all_makers',
-        status: completedMakerLeases.every((lease) => this.leaseDiffWithinThreshold(lease)) ? 'pass' : completedMakerLeases.length === 0 ? 'skipped' : 'fail',
+        status: combine(completedMakerLeases.map((lease) => this.leaseDiffWithinThreshold(lease))),
         evidence: completedMakerLeases.length === 0
           ? 'No completed maker leases yet.'
-          : 'All completed maker leases must stay under their configured diff threshold.',
+          : 'All completed maker leases must stay under their configured diff threshold (a maker without a recorded diff_lines is insufficient evidence).',
       },
       {
         name: 'checker_verdict',
@@ -278,10 +278,13 @@ export class LoopVerificationService {
     return files.every((file) => file === scope) ? 'pass' : 'fail';
   }
 
-  private leaseDiffWithinThreshold(lease: WorkerLeaseRecord): boolean {
-    const diffLines = Number(lease.metadata?.diff_lines ?? 0);
+  /** U4b (A3): an absent diff_lines is not 0 — it is unknown (insufficient evidence); no configured threshold still fails. */
+  private leaseDiffWithinThreshold(lease: WorkerLeaseRecord): GateStatus {
     const diffMaxLines = Number(lease.metadata?.diff_max_lines ?? 0);
-    return diffMaxLines > 0 && diffLines <= diffMaxLines;
+    if (!(diffMaxLines > 0)) return 'fail';
+    const raw = lease.metadata?.diff_lines;
+    if (raw === undefined || raw === null || raw === '' || !Number.isFinite(Number(raw))) return 'unknown';
+    return Number(raw) <= diffMaxLines ? 'pass' : 'fail';
   }
 
   /**
