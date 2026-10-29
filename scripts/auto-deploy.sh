@@ -14,11 +14,28 @@ ROOT="${DEPLOY_ROOT:-/srv/djimitflo}"
 REPO_SLUG="${AUTO_DEPLOY_REPO:-djimit/djimitflo}"
 SETTLE_MIN="${AUTO_DEPLOY_SETTLE_MIN:-20}"
 log() { echo "$(date -u +%FT%TZ) auto-deploy: $*"; }
-# S1: deploy events for the operator cockpit, in the data dir the container mounts as /data (bounded to 500 lines)
+# data_write <name> <keep>: the last <keep> lines of $ROOT/data/<name> plus stdin become the new file. This runs as root and
+# the data dir is writable by the container, so a target that is a link or not a regular file is refused (logged, left as
+# it is); the old content is read without following a link; the new file is a fresh mktemp file in the same dir, made
+# readable for the container and renamed into place with rename(2), which replaces a name and never follows it.
+data_write() {
+  local f="$ROOT/data/$1" keep="$2" tmp
+  if [ -L "$f" ] || { [ -e "$f" ] && [ ! -f "$f" ]; }; then cat >/dev/null; log "refusing to write $f: not a regular file (link or other) — left untouched"; return 1; fi
+  tmp="$(mktemp "$ROOT/data/.$1.XXXXXX")" || { cat >/dev/null; return 1; }
+  if { [ "$keep" = 0 ] || node -e '
+      const fs = require("fs"), c = fs.constants; let fd;
+      try { fd = fs.openSync(process.argv[1], c.O_RDONLY | c.O_NOFOLLOW | c.O_NONBLOCK); } catch (e) { process.exit(e.code === "ENOENT" ? 0 : 1); }
+      if (!fs.fstatSync(fd).isFile()) process.exit(1);
+      process.stdout.write(fs.readFileSync(fd));' "$f" | tail -n "$keep"; } > "$tmp" \
+    && cat >> "$tmp" && chmod 0644 "$tmp" \
+    && node -e 'require("fs").renameSync(process.argv[1], process.argv[2])' "$tmp" "$f" 2>/dev/null; then return 0; fi
+  rm -f "$tmp"; log "refusing to write $f: not a regular file or not writable — left untouched"; return 1
+}
+# S1: deploy events for the operator cockpit, in the data dir the container mounts as /data (bounded to 1000 lines)
 event() {
-  local f="$ROOT/data/deploy-log.jsonl"; [ -d "$ROOT/data" ] || return 0
-  printf '{"at":"%s","event":"%s","sha":"%s","detail":"%s"}\n' "$(date -u +%FT%TZ)" "$1" "${2:-}" "$(printf '%s' "${3:-}" | tr -d '"\\' | head -c 300)" >> "$f" 2>/dev/null || return 0
-  [ "$(wc -l < "$f")" -le 1000 ] || { tail -n 500 "$f" > "$f.tmp" && mv "$f.tmp" "$f"; } 2>/dev/null || true
+  [ -d "$ROOT/data" ] || return 0
+  printf '{"at":"%s","event":"%s","sha":"%s","detail":"%s"}\n' "$(date -u +%FT%TZ)" "$1" "${2:-}" "$(printf '%s' "${3:-}" | tr -d '"\\' | head -c 300)" \
+    | data_write deploy-log.jsonl 999 || true
 }
 
 # Each probe runs $AD_<NAME> (eval) when set, the real command otherwise.
@@ -103,7 +120,7 @@ deploy_commit() { DEPLOY_ROOT="$ROOT" bash "$INSTALLED" "$1" --apply --local; }
 FLEET_SERVICES="${AUTO_DEPLOY_FLEET_SERVICES:-event-bus=/srv/event-bus=infra/event-bus agent-registry=/srv/agent-registry=infra/agent-registry}"
 sha256_stdin() { if command -v sha256sum >/dev/null; then sha256sum; else shasum -a 256; fi | cut -d' ' -f1; }
 fleet_drift() {
-  local commit="$1" repo="${AUTO_DEPLOY_FLEET_REPO:-$ROOT/runtime-source-${1:0:7}}" spec name dir src f deployed main json="" sep="" own tmp
+  local commit="$1" repo="${AUTO_DEPLOY_FLEET_REPO:-$ROOT/runtime-source-${1:0:7}}" spec name dir src f deployed main json="" sep="" own
   [ -d "$ROOT/data" ] && [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || return 0
   local g=(git -C "$repo")
   if [ "$(id -u)" = 0 ] && [ -d "$repo" ]; then
@@ -121,10 +138,7 @@ fleet_drift() {
     [ "$deployed" = "$main" ] || log "fleet drift: $name ($dir) differs from $src at ${commit:0:8}"
   done
   [ -n "$json" ] || return 0
-  # the data dir is writable by the container: a fresh mktemp file (no pre-planted path is followed), renamed into place
-  tmp="$(mktemp "$ROOT/data/.fleet-drift.XXXXXX")" || return 1
-  printf '{"checked_at":"%s","commit":"%s","services":{%s}}\n' "$(date -u +%FT%TZ)" "$commit" "$json" > "$tmp" \
-    && chmod 0644 "$tmp" && mv -f "$tmp" "$ROOT/data/fleet-drift.json" || { rm -f "$tmp"; return 1; }
+  printf '{"checked_at":"%s","commit":"%s","services":{%s}}\n' "$(date -u +%FT%TZ)" "$commit" "$json" | data_write fleet-drift.json 0
 }
 
 fleet_drift "$(current_sha)" || log "fleet drift check failed"

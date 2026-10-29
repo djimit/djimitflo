@@ -286,3 +286,58 @@ it('S3: writes fleet-drift.json with the service whose deployed sources differ f
   at(commit, path.join(tmp, 'no-such-repo'));
   expect(fs.existsSync(path.join(root, 'data', 'fleet-drift.json'))).toBe(false);
 });
+
+// Root writes into the data dir the container can write: never through a pre-planted link or a non-regular file.
+it('a pre-planted symlink at data/deploy-log.jsonl is not followed: refused with a log line, the link target untouched', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
+  fs.mkdirSync(path.join(root, 'data'));
+  const victim = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ad-victim-')), 'victim');
+  fs.writeFileSync(victim, 'untouched\n');
+  fs.symlinkSync(victim, path.join(root, 'data', 'deploy-log.jsonl'));
+  const out = run({}, root);
+  expect(out).toContain('DEPLOYED'); // the deploy itself is not held by the log
+  expect(out).toContain('refusing to write');
+  expect(fs.readFileSync(victim, 'utf8')).toBe('untouched\n');
+  expect(fs.lstatSync(path.join(root, 'data', 'deploy-log.jsonl')).isSymbolicLink()).toBe(true);
+  // a directory (not a regular file) at the log path is refused too, and nothing is written into it
+  const root2 = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
+  fs.mkdirSync(path.join(root2, 'data', 'deploy-log.jsonl'), { recursive: true });
+  expect(run({}, root2)).toContain('refusing to write');
+  expect(fs.readdirSync(path.join(root2, 'data', 'deploy-log.jsonl'))).toEqual([]);
+  // no temp file is left behind in the data dir
+  expect(fs.readdirSync(path.join(root, 'data')).sort()).toEqual(['deploy-log.jsonl']);
+});
+
+it('the deploy log stays bounded, readable by the container user, and is replaced by rename', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
+  fs.mkdirSync(path.join(root, 'data'));
+  const log = path.join(root, 'data', 'deploy-log.jsonl');
+  fs.writeFileSync(log, Array.from({ length: 1200 }, (_, i) => JSON.stringify({ event: 'old', i })).join('\n') + '\n');
+  run({}, root);
+  const lines = fs.readFileSync(log, 'utf8').trim().split('\n');
+  expect(lines.length).toBeLessThanOrEqual(1000);
+  expect(lines.slice(-2).map((l) => JSON.parse(l).event)).toEqual(['deploying', 'done']);
+  expect(fs.statSync(log).mode & 0o777).toBe(0o644);
+  expect(fs.readdirSync(path.join(root, 'data'))).toEqual(['deploy-log.jsonl']);
+});
+
+it('a pre-planted symlink at data/fleet-drift.json is not followed', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-fleet-'));
+  const repo = path.join(tmp, 'repo');
+  fs.mkdirSync(path.join(repo, 'infra/event-bus'), { recursive: true });
+  fs.writeFileSync(path.join(repo, 'infra/event-bus/bus.py'), 'x = 1\n');
+  const git = (...args: string[]) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' }).trim();
+  git('init', '-q'); git('add', '.'); git('-c', 'user.email=t@example.invalid', '-c', 'user.name=t', 'commit', '-qm', 'fixture');
+  const commit = git('rev-parse', 'HEAD');
+  fs.mkdirSync(path.join(tmp, 'srv/event-bus'), { recursive: true });
+  fs.writeFileSync(path.join(tmp, 'srv/event-bus/bus.py'), 'x = 2\n');
+  const root = path.join(tmp, 'root'); fs.mkdirSync(path.join(root, 'data'), { recursive: true });
+  const victim = path.join(tmp, 'victim'); fs.writeFileSync(victim, 'untouched\n');
+  fs.symlinkSync(victim, path.join(root, 'data', 'fleet-drift.json'));
+  const out = run({ AD_MAIN_SHA: `printf '${commit}\\trefs/heads/main\\n'`, AD_CURRENT_SHA: `echo ${commit}`,
+    AUTO_DEPLOY_FLEET_SERVICES: `event-bus=${tmp}/srv/event-bus=infra/event-bus`, AUTO_DEPLOY_FLEET_REPO: repo }, root);
+  expect(out).toContain('refusing to write');
+  expect(fs.readFileSync(victim, 'utf8')).toBe('untouched\n');
+  expect(fs.lstatSync(path.join(root, 'data', 'fleet-drift.json')).isSymbolicLink()).toBe(true);
+  expect(fs.readdirSync(path.join(root, 'data'))).toEqual(['fleet-drift.json']);
+});
