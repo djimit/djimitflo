@@ -59,6 +59,21 @@ function seedRun(db: Database.Database, id: string, checkerAccepted = true, repo
 }
 
 describe('loop learning closure', () => {
+  // M1 (A #25, prod 14 d): 74/74 loop-learning evals passed (scores 0.90–1.00, vacuous) and the 58 open closure work items were
+  // never consumed. The closure pipeline is retired: a reviewed run gets no new eval, reflection, memory candidate or work item.
+  it('M1: a fully reviewed run creates no loop-learning eval, reflection, memory candidate or work item', () => {
+    const db = makeDb();
+    try {
+      seedRun(db, 'retired-closure');
+      expect(new KnowledgeRuntimeService(db).closeLoop({ loop_run_id: 'retired-closure' }))
+        .toMatchObject({ status: 'blocked', blocked_reasons: ['loop_learning_closure_retired'], eval_run: null, follow_up_work_item: null });
+      for (const table of ['loop_learning_closures', 'agent_eval_runs', 'reflection_candidates', 'memory_candidates']) {
+        expect(db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get()).toEqual({ count: 0 });
+      }
+      expect(db.prepare("SELECT COUNT(*) AS count FROM work_items WHERE source = 'loop_learning_closure'").get()).toEqual({ count: 0 });
+    } finally { db.close(); }
+  });
+
   it.each([
     ['unresolved gate', "UPDATE loop_runs SET gates_json='[{\"name\":\"pending_check\",\"status\":\"warning\"}]' WHERE id='guarded-closure'", 'gate_not_passed'],
     ['missing security review', "UPDATE loop_runs SET metadata='{\"risk_class\":\"high\"}' WHERE id='guarded-closure'", 'security_checker_not_accepted'],
