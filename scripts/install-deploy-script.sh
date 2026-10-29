@@ -21,13 +21,18 @@ T = int(os.environ.get("AUTO_DEPLOY_TRUSTED_UID") or "0"); path = sys.argv[1]
 if not path.startswith("/"): sys.exit(f"{path} is not an absolute path")
 comps = [c for c in path.split("/") if c]
 if any(c in (".", "..") for c in comps): sys.exit(f"{path} has a . or .. component")
+# AUTO_DEPLOY_TRUSTED_PREFIX: test-only seam (never set in prod) — that dir and its ancestors are not checked
+tp = os.environ.get("AUTO_DEPLOY_TRUSTED_PREFIX") or ""
+if tp and (not tp.startswith("/") or any(c in (".", "..") for c in tp.split("/"))): sys.exit(f"AUTO_DEPLOY_TRUSTED_PREFIX {tp} is not a clean absolute path")
+tpc = [c for c in tp.split("/") if c] if tp else None
 for i in range(len(comps), -1, -1):
+    if tpc is not None and i <= len(tpc) and tpc[:i] == comps[:i]: continue
     p = "/" + "/".join(comps[:i])
     st = os.lstat(p)
     if stat.S_ISLNK(st.st_mode): sys.exit(f"{p} is a symbolic link")
     if not stat.S_ISDIR(st.st_mode): sys.exit(f"{p} is not a directory")
     if st.st_uid not in (0, T): sys.exit(f"{p} is owned by uid {st.st_uid}, not root")
-    if st.st_mode & 0o022 and not (st.st_mode & stat.S_ISVTX and st.st_uid == 0): sys.exit(f"{p} is writable by group or others")
+    if st.st_mode & 0o022: sys.exit(f"{p} is writable by group or others")
 PY
 }
 sha="${1:-}"
@@ -49,8 +54,10 @@ untrusted() { echo "$INSTALL_DIR is not trusted — make it and every dir above 
 if [ -e "$INSTALL_DIR" ] || [ -L "$INSTALL_DIR" ]; then trusted_dir "$INSTALL_DIR" || untrusted; else trusted_dir "$(dirname "$INSTALL_DIR")" || untrusted; mkdir -m 0755 "$INSTALL_DIR"; fi
 trusted_dir "$INSTALL_DIR" || untrusted
 # the script first, then its record: an interrupted install leaves a mismatch, which auto-deploy refuses
-install -m 0755 "$tmp" "$INSTALLED.tmp.$$" && mv -f "$INSTALLED.tmp.$$" "$INSTALLED"
-printf 'commit=%s\nsha256=%s\ninstalled_at=%s\n' "$sha" "$hash" "$(date -u +%FT%TZ)" > "$INSTALLED.source.tmp.$$" \
-  && chmod 0644 "$INSTALLED.source.tmp.$$" && mv -f "$INSTALLED.source.tmp.$$" "$INSTALLED.source"
+# (unpredictable mktemp names inside the checked install dir, renamed into place)
+t="$(mktemp "$INSTALL_DIR/.deploy-vps.XXXXXX")" && cp "$tmp" "$t" && chmod 0755 "$t" && mv -f "$t" "$INSTALLED" || { rm -f "$t"; exit 1; }
+t="$(mktemp "$INSTALL_DIR/.deploy-vps.source.XXXXXX")" \
+  && printf 'commit=%s\nsha256=%s\ninstalled_at=%s\n' "$sha" "$hash" "$(date -u +%FT%TZ)" > "$t" \
+  && chmod 0644 "$t" && mv -f "$t" "$INSTALLED.source" || { rm -f "$t"; exit 1; }
 echo "installed scripts/deploy-vps.sh of $sha as $INSTALLED (sha256 $hash)"
 [ ! -e "$ROOT/AUTO_DEPLOY_DISABLED" ] || echo "auto-deploy is paused: $(head -c 300 "$ROOT/AUTO_DEPLOY_DISABLED") — remove $ROOT/AUTO_DEPLOY_DISABLED to resume"

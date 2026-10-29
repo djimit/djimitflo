@@ -5,6 +5,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # resolved: the trust checks refuse a symlink on a path, and the temp dir can contain one (macOS /var → /private/var)
 TMP="$(cd "$(mktemp -d)" && pwd -P)"; trap 'rm -rf "$TMP"' EXIT
+# test-only seam: the tmp base and what is above it (e.g. a sticky /tmp) are exempt from the trust walk; prod never sets it
+TMPBASE="$(dirname "$TMP")"
 # shellcheck source=deploy-vps.sh
 source "$SCRIPT_DIR/deploy-vps.sh"
 fail() { echo "FAIL: $*" >&2; exit 1; }
@@ -150,7 +152,7 @@ host() {   # host [knob...] → runs the remote script on a fresh stub host; set
   cp "$HOST/compose.yml" "$TMP/compose.before"
   # DEPLOY_FILE_REMOTE: seam — the stub host fetches from a local repo; prod fetches over https (file:// stays off)
   # AUTO_DEPLOY_TRUSTED_UID: seam — the test user stands in for root as the trusted owner of the deploy root
-  RC=0; OUT="$(remote_script | AUTO_DEPLOY_TRUSTED_UID="${HOST_TRUSTED_UID:-$(id -u)}" DEPLOY_FILE_REMOTE=always PATH="${HOST_PATH_PREFIX:-}$BIN:$PATH" bash -s -- "$HOST" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
+  RC=0; OUT="$(remote_script | AUTO_DEPLOY_TRUSTED_UID="${HOST_TRUSTED_UID:-$(id -u)}" AUTO_DEPLOY_TRUSTED_PREFIX="${HOST_TRUSTED_PREFIX-$TMPBASE}" DEPLOY_FILE_REMOTE=always PATH="${HOST_PATH_PREFIX:-}$BIN:$PATH" bash -s -- "$HOST" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
 }
 host
 [ "$RC" = 0 ] || fail "healthy deploy failed ($RC): $OUT"
@@ -258,7 +260,7 @@ host_compose() {   # host_compose <prep on compose.yml> → like host, the prep 
   HOST="$(mktemp -d "$TMP/host.XXXX")"; rm -f "$STUB"/build-args "$STUB"/compose-calls; rm -rf "$STUB/ctx"
   printf 'services:\n  djimitflo:\n    image: djimitflo:main-%s\n    environment:\n      DJIMITFLO_COMMIT_SHA: %s\n' "$PREV" "$PREV_FULL" > "$HOST/compose.yml"
   "$1" "$HOST/compose.yml"
-  RC=0; OUT="$(remote_script | AUTO_DEPLOY_TRUSTED_UID="$(id -u)" DEPLOY_FILE_REMOTE=always PATH="$BIN:$PATH" bash -s -- "$HOST" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
+  RC=0; OUT="$(remote_script | AUTO_DEPLOY_TRUSTED_UID="$(id -u)" AUTO_DEPLOY_TRUSTED_PREFIX="$TMPBASE" DEPLOY_FILE_REMOTE=always PATH="$BIN:$PATH" bash -s -- "$HOST" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
 }
 gw() { chmod 0664 "$1"; }
 linked() { mv "$1" "$1.real"; ln -s "$1.real" "$1"; }
@@ -271,11 +273,11 @@ done
 OPEN="$TMP/open"; mkdir -p "$OPEN"; chmod 0777 "$OPEN"
 link_root() { ln -s "$1" "$OPEN/root-$(basename "$1")"; }
 HOST_PREP=link_root host   # prepares a normal host, then runs the remote script on the link instead
-RC=0; OUT="$(remote_script | AUTO_DEPLOY_TRUSTED_UID="$(id -u)" DEPLOY_FILE_REMOTE=always PATH="$BIN:$PATH" bash -s -- "$OPEN/root-$(basename "$HOST")" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
+RC=0; OUT="$(remote_script | AUTO_DEPLOY_TRUSTED_UID="$(id -u)" AUTO_DEPLOY_TRUSTED_PREFIX="$TMPBASE" DEPLOY_FILE_REMOTE=always PATH="$BIN:$PATH" bash -s -- "$OPEN/root-$(basename "$HOST")" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
 [ "$RC" != 0 ] && echo "$OUT" | grep -q "symbolic link" || fail "a deploy root behind a symlink was not refused: $OUT"
 # the deploy root is checked as written: a '..' component or a relative path is refused, never normalised away
 remote_on() {   # remote_on <root arg> [cwd] → runs the remote script on a fresh stub host addressed as <root arg>
-  RC=0; OUT="$(cd "${2:-$TMP}" && remote_script | AUTO_DEPLOY_TRUSTED_UID="$(id -u)" DEPLOY_FILE_REMOTE=always PATH="$BIN:$PATH" bash -s -- "$1" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
+  RC=0; OUT="$(cd "${2:-$TMP}" && remote_script | AUTO_DEPLOY_TRUSTED_UID="$(id -u)" AUTO_DEPLOY_TRUSTED_PREFIX="$TMPBASE" DEPLOY_FILE_REMOTE=always PATH="$BIN:$PATH" bash -s -- "$1" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
 }
 fresh_host() { HOST="$(mktemp -d "$TMP/host.XXXX")"; mkdir "$HOST/sub"; rm -f "$STUB"/build-args "$STUB"/compose-calls; rm -rf "$STUB/ctx"
   printf 'services:\n  djimitflo:\n    image: djimitflo:main-%s\n    environment:\n      DJIMITFLO_COMMIT_SHA: %s\n' "$PREV" "$PREV_FULL" > "$HOST/compose.yml"; }
@@ -285,4 +287,12 @@ fresh_host; remote_on "$HOST/../$(basename "$HOST")"
 [ "$RC" != 0 ] && echo "$OUT" | grep -q ". or .. component" && untouched || fail "a /x/../x deploy root was not refused: $OUT"
 fresh_host; remote_on "$(basename "$HOST")" "$TMP"
 [ "$RC" != 0 ] && echo "$OUT" | grep -q "not an absolute path" && untouched || fail "a relative deploy root was not refused: $OUT"
+fresh_host; remote_on "$HOST/./"
+[ "$RC" != 0 ] && echo "$OUT" | grep -q ". or .. component" && untouched || fail "a deploy root with a . component was not refused: $OUT"
+# without the seam nothing is exempt: a deploy root under the real (root-owned, sticky, world-writable) /tmp is refused
+STICKY="$(cd /tmp && pwd -P)"; SH="$(mktemp -d "$STICKY/dv-sticky.XXXX")"
+printf 'services:\n  djimitflo:\n    image: djimitflo:main-%s\n    environment:\n      DJIMITFLO_COMMIT_SHA: %s\n' "$PREV" "$PREV_FULL" > "$SH/compose.yml"
+RC=0; OUT="$(remote_script | AUTO_DEPLOY_TRUSTED_UID="$(id -u)" DEPLOY_FILE_REMOTE=always PATH="$BIN:$PATH" bash -s -- "$SH" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
+rm -rf "$SH"
+[ "$RC" != 0 ] && echo "$OUT" | grep -qF "$STICKY is writable by group or others" || fail "a sticky world-writable ancestor was accepted without the seam: $OUT"
 echo "deploy-vps selftest OK"

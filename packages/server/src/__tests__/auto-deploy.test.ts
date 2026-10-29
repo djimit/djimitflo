@@ -13,7 +13,8 @@ const NEW = 'b'.repeat(40); const OLD = 'a'.repeat(40);
 const green = JSON.stringify({ check_runs: [{ id: 1, name: 'build-and-test (22)', status: 'completed', conclusion: 'success' }, { id: 2, name: 'optional', status: 'completed', conclusion: 'skipped' }] });
 const minutesAgo = (m: number) => JSON.stringify({ commit: { committer: { date: new Date(Date.now() - m * 60_000).toISOString() } } });
 // the test user stands in for root as the trusted owner of $DEPLOY_ROOT, the install dir and the staging dir
-const trust = (root: string) => ({ AUTO_DEPLOY_TRUSTED_UID: String(process.getuid!()), AUTO_DEPLOY_INSTALL_DIR: path.join(root, 'lib') });
+// and the resolved tmp base (and what is above it, e.g. a sticky /tmp) is exempt from the trust walk — a test-only seam
+const trust = (root: string) => ({ AUTO_DEPLOY_TRUSTED_UID: String(process.getuid!()), AUTO_DEPLOY_TRUSTED_PREFIX: TMPDIR, AUTO_DEPLOY_INSTALL_DIR: path.join(root, 'lib') });
 const run = (over: Record<string, string> = {}, root = fs.mkdtempSync(path.join(TMPDIR, 'ad-'))) => {
   const env = { ...process.env, DEPLOY_ROOT: root, ...trust(root), AD_MAIN_SHA: `printf '${NEW}\\trefs/heads/main\\n'`, AD_CURRENT_SHA: `echo ${OLD}`,
     AD_CHECKS: `echo '${green}'`, AD_REQUIRED: `echo 'build-and-test (22)'`, AD_COMMIT: `echo '${minutesAgo(30)}'`, AD_LEASES: 'echo 0', AD_DEPLOY: 'echo DEPLOYED', AD_DEPLOY_GATE: 'true', ...over };
@@ -512,4 +513,40 @@ it('a deploy root with a .. component, or a relative one, is refused', () => {
   const inst = spawnSync('bash', [installer, NEW, '--apply'], { env: { ...process.env, DEPLOY_ROOT: real, ...trust(real), AUTO_DEPLOY_INSTALL_DIR: `${real}/sub/../lib`, ...commitCopy(RAN) }, encoding: 'utf8' });
   expect(inst.status).not.toBe(0);
   expect(`${inst.stdout}${inst.stderr}`).toContain('. or .. component');
+});
+
+// Without the test seam nothing is exempt: a world-writable sticky ancestor (here the real /tmp, root's 1777) is refused.
+it('without the test seam a sticky world-writable ancestor is refused, by auto-deploy and by the installer', () => {
+  const stickyBase = fs.realpathSync('/tmp');
+  expect(fs.statSync(stickyBase).mode & 0o1777).toBe(0o1777);
+  const root = fs.mkdtempSync(path.join(stickyBase, 'ad-sticky-'));
+  try {
+    const out = run({ AUTO_DEPLOY_TRUSTED_PREFIX: '' }, root);
+    expect(out).toContain('not trusted');
+    expect(out).toContain(`${stickyBase} is writable by group or others`);
+    expect(out).not.toContain('DEPLOYED');
+    const inst = spawnSync('bash', [installer, NEW, '--apply'], { env: { ...process.env, DEPLOY_ROOT: root, ...trust(root), AUTO_DEPLOY_TRUSTED_PREFIX: '', ...commitCopy(RAN) }, encoding: 'utf8' });
+    expect(inst.status).not.toBe(0);
+    expect(`${inst.stdout}${inst.stderr}`).toContain('writable by group or others');
+    expect(fs.existsSync(installedPath(root))).toBe(false);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+it('the installer refuses an install dir with a . component, a .. component or a relative path', () => {
+  const real = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
+  fs.mkdirSync(path.join(real, 'sub'));
+  for (const [dir, why] of [[`${real}/./lib`, '. or .. component'], [`${real}/sub/../lib`, '. or .. component'], ['relative/lib', 'not an absolute path']]) {
+    const inst = spawnSync('bash', [installer, NEW, '--apply'], { cwd: real, env: { ...process.env, DEPLOY_ROOT: real, ...trust(real), AUTO_DEPLOY_INSTALL_DIR: dir, ...commitCopy(RAN) }, encoding: 'utf8' });
+    expect(inst.status).not.toBe(0);
+    expect(`${inst.stdout}${inst.stderr}`).toContain(why);
+  }
+  expect(fs.readdirSync(real)).toEqual(['sub']);
+});
+
+it('the installer writes through unpredictable temp names inside the install dir', () => {
+  const root = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
+  const script = fs.readFileSync(installer, 'utf8');
+  expect(script).not.toMatch(/\.tmp\.\$\$/);
+  expect(install(root, RAN).status).toBe(0);
+  expect(fs.readdirSync(path.join(root, 'lib')).sort()).toEqual(['deploy-vps.installed.sh', 'deploy-vps.installed.sh.source']);
 });

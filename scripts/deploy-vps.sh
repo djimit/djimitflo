@@ -91,12 +91,12 @@ verify_build_receipt() {   # verify_build_receipt <receipt> <src> <sha> <image> 
 }
 
 # trusted_path dir|private|file <path>: this runs as root, so what it enters, reads and writes must be root's.
-#   dir      <path> and every directory above it up to / (as given: no symlink anywhere) are owned by root and not
-#            group/other-writable (a root-owned sticky dir such as /tmp is allowed: others cannot rename or remove what
-#            they do not own there)
+#   dir      <path> (absolute, no . or .. component) and every directory above it up to / (as written: no symlink
+#            anywhere) are owned by root and not group/other-writable — a sticky /tmp included
 #   private  as dir, and <path> itself is root's 0700 (no group/other access at all)
 #   file     <path> is a regular file (not a link) of root, not group/other-writable, in a trusted dir
-# AUTO_DEPLOY_TRUSTED_UID (default 0) is a selftest seam: the test user stands in for root.
+# AUTO_DEPLOY_TRUSTED_UID (default 0: the test user stands in for root) and AUTO_DEPLOY_TRUSTED_PREFIX (unset: the tmp base
+# whose ancestors are not checked) are selftest seams; prod must leave them unset.
 trusted_path() {
   python3 -c '
 import os, stat, sys
@@ -116,13 +116,18 @@ if kind == "file":
 elif kind == "private":
     st = os.lstat(path)
     if not stat.S_ISDIR(st.st_mode) or st.st_uid != T or st.st_mode & 0o077: bad(f"{path} is not a root-only (0700) directory of root")
+# AUTO_DEPLOY_TRUSTED_PREFIX: test-only seam (never set in prod) — that dir and its ancestors are not checked
+tp = os.environ.get("AUTO_DEPLOY_TRUSTED_PREFIX") or ""
+if tp and (not tp.startswith("/") or any(c in (".", "..") for c in tp.split("/"))): bad(f"AUTO_DEPLOY_TRUSTED_PREFIX {tp} is not a clean absolute path")
+tpc = [c for c in tp.split("/") if c] if tp else None
 for i in range(len(comps), -1, -1):  # every prefix as written, deepest first (lstat): a symlink is refused, never resolved
+    if tpc is not None and i <= len(tpc) and tpc[:i] == comps[:i]: continue
     p = "/" + "/".join(comps[:i])
     st = os.lstat(p)
     if stat.S_ISLNK(st.st_mode): bad(f"{p} is a symbolic link")
     if not stat.S_ISDIR(st.st_mode): bad(f"{p} is not a directory")
     if st.st_uid not in (0, T): bad(f"{p} is owned by uid {st.st_uid}, not root")
-    if st.st_mode & 0o022 and not (st.st_mode & stat.S_ISVTX and st.st_uid == 0): bad(f"{p} is writable by group or others")
+    if st.st_mode & 0o022: bad(f"{p} is writable by group or others")
 ' "$1" "$2" || { echo "refusing to deploy: $2 must be root-owned and not group/other-writable, and so must every directory above it (chown root:root, chmod 0711 for the deploy root)" >&2; return 1; }
 }
 

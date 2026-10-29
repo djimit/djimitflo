@@ -15,9 +15,9 @@ REPO_SLUG="${AUTO_DEPLOY_REPO:-djimit/djimitflo}"
 SETTLE_MIN="${AUTO_DEPLOY_SETTLE_MIN:-20}"
 log() { echo "$(date -u +%FT%TZ) auto-deploy: $*"; }
 # safe_fs: file operations of this root process next to directories other users can write (python3, *at() calls).
-#   check <dir>                 every component of <dir> as given (no symlink anywhere) up to / is a directory owned by root
-#                               (or AUTO_DEPLOY_TRUSTED_UID), not writable by group/others (a root-owned sticky dir such as
-#                               /tmp is allowed)
+#   check <dir>                 <dir> is absolute, has no . or .. component, and every prefix of it as written (no symlink
+#                               anywhere) up to / is a directory owned by root (or AUTO_DEPLOY_TRUSTED_UID) and not writable
+#                               by group/others — a sticky /tmp included
 #   copy <file> <dest>          <file> (owned by the trusted uid, not group/other-writable, regular, in a checked dir) is read
 #                               once, without following a link, into <dest> (a new file in a private dir)
 #   write <dir> <name> <keep> <stage>
@@ -26,7 +26,8 @@ log() { echo "$(date -u +%FT%TZ) auto-deploy: $*"; }
 #                               content is written through an fd to a new file in <stage> (a 0700 dir of the trusted uid on the
 #                               same filesystem, checked up to /) and renamed into <dir> with renameat(2), which replaces a
 #                               name and never follows it. No pathname in <dir> is ever opened for writing or chmod-ed.
-# AUTO_DEPLOY_TRUSTED_UID (default 0) and AUTO_DEPLOY_TEST_HOOK_AFTER_TEMP are test seams (auto-deploy.test.ts).
+# AUTO_DEPLOY_TRUSTED_UID (default 0), AUTO_DEPLOY_TRUSTED_PREFIX (unset) and AUTO_DEPLOY_TEST_HOOK_AFTER_TEMP are test seams
+# (auto-deploy.test.ts); prod must leave them unset.
 SAFE_FS_PY="$(cat <<'PY'
 import os, secrets, stat, subprocess, sys
 TRUSTED = int(os.environ.get("AUTO_DEPLOY_TRUSTED_UID") or "0")
@@ -42,16 +43,24 @@ def parts(path):
     return comps
 def parent(path):
     return "/" + "/".join(parts(path)[:-1])
+def exempt(prefix):
+    # AUTO_DEPLOY_TRUSTED_PREFIX: test-only seam (never set in prod) — that dir and its ancestors are not checked
+    tp = os.environ.get("AUTO_DEPLOY_TRUSTED_PREFIX") or ""
+    if not tp: return False
+    tpc = parts(tp)
+    return len(prefix) <= len(tpc) and tpc[:len(prefix)] == prefix
 def chain(path):
-    # every prefix of the path as written, deepest first, with lstat: a symlink anywhere on it is refused, never resolved
+    # every prefix of the path as written, deepest first, with lstat: a symlink anywhere on it is refused, never resolved;
+    # no exemption for sticky dirs (a world-writable /tmp above it is refused)
     comps = parts(path)
     for i in range(len(comps), -1, -1):
+        if exempt(comps[:i]): continue
         p = "/" + "/".join(comps[:i])
         st = os.lstat(p)
         if stat.S_ISLNK(st.st_mode): fail(f"{p} is a symbolic link")
         if not stat.S_ISDIR(st.st_mode): fail(f"{p} is not a directory")
         if st.st_uid not in (0, TRUSTED): fail(f"{p} is owned by uid {st.st_uid}, not root")
-        if st.st_mode & 0o022 and not (st.st_mode & stat.S_ISVTX and st.st_uid == 0): fail(f"{p} is writable by group or others")
+        if st.st_mode & 0o022: fail(f"{p} is writable by group or others")
 def opendir(path):
     return os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
 def main(cmd, *a):

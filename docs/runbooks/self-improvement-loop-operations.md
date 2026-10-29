@@ -342,7 +342,10 @@ root and not group/other-writable (`chown root:root /srv/djimitflo && chmod 0711
 is). Git in a `runtime-source-*` clone runs as the clone's owner (uid 1001), which needs to traverse `/srv/djimitflo`: hence
 0711 (traverse, no listing), so keep private files in it unreadable by others (`chmod 0600 /srv/djimitflo/runtime.env*`).
 `deploy-vps.sh` (also when run by hand) checks the same before any step, plus `compose.yml` (a root-owned regular file, not
-group/other-writable) and `build-receipts/`; its temp dirs live in `/srv/djimitflo/.deploy-work` (root, 0700). Writes into `data/` are staged in `/srv/djimitflo/.auto-deploy-stage` (root, 0700, created by the script, same filesystem
+group/other-writable) and `build-receipts/`; its temp dirs live in `/srv/djimitflo/.deploy-work` (root, 0700). Paths are
+checked as written (absolute, no `.`/`..`, no symlink on any component) and no world-writable ancestor is accepted, a sticky
+`/tmp` included. `AUTO_DEPLOY_TRUSTED_UID`, `AUTO_DEPLOY_TRUSTED_PREFIX`, `AUTO_DEPLOY_TEST_HOOK_AFTER_TEMP` and
+`DEPLOY_FILE_REMOTE` are test seams: they **must be unset** on the VPS (systemd unit and root shell). Writes into `data/` are staged in `/srv/djimitflo/.auto-deploy-stage` (root, 0700, created by the script, same filesystem
 as `data/`; `AUTO_DEPLOY_STAGE_DIR`) and renamed in. `python3` must be on the host.
 
 - Install: `install -o root -g root -m 0755 scripts/auto-deploy.sh /srv/djimitflo/auto-deploy.sh && cp scripts/systemd/djimitflo-auto-deploy.* /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now djimitflo-auto-deploy.timer`
