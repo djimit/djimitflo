@@ -7,7 +7,7 @@
 # no kill switch file; the commit's scripts/deploy-vps.sh matches the host-installed copy. The deploy itself is that
 # host-installed copy of deploy-vps.sh (--local), with its health wait + rollback.
 #   kill switch: touch /srv/djimitflo/AUTO_DEPLOY_DISABLED
-#   deploy script: scripts/install-deploy-script.sh <sha> --apply (operator, as root on this host)
+#   deploy script: scripts/install-deploy-script.sh <sha> --apply (operator, as root on this host; /usr/local/lib/djimitflo)
 # Every probe is overridable (AD_<NAME>, evaluated) so the decision logic is testable without a VPS (auto-deploy.test.ts).
 set -euo pipefail
 ROOT="${DEPLOY_ROOT:-/srv/djimitflo}"
@@ -160,28 +160,37 @@ post_deploy_check() {
   echo ok > "$ROOT/.deploy-verdict-$dsha"; log "post-deploy check ok for ${dsha:0:8}"; event verdict_ok "$dsha"
 }
 # S2 (DEP-01): this runs as root, so the deploy script it executes is the copy an operator installed on this host
-# (scripts/install-deploy-script.sh), never the one in the commit being deployed — that would make merge rights root.
-# The commit's scripts/deploy-vps.sh is fetched only to compare: when it differs from the installed copy's record, or the
-# installed copy no longer matches its record, auto-deploy pauses with the reason until the operator installs it.
-INSTALLED="$ROOT/deploy-vps.installed.sh"
+# (scripts/install-deploy-script.sh) in a root-owned dir, never the one in the commit being deployed — that would make merge
+# rights root. The installed copy and its record are trusted only when they and every directory above them are root's and
+# not writable by group or others; each is read once into a private temp dir, and that copy is hashed and executed (a
+# swap after the check reaches nothing). The commit's scripts/deploy-vps.sh is fetched only to compare: when it differs
+# from the installed copy's record, or the installed copy no longer matches its record, auto-deploy pauses with the reason
+# until the operator installs it.
+INSTALL_DIR="${AUTO_DEPLOY_INSTALL_DIR:-/usr/local/lib/djimitflo}"
+INSTALLED="$INSTALL_DIR/deploy-vps.installed.sh"
+EXEC_STAGE=""
 sha256_file() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
 pause() { printf '%s\n' "$2" > "$ROOT/AUTO_DEPLOY_DISABLED"; log "$2 — auto-deploy paused"; event paused "$1" "$2"; exit 0; }
 deploy_gate() { probe DEPLOY_GATE deploy_script_gate "$1"; }
 deploy_script_gate() {
-  local rec tmp want
-  if [ ! -f "$INSTALLED" ] || [ ! -f "$INSTALLED.source" ]; then
+  local rec want err
+  if [ ! -e "$INSTALLED" ] || [ ! -e "$INSTALLED.source" ]; then
     log "no host-installed deploy script ($INSTALLED) — not deploying $1. Review scripts/deploy-vps.sh at a commit, then as root on this host run: scripts/install-deploy-script.sh <sha> --apply"
     event refused "$1" "no host-installed deploy script"; exit 1
   fi
-  rec="$(sed -n 's/^sha256=//p' "$INSTALLED.source")"
-  [ -n "$rec" ] && [ "$(sha256_file "$INSTALLED")" = "$rec" ] || pause "$1" "$INSTALLED does not match its install record ($INSTALLED.source); reinstall it with scripts/install-deploy-script.sh <sha> --apply, then remove $ROOT/AUTO_DEPLOY_DISABLED"
-  tmp="$(mktemp)"
-  curl -fsS "https://raw.githubusercontent.com/$REPO_SLUG/$1/scripts/deploy-vps.sh" -o "$tmp" || { rm -f "$tmp"; log "cannot fetch scripts/deploy-vps.sh of $1 to compare — not deploying"; exit 1; }
-  want="$(sha256_file "$tmp")"; rm -f "$tmp"
-  [ "$want" = "$rec" ] || pause "$1" "scripts/deploy-vps.sh at $1 differs from the host-installed copy (installed from $(sed -n 's/^commit=//p' "$INSTALLED.source")); review it, then run scripts/install-deploy-script.sh $1 --apply and remove $ROOT/AUTO_DEPLOY_DISABLED"
+  EXEC_STAGE="$(mktemp -d)"; trap 'rm -rf "$EXEC_STAGE"' EXIT
+  err="$(safe_fs copy "$INSTALLED" "$EXEC_STAGE/deploy-vps.sh" 2>&1 && safe_fs copy "$INSTALLED.source" "$EXEC_STAGE/deploy-vps.source" 2>&1)" || {
+    log "host-installed deploy script is not trusted ($err) — not deploying $1. $INSTALL_DIR and every dir above it must be owned by root and not writable by group or others; reinstall with scripts/install-deploy-script.sh <sha> --apply"
+    event refused "$1" "host-installed deploy script not trusted"; exit 1; }
+  rec="$(sed -n 's/^sha256=//p' "$EXEC_STAGE/deploy-vps.source")"
+  [ -n "$rec" ] && [ "$(sha256_file "$EXEC_STAGE/deploy-vps.sh")" = "$rec" ] || pause "$1" "$INSTALLED does not match its install record ($INSTALLED.source); reinstall it with scripts/install-deploy-script.sh <sha> --apply, then remove $ROOT/AUTO_DEPLOY_DISABLED"
+  curl -fsS "https://raw.githubusercontent.com/$REPO_SLUG/$1/scripts/deploy-vps.sh" -o "$EXEC_STAGE/commit-deploy-vps.sh" || { log "cannot fetch scripts/deploy-vps.sh of $1 to compare — not deploying"; exit 1; }
+  want="$(sha256_file "$EXEC_STAGE/commit-deploy-vps.sh")"
+  [ "$want" = "$rec" ] || pause "$1" "scripts/deploy-vps.sh at $1 differs from the host-installed copy (installed from $(sed -n 's/^commit=//p' "$EXEC_STAGE/deploy-vps.source")); review it, then run scripts/install-deploy-script.sh $1 --apply and remove $ROOT/AUTO_DEPLOY_DISABLED"
 }
 deploy() { probe DEPLOY deploy_commit "$1"; }
-deploy_commit() { DEPLOY_ROOT="$ROOT" bash "$INSTALLED" "$1" --apply --local; }
+# the verified private copy, not the installed pathname
+deploy_commit() { [ -n "$EXEC_STAGE" ] || { log "no verified deploy script"; return 1; }; DEPLOY_ROOT="$ROOT" bash "$EXEC_STAGE/deploy-vps.sh" "$1" --apply --local; }
 
 # S3 (fleet ≠ main): the event bus and agent registry under /srv are deployed by hand, outside the build receipt. Every run
 # (also while paused) compares the sha256 of each service's deployed *.py with infra/<service>/*.py at the running commit
@@ -213,6 +222,8 @@ fleet_drift() {
   printf '{"checked_at":"%s","commit":"%s","services":{%s}}\n' "$(date -u +%FT%TZ)" "$commit" "$json" | data_write fleet-drift.json 0
 }
 
+# everything below writes into $ROOT as root (kill switch, verdicts, baseline) and trusts what it reads there
+ROOT_ERR="$(safe_fs check "$ROOT" 2>&1)" || { log "$ROOT is not trusted ($ROOT_ERR) — not acting. It and every dir above it must be owned by root and not writable by group or others"; exit 1; }
 fleet_drift "$(current_sha)" || log "fleet drift check failed"
 [ -e "$ROOT/AUTO_DEPLOY_DISABLED" ] && { log "disabled by kill switch"; exit 0; }
 post_deploy_check

@@ -134,15 +134,16 @@ it('P2: a failed deploy says so and records no baseline', () => {
 });
 
 // S2: curl stub serving `content` as the commit's scripts/deploy-vps.sh (the real fetch path, no network)
-const commitCopy = (content: string) => {
+const commitCopy = (content: string, alsoRun = '') => {
   const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-bin-'));
   const src = path.join(bin, 'deploy-vps.sh'); fs.writeFileSync(src, content);
-  fs.writeFileSync(path.join(bin, 'curl'), `#!/usr/bin/env bash\nout=""; while [ $# -gt 0 ]; do [ "$1" = "-o" ] && out="$2"; shift; done; cat '${src}' > "$out"\n`, { mode: 0o755 });
+  fs.writeFileSync(path.join(bin, 'curl'), `#!/usr/bin/env bash\nout=""; while [ $# -gt 0 ]; do [ "$1" = "-o" ] && out="$2"; shift; done; cat '${src}' > "$out"\n${alsoRun}\n`, { mode: 0o755 });
   return { PATH: `${bin}:${process.env.PATH}` };
 };
 const installer = path.resolve(__dirname, '../../../../scripts/install-deploy-script.sh');
 const install = (root: string, content: string, args: string[] = ['--apply']) =>
-  spawnSync('bash', [installer, NEW, ...args], { env: { ...process.env, DEPLOY_ROOT: root, ...commitCopy(content) }, encoding: 'utf8' });
+  spawnSync('bash', [installer, NEW, ...args], { env: { ...process.env, DEPLOY_ROOT: root, ...trust(root), ...commitCopy(content) }, encoding: 'utf8' });
+const installedPath = (root: string) => path.join(root, 'lib', 'deploy-vps.installed.sh');
 const realDeploy = { AD_DEPLOY: '', AD_DEPLOY_GATE: '', AD_STALLS: 'echo', AD_RESTARTS: 'echo 0' };
 
 it('the real deploy path leaves no RETURN trap behind (bash 5: "tmp: unbound variable" after every deploy)', () => {
@@ -191,7 +192,9 @@ it('S2: deploys with the host-installed copy of deploy-vps.sh when the commit ca
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
   expect(install(root, RAN).status).toBe(0);
   const out = run({ ...realDeploy, ...commitCopy(RAN) }, root);
-  expect(out).toContain(`deploy-script-ran-from ${path.join(root, 'deploy-vps.installed.sh')}`);
+  // it runs a verified copy of the installed script, read once, never the installed pathname itself
+  expect(out).toMatch(/deploy-script-ran-from \S+/);
+  expect(out).not.toContain(`deploy-script-ran-from ${installedPath(root)}`);
   expect(out).toContain(`done ${NEW}`);
   expect(killSwitch(root)).toBeNull();
 });
@@ -217,7 +220,7 @@ it('S2: a deploy-vps.sh changed in the deployed commit is not executed; auto-dep
 
 it('S2: without a host-installed copy auto-deploy refuses, says how to install it and runs nothing', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
-  const r = spawnSync('bash', [script], { env: { ...process.env, DEPLOY_ROOT: root, AD_MAIN_SHA: `printf '${NEW}\\trefs/heads/main\\n'`, AD_CURRENT_SHA: `echo ${OLD}`,
+  const r = spawnSync('bash', [script], { env: { ...process.env, DEPLOY_ROOT: root, ...trust(root), AD_MAIN_SHA: `printf '${NEW}\\trefs/heads/main\\n'`, AD_CURRENT_SHA: `echo ${OLD}`,
     AD_CHECKS: `echo '${green}'`, AD_REQUIRED: `echo 'build-and-test (22)'`, AD_COMMIT: `echo '${minutesAgo(30)}'`, AD_LEASES: 'echo 0', ...realDeploy, ...commitCopy(RAN) }, encoding: 'utf8' });
   const out = `${r.stdout}${r.stderr}`;
   expect(r.status).not.toBe(0);
@@ -229,7 +232,7 @@ it('S2: without a host-installed copy auto-deploy refuses, says how to install i
 it('S2: an installed copy edited outside the installer does not run', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
   expect(install(root, RAN).status).toBe(0);
-  fs.appendFileSync(path.join(root, 'deploy-vps.installed.sh'), 'echo TAMPERED\n');
+  fs.appendFileSync(installedPath(root), 'echo TAMPERED\n');
   const out = run({ ...realDeploy, ...commitCopy(RAN) }, root);
   expect(out).not.toContain('TAMPERED');
   expect(out).not.toContain('deploy-script-ran-from');
@@ -241,13 +244,14 @@ it('S2: install-deploy-script.sh is a dry run by default and records the source 
   const dry = install(root, RAN, []);
   expect(dry.status).toBe(0);
   expect(dry.stdout).toContain('dry run');
-  expect(fs.existsSync(path.join(root, 'deploy-vps.installed.sh'))).toBe(false);
+  expect(fs.existsSync(installedPath(root))).toBe(false);
   expect(install(root, RAN).status).toBe(0);
-  expect(fs.readFileSync(path.join(root, 'deploy-vps.installed.sh'), 'utf8')).toBe(RAN);
-  const record = fs.readFileSync(path.join(root, 'deploy-vps.installed.sh.source'), 'utf8');
+  expect(fs.readFileSync(installedPath(root), 'utf8')).toBe(RAN);
+  expect(fs.statSync(installedPath(root)).mode & 0o022).toBe(0);
+  const record = fs.readFileSync(`${installedPath(root)}.source`, 'utf8');
   expect(record).toContain(`commit=${NEW}`);
   expect(record).toMatch(/^sha256=[0-9a-f]{64}$/m);
-  expect(spawnSync('bash', [installer, 'not-a-sha'], { env: { ...process.env, DEPLOY_ROOT: root }, encoding: 'utf8' }).status).not.toBe(0);
+  expect(spawnSync('bash', [installer, 'not-a-sha'], { env: { ...process.env, DEPLOY_ROOT: root, ...trust(root) }, encoding: 'utf8' }).status).not.toBe(0);
 });
 
 // S3 (fleet ≠ main): the event bus and agent registry under /srv are deployed by hand, outside the build receipt. Every
@@ -355,4 +359,59 @@ it('the staged copy of a data-dir write is never written through a link swapped 
   expect(out).toContain('refusing to write');
   expect(fs.readFileSync(victim, 'utf8')).toBe('untouched\n');
   for (const name of fs.readdirSync(path.join(root, 'data'))) expect(fs.lstatSync(path.join(root, 'data', name)).isSymbolicLink()).toBe(false);
+});
+
+// S2: the installed copy is trusted only when it and every directory above it are root's and not group/other-writable;
+// it is read once into a private copy that is hashed and executed, so a swap after the check runs nothing new.
+it('S2: a swap of the installed script after it was verified does not reach execution', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
+  expect(install(root, RAN).status).toBe(0);
+  // the commit-copy fetch happens after the installed copy was read; it rewrites the installed file as a side effect
+  const out = run({ ...realDeploy, ...commitCopy(RAN, `echo 'echo TAMPERED' >> '${installedPath(root)}'`) }, root);
+  expect(fs.readFileSync(installedPath(root), 'utf8')).toContain('TAMPERED');
+  expect(out).not.toContain('TAMPERED');
+  expect(out).toContain('deploy-script-ran-from');
+  expect(out).toContain(`done ${NEW}`);
+});
+
+it('S2: an installed script in a group-writable dir, or group-writable itself, is not trusted and not run', () => {
+  for (const loosen of [(root: string) => fs.chmodSync(path.join(root, 'lib'), 0o775), (root: string) => fs.chmodSync(installedPath(root), 0o775)]) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
+    expect(install(root, RAN).status).toBe(0);
+    loosen(root);
+    const r = spawnSync('bash', [script], { env: { ...process.env, DEPLOY_ROOT: root, ...trust(root), AD_MAIN_SHA: `printf '${NEW}\\trefs/heads/main\\n'`, AD_CURRENT_SHA: `echo ${OLD}`,
+      AD_CHECKS: `echo '${green}'`, AD_REQUIRED: `echo 'build-and-test (22)'`, AD_COMMIT: `echo '${minutesAgo(30)}'`, AD_LEASES: 'echo 0', ...realDeploy, ...commitCopy(RAN) }, encoding: 'utf8' });
+    const out = `${r.stdout}${r.stderr}`;
+    expect(r.status).not.toBe(0);
+    expect(out).toContain('not trusted');
+    expect(out).toContain('writable by group or others');
+    expect(out).not.toContain('deploy-script-ran-from');
+  }
+});
+
+it('S2: an installed script not owned by the trusted uid is not run', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
+  expect(install(root, RAN).status).toBe(0);
+  // the test user owns the file; requiring a different owner stands in for "not owned by root"
+  const out = run({ ...realDeploy, ...commitCopy(RAN), AUTO_DEPLOY_TRUSTED_UID: String(process.getuid!() + 1) }, root);
+  expect(out).toContain('not trusted');
+  expect(out).not.toContain('deploy-script-ran-from');
+});
+
+it('S2: auto-deploy refuses to act at all when $DEPLOY_ROOT is writable by group or others', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
+  fs.chmodSync(root, 0o777);
+  const out = run({}, root);
+  expect(out).toContain('not trusted');
+  expect(out).not.toContain('DEPLOYED');
+});
+
+it('S2: install-deploy-script.sh installs only into a trusted dir', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
+  fs.mkdirSync(path.join(root, 'open')); fs.chmodSync(path.join(root, 'open'), 0o777);
+  const dir = path.join(root, 'open', 'lib');
+  const r = spawnSync('bash', [installer, NEW, '--apply'], { env: { ...process.env, DEPLOY_ROOT: root, ...trust(root), AUTO_DEPLOY_INSTALL_DIR: dir, ...commitCopy(RAN) }, encoding: 'utf8' });
+  expect(r.status).not.toBe(0);
+  expect(`${r.stdout}${r.stderr}`).toContain('writable by group or others');
+  expect(fs.existsSync(path.join(dir, 'deploy-vps.installed.sh'))).toBe(false);
 });
