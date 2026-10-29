@@ -67,6 +67,11 @@ export class RemoteMakerExecutor implements TaskExecutor {
         if (finished) return;
         const job = this.queue.get(jobId!);
         if (job && job.status === 'done') {
+          // the lease was checked when the result arrived; a retry may have superseded it before this poll — never apply then
+          if (!this.queue.jobLeaseActive(job)) {
+            this.queue.cancel(jobId!, 'lease_not_active_at_apply', ['done']);
+            return cancelled('lease_not_active_at_apply', 'its lease is no longer the active maker lease');
+          }
           if (!job.patch) return finish(0, `remote maker (${target.host}): ${job.reason || 'no change'}`);
           const applied = spawnSync('git', ['-C', cwd, 'apply', '--whitespace=nowarn', '-'], { input: job.patch, encoding: 'utf8' });
           return applied.status === 0 ? finish(0, `remote maker (${target.host}): ${job.reason || 'patch applied'}`) : finish(1, '', `remote patch did not apply: ${(applied.stderr || '').slice(0, 300)}`);

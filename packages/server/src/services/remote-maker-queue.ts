@@ -53,7 +53,7 @@ export class RemoteMakerQueue {
     }
     if (job.status !== 'claimed') throw new Error('MAKER_JOB_NOT_CLAIMED');
     // §3d P1 #5: a result is applied only while its lease is still the run's running, non-superseded maker lease
-    if (job.lease_id && !this.leaseActive(job.loop_run_id, job.lease_id)) {
+    if (!this.jobLeaseActive(job)) {
       this.cancel(id, 'lease_not_active;late_result', ['claimed']);
       throw new Error('MAKER_JOB_LEASE_NOT_ACTIVE');
     }
@@ -66,6 +66,11 @@ export class RemoteMakerQueue {
 
   get(id: string): RemoteMakerJob | undefined {
     return this.db.prepare('SELECT id, host, species, base_commit, prompt, status, patch, reason, created_at, claimed_at, loop_run_id, lease_id FROM remote_maker_jobs WHERE id = ?').get(id) as RemoteMakerJob | undefined;
+  }
+
+  /** A job without a lease (legacy) has no binding to check; one with a lease is current only while that lease is active. */
+  jobLeaseActive(job: Pick<RemoteMakerJob, 'loop_run_id' | 'lease_id'>): boolean {
+    return !job.lease_id || this.leaseActive(job.loop_run_id, job.lease_id);
   }
 
   /**
