@@ -46,11 +46,12 @@ import { learningLedger } from './learning-ledger';
 import { fleetSignatureEvidence } from './fleet-event-signatures';
 import { makerWarmDepsEvidence } from './maker-warm-deps';
 import { falsifierEvidence } from './commons-falsifier';
-import { settlementExecutionEvidence } from './settlement-execution';
+import { runLanes, settlementExecutionEvidence, settlementValueEvidence, survivalByLane } from './settlement-execution';
 import { schedulerCapacityEvidence } from './resource-scheduler';
 import { procedureSelectionEvidence } from './procedure-selector';
 import { pl001Evidence } from './pl-001';
 import { memoryDeliveryEvidence } from './memory-delivery-receipts';
+import { realRunSql } from './synthetic-runs';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -68,7 +69,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'DREAM_EVOLUTION_ENABLED', acting: true }, { name: 'DREAM_TRIAL_MUTANTS', acting: true }, { name: 'DREAM_TRIAL_MUTANT_TIERS', acting: true },
   { name: 'DREAM_PROMOTION_ALPHA', acting: true }, { name: 'TRIAL_DIAGNOSTICS_ENABLED', acting: false }, { name: 'TRIAL_HEADROOM_PRECHECK', acting: true }, { name: 'DREAM_PROMOTION_RULE', acting: false }, { name: 'DREAM_TRIAL_WRITE_TEST_HOLDOUT', acting: true }, { name: 'DREAM_EVIDENCE_MUTATIONS', acting: true }, { name: 'GYM_HOLDOUT_EPOCH', acting: true }, { name: 'GENOME_APPLY_MODE', acting: false },
   { name: 'ARENA_GATE_ENABLED', acting: true }, { name: 'DISCOVERY_RELEVANCE_SOURCES', acting: true }, { name: 'DISCOVERY_RELEVANCE_PAUSED', acting: true }, { name: 'COMMITTEE_SWARM_ENABLED', acting: true }, { name: 'COMMONS_GROUNDING_APPLY', acting: true }, { name: 'SOCIAL_AUTOPILOT_FORECAST_ONLY', acting: true }, { name: 'AUTONOMOUS_LURES_ENABLED', acting: true },
-  { name: 'LOOP_AUTO_DRAFT_PR_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_TEST_ONLY', acting: true }, { name: 'LOOP_AUTO_MERGE_MAX_PER_DAY', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK_HOURS', acting: true }, { name: 'LOOP_AUTO_APPROVE_TEST_GAP', acting: true }, { name: 'ORACLE_LANES_AUTO_APPROVE', acting: true },
+  { name: 'LOOP_AUTO_DRAFT_PR_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_TEST_ONLY', acting: true }, { name: 'LOOP_AUTO_MERGE_MAX_PER_DAY', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK_HOURS', acting: true }, { name: 'LOOP_AUTO_MERGE_VALUE_GATE', acting: true }, { name: 'LOOP_AUTO_APPROVE_TEST_GAP', acting: true }, { name: 'ORACLE_LANES_AUTO_APPROVE', acting: true },
   { name: 'LOOP_MEMORY_RULES_ENABLED', acting: true }, { name: 'EVOLUTION_GYM_REMOTE_MAX_PER_DAY', acting: true }, { name: 'DJIMITFLO_PUBLIC_URL', acting: false },
   { name: 'GYM_TIER_PROBE_ENABLED', acting: false }, { name: 'GYM_TIER_PROBE_TIERS', acting: false }, { name: 'GYM_TIER_PROBE_EVERY', acting: false },
   { name: 'HACK_DETECTOR_MODE', acting: false }, { name: 'GYM_CANARY_RATE', acting: false }, { name: 'GYM_FAILURE_TASKS_ENABLED', acting: false }, { name: 'SPEC_GAP_LANE', acting: false },
@@ -246,7 +247,7 @@ export function memoryHoldoutEvidence(db: Database, since: string, env: NodeJS.P
  */
 export function gateRuleDisagreements(db: Database, since: string): number | null {
   let rows: Array<{ gates_json: string | null }>;
-  try { rows = db.prepare("SELECT gates_json FROM loop_runs WHERE created_at >= ? AND gates_json LIKE '%security_checker_verdict%'").all(since) as typeof rows; } catch { return null; }
+  try { rows = db.prepare(`SELECT gates_json FROM loop_runs WHERE created_at >= ? AND gates_json LIKE '%security_checker_verdict%' AND ${realRunSql()}`).all(since) as typeof rows; } catch { return null; }
   let n = 0;
   for (const r of rows) {
     let gates: Array<{ name: string; status: string }>;
@@ -292,12 +293,15 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   const ages = openDrafts.map((r) => (now - Date.parse(r.created_at)) / 86_400_000).sort((a, b) => a - b);
   const q = (p: number) => (ages.length ? +ages[Math.min(ages.length - 1, Math.floor(p * ages.length))].toFixed(1) : null);
   // E1: survival only over SETTLED_SURVIVED / SETTLED_REGRESSED — pending and anomalous PRs are in neither numerator nor denominator
+  // U1: the oracle lane of each loop PR run (survival per lane, settlement_value)
+  const lanes = runLanes(db);
   const settlement = (() => {
     if (!prs) return null; // unknown, not 0
     const by_state = emptySettlementCounts(); const anomalies: Record<string, number> = {};
     for (const p of prs) { by_state[p.settlement.state]++; if (p.settlement.state === 'PIPELINE_ANOMALY') anomalies[p.settlement.reason] = (anomalies[p.settlement.reason] ?? 0) + 1; }
     const c = survivalCounts(prs.map((p) => p.settlement.state));
-    return { by_state, anomalies, survived: c.survived, regressed: c.regressed, settled: c.settled, survival_rate: c.rate };
+    // U1: per lane, informative:false where 0 regressions at >= 30 settled (the label cannot fail there); report only
+    return { by_state, anomalies, survived: c.survived, regressed: c.regressed, settled: c.settled, survival_rate: c.rate, by_lane: survivalByLane(prs, lanes) };
   })();
   const byRepo = extras.length ? extras.map((r) => {
     try { const c = survivalCounts(loopPrSettlements(db, now, r.slug, env).map((p) => p.settlement.state)); return { repo: r.slug, ...c }; } catch { return { repo: r.slug, survived: null, regressed: null, settled: null, rate: null }; }
@@ -511,6 +515,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     falsifier: falsifierEvidence(db, env, now),
     // L3-v2 §5.1–2 (SETTLEMENT_EXECUTION_MODE, shadow): settled loop PRs' tests re-run at origin/main + fresh-mutant kill share; graded vs verified/survived (report only)
     settlement_execution: settlementExecutionEvidence(db, env, now),
+    // U1: per lane fresh-mutant kill share at settlement (median, share < 0.2, Wilson) — a value label that can fail (report only)
+    settlement_value: settlementValueEvidence(db, wilson, lanes),
     // RESOURCE_SCHEDULER_MODE (shadow): observed-capacity would-defer counts 24 h / 7 d + latest observed capacity (report only)
     scheduler_capacity: schedulerCapacityEvidence(db, env, now),
     // PL-001 (PROCEDURE_SELECTOR_MODE, shadow): applies / does_not_apply per ordinary gym claim 24 h / 7 d + top failed clauses (nothing delivered)
