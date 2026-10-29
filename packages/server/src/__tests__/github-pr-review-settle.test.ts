@@ -28,6 +28,7 @@ vi.mock('child_process', async (importOriginal) => {
 
 import { createTestDb } from './helpers/test-db';
 import { createGitHubWebhookRoutes } from '../routes/github-webhooks';
+import { LoopService } from '../services/loop-service';
 import { DreamStateService } from '../services/dream-state-service';
 
 const git = (cwd: string, args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
@@ -116,13 +117,25 @@ describe('PR review bookkeeping runs settle when the review cannot finish', () =
     db.close();
   }, 30_000);
 
-  it('LLM path: gh unavailable after the maker lease was prepared → the run is settled github_unavailable', async () => {
+  it('LLM path: gh unavailable after the maker lease was prepared → run settled github_unavailable and the maker cancelled with a reason', async () => {
     const { repoPath, prSha } = repo();
     process.env.GITHUB_PR_REVIEW_RUNTIME = 'mock';
     ghHandler = () => { throw new Error('gh: could not resolve host api.github.com'); };
-    const { db, run } = await review(repoPath, prSha);
+    const { db, run, leases } = await review(repoPath, prSha);
     expect(run.status).toBe('cancelled');
     expect(run.metadata).toMatchObject({ settle_reason: 'github_unavailable', failure_class: 'environment' });
+    expect(leases).toEqual([{ role: 'maker', status: 'cancelled', reason: 'pr_review_github_unavailable' }]);
+    db.close();
+  }, 30_000);
+
+  it('LLM path: the git step throws after the maker lease was inserted → the maker is cancelled, never left prepared', async () => {
+    const { repoPath, prSha } = repo();
+    process.env.GITHUB_PR_REVIEW_RUNTIME = 'mock';
+    ghHandler = (args) => { if (args[0] === 'pr' && args[1] === 'view') return JSON.stringify({ headRefOid: prSha }); throw new Error(`unexpected gh ${args.join(' ')}`); };
+    vi.spyOn(LoopService.prototype, 'createWorktree').mockImplementation(() => { throw new Error('fatal: worktree add failed'); });
+    const { db, row, leases } = await review(repoPath, prSha);
+    expect(row.status).toBe('failed');
+    expect(leases).toEqual([{ role: 'maker', status: 'cancelled', reason: 'pr_review_failed' }]);
     db.close();
   }, 30_000);
 });
