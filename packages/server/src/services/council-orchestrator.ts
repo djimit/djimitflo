@@ -7,7 +7,6 @@ import { TaskRouter, type TaskClassification } from './task-router';
 import { StructuredEvaluator, type EvaluationScores, type AggregatedScore } from './structured-evaluator';
 import { SynthesisEngine } from './synthesis-engine';
 import { MultiModelIntelligence } from './multi-model-intelligence';
-// reasoning-loop available for future per-phase reasoning depth
 
 export type CouncilMode = 'fast' | 'review' | 'council';
 export type CouncilPhase = 'diverge' | 'review' | 'synthesize' | 'completed' | 'failed' | 'escalated' | 'diverging' | 'reviewing' | 'synthesizing';
