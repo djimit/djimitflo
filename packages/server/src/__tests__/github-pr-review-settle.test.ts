@@ -138,4 +138,32 @@ describe('PR review bookkeeping runs settle when the review cannot finish', () =
     expect(leases).toEqual([{ role: 'maker', status: 'cancelled', reason: 'pr_review_failed' }]);
     db.close();
   }, 30_000);
+
+  // review #1096: an answer gh returned but that is no JSON object (malformed, or JSON null) is GitHub being unavailable too
+  const statusCalls: string[] = [];
+  const answers = (prSha: string, over: { view?: string; compare?: string; status?: string }) => (args: string[]) => {
+    if (args[0] === 'pr' && args[1] === 'view') return over.view ?? JSON.stringify({ headRefOid: prSha });
+    if (args[0] === 'api' && /\/compare\//.test(args[1])) return over.compare ?? JSON.stringify({ merge_base: 'c'.repeat(40), files: [{ filename: 'feature.txt', additions: 1, deletions: 0 }] });
+    if (args[0] === 'pr' && args[1] === 'comment') return '';
+    if (args[0] === 'api' && /\/statuses\//.test(args[1])) { statusCalls.push(args[1]); return over.status ?? JSON.stringify({ id: 1 }); }
+    throw new Error(`unexpected gh ${args.join(' ')}`);
+  };
+  it.each([
+    ['head read: malformed JSON', { view: '<html>502 Bad Gateway</html>' }, 0],
+    ['head read: JSON null', { view: 'null' }, 0],
+    ['compare: malformed JSON', { compare: '{"merge_base": ' }, 0],
+    ['compare: JSON null', { compare: 'null' }, 0],
+    ['status publication: malformed JSON', { status: 'oops' }, 1],
+    ['status publication: JSON null', { status: 'null' }, 1],
+  ] as const)('Phase 1: %s → run cancelled github_unavailable, status published at most once', async (_name, over, statuses) => {
+    statusCalls.length = 0;
+    const { repoPath, prSha } = repo();
+    ghHandler = answers(prSha, over);
+    const { db, row, run } = await review(repoPath, prSha);
+    expect(row.status).toBe('failed');
+    expect(run.status).toBe('cancelled');
+    expect(run.metadata).toMatchObject({ settle_reason: 'github_unavailable', failure_class: 'environment' });
+    expect(statusCalls).toHaveLength(statuses);
+    db.close();
+  }, 30_000);
 });
