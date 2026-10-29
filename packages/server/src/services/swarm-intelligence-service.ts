@@ -1665,7 +1665,8 @@ export class SwarmIntelligenceService {
       .map((row) => this.integrationChainForWorkItem(row))
       .filter((chain) => chain !== null)
       .slice(0, 10);
-    const completed = runs.filter((run) => Boolean(run.eval_run));
+    // M1: a pilot run is complete when its loop is (stored closures still count); the retired closure adds no eval any more
+    const completed = runs.filter((run) => Boolean(run.eval_run) || ['completed', 'ready_for_human_merge'].includes(String(run.loop?.status)));
     const checkerRejected = runs.filter((run) => run.leases.some((lease: any) => lease.role === 'checker' && lease.status === 'failed')).length;
     const interventionCount = runs.reduce((sum, run) => sum + Number((run as any).manual_interventions || 0), 0);
     const durations = runs
@@ -1761,7 +1762,7 @@ export class SwarmIntelligenceService {
     if (workItemStatus === 'planned') return 'Prepare maker and checker leases';
     if (makerStatus === 'prepared') return 'Run worker-pool scheduler';
     if (makerStatus === 'completed' && checkerStatus === 'prepared') return 'Run checker through worker pool';
-    if (checkerStatus === 'completed' && !hasEval) return 'Close loop learning';
+    if (checkerStatus === 'completed' && !hasEval) return 'Review the loop result'; // M1: the loop-learning closure is retired
     if (hasEval) return 'Review reflection and memory candidates';
     if (loopStatus === 'blocked' || workItemStatus === 'blocked') return 'Inspect blocked reasons';
     return 'Import integration event';

@@ -9,6 +9,7 @@ import { errorHandler } from '../middleware/error-handler';
 import { createSwarmRoutes } from '../routes/swarms';
 import { AgentAssuranceService } from '../services/agent-assurance-service';
 import { KnowledgeRuntimeService } from '../services/knowledge-runtime-service';
+import { MemoryCandidateService } from '../services/memory-candidate-service';
 import { SelfImprovementService } from '../services/self-improvement-service';
 
 function makeDb() {
@@ -58,6 +59,16 @@ function seedRun(db: Database.Database, id: string, checkerAccepted = true, repo
   `).run(`manifest-${id}`, `decision-${id}`, id, now);
 }
 
+/** A closure stored before the M1 retirement (prod keeps 74 such rows): eval + reflection + memory candidate + closure row. */
+function storeClosure(db: Database.Database, runId: string) {
+  const assurance = new AgentAssuranceService(db);
+  const evalRun = assurance.runEval({ suite_name: 'loop-learning', target_type: 'loop', target_ref: runId });
+  const reflection = assurance.createReflection({ source_type: 'loop', source_ref: runId, lesson: `stored lesson ${runId}`, evidence_refs: [`loop:${runId}`] });
+  const memory = new MemoryCandidateService(db).create({ title: `stored ${runId}`, content: `stored lesson ${runId}`, memory_type: 'operational_memory', source_ref: `loop:${runId}` });
+  db.prepare('INSERT INTO loop_learning_closures (loop_run_id, eval_run_id, reflection_id, memory_candidate_id) VALUES (?, ?, ?, ?)').run(runId, evalRun.id, reflection.id, memory.id);
+  return { evalId: evalRun.id, reflectionId: reflection.id };
+}
+
 describe('loop learning closure', () => {
   // M1 (A #25, prod 14 d): 74/74 loop-learning evals passed (scores 0.90–1.00, vacuous) and the 58 open closure work items were
   // never consumed. The closure pipeline is retired: a reviewed run gets no new eval, reflection, memory candidate or work item.
@@ -93,6 +104,7 @@ describe('loop learning closure', () => {
     const db = makeDb();
     try {
       seedRun(db, 'stale-closure');
+      storeClosure(db, 'stale-closure');
       const knowledge = new KnowledgeRuntimeService(db);
       expect(knowledge.closeLoop({ loop_run_id: 'stale-closure' }).status).toBe('closed');
       db.prepare("UPDATE loop_runs SET status='cancelled' WHERE id='stale-closure'").run();
@@ -121,6 +133,7 @@ describe('loop learning closure', () => {
       db.prepare("UPDATE self_improvements SET status='verified' WHERE id=?").run(proposal.id);
       db.prepare("INSERT INTO goals(id,objective,status,risk_class,improvement_id) VALUES ('improvement-goal','Fixture improvement','completed','low',?)").run(proposal.id);
       db.prepare("UPDATE loop_runs SET goal_id='improvement-goal' WHERE id='improvement-closure'").run();
+      storeClosure(db, 'improvement-closure');
       const knowledge = new KnowledgeRuntimeService(db);
       const early = knowledge.closeLoop({ loop_run_id: 'improvement-closure' });
       expect(early.status).toBe('closed');
@@ -137,10 +150,11 @@ describe('loop learning closure', () => {
     } finally { db.close(); }
   });
 
-  it('rolls back new closure artifacts if binding would overwrite malformed improvement evidence', () => {
+  it('refuses to bind a stored closure over malformed improvement evidence and changes nothing', () => {
     const db = makeDb();
     try {
       seedRun(db, 'atomic-closure');
+      storeClosure(db, 'atomic-closure');
       const [proposal] = new SelfImprovementService(db).generateFromBuildErrors(['Atomic closure fixture']);
       db.prepare("UPDATE self_improvements SET status='verified',evidence_refs_json='not-json' WHERE id=?").run(proposal.id);
       db.prepare("INSERT INTO goals(id,objective,status,risk_class,improvement_id) VALUES ('atomic-goal','Fixture','completed','low',?)").run(proposal.id);
@@ -148,7 +162,7 @@ describe('loop learning closure', () => {
       expect(() => new KnowledgeRuntimeService(db).closeLoop({ loop_run_id: 'atomic-closure' })).toThrow();
       expect(db.prepare('SELECT status,evidence_refs_json FROM self_improvements WHERE id=?').get(proposal.id)).toEqual({ status: 'verified', evidence_refs_json: 'not-json' });
       for (const table of ['loop_learning_closures', 'agent_eval_runs', 'reflection_candidates', 'memory_candidates']) {
-        expect(db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get()).toEqual({ count: 0 });
+        expect(db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get()).toEqual({ count: 1 });
       }
     } finally { db.close(); }
   });
@@ -187,89 +201,11 @@ describe('loop learning closure', () => {
     }
   });
 
-  it('creates eval, reflection, memory candidate and regression follow-up', () => {
-    const db = makeDb();
-    try {
-      seedRun(db, 'loop-regression-baseline', true);
-      seedRun(db, 'loop-regression', true);
-      const now = new Date().toISOString();
-      db.prepare(`
-        INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at)
-        VALUES (?, ?, 'maker', 'mock', 'completed', ?, ?, ?)
-      `).run('loop-regression-retried-maker', 'loop-regression', JSON.stringify({ superseded_by_maker_lease_id: 'loop-regression-maker' }), now, now);
-      db.prepare(`
-        INSERT INTO agent_eval_runs (id, suite_name, target_type, target_ref, status, score, scorecard_json, findings_json, metadata, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run('previous-eval', 'loop-learning', 'loop', 'loop-regression-baseline', 'passed', 1, '{}', '[]', '{}', new Date(Date.now() - 1000).toISOString());
-
-      const result = new KnowledgeRuntimeService(db).closeLoop({ loop_run_id: 'loop-regression' });
-      expect(result.status).toBe('closed');
-      expect(result.eval_run?.target_ref).toBe('loop-regression');
-      expect(result.reflection?.source_ref).toBe('loop-regression');
-      expect(result.memory_candidate?.source_ref).toBe('loop:loop-regression');
-      expect(result.follow_up_work_item?.source).toBe('loop_learning_closure');
-      expect(result.score_delta).toBeLessThan(0);
-    } finally {
-      db.close();
-    }
-  });
-
-  it('creates skill improvement work when score improves', () => {
-    const db = makeDb();
-    try {
-      seedRun(db, 'loop-improved-baseline', true);
-      seedRun(db, 'loop-improved', true);
-      db.prepare(`
-        INSERT INTO agent_eval_runs (id, suite_name, target_type, target_ref, status, score, scorecard_json, findings_json, metadata, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run('previous-low-eval', 'loop-learning', 'loop', 'loop-improved-baseline', 'failed', 0.35, '{}', '[]', '{}', new Date(Date.now() - 1000).toISOString());
-
-      const result = new KnowledgeRuntimeService(db).closeLoop({ loop_run_id: 'loop-improved' });
-      expect(result.status).toBe('closed');
-      expect(result.score_delta).toBeGreaterThan(0);
-      expect(result.skill_improvement_work_item).toMatchObject({
-        source: 'loop_learning_closure',
-        recommended_loop: 'skill-quality-loop',
-      });
-      expect(result.follow_up_work_item).toBeNull();
-    } finally {
-      db.close();
-    }
-  });
-
-  it('compares a new run with the latest run of the same loop', () => {
-    const db = makeDb();
-    try {
-      seedRun(db, 'loop-baseline', true);
-      const baseline = new KnowledgeRuntimeService(db).closeLoop({ loop_run_id: 'loop-baseline' });
-      seedRun(db, 'loop-next', true);
-      const next = new KnowledgeRuntimeService(db).closeLoop({ loop_run_id: 'loop-next' });
-      expect(next.previous_score).toBe(baseline.eval_run?.score);
-      expect(next.score_delta).toBe(0);
-      expect(next.eval_run?.scorecard).toMatchObject({ maker_completed: true, checker_accepted: true, deterministic: true });
-    } finally {
-      db.close();
-    }
-  });
-
-  it('does not compare runs from another repository', () => {
-    const db = makeDb();
-    try {
-      seedRun(db, 'repo-a-loop', true, '/repo/a');
-      new KnowledgeRuntimeService(db).closeLoop({ loop_run_id: 'repo-a-loop' });
-      seedRun(db, 'repo-b-loop', true, '/repo/b');
-      const result = new KnowledgeRuntimeService(db).closeLoop({ loop_run_id: 'repo-b-loop' });
-      expect(result.previous_score).toBeNull();
-      expect(result.score_delta).toBeNull();
-    } finally {
-      db.close();
-    }
-  });
-
   it('is idempotent for the same loop run', () => {
     const db = makeDb();
     try {
       seedRun(db, 'loop-idempotent');
+      storeClosure(db, 'loop-idempotent');
       const knowledge = new KnowledgeRuntimeService(db);
       const first = knowledge.closeLoop({ loop_run_id: 'loop-idempotent' });
       const second = knowledge.closeLoop({ loop_run_id: 'loop-idempotent' });
@@ -296,7 +232,7 @@ describe('loop learning closure', () => {
     }
   });
 
-  it('closes loop learning through the swarm API route', async () => {
+  it('reports the retired closure through the swarm API route', async () => {
     const db = makeDb();
     const app = express();
     app.use(express.json());
@@ -319,9 +255,9 @@ describe('loop learning closure', () => {
       expect(result).toMatchObject({
         action: 'closed_loop_learning',
         loop_run_id: 'loop-route-close',
-        status: 'closed',
+        status: 'blocked',
+        blocked_reasons: ['loop_learning_closure_retired'],
       });
-      expect(result.memory_candidate.promotion_status).toBe('proposed');
     } finally {
       if (server) {
         await new Promise<void>((resolve, reject) => server!.close((err) => err ? reject(err) : resolve()));

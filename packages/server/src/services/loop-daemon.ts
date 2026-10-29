@@ -10,7 +10,6 @@ import { swarmEventBus } from './swarm-event-bus';
 import { GoalDecomposer } from './goal-decomposer';
 import { ResourceScheduler } from './resource-scheduler';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
-import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import { LoopEventService } from './loop-event-service';
 import { blockOnUnmetDependencies, settleDependencyBlockedGoals } from './goal-dependency-gate';
 import { inheritableApproval } from './approval-inheritance';
@@ -939,39 +938,12 @@ export class LoopDaemon {
       // 9a'''. K2 (KNOWLEDGE_GAP_MODE=shadow): a failure signature recurring >= 3x in 14 d becomes one knowledge gap (never throws)
       if (!outcomeVerified) recordFailureGaps(this.db);
 
-      // 9b. Close learning loop (reflection + memory + follow-up).
+      // 9b. Record the certified outcome; hand verified work to a human.
       if (allGatesPass) {
         try { new CommonsProposalReviewService(this.db).recordGoalOutcome(goal.id, 'completed', `run ${run.id} certified`); } catch { /* best-effort learning */ }
         // G4: hand verified work to a human as a draft PR (default off; records draft_pr_failed on any problem).
         try { await new LoopDraftPrService(this.db).openForRun(run.id); } catch { /* never fail the daemon over a PR */ }
-        try {
-          const knowledge = new KnowledgeRuntimeService(this.db);
-          const closure = knowledge.closeLoop({ loop_run_id: run.id });
-          if (closure.status === 'blocked') {
-            // Previously silently discarded — this is the one signal that
-            // explains why loop_learning_closures stays near-empty even
-            // when most runs pass their gates. Not fatal for the daemon.
-            new LoopEventService(this.db).recordEvent(
-              run.id,
-              'learning_closure_blocked',
-              'info',
-              `Learning closure blocked: ${closure.blocked_reasons.join('; ') || 'no reason reported'}`,
-              { blocked_reasons: closure.blocked_reasons },
-            );
-          }
-        } catch (err) {
-          // Best-effort: learning closure is not fatal for the daemon, but
-          // record why it threw instead of discarding the error silently.
-          try {
-            new LoopEventService(this.db).recordEvent(
-              run.id,
-              'learning_closure_blocked',
-              'warning',
-              `Learning closure threw: ${err instanceof Error ? err.message : String(err)}`,
-              {},
-            );
-          } catch { /* logging must never break the daemon */ }
-        }
+        // M1 (29-10): the loop-learning closure (vacuous eval + unconsumed work items) is retired; stored closures stay readable.
       }
 
       // 10. Update goal + run status.
