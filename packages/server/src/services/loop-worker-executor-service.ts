@@ -30,6 +30,7 @@ import { classifyStderr, STDERR_TAIL_CHARS, type FailureStage, type LeaseFailure
 import { makerWarmDepsBlocked, warmDepsCacheRoot, warmDepsState } from './maker-warm-deps';
 import { asgAfterMaker, asgBeforeMaker, type AsgMakerOutcome } from './asg/oracle-lane';
 import { asgMode } from './asg/mode';
+import { recordWorkerCall } from './model-call-ledger';
 import type {
   LoopRunRecord,
   WorkerLeaseRecord,
@@ -523,6 +524,7 @@ export class LoopWorkerExecutorService {
     this.loopService.updateWorkerLeaseStatus(checker.id, 'running', { started_at: new Date().toISOString(), runtime_adapter: runtime });
 
     const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
+    const reviewerStartedAt = Date.now();
     const prompt = this.loopService.buildCheckerPrompt(run, maker, checker);
     const skipPermissions = this.loopService.resolveSkipPermissions(input.skip_permissions);
     const result = runtime === 'mock'
@@ -569,6 +571,10 @@ export class LoopWorkerExecutorService {
       ...(fallbackLimited ? { failure_reason: LIMIT_HIT, subscription_limit_hit_at: new Date().toISOString() } : exitStatus === 0 && !timedOut ? {} : { failure_reason: `${reviewRole}_runtime_failed:exit=${exitStatus ?? 'signal'},timed_out=${timedOut}: ${(result.stderr || '').split('\n').map((line) => line.trim()).filter((line) => line && !line.startsWith('at ')).pop()?.slice(0, 200) ?? ''}` }),
       ...(exitStatus === 0 && !timedOut ? {} : { failure: runtimeFailureHint(result, 'checker') }),
     });
+
+    // O2a: the reviewer's model call in the ledger (a mirror of this lease's runtime_usage; unknown tokens stay NULL)
+    recordWorkerCall(this.db, { consumer: 'checker', role: reviewRole, runId: run.id, goalId: run.goal_id, loopName: run.loop_name, runtime,
+      meta: { model: checker.metadata?.model, runtime_usage: runtimeUsage ? { input_tokens: runtimeUsage.prompt_tokens, output_tokens: runtimeUsage.completion_tokens, total_tokens: runtimeUsage.total_tokens } : undefined }, durationMs: Date.now() - reviewerStartedAt, ok: exitStatus === 0 && !timedOut });
 
     const gates: LoopGate[] = [
       { name: `${reviewRole}_runtime_exit_zero`, status: exitStatus === 0 && !timedOut ? 'pass' : 'fail', evidence: `runtime=${runtime}, exit=${exitStatus ?? 'signal'}, timed_out=${timedOut}` },
