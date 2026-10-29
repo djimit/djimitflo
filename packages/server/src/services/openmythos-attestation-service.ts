@@ -37,23 +37,30 @@ export interface OpenMythosAttestationRecord {
 
 /** The producer's default minimum (OpenMythos scripts/r21_calibrate_djimitflo.py --minimum-agreement). */
 const DEFAULT_MINIMUM_AGREEMENT = 0.8;
-const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+/** A rate is evidence only as a finite number in [0, 1]; absent, null, a string or out of range is not. */
+const rate = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1 ? v : null);
 
 /**
- * M1 (B §5): the producer's `calibrated` only means "complete and enough cases"; it stays true at any agreement. A calibration
- * artifact may not claim calibrated when its own agreement is below its own minimum (`minimum_agreement_rate`, default 0.8;
- * `minimum_category_agreement_rate`), or when the lowest category rate exceeds the overall rate (an overall rate is a weighted
- * mean of the category rates, so that is impossible). Returns why, or null when the claim holds. Missing rates: no claim to check.
+ * M1 (B §5) / review #1094: the producer's `calibrated` only means "complete and enough cases"; it stays true at any
+ * agreement. A calibration artifact may claim calibrated only with its agreement evidence present and valid:
+ * agreement_rate and lowest_category_agreement_rate finite in [0, 1]; minimum_agreement_rate (default 0.8) and
+ * minimum_category_agreement_rate (default 0) finite in [0, 1] when given; agreement ≥ its minimum, the lowest category ≥ its
+ * minimum, and the lowest category ≤ the overall rate (an overall rate is a weighted mean of the category rates).
+ * Returns why it is refused, or null when the claim holds. Callers need not have schema-validated the report.
  */
 export function calibrationRefusal(report: Record<string, unknown>): string | null {
   if (report.calibrated !== true) return 'not calibrated';
-  const agreement = num(report.agreement_rate);
-  const lowest = num(report.lowest_category_agreement_rate);
-  const minimum = num(report.minimum_agreement_rate) ?? DEFAULT_MINIMUM_AGREEMENT;
-  const categoryMinimum = num(report.minimum_category_agreement_rate) ?? 0;
-  if (agreement !== null && agreement < minimum) return `agreement ${agreement} < minimum ${minimum}`;
-  if (lowest !== null && lowest < categoryMinimum) return `lowest category agreement ${lowest} < minimum ${categoryMinimum}`;
-  if (agreement !== null && lowest !== null && lowest > agreement + 1e-9) return `lowest category agreement ${lowest} > overall ${agreement} (inconsistent)`;
+  const agreement = rate(report.agreement_rate);
+  const lowest = rate(report.lowest_category_agreement_rate);
+  if (agreement === null) return 'agreement_rate missing or not a rate in [0, 1]';
+  if (lowest === null) return 'lowest_category_agreement_rate missing or not a rate in [0, 1]';
+  const minimum = report.minimum_agreement_rate === undefined ? DEFAULT_MINIMUM_AGREEMENT : rate(report.minimum_agreement_rate);
+  const categoryMinimum = report.minimum_category_agreement_rate === undefined ? 0 : rate(report.minimum_category_agreement_rate);
+  if (minimum === null) return 'minimum_agreement_rate not a rate in [0, 1]';
+  if (categoryMinimum === null) return 'minimum_category_agreement_rate not a rate in [0, 1]';
+  if (agreement < minimum) return `agreement ${agreement} < minimum ${minimum}`;
+  if (lowest < categoryMinimum) return `lowest category agreement ${lowest} < minimum ${categoryMinimum}`;
+  if (lowest > agreement + 1e-9) return `lowest category agreement ${lowest} > overall ${agreement} (inconsistent)`;
   return null;
 }
 

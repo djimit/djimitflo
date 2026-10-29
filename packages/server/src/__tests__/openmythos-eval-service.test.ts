@@ -538,7 +538,7 @@ describe('GovernanceGuardService', () => {
     const reportPath = join(tmpdir(), `openmythos-calibration-${Date.now()}.json`);
     writeFileSync(reportPath, JSON.stringify({
       run_id: runId, agent_id: 'skill-1', calibrated: true, certification_eligible: true,
-      case_result_rows: 1, total_cases: 1,
+      case_result_rows: 1, total_cases: 1, agreement_rate: 0.9, lowest_category_agreement_rate: 0.85, // review #1094: evidence required
     }));
     process.env.OPENMYTHOS_CALIBRATION_REPORT_PATH = reportPath;
     expect(guardService.isGovernanceCertified('skill-1')).toBe(true);
