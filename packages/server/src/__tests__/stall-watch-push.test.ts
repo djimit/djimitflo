@@ -90,4 +90,29 @@ describe('stallWatchTick: detect → persist new → push new', () => {
     expect(await stallWatchTick(db, notify, NOW + 3_600_000, env)).toEqual([]);
     expect(notify.mock.calls.length).toBe(sentFirst);
   });
+
+  it('a detector that errors keeps its open stalls: no cleared row, and no second push when it detects them again (Codex #1093)', async () => {
+    const NOW = Date.parse('2026-10-25T21:00:00Z');
+    db.pragma('foreign_keys = OFF');
+    for (let i = 0; i < 5; i++) {
+      db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES (?, ?, 'maker', 'remote', 'failed', ?, ?, ?)`)
+        .run(`l${i}`, `r${i}`, JSON.stringify({ model: 'workstation/atomic', failure_reason: `maker_gate_failed:lease_not_active_${i}` }), new Date(NOW - (i + 1) * 3_600_000).toISOString(), new Date(NOW).toISOString());
+    }
+    const env = { VALUE_ANOMALY_ALARM: 'on', DJIMITFLO_SKILLS_DIR: __dirname, DJIMIT_SKILL_TRAINING_EVAL_RUNNER: __filename };
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const notify = vi.fn(async (s: Stall) => pushStall(db, s, ON, new Date(NOW)));
+    const SUB = 'zero_success:maker:remote@workstation/atomic';
+    expect(names(await stallWatchTick(db, notify, NOW, env))).toContain(SUB);
+    const pushed = notify.mock.calls.filter(([s]) => s.subsystem === SUB).length;
+    expect(pushed).toBe(1);
+    // the detector's query fails (table unreadable): its stall is unknown, not recovered
+    db.exec('ALTER TABLE worker_leases RENAME TO worker_leases_hidden');
+    await stallWatchTick(db, notify, NOW + 3_600_000, env);
+    expect(rows().filter((r) => r.subject_id === SUB).map((r) => r.decision)).toEqual(['open']);
+    // detection recovers and still reports it: not new, not pushed again
+    db.exec('ALTER TABLE worker_leases_hidden RENAME TO worker_leases');
+    expect(names(await stallWatchTick(db, notify, NOW + 2 * 3_600_000, env))).not.toContain(SUB);
+    expect(notify.mock.calls.filter(([s]) => s.subsystem === SUB).length).toBe(1);
+    expect(rows().filter((r) => r.subject_id === SUB).map((r) => r.decision)).toEqual(['open']);
+  });
 });

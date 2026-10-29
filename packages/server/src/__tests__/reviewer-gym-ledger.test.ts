@@ -78,6 +78,29 @@ describe('executeChecker writes one reviewer ledger row per settled lease', () =
     expect(rows).toEqual([expect.objectContaining({ run_id: runId, ok: 0, tokens_in: null, tokens_out: null, purpose: 'checker:doc-drift-and-small-fix-loop' })]);
   });
 
+  it('a reviewer cancelled during execution: its reported tokens are kept on the lease and ledgered once (status cancelled) (Codex #1093)', async () => {
+    const run = loops.startDocDriftAndSmallFixLoop({ repository_path: tmp, target_finding: { file_path: 'README.md', description: 'Improve wording', category: 'refactor' } });
+    const prepared = loops.continueLoopRun(run.id, { runtime: 'mock', max_assignments: 1, max_maker_workers: 1 });
+    const maker = prepared.leases.find((l) => l.role === 'maker')!;
+    await loops.executeWorker(run.id, { lease_id: maker.id, timeout_ms: 10_000 });
+    loops.runDeterministicChecks(run.id, { lease_id: maker.id, timeout_ms: 10_000, scripts: [] });
+    const checkerId = loops.listWorkerLeases(run.id).find((l) => l.role === 'checker')!.id;
+    vi.spyOn(loops.runtimeCommand, 'executeRuntimeCommand').mockImplementation(async () => {
+      loops.updateWorkerLeaseStatus(checkerId, 'cancelled', { cancellation_reason: 'operator_stop' }); // cancelled while it ran
+      return { exitCode: null, signal: 'SIGTERM', timedOut: false, stdout: '{"usage":{"prompt_tokens":70,"completion_tokens":30,"total_tokens":100}}', stderr: '' };
+    });
+    await loops.executeChecker(run.id, { runtime: 'mock', timeout_ms: 10_000 });
+    const lease = loops.getWorkerLease(checkerId);
+    expect(lease.status).toBe('cancelled');
+    expect(lease.metadata.runtime_usage).toMatchObject({ total_tokens: 100 });
+    expect(ledger(db, 'checker')).toEqual([expect.objectContaining({ run_id: run.id, ok: 0, tokens_in: 70, tokens_out: 30, status: 'cancelled' })]);
+    // counted once: the lease owns the tokens, the ledger row is its mirror
+    const since = new Date(Date.now() - 3_600_000).toISOString(); const until = new Date(Date.now() + 3_600_000).toISOString();
+    const { events } = usageEvents(db, since, until);
+    expect(events.filter((e) => e.source === 'llm_model_calls' && e.consumer === 'llm:checker')).toEqual([]);
+    expect(events.filter((e) => e.source === 'worker_leases' && e.row_id === checkerId).map((e) => e.tokens_reconciled)).toEqual([100]);
+  });
+
   it('an accepted reviewer: one row, ok 1', async () => {
     const runId = await runReviewer({ exitCode: 0, stdout: '{"verdict":"accepted","notes":"fine"}', stderr: '' });
     expect(ledger(db, 'checker')).toEqual([expect.objectContaining({ run_id: runId, ok: 1, purpose: 'checker:doc-drift-and-small-fix-loop' })]);
