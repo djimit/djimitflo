@@ -779,20 +779,27 @@ it('U2 on: a missing or low value signal is ineligible (never merged); FBPA pass
   expect(decision(700)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_missing' });
 });
 
-it('U2 rollback: a PR rejected only by the value gate is eligible again once the gate is off or shadow (other final reasons stay final)', async () => {
+it('U2 rollback: a PR rejected only by the value gate is eligible again once the gate is shadow or off (other final reasons stay final)', async () => {
+  const tick = (gate: string, min: number) => runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act', gate ? { LOOP_AUTO_MERGE_VALUE_GATE: gate } : {}), new Date(NOW.getTime() + min * 60_000));
   seedPr(702, { draft: false, fbpa: 'fail', graded: KILL(0) });
   seedPr(700, { draft: false }); // missing signal
   seedPr(710, { draft: false, lines: 401 }); // a non-value permanent reason
-  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act', { LOOP_AUTO_MERGE_VALUE_GATE: 'on' }), NOW);
+  await tick('on', 0);
   expect(decision(702)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_low' });
   expect(decision(700)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_missing' });
   expect(decision(710).reason).toMatch(/^diff_over_limit/);
-  // on → off: the value-gate rejection is not final any more; the PR goes through every gate and merges
-  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), new Date(NOW.getTime() + 60_000));
-  expect(decision(702)).toMatchObject({ decision: 'merged' });
-  expect(decision(710).reason).toMatch(/^diff_over_limit/); // unchanged: never re-evaluated
-  // on → shadow: eligible again, the decision carries what the gate would have done
-  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act', { LOOP_AUTO_MERGE_VALUE_GATE: 'shadow' }), new Date(NOW.getTime() + 120_000));
+  await tick('on', 1); // still on: final
+  expect(decision(702)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_low' });
+  // on → shadow: re-evaluated through every gate and merged; the record carries what the gate would have done
+  await tick('shadow', 2);
+  expect(decision(702)).toMatchObject({ decision: 'merged', would_block_value: 'value_signal_low' });
   expect(decision(700)).toMatchObject({ decision: 'merged', would_block_value: 'value_signal_missing' });
-  expect(writes().filter((c) => c.url.endsWith('/merge')).map((c) => c.url)).toEqual(['https://api.github.com/repos/o/r/pulls/702/merge', 'https://api.github.com/repos/o/r/pulls/700/merge']);
+  expect(decision(710).reason).toMatch(/^diff_over_limit/); // never re-evaluated
+  // on → off: the same, without a value read
+  seedPr(704, { draft: false, fbpa: 'fail' });
+  await tick('on', 3);
+  expect(decision(704)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_low' });
+  await tick('', 4);
+  expect(decision(704).decision).toBe('merged'); expect(decision(704).would_block_value).toBeUndefined();
+  expect(writes().filter((c) => c.url.endsWith('/merge')).map((c) => c.url.split('/').slice(-2)[0])).toEqual(['702', '700', '704']);
 });
