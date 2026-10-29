@@ -340,7 +340,9 @@ with the reason in `AUTO_DEPLOY_DISABLED` until an operator has reviewed and ins
 Preconditions (auto-deploy refuses to act otherwise, with a log line): `/srv/djimitflo` and every directory above it are owned by
 root and not group/other-writable (`chown root:root /srv/djimitflo && chmod 0711 /srv/djimitflo`; `data/` inside it stays as it
 is). Git in a `runtime-source-*` clone runs as the clone's owner (uid 1001), which needs to traverse `/srv/djimitflo`: hence
-0711 (traverse, no listing), so keep private files in it unreadable by others (`chmod 0600 /srv/djimitflo/runtime.env*`). Writes into `data/` are staged in `/srv/djimitflo/.auto-deploy-stage` (root, 0700, created by the script, same filesystem
+0711 (traverse, no listing), so keep private files in it unreadable by others (`chmod 0600 /srv/djimitflo/runtime.env*`).
+`deploy-vps.sh` (also when run by hand) checks the same before any step, plus `compose.yml` (a root-owned regular file, not
+group/other-writable) and `build-receipts/`; its temp dirs live in `/srv/djimitflo/.deploy-work` (root, 0700). Writes into `data/` are staged in `/srv/djimitflo/.auto-deploy-stage` (root, 0700, created by the script, same filesystem
 as `data/`; `AUTO_DEPLOY_STAGE_DIR`) and renamed in. `python3` must be on the host.
 
 - Install: `install -o root -g root -m 0755 scripts/auto-deploy.sh /srv/djimitflo/auto-deploy.sh && cp scripts/systemd/djimitflo-auto-deploy.* /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now djimitflo-auto-deploy.timer`

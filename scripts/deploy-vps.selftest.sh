@@ -148,7 +148,8 @@ host() {   # host [knob...] → runs the remote script on a fresh stub host; set
     "$PREV" "$PREV_FULL" "$HOST" "$PREV" > "$HOST/compose.yml"
   cp "$HOST/compose.yml" "$TMP/compose.before"
   # DEPLOY_FILE_REMOTE: seam — the stub host fetches from a local repo; prod fetches over https (file:// stays off)
-  RC=0; OUT="$(remote_script | DEPLOY_FILE_REMOTE=always PATH="${HOST_PATH_PREFIX:-}$BIN:$PATH" bash -s -- "$HOST" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
+  # AUTO_DEPLOY_TRUSTED_UID: seam — the test user stands in for root as the trusted owner of the deploy root
+  RC=0; OUT="$(remote_script | AUTO_DEPLOY_TRUSTED_UID="${HOST_TRUSTED_UID:-$(id -u)}" DEPLOY_FILE_REMOTE=always PATH="${HOST_PATH_PREFIX:-}$BIN:$PATH" bash -s -- "$HOST" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
 }
 host
 [ "$RC" = 0 ] || fail "healthy deploy failed ($RC): $OUT"
@@ -180,7 +181,7 @@ host
 [ -d "$STUB/ctx" ] && committed || fail "clean deploy did not build the committed source"
 grep -qF "\"source_tree\":\"$NEW_TREE\"" "$HOST/build-receipts/"*.json || fail "receipt lacks the commit tree id $NEW_TREE"
 echo "$OUT" | grep -q "not used for the build" && fail "clean checkout reported as dirty: $OUT"
-[ -z "$(ls -d "$HOST"/build-context-* 2>/dev/null)" ] || fail "build context left behind"
+[ -z "$(ls -d "$HOST"/build-context-* "$HOST"/.deploy-work/* 2>/dev/null)" ] || fail "build context left behind"
 [ ! -e "$STUB/ctx/.git" ] || fail "build context contains .git"
 # a reused runtime-source-$SHORT (retry after a build timeout, or written to by a container) with local changes
 reused() { git clone -q "$REPO_DIR" "$1/runtime-source-$NEW"; }
@@ -232,11 +233,37 @@ HOST_PREP=replaced host
 [ "$RC" = 0 ] || fail "replaced-clone deploy failed ($RC): $OUT"
 committed || fail "a replaced object in the reused clone reached the build context: $(cat "$STUB/ctx/$SRC_FILE")"
 grep -qF "\"source_tree\":\"$NEW_TREE\"" "$HOST/build-receipts/"*.json || fail "the receipt tree came from the reused clone, not the commit"
-[ -z "$(ls -d "$HOST"/.build-src-* 2>/dev/null)" ] || fail "the fresh build clone was left behind"
+[ -z "$(ls -d "$HOST"/.build-src-* "$HOST"/.deploy-work/* 2>/dev/null)" ] || fail "the fresh build clone was left behind"
 # a fetch that does not yield exactly $SHA (here: the commit is not in the remote) stops before anything is built
 NEW_SAVE="$NEW_FULL"; NEW_FULL="$(printf '1%.0s' $(seq 1 40))"; NEW="${NEW_FULL:0:7}"
 host
 [ "$RC" != 0 ] && [ ! -e "$STUB/ctx" ] || fail "a commit that cannot be fetched was built: $OUT"
 cmp -s "$HOST/compose.yml" "$TMP/compose.before" || fail "a failed fetch touched compose"
 NEW_FULL="$NEW_SAVE"; NEW="${NEW_FULL:0:7}"
+# --- the deploy root must be trusted before anything happens: owned by root (the trusted uid) up to /, not group/other
+# writable; compose.yml a regular file of root, not group/other-writable. Otherwise: refused before any git or build.
+untouched() { [ ! -e "$STUB/build-args" ] && [ ! -e "$STUB/ctx" ] && [ ! -e "$STUB/compose-calls" ] && [ ! -e "$HOST/runtime-source-$NEW" ]; }
+open_root() { chmod 0775 "$1"; }
+HOST_PREP=open_root host
+[ "$RC" != 0 ] && echo "$OUT" | grep -q "not trusted" && echo "$OUT" | grep -qF "$HOST" || fail "a group-writable deploy root was not refused: $OUT"
+untouched || fail "a group-writable deploy root was acted on"
+# another owner than root (in prod: the container's uid 1001); simulated by trusting a different uid than the test user
+HOST_TRUSTED_UID=1001 host
+[ "$RC" != 0 ] && echo "$OUT" | grep -q "owned by uid $(id -u)" || [ "$(id -u)" = 1001 ] || fail "a deploy root of another uid was not refused: $OUT"
+untouched || fail "a deploy root of another uid was acted on"
+HOST_PREP=true host; [ "$RC" = 0 ] || fail "baseline deploy failed: $OUT"
+# compose.yml writable by group/others, or a link: refused
+host_compose() {   # host_compose <prep on compose.yml> → like host, the prep runs after compose.yml was written
+  HOST="$(mktemp -d "$TMP/host.XXXX")"; rm -f "$STUB"/build-args "$STUB"/compose-calls; rm -rf "$STUB/ctx"
+  printf 'services:\n  djimitflo:\n    image: djimitflo:main-%s\n    environment:\n      DJIMITFLO_COMMIT_SHA: %s\n' "$PREV" "$PREV_FULL" > "$HOST/compose.yml"
+  "$1" "$HOST/compose.yml"
+  RC=0; OUT="$(remote_script | AUTO_DEPLOY_TRUSTED_UID="$(id -u)" DEPLOY_FILE_REMOTE=always PATH="$BIN:$PATH" bash -s -- "$HOST" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
+}
+gw() { chmod 0664 "$1"; }
+linked() { mv "$1" "$1.real"; ln -s "$1.real" "$1"; }
+for prep in gw linked; do
+  host_compose "$prep"
+  [ "$RC" != 0 ] && echo "$OUT" | grep -q "not trusted" || fail "$prep compose.yml was not refused: $OUT"
+  untouched || fail "$prep compose.yml: acted on"
+done
 echo "deploy-vps selftest OK"

@@ -90,6 +90,37 @@ verify_build_receipt() {   # verify_build_receipt <receipt> <src> <sha> <image> 
   printf '%s\n' "$envs" | grep -qxF "DJIMITFLO_BUILD_BASE_IMAGE=$base" || { echo "$image was not built from the receipt's base $base" >&2; return 1; }
 }
 
+# trusted_path dir|private|file <path>: this runs as root, so what it enters, reads and writes must be root's.
+#   dir      <path> and every directory above it up to / are owned by root and not group/other-writable (a root-owned
+#            sticky dir such as /tmp is allowed: others cannot rename or remove what they do not own there)
+#   private  as dir, and <path> itself is root's 0700 (no group/other access at all)
+#   file     <path> is a regular file (not a link) of root, not group/other-writable, in a trusted dir
+# AUTO_DEPLOY_TRUSTED_UID (default 0) is a selftest seam: the test user stands in for root.
+trusted_path() {
+  python3 -c '
+import os, stat, sys
+T = int(os.environ.get("AUTO_DEPLOY_TRUSTED_UID") or "0"); kind, path = sys.argv[1], sys.argv[2]
+def bad(msg): sys.exit(f"not trusted: {msg}")
+if kind == "file":
+    st = os.lstat(path)
+    if not stat.S_ISREG(st.st_mode): bad(f"{path} is not a regular file (link or other)")
+    if st.st_uid != T: bad(f"{path} is owned by uid {st.st_uid}, not root")
+    if st.st_mode & 0o022: bad(f"{path} is writable by group or others")
+    path = os.path.dirname(os.path.abspath(path))
+elif kind == "private":
+    st = os.lstat(path)
+    if not stat.S_ISDIR(st.st_mode) or st.st_uid != T or st.st_mode & 0o077: bad(f"{path} is not a root-only (0700) directory of root")
+p = os.path.realpath(path)
+while True:
+    st = os.lstat(p)
+    if not stat.S_ISDIR(st.st_mode): bad(f"{p} is not a directory")
+    if st.st_uid not in (0, T): bad(f"{p} is owned by uid {st.st_uid}, not root")
+    if st.st_mode & 0o022 and not (st.st_mode & stat.S_ISVTX and st.st_uid == 0): bad(f"{p} is writable by group or others")
+    if p == "/": break
+    p = os.path.dirname(p)
+' "$1" "$2" || { echo "refusing to deploy: $2 must be root-owned and not group/other-writable, and so must every directory above it (chown root:root, chmod 0711 for the deploy root)" >&2; return 1; }
+}
+
 # src_git <dir> <git args...>: git inside a runtime-source clone. A reused clone is the container's /workspace mount, so its
 # repo-local config and hooks are the container's: run as root, they would run as root. So when this runs as root and the
 # clone belongs to another uid, git runs as that uid (setpriv, no supplementary groups); and every call turns hooks,
@@ -107,10 +138,17 @@ src_git() {
 
 # The script that runs on the VPS. Values are passed as positional args ($1..$4).
 remote_script() {
-  declare -f rewrite_compose sha256_file resolve_base_image write_build_receipt verify_build_receipt src_git
+  declare -f rewrite_compose sha256_file resolve_base_image write_build_receipt verify_build_receipt src_git trusted_path
   cat <<'REMOTE'
 set -euo pipefail
 ROOT="$1"; SHA="$2"; REPO="$3"; SHORT="${SHA:0:7}"
+# before anything else: the deploy root (and every dir above it) and compose.yml are root's and only root can write them
+trusted_path dir "$ROOT" || exit 1
+trusted_path file "$ROOT/compose.yml" || exit 1
+mkdir -p "$ROOT/build-receipts" && trusted_path dir "$ROOT/build-receipts" || exit 1
+# temp and build dirs live in a root-only work dir
+WORK="$ROOT/.deploy-work"; [ -d "$WORK" ] || mkdir -m 0700 "$WORK"
+trusted_path private "$WORK" || exit 1
 cd "$ROOT"
 PREV_SHORT="$(sed -n 's/^ *image: djimitflo:main-\([0-9a-f]*\).*/\1/p' compose.yml | head -n 1)"
 PREV_FULL="$(sed -n 's/^ *DJIMITFLO_COMMIT_SHA: \([0-9a-f]*\).*/\1/p' compose.yml | head -n 1)"
@@ -134,17 +172,17 @@ prune_old_builds() {
 AVAIL_KB="$(df --output=avail -k "$ROOT" | tail -n 1 | tr -d ' ')"
 if [ "$AVAIL_KB" -lt 8000000 ]; then prune_old_builds all; AVAIL_KB="$(df --output=avail -k "$ROOT" | tail -n 1 | tr -d ' ')"; fi
 [ "$AVAIL_KB" -ge 6000000 ] || { echo "not enough free disk to build (${AVAIL_KB} KB free); free space first" >&2; exit 1; }
-# The build input is exactly $SHA, fetched into a fresh root-only (0700) dir: never the runtime-source clone, which is
-# reused on a retry and is the container's writable /workspace mount (its objects and refs, e.g. replace refs, are the
-# container's). The fetch verifies every object it receives; FETCH_HEAD must be $SHA; the receipt binds that commit's tree.
-# DEPLOY_FILE_REMOTE is a selftest seam (a local repo as remote); prod fetches over https with the file transport off.
-BUILD_SRC="$(mktemp -d "$ROOT/.build-src-$SHORT.XXXXXX")"; CTX=""; trap 'rm -rf "$BUILD_SRC" ${CTX:+"$CTX"}' EXIT
+# The build input is exactly $SHA, fetched into a fresh root-only (0700) dir in $WORK: never the runtime-source clone,
+# which is reused on a retry and is the container's writable /workspace mount (its objects and refs, e.g. replace refs,
+# are the container's). The fetch verifies every object it receives; FETCH_HEAD must be $SHA; the receipt binds that
+# commit's tree. DEPLOY_FILE_REMOTE is a selftest seam (a local repo as remote); prod fetches over https, file transport off.
+BUILD_SRC="$(mktemp -d "$WORK/build-src-$SHORT.XXXXXX")"; CTX=""; trap 'rm -rf "$BUILD_SRC" ${CTX:+"$CTX"}' EXIT
 bgit() { GIT_CONFIG_NOSYSTEM=1 git -c core.hooksPath=/dev/null -c core.fsmonitor=false -c protocol.file.allow="${DEPLOY_FILE_REMOTE:-never}" -C "$BUILD_SRC" "$@"; }
 bgit init -q
 bgit fetch -q --depth 1 --no-tags "$REPO" "$SHA" || { echo "cannot fetch $SHA from $REPO — not deploying" >&2; exit 1; }
 [ "$(bgit rev-parse --verify 'FETCH_HEAD^{commit}')" = "$SHA" ] || { echo "the fetched commit is not $SHA — not deploying" >&2; exit 1; }
 TREE="$(bgit rev-parse --verify "$SHA^{tree}")"
-CTX="$(mktemp -d "$ROOT/build-context-$SHORT.XXXXXX")"
+CTX="$(mktemp -d "$WORK/build-context-$SHORT.XXXXXX")"
 bgit archive "$SHA" | tar -x -C "$CTX"
 rm -rf "$BUILD_SRC"
 # The runtime-source clone is only the container's mount: created (root's until the chown below) or reused (the
