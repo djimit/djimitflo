@@ -67,8 +67,9 @@ export class RemoteMakerExecutor implements TaskExecutor {
         if (finished) return;
         const job = this.queue.get(jobId!);
         if (job && job.status === 'done') {
-          // the lease was checked when the result arrived; a retry may have superseded it before this poll — never apply then
-          if (!this.queue.jobLeaseActive(job)) {
+          // the lease was checked when the result arrived; a retry may have superseded it, or rebound it to another engine task,
+          // before this poll — never apply then
+          if (!this.queue.jobLeaseActive(job, task.id)) {
             this.queue.cancel(jobId!, 'lease_not_active_at_apply', ['done']);
             return cancelled('lease_not_active_at_apply', 'its lease is no longer the active maker lease');
           }

@@ -68,9 +68,12 @@ export class RemoteMakerQueue {
     return this.db.prepare('SELECT id, host, species, base_commit, prompt, status, patch, reason, created_at, claimed_at, loop_run_id, lease_id FROM remote_maker_jobs WHERE id = ?').get(id) as RemoteMakerJob | undefined;
   }
 
-  /** A job without a lease (legacy) has no binding to check; one with a lease is current only while that lease is active. */
-  jobLeaseActive(job: Pick<RemoteMakerJob, 'loop_run_id' | 'lease_id'>): boolean {
-    return !job.lease_id || this.leaseActive(job.loop_run_id, job.lease_id);
+  /**
+   * A job without a lease (legacy) has no binding to check; one with a lease is current only while that lease is active and,
+   * when the caller knows its engine task (the executor at apply time), the lease is still bound to that task.
+   */
+  jobLeaseActive(job: Pick<RemoteMakerJob, 'loop_run_id' | 'lease_id'>, expectedTaskId?: string): boolean {
+    return !job.lease_id || this.leaseActive(job.loop_run_id, job.lease_id, expectedTaskId);
   }
 
   /**
@@ -78,12 +81,13 @@ export class RemoteMakerQueue {
    * engine while its lease stays 'prepared' until the daemon reads the result back, so 'running' alone refused every result.
    * A prepared lease counts as active only while its own engine task (execution_task_id) is running.
    */
-  private leaseActive(loopRunId: string | null, leaseId: string): boolean {
+  private leaseActive(loopRunId: string | null, leaseId: string, expectedTaskId?: string): boolean {
     try {
       const lease = this.db.prepare(`SELECT loop_run_id, status, json_extract(metadata, '$.superseded_by_maker_lease_id') AS superseded,
         json_extract(metadata, '$.execution_task_id') AS task_id FROM worker_leases WHERE id = ?`)
         .get(leaseId) as { loop_run_id: string; status: string; superseded: string | null; task_id: string | null } | undefined;
       if (!lease || lease.loop_run_id !== loopRunId || lease.superseded) return false;
+      if (expectedTaskId !== undefined && lease.task_id !== expectedTaskId) return false; // rebound to another execution
       if (lease.status === 'running') return true;
       if (lease.status !== 'prepared' || !lease.task_id) return false;
       return (this.db.prepare('SELECT status FROM tasks WHERE id = ?').get(lease.task_id) as { status: string } | undefined)?.status === 'running';
