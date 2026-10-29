@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { Database } from 'better-sqlite3';
 import { SelfImprovementService } from './self-improvement-service';
 import { markRun } from './scheduler-registry';
+import { UsageTelemetry } from './usage-telemetry';
 
 /**
  * Dead-code lane (operator 2026-10-07): Djimitflo proposes removing its own unused code. Prod: 649 route handlers, ~121
@@ -10,6 +11,8 @@ import { markRun } from './scheduler-registry';
  *   (a) a server source file no production file imports and no code/config file names by string;
  *   (b) a route module whose mounts are all authenticated, got 0 hits in `usage_counts` (>= 14 days of telemetry) and
  *       whose path no other package (dashboard, mcp-server, ...) or script mentions — plus the services only it uses.
+ *       0 hits count as unused only while UsageTelemetry.coverage reports the window complete (OPS-003): with counts
+ *       dropped in the window the group is skipped as insufficient_evidence.
  * The oracle is `npm run test:dead-code:grounded` (scripts/dead-code-gate.mjs): only the named files/registrations change,
  * adds <= 10 % of removed lines, then the full test suite of every touched package. Proposals are normal risk: never
  * auto-approved, the maker approval and the merge stay human. DEAD_CODE_LANE_ENABLED=true (default off),
@@ -151,6 +154,7 @@ export function discoverDormantRouteGroups(repoPath: string, db: Database, now =
   try { firstDay = (db.prepare("SELECT MIN(day) AS d FROM usage_counts WHERE kind = 'api'").get() as { d: string | null }).d; } catch { /* no table yet */ }
   const days = firstDay ? Math.floor((now.getTime() - Date.parse(`${firstDay}T00:00:00Z`)) / 86_400_000) : 0;
   if (days < MIN_TELEMETRY_DAYS) return { units: [], skipped: [{ id: 'route-groups', reason: `usage telemetry covers ${days} day(s) < ${MIN_TELEMETRY_DAYS}` }] };
+  const coverage = new UsageTelemetry(db, 0).coverage(days, now); // the persisted loss signal for this window
   const index = repo.files.get(ROUTES_INDEX);
   if (!index) return { units: [], skipped: [{ id: 'route-groups', reason: `${ROUTES_INDEX} not found` }] };
 
@@ -171,6 +175,7 @@ export function discoverDormantRouteGroups(repoPath: string, db: Database, now =
     if (list.some((m) => !m.authed || m.prefix === '/')) { skipped.push({ id, reason: 'public mount (machine callers, webhooks)' }); continue; }
     const hits = list.reduce((n, m) => n + (hitsOf.get(`/api${m.prefix}`, `/api${m.prefix}/%`) as { n: number }).n, 0);
     if (hits > 0) { skipped.push({ id, reason: `${hits} hit(s) since ${firstDay}` }); continue; }
+    if (coverage.incomplete) { skipped.push({ id, reason: `insufficient_evidence: usage telemetry incomplete since ${firstDay} (${coverage.dropped_count} count(s) dropped)` }); continue; }
     const callers = outside.filter(([, text]) => list.some((m) => new RegExp(`${esc(m.prefix)}(?![\\w-])`).test(text))).map(([f]) => f);
     if (callers.length) { skipped.push({ id, reason: `called from ${callers.slice(0, 3).join(', ')}` }); continue; }
     const otherImporters = productionImporters(repo, routeFile).filter((f) => f !== ROUTES_INDEX);
