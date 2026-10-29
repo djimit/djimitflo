@@ -3,11 +3,11 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Database } from 'better-sqlite3';
-import { SURVIVAL_DAYS, loopPrSettlements } from './merge-survival';
+import { SURVIVAL_DAYS, loopPrSettlements, survivalCounts, type LoopPrSettlement } from './merge-survival';
 import { parsePrUrl } from './repo-registry';
 import { classifyReport, runChild } from './commons-falsifier';
 import { GRADED_KILL_BUDGET_MS, GRADED_TEST, gradedTarget, killShare, roundGraded, vitestRunner, type KillRunner } from './graded-fitness';
-import { WRITE_TEST_MUTANTS, targetMutants } from './gym-failure-tasks';
+import { WRITE_TEST_MUTANTS, laneOf, targetMutants } from './gym-failure-tasks';
 import { WorktreeManager } from './worktree-manager';
 import { guardTick, markRun, noteScheduler } from './scheduler-registry';
 import type { LoopService } from './loop-service';
@@ -341,3 +341,69 @@ export function startSettlementExecution(db: Database, loops: Pick<LoopService, 
   const timer = setInterval(tick, DAY); timer.unref?.();
   return () => { clearTimeout(first); clearInterval(timer); };
 }
+
+/**
+ * U1 (B-intelligence 10-29): merge survival cannot fail on test-only PRs (49/49 survived, 0 regressed) and the settlement
+ * re-run cannot either (49/49 pass) — but the fresh-mutant kill share the re-run already records does vary. Report only:
+ * `settlement_value` = per lane the kill share now of each PR's latest settlement_execution row (null = not re-scored, not
+ * counted): n, median, how many are below SETTLEMENT_VALUE_THRESHOLD, with a Wilson CI on that share. And the survival section
+ * says per lane whether it can carry information: 0 regressions over ≥ SURVIVAL_INFORMATIVE_MIN_N settled PRs is
+ * informative:false. Nothing reads either for a decision: fitness, Gate B and auto-merge are unchanged.
+ */
+export const SETTLEMENT_VALUE_THRESHOLD = 0.2;
+export const SURVIVAL_INFORMATIVE_MIN_N = 30;
+
+/** The oracle lane of every loop run with a proposal: mutation-gap → mutation, test-gap#exports → exports, test-gap, else other. */
+export function runLanes(db: Database): Map<string, string> {
+  const out = new Map<string, string>();
+  let rows: Array<{ id: string; ev: string | null }> = [];
+  try {
+    rows = db.prepare(`SELECT r.id, s.evidence_refs_json AS ev FROM loop_runs r JOIN goals g ON g.id = r.goal_id JOIN self_improvements s ON s.id = g.improvement_id
+      WHERE json_extract(r.metadata, '$.pr_url') IS NOT NULL`).all() as typeof rows;
+  } catch { /* tables absent: every run is 'other' */ }
+  for (const r of rows) { const ev = r.ev ?? ''; out.set(r.id, /"mutation-gap:/.test(ev) ? 'mutation' : laneOf(ev) ?? 'other'); }
+  return out;
+}
+
+const median = (xs: number[]): number | null => {
+  if (!xs.length) return null;
+  const s = [...xs].sort((a, b) => a - b); const m = Math.floor(s.length / 2);
+  return roundGraded(s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2);
+};
+
+/** evolution-evidence `settlement_value` (report only). `ci` = a binomial interval (the evidence passes Wilson). */
+export function settlementValueEvidence(db: Database, ci: (k: number, n: number) => [number, number], lanes = runLanes(db)) {
+  let rows: Array<{ sid: string; answers: string | null }> = [];
+  try { rows = db.prepare('SELECT subject_id AS sid, answers_json AS answers FROM judgments WHERE judgment = ? ORDER BY created_at, rowid').all(SETTLEMENT_JUDGMENT) as typeof rows; } catch { /* table absent */ }
+  const latest = new Map<string, string | null>();
+  for (const r of rows) latest.set(r.sid, r.answers);
+  const byLane = new Map<string, number[]>();
+  for (const [sid, answers] of latest) {
+    let k: unknown = null;
+    try { k = (JSON.parse(answers || '{}') as { kill_share_now?: unknown }).kill_share_now; } catch { /* unreadable */ }
+    if (typeof k !== 'number' || !Number.isFinite(k)) continue;
+    const lane = lanes.get(sid) ?? 'other';
+    byLane.set(lane, [...(byLane.get(lane) ?? []), k]);
+  }
+  return {
+    threshold: SETTLEMENT_VALUE_THRESHOLD,
+    by_lane: [...byLane.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([lane, xs]) => {
+      const below = xs.filter((x) => x < SETTLEMENT_VALUE_THRESHOLD).length;
+      return { lane, n: xs.length, kill_share_now_median: median(xs), below, share_below: roundGraded(below / xs.length), ci: ci(below, xs.length) };
+    }),
+    note: `per lane: the fresh-mutant kill share at settlement (settlement_execution kill_share_now, latest row per PR; not re-scored = not counted); below = kill share < ${SETTLEMENT_VALUE_THRESHOLD}, Wilson 95 %. Report only: fitness, Gate B and auto-merge do not read it`,
+  };
+}
+
+/** Survival per lane over settled PRs only; informative:false when a lane has 0 regressions at ≥ SURVIVAL_INFORMATIVE_MIN_N settled. */
+export function survivalByLane(prs: LoopPrSettlement[], lanes: Map<string, string>) {
+  const byLane = new Map<string, LoopPrSettlement['settlement']['state'][]>();
+  for (const p of prs) { const lane = lanes.get(p.run_id) ?? 'other'; byLane.set(lane, [...(byLane.get(lane) ?? []), p.settlement.state]); }
+  return [...byLane.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([lane, states]) => {
+    const c = survivalCounts(states);
+    const vacuous = c.settled >= SURVIVAL_INFORMATIVE_MIN_N && c.regressed === 0;
+    return { lane, survived: c.survived, regressed: c.regressed, settled: c.settled, survival_rate: c.rate, informative: !vacuous,
+      informative_reason: vacuous ? `0 regressions in ${c.settled} settled PRs: line-retention survival cannot fail on this lane (test-only PRs); see settlement_value` : null };
+  });
+}
+

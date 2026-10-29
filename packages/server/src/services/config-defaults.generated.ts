@@ -73,6 +73,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   LOOP_AUTO_MERGE_RECHECK_HOURS: '6 (a transient ineligible PR is re-checked at most once per window; > 0, else 6)',
   LOOP_AUTO_MERGE_REPOS: 'the primary repo (`GITHUB_REPOSITORY`) only',
   LOOP_AUTO_MERGE_TEST_ONLY: 'off (`shadow` records `would_merge` per loop PR; `act` marks ready, updates a behind branch, waits for green checks and…',
+  LOOP_AUTO_MERGE_VALUE_GATE: 'off (`shadow`, `on`)',
   LOOP_BANDIT_ENABLED: 'off',
   LOOP_BANDIT_MAX_SHARE: '0.1',
   LOOP_BANDIT_SPECIES: 'unset',

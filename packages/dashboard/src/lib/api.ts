@@ -323,6 +323,9 @@ export interface EvolutionEvidence {
   falsifier?: FalsifierEvidence;
   /** L3-v2 §5.1–2 (SETTLEMENT_EXECUTION_MODE, shadow): merged loop PRs ≥ 14 d — tests re-run at origin/main, fresh-mutant kill share vs maker time; graded vs labels (services/settlement-execution.ts) */
   settlement_execution?: SettlementExecutionEvidence;
+  /** U1 (report only): per lane the fresh-mutant kill share at settlement — median, share below the threshold (0.2), Wilson CI (services/settlement-execution.ts) */
+  settlement_value?: { threshold: number; note: string;
+    by_lane: Array<{ lane: string; n: number; kill_share_now_median: number | null; below: number; share_below: number; ci: [number, number] }> };
   scheduler_capacity?: { mode: string; would_defer_24h: number | null; would_defer_7d: number | null; would_schedule_7d: number | null; latest: { at: string; goal_id: string; would_defer: boolean; observed: Record<string, unknown> } | null; observed_now: Record<string, unknown> | null };
   /** PL-001 (PROCEDURE_SELECTOR_MODE, shadow): procedure applies / does_not_apply per ordinary gym claim; a window without a decision is null (services/procedure-selector.ts) */
   procedure_selection?: { mode: string; delivered: false; procedure: { id: string; version: number; lines_sha256: string } | null;

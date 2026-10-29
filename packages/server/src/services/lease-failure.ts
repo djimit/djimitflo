@@ -74,10 +74,13 @@ export function inferFailureStage(role: string, status: string, meta: Record<str
   return 'maker';
 }
 
-/** A cancel's reason: the stated one, else what the metadata shows, else the explicit unspecified marker (never null). */
-export function cancellationReasonOf(meta: Record<string, unknown>): string {
+/**
+ * A cancel's reason: the stated one, else what the metadata shows, else (O2b) `cascade:run_<status>` — the lease was settled
+ * with its run (471 reviewer cancels had no reason) — else the explicit unspecified marker (never null).
+ */
+export function cancellationReasonOf(meta: Record<string, unknown>, runStatus?: string | null): string {
   return str(meta.cancellation_reason) || (meta.stopped_by_runner ? 'operator_stop' : '')
-    || (meta.superseded_by_maker_lease_id ? 'superseded' : '') || 'unspecified: caller supplied no reason';
+    || (meta.superseded_by_maker_lease_id ? 'superseded' : '') || (runStatus ? `cascade:run_${runStatus}` : '') || 'unspecified: caller supplied no reason';
 }
 
 /**
