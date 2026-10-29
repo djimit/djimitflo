@@ -205,7 +205,6 @@ export function createRoutes(
     { prefix: '/telegram', middleware: [], router: createTelegramRoutes(db, auth, wsService, new TelegramApiService(authService!, `http://127.0.0.1:${process.env.PORT || 3001}/api`)) },
     { prefix: '/apex', middleware: [requireAuth], router: createApexRoutes(db, auth, operatorRuntime) },
     { prefix: '/swarm-v2', middleware: [requireAuth], router: createSwarmOrchestrationRoutes(db, auth) },
-    { prefix: '/swarm', middleware: [requireAuth], router: createSwarmOrchestrationRoutes(db, auth) },
     { prefix: '/self-improve', middleware: [requireAuth], router: createSelfImprovementRoutes(db, auth) },
     { prefix: '/agi', middleware: [requireAuth], router: createAgiRoutes(db, auth) },
     { prefix: '/intelligence', middleware: [requireAuth], router: createIntelligenceRoutes(db, auth) },
