@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { schema } from '../database/schema';
-import { runMigrations } from '../database/migrate';
+import { ensureMakerSpanSettlement, runMigrations } from '../database/migrate';
 import { LoopService } from '../services/loop-service';
 import { FixLoopService } from '../services/fix-loop-service';
 import { RsiSafetyGuard } from '../services/rsi-safety-guard';
@@ -257,6 +257,20 @@ describe('loop worker trace span', () => {
     expect(span).toMatchObject({ status: 'error', ended_at: expect.any(String) });
     expect(JSON.parse(span.metadata)).toMatchObject({ terminal_status: 'error', error: 'REVIEWER_EXPLODED' });
     expect(reviewerTrace(runId, leases.checker).spans.filter((s) => !s.ended_at)).toEqual([]);
+  });
+
+  it('replaces the settle trigger at boot inside one transaction (no window without it for another connection)', () => {
+    const exec = db.exec.bind(db);
+    const seen: Array<{ sql: string; inTransaction: boolean }> = [];
+    vi.spyOn(db, 'exec').mockImplementation((sql: string) => {
+      if (sql.includes('trg_worker_lease_settles_trace')) seen.push({ sql, inTransaction: db.inTransaction });
+      return exec(sql);
+    });
+    ensureMakerSpanSettlement(db);
+    expect(seen.some((c) => /DROP TRIGGER/.test(c.sql))).toBe(true);
+    expect(seen.some((c) => /CREATE TRIGGER/.test(c.sql))).toBe(true);
+    expect(seen.filter((c) => !c.inTransaction)).toEqual([]);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'trigger' AND name = 'trg_worker_lease_settles_trace'").get()).toEqual({ n: 1 });
   });
 
   it('FixLoopService (executeMaker entry point) records the maker span', async () => {
