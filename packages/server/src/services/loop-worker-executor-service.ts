@@ -55,6 +55,8 @@ export interface ExecuteCheckerInput {
 
 /** A worker lease's open lifecycle span (OPS-004): the worker span and its run-span parent. */
 type LeaseSpan = { runSpanId: string; workerSpanId: string; leaseId: string };
+/** What executeChecker learns from runChecker: the reviewer's span and the lease this call set running. */
+type ReviewerDispatch = { current?: LeaseSpan | null; leaseId?: string };
 
 export interface ExecuteWorkerResult {
   run: LoopRunRecord;
@@ -423,15 +425,20 @@ export class LoopWorkerExecutorService {
   /**
    * OPS-004: one lifecycle span per reviewer lease (checker / security checker), as for makers — opened at dispatch in
    * `loop-<run>-checker-<lease>`, reused by a resumed call, closed when the lease settles (here, or by the settle trigger).
+   * An unexpected error after dispatch fails the still-running lease (as executeMaker does), so the span closes; an
+   * approval / in-progress continuation has put the lease back to 'prepared' and is left alone.
    */
   async executeChecker(id: string, input: ExecuteCheckerInput = {}): Promise<ExecuteWorkerResult> {
-    const span: { current?: LeaseSpan | null } = {};
+    const span: ReviewerDispatch = {};
     let execution: ExecuteWorkerResult | undefined;
     let errorMessage: string | undefined;
     try {
       execution = await this.runChecker(id, input, span);
     } catch (err) {
       errorMessage = (err instanceof Error ? err.message : String(err)).slice(0, 200);
+      const stuck = span.leaseId ? this.db.prepare('SELECT status FROM worker_leases WHERE id = ?').get(span.leaseId) as { status: string } | undefined : undefined;
+      if (stuck?.status === 'running') this.loopService.updateWorkerLeaseStatus(span.leaseId!, 'failed', { failure_reason: `checker_execution_error: ${errorMessage}`,
+        failed_at: new Date().toISOString(), failure: { stage: 'checker', stderr_class: classifyStderr(errorMessage), stderr_source: 'reason' } });
       throw err;
     } finally {
       if (span.current) this.closeLeaseSpan(span.current, execution, errorMessage);
@@ -440,7 +447,7 @@ export class LoopWorkerExecutorService {
     return execution.trace ? { ...execution, trace: this.loopService.assurance.getTrace(execution.trace.trace_id) } : execution;
   }
 
-  private async runChecker(id: string, input: ExecuteCheckerInput, span: { current?: LeaseSpan | null }): Promise<ExecuteWorkerResult> {
+  private async runChecker(id: string, input: ExecuteCheckerInput, span: ReviewerDispatch): Promise<ExecuteWorkerResult> {
     const run = this.loopService.getLoopRun(id);
     this.loopService.assertOperatorNotPaused(run);
     const leases = this.loopService.listWorkerLeases(run.id);
@@ -512,6 +519,7 @@ export class LoopWorkerExecutorService {
     this.loopService.patchWorkerLeaseMetadata(checker.id, { checkpoint_before_id: checkpointBefore.id, trace_id: traceId, runtime_adapter: runtime });
     span.current = this.openLeaseSpan(run, checker, traceId, `loop:${run.id}/checker:${checker.id}`, runtime,
       { maker_lease_id: maker.id, checkpoint_before_id: checkpointBefore.id });
+    span.leaseId = checker.id; // dispatched by this call: an unexpected error from here on fails it
     this.loopService.updateWorkerLeaseStatus(checker.id, 'running', { started_at: new Date().toISOString(), runtime_adapter: runtime });
 
     const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
