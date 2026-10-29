@@ -1460,6 +1460,9 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   // streak (host-token-watch.ts; stall 'host_token'). Never the token.
   db.exec(`CREATE TABLE IF NOT EXISTS host_token_auth (host TEXT NOT NULL, scope TEXT NOT NULL, last_ok_at TEXT NOT NULL, token_expires_at TEXT,
     first_rejected_at TEXT, last_rejected_at TEXT, rejected_count INTEGER NOT NULL DEFAULT 0, last_reason TEXT, PRIMARY KEY (host, scope))`);
+  // A18 (re-20261029): a treatment-env change between boots, per experiment that declares it (experiment-registry.ts)
+  db.exec(`CREATE TABLE IF NOT EXISTS experiment_period_boundaries (experiment_id TEXT NOT NULL, env_name TEXT NOT NULL, previous TEXT, current TEXT,
+    at TEXT NOT NULL, PRIMARY KEY (experiment_id, env_name, at))`);
   // B8: the failure clusters a dream mutant cites (evidence-or-no-op, DREAM_EVIDENCE_MUTATIONS)
   addMissingColumns(db, 'maker_genomes', [{ name: 'evidence_clusters', definition: 'TEXT' }]);
   // KE-3: the knowledge units (expert_identities ids) whose titles the dream that wrote this mutant injected; null = none

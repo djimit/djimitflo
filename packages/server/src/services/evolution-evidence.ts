@@ -39,7 +39,7 @@ import { dreamSourcesEvidence } from './dream-evidence-sources';
 import { playbookGeneEvidence } from './lane-playbook';
 import type { ForecasterScoreV2 } from './forecast-scoring';
 import { extraRepos } from './repo-registry';
-import { allGatesPassed } from './loop-types';
+import { allGatesPassed, gatePassesStrict } from './loop-types';
 import { BASELINE_GENOME, holdoutEpoch } from './genome-registry';
 import { experimentsReport } from './experiment-registry';
 import { learningLedger } from './learning-ledger';
@@ -253,7 +253,7 @@ export function gateRuleDisagreements(db: Database, since: string): number | nul
     let gates: Array<{ name: string; status: string }>;
     try { gates = JSON.parse(r.gates_json || '[]'); } catch { continue; }
     if (!Array.isArray(gates)) continue;
-    const strict = gates.length > 0 && gates.every((g) => g.status === 'pass');
+    const strict = gates.length > 0 && (gates as Parameters<typeof allGatesPassed>[0]).every(gatePassesStrict);
     if (strict !== allGatesPassed(gates as Parameters<typeof allGatesPassed>[0])) n++;
   }
   return n;

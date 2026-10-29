@@ -42,7 +42,8 @@ it('G0.2: the 17–19 Oct replay fires both detectors for claude, never for open
 });
 
 it('does not fire below the attempt thresholds', () => {
-  for (let i = 0; i < ZERO_SUCCESS_MIN_ATTEMPTS - 1; i++) lease('codex', 'failed', 1 + i, { exit_status: 1, failure_reason: 'maker_gate_failed:maker_runtime_exit_zero' });
+  // distinct reasons: 4 identical ones would fire the O1b same-reason rule (≥ 3, zero-success-same-reason.test.ts)
+  for (let i = 0; i < ZERO_SUCCESS_MIN_ATTEMPTS - 1; i++) lease('codex', 'failed', 1 + i, { exit_status: 1, failure_reason: `runtime_exit_status_${i + 1}` });
   for (let i = 0; i < GATE_ALWAYS_FAILS_MIN_LEASES - 1; i++) lease('remote', 'failed', 1 + i, { exit_status: 0, failure_reason: 'maker_gate_failed:token_budget' });
   for (let i = 0; i < ZERO_SUCCESS_MIN_ATTEMPTS - 1; i++) call('panel_review', 0, 1 + i);
   lease('manual', 'failed', 1, {}); // manual leases are never a consumer
