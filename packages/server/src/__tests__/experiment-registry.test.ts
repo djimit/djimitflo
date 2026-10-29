@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { EXPERIMENT_WIP_LIMIT, MEMORY_HOLDOUT_CLOSED, TG_001_CLOSED, experimentDefs, experimentsReport, wipCheck, type ExperimentDef } from '../services/experiment-registry';
+import { EXPERIMENT_WIP_LIMIT, MEMORY_HOLDOUT_CLOSED, TG_001_CLOSED, experimentDefs, experimentsReport, recordTreatmentEnvBoundaries, wipCheck, type ExperimentDef } from '../services/experiment-registry';
 import { detectStallsWithHealth } from '../services/stall-watch';
 import { buildEvolutionEvidence } from '../services/evolution-evidence';
 import { readFileSync } from 'fs';
@@ -202,4 +202,34 @@ it('PL-001: registered with the protocol stop rule — a decide-start date befor
   const started = experimentsReport(db, {}, NOW).experiments.find((e) => e.id === 'PL-001')!;
   expect(started).toMatchObject({ started_at: '2026-11-01T10:00:00.000Z', stop_by: '2026-11-15T10:00:00.000Z' });
   expect(experimentDefs().find((d) => d.id === 'PL-001')!.stop_by).toBe('2026-11-25T00:00:00.000Z'); // the registered date is unchanged
+});
+
+// E-assumptions A18: experiments share the oracle-goal population; EXP-3's action (LOOP_MEMORY_RULES_ENABLED=false, 10-27)
+// changed the maker context of four others and each protocol had to add the period boundary by hand
+it('A18: every running experiment declares the env names that alter its treatment, its own flag first', () => {
+  const running = ['ACE-001', 'STE-001', 'MAKER-DEPS-001', 'X1', 'F2', 'PL-001'];
+  for (const d of experimentDefs().filter((x) => running.includes(x.id))) {
+    expect(d.treatment_env?.[0], d.id).toBe(d.flag);
+    expect(d.treatment_env!.every((n) => /^[A-Z][A-Z0-9_]+$/.test(n)), d.id).toBe(true);
+  }
+  const memory = experimentDefs().filter((d) => d.treatment_env?.includes('LOOP_MEMORY_RULES_ENABLED')).map((d) => d.id);
+  expect(memory).toEqual(['ACE-001', 'STE-001', 'MAKER-DEPS-001', 'X1', 'F2']);
+});
+
+it('A18: toggling LOOP_MEMORY_RULES_ENABLED between boots records a period boundary for ACE-001 (and every experiment it alters)', () => {
+  const t = (d: string) => Date.parse(`2026-10-${d}T06:00:00Z`);
+  expect(recordTreatmentEnvBoundaries(db, { LOOP_MEMORY_RULES_ENABLED: 'true', ACE_001_MODE: 'on' }, t('20'))).toEqual([]); // first boot: nothing to compare
+  expect(recordTreatmentEnvBoundaries(db, { LOOP_MEMORY_RULES_ENABLED: 'true', ACE_001_MODE: 'on' }, t('21'))).toEqual([]); // unchanged
+  const rows = recordTreatmentEnvBoundaries(db, { LOOP_MEMORY_RULES_ENABLED: 'false', ACE_001_MODE: 'on' }, t('27'));
+  expect(rows.map((r) => r.experiment_id)).toEqual(['ACE-001', 'STE-001', 'MAKER-DEPS-001', 'X1', 'F2']);
+  expect(rows[0]).toEqual({ experiment_id: 'ACE-001', env_name: 'LOOP_MEMORY_RULES_ENABLED', previous: 'true', current: 'false', at: '2026-10-27T06:00:00.000Z' });
+  const report = experimentsReport(db, {}, t('28'));
+  expect(report.experiments.find((e) => e.id === 'ACE-001')?.period_boundaries).toEqual([{ at: '2026-10-27T06:00:00.000Z', env: 'LOOP_MEMORY_RULES_ENABLED', from: 'true', to: 'false' }]);
+  expect(report.experiments.find((e) => e.id === 'PL-001')?.period_boundaries).toEqual([]);
+  // the evolution-evidence experiments section carries the same boundaries
+  expect(buildEvolutionEvidence(db, {}, t('28')).experiments.experiments.find((e) => e.id === 'F2')?.period_boundaries).toHaveLength(1);
+  // the next boot with the same env adds nothing; unsetting a flag is a change too
+  expect(recordTreatmentEnvBoundaries(db, { LOOP_MEMORY_RULES_ENABLED: 'false', ACE_001_MODE: 'on' }, t('28'))).toEqual([]);
+  expect(recordTreatmentEnvBoundaries(db, { LOOP_MEMORY_RULES_ENABLED: 'false' }, t('29'))).toEqual([
+    { experiment_id: 'ACE-001', env_name: 'ACE_001_MODE', previous: 'on', current: null, at: '2026-10-29T06:00:00.000Z' }]);
 });
