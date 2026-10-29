@@ -158,7 +158,7 @@ export function approvalOutcomes(db: Database, since: string, env: NodeJS.Proces
       LEFT JOIN loop_runs r ON r.id = COALESCE(json_extract(a.metadata, '$.loop_run_id'), json_extract(t.metadata, '$.loop_run_id'))
       LEFT JOIN goals g ON g.id = COALESCE(json_extract(a.metadata, '$.goal_id'), r.goal_id)
       LEFT JOIN self_improvements s ON s.id = COALESCE(json_extract(a.metadata, '$.improvement_id'), g.improvement_id)
-      WHERE a.created_at >= ?`).all(since) as Array<{ id: string; status: string; decided_by: string | null; stored_goal: string | null; lane: string | null; outcome: string | null; non_maker: number }>;
+      WHERE a.created_at >= ? AND ${realRunSql('r')}`).all(since) as Array<{ id: string; status: string; decided_by: string | null; stored_goal: string | null; lane: string | null; outcome: string | null; non_maker: number }>;
   } catch { return []; }
 }
 
