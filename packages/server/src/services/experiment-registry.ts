@@ -44,6 +44,9 @@ export interface ExperimentDef {
   population: ExperimentPopulation;
   /** G1.5: the reason this oracle-population experiment may run above EXPERIMENT_WIP_LIMIT; absent = it counts against the limit */
   approved_over_limit?: string;
+  /** A18: env names (as its protocol names them; its own flag first) whose change alters this experiment's treatment or
+   *  population. A change between boots writes a period boundary (recordTreatmentEnvBoundaries); analyses never pool across one */
+  treatment_env?: string[];
   /** n counted from `since` (started_at for the whole experiment; later for the accrual window). A status that cannot window
    *  returns n_per_arm null for since ≠ started_at — its accrual is unknown, never 0 */
   status: (db: Database, env: NodeJS.ProcessEnv, now: number, since: string) => ExperimentStatus;
@@ -77,6 +80,7 @@ export const experimentDefs = (): ExperimentDef[] => [
   { id: 'ACE-001', flag: 'ACE_001_MODE', protocol: 'docs/research/ace/ACE-001_PROTOCOL.md', started_at: '2026-10-12T00:00:00.000Z',
     target_n: ACE_001_TARGET_PER_ARM, stop_by: '2026-11-15T00:00:00.000Z',
     stop_note: `${AMENDED}: start + 1.25 × 50 ÷ 1.87/day (slowest arm, 13 in 6.9 d)`, stop_source: 'docs/research/ace/ACE-001_PROTOCOL.md#amendment-2-2026-10-19', population: 'oracle_goals',
+    treatment_env: ['ACE_001_MODE', 'LOOP_MEMORY_RULES_ENABLED', 'MEMORY_HOLDOUT_RATE', 'PROPOSAL_DEDUPE_MODE', 'LOOP_DAEMON_CHECK_SCRIPTS'],
     // ace001Evidence counts from max(since, analysis_since)
     status: (db, env, _now, since) => { const e = ace001Evidence(db, since > aceAnalysisSince(env) ? since : aceAnalysisSince(env), env);
       const main = (m: { diff: number | null }): ExperimentEffect => ({ metric: 'verified rate, factor on − off (interim, descriptive)', estimate: m.diff, ci: null, p: null });
@@ -85,24 +89,29 @@ export const experimentDefs = (): ExperimentDef[] => [
   { id: 'STE-001', flag: 'STE_001_MODE', protocol: 'docs/research/ace/STE-001_PROTOCOL.md', started_at: '2026-10-11T00:00:00.000Z',
     target_n: STE_001_TARGET_PER_ARM, stop_by: '2026-11-14T00:00:00.000Z',
     stop_note: `${AMENDED}: start + 1.25 × 100 ÷ 3.78/day (slowest arm, 30 in 7.9 d)`, stop_source: 'docs/research/ace/STE-001_PROTOCOL.md#amendment-1-2026-10-19', population: 'oracle_goals',
+    treatment_env: ['STE_001_MODE', 'LOOP_MEMORY_RULES_ENABLED', 'TEST_ONLY_DIFF_MAX'],
     status: (db, env, _now, since) => { const e = ste001Evidence(db, since, env);
       return { n_per_arm: { 0: e.arms['0'].n, 1: e.arms['1'].n }, verdict: null,
         effects: { maker_template: { metric: 'verified rate, STE − current template (interim, descriptive)', estimate: e.diff, ci: null, p: null } } }; } },
   { id: 'MAKER-DEPS-001', flag: 'MAKER_DEPS_001_MODE', protocol: 'docs/research/di-001/MAKER_DEPS_001_PREREG.md', started_at: '2026-10-14T00:00:00.000Z',
     target_n: MAKER_DEPS_001_TARGET_PER_ARM, stop_by: '2026-12-16T00:00:00.000Z',
     stop_note: `${AMENDED}: start + 1.25 × 141 ÷ 2.83/day (slowest arm, 14 in 4.9 d)`, stop_source: 'docs/research/di-001/MAKER_DEPS_001_AMENDMENT_1.md#amendment-1-2026-10-19', population: 'oracle_goals',
+    treatment_env: ['MAKER_DEPS_001_MODE', 'LOOP_MEMORY_RULES_ENABLED', 'LOOP_MAKER_PREPARE_DEPS', 'OPENCODE_MAX_RUN_TOKENS'],
     approved_over_limit: 'running before the G1.5 WIP limit existed (2026-10-19); finishes under its registered stop_by, no successor starts until the oracle population is ≤ 4',
     status: (db, env, _now, since) => { const e = makerDeps001Evidence(db, since, env);
       return { n_per_arm: { A: e.arms.A.terminal, B: e.arms.B.terminal }, verdict: null,
         effects: { deps_prep: { metric: 'ITT verified rate, B (deps prepared) − A; cluster-bootstrap 95 % CI (descriptive)', estimate: e.diff, ci: e.diff_ci_descriptive, p: null } } }; } },
   { id: 'X1', flag: 'EFFORT_SIBLING_RANDOMISE', protocol: 'docs/research/intelligence-metrics/EXPERIMENT_PROTOCOL.md#exp-2', started_at: X1_STARTED,
     target_n: 94, stop_by: '2026-11-06T00:00:00.000Z', stop_note: 'EXP-2 registration: 4 weeks, ~94 settled per arm', stop_source: 'docs/research/intelligence-metrics/EXPERIMENT_PROTOCOL.md#exp-2', population: 'oracle_goals',
+    // makers on the shared oracle-goal population: the memory-rules switch (EXPERIMENT_PROTOCOL.md amendment 2026-10-27) alters them too
+    treatment_env: ['EFFORT_SIBLING_RANDOMISE', 'LOOP_MEMORY_RULES_ENABLED'],
     status: (db, env, _now, since) => { const e = effortX1Evidence(db, since, env, fisherExact);
       return { n_per_arm: { on: e.on.verified + e.on.regressed, off: e.off.verified + e.off.regressed }, verdict: null,
         effects: { effort_siblings: { metric: 'verified / settled, evolve siblings on vs off (Fisher exact; no effect size computed)', estimate: null, ci: null, p: e.fisher_p } } }; } },
   { id: 'F2', flag: 'CHECKER_FAMILY_RANDOMISE', protocol: 'docs/research/intelligence-metrics/EXPERIMENT_PROTOCOL.md#exp-1', started_at: '2026-10-17T00:00:00.000Z',
     target_n: CHECKER_FAMILY_TARGET_DEFAULT, stop_by: '2027-01-15T00:00:00.000Z',
     stop_note: `${AMENDED}: start + 90 d cap (v2; 1 settled per arm in 1.9 d projects past the cap)`, stop_source: 'docs/research/intelligence-metrics/EXPERIMENT_PROTOCOL.md#amendment-2026-10-19-stop-conditions', population: 'oracle_goals',
+    treatment_env: ['CHECKER_FAMILY_RANDOMISE', 'CHECKER_FAMILY_VERSION', 'LOOP_MEMORY_RULES_ENABLED'],
     approved_over_limit: 'running before the G1.5 WIP limit existed (2026-10-19); finishes under its registered stop_by, no successor starts until the oracle population is ≤ 4',
     status: (db, env, now, since) => { const e = checkerFamilyEvidence(db, since, env, fisherExact, now);
       return { n_per_arm: { same: e.primary.n.same, cross: e.primary.n.cross }, verdict: e.stop.verdict === 'collecting' ? null : e.stop.verdict,
@@ -122,6 +131,7 @@ export const experimentDefs = (): ExperimentDef[] => [
     target_n: PL_PAIRS, stop_by: PL_DECIDE_START_BY,
     stop_note: `protocol stop rule: ${PL_PAIRS} completed pairs or day ${PL_MAX_DAYS} after the first attempt (stop_by = first attempt + ${PL_MAX_DAYS} d once one exists); before the first attempt the runner amendment registers a decide-start-or-close date; verdict rules unchanged`,
     stop_source: 'docs/research/procedure-loop/PL-001_PROTOCOL.md#amendment-2026-10-26-runner', population: 'gym_tasks',
+    treatment_env: ['PL_001_MODE', 'PL_001_CAP_SHARE', 'PROCEDURE_SELECTOR_MODE', 'GYM_PROD_GATES', 'GYM_MAKER_TIMEOUT_MS', 'GENOME_APPLY_MODE', 'EVOLUTION_GYM_REMOTE_MAX_PER_DAY'],
     schedule: (db) => { const f = plFirstAttempt(db); return f ? { started_at: f, stop_by: new Date(Date.parse(f) + PL_MAX_DAYS * 86_400_000).toISOString() } : null; },
     // n = completed pairs (both arms observed or censored), counted over the whole experiment; it cannot window
     status: (db, _env, now, since) => {
@@ -167,6 +177,34 @@ export interface ExperimentRow extends Omit<ExperimentDef, 'status' | 'schedule'
   n_per_arm: Record<string, number> | null; min_arm_n: number | null; verdict: string | null; effects?: Record<string, ExperimentEffect>;
   /** past stop_by, or every arm at the target, and no verdict recorded */
   overdue: boolean; overdue_reason: string | null; power: ExperimentPower; error?: string;
+  /** A18: treatment-env changes recorded at boot since the registry started watching; the periods are never pooled silently */
+  period_boundaries: Array<{ at: string; env: string; from: string | null; to: string | null }>;
+}
+
+export interface PeriodBoundary { experiment_id: string; env_name: string; previous: string | null; current: string | null; at: string }
+const ENV_SNAPSHOT_KEY = 'experiment_treatment_env';
+/**
+ * A18 (re-20261029): at boot, compare the values of every declared treatment_env name with the previous boot's snapshot
+ * (system_state). Each changed name writes one period-boundary row per experiment that declares it. A process's env is fixed
+ * for its life, so this boot is the boundary instant. A name missing from the previous snapshot (first boot, newly declared)
+ * is a baseline, not a change. Values are flag settings, capped at 200 characters.
+ */
+export function recordTreatmentEnvBoundaries(db: Database, env: NodeJS.ProcessEnv = process.env, now = Date.now(), defs: ExperimentDef[] = experimentDefs()): PeriodBoundary[] {
+  const names = [...new Set(defs.flatMap((d) => d.treatment_env ?? []))];
+  const current: Record<string, string | null> = Object.fromEntries(names.map((n) => [n, env[n] === undefined ? null : String(env[n]).slice(0, 200)]));
+  let previous: Record<string, string | null> | null = null;
+  try { const r = db.prepare('SELECT value FROM system_state WHERE key = ?').get(ENV_SNAPSHOT_KEY) as { value: string } | undefined; previous = r ? JSON.parse(r.value) : null; } catch { /* unreadable: a baseline */ }
+  const at = new Date(now).toISOString();
+  const rows: PeriodBoundary[] = !previous ? [] : defs.flatMap((d) => (d.treatment_env ?? [])
+    .filter((n) => n in previous! && previous![n] !== current[n])
+    .map((n) => ({ experiment_id: d.id, env_name: n, previous: previous![n], current: current[n], at })));
+  db.transaction(() => {
+    const ins = db.prepare('INSERT OR IGNORE INTO experiment_period_boundaries (experiment_id, env_name, previous, current, at) VALUES (?, ?, ?, ?, ?)');
+    for (const r of rows) ins.run(r.experiment_id, r.env_name, r.previous, r.current, r.at);
+    db.prepare('INSERT INTO system_state (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at')
+      .run(ENV_SNAPSHOT_KEY, JSON.stringify(current), at);
+  })();
+  return rows;
 }
 
 const DAY = 86_400_000;
@@ -192,6 +230,8 @@ export function wipCheck(defs: Array<Pick<ExperimentDef, 'id' | 'population' | '
 }
 
 export function experimentsReport(db: Database, env: NodeJS.ProcessEnv = process.env, now = Date.now(), defs: ExperimentDef[] = experimentDefs()) {
+  let boundaries: PeriodBoundary[] = [];
+  try { boundaries = db.prepare('SELECT experiment_id, env_name, previous, current, at FROM experiment_period_boundaries ORDER BY at, env_name').all() as PeriodBoundary[]; } catch { /* no table yet */ }
   const experiments: ExperimentRow[] = defs.map(({ status, schedule, ...registered }) => {
     let d = registered;
     try { const at = schedule?.(db); if (at) d = { ...registered, ...at }; } catch { /* unreadable: the registered dates stand */ }
@@ -209,7 +249,8 @@ export function experimentsReport(db: Database, env: NodeJS.ProcessEnv = process
     const overdue_reason = !overdue ? null : past ? `past stop_by ${d.stop_by} without a verdict (n per arm ${JSON.stringify(s.n_per_arm)})`
       : `every arm reached target ${d.target_n} without a verdict`;
     const power = powerLeft(d, s.n_per_arm, recent, (now - Date.parse(recentSince)) / DAY, now);
-    return { ...d, ...s, min_arm_n, overdue, overdue_reason, power, ...(error ? { error } : {}) };
+    const period_boundaries = boundaries.filter((b) => b.experiment_id === d.id).map((b) => ({ at: b.at, env: b.env_name, from: b.previous, to: b.current }));
+    return { ...d, ...s, min_arm_n, overdue, overdue_reason, power, period_boundaries, ...(error ? { error } : {}) };
   });
   // G1.5 (report-only): active = registered and no verdict yet; over_wip_limit counts every active oracle-population experiment,
   // guard_ok (the CI guard) only those without an approved_over_limit reason
