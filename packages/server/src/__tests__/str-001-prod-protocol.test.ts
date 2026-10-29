@@ -21,7 +21,7 @@ import { checkerFamilyArm } from '../services/checker-family';
  * reproduce), its independence from the real assignment functions of the other experiments, its stability along a real
  * requeue / refinement lineage, and that nothing is activated before the start PR.
  */
-const STR_PROD_PREREG_SHA256 = '0b5d6ea568b5afedfb6581da5fd48a91b648354928972eee72a349877f736cc8';
+const STR_PROD_PREREG_SHA256 = '8d31b31284a088b2d978591cbe2d207ff340cfbb29b366d0654a9fcae2a350c0';
 const STR_TEXT_SHA256 = '1a7cc5b85ae01a9f0d92ef434e9917406cd46984e4ed7e5126ed2491e2c8710f';
 const STR_RENDERED_SHA256 = '2747d68433ce41602af0b0ab7193f3680c9b227b4aa00bcbaac7c028d5b8a0aa';
 const STR_TEXT = 'Retry of a test-writing task: the vitest test file {test} already exists and covers {target}, but it is too weak: a subtly broken {target} can still pass it. Edit {test} so that it still passes against the real {target} and fails when {target} is subtly broken. Keep importing {target} with a relative import, do not mock it, skip nothing, and make it pass with: cd packages/server && npx vitest run {test_rel}. Change only {test}; do not edit {target} or any other file. Strengthen the assertions of this test.';
