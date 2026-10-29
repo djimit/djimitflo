@@ -1455,18 +1455,36 @@ export class LoopService {
     // metadata.improvement_id (see autonomous-goal-generator.ts).
     const improvementId = typeof goal.metadata.improvement_id === 'string' ? goal.metadata.improvement_id : null;
     const improvement = improvementId
-      ? this.db.prepare("SELECT description, rationale, type, json_extract(grounding_json, '$.artifactPath') AS artifact FROM self_improvements WHERE id = ?").get(improvementId) as
-          { description?: string; rationale?: string; type?: string; artifact?: string | null } | undefined
+      ? this.db.prepare("SELECT description, rationale, type, source, json_extract(grounding_json, '$.artifactPath') AS artifact FROM self_improvements WHERE id = ?").get(improvementId) as
+          { description?: string; rationale?: string; type?: string; source?: string | null; artifact?: string | null } | undefined
       : undefined;
 
     const severity: LoopFinding['severity'] =
       goal.risk_class === 'high' || goal.risk_class === 'critical' ? 'error'
       : goal.risk_class === 'medium' ? 'warning' : 'info';
 
+    // S4b: proposal text from an origin that is not the internal deterministic gap lane (test-gap, mutation, untested exports,
+    // dead code, finding-fix) — Commons replies via reflection, refinement, dream state, feedback, anything unknown — is data
+    // for the maker, not instructions: its title (the goal objective), description and rationale each reach the maker as a
+    // marked external-content block, JSON-encoded so the text cannot close it. The gap lane keeps its text byte for byte
+    // (running experiments compare its prompts).
+    const externalSource = improvement && improvement.source !== 'gap_analysis'
+      ? String(improvement.source ?? 'unknown').replace(/[^\w:-]/g, '_') : null;
+    const wrapExternal = (content: Record<string, string>) => [
+      `BEGIN_EXTERNAL_CONTENT source=self_improvement:${externalSource} trust=untrusted`, JSON.stringify(content), 'END_EXTERNAL_CONTENT',
+    ].join('\n');
+    const external = externalSource && (improvement?.description || improvement?.rationale)
+      ? wrapExternal({
+          ...(improvement?.description ? { original_proposal: improvement.description } : {}),
+          ...(improvement?.rationale ? { rationale: improvement.rationale } : {}),
+        })
+      : null;
+    const message = externalSource ? wrapExternal({ objective }) : objective;
     const evidence = [
       `Self-improvement goal ${goal.id} (source=${String(goal.metadata.source ?? 'unknown')}, risk_class=${goal.risk_class}).`,
-      improvement?.description ? `Original proposal: ${improvement.description}` : null,
-      improvement?.rationale ? `Rationale: ${improvement.rationale}` : null,
+      external,
+      !external && improvement?.description ? `Original proposal: ${improvement.description}` : null,
+      !external && improvement?.rationale ? `Rationale: ${improvement.rationale}` : null,
       goal.constraints.length ? `Constraints: ${goal.constraints.join('; ')}` : null,
     ].filter(Boolean).join('\n');
 
@@ -1477,11 +1495,11 @@ export class LoopService {
       // EV2 (prod 2026-10-03): every oracle goal said 'repository-wide objective' although its proposal names the file;
       // with a 'doc-drift' header that was enough for makers to edit README/CONTRIBUTING instead of the test
       file: improvement?.artifact || '(repository-wide objective; no single target file)',
-      message: objective,
+      message,
       evidence: evidence || 'No additional evidence beyond the goal objective was available.',
       suggested_fix: goal.acceptance_criteria.length
         ? `Satisfy: ${goal.acceptance_criteria.join('; ')}`
-        : objective,
+        : message,
       metadata: {
         objective_mode: true,
         goal_id: goal.id,

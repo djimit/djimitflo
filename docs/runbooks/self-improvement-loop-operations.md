@@ -330,10 +330,37 @@ Only for proposals that failed on infrastructure. In one transaction: set `self_
 
 `scripts/auto-deploy.sh` runs on the VPS every 10 minutes (`scripts/systemd/djimitflo-auto-deploy.{service,timer}`) and deploys
 `main` only when: it differs from what runs, every CI check on it succeeded, `main` has not moved for 20 minutes
-(`AUTO_DEPLOY_SETTLE_MIN`), and no loop worker is running. It uses `deploy-vps.sh --local` of that commit (health wait + rollback).
+(`AUTO_DEPLOY_SETTLE_MIN`), and no loop worker is running. It runs the **host-installed** copy
+`/usr/local/lib/djimitflo/deploy-vps.installed.sh` (`--local`; health wait + rollback), never the deploy script of the commit it
+deploys. That copy and its record are used only when they and every directory above them are owned by root and not writable by
+group or others; each is read once into a private temp dir and that copy is hashed and executed. When the commit's
+`scripts/deploy-vps.sh` differs from the installed copy (or the installed copy no longer matches its record), auto-deploy pauses
+with the reason in `AUTO_DEPLOY_DISABLED` until an operator has reviewed and installed it.
 
-- Install: `cp scripts/auto-deploy.sh /srv/djimitflo/auto-deploy.sh && cp scripts/systemd/djimitflo-auto-deploy.* /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now djimitflo-auto-deploy.timer`
+Preconditions (auto-deploy refuses to act otherwise, with a log line): `/srv/djimitflo` and every directory above it are owned by
+root and not group/other-writable (`chown root:root /srv/djimitflo && chmod 0711 /srv/djimitflo`; `data/` inside it stays as it
+is). Git in a `runtime-source-*` clone runs as the clone's owner (uid 1001), which needs to traverse `/srv/djimitflo`: hence
+0711 (traverse, no listing), so keep private files in it unreadable by others (`chmod 0600 /srv/djimitflo/runtime.env*`).
+`deploy-vps.sh` (also when run by hand) checks the same before any step, plus `compose.yml` (a root-owned regular file, not
+group/other-writable) and `build-receipts/`; its temp dirs live in `/srv/djimitflo/.deploy-work` (root, 0700). Paths are
+checked as written (absolute, no `.`/`..`, no symlink on any component) and no world-writable ancestor is accepted, a sticky
+`/tmp` included. `AUTO_DEPLOY_TRUSTED_UID`, `AUTO_DEPLOY_TRUSTED_PREFIX`, `AUTO_DEPLOY_TEST_HOOK_AFTER_TEMP` and
+`DEPLOY_FILE_REMOTE` are test seams: they **must be unset** on the VPS (systemd unit and root shell). Writes into `data/` are staged in `/srv/djimitflo/.auto-deploy-stage` (root, 0700, created by the script, same filesystem
+as `data/`; `AUTO_DEPLOY_STAGE_DIR`) and renamed in. `python3` must be on the host.
+
+- Install: `install -o root -g root -m 0755 scripts/auto-deploy.sh /srv/djimitflo/auto-deploy.sh && cp scripts/systemd/djimitflo-auto-deploy.* /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now djimitflo-auto-deploy.timer`
+- Deploy script (first install, and after every change to `scripts/deploy-vps.sh`): review the diff, then as root on the VPS
+  `scripts/install-deploy-script.sh <sha>` (dry run, shows the diff) and `scripts/install-deploy-script.sh <sha> --apply`. It
+  creates `/usr/local/lib/djimitflo` (root:root 0755, `AUTO_DEPLOY_INSTALL_DIR`), refuses a dir that is not root's or is
+  group/other-writable, and writes `deploy-vps.installed.sh` (0755) and `deploy-vps.installed.sh.source` (0644). Then remove
+  `/srv/djimitflo/AUTO_DEPLOY_DISABLED` if auto-deploy paused for it. Without an installed copy auto-deploy refuses to deploy.
 - Stop: `touch /srv/djimitflo/AUTO_DEPLOY_DISABLED` (remove the file to resume). Log: `journalctl -u djimitflo-auto-deploy`.
+- Fleet drift: every run (also while paused) compares the sha256 of `/srv/event-bus/*.py` and `/srv/agent-registry/*.py` with
+  `infra/{event-bus,agent-registry}/*.py` at the running commit and writes `/srv/djimitflo/data/fleet-drift.json`
+  (`AUTO_DEPLOY_FLEET_SERVICES` = `name=deployed_dir=repo_path ...`); a check that cannot be made writes
+  `{status:"unknown", reason}` instead. `/health.fleet_drift` lists the drifting services; `null` means unknown — no file, an
+  unknown record, a record for another commit than the running one, or one older than 20 minutes (`FLEET_DRIFT_MAX_AGE_MIN`) —
+  which is not the same as no drift.
 
 ## Operator push (Telegram) — UX-12 / UX-13
 

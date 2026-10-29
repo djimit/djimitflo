@@ -60,6 +60,7 @@ import { SHIPPED_CODE_SCAN_INTERVAL_MS, startShippedCodeScan } from './services/
 import { SKILL_DISTILLATION_INTERVAL_MS, startSkillDistillation } from './services/skill-distillation';
 import { buildProvenance } from './utils/build-provenance';
 import { recordTreatmentEnvBoundaries } from './services/experiment-registry';
+import { fleetDrift } from './utils/fleet-drift';
 
 // Operator rule (2026-09-29): this server never calls the hosts in OUTBOUND_DENY_HOSTS (the workstation only pulls).
 // §16 step 8: refusals are also counted in policy_violations (POLICY_VIOLATION_LOG=shadow) once the database is open.
@@ -170,6 +171,8 @@ async function main() {
       commit: build.commit,
       // Same build identity as /api/health so both liveness endpoints are attributable.
       build,
+      // S3: fleet services (event bus, agent registry) whose deployed sources differ from main; null = not checked
+      fleet_drift: fleetDrift(),
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
     });
