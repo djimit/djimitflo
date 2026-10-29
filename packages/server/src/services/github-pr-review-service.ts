@@ -47,6 +47,12 @@ class PrHeadMovedError extends Error {
   }
 }
 
+/**
+ * A `gh` call failed, or GitHub's answer was unreadable: GitHub was unavailable to the review (environment), not a failed
+ * review. The bookkeeping run is settled at once (settleReviewRunUnavailable) instead of lingering until it is reaped as failed.
+ */
+class GithubUnavailableError extends Error {}
+
 type Verdict = 'accepted' | 'needs_revision' | 'rejected' | 'insufficient_evidence';
 type LlmRuntime = 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'mock';
 
@@ -152,6 +158,7 @@ export class GithubPrReviewService {
       const message = error instanceof Error ? error.message : String(error);
       this.db.prepare("UPDATE github_pull_request_reviews SET status='failed', metadata=?, updated_at=? WHERE id=?")
         .run(JSON.stringify({ error: message }), new Date().toISOString(), id);
+      if (error instanceof GithubUnavailableError) this.settleReviewRunUnavailable(input.loopRunId);
       this.audit.appendEntry({
         actor: 'github-pr-review', action: 'github_pr_review_failed', resource: input.loopRunId, outcome: 'failure',
         evidence: { owner: input.owner, repo: input.repo, number: input.number, head_sha: input.headSha, error: message },
@@ -218,6 +225,29 @@ export class GithubPrReviewService {
     this.db.prepare(`UPDATE goals SET status = 'completed', updated_at = ? WHERE status = 'running' AND id IN
       (SELECT goal_id FROM loop_runs WHERE goal_id IS NOT NULL AND status = 'completed' AND json_extract(metadata, '$.settled_by') = 'github-pr-review')`)
       .run(new Date().toISOString());
+  }
+
+  /**
+   * GitHub was unavailable (GithubUnavailableError): nothing was or can be published for this head, and the run would sit in
+   * planning/blocked until queue hygiene reaped it to 'failed' — a loop failure and dream-state failure_cause input for an
+   * outage. Settled now as cancelled, settle_reason 'github_unavailable' (failure_class environment), its goal with it.
+   */
+  private settleReviewRunUnavailable(loopRunId: string): void {
+    const now = new Date().toISOString();
+    this.db.prepare(`UPDATE loop_runs SET status = 'cancelled', updated_at = ?,
+      metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.settled_by', 'github-pr-review', '$.settle_reason', 'github_unavailable', '$.failure_class', 'environment')
+      WHERE id = ? AND status IN ('created', 'planning', 'running', 'verifying', 'blocked')`).run(now, loopRunId);
+    this.db.prepare(`UPDATE goals SET status = 'cancelled', updated_at = ? WHERE status IN ('created', 'decomposed', 'running')
+      AND id = (SELECT goal_id FROM loop_runs WHERE id = ? AND status = 'cancelled')`).run(now, loopRunId);
+  }
+
+  /** Every `gh` call: a failure is GithubUnavailableError (the message is kept for the review row and audit). */
+  private gh(args: string[], options: { input?: string; maxBuffer?: number } = {}): string {
+    try {
+      return execFileSync('gh', args, { encoding: 'utf8', timeout: GH_TIMEOUT_MS, ...options });
+    } catch (error) {
+      throw new GithubUnavailableError(error instanceof Error ? error.message : String(error));
+    }
   }
 
   private resolveLlmRuntime(): LlmRuntime | null {
@@ -327,6 +357,7 @@ export class GithubPrReviewService {
       const message = error instanceof Error ? error.message : String(error);
       this.db.prepare("UPDATE github_pull_request_reviews SET status='failed', metadata=?, updated_at=? WHERE id=?")
         .run(JSON.stringify({ error: message, runtime }), new Date().toISOString(), reviewId);
+      if (error instanceof GithubUnavailableError) this.settleReviewRunUnavailable(input.loopRunId);
       this.audit.appendEntry({
         actor: 'github-pr-review', action: 'github_pr_review_failed', resource: input.loopRunId, outcome: 'failure',
         evidence: { owner: input.owner, repo: input.repo, number: input.number, head_sha: input.headSha, error: message, runtime },
@@ -340,11 +371,9 @@ export class GithubPrReviewService {
    * throw PrHeadMovedError (hold). An unreadable head throws as a failure — never publish on an unverified head.
    */
   private assertHeadUnchanged(input: StartReviewInput, stage: HoldStage): void {
-    const raw = execFileSync('gh', [
-      'pr', 'view', String(input.number), '--repo', `${input.owner}/${input.repo}`, '--json', 'headRefOid',
-    ], { encoding: 'utf8', timeout: GH_TIMEOUT_MS });
+    const raw = this.gh(['pr', 'view', String(input.number), '--repo', `${input.owner}/${input.repo}`, '--json', 'headRefOid']);
     const head = (JSON.parse(raw) as { headRefOid?: unknown }).headRefOid;
-    if (typeof head !== 'string' || !/^[0-9a-f]{40,64}$/.test(head)) throw new Error('PR_HEAD_UNREADABLE');
+    if (typeof head !== 'string' || !/^[0-9a-f]{40,64}$/.test(head)) throw new GithubUnavailableError('PR_HEAD_UNREADABLE');
     if (head !== input.headSha) throw new PrHeadMovedError(stage, head);
   }
 
@@ -353,12 +382,12 @@ export class GithubPrReviewService {
    * not `gh pr view <number>`, which reads whatever head the PR has now. GitHub resolves the merge base with the base branch.
    */
   private fetchExactShaPacket(input: StartReviewInput): ReviewPacket {
-    const raw = execFileSync('gh', [
+    const raw = this.gh([
       'api', `repos/${input.owner}/${input.repo}/compare/${input.baseRef}...${input.headSha}`,
       '--jq', '{merge_base: .merge_base_commit.sha, files: [.files[] | {filename, additions, deletions}]}',
-    ], { encoding: 'utf8', timeout: GH_TIMEOUT_MS, maxBuffer: DIFF_MAX_BUFFER });
+    ], { maxBuffer: DIFF_MAX_BUFFER });
     const parsed = JSON.parse(raw) as { merge_base?: unknown; files?: Array<{ filename: string; additions: number; deletions: number }> };
-    if (typeof parsed.merge_base !== 'string' || !Array.isArray(parsed.files)) throw new Error('PR_COMPARE_UNREADABLE');
+    if (typeof parsed.merge_base !== 'string' || !Array.isArray(parsed.files)) throw new GithubUnavailableError('PR_COMPARE_UNREADABLE');
     const files = parsed.files;
     return {
       stat: {
@@ -481,9 +510,7 @@ export class GithubPrReviewService {
     const bodyFile = path.join(os.tmpdir(), `djimitflo-pr-review-${input.loopRunId}.md`);
     fs.writeFileSync(bodyFile, body, 'utf8');
     try {
-      execFileSync('gh', [
-        'pr', 'comment', String(input.number), '--repo', `${input.owner}/${input.repo}`, '--body-file', bodyFile,
-      ], { timeout: GH_TIMEOUT_MS });
+      this.gh(['pr', 'comment', String(input.number), '--repo', `${input.owner}/${input.repo}`, '--body-file', bodyFile]);
     } finally {
       fs.rmSync(bodyFile, { force: true });
     }
@@ -503,9 +530,7 @@ export class GithubPrReviewService {
     };
     // CODE-005: re-read the head immediately before publishing; a moved head gets no status on the old SHA.
     this.assertHeadUnchanged(input, 'before_status');
-    const raw = execFileSync('gh', [
-      'api', `repos/${input.owner}/${input.repo}/statuses/${input.headSha}`, '--input', '-',
-    ], { input: JSON.stringify(statusPayload), encoding: 'utf8', timeout: GH_TIMEOUT_MS });
+    const raw = this.gh(['api', `repos/${input.owner}/${input.repo}/statuses/${input.headSha}`, '--input', '-'], { input: JSON.stringify(statusPayload) });
     const parsed = JSON.parse(raw) as { id?: number };
     return parsed.id != null ? String(parsed.id) : null;
   }

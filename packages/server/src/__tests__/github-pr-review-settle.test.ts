@@ -110,6 +110,7 @@ describe('PR review bookkeeping runs settle when the review cannot finish', () =
     expect(run.metadata).toMatchObject({ synthetic: true, settled_by: 'github-pr-review', settle_reason: 'github_unavailable', failure_class: 'environment' });
     expect(goal.status).toBe('cancelled');
     // even if something later re-opened it as failed, a synthetic run is no failure_cause candidate
+    db.exec('CREATE TABLE IF NOT EXISTS judgments (id TEXT PRIMARY KEY, judgment TEXT, subject_type TEXT, subject_id TEXT, decision TEXT, reason TEXT, created_at TEXT)');
     db.prepare("UPDATE loop_runs SET status = 'failed' WHERE id = ?").run(run.id);
     expect(new DreamStateService(db).pendingFailures().map((p) => p.id)).not.toContain(run.id);
     db.close();
