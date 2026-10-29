@@ -493,3 +493,23 @@ it('an install dir reached through a symlink is refused by the installer and by 
   expect(out).toContain('not trusted');
   expect(out).not.toContain('deploy-script-ran-from');
 });
+
+// The path is checked as written: '.'/'..' components and relative paths are refused, never normalised away.
+it('a deploy root with a .. component, or a relative one, is refused', () => {
+  const real = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
+  fs.mkdirSync(path.join(real, 'sub'));
+  for (const root of [path.join(real, 'sub') + '/..', `${real}/../${path.basename(real)}`, `${real}/./`]) {
+    const out = run({}, root);
+    expect(out).toContain('not trusted');
+    expect(out).toContain('. or .. component');
+    expect(out).not.toContain('DEPLOYED');
+  }
+  const r = spawnSync('bash', [script], { cwd: TMPDIR, env: { ...process.env, DEPLOY_ROOT: path.basename(real), ...trust(real), AD_MAIN_SHA: `printf '${NEW}\\trefs/heads/main\\n'`,
+    AD_CURRENT_SHA: `echo ${OLD}`, AD_CHECKS: `echo '${green}'`, AD_REQUIRED: `echo 'build-and-test (22)'`, AD_COMMIT: `echo '${minutesAgo(30)}'`, AD_LEASES: 'echo 0', AD_DEPLOY: 'echo DEPLOYED', AD_DEPLOY_GATE: 'true' }, encoding: 'utf8' });
+  expect(`${r.stdout}${r.stderr}`).toContain('not an absolute path');
+  expect(`${r.stdout}${r.stderr}`).not.toContain('DEPLOYED');
+  // the installer: an install dir with a .. component is refused
+  const inst = spawnSync('bash', [installer, NEW, '--apply'], { env: { ...process.env, DEPLOY_ROOT: real, ...trust(real), AUTO_DEPLOY_INSTALL_DIR: `${real}/sub/../lib`, ...commitCopy(RAN) }, encoding: 'utf8' });
+  expect(inst.status).not.toBe(0);
+  expect(`${inst.stdout}${inst.stderr}`).toContain('. or .. component');
+});

@@ -16,14 +16,18 @@ INSTALL_DIR="${AUTO_DEPLOY_INSTALL_DIR:-/usr/local/lib/djimitflo}"
 INSTALLED="$INSTALL_DIR/deploy-vps.installed.sh"
 trusted_dir() { python3 - "$1" <<'PY'
 import os, stat, sys
-T = int(os.environ.get("AUTO_DEPLOY_TRUSTED_UID") or "0"); p = os.path.abspath(sys.argv[1])  # as given, no symlink resolved
-while True:
+T = int(os.environ.get("AUTO_DEPLOY_TRUSTED_UID") or "0"); path = sys.argv[1]
+# the path exactly as written: absolute, no '.' or '..' component; every prefix, deepest first, with lstat (no symlink)
+if not path.startswith("/"): sys.exit(f"{path} is not an absolute path")
+comps = [c for c in path.split("/") if c]
+if any(c in (".", "..") for c in comps): sys.exit(f"{path} has a . or .. component")
+for i in range(len(comps), -1, -1):
+    p = "/" + "/".join(comps[:i])
     st = os.lstat(p)
     if stat.S_ISLNK(st.st_mode): sys.exit(f"{p} is a symbolic link")
+    if not stat.S_ISDIR(st.st_mode): sys.exit(f"{p} is not a directory")
     if st.st_uid not in (0, T): sys.exit(f"{p} is owned by uid {st.st_uid}, not root")
     if st.st_mode & 0o022 and not (st.st_mode & stat.S_ISVTX and st.st_uid == 0): sys.exit(f"{p} is writable by group or others")
-    if p == "/": break
-    p = os.path.dirname(p)
 PY
 }
 sha="${1:-}"

@@ -102,24 +102,27 @@ trusted_path() {
 import os, stat, sys
 T = int(os.environ.get("AUTO_DEPLOY_TRUSTED_UID") or "0"); kind, path = sys.argv[1], sys.argv[2]
 def bad(msg): sys.exit(f"not trusted: {msg}")
+# the path exactly as written: absolute, no '.' or '..' component (only repeated/trailing slashes are dropped)
+if not path.startswith("/"): bad(f"{path} is not an absolute path")
+comps = [c for c in path.split("/") if c]
+if any(c in (".", "..") for c in comps): bad(f"{path} has a . or .. component")
+path = "/" + "/".join(comps)
 if kind == "file":
     st = os.lstat(path)
     if not stat.S_ISREG(st.st_mode): bad(f"{path} is not a regular file (link or other)")
     if st.st_uid != T: bad(f"{path} is owned by uid {st.st_uid}, not root")
     if st.st_mode & 0o022: bad(f"{path} is writable by group or others")
-    path = os.path.dirname(os.path.abspath(path))
+    comps = comps[:-1]
 elif kind == "private":
     st = os.lstat(path)
     if not stat.S_ISDIR(st.st_mode) or st.st_uid != T or st.st_mode & 0o077: bad(f"{path} is not a root-only (0700) directory of root")
-p = os.path.abspath(path)  # as given, component by component: a symlink anywhere on it is refused, never resolved
-while True:
+for i in range(len(comps), -1, -1):  # every prefix as written, deepest first (lstat): a symlink is refused, never resolved
+    p = "/" + "/".join(comps[:i])
     st = os.lstat(p)
     if stat.S_ISLNK(st.st_mode): bad(f"{p} is a symbolic link")
     if not stat.S_ISDIR(st.st_mode): bad(f"{p} is not a directory")
     if st.st_uid not in (0, T): bad(f"{p} is owned by uid {st.st_uid}, not root")
     if st.st_mode & 0o022 and not (st.st_mode & stat.S_ISVTX and st.st_uid == 0): bad(f"{p} is writable by group or others")
-    if p == "/": break
-    p = os.path.dirname(p)
 ' "$1" "$2" || { echo "refusing to deploy: $2 must be root-owned and not group/other-writable, and so must every directory above it (chown root:root, chmod 0711 for the deploy root)" >&2; return 1; }
 }
 

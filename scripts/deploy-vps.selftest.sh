@@ -273,4 +273,16 @@ link_root() { ln -s "$1" "$OPEN/root-$(basename "$1")"; }
 HOST_PREP=link_root host   # prepares a normal host, then runs the remote script on the link instead
 RC=0; OUT="$(remote_script | AUTO_DEPLOY_TRUSTED_UID="$(id -u)" DEPLOY_FILE_REMOTE=always PATH="$BIN:$PATH" bash -s -- "$OPEN/root-$(basename "$HOST")" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
 [ "$RC" != 0 ] && echo "$OUT" | grep -q "symbolic link" || fail "a deploy root behind a symlink was not refused: $OUT"
+# the deploy root is checked as written: a '..' component or a relative path is refused, never normalised away
+remote_on() {   # remote_on <root arg> [cwd] → runs the remote script on a fresh stub host addressed as <root arg>
+  RC=0; OUT="$(cd "${2:-$TMP}" && remote_script | AUTO_DEPLOY_TRUSTED_UID="$(id -u)" DEPLOY_FILE_REMOTE=always PATH="$BIN:$PATH" bash -s -- "$1" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
+}
+fresh_host() { HOST="$(mktemp -d "$TMP/host.XXXX")"; mkdir "$HOST/sub"; rm -f "$STUB"/build-args "$STUB"/compose-calls; rm -rf "$STUB/ctx"
+  printf 'services:\n  djimitflo:\n    image: djimitflo:main-%s\n    environment:\n      DJIMITFLO_COMMIT_SHA: %s\n' "$PREV" "$PREV_FULL" > "$HOST/compose.yml"; }
+fresh_host; remote_on "$HOST/sub/.."
+[ "$RC" != 0 ] && echo "$OUT" | grep -q ". or .. component" && untouched || fail "a deploy root with a .. component was not refused: $OUT"
+fresh_host; remote_on "$HOST/../$(basename "$HOST")"
+[ "$RC" != 0 ] && echo "$OUT" | grep -q ". or .. component" && untouched || fail "a /x/../x deploy root was not refused: $OUT"
+fresh_host; remote_on "$(basename "$HOST")" "$TMP"
+[ "$RC" != 0 ] && echo "$OUT" | grep -q "not an absolute path" && untouched || fail "a relative deploy root was not refused: $OUT"
 echo "deploy-vps selftest OK"

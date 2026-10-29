@@ -34,24 +34,31 @@ def fail(msg):
     sys.stderr.write(msg); sys.exit(1)
 def readall(fd):
     return b"".join(iter(lambda: os.read(fd, 1 << 16), b""))
+def parts(path):
+    # the path exactly as written: absolute, no '.' or '..' component (only repeated/trailing slashes are dropped)
+    if not path.startswith("/"): fail(f"{path} is not an absolute path")
+    comps = [c for c in path.split("/") if c]
+    if any(c in (".", "..") for c in comps): fail(f"{path} has a . or .. component")
+    return comps
+def parent(path):
+    return "/" + "/".join(parts(path)[:-1])
 def chain(path):
-    # the path as given, component by component (lstat): a symlink anywhere on it is refused, never resolved
-    p = os.path.abspath(path)
-    while True:
+    # every prefix of the path as written, deepest first, with lstat: a symlink anywhere on it is refused, never resolved
+    comps = parts(path)
+    for i in range(len(comps), -1, -1):
+        p = "/" + "/".join(comps[:i])
         st = os.lstat(p)
         if stat.S_ISLNK(st.st_mode): fail(f"{p} is a symbolic link")
         if not stat.S_ISDIR(st.st_mode): fail(f"{p} is not a directory")
         if st.st_uid not in (0, TRUSTED): fail(f"{p} is owned by uid {st.st_uid}, not root")
         if st.st_mode & 0o022 and not (st.st_mode & stat.S_ISVTX and st.st_uid == 0): fail(f"{p} is writable by group or others")
-        if p == "/": return
-        p = os.path.dirname(p)
 def opendir(path):
     return os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
 def main(cmd, *a):
     if cmd == "check":
         chain(a[0])
     elif cmd == "copy":
-        src = os.path.abspath(a[0]); chain(os.path.dirname(src))
+        src = "/" + "/".join(parts(a[0])); chain(parent(src))
         fd = os.open(src, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK); st = os.fstat(fd)
         if not stat.S_ISREG(st.st_mode): fail(f"{src} is not a regular file")
         if st.st_uid != TRUSTED: fail(f"{src} is owned by uid {st.st_uid}, not root")
@@ -61,6 +68,7 @@ def main(cmd, *a):
     elif cmd == "write":
         d, name, keep, stage = a[0], a[1], int(a[2]), a[3]
         if not name or "/" in name or name.startswith("."): fail(f"bad name {name!r}")
+        chain(parent(stage))   # checked as written before anything is created
         if not os.path.lexists(stage): os.mkdir(stage, 0o700)
         chain(stage); sfd = opendir(stage); sst = os.fstat(sfd)
         if sst.st_uid != TRUSTED or sst.st_mode & 0o077: fail(f"{stage} is not a private (0700) directory of uid {TRUSTED}")
