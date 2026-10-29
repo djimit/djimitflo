@@ -6,6 +6,7 @@ import { buildEvolutionEvidence } from '../services/evolution-evidence';
 import { operatorCockpit } from '../services/operator-cockpit';
 import { ImprovementFunnelService } from '../services/improvement-funnel-service';
 import { makerTokenAccountingEvidence } from '../services/maker-token-accounting';
+import { MetricsService } from '../services/metrics-service';
 import { markSyntheticRun, realRunIdSql, realRunSql } from '../services/synthetic-runs';
 
 /**
@@ -68,5 +69,20 @@ describe('U3: synthetic PR-review runs are excluded from loop KPI aggregates', (
     expect(e.maker_tokens.by_runtime_model.reduce((a, g) => a + g.leases, 0)).toBe(2);
     expect(e.intelligence.metrics.find((m) => m.metric_id === 'GTI')!.detail).toMatchObject({ repository_paths: 2 });
     expect(e.gate_rule_disagreements).toBe(2);
+  });
+
+  it('cockpit maker_usage_7d: leases of synthetic runs are out by run (the LLM review checker is not runtime manual)', () => {
+    const usage = operatorCockpit(db, now, {}).maker_usage_7d;
+    expect(usage.map((u) => [u.role, u.runtime, u.leases, u.tokens])).toEqual([['maker', 'opencode', 2, 3000]]); // no codex checker of r-syn
+  });
+
+  it('metrics snapshot: run / lease totals, loop success rate and lease tokens count real runs only (marked and historical synthetic out)', () => {
+    db.prepare("UPDATE loop_runs SET status = 'completed' WHERE id IN ('r-syn', 'r-hist')").run();
+    db.prepare("UPDATE worker_leases SET metadata = json_set(metadata, '$.total_tokens', 5000) WHERE id IN ('r-syn-1', 'r-hist-1')").run();
+    db.prepare("UPDATE worker_leases SET metadata = json_set(metadata, '$.total_tokens', 100) WHERE id = 'r-real-0'").run();
+    const m = new MetricsService(db).getSnapshot();
+    expect(m.loops).toMatchObject({ total: 2, completed: 0, successRate: 0 });
+    expect(m.workers.total).toBe(2);
+    expect(m.tokens.totalUsed).toBe(100);
   });
 });

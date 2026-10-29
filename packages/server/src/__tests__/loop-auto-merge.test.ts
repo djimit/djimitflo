@@ -778,3 +778,21 @@ it('U2 on: a missing or low value signal is ineligible (never merged); FBPA pass
   await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act', { LOOP_AUTO_MERGE_VALUE_GATE: 'on', LOOP_AUTO_MERGE_RECHECK: 'on' }), new Date(NOW.getTime() + 7 * 3_600_000));
   expect(decision(700)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_missing' });
 });
+
+it('U2 rollback: a PR rejected only by the value gate is eligible again once the gate is off or shadow (other final reasons stay final)', async () => {
+  seedPr(702, { draft: false, fbpa: 'fail', graded: KILL(0) });
+  seedPr(700, { draft: false }); // missing signal
+  seedPr(710, { draft: false, lines: 401 }); // a non-value permanent reason
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act', { LOOP_AUTO_MERGE_VALUE_GATE: 'on' }), NOW);
+  expect(decision(702)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_low' });
+  expect(decision(700)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_missing' });
+  expect(decision(710).reason).toMatch(/^diff_over_limit/);
+  // on → off: the value-gate rejection is not final any more; the PR goes through every gate and merges
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), new Date(NOW.getTime() + 60_000));
+  expect(decision(702)).toMatchObject({ decision: 'merged' });
+  expect(decision(710).reason).toMatch(/^diff_over_limit/); // unchanged: never re-evaluated
+  // on → shadow: eligible again, the decision carries what the gate would have done
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act', { LOOP_AUTO_MERGE_VALUE_GATE: 'shadow' }), new Date(NOW.getTime() + 120_000));
+  expect(decision(700)).toMatchObject({ decision: 'merged', would_block_value: 'value_signal_missing' });
+  expect(writes().filter((c) => c.url.endsWith('/merge')).map((c) => c.url)).toEqual(['https://api.github.com/repos/o/r/pulls/702/merge', 'https://api.github.com/repos/o/r/pulls/700/merge']);
+});
