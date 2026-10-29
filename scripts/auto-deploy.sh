@@ -228,10 +228,11 @@ fleet_drift() {
   local commit="$1" repo="${AUTO_DEPLOY_FLEET_REPO:-$ROOT/runtime-source-${1:0:7}}" spec name dir src f deployed main json="" sep="" own
   [ -d "$ROOT/data" ] || return 0
   [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || { fleet_unknown "" "running commit unreadable"; return 0; }
-  local g=(git -C "$repo")
+  local hard=(-c core.hooksPath=/dev/null -c core.fsmonitor=false -c protocol.file.allow=never -C "$repo")
+  local g=(env GIT_CONFIG_NOSYSTEM=1 git "${hard[@]}")
   if [ "$(id -u)" = 0 ] && [ -d "$repo" ]; then
-    own="$(stat -c '%u:%g' "$repo")"
-    [ "${own%%:*}" = 0 ] || g=(env HOME=/nonexistent GIT_CONFIG_NOSYSTEM=1 setpriv --reuid="${own%%:*}" --regid="${own##*:}" --clear-groups git -C "$repo")
+    own="$(ls -nd "$repo" | awk '{print $3":"$4}')"
+    [ "${own%%:*}" = 0 ] || g=(env HOME=/nonexistent XDG_CONFIG_HOME=/nonexistent GIT_CONFIG_NOSYSTEM=1 setpriv --reuid="${own%%:*}" --regid="${own##*:}" --clear-groups git "${hard[@]}")
   fi
   for spec in $FLEET_SERVICES; do
     IFS='=' read -r name dir src <<<"$spec"

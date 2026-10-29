@@ -90,9 +90,24 @@ verify_build_receipt() {   # verify_build_receipt <receipt> <src> <sha> <image> 
   printf '%s\n' "$envs" | grep -qxF "DJIMITFLO_BUILD_BASE_IMAGE=$base" || { echo "$image was not built from the receipt's base $base" >&2; return 1; }
 }
 
+# src_git <dir> <git args...>: git inside a runtime-source clone. A reused clone is the container's /workspace mount, so its
+# repo-local config and hooks are the container's: run as root, they would run as root. So when this runs as root and the
+# clone belongs to another uid, git runs as that uid (setpriv, no supplementary groups); and every call turns hooks,
+# fsmonitor and the file:// transport off and ignores the system config.
+src_git() {
+  local dir="$1" own; shift
+  local as=()
+  if [ "$(id -u)" = 0 ]; then
+    own="$(ls -nd "$dir" | awk '{print $3":"$4}')"
+    [ "${own%%:*}" = 0 ] || as=(setpriv --reuid="${own%%:*}" --regid="${own##*:}" --clear-groups)
+  fi
+  env GIT_CONFIG_NOSYSTEM=1 ${as[@]+HOME=/nonexistent XDG_CONFIG_HOME=/nonexistent} ${as[@]+"${as[@]}"} \
+    git -c core.hooksPath=/dev/null -c core.fsmonitor=false -c protocol.file.allow=never -C "$dir" "$@"
+}
+
 # The script that runs on the VPS. Values are passed as positional args ($1..$4).
 remote_script() {
-  declare -f rewrite_compose sha256_file resolve_base_image write_build_receipt verify_build_receipt
+  declare -f rewrite_compose sha256_file resolve_base_image write_build_receipt verify_build_receipt src_git
   cat <<'REMOTE'
 set -euo pipefail
 ROOT="$1"; SHA="$2"; REPO="$3"; SHORT="${SHA:0:7}"
@@ -119,15 +134,17 @@ prune_old_builds() {
 AVAIL_KB="$(df --output=avail -k "$ROOT" | tail -n 1 | tr -d ' ')"
 if [ "$AVAIL_KB" -lt 8000000 ]; then prune_old_builds all; AVAIL_KB="$(df --output=avail -k "$ROOT" | tail -n 1 | tr -d ' ')"; fi
 [ "$AVAIL_KB" -ge 6000000 ] || { echo "not enough free disk to build (${AVAIL_KB} KB free); free space first" >&2; exit 1; }
-if [ ! -d "runtime-source-$SHORT" ]; then git clone -q "$REPO" "runtime-source-$SHORT"; fi
-(cd "runtime-source-$SHORT" && git checkout -q "$SHA" && git log -1 --oneline)
+# a fresh clone is root's until the chown below; a reused one is the container's (src_git runs git in it as its owner)
+if [ ! -d "runtime-source-$SHORT" ]; then GIT_CONFIG_NOSYSTEM=1 git -c core.hooksPath=/dev/null -c core.fsmonitor=false clone -q "$REPO" "runtime-source-$SHORT"; fi
+src_git "runtime-source-$SHORT" checkout -q "$SHA"
+src_git "runtime-source-$SHORT" log -1 --oneline
 # OPS-002: runtime-source-$SHORT is reused on a retry and is the container's (writable) /workspace mount, and `git checkout`
 # keeps local edits and untracked files. Build from an export of exactly $SHA instead; the checkout stays as it is (mount).
-DIRTY="$(git -C "runtime-source-$SHORT" status --porcelain --untracked-files=all 2>&1)" || DIRTY="git status failed: $DIRTY"
+DIRTY="$(src_git "runtime-source-$SHORT" status --porcelain --untracked-files=all 2>&1)" || DIRTY="git status failed: $DIRTY"
 [ -z "$DIRTY" ] || echo "WARNING: runtime-source-$SHORT has local changes; it is not used for the build (exported $SHA instead)" >&2
-TREE="$(git -C "runtime-source-$SHORT" rev-parse --verify "$SHA^{tree}")"
+TREE="$(src_git "runtime-source-$SHORT" rev-parse --verify "$SHA^{tree}")"
 CTX="$(mktemp -d "$ROOT/build-context-$SHORT.XXXXXX")"; trap 'rm -rf "$CTX"' EXIT
-git -C "runtime-source-$SHORT" archive "$SHA" | tar -x -C "$CTX"
+src_git "runtime-source-$SHORT" archive "$SHA" | tar -x -C "$CTX"
 # a hung build (0% CPU for 17-20 min, 2026-09-25 and 26) blocked every deploy until killed by hand: bound it.
 # --network host: on this VPS the docker bridge network stalls apt (g++ install: bridge timed out at 349 s, host 10 s)
 BUILT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"; LOCK="$(sha256_file "$CTX/package-lock.json")"

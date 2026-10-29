@@ -147,7 +147,7 @@ host() {   # host [knob...] → runs the remote script on a fresh stub host; set
   printf 'services:\n  djimitflo:\n    image: djimitflo:main-%s\n    environment:\n      DJIMITFLO_COMMIT_SHA: %s\n    volumes:\n      - %s/runtime-source-%s:/workspace/djimitflo\n' \
     "$PREV" "$PREV_FULL" "$HOST" "$PREV" > "$HOST/compose.yml"
   cp "$HOST/compose.yml" "$TMP/compose.before"
-  RC=0; OUT="$(remote_script | PATH="$BIN:$PATH" bash -s -- "$HOST" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
+  RC=0; OUT="$(remote_script | PATH="${HOST_PATH_PREFIX:-}$BIN:$PATH" bash -s -- "$HOST" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
 }
 host
 [ "$RC" = 0 ] || fail "healthy deploy failed ($RC): $OUT"
@@ -197,4 +197,24 @@ HOST_PREP=untracked host
 [ ! -e "$STUB/ctx/packages/server/src/evil.ts" ] || fail "an untracked file in the reused checkout reached the build context"
 [ -e "$HOST/runtime-source-$NEW/packages/server/src/evil.ts" ] || fail "the untracked file was deleted (user data must stay)"
 echo "$OUT" | grep -q "not used for the build" || fail "untracked file not warned about: $OUT"
+# --- git in a reused runtime-source clone (the container can write it) never runs repo-local hooks or fsmonitor, and when
+# the deploy runs as root it runs as the clone's owner. Root is simulated: `id -u` says 0, setpriv records its call and
+# execs the command as the (unchanged) test user.
+MARK="$TMP/marker"; ROOTSIM="$TMP/rootsim"; mkdir -p "$ROOTSIM"
+printf '#!/usr/bin/env bash\n[ "${1:-}" = -u ] && { echo 0; exit 0; }\nexec /usr/bin/id "$@"\n' > "$ROOTSIM/id"
+printf '#!/usr/bin/env bash\necho "setpriv $*" >> "%s/setpriv-calls"\nwhile [ "${1#--}" != "$1" ]; do shift; done\nexec "$@"\n' "$STUB" > "$ROOTSIM/setpriv"
+chmod +x "$ROOTSIM"/*
+hooked() {
+  reused "$1"; local r="$1/runtime-source-$NEW"
+  printf '#!/bin/sh\necho hook >> "%s"\n' "$MARK" > "$r/.git/hooks/post-checkout"
+  printf '#!/bin/sh\necho fsmonitor >> "%s"\n' "$MARK" > "$r/.git/fsmonitor.sh"
+  chmod +x "$r/.git/hooks/post-checkout" "$r/.git/fsmonitor.sh"
+  git -C "$r" config core.fsmonitor "$r/.git/fsmonitor.sh"; git -C "$r" config core.hooksPath "$r/.git/hooks"
+}
+rm -f "$MARK" "$STUB/setpriv-calls"
+HOST_PATH_PREFIX="$ROOTSIM:" HOST_PREP=hooked host
+[ "$RC" = 0 ] || fail "hooked-clone deploy failed ($RC): $OUT"
+[ ! -e "$MARK" ] || fail "a repo-local hook or fsmonitor of the reused clone ran: $(tr '\n' ' ' < "$MARK")"
+grep -q -- "--reuid=$(id -u) " "$STUB/setpriv-calls" 2>/dev/null || fail "git in the reused clone did not run as the clone's owner"
+committed || fail "hooked clone: the build context is not the committed source"
 echo "deploy-vps selftest OK"
