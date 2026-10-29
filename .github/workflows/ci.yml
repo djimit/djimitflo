@@ -57,6 +57,13 @@ jobs:
   fleet-auth-infra:
     # S3: the event bus / agent registry sources in infra/ (installed on the VPS by docs/runbooks/fleet-bus-auth.md)
     runs-on: ubuntu-latest
+    services:
+      redis:  # STATE-NEW-02: the bus dedupe Lua script runs against a real Redis (same major as infra/event-bus compose)
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+    env:
+      REDIS_TEST_URL: redis://localhost:6379/15
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
