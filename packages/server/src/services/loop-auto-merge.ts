@@ -5,8 +5,8 @@ import { LoopEventService } from './loop-event-service';
 import { testOnlyChange, TEST_ONLY_DIFF_MAX } from './loop-worker-executor-service';
 import { pushNotice } from './operator-push';
 import { settlementState, SURVIVAL_DAYS, type SettlementOutcome } from './merge-survival';
-import { autoMergeMaxPerDay, autoMergeMode, autoMergeRecheck, autoMergeRecheckHours, isAuditSample, isTransientReason, PR_REVIEW_STATUS_CONTEXT, readClassState,
-  RECHECK_PER_TICK, revokeClass } from './loop-auto-merge-state';
+import { autoMergeMaxPerDay, autoMergeMode, autoMergeRecheck, autoMergeRecheckHours, autoMergeValueGate, autoMergeValueSignal, isAuditSample, isTransientReason, PR_REVIEW_STATUS_CONTEXT,
+  readClassState, RECHECK_PER_TICK, revokeClass } from './loop-auto-merge-state';
 import { markRun } from './scheduler-registry';
 import { assertionStrengthVerdict } from './test-assertion-strength';
 import { autoMergeAllowed, parsePrUrl } from './repo-registry';
@@ -34,6 +34,8 @@ import { newestRuns, requiredChecksOf, requiredRun, type CheckRun, type Protecti
  * head must equal it, or be GitHub's own update-branch merge on top of it (web-flow, signature verified, first parent = the
  * verified head, at most 5 deep); anything else is 'head_moved'. The merge call passes that head as `sha`, so a push between
  * this read and the merge is rejected by GitHub.
+ * Value (U2, LOOP_AUTO_MERGE_VALUE_GATE off | shadow | on): after assertion strength, the maker's FBPA verdict pass or graded
+ * mutant kill share >= 0.2 (loop-auto-merge-state autoMergeValueSignal); shadow stamps would_block_value, on is ineligible.
  * Cap: LOOP_AUTO_MERGE_MAX_PER_DAY (default 10, rolling 24 h).
  * Revert window: an auto-merged PR that is reverted on main (a commit within 14 d whose message says revert and names the
  * PR or its merge commit), whose added lines merge survival marks removed, or whose merge commit fails a REQUIRED check on
@@ -61,6 +63,8 @@ export interface AutoMergeRecord {
   non_required_red?: string;
   /** LOOP_AUTO_MERGE_RECHECK: when this PR was last re-checked after a transient ineligible decision, and how often */
   rechecked_at?: string; rechecks?: number;
+  /** U2 LOOP_AUTO_MERGE_VALUE_GATE=shadow: the ineligible reason the value gate would have given (the decision is unchanged) */
+  would_block_value?: 'value_signal_missing' | 'value_signal_low';
 }
 interface Pr {
   number: number; state: string; draft?: boolean; title?: string; node_id?: string; mergeable?: boolean | null; mergeable_state?: string;
@@ -176,6 +180,7 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     WHERE json_extract(r.metadata, '$.pr_url') IS NOT NULL AND r.created_at >= ? ORDER BY r.created_at`)
     .all(new Date(now.getTime() - 60 * DAY).toISOString()) as Array<{ id: string; status: string; gates_json: string | null; metadata: string; improvement_status: string | null }>;
   const cap = autoMergeMaxPerDay(env);
+  const valueGate = autoMergeValueGate(env);
   const recheckOn = autoMergeRecheck(env); const recheckMs = autoMergeRecheckHours(env) * 3_600_000;
   let evaluated = 0; let merged = 0; let rechecks = 0;
   for (const run of runs) {
@@ -200,12 +205,14 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
         .run(prev.rechecked_at, prev.rechecks, run.id);
     }
     evaluated++;
+    // U2 shadow: set once the value gate has looked; every later decision of this PR carries it
+    let wouldBlock: AutoMergeRecord['would_block_value'];
     const record = (decision: Decision, reason: string, extra: Partial<AutoMergeRecord> = {}): AutoMergeRecord => {
       // unchanged decision (shadow re-checks every tick): keep the first record, so `at` stays when it was first decided
-      if (prev && prev.mode === mode && prev.decision === decision && prev.reason === reason) return prev;
+      if (prev && prev.mode === mode && prev.decision === decision && prev.reason === reason && prev.would_block_value === wouldBlock) return prev;
       // a PR that was ever re-checked keeps its re-check stamp (evidence: re-checks per 24 h); absent otherwise
       const stamp = prev?.rechecked_at ? { rechecked_at: prev.rechecked_at, rechecks: prev.rechecks } : {};
-      const rec: AutoMergeRecord = { mode, decision, reason, at: now.toISOString(), pr_number: number, ...stamp, ...extra };
+      const rec: AutoMergeRecord = { mode, decision, reason, at: now.toISOString(), pr_number: number, ...stamp, ...(wouldBlock ? { would_block_value: wouldBlock } : {}), ...extra };
       db.prepare("UPDATE loop_runs SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.auto_merge', json(?)) WHERE id = ?").run(JSON.stringify(rec), run.id);
       if (!prev || prev.decision !== decision || prev.reason !== reason) {
         events.recordEvent(run.id, decision === 'merged' ? 'auto_merged' : `auto_merge_${decision}`, 'info', `Auto-merge (${mode}) PR #${number}: ${decision} — ${reason}`,
@@ -224,8 +231,9 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     const pr = await json<Pr>(slug, `pulls/${number}`);
     if (!pr) { record('waiting', 'github_unavailable'); continue; }
     if (pr.state !== 'open') { record('ineligible', `not_open: ${pr.state}`); continue; }
-    const maker = db.prepare(`SELECT branch_name, json_extract(metadata, '$.diff_max_lines') AS diff_max, json_extract(metadata, '$.deterministic_checks') AS checks FROM worker_leases WHERE loop_run_id = ? AND role = 'maker'
-      AND status = 'completed' AND json_extract(metadata, '$.superseded_by_maker_lease_id') IS NULL ORDER BY updated_at DESC LIMIT 1`).get(run.id) as { branch_name: string | null; diff_max: number | null; checks: string | null } | undefined;
+    const maker = db.prepare(`SELECT branch_name, json_extract(metadata, '$.diff_max_lines') AS diff_max, json_extract(metadata, '$.deterministic_checks') AS checks,
+        json_extract(metadata, '$.graded') AS graded FROM worker_leases WHERE loop_run_id = ? AND role = 'maker'
+      AND status = 'completed' AND json_extract(metadata, '$.superseded_by_maker_lease_id') IS NULL ORDER BY updated_at DESC LIMIT 1`).get(run.id) as { branch_name: string | null; diff_max: number | null; checks: string | null; graded: string | null } | undefined;
     // never a non-loop or Dependabot PR: the title, the author, the head repo and the maker branch must all match
     if (!String(pr.title ?? '').startsWith('loop:') || /dependabot/i.test(String(pr.user?.login ?? '')) || /^dependabot\//.test(String(pr.head?.ref ?? ''))
       || pr.head?.repo?.full_name !== slug || !maker?.branch_name || pr.head?.ref !== maker.branch_name || pr.base?.ref !== base) {
@@ -250,8 +258,15 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     const diff = files.reduce((a, f) => a + (Number(f.additions) || 0) + (Number(f.deletions) || 0), 0);
     const limit = Number(maker.diff_max) > 0 ? Number(maker.diff_max) : TEST_ONLY_DIFF_MAX;
     if (diff > limit) { record('ineligible', `diff_over_limit: ${diff} > ${limit}`); continue; }
-    const strength = assertionStrengthVerdict((() => { try { return JSON.parse(maker.checks || '[]'); } catch { return []; } })());
+    const makerChecks = (() => { try { return JSON.parse(maker.checks || '[]'); } catch { return []; } })();
+    const strength = assertionStrengthVerdict(makerChecks);
     if (strength !== 'pass') { record('ineligible', `assertion_strength_${strength ?? 'missing'}`); continue; }
+    if (valueGate !== 'off') {
+      const value = autoMergeValueSignal(makerChecks, (() => { try { return JSON.parse(maker.graded || 'null'); } catch { return null; } })());
+      const block = value === 'pass' ? undefined : value === 'low' ? 'value_signal_low' as const : 'value_signal_missing' as const;
+      if (block && valueGate === 'on') { record('ineligible', block); continue; }
+      wouldBlock = block;
+    }
     const reviews = await json<Array<{ user?: { login?: string }; state?: string }>>(slug, `pulls/${number}/reviews?per_page=100`);
     if (!reviews) { record('waiting', 'reviews_unavailable'); continue; }
     const latest = new Map<string, string>();
