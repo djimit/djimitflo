@@ -237,6 +237,28 @@ describe('loop worker trace span', () => {
     expect(reviewerTrace(runId, leases.security_checker).spans.filter((s) => !s.ended_at)).toEqual([]);
   });
 
+  it.each([
+    ['the runtime promise rejects', 'executeMockChecker'],
+    ['writing the output files throws', 'writeOutput'],
+  ] as const)('an unexpected reviewer error after dispatch (%s) settles the lease as failed and closes the span', async (_case, step) => {
+    const { runId, leases } = await prepareReviewers();
+    const explode = () => {
+      expect(loops.getWorkerLease(leases.checker).status).toBe('running'); // the failure lands after the dispatch
+      throw new Error('REVIEWER_EXPLODED');
+    };
+    // the runtime step is async (a rejected promise); writeOutput is synchronous (a throw)
+    vi.spyOn(loops.workerExecutor as any, step).mockImplementationOnce(step === 'writeOutput' ? explode : async () => explode());
+    await expect(loops.executeChecker(runId, { lease_id: leases.checker, runtime: 'mock' })).rejects.toThrow('REVIEWER_EXPLODED');
+
+    const lease = loops.getWorkerLease(leases.checker);
+    expect(lease.status).toBe('failed');
+    expect(lease.metadata.failure_reason).toBe('checker_execution_error: REVIEWER_EXPLODED');
+    const [span] = workerSpans(leases.checker);
+    expect(span).toMatchObject({ status: 'error', ended_at: expect.any(String) });
+    expect(JSON.parse(span.metadata)).toMatchObject({ terminal_status: 'error', error: 'REVIEWER_EXPLODED' });
+    expect(reviewerTrace(runId, leases.checker).spans.filter((s) => !s.ended_at)).toEqual([]);
+  });
+
   it('FixLoopService (executeMaker entry point) records the maker span', async () => {
     vi.spyOn(RsiSafetyGuard.prototype, 'canMutate').mockReturnValue({ allowed: true });
     const result = await new FixLoopService(db as any, loops).fixFile({ repositoryPath: tmp, filePath: 'README.md', description: 'Improve wording', category: 'refactor', runtime: 'mock' });
