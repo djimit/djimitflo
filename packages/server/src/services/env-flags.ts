@@ -4,13 +4,57 @@ import { EVOLUTION_FLAGS } from './evolution-evidence';
  * M2c (E-A28, A-C8): env flag hygiene.
  * FLAG_NAME_PATTERN marks env names that switch or cap behaviour. Every such name the server reads is either in
  * EVOLUTION_FLAGS (evolution-evidence.ts: shown on the evidence page) or in NON_EVOLUTION_FLAGS below (runtime, scheduler,
- * cap … with a one-word reason); runbook-flags-drift.test.ts fails on a new name in neither list. So a flag-shaped name that is
- * set but in neither list is read by nothing in this build (a typo, a retired flag, a flag of another process): boot logs it.
+ * cap … with a one-word reason); runbook-flags-drift.test.ts fails on a new name in neither list. So a flag-shaped (or
+ * runtime/model selector) name that is set but read by no code path in this build — a typo, a retired flag, a flag of
+ * another process — is named in one boot warning.
  */
 export const FLAG_NAME_PATTERN = /_MODE(?:_|$)|_ENABLED(?:_|$)|REQUIRE_|_AUTO_|_INHERIT|_SKIP_|_MAX_PER_DAY$|_SHARE$/;
 
-/** Read by judgmentMode (judgment-service.ts) as TYPESAFE_<judgment id>_MODE, so no literal read exists. */
-const DYNAMIC_FLAGS = [/^TYPESAFE_[A-Z0-9_]+_MODE$/];
+/**
+ * Review #1094: runtime / model selectors (`LOOP_CHECKER_RUNTIME=hermes` was set in prod and read by nothing). A name of this
+ * shape is "read" only if a code path reads it: READ_SELECTOR_ENV (literal reads + the child-runtime env allowlists; kept equal
+ * to the source by runbook-flags-drift.test.ts), a dynamic read below, or a name the operator passes through to children.
+ */
+export const SELECTOR_NAME_PATTERN = /_RUNTIME$|_MODEL$|_PROVIDER$|_TIMEOUT_MS$|_SPECIES$|^MODEL_CANDIDATES_/;
+
+export const READ_SELECTOR_ENV: readonly string[] = [
+  'ATOMIC_AGENT_MODEL', 'ATOMIC_EXECUTION_TIMEOUT_MS', 'CHECKER_CROSS_MODEL', 'CLAUDE_EXECUTION_TIMEOUT_MS',
+  'CLINE_EXECUTION_TIMEOUT_MS', 'CODEX_EXECUTION_TIMEOUT_MS', 'COMMONS_PROPOSAL_REVIEW_TIMEOUT_MS',
+  'CONTENT_SAFETY_MODEL', 'DENNIS_AGENT_MODEL', 'DJIMITFLO_ASK_LLM_MODEL', 'DJIMITFLO_ASK_TIMEOUT_MS',
+  'DJIMITFLO_AUTHOR_LLM_MODEL', 'DJIMITFLO_CLAUDE_MODEL', 'DJIMITFLO_CLINE_MODEL', 'DJIMITFLO_CODEX_MODEL',
+  'DJIMITFLO_EMBED_MODEL', 'DJIMITFLO_GEMINI_MODEL', 'DJIMITFLO_OPENCODE_MODEL', 'DJIMITFLO_QDRANT_SEARCH_TIMEOUT_MS',
+  'DJIMIT_SKILL_TRAINING_GATE_TIMEOUT_MS', 'DOCKER_TIMEOUT_MS', 'DREAM_EVOLUTION_MODEL', 'DREAM_EVOLUTION_SPECIES',
+  'EMBEDDING_MODEL', 'EMBEDDING_PROVIDER', 'EMBEDDING_TIMEOUT_MS', 'EVOLUTION_GYM_EXTRA_SPECIES',
+  'EXECUTION_EVENT_STREAM_TIMEOUT_MS', 'FRONTIER_EXPERTS_RUNTIME', 'GEMINI_EXECUTION_TIMEOUT_MS',
+  'GITHUB_PR_REVIEW_RUNTIME', 'GYM_MAKER_TIMEOUT_MS', 'HERMES_EXECUTION_TIMEOUT_MS', 'JEV_CHALLENGER_MODEL',
+  'LOOP_BANDIT_SPECIES', 'LOOP_DAEMON_CHECK_TIMEOUT_MS', 'LOOP_DAEMON_MAKER_RUNTIME', 'LOOP_EVOLVE_SPECIES',
+  'LOOP_MAKER_TIMEOUT_MS', 'LOOP_REVIEWER_TIMEOUT_MS', 'LOOP_RUNTIME_PROBE_TIMEOUT_MS', 'OLLAMA_EMBED_MODEL',
+  'OLLAMA_FAILOVER_PROBE_MODEL', 'OLLAMA_FALLBACK_MODEL', 'OLLAMA_OUTAGE_FALLBACK_RUNTIME',
+  'OPENCODE_EXECUTION_TIMEOUT_MS', 'OPENMYTHOS_AGENT_MODEL', 'OPENMYTHOS_JUDGE_MODEL', 'OPENMYTHOS_WORKER_TIMEOUT_MS',
+  'PANEL_FALLBACK_MODEL', 'PANEL_FALLBACK_RUNTIME', 'PI_EXECUTION_TIMEOUT_MS', 'PI_MODEL', 'PI_PROVIDER',
+  'PROOF_RUN_RUNTIME_TIMEOUT_MS', 'REMOTE_MAKER_QUEUE_TIMEOUT_MS', 'REMOTE_MAKER_TIMEOUT_MS',
+  'SELF_IMPROVEMENT_REFINEMENT_MODEL', 'SELF_IMPROVEMENT_REFINEMENT_TIMEOUT_MS', 'SELF_IMPROVEMENT_REVIEW_MODEL',
+  'SELF_IMPROVEMENT_REVIEW_TIMEOUT_MS', 'SOCIAL_AUTOPILOT_FALLBACK_MODEL', 'SOCIAL_AUTOPILOT_FALLBACK_RUNTIME',
+  'SOCIAL_AUTOPILOT_MODEL', 'SOCIAL_AUTOPILOT_RUNTIME', 'SSE_STALL_TIMEOUT_MS', 'SUBSCRIPTION_GYM_SPECIES',
+  'TYPESAFE_MODEL'
+];
+
+/** Lease runtimes (worker_leases.runtime): leaseIdentity reads DJIMITFLO_<RUNTIME>_MODEL for each. */
+const LEASE_RUNTIMES = ['manual', 'mock', 'codex', 'opencode', 'claude', 'gemini', 'editor', 'pi', 'atomic', 'remote'];
+
+/** Names built at run time, so no literal read exists. */
+const DYNAMIC_FLAGS = [
+  /^TYPESAFE_[A-Z0-9_]+_MODE$/, // judgmentMode (judgment-service.ts): TYPESAFE_<judgment id>_MODE
+  /^[A-Z0-9]+_SOCIAL_MODEL$/, // scripts/commons-runtime-proof.ts: <RUNTIME>_SOCIAL_MODEL
+  new RegExp(`^DJIMITFLO_(${LEASE_RUNTIMES.join('|').toUpperCase()})_MODEL$`), // reviewer-independence leaseIdentity
+  /^MODEL_CANDIDATES_PANEL_REVIEW$/, // model-selector candidates('panel_review'), the only consumer
+];
+
+/** llm-fallback reads LLM_FALLBACK<n>_MODEL only for a configured LLM_FALLBACK<n>_OPENAI_URL (n = '' | 2). */
+function conditionallyRead(name: string, env: NodeJS.ProcessEnv): boolean {
+  const m = name.match(/^LLM_FALLBACK(2?)_MODEL$/);
+  return Boolean(m && env[`LLM_FALLBACK${m[1]}_OPENAI_URL`]?.trim());
+}
 
 /** Flag-shaped env names the server reads that do not steer the evolution loop. */
 export const NON_EVOLUTION_FLAGS: Readonly<Record<string, string>> = {
@@ -103,9 +147,11 @@ export const NON_EVOLUTION_FLAGS: Readonly<Record<string, string>> = {
 };
 
 export function unknownEnvFlags(env: NodeJS.ProcessEnv = process.env): string[] {
-  const known = new Set([...EVOLUTION_FLAGS.map((f) => f.name), ...Object.keys(NON_EVOLUTION_FLAGS)]);
+  const passthrough = (env.RUNTIME_ENV_PASSTHROUGH || '').split(',').map((v) => v.trim()).filter(Boolean); // copied to every child
+  const known = new Set([...EVOLUTION_FLAGS.map((f) => f.name), ...Object.keys(NON_EVOLUTION_FLAGS), ...READ_SELECTOR_ENV, ...passthrough]);
   return Object.keys(env)
-    .filter((n) => env[n] !== undefined && FLAG_NAME_PATTERN.test(n) && !known.has(n) && !DYNAMIC_FLAGS.some((re) => re.test(n)))
+    .filter((n) => env[n] !== undefined && (FLAG_NAME_PATTERN.test(n) || SELECTOR_NAME_PATTERN.test(n)) && !known.has(n)
+      && !DYNAMIC_FLAGS.some((re) => re.test(n)) && !conditionallyRead(n, env))
     .sort();
 }
 
