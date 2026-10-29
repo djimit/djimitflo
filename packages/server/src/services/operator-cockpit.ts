@@ -9,6 +9,7 @@ import { ATTRIBUTION_OF_PROPOSAL, decisionsInbox, openDecisionCounts } from './d
 import { listSchedulers, type SchedulerHealth, type SchedulerStatus } from './scheduler-registry';
 import { nonMakerRunSql, outcomeAttributionEnabled } from './outcome-attribution';
 import { supersededMergeOutcomeSql } from './merge-superseded';
+import { realRunIdSql, realRunSql } from './synthetic-runs';
 import { evolutionLineage, postVerificationRegressions } from './evolution-lineage';
 import { panelAttemptMetrics, type PanelAttemptMetrics } from './panel-attempt-metrics';
 import { unitEconomics, type UnitEconomics } from './unit-economics';
@@ -110,7 +111,8 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
     approvals_decided_7d: one("SELECT COUNT(*) FROM approvals WHERE status IN ('approved', 'denied') AND updated_at >= ?", d7),
     approvals_expired_7d: one("SELECT COUNT(*) FROM approvals WHERE status = 'expired' AND updated_at >= ?", d7),
     approvals_pending: one("SELECT COUNT(*) FROM approvals WHERE status = 'pending'"),
-    runs_failed_7d: one("SELECT COUNT(*) FROM loop_runs WHERE status IN ('failed', 'interrupted') AND created_at >= ?", d7),
+    // U3: synthetic PR-review bookkeeping runs and their leases are not loop work (synthetic-runs.ts)
+    runs_failed_7d: one(`SELECT COUNT(*) FROM loop_runs WHERE status IN ('failed', 'interrupted') AND created_at >= ? AND ${realRunSql()}`, d7),
     // #784 quarantines invalid answers instead of storing a coerced 'could not be parsed' review: count both, so neither the
     // pre-#784 rows nor the new attempts read as 0; an unreadable quarantine table is UNKNOWN (null), not 0
     panel_unparseable_7d: one(`SELECT (SELECT COUNT(*) FROM specialist_reviews WHERE findings_json LIKE '%could not be parsed%' AND created_at >= ?)
@@ -132,7 +134,7 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
     // Now: everything the maker + reviewer leases spent in the window over the proposals verified in it (prod ≈ 62.8 M / 26).
     tokens_per_verified_change_7d: one(`SELECT ROUND(COALESCE(SUM(json_extract(metadata, '$.runtime_usage.total_tokens')), 0) * 1.0
         / NULLIF((SELECT COUNT(*) FROM self_improvements WHERE status = 'verified' AND updated_at >= ?), 0))
-      FROM worker_leases WHERE role IN ('maker', 'checker', 'security_checker') AND created_at >= ?`, d7, d7),
+      FROM worker_leases WHERE role IN ('maker', 'checker', 'security_checker') AND created_at >= ? AND ${realRunIdSql('worker_leases.loop_run_id')}`, d7, d7),
   };
   scorecard.spend_per_verified_change_7d = scorecard.tokens_per_verified_change_7d;
   const v = scorecard.verified_7d;

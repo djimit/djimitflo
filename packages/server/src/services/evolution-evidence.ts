@@ -51,6 +51,7 @@ import { schedulerCapacityEvidence } from './resource-scheduler';
 import { procedureSelectionEvidence } from './procedure-selector';
 import { pl001Evidence } from './pl-001';
 import { memoryDeliveryEvidence } from './memory-delivery-receipts';
+import { realRunSql } from './synthetic-runs';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -246,7 +247,7 @@ export function memoryHoldoutEvidence(db: Database, since: string, env: NodeJS.P
  */
 export function gateRuleDisagreements(db: Database, since: string): number | null {
   let rows: Array<{ gates_json: string | null }>;
-  try { rows = db.prepare("SELECT gates_json FROM loop_runs WHERE created_at >= ? AND gates_json LIKE '%security_checker_verdict%'").all(since) as typeof rows; } catch { return null; }
+  try { rows = db.prepare(`SELECT gates_json FROM loop_runs WHERE created_at >= ? AND gates_json LIKE '%security_checker_verdict%' AND ${realRunSql()}`).all(since) as typeof rows; } catch { return null; }
   let n = 0;
   for (const r of rows) {
     let gates: Array<{ name: string; status: string }>;
