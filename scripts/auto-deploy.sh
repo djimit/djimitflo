@@ -197,12 +197,18 @@ deploy_commit() { [ -n "$EXEC_STAGE" ] || { log "no verified deploy script"; ret
 # (git objects of its runtime-source clone, read as the clone's owner: root never runs git in a repo the container can
 # write) and writes $ROOT/data/fleet-drift.json for /health.fleet_drift.
 # Services are `name=deployed_dir=repo_path`, space-separated; a service whose deployed dir is absent here is skipped.
-# A commit tree that cannot be read writes nothing: unknown is not "no drift".
+# A check that cannot be made (no running commit, unreadable commit tree, no service here, a failing step) overwrites the
+# file with {checked_at, commit, status:"unknown", reason}: a clean record is never left standing after a failed check.
 FLEET_SERVICES="${AUTO_DEPLOY_FLEET_SERVICES:-event-bus=/srv/event-bus=infra/event-bus agent-registry=/srv/agent-registry=infra/agent-registry}"
 sha256_stdin() { if command -v sha256sum >/dev/null; then sha256sum; else shasum -a 256; fi | cut -d' ' -f1; }
+fleet_unknown() {   # fleet_unknown <commit> <reason>
+  printf '{"checked_at":"%s","commit":"%s","status":"unknown","reason":"%s"}\n' "$(date -u +%FT%TZ)" "$1" "$(printf '%s' "$2" | tr -d '"\\' | head -c 300)" \
+    | data_write fleet-drift.json 0
+}
 fleet_drift() {
   local commit="$1" repo="${AUTO_DEPLOY_FLEET_REPO:-$ROOT/runtime-source-${1:0:7}}" spec name dir src f deployed main json="" sep="" own
-  [ -d "$ROOT/data" ] && [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || return 0
+  [ -d "$ROOT/data" ] || return 0
+  [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || { fleet_unknown "" "running commit unreadable"; return 0; }
   local g=(git -C "$repo")
   if [ "$(id -u)" = 0 ] && [ -d "$repo" ]; then
     own="$(stat -c '%u:%g' "$repo")"
@@ -211,20 +217,23 @@ fleet_drift() {
   for spec in $FLEET_SERVICES; do
     IFS='=' read -r name dir src <<<"$spec"
     [ -d "$dir" ] || continue
-    "${g[@]}" cat-file -e "$commit^{commit}" 2>/dev/null || { log "fleet drift: commit ${commit:0:8} not readable in $repo — not checked"; return 0; }
-    deployed="$(for f in "$dir"/*.py; do [ -f "$f" ] || continue; printf '%s %s\n' "${f##*/}" "$(sha256_file "$f")"; done | sort | sha256_stdin)"
+    "${g[@]}" cat-file -e "$commit^{commit}" 2>/dev/null || { log "fleet drift: commit ${commit:0:8} not readable in $repo — unknown"; fleet_unknown "$commit" "commit not readable in $repo"; return 0; }
+    deployed="$(for f in "$dir"/*.py; do [ -f "$f" ] || continue; printf '%s %s\n' "${f##*/}" "$(sha256_file "$f")"; done | sort | sha256_stdin)" \
+      || { fleet_unknown "$commit" "cannot hash $dir"; return 0; }
     main="$("${g[@]}" ls-tree "$commit" "$src/" | while read -r _ type oid f; do
-      [ "$type" = blob ] && [[ "$f" == *.py ]] || continue; printf '%s %s\n' "${f##*/}" "$("${g[@]}" cat-file blob "$oid" | sha256_stdin)"; done | sort | sha256_stdin)"
+      [ "$type" = blob ] && [[ "$f" == *.py ]] || continue; printf '%s %s\n' "${f##*/}" "$("${g[@]}" cat-file blob "$oid" | sha256_stdin)"; done | sort | sha256_stdin)" \
+      || { fleet_unknown "$commit" "cannot read $src at the running commit"; return 0; }
     json+="$sep\"$name\":{\"deployed\":\"$deployed\",\"main\":\"$main\",\"match\":$([ "$deployed" = "$main" ] && echo true || echo false)}"; sep=","
     [ "$deployed" = "$main" ] || log "fleet drift: $name ($dir) differs from $src at ${commit:0:8}"
   done
-  [ -n "$json" ] || return 0
-  printf '{"checked_at":"%s","commit":"%s","services":{%s}}\n' "$(date -u +%FT%TZ)" "$commit" "$json" | data_write fleet-drift.json 0
+  [ -n "$json" ] || { fleet_unknown "$commit" "no fleet service directory on this host"; return 0; }
+  printf '{"checked_at":"%s","commit":"%s","status":"checked","services":{%s}}\n' "$(date -u +%FT%TZ)" "$commit" "$json" | data_write fleet-drift.json 0
 }
 
 # everything below writes into $ROOT as root (kill switch, verdicts, baseline) and trusts what it reads there
 ROOT_ERR="$(safe_fs check "$ROOT" 2>&1)" || { log "$ROOT is not trusted ($ROOT_ERR) — not acting. It and every dir above it must be owned by root and not writable by group or others"; exit 1; }
-fleet_drift "$(current_sha)" || log "fleet drift check failed"
+FLEET_COMMIT="$(current_sha 2>/dev/null || true)"
+fleet_drift "$FLEET_COMMIT" || { log "fleet drift check failed"; fleet_unknown "$FLEET_COMMIT" "check failed" || true; }
 [ -e "$ROOT/AUTO_DEPLOY_DISABLED" ] && { log "disabled by kill switch"; exit 0; }
 post_deploy_check
 SHA="$(main_sha)"; CUR="$(current_sha)"

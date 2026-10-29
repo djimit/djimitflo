@@ -351,8 +351,10 @@ as `data/`; `AUTO_DEPLOY_STAGE_DIR`) and renamed in. `python3` must be on the ho
 - Stop: `touch /srv/djimitflo/AUTO_DEPLOY_DISABLED` (remove the file to resume). Log: `journalctl -u djimitflo-auto-deploy`.
 - Fleet drift: every run (also while paused) compares the sha256 of `/srv/event-bus/*.py` and `/srv/agent-registry/*.py` with
   `infra/{event-bus,agent-registry}/*.py` at the running commit and writes `/srv/djimitflo/data/fleet-drift.json`
-  (`AUTO_DEPLOY_FLEET_SERVICES` = `name=deployed_dir=repo_path ...`). `/health.fleet_drift` lists the drifting services; `null`
-  means not checked (no file), which is not the same as no drift.
+  (`AUTO_DEPLOY_FLEET_SERVICES` = `name=deployed_dir=repo_path ...`); a check that cannot be made writes
+  `{status:"unknown", reason}` instead. `/health.fleet_drift` lists the drifting services; `null` means unknown — no file, an
+  unknown record, a record for another commit than the running one, or one older than 20 minutes (`FLEET_DRIFT_MAX_AGE_MIN`) —
+  which is not the same as no drift.
 
 ## Operator push (Telegram) — UX-12 / UX-13
 

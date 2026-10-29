@@ -279,6 +279,7 @@ it('S3: writes fleet-drift.json with the service whose deployed sources differ f
   expect(at(commit)).toContain('up to date');
   const drift = JSON.parse(fs.readFileSync(path.join(root, 'data', 'fleet-drift.json'), 'utf8'));
   expect(drift.commit).toBe(commit);
+  expect(drift.status).toBe('checked');
   expect(Number.isNaN(Date.parse(drift.checked_at))).toBe(false);
   expect(Object.keys(drift.services).sort()).toEqual(['agent-registry', 'event-bus']);
   expect(drift.services['event-bus']).toMatchObject({ match: false });
@@ -287,10 +288,13 @@ it('S3: writes fleet-drift.json with the service whose deployed sources differ f
   expect(drift.services['event-bus'].deployed).not.toBe(drift.services['event-bus'].main);
   expect(drift.services['agent-registry'].match).toBe(true);
   expect(drift.services['agent-registry'].deployed).toBe(drift.services['agent-registry'].main);
-  // a commit tree that cannot be read is not "no drift": nothing is written
-  fs.rmSync(path.join(root, 'data', 'fleet-drift.json'));
+  // a failed check is not "no drift": the clean record is overwritten with an explicit unknown one, never left behind
   at(commit, path.join(tmp, 'no-such-repo'));
-  expect(fs.existsSync(path.join(root, 'data', 'fleet-drift.json'))).toBe(false);
+  const failed = JSON.parse(fs.readFileSync(path.join(root, 'data', 'fleet-drift.json'), 'utf8'));
+  expect(failed).toMatchObject({ commit, status: 'unknown' });
+  expect(failed.reason).toContain('not readable');
+  expect(failed).not.toHaveProperty('services');
+  expect(Number.isNaN(Date.parse(failed.checked_at))).toBe(false);
 });
 
 // Root writes into the data dir the container can write: never through a pre-planted link or a non-regular file.
@@ -311,7 +315,7 @@ it('a pre-planted symlink at data/deploy-log.jsonl is not followed: refused with
   expect(run({}, root2)).toContain('refusing to write');
   expect(fs.readdirSync(path.join(root2, 'data', 'deploy-log.jsonl'))).toEqual([]);
   // no temp file is left behind in the data dir
-  expect(fs.readdirSync(path.join(root, 'data')).sort()).toEqual(['deploy-log.jsonl']);
+  expect(fs.readdirSync(path.join(root, 'data')).filter((n) => n.startsWith('.'))).toEqual([]);
 });
 
 it('the deploy log stays bounded, readable by the container user, and is replaced by rename', () => {
@@ -324,7 +328,7 @@ it('the deploy log stays bounded, readable by the container user, and is replace
   expect(lines.length).toBeLessThanOrEqual(1000);
   expect(lines.slice(-2).map((l) => JSON.parse(l).event)).toEqual(['deploying', 'done']);
   expect(fs.statSync(log).mode & 0o777).toBe(0o644);
-  expect(fs.readdirSync(path.join(root, 'data'))).toEqual(['deploy-log.jsonl']);
+  expect(fs.readdirSync(path.join(root, 'data')).filter((n) => n.startsWith('.'))).toEqual([]);
 });
 
 it('a pre-planted symlink at data/fleet-drift.json is not followed', () => {
@@ -414,4 +418,11 @@ it('S2: install-deploy-script.sh installs only into a trusted dir', () => {
   expect(r.status).not.toBe(0);
   expect(`${r.stdout}${r.stderr}`).toContain('writable by group or others');
   expect(fs.existsSync(path.join(dir, 'deploy-vps.installed.sh'))).toBe(false);
+});
+
+it('S3: a host without any of the fleet services writes an explicit unknown record', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
+  fs.mkdirSync(path.join(root, 'data'));
+  run({ ...upToDate, AUTO_DEPLOY_FLEET_SERVICES: `event-bus=${root}/absent=infra/event-bus` }, root);
+  expect(JSON.parse(fs.readFileSync(path.join(root, 'data', 'fleet-drift.json'), 'utf8'))).toMatchObject({ commit: NEW, status: 'unknown' });
 });
