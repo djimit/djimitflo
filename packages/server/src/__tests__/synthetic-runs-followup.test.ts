@@ -41,4 +41,14 @@ describe('synthetic PR-review runs: functional follow-ups', () => {
     try { await loop.runCycle(); } finally { loop.stop(); }
     expect((db.prepare('SELECT loop_run_id FROM reflections ORDER BY loop_run_id').all() as Array<{ loop_run_id: string }>).map((r) => r.loop_run_id)).toEqual(['r-real']);
   });
+
+  it('fleetPools: 24 h outcome rates count real leases, spend (tokens_used_24h) keeps the synthetic LLM review checker', () => {
+    const checker = (id: string, run: string, tokens: number) => db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at)
+      VALUES (?, ?, 'checker', 'codex', 'completed', ?, ?, ?)`).run(id, run, JSON.stringify({ runtime_usage: { total_tokens: tokens } }), iso(now - 60_000), iso(now - 60_000));
+    checker('c-real', 'r-real', 300);
+    checker('c-syn', 'r-syn', 5000);
+    const pools = (new SwarmStatusService(db) as any).fleetPools({ load_average: [0], total_memory_bytes: 1, free_memory_bytes: 1, cpu_threads: 8 }) as any[];
+    const codex = pools.find((p) => p.runtime === 'codex');
+    expect(codex).toMatchObject({ completed_24h: 1, tokens_per_successful_worker: 300, tokens_used_24h: 5300 });
+  });
 });
