@@ -46,7 +46,7 @@ import { learningLedger } from './learning-ledger';
 import { fleetSignatureEvidence } from './fleet-event-signatures';
 import { makerWarmDepsEvidence } from './maker-warm-deps';
 import { falsifierEvidence } from './commons-falsifier';
-import { settlementExecutionEvidence } from './settlement-execution';
+import { runLanes, settlementExecutionEvidence, settlementValueEvidence, survivalByLane } from './settlement-execution';
 import { schedulerCapacityEvidence } from './resource-scheduler';
 import { procedureSelectionEvidence } from './procedure-selector';
 import { pl001Evidence } from './pl-001';
@@ -292,12 +292,15 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
   const ages = openDrafts.map((r) => (now - Date.parse(r.created_at)) / 86_400_000).sort((a, b) => a - b);
   const q = (p: number) => (ages.length ? +ages[Math.min(ages.length - 1, Math.floor(p * ages.length))].toFixed(1) : null);
   // E1: survival only over SETTLED_SURVIVED / SETTLED_REGRESSED — pending and anomalous PRs are in neither numerator nor denominator
+  // U1: the oracle lane of each loop PR run (survival per lane, settlement_value)
+  const lanes = runLanes(db);
   const settlement = (() => {
     if (!prs) return null; // unknown, not 0
     const by_state = emptySettlementCounts(); const anomalies: Record<string, number> = {};
     for (const p of prs) { by_state[p.settlement.state]++; if (p.settlement.state === 'PIPELINE_ANOMALY') anomalies[p.settlement.reason] = (anomalies[p.settlement.reason] ?? 0) + 1; }
     const c = survivalCounts(prs.map((p) => p.settlement.state));
-    return { by_state, anomalies, survived: c.survived, regressed: c.regressed, settled: c.settled, survival_rate: c.rate };
+    // U1: per lane, informative:false where 0 regressions at >= 30 settled (the label cannot fail there); report only
+    return { by_state, anomalies, survived: c.survived, regressed: c.regressed, settled: c.settled, survival_rate: c.rate, by_lane: survivalByLane(prs, lanes) };
   })();
   const byRepo = extras.length ? extras.map((r) => {
     try { const c = survivalCounts(loopPrSettlements(db, now, r.slug, env).map((p) => p.settlement.state)); return { repo: r.slug, ...c }; } catch { return { repo: r.slug, survived: null, regressed: null, settled: null, rate: null }; }
@@ -511,6 +514,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     falsifier: falsifierEvidence(db, env, now),
     // L3-v2 §5.1–2 (SETTLEMENT_EXECUTION_MODE, shadow): settled loop PRs' tests re-run at origin/main + fresh-mutant kill share; graded vs verified/survived (report only)
     settlement_execution: settlementExecutionEvidence(db, env, now),
+    // U1: per lane fresh-mutant kill share at settlement (median, share < 0.2, Wilson) — a value label that can fail (report only)
+    settlement_value: settlementValueEvidence(db, wilson, lanes),
     // RESOURCE_SCHEDULER_MODE (shadow): observed-capacity would-defer counts 24 h / 7 d + latest observed capacity (report only)
     scheduler_capacity: schedulerCapacityEvidence(db, env, now),
     // PL-001 (PROCEDURE_SELECTOR_MODE, shadow): applies / does_not_apply per ordinary gym claim 24 h / 7 d + top failed clauses (nothing delivered)
