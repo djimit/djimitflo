@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { Database } from 'better-sqlite3';
 import { SelfImprovementService } from './self-improvement-service';
 import { markRun } from './scheduler-registry';
-import { UsageTelemetry } from './usage-telemetry';
+import { UsageTelemetry, liveUsageTelemetry } from './usage-telemetry';
 
 /**
  * Dead-code lane (operator 2026-10-07): Djimitflo proposes removing its own unused code. Prod: 649 route handlers, ~121
@@ -12,7 +12,8 @@ import { UsageTelemetry } from './usage-telemetry';
  *   (b) a route module whose mounts are all authenticated, got 0 hits in `usage_counts` (>= 14 days of telemetry) and
  *       whose path no other package (dashboard, mcp-server, ...) or script mentions — plus the services only it uses.
  *       0 hits count as unused only while UsageTelemetry.coverage reports the window complete (OPS-003): with counts
- *       dropped in the window the group is skipped as insufficient_evidence.
+ *       dropped in the window, or still pending in the live collector after a flush, the group is skipped as
+ *       insufficient_evidence.
  * The oracle is `npm run test:dead-code:grounded` (scripts/dead-code-gate.mjs): only the named files/registrations change,
  * adds <= 10 % of removed lines, then the full test suite of every touched package. Proposals are normal risk: never
  * auto-approved, the maker approval and the merge stay human. DEAD_CODE_LANE_ENABLED=true (default off),
@@ -150,11 +151,15 @@ export function discoverUnimportedFiles(repoPath: string, repo = loadRepo(repoPa
 /** (b) route modules with 0 hits over >= 14 days of telemetry and no caller outside the server. */
 export function discoverDormantRouteGroups(repoPath: string, db: Database, now = new Date(), repo = loadRepo(repoPath)): { units: DeadCodeUnit[]; skipped: Array<{ id: string; reason: string }> } {
   const skipped: Array<{ id: string; reason: string }> = [];
+  // the live collector's pending counts land first (a failed flush stays pending and reads as incomplete), then its loss
+  // signal for this window; without a collector in this process, the persisted usage_loss alone
+  const telemetry = liveUsageTelemetry(db) ?? new UsageTelemetry(db, 0);
+  telemetry.flush();
   let firstDay: string | null = null;
   try { firstDay = (db.prepare("SELECT MIN(day) AS d FROM usage_counts WHERE kind = 'api'").get() as { d: string | null }).d; } catch { /* no table yet */ }
   const days = firstDay ? Math.floor((now.getTime() - Date.parse(`${firstDay}T00:00:00Z`)) / 86_400_000) : 0;
   if (days < MIN_TELEMETRY_DAYS) return { units: [], skipped: [{ id: 'route-groups', reason: `usage telemetry covers ${days} day(s) < ${MIN_TELEMETRY_DAYS}` }] };
-  const coverage = new UsageTelemetry(db, 0).coverage(days, now); // the persisted loss signal for this window
+  const coverage = telemetry.coverage(days, now);
   const index = repo.files.get(ROUTES_INDEX);
   if (!index) return { units: [], skipped: [{ id: 'route-groups', reason: `${ROUTES_INDEX} not found` }] };
 

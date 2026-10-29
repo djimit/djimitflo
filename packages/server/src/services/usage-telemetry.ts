@@ -17,6 +17,10 @@ const ensure = (db: Database) => db.exec(`CREATE TABLE IF NOT EXISTS usage_count
  */
 export const MAX_BUFFERED_KEYS = 10_000;
 
+/** The flushing collector per database — the API middleware's (routes/index.ts) — so readers see its pending counts. */
+const live = new WeakMap<Database, UsageTelemetry>();
+export const liveUsageTelemetry = (db: Database): UsageTelemetry | undefined => live.get(db);
+
 const sinceDay = (days: number, now = new Date()) => new Date(now.getTime() - days * 86_400_000).toISOString().slice(0, 10);
 
 export class UsageTelemetry {
@@ -25,7 +29,10 @@ export class UsageTelemetry {
   private timer: NodeJS.Timeout | null = null;
   constructor(private readonly db: Database, flushMs = 60_000) {
     ensure(db);
-    if (flushMs > 0) { this.timer = setInterval(() => this.flush(), flushMs); this.timer.unref?.(); }
+    if (flushMs > 0) {
+      this.timer = setInterval(() => this.flush(), flushMs); this.timer.unref?.();
+      if (!live.has(db)) live.set(db, this);
+    }
   }
 
   count(kind: 'api' | 'page', name: string, method = '', statusClass = ''): void {
@@ -91,5 +98,5 @@ export class UsageTelemetry {
       FROM usage_counts WHERE day >= ? GROUP BY kind, name, method ORDER BY hits DESC`).all(since) as never;
   }
 
-  stop(): void { if (this.timer) clearInterval(this.timer); this.flush(); }
+  stop(): void { if (this.timer) clearInterval(this.timer); this.flush(); if (live.get(this.db) === this) live.delete(this.db); }
 }
