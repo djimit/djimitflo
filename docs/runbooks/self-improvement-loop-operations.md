@@ -330,9 +330,15 @@ Only for proposals that failed on infrastructure. In one transaction: set `self_
 
 `scripts/auto-deploy.sh` runs on the VPS every 10 minutes (`scripts/systemd/djimitflo-auto-deploy.{service,timer}`) and deploys
 `main` only when: it differs from what runs, every CI check on it succeeded, `main` has not moved for 20 minutes
-(`AUTO_DEPLOY_SETTLE_MIN`), and no loop worker is running. It uses `deploy-vps.sh --local` of that commit (health wait + rollback).
+(`AUTO_DEPLOY_SETTLE_MIN`), and no loop worker is running. It runs the **host-installed** copy
+`/srv/djimitflo/deploy-vps.installed.sh --local` (health wait + rollback), never the deploy script of the commit it deploys.
+When the commit's `scripts/deploy-vps.sh` differs from the installed copy (or the installed copy no longer matches its record),
+auto-deploy pauses with the reason in `AUTO_DEPLOY_DISABLED` until an operator has reviewed and installed it.
 
 - Install: `cp scripts/auto-deploy.sh /srv/djimitflo/auto-deploy.sh && cp scripts/systemd/djimitflo-auto-deploy.* /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now djimitflo-auto-deploy.timer`
+- Deploy script (first install, and after every change to `scripts/deploy-vps.sh`): review the diff, then as root on the VPS
+  `scripts/install-deploy-script.sh <sha>` (dry run, shows the diff) and `scripts/install-deploy-script.sh <sha> --apply`; then
+  remove `/srv/djimitflo/AUTO_DEPLOY_DISABLED` if auto-deploy paused for it. Without an installed copy auto-deploy refuses to deploy.
 - Stop: `touch /srv/djimitflo/AUTO_DEPLOY_DISABLED` (remove the file to resume). Log: `journalctl -u djimitflo-auto-deploy`.
 
 ## Operator push (Telegram) — UX-12 / UX-13

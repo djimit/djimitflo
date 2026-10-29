@@ -4,8 +4,10 @@
 # Deploys only when ALL hold: main differs from what runs; every required context of main's branch protection has a
 # success of its newest run on that commit (skipped/neutral/missing is not a pass) and no other check failed or runs;
 # main has not moved for AUTO_DEPLOY_SETTLE_MIN minutes (a merge train becomes one deploy); no loop worker is running;
-# no kill switch file. The deploy itself is deploy-vps.sh of THAT commit (--local), with its health wait + rollback.
+# no kill switch file; the commit's scripts/deploy-vps.sh matches the host-installed copy. The deploy itself is that
+# host-installed copy of deploy-vps.sh (--local), with its health wait + rollback.
 #   kill switch: touch /srv/djimitflo/AUTO_DEPLOY_DISABLED
+#   deploy script: scripts/install-deploy-script.sh <sha> --apply (operator, as root on this host)
 # Every probe is overridable (AD_<NAME>, evaluated) so the decision logic is testable without a VPS (auto-deploy.test.ts).
 set -euo pipefail
 ROOT="${DEPLOY_ROOT:-/srv/djimitflo}"
@@ -68,16 +70,29 @@ post_deploy_check() {
   fi
   echo ok > "$ROOT/.deploy-verdict-$dsha"; log "post-deploy check ok for ${dsha:0:8}"; event verdict_ok "$dsha"
 }
-deploy() { probe DEPLOY deploy_commit "$1"; }
-deploy_commit() {
-  # no RETURN trap: bash keeps it after this function returns, and under `set -u` the next function return fired it with
-  # $tmp out of scope ('tmp: unbound variable', exit 1 after every healthy deploy — prod 2026-09-28 10:12)
-  local tmp rc=0; tmp="$(mktemp)"
-  # the deploy script of the commit being deployed, not whatever sits on the host
-  curl -fsS "https://raw.githubusercontent.com/$REPO_SLUG/$1/scripts/deploy-vps.sh" -o "$tmp" || { rm -f "$tmp"; return 1; }
-  DEPLOY_ROOT="$ROOT" bash "$tmp" "$1" --apply --local || rc=$?
-  rm -f "$tmp"; return "$rc"
+# S2 (DEP-01): this runs as root, so the deploy script it executes is the copy an operator installed on this host
+# (scripts/install-deploy-script.sh), never the one in the commit being deployed — that would make merge rights root.
+# The commit's scripts/deploy-vps.sh is fetched only to compare: when it differs from the installed copy's record, or the
+# installed copy no longer matches its record, auto-deploy pauses with the reason until the operator installs it.
+INSTALLED="$ROOT/deploy-vps.installed.sh"
+sha256_file() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
+pause() { printf '%s\n' "$2" > "$ROOT/AUTO_DEPLOY_DISABLED"; log "$2 — auto-deploy paused"; event paused "$1" "$2"; exit 0; }
+deploy_gate() { probe DEPLOY_GATE deploy_script_gate "$1"; }
+deploy_script_gate() {
+  local rec tmp want
+  if [ ! -f "$INSTALLED" ] || [ ! -f "$INSTALLED.source" ]; then
+    log "no host-installed deploy script ($INSTALLED) — not deploying $1. Review scripts/deploy-vps.sh at a commit, then as root on this host run: scripts/install-deploy-script.sh <sha> --apply"
+    event refused "$1" "no host-installed deploy script"; exit 1
+  fi
+  rec="$(sed -n 's/^sha256=//p' "$INSTALLED.source")"
+  [ -n "$rec" ] && [ "$(sha256_file "$INSTALLED")" = "$rec" ] || pause "$1" "$INSTALLED does not match its install record ($INSTALLED.source); reinstall it with scripts/install-deploy-script.sh <sha> --apply, then remove $ROOT/AUTO_DEPLOY_DISABLED"
+  tmp="$(mktemp)"
+  curl -fsS "https://raw.githubusercontent.com/$REPO_SLUG/$1/scripts/deploy-vps.sh" -o "$tmp" || { rm -f "$tmp"; log "cannot fetch scripts/deploy-vps.sh of $1 to compare — not deploying"; exit 1; }
+  want="$(sha256_file "$tmp")"; rm -f "$tmp"
+  [ "$want" = "$rec" ] || pause "$1" "scripts/deploy-vps.sh at $1 differs from the host-installed copy (installed from $(sed -n 's/^commit=//p' "$INSTALLED.source")); review it, then run scripts/install-deploy-script.sh $1 --apply and remove $ROOT/AUTO_DEPLOY_DISABLED"
 }
+deploy() { probe DEPLOY deploy_commit "$1"; }
+deploy_commit() { DEPLOY_ROOT="$ROOT" bash "$INSTALLED" "$1" --apply --local; }
 
 [ -e "$ROOT/AUTO_DEPLOY_DISABLED" ] && { log "disabled by kill switch"; exit 0; }
 post_deploy_check
@@ -118,6 +133,7 @@ AGE_MIN="$(commit_json "$SHA" | node -e 'const c=JSON.parse(require("fs").readFi
 RUNNING="$(running_leases)"
 [ "$RUNNING" = "0" ] || { log "$RUNNING loop worker(s) running; not deploying mid-run"; exit 0; }
 
+deploy_gate "$SHA"
 log "deploying $SHA (was $CUR)"; event deploying "$SHA" "was $CUR"
 deploy "$SHA" || { log "deploy of $SHA failed (deploy-vps.sh exited non-zero; it rolls back an unhealthy start)"; event failed "$SHA" "deploy-vps.sh exited non-zero"; exit 1; }
 stalls | sed '/^$/d' > "$ROOT/.deploy-baseline"; echo "$SHA $(date +%s)" > "$ROOT/.last-deploy"

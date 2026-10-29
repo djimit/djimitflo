@@ -11,7 +11,7 @@ const green = JSON.stringify({ check_runs: [{ id: 1, name: 'build-and-test (22)'
 const minutesAgo = (m: number) => JSON.stringify({ commit: { committer: { date: new Date(Date.now() - m * 60_000).toISOString() } } });
 const run = (over: Record<string, string> = {}, root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'))) => {
   const env = { ...process.env, DEPLOY_ROOT: root, AD_MAIN_SHA: `printf '${NEW}\\trefs/heads/main\\n'`, AD_CURRENT_SHA: `echo ${OLD}`,
-    AD_CHECKS: `echo '${green}'`, AD_REQUIRED: `echo 'build-and-test (22)'`, AD_COMMIT: `echo '${minutesAgo(30)}'`, AD_LEASES: 'echo 0', AD_DEPLOY: 'echo DEPLOYED', ...over };
+    AD_CHECKS: `echo '${green}'`, AD_REQUIRED: `echo 'build-and-test (22)'`, AD_COMMIT: `echo '${minutesAgo(30)}'`, AD_LEASES: 'echo 0', AD_DEPLOY: 'echo DEPLOYED', AD_DEPLOY_GATE: 'true', ...over };
   const r = spawnSync('bash', [script], { env, encoding: 'utf8' });
   return `${r.stdout}${r.stderr}`;
 };
@@ -131,13 +131,23 @@ it('P2: a failed deploy says so and records no baseline', () => {
   expect(fs.existsSync(path.join(root, '.last-deploy'))).toBe(false);
 });
 
+// S2: curl stub serving `content` as the commit's scripts/deploy-vps.sh (the real fetch path, no network)
+const commitCopy = (content: string) => {
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-bin-'));
+  const src = path.join(bin, 'deploy-vps.sh'); fs.writeFileSync(src, content);
+  fs.writeFileSync(path.join(bin, 'curl'), `#!/usr/bin/env bash\nout=""; while [ $# -gt 0 ]; do [ "$1" = "-o" ] && out="$2"; shift; done; cat '${src}' > "$out"\n`, { mode: 0o755 });
+  return { PATH: `${bin}:${process.env.PATH}` };
+};
+const installer = path.resolve(__dirname, '../../../../scripts/install-deploy-script.sh');
+const install = (root: string, content: string, args: string[] = ['--apply']) =>
+  spawnSync('bash', [installer, NEW, ...args], { env: { ...process.env, DEPLOY_ROOT: root, ...commitCopy(content) }, encoding: 'utf8' });
+const realDeploy = { AD_DEPLOY: '', AD_DEPLOY_GATE: '', AD_STALLS: 'echo', AD_RESTARTS: 'echo 0' };
+
 it('the real deploy path leaves no RETURN trap behind (bash 5: "tmp: unbound variable" after every deploy)', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
-  // a fake deploy-vps.sh behind a file:// URL; curl fetches it exactly like the real path
-  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-bin-'));
-  fs.writeFileSync(path.join(bin, 'curl'), '#!/usr/bin/env bash\nout=""; while [ $# -gt 0 ]; do [ "$1" = "-o" ] && out="$2"; shift; done; echo "echo deployed-fake" > "$out"\n', { mode: 0o755 });
-  const env = { PATH: `${bin}:${process.env.PATH}` };
-  const out = run({ AD_DEPLOY: '', AD_STALLS: 'echo', AD_RESTARTS: 'echo 0', ...env }, root);
+  // a fake deploy-vps.sh, fetched by curl exactly like the real path and installed on the host by the operator step (S2)
+  expect(install(root, 'echo deployed-fake\n').status).toBe(0);
+  const out = run({ ...realDeploy, ...commitCopy('echo deployed-fake\n') }, root);
   expect(out).toContain('deployed-fake');
   expect(out).not.toContain('unbound');
   expect(out).toContain(`done ${NEW}`);
@@ -168,4 +178,72 @@ it('S1: writes deploy events as JSON lines into the data dir the container mount
   const events = fs.readFileSync(path.join(root, 'data', 'deploy-log.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   expect(events.map((e) => e.event)).toEqual(['deploying', 'done']);
   expect(events[0]).toMatchObject({ sha: NEW, detail: `was ${OLD}` });
+});
+
+// S2 (DEP-01): auto-deploy runs as root on the host. It runs the host-installed deploy script; the copy in the commit it
+// deploys is fetched only to compare, so merging a change to deploy-vps.sh never reaches root without an operator step.
+const RAN = 'echo "deploy-script-ran-from $0"\n';
+const killSwitch = (root: string) => { try { return fs.readFileSync(path.join(root, 'AUTO_DEPLOY_DISABLED'), 'utf8'); } catch { return null; } };
+
+it('S2: deploys with the host-installed copy of deploy-vps.sh when the commit carries the same script', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
+  expect(install(root, RAN).status).toBe(0);
+  const out = run({ ...realDeploy, ...commitCopy(RAN) }, root);
+  expect(out).toContain(`deploy-script-ran-from ${path.join(root, 'deploy-vps.installed.sh')}`);
+  expect(out).toContain(`done ${NEW}`);
+  expect(killSwitch(root)).toBeNull();
+});
+
+it('S2: a deploy-vps.sh changed in the deployed commit is not executed; auto-deploy pauses until the operator installs it', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
+  expect(install(root, RAN).status).toBe(0);
+  const changed = 'echo COMMIT-COPY-RAN\n';
+  const out = run({ ...realDeploy, ...commitCopy(changed) }, root);
+  expect(out).not.toContain('COMMIT-COPY-RAN');
+  expect(out).not.toContain('deploy-script-ran-from');
+  expect(out).toContain('auto-deploy paused');
+  expect(killSwitch(root)).toContain('scripts/deploy-vps.sh');
+  expect(killSwitch(root)).toContain('install-deploy-script.sh');
+  expect(fs.existsSync(path.join(root, '.last-deploy'))).toBe(false);
+  // the explicit operator step installs the reviewed script; after the kill switch is removed it deploys with it
+  expect(install(root, changed).status).toBe(0);
+  fs.rmSync(path.join(root, 'AUTO_DEPLOY_DISABLED'));
+  const resumed = run({ ...realDeploy, ...commitCopy(changed) }, root);
+  expect(resumed).toContain('COMMIT-COPY-RAN');
+  expect(resumed).toContain(`done ${NEW}`);
+});
+
+it('S2: without a host-installed copy auto-deploy refuses, says how to install it and runs nothing', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
+  const r = spawnSync('bash', [script], { env: { ...process.env, DEPLOY_ROOT: root, AD_MAIN_SHA: `printf '${NEW}\\trefs/heads/main\\n'`, AD_CURRENT_SHA: `echo ${OLD}`,
+    AD_CHECKS: `echo '${green}'`, AD_REQUIRED: `echo 'build-and-test (22)'`, AD_COMMIT: `echo '${minutesAgo(30)}'`, AD_LEASES: 'echo 0', ...realDeploy, ...commitCopy(RAN) }, encoding: 'utf8' });
+  const out = `${r.stdout}${r.stderr}`;
+  expect(r.status).not.toBe(0);
+  expect(out).toContain('install-deploy-script.sh');
+  expect(out).not.toContain('deploy-script-ran-from');
+  expect(fs.existsSync(path.join(root, '.last-deploy'))).toBe(false);
+});
+
+it('S2: an installed copy edited outside the installer does not run', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
+  expect(install(root, RAN).status).toBe(0);
+  fs.appendFileSync(path.join(root, 'deploy-vps.installed.sh'), 'echo TAMPERED\n');
+  const out = run({ ...realDeploy, ...commitCopy(RAN) }, root);
+  expect(out).not.toContain('TAMPERED');
+  expect(out).not.toContain('deploy-script-ran-from');
+  expect(killSwitch(root)).toContain('install record');
+});
+
+it('S2: install-deploy-script.sh is a dry run by default and records the source commit and hash on --apply', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
+  const dry = install(root, RAN, []);
+  expect(dry.status).toBe(0);
+  expect(dry.stdout).toContain('dry run');
+  expect(fs.existsSync(path.join(root, 'deploy-vps.installed.sh'))).toBe(false);
+  expect(install(root, RAN).status).toBe(0);
+  expect(fs.readFileSync(path.join(root, 'deploy-vps.installed.sh'), 'utf8')).toBe(RAN);
+  const record = fs.readFileSync(path.join(root, 'deploy-vps.installed.sh.source'), 'utf8');
+  expect(record).toContain(`commit=${NEW}`);
+  expect(record).toMatch(/^sha256=[0-9a-f]{64}$/m);
+  expect(spawnSync('bash', [installer, 'not-a-sha'], { env: { ...process.env, DEPLOY_ROOT: root }, encoding: 'utf8' }).status).not.toBe(0);
 });
