@@ -15,6 +15,7 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { realRunSql } from './synthetic-runs';
 import { WorktreeManager } from './worktree-manager';
 import { CANCEL_LEASE_METADATA_SQL, cancelLeaseBind } from './lease-failure';
 import { RuntimeLeaseRegistry } from './loop-recovery-service';
@@ -79,7 +80,7 @@ export class SelfHealingService {
         SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
         SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END) as blocked
       FROM loop_runs
-      WHERE julianday(created_at) > julianday(?)
+      WHERE julianday(created_at) > julianday(?) AND ${realRunSql()}
     `).get(new Date(clock.getTime() - 24 * HOUR_MS).toISOString()) as any;
 
     const failureRate = loopStats.total > 0 ? (loopStats.failed || 0) / loopStats.total : 0;

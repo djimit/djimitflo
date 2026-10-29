@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { syntheticRunSql } from './synthetic-runs';
 import type { Database } from 'better-sqlite3';
 import { decide, expiringAdmissions } from '../execution/runtime-admission';
 import { randomUUID } from 'crypto';
@@ -137,7 +138,7 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
   run('goals', true, () => {
     const zombies = one<{ n: number; oldest: string | null }>(`SELECT COUNT(*) AS n, MIN(g.updated_at) AS oldest FROM goals g
       WHERE g.status = 'running' AND (SELECT r.status FROM loop_runs r WHERE r.goal_id = g.id ORDER BY r.created_at DESC LIMIT 1) IN ('completed', 'failed', 'cancelled')
-        AND g.updated_at < ?`, ago(now, 2));
+        AND g.updated_at < ? AND NOT EXISTS (SELECT 1 FROM loop_runs sr WHERE sr.goal_id = g.id AND ${syntheticRunSql('sr')})`, ago(now, 2));
     if (zombies && zombies.n > 0) out.push({ subsystem: 'goals', since: zombies.oldest, detail: `${zombies.n} goal(s) 'running' although their latest run ended` });
   });
   // 4b. incident 17-10: proposals 'executing' whose goal is not running and whose latest run had no activity for > 2 h (a

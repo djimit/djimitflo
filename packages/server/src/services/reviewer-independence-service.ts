@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import { realRunIdSql } from './synthetic-runs';
 import type { Database } from 'better-sqlite3';
 
 export type IndependenceState = 'PASS' | 'FAIL' | 'UNDETERMINED';
@@ -97,7 +98,7 @@ export class ReviewerIndependenceService {
   latest(limit = 20): ReviewerIndependenceAssessment[] {
     const runs = this.db.prepare(`
       SELECT DISTINCT loop_run_id FROM worker_leases
-      WHERE role = 'checker' ORDER BY updated_at DESC LIMIT ?
+      WHERE role = 'checker' AND ${realRunIdSql('loop_run_id')} ORDER BY updated_at DESC LIMIT ?
     `).all(Math.max(1, Math.min(limit, 100))) as Array<{ loop_run_id: string }>;
     return runs.map((row) => this.assessLoop(row.loop_run_id));
   }

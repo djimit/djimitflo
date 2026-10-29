@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { realRunSql } from './synthetic-runs';
 import type { Database } from 'better-sqlite3';
 import { MemoryCurator } from './memory-curator';
 import { ReflectionEngine } from './reflection-engine';
@@ -178,6 +179,8 @@ export class ContinuousLearningLoop {
       SELECT lr.id, lr.loop_name, lr.status, lr.created_at
       FROM loop_runs lr
       WHERE lr.status = 'completed'
+        -- a synthetic PR-review run (its maker is the PR's own commits) teaches the loop nothing
+        AND ${realRunSql('lr')}
         AND EXISTS (
           SELECT 1 FROM worker_leases wl
           WHERE wl.loop_run_id = lr.id AND wl.role = 'maker' AND wl.status = 'completed'
