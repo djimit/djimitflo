@@ -34,13 +34,31 @@ interface RoutingRequest {
 }
 
 interface RoutingDecision {
+  available: true;
   provider: LlmProvider;
   model: string;
   reason: string;
   estimatedCost: number;
   estimatedLatencyMs: number;
   wasExploration?: boolean;
+  posteriorScope?: PosteriorScope;
 }
+
+interface RoutingUnavailable {
+  available: false;
+  taskType: string;
+  reason: string;
+}
+
+// ponytail: the Beta posterior lives in memory only and resets on restart, while
+// llm_provider_metrics persists. Ceiling: nothing but the advisory
+// /api/apex/llm/* routes reads this router (no runtime/maker decision consumer),
+// so the posterior is labelled session-only instead of being persisted.
+// Upgrade trigger: the first runtime/maker caller of route() — then rebuild the
+// posterior at startup from persisted outcomes keyed by provider+model (add a
+// model column) so a model change does not inherit prior evidence.
+type PosteriorScope = 'session-only';
+const POSTERIOR_SCOPE: PosteriorScope = 'session-only';
 
 interface BanditArm {
   id: string;
@@ -50,8 +68,6 @@ interface BanditArm {
   beta: number;
   latencyEwma: number;
   costPerToken: number;
-  capabilities: string[];
-  status: 'unknown' | 'active' | 'degraded' | 'offline';
 }
 
 interface BanditStats {
@@ -59,6 +75,7 @@ interface BanditStats {
   meanSuccess: number;
   ci95: [number, number];
   nObservations: number;
+  posteriorScope: PosteriorScope;
 }
 
 const DEFAULT_PROVIDERS: ProviderConfig[] = [
@@ -96,59 +113,50 @@ function sampleBeta(alpha: number, beta: number): number {
 export class LlmRouterService {
   private providers: Map<LlmProvider, ProviderConfig> = new Map();
   private arms: BanditArm[] = [];
-  private taskRouting: Record<string, LlmProvider[]> = {
-    coding: ['anthropic', 'litellm', 'openai', 'ollama'],
-    analysis: ['litellm', 'anthropic', 'google', 'ollama'],
-    reasoning: ['anthropic', 'google', 'litellm', 'ollama'],
-    creative: ['openai', 'anthropic', 'google', 'litellm'],
-    chat: ['litellm', 'ollama', 'openai', 'anthropic'],
-    embedding: ['litellm', 'openai', 'ollama'],
-  };
   private totalRounds = 0;  private metricCounter = 0;
   private explorationCount = 0;
   private readonly latencyAlpha = 0.1;
-  private readonly capabilityBonus = 0.15;
 
   constructor(private db: Database) {
     for (const provider of DEFAULT_PROVIDERS) {
       this.providers.set(provider.name, { ...provider });
-      this.arms.push({ id: provider.name, provider: provider.name, model: provider.model, alpha: 1, beta: 1, latencyEwma: provider.avgLatencyMs, costPerToken: provider.costPerMtok / 1_000_000, capabilities: provider.capabilities, status: provider.status });
+      this.arms.push({ id: provider.name, provider: provider.name, model: provider.model, alpha: 1, beta: 1, latencyEwma: provider.avgLatencyMs, costPerToken: provider.costPerMtok / 1_000_000 });
     }
     this.ensureTables();
   }
 
-  route(request: RoutingRequest, cascadeHint?: { modelId: string; escalationLevel: number }): RoutingDecision {
-    if (cascadeHint?.modelId) {
-      const provider = this.findProviderByModelId(cascadeHint.modelId);
-      if (provider?.status === 'active') {
-        return { provider: provider.name, model: provider.model, reason: 'Cascade L' + cascadeHint.escalationLevel + ': ' + cascadeHint.modelId, estimatedCost: (request.maxTokens || 4096) / 1_000_000 * provider.costPerMtok, estimatedLatencyMs: provider.avgLatencyMs };
-      }
-    }
-    const result = this.selectThompson(request.taskType);
-    if (result) {
-      this.totalRounds++;
-      if (result.wasExploration) this.explorationCount++;
-      return { provider: result.arm.provider, model: result.arm.model, reason: 'Thompson Sampling (round=' + this.totalRounds + ', exploration=' + result.wasExploration + ')', estimatedCost: (request.maxTokens || 4096) * result.arm.costPerToken, estimatedLatencyMs: result.arm.latencyEwma, wasExploration: result.wasExploration };
-    }
-    const candidates = request.preferredProvider ? [request.preferredProvider] : this.taskRouting[request.taskType] || ['litellm'];
-    for (const providerName of candidates) {
-      const provider = this.providers.get(providerName);
-      if (!provider || provider.status !== 'active') continue;
-      if (provider.apiKeyEnv && !process.env[provider.apiKeyEnv]) continue;
-      return { provider: provider.name, model: provider.model, reason: 'Static fallback for ' + request.taskType, estimatedCost: (request.maxTokens || 4096) / 1_000_000 * provider.costPerMtok, estimatedLatencyMs: provider.avgLatencyMs };
-    }
-    throw new Error('LLM_PROVIDER_UNAVAILABLE');
+  /** The single eligibility predicate: healthy AND credentialed AND declares the task capability. */
+  private isEligible(provider: ProviderConfig | undefined, taskType: string): provider is ProviderConfig {
+    return !!provider
+      && provider.status === 'active'
+      && (!provider.apiKeyEnv || !!process.env[provider.apiKeyEnv])
+      && provider.capabilities.includes(taskType);
   }
 
-  private selectThompson(taskType: string): { arm: BanditArm; wasExploration: boolean } | null {
-    const activeArms = this.arms.filter(a => a.status === 'active');
-    if (activeArms.length === 0) return null;
-    const empiricalBest = activeArms.reduce((best, arm) => (arm.alpha / (arm.alpha + arm.beta)) > (best.alpha / (best.alpha + best.beta)) ? arm : best);
-    const samples = activeArms.map(arm => {
+  route(request: RoutingRequest, cascadeHint?: { modelId: string; escalationLevel: number }): RoutingDecision | RoutingUnavailable {
+    if (cascadeHint?.modelId) {
+      const provider = this.findProviderByModelId(cascadeHint.modelId);
+      if (this.isEligible(provider, request.taskType)) {
+        return { available: true, provider: provider.name, model: provider.model, reason: 'Cascade L' + cascadeHint.escalationLevel + ': ' + cascadeHint.modelId, estimatedCost: (request.maxTokens || 4096) / 1_000_000 * provider.costPerMtok, estimatedLatencyMs: provider.avgLatencyMs };
+      }
+    }
+    const result = this.selectThompson(request.taskType, request.preferredProvider);
+    if (!result) {
+      return { available: false, taskType: request.taskType, reason: 'No eligible provider (healthy, credentialed, capable of ' + request.taskType + ')' + (request.preferredProvider ? ' among preferred ' + request.preferredProvider : '') };
+    }
+    this.totalRounds++;
+    if (result.wasExploration) this.explorationCount++;
+    return { available: true, provider: result.arm.provider, model: result.arm.model, reason: 'Thompson Sampling (round=' + this.totalRounds + ', exploration=' + result.wasExploration + ')', estimatedCost: (request.maxTokens || 4096) * result.arm.costPerToken, estimatedLatencyMs: result.arm.latencyEwma, wasExploration: result.wasExploration, posteriorScope: POSTERIOR_SCOPE };
+  }
+
+  private selectThompson(taskType: string, preferredProvider?: LlmProvider): { arm: BanditArm; wasExploration: boolean } | null {
+    const eligibleArms = this.arms.filter(a => (!preferredProvider || a.provider === preferredProvider) && this.isEligible(this.providers.get(a.provider), taskType));
+    if (eligibleArms.length === 0) return null;
+    const empiricalBest = eligibleArms.reduce((best, arm) => (arm.alpha / (arm.alpha + arm.beta)) > (best.alpha / (best.alpha + best.beta)) ? arm : best);
+    const samples = eligibleArms.map(arm => {
       const posteriorSample = sampleBeta(arm.alpha, arm.beta);
-      const capabilityMatch = arm.capabilities.includes(taskType) ? this.capabilityBonus : 0;
       const latencyPenalty = 1 / (1 + arm.latencyEwma / 1000) * 0.1;
-      return { arm, sample: posteriorSample + capabilityMatch + latencyPenalty };
+      return { arm, sample: posteriorSample + latencyPenalty };
     });
     const selected = samples.reduce((best, s) => s.sample > best.sample ? s : best);
     return { arm: selected.arm, wasExploration: selected.arm.id !== empiricalBest.id };
@@ -162,13 +170,7 @@ export class LlmRouterService {
       if (input.success) { arm.alpha += 1; } else { arm.beta += 1; }
       arm.latencyEwma = arm.latencyEwma * (1 - this.latencyAlpha) + input.latencyMs * this.latencyAlpha;
     }
-    if (!input.success) {
-      provider.status = 'degraded';
-      if (arm) arm.status = 'degraded';
-    } else if (provider.status !== 'active') {
-      provider.status = 'active';
-      if (arm) arm.status = 'active';
-    }
+    provider.status = input.success ? 'active' : 'degraded';
     provider.lastHealthCheck = new Date().toISOString();
     this.db.prepare('INSERT INTO llm_provider_metrics (id, provider, task_type, latency_ms, success, cost_dollars, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(input.provider + '-' + Date.now() + '-' + (++this.metricCounter), input.provider, input.taskType, input.latencyMs, input.success ? 1 : 0, input.costDollars || 0, new Date().toISOString());
   }
@@ -177,12 +179,12 @@ export class LlmRouterService {
     return this.arms.map(arm => {
       const mean = arm.alpha / (arm.alpha + arm.beta);
       const n = Math.max(0, arm.alpha + arm.beta - 2);
-      if (n === 0) return { id: arm.id, meanSuccess: Math.round(mean * 1000) / 1000, ci95: [0, 1], nObservations: 0 };
+      if (n === 0) return { id: arm.id, meanSuccess: Math.round(mean * 1000) / 1000, ci95: [0, 1], nObservations: 0, posteriorScope: POSTERIOR_SCOPE };
       const z = 1.96;
       const denominator = 1 + z * z / n;
       const centre = (mean + z * z / (2 * n)) / denominator;
       const width = (z * Math.sqrt(mean * (1 - mean) / n + z * z / (4 * n * n))) / denominator;
-      return { id: arm.id, meanSuccess: Math.round(mean * 1000) / 1000, ci95: [Math.max(0, Math.round((centre - width) * 1000) / 1000), Math.min(1, Math.round((centre + width) * 1000) / 1000)], nObservations: n };
+      return { id: arm.id, meanSuccess: Math.round(mean * 1000) / 1000, ci95: [Math.max(0, Math.round((centre - width) * 1000) / 1000), Math.min(1, Math.round((centre + width) * 1000) / 1000)], nObservations: n, posteriorScope: POSTERIOR_SCOPE };
     });
   }
 
@@ -206,10 +208,10 @@ export class LlmRouterService {
     return this.getProviderHealth();
   }
 
-  getStats(): { totalProviders: number; activeProviders: number; totalRequests: number; avgLatencyMs: number; explorationRate: number } {
+  getStats(): { totalProviders: number; activeProviders: number; totalRequests: number; avgLatencyMs: number; explorationRate: number; posteriorScope: PosteriorScope } {
     const metrics = this.db.prepare('SELECT COUNT(*) as c, AVG(latency_ms) as avg_latency FROM llm_provider_metrics').get() as any;
     const active = Array.from(this.providers.values()).filter(p => p.status === 'active').length;
-    return { totalProviders: this.providers.size, activeProviders: active, totalRequests: metrics?.c || 0, avgLatencyMs: Math.round(metrics?.avg_latency || 0), explorationRate: this.totalRounds > 0 ? Math.round(this.explorationCount / this.totalRounds * 1000) / 1000 : 0 };
+    return { totalProviders: this.providers.size, activeProviders: active, totalRequests: metrics?.c || 0, avgLatencyMs: Math.round(metrics?.avg_latency || 0), explorationRate: this.totalRounds > 0 ? Math.round(this.explorationCount / this.totalRounds * 1000) / 1000 : 0, posteriorScope: POSTERIOR_SCOPE };
   }
 
   private findProviderByModelId(modelId: string): ProviderConfig | undefined {
