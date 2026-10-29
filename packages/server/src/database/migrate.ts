@@ -2010,16 +2010,25 @@ export function runMigrations(db: BetterSqlite3Database) {
 }
 
 /**
- * OPS-004: a maker lease's trace (`loop-<run>-worker-<lease>`: run span + worker span, opened by executeMaker) closes when
- * the lease settles — on every path, not only executeMaker's finally: stop run, superseded evolve siblings, stale/zombie/
- * hygiene sweeps and boot recovery settle prepared leases with their own UPDATEs. End time = the lease's updated_at
- * (normalised to ISO), so the span ends at the settlement. Only still-open spans of that one lease are touched; invalid
- * span metadata is left as is, so the trigger cannot fail a lease update. Created last: a worker_leases rebuild drops it.
+ * OPS-004: a worker lease's trace (run span + worker span) closes when the lease settles — on every path, not only the
+ * executor's finally: stop run, superseded evolve siblings, stale/zombie/hygiene sweeps and boot recovery settle prepared
+ * leases with their own UPDATEs. Maker traces are `loop-<run>-worker-<lease>` (executeMaker), reviewer traces (checker /
+ * security checker) `loop-<run>-checker-<lease>` (executeChecker). End time = the lease's updated_at (normalised to ISO),
+ * so the span ends at the settlement. Only still-open spans of that one lease are touched. It cannot fail a lease update
+ * on bad JSON or NULL timestamps: invalid span metadata is left as is (json_valid guard) and a NULL / unparsable
+ * updated_at falls back to now. Storage and schema errors still propagate into the lease UPDATE (disk full, locked, a
+ * missing table): while it exists, every worker_leases status UPDATE needs agent_trace_spans, so a migration that drops
+ * (or renames away) agent_trace_spans without also dropping worker_leases must DROP TRIGGER
+ * trg_worker_lease_settles_trace first (rebuildLoopTables drops worker_leases in the same exec, which drops the trigger).
+ * Created last: a worker_leases rebuild drops it. Replaced on every boot (DROP + CREATE in one transaction, so no other
+ * connection ever settles a lease without it) so a database that has the maker-only body gets the reviewer pattern too.
  * Down: DROP TRIGGER IF EXISTS trg_worker_lease_settles_trace;
  */
 export function ensureMakerSpanSettlement(db: BetterSqlite3Database): void {
   if (!tableSql(db, 'worker_leases') || !tableSql(db, 'agent_trace_spans')) return;
-  db.exec(`CREATE TRIGGER IF NOT EXISTS trg_worker_lease_settles_trace AFTER UPDATE OF status ON worker_leases
+  db.transaction(() => {
+    db.exec('DROP TRIGGER IF EXISTS trg_worker_lease_settles_trace');
+    db.exec(`CREATE TRIGGER trg_worker_lease_settles_trace AFTER UPDATE OF status ON worker_leases
     WHEN NEW.status IN ('completed', 'failed', 'cancelled')
     BEGIN
       UPDATE agent_trace_spans
@@ -2028,8 +2037,9 @@ export function ensureMakerSpanSettlement(db: BetterSqlite3Database): void {
           metadata = CASE WHEN json_valid(metadata) THEN json_set(metadata,
             '$.terminal_status', CASE NEW.status WHEN 'completed' THEN 'ok' WHEN 'cancelled' THEN 'cancelled' ELSE 'error' END,
             '$.lease_status', NEW.status) ELSE metadata END
-      WHERE trace_id = 'loop-' || NEW.loop_run_id || '-worker-' || NEW.id AND ended_at IS NULL;
+      WHERE trace_id IN ('loop-' || NEW.loop_run_id || '-worker-' || NEW.id, 'loop-' || NEW.loop_run_id || '-checker-' || NEW.id) AND ended_at IS NULL;
     END;`);
+  })();
 }
 
 /**
