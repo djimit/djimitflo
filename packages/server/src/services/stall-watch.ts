@@ -269,9 +269,43 @@ export function detectStalls(db: Database, now = Date.now(), env: NodeJS.Process
   return detectStallsWithHealth(db, now, env).stalls;
 }
 
-export function startStallWatch(db: Database, intervalMs = 3_600_000): (() => void) | null {
+/**
+ * O1a (re-20261029 C-reliability §3a: stalls were log-only, 0/20 non-CI defects caught by a monitor): each NEW stall subsystem
+ * is persisted as one `judgments` row (judgment 'stall', subject = subsystem, decision 'open', answers = detail + since); a
+ * subsystem open since the previous tick is not new. One that disappeared gets one 'cleared' row, so it is new again when it
+ * returns and the previous tick is read back from the rows (a deploy restart does not re-announce ongoing stalls). Returns
+ * the new stalls. Fail-soft: without a judgments table nothing is new.
+ */
+export function recordStallTransitions(db: Database, stalls: Stall[], now = new Date()): Stall[] {
+  try {
+    const open = new Set((db.prepare(`SELECT subject_id, decision FROM judgments j WHERE judgment = 'stall' AND rowid = (SELECT MAX(rowid) FROM judgments
+        WHERE judgment = 'stall' AND subject_id = j.subject_id)`).all() as Array<{ subject_id: string; decision: string }>)
+      .filter((r) => r.decision === 'open').map((r) => r.subject_id));
+    const at = now.toISOString();
+    const insert = db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at)
+      VALUES (?, 'stall', 'subsystem', ?, ?, 'annotation', ?, ?, ?, ?)`);
+    const current = new Map(stalls.map((s) => [s.subsystem, s]));
+    const fresh = [...current.values()].filter((s) => !open.has(s.subsystem));
+    db.transaction(() => {
+      for (const s of fresh) insert.run(randomUUID(), s.subsystem, s.since ?? '', 'open', s.detail.slice(0, 300), JSON.stringify({ detail: s.detail, since: s.since }), at);
+      for (const subsystem of open) if (!current.has(subsystem)) insert.run(randomUUID(), subsystem, '', 'cleared', 'no longer reported by the stall watch', null, at);
+    })();
+    return fresh;
+  } catch { return []; }
+}
+
+/** One stall-watch tick: detect, log every stall, persist the new ones and hand each new one to `notify` (the operator push). */
+export async function stallWatchTick(db: Database, notify?: (s: Stall) => Promise<unknown>, now = Date.now(), env: NodeJS.ProcessEnv = process.env): Promise<Stall[]> {
+  const stalls = detectStalls(db, now, env);
+  for (const s of stalls) console.warn(`🚨 stall: ${s.subsystem} since ${s.since ?? 'never'} — ${s.detail}`);
+  const fresh = recordStallTransitions(db, stalls, new Date(now));
+  for (const s of fresh) { try { await notify?.(s); } catch { /* a push never breaks the watch */ } }
+  return fresh;
+}
+
+export function startStallWatch(db: Database, intervalMs = 3_600_000, notify?: (s: Stall) => Promise<unknown>): (() => void) | null {
   if (process.env.STALL_WATCH_ENABLED !== 'true') return null;
-  const tick = guardTick('stall_watch', () => { for (const s of detectStalls(db)) console.warn(`🚨 stall: ${s.subsystem} since ${s.since ?? 'never'} — ${s.detail}`); });
+  const tick = guardTick('stall_watch', () => { void stallWatchTick(db, notify).catch((e) => console.warn('stall watch failed:', e instanceof Error ? e.message : String(e))); });
   const timer = setInterval(tick, intervalMs); timer.unref?.();
   return () => clearInterval(timer);
 }
