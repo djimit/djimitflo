@@ -291,7 +291,8 @@ export class CouncilOrchestrator {
     const start = Date.now();
 
     if (model.provider === 'ollama') {
-      const base = process.env.OLLAMA_URL || 'http://192.168.1.28:11434';
+      const base = process.env.OLLAMA_URL;
+      if (!base) throw new Error(`Ollama ${model.model_name}: OLLAMA_URL unset`);
       const response = await fetch(`${base}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -313,7 +314,8 @@ export class CouncilOrchestrator {
       };
     }
 
-    const base = process.env.LITELLM_URL || 'http://192.168.1.28:4000';
+    const base = process.env.LITELLM_URL;
+    if (!base) throw new Error(`LiteLLM ${model.model_name}: LITELLM_URL unset`);
     const apiKey = process.env.LITELLM_API_KEY || process.env.LITELLM_OPENCODE_KEY || '';
     const response = await fetch(`${base}/v1/chat/completions`, {
       method: 'POST',

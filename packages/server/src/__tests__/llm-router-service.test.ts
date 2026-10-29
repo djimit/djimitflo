@@ -3,6 +3,9 @@ import type Database from "better-sqlite3";
 import { createTestDb } from "./helpers/test-db";
 import { LlmRouterService } from "../services/llm-router-service";
 
+// M2d: the ollama/litellm base URLs have no workstation default any more; these tests exercise configured providers.
+vi.hoisted(() => { process.env.OLLAMA_URL ||= "http://ollama.test:11434"; process.env.LITELLM_URL ||= "http://litellm.test:4000/v1"; });
+
 const databases: Database.Database[] = [];
 const db = () => { const d = createTestDb(); databases.push(d); return d; };
 afterEach(() => databases.splice(0).forEach(d => d.close()));

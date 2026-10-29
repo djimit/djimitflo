@@ -332,8 +332,9 @@ export class MemoryCandidateService {
     try {
       const candidate = this.get(candidateId);
       if (!candidate || candidate.promotion_status !== 'promoted') return { ok: false, reason: 'candidate_not_found_or_not_promoted' };
-      const QDRANT_URL = (process.env.QDRANT_URL || 'http://192.168.1.28:6333').replace(/\/$/, '');
-      const OLLAMA_URL = (process.env.OLLAMA_URL || 'http://192.168.1.28:11434').replace(/\/$/, '');
+      const QDRANT_URL = (process.env.QDRANT_URL || '').replace(/\/$/, '');
+      const OLLAMA_URL = (process.env.OLLAMA_URL || '').replace(/\/$/, '');
+      if (!QDRANT_URL || !OLLAMA_URL) return { ok: false, reason: 'qdrant_or_ollama_url_unset' };
       const qdrantApiKey = process.env.QDRANT_API_KEY ?? '';
       // Best-effort + bounded: never let a slow/unreachable ollama or qdrant hang the proof or
       // the proof-run-service tests. Fail fast (<=5s) and skip the write-back on any timeout/error.

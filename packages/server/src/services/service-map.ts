@@ -74,7 +74,7 @@ function ledgerUrl(provider: string, consumer: string, env: NodeJS.ProcessEnv): 
   if (provider === 'typesafe') return env.TYPESAFE_BASE_URL || DEFAULTS.TYPESAFE_BASE_URL; // jev
   if (provider === 'nvidia') return env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1'; // content_safety, proposal embeddings
   if (provider === 'openai-compatible') return providerEnvFromEnv(env).compatibleBaseUrl; // resident runtime
-  if (consumer === 'council') return env.LITELLM_URL || 'http://192.168.1.28:4000'; // council: every non-ollama model goes via LiteLLM
+  if (consumer === 'council') return env.LITELLM_URL; // council: every non-ollama model goes via LiteLLM
   return undefined;
 }
 

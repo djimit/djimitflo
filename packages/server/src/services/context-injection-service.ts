@@ -8,7 +8,7 @@ import { ContextSanitizer } from './context-sanitizer';
 import { ExperienceRetrievalService } from './experience-retrieval-service';
 import { checkCollection, memoryEmbedModel, SWARM_MEMORY_COLLECTION } from './memory-embedding-contract';
 
-const QDRANT_URL = process.env.QDRANT_URL || 'http://192.168.1.28:6333';
+const QDRANT_URL = process.env.QDRANT_URL || ''; // unset = Qdrant context off (M2d: never a workstation default)
 const OLLAMA_URL = (process.env.OLLAMA_URL || process.env.OLLAMA_HOST || 'http://localhost:11434').replace(/\/$/, '');
 const OKF_COLLECTION = 'djimit_okf';
 const qdrantApiKey = process.env.QDRANT_API_KEY ?? '';
@@ -39,7 +39,7 @@ const qdrantHeaders = (extra: Record<string, string> = {}): Record<string, strin
 });
 const MAX_CONTEXT_TOKENS = 1500;
 const MIN_SCORE = 0.5;
-const DJIMITKB_MCP_URL = process.env.DJIMITKB_MCP_URL || 'http://192.168.1.28:8008';
+const DJIMITKB_MCP_URL = process.env.DJIMITKB_MCP_URL || ''; // unset = DjimitKB context off
 
 export interface ContextResult {
   source: 'qdrant_swarm' | 'okf_search' | 'okf_related' | 'djimitkb_search' | 'experience_retrieval';
@@ -184,6 +184,7 @@ export class ContextInjectionService {
    * collection is reported as unavailable, never queried with a foreign vector space.
    */
   private async searchQdrantSwarm(query: string, storeFilter?: MemoryStore): Promise<{ results: ContextResult[]; unavailable?: string }> {
+    if (!QDRANT_URL) return { results: [], unavailable: 'QDRANT_URL unset' };
     try {
       const model = memoryEmbedModel();
       const embedRes = await fetchJsonWithTimeout<{ embedding?: number[] }>(`${OLLAMA_URL}/api/embeddings`, {
@@ -242,6 +243,7 @@ export class ContextInjectionService {
 
   private async searchOkfMcp(query: string): Promise<ContextResult[]> {
     const results: ContextResult[] = [];
+    if (!QDRANT_URL) return results;
 
     try {
       const embedRes = await fetchJsonWithTimeout<{ embedding: number[] }>(`${OLLAMA_URL}/api/embeddings`, {
@@ -306,6 +308,7 @@ export class ContextInjectionService {
 
 
   private async searchDjimitKB(query: string): Promise<ContextResult[]> {
+    if (!DJIMITKB_MCP_URL) return [];
     try {
       const res = await fetchJsonWithTimeout<{ results: Array<{
         title: string; path: string; type: string; score: number;

@@ -56,6 +56,7 @@ describe('OpenMythosEvalService', () => {
     process.env.OPENMYTHOS_CORPUS_PATH = corpusPath;
     process.env.OPENMYTHOS_USE_JUDGE_SERVICE = 'false';
     process.env.OPENMYTHOS_SUBJECT_MODEL_DIGEST = 'subject-digest';
+    process.env.OLLAMA_URL = 'http://ollama.test:11434'; // M2d: no workstation default any more
     process.env.OPENMYTHOS_JUDGE_MODEL_DIGEST = 'judge-digest';
     service = new OpenMythosEvalService(db);
     // Clear cache so it loads from the new path
@@ -79,6 +80,7 @@ describe('OpenMythosEvalService', () => {
     delete process.env.OPENMYTHOS_ORACLE_ANCHORS_PATH;
     delete process.env.OPENMYTHOS_USE_JUDGE_SERVICE;
     delete process.env.OPENMYTHOS_SUBJECT_MODEL_DIGEST;
+    delete process.env.OLLAMA_URL;
     delete process.env.OPENMYTHOS_JUDGE_MODEL_DIGEST;
     vi.restoreAllMocks();
   });

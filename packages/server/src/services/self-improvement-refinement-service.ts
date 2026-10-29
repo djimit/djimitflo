@@ -37,7 +37,7 @@ export interface RefinedProposalDraft {
 }
 
 function defaultOllamaUrl(): string {
-  return process.env.OLLAMA_URL || 'http://192.168.1.28:11434';
+  return process.env.OLLAMA_URL || ''; // unset = no primary endpoint (llmEndpoints drops it), M2d
 }
 
 function defaultModel(): string {
