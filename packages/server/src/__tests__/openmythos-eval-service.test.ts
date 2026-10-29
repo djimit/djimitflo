@@ -545,6 +545,21 @@ describe('GovernanceGuardService', () => {
     rmSync(reportPath, { force: true });
   });
 
+  it('M1: does not certify on a calibration report whose agreement is below its own minimum', () => {
+    const runId = 'under-threshold-run';
+    db.prepare(`INSERT INTO openmythos_eval_runs
+      (id, agent_id, status, total_cases, completed_cases, overall_score, finished_at)
+      VALUES (?, ?, 'completed', 1, 1, 4.5, datetime('now'))`).run(runId, 'skill-2');
+    const reportPath = join(tmpdir(), `openmythos-calibration-low-${Date.now()}.json`);
+    writeFileSync(reportPath, JSON.stringify({
+      run_id: runId, agent_id: 'skill-2', calibrated: true, certification_eligible: true, case_result_rows: 1, total_cases: 1,
+      agreement_rate: 0.538, lowest_category_agreement_rate: 0.5, minimum_agreement_rate: 0.8,
+    }));
+    process.env.OPENMYTHOS_CALIBRATION_REPORT_PATH = reportPath;
+    expect(guardService.isGovernanceCertified('skill-2')).toBe(false);
+    rmSync(reportPath, { force: true });
+  });
+
   it('blocks when evaluation evidence is incomplete', async () => {
     (guardService as any).skillLoader.getSkill = vi.fn().mockReturnValue({
       id: 'skill-1',
