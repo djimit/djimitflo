@@ -56,3 +56,16 @@ it('M2c: decision-changing flags found unregistered on 29-10 are registered as a
     expect(EVOLUTION_FLAGS).toContainEqual({ name, acting: true });
   }
 });
+
+it('review #1094: READ_SELECTOR_ENV is exactly the runtime/model selector names server code reads or passes to child runtimes', async () => {
+  const { SELECTOR_NAME_PATTERN, READ_SELECTOR_ENV } = await import('../services/env-flags');
+  const reads = [...serverEnvReads().keys()].filter((n) => SELECTOR_NAME_PATTERN.test(n));
+  const root = path.resolve(__dirname, '..');
+  for (const file of ['execution/executors/executor-env.ts', 'services/loop-service.ts']) {
+    const src = fs.readFileSync(path.join(root, file), 'utf8');
+    const list = src.match(/(?:const ALLOWLIST|RUNTIME_ENV_ALLOWLIST) = \[([\s\S]*?)\];/);
+    expect(list, file).not.toBeNull();
+    for (const m of list![1].matchAll(/'([A-Z][A-Z0-9_]*)'/g)) if (SELECTOR_NAME_PATTERN.test(m[1])) reads.push(m[1]);
+  }
+  expect([...READ_SELECTOR_ENV]).toEqual([...new Set(reads)].sort());
+});
