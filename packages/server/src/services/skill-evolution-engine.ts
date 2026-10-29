@@ -57,6 +57,14 @@ interface SkillGenome {
  */
 export const COMPLETED_UNVERIFIED_REF = 'outcome_class:completed_unverified';
 
+/**
+ * INT-004 follow-up: an outcome the engine tagged as unverified skill attribution (skill assigned, delivery not proven:
+ * skill_delivery:assigned|unknown) is no observation of that skill. Per-skill fitness and promotion leave it out; the row
+ * stays stored. Untagged rows (written before delivery receipts, or by lanes without them) are unaffected.
+ */
+export const UNVERIFIED_ATTRIBUTION_SQL = `(evidence_refs_json LIKE '%"skill_attribution:unverified"%'
+  OR evidence_refs_json LIKE '%"skill_delivery:assigned"%' OR evidence_refs_json LIKE '%"skill_delivery:unknown"%')`;
+
 function seededRandom(seed?: string): () => number {
   if (!seed) return Math.random;
   let state = createHash('sha256').update(seed).digest().readUInt32LE(0);
@@ -214,9 +222,10 @@ export class SkillEvolutionEngine {
   measuredTraits(skillId: string): SkillGenome['traits'] {
     // E2: an infra / no-change / completed-unverified zero is no observation of the skill (left out, never a 0).
     // Unknown tokens (NULL, or a 0 that stands for a missing report) drop out of the efficiency AVG instead of scoring 1.
+    // Unverified skill attribution is left out on both sides (a success is no more the skill's than a failure).
     const r = this.db.prepare(`SELECT COUNT(*) AS n, AVG(success) AS rel,
         AVG(CASE WHEN tokens_used > 0 THEN MIN(1.0, 1000.0 / tokens_used) END) AS eff, COALESCE(SUM(tokens_used > 0), 0) AS eff_n FROM skill_outcomes WHERE skill_id = ?
-        AND NOT (success = 0 AND ${UNFAIR_ZERO_SQL}) AND NOT (success = 0 AND evidence_refs_json LIKE '%"${COMPLETED_UNVERIFIED_REF}"%')${skillId.includes('loop-maker:merge:') ? ` AND NOT ${supersededMergeOutcomeSql('skill_outcomes')}` : ''}`).get(skillId) as { n: number; rel: number | null; eff: number | null; eff_n: number };
+        AND NOT ${UNVERIFIED_ATTRIBUTION_SQL} AND NOT (success = 0 AND ${UNFAIR_ZERO_SQL}) AND NOT (success = 0 AND evidence_refs_json LIKE '%"${COMPLETED_UNVERIFIED_REF}"%')${skillId.includes('loop-maker:merge:') ? ` AND NOT ${supersededMergeOutcomeSql('skill_outcomes')}` : ''}`).get(skillId) as { n: number; rel: number | null; eff: number | null; eff_n: number };
     const has = r.n > 0;
     return { efficiency: has ? r.eff : null, reliability: has ? r.rel : null, generality: null, complexity: null, adaptability: null,
       efficiency_coverage: { known: r.eff_n, total: r.n } };
