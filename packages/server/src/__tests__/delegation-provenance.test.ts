@@ -295,6 +295,27 @@ describe('P1 #5: remote maker jobs carry their run and lease', () => {
     expect(maker.metadata.changed_files).toEqual(['README.md']);
   });
 
+  it('a result accepted while the lease was active is not applied once the lease is superseded before the executor polls', async () => {
+    preparedRemoteMaker(); approvedTask('running');
+    execFileSync('git', ['-C', repo, 'update-ref', 'refs/remotes/origin/main', 'HEAD']);
+    const q = new RemoteMakerQueue(db);
+    const task = { id: 'loop-worker-maker-1', description: 'fix', metadata: { loop_run_id: 'run', lease_id: 'maker' } } as unknown as Task;
+    const session = await new RemoteMakerExecutor(db, 200).start(task, { workingDirectory: repo, model: 'workstation/atomic', timeout: 300_000 });
+    const drained = (async () => { for await (const _ of session.events) { /* drain */ } })();
+    let job: ReturnType<RemoteMakerQueue['claim']> = null;
+    for (let i = 0; i < 100 && !job; i++) { job = q.claim('workstation', ['atomic']); if (!job) await new Promise((r) => setTimeout(r, 10)); }
+    const patch = 'diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-Small documentation fixture\n+Clearer fixture\n';
+    // synchronously, between two polls: the result is valid on receipt, then a retry supersedes the lease
+    q.record(job!.id, 'workstation', { status: 'done', patch, reason: 'fixed' });
+    loops.patchWorkerLeaseMetadata('maker', { superseded_by_maker_lease_id: 'retry' });
+    const result = await session.result; await drained;
+    expect(result.status).toBe('failed');
+    expect(result.stderr).toMatch(/remote_maker_cancelled:lease_not_active_at_apply/);
+    expect(fs.readFileSync(path.join(repo, 'README.md'), 'utf8')).toBe('Small documentation fixture\n');
+    expect(execFileSync('git', ['-C', repo, 'status', '--porcelain'], { encoding: 'utf8' })).toBe('');
+    expect(q.get(job!.id)).toMatchObject({ status: 'cancelled', reason: 'lease_not_active_at_apply' });
+  });
+
   it.each(['failed', 'completed', 'awaiting_approval'])('a prepared lease whose engine task is %s is not active: the result is still refused', (taskStatus) => {
     preparedRemoteMaker(); approvedTask(taskStatus);
     const q = new RemoteMakerQueue(db);
