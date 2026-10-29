@@ -147,7 +147,8 @@ host() {   # host [knob...] → runs the remote script on a fresh stub host; set
   printf 'services:\n  djimitflo:\n    image: djimitflo:main-%s\n    environment:\n      DJIMITFLO_COMMIT_SHA: %s\n    volumes:\n      - %s/runtime-source-%s:/workspace/djimitflo\n' \
     "$PREV" "$PREV_FULL" "$HOST" "$PREV" > "$HOST/compose.yml"
   cp "$HOST/compose.yml" "$TMP/compose.before"
-  RC=0; OUT="$(remote_script | PATH="${HOST_PATH_PREFIX:-}$BIN:$PATH" bash -s -- "$HOST" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
+  # DEPLOY_FILE_REMOTE: seam — the stub host fetches from a local repo; prod fetches over https (file:// stays off)
+  RC=0; OUT="$(remote_script | DEPLOY_FILE_REMOTE=always PATH="${HOST_PATH_PREFIX:-}$BIN:$PATH" bash -s -- "$HOST" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
 }
 host
 [ "$RC" = 0 ] || fail "healthy deploy failed ($RC): $OUT"
@@ -217,4 +218,25 @@ HOST_PATH_PREFIX="$ROOTSIM:" HOST_PREP=hooked host
 [ ! -e "$MARK" ] || fail "a repo-local hook or fsmonitor of the reused clone ran: $(tr '\n' ' ' < "$MARK")"
 grep -q -- "--reuid=$(id -u) " "$STUB/setpriv-calls" 2>/dev/null || fail "git in the reused clone did not run as the clone's owner"
 committed || fail "hooked clone: the build context is not the committed source"
+# --- the build input never comes from the reused runtime-source clone: a replaced commit (git replace, a ref the container
+# can write) makes $SHA resolve to other content there, but the build context and the receipt tree are the real commit's
+replaced() {
+  reused "$1"; local r="$1/runtime-source-$NEW" evil
+  echo 'export const v = "REPLACED";' > "$r/$SRC_FILE"
+  git -C "$r" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -qam evil
+  evil="$(git -C "$r" rev-parse HEAD)"; git -C "$r" reset -q --hard "$NEW_FULL"
+  git -C "$r" replace "$NEW_FULL" "$evil"
+  [ "$(git -C "$r" rev-parse "$NEW_FULL^{tree}")" != "$NEW_TREE" ] || fail "fixture: the replace did not take effect"
+}
+HOST_PREP=replaced host
+[ "$RC" = 0 ] || fail "replaced-clone deploy failed ($RC): $OUT"
+committed || fail "a replaced object in the reused clone reached the build context: $(cat "$STUB/ctx/$SRC_FILE")"
+grep -qF "\"source_tree\":\"$NEW_TREE\"" "$HOST/build-receipts/"*.json || fail "the receipt tree came from the reused clone, not the commit"
+[ -z "$(ls -d "$HOST"/.build-src-* 2>/dev/null)" ] || fail "the fresh build clone was left behind"
+# a fetch that does not yield exactly $SHA (here: the commit is not in the remote) stops before anything is built
+NEW_SAVE="$NEW_FULL"; NEW_FULL="$(printf '1%.0s' $(seq 1 40))"; NEW="${NEW_FULL:0:7}"
+host
+[ "$RC" != 0 ] && [ ! -e "$STUB/ctx" ] || fail "a commit that cannot be fetched was built: $OUT"
+cmp -s "$HOST/compose.yml" "$TMP/compose.before" || fail "a failed fetch touched compose"
+NEW_FULL="$NEW_SAVE"; NEW="${NEW_FULL:0:7}"
 echo "deploy-vps selftest OK"

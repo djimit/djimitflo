@@ -3,9 +3,9 @@
 #
 # Replaces a 4-step manual procedure whose easiest-to-forget step (chown of the fresh
 # checkout to the container user, needed for objective-mode git worktrees) silently
-# broke autonomy once. Steps, all on the VPS: clone -> checkout -> git archive of the exact commit -> docker build ->
-# chown 1001 -> back up compose.yml -> rewrite image/commit/mount -> recreate ->
-# wait for healthy; if the new container is not healthy, roll compose.yml back and
+# broke autonomy once. Steps, all on the VPS: fetch of the exact commit into a fresh root-only dir -> git archive ->
+# clone/checkout of the runtime-source mount -> docker build -> chown 1001 -> back up compose.yml -> rewrite
+# image/commit/mount -> recreate -> wait for healthy; if the new container is not healthy, roll compose.yml back and
 # recreate the previous one.
 #
 # Dry-run by default (prints the remote script). Usage:
@@ -134,17 +134,27 @@ prune_old_builds() {
 AVAIL_KB="$(df --output=avail -k "$ROOT" | tail -n 1 | tr -d ' ')"
 if [ "$AVAIL_KB" -lt 8000000 ]; then prune_old_builds all; AVAIL_KB="$(df --output=avail -k "$ROOT" | tail -n 1 | tr -d ' ')"; fi
 [ "$AVAIL_KB" -ge 6000000 ] || { echo "not enough free disk to build (${AVAIL_KB} KB free); free space first" >&2; exit 1; }
-# a fresh clone is root's until the chown below; a reused one is the container's (src_git runs git in it as its owner)
-if [ ! -d "runtime-source-$SHORT" ]; then GIT_CONFIG_NOSYSTEM=1 git -c core.hooksPath=/dev/null -c core.fsmonitor=false clone -q "$REPO" "runtime-source-$SHORT"; fi
+# The build input is exactly $SHA, fetched into a fresh root-only (0700) dir: never the runtime-source clone, which is
+# reused on a retry and is the container's writable /workspace mount (its objects and refs, e.g. replace refs, are the
+# container's). The fetch verifies every object it receives; FETCH_HEAD must be $SHA; the receipt binds that commit's tree.
+# DEPLOY_FILE_REMOTE is a selftest seam (a local repo as remote); prod fetches over https with the file transport off.
+BUILD_SRC="$(mktemp -d "$ROOT/.build-src-$SHORT.XXXXXX")"; CTX=""; trap 'rm -rf "$BUILD_SRC" ${CTX:+"$CTX"}' EXIT
+bgit() { GIT_CONFIG_NOSYSTEM=1 git -c core.hooksPath=/dev/null -c core.fsmonitor=false -c protocol.file.allow="${DEPLOY_FILE_REMOTE:-never}" -C "$BUILD_SRC" "$@"; }
+bgit init -q
+bgit fetch -q --depth 1 --no-tags "$REPO" "$SHA" || { echo "cannot fetch $SHA from $REPO — not deploying" >&2; exit 1; }
+[ "$(bgit rev-parse --verify 'FETCH_HEAD^{commit}')" = "$SHA" ] || { echo "the fetched commit is not $SHA — not deploying" >&2; exit 1; }
+TREE="$(bgit rev-parse --verify "$SHA^{tree}")"
+CTX="$(mktemp -d "$ROOT/build-context-$SHORT.XXXXXX")"
+bgit archive "$SHA" | tar -x -C "$CTX"
+rm -rf "$BUILD_SRC"
+# The runtime-source clone is only the container's mount: created (root's until the chown below) or reused (the
+# container's; src_git runs git in it as its owner) and checked out at $SHA. It is not read for the build or the receipt.
+if [ ! -d "runtime-source-$SHORT" ]; then GIT_CONFIG_NOSYSTEM=1 git -c core.hooksPath=/dev/null -c core.fsmonitor=false -c protocol.file.allow="${DEPLOY_FILE_REMOTE:-never}" clone -q "$REPO" "runtime-source-$SHORT"; fi
 src_git "runtime-source-$SHORT" checkout -q "$SHA"
 src_git "runtime-source-$SHORT" log -1 --oneline
-# OPS-002: runtime-source-$SHORT is reused on a retry and is the container's (writable) /workspace mount, and `git checkout`
-# keeps local edits and untracked files. Build from an export of exactly $SHA instead; the checkout stays as it is (mount).
+# OPS-002: `git checkout` keeps local edits and untracked files of a reused clone; they are the mount's, not the build's
 DIRTY="$(src_git "runtime-source-$SHORT" status --porcelain --untracked-files=all 2>&1)" || DIRTY="git status failed: $DIRTY"
-[ -z "$DIRTY" ] || echo "WARNING: runtime-source-$SHORT has local changes; it is not used for the build (exported $SHA instead)" >&2
-TREE="$(src_git "runtime-source-$SHORT" rev-parse --verify "$SHA^{tree}")"
-CTX="$(mktemp -d "$ROOT/build-context-$SHORT.XXXXXX")"; trap 'rm -rf "$CTX"' EXIT
-src_git "runtime-source-$SHORT" archive "$SHA" | tar -x -C "$CTX"
+[ -z "$DIRTY" ] || echo "WARNING: runtime-source-$SHORT has local changes; it is not used for the build (fetched $SHA instead)" >&2
 # a hung build (0% CPU for 17-20 min, 2026-09-25 and 26) blocked every deploy until killed by hand: bound it.
 # --network host: on this VPS the docker bridge network stalls apt (g++ install: bridge timed out at 349 s, host 10 s)
 BUILT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"; LOCK="$(sha256_file "$CTX/package-lock.json")"
