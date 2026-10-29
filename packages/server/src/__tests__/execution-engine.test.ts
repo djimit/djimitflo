@@ -801,6 +801,16 @@ describe('ExecutionEngine', () => {
       expect(engine().reliability).toBe(0);
     });
 
+    it('needs positive delivery evidence: an untagged (legacy) skill outcome is not counted; maker species are unchanged', () => {
+      const insert = db.prepare(`INSERT INTO skill_outcomes (id, skill_id, success, duration_ms, domain, evidence_refs_json) VALUES (?, ?, 1, 1, 'coding', '[]')`);
+      insert.run('legacy-skill-row', '.opencode.skills.running-tests');
+      insert.run('maker-row', 'loop-maker:doc-drift-and-small-fix-loop:codex');
+      const engine = new SkillEvolutionEngine(db);
+      expect(engine.measuredTraits('.opencode.skills.running-tests').reliability).toBeNull(); // stored, not an observation
+      // maker species never carry a skill delivery receipt: their fitness reads every row as before
+      expect(engine.measuredTraits('loop-maker:doc-drift-and-small-fix-loop:codex').reliability).toBe(1);
+    });
+
     it('does not change the assignment text the runtime receives (ACE-001/STE-001/PL-001 prompts stay identical)', async () => {
       for (const description of ['Run the bounded test', `Run the bounded test.\n\n${SKILL_TEXT}`]) {
         db.prepare("DELETE FROM skill_outcomes WHERE task_id = 'task-skill'").run();
