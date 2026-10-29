@@ -15,6 +15,7 @@
 import type { Database } from 'better-sqlite3';
 import { readFileSync } from 'fs';
 import { OpenMythosEvalService } from './openmythos-eval-service';
+import { calibrationRefusal } from './openmythos-attestation-service';
 import { swarmEventBus } from './swarm-event-bus';
 import { SkillLoaderService } from './skill-loader-service';
 
@@ -230,7 +231,8 @@ export class GovernanceGuardService {
         && report.agent_id === skillId
         && report.calibrated === true
         && report.certification_eligible === true
-        && report.case_result_rows === report.total_cases;
+        && report.case_result_rows === report.total_cases
+        && calibrationRefusal(report) === null; // M1: never calibrated below its own agreement minimum
     } catch {
       return false;
     }

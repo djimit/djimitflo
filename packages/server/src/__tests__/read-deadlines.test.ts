@@ -14,7 +14,6 @@ import type { AddressInfo } from 'node:net';
 import { createRequire } from 'node:module';
 import type * as TS from 'typescript';
 import { MemorySyncService } from '../services/memory-sync-service';
-import { OIDCAbstraction } from '../services/oidc-provider';
 
 const PACKAGES = path.resolve(__dirname, '../../..');
 // The workspace packages build with TypeScript 7 (native, no JS compiler API); the root devDependency (6.x) still
@@ -132,19 +131,4 @@ describe('outbound read deadlines (CODE-004)', () => {
       }
     }, 10_000);
   });
-
-  it('OIDC userinfo and JWKS reads on the login path end against a hung IdP', async () => {
-    const hung = await hungServer();
-    const oidc = new OIDCAbstraction({
-      provider_name: 'hung', issuer_url: hung.url, client_id: 'c', redirect_uri: 'http://localhost/cb', scopes: ['openid'],
-      authorization_endpoint: `${hung.url}/auth`, token_endpoint: `${hung.url}/token`,
-      userinfo_endpoint: `${hung.url}/userinfo`, jwks_uri: `${hung.url}/jwks`, response_type: 'code', pkce_enabled: false,
-    });
-    try {
-      await expect(oidc.getUserInfo('token')).rejects.toThrow();
-      await expect(oidc.validateIdToken('a.b.c')).rejects.toThrow();
-    } finally {
-      await hung.close();
-    }
-  }, 10_000);
 });

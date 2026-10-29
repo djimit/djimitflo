@@ -5,8 +5,6 @@ import type { Database } from 'better-sqlite3';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import { yamlScalar } from '../utils/yaml-scalar';
 
-const DEFAULT_DEERFLOW_URL = 'http://192.168.1.28:2026';
-
 export interface SkillAcquireResult {
   skillId: string;
   conceptPath: string;
@@ -50,7 +48,9 @@ export class SkillService {
       return { skillId, conceptPath: `skills/${slug}`, status: 'failed', error: 'SKILL_ALREADY_EXISTS' };
     }
 
-    const configuredUrl = process.env.DEERFLOW_URL || DEFAULT_DEERFLOW_URL;
+    // M2d: no default — the old one pointed at the workstation (8 refused hourly buckets in prod 10-10 → 10-23)
+    const configuredUrl = process.env.DEERFLOW_URL;
+    if (!configuredUrl) return { skillId, conceptPath: `skills/${slug}`, status: 'failed', error: 'DEERFLOW_URL_UNSET' };
     let baseUrl: URL;
     try {
       baseUrl = new URL(configuredUrl);

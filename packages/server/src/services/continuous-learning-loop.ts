@@ -62,7 +62,7 @@ export class ContinuousLearningLoop {
 
   start(): void {
     if (this.timer) return;
-    this.timer = setInterval((): void => { this.runCycle().catch((): void => {}); }, this.intervalMs);
+    this.timer = setInterval((): void => { this.runCycle({ skipEmpty: true }).catch((): void => {}); }, this.intervalMs);
     // Prod 2026-09-23: 408/408 SEGML cycles failed within 1 ms (no OpenMythos eval run; missing column category_scores).
     // Off until it is re-based on loop outcomes (plan E12); SEGML_ENABLED=true restores the old behaviour.
     if (process.env.SEGML_ENABLED !== 'true') return;
@@ -77,7 +77,11 @@ export class ContinuousLearningLoop {
     if (this.segmlTimer) { clearInterval(this.segmlTimer); this.segmlTimer = null; }
   }
 
-  async runCycle(): Promise<LearningCycleResult> {
+  /**
+   * skipEmpty (the scheduled hourly/boot cycles): a cycle in which every counter is 0 is returned but not persisted — prod
+   * wrote 412 such rows in 14 d (M1). An explicit run (POST /swarms/learning/cycle) is always recorded.
+   */
+  async runCycle(opts: { skipEmpty?: boolean } = {}): Promise<LearningCycleResult> {
     const start = Date.now();
     const id = randomUUID();
     const pendingEpisodes = this.collectPendingEpisodes();
@@ -130,6 +134,8 @@ export class ContinuousLearningLoop {
       producer: 'continuous-learning-loop',
       schemaVersion: 1,
     };
+    const { id: _id, timestamp: _ts, durationMs: _ms, producer: _p, schemaVersion: _v, ...counters } = result;
+    if (opts.skipEmpty && Object.values(counters).every((n) => !n)) return result;
     this.db.prepare('INSERT INTO learning_cycles (id, result_json) VALUES (?, ?)').run(id, JSON.stringify(result));
     return result;
   }

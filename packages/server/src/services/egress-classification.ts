@@ -70,7 +70,7 @@ export function classifyDestination(call: { provider?: string | null; model?: st
 
 /**
  * V2 routing rule (NOT wired anywhere): private_only allows only self-hosted and EU-hosted destinations — not US clouds
- * and not unknown ones. The original checkProviderRouting (which lists openai and anthropic as private_only) is unchanged.
+ * and not unknown ones.
  */
 const ROUTING: Record<string, DestinationClass[]> = {
   any: ['local', 'eu_hosted', 'us_cloud', 'unknown'],

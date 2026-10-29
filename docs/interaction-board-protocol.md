@@ -2,7 +2,7 @@
 
 The Interaction Board is an internal, read-only evidence projection. Agents
 communicate through the existing persistent agent message service; both the
-legacy `/api/messages` route and `/api/swarm/messages` enforce the same claim
+legacy `/api/messages` route and `/api/swarm-v2/messages` enforce the same claim
 evidence boundary. The board must never be treated as an authority to publish,
 deploy, promote a skill or write externally.
 

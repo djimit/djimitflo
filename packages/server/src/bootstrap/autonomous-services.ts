@@ -84,7 +84,7 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
   learningLoop.setTrajectoryStore(new TrajectoryStore(db));
   learningLoop.start();
   lifecycleManager.register({ serviceName: 'ContinuousLearningLoop', stop: () => learningLoop.stop() });
-  void learningLoop.runCycle().catch((error) => {
+  void learningLoop.runCycle({ skipEmpty: true }).catch((error) => {
     console.warn('⚠️  Initial continuous learning cycle failed (non-fatal):', error instanceof Error ? error.message : String(error));
   });
 

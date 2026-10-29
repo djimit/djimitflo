@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { ContinuousLearningLoop } from '../services/continuous-learning-loop';
 import { createTestDb } from './helpers/test-db';
@@ -79,6 +79,33 @@ describe('G127: Continuous Learning Loop', () => {
     } finally {
       delete process.env.DENNIS_AGENT_PAPERCLIP_PENDING;
     }
+  });
+
+  // M1 (A #26, prod 14 d): 412 learning_cycles rows, every counter 0 — the hourly/boot cycle wrote a row when nothing happened.
+  it('M1: a scheduled cycle that ingested and produced nothing writes no learning_cycles row', async () => {
+    const rows = () => (db.prepare('SELECT COUNT(*) AS n FROM learning_cycles').get() as { n: number }).n;
+    const result = await loop.runCycle({ skipEmpty: true });
+    expect(result.episodesIngested).toBe(0);
+    expect(rows()).toBe(0);
+    vi.useFakeTimers();
+    try {
+      const scheduled = new ContinuousLearningLoop(db, { intervalMs: 1000 });
+      scheduled.start();
+      vi.advanceTimersByTime(3000);
+      scheduled.stop();
+    } finally { vi.useRealTimers(); }
+    await new Promise((r) => setTimeout(r, 0));
+    expect(rows()).toBe(0);
+  });
+
+  it('M1: a scheduled cycle that did something still records its row', async () => {
+    db.prepare("INSERT INTO agents (id, name, status, capabilities_json) VALUES ('agent-a', 'Agent A', 'active', '[\"analysis\"]'), ('agent-b', 'Agent B', 'active', '[\"research\"]')").run();
+    const communication = new AgentCommunicationService(db);
+    communication.heartbeat('agent-a', 'runtime-a', 'model-a', 'runtime_token');
+    communication.heartbeat('agent-b', 'runtime-b', 'model-b', 'runtime_token');
+    const result = await loop.runCycle({ skipEmpty: true });
+    expect(result.socialExchangesStarted).toBe(1);
+    expect(db.prepare('SELECT id FROM learning_cycles').all()).toEqual([{ id: result.id }]);
   });
 
   it('tracks history', async () => {

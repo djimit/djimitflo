@@ -8,7 +8,6 @@ import { initializeDatabase } from '../database';
 import { AutonomousGoalGenerator } from '../services/autonomous-goal-generator';
 import { LoopService } from '../services/loop-service';
 import { LoopDaemon } from '../services/loop-daemon';
-import { KnowledgeRuntimeService } from '../services/knowledge-runtime-service';
 import { ExpertSwarmOrchestrator } from '../services/expert-swarm-orchestrator';
 import { OkfKnowledgeUpdater } from '../services/okf-knowledge-updater';
 
@@ -43,19 +42,7 @@ async function main() {
     console.error('   Daemon tick failed:', error instanceof Error ? error.message : String(error));
   }
 
-  // Step 3: Close learning loop for completed runs
-  console.log('');
-  console.log('🧠 Step 3: Closing learning loop...');
-  const knowledge = new KnowledgeRuntimeService(db);
-  const completedRuns = db.prepare("SELECT id FROM loop_runs WHERE status = 'completed'").all() as Array<{ id: string }>;
-  let reflections = 0;
-  for (const run of completedRuns) {
-    try {
-      const result = knowledge.closeLoop({ loop_run_id: run.id });
-      if (result.status === 'closed') reflections++;
-    } catch { /* skip runs that cannot be closed yet */ }
-  }
-  console.log(`   Closed ${reflections} learning loop(s).`);
+  // Step 3 (loop-learning closure) retired 29-10 (M1): its eval could not fail and its work items were never consumed.
 
   // Step 3b: Expert swarm (weekly knowledge acquisition)
   console.log('');

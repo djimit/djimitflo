@@ -12,11 +12,9 @@ import {
 } from './memory-delivery-receipts';
 import { guardTick, markRun } from './scheduler-registry';
 
-// Resolved per call so operators/tests can override without a rebuild.
-const DEFAULT_UAMS_URL = 'http://192.168.1.28:8000';
-const DEFAULT_QDRANT_URL = 'http://192.168.1.28:6333';
-const uamsUrl = (): string => process.env.UAMS_URL || DEFAULT_UAMS_URL;
-const qdrantUrl = (): string => process.env.QDRANT_URL || DEFAULT_QDRANT_URL;
+// Resolved per call so operators/tests can override without a rebuild. Unset = that leg is skipped (M2d: no workstation default).
+const uamsUrl = (): string => process.env.UAMS_URL || '';
+const qdrantUrl = (): string => process.env.QDRANT_URL || '';
 
 // Writes may target a different Qdrant than reads (e.g. the read-only credential
 // is intentional, while writes go to the service store). Falls back to the read pair.
@@ -305,6 +303,7 @@ export class MemorySyncService {
     }
     if (target !== 'qdrant') return 'inconclusive';
     if (!row.intent_sha256 || !row.embed_model) return 'stale'; // no recorded intent, nothing to certify against
+    if (!qdrantWriteUrl()) return 'inconclusive';
     try {
       const res = await fetch(`${qdrantWriteUrl()}/collections/${SWARM_MEMORY_COLLECTION}/points/${pointIdForTask(taskId)}`, {
         headers: authHeaders(qdrantWriteApiKey(), 'api-key'),
@@ -331,6 +330,7 @@ export class MemorySyncService {
       console.warn(`UAMS sync skipped for task ${taskId}: empty content`);
       return null;
     }
+    if (!uamsUrl()) return failed('UAMS_URL unset');
     const apiKey = process.env.UAMS_API_KEY;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
@@ -399,6 +399,7 @@ export class MemorySyncService {
     const apiKey = qdrantWriteApiKey();
     const headers = authHeaders(apiKey, 'api-key');
     const base = qdrantWriteUrl();
+    if (!base) return failed('QDRANT_URL unset');
     const collection = SWARM_MEMORY_COLLECTION;
     const model = intent?.model ?? memoryEmbedModel();
 

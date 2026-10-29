@@ -57,4 +57,31 @@ describe('OpenMythosAttestationService', () => {
     const metadata = JSON.parse((db.prepare("SELECT metadata FROM openmythos_eval_runs WHERE id = 'run-1'").get() as any).metadata);
     expect(metadata.certification_eligible).toBe(false);
   });
+
+  // M1 (B §5, prod 29-10): one attestation said calibrated=true / certification_eligible=1 at agreement 0.538 against its own
+  // 0.8 minimum, with a lowest category rate above the overall rate (impossible), and outcome containment release rests on it.
+  it('M1: refuses calibrated (and eligibility) when the agreement is below the attestation\'s own minimum', () => {
+    const imported = new OpenMythosAttestationService(db).import(artifact({ agreement_rate: 0.538, lowest_category_agreement_rate: 0.5, minimum_agreement_rate: 0.8 }), 'operator-1');
+    expect(imported.certification_eligible).toBe(false);
+    const metadata = JSON.parse((db.prepare("SELECT metadata FROM openmythos_eval_runs WHERE id = 'run-1'").get() as any).metadata);
+    expect(metadata).toMatchObject({ calibrated: false, certification_eligible: false, calibration_refusal: expect.stringMatching(/agreement 0\.538 < minimum 0\.8/) });
+  });
+
+  it('M1: refuses calibrated below the category minimum and on an impossible category rate', () => {
+    const svc = new OpenMythosAttestationService(db);
+    expect(svc.import(artifact({ lowest_category_agreement_rate: 0.4, minimum_category_agreement_rate: 0.5 }), 'op').certification_eligible).toBe(false);
+    expect(svc.import(artifact({ agreement_rate: 0.85, lowest_category_agreement_rate: 0.95 }), 'op').certification_eligible).toBe(false);
+  });
+
+  it('M1: a stored attestation flagged eligible does not certify when its payload is below its own minimum', () => {
+    const svc = new OpenMythosAttestationService(db);
+    const good = svc.import(artifact(), 'operator-1');
+    expect(svc.certifies(good.id)).toBe(true);
+    const legacy = artifact({ agreement_rate: 0.538, lowest_category_agreement_rate: 0.6, minimum_agreement_rate: 0.8 });
+    db.prepare(`INSERT INTO openmythos_attestations (id, run_id, schema_version, corpus_sha256, openmythos_commit, certification_eligible,
+      corpus_certification_ready, payload, imported_by) VALUES (?, 'run-1', ?, ?, ?, 1, 1, ?, 'legacy')`)
+      .run(legacy.attestation_hash, legacy.schema, corpusHash, legacy.openmythos_commit, JSON.stringify(legacy));
+    expect(svc.certifies(String(legacy.attestation_hash))).toBe(false);
+    expect(svc.certifies('sha256:missing')).toBe(false);
+  });
 });

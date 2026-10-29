@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { WorkItemService, type RiskClass } from './work-item-service';
+import { OpenMythosAttestationService } from './openmythos-attestation-service';
 
 export type OutcomeEvidenceStatus = 'SUPPORTED' | 'FALSIFIED' | 'UNDETERMINED';
 
@@ -280,8 +281,7 @@ export class OutcomeLearningService {
     const approvalId = ref('approval:');
     if (!openMythosId || !worldLabId || !approvalId) throw new Error('OUTCOME_CONTAINMENT_RELEASE_EVIDENCE_REQUIRED');
 
-    const openMythos = this.db.prepare(`SELECT 1 FROM openmythos_attestations
-      WHERE id = ? AND certification_eligible = 1 AND corpus_certification_ready = 1`).get(openMythosId);
+    const openMythos = new OpenMythosAttestationService(this.db).certifies(openMythosId);
     const worldLab = (this.db.prepare("SELECT metadata FROM goals WHERE json_type(metadata, '$.worldlab_retests') = 'array'").all() as Array<{ metadata: string }>)
       .some((row) => {
         const retests = this.object(row.metadata).worldlab_retests;

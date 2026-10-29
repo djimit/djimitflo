@@ -8,7 +8,7 @@ import { pointIdForTask } from '../utils/qdrant-point-id';
 import { yamlScalar } from '../utils/yaml-scalar';
 import { ensureCollection, memoryEmbedModel } from './memory-embedding-contract';
 
-const qdrantUrl = (): string => (process.env.QDRANT_WRITE_URL || process.env.QDRANT_URL || 'http://192.168.1.28:6333').replace(/\/$/, '');
+const qdrantUrl = (): string => (process.env.QDRANT_WRITE_URL || process.env.QDRANT_URL || '').replace(/\/$/, '');
 const OLLAMA_URL = (process.env.OLLAMA_URL || process.env.OLLAMA_HOST || 'http://localhost:11434').replace(/\/$/, '');
 const COLLECTION_REASONING = 'djimitflo_reasoning';
 // Same served model as the rest of the memory fan-out (memory-embedding-contract); the
@@ -121,9 +121,10 @@ export class ReasoningBankService {
 
     fs.writeFileSync(reasoningPath, `${frontmatter}\n\n${body}\n`, 'utf8');
 
-    // Upsert to Qdrant djimitflo_reasoning collection
+    // Upsert to Qdrant djimitflo_reasoning collection (QDRANT_URL unset = OKF file only, M2d)
     const model = memoryEmbedModel();
     try {
+      if (!qdrantUrl()) throw new Error('QDRANT_URL unset');
       const vector = await embed(`${task.title} ${task.description}`, model);
       if (!vector) {
         console.warn(`ReasoningBank skipped for ${taskId}: embedding unavailable (model ${model})`);
@@ -200,6 +201,7 @@ export class ReasoningBankService {
   }
 
   async searchReasoning(query: string, limit: number = 5): Promise<any[]> {
+    if (!qdrantUrl()) return [];
     try {
       const embedRes = await fetch(`${OLLAMA_URL}/api/embeddings`, {
         method: 'POST',

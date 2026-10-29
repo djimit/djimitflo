@@ -56,6 +56,7 @@ describe('OpenMythosEvalService', () => {
     process.env.OPENMYTHOS_CORPUS_PATH = corpusPath;
     process.env.OPENMYTHOS_USE_JUDGE_SERVICE = 'false';
     process.env.OPENMYTHOS_SUBJECT_MODEL_DIGEST = 'subject-digest';
+    process.env.OLLAMA_URL = 'http://ollama.test:11434'; // M2d: no workstation default any more
     process.env.OPENMYTHOS_JUDGE_MODEL_DIGEST = 'judge-digest';
     service = new OpenMythosEvalService(db);
     // Clear cache so it loads from the new path
@@ -79,6 +80,7 @@ describe('OpenMythosEvalService', () => {
     delete process.env.OPENMYTHOS_ORACLE_ANCHORS_PATH;
     delete process.env.OPENMYTHOS_USE_JUDGE_SERVICE;
     delete process.env.OPENMYTHOS_SUBJECT_MODEL_DIGEST;
+    delete process.env.OLLAMA_URL;
     delete process.env.OPENMYTHOS_JUDGE_MODEL_DIGEST;
     vi.restoreAllMocks();
   });
@@ -536,11 +538,62 @@ describe('GovernanceGuardService', () => {
     const reportPath = join(tmpdir(), `openmythos-calibration-${Date.now()}.json`);
     writeFileSync(reportPath, JSON.stringify({
       run_id: runId, agent_id: 'skill-1', calibrated: true, certification_eligible: true,
-      case_result_rows: 1, total_cases: 1,
+      case_result_rows: 1, total_cases: 1, agreement_rate: 0.9, lowest_category_agreement_rate: 0.85, // review #1094: evidence required
     }));
     process.env.OPENMYTHOS_CALIBRATION_REPORT_PATH = reportPath;
     expect(guardService.isGovernanceCertified('skill-1')).toBe(true);
     rmSync(reportPath, { force: true });
+  });
+
+  it('M1: does not certify on a calibration report whose agreement is below its own minimum', () => {
+    const runId = 'under-threshold-run';
+    db.prepare(`INSERT INTO openmythos_eval_runs
+      (id, agent_id, status, total_cases, completed_cases, overall_score, finished_at)
+      VALUES (?, ?, 'completed', 1, 1, 4.5, datetime('now'))`).run(runId, 'skill-2');
+    const reportPath = join(tmpdir(), `openmythos-calibration-low-${Date.now()}.json`);
+    writeFileSync(reportPath, JSON.stringify({
+      run_id: runId, agent_id: 'skill-2', calibrated: true, certification_eligible: true, case_result_rows: 1, total_cases: 1,
+      agreement_rate: 0.538, lowest_category_agreement_rate: 0.5, minimum_agreement_rate: 0.8,
+    }));
+    process.env.OPENMYTHOS_CALIBRATION_REPORT_PATH = reportPath;
+    expect(guardService.isGovernanceCertified('skill-2')).toBe(false);
+    rmSync(reportPath, { force: true });
+  });
+
+  it.each([
+    ['absent', {}],
+    ['null', { agreement_rate: null, lowest_category_agreement_rate: null }],
+    ['string', { agreement_rate: '0.95', lowest_category_agreement_rate: '0.9' }],
+    ['out of range', { agreement_rate: 1.5, lowest_category_agreement_rate: 0.9 }],
+    ['non-finite threshold', { agreement_rate: 0.95, lowest_category_agreement_rate: 0.9, minimum_agreement_rate: 'low' }],
+  ])('review #1094: the deployment guard blocks a calibrated report whose agreement evidence is %s', async (_label, evidence) => {
+    (guardService as any).skillLoader.getSkill = vi.fn().mockReturnValue({ id: 'skill-3', version: '1.0.0', contentHash: 'h', instructions: 'i', tools: [] });
+    (guardService as any).evalService.runEval = vi.fn().mockResolvedValue({
+      id: 'run-3', agentId: 'skill-3', status: 'completed', totalCases: 1, completedCases: 1,
+      overallScore: 4.8, categoryScores: { safety: 4.8 }, results: [], startedAt: '', finishedAt: '',
+    });
+    const reportPath = join(tmpdir(), `openmythos-calibration-evidence-${Date.now()}-${Math.random()}.json`);
+    writeFileSync(reportPath, JSON.stringify({ run_id: 'run-3', agent_id: 'skill-3', calibrated: true, certification_eligible: true, case_result_rows: 1, total_cases: 1, ...evidence }));
+    process.env.OPENMYTHOS_CALIBRATION_REPORT_PATH = reportPath;
+    try {
+      const result = await guardService.runBenchmarkCheck('skill-3', { model: 'test-model' });
+      expect(result).toMatchObject({ blocked: true, approved: false });
+    } finally { rmSync(reportPath, { force: true }); }
+  });
+
+  it('review #1094: the deployment guard approves a calibrated report with finite in-range agreement at/above its minimum', async () => {
+    (guardService as any).skillLoader.getSkill = vi.fn().mockReturnValue({ id: 'skill-3', version: '1.0.0', contentHash: 'h', instructions: 'i', tools: [] });
+    (guardService as any).evalService.runEval = vi.fn().mockResolvedValue({
+      id: 'run-3', agentId: 'skill-3', status: 'completed', totalCases: 1, completedCases: 1,
+      overallScore: 4.8, categoryScores: { safety: 4.8 }, results: [], startedAt: '', finishedAt: '',
+    });
+    const reportPath = join(tmpdir(), `openmythos-calibration-ok-${Date.now()}.json`);
+    writeFileSync(reportPath, JSON.stringify({ run_id: 'run-3', agent_id: 'skill-3', calibrated: true, certification_eligible: true, case_result_rows: 1, total_cases: 1,
+      agreement_rate: 0.9, lowest_category_agreement_rate: 0.85, minimum_agreement_rate: 0.8 }));
+    process.env.OPENMYTHOS_CALIBRATION_REPORT_PATH = reportPath;
+    try {
+      expect(await guardService.runBenchmarkCheck('skill-3', { model: 'test-model' })).toMatchObject({ blocked: false, approved: true });
+    } finally { rmSync(reportPath, { force: true }); }
   });
 
   it('blocks when evaluation evidence is incomplete', async () => {

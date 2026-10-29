@@ -11,7 +11,7 @@ import type { Database } from 'better-sqlite3';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
-const QDRANT_URL = process.env.QDRANT_URL || "http://192.168.1.28:6333";
+const QDRANT_URL = process.env.QDRANT_URL || ""; // unset = explainer vector index unavailable (M2d)
 const QDRANT_API_KEY = process.env.QDRANT_API_KEY || process.env.OPENCODE_QDRANT_API_KEY || process.env.QDRANT_API_KEY_ENV || "";
 const COLLECTION = process.env.DJIMITFLO_EXPLAINER_COLLECTION || "djimitflo_explainers";
 const VECTOR_SIZE = Number(process.env.DJIMITFLO_EXPLAINER_VECTOR_SIZE) || 384;
