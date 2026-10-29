@@ -426,3 +426,42 @@ it('S3: a host without any of the fleet services writes an explicit unknown reco
   run({ ...upToDate, AUTO_DEPLOY_FLEET_SERVICES: `event-bus=${root}/absent=infra/event-bus` }, root);
   expect(JSON.parse(fs.readFileSync(path.join(root, 'data', 'fleet-drift.json'), 'utf8'))).toMatchObject({ commit: NEW, status: 'unknown' });
 });
+
+// S3: a hash or object read that fails is an unknown record, never a "checked" one built from an empty hash
+it('S3: a failing hash or git object read writes the unknown record, not a checked one', () => {
+  const realGit = execFileSync('bash', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
+  const fixture = () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-fleet-'));
+    const repo = path.join(tmp, 'repo');
+    fs.mkdirSync(path.join(repo, 'infra/event-bus'), { recursive: true });
+    fs.writeFileSync(path.join(repo, 'infra/event-bus/bus.py'), 'x = 1\n');
+    const git = (...args: string[]) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' }).trim();
+    git('init', '-q'); git('add', '.'); git('-c', 'user.email=t@example.invalid', '-c', 'user.name=t', 'commit', '-qm', 'fixture');
+    fs.mkdirSync(path.join(tmp, 'srv/event-bus'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'srv/event-bus/bus.py'), 'x = 1\n');
+    const root = path.join(tmp, 'root'); fs.mkdirSync(path.join(root, 'data'), { recursive: true });
+    const commit = git('rev-parse', 'HEAD');
+    const go = (extra: Record<string, string> = {}) => {
+      run({ AD_MAIN_SHA: `printf '${commit}\\trefs/heads/main\\n'`, AD_CURRENT_SHA: `echo ${commit}`,
+        AUTO_DEPLOY_FLEET_SERVICES: `event-bus=${tmp}/srv/event-bus=infra/event-bus`, AUTO_DEPLOY_FLEET_REPO: repo, ...extra }, root);
+      return JSON.parse(fs.readFileSync(path.join(root, 'data', 'fleet-drift.json'), 'utf8'));
+    };
+    return { tmp, go };
+  };
+  const stubBin = (tmp: string, name: string, body: string) => {
+    const bin = path.join(tmp, `bin-${name}`); fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, name), `#!/usr/bin/env bash\n${body}\n`, { mode: 0o755 });
+    return { PATH: `${bin}:${process.env.PATH}` };
+  };
+  const a = fixture();
+  expect(a.go()).toMatchObject({ status: 'checked' });
+  // the sha256 tool fails (sha256_file prefers sha256sum when it exists)
+  const hashFails = a.go(stubBin(a.tmp, 'sha256sum', 'exit 1'));
+  expect(hashFails).toMatchObject({ status: 'unknown' });
+  expect(hashFails).not.toHaveProperty('services');
+  // reading a blob of the commit tree fails
+  const b = fixture();
+  const blobFails = b.go(stubBin(b.tmp, 'git', `case " $* " in *" cat-file blob "*) exit 1 ;; esac; exec '${realGit}' "$@"`));
+  expect(blobFails).toMatchObject({ status: 'unknown' });
+  expect(blobFails).not.toHaveProperty('services');
+});

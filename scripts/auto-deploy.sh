@@ -205,6 +205,25 @@ fleet_unknown() {   # fleet_unknown <commit> <reason>
   printf '{"checked_at":"%s","commit":"%s","status":"unknown","reason":"%s"}\n' "$(date -u +%FT%TZ)" "$1" "$(printf '%s' "$2" | tr -d '"\\' | head -c 300)" \
     | data_write fleet-drift.json 0
 }
+# one "name sha256" line per *.py; every hash is run and checked before it is printed (a failure fails the whole list)
+is_sha256() { [[ "$1" =~ ^[0-9a-f]{64}$ ]]; }
+deployed_lines() {
+  local f h
+  for f in "$1"/*.py; do
+    [ -f "$f" ] || continue
+    h="$(sha256_file "$f")" && is_sha256 "$h" || return 1
+    printf '%s %s\n' "${f##*/}" "$h"
+  done
+}
+main_lines() {   # uses the git command array g of fleet_drift
+  local tree mode type oid f h
+  tree="$("${g[@]}" ls-tree "$1" "$2/")" || return 1
+  while read -r mode type oid f; do
+    [ -n "$mode" ] && [ "$type" = blob ] && [[ "$f" == *.py ]] || continue
+    h="$("${g[@]}" cat-file blob "$oid" | sha256_stdin)" && is_sha256 "$h" || return 1
+    printf '%s %s\n' "${f##*/}" "$h"
+  done <<<"$tree"
+}
 fleet_drift() {
   local commit="$1" repo="${AUTO_DEPLOY_FLEET_REPO:-$ROOT/runtime-source-${1:0:7}}" spec name dir src f deployed main json="" sep="" own
   [ -d "$ROOT/data" ] || return 0
@@ -218,10 +237,9 @@ fleet_drift() {
     IFS='=' read -r name dir src <<<"$spec"
     [ -d "$dir" ] || continue
     "${g[@]}" cat-file -e "$commit^{commit}" 2>/dev/null || { log "fleet drift: commit ${commit:0:8} not readable in $repo — unknown"; fleet_unknown "$commit" "commit not readable in $repo"; return 0; }
-    deployed="$(for f in "$dir"/*.py; do [ -f "$f" ] || continue; printf '%s %s\n' "${f##*/}" "$(sha256_file "$f")"; done | sort | sha256_stdin)" \
+    deployed="$(deployed_lines "$dir")" && deployed="$(printf '%s\n' "$deployed" | sort | sha256_stdin)" && is_sha256 "$deployed" \
       || { fleet_unknown "$commit" "cannot hash $dir"; return 0; }
-    main="$("${g[@]}" ls-tree "$commit" "$src/" | while read -r _ type oid f; do
-      [ "$type" = blob ] && [[ "$f" == *.py ]] || continue; printf '%s %s\n' "${f##*/}" "$("${g[@]}" cat-file blob "$oid" | sha256_stdin)"; done | sort | sha256_stdin)" \
+    main="$(main_lines "$commit" "$src")" && main="$(printf '%s\n' "$main" | sort | sha256_stdin)" && is_sha256 "$main" \
       || { fleet_unknown "$commit" "cannot read $src at the running commit"; return 0; }
     json+="$sep\"$name\":{\"deployed\":\"$deployed\",\"main\":\"$main\",\"match\":$([ "$deployed" = "$main" ] && echo true || echo false)}"; sep=","
     [ "$deployed" = "$main" ] || log "fleet drift: $name ($dir) differs from $src at ${commit:0:8}"
