@@ -9,8 +9,10 @@ const script = path.resolve(__dirname, '../../../../scripts/auto-deploy.sh');
 const NEW = 'b'.repeat(40); const OLD = 'a'.repeat(40);
 const green = JSON.stringify({ check_runs: [{ id: 1, name: 'build-and-test (22)', status: 'completed', conclusion: 'success' }, { id: 2, name: 'optional', status: 'completed', conclusion: 'skipped' }] });
 const minutesAgo = (m: number) => JSON.stringify({ commit: { committer: { date: new Date(Date.now() - m * 60_000).toISOString() } } });
+// the test user stands in for root as the trusted owner of $DEPLOY_ROOT, the install dir and the staging dir
+const trust = (root: string) => ({ AUTO_DEPLOY_TRUSTED_UID: String(process.getuid!()), AUTO_DEPLOY_INSTALL_DIR: path.join(root, 'lib') });
 const run = (over: Record<string, string> = {}, root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'))) => {
-  const env = { ...process.env, DEPLOY_ROOT: root, AD_MAIN_SHA: `printf '${NEW}\\trefs/heads/main\\n'`, AD_CURRENT_SHA: `echo ${OLD}`,
+  const env = { ...process.env, DEPLOY_ROOT: root, ...trust(root), AD_MAIN_SHA: `printf '${NEW}\\trefs/heads/main\\n'`, AD_CURRENT_SHA: `echo ${OLD}`,
     AD_CHECKS: `echo '${green}'`, AD_REQUIRED: `echo 'build-and-test (22)'`, AD_COMMIT: `echo '${minutesAgo(30)}'`, AD_LEASES: 'echo 0', AD_DEPLOY: 'echo DEPLOYED', AD_DEPLOY_GATE: 'true', ...over };
   const r = spawnSync('bash', [script], { env, encoding: 'utf8' });
   return `${r.stdout}${r.stderr}`;
@@ -340,4 +342,17 @@ it('a pre-planted symlink at data/fleet-drift.json is not followed', () => {
   expect(fs.readFileSync(victim, 'utf8')).toBe('untouched\n');
   expect(fs.lstatSync(path.join(root, 'data', 'fleet-drift.json')).isSymbolicLink()).toBe(true);
   expect(fs.readdirSync(path.join(root, 'data'))).toEqual(['fleet-drift.json']);
+});
+
+it('the staged copy of a data-dir write is never written through a link swapped in after it was created', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
+  fs.mkdirSync(path.join(root, 'data'));
+  const victim = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ad-victim-')), 'victim');
+  fs.writeFileSync(victim, 'untouched\n');
+  // test seam: replace the staged temp pathname with a link right after it is created, before the content is written
+  const out = run({ AUTO_DEPLOY_TEST_HOOK_AFTER_TEMP: `rm -f "$TEMP_PATH"; ln -s '${victim}' "$TEMP_PATH"` }, root);
+  expect(out).toContain('DEPLOYED');
+  expect(out).toContain('refusing to write');
+  expect(fs.readFileSync(victim, 'utf8')).toBe('untouched\n');
+  for (const name of fs.readdirSync(path.join(root, 'data'))) expect(fs.lstatSync(path.join(root, 'data', name)).isSymbolicLink()).toBe(false);
 });

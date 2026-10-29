@@ -14,22 +14,94 @@ ROOT="${DEPLOY_ROOT:-/srv/djimitflo}"
 REPO_SLUG="${AUTO_DEPLOY_REPO:-djimit/djimitflo}"
 SETTLE_MIN="${AUTO_DEPLOY_SETTLE_MIN:-20}"
 log() { echo "$(date -u +%FT%TZ) auto-deploy: $*"; }
-# data_write <name> <keep>: the last <keep> lines of $ROOT/data/<name> plus stdin become the new file. This runs as root and
-# the data dir is writable by the container, so a target that is a link or not a regular file is refused (logged, left as
-# it is); the old content is read without following a link; the new file is a fresh mktemp file in the same dir, made
-# readable for the container and renamed into place with rename(2), which replaces a name and never follows it.
+# safe_fs: file operations of this root process next to directories other users can write (python3, *at() calls).
+#   check <dir>                 every directory from <dir> up to / is owned by root (or AUTO_DEPLOY_TRUSTED_UID) and not
+#                               writable by group/others (a root-owned sticky dir such as /tmp is allowed)
+#   copy <file> <dest>          <file> (owned by the trusted uid, not group/other-writable, regular, in a checked dir) is read
+#                               once, without following a link, into <dest> (a new file in a private dir)
+#   write <dir> <name> <keep> <stage>
+#                               the last <keep> lines of <dir>/<name> plus stdin replace <dir>/<name>. A target that is a link
+#                               or not a regular file is refused; the old content is read without following a link; the new
+#                               content is written through an fd to a new file in <stage> (a 0700 dir of the trusted uid on the
+#                               same filesystem, checked up to /) and renamed into <dir> with renameat(2), which replaces a
+#                               name and never follows it. No pathname in <dir> is ever opened for writing or chmod-ed.
+# AUTO_DEPLOY_TRUSTED_UID (default 0) and AUTO_DEPLOY_TEST_HOOK_AFTER_TEMP are test seams (auto-deploy.test.ts).
+SAFE_FS_PY="$(cat <<'PY'
+import os, secrets, stat, subprocess, sys
+TRUSTED = int(os.environ.get("AUTO_DEPLOY_TRUSTED_UID") or "0")
+def fail(msg):
+    sys.stderr.write(msg); sys.exit(1)
+def readall(fd):
+    return b"".join(iter(lambda: os.read(fd, 1 << 16), b""))
+def chain(path):
+    p = os.path.realpath(path)
+    while True:
+        st = os.lstat(p)
+        if not stat.S_ISDIR(st.st_mode): fail(f"{p} is not a directory")
+        if st.st_uid not in (0, TRUSTED): fail(f"{p} is owned by uid {st.st_uid}, not root")
+        if st.st_mode & 0o022 and not (st.st_mode & stat.S_ISVTX and st.st_uid == 0): fail(f"{p} is writable by group or others")
+        if p == "/": return
+        p = os.path.dirname(p)
+def opendir(path):
+    return os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+def main(cmd, *a):
+    if cmd == "check":
+        chain(a[0])
+    elif cmd == "copy":
+        src = os.path.realpath(a[0]); chain(os.path.dirname(src))
+        fd = os.open(src, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK); st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode): fail(f"{src} is not a regular file")
+        if st.st_uid != TRUSTED: fail(f"{src} is owned by uid {st.st_uid}, not root")
+        if st.st_mode & 0o022: fail(f"{src} is writable by group or others")
+        data = readall(fd)
+        out = os.open(a[1], os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600); os.write(out, data); os.close(out)
+    elif cmd == "write":
+        d, name, keep, stage = a[0], a[1], int(a[2]), a[3]
+        if not name or "/" in name or name.startswith("."): fail(f"bad name {name!r}")
+        if not os.path.lexists(stage): os.mkdir(stage, 0o700)
+        chain(stage); sfd = opendir(stage); sst = os.fstat(sfd)
+        if sst.st_uid != TRUSTED or sst.st_mode & 0o077: fail(f"{stage} is not a private (0700) directory of uid {TRUSTED}")
+        dfd = opendir(d)
+        if os.fstat(dfd).st_dev != sst.st_dev: fail(f"{stage} is not on the filesystem of {d}")
+        try: cur = os.lstat(name, dir_fd=dfd)
+        except FileNotFoundError: cur = None
+        if cur is not None and not stat.S_ISREG(cur.st_mode): fail(f"{d}/{name} is not a regular file (link or other)")
+        old = b""
+        if keep > 0 and cur is not None:
+            fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dfd)
+            if not stat.S_ISREG(os.fstat(fd).st_mode): fail(f"{d}/{name} is not a regular file")
+            old = b"".join(readall(fd).splitlines(keepends=True)[-keep:])
+        new = sys.stdin.buffer.read()
+        tmp = f".{name}.{secrets.token_hex(8)}"
+        tfd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=sfd)
+        try:
+            hook = os.environ.get("AUTO_DEPLOY_TEST_HOOK_AFTER_TEMP")
+            if hook: subprocess.run(hook, shell=True, env={**os.environ, "TEMP_PATH": os.path.join(stage, tmp)})
+            os.fchmod(tfd, 0o644); os.write(tfd, old + new); os.fsync(tfd)
+            mine, there = os.fstat(tfd), os.lstat(tmp, dir_fd=sfd)
+            if (mine.st_dev, mine.st_ino) != (there.st_dev, there.st_ino): fail(f"staged file in {stage} was replaced")
+            os.rename(tmp, name, src_dir_fd=sfd, dst_dir_fd=dfd)
+        except BaseException:
+            try: os.unlink(tmp, dir_fd=sfd)
+            except OSError: pass
+            raise
+    else:
+        fail(f"unknown command {cmd}")
+try:
+    main(*sys.argv[1:])
+except SystemExit:
+    raise
+except Exception as e:
+    fail(f"{type(e).__name__}: {e}")
+PY
+)"
+safe_fs() { python3 -c "$SAFE_FS_PY" "$@"; }
+STAGE_DIR="${AUTO_DEPLOY_STAGE_DIR:-$ROOT/.auto-deploy-stage}"
+# data_write <name> <keep>: stdin after the last <keep> lines of $ROOT/data/<name> (the container can write that dir)
 data_write() {
-  local f="$ROOT/data/$1" keep="$2" tmp
-  if [ -L "$f" ] || { [ -e "$f" ] && [ ! -f "$f" ]; }; then cat >/dev/null; log "refusing to write $f: not a regular file (link or other) — left untouched"; return 1; fi
-  tmp="$(mktemp "$ROOT/data/.$1.XXXXXX")" || { cat >/dev/null; return 1; }
-  if { [ "$keep" = 0 ] || node -e '
-      const fs = require("fs"), c = fs.constants; let fd;
-      try { fd = fs.openSync(process.argv[1], c.O_RDONLY | c.O_NOFOLLOW | c.O_NONBLOCK); } catch (e) { process.exit(e.code === "ENOENT" ? 0 : 1); }
-      if (!fs.fstatSync(fd).isFile()) process.exit(1);
-      process.stdout.write(fs.readFileSync(fd));' "$f" | tail -n "$keep"; } > "$tmp" \
-    && cat >> "$tmp" && chmod 0644 "$tmp" \
-    && node -e 'require("fs").renameSync(process.argv[1], process.argv[2])' "$tmp" "$f" 2>/dev/null; then return 0; fi
-  rm -f "$tmp"; log "refusing to write $f: not a regular file or not writable — left untouched"; return 1
+  local err
+  err="$(safe_fs write "$ROOT/data" "$1" "$2" "$STAGE_DIR" 2>&1 >/dev/null)" && return 0
+  log "refusing to write $ROOT/data/$1: ${err:-failed} — left untouched"; return 1
 }
 # S1: deploy events for the operator cockpit, in the data dir the container mounts as /data (bounded to 1000 lines)
 event() {
