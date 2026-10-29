@@ -73,6 +73,10 @@ export function valueAnomalyMode(env: NodeJS.ProcessEnv = process.env): ValueAno
   return v === 'on' || v === 'shadow' ? v : 'off';
 }
 
+/** Which detector raised a stall (kept off the Stall object, so API responses are unchanged); the stall watch persists it. */
+const STALL_DETECTOR = new WeakMap<Stall, string>();
+export const stallDetector = (s: Stall): string | undefined => STALL_DETECTOR.get(s);
+
 /** Health from detectors + stalls: BREACHED on any stall, UNKNOWN when a detector errored and nothing stalled. */
 export function stallHealth(stalls: Stall[], detectors: DetectorHealth[]): StallHealth {
   if (stalls.length) return 'BREACHED';
@@ -87,7 +91,8 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
   const out: Stall[] = []; const detectors: DetectorHealth[] = []; const checked_at = new Date(now).toISOString();
   const run = (name: string, applicable: boolean, fn: () => void | { capped: string }) => {
     if (!applicable) { detectors.push({ name, status: 'not_applicable', checked_at }); return; }
-    try { const r = fn(); detectors.push(r ? { name, status: 'capped', detail: r.capped, checked_at } : { name, status: 'ok', checked_at }); }
+    const before = out.length;
+    try { const r = fn(); for (const s of out.slice(before)) STALL_DETECTOR.set(s, name); detectors.push(r ? { name, status: 'capped', detail: r.capped, checked_at } : { name, status: 'ok', checked_at }); }
     catch (e) { detectors.push({ name, status: 'error', error: (e instanceof Error ? e.message : String(e)).slice(0, 200), checked_at }); }
   };
   // 1. gym enabled but no scored outcome for 6 h (the breaker or the worker can silently idle it)
@@ -297,20 +302,28 @@ export function detectStalls(db: Database, now = Date.now(), env: NodeJS.Process
  * subsystem open since the previous tick is not new. One that disappeared gets one 'cleared' row, so it is new again when it
  * returns and the previous tick is read back from the rows (a deploy restart does not re-announce ongoing stalls). Returns
  * the new stalls. Fail-soft: without a judgments table nothing is new.
+ * A stall whose detector errored this tick (`failed`) is unknown, not recovered: it stays open (no 'cleared' row), so it is
+ * not pushed again when detection recovers. The detector is stored with the open row; a row without one is kept open while
+ * any detector errored.
  */
-export function recordStallTransitions(db: Database, stalls: Stall[], now = new Date()): Stall[] {
+export function recordStallTransitions(db: Database, stalls: Stall[], now = new Date(), failed: ReadonlySet<string> = new Set()): Stall[] {
   try {
-    const open = new Set((db.prepare(`SELECT subject_id, decision FROM judgments j WHERE judgment = 'stall' AND rowid = (SELECT MAX(rowid) FROM judgments
-        WHERE judgment = 'stall' AND subject_id = j.subject_id)`).all() as Array<{ subject_id: string; decision: string }>)
-      .filter((r) => r.decision === 'open').map((r) => r.subject_id));
+    const latest = db.prepare(`SELECT subject_id, decision, answers_json FROM judgments j WHERE judgment = 'stall' AND rowid = (SELECT MAX(rowid) FROM judgments
+        WHERE judgment = 'stall' AND subject_id = j.subject_id)`).all() as Array<{ subject_id: string; decision: string; answers_json: string | null }>;
+    const detectorOfRow = new Map(latest.filter((r) => r.decision === 'open').map((r) => {
+      let d: unknown; try { d = (JSON.parse(r.answers_json || '{}') as { detector?: unknown }).detector; } catch { d = undefined; }
+      return [r.subject_id, typeof d === 'string' ? d : null] as const;
+    }));
+    const open = new Set(detectorOfRow.keys());
+    const unobserved = (subsystem: string) => { const d = detectorOfRow.get(subsystem); return d ? failed.has(d) : failed.size > 0; };
     const at = now.toISOString();
     const insert = db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at)
       VALUES (?, 'stall', 'subsystem', ?, ?, 'annotation', ?, ?, ?, ?)`);
     const current = new Map(stalls.map((s) => [s.subsystem, s]));
     const fresh = [...current.values()].filter((s) => !open.has(s.subsystem));
     db.transaction(() => {
-      for (const s of fresh) insert.run(randomUUID(), s.subsystem, s.since ?? '', 'open', s.detail.slice(0, 300), JSON.stringify({ detail: s.detail, since: s.since }), at);
-      for (const subsystem of open) if (!current.has(subsystem)) insert.run(randomUUID(), subsystem, '', 'cleared', 'no longer reported by the stall watch', null, at);
+      for (const s of fresh) insert.run(randomUUID(), s.subsystem, s.since ?? '', 'open', s.detail.slice(0, 300), JSON.stringify({ detail: s.detail, since: s.since, detector: stallDetector(s) ?? null }), at);
+      for (const subsystem of open) if (!current.has(subsystem) && !unobserved(subsystem)) insert.run(randomUUID(), subsystem, '', 'cleared', 'no longer reported by the stall watch', null, at);
     })();
     return fresh;
   } catch { return []; }
@@ -318,9 +331,9 @@ export function recordStallTransitions(db: Database, stalls: Stall[], now = new 
 
 /** One stall-watch tick: detect, log every stall, persist the new ones and hand each new one to `notify` (the operator push). */
 export async function stallWatchTick(db: Database, notify?: (s: Stall) => Promise<unknown>, now = Date.now(), env: NodeJS.ProcessEnv = process.env): Promise<Stall[]> {
-  const stalls = detectStalls(db, now, env);
+  const { stalls, detectors } = detectStallsWithHealth(db, now, env);
   for (const s of stalls) console.warn(`🚨 stall: ${s.subsystem} since ${s.since ?? 'never'} — ${s.detail}`);
-  const fresh = recordStallTransitions(db, stalls, new Date(now));
+  const fresh = recordStallTransitions(db, stalls, new Date(now), new Set(detectors.filter((d) => d.status === 'error').map((d) => d.name)));
   for (const s of fresh) { try { await notify?.(s); } catch { /* a push never breaks the watch */ } }
   return fresh;
 }
