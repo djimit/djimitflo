@@ -1310,39 +1310,8 @@ export class LoopService {
       runtime_adapter: lease.runtime,
     });
 
-    this.assurance.createTraceSpan({
-      trace_id: traceId,
-      loop_run_id: run.id,
-      span_type: 'worker',
-      name: `${lease.role}:${lease.runtime}:spawn`,
-      status: 'running',
-      evidence_ref: `loop:${run.id}/worker:${lease.id}`,
-      metadata: {
-        worker_lease_id: lease.id,
-        role: lease.role,
-        runtime: lease.runtime,
-        checkpoint_before_id: checkpointBefore.id,
-      },
-    });
-
+    // OPS-004: the worker span (one per maker lease, closed at settlement) is owned by the shared executeMaker path
     const execution = await this.executeMaker(id, input);
-    const finalStatus = execution.lease.status === 'completed' ? 'ok' : 'error';
-    this.assurance.createTraceSpan({
-      trace_id: traceId,
-      loop_run_id: run.id,
-      span_type: 'worker',
-      name: `${lease.role}:${lease.runtime}:completion`,
-      status: finalStatus,
-      evidence_ref: execution.stdout_path,
-      metadata: {
-        worker_lease_id: lease.id,
-        role: lease.role,
-        runtime: lease.runtime,
-        stdout_path: execution.stdout_path,
-        stderr_path: execution.stderr_path,
-        gates: execution.gates,
-      },
-    });
 
     const checkpointAfter = this.assurance.createCheckpoint({
       loop_run_id: run.id,

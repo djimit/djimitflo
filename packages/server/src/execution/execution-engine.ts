@@ -677,6 +677,7 @@ export class ExecutionEngine {
           '$.execution_recovery_attempt', json(?)), updated_at = ? WHERE id = ?`)
           .run(JSON.stringify({ ...admission, event_id: eventId }), new Date().toISOString(), task.id);
       })();
+      this.recordSkillDeliveryReceipt(task, activeExecutor.kind);
       const session = await activeExecutor.start(task, {
         ...(executionMetadata.model ? { model: String(executionMetadata.model) } : {}),
         ...(reasoningEffort ? { reasoningEffort: reasoningEffort as 'low' | 'medium' | 'high' | 'xhigh' | 'max' } : {}),
@@ -1483,6 +1484,7 @@ export class ExecutionEngine {
       : verification === 'passed' ? null
         : verification === 'failed' ? 'outcome_class:regressed' : COMPLETED_UNVERIFIED_REF;
     const model = this.effectiveModel(task);
+    const delivery = this.skillDeliveryRefs(taskId, skill);
     this.skillEvolution.recordOutcome(skill.id, {
       taskId,
       agentId: task.agent_id || undefined,
@@ -1498,8 +1500,63 @@ export class ExecutionEngine {
         ...(session?.executorKind ? [`runtime:${session.executorKind}`] : []),
         ...(verification ? [`verification:test_result:${verification}`] : []),
         ...(outcomeClass ? [outcomeClass] : []),
+        ...delivery,
       ],
     });
+  }
+
+  /**
+   * INT-004: an assigned skill is not a delivered one. Just before the runtime starts, record what the engine can prove it
+   * handed over: 'delivered' only when the admitted skill's instructions appear verbatim in the assignment text passed to
+   * executor.start (path + sha256 of that text), else 'assigned'. Receipt only — the task the runtime receives is not
+   * touched (running experiments depend on identical prompts). No executor injects skill text today and prod skill
+   * loading is DISABLED_BY_POLICY, so prod receipts read 'assigned'; native runtime skill autodiscovery is not observed.
+   */
+  private recordSkillDeliveryReceipt(task: Task, executorKind: string): void {
+    const skillId = typeof task.metadata?.skillId === 'string' ? task.metadata.skillId.trim() : '';
+    const assigned = !skillId && task.agent_id ? this.skillLoader.getAgentSkills(task.agent_id) : [];
+    const skill = skillId ? this.skillLoader.getSkill(skillId) : assigned.length === 1 ? assigned[0] : null;
+    if (!skill) return;
+    const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
+    const assignment = task.description ?? '';
+    const delivered = skill.instructions.length > 0 && assignment.includes(skill.instructions);
+    this.evidenceService.captureEvidence({
+      task_id: task.id,
+      evidence_type: EvidenceType.EXECUTION_SUMMARY,
+      severity: EvidenceSeverity.INFO,
+      title: 'Skill delivery receipt',
+      summary: delivered
+        ? `Skill ${skill.id} instructions are in the assignment handed to ${executorKind}.`
+        : `Skill ${skill.id} is assigned; its instructions are not in the assignment handed to ${executorKind}.`,
+      details: {
+        skill_id: skill.id,
+        skill_version: skill.version,
+        skill_content_hash: skill.contentHash,
+        executor_kind: executorKind,
+        delivery_state: delivered ? 'delivered' : 'assigned',
+        delivery_path: delivered ? 'task.description' : null,
+        delivered_sha256: delivered ? sha256(skill.instructions) : null,
+        assignment_sha256: sha256(assignment),
+      },
+      source: 'system',
+      metadata: { reason: 'skill_delivery_receipt' },
+    });
+  }
+
+  /** Outcome refs: 'delivered' needs this task's latest receipt for the same skill content; anything else is unverified. */
+  private skillDeliveryRefs(taskId: string, skill: SkillDefinition): string[] {
+    const row = this.db.prepare(`SELECT details FROM execution_evidence WHERE task_id = ?
+      AND json_extract(metadata, '$.reason') = 'skill_delivery_receipt' ORDER BY captured_at DESC, rowid DESC LIMIT 1`)
+      .get(taskId) as { details: string | null } | undefined;
+    let receipt: Record<string, unknown> | null = null;
+    try { receipt = row?.details ? JSON.parse(row.details) : null; } catch { receipt = null; }
+    if (!receipt || receipt.skill_id !== skill.id || receipt.skill_content_hash !== skill.contentHash) {
+      return ['skill_delivery:unknown', 'skill_attribution:unverified'];
+    }
+    if (receipt.delivery_state === 'delivered' && typeof receipt.delivered_sha256 === 'string') {
+      return ['skill_delivery:delivered', `skill_delivery_path:${String(receipt.delivery_path)}`, `skill_delivery_sha256:${receipt.delivered_sha256}`];
+    }
+    return ['skill_delivery:assigned', 'skill_attribution:unverified'];
   }
 
   private blockInvalidSkillAttribution(task: Task): string | null {
