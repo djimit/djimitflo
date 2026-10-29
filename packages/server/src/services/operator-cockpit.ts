@@ -197,7 +197,7 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
   section = 'usage';
   const maker_usage_7d = all<{ role: string; runtime: string; model: string | null; leases: number; tokens: number }>(
     `SELECT role, runtime, json_extract(metadata, '$.model') AS model, COUNT(*) AS leases, COALESCE(SUM(json_extract(metadata, '$.runtime_usage.total_tokens')), 0) AS tokens
-       FROM worker_leases WHERE created_at >= ? AND runtime != 'manual' GROUP BY role, runtime, model ORDER BY tokens DESC`, d7) ?? [];
+       FROM worker_leases WHERE created_at >= ? AND runtime != 'manual' AND ${realRunIdSql('worker_leases.loop_run_id')} GROUP BY role, runtime, model ORDER BY tokens DESC`, d7) ?? []; // U3: by run — an LLM review checker is not 'manual'
   const judgments_7d = all<{ judgment: string; calls: number; errors: number; input_tokens: number }>(
     `SELECT judgment, COUNT(*) AS calls, SUM(decision = 'error') AS errors, COALESCE(SUM(input_tokens), 0) AS input_tokens FROM judgments WHERE created_at >= ? GROUP BY judgment ORDER BY calls DESC`, d7) ?? [];
   const d30 = new Date(now - 30 * 86_400_000).toISOString();
