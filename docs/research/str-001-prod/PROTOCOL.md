@@ -4,13 +4,16 @@ Status: **pre-registered, not started** (2026-10-29). No flag is turned on, no r
 deliver the treatment or produce an outcome exists. Starting the experiment is an operator decision, and it may only happen
 once every precondition in §9 holds.
 
-**Revision before freeze.** Draft r1 (fingerprint `279fb5fe…c405`, commit 6a99c02c) was superseded on 2026-10-29, before any
-start, by this revision r2. The reason was the review on PR #1092. That review found three problems in r1:
-- its primary endpoint depended on the merge;
-- its decision rules overlapped;
-- it had an extension without alpha spending.
+**Revisions before freeze.** All superseded on 2026-10-29, before any start, after the reviews on PR #1092:
+- **Draft r1** (fingerprint `279fb5fe…c405`, commit 6a99c02c) had three problems:
+  - its primary endpoint depended on the merge;
+  - its decision rules overlapped;
+  - it had an extension without alpha spending.
+- **Draft r2** (fingerprint `98714130…f187`, commit 28437943) had two problems:
+  - its period weights used scored counts and dropped small periods;
+  - its holdout had no lifetime false-revert accounting and no epoch-relative dates.
 
-Only r2's fingerprint is binding.
+Only this revision r3's fingerprint is binding.
 
 Sources:
 - STR-001 Stage A (`docs/research/eco/STR-001_STAGE_A_PROTOCOL.md`, sha256 `87c8927f…3a47`;
@@ -180,18 +183,23 @@ One retry maker lease runs in the same loop run, after evolve selection and befo
 
 **Estimand.** The estimand is the average effect, over eligible triggered roots, of delivering the retry (retry − none) on the primary endpoint.
 - **Single period.** While there is one period, the effect is averaged over the concurrent treatment mix as it is randomised at the time: MAKER-DEPS-001 A/B 50/50 and F2 v2 same/cross 50/50, under the prevailing defaults of every other flag.
-- **Several periods.** With more than one period, the estimand is the n-weighted average of the per-period effects, each under its own configuration.
+- **Several periods.** With more than one period, the estimand is the average of the per-period effects, each under its own configuration, weighted by eligible triggered roots per period.
 
 **Periods (pre-registered).**
 - **What starts a period.**
   - The STR start is a boundary.
   - Every change in an STR `treatment_env` value is another boundary. The list is `STR_PROD_001_MODE`, `MAKER_DEPS_001_MODE`, `LOOP_MAKER_PREPARE_DEPS`, `CHECKER_FAMILY_RANDOMISE`, `CHECKER_FAMILY_VERSION`, `CHECKER_CROSS_MODEL`, `LOOP_EVOLVE_ENABLED`, `EFFORT_SIBLING_RANDOMISE`, `GRADED_CONTEST_MODE`, `LOOP_BANDIT_ENABLED`, `TEST_ONLY_DIFF_MAX`, `LOOP_MEMORY_RULES_ENABLED`, `OPENCODE_MAX_RUN_TOKENS` and `GRADED_FITNESS_MODE`. Such a change includes MAKER-DEPS-001 or F2 v2 stopping or promoting mid-run.
   - Each boundary is recorded as an `experiment_period_boundaries` row (PR #1091, `recordTreatmentEnvBoundaries` at boot).
-- **Analysis by period.**
-  - Δ_p is computed per period.
-  - The primary Δ is the stratified estimate Σ_p w_p Δ_p, with w_p = scored roots in p ÷ all scored roots.
-  - The bootstrap resamples within period × lane × arm. Periods are never pooled unstratified.
-- **Small periods.** A period with fewer than 5 scored roots in either arm is left out of the estimate and reported. This is a design rule per period, never per arm.
+- **Analysis by period. No period and no eligible triggered root is ever dropped.**
+  - **Weights.** w_p = eligible triggered roots in p ÷ all eligible triggered roots. Scored and unscored roots both count, so the weights cannot depend on treatment-dependent missingness.
+  - **Per-period difference.** Δ_p is the difference in mean primary value, retry − none, within period p. The primary Δ is Σ_p w_p Δ_p.
+  - **Bootstrap.** It resamples roots within period × lane × arm. Lane is a resampling stratum, not an estimator stratum. Periods are never pooled unstratified.
+- **Covered periods.** A period is **covered** when, in each arm, it has ≥ 5 eligible triggered roots and ≥ 90 % of them are scored.
+- **Uncovered periods.** An uncovered period stays in every estimate at its worst case, in the primary Δ̂ and in L_b alike:
+  - each of its `retry` roots counts as 0 and each of its `none` roots as 1, so Δ_p = −1;
+  - this also covers a period in which one arm has no root at all.
+  - An adverse small period therefore lowers both Δ̂ and L_b and can never vanish from the analysis.
+- **Promotion and uncovered periods.** PROMOTE is also blocked when uncovered periods together hold > 10 % of the eligible triggered roots (§7, branch 5).
 
 **Interaction check (pre-registered).**
 - **What is reported.** Δ within MAKER-DEPS-001 A and B, and within F2 v2 same and cross. The interaction contrasts are Δ_B − Δ_A and Δ_cross − Δ_same, each with a bootstrap 95 % CI.
@@ -227,7 +235,7 @@ The value comes from the **STR scorer**. It is pinned by the implementation PR a
 | no mutant / target missing | excluded before arms (§2) | excluded |
 
 **Worst-case (Manski) bound.**
-- **Construction.** Every missing `retry` value counts as 0 and every missing `none` value as 1. The same stratified bootstrap gives L_b, the lower 95 % bound of Δ under that worst case.
+- **Construction.** Every missing `retry` value counts as 0 and every missing `none` value as 1. The same period-stratified estimator and bootstrap (§4, §7), run over **every eligible triggered root of every period**, gives L_b, the lower 95 % bound of Δ under that worst case. Uncovered periods are included at Δ_p = −1.
 - **Promotion** needs L_b > 0 (§7).
 - **Reporting.** The missing share is reported per arm. The scorer is built to keep it ≤ 2 %: the per-mutant cap turns slow runs into kills, not skips, and infra gets 3 attempts.
 
@@ -315,9 +323,11 @@ The value comes from the **STR scorer**. It is pinned by the implementation PR a
 pre-registration.
 
 **Statistics.**
-- **Δ.** Δ̂ is the period- and lane-stratified mean difference, retry − none, of the primary value over scored roots. It is ITT by assigned arm: an unadopted `retry` root keeps its first attempt and stays in `retry`.
+- **Δ.** Δ̂ = Σ_p w_p Δ_p, with the weights and the uncovered-period rule of §4. Within a covered period it uses the scored roots, with baseline red = 0. It is ITT by assigned arm: an unadopted `retry` root keeps its first attempt and stays in `retry`.
 - **CI.** [L, U] is the stratified percentile bootstrap 95 % CI, with 10 000 resamples over roots and seed 20261029.
-- **Bound.** L_b is the same bootstrap on the worst-case data (§5).
+- **Bound.** L_b is the same estimator and bootstrap on **all eligible triggered roots of all periods**:
+  - every unscored root is imputed at its worst case: `retry` = 0, `none` = 1 (§5);
+  - uncovered periods enter at Δ_p = −1.
 - **Reported p.** One-sided permutation p of arm labels within period × lane, with 10 000 permutations and seed 20261030.
 
 **Decision tree.** It is evaluated in this order, and the first matching branch is the verdict, so exactly one verdict applies:
@@ -328,7 +338,7 @@ pre-registration.
 | 2 | fewer than 49 scored roots in either arm | **INCONCLUSIVE (acceptance)** | flag `off`; closed; learning ledger |
 | 3 | U < +0.10 | **REJECT (below floor)** | flag `off`; NEGATIVE_EVIDENCE entry. A gain below +0.10 kill share does not pay for one extra maker lease per root, even when L > 0 |
 | 4 | L ≤ 0 (and so U ≥ +0.10) | **INCONCLUSIVE** | flag `off`; closed; learning ledger |
-| 5 | L > 0, U ≥ +0.10, and all of: Δ̂ ≥ +0.10; L_b > 0; S1 Δ̂ ≥ −0.05; S2 ratio ≤ 2.0; the interaction rule (§4) holds | **PROMOTE** | §8 |
+| 5 | L > 0, U ≥ +0.10, and all of: Δ̂ ≥ +0.10; L_b > 0; uncovered periods hold ≤ 10 % of eligible triggered roots; S1 Δ̂ ≥ −0.05; S2 ratio ≤ 2.0; the interaction rule (§4) holds | **PROMOTE** | §8 |
 | 6 | L > 0, U ≥ +0.10, and any condition of branch 5 fails | **SUPPORTED, NOT PROMOTED** | flag `off`; operator decision with the numbers; no NE entry |
 
 **Operating characteristics** (normal approximation, n 86 per arm, σ 0.35, no missing values; branches 3–5):
@@ -365,30 +375,49 @@ Nothing else changes.
 - **It is not automatic before S5** (§9 G0.3). Once S5 is live, a later amendment may let the readout switch the mode itself.
 
 **Holdout monitoring (pre-registered).**
-- **Cohorts.** The monitor covers the roots that first trigger after the promotion boundary, which is the first boot with `default`, recorded as a period-boundary row.
-  - The default cohort is hbucket ≥ 10. The holdout is hbucket < 10.
+
+**Epochs and their start times.**
+- **What defines an epoch.** An epoch k is fixed by its flag value (`default`) and its scorer identity. The scorer identity is the pinned STR scorer sha plus the `gym-failure-tasks.ts` sha, both recorded in every root's `str_prod` metadata.
+- **E_k, the epoch start,** is the trigger timestamp (UTC, ms) of the **first** root that triggers with mode `default` and epoch k's scorer identity.
+  - E_1 is therefore the first post-promotion trigger.
+  - E_2 is the first trigger after a scorer or generator change. That change needs a dated amendment.
+- **Cohort k** is the roots that first trigger in [E_k, E_{k+1}): the default cohort is hbucket ≥ 10, the holdout is hbucket < 10.
+  - Cohorts are never pooled across epochs.
   - Experiment-period roots are never part of the monitor.
-- **Label.** The same primary endpoint and the same STR scorer version.
-  - If the scorer or the mutant generator changes (pinned scorer sha, or `gym-failure-tasks.ts targetMutants`), a new monitoring **epoch** starts at the change.
-  - Cohorts are not pooled across epochs. Each epoch restarts the look schedule, and the change needs a dated amendment.
-  - If the scorer stops producing values (≥ 7 d with none), the monitor pauses. It is not switched to another label.
-- **Looks.** Cumulative within the epoch, at promotion + 28, 56, 84 and 112 d.
-  - The roadmap's +14 d point is recorded descriptively and decides nothing: about 4 holdout roots will exist by then.
-  - A look decides only when n_holdout ≥ 8 scored. The holdout accrues 0.24–0.30 scored per day: about 7–8 by day 28, 20–25 by day 84 and 27–33 by day 112.
-- **Revert** (`STR_PROD_001_MODE=off`, plus a NEGATIVE_EVIDENCE entry "promoted, did not hold") when either holds:
-  - at a deciding look, the cumulative Δ̂(default − holdout) ≤ 0;
-  - a harm rule H1–H5 trips with default versus holdout.
-- **Cumulative revert probability** over the four looks (simulation, σ 0.35, holdout 0.24–0.30 per day):
+- **At most 2 epochs.** A third scorer or generator change ends automatic monitoring for good. The holdout stays as a descriptive comparison, and any revert after that is an operator decision through an amendment.
 
-  | true effect | probability of a revert |
-  |---|---|
-  | +0.20 | 0.04 (false revert) |
-  | +0.15 | 0.10–0.11 (false revert) |
-  | +0.10 | 0.24 (false revert) |
-  | 0 | 0.68–0.70 (correct revert) |
-  | −0.10 | 0.96–0.97 (correct revert) |
+**Looks, relative to each epoch start only.**
+- The looks of epoch k fall at exactly E_k + 28 d, E_k + 56 d, E_k + 84 d and E_k + 112 d (calendar-independent: 86 400 000 ms per day).
+- Each look reads cohort k, cumulatively over the roots that triggered before the look instant.
+- A look decides only when n_holdout ≥ 8 scored. A look that falls in a pause (≥ 7 d without any scorer value) is skipped, not postponed.
+- If epoch k + 1 starts before one of epoch k's looks, that look and every later look of epoch k are cancelled, and their error budget is not reused.
+- E_1 + 14 d (the roadmap's 14-day point) is recorded descriptively and decides nothing: about 4 holdout roots will exist by then.
+- The holdout accrues 0.24–0.30 scored roots per day: about 7–8 by +28 d, 20–25 by +84 d and 27–33 by +112 d.
 
-- **After day 112.** The holdout stays as the standing comparison for the learning ledger, but automatic reverts stop. A later revert is an operator decision through an amendment.
+**Revert rules at a deciding look.** Revert means `STR_PROD_001_MODE=off`, plus a NEGATIVE_EVIDENCE entry "promoted, did not hold". It happens when any rule holds:
+- **R-eff.** The cumulative Δ̂(default − holdout) ≤ 0.
+  - Unscored roots are imputed against the default: default = 0, holdout = 1.
+  - That imputation applies only when either cohort's missing share is > 5 %. Otherwise R-eff uses the scored roots.
+- **R-harm.** One of the statistical harm rules trips, each tested at one-sided **α_H / 24 = 0.025 / 24 ≈ 0.00104**. The 24 is 3 rules × 4 looks × 2 epochs.
+  - **H1′.** Verified-rate Δ(default − holdout) ≤ −0.15 **and** the matching one-sided Newcombe bound < 0.
+  - **H3′.** The settlement-`fail` rate is ≥ 2× the holdout's **and** the one-sided Fisher exact p < α_H / 24.
+  - **H4′.** The tokens-per-verified ratio's one-sided lower bound is > 3.0.
+- **R-incident.** H2 or H5 (scope violation or write outside the worktree) is an incident and reverts at once at any time. It is not a statistical test.
+
+**Lifetime false-revert risk** (true effect > 0, no real harm, no incident):
+- **R-eff.** Per epoch, by simulation (σ 0.35, holdout 0.24–0.30 per day, 4 looks): 0.04 at +0.20, 0.10–0.11 at +0.15, 0.24 at +0.10. Over the at most 2 disjoint epochs: 1 − (1 − p)².
+- **R-harm.** At most α_H = 0.025 for the whole lifetime, by the union bound over the 24 tests.
+
+| true effect | R-eff, lifetime (≤ 2 epochs) | R-harm, lifetime | **total lifetime false-revert (union bound)** |
+|---|---|---|---|
+| +0.20 | ≤ 0.08 | ≤ 0.025 | **≤ 0.10** |
+| +0.15 | ≤ 0.21 | ≤ 0.025 | **≤ 0.24** |
+| +0.10 | ≤ 0.42 | ≤ 0.025 | **≤ 0.45** |
+
+**Correct-revert probability** (R-eff alone, one epoch): 0.68–0.70 at a true 0, and 0.96–0.97 at −0.10.
+
+**After the last look of the last epoch** (E_k + 112 d), the holdout stays as the standing comparison for the learning ledger, but
+automatic reverts stop. A later revert is an operator decision through an amendment.
 
 ## 9. Preconditions (gate 0): all hold before `STR_PROD_001_MODE=experiment`
 
@@ -443,4 +472,4 @@ would hide a real WIP breach, and that is not allowed here.
 Amendments are appended below the fingerprint line, dated, with a reason. They never change the text above it.
 
 ---
-PREREG_SHA256: 9871413067c0c53888b84b5a44c0029813a1970fe24433fbc86a98d98280f187 (sha256 of everything above this line; computed 2026-10-29 for revision r2, before any STR-001-PROD runner, flag or enrolled goal existed)
+PREREG_SHA256: 0b5d6ea568b5afedfb6581da5fd48a91b648354928972eee72a349877f736cc8 (sha256 of everything above this line; computed 2026-10-29 for revision r3, before any STR-001-PROD runner, flag or enrolled goal existed)
