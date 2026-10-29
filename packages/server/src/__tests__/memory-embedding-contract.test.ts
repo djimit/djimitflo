@@ -105,6 +105,27 @@ describe('checkCollection', () => {
     });
   });
 
+  it('returns unavailable (not throw) when result is absent', async () => {
+    stubFetch(async () => jsonRes({}));
+    await expect(checkCollection(BASE, COLLECTION, HEADERS, DIM, MODEL)).resolves.toEqual({
+      status: 'unavailable', reason: 'collection vector size unknown',
+    });
+  });
+
+  it('returns unavailable (not throw) when config is absent', async () => {
+    stubFetch(async () => jsonRes({ result: {} }));
+    await expect(checkCollection(BASE, COLLECTION, HEADERS, DIM, MODEL)).resolves.toEqual({
+      status: 'unavailable', reason: 'collection vector size unknown',
+    });
+  });
+
+  it('returns unavailable (not throw) when params is null', async () => {
+    stubFetch(async () => jsonRes({ result: { config: { params: null } } }));
+    await expect(checkCollection(BASE, COLLECTION, HEADERS, DIM, MODEL)).resolves.toEqual({
+      status: 'unavailable', reason: 'collection vector size unknown',
+    });
+  });
+
   it('returns unavailable with a dimension-mismatch reason naming both sizes', async () => {
     stubFetch(async () => jsonRes(collectionInfo(768)));
     const state = await checkCollection(BASE, COLLECTION, HEADERS, DIM, MODEL);
