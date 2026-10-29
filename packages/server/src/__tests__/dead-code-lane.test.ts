@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -79,6 +79,22 @@ describe('dead-code candidates', () => {
     expect(units.map((u) => u.id)).toEqual([`${S}/services/orphan.ts`]);
     expect(skipped).toContainEqual({ id: 'routes:cold', reason: 'insufficient_evidence: usage telemetry incomplete since 2026-09-28 (3 count(s) dropped)' });
     expect(skipped).toContainEqual({ id: 'routes:hot', reason: expect.stringContaining('5 hit(s)') }); // a hit is still a hit
+  });
+
+  it("reads the live collector's pending counts: a failed flush is insufficient evidence, a flushed hit is a hit (#1084 review)", () => {
+    const live = new UsageTelemetry(db, 60_000); // the API middleware's collector (routes/index.ts)
+    try {
+      live.count('api', '/api/cold/a', 'GET', '2xx'); // pending in its buffer; nothing persisted, no usage_loss row
+      const transaction = vi.spyOn(db, 'transaction').mockImplementation(() => { throw new Error('SQLITE_BUSY: database is locked'); });
+      const { units, skipped } = discoverDeadCode(repo, db, NOW);
+      transaction.mockRestore();
+      expect(db.prepare('SELECT COUNT(*) AS n FROM usage_loss').get()).toEqual({ n: 0 });
+      expect(units.map((u) => u.id)).not.toContain('routes:cold');
+      expect(skipped).toContainEqual({ id: 'routes:cold', reason: expect.stringMatching(/^insufficient_evidence: /) });
+
+      const flushed = discoverDeadCode(repo, db, NOW); // the database takes writes again: the pending hit lands first
+      expect(flushed.skipped).toContainEqual({ id: 'routes:cold', reason: expect.stringContaining('1 hit(s)') });
+    } finally { live.stop(); }
   });
 
   it('skips a route group whose API path the server itself names (a self-call the import graph cannot see)', () => {
