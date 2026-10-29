@@ -76,7 +76,7 @@ describe('summarizeUsage', () => {
 
 describe('learningCurveView', () => {
   let db: Database.Database;
-  beforeEach(() => { db = new Database(':memory:'); db.exec('CREATE TABLE loop_runs (id TEXT PRIMARY KEY, loop_name TEXT, status TEXT, created_at TEXT, metadata TEXT)'); });
+  beforeEach(() => { db = new Database(':memory:'); db.exec('CREATE TABLE loop_runs (id TEXT PRIMARY KEY, loop_name TEXT, status TEXT, created_at TEXT, metadata TEXT); CREATE TABLE worker_leases (loop_run_id TEXT, role TEXT, runtime TEXT)'); });
   afterEach(() => db.close());
 
   const insertRun = (id: string, loopName: string, status: string, msAgo: number, metadata: Record<string, unknown> = {}) =>

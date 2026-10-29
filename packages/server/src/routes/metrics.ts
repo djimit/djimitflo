@@ -8,6 +8,7 @@
  */
 
 import { timingSafeEqual } from 'crypto';
+import { realRunIdSql, realRunSql } from '../services/synthetic-runs';
 import type { Request, Response } from 'express';
 import type { Database } from 'better-sqlite3';
 import rateLimit from 'express-rate-limit';
@@ -37,10 +38,10 @@ function authorized(req: Request): boolean {
 }
 
 export function createMetricsHandler(db: Database, getWsClients?: () => number) {
-  const statusGauge = (name: string, help: string, table: string): string[] => {
+  const statusGauge = (name: string, help: string, table: string, where = '1'): string[] => {
     const lines = [`# HELP ${name} ${help}`, `# TYPE ${name} gauge`];
     try {
-      const rows = db.prepare(`SELECT status, COUNT(*) AS n FROM ${table} GROUP BY status`).all() as Array<{ status: string; n: number }>;
+      const rows = db.prepare(`SELECT status, COUNT(*) AS n FROM ${table} WHERE ${where} GROUP BY status`).all() as Array<{ status: string; n: number }>;
       for (const row of rows) lines.push(`${name}{status="${escapeLabel(String(row.status))}"} ${row.n}`);
     } catch { /* table absent on this deploy — emit the header only */ }
     return lines;
@@ -59,8 +60,9 @@ export function createMetricsHandler(db: Database, getWsClients?: () => number) 
     const lines: string[] = [
       ...statusGauge('djimitflo_tasks', 'Tasks by status', 'tasks'),
       ...statusGauge('djimitflo_agents', 'Agents by status', 'agents'),
-      ...statusGauge('djimitflo_loop_runs', 'Loop runs by status', 'loop_runs'),
-      ...statusGauge('djimitflo_worker_leases', 'Worker leases by status', 'worker_leases'),
+      // synthetic PR-review bookkeeping runs (and their leases) are not loop work
+      ...statusGauge('djimitflo_loop_runs', 'Loop runs by status', 'loop_runs', realRunSql()),
+      ...statusGauge('djimitflo_worker_leases', 'Worker leases by status', 'worker_leases', realRunIdSql('loop_run_id')),
       ...statusGauge('djimitflo_approvals', 'Approvals by status', 'approvals'),
       ...statusGauge('djimitflo_work_items', 'Work items by status', 'work_items'),
     ];

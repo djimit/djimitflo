@@ -1,4 +1,5 @@
 import type { Database } from 'better-sqlite3';
+import { realRunSql } from './synthetic-runs';
 
 /**
  * Evidence pack for Agent Commons rounds (plan E9d). Prod 2026-09-23: residents may not read files or call tools, so they
@@ -21,7 +22,7 @@ export function buildEvidencePack(db: Database, days = 7): EvidencePack {
   const safe = <T>(fn: () => T, fallback: T): T => { try { return fn(); } catch { return fallback; } };
   const count = (sql: string) => safe(() => (db.prepare(sql).get(since) as { n: number }).n, 0);
   const gates = new Map<string, number>();
-  for (const row of safe(() => db.prepare("SELECT gates_json FROM loop_runs WHERE status IN ('blocked','failed') AND updated_at >= ?").all(since) as Array<{ gates_json: string | null }>, [])) {
+  for (const row of safe(() => db.prepare(`SELECT gates_json FROM loop_runs WHERE status IN ('blocked','failed') AND updated_at >= ? AND ${realRunSql()}`).all(since) as Array<{ gates_json: string | null }>, [])) {
     let list: Array<{ name?: string; status?: string }> = [];
     try { list = JSON.parse(row.gates_json || '[]'); } catch { /* skip */ }
     for (const g of list) if (g.status === 'fail' && g.name) gates.set(g.name, (gates.get(g.name) ?? 0) + 1);
@@ -40,7 +41,7 @@ export function buildEvidencePack(db: Database, days = 7): EvidencePack {
       parked: count("SELECT COUNT(*) n FROM self_improvements WHERE status = 'needs_more_evidence' AND updated_at >= ?"),
       needs_grounding: count("SELECT COUNT(*) n FROM self_improvements WHERE status = 'needs_grounding' AND updated_at >= ?"),
     },
-    loop_runs: Object.fromEntries(safe(() => db.prepare('SELECT status, COUNT(*) n FROM loop_runs WHERE updated_at >= ? GROUP BY status').all(since) as Array<{ status: string; n: number }>, []).map((r) => [r.status, r.n])),
+    loop_runs: Object.fromEntries(safe(() => db.prepare(`SELECT status, COUNT(*) n FROM loop_runs WHERE updated_at >= ? AND ${realRunSql()} GROUP BY status`).all(since) as Array<{ status: string; n: number }>, []).map((r) => [r.status, r.n])),
     top_failing_gates: top(gates, 'gate'),
     failure_causes: top(causes, 'cause'),
   };
