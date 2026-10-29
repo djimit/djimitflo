@@ -241,6 +241,12 @@ export class GithubPrReviewService {
       AND id = (SELECT goal_id FROM loop_runs WHERE id = ? AND status = 'cancelled')`).run(now, loopRunId);
   }
 
+  /** The review ended before its leases ran: each still 'prepared' lease of the run is cancelled with `reason`. */
+  private cancelPreparedLeases(loopRunId: string, reason: string): void {
+    const prepared = this.db.prepare("SELECT id FROM worker_leases WHERE loop_run_id = ? AND status = 'prepared'").all(loopRunId) as Array<{ id: string }>;
+    for (const lease of prepared) this.loops.updateWorkerLeaseStatus(lease.id, 'cancelled', { cancellation_reason: reason, cancelled_at: new Date().toISOString() });
+  }
+
   /** Every `gh` call: a failure is GithubUnavailableError (the message is kept for the review row and audit). */
   private gh(args: string[], options: { input?: string; maxBuffer?: number } = {}): string {
     try {
@@ -350,6 +356,9 @@ export class GithubPrReviewService {
         event: { eventType: 'integration.reviewed', resourceType: 'loop_run', riskLevel: 'low' },
       });
     } catch (error) {
+      // the maker lease is inserted before the git steps and the first head check: never leave it 'prepared' for ever
+      this.cancelPreparedLeases(input.loopRunId, error instanceof PrHeadMovedError ? 'pr_review_superseded'
+        : error instanceof GithubUnavailableError ? 'pr_review_github_unavailable' : 'pr_review_failed');
       if (error instanceof PrHeadMovedError) {
         this.recordSuperseded(reviewId, input, error, packet, { runtime });
         return;
