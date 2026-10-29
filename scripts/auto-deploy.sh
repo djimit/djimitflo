@@ -94,6 +94,40 @@ deploy_script_gate() {
 deploy() { probe DEPLOY deploy_commit "$1"; }
 deploy_commit() { DEPLOY_ROOT="$ROOT" bash "$INSTALLED" "$1" --apply --local; }
 
+# S3 (fleet ≠ main): the event bus and agent registry under /srv are deployed by hand, outside the build receipt. Every run
+# (also while paused) compares the sha256 of each service's deployed *.py with infra/<service>/*.py at the running commit
+# (git objects of its runtime-source clone, read as the clone's owner: root never runs git in a repo the container can
+# write) and writes $ROOT/data/fleet-drift.json for /health.fleet_drift.
+# Services are `name=deployed_dir=repo_path`, space-separated; a service whose deployed dir is absent here is skipped.
+# A commit tree that cannot be read writes nothing: unknown is not "no drift".
+FLEET_SERVICES="${AUTO_DEPLOY_FLEET_SERVICES:-event-bus=/srv/event-bus=infra/event-bus agent-registry=/srv/agent-registry=infra/agent-registry}"
+sha256_stdin() { if command -v sha256sum >/dev/null; then sha256sum; else shasum -a 256; fi | cut -d' ' -f1; }
+fleet_drift() {
+  local commit="$1" repo="${AUTO_DEPLOY_FLEET_REPO:-$ROOT/runtime-source-${1:0:7}}" spec name dir src f deployed main json="" sep="" own tmp
+  [ -d "$ROOT/data" ] && [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || return 0
+  local g=(git -C "$repo")
+  if [ "$(id -u)" = 0 ] && [ -d "$repo" ]; then
+    own="$(stat -c '%u:%g' "$repo")"
+    [ "${own%%:*}" = 0 ] || g=(env HOME=/nonexistent GIT_CONFIG_NOSYSTEM=1 setpriv --reuid="${own%%:*}" --regid="${own##*:}" --clear-groups git -C "$repo")
+  fi
+  for spec in $FLEET_SERVICES; do
+    IFS='=' read -r name dir src <<<"$spec"
+    [ -d "$dir" ] || continue
+    "${g[@]}" cat-file -e "$commit^{commit}" 2>/dev/null || { log "fleet drift: commit ${commit:0:8} not readable in $repo — not checked"; return 0; }
+    deployed="$(for f in "$dir"/*.py; do [ -f "$f" ] || continue; printf '%s %s\n' "${f##*/}" "$(sha256_file "$f")"; done | sort | sha256_stdin)"
+    main="$("${g[@]}" ls-tree "$commit" "$src/" | while read -r _ type oid f; do
+      [ "$type" = blob ] && [[ "$f" == *.py ]] || continue; printf '%s %s\n' "${f##*/}" "$("${g[@]}" cat-file blob "$oid" | sha256_stdin)"; done | sort | sha256_stdin)"
+    json+="$sep\"$name\":{\"deployed\":\"$deployed\",\"main\":\"$main\",\"match\":$([ "$deployed" = "$main" ] && echo true || echo false)}"; sep=","
+    [ "$deployed" = "$main" ] || log "fleet drift: $name ($dir) differs from $src at ${commit:0:8}"
+  done
+  [ -n "$json" ] || return 0
+  # the data dir is writable by the container: a fresh mktemp file (no pre-planted path is followed), renamed into place
+  tmp="$(mktemp "$ROOT/data/.fleet-drift.XXXXXX")" || return 1
+  printf '{"checked_at":"%s","commit":"%s","services":{%s}}\n' "$(date -u +%FT%TZ)" "$commit" "$json" > "$tmp" \
+    && chmod 0644 "$tmp" && mv -f "$tmp" "$ROOT/data/fleet-drift.json" || { rm -f "$tmp"; return 1; }
+}
+
+fleet_drift "$(current_sha)" || log "fleet drift check failed"
 [ -e "$ROOT/AUTO_DEPLOY_DISABLED" ] && { log "disabled by kill switch"; exit 0; }
 post_deploy_check
 SHA="$(main_sha)"; CUR="$(current_sha)"

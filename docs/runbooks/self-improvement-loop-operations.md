@@ -340,6 +340,10 @@ auto-deploy pauses with the reason in `AUTO_DEPLOY_DISABLED` until an operator h
   `scripts/install-deploy-script.sh <sha>` (dry run, shows the diff) and `scripts/install-deploy-script.sh <sha> --apply`; then
   remove `/srv/djimitflo/AUTO_DEPLOY_DISABLED` if auto-deploy paused for it. Without an installed copy auto-deploy refuses to deploy.
 - Stop: `touch /srv/djimitflo/AUTO_DEPLOY_DISABLED` (remove the file to resume). Log: `journalctl -u djimitflo-auto-deploy`.
+- Fleet drift: every run (also while paused) compares the sha256 of `/srv/event-bus/*.py` and `/srv/agent-registry/*.py` with
+  `infra/{event-bus,agent-registry}/*.py` at the running commit and writes `/srv/djimitflo/data/fleet-drift.json`
+  (`AUTO_DEPLOY_FLEET_SERVICES` = `name=deployed_dir=repo_path ...`). `/health.fleet_drift` lists the drifting services; `null`
+  means not checked (no file), which is not the same as no drift.
 
 ## Operator push (Telegram) — UX-12 / UX-13
 

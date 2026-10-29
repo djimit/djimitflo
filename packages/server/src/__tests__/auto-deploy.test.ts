@@ -247,3 +247,42 @@ it('S2: install-deploy-script.sh is a dry run by default and records the source 
   expect(record).toMatch(/^sha256=[0-9a-f]{64}$/m);
   expect(spawnSync('bash', [installer, 'not-a-sha'], { env: { ...process.env, DEPLOY_ROOT: root }, encoding: 'utf8' }).status).not.toBe(0);
 });
+
+// S3 (fleet ≠ main): the event bus and agent registry under /srv are deployed by hand, outside the build receipt. Every
+// run compares the sha256 of their deployed *.py with infra/<service>/*.py at the running commit, into the data mount.
+it('S3: writes fleet-drift.json with the service whose deployed sources differ from the running commit', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-fleet-'));
+  const write = (file: string, text: string) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
+  const repo = path.join(tmp, 'repo');
+  write(path.join(repo, 'infra/event-bus/bus.py'), 'def publish(): dedupe()\n');
+  write(path.join(repo, 'infra/event-bus/main.py'), 'app = 1\n');
+  write(path.join(repo, 'infra/event-bus/Dockerfile'), 'FROM python\n');
+  write(path.join(repo, 'infra/agent-registry/main.py'), 'registry = 1\n');
+  write(path.join(repo, 'infra/agent-registry/tests/test_main.py'), 'def test(): pass\n');
+  const git = (...args: string[]) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' }).trim();
+  git('init', '-q'); git('add', '.'); git('-c', 'user.email=t@example.invalid', '-c', 'user.name=t', 'commit', '-qm', 'fixture');
+  const commit = git('rev-parse', 'HEAD');
+  // deployed: event-bus/bus.py is an older copy (one changed file); agent-registry matches; a third service is not on this host
+  write(path.join(tmp, 'srv/event-bus/bus.py'), 'def publish(): pass\n');
+  write(path.join(tmp, 'srv/event-bus/main.py'), 'app = 1\n');
+  write(path.join(tmp, 'srv/agent-registry/main.py'), 'registry = 1\n');
+  const services = `event-bus=${tmp}/srv/event-bus=infra/event-bus agent-registry=${tmp}/srv/agent-registry=infra/agent-registry absent=${tmp}/srv/absent=infra/absent`;
+  const root = path.join(tmp, 'root'); fs.mkdirSync(path.join(root, 'data'), { recursive: true });
+  const at = (sha: string, repoDir = repo) => run({ AD_MAIN_SHA: `printf '${sha}\\trefs/heads/main\\n'`, AD_CURRENT_SHA: `echo ${sha}`,
+    AUTO_DEPLOY_FLEET_SERVICES: services, AUTO_DEPLOY_FLEET_REPO: repoDir }, root);
+  expect(at(commit)).toContain('up to date');
+  const drift = JSON.parse(fs.readFileSync(path.join(root, 'data', 'fleet-drift.json'), 'utf8'));
+  expect(drift.commit).toBe(commit);
+  expect(Number.isNaN(Date.parse(drift.checked_at))).toBe(false);
+  expect(Object.keys(drift.services).sort()).toEqual(['agent-registry', 'event-bus']);
+  expect(drift.services['event-bus']).toMatchObject({ match: false });
+  expect(drift.services['event-bus'].deployed).toMatch(/^[0-9a-f]{64}$/);
+  expect(drift.services['event-bus'].main).toMatch(/^[0-9a-f]{64}$/);
+  expect(drift.services['event-bus'].deployed).not.toBe(drift.services['event-bus'].main);
+  expect(drift.services['agent-registry'].match).toBe(true);
+  expect(drift.services['agent-registry'].deployed).toBe(drift.services['agent-registry'].main);
+  // a commit tree that cannot be read is not "no drift": nothing is written
+  fs.rmSync(path.join(root, 'data', 'fleet-drift.json'));
+  at(commit, path.join(tmp, 'no-such-repo'));
+  expect(fs.existsSync(path.join(root, 'data', 'fleet-drift.json'))).toBe(false);
+});
