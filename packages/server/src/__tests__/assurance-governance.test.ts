@@ -60,6 +60,7 @@ describe('AgentAssuranceService Governance', () => {
     }));
     process.env.OPENMYTHOS_CORPUS_PATH = corpusPath;
     process.env.OPENMYTHOS_SUBJECT_MODEL_DIGEST = 'subject-digest';
+    process.env.OLLAMA_URL = 'http://ollama.test:11434'; // M2d: no workstation default any more
     process.env.OPENMYTHOS_JUDGE_MODEL_DIGEST = 'judge-digest';
 
     service = new AgentAssuranceService(db);
@@ -74,6 +75,7 @@ describe('AgentAssuranceService Governance', () => {
     rmSync(tempDir, { recursive: true, force: true });
     delete process.env.OPENMYTHOS_CORPUS_PATH;
     delete process.env.OPENMYTHOS_SUBJECT_MODEL_DIGEST;
+    delete process.env.OLLAMA_URL;
     delete process.env.OPENMYTHOS_JUDGE_MODEL_DIGEST;
     vi.restoreAllMocks();
   });

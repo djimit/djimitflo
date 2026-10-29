@@ -62,6 +62,7 @@ it('UX-18: content safety records one ledger row per verdict, with the db it alr
 });
 
 it('UX-18: council model calls and resident calls are recorded with their consumer and tokens', async () => {
+  vi.stubEnv('OLLAMA_URL', 'http://ollama.test:11434'); // M2d: no workstation default any more
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ response: 'perspective', eval_count: 42 })));
   const council = new CouncilOrchestrator(db) as unknown as { callModel: (m: unknown, p: string) => Promise<{ content: string }> };
   expect((await council.callModel({ provider: 'ollama', model_name: 'glm-5.3:cloud' }, PROMPT_MARKER)).content).toBe('perspective');
