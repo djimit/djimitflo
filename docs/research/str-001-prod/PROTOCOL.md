@@ -12,8 +12,11 @@ once every precondition in §9 holds.
 - **Draft r2** (fingerprint `98714130…f187`, commit 28437943) had two problems:
   - its period weights used scored counts and dropped small periods;
   - its holdout had no lifetime false-revert accounting and no epoch-relative dates.
+- **Draft r3** (fingerprint `0b5d6ea5…6cc8`, commit 007d9673) had two problems:
+  - its holdout revert rule imputed missing scores against the default;
+  - its epoch-cap wording was ambiguous.
 
-Only this revision r3's fingerprint is binding.
+Only this revision r4's fingerprint is binding.
 
 Sources:
 - STR-001 Stage A (`docs/research/eco/STR-001_STAGE_A_PROTOCOL.md`, sha256 `87c8927f…3a47`;
@@ -384,7 +387,7 @@ Nothing else changes.
 - **Cohort k** is the roots that first trigger in [E_k, E_{k+1}): the default cohort is hbucket ≥ 10, the holdout is hbucket < 10.
   - Cohorts are never pooled across epochs.
   - Experiment-period roots are never part of the monitor.
-- **At most 2 epochs.** A third scorer or generator change ends automatic monitoring for good. The holdout stays as a descriptive comparison, and any revert after that is an operator decision through an amendment.
+- **At most 2 epochs.** The **second** scorer or generator change after promotion would start epoch 3, so it ends automatic monitoring for good. The holdout stays as a descriptive comparison, and any revert after that is an operator decision through an amendment.
 
 **Looks, relative to each epoch start only.**
 - The looks of epoch k fall at exactly E_k + 28 d, E_k + 56 d, E_k + 84 d and E_k + 112 d (calendar-independent: 86 400 000 ms per day).
@@ -395,9 +398,9 @@ Nothing else changes.
 - The holdout accrues 0.24–0.30 scored roots per day: about 7–8 by +28 d, 20–25 by +84 d and 27–33 by +112 d.
 
 **Revert rules at a deciding look.** Revert means `STR_PROD_001_MODE=off`, plus a NEGATIVE_EVIDENCE entry "promoted, did not hold". It happens when any rule holds:
-- **R-eff.** The cumulative Δ̂(default − holdout) ≤ 0.
-  - Unscored roots are imputed against the default: default = 0, holdout = 1.
-  - That imputation applies only when either cohort's missing share is > 5 %. Otherwise R-eff uses the scored roots.
+- **R-eff.** The cumulative Δ̂(default − holdout) ≤ 0, over the scored roots. Nothing is imputed.
+  - If either cohort's missing share is > 5 % at a look, the look **pauses** for R-eff: no R-eff decision is made at that look, and it is skipped, not postponed.
+  - R-harm and R-incident do not use the scores, so they still apply at that look.
 - **R-harm.** One of the statistical harm rules trips, each tested at one-sided **α_H / 24 = 0.025 / 24 ≈ 0.00104**. The 24 is 3 rules × 4 looks × 2 epochs.
   - **H1′.** Verified-rate Δ(default − holdout) ≤ −0.15 **and** the matching one-sided Newcombe bound < 0.
   - **H3′.** The settlement-`fail` rate is ≥ 2× the holdout's **and** the one-sided Fisher exact p < α_H / 24.
@@ -405,16 +408,23 @@ Nothing else changes.
 - **R-incident.** H2 or H5 (scope violation or write outside the worktree) is an incident and reverts at once at any time. It is not a statistical test.
 
 **Lifetime false-revert risk** (true effect > 0, no real harm, no incident):
-- **R-eff.** Per epoch, by simulation (σ 0.35, holdout 0.24–0.30 per day, 4 looks): 0.04 at +0.20, 0.10–0.11 at +0.15, 0.24 at +0.10. Over the at most 2 disjoint epochs: 1 − (1 − p)².
-- **R-harm.** At most α_H = 0.025 for the whole lifetime, by the union bound over the 24 tests.
+- **How R-eff per epoch was computed.**
+  - Assumption: missing scores are missing completely at random (MCAR), at the sample sizes stated above. Missingness then only lowers n, and a look with > 5 % missing pauses.
+  - Model: per-root values normal with σ 0.35. Poisson accrual: holdout 0.24 or 0.30 scored per day, default 9 × that.
+  - Rule: looks at +28, +56, +84 and +112 d; a look decides at n_holdout ≥ 8; revert when the cumulative Δ̂ ≤ 0.
+  - Run: 200 000 replications per (rate, δ) cell, numpy `default_rng(1)`, cells run in sequence.
+  - Result, the larger of the two rates: 0.045 at +0.20, 0.111 at +0.15, 0.240 at +0.10.
+- **R-eff, lifetime.** A plain union bound over the at most 2 epochs gives 2 × the per-epoch value. No independence is assumed.
+- **R-harm, lifetime.** At most α_H = 0.025, by the union bound over the 24 tests.
+- **Total.** The union bound R-eff + R-harm, rounded up:
 
-| true effect | R-eff, lifetime (≤ 2 epochs) | R-harm, lifetime | **total lifetime false-revert (union bound)** |
+| true effect | R-eff, lifetime (2 × per epoch) | R-harm, lifetime | **total lifetime false-revert (union bound)** |
 |---|---|---|---|
-| +0.20 | ≤ 0.08 | ≤ 0.025 | **≤ 0.10** |
-| +0.15 | ≤ 0.21 | ≤ 0.025 | **≤ 0.24** |
-| +0.10 | ≤ 0.42 | ≤ 0.025 | **≤ 0.45** |
+| +0.20 | ≤ 0.09 | ≤ 0.025 | **≤ 0.12** |
+| +0.15 | ≤ 0.23 | ≤ 0.025 | **≤ 0.25** |
+| +0.10 | ≤ 0.48 | ≤ 0.025 | **≤ 0.51** |
 
-**Correct-revert probability** (R-eff alone, one epoch): 0.68–0.70 at a true 0, and 0.96–0.97 at −0.10.
+**Correct-revert probability** (R-eff alone, one epoch, same simulation): 0.68–0.70 at a true 0, and 0.96–0.97 at −0.10.
 
 **After the last look of the last epoch** (E_k + 112 d), the holdout stays as the standing comparison for the learning ledger, but
 automatic reverts stop. A later revert is an operator decision through an amendment.
@@ -471,5 +481,6 @@ would hide a real WIP breach, and that is not allowed here.
 
 Amendments are appended below the fingerprint line, dated, with a reason. They never change the text above it.
 
+
 ---
-PREREG_SHA256: 0b5d6ea568b5afedfb6581da5fd48a91b648354928972eee72a349877f736cc8 (sha256 of everything above this line; computed 2026-10-29 for revision r3, before any STR-001-PROD runner, flag or enrolled goal existed)
+PREREG_SHA256: 8d31b31284a088b2d978591cbe2d207ff340cfbb29b366d0654a9fcae2a350c0 (sha256 of everything above this line; computed 2026-10-29 for revision r4, before any STR-001-PROD runner, flag or enrolled goal existed)
