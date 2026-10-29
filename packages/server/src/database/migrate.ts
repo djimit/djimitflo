@@ -2014,9 +2014,13 @@ export function runMigrations(db: BetterSqlite3Database) {
  * executor's finally: stop run, superseded evolve siblings, stale/zombie/hygiene sweeps and boot recovery settle prepared
  * leases with their own UPDATEs. Maker traces are `loop-<run>-worker-<lease>` (executeMaker), reviewer traces (checker /
  * security checker) `loop-<run>-checker-<lease>` (executeChecker). End time = the lease's updated_at (normalised to ISO),
- * so the span ends at the settlement. Only still-open spans of that one lease are touched; invalid span metadata is left
- * as is, so the trigger cannot fail a lease update. Created last: a worker_leases rebuild drops it. Re-created on every
- * boot so a database that has the maker-only body gets the reviewer pattern too.
+ * so the span ends at the settlement. Only still-open spans of that one lease are touched. It cannot fail a lease update
+ * on bad data: invalid span metadata is left as is (json_valid guard) and a NULL / unparsable updated_at falls back to
+ * now. It CAN fail on schema: while it exists, every worker_leases status UPDATE needs agent_trace_spans, so a migration
+ * that drops (or renames away) agent_trace_spans without also dropping worker_leases must DROP TRIGGER
+ * trg_worker_lease_settles_trace first (rebuildLoopTables drops worker_leases in the same exec, which drops the trigger).
+ * Created last: a worker_leases rebuild drops it. Re-created on every boot so a database that has the maker-only body
+ * gets the reviewer pattern too.
  * Down: DROP TRIGGER IF EXISTS trg_worker_lease_settles_trace;
  */
 export function ensureMakerSpanSettlement(db: BetterSqlite3Database): void {
