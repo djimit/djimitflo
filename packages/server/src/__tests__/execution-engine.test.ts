@@ -716,8 +716,11 @@ describe('ExecutionEngine', () => {
       expect(fitness.reliability).toBeNull();
     });
 
+    // fitness reads only delivered attribution (INT-004 follow-up), so the verification -> fitness tests deliver the skill
+    const DELIVERED = `Run the bounded test.\n\n${SKILL_TEXT}`;
+
     it('records success only when the task has a passed independent verification', async () => {
-      const row = await runSkillTask({ duringRun: (id) => testResult(id, 'info') });
+      const row = await runSkillTask({ duringRun: (id) => testResult(id, 'info'), description: DELIVERED });
       expect(row.success).toBe(1);
       expect(row.refs).toContain('verification:test_result:passed');
       expect(row.refs.some((r: string) => r.startsWith('outcome_class:'))).toBe(false);
@@ -725,7 +728,7 @@ describe('ExecutionEngine', () => {
     });
 
     it('records a completed process whose verification failed as a failure', async () => {
-      const row = await runSkillTask({ duringRun: (id) => { testResult(id, 'info'); testResult(id, 'error'); } });
+      const row = await runSkillTask({ duringRun: (id) => { testResult(id, 'info'); testResult(id, 'error'); }, description: DELIVERED });
       expect(row.success).toBe(0);
       expect(row.refs).toEqual(expect.arrayContaining(['verification:test_result:failed', 'outcome_class:regressed']));
       expect(new SkillEvolutionEngine(db).measuredTraits('.opencode.skills.running-tests').reliability).toBe(0);
@@ -747,6 +750,7 @@ describe('ExecutionEngine', () => {
       const row = await runSkillTask({
         duringRun: (id) => testResult(id, 'info'),
         result: { status: 'completed', message: 'ok', stdout: '', stderr: '', metrics: { executionTimeMs: 1 } },
+        description: DELIVERED,
       });
       expect(row.tokens_used).toBeNull();
       const traits = new SkillEvolutionEngine(db).measuredTraits('.opencode.skills.running-tests');
@@ -777,6 +781,24 @@ describe('ExecutionEngine', () => {
         db.prepare("DELETE FROM execution_evidence WHERE task_id = 'task-skill' AND json_extract(metadata, '$.reason') = 'skill_delivery_receipt'").run();
       } });
       expect(row.refs).toEqual(expect.arrayContaining(['skill_delivery:unknown', 'skill_attribution:unverified']));
+    });
+
+    it('leaves unverified skill attribution out of skill fitness; the outcome stays stored', async () => {
+      const engine = () => new SkillEvolutionEngine(db).measuredTraits('.opencode.skills.running-tests');
+      for (const duringRun of [(id: string) => testResult(id, 'info'), (id: string) => testResult(id, 'error')]) {
+        db.prepare("DELETE FROM skill_outcomes WHERE task_id = 'task-skill'").run();
+        db.prepare("DELETE FROM tasks WHERE id = 'task-skill'").run();
+        const row = await runSkillTask({ duringRun }); // assigned, not delivered
+        expect(row.refs).toContain('skill_attribution:unverified');
+        expect(engine()).toMatchObject({ reliability: null, efficiency: null }); // no observation of the skill, neither 1 nor 0
+      }
+      expect(db.prepare("SELECT COUNT(*) AS n FROM skill_outcomes WHERE skill_id = '.opencode.skills.running-tests'").get()).toEqual({ n: 1 });
+      // unknown delivery (no receipt) is unverified too; a delivered outcome next to it is the only one measured
+      db.prepare(`INSERT INTO skill_outcomes (id, skill_id, success, duration_ms, domain, evidence_refs_json)
+        VALUES ('unknown-delivery', '.opencode.skills.running-tests', 1, 1, 'coding', '["skill_delivery:unknown"]')`).run();
+      db.prepare(`INSERT INTO skill_outcomes (id, skill_id, success, duration_ms, domain, evidence_refs_json)
+        VALUES ('delivered', '.opencode.skills.running-tests', 0, 1, 'coding', '["skill_delivery:delivered"]')`).run();
+      expect(engine().reliability).toBe(0);
     });
 
     it('does not change the assignment text the runtime receives (ACE-001/STE-001/PL-001 prompts stay identical)', async () => {

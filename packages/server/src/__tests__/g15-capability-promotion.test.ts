@@ -148,6 +148,27 @@ describe('G15.2 capability promotion', () => {
     }));
   });
 
+  it('counts only verified skill attribution as promotion evidence (INT-004 follow-up)', () => {
+    svc.createCandidate({
+      id: 'unverified-skill', kind: 'skill', owner: 'test', version: '0.1.0', risk_ceiling: 'low',
+      input_schema_ref: 'none', output_schema_ref: 'none', allowed_actions: ['maker:mock'],
+      forbidden_actions: ['deploy'], required_evidence: ['worker_lease'], eval_threshold: 0.75,
+      removal_strategy: 'disable',
+      metadata: { agent_skill_id: 'unverified-skill', agent_skill_version: '0.1.0', agent_skill_content_hash: 'candidate-hash' },
+    });
+    const evidence = seedSkillEvidence('unverified-skill');
+    // the engine's assigned-but-not-delivered tags: the skill was assigned, the runtime never provably got it
+    db.prepare(`UPDATE skill_outcomes SET evidence_refs_json = '["skill_delivery:assigned","skill_attribution:unverified"]'
+      WHERE skill_id = 'unverified-skill' AND skill_content_hash = 'candidate-hash'`).run();
+
+    expect(() => svc.promoteCapability('unverified-skill', { eval_score: 0.9, ...evidence }))
+      .toThrow('CAPABILITY_PROMOTION_SKILL_OUTCOMES_REQUIRED:candidate=0:baseline=30:minimum=30');
+    expect(svc.skillEvolutionReadiness().find((item) => item.capability_id === 'unverified-skill')).toMatchObject({
+      candidate_runs: 0, evidence_ready: false,
+    });
+    expect(db.prepare("SELECT COUNT(*) AS n FROM skill_outcomes WHERE skill_id = 'unverified-skill'").get()).toEqual({ n: 60 }); // still stored
+  });
+
   it('blocks skill promotion when the training gate fails', () => {
     process.env.DJIMIT_SKILL_TRAINING_EVAL_RUNNER = writeRunner('fail.mjs', 'console.log(JSON.stringify({ passed: false, threshold_failures: ["regression"] })); process.exit(1);\n');
     svc.createCandidate({
