@@ -57,6 +57,14 @@ function readDeployLog(file: string): DeployEvent[] | null {
 export const VALUE_ANOMALY_WINDOW_H = 24;
 /** zero_success: a consumer with at least this many finished attempts in the window and none succeeded */
 export const ZERO_SUCCESS_MIN_ATTEMPTS = 5;
+/**
+ * O1b (re-20261029: the remote checker failed 21/21 with "remote maker needs model …, got ''" but under 5 per 24 h; the
+ * doc-drift prompt hang 10/10): a config-class failure repeats verbatim. zero_success also fires on at least this many failed
+ * leases of one species (maker or reviewer) whose failure_reason shares its first ZERO_SUCCESS_REASON_PREFIX characters,
+ * with no completed lease of that species in the window.
+ */
+export const ZERO_SUCCESS_SAME_REASON_MIN = 3;
+export const ZERO_SUCCESS_REASON_PREFIX = 60;
 /** gate_always_fails: at least this many maker leases of one runtime that exited 0, every one failed by the same gate */
 export const GATE_ALWAYS_FAILS_MIN_LEASES = 3;
 export type ValueAnomalyMode = 'off' | 'shadow' | 'on';
@@ -223,6 +231,20 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
         AND created_at >= ? GROUP BY runtime, model HAVING n >= ? AND SUM(status = 'completed') = 0`, since, ZERO_SUCCESS_MIN_ATTEMPTS)) {
       const species = m.model ? `${m.runtime}@${m.model}` : m.runtime;
       vaSink.push({ subsystem: `zero_success:maker:${species}`, since: m.first, detail: `0/${m.n} maker leases of ${species} completed in ${VALUE_ANOMALY_WINDOW_H} h — it runs but never yields; check its failure_reason` });
+    }
+    for (const g of all<{ role: string; runtime: string; model: string | null; prefix: string; k: number; n: number; first: string }>(`SELECT g.role, g.runtime, g.model, g.prefix, g.k,
+        (SELECT COUNT(*) FROM worker_leases f WHERE f.role = g.role AND f.runtime = g.runtime AND f.status = 'failed' AND f.created_at >= ?
+          AND json_extract(f.metadata, '$.model') IS g.model) AS n, g.first
+      FROM (SELECT role, runtime, json_extract(metadata, '$.model') AS model, substr(json_extract(metadata, '$.failure_reason'), 1, ?) AS prefix,
+          COUNT(*) AS k, MIN(created_at) AS first FROM worker_leases
+        WHERE role IN ('maker', 'checker', 'security_checker') AND runtime != 'manual' AND status = 'failed' AND created_at >= ?
+          AND json_extract(metadata, '$.failure_reason') IS NOT NULL GROUP BY 1, 2, 3, 4 HAVING k >= ?) g
+      WHERE NOT EXISTS (SELECT 1 FROM worker_leases c WHERE c.role = g.role AND c.runtime = g.runtime AND c.status = 'completed' AND c.created_at >= ?
+          AND json_extract(c.metadata, '$.model') IS g.model)
+      ORDER BY g.k DESC`, since, ZERO_SUCCESS_REASON_PREFIX, since, ZERO_SUCCESS_SAME_REASON_MIN, since)) {
+      const subsystem = `zero_success:${g.role}:${g.model ? `${g.runtime}@${g.model}` : g.runtime}`;
+      if (vaSink.some((x) => x.subsystem === subsystem)) continue; // already raised (≥ 5 rule, or a more frequent reason)
+      vaSink.push({ subsystem, since: g.first, detail: `0/${g.n} ${g.role} leases of ${g.model ? `${g.runtime}@${g.model}` : g.runtime} completed in ${VALUE_ANOMALY_WINDOW_H} h; ${g.k}/${g.n} failed with the same reason '${g.prefix}' — likely misconfigured`.slice(0, 500) });
     }
     for (const c of all<{ consumer: string; n: number; first: string }>(`SELECT consumer, COUNT(*) AS n, MIN(created_at) AS first FROM llm_model_calls
         WHERE shadow = 0 AND created_at >= ? GROUP BY consumer HAVING n >= ? AND SUM(ok = 1) = 0`, since, ZERO_SUCCESS_MIN_ATTEMPTS)) {
