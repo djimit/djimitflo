@@ -8,8 +8,11 @@
 import type { Database } from 'better-sqlite3';
 import { hourBucket, recordPolicyViolation } from '../services/policy-violations';
 
+/** Lowercase, strip IPv6 brackets and one trailing dot (`host.` is the same DNS name as `host`). */
+const normalizeHost = (h: string): string => h.trim().toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+
 export function deniedHosts(env: NodeJS.ProcessEnv = process.env): Set<string> {
-  return new Set((env.OUTBOUND_DENY_HOSTS || '').split(',').map((h) => h.trim().toLowerCase().replace(/^\[|\]$/g, '')).filter(Boolean));
+  return new Set((env.OUTBOUND_DENY_HOSTS || '').split(',').map(normalizeHost).filter(Boolean));
 }
 
 export function isDenied(input: unknown, denied: Set<string>): string | null {
@@ -17,7 +20,7 @@ export function isDenied(input: unknown, denied: Set<string>): string | null {
   let host: string;
   try {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as { url?: string })?.url ?? '';
-    host = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    host = normalizeHost(new URL(url).hostname);
   } catch { return null; }
   return deniedMatch(host, denied) ? host : null;
 }
