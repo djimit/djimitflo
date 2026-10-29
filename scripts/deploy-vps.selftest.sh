@@ -250,9 +250,10 @@ open_root() { chmod 0775 "$1"; }
 HOST_PREP=open_root host
 [ "$RC" != 0 ] && echo "$OUT" | grep -q "not trusted" && echo "$OUT" | grep -qF "$HOST" || fail "a group-writable deploy root was not refused: $OUT"
 untouched || fail "a group-writable deploy root was acted on"
-# another owner than root (in prod: the container's uid 1001); simulated by trusting a different uid than the test user
-HOST_TRUSTED_UID=1001 host
-[ "$RC" != 0 ] && echo "$OUT" | grep -q "owned by uid $(id -u)" || [ "$(id -u)" = 1001 ] || fail "a deploy root of another uid was not refused: $OUT"
+# another owner than root (in prod: the container's uid 1001); simulated by trusting a uid that is never the test user's
+# (CI runners run as uid 1001 themselves, so a fixed 1001 would make the test user's dir count as trusted)
+HOST_TRUSTED_UID=$(( $(id -u) + 1 )) host
+[ "$RC" != 0 ] && echo "$OUT" | grep -q "owned by uid $(id -u)" || fail "a deploy root of another uid was not refused: $OUT"
 untouched || fail "a deploy root of another uid was acted on"
 HOST_PREP=true host; [ "$RC" = 0 ] || fail "baseline deploy failed: $OUT"
 # compose.yml writable by group/others, or a link: refused
