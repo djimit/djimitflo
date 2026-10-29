@@ -15,8 +15,9 @@ REPO_SLUG="${AUTO_DEPLOY_REPO:-djimit/djimitflo}"
 SETTLE_MIN="${AUTO_DEPLOY_SETTLE_MIN:-20}"
 log() { echo "$(date -u +%FT%TZ) auto-deploy: $*"; }
 # safe_fs: file operations of this root process next to directories other users can write (python3, *at() calls).
-#   check <dir>                 every directory from <dir> up to / is owned by root (or AUTO_DEPLOY_TRUSTED_UID) and not
-#                               writable by group/others (a root-owned sticky dir such as /tmp is allowed)
+#   check <dir>                 every component of <dir> as given (no symlink anywhere) up to / is a directory owned by root
+#                               (or AUTO_DEPLOY_TRUSTED_UID), not writable by group/others (a root-owned sticky dir such as
+#                               /tmp is allowed)
 #   copy <file> <dest>          <file> (owned by the trusted uid, not group/other-writable, regular, in a checked dir) is read
 #                               once, without following a link, into <dest> (a new file in a private dir)
 #   write <dir> <name> <keep> <stage>
@@ -34,9 +35,11 @@ def fail(msg):
 def readall(fd):
     return b"".join(iter(lambda: os.read(fd, 1 << 16), b""))
 def chain(path):
-    p = os.path.realpath(path)
+    # the path as given, component by component (lstat): a symlink anywhere on it is refused, never resolved
+    p = os.path.abspath(path)
     while True:
         st = os.lstat(p)
+        if stat.S_ISLNK(st.st_mode): fail(f"{p} is a symbolic link")
         if not stat.S_ISDIR(st.st_mode): fail(f"{p} is not a directory")
         if st.st_uid not in (0, TRUSTED): fail(f"{p} is owned by uid {st.st_uid}, not root")
         if st.st_mode & 0o022 and not (st.st_mode & stat.S_ISVTX and st.st_uid == 0): fail(f"{p} is writable by group or others")
@@ -48,7 +51,7 @@ def main(cmd, *a):
     if cmd == "check":
         chain(a[0])
     elif cmd == "copy":
-        src = os.path.realpath(a[0]); chain(os.path.dirname(src))
+        src = os.path.abspath(a[0]); chain(os.path.dirname(src))
         fd = os.open(src, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK); st = os.fstat(fd)
         if not stat.S_ISREG(st.st_mode): fail(f"{src} is not a regular file")
         if st.st_uid != TRUSTED: fail(f"{src} is owned by uid {st.st_uid}, not root")

@@ -91,8 +91,9 @@ verify_build_receipt() {   # verify_build_receipt <receipt> <src> <sha> <image> 
 }
 
 # trusted_path dir|private|file <path>: this runs as root, so what it enters, reads and writes must be root's.
-#   dir      <path> and every directory above it up to / are owned by root and not group/other-writable (a root-owned
-#            sticky dir such as /tmp is allowed: others cannot rename or remove what they do not own there)
+#   dir      <path> and every directory above it up to / (as given: no symlink anywhere) are owned by root and not
+#            group/other-writable (a root-owned sticky dir such as /tmp is allowed: others cannot rename or remove what
+#            they do not own there)
 #   private  as dir, and <path> itself is root's 0700 (no group/other access at all)
 #   file     <path> is a regular file (not a link) of root, not group/other-writable, in a trusted dir
 # AUTO_DEPLOY_TRUSTED_UID (default 0) is a selftest seam: the test user stands in for root.
@@ -110,9 +111,10 @@ if kind == "file":
 elif kind == "private":
     st = os.lstat(path)
     if not stat.S_ISDIR(st.st_mode) or st.st_uid != T or st.st_mode & 0o077: bad(f"{path} is not a root-only (0700) directory of root")
-p = os.path.realpath(path)
+p = os.path.abspath(path)  # as given, component by component: a symlink anywhere on it is refused, never resolved
 while True:
     st = os.lstat(p)
+    if stat.S_ISLNK(st.st_mode): bad(f"{p} is a symbolic link")
     if not stat.S_ISDIR(st.st_mode): bad(f"{p} is not a directory")
     if st.st_uid not in (0, T): bad(f"{p} is owned by uid {st.st_uid}, not root")
     if st.st_mode & 0o022 and not (st.st_mode & stat.S_ISVTX and st.st_uid == 0): bad(f"{p} is writable by group or others")

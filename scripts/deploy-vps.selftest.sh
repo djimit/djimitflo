@@ -3,7 +3,8 @@
 # remote script (chown before recreate, rollback present). Run: ./deploy-vps.selftest.sh
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
+# resolved: the trust checks refuse a symlink on a path, and the temp dir can contain one (macOS /var → /private/var)
+TMP="$(cd "$(mktemp -d)" && pwd -P)"; trap 'rm -rf "$TMP"' EXIT
 # shellcheck source=deploy-vps.sh
 source "$SCRIPT_DIR/deploy-vps.sh"
 fail() { echo "FAIL: $*" >&2; exit 1; }
@@ -266,4 +267,10 @@ for prep in gw linked; do
   [ "$RC" != 0 ] && echo "$OUT" | grep -q "not trusted" || fail "$prep compose.yml was not refused: $OUT"
   untouched || fail "$prep compose.yml: acted on"
 done
+# a deploy root reached through a symlink in an untrusted dir is refused (the trusted target does not make it pass)
+OPEN="$TMP/open"; mkdir -p "$OPEN"; chmod 0777 "$OPEN"
+link_root() { ln -s "$1" "$OPEN/root-$(basename "$1")"; }
+HOST_PREP=link_root host   # prepares a normal host, then runs the remote script on the link instead
+RC=0; OUT="$(remote_script | AUTO_DEPLOY_TRUSTED_UID="$(id -u)" DEPLOY_FILE_REMOTE=always PATH="$BIN:$PATH" bash -s -- "$OPEN/root-$(basename "$HOST")" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
+[ "$RC" != 0 ] && echo "$OUT" | grep -q "symbolic link" || fail "a deploy root behind a symlink was not refused: $OUT"
 echo "deploy-vps selftest OK"

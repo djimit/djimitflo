@@ -16,9 +16,10 @@ INSTALL_DIR="${AUTO_DEPLOY_INSTALL_DIR:-/usr/local/lib/djimitflo}"
 INSTALLED="$INSTALL_DIR/deploy-vps.installed.sh"
 trusted_dir() { python3 - "$1" <<'PY'
 import os, stat, sys
-T = int(os.environ.get("AUTO_DEPLOY_TRUSTED_UID") or "0"); p = os.path.realpath(sys.argv[1])
+T = int(os.environ.get("AUTO_DEPLOY_TRUSTED_UID") or "0"); p = os.path.abspath(sys.argv[1])  # as given, no symlink resolved
 while True:
     st = os.lstat(p)
+    if stat.S_ISLNK(st.st_mode): sys.exit(f"{p} is a symbolic link")
     if st.st_uid not in (0, T): sys.exit(f"{p} is owned by uid {st.st_uid}, not root")
     if st.st_mode & 0o022 and not (st.st_mode & stat.S_ISVTX and st.st_uid == 0): sys.exit(f"{p} is writable by group or others")
     if p == "/": break
@@ -39,8 +40,10 @@ else
   echo "# no installed copy yet at $INSTALLED"
 fi
 if [ "${2:-}" != "--apply" ]; then echo "# dry run — review the diff above, then rerun with --apply to install scripts/deploy-vps.sh of $sha (sha256 $hash)"; exit 0; fi
-install -d -m 0755 "$INSTALL_DIR"
-trusted_dir "$INSTALL_DIR" || { echo "$INSTALL_DIR is not trusted — make it and every dir above it root:root and not group/other-writable (chown root:root, chmod 0755)" >&2; exit 1; }
+# checked before it is created or touched (a link or foreign dir is never chmod-ed), and again after
+untrusted() { echo "$INSTALL_DIR is not trusted — make it and every dir above it root:root, not group/other-writable, no symlinks (chown root:root, chmod 0755)" >&2; exit 1; }
+if [ -e "$INSTALL_DIR" ] || [ -L "$INSTALL_DIR" ]; then trusted_dir "$INSTALL_DIR" || untrusted; else trusted_dir "$(dirname "$INSTALL_DIR")" || untrusted; mkdir -m 0755 "$INSTALL_DIR"; fi
+trusted_dir "$INSTALL_DIR" || untrusted
 # the script first, then its record: an interrupted install leaves a mismatch, which auto-deploy refuses
 install -m 0755 "$tmp" "$INSTALLED.tmp.$$" && mv -f "$INSTALLED.tmp.$$" "$INSTALLED"
 printf 'commit=%s\nsha256=%s\ninstalled_at=%s\n' "$sha" "$hash" "$(date -u +%FT%TZ)" > "$INSTALLED.source.tmp.$$" \
