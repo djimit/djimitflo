@@ -256,6 +256,15 @@ export class GithubPrReviewService {
     }
   }
 
+  /** A `gh` call whose answer must be a JSON object: malformed JSON or a non-object (e.g. `null`) is GithubUnavailableError too. */
+  private ghJson(args: string[], options: { input?: string; maxBuffer?: number } = {}): Record<string, unknown> {
+    const raw = this.gh(args, options);
+    let parsed: unknown;
+    try { parsed = JSON.parse(raw); } catch { parsed = undefined; }
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new GithubUnavailableError(`GH_RESPONSE_UNREADABLE: gh ${args.slice(0, 2).join(' ')}`);
+    return parsed as Record<string, unknown>;
+  }
+
   private resolveLlmRuntime(): LlmRuntime | null {
     const configured = process.env.GITHUB_PR_REVIEW_RUNTIME;
     return configured && (LLM_RUNTIMES as string[]).includes(configured) ? (configured as LlmRuntime) : null;
@@ -380,8 +389,7 @@ export class GithubPrReviewService {
    * throw PrHeadMovedError (hold). An unreadable head throws as a failure — never publish on an unverified head.
    */
   private assertHeadUnchanged(input: StartReviewInput, stage: HoldStage): void {
-    const raw = this.gh(['pr', 'view', String(input.number), '--repo', `${input.owner}/${input.repo}`, '--json', 'headRefOid']);
-    const head = (JSON.parse(raw) as { headRefOid?: unknown }).headRefOid;
+    const head = this.ghJson(['pr', 'view', String(input.number), '--repo', `${input.owner}/${input.repo}`, '--json', 'headRefOid']).headRefOid;
     if (typeof head !== 'string' || !/^[0-9a-f]{40,64}$/.test(head)) throw new GithubUnavailableError('PR_HEAD_UNREADABLE');
     if (head !== input.headSha) throw new PrHeadMovedError(stage, head);
   }
@@ -391,11 +399,10 @@ export class GithubPrReviewService {
    * not `gh pr view <number>`, which reads whatever head the PR has now. GitHub resolves the merge base with the base branch.
    */
   private fetchExactShaPacket(input: StartReviewInput): ReviewPacket {
-    const raw = this.gh([
+    const parsed = this.ghJson([
       'api', `repos/${input.owner}/${input.repo}/compare/${input.baseRef}...${input.headSha}`,
       '--jq', '{merge_base: .merge_base_commit.sha, files: [.files[] | {filename, additions, deletions}]}',
-    ], { maxBuffer: DIFF_MAX_BUFFER });
-    const parsed = JSON.parse(raw) as { merge_base?: unknown; files?: Array<{ filename: string; additions: number; deletions: number }> };
+    ], { maxBuffer: DIFF_MAX_BUFFER }) as { merge_base?: unknown; files?: Array<{ filename: string; additions: number; deletions: number }> };
     if (typeof parsed.merge_base !== 'string' || !Array.isArray(parsed.files)) throw new GithubUnavailableError('PR_COMPARE_UNREADABLE');
     const files = parsed.files;
     return {
@@ -539,8 +546,7 @@ export class GithubPrReviewService {
     };
     // CODE-005: re-read the head immediately before publishing; a moved head gets no status on the old SHA.
     this.assertHeadUnchanged(input, 'before_status');
-    const raw = this.gh(['api', `repos/${input.owner}/${input.repo}/statuses/${input.headSha}`, '--input', '-'], { input: JSON.stringify(statusPayload) });
-    const parsed = JSON.parse(raw) as { id?: number };
+    const parsed = this.ghJson(['api', `repos/${input.owner}/${input.repo}/statuses/${input.headSha}`, '--input', '-'], { input: JSON.stringify(statusPayload) }) as { id?: number };
     return parsed.id != null ? String(parsed.id) : null;
   }
 }
