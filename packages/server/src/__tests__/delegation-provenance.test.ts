@@ -316,6 +316,29 @@ describe('P1 #5: remote maker jobs carry their run and lease', () => {
     expect(q.get(job!.id)).toMatchObject({ status: 'cancelled', reason: 'lease_not_active_at_apply' });
   });
 
+  it.each(['prepared', 'running'] as const)('a result accepted for one task is not applied once the %s lease is bound to a newer running task', async (leaseStatus) => {
+    preparedRemoteMaker(); approvedTask('running');
+    if (leaseStatus === 'running') loops.updateWorkerLeaseStatus('maker', 'running', {});
+    execFileSync('git', ['-C', repo, 'update-ref', 'refs/remotes/origin/main', 'HEAD']);
+    const q = new RemoteMakerQueue(db);
+    const task = { id: 'loop-worker-maker-1', description: 'fix', metadata: { loop_run_id: 'run', lease_id: 'maker' } } as unknown as Task;
+    const session = await new RemoteMakerExecutor(db, 200).start(task, { workingDirectory: repo, model: 'workstation/atomic', timeout: 300_000 });
+    const drained = (async () => { for await (const _ of session.events) { /* drain */ } })();
+    let job: ReturnType<RemoteMakerQueue['claim']> = null;
+    for (let i = 0; i < 100 && !job; i++) { job = q.claim('workstation', ['atomic']); if (!job) await new Promise((r) => setTimeout(r, 10)); }
+    const patch = 'diff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-Small documentation fixture\n+Clearer fixture\n';
+    // synchronously, between two polls: valid on receipt, then the lease is rebound to a new running engine task
+    q.record(job!.id, 'workstation', { status: 'done', patch, reason: 'fixed' });
+    db.prepare(`INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, metadata, created_at, updated_at)
+      VALUES ('loop-worker-maker-2', 'maker', 'fix', 'running', 'medium', 'low', 'local', '{}', datetime('now'), datetime('now'))`).run();
+    loops.patchWorkerLeaseMetadata('maker', { execution_task_id: 'loop-worker-maker-2' });
+    const result = await session.result; await drained;
+    expect(result.status).toBe('failed');
+    expect(result.stderr).toMatch(/remote_maker_cancelled:lease_not_active_at_apply/);
+    expect(execFileSync('git', ['-C', repo, 'status', '--porcelain'], { encoding: 'utf8' })).toBe('');
+    expect(q.get(job!.id)).toMatchObject({ status: 'cancelled', reason: 'lease_not_active_at_apply' });
+  });
+
   it.each(['failed', 'completed', 'awaiting_approval'])('a prepared lease whose engine task is %s is not active: the result is still refused', (taskStatus) => {
     preparedRemoteMaker(); approvedTask(taskStatus);
     const q = new RemoteMakerQueue(db);
