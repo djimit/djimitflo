@@ -49,7 +49,8 @@ export const autoMergeRecheckHours = (env: NodeJS.ProcessEnv = process.env): num
  * (metadata.graded kind mutant_kill, test-gap / exports lanes) >= VALUE_KILL_SHARE_MIN. 'low' = a signal exists and says no
  * (FBPA fail, kill share below); 'missing' = neither was measured — unknown is never a pass.
  * LOOP_AUTO_MERGE_VALUE_GATE = off (default: not read) | shadow (the decision carries would_block_value, unchanged) | on
- * (ineligible: value_signal_missing / value_signal_low — unknown codes, so permanent: the signals are written before the PR).
+ * (ineligible: value_signal_missing / value_signal_low — not re-checked while on: the signals are written before the PR; after a
+ * switch to off / shadow the next tick re-evaluates those PRs through every gate, so a rollback restores eligibility).
  */
 export type ValueGateMode = 'off' | 'shadow' | 'on';
 export const autoMergeValueGate = (env: NodeJS.ProcessEnv = process.env): ValueGateMode => {
@@ -57,6 +58,8 @@ export const autoMergeValueGate = (env: NodeJS.ProcessEnv = process.env): ValueG
   return v === 'shadow' || v === 'on' ? v : 'off';
 };
 export const VALUE_KILL_SHARE_MIN = 0.2;
+/** The value gate's own ineligible reasons: final while the gate is on, re-evaluated once it is off or shadow (rollback). */
+export const VALUE_GATE_REASONS = ['value_signal_missing', 'value_signal_low'] as const;
 const FBPA_CHECK_NAME = 'test:fail-before-pass-after'; // fail-before-pass-after.ts FBPA_CHECK (not imported: that module spawns test runs)
 export function autoMergeValueSignal(checks: unknown, graded: unknown): 'pass' | 'low' | 'missing' {
   const fbpa = Array.isArray(checks) ? (checks as Array<{ name?: unknown; shadow_status?: unknown } | null>).find((c) => c?.name === FBPA_CHECK_NAME)?.shadow_status : undefined;

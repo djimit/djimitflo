@@ -6,7 +6,7 @@ import { testOnlyChange, TEST_ONLY_DIFF_MAX } from './loop-worker-executor-servi
 import { pushNotice } from './operator-push';
 import { settlementState, SURVIVAL_DAYS, type SettlementOutcome } from './merge-survival';
 import { autoMergeMaxPerDay, autoMergeMode, autoMergeRecheck, autoMergeRecheckHours, autoMergeValueGate, autoMergeValueSignal, isAuditSample, isTransientReason, PR_REVIEW_STATUS_CONTEXT,
-  readClassState, RECHECK_PER_TICK, revokeClass } from './loop-auto-merge-state';
+  readClassState, reasonCode, RECHECK_PER_TICK, revokeClass, VALUE_GATE_REASONS } from './loop-auto-merge-state';
 import { markRun } from './scheduler-registry';
 import { assertionStrengthVerdict } from './test-assertion-strength';
 import { autoMergeAllowed, parsePrUrl } from './repo-registry';
@@ -187,7 +187,10 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     const meta = JSON.parse(run.metadata || '{}') as { pr_url: string; auto_merge?: AutoMergeRecord; verified_head_sha?: string };
     const prev = meta.auto_merge;
     let rechecking = false;
-    if (prev && ['merged', 'audit_sample', 'ineligible'].includes(prev.decision)) {
+    // U2 rollback: a rejection by the value gate alone is final only while the gate is on — off / shadow re-evaluates it
+    // through every gate (every other permanent reason stays final)
+    const valueRejectionLifted = prev?.decision === 'ineligible' && valueGate !== 'on' && (VALUE_GATE_REASONS as readonly string[]).includes(reasonCode(prev.reason));
+    if (prev && !valueRejectionLifted && ['merged', 'audit_sample', 'ineligible'].includes(prev.decision)) {
       // final, unless re-check is on and the ineligible reason is transient, its window has passed and this tick has room
       if (!recheckOn || prev.decision !== 'ineligible' || !isTransientReason(prev.reason) || rechecks >= RECHECK_PER_TICK) continue;
       const last = Date.parse(prev.rechecked_at ?? prev.at);
