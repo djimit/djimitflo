@@ -4,6 +4,7 @@
 /** Flag → its documented code default (runbook prose, clipped). Read by runtime-config-view (GET /api/health/config). */
 export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   ACE_001_MODE: 'off (`on`)',
+  ADVISORY_EXPOSURE_MODE: 'off',
   ARENA_GATE_ENABLED: 'off',
   ASG_MODE: 'off (`shadow`, `on`)',
   AUTONOMOUS_LURES_ENABLED: 'off',
@@ -47,6 +48,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   FINDING_FIX_MAX_PER_DAY: '2 (in flight: 1)',
   FITNESS_SHADOW_ENABLED: 'off',
   FLEET_EVENT_SIGNATURES: 'off (`shadow`, `enforce`)',
+  FLEET_REPAIR_MODE: 'off (`shadow`; `on` runs as shadow)',
   GENOME_APPLY_MODE: 'unset (only `shadow` exists)',
   GENOME_FIRE_CHECK: 'off',
   GRADED_CONTEST_MODE: 'off (`shadow`: when ≥ 2 evolve makers passed every gate, the graded winner — highest lease graded score, none = lowest,…',
@@ -138,6 +140,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
 
 /** Env flags that arm a background scheduler at boot (HEARTBEAT.md). */
 export const SCHEDULER_FLAGS: readonly string[] = [
+  'ADVISORY_EXPOSURE_MODE',
   'COMMITTEE_SWARM_ENABLED',
   'COMMONS_FALSIFIER_MODE',
   'COMMONS_INVESTIGATION_MODE',
@@ -151,6 +154,7 @@ export const SCHEDULER_FLAGS: readonly string[] = [
   'EVOLUTION_ESTIMATORS_ENABLED',
   'EVOLUTION_GYM_ENABLED',
   'FINDING_FIX_LANE',
+  'FLEET_REPAIR_MODE',
   'FRONTIER_EXPERTS_SCHEDULER_ENABLED',
   'GYM_ORPHAN_SWEEP',
   'LOOP_AUTO_MERGE_TEST_ONLY',
