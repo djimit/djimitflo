@@ -723,8 +723,29 @@ it('U2 value signal: FBPA pass or a mutant kill share >= 0.2 is a signal; FBPA f
   expect(autoMergeValueSignal([FBPA('skipped')], KILL(0.1))).toBe('low');
   expect(autoMergeValueSignal([], undefined)).toBe('missing');
   expect(autoMergeValueSignal([FBPA('skipped')], { skipped: 'timeout', ms: 1 })).toBe('missing'); // unknown is no signal
-  expect(autoMergeValueSignal([], { kind: 'mutation_score', lane: 'mutation', score: 0.9 })).toBe('missing'); // not a kill share
+  expect(autoMergeValueSignal([], { kind: 'mutation_score', lane: 'mutation', score: 0.9 })).toBe('pass'); // the mutation lane's own signal (below)
   expect(autoMergeValueSignal('garbage' as unknown as unknown[], undefined)).toBe('missing');
+});
+
+// re-20261030 B §2: 9/18 mutation-lane auto-merges read as `missing` (graded kind mutation_score = Stryker after/100 was not
+// read); and on test-only lanes FBPA's fail-before is the same seeded mutants as graded (fail-before-pass-after.ts:145-149:
+// `failBefore = graded.killed > 0`, no second run), so "FBPA pass OR kill >= 0.2" was "kills >= 1 seeded mutant"
+it('value signal: mutation_score >= 0.2 is the mutation lane signal; FBPA on seeded mutants is not an independent signal, FBPA against the parent source is', () => {
+  const MUT = (score: number) => ({ kind: 'mutation_score', lane: 'mutation', score, ms: 1 });
+  const FB = (shadow: string, before: 'seeded_mutant' | 'parent_source') => ({ ...FBPA(shadow), before });
+  expect(autoMergeValueSignal([], MUT(0.9))).toBe('pass');
+  expect(autoMergeValueSignal([], MUT(0.2))).toBe('pass');
+  expect(autoMergeValueSignal([], MUT(0.1))).toBe('low');
+  expect(autoMergeValueSignal([], { kind: 'mutation_score', lane: 'mutation', skipped: 'no score', ms: 1 })).toBe('missing');
+  // seeded-mutant FBPA reads the graded mutants: it neither passes nor fails the gate on its own
+  expect(autoMergeValueSignal([FB('pass', 'seeded_mutant')], undefined)).toBe('missing');
+  expect(autoMergeValueSignal([FB('fail', 'seeded_mutant')], undefined)).toBe('missing');
+  expect(autoMergeValueSignal([FB('pass', 'seeded_mutant')], KILL(0))).toBe('low');
+  expect(autoMergeValueSignal([FB('pass', 'seeded_mutant')], MUT(0.1))).toBe('low');
+  expect(autoMergeValueSignal([FB('fail', 'seeded_mutant')], KILL(0.333))).toBe('pass');
+  // FBPA against the parent source (source changed) is a separate run: still a signal either way
+  expect(autoMergeValueSignal([FB('pass', 'parent_source')], undefined)).toBe('pass');
+  expect(autoMergeValueSignal([FB('fail', 'parent_source')], undefined)).toBe('low');
 });
 
 it('U2 flag: LOOP_AUTO_MERGE_VALUE_GATE off (default) | shadow | on, registered as an acting evolution flag', () => {

@@ -34,8 +34,8 @@ import { newestRuns, requiredChecksOf, requiredRun, type CheckRun, type Protecti
  * head must equal it, or be GitHub's own update-branch merge on top of it (web-flow, signature verified, first parent = the
  * verified head, at most 5 deep); anything else is 'head_moved'. The merge call passes that head as `sha`, so a push between
  * this read and the merge is rejected by GitHub.
- * Value (U2, LOOP_AUTO_MERGE_VALUE_GATE off | shadow | on): after assertion strength, the maker's FBPA verdict pass or graded
- * mutant kill share >= 0.2 (loop-auto-merge-state autoMergeValueSignal); shadow stamps would_block_value, on is ineligible.
+ * Value (U2, LOOP_AUTO_MERGE_VALUE_GATE off | shadow | on): after assertion strength, the maker's parent-source FBPA verdict pass or
+ * graded kill share / mutation score >= 0.2 (loop-auto-merge-state autoMergeValueSignal); shadow stamps would_block_value, on is ineligible.
  * Cap: LOOP_AUTO_MERGE_MAX_PER_DAY (default 10, rolling 24 h).
  * Revert window: an auto-merged PR that is reverted on main (a commit within 14 d whose message says revert and names the
  * PR or its merge commit), whose added lines merge survival marks removed, or whose merge commit fails a REQUIRED check on

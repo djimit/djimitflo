@@ -395,15 +395,21 @@ export function settlementValueEvidence(db: Database, ci: (k: number, n: number)
   };
 }
 
-/** Survival per lane over settled PRs only; informative:false when a lane has 0 regressions at ≥ SURVIVAL_INFORMATIVE_MIN_N settled. */
+/**
+ * Survival per lane over settled PRs only. informative: true once a lane has a regression (the label has failed, so it can);
+ * with 0 regressions false at ≥ SURVIVAL_INFORMATIVE_MIN_N settled (it cannot fail there) and null below — not enough settled
+ * to know (E-assumptions A16/C9: 8 and 16 settled PRs with 0 regressions were shown as true).
+ */
 export function survivalByLane(prs: LoopPrSettlement[], lanes: Map<string, string>) {
   const byLane = new Map<string, LoopPrSettlement['settlement']['state'][]>();
   for (const p of prs) { const lane = lanes.get(p.run_id) ?? 'other'; byLane.set(lane, [...(byLane.get(lane) ?? []), p.settlement.state]); }
   return [...byLane.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([lane, states]) => {
     const c = survivalCounts(states);
-    const vacuous = c.settled >= SURVIVAL_INFORMATIVE_MIN_N && c.regressed === 0;
-    return { lane, survived: c.survived, regressed: c.regressed, settled: c.settled, survival_rate: c.rate, informative: !vacuous,
-      informative_reason: vacuous ? `0 regressions in ${c.settled} settled PRs: line-retention survival cannot fail on this lane (test-only PRs); see settlement_value` : null };
+    const enough = c.settled >= SURVIVAL_INFORMATIVE_MIN_N;
+    const informative: boolean | null = c.regressed > 0 ? true : enough ? false : null;
+    return { lane, survived: c.survived, regressed: c.regressed, settled: c.settled, survival_rate: c.rate, informative,
+      informative_reason: informative === false ? `0 regressions in ${c.settled} settled PRs: line-retention survival cannot fail on this lane (test-only PRs); see settlement_value`
+        : informative === null ? `not enough settled: 0 regressions in ${c.settled} settled PRs (< ${SURVIVAL_INFORMATIVE_MIN_N}); whether survival can fail on this lane is unknown` : null };
   });
 }
 
