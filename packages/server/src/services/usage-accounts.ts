@@ -5,6 +5,7 @@ import { ollamaLimitClass, readOllamaLimit } from './inference-failover';
 import { LIMIT_HIT, subscriptionLimitBackoffMs } from './subscription-gym';
 import type { OllamaAccountUsage } from './ollama-balance';
 import { latestSnapshots, snapshotLimitReached, withSnapshotPct, type LatestSnapshot } from './usage-snapshots';
+import { isLeaseMirror } from './model-call-ledger';
 
 /**
  * /usage per provider ACCOUNT (operator 18-10: the page read token_usage_log, 0 rows in prod). Read-only over the records
@@ -205,7 +206,7 @@ export function loadRecords(db: Database, since: string): { records: UsageRecord
       const tokens = r.tokens_in === null && r.tokens_out === null ? null : (r.tokens_in ?? 0) + (r.tokens_out ?? 0);
       const failed = r.ok !== 1;
       records.push({ account: accountOfCall(r.provider, r.model, r.consumer), at: isoMs(r.created_at), tokens, ok: !failed, consumer: r.purpose || r.consumer,
-        provider: r.provider ?? '(none)', model: r.model, mirror: r.consumer === 'maker' || MIRROR_PURPOSES.has(r.purpose ?? ''),
+        provider: r.provider ?? '(none)', model: r.model, mirror: isLeaseMirror(r.consumer) || MIRROR_PURPOSES.has(r.purpose ?? ''),
         limit_hit: failed && (r.status === 'subscription_limit' || ollamaLimitClass(r.status) !== null || LIMIT_TEXT.test(r.status ?? '')),
         error: failed ? (r.status ?? 'failed') : null, list_price_cost: r.list_price_cost, cost_basis: r.cost_basis });
     }

@@ -19,12 +19,13 @@ function writeRunner(name: string, source: string) {
   return file;
 }
 
+/** Outcomes carry the engine's positive delivery evidence (INT-004) unless `refs` says otherwise. */
 function seedSkillEvidence(skillId: string, candidateHash = 'candidate-hash', baselineHash = 'baseline-hash', candidateSuccesses = 30,
-  candidateTokens: number | null = 800, candidateDurationMs = 800) {
+  candidateTokens: number | null = 800, candidateDurationMs = 800, refs = '["skill_delivery:delivered"]') {
   const insert = db.prepare(`
     INSERT INTO skill_outcomes (
       id, skill_id, success, tokens_used, duration_ms, domain, skill_version, skill_content_hash, evidence_refs_json
-    ) VALUES (?, ?, ?, ?, ?, 'test', '0.1.0', ?, '[]')
+    ) VALUES (?, ?, ?, ?, ?, 'test', '0.1.0', ?, '${refs}')
   `);
   for (let i = 0; i < 30; i += 1) {
     insert.run(`baseline-${skillId}-${i}`, skillId, i < 24 ? 1 : 0, 1_000, 1_000, baselineHash);
@@ -146,6 +147,45 @@ describe('G15.2 capability promotion', () => {
         baseline_skill_content_hash: 'baseline-hash',
       }),
     }));
+  });
+
+  it('counts only verified skill attribution as promotion evidence (INT-004 follow-up)', () => {
+    svc.createCandidate({
+      id: 'unverified-skill', kind: 'skill', owner: 'test', version: '0.1.0', risk_ceiling: 'low',
+      input_schema_ref: 'none', output_schema_ref: 'none', allowed_actions: ['maker:mock'],
+      forbidden_actions: ['deploy'], required_evidence: ['worker_lease'], eval_threshold: 0.75,
+      removal_strategy: 'disable',
+      metadata: { agent_skill_id: 'unverified-skill', agent_skill_version: '0.1.0', agent_skill_content_hash: 'candidate-hash' },
+    });
+    const evidence = seedSkillEvidence('unverified-skill');
+    // the engine's assigned-but-not-delivered tags: the skill was assigned, the runtime never provably got it
+    db.prepare(`UPDATE skill_outcomes SET evidence_refs_json = '["skill_delivery:assigned","skill_attribution:unverified"]'
+      WHERE skill_id = 'unverified-skill' AND skill_content_hash = 'candidate-hash'`).run();
+
+    expect(() => svc.promoteCapability('unverified-skill', { eval_score: 0.9, ...evidence }))
+      .toThrow('CAPABILITY_PROMOTION_SKILL_OUTCOMES_REQUIRED:candidate=0:baseline=30:minimum=30');
+    expect(svc.skillEvolutionReadiness().find((item) => item.capability_id === 'unverified-skill')).toMatchObject({
+      candidate_runs: 0, evidence_ready: false,
+    });
+    expect(db.prepare("SELECT COUNT(*) AS n FROM skill_outcomes WHERE skill_id = 'unverified-skill'").get()).toEqual({ n: 60 }); // still stored
+  });
+
+  it('rejects untagged (legacy, no delivery evidence) candidate and baseline outcomes as promotion evidence', () => {
+    svc.createCandidate({
+      id: 'legacy-skill', kind: 'skill', owner: 'test', version: '0.1.0', risk_ceiling: 'low',
+      input_schema_ref: 'none', output_schema_ref: 'none', allowed_actions: ['maker:mock'],
+      forbidden_actions: ['deploy'], required_evidence: ['worker_lease'], eval_threshold: 0.75,
+      removal_strategy: 'disable',
+      metadata: { agent_skill_id: 'legacy-skill', agent_skill_version: '0.1.0', agent_skill_content_hash: 'candidate-hash' },
+    });
+    const evidence = seedSkillEvidence('legacy-skill', 'candidate-hash', 'baseline-hash', 30, 800, 800, '[]');
+
+    expect(() => svc.promoteCapability('legacy-skill', { eval_score: 0.9, ...evidence }))
+      .toThrow('CAPABILITY_PROMOTION_SKILL_OUTCOMES_REQUIRED:candidate=0:baseline=0:minimum=30');
+    expect(svc.skillEvolutionReadiness().find((item) => item.capability_id === 'legacy-skill')).toMatchObject({
+      candidate_runs: 0, evidence_ready: false, blocked_reasons: ['CAPABILITY_PROMOTION_SKILL_BASELINE_REQUIRED'],
+    });
+    expect(db.prepare("SELECT COUNT(*) AS n FROM skill_outcomes WHERE skill_id = 'legacy-skill'").get()).toEqual({ n: 60 }); // still stored
   });
 
   it('blocks skill promotion when the training gate fails', () => {

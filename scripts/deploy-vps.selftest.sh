@@ -3,7 +3,10 @@
 # remote script (chown before recreate, rollback present). Run: ./deploy-vps.selftest.sh
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
+# resolved: the trust checks refuse a symlink on a path, and the temp dir can contain one (macOS /var → /private/var)
+TMP="$(cd "$(mktemp -d)" && pwd -P)"; trap 'rm -rf "$TMP"' EXIT
+# test-only seam: the tmp base and what is above it (e.g. a sticky /tmp) are exempt from the trust walk; prod never sets it
+TMPBASE="$(dirname "$TMP")"
 # shellcheck source=deploy-vps.sh
 source "$SCRIPT_DIR/deploy-vps.sh"
 fail() { echo "FAIL: $*" >&2; exit 1; }
@@ -85,6 +88,16 @@ if verify_build_receipt "$receipt" "$SRC" "$NEW_FULL" "djimitflo:main-$NEW" 2>/d
 cp "$TMP/Dockerfile.orig" "$SRC/Dockerfile"
 echo '{"lockfileVersion":3,"x":1}' > "$SRC/package-lock.json"
 if verify_build_receipt "$receipt" "$SRC" "$NEW_FULL" "djimitflo:main-$NEW" 2>/dev/null; then fail "changed lockfile accepted"; fi
+echo '{"lockfileVersion":3}' > "$SRC/package-lock.json"
+# OPS-002: the receipt binds the commit's tree id; a wrong or missing tree fails when the caller states the expected tree
+TREE_OK="$(printf 'e%.0s' $(seq 1 40))"; TREE_BAD="$(printf 'f%.0s' $(seq 1 40))"
+RCPT2="$TMP/receipts-tree"
+treercpt="$(write_build_receipt "$RCPT2" "$SRC" "$NEW_FULL" "djimitflo:main-$NEW" "$BASE" 2026-10-27T00:00:00Z "$TREE_OK")" || fail "write_build_receipt with a tree failed"
+grep -qF "\"source_tree\":\"$TREE_OK\"" "$treercpt" || fail "receipt lacks the source tree id"
+verify_build_receipt "$treercpt" "$SRC" "$NEW_FULL" "djimitflo:main-$NEW" "$TREE_OK" 2>/dev/null || fail "matching tree id rejected"
+if verify_build_receipt "$treercpt" "$SRC" "$NEW_FULL" "djimitflo:main-$NEW" "$TREE_BAD" 2>/dev/null; then fail "receipt with a wrong tree id accepted"; fi
+if verify_build_receipt "$receipt" "$SRC" "$NEW_FULL" "djimitflo:main-$NEW" "$TREE_OK" 2>/dev/null; then fail "receipt without a tree id accepted when a tree is expected"; fi
+verify_build_receipt "$receipt" "$SRC" "$NEW_FULL" "djimitflo:main-$NEW" 2>/dev/null || fail "an old receipt (no tree id) must still verify without one"
 unset -f docker drop
 bash -n <<<"$remote" || fail "the remote script (with the receipt functions) does not parse"
 verify_line="$(echo "$remote" | grep -n 'verify_build_receipt "$RECEIPT"' | head -n 1 | cut -d: -f1)"
@@ -96,22 +109,26 @@ grep -q 'npm install --omit=dev' "$SCRIPT_DIR/../Dockerfile" && fail "runtime st
 grep -qF 'ENV DJIMITFLO_BUILD_LOCK_SHA256=$LOCKFILE_SHA256' "$SCRIPT_DIR/../Dockerfile" || fail "Dockerfile must bake the lockfile hash"
 grep -qF 'ENV DJIMITFLO_BUILD_BASE_IMAGE=$NODE_IMAGE' "$SCRIPT_DIR/../Dockerfile" || fail "Dockerfile must bake the base image reference"
 
-# --- the remote script end to end against a stub host (no real docker/git): healthy deploys, every failure rolls back
+# --- the remote script end to end against a stub host (stub docker, real git on a temp repo): healthy deploys, every
+# failure rolls back
+REPO_DIR="$TMP/repo"; mkdir -p "$REPO_DIR/packages/server/src"
+cp "$SRC/Dockerfile" "$REPO_DIR/"; echo '{"lockfileVersion":3}' > "$REPO_DIR/package-lock.json"
+echo 'export const v = "committed";' > "$REPO_DIR/packages/server/src/index.ts"
+G() { git -C "$REPO_DIR" -c user.name=t -c user.email=t@t -c commit.gpgsign=false "$@"; }
+G init -q && G add -A && G commit -q -m init
+NEW_FULL="$(G rev-parse HEAD)"; NEW="${NEW_FULL:0:7}"; NEW_TREE="$(G rev-parse "HEAD^{tree}")"
 STUB="$TMP/stub"; BIN="$STUB/bin"; mkdir -p "$BIN"
 printf '#!/usr/bin/env bash\nshift; exec "$@"\n' > "$BIN/timeout"
 printf '#!/usr/bin/env bash\nprintf "Avail\\n99999999\\n"\n' > "$BIN/df"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$BIN/chown"; cp "$BIN/chown" "$BIN/sleep"
-cat > "$BIN/git" <<EOF
-#!/usr/bin/env bash
-case "\$1" in clone) mkdir -p "\$4"; cp "$SRC/Dockerfile" "\$4/"; echo '{"lockfileVersion":3}' > "\$4/package-lock.json" ;; log) echo "$NEW stub" ;; esac
-EOF
 # docker: build records its build args; the env of the built image is what was passed; compose/inspect consult the live
 # compose.yml (cwd) and the knobs in \$STUB/{fail-compose-new,unhealthy-new,unhealthy-old,running-id}
 cat > "$BIN/docker" <<EOF
 #!/usr/bin/env bash
 new() { grep -q "image: djimitflo:main-$NEW" compose.yml; }
 case "\$1" in
-  build) shift; for a in "\$@"; do case "\$a" in *=*) echo "\$a" >> "$STUB/build-args" ;; esac; done; echo built ;;
+  build) shift; for a in "\$@"; do case "\$a" in *=*) echo "\$a" >> "$STUB/build-args" ;; esac; done
+    rm -rf "$STUB/ctx"; cp -R . "$STUB/ctx"; echo built ;;   # snapshot of the build context (cwd) as docker got it
   pull) exit 0 ;;
   images|rmi) exit 0 ;;
   image) case "\$2 \$4" in
@@ -128,11 +145,14 @@ EOF
 chmod +x "$BIN"/*
 host() {   # host [knob...] → runs the remote script on a fresh stub host; sets OUT, RC, HOST
   HOST="$(mktemp -d "$TMP/host.XXXX")"; rm -f "$STUB"/build-args "$STUB"/compose-calls "$STUB"/fail-compose-new "$STUB"/unhealthy-* "$STUB"/running-id
+  rm -rf "$STUB/ctx"; "${HOST_PREP:-true}" "$HOST"
   for k in "$@"; do case "$k" in running-id) echo "sha256:other" > "$STUB/running-id" ;; *) touch "$STUB/$k" ;; esac; done
   printf 'services:\n  djimitflo:\n    image: djimitflo:main-%s\n    environment:\n      DJIMITFLO_COMMIT_SHA: %s\n    volumes:\n      - %s/runtime-source-%s:/workspace/djimitflo\n' \
     "$PREV" "$PREV_FULL" "$HOST" "$PREV" > "$HOST/compose.yml"
   cp "$HOST/compose.yml" "$TMP/compose.before"
-  RC=0; OUT="$(remote_script | PATH="$BIN:$PATH" bash -s -- "$HOST" "$NEW_FULL" repo 2>&1)" || RC=$?
+  # DEPLOY_FILE_REMOTE: seam — the stub host fetches from a local repo; prod fetches over https (file:// stays off)
+  # AUTO_DEPLOY_TRUSTED_UID: seam — the test user stands in for root as the trusted owner of the deploy root
+  RC=0; OUT="$(remote_script | AUTO_DEPLOY_TRUSTED_UID="${HOST_TRUSTED_UID:-$(id -u)}" AUTO_DEPLOY_TRUSTED_PREFIX="${HOST_TRUSTED_PREFIX-$TMPBASE}" DEPLOY_FILE_REMOTE=always PATH="${HOST_PATH_PREFIX:-}$BIN:$PATH" bash -s -- "$HOST" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
 }
 host
 [ "$RC" = 0 ] || fail "healthy deploy failed ($RC): $OUT"
@@ -154,4 +174,126 @@ host
 [ "$RC" != 0 ] && echo "$OUT" | grep -q "base image unresolved" || fail "unresolved base was not refused: $OUT"
 cmp -s "$HOST/compose.yml" "$TMP/compose.before" && [ ! -e "$STUB/compose-calls" ] || fail "unresolved base touched compose"
 printf '%s\n' "$FAKE_SAVE" > "$BIN/docker"
+
+# --- OPS-002: the build context is an export of exactly $SHA, never the reused runtime-source checkout
+SRC_FILE=packages/server/src/index.ts
+committed() { cmp -s "$STUB/ctx/$SRC_FILE" "$REPO_DIR/$SRC_FILE"; }
+# (3) clean exact-SHA checkout: accepted, the receipt carries the commit's tree id, no warning, the context is removed
+host
+[ "$RC" = 0 ] || fail "clean deploy failed ($RC): $OUT"
+[ -d "$STUB/ctx" ] && committed || fail "clean deploy did not build the committed source"
+grep -qF "\"source_tree\":\"$NEW_TREE\"" "$HOST/build-receipts/"*.json || fail "receipt lacks the commit tree id $NEW_TREE"
+echo "$OUT" | grep -q "not used for the build" && fail "clean checkout reported as dirty: $OUT"
+[ -z "$(ls -d "$HOST"/build-context-* "$HOST"/.deploy-work/* 2>/dev/null)" ] || fail "build context left behind"
+[ ! -e "$STUB/ctx/.git" ] || fail "build context contains .git"
+# a reused runtime-source-$SHORT (retry after a build timeout, or written to by a container) with local changes
+reused() { git clone -q "$REPO_DIR" "$1/runtime-source-$NEW"; }
+tracked_mod() { reused "$1"; echo 'export const v = "TAMPERED";' > "$1/runtime-source-$NEW/$SRC_FILE"; }
+untracked() { reused "$1"; echo 'export const evil = 1;' > "$1/runtime-source-$NEW/packages/server/src/evil.ts"; }
+# (1) a modified tracked file in the reused checkout is not built; the checkout is warned about and left as it is
+HOST_PREP=tracked_mod host
+[ "$RC" = 0 ] || fail "tracked-mod deploy failed ($RC): $OUT"
+committed || fail "a modified tracked file in the reused checkout reached the build context"
+grep -q TAMPERED "$HOST/runtime-source-$NEW/$SRC_FILE" || fail "the reused checkout was reset (user data must stay)"
+echo "$OUT" | grep -q "runtime-source-$NEW .*not used for the build" || fail "dirty checkout not warned about: $OUT"
+# (2) an untracked compilable file in the reused checkout is not in the build context
+HOST_PREP=untracked host
+[ "$RC" = 0 ] || fail "untracked deploy failed ($RC): $OUT"
+[ ! -e "$STUB/ctx/packages/server/src/evil.ts" ] || fail "an untracked file in the reused checkout reached the build context"
+[ -e "$HOST/runtime-source-$NEW/packages/server/src/evil.ts" ] || fail "the untracked file was deleted (user data must stay)"
+echo "$OUT" | grep -q "not used for the build" || fail "untracked file not warned about: $OUT"
+# --- git in a reused runtime-source clone (the container can write it) never runs repo-local hooks or fsmonitor, and when
+# the deploy runs as root it runs as the clone's owner. Root is simulated: `id -u` says 0, setpriv records its call and
+# execs the command as the (unchanged) test user.
+MARK="$TMP/marker"; ROOTSIM="$TMP/rootsim"; mkdir -p "$ROOTSIM"
+printf '#!/usr/bin/env bash\n[ "${1:-}" = -u ] && { echo 0; exit 0; }\nexec /usr/bin/id "$@"\n' > "$ROOTSIM/id"
+printf '#!/usr/bin/env bash\necho "setpriv $*" >> "%s/setpriv-calls"\nwhile [ "${1#--}" != "$1" ]; do shift; done\nexec "$@"\n' "$STUB" > "$ROOTSIM/setpriv"
+chmod +x "$ROOTSIM"/*
+hooked() {
+  reused "$1"; local r="$1/runtime-source-$NEW"
+  printf '#!/bin/sh\necho hook >> "%s"\n' "$MARK" > "$r/.git/hooks/post-checkout"
+  printf '#!/bin/sh\necho fsmonitor >> "%s"\n' "$MARK" > "$r/.git/fsmonitor.sh"
+  chmod +x "$r/.git/hooks/post-checkout" "$r/.git/fsmonitor.sh"
+  git -C "$r" config core.fsmonitor "$r/.git/fsmonitor.sh"; git -C "$r" config core.hooksPath "$r/.git/hooks"
+}
+rm -f "$MARK" "$STUB/setpriv-calls"
+HOST_PATH_PREFIX="$ROOTSIM:" HOST_PREP=hooked host
+[ "$RC" = 0 ] || fail "hooked-clone deploy failed ($RC): $OUT"
+[ ! -e "$MARK" ] || fail "a repo-local hook or fsmonitor of the reused clone ran: $(tr '\n' ' ' < "$MARK")"
+grep -q -- "--reuid=$(id -u) " "$STUB/setpriv-calls" 2>/dev/null || fail "git in the reused clone did not run as the clone's owner"
+committed || fail "hooked clone: the build context is not the committed source"
+# --- the build input never comes from the reused runtime-source clone: a replaced commit (git replace, a ref the container
+# can write) makes $SHA resolve to other content there, but the build context and the receipt tree are the real commit's
+replaced() {
+  reused "$1"; local r="$1/runtime-source-$NEW" evil
+  echo 'export const v = "REPLACED";' > "$r/$SRC_FILE"
+  git -C "$r" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -qam evil
+  evil="$(git -C "$r" rev-parse HEAD)"; git -C "$r" reset -q --hard "$NEW_FULL"
+  git -C "$r" replace "$NEW_FULL" "$evil"
+  [ "$(git -C "$r" rev-parse "$NEW_FULL^{tree}")" != "$NEW_TREE" ] || fail "fixture: the replace did not take effect"
+}
+HOST_PREP=replaced host
+[ "$RC" = 0 ] || fail "replaced-clone deploy failed ($RC): $OUT"
+committed || fail "a replaced object in the reused clone reached the build context: $(cat "$STUB/ctx/$SRC_FILE")"
+grep -qF "\"source_tree\":\"$NEW_TREE\"" "$HOST/build-receipts/"*.json || fail "the receipt tree came from the reused clone, not the commit"
+[ -z "$(ls -d "$HOST"/.build-src-* "$HOST"/.deploy-work/* 2>/dev/null)" ] || fail "the fresh build clone was left behind"
+# a fetch that does not yield exactly $SHA (here: the commit is not in the remote) stops before anything is built
+NEW_SAVE="$NEW_FULL"; NEW_FULL="$(printf '1%.0s' $(seq 1 40))"; NEW="${NEW_FULL:0:7}"
+host
+[ "$RC" != 0 ] && [ ! -e "$STUB/ctx" ] || fail "a commit that cannot be fetched was built: $OUT"
+cmp -s "$HOST/compose.yml" "$TMP/compose.before" || fail "a failed fetch touched compose"
+NEW_FULL="$NEW_SAVE"; NEW="${NEW_FULL:0:7}"
+# --- the deploy root must be trusted before anything happens: owned by root (the trusted uid) up to /, not group/other
+# writable; compose.yml a regular file of root, not group/other-writable. Otherwise: refused before any git or build.
+untouched() { [ ! -e "$STUB/build-args" ] && [ ! -e "$STUB/ctx" ] && [ ! -e "$STUB/compose-calls" ] && [ ! -e "$HOST/runtime-source-$NEW" ]; }
+open_root() { chmod 0775 "$1"; }
+HOST_PREP=open_root host
+[ "$RC" != 0 ] && echo "$OUT" | grep -q "not trusted" && echo "$OUT" | grep -qF "$HOST" || fail "a group-writable deploy root was not refused: $OUT"
+untouched || fail "a group-writable deploy root was acted on"
+# another owner than root (in prod: the container's uid 1001); simulated by trusting a uid that is never the test user's
+# (CI runners run as uid 1001 themselves, so a fixed 1001 would make the test user's dir count as trusted)
+HOST_TRUSTED_UID=$(( $(id -u) + 1 )) host
+[ "$RC" != 0 ] && echo "$OUT" | grep -q "owned by uid $(id -u)" || fail "a deploy root of another uid was not refused: $OUT"
+untouched || fail "a deploy root of another uid was acted on"
+HOST_PREP=true host; [ "$RC" = 0 ] || fail "baseline deploy failed: $OUT"
+# compose.yml writable by group/others, or a link: refused
+host_compose() {   # host_compose <prep on compose.yml> → like host, the prep runs after compose.yml was written
+  HOST="$(mktemp -d "$TMP/host.XXXX")"; rm -f "$STUB"/build-args "$STUB"/compose-calls; rm -rf "$STUB/ctx"
+  printf 'services:\n  djimitflo:\n    image: djimitflo:main-%s\n    environment:\n      DJIMITFLO_COMMIT_SHA: %s\n' "$PREV" "$PREV_FULL" > "$HOST/compose.yml"
+  "$1" "$HOST/compose.yml"
+  RC=0; OUT="$(remote_script | AUTO_DEPLOY_TRUSTED_UID="$(id -u)" AUTO_DEPLOY_TRUSTED_PREFIX="$TMPBASE" DEPLOY_FILE_REMOTE=always PATH="$BIN:$PATH" bash -s -- "$HOST" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
+}
+gw() { chmod 0664 "$1"; }
+linked() { mv "$1" "$1.real"; ln -s "$1.real" "$1"; }
+for prep in gw linked; do
+  host_compose "$prep"
+  [ "$RC" != 0 ] && echo "$OUT" | grep -q "not trusted" || fail "$prep compose.yml was not refused: $OUT"
+  untouched || fail "$prep compose.yml: acted on"
+done
+# a deploy root reached through a symlink in an untrusted dir is refused (the trusted target does not make it pass)
+OPEN="$TMP/open"; mkdir -p "$OPEN"; chmod 0777 "$OPEN"
+link_root() { ln -s "$1" "$OPEN/root-$(basename "$1")"; }
+HOST_PREP=link_root host   # prepares a normal host, then runs the remote script on the link instead
+RC=0; OUT="$(remote_script | AUTO_DEPLOY_TRUSTED_UID="$(id -u)" AUTO_DEPLOY_TRUSTED_PREFIX="$TMPBASE" DEPLOY_FILE_REMOTE=always PATH="$BIN:$PATH" bash -s -- "$OPEN/root-$(basename "$HOST")" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
+[ "$RC" != 0 ] && echo "$OUT" | grep -q "symbolic link" || fail "a deploy root behind a symlink was not refused: $OUT"
+# the deploy root is checked as written: a '..' component or a relative path is refused, never normalised away
+remote_on() {   # remote_on <root arg> [cwd] → runs the remote script on a fresh stub host addressed as <root arg>
+  RC=0; OUT="$(cd "${2:-$TMP}" && remote_script | AUTO_DEPLOY_TRUSTED_UID="$(id -u)" AUTO_DEPLOY_TRUSTED_PREFIX="$TMPBASE" DEPLOY_FILE_REMOTE=always PATH="$BIN:$PATH" bash -s -- "$1" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
+}
+fresh_host() { HOST="$(mktemp -d "$TMP/host.XXXX")"; mkdir "$HOST/sub"; rm -f "$STUB"/build-args "$STUB"/compose-calls; rm -rf "$STUB/ctx"
+  printf 'services:\n  djimitflo:\n    image: djimitflo:main-%s\n    environment:\n      DJIMITFLO_COMMIT_SHA: %s\n' "$PREV" "$PREV_FULL" > "$HOST/compose.yml"; }
+fresh_host; remote_on "$HOST/sub/.."
+[ "$RC" != 0 ] && echo "$OUT" | grep -q ". or .. component" && untouched || fail "a deploy root with a .. component was not refused: $OUT"
+fresh_host; remote_on "$HOST/../$(basename "$HOST")"
+[ "$RC" != 0 ] && echo "$OUT" | grep -q ". or .. component" && untouched || fail "a /x/../x deploy root was not refused: $OUT"
+fresh_host; remote_on "$(basename "$HOST")" "$TMP"
+[ "$RC" != 0 ] && echo "$OUT" | grep -q "not an absolute path" && untouched || fail "a relative deploy root was not refused: $OUT"
+fresh_host; remote_on "$HOST/./"
+[ "$RC" != 0 ] && echo "$OUT" | grep -q ". or .. component" && untouched || fail "a deploy root with a . component was not refused: $OUT"
+# without the seam nothing is exempt: a deploy root under the real (root-owned, sticky, world-writable) /tmp is refused
+STICKY="$(cd /tmp && pwd -P)"; SH="$(mktemp -d "$STICKY/dv-sticky.XXXX")"
+printf 'services:\n  djimitflo:\n    image: djimitflo:main-%s\n    environment:\n      DJIMITFLO_COMMIT_SHA: %s\n' "$PREV" "$PREV_FULL" > "$SH/compose.yml"
+RC=0; OUT="$(remote_script | AUTO_DEPLOY_TRUSTED_UID="$(id -u)" DEPLOY_FILE_REMOTE=always PATH="$BIN:$PATH" bash -s -- "$SH" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
+rm -rf "$SH"
+[ "$RC" != 0 ] && echo "$OUT" | grep -qF "$STICKY is writable by group or others" || fail "a sticky world-writable ancestor was accepted without the seam: $OUT"
 echo "deploy-vps selftest OK"

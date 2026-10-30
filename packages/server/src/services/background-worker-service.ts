@@ -12,6 +12,7 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { realRunIdSql, realRunSql } from './synthetic-runs';
 import { randomUUID } from 'node:crypto';
 import { buildLeaseFailure, CANCEL_LEASE_METADATA_SQL, cancelLeaseBind } from './lease-failure';
 
@@ -214,9 +215,9 @@ export class BackgroundWorkerService {
       try { return (this.db.prepare(sql).get() as any)?.c ?? 0; } catch { return 0; }
     };
 
-    const running = safeCount("SELECT COUNT(*) as c FROM loop_runs WHERE status = 'running'");
-    const blocked = safeCount("SELECT COUNT(*) as c FROM loop_runs WHERE status = 'blocked'");
-    const failedMakers = safeCount("SELECT COUNT(*) as c FROM worker_leases WHERE role = 'maker' AND status = 'failed'");
+    const running = safeCount(`SELECT COUNT(*) as c FROM loop_runs WHERE status = 'running' AND ${realRunSql()}`);
+    const blocked = safeCount(`SELECT COUNT(*) as c FROM loop_runs WHERE status = 'blocked' AND ${realRunSql()}`);
+    const failedMakers = safeCount(`SELECT COUNT(*) as c FROM worker_leases WHERE role = 'maker' AND status = 'failed' AND ${realRunIdSql('loop_run_id')}`);
     const activeAgents = safeCount("SELECT COUNT(*) as c FROM agents WHERE status = 'active'");
 
     return `Health: ${running} running, ${blocked} blocked, ${failedMakers} failed makers, ${activeAgents} active agents`;
@@ -245,7 +246,7 @@ export class BackgroundWorkerService {
     const safeCount = (sql: string): number => {
       try { return (this.db.prepare(sql).get() as any)?.c ?? 0; } catch { return 0; }
     };
-    return `Metrics snapshot: ${safeCount('SELECT COUNT(*) as c FROM loop_runs')} loops, ${safeCount('SELECT COUNT(*) as c FROM goals')} goals`;
+    return `Metrics snapshot: ${safeCount(`SELECT COUNT(*) as c FROM loop_runs WHERE ${realRunSql()}`)} loops, ${safeCount('SELECT COUNT(*) as c FROM goals')} goals`;
   }
 
   private async taskOrphanLeaseCleanup(): Promise<string> {

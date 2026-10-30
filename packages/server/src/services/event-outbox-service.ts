@@ -50,6 +50,7 @@ export interface PublishResult { attempted: number; published: number; failed: n
 
 export class EventOutboxService {
   private timer: ReturnType<typeof setInterval> | null = null;
+  private inFlight: Promise<PublishResult> | null = null;
   constructor(private readonly db: Database, private readonly fetchFn: typeof fetch = fetch) {}
 
   start(intervalMs = 60_000): void {
@@ -60,16 +61,30 @@ export class EventOutboxService {
 
   stop(): void { if (this.timer) { clearInterval(this.timer); this.timer = null; } }
 
-  async publishPending(limit = 100): Promise<PublishResult> {
+  /**
+   * Single-flight (STATE-NEW-01): a call while a drain is running joins that drain instead of re-sending its rows. The row
+   * claim and the terminal updates are compare-and-set, so a stale drain can neither exceed the retry cap nor turn a
+   * published row back into failed. ponytail: in-process guard only, prod runs one server process; add a durable owner/lease
+   * column on event_outbox when a second publisher process (or a second EventOutboxService on one db) is deployed.
+   */
+  publishPending(limit = 100): Promise<PublishResult> {
+    this.inFlight ??= this.drain(limit).finally(() => { this.inFlight = null; });
+    return this.inFlight;
+  }
+
+  private async drain(limit: number): Promise<PublishResult> {
     const bus = process.env.DJIMIT_EVENT_BUS_URL?.replace(/\/$/, '');
     if (!bus) return { attempted: 0, published: 0, failed: 0, status: 'DISABLED' };
     const stream = process.env.DJIMIT_EVENT_STREAM || 'djimit.events';
     const rows = this.db.prepare(`SELECT event_id, event_type, aggregate_id, correlation_id, payload_json, created_at FROM event_outbox
       WHERE status IN ('pending', 'failed') AND attempts < 10 ORDER BY created_at ASC LIMIT ?`).all(Math.max(1, Math.min(limit, 500))) as Array<{
       event_id: string; event_type: string; aggregate_id: string; correlation_id: string; payload_json: string; created_at: string }>;
-    let published = 0; let failed = 0;
+    let attempted = 0; let published = 0; let failed = 0;
     for (const row of rows) {
-      this.db.prepare('UPDATE event_outbox SET attempts = attempts + 1 WHERE event_id = ?').run(row.event_id);
+      const claim = this.db.prepare(`UPDATE event_outbox SET attempts = attempts + 1
+        WHERE event_id = ? AND status IN ('pending', 'failed') AND attempts < 10`).run(row.event_id);
+      if (claim.changes === 0) continue; // published or exhausted since the select
+      attempted++;
       try {
         const response = await this.fetchFn(`${bus}/events/${encodeURIComponent(stream)}`, {
           method: 'POST', signal: AbortSignal.timeout(10_000),
@@ -83,11 +98,11 @@ export class EventOutboxService {
         this.db.prepare("UPDATE event_outbox SET status = 'published', published_at = ?, last_error = NULL WHERE event_id = ?").run(new Date().toISOString(), row.event_id);
         published++;
       } catch (err) {
-        this.db.prepare("UPDATE event_outbox SET status = 'failed', last_error = ? WHERE event_id = ?").run((err instanceof Error ? err.message : String(err)).slice(0, 300), row.event_id);
+        this.db.prepare("UPDATE event_outbox SET status = 'failed', last_error = ? WHERE event_id = ? AND status != 'published'").run((err instanceof Error ? err.message : String(err)).slice(0, 300), row.event_id);
         failed++;
       }
     }
-    return { attempted: rows.length, published, failed, status: 'OK' };
+    return { attempted, published, failed, status: 'OK' };
   }
 }
 

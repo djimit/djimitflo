@@ -42,6 +42,33 @@ export const autoMergeRecheckHours = (env: NodeJS.ProcessEnv = process.env): num
   const raw = env.LOOP_AUTO_MERGE_RECHECK_HOURS; const n = Number(raw);
   return raw !== undefined && raw.trim() !== '' && Number.isFinite(n) && n > 0 ? n : 6;
 };
+/**
+ * U2 (B-intelligence 10-29: 24/24 merges of the last 7 d were auto-merges on a label that cannot fail; 31/66 verified exports
+ * tests kill < 20 % of seeded mutants): test-only eligibility additionally needs a value signal from the maker lease — the
+ * fail-before-pass-after shadow verdict 'pass' (FBPA_CHECK in deterministic_checks) OR a graded mutant kill share
+ * (metadata.graded kind mutant_kill, test-gap / exports lanes) >= VALUE_KILL_SHARE_MIN. 'low' = a signal exists and says no
+ * (FBPA fail, kill share below); 'missing' = neither was measured — unknown is never a pass.
+ * LOOP_AUTO_MERGE_VALUE_GATE = off (default: not read) | shadow (the decision carries would_block_value, unchanged) | on
+ * (ineligible: value_signal_missing / value_signal_low — not re-checked while on: the signals are written before the PR; after a
+ * switch to off / shadow the next tick re-evaluates those PRs through every gate, so a rollback restores eligibility).
+ */
+export type ValueGateMode = 'off' | 'shadow' | 'on';
+export const autoMergeValueGate = (env: NodeJS.ProcessEnv = process.env): ValueGateMode => {
+  const v = String(env.LOOP_AUTO_MERGE_VALUE_GATE ?? '').trim().toLowerCase();
+  return v === 'shadow' || v === 'on' ? v : 'off';
+};
+export const VALUE_KILL_SHARE_MIN = 0.2;
+/** The value gate's own ineligible reasons: final while the gate is on, re-evaluated once it is off or shadow (rollback). */
+export const VALUE_GATE_REASONS = ['value_signal_missing', 'value_signal_low'] as const;
+const FBPA_CHECK_NAME = 'test:fail-before-pass-after'; // fail-before-pass-after.ts FBPA_CHECK (not imported: that module spawns test runs)
+export function autoMergeValueSignal(checks: unknown, graded: unknown): 'pass' | 'low' | 'missing' {
+  const fbpa = Array.isArray(checks) ? (checks as Array<{ name?: unknown; shadow_status?: unknown } | null>).find((c) => c?.name === FBPA_CHECK_NAME)?.shadow_status : undefined;
+  const g = graded && typeof graded === 'object' ? graded as { kind?: unknown; score?: unknown } : null;
+  const kill = g?.kind === 'mutant_kill' && typeof g.score === 'number' && Number.isFinite(g.score) ? g.score : null;
+  if (fbpa === 'pass' || (kill !== null && kill >= VALUE_KILL_SHARE_MIN)) return 'pass';
+  return fbpa === 'fail' || kill !== null ? 'low' : 'missing';
+}
+
 /** At most this many re-checks per tick (each is a handful of GitHub calls). */
 export const RECHECK_PER_TICK = 5;
 
@@ -104,11 +131,11 @@ export function reEnableClass(db: Database, actor: string, reason: string, now =
 
 /** Class state + counts for the cockpit, the evolution evidence and the digest. Fail-soft on a partial schema. */
 export function autoMergeEvidence(db: Database, env: NodeJS.ProcessEnv = process.env, now = Date.now()) {
-  let rows: Array<{ decision: string; mode: string; at: string | null; reason: string | null; settled: string | null; rechecked_at: string | null }> = [];
+  let rows: Array<{ decision: string; mode: string; at: string | null; reason: string | null; settled: string | null; rechecked_at: string | null; would_block: string | null }> = [];
   try {
     rows = db.prepare(`SELECT json_extract(metadata, '$.auto_merge.decision') AS decision, json_extract(metadata, '$.auto_merge.mode') AS mode,
       json_extract(metadata, '$.auto_merge.at') AS at, json_extract(metadata, '$.auto_merge.reason') AS reason, json_extract(metadata, '$.pr_outcome.settled_at') AS settled,
-      json_extract(metadata, '$.auto_merge.rechecked_at') AS rechecked_at
+      json_extract(metadata, '$.auto_merge.rechecked_at') AS rechecked_at, json_extract(metadata, '$.auto_merge.would_block_value') AS would_block
       FROM loop_runs WHERE json_extract(metadata, '$.auto_merge.decision') IS NOT NULL`).all() as typeof rows;
   } catch { /* loop_runs absent */ }
   const d1 = new Date(now - 86_400_000).toISOString();
@@ -132,6 +159,9 @@ export function autoMergeEvidence(db: Database, env: NodeJS.ProcessEnv = process
       waiting: count('waiting') + count('capped') + count('revoked_hold'), ineligible: count('ineligible'),
     },
     ineligible_by_reason: reasons,
+    // U2: what the value gate blocks (on: ineligible reasons) or would block (shadow: decisions carrying would_block_value)
+    value_gate: { mode: autoMergeValueGate(env), kill_share_min: VALUE_KILL_SHARE_MIN,
+      would_block: { value_signal_missing: rows.filter((r) => r.would_block === 'value_signal_missing').length, value_signal_low: rows.filter((r) => r.would_block === 'value_signal_low').length } },
     recheck: {
       enabled: autoMergeRecheck(env), window_hours: autoMergeRecheckHours(env), per_tick: RECHECK_PER_TICK,
       ineligible_by_class: { permanent: ineligible.length - transient, transient },
