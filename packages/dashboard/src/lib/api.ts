@@ -336,6 +336,7 @@ export interface EvolutionEvidence {
   /** CODE-004 (MEMORY_DELIVERY_RECEIPTS): memory-sync receipts per target × status; by_target null = no receipts table (services/memory-delivery-receipts.ts) */
   memory_delivery?: { mode: 'off' | 'shadow' | 'on'; max_attempts: number; oldest_unknown: string | null; note: string;
     by_target: Record<'uams' | 'qdrant' | 'okf', { idempotent: boolean; delivered: number; failed: number; unknown: number; exhausted: number | null }> | null };
+  content_drafts?: Record<string, unknown>;
 }
 export type Pl001Verdict = 'SUPPORTED' | 'NOT_SUPPORTED' | 'INCONCLUSIVE' | 'STOPPED_FOR_HARM';
 export interface Pl001Paired { n_pairs: number; both_verified: number; b_only_B: number; c_only_A: number; neither: number; verified_A: number | null; verified_B: number | null;
