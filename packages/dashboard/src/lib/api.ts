@@ -343,6 +343,10 @@ export interface EvolutionEvidence {
       linked_action_events: number; has_failure_tail: boolean;
       settlement: { status: 'no_linked_fix' | 'pending' | 'settled'; pr_url: string | null; merged_at: string | null; delta: number | null;
         before: { n: number; successes: number; rate: number | null } | null; after: { n: number; successes: number; rate: number | null } | null } | null }> | null };
+  /** Track A (ADVISORY_EXPOSURE_MODE): latest verdict per EVE-V advisory; counts null before the first judgment (services/advisory-exposure.ts) */
+  advisory_exposure?: { mode: 'off' | 'shadow' | 'on'; advisories: number | null; by_verdict: Record<'affected' | 'not_affected' | 'unknown', number> | null;
+    affected: Array<{ advisory_id: string; repo: string; package: string; installed_version: string; first_fixed_version: string | null }>;
+    pending: number | null; proposals: Record<string, number> | null; last_judged_at: string | null };
 }
 export type Pl001Verdict = 'SUPPORTED' | 'NOT_SUPPORTED' | 'INCONCLUSIVE' | 'STOPPED_FOR_HARM';
 export interface Pl001Paired { n_pairs: number; both_verified: number; b_only_B: number; c_only_A: number; neither: number; verified_A: number | null; verified_B: number | null;
