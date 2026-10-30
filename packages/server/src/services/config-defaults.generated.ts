@@ -4,6 +4,7 @@
 /** Flag → its documented code default (runbook prose, clipped). Read by runtime-config-view (GET /api/health/config). */
 export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   ACE_001_MODE: 'off (`on`)',
+  ADVISORY_EXPOSURE_MODE: 'off',
   ARENA_GATE_ENABLED: 'off',
   ASG_MODE: 'off (`shadow`, `on`)',
   AUTONOMOUS_LURES_ENABLED: 'off',
@@ -137,6 +138,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
 
 /** Env flags that arm a background scheduler at boot (HEARTBEAT.md). */
 export const SCHEDULER_FLAGS: readonly string[] = [
+  'ADVISORY_EXPOSURE_MODE',
   'COMMITTEE_SWARM_ENABLED',
   'COMMONS_FALSIFIER_MODE',
   'COMMONS_INVESTIGATION_MODE',

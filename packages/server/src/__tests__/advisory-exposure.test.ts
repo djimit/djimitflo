@@ -81,15 +81,15 @@ const proposals = () => db.prepare("SELECT id, title, description, type, status,
   Array<{ id: string; title: string; description: string; type: string; status: string; refs: string; g: string }>;
 
 function seedEvents() {
-  const a = event({ title: `Patch Misaka naar ≥ 2.8.10 (GHSA‑h9w3‑vw4p‑h6vw). ${MARKER}`, evidence_json: evidence(`${MARKER} https://github.com/advisories/GHSA-h9w3-vw4p-h6vw`) });
-  const b = event({ title: 'Container runtime policy', evidence_json: evidence('no id here', `- Upgrade *Bouncy Castle* (GHSA‑jch3‑5j66‑88vx). ${MARKER}`) }, { nested: true });
+  const a = event({ title: `Patch Misaka naar ≥ 2.8.10 (GHSA\u2011h9w3\u2011vw4p\u2011h6vw). ${MARKER}`, evidence_json: evidence(`${MARKER} https://github.com/advisories/GHSA-h9w3-vw4p-h6vw`) });
+  const b = event({ title: 'Container runtime policy', evidence_json: evidence('no id here', `- Upgrade *Bouncy Castle* (GHSA\u2011jch3\u20115j66\u201188vx). ${MARKER}`) }, { nested: true });
   const c = event({ title: `Also ${GHSA_A.toLowerCase()} and ${GHSA_B}; ${CVE}`, evidence_json: evidence('x') });
   return { a, b, c };
 }
 
 describe('intake: deterministic id extraction', () => {
   it('extracts GHSA and CVE ids, normalising unicode hyphens and GHSA case, deduped', () => {
-    expect(extractAdvisoryIds('fix (GHSA‑h9w3‑vw4p‑h6vw) and ghsa-H9W3-VW4P-H6VW, CVE‑2026‑104286 and cve-2026-35273'))
+    expect(extractAdvisoryIds('fix (GHSA\u2011h9w3\u2011vw4p\u2011h6vw) and ghsa-H9W3-VW4P-H6VW, CVE\u20112026\u2011104286 and cve-2026-35273'))
       .toEqual([GHSA_A, 'CVE-2026-104286', 'CVE-2026-35273']);
     expect(extractAdvisoryIds('GHSA-aaaa-bbbb-1111, GHSA-1234, CVE-26-1, XGHSA-h9w3-vw4p-h6vw9')).toEqual([]);
     expect(extractAdvisoryIds(undefined)).toEqual([]);
@@ -171,6 +171,7 @@ describe('exposure verdicts', () => {
     const py = fs.mkdtempSync(path.join(os.tmpdir(), 'advisory-py-'));
     fs.writeFileSync(path.join(py, 'pyproject.toml'), '');
     expect(evaluateAdvisory(CVE_ALIAS, cache(CVE_ALIAS), [...inv, readInventory('djimit/research', py)]).verdict).toBe('not_affected');
+    expect(evaluateAdvisory(CVE_ALIAS, cache(CVE_ALIAS), [readInventory('djimit/research', py)]).verdict).toBe('unknown'); // but never alone
     fs.rmSync(bare, { recursive: true, force: true }); fs.rmSync(py, { recursive: true, force: true });
   });
 });
@@ -216,7 +217,8 @@ describe('tick', () => {
     expect(db.prepare("SELECT COUNT(*) n FROM event_outbox WHERE event_type = 'djimitflo.feedback.advisory'").get()).toEqual({ n: 4 });
     const ev = advisoryExposureEvidence(db, env({ ADVISORY_EXPOSURE_MODE: 'shadow' }));
     expect(ev).toMatchObject({ mode: 'shadow', advisories: 4, by_verdict: { affected: 2, not_affected: 1, unknown: 1 } });
-    expect(ev.affected.map((x: { advisory_id: string }) => x.advisory_id).sort()).toEqual([GHSA_A, GHSA_B]);
+    expect(ev.affected.map((x: { advisory_id: string; installed_version: string }) => `${x.advisory_id}@${x.installed_version}`).sort())
+      .toEqual([`${GHSA_A}@1.2.0`, `${GHSA_B}@1.2.0`, `${GHSA_B}@1.3.0`]); // GHSA_B covers the nested 1.3.0 copy too
     expect(buildEvolutionEvidence(db, env({ ADVISORY_EXPOSURE_MODE: 'shadow' })).advisory_exposure).toMatchObject({ advisories: 4 });
   });
 
@@ -344,4 +346,23 @@ describe('untrusted text', () => {
 
 it('ADVISORY_EXPOSURE_MODE is an acting evolution flag', () => {
   expect(EVOLUTION_FLAGS).toContainEqual({ name: 'ADVISORY_EXPOSURE_MODE', acting: true });
+});
+
+it('GET /api/health/advisory-exposure requires read:evidence and is null (not 0) before the first judgment', async () => {
+  const { default: express } = await import('express');
+  const { rateLimit } = await import('express-rate-limit');
+  const { default: request } = await import('supertest');
+  const { UserRole } = await import('@djimitflo/shared');
+  const { createTestDb } = await import('./helpers/test-db');
+  const { createAuthMiddleware } = await import('../middleware/auth');
+  const { AuthService } = await import('../services/auth-service');
+  const { createHealthRoutes } = await import('../routes/health');
+  const tdb = createTestDb();
+  const authService = new AuthService(tdb);
+  const viewer = authService.generateToken(authService.createUser('adv-viewer@example.test', 'disposable-password', UserRole.VIEWER));
+  const app = express().use(rateLimit({ windowMs: 60_000, limit: 600 })).use('/api/health', createHealthRoutes(tdb, createAuthMiddleware(authService)));
+  expect((await request(app).get('/api/health/advisory-exposure')).status).toBe(401);
+  const res = await request(app).get('/api/health/advisory-exposure').set('Authorization', `Bearer ${viewer}`);
+  expect(res.status).toBe(200);
+  expect(res.body).toMatchObject({ mode: 'off', advisories: null, by_verdict: null, affected: [], pending: null });
 });

@@ -336,6 +336,10 @@ export interface EvolutionEvidence {
   /** CODE-004 (MEMORY_DELIVERY_RECEIPTS): memory-sync receipts per target × status; by_target null = no receipts table (services/memory-delivery-receipts.ts) */
   memory_delivery?: { mode: 'off' | 'shadow' | 'on'; max_attempts: number; oldest_unknown: string | null; note: string;
     by_target: Record<'uams' | 'qdrant' | 'okf', { idempotent: boolean; delivered: number; failed: number; unknown: number; exhausted: number | null }> | null };
+  /** Track A (ADVISORY_EXPOSURE_MODE): latest verdict per EVE-V advisory; counts null before the first judgment (services/advisory-exposure.ts) */
+  advisory_exposure?: { mode: 'off' | 'shadow' | 'on'; advisories: number | null; by_verdict: Record<'affected' | 'not_affected' | 'unknown', number> | null;
+    affected: Array<{ advisory_id: string; repo: string; package: string; installed_version: string; first_fixed_version: string | null }>;
+    pending: number | null; proposals: Record<string, number> | null; last_judged_at: string | null };
 }
 export type Pl001Verdict = 'SUPPORTED' | 'NOT_SUPPORTED' | 'INCONCLUSIVE' | 'STOPPED_FOR_HARM';
 export interface Pl001Paired { n_pairs: number; both_verified: number; b_only_B: number; c_only_A: number; neither: number; verified_A: number | null; verified_B: number | null;
