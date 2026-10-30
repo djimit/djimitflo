@@ -5,6 +5,7 @@ import path from 'path';
 import type { Database } from 'better-sqlite3';
 import { mineGymTasks, minedTaskAt, type GymTask } from './gym-task-miner';
 import { parseSpecies } from './evolve-selection';
+import { recordWorkerCall } from './model-call-ledger';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { infraFailing, triedTasks } from './evolution-gym-service';
 import { mutantTask, type MutantTask } from './gym-mutants';
@@ -441,6 +442,15 @@ export class RemoteGymService {
       if (gym.pl?.attempt_id && plRec) { try { recordPl001(this.db, gym.pl.attempt_id, { ...plRec, at: now }); } catch { /* experiment bookkeeping never breaks the report */ } }
     });
     try { write(); } catch (error) { throw error instanceof GymRunSettledError ? this.settled(runId) : error; }
+    // O2a: the gym attempt's model call in the ledger (the worker's reported tokens; none reported = NULL). A remote gym
+    // attempt has no lease, so this row is its only token record; the workstation runs it locally. TG-001 / PL-001 attempts
+    // stay isolated by provenance (their experiment rows keep the tokens), as for skill outcomes above.
+    try {
+      const [sp] = gym.tg || gym.pl ? [] : parseSpecies(gym.species, 1);
+      if (sp) recordWorkerCall(this.db, { consumer: 'gym', runId, goalId: null, loopName: 'evolution-gym', runtime: sp.runtime, provider: 'local',
+        meta: { model: sp.model, runtime_usage: tokens === null ? undefined : { total_tokens: tokens } }, durationMs: Number(result.durationMs) || 0,
+        ok: status !== 'discarded', status }); // ok = the call ran and was graded (a failed task is not a failed call; discarded = infra)
+    } catch { /* the ledger never breaks the report */ }
     // PL-001: a completed pair may reach the verdict (60 pairs or harm); its lifecycle decision is recorded on the procedure row
     if (gym.pl) { try { const m = plManifest(this.db); if (m) applyPl001Lifecycle(this.db, m, plState(this.db, m), new Date().toISOString()); } catch { /* bookkeeping */ } }
   }

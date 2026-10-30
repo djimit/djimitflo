@@ -1,4 +1,5 @@
 import type { Database } from 'better-sqlite3';
+import { realRunIdSql } from './synthetic-runs';
 import { RUNTIME_ADMISSIONS, checkAdmission, decide, type RuntimeAdmissionAssessment } from '../execution/runtime-admission';
 import { infraFailing } from './evolution-gym-service';
 
@@ -29,9 +30,9 @@ export function runtimeHealth(db: Database, now = Date.now(), ledger: readonly R
     "SELECT runtime, status, json_extract(contract_json, '$.version') AS version, probed_at FROM runtime_contract_probes").map((p) => [p.runtime, p]));
   const leases = new Map(all<{ runtime: string; n: number; completed: number; failed: number; cancelled: number }>(db,
     `SELECT runtime, COUNT(*) AS n, SUM(status = 'completed') AS completed, SUM(status = 'failed') AS failed, SUM(status = 'cancelled') AS cancelled
-     FROM worker_leases WHERE created_at >= ? GROUP BY runtime`, d30).map((l) => [l.runtime, l]));
+     FROM worker_leases WHERE created_at >= ? AND ${realRunIdSql('loop_run_id')} GROUP BY runtime`, d30).map((l) => [l.runtime, l]));
   const leases90 = new Map(all<{ runtime: string; n: number }>(db, 'SELECT runtime, COUNT(*) AS n FROM worker_leases WHERE created_at >= ? GROUP BY runtime', d90).map((l) => [l.runtime, l.n]));
-  const lastSuccess = new Map(all<{ runtime: string; t: string }>(db, "SELECT runtime, MAX(updated_at) AS t FROM worker_leases WHERE status = 'completed' GROUP BY runtime").map((l) => [l.runtime, l.t]));
+  const lastSuccess = new Map(all<{ runtime: string; t: string }>(db, `SELECT runtime, MAX(updated_at) AS t FROM worker_leases WHERE status = 'completed' AND ${realRunIdSql('loop_run_id')} GROUP BY runtime`).map((l) => [l.runtime, l.t]));
   const gymSpecies = all<{ s: string }>(db, "SELECT DISTINCT json_extract(metadata, '$.gym.species') AS s FROM loop_runs WHERE loop_name = 'evolution-gym' AND created_at >= ? AND json_extract(metadata, '$.gym.species') IS NOT NULL", d30).map((r) => r.s);
 
   const ids = [...new Set([...ledger.map((a) => a.runtime_id), ...leases.keys(), ...probes.keys()])].sort();

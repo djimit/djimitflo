@@ -15,6 +15,7 @@
  */
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
+import { realRunSql } from '../services/synthetic-runs';
 import { rateLimit } from 'express-rate-limit';
 import { mountRoutes } from '../utils/route-inventory';
 import type { Database } from 'better-sqlite3';
@@ -405,7 +406,8 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   router.get('/economy', requirePermission('read:evidence'), route((_req, res) => {
     const capabilities = computeCapabilityEconomy();
     const loops = new LoopService(db);
-    const recentRuns = loops.listLoopRuns().slice(0, 10).map((run) => {
+    const real = new Set((db.prepare(`SELECT id FROM loop_runs WHERE ${realRunSql()}`).all() as Array<{ id: string }>).map((r) => r.id));
+    const recentRuns = loops.listLoopRuns().filter((run) => real.has(run.id)).slice(0, 10).map((run) => {
       const metric = loops.computeEfficiencyMetric(run.id);
       return {
         run_id: run.id,

@@ -7,8 +7,9 @@ import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { EVOLUTION_FLAGS, buildEvolutionEvidence } from '../services/evolution-evidence';
 import { targetMutants } from '../services/gym-failure-tasks';
+import { wilson } from '../services/evolution-estimators';
 import {
-  MAX_ATTEMPTS, MAX_PER_TICK, SETTLEMENT_JUDGMENT, runVitestFiles, settlementCandidates, settlementExecutionEvidence, settlementExecutionTick,
+  MAX_ATTEMPTS, MAX_PER_TICK, SETTLEMENT_JUDGMENT, SETTLEMENT_VALUE_THRESHOLD, SURVIVAL_INFORMATIVE_MIN_N, settlementValueEvidence, runVitestFiles, settlementCandidates, settlementExecutionEvidence, settlementExecutionTick,
   type SettlementExecutionDeps, type TestRun,
 } from '../services/settlement-execution';
 
@@ -26,10 +27,10 @@ let wt: string;
 const now = Date.now();
 const iso = (t: number) => new Date(t).toISOString();
 
-function seedPr(id: string, n: number, opts: { mergedDaysAgo?: number; changed?: string[]; graded?: Record<string, unknown>; survived?: boolean; status?: string } = {}) {
+function seedPr(id: string, n: number, opts: { mergedDaysAgo?: number; changed?: string[]; graded?: Record<string, unknown>; survived?: boolean; status?: string; refs?: string[] } = {}) {
   const merged = iso(now - (opts.mergedDaysAgo ?? 20) * DAY);
-  db.prepare("INSERT INTO self_improvements (id, type, title, description, rationale, source, status, grounding_json) VALUES (?, 'test', ?, 'd', 'r', 'gap_analysis', ?, ?)")
-    .run(`si-${id}`, `t-${id}`, opts.status ?? 'verified', JSON.stringify({ target: TARGET }));
+  db.prepare("INSERT INTO self_improvements (id, type, title, description, rationale, source, status, grounding_json, evidence_refs_json) VALUES (?, 'test', ?, 'd', 'r', 'gap_analysis', ?, ?, ?)")
+    .run(`si-${id}`, `t-${id}`, opts.status ?? 'verified', JSON.stringify({ target: TARGET }), JSON.stringify(opts.refs ?? []));
   db.prepare("INSERT INTO goals (id, objective, risk_class, status, improvement_id) VALUES (?, 'o', 'low', 'completed', ?)").run(`g-${id}`, `si-${id}`);
   const outcome: Record<string, unknown> = { state: 'merged', merged_at: merged, checked_at: iso(now) };
   if (opts.survived !== undefined) { outcome.survived = opts.survived; outcome.retained = opts.survived ? 1 : 0; outcome.settled_at = iso(now - DAY); }
@@ -172,5 +173,45 @@ describe('execution-based settlement (SETTLEMENT_EXECUTION_MODE, shadow)', () =>
     reports.dashboard = { numTotalTests: 1, numPassedTests: 1, numFailedTests: 0 };
     expect((await runVitestFiles(wt, files, fake)).verdict).toBe('pass');
     expect((await runVitestFiles(wt, files, async () => ({ code: null, timedOut: true }))).verdict).toBe('unknown');
+  });
+});
+
+describe('U1: settlement value label (report only) and survival informativeness per lane', () => {
+  const EXPORTS = ['test-gap:foo#exports']; const GAP = ['test-gap:foo']; const MUT = ['mutation-gap:foo'];
+  const judge = (run: string, killNow: number | null, at: number, decision = 'pass') => db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at)
+    VALUES (?, ?, 'loop_pr', ?, 'h', 'shadow', ?, 'r', ?, ?)`).run(`j-${run}-${at}`, SETTLEMENT_JUDGMENT, run, decision, JSON.stringify({ kill_share_now: killNow }), iso(at));
+
+  it('settlement_value: per lane n, median fresh-mutant kill share, share below 0.2 with a Wilson CI; latest row per PR; no score = not counted', () => {
+    expect(SETTLEMENT_VALUE_THRESHOLD).toBe(0.2);
+    seedPr('e1', 401, { refs: EXPORTS }); seedPr('e2', 402, { refs: EXPORTS }); seedPr('e3', 403, { refs: EXPORTS }); seedPr('e4', 404, { refs: EXPORTS });
+    seedPr('m1', 405, { refs: MUT }); seedPr('g1', 406, { refs: GAP });
+    judge('e1', 0.9, now - 3 * DAY); judge('e1', 0.1, now - 2 * DAY); // the latest row decides
+    judge('e2', 0.5, now - 2 * DAY); judge('e3', 0, now - 2 * DAY);
+    judge('e4', null, now - 2 * DAY, 'fail'); // tests failed: no kill share now, not in the label
+    judge('m1', 0.667, now - 2 * DAY); judge('g1', 0.2, now - 2 * DAY); // exactly the threshold is not below it
+    const v = settlementValueEvidence(db, wilson);
+    expect(v.threshold).toBe(0.2);
+    const lane = (l: string) => v.by_lane.find((x) => x.lane === l);
+    expect(lane('exports')).toEqual({ lane: 'exports', n: 3, kill_share_now_median: 0.1, below: 2, share_below: 0.667, ci: wilson(2, 3) });
+    expect(lane('mutation')).toMatchObject({ n: 1, kill_share_now_median: 0.667, below: 0, share_below: 0 });
+    expect(lane('test-gap')).toMatchObject({ n: 1, kill_share_now_median: 0.2, below: 0 });
+    // in the evidence endpoint, report only
+    const e = buildEvolutionEvidence(db, ENV, now);
+    expect(e.settlement_value.by_lane).toEqual(v.by_lane);
+  });
+
+  it(`survival section: a lane with 0 regressions at ≥ ${SURVIVAL_INFORMATIVE_MIN_N} settled PRs is informative:false with a reason; Gate B unchanged`, () => {
+    for (let i = 0; i < SURVIVAL_INFORMATIVE_MIN_N; i++) seedPr(`x${i}`, 500 + i, { refs: EXPORTS, survived: true });
+    for (let i = 0; i < SURVIVAL_INFORMATIVE_MIN_N - 1; i++) seedPr(`t${i}`, 600 + i, { refs: GAP, survived: true });
+    seedPr('t-reg', 700, { refs: GAP, survived: false, status: 'regressed' });
+    for (let i = 0; i < 5; i++) seedPr(`u${i}`, 800 + i, { refs: MUT, survived: true });
+    const s = buildEvolutionEvidence(db, ENV, now).merge.settlement!;
+    const lane = (l: string) => s.by_lane.find((x) => x.lane === l)!;
+    expect(lane('exports')).toMatchObject({ settled: 30, survived: 30, regressed: 0, informative: false });
+    expect(lane('exports').informative_reason).toMatch(/0 regressions in 30 settled/);
+    expect(lane('test-gap')).toMatchObject({ settled: 30, regressed: 1, informative: true, informative_reason: null });
+    expect(lane('mutation')).toMatchObject({ settled: 5, regressed: 0, informative: true });
+    // the overall numbers (and so Gate B and fitness) are what they were
+    expect(s).toMatchObject({ survived: 64, regressed: 1, settled: 65 });
   });
 });

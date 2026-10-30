@@ -57,6 +57,21 @@ interface SkillGenome {
  */
 export const COMPLETED_UNVERIFIED_REF = 'outcome_class:completed_unverified';
 
+/**
+ * INT-004 follow-up: a skill outcome is an observation of the skill only with positive delivery evidence — the engine's
+ * `skill_delivery:delivered` ref (a receipt that the skill text was in the assignment the runtime got). Assigned /
+ * unknown delivery (skill_attribution:unverified) and untagged legacy rows (written before receipts, or via the manual
+ * /evolution/outcome API) are a stored association, not a measurement: per-skill fitness and promotion leave them out.
+ */
+export const DELIVERED_ATTRIBUTION_SQL = `evidence_refs_json LIKE '%"skill_delivery:delivered"%'`;
+
+/**
+ * Outcome namespaces that are species, not delivered skills — makers (`[repo:<slug>:]loop-maker:<lane|gym|merge>:...`),
+ * fleet agents (`agent:`), falsifiers (`falsifier:`). They never carry a delivery receipt; their fitness reads every row.
+ */
+export const isSpeciesOutcome = (skillId: string): boolean =>
+  skillId.includes('loop-maker:') || skillId.startsWith('agent:') || skillId.startsWith('falsifier:');
+
 function seededRandom(seed?: string): () => number {
   if (!seed) return Math.random;
   let state = createHash('sha256').update(seed).digest().readUInt32LE(0);
@@ -214,9 +229,10 @@ export class SkillEvolutionEngine {
   measuredTraits(skillId: string): SkillGenome['traits'] {
     // E2: an infra / no-change / completed-unverified zero is no observation of the skill (left out, never a 0).
     // Unknown tokens (NULL, or a 0 that stands for a missing report) drop out of the efficiency AVG instead of scoring 1.
+    // A named skill counts only delivered attribution, on both sides (an undelivered success is no more the skill's than a failure).
     const r = this.db.prepare(`SELECT COUNT(*) AS n, AVG(success) AS rel,
         AVG(CASE WHEN tokens_used > 0 THEN MIN(1.0, 1000.0 / tokens_used) END) AS eff, COALESCE(SUM(tokens_used > 0), 0) AS eff_n FROM skill_outcomes WHERE skill_id = ?
-        AND NOT (success = 0 AND ${UNFAIR_ZERO_SQL}) AND NOT (success = 0 AND evidence_refs_json LIKE '%"${COMPLETED_UNVERIFIED_REF}"%')${skillId.includes('loop-maker:merge:') ? ` AND NOT ${supersededMergeOutcomeSql('skill_outcomes')}` : ''}`).get(skillId) as { n: number; rel: number | null; eff: number | null; eff_n: number };
+        ${isSpeciesOutcome(skillId) ? '' : `AND ${DELIVERED_ATTRIBUTION_SQL} `}AND NOT (success = 0 AND ${UNFAIR_ZERO_SQL}) AND NOT (success = 0 AND evidence_refs_json LIKE '%"${COMPLETED_UNVERIFIED_REF}"%')${skillId.includes('loop-maker:merge:') ? ` AND NOT ${supersededMergeOutcomeSql('skill_outcomes')}` : ''}`).get(skillId) as { n: number; rel: number | null; eff: number | null; eff_n: number };
     const has = r.n > 0;
     return { efficiency: has ? r.eff : null, reliability: has ? r.rel : null, generality: null, complexity: null, adaptability: null,
       efficiency_coverage: { known: r.eff_n, total: r.n } };

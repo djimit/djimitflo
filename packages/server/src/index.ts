@@ -59,6 +59,8 @@ import { PROBE_INTERVAL_MS, startOllamaProbe } from './services/inference-failov
 import { SHIPPED_CODE_SCAN_INTERVAL_MS, startShippedCodeScan } from './services/shipped-code-scan';
 import { SKILL_DISTILLATION_INTERVAL_MS, startSkillDistillation } from './services/skill-distillation';
 import { buildProvenance } from './utils/build-provenance';
+import { recordTreatmentEnvBoundaries } from './services/experiment-registry';
+import { fleetDrift } from './utils/fleet-drift';
 
 // Operator rule (2026-09-29): this server never calls the hosts in OUTBOUND_DENY_HOSTS (the workstation only pulls).
 // §16 step 8: refusals are also counted in policy_violations (POLICY_VIOLATION_LOG=shadow) once the database is open.
@@ -120,6 +122,12 @@ async function main() {
   initExternalEventIngest(db);
   if (operatorRuntime) initOperatorServices(db);
   if (autonomousRuntime) {
+    // A18: the process that runs the experiments records a period boundary when a treatment flag changed since its last boot
+    try {
+      for (const b of recordTreatmentEnvBoundaries(db)) console.warn(`🧪 period boundary: ${b.experiment_id} ${b.env_name} ${b.previous ?? '(unset)'} → ${b.current ?? '(unset)'}`);
+    } catch (error) {
+      console.warn('⚠️  Experiment period-boundary check failed (non-fatal):', error instanceof Error ? error.message : String(error));
+    }
     initAutonomousServices(db, recoverySvc);
     // Share the same LoopService instance so daemon and API share runtime leases.
     try {
@@ -163,6 +171,8 @@ async function main() {
       commit: build.commit,
       // Same build identity as /api/health so both liveness endpoints are attributable.
       build,
+      // S3: fleet services (event bus, agent registry) whose deployed sources differ from main; null = not checked
+      fleet_drift: fleetDrift(),
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
     });
