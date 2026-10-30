@@ -53,6 +53,9 @@ jobs:
       - name: Test Commons runtime poller
         run: python3 -m unittest discover -s scripts -p 'test_*poller.py'
 
+      - name: Test fleet host agent
+        run: python3 -m unittest discover -s scripts -p 'test_djimit_host_agent.py'
+
       - name: Security audit
         run: npm run audit:ci
 

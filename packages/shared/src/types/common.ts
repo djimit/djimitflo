@@ -154,6 +154,7 @@ export enum AuditEventType {
   EXPORT_CREATED = 'export.created',
   EXPORT_DENIED = 'export.denied',
   AUTH_LOGIN = 'auth.login',
+  AUTH_LOGIN_FAILED = 'auth.login_failed',
   AUTH_LOGOUT = 'auth.logout',
 }
 
