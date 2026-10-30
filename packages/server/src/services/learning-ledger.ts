@@ -91,7 +91,7 @@ export function learningLedger(db: Database, experiments: ExperimentRow[], ope: 
       const status = fromVerdict(e.verdict);
       const ci = eff?.ci ?? null;
       return { ...base, metric: eff?.metric ?? null, estimate: eff?.estimate ?? null, ci, p: eff?.p ?? null, status, closed: status === 'ADOPTED' && excludesZero(ci),
-        note: e.error ? `evidence unreadable: ${e.error}` : `${m.experiment}: n per arm ${JSON.stringify(e.n_per_arm)} of target ${e.target_n}, stop_by ${e.stop_by?.slice(0, 10) ?? 'none'}${e.verdict ? `, verdict ${e.verdict}` : ''}` };
+        note: e.error ? `evidence unreadable: ${e.error}` : `${m.experiment}: n per arm ${JSON.stringify(e.n_per_arm)} of target ${e.target_n}, stop_by ${e.stop_by?.slice(0, 10) ?? 'none'}${e.verdict ? `, verdict ${e.verdict}` : ''}${eff?.withheld ? `; estimate ${eff.withheld}` : ''}` };
     }
     if (m.mechanism === 'genomes') {
       type G = { active: number; trial: number; decided: number };
