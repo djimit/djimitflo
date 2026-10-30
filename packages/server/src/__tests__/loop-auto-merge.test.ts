@@ -8,7 +8,7 @@ import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { runAutoMergeTick } from '../services/loop-auto-merge';
 import { EVOLUTION_FLAGS } from '../services/evolution-evidence';
-import { autoMergeValueGate, autoMergeValueSignal, VALUE_KILL_SHARE_MIN, autoMergeEvidence, isAuditSample, isTransientReason, PERMANENT_INELIGIBLE_REASONS, readClassState, revokeClass, TRANSIENT_INELIGIBLE_REASONS } from '../services/loop-auto-merge-state';
+import { autoMergeValueGate, autoMergeValueGateLanes, autoMergeValueSignal, VALUE_KILL_SHARE_MIN, autoMergeEvidence, isAuditSample, isTransientReason, PERMANENT_INELIGIBLE_REASONS, readClassState, revokeClass, TRANSIENT_INELIGIBLE_REASONS } from '../services/loop-auto-merge-state';
 import { listDraftPrs } from '../services/loop-draft-pr-service';
 import { buildDigest, setPushSender } from '../services/operator-push';
 import { createAuthMiddleware } from '../middleware/auth';
@@ -71,9 +71,9 @@ const fakeFetch = vi.fn(async (url: string, init?: { method?: string; body?: str
 const writes = () => calls.filter((c) => c.method !== 'GET');
 
 function seedPr(number: number, opts: { files?: string[]; proposal?: string; title?: string; login?: string; reviews?: FakePr['reviews']; removed?: boolean; lines?: number; draft?: boolean; behind?: boolean; strength?: 'pass' | 'fail' | 'skipped' | 'none'; verified?: string | null;
-  fbpa?: 'pass' | 'fail' | 'skipped'; graded?: Record<string, unknown> } = {}) {
+  fbpa?: 'pass' | 'fail' | 'skipped'; graded?: Record<string, unknown>; evidence?: string[] } = {}) {
   const id = `run-${number}`; const branch = `agent/loop/${id}`;
-  db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status) VALUES (?, 'test', ?, 'd', 'r', 'test-gap', ?)`).run(`si-${number}`, `t${number}`, opts.proposal ?? 'verified');
+  db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, evidence_refs_json) VALUES (?, 'test', ?, 'd', 'r', 'test-gap', ?, ?)`).run(`si-${number}`, `t${number}`, opts.proposal ?? 'verified', JSON.stringify(opts.evidence ?? []));
   db.prepare("INSERT INTO goals (id, objective, risk_class, status, metadata, improvement_id, created_at, updated_at) VALUES (?, 'o', 'low', 'completed', '{}', ?, datetime('now'), datetime('now'))").run(`g-${number}`, `si-${number}`);
   db.prepare(`INSERT INTO loop_runs (id, goal_id, loop_name, mode, status, gates_json, metadata, created_at, updated_at) VALUES (?, ?, 'test-gap', 'closed', 'completed', ?, ?, ?, ?)`)
     .run(id, `g-${number}`, JSON.stringify([{ name: 'diff_under_threshold', status: 'pass' }]), JSON.stringify({ pr_url: `https://github.com/o/r/pull/${number}`, ...(opts.verified === null ? {} : { verified_head_sha: opts.verified ?? `sha${number}` }) }), '2026-10-06T00:00:00Z', '2026-10-06T00:00:00Z');
@@ -798,6 +798,63 @@ it('U2 on: a missing or low value signal is ineligible (never merged); FBPA pass
   expect(isTransientReason('value_signal_missing')).toBe(false);
   await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act', { LOOP_AUTO_MERGE_VALUE_GATE: 'on', LOOP_AUTO_MERGE_RECHECK: 'on' }), new Date(NOW.getTime() + 7 * 3_600_000));
   expect(decision(700)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_missing' });
+});
+
+// operator 30-10: the gate acts only on the lanes in LOOP_AUTO_MERGE_VALUE_GATE_LANES (exports first: 70 % of exports PRs kill
+// < 0.2 fresh mutants); other lanes are evaluated like shadow. Lane identity = settlement's runLanes (proposal evidence refs).
+const EXPORTS_EV = ['test-gap:packages/server/src/services/x.ts#exports']; const TEST_GAP_EV = ['test-gap:packages/server/src/services/y.ts'];
+const MUTATION_EV = ['mutation-gap:packages/server/src/services/z.ts'];
+const seedLanePrs = () => {
+  expect([700, 702, 703, 704].filter(isAuditSample)).toEqual([]);
+  seedPr(700, { draft: false, evidence: EXPORTS_EV, graded: KILL(0) }); // exports, low
+  seedPr(702, { draft: false, evidence: TEST_GAP_EV, graded: KILL(0) }); // test-gap, low
+  seedPr(703, { draft: false, evidence: MUTATION_EV }); // mutation, missing
+  seedPr(704, { draft: false, evidence: EXPORTS_EV, graded: KILL(0.667) }); // exports, pass
+};
+
+it('value gate lanes: LOOP_AUTO_MERGE_VALUE_GATE_LANES is a comma list of lane names (unset/empty = all lanes), registered as an acting flag', () => {
+  expect(autoMergeValueGateLanes({})).toBeNull();
+  expect(autoMergeValueGateLanes({ LOOP_AUTO_MERGE_VALUE_GATE_LANES: ' , ' })).toBeNull();
+  expect(autoMergeValueGateLanes({ LOOP_AUTO_MERGE_VALUE_GATE_LANES: 'exports' })).toEqual(['exports']);
+  expect(autoMergeValueGateLanes({ LOOP_AUTO_MERGE_VALUE_GATE_LANES: ' Exports, test-gap ' })).toEqual(['exports', 'test-gap']);
+  expect(EVOLUTION_FLAGS).toContainEqual({ name: 'LOOP_AUTO_MERGE_VALUE_GATE_LANES', acting: true });
+});
+
+it('value gate lanes: on + lanes=exports blocks a low-value exports PR; a low-value test-gap / mutation PR is only recorded (would_block_value) and merged', async () => {
+  seedLanePrs();
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act', { LOOP_AUTO_MERGE_VALUE_GATE: 'on', LOOP_AUTO_MERGE_VALUE_GATE_LANES: 'exports' }), NOW);
+  expect(decision(700)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_low' });
+  expect(decision(702)).toMatchObject({ decision: 'merged', would_block_value: 'value_signal_low' });
+  expect(decision(703)).toMatchObject({ decision: 'merged', would_block_value: 'value_signal_missing' });
+  expect(decision(704).decision).toBe('merged'); expect(decision(704).would_block_value).toBeUndefined();
+  expect(writes().filter((c) => c.url.endsWith('/merge')).map((c) => c.url.split('/').slice(-2)[0])).toEqual(['702', '703', '704']);
+});
+
+it('value gate lanes: on with the list unset blocks every lane (current behaviour)', async () => {
+  seedLanePrs();
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act', { LOOP_AUTO_MERGE_VALUE_GATE: 'on' }), NOW);
+  expect(decision(700)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_low' });
+  expect(decision(702)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_low' });
+  expect(decision(703)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_missing' });
+  expect(decision(704)).toMatchObject({ decision: 'merged' });
+});
+
+it('value gate lanes: shadow never blocks, also for a listed lane', async () => {
+  seedLanePrs();
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act', { LOOP_AUTO_MERGE_VALUE_GATE: 'shadow', LOOP_AUTO_MERGE_VALUE_GATE_LANES: 'exports' }), NOW);
+  expect(decision(700)).toMatchObject({ decision: 'merged', would_block_value: 'value_signal_low' });
+  expect(decision(702)).toMatchObject({ decision: 'merged', would_block_value: 'value_signal_low' });
+  expect(writes().filter((c) => c.url.endsWith('/merge'))).toHaveLength(4);
+});
+
+it('value gate lanes: a PR the all-lanes gate rejected is re-evaluated once its lane leaves the list; a listed lane stays final', async () => {
+  seedLanePrs();
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act', { LOOP_AUTO_MERGE_VALUE_GATE: 'on' }), NOW);
+  expect(decision(702)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_low' });
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act', { LOOP_AUTO_MERGE_VALUE_GATE: 'on', LOOP_AUTO_MERGE_VALUE_GATE_LANES: 'exports' }), new Date(NOW.getTime() + 60_000));
+  expect(decision(700)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_low' });
+  expect(decision(702)).toMatchObject({ decision: 'merged', would_block_value: 'value_signal_low' });
+  expect(decision(703)).toMatchObject({ decision: 'merged', would_block_value: 'value_signal_missing' });
 });
 
 it('U2 rollback: a PR rejected only by the value gate is eligible again once the gate is shadow or off (other final reasons stay final)', async () => {

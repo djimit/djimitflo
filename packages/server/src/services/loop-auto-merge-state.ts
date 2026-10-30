@@ -57,6 +57,17 @@ export const autoMergeValueGate = (env: NodeJS.ProcessEnv = process.env): ValueG
   const v = String(env.LOOP_AUTO_MERGE_VALUE_GATE ?? '').trim().toLowerCase();
   return v === 'shadow' || v === 'on' ? v : 'off';
 };
+/**
+ * LOOP_AUTO_MERGE_VALUE_GATE_LANES (operator 30-10: exports first — 70 % of exports PRs kill < 0.2 fresh mutants): a comma list
+ * of oracle lanes (gym-failure-tasks oracleLane, the settlement lanes: exports | test-gap | mutation | other). With the gate on,
+ * only PRs of a listed lane are blocked; every other lane is evaluated like shadow (would_block_value). Unset / empty = all lanes.
+ */
+export const autoMergeValueGateLanes = (env: NodeJS.ProcessEnv = process.env): string[] | null => {
+  const lanes = String(env.LOOP_AUTO_MERGE_VALUE_GATE_LANES ?? '').split(',').map((l) => l.trim().toLowerCase()).filter(Boolean);
+  return lanes.length ? lanes : null;
+};
+/** Whether the value gate acts (blocks) on a PR of this lane: on, and the lane is listed (or no list is set). */
+export const valueGateActsOn = (mode: ValueGateMode, lanes: string[] | null, lane: string): boolean => mode === 'on' && (!lanes || lanes.includes(lane));
 export const VALUE_KILL_SHARE_MIN = 0.2;
 /** C4 (re-20261030): the one-off replay of the value gate on past auto-merges (auto-merge-value-replay.ts), shadow evidence only */
 export const VALUE_GATE_REPLAY_JUDGMENT = 'auto_merge_value_gate_replay';
@@ -173,7 +184,7 @@ export function autoMergeEvidence(db: Database, env: NodeJS.ProcessEnv = process
     },
     ineligible_by_reason: reasons,
     // U2: what the value gate blocks (on: ineligible reasons) or would block (shadow: decisions carrying would_block_value)
-    value_gate: { mode: autoMergeValueGate(env), kill_share_min: VALUE_KILL_SHARE_MIN,
+    value_gate: { mode: autoMergeValueGate(env), lanes: autoMergeValueGateLanes(env) ?? 'all', kill_share_min: VALUE_KILL_SHARE_MIN,
       would_block: { value_signal_missing: rows.filter((r) => r.would_block === 'value_signal_missing').length, value_signal_low: rows.filter((r) => r.would_block === 'value_signal_low').length },
       // C4: the operator-run replay of the rule on past auto-merges (shadow judgments, replay: true); n 0 = not run
       replay: { n: replay.reduce((a, r) => a + r.n, 0), pass: replayed('pass'), low: replayed('low'), missing: replayed('missing') } },

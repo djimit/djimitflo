@@ -7,7 +7,7 @@ import { SURVIVAL_DAYS, loopPrSettlements, survivalCounts, type LoopPrSettlement
 import { parsePrUrl } from './repo-registry';
 import { classifyReport, runChild } from './commons-falsifier';
 import { GRADED_KILL_BUDGET_MS, GRADED_TEST, gradedTarget, killShare, roundGraded, vitestRunner, type KillRunner } from './graded-fitness';
-import { WRITE_TEST_MUTANTS, laneOf, targetMutants } from './gym-failure-tasks';
+import { WRITE_TEST_MUTANTS, oracleLane, targetMutants } from './gym-failure-tasks';
 import { WorktreeManager } from './worktree-manager';
 import { guardTick, markRun, noteScheduler } from './scheduler-registry';
 import type { LoopService } from './loop-service';
@@ -361,7 +361,7 @@ export function runLanes(db: Database): Map<string, string> {
     rows = db.prepare(`SELECT r.id, s.evidence_refs_json AS ev FROM loop_runs r JOIN goals g ON g.id = r.goal_id JOIN self_improvements s ON s.id = g.improvement_id
       WHERE json_extract(r.metadata, '$.pr_url') IS NOT NULL`).all() as typeof rows;
   } catch { /* tables absent: every run is 'other' */ }
-  for (const r of rows) { const ev = r.ev ?? ''; out.set(r.id, /"mutation-gap:/.test(ev) ? 'mutation' : laneOf(ev) ?? 'other'); }
+  for (const r of rows) out.set(r.id, oracleLane(r.ev));
   return out;
 }
 
