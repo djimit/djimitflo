@@ -31,7 +31,7 @@ import { banditSpecies, chooseSpecies, speciesKey } from './runtime-bandit';
 import { recordFitnessShadow } from './fitness-view';
 import { buildProvenance, provenanceJson } from './judgment-provenance';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
-import { allGatesPassed } from './loop-types';
+import { allGatesPassed, gatePassesStrict } from './loop-types';
 import { authorityGateForGoal } from './authority-gate';
 import { remoteMakerWaitMs } from '../execution/executors/remote-maker-executor';
 import { recordFailureGaps } from './knowledge-gaps';
@@ -859,7 +859,7 @@ export class LoopDaemon {
       // 9. Verify the run (G3.4 convergence verification).
       const verification = this.loops.verifyLoopRun(run.id);
       // Completion (goal/run status, draft PR, learning closure) keeps the strict every-gate-'pass' rule.
-      const allGatesPass = verification.gates.length > 0 && verification.gates.every(g => g.status === 'pass');
+      const allGatesPass = verification.gates.length > 0 && verification.gates.every(gatePassesStrict);
       // P0-8: what learners record (cognitive episode, proposal outcome, skill_outcomes/bandit, model-call ledger, gaps) uses
       // certification's rule — a skipped security review on a non-high-risk run passes — as outcome_credits already does.
       const outcomeVerified = allGatesPassed(verification.gates);

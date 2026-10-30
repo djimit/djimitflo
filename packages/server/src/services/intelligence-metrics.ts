@@ -5,6 +5,7 @@ import { nonMakerRunSql, attributionSummary, attributionBackfill } from './outco
 import { efficiencyView } from './resource-ledger';
 import type { ForecasterScoreV2 } from './forecast-scoring';
 import { policyViolationCounts, policyViolationLogEnabled } from './policy-violations';
+import { realRunSql } from './synthetic-runs';
 
 /**
  * §16 step 1 (docs/research/intelligence-metrics/IMPLEMENTATION_PLAN.md, METRIC_CONTRACTS.yaml v0.2.0): one read-only status
@@ -157,7 +158,7 @@ export function approvalOutcomes(db: Database, since: string, env: NodeJS.Proces
       LEFT JOIN loop_runs r ON r.id = COALESCE(json_extract(a.metadata, '$.loop_run_id'), json_extract(t.metadata, '$.loop_run_id'))
       LEFT JOIN goals g ON g.id = COALESCE(json_extract(a.metadata, '$.goal_id'), r.goal_id)
       LEFT JOIN self_improvements s ON s.id = COALESCE(json_extract(a.metadata, '$.improvement_id'), g.improvement_id)
-      WHERE a.created_at >= ?`).all(since) as Array<{ id: string; status: string; decided_by: string | null; stored_goal: string | null; lane: string | null; outcome: string | null; non_maker: number }>;
+      WHERE a.created_at >= ? AND ${realRunSql('r')}`).all(since) as Array<{ id: string; status: string; decided_by: string | null; stored_goal: string | null; lane: string | null; outcome: string | null; non_maker: number }>;
   } catch { return []; }
 }
 
@@ -229,8 +230,8 @@ export function intelligenceEvidence(db: Database, env: NodeJS.ProcessEnv, now: 
   metrics.push(metric('RIR', 'INSUFFICIENT_EVIDENCE', decisiveCycles, decisiveCycles < 3 ? `${decisiveCycles} cycle(s) with a decisive VIG; needs ≥ 3` : 'per-cycle cost is not attributed to a trial in the resource ledger yet', { decisive_cycles: decisiveCycles }));
 
   // GTI = VIG_unseen / VIG_source, defined only once a source VIG is decisive; no per-stratum VIG is recorded yet
-  const paths = all<{ repo: string }>("SELECT DISTINCT COALESCE(repository_path, '') AS repo FROM loop_runs WHERE created_at >= ?", since).map((r) => r.repo).filter(Boolean);
-  const gtiDetail = { repository_paths: paths.length, note: 'distinct loop_runs.repository_path values; checkout aliases of one repository (/app, /workspace/…) are not distinct repositories' };
+  const paths = all<{ repo: string }>(`SELECT DISTINCT COALESCE(repository_path, '') AS repo FROM loop_runs WHERE created_at >= ? AND ${realRunSql()}`, since).map((r) => r.repo).filter(Boolean);
+  const gtiDetail = { repository_paths: paths.length, note: 'distinct loop_runs.repository_path values of real runs (synthetic PR-review runs excluded); checkout aliases of one repository (/app, /workspace/…) are not distinct repositories' };
   metrics.push(vigEligible.some(decisive)
     ? metric('GTI', 'INSUFFICIENT_EVIDENCE', 0, 'no per-stratum (unseen-repository / task-family) VIG is recorded yet', gtiDetail)
     : metric('GTI', 'UNDEFINED', 0, 'no decisive source VIG, so the transfer ratio is undefined; a second repository with ≥ 20 tasks is also needed', gtiDetail));

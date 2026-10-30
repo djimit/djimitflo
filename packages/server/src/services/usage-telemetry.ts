@@ -17,7 +17,11 @@ const ensure = (db: Database) => db.exec(`CREATE TABLE IF NOT EXISTS usage_count
  */
 export const MAX_BUFFERED_KEYS = 10_000;
 
-const sinceDay = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+/** The flushing collector per database — the API middleware's (routes/index.ts) — so readers see its pending counts. */
+const live = new WeakMap<Database, UsageTelemetry>();
+export const liveUsageTelemetry = (db: Database): UsageTelemetry | undefined => live.get(db);
+
+const sinceDay = (days: number, now = new Date()) => new Date(now.getTime() - days * 86_400_000).toISOString().slice(0, 10);
 
 export class UsageTelemetry {
   private buffer = new Map<string, number>();
@@ -25,7 +29,10 @@ export class UsageTelemetry {
   private timer: NodeJS.Timeout | null = null;
   constructor(private readonly db: Database, flushMs = 60_000) {
     ensure(db);
-    if (flushMs > 0) { this.timer = setInterval(() => this.flush(), flushMs); this.timer.unref?.(); }
+    if (flushMs > 0) {
+      this.timer = setInterval(() => this.flush(), flushMs); this.timer.unref?.();
+      if (!live.has(db)) live.set(db, this);
+    }
   }
 
   count(kind: 'api' | 'page', name: string, method = '', statusClass = ''): void {
@@ -75,10 +82,10 @@ export class UsageTelemetry {
   /**
    * Whether the persisted summary for the same window is the whole story: `dropped_count` = counts lost to the buffer cap
    * (persisted in usage_loss per day, plus losses not yet written), `incomplete` is true while any count in the window is
-   * dropped or still buffered (not yet written). Read it after `summary(days)`.
+   * dropped or still buffered (not yet written). Read it after `summary(days)`. `now` = the window's end (default: now).
    */
-  coverage(days = 14): { dropped_count: number; incomplete: boolean } {
-    const since = sinceDay(days);
+  coverage(days = 14, now = new Date()): { dropped_count: number; incomplete: boolean } {
+    const since = sinceDay(days, now);
     let dropped = (this.db.prepare('SELECT COALESCE(SUM(dropped), 0) n FROM usage_loss WHERE day >= ?').get(since) as { n: number }).n;
     for (const [day, n] of this.dropped) if (day >= since) dropped += n;
     return { dropped_count: dropped, incomplete: dropped > 0 || this.buffer.size > 0 };
@@ -91,5 +98,5 @@ export class UsageTelemetry {
       FROM usage_counts WHERE day >= ? GROUP BY kind, name, method ORDER BY hits DESC`).all(since) as never;
   }
 
-  stop(): void { if (this.timer) clearInterval(this.timer); this.flush(); }
+  stop(): void { if (this.timer) clearInterval(this.timer); this.flush(); if (live.get(this.db) === this) live.delete(this.db); }
 }

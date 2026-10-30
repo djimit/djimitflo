@@ -1,4 +1,5 @@
 import type { Database } from 'better-sqlite3';
+import { realRunSql } from './synthetic-runs';
 import { nonMakerRunSql } from './outcome-attribution';
 
 /**
@@ -23,7 +24,7 @@ export function earnedAutonomy(db: Database, now = Date.now(), env: NodeJS.Proce
       LEFT JOIN loop_runs r ON r.id = l.loop_run_id
       LEFT JOIN goals g ON g.id = r.goal_id
       LEFT JOIN self_improvements s ON s.id = g.improvement_id
-      WHERE a.created_at >= ?`).all(since) as typeof rows;
+      WHERE a.created_at >= ? AND ${realRunSql('r')}`).all(since) as typeof rows;
   } catch { return []; }
   const lane = (r: (typeof rows)[number]) => {
     const refs = r.refs ?? '';

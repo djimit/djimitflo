@@ -22,6 +22,7 @@ import { provenanceDag } from '../services/provenance-dag';
 import { attributionSummary } from '../services/outcome-attribution';
 import { runtimeConfigView } from '../services/runtime-config-view';
 import { buildProvenance } from '../utils/build-provenance';
+import { fleetDrift } from '../utils/fleet-drift';
 import { buildDigest } from '../services/operator-push';
 import { getDatabaseProvenance } from '../database/provenance';
 import { efficiencyWithCost } from '../services/cost-ledger';
@@ -48,6 +49,7 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
       // Non-secret build identity makes public liveness checks attributable.
       commit: process.env.DJIMITFLO_COMMIT_SHA || null,
       build: buildProvenance(),
+      fleet_drift: fleetDrift(),
       timestamp: new Date().toISOString(),
     });
   });

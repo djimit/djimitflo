@@ -41,6 +41,7 @@ export const OPERATOR_PUSH_FLAGS = ['TELEGRAM_PUSH_ENABLED', 'TELEGRAM_PUSH_MAX_
 /** Telegram rejects callback_data over 64 bytes. */
 export const CALLBACK_DATA_MAX_BYTES = 64;
 const TRIAGE_KEY = 'triage:';
+const STALL_KEY = 'stall:';
 const publicBase = (env: NodeJS.ProcessEnv): string | null => { const b = (env.DJIMITFLO_PUBLIC_URL || '').replace(/\/+$/, ''); return /^https:\/\//.test(b) ? b : null; };
 
 /** 'HH-HH' in UTC, wrapping midnight ('22-7' = 22:00..06:59). Malformed or empty = no quiet hours. */
@@ -124,11 +125,31 @@ export async function pushApproval(db: Database, a: ApprovalLike, env: NodeJS.Pr
     if (db.prepare('SELECT 1 FROM telegram_push_log WHERE approval_id = ?').get(a.id)) return 'duplicate';
     if (inQuietHours(env.TELEGRAM_QUIET_HOURS, now)) return 'quiet';
     const cap = Math.max(1, Number(env.TELEGRAM_PUSH_MAX_PER_HOUR) || 6);
-    const sentHour = (db.prepare(`SELECT COUNT(*) AS n FROM telegram_push_log WHERE sent_at >= ? AND approval_id NOT LIKE '${TRIAGE_KEY}%'`).get(new Date(now.getTime() - 3_600_000).toISOString()) as { n: number }).n;
+    const sentHour = (db.prepare(`SELECT COUNT(*) AS n FROM telegram_push_log WHERE sent_at >= ? AND approval_id NOT LIKE '${TRIAGE_KEY}%' AND approval_id NOT LIKE '${STALL_KEY}%'`).get(new Date(now.getTime() - 3_600_000).toISOString()) as { n: number }).n;
     if (sentHour >= cap) return 'capped';
     db.prepare('INSERT INTO telegram_push_log (approval_id, sent_at) VALUES (?, ?)').run(a.id, now.toISOString());
     const base = publicBase(env);
     await sender.requestApproval(a.id, approvalMessage(a, approvalContext(db, a)), base ? `${base}/decisions#approvals` : null);
+    return 'sent';
+  } catch { return 'failed'; }
+}
+
+/**
+ * O1a: one informational line per NEW stall (the stall watch dedupes against its previous tick). Same TELEGRAM_PUSH_ENABLED
+ * gate, quiet hours and TELEGRAM_PUSH_MAX_PER_HOUR as approvals, counted apart (a burst of stalls never crowds out an
+ * approval). A stall dropped by quiet hours or the cap is not retried: its judgments row and the digest still carry it.
+ */
+export async function pushStall(db: Database, stall: { subsystem: string; since: string | null; detail: string }, env: NodeJS.ProcessEnv = process.env, now = new Date()): Promise<Exclude<PushResult, 'decided' | 'duplicate'>> {
+  try {
+    if (!pushEnabled(env)) return 'disabled';
+    if (!sender) return 'no_sender';
+    ensureLog(db);
+    if (inQuietHours(env.TELEGRAM_QUIET_HOURS, now)) return 'quiet';
+    const cap = Math.max(1, Number(env.TELEGRAM_PUSH_MAX_PER_HOUR) || 6);
+    const sentHour = (db.prepare(`SELECT COUNT(*) AS n FROM telegram_push_log WHERE sent_at >= ? AND approval_id LIKE '${STALL_KEY}%'`).get(new Date(now.getTime() - 3_600_000).toISOString()) as { n: number }).n;
+    if (sentHour >= cap) return 'capped';
+    db.prepare('INSERT OR IGNORE INTO telegram_push_log (approval_id, sent_at) VALUES (?, ?)').run(`${STALL_KEY}${stall.subsystem}:${now.toISOString()}`, now.toISOString());
+    await sender.broadcastAlert(clean(`Stall: ${stall.subsystem} since ${stall.since ?? 'never'} — ${stall.detail}`, 400));
     return 'sent';
   } catch { return 'failed'; }
 }
@@ -230,9 +251,10 @@ export function buildDigest(db: Database, now = Date.now(), env: NodeJS.ProcessE
     approvals_expired_24h: one("SELECT COUNT(*) FROM approvals WHERE status = 'expired' AND updated_at >= ?", d1),
     approvals_pending: one("SELECT COUNT(*) FROM approvals WHERE status = 'pending'"),
     // E1: settled = SETTLED_SURVIVED + SETTLED_REGRESSED (closed-unmerged, pending and anomalous PRs are not survival settlements)
-    loop_prs_settled: evidence?.merge.settlement?.settled ?? 0,
-    loop_prs_survived: evidence?.merge.settlement?.survived ?? 0,
-    drafts_unsettled: evidence?.drafts.unsettled ?? 0,
+    // U4d (A4): unreadable evidence is null and reads 'unknown' — never a calm 0
+    loop_prs_settled: evidence?.merge.settlement?.settled ?? null,
+    loop_prs_survived: evidence?.merge.settlement?.survived ?? null,
+    drafts_unsettled: evidence?.drafts.unsettled ?? null,
     drafts_age_max_days: evidence?.drafts.age_days_max ?? null,
     gates: evidence ? Object.fromEntries(Object.entries(evidence.gates).map(([k, g]) => [k, (g as { state: string }).state])) : {},
     stalls: stalls ? stalls.map((s) => s.subsystem) : null,
@@ -253,8 +275,8 @@ export function buildDigest(db: Database, now = Date.now(), env: NodeJS.ProcessE
     `Waiting for you: ${waiting}`,
     ...sections.map((x) => `- ${n(x.count)} ${x.label}: ${x.link}`),
     `Optional labelling (not decisions): ${optional.map((x) => `${x.label} ${n(x.count)}`).join(', ')} — ${link('prescreen')}`,
-    `Loop PRs unsettled: ${data.drafts_unsettled}${data.drafts_age_max_days != null ? ` (oldest ${data.drafts_age_max_days} d)` : ''}`,
-    `Loop PRs settled: ${data.loop_prs_settled} (${data.loop_prs_survived} survived)`,
+    `Loop PRs unsettled: ${n(data.drafts_unsettled)}${data.drafts_age_max_days != null ? ` (oldest ${data.drafts_age_max_days} d)` : ''}`,
+    `Loop PRs settled: ${n(data.loop_prs_settled)} (${n(data.loop_prs_survived)} survived)`,
     `Realm gates: ${gates}`,
     data.stalls === null ? 'Stalls: unknown (stall watch failed)' : data.stalls.length ? `Stalls: ${data.stalls.join(', ')}` : 'Stalls: none',
     data.schedulers_off_unexpected.length ? `Schedulers off unexpectedly: ${data.schedulers_off_unexpected.length} (${data.schedulers_off_unexpected.map((s) => `${s.name} ${s.status}`).join(', ')})` : null,

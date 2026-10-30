@@ -170,6 +170,8 @@ export function usageEvents(db: Database, since: string, until: string, opts: Us
     const known = c.tin !== null || c.tout !== null;
     const tokens = (c.tin ?? 0) + (c.tout ?? 0);
     if (c.consumer === 'maker' && !opts.includeMakerMirror) { mirror('consumer = maker mirrors the maker lease runtime_usage (B29 recordMakerCall)', 'lease', tokens); continue; }
+    // O2a: a reviewer row mirrors its checker/security_checker lease (the lease branch above owns the tokens)
+    if (c.consumer === 'checker') { mirror('consumer = checker mirrors the reviewer lease runtime_usage (O2a recordWorkerCall)', 'lease', tokens); continue; }
     if (c.consumer === 'jev' && known) { mirror('consumer = jev with tokens mirrors the judgments rows of that System One call', 'judgment', tokens); continue; }
     if (String(c.purpose ?? '').startsWith('transport:')) { mirror('purpose transport:* is the transport row of a caller that records its own row (onUsage)', 'model_call', tokens); continue; }
     if (c.attempts === 0) { mirror('attempts = 0: never sent (breaker_open / queue_full)', 'model_call', tokens); continue; }

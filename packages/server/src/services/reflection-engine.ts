@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { realRunSql } from './synthetic-runs';
 import type { Database } from 'better-sqlite3';
 import { TrajectoryStore, type TrajectoryActionType, type TrajectoryOutcome } from './trajectory-store';
 
@@ -170,7 +171,7 @@ export class ReflectionEngine {
 
   correlateWithOutcomes(): CorrelationReport {
     const reflections = this.getReflections(50);
-    const runs = this.db.prepare('SELECT id, status FROM loop_runs ORDER BY created_at DESC LIMIT 50').all() as Array<{ id: string; status: string }>;
+    const runs = this.db.prepare(`SELECT id, status FROM loop_runs WHERE ${realRunSql()} ORDER BY created_at DESC LIMIT 50`).all() as Array<{ id: string; status: string }>;
 
     let reflectionSuccessCorrelation = 0;
     let totalCorrelated = 0;

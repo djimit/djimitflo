@@ -1,4 +1,5 @@
 import os from 'os';
+import { realRunSql, syntheticRunSql } from './synthetic-runs';
 import { randomUUID } from 'crypto';
 import { execFileSync } from 'child_process';
 import type { Database } from 'better-sqlite3';
@@ -779,7 +780,7 @@ export class SwarmStatusService {
   private fleetPools(resourceSnapshot: SwarmRealityStatus['resource_snapshot']): SwarmRealityStatus['fleet_pools'] {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const rows = this.db.prepare(`
-      SELECT wl.*, lr.metadata AS run_metadata
+      SELECT wl.*, lr.metadata AS run_metadata, ${syntheticRunSql('lr')} AS synthetic_run
       FROM worker_leases wl
       LEFT JOIN loop_runs lr ON lr.id = wl.loop_run_id
       WHERE wl.status IN ('prepared', 'running', 'completed', 'failed')
@@ -793,16 +794,21 @@ export class SwarmStatusService {
       const leases = rows.filter((row) => row.runtime === runtime);
       const prepared = leases.filter((row) => row.status === 'prepared');
       const running = leases.filter((row) => row.status === 'running');
-      const completed24h = leases.filter((row) => row.status === 'completed' && String(row.updated_at) >= since);
-      const failed24h = leases.filter((row) => row.status === 'failed' && String(row.updated_at) >= since);
+      // outcome rates count real loop work only (synthetic PR-review leases are bookkeeping); queue, capacity and spend count every lease
+      const completedAll24h = leases.filter((row) => row.status === 'completed' && String(row.updated_at) >= since);
+      const completed24h = completedAll24h.filter((row) => !row.synthetic_run);
+      const failed24h = leases.filter((row) => row.status === 'failed' && String(row.updated_at) >= since && !row.synthetic_run);
       const runtimeDurations = completed24h
         .map((row) => this.workerRuntimeMs(row))
         .filter((value): value is number => value !== null);
-      const tokensUsed24h = completed24h.reduce((sum, row) => {
+      const tokensOf = (rows: any[]) => rows.reduce((sum, row) => {
         const metadata = JSON.parse(row.metadata || '{}');
         const total = Number(metadata.runtime_usage?.total_tokens);
         return Number.isFinite(total) ? sum + total : sum;
       }, 0);
+      // real spend: a synthetic LLM review checker's tokens were consumed too
+      const tokensUsed24h = tokensOf(completedAll24h);
+      const realTokens24h = tokensOf(completed24h);
       const tokensPerDiffSamples = completed24h
         .map((row) => {
           const metadata = JSON.parse(row.metadata || '{}');
@@ -845,7 +851,7 @@ export class SwarmStatusService {
           : null,
         failure_rate_24h: totalFinished24h > 0 ? failed24h.length / totalFinished24h : 0,
         tokens_used_24h: tokensUsed24h,
-        tokens_per_successful_worker: completed24h.length > 0 ? tokensUsed24h / successfulWorkers : null,
+        tokens_per_successful_worker: completed24h.length > 0 ? realTokens24h / successfulWorkers : null,
         tokens_per_diff_line: tokensPerDiffSamples.length > 0
           ? tokensPerDiffSamples.reduce((sum, value) => sum + value, 0) / tokensPerDiffSamples.length
           : null,
@@ -1218,6 +1224,8 @@ export class SwarmStatusService {
     const rows = this.db.prepare(`
       SELECT * FROM loop_runs
       WHERE status = 'completed'
+        -- a synthetic PR-review run's finding ("Automated review for PR #N") is bookkeeping, not work
+        AND ${realRunSql()}
       ORDER BY completed_at DESC, created_at DESC
       LIMIT 100
     `).all() as any[];

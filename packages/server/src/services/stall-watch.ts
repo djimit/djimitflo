@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { syntheticRunSql } from './synthetic-runs';
 import type { Database } from 'better-sqlite3';
 import { decide, expiringAdmissions } from '../execution/runtime-admission';
 import { randomUUID } from 'crypto';
@@ -57,6 +58,14 @@ function readDeployLog(file: string): DeployEvent[] | null {
 export const VALUE_ANOMALY_WINDOW_H = 24;
 /** zero_success: a consumer with at least this many finished attempts in the window and none succeeded */
 export const ZERO_SUCCESS_MIN_ATTEMPTS = 5;
+/**
+ * O1b (re-20261029: the remote checker failed 21/21 with "remote maker needs model …, got ''" but under 5 per 24 h; the
+ * doc-drift prompt hang 10/10): a config-class failure repeats verbatim. zero_success also fires on at least this many failed
+ * leases of one species (maker or reviewer) whose failure_reason shares its first ZERO_SUCCESS_REASON_PREFIX characters,
+ * with no completed lease of that species in the window.
+ */
+export const ZERO_SUCCESS_SAME_REASON_MIN = 3;
+export const ZERO_SUCCESS_REASON_PREFIX = 60;
 /** gate_always_fails: at least this many maker leases of one runtime that exited 0, every one failed by the same gate */
 export const GATE_ALWAYS_FAILS_MIN_LEASES = 3;
 export type ValueAnomalyMode = 'off' | 'shadow' | 'on';
@@ -64,6 +73,10 @@ export function valueAnomalyMode(env: NodeJS.ProcessEnv = process.env): ValueAno
   const v = (env.VALUE_ANOMALY_ALARM || '').trim().toLowerCase();
   return v === 'on' || v === 'shadow' ? v : 'off';
 }
+
+/** Which detector raised a stall (kept off the Stall object, so API responses are unchanged); the stall watch persists it. */
+const STALL_DETECTOR = new WeakMap<Stall, string>();
+export const stallDetector = (s: Stall): string | undefined => STALL_DETECTOR.get(s);
 
 /** Health from detectors + stalls: BREACHED on any stall, UNKNOWN when a detector errored and nothing stalled. */
 export function stallHealth(stalls: Stall[], detectors: DetectorHealth[]): StallHealth {
@@ -79,7 +92,8 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
   const out: Stall[] = []; const detectors: DetectorHealth[] = []; const checked_at = new Date(now).toISOString();
   const run = (name: string, applicable: boolean, fn: () => void | { capped: string }) => {
     if (!applicable) { detectors.push({ name, status: 'not_applicable', checked_at }); return; }
-    try { const r = fn(); detectors.push(r ? { name, status: 'capped', detail: r.capped, checked_at } : { name, status: 'ok', checked_at }); }
+    const before = out.length;
+    try { const r = fn(); for (const s of out.slice(before)) STALL_DETECTOR.set(s, name); detectors.push(r ? { name, status: 'capped', detail: r.capped, checked_at } : { name, status: 'ok', checked_at }); }
     catch (e) { detectors.push({ name, status: 'error', error: (e instanceof Error ? e.message : String(e)).slice(0, 200), checked_at }); }
   };
   // 1. gym enabled but no scored outcome for 6 h (the breaker or the worker can silently idle it)
@@ -124,7 +138,7 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
   run('goals', true, () => {
     const zombies = one<{ n: number; oldest: string | null }>(`SELECT COUNT(*) AS n, MIN(g.updated_at) AS oldest FROM goals g
       WHERE g.status = 'running' AND (SELECT r.status FROM loop_runs r WHERE r.goal_id = g.id ORDER BY r.created_at DESC LIMIT 1) IN ('completed', 'failed', 'cancelled')
-        AND g.updated_at < ?`, ago(now, 2));
+        AND g.updated_at < ? AND NOT EXISTS (SELECT 1 FROM loop_runs sr WHERE sr.goal_id = g.id AND ${syntheticRunSql('sr')})`, ago(now, 2));
     if (zombies && zombies.n > 0) out.push({ subsystem: 'goals', since: zombies.oldest, detail: `${zombies.n} goal(s) 'running' although their latest run ended` });
   });
   // 4b. incident 17-10: proposals 'executing' whose goal is not running and whose latest run had no activity for > 2 h (a
@@ -224,6 +238,20 @@ export function detectStallsWithHealth(db: Database, now = Date.now(), env: Node
       const species = m.model ? `${m.runtime}@${m.model}` : m.runtime;
       vaSink.push({ subsystem: `zero_success:maker:${species}`, since: m.first, detail: `0/${m.n} maker leases of ${species} completed in ${VALUE_ANOMALY_WINDOW_H} h — it runs but never yields; check its failure_reason` });
     }
+    for (const g of all<{ role: string; runtime: string; model: string | null; prefix: string; k: number; n: number; first: string }>(`SELECT g.role, g.runtime, g.model, g.prefix, g.k,
+        (SELECT COUNT(*) FROM worker_leases f WHERE f.role = g.role AND f.runtime = g.runtime AND f.status = 'failed' AND f.created_at >= ?
+          AND json_extract(f.metadata, '$.model') IS g.model) AS n, g.first
+      FROM (SELECT role, runtime, json_extract(metadata, '$.model') AS model, substr(json_extract(metadata, '$.failure_reason'), 1, ?) AS prefix,
+          COUNT(*) AS k, MIN(created_at) AS first FROM worker_leases
+        WHERE role IN ('maker', 'checker', 'security_checker') AND runtime != 'manual' AND status = 'failed' AND created_at >= ?
+          AND json_extract(metadata, '$.failure_reason') IS NOT NULL GROUP BY 1, 2, 3, 4 HAVING k >= ?) g
+      WHERE NOT EXISTS (SELECT 1 FROM worker_leases c WHERE c.role = g.role AND c.runtime = g.runtime AND c.status = 'completed' AND c.created_at >= ?
+          AND json_extract(c.metadata, '$.model') IS g.model)
+      ORDER BY g.k DESC`, since, ZERO_SUCCESS_REASON_PREFIX, since, ZERO_SUCCESS_SAME_REASON_MIN, since)) {
+      const subsystem = `zero_success:${g.role}:${g.model ? `${g.runtime}@${g.model}` : g.runtime}`;
+      if (vaSink.some((x) => x.subsystem === subsystem)) continue; // already raised (≥ 5 rule, or a more frequent reason)
+      vaSink.push({ subsystem, since: g.first, detail: `0/${g.n} ${g.role} leases of ${g.model ? `${g.runtime}@${g.model}` : g.runtime} completed in ${VALUE_ANOMALY_WINDOW_H} h; ${g.k}/${g.n} failed with the same reason '${g.prefix}' — likely misconfigured`.slice(0, 500) });
+    }
     for (const c of all<{ consumer: string; n: number; first: string }>(`SELECT consumer, COUNT(*) AS n, MIN(created_at) AS first FROM llm_model_calls
         WHERE shadow = 0 AND created_at >= ? GROUP BY consumer HAVING n >= ? AND SUM(ok = 1) = 0`, since, ZERO_SUCCESS_MIN_ATTEMPTS)) {
       vaSink.push({ subsystem: `zero_success:llm:${c.consumer}`, since: c.first, detail: `0/${c.n} model calls of purpose ${c.consumer} succeeded in ${VALUE_ANOMALY_WINDOW_H} h` });
@@ -269,9 +297,51 @@ export function detectStalls(db: Database, now = Date.now(), env: NodeJS.Process
   return detectStallsWithHealth(db, now, env).stalls;
 }
 
-export function startStallWatch(db: Database, intervalMs = 3_600_000): (() => void) | null {
+/**
+ * O1a (re-20261029 C-reliability §3a: stalls were log-only, 0/20 non-CI defects caught by a monitor): each NEW stall subsystem
+ * is persisted as one `judgments` row (judgment 'stall', subject = subsystem, decision 'open', answers = detail + since); a
+ * subsystem open since the previous tick is not new. One that disappeared gets one 'cleared' row, so it is new again when it
+ * returns and the previous tick is read back from the rows (a deploy restart does not re-announce ongoing stalls). Returns
+ * the new stalls. Fail-soft: without a judgments table nothing is new.
+ * A stall whose detector errored this tick (`failed`) is unknown, not recovered: it stays open (no 'cleared' row), so it is
+ * not pushed again when detection recovers. The detector is stored with the open row; a row without one is kept open while
+ * any detector errored.
+ */
+export function recordStallTransitions(db: Database, stalls: Stall[], now = new Date(), failed: ReadonlySet<string> = new Set()): Stall[] {
+  try {
+    const latest = db.prepare(`SELECT subject_id, decision, answers_json FROM judgments j WHERE judgment = 'stall' AND rowid = (SELECT MAX(rowid) FROM judgments
+        WHERE judgment = 'stall' AND subject_id = j.subject_id)`).all() as Array<{ subject_id: string; decision: string; answers_json: string | null }>;
+    const detectorOfRow = new Map(latest.filter((r) => r.decision === 'open').map((r) => {
+      let d: unknown; try { d = (JSON.parse(r.answers_json || '{}') as { detector?: unknown }).detector; } catch { d = undefined; }
+      return [r.subject_id, typeof d === 'string' ? d : null] as const;
+    }));
+    const open = new Set(detectorOfRow.keys());
+    const unobserved = (subsystem: string) => { const d = detectorOfRow.get(subsystem); return d ? failed.has(d) : failed.size > 0; };
+    const at = now.toISOString();
+    const insert = db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at)
+      VALUES (?, 'stall', 'subsystem', ?, ?, 'annotation', ?, ?, ?, ?)`);
+    const current = new Map(stalls.map((s) => [s.subsystem, s]));
+    const fresh = [...current.values()].filter((s) => !open.has(s.subsystem));
+    db.transaction(() => {
+      for (const s of fresh) insert.run(randomUUID(), s.subsystem, s.since ?? '', 'open', s.detail.slice(0, 300), JSON.stringify({ detail: s.detail, since: s.since, detector: stallDetector(s) ?? null }), at);
+      for (const subsystem of open) if (!current.has(subsystem) && !unobserved(subsystem)) insert.run(randomUUID(), subsystem, '', 'cleared', 'no longer reported by the stall watch', null, at);
+    })();
+    return fresh;
+  } catch { return []; }
+}
+
+/** One stall-watch tick: detect, log every stall, persist the new ones and hand each new one to `notify` (the operator push). */
+export async function stallWatchTick(db: Database, notify?: (s: Stall) => Promise<unknown>, now = Date.now(), env: NodeJS.ProcessEnv = process.env): Promise<Stall[]> {
+  const { stalls, detectors } = detectStallsWithHealth(db, now, env);
+  for (const s of stalls) console.warn(`🚨 stall: ${s.subsystem} since ${s.since ?? 'never'} — ${s.detail}`);
+  const fresh = recordStallTransitions(db, stalls, new Date(now), new Set(detectors.filter((d) => d.status === 'error').map((d) => d.name)));
+  for (const s of fresh) { try { await notify?.(s); } catch { /* a push never breaks the watch */ } }
+  return fresh;
+}
+
+export function startStallWatch(db: Database, intervalMs = 3_600_000, notify?: (s: Stall) => Promise<unknown>): (() => void) | null {
   if (process.env.STALL_WATCH_ENABLED !== 'true') return null;
-  const tick = guardTick('stall_watch', () => { for (const s of detectStalls(db)) console.warn(`🚨 stall: ${s.subsystem} since ${s.since ?? 'never'} — ${s.detail}`); });
+  const tick = guardTick('stall_watch', () => { void stallWatchTick(db, notify).catch((e) => console.warn('stall watch failed:', e instanceof Error ? e.message : String(e))); });
   const timer = setInterval(tick, intervalMs); timer.unref?.();
   return () => clearInterval(timer);
 }

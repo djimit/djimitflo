@@ -51,7 +51,15 @@ export interface LoopGate {
  * so a run is never 'regressed' for a learner while 'verified' in outcome_credits.
  */
 export const gatePasses = (gate: Pick<LoopGate, 'name' | 'status'>): boolean =>
-  gate.status === 'pass' || (gate.name === 'security_checker_verdict' && gate.status === 'skipped');
+  gate.status === 'pass' || (gate.name === 'security_checker_verdict' && gate.status === 'skipped') || autoMergeMayAct(gate);
+/**
+ * U4a: no_automatic_merge reads 'skipped' (not applicable) while LOOP_AUTO_MERGE_TEST_ONLY=act — the loop may merge, so it
+ * cannot attest "did not merge". That is information, not a failed gate: every pass rule counts it as it counted the old
+ * hard-coded pass, so certification and completion are unchanged.
+ */
+export const autoMergeMayAct = (gate: Pick<LoopGate, 'name' | 'status'>): boolean => gate.name === 'no_automatic_merge' && gate.status === 'skipped';
+/** The daemon's strict completion rule: every gate 'pass' (the act-mode no_automatic_merge notice included, see above). */
+export const gatePassesStrict = (gate: Pick<LoopGate, 'name' | 'status'>): boolean => gate.status === 'pass' || autoMergeMayAct(gate);
 /** P0-8: every gate passed under {@link gatePasses}; no gates is not a pass. */
 export const allGatesPassed = (gates: ReadonlyArray<Pick<LoopGate, 'name' | 'status'>>): boolean => gates.length > 0 && gates.every(gatePasses);
 /** Certification's rule (certifyLoopRun): the run reached ready_for_human_merge/completed and every recorded gate passed. */

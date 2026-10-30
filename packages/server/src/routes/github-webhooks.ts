@@ -9,6 +9,7 @@ import { IntegrationInboxService } from '../services/integration-inbox-service';
 import { ComplianceAuditService } from '../services/compliance-audit-service';
 import { GithubPrReviewService } from '../services/github-pr-review-service';
 import { LoopService } from '../services/loop-service';
+import { markSyntheticRun } from '../services/synthetic-runs';
 import { createError } from '../middleware/error-handler';
 import type { DjimitSecTriggerService } from '../services/djimitsec-trigger-service';
 
@@ -176,6 +177,8 @@ export function createGitHubWebhookRoutes(db: Database, scanTriggers?: () => Dji
           goal_id: goal.id, repository_path: repositoryPath, loop_name: 'repo-maintenance-loop',
           target_finding: { file_path: stableAnchorFile(repositoryPath), description: `Automated review for PR #${pr.number}: ${pr.title}`, category: 'refactor' },
         });
+        // U3: review bookkeeping, not loop work — marked in the same transaction so no loop KPI ever counts it
+        markSyntheticRun(db, run.id, 'pr_review');
         const response = { status: 'accepted', delivery_id: deliveryId, source_ref: sourceRef, loop_run_id: run.id };
         db.prepare('INSERT INTO github_webhook_deliveries (id,event,source_ref,payload_sha256,result_json) VALUES (?,?,?,?,?)').run(deliveryId, action, sourceRef, payloadHash, JSON.stringify(response));
         return { duplicate: false as const, body: response, loopRunId: run.id };

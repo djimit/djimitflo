@@ -12,6 +12,7 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { realRunIdSql, realRunSql } from './synthetic-runs';
 import { DENNIS_AGENT_ID, DennisAgentService } from './dennis-agent-service';
 import type { TelegramApiService } from './telegram-api-service';
 import { mayActViaTelegram, mayApproveViaTelegram } from './telegram-identity';
@@ -400,10 +401,10 @@ export class TelegramBotService {
 
   private async sendMissionControl(chatId: number): Promise<void> {
     const stats = {
-      loops: (this.db.prepare("SELECT COUNT(*) as c FROM loop_runs").get() as any)?.c || 0,
+      loops: (this.db.prepare(`SELECT COUNT(*) as c FROM loop_runs WHERE ${realRunSql()}`).get() as any)?.c || 0,
       goals: (this.db.prepare("SELECT COUNT(*) as c FROM goals").get() as any)?.c || 0,
       agents: (this.db.prepare("SELECT COUNT(*) as c FROM agents").get() as any)?.c || 0,
-      leases: (this.db.prepare("SELECT COUNT(*) as c FROM worker_leases").get() as any)?.c || 0,
+      leases: (this.db.prepare(`SELECT COUNT(*) as c FROM worker_leases WHERE ${realRunIdSql('loop_run_id')}`).get() as any)?.c || 0,
     };
 
     await this.sendMessage(chatId,
