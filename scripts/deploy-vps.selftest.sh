@@ -3,7 +3,10 @@
 # remote script (chown before recreate, rollback present). Run: ./deploy-vps.selftest.sh
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
+# resolved: the trust checks refuse a symlink on a path, and the temp dir can contain one (macOS /var → /private/var)
+TMP="$(cd "$(mktemp -d)" && pwd -P)"; trap 'rm -rf "$TMP"' EXIT
+# test-only seam: the tmp base and what is above it (e.g. a sticky /tmp) are exempt from the trust walk; prod never sets it
+TMPBASE="$(dirname "$TMP")"
 # shellcheck source=deploy-vps.sh
 source "$SCRIPT_DIR/deploy-vps.sh"
 fail() { echo "FAIL: $*" >&2; exit 1; }
@@ -147,7 +150,9 @@ host() {   # host [knob...] → runs the remote script on a fresh stub host; set
   printf 'services:\n  djimitflo:\n    image: djimitflo:main-%s\n    environment:\n      DJIMITFLO_COMMIT_SHA: %s\n    volumes:\n      - %s/runtime-source-%s:/workspace/djimitflo\n' \
     "$PREV" "$PREV_FULL" "$HOST" "$PREV" > "$HOST/compose.yml"
   cp "$HOST/compose.yml" "$TMP/compose.before"
-  RC=0; OUT="$(remote_script | PATH="$BIN:$PATH" bash -s -- "$HOST" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
+  # DEPLOY_FILE_REMOTE: seam — the stub host fetches from a local repo; prod fetches over https (file:// stays off)
+  # AUTO_DEPLOY_TRUSTED_UID: seam — the test user stands in for root as the trusted owner of the deploy root
+  RC=0; OUT="$(remote_script | AUTO_DEPLOY_TRUSTED_UID="${HOST_TRUSTED_UID:-$(id -u)}" AUTO_DEPLOY_TRUSTED_PREFIX="${HOST_TRUSTED_PREFIX-$TMPBASE}" DEPLOY_FILE_REMOTE=always PATH="${HOST_PATH_PREFIX:-}$BIN:$PATH" bash -s -- "$HOST" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
 }
 host
 [ "$RC" = 0 ] || fail "healthy deploy failed ($RC): $OUT"
@@ -179,7 +184,7 @@ host
 [ -d "$STUB/ctx" ] && committed || fail "clean deploy did not build the committed source"
 grep -qF "\"source_tree\":\"$NEW_TREE\"" "$HOST/build-receipts/"*.json || fail "receipt lacks the commit tree id $NEW_TREE"
 echo "$OUT" | grep -q "not used for the build" && fail "clean checkout reported as dirty: $OUT"
-[ -z "$(ls -d "$HOST"/build-context-* 2>/dev/null)" ] || fail "build context left behind"
+[ -z "$(ls -d "$HOST"/build-context-* "$HOST"/.deploy-work/* 2>/dev/null)" ] || fail "build context left behind"
 [ ! -e "$STUB/ctx/.git" ] || fail "build context contains .git"
 # a reused runtime-source-$SHORT (retry after a build timeout, or written to by a container) with local changes
 reused() { git clone -q "$REPO_DIR" "$1/runtime-source-$NEW"; }
@@ -197,4 +202,98 @@ HOST_PREP=untracked host
 [ ! -e "$STUB/ctx/packages/server/src/evil.ts" ] || fail "an untracked file in the reused checkout reached the build context"
 [ -e "$HOST/runtime-source-$NEW/packages/server/src/evil.ts" ] || fail "the untracked file was deleted (user data must stay)"
 echo "$OUT" | grep -q "not used for the build" || fail "untracked file not warned about: $OUT"
+# --- git in a reused runtime-source clone (the container can write it) never runs repo-local hooks or fsmonitor, and when
+# the deploy runs as root it runs as the clone's owner. Root is simulated: `id -u` says 0, setpriv records its call and
+# execs the command as the (unchanged) test user.
+MARK="$TMP/marker"; ROOTSIM="$TMP/rootsim"; mkdir -p "$ROOTSIM"
+printf '#!/usr/bin/env bash\n[ "${1:-}" = -u ] && { echo 0; exit 0; }\nexec /usr/bin/id "$@"\n' > "$ROOTSIM/id"
+printf '#!/usr/bin/env bash\necho "setpriv $*" >> "%s/setpriv-calls"\nwhile [ "${1#--}" != "$1" ]; do shift; done\nexec "$@"\n' "$STUB" > "$ROOTSIM/setpriv"
+chmod +x "$ROOTSIM"/*
+hooked() {
+  reused "$1"; local r="$1/runtime-source-$NEW"
+  printf '#!/bin/sh\necho hook >> "%s"\n' "$MARK" > "$r/.git/hooks/post-checkout"
+  printf '#!/bin/sh\necho fsmonitor >> "%s"\n' "$MARK" > "$r/.git/fsmonitor.sh"
+  chmod +x "$r/.git/hooks/post-checkout" "$r/.git/fsmonitor.sh"
+  git -C "$r" config core.fsmonitor "$r/.git/fsmonitor.sh"; git -C "$r" config core.hooksPath "$r/.git/hooks"
+}
+rm -f "$MARK" "$STUB/setpriv-calls"
+HOST_PATH_PREFIX="$ROOTSIM:" HOST_PREP=hooked host
+[ "$RC" = 0 ] || fail "hooked-clone deploy failed ($RC): $OUT"
+[ ! -e "$MARK" ] || fail "a repo-local hook or fsmonitor of the reused clone ran: $(tr '\n' ' ' < "$MARK")"
+grep -q -- "--reuid=$(id -u) " "$STUB/setpriv-calls" 2>/dev/null || fail "git in the reused clone did not run as the clone's owner"
+committed || fail "hooked clone: the build context is not the committed source"
+# --- the build input never comes from the reused runtime-source clone: a replaced commit (git replace, a ref the container
+# can write) makes $SHA resolve to other content there, but the build context and the receipt tree are the real commit's
+replaced() {
+  reused "$1"; local r="$1/runtime-source-$NEW" evil
+  echo 'export const v = "REPLACED";' > "$r/$SRC_FILE"
+  git -C "$r" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -qam evil
+  evil="$(git -C "$r" rev-parse HEAD)"; git -C "$r" reset -q --hard "$NEW_FULL"
+  git -C "$r" replace "$NEW_FULL" "$evil"
+  [ "$(git -C "$r" rev-parse "$NEW_FULL^{tree}")" != "$NEW_TREE" ] || fail "fixture: the replace did not take effect"
+}
+HOST_PREP=replaced host
+[ "$RC" = 0 ] || fail "replaced-clone deploy failed ($RC): $OUT"
+committed || fail "a replaced object in the reused clone reached the build context: $(cat "$STUB/ctx/$SRC_FILE")"
+grep -qF "\"source_tree\":\"$NEW_TREE\"" "$HOST/build-receipts/"*.json || fail "the receipt tree came from the reused clone, not the commit"
+[ -z "$(ls -d "$HOST"/.build-src-* "$HOST"/.deploy-work/* 2>/dev/null)" ] || fail "the fresh build clone was left behind"
+# a fetch that does not yield exactly $SHA (here: the commit is not in the remote) stops before anything is built
+NEW_SAVE="$NEW_FULL"; NEW_FULL="$(printf '1%.0s' $(seq 1 40))"; NEW="${NEW_FULL:0:7}"
+host
+[ "$RC" != 0 ] && [ ! -e "$STUB/ctx" ] || fail "a commit that cannot be fetched was built: $OUT"
+cmp -s "$HOST/compose.yml" "$TMP/compose.before" || fail "a failed fetch touched compose"
+NEW_FULL="$NEW_SAVE"; NEW="${NEW_FULL:0:7}"
+# --- the deploy root must be trusted before anything happens: owned by root (the trusted uid) up to /, not group/other
+# writable; compose.yml a regular file of root, not group/other-writable. Otherwise: refused before any git or build.
+untouched() { [ ! -e "$STUB/build-args" ] && [ ! -e "$STUB/ctx" ] && [ ! -e "$STUB/compose-calls" ] && [ ! -e "$HOST/runtime-source-$NEW" ]; }
+open_root() { chmod 0775 "$1"; }
+HOST_PREP=open_root host
+[ "$RC" != 0 ] && echo "$OUT" | grep -q "not trusted" && echo "$OUT" | grep -qF "$HOST" || fail "a group-writable deploy root was not refused: $OUT"
+untouched || fail "a group-writable deploy root was acted on"
+# another owner than root (in prod: the container's uid 1001); simulated by trusting a uid that is never the test user's
+# (CI runners run as uid 1001 themselves, so a fixed 1001 would make the test user's dir count as trusted)
+HOST_TRUSTED_UID=$(( $(id -u) + 1 )) host
+[ "$RC" != 0 ] && echo "$OUT" | grep -q "owned by uid $(id -u)" || fail "a deploy root of another uid was not refused: $OUT"
+untouched || fail "a deploy root of another uid was acted on"
+HOST_PREP=true host; [ "$RC" = 0 ] || fail "baseline deploy failed: $OUT"
+# compose.yml writable by group/others, or a link: refused
+host_compose() {   # host_compose <prep on compose.yml> → like host, the prep runs after compose.yml was written
+  HOST="$(mktemp -d "$TMP/host.XXXX")"; rm -f "$STUB"/build-args "$STUB"/compose-calls; rm -rf "$STUB/ctx"
+  printf 'services:\n  djimitflo:\n    image: djimitflo:main-%s\n    environment:\n      DJIMITFLO_COMMIT_SHA: %s\n' "$PREV" "$PREV_FULL" > "$HOST/compose.yml"
+  "$1" "$HOST/compose.yml"
+  RC=0; OUT="$(remote_script | AUTO_DEPLOY_TRUSTED_UID="$(id -u)" AUTO_DEPLOY_TRUSTED_PREFIX="$TMPBASE" DEPLOY_FILE_REMOTE=always PATH="$BIN:$PATH" bash -s -- "$HOST" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
+}
+gw() { chmod 0664 "$1"; }
+linked() { mv "$1" "$1.real"; ln -s "$1.real" "$1"; }
+for prep in gw linked; do
+  host_compose "$prep"
+  [ "$RC" != 0 ] && echo "$OUT" | grep -q "not trusted" || fail "$prep compose.yml was not refused: $OUT"
+  untouched || fail "$prep compose.yml: acted on"
+done
+# a deploy root reached through a symlink in an untrusted dir is refused (the trusted target does not make it pass)
+OPEN="$TMP/open"; mkdir -p "$OPEN"; chmod 0777 "$OPEN"
+link_root() { ln -s "$1" "$OPEN/root-$(basename "$1")"; }
+HOST_PREP=link_root host   # prepares a normal host, then runs the remote script on the link instead
+RC=0; OUT="$(remote_script | AUTO_DEPLOY_TRUSTED_UID="$(id -u)" AUTO_DEPLOY_TRUSTED_PREFIX="$TMPBASE" DEPLOY_FILE_REMOTE=always PATH="$BIN:$PATH" bash -s -- "$OPEN/root-$(basename "$HOST")" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
+[ "$RC" != 0 ] && echo "$OUT" | grep -q "symbolic link" || fail "a deploy root behind a symlink was not refused: $OUT"
+# the deploy root is checked as written: a '..' component or a relative path is refused, never normalised away
+remote_on() {   # remote_on <root arg> [cwd] → runs the remote script on a fresh stub host addressed as <root arg>
+  RC=0; OUT="$(cd "${2:-$TMP}" && remote_script | AUTO_DEPLOY_TRUSTED_UID="$(id -u)" AUTO_DEPLOY_TRUSTED_PREFIX="$TMPBASE" DEPLOY_FILE_REMOTE=always PATH="$BIN:$PATH" bash -s -- "$1" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
+}
+fresh_host() { HOST="$(mktemp -d "$TMP/host.XXXX")"; mkdir "$HOST/sub"; rm -f "$STUB"/build-args "$STUB"/compose-calls; rm -rf "$STUB/ctx"
+  printf 'services:\n  djimitflo:\n    image: djimitflo:main-%s\n    environment:\n      DJIMITFLO_COMMIT_SHA: %s\n' "$PREV" "$PREV_FULL" > "$HOST/compose.yml"; }
+fresh_host; remote_on "$HOST/sub/.."
+[ "$RC" != 0 ] && echo "$OUT" | grep -q ". or .. component" && untouched || fail "a deploy root with a .. component was not refused: $OUT"
+fresh_host; remote_on "$HOST/../$(basename "$HOST")"
+[ "$RC" != 0 ] && echo "$OUT" | grep -q ". or .. component" && untouched || fail "a /x/../x deploy root was not refused: $OUT"
+fresh_host; remote_on "$(basename "$HOST")" "$TMP"
+[ "$RC" != 0 ] && echo "$OUT" | grep -q "not an absolute path" && untouched || fail "a relative deploy root was not refused: $OUT"
+fresh_host; remote_on "$HOST/./"
+[ "$RC" != 0 ] && echo "$OUT" | grep -q ". or .. component" && untouched || fail "a deploy root with a . component was not refused: $OUT"
+# without the seam nothing is exempt: a deploy root under the real (root-owned, sticky, world-writable) /tmp is refused
+STICKY="$(cd /tmp && pwd -P)"; SH="$(mktemp -d "$STICKY/dv-sticky.XXXX")"
+printf 'services:\n  djimitflo:\n    image: djimitflo:main-%s\n    environment:\n      DJIMITFLO_COMMIT_SHA: %s\n' "$PREV" "$PREV_FULL" > "$SH/compose.yml"
+RC=0; OUT="$(remote_script | AUTO_DEPLOY_TRUSTED_UID="$(id -u)" DEPLOY_FILE_REMOTE=always PATH="$BIN:$PATH" bash -s -- "$SH" "$NEW_FULL" "$REPO_DIR" 2>&1)" || RC=$?
+rm -rf "$SH"
+[ "$RC" != 0 ] && echo "$OUT" | grep -qF "$STICKY is writable by group or others" || fail "a sticky world-writable ancestor was accepted without the seam: $OUT"
 echo "deploy-vps selftest OK"

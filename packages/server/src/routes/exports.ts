@@ -70,8 +70,8 @@ export function createExportRoutes(db: Database, auth: AuthMiddleware): Router {
     }
   });
 
-  // POST /exports/audit
-  router.post('/audit', requireAuth, (req: Request, res: Response) => {
+  // POST /exports/audit — read:audit at the route boundary, like GET /api/audit (the service also requires admin)
+  router.post('/audit', requireAuth, auth.requirePermission('read:audit'), (req: Request, res: Response) => {
     try {
       const user = getUser(req);
       const options = parseExportRequest(req.body);

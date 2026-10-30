@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { modelPriceEntry } from './loop-budget-service';
+import { realRunIdSql } from './synthetic-runs';
 
 /**
  * P0 remediation §5: per-maker token accounting on the lease (`metadata.token_accounting`), so cost per verified success
@@ -218,10 +219,10 @@ export interface MakerTokenAggregateRow {
   by_source: Record<MeasurementSource, number>;
 }
 
-/** Read-only aggregate per runtime × model over maker leases created since `since` (fail-soft: no table → empty). */
+/** Read-only aggregate per runtime × model over maker leases created since `since` (fail-soft: no table → empty). U3: synthetic PR-review runs' leases are left out. */
 export function makerTokenAccountingEvidence(db: Database, since: string) {
   let rows: Array<{ runtime: string; metadata: string }> = [];
-  try { rows = db.prepare("SELECT runtime, metadata FROM worker_leases WHERE role = 'maker' AND created_at >= ?").all(since) as typeof rows; } catch { rows = []; }
+  try { rows = db.prepare(`SELECT runtime, metadata FROM worker_leases WHERE role = 'maker' AND created_at >= ? AND ${realRunIdSql('worker_leases.loop_run_id')}`).all(since) as typeof rows; } catch { rows = []; }
   const groups = new Map<string, MakerTokenAggregateRow & { versions: Map<string, { leases: number; partial: number; usd: number }> }>();
   for (const r of rows) {
     let meta: Record<string, unknown> = {};

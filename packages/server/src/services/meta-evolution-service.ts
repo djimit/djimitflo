@@ -1,4 +1,5 @@
 import type { Database } from 'better-sqlite3';
+import { realRunIdSql } from './synthetic-runs';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { swarmEventBus } from './swarm-event-bus';
 
@@ -51,8 +52,8 @@ export class MetaEvolutionService {
     const now = new Date().toISOString();
 
     // 1. Maker lease completion rate: % of maker leases that completed (a completed lease can still produce a wrong change).
-    const totalMakers = this.db.prepare('SELECT COUNT(*) as c FROM worker_leases WHERE role = \'maker\'').get() as { c: number };
-    const completedMakers = this.db.prepare('SELECT COUNT(*) as c FROM worker_leases WHERE role = \'maker\' AND status = \'completed\'').get() as { c: number };
+    const totalMakers = this.db.prepare(`SELECT COUNT(*) as c FROM worker_leases WHERE role = 'maker' AND ${realRunIdSql('loop_run_id')}`).get() as { c: number };
+    const completedMakers = this.db.prepare(`SELECT COUNT(*) as c FROM worker_leases WHERE role = 'maker' AND status = 'completed' AND ${realRunIdSql('loop_run_id')}`).get() as { c: number };
     const makerLeaseCompletionRate = totalMakers.c > 0 ? completedMakers.c / totalMakers.c : 0;
 
     // 2. Rule accuracy: count contradicted rules.

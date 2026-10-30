@@ -1,0 +1,283 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import Database from 'better-sqlite3';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { schema } from '../database/schema';
+import { ensureMakerSpanSettlement, runMigrations } from '../database/migrate';
+import { LoopService } from '../services/loop-service';
+import { FixLoopService } from '../services/fix-loop-service';
+import { RsiSafetyGuard } from '../services/rsi-safety-guard';
+
+/**
+ * OPS-004: executeWorker wrote a 'running' spawn row and a separate completion row — two roots, no parent edge, both
+ * ended_at null — and a rejected executeMaker left only the 'running' row. A maker lease has one span, child of the run,
+ * opened at first dispatch and closed only when the maker settles (ok / error / cancelled) with the time it settled; an
+ * approval / in-progress exit leaves it open for the resumed call. Every maker entry point (executeWorker, executeMaker
+ * as used by the execute-maker route and FixLoopService) goes through it.
+ */
+describe('loop worker trace span', () => {
+  let db: Database.Database; let loops: LoopService; let tmp: string;
+  beforeEach(() => {
+    db = new Database(':memory:'); db.pragma('foreign_keys = ON'); db.exec(schema); runMigrations(db);
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'worker-span-'));
+    fs.writeFileSync(path.join(tmp, 'README.md'), '# fixture\n');
+    execFileSync('git', ['init'], { cwd: tmp, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 'test@example.invalid'], { cwd: tmp });
+    execFileSync('git', ['config', 'user.name', 'Test'], { cwd: tmp });
+    execFileSync('git', ['add', '.'], { cwd: tmp, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'init'], { cwd: tmp, stdio: 'ignore' });
+    loops = new LoopService(db, fs.mkdtempSync(path.join(os.tmpdir(), 'worker-span-ev-')));
+  });
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); db.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
+
+  const prepareMaker = () => {
+    const run = loops.startDocDriftAndSmallFixLoop({ repository_path: tmp, target_finding: { file_path: 'README.md', description: 'Improve wording', category: 'refactor' } });
+    const prepared = loops.continueLoopRun(run.id, { runtime: 'mock', max_assignments: 1, max_maker_workers: 1 });
+    return { runId: run.id, maker: prepared.leases.find((l) => l.role === 'maker')! };
+  };
+  const traceOf = (runId: string, leaseId: string) => loops.assurance.getTrace(`loop-${runId}-worker-${leaseId}`);
+  const fakeExecution = (runId: string, leaseId: string) => ({
+    run: loops.getLoopRun(runId), lease: loops.listWorkerLeases(runId).find((l) => l.id === leaseId)!,
+    gates: [], stdout_path: '/dev/null', stderr_path: '/dev/null',
+  });
+  /** Stub the runtime step under the shared maker path (span ownership stays in the real executeMaker). */
+  const stubRunMaker = () => vi.spyOn(loops.workerExecutor as any, 'runMaker');
+  const workerSpans = (leaseId: string) => (db.prepare("SELECT * FROM agent_trace_spans WHERE span_type = 'worker' AND json_extract(metadata, '$.worker_lease_id') = ?")
+    .all(leaseId) as Array<{ status: string; started_at: string; ended_at: string | null; parent_span_id: string | null; metadata: string }>);
+
+  it('success yields one closed worker span with a run->worker edge', async () => {
+    const { runId, maker } = prepareMaker();
+    const executed = await loops.executeWorker(runId, { lease_id: maker.id, timeout_ms: 10_000 });
+    expect(executed.lease.status).toBe('completed');
+
+    const trace = traceOf(runId, maker.id);
+    const workers = trace.spans.filter((s) => s.span_type === 'worker');
+    expect(workers).toHaveLength(1);
+    expect(workers[0]).toMatchObject({ status: 'ok', loop_run_id: runId, ended_at: expect.any(String) });
+    expect(Date.parse(workers[0].ended_at!)).toBeGreaterThanOrEqual(Date.parse(workers[0].started_at!));
+
+    const runSpan = trace.spans.find((s) => s.span_type === 'loop')!;
+    expect(runSpan).toMatchObject({ loop_run_id: runId, parent_span_id: null, ended_at: expect.any(String) });
+    expect(trace.roots.map((s) => s.id)).toEqual([runSpan.id]);
+    expect(trace.edges).toEqual([{ from: runSpan.id, to: workers[0].id }]);
+    expect(trace.spans.filter((s) => s.status === 'running')).toEqual([]);
+    expect(executed.trace).toEqual(trace);
+  });
+
+  it('a thrown executeMaker closes the worker span as an error with an end time', async () => {
+    const { runId, maker } = prepareMaker();
+    stubRunMaker().mockImplementation(async () => {
+      loops.updateWorkerLeaseStatus(maker.id, 'running', { started_at: new Date().toISOString() });
+      throw new Error('MAKER_EXPLODED');
+    });
+    await expect(loops.executeWorker(runId, { lease_id: maker.id })).rejects.toThrow('MAKER_EXPLODED');
+
+    const trace = traceOf(runId, maker.id);
+    const worker = trace.spans.find((s) => s.span_type === 'worker')!;
+    expect(worker).toMatchObject({ status: 'error', ended_at: expect.any(String), metadata: expect.objectContaining({ terminal_status: 'error', error: 'MAKER_EXPLODED' }) });
+    expect(trace.edges).toHaveLength(1);
+    expect(trace.spans.filter((s) => s.status === 'running' || !s.ended_at)).toEqual([]);
+  });
+
+  it('a cancelled maker closes the worker span as a terminal failure with an end time', async () => {
+    const { runId, maker } = prepareMaker();
+    stubRunMaker().mockImplementation(async () => {
+      loops.updateWorkerLeaseStatus(maker.id, 'cancelled', { cancellation_reason: 'operator_stop' });
+      return fakeExecution(runId, maker.id);
+    });
+    await loops.executeWorker(runId, { lease_id: maker.id });
+
+    const worker = traceOf(runId, maker.id).spans.find((s) => s.span_type === 'worker')!;
+    expect(worker).toMatchObject({ status: 'error', ended_at: expect.any(String), metadata: expect.objectContaining({ terminal_status: 'cancelled' }) });
+  });
+
+  it('span timing is the maker execution window, not when later bookkeeping ran', async () => {
+    const { runId, maker } = prepareMaker();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const start = new Date('2026-10-28T10:00:00.000Z');
+    const settled = new Date('2026-10-28T10:05:00.000Z');
+    vi.setSystemTime(start);
+    stubRunMaker().mockImplementation(async () => {
+      vi.setSystemTime(settled);
+      loops.updateWorkerLeaseStatus(maker.id, 'completed', {});
+      return fakeExecution(runId, maker.id);
+    });
+    const createCheckpoint = loops.assurance.createCheckpoint.bind(loops.assurance);
+    vi.spyOn(loops.assurance, 'createCheckpoint').mockImplementation((input) => {
+      if (input.metadata?.phase === 'after_worker_execution') vi.setSystemTime(new Date('2026-10-28T11:00:00.000Z'));
+      return createCheckpoint(input);
+    });
+    await loops.executeWorker(runId, { lease_id: maker.id });
+
+    const worker = traceOf(runId, maker.id).spans.find((s) => s.span_type === 'worker')!;
+    expect(worker.started_at).toBe(start.toISOString());
+    expect(worker.ended_at).toBe(settled.toISOString());
+  });
+
+  it('approval -> execution -> resumed collection is one worker span: start at first dispatch, end at settlement', async () => {
+    const { runId, maker } = prepareMaker();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const dispatched = new Date('2026-10-28T10:00:00.000Z');
+    const resumed = new Date('2026-10-28T10:30:00.000Z');
+    const settled = new Date('2026-10-28T10:31:00.000Z');
+    vi.setSystemTime(dispatched);
+    stubRunMaker()
+      .mockImplementationOnce(async () => { throw new Error('LOOP_WORKER_APPROVAL_REQUIRED'); }) // the lease stays 'prepared'
+      .mockImplementationOnce(async () => {
+        vi.setSystemTime(settled);
+        loops.updateWorkerLeaseStatus(maker.id, 'completed', {});
+        return fakeExecution(runId, maker.id);
+      });
+    await expect(loops.executeWorker(runId, { lease_id: maker.id })).rejects.toThrow('LOOP_WORKER_APPROVAL_REQUIRED');
+    expect(workerSpans(maker.id)).toEqual([expect.objectContaining({ status: 'running', ended_at: null })]); // open, not an error
+
+    vi.setSystemTime(resumed);
+    await loops.executeWorker(runId, { lease_id: maker.id });
+    const spans = workerSpans(maker.id);
+    expect(spans).toHaveLength(1);
+    expect(spans[0]).toMatchObject({ status: 'ok', started_at: dispatched.toISOString(), ended_at: settled.toISOString() });
+    const trace = traceOf(runId, maker.id);
+    expect(trace.edges).toEqual([{ from: trace.roots[0].id, to: trace.spans.find((s) => s.span_type === 'worker')!.id }]);
+  });
+
+  it('approval -> stop run settles the open span: one worker span, error / cancelled, with an end time', async () => {
+    const { runId, maker } = prepareMaker();
+    stubRunMaker().mockImplementationOnce(async () => { throw new Error('LOOP_WORKER_APPROVAL_REQUIRED'); });
+    await expect(loops.executeWorker(runId, { lease_id: maker.id })).rejects.toThrow('LOOP_WORKER_APPROVAL_REQUIRED');
+    await loops.stopLoopRun(runId); // cancels the still-prepared lease outside executeMaker
+
+    expect(loops.listWorkerLeases(runId).find((l) => l.id === maker.id)!.status).toBe('cancelled');
+    const spans = workerSpans(maker.id);
+    expect(spans).toHaveLength(1);
+    expect(spans[0]).toMatchObject({ status: 'error', ended_at: expect.any(String) });
+    expect(JSON.parse(spans[0].metadata)).toMatchObject({ terminal_status: 'cancelled', lease_status: 'cancelled' });
+    expect(traceOf(runId, maker.id).spans.filter((s) => !s.ended_at)).toEqual([]); // the run span too
+  });
+
+  it('a raw SQL settle of a prepared lease (stale / superseded / hygiene sweeps) closes its open span', async () => {
+    const { runId, maker } = prepareMaker();
+    stubRunMaker().mockImplementationOnce(async () => { throw new Error('LOOP_WORKER_EXECUTION_IN_PROGRESS'); });
+    await expect(loops.executeWorker(runId, { lease_id: maker.id })).rejects.toThrow('LOOP_WORKER_EXECUTION_IN_PROGRESS');
+    const settledAt = '2026-10-29T08:00:00.000Z';
+    db.prepare("UPDATE worker_leases SET status = 'cancelled', updated_at = ? WHERE id = ? AND status = 'prepared'").run(settledAt, maker.id);
+
+    const [span] = workerSpans(maker.id);
+    expect(span).toMatchObject({ status: 'error', ended_at: settledAt });
+    expect(traceOf(runId, maker.id).spans.filter((s) => !s.ended_at)).toEqual([]);
+  });
+
+  it('executeMaker called directly (execute-maker route) records the same closed span', async () => {
+    const { runId, maker } = prepareMaker();
+    const executed = await loops.executeMaker(runId, { lease_id: maker.id, timeout_ms: 10_000 });
+    expect(executed.lease.status).toBe('completed');
+    expect(workerSpans(maker.id)).toEqual([expect.objectContaining({ status: 'ok', ended_at: expect.any(String), parent_span_id: expect.any(String) })]);
+    expect(traceOf(runId, maker.id).edges).toHaveLength(1);
+  });
+
+  /** A completed mock maker plus its prepared checker and (inserted, like a sensitive-file maker gets) security checker. */
+  const prepareReviewers = async () => {
+    const { runId, maker } = prepareMaker();
+    await loops.executeWorker(runId, { lease_id: maker.id, timeout_ms: 10_000 });
+    const checker = loops.listWorkerLeases(runId).find((l) => l.role === 'checker')!;
+    loops.insertWorkerLease({ id: `sec-${maker.id}`, loopRunId: runId, role: 'security_checker', runtime: 'manual', findingId: maker.finding_id ?? '',
+      worktreePath: null, branchName: null, metadata: { maker_lease_id: maker.id }, now: new Date().toISOString() });
+    return { runId, maker, leases: { checker: checker.id, security_checker: `sec-${maker.id}` } };
+  };
+  const reviewerTrace = (runId: string, leaseId: string) => loops.assurance.getTrace(`loop-${runId}-checker-${leaseId}`);
+  /** The engine's approval exit: the reviewer lease goes back to 'prepared' and the dispatch throws. */
+  const approvalExit = (leaseId: string) => async () => { loops.updateWorkerLeaseStatus(leaseId, 'prepared', {}); throw new Error('LOOP_WORKER_APPROVAL_REQUIRED'); };
+  const stubReviewerRuntime = () => vi.spyOn(loops.workerExecutor as any, 'executeMockChecker');
+
+  it.each(['checker', 'security_checker'] as const)('a %s run yields one closed reviewer span, child of a run span', async (role) => {
+    const { runId, leases } = await prepareReviewers();
+    const executed = await loops.executeChecker(runId, { lease_id: leases[role], runtime: 'mock', timeout_ms: 10_000 });
+    expect(executed.lease.status).toBe('completed');
+
+    const trace = reviewerTrace(runId, leases[role]);
+    const workers = trace.spans.filter((s) => s.span_type === 'worker');
+    expect(workers).toHaveLength(1); // not a 'running' spawn row plus a separate completion row
+    expect(workers[0]).toMatchObject({ status: 'ok', loop_run_id: runId, ended_at: expect.any(String),
+      metadata: expect.objectContaining({ worker_lease_id: leases[role], role, terminal_status: 'ok', verdict: 'accepted' }) });
+    const runSpan = trace.spans.find((s) => s.span_type === 'loop')!;
+    expect(runSpan).toMatchObject({ parent_span_id: null, ended_at: expect.any(String) });
+    expect(trace.edges).toEqual([{ from: runSpan.id, to: workers[0].id }]);
+    expect(trace.spans.filter((s) => s.status === 'running' || !s.ended_at)).toEqual([]);
+    expect(executed.trace).toEqual(trace);
+  });
+
+  it('reviewer approval -> stop run between calls closes the open span as cancelled', async () => {
+    const { runId, leases } = await prepareReviewers();
+    stubReviewerRuntime().mockImplementationOnce(approvalExit(leases.checker));
+    await expect(loops.executeChecker(runId, { lease_id: leases.checker, runtime: 'mock' })).rejects.toThrow('LOOP_WORKER_APPROVAL_REQUIRED');
+    expect(workerSpans(leases.checker)).toEqual([expect.objectContaining({ status: 'running', ended_at: null })]); // open, not an error
+
+    await loops.stopLoopRun(runId); // cancels the still-prepared reviewer lease outside executeChecker
+    expect(loops.getWorkerLease(leases.checker).status).toBe('cancelled');
+    const spans = workerSpans(leases.checker);
+    expect(spans).toHaveLength(1);
+    expect(spans[0]).toMatchObject({ status: 'error', ended_at: expect.any(String) });
+    expect(JSON.parse(spans[0].metadata)).toMatchObject({ terminal_status: 'cancelled', lease_status: 'cancelled' });
+    expect(reviewerTrace(runId, leases.checker).spans.filter((s) => !s.ended_at)).toEqual([]); // the run span too
+  });
+
+  it('reviewer approval -> resumed call reuses the span; a raw SQL settle closes a still-open one', async () => {
+    const { runId, leases } = await prepareReviewers();
+    const runtime = stubReviewerRuntime().mockImplementationOnce(approvalExit(leases.checker));
+    await expect(loops.executeChecker(runId, { lease_id: leases.checker, runtime: 'mock' })).rejects.toThrow('LOOP_WORKER_APPROVAL_REQUIRED');
+    await loops.executeChecker(runId, { lease_id: leases.checker, runtime: 'mock', timeout_ms: 10_000 });
+    expect(workerSpans(leases.checker)).toEqual([expect.objectContaining({ status: 'ok', ended_at: expect.any(String), parent_span_id: expect.any(String) })]);
+
+    runtime.mockImplementationOnce(approvalExit(leases.security_checker));
+    await expect(loops.executeChecker(runId, { lease_id: leases.security_checker, runtime: 'mock' })).rejects.toThrow('LOOP_WORKER_APPROVAL_REQUIRED');
+    const settledAt = '2026-10-29T08:00:00.000Z';
+    db.prepare("UPDATE worker_leases SET status = 'cancelled', updated_at = ? WHERE id = ? AND status = 'prepared'").run(settledAt, leases.security_checker);
+    expect(workerSpans(leases.security_checker)).toEqual([expect.objectContaining({ status: 'error', ended_at: settledAt })]);
+    expect(reviewerTrace(runId, leases.security_checker).spans.filter((s) => !s.ended_at)).toEqual([]);
+  });
+
+  it.each([
+    ['the runtime promise rejects', 'executeMockChecker'],
+    ['writing the output files throws', 'writeOutput'],
+  ] as const)('an unexpected reviewer error after dispatch (%s) settles the lease as failed and closes the span', async (_case, step) => {
+    const { runId, leases } = await prepareReviewers();
+    const explode = () => {
+      expect(loops.getWorkerLease(leases.checker).status).toBe('running'); // the failure lands after the dispatch
+      throw new Error('REVIEWER_EXPLODED');
+    };
+    // the runtime step is async (a rejected promise); writeOutput is synchronous (a throw)
+    vi.spyOn(loops.workerExecutor as any, step).mockImplementationOnce(step === 'writeOutput' ? explode : async () => explode());
+    await expect(loops.executeChecker(runId, { lease_id: leases.checker, runtime: 'mock' })).rejects.toThrow('REVIEWER_EXPLODED');
+
+    const lease = loops.getWorkerLease(leases.checker);
+    expect(lease.status).toBe('failed');
+    expect(lease.metadata.failure_reason).toBe('checker_execution_error: REVIEWER_EXPLODED');
+    const [span] = workerSpans(leases.checker);
+    expect(span).toMatchObject({ status: 'error', ended_at: expect.any(String) });
+    expect(JSON.parse(span.metadata)).toMatchObject({ terminal_status: 'error', error: 'REVIEWER_EXPLODED' });
+    expect(reviewerTrace(runId, leases.checker).spans.filter((s) => !s.ended_at)).toEqual([]);
+  });
+
+  it('replaces the settle trigger at boot inside one transaction (no window without it for another connection)', () => {
+    const exec = db.exec.bind(db);
+    const seen: Array<{ sql: string; inTransaction: boolean }> = [];
+    vi.spyOn(db, 'exec').mockImplementation((sql: string) => {
+      if (sql.includes('trg_worker_lease_settles_trace')) seen.push({ sql, inTransaction: db.inTransaction });
+      return exec(sql);
+    });
+    ensureMakerSpanSettlement(db);
+    expect(seen.some((c) => /DROP TRIGGER/.test(c.sql))).toBe(true);
+    expect(seen.some((c) => /CREATE TRIGGER/.test(c.sql))).toBe(true);
+    expect(seen.filter((c) => !c.inTransaction)).toEqual([]);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'trigger' AND name = 'trg_worker_lease_settles_trace'").get()).toEqual({ n: 1 });
+  });
+
+  it('FixLoopService (executeMaker entry point) records the maker span', async () => {
+    vi.spyOn(RsiSafetyGuard.prototype, 'canMutate').mockReturnValue({ allowed: true });
+    const result = await new FixLoopService(db as any, loops).fixFile({ repositoryPath: tmp, filePath: 'README.md', description: 'Improve wording', category: 'refactor', runtime: 'mock' });
+    const maker = loops.listWorkerLeases(result.loopRunId!).find((l) => l.role === 'maker')!;
+    // the mock maker completes; later checker/verify steps may move the lease on, the span keeps the settlement
+    expect(workerSpans(maker.id)).toEqual([expect.objectContaining({ status: 'ok', ended_at: expect.any(String), parent_span_id: expect.any(String) })]);
+  });
+});

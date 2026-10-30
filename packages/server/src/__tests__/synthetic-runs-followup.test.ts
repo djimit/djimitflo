@@ -1,0 +1,63 @@
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import Database from 'better-sqlite3';
+import { schema } from '../database/schema';
+import { runMigrations } from '../database/migrate';
+import { SwarmStatusService } from '../services/swarm-status-service';
+import { ContinuousLearningLoop } from '../services/continuous-learning-loop';
+import { runtimeHealth } from '../services/runtime-health';
+
+/**
+ * Functional follow-ups to U3 (#1090): a completed synthetic PR-review run (marked, or historical: repo-maintenance-loop + a
+ * 'manual' maker) is bookkeeping. Its "Automated review for PR #N" finding is no work item, and it is nothing to learn from.
+ */
+const now = Date.now();
+const iso = (t: number) => new Date(t).toISOString();
+let db: Database.Database;
+
+function completedRun(id: string, loop: string, meta: Record<string, unknown>, makerRuntime: string, message: string, ago: number) {
+  db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, metadata, created_at, updated_at, completed_at)
+    VALUES (?, ?, 'closed', 'completed', ?, ?, ?, ?, ?)`).run(id, loop, JSON.stringify([{ id: `f-${id}`, type: 'refactor', file: 'README.md', message }]),
+    JSON.stringify(meta), iso(now - ago), iso(now - ago), iso(now - ago));
+  db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, created_at, updated_at) VALUES (?, ?, 'maker', ?, 'completed', ?, ?)`)
+    .run(`${id}-maker`, id, makerRuntime, iso(now - ago), iso(now - ago));
+}
+
+beforeEach(() => {
+  db = new Database(':memory:'); db.exec(schema); runMigrations(db);
+  completedRun('r-real', 'test-gap', {}, 'opencode', 'Missing test for src/a.ts', 3_600_000);
+  completedRun('r-syn', 'repo-maintenance-loop', { synthetic: true, synthetic_reason: 'pr_review' }, 'manual', 'Automated review for PR #7: add x', 60_000);
+  completedRun('r-hist', 'repo-maintenance-loop', {}, 'manual', 'Automated review for PR #6: add y', 120_000);
+});
+afterEach(() => db.close());
+
+describe('synthetic PR-review runs: functional follow-ups', () => {
+  it('tickScheduler turns only real runs\' findings into loop_finding work items', () => {
+    const result = new SwarmStatusService(db).tickScheduler();
+    expect(result.created_work_items.map((w) => w.source_ref)).toEqual(['r-real:f-r-real']);
+    expect((db.prepare("SELECT COUNT(*) AS n FROM work_items WHERE source = 'loop_finding' AND description LIKE 'Automated review%'").get() as { n: number }).n).toBe(0);
+  });
+
+  it('the continuous learning loop reflects on real completed runs only', async () => {
+    const loop = new ContinuousLearningLoop(db, { intervalMs: 999_999_999 });
+    try { await loop.runCycle(); } finally { loop.stop(); }
+    expect((db.prepare('SELECT loop_run_id FROM reflections ORDER BY loop_run_id').all() as Array<{ loop_run_id: string }>).map((r) => r.loop_run_id)).toEqual(['r-real']);
+  });
+
+  it('fleetPools: 24 h outcome rates count real leases, spend (tokens_used_24h) keeps the synthetic LLM review checker', () => {
+    const checker = (id: string, run: string, tokens: number) => db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at)
+      VALUES (?, ?, 'checker', 'codex', 'completed', ?, ?, ?)`).run(id, run, JSON.stringify({ runtime_usage: { total_tokens: tokens } }), iso(now - 60_000), iso(now - 60_000));
+    checker('c-real', 'r-real', 300);
+    checker('c-syn', 'r-syn', 5000);
+    const pools = (new SwarmStatusService(db) as any).fleetPools({ load_average: [0], total_memory_bytes: 1, free_memory_bytes: 1, cpu_threads: 8 }) as any[];
+    const codex = pools.find((p) => p.runtime === 'codex');
+    expect(codex).toMatchObject({ completed_24h: 1, tokens_per_successful_worker: 300, tokens_used_24h: 5300 });
+  });
+
+  it('runtime-health last_success_at: a synthetic review checker\'s later completion does not advertise success', () => {
+    const checker = (id: string, run: string, at: number) => db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, created_at, updated_at)
+      VALUES (?, ?, 'checker', 'codex', 'completed', ?, ?)`).run(id, run, iso(at), iso(at));
+    checker('c-real', 'r-real', now - 3 * 3_600_000);
+    checker('c-syn', 'r-syn', now - 60_000);
+    expect(runtimeHealth(db, now).find((r) => r.runtime === 'codex')!.last_success_at).toBe(iso(now - 3 * 3_600_000));
+  });
+});

@@ -185,7 +185,7 @@ function collect(db: Database, since: string, until: string, schedulers: string[
 
   for (const r of safeAll<{ p: string; consumer: string; provider: string | null; model: string | null; shadow: number; tin: number | null; tout: number | null }>(db,
     `SELECT COALESCE(purpose, 'consumer:' || consumer) AS p, consumer, provider, model, shadow, tokens_in AS tin, tokens_out AS tout FROM llm_model_calls
-      WHERE created_at >= ? AND created_at < ? AND consumer != 'maker' AND NOT (consumer = 'jev' AND purpose IS NULL)`, since, until)) {
+      WHERE created_at >= ? AND created_at < ? AND consumer NOT IN ('maker', 'checker') AND NOT (consumer = 'jev' AND purpose IS NULL)`, since, until)) {
     const a = acc(`llm:${r.p}`, 'llm_purpose'); a.runs++;
     if (r.shadow) a.shadowRows++; else a.otherRows++;
     const tin = num(r.tin); const tout = num(r.tout);

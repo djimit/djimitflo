@@ -30,6 +30,7 @@ import { classifyStderr, STDERR_TAIL_CHARS, type FailureStage, type LeaseFailure
 import { makerWarmDepsBlocked, warmDepsCacheRoot, warmDepsState } from './maker-warm-deps';
 import { asgAfterMaker, asgBeforeMaker, type AsgMakerOutcome } from './asg/oracle-lane';
 import { asgMode } from './asg/mode';
+import { recordWorkerCall } from './model-call-ledger';
 import type {
   LoopRunRecord,
   WorkerLeaseRecord,
@@ -52,6 +53,11 @@ export interface ExecuteCheckerInput {
   timeout_ms?: number;
   skip_permissions?: boolean;
 }
+
+/** A worker lease's open lifecycle span (OPS-004): the worker span and its run-span parent. */
+type LeaseSpan = { runSpanId: string; workerSpanId: string; leaseId: string };
+/** What executeChecker learns from runChecker: the reviewer's span and the lease this call set running. */
+type ReviewerDispatch = { current?: LeaseSpan | null; leaseId?: string };
 
 export interface ExecuteWorkerResult {
   run: LoopRunRecord;
@@ -115,16 +121,91 @@ export class LoopWorkerExecutorService {
    */
   async executeMaker(id: string, input: ExecuteMakerInput = {}): Promise<ExecuteWorkerResult> {
     const since = new Date().toISOString();
+    const span = this.openMakerSpan(id, input);
+    let execution: ExecuteWorkerResult | undefined;
+    let errorMessage: string | undefined;
     try {
-      return await this.runMaker(id, input);
+      execution = await this.runMaker(id, input);
+      return execution;
     } catch (err) {
       const stuck = this.db.prepare("SELECT id FROM worker_leases WHERE loop_run_id = ? AND role = 'maker' AND status = 'running' AND json_extract(metadata, '$.started_at') >= ?")
         .all(id, since) as Array<{ id: string }>;
       const message = (err instanceof Error ? err.message : String(err)).slice(0, 200);
+      errorMessage = message;
       for (const lease of stuck) this.loopService.updateWorkerLeaseStatus(lease.id, 'failed', { failure_reason: `maker_execution_error: ${message}`, failed_at: new Date().toISOString(),
         failure: { stderr_class: classifyStderr(message), stderr_source: 'reason' } });
       throw err;
+    } finally {
+      if (span) this.closeLeaseSpan(span, execution, errorMessage);
     }
+  }
+
+  /**
+   * OPS-004: one lifecycle span per maker lease — a worker span, child of a run span, in `loop-<run>-worker-<lease>`.
+   * Opened at the first dispatch of a prepared lease; a resumed call (after an approval / in-progress exit, which leaves the
+   * lease 'prepared') reuses the lease's open span (found by its trace id) instead of opening a second one. Lease metadata
+   * is not touched. Never throws.
+   */
+  private openMakerSpan(runId: string, input: ExecuteMakerInput): LeaseSpan | null {
+    try {
+      const run = this.loopService.getLoopRun(runId);
+      const leases = this.loopService.listWorkerLeases(run.id);
+      const lease = input.lease_id ? leases.find((l) => l.id === input.lease_id) : leases.find((l) => l.role === 'maker' && l.status === 'prepared');
+      if (!lease) return null;
+      // nothing to dispatch when not prepared: runMaker refuses it, no span for a refusal
+      return this.openLeaseSpan(run, lease, `loop-${run.id}-worker-${lease.id}`, `loop:${run.id}/worker:${lease.id}`, lease.runtime, {}, lease.status === 'prepared');
+    } catch {
+      return null; // tracing never blocks a maker
+    }
+  }
+
+  /**
+   * One lifecycle span per worker lease (maker or reviewer): a worker span, child of a run span, in the lease's own trace.
+   * A resumed call reuses the lease's open span (found by trace id) instead of opening a second one; a new pair is opened
+   * only when `create`. Never throws. trg_worker_lease_settles_trace closes it on every settle path outside the caller.
+   */
+  private openLeaseSpan(run: LoopRunRecord, lease: WorkerLeaseRecord, traceId: string, evidenceRef: string, runtime: string,
+    metadata: Record<string, unknown>, create = true): LeaseSpan | null {
+    try {
+      const open = this.db.prepare(`SELECT id, parent_span_id FROM agent_trace_spans WHERE trace_id = ? AND span_type = 'worker'
+        AND ended_at IS NULL AND parent_span_id IS NOT NULL ORDER BY created_at DESC LIMIT 1`).get(traceId) as { id: string; parent_span_id: string } | undefined;
+      if (open) return { runSpanId: open.parent_span_id, workerSpanId: open.id, leaseId: lease.id };
+      if (!create) return null;
+      const assurance = this.loopService.assurance;
+      const runSpan = assurance.createTraceSpan({ trace_id: traceId, loop_run_id: run.id, span_type: 'loop', name: `loop_run:${run.id}`, status: 'running',
+        evidence_ref: `loop:${run.id}`, metadata: { loop_name: run.loop_name, scope: 'worker_trace', worker_lease_id: lease.id } });
+      const workerSpan = assurance.createTraceSpan({ trace_id: traceId, parent_span_id: runSpan.id, loop_run_id: run.id, span_type: 'worker',
+        name: `${lease.role}:${runtime}`, status: 'running', evidence_ref: evidenceRef,
+        metadata: { worker_lease_id: lease.id, role: lease.role, runtime, ...metadata } });
+      return { runSpanId: runSpan.id, workerSpanId: workerSpan.id, leaseId: lease.id };
+    } catch {
+      return null; // tracing never blocks a worker
+    }
+  }
+
+  /** Close the span only when the lease settled (completed / failed / cancelled); an approval / in-progress exit keeps it open. */
+  private closeLeaseSpan(span: LeaseSpan, execution: ExecuteWorkerResult | undefined, errorMessage: string | undefined): void {
+    const endedAt = new Date().toISOString(); // the settle time, before the caller's bookkeeping
+    try {
+      const leaseStatus = (this.db.prepare('SELECT status FROM worker_leases WHERE id = ?').get(span.leaseId) as { status: string } | undefined)?.status;
+      if (leaseStatus !== 'completed' && leaseStatus !== 'failed' && leaseStatus !== 'cancelled') return;
+      const terminal = leaseStatus === 'completed' && !errorMessage ? 'ok' : leaseStatus === 'cancelled' ? 'cancelled' : 'error';
+      const status = terminal === 'ok' ? 'ok' : 'error'; // the span schema has no 'cancelled': a cancel is a terminal failure
+      const assurance = this.loopService.assurance;
+      const closed = { terminal_status: terminal, lease_status: leaseStatus };
+      try {
+        assurance.finishTraceSpan(span.workerSpanId, { status, ended_at: endedAt, metadata: {
+          ...closed,
+          ...(errorMessage ? { error: errorMessage } : {}),
+          ...(execution ? { stdout_path: execution.stdout_path, stderr_path: execution.stderr_path, gates: execution.gates } : {}),
+          ...(typeof execution?.lease?.metadata?.verdict === 'string' ? { verdict: execution.lease.metadata.verdict } : {}),
+        } });
+      } catch {
+        // secret-like detail is refused; the span still closes
+        assurance.finishTraceSpan(span.workerSpanId, { status, ended_at: endedAt, metadata: { ...closed, detail_withheld: true } });
+      }
+      assurance.finishTraceSpan(span.runSpanId, { status, ended_at: endedAt, metadata: { terminal_status: terminal } });
+    } catch { /* tracing never masks the worker's outcome */ }
   }
 
   private async runMaker(id: string, input: ExecuteMakerInput = {}): Promise<ExecuteWorkerResult> {
@@ -342,7 +423,32 @@ export class LoopWorkerExecutorService {
     return { run: this.loopService.getLoopRun(run.id), lease: completedLease, gates, stdout_path: stdoutPath, stderr_path: stderrPath };
   }
 
+  /**
+   * OPS-004: one lifecycle span per reviewer lease (checker / security checker), as for makers — opened at dispatch in
+   * `loop-<run>-checker-<lease>`, reused by a resumed call, closed when the lease settles (here, or by the settle trigger).
+   * An unexpected error after dispatch fails the still-running lease (as executeMaker does), so the span closes; an
+   * approval / in-progress continuation has put the lease back to 'prepared' and is left alone.
+   */
   async executeChecker(id: string, input: ExecuteCheckerInput = {}): Promise<ExecuteWorkerResult> {
+    const span: ReviewerDispatch = {};
+    let execution: ExecuteWorkerResult | undefined;
+    let errorMessage: string | undefined;
+    try {
+      execution = await this.runChecker(id, input, span);
+    } catch (err) {
+      errorMessage = (err instanceof Error ? err.message : String(err)).slice(0, 200);
+      const stuck = span.leaseId ? this.db.prepare('SELECT status FROM worker_leases WHERE id = ?').get(span.leaseId) as { status: string } | undefined : undefined;
+      if (stuck?.status === 'running') this.loopService.updateWorkerLeaseStatus(span.leaseId!, 'failed', { failure_reason: `checker_execution_error: ${errorMessage}`,
+        failed_at: new Date().toISOString(), failure: { stage: 'checker', stderr_class: classifyStderr(errorMessage), stderr_source: 'reason' } });
+      throw err;
+    } finally {
+      if (span.current) this.closeLeaseSpan(span.current, execution, errorMessage);
+    }
+    // the trace as closed, with the detail the close added
+    return execution.trace ? { ...execution, trace: this.loopService.assurance.getTrace(execution.trace.trace_id) } : execution;
+  }
+
+  private async runChecker(id: string, input: ExecuteCheckerInput, span: ReviewerDispatch): Promise<ExecuteWorkerResult> {
     const run = this.loopService.getLoopRun(id);
     this.loopService.assertOperatorNotPaused(run);
     const leases = this.loopService.listWorkerLeases(run.id);
@@ -412,10 +518,13 @@ export class LoopWorkerExecutorService {
     const traceId = `loop-${run.id}-checker-${checker.id}`;
     const checkpointBefore = this.loopService.assurance.createCheckpoint({ loop_run_id: run.id, label: `before checker ${checker.id}`, metadata: { worker_lease_id: checker.id, maker_lease_id: maker.id, worker_role: checker.role, worker_runtime: runtime, phase: 'before_checker_execution' } });
     this.loopService.patchWorkerLeaseMetadata(checker.id, { checkpoint_before_id: checkpointBefore.id, trace_id: traceId, runtime_adapter: runtime });
-    this.loopService.assurance.createTraceSpan({ trace_id: traceId, loop_run_id: run.id, span_type: 'worker', name: `${checker.role}:${runtime}:spawn`, status: 'running', evidence_ref: `loop:${run.id}/checker:${checker.id}`, metadata: { worker_lease_id: checker.id, maker_lease_id: maker.id, role: checker.role, runtime, checkpoint_before_id: checkpointBefore.id } });
+    span.current = this.openLeaseSpan(run, checker, traceId, `loop:${run.id}/checker:${checker.id}`, runtime,
+      { maker_lease_id: maker.id, checkpoint_before_id: checkpointBefore.id });
+    span.leaseId = checker.id; // dispatched by this call: an unexpected error from here on fails it
     this.loopService.updateWorkerLeaseStatus(checker.id, 'running', { started_at: new Date().toISOString(), runtime_adapter: runtime });
 
     const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
+    const reviewerStartedAt = Date.now();
     const prompt = this.loopService.buildCheckerPrompt(run, maker, checker);
     const skipPermissions = this.loopService.resolveSkipPermissions(input.skip_permissions);
     const result = runtime === 'mock'
@@ -424,13 +533,20 @@ export class LoopWorkerExecutorService {
         this.riskAssessmentText(maker, prompt));
 
     const { stdoutPath, stderrPath } = this.writeOutput(run.id, checker.id, 'checker-output', result.stdout || '', result.stderr || '');
+    const runtimeUsage = this.loopService.extractRuntimeUsage(result.stdout || '');
+    // O2a: the reviewer's model call in the ledger (a mirror of this lease's runtime_usage; unknown tokens stay NULL)
+    const ledgerReviewer = (ok: boolean, status?: string) => recordWorkerCall(this.db, { consumer: 'checker', role: reviewRole, runId: run.id, goalId: run.goal_id,
+      loopName: run.loop_name, runtime, meta: { model: checker.metadata?.model, runtime_usage: runtimeUsage ? { input_tokens: runtimeUsage.prompt_tokens,
+        output_tokens: runtimeUsage.completion_tokens, total_tokens: runtimeUsage.total_tokens } : undefined }, durationMs: Date.now() - reviewerStartedAt, ok, status });
     if (this.loopService.isWorkerLeaseCancelled(checker.id)) {
-      this.loopService.patchWorkerLeaseMetadata(checker.id, { stdout_path: stdoutPath, stderr_path: stderrPath, runtime_was_cancelled: true, failure: runtimeFailureHint(result, 'checker') });
+      // cancelled while it ran: the tokens it spent are still on the lease and in the ledger (once)
+      this.loopService.patchWorkerLeaseMetadata(checker.id, { stdout_path: stdoutPath, stderr_path: stderrPath, runtime_was_cancelled: true, failure: runtimeFailureHint(result, 'checker'),
+        runtime_usage: runtimeUsage || { usage_source: 'unknown' } });
+      ledgerReviewer(false, 'cancelled');
       return { run: this.loopService.getLoopRun(run.id), lease: this.loopService.getWorkerLease(checker.id), gates: [], stdout_path: stdoutPath, stderr_path: stderrPath };
     }
     const exitStatus = result.exitCode;
     const timedOut = result.timedOut;
-    const runtimeUsage = this.loopService.extractRuntimeUsage(result.stdout || '');
     const runtimeWarnings = this.loopService.extractRuntimeWarnings(result.stdout || '', result.stderr || '');
     const fallbackLimited = this.fallbackLimitHit(checker, exitStatus, result);
     this.noteOpencodeLimit(runtime, reviewRole, exitStatus, result);
@@ -463,6 +579,8 @@ export class LoopWorkerExecutorService {
       ...(exitStatus === 0 && !timedOut ? {} : { failure: runtimeFailureHint(result, 'checker') }),
     });
 
+    ledgerReviewer(exitStatus === 0 && !timedOut);
+
     const gates: LoopGate[] = [
       { name: `${reviewRole}_runtime_exit_zero`, status: exitStatus === 0 && !timedOut ? 'pass' : 'fail', evidence: `runtime=${runtime}, exit=${exitStatus ?? 'signal'}, timed_out=${timedOut}` },
       { name: `${reviewRole}_verdict`, status: verdict === 'accepted' ? 'pass' : 'fail', evidence: `${reviewRole} verdict=${verdict}` },
@@ -488,7 +606,6 @@ export class LoopWorkerExecutorService {
       metadata: { worker_role: checker.role, worker_runtime: runtime, maker_lease_id: maker.id, verdict, runtime_pid: result.runtimePid, runtime_signal: result.signal, runtime_timed_out: result.timedOut, runtime_timed_out_at: result.timedOutAt, exit_status: exitStatus, timed_out: timedOut, runtime_usage: runtimeUsage || { usage_source: 'unknown' }, runtime_warnings: runtimeWarnings, started_from: 'executeChecker' },
     });
 
-    this.loopService.assurance.createTraceSpan({ trace_id: traceId, loop_run_id: run.id, span_type: 'worker', name: `${checker.role}:${runtime}:completion`, status: failed ? 'error' : 'ok', evidence_ref: stdoutPath, metadata: { worker_lease_id: checker.id, maker_lease_id: maker.id, role: checker.role, runtime, stdout_path: stdoutPath, stderr_path: stderrPath, gates, verdict } });
     const checkpointAfter = this.loopService.assurance.createCheckpoint({ loop_run_id: run.id, label: `after checker ${checker.id}`, metadata: { worker_lease_id: checker.id, maker_lease_id: maker.id, worker_role: checker.role, worker_runtime: runtime, phase: 'after_checker_execution' } });
     this.loopService.patchWorkerLeaseMetadata(checker.id, { checkpoint_after_id: checkpointAfter.id });
 

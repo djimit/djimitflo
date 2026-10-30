@@ -5,13 +5,19 @@ import { execFileSync, spawnSync } from 'child_process';
 import { expect, it } from 'vitest';
 
 // scripts/auto-deploy.sh (plan J2) with every probe simulated: which conditions let main deploy on its own.
+// The trust checks refuse any symlink on a path, and TMPDIR can contain one (macOS /var → /private/var): use its
+// resolved form for every fixture.
+const TMPDIR = fs.realpathSync(os.tmpdir());
 const script = path.resolve(__dirname, '../../../../scripts/auto-deploy.sh');
 const NEW = 'b'.repeat(40); const OLD = 'a'.repeat(40);
 const green = JSON.stringify({ check_runs: [{ id: 1, name: 'build-and-test (22)', status: 'completed', conclusion: 'success' }, { id: 2, name: 'optional', status: 'completed', conclusion: 'skipped' }] });
 const minutesAgo = (m: number) => JSON.stringify({ commit: { committer: { date: new Date(Date.now() - m * 60_000).toISOString() } } });
-const run = (over: Record<string, string> = {}, root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'))) => {
-  const env = { ...process.env, DEPLOY_ROOT: root, AD_MAIN_SHA: `printf '${NEW}\\trefs/heads/main\\n'`, AD_CURRENT_SHA: `echo ${OLD}`,
-    AD_CHECKS: `echo '${green}'`, AD_REQUIRED: `echo 'build-and-test (22)'`, AD_COMMIT: `echo '${minutesAgo(30)}'`, AD_LEASES: 'echo 0', AD_DEPLOY: 'echo DEPLOYED', ...over };
+// the test user stands in for root as the trusted owner of $DEPLOY_ROOT, the install dir and the staging dir
+// and the resolved tmp base (and what is above it, e.g. a sticky /tmp) is exempt from the trust walk — a test-only seam
+const trust = (root: string) => ({ AUTO_DEPLOY_TRUSTED_UID: String(process.getuid!()), AUTO_DEPLOY_TRUSTED_PREFIX: TMPDIR, AUTO_DEPLOY_INSTALL_DIR: path.join(root, 'lib') });
+const run = (over: Record<string, string> = {}, root = fs.mkdtempSync(path.join(TMPDIR, 'ad-'))) => {
+  const env = { ...process.env, DEPLOY_ROOT: root, ...trust(root), AD_MAIN_SHA: `printf '${NEW}\\trefs/heads/main\\n'`, AD_CURRENT_SHA: `echo ${OLD}`,
+    AD_CHECKS: `echo '${green}'`, AD_REQUIRED: `echo 'build-and-test (22)'`, AD_COMMIT: `echo '${minutesAgo(30)}'`, AD_LEASES: 'echo 0', AD_DEPLOY: 'echo DEPLOYED', AD_DEPLOY_GATE: 'true', ...over };
   const r = spawnSync('bash', [script], { env, encoding: 'utf8' });
   return `${r.stdout}${r.stderr}`;
 };
@@ -60,7 +66,7 @@ it('skip is not pass: every required context needs a success of its newest run o
 });
 
 it('reads the required contexts from the public branch summary of main', () => {
-  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-bin-'));
+  const bin = fs.mkdtempSync(path.join(TMPDIR, 'ad-bin-'));
   const summary = JSON.stringify({ protection: { required_status_checks: { contexts: ['build-and-test (22)'], checks: [{ context: 'sbom', app_id: 15368 }] } } });
   fs.writeFileSync(path.join(bin, 'curl'), `#!/usr/bin/env bash\ncase "$*" in *branches/main*) echo '${summary}' ;; *) exit 22 ;; esac\n`, { mode: 0o755 });
   const runs = JSON.stringify({ check_runs: [{ id: 1, name: 'build-and-test (22)', status: 'completed', conclusion: 'success', app: { id: 15368 } }, { id: 2, name: 'sbom', status: 'completed', conclusion: 'skipped', app: { id: 15368 } }] });
@@ -80,7 +86,7 @@ it('a skipped required Actions check is not replaced by a same-named success fro
   expect(other).toContain('required_missing:sbom'); expect(other).not.toContain('DEPLOYED');
   expect(run({ ...req, ...checks([r(1, 'build-and-test (22)', 'success', 15368), r(2, 'sbom', 'success', 15368)]) })).toContain('DEPLOYED');
   // the real reader keeps the app id from the public branch summary
-  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-bin-'));
+  const bin = fs.mkdtempSync(path.join(TMPDIR, 'ad-bin-'));
   const summary = JSON.stringify({ protection: { required_status_checks: { contexts: ['sbom'], checks: [{ context: 'sbom', app_id: 15368 }] } } });
   fs.writeFileSync(path.join(bin, 'curl'), `#!/usr/bin/env bash\ncase "$*" in *branches/main*) echo '${summary}' ;; *) exit 22 ;; esac\n`, { mode: 0o755 });
   const viaSummary = run({ AD_REQUIRED: '', PATH: `${bin}:${process.env.PATH}`, ...checks([r(2, 'sbom', 'skipped', 15368), r(3, 'sbom', 'success', 999)]) });
@@ -88,7 +94,7 @@ it('a skipped required Actions check is not replaced by a same-named success fro
 });
 
 it('the kill switch file stops everything', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
+  const root = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
   fs.writeFileSync(path.join(root, 'AUTO_DEPLOY_DISABLED'), '');
   const out = run({}, root);
   expect(out).toContain('disabled by kill switch');
@@ -103,7 +109,7 @@ const deployedAgo = (root: string, min: number, baseline: string) => {
 const upToDate = { AD_CURRENT_SHA: `echo ${NEW}` };
 
 it('P2: a deploy records the stall baseline', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
+  const root = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
   expect(run({ AD_STALLS: `printf 'gym:atomic\\n'` }, root)).toContain('DEPLOYED');
   expect(fs.readFileSync(path.join(root, '.deploy-baseline'), 'utf8')).toBe('gym:atomic\n');
   expect(fs.readFileSync(path.join(root, '.last-deploy'), 'utf8')).toMatch(new RegExp(`^${NEW} \\d+`));
@@ -111,7 +117,7 @@ it('P2: a deploy records the stall baseline', () => {
 
 it('P2: a new structural stall or a restart pauses auto-deploy; provider noise is only logged; nothing before 15 min', () => {
   const pausedBy = (over: Record<string, string>, baseline = 'gym:atomic\n', min = 20) => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-')); deployedAgo(root, min, baseline);
+    const root = fs.mkdtempSync(path.join(TMPDIR, 'ad-')); deployedAgo(root, min, baseline);
     const out = run({ ...upToDate, AD_RESTARTS: 'echo 0', ...over }, root);
     return { out, paused: fs.existsSync(path.join(root, 'AUTO_DEPLOY_DISABLED')) };
   };
@@ -125,19 +131,30 @@ it('P2: a new structural stall or a restart pauses auto-deploy; provider noise i
 });
 
 it('P2: a failed deploy says so and records no baseline', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
+  const root = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
   const out = run({ AD_DEPLOY: 'false', AD_STALLS: 'true' }, root);
   expect(out).toContain('deploy of'); expect(out).toContain('failed');
   expect(fs.existsSync(path.join(root, '.last-deploy'))).toBe(false);
 });
 
+// S2: curl stub serving `content` as the commit's scripts/deploy-vps.sh (the real fetch path, no network)
+const commitCopy = (content: string, alsoRun = '') => {
+  const bin = fs.mkdtempSync(path.join(TMPDIR, 'ad-bin-'));
+  const src = path.join(bin, 'deploy-vps.sh'); fs.writeFileSync(src, content);
+  fs.writeFileSync(path.join(bin, 'curl'), `#!/usr/bin/env bash\nout=""; while [ $# -gt 0 ]; do [ "$1" = "-o" ] && out="$2"; shift; done; cat '${src}' > "$out"\n${alsoRun}\n`, { mode: 0o755 });
+  return { PATH: `${bin}:${process.env.PATH}` };
+};
+const installer = path.resolve(__dirname, '../../../../scripts/install-deploy-script.sh');
+const install = (root: string, content: string, args: string[] = ['--apply']) =>
+  spawnSync('bash', [installer, NEW, ...args], { env: { ...process.env, DEPLOY_ROOT: root, ...trust(root), ...commitCopy(content) }, encoding: 'utf8' });
+const installedPath = (root: string) => path.join(root, 'lib', 'deploy-vps.installed.sh');
+const realDeploy = { AD_DEPLOY: '', AD_DEPLOY_GATE: '', AD_STALLS: 'echo', AD_RESTARTS: 'echo 0' };
+
 it('the real deploy path leaves no RETURN trap behind (bash 5: "tmp: unbound variable" after every deploy)', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
-  // a fake deploy-vps.sh behind a file:// URL; curl fetches it exactly like the real path
-  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-bin-'));
-  fs.writeFileSync(path.join(bin, 'curl'), '#!/usr/bin/env bash\nout=""; while [ $# -gt 0 ]; do [ "$1" = "-o" ] && out="$2"; shift; done; echo "echo deployed-fake" > "$out"\n', { mode: 0o755 });
-  const env = { PATH: `${bin}:${process.env.PATH}` };
-  const out = run({ AD_DEPLOY: '', AD_STALLS: 'echo', AD_RESTARTS: 'echo 0', ...env }, root);
+  const root = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
+  // a fake deploy-vps.sh, fetched by curl exactly like the real path and installed on the host by the operator step (S2)
+  expect(install(root, 'echo deployed-fake\n').status).toBe(0);
+  const out = run({ ...realDeploy, ...commitCopy('echo deployed-fake\n') }, root);
   expect(out).toContain('deployed-fake');
   expect(out).not.toContain('unbound');
   expect(out).toContain(`done ${NEW}`);
@@ -147,7 +164,7 @@ it('the real deploy path leaves no RETURN trap behind (bash 5: "tmp: unbound var
 it('deploy-vps keeps a week of build cache after a healthy deploy; only a low-disk prune clears it', () => {
   const script = fs.readFileSync(path.resolve(__dirname, '../../../../scripts/deploy-vps.sh'), 'utf8');
   const fn = script.slice(script.indexOf('prune_old_builds() {'), script.indexOf('\n}\n', script.indexOf('prune_old_builds() {')) + 3);
-  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'dv-'));
+  const bin = fs.mkdtempSync(path.join(TMPDIR, 'dv-'));
   const log = path.join(bin, 'docker.log');
   fs.writeFileSync(path.join(bin, 'docker'), `#!/bin/sh\necho "$*" >> ${log}\n`, { mode: 0o755 });
   const prune = (arg: string) => {
@@ -160,7 +177,7 @@ it('deploy-vps keeps a week of build cache after a healthy deploy; only a low-di
 });
 
 it('S1: writes deploy events as JSON lines into the data dir the container mounts, when it exists', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ad-'));
+  const root = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
   run({}, root); // no data dir: nothing written, nothing breaks
   expect(fs.existsSync(path.join(root, 'data', 'deploy-log.jsonl'))).toBe(false);
   fs.mkdirSync(path.join(root, 'data'));
@@ -168,4 +185,368 @@ it('S1: writes deploy events as JSON lines into the data dir the container mount
   const events = fs.readFileSync(path.join(root, 'data', 'deploy-log.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   expect(events.map((e) => e.event)).toEqual(['deploying', 'done']);
   expect(events[0]).toMatchObject({ sha: NEW, detail: `was ${OLD}` });
+});
+
+// S2 (DEP-01): auto-deploy runs as root on the host. It runs the host-installed deploy script; the copy in the commit it
+// deploys is fetched only to compare, so merging a change to deploy-vps.sh never reaches root without an operator step.
+const RAN = 'echo "deploy-script-ran-from $0"\n';
+const killSwitch = (root: string) => { try { return fs.readFileSync(path.join(root, 'AUTO_DEPLOY_DISABLED'), 'utf8'); } catch { return null; } };
+
+it('S2: deploys with the host-installed copy of deploy-vps.sh when the commit carries the same script', () => {
+  const root = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
+  expect(install(root, RAN).status).toBe(0);
+  const out = run({ ...realDeploy, ...commitCopy(RAN) }, root);
+  // it runs a verified copy of the installed script, read once, never the installed pathname itself
+  expect(out).toMatch(/deploy-script-ran-from \S+/);
+  expect(out).not.toContain(`deploy-script-ran-from ${installedPath(root)}`);
+  expect(out).toContain(`done ${NEW}`);
+  expect(killSwitch(root)).toBeNull();
+});
+
+it('S2: a deploy-vps.sh changed in the deployed commit is not executed; auto-deploy pauses until the operator installs it', () => {
+  const root = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
+  expect(install(root, RAN).status).toBe(0);
+  const changed = 'echo COMMIT-COPY-RAN\n';
+  const out = run({ ...realDeploy, ...commitCopy(changed) }, root);
+  expect(out).not.toContain('COMMIT-COPY-RAN');
+  expect(out).not.toContain('deploy-script-ran-from');
+  expect(out).toContain('auto-deploy paused');
+  expect(killSwitch(root)).toContain('scripts/deploy-vps.sh');
+  expect(killSwitch(root)).toContain('install-deploy-script.sh');
+  expect(fs.existsSync(path.join(root, '.last-deploy'))).toBe(false);
+  // the explicit operator step installs the reviewed script; after the kill switch is removed it deploys with it
+  expect(install(root, changed).status).toBe(0);
+  fs.rmSync(path.join(root, 'AUTO_DEPLOY_DISABLED'));
+  const resumed = run({ ...realDeploy, ...commitCopy(changed) }, root);
+  expect(resumed).toContain('COMMIT-COPY-RAN');
+  expect(resumed).toContain(`done ${NEW}`);
+});
+
+it('S2: without a host-installed copy auto-deploy refuses, says how to install it and runs nothing', () => {
+  const root = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
+  const r = spawnSync('bash', [script], { env: { ...process.env, DEPLOY_ROOT: root, ...trust(root), AD_MAIN_SHA: `printf '${NEW}\\trefs/heads/main\\n'`, AD_CURRENT_SHA: `echo ${OLD}`,
+    AD_CHECKS: `echo '${green}'`, AD_REQUIRED: `echo 'build-and-test (22)'`, AD_COMMIT: `echo '${minutesAgo(30)}'`, AD_LEASES: 'echo 0', ...realDeploy, ...commitCopy(RAN) }, encoding: 'utf8' });
+  const out = `${r.stdout}${r.stderr}`;
+  expect(r.status).not.toBe(0);
+  expect(out).toContain('install-deploy-script.sh');
+  expect(out).not.toContain('deploy-script-ran-from');
+  expect(fs.existsSync(path.join(root, '.last-deploy'))).toBe(false);
+});
+
+it('S2: an installed copy edited outside the installer does not run', () => {
+  const root = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
+  expect(install(root, RAN).status).toBe(0);
+  fs.appendFileSync(installedPath(root), 'echo TAMPERED\n');
+  const out = run({ ...realDeploy, ...commitCopy(RAN) }, root);
+  expect(out).not.toContain('TAMPERED');
+  expect(out).not.toContain('deploy-script-ran-from');
+  expect(killSwitch(root)).toContain('install record');
+});
+
+it('S2: install-deploy-script.sh is a dry run by default and records the source commit and hash on --apply', () => {
+  const root = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
+  const dry = install(root, RAN, []);
+  expect(dry.status).toBe(0);
+  expect(dry.stdout).toContain('dry run');
+  expect(fs.existsSync(installedPath(root))).toBe(false);
+  expect(install(root, RAN).status).toBe(0);
+  expect(fs.readFileSync(installedPath(root), 'utf8')).toBe(RAN);
+  expect(fs.statSync(installedPath(root)).mode & 0o022).toBe(0);
+  const record = fs.readFileSync(`${installedPath(root)}.source`, 'utf8');
+  expect(record).toContain(`commit=${NEW}`);
+  expect(record).toMatch(/^sha256=[0-9a-f]{64}$/m);
+  expect(spawnSync('bash', [installer, 'not-a-sha'], { env: { ...process.env, DEPLOY_ROOT: root, ...trust(root) }, encoding: 'utf8' }).status).not.toBe(0);
+});
+
+// S3 (fleet ≠ main): the event bus and agent registry under /srv are deployed by hand, outside the build receipt. Every
+// run compares the sha256 of their deployed *.py with infra/<service>/*.py at the running commit, into the data mount.
+it('S3: writes fleet-drift.json with the service whose deployed sources differ from the running commit', () => {
+  const tmp = fs.mkdtempSync(path.join(TMPDIR, 'ad-fleet-'));
+  const write = (file: string, text: string) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
+  const repo = path.join(tmp, 'repo');
+  write(path.join(repo, 'infra/event-bus/bus.py'), 'def publish(): dedupe()\n');
+  write(path.join(repo, 'infra/event-bus/main.py'), 'app = 1\n');
+  write(path.join(repo, 'infra/event-bus/Dockerfile'), 'FROM python\n');
+  write(path.join(repo, 'infra/agent-registry/main.py'), 'registry = 1\n');
+  write(path.join(repo, 'infra/agent-registry/tests/test_main.py'), 'def test(): pass\n');
+  const git = (...args: string[]) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' }).trim();
+  git('init', '-q'); git('add', '.'); git('-c', 'user.email=t@example.invalid', '-c', 'user.name=t', 'commit', '-qm', 'fixture');
+  const commit = git('rev-parse', 'HEAD');
+  // deployed: event-bus/bus.py is an older copy (one changed file); agent-registry matches; a third service is not on this host
+  write(path.join(tmp, 'srv/event-bus/bus.py'), 'def publish(): pass\n');
+  write(path.join(tmp, 'srv/event-bus/main.py'), 'app = 1\n');
+  write(path.join(tmp, 'srv/agent-registry/main.py'), 'registry = 1\n');
+  const services = `event-bus=${tmp}/srv/event-bus=infra/event-bus agent-registry=${tmp}/srv/agent-registry=infra/agent-registry absent=${tmp}/srv/absent=infra/absent`;
+  const root = path.join(tmp, 'root'); fs.mkdirSync(path.join(root, 'data'), { recursive: true });
+  const at = (sha: string, repoDir = repo) => run({ AD_MAIN_SHA: `printf '${sha}\\trefs/heads/main\\n'`, AD_CURRENT_SHA: `echo ${sha}`,
+    AUTO_DEPLOY_FLEET_SERVICES: services, AUTO_DEPLOY_FLEET_REPO: repoDir }, root);
+  expect(at(commit)).toContain('up to date');
+  const drift = JSON.parse(fs.readFileSync(path.join(root, 'data', 'fleet-drift.json'), 'utf8'));
+  expect(drift.commit).toBe(commit);
+  expect(drift.status).toBe('checked');
+  expect(Number.isNaN(Date.parse(drift.checked_at))).toBe(false);
+  expect(Object.keys(drift.services).sort()).toEqual(['agent-registry', 'event-bus']);
+  expect(drift.services['event-bus']).toMatchObject({ match: false });
+  expect(drift.services['event-bus'].deployed).toMatch(/^[0-9a-f]{64}$/);
+  expect(drift.services['event-bus'].main).toMatch(/^[0-9a-f]{64}$/);
+  expect(drift.services['event-bus'].deployed).not.toBe(drift.services['event-bus'].main);
+  expect(drift.services['agent-registry'].match).toBe(true);
+  expect(drift.services['agent-registry'].deployed).toBe(drift.services['agent-registry'].main);
+  // a failed check is not "no drift": the clean record is overwritten with an explicit unknown one, never left behind
+  at(commit, path.join(tmp, 'no-such-repo'));
+  const failed = JSON.parse(fs.readFileSync(path.join(root, 'data', 'fleet-drift.json'), 'utf8'));
+  expect(failed).toMatchObject({ commit, status: 'unknown' });
+  expect(failed.reason).toContain('not readable');
+  expect(failed).not.toHaveProperty('services');
+  expect(Number.isNaN(Date.parse(failed.checked_at))).toBe(false);
+});
+
+// Root writes into the data dir the container can write: never through a pre-planted link or a non-regular file.
+it('a pre-planted symlink at data/deploy-log.jsonl is not followed: refused with a log line, the link target untouched', () => {
+  const root = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
+  fs.mkdirSync(path.join(root, 'data'));
+  const victim = path.join(fs.mkdtempSync(path.join(TMPDIR, 'ad-victim-')), 'victim');
+  fs.writeFileSync(victim, 'untouched\n');
+  fs.symlinkSync(victim, path.join(root, 'data', 'deploy-log.jsonl'));
+  const out = run({}, root);
+  expect(out).toContain('DEPLOYED'); // the deploy itself is not held by the log
+  expect(out).toContain('refusing to write');
+  expect(fs.readFileSync(victim, 'utf8')).toBe('untouched\n');
+  expect(fs.lstatSync(path.join(root, 'data', 'deploy-log.jsonl')).isSymbolicLink()).toBe(true);
+  // a directory (not a regular file) at the log path is refused too, and nothing is written into it
+  const root2 = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
+  fs.mkdirSync(path.join(root2, 'data', 'deploy-log.jsonl'), { recursive: true });
+  expect(run({}, root2)).toContain('refusing to write');
+  expect(fs.readdirSync(path.join(root2, 'data', 'deploy-log.jsonl'))).toEqual([]);
+  // no temp file is left behind in the data dir
+  expect(fs.readdirSync(path.join(root, 'data')).filter((n) => n.startsWith('.'))).toEqual([]);
+});
+
+it('the deploy log stays bounded, readable by the container user, and is replaced by rename', () => {
+  const root = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
+  fs.mkdirSync(path.join(root, 'data'));
+  const log = path.join(root, 'data', 'deploy-log.jsonl');
+  fs.writeFileSync(log, Array.from({ length: 1200 }, (_, i) => JSON.stringify({ event: 'old', i })).join('\n') + '\n');
+  run({}, root);
+  const lines = fs.readFileSync(log, 'utf8').trim().split('\n');
+  expect(lines.length).toBeLessThanOrEqual(1000);
+  expect(lines.slice(-2).map((l) => JSON.parse(l).event)).toEqual(['deploying', 'done']);
+  expect(fs.statSync(log).mode & 0o777).toBe(0o644);
+  expect(fs.readdirSync(path.join(root, 'data')).filter((n) => n.startsWith('.'))).toEqual([]);
+});
+
+it('a pre-planted symlink at data/fleet-drift.json is not followed', () => {
+  const tmp = fs.mkdtempSync(path.join(TMPDIR, 'ad-fleet-'));
+  const repo = path.join(tmp, 'repo');
+  fs.mkdirSync(path.join(repo, 'infra/event-bus'), { recursive: true });
+  fs.writeFileSync(path.join(repo, 'infra/event-bus/bus.py'), 'x = 1\n');
+  const git = (...args: string[]) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' }).trim();
+  git('init', '-q'); git('add', '.'); git('-c', 'user.email=t@example.invalid', '-c', 'user.name=t', 'commit', '-qm', 'fixture');
+  const commit = git('rev-parse', 'HEAD');
+  fs.mkdirSync(path.join(tmp, 'srv/event-bus'), { recursive: true });
+  fs.writeFileSync(path.join(tmp, 'srv/event-bus/bus.py'), 'x = 2\n');
+  const root = path.join(tmp, 'root'); fs.mkdirSync(path.join(root, 'data'), { recursive: true });
+  const victim = path.join(tmp, 'victim'); fs.writeFileSync(victim, 'untouched\n');
+  fs.symlinkSync(victim, path.join(root, 'data', 'fleet-drift.json'));
+  const out = run({ AD_MAIN_SHA: `printf '${commit}\\trefs/heads/main\\n'`, AD_CURRENT_SHA: `echo ${commit}`,
+    AUTO_DEPLOY_FLEET_SERVICES: `event-bus=${tmp}/srv/event-bus=infra/event-bus`, AUTO_DEPLOY_FLEET_REPO: repo }, root);
+  expect(out).toContain('refusing to write');
+  expect(fs.readFileSync(victim, 'utf8')).toBe('untouched\n');
+  expect(fs.lstatSync(path.join(root, 'data', 'fleet-drift.json')).isSymbolicLink()).toBe(true);
+  expect(fs.readdirSync(path.join(root, 'data'))).toEqual(['fleet-drift.json']);
+});
+
+it('the staged copy of a data-dir write is never written through a link swapped in after it was created', () => {
+  const root = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
+  fs.mkdirSync(path.join(root, 'data'));
+  const victim = path.join(fs.mkdtempSync(path.join(TMPDIR, 'ad-victim-')), 'victim');
+  fs.writeFileSync(victim, 'untouched\n');
+  // test seam: replace the staged temp pathname with a link right after it is created, before the content is written
+  const out = run({ AUTO_DEPLOY_TEST_HOOK_AFTER_TEMP: `rm -f "$TEMP_PATH"; ln -s '${victim}' "$TEMP_PATH"` }, root);
+  expect(out).toContain('DEPLOYED');
+  expect(out).toContain('refusing to write');
+  expect(fs.readFileSync(victim, 'utf8')).toBe('untouched\n');
+  for (const name of fs.readdirSync(path.join(root, 'data'))) expect(fs.lstatSync(path.join(root, 'data', name)).isSymbolicLink()).toBe(false);
+});
+
+// S2: the installed copy is trusted only when it and every directory above it are root's and not group/other-writable;
+// it is read once into a private copy that is hashed and executed, so a swap after the check runs nothing new.
+it('S2: a swap of the installed script after it was verified does not reach execution', () => {
+  const root = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
+  expect(install(root, RAN).status).toBe(0);
+  // the commit-copy fetch happens after the installed copy was read; it rewrites the installed file as a side effect
+  const out = run({ ...realDeploy, ...commitCopy(RAN, `echo 'echo TAMPERED' >> '${installedPath(root)}'`) }, root);
+  expect(fs.readFileSync(installedPath(root), 'utf8')).toContain('TAMPERED');
+  expect(out).not.toContain('TAMPERED');
+  expect(out).toContain('deploy-script-ran-from');
+  expect(out).toContain(`done ${NEW}`);
+});
+
+it('S2: an installed script in a group-writable dir, or group-writable itself, is not trusted and not run', () => {
+  for (const loosen of [(root: string) => fs.chmodSync(path.join(root, 'lib'), 0o775), (root: string) => fs.chmodSync(installedPath(root), 0o775)]) {
+    const root = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
+    expect(install(root, RAN).status).toBe(0);
+    loosen(root);
+    const r = spawnSync('bash', [script], { env: { ...process.env, DEPLOY_ROOT: root, ...trust(root), AD_MAIN_SHA: `printf '${NEW}\\trefs/heads/main\\n'`, AD_CURRENT_SHA: `echo ${OLD}`,
+      AD_CHECKS: `echo '${green}'`, AD_REQUIRED: `echo 'build-and-test (22)'`, AD_COMMIT: `echo '${minutesAgo(30)}'`, AD_LEASES: 'echo 0', ...realDeploy, ...commitCopy(RAN) }, encoding: 'utf8' });
+    const out = `${r.stdout}${r.stderr}`;
+    expect(r.status).not.toBe(0);
+    expect(out).toContain('not trusted');
+    expect(out).toContain('writable by group or others');
+    expect(out).not.toContain('deploy-script-ran-from');
+  }
+});
+
+it('S2: an installed script not owned by the trusted uid is not run', () => {
+  const root = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
+  expect(install(root, RAN).status).toBe(0);
+  // the test user owns the file; requiring a different owner stands in for "not owned by root"
+  const out = run({ ...realDeploy, ...commitCopy(RAN), AUTO_DEPLOY_TRUSTED_UID: String(process.getuid!() + 1) }, root);
+  expect(out).toContain('not trusted');
+  expect(out).not.toContain('deploy-script-ran-from');
+});
+
+it('S2: auto-deploy refuses to act at all when $DEPLOY_ROOT is writable by group or others', () => {
+  const root = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
+  fs.chmodSync(root, 0o777);
+  const out = run({}, root);
+  expect(out).toContain('not trusted');
+  expect(out).not.toContain('DEPLOYED');
+});
+
+it('S2: install-deploy-script.sh installs only into a trusted dir', () => {
+  const root = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
+  fs.mkdirSync(path.join(root, 'open')); fs.chmodSync(path.join(root, 'open'), 0o777);
+  const dir = path.join(root, 'open', 'lib');
+  const r = spawnSync('bash', [installer, NEW, '--apply'], { env: { ...process.env, DEPLOY_ROOT: root, ...trust(root), AUTO_DEPLOY_INSTALL_DIR: dir, ...commitCopy(RAN) }, encoding: 'utf8' });
+  expect(r.status).not.toBe(0);
+  expect(`${r.stdout}${r.stderr}`).toContain('writable by group or others');
+  expect(fs.existsSync(path.join(dir, 'deploy-vps.installed.sh'))).toBe(false);
+});
+
+it('S3: a host without any of the fleet services writes an explicit unknown record', () => {
+  const root = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
+  fs.mkdirSync(path.join(root, 'data'));
+  run({ ...upToDate, AUTO_DEPLOY_FLEET_SERVICES: `event-bus=${root}/absent=infra/event-bus` }, root);
+  expect(JSON.parse(fs.readFileSync(path.join(root, 'data', 'fleet-drift.json'), 'utf8'))).toMatchObject({ commit: NEW, status: 'unknown' });
+});
+
+// S3: a hash or object read that fails is an unknown record, never a "checked" one built from an empty hash
+it('S3: a failing hash or git object read writes the unknown record, not a checked one', () => {
+  const realGit = execFileSync('bash', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
+  const fixture = () => {
+    const tmp = fs.mkdtempSync(path.join(TMPDIR, 'ad-fleet-'));
+    const repo = path.join(tmp, 'repo');
+    fs.mkdirSync(path.join(repo, 'infra/event-bus'), { recursive: true });
+    fs.writeFileSync(path.join(repo, 'infra/event-bus/bus.py'), 'x = 1\n');
+    const git = (...args: string[]) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' }).trim();
+    git('init', '-q'); git('add', '.'); git('-c', 'user.email=t@example.invalid', '-c', 'user.name=t', 'commit', '-qm', 'fixture');
+    fs.mkdirSync(path.join(tmp, 'srv/event-bus'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'srv/event-bus/bus.py'), 'x = 1\n');
+    const root = path.join(tmp, 'root'); fs.mkdirSync(path.join(root, 'data'), { recursive: true });
+    const commit = git('rev-parse', 'HEAD');
+    const go = (extra: Record<string, string> = {}) => {
+      run({ AD_MAIN_SHA: `printf '${commit}\\trefs/heads/main\\n'`, AD_CURRENT_SHA: `echo ${commit}`,
+        AUTO_DEPLOY_FLEET_SERVICES: `event-bus=${tmp}/srv/event-bus=infra/event-bus`, AUTO_DEPLOY_FLEET_REPO: repo, ...extra }, root);
+      return JSON.parse(fs.readFileSync(path.join(root, 'data', 'fleet-drift.json'), 'utf8'));
+    };
+    return { tmp, go };
+  };
+  const stubBin = (tmp: string, name: string, body: string) => {
+    const bin = path.join(tmp, `bin-${name}`); fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, name), `#!/usr/bin/env bash\n${body}\n`, { mode: 0o755 });
+    return { PATH: `${bin}:${process.env.PATH}` };
+  };
+  const a = fixture();
+  expect(a.go()).toMatchObject({ status: 'checked' });
+  // the sha256 tool fails (sha256_file prefers sha256sum when it exists)
+  const hashFails = a.go(stubBin(a.tmp, 'sha256sum', 'exit 1'));
+  expect(hashFails).toMatchObject({ status: 'unknown' });
+  expect(hashFails).not.toHaveProperty('services');
+  // reading a blob of the commit tree fails
+  const b = fixture();
+  const blobFails = b.go(stubBin(b.tmp, 'git', `case " $* " in *" cat-file blob "*) exit 1 ;; esac; exec '${realGit}' "$@"`));
+  expect(blobFails).toMatchObject({ status: 'unknown' });
+  expect(blobFails).not.toHaveProperty('services');
+});
+
+// A symlink anywhere on a trusted path is refused: a link in an untrusted dir pointing at a trusted dir must not pass.
+it('a deploy root reached through a symlink in an untrusted dir is refused', () => {
+  const real = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
+  const open = fs.mkdtempSync(path.join(TMPDIR, 'ad-open-')); fs.chmodSync(open, 0o777);
+  const link = path.join(open, 'root'); fs.symlinkSync(real, link);
+  const out = run({}, link);
+  expect(out).toContain('not trusted');
+  expect(out).toContain('symbolic link');
+  expect(out).not.toContain('DEPLOYED');
+});
+
+it('an install dir reached through a symlink is refused by the installer and by auto-deploy', () => {
+  const root = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
+  expect(install(root, RAN).status).toBe(0); // real install into <root>/lib
+  const open = fs.mkdtempSync(path.join(TMPDIR, 'ad-open-')); fs.chmodSync(open, 0o777);
+  const link = path.join(open, 'lib'); fs.symlinkSync(path.join(root, 'lib'), link);
+  const viaLink = { AUTO_DEPLOY_INSTALL_DIR: link };
+  const inst = spawnSync('bash', [installer, NEW, '--apply'], { env: { ...process.env, DEPLOY_ROOT: root, ...trust(root), ...viaLink, ...commitCopy(RAN) }, encoding: 'utf8' });
+  expect(inst.status).not.toBe(0);
+  expect(`${inst.stdout}${inst.stderr}`).toContain('symbolic link');
+  const out = run({ ...realDeploy, ...commitCopy(RAN), ...viaLink }, root);
+  expect(out).toContain('not trusted');
+  expect(out).not.toContain('deploy-script-ran-from');
+});
+
+// The path is checked as written: '.'/'..' components and relative paths are refused, never normalised away.
+it('a deploy root with a .. component, or a relative one, is refused', () => {
+  const real = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
+  fs.mkdirSync(path.join(real, 'sub'));
+  for (const root of [path.join(real, 'sub') + '/..', `${real}/../${path.basename(real)}`, `${real}/./`]) {
+    const out = run({}, root);
+    expect(out).toContain('not trusted');
+    expect(out).toContain('. or .. component');
+    expect(out).not.toContain('DEPLOYED');
+  }
+  const r = spawnSync('bash', [script], { cwd: TMPDIR, env: { ...process.env, DEPLOY_ROOT: path.basename(real), ...trust(real), AD_MAIN_SHA: `printf '${NEW}\\trefs/heads/main\\n'`,
+    AD_CURRENT_SHA: `echo ${OLD}`, AD_CHECKS: `echo '${green}'`, AD_REQUIRED: `echo 'build-and-test (22)'`, AD_COMMIT: `echo '${minutesAgo(30)}'`, AD_LEASES: 'echo 0', AD_DEPLOY: 'echo DEPLOYED', AD_DEPLOY_GATE: 'true' }, encoding: 'utf8' });
+  expect(`${r.stdout}${r.stderr}`).toContain('not an absolute path');
+  expect(`${r.stdout}${r.stderr}`).not.toContain('DEPLOYED');
+  // the installer: an install dir with a .. component is refused
+  const inst = spawnSync('bash', [installer, NEW, '--apply'], { env: { ...process.env, DEPLOY_ROOT: real, ...trust(real), AUTO_DEPLOY_INSTALL_DIR: `${real}/sub/../lib`, ...commitCopy(RAN) }, encoding: 'utf8' });
+  expect(inst.status).not.toBe(0);
+  expect(`${inst.stdout}${inst.stderr}`).toContain('. or .. component');
+});
+
+// Without the test seam nothing is exempt: a world-writable sticky ancestor (here the real /tmp, root's 1777) is refused.
+it('without the test seam a sticky world-writable ancestor is refused, by auto-deploy and by the installer', () => {
+  const stickyBase = fs.realpathSync('/tmp');
+  expect(fs.statSync(stickyBase).mode & 0o1777).toBe(0o1777);
+  const root = fs.mkdtempSync(path.join(stickyBase, 'ad-sticky-'));
+  try {
+    const out = run({ AUTO_DEPLOY_TRUSTED_PREFIX: '' }, root);
+    expect(out).toContain('not trusted');
+    expect(out).toContain(`${stickyBase} is writable by group or others`);
+    expect(out).not.toContain('DEPLOYED');
+    const inst = spawnSync('bash', [installer, NEW, '--apply'], { env: { ...process.env, DEPLOY_ROOT: root, ...trust(root), AUTO_DEPLOY_TRUSTED_PREFIX: '', ...commitCopy(RAN) }, encoding: 'utf8' });
+    expect(inst.status).not.toBe(0);
+    expect(`${inst.stdout}${inst.stderr}`).toContain('writable by group or others');
+    expect(fs.existsSync(installedPath(root))).toBe(false);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+it('the installer refuses an install dir with a . component, a .. component or a relative path', () => {
+  const real = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
+  fs.mkdirSync(path.join(real, 'sub'));
+  for (const [dir, why] of [[`${real}/./lib`, '. or .. component'], [`${real}/sub/../lib`, '. or .. component'], ['relative/lib', 'not an absolute path']]) {
+    const inst = spawnSync('bash', [installer, NEW, '--apply'], { cwd: real, env: { ...process.env, DEPLOY_ROOT: real, ...trust(real), AUTO_DEPLOY_INSTALL_DIR: dir, ...commitCopy(RAN) }, encoding: 'utf8' });
+    expect(inst.status).not.toBe(0);
+    expect(`${inst.stdout}${inst.stderr}`).toContain(why);
+  }
+  expect(fs.readdirSync(real)).toEqual(['sub']);
+});
+
+it('the installer writes through unpredictable temp names inside the install dir', () => {
+  const root = fs.mkdtempSync(path.join(TMPDIR, 'ad-'));
+  const script = fs.readFileSync(installer, 'utf8');
+  expect(script).not.toMatch(/\.tmp\.\$\$/);
+  expect(install(root, RAN).status).toBe(0);
+  expect(fs.readdirSync(path.join(root, 'lib')).sort()).toEqual(['deploy-vps.installed.sh', 'deploy-vps.installed.sh.source']);
 });

@@ -16,10 +16,10 @@ afterEach(() => db.close());
 describe('L-F05: missing tokens or duration never improve efficiency or an arm mean', () => {
   it('a 0-token / 0-duration outcome (missing usage coalesced to 0) does not raise skill efficiency; coverage is reported', () => {
     const engine = new SkillEvolutionEngine(db);
-    engine.recordOutcome('s', { success: true, tokensUsed: 4000, durationMs: 60_000, domain: 'fleet' });
+    engine.recordOutcome('s', { success: true, tokensUsed: 4000, durationMs: 60_000, domain: 'fleet', evidenceRefs: ['skill_delivery:delivered'] });
     expect(engine.measuredTraits('s').efficiency).toBe(0.25);
-    engine.recordOutcome('s', { success: true, tokensUsed: 0, durationMs: 0, domain: 'fleet' }); // producer sent no usage
-    engine.recordOutcome('s', { success: true, tokensUsed: null, durationMs: 0, domain: 'fleet' });
+    engine.recordOutcome('s', { success: true, tokensUsed: 0, durationMs: 0, domain: 'fleet', evidenceRefs: ['skill_delivery:delivered'] }); // producer sent no usage
+    engine.recordOutcome('s', { success: true, tokensUsed: null, durationMs: 0, domain: 'fleet', evidenceRefs: ['skill_delivery:delivered'] });
     const t = engine.measuredTraits('s');
     expect(t.efficiency).toBe(0.25); // was (0.25 + 1) / 2 = 0.625: the missing report scored maximal efficiency
     expect(t.reliability).toBe(1); // the outcomes still count as outcomes
@@ -28,7 +28,7 @@ describe('L-F05: missing tokens or duration never improve efficiency or an arm m
 
   it('only missing usage gives efficiency null, never 1', () => {
     const engine = new SkillEvolutionEngine(db);
-    engine.recordOutcome('s', { success: true, tokensUsed: 0, durationMs: 0, domain: 'fleet' });
+    engine.recordOutcome('s', { success: true, tokensUsed: 0, durationMs: 0, domain: 'fleet', evidenceRefs: ['skill_delivery:delivered'] });
     expect(engine.measuredTraits('s')).toMatchObject({ efficiency: null, efficiency_coverage: { known: 0, total: 1 } });
   });
 
