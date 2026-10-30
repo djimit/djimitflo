@@ -4,6 +4,7 @@
 /** Flag → its documented code default (runbook prose, clipped). Read by runtime-config-view (GET /api/health/config). */
 export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   ACE_001_MODE: 'off (`on`)',
+  ADVISORY_EXPOSURE_MODE: 'off',
   ARENA_GATE_ENABLED: 'off',
   ASG_MODE: 'off (`shadow`, `on`)',
   AUTONOMOUS_LURES_ENABLED: 'off',
@@ -16,6 +17,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   COMMONS_FALSIFIER_MODE: 'off (`shadow`)',
   COMMONS_GROUNDING_APPLY: 'off',
   COMMONS_INVESTIGATION_MODE: 'off (`shadow`, `on`)',
+  CONTENT_DRAFTS_MODE: 'off (`shadow`, `on`)',
   DEAD_CODE_LANE_ENABLED: 'off',
   DEAD_CODE_MAX_PER_DAY: '2 (also the in-flight cap)',
   DEPENDENCY_LANE_MAX_PER_DAY: '4 (lane merges per UTC day; tick every `DEPENDENCY_LANE_INTERVAL_MS`, default 3 h)',
@@ -138,10 +140,12 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
 
 /** Env flags that arm a background scheduler at boot (HEARTBEAT.md). */
 export const SCHEDULER_FLAGS: readonly string[] = [
+  'ADVISORY_EXPOSURE_MODE',
   'COMMITTEE_SWARM_ENABLED',
   'COMMONS_FALSIFIER_MODE',
   'COMMONS_INVESTIGATION_MODE',
   'COMPLIANCE_REPORT_SCHEDULER_ENABLED',
+  'CONTENT_DRAFTS_MODE',
   'DEAD_CODE_LANE_ENABLED',
   'DEPENDENCY_LANE_MODE',
   'DJIMITSEC_SCAN_TRIGGERS',

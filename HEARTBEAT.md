@@ -7,11 +7,13 @@ unknown …) is `GET /api/health/schedulers` (admins). Armed is intent, not exec
 
 | Scheduler | Gating flag | Interval | Owner |
 |---|---|---|---|
+| advisory_exposure | `ADVISORY_EXPOSURE_MODE` | 1 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | auto_requeue | `REQUEUE_AUTO_MODE` | 1 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | committee_evolution | `COMMITTEE_SWARM_ENABLED` | 1 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | commons_falsifier | `COMMONS_FALSIFIER_MODE` | 1 h | `packages/server/src/services/commons-falsifier.ts` |
 | commons_investigation_outcomes | `COMMONS_INVESTIGATION_MODE` | 15 min | `packages/server/src/services/commons-investigation.ts` |
 | compliance_report | `COMPLIANCE_REPORT_SCHEDULER_ENABLED` | `complianceReportSched.intervalHours()` h | `packages/server/src/index.ts` |
+| content_drafts | `CONTENT_DRAFTS_MODE` | 6 h | `packages/server/src/index.ts` |
 | dead_code_lane | `DEAD_CODE_LANE_ENABLED` | 12 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | dependency_lane | `DEPENDENCY_LANE_MODE` | `laneIntervalMs()` | `packages/server/src/index.ts` |
 | djimitsec_repository_scan | `DJIMITSEC_SCAN_TRIGGERS` | 1 min | `packages/server/src/index.ts` |

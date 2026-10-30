@@ -3,6 +3,7 @@ import { assertionStrengthCheck } from './test-assertion-strength';
 import { withoutHiddenChecks } from './fail-before-pass-after';
 import { deadCodeCheckEnv } from './dead-code-source-service';
 import { findingFixCheck, findingFixCheckEnv } from './finding-fix-source';
+import { ADVISORY_EXPOSURE_CHECK, advisoryExposureCheck, advisoryGoalRefs } from './advisory-exposure';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -1207,6 +1208,13 @@ export class LoopService {
       if (findingFix) checks.push(findingFix);
     } catch (err) {
       if (Object.keys(findingFixCheckEnv(this.db, run.goal_id)).length) checks.push({ name: 'test:finding-fix', status: 'fail', reason: `gate_error: ${err instanceof Error ? err.message : String(err)}`, exit_status: null });
+    }
+    // Track A advisory exposure: the exposure check re-run on the worktree lockfile (must be not_affected) + package files only
+    try {
+      const advisory = advisoryExposureCheck(this.db, run.goal_id, makerLease.worktree_path!, outputDir, makerLease.metadata?.changed_files);
+      if (advisory) checks.push(advisory);
+    } catch (err) {
+      if (advisoryGoalRefs(this.db, run.goal_id)) checks.push({ name: ADVISORY_EXPOSURE_CHECK, status: 'fail', reason: `gate_error: ${err instanceof Error ? err.message : String(err)}`, exit_status: null });
     }
     const failed = checks.some((check) => check.status === 'fail');
     // Batch-8 evidence freshness: fingerprint what the checks READ (configs, lockfile, imports) at the base commit.
