@@ -1131,8 +1131,11 @@ export class ExecutionEngine {
     if (this.activeSessions.get(taskId) !== session) return;
     this.activeSessions.delete(taskId);
     runtimeConcurrencySemaphore.release(`execution:${taskId}`);
+    // The stored result is what an approval-resumed worker reads back (executeViaEngine), so it carries the child's exit as
+    // the live completion does; it lacked it, and exit_observed was false on 169/169 failures (C-reliability 30-10 §1c).
+    const stored = session.exit ? { ...result, exitCode: session.exit.code, signal: session.exit.signal } : result;
     this.db.prepare("UPDATE tasks SET metadata = json_set(COALESCE(metadata, '{}'), '$.executionResult', json(?)) WHERE id = ?")
-      .run(JSON.stringify(result), taskId);
+      .run(JSON.stringify(stored), taskId);
 
     // Capture repository changes before any terminal status or assurance hold.
     this.capturePostExecutionDiff(taskId);
