@@ -152,7 +152,8 @@ describe('fleet repair (FLEET_REPAIR_MODE)', () => {
     // 3 d after the merge the after-window is still open
     const p = candidateSettlement(db, 'hermes-eve-v', 'cron:regulatory-watchdog', merged + 3 * DAY);
     expect(p.status).toBe('pending');
-    expect(p.after).toEqual({ n: 2, successes: 2, rate: 1 });
+    expect(p.after).toEqual({ n: 3, successes: 3, rate: 1 }); // runs up to now (+1, +2, +3 d)
+    expect(p.delta).toBeNull();
     // no runs in a window: the rate is null, never 0
     expect(candidateSettlement(db, 'hermes-eve-v', 'cron:regulatory-watchdog-v2', NOW)).toMatchObject({ status: 'settled', before: { n: 0, successes: 0, rate: null }, delta: null });
   });
