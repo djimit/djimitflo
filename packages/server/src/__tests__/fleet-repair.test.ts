@@ -176,7 +176,7 @@ describe('hermes-cron-outcomes.py --all-jobs', () => {
   const HERMES = path.resolve(__dirname, '../../../../scripts/hermes-cron-outcomes.py');
   const MASTER = 'test-master-secret';
 
-  function fixture() {
+  function fixture(error = `${'.'.repeat(1000)}subprocess.TimeoutExpired: blogwatcher-cli timed out after 45 seconds`) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-all-'));
     const home = path.join(dir, 'hermes');
     fs.mkdirSync(path.join(home, 'cron'), { recursive: true });
@@ -184,7 +184,7 @@ describe('hermes-cron-outcomes.py --all-jobs', () => {
     const iso = (s: number) => new Date(Date.now() - s * 1000).toISOString();
     const exec = new Database(path.join(home, 'cron', 'executions.db'));
     exec.exec('CREATE TABLE executions (id TEXT PRIMARY KEY, job_id TEXT, status TEXT, claimed_at TEXT, started_at TEXT, finished_at TEXT, error TEXT)');
-    exec.prepare('INSERT INTO executions VALUES (?, ?, ?, ?, ?, ?, ?)').run('x1', 'j9', 'failed', iso(600), iso(600), iso(500), `${'.'.repeat(1000)}subprocess.TimeoutExpired: blogwatcher-cli timed out after 45 seconds`);
+    exec.prepare('INSERT INTO executions VALUES (?, ?, ?, ?, ?, ?, ?)').run('x1', 'j9', 'failed', iso(600), iso(600), iso(500), error);
     exec.prepare('INSERT INTO executions VALUES (?, ?, ?, ?, ?, ?, ?)').run('x2', 'j9', 'completed', iso(400), iso(400), iso(300), null);
     exec.close();
     return { dir, home };
@@ -213,6 +213,54 @@ describe('hermes-cron-outcomes.py --all-jobs', () => {
       expect(ok).not.toHaveProperty('error_tail');
       // the tail is outside the signed body: the event verifies, and the tail is untrusted data for the server
       expect(verifyFleetEvent(db, failed, { master: MASTER, now: Date.parse(String(failed.occurred_at)) }).verdict).toBe('verified');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it('the error_tail is redacted on the host before it is sent: nothing unredacted reaches external_events.payload', () => {
+    const secrets = {
+      bearer: 'eyJhbGciOiJIUzI1NiJ9.payloadPart.sigPart123',
+      basic: 'dXNlcjpodW50ZXIyLXBhc3N3b3Jk',
+      kv: 'hunter2-plain-pw',
+      json: 'q9W8e7R6t5Y4u3I2',
+      openai: `sk-${'a1B2c3D4e5'.repeat(3)}`,
+      ghp: `ghp_${'Z9y8X7w6V5'.repeat(4)}`,
+      pat: `github_pat_11ABCDEFG0${'h'.repeat(20)}_${'K'.repeat(30)}`,
+      slack: 'xoxb-1234567890-0987654321-AbCdEfGhIjKl',
+      aws: 'AKIAIOSFODNN7EXAMPLE',
+      hex: 'deadbeef'.repeat(5),
+      b64: 'Qm9vbXNoYWthbGFrYTEyMzQ1Njc4OTBBQkNERUY=',
+    };
+    const error = [
+      'Traceback (most recent call last):',
+      `  File "/home/djimit/.hermes/scripts/regulatory-watchdog.py", line 257, in <module>`,
+      `requests.exceptions.HTTPError: 401 for url https://api.example.org/v1 headers={'Authorization': 'Bearer ${secrets.bearer}'}`,
+      `retry with Authorization: Basic ${secrets.basic}`,
+      `DB_PASSWORD=${secrets.kv} SLACK_BOT_TOKEN = "${secrets.slack}"`,
+      `{"api_key": "${secrets.json}", "openai": "${secrets.openai}"}`,
+      `git push https://${secrets.ghp}@github.com/x/y and ${secrets.pat}`,
+      `aws ${secrets.aws} digest ${secrets.hex} blob ${secrets.b64}`,
+      'ref 4c398452-3fe8-4b4f-9a10-dc1a0e9fc9ff: subprocess.TimeoutExpired: blogwatcher-cli timed out after 45 seconds',
+    ].join('\n');
+    const { dir, home } = fixture(error);
+    try {
+      const [failed] = run(home, dir, ['--all-jobs']);
+      const tail = String(failed.error_tail);
+      for (const [kind, value] of Object.entries(secrets)) expect(tail, kind).not.toContain(value);
+      expect(tail).toContain('[REDACTED]');
+      // diagnostic text survives: a request id, the exception and the job's own words
+      expect(tail).toMatch(/ref 4c398452-3fe8-4b4f-9a10-dc1a0e9fc9ff: subprocess\.TimeoutExpired: blogwatcher-cli timed out after 45 seconds$/);
+      expect(tail.length).toBeLessThanOrEqual(400);
+      // the server-side redactSecrets still runs on top when the tail is copied into a judgment
+      expect(wrapFailureTail('hermes-eve-v', tail)).toContain('BEGIN_EXTERNAL_CONTENT');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it('a secret cut by the 400-char clip is still redacted (redaction runs on the whole error first)', () => {
+    const token = `ghp_${'Q1w2E3r4T5'.repeat(4)}`;
+    const { dir, home } = fixture(`token ${token}${' '.repeat(380)}end`);
+    try {
+      const tail = String(run(home, dir, ['--all-jobs'])[0].error_tail);
+      expect(tail).not.toMatch(/Q1w2E3r4T5/);
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   });
 });
