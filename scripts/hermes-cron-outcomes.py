@@ -22,8 +22,10 @@ Hermes keeps the last 1000 executions; on a host where a minutely job fills that
 
 --all-jobs (Track B fleet repair, 30-10; default off = unchanged): also report the runs of jobs that declare no skill (one
 event per run, no skill fields; on EVE-V 39 of 43 jobs, among them 9 of the 12 jobs that failed in the last 1000 runs), and give a
-failed run an `error_tail`: the last 400 characters of the Hermes error. The tail is NOT signed (it is outside the signed body,
-so the event verifies as before) and is untrusted data: the server redacts it and wraps it as external content.
+failed run an `error_tail`: the last 400 characters of the Hermes error, redacted HERE before it is sent (redact_tail: auth
+headers, key=value / "key": "value" for secret-looking names, known token prefixes, long hex / mixed-case base64 runs) and only
+then clipped, so a token cut by the clip is gone too. The tail is NOT signed (it is outside the signed body, so the event
+verifies as before) and is untrusted data: the server redacts it again and wraps it as external content.
 
 Stdlib only, Python 3.9-safe. Signing, hashing and the POST come from emit-agent-outcome.py next to this file.
 
@@ -36,6 +38,34 @@ from datetime import datetime, timezone
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_KEEP_S = 7 * 86400
 ERROR_TAIL_MAX = 400
+REDACTED = '[REDACTED]'
+_SECRET_NAME = r'[\w.-]*(?:token|secret|password|passwd|api_key|apikey|authorization)[\w.-]*'
+_REDACTIONS = (
+    # key=value, key: value, "key": "value" (value may be `Bearer x` / `Basic x`) for names that look secret
+    (re.compile(r'(?i)(["\']?' + _SECRET_NAME + r'["\']?\s*[:=]\s*)(["\']?)(?:(?:bearer|basic)\s+)?[^\s"\',;}]+'), r'\1\2' + REDACTED),
+    # a bare bearer token (an auth header printed without its name)
+    (re.compile(r'(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{16,}'), 'Bearer ' + REDACTED),
+    # known token prefixes: OpenAI/Anthropic sk-, GitHub ghp_ / github_pat_, Slack xoxa/xoxb/xoxp, AWS access key ids
+    (re.compile(r'\b(?:sk-[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[abp]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})'), REDACTED),
+)
+_LONG_RUN = re.compile(r'[A-Za-z0-9+/_=-]{32,}')
+
+
+def _long_secret(m):
+    """A run of >= 32 hex chars, or a base64-looking run with digits, upper- and lowercase: redacted. Paths, UUIDs (dashes,
+    lowercase only) and identifiers keep their text."""
+    run = m.group(0)
+    core = run.strip('=')
+    if re.fullmatch(r'[A-Fa-f0-9]{32,}', core) or (re.search(r'[0-9]', core) and re.search(r'[A-Z]', core) and re.search(r'[a-z]', core)):
+        return REDACTED
+    return run
+
+
+def redact_tail(text):
+    """The Hermes error with secrets replaced by [REDACTED] (stdlib re only), then the last ERROR_TAIL_MAX characters."""
+    for pattern, repl in _REDACTIONS:
+        text = pattern.sub(repl, text)
+    return _LONG_RUN.sub(_long_secret, text)[-ERROR_TAIL_MAX:]
 
 
 def load_emitter(path=os.path.join(HERE, 'emit-agent-outcome.py')):
@@ -185,7 +215,7 @@ def collect(home, agent, emitter, state, now, max_age_s, key=None, all_jobs=Fals
         e['event_id'] = 'agent-outcome:hermes-cron:%s:%s' % (agent, exec_id)
         e['occurred_at'] = utc_z(done)
         if all_jobs and status == 'failed' and isinstance(error, str) and error.strip():
-            e['error_tail'] = error[-ERROR_TAIL_MAX:]  # unsigned, untrusted: outside the signed body
+            e['error_tail'] = redact_tail(error)  # redacted, then clipped; unsigned, untrusted: outside the signed body
         if key:
             emitter.sign(e, *key)
         out.append((exec_id, e))
@@ -283,6 +313,10 @@ def selfcheck(emitter):
     patched = [s for _, e in fresh for s in e.get('skills', []) if s['name'] == 'blog-publisher']
     assert len(patched) == 2 and all('sha' not in s for s in patched) and rep3['unhashed']['blog-publisher:changed-since-run'] == 2, rep3
     assert all('sha' in s for _, e in fresh for s in e.get('skills', []) if s['name'] != 'blog-publisher')
+    # the error tail is redacted before it leaves the host, also when the clip would cut the token
+    t = redact_tail('Authorization: Bearer abcdefghijklmnop1234 ghp_' + 'Ab1' * 10 + ' ' * 390 + 'ok')
+    assert 'abcdefghijklmnop1234' not in t and 'Ab1Ab1' not in t and t.endswith('ok') and len(t) <= ERROR_TAIL_MAX, t
+    assert redact_tail('ref 4c398452-3fe8-4b4f-9a10-dc1a0e9fc9ff /home/djimit/.hermes/scripts/x.py') == 'ref 4c398452-3fe8-4b4f-9a10-dc1a0e9fc9ff /home/djimit/.hermes/scripts/x.py'
     # state round trip prunes entries older than 7 days
     sp = os.path.join(d, 'state', 's.json')
     save_state(sp, {'emitted': {'keep': now, 'drop': now - 8 * 86400}}, now)
