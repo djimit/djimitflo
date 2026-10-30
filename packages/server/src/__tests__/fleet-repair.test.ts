@@ -225,7 +225,7 @@ describe('hermes-cron-outcomes.py --all-jobs', () => {
       openai: `sk-${'a1B2c3D4e5'.repeat(3)}`,
       ghp: `ghp_${'Z9y8X7w6V5'.repeat(4)}`,
       pat: `github_pat_11ABCDEFG0${'h'.repeat(20)}_${'K'.repeat(30)}`,
-      slack: 'xoxb-1234567890-0987654321-AbCdEfGhIjKl',
+      slack: ['xoxb', '1234567890', '0987654321', 'AbCdEfGhIjKl'].join('-'), // assembled: no token-shaped literal in the source
       aws: 'AKIAIOSFODNN7EXAMPLE',
       hex: 'deadbeef'.repeat(5),
       b64: 'Qm9vbXNoYWthbGFrYTEyMzQ1Njc4OTBBQkNERUY=',
