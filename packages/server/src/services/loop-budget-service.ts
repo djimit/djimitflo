@@ -124,8 +124,9 @@ export function modelPriceEntry(model: string, env: NodeJS.ProcessEnv = process.
     if (!name || !prices || (name !== model && name !== base)) continue;
     const [input, output, cacheRead, cacheWrite] = prices.split('/').map((p) => (p.trim() === '' ? NaN : Number(p)));
     const opt = (v: number | undefined) => (v !== undefined && Number.isFinite(v) ? v : null);
-    if (Number.isFinite(input) && Number.isFinite(output ?? 0)) {
-      return { raw: `${name}=${prices}`, input, output: Number.isFinite(output) ? output : 0, cache_read: opt(cacheRead), cache_write: opt(cacheWrite) };
+    // both sides are required: a missing output price is no price (E-assumptions A4/C13), never a free output; "in/0" is explicit
+    if (Number.isFinite(input) && Number.isFinite(output)) {
+      return { raw: `${name}=${prices}`, input, output, cache_read: opt(cacheRead), cache_write: opt(cacheWrite) };
     }
   }
   return null;

@@ -474,7 +474,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // R2 (FAIL_BEFORE_PASS_AFTER_MODE, shadow): check verdict counts per run and 14-d survival per arm (decision at n >= 40 settled)
     fail_before_pass_after: failBeforePassAfterEvidence(db, env, fisherExact, now),
     // ACE-001 (ACE_001_MODE): oracle-lane maker outcomes per retrieval × example-selection arm (pre-registered, collecting until target)
-    ace_001: ace001Evidence(db, since, env),
+    ace_001: ace001Evidence(db, since, env, now),
     ste_001: ste001Evidence(db, since, env),
     // MAKER-DEPS-001 (MAKER_DEPS_001_MODE): ITT verified completion per dependency-preparation arm (pre-registered, collecting)
     // MAKER_WARM_DEPS (nested; blocked_by_experiment while MAKER-DEPS-001 runs): leases per deps_source
