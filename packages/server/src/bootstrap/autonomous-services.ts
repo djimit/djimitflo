@@ -45,6 +45,7 @@ import { startEvidenceRoom } from '../services/commons-evidence-room';
 import { startInvestigationOutcomes } from '../services/commons-investigation';
 import { startCommonsFalsifier } from '../services/commons-falsifier';
 import { startSettlementExecution } from '../services/settlement-execution';
+import { startFleetRepair } from '../services/fleet-repair';
 import { startValueAllocator } from '../services/value-allocator';
 import { startDreamEvolution } from '../services/dream-evolution';
 import { gymOrphanSweepMode } from '../services/remote-gym-service';
@@ -301,6 +302,14 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     if (stopSettlementExec) { lifecycleManager.register({ serviceName: 'SettlementExecution', stop: stopSettlementExec }); console.log('🧪 Settlement execution on (shadow, daily).'); }
   } catch (error) {
     console.warn('⚠️  Settlement execution failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // Track B EVE-V cron repair (shadow): fleet jobs with >= 3 verified agent.outcome failures in 7 d → one fleet_repair_candidate judgment / day. FLEET_REPAIR_MODE=shadow.
+  try {
+    const stopFleetRepair = startFleetRepair(db);
+    if (stopFleetRepair) { lifecycleManager.register({ serviceName: 'FleetRepair', stop: stopFleetRepair }); console.log('🔧 Fleet repair on (shadow, daily).'); }
+  } catch (error) {
+    console.warn('⚠️  Fleet repair failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // E4: shadow value allocator — one value_allocation judgment per UTC day (6-hourly tick); proposals never applied. VALUE_ALLOCATOR_MODE=shadow.

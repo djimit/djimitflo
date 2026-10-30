@@ -52,6 +52,7 @@ import { procedureSelectionEvidence } from './procedure-selector';
 import { pl001Evidence } from './pl-001';
 import { memoryDeliveryEvidence } from './memory-delivery-receipts';
 import { realRunSql } from './synthetic-runs';
+import { fleetRepairEvidence } from './fleet-repair';
 import { advisoryExposureEvidence } from './advisory-exposure';
 
 /**
@@ -121,6 +122,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'FLEET_EVENT_SIGNATURES', acting: true },
   { name: 'EXTRA_REPOS_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_REPOS', acting: true },
   { name: 'MEMORY_DELIVERY_RECEIPTS', acting: true },
+  { name: 'FLEET_REPAIR_MODE', acting: false },
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */
@@ -528,6 +530,8 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     pl_001: pl001Evidence(db, env, now),
     // CODE-004 (MEMORY_DELIVERY_RECEIPTS): memory-sync receipts per target × status (delivered / failed / unknown); null = no table (off)
     memory_delivery: memoryDeliveryEvidence(db, env),
+    // Track B (FLEET_REPAIR_MODE, shadow): fleet jobs with >= 3 verified failures in 7 d + before/after success rate around a linked merged fix (read-only)
+    fleet_repair: fleetRepairEvidence(db, env, now),
     // Track A (ADVISORY_EXPOSURE_MODE): latest verdict per EVE-V advisory (affected / not_affected / unknown), the affected list,
     // ids not fetched yet and bump proposals by status; null counts before the first judgment (read-only)
     advisory_exposure: advisoryExposureEvidence(db, env) };
