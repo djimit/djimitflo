@@ -49,7 +49,7 @@ export class FleetCommands {
     if (sha !== c.command_sha256 || sha256(c.command) !== c.command_sha256) throw new Error('FLEET_COMMAND_HASH_MISMATCH');
     const at = now();
     this.db.prepare(`UPDATE fleet_commands SET status = 'queued', approved_by = ?, approved_at = ?, expires_at = ? WHERE id = ? AND status = 'pending_approval'`)
-      .run(approver, at, new Date(Date.now() + APPROVAL_WINDOW_MS).toISOString(), id);
+      .run(approver, at, new Date(Date.parse(at) + APPROVAL_WINDOW_MS).toISOString(), id); // same instant as approved_at
     // ponytail: no separation of duties with a single operator (operator decision 10-10) — self-approval is recorded, not blocked
     new AuditService(this.db).record({ event_type: AuditEventType.APPROVAL_GRANTED, action: 'fleet_command_approved', resource_type: 'fleet_command', resource_id: id,
       user_id: approver, risk_level: RiskLevel.CRITICAL, metadata: { host: c.host, command_sha256: c.command_sha256, requested_by: c.requested_by, self_approved: approver === c.requested_by } });

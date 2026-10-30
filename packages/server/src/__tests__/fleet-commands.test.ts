@@ -202,3 +202,11 @@ it('poll: a row whose text no longer matches its sha is refused, not left runnin
   expect(fleet.poll('workstation')).toEqual([]);
   expect(fleet.get(c.id)).toMatchObject({ status: 'refused', decided_reason: 'command_sha_mismatch' });
 });
+
+it('approve: expiry is measured from the same instant as approved_at (a clock tick never refuses a fresh approval)', () => {
+  let t = Date.parse('2026-10-30T12:00:00.000Z');
+  vi.spyOn(Date, 'now').mockImplementation(() => t++); // every read advances 1 ms, like a busy CI runner
+  const c = fleet.request('workstation', 'reboot', 'op');
+  fleet.approve(c.id, 'dennis', sha('reboot'));
+  expect(fleet.poll('workstation').map((x) => x.id)).toEqual([c.id]);
+});
