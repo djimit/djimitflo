@@ -347,6 +347,7 @@ export interface EvolutionEvidence {
   advisory_exposure?: { mode: 'off' | 'shadow' | 'on'; advisories: number | null; by_verdict: Record<'affected' | 'not_affected' | 'unknown', number> | null;
     affected: Array<{ advisory_id: string; repo: string; package: string; installed_version: string; first_fixed_version: string | null }>;
     pending: number | null; proposals: Record<string, number> | null; last_judged_at: string | null };
+  content_drafts?: Record<string, unknown>;
 }
 export type Pl001Verdict = 'SUPPORTED' | 'NOT_SUPPORTED' | 'INCONCLUSIVE' | 'STOPPED_FOR_HARM';
 export interface Pl001Paired { n_pairs: number; both_verified: number; b_only_B: number; c_only_A: number; neither: number; verified_A: number | null; verified_B: number | null;
