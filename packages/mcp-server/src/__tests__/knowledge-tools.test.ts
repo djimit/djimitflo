@@ -27,6 +27,8 @@ describe('knowledge MCP tool contracts', () => {
     process.env.NOTEBOOKLM_BRIDGE_PATH = bridge;
 
     const { registerNotebookTools } = await import('../tools/notebooks.js');
+    const { runWithMcpAuth } = await import('../auth-context.js');
+    const asMaker = <T>(work: () => T) => runWithMcpAuth({ payload: { sub: 'test-maker', role: 'maker' as never, email: 'maker@test', iat: 0, exp: 9999999999 }, token: 'fixture' }, work);
     const server = new McpServer({ name: 'notebook-test', version: '0' });
     registerNotebookTools(server);
     const tools = (server as any)._registeredTools;
@@ -37,11 +39,11 @@ describe('knowledge MCP tool contracts', () => {
       notebook_generate: { notebookId: 'n1', artifactType: 'report' },
       notebook_research: { notebookId: 'n1', query: 'topic' },
       notebook_notes: { notebookId: 'n1', action: 'create', title: 'Note', content: 'Body' },
-      notebook_download: { notebookId: 'n1', artifactType: 'report', outputPath: '/tmp/report.pdf' },
+      notebook_download: { notebookId: 'n1', artifactType: 'report', outputPath: 'report.pdf' }, // inside <bridge dir>/downloads
     };
 
     for (const [name, input] of Object.entries(calls)) {
-      const result = await tools[name].handler(input);
+      const result = await asMaker(() => tools[name].handler(input)); // writes need write:evidence (a maker holds it)
       expect(result.isError).not.toBe(true);
       expect(JSON.parse(result.content[0].text).args.length).toBeGreaterThan(0);
     }

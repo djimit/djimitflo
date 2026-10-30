@@ -54,6 +54,7 @@ import { memoryDeliveryEvidence } from './memory-delivery-receipts';
 import { realRunSql } from './synthetic-runs';
 import { fleetRepairEvidence } from './fleet-repair';
 import { advisoryExposureEvidence } from './advisory-exposure';
+import { contentDraftsEvidence } from './content-drafts';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -123,6 +124,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'EXTRA_REPOS_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_REPOS', acting: true },
   { name: 'MEMORY_DELIVERY_RECEIPTS', acting: true },
   { name: 'FLEET_REPAIR_MODE', acting: false },
+  { name: 'CONTENT_DRAFTS_MODE', acting: true },
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */
@@ -534,5 +536,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     fleet_repair: fleetRepairEvidence(db, env, now),
     // Track A (ADVISORY_EXPOSURE_MODE): latest verdict per EVE-V advisory (affected / not_affected / unknown), the affected list,
     // ids not fetched yet and bump proposals by status; null counts before the first judgment (read-only)
-    advisory_exposure: advisoryExposureEvidence(db, env) };
+    advisory_exposure: advisoryExposureEvidence(db, env),
+    // track C (CONTENT_DRAFTS_MODE): content_draft judgments by decision, verifier pass rate per check, draft PRs opened, tokens (read-only)
+    content_drafts: contentDraftsEvidence(db, env, since) };
 }

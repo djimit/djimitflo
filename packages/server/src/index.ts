@@ -58,6 +58,7 @@ import { laneIntervalMs, startDependencyLane } from './services/dependency-lane'
 import { PROBE_INTERVAL_MS, startOllamaProbe } from './services/inference-failover';
 import { SHIPPED_CODE_SCAN_INTERVAL_MS, startShippedCodeScan } from './services/shipped-code-scan';
 import { SKILL_DISTILLATION_INTERVAL_MS, startSkillDistillation } from './services/skill-distillation';
+import { CONTENT_DRAFTS_INTERVAL_MS, startContentDrafts } from './services/content-drafts';
 import { buildProvenance } from './utils/build-provenance';
 import { recordTreatmentEnvBoundaries } from './services/experiment-registry';
 import { fleetDrift } from './utils/fleet-drift';
@@ -362,6 +363,13 @@ async function main() {
   registerRestart('skill_distillation', () => { stopSkillDistillation?.(); stopSkillDistillation = startSkillDistillation(db); });
   if (noteScheduler('skill_distillation', 'SKILL_DISTILLATION_MODE', !!stopSkillDistillation, SKILL_DISTILLATION_INTERVAL_MS)) {
     console.log('🧠 Skill distillation armed (shadow)');
+  }
+
+  // Content drafts (track C) — at most one EVE-V blog signal a day → verified MDX draft; on = draft PR on djimit/djimit.nl (CONTENT_DRAFTS_MODE, default off)
+  let stopContentDrafts = startContentDrafts(db);
+  registerRestart('content_drafts', () => { stopContentDrafts?.(); stopContentDrafts = startContentDrafts(db); });
+  if (noteScheduler('content_drafts', 'CONTENT_DRAFTS_MODE', !!stopContentDrafts, CONTENT_DRAFTS_INTERVAL_MS)) {
+    console.log(`📝 Content drafts armed (${process.env.CONTENT_DRAFTS_MODE})`);
   }
 
   // API routes
