@@ -336,6 +336,13 @@ export interface EvolutionEvidence {
   /** CODE-004 (MEMORY_DELIVERY_RECEIPTS): memory-sync receipts per target × status; by_target null = no receipts table (services/memory-delivery-receipts.ts) */
   memory_delivery?: { mode: 'off' | 'shadow' | 'on'; max_attempts: number; oldest_unknown: string | null; note: string;
     by_target: Record<'uams' | 'qdrant' | 'okf', { idempotent: boolean; delivered: number; failed: number; unknown: number; exhausted: number | null }> | null };
+  /** Track B (FLEET_REPAIR_MODE, shadow): fleet jobs with >= 3 verified failures in 7 d + before/after settlement; candidates null = no table (services/fleet-repair.ts) */
+  fleet_repair?: { mode: 'off' | 'shadow'; requested: string | null; on_available: boolean; on_blocked_reason: string; window_days: number; min_failures: number;
+    settlement_days: number; last_run_at: string | null; n_candidates: number | null;
+    candidates: Array<{ key: string; recorded_at: string; n: number | null; failures: number | null; failure_ratio: number | null; last_failure_at: string | null;
+      linked_action_events: number; has_failure_tail: boolean;
+      settlement: { status: 'no_linked_fix' | 'pending' | 'settled'; pr_url: string | null; merged_at: string | null; delta: number | null;
+        before: { n: number; successes: number; rate: number | null } | null; after: { n: number; successes: number; rate: number | null } | null } | null }> | null };
 }
 export type Pl001Verdict = 'SUPPORTED' | 'NOT_SUPPORTED' | 'INCONCLUSIVE' | 'STOPPED_FOR_HARM';
 export interface Pl001Paired { n_pairs: number; both_verified: number; b_only_B: number; c_only_A: number; neither: number; verified_A: number | null; verified_B: number | null;
