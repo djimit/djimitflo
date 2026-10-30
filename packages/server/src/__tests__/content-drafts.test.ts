@@ -6,7 +6,7 @@ import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import {
-  buildDraftPrompt, composeMdx, contentDraftsEvidence, runContentDraftOnce, selectContentSignal, verifyDraft,
+  buildDraftPrompt, composeMdx, contentDraftsEvidence, runContentDraftOnce, selectContentSignal, startContentDrafts, verifyDraft,
   type ContentSignal, type RunDeps,
 } from '../services/content-drafts';
 import { EVOLUTION_FLAGS } from '../services/evolution-evidence';
@@ -50,6 +50,16 @@ function body(paragraphs = 16, extra = ''): string {
 const draft = (b = body()) => ({ title: 'Besluitvorming over data zorgvuldig inrichten', excerpt: 'Hoe een organisatie besluitvorming over data en risico inricht, met eigenaarschap en zichtbare voortgang.', tags: ['data', 'governance'], body: b });
 const okFetch = vi.fn(async () => new Response(null, { status: 200 }));
 const okBuild = async () => ({ ok: true, detail: 'stub build ok' });
+/** content safety answers 'safe', every link resolves */
+const safeFetch = vi.fn(async (url: string) => (String(url).includes('chat/completions')
+  ? new Response(JSON.stringify({ choices: [{ message: { content: '{"User Safety": "safe"}' } }] }), { status: 200 })
+  : new Response(null, { status: 200 })));
+/** a fresh throwaway site checkout per tick, as the real clone is */
+const freshSite = async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'content-drafts-tick-'));
+  fs.mkdirSync(path.join(dir, 'src/content/blog'), { recursive: true });
+  return { dir, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
+};
 const signalFor = (id: string): ContentSignal => { addSignal(id); return selectContentSignal(db, NOW).signal!; };
 
 describe('selection', () => {
@@ -171,7 +181,7 @@ describe('verifier', () => {
 
 describe('run', () => {
   const deps = (over: Partial<RunDeps> = {}): Partial<RunDeps> => ({
-    now: NOW, fetchFn: okFetch as never, runBuild: okBuild, prepareSite: async () => ({ dir: site, cleanup: () => {} }),
+    now: NOW, fetchFn: okFetch as never, runBuild: okBuild, prepareSite: freshSite,
     generate: vi.fn(async () => ({ text: JSON.stringify(draft()), tokensIn: 900, tokensOut: 2400, model: 'm' })), ...over,
   });
 
@@ -182,6 +192,7 @@ describe('run', () => {
     expect(d.generate).not.toHaveBeenCalled();
     expect(d.prepareSite).not.toHaveBeenCalled();
     expect(db.prepare("SELECT COUNT(*) AS n FROM judgments WHERE judgment = 'content_draft'").get()).toEqual({ n: 0 });
+    expect(startContentDrafts(db, {})).toBeNull(); // no scheduler either
   });
 
   it('shadow: records one content_draft judgment with per-check verdicts, draft hash and tokens, and pushes nothing', async () => {
@@ -203,17 +214,27 @@ describe('run', () => {
     expect(ev.per_check?.build).toEqual({ n: 1, pass: 1, rate: 1 });
   });
 
-  it('on: opens a draft PR only for a draft that passed every check', async () => {
+  it('on: opens a draft PR only for a draft that passed every check and a safe content-safety verdict', async () => {
+    process.env.CONTENT_SAFETY_MODE = 'shadow'; process.env.NVIDIA_API_KEY = 'k';
     signalFor('a');
     const publish = vi.fn(async () => 'https://github.com/djimit/djimit.nl/pull/20');
-    const failing = deps({ env: { CONTENT_DRAFTS_MODE: 'on' }, publish, runBuild: async () => ({ ok: false, detail: 'x' }) });
+    const failing = deps({ env: { CONTENT_DRAFTS_MODE: 'on' }, publish, fetchFn: safeFetch as never, runBuild: async () => ({ ok: false, detail: 'x' }) });
     expect((await runContentDraftOnce(db, failing))?.decision).toBe('fail');
     expect(publish).not.toHaveBeenCalled();
     db.prepare('DELETE FROM judgments').run();
     addSignal('b');
-    const r = await runContentDraftOnce(db, deps({ env: { CONTENT_DRAFTS_MODE: 'on' }, publish }));
+    const r = await runContentDraftOnce(db, deps({ env: { CONTENT_DRAFTS_MODE: 'on' }, publish, fetchFn: safeFetch as never }));
     expect(publish).toHaveBeenCalledTimes(1);
     expect(r?.pr_url).toBe('https://github.com/djimit/djimit.nl/pull/20');
+  });
+
+  it('on: without a safe verdict (content safety off) nothing is generated or pushed', async () => {
+    signalFor('a');
+    const publish = vi.fn(); const generate = vi.fn();
+    const r = await runContentDraftOnce(db, deps({ env: { CONTENT_DRAFTS_MODE: 'on' }, publish, generate }));
+    expect(r?.decision).toBe('excluded');
+    expect(generate).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
   });
 });
 

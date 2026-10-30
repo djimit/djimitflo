@@ -52,6 +52,7 @@ import { procedureSelectionEvidence } from './procedure-selector';
 import { pl001Evidence } from './pl-001';
 import { memoryDeliveryEvidence } from './memory-delivery-receipts';
 import { realRunSql } from './synthetic-runs';
+import { contentDraftsEvidence } from './content-drafts';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -119,6 +120,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'FLEET_EVENT_SIGNATURES', acting: true },
   { name: 'EXTRA_REPOS_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_REPOS', acting: true },
   { name: 'MEMORY_DELIVERY_RECEIPTS', acting: true },
+  { name: 'CONTENT_DRAFTS_MODE', acting: true },
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */
@@ -525,5 +527,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // gated verified outcomes, one-sided exact McNemar, harm / stop rule, verdict and the procedure's lifecycle state
     pl_001: pl001Evidence(db, env, now),
     // CODE-004 (MEMORY_DELIVERY_RECEIPTS): memory-sync receipts per target × status (delivered / failed / unknown); null = no table (off)
-    memory_delivery: memoryDeliveryEvidence(db, env) };
+    memory_delivery: memoryDeliveryEvidence(db, env),
+    // track C (CONTENT_DRAFTS_MODE): content_draft judgments by decision, verifier pass rate per check, draft PRs opened, tokens (read-only)
+    content_drafts: contentDraftsEvidence(db, env, since) };
 }
