@@ -55,6 +55,7 @@ import { realRunSql } from './synthetic-runs';
 import { fleetRepairEvidence } from './fleet-repair';
 import { advisoryExposureEvidence } from './advisory-exposure';
 import { contentDraftsEvidence } from './content-drafts';
+import { capabilityFactoryEvidence } from './capability-factory';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -126,6 +127,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'MEMORY_DELIVERY_RECEIPTS', acting: true },
   { name: 'FLEET_REPAIR_MODE', acting: false },
   { name: 'CONTENT_DRAFTS_MODE', acting: true },
+  { name: 'CAPABILITY_FACTORY_MODE', acting: true },
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */
@@ -539,5 +541,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // ids not fetched yet and bump proposals by status; null counts before the first judgment (read-only)
     advisory_exposure: advisoryExposureEvidence(db, env),
     // track C (CONTENT_DRAFTS_MODE): content_draft judgments by decision, verifier pass rate per check, draft PRs opened, tokens (read-only)
-    content_drafts: contentDraftsEvidence(db, env, since) };
+    content_drafts: contentDraftsEvidence(db, env, since),
+    // capability factory (CAPABILITY_FACTORY_MODE): operator requests by status — reused / proposed / in_progress / merged / registered / rejected (read-only)
+    capability_factory: capabilityFactoryEvidence(db, env) };
 }
