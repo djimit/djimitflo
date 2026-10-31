@@ -21,6 +21,10 @@ import { notFallbackOutcomeSql } from './ollama-outage-fallback';
  */
 export const ace001On = (env: NodeJS.ProcessEnv = process.env): boolean => env.ACE_001_MODE === 'on';
 export const ACE_001_TARGET_PER_ARM = 50;
+/** Amendment 2 (2026-10-19): the readout runs at whatever n is reached by this date (experiment-registry stop_by) */
+export const ACE_001_STOP_BY = '2026-11-15T00:00:00.000Z';
+/** "No interim efficacy looks" (ACE-001_PROTOCOL.md, Analysis): the main-effect estimate is withheld until the readout */
+export const ACE_001_INTERIM_WITHHELD = 'withheld: no interim efficacy looks (docs/research/ace/ACE-001_PROTOCOL.md, Analysis) — the estimate is read once every arm reaches the target or at stop_by (Amendment 2)';
 export const ACE_ARMS = ['00', '01', '10', '11'] as const;
 export type AceArm = typeof ACE_ARMS[number];
 export interface AceContext { arm: AceArm; lane: AceLane; examples_source: 'recency' | 'similarity' | 'fallback_recency'; kb_paths: string[]; fallback: Array<'r' | 's'>;
@@ -99,7 +103,7 @@ export function similarKbPages(db: Database, improvementId: string, k = 3, min =
  * Amendment 3 (2026-10-27, L-F05): tokens_mean averages runs with known tokens (> 0) only and tokens_n reports how many;
  * a run without a usage report is not a 0-token run. Secondary reading only: n, verified and the arm assignment are unchanged.
  */
-export function ace001Evidence(db: Database, windowSince: string, env: NodeJS.ProcessEnv = process.env) {
+export function ace001Evidence(db: Database, windowSince: string, env: NodeJS.ProcessEnv = process.env, now = Date.now()) {
   const analysisSince = aceAnalysisSince(env);
   const since = windowSince > analysisSince ? windowSince : analysisSince;
   let rows: Array<{ arm: string; success: number; tokens: number | null; graded: number | null }> = [];
@@ -123,17 +127,20 @@ export function ace001Evidence(db: Database, windowSince: string, env: NodeJS.Pr
       tokens_n: t.length, tokens_mean: t.length ? Math.round(t.reduce((s, x) => s + x, 0) / t.length) : null }];
   })) as Record<AceArm, { n: number; verified: number; verified_rate: number | null; ci: [number, number] | null; graded_n: number; graded_mean: number | null; tokens_n: number; tokens_mean: number | null }>;
   const reached = ACE_ARMS.every((a) => arms[a].n >= ACE_001_TARGET_PER_ARM);
+  // re-20261030 B §3: before the readout no effect estimate is published (counts per arm only), with the reason
+  const readout = reached || now >= Date.parse(ACE_001_STOP_BY);
   const main = (pick: (a: AceArm) => boolean) => {
     const on = ACE_ARMS.filter(pick); const off = ACE_ARMS.filter((a) => !pick(a));
     const sum = (as: readonly AceArm[], f: 'n' | 'verified') => as.reduce((s, a) => s + arms[a][f], 0);
     const pOn = sum(on, 'n') ? sum(on, 'verified') / sum(on, 'n') : null; const pOff = sum(off, 'n') ? sum(off, 'verified') / sum(off, 'n') : null;
-    return { on_n: sum(on, 'n'), off_n: sum(off, 'n'), diff: pOn !== null && pOff !== null ? +(pOn - pOff).toFixed(3) : null };
+    return { on_n: sum(on, 'n'), off_n: sum(off, 'n'), diff: readout && pOn !== null && pOff !== null ? +(pOn - pOff).toFixed(3) : null,
+      withheld: readout ? null : ACE_001_INTERIM_WITHHELD };
   };
   return { mode: env.ACE_001_MODE ?? null, target_per_arm: ACE_001_TARGET_PER_ARM, analysis_since: analysisSince, delivery_invalid: deliveryInvalid,
     delivery: aceDelivery(db, since), arms,
     main_effects: { retrieval: main((a) => a[0] === '1'), examples: main((a) => a[1] === '1') },
     status: reached ? 'analysable' as const : 'collecting' as const,
-    note: 'Production maker outcomes of oracle-lane goals by ACE-001 arm (R = KB retrieval, S = similarity examples), from analysis_since (Amendment 1); delivery_invalid = earlier outcomes, kept but excluded. Interim diffs are descriptive only; the pre-registered analysis (docs/research/ace/ACE-001_PROTOCOL.md) runs once every arm reaches the target.' };
+    note: 'Production maker outcomes of oracle-lane goals by ACE-001 arm (R = KB retrieval, S = similarity examples), from analysis_since (Amendment 1); delivery_invalid = earlier outcomes, kept but excluded. No interim efficacy looks: main-effect diffs are null (withheld) until every arm reaches the target or stop_by; the pre-registered analysis (docs/research/ace/ACE-001_PROTOCOL.md) runs then.' };
 }
 
 /**

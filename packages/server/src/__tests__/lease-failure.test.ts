@@ -155,6 +155,35 @@ describe('engine path: the child\'s exit code and signal reach the result (runti
     const completed = await execution.completion!;
     expect(completed).toMatchObject({ status: 'failed', exitCode: null, signal: 'SIGTERM' });
   }, 15_000);
+
+  // C-reliability 30-10 §1c: exit_observed was false on 169/169 failures. An approved maker's run is consumed by the approval
+  // decision; the daemon then reads the task's stored executionResult (executeViaEngine), which never carried the exit.
+  it('ExecutionEngine: the stored executionResult (read back by an approval-resumed maker) carries exitCode and signal', async () => {
+    const { root, bin } = worker("#!/usr/bin/env node\nif (process.argv.includes('config')) process.exit(0);\nprocess.exit(3);\n");
+    const db = memDb();
+    const engine = new ExecutionEngine(db);
+    engine.registerExecutor(new CodexExecutor(bin));
+    db.prepare("INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, metadata) VALUES ('stored-task', 'Observe fixture', 'echo hello', 'pending', 'medium', 'low', 'local', ?)")
+      .run(JSON.stringify({ workingDirectory: root }));
+    const execution = await engine.executeTask('stored-task', 'codex');
+    await execution.completion!;
+    const stored = () => (JSON.parse((db.prepare('SELECT metadata FROM tasks WHERE id = ?').get('stored-task') as { metadata: string }).metadata) as { executionResult?: ExecutionResult }).executionResult;
+    await vi.waitFor(() => expect(stored()).toBeDefined(), { timeout: 5_000 });
+    expect(stored()).toMatchObject({ status: 'failed', exitCode: 3, signal: null });
+  }, 15_000);
+});
+
+describe('an approval-resumed maker (stored engine result) records the child\'s exit', () => {
+  it('exit_observed and exit_code come from the stored executionResult', async () => {
+    const { loops, db } = fixture();
+    db.prepare("INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, metadata) VALUES ('done-task', 't', 'd', 'failed', 'medium', 'low', 'local', ?)")
+      .run(JSON.stringify({ executionResult: { status: 'failed', message: 'OpenCode execution failed with exit code 3', error: 'Process exited with code 3', exitCode: 3, signal: null } }));
+    db.prepare("UPDATE worker_leases SET metadata = json_set(metadata, '$.execution_task_id', 'done-task') WHERE id = 'maker'").run();
+    const engine = vi.spyOn(ExecutionEngine.prototype, 'executeTask');
+    await loops.executeMaker('lf-run', { lease_id: 'maker' });
+    expect(engine).not.toHaveBeenCalled();
+    expect(loops.getWorkerLease('maker').metadata.failure).toMatchObject({ stage: 'maker', exit_observed: true, exit_code: 3, signal: null });
+  });
 });
 
 describe('executeMaker on the engine path records the failure (record-only: gates and exit_status unchanged)', () => {

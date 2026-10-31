@@ -75,6 +75,12 @@ describe('value allocator: resources', () => {
     expect(maker.w7.class).toBe('UNKNOWN_COST');
   });
 
+  // E-assumptions A4/C13 (re-20261030): a one-sided report was summed as (tin ?? 0) + (tout ?? 0) at value-allocator.ts:192
+  it('a call reporting only one token side is unknown, never the known side + 0', () => {
+    call('one-sided', { tin: 100, tout: null }); call('one-sided', { tin: null, tout: 50 }); call('one-sided', { tin: 100, tout: 50 });
+    expect(row(buildValueAllocation(db, NOW, {}, []), 'llm:one-sided').w7.tokens).toMatchObject({ known_calls: 1, unknown_calls: 2 });
+  });
+
   it('P0-7: a maker lease the engine ran on a fallback runtime is the effective runtime\'s consumer, not the requested one', () => {
     makerRun({ meta: { requested_runtime: 'opencode', effective_runtime: 'claude', effective_model: null } });
     makerRun({ meta: { effective_runtime: 'opencode', effective_model: 'm1' } }); // no switch: unchanged
