@@ -85,14 +85,15 @@ export function similarExamples(db: Database, improvementId: string, lane: AceLa
   return hits.length ? hits.map((h) => `${h.r.artifact} — ${h.r.title}`) : null;
 }
 
-/** R=1: top-k KB pages by cosine to the goal's proposal (P1: a page whose body no longer matches its ingest sha is skipped). */
+/** R=1: top-k KB pages by cosine to the goal's proposal (P1: a page whose body no longer matches its ingest sha is skipped; so is a quarantined page). */
 export function similarKbPages(db: Database, improvementId: string, k = 3, min = 0.3): Array<{ path: string; title: string; body: string; score: number }> | null {
   const q = proposalVector(db, improvementId);
   if (!q) return null;
-  let rows: Array<{ path: string; title: string; body: string; sha: string; vector: Buffer }> = [];
-  try { rows = db.prepare('SELECT path, title, body, sha, vector FROM kb_pages').all() as typeof rows; } catch { return []; }
+  let rows: Array<{ path: string; title: string; body: string; sha: string; vector: Buffer; quarantined_at?: string | null }> = [];
+  // SELECT *: quarantined_at is added lazily by kb-corpus ingest; a table without it has no quarantined page
+  try { rows = db.prepare('SELECT * FROM kb_pages').all() as typeof rows; } catch { return []; }
   // ponytail: full scan (~1.3k pages × 2048 dims per maker assignment, a few ms); move to Qdrant when the corpus passes ~20k pages
-  return rows.filter((r) => createHash('sha256').update(r.body).digest('hex') === r.sha)
+  return rows.filter((r) => !r.quarantined_at && createHash('sha256').update(r.body).digest('hex') === r.sha)
     .map((r) => ({ r, v: vec(r.vector) })).filter((x) => x.v.length === q.length)
     .map((x) => ({ path: x.r.path, title: x.r.title, body: x.r.body, score: cosine(q, x.v) }))
     .filter((h) => h.score >= min).sort((a, b) => b.score - a.score).slice(0, k);

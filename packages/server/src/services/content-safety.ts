@@ -7,7 +7,7 @@ import { recordPolicyViolation } from './policy-violations';
  * Plan K1: a fast content-safety check on text Djimitflo did not write (fleet/HF discoveries, replies from external
  * agents) before it flows into prompts. NVIDIA nemotron-3.5-content-safety answers in ~0.3 s and flagged a prompt
  * injection 'unsafe' while paper text stayed 'safe' (measured 2026-09-27). The verdict is recorded as a judgment
- * ('content_safety'). Fail-open. NOT shadow-only everywhere: KB ingest (kb-corpus) deletes/skips a page on 'unsafe' in every
+ * ('content_safety'). Fail-open. NOT shadow-only everywhere: KB ingest (kb-corpus) quarantines a page on 'unsafe' in every
  * mode, and those rows are recorded with mode 'enforce' (P0-11); other callers only record (mode 'shadow').
  *   CONTENT_SAFETY_MODE=shadow + NVIDIA_API_KEY (default off); 'enforce' checks the same way and additionally makes the
  *   prompt gate (gateUntrustedForPrompt, B19) exclude untrusted text without a 'safe' verdict.
@@ -56,7 +56,7 @@ export const resetContentSafetyPause = (): void => { pausedUntil = 0; };
 
 /**
  * P0-11: the row's mode is the regime the verdict is used under, not a fixed label. `acting` = the caller acts on the verdict
- * whatever CONTENT_SAFETY_MODE says (KB ingest deletes/skips a page on 'unsafe'); a prompt-bound check acts under enforce.
+ * whatever CONTENT_SAFETY_MODE says (KB ingest quarantines a page on 'unsafe'); a prompt-bound check acts under enforce.
  */
 export async function checkContentSafety(db: Database, subject: { type: string; id: string }, text: string, fetchFn: typeof fetch = fetch, promptBound = false, acting = false): Promise<'safe' | 'unsafe' | null> {
   if (!contentSafetyApplies(subject.type, process.env, promptBound) || !text.trim() || Date.now() < pausedUntil) return null;

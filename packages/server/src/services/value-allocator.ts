@@ -124,7 +124,7 @@ export const GATE_READ_JUDGMENTS: Record<string, (row: JudgmentRow, env: NodeJS.
   decision_context: (r) => r.mode === 'enforce',
   // kb-corpus gatePassages: under enforce pages below 0.5 are dropped before the panel prompt
   kb_passage_relevance: (r) => r.mode === 'enforce',
-  // kb-corpus ingestKbPages deletes/skips a KB page on 'unsafe' in every mode; gateUntrustedForPrompt excludes text under enforce
+  // kb-corpus ingestKbPages quarantines a KB page on 'unsafe' in every mode; gateUntrustedForPrompt excludes text under enforce
   content_safety: (r) => r.subject_type === 'kb_page' || r.mode === 'enforce',
   // content-safety gateUntrustedForPrompt: an enforce row is an exclusion that happened
   content_safety_prompt_gate: (r) => r.mode === 'enforce',
