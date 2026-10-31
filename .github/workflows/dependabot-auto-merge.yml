@@ -4,6 +4,7 @@ on: pull_request
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
 # A newer head of the same PR supersedes the wait for the older one.
 concurrency:
@@ -44,4 +45,15 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           MERGE_TRAIN_REPO: ${{ github.repository }}
           MT_IGNORE_CHECKS: auto-merge
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # A GITHUB_TOKEN merge starts no push workflows, so main's head would never get the required checks and
+      # auto-deploy would wait on it (be57e146, 2026-10-30). workflow_dispatch is the documented exception.
+      - name: Run the required workflows on main after a merge
+        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+        run: |
+          state=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json state -q .state)
+          [ "$state" = MERGED ] || { echo "#$PR_NUMBER $state — no dispatch"; exit 0; }
+          for wf in ci.yml secret-scan.yml; do gh workflow run "$wf" --repo "$GITHUB_REPOSITORY" --ref main; done
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
