@@ -40,7 +40,10 @@ export function parseSafety(content: string): { verdict: 'safe' | 'unsafe' | nul
   const text = content || '';
   const m = /user safety"?\s*:\s*"?(safe|unsafe)/i.exec(text);
   const cats = /safety categories"?\s*:\s*"?([^"\n}]+)/i.exec(text);
-  return { verdict: m ? (m[1].toLowerCase() as 'safe' | 'unsafe') : null, categories: cats ? cats[1].trim().slice(0, 200) : '' };
+  if (m) return { verdict: m[1].toLowerCase() as 'safe' | 'unsafe', categories: cats ? cats[1].trim().slice(0, 200) : '' };
+  // Llama Guard shape: the whole answer is "safe", or "unsafe" with category codes on the next line
+  const g = /^\s*(safe|unsafe)\s*(?:\n\s*([A-Z0-9, ]+?))?\s*$/i.exec(text);
+  return { verdict: g ? (g[1].toLowerCase() as 'safe' | 'unsafe') : null, categories: g?.[2] ? g[2].trim().slice(0, 200) : '' };
 }
 
 /**
