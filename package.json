@@ -22,6 +22,7 @@
     "test:dead-code:grounded": "node scripts/dead-code-gate.mjs",
     "test:finding-fix:grounded": "node scripts/finding-fix-gate.mjs",
     "audit:ci": "node scripts/ci-audit.mjs",
+    "budget:dashboard": "node scripts/dashboard-bundle-budget.mjs",
     "assurance:truth": "node scripts/assurance-truth.mjs",
     "assurance:contracts": "node scripts/contract-inventory.mjs",
     "assurance:route-contracts": "node scripts/contract-inventory.mjs --route-contracts-only",
