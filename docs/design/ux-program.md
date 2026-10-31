@@ -11,6 +11,7 @@ existing auth; anything that sends, closes, approves or changes permissions ship
 | UX-1 | Proof-run live updates use the subscribed WebSocket event type (#624) | done |
 | UX-2 | Cockpit `genomes` type + table (#625) | done |
 | UX-3 … UX-33 | live shell, permission-aware UI, inbox, draft-PR queue, schedulers, evolution page, push, agents, LLM ledger, a11y | open |
+| UX-30 | Lab pruning: dormant Lab pages measured from S4 usage telemetry, one recommendation per page (`docs/design/ux-30-lab-pruning.md`) | done = table; **decision pending** (operator, UXD-3) |
 
 ## Coverage baseline (UX-0, origin/main 5a9d46d5, 2026-10-05)
 
@@ -30,7 +31,7 @@ repositories 7 / 9. Full per-router table: `node scripts/ux-coverage.mjs`.
 | Id | Unknown | How it gets settled |
 |---|---|---|
 | U-a | Prod flags / armed schedulers | evolution flags: `GET /api/health/evolution-evidence`; schedulers: UX-8 |
-| U-b | Page usage (dormant pages/routes) | `GET /api/telemetry/usage` (S4), two weeks before W8 retirement (14-10) |
+| U-b | Page usage (dormant pages/routes) | **measured 31-10 (UX-30)**: `ux-30-lab-pruning.md`, 30 d of `usage_counts` |
 | U-c | Operator device / channel | **settled: Telegram** (2026-10-04) |
 | U-d | Loop PR merge/close history, review latency | merge survival + RX-6 draft-queue view |
 | U-e | Draft-PR token write scope | needed before any close/comment action (UX-7 follow-up) |
@@ -42,4 +43,4 @@ repositories 7 / 9. Full per-router table: `node scripts/ux-coverage.mjs`.
 |---|---|---|
 | UXD-1 | Alert / one-tap approval channel = Telegram (UX-12/UX-13 built with the flag off) | decided 2026-10-04 |
 | UXD-2 | English-only UI, no message catalog (UX-5 default) | proposed |
-| UXD-3 | Deleting orphan UI (e.g. `ComplianceDashboard`) or Lab pages | ask first, after telemetry |
+| UXD-3 | Deleting orphan UI (e.g. `ComplianceDashboard`) or Lab pages | ask first, after telemetry. Telemetry is in (UX-30, 31-10): per-page KEEP / MOVE / MERGE-INTO / RETIRE-CANDIDATE in `ux-30-lab-pruning.md`; decision pending |
