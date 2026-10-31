@@ -30,6 +30,7 @@ import { shippedCodeView } from '../services/shipped-code-scan';
 import { memoryTemplateAnalysis } from '../services/memory-template-dedup';
 import { skillCardsView } from '../services/skill-distillation';
 import { evolutionFeedbackMode, latestEvolutionDigest } from '../services/evolution-feedback';
+import { advisoryExposureEvidence } from '../services/advisory-exposure';
 import { expertUnitDedupe } from '../services/expert-unit-dedupe';
 import { buildTrainingDataset, trainingDatasetMode, trainingDatasetSummary } from '../services/training-dataset';
 import { buildValueAllocation, latestValueAllocation, valueAllocatorMode } from '../services/value-allocator';
@@ -191,6 +192,11 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   // K4 (shadow, SKILL_DISTILLATION_MODE): distilled skill / anti-pattern cards by lane and status + the latest cards (read-only, never injected)
   router.get('/skills', requireAuth, requirePermission('read:evidence'), (req, res) => {
     res.json(skillCardsView(db, process.env, Number(req.query.limit) || 20));
+  });
+
+  // Track A (ADVISORY_EXPOSURE_MODE): latest verdict per EVE-V advisory, affected list, pending ids, bump proposals (read-only)
+  router.get('/advisory-exposure', requireAuth, requirePermission('read:evidence'), (_req, res) => {
+    res.json(advisoryExposureEvidence(db));
   });
 
   // K5: the newest stored evolution digest (EVOLUTION_FEEDBACK_MODE=shadow|on writes one per day; null before the first)

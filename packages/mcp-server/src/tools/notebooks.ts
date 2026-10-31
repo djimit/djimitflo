@@ -11,6 +11,9 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import fs from 'node:fs';
+import path from 'node:path';
+import { requireMcpPermission } from '../auth-context.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -24,6 +27,33 @@ async function callBridge(command: string, args: string[] = []): Promise<unknown
     maxBuffer: 10 * 1024 * 1024,
   });
   return JSON.parse(stdout);
+}
+
+/**
+ * D-security 30-10 B11: the nine notebook tools had no permission check (a viewer, the stdio default, could create or delete
+ * notebooks and push local files to NotebookLM) and notebook_download wrote wherever outputPath pointed. Every tool that
+ * changes a notebook or writes a file asks for write:evidence, as the other MCP write tools ask for their route twin's.
+ */
+const NOTEBOOK_WRITE_PERMISSION = 'write:evidence';
+
+/** Downloads land only under the notebook directory (NOTEBOOKLM_OUTPUT_DIR, default <bridge dir>/downloads), symlinks resolved. */
+function confinedOutputPath(outputPath: string): string {
+  const root = path.resolve(process.env.NOTEBOOKLM_OUTPUT_DIR || path.join(path.dirname(BRIDGE_PATH), 'downloads'));
+  const inside = (base: string, p: string) => { const rel = path.relative(base, p); return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel); };
+  fs.mkdirSync(root, { recursive: true });
+  const realRoot = fs.realpathSync(root);
+  const target = path.resolve(root, outputPath);
+  const refuse = () => new Error(`NOTEBOOK_OUTPUT_PATH_OUTSIDE_DIR: ${outputPath}`);
+  // lexical first, then the nearest existing ancestor resolved (a symlink cannot lead out, and nothing is created outside)
+  if (!inside(root, target) && !inside(realRoot, target)) throw refuse();
+  let existing = path.dirname(target);
+  while (!fs.existsSync(existing)) existing = path.dirname(existing);
+  const realExisting = fs.realpathSync(existing);
+  if (realExisting !== realRoot && !inside(realRoot, realExisting)) throw refuse();
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  const realTarget = path.join(fs.realpathSync(path.dirname(target)), path.basename(target));
+  if (!inside(realRoot, realTarget) || (fs.existsSync(realTarget) && fs.lstatSync(realTarget).isSymbolicLink())) throw refuse();
+  return realTarget;
 }
 
 function bridgeError(result: unknown): string {
@@ -56,6 +86,7 @@ export function registerNotebookTools(server: McpServer) {
     { description: 'Create a new NotebookLM notebook', inputSchema: { title: z.string().describe('Notebook title') } },
     async ({ title }) => {
       try {
+        requireMcpPermission(NOTEBOOK_WRITE_PERMISSION);
         const result = await callBridge('create', [title]);
         if ('error' in (result as object)) return { content: [{ type: 'text' as const, text: bridgeError(result) }], isError: true };
         return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
@@ -70,6 +101,7 @@ export function registerNotebookTools(server: McpServer) {
     { description: 'Delete a NotebookLM notebook', inputSchema: { notebookId: z.string().describe('The notebook ID') } },
     async ({ notebookId }) => {
       try {
+        requireMcpPermission(NOTEBOOK_WRITE_PERMISSION);
         const result = await callBridge('delete', [notebookId]);
         if ('error' in (result as object)) return { content: [{ type: 'text' as const, text: bridgeError(result) }], isError: true };
         return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
@@ -84,6 +116,7 @@ export function registerNotebookTools(server: McpServer) {
     { description: 'Add a source (URL, text, or file) to a notebook', inputSchema: { notebookId: z.string().describe('The notebook ID'), type: z.enum(['url', 'text', 'file']).describe('Source type'), value: z.string().describe('URL, text content, or file path'), title: z.string().optional().describe('Title for text sources') } },
     async ({ notebookId, type, value, title }) => {
       try {
+        requireMcpPermission(NOTEBOOK_WRITE_PERMISSION);
         let result: unknown;
         if (type === 'url') result = await callBridge('add_url', [notebookId, value]);
         else if (type === 'text') result = await callBridge('add_text', [notebookId, title || 'Untitled', value]);
@@ -115,6 +148,7 @@ export function registerNotebookTools(server: McpServer) {
     { description: 'Generate an artifact (audio, report, quiz, mindmap, slides, infographic, video)', inputSchema: { notebookId: z.string().describe('The notebook ID'), artifactType: z.enum(['audio', 'report', 'quiz', 'flashcards', 'mindmap', 'slides', 'infographic', 'video']).describe('Type of artifact to generate') } },
     async ({ notebookId, artifactType }) => {
       try {
+        requireMcpPermission(NOTEBOOK_WRITE_PERMISSION);
         const result = await callBridge('generate_' + artifactType, [notebookId]);
         if ('error' in (result as object)) return { content: [{ type: 'text' as const, text: bridgeError(result) }], isError: true };
         return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
@@ -129,6 +163,7 @@ export function registerNotebookTools(server: McpServer) {
     { description: 'Start a web research session and import sources into the notebook', inputSchema: { notebookId: z.string().describe('The notebook ID'), query: z.string().describe('Research query') } },
     async ({ notebookId, query }) => {
       try {
+        requireMcpPermission(NOTEBOOK_WRITE_PERMISSION);
         const result = await callBridge('research_start', [notebookId, query]);
         if ('error' in (result as object)) return { content: [{ type: 'text' as const, text: bridgeError(result) }], isError: true };
         return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
@@ -145,7 +180,10 @@ export function registerNotebookTools(server: McpServer) {
       try {
         let result: unknown;
         if (action === 'list') result = await callBridge('notes_list', [notebookId]);
-        else result = await callBridge('note_create', [notebookId, title || 'Untitled', content || '']);
+        else {
+          requireMcpPermission(NOTEBOOK_WRITE_PERMISSION);
+          result = await callBridge('note_create', [notebookId, title || 'Untitled', content || '']);
+        }
         if ('error' in (result as object)) return { content: [{ type: 'text' as const, text: bridgeError(result) }], isError: true };
         return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
       } catch (error) {
@@ -156,10 +194,11 @@ export function registerNotebookTools(server: McpServer) {
 
   server.registerTool(
     'notebook_download',
-    { description: 'Download a generated artifact (audio, report, quiz)', inputSchema: { notebookId: z.string().describe('The notebook ID'), artifactType: z.enum(['audio', 'report', 'quiz']).describe('Type of artifact to download'), outputPath: z.string().describe('Output file path') } },
+    { description: 'Download a generated artifact (audio, report, quiz)', inputSchema: { notebookId: z.string().describe('The notebook ID'), artifactType: z.enum(['audio', 'report', 'quiz']).describe('Type of artifact to download'), outputPath: z.string().describe('Output file path, inside the notebook directory (NOTEBOOKLM_OUTPUT_DIR)') } },
     async ({ notebookId, artifactType, outputPath }) => {
       try {
-        const result = await callBridge('download_' + artifactType, [notebookId, outputPath]);
+        requireMcpPermission(NOTEBOOK_WRITE_PERMISSION);
+        const result = await callBridge('download_' + artifactType, [notebookId, confinedOutputPath(outputPath)]);
         if ('error' in (result as object)) return { content: [{ type: 'text' as const, text: bridgeError(result) }], isError: true };
         return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
       } catch (error) {
