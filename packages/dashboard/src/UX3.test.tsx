@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { MemoryRouter } from 'react-router-dom';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
@@ -74,4 +76,10 @@ it('UX-3: a banner says when the live connection is down', async () => {
   expect(screen.getByRole('status').textContent).toMatch(/live updates are off/i);
   rerender(<WsContext.Provider value={{ subscribe: (() => () => undefined) as never, isConnected: true }}><ConnectionBanner graceMs={0} /></WsContext.Provider>);
   await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+});
+
+it('UX-28: App loads every page lazily, so the entry chunk holds no page and a stale chunk hits the reload guard', () => {
+  const app = readFileSync(join(__dirname, 'App.tsx'), 'utf8');
+  expect(app.match(/^import .* from '\.\/pages\/.*$/gm) ?? []).toEqual([]);
+  expect(app).toMatch(/const LoginPage = lazy\(/);
 });
