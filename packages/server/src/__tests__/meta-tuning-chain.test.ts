@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { CognitiveLoopClosureService } from '../services/cognitive-loop-closure-service';
-import { MetaOrchestrationService } from '../services/meta-orchestration-service';
+import { META_TUNING_MAX_CONFIDENCE, MetaOrchestrationService } from '../services/meta-orchestration-service';
 import { LoopService, type LoopRunRecord } from '../services/loop-service';
 
 let db: Database.Database;
@@ -17,7 +17,7 @@ beforeEach(() => {
   meta = new MetaOrchestrationService(db);
   loops = new LoopService(db); loops.setMetaOrchestration(meta);
 });
-afterEach(() => { cognitive.stop(); meta.stop(); db.close(); });
+afterEach(() => { vi.unstubAllEnvs(); cognitive.stop(); meta.stop(); db.close(); });
 
 function record(index: number, outcome: 'success' | 'failure' | 'partial' | 'cancelled' = 'success', totalTokens = 2000) {
   return cognitive.recordEpisode({
@@ -108,4 +108,26 @@ it('a stale 1000-floor tuning is replaced on the next tick; measured episodes st
   // zero-token episodes do not drag the average of measured ones down: 3 × 2000 measured → 3000
   for (let i = 20; i < 23; i++) record(i, 'success', 2000);
   expect(meta.getLoopTuning('doc-drift').recommendedBudget.maxTokens).toBe(3000);
+});
+
+// re-20261030 B §3 / candidate 4: META_TUNING_MIN_CONFIDENCE=0.95 is above the confidence the tuner can reach (min(0.9, …),
+// getLoopTuning), so no new tuning applies — but the last applied row (10-30 09:20Z: concurrency 2, maxRuntimeMs 934 903)
+// stayed in meta_active_loop_parameters and loop-service still consumed it. The flag froze the tuner instead of turning it off.
+it('a minimum confidence above the reachable cap turns tuning off: the stale active row is not consumed, and the stats say why', async () => {
+  for (let i = 0; i < 20; i++) record(i);
+  expect(await meta.runAutoTuning()).toEqual({ evaluated: 1, applied: 1 }); // default minimum 0.75: applied
+  expect(loops.getMakerLeaseBudget(run, {})).toEqual({ maxMakerWorkers: 3, source: 'meta' });
+  expect(meta.getStats().tuning).toMatchObject({ active: true, reason: null });
+  expect(META_TUNING_MAX_CONFIDENCE).toBe(0.9);
+  vi.stubEnv('META_TUNING_MIN_CONFIDENCE', '0.95');
+  expect(meta.getActiveLoopTuning('doc-drift')).toBeNull();
+  expect(loops.getMakerLeaseBudget(run, {})).toMatchObject({ source: 'default' });
+  expect(loops.getTokenBudget(run)).toEqual({ source: 'none' });
+  expect(loops.evaluateTokenBudget(run, { total_tokens: 3001 }, 'fixture-lease').gate.status).toBe('skipped');
+  expect(meta.getStats().tuning).toEqual({ active: false, min_confidence: 0.95, max_reachable_confidence: 0.9,
+    reason: expect.stringMatching(/META_TUNING_MIN_CONFIDENCE 0\.95 > reachable 0\.9/) });
+  // the row is kept (evidence), not deleted; at a reachable minimum it applies again
+  expect(db.prepare('SELECT COUNT(*) AS n FROM meta_active_loop_parameters').get()).toEqual({ n: 1 });
+  vi.stubEnv('META_TUNING_MIN_CONFIDENCE', '0.9');
+  expect(meta.getActiveLoopTuning('doc-drift')).toMatchObject({ recommendedConcurrency: 3 });
 });

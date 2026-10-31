@@ -216,6 +216,41 @@ it('A18: every running experiment declares the env names that alter its treatmen
   expect(memory).toEqual(['ACE-001', 'STE-001', 'MAKER-DEPS-001', 'X1', 'F2']);
 });
 
+// E-assumptions A18/C8 (re-20261030): at 10-30 09:42 LOOP_BANDIT_MAX_SHARE went 0.8 → default 0.1, an acting flag that
+// changes the maker-species mix of the shared oracle-goal population, and 0 period boundaries were written: no experiment
+// declared it. Every env name maker selection reads must be a treatment variable of every running oracle-population experiment.
+const MAKER_SELECTION_SOURCES = ['runtime-bandit.ts', 'remote-maker-queue.ts', 'meta-orchestration-service.ts'];
+const envNames = (src: string) => [...src.matchAll(/(?:process\.)?env\.([A-Z][A-Z0-9_]+)|env\[['"]([A-Z][A-Z0-9_]+)['"]\]/g)].map((m) => m[1] ?? m[2]);
+function makerSelectionEnv(): string[] {
+  const dir = join(__dirname, '../services');
+  const daemon = readFileSync(join(dir, 'loop-daemon.ts'), 'utf8');
+  // loop-daemon's maker selection: from the operator's explicit maker runtime through the bandit choice (5b), up to D2
+  const start = daemon.indexOf('const makerRuntime = '); const end = daemon.indexOf('// D2: attribute the maker to its strategy genome');
+  expect(start, 'loop-daemon maker selection start marker').toBeGreaterThan(0); expect(end, 'loop-daemon maker selection end marker').toBeGreaterThan(start);
+  expect(daemon.slice(start, end)).toMatch(/chooseSpecies\(.*banditSpecies\(\)/); // the bandit (runtime-bandit.ts) chooses
+  expect(daemon.slice(start, end)).toContain('assertRuntimeAvailable('); // remote is available only under REMOTE_MAKER_ENABLED
+  return [...new Set([...envNames(daemon.slice(start, end)), ...MAKER_SELECTION_SOURCES.flatMap((f) => envNames(readFileSync(join(dir, f), 'utf8')))])].sort();
+}
+it('C8: every env name read by loop-daemon maker selection is a treatment variable of every running oracle-population experiment', () => {
+  const names = makerSelectionEnv();
+  for (const n of ['LOOP_BANDIT_ENABLED', 'LOOP_BANDIT_SPECIES', 'LOOP_BANDIT_MAX_SHARE', 'REMOTE_MAKER_ENABLED', 'META_TUNING_MIN_CONFIDENCE']) expect(names).toContain(n);
+  const oracle = experimentDefs().filter((d) => d.population === 'oracle_goals' && !d.closed);
+  expect(oracle.map((d) => d.id)).toEqual(['ACE-001', 'STE-001', 'MAKER-DEPS-001', 'X1', 'F2']);
+  for (const d of oracle) {
+    const undeclared = names.filter((n) => !d.treatment_env?.includes(n));
+    expect(undeclared, `${d.id}: maker-selection env not declared as treatment_env`).toEqual([]);
+    expect(d.treatment_env?.[0], d.id).toBe(d.flag);
+  }
+});
+
+it('C8: changing LOOP_BANDIT_MAX_SHARE between boots writes a period boundary for ACE-001, STE-001, MAKER-DEPS-001, X1 and F2', () => {
+  const t = (d: string) => Date.parse(`2026-10-${d}T09:42:39Z`);
+  expect(recordTreatmentEnvBoundaries(db, { LOOP_BANDIT_MAX_SHARE: '0.8' }, t('29'))).toEqual([]);
+  const rows = recordTreatmentEnvBoundaries(db, {}, t('30')); // unset → code default 0.1
+  expect(rows.map((r) => [r.experiment_id, r.env_name, r.previous, r.current])).toEqual(['ACE-001', 'STE-001', 'MAKER-DEPS-001', 'X1', 'F2'].map((id) => [id, 'LOOP_BANDIT_MAX_SHARE', '0.8', null]));
+  expect(experimentsReport(db, {}, t('30') + 1000).experiments.find((e) => e.id === 'PL-001')?.period_boundaries).toEqual([]); // gym population: not altered
+});
+
 it('A18: toggling LOOP_MEMORY_RULES_ENABLED between boots records a period boundary for ACE-001 (and every experiment it alters)', () => {
   const t = (d: string) => Date.parse(`2026-10-${d}T06:00:00Z`);
   expect(recordTreatmentEnvBoundaries(db, { LOOP_MEMORY_RULES_ENABLED: 'true', ACE_001_MODE: 'on' }, t('20'))).toEqual([]); // first boot: nothing to compare
