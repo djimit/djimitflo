@@ -4,7 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 const packageState = vi.hoisted(() => ({ hash: 'verified-hash' }));
-vi.mock('../services/executable-skills', async importOriginal => ({ ...await importOriginal<typeof import('../services/executable-skills')>(), ExecutableSkills: class { load() { return { contract: { test: 'run.test.mjs' }, contentHash: packageState.hash }; } } }));
+vi.mock('../services/executable-skills', async importOriginal => ({ ...await importOriginal<typeof import('../services/executable-skills')>(), ExecutableSkills: class { load() { return { contract: { test: 'run.test.mjs' }, skill: { contentHash: 'a'.repeat(64) }, contentHash: packageState.hash }; } } }));
 let worktree: string;
 import { SkillFactoryService } from '../services/skill-factory-service';
 import type { LoopService } from '../services/loop-service';

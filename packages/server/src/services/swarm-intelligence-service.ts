@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { isDeepStrictEqual } from 'util';
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { swarmEventBus } from './swarm-event-bus';
@@ -15,7 +16,7 @@ import { SkillTrainingPromotionGate } from './skill-training-promotion-gate';
 import { AgentInteractionLedgerService, type AgentInteractionRecord } from './agent-interaction-ledger-service';
 import { OutcomeLearningService, type OutcomeLearningAssessment } from './outcome-learning-service';
 import { ReviewerIndependenceService, type ReviewerIndependenceAssessment } from './reviewer-independence-service';
-import { DELIVERED_ATTRIBUTION_SQL } from './skill-evolution-engine';
+import { COMPLETED_UNVERIFIED_REF, DELIVERED_ATTRIBUTION_SQL } from './skill-evolution-engine';
 
 type CapabilityKind = 'skill' | 'specialist_agent' | 'runtime_adapter' | 'deterministic_harness' | 'memory_source' | 'dashboard_action' | 'openai_agents_sdk' | 'openai_skill' | 'openai_mcp_connector';
 type CapabilityStatus = 'draft' | 'candidate' | 'validated' | 'deprecated' | 'disabled';
@@ -372,6 +373,7 @@ export class SwarmIntelligenceService {
     eval_scorecard_ref?: string;
     evidence_refs?: string[];
     baseline_skill_content_hash?: string;
+    baseline_capability_id?: string;
     security_checker_ref?: string;
     human_approval_ref?: string;
     validation_report?: string;
@@ -439,11 +441,25 @@ export class SwarmIntelligenceService {
           ? this.db.prepare(`
               SELECT skill_content_hash AS hash, COUNT(*) AS count
               FROM skill_outcomes WHERE skill_id = ? AND skill_content_hash IS NOT NULL AND ${DELIVERED_ATTRIBUTION_SQL}
+              AND evidence_refs_json NOT LIKE '%"${COMPLETED_UNVERIFIED_REF}"%'
+              AND (? IS NULL OR EXISTS (SELECT 1 FROM json_each(skill_outcomes.evidence_refs_json) WHERE value = ?))
               GROUP BY skill_content_hash ORDER BY MAX(created_at) DESC
-            `).all(skillId) as Array<{ hash: string; count: number }>
+            `).all(skillId, capability.metadata.executable_skill ? String(capability.metadata.package_hash || '') : null,
+              `skill_package_sha256:${String(capability.metadata.package_hash || '')}`) as Array<{ hash: string; count: number }>
           : [];
         const candidateRuns = Number(outcomeRows.find((row) => row.hash === candidateHash)?.count || 0);
-        const baselineHashes = outcomeRows.filter((row) => row.hash !== candidateHash).map((row) => row.hash);
+        const baselines: Array<{ hash: string; capability_id?: string; skill_id: string }> = outcomeRows
+          .filter((row) => row.hash !== candidateHash).map((row) => ({ hash: row.hash, skill_id: skillId }));
+        if (capability.metadata.executable_skill && skillId.endsWith(`-v${skillVersion.replaceAll('.', '-')}`)) {
+          const prefix = skillId.slice(0, -(skillVersion.length + 2));
+          const siblings = this.db.prepare(`SELECT id FROM swarm_capabilities WHERE kind = ? AND id != ?
+            AND json_extract(metadata, '$.executable_skill.id') LIKE ? ORDER BY id`).all(capability.kind, capability.id, `${prefix}-v%`) as Array<{ id: string }>;
+          for (const { id } of siblings) {
+            const sibling = this.getCapability(id);
+            baselines.push({ hash: String(sibling.metadata.agent_skill_content_hash || ''), capability_id: id, skill_id: String(sibling.metadata.agent_skill_id || '') });
+          }
+        }
+        const baselineHashes = [...new Set(baselines.map((baseline) => baseline.hash).filter(Boolean))];
         const evalRefs = skillId
           ? (this.db.prepare("SELECT id FROM openmythos_eval_runs WHERE agent_id = ? AND status = 'completed'").all(skillId) as Array<{ id: string }>)
             .map((row) => `openmythos:${row.id}`)
@@ -455,11 +471,12 @@ export class SwarmIntelligenceService {
         else if (capability.status !== 'candidate') blockedReasons.push(`CAPABILITY_NOT_CANDIDATE:${capability.status}`);
         else if (baselineHashes.length === 0) blockedReasons.push('CAPABILITY_PROMOTION_SKILL_BASELINE_REQUIRED');
         else {
-          for (const baselineHash of baselineHashes) {
+          for (const baseline of baselines) {
             try {
               comparison = this.assertSkillPromotionEvidence(capability, {
-                baseline_skill_content_hash: baselineHash,
-                evidence_refs: [`skill_outcomes:${skillId}:${candidateHash}`, ...evalRefs],
+                baseline_skill_content_hash: baseline.hash,
+                baseline_capability_id: baseline.capability_id,
+                evidence_refs: [`skill_outcomes:${skillId}:${candidateHash}`, `skill_outcomes:${baseline.skill_id}:${baseline.hash}`, ...evalRefs],
               });
               if (comparison) break;
             } catch (error) {
@@ -475,7 +492,7 @@ export class SwarmIntelligenceService {
           : 0;
         const baselineHash = comparison ? String(comparison.baseline_hash) : null;
         const evidenceRefs = openmythosRunId
-          ? [`skill_outcomes:${skillId}:${candidateHash}`, `openmythos:${openmythosRunId}`]
+          ? [`skill_outcomes:${skillId}:${candidateHash}`, `skill_outcomes:${comparison?.baseline_skill_id}:${baselineHash}`, `openmythos:${openmythosRunId}`]
           : [];
 
         return {
@@ -495,6 +512,7 @@ export class SwarmIntelligenceService {
             eval_scorecard_ref: `openmythos:${openmythosRunId}`,
             evidence_refs: evidenceRefs,
             baseline_skill_content_hash: baselineHash,
+            ...(comparison.baseline_capability_id ? { baseline_capability_id: comparison.baseline_capability_id } : {}),
           } : null,
         };
       });
@@ -502,7 +520,7 @@ export class SwarmIntelligenceService {
 
   private assertSkillPromotionEvidence(
     capability: SwarmCapabilityRecord,
-    input: { evidence_refs?: string[]; baseline_skill_content_hash?: string },
+    input: { evidence_refs?: string[]; baseline_skill_content_hash?: string; baseline_capability_id?: string },
   ): Record<string, unknown> | null {
     if (capability.kind !== 'skill' && capability.kind !== 'openai_skill') return null;
 
@@ -518,14 +536,49 @@ export class SwarmIntelligenceService {
       throw new Error('CAPABILITY_PROMOTION_SKILL_OUTCOMES_REQUIRED:candidate=0:baseline=0:minimum=30');
     }
 
+    let baselineSkillId = skillId;
+    let baselinePackageHash: string | null = null;
+    const candidatePackageHash = capability.metadata.executable_skill ? String(capability.metadata.package_hash || '') : null;
+    if (candidatePackageHash !== null && (!/^[a-f0-9]{64}$/.test(candidatePackageHash) || !input.baseline_capability_id)) {
+      throw new Error('CAPABILITY_PROMOTION_SKILL_BASELINE_MISMATCH');
+    }
+    if (input.baseline_capability_id) {
+      const baseline = this.getCapability(input.baseline_capability_id);
+      const candidateContract = capability.metadata.executable_skill as Record<string, unknown> | undefined;
+      const baselineContract = baseline.metadata.executable_skill as Record<string, unknown> | undefined;
+      const family = (c: SwarmCapabilityRecord, contract: Record<string, unknown> | undefined): string | null => {
+        const id = c.metadata.agent_skill_id, version = c.metadata.agent_skill_version;
+        if (!contract || contract.format !== 1 || typeof id !== 'string' || typeof version !== 'string'
+          || !/^\d+\.\d+\.\d+$/.test(version) || contract.id !== id || contract.version !== version
+          || !id.endsWith(`-v${version.replaceAll('.', '-')}`)) return null;
+        return id.slice(0, -(version.length + 2));
+      };
+      const candidateFamily = family(capability, candidateContract);
+      if (baseline.id === capability.id || baseline.kind !== capability.kind || !candidateFamily
+        || candidateFamily !== family(baseline, baselineContract)
+        || baseline.metadata.agent_skill_content_hash !== baselineHash
+        || !candidateContract?.input || !candidateContract.output
+        || !Array.isArray(candidateContract.capabilities) || !candidateContract.capabilities.length
+        || !['input', 'output', 'capabilities', 'dependencies'].every((key) => isDeepStrictEqual(candidateContract[key], baselineContract?.[key]))
+        || !isDeepStrictEqual([...capability.allowed_actions].sort(), [...baseline.allowed_actions].sort())
+        || !isDeepStrictEqual([...capability.forbidden_actions].sort(), [...baseline.forbidden_actions].sort())) {
+        throw new Error('CAPABILITY_PROMOTION_SKILL_BASELINE_MISMATCH');
+      }
+      baselineSkillId = String(baseline.metadata.agent_skill_id);
+      baselinePackageHash = String(baseline.metadata.package_hash || '');
+      if (!/^[a-f0-9]{64}$/.test(baselinePackageHash)) throw new Error('CAPABILITY_PROMOTION_SKILL_BASELINE_MISMATCH');
+    }
+
     type OutcomeRow = { id: string; success: number; tokens_used: number | null; duration_ms: number };
-    const outcomes = (hash: string) => this.db.prepare(`
+    const outcomes = (id: string, hash: string, packageHash: string | null) => this.db.prepare(`
       SELECT id, success, tokens_used, duration_ms FROM skill_outcomes
       WHERE skill_id = ? AND skill_content_hash = ? AND ${DELIVERED_ATTRIBUTION_SQL}
+              AND evidence_refs_json NOT LIKE '%"${COMPLETED_UNVERIFIED_REF}"%'
+      AND (? IS NULL OR EXISTS (SELECT 1 FROM json_each(skill_outcomes.evidence_refs_json) WHERE value = ?))
       ORDER BY created_at ASC, id ASC
-    `).all(skillId, hash) as OutcomeRow[];
-    const candidate = outcomes(candidateHash);
-    const baseline = outcomes(baselineHash);
+    `).all(id, hash, packageHash, `skill_package_sha256:${packageHash}`) as OutcomeRow[];
+    const candidate = outcomes(skillId, candidateHash, candidatePackageHash);
+    const baseline = outcomes(baselineSkillId, baselineHash, baselinePackageHash);
     const minimum = 30;
     if (candidate.length < minimum || baseline.length < minimum) {
       throw new Error(`CAPABILITY_PROMOTION_SKILL_OUTCOMES_REQUIRED:candidate=${candidate.length}:baseline=${baseline.length}:minimum=${minimum}`);
@@ -573,6 +626,7 @@ export class SwarmIntelligenceService {
     const requiredRefs = [
       `skill_outcomes:${skillId}:${candidateHash}`,
       `openmythos:${evalRun.id}`,
+      ...(input.baseline_capability_id ? [`skill_outcomes:${baselineSkillId}:${baselineHash}`] : []),
     ];
     if (!requiredRefs.every((ref) => input.evidence_refs?.includes(ref))) {
       throw new Error('CAPABILITY_PROMOTION_SKILL_EVIDENCE_REFS_REQUIRED');
@@ -583,6 +637,8 @@ export class SwarmIntelligenceService {
       skill_version: skillVersion,
       candidate_hash: candidateHash,
       baseline_hash: baselineHash,
+      baseline_skill_id: baselineSkillId,
+      baseline_capability_id: input.baseline_capability_id ?? null,
       candidate_runs: candidate.length,
       baseline_runs: baseline.length,
       candidate_success_rate: candidateSuccess,

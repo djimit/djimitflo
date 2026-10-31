@@ -2,7 +2,7 @@
  * Execution engine - orchestrates task execution, event persistence, and WebSocket broadcasting
  */
 
-import { assertSkillAssignmentCurrent } from '../services/executable-skills';
+import { assertSkillAssignmentCurrent, ExecutableSkills, skillFirstMode } from '../services/executable-skills';
 import type { Database } from 'better-sqlite3';
 import {
   ApprovalRequestType,
@@ -1439,7 +1439,7 @@ export class ExecutionEngine {
   }
 
   private skillLoaderForTask(task: Task): SkillLoaderService {
-    return task.metadata?.skill_execution && typeof task.metadata.skillId === 'string'
+    return (task.metadata?.skill_execution || task.metadata?.skill_evaluation_package_hash) && typeof task.metadata.skillId === 'string'
       ? new SkillLoaderService(this.db, this.skillsDirectory, undefined, task.metadata.skillId) : this.skillLoader;
   }
 
@@ -1494,7 +1494,8 @@ export class ExecutionEngine {
       'SELECT id FROM execution_evidence WHERE task_id = ? ORDER BY captured_at ASC',
     ).all(taskId) as Array<{ id: string }>).map((row) => row.id);
 
-    const verification = processCompleted ? this.taskVerification(taskId) : null;
+    const executablePackage = Boolean(task.metadata?.skill_execution || task.metadata?.skill_evaluation_package_hash);
+    const verification = processCompleted && !executablePackage ? this.taskVerification(taskId) : null;
     const outcomeClass = !processCompleted ? null
       : verification === 'passed' ? null
         : verification === 'failed' ? 'outcome_class:regressed' : COMPLETED_UNVERIFIED_REF;
@@ -1518,6 +1519,10 @@ export class ExecutionEngine {
         ...delivery,
       ],
     });
+    const packageRef = delivery.find((ref) => ref.startsWith('skill_package_sha256:'));
+    if (processCompleted && executablePackage && packageRef) {
+      this.skillEvolution.settleTaskVerification(taskId, skill.id, skill.contentHash, packageRef.slice('skill_package_sha256:'.length));
+    }
   }
 
   /**
@@ -1537,6 +1542,13 @@ export class ExecutionEngine {
     const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
     const assignment = task.description ?? '';
     const delivered = skill.instructions.length > 0 && assignment.includes(skill.instructions);
+    const pkg = task.metadata?.skill_execution || task.metadata?.skill_evaluation_package_hash
+      ? new ExecutableSkills(this.db, this.skillsDirectory).load(skill.id) : null;
+    if (pkg && (!assignment.includes(JSON.stringify(pkg.payload))
+      || (task.metadata.skill_evaluation_package_hash && task.metadata.skill_evaluation_package_hash !== pkg.contentHash))) {
+      throw new Error('SKILL_EVALUATION_PACKAGE_MISMATCH');
+    }
+    const packageHash = pkg?.contentHash ?? null;
     this.evidenceService.captureEvidence({
       task_id: task.id,
       evidence_type: EvidenceType.EXECUTION_SUMMARY,
@@ -1549,6 +1561,7 @@ export class ExecutionEngine {
         skill_id: skill.id,
         skill_version: skill.version,
         skill_content_hash: skill.contentHash,
+        skill_package_hash: packageHash,
         executor_kind: executorKind,
         delivery_state: delivered ? 'delivered' : 'assigned',
         delivery_path: delivered ? 'task.description' : null,
@@ -1571,12 +1584,19 @@ export class ExecutionEngine {
       return ['skill_delivery:unknown', 'skill_attribution:unverified'];
     }
     if (receipt.delivery_state === 'delivered' && typeof receipt.delivered_sha256 === 'string') {
-      return ['skill_delivery:delivered', `skill_delivery_path:${String(receipt.delivery_path)}`, `skill_delivery_sha256:${receipt.delivered_sha256}`];
+      return ['skill_delivery:delivered', `skill_delivery_path:${String(receipt.delivery_path)}`, `skill_delivery_sha256:${receipt.delivered_sha256}`,
+        ...(typeof receipt.skill_package_hash === 'string' ? [`skill_package_sha256:${receipt.skill_package_hash}`] : [])];
     }
     return ['skill_delivery:assigned', 'skill_attribution:unverified'];
   }
 
   private blockInvalidSkillAttribution(task: Task): string | null {
+    if (task.metadata?.skill_evaluation_package_hash) {
+      if (skillFirstMode() !== 'on' || typeof task.metadata.skillId !== 'string') throw new Error('SKILL_EVALUATION_DISABLED');
+      const pkg = new ExecutableSkills(this.db, this.skillsDirectory).load(task.metadata.skillId);
+      if (pkg.contentHash !== task.metadata.skill_evaluation_package_hash || !task.description.includes(JSON.stringify(pkg.payload))
+        || !task.description.includes(pkg.skill.instructions)) throw new Error('SKILL_EVALUATION_PACKAGE_MISMATCH');
+    }
     if (task.metadata?.skill_execution) {
       const ids = assertSkillAssignmentCurrent(this.db, task);
       if (task.agent_id) for (const id of ids) {

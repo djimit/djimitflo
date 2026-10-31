@@ -12,6 +12,8 @@ import { createNativeTask } from '../services/native-task-service';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
 import { LoopWorkerExecutorService } from '../services/loop-worker-executor-service';
 import type { LoopService } from '../services/loop-service';
+import { EvidenceService } from '../services/evidence-service';
+import { EvidenceType, EvidenceSeverity } from '@djimitflo/shared';
 import { GoalService } from '../services/goal-service';
 import { ensureSkillCardTable } from '../services/skill-distillation';
 import { ExecutionEngine } from '../execution/execution-engine';
@@ -193,6 +195,35 @@ describe('executable package admission and reuse', () => {
     expect(db.prepare('SELECT skill_id,skill_content_hash,tokens_used,success FROM skill_outcomes WHERE task_id=?').get(created.id)).toEqual({ skill_id: 'increment-v1-0-0', skill_content_hash: service.load('increment-v1-0-0').skill.contentHash, tokens_used: null, success: 0 });
     vi.stubEnv('DJIMITFLO_SKILL_ALLOWLIST', 'unrelated');
     expect(() => boundary.blockInvalidSkillAttribution(created)).toThrow('SKILL_NOT_ADMITTED');
+  });
+
+  it('pins candidate evaluation and rejects wrong-package verification even before completion', () => {
+    writePackage(); const candidate = capture('increment-v1-0-0');
+    const pkg = service.load('increment-v1-0-0');
+    const engine = new ExecutionEngine(db, undefined, dir);
+    const boundary = engine as unknown as {
+      blockInvalidSkillAttribution(task: ReturnType<typeof createNativeTask>): string | null;
+      recordSkillDeliveryReceipt(task: ReturnType<typeof createNativeTask>, runtime: string): void;
+      recordSkillOutcome(taskId: string, session: undefined, completed: boolean, durationMs: number, tokens: number | null): void;
+    };
+    const created = createNativeTask(db, { id: 'candidate-eval', title: 'Evaluate only', description: `${pkg.skill.instructions}\n${JSON.stringify(pkg.payload)}`,
+      metadata: { skillId: pkg.skill.id, skill_evaluation_package_hash: pkg.contentHash } });
+    expect(boundary.blockInvalidSkillAttribution(created)).toBeNull();
+    expect(() => boundary.blockInvalidSkillAttribution({ ...created, metadata: { ...created.metadata, skill_evaluation_package_hash: 'f'.repeat(64) } })).toThrow('SKILL_EVALUATION_PACKAGE_MISMATCH');
+    boundary.recordSkillDeliveryReceipt(created, 'codex');
+    const verifier = new EvidenceService(db);
+    const check = (packageHash: string) => verifier.captureEvidence({ task_id: created.id, evidence_type: EvidenceType.TEST_RESULT,
+      severity: EvidenceSeverity.INFO, source: 'system', title: 'Fixture', summary: 'Not real provider evidence',
+      details: { skill_package_id: pkg.skill.id, skill_content_hash: pkg.skill.contentHash, skill_package_hash: packageHash } });
+    check('f'.repeat(64));
+    db.prepare("UPDATE tasks SET status='completed' WHERE id=?").run(created.id);
+    boundary.recordSkillOutcome(created.id, undefined, true, 25, null);
+    expect(db.prepare('SELECT success FROM skill_outcomes WHERE task_id=?').get(created.id)).toEqual({ success: 0 });
+    check(pkg.contentHash);
+    expect(db.prepare('SELECT success,tokens_used,duration_ms FROM skill_outcomes WHERE task_id=?').get(created.id)).toEqual({ success: 1, tokens_used: null, duration_ms: 25 });
+    expect(new SwarmIntelligenceService(db).getCapability(candidate.id).status).toBe('candidate');
+    vi.stubEnv('SKILL_FIRST_MODE', 'off');
+    expect(() => boundary.blockInvalidSkillAttribution(created)).toThrow('SKILL_EVALUATION_DISABLED');
   });
 
   it('checks every selected composite package assignment without requiring a false single-skill attribution', () => {

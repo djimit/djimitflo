@@ -114,18 +114,41 @@ not silently replaced. Keep admitted package directories read-only to runtime
 workers. This feature neither deploys nor merges and remains off until explicitly
 enabled in an authorized environment.
 
-## Release hold from independent review (2026-10-31)
+## Candidate evaluation and promotion evidence
 
-Provider → promotion → reuse is **not yet end-to-end verified**. Do not enable this
-slice on the assumption that the tests prove that chain. Independent review of PR
-#1114 reproduced a promotion incompatibility: immutable package versions have
-separate skill IDs, while the existing gate queries candidate and baseline hashes
-under one skill ID. A diagnostic fixture with 30 delivered rows for each version
-was rejected with candidate=30, baseline=0. Those fixtures are not promotion evidence.
+An operator-admitted candidate can be evaluated through the existing native task
+API without live registry routing. Set `metadata.skillId` and
+`metadata.skill_evaluation_package_hash` to its exact loaded package; include its
+instructions and the exact JSON-encoded selected payload in the task description.
+The engine rechecks admission and bytes before dispatch; existing policy and
+execution approval still apply. This is an explicit evaluation task, not a way to
+mark a candidate approved. `off` and `shadow` refuse this evaluation path.
 
-A repair must bind an explicit compatible baseline identity and its hash without
-reducing sample, improvement, OpenMythos or training requirements. A first family
-also needs an explicit independently evaluated baseline. In addition, normal task
-outcomes are recorded before later checker evidence; independent verification
-must settle the existing outcome without duplicating or rewriting usage evidence.
-Until those paths are verified, keep the feature off and the release blocked.
+The engine records the full delivered package hash. Trusted `system` test-result
+receipts must bind `skill_package_id`, `skill_content_hash` and `skill_package_hash`.
+Both initial and late verification use the same settlement path. It updates one
+existing task/skill/hash outcome, preserves measured usage, and refuses ambiguous
+retry attribution. Missing/wrong hashes or unverified execution never become a
+successful skill improvement. A delivery receipt alone proves no successful tool
+execution; the independent checker must verify the actual output and package.
+
+For immutable versions, promotion accepts `baseline_capability_id` together with
+`baseline_skill_content_hash`. Baseline and candidate must have the same logical
+family, compatible input/output contracts, dependencies and permission scope.
+Each cohort uses its own immutable skill ID and full package hash. Include both
+`skill_outcomes:<skill-id>:<instruction-hash>` references. Readiness returns the
+same pinned promotion input. Existing 30-per-cohort, improvement, OpenMythos,
+training and security requirements remain unchanged. A first family needs an
+honest independently evaluated reference version; it has no bootstrap exemption.
+
+## Activation hold (2026-10-31)
+
+The independent review's immutable-baseline and retired-goal defects are repaired;
+full provider → promotion → approved reuse is still **not verified**. Release with
+`SKILL_FIRST_MODE=off` is distinct from activation. The installed local OpenMythos
+corpus has `certification_ready:false`, and the real training runner fails with
+six split recommendations. Those observations are local prerequisites, not a claim
+that production has the same files. Production had no training runner configured
+at the last check. Do not set eligibility flags, reduce thresholds or manufacture
+outcomes to obtain approval. Retain the activation hold until genuine evidence
+satisfies every existing gate.
