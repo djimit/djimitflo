@@ -30,6 +30,7 @@ import { extraRepoChecks, goalExtraRepo, goalRepoSlug, primaryRepo, repoSkillPre
 import { recordMakerCall } from './model-call-ledger';
 import { strategyGenomeFor } from './genome-registry';
 import { banditSpecies, chooseSpecies, speciesKey } from './runtime-bandit';
+import { recordFactorySpecialist } from './capability-factory';
 import { recordFitnessShadow } from './fitness-view';
 import { buildProvenance, provenanceJson } from './judgment-provenance';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
@@ -647,6 +648,8 @@ export class LoopDaemon {
             `Genome ${strategy.id} would add ${strategy.lines.length} strategy line(s) to this maker`, { genome_id: strategy.id, lines: strategy.lines, maker_lease_id: makerLease.id });
         }
       } catch { /* attribution is best-effort */ }
+      // capability factory (CAPABILITY_FACTORY_MODE=on): the species chosen above is the run's `specialist` (no-op otherwise)
+      if (!makerAlreadyDone) try { recordFactorySpecialist(this.db, run.id, makerLease.id); } catch { /* attribution is best-effort */ }
 
       // 6. Execute the maker (runs the runtime — codex/opencode/pi).
       const mutationLane = Object.keys(mutationCheckEnv(this.db, goal.id)).length > 0;
