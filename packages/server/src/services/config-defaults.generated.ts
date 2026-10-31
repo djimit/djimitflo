@@ -4,6 +4,7 @@
 /** Flag → its documented code default (runbook prose, clipped). Read by runtime-config-view (GET /api/health/config). */
 export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   ACE_001_MODE: 'off (`on`)',
+  ADVISORY_EXPOSURE_MODE: 'off',
   ARENA_GATE_ENABLED: 'off',
   ASG_MODE: 'off (`shadow`, `on`)',
   AUTONOMOUS_LURES_ENABLED: 'off',
@@ -16,6 +17,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   COMMONS_FALSIFIER_MODE: 'off (`shadow`)',
   COMMONS_GROUNDING_APPLY: 'off',
   COMMONS_INVESTIGATION_MODE: 'off (`shadow`, `on`)',
+  CONTENT_DRAFTS_MODE: 'off (`shadow`, `on`)',
   DEAD_CODE_LANE_ENABLED: 'off',
   DEAD_CODE_MAX_PER_DAY: '2 (also the in-flight cap)',
   DEPENDENCY_LANE_MAX_PER_DAY: '4 (lane merges per UTC day; tick every `DEPENDENCY_LANE_INTERVAL_MS`, default 3 h)',
@@ -46,6 +48,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   FINDING_FIX_MAX_PER_DAY: '2 (in flight: 1)',
   FITNESS_SHADOW_ENABLED: 'off',
   FLEET_EVENT_SIGNATURES: 'off (`shadow`, `enforce`)',
+  FLEET_REPAIR_MODE: 'off (`shadow`; `on` runs as shadow)',
   GENOME_APPLY_MODE: 'unset (only `shadow` exists)',
   GENOME_FIRE_CHECK: 'off',
   GRADED_CONTEST_MODE: 'off (`shadow`: when ≥ 2 evolve makers passed every gate, the graded winner — highest lease graded score, none = lowest,…',
@@ -74,6 +77,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   LOOP_AUTO_MERGE_REPOS: 'the primary repo (`GITHUB_REPOSITORY`) only',
   LOOP_AUTO_MERGE_TEST_ONLY: 'off (`shadow` records `would_merge` per loop PR; `act` marks ready, updates a behind branch, waits for green checks and…',
   LOOP_AUTO_MERGE_VALUE_GATE: 'off (`shadow`, `on`)',
+  LOOP_AUTO_MERGE_VALUE_GATE_LANES: '\'\' = all lanes (comma list of `exports`, `test-gap`, `mutation`, `other`, e.g. `exports`)',
   LOOP_BANDIT_ENABLED: 'off',
   LOOP_BANDIT_MAX_SHARE: '0.1',
   LOOP_BANDIT_SPECIES: 'unset',
@@ -137,10 +141,12 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
 
 /** Env flags that arm a background scheduler at boot (HEARTBEAT.md). */
 export const SCHEDULER_FLAGS: readonly string[] = [
+  'ADVISORY_EXPOSURE_MODE',
   'COMMITTEE_SWARM_ENABLED',
   'COMMONS_FALSIFIER_MODE',
   'COMMONS_INVESTIGATION_MODE',
   'COMPLIANCE_REPORT_SCHEDULER_ENABLED',
+  'CONTENT_DRAFTS_MODE',
   'DEAD_CODE_LANE_ENABLED',
   'DEPENDENCY_LANE_MODE',
   'DJIMITSEC_SCAN_TRIGGERS',
@@ -149,6 +155,7 @@ export const SCHEDULER_FLAGS: readonly string[] = [
   'EVOLUTION_ESTIMATORS_ENABLED',
   'EVOLUTION_GYM_ENABLED',
   'FINDING_FIX_LANE',
+  'FLEET_REPAIR_MODE',
   'FRONTIER_EXPERTS_SCHEDULER_ENABLED',
   'GYM_ORPHAN_SWEEP',
   'LOOP_AUTO_MERGE_TEST_ONLY',
