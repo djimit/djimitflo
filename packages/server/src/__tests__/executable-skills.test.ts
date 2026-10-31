@@ -14,7 +14,7 @@ import { LoopWorkerExecutorService } from '../services/loop-worker-executor-serv
 import type { LoopService } from '../services/loop-service';
 import { GoalService } from '../services/goal-service';
 import { ensureSkillCardTable } from '../services/skill-distillation';
-import type { ExecutionEngine } from '../execution/execution-engine';
+import { ExecutionEngine } from '../execution/execution-engine';
 import type { LoopRunRecord, WorkerLeaseRecord } from '../services/loop-types';
 
 let db: Database.Database;
@@ -174,6 +174,49 @@ describe('executable package admission and reuse', () => {
       expect(() => service.capture('increment-v1-0-0', 'disabled-capture', 'fixture')).toThrow('SKILL_FIRST_EXECUTION_DISABLED');
       expect(db.prepare('SELECT COUNT(*) n FROM swarm_capabilities').get()).toEqual({ n: 0 });
     }
+  });
+
+  it('admits a newly approved package after engine construction and records its current delivered hash', () => {
+    const engine = new ExecutionEngine(db, undefined, dir);
+    const boundary = engine as unknown as {
+      blockInvalidSkillAttribution(task: ReturnType<typeof createNativeTask>): string | null;
+      recordSkillDeliveryReceipt(task: ReturnType<typeof createNativeTask>, runtime: string): void;
+      recordSkillOutcome(taskId: string, session: undefined, completed: boolean, durationMs: number, tokens: number | null): void;
+    };
+    writePackage(); const candidate = capture('increment-v1-0-0'); fixtureApprove(candidate.id);
+    const created = createNativeTask(db, { id: 'late-package', title: 'late package', description: 'run', metadata: { skill_execution: { selected: [selection(candidate.id)], tools: ['Bash'], input: { value: 1 } } } });
+    expect(boundary.blockInvalidSkillAttribution(created)).toBeNull();
+    boundary.recordSkillDeliveryReceipt(created, 'codex');
+    const receipt = db.prepare("SELECT details FROM execution_evidence WHERE task_id=? AND json_extract(metadata, '$.reason')='skill_delivery_receipt'").get(created.id) as { details: string };
+    expect(JSON.parse(receipt.details)).toMatchObject({ skill_id: 'increment-v1-0-0', skill_content_hash: service.load('increment-v1-0-0').skill.contentHash, delivery_state: 'delivered', delivered_sha256: hash(service.load('increment-v1-0-0').skill.instructions) });
+    boundary.recordSkillOutcome(created.id, undefined, true, 25, null);
+    expect(db.prepare('SELECT skill_id,skill_content_hash,tokens_used,success FROM skill_outcomes WHERE task_id=?').get(created.id)).toEqual({ skill_id: 'increment-v1-0-0', skill_content_hash: service.load('increment-v1-0-0').skill.contentHash, tokens_used: null, success: 0 });
+    vi.stubEnv('DJIMITFLO_SKILL_ALLOWLIST', 'unrelated');
+    expect(() => boundary.blockInvalidSkillAttribution(created)).toThrow('SKILL_NOT_ADMITTED');
+  });
+
+  it('checks every selected composite package assignment without requiring a false single-skill attribution', () => {
+    const engine = new ExecutionEngine(db, undefined, dir);
+    const boundary = engine as unknown as {
+      blockInvalidSkillAttribution(task: ReturnType<typeof createNativeTask>): string | null;
+      recordSkillOutcome(taskId: string, session: undefined, completed: boolean, durationMs: number, tokens: number | null): void;
+    };
+    db.prepare("INSERT INTO agents(id,name,description,status,capabilities) VALUES ('composite-agent','Composite fixture','fixture','idle','[]')").run();
+    const ids = ['first-v1-0-0', 'second-v1-0-0'];
+    const selected = ids.map(id => {
+      writePackage(id); const candidate = capture(id); fixtureApprove(candidate.id);
+      db.prepare('INSERT INTO agent_skills(agent_id,skill_id,enabled) VALUES (?,?,1)').run('composite-agent', id);
+      return selection(candidate.id);
+    });
+    const created = createNativeTask(db, { id: 'composite-package', title: 'composite', description: 'run', agent_id: 'composite-agent', metadata: { skill_execution: { selected, tools: ['Bash'], input: { value: 1 } } } });
+    expect(created.metadata?.skillId).toBeUndefined();
+    expect(created.metadata?.skill_package_ids).toEqual(ids);
+    expect(boundary.blockInvalidSkillAttribution(created)).toBeNull();
+    boundary.recordSkillOutcome(created.id, undefined, true, 25, 10);
+    expect(db.prepare('SELECT COUNT(*) n FROM skill_outcomes WHERE task_id=?').get(created.id)).toEqual({ n: 0 });
+    db.prepare('DELETE FROM agent_skills WHERE agent_id=? AND skill_id=?').run('composite-agent', ids[1]);
+    expect(boundary.blockInvalidSkillAttribution(created)).not.toBeNull();
+    expect(db.prepare('SELECT COUNT(*) n FROM skill_outcomes WHERE task_id=?').get(created.id)).toEqual({ n: 0 });
   });
 
   it('discovers SQL metadata without opening instructions or package files', () => {

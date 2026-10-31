@@ -86,8 +86,11 @@ prompt. Payloads carry the selected files to the existing isolated runtime
 workspace rather than requiring a remote maker to access server filesystem paths.
 Packages are limited to 64 KB of encoded payload; total composed instructions to
 128 KB. Materialization and execution use existing permitted tools; declarations
-never grant additional privileges. Assign skills to agents through the existing
-assignment interface when agent attribution is used. Execution rechecks current
+never grant additional privileges. Assign every component skill to the agent through the existing assignment
+interface when an agent is selected. Newly admitted versions are read at task
+execution without refreshing the shared legacy loader or restarting the engine.
+Composed tasks retain whole-workflow outcomes and package receipts; a successful
+workflow is not counted as an independent successful outcome for every skill. Execution rechecks current
 package bytes, registry status and exact rendered instructions immediately before
 starting the existing adapter, including approval resumes/retries.
 

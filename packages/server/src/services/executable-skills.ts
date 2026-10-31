@@ -171,7 +171,7 @@ export class ExecutableSkills {
       `Run node --test .djimitflo/skills/${p.contract.id}/${p.contract.test}; record real exit/output evidence.`,
     ].join('\n')).join('\n\n');
     if (Buffer.byteLength(instructions) > 128000) throw new Error('SKILL_CONTEXT_TOO_LARGE');
-    return { instructions, receipts, tools: [...new Set(packages.flatMap((p) => p.skill.tools))],
+    return { instructions, receipts, skillIds: packages.map((p) => p.skill.id), tools: [...new Set(packages.flatMap((p) => p.skill.tools))],
       skillId: packages.length === 1 ? packages[0].skill.id : undefined };
   }
 
@@ -223,12 +223,13 @@ export function skillAssignment(db: Database, description: string, metadata: Rec
   const result = new ExecutableSkills(db).compose(request.selected, request.tools, request.input);
   if (metadata.skillId && metadata.skillId !== result.skillId) throw new Error('SKILL_ATTRIBUTION_CONFLICT');
   return { description: `${description}\n\n## Selected executable skills\nThese instructions do not grant permissions beyond the existing task policy.\n${result.instructions}`,
-    metadata: { ...metadata, ...(result.skillId ? { skillId: result.skillId } : {}), skill_package_receipts: result.receipts } };
+    metadata: { ...metadata, ...(result.skillId ? { skillId: result.skillId } : {}), skill_package_receipts: result.receipts, skill_package_ids: result.skillIds } };
 }
 
 /** Recheck bytes and registry status immediately before every runtime start, including approval resumes/retries. */
-export function assertSkillAssignmentCurrent(db: Database, task: { description: string; metadata: Record<string, unknown> }): void {
-  if (!task.metadata.skill_execution) return;
+export function assertSkillAssignmentCurrent(db: Database, task: { description: string; metadata: Record<string, unknown> }): string[] {
+  if (!task.metadata.skill_execution) return [];
   const expected = skillAssignment(db, '', task.metadata);
-  if (!task.description.endsWith(expected.description) || JSON.stringify(task.metadata.skill_package_receipts) !== JSON.stringify(expected.metadata.skill_package_receipts)) throw new Error('SKILL_ASSIGNMENT_CHANGED');
+  if (!task.description.endsWith(expected.description) || JSON.stringify(task.metadata.skill_package_receipts) !== JSON.stringify(expected.metadata.skill_package_receipts) || JSON.stringify(task.metadata.skill_package_ids) !== JSON.stringify(expected.metadata.skill_package_ids)) throw new Error('SKILL_ASSIGNMENT_CHANGED');
+  return expected.metadata.skill_package_ids as string[];
 }
