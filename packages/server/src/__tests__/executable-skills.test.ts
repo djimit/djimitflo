@@ -346,6 +346,24 @@ describe('executable package admission and reuse', () => {
     expect(db.prepare('SELECT COUNT(*) n FROM goals').get()).toEqual({ n: 1 });
   });
 
+  it('requests a new immutable version after retirement without reusing completed work', () => {
+    const first = service.request('increment-number', 'Implement', 'fixture-owner');
+    if (first.status !== 'implementation_required') throw new Error('missing goal');
+    writePackage('increment-number-v1-0-0');
+    const old = capture('increment-number-v1-0-0');
+    db.prepare("UPDATE swarm_capabilities SET status='disabled' WHERE id=?").run(old.id);
+    db.prepare("UPDATE goals SET status='completed' WHERE id=?").run(first.goal_id);
+    const next = service.request('increment-number', 'Replace retired package', 'fixture-owner');
+    expect(next.status).toBe('implementation_required');
+    if (next.status !== 'implementation_required') throw new Error('missing replacement');
+    expect(next.goal_id).not.toBe(first.goal_id);
+    const goal = new GoalService(db).getGoalById(next.goal_id);
+    expect(goal.metadata.skill_factory_package_id).toBe('increment-number-v1-0-1');
+    expect(goal.acceptance_criteria.join(' ')).toContain('version=1.0.1');
+    expect(service.request('increment-number', 'Repeat replacement', 'fixture-owner')).toEqual(next);
+    expect(new SwarmIntelligenceService(db).getCapability(old.id).status).toBe('disabled');
+  });
+
   it('bounds logical capability names so generated versioned package IDs remain admissible', () => {
     expect(() => service.request('x'.repeat(74), 'bounded task', 'fixture')).toThrow('SKILL_CAPABILITY_NAME_TOO_LONG');
     expect(db.prepare('SELECT COUNT(*) n FROM goals').get()).toEqual({ n: 0 });

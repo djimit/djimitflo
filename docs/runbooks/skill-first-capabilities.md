@@ -16,7 +16,10 @@ input/output contracts and at most eight pinned skills in a sequential compositi
 Package IDs end in their version, e.g. `text-count-v1-0-0`, with `version: "1.0.0"`.
 The logical `capabilities` name stays stable. New versions use new directories;
 old versions and evidence remain available. Existing registry deprecation disables
-a version; selecting the previous approved version is rollback.
+a version; selecting the previous approved version is rollback. If every matching
+version is retired, a new request reserves the next patch version and deduplicates
+only unfinished work for that package. Completed goals and retired packages remain
+historical; replacement does not reactivate or overwrite them.
 
 Every package contains `SKILL.md` and `skill.contract.json`. The contract schema is
 `executableSkillContract` in `services/executable-skills.ts`; factory goals include
@@ -110,3 +113,19 @@ then use the operator's existing recovery procedure. A failed or cancelled run i
 not silently replaced. Keep admitted package directories read-only to runtime
 workers. This feature neither deploys nor merges and remains off until explicitly
 enabled in an authorized environment.
+
+## Release hold from independent review (2026-10-31)
+
+Provider → promotion → reuse is **not yet end-to-end verified**. Do not enable this
+slice on the assumption that the tests prove that chain. Independent review of PR
+#1114 reproduced a promotion incompatibility: immutable package versions have
+separate skill IDs, while the existing gate queries candidate and baseline hashes
+under one skill ID. A diagnostic fixture with 30 delivered rows for each version
+was rejected with candidate=30, baseline=0. Those fixtures are not promotion evidence.
+
+A repair must bind an explicit compatible baseline identity and its hash without
+reducing sample, improvement, OpenMythos or training requirements. A first family
+also needs an explicit independently evaluated baseline. In addition, normal task
+outcomes are recorded before later checker evidence; independent verification
+must settle the existing outcome without duplicating or rewriting usage evidence.
+Until those paths are verified, keep the feature off and the release blocked.
