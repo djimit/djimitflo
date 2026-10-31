@@ -64,6 +64,7 @@ import { capabilityFactoryEvidence } from './capability-factory';
  * Aggregates only: no prompts, diffs, tokens or hosts.
  */
 export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
+  { name: 'SKILL_FIRST_MODE', acting: true },
   { name: 'DJIMITSEC_SCAN_MODE', acting: true },
   { name: 'DJIMITSEC_SCAN_TRIGGERS', acting: true },
   { name: 'RUNTIME_PROCESS_GROUP_KILL', acting: true },
