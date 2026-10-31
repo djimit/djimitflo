@@ -56,7 +56,14 @@ interface RoutingOptimization {
   expectedCostSavings: number;
 }
 
+/** The highest confidence getLoopTuning can report (min(0.9, 0.3 + 0.03 · episodes)): a higher minimum can never be met */
+export const META_TUNING_MAX_CONFIDENCE = 0.9;
+
+/** re-20261030 B candidate 4: whether applied tunings are consumed, and why not */
+interface MetaTuningState { active: boolean; min_confidence: number; max_reachable_confidence: number; reason: string | null }
+
 interface MetaStats {
+  tuning: MetaTuningState;
   totalDecisions: number;
   autoTuningsApplied: number;
   failuresPredicted: number;
@@ -224,7 +231,7 @@ export class MetaOrchestrationService {
       recommendedConcurrency: concurrency,
       recommendedBudget: { ...(maxTokens !== undefined ? { maxTokens } : {}), maxRuntimeMs },
       recommendedGateThresholds: { diffMaxLines, minSuccessRate: Math.max(0.5, successRate - 0.1) },
-      confidence: Number(Math.min(0.9, 0.3 + episodes.length * 0.03).toFixed(3)),
+      confidence: Number(Math.min(META_TUNING_MAX_CONFIDENCE, 0.3 + episodes.length * 0.03).toFixed(3)),
     };
   }
 
@@ -420,7 +427,7 @@ export class MetaOrchestrationService {
     for (const { goal_type } of goalTypes) {
       const tuning = this.boundTuning(this.getLoopTuning(goal_type));
       const shouldApply = tuning.confidence >= this.minimumTuningConfidence();
-      const previous = this.getActiveLoopTuning(goal_type);
+      const previous = this.storedTuning(goal_type);
       const now = new Date().toISOString();
 
       this.db.transaction(() => {
@@ -454,7 +461,24 @@ export class MetaOrchestrationService {
     return { evaluated: goalTypes.length, applied };
   }
 
+  /**
+   * re-20261030 (B §3, candidate 4): META_TUNING_MIN_CONFIDENCE above META_TUNING_MAX_CONFIDENCE means no tuning can apply —
+   * the tuner is off, so the last applied row (kept as evidence) is not consumed either; before, it stayed the default maker
+   * concurrency and wall-clock budget (frozen, not off).
+   */
+  tuningState(): MetaTuningState {
+    const min = this.minimumTuningConfidence();
+    const active = min <= META_TUNING_MAX_CONFIDENCE;
+    return { active, min_confidence: min, max_reachable_confidence: META_TUNING_MAX_CONFIDENCE,
+      reason: active ? null : `off: META_TUNING_MIN_CONFIDENCE ${min} > reachable ${META_TUNING_MAX_CONFIDENCE}; applied tunings are not consumed` };
+  }
+
   getActiveLoopTuning(goalType: string): LoopTuning | null {
+    return this.tuningState().active ? this.storedTuning(goalType) : null;
+  }
+
+  /** the stored row, consumed or not (the tuning log's previous_value) */
+  private storedTuning(goalType: string): LoopTuning | null {
     const row = this.db.prepare('SELECT tuning_json FROM meta_active_loop_parameters WHERE goal_type = ?').get(goalType) as { tuning_json?: string } | undefined;
     return row?.tuning_json ? JSON.parse(row.tuning_json) as LoopTuning : null;
   }
@@ -484,6 +508,7 @@ export class MetaOrchestrationService {
 
   getStats(): MetaStats {
     return {
+      tuning: this.tuningState(),
       totalDecisions: this.totalDecisions,
       autoTuningsApplied: this.autoTuningsApplied,
       failuresPredicted: this.failuresPredicted,

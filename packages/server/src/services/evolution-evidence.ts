@@ -52,6 +52,9 @@ import { procedureSelectionEvidence } from './procedure-selector';
 import { pl001Evidence } from './pl-001';
 import { memoryDeliveryEvidence } from './memory-delivery-receipts';
 import { realRunSql } from './synthetic-runs';
+import { fleetRepairEvidence } from './fleet-repair';
+import { advisoryExposureEvidence } from './advisory-exposure';
+import { contentDraftsEvidence } from './content-drafts';
 
 /**
  * RX-1 (Phase F, operator 2026-10-04): one read-only snapshot of the evolution loop's evidence — the flags that steer it,
@@ -69,7 +72,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'DREAM_EVOLUTION_ENABLED', acting: true }, { name: 'DREAM_TRIAL_MUTANTS', acting: true }, { name: 'DREAM_TRIAL_MUTANT_TIERS', acting: true },
   { name: 'DREAM_PROMOTION_ALPHA', acting: true }, { name: 'TRIAL_DIAGNOSTICS_ENABLED', acting: false }, { name: 'TRIAL_HEADROOM_PRECHECK', acting: true }, { name: 'DREAM_PROMOTION_RULE', acting: false }, { name: 'DREAM_TRIAL_WRITE_TEST_HOLDOUT', acting: true }, { name: 'DREAM_EVIDENCE_MUTATIONS', acting: true }, { name: 'GYM_HOLDOUT_EPOCH', acting: true }, { name: 'GENOME_APPLY_MODE', acting: false },
   { name: 'ARENA_GATE_ENABLED', acting: true }, { name: 'DISCOVERY_RELEVANCE_SOURCES', acting: true }, { name: 'DISCOVERY_RELEVANCE_PAUSED', acting: true }, { name: 'COMMITTEE_SWARM_ENABLED', acting: true }, { name: 'COMMONS_GROUNDING_APPLY', acting: true }, { name: 'SOCIAL_AUTOPILOT_FORECAST_ONLY', acting: true }, { name: 'AUTONOMOUS_LURES_ENABLED', acting: true },
-  { name: 'LOOP_AUTO_DRAFT_PR_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_TEST_ONLY', acting: true }, { name: 'LOOP_AUTO_MERGE_MAX_PER_DAY', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK_HOURS', acting: true }, { name: 'LOOP_AUTO_MERGE_VALUE_GATE', acting: true }, { name: 'LOOP_AUTO_APPROVE_TEST_GAP', acting: true }, { name: 'ORACLE_LANES_AUTO_APPROVE', acting: true },
+  { name: 'LOOP_AUTO_DRAFT_PR_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_TEST_ONLY', acting: true }, { name: 'LOOP_AUTO_MERGE_MAX_PER_DAY', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK', acting: true }, { name: 'LOOP_AUTO_MERGE_RECHECK_HOURS', acting: true }, { name: 'LOOP_AUTO_MERGE_VALUE_GATE', acting: true }, { name: 'LOOP_AUTO_MERGE_VALUE_GATE_LANES', acting: true }, { name: 'LOOP_AUTO_APPROVE_TEST_GAP', acting: true }, { name: 'ORACLE_LANES_AUTO_APPROVE', acting: true },
   { name: 'LOOP_MEMORY_RULES_ENABLED', acting: true }, { name: 'EVOLUTION_GYM_REMOTE_MAX_PER_DAY', acting: true }, { name: 'DJIMITFLO_PUBLIC_URL', acting: false },
   { name: 'GYM_TIER_PROBE_ENABLED', acting: false }, { name: 'GYM_TIER_PROBE_TIERS', acting: false }, { name: 'GYM_TIER_PROBE_EVERY', acting: false },
   { name: 'HACK_DETECTOR_MODE', acting: false }, { name: 'GYM_CANARY_RATE', acting: false }, { name: 'GYM_FAILURE_TASKS_ENABLED', acting: false }, { name: 'SPEC_GAP_LANE', acting: false },
@@ -77,6 +80,7 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'DEPENDENCY_LANE_MODE', acting: true }, { name: 'DEPENDENCY_LANE_MAX_PER_DAY', acting: true },
   { name: 'DEAD_CODE_LANE_ENABLED', acting: true }, { name: 'DEAD_CODE_MAX_PER_DAY', acting: true },
   { name: 'FINDING_FIX_LANE', acting: true }, { name: 'FINDING_FIX_MAX_PER_DAY', acting: true },
+  { name: 'ADVISORY_EXPOSURE_MODE', acting: true },
   { name: 'REQUEUE_AUTO_MODE', acting: true }, { name: 'REQUEUE_AUTO_MAX_PER_TICK', acting: true },
   { name: 'GYM_PROD_GATES', acting: false },
   { name: 'SUBSCRIPTION_GYM_SPECIES', acting: true }, { name: 'SUBSCRIPTION_GYM_MAX_PER_DAY', acting: true }, { name: 'SUBSCRIPTION_GYM_LIMIT_BACKOFF_MS', acting: true }, { name: 'OLLAMA_OUTAGE_FALLBACK_RUNTIME', acting: true },
@@ -119,6 +123,8 @@ export const EVOLUTION_FLAGS: Array<{ name: string; acting: boolean }> = [
   { name: 'FLEET_EVENT_SIGNATURES', acting: true },
   { name: 'EXTRA_REPOS_ENABLED', acting: true }, { name: 'LOOP_AUTO_MERGE_REPOS', acting: true },
   { name: 'MEMORY_DELIVERY_RECEIPTS', acting: true },
+  { name: 'FLEET_REPAIR_MODE', acting: false },
+  { name: 'CONTENT_DRAFTS_MODE', acting: true },
 ];
 
 /** Two-sided Fisher exact test on [[a, b], [c, d]]: the summed probability of every table with the same margins that is no more likely than this one. */
@@ -468,7 +474,7 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // R2 (FAIL_BEFORE_PASS_AFTER_MODE, shadow): check verdict counts per run and 14-d survival per arm (decision at n >= 40 settled)
     fail_before_pass_after: failBeforePassAfterEvidence(db, env, fisherExact, now),
     // ACE-001 (ACE_001_MODE): oracle-lane maker outcomes per retrieval × example-selection arm (pre-registered, collecting until target)
-    ace_001: ace001Evidence(db, since, env),
+    ace_001: ace001Evidence(db, since, env, now),
     ste_001: ste001Evidence(db, since, env),
     // MAKER-DEPS-001 (MAKER_DEPS_001_MODE): ITT verified completion per dependency-preparation arm (pre-registered, collecting)
     // MAKER_WARM_DEPS (nested; blocked_by_experiment while MAKER-DEPS-001 runs): leases per deps_source
@@ -525,5 +531,12 @@ export function buildEvolutionEvidence(db: Database, env: NodeJS.ProcessEnv = pr
     // gated verified outcomes, one-sided exact McNemar, harm / stop rule, verdict and the procedure's lifecycle state
     pl_001: pl001Evidence(db, env, now),
     // CODE-004 (MEMORY_DELIVERY_RECEIPTS): memory-sync receipts per target × status (delivered / failed / unknown); null = no table (off)
-    memory_delivery: memoryDeliveryEvidence(db, env) };
+    memory_delivery: memoryDeliveryEvidence(db, env),
+    // Track B (FLEET_REPAIR_MODE, shadow): fleet jobs with >= 3 verified failures in 7 d + before/after success rate around a linked merged fix (read-only)
+    fleet_repair: fleetRepairEvidence(db, env, now),
+    // Track A (ADVISORY_EXPOSURE_MODE): latest verdict per EVE-V advisory (affected / not_affected / unknown), the affected list,
+    // ids not fetched yet and bump proposals by status; null counts before the first judgment (read-only)
+    advisory_exposure: advisoryExposureEvidence(db, env),
+    // track C (CONTENT_DRAFTS_MODE): content_draft judgments by decision, verifier pass rate per check, draft PRs opened, tokens (read-only)
+    content_drafts: contentDraftsEvidence(db, env, since) };
 }

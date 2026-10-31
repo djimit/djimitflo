@@ -31,6 +31,7 @@ import { startAutoRequeue } from '../services/auto-requeue';
 import { autoRequeueMaxPerTick, autoRequeueMode } from '../services/requeue-policy';
 import { DeadCodeSourceService, deadCodeLaneEnabled } from '../services/dead-code-source-service';
 import { FindingFixSourceService, findingFixMode } from '../services/finding-fix-source';
+import { AdvisoryExposureService, advisoryExposureMode } from '../services/advisory-exposure';
 import { EvolutionGymService, gymArmed } from '../services/evolution-gym-service';
 import { DreamStateService, dreamStateEnabled } from '../services/dream-state-service';
 import { NeedsGroundingTriageService, needsGroundingTriageEnabled } from '../services/needs-grounding-triage-service';
@@ -44,6 +45,7 @@ import { startEvidenceRoom } from '../services/commons-evidence-room';
 import { startInvestigationOutcomes } from '../services/commons-investigation';
 import { startCommonsFalsifier } from '../services/commons-falsifier';
 import { startSettlementExecution } from '../services/settlement-execution';
+import { startFleetRepair } from '../services/fleet-repair';
 import { startValueAllocator } from '../services/value-allocator';
 import { startDreamEvolution } from '../services/dream-evolution';
 import { gymOrphanSweepMode } from '../services/remote-gym-service';
@@ -176,6 +178,20 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     console.warn('⚠️  Finding-fix lane failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
+  // Advisory exposure (Track A): EVE-V advisory ids → OSV → lockfile verdicts (shadow judgments + feedback events); on: one
+  // bump proposal per affected (repo, package), <= 2/day, panel + human approval and merge. Default off.
+  try {
+    if (noteScheduler('advisory_exposure', 'ADVISORY_EXPOSURE_MODE', advisoryExposureMode() !== 'off', 3_600_000)) {
+      const advisory = new AdvisoryExposureService(db);
+      advisory.start();
+      registerRestart('advisory_exposure', () => { advisory.stop(); advisory.start(); });
+      lifecycleManager.register({ serviceName: 'AdvisoryExposure', stop: () => advisory.stop() });
+      console.log(`🛡️  Advisory exposure ${advisoryExposureMode()} (OSV <= 20 fetches/h, max 2 proposals/day).`);
+    }
+  } catch (error) {
+    console.warn('⚠️  Advisory exposure failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
   // Auto-requeue (REQUEUE_AUTO_MODE, requeue-policy.ts): requeues retryable failures once and dismisses the rest after 14 d,
   // so routine requeue rows leave the operator's /decisions queue. Default off; shadow records judgments only.
   try {
@@ -286,6 +302,14 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     if (stopSettlementExec) { lifecycleManager.register({ serviceName: 'SettlementExecution', stop: stopSettlementExec }); console.log('🧪 Settlement execution on (shadow, daily).'); }
   } catch (error) {
     console.warn('⚠️  Settlement execution failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // Track B EVE-V cron repair (shadow): fleet jobs with >= 3 verified agent.outcome failures in 7 d → one fleet_repair_candidate judgment / day. FLEET_REPAIR_MODE=shadow.
+  try {
+    const stopFleetRepair = startFleetRepair(db);
+    if (stopFleetRepair) { lifecycleManager.register({ serviceName: 'FleetRepair', stop: stopFleetRepair }); console.log('🔧 Fleet repair on (shadow, daily).'); }
+  } catch (error) {
+    console.warn('⚠️  Fleet repair failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // E4: shadow value allocator — one value_allocation judgment per UTC day (6-hourly tick); proposals never applied. VALUE_ALLOCATOR_MODE=shadow.
