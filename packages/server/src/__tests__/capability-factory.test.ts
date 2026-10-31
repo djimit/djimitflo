@@ -120,13 +120,13 @@ const pollEnv = () => ({ ...process.env, GITHUB_REPOSITORY: 'o/r', GITHUB_TOKEN:
 
 it('records the chosen maker runtime@model as the run specialist (factory runs only)', async () => {
   await mergedFactoryRun();
-  recordFactorySpecialist(db, 'run1', 'g1', 'm1');
+  recordFactorySpecialist(db, 'run1', 'm1');
   expect(JSON.parse((db.prepare("SELECT metadata FROM loop_runs WHERE id = 'run1'").get() as { metadata: string }).metadata).specialist).toBe('opencode@ollama/kimi');
 });
 
 it('a merged factory run registers the capability once, validated, with provenance; survival regression downgrades it', async () => {
   const { requestId, proposalId } = await mergedFactoryRun();
-  recordFactorySpecialist(db, 'run1', 'g1', 'm1');
+  recordFactorySpecialist(db, 'run1', 'm1');
   await checkLoopPrs(db, mergedFetch, pollEnv(), new Date('2026-10-31T00:00:00Z'));
   await checkLoopPrs(db, mergedFetch, pollEnv(), new Date('2026-10-31T06:00:00Z')); // still pending survival: polled again
   const caps = db.prepare("SELECT * FROM swarm_capabilities").all() as Array<{ id: string; status: string; metadata: string }>;
@@ -175,7 +175,7 @@ it('flag off: the request route creates nothing, a merge registers nothing, no s
   vi.stubEnv('CAPABILITY_FACTORY_MODE', 'on');
   await mergedFactoryRun();
   vi.stubEnv('CAPABILITY_FACTORY_MODE', 'off');
-  recordFactorySpecialist(db, 'run1', 'g1', 'm1');
+  recordFactorySpecialist(db, 'run1', 'm1');
   await checkLoopPrs(db, mergedFetch, pollEnv(), new Date('2026-10-31T00:00:00Z'));
   expect(count('SELECT COUNT(*) AS n FROM swarm_capabilities')).toBe(0);
   expect(JSON.parse((db.prepare("SELECT metadata FROM loop_runs WHERE id = 'run1'").get() as { metadata: string }).metadata).specialist).toBeUndefined();

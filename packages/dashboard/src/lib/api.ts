@@ -348,6 +348,8 @@ export interface EvolutionEvidence {
     affected: Array<{ advisory_id: string; repo: string; package: string; installed_version: string; first_fixed_version: string | null }>;
     pending: number | null; proposals: Record<string, number> | null; last_judged_at: string | null };
   content_drafts?: Record<string, unknown>;
+  /** capability factory (CAPABILITY_FACTORY_MODE): operator requests by status; null counts when unreadable (services/capability-factory.ts) */
+  capability_factory?: { mode: 'off' | 'on'; requests: Record<'reused' | 'proposed' | 'in_progress' | 'merged' | 'registered' | 'rejected', number> | null; registered_downgraded: number | null };
 }
 export type Pl001Verdict = 'SUPPORTED' | 'NOT_SUPPORTED' | 'INCONCLUSIVE' | 'STOPPED_FOR_HARM';
 export interface Pl001Paired { n_pairs: number; both_verified: number; b_only_B: number; c_only_A: number; neither: number; verified_A: number | null; verified_B: number | null;
