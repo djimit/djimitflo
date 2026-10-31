@@ -119,6 +119,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   SETTLEMENT_EXECUTION_MODE: 'off (`shadow`)',
   SHIPPED_CODE_SCAN_MODE: 'off (`shadow`: once a day (first run 15 min after boot) the installed runtime packages — `<node prefix>/lib/node_module…',
   SKILL_DISTILLATION_MODE: 'off (`shadow`)',
+  SKILL_FIRST_MODE: 'off (`shadow`, `on`)',
   SOCIAL_AUTOPILOT_FORECAST_ONLY: 'off',
   SPEC_GAP_LANE: 'off (`shadow`, `on`)',
   STE_001_MODE: 'off (`on`)',

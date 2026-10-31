@@ -2,6 +2,7 @@
  * Execution engine - orchestrates task execution, event persistence, and WebSocket broadcasting
  */
 
+import { assertSkillAssignmentCurrent } from '../services/executable-skills';
 import type { Database } from 'better-sqlite3';
 import {
   ApprovalRequestType,
@@ -677,6 +678,7 @@ export class ExecutionEngine {
           '$.execution_recovery_attempt', json(?)), updated_at = ? WHERE id = ?`)
           .run(JSON.stringify({ ...admission, event_id: eventId }), new Date().toISOString(), task.id);
       })();
+      assertSkillAssignmentCurrent(this.db, task);
       this.recordSkillDeliveryReceipt(task, activeExecutor.kind);
       const session = await activeExecutor.start(task, {
         ...(executionMetadata.model ? { model: String(executionMetadata.model) } : {}),
