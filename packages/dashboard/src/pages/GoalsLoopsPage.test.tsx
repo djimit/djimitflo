@@ -315,3 +315,28 @@ it('gym run panel: an evolution-gym run shows why it stopped, what is proven and
   expect(screen.queryByTestId('gym-run-panel')).toBeNull();
   expect(requests.mock.calls.filter(([url]) => String(url).endsWith('/gym-outcome'))).toHaveLength(1);
 });
+
+it('UX-28: renders the run list and opens the run named by ?run=<id>, not the newest one', async () => {
+  const second = { ...run, id: 'second-run', loop_name: 'second-loop', repository_path: '/tmp/second-fixture' };
+  const baseline = requests.getMockImplementation()!;
+  requests.mockImplementation((url: string, init?: RequestInit) => {
+    if (url === '/api/loops/runs') return Promise.resolve(response({ runs: [run, second] }));
+    if (url === '/api/loops/runs/second-run/review-bundle') return Promise.resolve(response({ run: second, leases: [], events: [] }));
+    return baseline(url, init);
+  });
+  window.history.pushState({}, '', '/goals-loops?run=second-run');
+  try {
+    render(<GoalsLoopsPage />);
+    expect((await screen.findByRole('heading', { level: 2 })).textContent).toBe('second-loop');
+    expect(screen.getByText('fixture-run').closest('button')).toBeTruthy(); // the list still shows every run
+    expect(screen.getByText('second-run').closest('button')).toBeTruthy();
+    expect(screen.getByText('/tmp/second-fixture')).toBeTruthy();
+    expect(await screen.findByText('No worker leases for this run.')).toBeTruthy();
+    expect(requests.mock.calls.some(([url]) => url === '/api/loops/runs/fixture-run/review-bundle')).toBe(false);
+    fireEvent.click(screen.getByText('fixture-run').closest('button')!);
+    expect((await screen.findByRole('heading', { level: 2 })).textContent).toBe('doc-drift-and-small-fix-loop');
+    expect(await screen.findByText('security_checker')).toBeTruthy();
+  } finally {
+    window.history.pushState({}, '', '/');
+  }
+});
