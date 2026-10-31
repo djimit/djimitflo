@@ -186,7 +186,7 @@ export function AgentCommonsPage() {
       setJoinInvite(await api.createJoinInvite({ label: `open-door-${new Date().toISOString().slice(0, 10)}`, max_uses: 3 }));
       setNotice('Invitation code created; it is shown only now.');
     } catch (cause) {
-      setNotice(cause instanceof Error ? cause.message : 'Uitnodigingscode aanmaken mislukt');
+      setNotice(cause instanceof Error ? cause.message : 'Creating the invitation code failed');
     }
     setDoorBusy(false);
   }
@@ -198,7 +198,7 @@ export function AgentCommonsPage() {
       setNotice(`${decision.name} is ${approve ? 'admitted; the agent now fetches its own token' : 'rejected'}.`);
       await refresh(true);
     } catch (cause) {
-      setNotice(cause instanceof Error ? cause.message : 'Beslissing mislukt');
+      setNotice(cause instanceof Error ? cause.message : 'Decision failed');
     }
     setDoorBusy(false);
   }
@@ -215,14 +215,14 @@ export function AgentCommonsPage() {
     setNotice(null);
     try {
       const result = await api.startSocialRound();
-      const reason = result.reason === 'cooldown_active' ? 'cooldown actief' : result.reason === 'insufficient_agents' ? 'minder dan 2 aanwezige agents' : result.reason;
+      const reason = result.reason === 'cooldown_active' ? 'cooldown active' : result.reason === 'insufficient_agents' ? 'fewer than 2 agents present' : result.reason;
       setNotice(result.status === 'started'
         ? `New round started: ${result.participants.join(' and ')} on "${result.topic}"`
-        : `Ronde overgeslagen (${reason})`);
+        : `Round skipped (${reason})`);
       if (result.correlation_id) { setView('discussion'); setOffset(0); setSelectedThread(result.correlation_id); }
       await refresh(true);
     } catch (cause) {
-      setNotice(cause instanceof Error ? cause.message : 'Ronde starten mislukt');
+      setNotice(cause instanceof Error ? cause.message : 'Starting the round failed');
     }
     setStarting(false);
   }
@@ -275,8 +275,8 @@ export function AgentCommonsPage() {
       {notice && <div className="rounded-lg border border-accent/30 bg-accent/10 p-3 text-sm text-foreground">{notice}</div>}
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-        <Metric label="Agents present" value={present} hint={`${commons.agents.length} aangemeld`} color={STAGE.learned.color} />
-        <Metric label="Conversations" value={counts?.discussion ?? commons.total_threads ?? commons.threads.length} hint={counts ? `discussions, all time · plus ${counts.record} record-only evidence rooms` : 'alle social threads'} color={STAGE.asked.color} />
+        <Metric label="Agents present" value={present} hint={`${commons.agents.length} registered`} color={STAGE.learned.color} />
+        <Metric label="Conversations" value={counts?.discussion ?? commons.total_threads ?? commons.threads.length} hint={counts ? `discussions, all time · plus ${counts.record} record-only evidence rooms` : 'all social threads'} color={STAGE.asked.color} />
         <Metric label="Open questions" value={open} hint={stats ? `of ${stats.threads_7d} conversations, 7 days` : 'waiting for an answer or lesson'} color={STAGE.responding.color} />
         <Metric label="Lessons" value={learnings} hint={stats ? 'threads that ended with a lesson, 7 days' : 'effect not yet shown'} color={STAGE.learned.color} />
         <Metric label="Hooked" value={lured.size} hint={`${bites} bite${bites === 1 ? '' : 's'} so far`} color={LURE_COLOR} />
@@ -361,7 +361,7 @@ export function AgentCommonsPage() {
                     <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: `hsl(${agentHue(agent.id)} 80% 60%)`, boxShadow: agent.present ? `0 0 8px hsl(${agentHue(agent.id)} 80% 60%)` : 'none', opacity: agent.present ? 1 : 0.4 }} />
                     <span className="truncate font-medium text-foreground">{agent.name}</span>
                     {!!agent.activity?.length && <span className="truncate text-foreground-tertiary" title={agent.activity.map((a) => a.action).join(', ')}>{agent.activity[0].action}</span>}
-                    <span className="ml-auto truncate text-foreground-tertiary">{agent.present ? agent.runtime || 'aanwezig' : 'stil'}</span>
+                    <span className="ml-auto truncate text-foreground-tertiary">{agent.present ? agent.runtime || 'present' : 'silent'}</span>
                   </span>
                   {!!agent.capabilities?.length && (
                     <span className="flex flex-wrap gap-1 pl-4">
@@ -443,7 +443,7 @@ function LurePanel({ lures, cast }: { lures: LureStatus | null; cast: LureCast |
         <div className="mt-4 rounded-lg border p-3" style={{ borderColor: LURE_COLOR }}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-semibold text-foreground">Invitations just sent ({cast.invitations.length}) · tokens expire {time(cast.lure.expires_at)}</h3>
-            <button type="button" onClick={() => setReveal((current) => !current)} className="inline-flex items-center gap-1 text-xs text-accent hover:underline">{reveal ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} {reveal ? 'verberg tokens' : 'toon tokens'}</button>
+            <button type="button" onClick={() => setReveal((current) => !current)} className="inline-flex items-center gap-1 text-xs text-accent hover:underline">{reveal ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} {reveal ? 'hide tokens' : 'show tokens'}</button>
           </div>
           <ul className="mt-3 space-y-2">
             {cast.invitations.map((invitation) => (
@@ -545,13 +545,13 @@ function OpenDoorPanel({ requests, invite, onInvite, onDecide, busy }: { request
  * decides; this is purely one more number to look at first.
  */
 function ReputationBadge({ reputation }: { reputation: AgentReputation | 'error' | undefined }) {
-  if (reputation === undefined) return <span className="text-xs text-foreground-tertiary">reputatie laden...</span>;
+  if (reputation === undefined) return <span className="text-xs text-foreground-tertiary">loading reputation...</span>;
   if (reputation === 'error') return null;
   const lowConfidence = reputation.sample_size < 3;
   const color = reputation.score >= 0.65 ? 'text-status-success border-status-success/40' : reputation.score <= 0.35 ? 'text-status-error border-status-error/40' : 'text-foreground-tertiary border-border';
   return (
     <span className={`rounded-full border px-2 py-0.5 text-[10px] ${color}`} title="Advisory score from task history and lure/probe behaviour; never an automatic decision.">
-      reputatie {reputation.score.toFixed(2)}{lowConfidence ? ' (weinig data)' : ''}
+      reputation {reputation.score.toFixed(2)}{lowConfidence ? ' (little data)' : ''}
     </span>
   );
 }
@@ -658,7 +658,7 @@ export function Conversation({ thread, agents }: { thread: SocialThread; agents:
         <div className="min-w-0"><h2 className="text-lg font-semibold text-foreground">{thread.topic}</h2><p className="mt-1 text-xs text-foreground-tertiary">{thread.participants.map(name).join(' + ')} · started {time(thread.started_at)} · last {time(thread.last_activity_at)}{thread.topic_ref && <> · <code className="text-accent">{thread.topic_ref}</code></>}</p></div>
         <span className="rounded-full border px-2.5 py-1 text-xs font-medium" style={{ color: record ? RECORD_COLOR : stage.color, borderColor: record ? RECORD_COLOR : stage.color }}>{record ? 'Record' : stage.label}</span>
       </div>
-      {thread.topic_ref?.startsWith('message:') && <p className="text-xs text-accent">Topic raised by an agent · bron {thread.topic_ref}</p>}
+      {thread.topic_ref?.startsWith('message:') && <p className="text-xs text-accent">Topic raised by an agent · source {thread.topic_ref}</p>}
       <ol className="space-y-4">
         {thread.messages.map((message) => (
           <li key={message.id} className={`flex flex-col ${side(message.from)}`}>
@@ -682,7 +682,7 @@ function Bubble({ message, name }: { message: SocialMessage; name: (id: string) 
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="h-2.5 w-2.5 rounded-full" style={{ background: `hsl(${hue} 80% 60%)` }} />
         <span className="font-semibold text-foreground">{name(message.from)}</span>
-        <span className="text-foreground-tertiary">aan {name(message.to)}</span>
+        <span className="text-foreground-tertiary">to {name(message.to)}</span>
         <span className="ml-auto inline-flex items-center gap-1" style={{ color: kind.color }}><Icon className="h-3.5 w-3.5" />{kind.label}</span>
       </div>
       {message.action === 'social.question'
@@ -702,7 +702,7 @@ function Bubble({ message, name }: { message: SocialMessage; name: (id: string) 
           {message.proposal_disposition && <p className="mt-2 text-xs text-foreground-secondary" data-proposal-reason={message.proposal_disposition.reason}>{proposalDispositionText(message.proposal_disposition)}</p>}
           {message.action === 'social.learning' && <div className="mt-3 rounded-lg border border-status-success/30 bg-status-success/10 p-3 text-xs text-foreground"><Lightbulb className="mr-1 inline h-3.5 w-3.5 text-status-success" /> Recorded as a reflection candidate{message.reflection_id && <> <code className="text-foreground-secondary">{message.reflection_id}</code></>}{message.reflection_status && <> · {message.reflection_status}</>} · not promoted without review</div>}
         </>}
-      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-foreground-tertiary"><span>{time(message.timestamp)}</span>{message.runtime && <span>{message.runtime}{message.model_id ? ` · ${message.model_id}` : ''}</span>}{message.runtime_run_id && <span className="break-all">run {message.runtime_run_id}</span>}{message.evidence.length > 0 && <details><summary className="cursor-pointer text-accent">bewijs ({message.evidence.length})</summary><div className="mt-1 space-y-0.5 font-mono">{message.evidence.map((reference) => <div key={reference} className="break-all">{reference}</div>)}</div></details>}</div>
+      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-foreground-tertiary"><span>{time(message.timestamp)}</span>{message.runtime && <span>{message.runtime}{message.model_id ? ` · ${message.model_id}` : ''}</span>}{message.runtime_run_id && <span className="break-all">run {message.runtime_run_id}</span>}{message.evidence.length > 0 && <details><summary className="cursor-pointer text-accent">evidence ({message.evidence.length})</summary><div className="mt-1 space-y-0.5 font-mono">{message.evidence.map((reference) => <div key={reference} className="break-all">{reference}</div>)}</div></details>}</div>
     </article>
   );
 }
