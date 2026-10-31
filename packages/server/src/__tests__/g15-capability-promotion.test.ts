@@ -127,6 +127,38 @@ describe('G15.2 capability promotion', () => {
     });
   });
 
+  it('compares immutable versions using an explicit compatible baseline capability', () => {
+    const common = { kind: 'skill' as const, owner: 'test', risk_ceiling: 'low' as const,
+      input_schema_ref: 'input', output_schema_ref: 'output', allowed_actions: ['Bash'],
+      forbidden_actions: ['deploy'], required_evidence: ['verified-task'], removal_strategy: 'disable' };
+    const contract = { format: 1, capabilities: ['counter'], input: { type: 'object' }, output: { type: 'object' }, dependencies: [] };
+    svc.createCandidate({ ...common, id: 'baseline', version: '0.0.1', metadata: {
+      package_hash: 'b'.repeat(64), agent_skill_id: 'counter-v0-0-1', agent_skill_version: '0.0.1', agent_skill_content_hash: 'baseline-hash',
+      executable_skill: { ...contract, id: 'counter-v0-0-1', version: '0.0.1' },
+    } });
+    svc.createCandidate({ ...common, id: 'candidate', version: '0.1.0', metadata: {
+      package_hash: 'c'.repeat(64), agent_skill_id: 'counter-v0-1-0', agent_skill_version: '0.1.0', agent_skill_content_hash: 'candidate-hash',
+      executable_skill: { ...contract, id: 'counter-v0-1-0', version: '0.1.0' },
+    } });
+    const evidence = seedSkillEvidence('counter-v0-1-0');
+    db.prepare("UPDATE skill_outcomes SET skill_id='counter-v0-0-1' WHERE skill_content_hash='baseline-hash'").run();
+    db.prepare("UPDATE skill_outcomes SET evidence_refs_json=? WHERE skill_content_hash='baseline-hash'").run(JSON.stringify(['skill_delivery:delivered', `skill_package_sha256:${'b'.repeat(64)}`]));
+    db.prepare("UPDATE skill_outcomes SET evidence_refs_json=? WHERE skill_content_hash='candidate-hash'").run(JSON.stringify(['skill_delivery:delivered', `skill_package_sha256:${'c'.repeat(64)}`]));
+    const input = { ...evidence, evidence_refs: [...evidence.evidence_refs, 'skill_outcomes:counter-v0-0-1:baseline-hash'], eval_score: 1, baseline_capability_id: 'baseline' };
+    expect(() => svc.promoteCapability('candidate', { ...input, baseline_skill_content_hash: 'wrong' })).toThrow('CAPABILITY_PROMOTION_SKILL_BASELINE_MISMATCH');
+    db.prepare("UPDATE swarm_capabilities SET allowed_actions_json='[\"Network\"]' WHERE id='baseline'").run();
+    expect(() => svc.promoteCapability('candidate', input)).toThrow('CAPABILITY_PROMOTION_SKILL_BASELINE_MISMATCH');
+    db.prepare("UPDATE swarm_capabilities SET allowed_actions_json='[\"Bash\"]' WHERE id='baseline'").run();
+    db.prepare("UPDATE skill_outcomes SET evidence_refs_json='[\"skill_delivery:delivered\",\"outcome_class:completed_unverified\"]' WHERE skill_content_hash='candidate-hash'").run();
+    expect(() => svc.promoteCapability('candidate', input)).toThrow('candidate=0:baseline=30:minimum=30');
+    db.prepare("UPDATE skill_outcomes SET evidence_refs_json=? WHERE skill_content_hash='candidate-hash'").run(JSON.stringify(['skill_delivery:delivered', `skill_package_sha256:${'c'.repeat(64)}`]));
+    expect(svc.skillEvolutionReadiness().find((row) => row.capability_id === 'candidate')?.promotion_input).toMatchObject({ baseline_capability_id: 'baseline' });
+    const promoted = svc.promoteCapability('candidate', input);
+    expect(promoted.metadata.promotion_skill_comparison).toMatchObject({
+      baseline_capability_id: 'baseline', baseline_skill_id: 'counter-v0-0-1', candidate_runs: 30, baseline_runs: 30,
+    });
+  });
+
   it('reports exact promotion readiness without running the final training gate', () => {
     svc.createCandidate({
       id: 'ready-skill', kind: 'skill', owner: 'test', version: '0.1.0', risk_ceiling: 'low',
