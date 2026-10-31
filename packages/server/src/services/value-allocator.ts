@@ -189,7 +189,8 @@ function collect(db: Database, since: string, until: string, schedulers: string[
     const a = acc(`llm:${r.p}`, 'llm_purpose'); a.runs++;
     if (r.shadow) a.shadowRows++; else a.otherRows++;
     const tin = num(r.tin); const tout = num(r.tout);
-    tokens(a, tin === null && tout === null ? null : (tin ?? 0) + (tout ?? 0), isLocalModel(r.provider, r.model));
+    // a one-sided report is unknown (E-assumptions A4/C13), never the known side + 0
+    tokens(a, tin === null || tout === null ? null : tin + tout, isLocalModel(r.provider, r.model));
   }
 
   for (const r of safeAll<{ judgment: string; mode: string; subject_type: string; decision: string; model: string | null; tin: number | null; tout: number | null }>(db,

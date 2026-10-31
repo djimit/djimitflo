@@ -3,9 +3,11 @@ import { recordAutoApproveShadow, testGapAutoApproveScope } from './autonomy-sha
 import { mutationCheckEnv } from './test-gap-source-service';
 import { deadCodeCheckEnv } from './dead-code-source-service';
 import { FINDING_FIX_DIFF_MAX, findingFixCheckEnv } from './finding-fix-source';
+import { ADVISORY_DIFF_MAX, advisoryGoalRefs } from './advisory-exposure';
 import { LoopService } from './loop-service';
 import { randomUUID } from 'node:crypto';
 import { WorkerLeaseRepo } from './loop-worker-lease-repo';
+import { CANCEL_LEASE_METADATA_SQL, cancelLeaseBind } from './lease-failure';
 import { swarmEventBus } from './swarm-event-bus';
 import { GoalDecomposer } from './goal-decomposer';
 import { ResourceScheduler } from './resource-scheduler';
@@ -105,6 +107,23 @@ export function reviewerRetryable(role: string, status: string | undefined, fail
  */
 export const reviewerStrategyBounded = (env: NodeJS.ProcessEnv = process.env): boolean => env.LOOP_REVIEWER_STRATEGY === 'bounded';
 const DECISIVE_VERDICTS = ['accepted', 'needs_revision', 'rejected'];
+
+/**
+ * A run the daemon set 'blocked' (failed gates) with its goal 'failed' is terminal; its still-prepared leases (manual
+ * reviewers nobody will run) are cancelled with the O2b cascade reason. Prod 2026-10-29: 10 such leases on 4 runs stayed
+ * 'prepared' for up to 48 h and counted as live (C-reliability 30-10 §1d). Running leases are never touched, and neither is
+ * a run any of whose leases still waits on a pending approval. Returns the number cancelled.
+ */
+export function cancelPreparedLeasesOfBlockedRun(db: Database, runId: string, now = new Date().toISOString()): number {
+  const meta = (col: string, key: string) => `json_extract(CASE WHEN json_valid(${col}) THEN ${col} ELSE '{}' END, '$.${key}')`;
+  return db.prepare(`UPDATE worker_leases SET status = 'cancelled', updated_at = ?, ${CANCEL_LEASE_METADATA_SQL}
+    WHERE loop_run_id = ? AND status = 'prepared'
+      AND EXISTS (SELECT 1 FROM loop_runs r JOIN goals g ON g.id = r.goal_id WHERE r.id = ? AND r.status = 'blocked' AND g.status = 'failed')
+      AND NOT EXISTS (SELECT 1 FROM worker_leases w JOIN approvals a ON a.status = 'pending'
+        AND (a.id = ${meta('w.metadata', 'approval_id')} OR a.task_id = ${meta('w.metadata', 'execution_task_id')})
+        WHERE w.loop_run_id = ?)`)
+    .run(now, ...cancelLeaseBind('cascade:run_blocked', now), runId, runId, runId).changes;
+}
 
 /**
  * G16+G19: ParallelLoopDaemon — continuous + parallel operation mode.
@@ -635,8 +654,9 @@ export class LoopDaemon {
       // strengthening a thin test to kill surviving mutants legitimately adds more lines (prod: 23-line test → 276 diff lines)
       // a dead-code removal is mostly deleted lines (units are <= 1 500); its gate checks adds <= 10 % of removed
       // a finding fix is one file, <= 30 changed lines (its gate); 60 leaves room for diff headers
+      // an advisory bump rewrites lockfile lines of the package and its dependencies (package files only, its check)
       const makerDiffMax = mutationLane ? 400 : Object.keys(deadCodeCheckEnv(this.db, goal.id)).length ? 2_000
-        : Object.keys(findingFixCheckEnv(this.db, goal.id)).length ? FINDING_FIX_DIFF_MAX : 200;
+        : Object.keys(findingFixCheckEnv(this.db, goal.id)).length ? FINDING_FIX_DIFF_MAX : advisoryGoalRefs(this.db, goal.id) ? ADVISORY_DIFF_MAX : 200;
       if (!makerAlreadyDone) await this.loops.executeWorker(run.id, {
         lease_id: makerLease.id,
         timeout_ms: makerTimeout,
@@ -981,6 +1001,9 @@ export class LoopDaemon {
         .run(goalStatus, new Date().toISOString(), goal.id);
       this.db.prepare('UPDATE loop_runs SET status = ?, updated_at = ? WHERE id = ?')
         .run(runStatus, new Date().toISOString(), run.id);
+      if (runStatus === 'blocked') {
+        try { cancelPreparedLeasesOfBlockedRun(this.db, run.id); } catch { /* best-effort: the orphan cleanup still settles them */ }
+      }
 
       swarmEventBus.emit('convergence', {
         daemon: 'goal_completed',
@@ -998,6 +1021,8 @@ export class LoopDaemon {
       // Mark the goal as failed if execution fails.
       this.db.prepare('UPDATE goals SET status = ?, updated_at = ? WHERE id = ?')
         .run('failed', new Date().toISOString(), goal.id);
+      // a run already left 'blocked' (e.g. by its failed checks) is now terminal too
+      if (runId) { try { cancelPreparedLeasesOfBlockedRun(this.db, runId); } catch { /* best-effort */ } }
 
       const failureMessage = error instanceof Error ? error.message : String(error);
       console.error(`[loop-daemon] goal ${goal.id} failed (run ${runId ?? 'none'}): ${failureMessage}`);

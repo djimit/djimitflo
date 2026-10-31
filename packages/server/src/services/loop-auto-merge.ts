@@ -5,8 +5,9 @@ import { LoopEventService } from './loop-event-service';
 import { testOnlyChange, TEST_ONLY_DIFF_MAX } from './loop-worker-executor-service';
 import { pushNotice } from './operator-push';
 import { settlementState, SURVIVAL_DAYS, type SettlementOutcome } from './merge-survival';
-import { autoMergeMaxPerDay, autoMergeMode, autoMergeRecheck, autoMergeRecheckHours, autoMergeValueGate, autoMergeValueSignal, isAuditSample, isTransientReason, PR_REVIEW_STATUS_CONTEXT,
-  readClassState, reasonCode, RECHECK_PER_TICK, revokeClass, VALUE_GATE_REASONS } from './loop-auto-merge-state';
+import { autoMergeMaxPerDay, autoMergeMode, autoMergeRecheck, autoMergeRecheckHours, autoMergeValueGate, autoMergeValueGateLanes, autoMergeValueSignal, isAuditSample, isTransientReason, PR_REVIEW_STATUS_CONTEXT,
+  readClassState, reasonCode, RECHECK_PER_TICK, revokeClass, VALUE_GATE_REASONS, valueGateActsOn } from './loop-auto-merge-state';
+import { oracleLane } from './gym-failure-tasks';
 import { markRun } from './scheduler-registry';
 import { assertionStrengthVerdict } from './test-assertion-strength';
 import { autoMergeAllowed, parsePrUrl } from './repo-registry';
@@ -34,8 +35,10 @@ import { newestRuns, requiredChecksOf, requiredRun, type CheckRun, type Protecti
  * head must equal it, or be GitHub's own update-branch merge on top of it (web-flow, signature verified, first parent = the
  * verified head, at most 5 deep); anything else is 'head_moved'. The merge call passes that head as `sha`, so a push between
  * this read and the merge is rejected by GitHub.
- * Value (U2, LOOP_AUTO_MERGE_VALUE_GATE off | shadow | on): after assertion strength, the maker's FBPA verdict pass or graded
- * mutant kill share >= 0.2 (loop-auto-merge-state autoMergeValueSignal); shadow stamps would_block_value, on is ineligible.
+ * Value (U2, LOOP_AUTO_MERGE_VALUE_GATE off | shadow | on): after assertion strength, the maker's parent-source FBPA verdict pass or
+ * graded kill share / mutation score >= 0.2 (loop-auto-merge-state autoMergeValueSignal); shadow stamps would_block_value, on is ineligible.
+ * With LOOP_AUTO_MERGE_VALUE_GATE_LANES set, on blocks only PRs of a listed lane (the proposal's oracle lane, as settlement);
+ * other lanes are stamped like shadow.
  * Cap: LOOP_AUTO_MERGE_MAX_PER_DAY (default 10, rolling 24 h).
  * Revert window: an auto-merged PR that is reverted on main (a commit within 14 d whose message says revert and names the
  * PR or its merge commit), whose added lines merge survival marks removed, or whose merge commit fails a REQUIRED check on
@@ -175,21 +178,24 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
   const revoked = await checkRevocations(db, json, mergeCommitChecks, events, base, now, env);
 
   // 2. Candidates: loop PRs without a final decision for this mode.
-  const runs = db.prepare(`SELECT r.id, r.status, r.gates_json, r.metadata, s.status AS improvement_status FROM loop_runs r
+  const runs = db.prepare(`SELECT r.id, r.status, r.gates_json, r.metadata, s.status AS improvement_status, s.evidence_refs_json AS ev FROM loop_runs r
       LEFT JOIN goals g ON g.id = r.goal_id LEFT JOIN self_improvements s ON s.id = g.improvement_id
     WHERE json_extract(r.metadata, '$.pr_url') IS NOT NULL AND r.created_at >= ? ORDER BY r.created_at`)
-    .all(new Date(now.getTime() - 60 * DAY).toISOString()) as Array<{ id: string; status: string; gates_json: string | null; metadata: string; improvement_status: string | null }>;
+    .all(new Date(now.getTime() - 60 * DAY).toISOString()) as Array<{ id: string; status: string; gates_json: string | null; metadata: string; improvement_status: string | null; ev: string | null }>;
   const cap = autoMergeMaxPerDay(env);
   const valueGate = autoMergeValueGate(env);
+  const valueLanes = autoMergeValueGateLanes(env);
   const recheckOn = autoMergeRecheck(env); const recheckMs = autoMergeRecheckHours(env) * 3_600_000;
   let evaluated = 0; let merged = 0; let rechecks = 0;
   for (const run of runs) {
     const meta = JSON.parse(run.metadata || '{}') as { pr_url: string; auto_merge?: AutoMergeRecord; verified_head_sha?: string };
     const prev = meta.auto_merge;
     let rechecking = false;
-    // U2 rollback: a rejection by the value gate alone is final only while the gate is on — off / shadow re-evaluates it
-    // through every gate (every other permanent reason stays final)
-    const valueRejectionLifted = prev?.decision === 'ineligible' && valueGate !== 'on' && (VALUE_GATE_REASONS as readonly string[]).includes(reasonCode(prev.reason));
+    // the value gate acts on this PR only when on and its lane is listed (or no list is set); otherwise it is shadow for it
+    const valueActs = valueGateActsOn(valueGate, valueLanes, oracleLane(run.ev));
+    // U2 rollback: a rejection by the value gate alone is final only while the gate acts on the PR — off / shadow / its lane
+    // leaving the list re-evaluates it through every gate (every other permanent reason stays final)
+    const valueRejectionLifted = prev?.decision === 'ineligible' && !valueActs && (VALUE_GATE_REASONS as readonly string[]).includes(reasonCode(prev.reason));
     if (prev && !valueRejectionLifted && ['merged', 'audit_sample', 'ineligible'].includes(prev.decision)) {
       // final, unless re-check is on and the ineligible reason is transient, its window has passed and this tick has room
       if (!recheckOn || prev.decision !== 'ineligible' || !isTransientReason(prev.reason) || rechecks >= RECHECK_PER_TICK) continue;
@@ -267,7 +273,7 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     if (valueGate !== 'off') {
       const value = autoMergeValueSignal(makerChecks, (() => { try { return JSON.parse(maker.graded || 'null'); } catch { return null; } })());
       const block = value === 'pass' ? undefined : value === 'low' ? 'value_signal_low' as const : 'value_signal_missing' as const;
-      if (block && valueGate === 'on') { record('ineligible', block); continue; }
+      if (block && valueActs) { record('ineligible', block); continue; }
       wouldBlock = block;
     }
     const reviews = await json<Array<{ user?: { login?: string }; state?: string }>>(slug, `pulls/${number}/reviews?per_page=100`);
