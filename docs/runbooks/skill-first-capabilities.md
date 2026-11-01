@@ -213,3 +213,28 @@ The runtime-intent tests use pre-approved SQLite fixtures. They demonstrate
 selection, invocation and immutable reuse mechanics, not independent operational
 promotion or causal improvement. The existing training/OpenMythos/baseline and
 human-controlled gates remain mandatory for real activation.
+
+## Request a bounded descendant
+
+Use the existing authenticated `POST /api/skills/executable/request` with
+`{"capability":"normalize-label","objective":"Improve the implementation while preserving its contract","parent":{"capability_id":"<approved registry ID>","content_hash":"<exact package SHA256>"}}`.
+The parent must be live and hash-matched. The normal prepare/advance/capture route
+creates a new immutable version; schemas, dependencies and denied actions remain
+fixed, allowed tools may only narrow. Repeated requests reuse the active parent-bound
+goal. Capture requires the owner's canonical factory run, completed maker task and
+independent exact-package receipt. A child never inherits approval.
+
+## Executable provider usage candidate
+
+`skills/provider-step-usage-v1-0-0` is an operator-authored executable candidate,
+not an approved capability or the output of a successful autonomous factory run.
+Run `npm run test:skill-packages` for its positive and negative cases, or:
+
+```sh
+printf '%s\n' '{"events_json":"{\"type\":\"step_finish\",\"part\":{\"id\":\"step-1\",\"tokens\":{\"total\":12}}}"}' | node skills/provider-step-usage-v1-0-0/run.mjs
+```
+
+Expected result: `{"tokens":12,"steps":1}`. Repeated identical step IDs count once;
+missing usage and conflicting duplicate records fail. This counts supplied records,
+not stream completeness, money, energy or verified task success. Register and promote
+only through the existing independent verification and approval path.
