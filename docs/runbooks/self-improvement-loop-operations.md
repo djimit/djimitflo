@@ -82,6 +82,8 @@ Draft publication recovery uses `loop_runs.metadata.draft_publication` as a pers
 
 GitHub PR webhook redelivery can recover the intake-to-dispatch crash window only: the original synthetic run retains its PR/head, repository and review-runtime binding, and no review record or worker may already exist. Deliveries for the same repository/PR/head reuse that run. A stopped/paused run, changed runtime/repository, retargeted base/head ref, missing historical checkpoint or existing pending/failed review remains held; redelivery never restarts paid work or replenishes a budget. This does not add CI-event repair or a retry scheduler.
 
+Loop `continue`/`retry` preparation returns HTTP 409 for cancelled, completed or review-ready runs and cancelled/completed/failed goals. Explicit retry of failed or interrupted runs with a live goal remains available under the existing retry budget; ordinary continue cannot reopen them. State is rechecked before worktree creation and inside the final SQLite lease/transition transaction. If an operator stops work while filesystem preparation is already in flight, the prepared worktree may remain for inspection, but no new leases or running transition are committed. Retry preparation also rechecks the current maker, root retry count and effective retry limit inside that transaction; no new reservation framework is introduced.
+
 
 ## Evolution flags (Phase F, RX-2)
 

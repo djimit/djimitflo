@@ -6,6 +6,7 @@
  */
 
 import { randomUUID } from 'crypto';
+import { createError } from '../middleware/error-handler';
 import type {
   LoopService,
   LoopRunRecord,
@@ -24,10 +25,23 @@ export type SplitResult = { run: LoopRunRecord; parent: LoopFinding; children: L
 export class LoopLifecycleService {
   constructor(private loopService: LoopService) {}
 
-  continueLoopRun(id: string, input: ContinueLoopInput = {}): ContinueResult {
+  /** Preparation cannot undo a stop or bypass the explicit interrupted-run recovery path. */
+  private assertContinuable(id: string, retry = false): LoopRunRecord {
     const run = this.loopService.getLoopRun(id);
+    if (['cancelled', 'completed', 'ready_for_human_merge'].includes(run.status)
+      || (!retry && ['failed', 'interrupted'].includes(run.status))) {
+      throw createError(409, 'LOOP_RUN_NOT_CONTINUABLE', 'LOOP_RUN_NOT_CONTINUABLE');
+    }
+    if (run.goal_id && ['cancelled', 'completed', 'failed'].includes(this.loopService.getGoal(run.goal_id).status)) {
+      throw createError(409, 'LOOP_GOAL_NOT_CONTINUABLE', 'LOOP_GOAL_NOT_CONTINUABLE');
+    }
     this.loopService.assertOperatorNotPaused(run);
     this.loopService.assertLoopNotEscalated(run);
+    return run;
+  }
+
+  continueLoopRun(id: string, input: ContinueLoopInput = {}): ContinueResult {
+    const run = this.assertContinuable(id);
     this.loopService.assertWallClockBudgetAvailable(run);
     this.loopService.assertTokenBudgetAvailable(run);
     this.loopService.assertNoFailedGates(run);
@@ -71,59 +85,66 @@ export class LoopLifecycleService {
       .filter(recommendation => selectedFindings.some(finding => finding.id === recommendation.findingId));
 
     const now = new Date().toISOString();
-    for (const finding of selectedFindings) {
+    const repositoryPath = run.repository_path;
+    const preparations = selectedFindings.map((finding) => {
       const branchName = this.loopService.branchNameFor(run.id, finding.id);
-      const worktreePath = this.loopService.createWorktree(run.repository_path, run.id, finding.id, branchName);
+      this.assertContinuable(run.id);
+      const worktreePath = this.loopService.createWorktree(repositoryPath, run.id, finding.id, branchName);
       this.loopService.ensureWorktreeControlIgnore(worktreePath);
       this.loopService.writeWorkAssignment(worktreePath, run, finding, runtime);
       const assignmentPacketFile = this.loopService.writeAssignmentPacket(worktreePath, run, finding, runtime);
-      const makerLeaseId = randomUUID();
       const assignmentFile = this.loopService.workAssignmentPath(worktreePath);
-      this.loopService.insertWorkerLease({
-        id: makerLeaseId, loopRunId: run.id, role: 'maker', runtime,
-        findingId: finding.id, worktreePath, branchName,
-        metadata: { assignment_file: assignmentFile, assignment_packet_file: assignmentPacketFile,
-          requested_runtime: input.runtime ?? null, effective_runtime: runtime,
-          ...(input.model ? { model: input.model } : {}),
-          ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
-          routing_recommendation: routingRecommendations.find(recommendation => recommendation.findingId === finding.id) }, now,
-      });
-      const checkerLeaseId = randomUUID();
-      this.loopService.insertWorkerLease({
-        id: checkerLeaseId, loopRunId: run.id, role: 'checker', runtime: 'manual',
-        findingId: finding.id, worktreePath: null, branchName: null,
-        metadata: { maker_lease_id: makerLeaseId, requires_independent_review: true }, now,
-      });
-      if (this.loopService.isHighRiskRun(run, finding)) {
-        const securityCheckerLeaseId = randomUUID();
-        this.loopService.insertWorkerLease({
-          id: securityCheckerLeaseId, loopRunId: run.id, role: 'security_checker', runtime: 'manual',
-          findingId: finding.id, worktreePath: null, branchName: null,
-          metadata: { maker_lease_id: makerLeaseId, requires_security_review: true, high_risk_reason: this.loopService.highRiskReason(run, finding) }, now,
-        });
-      }
-    }
-
-    // Select best strategy from cognitive learning (if available)
-    const strategy = this.loopService.metaOrchestration
-      ? this.loopService.metaOrchestration.getStrategyRecommendation(run.loop_name || 'coding')
-      : { strategy: 'maker-checker-v1', confidence: 0, rationale: 'No meta-orchestration' };
-
-    this.loopService.getLoopRun(id); // refresh
-    const db = (this.loopService as any).db;
-    db.prepare("UPDATE loop_runs SET status = ?, next_actions_json = ?, updated_at = ?, metadata = json_set(COALESCE(metadata, '{}'), '$.strategy', ?) WHERE id = ?").run(
-      'running',
-      JSON.stringify(this.loopService.isHighRiskRun(run)
-        ? ['Run maker in prepared worktree', 'Run checker and security checker after maker output', 'Call verify before completion']
-        : ['Run maker in prepared worktree', 'Run checker after maker output', 'Call verify before completion']),
-      now,
-      strategy.strategy,
-      run.id,
-    );
-    this.loopService.recordLoopEvent(run.id, 'worker_leases_prepared', 'info', 'Prepared ' + selectedFindings.length + ' maker/checker assignment(s) with strategy "' + strategy.strategy + '".', {
-      finding_ids: selectedFindings.map((f) => f.id), runtime, routing_recommendations: routingRecommendations, budget, strategy: strategy.strategy, strategyConfidence: strategy.confidence,
+      return { finding, branchName, worktreePath, assignmentPacketFile, assignmentFile };
     });
-    return { run: this.loopService.getLoopRun(run.id), leases: this.loopService.listWorkerLeases(run.id) };
+    const db = (this.loopService as any).db;
+    return db.transaction(() => {
+      this.assertContinuable(run.id);
+      for (const { finding, branchName, worktreePath, assignmentPacketFile, assignmentFile } of preparations) {
+        const makerLeaseId = randomUUID();
+        this.loopService.insertWorkerLease({
+          id: makerLeaseId, loopRunId: run.id, role: 'maker', runtime,
+          findingId: finding.id, worktreePath, branchName,
+          metadata: { assignment_file: assignmentFile, assignment_packet_file: assignmentPacketFile,
+            requested_runtime: input.runtime ?? null, effective_runtime: runtime,
+            ...(input.model ? { model: input.model } : {}),
+            ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
+            routing_recommendation: routingRecommendations.find(recommendation => recommendation.findingId === finding.id) }, now,
+        });
+        const checkerLeaseId = randomUUID();
+        this.loopService.insertWorkerLease({
+          id: checkerLeaseId, loopRunId: run.id, role: 'checker', runtime: 'manual',
+          findingId: finding.id, worktreePath: null, branchName: null,
+          metadata: { maker_lease_id: makerLeaseId, requires_independent_review: true }, now,
+        });
+        if (this.loopService.isHighRiskRun(run, finding)) {
+          const securityCheckerLeaseId = randomUUID();
+          this.loopService.insertWorkerLease({
+            id: securityCheckerLeaseId, loopRunId: run.id, role: 'security_checker', runtime: 'manual',
+            findingId: finding.id, worktreePath: null, branchName: null,
+            metadata: { maker_lease_id: makerLeaseId, requires_security_review: true, high_risk_reason: this.loopService.highRiskReason(run, finding) }, now,
+          });
+        }
+      }
+
+      // Select best strategy from cognitive learning (if available)
+      const strategy = this.loopService.metaOrchestration
+        ? this.loopService.metaOrchestration.getStrategyRecommendation(run.loop_name || 'coding')
+        : { strategy: 'maker-checker-v1', confidence: 0, rationale: 'No meta-orchestration' };
+
+      db.prepare("UPDATE loop_runs SET status = ?, next_actions_json = ?, updated_at = ?, metadata = json_set(COALESCE(metadata, '{}'), '$.strategy', ?) WHERE id = ?").run(
+        'running',
+        JSON.stringify(this.loopService.isHighRiskRun(run)
+          ? ['Run maker in prepared worktree', 'Run checker and security checker after maker output', 'Call verify before completion']
+          : ['Run maker in prepared worktree', 'Run checker after maker output', 'Call verify before completion']),
+        now,
+        strategy.strategy,
+        run.id,
+      );
+      this.loopService.recordLoopEvent(run.id, 'worker_leases_prepared', 'info', 'Prepared ' + selectedFindings.length + ' maker/checker assignment(s) with strategy "' + strategy.strategy + '".', {
+        finding_ids: selectedFindings.map((f) => f.id), runtime, routing_recommendations: routingRecommendations, budget, strategy: strategy.strategy, strategyConfidence: strategy.confidence,
+      });
+      return { run: this.loopService.getLoopRun(run.id), leases: this.loopService.listWorkerLeases(run.id) };
+    }).immediate();
   }
 
   splitLoopFinding(id: string, input: SplitLoopInput): SplitResult {
@@ -164,9 +185,7 @@ export class LoopLifecycleService {
   }
 
   retryLoopRun(id: string, input: RetryLoopInput = {}): RetryResult {
-    const run = this.loopService.getLoopRun(id);
-    this.loopService.assertOperatorNotPaused(run);
-    this.loopService.assertLoopNotEscalated(run);
+    const run = this.assertContinuable(id, true);
     this.loopService.assertWallClockBudgetAvailable(run);
     this.loopService.assertTokenBudgetAvailable(run);
     if (!run.repository_path) throw new Error('LOOP_REPOSITORY_REQUIRED');
@@ -197,41 +216,55 @@ export class LoopLifecycleService {
     this.loopService.assertRuntimeAvailable(runtime);
     const retryAttempt = usedRetries + 1;
     const branchName = this.loopService.branchNameFor(run.id, finding.id, retryAttempt);
+    this.assertContinuable(run.id, true);
     const worktreePath = this.loopService.createWorktree(run.repository_path, run.id, `${finding.id}-retry-${retryAttempt}`, branchName);
     this.loopService.ensureWorktreeControlIgnore(worktreePath);
     this.loopService.writeWorkAssignment(worktreePath, run, finding, runtime);
     const assignmentPacketFile = this.loopService.writeAssignmentPacket(worktreePath, run, finding, runtime, retryAttempt);
     const assignmentFile = this.loopService.workAssignmentPath(worktreePath);
-    const now = new Date().toISOString();
-    const retryMakerLeaseId = randomUUID();
-    this.loopService.insertWorkerLease({
-      id: retryMakerLeaseId, loopRunId: run.id, role: 'maker', runtime, findingId: finding.id, worktreePath, branchName,
-      metadata: { assignment_file: assignmentFile, assignment_packet_file: assignmentPacketFile,
-        ...(model ? { model } : {}), ...(reasoningEffort ? { reasoningEffort } : {}),
-        retry_of_maker_lease_id: maker.id, retry_root_maker_lease_id: retryRootMakerLeaseId, retry_attempt: retryAttempt,
-        ...(input.sibling ? { evolve_sibling_of: maker.id } : {}) }, now,
-    });
-    const retryCheckerLeaseId = randomUUID();
-    this.loopService.insertWorkerLease({
-      id: retryCheckerLeaseId, loopRunId: run.id, role: 'checker', runtime: 'manual', findingId: finding.id, worktreePath: null, branchName: null,
-      metadata: { maker_lease_id: retryMakerLeaseId, requires_independent_review: true, retry_of_maker_lease_id: maker.id, retry_root_maker_lease_id: retryRootMakerLeaseId, retry_attempt: retryAttempt }, now,
-    });
-    const retrySecurityCheckerLeaseId = this.loopService.isHighRiskRun(run, finding) ? randomUUID() : null;
-    if (retrySecurityCheckerLeaseId) {
-      this.loopService.insertWorkerLease({
-        id: retrySecurityCheckerLeaseId, loopRunId: run.id, role: 'security_checker', runtime: 'manual', findingId: finding.id, worktreePath: null, branchName: null,
-        metadata: { maker_lease_id: retryMakerLeaseId, requires_security_review: true, high_risk_reason: this.loopService.highRiskReason(run, finding), retry_of_maker_lease_id: maker.id, retry_root_maker_lease_id: retryRootMakerLeaseId, retry_attempt: retryAttempt }, now,
-      });
-    }
-    this.loopService.updateWorkerLeaseStatus(maker.id, maker.status, { superseded_by_maker_lease_id: retryMakerLeaseId, superseded_at: now });
     const db = (this.loopService as any).db;
-    db.prepare('UPDATE loop_runs SET status = ?, next_actions_json = ?, updated_at = ? WHERE id = ?').run(
-      'running', JSON.stringify(['Run retry maker in prepared worktree', 'Run deterministic checks', retrySecurityCheckerLeaseId ? 'Submit independent checker and security checker verdicts' : 'Submit independent checker verdict']), now, run.id,
-    );
-    this.loopService.recordLoopEvent(run.id, 'retry_prepared', 'info', `Prepared retry ${retryAttempt} for maker lease ${maker.id}.`, {
-      maker_lease_id: maker.id, retry_maker_lease_id: retryMakerLeaseId, retry_checker_lease_id: retryCheckerLeaseId, retry_security_checker_lease_id: retrySecurityCheckerLeaseId, retry_attempt: retryAttempt, retry_budget: retryBudget,
-    });
-    const updatedLeases = this.loopService.listWorkerLeases(run.id);
-    return { run: this.loopService.getLoopRun(run.id), leases: updatedLeases, retry_maker: updatedLeases.find((l) => l.id === retryMakerLeaseId)!, retry_checker: updatedLeases.find((l) => l.id === retryCheckerLeaseId)! };
+    return db.transaction(() => {
+      const currentRun = this.assertContinuable(run.id, true);
+      const currentLeases = this.loopService.listWorkerLeases(run.id);
+      const currentMaker = currentLeases.find((lease) => lease.id === maker.id);
+      if (!currentMaker || this.loopService.retryRootFor(currentMaker) !== retryRootMakerLeaseId
+        || (!input.sibling && !this.loopService.isRetryableMakerLease(currentMaker, currentLeases.filter((lease) => lease.role === 'checker')))) {
+        throw createError(409, 'LOOP_RETRY_NOT_ALLOWED', 'LOOP_RETRY_NOT_ALLOWED');
+      }
+      const currentBudget = this.loopService.getRetryBudget(currentRun, currentMaker, input);
+      const currentUsed = currentLeases.filter((lease) => lease.role === 'maker' && lease.metadata.retry_root_maker_lease_id === retryRootMakerLeaseId).length;
+      if (!input.sibling && currentUsed >= currentBudget.maxRetries) throw createError(409, 'LOOP_RETRY_BUDGET_EXHAUSTED', 'LOOP_RETRY_BUDGET_EXHAUSTED');
+      if (currentUsed !== usedRetries) throw createError(409, 'LOOP_RETRY_STATE_CHANGED', 'LOOP_RETRY_STATE_CHANGED');
+      const now = new Date().toISOString();
+      const retryMakerLeaseId = randomUUID();
+      this.loopService.insertWorkerLease({
+        id: retryMakerLeaseId, loopRunId: run.id, role: 'maker', runtime, findingId: finding.id, worktreePath, branchName,
+        metadata: { assignment_file: assignmentFile, assignment_packet_file: assignmentPacketFile,
+          ...(model ? { model } : {}), ...(reasoningEffort ? { reasoningEffort } : {}),
+          retry_of_maker_lease_id: maker.id, retry_root_maker_lease_id: retryRootMakerLeaseId, retry_attempt: retryAttempt,
+          ...(input.sibling ? { evolve_sibling_of: maker.id } : {}) }, now,
+      });
+      const retryCheckerLeaseId = randomUUID();
+      this.loopService.insertWorkerLease({
+        id: retryCheckerLeaseId, loopRunId: run.id, role: 'checker', runtime: 'manual', findingId: finding.id, worktreePath: null, branchName: null,
+        metadata: { maker_lease_id: retryMakerLeaseId, requires_independent_review: true, retry_of_maker_lease_id: maker.id, retry_root_maker_lease_id: retryRootMakerLeaseId, retry_attempt: retryAttempt }, now,
+      });
+      const retrySecurityCheckerLeaseId = this.loopService.isHighRiskRun(run, finding) ? randomUUID() : null;
+      if (retrySecurityCheckerLeaseId) {
+        this.loopService.insertWorkerLease({
+          id: retrySecurityCheckerLeaseId, loopRunId: run.id, role: 'security_checker', runtime: 'manual', findingId: finding.id, worktreePath: null, branchName: null,
+          metadata: { maker_lease_id: retryMakerLeaseId, requires_security_review: true, high_risk_reason: this.loopService.highRiskReason(run, finding), retry_of_maker_lease_id: maker.id, retry_root_maker_lease_id: retryRootMakerLeaseId, retry_attempt: retryAttempt }, now,
+        });
+      }
+      this.loopService.updateWorkerLeaseStatus(currentMaker.id, currentMaker.status, { superseded_by_maker_lease_id: retryMakerLeaseId, superseded_at: now });
+      db.prepare('UPDATE loop_runs SET status = ?, next_actions_json = ?, updated_at = ? WHERE id = ?').run(
+        'running', JSON.stringify(['Run retry maker in prepared worktree', 'Run deterministic checks', retrySecurityCheckerLeaseId ? 'Submit independent checker and security checker verdicts' : 'Submit independent checker verdict']), now, run.id,
+      );
+      this.loopService.recordLoopEvent(run.id, 'retry_prepared', 'info', `Prepared retry ${retryAttempt} for maker lease ${maker.id}.`, {
+        maker_lease_id: maker.id, retry_maker_lease_id: retryMakerLeaseId, retry_checker_lease_id: retryCheckerLeaseId, retry_security_checker_lease_id: retrySecurityCheckerLeaseId, retry_attempt: retryAttempt, retry_budget: retryBudget,
+      });
+      const updatedLeases = this.loopService.listWorkerLeases(run.id);
+      return { run: this.loopService.getLoopRun(run.id), leases: updatedLeases, retry_maker: updatedLeases.find((l) => l.id === retryMakerLeaseId)!, retry_checker: updatedLeases.find((l) => l.id === retryCheckerLeaseId)! };
+    }).immediate();
   }
 }
