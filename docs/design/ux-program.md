@@ -29,13 +29,6 @@ Operator-adopted 2026-11-01. Each item ships as a draft PR on `feat/ux-evo/<NN>-
 | Item | What | State |
 |---|---|---|
 | UXE-00 | Value-gate decision card + settlement value by lane on `/evolution` (read-only); UI fitness ratchet v0 (`scripts/ui-fitness.mjs`, baseline `ui-fitness-baseline.json`) | draft PR |
-
-### UX evolution program (Phase UXE)
-
-Operator-adopted 2026-11-01. Each item ships as a draft PR on `feat/ux-evo/<NN>-<slug>`; the operator merges.
-
-| Item | What | State |
-|---|---|---|
 | UXE-11 | UX-4b permission memo (no code): role × permission matrix, APPROVER/`write:governance`, `GET /approvals` and `GET /self-improve/decisions` payloads, 27 mutating routes without a permission check, proposed matrix, blast radius, migration, rollback (`permission-memo-2026-11.md`) | draft PR; **decisions D-UXE-11a–f pending** (operator) |
 
 ## Coverage baseline (UX-0, origin/main 5a9d46d5, 2026-10-05)
