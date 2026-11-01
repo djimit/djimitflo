@@ -28,6 +28,8 @@ export class LoopLifecycleService {
   /** Preparation cannot undo a stop or bypass the explicit interrupted-run recovery path. */
   private assertContinuable(id: string, retry = false): LoopRunRecord {
     const run = this.loopService.getLoopRun(id);
+    this.loopService.assertOperatorNotPaused(run);
+    this.loopService.assertLoopNotEscalated(run);
     if (['cancelled', 'completed', 'ready_for_human_merge'].includes(run.status)
       || (!retry && ['failed', 'interrupted'].includes(run.status))) {
       throw createError(409, 'LOOP_RUN_NOT_CONTINUABLE', 'LOOP_RUN_NOT_CONTINUABLE');
@@ -35,8 +37,6 @@ export class LoopLifecycleService {
     if (run.goal_id && ['cancelled', 'completed', 'failed'].includes(this.loopService.getGoal(run.goal_id).status)) {
       throw createError(409, 'LOOP_GOAL_NOT_CONTINUABLE', 'LOOP_GOAL_NOT_CONTINUABLE');
     }
-    this.loopService.assertOperatorNotPaused(run);
-    this.loopService.assertLoopNotEscalated(run);
     return run;
   }
 
