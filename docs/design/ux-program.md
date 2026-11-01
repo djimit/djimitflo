@@ -13,6 +13,14 @@ existing auth; anything that sends, closes, approves or changes permissions ship
 | UX-3 … UX-33 | live shell, permission-aware UI, inbox, draft-PR queue, schedulers, evolution page, push, agents, LLM ledger, a11y | open |
 | UX-30 | Lab pruning: dormant Lab pages measured from S4 usage telemetry, one recommendation per page (`docs/design/ux-30-lab-pruning.md`) | done = table; **decision pending** (operator, UXD-3) |
 
+### UX evolution program (Phase UXE)
+
+Operator-adopted 2026-11-01. Each item ships as a draft PR on `feat/ux-evo/<NN>-<slug>`; the operator merges.
+
+| Item | What | State |
+|---|---|---|
+| UXE-00a | Guard-test list (R12): a loop PR touching a UX oracle test (`ORACLE_TEST_FILES` in `loop-auto-merge.ts`) is permanent `ineligible: oracle_test_file`; refuses more PRs, never allows more | draft PR |
+
 ## Coverage baseline (UX-0, origin/main 5a9d46d5, 2026-10-05)
 
 Static: mounted routes (route-source inventory) vs `this.request` calls in `dashboard/src/lib/api.ts`. Direct `fetch`
@@ -44,3 +52,4 @@ repositories 7 / 9. Full per-router table: `node scripts/ux-coverage.mjs`.
 | UXD-1 | Alert / one-tap approval channel = Telegram (UX-12/UX-13 built with the flag off) | decided 2026-10-04 |
 | UXD-2 | English-only UI, no message catalog (UX-5 default) | proposed |
 | UXD-3 | Deleting orphan UI (e.g. `ComplianceDashboard`) or Lab pages | ask first, after telemetry. Telemetry is in (UX-30, 31-10): per-page KEEP / MOVE / MERGE-INTO / RETIRE-CANDIDATE in `ux-30-lab-pruning.md`; decision pending |
+| D-UXE-00a | Guard-test list: loop PRs touching the UX oracle tests are never earned-auto-merged (UXE-00a) | decided 2026-11-01 (yes) |
