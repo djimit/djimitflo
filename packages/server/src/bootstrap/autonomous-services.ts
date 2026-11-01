@@ -53,6 +53,7 @@ import { startEvolutionEstimators } from '../services/evolution-estimators';
 import { startMergeSurvival } from '../services/merge-survival';
 import { startLoopAutoMerge } from '../services/loop-auto-merge';
 import { startDraftPrRetry } from '../services/loop-draft-pr-service';
+import { ciWatchIntervalMs, startLoopPrCiWatch } from '../services/loop-pr-ci-watch';
 import { startCommitteeEvolution } from '../services/committee-swarm';
 import { KnowledgeMaintenanceService, maintenanceEnabled } from '../services/knowledge-maintenance-service';
 
@@ -383,6 +384,16 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     if (stopDraftPrRetry) { lifecycleManager.register({ serviceName: 'DraftPrRetry', stop: () => stopDraftPrRetry?.() }); console.log('🔁 Draft PR retry on (every 15 min).'); }
   } catch (error) {
     console.warn('⚠️  Draft PR retry failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // PRC-2: record-only CI watch (required checks on the head of open loop PRs → metadata.ci + ci_red/ci_green). LOOP_PR_CI_WATCH=shadow.
+  try {
+    let stopCiWatch = startLoopPrCiWatch(db);
+    registerRestart('loop_pr_ci_watch', () => { stopCiWatch?.(); stopCiWatch = startLoopPrCiWatch(db); });
+    noteScheduler('loop_pr_ci_watch', 'LOOP_PR_CI_WATCH', !!stopCiWatch, ciWatchIntervalMs());
+    if (stopCiWatch) { lifecycleManager.register({ serviceName: 'LoopPrCiWatch', stop: () => stopCiWatch?.() }); console.log('👀 Loop PR CI watch on (shadow, record-only).'); }
+  } catch (error) {
+    console.warn('⚠️  Loop PR CI watch failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // P0.1 scheduler self-heal watchdog: armed-but-not-ticking ⇒ diagnose ⇒ one bounded restart (act) ⇒ verify ⇒ quarantine + escalate.

@@ -28,6 +28,7 @@ unknown …) is `GET /api/health/schedulers` (admins). Armed is intent, not exec
 | gym_orphan_sweep | `GYM_ORPHAN_SWEEP` | 1 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | inference_failover_probe | `OLLAMA_AUTO_FAILOVER` | 30 min | `packages/server/src/index.ts` |
 | loop_auto_merge | `LOOP_AUTO_MERGE_TEST_ONLY` | 15 min | `packages/server/src/bootstrap/autonomous-services.ts` |
+| loop_pr_ci_watch | `LOOP_PR_CI_WATCH` | `ciWatchIntervalMs()` | `packages/server/src/bootstrap/autonomous-services.ts` |
 | memory_candidate_review | `MEMORY_CANDIDATE_REVIEW_ENABLED` | `memoryCandidateReviewSched.intervalMinutes()` min | `packages/server/src/index.ts` |
 | memory_delivery_reconcile | `MEMORY_DELIVERY_RECEIPTS` | 10 min | `packages/server/src/index.ts` |
 | merge_survival | `MERGE_SURVIVAL_ENABLED` | 6 h | `packages/server/src/bootstrap/autonomous-services.ts` |
