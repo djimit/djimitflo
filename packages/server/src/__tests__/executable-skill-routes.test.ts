@@ -86,6 +86,20 @@ describe('executable skill API trust boundary', () => {
     expect(result.status).toBe(400); expect(dispatch).not.toHaveBeenCalled();
   });
 
+  it('forwards an explicit immutable parent only through the authorized request route', async () => {
+    const parent = {capability_id:'skill:fixture-v1-0-0@1.0.0', content_hash:'a'.repeat(64)};
+    const dispatch = vi.spyOn(ExecutableSkills.prototype,'request').mockReturnValue({status:'implementation_required',goal_id:'fixture-goal',matches:[]});
+    const body = {capability:'fixture',objective:'Bounded variation',parent};
+    expect((await request(app).post('/skills/executable/request').set('Authorization',bearer('viewer')).send(body)).status).toBe(403);
+    expect(dispatch).not.toHaveBeenCalled();
+    expect((await request(app).post('/skills/executable/request').set('Authorization',bearer()).send(body)).status).toBe(202);
+    expect(dispatch).toHaveBeenCalledWith('fixture','Bounded variation','owner',undefined,parent);
+    for (const bad of [{...parent,content_hash:'bad'}, {...parent,approved:true}]) {
+      expect((await request(app).post('/skills/executable/request').set('Authorization',bearer()).send({...body,parent:bad})).status).toBe(400);
+    }
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+
   it('validates discovery query and capture input strictly', async () => {
     const discover = vi.spyOn(ExecutableSkills.prototype, 'discover');
     for (const query of ['', '?capability=fixture&extra=1', '?capability=a&capability=b']) {

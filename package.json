@@ -15,7 +15,7 @@
     "build": "npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/telegram && npm run build --workspace=@djimitflo/agent-catalog && npm run build --workspace=@djimitflo/mcp-server && npm run build --workspace=@djimitflo/ransomware-module && npm run build --workspace=@djimitflo/server && npm run build --workspace=@djimitflo/dashboard",
     "build:server": "npm run build --workspace=@djimitflo/server",
     "build:dashboard": "npm run build --workspace=@djimitflo/dashboard",
-    "test": "bash scripts/deploy-vps.selftest.sh && bash scripts/wiki-delta-emitter.selftest.sh && node scripts/live-identity-evidence.test.mjs && node scripts/integration-probes.test.mjs && node scripts/gen-agent-docs.mjs --check && node scripts/gen-agent-docs.test.mjs && node scripts/gym-worker.mjs --selfcheck && node scripts/gym-worker.test.mjs && node scripts/kb-sync.test.mjs && node scripts/mutation-gain.test.mjs && node scripts/ci-workflows.test.mjs && npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog && npm run test --workspaces --if-present",
+    "test": "bash scripts/deploy-vps.selftest.sh && bash scripts/wiki-delta-emitter.selftest.sh && node scripts/live-identity-evidence.test.mjs && node scripts/integration-probes.test.mjs && node scripts/gen-agent-docs.mjs --check && node scripts/gen-agent-docs.test.mjs && node scripts/gym-worker.mjs --selfcheck && node scripts/gym-worker.test.mjs && node scripts/kb-sync.test.mjs && node scripts/mutation-gain.test.mjs && node scripts/ci-workflows.test.mjs && npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog && npm run test --workspaces --if-present && npm run test:skill-packages",
     "test:changed": "npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog && npm run test -w @djimitflo/server -w @djimitflo/shared -w @djimitflo/agent-catalog -w @djimitflo/mcp-server -- --changed",
     "test:mutation": "stryker run",
     "test:mutation:grounded": "node scripts/mutation-gain.mjs",
@@ -38,7 +38,8 @@
     "github:cocreate": "npm run github:cocreate --workspace=@djimitflo/server --",
     "swarm_proof": "npm run swarm_proof --workspace=@djimitflo/server",
     "demo_proof": "npm run demo_proof --workspace=@djimitflo/server",
-    "clean": "rm -rf packages/*/dist packages/*/node_modules node_modules && find packages/*/src -name '*.js' -o -name '*.js.map' -o -name '*.d.ts' -o -name '*.d.ts.map' -o -name '*.tsbuildinfo' | xargs rm -f"
+    "clean": "rm -rf packages/*/dist packages/*/node_modules node_modules && find packages/*/src -name '*.js' -o -name '*.js.map' -o -name '*.d.ts' -o -name '*.d.ts.map' -o -name '*.tsbuildinfo' | xargs rm -f",
+    "test:skill-packages": "node --test skills/*/*.test.mjs"
   },
   "devDependencies": {
     "@stryker-mutator/core": "10.0.0",

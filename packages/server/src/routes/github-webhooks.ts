@@ -161,7 +161,17 @@ export function createGitHubWebhookRoutes(db: Database, scanTriggers?: () => Dji
         const previous = db.prepare('SELECT event, source_ref, payload_sha256, result_json FROM github_webhook_deliveries WHERE id=?').get(deliveryId) as { event: string; source_ref: string | null; payload_sha256: string | null; result_json: string | null } | undefined;
         if (previous) {
           if (previous.payload_sha256 !== payloadHash || previous.source_ref !== sourceRef || previous.event !== action || !previous.result_json) throw createError(409, 'Delivery ID is already bound to different or unverifiable content', 'GITHUB_WEBHOOK_DELIVERY_CONFLICT');
-          return { duplicate: true as const, body: { ...JSON.parse(previous.result_json), status: 'duplicate' } };
+          const response = JSON.parse(previous.result_json);
+          return { duplicate: true as const, body: { ...response, status: 'duplicate' }, loopRunId: response.loop_run_id as string };
+        }
+        // Different webhook deliveries for the same head are one existing review, not new work.
+        const prior = db.prepare('SELECT result_json FROM github_webhook_deliveries WHERE source_ref = ? AND result_json IS NOT NULL ORDER BY created_at, id LIMIT 1')
+          .get(sourceRef) as { result_json: string } | undefined;
+        if (prior) {
+          const response = { ...JSON.parse(prior.result_json), delivery_id: deliveryId, status: 'duplicate' };
+          db.prepare('INSERT INTO github_webhook_deliveries (id,event,source_ref,payload_sha256,result_json) VALUES (?,?,?,?,?)')
+            .run(deliveryId, action, sourceRef, payloadHash, JSON.stringify(response));
+          return { duplicate: true as const, body: response, loopRunId: response.loop_run_id as string };
         }
         const objective = [
           'BEGIN_EXTERNAL_CONTENT source=github_pull_request trust=untrusted',
@@ -179,6 +189,9 @@ export function createGitHubWebhookRoutes(db: Database, scanTriggers?: () => Dji
         });
         // U3: review bookkeeping, not loop work — marked in the same transaction so no loop KPI ever counts it
         markSyntheticRun(db, run.id, 'pr_review');
+        db.prepare("UPDATE loop_runs SET metadata = json_set(metadata, '$.github_review_dispatch', json(?)) WHERE id = ?")
+          .run(JSON.stringify({ owner, repo, number: pr.number, headSha: pr.head.sha, baseRef: pr.base.ref, headRef: pr.head.ref,
+            repositoryPath, loopRunId: run.id, deliveryId, runtime: process.env.GITHUB_PR_REVIEW_RUNTIME ?? null }), run.id);
         const response = { status: 'accepted', delivery_id: deliveryId, source_ref: sourceRef, loop_run_id: run.id };
         db.prepare('INSERT INTO github_webhook_deliveries (id,event,source_ref,payload_sha256,result_json) VALUES (?,?,?,?,?)').run(deliveryId, action, sourceRef, payloadHash, JSON.stringify(response));
         return { duplicate: false as const, body: response, loopRunId: run.id };
@@ -189,7 +202,8 @@ export function createGitHubWebhookRoutes(db: Database, scanTriggers?: () => Dji
       try { repositoryScan = scanTriggers?.()?.webhook('pull_request', deliveryId, body) ?? null; }
       catch { repositoryScan = { status: 'held', taskId: null, executionStarted: false, verified: false, reason: 'scan_intake_unavailable' }; }
       if (prepared.duplicate) {
-        res.status(200).json({ ...prepared.body, ...(repositoryScan ? { repository_scan: repositoryScan } : {}) });
+        const review = prReview.resumeUnstartedReview(prepared.loopRunId, repositoryPath, { owner, repo, number: pr.number, headSha: pr.head.sha, baseRef: pr.base.ref, headRef: pr.head.ref });
+        res.status(200).json({ ...prepared.body, review, ...(repositoryScan ? { repository_scan: repositoryScan } : {}) });
         return;
       }
 

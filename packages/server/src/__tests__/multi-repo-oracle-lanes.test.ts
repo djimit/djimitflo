@@ -96,7 +96,7 @@ describe('B2: a draft PR goes to the repo of the goal, or nowhere', () => {
     db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, worktree_path, branch_name, metadata, created_at, updated_at) VALUES ('m1', 'run-1', 'maker', 'codex', 'completed', ?, 'agent/loop/run-1', '{}', ?, ?)`).run(wt, now, now);
     return remote;
   }
-  const created = (slug: string) => vi.fn().mockResolvedValue({ ok: true, status: 201, json: async () => ({ html_url: `https://github.com/${slug}/pull/3` }) });
+  const created = (slug: string) => vi.fn().mockResolvedValue({ ok: true, status: 201, json: async () => ({ html_url: `https://github.com/${slug}/pull/3`, draft: true, state: 'open', body: 'Opened by the djimitflo loop for run `run-1`.', head: { ref: 'agent/loop/run-1', sha: git(path.join(tmp, 'wt'), 'rev-parse', 'HEAD'), repo: { full_name: slug } }, base: { ref: 'main', repo: { full_name: slug } } }) });
   const failure = () => (db.prepare("SELECT message FROM loop_events WHERE event_type = 'draft_pr_failed'").get() as { message: string } | undefined)?.message;
   const base = { LOOP_AUTO_DRAFT_PR_ENABLED: 'true', GITHUB_REPOSITORY: 'o/r', GITHUB_TOKEN: 't0ken' };
 

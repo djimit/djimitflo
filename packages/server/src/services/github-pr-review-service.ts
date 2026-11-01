@@ -115,13 +115,49 @@ export class GithubPrReviewService {
    * table and returned, since djimitflo's own DB state must stay
    * authoritative even when the GitHub-posting step fails transiently.
    */
-  startReview(input: StartReviewInput): { status: 'commented' | 'pending' | 'failed' | 'superseded'; verdict?: Verdict } {
+  /** Redelivery can fill only the intake-to-dispatch crash window, never restart a review or its budget. */
+  resumeUnstartedReview(loopRunId: string, configuredPath: string, expected: Pick<StartReviewInput, 'owner' | 'repo' | 'number' | 'headSha' | 'baseRef' | 'headRef'>): { status: string } {
+    const row = this.db.prepare('SELECT metadata FROM loop_runs WHERE id = ?').get(loopRunId) as { metadata: string } | undefined;
+    const dispatch = row ? JSON.parse(row.metadata || '{}').github_review_dispatch : null;
+    if (!dispatch || dispatch.repositoryPath !== configuredPath || dispatch.loopRunId !== loopRunId) return { status: 'held' };
+    if (Object.entries(expected).some(([key, value]) => dispatch[key] !== value)) {
+      // A retargeted PR cannot authorize review of the old base on a later replay of the original delivery.
+      this.db.prepare("UPDATE loop_runs SET metadata=json_set(metadata, '$.github_review_dispatch_hold', 'binding_changed') WHERE id=?")
+        .run(loopRunId);
+      return { status: 'held' };
+    }
+    return this.startReview(dispatch as StartReviewInput, true);
+  }
+
+  startReview(input: StartReviewInput, recovering = false): { status: 'commented' | 'pending' | 'failed' | 'superseded' | 'held'; verdict?: Verdict } {
     const id = randomUUID();
     const now = new Date().toISOString();
-    this.db.prepare(`
-      INSERT INTO github_pull_request_reviews (id, loop_run_id, owner, repo, pr_number, head_sha, base_ref, head_ref, status, delivery_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
-    `).run(id, input.loopRunId, input.owner, input.repo, input.number, input.headSha, input.baseRef, input.headRef, input.deliveryId, now, now);
+    const claimed = this.db.transaction(() => {
+      const existing = this.db.prepare('SELECT status FROM github_pull_request_reviews WHERE owner = ? AND repo = ? AND pr_number = ? AND head_sha = ?')
+        .get(input.owner, input.repo, input.number, input.headSha) as { status: string } | undefined;
+      if (existing) return false;
+      {
+        const run = this.db.prepare('SELECT status, metadata, goal_id, repository_path FROM loop_runs WHERE id = ?').get(input.loopRunId) as
+          { status: string; metadata: string; goal_id: string; repository_path: string } | undefined;
+        const meta = run ? JSON.parse(run.metadata || '{}') : {};
+        // Legacy direct callers keep their existing admission path; webhook dispatches must retain their binding.
+        if (recovering || meta.github_review_dispatch) {
+          const goal = run?.goal_id ? this.db.prepare('SELECT status, metadata FROM goals WHERE id = ?').get(run.goal_id) as { status: string; metadata: string } | undefined : undefined;
+          const goalMeta = goal ? JSON.parse(goal.metadata || '{}') : {};
+          const binding = goalMeta.github_pull_request;
+          if (!run || run.status !== 'planning' || meta.operator_paused || meta.github_review_dispatch_hold || meta.synthetic_reason !== 'pr_review'
+          || !goal || ['cancelled', 'blocked', 'completed', 'failed', 'archived'].includes(goal.status) || goalMeta.operator_paused
+          || run.repository_path !== input.repositoryPath || meta.github_review_dispatch?.runtime !== (process.env.GITHUB_PR_REVIEW_RUNTIME ?? null)
+          || binding?.owner !== input.owner || binding?.repo !== input.repo || binding?.number !== input.number || binding?.head_sha !== input.headSha
+          || this.db.prepare('SELECT 1 FROM worker_leases WHERE loop_run_id = ? LIMIT 1').get(input.loopRunId)) return false;
+        }
+      }
+      this.db.prepare(`INSERT INTO github_pull_request_reviews (id, loop_run_id, owner, repo, pr_number, head_sha, base_ref, head_ref, status, delivery_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`)
+        .run(id, input.loopRunId, input.owner, input.repo, input.number, input.headSha, input.baseRef, input.headRef, input.deliveryId, now, now);
+      return true;
+    }).immediate();
+    if (!claimed) return { status: 'held' };
 
     const llmRuntime = this.resolveLlmRuntime();
     if (llmRuntime) {
@@ -506,7 +542,7 @@ export class GithubPrReviewService {
       `- Reviewed commit: ${input.headSha} (merge base ${packet.mergeBaseSha}, packet sha256 ${packet.sha256})`,
       '',
     ];
-    if (llmNotes) lines.push(llmNotes, '');
+    lines.push(isStub ? this.computeVerdict(stat).notes : llmNotes, '');
     lines.push(this.roborevSection(input.owner, input.repo, input.headSha));
     lines.push(isStub
       ? '_Phase 1 automated stub — full checker review not yet enabled. This does not merge or block merging on its own._'

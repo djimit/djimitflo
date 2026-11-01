@@ -681,7 +681,7 @@ describe('ExecutionEngine', () => {
       await execution.completion;
       await new Promise((resolve) => setTimeout(resolve, 0));
       const row = db.prepare(`
-        SELECT skill_id, skill_version, skill_content_hash, task_id, agent_id, success, tokens_used, model, evidence_refs_json
+        SELECT skill_id, skill_version, skill_content_hash, task_id, agent_id, success, tokens_used, model, runtime, artifact_digest, capability_id, evidence_refs_json
         FROM skill_outcomes WHERE task_id = 'task-skill'
       `).get() as any;
       return { ...row, refs: JSON.parse(row.evidence_refs_json) as string[], engine: attributedEngine, received: received! };
@@ -704,7 +704,7 @@ describe('ExecutionEngine', () => {
       const row = await runSkillTask();
       expect(row).toMatchObject({
         skill_id: '.opencode.skills.running-tests', skill_version: '0.1.0', task_id: 'task-skill',
-        agent_id: 'agent-skill', tokens_used: 100,
+        agent_id: 'agent-skill', tokens_used: 100, runtime: 'mock', artifact_digest: null, capability_id: null,
       });
       expect(row.skill_content_hash).toMatch(/^[a-f0-9]{64}$/);
     });

@@ -21,7 +21,7 @@ afterEach(() => { db.close(); vi.unstubAllEnvs(); });
 function verify(source = 'system', hash = digest, severity = EvidenceSeverity.INFO, verifiedPackage: string | undefined = packageHash) {
   return new EvidenceService(db).captureEvidence({ task_id: 'task', evidence_type: EvidenceType.TEST_RESULT,
     source, severity, title: 'Independent fixture check', summary: 'Test fixture, not operational evidence',
-    details: { skill_package_id: 'counter-v1-0-0', skill_content_hash: hash, skill_package_hash: verifiedPackage } });
+    details: { status: 'passed', skill_package_id: 'counter-v1-0-0', skill_content_hash: hash, skill_package_hash: verifiedPackage } });
 }
 it('settles late verification once without inventing usage and retains later failed evidence', () => {
   const before = db.prepare('SELECT id,tokens_used,duration_ms FROM skill_outcomes').get();
@@ -53,4 +53,18 @@ it('refuses a different executable package even when its instructions hash is un
 it('leaves settlement disabled when the skill-first feature is off', () => {
   vi.stubEnv('SKILL_FIRST_MODE', 'off'); verify();
   expect(db.prepare('SELECT success FROM skill_outcomes').get()).toEqual({ success: 0 });
+});
+
+it('does not promote contradictory info-severity failure evidence to success', () => {
+  new EvidenceService(db).captureEvidence({ task_id: 'task', evidence_type: EvidenceType.TEST_RESULT,
+    source: 'system', severity: EvidenceSeverity.INFO, title: 'Rejected verifier result', summary: 'Explicit failure',
+    details: { status: 'failed', skill_package_id: 'counter-v1-0-0', skill_content_hash: digest, skill_package_hash: packageHash } });
+  expect(db.prepare('SELECT success FROM skill_outcomes').get()).toEqual({ success: 0 });
+});
+it('keeps an executable result without an explicit verifier verdict unknown', () => {
+  new EvidenceService(db).captureEvidence({ task_id: 'task', evidence_type: EvidenceType.TEST_RESULT,
+    source: 'system', severity: EvidenceSeverity.INFO, title: 'No verifier result', summary: 'Missing verdict',
+    details: { skill_package_id: 'counter-v1-0-0', skill_content_hash: digest, skill_package_hash: packageHash } });
+  expect(db.prepare('SELECT success FROM skill_outcomes').get()).toEqual({ success: 0 });
+  expect(skills.measuredTraits('counter-v1-0-0').reliability).toBeNull();
 });

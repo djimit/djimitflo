@@ -86,6 +86,17 @@ describe('SkillFactoryService existing loop continuation', () => {
     expect(loops.executeMaker).toHaveBeenCalledOnce();
   });
 
+  it('binds canonical variation parent into the package verification receipt without promoting it', async () => {
+    const parent = {capability_id:'skill:fixture-v1-0-0@1.0.0',content_hash:'b'.repeat(64)};
+    db.prepare("UPDATE goals SET metadata=json_set(metadata,'$.skill_factory_parent',json(?))").run(JSON.stringify(parent));
+    const {factory}=harness(); factory.prepare('goal','owner',prep);
+    await factory.advance('goal','owner'); await factory.advance('goal','owner');
+    await factory.advance('goal','owner',{checker_runtime:'claude'});
+    expect((await factory.advance('goal','owner')).status).toBe('awaiting_package_admission');
+    const details=JSON.parse((db.prepare('SELECT details FROM execution_evidence').get() as {details:string}).details);
+    expect(details).toMatchObject({skill_parent:parent,skill_factory_run_id:'run',maker_lease_id:'maker',skill_package_hash:'verified-hash'});
+  });
+
   it('retains pending approval and recovery without redispatch or auto-approval', async () => {
     const { factory, loops } = harness(); factory.prepare('goal', 'owner', prep);
     leases[0].metadata.execution_task_id = 'task';

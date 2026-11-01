@@ -8,7 +8,7 @@ import { z } from 'zod';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { SkillLoaderService } from '../services/skill-loader-service';
-import { ExecutableSkills, skillFirstMode } from '../services/executable-skills';
+import { ExecutableSkills, skillFirstMode, skillParent } from '../services/executable-skills';
 import { AuthorizationService, type OwnableResource } from '../services/authorization-service';
 import { SkillFactoryService, skillFactoryPrepareInput, skillFactoryAdvanceInput } from '../services/skill-factory-service';
 import { LoopService } from '../services/loop-service';
@@ -16,7 +16,7 @@ import { LoopService } from '../services/loop-service';
 const skillName = z.string().regex(/^[a-z0-9][a-z0-9-]{0,79}$/);
 const taskId = z.string().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]*$/);
 const discoveryInput = z.object({ capability: skillName }).strict();
-const requestInput = z.object({ capability: skillName, objective: z.string().trim().min(1).max(4000), source_run_id: taskId.optional() }).strict();
+const requestInput = z.object({ capability: skillName, objective: z.string().trim().min(1).max(4000), source_run_id: taskId.optional(), parent: skillParent.optional() }).strict();
 const captureInput = z.object({ task_id: taskId }).strict();
 
 function skillError(res: Response, error: unknown): void {
@@ -59,7 +59,7 @@ export function createSkillRoutes(db: Database, auth?: AuthMiddleware): Router {
     const parsed = requestInput.safeParse(req.body);
     if (!parsed.success) { invalid(res); return; }
     try {
-      const result = executable.request(parsed.data.capability, parsed.data.objective, req.user!.sub, parsed.data.source_run_id);
+      const result = executable.request(parsed.data.capability, parsed.data.objective, req.user!.sub, parsed.data.source_run_id, parsed.data.parent);
       res.status(result.status === 'implementation_required' ? 202 : 200).json(result);
     } catch (error) { skillError(res, error); }
   });
