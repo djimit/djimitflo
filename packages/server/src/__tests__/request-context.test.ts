@@ -36,3 +36,33 @@ it('UXE-08: request context is mounted at startup before the API, health and das
     expect(startup.indexOf(handler)).toBeGreaterThan(middleware);
   }
 });
+
+describe('UXE-08: an inbound X-Request-ID is accepted only when it is a short plain token', () => {
+  const run = (value: unknown) => {
+    const req = { headers: { 'x-request-id': value } } as unknown as Request;
+    const setHeader = vi.fn();
+    requestContext(req, { setHeader } as unknown as Response, vi.fn());
+    return { id: (req as any).requestId as string, header: setHeader.mock.calls[0] };
+  };
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+  it('UXE-08: a valid client id is echoed', () => {
+    const valid = 'edge-1.req_42:a';
+    expect(run(valid)).toEqual({ id: valid, header: ['X-Request-ID', valid] });
+    const max = 'a'.repeat(128);
+    expect(run(max).id).toBe(max);
+  });
+
+  it.each([
+    ['an over-long id', 'a'.repeat(129)],
+    ['an id with spaces', 'req 42'],
+    ['an id with control-like characters', 'req\t42\u0007'],
+    ['a forged log line', 'ok\n[ERROR] forged'],
+    ['an array value', ['req-1', 'req-2']],
+    ['an empty id', ''],
+  ])('UXE-08: %s gets a fresh UUID', (_label, value) => {
+    const { id, header } = run(value);
+    expect(id).toMatch(UUID);
+    expect(header).toEqual(['X-Request-ID', id]);
+  });
+});
