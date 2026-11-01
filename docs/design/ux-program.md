@@ -13,6 +13,14 @@ existing auth; anything that sends, closes, approves or changes permissions ship
 | UX-3 … UX-33 | live shell, permission-aware UI, inbox, draft-PR queue, schedulers, evolution page, push, agents, LLM ledger, a11y | open |
 | UX-30 | Lab pruning: dormant Lab pages measured from S4 usage telemetry, one recommendation per page (`docs/design/ux-30-lab-pruning.md`) | done = table; **decision pending** (operator, UXD-3) |
 
+### UX evolution program (Phase UXE)
+
+Operator-adopted 2026-11-01. Each item ships as a draft PR on `feat/ux-evo/<NN>-<slug>`; the operator merges.
+
+| Item | What | State |
+|---|---|---|
+| UXE-11 | UX-4b permission memo (no code): role × permission matrix, APPROVER/`write:governance`, `GET /approvals` and `GET /self-improve/decisions` payloads, 27 mutating routes without a permission check, proposed matrix, blast radius, migration, rollback (`permission-memo-2026-11.md`) | draft PR; **decisions D-UXE-11a–f pending** (operator) |
+
 ## Coverage baseline (UX-0, origin/main 5a9d46d5, 2026-10-05)
 
 Static: mounted routes (route-source inventory) vs `this.request` calls in `dashboard/src/lib/api.ts`. Direct `fetch`
