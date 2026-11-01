@@ -115,3 +115,17 @@ it('PRC-1: retry sweep shadow records draft_pr_retry_shadow and calls nothing', 
   expect(await retryFailedDraftPrs(db, f as unknown as typeof fetch, env({ LOOP_DRAFT_PR_RETRY: 'shadow' }))).toEqual({ retried: 0, opened: 0 });
   expect(f).not.toHaveBeenCalled(); expect(count('draft_pr_retry_shadow')).toBe(1);
 });
+
+it('PRC-3: the draft PR body says `Refs owner/repo#N` when the goal came from a GitHub issue (WORK_ITEM_OUTCOME_SYNC=on only)', async () => {
+  db.prepare(`INSERT INTO goals (id, objective, constraints_json, acceptance_criteria_json, risk_class, budget_json, status, metadata, created_at, updated_at)
+    VALUES ('g1', 'o', '[]', '[]', 'low', '{}', 'completed', '{"source":"github_issue","source_ref":"o/r#12","source_work_item_id":"w1"}', datetime('now'), datetime('now'))`).run();
+  db.prepare("UPDATE loop_runs SET goal_id = 'g1' WHERE id = 'run-1'").run();
+  const bodyOf = (f: ReturnType<typeof github>) => JSON.parse(String((f.mock.calls.find((c) => (c[1] as Init)?.method === 'POST')![1] as Init)!.body)).body as string;
+  const off = github({ post: { status: 201, json: { html_url: 'https://github.com/o/r/pull/50', number: 50 } } });
+  await new LoopDraftPrService(db, off as unknown as typeof fetch, env()).openForRun('run-1');
+  expect(bodyOf(off)).not.toContain('Refs');
+  db.prepare("UPDATE loop_runs SET metadata = '{}' WHERE id = 'run-1'").run();
+  const on = github({ existing: [], post: { status: 201, json: { html_url: 'https://github.com/o/r/pull/51', number: 51 } } });
+  await new LoopDraftPrService(db, on as unknown as typeof fetch, env({ WORK_ITEM_OUTCOME_SYNC: 'on' })).openForRun('run-1');
+  expect(bodyOf(on).endsWith('\n\nRefs o/r#12')).toBe(true);
+});

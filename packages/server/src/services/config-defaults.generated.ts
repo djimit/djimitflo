@@ -142,6 +142,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   VALUE_ALLOCATOR_MODE: 'off (`shadow`)',
   VALUE_ANOMALY_ALARM: 'off (`shadow`, `on`)',
   WEAK_ASSERTION_CHECK_MODE: 'off (`shadow` / `enforce`: for a test-gap, exports or mutation-gap maker, the deterministic check `test:assertion-stren…',
+  WORK_ITEM_OUTCOME_SYNC: 'off (`shadow`, `on`)',
 };
 
 /** Env flags that arm a background scheduler at boot (HEARTBEAT.md). */

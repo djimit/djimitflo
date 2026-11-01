@@ -9,6 +9,7 @@ import { freshnessMode, staleAgainst, type ReadSet } from './evidence-freshness'
 import { emptySettlementCounts, parseOutcome, settlementState, type SettlementState } from './merge-survival';
 import { extraRepoBySlug, goalRepoSlug, isExtraRepoPr, slugFromRemote } from './repo-registry';
 import { guardTick, markRun } from './scheduler-registry';
+import { issueRefsLine } from './work-item-outcome-sync';
 
 /**
  * G4: a verified loop run becomes a *draft* PR. Before this, ready_for_human_merge output stayed in a VPS worktree
@@ -112,6 +113,7 @@ export class LoopDraftPrService {
         .map((l) => `- ${l.role}: ${l.verdict ?? 'n/a'}`).join('\n');
       let body = `Opened by the djimitflo loop for run \`${runId}\`${proposal ? ` (proposal \`${proposal.id}\`)` : ''}.\n\nReviewer verdicts:\n${verdicts || '- none recorded'}\n\nFiles: ${files.map((f) => `\`${f}\``).join(', ')}\n\nDraft: a human reviews and merges.`;
       if (this.env.LOOP_PR_BODY_V2 === 'true') { let numstat = ''; try { numstat = git('diff', '--numstat', 'HEAD~1', 'HEAD'); } catch { /* no parent: diff stat omitted */ } body = this.bodyV2(runId, maker.id, body, numstat); }
+      body += issueRefsLine(this.db, run.goal_id, this.env); // PRC-3: `Refs owner/repo#N` for a GitHub-issue work item
       // PRC-1: never a second PR for one branch — a retry looks up the PR an earlier attempt may have opened before it
       // POSTs, and a 422 (a PR for this head exists) adopts that PR instead of failing.
       let pr = committed ? await this.existingPr(repo, maker.branch_name, token) : null;
