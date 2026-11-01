@@ -51,16 +51,16 @@ export function keywords(text: string): Set<string> {
   return new Set(text.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 4 && !STOP.has(w)));
 }
 
-interface CapView { id: string; status: string; title: string; files: string[]; test: string | null; repo: string | null; text: string; factory: boolean; proposalId: string | null }
+interface CapView { id: string; version: string; status: string; title: string; files: string[]; test: string | null; repo: string | null; text: string; factory: boolean; proposalId: string | null }
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x.length > 0) : []);
-function view(row: { id: string; status: string; owner: string; metadata: string }): CapView {
+function view(row: { id: string; version: string; status: string; owner: string; metadata: string }): CapView {
   let m: Record<string, unknown> = {};
   try { m = JSON.parse(row.metadata || '{}') as Record<string, unknown>; } catch { /* empty */ }
   const str = (k: string) => (typeof m[k] === 'string' ? m[k] as string : '');
   const files = [...new Set([...strings(m.files), ...(str('target_file') ? [str('target_file')] : [])])];
   const text = [str('title'), str('description'), str('name')].filter(Boolean).join(' ') || row.id;
   const prov = m.provenance && typeof m.provenance === 'object' ? m.provenance as Record<string, unknown> : {};
-  return { id: row.id, status: row.status, title: str('title') || str('name') || row.id, files, test: str('test') || null, repo: str('repo') || null, text,
+  return { id: row.id, version: row.version, status: row.status, title: str('title') || str('name') || row.id, files, test: str('test') || null, repo: str('repo') || null, text,
     factory: row.owner === FACTORY_OWNER, proposalId: typeof prov.proposal_id === 'string' ? prov.proposal_id : null };
 }
 
@@ -74,8 +74,8 @@ function score(task: { files: string[]; text: string }, cap: CapView): number {
 
 function validatedCaps(db: Database, factoryOnly = false): CapView[] {
   try {
-    return (db.prepare(`SELECT id, status, owner, metadata FROM swarm_capabilities WHERE status = 'validated'${factoryOnly ? ' AND owner = ?' : ''}
-      ORDER BY updated_at DESC, id ASC LIMIT 2000`).all(...(factoryOnly ? [FACTORY_OWNER] : [])) as Array<{ id: string; status: string; owner: string; metadata: string }>).map(view);
+    return (db.prepare(`SELECT id, version, status, owner, metadata FROM swarm_capabilities WHERE status = 'validated'${factoryOnly ? ' AND owner = ?' : ''}
+      ORDER BY updated_at DESC, id ASC LIMIT 2000`).all(...(factoryOnly ? [FACTORY_OWNER] : [])) as Array<{ id: string; version: string; status: string; owner: string; metadata: string }>).map(view);
   } catch { return []; }
 }
 
@@ -262,8 +262,11 @@ export function onLoopPrPolled(db: Database, runId: string, pr: { url: string; m
 
 // ─── discovery ─────────────────────────────────────────────────────────────
 
+/** A capability line of a maker assignment and the exact capability version behind it (OMEGA slice 1: attribution). */
+export interface FactoryCapabilityLine { id: string; version: string; line: string }
+
 /** Step 6: up to 3 factory capabilities matching the goal's proposal (files, then keywords); never the goal's own result. */
-export function factoryCapabilityLines(db: Database, goalId: string | null, env: NodeJS.ProcessEnv = process.env): string[] {
+export function factoryCapabilityLines(db: Database, goalId: string | null, env: NodeJS.ProcessEnv = process.env): FactoryCapabilityLine[] {
   if (capabilityFactoryMode(env) !== 'on' || !goalId) return [];
   const row = db.prepare(`SELECT s.id, s.title, s.description, s.grounding_json AS grounding FROM goals g
     JOIN self_improvements s ON s.id = COALESCE(g.improvement_id, json_extract(g.metadata, '$.improvement_id')) WHERE g.id = ?`).get(goalId) as
@@ -275,7 +278,7 @@ export function factoryCapabilityLines(db: Database, goalId: string | null, env:
   const caps = validatedCaps(db, true).filter((c) => c.proposalId !== row.id && sameRepo(c, slug, primaryRepo(env)));
   const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim().slice(0, 200);
   return bestMatches(caps, { files, text: `${row.title}\n${row.description}` }, DISCOVERY_CAP)
-    .map((c) => `${oneLine(c.title)} — ${c.files.join(', ')} — ${oneLine(c.test ?? 'no test recorded')}`);
+    .map((c) => ({ id: c.id, version: c.version, line: `${oneLine(c.title)} — ${c.files.join(', ')} — ${oneLine(c.test ?? 'no test recorded')}` }));
 }
 
 /** GET /api/capabilities/registry?q= — validated capabilities of the canonical store whose file is q or whose title/description
