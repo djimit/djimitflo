@@ -28,6 +28,9 @@ export const ACTION_PERMISSIONS = {
 export const NAV_PERMISSIONS: Record<string, string> = {
   '/configuration': ACTION_PERMISSIONS.runtimeConfig, // GET /health/config
   '/audit': 'read:audit', // GET /audit
+  '/evolution': 'manage:config', // GET /health/evolution-evidence (UXE-03)
+  '/observability': 'manage:config', // GET /observability/metrics (UXE-03)
+  '/usage': 'manage:config', // GET /usage/accounts (UXE-03)
 };
 
 export const needsText = (permission: string): string => `Needs ${permission}`;

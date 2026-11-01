@@ -13,6 +13,12 @@ existing auth; anything that sends, closes, approves or changes permissions ship
 | UX-3 … UX-33 | live shell, permission-aware UI, inbox, draft-PR queue, schedulers, evolution page, push, agents, LLM ledger, a11y | open |
 | UX-30 | Lab pruning: dormant Lab pages measured from S4 usage telemetry, one recommendation per page (`docs/design/ux-30-lab-pruning.md`) | done = table; **decision pending** (operator, UXD-3) |
 
+### UX evolution program (Phase UXE)
+
+| Item | What | State |
+|---|---|---|
+| UXE-03 | Role-matrix route smoke (UX-29): 7 roles × the `App.tsx` route table, offline and on synthetic fixtures; the fixture fetch answers 403 where the server's `requirePermission` (route-source inventory) would. `NAV_PERMISSIONS` gains `/evolution`, `/observability`, `/usage` (`manage:config`, UI gating only). Visible-but-403 = 0, hidden-but-permitted = 0; Agent Commons' lure and join-request panels (`manage:tokens`) are pinned in-page 403s | draft PR |
+
 ## Coverage baseline (UX-0, origin/main 5a9d46d5, 2026-10-05)
 
 Static: mounted routes (route-source inventory) vs `this.request` calls in `dashboard/src/lib/api.ts`. Direct `fetch`
