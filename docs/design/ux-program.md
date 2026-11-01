@@ -29,11 +29,6 @@ Operator-adopted 2026-11-01. Each item ships as a draft PR on `feat/ux-evo/<NN>-
 | Item | What | State |
 |---|---|---|
 | UXE-00 | Value-gate decision card + settlement value by lane on `/evolution` (read-only); UI fitness ratchet v0 (`scripts/ui-fitness.mjs`, baseline `ui-fitness-baseline.json`) | draft PR |
-
-### UX evolution program (Phase UXE)
-
-| Item | What | State |
-|---|---|---|
 | UXE-03 | Role-matrix route smoke (UX-29): 7 roles × the `App.tsx` route table, offline and on synthetic fixtures; the fixture fetch answers 403 where the server's `requirePermission` (route-source inventory) would. `NAV_PERMISSIONS` gains `/evolution`, `/observability`, `/usage` (`manage:config`, UI gating only). Visible-but-403 = 0, hidden-but-permitted = 0; Agent Commons' lure and join-request panels (`manage:tokens`) are pinned in-page 403s | draft PR |
 
 ## Coverage baseline (UX-0, origin/main 5a9d46d5, 2026-10-05)
