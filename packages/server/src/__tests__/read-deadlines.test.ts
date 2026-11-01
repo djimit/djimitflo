@@ -94,6 +94,9 @@ describe('outbound read deadlines (CODE-004)', () => {
       process.env.UAMS_URL = hung.url;
       process.env.OLLAMA_URL = hung.url;
       process.env.QDRANT_URL = hung.url;
+      // 50 ms let the client abort before the hung server accepted the connection under full-suite load (0 POSTs seen,
+      // CI 2026-11-01); 500 ms still settles well inside the 5 s budget and lets the one POST land
+      vi.mocked(AbortSignal.timeout).mockImplementation(() => realTimeout(500));
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       try {
         const started = Date.now();

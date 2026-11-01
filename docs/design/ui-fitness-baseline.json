@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "base_commit": "ea65fd0738a7f633742d8348d554072870d6b8c6",
+  "counters": {
+    "decision_keys_proven": 23,
+    "undefined_theme_token_uses": 55,
+    "locale_less_toLocale": 33,
+    "native_alert": 3
+  }
+}

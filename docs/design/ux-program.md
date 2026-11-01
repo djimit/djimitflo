@@ -7,11 +7,20 @@ existing auth; anything that sends, closes, approves or changes permissions ship
 
 | Item | What | State |
 |---|---|---|
-| UX-0 | Route-to-UI coverage baseline: `node scripts/ux-coverage.mjs [--json]` | done (this file) |
-| UX-1 | Proof-run live updates use the subscribed WebSocket event type (#624) | done |
-| UX-2 | Cockpit `genomes` type + table (#625) | done |
-| UX-3 … UX-33 | live shell, permission-aware UI, inbox, draft-PR queue, schedulers, evolution page, push, agents, LLM ledger, a11y | open |
-| UX-30 | Lab pruning: dormant Lab pages measured from S4 usage telemetry, one recommendation per page (`docs/design/ux-30-lab-pruning.md`) | done = table; **decision pending** (operator, UXD-3) |
+| UX-0, 2, 2b, 3, 4, 8, 9, 10, 13, 14, 16, 17, 18, 19, 20, 21, 24, 25, 25b, 26 | coverage baseline, contracts, live shell, permission-aware UI, schedulers, evolution page, PR body v2, push + digest, scorecards, LLM ledger, JSON repair, egress, embeddings, retrieval harness, a11y, UI kit | done (each re-checked with `git log --grep 'UX-<n>'`) |
+| UX-11 | draft-PR queue | done via RX-6 (36ea8c1, #634) |
+| UX-30 | Lab pruning table (`ux-30-lab-pruning.md`) | done (8736cbb, #1116); **decision pending** (operator, UXD-3) |
+| UX-1 | proof-run live updates | partial → UXE-06 |
+| UX-5 | Dutch strings | partial → #1115 / UXE-07 |
+| UX-6 | allowlist move | partial → UXE-20 |
+| UX-7 | draft-PR disposition | partial → parked |
+| UX-12 | Telegram commands | partial → UXE-26 |
+| UX-27 | mobile layout | partial → UXE-25 |
+| UX-28 | component splits | partial → #1115 / UXE-27 |
+| UX-29 | role matrix in route smoke | partial → UXE-03 |
+| UX-31, UX-32 | evidence pack, executive page | partial → UXE-31, UXE-32 |
+| UX-33 | (see Phase UX prompt) | open |
+| UX-15, UX-18b, UX-22, UX-23 | (see Phase UX prompt) | parked |
 
 ### UX evolution program (Phase UXE)
 
@@ -19,6 +28,7 @@ Operator-adopted 2026-11-01. Each item ships as a draft PR on `feat/ux-evo/<NN>-
 
 | Item | What | State |
 |---|---|---|
+| UXE-00 | Value-gate decision card + settlement value by lane on `/evolution` (read-only); UI fitness ratchet v0 (`scripts/ui-fitness.mjs`, baseline `ui-fitness-baseline.json`) | draft PR |
 | UXE-00a | Guard-test list (R12): a loop PR touching a UX oracle test (`ORACLE_TEST_FILES` in `loop-auto-merge.ts`) is permanent `ineligible: oracle_test_file`; refuses more PRs, never allows more | draft PR |
 
 ## Coverage baseline (UX-0, origin/main 5a9d46d5, 2026-10-05)
@@ -52,4 +62,5 @@ repositories 7 / 9. Full per-router table: `node scripts/ux-coverage.mjs`.
 | UXD-1 | Alert / one-tap approval channel = Telegram (UX-12/UX-13 built with the flag off) | decided 2026-10-04 |
 | UXD-2 | English-only UI, no message catalog (UX-5 default) | proposed |
 | UXD-3 | Deleting orphan UI (e.g. `ComplianceDashboard`) or Lab pages | ask first, after telemetry. Telemetry is in (UX-30, 31-10): per-page KEEP / MOVE / MERGE-INTO / RETIRE-CANDIDATE in `ux-30-lab-pruning.md`; decision pending |
+| UXD-4 | Decision coverage (evidence keys a page reads and a test proves, `decision_keys_proven`) replaces route coverage as the primary UI target | proposed |
 | D-UXE-00a | Guard-test list: loop PRs touching the UX oracle tests are never earned-auto-merged (UXE-00a) | decided 2026-11-01 (yes) |
