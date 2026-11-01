@@ -259,7 +259,9 @@ const promotion = (runId: string, run: FactoryRun, pr: { url: string; mergeSha: 
 function createV2Candidate(db: Database, runId: string, run: FactoryRun, prUrl: string): void {
   const head = (db.prepare("SELECT json_extract(metadata, '$.verified_head_sha') AS h FROM loop_runs WHERE id = ?").get(runId) as { h: string | null } | undefined)?.h ?? null;
   const input = candidateInput(db, runId, run, prUrl, null, head ? head.slice(0, 12) : '1', { ...(run.reuseOf ? { parent_versions: [run.reuseOf] } : {}), artifact_digest: null });
-  new SwarmIntelligenceService(db).createCandidate(input);
+  const intel = new SwarmIntelligenceService(db);
+  if (run.reuseOf) intel.assertWithinParents(input.allowed_actions, [run.reuseOf]); // slice 4: never more than the parent allows
+  intel.createCandidate(input);
   swarmEventBus.emit('capability_transition', { capability_id: input.id, old_status: 'none', new_status: 'candidate', reason: `capability factory: draft PR ${prUrl}` });
 }
 

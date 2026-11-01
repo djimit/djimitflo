@@ -12,6 +12,7 @@ import { assignmentContext, assignmentContextMarkdown } from '../services/assign
 import { factoryCapabilityLines, onDraftPrOpened, submitCapabilityRequest } from '../services/capability-factory';
 import { checkLoopPrs } from '../services/merge-survival';
 import { EVOLUTION_FLAGS } from '../services/evolution-evidence';
+import { MetaEvolutionService } from '../services/meta-evolution-service';
 import { LoopService, type LoopFinding, type LoopRunRecord } from '../services/loop-service';
 import { runGenome } from '../services/maker-genome';
 import { LoopDaemon } from '../services/loop-daemon';
@@ -251,5 +252,90 @@ describe('CAP-3: candidate at draft PR, promote on merge (CAPABILITY_LIFECYCLE_V
     const { requestId, prUrl } = factoryRun('run1', 'g1', { ...REQ, execute: true });
     expect(onDraftPrOpened(db, 'run1', prUrl)).toBe('candidate');
     expect(JSON.parse(capRow(`capfac:${requestId}`)!.metadata).parent_versions).toEqual(['capfac:parent@p1']);
+  });
+});
+
+// ─── slice 4: immutability ──────────────────────────────────────────────────
+describe('CAP-4: immutability', () => {
+  const base = { kind: 'deterministic_harness' as const, owner: 'o', version: '1', risk_ceiling: 'low' as const, input_schema_ref: 'in', output_schema_ref: 'out',
+    allowed_actions: ['reuse_in_assignment'], forbidden_actions: ['deploy'], required_evidence: ['proof:test'], removal_strategy: 'deprecate' };
+  const code = (fn: () => unknown) => { try { fn(); return null; } catch (e) { return (e as { code?: string }).code ?? (e as Error).message; } };
+
+  it('CAP-4: a non-draft row refuses a changed version, allowed/forbidden actions or risk (CAPABILITY_IMMUTABLE); a new version is a new id', () => {
+    const intel = new SwarmIntelligenceService(db);
+    intel.registerCapability({ ...base, id: 'c1', status: 'candidate' });
+    expect(code(() => intel.registerCapability({ ...base, id: 'c1', status: 'candidate', version: '2' }))).toBe('CAPABILITY_IMMUTABLE');
+    expect(code(() => intel.registerCapability({ ...base, id: 'c1', status: 'candidate', allowed_actions: ['reuse_in_assignment', 'push'] }))).toBe('CAPABILITY_IMMUTABLE');
+    expect(code(() => intel.registerCapability({ ...base, id: 'c1', status: 'candidate', forbidden_actions: ['merge'] }))).toBe('CAPABILITY_IMMUTABLE');
+    expect(code(() => intel.registerCapability({ ...base, id: 'c1', status: 'candidate', risk_ceiling: 'high' }))).toBe('CAPABILITY_IMMUTABLE');
+    expect(intel.getCapability('c1')).toMatchObject({ version: '1', risk_ceiling: 'low', allowed_actions: ['reuse_in_assignment'], forbidden_actions: ['deploy'] });
+    // metadata and the same fields in another order are fine; a new version is a new id
+    expect(intel.registerCapability({ ...base, id: 'c1', status: 'candidate', metadata: { note: 'x' } }).metadata).toEqual({ note: 'x' });
+    expect(intel.registerCapability({ ...base, id: 'c1@2', status: 'candidate', version: '2' }).version).toBe('2');
+    // a draft is still editable
+    intel.registerCapability({ ...base, id: 'd1', status: 'draft' });
+    expect(intel.registerCapability({ ...base, id: 'd1', status: 'draft', version: '9', risk_ceiling: 'medium' })).toMatchObject({ version: '9', risk_ceiling: 'medium' });
+  });
+
+  it('CAP-4: factory registration with parent_versions requires allowed_actions ⊆ the parent\'s', async () => {
+    vi.stubEnv('CAPABILITY_LIFECYCLE_V2', 'on'); vi.stubEnv('CAPABILITY_FACTORY_REUSE_EXECUTE', 'on');
+    seedValidated('cap-narrow', 'n1', { title: 'URL slug helper', files: [TARGET, TEST], test: TEST }, 'someone');
+    db.prepare(`UPDATE swarm_capabilities SET allowed_actions_json = '["spawn_runtime_worker"]' WHERE id = 'cap-narrow'`).run();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { requestId, prUrl } = factoryRun('run1', 'g1', { ...REQ, execute: true });
+    expect(onDraftPrOpened(db, 'run1', prUrl)).toBeNull();
+    expect(capRow(`capfac:${requestId}`)).toBeUndefined();
+    expect(String(warn.mock.calls[0]?.[1])).toContain('CAPABILITY_ACTIONS_EXCEED_PARENT');
+    warn.mockRestore();
+  });
+});
+
+// ─── end to end: a need is built once, then reused by its exact version ──────
+describe('CAP-E2E: build → candidate → promoted → reused by version → attributed', () => {
+  it('CAP-E2E: task 1 builds and promotes the capability; task 2 reuses it pinned, and its maker outcome is attributed', async () => {
+    vi.stubEnv('CAPABILITY_LIFECYCLE_V2', 'on'); vi.stubEnv('CAPABILITY_FACTORY_REUSE_EXECUTE', 'on');
+    const sha = commitRepo();
+    // task 1: no match → one proposal → (simulated) approved maker run with a verified head → draft PR → candidate → merge → validated
+    const t1 = factoryRun('run1', 'g1', REQ, 'c0ffee0123456789');
+    expect(onDraftPrOpened(db, 'run1', t1.prUrl)).toBe('candidate');
+    const capId = `capfac:${t1.requestId}`;
+    expect(capRow(capId)).toMatchObject({ status: 'candidate', version: 'c0ffee012345' });
+    await checkLoopPrs(db, merged(sha), pollEnv(), new Date('2026-10-31T00:00:00Z'));
+    expect(capRow(capId)).toMatchObject({ status: 'validated', version: 'c0ffee012345' });
+    expect(JSON.parse(capRow(capId)!.metadata).artifact_digest).toMatch(/^sha256:[0-9a-f]{64}$/);
+
+    // task 2: the same need with execute:true → a proposal pinned to the approved version
+    const t2 = submitCapabilityRequest(db, { ...REQ, title: 'Slugify titles for URLs again', execute: true }, 'op');
+    expect(t2).toMatchObject({ status: 'proposed', reuse_of: `${capId}@c0ffee012345` });
+    if (t2.status !== 'proposed') throw new Error('unreachable');
+    expect((db.prepare('SELECT evidence_refs_json AS r FROM self_improvements WHERE id = ?').get(t2.proposal.id) as { r: string }).r).toContain(`capability-reuse:${capId}@c0ffee012345`);
+    const goal = new GoalService(db).createGoal({ objective: 'Slugify again', acceptance_criteria: ['Tests pass'], risk_class: 'low', metadata: {} });
+    db.prepare("UPDATE goals SET status = 'decomposed', improvement_id = ? WHERE id = ?").run(t2.proposal.id, goal.id);
+
+    // the maker assignment of task 2's run lists the pinned capability first; its event metadata carries the exact id@version
+    const loops = new LoopService(db);
+    const run = { id: 'run-1', loop_name: 'doc-drift-and-small-fix-loop', goal_id: goal.id, mode: 'closed', status: 'planning', metadata: {}, gates: [], next_actions: [], plan: {}, state_file: null, repository_path: repo } as unknown as LoopRunRecord;
+    loops.writeWorkAssignment(repo, run, { id: 'f1', type: 'documentation', severity: 'low', file: TARGET, line: 1, message: 'm', evidence: 'e', suggested_fix: 's' } as LoopFinding, 'codex');
+    const ev = db.prepare("SELECT metadata FROM loop_events WHERE loop_run_id = 'run-1' AND event_type = 'assignment_context'").get() as { metadata: string };
+    expect(JSON.parse(ev.metadata).capability_ids).toEqual([`${capId}@c0ffee012345`]);
+
+    // the daemon finishes task 2's maker: the outcome carries capability:<id>@<version>, the lease the capability id
+    const now = new Date().toISOString();
+    db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES ('maker-1', 'run-1', 'maker', 'codex', 'completed', '{}', ?, ?)`).run(now, now);
+    const stub = {
+      startDocDriftAndSmallFixLoop: vi.fn(() => ({ id: 'run-1', findings: [{ id: 'f1', type: 'test_finding', severity: 'info', file: TARGET, message: 'x', evidence: 'x', suggested_fix: 'x' }] })),
+      continueLoopRun: vi.fn(() => ({ leases: [{ id: 'maker-1', role: 'maker', status: 'prepared', runtime: 'codex' }, { id: 'checker-1', role: 'checker', status: 'prepared', runtime: 'manual' }] })),
+      executeWorker: vi.fn(async () => ({})), runDeterministicChecks: vi.fn(() => ({ run: { status: 'completed' }, lease: {}, checks: [] })),
+      retryLoopRun: vi.fn(), executeChecker: vi.fn(async () => ({})), verifyLoopRun: vi.fn(() => ({ gates: [] })), pruneOrphanedWorktrees: vi.fn(),
+    };
+    const daemon = new LoopDaemon(db, stub as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+    await daemon.tick(); await new Promise((r) => setImmediate(r)); daemon.stop();
+    const outcome = db.prepare('SELECT skill_version AS v, evidence_refs_json AS refs FROM skill_outcomes WHERE task_id = ?').get('run-1') as { v: string; refs: string };
+    expect(JSON.parse(outcome.refs)).toContain(`capability:${capId}@c0ffee012345`);
+    expect(outcome.v).toBe(`${capId}@c0ffee012345`);
+    expect((db.prepare("SELECT capability_id FROM worker_leases WHERE id = 'maker-1'").get() as { capability_id: string }).capability_id).toBe(capId);
+    // used, so meta-evolution's 30-day dormancy prune keeps it validated
+    new MetaEvolutionService(db, new SwarmIntelligenceService(db)).evaluate();
+    expect(capRow(capId)!.status).toBe('validated');
   });
 });
