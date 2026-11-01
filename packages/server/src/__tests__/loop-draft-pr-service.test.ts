@@ -11,7 +11,7 @@ import { LoopDraftPrService } from '../services/loop-draft-pr-service';
 let db: Database.Database; let wt: string; let remote: string;
 const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8' }).trim();
 const env = () => ({ LOOP_AUTO_DRAFT_PR_ENABLED: 'true', GITHUB_REPOSITORY: 'o/r', GITHUB_TOKEN: 't0ken' });
-const ok = () => vi.fn().mockResolvedValue({ ok: true, status: 201, json: async () => ({ html_url: 'https://github.com/o/r/pull/9' }) });
+const ok = () => vi.fn().mockResolvedValue({ ok: true, status: 201, json: async () => existingPr() });
 
 beforeEach(() => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'draftpr-'));
@@ -68,7 +68,7 @@ const gh = (openTitles: string[] | 'error') => vi.fn(async (_url: string, init?:
     if (openTitles === 'error') return { ok: false, status: 500, json: async () => ({}) };
     return { ok: true, status: 200, json: async () => openTitles.map((title) => ({ title })) };
   }
-  return { ok: true, status: 201, json: async () => ({ html_url: 'https://github.com/o/r/pull/9' }) };
+  return { ok: true, status: 201, json: async () => existingPr() };
 });
 const posts = (f: ReturnType<typeof gh>) => f.mock.calls.filter((c) => (c[1] as { method?: string } | undefined)?.method === 'POST').length;
 const events = (type: string) => db.prepare('SELECT COUNT(*) AS n FROM loop_events WHERE event_type = ?').get(type) as { n: number };
@@ -156,4 +156,174 @@ it('UX-10: no secret pattern survives in the v2 body and the PR is still opened 
   expect(body).not.toContain('t0ken');
   await svc.openForRun('run-1');
   expect(f).toHaveBeenCalledTimes(1);
+});
+
+const publication = () => JSON.parse((db.prepare("SELECT metadata FROM loop_runs WHERE id = 'run-1'").get() as { metadata: string }).metadata).draft_publication;
+const existingPr = (patch: Record<string, unknown> = {}) => ({
+  html_url: 'https://github.com/o/r/pull/9', draft: true, state: 'open',
+  body: 'Opened by the djimitflo loop for run `run-1`.',
+  head: { ref: 'agent/loop/run-1', sha: publication().head, repo: { full_name: 'o/r' } },
+  base: { ref: 'main', repo: { full_name: 'o/r' } }, ...patch,
+});
+const recoveryFetch = (rows: () => unknown[]) => vi.fn(async (_url: string, init?: RequestInit) => ({
+  ok: true, status: 200, json: async () => init?.method === 'POST' ? existingPr() : rows(),
+}));
+
+it('recovers a crash after commit before its checkpoint without recommitting or losing original files', async () => {
+  db.exec(`CREATE TRIGGER crash_commit BEFORE UPDATE OF metadata ON loop_runs
+    WHEN json_extract(NEW.metadata, '$.draft_publication.phase') = 'committed'
+    BEGIN SELECT RAISE(ABORT, 'simulated commit checkpoint crash'); END;`);
+  const first = ok();
+  expect(await new LoopDraftPrService(db, first as unknown as typeof fetch, env()).openForRun('run-1')).toBeNull();
+  expect(first).not.toHaveBeenCalled();
+  const head = git(wt, 'rev-parse', 'HEAD');
+  expect(publication().phase).toBe('prepared');
+  db.exec('DROP TRIGGER crash_commit');
+  const retry = recoveryFetch(() => []);
+  expect(await new LoopDraftPrService(db, retry as unknown as typeof fetch, env()).openForRun('run-1')).toBe('https://github.com/o/r/pull/9');
+  expect(git(wt, 'rev-parse', 'HEAD')).toBe(head);
+  expect(publication().files).toEqual(['src/x.test.ts']);
+  expect(retry.mock.calls.filter(c => c[1]?.method === 'POST')).toHaveLength(1);
+});
+
+it('recovers after push before POST completion and performs one replacement request after exact reconciliation', async () => {
+  const failFetch = vi.fn().mockRejectedValue(new Error('connection lost'));
+  expect(await new LoopDraftPrService(db, failFetch as unknown as typeof fetch, env()).openForRun('run-1')).toBeNull();
+  expect(git(remote, 'rev-parse', 'agent/loop/run-1')).toBe(publication().head);
+  const retry = recoveryFetch(() => []);
+  expect(await new LoopDraftPrService(db, retry as unknown as typeof fetch, env()).openForRun('run-1')).toBe('https://github.com/o/r/pull/9');
+  expect(retry.mock.calls).toHaveLength(2);
+});
+
+it('reconciles a created draft after response loss without duplicate POST, including service recreation', async () => {
+  const lost = vi.fn().mockResolvedValue({ ok: true, status: 201, json: async () => { throw new Error('lost response'); } });
+  expect(await new LoopDraftPrService(db, lost as unknown as typeof fetch, env()).openForRun('run-1')).toBeNull();
+  const retry = recoveryFetch(() => [existingPr()]);
+  const service = new LoopDraftPrService(db, retry as unknown as typeof fetch, env());
+  expect(await service.openForRun('run-1')).toBe('https://github.com/o/r/pull/9');
+  expect(await new LoopDraftPrService(db, retry as unknown as typeof fetch, env()).openForRun('run-1')).toBe('https://github.com/o/r/pull/9');
+  expect(retry.mock.calls).toHaveLength(1);
+  expect(retry.mock.calls[0][1]?.method).not.toBe('POST');
+  expect(events('draft_pr_opened')).toEqual({ n: 1 });
+});
+
+it.each(['ambiguous', 'moved', 'wrong-repo', 'wrong-base', 'wrong-run', 'not-draft', 'closed'])('refuses unsafe reconciliation: %s', async (fault) => {
+  await new LoopDraftPrService(db, vi.fn().mockRejectedValue(new Error('lost')) as unknown as typeof fetch, env()).openForRun('run-1');
+  const retry = recoveryFetch(() => {
+    const pr = existingPr();
+    if (fault === 'ambiguous') return [pr, pr];
+    if (fault === 'moved') pr.head.sha = 'f'.repeat(40);
+    if (fault === 'wrong-repo') pr.head.repo.full_name = 'other/r';
+    if (fault === 'wrong-base') pr.base.ref = 'other';
+    if (fault === 'wrong-run') pr.body = 'another run';
+    if (fault === 'not-draft') pr.draft = false;
+    if (fault === 'closed') pr.state = 'closed';
+    return [pr];
+  });
+  expect(await new LoopDraftPrService(db, retry as unknown as typeof fetch, env()).openForRun('run-1')).toBeNull();
+  expect(retry.mock.calls.filter(c => c[1]?.method === 'POST')).toHaveLength(0);
+});
+
+it('does not retry publishing when reconciliation is unavailable', async () => {
+  const failFetch = vi.fn().mockRejectedValue(new Error('lost'));
+  await new LoopDraftPrService(db, failFetch as unknown as typeof fetch, env()).openForRun('run-1');
+  failFetch.mockClear();
+  expect(await new LoopDraftPrService(db, failFetch as unknown as typeof fetch, env()).openForRun('run-1')).toBeNull();
+  expect(failFetch.mock.calls).toHaveLength(1);
+  expect(failFetch.mock.calls[0][1]?.method).not.toBe('POST');
+});
+
+it('uses a persisted claim across service instances while the first publisher is awaiting GitHub', async () => {
+  let resolve!: (value: unknown) => void;
+  const waiting = vi.fn(() => new Promise(r => { resolve = r; }));
+  const first = new LoopDraftPrService(db, waiting as unknown as typeof fetch, env()).openForRun('run-1');
+  const second = ok();
+  expect(await new LoopDraftPrService(db, second as unknown as typeof fetch, env()).openForRun('run-1')).toBeNull();
+  expect(second).not.toHaveBeenCalled();
+  resolve({ ok: true, status: 201, json: async () => existingPr() });
+  expect(await first).toBe('https://github.com/o/r/pull/9');
+});
+
+it('revalidates a stop during reconciliation and never publishes after it', async () => {
+  await new LoopDraftPrService(db, vi.fn().mockRejectedValue(new Error('lost')) as unknown as typeof fetch, env()).openForRun('run-1');
+  const retry = recoveryFetch(() => { db.prepare("UPDATE loop_runs SET status = 'cancelled' WHERE id = 'run-1'").run(); return []; });
+  expect(await new LoopDraftPrService(db, retry as unknown as typeof fetch, env()).openForRun('run-1')).toBeNull();
+  expect(retry.mock.calls.filter(c => c[1]?.method === 'POST')).toHaveLength(0);
+});
+
+it('holds a changed maker artifact instead of publishing it under the previous checkpoint', async () => {
+  await new LoopDraftPrService(db, vi.fn().mockRejectedValue(new Error('lost')) as unknown as typeof fetch, env()).openForRun('run-1');
+  fs.appendFileSync(path.join(wt, 'src/x.test.ts'), '\nchanged');
+  const retry = recoveryFetch(() => []);
+  expect(await new LoopDraftPrService(db, retry as unknown as typeof fetch, env()).openForRun('run-1')).toBeNull();
+  expect(retry).not.toHaveBeenCalled();
+});
+
+it('recovers an expired persisted publisher lease and refuses a still-live lease', async () => {
+  await new LoopDraftPrService(db, vi.fn().mockRejectedValue(new Error('lost')) as unknown as typeof fetch, env()).openForRun('run-1');
+  db.prepare(`UPDATE loop_runs SET metadata = json_set(metadata, '$.draft_publication.owner', 'crashed-worker', '$.draft_publication.leaseUntil', ?) WHERE id = 'run-1'`).run(Date.now() + 60_000);
+  const retry = recoveryFetch(() => [existingPr()]);
+  expect(await new LoopDraftPrService(db, retry as unknown as typeof fetch, env()).openForRun('run-1')).toBeNull();
+  expect(retry).not.toHaveBeenCalled();
+  db.prepare(`UPDATE loop_runs SET metadata = json_set(metadata, '$.draft_publication.leaseUntil', ?) WHERE id = 'run-1'`).run(Date.now() - 1);
+  expect(await new LoopDraftPrService(db, retry as unknown as typeof fetch, env()).openForRun('run-1')).toBe('https://github.com/o/r/pull/9');
+});
+
+it('refuses changed publication ownership before reconciliation', async () => {
+  await new LoopDraftPrService(db, vi.fn().mockRejectedValue(new Error('lost')) as unknown as typeof fetch, env()).openForRun('run-1');
+  db.prepare("UPDATE worker_leases SET branch_name = 'agent/other' WHERE id = 'm1'").run();
+  const retry = recoveryFetch(() => []);
+  expect(await new LoopDraftPrService(db, retry as unknown as typeof fetch, env()).openForRun('run-1')).toBeNull();
+  expect(retry).not.toHaveBeenCalled();
+});
+
+it('does not overwrite a remote branch moved after the original push', async () => {
+  await new LoopDraftPrService(db, vi.fn().mockRejectedValue(new Error('lost')) as unknown as typeof fetch, env()).openForRun('run-1');
+  const changed = git(wt, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit-tree', 'HEAD^{tree}', '-p', 'HEAD', '-m', 'other writer');
+  git(wt, 'push', '-q', 'origin', `${changed}:refs/heads/agent/loop/run-1`);
+  const retry = recoveryFetch(() => []);
+  expect(await new LoopDraftPrService(db, retry as unknown as typeof fetch, env()).openForRun('run-1')).toBeNull();
+  expect(retry.mock.calls.filter(c => c[1]?.method === 'POST')).toHaveLength(0);
+  expect(git(remote, 'rev-parse', 'agent/loop/run-1')).toBe(changed);
+});
+
+it('does not include unrelated staged files in the checkpoint commit', async () => {
+  fs.writeFileSync(path.join(wt, 'package-lock.json'), '{"noise":true}\n');
+  git(wt, 'add', 'package-lock.json');
+  const f = ok();
+  expect(await new LoopDraftPrService(db, f as unknown as typeof fetch, env()).openForRun('run-1')).toBe('https://github.com/o/r/pull/9');
+  expect(git(remote, 'show', 'agent/loop/run-1:package-lock.json')).toBe('{}');
+});
+
+it('a publisher that loses its lease cannot settle or release the replacement owner claim', async () => {
+  const takeover = vi.fn(async () => {
+    db.prepare(`UPDATE loop_runs SET metadata = json_set(metadata, '$.draft_publication.owner', 'replacement', '$.draft_publication.leaseUntil', ?) WHERE id = 'run-1'`).run(Date.now() + 300_000);
+    return { ok: true, status: 201, json: async () => existingPr() };
+  });
+  expect(await new LoopDraftPrService(db, takeover as unknown as typeof fetch, env()).openForRun('run-1')).toBeNull();
+  expect(publication().owner).toBe('replacement');
+  expect(publication().leaseUntil).toBeGreaterThan(Date.now());
+  expect(events('draft_pr_opened')).toEqual({ n: 0 });
+});
+
+it.each(['head', 'base'])('does not settle a successful POST response for a different %s', async (field) => {
+  const f = vi.fn(async () => ({ ok: true, status: 201, json: async () => {
+    const pr = existingPr();
+    if (field === 'head') pr.head.sha = 'f'.repeat(40);
+    else pr.base.ref = 'other';
+    return pr;
+  } }));
+  expect(await new LoopDraftPrService(db, f as unknown as typeof fetch, env()).openForRun('run-1')).toBeNull();
+  expect(events('draft_pr_opened')).toEqual({ n: 0 });
+  const metadata = JSON.parse((db.prepare("SELECT metadata FROM loop_runs WHERE id = 'run-1'").get() as { metadata: string }).metadata);
+  expect(metadata.pr_url).toBeUndefined();
+  expect(metadata.verified_head_sha).toBeUndefined();
+});
+
+it.each([true, false])('at the draft cap, recovery may reconcile but cannot create a new PR (exists=%s)', async (exists) => {
+  await new LoopDraftPrService(db, vi.fn().mockRejectedValue(new Error('lost')) as unknown as typeof fetch, env()).openForRun('run-1');
+  const f = vi.fn(async (url: string) => ({ ok: true, status: 200, json: async () => url.includes('state=all') ? (exists ? [existingPr()] : []) : [{ title: 'loop: existing' }] }));
+  const result = await new LoopDraftPrService(db, f as unknown as typeof fetch, { ...env(), LOOP_DRAFT_PR_THROTTLE_MODE: 'enforce', LOOP_DRAFT_PR_MAX_OPEN: '1' }).openForRun('run-1');
+  expect(result).toBe(exists ? 'https://github.com/o/r/pull/9' : null);
+  expect(f.mock.calls).toHaveLength(2);
 });
