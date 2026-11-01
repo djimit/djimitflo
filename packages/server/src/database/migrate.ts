@@ -1971,6 +1971,12 @@ function applyMultiTenancyMigration(db: BetterSqlite3Database) {
 }
 
 export function runMigrations(db: BetterSqlite3Database) {
+  // Historical rows remain unknown; instruction hashes are not executable artifact digests.
+  addMissingColumns(db, 'skill_outcomes', [
+    { name: 'capability_id', definition: 'TEXT' },
+    { name: 'artifact_digest', definition: 'TEXT' },
+    { name: 'runtime', definition: 'TEXT' },
+  ]);
   addMissingColumns(db, 'approvals', approvalColumns);
   addMissingColumns(db, 'approval_policies', approvalPolicyColumns);
   createPhase42Tables(db);

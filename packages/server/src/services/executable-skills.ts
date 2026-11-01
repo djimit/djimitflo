@@ -47,6 +47,25 @@ export class ExecutableSkills {
     }));
   }
 
+  /** Resolve metadata to an exact pin; compose still verifies bytes and the complete dependency graph before use. */
+  resolve(capability: string, permittedTools: string[], input: Record<string, unknown>): SkillSelection | null {
+    const registry = new SwarmIntelligenceService(this.db);
+    const candidates = this.discover(capability).filter((candidate) => candidate.available && /^\d+\.\d+\.\d+$/.test(candidate.version)).sort((a, b) => {
+      const av = a.version.split('.').map(BigInt), bv = b.version.split('.').map(BigInt);
+      for (let i = 0; i < 3; i++) if (av[i] !== bv[i]) return av[i] > bv[i] ? -1 : 1;
+      return a.capability_id.localeCompare(b.capability_id);
+    });
+    for (const candidate of candidates) {
+      const record = registry.getCapability(candidate.capability_id);
+      const parsed = executableSkillContract.safeParse(record.metadata.executable_skill);
+      if (!parsed.success || parsed.data.version !== record.version || !digest.safeParse(record.metadata.package_hash).success) continue;
+      if (record.allowed_actions.some((tool) => !permittedTools.includes(tool)) || record.forbidden_actions.some((tool) => permittedTools.includes(tool))) continue;
+      try { assertSkillInput(input, parsed.data.input); } catch { continue; }
+      return { capability_id: record.id, content_hash: candidate.content_hash };
+    }
+    return null;
+  }
+
   /** Read only an operator-provisioned package; generated packages are not trusted merely by existing. */
   load(id: string, options: { candidateForVerification?: boolean } = {}) {
     name.parse(id);
@@ -105,7 +124,10 @@ export class ExecutableSkills {
     const verification = this.db.prepare(`SELECT id, details, severity, source FROM execution_evidence WHERE task_id = ? AND evidence_type = 'test_result' ORDER BY captured_at DESC, rowid DESC LIMIT 1`).get(taskId) as { id: string; details: string; severity: string; source: string } | undefined;
     if (task?.status !== 'completed' || !verification || verification.severity !== 'info' || verification.source !== 'system') throw new Error('SKILL_VERIFIED_TASK_REQUIRED');
     const p = this.load(id);
-    if (JSON.parse(verification.details || '{}').skill_package_hash !== p.contentHash) throw new Error('SKILL_VERIFICATION_PACKAGE_MISMATCH');
+    let receipt: Record<string, unknown>;
+    try { receipt = JSON.parse(verification.details || '{}'); } catch { throw new Error('SKILL_VERIFIED_TASK_REQUIRED'); }
+    if (!receipt || receipt.status !== 'passed' || receipt.skill_package_id !== id || receipt.skill_content_hash !== p.skill.contentHash) throw new Error('SKILL_VERIFIED_TASK_REQUIRED');
+    if (receipt.skill_package_hash !== p.contentHash) throw new Error('SKILL_VERIFICATION_PACKAGE_MISMATCH');
     const capabilityId = `skill:${id}@${p.contract.version}`;
     const registry = new SwarmIntelligenceService(this.db);
     return this.db.transaction(() => {
@@ -159,7 +181,8 @@ export class ExecutableSkills {
       if (i === 0) assertSkillInput(input, packages[i].contract.input);
       else {
         const previous = packages[i - 1].contract.output, next = packages[i].contract.input;
-        if (JSON.stringify(previous) !== JSON.stringify(next)) throw new Error('SKILL_COMPOSITION_SCHEMA_MISMATCH');
+        if (JSON.stringify(Object.entries(previous.properties).sort()) !== JSON.stringify(Object.entries(next.properties).sort())
+          || JSON.stringify([...new Set(previous.required)].sort()) !== JSON.stringify([...new Set(next.required)].sort())) throw new Error('SKILL_COMPOSITION_SCHEMA_MISMATCH');
       }
     }
     const instructions = packages.map((p, i) => [
@@ -220,6 +243,16 @@ export class ExecutableSkills {
 
 /** Explicit tasks only. Render before persistence/policy assessment, never after approval. */
 export function skillAssignment(db: Database, description: string, metadata: Record<string, unknown>) {
+  if (metadata.capability_intent !== undefined) {
+    if (skillFirstMode() !== 'on') throw new Error('SKILL_FIRST_EXECUTION_DISABLED');
+    if (metadata.skill_execution || metadata.skill_evaluation_package_hash) throw new Error('SKILL_INTENT_CONFLICT');
+    const intent = z.object({ capability: name, tools: z.array(z.string().min(1).max(80)).min(1).max(30), input: z.record(z.string(), z.unknown()) }).strict().parse(metadata.capability_intent);
+    // Requested tools narrow selection; normal runtime/approval policy remains the authority.
+    const pin = new ExecutableSkills(db).resolve(intent.capability, intent.tools, intent.input);
+    if (!pin) throw new Error('SKILL_CAPABILITY_UNAVAILABLE');
+    metadata = { ...metadata, resolved_capability_intent: intent, skill_execution: { selected: [pin], tools: intent.tools, input: intent.input } };
+    delete metadata.capability_intent; // Resume the immutable pin, never re-resolve a newer version on retry.
+  }
   if (!metadata.skill_execution) return { description, metadata };
   const request = z.object({ selected: z.array(z.object({ capability_id: z.string(), content_hash: digest }).strict()).min(1).max(8),
     tools: z.array(z.string()).min(1).max(30), input: z.record(z.string(), z.unknown()) }).strict().parse(metadata.skill_execution);

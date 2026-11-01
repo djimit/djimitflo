@@ -45,13 +45,13 @@ function writePackage(id = 'increment-v1-0-0', change: Partial<ExecutableSkillCo
 function task(id: string, status = 'completed') {
   db.prepare("INSERT INTO tasks (id,title,description,status,priority,risk_level,execution_mode) VALUES (?, 'fixture', 'fixture', ?, 'low', 'low', 'review_only')").run(id, status);
 }
-function evidence(taskId: string, packageHash: string, source = 'system', severity = 'info') {
+function evidence(taskId: string, pkg: ReturnType<ExecutableSkills['load']>, source = 'system', severity = 'info', details: Record<string, unknown> = {}) {
   db.prepare(`INSERT INTO execution_evidence (id,task_id,evidence_type,severity,title,summary,details,source,captured_at) VALUES (?,?,'test_result',?,'fixture','Local test receipt fixture',?,?,?)`)
-    .run(randomUUID(), taskId, severity, JSON.stringify({ skill_package_hash: packageHash }), source, new Date().toISOString());
+    .run(randomUUID(), taskId, severity, JSON.stringify({ status: 'passed', skill_package_hash: pkg.contentHash, skill_package_id: pkg.skill.id, skill_content_hash: pkg.skill.contentHash, ...details }), source, new Date().toISOString());
 }
 function capture(id: string) {
   const p = service.load(id);
-  const taskId = randomUUID(); task(taskId); evidence(taskId, p.contentHash);
+  const taskId = randomUUID(); task(taskId); evidence(taskId, p);
   return service.capture(id, taskId, 'fixture-owner');
 }
 // Fixture only: downstream routing is tested against a pre-approved registry state, NOT real independent promotion.
@@ -145,6 +145,24 @@ describe('executable package admission and reuse', () => {
     expect(() => service.compose(selected, ['Bash'], { value: 1 })).toThrow('SKILL_CONTEXT_TOO_LARGE');
   });
 
+  it('attributes completion to the delivered artifact even when disk contents change during a run', () => {
+    writePackage(); const pkg = service.load('increment-v1-0-0'); const candidate = capture('increment-v1-0-0'); fixtureApprove(candidate.id);
+    const created = createNativeTask(db, { id: 'pinned-outcome', title: 'Pinned', description: 'Run', metadata: {
+      skill_execution: { selected: [selection(candidate.id)], tools: ['Bash'], input: { value: 1 } },
+    } });
+    const boundary = new ExecutionEngine(db, undefined, dir) as unknown as {
+      recordSkillDeliveryReceipt(task: ReturnType<typeof createNativeTask>, runtime: string): void;
+      recordSkillOutcome(id: string, session: { executorKind: string }, completed: boolean, duration: number, tokens: null): void;
+    };
+    boundary.recordSkillDeliveryReceipt(created, 'codex');
+    fs.appendFileSync(path.join(pkg.directory, 'SKILL.md'), '\nChanged after delivery.');
+    const unavailable = vi.spyOn(fs, 'readdirSync').mockImplementation(() => { throw new Error('skill store unavailable'); });
+    try { boundary.recordSkillOutcome(created.id, { executorKind: 'codex' }, true, 10, null); } finally { unavailable.mockRestore(); }
+    expect(db.prepare('SELECT capability_id,artifact_digest,runtime,skill_version,skill_content_hash,tokens_used FROM skill_outcomes WHERE task_id=?').get(created.id))
+      .toEqual({ capability_id: candidate.id, artifact_digest: pkg.contentHash, runtime: 'codex',
+        skill_version: '1.0.0', skill_content_hash: pkg.skill.contentHash, tokens_used: null });
+  });
+
   it('permits explicit verification inspection without granting default admission or registry approval', () => {
     writePackage();
     vi.stubEnv('DJIMITFLO_SKILL_ALLOWLIST', 'unrelated');
@@ -154,7 +172,7 @@ describe('executable package admission and reuse', () => {
     expect(db.prepare('SELECT COUNT(*) n FROM agent_skills').get()).toEqual({ n: 0 });
     expect(db.prepare('SELECT COUNT(*) n FROM swarm_capabilities').get()).toEqual({ n: 0 });
     expect(() => service.load('increment-v1-0-0')).toThrow('SKILL_NOT_ADMITTED');
-    task('inspection-source'); evidence('inspection-source', inspected.contentHash);
+    task('inspection-source'); evidence('inspection-source', inspected);
     expect(() => service.capture('increment-v1-0-0', 'inspection-source', 'fixture')).toThrow('SKILL_NOT_ADMITTED');
     expect(db.prepare('SELECT COUNT(*) n FROM swarm_capabilities').get()).toEqual({ n: 0 });
     // Even a pre-approved registry fixture cannot override the operator allowlist.
@@ -170,7 +188,7 @@ describe('executable package admission and reuse', () => {
 
   it('blocks candidate capture while off or shadow despite a valid completed-task receipt', () => {
     writePackage(); const loaded = service.load('increment-v1-0-0');
-    task('disabled-capture'); evidence('disabled-capture', loaded.contentHash);
+    task('disabled-capture'); evidence('disabled-capture', loaded);
     for (const mode of ['off', 'shadow']) {
       vi.stubEnv('SKILL_FIRST_MODE', mode);
       expect(() => service.capture('increment-v1-0-0', 'disabled-capture', 'fixture')).toThrow('SKILL_FIRST_EXECUTION_DISABLED');
@@ -214,7 +232,7 @@ describe('executable package admission and reuse', () => {
     const verifier = new EvidenceService(db);
     const check = (packageHash: string) => verifier.captureEvidence({ task_id: created.id, evidence_type: EvidenceType.TEST_RESULT,
       severity: EvidenceSeverity.INFO, source: 'system', title: 'Fixture', summary: 'Not real provider evidence',
-      details: { skill_package_id: pkg.skill.id, skill_content_hash: pkg.skill.contentHash, skill_package_hash: packageHash } });
+      details: { status: 'passed', skill_package_id: pkg.skill.id, skill_content_hash: pkg.skill.contentHash, skill_package_hash: packageHash } });
     check('f'.repeat(64));
     db.prepare("UPDATE tasks SET status='completed' WHERE id=?").run(created.id);
     boundary.recordSkillOutcome(created.id, undefined, true, 25, null);
@@ -257,15 +275,55 @@ describe('executable package admission and reuse', () => {
     expect(read).not.toHaveBeenCalled();
   });
 
+  it('resolves the newest compatible approved version using metadata only and falls back after revocation', () => {
+    const register = (version: string, approve = true, changes: Partial<ExecutableSkillContract> = {}) => {
+      const id = `increment-v${version.replaceAll('.', '-')}`;
+      writePackage(id, { version, ...changes }); const capability = capture(id);
+      if (approve) fixtureApprove(capability.id);
+      return capability;
+    };
+    const old = register('1.0.2'); const newest = register('1.0.10'); register('2.0.0', false);
+    const incompatible = register('3.0.0', true, { input: { type: 'object', properties: { value: 'string' }, required: ['value'] }, examples: [{ input: { value: '1' }, output: { value: 2 } }] });
+    const read = vi.spyOn(fs, 'readFileSync').mockImplementation(() => { throw new Error('Metadata discovery must not open package files'); });
+    expect(service.resolve('increment-number', ['Bash'], { value: 1 })).toEqual(selection(newest.id));
+    db.prepare("UPDATE swarm_capabilities SET status='disabled' WHERE id=?").run(newest.id);
+    expect(service.resolve('increment-number', ['Bash'], { value: 1 })).toEqual(selection(old.id));
+    expect(service.resolve('increment-number', [], { value: 1 })).toBeNull();
+    expect(service.resolve('missing', ['Bash'], { value: 1 })).toBeNull();
+    expect(service.resolve('increment-number', ['Bash'], { value: '1' })).toEqual(selection(incompatible.id));
+    expect(read).not.toHaveBeenCalled();
+  });
+
   it('requires a completed task and a system/info receipt bound to the exact package hash', () => {
     writePackage(); const p = service.load('increment-v1-0-0'); task('source', 'running');
     expect(() => service.capture('increment-v1-0-0', 'source', 'fixture')).toThrow('SKILL_VERIFIED_TASK_REQUIRED');
-    evidence('source', p.contentHash); expect(() => service.capture('increment-v1-0-0', 'source', 'fixture')).toThrow('SKILL_VERIFIED_TASK_REQUIRED');
+    evidence('source', p); expect(() => service.capture('increment-v1-0-0', 'source', 'fixture')).toThrow('SKILL_VERIFIED_TASK_REQUIRED');
     db.prepare("UPDATE tasks SET status='completed' WHERE id='source'").run();
-    evidence('source', p.contentHash, 'agent'); expect(() => service.capture('increment-v1-0-0', 'source', 'fixture')).toThrow('SKILL_VERIFIED_TASK_REQUIRED');
-    evidence('source', p.contentHash, 'system', 'warning'); expect(() => service.capture('increment-v1-0-0', 'source', 'fixture')).toThrow('SKILL_VERIFIED_TASK_REQUIRED');
-    evidence('source', '0'.repeat(64)); expect(() => service.capture('increment-v1-0-0', 'source', 'fixture')).toThrow('SKILL_VERIFICATION_PACKAGE_MISMATCH');
-    evidence('source', p.contentHash); expect(service.capture('increment-v1-0-0', 'source', 'fixture').status).toBe('candidate');
+    evidence('source', p, 'agent'); expect(() => service.capture('increment-v1-0-0', 'source', 'fixture')).toThrow('SKILL_VERIFIED_TASK_REQUIRED');
+    evidence('source', p, 'system', 'warning'); expect(() => service.capture('increment-v1-0-0', 'source', 'fixture')).toThrow('SKILL_VERIFIED_TASK_REQUIRED');
+    evidence('source', p, 'system', 'info', { skill_package_hash: '0'.repeat(64) }); expect(() => service.capture('increment-v1-0-0', 'source', 'fixture')).toThrow('SKILL_VERIFICATION_PACKAGE_MISMATCH');
+    evidence('source', p); expect(service.capture('increment-v1-0-0', 'source', 'fixture').status).toBe('candidate');
+  });
+
+  it.each([
+    { status: 'failed' },
+    { status: undefined },
+    { skill_package_id: 'other-v1-0-0' },
+    { skill_content_hash: 'f'.repeat(64) },
+  ])('does not harvest an unverified or differently attributed package: %j', (details) => {
+    writePackage(); const pkg = service.load('increment-v1-0-0'); task('unverified-source');
+    evidence('unverified-source', pkg, 'system', 'info', details);
+    expect(() => service.capture(pkg.skill.id, 'unverified-source', 'fixture')).toThrow('SKILL_VERIFIED_TASK_REQUIRED');
+    expect(db.prepare('SELECT COUNT(*) n FROM swarm_capabilities').get()).toEqual({ n: 0 });
+  });
+
+  it('composes semantically identical object schemas regardless of property and required order', () => {
+    const a: ExecutableSkillContract['input'] = { type: 'object', properties: { value: 'number', label: 'string' }, required: ['value', 'label'] };
+    const b: ExecutableSkillContract['input'] = { type: 'object', properties: { label: 'string', value: 'number' }, required: ['label', 'value'] };
+    const examples = [{ input: { value: 1, label: 'x' }, output: { value: 2, label: 'x' } }];
+    writePackage('first-v1-0-0', { input: a, output: a, examples }); const first = capture('first-v1-0-0'); fixtureApprove(first.id);
+    writePackage('second-v1-0-0', { input: b, output: b, examples }); const second = capture('second-v1-0-0'); fixtureApprove(second.id);
+    expect(service.compose([selection(first.id), selection(second.id)], ['Bash'], { value: 1, label: 'x' }).skillIds).toEqual(['first-v1-0-0', 'second-v1-0-0']);
   });
 
   it('rejects changed bytes, escaping symlinks, and reusing one version for different package content', () => {
@@ -273,7 +331,7 @@ describe('executable package admission and reuse', () => {
     fs.appendFileSync(path.join(p.directory, 'run.mjs'), '\n// changed\n');
     expect(() => service.compose([selection(candidate.id)], ['Bash'], { value: 1 })).toThrow('SKILL_FILE_CHANGED');
     writePackage('increment-v1-0-0', { examples: [{ input: { value: 5 }, output: { value: 6 } }] });
-    const changed = service.load('increment-v1-0-0'); task('changed'); evidence('changed', changed.contentHash);
+    const changed = service.load('increment-v1-0-0'); task('changed'); evidence('changed', changed);
     expect(() => service.capture('increment-v1-0-0', 'changed', 'fixture')).toThrow('SKILL_VERSION_CONFLICT');
     fs.unlinkSync(path.join(p.directory, 'run.mjs')); fs.writeFileSync(path.join(dir, 'outside.mjs'), '// outside'); fs.symlinkSync(path.join(dir, 'outside.mjs'), path.join(p.directory, 'run.mjs'));
     expect(() => service.load('increment-v1-0-0')).toThrow('SKILL_PATH_OUTSIDE_ROOT');
@@ -427,6 +485,9 @@ describe('executable package admission and reuse', () => {
     expect(() => service.request('derived-transform', 'Extract', 'source-owner', 'source-run')).toThrow('SKILL_SOURCE_CARD_REQUIRED');
     const card = sourceCard();
     expect(() => service.request('derived-transform', 'Extract', 'other-owner', 'source-run')).toThrow('SKILL_SOURCE_CARD_REQUIRED');
+    db.prepare("UPDATE skill_cards SET kind='anti_pattern' WHERE run_id='source-run'").run();
+    expect(() => service.request('derived-transform', 'Extract', 'source-owner', 'source-run')).toThrow('SKILL_SOURCE_CARD_REQUIRED');
+    db.prepare("UPDATE skill_cards SET kind='skill' WHERE run_id='source-run'").run();
     db.prepare("UPDATE skill_cards SET status='regressed' WHERE run_id='source-run'").run();
     expect(() => service.request('derived-transform', 'Extract', 'source-owner', 'source-run')).toThrow('SKILL_SOURCE_CARD_REQUIRED');
     db.prepare("UPDATE skill_cards SET status='survived', card_json=? WHERE run_id='source-run'").run(card + ' ');

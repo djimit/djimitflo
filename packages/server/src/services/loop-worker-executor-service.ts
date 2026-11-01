@@ -716,7 +716,10 @@ export class LoopWorkerExecutorService {
     // OLLAMA_OUTAGE_FALLBACK_RUNTIME: every role of a fallback lease (maker, checker, security checker) runs the same way
     if ((lease.role === 'maker' || isFallbackLease(lease)) && lease.metadata.subscription_auth === runtime && (runtime === 'claude' || runtime === 'codex' || runtime === 'opencode')) environment[SUBSCRIPTION_ENV_MARKER] = runtime;
     const factoryGoal = run.goal_id ? this.db.prepare("SELECT owner_user_id FROM goals WHERE id = ? AND json_type(metadata, '$.skill_factory_key') = 'text'").get(run.goal_id) as { owner_user_id: string | null } | undefined : undefined;
-    const selected = skillAssignment(this.db, prompt, lease.role === 'maker' && lease.metadata.skill_execution ? { skill_execution: lease.metadata.skill_execution } : {});
+    const selected = skillAssignment(this.db, prompt, lease.role === 'maker' ? {
+      ...(lease.metadata.skill_execution ? { skill_execution: lease.metadata.skill_execution } : {}),
+      ...(lease.metadata.capability_intent !== undefined ? { capability_intent: lease.metadata.capability_intent } : {}),
+    } : {});
     prompt = selected.description;
     riskAssessmentText += selected.metadata.skill_package_receipts ? `\n${prompt}` : '';
     this.db.prepare(`

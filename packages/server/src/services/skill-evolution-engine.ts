@@ -165,14 +165,17 @@ export class SkillEvolutionEngine {
     agentId?: string;
     skillVersion?: string;
     skillContentHash?: string;
+    capabilityId?: string;
+    artifactDigest?: string;
+    runtime?: string;
     model?: string;
     evidenceRefs?: string[];
   }): void {
     this.db.prepare(`
       INSERT INTO skill_outcomes (
         id, skill_id, success, tokens_used, duration_ms, domain,
-        task_id, agent_id, skill_version, skill_content_hash, model, evidence_refs_json, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        task_id, agent_id, skill_version, skill_content_hash, model, evidence_refs_json, created_at, capability_id, artifact_digest, runtime
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       randomUUID(),
       skillId,
@@ -187,6 +190,9 @@ export class SkillEvolutionEngine {
       outcome.model || null,
       JSON.stringify(outcome.evidenceRefs || []),
       new Date().toISOString(),
+      outcome.capabilityId || null,
+      outcome.artifactDigest || null,
+      outcome.runtime || null,
     );
 
     // Update skill traits based on outcome
@@ -208,14 +214,14 @@ export class SkillEvolutionEngine {
     const delivered = receipt ? JSON.parse(receipt.details) as Record<string, unknown> : null;
     if (delivered?.delivery_state !== 'delivered' || delivered.skill_id !== skillId
       || delivered.skill_content_hash !== contentHash || delivered.skill_package_hash !== packageHash) return;
-    const checks = this.db.prepare(`SELECT id, severity FROM execution_evidence WHERE task_id = ?
+    const checks = this.db.prepare(`SELECT id, severity, json_extract(details, '$.status') AS verdict FROM execution_evidence WHERE task_id = ?
       AND evidence_type = 'test_result' AND source = 'system' AND json_valid(details)
       AND json_extract(details, '$.skill_package_id') = ? AND json_extract(details, '$.skill_content_hash') = ?
       AND json_extract(details, '$.skill_package_hash') = ?`)
-      .all(taskId, skillId, contentHash, packageHash) as Array<{ id: string; severity: string }>;
+      .all(taskId, skillId, contentHash, packageHash) as Array<{ id: string; severity: string; verdict: string | null }>;
     if (!checks.length) return;
-    const failed = checks.some((check) => ['error', 'critical'].includes(check.severity));
-    const passed = !failed && checks.every((check) => check.severity === 'info');
+    const failed = checks.some((check) => ['error', 'critical'].includes(check.severity) || check.verdict === 'failed');
+    const passed = !failed && checks.every((check) => check.severity === 'info' && check.verdict === 'passed');
     const refs = (JSON.parse(rows[0].evidence_refs_json) as string[]).filter((ref) =>
       ref !== COMPLETED_UNVERIFIED_REF && ref !== 'outcome_class:regressed' && !ref.startsWith('verification:test_result:'));
     refs.push(...checks.map((check) => check.id), ...(passed ? ['verification:test_result:passed']
@@ -341,6 +347,9 @@ export class SkillEvolutionEngine {
         agent_id TEXT,
         skill_version TEXT,
         skill_content_hash TEXT,
+        capability_id TEXT,
+        artifact_digest TEXT,
+        runtime TEXT,
         model TEXT,
         evidence_refs_json TEXT NOT NULL DEFAULT '[]',
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -351,6 +360,9 @@ export class SkillEvolutionEngine {
       ['agent_id', 'TEXT'],
       ['skill_version', 'TEXT'],
       ['skill_content_hash', 'TEXT'],
+      ['capability_id', 'TEXT'],
+      ['artifact_digest', 'TEXT'],
+      ['runtime', 'TEXT'],
       ['model', 'TEXT'],
       ['evidence_refs_json', "TEXT NOT NULL DEFAULT '[]'"],
     ] as const) {

@@ -152,3 +152,64 @@ that production has the same files. Production had no training runner configured
 at the last check. Do not set eligibility flags, reduce thresholds or manufacture
 outcomes to obtain approval. Retain the activation hold until genuine evidence
 satisfies every existing gate.
+
+## Resolve an explicit capability intent at task creation
+
+Instead of supplying a registry ID and hash, an authenticated caller can submit the
+following metadata to the existing `POST /api/tasks` endpoint (`SKILL_FIRST_MODE=on`):
+
+```json
+{
+  "title": "Normalize a label with an approved package",
+  "description": "Use the existing capability and return its JSON output.",
+  "use_swarm_context": false,
+  "metadata": {
+    "capability_intent": {
+      "capability": "normalize-label",
+      "tools": ["Bash"],
+      "input": {"value": "A bounded label"}
+    }
+  }
+}
+```
+
+The resolver reads registry metadata first, selects the latest compatible approved
+version, then loads only the selected package and its pinned dependencies. It
+persists `skill_execution`, exact package receipts and
+`resolved_capability_intent`; the unresolved intent is consumed. A later retry
+revalidates that exact version, never silently upgrades it. New tasks may resolve a
+new approved version. Missing/unapproved capabilities fail with
+`SKILL_CAPABILITY_UNAVAILABLE`; use the existing executable request/factory path to
+prepare missing work. No task or factory goal is created by a failed resolution.
+
+Maker leases can carry the same `capability_intent` in metadata. The existing
+loop-worker dispatch passes it through the same resolver before policy assessment;
+checker and security-checker assignments never inherit maker instructions. Existing
+agent-to-skill assignments, runtime admission and approval gates remain required.
+
+`tools` is a requested selection bound, **not an authorization grant or a new
+sandbox**. Registry actions must fit that request; omitted tools are not inferred.
+CLI-internal tools are still governed by the existing runtime permissions, not
+mediated per call by ToolBroker. This path adds no permission flags, credentials,
+environment overrides, approval or production activation. Tests verify pinning,
+revocation, changed bytes, input separation and six adapter input boundaries using
+explicit approval fixtures; they do not demonstrate real promotion or provider use.
+
+### Outcome identity and verification
+
+New native skill executions persist nullable `capability_id`, `artifact_digest`
+(the complete executable package), and `runtime` alongside the existing exact
+`skill_version` and instruction `skill_content_hash`. Attribution uses the system
+receipt created at dispatch, not a package reloaded after the worker finishes.
+The additive migration deliberately leaves historical values NULL; no guessed
+versions or runtime identities are backfilled. Missing usage stays NULL.
+
+A hash-bound executable verification must explicitly report `status: passed`.
+An absent verdict remains unknown; `status: failed` cannot become success merely
+because its evidence severity is `info`. Candidate capture additionally checks
+skill ID, instruction hash and executable package hash. Capture does not promote.
+
+The runtime-intent tests use pre-approved SQLite fixtures. They demonstrate
+selection, invocation and immutable reuse mechanics, not independent operational
+promotion or causal improvement. The existing training/OpenMythos/baseline and
+human-controlled gates remain mandatory for real activation.
