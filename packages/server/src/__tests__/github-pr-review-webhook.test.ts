@@ -16,6 +16,7 @@ import { execFileSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { createTestDb } from './helpers/test-db';
 import { createGitHubWebhookRoutes } from '../routes/github-webhooks';
+import { GithubPrReviewService } from '../services/github-pr-review-service';
 
 const HEAD_SHA = 'a'.repeat(40);
 let lastCommentBody: string | undefined;
@@ -56,6 +57,8 @@ describe('GitHub pull_request review webhook', () => {
     delete process.env.GITHUB_WEBHOOK_SECRET;
     delete process.env.GITHUB_REPOSITORY_PATHS;
     delete process.env.ROBOREV_PENDING_PATH;
+    delete process.env.GITHUB_PR_REVIEW_RUNTIME;
+    vi.restoreAllMocks();
     vi.mocked(execFileSync).mockReset();
   });
 
@@ -197,6 +200,87 @@ describe('GitHub pull_request review webhook', () => {
     const second = await post(body, 'delivery-pr-5');
     expect(second.status).toBe(200);
     expect(vi.mocked(execFileSync).mock.calls.length).toBe(callsAfterFirst);
+    db.close();
+  });
+
+  it('resumes only the undispatched review after a crash between intake and dispatch', async () => {
+    const db = await setup();
+    mockGh({ additions: 1, deletions: 1, changedFiles: 1, files: ['src/index.ts'] });
+    const crash = vi.spyOn(GithubPrReviewService.prototype, 'startReview').mockImplementationOnce(() => { throw new Error('dispatch crash'); });
+    expect((await post(prBody(), 'delivery-gap')).status).toBe(500);
+    crash.mockRestore();
+    expect(db.prepare('SELECT COUNT(*) n FROM github_pull_request_reviews').get()).toEqual({ n: 0 });
+    await new Promise<void>(resolve => server!.close(() => resolve()));
+    const app = express(); app.use('/github/webhook', createGitHubWebhookRoutes(db));
+    server = await new Promise<Server>(resolve => { const listening = app.listen(0, () => resolve(listening)); });
+    const result = await post(prBody(), 'delivery-gap');
+    expect(result.status).toBe(200);
+    expect(await result.json()).toMatchObject({ review: { status: 'commented' } });
+    expect(db.prepare('SELECT COUNT(*) n FROM loop_runs').get()).toEqual({ n: 1 });
+    expect(db.prepare('SELECT COUNT(*) n FROM github_pull_request_reviews').get()).toEqual({ n: 1 });
+    db.close();
+  });
+
+  it('reuses the existing head review for a new delivery without orphan goals or runs', async () => {
+    const db = await setup();
+    mockGh({ additions: 1, deletions: 1, changedFiles: 1, files: ['src/index.ts'] });
+    expect((await post(prBody(), 'delivery-first')).status).toBe(202);
+    const calls = vi.mocked(execFileSync).mock.calls.length;
+    expect((await post(prBody({ action: 'synchronize' }), 'delivery-second')).status).toBe(200);
+    expect(db.prepare('SELECT COUNT(*) n FROM loop_runs').get()).toEqual({ n: 1 });
+    expect(db.prepare('SELECT COUNT(*) n FROM goals').get()).toEqual({ n: 1 });
+    expect(vi.mocked(execFileSync).mock.calls.length).toBe(calls);
+    db.close();
+  });
+
+  it.each(['stopped', 'run-paused', 'goal-paused', 'goal-cancelled', 'runtime-changed', 'repository-changed', 'binding-changed', 'worker-exists', 'checkpoint-missing'])('holds undispatched recovery when %s', async (reason) => {
+    const db = await setup();
+    mockGh({ additions: 1, deletions: 1, changedFiles: 1, files: ['src/index.ts'] });
+    const crash = vi.spyOn(GithubPrReviewService.prototype, 'startReview').mockImplementationOnce(() => { throw new Error('dispatch crash'); });
+    await post(prBody(), 'delivery-hold'); crash.mockRestore();
+    if (reason === 'stopped') db.prepare("UPDATE loop_runs SET status='cancelled'").run();
+    if (reason === 'run-paused') db.prepare("UPDATE loop_runs SET metadata=json_set(metadata,'$.operator_paused',json('true'))").run();
+    if (reason === 'goal-paused') db.prepare("UPDATE goals SET metadata=json_set(metadata,'$.operator_paused',json('true'))").run();
+    if (reason === 'goal-cancelled') db.prepare("UPDATE goals SET status='cancelled'").run();
+    if (reason === 'runtime-changed') process.env.GITHUB_PR_REVIEW_RUNTIME = 'mock';
+    if (reason === 'repository-changed') db.prepare("UPDATE loop_runs SET repository_path='/another/repository'").run();
+    if (reason === 'binding-changed') db.prepare("UPDATE goals SET metadata=json_set(metadata,'$.github_pull_request.head_sha',?)").run('b'.repeat(40));
+    if (reason === 'checkpoint-missing') db.prepare("UPDATE loop_runs SET metadata=json_remove(metadata,'$.github_review_dispatch')").run();
+    if (reason === 'worker-exists') db.prepare(`INSERT INTO worker_leases(id,loop_run_id,role,runtime,status,created_at,updated_at)
+      SELECT 'partial-worker',id,'checker','mock','failed',datetime('now'),datetime('now') FROM loop_runs`).run();
+    const result = await post(prBody(), 'delivery-hold');
+    expect(result.status).toBe(200);
+    expect(await result.json()).toMatchObject({ review: { status: 'held' } });
+    expect(vi.mocked(execFileSync)).not.toHaveBeenCalled();
+    expect(db.prepare('SELECT COUNT(*) n FROM github_pull_request_reviews').get()).toEqual({ n: 0 });
+    db.close();
+  });
+
+  it.each(['pending', 'failed'])('never restarts a %s review on redelivery', async (status) => {
+    const db = await setup();
+    mockGh({ additions: 1, deletions: 1, changedFiles: 1, files: ['src/index.ts'] });
+    await post(prBody(), 'delivery-started');
+    db.prepare('UPDATE github_pull_request_reviews SET status=?').run(status);
+    const calls = vi.mocked(execFileSync).mock.calls.length;
+    expect((await post(prBody(), 'delivery-started')).status).toBe(200);
+    expect(vi.mocked(execFileSync).mock.calls.length).toBe(calls);
+    expect(db.prepare('SELECT COUNT(*) n FROM github_pull_request_reviews').get()).toEqual({ n: 1 });
+    expect(db.prepare('SELECT status FROM github_pull_request_reviews').get()).toEqual({ status });
+    db.close();
+  });
+
+  it.each(['base', 'head'])('holds a same-SHA retargeted %s ref and cannot revive the old dispatch on replay', async (ref) => {
+    const db = await setup();
+    mockGh({ additions: 1, deletions: 1, changedFiles: 1, files: ['src/index.ts'] });
+    const crash = vi.spyOn(GithubPrReviewService.prototype, 'startReview').mockImplementationOnce(() => { throw new Error('dispatch crash'); });
+    await post(prBody(), 'delivery-old-target'); crash.mockRestore();
+    const changed = JSON.parse(prBody()); changed.action = 'synchronize'; changed.pull_request[ref].ref = 'different-target';
+    const retarget = await post(JSON.stringify(changed), 'delivery-retarget');
+    expect(retarget.status).toBe(200);
+    expect(await retarget.json()).toMatchObject({ review: { status: 'held' } });
+    expect(await (await post(prBody(), 'delivery-old-target')).json()).toMatchObject({ review: { status: 'held' } });
+    expect(vi.mocked(execFileSync)).not.toHaveBeenCalled();
+    expect(db.prepare('SELECT COUNT(*) n FROM loop_runs').get()).toEqual({ n: 1 });
     db.close();
   });
 
