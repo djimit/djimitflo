@@ -164,6 +164,8 @@ describe('GitHub pull_request review webhook', () => {
     const response = await post(prBody(), 'delivery-pr-2');
     const payload = await response.json() as any;
     expect(payload.review).toMatchObject({ status: 'commented', verdict: 'needs_revision' });
+    expect(lastCommentBody).toContain('Large change (50 files, 1600 lines) — please split or request manual review.');
+    expect(lastCommentBody).toContain('Phase 1 automated stub');
     db.close();
   });
 
@@ -174,6 +176,7 @@ describe('GitHub pull_request review webhook', () => {
     const response = await post(prBody(), 'delivery-pr-3');
     const payload = await response.json() as any;
     expect(payload.review).toMatchObject({ status: 'commented', verdict: 'needs_revision' });
+    expect(lastCommentBody).toContain('Touches sensitive-looking path(s): .env.production.');
     db.close();
   });
 

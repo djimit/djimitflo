@@ -542,7 +542,7 @@ export class GithubPrReviewService {
       `- Reviewed commit: ${input.headSha} (merge base ${packet.mergeBaseSha}, packet sha256 ${packet.sha256})`,
       '',
     ];
-    if (llmNotes) lines.push(llmNotes, '');
+    lines.push(isStub ? this.computeVerdict(stat).notes : llmNotes, '');
     lines.push(this.roborevSection(input.owner, input.repo, input.headSha));
     lines.push(isStub
       ? '_Phase 1 automated stub — full checker review not yet enabled. This does not merge or block merging on its own._'
