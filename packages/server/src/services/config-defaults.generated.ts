@@ -84,10 +84,13 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   LOOP_BANDIT_ENABLED: 'off',
   LOOP_BANDIT_MAX_SHARE: '0.1',
   LOOP_BANDIT_SPECIES: 'unset',
+  LOOP_DRAFT_PR_RETRY: 'off (`shadow`, `on`)',
   LOOP_EVIDENCE_FRESHNESS_MODE: 'off',
   LOOP_EVOLVE_ENABLED: 'off',
   LOOP_EVOLVE_SPECIES: 'unset',
   LOOP_MEMORY_RULES_ENABLED: 'off',
+  LOOP_PR_CI_WATCH: 'off (`shadow`)',
+  LOOP_PR_CI_WATCH_MINUTES: '15 (> 0, else 15)',
   MAKER_DIFF_CAPTURE: 'off (`on`: when a maker lease completes, the working-tree diff that `diff_lines` is counted from — tracked changes plus…',
   MAKER_WARM_DEPS: 'off (`on`: before a local opencode maker of a goal run starts (MAKER-DEPS-001\'s eligible population: never TG-001, the …',
   MEMORY_DELIVERY_RECEIPTS: 'off (`shadow`, `on`)',
@@ -141,6 +144,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   VALUE_ALLOCATOR_MODE: 'off (`shadow`)',
   VALUE_ANOMALY_ALARM: 'off (`shadow`, `on`)',
   WEAK_ASSERTION_CHECK_MODE: 'off (`shadow` / `enforce`: for a test-gap, exports or mutation-gap maker, the deterministic check `test:assertion-stren…',
+  WORK_ITEM_OUTCOME_SYNC: 'off (`shadow`, `on`)',
 };
 
 /** Env flags that arm a background scheduler at boot (HEARTBEAT.md). */
@@ -163,6 +167,8 @@ export const SCHEDULER_FLAGS: readonly string[] = [
   'FRONTIER_EXPERTS_SCHEDULER_ENABLED',
   'GYM_ORPHAN_SWEEP',
   'LOOP_AUTO_MERGE_TEST_ONLY',
+  'LOOP_DRAFT_PR_RETRY',
+  'LOOP_PR_CI_WATCH',
   'MEMORY_CANDIDATE_REVIEW_ENABLED',
   'MEMORY_DELIVERY_RECEIPTS',
   'MERGE_SURVIVAL_ENABLED',
