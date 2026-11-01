@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import type { Database } from 'better-sqlite3';
 import { SelfImprovementService, type ImprovementProposal } from './self-improvement-service';
 import { SwarmIntelligenceService, type SwarmCapabilityRecord } from './swarm-intelligence-service';
@@ -26,6 +27,10 @@ export const capabilityFactoryMode = (env: NodeJS.ProcessEnv = process.env): Cap
 /** OMEGA slice 2: CAPABILITY_FACTORY_REUSE_EXECUTE=off|on (default off). On: a request with `execute: true` that matches a validated
  * capability still becomes one operator_request proposal, pinned to that capability version (`capability-reuse:<id>@<version>`). */
 export const capabilityReuseExecute = (env: NodeJS.ProcessEnv = process.env): boolean => env.CAPABILITY_FACTORY_REUSE_EXECUTE === 'on';
+
+/** OMEGA slices 3/4: CAPABILITY_LIFECYCLE_V2=off|on (default off). On: the draft PR of a factory run creates the `capfac:` candidate
+ * (provenance, parent_versions, artifact digest at merge), the merge promotes that candidate through promoteCapability. */
+export const capabilityLifecycleV2 = (env: NodeJS.ProcessEnv = process.env): boolean => env.CAPABILITY_LIFECYCLE_V2 === 'on';
 
 export const FACTORY_OWNER = 'capability-factory';
 const REQUEST_REF = 'capability-request:';
@@ -193,7 +198,9 @@ export function submitCapabilityRequest(db: Database, input: CapabilityRequestIn
 
 // ─── run lifecycle hooks (no-ops when off or not a factory run) ─────────────
 
-interface FactoryRun { proposalId: string; requestId: string; title: string; description: string; grounding: Record<string, unknown>; goalId: string }
+interface FactoryRun { proposalId: string; requestId: string; title: string; description: string; grounding: Record<string, unknown>; goalId: string;
+  /** slice 2: `<id>@<version>` this run reuses (its proposal's `capability-reuse:` ref), else null */
+  reuseOf: string | null }
 function factoryRun(db: Database, runId: string): FactoryRun | null {
   const row = db.prepare(`SELECT g.id AS goal_id, s.id, s.title, s.description, s.evidence_refs_json AS refs, s.grounding_json AS grounding FROM loop_runs r
     JOIN goals g ON g.id = r.goal_id JOIN self_improvements s ON s.id = COALESCE(g.improvement_id, json_extract(g.metadata, '$.improvement_id'))
@@ -203,7 +210,9 @@ function factoryRun(db: Database, runId: string): FactoryRun | null {
   try { refs = JSON.parse(row.refs || '[]'); } catch { /* none */ }
   try { grounding = JSON.parse(row.grounding || '{}') as Record<string, unknown>; } catch { /* none */ }
   const requestId = strings(refs).find((r) => r.startsWith(REQUEST_REF))?.slice(REQUEST_REF.length);
-  return requestId ? { proposalId: row.id, requestId, title: row.title, description: row.description, grounding, goalId: row.goal_id } : null;
+  const reuse = reuseRef(row.refs);
+  return requestId ? { proposalId: row.id, requestId, title: row.title, description: row.description, grounding, goalId: row.goal_id,
+    reuseOf: reuse ? `${reuse.id}@${reuse.version}` : null } : null;
 }
 
 /** Step 4: the maker species the existing selection (LOOP_DAEMON_MAKER_RUNTIME / bandit) chose, as runtime[@model]. */
@@ -218,10 +227,79 @@ export function recordFactorySpecialist(db: Database, runId: string, makerLeaseI
 
 const capabilityId = (requestId: string) => `capfac:${requestId}`;
 
+type CandidateInput = Parameters<SwarmIntelligenceService['createCandidate']>[0] & { id: string; allowed_actions: string[] };
+
+/** The `capfac:` candidate of a factory run (files from the maker lease, else target + test; provenance of request/proposal/run/PR). */
+function candidateInput(db: Database, runId: string, run: FactoryRun, prUrl: string, mergeSha: string | null, version: string, extra: Record<string, unknown> = {}): CandidateInput {
+  const maker = db.prepare(`SELECT json_extract(metadata, '$.changed_files') AS files FROM worker_leases WHERE loop_run_id = ? AND role = 'maker' AND status = 'completed'
+    AND json_extract(metadata, '$.superseded_by_maker_lease_id') IS NULL ORDER BY updated_at DESC LIMIT 1`).get(runId) as { files: string | null } | undefined;
+  let changed: string[] = []; try { changed = strings(JSON.parse(maker?.files || '[]')); } catch { /* none */ }
+  const target = String(run.grounding.target ?? run.grounding.artifactPath ?? '');
+  const test = String(run.grounding.acceptanceTest ?? '');
+  const files = changed.length ? changed : [target, ...(TEST_FILE.test(test) && test !== target ? [test] : [])].filter(Boolean);
+  const specialist = (db.prepare("SELECT json_extract(metadata, '$.specialist') AS s FROM loop_runs WHERE id = ?").get(runId) as { s: string | null } | undefined)?.s ?? null;
+  const request = db.prepare("SELECT answers_json AS a FROM judgments WHERE judgment = 'capability_request' AND subject_id = ? ORDER BY created_at LIMIT 1").get(run.requestId) as { a: string | null } | undefined;
+  let answers: Record<string, unknown> = {}; try { answers = JSON.parse(request?.a || '{}') as Record<string, unknown>; } catch { /* none */ }
+  const provenance = { request_id: run.requestId, proposal_id: run.proposalId, run_id: runId, pr_url: prUrl, merge_sha: mergeSha, files, test };
+  return {
+    id: capabilityId(run.requestId), kind: 'deterministic_harness', owner: FACTORY_OWNER, version, risk_ceiling: 'low',
+    input_schema_ref: `file:${target}`, output_schema_ref: `test:${test}`, allowed_actions: ['reuse_in_assignment'],
+    forbidden_actions: ['deploy', 'push', 'merge'], required_evidence: ['proof:test', 'pr:merged'], removal_strategy: 'deprecate_on_merge_survival_regression',
+    metadata: { capability_factory: true, title: run.title, description: typeof answers.description === 'string' ? answers.description : null, files, test,
+      repo: typeof answers.repo === 'string' ? answers.repo : null, specialist, provenance, ...extra },
+  };
+}
+
+// eval_score 1: its acceptance test passed the deterministic checks and a human merged the PR
+const promotion = (runId: string, run: FactoryRun, pr: { url: string; mergeSha: string | null }) => ({ eval_score: 1,
+  evidence_refs: [`pr:${pr.url}`, `loop_run:${runId}`, ...(pr.mergeSha ? [`merge_sha:${pr.mergeSha}`] : []), `self_improvement:${run.proposalId}`],
+  validation_report: `merged ${pr.url}${pr.mergeSha ? ` at ${pr.mergeSha}` : ''}` });
+
+/** V2 candidate: version = the verified head the reviewers saw (fixed from here on), parent_versions on a reuse run, digest unknown yet. */
+function createV2Candidate(db: Database, runId: string, run: FactoryRun, prUrl: string): void {
+  const head = (db.prepare("SELECT json_extract(metadata, '$.verified_head_sha') AS h FROM loop_runs WHERE id = ?").get(runId) as { h: string | null } | undefined)?.h ?? null;
+  const input = candidateInput(db, runId, run, prUrl, null, head ? head.slice(0, 12) : '1', { ...(run.reuseOf ? { parent_versions: [run.reuseOf] } : {}), artifact_digest: null });
+  new SwarmIntelligenceService(db).createCandidate(input);
+  swarmEventBus.emit('capability_transition', { capability_id: input.id, old_status: 'none', new_status: 'candidate', reason: `capability factory: draft PR ${prUrl}` });
+}
+
+/** sha256 over the changed files' content at the merge commit (`<path>\0<bytes>\0`, paths sorted); null when any file or the sha is unavailable. */
+function artifactDigest(db: Database, goalId: string, mergeSha: string | null, files: string[], env: NodeJS.ProcessEnv): string | null {
+  if (!mergeSha || !/^[0-9a-f]{7,64}$/i.test(mergeSha) || !files.length || files.some((f) => !REL_PATH.test(f))) return null;
+  try {
+    const root = repoRoot(goalRepoSlug(db, goalId) ?? primaryRepo(env), env);
+    const hash = createHash('sha256');
+    for (const f of [...files].sort()) {
+      const bytes = execFileSync('git', ['-C', root, 'show', `${mergeSha}:${f}`], { timeout: 10_000, maxBuffer: 20 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] });
+      hash.update(`${f}\0`); hash.update(bytes); hash.update('\0');
+    }
+    return `sha256:${hash.digest('hex')}`;
+  } catch { return null; }
+}
+
+/**
+ * OMEGA slice 3 (CAPABILITY_LIFECYCLE_V2=on), called next to the draft_pr_opened event: a factory run's draft PR creates its
+ * `capfac:` candidate once. Off, or not a factory run: no-op. Idempotent; never throws into the PR service.
+ */
+export function onDraftPrOpened(db: Database, runId: string, prUrl: string, env: NodeJS.ProcessEnv = process.env): 'candidate' | null {
+  if (capabilityFactoryMode(env) !== 'on' || !capabilityLifecycleV2(env)) return null;
+  try {
+    const run = factoryRun(db, runId);
+    if (!run || db.prepare('SELECT 1 FROM swarm_capabilities WHERE id = ?').get(capabilityId(run.requestId))) return null;
+    createV2Candidate(db, runId, run, prUrl);
+    return 'candidate';
+  } catch (err) {
+    console.warn(`[capability-factory] candidate for run ${runId} failed:`, err instanceof Error ? err.message : String(err));
+    return null;
+  }
+}
+
 /**
  * Step 5, called by the merge-survival poller on every poll of a loop PR. A merged factory run registers its capability once
  * (candidate → promoteCapability → validated, the store's own promotion path); a merged PR whose survival settled as
  * regressed deprecates it (the store's downgrade status, as G1.5 does). Idempotent; never throws into the poller.
+ * CAPABILITY_LIFECYCLE_V2=on: the candidate from the draft PR (created here if missing) gets the merge sha and artifact digest
+ * and is promoted; its version stays the one it was reviewed at.
  */
 export function onLoopPrPolled(db: Database, runId: string, pr: { url: string; mergeSha: string | null; merged: boolean; regressed: boolean }, env: NodeJS.ProcessEnv = process.env): 'registered' | 'deprecated' | null {
   if (capabilityFactoryMode(env) !== 'on' || !pr.merged) return null;
@@ -231,34 +309,33 @@ export function onLoopPrPolled(db: Database, runId: string, pr: { url: string; m
     const id = capabilityId(run.requestId);
     const intel = new SwarmIntelligenceService(db);
     const existing = db.prepare('SELECT status FROM swarm_capabilities WHERE id = ?').get(id) as { status: string } | undefined;
+    let status = existing?.status;
     let result: 'registered' | 'deprecated' | null = null;
-    if (!existing) {
-      const maker = db.prepare(`SELECT json_extract(metadata, '$.changed_files') AS files FROM worker_leases WHERE loop_run_id = ? AND role = 'maker' AND status = 'completed'
-        AND json_extract(metadata, '$.superseded_by_maker_lease_id') IS NULL ORDER BY updated_at DESC LIMIT 1`).get(runId) as { files: string | null } | undefined;
-      let changed: string[] = []; try { changed = strings(JSON.parse(maker?.files || '[]')); } catch { /* none */ }
-      const target = String(run.grounding.target ?? run.grounding.artifactPath ?? '');
-      const test = String(run.grounding.acceptanceTest ?? '');
-      const files = changed.length ? changed : [target, ...(TEST_FILE.test(test) && test !== target ? [test] : [])].filter(Boolean);
-      const specialist = (db.prepare("SELECT json_extract(metadata, '$.specialist') AS s FROM loop_runs WHERE id = ?").get(runId) as { s: string | null } | undefined)?.s ?? null;
-      const request = db.prepare("SELECT answers_json AS a FROM judgments WHERE judgment = 'capability_request' AND subject_id = ? ORDER BY created_at LIMIT 1").get(run.requestId) as { a: string | null } | undefined;
-      let answers: Record<string, unknown> = {}; try { answers = JSON.parse(request?.a || '{}') as Record<string, unknown>; } catch { /* none */ }
-      const provenance = { request_id: run.requestId, proposal_id: run.proposalId, run_id: runId, pr_url: pr.url, merge_sha: pr.mergeSha, files, test };
+    if (capabilityLifecycleV2(env)) {
+      if (!existing) { createV2Candidate(db, runId, run, pr.url); status = 'candidate'; }
+      if (status === 'candidate') {
+        const cap = intel.getCapability(id);
+        const digest = artifactDigest(db, run.goalId, pr.mergeSha, strings(cap.metadata.files), env);
+        const provenance = { ...(cap.metadata.provenance && typeof cap.metadata.provenance === 'object' ? cap.metadata.provenance as Record<string, unknown> : {}), merge_sha: pr.mergeSha };
+        db.transaction(() => {
+          // same version, actions and risk (immutable): only the merge facts are added to the candidate's metadata
+          intel.createCandidate({ id, kind: cap.kind, owner: cap.owner, version: cap.version, risk_ceiling: cap.risk_ceiling, input_schema_ref: cap.input_schema_ref,
+            output_schema_ref: cap.output_schema_ref, allowed_actions: cap.allowed_actions, forbidden_actions: cap.forbidden_actions, required_evidence: cap.required_evidence,
+            eval_threshold: cap.eval_threshold, removal_strategy: cap.removal_strategy, metadata: { ...cap.metadata, provenance, artifact_digest: digest } });
+          intel.promoteCapability(id, promotion(runId, run, pr));
+        })();
+        swarmEventBus.emit('capability_transition', { capability_id: id, old_status: 'candidate', new_status: 'validated', reason: `capability factory: merged ${pr.url}` });
+        status = 'validated'; result = 'registered';
+      }
+    } else if (!existing) {
       db.transaction(() => {
-        intel.createCandidate({
-          id, kind: 'deterministic_harness', owner: FACTORY_OWNER, version: pr.mergeSha ? pr.mergeSha.slice(0, 12) : '1', risk_ceiling: 'low',
-          input_schema_ref: `file:${target}`, output_schema_ref: `test:${test}`, allowed_actions: ['reuse_in_assignment'],
-          forbidden_actions: ['deploy', 'push', 'merge'], required_evidence: ['proof:test', 'pr:merged'], removal_strategy: 'deprecate_on_merge_survival_regression',
-          metadata: { capability_factory: true, title: run.title, description: typeof answers.description === 'string' ? answers.description : null, files, test,
-            repo: typeof answers.repo === 'string' ? answers.repo : null, specialist, provenance },
-        });
-        // eval_score 1: its acceptance test passed the deterministic checks and a human merged the PR
-        intel.promoteCapability(id, { eval_score: 1, evidence_refs: [`pr:${pr.url}`, `loop_run:${runId}`, ...(pr.mergeSha ? [`merge_sha:${pr.mergeSha}`] : []), `self_improvement:${run.proposalId}`],
-          validation_report: `merged ${pr.url}${pr.mergeSha ? ` at ${pr.mergeSha}` : ''}` });
+        intel.createCandidate(candidateInput(db, runId, run, pr.url, pr.mergeSha, pr.mergeSha ? pr.mergeSha.slice(0, 12) : '1'));
+        intel.promoteCapability(id, promotion(runId, run, pr));
       })();
       swarmEventBus.emit('capability_transition', { capability_id: id, old_status: 'none', new_status: 'validated', reason: `capability factory: merged ${pr.url}` });
-      result = 'registered';
+      status = 'validated'; result = 'registered';
     }
-    if (pr.regressed && (existing?.status ?? 'validated') === 'validated') {
+    if (pr.regressed && status === 'validated') {
       db.prepare("UPDATE swarm_capabilities SET status = 'deprecated', updated_at = ? WHERE id = ? AND status = 'validated'").run(new Date().toISOString(), id);
       swarmEventBus.emit('capability_transition', { capability_id: id, old_status: 'validated', new_status: 'deprecated', reason: `merge survival regressed: ${pr.url}` });
       result = 'deprecated';

@@ -1,4 +1,6 @@
 import fs from 'fs';
+import { createHash } from 'crypto';
+import { execFileSync } from 'child_process';
 import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,7 +9,9 @@ import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
 import { assignmentContext, assignmentContextMarkdown } from '../services/assignment-context';
-import { factoryCapabilityLines, submitCapabilityRequest } from '../services/capability-factory';
+import { factoryCapabilityLines, onDraftPrOpened, submitCapabilityRequest } from '../services/capability-factory';
+import { checkLoopPrs } from '../services/merge-survival';
+import { EVOLUTION_FLAGS } from '../services/evolution-evidence';
 import { LoopService, type LoopFinding, type LoopRunRecord } from '../services/loop-service';
 import { runGenome } from '../services/maker-genome';
 import { LoopDaemon } from '../services/loop-daemon';
@@ -167,5 +171,85 @@ describe('CAP-2: reuse executes', () => {
     const judgment = db.prepare("SELECT decision, answers_json AS a FROM judgments WHERE judgment = 'capability_request'").get() as { decision: string; a: string };
     expect(judgment.decision).toBe('proposed');
     expect(JSON.parse(judgment.a)).toMatchObject({ reuse_of: 'cap-slug@1', capability_id: 'cap-slug' });
+  });
+});
+
+// ─── slice 3: candidate at draft PR, promote on merge ────────────────────────
+const REQ = { title: 'Slugify titles for URLs', description: 'Turn arbitrary titles into lowercase URL slugs with hyphens.', target_file: TARGET, acceptance: TEST };
+const git = (...args: string[]) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' }).trim();
+function commitRepo(): string {
+  git('init', '-q', '-b', 'main'); git('add', '.'); git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'merge');
+  return git('rev-parse', 'HEAD');
+}
+/** A factory request → proposal → goal → completed run with a maker lease and a verified head (the existing test-helper shape). */
+function factoryRun(runId: string, goalId: string, input: Parameters<typeof submitCapabilityRequest>[1] = REQ, verifiedHead = 'feedface0123456789') {
+  const res = submitCapabilityRequest(db, input, 'op');
+  if (res.status !== 'proposed') throw new Error(`expected a proposal, got ${res.status}`);
+  db.prepare(`INSERT INTO goals (id, objective, risk_class, status, metadata, improvement_id, created_at, updated_at)
+    VALUES (?, 'o', 'low', 'running', ?, ?, datetime('now'), datetime('now'))`).run(goalId, JSON.stringify({ source: 'self-improvement', improvement_id: res.proposal.id }), res.proposal.id);
+  db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, goal_id, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
+    VALUES (?, 'doc-drift-and-small-fix-loop', 'closed', 'completed', ?, '[]', '{}', '[]', '[]', ?, '2026-10-28T00:00:00Z', '2026-10-28T00:00:00Z')`)
+    .run(runId, goalId, JSON.stringify({ pr_url: `https://github.com/o/r/pull/${runId.length}`, verified_head_sha: verifiedHead }));
+  db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES (?, ?, 'maker', 'opencode', 'completed', ?, datetime('now'), datetime('now'))")
+    .run(`m-${runId}`, runId, JSON.stringify({ model: 'ollama/kimi', changed_files: [TARGET, TEST] }));
+  return { requestId: res.request_id, proposalId: res.proposal.id, prUrl: `https://github.com/o/r/pull/${runId.length}` };
+}
+const merged = (sha: string) => vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ state: 'closed', merged_at: '2026-10-29T00:00:00Z', created_at: '2026-10-28T00:00:00Z', merge_commit_sha: sha }) })) as unknown as typeof fetch;
+const pollEnv = () => ({ ...process.env, GITHUB_REPOSITORY: 'o/r', GITHUB_TOKEN: 't' }) as NodeJS.ProcessEnv;
+const capRow = (id: string) => db.prepare('SELECT status, version, metadata FROM swarm_capabilities WHERE id = ?').get(id) as { status: string; version: string; metadata: string } | undefined;
+
+describe('CAP-3: candidate at draft PR, promote on merge (CAPABILITY_LIFECYCLE_V2)', () => {
+  it('CAP-3: flag on — the draft PR creates the candidate with provenance; the merge promotes it with an artifact digest', async () => {
+    vi.stubEnv('CAPABILITY_LIFECYCLE_V2', 'on');
+    const sha = commitRepo();
+    const { requestId, proposalId, prUrl } = factoryRun('run1', 'g1');
+    expect(onDraftPrOpened(db, 'run1', prUrl)).toBe('candidate');
+    const cand = capRow(`capfac:${requestId}`)!;
+    expect(cand.status).toBe('candidate');
+    expect(cand.version).toBe('feedface0123');
+    expect(JSON.parse(cand.metadata)).toMatchObject({ capability_factory: true, artifact_digest: null,
+      provenance: { request_id: requestId, proposal_id: proposalId, run_id: 'run1', pr_url: prUrl, merge_sha: null, files: [TARGET, TEST], test: TEST } });
+    expect(JSON.parse(cand.metadata).parent_versions).toBeUndefined();
+    expect(onDraftPrOpened(db, 'run1', prUrl)).toBeNull(); // idempotent
+    await checkLoopPrs(db, merged(sha), pollEnv(), new Date('2026-10-31T00:00:00Z'));
+    const done = capRow(`capfac:${requestId}`)!;
+    expect(done.status).toBe('validated');
+    expect(done.version).toBe('feedface0123'); // the version never changes after the candidate exists
+    const digest = createHash('sha256');
+    for (const f of [TARGET, TEST].sort()) digest.update(`${f}\0${fs.readFileSync(path.join(repo, f), 'utf8')}\0`);
+    const meta = JSON.parse(done.metadata);
+    expect(meta.artifact_digest).toBe(`sha256:${digest.digest('hex')}`);
+    expect(meta).toMatchObject({ provenance: { merge_sha: sha }, promotion_evidence_refs: [`pr:${prUrl}`, 'loop_run:run1', `merge_sha:${sha}`, `self_improvement:${proposalId}`] });
+  });
+
+  it('CAP-3: flag on — an unavailable merge sha leaves the digest null (never guessed); regression still deprecates', async () => {
+    vi.stubEnv('CAPABILITY_LIFECYCLE_V2', 'on');
+    const { requestId, prUrl } = factoryRun('run1', 'g1');
+    onDraftPrOpened(db, 'run1', prUrl);
+    await checkLoopPrs(db, merged('0000000000000000000000000000000000000000'), pollEnv(), new Date('2026-10-31T00:00:00Z'));
+    expect(capRow(`capfac:${requestId}`)!.status).toBe('validated');
+    expect(JSON.parse(capRow(`capfac:${requestId}`)!.metadata).artifact_digest).toBeNull();
+  });
+
+  it('CAP-3: flag off — no candidate at draft PR; the merge registers exactly as today (version = merge sha)', async () => {
+    const { requestId, prUrl } = factoryRun('run1', 'g1');
+    expect(onDraftPrOpened(db, 'run1', prUrl)).toBeNull();
+    expect(db.prepare('SELECT COUNT(*) AS n FROM swarm_capabilities').get()).toEqual({ n: 0 });
+    await checkLoopPrs(db, merged('abc123def4567890'), pollEnv(), new Date('2026-10-31T00:00:00Z'));
+    const row = capRow(`capfac:${requestId}`)!;
+    expect(row).toMatchObject({ status: 'validated', version: 'abc123def456' });
+    expect(JSON.parse(row.metadata).artifact_digest).toBeUndefined();
+  });
+
+  it('CAP-3: CAPABILITY_LIFECYCLE_V2 is an acting evolution flag', () => {
+    expect(EVOLUTION_FLAGS).toContainEqual({ name: 'CAPABILITY_LIFECYCLE_V2', acting: true });
+  });
+
+  it('CAP-3: a reuse run records parent_versions = the matched capability@version', () => {
+    vi.stubEnv('CAPABILITY_LIFECYCLE_V2', 'on'); vi.stubEnv('CAPABILITY_FACTORY_REUSE_EXECUTE', 'on');
+    seedValidated('capfac:parent', 'p1', { title: 'URL slug helper', files: [TARGET, TEST], test: TEST });
+    const { requestId, prUrl } = factoryRun('run1', 'g1', { ...REQ, execute: true });
+    expect(onDraftPrOpened(db, 'run1', prUrl)).toBe('candidate');
+    expect(JSON.parse(capRow(`capfac:${requestId}`)!.metadata).parent_versions).toEqual(['capfac:parent@p1']);
   });
 });
