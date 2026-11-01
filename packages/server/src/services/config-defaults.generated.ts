@@ -9,6 +9,7 @@ export const RUNBOOK_DEFAULTS: Readonly<Record<string, string>> = {
   ASG_MODE: 'off (`shadow`, `on`)',
   AUTONOMOUS_LURES_ENABLED: 'off',
   CAPABILITY_FACTORY_MODE: 'off (`on`)',
+  CAPABILITY_FACTORY_REUSE_EXECUTE: 'off (`on`)',
   CHECKER_CROSS_MODEL: '`ollama/kimi-k3:cloud` (rule: registered in prod\'s opencode provider config, another family than the maker, already a p…',
   CHECKER_FAMILY_RANDOMISE: 'off (`on`)',
   CHECKER_FAMILY_TARGET_PER_ARM: '93 (EXP-1 registration; integer ≥ 2, else 93)',

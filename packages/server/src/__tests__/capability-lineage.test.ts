@@ -7,7 +7,7 @@ import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
 import { assignmentContext, assignmentContextMarkdown } from '../services/assignment-context';
-import { factoryCapabilityLines } from '../services/capability-factory';
+import { factoryCapabilityLines, submitCapabilityRequest } from '../services/capability-factory';
 import { LoopService, type LoopFinding, type LoopRunRecord } from '../services/loop-service';
 import { runGenome } from '../services/maker-genome';
 import { LoopDaemon } from '../services/loop-daemon';
@@ -130,5 +130,42 @@ describe('CAP-1: maker outcome (loop daemon)', () => {
     expect((JSON.parse(row.refs) as string[]).filter((r) => r.startsWith('capability:'))).toEqual([]);
     expect(row.v).toBeNull();
     expect((db.prepare("SELECT capability_id FROM worker_leases WHERE id = 'maker-1'").get() as { capability_id: string | null }).capability_id).toBeNull();
+  });
+});
+
+describe('CAP-2: reuse executes', () => {
+  const req = { title: 'Slugify titles for URLs', description: 'Turn arbitrary titles into lowercase URL slugs with hyphens.', target_file: TARGET, acceptance: TEST };
+  const count = (sql: string) => (db.prepare(sql).get() as { n: number }).n;
+
+  it('CAP-2: flag off — execute:true on a match is still a plain reuse that creates nothing', () => {
+    seedValidated('cap-slug', '1', { title: 'URL slug helper', files: [TARGET, TEST], test: TEST });
+    const res = submitCapabilityRequest(db, { ...req, execute: true }, 'op');
+    expect(res).toMatchObject({ status: 'reused', capability: { id: 'cap-slug', version: '1' } });
+    expect(count('SELECT COUNT(*) AS n FROM self_improvements')).toBe(0);
+  });
+
+  it('CAP-2: flag on, without execute — unchanged reuse', () => {
+    vi.stubEnv('CAPABILITY_FACTORY_REUSE_EXECUTE', 'on');
+    seedValidated('cap-slug', '1', { title: 'URL slug helper', files: [TARGET, TEST], test: TEST });
+    expect(submitCapabilityRequest(db, req, 'op').status).toBe('reused');
+    expect(count('SELECT COUNT(*) AS n FROM self_improvements')).toBe(0);
+  });
+
+  it('CAP-2: flag on + execute:true — one operator_request proposal pinned to capability-reuse:<id>@<version>, listed first', () => {
+    vi.stubEnv('CAPABILITY_FACTORY_REUSE_EXECUTE', 'on');
+    seedValidated('cap-slug', '1', { title: 'URL slug helper', files: [TARGET, TEST], test: TEST });
+    seedValidated('capfac:other', '7', { title: 'Slug helper variant', files: [TARGET], test: TEST });
+    const res = submitCapabilityRequest(db, { ...req, execute: true }, 'op');
+    expect(res).toMatchObject({ status: 'proposed', reuse_of: 'cap-slug@1', proposal: { source: 'operator_request', status: 'proposed' } });
+    const row = db.prepare('SELECT id, evidence_refs_json AS refs FROM self_improvements').get() as { id: string; refs: string };
+    expect(JSON.parse(row.refs)).toEqual([`capability-request:${res.request_id}`, 'capability-reuse:cap-slug@1']);
+    db.prepare(`INSERT INTO goals (id, objective, risk_class, status, metadata, improvement_id, created_at, updated_at) VALUES ('g3', 'o', 'low', 'running', '{}', ?, datetime('now'), datetime('now'))`).run(row.id);
+    expect(factoryCapabilityLines(db, 'g3').map((c) => `${c.id}@${c.version}`)).toEqual(['cap-slug@1', 'capfac:other@7']);
+    // the pinned version is exact: a capability no longer at that version (or no longer validated) is never listed in its place
+    db.prepare("UPDATE swarm_capabilities SET status = 'deprecated' WHERE id = 'cap-slug'").run();
+    expect(factoryCapabilityLines(db, 'g3').map((c) => c.id)).toEqual(['capfac:other']);
+    const judgment = db.prepare("SELECT decision, answers_json AS a FROM judgments WHERE judgment = 'capability_request'").get() as { decision: string; a: string };
+    expect(judgment.decision).toBe('proposed');
+    expect(JSON.parse(judgment.a)).toMatchObject({ reuse_of: 'cap-slug@1', capability_id: 'cap-slug' });
   });
 });

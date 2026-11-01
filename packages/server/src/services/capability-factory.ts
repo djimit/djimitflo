@@ -23,8 +23,13 @@ export type CapabilityFactoryMode = 'off' | 'on';
 export const capabilityFactoryMode = (env: NodeJS.ProcessEnv = process.env): CapabilityFactoryMode =>
   (env.CAPABILITY_FACTORY_MODE === 'on' ? 'on' : 'off');
 
+/** OMEGA slice 2: CAPABILITY_FACTORY_REUSE_EXECUTE=off|on (default off). On: a request with `execute: true` that matches a validated
+ * capability still becomes one operator_request proposal, pinned to that capability version (`capability-reuse:<id>@<version>`). */
+export const capabilityReuseExecute = (env: NodeJS.ProcessEnv = process.env): boolean => env.CAPABILITY_FACTORY_REUSE_EXECUTE === 'on';
+
 export const FACTORY_OWNER = 'capability-factory';
 const REQUEST_REF = 'capability-request:';
+const REUSE_REF = 'capability-reuse:';
 const DISCOVERY_CAP = 3;
 const TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
 const REL_PATH = /^[A-Za-z0-9_.@-]+(?:\/[A-Za-z0-9_.@-]+)*$/;
@@ -32,10 +37,12 @@ const NEW_FILE_ROOT = /^packages\/[A-Za-z0-9_.-]+\/src\/.+/;
 // one runnable test command, no shell syntax: npm test / npm run test[:x] / npx vitest run, plus plain arguments
 const TEST_COMMAND = /^(?:npm (?:run )?test(?::[\w:-]+)?|npx vitest run)(?: [\w.\/@=:-]+){0,12}$/;
 
-export interface CapabilityRequestInput { title: string; description: string; target_file: string; acceptance: string; repo?: string }
+export interface CapabilityRequestInput { title: string; description: string; target_file: string; acceptance: string; repo?: string;
+  /** OMEGA slice 2 (CAPABILITY_FACTORY_REUSE_EXECUTE=on): run the matched capability instead of only answering `reused` */
+  execute?: boolean }
 export type CapabilityRequestResult =
   | { status: 'reused'; request_id: string; capability: SwarmCapabilityRecord }
-  | { status: 'proposed'; request_id: string; proposal: ImprovementProposal }
+  | { status: 'proposed'; request_id: string; proposal: ImprovementProposal; reuse_of?: string }
   | { status: 'duplicate'; request_id: string; proposal_id: string | null };
 
 export class CapabilityRequestError extends Error {
@@ -153,7 +160,8 @@ export function submitCapabilityRequest(db: Database, input: CapabilityRequestIn
   const task = { files: [target], text: `${input.title}\n${input.description}` };
   const match = bestMatches(validatedCaps(db).filter((c) => sameRepo(c, slug, primary)), task, 1)[0];
   const base = { title: input.title.trim(), description: input.description.trim(), target_file: target, acceptance, repo: slug, requested_by: actor };
-  if (match) {
+  const reuseOf = match && input.execute === true && capabilityReuseExecute(env) ? `${match.id}@${match.version}` : null;
+  if (match && !reuseOf) {
     recordRequest(db, requestId, 'reused', `reused validated capability ${match.id}`, { ...base, capability_id: match.id });
     return { status: 'reused', request_id: requestId, capability: new SwarmIntelligenceService(db).getCapability(match.id) };
   }
@@ -172,13 +180,15 @@ export function submitCapabilityRequest(db: Database, input: CapabilityRequestIn
     + `Lint, type-check and the test suite run as the usual deterministic checks. BUDGET: ${budget}.`;
   const proposal = new SelfImprovementService(db).generateFromOperatorRequest({
     title: input.title.trim(), description,
-    rationale: `Operator-requested capability (${actor}); no validated capability in swarm_capabilities matched ${target} or the request keywords.`,
-    evidenceRefs: [`${REQUEST_REF}${requestId}`, ...(slug.toLowerCase() === primary.toLowerCase() ? [] : [`repo:${slug}`])],
+    rationale: reuseOf
+      ? `Operator-requested execution (${actor}) reusing validated capability ${reuseOf} on ${target}.`
+      : `Operator-requested capability (${actor}); no validated capability in swarm_capabilities matched ${target} or the request keywords.`,
+    evidenceRefs: [`${REQUEST_REF}${requestId}`, ...(reuseOf ? [`${REUSE_REF}${reuseOf}`] : []), ...(slug.toLowerCase() === primary.toLowerCase() ? [] : [`repo:${slug}`])],
     grounding: { target, acceptanceTest: acceptance, runtimeCommand: command, artifactPath: target, budget },
   });
   if (!proposal) return { status: 'duplicate', request_id: requestId, proposal_id: null };
-  recordRequest(db, requestId, 'proposed', `proposal ${proposal.id}`, { ...base, proposal_id: proposal.id, files });
-  return { status: 'proposed', request_id: requestId, proposal };
+  recordRequest(db, requestId, 'proposed', `proposal ${proposal.id}`, { ...base, proposal_id: proposal.id, files, ...(reuseOf && match ? { capability_id: match.id, reuse_of: reuseOf } : {}) });
+  return { status: 'proposed', request_id: requestId, proposal, ...(reuseOf ? { reuse_of: reuseOf } : {}) };
 }
 
 // ─── run lifecycle hooks (no-ops when off or not a factory run) ─────────────
@@ -262,22 +272,33 @@ export function onLoopPrPolled(db: Database, runId: string, pr: { url: string; m
 
 // ─── discovery ─────────────────────────────────────────────────────────────
 
+/** `capability-reuse:<id>@<version>` on a proposal's evidence refs (slice 2), split at the last '@'. */
+function reuseRef(refsJson: string | null): { id: string; version: string } | null {
+  let refs: unknown = []; try { refs = JSON.parse(refsJson || '[]'); } catch { /* none */ }
+  const ref = strings(refs).find((r) => r.startsWith(REUSE_REF))?.slice(REUSE_REF.length);
+  const at = ref ? ref.lastIndexOf('@') : -1;
+  return ref && at > 0 && at < ref.length - 1 ? { id: ref.slice(0, at), version: ref.slice(at + 1) } : null;
+}
+
 /** A capability line of a maker assignment and the exact capability version behind it (OMEGA slice 1: attribution). */
 export interface FactoryCapabilityLine { id: string; version: string; line: string }
 
 /** Step 6: up to 3 factory capabilities matching the goal's proposal (files, then keywords); never the goal's own result. */
 export function factoryCapabilityLines(db: Database, goalId: string | null, env: NodeJS.ProcessEnv = process.env): FactoryCapabilityLine[] {
   if (capabilityFactoryMode(env) !== 'on' || !goalId) return [];
-  const row = db.prepare(`SELECT s.id, s.title, s.description, s.grounding_json AS grounding FROM goals g
+  const row = db.prepare(`SELECT s.id, s.title, s.description, s.grounding_json AS grounding, s.evidence_refs_json AS refs FROM goals g
     JOIN self_improvements s ON s.id = COALESCE(g.improvement_id, json_extract(g.metadata, '$.improvement_id')) WHERE g.id = ?`).get(goalId) as
-    { id: string; title: string; description: string; grounding: string | null } | undefined;
+    { id: string; title: string; description: string; grounding: string | null; refs: string | null } | undefined;
   if (!row) return [];
+  // slice 2: a reuse proposal lists its pinned capability first — the exact approved version, while still validated; never a guess
+  const pinned = reuseRef(row.refs);
+  const pinnedCap = pinned ? validatedCaps(db).find((c) => c.id === pinned.id && c.version === pinned.version) ?? null : null;
   let grounding: Record<string, unknown> = {}; try { grounding = JSON.parse(row.grounding || '{}') as Record<string, unknown>; } catch { /* none */ }
   const files = [grounding.target, grounding.artifactPath].filter((f): f is string => typeof f === 'string' && f.length > 0);
   const slug = goalRepoSlug(db, goalId) ?? primaryRepo(env);
-  const caps = validatedCaps(db, true).filter((c) => c.proposalId !== row.id && sameRepo(c, slug, primaryRepo(env)));
+  const caps = validatedCaps(db, true).filter((c) => c.proposalId !== row.id && c.id !== pinnedCap?.id && sameRepo(c, slug, primaryRepo(env)));
   const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim().slice(0, 200);
-  return bestMatches(caps, { files, text: `${row.title}\n${row.description}` }, DISCOVERY_CAP)
+  return [...(pinnedCap ? [pinnedCap] : []), ...bestMatches(caps, { files, text: `${row.title}\n${row.description}` }, DISCOVERY_CAP - (pinnedCap ? 1 : 0))]
     .map((c) => ({ id: c.id, version: c.version, line: `${oneLine(c.title)} — ${c.files.join(', ')} — ${oneLine(c.test ?? 'no test recorded')}` }));
 }
 
