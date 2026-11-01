@@ -115,8 +115,11 @@ export class LoopDraftPrService {
       if (this.env.LOOP_PR_BODY_V2 === 'true') { let numstat = ''; try { numstat = git('diff', '--numstat', 'HEAD~1', 'HEAD'); } catch { /* no parent: diff stat omitted */ } body = this.bodyV2(runId, maker.id, body, numstat); }
       body += issueRefsLine(this.db, run.goal_id, this.env); // PRC-3: `Refs owner/repo#N` for a GitHub-issue work item
       // PRC-1: never a second PR for one branch — a retry looks up the PR an earlier attempt may have opened before it
-      // POSTs, and a 422 (a PR for this head exists) adopts that PR instead of failing.
-      let pr = committed ? await this.existingPr(repo, maker.branch_name, token) : null;
+      // POSTs, and a 422 (a PR for this head exists) adopts that PR instead of failing. Only an OPEN PR is adopted; a
+      // branch whose only PR is closed (rejected, or merged elsewhere) gets no new PR: draft_pr_failed closed_pr_exists.
+      const found = committed ? await this.existingPr(repo, maker.branch_name, token) : null;
+      if (found === 'closed') return fail('closed_pr_exists');
+      let pr = found;
       let adopted = pr !== null;
       if (!pr) {
         const res = await this.fetchImpl(`https://api.github.com/repos/${repo}/pulls`, {
@@ -126,7 +129,11 @@ export class LoopDraftPrService {
           signal: AbortSignal.timeout(15_000),
         });
         if (res.ok) { const j = (await res.json()) as { html_url?: string; number?: number }; pr = { url: String(j.html_url ?? ''), number: Number(j.number) || null }; }
-        else if (res.status === 422) { pr = await this.existingPr(repo, maker.branch_name, token); adopted = pr !== null; }
+        else if (res.status === 422) {
+          const existing = await this.existingPr(repo, maker.branch_name, token);
+          if (existing === 'closed') return fail('closed_pr_exists');
+          pr = existing; adopted = pr !== null;
+        }
         if (!pr) return fail(`GitHub ${res.status}`);
       }
       this.db.prepare(`UPDATE loop_runs SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.pr_number', ?, '$.pr_head_branch', ?) WHERE id = ?`)
@@ -171,18 +178,23 @@ export class LoopDraftPrService {
     return redactSecrets(`${v1}\n\n${lines.join('\n')}`).redacted;
   }
 
-  /** PRC-1: the newest PR (any state) whose head is `branch` in `repo`; null when none or unreadable. */
-  private async existingPr(repo: string, branch: string, token: string): Promise<{ url: string; number: number | null } | null> {
+  /**
+   * PRC-1: the open PR whose head is `branch` in `repo` (newest first); 'closed' when the branch has PRs but none is open;
+   * null when it has none or the list is unreadable.
+   */
+  private async existingPr(repo: string, branch: string, token: string): Promise<{ url: string; number: number | null } | 'closed' | null> {
     try {
       const head = encodeURIComponent(`${repo.split('/')[0]}:${branch}`);
-      const res = await this.fetchImpl(`https://api.github.com/repos/${repo}/pulls?head=${head}&state=all&per_page=1`, {
+      const res = await this.fetchImpl(`https://api.github.com/repos/${repo}/pulls?head=${head}&state=all&per_page=10`, {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
         signal: AbortSignal.timeout(15_000),
       });
       if (!res.ok) return null;
-      const pulls = (await res.json()) as Array<{ html_url?: string; number?: number }>;
-      const found = Array.isArray(pulls) ? pulls.find((p) => typeof p.html_url === 'string' && p.html_url) : undefined;
-      return found ? { url: String(found.html_url), number: Number(found.number) || null } : null;
+      const pulls = (await res.json()) as Array<{ html_url?: string; number?: number; state?: string }>;
+      const listed = Array.isArray(pulls) ? pulls.filter((p) => typeof p.html_url === 'string' && p.html_url) : [];
+      const open = listed.find((p) => p.state === 'open');
+      if (open) return { url: String(open.html_url), number: Number(open.number) || null };
+      return listed.length ? 'closed' : null;
     } catch { return null; }
   }
 
