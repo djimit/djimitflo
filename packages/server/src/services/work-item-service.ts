@@ -181,7 +181,7 @@ export class WorkItemService {
       );
 
       const created = this.get(id);
-      enqueueRequiredEvent(this.db, { type: 'djimitflo.work_item.created', aggregateId: id, payload: { work_item_id: id, title: created.title, source: created.source, source_ref: created.source_ref, risk_class: created.risk_class, status: created.status, recommended_loop: created.recommended_loop } });
+      enqueueRequiredEvent(this.db, { type: 'djimitflo.work_item.created', aggregateId: id, payload: { work_item_id: id, title: created.title, work_item_source: created.source, source_ref: created.source_ref, risk_class: created.risk_class, status: created.status, recommended_loop: created.recommended_loop } });
       return created;
     })();
   }
