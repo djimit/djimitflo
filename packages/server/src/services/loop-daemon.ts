@@ -19,6 +19,7 @@ import { inheritableApproval } from './approval-inheritance';
 import { CommonsProposalReviewService } from './commons-proposal-review-service';
 import { SelfImprovementService } from './self-improvement-service';
 import { LoopDraftPrService } from './loop-draft-pr-service';
+import { syncWorkItemOutcome } from './work-item-outcome-sync';
 import { evolveEligible, evolveSpecies, selectEvolveWinner } from './evolve-selection';
 import { leaseGradedRefs, recordMakerGraded } from './graded-fitness';
 import { recordFailBeforePassAfter } from './fail-before-pass-after';
@@ -467,6 +468,7 @@ export class LoopDaemon {
       }
       // denied | expired: the human gate said no (or nobody answered in time)
       this.db.prepare("UPDATE goals SET status = 'failed', metadata = json_remove(metadata, '$.awaiting_approval'), updated_at = ? WHERE id = ?").run(now, row.id);
+      syncWorkItemOutcome(this.db, row.id, 'failed', waiting.run_id); // PRC-3
       const reason = `approval ${approval.status}`;
       try { new LoopEventService(this.db).recordEvent(waiting.run_id, 'goal_failed', 'error', reason, { goal_id: row.id, approval_id: waiting.approval_id }); } catch { /* best-effort */ }
       try { new CommonsProposalReviewService(this.db).recordGoalOutcome(row.id, 'failed', reason); } catch { /* best-effort learning */ }
@@ -936,6 +938,11 @@ export class LoopDaemon {
         // STE-001: the template arm of this maker's assignment, on the lease and as `ste-001-arm:<0|1>` on the outcome
         const ste = runSte001(this.db, run.id);
         if (ste) this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.ste_001', json(?)) WHERE id = ?").run(JSON.stringify(ste), activeMakerLease.id);
+        // OMEGA slice 1 (record-only, no gate reads it): the factory capabilities this maker was shown, as `capability:<id>@<version>`
+        // refs; exactly one also becomes the lease's capability_id (competence per capability, meta-evolution dormancy)
+        const capabilityIds = genome.capability_ids;
+        if (capabilityIds.length === 1) this.db.prepare('UPDATE worker_leases SET capability_id = ? WHERE id = ? AND capability_id IS NULL')
+          .run(capabilityIds[0].slice(0, capabilityIds[0].lastIndexOf('@')), activeMakerLease.id);
         // One outcome per run: two daemon passes can finish the same run.
         const firstPass = !this.db.prepare('SELECT 1 FROM skill_outcomes WHERE skill_id = ? AND task_id = ? AND agent_id = ? LIMIT 1').get(skillId, run.id, activeMakerLease.id);
         // B29: the maker's model call in the ledger, with the experiment arms it ran in (opencode/remote runtime_usage; missing = null)
@@ -949,13 +956,14 @@ export class LoopDaemon {
           agentId: activeMakerLease.id,
           // §16 step 9: identity of the template + examples + sealed rules + strategy genome this maker ran with
           skillContentHash: skillContentHash(genome, typeof meta.genome_id === 'string' ? meta.genome_id : null),
+          ...(capabilityIds.length ? { skillVersion: capabilityIds.join(',') } : {}),
           ...(typeof meta.model === 'string' ? { model: meta.model } : {}),
           evidenceRefs: [`loop_run:${run.id}`, `genome:${genome.id}`, ...(typeof meta.genome_id === 'string' ? [`strategy_genome:${meta.genome_id}`] : []), ...verification.gates.filter(g => g.status !== 'pass').map(g => `gate:${g.name}:${g.status}`),
             // RX-3: why a failed run failed (infra / no change / regressed) — the bandit counts all three as 0 today
             ...(outcomeVerified ? [] : [`outcome_class:${verificationFailureOutcome(this.db, activeMakerLease.id, verification.gates)}`]),
             ...leaseGradedRefs(meta), // SI-A: graded:<score>, graded_kind, graded_lane when the maker was graded
             ...(ace ? [`ace-001-arm:${ace.arm}`] : []), ...(ste ? [`ste-001-arm:${ste.arm}`] : []), ...(meta.runtime_fallback ? [FALLBACK_REF] : []),
-            ...(ran.runtime !== leaseRuntime ? [`requested_runtime:${leaseRuntime}`] : [])],
+            ...(ran.runtime !== leaseRuntime ? [`requested_runtime:${leaseRuntime}`] : []), ...capabilityIds.map((c) => `capability:${c}`)],
         });
       } catch { /* best-effort learning */ }
 
@@ -1004,6 +1012,8 @@ export class LoopDaemon {
         .run(goalStatus, new Date().toISOString(), goal.id);
       this.db.prepare('UPDATE loop_runs SET status = ?, updated_at = ? WHERE id = ?')
         .run(runStatus, new Date().toISOString(), run.id);
+      // PRC-3 (WORK_ITEM_OUTCOME_SYNC): the source work item learns the outcome (done / blocked + pr_url, run_id); never throws
+      syncWorkItemOutcome(this.db, goal.id, allGatesPass ? 'completed' : 'failed', run.id);
       if (runStatus === 'blocked') {
         try { cancelPreparedLeasesOfBlockedRun(this.db, run.id); } catch { /* best-effort: the orphan cleanup still settles them */ }
       }
@@ -1024,6 +1034,7 @@ export class LoopDaemon {
       // Mark the goal as failed if execution fails.
       this.db.prepare('UPDATE goals SET status = ?, updated_at = ? WHERE id = ?')
         .run('failed', new Date().toISOString(), goal.id);
+      syncWorkItemOutcome(this.db, goal.id, 'failed', runId ?? null); // PRC-3
       // a run already left 'blocked' (e.g. by its failed checks) is now terminal too
       if (runId) { try { cancelPreparedLeasesOfBlockedRun(this.db, runId); } catch { /* best-effort */ } }
 

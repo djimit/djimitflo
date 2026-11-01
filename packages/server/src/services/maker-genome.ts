@@ -9,20 +9,23 @@ import { STE_TEMPLATE_HASH } from './ste-001';
  * the maker received. The species (runtime@model) is already on the lease. Outcomes carry `genome:<id>`, so fitness can be
  * compared per genome and the dreaming step (Y3) can mutate one gene at a time.
  */
-export interface MakerGenome { id: string; template: string; examples: string[]; rules: string[] }
+export interface MakerGenome { id: string; template: string; examples: string[]; rules: string[];
+  /** OMEGA slice 1: `<id>@<version>` of the factory capabilities in the assignment (record-only: not part of `id`) */
+  capability_ids: string[] }
 
 const sha = (text: string) => createHash('sha256').update(text).digest('hex');
 export const MAKER_TEMPLATE_HASH = sha(MAKER_TEMPLATE_RULES.join('\n')).slice(0, 12);
 
 export function runGenome(db: Database, runId: string): MakerGenome {
-  let examples: string[] = []; let ruleIds: string[] = []; let template = MAKER_TEMPLATE_HASH;
+  let examples: string[] = []; let ruleIds: string[] = []; let capabilityIds: string[] = []; let template = MAKER_TEMPLATE_HASH;
   try {
     const event = db.prepare("SELECT metadata FROM loop_events WHERE loop_run_id = ? AND event_type = 'assignment_context' ORDER BY created_at DESC LIMIT 1").get(runId) as { metadata: string } | undefined;
-    const meta = event ? JSON.parse(event.metadata || '{}') as { examples?: unknown; rule_ids?: unknown; ste_001?: { arm?: unknown } } : {};
+    const meta = event ? JSON.parse(event.metadata || '{}') as { examples?: unknown; rule_ids?: unknown; capability_ids?: unknown; ste_001?: { arm?: unknown } } : {};
     // STE-001: arm 1 ran on the Simplified Technical English template — its own template gene
     if (meta.ste_001?.arm === 1) template = STE_TEMPLATE_HASH;
     examples = Array.isArray(meta.examples) ? meta.examples.filter((e): e is string => typeof e === 'string').sort() : [];
     ruleIds = Array.isArray(meta.rule_ids) ? meta.rule_ids.filter((r): r is string => typeof r === 'string').sort() : [];
+    capabilityIds = Array.isArray(meta.capability_ids) ? meta.capability_ids.filter((c): c is string => typeof c === 'string').sort() : [];
   } catch { /* no events table: template-only genome */ }
   const rules = ruleIds.map((id) => {
     let hash: string | null = null;
@@ -30,7 +33,7 @@ export function runGenome(db: Database, runId: string): MakerGenome {
     return `${id}:${(hash ?? 'unsealed').slice(0, 12)}`;
   });
   const genome = { template, examples, rules };
-  return { id: sha(JSON.stringify(genome)).slice(0, 16), ...genome };
+  return { id: sha(JSON.stringify(genome)).slice(0, 16), ...genome, capability_ids: capabilityIds };
 }
 
 /**
