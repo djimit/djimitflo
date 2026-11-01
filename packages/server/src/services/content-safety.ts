@@ -85,9 +85,16 @@ export async function checkContentSafety(db: Database, subject: { type: string; 
     }
     if (!res.ok) { record('error', `http_${res.status}${res.status === 429 ? ' (pausing checks)' : ''}`); return null; }
     const body = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
-    const { verdict, categories } = parseSafety(body.choices?.[0]?.message?.content ?? '');
-    if (!verdict) { record('error', `unparsed:${JSON.stringify((body.choices?.[0]?.message?.content ?? '').slice(0, 80))}`); return null; }
-    record(verdict === 'safe' ? 'yes' : 'no', `verdict=${verdict}${categories ? ` categories=${categories}` : ''}`);
+    const parsed = parseSafety(body.choices?.[0]?.message?.content ?? '');
+    const { categories } = parsed;
+    if (!parsed.verdict) { record('error', `unparsed:${JSON.stringify((body.choices?.[0]?.message?.content ?? '').slice(0, 80))}`); return null; }
+    // prod 2026-10-31: Llama Guard flags plain technical text S14 (code interpreter abuse) → CONTENT_SAFETY_IGNORE_CATEGORIES=S14
+    // makes an 'unsafe' whose categories are ALL ignored count as safe; the categories stay in the reason
+    const ignore = new Set((process.env.CONTENT_SAFETY_IGNORE_CATEGORIES || '').split(/[\s,]+/).filter(Boolean).map((c) => c.toUpperCase()));
+    const cats = categories.split(/[\s,]+/).filter(Boolean).map((c) => c.toUpperCase());
+    const ignored = parsed.verdict === 'unsafe' && cats.length > 0 && cats.every((c) => ignore.has(c));
+    const verdict = ignored ? 'safe' : parsed.verdict;
+    record(verdict === 'safe' ? 'yes' : 'no', `verdict=${verdict}${categories ? ` categories=${categories}` : ''}${ignored ? ` ignored=${cats.join(',')}` : ''}`);
     // §16 step 8 (shadow, POLICY_VIOLATION_LOG): untrusted input judged unsafe is counted; nothing is blocked (still shadow)
     if (verdict === 'unsafe') {
       const stateHash = createHash('sha256').update(text).digest('hex').slice(0, 16);
