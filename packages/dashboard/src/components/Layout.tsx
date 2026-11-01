@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ConnectionBanner } from './WebSocketProvider';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
@@ -13,50 +13,50 @@ import { NAV_PERMISSIONS } from '../lib/permissions';
 
 // W4 (2026-09-30): one operator's jobs, ≤ 20 top-level items; experimental or dormant pages live in a collapsed Lab.
 // Page-view telemetry (S4, 28-30 Sep) decided what is top-level; Lab pages stay reachable, once each.
-const NAV_SECTIONS: Array<{ title: string; lab?: boolean; items: Array<{ to: string; label: string; icon: LucideIcon }> }> = [
+const NAV_SECTIONS: Array<{ title: string; lab?: boolean; items: Array<{ to: string; label: string; keywords?: string; icon: LucideIcon }> }> = [
   { title: 'Operate', items: [
     { to: '/', label: 'Cockpit', icon: Activity },
     { to: '/decisions', label: 'Decisions', icon: CheckSquare },
-    { to: '/goals-loops', label: 'Goals & Loops', icon: Workflow },
+    { to: '/goals-loops', label: 'Goals & Loops', keywords: 'workflows goals runs doelen', icon: Workflow },
     { to: '/tasks', label: 'Tasks', icon: ListTodo },
     { to: '/repositories', label: 'Repositories', icon: FolderGit },
   ] },
   { title: 'Improve', items: [
-    { to: '/improvement-funnel', label: 'Improvement funnel', icon: Gauge },
+    { to: '/improvement-funnel', label: 'Improvement funnel', keywords: 'verification outcomes proposals improvements verbetering', icon: Gauge },
     { to: '/evolution', label: 'Evolution', icon: Dna },
-    { to: '/observability', label: 'Observability', icon: BarChart3 },
-    { to: '/usage', label: 'Usage', icon: DollarSign },
+    { to: '/observability', label: 'Observability', keywords: 'traces metrics latency diagnostics diagnose', icon: BarChart3 },
+    { to: '/usage', label: 'Usage', keywords: 'tokens costs usage verbruik kosten', icon: DollarSign },
   ] },
   { title: 'Knowledge', items: [
-    { to: '/knowledge', label: 'Knowledge', icon: Library },
+    { to: '/knowledge', label: 'Knowledge', keywords: 'skills cards research retrieval kennis vaardigheden', icon: Library },
     { to: '/frontier-experts', label: 'Frontier Experts', icon: GraduationCap },
-    { to: '/agent-commons', label: 'Agent Commons', icon: Sparkles },
+    { to: '/agent-commons', label: 'Agent Commons', keywords: 'reflection proposals collaboration reflectie samenwerken', icon: Sparkles },
   ] },
   { title: 'Fleet', items: [
     { to: '/fleet', label: 'Fleet hosts', icon: Network },
-    { to: '/agents', label: 'Agents', icon: Users },
+    { to: '/agents', label: 'Agents', keywords: 'subagents specialists agenten specialisten', icon: Users },
   ] },
   { title: 'Govern', items: [
     { to: '/policies', label: 'Policies', icon: Shield },
     { to: '/governance', label: 'Governance & Assurance', icon: ShieldCheck },
-    { to: '/mcp-permissions', label: 'MCP Permissions', icon: PlugZap },
-    { to: '/audit', label: 'Audit', icon: ScrollText },
+    { to: '/mcp-permissions', label: 'MCP Permissions', keywords: 'tools integrations permissions rechten integraties', icon: PlugZap },
+    { to: '/audit', label: 'Audit', keywords: 'logs events fouten', icon: ScrollText },
     { to: '/authority', label: 'Authority ledger', icon: ShieldCheck },
-    { to: '/configuration', label: 'Configuration', icon: SlidersHorizontal },
+    { to: '/configuration', label: 'Configuration', keywords: 'models providers routing flags budgets instellingen modellen', icon: SlidersHorizontal },
   ] },
   { title: 'Lab', lab: true, items: [
     { to: '/dashboard', label: 'Activity overview', icon: Activity },
     { to: '/swarm-resources', label: 'Swarm Resources', icon: Network },
     { to: '/swarm', label: 'Swarm', icon: Cpu },
     { to: '/fleet-cockpit', label: 'Fleet Cockpit', icon: Gauge },
-    { to: '/swarm-mission-control', label: 'Swarm Mission Control', icon: BrainCircuit },
+    { to: '/swarm-mission-control', label: 'Swarm Mission Control', keywords: 'memory capabilities runtime geheugen mogelijkheden', icon: BrainCircuit },
     { to: '/explainers', label: 'Repository explainers', icon: BookUser },
     { to: '/pipeline-builder', label: 'Pipeline drafts', icon: Workflow },
     { to: '/catalog', label: 'Agent Catalog', icon: BookUser },
     { to: '/interaction-board', label: 'Interaction Board', icon: MessageSquare },
     { to: '/self-driving', label: 'Self-Driving', icon: Activity },
     { to: '/cognitive', label: 'Cognitive', icon: Brain },
-    { to: '/consensus-debates', label: 'Consensus debates', icon: MessageSquare },
+    { to: '/consensus-debates', label: 'Consensus debates', keywords: 'committee committees comite consensus', icon: MessageSquare },
     { to: '/agi-reasoning', label: 'Goal reasoning', icon: Brain },
     { to: '/predictive-analytics', label: 'Predictive analytics', icon: BarChart3 },
     { to: '/self-healing', label: 'Health checks', icon: Activity },
@@ -69,10 +69,11 @@ export function Layout() {
   const location = useLocation();
   const { user, logout, hasPermission } = useAuthStore();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [navigationQuery, setNavigationQuery] = useState('');
   const openButton = useRef<HTMLButtonElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => setMobileNavOpen(false), [location.pathname]);
+  useEffect(() => { setMobileNavOpen(false); setNavigationQuery(''); }, [location.pathname]);
   // UX-007: an open drawer takes focus; Escape closes it and returns focus to the menu button
   useEffect(() => {
     if (!mobileNavOpen) return;
@@ -111,6 +112,16 @@ export function Layout() {
     return location.pathname === path || location.pathname.startsWith(path + '/');
   };
   
+  const query = navigationQuery.trim().toLocaleLowerCase();
+  const queryWords = query.split(/[\s/_-]+/).filter(Boolean);
+  const visibleSections = NAV_SECTIONS.map(section => ({
+    ...section,
+    items: section.items.filter(item => (item.to !== '/authority' || authorityAvailable)
+      && (!NAV_PERMISSIONS[item.to] || hasPermission(NAV_PERMISSIONS[item.to]))
+      && queryWords.every(term => `${section.title} ${item.label} ${item.to} ${item.keywords ?? ''}`.toLocaleLowerCase().split(/[\s/_-]+/).some(word => word.startsWith(term)))),
+  })).filter(section => section.items.length > 0);
+  const resultCount = visibleSections.reduce((count, section) => count + section.items.length, 0);
+
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       {/* UX-25: keyboard users jump past the navigation */}
@@ -148,10 +159,20 @@ export function Layout() {
         
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto p-4" aria-label="Main">
-          {NAV_SECTIONS.map((section) => {
+          <div className="mb-4 space-y-2">
+            <label htmlFor="navigation-search" className="block text-xs font-medium text-foreground-secondary">Find a function</label>
+            <input id="navigation-search" type="search" value={navigationQuery}
+              placeholder="Pages, skills, memory, providers…" aria-controls="navigation-results"
+              className="w-full rounded border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+              onChange={event => setNavigationQuery(event.target.value)}
+              onKeyDown={event => { if (event.key === 'Escape' && navigationQuery) { event.stopPropagation(); setNavigationQuery(''); } }} />
+            {query && <p role="status" className="text-xs text-foreground-secondary">{resultCount ? `${resultCount} matching ${resultCount === 1 ? 'page' : 'pages'}` : 'No matching pages. Try a page name or group.'}</p>}
+          </div>
+          <div id="navigation-results">
+          {visibleSections.map((section) => {
             const links = (
               <div className="space-y-1">
-                {section.items.filter((item) => (item.to !== '/authority' || authorityAvailable) && (!NAV_PERMISSIONS[item.to] || hasPermission(NAV_PERMISSIONS[item.to]))).map((item) => (
+                {section.items.map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}
@@ -165,7 +186,7 @@ export function Layout() {
             );
             // Lab: native <details>, collapsed unless the current page lives in it (no state, no storage)
             return section.lab ? (
-              <details key={section.title} className="mb-4" open={section.items.some((item) => isActive(item.to))}>
+              <details key={section.title} className="mb-4" open={Boolean(query) || section.items.some((item) => isActive(item.to))}>
                 <summary className="cursor-pointer px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-foreground-muted">{section.title} · experimental</summary>
                 {links}
               </details>
@@ -176,6 +197,7 @@ export function Layout() {
               </div>
             );
           })}
+          </div>
         </nav>
 
         {/* Footer */}
@@ -210,7 +232,9 @@ export function Layout() {
         {location.pathname !== '/decisions' && <PendingApprovalsBanner {...pending} />}
         <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 overflow-auto focus:outline-none">
           <ConnectionBanner />
-          <Outlet />
+          <Suspense fallback={<div role="status" className="p-6 text-foreground-secondary">Loading page…</div>}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>
