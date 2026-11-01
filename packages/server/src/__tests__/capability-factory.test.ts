@@ -216,3 +216,16 @@ it('evidence: request counts by status and the flag is listed', async () => {
   expect(capabilityFactoryEvidence(db)).toMatchObject({ mode: 'on', requests: { reused: 1, proposed: 1, in_progress: 0, merged: 0, registered: 0, rejected: 1 } });
   expect(EVOLUTION_FLAGS).toContainEqual({ name: 'CAPABILITY_FACTORY_MODE', acting: true });
 });
+
+it('CAP-2: the request route accepts execute; with CAPABILITY_FACTORY_REUSE_EXECUTE=on a match becomes a pinned proposal (201)', async () => {
+  seedValidated('cap-slug', { title: 'URL slug helper', files: [TARGET, TEST], test: TEST });
+  const off = await request(app()).post('/api/capabilities/requests').set('Authorization', `Bearer ${admin}`).send({ ...body, execute: true });
+  expect(off.status).toBe(200);
+  expect(off.body.status).toBe('reused');
+  vi.stubEnv('CAPABILITY_FACTORY_REUSE_EXECUTE', 'on');
+  const on = await request(app()).post('/api/capabilities/requests').set('Authorization', `Bearer ${admin}`).send({ ...body, execute: true });
+  expect(on.status).toBe(201);
+  expect(on.body).toMatchObject({ status: 'proposed', reuse_of: 'cap-slug@1' });
+  expect((await request(app()).post('/api/capabilities/requests').set('Authorization', `Bearer ${admin}`).send({ ...body, execute: 'yes' })).status).toBe(400);
+  expect(EVOLUTION_FLAGS).toContainEqual({ name: 'CAPABILITY_FACTORY_REUSE_EXECUTE', acting: true });
+});
