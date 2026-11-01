@@ -457,12 +457,35 @@ export class LoopDaemon {
       const now = new Date().toISOString();
       if (!approval || approval.status === 'pending') continue;
       if (approval.status === 'approved') {
-        // Approving resumes the task inside the engine; continue only once it reached a terminal state, then
-        // executeViaEngine returns the stored result instead of running the maker twice.
-        const task = this.db.prepare('SELECT status FROM tasks WHERE id = ?').get(approval.task_id) as { status: string } | undefined;
-        if (!task || !['completed', 'failed', 'cancelled'].includes(task.status)) continue;
-        this.db.prepare("UPDATE goals SET status = 'decomposed', metadata = json_set(json_remove(metadata, '$.awaiting_approval'), '$.resume_run_id', ?), updated_at = ? WHERE id = ?")
-          .run(waiting.run_id, now, row.id);
+        // Approval is evidence for its task, not authority to resurrect stopped or reassigned work.
+        this.db.transaction(() => {
+          const current = this.db.prepare("SELECT metadata FROM goals WHERE id=? AND status='blocked'").get(row.id) as { metadata: string } | undefined;
+          if (!current) return;
+          const currentApproval = this.db.prepare('SELECT status,task_id FROM approvals WHERE id=?').get(waiting.approval_id) as { status: string; task_id: string } | undefined;
+          if (currentApproval?.status !== 'approved' || currentApproval.task_id !== approval.task_id) return;
+          const metadata = JSON.parse(current.metadata || '{}');
+          if (metadata.operator_paused === true || JSON.stringify(metadata.awaiting_approval) !== JSON.stringify(waiting)) return;
+          const run = this.db.prepare('SELECT goal_id,status,metadata FROM loop_runs WHERE id=?').get(waiting.run_id) as { goal_id: string; status: string; metadata: string } | undefined;
+          if (run && JSON.parse(run.metadata || '{}').operator_paused === true) return;
+          const lease = this.db.prepare('SELECT loop_run_id,status,metadata FROM worker_leases WHERE id=?').get(waiting.lease_id) as { loop_run_id: string; status: string; metadata: string } | undefined;
+          const leaseMeta = JSON.parse(lease?.metadata || '{}');
+          const task = this.db.prepare('SELECT status FROM tasks WHERE id=?').get(approval.task_id) as { status: string } | undefined;
+          const owned = run?.goal_id === row.id && lease?.loop_run_id === waiting.run_id
+            && (leaseMeta.execution_task_id ? leaseMeta.execution_task_id === approval.task_id : leaseMeta.approval_id === waiting.approval_id);
+          const reason = !owned ? 'continuation_ownership_mismatch'
+            : !['running', 'planning', 'verifying', 'blocked'].includes(run!.status) ? 'run_not_resumable'
+            : lease?.status === 'cancelled' || task?.status === 'cancelled' ? 'worker_cancelled' : null;
+          if (reason) {
+            this.db.prepare("UPDATE goals SET metadata=json_set(json_remove(metadata,'$.awaiting_approval'),'$.continuation_hold',json(?)),updated_at=? WHERE id=?")
+              .run(JSON.stringify({ ...waiting, reason, held_at: now }), now, row.id);
+            if (run) new LoopEventService(this.db).recordEvent(waiting.run_id, 'goal_continuation_held', 'warning', reason, { goal_id: row.id, approval_id: waiting.approval_id, lease_id: waiting.lease_id });
+            return;
+          }
+          // executeViaEngine consumes this task's stored result; it must not start another maker.
+          if (!task || !['completed', 'failed'].includes(task.status)) return;
+          this.db.prepare("UPDATE goals SET status='decomposed',metadata=json_set(json_remove(metadata,'$.awaiting_approval'),'$.resume_run_id',?),updated_at=? WHERE id=?")
+            .run(waiting.run_id, now, row.id);
+        }).immediate();
         continue;
       }
       // denied | expired: the human gate said no (or nobody answered in time)

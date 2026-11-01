@@ -102,6 +102,65 @@ describe('LoopDaemon waits for worker approval', () => {
     expect(goalRow().status).toBe('completed'); // stub run has no findings, so the resumed goal completes
   });
 
+  it.each(['cancelled', 'failed', 'completed', 'escalated'])('does not resume a %s run after an approved task finishes', async status => {
+    seedRunWithApprovalLease(); seedApproval('approved', 'completed'); blockGoal();
+    db.prepare('UPDATE loop_runs SET status=? WHERE id=?').run(status, 'run-a');
+    const getLoopRun = vi.fn(() => ({ id: 'run-a', findings: [] }));
+    await runTick(daemonWith({ getLoopRun }));
+    expect(getLoopRun).not.toHaveBeenCalled();
+    expect(goalRow().status).toBe('blocked');
+    expect(JSON.parse(goalRow().metadata).continuation_hold.reason).toBe('run_not_resumable');
+  });
+
+  it.each(['goal', 'lease', 'approval_task'])('refuses a continuation whose %s ownership changed', async changed => {
+    seedRunWithApprovalLease(); seedApproval('approved', 'completed'); blockGoal();
+    if (changed === 'goal') db.prepare("UPDATE loop_runs SET goal_id='another-goal' WHERE id='run-a'").run();
+    if (changed === 'lease') db.prepare("UPDATE worker_leases SET loop_run_id='another-run' WHERE id='lease-a'").run();
+    if (changed === 'approval_task') db.prepare("UPDATE worker_leases SET metadata=json_set(metadata,'$.execution_task_id','another-task') WHERE id='lease-a'").run();
+    const getLoopRun = vi.fn();
+    await runTick(daemonWith({ getLoopRun }));
+    expect(getLoopRun).not.toHaveBeenCalled();
+    expect(goalRow().status).toBe('blocked');
+    expect(JSON.parse(goalRow().metadata).continuation_hold.reason).toBe('continuation_ownership_mismatch');
+    expect(JSON.parse(goalRow().metadata).awaiting_approval).toBeUndefined();
+    // A second tick after a process restart must not dispatch or duplicate the hold event.
+    await runTick(daemonWith({ getLoopRun }));
+    expect(getLoopRun).not.toHaveBeenCalled();
+    expect(db.prepare("SELECT COUNT(*) n FROM loop_events WHERE event_type='goal_continuation_held'").get()).toEqual({ n: 1 });
+  });
+
+  it.each(['goal', 'run'])('preserves an operator-paused %s while the approval task finishes', async target => {
+    seedRunWithApprovalLease(); seedApproval('approved', 'completed'); blockGoal();
+    db.prepare(`UPDATE ${target === 'goal' ? 'goals' : 'loop_runs'} SET metadata=json_set(metadata,'$.operator_paused',json('true')) WHERE id=?`).run(target === 'goal' ? goalId : 'run-a');
+    const getLoopRun = vi.fn();
+    await runTick(daemonWith({ getLoopRun }));
+    expect(getLoopRun).not.toHaveBeenCalled();
+    expect(goalRow().status).toBe('blocked');
+    expect(JSON.parse(goalRow().metadata).awaiting_approval).toBeDefined();
+  });
+
+  it.each(['lease', 'task'])('does not continue a cancelled %s', async target => {
+    seedRunWithApprovalLease(); seedApproval('approved', target === 'task' ? 'cancelled' : 'completed'); blockGoal();
+    if (target === 'lease') db.prepare("UPDATE worker_leases SET status='cancelled' WHERE id='lease-a'").run();
+    const getLoopRun = vi.fn();
+    await runTick(daemonWith({ getLoopRun }));
+    expect(getLoopRun).not.toHaveBeenCalled();
+    expect(goalRow().status).toBe('blocked');
+    expect(JSON.parse(goalRow().metadata).continuation_hold.reason).toBe('worker_cancelled');
+  });
+
+  it('retains the pending checkpoint when recording the continuation hold fails', async () => {
+    seedRunWithApprovalLease(); seedApproval('approved', 'completed'); blockGoal();
+    db.prepare("UPDATE loop_runs SET status='cancelled' WHERE id='run-a'").run();
+    db.exec("CREATE TRIGGER reject_hold BEFORE INSERT ON loop_events WHEN NEW.event_type='goal_continuation_held' BEGIN SELECT RAISE(ABORT,'audit unavailable'); END");
+    const getLoopRun = vi.fn();
+    await runTick(daemonWith({ getLoopRun }));
+    expect(getLoopRun).not.toHaveBeenCalled();
+    expect(goalRow().status).toBe('blocked');
+    expect(JSON.parse(goalRow().metadata).awaiting_approval).toBeDefined();
+    expect(JSON.parse(goalRow().metadata).continuation_hold).toBeUndefined();
+  });
+
   it('waits for an approved task that is still running', async () => {
     seedRunWithApprovalLease(); seedApproval('approved', 'running'); blockGoal();
     await runTick(daemonWith({ startObjectiveLoop: vi.fn() }));

@@ -44,3 +44,24 @@ it('never treats automated or inherited decisions as the human approval', () => 
   db.prepare("DELETE FROM approvals WHERE id = 'p'").run();
   db.prepare("UPDATE approvals SET decided_by = 'inherit:x' WHERE id = 'human'").run(); expect(pending()).toBeNull();
 });
+
+it.each(['not-a-date', '2026-09-28T19:00:00Z'])('refuses unverifiable approval time %s', decidedAt => {
+  db.prepare('UPDATE approvals SET decided_at=? WHERE id=?').run(decidedAt, 'human');
+  expect(pending()).toBeNull();
+});
+it.each(['Infinity', 'NaN', '0', '-1'])('fails closed on invalid inheritance TTL %s', ttl => {
+  approval('p', 't2', { status: 'pending', by: null });
+  expect(inheritableApproval(db, 'p', 'run', NOW, { ...ON, APPROVAL_INHERIT_TTL_MS: ttl })).toBeNull();
+});
+it('refuses to lend a run approval to a pending task owned by another run', () => {
+  lease('other', 'run2', 't3'); approval('p', 't3', { status: 'pending', by: null });
+  expect(inheritableApproval(db, 'p', 'run', NOW, ON)).toBeNull();
+});
+it('expires exactly at the inherited authority deadline', () => {
+  db.prepare("UPDATE approvals SET decided_at = '2026-09-28T16:00:00Z' WHERE id = 'human'").run();
+  expect(pending()).toBeNull();
+});
+it('does not infer freshness from an invalid clock', () => {
+  approval('p', 't2', { status: 'pending', by: null });
+  expect(inheritableApproval(db, 'p', 'run', NaN, ON)).toBeNull();
+});
