@@ -12,6 +12,7 @@ existing auth; anything that sends, closes, approves or changes permissions ship
 | UX-2 | Cockpit `genomes` type + table (#625) | done |
 | UX-3 … UX-33 | live shell, permission-aware UI, inbox, draft-PR queue, schedulers, evolution page, push, agents, LLM ledger, a11y | open |
 | UX-30 | Lab pruning: dormant Lab pages measured from S4 usage telemetry, one recommendation per page (`docs/design/ux-30-lab-pruning.md`) | done = table; **decision pending** (operator, UXD-3) |
+| UXE-08 | Typed client errors: `ApiClient.request` and export downloads throw `ApiError` (`status`, `code`, `request_id` from `X-Request-ID`) with unchanged messages; `{error:'text'}` bodies show the text; `permissionError` prefers status 403; `LoadErrorNotice` lines carry the request id; server mounts the existing `requestContext` middleware | draft PR |
 
 ## Coverage baseline (UX-0, origin/main 5a9d46d5, 2026-10-05)
 

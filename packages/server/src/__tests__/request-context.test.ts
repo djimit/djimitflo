@@ -26,3 +26,13 @@ describe('request-context middleware', () => {
     expect((req as any).requestId).toMatch(/^[0-9a-f-]{36}$/);
   });
 });
+it('UXE-08: request context is mounted at startup before the API, health and dashboard handlers', async () => {
+  const { readFileSync } = await import('fs');
+  const { join } = await import('path');
+  const startup = readFileSync(join(__dirname, '../index.ts'), 'utf8');
+  const middleware = startup.indexOf('app.use(requestContext)');
+  expect(middleware).toBeGreaterThan(startup.indexOf('app.use(securityHeaders)'));
+  for (const handler of ["app.get('/health'", "app.use('/api'", "app.use('/explore'", 'app.use(express.static']) {
+    expect(startup.indexOf(handler)).toBeGreaterThan(middleware);
+  }
+});
