@@ -7,7 +7,7 @@
  *
  * The worktree is inherited as cwd via spawn (no --cd flag). MVP parsing: each
  * stdout line is attempted as JSON (emitted as a LOG carrying the parsed shape)
- * and otherwise heuristic-parsed; the final result is decided by exit code.
+ * and otherwise heuristic-parsed; explicit provider failures override exit code 0.
  * Native Claude streaming-event schema mapping (tool-call traces) is deferred —
  * this mirrors how CodexExecutor falls back to heuristics for non-JSON output.
  */
@@ -103,8 +103,8 @@ export class ClaudeExecutor implements TaskExecutor {
       });
     };
 
-    const events = this.createEventStream(task, emitter, spawnProcess, skipPerms);
     const result = this.createResultPromise(task, emitter);
+    const events = this.createEventStream(task, emitter, spawnProcess, skipPerms, result);
 
     const session: ExecutionSession = {
       id: sessionId,
@@ -215,6 +215,7 @@ export class ClaudeExecutor implements TaskExecutor {
     emitter: EventEmitter,
     spawnProcess: () => void,
     skipPerms: boolean,
+    result: Promise<ExecutionResult>,
   ): AsyncIterable<ExecutionEventCreateInput> {
     spawnProcess();
 
@@ -307,11 +308,12 @@ export class ClaudeExecutor implements TaskExecutor {
       yield this.lineToExecutionEvent(task.id, buffer, 'stdout');
     }
 
-    if (exitCode === 0) {
+    const outcome = await result;
+    if (outcome.status === 'completed') {
       yield {
         task_id: task.id,
         event_type: ExecutionEventType.TASK_COMPLETED,
-        message: 'Claude execution completed successfully',
+        message: outcome.message,
         level: LogLevel.INFO,
         metadata: { executor: 'claude', exit_code: exitCode },
       };
@@ -319,11 +321,31 @@ export class ClaudeExecutor implements TaskExecutor {
       yield {
         task_id: task.id,
         event_type: ExecutionEventType.TASK_FAILED,
-        message: `Claude execution failed with exit code ${exitCode}`,
+        message: outcome.message,
         level: LogLevel.ERROR,
         metadata: { executor: 'claude', exit_code: exitCode },
       };
     }
+  }
+
+  // Inspect stdout only: stderr diagnostics and model text are not result envelopes.
+  private providerFailure(stdout: string): string | undefined {
+    const parse = (text: string): unknown => {
+      try { return JSON.parse(text); } catch { return undefined; }
+    };
+    const document = parse(stdout);
+    const records = document === undefined ? stdout.split('\n').map(parse) : [document];
+    for (const record of records) {
+      if (!record || typeof record !== 'object' || !('type' in record) || record.type !== 'result') continue;
+      if ('permission_denials' in record && Array.isArray(record.permission_denials) && record.permission_denials.length > 0) {
+        return 'Claude tool permission denied; execution is not complete';
+      }
+      if (('is_error' in record && record.is_error === true)
+        || ('subtype' in record && typeof record.subtype === 'string' && record.subtype.startsWith('error_'))) {
+        return 'Claude reported an unsuccessful provider result';
+      }
+    }
+    return undefined;
   }
 
   // ── Result promise ─────────────────────────────────────────────────────────
@@ -332,11 +354,20 @@ export class ClaudeExecutor implements TaskExecutor {
     _task: Task,
     emitter: EventEmitter,
   ): Promise<ExecutionResult> {
-    const output = captureExecutorOutput(emitter);
+    const maxOutputChars = 5 * 1024 * 1024;
+    const output = captureExecutorOutput(emitter, maxOutputChars);
+    let stdoutChars = 0;
+    emitter.on('output', (text: string, stream: 'stdout' | 'stderr') => {
+      if (stream === 'stdout') stdoutChars = Math.min(maxOutputChars + 1, stdoutChars + text.length);
+    });
     return new Promise((resolveResult) => {
       const resolve = (result: ExecutionResult) => resolveResult({ ...result, ...output() });
-      emitter.on('exit', (code: number) => {
-        if (code === 0) {
+      emitter.on('exit', (code: number | null) => {
+        // A truncated JSON envelope cannot establish provider success.
+        const providerFailure = stdoutChars > maxOutputChars
+          ? 'Claude output exceeded verification limit; provider result is unknown'
+          : this.providerFailure(output().stdout);
+        if (code === 0 && !providerFailure) {
           resolve({
             status: 'completed',
             message: 'Claude execution completed successfully',
@@ -345,8 +376,8 @@ export class ClaudeExecutor implements TaskExecutor {
         } else {
           resolve({
             status: 'failed',
-            message: `Claude execution failed with exit code ${code}`,
-            error: `Process exited with code ${code}`,
+            message: providerFailure ?? `Claude execution failed with exit code ${code}`,
+            error: providerFailure ?? `Process exited with code ${code}`,
             metrics: { executionTimeMs: 0 },
           });
         }
