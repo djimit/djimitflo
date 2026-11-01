@@ -1,0 +1,47 @@
+{
+  "format": 1,
+  "id": "provider-step-usage-v1-0-0",
+  "version": "1.0.0",
+  "capabilities": [
+    "provider-step-usage"
+  ],
+  "input": {
+    "type": "object",
+    "properties": {
+      "events_json": "string"
+    },
+    "required": [
+      "events_json"
+    ]
+  },
+  "output": {
+    "type": "object",
+    "properties": {
+      "tokens": "number",
+      "steps": "number"
+    },
+    "required": [
+      "tokens",
+      "steps"
+    ]
+  },
+  "entrypoint": "run.mjs",
+  "test": "run.test.mjs",
+  "files": {
+    "SKILL.md": "fa726d97fc43729fbb79258cec897ad3364b2c1829dc54695f88aa4ce9d8007f",
+    "run.mjs": "9028eefa569c80075357def470ae613fedc6fbb90832d1f8ec9e258087534af2",
+    "run.test.mjs": "e04691f2c2308d2247b0763894a87cbb50798f494f039e6c6474cd5a4cf39b8d"
+  },
+  "dependencies": [],
+  "examples": [
+    {
+      "input": {
+        "events_json": "{\"type\":\"step_finish\",\"part\":{\"id\":\"a\",\"tokens\":{\"total\":6840}}}\n{\"type\":\"step_finish\",\"part\":{\"id\":\"b\",\"tokens\":{\"total\":7101}}}"
+      },
+      "output": {
+        "tokens": 13941,
+        "steps": 2
+      }
+    }
+  ]
+}
