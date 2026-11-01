@@ -541,3 +541,86 @@ describe('loop runtime dispatch receives the package before engine policy assess
   it.each(['codex', 'opencode', 'claude', 'gemini', 'pi', 'editor'])('renders the exact skill receipt for %s maker dispatch', async (runtime) => { await dispatch(runtime); });
   it('does not inject maker-selected skill instructions into checker assignments', async () => { await dispatch('codex', 'checker'); });
 });
+
+describe('explicit bounded parent variation', () => {
+  function parentFixture() {
+    writePackage(); const c = capture('increment-v1-0-0'); fixtureApprove(c.id);
+    return selection(c.id);
+  }
+  function variationReceipt(parent: { capability_id: string; content_hash: string }, omitParent = false) {
+    const result = service.request('increment-number', 'Improve bounded implementation', 'fixture-owner', undefined, parent);
+    if (result.status !== 'implementation_required') throw new Error('variation not requested');
+    const goal = new GoalService(db).getGoalById(result.goal_id);
+    const id = String(goal.metadata.skill_factory_package_id);
+    writePackage(id, { version: '1.0.1', ...(omitParent ? {} : {parent}) });
+    const p = service.load(id); const taskId = randomUUID(); task(taskId);
+    const runId = randomUUID(), leaseId = randomUUID();
+    db.prepare("INSERT INTO loop_runs(id,goal_id,loop_name,mode,status) VALUES(?,?,'fixture','closed','completed')").run(runId,result.goal_id);
+    db.prepare("INSERT INTO worker_leases(id,loop_run_id,role,runtime,status,metadata) VALUES(?,?,'maker','codex','completed',?)").run(leaseId,runId,JSON.stringify({execution_task_id:taskId}));
+    evidence(taskId,p,'system','info',{skill_factory_run_id:runId,maker_lease_id:leaseId,skill_parent:parent});
+    return {id,taskId,p,runId,leaseId};
+  }
+  it('creates one explicit variation goal despite an available parent, preserving candidate status and lineage', () => {
+    const parent = parentFixture();
+    const first = service.request('increment-number','Improve','fixture-owner',undefined,parent);
+    const next = service.request('increment-number','Improve','fixture-owner',undefined,parent);
+    expect(first.status).toBe('implementation_required'); expect(next).toEqual(first);
+    if (first.status !== 'implementation_required') throw new Error('expected variation');
+    const goal = new GoalService(db).getGoalById(first.goal_id);
+    expect(goal.constraints.join('\n')).toContain('export function increment');
+    expect(goal.metadata.skill_factory_parent).toEqual(parent);
+    const child = variationReceipt(parent); const result = service.capture(child.id,child.taskId,'fixture-owner');
+    expect(result.status).toBe('candidate'); expect(result.live_route_allowed).toBe(false);
+    expect(result.metadata.parent).toEqual(parent);
+    const repeated = service.request('increment-number','Improve','fixture-owner',undefined,parent);
+    expect(repeated.status === 'implementation_required' && repeated.goal_id).toBe(first.goal_id);
+  });
+  it('rejects omitted lineage from a factory variation', () => {
+    const child = variationReceipt(parentFixture(),true);
+    expect(() => service.capture(child.id,child.taskId,'fixture-owner')).toThrow('SKILL_PARENT_MANDATE_MISMATCH');
+  });
+  it('rejects changed and unapproved parent at request and capture', () => {
+    const parent = parentFixture();
+    expect(() => service.request('increment-number','Improve','fixture-owner',undefined,{...parent,content_hash:'0'.repeat(64)})).toThrow('SKILL_PARENT_CHANGED');
+    const child = variationReceipt(parent);
+    db.prepare("UPDATE swarm_capabilities SET status='disabled' WHERE id=?").run(parent.capability_id);
+    expect(() => service.request('increment-number','Improve','fixture-owner',undefined,parent)).toThrow('SKILL_PARENT_NOT_APPROVED');
+    expect(() => service.capture(child.id,child.taskId,'fixture-owner')).toThrow('SKILL_PARENT_NOT_APPROVED');
+  });
+  it('rejects broader tools, changed schemas, and dependencies', () => {
+    const parent = parentFixture(); const child = variationReceipt(parent);
+    const loaded = service.load.bind(service);
+    const altered = {...child.p, skill:{...child.p.skill,tools:['Bash','Network']}};
+    vi.spyOn(service,'load').mockImplementation(id => id === child.id ? altered : loaded(id));
+    expect(() => service.capture(child.id,child.taskId,'fixture-owner')).toThrow('SKILL_PARENT_SCOPE_EXCEEDED');
+    altered.skill.tools=['Bash']; altered.contract={...altered.contract,dependencies:[parent]};
+    expect(() => service.capture(child.id,child.taskId,'fixture-owner')).toThrow('SKILL_PARENT_CONTRACT_MISMATCH');
+    altered.contract={...child.p.contract,input:{type:'object',properties:{other:'number'},required:['other']}};
+    expect(() => service.capture(child.id,child.taskId,'fixture-owner')).toThrow('SKILL_PARENT_CONTRACT_MISMATCH');
+  });
+  it('rejects relaxed deny declarations and equal versions; preserves canonical forbidden actions', () => {
+    const parent = parentFixture();
+    db.prepare("UPDATE swarm_capabilities SET forbidden_actions_json='[\"merge\",\"publish\"]' WHERE id=?").run(parent.capability_id);
+    const child = variationReceipt(parent); const loaded = service.load.bind(service);
+    const altered = {...child.p, skill:{...child.p.skill,metadata:{...child.p.skill.metadata,'disallowed-tools':''}}};
+    vi.spyOn(service,'load').mockImplementation(id => id === child.id ? altered : loaded(id));
+    expect(() => service.capture(child.id,child.taskId,'fixture-owner')).toThrow('SKILL_PARENT_SCOPE_EXCEEDED');
+    altered.skill.metadata=child.p.skill.metadata; altered.contract={...child.p.contract,version:'1.0.0'};
+    expect(() => service.capture(child.id,child.taskId,'fixture-owner')).toThrow('SKILL_PARENT_CONTRACT_MISMATCH');
+    altered.contract=child.p.contract;
+    expect(service.capture(child.id,child.taskId,'fixture-owner').forbidden_actions).toContain('publish');
+  });
+  it('rejects a mismatched maker execution and stripped receipt linkage', () => {
+    const child = variationReceipt(parentFixture());
+    db.prepare("UPDATE execution_evidence SET details=json_set(details,'$.maker_lease_id','other') WHERE task_id=?").run(child.taskId);
+    expect(() => service.capture(child.id,child.taskId,'fixture-owner')).toThrow('SKILL_PARENT_MANDATE_MISMATCH');
+    db.prepare("UPDATE execution_evidence SET details=json_remove(details,'$.skill_factory_run_id','$.maker_lease_id','$.skill_parent') WHERE task_id=?").run(child.taskId);
+    expect(() => service.capture(child.id,child.taskId,'fixture-owner')).toThrow('SKILL_PARENT_MANDATE_MISMATCH');
+  });
+  it('rejects unrelated actor, missing receipt lineage and mismatched execution task', () => {
+    const child = variationReceipt(parentFixture());
+    expect(() => service.capture(child.id,child.taskId,'another-owner')).toThrow('SKILL_PARENT_MANDATE_MISMATCH');
+    db.prepare("UPDATE execution_evidence SET details=json_remove(details,'$.skill_parent') WHERE task_id=?").run(child.taskId);
+    expect(() => service.capture(child.id,child.taskId,'fixture-owner')).toThrow('SKILL_PARENT_MANDATE_MISMATCH');
+  });
+});
