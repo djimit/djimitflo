@@ -327,3 +327,39 @@ it.each([true, false])('at the draft cap, recovery may reconcile but cannot crea
   expect(result).toBe(exists ? 'https://github.com/o/r/pull/9' : null);
   expect(f.mock.calls).toHaveLength(2);
 });
+
+function factoryRunRows() {
+  const now = new Date().toISOString();
+  db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, priority, evidence_refs_json, grounding_json, created_at, updated_at)
+    VALUES ('p1', 'feature', 'Slug', 'd', 'r', 'operator_request', 'executing', 0.6, '["capability-request:req1"]', '{"target":"src/x.test.ts","acceptanceTest":"src/x.test.ts"}', ?, ?)`).run(now, now);
+  db.prepare(`INSERT INTO goals (id, objective, risk_class, status, metadata, improvement_id, created_at, updated_at) VALUES ('g1', 'o', 'low', 'running', '{}', 'p1', ?, ?)`).run(now, now);
+  db.prepare("UPDATE loop_runs SET goal_id = 'g1' WHERE id = 'run-1'").run();
+  return { ...env(), CAPABILITY_FACTORY_MODE: 'on' };
+}
+
+it('CAP-3: flag off — a factory run\'s draft PR creates no capability (today\'s behaviour)', async () => {
+  expect(await new LoopDraftPrService(db, ok() as unknown as typeof fetch, factoryRunRows()).openForRun('run-1')).toBe('https://github.com/o/r/pull/9');
+  expect(db.prepare('SELECT COUNT(*) AS n FROM swarm_capabilities').get()).toEqual({ n: 0 });
+});
+
+it('CAP-3: CAPABILITY_LIFECYCLE_V2=on — the draft PR creates the capfac candidate at the verified head', async () => {
+  expect(await new LoopDraftPrService(db, ok() as unknown as typeof fetch, { ...factoryRunRows(), CAPABILITY_LIFECYCLE_V2: 'on' }).openForRun('run-1')).toBe('https://github.com/o/r/pull/9');
+  const head = JSON.parse((db.prepare("SELECT metadata FROM loop_runs WHERE id = 'run-1'").get() as { metadata: string }).metadata).verified_head_sha as string;
+  expect(db.prepare("SELECT status, version, json_extract(metadata, '$.provenance.pr_url') AS pr FROM swarm_capabilities WHERE id = 'capfac:req1'").get())
+    .toEqual({ status: 'candidate', version: head.slice(0, 12), pr: 'https://github.com/o/r/pull/9' });
+});
+
+it('creates one candidate after reconciling a lost draft response, without a second POST', async () => {
+  const config = { ...factoryRunRows(), CAPABILITY_LIFECYCLE_V2: 'on' };
+  await new LoopDraftPrService(db, vi.fn().mockRejectedValue(new Error('response lost')) as unknown as typeof fetch, config).openForRun('run-1');
+  expect(db.prepare('SELECT COUNT(*) AS n FROM swarm_capabilities').get()).toEqual({ n: 0 });
+  const fetch = recoveryFetch(() => [existingPr()]);
+  const service = new LoopDraftPrService(db, fetch as unknown as typeof globalThis.fetch, config);
+  expect(await service.openForRun('run-1')).toBe('https://github.com/o/r/pull/9');
+  expect(await service.openForRun('run-1')).toBe('https://github.com/o/r/pull/9');
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(fetch.mock.calls[0][1]?.method).not.toBe('POST');
+  expect(db.prepare("SELECT status, version FROM swarm_capabilities WHERE id = 'capfac:req1'").get())
+    .toEqual({ status: 'candidate', version: publication().head.slice(0, 12) });
+  expect(db.prepare('SELECT COUNT(*) AS n FROM swarm_capabilities').get()).toEqual({ n: 1 });
+});

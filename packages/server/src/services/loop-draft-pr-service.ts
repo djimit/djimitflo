@@ -9,6 +9,7 @@ import { withoutHiddenChecks } from './fail-before-pass-after';
 import { freshnessMode, staleAgainst, type ReadSet } from './evidence-freshness';
 import { emptySettlementCounts, parseOutcome, settlementState, type SettlementState } from './merge-survival';
 import { extraRepoBySlug, goalRepoSlug, isExtraRepoPr, slugFromRemote } from './repo-registry';
+import { onDraftPrOpened } from './capability-factory';
 
 interface DraftPublication {
   makerId: string; repo: string; branch: string; base: string; worktree: string;
@@ -239,6 +240,7 @@ export class LoopDraftPrService {
       if (result.changes !== 1) throw new Error('publication_lease_lost');
       events.recordEvent(runId, 'draft_pr_opened', 'info', `Draft PR opened: ${prUrl}`, { pr_url: prUrl, files: checkpoint.files });
     }).immediate();
+    onDraftPrOpened(this.db, runId, prUrl, this.env);
   }
 
   private async reconcilePublication(checkpoint: DraftPublication, runId: string, token: string): Promise<string | null> {

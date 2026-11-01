@@ -10,7 +10,7 @@ import { createError } from '../middleware/error-handler';
 import { SwarmTaskDecomposer } from '../services/swarm-task-decomposer';
 import { KnowledgeSharingService } from '../services/knowledge-sharing-service';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
-import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
+import { CapabilityLifecycleError, SwarmIntelligenceService } from '../services/swarm-intelligence-service';
 import { SpecialistPanelService } from '../services/specialist-panel-service';
 import { AgentInteractionLedgerService } from '../services/agent-interaction-ledger-service';
 import { OutcomeLearningService } from '../services/outcome-learning-service';
@@ -253,7 +253,9 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
       const capability = intelligence.registerCapability(req.body);
       res.status(201).json(capability);
     } catch (err: any) {
-      if (err.message?.startsWith('SWARM_CAPABILITY_')) {
+      if (err instanceof CapabilityLifecycleError) {
+        next(createError(409, err.message, err.code));
+      } else if (err.message?.startsWith('SWARM_CAPABILITY_')) {
         next(createError(400, err.message, err.message));
       } else {
         next(err);
