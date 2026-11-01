@@ -5,6 +5,7 @@ import { useResource } from '../hooks/useResource';
 import { LoadErrorNotice } from '../components/LoadErrorNotice';
 import { ExperimentsSection } from './EvolutionExperiments';
 import { Pl001Card } from './EvolutionPl001';
+import { DataTable } from '../components/ui';
 
 const fetchEvidence = () => api.getEvolutionEvidence();
 const pct = (v: number | null | undefined) => (v === null || v === undefined ? '—' : `${Math.round(v * 100)} %`);
@@ -162,8 +163,14 @@ export function EvolutionBody({ data }: { data: EvolutionEvidence }) {
           {data.auto_merge.recheck && (
             <p className="text-sm">Re-check {data.auto_merge.recheck.enabled ? 'on' : 'off'} ({data.auto_merge.recheck.window_hours} h window, ≤ {data.auto_merge.recheck.per_tick} per tick) · ineligible {data.auto_merge.recheck.ineligible_by_class.transient} transient / {data.auto_merge.recheck.ineligible_by_class.permanent} permanent · {data.auto_merge.recheck.rechecked_24h} re-checked in 24 h</p>
           )}
+          {Object.keys(data.auto_merge.ineligible_by_reason).length > 0 && (
+            <p className="text-sm">{'Ineligible by reason (all loop runs, latest decision per run): ' + Object.entries(data.auto_merge.ineligible_by_reason).sort((a, b) => b[1] - a[1]).map(([r, n]) => `${r} ${n}`).join(' · ')}</p>
+          )}
+          <ValueGate am={data.auto_merge} />
         </Section>
       )}
+
+      {data.settlement_value && <SettlementValue sv={data.settlement_value} />}
 
       <Section title="Flags">
         {!data.flags.length ? <Empty text="No evolution flags reported." /> : (
@@ -171,5 +178,47 @@ export function EvolutionBody({ data }: { data: EvolutionEvidence }) {
         )}
       </Section>
     </div>
+  );
+}
+
+/** UXE-00: the value gate decides which lanes auto-merge keeps merging; read-only, every count all time (the server applies no window). */
+function ValueGate({ am }: { am: NonNullable<EvolutionEvidence['auto_merge']> }) {
+  const vg = am.value_gate;
+  if (!vg) return <p className="text-sm">Value gate: not reported by this server</p>;
+  const acting = vg.mode === 'on' && am.mode === 'act';
+  return (
+    <section className="space-y-1 border-l-2 border-border pl-3">
+      <h3 className="font-semibold">Value gate{!acting && <Shadow />}</h3>
+      <p className="text-sm">{`Mode ${vg.mode} · lanes ${Array.isArray(vg.lanes) ? vg.lanes.join(', ') : vg.lanes} · kill share minimum ${vg.kill_share_min}`}</p>
+      <p className="text-sm">
+        {`Would block (${acting ? 'unlisted lanes and earlier shadow stamps, all loop runs, no window — did not act' : 'all loop runs, no window; shadow — did not act'}): ${vg.would_block.value_signal_missing} missing value signal · ${vg.would_block.value_signal_low} low value signal`}
+      </p>
+      {vg.mode === 'on' && (
+        <p className="text-sm">{`Blocked (mode on, all loop runs): ${am.ineligible_by_reason.value_signal_missing ?? 0} missing · ${am.ineligible_by_reason.value_signal_low ?? 0} low`}</p>
+      )}
+      <p className="text-sm">
+        {vg.replay.n === 0 ? 'Replay not run: this decision has no replay evidence'
+          : `Replay (all lanes together, first run only, date not reported): n = ${vg.replay.n} · ${vg.replay.pass} pass · ${vg.replay.low} low · ${vg.replay.missing} missing`}
+      </p>
+    </section>
+  );
+}
+
+type SettlementLane = NonNullable<EvolutionEvidence['settlement_value']>['by_lane'][number];
+const SMALL_N = 10; // §8: below this a share and its CI are not shown
+function SettlementValue({ sv }: { sv: NonNullable<EvolutionEvidence['settlement_value']> }) {
+  const small = (l: SettlementLane) => l.n < SMALL_N;
+  return (
+    <Section title="Settlement value — report only">
+      <p className="text-sm">{`Threshold ${sv.threshold} · ${sv.note}`}</p>
+      <DataTable<SettlementLane> caption="Settlement value by lane" rows={sv.by_lane} rowKey={(l) => l.lane}
+        empty="No settled loop PR has a fresh-mutant kill share yet."
+        columns={[
+          { key: 'lane', label: 'Lane', render: (l) => l.lane },
+          { key: 'below', label: `Below ${sv.threshold} / n (share)`, render: (l) => (small(l) ? `insufficient (n = ${l.n})` : `${l.below}/${l.n} (${pct(l.share_below)})`) },
+          { key: 'median', label: 'Median kill share now', render: (l) => (l.kill_share_now_median === null ? 'unknown' : num(l.kill_share_now_median, 2)) },
+          { key: 'ci', label: 'Wilson CI', render: (l) => (small(l) ? `insufficient (n = ${l.n})` : ci(l.ci, true)) },
+        ]} />
+    </Section>
   );
 }
