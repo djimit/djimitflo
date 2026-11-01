@@ -52,6 +52,7 @@ import { gymOrphanSweepMode } from '../services/remote-gym-service';
 import { startEvolutionEstimators } from '../services/evolution-estimators';
 import { startMergeSurvival } from '../services/merge-survival';
 import { startLoopAutoMerge } from '../services/loop-auto-merge';
+import { startDraftPrRetry } from '../services/loop-draft-pr-service';
 import { startCommitteeEvolution } from '../services/committee-swarm';
 import { KnowledgeMaintenanceService, maintenanceEnabled } from '../services/knowledge-maintenance-service';
 
@@ -372,6 +373,16 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     if (stopAutoMerge) { lifecycleManager.register({ serviceName: 'LoopAutoMerge', stop: () => stopAutoMerge?.() }); console.log('🤝 Loop auto-merge (test-only) on (every 15 min).'); }
   } catch (error) {
     console.warn('⚠️  Loop auto-merge failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // PRC-1: certified runs whose draft PR failed (< 3 times) are retried; a PR an earlier attempt opened is adopted. LOOP_DRAFT_PR_RETRY=shadow|on.
+  try {
+    let stopDraftPrRetry = startDraftPrRetry(db);
+    registerRestart('draft_pr_retry', () => { stopDraftPrRetry?.(); stopDraftPrRetry = startDraftPrRetry(db); });
+    noteScheduler('draft_pr_retry', 'LOOP_DRAFT_PR_RETRY', !!stopDraftPrRetry, 15 * 60_000);
+    if (stopDraftPrRetry) { lifecycleManager.register({ serviceName: 'DraftPrRetry', stop: () => stopDraftPrRetry?.() }); console.log('🔁 Draft PR retry on (every 15 min).'); }
+  } catch (error) {
+    console.warn('⚠️  Draft PR retry failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // P0.1 scheduler self-heal watchdog: armed-but-not-ticking ⇒ diagnose ⇒ one bounded restart (act) ⇒ verify ⇒ quarantine + escalate.

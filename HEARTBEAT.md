@@ -17,6 +17,7 @@ unknown …) is `GET /api/health/schedulers` (admins). Armed is intent, not exec
 | dead_code_lane | `DEAD_CODE_LANE_ENABLED` | 12 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | dependency_lane | `DEPENDENCY_LANE_MODE` | `laneIntervalMs()` | `packages/server/src/index.ts` |
 | djimitsec_repository_scan | `DJIMITSEC_SCAN_TRIGGERS` | 1 min | `packages/server/src/index.ts` |
+| draft_pr_retry | `LOOP_DRAFT_PR_RETRY` | 15 min | `packages/server/src/bootstrap/autonomous-services.ts` |
 | dream_evolution | `DREAM_EVOLUTION_ENABLED` | 1 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | dream_state | `DREAM_STATE_ENABLED` | 6 h | `packages/server/src/bootstrap/autonomous-services.ts` |
 | evolution_estimators | `EVOLUTION_ESTIMATORS_ENABLED` | 1 h | `packages/server/src/bootstrap/autonomous-services.ts` |
