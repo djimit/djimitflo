@@ -26,7 +26,7 @@ Back up before editing (`cp -p runtime.env runtime.env.bak-<date>`), then `docke
 | `SELF_IMPROVEMENT_AUTO_REVIEW_ENABLED`, `_REFINEMENT_ENABLED`, `_OBJECTIVE_LOOP_ENABLED` | the proposal → panel → goal → run pipeline |
 | `LOOP_PR_BODY_V2` | UX-10, default off: loop draft-PR body adds lane, oracle check results, gate summary, diff stat, mutation score and (only with an https `DJIMITFLO_PUBLIC_URL`) a link to `/goals-loops?run=<id>`; names, statuses and numbers only, secret-redacted (public repo) |
 | `FRONTIER_EXPERT_PERSONS_ENABLED` | FE-AREAS, default off: Frontier Experts are fields of interest (`area:<capability>`, backed by paper/repository units); with the flag off no person identity is created (Pacing ingestion, author enrichment and person peer review skip), and API, dashboard and MCP never show one. Existing people are removed with `node scripts/fe-persons-to-areas.mjs --db <db>` (dry-run) then `--apply --backup <path>` |
-| `LLM_JSON_REPAIR_ENABLED` | UX-19, default off: an unusable model answer (panel review, Frontier Experts) gets ONE repair call to the same model with the required JSON shape; outcome recorded in `llm_model_calls` (`task_kind` json_repair, status `repaired` / `unparseable`). Off = no extra call, behaviour unchanged |
+| `LLM_JSON_REPAIR_ENABLED` | UX-19, default off, Frontier Experts only (`expert-council-service.ts`; the panel review has validated and re-asked on its own since #784): an unusable Frontier Experts answer gets ONE repair call to the same model with the required JSON shape; outcome recorded in `llm_model_calls` (`task_kind` json_repair, status `repaired` / `unparseable`). Off = no extra call, behaviour unchanged |
 | `SELF_IMPROVEMENT_GOAL_ON_APPROVE` | create the goal right after panel approval instead of the hourly cycle |
 | `TEST_GAP_SOURCE_ENABLED` | deterministic, fully grounded test-only proposals (max 2/day, 2 in flight) |
 | `BUILD_ERROR_PROPOSALS_ENABLED` | default `true` (unchanged); `false` = a failed deterministic check no longer creates a "Fix: <check> failed (exit N) for run X" `feedback` proposal (0 of 31 verified, ~26 panel reviews/week; requeue covers those runs), one log line per tick with the skipped count. Security-scan findings (also source `feedback`) keep their proposal and panel review |
@@ -76,6 +76,15 @@ Back up before editing (`cp -p runtime.env runtime.env.bak-<date>`), then `docke
 | `SEGML_ENABLED`, `DREAM_CYCLE_LEGACY_ENABLED` | restore the gated-off legacy loops (off since 2026-09-24) |
 | `LLM_COST_BASIS` | B29: `<provider-or-model substring>=<basis>,…` (flat_subscription / local / free_tier / metered) overrides how the model-call ledger prices a call; defaults: Ollama (`ollama.com`, `:cloud`) flat subscription, llama-router / localhost local, NVIDIA free tier, TypeSafe metered. marginal_cost is 0 only for the first three, null when unknown. Totals per purpose / experiment: `models.ledger_7d` in `/api/health/evolution-evidence` |
 | **Operator decisions** `NEEDS_GROUNDING_TRIAGE_ENABLED`, `DREAM_STATE_PROPOSALS_ENABLED`, any `…_MODE=enforce` | act on shadow judgments; switch on only after the funnel agreement numbers justify it |
+
+Flags read in code with a default (UXE-01; `node scripts/gen-agent-docs.mjs` takes the Default column to the Configuration page):
+
+| Flag | Default | What it does |
+|---|---|---|
+| `LOOP_DRAFT_PR_THROTTLE_MODE` | off (unset) | RX-6 arrival throttle on loop draft PRs (`loop-draft-pr-service.ts`): `shadow` records `draft_pr_throttle_shadow` at the cap and still opens the PR; `enforce` records `draft_pr_throttled` and opens nothing; any other value = off. A failing open-PR list never throttles (fail-open) |
+| `LOOP_DRAFT_PR_MAX_OPEN` | 5 | cap on open loop draft PRs, read only when `LOOP_DRAFT_PR_THROTTLE_MODE` is `shadow` or `enforce`; a non-numeric value reads as 0 |
+| `VECTOR_STRICT_DIM` | off | UX-21 (`embedding-dims.ts`): only `true` enables; a stored vector of another dimension is skipped instead of resampled. Mismatches are counted either way (`embedding_dim_mismatch`) |
+| `RETRIEVAL_NORMALISE_SCORES` | off | UX-24 (`context-injection-service.ts`): only `true` min-max normalises the score within each source before the within-tier comparison; any other value keeps today's order. The trust tier ranks first either way |
 
 ## Evolution flags (Phase F, RX-2)
 
@@ -379,10 +388,11 @@ The polling gateway in `packages/telegram` (`TELEGRAM_BOTS_CONFIG`) is kept as i
 |---|---|---|
 | `TELEGRAM_PUSH_ENABLED` | off | one message per new approval with Approve / Deny / Open buttons (dedupe per approval id) |
 | `TELEGRAM_PUSH_MAX_PER_HOUR` | 6 | hourly cap on approval messages |
+| `TELEGRAM_PUSH_DELAY_MS` | 15000 (15 s) | TG-2 (`approval-service.ts`): wait before pushing a new approval, so one a lane rule auto-approves right after creation is skipped as decided; `0` (or a non-numeric value) pushes at once |
 | `TELEGRAM_QUIET_HOURS` | unset | UTC window `HH-HH` (e.g. `22-7`) without messages |
 | `TELEGRAM_TRIAGE_ENABLED` | off | needs `TELEGRAM_PUSH_ENABLED`: one message per unlabelled D5 pre-screen rejection (Correct / Wrong rejection) and per memory candidate waiting for review (Promote / Reject); each item once; taps are refused while off |
 | `TELEGRAM_TRIAGE_MAX_PER_PUSH` | 3 | triage messages per 15-minute tick; triage also stays under `TELEGRAM_PUSH_MAX_PER_HOUR`, counted apart from approvals |
-| `OPERATOR_DIGEST_ENABLED` | off | daily digest via the bot: counts + `/decisions` links for approvals, D5 labels, memory review, requeue candidates and open loop PRs |
+| `OPERATOR_DIGEST_ENABLED` | off | daily digest via the bot: counts + `/decisions` links for approvals, D5 labels, memory review, requeue candidates and open loop PRs. Its 15-min tick is scheduler `operator_digest` (`GET /api/health/schedulers`), armed by this flag or `TELEGRAM_TRIAGE_ENABLED` (the registry names one flag); it registers only when `TELEGRAM_BOT_TOKEN` is set |
 | `OPERATOR_DIGEST_HOUR` | 7 | UTC hour of the digest |
 | `SCHEDULER_SELF_HEAL_MODE` | shadow | P0.1 watchdog every 15 min: an armed scheduler with no tick past 2× its interval is diagnosed (`scheduler_recovery` judgment); `act` re-arms it once via its own start function (≤ 1 restart / 6 h), verifies a tick within one interval + 10 min, else quarantines it (status `quarantined`, stall `scheduler:<name>`, no further restarts); `shadow` diagnoses and escalates without restarting; `off` disables |
 
