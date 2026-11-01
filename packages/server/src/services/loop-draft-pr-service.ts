@@ -10,6 +10,7 @@ import { emptySettlementCounts, parseOutcome, settlementState, type SettlementSt
 import { extraRepoBySlug, goalRepoSlug, isExtraRepoPr, slugFromRemote } from './repo-registry';
 import { guardTick, markRun } from './scheduler-registry';
 import { issueRefsLine } from './work-item-outcome-sync';
+import { onDraftPrOpened } from './capability-factory';
 
 /**
  * G4: a verified loop run becomes a *draft* PR. Before this, ready_for_human_merge output stayed in a VPS worktree
@@ -142,6 +143,7 @@ export class LoopDraftPrService {
       const prUrl = pr.url;
       this.db.prepare(`UPDATE loop_runs SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.pr_url', ?, '$.verified_head_sha', ?) WHERE id = ?`).run(prUrl, verifiedHead, runId);
       events.recordEvent(runId, 'draft_pr_opened', 'info', `Draft PR opened: ${prUrl}`, { pr_url: prUrl, files });
+      onDraftPrOpened(this.db, runId, prUrl, this.env); // OMEGA slice 3 (CAPABILITY_LIFECYCLE_V2): a factory run's candidate; never throws
       return prUrl;
     } catch (error) {
       return fail(error instanceof Error ? error.message.replace(/basic [A-Za-z0-9+/=]+/g, 'basic ***').slice(0, 200) : String(error));

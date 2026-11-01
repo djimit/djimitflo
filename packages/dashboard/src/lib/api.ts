@@ -196,6 +196,10 @@ export interface EvolutionEvidence {
     class: { state: 'active' | 'revoked'; reason?: string; pr_url?: string; revoked_at?: string; re_enabled_by?: string; re_enabled_at?: string; re_enable_reason?: string };
     counts: { merged: number; merged_24h: number; would_merge: number; audit_samples: number; audit_samples_open: number; waiting: number; ineligible: number };
     ineligible_by_reason: Record<string, number>;
+    /** U2 value gate (loop-auto-merge-state.ts); optional: an older server may lack it during a rolling deploy */
+    value_gate?: { mode: 'off' | 'shadow' | 'on'; lanes: string[] | 'all'; kill_share_min: number;
+      would_block: { value_signal_missing: number; value_signal_low: number };
+      replay: { n: number; pass: number; low: number; missing: number } };
     /** LOOP_AUTO_MERGE_RECHECK: latest decision × reason code, ineligible permanent vs transient, PRs re-checked in the last 24 h */
     recheck?: { enabled: boolean; window_hours: number; per_tick: number; ineligible_by_class: { permanent: number; transient: number };
       by_decision_reason: Record<string, Record<string, number>>; rechecked_24h: number; rechecked_24h_by_decision: Record<string, number> } };

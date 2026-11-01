@@ -59,6 +59,17 @@ const ECOSYSTEM_CONTRACTS = [
   { from: 'knowledge', to: 'djimitflo', exchange: 'retrieval and experiences -> bounded context', boundary: 'Retrieved content retains provenance and confidence.' },
 ] as const;
 
+/**
+ * OMEGA slice 4: typed refusals of the capability lifecycle. CAPABILITY_IMMUTABLE — an upsert would change version, allowed/forbidden
+ * actions or risk of a row that is no longer a draft (a new version is a new id). CAPABILITY_ACTIONS_EXCEED_PARENT /
+ * CAPABILITY_PARENT_NOT_FOUND — a derived capability (metadata.parent_versions) may not allow more than the exact parent version.
+ */
+export class CapabilityLifecycleError extends Error {
+  constructor(public code: 'CAPABILITY_IMMUTABLE' | 'CAPABILITY_ACTIONS_EXCEED_PARENT' | 'CAPABILITY_PARENT_NOT_FOUND', message: string) {
+    super(`${code}: ${message}`); this.name = 'CapabilityLifecycleError';
+  }
+}
+
 export interface SwarmCapabilityRecord {
   id: string;
   kind: CapabilityKind;
@@ -292,6 +303,7 @@ export class SwarmIntelligenceService {
     if (!evidence.length) throw new Error('SWARM_CAPABILITY_REQUIRED_EVIDENCE_REQUIRED');
     if (!input.removal_strategy?.trim()) throw new Error('SWARM_CAPABILITY_REMOVAL_STRATEGY_REQUIRED');
     this.rejectSecretLike(input);
+    this.assertMutable(input.id.trim(), { version: input.version.trim(), risk_ceiling: input.risk_ceiling, allowed, forbidden });
 
     const evalScore = this.normalizedScore(input.eval_score ?? 0);
     const evalThreshold = this.normalizedScore(input.eval_threshold ?? 0.75);
@@ -343,6 +355,34 @@ export class SwarmIntelligenceService {
       now
     );
     return this.getCapability(input.id.trim());
+  }
+
+  /** OMEGA slice 4: identity fields of a non-draft capability never change in place (CAPABILITY_IMMUTABLE). */
+  private assertMutable(id: string, next: { version: string; risk_ceiling: RiskClass; allowed: string[]; forbidden: string[] }): void {
+    const prior = this.db.prepare('SELECT status, version, risk_ceiling, allowed_actions_json, forbidden_actions_json FROM swarm_capabilities WHERE id = ?').get(id) as
+      { status: string; version: string; risk_ceiling: string; allowed_actions_json: string; forbidden_actions_json: string } | undefined;
+    if (!prior || prior.status === 'draft') return;
+    const set = (values: unknown) => JSON.stringify([...new Set(this.stringArray(values))].sort());
+    const parse = (json: string) => { try { return JSON.parse(json) as unknown; } catch { return []; } };
+    const changed = [
+      ...(prior.version !== next.version ? ['version'] : []),
+      ...(prior.risk_ceiling !== next.risk_ceiling ? ['risk_ceiling'] : []),
+      ...(set(parse(prior.allowed_actions_json)) !== set(next.allowed) ? ['allowed_actions'] : []),
+      ...(set(parse(prior.forbidden_actions_json)) !== set(next.forbidden) ? ['forbidden_actions'] : []),
+    ];
+    if (changed.length) throw new CapabilityLifecycleError('CAPABILITY_IMMUTABLE', `${id} is ${prior.status}; ${changed.join(', ')} cannot change (register a new version as a new id)`);
+  }
+
+  /** OMEGA slice 4: a derived capability allows no action its exact parent version (`<id>@<version>`) does not allow. */
+  assertWithinParents(allowedActions: string[], parentVersions: string[]): void {
+    for (const ref of parentVersions) {
+      const at = ref.lastIndexOf('@');
+      const parent = at > 0 ? this.db.prepare('SELECT allowed_actions_json AS a FROM swarm_capabilities WHERE id = ? AND version = ?').get(ref.slice(0, at), ref.slice(at + 1)) as { a: string } | undefined : undefined;
+      if (!parent) throw new CapabilityLifecycleError('CAPABILITY_PARENT_NOT_FOUND', `parent ${ref} is not in the registry at that version`);
+      let parentAllowed: unknown = []; try { parentAllowed = JSON.parse(parent.a); } catch { /* none */ }
+      const extra = allowedActions.filter((a) => !this.stringArray(parentAllowed).includes(a));
+      if (extra.length) throw new CapabilityLifecycleError('CAPABILITY_ACTIONS_EXCEED_PARENT', `${extra.join(', ')} not allowed by parent ${ref}`);
+    }
   }
 
   // G15.2: Split candidate creation from validated promotion

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { EvolutionBody, EvolutionPage } from './EvolutionPage';
@@ -224,4 +224,111 @@ it('L6-04: the learning ledger shows mechanism, effect, CI and status, with null
 
 it('L6-04: a server without the experiment registry renders an honest empty state', () => {
   expect(renderToStaticMarkup(<EvolutionBody data={EMPTY} />)).toContain('Experiment registry not reported by this server.');
+});
+
+// UXE-00: value-gate decision card + settlement value. jsdom applies no CSS: text hidden by class, attribute or a closed <details> must not count as shown
+const HIDES = new Set(['hidden', 'sr-only', 'invisible', 'opacity-0']); // exact class tokens, so overflow-hidden is not one
+const visibleText = (el: Element): string => [...el.childNodes].map((n) => {
+  if (n.nodeType === Node.TEXT_NODE) return n.textContent ?? '';
+  if (!(n instanceof Element) || n.hasAttribute('hidden') || n.getAttribute('aria-hidden') === 'true'
+    || (n.getAttribute('class') ?? '').split(/\s+/).some((c) => HIDES.has(c))) return '';
+  if (n.tagName === 'DETAILS' && !n.hasAttribute('open')) return [...n.children].filter((c) => c.tagName === 'SUMMARY').map(visibleText).join(' ');
+  return visibleText(n); }).join(' ');
+const AM: NonNullable<EvolutionEvidence['auto_merge']> = { mode: 'act', max_per_day: 10, audit_sample_pct: 10, class: { state: 'active' },
+  counts: { merged: 25, merged_24h: 1, would_merge: 0, audit_samples: 10, audit_samples_open: 2, waiting: 0, ineligible: 79 },
+  ineligible_by_reason: { not_open: 47, checks_failed: 15, assertion_strength_missing: 14, not_verified: 3 },
+  value_gate: { mode: 'shadow', lanes: 'all', kill_share_min: 0.2,
+    would_block: { value_signal_missing: 4, value_signal_low: 9 }, replay: { n: 25, pass: 11, low: 9, missing: 5 } } };
+const VG: EvolutionEvidence = { ...FULL, auto_merge: AM,
+  settlement_value: { threshold: 0.2, note: 'report only', by_lane: [
+    { lane: 'exports', n: 20, kill_share_now_median: 0.12, below: 14, share_below: 0.7, ci: [0.48, 0.85] },
+    { lane: 'test-gap', n: 6, kill_share_now_median: null, below: 0, share_below: 0, ci: [0, 0.39] } ] } };
+const section = (name: RegExp) => screen.getByRole('heading', { name }).closest('section')!;
+const vg = (over: object) => ({ ...VG, auto_merge: { ...AM, ...over } });
+const gate = (over: object) => vg({ value_gate: { ...AM.value_gate!, ...over } });
+const SHADOW = /shadow — did not act/;
+
+it('UXE-00: value gate shows mode, lanes, would-block and replay with n, labelled shadow', () => {
+  render(<EvolutionBody data={VG} />);
+  const g = visibleText(section(/value gate/i));
+  expect(g).toContain('shadow — did not act');
+  for (const re of [/no window/, /lanes all/i, /kill share minimum 0\.2/, /4 missing value signal/, /9 low value signal/, /n = 25/, /11 pass/]) expect(g).toMatch(re);
+});
+
+it('UXE-00: a lane list renders as the configured lanes', () => {
+  render(<EvolutionBody data={gate({ lanes: ['exports', 'test-gap'] })} />);
+  expect(visibleText(section(/value gate/i))).toMatch(/lanes exports, test-gap/);
+});
+
+it('UXE-00: mode on still labels would-block as did not act', () => {
+  const data = gate({ mode: 'on' });
+  render(<EvolutionBody data={{ ...data, auto_merge: { ...data.auto_merge!, ineligible_by_reason: { ...AM.ineligible_by_reason, value_signal_low: 3 } } }} />);
+  const g = visibleText(section(/value gate/i));
+  expect(g).toMatch(/unlisted lanes and earlier shadow stamps/);
+  expect(g).toContain('did not act');
+  expect(g).toMatch(/Blocked \(mode on, all loop runs\): 0 missing · 3 low/);
+  expect(visibleText(screen.getByRole('heading', { name: /value gate/i }))).not.toMatch(SHADOW);
+});
+
+it('UXE-00: auto_merge shadow labels the whole value gate shadow', () => {
+  render(<EvolutionBody data={{ ...gate({ mode: 'on' }), auto_merge: { ...gate({ mode: 'on' }).auto_merge!, mode: 'shadow' } }} />);
+  expect(visibleText(screen.getByRole('heading', { name: /value gate/i }))).toMatch(SHADOW);
+  expect(visibleText(section(/value gate/i))).toContain('shadow — did not act');
+});
+
+it('UXE-00: auto-merge off hides the value gate', () => {
+  render(<EvolutionBody data={vg({ mode: 'off' })} />);
+  expect(screen.queryByRole('heading', { name: /value gate/i })).toBeNull();
+});
+
+it('UXE-00: replay n 0 reads as not run, never as 0 pass', () => {
+  render(<EvolutionBody data={gate({ replay: { n: 0, pass: 0, low: 0, missing: 0 } })} />);
+  const g = visibleText(section(/value gate/i));
+  expect(g).toMatch(/replay not run: this decision has no replay evidence/i);
+  expect(g).not.toMatch(/\b0 pass/);
+});
+
+it('UXE-00: per-lane settlement value shows n and CI; small n reads insufficient', () => {
+  render(<EvolutionBody data={VG} />);
+  const sv = section(/settlement value/i);
+  const rows = within(sv).getAllByRole('row');
+  expect(within(sv).getByRole('table', { name: /settlement value by lane/i })).toBe(rows[0].closest('table'));
+  const r1 = visibleText(rows[1]); const r2 = visibleText(rows[2]);
+  for (const s of ['exports', '14/20', '0.12', '[48 %, 85 %]']) expect(r1).toContain(s);
+  expect(r2).toContain('insufficient (n = 6)');
+  expect(r2).toContain('unknown');
+  expect(r2).not.toContain('—');
+  expect(r2).not.toMatch(/\[\d+ %/);
+  expect(visibleText(sv)).toMatch(/report only/i);
+});
+
+it('UXE-00: an empty settlement value says so', () => {
+  render(<EvolutionBody data={{ ...VG, settlement_value: { threshold: 0.2, note: 'report only', by_lane: [] } }} />);
+  expect(visibleText(section(/settlement value/i))).toContain('No settled loop PR has a fresh-mutant kill share yet.');
+});
+
+it('UXE-00: ineligible reasons listed with counts, largest first, all time', () => {
+  render(<EvolutionBody data={VG} />);
+  const t = visibleText(section(/test-only auto-merge/i));
+  expect(t.indexOf('not_open 47')).toBeGreaterThan(-1);
+  expect(t.indexOf('not_open 47')).toBeLessThan(t.indexOf('checks_failed 15'));
+  expect(t).toMatch(/Ineligible by reason \(all loop runs, latest decision per run\)/);
+});
+
+it('UXE-00: read-only — no action control', () => {
+  render(<EvolutionBody data={VG} />);
+  for (const s of [section(/test-only auto-merge/i), section(/settlement value/i)]) {
+    for (const role of ['button', 'switch', 'checkbox', 'combobox', 'textbox', 'menuitem'] as const) expect(within(s).queryAllByRole(role)).toHaveLength(0);
+  }
+});
+
+it('UXE-00: absent value_gate says not reported', () => {
+  render(<EvolutionBody data={vg({ value_gate: undefined })} />);
+  expect(visibleText(section(/test-only auto-merge/i))).toContain('Value gate: not reported by this server');
+});
+
+it('UXE-00: visibleText ignores sr-only text', () => {
+  const { container } = render(<p>shown <span className="sr-only">hidden-value</span></p>);
+  expect(visibleText(container)).toContain('shown');
+  expect(visibleText(container)).not.toContain('hidden-value');
 });
