@@ -113,3 +113,18 @@ it('P0-11: the row mode is the regime the verdict is used under (prompt-bound un
   expect(db.prepare("SELECT subject_id, mode FROM judgments WHERE judgment = 'content_safety' ORDER BY subject_id").all()).toEqual([
     { subject_id: 'c1', mode: 'enforce' }, { subject_id: 'c2', mode: 'shadow' }, { subject_id: 'p1', mode: 'enforce' }, { subject_id: 'r1', mode: 'shadow' }]);
 });
+
+it('CONTENT_SAFETY_IGNORE_CATEGORIES turns an unsafe verdict with only ignored categories into safe (Llama Guard S14 on technical text, prod 2026-10-31)', async () => {
+  vi.stubEnv('CONTENT_SAFETY_MODE', 'shadow'); vi.stubEnv('NVIDIA_API_KEY', 'k');
+  expect(await checkContentSafety(db, { type: 'x', id: 'a' }, 'run this python snippet', reply('unsafe\nS14'))).toBe('unsafe'); // default: nothing ignored
+  vi.stubEnv('CONTENT_SAFETY_IGNORE_CATEGORIES', 'S14');
+  expect(await checkContentSafety(db, { type: 'x', id: 'b' }, 'run this python snippet', reply('unsafe\nS14'))).toBe('safe');
+  expect(await checkContentSafety(db, { type: 'x', id: 'c' }, 'mixed', reply('unsafe\nS1,S14'))).toBe('unsafe'); // one category not ignored
+  expect(await checkContentSafety(db, { type: 'x', id: 'd' }, 'no categories', reply('unsafe'))).toBe('unsafe'); // no categories → never ignored
+  expect(db.prepare("SELECT subject_id, decision, reason FROM judgments ORDER BY subject_id").all()).toEqual([
+    { subject_id: 'a', decision: 'no', reason: 'verdict=unsafe categories=S14' },
+    { subject_id: 'b', decision: 'yes', reason: 'verdict=safe categories=S14 ignored=S14' },
+    { subject_id: 'c', decision: 'no', reason: 'verdict=unsafe categories=S1,S14' },
+    { subject_id: 'd', decision: 'no', reason: 'verdict=unsafe' },
+  ]);
+});
