@@ -231,6 +231,16 @@ async function main() {
   if (taskRecovery.failedMockTasks || taskRecovery.heldTasks) {
     console.log(`🔄 Reconciled ${taskRecovery.failedMockTasks} interrupted mock task(s); ${taskRecovery.heldTasks} task(s) held for operator outcome reconciliation.`);
   }
+  // RIR (LOOP_RESUME_INTERRUPTED, default off): after both the loop settle and the engine's recovery holds, re-queue this
+  // boot's interrupted runs with a fresh maker; the daemon's next tick runs them through every gate again.
+  if (autonomousRuntime) {
+    try {
+      const resume = recoverySvc.resumeInterruptedRuns();
+      if (resume.mode !== 'off' && resume.details.length) console.log(`🔄 Resume interrupted runs (${resume.mode}): ${resume.resumed} resumed, ${resume.skipped} skipped.`);
+    } catch (error) {
+      console.warn('⚠️  Resume of interrupted runs failed (non-fatal):', error instanceof Error ? error.message : String(error));
+    }
+  }
   console.log('⚙️  Execution engine initialized');
 
   const memorySync = new MemorySyncService(db);
