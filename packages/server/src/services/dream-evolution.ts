@@ -1,9 +1,17 @@
 import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { redactSecrets } from './secret-patterns';
+import { eValue, mcnemarOneSided } from './paired-stats';
 import { generateText, llmEndpoints } from './llm-fallback';
+import { budgetPause } from './inference-budget';
 import { firstJsonObject } from './expert-council-service';
-import { BASELINE_GENOME, dreamEvolutionEnabled, ensureBaseline, frozenHoldoutCommits, genome, holdoutEpoch, mutantHoldoutKeys, mutantHoldoutTiers, mutantTrialsEnabled, NOT_VOID, trialHeadroomPrecheck, unscorable, writeTestHoldoutEnabled, writeTestHoldoutKeys } from './genome-registry';
+import { BASELINE_GENOME, dreamEvolutionEnabled, ELIGIBLE_GATED, ensureBaseline, frozenHoldoutCommits, genome, holdoutEpoch, mutantDecidingTiers, mutantHoldoutKeys, mutantTrialsEnabled, NOT_VOID, trialHeadroomPrecheck, unscorable, writeTestHoldoutEnabled, writeTestHoldoutKeys } from './genome-registry';
+import { markRun } from './scheduler-registry';
+import { type DecidingHoldout, holdoutValidity, promoteGenome } from './genome-promotion';
+import { prodGatesConfig, sweepOrphanedGymRuns } from './remote-gym-service';
+import { recordNegativeEvidenceMatches } from './negative-evidence-check';
+import { buildSourcePack, CITED_FORMAT, citedLines, dreamEvidenceSources, genomeSourceColumns, type PackItem, recordDreamPack, type SourcePack, sourcePrompt } from './dream-evidence-sources';
+import { dreamPlaybookGene, playbookFor, playbookLanes, playbookNote } from './lane-playbook';
 
 /**
  * Y3b/Y3c (plan Phase Y, Darwin loop). Dreaming is the mutation operator: once a day the day's failed makers (real and
@@ -21,13 +29,7 @@ export const MAX_MUTANTS = 3;
  * typically 3 vs 1 discordant pairs — exact one-sided McNemar p ≈ 0.31, i.e. noise. Only discordant pairs (one genome
  * green, the other not) carry information: P(X ≥ b | n = b + c, ½) < DREAM_PROMOTION_ALPHA (default 0.05) promotes.
  */
-export function mcnemarOneSided(b: number, c: number): number {
-  const n = b + c;
-  if (n === 0) return 1;
-  let p = 0; let coef = 1; // C(n, 0)
-  for (let k = 0; k <= n; k++) { if (k >= b) p += coef; coef = coef * (n - k) / (k + 1); }
-  return p / 2 ** n;
-}
+export { mcnemarOneSided } from './paired-stats';
 const promotionAlpha = () => Number(process.env.DREAM_PROMOTION_ALPHA) || 0.05;
 
 /**
@@ -49,15 +51,7 @@ const binom = (n: number, p: number): number[] => {
  * among n discordant pairs. Promote iff E ≥ 1/alpha; by Ville's inequality that stays valid when looked at after every pair
  * (McNemar does not). It is exchangeable, so the final value does not depend on the pair order.
  */
-const logFact = (n: number): number => { let s = 0; for (let i = 2; i <= n; i++) s += Math.log(i); return s; };
-export function eValue(n: number, k: number): number {
-  if (n <= 0) return 1;
-  const terms = Array.from({ length: k + 1 }, (_, i) => logFact(n + 1) - logFact(i) - logFact(n + 1 - i));
-  const max = Math.max(...terms);
-  const logCdf = max + Math.log(terms.reduce((a, t) => a + Math.exp(t - max), 0)) - (n + 1) * Math.LN2;
-  return Math.exp((n + 1) * Math.LN2 + logFact(k) + logFact(n - k) - logFact(n + 1) + logCdf);
-}
-export const ePaired = (pairs: Array<1 | -1>): number => eValue(pairs.length, pairs.filter((p) => p === 1).length);
+export { eValue, ePaired } from './paired-stats';
 export type PromotionRule = 'mcnemar' | 'both' | 'graded';
 export const promotionRule = (env: NodeJS.ProcessEnv = process.env): PromotionRule =>
   (env.DREAM_PROMOTION_RULE === 'both' ? 'both' : env.DREAM_PROMOTION_RULE === 'graded' ? 'graded' : 'mcnemar');
@@ -139,17 +133,34 @@ export const trialDiagnosticsEnabled = (env: NodeJS.ProcessEnv = process.env): b
 const MAX_LINES = 5;
 const MAX_LINE_CHARS = 200;
 // what a genome may never steer: gates, checks, scope, secrets, deploy, approvals, git history (a gym `git commit` empties the
-// diff the verdict reads — first dream 2026-10-01 proposed 'commit the smallest confirmed improvement') — or the tests
-const FORBIDDEN = /\b(gates?|checks?|checker|scope|secrets?|tokens?|passwords?|credentials?|deploy\w*|push\w*|merge\w*|commit\w*|stash\w*|reset|revert\w*|approv\w*|skip\w*|disable\w*|no-verify|package\.json|lock ?files?|\.github|polic(y|ies)|auth\w*)\b|\b(edit|change|modify|delete|remove|rewrite|weaken)\s+(the\s+|a\s+|any\s+)?tests?\b/i;
+// diff the verdict reads — first dream 2026-10-01 proposed 'commit the smallest confirmed improvement') — or the tests, or the
+// evaluator that judges the genome itself (holdout, oracle, verdict, promotion, the genome/gym code; Codex P0 11-10)
+const FORBIDDEN = /\b(gates?|checks?|checker|scope|secrets?|tokens?|passwords?|credentials?|deploy\w*|push\w*|merge\w*|commit\w*|stash\w*|reset|revert\w*|approv\w*|skip\w*|disable\w*|no-verify|package\.json|lock ?files?|\.github|polic(y|ies)|auth\w*|holdouts?|evaluat\w*|promot\w*|fitness|oracles?|verdicts?|genomes?|dream-evolution|genome-\w+|gym-worker)\b|\b(edit|change|modify|delete|remove|rewrite|weaken)\s+(the\s+|a\s+|any\s+)?tests?\b/i;
+
+// FR-001 / A9 (re-20261029): matched on the line tokenised on [^a-z0-9]+, so '_' and punctuation no longer hide a word
+// (maker_gate_failed, it.todo, @ts-ignore). Test-weakening vocabulary: runner modifiers, suppressions, runner/mutation
+// config, env files, blanket mocks, trivial or weakened assertions, and removing/renaming tests, specs or assertions.
+// Bare 'only' stays allowed ("Edit only the named file", the playbook's "test-only"); the '.only' call form is not.
+const FILLER = '(?:the|a|an|any|all|every|each|failing|failed|flaky|slow|unstable|broken|red|out|that|those|these|its|their|old|existing|unit|named)';
+const TEST_WEAKENING = new RegExp([
+  '\\b(todos?|xit|xdescribe|xtest|fdescribe|bypass\\w*|stryker|env|dotenv|bak|tobedefined|tobetruthy|tobefalsy|tobeundefined)\\b',
+  '\\bts (ignore|nocheck|expect error)\\b', '\\beslint disable', '\\b(vitest|jest|vite) config\\b', '\\bexpect (true|1)\\b', '\\btobe true\\b',
+  // FORBIDDEN's hyphen/dot names as the tokeniser spells them (gym_worker, dream_evolution, package.json)
+  '\\b(gym worker|dream evolution|no verify|package json)\\b', '\\bci (false|0)\\b', '\\bmock\\w* (the )?(everything|all|every|modules?|dependencies|imports)\\b',
+  `\\b(delet|remov|renam|drop|comment|weaken|loosen|relax|replac|exclud|edit|chang|modif|rewrit)\\w* (${FILLER} )*(tests?|specs?|assertions?|asserts?|expects?|expectations?|suites?)\\b`,
+].join('|'));
+const RAW_TEST_WEAKENING = /\.\s*only\b/i;
+const tokens = (l: string): string => ` ${l.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()} `;
 
 /** Lines a mutant may add: strings, ≤ 5, ≤ 200 chars, none touching what the guard forbids. null when anything is off. */
 export function guardLines(lines: unknown): string[] | null {
   if (!Array.isArray(lines) || !lines.length || lines.length > MAX_LINES) return null;
   const clean = lines.map((l) => (typeof l === 'string' ? l.replace(/\s+/g, ' ').trim() : ''));
-  return clean.every((l) => l.length > 0 && l.length <= MAX_LINE_CHARS && !FORBIDDEN.test(l)) ? clean : null;
+  const forbidden = (l: string) => FORBIDDEN.test(l) || RAW_TEST_WEAKENING.test(l) || FORBIDDEN.test(tokens(l)) || TEST_WEAKENING.test(tokens(l));
+  return clean.every((l) => l.length > 0 && l.length <= MAX_LINE_CHARS && !forbidden(l)) ? clean : null;
 }
 
-export function dreamInputs(db: Database, now = Date.now()): { failures: string[]; knowledge: string[] } {
+export function dreamInputs(db: Database, now = Date.now()): { failures: string[]; knowledge: string[]; knowledgeRefs: string[] } {
   const all = <T>(sql: string, ...args: unknown[]): T[] => { try { return db.prepare(sql).all(...args) as T[]; } catch { return []; } };
   const d1 = new Date(now - 86_400_000).toISOString(); const d30 = new Date(now - 30 * 86_400_000).toISOString();
   const gym = all<{ source: string; reason: string }>(`SELECT json_extract(metadata, '$.gym.source') AS source, json_extract(metadata, '$.gym_result.reason') AS reason
@@ -164,9 +175,10 @@ export function dreamInputs(db: Database, now = Date.now()): { failures: string[
   const real = all<{ reason: string; files: string }>(`SELECT json_extract(metadata, '$.failure_reason') AS reason, json_extract(metadata, '$.changed_files') AS files
     FROM worker_leases WHERE role = 'maker' AND status = 'failed' AND created_at >= ? LIMIT 20`, d1)
     .map((r) => `maker: ${r.reason || 'failed'} — changed ${r.files || '[]'}`);
-  const knowledge = all<{ t: string }>(`SELECT i.canonical_name AS t FROM judgments j JOIN expert_identities i ON i.id = j.subject_id
-    WHERE j.judgment = 'discovery_relevance' AND j.decision = 'yes' AND j.created_at >= ? ORDER BY j.created_at DESC LIMIT 3`, d30).map((r) => r.t);
-  return { failures: [...gym, ...real].map((f) => f.slice(0, 300)), knowledge };
+  // KE-3: the unit ids travel with the titles, so a mutant genome records which knowledge it was written from
+  const units = all<{ t: string; id: string }>(`SELECT i.canonical_name AS t, i.id FROM judgments j JOIN expert_identities i ON i.id = j.subject_id
+    WHERE j.judgment = 'discovery_relevance' AND j.decision = 'yes' AND j.created_at >= ? ORDER BY j.created_at DESC LIMIT 3`, d30);
+  return { failures: [...gym, ...real].map((f) => f.slice(0, 300)), knowledge: units.map((r) => r.t), knowledgeRefs: units.map((r) => r.id) };
 }
 
 /**
@@ -252,51 +264,121 @@ export function clusterPrompt(clusters: FailureCluster[]): string[] {
   return out;
 }
 
+/**
+ * DREAM_EVIDENCE_SOURCES (EVO-K, default '' = unchanged): the pack of skill / anti-pattern cards and valued knowledge the
+ * mutation step must cite (dream-evidence-sources.ts); null when off. Lanes = the day's failing maker lanes (their cards first).
+ */
+const failureLanes = (clusters: FailureCluster[]): string[] => clusters.filter((c) => c.source === 'maker').map((c) => c.lane);
+function sourcePackFor(db: Database, now: number, lanes: () => string[]): SourcePack | null {
+  const sources = dreamEvidenceSources();
+  return sources.length ? buildSourcePack(db, sources, lanes(), now) : null;
+}
+/** Per dream: the deterministic citation check (off: lines pass through untouched), the genome columns and the pack record. */
+class CitationTally {
+  dropped = 0; rejected = 0; private made: Array<{ id: string; cites: PackItem[] }> = [];
+  constructor(private readonly pack: SourcePack | null) {}
+  check(raw: unknown): { lines: unknown; cites: PackItem[] } | null {
+    if (!this.pack) return { lines: raw, cites: [] };
+    const c = citedLines(raw, this.pack);
+    this.dropped += c.dropped;
+    if (!c.lines.length) { this.rejected++; return null; }
+    return c;
+  }
+  columns(cites: PackItem[], keRefs: string[], offRefs: string | null): { knowledgeRefs: string | null; sources: string | null } {
+    return this.pack ? genomeSourceColumns(cites, keRefs) : { knowledgeRefs: offRefs, sources: null };
+  }
+  created(id: string, cites: PackItem[]): void { this.made.push({ id, cites }); }
+  record(db: Database, iso: string): void { if (this.pack) recordDreamPack(db, iso, this.pack, this.made, this.dropped, this.rejected); }
+}
+
 function activeParent(db: Database): string {
   const row = db.prepare("SELECT id FROM maker_genomes WHERE status = 'active' AND id <> ? ORDER BY updated_at DESC LIMIT 1").get(BASELINE_GENOME) as { id: string } | undefined;
   return row?.id ?? BASELINE_GENOME;
 }
 
-const defaultCaller: DreamCaller = (prompt) => generateText(
-  { prompt, model: process.env.DREAM_EVOLUTION_MODEL || process.env.SELF_IMPROVEMENT_REVIEW_MODEL || 'kimi-k3:cloud', temperature: 0.7, maxTokens: 1200, timeoutMs: 120_000 },
+export const defaultCaller: DreamCaller = (prompt) => generateText(
+  { prompt, model: process.env.DREAM_EVOLUTION_MODEL || process.env.SELF_IMPROVEMENT_REVIEW_MODEL || 'kimi-k3:cloud', temperature: 0.7, maxTokens: 1200, timeoutMs: 120_000, purpose: 'dream_evolution' },
   { endpoints: llmEndpoints(process.env.OLLAMA_URL || 'https://ollama.com') },
 );
 
 export async function dreamOnce(db: Database, now = Date.now(), call: DreamCaller = defaultCaller): Promise<{ created: string[]; skipped?: string }> {
   if (!dreamEvolutionEnabled()) return { created: [], skipped: 'disabled' };
+  if (budgetPause(db, 'dream_evolution')) return { created: [], skipped: 'inference_budget' }; // INFERENCE_BUDGET_THROTTLE=on
   const iso = new Date(now).toISOString();
   ensureBaseline(db, iso);
   if (db.prepare("SELECT 1 FROM maker_genomes WHERE origin = 'dream' AND created_at >= ? LIMIT 1").get(iso.slice(0, 10))) return { created: [], skipped: 'already dreamt today' };
   if (db.prepare("SELECT 1 FROM maker_genomes WHERE status = 'trial' LIMIT 1").get()) return { created: [], skipped: 'a trial is still running' };
-  if (evidenceMutationsEnabled()) return dreamFromEvidence(db, now, iso, call);
-  const { failures, knowledge } = dreamInputs(db, now);
+  const r = evidenceMutationsEnabled() ? await dreamFromEvidence(db, now, iso, call) : await dreamFromFailures(db, now, iso, call);
+  // DREAM_PLAYBOOK_GENE: after the model's mutants (a failed call leaves the day undreamt), at most one deterministic playbook mutant
+  const pb = dreamPlaybookGene() ? proposePlaybookMutant(db, now, iso) : null;
+  return pb ? { ...r, created: [...r.created, pb] } : r;
+}
+
+/**
+ * DREAM_PLAYBOOK_GENE=on (default off): ONE mutant of the active genome whose only change is the current lane playbook
+ * (lane-playbook.ts — fixed template over skill-card fields, no model). Lanes: the day's failing maker lanes first, then by
+ * card count. Each line passes guardLines on its own (the playbook caps itself at 12 lines; guardLines' 5-line cap is for
+ * model mutants) and lines the parent already has are not added again; a playbook (lane + sha256) is trialled once ever.
+ * evidence_sources_json cites every kept line's source cards ({source, id, line}); the K3 NE check records as for any
+ * mutant. Trial and promotion are the unchanged rules.
+ */
+function proposePlaybookMutant(db: Database, now: number, iso: string): string | null {
+  const parent = genome(db, activeParent(db))!;
+  for (const lane of playbookLanes(db, failureLanes(failureClusters(db, now)))) {
+    const p = playbookFor(db, lane);
+    if (!p || db.prepare("SELECT 1 FROM maker_genomes WHERE gene = 'playbook' AND note = ?").get(playbookNote(p))) continue;
+    const kept = p.lines.map((l, i) => ({ line: guardLines([l])?.[0], cites: p.cites[i] }))
+      .filter((k): k is { line: string; cites: typeof k.cites } => Boolean(k.line) && !parent.lines.includes(k.line!));
+    if (!kept.length) continue;
+    const lines = [...parent.lines, ...kept.map((k) => k.line)];
+    const sources = kept.flatMap((k, i) => k.cites.map((c) => ({ source: c.source, id: c.id, line: parent.lines.length + i })));
+    const id = `g-${randomUUID().slice(0, 8)}`;
+    db.prepare(`INSERT INTO maker_genomes (id, parent_id, gene, lines_json, origin, status, note, created_at, updated_at, evidence_sources_json)
+      VALUES (?, ?, 'playbook', ?, 'dream', 'trial', ?, ?, ?, ?)`).run(id, parent.id, JSON.stringify(lines), playbookNote(p), iso, iso, JSON.stringify(sources));
+    recordNegativeEvidenceMatches(db, { type: 'maker_genome', id }, kept.map((k) => k.line).join('\n'), 'dream_mutant'); // K3 shadow
+    return id;
+  }
+  return null;
+}
+
+async function dreamFromFailures(db: Database, now: number, iso: string, call: DreamCaller): Promise<{ created: string[]; skipped?: string }> {
+  const { failures, knowledge, knowledgeRefs } = dreamInputs(db, now);
   if (!failures.length) return { created: [], skipped: 'no failures to learn from' };
+  const pack = sourcePackFor(db, now, () => failureLanes(failureClusters(db, now)));
+  if (pack && !pack.items.length) { recordDreamPack(db, iso, pack, [], 0, 0); return { created: [], skipped: 'no evidence sources in the pack' }; }
   const parent = genome(db, activeParent(db))!;
   const prompt = [
     'You improve the instructions given to an autonomous coding agent ("maker") that fixes code so that given tests pass.',
     `Its current extra strategy lines: ${parent.lines.length ? parent.lines.map((l) => `"${l}"`).join('; ') : '(none)'}.`,
     'Today it failed on:', ...failures.map((f) => `- ${f}`),
     ...(knowledge.length ? ['Recent relevant research titles:', ...knowledge.map((k) => `- ${k}`)] : []),
+    ...(pack ? sourcePrompt(pack) : []),
     `Propose at most ${MAX_MUTANTS} alternative strategies. Each changes ONE thing: either new "strategy_lines" (how to approach the work)`,
     'or an "anti_pattern" line (a mistake to avoid that today\'s failures show). At most 5 short lines each. Never mention tests to edit,',
     'gates, checks, scope, approvals, secrets, deploy or merging. Return JSON only:',
-    '{"mutants":[{"gene":"strategy_lines|anti_pattern","lines":["..."],"rationale":"which failure this addresses"}]}',
+    pack ? CITED_FORMAT.replace('%EXTRA%', '') : '{"mutants":[{"gene":"strategy_lines|anti_pattern","lines":["..."],"rationale":"which failure this addresses"}]}',
   ].join('\n');
   const parsed = firstJsonObject(await call(prompt));
   const mutants = Array.isArray(parsed?.mutants) ? parsed!.mutants as Array<Record<string, unknown>> : [];
-  const insert = db.prepare(`INSERT INTO maker_genomes (id, parent_id, gene, lines_json, origin, status, note, created_at, updated_at)
-    VALUES (?, ?, ?, ?, 'dream', 'trial', ?, ?, ?)`);
-  const created: string[] = [];
+  const refs = knowledgeRefs.length ? JSON.stringify(knowledgeRefs) : null;
+  const insert = db.prepare(`INSERT INTO maker_genomes (id, parent_id, gene, lines_json, origin, status, note, created_at, updated_at, knowledge_refs_json, evidence_sources_json)
+    VALUES (?, ?, ?, ?, 'dream', 'trial', ?, ?, ?, ?, ?)`);
+  const created: string[] = []; const cited = new CitationTally(pack);
   for (const m of mutants.slice(0, MAX_MUTANTS)) {
+    const c = cited.check(m.lines);
+    if (!c) continue;
     const gene = m.gene === 'anti_pattern' ? 'anti_pattern' : m.gene === 'strategy_lines' ? 'strategy_lines' : null;
-    const lines = guardLines(m.lines);
+    const lines = guardLines(c.lines);
     if (!gene || !lines) continue;
     const added = gene === 'anti_pattern' ? lines.map((l) => (l.toLowerCase().startsWith('avoid') ? l : `Avoid: ${l}`)) : lines;
     const id = `g-${randomUUID().slice(0, 8)}`;
-    insert.run(id, parent.id, gene, JSON.stringify([...parent.lines, ...added]), String(m.rationale ?? '').slice(0, 300), iso, iso);
-    created.push(id);
+    const cols = cited.columns(c.cites, knowledgeRefs, refs);
+    insert.run(id, parent.id, gene, JSON.stringify([...parent.lines, ...added]), String(m.rationale ?? '').slice(0, 300), iso, iso, cols.knowledgeRefs, cols.sources);
+    recordNegativeEvidenceMatches(db, { type: 'maker_genome', id }, [...added, String(m.rationale ?? '')].join('\n'), 'dream_mutant'); // K3 shadow
+    cited.created(id, c.cites); created.push(id);
   }
-  return { created, ...(created.length ? {} : { skipped: 'no mutant passed the guard' }) };
+  cited.record(db, iso);
+  return { created, ...(created.length ? {} : { skipped: cited.rejected ? 'no mutant line cited an evidence source' : 'no mutant passed the guard' }) };
 }
 
 /**
@@ -306,10 +388,10 @@ export async function dreamOnce(db: Database, now = Date.now(), call: DreamCalle
  * with zero losses (McNemar 5 at α 0.05; under DREAM_PROMOTION_RULE=both the smaller of McNemar and the e-process). Such a trial is settled 'inconclusive' before any
  * of its deciding attempts are spent. TRIAL_HEADROOM_PRECHECK (default off). SI-C: under DREAM_PROMOTION_RULE=graded a parent
  * whose mean graded score is below GRADED_HEADROOM still has headroom, whatever its binary failures.
- * WT-HOLDOUT (09-10): under the graded rule the parent's failures come from its most recent GATED results (claimed with
- * GYM_PROD_GATES: prod 09-10 the gated pass rate is ~55–60 %, the old ungated holdout results 17/20) — a deciding task without
- * one leaves headroom unknown and the trial runs — and the graded mean from the write_test holdout when there is one (its
- * mutant_kill share moves; a repair score is 0/1). The parent not yet scored on that holdout: wait. Other rules: unchanged.
+ * WT-HOLDOUT (09-10) + P0 (13-10): under EVERY rule the parent's failures come from its newest ELIGIBLE gated results
+ * (gatedEvidence: prod 09-10 the gated pass rate is ~55–60 %, the old ungated holdout results 17/20) — a deciding task without
+ * one leaves headroom unknown and the trial runs; under the graded rule the graded mean comes from the write_test holdout
+ * when there is one (its mutant_kill share moves; a repair score is 0/1). The parent not yet scored on that holdout: wait.
  */
 /**
  * The fewest wins that make ANY trial significant: the best case for a mutant is to win exactly the tasks its parent
@@ -324,40 +406,128 @@ export function minWinsNeeded(alpha = promotionAlpha(), rule: PromotionRule = pr
   }
   return rule === 'both' ? Math.min(mcnemar, eproc) : mcnemar;
 }
+
+/**
+ * P0 (EVOLUTION ENGINE 4.0, 13-10). Prod 13-10: under DREAM_PROMOTION_RULE=both 17 of the 20 parent results on the deciding
+ * mutant holdout were ungated 10-03 runs (gated pass rate since 10-08: 34/91), and headroom, Gate A and promotion all read
+ * them. For EVERY rule (mcnemar, e-process / both, graded) headroom, parent fitness and the paired promotion test rest only on
+ * ELIGIBLE observations:
+ *  1. production-gated: claimed with GYM_PROD_GATES and the gate verdict recorded on that attempt (ELIGIBLE_GATED); a
+ *     'success' with any failing check is a failure — never a win;
+ *  2. same holdout epoch: a task frozen in a holdout table counts only when frozen in that table's CURRENT epoch, and only
+ *     attempts made after it was frozen; a task frozen under another epoch is rejected, never combined;
+ *  3. same evaluation contract: same task key and species; scored under the active gate policy (gatePolicyVersion, recorded
+ *     on every decision — attempts do not carry a policy version yet, so 'gated' is the per-attempt check); parent and mutant
+ *     on a pair share task family (gym.kind), difficulty (gym.tier) and graded kind where recorded;
+ *  4. per task the NEWEST eligible attempt counts (created_at, then id): an older one never overrides it, an ungated one never counts.
+ * Missing eligible evidence leaves headroom unknown (the trial runs) and settles a finished trial as inconclusive
+ * ('inconclusive: no eligible gated parent evidence'), never as a promotion. Ungated history stays readable as counts
+ * (genome_trial_results.evidence_json), never as a verdict. Thresholds and Gate A's band are unchanged.
+ */
+export const GATE_POLICY_SCHEMA = 'prod_gates/v1';
+export const gatePolicyVersion = (env: NodeJS.ProcessEnv = process.env): string =>
+  `${GATE_POLICY_SCHEMA}:${createHash('sha256').update(JSON.stringify(prodGatesConfig(env))).digest('hex').slice(0, 12)}`;
+type HoldoutTable = 'gym_holdout' | 'gym_mutant_holdout' | 'gym_write_test_holdout';
+const HOLDOUT_KEY: Record<HoldoutTable, string> = { gym_holdout: 'commit_sha', gym_mutant_holdout: 'key', gym_write_test_holdout: 'key' };
+/** task key → when the CURRENT epoch froze it, or null when only another epoch froze it; keys in no holdout table are absent */
+function epochFreeze(db: Database): Map<string, string | null> {
+  const out = new Map<string, string | null>();
+  for (const table of Object.keys(HOLDOUT_KEY) as HoldoutTable[]) {
+    try {
+      const current = holdoutEpoch(db, table);
+      for (const r of db.prepare(`SELECT ${HOLDOUT_KEY[table]} AS k, epoch, created_at FROM ${table}`).all() as Array<{ k: string; epoch: number; created_at: string }>) {
+        if (r.epoch === current) out.set(r.k, r.created_at); else if (!out.has(r.k)) out.set(r.k, null);
+      }
+    } catch { /* no such table yet: nothing frozen there */ }
+  }
+  return out;
+}
+export interface GatedObservation { id: string; commit: string; status: 'success' | 'failure'; reason: string; created_at: string; kind: string; tier: number | null; graded_kind: string | null }
+/**
+ * Evidence classes, one per attempt (P0 conditional GO, 13-10):
+ *  ELIGIBLE_PASS  gated, every recorded gate passed (or skipped), task passed, provenance valid
+ *  ELIGIBLE_FAIL  gated, verdict recorded on the same attempt, task failed or a gate failed
+ *  INELIGIBLE     ungated / gated success without its own gate map / other epoch / before the freeze / VOID (invalid provenance)
+ *  INFRA_CENSORED infra failure or a discarded attempt: no task-level observation — never a failure, never a pass
+ * Per task: UNKNOWN when no eligible attempt exists. Only ELIGIBLE_* attempts decide anything; an incompatible pair is a HOLD.
+ * Status, gate map and provenance are always read from the same loop_run row: a verdict is never joined across attempts.
+ */
+export type EvidenceClass = 'ELIGIBLE_PASS' | 'ELIGIBLE_FAIL' | 'INELIGIBLE' | 'INFRA_CENSORED';
+export interface GatedEvidence { byKey: Map<string, GatedObservation>; classes: Partial<Record<EvidenceClass, number>> }
+/** The newest eligible attempt per task of one genome (see above; ties on created_at break on id), plus per-attempt class counts. */
+export function gatedEvidence(db: Database, speciesKey: string, genomeId: string, keys: string[], freeze = epochFreeze(db)): GatedEvidence {
+  const want = new Set(keys); const byKey = new Map<string, GatedObservation>(); const classes: Partial<Record<EvidenceClass, number>> = {};
+  const rows = db.prepare(`SELECT id, json_extract(metadata, '$.gym.commit') AS commit_sha, json_extract(metadata, '$.gym_result.status') AS status,
+      COALESCE(json_extract(metadata, '$.gym_result.reason'), '') AS reason, created_at, COALESCE(json_extract(metadata, '$.gym.kind'), 'repair') AS kind,
+      json_extract(metadata, '$.gym.tier') AS tier, json_extract(metadata, '$.gym_result.graded_kind') AS graded_kind, ${ELIGIBLE_GATED} AS eligible, NOT ${NOT_VOID} AS voided,
+      EXISTS (SELECT 1 FROM json_each(CASE WHEN json_type(metadata, '$.gym_result.prod_gates') = 'object' THEN json_extract(metadata, '$.gym_result.prod_gates') ELSE '{}' END) g WHERE g.value = 'fail') AS gate_failed
+    FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.genome') = ? AND status = 'completed'
+    ORDER BY created_at, id`).all(speciesKey, genomeId) as Array<{ id: string; commit_sha: string; status: string; reason: string; created_at: string; kind: string; tier: number | null; graded_kind: string | null; eligible: number; voided: number; gate_failed: number }>;
+  for (const r of rows) {
+    if (!want.has(r.commit_sha)) continue;
+    const frozen = freeze.get(r.commit_sha);
+    const cls: EvidenceClass = r.reason.startsWith('infra:') || r.status === 'discarded' ? 'INFRA_CENSORED'
+      : r.voided || frozen === null || (frozen !== undefined && r.created_at < frozen) || !r.eligible ? 'INELIGIBLE' // provenance, other epoch, pre-freeze, ungated
+        : r.status === 'success' && !r.gate_failed ? 'ELIGIBLE_PASS' : 'ELIGIBLE_FAIL';
+    classes[cls] = (classes[cls] ?? 0) + 1;
+    if (cls !== 'ELIGIBLE_PASS' && cls !== 'ELIGIBLE_FAIL') continue;
+    byKey.set(r.commit_sha, { id: r.id, commit: r.commit_sha, status: cls === 'ELIGIBLE_PASS' ? 'success' : 'failure', reason: r.reason,
+      created_at: r.created_at, kind: r.kind, tier: r.tier, graded_kind: r.graded_kind }); // ascending (created_at, id): the newest eligible attempt wins
+  }
+  return { byKey, classes };
+}
+const tally = (xs: Array<string | number | null>): Record<string, number> => xs.reduce<Record<string, number>>((a, x) => (x == null ? a : { ...a, [String(x)]: (a[String(x)] ?? 0) + 1 }), {});
+/** What a trial decision rested on: gate policy, epoch, eligible / UNKNOWN tasks, per-attempt evidence classes, task families and difficulties. */
+function evidenceSummary(policy: string, holdout: HoldoutTable, epoch: number, keys: string[], parent: GatedEvidence, mutant?: GatedEvidence): string {
+  const obs = keys.map((k) => parent.byKey.get(k)).filter((o): o is GatedObservation => Boolean(o));
+  const count = (e: GatedEvidence) => { const eligible = keys.filter((k) => e.byKey.has(k)).length; return { eligible, unknown: keys.length - eligible, classes: e.classes }; };
+  return JSON.stringify({ gate_policy: policy, holdout, epoch, deciding_n: keys.length, parent: count(parent), ...(mutant ? { mutant: count(mutant) } : {}),
+    families: tally(obs.map((o) => o.kind)), tiers: tally(obs.map((o) => o.tier)) });
+}
+
 export function settleNoHeadroom(db: Database, speciesKey: string, holdoutCommits: string[], mutantCommits: string[] = [], now = Date.now(), writeTestKeys: string[] = []): Array<{ id: string; f: number; n: number; needed: number }> {
   if (!trialHeadroomPrecheck() || !holdoutCommits.length) return [];
+  // Z5: with mutant trials on, the mined holdout is the no-regression check only — no deciding mutants, no headroom verdict
+  // (the remote claim called this with an empty mutant set and counted the parent's failures on the mined holdout)
+  if (mutantTrialsEnabled() && !mutantCommits.length) return [];
   const deciding = mutantCommits.length ? mutantCommits : holdoutCommits;
   const iso = new Date(now).toISOString();
   const graded = promotionRule() === 'graded';
-  const latest = (gated: boolean) => db.prepare(`SELECT id, json_extract(metadata, '$.gym_result.status') AS status FROM loop_runs WHERE loop_name = 'evolution-gym'
+  // any scored attempt: only to see whether the mutant already ran (then evaluateTrials decides) — never a verdict
+  const result = db.prepare(`SELECT id FROM loop_runs WHERE loop_name = 'evolution-gym'
     AND json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.genome') = ? AND json_extract(metadata, '$.gym.commit') = ?
     AND status = 'completed' AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%' AND ${NOT_VOID}
-    ${gated ? "AND json_extract(metadata, '$.gym.prod_gates') = 1" : ''} ORDER BY created_at DESC LIMIT 1`);
-  const result = latest(false);
-  const parentResult = graded ? latest(true) : result;
+    AND COALESCE(json_extract(metadata, '$.gym_result.status'), '') <> 'discarded' LIMIT 1`);
   const trials = db.prepare("SELECT id, COALESCE(parent_id, ?) AS parent FROM maker_genomes WHERE status = 'trial' ORDER BY created_at").all(BASELINE_GENOME) as Array<{ id: string; parent: string }>;
   const settled: Array<{ id: string; f: number; n: number; needed: number }> = [];
   const grade = gradedScorer(db);
+  const freeze = epochFreeze(db); const policy = gatePolicyVersion();
+  const table: HoldoutTable = mutantCommits.length ? 'gym_mutant_holdout' : 'gym_holdout';
   for (const trial of trials) {
     const scored = deciding.filter((c) => !unscorable(db, speciesKey, trial.parent, c));
-    const parent = scored.map((c) => parentResult.get(speciesKey, trial.parent, c) as { id: string; status: string } | undefined);
-    if (parent.some((r) => !r)) continue; // the parent is not fully scored yet (graded rule: no gated result yet)
+    const evidence = gatedEvidence(db, speciesKey, trial.parent, scored, freeze);
+    // P0: headroom is unknown until every deciding task has an eligible gated parent result — the trial runs, never settles on ungated history
+    if (scored.some((c) => !evidence.byKey.has(c))) continue;
+    const parent = scored.map((c) => evidence.byKey.get(c)!);
     if (scored.every((c) => result.get(speciesKey, trial.id, c) || unscorable(db, speciesKey, trial.id, c))) continue; // already run: evaluateTrials decides
-    const n = scored.length; const f = parent.filter((r) => r?.status !== 'success').length;
+    const n = scored.length; const f = parent.filter((r) => r.status !== 'success').length;
     const needed = minWinsNeeded();
     if (f >= needed) continue;
     // WT-HOLDOUT: under the graded rule the write_test holdout's mutant_kill mean is the graded headroom when there is one
-    const wt = graded ? writeTestKeys.filter((k) => !unscorable(db, speciesKey, trial.parent, k)).map((k) => result.get(speciesKey, trial.parent, k) as { id: string; status: string } | undefined) : [];
-    if (wt.some((r) => !r)) continue; // the parent has not run the write_test holdout yet
-    const parentGraded = avg((wt.length ? wt : parent).map((r) => grade(r!.id, r!.status === 'success').score));
+    const wtKeys = graded ? writeTestKeys.filter((k) => !unscorable(db, speciesKey, trial.parent, k)) : [];
+    const wtEvidence = gatedEvidence(db, speciesKey, trial.parent, wtKeys, freeze);
+    if (wtKeys.some((k) => !wtEvidence.byKey.has(k))) continue; // no eligible parent result on the write_test holdout yet
+    const wt = wtKeys.map((k) => wtEvidence.byKey.get(k)!);
+    const parentGraded = avg((wt.length ? wt : parent).map((r) => grade(r.id, r.status === 'success').score));
     if (graded && parentGraded < GRADED_HEADROOM) continue; // SI-C: graded headroom
     const shown = Number.isFinite(needed) ? needed : n + 1;
     db.prepare("UPDATE maker_genomes SET status = 'inconclusive', note = ?, updated_at = ? WHERE id = ? AND status = 'trial'")
-      .run(`no_headroom: parent fails ${f} of ${n}; ≥ ${shown} needed for any significant win`, iso, trial.id);
+      .run(`no_headroom: parent fails ${f} of ${n}; ≥ ${shown} needed for any significant win; gates ${policy}`, iso, trial.id);
     try {
-      db.prepare(`INSERT OR REPLACE INTO genome_trial_results (trial_id, parent_id, tier_set, deciding_n, f_parent_failures, b, c, p, mined_b, mined_c, power_q8_l05, state, recorded_at, epoch, graded_mean_parent)
-        VALUES (?, ?, ?, ?, ?, 0, 0, 1, 0, 0, 0, 'no_headroom', ?, ?, ?)`).run(trial.id, trial.parent, mutantCommits.length ? mutantHoldoutTiers().join(',') : 'mined', n, f, iso,
-        holdoutEpoch(db, mutantCommits.length ? 'gym_mutant_holdout' : 'gym_holdout'), parentGraded);
+      const epoch = holdoutEpoch(db, table);
+      db.prepare(`INSERT OR REPLACE INTO genome_trial_results (trial_id, parent_id, tier_set, deciding_n, f_parent_failures, b, c, p, mined_b, mined_c, power_q8_l05, state, recorded_at, epoch, graded_mean_parent, gate_policy, evidence_json)
+        VALUES (?, ?, ?, ?, ?, 0, 0, 1, 0, 0, 0, 'no_headroom', ?, ?, ?, ?, ?)`).run(trial.id, trial.parent, mutantCommits.length ? mutantDecidingTiers(db).join(',') : 'mined', n, f, iso,
+        epoch, parentGraded, policy, evidenceSummary(policy, table, epoch, scored, evidence));
     } catch { /* the record is fail-soft; the settlement above is what stops the attempts */ }
     console.log(`🧬 genome ${trial.id} inconclusive (no headroom: parent fails ${f} of ${n}; ≥ ${shown} needed for any significant win)`);
     settled.push({ id: trial.id, f, n, needed: shown });
@@ -369,40 +539,50 @@ export function settleNoHeadroom(db: Database, speciesKey: string, holdoutCommit
 async function dreamFromEvidence(db: Database, now: number, iso: string, call: DreamCaller): Promise<{ created: string[]; skipped?: string; rejected: Array<{ reason: string }> }> {
   const clusters = failureClusters(db, now);
   if (!clusters.length) return { created: [], skipped: 'no failures to learn from', rejected: [] };
-  const { knowledge } = dreamInputs(db, now);
+  const { knowledge, knowledgeRefs } = dreamInputs(db, now);
+  const pack = sourcePackFor(db, now, () => failureLanes(clusters));
+  if (pack && !pack.items.length) { recordDreamPack(db, iso, pack, [], 0, 0); return { created: [], skipped: 'no evidence sources in the pack', rejected: [] }; }
   const parent = genome(db, activeParent(db))!;
   const prompt = [
     'You improve the instructions given to an autonomous coding agent ("maker") that fixes code so that given tests pass.',
     `Its current extra strategy lines: ${parent.lines.length ? parent.lines.map((l) => `"${l}"`).join('; ') : '(none)'}.`,
     'Today\'s failures, grouped into clusters (id, count, shape, raw excerpts):', ...clusterPrompt(clusters),
     ...(knowledge.length ? ['Recent relevant research titles:', ...knowledge.map((k) => `- ${k}`)] : []),
+    ...(pack ? sourcePrompt(pack) : []),
     `Propose at most ${MAX_MUTANTS} alternative strategies, at most one per cluster. Each changes ONE thing: either new "strategy_lines" (how to approach the work)`,
     'or an "anti_pattern" line (a mistake to avoid that the cluster shows). At most 5 short lines each. Each MUST name the cluster id it addresses in "addresses".',
     'A mutant without a valid cluster id is discarded. Never mention tests to edit, gates, checks, scope, approvals, secrets, deploy or merging. Return JSON only:',
-    '{"mutants":[{"gene":"strategy_lines|anti_pattern","lines":["..."],"addresses":["fc-…"],"rationale":"how this fixes that cluster"}]}',
+    pack ? CITED_FORMAT.replace('%EXTRA%', '"addresses":["fc-…"],') : '{"mutants":[{"gene":"strategy_lines|anti_pattern","lines":["..."],"addresses":["fc-…"],"rationale":"how this fixes that cluster"}]}',
   ].join('\n');
   const parsed = firstJsonObject(await call(prompt));
   const mutants = Array.isArray(parsed?.mutants) ? parsed!.mutants as Array<Record<string, unknown>> : [];
   const valid = new Set(clusters.map((c) => c.id)); const usedClusters = new Set<string>();
-  const insert = db.prepare(`INSERT INTO maker_genomes (id, parent_id, gene, lines_json, origin, status, note, created_at, updated_at, evidence_clusters)
-    VALUES (?, ?, ?, ?, 'dream', 'trial', ?, ?, ?, ?)`);
-  const created: string[] = []; const rejected: Array<{ reason: string }> = [];
+  const refs = knowledgeRefs.length ? JSON.stringify(knowledgeRefs) : null;
+  const insert = db.prepare(`INSERT INTO maker_genomes (id, parent_id, gene, lines_json, origin, status, note, created_at, updated_at, evidence_clusters, knowledge_refs_json, evidence_sources_json)
+    VALUES (?, ?, ?, ?, 'dream', 'trial', ?, ?, ?, ?, ?, ?)`);
+  const created: string[] = []; const rejected: Array<{ reason: string }> = []; const cited = new CitationTally(pack);
   for (const m of mutants) {
     if (created.length >= MAX_MUTANTS) break;
     const cites = (Array.isArray(m.addresses) ? m.addresses : [m.addresses]).map(String).filter((c) => valid.has(c));
     const fresh = cites.filter((c) => !usedClusters.has(c));
     if (!cites.length) { rejected.push({ reason: 'no_evidence' }); continue; }
     if (!fresh.length) { rejected.push({ reason: 'cluster_taken' }); continue; }
+    const c = cited.check(m.lines);
+    if (!c) { rejected.push({ reason: 'uncited_source' }); continue; }
     const gene = m.gene === 'anti_pattern' ? 'anti_pattern' : m.gene === 'strategy_lines' ? 'strategy_lines' : null;
-    const lines = guardLines(m.lines);
+    const lines = guardLines(c.lines);
     if (!gene || !lines) { rejected.push({ reason: 'guard' }); continue; }
     const added = gene === 'anti_pattern' ? lines.map((l) => (l.toLowerCase().startsWith('avoid') ? l : `Avoid: ${l}`)) : lines;
     const id = `g-${randomUUID().slice(0, 8)}`;
     usedClusters.add(fresh[0]);
-    insert.run(id, parent.id, gene, JSON.stringify([...parent.lines, ...added]), String(m.rationale ?? '').slice(0, 300), iso, iso, JSON.stringify([fresh[0]]));
-    created.push(id);
+    const cols = cited.columns(c.cites, knowledgeRefs, refs);
+    insert.run(id, parent.id, gene, JSON.stringify([...parent.lines, ...added]), String(m.rationale ?? '').slice(0, 300), iso, iso, JSON.stringify([fresh[0]]), cols.knowledgeRefs, cols.sources);
+    recordNegativeEvidenceMatches(db, { type: 'maker_genome', id }, [...added, String(m.rationale ?? '')].join('\n'), 'dream_mutant'); // K3 shadow
+    cited.created(id, c.cites); created.push(id);
   }
-  return { created, rejected, ...(created.length ? {} : { skipped: rejected.some((r) => r.reason === 'no_evidence') ? 'no mutant cited a failure cluster' : 'no mutant passed the guard' }) };
+  cited.record(db, iso);
+  return { created, rejected, ...(created.length ? {} : { skipped: rejected.some((r) => r.reason === 'no_evidence') ? 'no mutant cited a failure cluster'
+    : rejected.some((r) => r.reason === 'uncited_source') ? 'no mutant line cited an evidence source' : 'no mutant passed the guard' }) };
 }
 
 /** Settles finished trials: paired holdout results decide; at most one promotion a day; everything else retires. */
@@ -411,27 +591,35 @@ async function dreamFromEvidence(db: Database, now: number, iso: string, call: D
  * trial settles; their graded mutant_kill scores join the paired graded test (decides under the graded rule, shadow columns
  * otherwise). Binary wins, McNemar, the mined no-regression check and out-of-scope stay on the repair holdouts.
  */
-export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits: string[], now = Date.now(), mutantCommits: string[] = [], writeTestKeys: string[] = []): Array<{ id: string; status: 'active' | 'retired'; wins: number; parentWins: number }> {
+export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits: string[], now = Date.now(), mutantCommits: string[] = [], writeTestKeys: string[] = []): Array<{ id: string; status: 'active' | 'retired' | 'inconclusive'; wins: number; parentWins: number }> {
   if (!holdoutCommits.length) return [];
   const binary = [...holdoutCommits, ...mutantCommits];
   const all = [...binary, ...writeTestKeys];
   const iso = new Date(now).toISOString();
-  const results = db.prepare(`SELECT id, json_extract(metadata, '$.gym.commit') AS commit_sha, json_extract(metadata, '$.gym_result.status') AS status,
-      COALESCE(json_extract(metadata, '$.gym_result.reason'), '') AS reason
+  // any scored attempt: only whether a task was run at all (completeness) — verdicts come from gatedEvidence (P0)
+  const results = db.prepare(`SELECT DISTINCT json_extract(metadata, '$.gym.commit') AS commit_sha
     FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.genome') = ?
-      AND status = 'completed' AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%' AND ${NOT_VOID}`);
+      AND status = 'completed' AND COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%' AND ${NOT_VOID}
+      AND COALESCE(json_extract(metadata, '$.gym_result.status'), '') <> 'discarded'`); // INFRA_CENSORED: not a run of the task
   // GENOME_FIRE_CHECK: VOID attempts (the genome's lines never reached the maker) are never paired; counted for the note
   const voids = db.prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.species') = ?
       AND json_extract(metadata, '$.gym.genome') = ? AND NOT ${NOT_VOID}`);
+  const freeze = epochFreeze(db); const policy = gatePolicyVersion();
   const score = (genomeId: string) => {
-    const rows = (results.all(speciesKey, genomeId) as Array<{ id: string; commit_sha: string; status: string; reason: string }>).filter((r) => all.includes(r.commit_sha));
-    const byCommit = new Map(rows.map((r) => [r.commit_sha, r]));
-    const repair = [...byCommit.values()].filter((r) => binary.includes(r.commit_sha));
-    return { byCommit, complete: all.every((c) => byCommit.has(c) || unscorable(db, speciesKey, genomeId, c)), wins: repair.filter((r) => r.status === 'success').length,
-      won: new Set(repair.filter((r) => r.status === 'success').map((r) => r.commit_sha)),
+    const ran = new Set((results.all(speciesKey, genomeId) as Array<{ commit_sha: string }>).map((r) => r.commit_sha));
+    const evidence = gatedEvidence(db, speciesKey, genomeId, all, freeze);
+    const byCommit = evidence.byKey;
+    const repair = [...byCommit.values()].filter((r) => binary.includes(r.commit));
+    return { evidence, byCommit, complete: all.every((c) => ran.has(c) || unscorable(db, speciesKey, genomeId, c)), wins: repair.filter((r) => r.status === 'success').length,
+      won: new Set(repair.filter((r) => r.status === 'success').map((r) => r.commit)),
       outOfScope: repair.filter((r) => r.reason.startsWith('out of scope')).length };
   };
-  const settled: Array<{ id: string; status: 'active' | 'retired'; wins: number; parentWins: number }> = [];
+  const settled: Array<{ id: string; status: 'active' | 'retired' | 'inconclusive'; wins: number; parentWins: number }> = [];
+  // Cockpit 3.0 scenario 10 (§16.11): the deciding holdout epoch, once more distinct candidates were judged on it than the contract
+  // allows, no longer separates skill from repeated exposure — neither a win nor a loss on it is evidence. Default on (safety block);
+  // DREAM_HOLDOUT_REUSE_LIMIT overrides the limit. A fresh epoch (GYM_HOLDOUT_EPOCH) is the operator's way out. Codex P0: the same
+  // check (strict: unknown validity also refuses) runs again inside promoteGenome, the only writer of status 'active'.
+  const decidingHoldout: DecidingHoldout = mutantCommits.length ? 'mutant' : 'mined';
   const promotedToday = () => Boolean(db.prepare("SELECT 1 FROM maker_genomes WHERE origin = 'dream' AND status = 'active' AND updated_at >= ? LIMIT 1").get(iso.slice(0, 10)));
   const trials = db.prepare("SELECT id, COALESCE(parent_id, ?) AS parent FROM maker_genomes WHERE status = 'trial' ORDER BY created_at").all(BASELINE_GENOME) as Array<{ id: string; parent: string }>;
   const grade = gradedScorer(db);
@@ -439,6 +627,36 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
   for (const trial of trials) {
     const mine = score(trial.id); const theirs = score(trial.parent);
     if (!mine.complete || !theirs.complete) continue;
+    const validity = holdoutValidity(db, decidingHoldout, mutantCommits.length ? mutantCommits : holdoutCommits);
+    if (validity.state !== 'valid') { // symmetric on purpose: no promotion and no retirement from a spent or unknown holdout
+      db.prepare("UPDATE maker_genomes SET status = 'inconclusive', note = ?, updated_at = ? WHERE id = ? AND status = 'trial'").run(validity.reason, iso, trial.id);
+      console.log(`🧬 genome ${trial.id} inconclusive (${validity.reason})`);
+      settled.push({ id: trial.id, status: 'inconclusive', wins: mine.wins, parentWins: theirs.wins });
+      continue;
+    }
+    // P0: every task both genomes were scored on needs an eligible gated result on both sides, under one contract — else HOLD
+    const table: HoldoutTable = mutantCommits.length ? 'gym_mutant_holdout' : 'gym_holdout';
+    const pairedKeys = all.filter((h) => !unscorable(db, speciesKey, trial.id, h) && !unscorable(db, speciesKey, trial.parent, h));
+    const eligibleOn = (s: typeof mine) => pairedKeys.filter((h) => s.byCommit.has(h)).length;
+    const incompatible = pairedKeys.filter((h) => {
+      const pr = theirs.byCommit.get(h); const mr = mine.byCommit.get(h);
+      return pr && mr && (pr.kind !== mr.kind || pr.tier !== mr.tier || (pr.graded_kind != null && mr.graded_kind != null && pr.graded_kind !== mr.graded_kind));
+    });
+    const left = (s: typeof mine) => `${eligibleOn(s)} of ${pairedKeys.length} tasks eligible, ${pairedKeys.length - eligibleOn(s)} UNKNOWN; attempts ${JSON.stringify(s.evidence.classes)}`;
+    const hold = eligibleOn(theirs) < pairedKeys.length ? `inconclusive: no eligible gated parent evidence (${left(theirs)})`
+      : eligibleOn(mine) < pairedKeys.length ? `inconclusive: no eligible gated mutant evidence (${left(mine)})`
+        : incompatible.length ? `inconclusive: incompatible evidence contract on ${incompatible.length} task(s) (task family, difficulty or graded kind differ)` : null;
+    if (hold) {
+      db.prepare("UPDATE maker_genomes SET status = 'inconclusive', note = ?, updated_at = ? WHERE id = ? AND status = 'trial'").run(`${hold}; gates ${policy}`, iso, trial.id);
+      try {
+        const epoch = holdoutEpoch(db, table);
+        db.prepare(`INSERT OR REPLACE INTO genome_trial_results (trial_id, parent_id, tier_set, state, recorded_at, epoch, gate_policy, evidence_json) VALUES (?, ?, ?, 'hold_ineligible', ?, ?, ?, ?)`)
+          .run(trial.id, trial.parent, mutantCommits.length ? mutantDecidingTiers(db).join(',') : 'mined', iso, epoch, policy, evidenceSummary(policy, table, epoch, pairedKeys, theirs.evidence, mine.evidence));
+      } catch { /* the record is fail-soft; the settlement above is the decision */ }
+      console.log(`🧬 genome ${trial.id} ${hold}`);
+      settled.push({ id: trial.id, status: 'inconclusive', wins: mine.wins, parentWins: theirs.wins });
+      continue;
+    }
     // paired comparison only on tasks both genomes could be scored on (a timed-out pair is unscorable, not lost)
     const discordant = (list: string[]) => {
       const scored = list.filter((h) => !unscorable(db, speciesKey, trial.id, h) && !unscorable(db, speciesKey, trial.parent, h));
@@ -458,10 +676,11 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
       decision: gradedDecision(diffs), refs: pairs.reduce((a, [pg, mg]) => a + Number(pg.graded) + Number(mg.graded), 0) };
     const significant = promotionRule() === 'graded' ? graded.decision === 'promote' : b > c && p < promotionAlpha();
     const wins = significant && mined.c - mined.b <= 1 && mine.outOfScope <= theirs.outOfScope && !promotedToday();
-    const status = wins ? 'active' : 'retired';
     const gradedNote = promotionRule() === 'graded' ? `; graded ${graded.mutant.toFixed(3)} vs ${graded.parent.toFixed(3)}, permutation p=${graded.p.toPrecision(3)} (${graded.decision})` : '';
-    db.prepare('UPDATE maker_genomes SET status = ?, note = ?, updated_at = ? WHERE id = ?')
-      .run(status, `holdout ${mine.wins}/${binary.length} vs parent ${theirs.wins}/${binary.length}; ${mutantCommits.length ? 'mutant ' : ''}discordant ${b} vs ${c}, McNemar p=${p.toFixed(3)}${gradedNote}${writeTestKeys.length ? `; write_test ${writeTestKeys.length} in the graded test` : ''}${mutantCommits.length ? `; mined discordant ${mined.b} vs ${mined.c}` : ''}; out of scope ${mine.outOfScope} vs ${theirs.outOfScope}${voidNote(trial.id)}`, iso, trial.id);
+    const note = `holdout ${mine.wins}/${binary.length} vs parent ${theirs.wins}/${binary.length}; ${mutantCommits.length ? 'mutant ' : ''}discordant ${b} vs ${c}, McNemar p=${p.toFixed(3)}${gradedNote}${writeTestKeys.length ? `; write_test ${writeTestKeys.length} in the graded test` : ''}${mutantCommits.length ? `; mined discordant ${mined.b} vs ${mined.c}` : ''}; out of scope ${mine.outOfScope} vs ${theirs.outOfScope}${voidNote(trial.id)}; gates ${policy}`;
+    let status: 'active' | 'retired' | 'inconclusive' = 'retired';
+    if (wins) status = promoteGenome(db, trial.id, decidingHoldout, deciding, note, iso).promoted ? 'active' : 'inconclusive';
+    else db.prepare("UPDATE maker_genomes SET status = 'retired', note = ?, updated_at = ? WHERE id = ?").run(note, iso, trial.id);
     if (trialDiagnosticsEnabled()) {
       try { // RX-4: record what this trial could have shown; never changes the decision above
         const scored = deciding.filter((h) => !unscorable(db, speciesKey, trial.id, h) && !unscorable(db, speciesKey, trial.parent, h));
@@ -469,7 +688,7 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
         const power = trialPower(f, scored.length - f, 0.8, 0.05);
         const state = mcnemarOneSided(f, 0) >= promotionAlpha() ? 'blind' : power < 0.8 ? 'underpowered' : 'powered';
         db.prepare(`INSERT OR REPLACE INTO genome_trial_results (trial_id, parent_id, tier_set, deciding_n, f_parent_failures, b, c, p, mined_b, mined_c, power_q8_l05, state, recorded_at, epoch)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(trial.id, trial.parent, mutantCommits.length ? mutantHoldoutTiers().join(',') : 'mined', scored.length, f, b, c, p, mined.b, mined.c,
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(trial.id, trial.parent, mutantCommits.length ? mutantDecidingTiers(db).join(',') : 'mined', scored.length, f, b, c, p, mined.b, mined.c,
           +power.toFixed(4), state, iso, holdoutEpoch(db, mutantCommits.length ? 'gym_mutant_holdout' : 'gym_holdout'));
       } catch { /* diagnostics are fail-soft */ }
     }
@@ -487,6 +706,9 @@ export function evaluateTrials(db: Database, speciesKey: string, holdoutCommits:
         VALUES (?, ?, 'graded_only', ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(trial_id) DO UPDATE SET graded_mean_parent = excluded.graded_mean_parent,
         graded_mean_mutant = excluded.graded_mean_mutant, graded_p = excluded.graded_p, graded_decision = excluded.graded_decision, graded_refs = excluded.graded_refs`)
         .run(trial.id, trial.parent, iso, holdoutEpoch(db, mutantCommits.length ? 'gym_mutant_holdout' : 'gym_holdout'), graded.parent, graded.mutant, graded.p, graded.decision, graded.refs);
+      // P0: the gate policy and the eligible evidence this decision rested on (Gate A reads only rows that carry it)
+      db.prepare('UPDATE genome_trial_results SET gate_policy = ?, evidence_json = ? WHERE trial_id = ?')
+        .run(policy, evidenceSummary(policy, table, holdoutEpoch(db, table), pairedKeys, theirs.evidence, mine.evidence), trial.id);
     } catch { /* the record is fail-soft */ }
     settled.push({ id: trial.id, status, wins: mine.wins, parentWins: theirs.wins });
   }
@@ -498,6 +720,12 @@ export function startDreamEvolution(db: Database, intervalMs = 3_600_000): (() =
   if (!dreamEvolutionEnabled()) return null;
   const species = process.env.DREAM_EVOLUTION_SPECIES || 'atomic@llama-router';
   const tick = () => {
+    markRun('dream_evolution');
+    // GYM_ORPHAN_SWEEP: settle remote gym runs whose host never reported (before trials are evaluated: an orphan keeps its item pending)
+    try {
+      const swept = sweepOrphanedGymRuns(db);
+      if (swept.mode !== 'off') { markRun('gym_orphan_sweep'); if (swept.candidates.length) console.log(`🧹 gym orphan sweep (${swept.mode}): ${swept.candidates.length} stale remote run(s), ${swept.settled.length} settled`); }
+    } catch (e) { markRun('gym_orphan_sweep', e); }
     try {
       const commits = frozenHoldoutCommits(db); // RX-12: the current epoch's mined holdout
       const mutants = mutantTrialsEnabled() ? mutantHoldoutKeys(db) : [];

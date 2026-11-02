@@ -8,7 +8,10 @@ import { checkerSecondOpinion, checkerSecondOpinionState } from '../services/jud
 import { shouldRecordSecondOpinion } from '../services/loop-worker-executor-service';
 
 let db: Database.Database;
-const choice = (c: string, confidence: number) => ({ verdict: { type: 'choice', choice: c, confidence, probabilities: {} } });
+// E2: every question must be answered for a decision (a missing atomic answer is insufficient evidence), so the base fixture
+// answers the three atomic questions neutrally; the S2 test overrides them.
+const choice = (c: string, confidence: number) => ({ verdict: { type: 'choice', choice: c, confidence, probabilities: {} },
+  tests_named_behaviour: { type: 'noul', noul: 0.9 }, weakens_assertions: { type: 'noul', noul: 0.05 }, trivial_tests: { type: 'noul', noul: 0.1 } });
 const client = (answers: unknown, sent: unknown[] = []) => new TypeSafeClient(vi.fn().mockImplementation(async (_u, init) => {
   sent.push(JSON.parse(String(init.body)));
   return { ok: true, status: 200, json: async () => ({ model: 'jev-1.13.0', answers }) };
@@ -20,7 +23,7 @@ afterEach(() => { delete process.env.TYPESAFE_API_KEY; delete process.env.TYPESA
 it('records agreement with the real checker, gated on confidence', async () => {
   const s = checkerSecondOpinionState('add a test', 'diff --git a/x b/x', []);
   const agree = await runJudgment(db, checkerSecondOpinion, { type: 'worker_lease', id: 'l1' }, s, client(choice('accepted', 0.9)), { checkerVerdict: 'accepted' });
-  expect(agree).toMatchObject({ decision: 'yes', reason: 'jev=accepted conf=0.90 checker=accepted agree' });
+  expect(agree).toMatchObject({ decision: 'yes', reason: expect.stringMatching(/^jev=accepted conf=0\.90 checker=accepted agree/) });
   const disagree = await runJudgment(db, checkerSecondOpinion, { type: 'worker_lease', id: 'l2' }, s, client(choice('rejected', 0.8)), { checkerVerdict: 'accepted' });
   expect(disagree?.decision).toBe('no'); expect(disagree?.reason).toContain('disagree');
   const unsure = await runJudgment(db, checkerSecondOpinion, { type: 'worker_lease', id: 'l3' }, s, client(choice('accepted', 0.4)), { checkerVerdict: 'accepted' });

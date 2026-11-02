@@ -93,7 +93,7 @@ it('RX-13: DREAM_PROMOTION_RULE=both records the e-process decision and never ch
     const ins = db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
       VALUES (?, 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`);
     commits.forEach((c, i) => {
-      const meta = (genome: string, ok: boolean) => JSON.stringify({ gym: { commit: c, species: 'atomic@llama-router', genome }, gym_result: { status: ok ? 'success' : 'failure', reason: ok ? 'tests green' : 'tests still red' } });
+      const meta = (genome: string, ok: boolean) => JSON.stringify({ gym: { commit: c, species: 'atomic@llama-router', genome, prod_gates: 1 }, gym_result: { status: ok ? 'success' : 'failure', reason: ok ? 'tests green' : 'tests still red', ...(ok ? { prod_gates: { lint: 'pass' } } : {}) } });
       ins.run(`p${i}`, meta(BASELINE_GENOME, i >= 10), `2026-10-05T11:${String(i).padStart(2, '0')}:00Z`, `2026-10-05T11:${String(i).padStart(2, '0')}:00Z`);
       ins.run(`m${i}`, meta('g-e', i !== 0), `2026-10-05T12:${String(i).padStart(2, '0')}:00Z`, `2026-10-05T12:${String(i).padStart(2, '0')}:00Z`);
     });

@@ -65,6 +65,9 @@ it('W3: splits gym species per model, flags a benched species and counts what ne
 it('honest needs-you: open loop PRs count, merged ones do not; no_change and dismissed requeue candidates do not', async () => {
   const { dismissRequeue } = await import('../services/decisions-inbox');
   proposal('r1', 'regressed'); proposal('i1', 'infra_failed'); proposal('n1', 'no_change');
+  // a regression with a maker attribution is the operator's; unattributed ones are counted as attribution_unknown
+  db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at)
+    VALUES ('a-r1', 'outcome_attribution', 'self_improvement', 'r1', 'h', 'annotation', 'maker_failure', 'test', ?)`).run(new Date().toISOString());
   const run = db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
     VALUES (?, 'test-gap', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`);
   run.run('o1', JSON.stringify({ pr_url: 'https://github.com/o/r/pull/1' }), ago(30), ago(30));
@@ -73,10 +76,11 @@ it('honest needs-you: open loop PRs count, merged ones do not; no_change and dis
   run.run('c1', JSON.stringify({ pr_url: 'https://github.com/o/r/pull/4', pr_outcome: { state: 'closed_unmerged', settled_at: ago(1) } }), ago(30), ago(30));
   let c = operatorCockpit(db, NOW);
   expect(c.needs_you.open_prs).toBe(2);
-  expect(c.needs_you.requeue).toBe(2);
-  dismissRequeue(db, 'i1', 'op');
+  expect(c.needs_you.requeue).toBe(1); // E2: i1 (infra_failed) is operational system work, not an operator decision
+  expect(c.needs_you.system_requeue?.infra_failed).toBe(1);
+  dismissRequeue(db, 'r1', 'op');
   c = operatorCockpit(db, NOW);
-  expect(c.needs_you.requeue).toBe(1);
+  expect(c.needs_you.requeue).toBe(0);
 });
 
 it('honest cockpit: tokens per verified change = maker + reviewer lease tokens / verified proposals (not an average over zero-token gym outcomes)', () => {

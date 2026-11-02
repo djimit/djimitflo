@@ -58,7 +58,7 @@ function refinementTimeoutMs(): number {
 
 async function callOllama(prompt: string): Promise<string> {
   return generateText(
-    { prompt, model: defaultModel(), temperature: 0.2, maxTokens: 1024, timeoutMs: refinementTimeoutMs() },
+    { prompt, model: defaultModel(), temperature: 0.2, maxTokens: 1024, timeoutMs: refinementTimeoutMs(), purpose: 'self_improvement:refinement' },
     { endpoints: llmEndpoints(defaultOllamaUrl()) },
   );
 }

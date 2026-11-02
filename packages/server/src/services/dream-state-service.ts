@@ -1,10 +1,12 @@
 import fs from 'fs';
+import { realRunSql } from './synthetic-runs';
 import type { Database } from 'better-sqlite3';
 import { judgmentMode, runJudgment } from './judgment-service';
 import { failureCause } from './judgments/failure-cause';
 import { MemoryCandidateService } from './memory-candidate-service';
 import { SelfImprovementService } from './self-improvement-service';
 import { redactSecrets } from './secret-patterns';
+import { markRun } from './scheduler-registry';
 
 /**
  * Outcome-driven dream state (plan E11), step 1–2: replay the recent failed/blocked loop runs and classify each once with
@@ -72,7 +74,7 @@ export class DreamStateService {
   start(intervalMs = 6 * 3600_000): void {
     if (this.timer || !dreamStateEnabled()) return;
     // One pass per interval, however often the container restarts (prod 2026-09-25: every auto-deploy added a ledger row).
-    const run = () => { if (!this.due(intervalMs)) return; this.replay().then((r) => { if (r.classified) console.log(`🌙 dream state: classified ${r.classified}/${r.candidates} failed runs`); }).catch((err) => console.warn('Dream state replay failed:', err instanceof Error ? err.message : String(err))); };
+    const run = () => { markRun('dream_state'); if (!this.due(intervalMs)) return; this.replay().then((r) => { if (r.classified) console.log(`🌙 dream state: classified ${r.classified}/${r.candidates} failed runs`); }).catch((err) => console.warn('Dream state replay failed:', err instanceof Error ? err.message : String(err))); };
     this.timer = setInterval(run, intervalMs); this.timer.unref?.();
     setTimeout(run, 120_000).unref?.();
   }
@@ -92,6 +94,8 @@ export class DreamStateService {
         -- classified once, except that an 'uncertain' result gets one more try (the state was enriched on 2026-09-24)
         -- a run that never leased a worker has nothing to diagnose (13/32 'uncertain' on prod 2026-09-24)
         AND EXISTS (SELECT 1 FROM worker_leases WHERE loop_run_id = loop_runs.id)
+        -- a synthetic PR-review run is bookkeeping; its failure (e.g. github_unavailable) is no loop failure to diagnose
+        AND ${realRunSql()}
         AND id NOT IN (SELECT subject_id FROM judgments WHERE judgment = 'failure_cause' AND subject_type = 'loop_run'
           GROUP BY subject_id HAVING SUM(decision != 'uncertain') > 0 OR COUNT(*) >= 2)
       ORDER BY updated_at DESC LIMIT ?`).all(since, limit) as Array<{ id: string; loop_name: string; status: string; gates_json: string | null; goal_id: string | null }>;
