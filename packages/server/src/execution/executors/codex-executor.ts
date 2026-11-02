@@ -15,9 +15,10 @@
 import { Task, ExecutionEventType, LogLevel, ExecutionEventCreateInput } from '@djimitflo/shared';
 import { TaskExecutor, ExecutionSession, ExecutionResult, ExecutorOptions, ExecutorKind } from '../types';
 import { buildExecutorEnv } from './executor-env';
-import { runtimeProcessClosed, stopRuntimeProcess } from './runtime-process';
+import { isSubscriptionRun } from './subscription-env';
+import { runtimeProcessClosed, spawnRuntime, stopRuntimeProcess } from './runtime-process';
 import { randomUUID } from 'crypto';
-import { spawn, ChildProcess } from 'child_process';
+import type { ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import { captureExecutorOutput } from '../executor-output';
 
@@ -117,15 +118,15 @@ export class CodexExecutor implements TaskExecutor {
     let resolveClosed!: () => void;
     const closed = new Promise<void>(resolve => { resolveClosed = resolve; });
 
-    const skipPerms = options?.skipPermissions ?? this.skipPermissions;
+    const skipPerms = !isSubscriptionRun(options, 'codex') && (options?.skipPermissions ?? this.skipPermissions);
 
     const spawnProcess = () => {
       if (session.status === 'cancelled') { resolveClosed(); emitter.emit('exit', null); return; }
       const cwd = options?.workingDirectory || process.cwd();
-      const env = buildExecutorEnv(options?.environment);
+      const env = buildExecutorEnv(options?.environment, 'codex');
       const timeoutMs = options?.timeout ?? this.executionTimeoutMs;
 
-      const child = spawn(this.codexPath, args, {
+      const child = spawnRuntime(this.codexPath, args, {
         cwd,
         env,
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -147,7 +148,8 @@ export class CodexExecutor implements TaskExecutor {
         emitter.emit('output', data.toString(), 'stderr');
       });
 
-      child.on('close', (code) => {
+      child.on('close', (code, signal) => {
+        session.exit = { code, signal };
         clearTimeout(timeoutHandle);
         emitter.emit('exit', code);
       });
@@ -203,10 +205,14 @@ export class CodexExecutor implements TaskExecutor {
       if (!['low', 'medium', 'high', 'xhigh', 'max'].includes(reasoningEffort)) throw new Error('INVALID_REASONING_EFFORT');
       args.push('-c', `model_reasoning_effort=${JSON.stringify(reasoningEffort)}`);
     }
-    if (options?.codexSandbox) args.push('--sandbox', options.codexSandbox);
-
-    const skipPerms = options?.skipPermissions ?? this.skipPermissions;
-    if (skipPerms) {
+    // SUBSCRIPTION_GYM_SPECIES maker: writes inside the worktree only, approvals pinned to never (exec is non-interactive;
+    // the pin overrides a CODEX_HOME config.toml) — never the bypass flag. Flags checked against the 0.146 CLI (test fixtures).
+    const subscription = isSubscriptionRun(options, 'codex');
+    const sandbox = options?.codexSandbox ?? (subscription ? 'workspace-write' : undefined);
+    if (sandbox) args.push('--sandbox', sandbox);
+    if (subscription) {
+      args.push('-c', 'approval_policy="never"');
+    } else if (options?.skipPermissions ?? this.skipPermissions) {
       args.push('--dangerously-bypass-approvals-and-sandbox');
     }
 

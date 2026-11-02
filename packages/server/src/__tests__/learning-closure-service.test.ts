@@ -37,7 +37,7 @@ function seedRun(db: Database.Database, id: string, checkerAccepted = true, repo
         verdict: 'accepted',
         maker_lease_id: `${id}-maker`,
         // P1a: manual verdicts require reviewer+reason attestation.
-        manual_review_attestation: { reviewer: 'test-reviewer', reason: 'test fixture: simulated human review attestation' },
+        manual_review_attestation: { reviewer: 'test-reviewer', reviewer_type: 'human', reviewer_user_id: 'user-op', reason: 'test fixture: simulated human review attestation' },
       })
     : JSON.stringify({ maker_lease_id: `${id}-maker` }), now, now);
   const assurance = new AgentAssuranceService(db);

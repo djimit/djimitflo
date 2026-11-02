@@ -1,0 +1,272 @@
+{
+  "at": "2026-10-23T22:52:27.563Z",
+  "credential_configured": true,
+  "http": 200,
+  "auth_status": "existing client credential accepted",
+  "collections": [
+    {
+      "name": "action_items",
+      "http": 200,
+      "status": "green",
+      "points_count": 1448,
+      "indexed_vectors_count": 0,
+      "vectors": {
+        "size": 768,
+        "distance": "Cosine"
+      }
+    },
+    {
+      "name": "agent_shared_memory",
+      "http": 200,
+      "status": "grey",
+      "points_count": 33,
+      "indexed_vectors_count": 0,
+      "vectors": {
+        "size": 1536,
+        "distance": "Cosine"
+      }
+    },
+    {
+      "name": "agent_shared_memory_v2",
+      "http": 200,
+      "status": "grey",
+      "points_count": 793,
+      "indexed_vectors_count": 0,
+      "vectors": {
+        "size": 768,
+        "distance": "Cosine"
+      }
+    },
+    {
+      "name": "authority_events",
+      "http": 200,
+      "status": "green",
+      "points_count": 2839,
+      "indexed_vectors_count": 0,
+      "vectors": {
+        "size": 1,
+        "distance": "Cosine"
+      }
+    },
+    {
+      "name": "chunks-persona",
+      "http": 200,
+      "status": "green",
+      "points_count": 500,
+      "indexed_vectors_count": 0,
+      "vectors": {
+        "size": 768,
+        "distance": "Cosine"
+      }
+    },
+    {
+      "name": "crewai_docs",
+      "http": 200,
+      "status": "grey",
+      "points_count": 47,
+      "indexed_vectors_count": 0,
+      "vectors": {
+        "size": 768,
+        "distance": "Cosine"
+      }
+    },
+    {
+      "name": "dennis-knowledge",
+      "http": 200,
+      "status": "green",
+      "points_count": 175,
+      "indexed_vectors_count": 0,
+      "vectors": {
+        "size": 768,
+        "distance": "Cosine"
+      }
+    },
+    {
+      "name": "djiment_kb",
+      "http": 200,
+      "status": "grey",
+      "points_count": 60618,
+      "indexed_vectors_count": 53358,
+      "vectors": {
+        "size": 768,
+        "distance": "Cosine"
+      }
+    },
+    {
+      "name": "djimit-skills",
+      "http": 200,
+      "status": "grey",
+      "points_count": 1195,
+      "indexed_vectors_count": 0,
+      "vectors": {
+        "size": 768,
+        "distance": "Cosine"
+      }
+    },
+    {
+      "name": "djimit_okf",
+      "http": 200,
+      "status": "green",
+      "points_count": 30575,
+      "indexed_vectors_count": 30464,
+      "vectors": {
+        "size": 768,
+        "distance": "Cosine"
+      }
+    },
+    {
+      "name": "djimitflo_explainers",
+      "http": 200,
+      "status": "green",
+      "points_count": 43,
+      "indexed_vectors_count": 0,
+      "vectors": {
+        "size": 384,
+        "distance": "Cosine"
+      }
+    },
+    {
+      "name": "djimitflo_reasoning",
+      "http": 200,
+      "status": "green",
+      "points_count": 2,
+      "indexed_vectors_count": 0,
+      "vectors": {
+        "size": 384,
+        "distance": "Cosine"
+      }
+    },
+    {
+      "name": "djimitflo_swarm",
+      "http": 200,
+      "status": "green",
+      "points_count": 87,
+      "indexed_vectors_count": 0,
+      "vectors": {
+        "size": 384,
+        "distance": "Cosine"
+      }
+    },
+    {
+      "name": "djimitkb-wiki",
+      "http": 200,
+      "status": "green",
+      "points_count": 63,
+      "indexed_vectors_count": 0,
+      "vectors": {
+        "size": 768,
+        "distance": "Cosine"
+      }
+    },
+    {
+      "name": "juraregel-rules",
+      "http": 200,
+      "status": "green",
+      "points_count": 10,
+      "indexed_vectors_count": 0,
+      "vectors": {
+        "size": 768,
+        "distance": "Cosine"
+      }
+    },
+    {
+      "name": "langchain_docs",
+      "http": 200,
+      "status": "grey",
+      "points_count": 18,
+      "indexed_vectors_count": 0,
+      "vectors": {
+        "size": 768,
+        "distance": "Cosine"
+      }
+    },
+    {
+      "name": "litellm-cache",
+      "http": 200,
+      "status": "grey",
+      "points_count": 7987,
+      "indexed_vectors_count": 0,
+      "vectors": {
+        "size": 768,
+        "distance": "Cosine"
+      }
+    },
+    {
+      "name": "litellm_docs",
+      "http": 200,
+      "status": "grey",
+      "points_count": 48,
+      "indexed_vectors_count": 0,
+      "vectors": {
+        "size": 768,
+        "distance": "Cosine"
+      }
+    },
+    {
+      "name": "mcp_docs",
+      "http": 200,
+      "status": "grey",
+      "points_count": 2,
+      "indexed_vectors_count": 0,
+      "vectors": {
+        "size": 768,
+        "distance": "Cosine"
+      }
+    },
+    {
+      "name": "ollama_docs",
+      "http": 200,
+      "status": "grey",
+      "points_count": 97,
+      "indexed_vectors_count": 0,
+      "vectors": {
+        "size": 768,
+        "distance": "Cosine"
+      }
+    },
+    {
+      "name": "openai_docs",
+      "http": 200,
+      "status": "grey",
+      "points_count": 70,
+      "indexed_vectors_count": 0,
+      "vectors": {
+        "size": 768,
+        "distance": "Cosine"
+      }
+    },
+    {
+      "name": "opencode_docs",
+      "http": 200,
+      "status": "grey",
+      "points_count": 8,
+      "indexed_vectors_count": 0,
+      "vectors": {
+        "size": 768,
+        "distance": "Cosine"
+      }
+    },
+    {
+      "name": "rechtspraak-benchmark",
+      "http": 200,
+      "status": "grey",
+      "points_count": 351,
+      "indexed_vectors_count": 0,
+      "vectors": {
+        "size": 768,
+        "distance": "Cosine"
+      }
+    },
+    {
+      "name": "signals",
+      "http": 200,
+      "status": "grey",
+      "points_count": 1,
+      "indexed_vectors_count": 0,
+      "vectors": {
+        "size": 768,
+        "distance": "Cosine"
+      }
+    }
+  ]
+}

@@ -24,7 +24,10 @@ export class TelegramApiService {
       headers: { authorization: `Bearer ${this.auth.generateToken(user)}`, 'content-type': 'application/json' },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-    const data = await response.json() as any;
+    // 204 No Content (e.g. POST /self-improve/proposals/:id/prescreen-label) has no body to parse
+    const raw = await response.text();
+    let data: any = {};
+    try { data = raw ? JSON.parse(raw) : {}; } catch { data = {}; }
     if (!response.ok) throw new Error(data.error?.code || `DJIMFLO_API_HTTP_${response.status}`);
     return data as T;
   }

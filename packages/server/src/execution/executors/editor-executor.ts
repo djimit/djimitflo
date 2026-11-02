@@ -16,10 +16,10 @@
 import { Task, ExecutionEventType, LogLevel, ExecutionEventCreateInput } from '@djimitflo/shared';
 import { TaskExecutor, ExecutionSession, ExecutionResult, ExecutorOptions, ExecutorKind } from '../types';
 import { buildExecutorEnv } from './executor-env';
-import { runtimeProcessClosed, stopRuntimeProcess } from './runtime-process';
+import { runtimeProcessClosed, spawnRuntime, stopRuntimeProcess } from './runtime-process';
 import { structuredRuntimeEvent } from './structured-runtime-event';
 import { randomUUID } from 'crypto';
-import { spawn, ChildProcess } from 'child_process';
+import type { ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import { captureExecutorOutput } from '../executor-output';
 
@@ -70,7 +70,7 @@ export class EditorExecutor implements TaskExecutor {
       const env = buildExecutorEnv(options?.environment);
       const timeoutMs = options?.timeout ?? this.executionTimeoutMs;
 
-      const child = spawn(this.clinePath, args, {
+      const child = spawnRuntime(this.clinePath, args, {
         cwd,
         env,
         stdio: ['ignore', 'pipe', 'pipe'],

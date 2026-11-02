@@ -5,7 +5,8 @@ import { afterEach, beforeEach, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { assignmentContext, assignmentContextMarkdown } from '../services/assignment-context';
+import { assignmentContext, assignmentContextMarkdown, memoryHoldout, memoryHoldoutRate } from '../services/assignment-context';
+import { LoopService, type LoopFinding, type LoopRunRecord } from '../services/loop-service';
 
 let db: Database.Database; let checkout: string;
 const now = new Date().toISOString(); const old = new Date(Date.now() - 30 * 86_400_000).toISOString();
@@ -80,4 +81,41 @@ it('P1: a rule is sealed on first use and refused once its content changes', () 
     expect(second.rules.map((r) => r.id)).not.toContain('r-seal');
     expect(db.prepare("SELECT judgment, decision FROM judgments WHERE subject_id = 'r-seal'").get()).toEqual({ judgment: 'artifact_integrity', decision: 'no' });
   } finally { delete process.env.LOOP_MEMORY_RULES_ENABLED; }
+});
+
+it('MEMORY_HOLDOUT_RATE: a deterministic fraction of runs (by goal id) is held out; 0 / unset = off', () => {
+  const ids = Array.from({ length: 2000 }, (_, i) => `goal-${i}`);
+  const held = ids.filter((id) => memoryHoldout(id, 0.2));
+  expect(held.length).toBeGreaterThan(330); expect(held.length).toBeLessThan(470); // ≈ 20 %
+  expect(ids.filter((id) => memoryHoldout(id, 0.2))).toEqual(held); // same ids every time
+  expect(ids.some((id) => memoryHoldout(id, 0))).toBe(false);
+  expect(ids.every((id) => memoryHoldout(id, 1))).toBe(true);
+  expect(memoryHoldoutRate({})).toBe(0); expect(memoryHoldoutRate({ MEMORY_HOLDOUT_RATE: '7' })).toBe(1); expect(memoryHoldoutRate({ MEMORY_HOLDOUT_RATE: 'x' })).toBe(0);
+});
+
+it('MEMORY_HOLDOUT_RATE: a held-out run gets no rules, logs no read and says so; a treated run of another goal still gets rules', () => {
+  const rate = '0.5';
+  const heldGoal = Array.from({ length: 50 }, (_, i) => `hg-${i}`).find((g) => memoryHoldout(g, 0.5))!;
+  const treatedGoal = Array.from({ length: 50 }, (_, i) => `tg-${i}`).find((g) => !memoryHoldout(g, 0.5))!;
+  const held = assignmentContext(db, { id: 'run-h', goal_id: heldGoal }, checkout, 'loop-maker:run-h', { LOOP_MEMORY_RULES_ENABLED: 'true', MEMORY_HOLDOUT_RATE: rate });
+  expect(held).toEqual({ examples: [], rules: [], memory_holdout: true });
+  expect(db.prepare("SELECT COUNT(*) AS n FROM memory_access_log WHERE agent_id = 'loop-maker:run-h'").get()).toEqual({ n: 0 });
+  const treated = assignmentContext(db, { id: 'run-t', goal_id: treatedGoal }, checkout, 'loop-maker:run-t', { LOOP_MEMORY_RULES_ENABLED: 'true', MEMORY_HOLDOUT_RATE: rate });
+  expect(treated.rules.length).toBe(2); expect(treated.memory_holdout).toBeUndefined();
+  // rules off: no holdout either (nothing to withhold)
+  expect(assignmentContext(db, { id: 'run-x', goal_id: heldGoal }, checkout, 'm', { MEMORY_HOLDOUT_RATE: rate })).toEqual({ examples: [], rules: [] });
+});
+
+it('MEMORY_HOLDOUT_RATE: the maker assignment records memory_holdout: true on its assignment_context event', () => {
+  process.env.LOOP_MEMORY_RULES_ENABLED = 'true'; process.env.MEMORY_HOLDOUT_RATE = '1';
+  try {
+    const run = { id: 'holdout-run', loop_name: 'doc-drift-and-small-fix-loop', goal_id: 'g1', mode: 'closed', status: 'planning', metadata: {}, gates: [], next_actions: [], plan: {}, state_file: null, repository_path: checkout } as unknown as LoopRunRecord;
+    db.prepare("INSERT INTO loop_runs (id, goal_id, loop_name, mode, status) VALUES ('holdout-run', 'g1', 'doc-drift-and-small-fix-loop', 'closed', 'planning')").run();
+    const finding = { id: 'f1', type: 'documentation', severity: 'low', file: 'README.md', line: 1, message: 'm', evidence: 'e', suggested_fix: 's' } as LoopFinding;
+    const loops = new LoopService(db);
+    loops.writeWorkAssignment(checkout, run, finding, 'codex');
+    const event = db.prepare("SELECT metadata FROM loop_events WHERE loop_run_id = 'holdout-run' AND event_type = 'assignment_context'").get() as { metadata: string } | undefined;
+    expect(JSON.parse(event!.metadata)).toMatchObject({ memory_holdout: true, rule_ids: [] });
+    expect(fs.readFileSync(loops.workAssignmentPath(checkout), 'utf8')).not.toContain('## Engineering Rules');
+  } finally { delete process.env.LOOP_MEMORY_RULES_ENABLED; delete process.env.MEMORY_HOLDOUT_RATE; }
 });

@@ -43,18 +43,16 @@ describe('SelfImprovementAgentReviewService', () => {
     expect(actors.every((actor) => actor?.includes('run-42'))).toBe(true);
   });
 
-  it('falls back to needs_evidence on an unparseable model response, without fabricating evidence', async () => {
+  it('B32: an unparseable answer is quarantined, never stored as a review; exhausted seats close without a vote', async () => {
     const { db, panel } = setup();
     const reviewer = new SelfImprovementAgentReviewService(db, async () => 'not json at all');
     vi.spyOn(console, 'warn').mockImplementation(() => {});
-    // an unreadable answer is retried like a failed call; only after 3 attempts is it recorded
     expect((await reviewer.reviewMissingSpecialists(panel.id, 'run-1')).reviews ?? []).toHaveLength(0);
-    await reviewer.reviewMissingSpecialists(panel.id, 'run-2');
-    const updated = await reviewer.reviewMissingSpecialists(panel.id, 'run-3');
-    expect(updated.consensus.needs_evidence_count).toBe(2);
-    for (const review of updated.reviews || []) {
-      expect(review.evidence_refs).toContain('agent-review:model-response-unparseable-or-missing-evidence');
-    }
+    const updated = await reviewer.reviewMissingSpecialists(panel.id, 'run-2');
+    expect(updated.reviews ?? []).toHaveLength(0);
+    expect(updated.consensus.needs_evidence_count).toBe(0);
+    expect(updated.status).toBe('consensus_ready'); // both seats closed: decided on valid reviews only (none → panel_failed path)
+    expect((db.prepare('SELECT COUNT(*) n FROM specialist_review_quarantine WHERE panel_id = ?').get(panel.id) as { n: number }).n).toBe(4);
   });
 
   it('a garbled answer followed by a readable one yields the real review (prod 2026-09-25)', async () => {
@@ -67,14 +65,16 @@ describe('SelfImprovementAgentReviewService', () => {
     expect((await reviewer.reviewMissingSpecialists(panel.id, 'run-2')).consensus.support_count).toBe(2);
   });
 
-  it('downgrades a claimed-support response with no evidence_refs to needs_evidence', async () => {
+  it('B32: a claimed support without evidence_refs is invalid (quarantined), not silently downgraded to needs_evidence', async () => {
     const { db, panel } = setup();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
     const reviewer = new SelfImprovementAgentReviewService(db, async () =>
       JSON.stringify({ stance: 'support', confidence: 0.95, findings: ['looks fine'], evidence_refs: [] }),
     );
     const updated = await reviewer.reviewMissingSpecialists(panel.id, 'run-1');
     expect(updated.consensus.support_count).toBe(0);
-    expect(updated.consensus.needs_evidence_count).toBe(2);
+    expect(updated.consensus.needs_evidence_count).toBe(0);
+    expect(updated.reviews ?? []).toHaveLength(0);
   });
 
   it('ignores a <think> block with braces before the JSON answer', async () => {
@@ -88,21 +88,22 @@ describe('SelfImprovementAgentReviewService', () => {
   it('extracts JSON from a markdown-fenced response', async () => {
     const { db, panel } = setup();
     const reviewer = new SelfImprovementAgentReviewService(db, async () =>
-      '```json\n' + JSON.stringify({ stance: 'support', confidence: 0.9, evidence_refs: ['context:rationale'] }) + '\n```',
+      '```json\n' + JSON.stringify({ stance: 'support', confidence: 0.9, findings: ['ok'], evidence_refs: ['context:rationale'] }) + '\n```',
     );
     const updated = await reviewer.reviewMissingSpecialists(panel.id, 'run-1');
     expect(updated.consensus.support_count).toBe(2);
   });
 
-  it('a permanently throwing model call does not leave the specialist unreviewed forever (bounded retries, then the recorded failure)', async () => {
+  it('a permanently throwing model call does not leave the specialist unreviewed forever (bounded retries, then the seat closes)', async () => {
     const { db, panel } = setup();
     const reviewer = new SelfImprovementAgentReviewService(db, async () => { throw new Error('network down'); });
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     await reviewer.reviewMissingSpecialists(panel.id, 'run-1');
     await reviewer.reviewMissingSpecialists(panel.id, 'run-2');
     const updated = await reviewer.reviewMissingSpecialists(panel.id, 'run-3');
-    expect(updated.consensus.submitted_reviews).toBe(2);
-    expect(updated.consensus.needs_evidence_count).toBe(2);
+    expect(updated.status).toBe('consensus_ready');
+    expect(updated.consensus.submitted_reviews).toBe(0); // B32: no synthetic needs_evidence review
+    expect(updated.consensus.needs_evidence_count).toBe(0);
   });
 
   it('only reviews specialists that have not already been reviewed', async () => {
@@ -113,13 +114,13 @@ describe('SelfImprovementAgentReviewService', () => {
     let calls = 0;
     const reviewer = new SelfImprovementAgentReviewService(db, async () => {
       calls += 1;
-      return JSON.stringify({ stance: 'support', confidence: 0.9, evidence_refs: ['context:rationale'] });
+      return JSON.stringify({ stance: 'support', confidence: 0.9, findings: ['ok'], evidence_refs: ['context:rationale'] });
     });
     await reviewer.reviewMissingSpecialists(panel.id, 'run-1');
     expect(calls).toBe(1);
   });
 
-  it('does not record a failed model call as a review: the seat stays open for a retry, then falls back after 3 attempts', async () => {
+  it('does not record a failed model call as a review: the seat stays open for a retry, then closes (quarantined) after 3 attempts', async () => {
     const { db, panel } = setup();
     let calls = 0;
     const reviewer = new SelfImprovementAgentReviewService(db, async () => { calls++; throw new Error('Ollama request failed: 404'); });
@@ -129,8 +130,10 @@ describe('SelfImprovementAgentReviewService', () => {
     expect(first.status).not.toBe('consensus_ready');
     await reviewer.reviewMissingSpecialists(panel.id, 'run-2');
     const third = await reviewer.reviewMissingSpecialists(panel.id, 'run-3');
-    expect((third.reviews ?? []).length).toBe(2); // bounded: now the recorded failure is used
-    expect(third.reviews?.[0].findings.join()).toContain('Review generation failed: Ollama request failed: 404');
+    expect(third.reviews ?? []).toHaveLength(0); // B32: bounded, but no synthetic review: the seats are closed
+    expect(third.status).toBe('consensus_ready');
+    const q = db.prepare('SELECT error FROM specialist_review_quarantine WHERE panel_id = ?').all(panel.id) as Array<{ error: string }>;
+    expect(q.map((r) => r.error).join()).toContain('generation failed: Ollama request failed: 404');
     expect(calls).toBe(6);
     warn.mockRestore();
   });
