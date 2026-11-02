@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, GitBranch, Play, Plus, RefreshCw, ShieldCh
 import { api, type GoalRecord, type LoopCatalogItem, type LoopGate, type LoopReviewBundle, type LoopRunRecord, type WorkerLeaseRecord } from '../lib/api';
 import { useAuthStore } from '../lib/auth-store';
 import { useDialog } from '../components/ConfirmDialog';
+import { GymRunPanel, isGymRun } from '../components/GymRunPanel';
 
 export function GoalsLoopsPage() {
   const dialog = useDialog();
@@ -27,10 +28,12 @@ export function GoalsLoopsPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  // UX-005: a requested run is shown only if it is that run — never another run's evidence as a fallback
   const selectedRun = useMemo(
-    () => runs.find((run) => run.id === selectedRunId) || runs[0] || null,
+    () => (selectedRunId ? runs.find((run) => run.id === selectedRunId) ?? null : runs[0] ?? null),
     [runs, selectedRunId]
   );
+  const [runLookupError, setRunLookupError] = useState<{ id: string; message: string } | null>(null);
   const selectedBundle = bundle?.run.id === selectedRun?.id ? bundle : null;
   const selectedRunRef = useRef<string | null>(null);
   selectedRunRef.current = selectedRun?.id || null;
@@ -49,6 +52,17 @@ export function GoalsLoopsPage() {
     }
     void loadBundle(selectedRun.id);
   }, [selectedRun?.id]);
+
+  // UX-005: the run list holds only the newest runs; a linked older run is fetched by its id
+  useEffect(() => {
+    if (loading || !selectedRunId || runs.some((run) => run.id === selectedRunId)) return;
+    let active = true;
+    setRunLookupError(null);
+    api.getLoopRun(selectedRunId)
+      .then((run) => { if (active) setRuns((current) => current.some((r) => r.id === run.id) ? current : [run, ...current]); })
+      .catch((err) => { if (active) setRunLookupError({ id: selectedRunId, message: err instanceof Error ? err.message : String(err) }); });
+    return () => { active = false; };
+  }, [loading, selectedRunId, runs]);
 
   async function refresh() {
     setLoading(true);
@@ -450,6 +464,9 @@ export function GoalsLoopsPage() {
                 </div>
               </div>
 
+              {/* gym runs have no worker leases: their claim, result and outcome are read from the run itself */}
+              {isGymRun(selectedRun) && <GymRunPanel key={selectedRun.id} run={selectedBundle?.run ?? selectedRun} />}
+
               <section className="bg-background-secondary border border-border rounded-lg p-5">
                 <h3 className="text-lg font-semibold text-foreground mb-3">Gates</h3>
                 <div className="space-y-2">
@@ -529,6 +546,12 @@ export function GoalsLoopsPage() {
                 </div>
               </section>
             </>
+          ) : selectedRunId && runLookupError?.id === selectedRunId ? (
+            <div role="alert" className="bg-background-secondary border border-status-error/30 rounded-lg p-8 text-status-error">
+              Run {selectedRunId} is unavailable: {runLookupError.message}. No other run&apos;s evidence is shown; pick a run from the list.
+            </div>
+          ) : selectedRunId && !loading ? (
+            <div className="bg-background-secondary border border-border rounded-lg p-8 text-foreground-secondary">Loading run {selectedRunId}…</div>
           ) : (
             <div className="bg-background-secondary border border-border rounded-lg p-8 text-foreground-secondary">Select a loop run.</div>
           )}

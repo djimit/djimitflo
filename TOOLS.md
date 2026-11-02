@@ -25,6 +25,7 @@ A registered runtime is not an admitted one; the decision per version is in `GET
 
 | Runtime | Pinned version | Record | Expires |
 |---|---|---|---|
+| djimitsec | 1.0.0 | assessed | 2026-11-27 |
 | opencode | 1.18.10 | legacy | 2026-12-31 |
 | atomic | 0.6.5 | legacy | 2026-12-31 |
 | codex | 0.146.0 | legacy | 2026-12-31 |

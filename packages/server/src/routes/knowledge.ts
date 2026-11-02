@@ -4,6 +4,7 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { knowledgeBus } from '../services/knowledge-bus';
 import { createError } from '../middleware/error-handler';
+import { openSseStream } from '../utils/sse';
 
 function boundedLimit(value: unknown, fallback = 50): number {
   if (value === undefined) return fallback;
@@ -58,21 +59,12 @@ export function createKnowledgeRoutes(auth: AuthMiddleware, db?: Database): Rout
 
   // G15: GET /api/knowledge/subscribe/:capabilityId — SSE stream of claims for a capability.
   // Use :capabilityId=all for all claims.
+  // OBS-001: same bounded backpressure contract as /observability/stream (utils/sse.ts).
   router.get('/subscribe/:capabilityId', requireAuth, (req: Request, res: Response) => {
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-      'X-Accel-Buffering': 'no',
-    });
-    res.write(`data: ${JSON.stringify({ type: 'connected', capability: req.params.capabilityId })}\n\n`);
-
+    const stream = openSseStream(req, res);
+    stream.send({ type: 'connected', capability: req.params.capabilityId });
     const capId = req.params.capabilityId === 'all' ? '*' : req.params.capabilityId;
-    const unsub = knowledgeBus.subscribe(capId, (claim) => {
-      try { res.write(`data: ${JSON.stringify(claim)}\n\n`); } catch { /* disconnected */ }
-    });
-    const ka = setInterval(() => { try { res.write(': keepalive\n\n'); } catch { clearInterval(ka); } }, 15_000);
-    req.on('close', () => { unsub(); clearInterval(ka); });
+    stream.onClose(knowledgeBus.subscribe(capId, (claim) => { stream.send(claim); }));
   });
 
   // D12: GET /api/knowledge/events — recent knowledge bus claims
