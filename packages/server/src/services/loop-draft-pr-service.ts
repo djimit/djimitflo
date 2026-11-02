@@ -9,6 +9,8 @@ import { withoutHiddenChecks } from './fail-before-pass-after';
 import { freshnessMode, staleAgainst, type ReadSet } from './evidence-freshness';
 import { emptySettlementCounts, parseOutcome, settlementState, type SettlementState } from './merge-survival';
 import { extraRepoBySlug, goalRepoSlug, isExtraRepoPr, slugFromRemote } from './repo-registry';
+import { guardTick, markRun } from './scheduler-registry';
+import { issueRefsLine } from './work-item-outcome-sync';
 import { onDraftPrOpened } from './capability-factory';
 
 interface DraftPublication {
@@ -58,9 +60,13 @@ export class LoopDraftPrService {
     let publication: DraftPublication | undefined;
     const owner = randomUUID();
     try {
+      // PRC-1: a retry after a failed push/POST finds the work already committed on HEAD (this run's loop commit): it
+      // republishes that commit and never commits the work a second time.
+      let committed = false;
+      try { committed = git('log', '-1', '--format=%B').includes(`Loop run ${runId}, maker lease ${maker.id}.`); } catch { /* no commit yet */ }
       // Only the maker's real files: never node_modules symlinks from `npm ci`, never lockfile install noise.
-      const tracked = git('diff', '--name-only', '--', '.').split('\n').filter(Boolean);
-      const untracked = git('ls-files', '--others', '--exclude-standard', '--', '.').split('\n').filter(Boolean);
+      const tracked = (committed ? git('diff', '--name-only', 'HEAD~1', 'HEAD') : git('diff', '--name-only', '--', '.')).split('\n').filter(Boolean);
+      const untracked = committed ? [] : git('ls-files', '--others', '--exclude-standard', '--', '.').split('\n').filter(Boolean);
       const discoveredFiles = [...tracked, ...untracked].filter((f) => !f.split('/').includes('node_modules')
         && !(f.endsWith('package-lock.json') && !tracked.includes(path.join(path.dirname(f), 'package.json').replace(/^\.\//, '')))
         && !fs.lstatSync(path.join(wt, f), { throwIfNoEntry: false })?.isSymbolicLink());
@@ -102,7 +108,7 @@ export class LoopDraftPrService {
           events.recordEvent(runId, mode === 'enforce' ? 'draft_pr_throttled' : 'draft_pr_throttle_shadow', 'info',
             `${open} open loop drafts ≥ cap ${cap}${mode === 'enforce' ? ': draft PR not opened' : ' (shadow: opened anyway)'}`, { open, cap, mode });
           if (mode === 'enforce') {
-            if (!meta.draft_publication) return null;
+            if (!meta.draft_publication && !committed) return null;
             publicationThrottled = true; // An already-created draft may be the item that fills the cap.
           }
         }
@@ -123,7 +129,7 @@ export class LoopDraftPrService {
         if (previous && previous.leaseUntil > Date.now()) throw new Error('publication_owned');
         const checkpoint: DraftPublication = previous ?? {
           makerId: maker.id, repo, branch: maker.branch_name!, base, worktree: wt,
-          parentHead: git('rev-parse', 'HEAD'), files, digest: this.publicationDigest(wt, files), phase: 'prepared', owner, leaseUntil: 0,
+          parentHead: git('rev-parse', committed ? 'HEAD^' : 'HEAD'), files, digest: this.publicationDigest(wt, files), phase: 'prepared', owner, leaseUntil: 0,
         };
         checkpoint.owner = owner; checkpoint.leaseUntil = Date.now() + 300_000;
         this.writePublication(runId, checkpoint, true);
@@ -154,11 +160,11 @@ export class LoopDraftPrService {
       if (JSON.stringify(committedFiles) !== JSON.stringify([...publication.files].sort())
         || git('diff', 'HEAD', '--', ...publication.files)) throw new Error('publication_commit_artifact_mismatch');
       // A retry reconciles the previous external effect before attempting another POST.
-      if (meta.draft_publication) {
+      if (meta.draft_publication || committed) {
         const reconciled = await this.reconcilePublication(publication, runId, token);
         guard();
         if (reconciled) {
-          this.completePublication(runId, publication, reconciled, events);
+          this.completePublication(runId, publication, reconciled, events, true);
           return reconciled;
         }
       }
@@ -174,6 +180,7 @@ export class LoopDraftPrService {
         .map((l) => `- ${l.role}: ${l.verdict ?? 'n/a'}`).join('\n');
       let body = `Opened by the djimitflo loop for run \`${runId}\`${proposal ? ` (proposal \`${proposal.id}\`)` : ''}.\n\nReviewer verdicts:\n${verdicts || '- none recorded'}\n\nFiles: ${files.map((f) => `\`${f}\``).join(', ')}\n\nDraft: a human reviews and merges.`;
       if (this.env.LOOP_PR_BODY_V2 === 'true') { let numstat = ''; try { numstat = git('diff', '--numstat', 'HEAD~1', 'HEAD'); } catch { /* no parent: diff stat omitted */ } body = this.bodyV2(runId, maker.id, body, numstat); }
+      body += issueRefsLine(this.db, run.goal_id, this.env);
       guard();
       publication.phase = 'submitting'; this.writePublication(runId, publication);
       const res = await this.fetchImpl(`https://api.github.com/repos/${repo}/pulls`, {
@@ -182,10 +189,11 @@ export class LoopDraftPrService {
         body: JSON.stringify({ title, head: maker.branch_name, base: this.env.LOOP_DRAFT_PR_BASE || 'main', draft: true, body }),
         signal: AbortSignal.timeout(15_000),
       });
-      if (!res.ok) return fail(`GitHub ${res.status}`);
-      const prUrl = this.validatePublishedDraft(await res.json() as PublishedDraft, publication, runId);
+      const prUrl = res.ok ? this.validatePublishedDraft(await res.json() as PublishedDraft, publication, runId)
+        : res.status === 422 ? await this.reconcilePublication(publication, runId, token) : null;
       guard();
-      this.completePublication(runId, publication, prUrl, events);
+      if (!prUrl) return fail(`GitHub ${res.status}`);
+      this.completePublication(runId, publication, prUrl, events, res.status === 422);
       return prUrl;
     } catch (error) {
       return fail(error instanceof Error ? error.message.replace(/basic [A-Za-z0-9+/=]+/g, 'basic ***').slice(0, 200) : String(error));
@@ -228,16 +236,17 @@ export class LoopDraftPrService {
     if (result.changes !== 1) throw new Error('publication_lease_lost');
   }
 
-  private completePublication(runId: string, checkpoint: DraftPublication, prUrl: string, events: LoopEventService): void {
+  private completePublication(runId: string, checkpoint: DraftPublication, prUrl: string, events: LoopEventService, adopted = false): void {
     this.db.transaction(() => {
       if (!this.publicationAuthorized(runId, checkpoint.makerId, checkpoint.worktree, checkpoint.branch, checkpoint.repo, this.env.GITHUB_REPOSITORY!)) {
         throw new Error('publication_authority_changed');
       }
-      const result = this.db.prepare(`UPDATE loop_runs SET metadata = json_set(metadata, '$.pr_url', ?, '$.verified_head_sha', ?)
+      const result = this.db.prepare(`UPDATE loop_runs SET metadata = json_set(metadata, '$.pr_url', ?, '$.verified_head_sha', ?, '$.pr_number', ?, '$.pr_head_branch', ?)
         WHERE id = ? AND json_extract(metadata, '$.draft_publication.owner') = ?
         AND json_extract(metadata, '$.draft_publication.leaseUntil') > ?`)
-        .run(prUrl, checkpoint.head!, runId, checkpoint.owner, Date.now());
+        .run(prUrl, checkpoint.head!, Number(/\/pull\/(\d+)$/.exec(prUrl)?.[1]) || null, checkpoint.branch, runId, checkpoint.owner, Date.now());
       if (result.changes !== 1) throw new Error('publication_lease_lost');
+      if (adopted) events.recordEvent(runId, 'draft_pr_adopted', 'info', `Existing PR adopted: ${prUrl}`, { pr_url: prUrl });
       events.recordEvent(runId, 'draft_pr_opened', 'info', `Draft PR opened: ${prUrl}`, { pr_url: prUrl, files: checkpoint.files });
     }).immediate();
     onDraftPrOpened(this.db, runId, prUrl, this.env);
@@ -252,6 +261,7 @@ export class LoopDraftPrService {
     const rows = await response.json() as PublishedDraft[];
     if (!Array.isArray(rows) || rows.length > 1) throw new Error('publication_reconciliation_ambiguous');
     if (!rows.length) return null;
+    if (rows[0].state === 'closed') throw new Error('closed_pr_exists');
     return this.validatePublishedDraft(rows[0], checkpoint, runId);
   }
 
@@ -305,6 +315,47 @@ export class LoopDraftPrService {
       return Array.isArray(pulls) ? pulls.filter((p) => String(p.title ?? '').startsWith('loop:')).length : null;
     } catch { return null; }
   }
+}
+
+/**
+ * PRC-1 retry sweep. LOOP_DRAFT_PR_RETRY: off (default) | shadow (records `draft_pr_retry_shadow`, calls nothing) | on;
+ * needs LOOP_AUTO_DRAFT_PR_ENABLED. A certified run (completed / ready_for_human_merge, the statuses openForRun accepts)
+ * created in the last 14 days, without pr_url, whose draft PR failed 1–2 times (`draft_pr_failed`) gets openForRun again —
+ * at most 5 per tick, so the 3rd failure ends it. A run never attempted (0 failures) or held on purpose (throttle,
+ * stale evidence: no failure event) is never touched. openForRun adopts a PR an earlier attempt opened (no duplicate).
+ */
+export type DraftPrRetryMode = 'off' | 'shadow' | 'on';
+export function draftPrRetryMode(env: NodeJS.ProcessEnv = process.env): DraftPrRetryMode {
+  const v = env.LOOP_DRAFT_PR_RETRY; return v === 'shadow' || v === 'on' ? v : 'off';
+}
+export const DRAFT_PR_MAX_FAILURES = 3;
+
+export async function retryFailedDraftPrs(db: Database, fetchImpl: typeof fetch = fetch, env: NodeJS.ProcessEnv = process.env, now = Date.now()): Promise<{ retried: number; opened: number }> {
+  const mode = draftPrRetryMode(env);
+  if (mode === 'off' || env.LOOP_AUTO_DRAFT_PR_ENABLED !== 'true') return { retried: 0, opened: 0 };
+  const rows = db.prepare(`SELECT r.id, COUNT(e.id) AS failures FROM loop_runs r
+      JOIN loop_events e ON e.loop_run_id = r.id AND e.event_type = 'draft_pr_failed'
+    WHERE r.status IN ('completed', 'ready_for_human_merge') AND r.created_at >= ?
+      AND json_extract(COALESCE(NULLIF(r.metadata, ''), '{}'), '$.pr_url') IS NULL
+    GROUP BY r.id HAVING failures < ? ORDER BY MAX(e.created_at) LIMIT 5`)
+    .all(new Date(now - 14 * 86_400_000).toISOString(), DRAFT_PR_MAX_FAILURES) as Array<{ id: string; failures: number }>;
+  const events = new LoopEventService(db);
+  if (mode === 'shadow') {
+    for (const r of rows) events.recordEvent(r.id, 'draft_pr_retry_shadow', 'info', `would retry the draft PR (${r.failures} failed attempt(s))`, { failures: r.failures });
+    return { retried: 0, opened: 0 };
+  }
+  const svc = new LoopDraftPrService(db, fetchImpl, env);
+  let opened = 0;
+  for (const r of rows) if (await svc.openForRun(r.id)) opened++;
+  return { retried: rows.length, opened };
+}
+
+/** Scheduler `draft_pr_retry` (every 15 min) while LOOP_DRAFT_PR_RETRY is not off; null when off. */
+export function startDraftPrRetry(db: Database, intervalMs = 15 * 60_000): (() => void) | null {
+  if (draftPrRetryMode() === 'off') return null;
+  const tick = guardTick('draft_pr_retry', async () => { await retryFailedDraftPrs(db); markRun('draft_pr_retry'); });
+  const timer = setInterval(tick, intervalMs); timer.unref?.();
+  return () => clearInterval(timer);
 }
 
 export interface DraftPrRow { run_id: string; lane: string; pr_url: string; pr_number: number | null; age_days: number; outcome: string | null; survived: boolean | null; auto_merge: string | null;

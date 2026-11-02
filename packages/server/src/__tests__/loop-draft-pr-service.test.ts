@@ -56,10 +56,10 @@ it('pushes only the maker files and opens one draft PR per run', async () => {
   expect(f).toHaveBeenCalledTimes(1);
 });
 
-it('records draft_pr_failed instead of throwing when GitHub refuses', async () => {
+it('records draft_pr_failed when GitHub refuses and reconciliation is unavailable', async () => {
   const f = vi.fn().mockResolvedValue({ ok: false, status: 422, json: async () => ({}) });
   expect(await new LoopDraftPrService(db, f as unknown as typeof fetch, env()).openForRun('run-1')).toBeNull();
-  expect(db.prepare("SELECT message FROM loop_events WHERE event_type = 'draft_pr_failed'").get()).toEqual({ message: 'Draft PR not opened: GitHub 422' });
+  expect(db.prepare("SELECT message FROM loop_events WHERE event_type = 'draft_pr_failed'").get()).toEqual({ message: 'Draft PR not opened: publication_reconciliation_failed: 422' });
 });
 
 // RX-6: a fetch that answers the open-PR list (GET) and the create call (POST)

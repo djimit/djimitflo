@@ -30,7 +30,7 @@ import type { ExecuteWorkerResult } from './loop-worker-executor-service';
 import { LoopEventService } from './loop-event-service';
 import { LoopRunQueryService } from './loop-run-query-service';
 import { WorkerLeaseRepo } from './loop-worker-lease-repo';
-import { LoopRecoveryService, RuntimeLeaseRegistry } from './loop-recovery-service';
+import { LoopRecoveryService, RuntimeLeaseRegistry, type ResumeInterruptedMode, type ResumeInterruptedSummary } from './loop-recovery-service';
 import { LoopPersistenceService } from './loop-persistence-service';
 import { ExperienceRetrievalService } from './experience-retrieval-service';
 import { SelfImprovementService } from './self-improvement-service';
@@ -481,18 +481,9 @@ export class LoopService {
     return { ...result, prunedWorktrees };
   }
 
-  resumeInterruptedRun(runId: string, maxResumeAttempts = 3): {
-    resumed: boolean;
-    boundedFail: boolean;
-    resumeAttempt: number;
-    requeuedFindings: string[];
-    skippedFindings: string[];
-  } {
-    return this.recovery.resumeInterruptedRun(runId, maxResumeAttempts);
-  }
-
-  resumeInterruptedRuns(): { resumed: number; boundedFailed: number; details: Array<{ runId: string; resumed: boolean }> } {
-    return this.recovery.resumeInterruptedRuns();
+  /** RIR (LOOP_RESUME_INTERRUPTED): re-queue this boot's interrupted runs with a fresh maker; see LoopRecoveryService. */
+  resumeInterruptedRuns(opts: { bootedAt?: string; mode?: ResumeInterruptedMode } = {}): ResumeInterruptedSummary {
+    return this.recovery.resumeInterruptedRuns((id) => this.retryLoopRun(id), opts);
   }
 
   /**

@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { EvolutionBody, EvolutionPage } from './EvolutionPage';
 import { api, type EvolutionEvidence } from '../lib/api';
+import { visibleText } from '../test/visible-text';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -226,14 +227,7 @@ it('L6-04: a server without the experiment registry renders an honest empty stat
   expect(renderToStaticMarkup(<EvolutionBody data={EMPTY} />)).toContain('Experiment registry not reported by this server.');
 });
 
-// UXE-00: value-gate decision card + settlement value. jsdom applies no CSS: text hidden by class, attribute or a closed <details> must not count as shown
-const HIDES = new Set(['hidden', 'sr-only', 'invisible', 'opacity-0']); // exact class tokens, so overflow-hidden is not one
-const visibleText = (el: Element): string => [...el.childNodes].map((n) => {
-  if (n.nodeType === Node.TEXT_NODE) return n.textContent ?? '';
-  if (!(n instanceof Element) || n.hasAttribute('hidden') || n.getAttribute('aria-hidden') === 'true'
-    || (n.getAttribute('class') ?? '').split(/\s+/).some((c) => HIDES.has(c))) return '';
-  if (n.tagName === 'DETAILS' && !n.hasAttribute('open')) return [...n.children].filter((c) => c.tagName === 'SUMMARY').map(visibleText).join(' ');
-  return visibleText(n); }).join(' ');
+// UXE-00: value-gate decision card + settlement value (visibleText: shared helper, test/visible-text.ts)
 const AM: NonNullable<EvolutionEvidence['auto_merge']> = { mode: 'act', max_per_day: 10, audit_sample_pct: 10, class: { state: 'active' },
   counts: { merged: 25, merged_24h: 1, would_merge: 0, audit_samples: 10, audit_samples_open: 2, waiting: 0, ineligible: 79 },
   ineligible_by_reason: { not_open: 47, checks_failed: 15, assertion_strength_missing: 14, not_verified: 3 },
