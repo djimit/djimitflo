@@ -104,15 +104,7 @@ export class VectorMemoryService {
     const dim = detectDim(queryEmbedding);
     const results: SearchResult[] = [];
 
-    for (const [id, vector] of this.index) {
-      if (vector.ttl) {
-        const ageSeconds = (Date.now() - new Date(vector.createdAt).getTime()) / 1000;
-        if (ageSeconds > vector.ttl) {
-          this.index.delete(id);
-          continue;
-        }
-      }
-
+    for (const [id, vector] of this.liveEntries()) {
       // UX-21: a different dimension is a different vector space — counted; skipped under VECTOR_STRICT_DIM
       if (!dimsMatch('vector_memories', dim, vector.embedding.length) && vectorStrictDim()) continue;
       const vecEmb = vector.embedding.length === dim
@@ -161,24 +153,31 @@ export class VectorMemoryService {
    * Get a memory by ID.
    */
   getMemory(id: string): MemoryVector | null {
-    const vector = this.index.get(id);
-    if (vector) {
-      vector.accessCount++;
-      vector.lastAccessed = new Date().toISOString();
+    // L-F06: the durable row is the source of truth — a row deleted elsewhere (another instance, the TTL purge
+    // worker, retention) must not be served from this instance's cache.
+    const row = this.db.prepare('SELECT * FROM vector_memories WHERE id = ?').get(id) as any;
+    if (!row) {
+      this.forget(id);
+      return null;
     }
-    return vector || null;
+    const vector = this.index.get(id) ?? this.rowToVector(row);
+    if (this.isExpired(vector)) return null;
+    vector.accessCount++;
+    vector.lastAccessed = new Date().toISOString();
+    return vector;
   }
 
   /**
-   * Delete a memory.
+   * Delete a memory. Removes the durable row (and its feedback) whether or not this instance has it cached.
    */
   deleteMemory(id: string): boolean {
-    const deleted = this.index.delete(id);
-    if (deleted) {
-      this.db.prepare('DELETE FROM vector_memories WHERE id = ?').run(id);
-      this.accessOrder = this.accessOrder.filter((oid) => oid !== id);
-    }
-    return deleted;
+    const deleted = this.db.transaction(() => {
+      // vector_feedback references vector_memories; with foreign_keys=ON the memory row cannot go first.
+      this.db.prepare('DELETE FROM vector_feedback WHERE memory_id = ?').run(id);
+      return this.db.prepare('DELETE FROM vector_memories WHERE id = ?').run(id).changes > 0;
+    })();
+    const cached = this.forget(id);
+    return deleted || cached;
   }
 
   /**
@@ -194,12 +193,13 @@ export class VectorMemoryService {
     const assigned = new Set<string>();
     const dim = this.detectIndexDim();
 
-    for (const [id, vector] of this.index) {
+    const live = this.liveEntries();
+    for (const [id, vector] of live) {
       if (assigned.has(id)) continue;
       const cluster = { centroid: id, memories: new Set<string>([id]) };
       assigned.add(id);
 
-      for (const [otherId, otherVector] of this.index) {
+      for (const [otherId, otherVector] of live) {
         if (id === otherId || assigned.has(otherId)) continue;
         if ((!dimsMatch('vector_memories', dim, vector.embedding.length) || !dimsMatch('vector_memories', dim, otherVector.embedding.length)) && vectorStrictDim()) continue;
         const vecA = this.resample(vector.embedding, dim);
@@ -230,7 +230,7 @@ export class VectorMemoryService {
     embeddingMode: string;
     feedbackCount: number;
   } {
-    const memories = Array.from(this.index.values());
+    const memories = this.liveEntries().map(([, vector]) => vector);
     const feedbackRows = (this.db.prepare('SELECT COUNT(*) as c FROM vector_feedback').get() as any)?.c || 0;
 
     return {
@@ -248,6 +248,44 @@ export class VectorMemoryService {
   }
 
   // ─── Private ──────────────────────────────────────────────────────────
+
+  private isExpired(vector: MemoryVector): boolean {
+    if (!vector.ttl) return false;
+    return (Date.now() - new Date(vector.createdAt).getTime()) / 1000 > vector.ttl;
+  }
+
+  /**
+   * Cached memories that still have a durable row and whose TTL has not elapsed. Deleted rows (another instance, the
+   * TTL purge worker, retention) and expired entries are evicted from this cache, so corpus stats such as the BM25
+   * index size only count live memories. Expired durable rows are left for the explicit TTL purge worker.
+   */
+  private liveEntries(): Array<[string, MemoryVector]> {
+    const durable = new Set(this.db.prepare('SELECT id FROM vector_memories').pluck().all() as string[]);
+    for (const [id, vector] of Array.from(this.index.entries())) {
+      if (!durable.has(id) || this.isExpired(vector)) this.forget(id);
+    }
+    return Array.from(this.index.entries());
+  }
+
+  private forget(id: string): boolean {
+    const cached = this.index.delete(id);
+    this.banditStates.delete(id);
+    if (cached) this.accessOrder = this.accessOrder.filter((oid) => oid !== id);
+    return cached;
+  }
+
+  private rowToVector(row: any): MemoryVector {
+    return {
+      id: row.id,
+      content: row.content,
+      embedding: JSON.parse(row.embedding_json || '[]'),
+      metadata: JSON.parse(row.metadata_json || '{}'),
+      createdAt: row.created_at,
+      ttl: row.ttl,
+      accessCount: row.access_count,
+      lastAccessed: row.last_accessed,
+    };
+  }
 
   private async generateEmbeddingCached(text: string): Promise<number[]> {
     const cacheKey = createHash('sha256').update(text).digest('hex');
@@ -365,16 +403,7 @@ export class VectorMemoryService {
         ORDER BY created_at DESC LIMIT ?
       `).all(this.embeddingProvider.name, MAX_MEMORIES) as any[];
       for (const row of rows) {
-        const vector: MemoryVector = {
-          id: row.id,
-          content: row.content,
-          embedding: JSON.parse(row.embedding_json || '[]'),
-          metadata: JSON.parse(row.metadata_json || '{}'),
-          createdAt: row.created_at,
-          ttl: row.ttl,
-          accessCount: row.access_count,
-          lastAccessed: row.last_accessed,
-        };
+        const vector = this.rowToVector(row);
         this.index.set(vector.id, vector);
         this.accessOrder.push(vector.id);
       }

@@ -7,6 +7,17 @@ import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { mineGymTasks, type GymTask } from './gym-task-miner';
 import { classifyHack, hackDetectorShadow } from './gym-hack-classifier';
 import { evolveSpecies, parseSpecies, type Species } from './evolve-selection';
+import { markRun } from './scheduler-registry';
+import { gymSkillContentHash } from './gym-skill-hash';
+import { recordModelCall } from './model-selector';
+import { AUTH_MISSING, LIMIT_HIT, inLimitBackoff, isSubscriptionLimit, subscriptionAttemptsToday, subscriptionAuthPresent, subscriptionGymMaxPerDay,
+  subscriptionGymSpecies, type SubscriptionRuntime } from './subscription-gym';
+import { CANCEL_LEASE_METADATA_SQL, cancelLeaseBind } from './lease-failure';
+
+const speciesKey = (s: Species): string => (s.model ? `${s.runtime}@${s.model}` : s.runtime);
+
+/** A gym species; `subscription` = a flat-subscription CLI maker (SUBSCRIPTION_GYM_SPECIES, services/subscription-gym.ts). */
+export type GymSpecies = Species & { subscription?: true };
 
 /**
  * C2b evolution gym runner (docs/design/evolution-gym.md). One attempt = one species on one replay task in a sandbox
@@ -25,19 +36,22 @@ import { evolveSpecies, parseSpecies, type Species } from './evolve-selection';
  * discards (prod 2026-09-29: task 9b2fa2bf crashed/timed out three times in a row on atomic@llama-router and, being
  * re-offered after each infra discard, tripped the breaker for the whole species).
  */
+/** PL-001 attempts (loop_name 'pl-001', gym.pl) are an experiment: they never mark a task tried or trip the species breaker. */
+const NOT_PL = "json_extract(metadata, '$.gym.pl') IS NULL";
 export function triedTasks(db: Database, speciesKey: string): Set<string | null> {
   return new Set((db.prepare(`SELECT c FROM (SELECT json_extract(metadata, '$.gym.commit') AS c,
-      SUM(COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%') AS real, SUM(json_extract(metadata, '$.gym_result.reason') LIKE 'infra:%') AS infra
-    FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.canary') IS NULL GROUP BY c) WHERE real > 0 OR infra >= 2`).all(speciesKey) as Array<{ c: string | null }>).map((r) => r.c));
+      SUM(COALESCE(json_extract(metadata, '$.gym_result.reason'), '') NOT LIKE 'infra:%') AS real,
+      SUM(json_extract(metadata, '$.gym_result.reason') LIKE 'infra:%' AND json_extract(metadata, '$.gym_result.reason') NOT LIKE 'infra: subscription_%') AS infra
+    FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.canary') IS NULL AND ${NOT_PL} GROUP BY c) WHERE real > 0 OR infra >= 2`).all(speciesKey) as Array<{ c: string | null }>).map((r) => r.c));
 }
 
 export function infraFailing(db: Database, speciesKey: string, since: string): boolean {
   // a success proves the species works: only discards after its latest success count (prod 2026-09-27: atomic@llama-router
   // was benched by three discards from since-fixed bugs, two of them before and after two successes)
-  const lastSuccess = (db.prepare("SELECT MAX(created_at) AS t FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.canary') IS NULL AND json_extract(metadata, '$.gym_result.status') = 'success'")
+  const lastSuccess = (db.prepare(`SELECT MAX(created_at) AS t FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.canary') IS NULL AND ${NOT_PL} AND json_extract(metadata, '$.gym_result.status') = 'success'`)
     .get(speciesKey) as { t: string | null }).t;
   const from = lastSuccess && lastSuccess > since ? lastSuccess : since;
-  const trips = db.prepare("SELECT COUNT(*) AS n, MAX(created_at) AS last FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.canary') IS NULL AND json_extract(metadata, '$.gym_result.reason') LIKE 'infra:%' AND created_at > ?")
+  const trips = db.prepare(`SELECT COUNT(*) AS n, MAX(created_at) AS last FROM loop_runs WHERE json_extract(metadata, '$.gym.species') = ? AND json_extract(metadata, '$.gym.canary') IS NULL AND ${NOT_PL} AND json_extract(metadata, '$.gym_result.reason') LIKE 'infra:%' AND created_at > ?`)
     .get(speciesKey, from) as { n: number; last: string | null };
   if (trips.n < (Number(process.env.EVOLUTION_GYM_INFRA_TRIP) || 3)) return false;
   // half-open: after a quiet cool-down one probe attempt is let through (prod 2026-09-27: a fixed worker stayed benched for
@@ -47,6 +61,8 @@ export function infraFailing(db: Database, speciesKey: string, since: string): b
 }
 
 export const gymEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.EVOLUTION_GYM_ENABLED === 'true';
+/** The local gym runs when it is enabled or when subscription species are set (those alone, then). */
+export const gymArmed = (env: NodeJS.ProcessEnv = process.env): boolean => gymEnabled(env) || subscriptionGymSpecies(env).length > 0;
 
 export type GymResult = { status: 'success' | 'failure' | 'discarded' | 'skipped'; reason: string; task?: GymTask; species?: string; runId?: string; hack_flags?: string[] };
 
@@ -84,40 +100,58 @@ export class EvolutionGymService {
   }) { new SkillEvolutionEngine(db); } // ensures skill_outcomes exists (created lazily elsewhere)
 
   start(intervalMs = 3_600_000): void {
-    if (this.timer || !gymEnabled()) return;
-    const run = () => { this.runOne().then((r) => { if (r.status !== 'skipped') console.log(`🏋️ gym: ${r.status} (${r.reason}) ${r.species ?? ''} ${r.task?.source ?? ''}`); }).catch((err) => console.warn('Gym attempt failed:', err instanceof Error ? err.message : String(err))); };
+    if (this.timer || !gymArmed()) return;
+    const run = () => { markRun('evolution_gym'); this.runOne().then((r) => { if (r.status !== 'skipped') console.log(`🏋️ gym: ${r.status} (${r.reason}) ${r.species ?? ''} ${r.task?.source ?? ''}`); }).catch((err) => console.warn('Gym attempt failed:', err instanceof Error ? err.message : String(err))); };
     this.timer = setInterval(run, intervalMs); this.timer.unref?.();
     // auto-deploy restarts the server every hour or two: waiting a full interval after boot would starve the gym
     setTimeout(run, Number(process.env.EVOLUTION_GYM_FIRST_DELAY_MS) || 600_000).unref?.();
   }
   stop(): void { if (this.timer) { clearInterval(this.timer); this.timer = null; } }
 
-  /** Incumbent maker runtime plus the evolve challengers: every species gets the same tasks. */
-  species(env: NodeJS.ProcessEnv = process.env): Species[] {
+  /**
+   * Incumbent maker runtime plus the evolve challengers: every species gets the same tasks. SUBSCRIPTION_GYM_SPECIES adds the
+   * subscription CLIs (alone while EVOLUTION_GYM_ENABLED is off); a configured species on the same runtime gives way to them,
+   * so a claude/codex gym maker never bills an API key. An opencode-free species (runtime opencode, model opencode/<x>-free)
+   * replaces only a configured species with that same model, never the plain opencode species.
+   */
+  species(env: NodeJS.ProcessEnv = process.env): GymSpecies[] {
+    const subs = subscriptionGymSpecies(env);
     // EVOLUTION_GYM_EXTRA_SPECIES: challengers that compete in the gym only, never on production goals (e.g. 'atomic', plan C5)
-    return [{ runtime: env.LOOP_DAEMON_MAKER_RUNTIME || 'opencode' }, ...evolveSpecies({ ...env, LOOP_EVOLVE_ENABLED: 'true' }), ...parseSpecies(env.EVOLUTION_GYM_EXTRA_SPECIES)];
+    const base: Species[] = gymEnabled(env) ? [{ runtime: env.LOOP_DAEMON_MAKER_RUNTIME || 'opencode' }, ...evolveSpecies({ ...env, LOOP_EVOLVE_ENABLED: 'true' }), ...parseSpecies(env.EVOLUTION_GYM_EXTRA_SPECIES)] : [];
+    const replaced = (s: Species) => subs.some((sub) => (sub.model ? speciesKey(s) === sub.key : s.runtime === sub.runtime));
+    return [...base.filter((s) => !replaced(s)), ...subs.map((sub) => ({ runtime: sub.runtime, ...(sub.model ? { model: sub.model } : {}), subscription: true as const }))];
   }
 
   async runOne(now = new Date()): Promise<GymResult> {
-    if (!gymEnabled()) return { status: 'skipped', reason: 'disabled' };
+    if (!gymArmed()) return { status: 'skipped', reason: 'disabled' };
     const repo = process.env.LOOP_DAEMON_REPOSITORY_PATH;
     if (!repo) return { status: 'skipped', reason: 'no repository path' };
     const day = new Date(now.getTime() - 86_400_000).toISOString();
-    // remote hosts (plan I1) have their own cap; only attempts on this VPS count here
-    const today = (this.db.prepare("SELECT COUNT(*) AS n FROM skill_outcomes WHERE domain = 'gym' AND created_at >= ? AND COALESCE(evidence_refs_json, '') NOT LIKE '%\"remote:%'").get(day) as { n: number }).n;
-    if (today >= (Number(process.env.EVOLUTION_GYM_MAX_PER_DAY) || 12)) return { status: 'skipped', reason: 'daily cap reached' };
+    // remote hosts (plan I1) have their own cap; only attempts on this VPS count here. Subscription species have their own
+    // per-species cap (SUBSCRIPTION_GYM_MAX_PER_DAY, attempts) and stay out of this one.
+    const subs = subscriptionGymSpecies();
+    const today = (this.db.prepare(`SELECT COUNT(*) AS n FROM skill_outcomes WHERE domain = 'gym' AND created_at >= ? AND COALESCE(evidence_refs_json, '') NOT LIKE '%"remote:%'
+      AND skill_id || '|' || COALESCE(model, '') NOT IN (SELECT value FROM json_each(?))`).get(day, JSON.stringify(subs.map((r) => `loop-maker:gym:${r.runtime}|${r.model ?? ''}`))) as { n: number }).n;
+    const capped = today >= (Number(process.env.EVOLUTION_GYM_MAX_PER_DAY) || 12);
+    let backingOff = false;
+    const open = this.species().filter((s) => {
+      if (!s.subscription) return !capped;
+      if (subscriptionAttemptsToday(this.db, speciesKey(s), now.getTime()) >= subscriptionGymMaxPerDay()) return false;
+      if (inLimitBackoff(this.db, speciesKey(s), now.getTime())) { backingOff = true; return false; }
+      return true;
+    });
+    if (!open.length) return { status: 'skipped', reason: backingOff ? 'subscription limit back-off' : 'daily cap reached' };
     // production first: never compete with a running maker/reviewer
     const busy = (this.db.prepare("SELECT (SELECT COUNT(*) FROM worker_leases WHERE status = 'running') + (SELECT COUNT(*) FROM tasks WHERE status = 'running' AND id LIKE 'loop-worker-%') AS n").get() as { n: number }).n;
     if (busy > 0) return { status: 'skipped', reason: 'production workers running' };
 
     // the species with the fewest gym outcomes goes next, on the task it has attempted least recently
     const count = this.db.prepare("SELECT COUNT(*) AS n FROM skill_outcomes WHERE domain = 'gym' AND skill_id = ? AND COALESCE(model, '') = ?");
-    const keyOf = (s: Species) => (s.model ? `${s.runtime}@${s.model}` : s.runtime);
-    const healthy = this.species().filter((s) => !infraFailing(this.db, keyOf(s), day));
+    const healthy = open.filter((s) => !infraFailing(this.db, speciesKey(s), day));
     if (!healthy.length) return { status: 'skipped', reason: 'every species is infra-failing' };
     const species = healthy.map((s) => ({ s, n: (count.get(`loop-maker:gym:${s.runtime}`, s.model ?? '') as { n: number }).n })).sort((a, b) => a.n - b.n)[0].s;
     // every attempt (success, failure or discarded) is a gym loop_run for that species: never repeat one
-    const key = species.model ? `${species.runtime}@${species.model}` : species.runtime;
+    const key = speciesKey(species);
     // an infra discard (provider error before the maker did anything) says nothing about the species: the task stays open (once)
     const tried = triedTasks(this.db, key);
     const task = this.deps.mine(repo).find((t) => !tried.has(t.commit));
@@ -125,19 +159,27 @@ export class EvolutionGymService {
     return this.attempt(repo, task, species);
   }
 
-  async attempt(repo: string, task: GymTask, species: Species): Promise<GymResult> {
-    const key = species.model ? `${species.runtime}@${species.model}` : species.runtime;
+  async attempt(repo: string, task: GymTask, species: GymSpecies): Promise<GymResult> {
+    const key = speciesKey(species);
     const run = this.loops.startLoop({ repository_path: repo, target_finding: { file_path: task.source, category: 'bug',
       description: `Evolution gym: make ${task.tests.join(', ')} pass. Change only ${task.source}. The tests describe the intended behaviour; do not edit them.` } });
-    this.db.prepare("UPDATE loop_runs SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.gym', json(?)) WHERE id = ?").run(JSON.stringify({ ...task, species: key }), run.id);
+    this.db.prepare("UPDATE loop_runs SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.gym', json(?)) WHERE id = ?").run(JSON.stringify({ ...task, species: key, ...(species.subscription ? { subscription: 1 } : {}) }), run.id);
+    // a subscription maker without its login is never spawned: the CLI could otherwise only fail or bill elsewhere
+    if (species.subscription && !subscriptionAuthPresent(species.runtime as SubscriptionRuntime)) {
+      const refused: GymResult = { status: 'discarded', reason: AUTH_MISSING, task, species: key, runId: run.id };
+      this.settle(run.id, refused, null, repo);
+      return refused;
+    }
     const started = Date.now();
     let result: GymResult;
     let maker: { id: string; worktree_path: string | null } | undefined;
     let makerRan = false;
+    let limited: boolean | null = null; // subscription species: set once the maker's usage is recorded
     try {
       const { leases } = this.loops.continueLoopRun(run.id, { runtime: species.runtime as never, ...(species.model ? { model: species.model } : {}), max_maker_workers: 1 });
       maker = leases.find((l) => l.role === 'maker');
       if (!maker?.worktree_path) throw new Error('no maker worktree');
+      if (species.subscription) this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.subscription_auth', ?) WHERE id = ?").run(species.runtime, maker.id);
       this.deps.prepare(maker.worktree_path, task);
       const discard = !this.deps.install(maker.worktree_path) ? 'npm ci failed'
         : this.deps.oracle(maker.worktree_path, task) ? 'tests already green on the parent' : null;
@@ -146,6 +188,12 @@ export class EvolutionGymService {
       } else {
         makerRan = true;
         await this.executeMaker(run.id, maker.id);
+        // a rate/usage limit says nothing about the species: discard (no outcome) and back off (inLimitBackoff)
+        if (species.subscription && (limited = this.subscriptionMakerRan(run.id, maker.id, species))) {
+          result = { status: 'discarded', reason: LIMIT_HIT, task, species: key, runId: run.id };
+          this.settle(run.id, result, maker.worktree_path, repo);
+          return result;
+        }
         const changed = this.deps.changed(maker.worktree_path);
         // prod 2026-09-25: an opencode provider error ('Unexpected server error', exit 1, 0 tokens) was scored as a species loss
         if (!changed.length && this.makerTokens(maker.id) === 0) {
@@ -162,17 +210,49 @@ export class EvolutionGymService {
       // an error before the maker ran (git, npm ci, worktree) says nothing about the species (prod 2026-09-27: 'git show
       // <commit>^:<file>' on a task whose source was new scored kimi-k3 and atomic as failures)
       const message = err instanceof Error ? err.message.slice(0, 190) : String(err);
-      result = makerRan ? { status: 'failure', reason: message, task, species: key, runId: run.id } : { status: 'discarded', reason: `infra: ${message}`, task, species: key, runId: run.id };
+      result = makerRan && species.subscription && maker && (limited ?? this.subscriptionMakerRan(run.id, maker.id, species)) ? { status: 'discarded', reason: LIMIT_HIT, task, species: key, runId: run.id }
+        : makerRan ? { status: 'failure', reason: message, task, species: key, runId: run.id } : { status: 'discarded', reason: `infra: ${message}`, task, species: key, runId: run.id };
     }
     if (result.status !== 'discarded') {
       const tokens = maker ? this.makerTokens(maker.id) : 0;
       new SkillEvolutionEngine(this.db).recordOutcome(`loop-maker:gym:${species.runtime}`, {
-        success: result.status === 'success', tokensUsed: tokens, durationMs: Date.now() - started, domain: 'gym', taskId: run.id,
+        success: result.status === 'success', tokensUsed: tokens, durationMs: Date.now() - started, domain: 'gym', taskId: run.id, skillContentHash: gymSkillContentHash((task as { kind?: string }).kind, null),
         ...(species.model ? { model: species.model } : {}), evidenceRefs: [`gym:${task.commit}`, `loop_run:${run.id}`, `gym_result:${result.reason}`],
       });
     }
     this.settle(run.id, result, maker?.worktree_path ?? null, repo);
     return result;
+  }
+
+  /**
+   * After a subscription maker ran: what the CLI reported goes to llm_model_calls as a flat subscription (provider
+   * `subscription-cli:<runtime>`) or, for an opencode-free species, the Zen free tier (provider `free-tier-cli:opencode`);
+   * marginal cost 0 either way, unreported counts stay null. Returns whether the run hit the
+   * subscription's rate/usage limit. Reads the lease's recorded outputs; never the token.
+   */
+  private subscriptionMakerRan(runId: string, leaseId: string, species: GymSpecies): boolean {
+    const runtime = species.runtime;
+    const freeTier = runtime === 'opencode'; // the only opencode subscription species are opencode-free:<model>
+    const meta = JSON.parse((this.db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(leaseId) as { metadata: string } | undefined)?.metadata || '{}') as {
+      exit_status?: number | null; stdout_path?: string; stderr_path?: string; failure_reason?: string;
+      token_accounting?: { input_tokens?: number | null; output_tokens?: number | null; model_id?: string | null; duration_ms?: number | null } };
+    if (meta.exit_status === undefined && !meta.stdout_path && !meta.failure_reason) return false; // the maker never ran
+    const read = (p?: string) => { try { return p ? fs.readFileSync(p, 'utf8') : ''; } catch { return ''; } };
+    const stdout = read(meta.stdout_path); const stderr = `${read(meta.stderr_path)}\n${meta.failure_reason ?? ''}`;
+    const limited = isSubscriptionLimit(meta.exit_status ?? null, stdout, stderr);
+    // claude -p --output-format json reports its own duration_ms; else the server's wall clock around the call
+    let cliMs: number | null = null;
+    for (const line of stdout.split('\n').reverse()) {
+      if (!line.includes('"duration_ms"')) continue;
+      try { const v = JSON.parse(line.trim()) as { duration_ms?: unknown }; if (typeof v.duration_ms === 'number') { cliMs = v.duration_ms; break; } } catch { /* not a JSON line */ }
+    }
+    const t = meta.token_accounting ?? {};
+    recordModelCall(this.db, { consumer: 'evolution_gym', model: t.model_id || species.model || `${runtime}-cli`,
+      provider: freeTier ? 'free-tier-cli:opencode' : `subscription-cli:${runtime}`, ok: meta.exit_status === 0,
+      latencyMs: cliMs ?? t.duration_ms ?? 0, outChars: stdout.length, shadow: 0, agree: null, tokensIn: t.input_tokens ?? null, tokensOut: t.output_tokens ?? null,
+      taskKind: 'gym_maker', runId, status: limited ? 'subscription_limit' : meta.exit_status === 0 ? 'ok' : `exit_${meta.exit_status ?? 'signal'}`,
+      purpose: freeTier ? 'evolution_gym:free_tier_maker' : 'evolution_gym:subscription_maker' });
+    return limited;
   }
 
   private makerTokens(leaseId: string): number {
@@ -200,7 +280,7 @@ export class EvolutionGymService {
     const now = new Date().toISOString();
     this.db.prepare(`UPDATE loop_runs SET status = 'completed', updated_at = ?, metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.gym_result', json(?)) WHERE id = ?`)
       .run(now, JSON.stringify({ status: result.status, reason: result.reason, ...(result.hack_flags ? { hack_flags: result.hack_flags } : {}) }), runId);
-    this.db.prepare("UPDATE worker_leases SET status = 'cancelled', updated_at = ? WHERE loop_run_id = ? AND status = 'prepared'").run(now, runId);
+    this.db.prepare(`UPDATE worker_leases SET status = 'cancelled', updated_at = ?, ${CANCEL_LEASE_METADATA_SQL} WHERE loop_run_id = ? AND status = 'prepared'`).run(now, ...cancelLeaseBind('gym_run_settled', now), runId);
     if (worktree) { try { git(repo, ['worktree', 'remove', '--force', worktree]); } catch { fs.rmSync(worktree, { recursive: true, force: true }); } }
   }
 }

@@ -1,0 +1,14 @@
+{
+  "status": "healthy",
+  "commit": "bf6f647c49b70a65ab795b113f512b9c84ca08a1",
+  "build": {
+    "commit": "bf6f647c49b70a65ab795b113f512b9c84ca08a1",
+    "built_commit": "bf6f647c49b70a65ab795b113f512b9c84ca08a1",
+    "build_source": "deploy-vps.sh",
+    "build_time": "2026-10-24T00:26:34Z",
+    "instance_id": "vps-agentical-production",
+    "commit_matches_build": true
+  },
+  "timestamp": "2026-10-24T15:16:36.431Z",
+  "uptime": 53206.671443488
+}

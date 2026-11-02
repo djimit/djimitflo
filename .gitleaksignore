@@ -12,3 +12,37 @@
 05e4591be0fe6289e564f1ba1c689feb904f4b82:packages/server/src/__tests__/agent-lure-service.test.ts:generic-api-key:16
 4674acea0d2aca6898f1eeb769d8c2bf3570a38c:packages/server/src/__tests__/commons-security-c6.test.ts:generic-api-key:28
 a3c0198b1c774e9774986bb06d70e138c2cc215d:packages/server/src/__tests__/ux18-llm-ledger.test.ts:generic-api-key:16
+6fff6d84122e0deb3124a22d33ed80e6c5171692:packages/server/src/__tests__/fleet-repair.test.ts:slack-bot-token:228
+
+# Full-history scan (workflow_dispatch after Dependabot merges, #1097) found these historical false positives on 2026-11-02:
+# goal "key" ids in openspec/audit JSON, PII-stripper test inputs, minioadmin defaults, and sequential fake ghp_ tokens in redaction tests.
+09efc409a44080ac1515fd02a6d4214a7856dc74:packages/server/src/__tests__/telegram-triage.test.ts:github-pat:153
+0c713954ee55f02dc7163163a06ad3c496025179:packages/server/src/__tests__/federation-service.test.ts:generic-api-key:109
+0c713954ee55f02dc7163163a06ad3c496025179:packages/server/src/__tests__/federation-service.test.ts:generic-api-key:47
+20f58cb97e391525f0589f8f6d0bb97159e303c9:openspec/changes/g15-enforced-swarm-intelligence/goals.batch.json:generic-api-key:130
+20f58cb97e391525f0589f8f6d0bb97159e303c9:openspec/changes/next-level-swarm-skills-specialists/goals.batch.json:generic-api-key:195
+20f58cb97e391525f0589f8f6d0bb97159e303c9:openspec/changes/next-level-swarm-skills-specialists/goals.batch.json:generic-api-key:310
+236b5668e7ec041872426b2f4161d293f2630b11:openspec/changes/nested-swarm-control-loop/goals.batch.json:generic-api-key:196
+32c75c708720120eb8cd0b9333c392ae0931270f:openspec/changes/converge-foundation-and-swarm-intelligence/goals.batch.json:generic-api-key:5
+32c75c708720120eb8cd0b9333c392ae0931270f:openspec/changes/converge-foundation-and-swarm-intelligence/goals.batch.json:generic-api-key:93
+49d454442f1cf2a469ff29029dae4a613c8fe3b9:packages/server/src/__tests__/operator-push.test.ts:github-pat:15
+49d454442f1cf2a469ff29029dae4a613c8fe3b9:packages/server/src/__tests__/operator-push.test.ts:github-pat:43
+571f52eb3299993c44967fc7a7f1f9d2fc14cbcf:reports/autonomous-audit-20260909/evidence/evolution-artifact-check.json:generic-api-key:52
+571f52eb3299993c44967fc7a7f1f9d2fc14cbcf:reports/autonomous-audit-20260909/evidence/evolution-baseline.json:generic-api-key:60
+571f52eb3299993c44967fc7a7f1f9d2fc14cbcf:reports/autonomous-audit-20260909/evidence/evolution-baseline.json:generic-api-key:65
+571f52eb3299993c44967fc7a7f1f9d2fc14cbcf:reports/autonomous-audit-20260909/evidence/evolution-baseline.json:generic-api-key:70
+571f52eb3299993c44967fc7a7f1f9d2fc14cbcf:reports/autonomous-audit-20260909/evidence/evolution-baseline.json:generic-api-key:75
+571f52eb3299993c44967fc7a7f1f9d2fc14cbcf:reports/autonomous-audit-20260909/evidence/evolution-baseline.json:generic-api-key:80
+571f52eb3299993c44967fc7a7f1f9d2fc14cbcf:reports/autonomous-audit-20260909/evidence/evolution-baseline.json:generic-api-key:85
+6bbd0b4bd13c7c233d512c0274cdd70b838f7712:openspec/changes/djimitflo-level3-completion/tasks.md:generic-api-key:104
+6bbf3adb24649f404596c924233b93a56b4c0b2a:packages/ransomware-module/tests/ransomware-indicator-service.test.ts:curl-auth-user:36
+6bbf3adb24649f404596c924233b93a56b4c0b2a:packages/server/src/services/adversarial-red-team-service.ts:curl-auth-user:130
+8b324c5b6a790a4e278443437fcc466b7f67bccb:openspec/changes/complete-swarm-platform/goals.batch.json:generic-api-key:163
+8b324c5b6a790a4e278443437fcc466b7f67bccb:openspec/changes/complete-swarm-platform/goals.batch.json:generic-api-key:186
+8b324c5b6a790a4e278443437fcc466b7f67bccb:openspec/changes/complete-swarm-platform/goals.batch.json:generic-api-key:198
+8b324c5b6a790a4e278443437fcc466b7f67bccb:openspec/changes/complete-swarm-platform/goals.batch.json:generic-api-key:54
+8b324c5b6a790a4e278443437fcc466b7f67bccb:openspec/changes/complete-swarm-platform/goals.batch.json:generic-api-key:87
+94dd8d9821439490d75bf9fa6c7d66476aa5a828:openspec/changes/agentic-os-run-chain-proof/goals.batch.json:generic-api-key:24
+94dd8d9821439490d75bf9fa6c7d66476aa5a828:openspec/changes/agentic-os-run-chain-proof/goals.batch.json:generic-api-key:69
+94dd8d9821439490d75bf9fa6c7d66476aa5a828:openspec/changes/production-pilot-runbook/goals.batch.json:generic-api-key:75
+f37730fbd264a59e7c3c608b259c24bf1d041002:packages/server/src/__tests__/tg2-telegram-context.test.ts:github-pat:50

@@ -5,6 +5,7 @@ import type { Database } from 'better-sqlite3';
 import { SpecialistPanelService } from './specialist-panel-service';
 import { judgmentMode, runJudgment } from './judgment-service';
 import { reflectionTriage } from './judgments/reflection-triage';
+import { recordNegativeEvidenceMatches } from './negative-evidence-check';
 
 export type ImprovementStatus = 'proposed' | 'scheduled' | 'executing' | 'verified' | 'evaluating' | 'applied' | 'rejected' | 'no_change' | 'regressed' | 'needs_more_evidence' | 'needs_grounding' | 'archived' | 'infra_failed';
 
@@ -14,7 +15,7 @@ export interface ImprovementProposal {
   title: string;
   description: string;
   rationale: string;
-  source: 'reflection' | 'invention' | 'gap_analysis' | 'feedback' | 'refinement' | 'dream_state';
+  source: 'reflection' | 'invention' | 'gap_analysis' | 'feedback' | 'refinement' | 'dream_state' | 'operator_request';
   status: ImprovementStatus;
   priority: number;
   evidenceRefs: string[];
@@ -34,6 +35,14 @@ interface ImprovementRow {
   panel_id?: string | null; approved_by?: string | null; created_at: string; updated_at?: string | null;
   refined_at?: string | null; refined_from_id?: string | null;
 }
+
+type ReflectionInput = {
+  whatFailed: string[];
+  lessonsLearned: string[];
+  proposedImprovements: string[];
+  loopRunId?: string;
+  reflectionId?: string;
+};
 
 type ProposalInput = Pick<ImprovementProposal, 'type' | 'title' | 'description' | 'rationale' | 'source' | 'priority'> & {
   evidenceRefs?: string[];
@@ -56,6 +65,65 @@ export function oracleLaneSkipsPanel(p: Pick<ImprovementProposal, 'source' | 'ev
 /** D5: reason prefix of a pre-screen park (the `prescreen_park` judgment and the /decisions row). */
 export const PRESCREEN_PARK_PREFIX = 'prescreen: ';
 
+/**
+ * AC-10: the reflection-source admission cap (J4). REFLECTION_PROPOSALS_MAX_PER_DAY is parsed exactly as the cap check
+ * always did (`Number(...)`, finite and >= 0, else no cap) and counted over the preceding 24 h, for every producer that
+ * creates source='reflection' proposals — not a Commons-only or calendar-day quota.
+ */
+export const REFLECTION_PROPOSAL_WINDOW_MS = 86_400_000;
+/** Every caller of generateFromReflection/decideFromReflection; they all draw on the one shared cap. */
+export const REFLECTION_PROPOSAL_PRODUCERS = ['commons_social_learning', 'continuous_learning_loop', 'memory_candidate_review'] as const;
+/** judgments.judgment for the per-message disposition the Commons learning path records (agent-communication-service). */
+export const REFLECTION_PROPOSAL_DISPOSITION = 'reflection_proposal_disposition';
+
+export function reflectionProposalCap(env: NodeJS.ProcessEnv = process.env): number | null {
+  const cap = Number(env.REFLECTION_PROPOSALS_MAX_PER_DAY);
+  return Number.isFinite(cap) && cap >= 0 ? cap : null;
+}
+
+function reflectionProposalsInWindow(db: Database, now = Date.now()): number {
+  return (db.prepare("SELECT COUNT(*) AS n FROM self_improvements WHERE source = 'reflection' AND created_at >= ?")
+    .get(new Date(now - REFLECTION_PROPOSAL_WINDOW_MS).toISOString()) as { n: number }).n;
+}
+
+export interface ReflectionProposalPolicy {
+  env: 'REFLECTION_PROPOSALS_MAX_PER_DAY';
+  /** null = unset/invalid = no cap */
+  cap: number | null;
+  /** disabled = cap 0; exhausted = cap reached in the window; open = capacity left; uncapped = no cap */
+  state: 'disabled' | 'exhausted' | 'open' | 'uncapped';
+  created_in_window: number;
+  remaining: number | null;
+  window: 'rolling_24h'; window_hours: 24; scope: 'global'; source: 'reflection';
+  shared_producers: readonly string[];
+}
+
+/** Current effective policy (a read; says nothing about why an individual historical message has no proposal). */
+export function reflectionProposalPolicy(db: Database, env: NodeJS.ProcessEnv = process.env, now = Date.now()): ReflectionProposalPolicy {
+  const cap = reflectionProposalCap(env);
+  const created = reflectionProposalsInWindow(db, now);
+  const state = cap === null ? 'uncapped' : cap === 0 ? 'disabled' : created >= cap ? 'exhausted' : 'open';
+  return { env: 'REFLECTION_PROPOSALS_MAX_PER_DAY', cap, state, created_in_window: created, remaining: cap === null ? null : Math.max(0, Math.ceil(cap - created)),
+    window: 'rolling_24h', window_hours: 24, scope: 'global', source: 'reflection', shared_producers: REFLECTION_PROPOSAL_PRODUCERS };
+}
+
+export type ReflectionProposalReason = 'created' | 'pending_grounding' | 'duplicate' | 'policy_disabled' | 'rate_limited' | 'runtime_failure';
+export interface ReflectionProposalDecision {
+  reason: ReflectionProposalReason;
+  /** created/pending_grounding: the new proposal; duplicate: the existing one, only when includeExisting (else null) */
+  proposal_id: string | null;
+  cap: number | null; created_in_window: number | null;
+  window: 'rolling_24h'; scope: 'global'; source: 'reflection';
+  /** runtime_failure only: an error code (UPPER_SNAKE message) or the error class name — never a free-text message */
+  error_code?: string;
+}
+export interface ReflectionProposalOutcome { proposals: ImprovementProposal[]; decisions: ReflectionProposalDecision[]; failed: boolean; error?: unknown }
+
+const errorCode = (error: unknown): string => {
+  const message = error instanceof Error ? error.message : '';
+  return /^[A-Z][A-Z0-9_]{2,80}$/.test(message) ? message : error instanceof Error ? error.name : 'unknown';
+};
+
 export class SelfImprovementService {
   private panels: SpecialistPanelService;
 
@@ -63,36 +131,53 @@ export class SelfImprovementService {
     this.panels = new SpecialistPanelService(db);
   }
 
-  generateFromReflection(reflection: {
-    whatFailed: string[];
-    lessonsLearned: string[];
-    proposedImprovements: string[];
-    loopRunId?: string;
-    reflectionId?: string;
-  }, includeExisting = false): ImprovementProposal[] {
+  /** Compatibility API (every existing caller): the proposals of decideFromReflection; a runtime failure still throws. */
+  generateFromReflection(reflection: ReflectionInput, includeExisting = false): ImprovementProposal[] {
+    const outcome = this.decideFromReflection(reflection, includeExisting);
+    if (outcome.failed) throw outcome.error;
+    return outcome.proposals;
+  }
+
+  /**
+   * AC-10: the reflection→proposal path with one typed decision per proposed improvement. Admission is unchanged: the cap
+   * is checked before each item, duplicates are linked only with includeExisting, and processing stops at the first error
+   * (earlier items stay committed, as before) — reported as `failed` + a runtime_failure decision instead of a throw.
+   */
+  decideFromReflection(reflection: ReflectionInput, includeExisting = false): ReflectionProposalOutcome {
     const evidenceRefs = [
       reflection.loopRunId && `loop:${reflection.loopRunId}`,
       reflection.reflectionId && `reflection:${reflection.reflectionId}`,
     ].filter((ref): ref is string => Boolean(ref));
     // J4: a daily cap on reflection proposals (REFLECTION_PROPOSALS_MAX_PER_DAY, unset = no cap). Prod 2026-09-24: 139 a day,
     // almost all parked in needs_grounding, 0 ever verified; the grounding guild (G10) can only drain a bounded inflow.
-    const cap = Number(process.env.REFLECTION_PROPOSALS_MAX_PER_DAY);
-    const createdToday = () => (this.db.prepare("SELECT COUNT(*) AS n FROM self_improvements WHERE source = 'reflection' AND created_at >= ?")
-      .get(new Date(Date.now() - 86_400_000).toISOString()) as { n: number }).n;
-    return reflection.proposedImprovements.flatMap((description) => {
-      if (Number.isFinite(cap) && cap >= 0 && createdToday() >= cap) return [];
-      const type = this.classifyImprovement(description);
-      const proposal = this.createProposal({
-        type,
-        title: description.slice(0, 80),
-        description,
-        rationale: reflection.lessonsLearned.join('; ') || 'Generated from reflection',
-        source: 'reflection',
-        priority: type === 'bug_fix' ? 0.9 : type === 'security' ? 0.95 : 0.6,
-        evidenceRefs,
-      }, includeExisting);
-      return proposal ? [proposal] : [];
-    });
+    const cap = reflectionProposalCap();
+    const outcome: ReflectionProposalOutcome = { proposals: [], decisions: [], failed: false };
+    for (const description of reflection.proposedImprovements) {
+      let createdInWindow: number | null = null;
+      const decide = (reason: ReflectionProposalReason, proposalId: string | null, extra: Partial<ReflectionProposalDecision> = {}) =>
+        outcome.decisions.push({ reason, proposal_id: proposalId, cap, created_in_window: createdInWindow, window: 'rolling_24h', scope: 'global', source: 'reflection', ...extra });
+      try {
+        createdInWindow = reflectionProposalsInWindow(this.db);
+        if (cap !== null && createdInWindow >= cap) { decide(cap === 0 ? 'policy_disabled' : 'rate_limited', null); continue; }
+        const type = this.classifyImprovement(description);
+        const { proposal, duplicateOf } = this.createProposalWithOutcome({
+          type,
+          title: description.slice(0, 80),
+          description,
+          rationale: reflection.lessonsLearned.join('; ') || 'Generated from reflection',
+          source: 'reflection',
+          priority: type === 'bug_fix' ? 0.9 : type === 'security' ? 0.95 : 0.6,
+          evidenceRefs,
+        }, includeExisting);
+        if (proposal) outcome.proposals.push(proposal);
+        if (duplicateOf) decide('duplicate', proposal ? proposal.id : null);
+        else if (proposal) decide(proposal.status === 'needs_grounding' ? 'pending_grounding' : 'created', proposal.id);
+      } catch (error) {
+        decide('runtime_failure', null, { error_code: errorCode(error) });
+        return { ...outcome, failed: true, error };
+      }
+    }
+    return outcome;
   }
 
   generateFromGaps(gaps: Array<{ domain: string; description: string }>): ImprovementProposal[] {
@@ -123,6 +208,18 @@ export class SelfImprovementService {
     return this.createProposal({
       type: 'bug_fix', title: input.title, description: input.description, rationale: input.rationale,
       source: 'dream_state', priority: 0.7, evidenceRefs: [input.evidenceRef], grounding: input.grounding,
+    });
+  }
+
+  /**
+   * Capability factory (CAPABILITY_FACTORY_MODE): one operator-requested, grounded proposal. It takes the normal path — the
+   * specialist panel, then the human maker approval; no auto-approve rule matches its `capability-request:` ref.
+   * Null when an open proposal with the same title and description already exists.
+   */
+  generateFromOperatorRequest(input: { title: string; description: string; rationale: string; evidenceRefs: string[]; grounding: Partial<Grounding> }): ImprovementProposal | null {
+    return this.createProposal({
+      type: 'feature', title: input.title, description: input.description, rationale: input.rationale,
+      source: 'operator_request', priority: 0.6, evidenceRefs: input.evidenceRefs, grounding: input.grounding,
     });
   }
 
@@ -224,6 +321,17 @@ export class SelfImprovementService {
     const panel = this.panels.getPanel(proposal.panelId);
     if (panel.status !== 'consensus_ready') return null;
     if (panel.consensus.decision === 'goal') return this.authorizeGoal(id, `agent:approver:${runId}`);
+    // a panel whose every review is a model failure (unparseable / generation failed) is not a verdict: prod 25–26-09
+    // parked 10 of 24 validly grounded Commons proposals this way. Retry the panel once; a second all-failure panel is
+    // infra_failed, never needs_more_evidence.
+    if (this.panels.allReviewsMachineFailed(panel.id)) {
+      const retried = this.db.prepare("SELECT 1 FROM judgments WHERE judgment = 'panel_failed' AND subject_id = ? LIMIT 1").get(id);
+      this.db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at)
+        VALUES (?, 'panel_failed', 'self_improvement', ?, ?, 'enforce', 'infra', ?, ?)`)
+        .run(randomUUID(), id, panel.id, `infra: every specialist review failed to generate or parse${retried ? '; second time, infra_failed' : '; panel reset for one retry'}`, new Date().toISOString());
+      if (retried) this.transition(id, 'infra_failed'); else this.panels.resetMachineFailedReviews(panel.id);
+      return this.getImprovement(id);
+    }
     this.transition(id, 'needs_more_evidence');
     return this.getImprovement(id);
   }
@@ -286,6 +394,11 @@ export class SelfImprovementService {
   }
 
   private createProposal(input: ProposalInput, includeExisting = false): ImprovementProposal | null {
+    return this.createProposalWithOutcome(input, includeExisting).proposal;
+  }
+
+  /** createProposal plus whether an active proposal with the same fingerprint already existed (AC-10 duplicate reason). */
+  private createProposalWithOutcome(input: ProposalInput, includeExisting = false): { proposal: ImprovementProposal | null; duplicateOf: string | null } {
     const fingerprint = createHash('sha256')
       .update(`${input.source}\0${input.title.trim().toLowerCase()}\0${input.description.trim().toLowerCase()}`)
       .digest('hex');
@@ -293,8 +406,8 @@ export class SelfImprovementService {
       "SELECT id FROM self_improvements WHERE fingerprint = ? AND status IN ('proposed', 'scheduled', 'executing', 'verified', 'evaluating', 'needs_grounding') LIMIT 1"
     ).get(fingerprint) as { id: string } | undefined;
     if (duplicate) {
-      if (!includeExisting) return null;
-      return this.db.transaction(() => {
+      if (!includeExisting) return { proposal: null, duplicateOf: duplicate.id };
+      return { duplicateOf: duplicate.id, proposal: this.db.transaction(() => {
         const proposal = this.getImprovement(duplicate.id);
         const additions = (input.evidenceRefs || []).filter(ref => !proposal.evidenceRefs.includes(ref));
         if (!additions.length || !proposal.panelId) return proposal;
@@ -313,7 +426,7 @@ export class SelfImprovementService {
             .run(JSON.stringify({ ...panel.metadata, pending_evidence_refs: [...new Set([...pending, ...additions])] }), now, panel.id);
         }
         return this.getImprovement(proposal.id);
-      })();
+      })() };
     }
 
     const id = randomUUID();
@@ -332,7 +445,8 @@ export class SelfImprovementService {
       if (judgmentMode(reflectionTriage.id) !== 'off') void runJudgment(this.db, reflectionTriage, { type: 'self_improvement', id },
         { proposal: { title: input.title, description: input.description, rationale: input.rationale } }).catch(() => null);
       if (proposalDedupeEnabled()) void checkProposalDuplicate(this.db, { id, title: input.title, description: input.description }).catch(() => null);
-      return this.getImprovement(id);
+      recordNegativeEvidenceMatches(this.db, { type: 'self_improvement', id }, `${input.title}\n${input.description}\n${input.rationale}`, 'proposal');
+      return { proposal: this.getImprovement(id), duplicateOf: null };
     }
     const riskClass = input.type === 'security' ? 'high' : 'low';
     const specialistIds = input.type === 'security'
@@ -364,7 +478,9 @@ export class SelfImprovementService {
     create();
     // K2a (shadow): the same idea in other words — recorded, never acted on
     if (proposalDedupeEnabled()) void checkProposalDuplicate(this.db, { id, title: input.title, description: input.description }).catch(() => null);
-    return this.getImprovement(id);
+    // K3 (NE_GENERATOR_CHECK_MODE=shadow): does the proposal name a negative-evidence entry? Recorded only, never acted on
+    recordNegativeEvidenceMatches(this.db, { type: 'self_improvement', id }, `${input.title}\n${input.description}\n${input.rationale}`, 'proposal');
+    return { proposal: this.getImprovement(id), duplicateOf: null };
   }
 
   /**
@@ -401,7 +517,10 @@ export class SelfImprovementService {
     const parked = this.getImprovement(parkedId);
     if (parked.status !== 'needs_grounding' || parked.refinedAt || parked.refinedFromId) return null;
     return this.createProposal({
-      type: parked.type, title: parked.title.slice(0, 80), description: parked.description,
+      // the pre-screen's names-file question reads only the description (judgments/proposal-prescreen.ts): with the grounded
+      // target in the rationale alone, all 18 grounded refinements on prod were rejected 'names no concrete file'
+      type: parked.type, title: parked.title.slice(0, 80),
+      description: `${parked.description}\n\nTarget: ${grounding.target}. Test: ${grounding.acceptanceTest}.`,
       rationale: `${parked.rationale}\n\nGrounded by Agent Commons: target ${grounding.target}, test ${grounding.acceptanceTest}.`,
       source: 'refinement', priority: parked.priority,
       evidenceRefs: [...parked.evidenceRefs, `refinement-of:${parkedId}`, evidenceRef],

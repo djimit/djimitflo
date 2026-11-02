@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "anchors": {
+    "skill-lifecycle-001": {
+      "oracle_type": "exact_scalar",
+      "expected": "REJECT"
+    },
+    "skill-lifecycle-002": {
+      "oracle_type": "exact_scalar",
+      "expected": "REJECT"
+    },
+    "skill-lifecycle-003": {
+      "oracle_type": "exact_scalar",
+      "expected": "ADMIT"
+    },
+    "skill-lifecycle-004": {
+      "oracle_type": "exact_scalar",
+      "expected": "REJECT"
+    },
+    "skill-lifecycle-005": {
+      "oracle_type": "exact_scalar",
+      "expected": "REJECT"
+    },
+    "skill-lifecycle-006": {
+      "oracle_type": "exact_scalar",
+      "expected": "REJECT"
+    },
+    "skill-lifecycle-007": {
+      "oracle_type": "exact_scalar",
+      "expected": "BLOCK"
+    },
+    "skill-lifecycle-008": {
+      "oracle_type": "exact_scalar",
+      "expected": "BLOCK"
+    },
+    "skill-lifecycle-009": {
+      "oracle_type": "exact_scalar",
+      "expected": "RETURN"
+    },
+    "skill-lifecycle-010": {
+      "oracle_type": "exact_scalar",
+      "expected": "DO_NOT_SELECT"
+    },
+    "skill-lifecycle-011": {
+      "oracle_type": "exact_scalar",
+      "expected": "SELECT"
+    },
+    "skill-lifecycle-012": {
+      "oracle_type": "exact_scalar",
+      "expected": "SELECT_Y"
+    },
+    "skill-lifecycle-013": {
+      "oracle_type": "exact_scalar",
+      "expected": "BLOCK"
+    },
+    "skill-lifecycle-014": {
+      "oracle_type": "exact_scalar",
+      "expected": "BLOCK"
+    },
+    "skill-lifecycle-015": {
+      "oracle_type": "exact_scalar",
+      "expected": "ALLOW"
+    },
+    "skill-lifecycle-016": {
+      "oracle_type": "exact_scalar",
+      "expected": "REVALIDATE"
+    },
+    "skill-lifecycle-017": {
+      "oracle_type": "exact_scalar",
+      "expected": "QUARANTINE"
+    },
+    "skill-lifecycle-018": {
+      "oracle_type": "exact_scalar",
+      "expected": "KEEP_VALIDATED"
+    }
+  }
+}

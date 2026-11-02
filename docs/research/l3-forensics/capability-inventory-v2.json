@@ -1,0 +1,1383 @@
+{
+ "meta": {
+  "generated": "2026-10-21T21:10Z",
+  "prod_commit": "5a8d1b9c",
+  "code_commit": "b3cc830d",
+  "report": "L3-REPORT-v2-20261021.md",
+  "levels": {
+   "L0": "code/config, no prod use",
+   "L1": "runs",
+   "L2": "own contract + consumer",
+   "L3": "acts in prod + independent oracle/planted test validates",
+   "L4": "controlled comparison shows feedback improved later performance"
+  },
+  "level_counts": {
+   "L0": 5,
+   "L1": 45,
+   "L2": 15,
+   "L3": 6,
+   "L4": 0,
+   "UNKNOWN": 4
+  },
+  "capabilities_end_to_end": {
+   "L3": 1,
+   "L4": 0
+  },
+  "sources": {
+   "P1-P9": "ecosystem/v2/p*.json (read-only prod probes 20:33-21:05Z)",
+   "EE": "ecosystem/v2/ee.json (prod buildEvolutionEvidence, readonly db)",
+   "H": "ecosystem/v2/host-*.txt",
+   "SX": "ecosystem/v2/survival-vitest.json",
+   "VA/DA": "sub-agent audits (read-only)"
+  }
+ },
+ "capabilities": [
+  {
+   "id": "lane.oracle_test",
+   "name": "Oracle test lanes (exports/test-gap/mutation)",
+   "group": "engineering",
+   "level": "L3",
+   "level_v1": "L3",
+   "numbers": {
+    "proposals_30d": 248,
+    "verified": 117,
+    "regressed": 71,
+    "infra": 27,
+    "by_lane_verified": {
+     "exports": 67,
+     "mutation": 31,
+     "test_gap": 19
+    }
+   },
+   "validation": "executed tests + merge survival",
+   "source": "P1 funnel_30, P8 by_lane30",
+   "tag": "FACT",
+   "location": "test-gap-source-service.ts"
+  },
+  {
+   "id": "runtime.opencode",
+   "name": "Maker opencode glm-5.2",
+   "group": "engineering",
+   "level": "L3",
+   "level_v1": "L3",
+   "numbers": {
+    "leases_30d": 204,
+    "completed": 123,
+    "verified_so": 89,
+    "tokens": 114745894,
+    "tokens_per_verified": 1289280,
+    "graded_exports_mean": 0.326,
+    "graded_exports_zero_kill": "16/48"
+   },
+   "validation": "same oracle; 22/22 human-merged survived",
+   "source": "P1 makers_30, P4 so_tok30, P9",
+   "tag": "FACT",
+   "location": "execution/executors/opencode-executor.ts"
+  },
+  {
+   "id": "runtime.remote_workstation",
+   "name": "Maker workstation atomic@llama-router",
+   "group": "engineering",
+   "level": "L3",
+   "level_v1": "L3",
+   "numbers": {
+    "leases_30d": 149,
+    "completed": 69,
+    "verified_so_30d": "26/90",
+    "verified_so_7d": "18/26",
+    "cloud_tokens": 0,
+    "merged": 16,
+    "settled": 0,
+    "graded_exports_mean": 0.187,
+    "graded_exports_zero_kill": "10/16"
+   },
+   "validation": "same oracle; survival UNKNOWN (first due 27-10)",
+   "source": "P1, P3, P4, P9",
+   "tag": "FACT",
+   "location": "execution/executors/remote-maker-executor.ts"
+  },
+  {
+   "id": "runtime.claude_maker",
+   "name": "Maker claude (Max fallback)",
+   "group": "engineering",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "leases": 13,
+    "completed": 0,
+    "tokens": 23058659,
+    "failure": "token_budget x10"
+   },
+   "validation": "none",
+   "source": "P1, P4 claude_maker",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "runtime.codex_maker",
+   "name": "Maker codex",
+   "group": "engineering",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "leases": 5,
+    "completed": 0,
+    "tokens": 1052652
+   },
+   "validation": "none",
+   "source": "P1",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "runtime.atomic_server",
+   "name": "Maker atomic (server-side)",
+   "group": "engineering",
+   "level": "L0",
+   "level_v1": "L1",
+   "numbers": {
+    "leases_30d": 16,
+    "since_01_10": 1,
+    "completed": 0
+   },
+   "validation": "none",
+   "source": "P1",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "verify.deterministic_checks",
+   "name": "Deterministic checks (tests/lint/typecheck)",
+   "group": "engineering",
+   "level": "L3",
+   "level_v1": "L3",
+   "numbers": {},
+   "validation": "executed oracle; SX 904/904",
+   "source": "SX",
+   "tag": "FACT",
+   "location": "loop-service.ts"
+  },
+  {
+   "id": "verify.llm_checker",
+   "name": "LLM checker opencode",
+   "group": "engineering",
+   "level": "L3",
+   "level_v1": "L3",
+   "numbers": {
+    "accepted": 137,
+    "failed": 17,
+    "kappa_checker_outcome": 0.318
+   },
+   "validation": "F1 offline AUC 0.95 (14-10)",
+   "source": "P1 reviewers_30, EE oracle",
+   "tag": "FACT",
+   "location": "loop-verification-service.ts"
+  },
+  {
+   "id": "verify.security_checker",
+   "name": "Security checker opencode glm-5.2",
+   "group": "engineering",
+   "level": "L3",
+   "level_v1": "L2",
+   "numbers": {
+    "accepted": 135,
+    "rejected": 3,
+    "needs_revision": 2,
+    "insufficient": 19
+   },
+   "validation": "SEC-F1 KEEP: 19/20 caught, 0/26 FR, AUC 0.975, McNemar p 0.00014, 2.0M tok",
+   "source": "docs/research/eco/sec-f1/result/score.json",
+   "tag": "FACT",
+   "location": "loop-verification-service.ts"
+  },
+  {
+   "id": "verify.checker_manual",
+   "name": "Manual checker/security placeholders",
+   "group": "engineering",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "rows_30d": 1550
+   },
+   "validation": "none",
+   "source": "P1",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "verify.weak_assertion",
+   "name": "Weak-assertion check (shadow)",
+   "group": "engineering",
+   "level": "L2",
+   "level_v1": "L2",
+   "numbers": {
+    "f2_weak_caught": 0
+   },
+   "validation": "offline 18/20",
+   "source": "EE checker_family",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "verify.fail_before_pass_after",
+   "name": "R2 fail-before/pass-after (shadow)",
+   "group": "engineering",
+   "level": "L1",
+   "level_v1": null,
+   "numbers": {
+    "runs": 6,
+    "pass": 4,
+    "skipped": 2,
+    "settled": 0
+   },
+   "validation": "INSUFFICIENT; endpoint = survival (ceiling risk)",
+   "source": "EE fail_before_pass_after",
+   "tag": "FACT",
+   "location": "fail-before-pass-after.ts"
+  },
+  {
+   "id": "fitness.graded_mutant_kill",
+   "name": "Graded mutant-kill fitness (shadow)",
+   "group": "engineering",
+   "level": "L2",
+   "level_v1": "L1",
+   "numbers": {
+    "exports_opencode": {
+     "n": 48,
+     "mean": 0.326
+    },
+    "exports_remote": {
+     "n": 16,
+     "mean": 0.187
+    },
+    "mutation_opencode": {
+     "n": 15,
+     "mean": 0.907
+    },
+    "mutation_remote": {
+     "n": 9,
+     "mean": 0.862
+    }
+   },
+   "validation": "executed mutants; no consumer acts",
+   "source": "P9",
+   "tag": "FACT",
+   "location": "graded-fitness.ts:96-128"
+  },
+  {
+   "id": "settle.merge_survival",
+   "name": "Merge-survival settlement",
+   "group": "engineering",
+   "level": "L2",
+   "level_v1": "L2",
+   "numbers": {
+    "survived": 22,
+    "regressed": 0,
+    "superseded": 4,
+    "pending": 53,
+    "open_blocked": 39
+   },
+   "validation": "SX: 73/73 present, 904/904 pass; 0 negatives ever",
+   "source": "EE merge, SX",
+   "tag": "FACT",
+   "location": "merge-survival.ts:150-153,270-280"
+  },
+  {
+   "id": "act.auto_merge",
+   "name": "Auto-merge test-only (act)",
+   "group": "engineering",
+   "level": "L2",
+   "level_v1": "L2",
+   "numbers": {
+    "merged": 25,
+    "audit_samples": 10,
+    "ineligible": 79,
+    "settled": 0
+   },
+   "validation": "0 settled",
+   "source": "EE auto_merge, P3",
+   "tag": "FACT",
+   "location": "loop-auto-merge.ts"
+  },
+  {
+   "id": "lane.finding_fix",
+   "name": "Finding-fix lane (shadow)",
+   "group": "engineering",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "findings": 46,
+    "shadow_judgments_30d": 13,
+    "proposals": 0
+   },
+   "validation": "none",
+   "source": "P2 ffc",
+   "tag": "FACT",
+   "location": "finding-fix-source.ts"
+  },
+  {
+   "id": "lane.llm_originated",
+   "name": "LLM-originated proposals (reflection/refinement/feedback)",
+   "group": "engineering",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "proposals_30d": 408,
+    "verified": 1
+   },
+   "validation": "none",
+   "source": "P1",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "select.runtime_bandit",
+   "name": "Runtime bandit (max share 0.8)",
+   "group": "learning",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "bandit_selected_7d": 145,
+    "ope_diff": 0.0015,
+    "ope_ci": [
+     -0.0104,
+     0.014
+    ]
+   },
+   "validation": "NOT_MEASURED",
+   "source": "EE ope, learning_ledger",
+   "tag": "FACT",
+   "location": "runtime-bandit.ts"
+  },
+  {
+   "id": "select.evolve_siblings",
+   "name": "Evolve siblings (X1)",
+   "group": "learning",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "on": "31/42",
+    "off": "45/61",
+    "fisher_p": 1,
+    "n_vs_target": "39/50 of 94",
+    "projected_reaches_target": false
+   },
+   "validation": "no benefit",
+   "source": "EE effort_x1, experiments",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "select.graded_contest",
+   "name": "Graded evolve contest (shadow)",
+   "group": "learning",
+   "level": "L1",
+   "level_v1": null,
+   "numbers": {
+    "contests": 17,
+    "agree": 15
+   },
+   "validation": "none",
+   "source": "EE graded",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "memory.rules",
+   "name": "Memory rules to maker context",
+   "group": "learning",
+   "level": "L2",
+   "level_v1": "L2",
+   "numbers": {
+    "promoted": 185,
+    "rejected": 45,
+    "new_candidates_7d": 48,
+    "reads_30d": 916,
+    "holdout": {
+     "rules": "75/92",
+     "withheld": "27/30",
+     "fisher_p": 0.397
+    }
+   },
+   "validation": "no benefit; readout due 27-10",
+   "source": "EE memory_holdout, P2",
+   "tag": "FACT",
+   "location": "assignment-context.ts"
+  },
+  {
+   "id": "memory.skill_cards",
+   "name": "Skill cards",
+   "group": "learning",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "cards": 97,
+    "consumer_events_30d": 0
+   },
+   "validation": "none",
+   "source": "P2, P3",
+   "tag": "FACT",
+   "location": "lane-playbook.ts"
+  },
+  {
+   "id": "memory.dream_state",
+   "name": "Dream state ledger",
+   "group": "learning",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "rows": 79,
+    "since_15_10": {
+     "ACCEPT": 1,
+     "REJECT": 13,
+     "INCONCLUSIVE": 10,
+     "consolidated": 1
+    }
+   },
+   "validation": "none",
+   "source": "P2, P6",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "memory.lessons",
+   "name": "Outcome learning assessments",
+   "group": "learning",
+   "level": "L1",
+   "level_v1": null,
+   "numbers": {
+    "UNDETERMINED": 67,
+    "FALSIFIED": 2,
+    "SUPPORTED": 0
+   },
+   "validation": "none",
+   "source": "P3",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "evo.genomes",
+   "name": "Maker genomes / dream evolution",
+   "group": "learning",
+   "level": "L0",
+   "level_v1": "L1",
+   "numbers": {
+    "genomes": 19,
+    "promoted": 0,
+    "trials": 8,
+    "last_trial": "2026-10-09",
+    "enabled": false
+   },
+   "validation": "VIG INSUFFICIENT",
+   "source": "EE genomes, trials",
+   "tag": "FACT",
+   "location": "dream-evolution.ts"
+  },
+  {
+   "id": "evo.gym",
+   "name": "Evolution gym (remote atomic)",
+   "group": "learning",
+   "level": "L2",
+   "level_v1": "L2",
+   "numbers": {
+    "success_30d": 591,
+    "failure_30d": 196,
+    "discard_30d": 95,
+    "success_7d": 30,
+    "failure_7d": 50,
+    "proxy_vs_prodgate": {
+     "mined": [
+      0.839,
+      0.258
+     ],
+     "mutant": [
+      0.936,
+      0.418
+     ],
+     "write_test": [
+      0.765,
+      0.588
+     ]
+    }
+   },
+   "validation": "proxy overstates prod gate",
+   "source": "EE gym_prod_gates, P2",
+   "tag": "FACT",
+   "location": "remote-gym-service.ts"
+  },
+  {
+   "id": "evo.gym_subscription",
+   "name": "Gym subscription species claude/codex",
+   "group": "learning",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "claude": "0/10",
+    "codex": "0/5",
+    "enabled": false
+   },
+   "validation": "none",
+   "source": "EE",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "evo.tg001",
+   "name": "TG-001 r2 prompt arms",
+   "group": "learning",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "A": 19,
+    "B": 20,
+    "C": 20,
+    "D": 18
+   },
+   "validation": "INCONCLUSIVE",
+   "source": "EE tg_001",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "exp.ace001",
+   "name": "ACE-001 retrieval x examples",
+   "group": "learning",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "retrieval_diff": -0.252,
+    "examples_diff": -0.015,
+    "min_arm": 19,
+    "target": 50
+   },
+   "validation": "interim descriptive",
+   "source": "EE",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "exp.ste001",
+   "name": "STE-001 template",
+   "group": "learning",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "diff": -0.093,
+    "n": "43/43 of 100"
+   },
+   "validation": "interim",
+   "source": "EE",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "exp.maker_deps",
+   "name": "MAKER-DEPS-001",
+   "group": "learning",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "diff": 0.058,
+    "ci": [
+     -0.188,
+     0.306
+    ],
+    "n": "25/34 of 141"
+   },
+   "validation": "interim",
+   "source": "EE",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "exp.f2",
+   "name": "F2 checker family",
+   "group": "learning",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "same": 11,
+    "cross": 7,
+    "target": 93
+   },
+   "validation": "collecting",
+   "source": "EE checker_family",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "exp.d5no",
+   "name": "D5-NO prescreen",
+   "group": "learning",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "confident_no": 0
+   },
+   "validation": "collecting",
+   "source": "EE d5_no",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "exp.jev114",
+   "name": "JEV-114 challenger",
+   "group": "learning",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "with_ground_truth": 4
+   },
+   "validation": "insufficient",
+   "source": "EE jev_challenger",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "learn.ledger",
+   "name": "Learning ledger",
+   "group": "learning",
+   "level": "L2",
+   "level_v1": null,
+   "numbers": {
+    "loops_closed": "0/11",
+    "RUNNING": 8,
+    "NOT_MEASURED": 3
+   },
+   "validation": "reporting only; no dashboard consumer",
+   "source": "EE learning_ledger, VA",
+   "tag": "FACT",
+   "location": "learning-ledger.ts"
+  },
+  {
+   "id": "know.kb_retrieval",
+   "name": "KB corpus / retrieval",
+   "group": "knowledge",
+   "level": "L2",
+   "level_v1": "L2",
+   "numbers": {
+    "kb_pages": 1313
+   },
+   "validation": "ACE retrieval interim -0.252",
+   "source": "P4, EE",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "know.frontier_experts",
+   "name": "Frontier Experts",
+   "group": "knowledge",
+   "level": "L1",
+   "level_v1": "L2",
+   "numbers": {
+    "papers": 4401,
+    "repos": 138,
+    "areas": 29,
+    "last_call": "2026-10-12",
+    "proposals_citing": 0
+   },
+   "validation": "none",
+   "source": "P2, P4, EE knowledge_links",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "know.knowledge_gaps",
+   "name": "Knowledge gaps",
+   "group": "knowledge",
+   "level": "L2",
+   "level_v1": "L1",
+   "numbers": {
+    "open": 13,
+    "proposals_from_gap": 101
+   },
+   "validation": "no outcome split",
+   "source": "EE knowledge_gaps, provenance",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "know.discovery",
+   "name": "Discovery (scout + Hermes publishers)",
+   "group": "knowledge",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "scout_events_30d": 7007,
+    "hermes_macmini": 697,
+    "hermes_eve_v": 102,
+    "relevance_paused_since": "2026-10-14",
+    "proposal_link": "not_linked"
+   },
+   "validation": "none",
+   "source": "P4 ext, EE lineage",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "judge.jev",
+   "name": "jev engine",
+   "group": "judgment",
+   "level": "L2",
+   "level_v1": "L2",
+   "numbers": {
+    "calls_7d": 571,
+    "kappa_jev_outcome": 0.381
+   },
+   "validation": "not enforce-eligible",
+   "source": "P2, EE oracle",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "judge.content_safety",
+   "name": "Content safety",
+   "group": "judgment",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "shadow_30d": 6092
+   },
+   "validation": "none",
+   "source": "P1 judg",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "judge.panel",
+   "name": "Specialist panel",
+   "group": "judgment",
+   "level": "L1",
+   "level_v1": "L2",
+   "numbers": {
+    "reviews_30d": 524,
+    "consensus": {
+     "needs_more_evidence": 368,
+     "goal": 34,
+     "blocked": 31,
+     "backlog": 12
+    }
+   },
+   "validation": "semantic quality 0 scored",
+   "source": "P2, P4, EE panel_attempts",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "judge.committee",
+   "name": "Committee forecast swarm",
+   "group": "judgment",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "jobs": 134,
+    "last": "2026-10-19",
+    "decision_grade": "0/20"
+   },
+   "validation": "none",
+   "source": "P2, EE gates.D",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "judge.residents",
+   "name": "Commons residents",
+   "group": "judgment",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "last_call": "2026-10-08"
+   },
+   "validation": "none",
+   "source": "P2",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "judge.council",
+   "name": "Council sessions",
+   "group": "judgment",
+   "level": "L0",
+   "level_v1": "L1",
+   "numbers": {
+    "sessions": 17,
+    "last": "2026-09-21"
+   },
+   "validation": "none",
+   "source": "P2",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "judge.shadow_share",
+   "name": "Shadow judgments",
+   "group": "judgment",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "shadow_30d": 18909,
+    "total_30d": 19743,
+    "share": 0.958
+   },
+   "validation": "n/a",
+   "source": "P1",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "ops.value_allocator",
+   "name": "Value allocator (shadow)",
+   "group": "ops",
+   "level": "L1",
+   "level_v1": "L0",
+   "numbers": {
+    "VALUE_PROVEN": 3,
+    "NO_CONSUMER": 31,
+    "INSUFFICIENT": 16,
+    "UNKNOWN_COST": 20,
+    "EXPERIMENT": 8
+   },
+   "validation": "no consumer, no page",
+   "source": "P3 va, VA",
+   "tag": "FACT",
+   "location": "value-allocator.ts"
+  },
+  {
+   "id": "ops.value_anomaly_alarm",
+   "name": "Value-anomaly alarm (shadow)",
+   "group": "ops",
+   "level": "L1",
+   "level_v1": "L0",
+   "numbers": {
+    "replay_10d_fires": 1
+   },
+   "validation": "in-memory only",
+   "source": "P4, stall-watch.ts:202-236",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "ops.unit_economics",
+   "name": "Unit economics",
+   "group": "ops",
+   "level": "L2",
+   "level_v1": null,
+   "numbers": {
+    "verified": 118,
+    "surviving": 22,
+    "eur": null,
+    "gpu_kwh": 13.504,
+    "coverage_pct": 38.1,
+    "waiting_min_per_surviving": 285.8,
+    "handling_min_per_surviving": 14.27
+   },
+   "validation": "prices null",
+   "source": "EE ue",
+   "tag": "FACT",
+   "location": "unit-economics.ts"
+  },
+  {
+   "id": "commons.evidence_room",
+   "name": "Commons evidence room",
+   "group": "commons",
+   "level": "L1",
+   "level_v1": null,
+   "numbers": {
+    "summary_threads": 771,
+    "survival_followups": 22,
+    "typed_replies": 0
+   },
+   "validation": "none",
+   "source": "P4 evroom",
+   "tag": "FACT",
+   "location": "commons-evidence-room.ts"
+  },
+  {
+   "id": "commons.falsifier",
+   "name": "Commons falsifier niche",
+   "group": "commons",
+   "level": "L0",
+   "level_v1": null,
+   "numbers": {
+    "mode": "off",
+    "allowlist": "empty"
+   },
+   "validation": "none",
+   "source": "EE falsifier",
+   "tag": "FACT",
+   "location": "commons-falsifier.ts"
+  },
+  {
+   "id": "commons.lures",
+   "name": "Lures",
+   "group": "commons",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "lures": 33,
+    "probes": 0
+   },
+   "validation": "none",
+   "source": "P4",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "fleet.event_signatures",
+   "name": "Fleet event signatures (enforce)",
+   "group": "fleet",
+   "level": "L2",
+   "level_v1": null,
+   "numbers": {
+    "verified_events": 6,
+    "bad": 0,
+    "outcomes_since_enforce": 0
+   },
+   "validation": "authenticity only",
+   "source": "EE fleet_signatures, P2",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "fleet.outcomes",
+   "name": "Fleet outcomes (self-reported)",
+   "group": "fleet",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "n_30d": 127,
+    "success": 127
+   },
+   "validation": "none",
+   "source": "P2 fleet_so",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "fleet.hermes_eve_v",
+   "name": "Hermes Eve-V",
+   "group": "fleet",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "sessions_new_7d": 40,
+    "sessions_total": 755,
+    "maintainer_runs_30d": 17,
+    "maintainer_pr_refs": 0
+   },
+   "validation": "none",
+   "source": "H eve",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "fleet.hermes_macmini",
+   "name": "Hermes Mac mini",
+   "group": "fleet",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "sessions_new_7d": 0,
+    "sessions_total": 100,
+    "apex_self_heal_last_log": "2026-10-01"
+   },
+   "validation": "none; self-heal cron stale",
+   "source": "H macmini",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "fleet.hermes_workstation",
+   "name": "Hermes workstation djimit2-bot",
+   "group": "fleet",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "sessions_new_7d": 0,
+    "journal_7d": 73
+   },
+   "validation": "none",
+   "source": "H ws",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "fleet.openclaw",
+   "name": "OpenClaw gateway",
+   "group": "fleet",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "journal_7d": 6069,
+    "err_7d": 395,
+    "journal_24h": 967
+   },
+   "validation": "UNKNOWN",
+   "source": "H ws",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "fleet.nanoclaw",
+   "name": "NanoClaw v2",
+   "group": "fleet",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "journal_7d": 412,
+    "err_7d": 229
+   },
+   "validation": "UNKNOWN",
+   "source": "H ws",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "fleet.scallop",
+   "name": "Scallop bot",
+   "group": "fleet",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "journal_7d": 489,
+    "err_7d": 17
+   },
+   "validation": "UNKNOWN",
+   "source": "H ws",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "fleet.overwatch",
+   "name": "Overwatch",
+   "group": "fleet",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "journal_7d": 198
+   },
+   "validation": "UNKNOWN",
+   "source": "H ws",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "fleet.deerflow",
+   "name": "DeerFlow",
+   "group": "fleet",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "containers": "up 6 d",
+    "daily_check_lines": 34
+   },
+   "validation": "UNKNOWN",
+   "source": "H ws",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "fleet.research_agent",
+   "name": "Research-Agent",
+   "group": "fleet",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "container": "healthy"
+   },
+   "validation": "UNKNOWN",
+   "source": "H ws",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "fleet.onecli",
+   "name": "onecli",
+   "group": "fleet",
+   "level": "UNKNOWN",
+   "level_v1": "UNKNOWN",
+   "numbers": {
+    "container": "healthy"
+   },
+   "validation": "UNKNOWN",
+   "source": "H ws",
+   "tag": "UNKNOWN",
+   "location": null
+  },
+  {
+   "id": "fleet.llama_router",
+   "name": "llama-router (R9700)",
+   "group": "fleet",
+   "level": "L2",
+   "level_v1": "L2",
+   "numbers": {
+    "journal_7d": 55122,
+    "last": "2026-10-21T17:35Z"
+   },
+   "validation": "serves the L3 species",
+   "source": "H ws",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "fleet.ollama_ws",
+   "name": "Ollama workstation",
+   "group": "fleet",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "journal_7d": 104313,
+    "calls_24h_by_ip": {
+     "127.0.0.1": 2916,
+     "192.168.1.28": 631,
+     "100.83.83.81": 96,
+     "192.168.1.208": 77,
+     "vps_100.86.47.122": 0
+    }
+   },
+   "validation": "callers UNKNOWN",
+   "source": "H ws",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "fleet.ws_crons",
+   "name": "Workstation crons (memory-evolution, adapter-host, scallop feeder, wiki-delta, graphify, threat, apex probe)",
+   "group": "fleet",
+   "level": "UNKNOWN",
+   "level_v1": "UNKNOWN",
+   "numbers": {
+    "entries": 33
+   },
+   "validation": "no outcome reaches Djimitflo",
+   "source": "H ws",
+   "tag": "UNKNOWN",
+   "location": null
+  },
+  {
+   "id": "fleet.roborev",
+   "name": "roborev",
+   "group": "fleet",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "pending": 331,
+    "last_write": "2026-10-18",
+    "shipped": 0
+   },
+   "validation": "none",
+   "source": "local file",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "fleet.remote_maker_jobs",
+   "name": "Remote maker job queue",
+   "group": "fleet",
+   "level": "L2",
+   "level_v1": "L2",
+   "numbers": {
+    "done_30d": 118,
+    "cancelled_30d": 23,
+    "lease_link": false
+   },
+   "validation": "provenance gap",
+   "source": "P3 rmj, remote-maker-queue.ts:17-20",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "fleet.host_agents",
+   "name": "Host agents (7 hosts)",
+   "group": "fleet",
+   "level": "L2",
+   "level_v1": "L2",
+   "numbers": {
+    "hosts": [
+     "workstation",
+     "djimit-Eve-V",
+     "macmini",
+     "vps",
+     "agenticservices",
+     "djimit-web",
+     "macbook"
+    ]
+   },
+   "validation": "heartbeats",
+   "source": "P2 fleet_hosts",
+   "tag": "FACT",
+   "location": null
+  },
+  {
+   "id": "fleet.host_commands",
+   "name": "Host commands",
+   "group": "fleet",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "total": 9,
+    "last": "2026-10-07"
+   },
+   "validation": "none",
+   "source": "P2",
+   "tag": "FACT",
+   "location": "fleet-commands.ts"
+  },
+  {
+   "id": "fleet.agenticservices",
+   "name": "agenticservices (ollama-cloud proxy)",
+   "group": "fleet",
+   "level": "UNKNOWN",
+   "level_v1": "UNKNOWN",
+   "numbers": {
+    "components": [
+     "ollama-cloud",
+     "nginx",
+     "pm2"
+    ],
+    "load": 0
+   },
+   "validation": "heartbeat only",
+   "source": "P2",
+   "tag": "UNKNOWN",
+   "location": null
+  },
+  {
+   "id": "fleet.djimit_web",
+   "name": "djimit-web",
+   "group": "fleet",
+   "level": "UNKNOWN",
+   "level_v1": null,
+   "numbers": {
+    "components": [
+     "djimit-next",
+     "mariadb",
+     "nginx",
+     "redis"
+    ]
+   },
+   "validation": "heartbeat only",
+   "source": "P2",
+   "tag": "UNKNOWN",
+   "location": null
+  },
+  {
+   "id": "spawn.nested",
+   "name": "Nested spawn (sub_agent_spawns)",
+   "group": "delegation",
+   "level": "L0",
+   "level_v1": "UNKNOWN",
+   "numbers": {
+    "rows": 52,
+    "last": "2026-06-29",
+    "spawn_trees": 26
+   },
+   "validation": "dormant",
+   "source": "P3",
+   "tag": "FACT",
+   "location": "nested-spawn-service.ts"
+  },
+  {
+   "id": "fleet.registries",
+   "name": "Agent registries x5",
+   "group": "fleet",
+   "level": "L1",
+   "level_v1": "L1",
+   "numbers": {
+    "agents": 32,
+    "registry_agents": 5
+   },
+   "validation": "registration only",
+   "source": "P2",
+   "tag": "FACT",
+   "location": null
+  }
+ ],
+ "graph_delta": [
+  {
+   "node": "verify.security_checker",
+   "change": "L2->L3"
+  },
+  {
+   "node": "fleet.event_signatures",
+   "change": "new L2"
+  },
+  {
+   "node": "commons.evidence_room",
+   "change": "new L1"
+  },
+  {
+   "node": "commons.falsifier",
+   "change": "new L0"
+  },
+  {
+   "node": "verify.fail_before_pass_after",
+   "change": "new L1"
+  },
+  {
+   "node": "ops.value_allocator",
+   "change": "L0->L1"
+  },
+  {
+   "node": "ops.value_anomaly_alarm",
+   "change": "L0->L1"
+  },
+  {
+   "node": "fitness.graded_mutant_kill",
+   "change": "L1->L2 (measurement)"
+  },
+  {
+   "node": "know.frontier_experts",
+   "change": "L2->L1 dormant"
+  },
+  {
+   "node": "judge.committee",
+   "change": "off since 19-10"
+  },
+  {
+   "node": "judge.residents",
+   "change": "off since 08-10"
+  },
+  {
+   "edge": "fitness.graded_mutant_kill->verify.fail_before_pass_after",
+   "change": "added"
+  },
+  {
+   "edge": "settle.merge_survival->gate.B / R2",
+   "change": "broken by ceiling"
+  },
+  {
+   "edge": "fleet.remote_maker_jobs->worker_leases",
+   "change": "missing"
+  }
+ ],
+ "funnel_30d": {
+  "proposals": 656,
+  "verified": 118,
+  "regressed": 74,
+  "infra": 30,
+  "candidate_to_verified": 0.18,
+  "oracle_lane_rate": 0.472,
+  "llm_originated": "1/408",
+  "regression_rate": 0.385,
+  "verified_to_merged": "72/118",
+  "survived": "22/22",
+  "pending_settlement": 53,
+  "frr": [
+   0.4065,
+   0.3532,
+   0.462
+  ],
+  "tokens_per_verified_opencode": 1289280,
+  "eur_per_verified": null,
+  "loops_closed": "0/11"
+ },
+ "next_intervention": {
+  "id": "MFR-001",
+  "title": "Mutant-kill feedback retry on the exports lane (offline first, held-out mutants)",
+  "phase1": "offline paired replay on workstation species, 0 cloud tokens, prereg",
+  "decision": "SUPPORTED if diff>=+0.15 and CI low>0; FALSIFIED if CI high<+0.15",
+  "status": "proposed"
+ },
+ "verdict": "INCOMPLETE"
+}

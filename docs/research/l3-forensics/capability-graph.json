@@ -1,0 +1,3762 @@
+{
+ "meta": {
+  "repo": "djimit/djimitflo",
+  "origin_main": "7072c94b (2026-10-19)",
+  "generated": "2026-10-20",
+  "method": "read-only git show/grep on origin/main via 4 parallel inventories; spot-verified: routes/federation.ts:110-191, external-event-ingest-service.ts:27-56,142, mcp-server tools/okf.ts:161-170, specialist-panel-service.ts:608-626, loop-daemon.ts:848-849, loop-verification-service.ts:115-131,205-217, execution-engine.ts:622-640, loop-service.ts:1721-1747",
+  "prod_sources": [
+   "scratchpad/align.json (30 d, 19-10)",
+   "scratchpad/value-snapshot.json (7 d, 19-10)",
+   "scratchpad/ecosystem-prod.json (30 d, 20-10)",
+   "scratchpad/unit-economics.md (30 d to 17-10)"
+  ],
+  "status_rules": "VERIFIED = independent outcome measure (executed oracle + merge survival, or offline planted-defect replay); ACTIVE = prod rows show use; IMPLEMENTED = code on main without prod use evidence or flag off; UNREACHABLE = code path cannot produce output in prod; UNKNOWN = not on main or prod use not observable; DEPRECATED = outside deploy path / superseded",
+  "counts": {
+   "ACTIVE": 95,
+   "IMPLEMENTED": 30,
+   "UNKNOWN": 5,
+   "VERIFIED": 3,
+   "UNREACHABLE": 3,
+   "DEPRECATED": 1
+  },
+  "level_counts": {
+   "L0": 20,
+   "L1": 72,
+   "L2": 30,
+   "L3": 7,
+   "UNKNOWN": 8
+  },
+  "level_rules": "L0 code/config exists, no prod use \u00b7 L1 runs (activity) \u00b7 L2 completes own contract reliably, output consumed \u00b7 L3 acts in prod AND independent oracle/planted test validates outcomes \u00b7 L4 controlled comparison shows feedback improved later performance \u00b7 UNKNOWN no evidence",
+  "n_nodes": 137,
+  "n_edges": 116
+ },
+ "nodes": [
+  {
+   "id": "exec.engine",
+   "kind": "runtime-dispatch",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/execution/execution-engine.ts:163-176,190,314,611",
+   "input_contract": "task row (metadata: model, codexSandbox, sandbox, timeoutMs, skipPermissions)",
+   "output_contract": "session + completion promise",
+   "permissions": "create:task/execute:task on HTTP; in-process for loops",
+   "dependencies": [
+    "runtime.admission",
+    "fallback.engine_chain"
+   ],
+   "evaluation_evidence": "prod 20-10: 30 d non-manual leases opencode 316 maker / remote 147 / claude 13 / codex 5 / atomic 16 dispatched",
+   "failure_modes": [
+    "3 instances (index.ts:221, bootstrap/core-services.ts:48, lazy loop-worker-executor-service.ts:494) -> in-memory circuit breaker/fallback state not shared",
+    "task.metadata.sandbox.bindMounts/networkMode passed unvalidated to DockerSandboxExecutor (execution-engine.ts:628-640)"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/loop-worker-executor-service.ts:557",
+    "packages/server/src/routes/tasks.ts:141"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "dispatches and completes leases (opencode 164, remote 66 completed / 30 d)"
+  },
+  {
+   "id": "runtime.opencode",
+   "kind": "runtime-adapter",
+   "provider": "opencode CLI -> Ollama Cloud (kimi-k3 etc.)",
+   "runtime": "opencode 1.18.10 (legacy admitted)",
+   "location": "packages/server/src/execution/executors/opencode-executor.ts:110-115,135,192,522",
+   "input_contract": "goal prompt + worktree + model",
+   "output_contract": "diff in worktree, stdout, runtime_usage",
+   "permissions": "OPENCODE_SKIP_PERMISSIONS (security override event :522)",
+   "dependencies": [],
+   "evaluation_evidence": "prod 20-10 30 d: maker 316/164 completed, checker 155/133, security_checker 148/134; 7 d outcomes doc-drift opencode 31/71 verified, merge 20/24",
+   "failure_modes": [
+    "OPENCODE_MAX_RUN_TOKENS brake off by default",
+    "token usage missing on 38/76 maker leases (value-snapshot 7 d)"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/execution/execution-engine.ts:163"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L3",
+   "level_evidence": "maker outcomes graded by executed oracle: 7 d 31/71 verified; merged loop PRs 22/22 survived 14 d"
+  },
+  {
+   "id": "runtime.remote_workstation",
+   "kind": "runtime-adapter",
+   "provider": "workstation atomic@llama-router (local GPU)",
+   "runtime": "pull model, HMAC host token scope gym-worker",
+   "location": "packages/server/src/execution/executors/remote-maker-executor.ts:53-80; packages/server/src/services/remote-maker-queue.ts:10-52",
+   "input_contract": "base commit + prompt, model '<host>/<species>'",
+   "output_contract": "patch from host, git apply into worktree",
+   "permissions": "host token (spawn-token.ts, TTL<=90 d, no revocation list)",
+   "dependencies": [
+    "auth.spawn_token",
+    "guard.outbound"
+   ],
+   "evaluation_evidence": "prod 20-10 30 d maker 147/66 completed; 7 d doc-drift remote 14/26 verified; checker/security remote 10/0 + 11/0 (last 2026-10-07, pre-#687)",
+   "failure_modes": [
+    "what ran on the host is host-reported only (reason string); lease records requested species",
+    "self-healing cancels running leases idle >1 h (self-healing-service.ts:228-232) while remote jobs average 892 s and may queue 45 min"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/routes/remote-gym.ts:46-55"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L3",
+   "level_evidence": "7 d 14/26 verified by the same executed oracle; per-species survival not split"
+  },
+  {
+   "id": "runtime.claude",
+   "kind": "runtime-adapter",
+   "provider": "Claude subscription CLI (OAuth)",
+   "runtime": "server",
+   "location": "packages/server/src/execution/executors/claude-executor.ts:130-152",
+   "input_contract": "prompt + model (DJIMITFLO_CLAUDE_MODEL)",
+   "output_contract": "worktree diff",
+   "permissions": "acceptEdits on subscription; --dangerously-skip-permissions when skipPermissions",
+   "dependencies": [],
+   "evaluation_evidence": "prod 20-10 30 d maker 13/0 completed, 23.06M tokens (value-snapshot); cause 1000-token meta cap fixed by #898 (6ca03d55), post-fix outcome UNKNOWN",
+   "failure_modes": [
+    "0/13 makers in 30 d",
+    "engine fallback chain lands unlisted runtimes on claude (fallback-chain-service.ts:58-60)"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/execution/execution-engine.ts:163",
+    "packages/server/src/services/ollama-outage-fallback.ts:52-70"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "13 maker leases / 0 completed (30 d)"
+  },
+  {
+   "id": "runtime.codex",
+   "kind": "runtime-adapter",
+   "provider": "Codex CLI subscription",
+   "runtime": "server",
+   "location": "packages/server/src/execution/executors/codex-executor.ts:188-219",
+   "input_contract": "prompt + codexSandbox (workspace-write maker / read-only reviewer)",
+   "output_contract": "worktree diff",
+   "permissions": "sandbox mode + --dangerously-bypass-approvals-and-sandbox when skipPermissions (:210-215)",
+   "dependencies": [],
+   "evaluation_evidence": "prod 20-10 maker 5/0; gym subscription codex 5/0 (7 d outcomes)",
+   "failure_modes": [
+    "bypass flag can void reviewer read-only sandbox or conflict (UNKNOWN which)",
+    "0/5 makers"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/execution/execution-engine.ts:163"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "5/0"
+  },
+  {
+   "id": "runtime.atomic",
+   "kind": "runtime-adapter",
+   "provider": "atomic agent -> ATOMIC_AGENT_BASE_URL (default ollama.com/v1, kimi-k3)",
+   "runtime": "server",
+   "location": "packages/server/src/execution/executors/atomic-executor.ts:34,72",
+   "input_contract": "goal on stdin",
+   "output_contract": "worktree diff",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "prod 20-10 maker 16/0 (local server-side atomic, not the workstation species)",
+   "failure_modes": [
+    "0/16",
+    "mkdirSync error swallowed :72"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/execution/execution-engine.ts:163"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "16/0"
+  },
+  {
+   "id": "runtime.manual",
+   "kind": "runtime-adapter",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/loop-lifecycle-service.ts:57,92-101; packages/server/src/services/loop-worker-executor-service.ts:118-121",
+   "input_contract": "lease placeholder",
+   "output_contract": "human/attested verdict via routes/loops.ts:306-328",
+   "permissions": "create:task writes verdicts; attestation reviewer = free text",
+   "dependencies": [],
+   "evaluation_evidence": "prod 20-10 30 d maker 930/929, checker 1264/929 (PR-review synthetic pairs), security_checker 257/0 (250 cancelled, 7 prepared)",
+   "failure_modes": [
+    "manual_attestation.reviewer not bound to req.user (loop-service.ts:1009-1018,1067-1077)",
+    "manual security_checker leases are never dispatched; swept by queue-hygiene/self-healing/evolve-loser cancels without reason"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/loop-verification-service.ts:287-291"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "placeholders; security_checker 257/0"
+  },
+  {
+   "id": "runtime.mock_hermes_gemini_pi_editor",
+   "kind": "runtime-adapter",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/execution/execution-engine.ts:163-176",
+   "input_contract": "task",
+   "output_contract": "session",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "no prod lease rows in prod 20-10 runtimes30",
+   "failure_modes": [
+    "mock bypasses engine admission (loop-worker-executor-service.ts:191-193,470-492)",
+    "unpinned LEGACY_ADMITTED"
+   ],
+   "status": "IMPLEMENTED",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L0",
+   "level_evidence": "no prod lease rows"
+  },
+  {
+   "id": "runtime.deep_agent_fabric",
+   "kind": "runtime-adapter",
+   "provider": "djimit/djimit-deep-agent-fabric (private, Python)",
+   "runtime": "server",
+   "location": "packages/server/src/execution/executors/deep-agent-executor.ts:56-97,203-240; deep-agent-contract-issuer.ts:44-66",
+   "input_contract": "signed contract (DJIMIT_CANARY_SIGNING_KEY)",
+   "output_contract": "fabric result + bus events",
+   "permissions": "signed contracts, nonce replay protection, fails closed without key",
+   "dependencies": [],
+   "evaluation_evidence": "registered only when DJIMIT_DEEP_ENABLED=true; prod flag UNKNOWN; only integration with cryptographic provenance",
+   "failure_modes": [],
+   "status": "UNKNOWN",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "UNKNOWN",
+   "level_evidence": "flag state UNKNOWN"
+  },
+  {
+   "id": "runtime.admission",
+   "kind": "gate",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/execution/runtime-admission.ts:48-71,91-108,122,151-208; packages/server/src/execution/execution-engine.ts:320,625,832-855",
+   "input_contract": "executor kind + observed version (runtime_contract_probes)",
+   "output_contract": "allow/deny + policy_violations row",
+   "permissions": "RUNTIME_ADMISSION_MODE enforce default; shadow allows",
+   "dependencies": [],
+   "evaluation_evidence": "every engine attempt incl. fallbacks passes it; deny counts in prod UNKNOWN",
+   "failure_modes": [
+    "observed version null when no probe since boot -> version-bound record allowed (:104-106)",
+    "all legacy records expire 2026-12-31 simultaneously (:122)",
+    "probe read error swallowed (:838)"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/execution/execution-engine.ts:320"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "every attempt passes it; deny counts UNKNOWN"
+  },
+  {
+   "id": "fallback.engine_chain",
+   "kind": "failover",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/fallback-chain-service.ts:13-18,58-60; packages/server/src/execution/execution-engine.ts:615-619,718-724,783-790",
+   "input_contract": "failed/circuit-open executor",
+   "output_contract": "next executor in fast/standard chain",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "prod use UNKNOWN (no fallback event on circuit-open path)",
+   "failure_modes": [
+    "worker_leases.runtime never rewritten -> skill_outcomes/bandit attributed to requested runtime",
+    "circuit-open switch emits no persistFallbackEvent",
+    "RETRYABLE regex 'process exited|exit code' broad (:84)"
+   ],
+   "status": "UNKNOWN",
+   "consumers": [
+    "packages/server/src/execution/execution-engine.ts:615"
+   ],
+   "integration_points": [],
+   "duplicates_of": [
+    "fallback.ollama_outage",
+    "fallback.llm_generate"
+   ],
+   "level": "UNKNOWN",
+   "level_evidence": "no fallback event on circuit-open path"
+  },
+  {
+   "id": "fallback.ollama_outage",
+   "kind": "failover",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/ollama-outage-fallback.ts:52-70; packages/server/src/services/inference-failover.ts:36,74,85-99,139,143-162",
+   "input_contract": "lease + OLLAMA_OUTAGE_FALLBACK_RUNTIME / auto state",
+   "output_contract": "lease runtime rewritten + runtime_fallback provenance",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "OLLAMA_AUTO_FAILOVER off by default; prod engagement UNKNOWN",
+   "failure_modes": [
+    "probe host https://ollama.com vs LAN 192.168.1.28 used by panel/council (inference-failover.ts:139 vs self-improvement-agent-review-service.ts:121)",
+    "readOllamaLimit treats errors as not-limited (:74)"
+   ],
+   "status": "IMPLEMENTED",
+   "consumers": [
+    "packages/server/src/services/loop-worker-executor-service.ts:123,303"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "engaged 18-19-10 (manual); claude fallback makers 0 completed"
+  },
+  {
+   "id": "fallback.llm_generate",
+   "kind": "failover",
+   "provider": "OLLAMA_URL -> OLLAMA_FALLBACK -> LLM_FALLBACK_OPENAI (NVIDIA) -> LLM_FALLBACK2",
+   "runtime": "server",
+   "location": "packages/server/src/services/llm-fallback.ts:33-48,95-123",
+   "input_contract": "GenerateOptions{prompt,model,purpose}",
+   "output_contract": "text or primary error",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "prod llm 7 d shows ollama + nvidia purposes; fallback tier use counts UNKNOWN",
+   "failure_modes": [
+    "fails over on any error incl. 4xx/usage-limit -> prompts cross to third-party provider silently"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/dream-evolution.ts:298",
+    "packages/server/src/services/inference-failover.ts:139"
+   ],
+   "integration_points": [],
+   "duplicates_of": [
+    "routing.llm_router"
+   ],
+   "level": "L1",
+   "level_evidence": "tier use counts UNKNOWN"
+  },
+  {
+   "id": "routing.llm_router",
+   "kind": "model-routing",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/llm-router-service.ts:68",
+   "input_contract": "provider list",
+   "output_contract": "Thompson pick",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "only /apex route; no prod evidence",
+   "failure_modes": [],
+   "status": "IMPLEMENTED",
+   "consumers": [
+    "packages/server/src/routes/apex.ts:31"
+   ],
+   "integration_points": [],
+   "duplicates_of": [
+    "fallback.llm_generate",
+    "routing.model_selector"
+   ],
+   "level": "L0",
+   "level_evidence": "/apex only"
+  },
+  {
+   "id": "panel.fallback_claude",
+   "kind": "failover",
+   "provider": "Claude subscription",
+   "runtime": "server",
+   "location": "packages/server/src/services/self-improvement-agent-review-service.ts:142-180,295-317",
+   "input_contract": "panel prompt",
+   "output_contract": "claude:haiku review, no tools",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "prod 7 d panel_review:fallback claude:haiku 4/4 ok",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/specialist-panel-service.ts:283"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "4/4 ok parse 7 d"
+  },
+  {
+   "id": "routing.runtime_bandit",
+   "kind": "model-routing",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/runtime-bandit.ts:35-53; packages/server/src/services/loop-daemon.ts:595-611",
+   "input_contract": "loopName + species list (incumbent first)",
+   "output_contract": "{species, reason, posterior}",
+   "permissions": "LOOP_BANDIT_ENABLED=true (prod per CODEX_REPORT), MAX_SHARE 0.1, PROMOTE_AFTER 20",
+   "dependencies": [
+    "store.skill_outcomes"
+   ],
+   "evaluation_evidence": "live; reward fixed #771; effect on verified rate NOT_MEASURED (#907 learning ledger, unmerged)",
+   "failure_modes": [
+    "stats keyed on lease runtime, which engine fallback can make wrong",
+    "outage-fallback outcomes not excluded (:41-43)",
+    "missing table -> null silently (:44)"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/loop-daemon.ts:596"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "acts on real makers; effect NOT_MEASURED; inputs biased (P0-7)"
+  },
+  {
+   "id": "routing.model_selector",
+   "kind": "model-routing",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/model-selector.ts:12-13,68-78,121-134,185-213",
+   "input_contract": "consumer + MODEL_CANDIDATES_<CONSUMER>",
+   "output_contract": "chosen model; shadow sample",
+   "permissions": "MODEL_SELECTOR_MODE off|shadow|enforce (prod shadow per CODEX_REPORT)",
+   "dependencies": [],
+   "evaluation_evidence": "FITNESS_AUDIT #12 PROXY_ERROR (agreement != correctness); prod shadow volume UNKNOWN",
+   "failure_modes": [
+    "selectingRunner ledger rows carry no provider/tokens/runId (frontier_experts tok=0 in value-snapshot)",
+    "shadow calls awaited inline -> added latency"
+   ],
+   "status": "IMPLEMENTED",
+   "consumers": [
+    "packages/server/src/services/expert-council-service.ts:119",
+    "packages/server/src/services/self-improvement-agent-review-service.ts:319-332"
+   ],
+   "integration_points": [],
+   "duplicates_of": [
+    "routing.llm_router"
+   ],
+   "level": "L0",
+   "level_evidence": "shadow; qualification never reached"
+  },
+  {
+   "id": "ledger.llm_model_calls",
+   "kind": "evidence-ledger",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/database/migrate.ts:1373-1376,1439,1443; packages/server/src/services/model-selector.ts:68-93",
+   "input_contract": "per call purpose/provider/model/tokens",
+   "output_contract": "rows",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "prod 30 d top purpose maker:doc-drift 75 calls 26.7M tok; coverage ~11.5 of 30 d (unit-economics)",
+   "failure_modes": [
+    "recordModelCall swallows all errors",
+    "council tokensIn = prompt.length/4 estimate (council-orchestrator.ts:284)",
+    "list_price_cost NULL on every row (unit-economics)"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/value-allocator.ts",
+    "packages/server/src/services/operator-cockpit.ts"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "coverage holes (FE tokens 0, checker tok_unknown)"
+  },
+  {
+   "id": "effort.controller",
+   "kind": "delegation-policy",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/effort-controller.ts:35-36,102-112,178-187",
+   "input_contract": "goal",
+   "output_contract": "EVC shadow judgment; X1 arm (acting: arm off = no sibling)",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "EFFORT_SIBLING_RANDOMISE=true; prod effort_decision 1093 shadow judgments 30 d; X1 interim 0/3 vs 8/11 (n 15)",
+   "failure_modes": [
+    "all recorders swallow errors"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/loop-daemon.ts:690-693"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "1 093 shadow judgments; drives X1 arm"
+  },
+  {
+   "id": "delegation.evolve_siblings",
+   "kind": "delegation",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/evolve-selection.ts:10-29,75-128; packages/server/src/services/loop-daemon.ts:582,694-741",
+   "input_contract": "eligible goal",
+   "output_contract": "sibling maker lease; contest winner",
+   "permissions": "",
+   "dependencies": [
+    "verify.evolve_contest"
+   ],
+   "evaluation_evidence": "X1 randomised; interim negative, underpowered (AGENT_SWARM_EVALUATION)",
+   "failure_modes": [
+    "retry-maker failure swallowed (loop-daemon.ts:668)",
+    "loser reviewer cancels leave no reason on reviewer lease (evolve-selection.ts:113-126)"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/loop-daemon.ts:694"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "X1 interim on 0/3 vs off 8/11 (p 0.055) - no benefit shown"
+  },
+  {
+   "id": "delegation.nested_spawn",
+   "kind": "delegation",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/nested-spawn-service.ts:137,170,273-326; packages/server/src/database/migrate.ts:689-722,1978; packages/server/src/routes/spawns.ts:46,116",
+   "input_contract": "spawn request + token",
+   "output_contract": "child lease in sub_agent_spawns/spawn_trees",
+   "permissions": "requireAuthOrSpawnToken; SPAWN_DEPTH_BUDGET=0 default (off)",
+   "dependencies": [],
+   "evaluation_evidence": "prod probe looked for nonexistent table 'nested_spawns'; real tables sub_agent_spawns/spawn_trees -> prod use UNKNOWN",
+   "failure_modes": [
+    "requirePermission no-op when auth undefined (spawns.ts:46)",
+    "nested_spawn lease may run as maker regardless of role (loop-worker-executor-service.ts:112)"
+   ],
+   "status": "IMPLEMENTED",
+   "consumers": [
+    "packages/server/src/bootstrap/autonomous-services.ts:327",
+    "packages/server/src/services/proof-run-service.ts:118"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "UNKNOWN",
+   "level_evidence": "probe hit wrong table"
+  },
+  {
+   "id": "delegation.federation",
+   "kind": "delegation",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/routes/federation.ts:110-127,147-166,169-200",
+   "input_contract": "peer url/trust/metadata; goal_objective",
+   "output_contract": "peer row; goal+loop run; outbound POST to peer",
+   "permissions": "login only (requireAuth, any role)",
+   "dependencies": [],
+   "evaluation_evidence": "prod peers/use UNKNOWN; SECURITY_REVIEW K1 open",
+   "failure_modes": [
+    "any authenticated user registers arbitrary peer URL with trust 'high'",
+    "metadata.auth_token_env names ANY server env var, sent as Bearer to that URL (:184)",
+    "/inbox/work starts repo-maintenance-loop for any login (:147-166)"
+   ],
+   "status": "IMPLEMENTED",
+   "consumers": [
+    "packages/server/src/routes/index.ts:152"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L0",
+   "level_evidence": "0 peers in prod"
+  },
+  {
+   "id": "auth.spawn_token",
+   "kind": "auth",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/spawn-token.ts:19,31-34; packages/server/src/routes/remote-gym.ts:20-28,72-77",
+   "input_contract": "HMAC token scope/lease",
+   "output_contract": "accept/reject with reason",
+   "permissions": "mint needs manage:tokens; secret falls back to JWT_SECRET",
+   "dependencies": [],
+   "evaluation_evidence": "workstation gym/maker/committee/kb traffic uses it",
+   "failure_modes": [
+    "stateless, no revocation (TTL up to 90 d)",
+    "kb-sync reuses gym-worker scope (scripts/kb-sync.mjs:39)"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/routes/remote-gym.ts:20"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "workstation traffic authenticates"
+  },
+  {
+   "id": "guard.outbound",
+   "kind": "guard",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/utils/outbound-guard.ts:11-47; packages/server/src/index.ts:61-64",
+   "input_contract": "every in-process fetch",
+   "output_contract": "refuse + policy_violations row",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "2 outbound_denied rows recorded (CODEX_REPORT)",
+   "failure_modes": [
+    "exact hostname match only",
+    "unparsable URL allowed",
+    "child processes / http module not covered (documented runtime-admission.ts:126)"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/index.ts:64"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "2 outbound_denied rows"
+  },
+  {
+   "id": "verify.deterministic_checks",
+   "kind": "gate",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/loop-service.ts:1095-1189; packages/server/src/services/loop-verification-service.ts:307-309",
+   "input_contract": "worktree + lane check list",
+   "output_contract": "per-check status + stdout/stderr paths",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "executed tests/lint/typecheck are the oracle; merged loop PRs survive (skill_outcomes merge 22/26 ok, align.json)",
+   "failure_modes": [
+    "no worktree HEAD / diff hash stored with check results",
+    "daemon wraps checks in catch{} (loop-daemon.ts:666-670), fail-closed via missing result"
+   ],
+   "status": "VERIFIED",
+   "consumers": [
+    "packages/server/src/services/loop-verification-service.ts:49"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L3",
+   "level_evidence": "executed tests are the oracle; 22/22 survival"
+  },
+  {
+   "id": "verify.llm_checker",
+   "kind": "checker",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/loop-worker-executor-service.ts:282-360; packages/server/src/services/loop-daemon.ts:757-797",
+   "input_contract": "maker lease + diff, read-only worktree",
+   "output_contract": "runtime_verdict accepted/rejected",
+   "permissions": "LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED; reuses maker runtime (self-family)",
+   "dependencies": [],
+   "evaluation_evidence": "F1 offline planted-defect replay AUC 0.875 (20 good/20 defective); prod 30 d opencode 155/133",
+   "failure_modes": [
+    "same provider family as maker -> correlated errors unmeasured",
+    "kind-B weak assertions 3/7 accepted"
+   ],
+   "status": "VERIFIED",
+   "consumers": [
+    "packages/server/src/services/loop-verification-service.ts:292-302"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L3",
+   "level_evidence": "acts in prod; offline planted-defect AUC 0.875 -> 0.95 (n 40)"
+  },
+  {
+   "id": "verify.security_checker",
+   "kind": "checker",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/loop-daemon.ts:820-832; packages/server/src/services/loop-verification-service.ts:121-131; packages/server/src/services/loop-service.ts:1721-1747",
+   "input_contract": "high-risk run maker lease",
+   "output_contract": "security verdict",
+   "permissions": "LOOP_DAEMON_AUTOMATED_SECURITY_CHECKER_ENABLED; bounded strategy skips without decisive checker verdict",
+   "dependencies": [],
+   "evaluation_evidence": "prod 30 d opencode 148/134; no discrimination test (AGENT_SWARM_EVALUATION: INSUFFICIENT_EVIDENCE, 14.6M tok/7 d)",
+   "failure_modes": [
+    "non-high-risk -> 'skipped', and daemon allGatesPass requires every gate 'pass' (loop-daemon.ts:849) while certifyLoopRun tolerates skipped (loop-verification-service.ts:215-217)",
+    "manual security leases 257/0"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/loop-verification-service.ts:121"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "134/148 verdicts; no discrimination test"
+  },
+  {
+   "id": "verify.checker_family_F2",
+   "kind": "experiment-arm",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/checker-family.ts:27-52,184; packages/server/src/services/loop-daemon.ts:816-819",
+   "input_contract": "opencode evolve-eligible goal",
+   "output_contract": "cross/same family checker assignment",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "CHECKER_FAMILY_RANDOMISE=on; 5 vs 6 at 11-10, target 93/arm",
+   "failure_modes": [
+    "assignment failure swallowed -> unrandomised checker"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/loop-daemon.ts:816"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "collecting; v1 closed interim, v2 since 17-10"
+  },
+  {
+   "id": "verify.scope_gate",
+   "kind": "gate",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/loop-verification-service.ts:132-137,190-196,228-231; packages/server/src/services/loop-daemon.ts:388",
+   "input_contract": "lease.metadata.changed_files + auto_approved_scope",
+   "output_contract": "pass/fail + policy violation",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "fails closed on missing changed_files; writer of changed_files UNKNOWN",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/loop-verification-service.ts:132"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "fails closed; writer UNKNOWN"
+  },
+  {
+   "id": "verify.evolve_contest",
+   "kind": "fitness",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/evolve-fitness-service.ts:20-41; packages/server/src/services/evolve-selection.ts:95-128",
+   "input_contract": "sibling maker results",
+   "output_contract": "winner; losers superseded",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "FITNESS_AUDIT #3 PROXY_ERROR (smaller diff tiebreak)",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/loop-daemon.ts:694"
+   ],
+   "integration_points": [],
+   "duplicates_of": [
+    "verify.graded_fitness"
+   ],
+   "level": "L1",
+   "level_evidence": "PROXY_ERROR (FITNESS_AUDIT #3)"
+  },
+  {
+   "id": "verify.graded_fitness",
+   "kind": "fitness",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/graded-fitness.ts:23,75-127",
+   "input_contract": "target file + test",
+   "output_contract": "mutant-kill / red-green share",
+   "permissions": "GRADED_FITNESS_MODE / GRADED_CONTEST_MODE shadow",
+   "dependencies": [],
+   "evaluation_evidence": "shadow only; FITNESS_AUDIT OK",
+   "failure_modes": [
+    "restore failure swallowed -> reviewers see mutated target (:126)"
+   ],
+   "status": "IMPLEMENTED",
+   "consumers": [
+    "packages/server/src/services/evolve-selection.ts:95"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L0",
+   "level_evidence": "shadow only, no prod evidence"
+  },
+  {
+   "id": "verify.weak_assertion",
+   "kind": "gate",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/loop-auto-merge.ts:121-128",
+   "input_contract": "test diff",
+   "output_contract": "assertion-strength verdict",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "WEAK_ASSERTION_CHECK_MODE=shadow; used by auto-merge eligibility",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/loop-auto-merge.ts:121"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "offline 18/20 defective caught, 0/20 good failed; prod shadow -> not acting"
+  },
+  {
+   "id": "verify.outcome_attribution",
+   "kind": "attribution",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/outcome-attribution.ts:102-131,182-249",
+   "input_contract": "run gates fail/unknown + lease states",
+   "output_contract": "maker/reviewer/env/unknown + outcome_credits",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "prod 30 d outcome_attribution 165 annotation judgments; CAR audit waits on operator labels",
+   "failure_modes": [
+    "daemon passes only fail/unknown gates -> 'verified' credit for runs daemon marked failed (D1)",
+    "check-then-insert on judgments, no unique key; catch swallows (:182-190)",
+    "counts requeue_dismiss/operator_label 'enforce' rows as gating judgments (:237-238)"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/value-allocator.ts:164",
+    "packages/server/src/services/knowledge-fitness.ts:119",
+    "packages/server/src/services/evolution-feedback.ts:87"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "CAR audit awaits labels; disagrees with daemon (P0-8)"
+  },
+  {
+   "id": "settle.merge_survival",
+   "kind": "settlement",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/merge-survival.ts:196-302",
+   "input_contract": "merged loop PR + 14 d",
+   "output_contract": "SETTLED_SURVIVED/REGRESSED + skill_outcomes domain merge",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "prod: skill_outcomes merge 22/26 survived (align.json); 7 d loop-maker:merge:opencode 20/24",
+   "failure_modes": [
+    "outcome write (:289) and metadata update (:297) not atomic -> duplicate on crash",
+    "no merge sha stored",
+    "line-presence heuristic (:276-277)",
+    "v1 unpaginated commits/files (:259-261)"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/value-allocator.ts",
+    "packages/server/src/services/loop-auto-merge.ts:179-213"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "26 settled labels; line-presence heuristic unvalidated"
+  },
+  {
+   "id": "decision.auto_merge",
+   "kind": "promotion",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/loop-auto-merge.ts:44-213; packages/server/src/services/loop-auto-merge-state.ts:42",
+   "input_contract": "verified loop PR",
+   "output_contract": "squash merge or skip; class revoke",
+   "permissions": "LOOP_AUTO_MERGE_REPOS allow-list; re-enable manage:config",
+   "dependencies": [],
+   "evaluation_evidence": "22/22 merged loop PRs survived 14 d (plan Phase G); auto vs human split UNKNOWN",
+   "failure_modes": [
+    "merges current head sha, not the verified sha (:143,164)",
+    "revocation fails open when GitHub unreachable (:54,193-199)",
+    "djimitflo-review stub status counts as green (:56-62)"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/bootstrap/autonomous-services.ts"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "acts since 15-10; auto vs human share of the 22 survivors UNKNOWN"
+  },
+  {
+   "id": "decision.earned_autonomy",
+   "kind": "promotion",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/earned-autonomy.ts:15-62",
+   "input_contract": "approvals per action class",
+   "output_contract": "earned/not table",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "read-only table; 'no class qualifies' at #534",
+   "failure_modes": [
+    "pending outcomes neutral -> earned with 0 verified (:55-60)"
+   ],
+   "status": "IMPLEMENTED",
+   "consumers": [
+    "packages/server/src/routes/self-improve.ts"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "read-only table; no class qualifies"
+  },
+  {
+   "id": "decision.panel_review",
+   "kind": "consensus",
+   "provider": "Ollama kimi-k3/gemma4 cloud + claude haiku fallback",
+   "runtime": "server",
+   "location": "packages/server/src/services/specialist-panel-service.ts:283,580-640; packages/server/src/services/self-improvement-agent-review-service.ts:121-134,354",
+   "input_contract": "proposal + decision_context + kbContext",
+   "output_contract": "goal/backlog/needs_more_evidence/blocked",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "prod 30 d specialist_reviews 2 631; 7 d panel_review 86 calls; panel AUC 0.98 is leakage (AGENT_SWARM_EVALUATION); reflection->verified 1/416",
+   "failure_modes": [
+    "risk ceiling removed by operator decision -> unanimous goal for any risk (:614-623)",
+    "seats closed on machine failure shrink 'required'"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/self-improvement-service.ts:227",
+    "packages/server/src/services/memory-candidate-review-scheduler.ts:142"
+   ],
+   "integration_points": [],
+   "duplicates_of": [
+    "swarm.council",
+    "swarm.committee",
+    "swarm.consensus_debates"
+   ],
+   "level": "L2",
+   "level_evidence": "2 631 reviews; AUC 0.98 = leakage, Brier 0.33 -> no validity"
+  },
+  {
+   "id": "decision.genome_promotion",
+   "kind": "promotion",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/genome-promotion.ts:20-52",
+   "input_contract": "trial genome + holdout validity",
+   "output_contract": "status active (single writer)",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "0 non-baseline promotions ever (align.json genomes active 1 / trial 2 / inconclusive 6 / retired 10)",
+   "failure_modes": [
+    "does not read hack_flags"
+   ],
+   "status": "IMPLEMENTED",
+   "consumers": [
+    "packages/server/src/services/dream-evolution.ts:676"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L0",
+   "level_evidence": "0 promotions ever"
+  },
+  {
+   "id": "deploy.auto_deploy_verdict",
+   "kind": "promotion",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "scripts/auto-deploy.sh:38-58,80",
+   "input_contract": "sha on main",
+   "output_contract": "deploy + verdict file",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "prod 7072c94b deployed 19-10 22:06Z",
+   "failure_modes": [
+    "restarts() echo 0 on docker inspect failure",
+    "empty stalls probe = ok",
+    "older sha may never get a verdict"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/stall-watch.ts:150-160"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "verdict_ok on 7072c94b; fails open on empty probe (P2-8)"
+  },
+  {
+   "id": "review.github_pr",
+   "kind": "verification-pipeline",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/routes/github-webhooks.ts:56-60,76-191; packages/server/src/services/github-pr-review-service.ts:81-98,145-256,298-370",
+   "input_contract": "signed webhook delivery",
+   "output_contract": "djimitflo-review commit status + PR comment",
+   "permissions": "HMAC timingSafeEqual; fine-grained PAT commit statuses",
+   "dependencies": [],
+   "evaluation_evidence": "prod 30 d ~929 synthetic manual maker/checker pairs; Phase 2 LLM built but disabled (memory note)",
+   "failure_modes": [
+    "Phase-1 heuristic verdict recorded as manual human attestation 'roborev-webhook' (:171-174)",
+    "second delivery same head sha -> UNIQUE throw after goal/run committed (:95-98)"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/loop-auto-merge.ts:56-62"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "heuristic stub recorded as human (P0-5)"
+  },
+  {
+   "id": "lane.oracle_test",
+   "kind": "lane",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/test-gap-source-service.ts:108; packages/server/src/services/loop-daemon.ts:466-486,525-528",
+   "input_contract": "gap_analysis proposal (untested export / mutation target)",
+   "output_contract": "draft PR with tests",
+   "permissions": "",
+   "dependencies": [
+    "verify.deterministic_checks",
+    "verify.llm_checker",
+    "settle.merge_survival"
+   ],
+   "evaluation_evidence": "prod 30 d gap_analysis 329 -> 105 verified; 66 merged; survival 22/26 settled-survived (skill_outcomes merge)",
+   "failure_modes": [],
+   "status": "VERIFIED",
+   "consumers": [
+    "packages/server/src/services/loop-daemon.ts"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L3",
+   "level_evidence": "329 -> 105 verified (30 d), 22/22 survival"
+  },
+  {
+   "id": "lane.doc_drift_findings",
+   "kind": "lane",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/loop-service.ts:1750 (discoverLoopFindings); loop doc-drift-and-small-fix-loop",
+   "input_contract": "reflection/refinement/feedback proposals + findings",
+   "output_contract": "draft PR",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "prod 30 d reflection 416 -> 1 verified, refinement 307 -> 0, feedback 32 -> 0 (align.json)",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/loop-daemon.ts"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "755 LLM-originated proposals -> 1 verified"
+  },
+  {
+   "id": "lane.extra_repo_nodetest",
+   "kind": "lane",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/test-gap-source-service.ts:108; packages/server/src/services/repo-registry.ts:13-17,100-104",
+   "input_contract": "registered extra repo (node:test, tests/ + ESM .js since #899)",
+   "output_contract": "PR on that repo",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "no second repo live; EXTRA_REPOS gating; vitest extra-repo discovery missing (second-repo-pilot.md)",
+   "failure_modes": [],
+   "status": "IMPLEMENTED",
+   "consumers": [
+    "packages/server/src/services/loop-daemon.ts:525"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L0",
+   "level_evidence": "no second repo live"
+  },
+  {
+   "id": "lane.finding_fix",
+   "kind": "lane",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "PR #909 (feat/finding-fix-lane, unmerged); scripts/finding-fix-gate.mjs",
+   "input_contract": "ESLint pack v1 finding",
+   "output_contract": "fix PR + scanner re-run oracle",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "not on origin/main; shadow count 43 findings on 6ca03d55",
+   "failure_modes": [],
+   "status": "UNKNOWN",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "UNKNOWN",
+   "level_evidence": "not on main (#909)"
+  },
+  {
+   "id": "lane.pr_review_loop",
+   "kind": "lane",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/github-pr-review-service.ts:145-177",
+   "input_contract": "PR webhook",
+   "output_contract": "manual-attested review run",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "see review.github_pr",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/cost-ledger.ts:136"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "synthetic pairs"
+  },
+  {
+   "id": "gym.remote",
+   "kind": "evolution-gym",
+   "provider": "workstation",
+   "runtime": "server",
+   "location": "packages/server/src/services/remote-gym-service.ts:30,50-64,140-277; scripts/gym-worker.mjs:63-66,137,175,188,352-364",
+   "input_contract": "gym task claim (mined/mutant/write_test)",
+   "output_contract": "worker-reported status + skill_outcome domain gym",
+   "permissions": "host token gym-worker",
+   "dependencies": [],
+   "evaluation_evidence": "7 d loop-maker:gym:atomic 17/41; 30 d gym 570/727; gym 78.8% vs prod 7.0% (CODEX_REPORT) -> no independent transfer",
+   "failure_modes": [
+    "server accepts worker status without re-running oracle (:234-246)",
+    "no harness hash except TG-001",
+    "canaries off by default and opt-in (GYM_CANARY_RATE)"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/dream-evolution.ts",
+    "packages/server/src/services/evolution-estimators.ts:56"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "7 d atomic 17/41; worker-reported verdict (P0-12)"
+  },
+  {
+   "id": "gym.local",
+   "kind": "evolution-gym",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/evolution-gym-service.ts:20,204,215,247,279; packages/server/src/bootstrap/autonomous-services.ts:159",
+   "input_contract": "gym task",
+   "output_contract": "skill_outcome gym",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "EVOLUTION_GYM_ENABLED default off; prod use UNKNOWN",
+   "failure_modes": [],
+   "status": "IMPLEMENTED",
+   "consumers": [
+    "packages/server/src/services/dream-evolution.ts"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L0",
+   "level_evidence": "off"
+  },
+  {
+   "id": "gym.subscription_maker",
+   "kind": "evolution-gym",
+   "provider": "claude-sonnet-5 / codex-cli subscriptions",
+   "runtime": "server",
+   "location": "evolution_gym:subscription_maker purpose (services/subscription-gym.ts)",
+   "input_contract": "gym task",
+   "output_contract": "outcome",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "prod 7 d llm calls 10+5 ok, but outcomes loop-maker:gym:claude 0/10, codex 0/5",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "0/15 outcomes (harness)"
+  },
+  {
+   "id": "gym.hack_classifier",
+   "kind": "verification",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/gym-hack-classifier.ts:9,17,30",
+   "input_contract": "worker-supplied changed_files/diff",
+   "output_contract": "hack_flags",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "HACK_DETECTOR_MODE=shadow",
+   "failure_modes": [
+    "flags never gate promotion",
+    "falls back to parsing reason string"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/evolution-evidence.ts:119-120,304-310"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "shadow, never read by promotion"
+  },
+  {
+   "id": "gym.holdout_epochs",
+   "kind": "evaluation",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/genome-registry.ts:51-67; packages/server/src/services/holdout-manifest.ts:28-198; scripts/holdout-freeze.ts:7,55; packages/server/src/services/holdout-exposure.ts:11-37",
+   "input_contract": "GYM_HOLDOUT_EPOCH",
+   "output_contract": "frozen holdout + exposure",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "epoch 1 live; epoch 0 exhausted",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/genome-promotion.ts:20-41"
+   ],
+   "integration_points": [],
+   "duplicates_of": [
+    "evidence.evolution_evidence (lenient twin :147-172)"
+   ],
+   "level": "L2",
+   "level_evidence": "epoch-1 frozen 14-10, manifest sha 37b8172e"
+  },
+  {
+   "id": "evo.dream_genomes",
+   "kind": "evolution",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/dream-evolution.ts:302-334,600-710; packages/server/src/database/migrate.ts:1342",
+   "input_contract": "parent genome + evidence",
+   "output_contract": "trial mutants; McNemar/graded settlement",
+   "permissions": "DREAM_EVOLUTION_ENABLED=false",
+   "dependencies": [],
+   "evaluation_evidence": "17 genomes, 0 promoted; dormant by decision",
+   "failure_modes": [
+    "settlement writes fail-soft (:684-708)"
+   ],
+   "status": "IMPLEMENTED",
+   "consumers": [
+    "packages/server/src/services/remote-gym-service.ts:185"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "17 genomes, 0 promoted; off since 18-10"
+  },
+  {
+   "id": "evo.committee_genomes",
+   "kind": "evolution",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/committee-swarm.ts:190-216; packages/server/src/database/migrate.ts:1378",
+   "input_contract": "forecast scores",
+   "output_contract": "retire/breed members",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "0/20 decision-grade forecasters",
+   "failure_modes": [
+    "status writes outside promoteGenome boundary (:202,216)"
+   ],
+   "status": "IMPLEMENTED",
+   "consumers": [
+    "packages/server/src/bootstrap/autonomous-services.ts:255"
+   ],
+   "integration_points": [],
+   "duplicates_of": [
+    "evo.dream_genomes"
+   ],
+   "level": "L1",
+   "level_evidence": "0/20 decision-grade"
+  },
+  {
+   "id": "exp.registry",
+   "kind": "experiment-control",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/experiment-registry.ts:41-101",
+   "input_contract": "static list of 9 experiments",
+   "output_contract": "report + experiment_overdue stall",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "no WIP limit on main (#907 open)",
+   "failure_modes": [
+    "does not check experiment flag is on"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/stall-watch.ts:176-181",
+    "packages/server/src/services/evolution-evidence.ts:454"
+   ],
+   "integration_points": [],
+   "duplicates_of": [
+    "evolution-feedback.ts:41-43 EXPERIMENT_FLAGS (4 of 9)"
+   ],
+   "level": "L1",
+   "level_evidence": "no WIP limit on main"
+  },
+  {
+   "id": "exp.ace_001",
+   "kind": "experiment-arm",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/ace-001.ts:48,105,111",
+   "input_contract": "goal hash",
+   "output_contract": "R x S arm context",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "ACE_001_MODE=on; treatment delivered 2/11 slots (CODEX_REPORT); stop 15-11",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/assignment-context.ts"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "collecting; treatment delivery fixed (B24)"
+  },
+  {
+   "id": "exp.ste_001",
+   "kind": "experiment-arm",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/ste-001.ts; packages/server/src/services/assignment-context.ts:7,73",
+   "input_contract": "goal hash",
+   "output_contract": "STE template arm",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "STE_001_MODE=on; stop 14-11",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/assignment-context.ts:73"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "collecting"
+  },
+  {
+   "id": "exp.memory_holdout",
+   "kind": "experiment-arm",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/assignment-context.ts:28-37,78",
+   "input_contract": "goal hash",
+   "output_contract": "rules withheld",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "MEMORY_HOLDOUT_RATE=0.3; readout 27-10; F3 trend against",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/evolution-evidence.ts:196"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "rules 29/42 vs withheld 4/6, p 1"
+  },
+  {
+   "id": "value.allocator",
+   "kind": "allocation",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/value-allocator.ts:33,124-125,164,298-310; packages/server/src/routes/health.ts:231-234",
+   "input_contract": "outcome_credits + survival + tokens",
+   "output_contract": "daily value_allocation judgment (record-only)",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "merged #900, deployed 7072c94b; VALUE_ALLOCATOR_MODE=shadow written 19-10 22:19Z, live at next recreate -> first table UNKNOWN",
+   "failure_modes": [
+    "decision_consumed = mode 'enforce' proxy: audit rows count as consumed, acting shadow rows count as NO_CONSUMER"
+   ],
+   "status": "IMPLEMENTED",
+   "consumers": [
+    "packages/server/src/routes/health.ts:231"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L0",
+   "level_evidence": "first shadow table not yet produced"
+  },
+  {
+   "id": "swarm.council",
+   "kind": "consensus",
+   "provider": "Ollama / LiteLLM",
+   "runtime": "server",
+   "location": "packages/server/src/services/council-orchestrator.ts:76,259-318,357-366; packages/server/src/services/council-registry.ts:46",
+   "input_contract": "question",
+   "output_contract": "synthesis + requires_human_approval flag",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "prod 30 d council_sessions 4; no decision consumer",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/mcp-server/src/tools/platform.ts:22",
+    "packages/server/src/routes/council.ts"
+   ],
+   "integration_points": [],
+   "duplicates_of": [
+    "decision.panel_review",
+    "frontier.expert_council"
+   ],
+   "level": "L1",
+   "level_evidence": "4 sessions/30 d; no consumer"
+  },
+  {
+   "id": "swarm.committee",
+   "kind": "consensus",
+   "provider": "workstation",
+   "runtime": "server",
+   "location": "packages/server/src/services/committee-swarm.ts:22-23,58,82,98-160,268-291",
+   "input_contract": "proposal/question",
+   "output_contract": "forecast:committee judgments (shadow)",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "prod 30 d committee_jobs 134; COMMITTEE_SWARM_ENABLED off since 19-10; 0/20 decision-grade",
+   "failure_modes": [
+    "context recipes swallow errors ''",
+    "fleetSourceGate acts without flag (:291)"
+   ],
+   "status": "IMPLEMENTED",
+   "consumers": [
+    "packages/server/src/services/agent-social-autopilot-service.ts:235",
+    "packages/server/src/services/expert-source-units-service.ts:321"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "134 jobs; 0/20 skilled; off 19-10"
+  },
+  {
+   "id": "swarm.consensus_debates",
+   "kind": "consensus",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/multi-agent-consensus-service.ts:55; packages/server/src/routes/agi.ts:16,33-59",
+   "input_contract": "manual REST",
+   "output_contract": "debate rows",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "prod consensus_debates 0 rows",
+   "failure_modes": [],
+   "status": "IMPLEMENTED",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [
+    "decision.panel_review"
+   ],
+   "level": "L0",
+   "level_evidence": "0 rows"
+  },
+  {
+   "id": "swarm.sessions",
+   "kind": "swarm",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/swarm-orchestration-service.ts:54,83; packages/server/src/routes/swarm-orchestration.ts:10",
+   "input_contract": "manual REST",
+   "output_contract": "swarm_sessions",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "0 rows ever; sessions throw (AGENT_SWARM_EVALUATION)",
+   "failure_modes": [],
+   "status": "UNREACHABLE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [
+    "swarm.committee"
+   ],
+   "level": "L0",
+   "level_evidence": "unreachable"
+  },
+  {
+   "id": "swarm.expert_orchestrator",
+   "kind": "swarm",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/expert-swarm-orchestrator.ts:55,154,220; packages/server/src/bootstrap/autonomous-services.ts:403",
+   "input_contract": "route call",
+   "output_contract": "expert_swarm_history + memory_candidates",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "constructed and discarded at boot; prod use UNKNOWN",
+   "failure_modes": [],
+   "status": "IMPLEMENTED",
+   "consumers": [
+    "packages/server/src/routes/swarms.ts:226-232,319-324"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L0",
+   "level_evidence": "discarded at boot"
+  },
+  {
+   "id": "commons.residents",
+   "kind": "swarm",
+   "provider": "Ollama qwen2.5:3b default",
+   "runtime": "server",
+   "location": "packages/server/src/services/agent-social-autopilot-service.ts:164,228,260-396; packages/server/src/bootstrap/autonomous-services.ts:83-106",
+   "input_contract": "threads/questions",
+   "output_contract": "replies, commons_contribution/commons_idea judgments",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "prod 30 d commons_contribution 1 368 + commons_idea 1 327 shadow; residents 7 x ~80-109 calls; SOCIAL_AUTOPILOT_RUNTIME now off; 0 verified changes from Commons",
+   "failure_modes": [
+    "threadGated acts on shadow judgments without mode check (:387-396)",
+    "resident selection reads agents.status (never decays) (:228)"
+   ],
+   "status": "IMPLEMENTED",
+   "consumers": [
+    "packages/server/src/services/self-improvement-service.ts:399"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "~80-109 calls each; 0 verified"
+  },
+  {
+   "id": "frontier.expert_council",
+   "kind": "expert-registry",
+   "provider": "ollama kimi-k3 / glm cloud",
+   "runtime": "server",
+   "location": "packages/server/src/services/expert-council-service.ts:104,119-120; packages/server/src/services/frontier-expert-scheduler.ts:72,142; packages/server/src/services/frontier-expert-registry-service.ts",
+   "input_contract": "expert identity + units",
+   "output_contract": "reviews, expert_claims",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "prod units 4 401 papers / 138 repos / 29 areas, 2 265 claims; 7 d frontier_experts 37 calls (tokens 0 recorded); 0 proposals cite knowledge (CODEX_REPORT)",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/committee-swarm.ts:88",
+    "packages/server/src/services/technique-card-service.ts:83,126,163",
+    "packages/server/src/services/knowledge-fitness.ts:156"
+   ],
+   "integration_points": [],
+   "duplicates_of": [
+    "swarm.council"
+   ],
+   "level": "L2",
+   "level_evidence": "2 265 claims written; 0 proposals cite knowledge"
+  },
+  {
+   "id": "registry.agents_table",
+   "kind": "registry",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/routes/agents.ts:38-39,306; packages/mcp-server/src/tools/agents.ts:47-54",
+   "input_contract": "registration",
+   "output_contract": "agents rows",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "prod 20-10: 32 rows all 'active' = registration, not liveness; 0 heartbeats/24 h at 11-10",
+   "failure_modes": [],
+   "status": "IMPLEMENTED",
+   "consumers": [
+    "packages/server/src/services/agent-social-autopilot-service.ts:228",
+    "packages/server/src/services/agent-lure-service.ts:46"
+   ],
+   "integration_points": [],
+   "duplicates_of": [
+    "registry.registry_agents",
+    "registry.okf_agents"
+   ],
+   "level": "L1",
+   "level_evidence": "32/32 'active' = registration"
+  },
+  {
+   "id": "registry.registry_agents",
+   "kind": "registry",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/agent-registry-sync-service.ts:30-56",
+   "input_contract": "agent-registry fetch",
+   "output_contract": "registry_agents",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "display only",
+   "failure_modes": [],
+   "status": "IMPLEMENTED",
+   "consumers": [
+    "packages/server/src/routes/agents.ts:29",
+    "packages/server/src/services/scorecards.ts:95"
+   ],
+   "integration_points": [],
+   "duplicates_of": [
+    "registry.agents_table"
+   ],
+   "level": "L1",
+   "level_evidence": "display only"
+  },
+  {
+   "id": "registry.okf_agents",
+   "kind": "registry",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/agent-registry-service.ts:12,33-50",
+   "input_contract": "agent def",
+   "output_contract": "OKF markdown",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "self-declared capabilities strings, never measured",
+   "failure_modes": [],
+   "status": "IMPLEMENTED",
+   "consumers": [
+    "packages/server/src/routes/agents.ts:12"
+   ],
+   "integration_points": [],
+   "duplicates_of": [
+    "registry.agents_table"
+   ],
+   "level": "L0",
+   "level_evidence": "self-declared"
+  },
+  {
+   "id": "registry.swarm_capabilities",
+   "kind": "capability-registry",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/capability-acquisition.ts:51-83; packages/server/src/services/integration-inbox-service.ts:176-183",
+   "input_contract": "capability gap",
+   "output_contract": "draft/candidate capability rows",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "prod 20-10 510 rows; auto rows never 'validated' -> cannot pass the only gate; PHASE0 DUPLICATE/retire",
+   "failure_modes": [
+    "catch{} swallows everything (:83)"
+   ],
+   "status": "IMPLEMENTED",
+   "consumers": [
+    "packages/server/src/services/integration-inbox-service.ts:176",
+    "packages/server/src/routes/federation.ts:133"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "510 rows, never validated, unread"
+  },
+  {
+   "id": "registry.liveness_connection_state",
+   "kind": "registry",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/agent-connection-state.ts:25-74; packages/server/src/services/fleet-commands.ts:92",
+   "input_contract": "last_seen/heartbeat/messages",
+   "output_contract": "connection_state (display)",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "display only; not used by resident selection",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/routes/agents.ts:38",
+    "packages/server/src/services/scorecards.ts:101"
+   ],
+   "integration_points": [],
+   "duplicates_of": [
+    "fleet.hosts (120 s liveness vs 24 h)"
+   ],
+   "level": "L1",
+   "level_evidence": "display only"
+  },
+  {
+   "id": "skills.agent_skills",
+   "kind": "skill-store",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/skill-loader-service.ts:159-206,295; packages/server/src/execution/execution-engine.ts:1386,1437,1452",
+   "input_contract": "skills dir",
+   "output_contract": "agent_skills rows",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "prod 20-10 agent_skills 0 rows -> selection always falls through",
+   "failure_modes": [],
+   "status": "UNREACHABLE",
+   "consumers": [
+    "packages/server/src/execution/execution-engine.ts:1386"
+   ],
+   "integration_points": [],
+   "duplicates_of": [
+    "skills.skill_cards"
+   ],
+   "level": "L0",
+   "level_evidence": "0 rows"
+  },
+  {
+   "id": "skills.skill_cards",
+   "kind": "skill-store",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/skill-distillation.ts:41-129; packages/server/src/services/lane-playbook.ts:50,72",
+   "input_contract": "verified runs",
+   "output_contract": "77 skill cards",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "consumer gated DREAM_PLAYBOOK_GENE off + dream off -> no live consumer",
+   "failure_modes": [],
+   "status": "IMPLEMENTED",
+   "consumers": [
+    "packages/server/src/services/dream-evolution.ts:316"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "77 cards, no live consumer"
+  },
+  {
+   "id": "skills.skill_genomes",
+   "kind": "skill-store",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/skill-evolution-engine.ts:144-163,179-288",
+   "input_contract": "outcomes",
+   "output_contract": "skill_outcomes insert; genome traits",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "skill_outcomes is the shared fitness store (live); skill_genomes 0 rows, unread (FITNESS_AUDIT #18)",
+   "failure_modes": [
+    "skill_outcomes: random id, no UNIQUE, minimal provenance"
+   ],
+   "status": "IMPLEMENTED",
+   "consumers": [
+    "packages/server/src/services/loop-daemon.ts:900"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L0",
+   "level_evidence": "0 rows"
+  },
+  {
+   "id": "store.skill_outcomes",
+   "kind": "evidence-store",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/skill-evolution-engine.ts:144-163; packages/server/src/routes/swarm-intel.ts:150-160",
+   "input_contract": "success + skill id + refs",
+   "output_contract": "fitness rows",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "all lane/gym/fleet/merge outcomes",
+   "failure_modes": [
+    "write:evidence route accepts arbitrary loop-maker:* outcomes",
+    "fleet rows self-asserted, unauthenticated bus"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/runtime-bandit.ts:41",
+    "packages/server/src/services/scorecards.ts:11",
+    "packages/server/src/services/value-allocator.ts"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "shared outcome store; fleet rows self-asserted"
+  },
+  {
+   "id": "mcp.server_tools",
+   "kind": "mcp",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/mcp-server/src/register-tools.ts; transports/http.ts:14-100; tools/okf.ts:161,170; tools/governance.ts:123-169,350-384,476-510",
+   "input_contract": "JWT MCP call",
+   "output_contract": "60 tools",
+   "permissions": "HS256 JWT; per-tool permission only in tools/orchestration.ts:19-21, tools/authority.ts:23",
+   "dependencies": [],
+   "evaluation_evidence": "tools exposed to operator sessions; usage counts UNKNOWN",
+   "failure_modes": [
+    "okf_get path.join without containment -> arbitrary file read",
+    "catalog sync overwrites operator permission decisions; regex marks notebook_delete allowed"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "Claude Code sessions (this one lists djimitflo_* tools)"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "usage counts UNKNOWN"
+  },
+  {
+   "id": "mcp.servers_registry",
+   "kind": "mcp",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/routes/mcp.ts:62,110-131,302-340; packages/server/src/database/seed-mcp-servers.ts:15-36",
+   "input_contract": "probe",
+   "output_contract": "mcp_servers status",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "prod 20-10 6 running / 4 stopped; no call path gated on status (display/doctor only)",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/routes/mcp.ts"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "6 running / 4 stopped, display only"
+  },
+  {
+   "id": "memory.rules_injection",
+   "kind": "memory",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/assignment-context.ts:33,78-122; packages/server/src/services/loop-service.ts:36",
+   "input_contract": "promoted engineering_rule candidates",
+   "output_contract": "<=3 rules in maker prompt + memory_access_log",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "prod 175 promoted / 43 rejected; 850 reads 30 d; holdout F3 inconclusive, trend against; fitness PROXY_ERROR (FITNESS_AUDIT #2)",
+   "failure_modes": [
+    "TOFU seal",
+    "whole block catch{} advisory (:103)"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/loop-service.ts:36"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "850 reads; effect not shown (holdout p 1)"
+  },
+  {
+   "id": "memory.candidates_promotion",
+   "kind": "memory",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/memory-candidate-service.ts:99,139,204,224,321-345; packages/server/src/routes/swarm-governance.ts:193-206",
+   "input_contract": "candidate",
+   "output_contract": "promoted/rejected",
+   "permissions": "route approve:task; service gate: any approved_by string",
+   "dependencies": [],
+   "evaluation_evidence": "175 promoted",
+   "failure_modes": [
+    "machine approved_by ('proof-run-service','memory_curator') passes human gate (proof-run-service.ts:480,816,837,863,1253)"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/assignment-context.ts"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "175 promoted; human gate bypassable (P0-9)"
+  },
+  {
+   "id": "knowledge.kb_corpus",
+   "kind": "knowledge",
+   "provider": "NVIDIA nemotron embed + jev kb_passage_relevance",
+   "runtime": "server",
+   "location": "packages/server/src/services/kb-corpus.ts:14-30,39-41,63,72-94,136-137",
+   "input_contract": "kb-sync pages (POST /api/gym-worker/kb)",
+   "output_contract": "passages for panel/committee prompts",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "prod 30 d kb_retrieval 127; kb_passage_relevance enforce 155; F4 cited 44/52 panels, decisions unchanged",
+   "failure_modes": [
+    "deletes/skips pages on content_safety 'unsafe' even in shadow mode (:39-41)",
+    "missing relevance answer defaults keep (fail-open)"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/self-improvement-agent-review-service.ts:250",
+    "packages/server/src/services/committee-swarm.ts:85"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "127 retrievals; cited 44/52 panels, decisions unchanged"
+  },
+  {
+   "id": "knowledge.okf",
+   "kind": "knowledge",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/okf-knowledge-updater.ts; packages/server/src/knowledge-adapters/okf-adapter.ts; packages/mcp-server/src/tools/okf.ts",
+   "input_contract": "OKF dir",
+   "output_contract": "concepts",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "updater voided at boot; knowledge symlink absent in CI (memory)",
+   "failure_modes": [],
+   "status": "IMPLEMENTED",
+   "consumers": [
+    "packages/mcp-server/src/tools/okf.ts"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L0",
+   "level_evidence": "updater voided"
+  },
+  {
+   "id": "knowledge.reasoning_bank_qdrant",
+   "kind": "memory",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/reasoning-bank-service.ts:15,140-151,188-220; packages/server/src/services/vector-memory-service.ts:41",
+   "input_contract": "trajectories",
+   "output_contract": "Qdrant djimitflo_reasoning",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "write-only (searchReasoning/getTrajectoryContext no callers); Qdrant swarm path dead (embedding 404, dim mismatch, ACE CURRENT_STATE)",
+   "failure_modes": [
+    "rewards memories never used (:188-195)"
+   ],
+   "status": "UNREACHABLE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [
+    "knowledge.kb_corpus"
+   ],
+   "level": "L1",
+   "level_evidence": "write-only; no reader"
+  },
+  {
+   "id": "judgment.jev_engine",
+   "kind": "judgment",
+   "provider": "TypeSafe jev 1.13/1.14 (System One)",
+   "runtime": "server",
+   "location": "packages/server/src/services/judgment-service.ts:9-11,26-27,92,106-113,172-238",
+   "input_contract": "judgment id + input",
+   "output_contract": "judgments row (off|shadow|enforce)",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "prod 30 d judgments: shadow 18 570 / enforce 539 / annotation 164 / observe 69 -> 96% shadow; jev 1 822 + systemone 565 calls",
+   "failure_modes": [
+    "error -> decision 'error' row, returns null (fail-open)",
+    "~35 raw INSERT sites bypass buildProvenance",
+    "annotation/observe are not engine modes"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/self-improvement-auto-review-scheduler.ts:150-164",
+    "packages/server/src/services/decision-context-service.ts:61-75",
+    "packages/server/src/services/kb-corpus.ts:136"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "545/546 ok; 96 % shadow"
+  },
+  {
+   "id": "judgment.content_safety",
+   "kind": "guard",
+   "provider": "NVIDIA nemotron-3.5-content-safety",
+   "runtime": "server",
+   "location": "packages/server/src/services/content-safety.ts:9-10,59-63,116-131",
+   "input_contract": "untrusted text",
+   "output_contract": "content_safety judgment; prompt exclusion under enforce",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "prod 30 d 6 092 shadow rows; 7 d 116/116 ok",
+   "failure_modes": [
+    "rows always labelled mode 'shadow' even under enforce (:59-60)",
+    "discovery check fire-and-forget"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/kb-corpus.ts:39",
+    "packages/server/src/services/external-event-ingest-service.ts:186-188"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "shadow label but acts on KB deletes (P0-11)"
+  },
+  {
+   "id": "fleet.event_bus_ingest",
+   "kind": "integration",
+   "provider": "Djimit event bus 100.86.47.122:8083",
+   "runtime": "server",
+   "location": "packages/server/src/services/external-event-ingest-service.ts:20,38-56,116-131,142,186-198,225",
+   "input_contract": "GET bus /events/djimit.events",
+   "output_contract": "external_events, fleet skill_outcomes, roborev work_items, discovery units",
+   "permissions": "no Authorization on read, unsigned events, self-claimed source",
+   "dependencies": [],
+   "evaluation_evidence": "prod 30 d fleet outcomes 113/113 success over the top-8 fleet skills (align.json)",
+   "failure_modes": [
+    "forgeable agent.outcome/roborev.finding/discovery events",
+    "poll errors only logged; malformed outcome skipped silently"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/scorecards.ts:11",
+    "packages/server/src/services/expert-source-units-service.ts"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "ingests, idempotent"
+  },
+  {
+   "id": "fleet.agent_outcome_emitter",
+   "kind": "fleet-agent",
+   "provider": "host crons (hermes-macmini, hermes-eve-v, eve-maintainer, djimit-kbwiki, djimitflo-scout)",
+   "runtime": "server",
+   "location": "scripts/emit-agent-outcome.py:14-21,42,52",
+   "input_contract": "--success true|false from caller",
+   "output_contract": "agent.outcome event",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "success self-asserted, no exit-code/commit/lease provenance; 100% success",
+   "failure_modes": [
+    "exits 0 even when bus down",
+    "no auth header"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/external-event-ingest-service.ts:38"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "self-asserted success"
+  },
+  {
+   "id": "fleet.hermes_macmini",
+   "kind": "fleet-agent",
+   "provider": "hermes-macmini host",
+   "runtime": "server",
+   "location": "host-local cron (no repo code); djimit/hermes-agent fork",
+   "input_contract": "schedule",
+   "output_contract": "discovery-publish outcomes + discovery.* events",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "30 d discovery-publish 20/20 self-reported; discovery yield 0/105 relevant (expert-source-units-service.ts:30)",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/expert-source-units-service.ts:30"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "yield 0/105"
+  },
+  {
+   "id": "fleet.hermes_eve_v",
+   "kind": "fleet-agent",
+   "provider": "eve-v host",
+   "runtime": "server",
+   "location": "host-local cron; .opencode/agent/dream-*.md",
+   "input_contract": "schedule",
+   "output_contract": "discovery-publish, publish-goals, dream-scout, dream-architect outcomes",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "30 d 20+6+6+6 self-reported ok; discovery yield 0/16",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "yield 0/16"
+  },
+  {
+   "id": "fleet.djimitflo_scout",
+   "kind": "fleet-agent",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "scripts/fleet-discovery-publisher.py:116",
+   "input_contract": "feeds",
+   "output_contract": "discovery.* + scout outcome",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "20/20 self-reported; 199/2 664 relevant (jev) -> only source with yield",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/expert-source-units-service.ts"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "199/2 664 jev-relevant (not independent)"
+  },
+  {
+   "id": "fleet.kb_sync",
+   "kind": "fleet-agent",
+   "provider": "djimit/DjimitKBWiki host",
+   "runtime": "server",
+   "location": "scripts/kb-sync.mjs:2,39-46; scripts/wiki-delta-emitter.sh",
+   "input_contract": "DjimitKBWiki pages",
+   "output_contract": "POST /api/gym-worker/kb; wiki.page.changed",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "20/20 self-reported",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/services/kb-corpus.ts:16",
+    "packages/server/src/services/knowledge-maintenance-service.ts:58"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "pages consumed by KB retrieval"
+  },
+  {
+   "id": "fleet.eve_maintainer",
+   "kind": "fleet-agent",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "host-local",
+   "input_contract": "schedule",
+   "output_contract": "repo-maintenance outcomes",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "15/15 self-reported; plan G5.1 wants PR-merge-survival instead",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "15/15 self-reported; PR fate UNKNOWN"
+  },
+  {
+   "id": "fleet.host_agent",
+   "kind": "fleet-agent",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "scripts/djimit-host-agent.py:4,185,196; packages/server/src/services/fleet-commands.ts:39-94; packages/server/src/routes/host-agent.ts:11-30",
+   "input_contract": "poll with host-agent token",
+   "output_contract": "heartbeat; sha-bound approved root commands",
+   "permissions": "root shell per-command human approval (15 min); self-approval allowed+audited",
+   "dependencies": [],
+   "evaluation_evidence": "prod fleet_hosts 7",
+   "failure_modes": [
+    "result status = exit code only"
+   ],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/routes/fleet-hosts.ts"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "heartbeats; errors = deploy-time poll timeouts (~7/day)"
+  },
+  {
+   "id": "eco.roborev",
+   "kind": "fleet-agent",
+   "provider": "roborev (cockpit)",
+   "runtime": "server",
+   "location": "github djimit/roborev src/events.mjs:15,60; scripts/ship-to-djimitflo.sh",
+   "input_contract": "commit review events",
+   "output_contract": "roborev.finding on bus (manual --live)",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "331 pending + 89 archived events, 0 review_fix, 0 for Djimit code repos (finding-fix-lane-design.md)",
+   "failure_modes": [
+    "dedupe 'nosha' when sha missing",
+    "3 djimitflo readers of the local pending JSONL return [] in prod (roborev-findings-service.ts:14-45; operator-services.ts:14; dennis-agent-service.ts:887)"
+   ],
+   "status": "IMPLEMENTED",
+   "consumers": [
+    "packages/server/src/services/external-event-ingest-service.ts:116-131"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "daily scans; 0 review_fix"
+  },
+  {
+   "id": "eco.security_review_commons",
+   "kind": "scanner",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "github djimit/security-review-commons",
+   "input_contract": "repo files",
+   "output_contract": "findings/SARIF",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "deterministic, ~86% FP on prod code (finding-fix-lane-design.md); no djimitflo coupling; candidate second repo",
+   "failure_modes": [],
+   "status": "IMPLEMENTED",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L0",
+   "level_evidence": "not in a live flow"
+  },
+  {
+   "id": "eco.codeguardian",
+   "kind": "scanner",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "github djimit/codeguardian",
+   "input_contract": "repos",
+   "output_contract": "scan report",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "no CI tests, no branch protection; scan target only",
+   "failure_modes": [],
+   "status": "IMPLEMENTED",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L0",
+   "level_evidence": "scan target only"
+  },
+  {
+   "id": "eco.loop_engineering",
+   "kind": "governance-reference",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "github djimit/loop-engineering tools/config.py:14",
+   "input_contract": "djimitflo sqlite file",
+   "output_contract": "loop governance reports",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "opens djimitflo DB directly with own loop_runs DDL (bypasses API/auth/audit)",
+   "failure_modes": [],
+   "status": "UNKNOWN",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "UNKNOWN",
+   "level_evidence": "direct DB access; use UNKNOWN"
+  },
+  {
+   "id": "eco.agent_gym_bridge",
+   "kind": "integration",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "github djimit/agent-gym swarm-djimitflo-bridge.py:13-52,86-138",
+   "input_contract": "email/password env",
+   "output_contract": "POST /api/agents, /api/tasks",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "user-password JWT, not scoped; prod use UNKNOWN",
+   "failure_modes": [],
+   "status": "UNKNOWN",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "UNKNOWN",
+   "level_evidence": "use UNKNOWN"
+  },
+  {
+   "id": "eco.authority_ledger_patches",
+   "kind": "integration",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "github djimit/authority-ledger patch_djimitflo_*.py",
+   "input_contract": "djimitflo source",
+   "output_contract": "patched files",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "out-of-repo source mutation scripts, no tests; status inferred (not in deploy path)",
+   "failure_modes": [],
+   "status": "DEPRECATED",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L0",
+   "level_evidence": "deprecated patch scripts (authority sync itself runs on Eve-V: eve.authority_sync)"
+  },
+  {
+   "id": "evidence.evolution_evidence",
+   "kind": "evidence-view",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/evolution-evidence.ts:73,93,106,119-172,196,304-341,454",
+   "input_contract": "many tables",
+   "output_contract": "/api/health/evolution-evidence",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "manage:config cockpit view",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/routes/health.ts"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "cockpit view"
+  },
+  {
+   "id": "evidence.stall_watch",
+   "kind": "monitoring",
+   "provider": "djimitflo",
+   "runtime": "server",
+   "location": "packages/server/src/services/stall-watch.ts:139,150-160,176-181,218",
+   "input_contract": "detectors",
+   "output_contract": "stall events",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "value-anomaly alarm #905 unmerged",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [
+    "packages/server/src/routes/health.ts"
+   ],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "detectors run; health surfaced"
+  },
+  {
+   "id": "ws.atomic_agent_species",
+   "kind": "fleet-agent",
+   "provider": "workstation",
+   "runtime": "atomic-agent 0.6.5",
+   "location": "workstation systemd-user atomic-agent-serve.service + gym-workstation container djimitflo-gym-runner:atomic-0.6.5",
+   "input_contract": "remote maker job / gym task -> patch",
+   "output_contract": "remote maker job / gym task -> patch",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "atomic-agent-serve journal7d 10 / errors 0; is the 'remote' maker species workstation/atomic@llama-router: 7 d doc-drift 14/26 verified (V), 30 d 147 leases / 66 completed (P)",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L3",
+   "level_evidence": "= remote maker species, 14/26 verified 7 d"
+  },
+  {
+   "id": "ws.atomic_shim",
+   "kind": "fleet-agent",
+   "provider": "workstation",
+   "runtime": "systemd",
+   "location": "workstation systemd-user atomic-shim.service",
+   "input_contract": "UNKNOWN (shim between atomic and llama-router, inferred)",
+   "output_contract": "UNKNOWN (shim between atomic and llama-router, inferred)",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "journal7d 3 063 / errors 483 (16 %); role not observable",
+   "failure_modes": [
+    "error share 16 % of journal lines; cause not read"
+   ],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "16 % error lines"
+  },
+  {
+   "id": "ws.llama_router",
+   "kind": "model-routing",
+   "provider": "workstation",
+   "runtime": "llama.cpp router",
+   "location": "workstation systemd-user llama-router.service (AMD R9700)",
+   "input_contract": "OpenAI-style completion -> local GGUF",
+   "output_contract": "OpenAI-style completion -> local GGUF",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "journal7d 54 021 / errors 152 (0.3 %); serves the remote maker + gym species",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "serves the L3 species; 0.3 % error lines"
+  },
+  {
+   "id": "ws.ollama",
+   "kind": "inference",
+   "provider": "workstation",
+   "runtime": "ollama",
+   "location": "workstation ollama.service *:11434",
+   "input_contract": "model tags",
+   "output_contract": "model tags",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "models: qwen2.5:32b/14b-instruct, openmythos-r12..r16, nomic-embed-text, glm-5.2:cloud; prod consumer of this host's Ollama in 7 d ledger: none visible (panel uses 100.77.58.72)",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "no prod consumer visible"
+  },
+  {
+   "id": "ws.gpu_r9700",
+   "kind": "compute",
+   "provider": "workstation",
+   "runtime": "rocm",
+   "location": "workstation GPU[0] AMD Radeon AI PRO R9700",
+   "input_contract": "GPU",
+   "output_contract": "GPU",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "serves llama-router: ~19 GPU-h/day measured 08-10 (gym 79 %, committee ~7 %, prod makers 14 %)",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "~19 GPU-h/day (08-10)"
+  },
+  {
+   "id": "ws.gpu_rtx2060",
+   "kind": "compute",
+   "provider": "workstation",
+   "runtime": "cuda",
+   "location": "workstation NVIDIA RTX 2060 SUPER 8 GB",
+   "input_contract": "GPU",
+   "output_contract": "GPU",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "0 % utilisation at the 20-10 snapshot; consumer UNKNOWN",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "0 % at snapshot"
+  },
+  {
+   "id": "ws.openclaw_gateway",
+   "kind": "fleet-agent",
+   "provider": "workstation",
+   "runtime": "OpenClaw",
+   "location": "workstation openclaw-gateway.service :18789; djimit/openclaw-workspace; djimit/agent-orchestration README ('14 agents')",
+   "input_contract": "webhook / Telegram / MCP bridge",
+   "output_contract": "webhook / Telegram / MCP bridge",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "journal7d 5 250 / errors 353 (6.7 %); ~/.openclaw files_changed_7d 10 951; sandbox container up 2 d; NO outcome stream into Djimitflo (no agent:openclaw skill_outcomes)",
+   "failure_modes": [
+    "activity without any externally measured outcome"
+   ],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "activity, no outcome stream"
+  },
+  {
+   "id": "ws.nanoclaw_v2",
+   "kind": "fleet-agent",
+   "provider": "workstation",
+   "runtime": "NanoClaw",
+   "location": "workstation nanoclaw-v2-95f65da6.service",
+   "input_contract": "UNKNOWN",
+   "output_contract": "UNKNOWN",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "journal7d 357 / errors 196 (55 %); ~/.config/nanoclaw files_changed_7d 0; no outcome stream; no repo found",
+   "failure_modes": [
+    "majority of journal lines are errors -> likely failing loop (not root-caused)"
+   ],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "55 % error lines, 0 config changes"
+  },
+  {
+   "id": "ws.hermes_djimit2_bot",
+   "kind": "fleet-agent",
+   "provider": "workstation",
+   "runtime": "Hermes (djimit/hermes-agent fork)",
+   "location": "workstation hermes-gateway-djimit2-bot.service",
+   "input_contract": "Telegram bot",
+   "output_contract": "Telegram bot",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "journal7d 334 / errors 59; hermes sessions 0 in 7 d (56 total) -> idle",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "0 sessions 7 d"
+  },
+  {
+   "id": "ws.overwatch",
+   "kind": "fleet-agent",
+   "provider": "workstation",
+   "runtime": "Overwatch",
+   "location": "workstation overwatch.service (user + system) + */5 cron overwatch-llm.py",
+   "input_contract": "host/policy signals",
+   "output_contract": "host/policy signals",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "journal7d 198 / errors 0; outcome stream into Djimitflo: none observed ('overwatch-policy-drift-loop' only named in integration-inbox-service.ts:24)",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "no outcome stream"
+  },
+  {
+   "id": "ws.scallopbot",
+   "kind": "fleet-agent",
+   "provider": "workstation",
+   "runtime": "Scallop",
+   "location": "workstation scallopbot.service",
+   "input_contract": "UNKNOWN",
+   "output_contract": "UNKNOWN",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "journal7d 489 / errors 17; named in the N2 outcome contract (external-event-ingest-service.ts:23) but 0 scallop outcomes in the top-8 fleet skills (A)",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "no outcome stream"
+  },
+  {
+   "id": "ws.deerflow",
+   "kind": "fleet-agent",
+   "provider": "workstation",
+   "runtime": "DeerFlow (bytedance upstream)",
+   "location": "workstation docker deer-flow-{gateway,frontend,nginx,redis} up 4 d; */5 heartbeat cron -> :8088; daily check cron",
+   "input_contract": "research task",
+   "output_contract": "research task",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "stack healthy; heartbeat only; no deerflow outcome in prod (A fleet top-8); MCP deerflow_status/open exposed to operator sessions",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "heartbeat only"
+  },
+  {
+   "id": "ws.research_agent",
+   "kind": "fleet-agent",
+   "provider": "workstation",
+   "runtime": "Research-Agent",
+   "location": "workstation docker research-agent + research-redis (djimit/Research-Agent, pushed 16-10)",
+   "input_contract": "topic -> report",
+   "output_contract": "topic -> report",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "container healthy; reached via scripts/uams.sh / MCP research_*; 'research' 3.30M tokens/30 d with no verified consumer (unit-economics)",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "3.30M tokens/30 d, no verified consumer"
+  },
+  {
+   "id": "ws.onecli",
+   "kind": "integration",
+   "provider": "workstation",
+   "runtime": "onecli (upstream image)",
+   "location": "workstation docker onecli 1.42.0 + onecli-postgres",
+   "input_contract": "UNKNOWN",
+   "output_contract": "UNKNOWN",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "containers healthy 4 d; 0 references in djimitflo main; purpose not observable",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "UNKNOWN",
+   "level_evidence": "purpose not observable"
+  },
+  {
+   "id": "ws.agent_registry",
+   "kind": "registry",
+   "provider": "workstation",
+   "runtime": "agent-registry",
+   "location": "workstation docker agent-registry (:8088)",
+   "input_contract": "heartbeats",
+   "output_contract": "heartbeats",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "receives deerflow heartbeats every 5 min; 4th agent registry (dup of agents/registry_agents/OKF + VPS agent-registry)",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "heartbeats"
+  },
+  {
+   "id": "ws.litellm",
+   "kind": "model-routing",
+   "provider": "workstation",
+   "runtime": "LiteLLM",
+   "location": "workstation 100.81.133.48:4000 listening",
+   "input_contract": "OpenAI-compatible alias",
+   "output_contract": "OpenAI-compatible alias",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "listening; prod key 401 / prod base points to wrong host (memory reference_inference_inventory) -> no prod consumer",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "no prod consumer (key 401)"
+  },
+  {
+   "id": "ws.qdrant",
+   "kind": "memory",
+   "provider": "workstation",
+   "runtime": "Qdrant",
+   "location": "workstation 0.0.0.0:6333/6334 listening; KBWiki rebuild_indexes cron (Sun 04:00)",
+   "input_contract": "vectors",
+   "output_contract": "vectors",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "KBWiki index target; djimitflo reasoning-bank path is write-only (UNREACHABLE)",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "KBWiki index"
+  },
+  {
+   "id": "ws.observability",
+   "kind": "monitoring",
+   "provider": "workstation",
+   "runtime": "prometheus/grafana",
+   "location": "workstation docker prometheus + grafana; gpu-monitor, abtop snapshots crons",
+   "input_contract": "metrics",
+   "output_contract": "metrics",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "up 4 d; no alert->decision consumer observed",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "metrics only"
+  },
+  {
+   "id": "ws.cron_intelligence",
+   "kind": "fleet-agent",
+   "provider": "workstation",
+   "runtime": "cron",
+   "location": "workstation crons: graphify pilot (daily_swarm_assessment, intelligence_telegram, freshness, step9-status), trend_predictor, model_health_check, smart-intelligence/autofix wrappers, agent-mesh daily_training, threat-daily-check, apex_runtime_probe_sync",
+   "input_contract": "schedule -> logs/Telegram",
+   "output_contract": "schedule -> logs/Telegram",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "logs not read; no outcome stream into Djimitflo; agent-mesh 'daily_training' effect UNKNOWN",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "UNKNOWN",
+   "level_evidence": "logs not read"
+  },
+  {
+   "id": "ws.kbwiki_maintenance",
+   "kind": "knowledge",
+   "provider": "workstation",
+   "runtime": "cron",
+   "location": "workstation crons DjimitKBWiki daily-validate 07:20, qdrant rebuild weekly, NAS rsync 03:00",
+   "input_contract": "wiki vault",
+   "output_contract": "wiki vault",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "feeds fleet.kb_sync (20/20 self-reported)",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "daily validate + rsync"
+  },
+  {
+   "id": "eve.hermes_gateway",
+   "kind": "fleet-agent",
+   "provider": "Eve-V",
+   "runtime": "Hermes",
+   "location": "Eve-V system hermes-gateway.service; ~/.hermes",
+   "input_contract": "Telegram/cron sessions",
+   "output_contract": "Telegram/cron sessions",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "hermes sessions 40 in 7 d (755 total); ~/.hermes files_changed_7d 2 744; emits discovery-publish/publish-goals/dream-* outcomes (self-reported 100 %)",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "40 sessions 7 d; outputs unverified"
+  },
+  {
+   "id": "eve.dream_cycle",
+   "kind": "fleet-agent",
+   "provider": "Eve-V",
+   "runtime": "Hermes scripts",
+   "location": "Eve-V cron dream_cycle.py --phase scout|architect (Mon/Fri) + .opencode/agent/dream-*.md",
+   "input_contract": "repo scan -> proposals",
+   "output_contract": "repo scan -> proposals",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "dream-scout 6/6, dream-architect 6/6 self-reported (A); no proposal from them verified in Djimitflo (UNKNOWN link)",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "self-reported"
+  },
+  {
+   "id": "eve.authority_sync",
+   "kind": "integration",
+   "provider": "Eve-V",
+   "runtime": "Hermes scripts",
+   "location": "Eve-V authority-proxy.service + */15 authority_sync.py + weekly authority_retrospective.py --emit",
+   "input_contract": "authority JSONL",
+   "output_contract": "authority JSONL",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "runs every 15 min; consumer in Djimitflo: djimitflo_authority_* MCP tools exist; prod effect UNKNOWN",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "every 15 min; effect UNKNOWN"
+  },
+  {
+   "id": "eve.publish_goals",
+   "kind": "fleet-agent",
+   "provider": "Eve-V",
+   "runtime": "Hermes scripts",
+   "location": "Eve-V cron publish_goals.py Mon/Wed",
+   "input_contract": "goals",
+   "output_contract": "goals",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "publish-goals 6/6 self-reported; downstream goal verification UNKNOWN",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "self-reported"
+  },
+  {
+   "id": "mm.hermes",
+   "kind": "fleet-agent",
+   "provider": "Mac mini",
+   "runtime": "Hermes",
+   "location": "Mac mini ~/.hermes (no gateway unit visible); cron apex_self_heal */15",
+   "input_contract": "sessions",
+   "output_contract": "sessions",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "hermes sessions 0 in 7 d (100 total) -> idle; yet 'hermes-macmini:discovery-publish' 20/20 in 30 d (publisher not visible in captured cron/launchd = UNKNOWN source); yield 0/105",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "0 sessions 7 d (idle)"
+  },
+  {
+   "id": "mm.ollama_app",
+   "kind": "inference",
+   "provider": "Mac mini",
+   "runtime": "ollama",
+   "location": "Mac mini Ollama.app 127.0.0.1:11434 (localhost only)",
+   "input_contract": "models",
+   "output_contract": "models",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "loopback only -> no fleet consumer possible; model list empty in capture",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "loopback only"
+  },
+  {
+   "id": "vps.djimitflo_live",
+   "kind": "runtime-dispatch",
+   "provider": "VPS",
+   "runtime": "node",
+   "location": "VPS docker djimitflo-live djimitflo:main-7072c94 (healthy)",
+   "input_contract": "control plane",
+   "output_contract": "control plane",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "healthy; all prod numbers in this report come from its DB",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "healthy, verdict_ok"
+  },
+  {
+   "id": "vps.event_bus",
+   "kind": "integration",
+   "provider": "VPS",
+   "runtime": "redis streams",
+   "location": "VPS docker event-bus + event-bus-redis :8083",
+   "input_contract": "events",
+   "output_contract": "events",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "fleet outcomes + discovery + roborev.finding transport; unsigned, unauthenticated read (P0-3)",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "transports fleet events"
+  },
+  {
+   "id": "vps.agent_registry_router",
+   "kind": "registry",
+   "provider": "VPS",
+   "runtime": "agent-registry/agent-router",
+   "location": "VPS docker agent-registry + agent-router",
+   "input_contract": "UNKNOWN",
+   "output_contract": "UNKNOWN",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "up 7 d; consumer: AgentRegistrySyncService (bootstrap/autonomous-services.ts:28); routing decisions UNKNOWN",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "consumer UNKNOWN"
+  },
+  {
+   "id": "vps.roborev_crons",
+   "kind": "scanner",
+   "provider": "VPS",
+   "runtime": "cron",
+   "location": "VPS /srv/roborev-integration scan-and-flush (daily), watchdogs, domain-scan (weekly), trend-anomaly, contracts-regen",
+   "input_contract": "repos -> findings",
+   "output_contract": "repos -> findings",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "331 pending / 89 archived events, 0 review_fix (finding-fix-lane-design.md)",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "0 review_fix"
+  },
+  {
+   "id": "model.glm_5_2",
+   "kind": "model",
+   "provider": "Ollama Cloud",
+   "runtime": "opencode",
+   "location": "opencode default family (maker/checker; F2 maker_model_family 'glm')",
+   "input_contract": "prompt",
+   "output_contract": "prompt",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "F1 re-run 14-10: good 19/20 accepted, defective 1/20 accepted, AUC 0.95 (offline planted defects)",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L3",
+   "level_evidence": "F1 AUC 0.95 offline + prod checker/maker family"
+  },
+  {
+   "id": "model.kimi_k3_cloud",
+   "kind": "model",
+   "provider": "Ollama Cloud",
+   "runtime": "ollama",
+   "location": "ollama 100.77.58.72 kimi-k3:cloud",
+   "input_contract": "prompt",
+   "output_contract": "prompt",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "panel 76/76 ok 7 d (V); F1 same rates as glm-5.2, 38/40 agreement; F2 v1 cross arm (closed interim, never pooled)",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "76/76 ok; F1 same as glm offline (not prod checker default)"
+  },
+  {
+   "id": "model.gemma4_31b_cloud",
+   "kind": "model",
+   "provider": "Ollama Cloud",
+   "runtime": "ollama",
+   "location": "ollama gemma4:31b:cloud",
+   "input_contract": "prompt",
+   "output_contract": "prompt",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "panel since 17-10 (10/10 ok 7 d); F2 v2 cross arm; residents",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "10/10 ok"
+  },
+  {
+   "id": "model.jev_1_13",
+   "kind": "model",
+   "provider": "TypeSafe",
+   "runtime": "api",
+   "location": "TypeSafe jev-1.13.0 (pinned)",
+   "input_contract": "judgment",
+   "output_contract": "judgment",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "546/545 ok 7 d; JC-001 cascade REJECT (#779); NE-001 prescreen cascade REJECT",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "545/546"
+  },
+  {
+   "id": "model.jev_1_14",
+   "kind": "model",
+   "provider": "TypeSafe",
+   "runtime": "api",
+   "location": "TypeSafe jev-1.14.0 challenger",
+   "input_contract": "judgment",
+   "output_contract": "judgment",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "18/18 shadow 7 d; IMG-001 error-noul 34/34",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "shadow challenger"
+  },
+  {
+   "id": "model.nemotron",
+   "kind": "model",
+   "provider": "NVIDIA",
+   "runtime": "api",
+   "location": "NVIDIA nemotron-3.5-content-safety + nemotron-3-embed-1b",
+   "input_contract": "text",
+   "output_contract": "text",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "safety 116/116, embeddings 157/157 ok 7 d",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L2",
+   "level_evidence": "all calls ok 7 d"
+  },
+  {
+   "id": "model.claude_subscription",
+   "kind": "model",
+   "provider": "Anthropic subscription",
+   "runtime": "claude CLI",
+   "location": "Claude Code OAuth (sonnet-5 gym, haiku panel fallback)",
+   "input_contract": "prompt",
+   "output_contract": "prompt",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "gym 10/10 calls ok but 0/10 outcomes (harness: no edit perms, then 'tests still red'); haiku fallback 4/4; prod maker 0/13 (1000-token cap, fixed #898)",
+   "failure_modes": [],
+   "status": "ACTIVE",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "0 verified outcomes"
+  },
+  {
+   "id": "model.codex_subscription",
+   "kind": "model",
+   "provider": "OpenAI subscription",
+   "runtime": "codex CLI",
+   "location": "Codex CLI (ChatGPT Pro)",
+   "input_contract": "prompt",
+   "output_contract": "prompt",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "gym 5/5 calls, 0/5 outcomes (bubblewrap sandbox cannot write); paused 18-10",
+   "failure_modes": [],
+   "status": "IMPLEMENTED",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L1",
+   "level_evidence": "0/5, paused"
+  },
+  {
+   "id": "model.local_openmythos_qwen",
+   "kind": "model",
+   "provider": "workstation",
+   "runtime": "ollama",
+   "location": "workstation ollama openmythos-r12..r16, qwen2.5 32b/14b",
+   "input_contract": "prompt",
+   "output_contract": "prompt",
+   "permissions": "",
+   "dependencies": [],
+   "evaluation_evidence": "no consumer in 7 d ledger; APEX benchmark history only",
+   "failure_modes": [],
+   "status": "IMPLEMENTED",
+   "consumers": [],
+   "integration_points": [],
+   "duplicates_of": [],
+   "level": "L0",
+   "level_evidence": "no consumer"
+  }
+ ],
+ "edges": [
+  {
+   "from": "lane.oracle_test",
+   "to": "exec.engine",
+   "type": "dispatches",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "lane.doc_drift_findings",
+   "to": "exec.engine",
+   "type": "dispatches",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "routing.runtime_bandit",
+   "to": "lane.oracle_test",
+   "type": "selects_runtime",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "store.skill_outcomes",
+   "to": "routing.runtime_bandit",
+   "type": "reward",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "exec.engine",
+   "to": "runtime.admission",
+   "type": "gated_by",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "exec.engine",
+   "to": "fallback.engine_chain",
+   "type": "fails_over",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "exec.engine",
+   "to": "runtime.opencode",
+   "type": "executes",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "exec.engine",
+   "to": "runtime.remote_workstation",
+   "type": "executes",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "exec.engine",
+   "to": "runtime.claude",
+   "type": "executes",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "exec.engine",
+   "to": "runtime.codex",
+   "type": "executes",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "exec.engine",
+   "to": "runtime.atomic",
+   "type": "executes",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "exec.engine",
+   "to": "runtime.deep_agent_fabric",
+   "type": "executes",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "exec.engine",
+   "to": "runtime.mock_hermes_gemini_pi_editor",
+   "type": "executes",
+   "exercised_in_prod": "no"
+  },
+  {
+   "from": "fallback.engine_chain",
+   "to": "runtime.claude",
+   "type": "falls_back_to",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "fallback.ollama_outage",
+   "to": "runtime.claude",
+   "type": "falls_back_to",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "runtime.remote_workstation",
+   "to": "auth.spawn_token",
+   "type": "authenticates_with",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "gym.remote",
+   "to": "auth.spawn_token",
+   "type": "authenticates_with",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "fleet.kb_sync",
+   "to": "auth.spawn_token",
+   "type": "authenticates_with",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "effort.controller",
+   "to": "delegation.evolve_siblings",
+   "type": "gates (X1)",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "delegation.evolve_siblings",
+   "to": "verify.evolve_contest",
+   "type": "ranked_by",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "verify.graded_fitness",
+   "to": "verify.evolve_contest",
+   "type": "shadow_ranks",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "lane.oracle_test",
+   "to": "verify.deterministic_checks",
+   "type": "verified_by",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "lane.oracle_test",
+   "to": "verify.llm_checker",
+   "type": "reviewed_by",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "lane.oracle_test",
+   "to": "verify.security_checker",
+   "type": "reviewed_by",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "verify.checker_family_F2",
+   "to": "verify.llm_checker",
+   "type": "randomises",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "lane.oracle_test",
+   "to": "verify.scope_gate",
+   "type": "gated_by",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "verify.deterministic_checks",
+   "to": "verify.outcome_attribution",
+   "type": "feeds",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "verify.outcome_attribution",
+   "to": "value.allocator",
+   "type": "credits",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "lane.oracle_test",
+   "to": "settle.merge_survival",
+   "type": "settled_by",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "settle.merge_survival",
+   "to": "store.skill_outcomes",
+   "type": "writes",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "settle.merge_survival",
+   "to": "decision.auto_merge",
+   "type": "revokes_class",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "verify.weak_assertion",
+   "to": "decision.auto_merge",
+   "type": "gates",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "review.github_pr",
+   "to": "decision.auto_merge",
+   "type": "commit_status_counts_green",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "lane.pr_review_loop",
+   "to": "runtime.manual",
+   "type": "uses",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "review.github_pr",
+   "to": "lane.pr_review_loop",
+   "type": "creates",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "decision.panel_review",
+   "to": "lane.doc_drift_findings",
+   "type": "authorizes_goal",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "judgment.jev_engine",
+   "to": "decision.panel_review",
+   "type": "prescreens (proposal_prescreen enforce)",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "knowledge.kb_corpus",
+   "to": "decision.panel_review",
+   "type": "context",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "judgment.jev_engine",
+   "to": "knowledge.kb_corpus",
+   "type": "filters (kb_passage_relevance enforce)",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "panel.fallback_claude",
+   "to": "decision.panel_review",
+   "type": "fallback_seat",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "routing.model_selector",
+   "to": "decision.panel_review",
+   "type": "shadow_model",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "routing.model_selector",
+   "to": "frontier.expert_council",
+   "type": "selects_model",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "memory.candidates_promotion",
+   "to": "memory.rules_injection",
+   "type": "supplies",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "decision.panel_review",
+   "to": "memory.candidates_promotion",
+   "type": "promotes",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "memory.rules_injection",
+   "to": "lane.oracle_test",
+   "type": "maker_context",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "exp.memory_holdout",
+   "to": "memory.rules_injection",
+   "type": "withholds",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "exp.ace_001",
+   "to": "lane.oracle_test",
+   "type": "maker_context_arm",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "exp.ste_001",
+   "to": "lane.oracle_test",
+   "type": "maker_context_arm",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "exp.registry",
+   "to": "evidence.stall_watch",
+   "type": "overdue_alarm",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "gym.remote",
+   "to": "store.skill_outcomes",
+   "type": "writes (worker-reported)",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "gym.hack_classifier",
+   "to": "evidence.evolution_evidence",
+   "type": "reports",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "gym.remote",
+   "to": "evo.dream_genomes",
+   "type": "trial_evidence",
+   "exercised_in_prod": "no"
+  },
+  {
+   "from": "evo.dream_genomes",
+   "to": "decision.genome_promotion",
+   "type": "promotes_via",
+   "exercised_in_prod": "no"
+  },
+  {
+   "from": "gym.holdout_epochs",
+   "to": "decision.genome_promotion",
+   "type": "validity",
+   "exercised_in_prod": "no"
+  },
+  {
+   "from": "gym.subscription_maker",
+   "to": "store.skill_outcomes",
+   "type": "writes",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "swarm.committee",
+   "to": "evo.committee_genomes",
+   "type": "scores",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "swarm.committee",
+   "to": "commons.residents",
+   "type": "arena_gate",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "swarm.committee",
+   "to": "fleet.event_bus_ingest",
+   "type": "fleetSourceGate",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "knowledge.kb_corpus",
+   "to": "swarm.committee",
+   "type": "context",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "frontier.expert_council",
+   "to": "swarm.committee",
+   "type": "claims_context",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "commons.residents",
+   "to": "decision.panel_review",
+   "type": "proposals (groundFromCommons, APPLY off)",
+   "exercised_in_prod": "no"
+  },
+  {
+   "from": "registry.agents_table",
+   "to": "commons.residents",
+   "type": "selects_residents",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "fleet.agent_outcome_emitter",
+   "to": "fleet.event_bus_ingest",
+   "type": "publishes",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "fleet.event_bus_ingest",
+   "to": "store.skill_outcomes",
+   "type": "writes fleet outcomes",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "fleet.hermes_macmini",
+   "to": "fleet.agent_outcome_emitter",
+   "type": "invokes",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "fleet.hermes_eve_v",
+   "to": "fleet.agent_outcome_emitter",
+   "type": "invokes",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "fleet.djimitflo_scout",
+   "to": "fleet.agent_outcome_emitter",
+   "type": "invokes",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "fleet.kb_sync",
+   "to": "fleet.agent_outcome_emitter",
+   "type": "invokes",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "fleet.eve_maintainer",
+   "to": "fleet.agent_outcome_emitter",
+   "type": "invokes",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "fleet.djimitflo_scout",
+   "to": "fleet.event_bus_ingest",
+   "type": "discovery events",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "fleet.hermes_macmini",
+   "to": "fleet.event_bus_ingest",
+   "type": "discovery events",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "fleet.event_bus_ingest",
+   "to": "frontier.expert_council",
+   "type": "discovery units",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "judgment.content_safety",
+   "to": "fleet.event_bus_ingest",
+   "type": "fire-and-forget check",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "fleet.kb_sync",
+   "to": "knowledge.kb_corpus",
+   "type": "ingests",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "judgment.content_safety",
+   "to": "knowledge.kb_corpus",
+   "type": "deletes unsafe (any mode)",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "eco.roborev",
+   "to": "fleet.event_bus_ingest",
+   "type": "roborev.finding",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "fleet.host_agent",
+   "to": "registry.liveness_connection_state",
+   "type": "heartbeat",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "delegation.federation",
+   "to": "exec.engine",
+   "type": "starts loop runs",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "registry.swarm_capabilities",
+   "to": "delegation.federation",
+   "type": "exported",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "mcp.server_tools",
+   "to": "knowledge.okf",
+   "type": "reads",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "mcp.server_tools",
+   "to": "swarm.council",
+   "type": "council_ask",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "mcp.server_tools",
+   "to": "mcp.servers_registry",
+   "type": "catalog sync",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "skills.skill_cards",
+   "to": "evo.dream_genomes",
+   "type": "playbook gene (off)",
+   "exercised_in_prod": "no"
+  },
+  {
+   "from": "skills.agent_skills",
+   "to": "exec.engine",
+   "type": "skill selection",
+   "exercised_in_prod": "no"
+  },
+  {
+   "from": "eco.loop_engineering",
+   "to": "store.skill_outcomes",
+   "type": "direct sqlite access (loop_runs)",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "eco.agent_gym_bridge",
+   "to": "exec.engine",
+   "type": "POST /api/tasks",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "value.allocator",
+   "to": "evidence.evolution_evidence",
+   "type": "listed acting:false",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "ledger.llm_model_calls",
+   "to": "value.allocator",
+   "type": "tokens",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "deploy.auto_deploy_verdict",
+   "to": "evidence.stall_watch",
+   "type": "verdict check",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "ws.atomic_agent_species",
+   "to": "runtime.remote_workstation",
+   "type": "is_species_of",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "ws.llama_router",
+   "to": "ws.atomic_agent_species",
+   "type": "serves",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "ws.gpu_r9700",
+   "to": "ws.llama_router",
+   "type": "runs_on",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "ws.atomic_agent_species",
+   "to": "gym.remote",
+   "type": "gym_worker",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "ws.deerflow",
+   "to": "ws.agent_registry",
+   "type": "heartbeat",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "ws.research_agent",
+   "to": "mcp.server_tools",
+   "type": "MCP research_*",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "ws.kbwiki_maintenance",
+   "to": "fleet.kb_sync",
+   "type": "feeds",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "ws.kbwiki_maintenance",
+   "to": "ws.qdrant",
+   "type": "rebuilds",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "eve.hermes_gateway",
+   "to": "fleet.hermes_eve_v",
+   "type": "is",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "eve.dream_cycle",
+   "to": "fleet.agent_outcome_emitter",
+   "type": "invokes",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "eve.publish_goals",
+   "to": "fleet.agent_outcome_emitter",
+   "type": "invokes",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "mm.hermes",
+   "to": "fleet.hermes_macmini",
+   "type": "is",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "vps.event_bus",
+   "to": "fleet.event_bus_ingest",
+   "type": "transport",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "vps.roborev_crons",
+   "to": "eco.roborev",
+   "type": "runs",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "vps.agent_registry_router",
+   "to": "registry.registry_agents",
+   "type": "sync",
+   "exercised_in_prod": "unknown"
+  },
+  {
+   "from": "model.glm_5_2",
+   "to": "runtime.opencode",
+   "type": "default_model",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "model.glm_5_2",
+   "to": "verify.llm_checker",
+   "type": "model",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "model.kimi_k3_cloud",
+   "to": "decision.panel_review",
+   "type": "model (to 17-10)",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "model.gemma4_31b_cloud",
+   "to": "decision.panel_review",
+   "type": "model (from 17-10)",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "model.gemma4_31b_cloud",
+   "to": "verify.checker_family_F2",
+   "type": "cross arm v2",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "model.jev_1_13",
+   "to": "judgment.jev_engine",
+   "type": "backend",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "model.jev_1_14",
+   "to": "judgment.jev_engine",
+   "type": "challenger",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "model.nemotron",
+   "to": "judgment.content_safety",
+   "type": "backend",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "model.claude_subscription",
+   "to": "gym.subscription_maker",
+   "type": "species",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "model.claude_subscription",
+   "to": "panel.fallback_claude",
+   "type": "model",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "model.codex_subscription",
+   "to": "gym.subscription_maker",
+   "type": "species (paused)",
+   "exercised_in_prod": "yes"
+  },
+  {
+   "from": "ws.openclaw_gateway",
+   "to": "ws.hermes_djimit2_bot",
+   "type": "bridge (agent-orchestration README)",
+   "exercised_in_prod": "unknown"
+  }
+ ]
+}
