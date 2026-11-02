@@ -68,7 +68,7 @@ export function computeEstimates(db: Database, env: NodeJS.ProcessEnv = process.
   }
 
   // trial blindness: share of settled trials (RX-4 diagnostics) that could not have promoted anything
-  const trials = all<{ state: string; n: number }>('SELECT state, COUNT(*) AS n FROM genome_trial_results WHERE recorded_at >= ? GROUP BY 1', since(30));
+  const trials = all<{ state: string; n: number }>("SELECT state, COUNT(*) AS n FROM genome_trial_results WHERE recorded_at >= ? AND state <> 'graded_only' GROUP BY 1", since(30));
   const tn = trials.reduce((a, t) => a + t.n, 0);
   out.push(rate('trial_blindness', 'trials', 30, trials.find((t) => t.state === 'blind')?.n ?? 0, tn, Object.fromEntries(trials.map((t) => [t.state, t.n]))));
 
@@ -116,11 +116,13 @@ export function runEstimators(db: Database, env: NodeJS.ProcessEnv = process.env
 export function startEvolutionEstimators(db: Database, intervalMs = 3_600_000, env: NodeJS.ProcessEnv = process.env, clock = () => Date.now()): (() => void) | null {
   if (!estimatorsEnabled(env)) return null;
   const tick = () => {
+    // P0.1 (prod 11-10): the 'already written today' return came before markRun, so after a mid-day restart the hourly
+    // tick ran but never reported — armed_not_ticking for the rest of the day. Report the tick first, then decide.
+    markRun('evolution_estimators');
     try {
       const now = clock(); const day = new Date(now).toISOString().slice(0, 10);
       if (db.prepare('SELECT 1 FROM evolution_estimates WHERE as_of_day = ? LIMIT 1').get(day)) return;
       const n = runEstimators(db, env, now);
-      markRun('evolution_estimators');
       console.log(`🌡️  evolution estimates: ${n} row(s) for ${day}`);
     } catch (e) { markRun('evolution_estimators', e); console.warn('evolution estimates failed:', e instanceof Error ? e.message : String(e)); }
   };

@@ -13,8 +13,8 @@ afterEach(() => { vi.unstubAllEnvs(); db.close(); });
 const NOW = Date.parse('2026-10-05T12:00:00Z');
 const gymRun = (id: string, commit: string, genomeId: string, ok: boolean) => db.prepare(`INSERT INTO loop_runs
   (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
-  VALUES (?, 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`).run(id, JSON.stringify({ gym: { commit, species: 'atomic@llama-router', genome: genomeId },
-    gym_result: { status: ok ? 'success' : 'failure', reason: ok ? 'tests green, source only' : 'tests still red' } }), '2026-10-05T11:00:00Z', '2026-10-05T11:00:00Z');
+  VALUES (?, 'evolution-gym', 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`).run(id, JSON.stringify({ gym: { commit, species: 'atomic@llama-router', genome: genomeId, prod_gates: 1 },
+    gym_result: { status: ok ? 'success' : 'failure', reason: ok ? 'tests green, source only' : 'tests still red', ...(ok ? { prod_gates: { lint: 'pass' } } : {}) } }), '2026-10-05T11:00:00Z', '2026-10-05T11:00:00Z');
 const trial = (id: string) => db.prepare("INSERT INTO maker_genomes (id, parent_id, gene, lines_json, origin, status, created_at, updated_at) VALUES (?, ?, 'strategy_lines', '[\"x\"]', 'dream', 'trial', ?, ?)")
   .run(id, BASELINE_GENOME, '2026-10-05T10:00:00Z', '2026-10-05T10:00:00Z');
 /** 20 deciding tasks; the parent fails the first `f`, the mutant fails the listed ones. */
@@ -56,9 +56,9 @@ it('RX-4: with the flag on a settled trial records its blindness (f ≤ 4 → bl
   expect(e.gates.A).toMatchObject({ state: 'red' }); // parent passed 17/20 = 0.85, outside [0.30, 0.55]
 });
 
-it('RX-4: without the flag nothing is written; Gate A stays unknown', () => {
+it('RX-4: without the flag no diagnostics are written (only the SI-C graded shadow row); Gate A stays unknown', () => {
   evaluateTrials(db, 'atomic@llama-router', seed('g-c', 3, [1]), NOW);
-  expect(db.prepare('SELECT COUNT(*) AS n FROM genome_trial_results').get()).toEqual({ n: 0 });
+  expect(db.prepare('SELECT state, deciding_n, power_q8_l05 FROM genome_trial_results').all()).toEqual([{ state: 'graded_only', deciding_n: null, power_q8_l05: null }]);
   expect(buildEvolutionEvidence(db, {}, NOW).gates.A.state).toBe('unknown');
 });
 

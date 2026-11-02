@@ -110,13 +110,15 @@ def poll_once(poller, operator, progress=lambda stage: None):
     path = f'/api/swarm-v2/social-runtime/{AGENT}/messages?limit=1'
     progress('claim_inbox')
     _, inbox = poller.api('GET', path)
-    if not inbox.get('messages'):
+    # social.invite is informational (already marked read server-side); only questions/responses need a reply
+    actionable = lambda box: [m for m in box.get('messages', []) if (m.get('payload') or {}).get('action') != 'social.invite']
+    if not actionable(inbox):
         progress('targeted_round')
         request('POST', DJIMITFLO, '/api/swarm-v2/socialize',
                 {'cooldown_ms': 0, 'participant_ids': [AGENT, PEER]}, operator)
         progress('claim_after_round')
         _, inbox = poller.api('GET', path)
-    messages = inbox.get('messages', [])
+    messages = actionable(inbox)
     if not messages:
         return {'agent': AGENT, 'processed': 0, 'model_calls': 0, 'reason': 'no_eligible_message'}
     message = messages[0]

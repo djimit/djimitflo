@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, BookOpenCheck, GraduationCap, History, RefreshCw, Scale, Search, ShieldCheck, Swords, Users } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
-import { api, type ExpertDetail, type ExpertLifecycleState, type ExpertResolution, type ExpertSummary, type ExpertSwarmRun } from '../lib/api';
+import { api, type ExpertDedupeReport, type ExpertDetail, type ExpertLifecycleState, type ExpertResolution, type ExpertSummary, type ExpertSwarmRun } from '../lib/api';
 import { fmtDate } from '../lib/format';
 
 /** Visual tone per lifecycle state: only ACTIVE is verified-for-recommendation; everything else is tentative or closed (§36). */
@@ -81,6 +81,33 @@ function StateBadge({ state }: { state: ExpertLifecycleState }) {
   return <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${TONE_CLASS[tone.tone]}`}>{tone.label}</span>;
 }
 
+/** FE-DEDUPE: count lines for the read-only duplicate section; null metrics stay "unknown", never 0. */
+export function dedupeLines(report: ExpertDedupeReport): string[] {
+  const { totals, by_kind: kinds, metrics_if_collapsed: m } = report;
+  const kf = m.knowledge_fitness; const gd = m.gap_demand;
+  return [
+    `${totals.units} units → ${totals.clusters} distinct works (${totals.duplicate_units} duplicates in ${totals.duplicate_clusters} clusters, ×${totals.inflation_factor ?? 'n/a'})`,
+    kinds.map((k) => `${k.kind} ${k.units}→${k.clusters}`).join(' · '),
+    `if collapsed: funnel ${m.funnel.units_before}→${m.funnel.units_after} (${m.funnel.cells_changed} cells change)`
+      + ` · fitness inventory ${kf ? `${kf.inventory_before}→${kf.inventory_after}, used items ${kf.used_items_before}→${kf.used_items_after}` : 'unknown'}`
+      + ` · gap demand ${gd ? `${gd.total_before}→${gd.total_after} over ${gd.areas_annotated_before}→${gd.areas_annotated_after} areas` : 'unknown'}`,
+  ];
+}
+
+function ExpertDedupeSection() {
+  const [report, setReport] = useState<ExpertDedupeReport | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { api.getExpertDedupe(1).then(setReport, () => setFailed(true)); }, []);
+  return (
+    <section className="rounded-xl border border-border bg-background-secondary p-4 text-xs">
+      <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground"><Scale className="h-4 w-4" /> Duplicate units (read-only)</h2>
+      {report ? <ul className="mt-2 space-y-1 text-foreground-secondary">{dedupeLines(report).map((line) => <li key={line}>{line}</li>)}</ul>
+        : <p className="mt-2 text-foreground-tertiary">{failed ? 'Duplicate report unavailable.' : 'Loading…'}</p>}
+      <p className="mt-2 text-foreground-tertiary">Computed, never applied: merging duplicates is a separate, approved migration.</p>
+    </section>
+  );
+}
+
 export function FrontierExpertsPage() {
   const { expertId } = useParams();
   const [experts, setExperts] = useState<ExpertSummary[]>([]);
@@ -153,6 +180,8 @@ export function FrontierExpertsPage() {
         {!counts.length && <p className="text-xs text-foreground-tertiary">No experts in the registry yet. Discovery ingestion and arXiv enrichment fill it.</p>}
       </section>
 
+      <ExpertDedupeSection />
+
       <section className="rounded-xl border border-border bg-background-secondary p-4">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground"><Search className="h-4 w-4" /> Expert resolution</h2>
         <p className="mt-1 text-xs text-foreground-secondary">Question → capability families → active experts with evidence. The weighting is shown per component; without a fitting expert the resolver abstains.</p>
@@ -191,7 +220,7 @@ export function FrontierExpertsPage() {
             {experts.map((expert) => (
               <li key={expert.id} className={`flex flex-wrap items-center justify-between gap-2 py-2 text-xs ${detail?.expert.id === expert.id ? 'bg-background-tertiary/60' : ''}`}>
                 <span className="flex items-center gap-2"><span className="rounded bg-background-tertiary px-1.5 py-0.5 text-xs text-foreground-tertiary">{expert.kind === 'area' ? 'area' : expert.kind}</span><Link to={`/frontier-experts/${expert.id}`} className="font-medium text-foreground hover:underline">{expert.canonical_name}</Link></span>
-                <span className="flex flex-wrap items-center gap-1"><StateBadge state={expert.lifecycle_state} />{expert.capabilities.map((capability) => <span key={capability} className="rounded bg-background-tertiary px-1.5 py-0.5 text-xs text-foreground-secondary">{capability}</span>)}</span>
+                <span className="flex flex-wrap items-center gap-1"><StateBadge state={expert.lifecycle_state} />{expert.gap_demand ? <span title="Open knowledge gaps matching this area's capabilities (evolution digest, read-only)" className="rounded bg-status-warning/10 px-1.5 py-0.5 text-xs text-status-warning">gap demand {expert.gap_demand}</span> : null}{expert.capabilities.map((capability) => <span key={capability} className="rounded bg-background-tertiary px-1.5 py-0.5 text-xs text-foreground-secondary">{capability}</span>)}</span>
               </li>
             ))}
             {!experts.length && <li className="py-2 text-xs text-foreground-tertiary">No experts for this filter.</li>}

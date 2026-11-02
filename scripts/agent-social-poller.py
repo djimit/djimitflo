@@ -25,7 +25,10 @@ def extract_object(text):
     refs = value.get('evidence_refs', [])
     if not isinstance(refs, list): raise RuntimeError('runtime evidence_refs must be an array')
     value['evidence_refs'] = [item for item in refs if isinstance(item, str)]
-    return {key: value[key] for key in (*required, 'evidence_refs', 'interest', 'ecosystem_component', 'proposed_improvement') if key in value and (key == 'evidence_refs' or isinstance(value[key], str))}
+    reply = {key: value[key] for key in (*required, 'evidence_refs', 'interest', 'ecosystem_component', 'proposed_improvement') if key in value and (key == 'evidence_refs' or isinstance(value[key], str))}
+    # AC-06: a typed artefact object is passed through; the server validates it and ignores it outside investigation threads
+    if isinstance(value.get('artefact'), dict): reply['artefact'] = value['artefact']
+    return reply
 
 def prompt_for(message):
     payload = message.get('payload') or {}
@@ -194,7 +197,7 @@ def run_cli(runtime, prompt):
     return parse_cli_output(runtime, output)
 
 def run_hermes(prompt):
-    output = bounded_process([os.environ.get('HERMES_BIN', 'hermes'), 'chat', '--query-file', '-', '--oneshot', '--quiet', '--toolsets', '', '--max-turns', '1', '--run-budget', '90', '--source', 'djimitflo-social'], prompt,
+    output = bounded_process([os.environ.get('HERMES_BIN', 'hermes'), 'chat', '--query-file', '-', '--oneshot', '--quiet', '--toolsets', '', '--max-turns', '1', '--run-budget', '90', '--source', os.environ.get('HERMES_SOURCE', 'tool')], prompt,
                              os.environ.get('HERMES_HOME', os.path.expanduser('~/.hermes')), runtime_env('hermes'))
     sessions = re.findall(r'session_id:\s*([^\s]+)', output)
     return output, sessions[-1] if sessions else '', {}
@@ -220,6 +223,8 @@ RUNTIMES.update({name: (lambda prompt, runtime=name: run_cli(runtime, prompt)) f
 
 def self_test():
     assert extract_object('{"answer":"a","uncertainty":"u","falsifiable_next_step":"f","creative_alternative":"c","stop_condition":"s","evidence_refs":[]}')['answer'] == 'a'
+    assert 'artefact' not in extract_object('{"answer":"a","uncertainty":"u","falsifiable_next_step":"f","creative_alternative":"c","stop_condition":"s","artefact":"x"}')
+    assert extract_object('{"answer":"a","uncertainty":"u","falsifiable_next_step":"f","creative_alternative":"c","stop_condition":"s","artefact":{"kind":"repro","command":"x"}}')['artefact'] == {'kind': 'repro', 'command': 'x'}
     print('agent-social-poller self-test: PASS')
 
 def main():
@@ -230,6 +235,8 @@ def main():
     api('POST', f'/api/swarm-v2/social-runtime/{agent}/heartbeat', {'runtime': runtime, 'model_id': model})
     _, body = api('GET', f'/api/swarm-v2/social-runtime/{agent}/messages?limit=1'); failures = processed = 0
     for message in body.get('messages', []):
+        if (message.get('payload') or {}).get('action') == 'social.invite':  # informational: the server marked it read; the next heartbeat is the bite
+            print(json.dumps({'agent': agent, 'invite': message['payload'].get('thread_id')})); continue
         try:
             output, run_id, usage = RUNTIMES[runtime](prompt_for(message))
             reply = extract_object(output); reply.update({'runtime': runtime, 'model_id': model, 'runtime_run_id': run_id, 'usage': usage, 'delivery_lease_token': message.get('deliveryLeaseToken', '')})

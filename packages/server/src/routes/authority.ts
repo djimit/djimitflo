@@ -59,7 +59,7 @@ export function createAuthorityRoutes(db: Database, auth?: AuthMiddleware): Rout
         db.prepare(
           `SELECT action_type, description, risk_level, status, created_at
            FROM policy_violations
-           WHERE metadata LIKE ? OR task_id = ? OR task_id IS NULL LIMIT 20`,
+           WHERE metadata LIKE ? OR task_id = ? LIMIT 20`,
         ).all(`%${correlationId}%`, correlationId) as Array<Record<string, unknown>>
       );
 

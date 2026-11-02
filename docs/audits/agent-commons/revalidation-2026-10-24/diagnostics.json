@@ -1,0 +1,989 @@
+{
+  "captured_at": "2026-10-24T19:00:32.122Z",
+  "source_sha": "936b93479920d5c251cf006bc42771c9142fa136",
+  "mode": "readonly/query_only consistent transaction; model review text retained as untrusted data",
+  "results": {
+    "review_reasons": {
+      "sql": "SELECT r.panel_id,r.specialist_id,r.stance,r.status,r.confidence,r.model,r.limitations,r.findings_json,r.recommendations_json FROM specialist_reviews r JOIN self_improvements s ON s.panel_id=r.panel_id WHERE s.id IN (SELECT s.id FROM self_improvements s WHERE s.refined_from_id IN (SELECT DISTINCT subject_id FROM judgments WHERE judgment='commons_grounding' AND decision='yes')) ORDER BY r.panel_id,r.specialist_id",
+      "params": [],
+      "rows": [
+        {
+          "panel_id": "1a6668b8-9528-4f1e-92f1-d6152a63e3fd",
+          "specialist_id": "runtime_engineer",
+          "stance": "needs_evidence",
+          "status": "submitted",
+          "confidence": 0,
+          "model": null,
+          "limitations": null,
+          "findings_json": "[\"Model response could not be parsed as a structured review.\"]",
+          "recommendations_json": "[\"Retry the automated review, or have a human complete this specialist role.\"]"
+        },
+        {
+          "panel_id": "1a6668b8-9528-4f1e-92f1-d6152a63e3fd",
+          "specialist_id": "systems_architect",
+          "stance": "needs_evidence",
+          "status": "submitted",
+          "confidence": 0,
+          "model": null,
+          "limitations": null,
+          "findings_json": "[\"Model response could not be parsed as a structured review.\"]",
+          "recommendations_json": "[\"Retry the automated review, or have a human complete this specialist role.\"]"
+        },
+        {
+          "panel_id": "1e0d9d00-cce7-4bc1-9fd2-e89af6494db1",
+          "specialist_id": "runtime_engineer",
+          "stance": "needs_evidence",
+          "status": "submitted",
+          "confidence": 0.72,
+          "model": null,
+          "limitations": "I reviewed only the first 6000 characters of the 269-line target file; a transition-guardrail hook could exist later in the file or in another service, but no evidence of it was provided. I did not execute any code and make no claim about active execution from registry rows; my assessment of runtime behavior is based solely on the static excerpt and the proposal text.",
+          "findings_json": "[\"The proposal is a governance/schema guardrail (mandatory 'Resilience' metadata + linked Adversary Model before 'Execution' transition), but the only target shown is packages/server/src/services/expert-council-service.ts, which is a council runner/claim-graph service; the excerpt contains no work-item status machine, no 'Execution' transition, and no metadata validation point where such a guardrail would actually be enforced.\",\"From a runtime-engineering view, the excerpt does show a real runtime command contract for the council itself: PerspectiveRunner is injectable, createModelPerspectiveRunner keys off FRONTIER_EXPERTS_RUNTIME and abstains (returns null -> BLOCKED) when unconfigured rather than faking output — so the council can report whether a real runtime backed its output via the 'runtime' label on CouncilPerspective and adversarial.runtime. But nothing in the excerpt ties this to the proposed guardrail's enforcement path.\",\"No artifact path, budget signal, lease stop/retry semantics, or process-supervision hook for the proposed 'Constant-Budget Comparison' experiment is present in the provided source or context. The experiment (single-model FL vs ensemble-FL under identical epsilon, membership-inference on a canary set) has no identified runner, no artifact output location, and no budget accounting mechanism in the Djimitflo runtime shown.\",\"The stop condition requires the experiment to be 'executed and recorded', but the context provides no evidence of an execution harness, worktree isolation, or artifact store that could record it; grounding.derived=false and the acceptance test file (expert-council-service.guardrail.test.ts) is named but its contents are not provided, so I cannot verify the guardrail is testable against the shown code.\",\"The rationale itself flags 'High' uncertainty about whether a baseline FL implementation exists in the commons; without that baseline the discriminating experiment cannot be run, making authorization premature from a runtime feasibility standpoint.\"]",
+          "recommendations_json": "[\"Identify the actual enforcement point for the 'Execution' status transition (the work-item lifecycle service/state machine) and ground the proposal there; expert-council-service.ts as shown is the wrong or at least unproven target for a transition guardrail.\",\"Specify the runtime contract for the Constant-Budget Comparison: which runner executes it, the artifact path where attack success-rate results are recorded, and the budget signal (epsilon accounting) surfaced to the capacity governor.\",\"Provide the acceptance test contents (expert-council-service.guardrail.test.ts) demonstrating the guardrail blocks transition when the Adversary Model link is missing, and define how the linked adversary model is validated as machine-readable.\",\"Define lease/stop-retry behavior for the experiment run (timeout, retry on runner failure, abstention vs. blocking when the FL baseline is absent) before authorization.\"]"
+        },
+        {
+          "panel_id": "1e0d9d00-cce7-4bc1-9fd2-e89af6494db1",
+          "specialist_id": "systems_architect",
+          "stance": "needs_evidence",
+          "status": "submitted",
+          "confidence": 0.7,
+          "model": null,
+          "limitations": "Only the first 6000 characters of the 269-line target file were provided; the state transition logic, persistence layer, and existing metadata validation points are not visible. The proposal's grounding flag 'derived: false' suggests the acceptance test is not yet implemented, so observable behavior cannot be confirmed.",
+          "findings_json": "[\"The proposal targets a state transition guardrail (blocking 'Execution' status without a linked Adversary Model), which aligns with the target file's existing pattern of explicit state handling (e.g., abstention when FRONTIER_EXPERTS_RUNTIME is unconfigured, rejected_perspectives surfacing).\",\"However, the provided source excerpt (first 6000 chars of 269 lines) does not show the work-item state machine, transition functions, or where metadata validation would be enforced; the architecture boundary for the guardrail is not evidenced in the provided code.\",\"The proposal's stop condition requires a machine-readable adversary model schema (attacker roles, access level, DP accounting rule), but no schema, validation logic, or storage interface is specified in the context, leaving the interface stability for automation unclear.\",\"The 'Constant-Budget Comparison' experiment is a bounded, discriminating test with a clear falsification criterion, but it is a one-time empirical validation rather than an ongoing operability control; resource costs (compute for two FL systems, attack success measurement) are not estimated.\",\"Failure modes are partially addressed: the guardrail fails closed (blocks transition), but there is no evidence of how the system handles malformed adversary models, version skew between model and implementation, or bypass attempts.\"]",
+          "recommendations_json": "[\"Provide the specific state transition function or middleware in expert-council-service.ts (or related work-item service) where the guardrail will be injected, including the exact metadata field name and validation rules.\",\"Define the machine-readable adversary model schema (JSON Schema or TypeScript interface) and show how it will be stored, versioned, and linked to work items.\",\"Include a failure-mode analysis for the guardrail itself: what happens on invalid schema, missing linked model, or database unavailability during transition.\",\"Estimate the resource cost (CPU, memory, time) for running the 'Constant-Budget Comparison' experiment and specify where results will be recorded for auditability.\"]"
+        },
+        {
+          "panel_id": "52bb8807-021d-4949-96c7-b8c8279abed2",
+          "specialist_id": "runtime_engineer",
+          "stance": "needs_evidence",
+          "status": "submitted",
+          "confidence": 0.85,
+          "model": null,
+          "limitations": "Evaluation is strictly limited to the provided `dream-state-service.ts` file and the textual proposal context. I cannot execute the proposed read-only query against the external GraphStore/Qdrant instance, nor can I verify the existence of the 'Djimitflo' binary or its runtime behavior. The assessment assumes the provided source code represents the current 'ecosystem orientation' mentioned in the proposal, though the mismatch in technology stack (SQLite vs Qdrant) suggests significant missing context.",
+          "findings_json": "[\"The proposal targets 'Djimitflo run controller' and 'gate ledger' persistence to Qdrant/GraphStore, but the provided source code (`dream-state-service.ts`) implements a local SQLite-based `dream_ledger` with no references to Djimitflo, Qdrant, GraphStore, or append-only write-ahead logs for gate outcomes.\",\"The proposal's primary discriminator is a read-only query against run `318e5e4c...` in GraphStore; the provided context contains no schema, access pattern, or existence proof for this external store, making the H1-H4 hypothesis test impossible to verify against the supplied artifacts.\",\"The rationale correctly identifies that emitting outcomes 'at run finalization' shares fate with infra faults (H2), yet the proposed fix relies on an unverified 'out-of-process watchdog' whose contract and lease termination signals are not defined in the provided `DreamStateService`.\",\"The proposal flags 'platform_fault=0.94' and 'conf=1.00' as untrusted PEER_DATA requiring audit, but the current `dream-state-service.ts` only processes local stderr tails and database rows, lacking any ingestion pipeline for the specific provenance fields cited in the proposal.\"]",
+          "recommendations_json": "[\"Require the proponent to provide the actual runtime command contract and artifact path for the 'Djimitflo' controller before authorizing any goal, as the current codebase shows no such component.\",\"Mandate a dry-run of the read-only provenance query against the specific run ID (`318e5e4c...`) to confirm H3/H4 status before approving state-changing sandbox trials.\",\"Define the budget signal and lease stop condition for the proposed 'out-of-process watchdog' to ensure it can synthesize `gates_outcome` entries without creating denial-of-service vectors via false positives.\",\"Verify if the 'gate ledger' functionality already exists in a different module (e.g., `loop-service.ts` or `worktree-manager.ts` referenced in `CAUSE_TARGETS`) to avoid duplicating effort if H3 (surfacing bug) is the true root cause.\"]"
+        },
+        {
+          "panel_id": "52bb8807-021d-4949-96c7-b8c8279abed2",
+          "specialist_id": "systems_architect",
+          "stance": "needs_evidence",
+          "status": "submitted",
+          "confidence": 0.85,
+          "model": null,
+          "limitations": "Evaluation is constrained to the provided dream-state-service.ts which does not contain the 'gate ledger' or 'run controller' logic described in the proposal; the proposal's core premise rests on unverified external data (Qdrant/GraphStore state) that cannot be validated without executing the suggested read-only query.",
+          "findings_json": "[\"The proposal targets a 'gate ledger' and 'run controller' mechanism, but the provided source code (dream-state-service.ts) implements a 'dream_ledger' for engineering rule consolidation, not an append-only write-ahead log for run gate outcomes.\",\"The proposal assumes the existence of specific provenance nodes in Qdrant/GraphStore (run:318e5e4c...) with specific fields (cause=infra/conf=1.00), yet the rationale explicitly states these are 'untrusted PEER_DATA' and 'nothing was executed' to verify their existence (H3/H4 hypotheses remain unresolved).\",\"The proposed fix relies on an out-of-process watchdog to synthesize terminal states, but the current architecture shows no evidence of such a control plane boundary or failure detection interface in the provided service layer.\",\"The proposal claims to fix 'H2' (outcomes never persisted on failure) by writing at evaluation time, but fails to demonstrate how the 'evaluation time' event is decoupled from the 'SIGKILL' failure mode in the current implementation.\"]",
+          "recommendations_json": "[\"Execute the mandatory read-only provenance query against run:318e5e4c-96b4-466b-8588-23cba06b4fd7 immediately to falsify H3 (surfacing bug) or H4 (fabrication) before authorizing any code changes.\",\"Provide architectural diagrams or interface definitions showing the boundary between the 'Djimitflo run controller' and the proposed 'out-of-process watchdog' to verify observability and reversibility.\",\"Demonstrate via a dry-run or simulation that the 'append-only write-ahead' entry can be successfully committed in a scenario where the main process receives a SIGKILL immediately after the write trigger.\",\"Clarify the mapping between the 'dream_ledger' in the current codebase and the proposed 'gate ledger' to ensure the proposal isn't solving a problem in a non-existent subsystem.\"]"
+        },
+        {
+          "panel_id": "54809b63-eff1-4e7b-8069-ef0af1aa9fa6",
+          "specialist_id": "security_reviewer",
+          "stance": "needs_evidence",
+          "status": "submitted",
+          "confidence": 0,
+          "model": null,
+          "limitations": null,
+          "findings_json": "[\"Model response could not be parsed as a structured review.\"]",
+          "recommendations_json": "[\"Retry the automated review, or have a human complete this specialist role.\"]"
+        },
+        {
+          "panel_id": "54809b63-eff1-4e7b-8069-ef0af1aa9fa6",
+          "specialist_id": "systems_architect",
+          "stance": "needs_evidence",
+          "status": "submitted",
+          "confidence": 0,
+          "model": null,
+          "limitations": null,
+          "findings_json": "[\"Model response could not be parsed as a structured review.\"]",
+          "recommendations_json": "[\"Retry the automated review, or have a human complete this specialist role.\"]"
+        },
+        {
+          "panel_id": "58b6c192-2652-4407-a016-2c174afe8e86",
+          "specialist_id": "security_reviewer",
+          "stance": "needs_evidence",
+          "status": "submitted",
+          "confidence": 0,
+          "model": null,
+          "limitations": null,
+          "findings_json": "[\"Model response could not be parsed as a structured review.\"]",
+          "recommendations_json": "[\"Retry the automated review, or have a human complete this specialist role.\"]"
+        },
+        {
+          "panel_id": "58b6c192-2652-4407-a016-2c174afe8e86",
+          "specialist_id": "systems_architect",
+          "stance": "needs_evidence",
+          "status": "submitted",
+          "confidence": 0,
+          "model": null,
+          "limitations": null,
+          "findings_json": "[\"Model response could not be parsed as a structured review.\"]",
+          "recommendations_json": "[\"Retry the automated review, or have a human complete this specialist role.\"]"
+        },
+        {
+          "panel_id": "5a5c3bb9-2977-4002-81d0-2c71ce8281cc",
+          "specialist_id": "runtime_engineer",
+          "stance": "support",
+          "status": "submitted",
+          "confidence": 0.78,
+          "model": null,
+          "limitations": "The provided source excerpt is truncated (first 6000 characters of 587 lines), so I cannot verify the exact gate evaluation loop or where the ledger writes should be injected. The proposal's success depends on the ledger being write-ahead or transactional with respect to the runtime execution, which is not fully specified in the context.",
+          "findings_json": "[\"The proposal targets a real observability gap in the runtime: the provided source shows `LoopWorkerExecutorService` orchestrates gates and runtimes, but the rationale explicitly identifies that an 'empty failed-gates record' is ambiguous—it could mean no gates ran or telemetry failed. A mandatory gate-event ledger directly addresses this by providing a persistent, queryable artifact (the ledger itself) that can falsify whether a failure occurred pre-gate, during a specific gate, or post-gate.\",\"The target file `packages/server/src/services/loop-worker-executor-service.ts` is the correct intervention point. It already imports `RuntimeContract` and `RuntimeExecutionResult` types and handles lease lifecycle (e.g., `updateWorkerLeaseStatus`, `recordWorkerManifest`). Adding ledger writes here ensures the artifact is tied to the actual runtime execution path, not inferred from registry rows.\",\"The stop condition is well-formed and falsifiable: it ceases iteration once the ledger either records a failing gate or confirms a pre-gate abort. This aligns with runtime engineering needs for deterministic failure analysis and avoids open-ended searching.\",\"The proposal does not claim active execution from registry rows alone; it proposes recording actual gate invocations and outcomes, which is a runtime artifact.\"]",
+          "recommendations_json": "[\"Define the ledger's artifact path and schema explicitly (e.g., a JSONL file per run under a `gate-ledger/` directory or a dedicated DB table) to ensure it is queryable post-run and survives premature aborts.\",\"Integrate ledger writes at the same transactional boundary as lease status updates (e.g., within `updateWorkerLeaseStatus` or immediately before/after gate evaluation) to guarantee persistence even if the process crashes.\",\"Include a budget signal in each ledger entry (e.g., `wall_clock_remaining_ms` or `budget_snapshot`) to correlate gate failures with resource exhaustion, leveraging the existing `currentBudgetSnapshot` pattern seen in the source.\",\"Ensure the acceptance test in `packages/server/src/__tests__/loop-worker-executor-service.test.ts` simulates a crash mid-gate and verifies the ledger contains entries up to the point of failure.\"]"
+        },
+        {
+          "panel_id": "5a5c3bb9-2977-4002-81d0-2c71ce8281cc",
+          "specialist_id": "systems_architect",
+          "stance": "support",
+          "status": "submitted",
+          "confidence": 0.78,
+          "model": null,
+          "limitations": "Only the first ~6000 characters of the 587-line target file were provided; the actual gate evaluation loop where ledger writes must be inserted is not visible, so insertion-point correctness and the exact abort paths between gate invocations cannot be verified. The proposal also lacks a concrete schema and write-durability specification, which is why confidence is 0.78 rather than higher. No scalability claims were made or evaluated; the ledger adds one write per gate invocation, which is bounded by the existing gate count per run.",
+          "findings_json": "[\"The proposal addresses a genuine observability gap: the rationale explicitly states the primary doubt is whether an empty failed-gates record means no gates were evaluated or telemetry failure obscured the outcome — this is a real ambiguity that a mandatory gate-event ledger would resolve.\",\"The target file shows the service already has persistence infrastructure and event-recording patterns: recordWorkerManifest is called with decisionId, action ('start'/'fail'), gateRefs, and blockedReasons, and recordLoopEvent exists for run-level events. A gate-event ledger is an incremental extension of an existing pattern, not a new subsystem — the architecture boundary is clear (LoopWorkerExecutorService owns gate evaluation and result persistence per its header comment).\",\"State transitions are already partially instrumented: updateWorkerLeaseStatus records started_at/failed_at, and the executeMaker catch block demonstrates the codebase already handles the 'throw between marking running and settling' failure mode. A mandatory ledger that records gate invocation before evaluation and outcome after, written independently of run abort, fits this existing failure-handling discipline.\",\"The stop condition is well-bounded and falsifiable: (a) rerun reproduces failure with a recorded failing gate, or (b) ledger confirms abort before any gate evaluation. This is a discriminating experiment with two terminal outcomes, not an open-ended search.\",\"Reversibility is adequate: adding a ledger table and write calls is additive; it does not change gate semantics or control flow. The test plan (controlled replay comparing ledger against expected gate set) is automatable against the existing test file packages/server/src/__tests__/loop-worker-executor-service.test.ts.\",\"The grounding is marked derived:false and cites a commons-grounding ref, but only the first ~6000 characters of a 587-line file are visible, so the actual gate evaluation loop (where ledger writes must be inserted) is not shown — the precise insertion points cannot be verified from the provided excerpt.\"]",
+          "recommendations_json": "[\"Specify the ledger write as transactional or write-ahead relative to gate evaluation: the gate-invocation record must be persisted before the gate executes, so that an abort mid-gate still leaves an invocation entry without an outcome — this is the key property that distinguishes 'gate never ran' from 'gate ran and crashed'.\",\"Define the ledger schema explicitly in the proposal before implementation: gate_id, invocation timestamp, outcome, outcome timestamp, run_id, lease_id, and a monotonic sequence or decision id consistent with the existing makeManifestDecisionId pattern.\",\"Require the ledger write path to be failure-isolated from the gate path: a ledger write failure must itself be recorded via recordLoopEvent (or a fallback) so that 'empty ledger' can be falsified as telemetry failure versus genuine pre-gate abort — otherwise the original ambiguity reappears one level down.\",\"Add the acceptance test to the cited test file covering three cases: gate entries present with failing outcome, empty ledger with confirmed pre-gate abort, and ledger write failure surfaced distinctly.\",\"Clarify query interface: expose a post-run query (e.g., listGateEvents(run_id)) on LoopService rather than requiring direct DB access, to keep the interface stable enough to automate against.\"]"
+        },
+        {
+          "panel_id": "5e2dfa2c-6b07-4c7e-a5f5-1eb1a61053f0",
+          "specialist_id": "runtime_engineer",
+          "stance": "support",
+          "status": "submitted",
+          "confidence": 0.78,
+          "model": null,
+          "limitations": "The provided source is truncated at 6000 characters; the full implementation of resolveWorkAssignmentPath and the complete gate evaluation loop are not visible, so I cannot confirm the exact fallback logic or whether hash-binding is currently implemented.",
+          "findings_json": "[\"The target source confirms the masking hypothesis is technically plausible: the 'assignment_file_present' gate evidence explicitly references 'a readable historical LOOP_WORK.md' as a valid fallback, which could allow a lease to pass despite missing current assignments.\",\"The current gate evaluation is flat and non-causal; all gates are evaluated simultaneously in a single array without dependency ordering, making it possible for downstream gates (like 'diff_threshold_all_makers') to be evaluated even when upstream gates (like 'worktree_isolation' or 'assignment_file_present') have failed.\",\"The proposal's falsification test is directly executable against the visible code: provision a lease with deleted current assignment but historical LOOP_WORK.md present, and observe if 'assignment_file_present' returns PASS, which would confirm the peer's hypothesis (a) and invalidate current 'infra fault' grading.\",\"The runtime command contract is verifiable through the existing test file packages/server/src/__tests__/loop-verification-service.test.ts, which can be extended to implement the proposed masking-test run without requiring new infrastructure.\"]",
+          "recommendations_json": "[\"Authorize the goal with the specific acceptance criteria that the masking-test run must demonstrate either (1) preflight abort on missing current assignment or (2) historical fallback allowing reach to diff_threshold_all_makers gate.\",\"Require the implementation to add causal ordering metadata to the LoopGate interface so that downstream gates report 'skipped' or 'blocked' when upstream dependencies fail, rather than evaluating independently.\",\"The fault-injection replay should be implemented as a deterministic test case in loop-verification-service.test.ts that mocks fs.existsSync to simulate the historical LOOP_WORK.md fallback scenario.\"]"
+        },
+        {
+          "panel_id": "5e2dfa2c-6b07-4c7e-a5f5-1eb1a61053f0",
+          "specialist_id": "systems_architect",
+          "stance": "support",
+          "status": "submitted",
+          "confidence": 0.75,
+          "model": null,
+          "limitations": "The full implementation of `resolveWorkAssignmentPath` and the specific logic for determining 'readable historical' vs. current assignments is not visible in the provided source excerpt; the analysis assumes the fallback logic resides there. The proposal does not specify the resource overhead of maintaining the dependency graph state, though given the gate count is small (<10), this is negligible.",
+          "findings_json": "[\"The proposal targets a critical architectural gap: the current gate evaluation in `verifyLoopRun` is a flat, unordered array where `assignment_file_present` (upstream) and `diff_threshold_all_makers` (downstream) are evaluated independently without causal dependency enforcement.\",\"The masking vulnerability is structurally possible: the `assignment_file_present` gate explicitly permits 'a readable historical LOOP_WORK.md' as a fallback, which could allow a lease with a deleted current assignment to pass upstream validation and reach downstream gates like `diff_threshold_all_makers`.\",\"The design is bounded and reversible: the falsification criterion (downstream evaluation before upstream failure) and stop conditions (preflight abort vs. reaching diff threshold) provide clear state transition boundaries for the experiment.\",\"The proposed masking-test directly validates the architecture boundary between worktree state (file existence) and assignment validity, addressing the peer hypothesis (a) regarding stale-assignment reuse.\"]",
+          "recommendations_json": "[\"Authorize with the constraint that the implementation must explicitly model gate dependencies as a DAG (e.g., Worktree -> Assignment -> Checks -> Diff) rather than the current flat array evaluation.\",\"Require the masking-test to be implemented as a fault-injection integration test that provisions a lease with a deleted current assignment but present historical LOOP_WORK.md, verifying whether `assignment_file_present` returns PASS (confirming the vulnerability) or FAIL.\",\"Mandate that the dependency graph implementation include observability hooks to log gate evaluation order and skip reasons, ensuring that downstream gates are not evaluated when upstream causal dependencies fail.\",\"Clarify whether the historical LOOP_WORK.md fallback is intended resilience behavior or a legacy defect; if retained, it must be hash-bound to the lease manifest to prevent masking.\"]"
+        },
+        {
+          "panel_id": "610dc2c3-4d58-4393-9f99-1723dd1a0843",
+          "specialist_id": "runtime_engineer",
+          "stance": "needs_evidence",
+          "status": "submitted",
+          "confidence": 0,
+          "model": null,
+          "limitations": null,
+          "findings_json": "[\"Model response could not be parsed as a structured review.\"]",
+          "recommendations_json": "[\"Retry the automated review, or have a human complete this specialist role.\"]"
+        },
+        {
+          "panel_id": "610dc2c3-4d58-4393-9f99-1723dd1a0843",
+          "specialist_id": "systems_architect",
+          "stance": "needs_evidence",
+          "status": "submitted",
+          "confidence": 0,
+          "model": null,
+          "limitations": null,
+          "findings_json": "[\"Model response could not be parsed as a structured review.\"]",
+          "recommendations_json": "[\"Retry the automated review, or have a human complete this specialist role.\"]"
+        },
+        {
+          "panel_id": "6c54ccb9-ce51-4377-a986-85ee25053987",
+          "specialist_id": "runtime_engineer",
+          "stance": "support",
+          "status": "submitted",
+          "confidence": 0.78,
+          "model": null,
+          "limitations": "This evaluation is based solely on the provided 245-line excerpt of loop-verification-service.ts; I cannot verify the runtime command contract for worktree creation APIs or the existing process supervision logic for lease lifecycle management outside this file. The proposal's success depends on the unverified assumption that the worktree API exposes distinguishable 4xx/5xx error classes to the pre-flight check.",
+          "findings_json": "[\"The proposal correctly identifies a runtime observability gap: the current `verifyLoopRun` implementation evaluates `worktree_isolation` and `assignment_file_present` using only synchronous `fs.existsSync` checks against lease records, with no mechanism to distinguish between a path that never existed (misconfiguration) and a path that vanished due to infrastructure failure (availability).\",\"The discriminating test pair (injecting worktree-API 503 vs. deleted LOOP_WORK.md template) is the correct runtime engineering approach to root-cause the failure signature, as the current gate evidence strings ('Every maker lease must have an existing isolated worktree') are insufficient to determine why the check failed.\",\"The 'Canary + Circuit-Breaker' pre-flight addresses the supervision gap where provisioning faults currently cascade into four independent gate failures; by validating worktree creation and LOOP_WORK.md write/read before lease grant, the runtime can report 'not-evaluated (upstream blocked)' rather than misleading 'failed' states.\",\"The fail-closed lease denial with signed audit entry satisfies the artifact path requirement for runtime accountability, ensuring that raw error payloads (4xx vs 5xx) are captured before the lease cycle begins, unlike the current post-hoc gate evaluation which only sees the aftermath (missing paths).\",\"The stop condition's requirement for 100% fail-closed behavior during canary failures directly tests the runtime command contract's ability to halt provisioning before contaminating the gate evaluation phase.\"]",
+          "recommendations_json": "[\"Ensure the canary lease writes to a temporary probe path within the target worktree mount to verify actual writability, not just path existence, as `fs.existsSync` in the current implementation does not verify permissions or mount health.\",\"The circuit-breaker must distinguish between 4xx (config/auth) and 5xx (availability) at the runtime command level, halting immediately on 4xx to prevent retry storms on misconfigured LOOP_WORK.md templates, while bounding retries on 5xx to avoid the DoS lever identified in the rationale.\",\"Verify that the signed audit entry captures the raw error payload from the worktree API before any gate evaluation occurs, as the current `LoopGate` evidence field is populated too late to discriminate root causes.\",\"The pre-flight check should validate the artifact path contract (`.djimitflo/LOOP_WORK.md`) explicitly, ensuring the runtime can report real usage versus phantom paths left by failed provisioning.\"]"
+        },
+        {
+          "panel_id": "6c54ccb9-ce51-4377-a986-85ee25053987",
+          "specialist_id": "systems_architect",
+          "stance": "support",
+          "status": "submitted",
+          "confidence": 0.78,
+          "model": null,
+          "limitations": "The proposal does not specify concrete values for N and T, nor does it provide queue-depth or resource-usage evidence for the bounded retry claim; the scalability of the canary mechanism under high lease volume is asserted but not demonstrated with resource or queue evidence. The discriminating test pair is well-designed but has not yet been executed, so the root cause (availability vs misconfiguration) remains unverified.",
+          "findings_json": "[\"Boundedness is explicitly designed: the proposal mandates bounded exponential-backoff retry with a halt only after N consecutive canary failures in window T, and the stop condition requires 100% fail-closed behavior across the injection matrix (503, timeout, 403, mount-missing) with zero maker leases granted during canary failure.\",\"Observability is addressed via signed audit entries of raw errors on lease denial, error-classified responses (4xx/config vs 5xx/timeout), and downstream gates reporting 'not-evaluated (upstream blocked)' instead of 'failed', which eliminates the cascade signature and makes failure modes distinguishable.\",\"Reversibility is strong: the design is fail-closed (no lease granted during failure windows), halts before gate evaluation on 403, and the discriminating test pair (503 vs template deletion) is designed to abort the current hypothesis and re-open investigation if stored error payloads contradict injected signatures.\",\"The architecture boundary is correctly placed at the provisioning phase (pre-batch canary lease validating worktree creation and LOOP_WORK.md write/read), which is upstream of the gate evaluation logic in LoopVerificationService.verifyLoopRun; this prevents the observed four-gate cascade (worktree_isolation, assignment_file_present, etc.) from being triggered by provisioning faults.\",\"State transitions are explicit: canary validation → lease granted/denied → gate evaluation or halt; the proposal removes the ambiguous 'Ghost Worktree' fallback path that the rationale correctly identifies as a worktree_isolation breach.\",\"The discriminating test pair directly addresses the evidence-audit flag that the peer's 503 injection was a proposal, not executed evidence, by requiring reproduction of the exact four-gate cluster and platform_fault near 0.70 from run:f4f0d49a before any code change.\"]",
+          "recommendations_json": "[\"Define concrete values for N (consecutive canary failures) and T (window) in the implementation, and ensure the retry budget is enforced by a queue-depth or token-bucket mechanism to satisfy the boundedness claim with resource evidence.\",\"Specify the stable interface for the canary lease: it should be a minimal, idempotent worktree creation + LOOP_WORK.md write/read operation that does not depend on the full maker lease lifecycle, so it can be automated without side effects.\",\"Clarify whether platform_fault is computed before or after lease assignment; if it is scored after gates fail, it cannot serve as a pre-flight signal and the circuit-breaker logic must rely solely on the canary result, not on downstream gate scores.\",\"Ensure the signed audit entry includes the raw error payload, timestamp, and canary lease ID, and that these records are retained for the same duration as loop run records to support post-hoc root-cause analysis.\",\"Add a metric or log line that counts 'not-evaluated (upstream blocked)' gate reports versus 'failed' reports, so operators can observe the elimination of the cascade signature in production.\"]"
+        },
+        {
+          "panel_id": "7224faf8-3177-4e15-8d93-74b985a488bc",
+          "specialist_id": "runtime_engineer",
+          "stance": "needs_evidence",
+          "status": "submitted",
+          "confidence": 0,
+          "model": null,
+          "limitations": null,
+          "findings_json": "[\"Model response could not be parsed as a structured review.\"]",
+          "recommendations_json": "[\"Retry the automated review, or have a human complete this specialist role.\"]"
+        },
+        {
+          "panel_id": "7224faf8-3177-4e15-8d93-74b985a488bc",
+          "specialist_id": "systems_architect",
+          "stance": "needs_evidence",
+          "status": "submitted",
+          "confidence": 0,
+          "model": null,
+          "limitations": null,
+          "findings_json": "[\"Model response could not be parsed as a structured review.\"]",
+          "recommendations_json": "[\"Retry the automated review, or have a human complete this specialist role.\"]"
+        },
+        {
+          "panel_id": "761904b5-ffc7-4d83-a124-e99c90bcedc9",
+          "specialist_id": "runtime_engineer",
+          "stance": "needs_evidence",
+          "status": "submitted",
+          "confidence": 0,
+          "model": null,
+          "limitations": null,
+          "findings_json": "[\"Model response could not be parsed as a structured review.\"]",
+          "recommendations_json": "[\"Retry the automated review, or have a human complete this specialist role.\"]"
+        },
+        {
+          "panel_id": "761904b5-ffc7-4d83-a124-e99c90bcedc9",
+          "specialist_id": "systems_architect",
+          "stance": "needs_evidence",
+          "status": "submitted",
+          "confidence": 0,
+          "model": null,
+          "limitations": null,
+          "findings_json": "[\"Model response could not be parsed as a structured review.\"]",
+          "recommendations_json": "[\"Retry the automated review, or have a human complete this specialist role.\"]"
+        },
+        {
+          "panel_id": "76cddbd4-3bd0-4a64-95a0-d0a271dcfbaa",
+          "specialist_id": "runtime_engineer",
+          "stance": "oppose",
+          "status": "submitted",
+          "confidence": 0.82,
+          "model": null,
+          "limitations": "I reviewed only the first 6000 characters of operator-intervention.ts (264 lines total); a shadow-execution or sandbox facility could exist elsewhere in the Djimitflo codebase, but no evidence of it was provided in this context, and the burden of demonstrating a runtime command contract, artifact path, and budget signal rests on the proposal. I did not infer any active execution capability from registry rows or service existence alone.",
+          "findings_json": "[\"The proposal's core mechanism is to 'automatically re-execute the action in a sandbox with one randomly selected guardrail disabled' — from a runtime/process-supervision perspective this is a guardrail-bypass execution path, and the provided target source (operator-intervention.ts) contains no runtime command contract, sandbox spawn contract, artifact path, or budget signal to support it; the file is an operator pause/resume/inject service, not an execution sandbox.\",\"The acceptance test described in the proposal ('run a controlled batch of harmful prompts through both the safe and the unsafe personas... declare the unsafe persona insufficient if any intervention exceeds a zero-tolerance threshold') is incoherent as written: it measures guardrail interventions while simultaneously requiring guardrails to be disabled, and the stop condition ('cease treating the unsafe persona as evidence... once it yields at least one safety refusal') concedes the persona may not bypass guardrails at all — meaning the experiment cannot discriminate what it claims to discriminate.\",\"No runtime command contract is specified anywhere in the proposal: there is no definition of how the shadow re-execution is spawned (Codex/OpenCode/worktree isolation), how the 'randomly selected guardrail' is disabled at the process level, what artifact path divergence logs are written to, or what budget signal caps the sample of re-executions. Without these, usage and artifacts cannot be reported and leases cannot be stopped or retried safely.\",\"The grounding target (packages/server/src/services/operator-intervention.ts) is mismatched to the proposal: that service explicitly refuses to checkpoint or drain live execution ('This does not pretend to checkpoint a CLI', 'live checkpoint/drain is unavailable') and gates on worker_leases status — it provides admission control, not a shadow-execution harness. Building guardrail-ablation re-execution on top of it has no evidenced foundation.\",\"The rationale itself states the key uncertainty: 'I am uncertain whether the unsafe persona... ever produces a safety refusal or guardrail activation' — i.e., the central premise (that guardrails can be selectively disabled to create an unconstrained environment) is unverified, and the proposal asks to automate that unverified bypass in shadow mode.\"]",
+          "recommendations_json": "[\"Do not authorize as a goal in current form. At minimum, require a runtime command contract specifying the sandbox spawn mechanism (e.g., isolated worktree + supervised process), the exact guardrail-disable interface, the artifact path for divergence logs, and a budget signal (max samples, max retries, lease TTL) before any shadow re-execution is permitted.\",\"Replace the persona-based test with the paired-prompt discriminating experiment the rationale itself identifies as 'the smallest discriminating experiment', run once under full guardrails, before any guardrail-disable automation is built.\",\"Require that any shadow-mode re-execution path integrate with the existing lease supervision evidenced in operator-intervention.ts (worker_leases status checks, LoopRunMutationService transitions) so shadow runs can be stopped/retried through the same interruption protocol rather than a parallel unsupervised path.\",\"Clarify the acceptance test's zero-tolerance logic: define whether interventions are expected (proving guardrails active) or absent (proving bypass), since the current wording makes both outcomes ambiguous.\"]"
+        },
+        {
+          "panel_id": "76cddbd4-3bd0-4a64-95a0-d0a271dcfbaa",
+          "specialist_id": "systems_architect",
+          "stance": "oppose",
+          "status": "submitted",
+          "confidence": 0.78,
+          "model": null,
+          "limitations": "I reviewed only the first 6000 characters of operator-intervention.ts (264 lines total); the remainder could conceivably contain sandbox or re-execution hooks, though the class docstring and constructor dependencies (LoopService, SwarmIntelligenceService, AuditService) make that unlikely. I have no visibility into whether a separate sandbox service exists elsewhere in Djimitflo that the proposal intended to target; my opposition is based on the mismatch between the proposed mechanism and the grounded control-plane file, plus the absence of bounded experiment and observability specifications.",
+          "findings_json": "[\"The proposal's core mechanism — 'automatically re-execute the action in a sandbox with one randomly selected guardrail disabled' — is architecturally irreconcilable with the grounded target. operator-intervention.ts implements an operator-owned pause/resume/advisory protocol whose audit method hardcodes event_type CONFIG_CHANGED and whose docstring explicitly states interventions 'record an advisory gate decision, never replace executable verification'. There is no sandbox, no re-execution path, no guardrail registry, and no constraint-ablation interface in this control plane; the grounding target does not bound the proposed feature.\",\"State transitions in this service are deliberately conservative: pause requires quiescence (rejects with OPERATOR_GOAL_BUSY when workers are prepared/running), resume 'never revives' a terminal stop, and every mutation goes through LoopRunMutationService with audit. A feature that re-executes approved actions with a guardrail disabled introduces a new, unbounded state machine (sample selection, random ablation choice, sandbox lifecycle, divergence logging) with no defined states, no failure modes, and no reconciliation with the interrupted/blocked/operator_paused metadata protocol already present.\",\"Reversibility is asserted ('shadow-mode') but not evidenced: nothing in the proposal specifies how ablated re-executions are isolated from the semantic store, worker leases, or the audit trail, and the existing service shows that even pause — a far weaker operation — refuses to act when any task holds an execution_recovery_hold. Disabling a guardrail, even in a claimed sandbox, is a stronger intervention than anything this control plane currently admits.\",\"The stop condition is self-defeating as a bounded experiment: it ceases treating the unsafe persona as evidence 'once it yields at least one safety refusal' — i.e., a single observation terminates the evidence label — while simultaneously the test declares the persona insufficient 'if any intervention exceeds a zero-tolerance threshold'. These are one-shot, non-stationary criteria with no sample size, no queue/backpressure bounds, and no defined divergence metric, so the experiment is neither bounded nor repeatable.\",\"Observability is claimed via 'log output divergence' but no interface is specified: no event type on swarmEventBus, no AuditEventType, no schema for divergence records. The existing service emits a single 'convergence' SSE event and CONFIG_CHANGED audit rows; the proposal does not state which stable interface it would extend, so there is nothing stable enough to automate against.\"]",
+          "recommendations_json": "[\"Re-ground the proposal on the actual execution/sandbox path (worker lease dispatch or wherever action re-execution would occur) rather than operator-intervention.ts, or explicitly scope it as a new service with its own boundary.\",\"Define the ablation state machine: sampling rate limits, sandbox provisioning/teardown, divergence metric schema, and how ablated runs are prevented from mutating the semantic store or emitting real side effects.\",\"Replace one-shot stop criteria with a bounded experiment spec: fixed batch size, predefined divergence threshold with units, and a maximum number of shadow executions per goal.\",\"Specify the observability interface concretely: new AuditEventType(s), SSE event names, and the divergence log schema, so downstream automation has a stable contract.\",\"Provide resource and queue evidence (sandbox concurrency limits, execution timeouts, storage bounds for divergence logs) before any claim that shadow-mode sampling is safe at scale.\"]"
+        },
+        {
+          "panel_id": "80f8355c-676e-42ae-ba19-091f39b66cce",
+          "specialist_id": "runtime_engineer",
+          "stance": "needs_evidence",
+          "status": "submitted",
+          "confidence": 0.7,
+          "model": null,
+          "limitations": "Review limited to the provided 204-line excerpt of dream-state-service.ts; the actual loop execution and process supervision code (loop-service.ts, loop-worker-executor-service.ts) referenced in CAUSE_TARGETS was not provided, preventing verification of whether the gate can actually abort active leases or only classify failures post-hoc.",
+          "findings_json": "[\"The proposal targets dream-state-service.ts, but the provided source shows no existing runtime command contract for replaying specific historical runs (run:c2f60ca5-58b2-4cbe-b6ef-3a00403e8b98) with injected fault parameters (platform_fault=0.64, infra_confidence mocks).\",\"No artifact path or budget signal is defined in the current DreamStateService implementation for recording shadow-mode 'would-have-aborted' decisions or calibration metrics; the service currently only writes to a dream_ledger table with verdict counts, not granular gate decisions.\",\"The stop condition requires demonstrating the gate 'prevents the original failure without causing false aborts,' but the current service lacks process supervision hooks or lease management to actually abort running loops based on confidence thresholds.\",\"The grounding indicates 'derived: false' and the target file is the dream-state service (analysis/classification layer), not the loop execution engine where a confidence gate would need to intercept execution.\"]",
+          "recommendations_json": "[\"Define the runtime command contract: specify how the replay mechanism injects platform_fault and infra_confidence values into the loop execution context for run:c2f60ca5-58b2-4cbe-b6ef-3a00403e8b98.\",\"Specify the artifact path and schema for shadow-mode decision records (e.g., JSONL logs or database table) capturing would-have-aborted decisions, actual outcomes, and calibration metrics.\",\"Clarify the budget signal: identify which service (loop-service.ts vs dream-state-service.ts) owns the lease/abort mechanism and how the gate integrates with existing process supervision without violating the 'no active execution inferred from registry rows' constraint.\",\"Provide evidence that the target file can access the necessary runtime context (infra_confidence, platform_fault) to make gating decisions, or identify the correct target file in the execution path.\"]"
+        },
+        {
+          "panel_id": "80f8355c-676e-42ae-ba19-091f39b66cce",
+          "specialist_id": "systems_architect",
+          "stance": "support",
+          "status": "submitted",
+          "confidence": 0.72,
+          "model": null,
+          "limitations": "Only the first ~6000 characters of dream-state-service.ts were visible; I could not inspect the replay() implementation, the judgment-service interface, or how infra_confidence is currently computed and threaded, so I cannot verify the exact integration point for the gate. My assessment of interface stability is inferred from the ledger/verdict pattern rather than confirmed against the full control flow. No queue or resource evidence was provided, so I make no scalability claims; the MAX_PER_REPLAY=25 bound in the visible code suggests the existing pass is already capped, but the gate's own recording volume during calibration is unspecified.",
+          "findings_json": "[\"The proposal is architecturally bounded and reversible: shadow-mode recording of would-have-aborted decisions before enforcement is a classic control-plane canary pattern, and the explicit calibration period with exposed metrics for threshold selection directly addresses the unverified assumption (2) in the rationale that 0.5 is calibrated.\",\"The discriminating experiment design is sound from a systems perspective: holding platform_fault fixed at 0.64 while varying infra_confidence (0.38 vs 0.51) isolates the candidate causal variable, and the third leg (0.51 + same fault) is a genuine falsification test — if the loop still fails, the gate is insufficient, which is exactly the kind of negative-result branch a bounded experiment needs.\",\"The stop condition is symmetric and observable: it terminates on both false-negative evidence (infra_confidence >=0.5 still fails) and false-positive evidence (excessive false aborts on non-failing runs), so the experiment cannot silently succeed by only measuring aborts — this fixes the gap the rationale identified in the peer's original staging test.\",\"The grounding target (dream-state-service.ts) shows the service already has a shadow-classification precedent (TYPESAFE_FAILURE_CAUSE_MODE=shadow) and a ledger pattern (dream_ledger with explicit verdicts, never silence), so a shadow-mode gate that records decisions and outcomes fits the existing observability idiom rather than introducing a new unbounded subsystem.\",\"State transitions are explicit in the existing code (DreamVerdict ACCEPT/REJECT/INCONCLUSIVE with reasons), which gives the calibration metrics a natural place to live; however, the proposal text itself does not specify where the would-have-aborted records persist or their schema, so the interface stability for downstream threshold automation is implied, not demonstrated.\"]",
+          "recommendations_json": "[\"Require the would-have-aborted records to be persisted in a versioned ledger table (mirroring dream_ledger: decision, confidence, platform_fault, outcome, timestamp) so the calibration metrics are queryable and the threshold-selection interface is stable enough to automate later.\",\"Define 'excessive false aborts' quantitatively before the calibration period starts (e.g., a false-abort rate ceiling on non-failing runs), otherwise the stop condition is not machine-checkable.\",\"Extend the replay test beyond the single failing run c2f60ca5 to a small matrix of non-failing runs across a confidence range, since the rationale explicitly flags that the peer's test did not check normal runs across confidences.\",\"Keep the gate behind a feature flag with enforcement default-off (consistent with DREAM_STATE_ENABLED / dreamProposalsEnabled gating in the target file) so rollout is reversible at runtime.\"]"
+        },
+        {
+          "panel_id": "b4e112cf-3f69-45ce-b047-6b6c33ea0ba6",
+          "specialist_id": "runtime_engineer",
+          "stance": "needs_evidence",
+          "status": "submitted",
+          "confidence": 0,
+          "model": null,
+          "limitations": null,
+          "findings_json": "[\"Model response could not be parsed as a structured review.\"]",
+          "recommendations_json": "[\"Retry the automated review, or have a human complete this specialist role.\"]"
+        },
+        {
+          "panel_id": "b4e112cf-3f69-45ce-b047-6b6c33ea0ba6",
+          "specialist_id": "systems_architect",
+          "stance": "needs_evidence",
+          "status": "submitted",
+          "confidence": 0,
+          "model": null,
+          "limitations": null,
+          "findings_json": "[\"Model response could not be parsed as a structured review.\"]",
+          "recommendations_json": "[\"Retry the automated review, or have a human complete this specialist role.\"]"
+        },
+        {
+          "panel_id": "c13932f2-6230-4ac9-940c-2f32702a6432",
+          "specialist_id": "runtime_engineer",
+          "stance": "oppose",
+          "status": "submitted",
+          "confidence": 0.82,
+          "model": null,
+          "limitations": "I cannot see the full Djimitflo execution pipeline or the actual GraphStore ingestion path; my opposition is based on the specific grounded target being a maintenance scheduler with no user-input handling, making the proposal unimplementable as specified. I also cannot verify whether a separate persona-masking service exists elsewhere in the codebase.",
+          "findings_json": "[\"The proposal targets a 'Persona-Masking Layer' for the Djimitflo execution pipeline, but the grounded target file (packages/server/src/services/knowledge-maintenance-service.ts) is a deterministic maintenance scheduler for OKF sync drift, wiki delta projection, and linting. It contains no user-input ingestion path, no GraphStore write path for raw user data, and no privacy/masking logic. The grounding is a category error.\",\"The target service operates on a run-ledger model with period keys and dry-run syncs; it does not process user personas or handle data authorization. Injecting an A/B test about 'Data Grant Rate' and synthetic personas into this file would require unrelated architectural changes not evidenced in the source.\",\"The acceptance test path (knowledge-maintenance-service.test.ts) is designed for job outcome assertions (ok/findings/skipped/failed) and ledger idempotency, not for measuring membership inference attack success rates or user engagement metrics. There is no runtime command contract or artifact path in the target that could report real usage of a masking layer.\",\"The proposal's stop condition relies on detecting 'cognitive friction' via user engagement metrics, but the target service has no user interaction surface, no lease/budget signal for user-facing operations, and no telemetry pipeline for A/B test cohorts. The runtime cannot report real usage for this experiment from the grounded code.\"]",
+          "recommendations_json": "[\"Reject this goal as grounded. The proposal describes a UX/privacy experiment that belongs in a user-facing ingestion service or a dedicated privacy gateway, not in the knowledge maintenance scheduler.\",\"If the Persona-Masking Layer is to be pursued, re-ground the proposal in a service that actually handles raw user inputs before GraphStore persistence (e.g., an ingestion API or privacy middleware), with a runtime command contract that exposes artifact paths for masked vs. unmasked data samples and budget signals for compute overhead.\",\"Require evidence of a lease/supervision mechanism for the A/B test itself: how are test cohorts assigned, how is the experiment stopped or retried if the masking pipeline fails, and what artifact path records the membership inference attack results?\"]"
+        },
+        {
+          "panel_id": "c13932f2-6230-4ac9-940c-2f32702a6432",
+          "specialist_id": "systems_architect",
+          "stance": "oppose",
+          "status": "submitted",
+          "confidence": 0.85,
+          "model": null,
+          "limitations": "The provided source file is truncated (144 lines, first 6000 characters), so the full extent of the KnowledgeMaintenanceService class and its integration points with the GraphStore or event bus are not visible. However, the visible architecture (scheduled jobs, ledger-based, deterministic) is sufficiently distinct from a synchronous persona-masking pipeline to conclude a boundary mismatch.",
+          "findings_json": "[\"The proposal targets the wrong architectural boundary: it aims to modify the 'execution pipeline' before the GraphStore, but the grounded target file (knowledge-maintenance-service.ts) is a scheduled maintenance service for drift detection and linting, not a synchronous data ingestion pipeline.\",\"The design is unbounded regarding state management: introducing a 'Persona-Masking Layer' implies a stateful transformation of user inputs into synthetic archetypes, yet the target file shows a deterministic, stateless job runner with a run ledger; there is no evidence of where persona state, mapping consistency, or identity lifecycle would be managed.\",\"The proposal lacks observable failure modes for the masking layer: while the existing service has explicit JobOutcome states ('ok', 'findings', 'skipped', 'failed'), the proposal does not define how masking failures, persona collisions, or GraphStore consistency errors would be detected or handled.\",\"The interface is not stable enough to automate: the proposal describes a conceptual UX experiment (A/B testing 'Data Grant Rate') rather than a technical interface contract, whereas the target file demonstrates stable, typed interfaces (JobSpec, Context) for deterministic automation.\",\"Reversibility is not addressed: the proposal does not specify how to revert synthetic personas to raw inputs or how to handle data already transformed and stored in the GraphStore, creating a potential one-way data mutation risk.\"]",
+          "recommendations_json": "[\"Redirect the proposal to target the actual data ingestion or event handling layer (e.g., the external_events processing or a dedicated ingestion service) rather than the maintenance service.\",\"Define a bounded state transition model for persona lifecycle (creation, mapping, rotation, deletion) with explicit failure modes and rollback procedures before authorization.\",\"Provide evidence of queue depth, processing latency, and resource overhead for the masking transformation to ensure it does not block the existing 15-minute maintenance cadence or the event bus.\",\"Specify the stable interface contract for the masking layer (input schema, output schema, error codes) to enable automation and testing comparable to the existing JobSpec pattern.\",\"Clarify how the A/B test metric ('Data Grant Rate') relates to the technical implementation; if the goal is purely UX research, it should not be grounded in the server execution pipeline.\"]"
+        },
+        {
+          "panel_id": "c536d59d-d448-43a6-8f2f-b2ef4bc1a147",
+          "specialist_id": "runtime_engineer",
+          "stance": "needs_evidence",
+          "status": "submitted",
+          "confidence": 0,
+          "model": null,
+          "limitations": null,
+          "findings_json": "[\"Model response could not be parsed as a structured review.\"]",
+          "recommendations_json": "[\"Retry the automated review, or have a human complete this specialist role.\"]"
+        },
+        {
+          "panel_id": "c536d59d-d448-43a6-8f2f-b2ef4bc1a147",
+          "specialist_id": "systems_architect",
+          "stance": "needs_evidence",
+          "status": "submitted",
+          "confidence": 0,
+          "model": null,
+          "limitations": null,
+          "findings_json": "[\"Model response could not be parsed as a structured review.\"]",
+          "recommendations_json": "[\"Retry the automated review, or have a human complete this specialist role.\"]"
+        },
+        {
+          "panel_id": "c75505bc-0861-4024-9a8e-20f31f006edd",
+          "specialist_id": "runtime_engineer",
+          "stance": "needs_evidence",
+          "status": "submitted",
+          "confidence": 0,
+          "model": null,
+          "limitations": null,
+          "findings_json": "[\"Model response could not be parsed as a structured review.\"]",
+          "recommendations_json": "[\"Retry the automated review, or have a human complete this specialist role.\"]"
+        },
+        {
+          "panel_id": "c75505bc-0861-4024-9a8e-20f31f006edd",
+          "specialist_id": "systems_architect",
+          "stance": "needs_evidence",
+          "status": "submitted",
+          "confidence": 0,
+          "model": null,
+          "limitations": null,
+          "findings_json": "[\"Model response could not be parsed as a structured review.\"]",
+          "recommendations_json": "[\"Retry the automated review, or have a human complete this specialist role.\"]"
+        },
+        {
+          "panel_id": "e2743f5a-5203-473a-af43-9b1df35439cc",
+          "specialist_id": "runtime_engineer",
+          "stance": "needs_evidence",
+          "status": "submitted",
+          "confidence": 0,
+          "model": null,
+          "limitations": null,
+          "findings_json": "[\"Model response could not be parsed as a structured review.\"]",
+          "recommendations_json": "[\"Retry the automated review, or have a human complete this specialist role.\"]"
+        },
+        {
+          "panel_id": "e2743f5a-5203-473a-af43-9b1df35439cc",
+          "specialist_id": "systems_architect",
+          "stance": "needs_evidence",
+          "status": "submitted",
+          "confidence": 0,
+          "model": null,
+          "limitations": null,
+          "findings_json": "[\"Model response could not be parsed as a structured review.\"]",
+          "recommendations_json": "[\"Retry the automated review, or have a human complete this specialist role.\"]"
+        }
+      ]
+    },
+    "child_consensus": {
+      "sql": "SELECT p.id,json_extract(p.consensus_json,'$.decision') decision,json_extract(p.consensus_json,'$.next_actions') next_actions,json_extract(p.consensus_json,'$.dissent') dissent FROM specialist_panels p JOIN self_improvements s ON s.panel_id=p.id WHERE s.id IN (SELECT s.id FROM self_improvements s WHERE s.refined_from_id IN (SELECT DISTINCT subject_id FROM judgments WHERE judgment='commons_grounding' AND decision='yes'))",
+      "params": [],
+      "rows": [
+        {
+          "id": "54809b63-eff1-4e7b-8069-ef0af1aa9fa6",
+          "decision": "needs_more_evidence",
+          "next_actions": "[\"Collect deterministic evidence before creating worker leases.\",\"Retry the automated review, or have a human complete this specialist role.\",\"Retry the automated review, or have a human complete this specialist role.\"]",
+          "dissent": "[{\"specialist_id\":\"systems_architect\",\"specialist_title\":\"Systems Architect\",\"stance\":\"needs_evidence\",\"limitations\":null},{\"specialist_id\":\"security_reviewer\",\"specialist_title\":\"Security Reviewer\",\"stance\":\"needs_evidence\",\"limitations\":null}]"
+        },
+        {
+          "id": "1a6668b8-9528-4f1e-92f1-d6152a63e3fd",
+          "decision": "needs_more_evidence",
+          "next_actions": "[\"Collect deterministic evidence before creating worker leases.\",\"Retry the automated review, or have a human complete this specialist role.\",\"Retry the automated review, or have a human complete this specialist role.\"]",
+          "dissent": "[{\"specialist_id\":\"systems_architect\",\"specialist_title\":\"Systems Architect\",\"stance\":\"needs_evidence\",\"limitations\":null},{\"specialist_id\":\"runtime_engineer\",\"specialist_title\":\"Runtime Engineer\",\"stance\":\"needs_evidence\",\"limitations\":null}]"
+        },
+        {
+          "id": "52bb8807-021d-4949-96c7-b8c8279abed2",
+          "decision": "needs_more_evidence",
+          "next_actions": "[\"Collect deterministic evidence before creating worker leases.\",\"Execute the mandatory read-only provenance query against run:318e5e4c-96b4-466b-8588-23cba06b4fd7 immediately to falsify H3 (surfacing bug) or H4 (fabrication) before authorizing any code changes.\",\"Provide architectural diagrams or interface definitions showing the boundary between the 'Djimitflo run controller' and the proposed 'out-of-process watchdog' to verify observability and reversibility.\",\"Demonstrate via a dry-run or simulation that the 'append-only write-ahead' entry can be successfully committed in a scenario where the main process receives a SIGKILL immediately after the write trigger.\",\"Clarify the mapping between the 'dream_ledger' in the current codebase and the proposed 'gate ledger' to ensure the proposal isn't solving a problem in a non-existent subsystem.\",\"Require the proponent to provide the actual runtime command contract and artifact path for the 'Djimitflo' controller before authorizing any goal, as the current codebase shows no such component.\",\"Mandate a dry-run of the read-only provenance query against the specific run ID (`318e5e4c...`) to confirm H3/H4 status before approving state-changing sandbox trials.\",\"Define the budget signal and lease stop condition for the proposed 'out-of-process watchdog' to ensure it can synthesize `gates_outcome` entries without creating denial-of-service vectors via false positives.\"]",
+          "dissent": "[{\"specialist_id\":\"systems_architect\",\"specialist_title\":\"Systems Architect\",\"stance\":\"needs_evidence\",\"limitations\":\"Evaluation is constrained to the provided dream-state-service.ts which does not contain the 'gate ledger' or 'run controller' logic described in the proposal; the proposal's core premise rests on unverified external data (Qdrant/GraphStore state) that cannot be validated without executing the suggested read-only query.\"},{\"specialist_id\":\"runtime_engineer\",\"specialist_title\":\"Runtime Engineer\",\"stance\":\"needs_evidence\",\"limitations\":\"Evaluation is strictly limited to the provided `dream-state-service.ts` file and the textual proposal context. I cannot execute the proposed read-only query against the external GraphStore/Qdrant instance, nor can I verify the existence of the 'Djimitflo' binary or its runtime behavior. The assessment assumes the provided source code represents the current 'ecosystem orientation' mentioned in the proposal, though the mismatch in technology stack (SQLite vs Qdrant) suggests significant missing context.\"}]"
+        },
+        {
+          "id": "5a5c3bb9-2977-4002-81d0-2c71ce8281cc",
+          "decision": "backlog",
+          "next_actions": "[\"Project to backlog before worker leasing; keep maker/checker separation.\",\"Specify the ledger write as transactional or write-ahead relative to gate evaluation: the gate-invocation record must be persisted before the gate executes, so that an abort mid-gate still leaves an invocation entry without an outcome — this is the key property that distinguishes 'gate never ran' from 'gate ran and crashed'.\",\"Define the ledger schema explicitly in the proposal before implementation: gate_id, invocation timestamp, outcome, outcome timestamp, run_id, lease_id, and a monotonic sequence or decision id consistent with the existing makeManifestDecisionId pattern.\",\"Require the ledger write path to be failure-isolated from the gate path: a ledger write failure must itself be recorded via recordLoopEvent (or a fallback) so that 'empty ledger' can be falsified as telemetry failure versus genuine pre-gate abort — otherwise the original ambiguity reappears one level down.\",\"Add the acceptance test to the cited test file covering three cases: gate entries present with failing outcome, empty ledger with confirmed pre-gate abort, and ledger write failure surfaced distinctly.\",\"Clarify query interface: expose a post-run query (e.g., listGateEvents(run_id)) on LoopService rather than requiring direct DB access, to keep the interface stable enough to automate against.\",\"Define the ledger's artifact path and schema explicitly (e.g., a JSONL file per run under a `gate-ledger/` directory or a dedicated DB table) to ensure it is queryable post-run and survives premature aborts.\",\"Integrate ledger writes at the same transactional boundary as lease status updates (e.g., within `updateWorkerLeaseStatus` or immediately before/after gate evaluation) to guarantee persistence even if the process crashes.\"]",
+          "dissent": "[]"
+        },
+        {
+          "id": "610dc2c3-4d58-4393-9f99-1723dd1a0843",
+          "decision": "needs_more_evidence",
+          "next_actions": "[\"Collect deterministic evidence before creating worker leases.\",\"Retry the automated review, or have a human complete this specialist role.\",\"Retry the automated review, or have a human complete this specialist role.\"]",
+          "dissent": "[{\"specialist_id\":\"systems_architect\",\"specialist_title\":\"Systems Architect\",\"stance\":\"needs_evidence\",\"limitations\":null},{\"specialist_id\":\"runtime_engineer\",\"specialist_title\":\"Runtime Engineer\",\"stance\":\"needs_evidence\",\"limitations\":null}]"
+        },
+        {
+          "id": "c536d59d-d448-43a6-8f2f-b2ef4bc1a147",
+          "decision": "needs_more_evidence",
+          "next_actions": "[\"Collect deterministic evidence before creating worker leases.\",\"Retry the automated review, or have a human complete this specialist role.\",\"Retry the automated review, or have a human complete this specialist role.\"]",
+          "dissent": "[{\"specialist_id\":\"systems_architect\",\"specialist_title\":\"Systems Architect\",\"stance\":\"needs_evidence\",\"limitations\":null},{\"specialist_id\":\"runtime_engineer\",\"specialist_title\":\"Runtime Engineer\",\"stance\":\"needs_evidence\",\"limitations\":null}]"
+        },
+        {
+          "id": "76cddbd4-3bd0-4a64-95a0-d0a271dcfbaa",
+          "decision": "blocked",
+          "next_actions": "[\"Do not spawn workers. Resolve dissent and missing evidence first.\",\"Re-ground the proposal on the actual execution/sandbox path (worker lease dispatch or wherever action re-execution would occur) rather than operator-intervention.ts, or explicitly scope it as a new service with its own boundary.\",\"Define the ablation state machine: sampling rate limits, sandbox provisioning/teardown, divergence metric schema, and how ablated runs are prevented from mutating the semantic store or emitting real side effects.\",\"Replace one-shot stop criteria with a bounded experiment spec: fixed batch size, predefined divergence threshold with units, and a maximum number of shadow executions per goal.\",\"Specify the observability interface concretely: new AuditEventType(s), SSE event names, and the divergence log schema, so downstream automation has a stable contract.\",\"Provide resource and queue evidence (sandbox concurrency limits, execution timeouts, storage bounds for divergence logs) before any claim that shadow-mode sampling is safe at scale.\",\"Do not authorize as a goal in current form. At minimum, require a runtime command contract specifying the sandbox spawn mechanism (e.g., isolated worktree + supervised process), the exact guardrail-disable interface, the artifact path for divergence logs, and a budget signal (max samples, max retries, lease TTL) before any shadow re-execution is permitted.\",\"Replace the persona-based test with the paired-prompt discriminating experiment the rationale itself identifies as 'the smallest discriminating experiment', run once under full guardrails, before any guardrail-disable automation is built.\"]",
+          "dissent": "[{\"specialist_id\":\"systems_architect\",\"specialist_title\":\"Systems Architect\",\"stance\":\"oppose\",\"limitations\":\"I reviewed only the first 6000 characters of operator-intervention.ts (264 lines total); the remainder could conceivably contain sandbox or re-execution hooks, though the class docstring and constructor dependencies (LoopService, SwarmIntelligenceService, AuditService) make that unlikely. I have no visibility into whether a separate sandbox service exists elsewhere in Djimitflo that the proposal intended to target; my opposition is based on the mismatch between the proposed mechanism and the grounded control-plane file, plus the absence of bounded experiment and observability specifications.\"},{\"specialist_id\":\"runtime_engineer\",\"specialist_title\":\"Runtime Engineer\",\"stance\":\"oppose\",\"limitations\":\"I reviewed only the first 6000 characters of operator-intervention.ts (264 lines total); a shadow-execution or sandbox facility could exist elsewhere in the Djimitflo codebase, but no evidence of it was provided in this context, and the burden of demonstrating a runtime command contract, artifact path, and budget signal rests on the proposal. I did not infer any active execution capability from registry rows or service existence alone.\"}]"
+        },
+        {
+          "id": "c75505bc-0861-4024-9a8e-20f31f006edd",
+          "decision": "needs_more_evidence",
+          "next_actions": "[\"Collect deterministic evidence before creating worker leases.\",\"Retry the automated review, or have a human complete this specialist role.\",\"Retry the automated review, or have a human complete this specialist role.\"]",
+          "dissent": "[{\"specialist_id\":\"systems_architect\",\"specialist_title\":\"Systems Architect\",\"stance\":\"needs_evidence\",\"limitations\":null},{\"specialist_id\":\"runtime_engineer\",\"specialist_title\":\"Runtime Engineer\",\"stance\":\"needs_evidence\",\"limitations\":null}]"
+        },
+        {
+          "id": "b4e112cf-3f69-45ce-b047-6b6c33ea0ba6",
+          "decision": "needs_more_evidence",
+          "next_actions": "[\"Collect deterministic evidence before creating worker leases.\",\"Retry the automated review, or have a human complete this specialist role.\",\"Retry the automated review, or have a human complete this specialist role.\"]",
+          "dissent": "[{\"specialist_id\":\"systems_architect\",\"specialist_title\":\"Systems Architect\",\"stance\":\"needs_evidence\",\"limitations\":null},{\"specialist_id\":\"runtime_engineer\",\"specialist_title\":\"Runtime Engineer\",\"stance\":\"needs_evidence\",\"limitations\":null}]"
+        },
+        {
+          "id": "58b6c192-2652-4407-a016-2c174afe8e86",
+          "decision": "needs_more_evidence",
+          "next_actions": "[\"Collect deterministic evidence before creating worker leases.\",\"Retry the automated review, or have a human complete this specialist role.\",\"Retry the automated review, or have a human complete this specialist role.\"]",
+          "dissent": "[{\"specialist_id\":\"systems_architect\",\"specialist_title\":\"Systems Architect\",\"stance\":\"needs_evidence\",\"limitations\":null},{\"specialist_id\":\"security_reviewer\",\"specialist_title\":\"Security Reviewer\",\"stance\":\"needs_evidence\",\"limitations\":null}]"
+        },
+        {
+          "id": "c13932f2-6230-4ac9-940c-2f32702a6432",
+          "decision": "blocked",
+          "next_actions": "[\"Do not spawn workers. Resolve dissent and missing evidence first.\",\"Reject this goal as grounded. The proposal describes a UX/privacy experiment that belongs in a user-facing ingestion service or a dedicated privacy gateway, not in the knowledge maintenance scheduler.\",\"If the Persona-Masking Layer is to be pursued, re-ground the proposal in a service that actually handles raw user inputs before GraphStore persistence (e.g., an ingestion API or privacy middleware), with a runtime command contract that exposes artifact paths for masked vs. unmasked data samples and budget signals for compute overhead.\",\"Require evidence of a lease/supervision mechanism for the A/B test itself: how are test cohorts assigned, how is the experiment stopped or retried if the masking pipeline fails, and what artifact path records the membership inference attack results?\",\"Redirect the proposal to target the actual data ingestion or event handling layer (e.g., the external_events processing or a dedicated ingestion service) rather than the maintenance service.\",\"Define a bounded state transition model for persona lifecycle (creation, mapping, rotation, deletion) with explicit failure modes and rollback procedures before authorization.\",\"Provide evidence of queue depth, processing latency, and resource overhead for the masking transformation to ensure it does not block the existing 15-minute maintenance cadence or the event bus.\",\"Specify the stable interface contract for the masking layer (input schema, output schema, error codes) to enable automation and testing comparable to the existing JobSpec pattern.\"]",
+          "dissent": "[{\"specialist_id\":\"runtime_engineer\",\"specialist_title\":\"Runtime Engineer\",\"stance\":\"oppose\",\"limitations\":\"I cannot see the full Djimitflo execution pipeline or the actual GraphStore ingestion path; my opposition is based on the specific grounded target being a maintenance scheduler with no user-input handling, making the proposal unimplementable as specified. I also cannot verify whether a separate persona-masking service exists elsewhere in the codebase.\"},{\"specialist_id\":\"systems_architect\",\"specialist_title\":\"Systems Architect\",\"stance\":\"oppose\",\"limitations\":\"The provided source file is truncated (144 lines, first 6000 characters), so the full extent of the KnowledgeMaintenanceService class and its integration points with the GraphStore or event bus are not visible. However, the visible architecture (scheduled jobs, ledger-based, deterministic) is sufficiently distinct from a synchronous persona-masking pipeline to conclude a boundary mismatch.\"}]"
+        },
+        {
+          "id": "5e2dfa2c-6b07-4c7e-a5f5-1eb1a61053f0",
+          "decision": "backlog",
+          "next_actions": "[\"Project to backlog before worker leasing; keep maker/checker separation.\",\"Authorize with the constraint that the implementation must explicitly model gate dependencies as a DAG (e.g., Worktree -> Assignment -> Checks -> Diff) rather than the current flat array evaluation.\",\"Require the masking-test to be implemented as a fault-injection integration test that provisions a lease with a deleted current assignment but present historical LOOP_WORK.md, verifying whether `assignment_file_present` returns PASS (confirming the vulnerability) or FAIL.\",\"Mandate that the dependency graph implementation include observability hooks to log gate evaluation order and skip reasons, ensuring that downstream gates are not evaluated when upstream causal dependencies fail.\",\"Clarify whether the historical LOOP_WORK.md fallback is intended resilience behavior or a legacy defect; if retained, it must be hash-bound to the lease manifest to prevent masking.\",\"Authorize the goal with the specific acceptance criteria that the masking-test run must demonstrate either (1) preflight abort on missing current assignment or (2) historical fallback allowing reach to diff_threshold_all_makers gate.\",\"Require the implementation to add causal ordering metadata to the LoopGate interface so that downstream gates report 'skipped' or 'blocked' when upstream dependencies fail, rather than evaluating independently.\",\"The fault-injection replay should be implemented as a deterministic test case in loop-verification-service.test.ts that mocks fs.existsSync to simulate the historical LOOP_WORK.md fallback scenario.\"]",
+          "dissent": "[]"
+        },
+        {
+          "id": "6c54ccb9-ce51-4377-a986-85ee25053987",
+          "decision": "backlog",
+          "next_actions": "[\"Project to backlog before worker leasing; keep maker/checker separation.\",\"Ensure the canary lease writes to a temporary probe path within the target worktree mount to verify actual writability, not just path existence, as `fs.existsSync` in the current implementation does not verify permissions or mount health.\",\"The circuit-breaker must distinguish between 4xx (config/auth) and 5xx (availability) at the runtime command level, halting immediately on 4xx to prevent retry storms on misconfigured LOOP_WORK.md templates, while bounding retries on 5xx to avoid the DoS lever identified in the rationale.\",\"Verify that the signed audit entry captures the raw error payload from the worktree API before any gate evaluation occurs, as the current `LoopGate` evidence field is populated too late to discriminate root causes.\",\"The pre-flight check should validate the artifact path contract (`.djimitflo/LOOP_WORK.md`) explicitly, ensuring the runtime can report real usage versus phantom paths left by failed provisioning.\",\"Define concrete values for N (consecutive canary failures) and T (window) in the implementation, and ensure the retry budget is enforced by a queue-depth or token-bucket mechanism to satisfy the boundedness claim with resource evidence.\",\"Specify the stable interface for the canary lease: it should be a minimal, idempotent worktree creation + LOOP_WORK.md write/read operation that does not depend on the full maker lease lifecycle, so it can be automated without side effects.\",\"Clarify whether platform_fault is computed before or after lease assignment; if it is scored after gates fail, it cannot serve as a pre-flight signal and the circuit-breaker logic must rely solely on the canary result, not on downstream gate scores.\"]",
+          "dissent": "[]"
+        },
+        {
+          "id": "761904b5-ffc7-4d83-a124-e99c90bcedc9",
+          "decision": "needs_more_evidence",
+          "next_actions": "[\"Collect deterministic evidence before creating worker leases.\",\"Retry the automated review, or have a human complete this specialist role.\",\"Retry the automated review, or have a human complete this specialist role.\"]",
+          "dissent": "[{\"specialist_id\":\"systems_architect\",\"specialist_title\":\"Systems Architect\",\"stance\":\"needs_evidence\",\"limitations\":null},{\"specialist_id\":\"runtime_engineer\",\"specialist_title\":\"Runtime Engineer\",\"stance\":\"needs_evidence\",\"limitations\":null}]"
+        },
+        {
+          "id": "80f8355c-676e-42ae-ba19-091f39b66cce",
+          "decision": "needs_more_evidence",
+          "next_actions": "[\"Collect deterministic evidence before creating worker leases.\",\"Require the would-have-aborted records to be persisted in a versioned ledger table (mirroring dream_ledger: decision, confidence, platform_fault, outcome, timestamp) so the calibration metrics are queryable and the threshold-selection interface is stable enough to automate later.\",\"Define 'excessive false aborts' quantitatively before the calibration period starts (e.g., a false-abort rate ceiling on non-failing runs), otherwise the stop condition is not machine-checkable.\",\"Extend the replay test beyond the single failing run c2f60ca5 to a small matrix of non-failing runs across a confidence range, since the rationale explicitly flags that the peer's test did not check normal runs across confidences.\",\"Keep the gate behind a feature flag with enforcement default-off (consistent with DREAM_STATE_ENABLED / dreamProposalsEnabled gating in the target file) so rollout is reversible at runtime.\",\"Define the runtime command contract: specify how the replay mechanism injects platform_fault and infra_confidence values into the loop execution context for run:c2f60ca5-58b2-4cbe-b6ef-3a00403e8b98.\",\"Specify the artifact path and schema for shadow-mode decision records (e.g., JSONL logs or database table) capturing would-have-aborted decisions, actual outcomes, and calibration metrics.\",\"Clarify the budget signal: identify which service (loop-service.ts vs dream-state-service.ts) owns the lease/abort mechanism and how the gate integrates with existing process supervision without violating the 'no active execution inferred from registry rows' constraint.\"]",
+          "dissent": "[{\"specialist_id\":\"runtime_engineer\",\"specialist_title\":\"Runtime Engineer\",\"stance\":\"needs_evidence\",\"limitations\":\"Review limited to the provided 204-line excerpt of dream-state-service.ts; the actual loop execution and process supervision code (loop-service.ts, loop-worker-executor-service.ts) referenced in CAUSE_TARGETS was not provided, preventing verification of whether the gate can actually abort active leases or only classify failures post-hoc.\"}]"
+        },
+        {
+          "id": "e2743f5a-5203-473a-af43-9b1df35439cc",
+          "decision": "needs_more_evidence",
+          "next_actions": "[\"Collect deterministic evidence before creating worker leases.\",\"Retry the automated review, or have a human complete this specialist role.\",\"Retry the automated review, or have a human complete this specialist role.\"]",
+          "dissent": "[{\"specialist_id\":\"systems_architect\",\"specialist_title\":\"Systems Architect\",\"stance\":\"needs_evidence\",\"limitations\":null},{\"specialist_id\":\"runtime_engineer\",\"specialist_title\":\"Runtime Engineer\",\"stance\":\"needs_evidence\",\"limitations\":null}]"
+        },
+        {
+          "id": "1e0d9d00-cce7-4bc1-9fd2-e89af6494db1",
+          "decision": "needs_more_evidence",
+          "next_actions": "[\"Collect deterministic evidence before creating worker leases.\",\"Provide the specific state transition function or middleware in expert-council-service.ts (or related work-item service) where the guardrail will be injected, including the exact metadata field name and validation rules.\",\"Define the machine-readable adversary model schema (JSON Schema or TypeScript interface) and show how it will be stored, versioned, and linked to work items.\",\"Include a failure-mode analysis for the guardrail itself: what happens on invalid schema, missing linked model, or database unavailability during transition.\",\"Estimate the resource cost (CPU, memory, time) for running the 'Constant-Budget Comparison' experiment and specify where results will be recorded for auditability.\",\"Identify the actual enforcement point for the 'Execution' status transition (the work-item lifecycle service/state machine) and ground the proposal there; expert-council-service.ts as shown is the wrong or at least unproven target for a transition guardrail.\",\"Specify the runtime contract for the Constant-Budget Comparison: which runner executes it, the artifact path where attack success-rate results are recorded, and the budget signal (epsilon accounting) surfaced to the capacity governor.\",\"Provide the acceptance test contents (expert-council-service.guardrail.test.ts) demonstrating the guardrail blocks transition when the Adversary Model link is missing, and define how the linked adversary model is validated as machine-readable.\"]",
+          "dissent": "[{\"specialist_id\":\"systems_architect\",\"specialist_title\":\"Systems Architect\",\"stance\":\"needs_evidence\",\"limitations\":\"Only the first 6000 characters of the 269-line target file were provided; the state transition logic, persistence layer, and existing metadata validation points are not visible. The proposal's grounding flag 'derived: false' suggests the acceptance test is not yet implemented, so observable behavior cannot be confirmed.\"},{\"specialist_id\":\"runtime_engineer\",\"specialist_title\":\"Runtime Engineer\",\"stance\":\"needs_evidence\",\"limitations\":\"I reviewed only the first 6000 characters of the 269-line target file; a transition-guardrail hook could exist later in the file or in another service, but no evidence of it was provided. I did not execute any code and make no claim about active execution from registry rows; my assessment of runtime behavior is based solely on the static excerpt and the proposal text.\"}]"
+        },
+        {
+          "id": "7224faf8-3177-4e15-8d93-74b985a488bc",
+          "decision": "needs_more_evidence",
+          "next_actions": "[\"Collect deterministic evidence before creating worker leases.\",\"Retry the automated review, or have a human complete this specialist role.\",\"Retry the automated review, or have a human complete this specialist role.\"]",
+          "dissent": "[{\"specialist_id\":\"systems_architect\",\"specialist_title\":\"Systems Architect\",\"stance\":\"needs_evidence\",\"limitations\":null},{\"specialist_id\":\"runtime_engineer\",\"specialist_title\":\"Runtime Engineer\",\"stance\":\"needs_evidence\",\"limitations\":null}]"
+        }
+      ]
+    },
+    "archival_judgments": {
+      "sql": "SELECT judgment,decision,reason,COUNT(*) n FROM judgments WHERE subject_id IN (SELECT s.id FROM self_improvements s WHERE s.refined_from_id IN (SELECT DISTINCT subject_id FROM judgments WHERE judgment='commons_grounding' AND decision='yes')) AND judgment NOT LIKE 'commons_%' GROUP BY 1,2,3 ORDER BY n DESC LIMIT 30",
+      "params": [],
+      "rows": [
+        {
+          "judgment": "proposal_prescreen",
+          "decision": "no",
+          "reason": "names no concrete file",
+          "n": 42
+        },
+        {
+          "judgment": "operator_label",
+          "decision": "yes",
+          "reason": "proposal_prescreen rejection labelled 'ok' by ee5e7993-7aed-4726-a83d-14b31dfbf2ee",
+          "n": 22
+        },
+        {
+          "judgment": "operator_label",
+          "decision": "no",
+          "reason": "proposal_prescreen rejection labelled 'wrong' by ee5e7993-7aed-4726-a83d-14b31dfbf2ee",
+          "n": 1
+        },
+        {
+          "judgment": "proposal_near_duplicate",
+          "decision": "yes",
+          "reason": "similar_to=cafcb2cf-92d1-4677-a0dd-bd6d54820d50 cosine=1.000",
+          "n": 1
+        }
+      ]
+    },
+    "lures": {
+      "sql": "SELECT id,topic_ref,created_at,expires_at,json_array_length(invited_json) invited FROM social_lures ORDER BY created_at DESC LIMIT 30",
+      "params": [],
+      "rows": [
+        {
+          "id": "lure:da65d2c7-c550-4126-afe5-241ce511a026",
+          "topic_ref": "claim:68ef4788-6c16-40cb-8dc9-2d82c1ca20ea",
+          "created_at": "2026-10-20T20:14:56.324Z",
+          "expires_at": "2026-10-21T20:14:56.324Z",
+          "invited": 1
+        },
+        {
+          "id": "lure:206cc240-d673-45fc-b7b9-a0d0941b5b37",
+          "topic_ref": "claim:68ef4788-6c16-40cb-8dc9-2d82c1ca20ea",
+          "created_at": "2026-10-19T19:54:28.834Z",
+          "expires_at": "2026-10-20T19:54:28.834Z",
+          "invited": 20
+        },
+        {
+          "id": "lure:09795f59-d10e-47e2-bf44-0b93a3106c33",
+          "topic_ref": "claim:68ef4788-6c16-40cb-8dc9-2d82c1ca20ea",
+          "created_at": "2026-10-18T23:21:18.179Z",
+          "expires_at": "2026-10-19T23:21:18.179Z",
+          "invited": 8
+        },
+        {
+          "id": "lure:a78f4460-e062-45be-8ede-b5e387cd5327",
+          "topic_ref": "claim:68ef4788-6c16-40cb-8dc9-2d82c1ca20ea",
+          "created_at": "2026-10-14T23:09:14.672Z",
+          "expires_at": "2026-10-15T23:09:14.672Z",
+          "invited": 19
+        },
+        {
+          "id": "lure:8fc49609-a285-4efb-a5d0-a86c153b0272",
+          "topic_ref": "proposal:f4d5353b-2709-428b-a310-be93b3a7d672",
+          "created_at": "2026-10-12T16:43:39.706Z",
+          "expires_at": "2026-10-13T16:43:39.706Z",
+          "invited": 9
+        },
+        {
+          "id": "lure:21845030-1b60-44d7-984c-50f6cb3c97b9",
+          "topic_ref": "proposal:cb2d05e7-9add-42cd-8445-c9a3bab2c38a",
+          "created_at": "2026-10-05T12:22:00.737Z",
+          "expires_at": "2026-10-06T12:22:00.737Z",
+          "invited": 12
+        },
+        {
+          "id": "lure:d828ed66-4c11-4159-9fb7-c3f52bda5af2",
+          "topic_ref": "proposal:f2be9e04-b7f9-4249-bd8b-c9defec5ad73",
+          "created_at": "2026-10-03T23:24:21.791Z",
+          "expires_at": "2026-10-04T23:24:21.791Z",
+          "invited": 19
+        },
+        {
+          "id": "lure:c458876f-ec87-41f8-a1e8-606aea75dcf8",
+          "topic_ref": "proposal:c1c75b5a-206c-4638-b9db-fcf79f80c978",
+          "created_at": "2026-10-03T14:28:04.279Z",
+          "expires_at": "2026-10-04T14:28:04.279Z",
+          "invited": 19
+        },
+        {
+          "id": "lure:697b4d0e-7981-47c9-91dc-dd4cebcd193c",
+          "topic_ref": "proposal:b2aaef62-d10f-4867-921b-684cc43b42cf",
+          "created_at": "2026-10-02T09:31:33.716Z",
+          "expires_at": "2026-10-03T09:31:33.716Z",
+          "invited": 19
+        },
+        {
+          "id": "lure:054571a0-423d-4e2e-9c92-68041bafd678",
+          "topic_ref": "proposal:f6d2ab80-537c-49d4-a7e5-ddcfeab1c36f",
+          "created_at": "2026-10-01T19:45:27.688Z",
+          "expires_at": "2026-10-02T19:45:27.688Z",
+          "invited": 19
+        },
+        {
+          "id": "lure:80c513fb-e16f-4132-80a8-65272e23b1cf",
+          "topic_ref": "proposal:0b9d5949-5504-4f3e-84d7-adac8106ccf0",
+          "created_at": "2026-10-01T07:22:49.795Z",
+          "expires_at": "2026-10-02T07:22:49.795Z",
+          "invited": 19
+        },
+        {
+          "id": "lure:d73c25c9-5197-4fb3-bcd5-289171135439",
+          "topic_ref": "proposal:f4d5353b-2709-428b-a310-be93b3a7d672",
+          "created_at": "2026-09-30T21:18:42.703Z",
+          "expires_at": "2026-10-01T21:18:42.703Z",
+          "invited": 12
+        },
+        {
+          "id": "lure:c8c596e6-5e76-488c-95fa-09213a48f8a2",
+          "topic_ref": "proposal:0e50e9b8-7d95-4ff5-a65a-ab0b0e93034c",
+          "created_at": "2026-09-28T20:25:45.378Z",
+          "expires_at": "2026-09-29T20:25:45.378Z",
+          "invited": 12
+        },
+        {
+          "id": "lure:cbc1e754-4d87-4b5a-b07b-b0f2ca96d6c8",
+          "topic_ref": "proposal:bfc15bb5-f6ba-475c-ab85-da0e75644df7",
+          "created_at": "2026-09-28T09:00:21.104Z",
+          "expires_at": "2026-09-29T09:00:21.104Z",
+          "invited": 12
+        },
+        {
+          "id": "lure:5e3969b6-97d8-441c-8abb-3ab6d77cdd15",
+          "topic_ref": "proposal:b3eba883-f91c-47f2-a540-a7e1f61ec02f",
+          "created_at": "2026-09-27T20:13:31.047Z",
+          "expires_at": "2026-09-28T20:13:31.047Z",
+          "invited": 12
+        },
+        {
+          "id": "lure:af91175a-dbd1-4cc0-a9fb-11361aaeb6cd",
+          "topic_ref": "proposal:c0db4c84-fbe8-4510-87fe-42615ede317a",
+          "created_at": "2026-09-26T05:57:42.822Z",
+          "expires_at": "2026-09-27T05:57:42.822Z",
+          "invited": 12
+        },
+        {
+          "id": "lure:616e9962-1476-4d33-b6d5-18cdd9aa0828",
+          "topic_ref": "proposal:e56933cc-033e-4277-87ca-5f3c4dec7fbf",
+          "created_at": "2026-09-25T22:18:59.996Z",
+          "expires_at": "2026-09-26T22:18:59.996Z",
+          "invited": 12
+        },
+        {
+          "id": "lure:e5f39578-16c0-41d9-a0d1-8c11ef7f5a71",
+          "topic_ref": "proposal:f51b5130-35a1-4437-97be-bd553d066141",
+          "created_at": "2026-09-25T19:56:02.756Z",
+          "expires_at": "2026-09-26T19:56:02.756Z",
+          "invited": 11
+        },
+        {
+          "id": "lure:d1aaf0eb-90a1-4d24-a61b-884bb6b00c68",
+          "topic_ref": "proposal:07141955-7185-404f-8b0d-c1a0a18be806",
+          "created_at": "2026-09-25T14:53:54.162Z",
+          "expires_at": "2026-09-26T14:53:54.162Z",
+          "invited": 11
+        },
+        {
+          "id": "lure:daaaddc1-93b5-4c8f-bab0-603554047edd",
+          "topic_ref": "proposal:07141955-7185-404f-8b0d-c1a0a18be806",
+          "created_at": "2026-09-24T22:39:11.010Z",
+          "expires_at": "2026-09-25T22:39:11.010Z",
+          "invited": 11
+        },
+        {
+          "id": "lure:9c83ec98-37ed-4172-91b1-a555f8f7ca74",
+          "topic_ref": "claim:c767c598-ab5f-4aff-bfc2-dcc25e21b929",
+          "created_at": "2026-09-24T19:53:30.602Z",
+          "expires_at": "2026-09-25T19:53:30.602Z",
+          "invited": 14
+        },
+        {
+          "id": "lure:bcd50233-f7cd-40d1-aa0d-4463ca58133c",
+          "topic_ref": "claim:c767c598-ab5f-4aff-bfc2-dcc25e21b929",
+          "created_at": "2026-09-22T11:13:20.950Z",
+          "expires_at": "2026-09-23T11:13:20.950Z",
+          "invited": 14
+        },
+        {
+          "id": "lure:1041451f-a490-480e-b98d-c715f1d24189",
+          "topic_ref": "claim:c767c598-ab5f-4aff-bfc2-dcc25e21b929",
+          "created_at": "2026-09-20T22:40:20.151Z",
+          "expires_at": "2026-09-21T22:40:20.151Z",
+          "invited": 11
+        },
+        {
+          "id": "lure:02b91c04-f3dc-440c-ac03-becc85422119",
+          "topic_ref": "claim:c767c598-ab5f-4aff-bfc2-dcc25e21b929",
+          "created_at": "2026-09-20T16:37:07.314Z",
+          "expires_at": "2026-09-21T16:37:07.314Z",
+          "invited": 11
+        },
+        {
+          "id": "lure:8016e8c5-e91d-4610-913c-4ed1f1fbd96a",
+          "topic_ref": "claim:c767c598-ab5f-4aff-bfc2-dcc25e21b929",
+          "created_at": "2026-09-19T20:42:20.984Z",
+          "expires_at": "2026-09-20T20:42:20.984Z",
+          "invited": 11
+        },
+        {
+          "id": "lure:ea2be94d-f706-4226-bece-6a1480e306bb",
+          "topic_ref": "claim:c767c598-ab5f-4aff-bfc2-dcc25e21b929",
+          "created_at": "2026-09-14T17:30:25.460Z",
+          "expires_at": "2026-09-15T17:30:25.460Z",
+          "invited": 11
+        },
+        {
+          "id": "lure:8843b347-209d-4388-8a07-ccdfae3674cb",
+          "topic_ref": "claim:c767c598-ab5f-4aff-bfc2-dcc25e21b929",
+          "created_at": "2026-09-14T14:05:40.065Z",
+          "expires_at": "2026-09-15T14:05:40.065Z",
+          "invited": 11
+        },
+        {
+          "id": "lure:0086cc47-9aaf-4baa-a53c-d38c6add48ce",
+          "topic_ref": "claim:c767c598-ab5f-4aff-bfc2-dcc25e21b929",
+          "created_at": "2026-09-14T09:27:07.604Z",
+          "expires_at": "2026-09-15T09:27:07.604Z",
+          "invited": 11
+        },
+        {
+          "id": "lure:3797d22c-ce62-4a1f-961b-6da4c37c22cf",
+          "topic_ref": "claim:c767c598-ab5f-4aff-bfc2-dcc25e21b929",
+          "created_at": "2026-09-13T23:36:27.229Z",
+          "expires_at": "2026-09-14T23:36:27.229Z",
+          "invited": 10
+        },
+        {
+          "id": "lure:e49747a7-9da6-4192-bd66-fcce2d6a13ac",
+          "topic_ref": "claim:0ee59f0a-7f2b-4b0a-af15-8379d18e5de8",
+          "created_at": "2026-09-13T17:40:34.782Z",
+          "expires_at": "2026-09-14T17:40:34.782Z",
+          "invited": 6
+        }
+      ]
+    },
+    "lure_events": {
+      "sql": "SELECT transition,reason,COUNT(*) n,MAX(at) last_at FROM lure_events GROUP BY 1,2",
+      "params": [],
+      "rows": [
+        {
+          "transition": "bitten",
+          "reason": "heartbeat_after_delivery",
+          "n": 2,
+          "last_at": "2026-10-12T16:52:51.957Z"
+        },
+        {
+          "transition": "expired_undelivered",
+          "reason": "window_closed",
+          "n": 55,
+          "last_at": "2026-10-21T20:14:56.324Z"
+        },
+        {
+          "transition": "invite_delivered",
+          "reason": "runtime_token",
+          "n": 2,
+          "last_at": "2026-10-12T16:47:31.484Z"
+        },
+        {
+          "transition": "invite_published",
+          "reason": "bus_message",
+          "n": 26,
+          "last_at": "2026-10-20T20:14:56.324Z"
+        },
+        {
+          "transition": "invite_published",
+          "reason": "token_only",
+          "n": 31,
+          "last_at": "2026-10-19T19:54:28.834Z"
+        }
+      ]
+    },
+    "expired_pending_review": {
+      "sql": "SELECT improvement_id,thread_id,status,reply_count,posted_at,completed_at FROM commons_proposal_reviews WHERE status='pending'",
+      "params": [],
+      "rows": [
+        {
+          "improvement_id": "fb249fe8-2b81-4825-89fe-3edc65284ab2",
+          "thread_id": "social:2e02477a-a138-4ddb-b2d4-41dbba66ccfb",
+          "status": "pending",
+          "reply_count": 0,
+          "posted_at": "2026-10-01T21:24:47.966Z",
+          "completed_at": null
+        }
+      ]
+    },
+    "campaign_events": {
+      "sql": "SELECT event_type,occurred_at,json_extract(payload,'$.status') status,json_extract(payload,'$.pairs') pairs,json_extract(payload,'$.peer_signal') peer_signal,json_extract(payload,'$.outcome_signal') outcome_signal,json_extract(payload,'$.checker') checker,json_extract(payload,'$.worldlab') worldlab FROM external_events WHERE source='djimitflo-social-campaign' ORDER BY occurred_at DESC LIMIT 12",
+      "params": [],
+      "rows": [
+        {
+          "event_type": "social.campaign.observed",
+          "occurred_at": "2026-09-13T21:12:57.844Z",
+          "status": "RUNNING",
+          "pairs": 36,
+          "peer_signal": "SUPPORTED",
+          "outcome_signal": "UNDETERMINED",
+          "checker": "FAIL",
+          "worldlab": "UNDETERMINED"
+        },
+        {
+          "event_type": "social.campaign.observed",
+          "occurred_at": "2026-09-12T21:29:53.878Z",
+          "status": "RUNNING",
+          "pairs": 8,
+          "peer_signal": "UNDETERMINED",
+          "outcome_signal": "UNDETERMINED",
+          "checker": "PASS",
+          "worldlab": "UNDETERMINED"
+        },
+        {
+          "event_type": "social.campaign.amended",
+          "occurred_at": "2026-09-11T20:56:01.830Z",
+          "status": null,
+          "pairs": null,
+          "peer_signal": null,
+          "outcome_signal": null,
+          "checker": null,
+          "worldlab": null
+        },
+        {
+          "event_type": "social.campaign.observed",
+          "occurred_at": "2026-09-11T20:42:02.342Z",
+          "status": "RUNNING",
+          "pairs": 0,
+          "peer_signal": "UNDETERMINED",
+          "outcome_signal": "UNDETERMINED",
+          "checker": "UNDETERMINED",
+          "worldlab": "UNDETERMINED"
+        },
+        {
+          "event_type": "social.campaign.started",
+          "occurred_at": "2026-09-11T20:42:00.000Z",
+          "status": null,
+          "pairs": null,
+          "peer_signal": null,
+          "outcome_signal": null,
+          "checker": null,
+          "worldlab": null
+        }
+      ]
+    },
+    "interest_7d_provenance": {
+      "sql": "SELECT from_agent,to_agent,COUNT(DISTINCT json_extract(payload_json,'$.thread_id')) threads,MIN(timestamp) first_at,MAX(timestamp) last_at FROM agent_messages WHERE json_extract(payload_json,'$.action')='social.question' AND julianday(timestamp)>=julianday('now','-7 days') AND json_extract(payload_json,'$.thread_id') NOT LIKE 'evidence-room:%' GROUP BY 1,2",
+      "params": [],
+      "rows": [
+        {
+          "from_agent": "deerflow",
+          "to_agent": "hermes-eve-v",
+          "threads": 15,
+          "first_at": "2026-10-17T20:58:06.887Z",
+          "last_at": "2026-10-24T17:31:45.267Z"
+        },
+        {
+          "from_agent": "hermes-eve-v",
+          "to_agent": "deerflow",
+          "threads": 15,
+          "first_at": "2026-10-17T20:58:06.890Z",
+          "last_at": "2026-10-24T17:31:45.267Z"
+        }
+      ]
+    },
+    "interests_without_grounding_7d": {
+      "sql": "SELECT COUNT(*) n,SUM(json_extract(payload_json,'$.params.proposed_improvement')<>'') proposed_improvement,SUM(json_type(payload_json,'$.params.improvement_id')='text') registered_improvement,SUM(EXISTS(SELECT 1 FROM json_each(json_extract(payload_json,'$.evidence')) WHERE value NOT LIKE 'message:%' AND value NOT LIKE 'runtime:%' AND value NOT LIKE 'ecosystem:%')) outside_conversation_evidence FROM agent_messages WHERE json_extract(payload_json,'$.action') IN ('social.response','social.learning') AND julianday(timestamp)>=julianday('now','-7 days') AND json_extract(payload_json,'$.thread_id') NOT LIKE 'evidence-room:%'",
+      "params": [],
+      "rows": [
+        {
+          "n": 39,
+          "proposed_improvement": 31,
+          "registered_improvement": null,
+          "outside_conversation_evidence": 0
+        }
+      ]
+    },
+    "external_usage_7d": {
+      "sql": "SELECT from_agent,COUNT(*) n,SUM(json_type(payload_json,'$.params.runtime_run_id')='text') run_ids,SUM(json_type(payload_json,'$.params.usage')='object') usage_objects,SUM(json_extract(payload_json,'$.params.usage.total_tokens')) reported_total_tokens,SUM(CASE WHEN json_type(payload_json,'$.params.usage.total_tokens') IN ('integer','real') THEN 1 ELSE 0 END) measured_total_token_rows,MIN(timestamp) first_at,MAX(timestamp) last_at FROM agent_messages WHERE json_extract(payload_json,'$.action') IN ('social.response','social.learning') AND julianday(timestamp)>=julianday('now','-7 days') AND json_extract(payload_json,'$.thread_id') NOT LIKE 'evidence-room:%' GROUP BY 1",
+      "params": [],
+      "rows": [
+        {
+          "from_agent": "deerflow",
+          "n": 23,
+          "run_ids": 23,
+          "usage_objects": 23,
+          "reported_total_tokens": 272802,
+          "measured_total_token_rows": 23,
+          "first_at": "2026-10-17T21:03:38.020Z",
+          "last_at": "2026-10-24T18:45:17.088Z"
+        },
+        {
+          "from_agent": "hermes-eve-v",
+          "n": 16,
+          "run_ids": 16,
+          "usage_objects": 16,
+          "reported_total_tokens": null,
+          "measured_total_token_rows": 0,
+          "first_at": "2026-10-17T20:59:10.534Z",
+          "last_at": "2026-10-24T18:20:00.701Z"
+        }
+      ]
+    },
+    "usage_keys": {
+      "sql": "SELECT m.from_agent,u.key,COUNT(*) n FROM agent_messages m JOIN json_each(json_extract(m.payload_json,'$.params.usage')) u WHERE json_extract(m.payload_json,'$.action') IN ('social.response','social.learning') AND julianday(m.timestamp)>=julianday('now','-7 days') AND json_extract(m.payload_json,'$.thread_id') NOT LIKE 'evidence-room:%' GROUP BY 1,2",
+      "params": [],
+      "rows": [
+        {
+          "from_agent": "deerflow",
+          "key": "input_tokens",
+          "n": 23
+        },
+        {
+          "from_agent": "deerflow",
+          "key": "output_tokens",
+          "n": 23
+        },
+        {
+          "from_agent": "deerflow",
+          "key": "total_tokens",
+          "n": 23
+        }
+      ]
+    },
+    "evidence_room_unknowns": {
+      "sql": "SELECT json_extract(payload_json,'$.params.summary.lane') lane,COUNT(*) n,SUM(json_type(payload_json,'$.params.summary.goal')='null') missing_goal,SUM(json_type(payload_json,'$.params.summary.target_file')='null') missing_target,SUM(json_type(payload_json,'$.params.summary.gates')='null') missing_gates,SUM(json_type(payload_json,'$.params.summary.maker.effective_runtime')='null') missing_runtime FROM agent_messages WHERE json_extract(payload_json,'$.params.evidence_room_kind')='summary' GROUP BY 1",
+      "params": [],
+      "rows": [
+        {
+          "lane": "doc-drift-and-small-fix-loop",
+          "n": 186,
+          "missing_goal": 8,
+          "missing_target": 8,
+          "missing_gates": 0,
+          "missing_runtime": 10
+        },
+        {
+          "lane": "evolution-gym",
+          "n": 639,
+          "missing_goal": 639,
+          "missing_target": 639,
+          "missing_gates": 639,
+          "missing_runtime": 639
+        }
+      ]
+    },
+    "chain_depth_7d": {
+      "sql": "WITH RECURSIVE thread_roots AS (\n SELECT json_extract(payload_json,'$.thread_id') thread_id,MIN(json_extract(payload_json,'$.params.topic_ref')) ref FROM agent_messages WHERE json_extract(payload_json,'$.action')='social.question' AND julianday(timestamp)>=julianday('now','-7 days') AND json_extract(payload_json,'$.thread_id') NOT LIKE 'evidence-room:%' GROUP BY 1),\n chain(thread_id,ref,depth) AS (SELECT thread_id,ref,0 FROM thread_roots UNION ALL SELECT c.thread_id,json_extract(m.payload_json,'$.params.topic_ref'),c.depth+1 FROM chain c JOIN agent_messages m ON c.ref='message:'||m.id WHERE c.depth<200),\n final AS (SELECT thread_id,MAX(depth) depth FROM chain GROUP BY 1)\n SELECT COUNT(*) threads,MIN(depth) min_hops,MAX(depth) max_hops,ROUND(AVG(depth),1) mean_hops,SUM(depth>=200) capped FROM final",
+      "params": [],
+      "rows": [
+        {
+          "threads": 15,
+          "min_hops": 2,
+          "max_hops": 3,
+          "mean_hops": 2.8,
+          "capped": 0
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,727 @@
+{
+  "at": "2026-10-24T23:46:04.749Z",
+  "source_sha": "e8d0de33bbae8736d7ab0b4f9195292a2e9f56aa",
+  "mode": "readonly/query_only consistent transaction",
+  "since": "2026-10-17T23:46:04.749Z",
+  "flags": {
+    "LOOP_BANDIT_ENABLED": "true",
+    "LOOP_BANDIT_MAX_SHARE": "0.8",
+    "FITNESS_SHADOW_ENABLED": "true",
+    "FITNESS_EVOLVE_ENABLED": null,
+    "OUTCOME_ATTRIBUTION_ENABLED": "true",
+    "MEMORY_HOLDOUT_RATE": "0.3",
+    "ACE_001_MODE": "on",
+    "STE_001_MODE": "on",
+    "MAKER_DEPS_001_MODE": "on",
+    "CHECKER_FAMILY_RANDOMISE": "on",
+    "TG_001_MODE": "on",
+    "EVOLVE_ENABLED": null
+  },
+  "results": {
+    "mission_goal_states": {
+      "sql": "SELECT m.status mission_status,g.status goal_status,COUNT(*) n,SUM(EXISTS(SELECT 1 FROM loop_runs r WHERE r.goal_id=g.id)) with_loop FROM swarm_missions m LEFT JOIN goals g ON g.id=m.goal_id GROUP BY 1,2",
+      "params": [],
+      "rows": [
+        {
+          "mission_status": "observed",
+          "goal_status": "completed",
+          "n": 103,
+          "with_loop": 103
+        },
+        {
+          "mission_status": "observed",
+          "goal_status": "failed",
+          "n": 109,
+          "with_loop": 109
+        }
+      ]
+    },
+    "unclosed_repair_runs": {
+      "sql": "SELECT l.id,l.mode,l.status,l.created_at,COUNT(w.id) leases,SUM(w.role='maker') makers,SUM(w.role='checker') checkers,SUM(w.role='security_checker') security_checkers FROM loop_runs l LEFT JOIN worker_leases w ON w.loop_run_id=l.id WHERE l.loop_name='doc-drift-and-small-fix-loop' AND l.status='completed' AND julianday(l.created_at)>=julianday(?) AND NOT EXISTS(SELECT 1 FROM loop_learning_closures c WHERE c.loop_run_id=l.id) GROUP BY l.id ORDER BY l.created_at DESC",
+      "params": [
+        "2026-10-17T23:46:04.749Z"
+      ],
+      "rows": [
+        {
+          "id": "6b672796-3761-4987-a7ec-e2178d6d2392",
+          "mode": "closed",
+          "status": "completed",
+          "created_at": "2026-10-19T05:21:20.571Z",
+          "leases": 2,
+          "makers": 1,
+          "checkers": 1,
+          "security_checkers": 0
+        },
+        {
+          "id": "dc174b0c-bcaa-4bf2-b9c2-40125f12d5ab",
+          "mode": "closed",
+          "status": "completed",
+          "created_at": "2026-10-19T03:21:20.013Z",
+          "leases": 2,
+          "makers": 1,
+          "checkers": 1,
+          "security_checkers": 0
+        },
+        {
+          "id": "3661a13b-4ff7-4f3b-9a9f-1f972af88402",
+          "mode": "closed",
+          "status": "completed",
+          "created_at": "2026-10-19T01:21:20.217Z",
+          "leases": 2,
+          "makers": 1,
+          "checkers": 1,
+          "security_checkers": 0
+        },
+        {
+          "id": "dbb643f5-1e59-4177-861a-edce0b5bf3e6",
+          "mode": "closed",
+          "status": "completed",
+          "created_at": "2026-10-18T23:31:21.402Z",
+          "leases": 2,
+          "makers": 1,
+          "checkers": 1,
+          "security_checkers": 0
+        },
+        {
+          "id": "7d042f4a-83cb-4196-96c4-c37b77bc69fb",
+          "mode": "closed",
+          "status": "completed",
+          "created_at": "2026-10-18T21:21:41.853Z",
+          "leases": 2,
+          "makers": 1,
+          "checkers": 1,
+          "security_checkers": 0
+        },
+        {
+          "id": "43678619-55a7-4042-a9e4-38ad3fa46f75",
+          "mode": "closed",
+          "status": "completed",
+          "created_at": "2026-10-18T05:48:03.220Z",
+          "leases": 2,
+          "makers": 1,
+          "checkers": 1,
+          "security_checkers": 0
+        },
+        {
+          "id": "98763732-a363-4a55-a348-eac460500abf",
+          "mode": "closed",
+          "status": "completed",
+          "created_at": "2026-10-18T04:48:04.059Z",
+          "leases": 2,
+          "makers": 1,
+          "checkers": 1,
+          "security_checkers": 0
+        },
+        {
+          "id": "e6ee56fd-6283-4354-aa7b-0113bd8c94ee",
+          "mode": "closed",
+          "status": "completed",
+          "created_at": "2026-10-18T03:48:03.830Z",
+          "leases": 2,
+          "makers": 1,
+          "checkers": 1,
+          "security_checkers": 0
+        },
+        {
+          "id": "36f1d5c4-8ad9-4847-ab00-ff5f33b3dd8c",
+          "mode": "closed",
+          "status": "completed",
+          "created_at": "2026-10-18T02:48:02.273Z",
+          "leases": 2,
+          "makers": 1,
+          "checkers": 1,
+          "security_checkers": 0
+        },
+        {
+          "id": "2d1da72b-45b1-4878-88ed-2b9c9dfbcb55",
+          "mode": "closed",
+          "status": "completed",
+          "created_at": "2026-10-18T01:48:02.929Z",
+          "leases": 2,
+          "makers": 1,
+          "checkers": 1,
+          "security_checkers": 0
+        },
+        {
+          "id": "92f66aab-7ca2-4876-95a8-c9a74df36823",
+          "mode": "closed",
+          "status": "completed",
+          "created_at": "2026-10-18T00:48:02.641Z",
+          "leases": 2,
+          "makers": 1,
+          "checkers": 1,
+          "security_checkers": 0
+        },
+        {
+          "id": "fef2a081-da5b-41d2-8444-6b5969169665",
+          "mode": "closed",
+          "status": "completed",
+          "created_at": "2026-10-17T23:48:02.812Z",
+          "leases": 2,
+          "makers": 1,
+          "checkers": 1,
+          "security_checkers": 0
+        }
+      ]
+    },
+    "closure_eval_authority": {
+      "sql": "SELECT e.source,e.suite_name,e.status,COUNT(*) n,SUM(c.score_delta>0) positive_delta,MIN(c.previous_score) min_previous,MAX(c.previous_score) max_previous FROM loop_learning_closures c LEFT JOIN agent_eval_runs e ON e.id=c.eval_run_id GROUP BY 1,2,3",
+      "params": [],
+      "error": "no such column: e.source"
+    },
+    "assignment_evidence_7d": {
+      "sql": "SELECT COUNT(*) events,COUNT(DISTINCT loop_run_id) runs,SUM(json_extract(metadata,'$.memory_holdout')=1) withheld,SUM(json_array_length(json_extract(metadata,'$.rule_ids'))>0) with_rules FROM loop_events WHERE event_type='assignment_context' AND julianday(created_at)>=julianday(?)",
+      "params": [
+        "2026-10-17T23:46:04.749Z"
+      ],
+      "rows": [
+        {
+          "events": 93,
+          "runs": 67,
+          "withheld": 30,
+          "with_rules": 63
+        }
+      ]
+    },
+    "maker_source_usage_7d": {
+      "sql": "SELECT json_extract(metadata,'$.model') model,runtime,COUNT(*) n,SUM(json_type(metadata,'$.runtime_usage.total_tokens') IN ('integer','real')) measured,SUM(json_extract(metadata,'$.runtime_usage.total_tokens')) tokens,SUM(json_type(metadata,'$.genome')='object') genome_records,SUM(json_type(metadata,'$.ace_001')='object') ace_records,SUM(json_type(metadata,'$.ste_001')='object') ste_records FROM worker_leases WHERE role='maker' AND julianday(created_at)>=julianday(?) GROUP BY 1,2",
+      "params": [
+        "2026-10-17T23:46:04.749Z"
+      ],
+      "rows": [
+        {
+          "model": null,
+          "runtime": "claude",
+          "n": 11,
+          "measured": 8,
+          "tokens": 151977,
+          "genome_records": null,
+          "ace_records": null,
+          "ste_records": null
+        },
+        {
+          "model": null,
+          "runtime": "codex",
+          "n": 4,
+          "measured": 4,
+          "tokens": 980225,
+          "genome_records": null,
+          "ace_records": null,
+          "ste_records": null
+        },
+        {
+          "model": null,
+          "runtime": "manual",
+          "n": 246,
+          "measured": null,
+          "tokens": null,
+          "genome_records": null,
+          "ace_records": null,
+          "ste_records": null
+        },
+        {
+          "model": null,
+          "runtime": "opencode",
+          "n": 55,
+          "measured": 45,
+          "tokens": 22710159,
+          "genome_records": 38,
+          "ace_records": 38,
+          "ste_records": 38
+        },
+        {
+          "model": "workstation/atomic@llama-router",
+          "runtime": "remote",
+          "n": 23,
+          "measured": 2,
+          "tokens": 1895721,
+          "genome_records": 15,
+          "ace_records": 15,
+          "ste_records": 15
+        }
+      ]
+    },
+    "outcome_credit_counts": {
+      "sql": "SELECT kind,COUNT(*) n,MAX(created_at) last_at FROM outcome_credits GROUP BY 1",
+      "params": [],
+      "rows": [
+        {
+          "kind": "example",
+          "n": 105,
+          "last_at": "2026-10-24T21:40:59.363Z"
+        },
+        {
+          "kind": "genome",
+          "n": 3,
+          "last_at": "2026-10-21T16:50:16.251Z"
+        },
+        {
+          "kind": "judgment",
+          "n": 14,
+          "last_at": "2026-10-12T17:27:14.771Z"
+        },
+        {
+          "kind": "maker",
+          "n": 88,
+          "last_at": "2026-10-24T21:40:59.363Z"
+        },
+        {
+          "kind": "memory_rule",
+          "n": 171,
+          "last_at": "2026-10-23T22:15:37.256Z"
+        },
+        {
+          "kind": "model",
+          "n": 23,
+          "last_at": "2026-10-21T11:35:39.607Z"
+        },
+        {
+          "kind": "reviewer",
+          "n": 176,
+          "last_at": "2026-10-24T21:40:59.363Z"
+        }
+      ]
+    },
+    "memory_closure_candidates": {
+      "sql": "SELECT m.status,m.promotion_status,COUNT(*) n FROM loop_learning_closures c JOIN memory_candidates m ON m.id=c.memory_candidate_id GROUP BY 1,2",
+      "params": [],
+      "rows": [
+        {
+          "status": "candidate",
+          "promotion_status": "blocked_pending_review",
+          "n": 1
+        },
+        {
+          "status": "promoted",
+          "promotion_status": "promoted",
+          "n": 112
+        },
+        {
+          "status": "rejected",
+          "promotion_status": "rejected",
+          "n": 18
+        }
+      ]
+    }
+  },
+  "readers": {
+    "experiments": {
+      "experiments": [
+        {
+          "id": "ACE-001",
+          "flag": "ACE_001_MODE",
+          "protocol": "docs/research/ace/ACE-001_PROTOCOL.md",
+          "started_at": "2026-10-12T00:00:00.000Z",
+          "target_n": 50,
+          "stop_by": "2026-11-15T00:00:00.000Z",
+          "stop_note": "stop condition added 2026-10-19; verdict rules unchanged: start + 1.25 × 50 ÷ 1.87/day (slowest arm, 13 in 6.9 d)",
+          "stop_source": "docs/research/ace/ACE-001_PROTOCOL.md#amendment-2-2026-10-19",
+          "population": "oracle_goals",
+          "n_per_arm": {
+            "10": 29,
+            "11": 24,
+            "00": 32,
+            "01": 23
+          },
+          "verdict": null,
+          "effects": {
+            "kb_retrieval": {
+              "metric": "verified rate, factor on − off (interim, descriptive)",
+              "estimate": -0.143,
+              "ci": null,
+              "p": null
+            },
+            "example_selection": {
+              "metric": "verified rate, factor on − off (interim, descriptive)",
+              "estimate": -0.076,
+              "ci": null,
+              "p": null
+            }
+          },
+          "min_arm_n": 23,
+          "overdue": false,
+          "overdue_reason": null,
+          "power": {
+            "n_so_far": 23,
+            "target_per_arm": 50,
+            "days_to_stop": 21,
+            "accrual_window_days": 13,
+            "accrual_per_day": {
+              "10": 2.232,
+              "11": 1.848,
+              "00": 2.463,
+              "01": 1.771
+            },
+            "projected_min_arm_n": 60,
+            "projected_reaches_target": true
+          }
+        },
+        {
+          "id": "STE-001",
+          "flag": "STE_001_MODE",
+          "protocol": "docs/research/ace/STE-001_PROTOCOL.md",
+          "started_at": "2026-10-11T00:00:00.000Z",
+          "target_n": 100,
+          "stop_by": "2026-11-14T00:00:00.000Z",
+          "stop_note": "stop condition added 2026-10-19; verdict rules unchanged: start + 1.25 × 100 ÷ 3.78/day (slowest arm, 30 in 7.9 d)",
+          "stop_source": "docs/research/ace/STE-001_PROTOCOL.md#amendment-1-2026-10-19",
+          "population": "oracle_goals",
+          "n_per_arm": {
+            "0": 54,
+            "1": 50
+          },
+          "verdict": null,
+          "effects": {
+            "maker_template": {
+              "metric": "verified rate, STE − current template (interim, descriptive)",
+              "estimate": -0.085,
+              "ci": null,
+              "p": null
+            }
+          },
+          "min_arm_n": 50,
+          "overdue": false,
+          "overdue_reason": null,
+          "power": {
+            "n_so_far": 50,
+            "target_per_arm": 100,
+            "days_to_stop": 20,
+            "accrual_window_days": 14,
+            "accrual_per_day": {
+              "0": 3.86,
+              "1": 3.574
+            },
+            "projected_min_arm_n": 121,
+            "projected_reaches_target": true
+          }
+        },
+        {
+          "id": "MAKER-DEPS-001",
+          "flag": "MAKER_DEPS_001_MODE",
+          "protocol": "docs/research/di-001/MAKER_DEPS_001_PREREG.md",
+          "started_at": "2026-10-14T00:00:00.000Z",
+          "target_n": 141,
+          "stop_by": "2026-12-16T00:00:00.000Z",
+          "stop_note": "stop condition added 2026-10-19; verdict rules unchanged: start + 1.25 × 141 ÷ 2.83/day (slowest arm, 14 in 4.9 d)",
+          "stop_source": "docs/research/di-001/MAKER_DEPS_001_AMENDMENT_1.md#amendment-1-2026-10-19",
+          "population": "oracle_goals",
+          "approved_over_limit": "running before the G1.5 WIP limit existed (2026-10-19); finishes under its registered stop_by, no successor starts until the oracle population is ≤ 4",
+          "n_per_arm": {
+            "A": 35,
+            "B": 42
+          },
+          "verdict": null,
+          "effects": {
+            "deps_prep": {
+              "metric": "ITT verified rate, B (deps prepared) − A; cluster-bootstrap 95 % CI (descriptive)",
+              "estimate": 0,
+              "ci": [
+                -0.229,
+                0.229
+              ],
+              "p": null
+            }
+          },
+          "min_arm_n": 35,
+          "overdue": false,
+          "overdue_reason": null,
+          "power": {
+            "n_so_far": 35,
+            "target_per_arm": 141,
+            "days_to_stop": 52,
+            "accrual_window_days": 11,
+            "accrual_per_day": {
+              "A": 3.185,
+              "B": 3.822
+            },
+            "projected_min_arm_n": 200,
+            "projected_reaches_target": true
+          }
+        },
+        {
+          "id": "X1",
+          "flag": "EFFORT_SIBLING_RANDOMISE",
+          "protocol": "docs/research/intelligence-metrics/EXPERIMENT_PROTOCOL.md#exp-2",
+          "started_at": "2026-10-09T00:00:00.000Z",
+          "target_n": 94,
+          "stop_by": "2026-11-06T00:00:00.000Z",
+          "stop_note": "EXP-2 registration: 4 weeks, ~94 settled per arm",
+          "stop_source": "docs/research/intelligence-metrics/EXPERIMENT_PROTOCOL.md#exp-2",
+          "population": "oracle_goals",
+          "n_per_arm": {
+            "on": 44,
+            "off": 58
+          },
+          "verdict": null,
+          "effects": {
+            "effort_siblings": {
+              "metric": "verified / settled, evolve siblings on vs off (Fisher exact; no effect size computed)",
+              "estimate": null,
+              "ci": null,
+              "p": 0.8178
+            }
+          },
+          "min_arm_n": 44,
+          "overdue": false,
+          "overdue_reason": null,
+          "power": {
+            "n_so_far": 44,
+            "target_per_arm": 94,
+            "days_to_stop": 12,
+            "accrual_window_days": 14,
+            "accrual_per_day": {
+              "on": 2.929,
+              "off": 3.714
+            },
+            "projected_min_arm_n": 79,
+            "projected_reaches_target": false
+          }
+        },
+        {
+          "id": "F2",
+          "flag": "CHECKER_FAMILY_RANDOMISE",
+          "protocol": "docs/research/intelligence-metrics/EXPERIMENT_PROTOCOL.md#exp-1",
+          "started_at": "2026-10-17T00:00:00.000Z",
+          "target_n": 93,
+          "stop_by": "2027-01-15T00:00:00.000Z",
+          "stop_note": "stop condition added 2026-10-19; verdict rules unchanged: start + 90 d cap (v2; 1 settled per arm in 1.9 d projects past the cap)",
+          "stop_source": "docs/research/intelligence-metrics/EXPERIMENT_PROTOCOL.md#amendment-2026-10-19-stop-conditions",
+          "population": "oracle_goals",
+          "approved_over_limit": "running before the G1.5 WIP limit existed (2026-10-19); finishes under its registered stop_by, no successor starts until the oracle population is ≤ 4",
+          "n_per_arm": {
+            "same": 18,
+            "cross": 9
+          },
+          "verdict": null,
+          "effects": {
+            "checker_family": {
+              "metric": "Δkappa cross − same on outcome_wo_checker (interim); seeded bootstrap 95 % CI",
+              "estimate": null,
+              "ci": null,
+              "p": 1
+            }
+          },
+          "min_arm_n": 9,
+          "overdue": false,
+          "overdue_reason": null,
+          "power": {
+            "n_so_far": 9,
+            "target_per_arm": 93,
+            "days_to_stop": 82,
+            "accrual_window_days": 8,
+            "accrual_per_day": {
+              "same": 2.253,
+              "cross": 1.126
+            },
+            "projected_min_arm_n": 101,
+            "projected_reaches_target": true
+          }
+        },
+        {
+          "id": "TG-001",
+          "flag": "TG_001_MODE",
+          "protocol": "docs/research/ace/TG-001_PROTOCOL.md",
+          "started_at": "2026-10-11T23:20:22.000Z",
+          "target_n": 20,
+          "stop_by": "2026-11-18T00:00:00.000Z",
+          "stop_note": "stop condition added 2026-10-19; verdict rules unchanged: 20-task result INCONCLUSIVE, the extension to 40 waits on task supply (accrual ~0) → today + 30 d: decide extend or close INCONCLUSIVE",
+          "stop_source": "docs/research/ace/TG-001_PROTOCOL.md#amendment-2026-10-19-stop-condition",
+          "population": "gym_tasks",
+          "n_per_arm": {
+            "A": 19,
+            "B": 20,
+            "C": 20,
+            "D": 18
+          },
+          "verdict": null,
+          "min_arm_n": 18,
+          "overdue": false,
+          "overdue_reason": null,
+          "power": {
+            "n_so_far": 18,
+            "target_per_arm": 20,
+            "days_to_stop": 24,
+            "accrual_window_days": 13,
+            "accrual_per_day": {
+              "A": 1.46,
+              "B": 1.536,
+              "C": 1.536,
+              "D": 1.383
+            },
+            "projected_min_arm_n": 51,
+            "projected_reaches_target": true
+          }
+        },
+        {
+          "id": "D5-NO",
+          "flag": "TYPESAFE_PROPOSAL_PRESCREEN_MODE",
+          "protocol": "docs/research/eco/D5NO_PROTOCOL.md",
+          "started_at": "2026-10-11T21:00:00.000Z",
+          "target_n": 100,
+          "stop_by": "2027-01-09T21:00:00.000Z",
+          "stop_note": "cutoff + 90 days → INSUFFICIENT_EVIDENCE",
+          "stop_source": "docs/research/eco/D5NO_PROTOCOL.md",
+          "population": "prescreen_proposals",
+          "n_per_arm": {
+            "confident_no": 0
+          },
+          "verdict": null,
+          "min_arm_n": 0,
+          "overdue": false,
+          "overdue_reason": null,
+          "power": {
+            "n_so_far": 0,
+            "target_per_arm": 100,
+            "days_to_stop": 76.9,
+            "accrual_window_days": 13.1,
+            "accrual_per_day": {
+              "confident_no": 0
+            },
+            "projected_min_arm_n": 0,
+            "projected_reaches_target": false
+          }
+        },
+        {
+          "id": "JEV-114",
+          "flag": "JEV_CHALLENGER_MODEL",
+          "protocol": "docs/runbooks/self-improvement-loop-operations.md",
+          "started_at": "2026-10-16T00:00:00.000Z",
+          "target_n": 100,
+          "stop_by": "2027-01-14T00:00:00.000Z",
+          "stop_note": "stop condition added 2026-10-19; verdict rules unchanged: target 100 paired judgments with ground truth (operator default); start + 90 d cap (2 in 2.9 d projects past it)",
+          "stop_source": "docs/research/eco/JEV-114_PROTOCOL.md#amendment-1-2026-10-19",
+          "population": "judgments",
+          "n_per_arm": {
+            "with_ground_truth": 7
+          },
+          "verdict": null,
+          "min_arm_n": 7,
+          "overdue": false,
+          "overdue_reason": null,
+          "power": {
+            "n_so_far": 7,
+            "target_per_arm": 100,
+            "days_to_stop": 81,
+            "accrual_window_days": 9,
+            "accrual_per_day": {
+              "with_ground_truth": 0.779
+            },
+            "projected_min_arm_n": 70,
+            "projected_reaches_target": false
+          }
+        },
+        {
+          "id": "memory-holdout",
+          "flag": "MEMORY_HOLDOUT_RATE",
+          "protocol": "docs/research/intelligence-metrics/EXPERIMENT_PROTOCOL.md#exp-3",
+          "started_at": "2026-10-08T00:00:00.000Z",
+          "target_n": 30,
+          "stop_by": "2026-10-27T00:00:00.000Z",
+          "stop_note": "stop condition added 2026-10-19; verdict rules unchanged: target 30 outcomes per arm (operator default); start + 1.25 × 30 ÷ 2.01/day (holdout arm, 22 in 10.9 d)",
+          "stop_source": "docs/research/intelligence-metrics/EXPERIMENT_PROTOCOL.md#amendment-2026-10-19-stop-conditions",
+          "population": "oracle_goals",
+          "n_per_arm": {
+            "rules": 73,
+            "holdout": 35
+          },
+          "verdict": null,
+          "effects": {
+            "memory_rules": {
+              "metric": "verified / settled, rules vs held out (Fisher exact; no effect size computed)",
+              "estimate": null,
+              "ci": null,
+              "p": 0.1316
+            }
+          },
+          "min_arm_n": 35,
+          "overdue": true,
+          "overdue_reason": "every arm reached target 30 without a verdict",
+          "power": {
+            "n_so_far": 35,
+            "target_per_arm": 30,
+            "days_to_stop": 2,
+            "accrual_window_days": 14,
+            "accrual_per_day": {
+              "rules": 4.357,
+              "holdout": 1.857
+            },
+            "projected_min_arm_n": 38,
+            "projected_reaches_target": true
+          }
+        }
+      ],
+      "overdue": [
+        "memory-holdout"
+      ],
+      "no_stop_date": [],
+      "wip": {
+        "population": "oracle_goals",
+        "limit": 4,
+        "active": [
+          "ACE-001",
+          "STE-001",
+          "MAKER-DEPS-001",
+          "X1",
+          "F2",
+          "memory-holdout"
+        ],
+        "active_count": 6,
+        "over_wip_limit": true,
+        "counted": [
+          "ACE-001",
+          "STE-001",
+          "X1",
+          "memory-holdout"
+        ],
+        "approved_over_limit": [
+          {
+            "id": "MAKER-DEPS-001",
+            "reason": "running before the G1.5 WIP limit existed (2026-10-19); finishes under its registered stop_by, no successor starts until the oracle population is ≤ 4"
+          },
+          {
+            "id": "F2",
+            "reason": "running before the G1.5 WIP limit existed (2026-10-19); finishes under its registered stop_by, no successor starts until the oracle population is ≤ 4"
+          }
+        ],
+        "guard_ok": true
+      },
+      "note": "Report-only. stop_by = the date the pre-registration stops at (null = none registered); overdue = past stop_by or every arm at target_n with no verdict. n counts from started_at. power: projected n per arm at stop_by from the last-14-day accrual (null = unknown). wip: G1.5 limit of concurrent experiments on the oracle-goal population; a new one starts only when one reads out."
+    },
+    "memory_holdout": {
+      "rate": "0.3",
+      "rules": {
+        "n": 73,
+        "verified": 55,
+        "regressed": 18,
+        "verified_rate": 0.753
+      },
+      "holdout": {
+        "n": 35,
+        "verified": 31,
+        "regressed": 4,
+        "verified_rate": 0.886
+      },
+      "fisher_p": 0.1316,
+      "note": "runs with a settled proposal (verified or regressed); rules = ≥ 1 rule in the assignment, holdout = rules withheld by MEMORY_HOLDOUT_RATE. Two-sided Fisher exact."
+    },
+    "siblings": {
+      "enabled": "true",
+      "on": {
+        "goals": 48,
+        "verified": 34,
+        "regressed": 10,
+        "infra": 4,
+        "verified_rate": 0.773
+      },
+      "off": {
+        "goals": 69,
+        "verified": 43,
+        "regressed": 15,
+        "infra": 9,
+        "verified_rate": 0.741
+      },
+      "fisher_p": 0.8178,
+      "note": "X1 (EFFORT_SIBLING_RANDOMISE): oracle-lane goals by sha256 of the goal id; on = evolve siblings as configured, off = none. verified_rate over settled (verified + regressed); two-sided Fisher exact."
+    }
+  }
+}
