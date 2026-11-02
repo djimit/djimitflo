@@ -8,6 +8,9 @@ import { withoutHiddenChecks } from './fail-before-pass-after';
 import { freshnessMode, staleAgainst, type ReadSet } from './evidence-freshness';
 import { emptySettlementCounts, parseOutcome, settlementState, type SettlementState } from './merge-survival';
 import { extraRepoBySlug, goalRepoSlug, isExtraRepoPr, slugFromRemote } from './repo-registry';
+import { guardTick, markRun } from './scheduler-registry';
+import { issueRefsLine } from './work-item-outcome-sync';
+import { onDraftPrOpened } from './capability-factory';
 
 /**
  * G4: a verified loop run becomes a *draft* PR. Before this, ready_for_human_merge output stayed in a VPS worktree
@@ -46,9 +49,13 @@ export class LoopDraftPrService {
     if (remoteSlug && remoteSlug.toLowerCase() !== repo.toLowerCase()) return fail(`repo_mismatch: worktree ${remoteSlug} ≠ goal ${repo}`);
 
     try {
+      // PRC-1: a retry after a failed push/POST finds the work already committed on HEAD (this run's loop commit): it
+      // republishes that commit and never commits the work a second time.
+      let committed = false;
+      try { committed = git('log', '-1', '--format=%B').includes(`Loop run ${runId}, maker lease ${maker.id}.`); } catch { /* no commit yet */ }
       // Only the maker's real files: never node_modules symlinks from `npm ci`, never lockfile install noise.
-      const tracked = git('diff', '--name-only', '--', '.').split('\n').filter(Boolean);
-      const untracked = git('ls-files', '--others', '--exclude-standard', '--', '.').split('\n').filter(Boolean);
+      const tracked = (committed ? git('diff', '--name-only', 'HEAD~1', 'HEAD') : git('diff', '--name-only', '--', '.')).split('\n').filter(Boolean);
+      const untracked = committed ? [] : git('ls-files', '--others', '--exclude-standard', '--', '.').split('\n').filter(Boolean);
       const files = [...tracked, ...untracked].filter((f) => !f.split('/').includes('node_modules')
         && !(f.endsWith('package-lock.json') && !tracked.includes(path.join(path.dirname(f), 'package.json').replace(/^\.\//, '')))
         && !fs.lstatSync(path.join(wt, f), { throwIfNoEntry: false })?.isSymbolicLink());
@@ -93,8 +100,10 @@ export class LoopDraftPrService {
 
       const proposal = run.goal_id ? this.db.prepare('SELECT si.id, si.title FROM goals g JOIN self_improvements si ON si.id = g.improvement_id WHERE g.id = ?').get(run.goal_id) as { id: string; title: string } | undefined : undefined;
       const title = `loop: ${proposal?.title ?? `run ${runId.slice(0, 8)}`}`.slice(0, 120);
-      git('add', '--', ...files);
-      execFileSync('git', ['-C', wt, '-c', 'user.name=djimitflo-loop', '-c', 'user.email=loop@djimitflo.invalid', 'commit', '-q', '-m', `${title}\n\nLoop run ${runId}, maker lease ${maker.id}.`], { stdio: 'ignore' });
+      if (!committed) {
+        git('add', '--', ...files);
+        execFileSync('git', ['-C', wt, '-c', 'user.name=djimitflo-loop', '-c', 'user.email=loop@djimitflo.invalid', 'commit', '-q', '-m', `${title}\n\nLoop run ${runId}, maker lease ${maker.id}.`], { stdio: 'ignore' });
+      }
       // P0-6: the commit of the checked worktree is the verified head; auto-merge only ever merges this sha.
       const verifiedHead = git('rev-parse', 'HEAD');
       // Token only as a one-off header: never written to the remote URL or git config.
@@ -105,16 +114,36 @@ export class LoopDraftPrService {
         .map((l) => `- ${l.role}: ${l.verdict ?? 'n/a'}`).join('\n');
       let body = `Opened by the djimitflo loop for run \`${runId}\`${proposal ? ` (proposal \`${proposal.id}\`)` : ''}.\n\nReviewer verdicts:\n${verdicts || '- none recorded'}\n\nFiles: ${files.map((f) => `\`${f}\``).join(', ')}\n\nDraft: a human reviews and merges.`;
       if (this.env.LOOP_PR_BODY_V2 === 'true') { let numstat = ''; try { numstat = git('diff', '--numstat', 'HEAD~1', 'HEAD'); } catch { /* no parent: diff stat omitted */ } body = this.bodyV2(runId, maker.id, body, numstat); }
-      const res = await this.fetchImpl(`https://api.github.com/repos/${repo}/pulls`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, head: maker.branch_name, base: this.env.LOOP_DRAFT_PR_BASE || 'main', draft: true, body }),
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (!res.ok) return fail(`GitHub ${res.status}`);
-      const prUrl = String(((await res.json()) as { html_url?: string }).html_url ?? '');
+      body += issueRefsLine(this.db, run.goal_id, this.env); // PRC-3: `Refs owner/repo#N` for a GitHub-issue work item
+      // PRC-1: never a second PR for one branch — a retry looks up the PR an earlier attempt may have opened before it
+      // POSTs, and a 422 (a PR for this head exists) adopts that PR instead of failing. Only an OPEN PR is adopted; a
+      // branch whose only PR is closed (rejected, or merged elsewhere) gets no new PR: draft_pr_failed closed_pr_exists.
+      const found = committed ? await this.existingPr(repo, maker.branch_name, token) : null;
+      if (found === 'closed') return fail('closed_pr_exists');
+      let pr = found;
+      let adopted = pr !== null;
+      if (!pr) {
+        const res = await this.fetchImpl(`https://api.github.com/repos/${repo}/pulls`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, head: maker.branch_name, base: this.env.LOOP_DRAFT_PR_BASE || 'main', draft: true, body }),
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (res.ok) { const j = (await res.json()) as { html_url?: string; number?: number }; pr = { url: String(j.html_url ?? ''), number: Number(j.number) || null }; }
+        else if (res.status === 422) {
+          const existing = await this.existingPr(repo, maker.branch_name, token);
+          if (existing === 'closed') return fail('closed_pr_exists');
+          pr = existing; adopted = pr !== null;
+        }
+        if (!pr) return fail(`GitHub ${res.status}`);
+      }
+      this.db.prepare(`UPDATE loop_runs SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.pr_number', ?, '$.pr_head_branch', ?) WHERE id = ?`)
+        .run(pr.number ?? (Number(/\/pull\/(\d+)/.exec(pr.url)?.[1]) || null), maker.branch_name, runId);
+      if (adopted) events.recordEvent(runId, 'draft_pr_adopted', 'info', `Existing PR adopted: ${pr.url}`, { pr_url: pr.url });
+      const prUrl = pr.url;
       this.db.prepare(`UPDATE loop_runs SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.pr_url', ?, '$.verified_head_sha', ?) WHERE id = ?`).run(prUrl, verifiedHead, runId);
       events.recordEvent(runId, 'draft_pr_opened', 'info', `Draft PR opened: ${prUrl}`, { pr_url: prUrl, files });
+      onDraftPrOpened(this.db, runId, prUrl, this.env); // OMEGA slice 3 (CAPABILITY_LIFECYCLE_V2): a factory run's candidate; never throws
       return prUrl;
     } catch (error) {
       return fail(error instanceof Error ? error.message.replace(/basic [A-Za-z0-9+/=]+/g, 'basic ***').slice(0, 200) : String(error));
@@ -151,6 +180,26 @@ export class LoopDraftPrService {
     return redactSecrets(`${v1}\n\n${lines.join('\n')}`).redacted;
   }
 
+  /**
+   * PRC-1: the open PR whose head is `branch` in `repo` (newest first); 'closed' when the branch has PRs but none is open;
+   * null when it has none or the list is unreadable.
+   */
+  private async existingPr(repo: string, branch: string, token: string): Promise<{ url: string; number: number | null } | 'closed' | null> {
+    try {
+      const head = encodeURIComponent(`${repo.split('/')[0]}:${branch}`);
+      const res = await this.fetchImpl(`https://api.github.com/repos/${repo}/pulls?head=${head}&state=all&per_page=10`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) return null;
+      const pulls = (await res.json()) as Array<{ html_url?: string; number?: number; state?: string }>;
+      const listed = Array.isArray(pulls) ? pulls.filter((p) => typeof p.html_url === 'string' && p.html_url) : [];
+      const open = listed.find((p) => p.state === 'open');
+      if (open) return { url: String(open.html_url), number: Number(open.number) || null };
+      return listed.length ? 'closed' : null;
+    } catch { return null; }
+  }
+
   /** Open PRs titled 'loop:' (one list call, first 100). null on any error: the throttle fails open. */
   private async openLoopDrafts(repo: string, token: string): Promise<number | null> {
     try {
@@ -163,6 +212,47 @@ export class LoopDraftPrService {
       return Array.isArray(pulls) ? pulls.filter((p) => String(p.title ?? '').startsWith('loop:')).length : null;
     } catch { return null; }
   }
+}
+
+/**
+ * PRC-1 retry sweep. LOOP_DRAFT_PR_RETRY: off (default) | shadow (records `draft_pr_retry_shadow`, calls nothing) | on;
+ * needs LOOP_AUTO_DRAFT_PR_ENABLED. A certified run (completed / ready_for_human_merge, the statuses openForRun accepts)
+ * created in the last 14 days, without pr_url, whose draft PR failed 1–2 times (`draft_pr_failed`) gets openForRun again —
+ * at most 5 per tick, so the 3rd failure ends it. A run never attempted (0 failures) or held on purpose (throttle,
+ * stale evidence: no failure event) is never touched. openForRun adopts a PR an earlier attempt opened (no duplicate).
+ */
+export type DraftPrRetryMode = 'off' | 'shadow' | 'on';
+export function draftPrRetryMode(env: NodeJS.ProcessEnv = process.env): DraftPrRetryMode {
+  const v = env.LOOP_DRAFT_PR_RETRY; return v === 'shadow' || v === 'on' ? v : 'off';
+}
+export const DRAFT_PR_MAX_FAILURES = 3;
+
+export async function retryFailedDraftPrs(db: Database, fetchImpl: typeof fetch = fetch, env: NodeJS.ProcessEnv = process.env, now = Date.now()): Promise<{ retried: number; opened: number }> {
+  const mode = draftPrRetryMode(env);
+  if (mode === 'off' || env.LOOP_AUTO_DRAFT_PR_ENABLED !== 'true') return { retried: 0, opened: 0 };
+  const rows = db.prepare(`SELECT r.id, COUNT(e.id) AS failures FROM loop_runs r
+      JOIN loop_events e ON e.loop_run_id = r.id AND e.event_type = 'draft_pr_failed'
+    WHERE r.status IN ('completed', 'ready_for_human_merge') AND r.created_at >= ?
+      AND json_extract(COALESCE(NULLIF(r.metadata, ''), '{}'), '$.pr_url') IS NULL
+    GROUP BY r.id HAVING failures < ? ORDER BY MAX(e.created_at) LIMIT 5`)
+    .all(new Date(now - 14 * 86_400_000).toISOString(), DRAFT_PR_MAX_FAILURES) as Array<{ id: string; failures: number }>;
+  const events = new LoopEventService(db);
+  if (mode === 'shadow') {
+    for (const r of rows) events.recordEvent(r.id, 'draft_pr_retry_shadow', 'info', `would retry the draft PR (${r.failures} failed attempt(s))`, { failures: r.failures });
+    return { retried: 0, opened: 0 };
+  }
+  const svc = new LoopDraftPrService(db, fetchImpl, env);
+  let opened = 0;
+  for (const r of rows) if (await svc.openForRun(r.id)) opened++;
+  return { retried: rows.length, opened };
+}
+
+/** Scheduler `draft_pr_retry` (every 15 min) while LOOP_DRAFT_PR_RETRY is not off; null when off. */
+export function startDraftPrRetry(db: Database, intervalMs = 15 * 60_000): (() => void) | null {
+  if (draftPrRetryMode() === 'off') return null;
+  const tick = guardTick('draft_pr_retry', async () => { await retryFailedDraftPrs(db); markRun('draft_pr_retry'); });
+  const timer = setInterval(tick, intervalMs); timer.unref?.();
+  return () => clearInterval(timer);
 }
 
 export interface DraftPrRow { run_id: string; lane: string; pr_url: string; pr_number: number | null; age_days: number; outcome: string | null; survived: boolean | null; auto_merge: string | null;

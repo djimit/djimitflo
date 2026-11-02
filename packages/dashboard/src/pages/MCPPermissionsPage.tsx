@@ -56,6 +56,8 @@ export function MCPPermissionsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshScope, setRefreshScope] = useState<MCPRefreshScope | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [serversError, setServersError] = useState<string | null>(null);
+  const [permissionsError, setPermissionsError] = useState<string | null>(null);
   // L6-08: opening the page only reads stored status; probing is the explicit Refresh status button.
   useEffect(() => {
     loadServers();
@@ -63,12 +65,13 @@ export function MCPPermissionsPage() {
 
   function loadServers() {
     setServersLoading(true);
+    setServersError(null);
     return api.getMCPServers()
       .then((serversResult) => {
         setServers(serversResult.servers);
       })
       .catch((error) => {
-        console.error('Failed to load MCP servers:', error);
+        setServersError(`Could not load MCP servers: ${error instanceof Error ? error.message : String(error)}`);
       })
       .finally(() => setServersLoading(false));
   }
@@ -107,12 +110,13 @@ export function MCPPermissionsPage() {
 
   useEffect(() => {
     setPermissionsLoading(true);
+    setPermissionsError(null);
     api.getMCPPermissions({ serverId, decision, riskLevel, q: query.trim() })
       .then((permissionsResult) => {
         setPermissions(permissionsResult.permissions);
       })
       .catch((error) => {
-        console.error('Failed to load MCP permissions:', error);
+        setPermissionsError(`Could not load MCP permissions: ${error instanceof Error ? error.message : String(error)}`);
       })
       .finally(() => setPermissionsLoading(false));
   }, [serverId, decision, riskLevel, query]);
@@ -214,6 +218,8 @@ export function MCPPermissionsPage() {
           <div className="bg-background-secondary border border-border rounded-lg p-6 text-foreground-secondary text-sm">
             Loading…
           </div>
+        ) : serversError ? (
+          <p role="alert" className="text-sm text-status-error">{serversError}</p>
         ) : servers.length === 0 ? (
           <div className="bg-background-secondary border border-border rounded-lg p-8 text-center text-foreground-secondary text-sm">
             No MCP servers registered.
@@ -326,6 +332,8 @@ export function MCPPermissionsPage() {
           <div className="bg-background-secondary border border-border rounded-lg p-6 text-foreground-secondary text-sm">
             Loading…
           </div>
+        ) : permissionsError ? (
+          <p role="alert" className="text-sm text-status-error">{permissionsError}</p>
         ) : permissions.length === 0 ? (
           <div className="bg-background-secondary border border-border rounded-lg p-8 text-center">
             <Circle className="w-8 h-8 text-foreground-tertiary mx-auto mb-2" />

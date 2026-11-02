@@ -26,6 +26,7 @@ import {
   type WorkerPoolPlanResult,
 } from '../lib/api';
 import { useWsSubscribe } from '../components/WebSocketProvider';
+import { useDialog } from '../components/ConfirmDialog';
 import { WebSocketEventType } from '@djimitflo/shared';
 
 type RuntimeChoice = 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'mock' | 'manual';
@@ -99,6 +100,7 @@ export function FleetCockpitPage() {
   const [action, setAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const subscribe = useWsSubscribe();
+  const dialog = useDialog();
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -135,6 +137,17 @@ export function FleetCockpitPage() {
     } finally {
       setAction(null);
     }
+  }
+
+  async function drainPool() {
+    const capacity = ignoreCapacity ? ', ignoring capacity limits' : '';
+    if (!(await dialog.confirm('Drain the worker pool?', `Starts up to ${maxWorkers} eligible worker${maxWorkers === 1 ? '' : 's'} on ${runtime}${capacity}.`, 'Drain'))) return;
+    await runAction('drain', () => api.drainWorkerPool({ runtime, checker_runtime: checkerRuntime, max_workers: maxWorkers, ignore_capacity: ignoreCapacity }));
+  }
+
+  async function stopLease(leaseId: string) {
+    if (!(await dialog.confirm(`Stop worker lease ${leaseId}?`, 'The lease is cancelled and its worker runtime is asked to stop; unfinished work is lost. This cannot be undone.', 'Stop lease'))) return;
+    await runAction(`stop-${leaseId}`, () => api.stopWorkerLease(leaseId));
   }
 
   async function runScheduler(name: string, input: { plan_triaged?: boolean; prepare_planned?: boolean }) {
@@ -193,6 +206,7 @@ export function FleetCockpitPage() {
 
   return (
     <div className="space-y-6 p-8">
+      {dialog.element}
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Fleet Cockpit</h1>
@@ -257,7 +271,7 @@ export function FleetCockpitPage() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-status-error/20 bg-status-error/10 p-3 text-sm text-status-error">
+        <div role="alert" className="flex items-center gap-2 rounded-lg border border-status-error/20 bg-status-error/10 p-3 text-sm text-status-error">
           <AlertTriangle className="h-4 w-4" />
           {error}
         </div>
@@ -288,7 +302,7 @@ export function FleetCockpitPage() {
                 Start next
               </button>
               <button
-                onClick={() => void runAction('drain', () => api.drainWorkerPool({ runtime, checker_runtime: checkerRuntime, max_workers: maxWorkers, ignore_capacity: ignoreCapacity }))}
+                onClick={() => void drainPool()}
                 disabled={action !== null || !eligible.length}
                 className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground hover:border-accent/40 disabled:opacity-50"
               >
@@ -500,7 +514,7 @@ export function FleetCockpitPage() {
                       <span>{decision.next_action}</span>
                       {decision.status === 'running' && (
                         <button
-                          onClick={() => void runAction(`stop-${decision.lease_id}`, () => api.stopWorkerLease(decision.lease_id))}
+                          onClick={() => void stopLease(decision.lease_id)}
                           disabled={action !== null}
                           className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground hover:border-status-error/40 disabled:opacity-50"
                           title="Stop worker lease"
