@@ -16,7 +16,7 @@ function seed() {
   const run = db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
     VALUES (?, ?, 'closed', 'completed', '[]', '{}', '[]', '[]', ?, ?, ?)`);
   run.run('r1', 'test-gap', JSON.stringify({ pr_url: 'https://github.com/o/r/pull/474' }), '2026-09-27T12:00:00Z', '2026-09-27T12:00:00Z');
-  run.run('r2', 'mutation-gap', JSON.stringify({ pr_url: 'https://github.com/o/r/pull/616', pr_outcome: { state: 'merged', survived: true, settled_at: 'x' } }), '2026-10-04T12:00:00Z', '2026-10-04T12:00:00Z');
+  run.run('r2', 'mutation-gap', JSON.stringify({ pr_url: 'https://github.com/o/r/pull/616', pr_outcome: { state: 'merged', merged_at: '2026-09-15T12:00:00Z', survived: true, settled_at: '2026-10-01T12:00:00Z' } }), '2026-10-04T12:00:00Z', '2026-10-04T12:00:00Z');
   run.run('r3', 'test-gap', '{}', '2026-10-05T00:00:00Z', '2026-10-05T00:00:00Z');
   return db;
 }
@@ -25,8 +25,11 @@ it('UX-7: lists loop draft PRs newest first with number, lane, age and settlemen
   const r = listDraftPrs(seed(), 50, NOW);
   expect(r).toMatchObject({ total: 2, unsettled: 1 });
   expect(r.rows).toEqual([
-    { run_id: 'r2', lane: 'mutation-gap', pr_url: 'https://github.com/o/r/pull/616', pr_number: 616, age_days: 1, outcome: 'merged', survived: true, auto_merge: null },
-    { run_id: 'r1', lane: 'test-gap', pr_url: 'https://github.com/o/r/pull/474', pr_number: 474, age_days: 8, outcome: null, survived: null, auto_merge: null },
+    { run_id: 'r2', lane: 'mutation-gap', pr_url: 'https://github.com/o/r/pull/616', pr_number: 616, age_days: 1, outcome: 'merged', survived: true, auto_merge: null,
+      settlement: 'SETTLED_SURVIVED', settlement_reason: 'survived', settlement_terminal: false, settlement_age_days: 4 },
+    // never polled 8 days after it was opened: a pipeline anomaly, not "open"
+    { run_id: 'r1', lane: 'test-gap', pr_url: 'https://github.com/o/r/pull/474', pr_number: 474, age_days: 8, outcome: null, survived: null, auto_merge: null,
+      settlement: 'PIPELINE_ANOMALY', settlement_reason: 'never_polled', settlement_terminal: false, settlement_age_days: 8 },
   ]);
   expect(listDraftPrs(seed(), 1, NOW).rows).toHaveLength(1);
   expect(listDraftPrs(seed(), 999, NOW).rows).toHaveLength(2); // clamp ≤ 100

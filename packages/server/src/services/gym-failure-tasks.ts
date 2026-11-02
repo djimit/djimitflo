@@ -66,8 +66,11 @@ export function failureRows(db: Database): FailureRow[] {
   } catch { return []; }
 }
 
-const laneOf = (evidence: string): FailureTask['lane'] | null =>
+export const laneOf = (evidence: string): FailureTask['lane'] | null =>
   /mutation-gap:/.test(evidence) ? null : /test-gap:[^"]*#exports/.test(evidence) ? 'exports' : /test-gap:/.test(evidence) ? 'test-gap' : null;
+
+/** The oracle lane of a proposal's evidence refs (settlement runLanes, auto-merge value gate lanes): mutation-gap → mutation, else laneOf, else other. */
+export const oracleLane = (evidence: string | null): string => /"mutation-gap:/.test(evidence ?? '') ? 'mutation' : laneOf(evidence ?? '') ?? 'other';
 
 /** Pure: which failure rows qualify, before any git lookup. */
 export function qualifyingFailures(rows: FailureRow[]): Array<FailureRow & { lane: FailureTask['lane'] }> {

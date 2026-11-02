@@ -11,6 +11,7 @@ export const FAILURE_CAUSES = ['infra', 'environment_noise', 'parse_error', 'sco
 
 export const failureCause: JudgmentDef = {
   id: 'failure_cause',
+  policyVersion: '1', // DI-001 B: bump when the meaning of this judgment changes
   questions: {
     cause: {
       type: 'choice',

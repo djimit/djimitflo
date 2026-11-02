@@ -1,4 +1,4 @@
-import { enqueueEvent } from './event-outbox-service';
+import { enqueueRequiredEvent } from './event-outbox-service';
 import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 
@@ -153,34 +153,37 @@ export class WorkItemService {
     const confidence = this.normalizedNumber(input.confidence, 0.5, 0, 1);
     const status = input.status || 'candidate';
 
-    this.db.prepare(`
-      INSERT INTO work_items (
-        id, title, description, source, source_ref, risk_class, value_score,
-        confidence, status, recommended_loop, assigned_agent_id, assigned_runtime,
-        parent_goal_id, metadata, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      id,
-      input.title.trim(),
-      input.description.trim(),
-      (input.source || 'manual').trim(),
-      input.source_ref || null,
-      riskClass,
-      valueScore,
-      confidence,
-      status,
-      input.recommended_loop || null,
-      input.assigned_agent_id || null,
-      input.assigned_runtime || null,
-      input.parent_goal_id || null,
-      JSON.stringify(input.metadata || {}),
-      now,
-      now
-    );
+    // CODE-003: the work item and its required djimitflo.work_item.created outbox row commit together or not at all.
+    return this.db.transaction(() => {
+      this.db.prepare(`
+        INSERT INTO work_items (
+          id, title, description, source, source_ref, risk_class, value_score,
+          confidence, status, recommended_loop, assigned_agent_id, assigned_runtime,
+          parent_goal_id, metadata, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        id,
+        input.title.trim(),
+        input.description.trim(),
+        (input.source || 'manual').trim(),
+        input.source_ref || null,
+        riskClass,
+        valueScore,
+        confidence,
+        status,
+        input.recommended_loop || null,
+        input.assigned_agent_id || null,
+        input.assigned_runtime || null,
+        input.parent_goal_id || null,
+        JSON.stringify(input.metadata || {}),
+        now,
+        now
+      );
 
-    const created = this.get(id);
-    enqueueEvent(this.db, { type: 'djimitflo.work_item.created', aggregateId: id, payload: { work_item_id: id, title: created.title, source: created.source, source_ref: created.source_ref, risk_class: created.risk_class, status: created.status, recommended_loop: created.recommended_loop } });
-    return created;
+      const created = this.get(id);
+      enqueueRequiredEvent(this.db, { type: 'djimitflo.work_item.created', aggregateId: id, payload: { work_item_id: id, title: created.title, source: created.source, source_ref: created.source_ref, risk_class: created.risk_class, status: created.status, recommended_loop: created.recommended_loop } });
+      return created;
+    })();
   }
 
   createIfMissingBySourceRef(

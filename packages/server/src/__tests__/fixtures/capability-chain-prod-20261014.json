@@ -1,0 +1,177 @@
+{
+ "collected_at": "2026-10-14T21:40:11.267Z",
+ "source": "djimitflo-live: /data/djimitflo.sqlite opened readonly + container env/fs; the scheduler registry is in-process memory, not observable read-only (scheduler: null)",
+ "cwd": "/app",
+ "observations": [
+  {
+   "name": "dream_state",
+   "observed_at": "2026-10-14T21:40:11.267Z",
+   "env": {
+    "DREAM_STATE_ENABLED": "true",
+    "TYPESAFE_FAILURE_CAUSE_MODE": "off"
+   },
+   "paths": [],
+   "scheduler": null,
+   "outcome": {
+    "value": "2026-10-08T17:39:47.013Z"
+   },
+   "input": null,
+   "cap": null
+  },
+  {
+   "name": "evolution_estimates",
+   "observed_at": "2026-10-14T21:40:11.267Z",
+   "env": {
+    "EVOLUTION_ESTIMATORS_ENABLED": "true"
+   },
+   "paths": [],
+   "scheduler": null,
+   "outcome": {
+    "value": "2026-10-14T00:03:52.131Z"
+   },
+   "input": null,
+   "cap": null
+  },
+  {
+   "name": "evolution_gym",
+   "observed_at": "2026-10-14T21:40:11.267Z",
+   "env": {
+    "EVOLUTION_GYM_ENABLED": "false",
+    "EVOLUTION_GYM_MAX_PER_DAY": "4"
+   },
+   "paths": [],
+   "scheduler": null,
+   "outcome": {
+    "value": "2026-10-01T13:23:36.859Z"
+   },
+   "input": null,
+   "cap": {
+    "value": {
+     "used": 0,
+     "max": 4
+    }
+   }
+  },
+  {
+   "name": "evolution_gym_remote",
+   "observed_at": "2026-10-14T21:40:11.267Z",
+   "env": {
+    "EVOLUTION_GYM_REMOTE_ENABLED": "true",
+    "EVOLUTION_GYM_REMOTE_MAX_PER_DAY": "20"
+   },
+   "paths": [],
+   "scheduler": null,
+   "outcome": {
+    "value": "2026-10-14T21:37:55.878Z"
+   },
+   "input": null,
+   "cap": {
+    "value": {
+     "used": 18,
+     "max": 20
+    }
+   }
+  },
+  {
+   "name": "frontier_experts",
+   "observed_at": "2026-10-14T21:40:11.267Z",
+   "env": {
+    "FRONTIER_EXPERTS_SCHEDULER_ENABLED": "false"
+   },
+   "paths": [],
+   "scheduler": null,
+   "outcome": null,
+   "input": null,
+   "cap": null
+  },
+  {
+   "name": "memory_candidate_review",
+   "observed_at": "2026-10-14T21:40:11.267Z",
+   "env": {
+    "MEMORY_CANDIDATE_REVIEW_ENABLED": "true"
+   },
+   "paths": [],
+   "scheduler": null,
+   "outcome": null,
+   "input": {
+    "value": {
+     "pending": 0,
+     "last_progress": "2026-10-14T20:48:50.473Z"
+    }
+   },
+   "cap": null
+  },
+  {
+   "name": "proposal_review",
+   "observed_at": "2026-10-14T21:40:11.267Z",
+   "env": {
+    "SELF_IMPROVEMENT_AUTO_REVIEW_ENABLED": "true"
+   },
+   "paths": [],
+   "scheduler": null,
+   "outcome": null,
+   "input": {
+    "value": {
+     "pending": 0,
+     "last_progress": "2026-10-14T20:32:35.599Z"
+    }
+   },
+   "cap": null
+  },
+  {
+   "name": "goal_queue",
+   "observed_at": "2026-10-14T21:40:11.267Z",
+   "env": {},
+   "paths": [],
+   "scheduler": null,
+   "outcome": null,
+   "input": {
+    "value": {
+     "pending": 0,
+     "last_progress": "2026-10-14T21:39:37.750Z"
+    }
+   },
+   "cap": null
+  },
+  {
+   "name": "skill_loader",
+   "observed_at": "2026-10-14T21:40:11.267Z",
+   "env": {
+    "DJIMITFLO_SKILLS_DIR": null
+   },
+   "paths": [
+    {
+     "label": "skills directory",
+     "env": "DJIMITFLO_SKILLS_DIR",
+     "path": "/app/.opencode/skills/generated",
+     "kind": "dir",
+     "status": "missing"
+    }
+   ],
+   "scheduler": null,
+   "outcome": null,
+   "input": null,
+   "cap": null
+  },
+  {
+   "name": "skill_training_promotion_gate",
+   "observed_at": "2026-10-14T21:40:11.267Z",
+   "env": {
+    "DJIMIT_SKILL_TRAINING_EVAL_RUNNER": null
+   },
+   "paths": [
+    {
+     "label": "skill-training eval runner",
+     "env": "DJIMIT_SKILL_TRAINING_EVAL_RUNNER",
+     "path": "/Users/dlandman/agent-skills/common/skill-training-eval-runner/scripts/run_skill_training_eval.mjs",
+     "kind": "file",
+     "status": "missing"
+    }
+   ],
+   "scheduler": null,
+   "outcome": null,
+   "input": null,
+   "cap": null
+  }
+ ]
+}
