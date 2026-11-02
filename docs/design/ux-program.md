@@ -29,6 +29,12 @@ Operator-adopted 2026-11-01. Each item ships as a draft PR on `feat/ux-evo/<NN>-
 | Item | What | State |
 |---|---|---|
 | UXE-00 | Value-gate decision card + settlement value by lane on `/evolution` (read-only); UI fitness ratchet v0 (`scripts/ui-fitness.mjs`, baseline `ui-fitness-baseline.json`) | draft PR |
+| UXE-02a | Ratchet v1a: `operator_routes_ui_called` / `unmatched_calls` (a2, wraps `ux-coverage.mjs`; `unavailable` without `typescript`, never 0), `contrast_pairs_below_4_5` (a4), `max_page_lines`, `dead_ws_subscriptions`; baseline = base measurement 155 / 0 / 10 / 1301 / 6 | draft PR (stacked on UXE-00) |
+| UXE-09 | Visible errors: load and action failures render as text on Policy Center, Federation, MCP Permissions, Tasks and Task detail (no `alert()`, `native_alert` 3 → 0); `useDialog` confirmation before proof-run rollback (Mission Control, proof-run detail) and worker drain / lease stop (Fleet Cockpit) | draft PR |
+| UXE-00a | Guard-test list (R12): a loop PR touching a UX oracle test (`ORACLE_TEST_FILES` in `loop-auto-merge.ts`) is permanent `ineligible: oracle_test_file`; refuses more PRs, never allows more | draft PR |
+| UXE-01 | Runbook default rows for `LOOP_DRAFT_PR_THROTTLE_MODE`, `LOOP_DRAFT_PR_MAX_OPEN`, `VECTOR_STRICT_DIM`, `RETRIEVAL_NORMALISE_SCORES`, `TELEGRAM_PUSH_DELAY_MS` (now in `RUNBOOK_DEFAULTS`); `LLM_JSON_REPAIR_ENABLED` row corrected (Frontier Experts only); the digest / triage tick reports as scheduler `operator_digest` with a guarded tick | draft PR |
+| UXE-08 | Typed client errors: `ApiClient.request` and export downloads throw `ApiError` (`status`, `code`, `request_id` from `X-Request-ID`) with unchanged messages; `{error:'text'}` bodies show the text; `permissionError` prefers status 403; `LoadErrorNotice` lines carry the request id; server mounts the existing `requestContext` middleware | draft PR |
+| UXE-03 | Role-matrix route smoke (UX-29): 7 roles × the `App.tsx` route table, offline and on synthetic fixtures; the fixture fetch answers 403 where the server's `requirePermission` (route-source inventory) would. `NAV_PERMISSIONS` gains `/evolution`, `/observability`, `/usage` (`manage:config`, UI gating only). Visible-but-403 = 0, hidden-but-permitted = 0; Agent Commons' lure and join-request panels (`manage:tokens`) are pinned in-page 403s | draft PR |
 | UXE-11 | UX-4b permission memo (no code): role × permission matrix, APPROVER/`write:governance`, `GET /approvals` and `GET /self-improve/decisions` payloads, 27 mutating routes without a permission check, proposed matrix, blast radius, migration, rollback (`permission-memo-2026-11.md`) | draft PR; **decisions D-UXE-11a–f pending** (operator) |
 
 ## Coverage baseline (UX-0, origin/main 5a9d46d5, 2026-10-05)
@@ -63,3 +69,4 @@ repositories 7 / 9. Full per-router table: `node scripts/ux-coverage.mjs`.
 | UXD-2 | English-only UI, no message catalog (UX-5 default) | proposed |
 | UXD-3 | Deleting orphan UI (e.g. `ComplianceDashboard`) or Lab pages | ask first, after telemetry. Telemetry is in (UX-30, 31-10): per-page KEEP / MOVE / MERGE-INTO / RETIRE-CANDIDATE in `ux-30-lab-pruning.md`; decision pending |
 | UXD-4 | Decision coverage (evidence keys a page reads and a test proves, `decision_keys_proven`) replaces route coverage as the primary UI target | proposed |
+| D-UXE-00a | Guard-test list: loop PRs touching the UX oracle tests are never earned-auto-merged (UXE-00a) | decided 2026-11-01 (yes) |

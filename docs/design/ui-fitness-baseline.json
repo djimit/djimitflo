@@ -5,6 +5,11 @@
     "decision_keys_proven": 23,
     "undefined_theme_token_uses": 55,
     "locale_less_toLocale": 33,
-    "native_alert": 3
+    "native_alert": 0,
+    "operator_routes_ui_called": 155,
+    "unmatched_calls": 0,
+    "contrast_pairs_below_4_5": 10,
+    "max_page_lines": 1303,
+    "dead_ws_subscriptions": 6
   }
 }

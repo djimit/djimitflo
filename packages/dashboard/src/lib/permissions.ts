@@ -28,6 +28,9 @@ export const ACTION_PERMISSIONS = {
 export const NAV_PERMISSIONS: Record<string, string> = {
   '/configuration': ACTION_PERMISSIONS.runtimeConfig, // GET /health/config
   '/audit': 'read:audit', // GET /audit
+  '/evolution': 'manage:config', // GET /health/evolution-evidence (UXE-03)
+  '/observability': 'manage:config', // GET /observability/metrics (UXE-03)
+  '/usage': 'manage:config', // GET /usage/accounts (UXE-03)
 };
 
 export const needsText = (permission: string): string => `Needs ${permission}`;
@@ -35,7 +38,8 @@ export const needsText = (permission: string): string => `Needs ${permission}`;
 /** A server 403 as a sentence the operator can act on. */
 export function permissionError(error: unknown, permission: string, fallback: string): string {
   const message = error instanceof Error ? error.message : '';
-  return /403|forbidden|insufficient|permission|access denied/i.test(message)
+  const forbidden = (error as { status?: unknown } | null)?.status === 403; // ApiError (lib/api.ts) keeps the HTTP status
+  return forbidden || /403|forbidden|insufficient|permission|access denied/i.test(message)
     ? `Not allowed: this action ${needsText(permission).toLowerCase()} (${message}).`
     : message || fallback;
 }

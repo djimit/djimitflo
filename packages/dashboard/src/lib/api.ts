@@ -1827,22 +1827,41 @@ export interface MCPRefreshScope {
   skipped: Array<{ id: string; reason: 'no_url' | 'known_unreachable' }>;
 }
 
+/** A failed API call: the message is unchanged from the plain Error it replaces; status, code and request id ride along. */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  readonly request_id?: string;
+  constructor(message: string, info: { status: number; code?: string; request_id?: string }) {
+    super(message);
+    this.status = info.status;
+    this.code = info.code;
+    this.request_id = info.request_id;
+  }
+}
+
+/** Reads `{error:{message,code}}`, `{message}` or `{error:'text'}`; 403/404 keep their fixed messages. */
+async function apiError(response: Response, prefix: string): Promise<ApiError> {
+  let body: any;
+  try { body = await response.json(); } catch { body = { message: response.statusText }; }
+  body = body ?? {};
+  const status = response.status;
+  const message = status === 403 ? 'Access denied'
+    : status === 404 ? 'Not found'
+    : body.message || body.error?.message || (typeof body.error === 'string' && body.error) || `${prefix}: ${status}`;
+  const code = body.error?.code ?? body.code;
+  return new ApiError(message, {
+    status,
+    code: typeof code === 'string' ? code : undefined,
+    request_id: response.headers?.get?.('X-Request-ID') ?? undefined,
+  });
+}
+
 class ApiClient {
   async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const response = await authenticatedFetch(endpoint, options);
 
-    if (response.status === 403) {
-      throw new Error('Access denied');
-    }
-
-    if (response.status === 404) {
-      throw new Error('Not found');
-    }
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: response.statusText }));
-      throw new Error(error.message || error.error?.message || `API error: ${response.status}`);
-    }
+    if (!response.ok) throw await apiError(response, 'API error');
 
     if (response.status === 204) return undefined as T;
     return response.json();
@@ -2796,12 +2815,7 @@ class ApiClient {
       method,
       body: method === 'GET' ? undefined : JSON.stringify({ format, ...options }),
     });
-    if (response.status === 403) throw new Error('Access denied');
-    if (response.status === 404) throw new Error('Not found');
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: response.statusText }));
-      throw new Error(error.message || error.error?.message || `Export failed: ${response.status}`);
-    }
+    if (!response.ok) throw await apiError(response, 'Export failed');
 
     const blob = await response.blob();
     const contentDisposition = response.headers.get('Content-Disposition') || '';
