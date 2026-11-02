@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, expect, it, vi } from 'vitest';
-import { DecisionsInboxPage, DependencyLaneSection, DraftPrsSection, RankingSection } from './DecisionsInboxPage';
+import { DecisionsInboxPage, DependencyLaneSection, DraftPrsSection, RankingSection, RequeueAutoNote } from './DecisionsInboxPage';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { api, type DraftPrs } from '../lib/api';
 import { useAuthStore } from '../lib/auth-store';
@@ -146,13 +146,19 @@ it('dependency lane: shows the Dependabot queue read-only with bump, age, checks
   expect(screen.queryByRole('button')).toBeNull(); // read-only
 });
 
-it('earned auto-merge: an audit-sample loop PR is flagged for the human; auto-merged ones say so', async () => {
-  vi.spyOn(api, 'getDraftPrs').mockResolvedValueOnce({ total: 2, unsettled: 2, by_settlement: { ...BY, OPEN_BLOCKED: 2 }, closed_unmerged: 0, rows: [
+it('earned auto-merge: audit-sample loop PRs are one weekly audit batch card with a count and links, not rows in the table', async () => {
+  vi.spyOn(api, 'getDraftPrs').mockResolvedValueOnce({ total: 3, unsettled: 3, by_settlement: { ...BY, OPEN_BLOCKED: 3 }, closed_unmerged: 0, rows: [
     draftRow({ run_id: 'r5', pr_number: 705, auto_merge: 'audit_sample' }),
+    draftRow({ run_id: 'r7', pr_number: 707, auto_merge: 'audit_sample' }),
     draftRow({ run_id: 'r6', pr_number: 706, auto_merge: 'merged' }),
   ] });
   render(<DraftPrsSection />);
-  expect(await screen.findByText('audit sample — review it')).toBeTruthy();
+  expect(await screen.findByText('Weekly audit batch (2)')).toBeTruthy();
+  const card = document.getElementById('audit-batch')!;
+  expect([...card.querySelectorAll('a')].map((a) => a.textContent)).toEqual(['#705', '#707']);
+  const table = screen.getByRole('table', { name: 'Loop draft PRs and their settlement' });
+  expect(table.textContent).toContain('#706');
+  expect(table.textContent).not.toContain('#705'); expect(table.textContent).not.toContain('#707');
   expect(screen.getByText('merged')).toBeTruthy();
 });
 
@@ -175,4 +181,32 @@ it('Cockpit 3.0 Phase 3: shows the top 5 of the shadow ranking with reasons, and
   expect((html.match(/<li/g) ?? []).length).toBe(5);
   expect(html).toContain('earlier requeues verified 4/5');
   expect(html).not.toContain('proposal 5');
+});
+
+it('auto-requeue on: rows the policy handles say "system will handle"; held rows need you; labelling is grouped as optional', async () => {
+  const requeue = [
+    { ...inbox.requeue[0], id: 'aaaaaaaa-2', auto: { mode: 'on', action: 'requeue', cls: 'environment_failure', reason: 'auto: environment_failure is retryable' } },
+    { ...inbox.requeue[0], id: 'aaaaaaaa-3', auto: { mode: 'on', action: 'hold', cls: 'infra_failed', reason: 'escalated' } },
+  ];
+  vi.spyOn(api, 'getDecisionsInbox').mockResolvedValue({ ...inbox, requeue,
+    memory: [...inbox.memory, { ...inbox.memory[0], id: 'm2', template_duplicate: 1 }],
+    totals: { prescreen_unlabelled: 1, requeue_auto: { mode: 'on', will_handle: 1, held: 1, by_action: { requeue: 1, hold: 1 } } } } as never);
+  renderPage();
+  expect((await screen.findByTestId('requeue-auto')).textContent).toContain('System will handle 1');
+  expect(screen.getByText('system will requeue · environment failure')).toBeTruthy();
+  expect(screen.getByText('needs you · infra failed')).toBeTruthy();
+  expect(screen.getByText('template duplicate — system dedup, not counted')).toBeTruthy();
+  const header = screen.getByTestId('optional-labelling-header');
+  expect(header.textContent).toContain('Optional labelling');
+  expect(header.textContent).toContain('1 D5 label(s) and 1 CAR audit(s) open');
+  // the header sits before the labelling sections it groups
+  expect(header.compareDocumentPosition(document.getElementById('prescreen')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+it('auto-requeue off or an older server: no policy note; a failed policy query reads unknown', async () => {
+  renderPage();
+  await screen.findByText('Add unit tests for foo');
+  expect(screen.queryByTestId('requeue-auto')).toBeNull();
+  const html = renderToStaticMarkup(<MemoryRouter><RequeueAutoNote auto={null} /></MemoryRouter>);
+  expect(html).toContain('unknown');
 });

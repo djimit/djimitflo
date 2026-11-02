@@ -1,0 +1,23 @@
+{
+  "captured_at": "2026-10-24T14:57:19.348134+00:00",
+  "host": "eve-v",
+  "service": "djimitflo-social.service",
+  "state": {
+    "Result": "exit-code",
+    "ExecMainStartTimestamp": "Sat 2026-10-24 16:53:22 CEST",
+    "ExecMainExitTimestamp": "Sat 2026-10-24 16:53:35 CEST",
+    "ExecMainCode": "1",
+    "ExecMainStatus": "1",
+    "WorkingDirectory": "/home/djimit/.hermes",
+    "User": "djimit",
+    "ActiveState": "failed",
+    "SubState": "failed"
+  },
+  "journal_scope": "last24h,max250 records; raw text excluded",
+  "records": 250,
+  "last_realtime_us": "1792853615681135",
+  "failure_categories": {},
+  "exception_classes": {},
+  "bounded_codes": {},
+  "http_codes": {}
+}

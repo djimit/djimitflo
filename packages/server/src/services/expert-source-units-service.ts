@@ -4,7 +4,7 @@ import { FrontierExpertRegistryService } from './frontier-expert-registry-servic
 import { ExpertEvidenceEnrichmentService } from './expert-evidence-enrichment-service';
 import type { ArxivPaper } from './knowledge-adapters/arxiv-adapter';
 import { judgmentMode, runJudgment } from './judgment-service';
-import { hasMandatoryProvenance } from './judgment-provenance';
+import { hasMandatoryProvenance, provenanceJson, readProvenance, type JudgmentProvenance } from './judgment-provenance';
 import { discoveryRelevance } from './judgments/discovery-relevance';
 import { CONFIDENCE_FLOOR } from './judgments/checker-second-opinion';
 import { buildEvidencePack } from './commons-evidence-pack';
@@ -142,8 +142,7 @@ export class ExpertSourceUnitsService {
           const cls = verdict?.answers?.relevance?.choice;
           // DI-001 B: unit creation is a promotion — no recorded provenance, no unit (fail-closed, like no verdict)
           if (!verdict || !hasMandatoryProvenance(verdict) || (cls !== 'open_problem' && cls !== 'lane_technique') || this.knownRefs().has(ref)) return;
-          const unitId = createUnit();
-          this.db.prepare("UPDATE judgments SET subject_type = 'expert_unit', subject_id = ? WHERE id = ?").run(unitId, verdict.id);
+          this.repointVerdict(verdict.id, createUnit());
         }).catch(() => undefined);
       return 'pending';
     }
@@ -175,8 +174,28 @@ export class ExpertSourceUnitsService {
   /** KE-2: a gate-rejected discovery jev called relevant becomes a unit (no taxonomy capability, so it stops at EVIDENCE_COLLECTED). */
   private overrideUnit(d: Discovery, judgmentId: string, extra: Record<string, unknown> = {}): string {
     const unitId = this.fleetUnit(d, [], 'taxonomy_override:jev', extra);
-    this.db.prepare("UPDATE judgments SET subject_type = 'expert_unit', subject_id = ? WHERE id = ?").run(unitId, judgmentId);
+    this.repointVerdict(judgmentId, unitId);
     return unitId;
+  }
+
+  /**
+   * AUTHZ-F2: re-point a discovery verdict at the expert unit it created. The row's subject moves to the unit (its readers
+   * join on expert_unit), and its provenance records the move: `evidence_reference` still names the judged discovery and
+   * `subject_rewrite` names from → to. NULL provenance (pre-DI-001 history) stays NULL — never backfilled.
+   */
+  private repointVerdict(judgmentId: string, unitId: string): void {
+    const row = this.db.prepare('SELECT subject_type, subject_id, provenance_json FROM judgments WHERE id = ?').get(judgmentId) as
+      { subject_type: string; subject_id: string; provenance_json: string | null } | undefined;
+    if (!row) return;
+    let provenance = row.provenance_json;
+    if (provenance !== null) {
+      const p = readProvenance(row);
+      if (p.status !== 'unrecorded') {
+        const rewrite = { from: { type: row.subject_type, id: row.subject_id }, to: { type: 'expert_unit', id: unitId }, at: new Date().toISOString(), reason: 'expert_unit_created' };
+        provenance = provenanceJson({ ...(p as JudgmentProvenance), subject_rewrite: rewrite }) ?? provenance;
+      }
+    }
+    this.db.prepare("UPDATE judgments SET subject_type = 'expert_unit', subject_id = ?, provenance_json = ? WHERE id = ?").run(unitId, provenance, judgmentId);
   }
 
   private discoveryEvent(ref: string): Record<string, unknown> | null {
@@ -306,10 +325,12 @@ export class ExpertSourceUnitsService {
         const requireRelevance = process.env.FRONTIER_UNITS_REQUIRE_RELEVANCE === 'true';
         if (row.path === 'pending') {
           const cls = verdict.answers?.relevance?.choice;
-          if ((!requireRelevance || cls === 'open_problem' || cls === 'lane_technique') && !unitOf()) {
-            this.db.prepare("UPDATE judgments SET subject_type = 'expert_unit', subject_id = ? WHERE id = ?").run(this.fleetUnit(d, capabilities), verdict.id);
+          // DI-001 B: under FRONTIER_UNITS_REQUIRE_RELEVANCE the verdict decides unit creation (a promotion) — recorded provenance
+          // is mandatory, as on the live ingest path (AUTHZ-F2: the backlog path lacked this check)
+          if ((!requireRelevance || ((cls === 'open_problem' || cls === 'lane_technique') && hasMandatoryProvenance(verdict))) && !unitOf()) {
+            this.repointVerdict(verdict.id, this.fleetUnit(d, capabilities));
           }
-        } else if (row.path === 'rejected' && verdict.decision === 'yes' && requireRelevance && !unitOf()) this.overrideUnit(d, verdict.id);
+        } else if (row.path === 'rejected' && verdict.decision === 'yes' && requireRelevance && hasMandatoryProvenance(verdict) && !unitOf()) this.overrideUnit(d, verdict.id);
         return true;
       })
       .then((verdict) => { if (!verdict) release(); }) // a no-op when the fence moved on

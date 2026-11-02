@@ -155,7 +155,8 @@ describe('G121: MemoryCurator', () => {
       expect(second.record.content).toBe(
         first.record.content + '\n\n--- Update ---\n\n' + 'alpha beta gamma delta epsilon',
       );
-      expect(second.record.confidence).toBeCloseTo(0.85, 10);
+      // L-F07: a same-source merge is not independent corroboration and leaves confidence unchanged
+      expect(second.record.confidence).toBe(first.record.confidence);
     });
 
     it('updates the database row on merge', () => {
@@ -173,7 +174,7 @@ describe('G121: MemoryCurator', () => {
       const row = db.prepare(
         'SELECT content, confidence, metadata_json FROM central_memories WHERE id = ?',
       ).get(first.record.id) as { content: string; confidence: number; metadata_json: string };
-      expect(row.confidence).toBeCloseTo(0.85, 10);
+      expect(row.confidence).toBe(first.record.confidence);
       expect(row.content).toContain('--- Update ---');
       expect(row.content).toContain('alpha beta gamma delta epsilon');
       const meta = JSON.parse(row.metadata_json);

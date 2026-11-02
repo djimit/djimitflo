@@ -206,6 +206,13 @@ export function createSelfImprovementRoutes(db: Database, auth?: AuthMiddleware)
       if (!actor) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
       const body = (req.body ?? {}) as { user_id?: unknown; note?: unknown };
       if (typeof body.user_id !== 'string' || !body.user_id.trim()) throw createError(400, 'user_id required', 'VALIDATION_ERROR');
+      // AUTHZ-F6: a mapped Telegram account acts as that user (telegram-api-service mints its JWT), so mapping is delegation:
+      // the caller may only map to a user whose role holds no permission the caller lacks (manage:config must not reach approve:task)
+      const target = db.prepare('SELECT role FROM users WHERE id = ?').get(body.user_id.trim()) as { role?: string } | undefined;
+      const mine = ROLE_PERMISSIONS[req.user?.role as UserRole] ?? [];
+      const theirs = target?.role ? ROLE_PERMISSIONS[target.role as UserRole] ?? [] : [];
+      const missing = theirs.filter((p) => !mine.includes(p));
+      if (missing.length) throw createError(403, `Cannot map to a user with permissions you do not hold: ${missing.join(', ')}`, 'TELEGRAM_MAPPING_ESCALATION');
       setTelegramIdentity(db, req.params.telegramId, body.user_id.trim(), actor, typeof body.note === 'string' ? body.note : undefined);
       res.status(204).end();
     } catch (error) {
