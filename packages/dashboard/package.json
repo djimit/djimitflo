@@ -23,8 +23,8 @@
     "@xyflow/react": "^12.12.0",
     "clsx": "^2.1.0",
     "lucide-react": "^1.47.0",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "react-router-dom": "7.18.4",
     "tailwind-merge": "^3.6.0",
     "zustand": "^5.0.14"
