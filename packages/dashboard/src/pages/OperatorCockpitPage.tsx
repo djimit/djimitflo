@@ -3,7 +3,7 @@ import { WebSocketEventType } from '@djimitflo/shared';
 import { useWsSubscribe } from '../components/WebSocketProvider';
 import { Link } from 'react-router-dom';
 import { Activity, RefreshCw } from 'lucide-react';
-import { api, type EfficiencyConsumer, type EfficiencyView, type EvolutionLineage, type OperatorCockpit, type ServiceStatus, type ValueInterval } from '../lib/api';
+import { api, type EfficiencyConsumer, type EfficiencyView, type EvolutionLineage, type IntegrationState, type OperatorCockpit, type ServiceStatus, type ValueInterval } from '../lib/api';
 import { fmt, since } from '../lib/format';
 import { DataTable, Section, StatusPill } from '../components/ui';
 
@@ -36,8 +36,9 @@ export function DigestCard() {
  */
 export type HealthState = 'HEALTHY' | 'DEGRADED' | 'BREACHED' | 'UNKNOWN' | 'STALE' | 'NOT_APPLICABLE';
 type Gr = OperatorCockpit['guardrails'][number] & { state?: HealthState; split?: { maker: number; reviewer: number; environment: number; unknown?: number } };
-type NeedsYouCounts = { [K in Exclude<keyof NonNullable<OperatorCockpit['needs_you']>, 'system_requeue'>]?: number | null }
-  & { system_requeue?: NonNullable<OperatorCockpit['needs_you']>['system_requeue'] };
+type NY = NonNullable<OperatorCockpit['needs_you']>;
+type NeedsYouCounts = { [K in Exclude<keyof NY, 'system_requeue' | 'optional_labelling' | 'system' | 'dependency_tracked'>]?: number | null }
+  & Partial<Pick<NY, 'system_requeue' | 'optional_labelling' | 'system' | 'dependency_tracked'>>;
 export type CockpitView = Omit<OperatorCockpit, 'guardrails' | 'needs_you'> & {
   guardrails: Gr[]; needs_you?: NeedsYouCounts;
   health?: HealthState; errors?: Array<{ section: string; message: string }>; snapshot_id?: string;
@@ -67,6 +68,9 @@ export function overallHealth(d: CockpitView, now = Date.now()): { state: Health
   return { state: worst(states), reasons };
 }
 
+const STATE_TONE: Record<IntegrationState, 'ok' | 'warn' | 'error' | 'paused' | 'neutral'> = {
+  HEALTHY: 'ok', CONNECTED: 'neutral', CONFIGURED: 'neutral', UNKNOWN: 'neutral', DEGRADED: 'warn', FAILED: 'error', DISABLED: 'paused',
+};
 const num = (v: number | null | undefined) => (v === null || v === undefined ? 'unknown' : fmt(v));
 
 /** Level 1: the four questions the operator must answer in seconds. */
@@ -282,14 +286,16 @@ export function OperatorCockpitPage() {
 
           <Disclose id="services" open title="Services">
             {services === null ? <p className="text-sm text-foreground-secondary">Probing…</p> : (
-              <DataTable caption="Service endpoints and their status" rows={services} rowKey={(s) => s.endpoint}
+              <DataTable caption="Service endpoints and their integration state" rows={services} rowKey={(s) => s.endpoint}
                 empty="No service endpoints configured or the probe failed." columns={[
                   { key: 'service', label: 'Service', render: (s) => s.names.join(' · ') },
                   { key: 'endpoint', label: 'Endpoint', render: (s) => s.endpoint, cellClassName: () => 'font-mono text-xs' },
-                  // a 404 says something listens, not that it is healthy: 'reachable (404)', never 'up'
-                  { key: 'status', label: 'Status', render: (s) => `${s.status === 'up' && s.http === 404 ? 'reachable' : s.status}${s.error ? ` (${s.error})` : s.http === 404 ? ' (404)' : ''}`,
-                    cellClassName: (s) => (s.status === 'up' && s.http !== 404 ? 'text-status-completed' : s.status === 'down' ? 'text-status-error' : 'text-status-warning') },
-                  { key: 'http', label: 'HTTP', render: (s) => s.http ?? '—' },
+                  // DF-07: HTTP proves transport only; the state comes from the server's business evidence, never from the probe here
+                  { key: 'state', label: 'State', render: (s) => <StatusPill tone={STATE_TONE[s.state ?? 'UNKNOWN']} label={s.state ?? 'UNKNOWN'} title={s.state_evidence} /> },
+                  { key: 'evidence', label: 'Evidence', render: (s) => s.state_evidence ?? 'no state from the server', cellClassName: () => 'text-xs' },
+                  { key: 'success', label: 'Last success', render: (s) => (s.evidence_source ? since(s.last_success_at) : '—') },
+                  { key: 'failure', label: 'Last failure', render: (s) => (s.evidence_source ? since(s.last_failure_at) : '—') },
+                  { key: 'http', label: 'HTTP', render: (s) => s.http ?? (s.error ? `— (${s.error})` : '—') },
                   { key: 'ms', label: 'Latency', render: (s) => (s.ms === null ? '—' : `${s.ms} ms`) },
                 ]} />
             )}
@@ -309,7 +315,7 @@ export function OperatorCockpitPage() {
           <Disclose id="stalls" open title="Silent stalls">
             {data.stalls.length === 0 ? <p className="text-sm text-foreground-secondary">None — every watched subsystem produced output recently.</p> : (
               <ul className="space-y-1 text-sm">
-                {data.stalls.map((s) => <li key={s.subsystem} className="text-status-warning"><strong>{s.subsystem}</strong> — {s.detail} (since {since(s.since)})</li>)}
+                {data.stalls.map((s) => <li key={s.subsystem} className="text-status-warning"><strong>{s.subsystem}</strong> — {s.detail}{s.since ? ` (since ${since(s.since)})` : ''}</li>)}
               </ul>
             )}
           </Disclose>
@@ -344,7 +350,7 @@ export function OperatorCockpitPage() {
                 { key: 'outcomes', label: 'Outcomes', render: (g) => g.outcomes },
                 { key: 'success', label: 'Success', render: (g) => `${g.success_pct}%` },
                 { key: 'secs', label: 'Avg s', render: (g) => fmt(g.avg_seconds) },
-                { key: 'tokens', label: 'Avg tokens', render: (g) => fmt(g.avg_tokens) },
+                { key: 'tokens', label: 'Avg tokens', render: (g) => num(g.avg_tokens) },
                 { key: 'last', label: 'Last', render: (g) => since(g.last) },
               ]} />
             </Disclose>
@@ -410,41 +416,75 @@ export function NeedsYouTotal({ n }: { n: NeedsYouCounts }) {
   return <div className="text-xl font-semibold">{unknown.length ? `≥ ${total} (${unknown.length} unknown)` : total ? `${total} waiting` : 'nothing'} {total || unknown.length ? <Link to="/decisions" className="text-sm underline">open Decisions</Link> : null}</div>;
 }
 
+/**
+ * Human-only needs-you (operator 26-10): `items` are HUMAN_DECISION items and make the headline; ground-truth labelling
+ * (D5, CAR, E1, DI-001) is optional with its own count; `info` and `system` are shown, never counted.
+ */
 function needsYouItems(n: NeedsYouCounts) {
   // absent (older server) = 0; null (the server could not count it) = unknown
   const c = (v: number | null | undefined) => (v === undefined ? 0 : v);
-  const items: Array<{ label: string; count: number | null; href: string }> = [
+  type Item = { label: string; count: number | null; href: string };
+  const split = n.audit_batch !== undefined || n.flagged_prs !== undefined;
+  const proposalsSystem = !!n.system?.proposals_auto_reviewed;
+  const items: Item[] = [
     { label: 'approvals', count: c(n.approvals), href: '/decisions#approvals' },
-    { label: 'approvals expiring within 1 h', count: c(n.approvals_expiring), href: '/decisions#approvals' },
     { label: 'requeue candidates', count: c(n.requeue), href: '/decisions#requeue' },
-    { label: 'pre-screen labels', count: c(n.labels), href: '/decisions#prescreen' },
     { label: 'memory reviews', count: c(n.memory_review), href: '/decisions#memory' },
-    { label: 'open loop PRs', count: c(n.open_prs), href: '/decisions#draft-prs' },
-    { label: 'loop PRs unsettled', count: c(n.draft_prs), href: '/decisions#draft-prs' },
-    { label: 'proposals awaiting approval', count: c(n.proposals), href: '/governance?tab=assurance' },
-    { label: 'silent stalls', count: c(n.stalls), href: '/#stalls' },
+    ...(split ? [{ label: 'PRs in the weekly audit batch', count: c(n.audit_batch), href: '/decisions#audit-batch' },
+      { label: 'flagged loop PRs', count: c(n.flagged_prs), href: '/decisions#draft-prs' }]
+      : [{ label: 'open loop PRs', count: c(n.open_prs), href: '/decisions#draft-prs' }]),
+    ...(n.dependency_tracked ? [{ label: 'Dependabot PRs the lane leaves to you', count: c(n.dependency_human), href: '/decisions#dependency-lane' }] : []),
+    ...(proposalsSystem ? [] : [{ label: 'proposals awaiting approval', count: c(n.proposals), href: '/governance?tab=assurance' }]),
     { label: 'Commons join requests', count: c(n.join_requests), href: '/agent-commons' },
     { label: 'fleet shell requests', count: c(n.shell_requests), href: '/fleet' },
   ];
-  // UX-6: 'approvals expiring' is a subset of 'approvals' and unsettled loop PRs include merged ones still settling — not double-counted;
-  // open loop PRs wait for a human merge or close, so they count
-  const blocking = items.filter((item) => item.label !== 'approvals expiring within 1 h' && item.label !== 'loop PRs unsettled');
-  // the server's total counts a proposal waiting in two sections once; older servers send no total
-  const total = n.total ?? blocking.reduce((sum, item) => sum + (item.count ?? 0), 0);
-  const unknown = blocking.filter((item) => item.count === null);
-  return { items, total, unknown };
+  // UX-6: 'approvals expiring' is a subset of 'approvals' and unsettled loop PRs include merged ones still settling — not double-counted
+  const info: Item[] = [
+    { label: 'approvals expiring within 1 h', count: c(n.approvals_expiring), href: '/decisions#approvals' },
+    { label: 'loop PRs unsettled', count: c(n.draft_prs), href: '/decisions#draft-prs' },
+  ];
+  const ol = n.optional_labelling;
+  const labelling: Item[] = [
+    { label: 'pre-screen labels (D5)', count: ol ? ol.d5 : c(n.labels), href: '/decisions#prescreen' },
+    ...(ol ? [{ label: 'CAR audits', count: ol.car, href: '/decisions#attribution-audit' }, { label: 'E1 retrieval labels', count: ol.e1, href: '/decisions#e1-retrieval-labels' },
+      { label: 'DI-001 relevance labels', count: ol.di001, href: '/decisions#discovery-relevance' }] : []),
+  ];
+  const system: Item[] = [
+    ...(n.system?.requeue_mode === 'on' ? [{ label: 'requeue rows the system will handle', count: n.system.requeue_will_handle, href: '/decisions#requeue' }] : []),
+    { label: 'silent stalls', count: c(n.stalls), href: '/#stalls' },
+    ...(proposalsSystem ? [{ label: 'proposals in panel review', count: c(n.proposals), href: '/governance?tab=assurance' }] : []),
+  ];
+  // the server's total counts human decisions only; older servers send no total
+  const total = n.total ?? items.reduce((sum, item) => sum + (item.count ?? 0), 0);
+  const unknown = items.filter((item) => item.count === null);
+  const labellingTotal = labelling.some((l) => l.count === null) ? null : labelling.reduce((a, l) => a + (l.count as number), 0);
+  return { items, info, labelling, labellingTotal, system, total, unknown };
 }
 
 export function NeedsYou({ n }: { n: NeedsYouCounts }) {
-  const { items, total, unknown } = needsYouItems(n);
+  const { items, info, labelling, labellingTotal, system, total, unknown } = needsYouItems(n);
   const sys = n.system_requeue;
+  const shown = <T extends { count: number | null }>(xs: T[]): T[] => xs.filter((x) => x.count !== 0);
+  const link = (item: { label: string; count: number | null; href: string }) => (
+    <li key={item.label}><Link to={item.href} className="underline">{item.count ?? 'unknown'} {item.label}</Link></li>
+  );
   return (
     <section aria-labelledby="needs-you" className={`rounded-lg border p-4 ${total || unknown.length ? 'border-status-paused/40 bg-status-paused/10' : 'border-border'}`}>
       <h2 id="needs-you" className="text-lg font-semibold mb-2">{total ? `Needs you (${unknown.length ? '≥ ' : ''}${total})` : unknown.length ? 'Needs you: unknown' : 'Nothing needs you right now'}</h2>
       {unknown.length > 0 && <p className="text-sm text-status-warning mb-1">Could not count: {unknown.map((u) => u.label).join(', ')} — shown as unknown, not 0.</p>}
-      {items.some((item) => item.count) && <ul className="flex flex-wrap gap-4 text-sm">{items.filter((item) => item.count).map((item) => (
-        <li key={item.label}><Link to={item.href} className="underline">{item.count} {item.label}</Link></li>
-      ))}</ul>}
+      {items.some((item) => item.count) && <ul className="flex flex-wrap gap-4 text-sm">{items.filter((item) => item.count).map(link)}</ul>}
+      {info.some((item) => item.count) && <ul className="flex flex-wrap gap-4 text-xs text-foreground-secondary mt-1">{info.filter((item) => item.count).map(link)}</ul>}
+      {shown(labelling).length > 0 && (
+        <div className="mt-2 text-sm" data-testid="optional-labelling">
+          <span className="font-medium">Optional labelling ({labellingTotal ?? 'unknown'})</span> <span className="text-xs text-foreground-tertiary">ground truth, not decisions</span>
+          <ul className="flex flex-wrap gap-4 text-xs mt-1">{shown(labelling).map(link)}</ul>
+        </div>
+      )}
+      {shown(system).length > 0 && (
+        <div className="mt-2 text-xs text-foreground-tertiary" data-testid="system-handles">
+          System handles (not counted): <ul className="inline-flex flex-wrap gap-3">{shown(system).map(link)}</ul>
+        </div>
+      )}
       {sys && (sys.budgeted_requeue || sys.attribution_unknown || sys.not_actionable) ? (
         <p className="text-xs text-foreground-tertiary mt-2">
           System-side requeue candidates (not counted): {sys.budgeted_requeue ?? 0} budgeted requeue · {sys.attribution_unknown ?? 0} attribution unknown · {sys.not_actionable ?? 0} not actionable

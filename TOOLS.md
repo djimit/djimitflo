@@ -25,6 +25,7 @@ A registered runtime is not an admitted one; the decision per version is in `GET
 
 | Runtime | Pinned version | Record | Expires |
 |---|---|---|---|
+| djimitsec | 1.0.0 | assessed | 2026-11-27 |
 | opencode | 1.18.10 | legacy | 2026-12-31 |
 | atomic | 0.6.5 | legacy | 2026-12-31 |
 | codex | 0.146.0 | legacy | 2026-12-31 |
@@ -56,6 +57,8 @@ From EVOLUTION_FLAGS; default as in the runbook flag table (docs/runbooks/self-i
 | `INFERENCE_BUDGET_THROTTLE` | yes | `shadow` (`off`, `on`) |
 | `OLLAMA_WEEKLY_TOKEN_BUDGET` | yes | unset = no budget (never throttles) |
 | `OLLAMA_THROTTLE_AT` | yes | 0.7 |
+| `OLLAMA_BALANCE_MODE` | no | off (`on`) |
+| `OLLAMA_ACCOUNT_KEY_ENV` | no | `SOCIAL_COMPAT_API_KEY` |
 
 ## Fixed rules
 

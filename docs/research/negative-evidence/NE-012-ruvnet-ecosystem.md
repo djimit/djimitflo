@@ -93,3 +93,14 @@ non-deep repositories is a judgement from README head and tree, not a code revie
 `git clone --depth 1 -c core.hooksPath=/dev/null https://github.com/ruvnet/<repo>` and fetch the pinned commit above, then read the
 cited files. Never open a checkout as a Claude Code or IDE project with hooks active, and do not install or run anything outside an
 isolated sandbox approved by the operator.
+
+## Addendum 2026-10-21: create-sparc (ruvnet/rUv-dev)
+
+Reviewed read-only at `0cfebab8` and the published npm tarball `create-sparc@1.2.4` (nothing installed or run).
+`npx create-sparc init` scaffolds Roo Code modes and copies `.roo/mcp.json` into the target project. That file
+auto-approves Supabase `execute_sql` and `apply_migration` through an unpinned `@supabase/mcp-server-supabase@latest`,
+and points mem0/perplexity at the author's own `mcp.composio.dev/<session>` URLs (prompts and memory would flow through
+an account outside our control). The npm release predates the repo's own command-injection/path-traversal/SSRF fix
+(`execSync` with a command built from config; registry URL is a placeholder). 6 of 16 modes get shell + edit + browser
++ MCP. The SPARC phase prompts are a prompt method only; Djimitflo already tests such variants through maker-template
+and genome trials. Guard patterns added: `create-sparc`, `mcp.composio.dev/`.
