@@ -1,0 +1,43 @@
+diff --git a/ghost/core/core/server/api/endpoints/db.js b/ghost/core/core/server/api/endpoints/db.js
+index aa33603..8f66f29 100644
+--- a/ghost/core/core/server/api/endpoints/db.js
++++ b/ghost/core/core/server/api/endpoints/db.js
+@@ -1,5 +1,4 @@
+ const moment = require('moment-timezone');
+-const path = require('path');
+ const dbBackup = require('../../data/db/backup');
+ const exporter = require('../../data/exporter');
+ const importer = require('../../data/importer');
+@@ -30,11 +29,6 @@ const controller = {
+             }
+         },
+         query(frame) {
+-            const filename = frame.options.filename;
+-            if (filename && path.basename(filename) !== filename) {
+-                throw new errors.ValidationError({message: 'Export filename must not contain path separators'});
+-            }
+-
+             // NOTE: we need to have `include` property available as backupDatabase uses it internally
+             Object.assign(frame.options, {include: frame.options.withRelated});
+ 
+diff --git a/ghost/core/core/server/data/exporter/export-filename.js b/ghost/core/core/server/data/exporter/export-filename.js
+index 7ba248b..c2564d9 100644
+--- a/ghost/core/core/server/data/exporter/export-filename.js
++++ b/ghost/core/core/server/data/exporter/export-filename.js
+@@ -3,7 +3,6 @@ const logging = require('@tryghost/logging');
+ const errors = require('@tryghost/errors');
+ const security = require('@tryghost/security');
+ const models = require('../../models');
+-const path = require('path');
+ 
+ const modelOptions = {context: {internal: true}};
+ 
+@@ -15,7 +14,7 @@ const exportFileName = async function exportFileName(options) {
+ 
+     // custom filename
+     if (options.filename) {
+-        return path.basename(options.filename) + '.json';
++        return options.filename + '.json';
+     }
+ 
+     try {

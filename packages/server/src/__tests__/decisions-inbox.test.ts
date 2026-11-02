@@ -49,7 +49,8 @@ it('honest needs-you: no_change rows are listed but not counted; a dismissed can
   // a regression with a maker attribution is the operator's; unattributed ones are counted as attribution_unknown
   db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at)
     VALUES ('a-r1', 'outcome_attribution', 'self_improvement', 'r1', 'h', 'annotation', 'maker_failure', 'test', ?)`).run(new Date().toISOString());
-  expect(openDecisionCounts(decisionsInbox(db, NOW)).requeue).toBe(2);
+  expect(openDecisionCounts(decisionsInbox(db, NOW)).requeue).toBe(1); // E2: i1 (infra_failed) is listed but operational, not counted
+  expect(decisionsInbox(db, NOW).requeue.find((r) => r.id === 'i1')?.queue_class).toBe('infra_failed');
   expect(decisionsInbox(db, NOW).requeue.map((r) => r.id).sort()).toEqual(['i1', 'n1', 'r1']);
   dismissRequeue(db, 'i1', 'op', '  runner was down \n fixed  ');
   expect(decisionsInbox(db, NOW).requeue.map((r) => r.id).sort()).toEqual(['n1', 'r1']);

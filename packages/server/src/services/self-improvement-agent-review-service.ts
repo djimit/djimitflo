@@ -12,13 +12,19 @@
  * profile (from the panel's catalog snapshot) as the reviewer persona, and
  * requires it to answer in the panel's own output_schema as JSON. The prompt
  * is explicit that 'oppose'/'needs_evidence' are expected, valid outcomes —
- * this is deliberately not built to rubber-stamp. A response that fails to
- * parse, or omits evidence, is submitted as 'needs_evidence' with a synthetic
- * evidence marker rather than inventing supporting evidence to pass
- * validation.
+ * this is deliberately not built to rubber-stamp.
+ *
+ * B32 (operator 11-10, 'no silent coercion'): an answer must pass schema + semantic validation (stance in the allowed
+ * set, confidence in [0,1], non-empty findings, non-empty concrete evidence_refs). An invalid answer gets ONE re-ask
+ * that quotes the validation error; still invalid → quarantined (specialist_review_quarantine: model, prompt hash, raw
+ * hash, short excerpt), never stored as a review and never a needs_more_evidence vote. A seat whose attempts are
+ * exhausted is closed and the panel decides on its valid reviews only; no valid review at all → panel_failed (#758).
  */
 
+import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { generateText, llmEndpoints, type LlmUsage } from './llm-fallback';
 import { prepareState } from './typesafe-client';
@@ -26,9 +32,12 @@ import { buildDecisionContext } from './decision-context-service';
 import { kbContext } from './kb-corpus';
 import type { Database } from 'better-sqlite3';
 import { SpecialistPanelService, type SpecialistPanelRecord, type SpecialistProfile } from './specialist-panel-service';
+import { extraRepoBySlug, repoRefOf } from './repo-registry';
 import { chooseModel, modelSelectorMode, recordModelCall, shadowCandidate, shadowRate } from './model-selector';
-import { repairModelJson } from './model-json';
-import { z } from 'zod';
+import { noteOllamaOutput, ollamaLimitClass, PANEL_FALLBACK_PREFIX, panelFallbackModel, panelFallbackRuntime } from './inference-failover';
+import { effectiveFallbackRuntime } from './ollama-outage-fallback';
+import { AUTH_MISSING, LIMIT_HIT, claudeSubscriptionBackoff, isSubscriptionLimit, recordSubscriptionLimit, subscriptionAuthPresent } from './subscription-gym';
+import { subscriptionChildEnv } from '../execution/executors/subscription-env';
 
 /** The model argument is only passed when MODEL_SELECTOR_MODE is on; undefined = the caller's own default (unchanged). */
 /** usage: B29 — the provider's token counts for this call (not called = unknown; the ledger keeps null, never 0) */
@@ -45,10 +54,68 @@ interface ParsedReview {
 }
 
 const VALID_STANCES = new Set(['support', 'oppose', 'uncertain', 'needs_evidence']);
-/** UX-19: the shape a repaired panel answer must have before it is accepted. */
-const REVIEW_SCHEMA = z.object({ stance: z.string().refine((s) => VALID_STANCES.has(s)) }).passthrough();
 const REVIEW_SHAPE = '{"stance": "support|oppose|uncertain|needs_evidence", "confidence": 0.0-1.0, "findings": ["..."], "recommendations": ["..."], "evidence_refs": ["..."], "limitations": "..."}';
-const FALLBACK_EVIDENCE = 'agent-review:model-response-unparseable-or-missing-evidence';
+/** B32: a seat is closed after this many quarantined attempts (each attempt = one call + one re-ask). */
+export const QUARANTINE_SEAT_LIMIT = 2;
+const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
+
+/** Provenance stored on every automated review and quarantined attempt. */
+interface Provenance { model: string; prompt_sha256: string; raw_sha256: string | null; attempt: number }
+type AskOutcome = { review: ParsedReview; provenance: Provenance } | { invalid: string; raw: string; provenance: Provenance } | { error: string };
+
+/**
+ * E4: why an answer failed validation — 'parse' (no JSON object could be read) vs 'schema' (JSON, but a field breaks the
+ * review schema). The writer records it (ledger status invalid_parse / invalid_schema); the quarantine row keeps the exact
+ * error text, which reviewFailureKind() maps back without guessing (the parse messages are this fixed list).
+ */
+export type ReviewFailureKind = 'parse' | 'schema';
+export const PARSE_ERRORS = ['no JSON object in the answer', 'answer is not valid JSON', 'answer is not a JSON object'] as const;
+const SCHEMA_ERROR = /^(stance|confidence|findings|evidence_refs|recommendations|limitations) must /;
+export function reviewFailureKind(error: string): ReviewFailureKind | null {
+  return (PARSE_ERRORS as readonly string[]).includes(error) ? 'parse' : SCHEMA_ERROR.test(error) ? 'schema' : null;
+}
+
+const PLACEHOLDER_REF = /^(\.{2,}|n\/a|none|todo|tbd)$/i;
+
+/**
+ * B32: strict schema + semantic check of one specialist answer. No coercion: a missing or out-of-set stance, a confidence
+ * outside [0,1], empty findings or no concrete evidence ref makes the answer invalid (re-asked once, then quarantined).
+ * ponytail: 'cited evidence exists' is checked as 'non-empty, not a placeholder'; matching refs against the prompt
+ * context is the upgrade if invented refs show up in quarantine / audit samples.
+ */
+export function validateReview(raw: string): { ok: true; review: ParsedReview } | { ok: false; error: string; kind: ReviewFailureKind } {
+  const parse = (error: string) => ({ ok: false as const, error, kind: 'parse' as const });
+  const schema = (error: string) => ({ ok: false as const, error, kind: 'schema' as const });
+  // thinking models (and the LLM fallback) may prefix the answer with a reasoning block that itself contains braces
+  const trimmed = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const first = trimmed.indexOf('{');
+  const last = trimmed.lastIndexOf('}');
+  const jsonText = fenced ? fenced[1].trim() : first !== -1 && last > first ? trimmed.slice(first, last + 1) : null;
+  if (!jsonText) return parse(PARSE_ERRORS[0]);
+  let c: Record<string, unknown>;
+  try { c = JSON.parse(jsonText); } catch { return parse(PARSE_ERRORS[1]); }
+  if (!c || typeof c !== 'object' || Array.isArray(c)) return parse(PARSE_ERRORS[2]);
+  if (typeof c.stance !== 'string' || !VALID_STANCES.has(c.stance)) {
+    return schema(`stance must be one of support|oppose|uncertain|needs_evidence (got ${JSON.stringify(c.stance ?? null)})`);
+  }
+  const confidence = typeof c.confidence === 'number' ? c.confidence : Number.NaN;
+  if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) return schema('confidence must be a number between 0 and 1');
+  const strings = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').map((x) => x.trim()).filter(Boolean) : null);
+  const findings = strings(c.findings);
+  if (!findings || findings.length === 0) return schema('findings must be a non-empty array of strings');
+  const evidence = strings(c.evidence_refs)?.filter((r) => r.length >= 3 && !PLACEHOLDER_REF.test(r));
+  if (!evidence || evidence.length === 0) return schema('evidence_refs must cite at least one concrete item from the context');
+  if (c.recommendations !== undefined && !Array.isArray(c.recommendations)) return schema('recommendations must be an array of strings');
+  if (c.limitations !== undefined && c.limitations !== null && typeof c.limitations !== 'string') return schema('limitations must be a string');
+  return {
+    ok: true,
+    review: {
+      stance: c.stance as ParsedReview['stance'], confidence, findings, recommendations: strings(c.recommendations) ?? [],
+      evidence_refs: evidence, limitations: typeof c.limitations === 'string' ? c.limitations : undefined,
+    },
+  };
+}
 
 function defaultOllamaUrl(): string {
   return process.env.OLLAMA_URL || 'http://192.168.1.28:11434';
@@ -70,6 +137,51 @@ async function callOllama(prompt: string, model = defaultModel(), usage?: (u: Ll
 }
 
 const MAX_GENERATION_ATTEMPTS = 3;
+
+/**
+ * PANEL_FALLBACK_RUNTIME=claude: the CLI args of one panel answer — print mode, JSON result, no tools at all (`--tools ""`)
+ * in plan mode (read-only; the most restrictive mode of the 2.1.282 CLI), prompts nobody answers denied, no session kept,
+ * no MCP servers. Prompt on stdin.
+ */
+export const panelClaudeArgs = (model: string): string[] =>
+  ['-p', '--output-format', 'json', '--model', model, '--permission-mode', 'plan', '--permission-prompts', 'none', '--tools', '', '--no-session-persistence', '--strict-mcp-config'];
+/** A fallback failure that says nothing about the proposal (no OAuth token / subscription window used): no attempt spent. */
+const FALLBACK_INFRA = /^panel_fallback: infra: subscription_(auth_missing|limit)\b/; // AUTH_MISSING / LIMIT_HIT (literal: import cycle at load)
+export type SpawnFn = typeof spawn;
+
+/**
+ * One panel answer from the Claude Code CLI on the Max subscription: child env without any API key / base URL, the OAuth
+ * token injected (subscriptionChildEnv), cwd a temp dir (no repo CLAUDE.md). No token → refused before any spawn.
+ * model is 'claude:<model>' (the provenance name). Usage reported as provider subscription-cli:claude.
+ */
+export function callClaudePanel(prompt: string, model = `${PANEL_FALLBACK_PREFIX}${panelFallbackModel()}`, usage?: (u: LlmUsage) => void,
+  deps: { spawnFn?: SpawnFn; env?: NodeJS.ProcessEnv } = {}): Promise<string> {
+  const env = deps.env ?? process.env;
+  if (!subscriptionAuthPresent('claude', env)) return Promise.reject(new Error(`panel_fallback: ${AUTH_MISSING}`));
+  const cliModel = model.startsWith(PANEL_FALLBACK_PREFIX) ? model.slice(PANEL_FALLBACK_PREFIX.length) : model;
+  return new Promise((resolve, reject) => {
+    const child = (deps.spawnFn ?? spawn)(env.CLAUDE_BIN_PATH || 'claude', panelClaudeArgs(cliModel), { cwd: os.tmpdir(), env: subscriptionChildEnv(env, 'claude', env), stdio: ['pipe', 'pipe', 'pipe'] });
+    let stdout = ''; let stderr = '';
+    const timer = setTimeout(() => child.kill('SIGTERM'), reviewTimeoutMs());
+    child.stdout?.on('data', (d) => { stdout += String(d); });
+    child.stderr?.on('data', (d) => { stderr += String(d); });
+    child.on('error', (err) => { clearTimeout(timer); reject(new Error(`panel_fallback: ${err.message}`)); });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      let out: { result?: unknown; is_error?: unknown; usage?: { input_tokens?: unknown; output_tokens?: unknown } } | null = null;
+      try { out = JSON.parse(stdout.trim()); } catch { out = null; }
+      if (code !== 0 || !out || out.is_error === true || typeof out.result !== 'string') {
+        const detail = (typeof out?.result === 'string' ? out.result : stderr || stdout).trim().split('\n').pop()?.slice(0, 200) ?? '';
+        reject(new Error(`panel_fallback: ${isSubscriptionLimit(code ?? 1, stdout, stderr) ? LIMIT_HIT : `exit=${code ?? 'signal'}`} ${detail}`.trim()));
+        return;
+      }
+      const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+      try { usage?.({ tokensIn: n(out.usage?.input_tokens), tokensOut: n(out.usage?.output_tokens), provider: 'subscription-cli:claude', model }); } catch { /* usage never breaks the call */ }
+      resolve(out.result);
+    });
+    child.stdin?.end(prompt);
+  });
+}
 
 const EXCERPT_CHARS = 6000;
 const SENSITIVE_PATH = /(^|\/)(\.env|node_modules|\.git)(\/|$)|secret|credential|password|\.pem$|id_rsa|\.key$/i;
@@ -95,8 +207,6 @@ export function readTargetExcerpt(target: unknown, repoRoot = process.env.REVIEW
 }
 const CONNECTIVITY_ERROR = /fetch failed|ECONN|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|EAI_AGAIN|aborted|timed? ?out|socket hang up/i;
 
-const UNPARSEABLE = 'model response could not be parsed as a structured review';
-
 /** The fixed instruction lines of every specialist panel review prompt (exported for the STE prompt lint). */
 export const PANEL_REVIEW_INSTRUCTIONS = [
   'You are one of several independent reviewers. Your job is to genuinely evaluate this proposal',
@@ -117,17 +227,21 @@ export class SelfImprovementAgentReviewService {
   private readonly generationFailures = new Map<string, number>();
   private readonly random: () => number;
 
-  constructor(private readonly db: Database, callModel: ModelCaller = callOllama, opts: { random?: () => number } = {}) {
+  private readonly callFallback: ModelCaller;
+
+  constructor(private readonly db: Database, callModel: ModelCaller = callOllama, opts: { random?: () => number; callFallback?: ModelCaller } = {}) {
     this.panels = new SpecialistPanelService(db);
     this.callModel = callModel;
     this.random = opts.random ?? Math.random;
+    this.callFallback = opts.callFallback ?? ((prompt, model, usage) => callClaudePanel(prompt, model, usage));
   }
 
   /** Generate and submit reviews for every specialist role that hasn't reviewed this panel yet. */
   async reviewMissingSpecialists(panelId: string, runId: string): Promise<SpecialistPanelRecord> {
     let panel = this.panels.getPanel(panelId);
     const reviewed = new Set((panel.reviews || []).map((review) => review.specialist_id));
-    const missing = panel.panel.filter((profile) => !reviewed.has(profile.id));
+    const closed = this.panels.closedSeats(panel.id);
+    const missing = panel.panel.filter((profile) => !reviewed.has(profile.id) && !closed.has(profile.id));
     // one advisory lookup per panel (not per specialist); null unless TYPESAFE_DECISION_CONTEXT_MODE=enforce
     const lessons = missing.length
       ? (await buildDecisionContext(this.db, { type: 'specialist_panel', id: panel.id }, { topic: panel.topic, context: panel.context }).catch(() => null))?.text
@@ -138,6 +252,12 @@ export class SelfImprovementAgentReviewService {
 
     for (const profile of missing) {
       const outcome = await this.reviewOne(panel, profile, advisory);
+      if ('invalid' in outcome) {
+        // B32: never a review — quarantine the attempt; close the seat once its attempts are exhausted
+        this.panels.quarantineAttempt({ panel_id: panel.id, specialist_id: profile.id, ...outcome.provenance, raw_excerpt: outcome.raw, error: outcome.invalid });
+        if (this.panels.seatQuarantineCount(panel.id, profile.id) >= QUARANTINE_SEAT_LIMIT) panel = this.panels.closeSeat(panel.id, profile.id);
+        continue;
+      }
       if ('error' in outcome) {
         // A failed model call is not a judgement. It used to be stored as a confidence-0 needs_evidence review
         // (208 of 2309 production reviews: 404 on a missing model, 'fetch failed'), which parked the proposal
@@ -145,7 +265,7 @@ export class SelfImprovementAgentReviewService {
         // fall back to the recorded failure so a permanently broken proposal cannot spin forever.
         // A connectivity failure (host down, timeout) says nothing about the proposal: wait it out without
         // spending attempts, or a 45-minute outage would park every proposal in review (seen 2026-09-21).
-        if (CONNECTIVITY_ERROR.test(outcome.error)) {
+        if (CONNECTIVITY_ERROR.test(outcome.error) || FALLBACK_INFRA.test(outcome.error)) {
           console.warn(`self-improvement review for ${profile.id} skipped, model host unreachable (${outcome.error}); will retry next tick`);
           continue;
         }
@@ -156,81 +276,107 @@ export class SelfImprovementAgentReviewService {
           console.warn(`self-improvement review for ${profile.id} failed (attempt ${attempts}/${MAX_GENERATION_ATTEMPTS}), will retry: ${outcome.error}`);
           continue;
         }
+        // bounded: a seat that keeps failing to generate is closed (quarantined), not filled with a synthetic review
+        this.panels.quarantineAttempt({ panel_id: panel.id, specialist_id: profile.id, model: defaultModel(), error: `generation failed: ${outcome.error}`, attempt: attempts });
+        panel = this.panels.closeSeat(panel.id, profile.id);
+        continue;
       }
-      const parsed = !('error' in outcome) ? outcome : outcome.error === UNPARSEABLE ? this.needsEvidenceFallback() : this.failureReview(outcome.error);
       panel = this.panels.submitReview(
         panel.id,
-        { specialist_id: profile.id, ...parsed },
-        `agent:${profile.id}:${runId}`,
+        { specialist_id: profile.id, ...outcome.review, ...outcome.provenance },
+        `agent:${profile.id}:${runId}${outcome.provenance.model.startsWith(PANEL_FALLBACK_PREFIX) ? ':panel_fallback' : ''}`,
       );
     }
     return panel;
   }
 
-  private async reviewOne(panel: SpecialistPanelRecord, profile: SpecialistProfile, lessons?: string): Promise<ParsedReview | { error: string }> {
+  private async reviewOne(panel: SpecialistPanelRecord, profile: SpecialistProfile, lessons?: string): Promise<AskOutcome> {
     const prompt = this.buildPrompt(panel, profile, lessons);
+    // PANEL_FALLBACK_RUNTIME=claude: while Ollama is limited (auto state or the manual outage flag) the seat is answered on the
+    // subscription; a panel call failing with the usage-limit shape is answered there too. Same validation / quarantine.
+    const fallback = panelFallbackRuntime() ? `${PANEL_FALLBACK_PREFIX}${panelFallbackModel()}` : null;
+    if (fallback && effectiveFallbackRuntime(this.db)) return this.askFallback(prompt, profile.id, fallback);
+    const outcome = await this.reviewOnOllama(prompt, profile);
+    if (fallback && 'error' in outcome && ollamaLimitClass(outcome.error)) {
+      noteOllamaOutput(this.db, outcome.error, 'panel_review');
+      return this.askFallback(prompt, profile.id, fallback);
+    }
+    return outcome;
+  }
+
+  /**
+   * The fallback seat under the shared Claude subscription backoff (subscription-gym claudeSubscriptionBackoff): while it holds,
+   * no spawn and an infra error (FALLBACK_INFRA: no attempt spent, no quarantine, no verdict); a limit hit records it.
+   */
+  private async askFallback(prompt: string, who: string, model: string): Promise<AskOutcome> {
+    const backoff = claudeSubscriptionBackoff(this.db);
+    if (backoff) return { error: `panel_fallback: ${LIMIT_HIT} backoff (hit ${backoff.hit_at} via ${backoff.source}, until ${backoff.until})` };
+    const outcome = await this.ask(prompt, who, model, undefined, this.callFallback);
+    if ('error' in outcome && outcome.error.startsWith(`panel_fallback: ${LIMIT_HIT}`)) recordSubscriptionLimit(this.db, 'panel_review');
+    return outcome;
+  }
+
+  private async reviewOnOllama(prompt: string, profile: SpecialistProfile): Promise<AskOutcome> {
     const mode = modelSelectorMode();
     if (mode === 'off') return this.ask(prompt, profile.id);
     // MS-1: enforce uses the cheapest model that earned it (incumbent as fallback); shadow samples one candidate and discards it
     const incumbent = defaultModel();
     const pick = mode === 'enforce' ? chooseModel(this.db, CONSUMER, incumbent) : incumbent;
     let outcome = await this.ask(prompt, profile.id, pick);
-    if (pick !== incumbent && 'error' in outcome) outcome = await this.ask(prompt, profile.id, incumbent);
+    // the configured fallback: a selector-picked challenger that fails or answers invalidly falls back to the incumbent
+    if (pick !== incumbent && !('review' in outcome)) outcome = await this.ask(prompt, profile.id, incumbent);
     if (mode === 'shadow' && this.random() < shadowRate()) {
       const candidate = shadowCandidate(this.db, CONSUMER, incumbent);
-      if (candidate) await this.ask(prompt, profile.id, candidate, 'error' in outcome ? null : outcome.stance);
+      if (candidate) await this.ask(prompt, profile.id, candidate, 'review' in outcome ? outcome.review.stance : null);
     }
     return outcome;
   }
 
-  /** One model call; with a model given it is recorded in the MS-1 ledger (a shadow call when incumbentStance is passed). */
-  private async ask(prompt: string, who: string, model?: string, incumbentStance?: ParsedReview['stance'] | null): Promise<ParsedReview | { error: string }> {
+  /**
+   * One answer with at most one re-ask: the re-ask quotes the validation error. With a model given the call is recorded in
+   * the MS-1 ledger (status ok / repaired / invalid_parse / invalid_schema (E4; 'invalid' before) / empty / error; a shadow call when incumbentStance is passed).
+   */
+  private async ask(prompt: string, who: string, model?: string, incumbentStance?: ParsedReview['stance'] | null, callModel: ModelCaller = this.callModel): Promise<AskOutcome> {
     const started = Date.now();
     const shadow = incumbentStance !== undefined;
-    // B29: tokens of this call (summed over a JSON repair call) as the provider reported them; recorded on the selector row
+    const promptSha = sha256(prompt);
+    // B29: tokens of this call (summed over the re-ask) as the provider reported them; recorded on the selector row
     // (the transport row then carries none, so they count once). No row (selector off) = the transport row keeps them.
     let usage: { tokensIn: number | null; tokensOut: number | null; provider: string | null } = { tokensIn: null, tokensOut: null, provider: null };
     const sink = (u: LlmUsage) => {
       const add = (a: number | null, b: number | null) => (a === null && b === null ? null : (a ?? 0) + (b ?? 0));
       usage = { tokensIn: add(usage.tokensIn, u.tokensIn), tokensOut: add(usage.tokensOut, u.tokensOut), provider: u.provider };
     };
-    const record = (ok: boolean, chars: number, stance?: string) => {
+    const record = (ok: boolean, chars: number, status: string, stance?: string) => {
       if (model) recordModelCall(this.db, { consumer: CONSUMER, model, ok, latencyMs: Date.now() - started, outChars: chars, shadow: shadow ? 1 : 0,
-        agree: shadow && incumbentStance && stance ? stance === incumbentStance : null,
-        provider: usage.provider, tokensIn: usage.tokensIn, tokensOut: usage.tokensOut, taskKind: 'review', purpose: `panel_review:${shadow ? 'shadow' : 'review'}` });
+        agree: shadow && incumbentStance && stance ? stance === incumbentStance : null, status,
+        provider: usage.provider ?? (model.startsWith(PANEL_FALLBACK_PREFIX) ? 'subscription-cli:claude' : null), tokensIn: usage.tokensIn, tokensOut: usage.tokensOut,
+        taskKind: 'review', purpose: `panel_review:${shadow ? 'shadow' : model.startsWith(PANEL_FALLBACK_PREFIX) ? 'fallback' : 'review'}` });
     };
     try {
-      const raw = await this.callModel(prompt, model, model ? sink : undefined);
+      let raw = await callModel(prompt, model, model ? sink : undefined);
       // prod 2026-09-25 (sample logged since #416): the "unreadable" answers were empty responses — a transient model
       // failure, treated like an unreachable host (no attempt spent, never recorded as a vote)
-      if (!raw.trim()) { record(false, 0); return { error: 'empty model response (timed out)' }; }
-      // An unreadable answer is no judgement either (prod 2026-09-25: one garbled reply parked two test-gap proposals
-      // of a 6/6 lane); retry it like a failed call.
-      let parsed = this.parseResponse(raw);
-      // UX-19: one repair call to the same model (LLM_JSON_REPAIR_ENABLED); recorded as 'repaired' / 'unparseable'
-      if (!parsed) {
-        const repaired = await repairModelJson({ db: this.db, consumer: CONSUMER, model: model ?? defaultModel(), raw, schema: REVIEW_SCHEMA, shape: REVIEW_SHAPE,
-          ask: (repairPrompt) => this.callModel(repairPrompt, model, model ? sink : undefined) });
-        if (repaired) parsed = this.parseResponse(repaired);
+      if (!raw.trim()) { record(false, 0, 'empty'); return { error: 'empty model response (timed out)' }; }
+      let checked = validateReview(raw);
+      let attempt = 1;
+      if (!checked.ok) {
+        attempt = 2;
+        const retry = await callModel(`${prompt}\n\nYour previous answer was rejected: ${checked.error}. Respond again with ONLY the JSON object in exactly this shape:\n${REVIEW_SHAPE}`, model, model ? sink : undefined);
+        if (retry.trim()) { raw = retry; checked = validateReview(raw); }
       }
-      // keep a short sample so the next unreadable answer can be diagnosed (prod 2026-09-25: 16 in 7 days, in pairs per panel)
-      record(!!parsed, raw.length, parsed?.stance);
-      if (!parsed) console.warn(`self-improvement review for ${who}${shadow ? ' (shadow)' : ''}: unreadable answer (${raw.length} chars): ${JSON.stringify(raw.slice(0, 160))} … ${JSON.stringify(raw.slice(-160))}`);
-      return parsed ?? { error: UNPARSEABLE };
+      const provenance: Provenance = { model: model ?? defaultModel(), prompt_sha256: promptSha, raw_sha256: sha256(raw), attempt };
+      if (!checked.ok) {
+        record(false, raw.length, `invalid_${checked.kind}`);
+        console.warn(`self-improvement review for ${who}${shadow ? ' (shadow)' : ''}: invalid answer after re-ask (${checked.error}; ${raw.length} chars): ${JSON.stringify(raw.slice(0, 160))}`);
+        return { invalid: checked.error, raw, provenance };
+      }
+      record(true, raw.length, attempt === 1 ? 'ok' : 'repaired', checked.review.stance);
+      return { review: checked.review, provenance };
     } catch (err) {
-      record(false, 0);
+      record(false, 0, 'error');
       return { error: err instanceof Error ? err.message : String(err) };
     }
-  }
-
-  private failureReview(error: string): ParsedReview {
-    return {
-      stance: 'needs_evidence',
-      confidence: 0,
-      findings: [`Review generation failed: ${error}`],
-      recommendations: ['Retry the automated review, or have a human complete this specialist role.'],
-      evidence_refs: [FALLBACK_EVIDENCE],
-    };
   }
 
   private buildPrompt(panel: SpecialistPanelRecord, profile: SpecialistProfile, lessons?: string): string {
@@ -252,61 +398,9 @@ export class SelfImprovementAgentReviewService {
   }
 
   private targetEvidence(panel: SpecialistPanelRecord): string | null {
-    const grounding = (panel.context as { grounding?: { target?: unknown } } | undefined)?.grounding;
-    return readTargetExcerpt(grounding?.target);
-  }
-
-  private parseResponse(raw: string): ParsedReview | null {
-    const jsonText = this.extractJson(raw);
-    let candidate: Partial<ParsedReview> | null = null;
-    try {
-      candidate = jsonText ? JSON.parse(jsonText) : null;
-    } catch {
-      candidate = null;
-    }
-
-    if (!candidate || typeof candidate !== 'object') return null;
-
-    const stance = typeof candidate.stance === 'string' && VALID_STANCES.has(candidate.stance)
-      ? (candidate.stance as ParsedReview['stance'])
-      : 'needs_evidence';
-    const confidence = Number(candidate.confidence);
-    const evidenceRefs = Array.isArray(candidate.evidence_refs)
-      ? candidate.evidence_refs.filter((ref): ref is string => typeof ref === 'string' && ref.trim().length > 0)
-      : [];
-
-    return {
-      stance: evidenceRefs.length === 0 ? 'needs_evidence' : stance,
-      confidence: Number.isFinite(confidence) ? Math.min(1, Math.max(0, confidence)) : 0,
-      findings: this.stringArray(candidate.findings),
-      recommendations: this.stringArray(candidate.recommendations),
-      evidence_refs: evidenceRefs.length > 0 ? evidenceRefs : [FALLBACK_EVIDENCE],
-      limitations: typeof candidate.limitations === 'string' ? candidate.limitations : undefined,
-    };
-  }
-
-  private needsEvidenceFallback(): ParsedReview {
-    return {
-      stance: 'needs_evidence',
-      confidence: 0,
-      findings: ['Model response could not be parsed as a structured review.'],
-      recommendations: ['Retry the automated review, or have a human complete this specialist role.'],
-      evidence_refs: [FALLBACK_EVIDENCE],
-    };
-  }
-
-  private extractJson(raw: string): string | null {
-    // thinking models (and the LLM fallback) may prefix the answer with a reasoning block that itself contains braces
-    const trimmed = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    if (fenced) return fenced[1].trim();
-    const firstBrace = trimmed.indexOf('{');
-    const lastBrace = trimmed.lastIndexOf('}');
-    if (firstBrace === -1 || lastBrace === -1 || lastBrace < firstBrace) return null;
-    return trimmed.slice(firstBrace, lastBrace + 1);
-  }
-
-  private stringArray(value: unknown): string[] {
-    return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+    const context = panel.context as { grounding?: { target?: unknown }; evidence_refs?: unknown } | undefined;
+    // multi-repo: a proposal for a registered extra repo (`repo:<slug>`, EXTRA_REPOS_ENABLED=on) is read from that checkout
+    const repo = extraRepoBySlug(repoRefOf(context?.evidence_refs));
+    return repo ? readTargetExcerpt(context?.grounding?.target, repo.path) : readTargetExcerpt(context?.grounding?.target);
   }
 }

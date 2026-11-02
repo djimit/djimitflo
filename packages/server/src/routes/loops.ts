@@ -4,6 +4,7 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { createError } from '../middleware/error-handler';
 import { LoopService } from '../services/loop-service';
+import { LoopRunQueryService } from '../services/loop-run-query-service';
 import { listDraftPrs } from '../services/loop-draft-pr-service';
 import { dependencyLaneQueue, reenableDependencyLane } from '../services/dependency-lane';
 import { autoMergeEvidence, reEnableClass } from '../services/loop-auto-merge-state';
@@ -32,6 +33,7 @@ function mapLoopServiceError(error: unknown): never {
   if (message === 'LOOP_RETRY_NOT_ALLOWED') throw createError(409, 'maker lease is not failed, rejected, or marked for revision', 'LOOP_RETRY_NOT_ALLOWED');
   if (message === 'LOOP_ESCALATED_REQUIRES_HUMAN') throw createError(409, 'loop is escalated and requires human review before leasing more workers', 'LOOP_ESCALATED_REQUIRES_HUMAN');
   if (message === 'LOOP_FAILED_GATES_BLOCK_CONTINUE') throw createError(409, 'failed gates block continuation', 'LOOP_FAILED_GATES_BLOCK_CONTINUE');
+  if (message === 'LOOP_INSUFFICIENT_EVIDENCE_BLOCKS_CONTINUE') throw createError(409, 'gates with insufficient evidence block continuation', 'LOOP_INSUFFICIENT_EVIDENCE_BLOCKS_CONTINUE');
   if (message.startsWith('WORKTREE_CREATE_FAILED')) throw createError(500, message, 'WORKTREE_CREATE_FAILED');
   if (message === 'MAKER_LEASE_NOT_FOUND') throw createError(404, 'maker lease not found', 'MAKER_LEASE_NOT_FOUND');
   if (message === 'LEASE_NOT_MAKER') throw createError(400, 'lease is not a maker lease', 'LEASE_NOT_MAKER');
@@ -66,6 +68,10 @@ function mapLoopServiceError(error: unknown): never {
     const gate = message.split(':')[1] || 'unknown';
     throw createError(409, `loop completion blocked by gate: ${gate}`, 'LOOP_COMPLETION_BLOCKED');
   }
+  if (message.startsWith('LOOP_COMPLETION_INSUFFICIENT_EVIDENCE:')) {
+    const gate = message.split(':')[1] || 'unknown';
+    throw createError(409, `loop completion blocked: insufficient evidence for gate ${gate}`, 'LOOP_COMPLETION_INSUFFICIENT_EVIDENCE');
+  }
   throw error;
 }
 
@@ -74,6 +80,7 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
   router.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false })); // per-router limiter CodeQL can see; /api also caps 300/min
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
   const loopService = new LoopService(db, evidenceRoot, executionEngine);
+  const queries = new LoopRunQueryService(db);
 
   router.get('/catalog', requirePermission('read:evidence'), (_req, res, next) => {
     try {
@@ -166,6 +173,19 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
   router.get('/runs/:id/review-bundle', requirePermission('read:evidence'), (req, res, next) => {
     try {
       res.json(loopService.getReviewBundle(req.params.id));
+    } catch (error) {
+      try {
+        mapLoopServiceError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  // Gym run panel (read-only): the skill outcome record() wrote for this run — duration and the counted verdict live only there
+  router.get('/runs/:id/gym-outcome', requirePermission('read:evidence'), (req, res, next) => {
+    try {
+      res.json(queries.getGymSkillOutcome(req.params.id));
     } catch (error) {
       try {
         mapLoopServiceError(error);
@@ -298,9 +318,11 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
     }
   });
 
-  router.post('/runs/:id/checker-verdict', requirePermission('create:task'), (req, res, next) => {
+  // P0-4: a verdict is an approval — approve:task, and the reviewer is the authenticated user, never a body string
+  router.post('/runs/:id/checker-verdict', requirePermission('approve:task'), (req, res, next) => {
     try {
-      res.json(loopService.submitCheckerVerdict(req.params.id, req.body || {}));
+      if (!req.user?.sub) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
+      res.json(loopService.submitCheckerVerdict(req.params.id, req.body || {}, { id: req.user.sub, email: req.user.email }));
     } catch (error) {
       try {
         mapLoopServiceError(error);
@@ -310,9 +332,11 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
     }
   });
 
-  router.post('/runs/:id/security-verdict', requirePermission('create:task'), (req, res, next) => {
+  // P0-4: a verdict is an approval — approve:task, and the reviewer is the authenticated user, never a body string
+  router.post('/runs/:id/security-verdict', requirePermission('approve:task'), (req, res, next) => {
     try {
-      res.json(loopService.submitSecurityVerdict(req.params.id, req.body || {}));
+      if (!req.user?.sub) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
+      res.json(loopService.submitSecurityVerdict(req.params.id, req.body || {}, { id: req.user.sub, email: req.user.email }));
     } catch (error) {
       try {
         mapLoopServiceError(error);

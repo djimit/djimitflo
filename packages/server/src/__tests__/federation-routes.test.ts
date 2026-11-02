@@ -25,11 +25,12 @@ describe('federation work distribution', () => {
     const db = createTestDb();
     const app = express();
     app.use(express.json());
-    const auth = { requireAuth: (_req: unknown, _res: unknown, next: () => void) => next() } as any;
+    const auth = { requireAuth: (_req: unknown, _res: unknown, next: () => void) => next(), requirePermission: () => (_req: unknown, _res: unknown, next: () => void) => next() } as any;
     app.use('/federation', createFederationRoutes(db, auth));
     servers.push(await new Promise<Server>(resolve => { const listening = app.listen(0, () => resolve(listening)); }));
     const peerUrl = `http://127.0.0.1:${(servers[0].address() as AddressInfo).port}`;
     db.prepare("INSERT INTO federation_peers (id,url,trust_level,metadata) VALUES ('peer-1',?,'high','{}')").run(peerUrl);
+    process.env.FEDERATION_ALLOWED_HOSTS = '127.0.0.1';
 
     const response = await fetch(`http://127.0.0.1:${(servers[1].address() as AddressInfo).port}/federation/work`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ goal_objective: 'Fix the bounded issue' }),
@@ -37,6 +38,7 @@ describe('federation work distribution', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ accepted: true, peer_id: 'peer-1', result: { loop_run_id: 'remote-run' } });
     expect(offered).toMatchObject({ goal_objective: 'Fix the bounded issue' });
+    delete process.env.FEDERATION_ALLOWED_HOSTS;
     db.close();
   });
 
@@ -47,7 +49,7 @@ describe('federation work distribution', () => {
     const db = createTestDb();
     const app = express();
     app.use(express.json());
-    const auth = { requireAuth: (_req: unknown, _res: unknown, next: () => void) => next() } as any;
+    const auth = { requireAuth: (_req: unknown, _res: unknown, next: () => void) => next(), requirePermission: () => (_req: unknown, _res: unknown, next: () => void) => next() } as any;
     app.use('/federation', createFederationRoutes(db, auth));
     const local = await new Promise<Server>(resolve => { const listening = app.listen(0, () => resolve(listening)); });
     servers.push(local);
@@ -71,7 +73,7 @@ describe('federation work distribution', () => {
     const db = createTestDb();
     const app = express();
     app.use(express.json());
-    const auth = { requireAuth: (_req: unknown, _res: unknown, next: () => void) => next() } as any;
+    const auth = { requireAuth: (_req: unknown, _res: unknown, next: () => void) => next(), requirePermission: () => (_req: unknown, _res: unknown, next: () => void) => next() } as any;
     app.use('/federation', createFederationRoutes(db, auth));
     const local = await new Promise<Server>(resolve => { const listening = app.listen(0, () => resolve(listening)); });
     servers.push(local);
@@ -102,7 +104,7 @@ describe('federation work distribution', () => {
     const db = createTestDb();
     const app = express();
     app.use(express.json());
-    const auth = { requireAuth: (_req: unknown, _res: unknown, next: () => void) => next() } as any;
+    const auth = { requireAuth: (_req: unknown, _res: unknown, next: () => void) => next(), requirePermission: () => (_req: unknown, _res: unknown, next: () => void) => next() } as any;
     app.use('/federation', createFederationRoutes(db, auth));
     servers.push(await new Promise<Server>(resolve => { const listening = app.listen(0, () => resolve(listening)); }));
     const base = `http://127.0.0.1:${(servers[servers.length - 1].address() as AddressInfo).port}/federation`;

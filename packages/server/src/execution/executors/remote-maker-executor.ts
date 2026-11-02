@@ -58,13 +58,21 @@ export class RemoteMakerExecutor implements TaskExecutor {
         base = execFileSync('git', ['-C', cwd, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
         execFileSync('git', ['-C', cwd, 'merge-base', '--is-ancestor', base, 'origin/main'], { stdio: 'ignore' });
       } catch { return finish(1, '', 'infra: base commit is not on origin/main, the remote host cannot fetch it'); }
-      jobId = this.queue.enqueue(target.host, target.species, base, task.description);
+      const meta = (task.metadata || {}) as Record<string, unknown>;
+      jobId = this.queue.enqueue(target.host, target.species, base, task.description, {
+        loopRunId: typeof meta.loop_run_id === 'string' ? meta.loop_run_id : null, leaseId: typeof meta.lease_id === 'string' ? meta.lease_id : null });
       emitter.emit('log', `queued remote maker job ${jobId} for ${target.host} (${target.species}) at ${base.slice(0, 8)}`);
       const deadline = Date.now() + remoteMakerWaitMs(workMs); // backstop only: expire() fails the job first
       const poll = () => {
         if (finished) return;
         const job = this.queue.get(jobId!);
         if (job && job.status === 'done') {
+          // the lease was checked when the result arrived; a retry may have superseded it, or rebound it to another engine task,
+          // before this poll — never apply then
+          if (!this.queue.jobLeaseActive(job, task.id)) {
+            this.queue.cancel(jobId!, 'lease_not_active_at_apply', ['done']);
+            return cancelled('lease_not_active_at_apply', 'its lease is no longer the active maker lease');
+          }
           if (!job.patch) return finish(0, `remote maker (${target.host}): ${job.reason || 'no change'}`);
           const applied = spawnSync('git', ['-C', cwd, 'apply', '--whitespace=nowarn', '-'], { input: job.patch, encoding: 'utf8' });
           return applied.status === 0 ? finish(0, `remote maker (${target.host}): ${job.reason || 'patch applied'}`) : finish(1, '', `remote patch did not apply: ${(applied.stderr || '').slice(0, 300)}`);

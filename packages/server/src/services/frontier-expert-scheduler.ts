@@ -27,6 +27,7 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { budgetPause } from './inference-budget';
 import { FrontierExpertRegistryService, frontierExpertsEnabled } from './frontier-expert-registry-service';
 import { PacingFrontierIngestionService } from './pacing-frontier-ingestion-service';
 import { ExpertEvidenceEnrichmentService } from './expert-evidence-enrichment-service';
@@ -34,7 +35,7 @@ import { ExpertSourceUnitsService, sourceUnitsEnabled } from './expert-source-un
 import { TechniqueCardService, techniqueCardsEnabled } from './technique-card-service';
 import { ExpertCouncilService } from './expert-council-service';
 import { frontierExpertPersonsEnabled, syncAreas } from './expert-areas';
-import { markRun } from './scheduler-registry';
+import { guardTick, markRun } from './scheduler-registry';
 
 const MINUTE_MS = 60 * 1000;
 const SCHEDULER_ACTOR = 'autopilot:frontier-experts';
@@ -70,9 +71,9 @@ export class FrontierExpertScheduler {
     if (!frontierExpertsEnabled(process.env)) return false;
     if (process.env.FRONTIER_EXPERTS_SCHEDULER_ENABLED !== 'true') return false;
     const intervalMs = this.intervalMinutes() * MINUTE_MS;
-    this.timer = setInterval(() => void this.tick(), intervalMs);
+    this.timer = setInterval(guardTick('frontier_experts', () => this.tick()), intervalMs);
     this.timer.unref();
-    void this.tick(); // catch-up on boot
+    guardTick('frontier_experts', () => this.tick())(); // catch-up on boot
     return true;
   }
 
@@ -130,12 +131,17 @@ export class FrontierExpertScheduler {
         // KE-5: discovery judgments that failed (queue full, timeout) get one more try, ≤ 50 a tick
         const retry = sourceUnits.retryErroredRelevance(50);
         if (retry.retried) console.log(`🔭 discovery relevance: ${retry.retried} errored judgment(s) retried`);
+        // DI-001 C: discoveries stored unjudged during DISCOVERY_RELEVANCE_PAUSED are judged once the pause is lifted
+        const rejudge = sourceUnits.rejudgePaused(); // bounded: DISCOVERY_REJUDGE_BATCH per tick, MAX_PER_DAY per 24 h
+        if (rejudge.claimed) console.log(`🔭 discovery relevance: ${rejudge.claimed} paused discovery(ies) claimed for re-judging`);
       } catch (err) {
         result.failed.push({ stage: 'enrich', error: `source units: ${err instanceof Error ? err.message : String(err)}` });
       }
     }
+    // INFERENCE_BUDGET_THROTTLE=on over the Ollama budget: the model-calling stages (technique cards, capability reviews) pause
+    const throttled = budgetPause(this.db, 'frontier_experts');
     // E3: technique cards (claims + contradictions) from paper units, via the council runtime (default off)
-    if (techniqueCardsEnabled()) {
+    if (techniqueCardsEnabled() && !throttled) {
       try {
         const service = new TechniqueCardService(this.db);
         // KE-1: abstracts first (discovery notes, else ≤ 10 scholarly-adapter lookups), so units without one can be carded
@@ -154,7 +160,7 @@ export class FrontierExpertScheduler {
     } catch (err) {
       result.failed.push({ stage: 'enrich', error: `areas: ${err instanceof Error ? err.message : String(err)}` });
     }
-    if (frontierExpertPersonsEnabled()) await this.reviewCapabilityInferred(result);
+    if (frontierExpertPersonsEnabled() && !throttled) await this.reviewCapabilityInferred(result);
     this.report(result);
     return result;
   }

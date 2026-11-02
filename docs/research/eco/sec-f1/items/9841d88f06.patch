@@ -1,0 +1,35 @@
+diff --git a/src/session.ts b/src/session.ts
+index 37f1b13..c4e4641 100644
+--- a/src/session.ts
++++ b/src/session.ts
+@@ -120,7 +120,7 @@ async function updateSession(
+   }
+ 
+   try {
+-    if (debug) console.log('Session invalid. Attempting refresh', session.refreshToken);
++    if (debug) console.log(`Session invalid. Refreshing access token that ends in ${session.accessToken.slice(-10)}`);
+ 
+     const { org_id: organizationId } = decodeJwt<AccessToken>(session.accessToken);
+ 
+@@ -131,7 +131,7 @@ async function updateSession(
+       organizationId,
+     });
+ 
+-    if (debug) console.log('Refresh successful:', refreshToken);
++    if (debug) console.log(`Refresh successful. New access token ends in ${accessToken.slice(-10)}`);
+ 
+     // Encrypt session with new access and refresh tokens
+     const encryptedSession = await encryptSession({
+diff --git a/src/workos.ts b/src/workos.ts
+index d689f6d..6c0d1d7 100644
+--- a/src/workos.ts
++++ b/src/workos.ts
+@@ -1,7 +1,7 @@
+ import { WorkOS } from '@workos-inc/node';
+ import { WORKOS_API_HOSTNAME, WORKOS_API_KEY, WORKOS_API_HTTPS, WORKOS_API_PORT } from './env-variables.js';
+ 
+-export const VERSION = '0.13.1';
++export const VERSION = '0.13.2';
+ 
+ const options = {
+   apiHostname: WORKOS_API_HOSTNAME,

@@ -49,16 +49,17 @@ export function resetTypesafeLimiter(): void { active = 0; waiting.length = 0; }
 /** KE-5: deferred work (retries) waits while the breaker is open or calls are already queued behind the limiter. */
 export const typesafeBusy = (): boolean => Date.now() < downUntil || waiting.length > 0;
 const envInt = (name: string, d: number): number => { const n = Number(process.env[name]); return Number.isInteger(n) && n > 0 ? n : d; };
-async function acquire(): Promise<boolean> {
+async function acquire(noWait = false): Promise<boolean> {
   if (active < envInt('TYPESAFE_MAX_CONCURRENCY', 6)) { active += 1; return true; }
-  if (waiting.length >= envInt('TYPESAFE_MAX_QUEUE', 1000)) return false;
+  if (noWait || waiting.length >= envInt('TYPESAFE_MAX_QUEUE', 1000)) return false;
   await new Promise<void>((resolve) => waiting.push(resolve));
   active += 1;
   return true;
 }
 function release(): void { active = Math.max(0, active - 1); waiting.shift()?.(); }
 
-const MODEL = (): string => process.env.TYPESAFE_MODEL || 'jev-1.13.0';
+/** The pinned primary model (aliases move). */
+export const typesafeModel = (): string => process.env.TYPESAFE_MODEL || 'jev-1.13.0';
 const statusOf = (err: unknown): string => {
   const e = err as { name?: string; message?: string };
   if (e?.name === 'TimeoutError' || /aborted due to timeout|timed? ?out/i.test(e?.message ?? '')) return 'timeout';
@@ -68,19 +69,28 @@ const statusOf = (err: unknown): string => {
 export class TypeSafeClient {
   constructor(private readonly fetchFn: typeof fetch = fetch) {}
 
-  /** One ledger row per call (final outcome + attempts), not one per attempt; breaker_open and queue_full are recorded too. */
-  async systemOne(state: unknown, questions: Record<string, TsQuestion>, opts: { timeoutMs?: number; retries?: number } = {}): Promise<TsResponse> {
+  /**
+   * One ledger row per call (final outcome + attempts), not one per attempt; breaker_open and queue_full are recorded too.
+   * JEV-114: `model` overrides the pinned model for one call (the paired challenger), `purpose` tags its ledger row, and
+   * `noWait` drops the call (TYPESAFE_DROPPED_BUSY) instead of queueing it when no slot is free right now.
+   */
+  async systemOne(state: unknown, questions: Record<string, TsQuestion>, opts: { timeoutMs?: number; retries?: number; model?: string; purpose?: string; noWait?: boolean } = {}): Promise<TsResponse> {
     const key = process.env.TYPESAFE_API_KEY?.trim();
     if (!key) throw new Error('TYPESAFE_NOT_CONFIGURED');
+    const model = opts.model || typesafeModel();
+    const challenger = model !== typesafeModel();
     let started = Date.now();
     const record = (ok: boolean, status: string, attempts: number, tokensIn?: number) =>
-      recordLlmCall({ consumer: 'jev', model: MODEL(), provider: 'typesafe', ok, latencyMs: Date.now() - started, outChars: 0, tokensIn, taskKind: 'systemone', status, attempts });
+      recordLlmCall({ consumer: 'jev', model, provider: 'typesafe', ok, latencyMs: Date.now() - started, outChars: 0, tokensIn, taskKind: 'systemone', status, attempts, ...(opts.purpose ? { purpose: opts.purpose } : {}) });
     if (Date.now() < downUntil) { record(false, 'breaker_open', 0); throw new Error('TYPESAFE_BREAKER_OPEN'); }
-    if (!(await acquire())) { record(false, 'queue_full', 0); throw new Error('TYPESAFE_QUEUE_FULL'); }
+    if (!(await acquire(opts.noWait))) {
+      if (opts.noWait) { record(false, 'dropped_busy', 0); throw new Error('TYPESAFE_DROPPED_BUSY'); }
+      record(false, 'queue_full', 0); throw new Error('TYPESAFE_QUEUE_FULL');
+    }
     started = Date.now(); // a slot is ours: latency is the request, not the wait
     try {
       const base = (process.env.TYPESAFE_BASE_URL || 'https://api.typesafe.ai').replace(/\/$/, '');
-      const body = JSON.stringify({ state: prepareState(state), model: MODEL(), questions });
+      const body = JSON.stringify({ state: prepareState(state), model, questions });
       const retries = opts.retries ?? 2;
       let lastStatus = 'unknown'; let attempts = 0;
       for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -91,7 +101,8 @@ export class TypeSafeClient {
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
           });
           if (response.ok) {
-            failures = 0; const out = (await response.json()) as TsResponse;
+            if (!challenger) failures = 0;
+            const out = (await response.json()) as TsResponse;
             record(true, 'ok', attempts, Math.ceil(body.length / 4));
             return out;
           }
@@ -103,8 +114,8 @@ export class TypeSafeClient {
         }
         if (attempt < retries) await new Promise((r) => setTimeout(r, 400 * 2 ** attempt)); // exponential backoff (docs: 429)
       }
-      failures += 1;
-      if (failures >= 3) downUntil = Date.now() + BREAKER_MS;
+      // JEV-114: a challenger model's failures (e.g. a model the API does not know) never open the breaker for the primary
+      if (!challenger) { failures += 1; if (failures >= 3) downUntil = Date.now() + BREAKER_MS; }
       record(false, lastStatus, attempts);
       throw new Error(`TYPESAFE_FAILED: ${lastStatus}`);
     } finally {

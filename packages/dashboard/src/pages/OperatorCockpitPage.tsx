@@ -3,7 +3,7 @@ import { WebSocketEventType } from '@djimitflo/shared';
 import { useWsSubscribe } from '../components/WebSocketProvider';
 import { Link } from 'react-router-dom';
 import { Activity, RefreshCw } from 'lucide-react';
-import { api, type EfficiencyConsumer, type EfficiencyView, type OperatorCockpit, type ServiceStatus, type ValueInterval } from '../lib/api';
+import { api, type EfficiencyConsumer, type EfficiencyView, type EvolutionLineage, type IntegrationState, type OperatorCockpit, type ServiceStatus, type ValueInterval } from '../lib/api';
 import { fmt, since } from '../lib/format';
 import { DataTable, Section, StatusPill } from '../components/ui';
 
@@ -36,8 +36,9 @@ export function DigestCard() {
  */
 export type HealthState = 'HEALTHY' | 'DEGRADED' | 'BREACHED' | 'UNKNOWN' | 'STALE' | 'NOT_APPLICABLE';
 type Gr = OperatorCockpit['guardrails'][number] & { state?: HealthState; split?: { maker: number; reviewer: number; environment: number; unknown?: number } };
-type NeedsYouCounts = { [K in Exclude<keyof NonNullable<OperatorCockpit['needs_you']>, 'system_requeue'>]?: number | null }
-  & { system_requeue?: NonNullable<OperatorCockpit['needs_you']>['system_requeue'] };
+type NY = NonNullable<OperatorCockpit['needs_you']>;
+type NeedsYouCounts = { [K in Exclude<keyof NY, 'system_requeue' | 'optional_labelling' | 'system' | 'dependency_tracked'>]?: number | null }
+  & Partial<Pick<NY, 'system_requeue' | 'optional_labelling' | 'system' | 'dependency_tracked'>>;
 export type CockpitView = Omit<OperatorCockpit, 'guardrails' | 'needs_you'> & {
   guardrails: Gr[]; needs_you?: NeedsYouCounts;
   health?: HealthState; errors?: Array<{ section: string; message: string }>; snapshot_id?: string;
@@ -67,6 +68,9 @@ export function overallHealth(d: CockpitView, now = Date.now()): { state: Health
   return { state: worst(states), reasons };
 }
 
+const STATE_TONE: Record<IntegrationState, 'ok' | 'warn' | 'error' | 'paused' | 'neutral'> = {
+  HEALTHY: 'ok', CONNECTED: 'neutral', CONFIGURED: 'neutral', UNKNOWN: 'neutral', DEGRADED: 'warn', FAILED: 'error', DISABLED: 'paused',
+};
 const num = (v: number | null | undefined) => (v === null || v === undefined ? 'unknown' : fmt(v));
 
 /** Level 1: the four questions the operator must answer in seconds. */
@@ -90,7 +94,7 @@ export function CommandStrip({ d, now = Date.now() }: { d: CockpitView; now?: nu
       </div>)}
       {card('cmd-improvement', 'Is improvement occurring?', <>
         <div className="text-xl font-semibold">{num(d.scorecard.verified_7d)} verified · {num(d.scorecard.regressed_7d)} regressed</div>
-        <p className="text-xs text-foreground-secondary">7 d throughput, not intelligence — see <Link to="/evolution" className="underline">Evolution</Link> for the validated-improvement scorecard.</p>
+        <p className="text-xs text-foreground-secondary">7 d throughput, not improvement — see <Link to="/evolution" className="underline">Evolution</Link> for the validated-improvement scorecard.</p>
       </>)}
       {card('cmd-blocked', 'What is blocked?', <>
         <div className="text-xl font-semibold">{blocked ? `${blocked} blocked` : 'nothing blocked'}</div>
@@ -105,6 +109,38 @@ export function CommandStrip({ d, now = Date.now() }: { d: CockpitView; now?: nu
       </>)}
       {card('cmd-needs-you', 'What needs you?', d.needs_you ? <NeedsYouTotal n={d.needs_you} /> : <div className="text-xl font-semibold">unknown</div>)}
     </div>
+  );
+}
+
+
+const STAGE_LABEL: Record<string, string> = { discovery: 'Discovery', proposal: 'Proposal', experiment: 'Experiment', verified: 'Verified', merged: 'Merged',
+  settled: 'Settled', survived_14d: 'Survived 14 d', survived_30d: 'Survived 30 d', capability_gain: 'Capability gain', reproduced: 'Reproduced' };
+const pct = (v: number | null) => (v === null ? '—' : `${Math.round(v * 100)} %`);
+
+/** 'Restore Evolutionary Health': the evolutionary funnel (lineage to survival), the largest bottleneck, 4-way regressions and NEV. */
+export function EvolutionFunnel({ e }: { e: EvolutionLineage }) {
+  const b = e.bottleneck; const r = e.regression_split; const n = e.nev;
+  return (
+    <section aria-labelledby="evo-funnel" className="rounded-lg border border-border p-4 space-y-3" data-testid="evolution-funnel">
+      <h2 id="evo-funnel" className="text-lg font-semibold">Evolutionary funnel ({e.window_days} d)</h2>
+      <p className="text-xs text-foreground-secondary">{e.throughput.verified} verified = {e.throughput.label}. Survival, not verification, is the fitness signal.</p>
+      {b && <p role="status" className="text-sm"><strong>Largest bottleneck:</strong> {STAGE_LABEL[b.from] ?? b.from} → {STAGE_LABEL[b.to] ?? b.to}: {b.lost} lineage(s) lost
+        ({pct(b.conversion)} convert){b.reason ? `; top reason ${b.reason}` : ''}{b.oldest_queue ? `; oldest queue ${STAGE_LABEL[b.oldest_queue.stage] ?? b.oldest_queue.stage} (median ${b.oldest_queue.median_age_days} d)` : ''}</p>}
+      <DataTable caption="Lineage per stage" rows={e.stages} rowKey={(s) => s.stage} empty="No lineages in the window." columns={[
+        { key: 'stage', label: 'Stage', render: (s) => <span className={b && (s.stage === b.to) ? 'font-semibold text-status-warning' : ''}>{STAGE_LABEL[s.stage] ?? s.stage}</span> },
+        { key: 'count', label: 'Count', render: (s) => (s.count === null ? (s.measured === 'not_measured' ? 'not measured' : 'unknown') : fmt(s.count)) },
+        { key: 'conv', label: 'Conversion', render: (s) => (s.measured === 'not_linked' ? 'not linked' : pct(s.conversion)) },
+        { key: 'age', label: 'Median wait', render: (s) => (s.median_age_days === null ? '—' : `${s.median_age_days} d`) },
+        { key: 'why', label: 'Top reason', render: (s) => s.top_failure ?? s.note ?? '—' },
+        { key: 'tok', label: 'Compute', render: (s) => (s.compute_tokens === null ? '—' : `${(s.compute_tokens / 1e6).toFixed(2)} M tok`) },
+        { key: 'op', label: 'Operator decisions', render: (s) => (s.operator_decisions === null ? 'unknown' : fmt(s.operator_decisions)) },
+      ]} />
+      <p className="text-sm">Regressions: mutation failure {r.mutation_failure} · post-verification {r.post_verification} (evolutionary {e.evolutionary_regressions}) ·
+        reviewer rejection {r.reviewer_rejection} (gate worked, not a regression) · environment {r.environment} · unattributed {r.unknown}</p>
+      <p className="text-sm">NEV (shadow): {n.status === 'ok' ? `${n.value} (per M cloud tokens ${n.per_m_cloud_tokens ?? '—'}, per operator decision ${n.per_operator_decision ?? '—'})` : `insufficient evidence — ${n.reason}`};
+        survival {n.survived}/{n.settled}{n.survival_ci ? ` [${n.survival_ci[0].toFixed(2)}–${n.survival_ci[1].toFixed(2)}]` : ''}; per kWh: {n.per_kwh ?? n.per_kwh_status}</p>
+      <p className="text-xs text-foreground-secondary">JEV semantic routing: {e.jev_semantic_routing}</p>
+    </section>
   );
 }
 
@@ -221,6 +257,7 @@ export function OperatorCockpitPage() {
       {data && (
         <>
           <CommandStrip d={data} />
+          {data.evolution && <EvolutionFunnel e={data.evolution} />}
           {data.errors && data.errors.length > 0 && (
             <div role="alert" className="rounded border border-status-warning/60 bg-status-warning/10 p-3 text-sm">
               <strong>Partial data:</strong> these sections failed and are shown as unknown, not as healthy.
@@ -241,7 +278,7 @@ export function OperatorCockpitPage() {
                   <div className="text-xs text-foreground-tertiary">{g.name}</div>
                   <div className="text-2xl font-semibold">{num(g.value)}</div>
                   <div className={`text-xs ${st === 'HEALTHY' ? 'text-foreground-muted' : st === 'BREACHED' ? 'text-status-error' : 'text-status-warning'}`}>{lower(st)} · limit {g.limit}</div>
-                  {g.split && <div className="text-xs text-foreground-tertiary">maker {g.split.maker} · reviewer {g.split.reviewer} · environment {g.split.environment}{g.split.unknown ? ` · unattributed ${g.split.unknown}` : ''}</div>}
+                  {g.split && <div className="text-xs text-foreground-tertiary">maker {g.split.maker} · reviewer {g.split.reviewer} · environment {g.split.environment}{g.split.unknown ? ` · unattributed ${g.split.unknown}` : ''}{g.split.post_verification ? ` · post-verification ${g.split.post_verification}` : ''}</div>}
                 </div>
               ); })}
             </div>
@@ -249,14 +286,16 @@ export function OperatorCockpitPage() {
 
           <Disclose id="services" open title="Services">
             {services === null ? <p className="text-sm text-foreground-secondary">Probing…</p> : (
-              <DataTable caption="Service endpoints and their status" rows={services} rowKey={(s) => s.endpoint}
+              <DataTable caption="Service endpoints and their integration state" rows={services} rowKey={(s) => s.endpoint}
                 empty="No service endpoints configured or the probe failed." columns={[
                   { key: 'service', label: 'Service', render: (s) => s.names.join(' · ') },
                   { key: 'endpoint', label: 'Endpoint', render: (s) => s.endpoint, cellClassName: () => 'font-mono text-xs' },
-                  // a 404 says something listens, not that it is healthy: 'reachable (404)', never 'up'
-                  { key: 'status', label: 'Status', render: (s) => `${s.status === 'up' && s.http === 404 ? 'reachable' : s.status}${s.error ? ` (${s.error})` : s.http === 404 ? ' (404)' : ''}`,
-                    cellClassName: (s) => (s.status === 'up' && s.http !== 404 ? 'text-status-completed' : s.status === 'down' ? 'text-status-error' : 'text-status-warning') },
-                  { key: 'http', label: 'HTTP', render: (s) => s.http ?? '—' },
+                  // DF-07: HTTP proves transport only; the state comes from the server's business evidence, never from the probe here
+                  { key: 'state', label: 'State', render: (s) => <StatusPill tone={STATE_TONE[s.state ?? 'UNKNOWN']} label={s.state ?? 'UNKNOWN'} title={s.state_evidence} /> },
+                  { key: 'evidence', label: 'Evidence', render: (s) => s.state_evidence ?? 'no state from the server', cellClassName: () => 'text-xs' },
+                  { key: 'success', label: 'Last success', render: (s) => (s.evidence_source ? since(s.last_success_at) : '—') },
+                  { key: 'failure', label: 'Last failure', render: (s) => (s.evidence_source ? since(s.last_failure_at) : '—') },
+                  { key: 'http', label: 'HTTP', render: (s) => s.http ?? (s.error ? `— (${s.error})` : '—') },
                   { key: 'ms', label: 'Latency', render: (s) => (s.ms === null ? '—' : `${s.ms} ms`) },
                 ]} />
             )}
@@ -276,9 +315,17 @@ export function OperatorCockpitPage() {
           <Disclose id="stalls" open title="Silent stalls">
             {data.stalls.length === 0 ? <p className="text-sm text-foreground-secondary">None — every watched subsystem produced output recently.</p> : (
               <ul className="space-y-1 text-sm">
-                {data.stalls.map((s) => <li key={s.subsystem} className="text-status-warning"><strong>{s.subsystem}</strong> — {s.detail} (since {since(s.since)})</li>)}
+                {data.stalls.map((s) => <li key={s.subsystem} className="text-status-warning"><strong>{s.subsystem}</strong> — {s.detail}{s.since ? ` (since ${since(s.since)})` : ''}</li>)}
               </ul>
             )}
+          </Disclose>
+
+          <Disclose id="subtraction" title="Subtraction">
+            <SubtractionSection kpi={data.subtraction} />
+          </Disclose>
+
+          <Disclose id="unit-economics" title="Cost per change (30 d)">
+            <UnitEconomicsSection ue={data.unit_economics} />
           </Disclose>
 
           <Disclose id="scorecard" title="Scorecard">
@@ -303,7 +350,7 @@ export function OperatorCockpitPage() {
                 { key: 'outcomes', label: 'Outcomes', render: (g) => g.outcomes },
                 { key: 'success', label: 'Success', render: (g) => `${g.success_pct}%` },
                 { key: 'secs', label: 'Avg s', render: (g) => fmt(g.avg_seconds) },
-                { key: 'tokens', label: 'Avg tokens', render: (g) => fmt(g.avg_tokens) },
+                { key: 'tokens', label: 'Avg tokens', render: (g) => num(g.avg_tokens) },
                 { key: 'last', label: 'Last', render: (g) => since(g.last) },
               ]} />
             </Disclose>
@@ -369,47 +416,115 @@ export function NeedsYouTotal({ n }: { n: NeedsYouCounts }) {
   return <div className="text-xl font-semibold">{unknown.length ? `≥ ${total} (${unknown.length} unknown)` : total ? `${total} waiting` : 'nothing'} {total || unknown.length ? <Link to="/decisions" className="text-sm underline">open Decisions</Link> : null}</div>;
 }
 
+/**
+ * Human-only needs-you (operator 26-10): `items` are HUMAN_DECISION items and make the headline; ground-truth labelling
+ * (D5, CAR, E1, DI-001) is optional with its own count; `info` and `system` are shown, never counted.
+ */
 function needsYouItems(n: NeedsYouCounts) {
   // absent (older server) = 0; null (the server could not count it) = unknown
   const c = (v: number | null | undefined) => (v === undefined ? 0 : v);
-  const items: Array<{ label: string; count: number | null; href: string }> = [
+  type Item = { label: string; count: number | null; href: string };
+  const split = n.audit_batch !== undefined || n.flagged_prs !== undefined;
+  const proposalsSystem = !!n.system?.proposals_auto_reviewed;
+  const items: Item[] = [
     { label: 'approvals', count: c(n.approvals), href: '/decisions#approvals' },
-    { label: 'approvals expiring within 1 h', count: c(n.approvals_expiring), href: '/decisions#approvals' },
     { label: 'requeue candidates', count: c(n.requeue), href: '/decisions#requeue' },
-    { label: 'pre-screen labels', count: c(n.labels), href: '/decisions#prescreen' },
     { label: 'memory reviews', count: c(n.memory_review), href: '/decisions#memory' },
-    { label: 'open loop PRs', count: c(n.open_prs), href: '/decisions#draft-prs' },
-    { label: 'loop PRs unsettled', count: c(n.draft_prs), href: '/decisions#draft-prs' },
-    { label: 'proposals awaiting approval', count: c(n.proposals), href: '/governance?tab=assurance' },
-    { label: 'silent stalls', count: c(n.stalls), href: '/#stalls' },
+    ...(split ? [{ label: 'PRs in the weekly audit batch', count: c(n.audit_batch), href: '/decisions#audit-batch' },
+      { label: 'flagged loop PRs', count: c(n.flagged_prs), href: '/decisions#draft-prs' }]
+      : [{ label: 'open loop PRs', count: c(n.open_prs), href: '/decisions#draft-prs' }]),
+    ...(n.dependency_tracked ? [{ label: 'Dependabot PRs the lane leaves to you', count: c(n.dependency_human), href: '/decisions#dependency-lane' }] : []),
+    ...(proposalsSystem ? [] : [{ label: 'proposals awaiting approval', count: c(n.proposals), href: '/governance?tab=assurance' }]),
     { label: 'Commons join requests', count: c(n.join_requests), href: '/agent-commons' },
     { label: 'fleet shell requests', count: c(n.shell_requests), href: '/fleet' },
   ];
-  // UX-6: 'approvals expiring' is a subset of 'approvals' and unsettled loop PRs include merged ones still settling — not double-counted;
-  // open loop PRs wait for a human merge or close, so they count
-  const blocking = items.filter((item) => item.label !== 'approvals expiring within 1 h' && item.label !== 'loop PRs unsettled');
-  // the server's total counts a proposal waiting in two sections once; older servers send no total
-  const total = n.total ?? blocking.reduce((sum, item) => sum + (item.count ?? 0), 0);
-  const unknown = blocking.filter((item) => item.count === null);
-  return { items, total, unknown };
+  // UX-6: 'approvals expiring' is a subset of 'approvals' and unsettled loop PRs include merged ones still settling — not double-counted
+  const info: Item[] = [
+    { label: 'approvals expiring within 1 h', count: c(n.approvals_expiring), href: '/decisions#approvals' },
+    { label: 'loop PRs unsettled', count: c(n.draft_prs), href: '/decisions#draft-prs' },
+  ];
+  const ol = n.optional_labelling;
+  const labelling: Item[] = [
+    { label: 'pre-screen labels (D5)', count: ol ? ol.d5 : c(n.labels), href: '/decisions#prescreen' },
+    ...(ol ? [{ label: 'CAR audits', count: ol.car, href: '/decisions#attribution-audit' }, { label: 'E1 retrieval labels', count: ol.e1, href: '/decisions#e1-retrieval-labels' },
+      { label: 'DI-001 relevance labels', count: ol.di001, href: '/decisions#discovery-relevance' }] : []),
+  ];
+  const system: Item[] = [
+    ...(n.system?.requeue_mode === 'on' ? [{ label: 'requeue rows the system will handle', count: n.system.requeue_will_handle, href: '/decisions#requeue' }] : []),
+    { label: 'silent stalls', count: c(n.stalls), href: '/#stalls' },
+    ...(proposalsSystem ? [{ label: 'proposals in panel review', count: c(n.proposals), href: '/governance?tab=assurance' }] : []),
+  ];
+  // the server's total counts human decisions only; older servers send no total
+  const total = n.total ?? items.reduce((sum, item) => sum + (item.count ?? 0), 0);
+  const unknown = items.filter((item) => item.count === null);
+  const labellingTotal = labelling.some((l) => l.count === null) ? null : labelling.reduce((a, l) => a + (l.count as number), 0);
+  return { items, info, labelling, labellingTotal, system, total, unknown };
 }
 
 export function NeedsYou({ n }: { n: NeedsYouCounts }) {
-  const { items, total, unknown } = needsYouItems(n);
+  const { items, info, labelling, labellingTotal, system, total, unknown } = needsYouItems(n);
   const sys = n.system_requeue;
+  const shown = <T extends { count: number | null }>(xs: T[]): T[] => xs.filter((x) => x.count !== 0);
+  const link = (item: { label: string; count: number | null; href: string }) => (
+    <li key={item.label}><Link to={item.href} className="underline">{item.count ?? 'unknown'} {item.label}</Link></li>
+  );
   return (
     <section aria-labelledby="needs-you" className={`rounded-lg border p-4 ${total || unknown.length ? 'border-status-paused/40 bg-status-paused/10' : 'border-border'}`}>
       <h2 id="needs-you" className="text-lg font-semibold mb-2">{total ? `Needs you (${unknown.length ? '≥ ' : ''}${total})` : unknown.length ? 'Needs you: unknown' : 'Nothing needs you right now'}</h2>
       {unknown.length > 0 && <p className="text-sm text-status-warning mb-1">Could not count: {unknown.map((u) => u.label).join(', ')} — shown as unknown, not 0.</p>}
-      {items.some((item) => item.count) && <ul className="flex flex-wrap gap-4 text-sm">{items.filter((item) => item.count).map((item) => (
-        <li key={item.label}><Link to={item.href} className="underline">{item.count} {item.label}</Link></li>
-      ))}</ul>}
+      {items.some((item) => item.count) && <ul className="flex flex-wrap gap-4 text-sm">{items.filter((item) => item.count).map(link)}</ul>}
+      {info.some((item) => item.count) && <ul className="flex flex-wrap gap-4 text-xs text-foreground-secondary mt-1">{info.filter((item) => item.count).map(link)}</ul>}
+      {shown(labelling).length > 0 && (
+        <div className="mt-2 text-sm" data-testid="optional-labelling">
+          <span className="font-medium">Optional labelling ({labellingTotal ?? 'unknown'})</span> <span className="text-xs text-foreground-tertiary">ground truth, not decisions</span>
+          <ul className="flex flex-wrap gap-4 text-xs mt-1">{shown(labelling).map(link)}</ul>
+        </div>
+      )}
+      {shown(system).length > 0 && (
+        <div className="mt-2 text-xs text-foreground-tertiary" data-testid="system-handles">
+          System handles (not counted): <ul className="inline-flex flex-wrap gap-3">{shown(system).map(link)}</ul>
+        </div>
+      )}
       {sys && (sys.budgeted_requeue || sys.attribution_unknown || sys.not_actionable) ? (
         <p className="text-xs text-foreground-tertiary mt-2">
           System-side requeue candidates (not counted): {sys.budgeted_requeue ?? 0} budgeted requeue · {sys.attribution_unknown ?? 0} attribution unknown · {sys.not_actionable ?? 0} not actionable
         </p>
       ) : null}
     </section>
+  );
+}
+
+/** SOUL.md subtraction KPI: what the checkout lost next to what it gained, per ISO week (report-only, never a gate). */
+export function SubtractionSection({ kpi }: { kpi: OperatorCockpit['subtraction'] }) {
+  if (!kpi) return <p className="text-sm text-foreground-secondary">Not reported by this server.</p>;
+  if (kpi.status !== 'ok' || !kpi.weeks) return <p className="text-sm text-status-warning">Unknown — {kpi.reason ?? 'no git history'}</p>;
+  const signed = (n: number | null) => (n === null ? '—' : n > 0 ? `+${n}` : String(n));
+  return (
+    <DataTable caption="Lines, files and routes added vs removed per ISO week (last 8)" rows={kpi.weeks} rowKey={(w) => w.week} columns={[
+      { key: 'week', label: 'Week', render: (w) => w.week },
+      { key: 'commits', label: 'Commits', render: (w) => w.commits },
+      { key: 'lines', label: 'Lines +/−', render: (w) => `+${w.lines_added} / −${w.lines_removed}` },
+      { key: 'ratio', label: 'Removed / added', render: (w) => (w.ratio_removed_added === null ? '—' : w.ratio_removed_added.toFixed(2)) },
+      { key: 'files', label: 'Files +/−', render: (w) => `+${w.files_added} / −${w.files_deleted}` },
+      { key: 'routes', label: 'Routes Δ', render: (w) => signed(w.routes_delta) },
+    ]} />
+  );
+}
+
+/** G0.3/G0.4: € and operator minutes per verified / surviving change; unknown prices stay unknown (never shown as €0). */
+export function UnitEconomicsSection({ ue }: { ue: OperatorCockpit['unit_economics'] }) {
+  if (!ue) return <p className="text-sm text-foreground-secondary">Not reported by this server.</p>;
+  const eur = (v: number | null) => (v === null ? 'unknown' : `€${v.toFixed(2)}`);
+  const min = (v: number | null) => (v === null ? 'unknown' : `${v.toFixed(1)} min`);
+  const m = ue.operator_minutes;
+  return (
+    <ul className="space-y-1 text-sm">
+      <li>€ per verified change: <strong>{eur(ue.eur.per_verified)}</strong> · per surviving change: <strong>{eur(ue.eur.per_surviving)}</strong>
+        {' '}({ue.counts.verified ?? '?'} verified, {ue.counts.surviving ?? '?'} surviving) — unknown share {(ue.eur.unknown_share * 100).toFixed(0)} %
+        {ue.eur.reason ? <span className="text-status-warning"> · {ue.eur.reason === 'no_prices' ? 'no € prices filled in docs/usage-plan-limits.json' : ue.eur.reason}</span> : null}</li>
+      <li>Operator minutes per surviving change: waiting <strong>{min(m.per_surviving.waiting_minutes)}</strong> · handling <strong>{min(m.per_surviving.handling_minutes_estimate)}</strong> (estimate, {m.handling_minutes_per_item} min per item)
+        {m.reason ? <span className="text-foreground-secondary"> · {m.reason.replace(/_/g, ' ')}</span> : null}</li>
+    </ul>
   );
 }
 

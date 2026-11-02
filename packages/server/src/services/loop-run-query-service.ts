@@ -19,6 +19,21 @@ export interface LoopRunFilter {
   offset?: number;
 }
 
+/** The skill outcome remote-gym-service record() wrote for a gym run (task_id = run id), as stored. */
+export interface GymSkillOutcome {
+  id: string;
+  skill_id: string;
+  success: boolean;
+  /** null = the runtime reported no usage (unknown, never 0); legacy rows may hold 0, which is also unknown */
+  tokens_used: number | null;
+  /** record() stores 0 when the worker sent no duration: 0 is unknown */
+  duration_ms: number;
+  model: string | null;
+  skill_content_hash: string | null;
+  evidence_refs: string[];
+  created_at: string;
+}
+
 export class LoopRunQueryService {
   constructor(private db: Database) {}
 
@@ -132,6 +147,39 @@ export class LoopRunQueryService {
       `SELECT * FROM loop_runs WHERE loop_name = ? ORDER BY created_at DESC LIMIT 1`
     ).get(loopName) as any | undefined;
     return row ? this.parseRow(row) : null;
+  }
+
+  /**
+   * Read-only: the gym skill outcome of one run (null when record() wrote none — a discard, VOID, canary or TG-001 attempt —
+   * or when the skill_outcomes table does not exist yet).
+   * @throws Error('LOOP_RUN_NOT_FOUND') if the run does not exist
+   */
+  getGymSkillOutcome(runId: string): { run_id: string; skill_outcome: GymSkillOutcome | null } {
+    if (!this.exists(runId)) throw new Error('LOOP_RUN_NOT_FOUND');
+    let row: any;
+    try {
+      row = this.db.prepare(`SELECT id, skill_id, success, tokens_used, duration_ms, model, skill_content_hash, evidence_refs_json, created_at
+        FROM skill_outcomes WHERE domain = 'gym' AND task_id = ? ORDER BY created_at DESC LIMIT 1`).get(runId);
+    } catch {
+      return { run_id: runId, skill_outcome: null }; // no skill_outcomes table yet: nothing recorded
+    }
+    if (!row) return { run_id: runId, skill_outcome: null };
+    let refs: unknown = [];
+    try { refs = JSON.parse(row.evidence_refs_json || '[]'); } catch { /* unreadable refs: shown as none */ }
+    return {
+      run_id: runId,
+      skill_outcome: {
+        id: row.id,
+        skill_id: row.skill_id,
+        success: row.success === 1,
+        tokens_used: typeof row.tokens_used === 'number' ? row.tokens_used : null,
+        duration_ms: Number(row.duration_ms) || 0,
+        model: row.model ?? null,
+        skill_content_hash: row.skill_content_hash ?? null,
+        evidence_refs: Array.isArray(refs) ? refs.map(String) : [],
+        created_at: row.created_at,
+      },
+    };
   }
 
   private parseRow(row: any): LoopRunRecord {

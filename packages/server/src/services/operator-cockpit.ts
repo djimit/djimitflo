@@ -2,10 +2,18 @@ import fs from 'fs';
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { detectStallsWithHealth, type DetectorHealth, type Stall } from './stall-watch';
+import { subtractionKpi, type SubtractionKpi } from './subtraction-kpi';
+import type { CapabilityVerdict } from './capability-chain';
 import { infraFailing } from './evolution-gym-service';
 import { ATTRIBUTION_OF_PROPOSAL, decisionsInbox, openDecisionCounts } from './decisions-inbox';
 import { listSchedulers, type SchedulerHealth, type SchedulerStatus } from './scheduler-registry';
 import { nonMakerRunSql, outcomeAttributionEnabled } from './outcome-attribution';
+import { supersededMergeOutcomeSql } from './merge-superseded';
+import { realRunIdSql, realRunSql } from './synthetic-runs';
+import { evolutionLineage, postVerificationRegressions } from './evolution-lineage';
+import { panelAttemptMetrics, type PanelAttemptMetrics } from './panel-attempt-metrics';
+import { unitEconomics, type UnitEconomics } from './unit-economics';
+import { dependencyHuman, openLoopPrSplit, optionalLabelling, type OptionalLabelling } from './needs-you-classes';
 
 /**
  * S1 (operator 2026-09-28): one read-only snapshot of what the operator otherwise measures by hand over SSH —
@@ -23,7 +31,9 @@ export const worstState = (states: HealthState[]): HealthState =>
  * split: regressions by attributed class — with OUTCOME_ATTRIBUTION_ENABLED the guardrail counts maker only.
  * unknown = no outcome_attribution judgment (was silently 'maker'). ok = state === 'HEALTHY' (kept for older clients).
  */
-export interface Guardrail { name: string; ok: boolean; state: HealthState; value: number | null; limit: string; split?: { maker: number; reviewer: number; environment: number; unknown: number } }
+export interface Guardrail { name: string; ok: boolean; state: HealthState; value: number | null; limit: string; split?: { maker: number; reviewer: number; environment: number; unknown: number; post_verification: number | null };
+  /** E4: the panel guardrail's attempt split (7 d) — services/panel-attempt-metrics.ts */
+  attempts?: PanelAttemptMetrics['seat_attempts']['totals'] & { legacy: PanelAttemptMetrics['legacy'] } }
 export interface CockpitSnapshot {
   at: string;
   /** one id per snapshot; every section is read in this one synchronous pass, so `at` is each section's observation time */
@@ -36,7 +46,8 @@ export interface CockpitSnapshot {
   guardrails: Guardrail[];
   stalls: Stall[];
   /** stale: no outcome for 72 h — the species is not running, whatever its success rate says (sorted after the active ones) */
-  gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number; last: string; benched: boolean; stale: boolean }>;
+  /** avg_tokens: mean over the outcomes whose runtime reported a count; null = none did (unknown, not 0) */
+  gym: Array<{ species: string; outcomes: number; successes: number; success_pct: number; avg_seconds: number; avg_tokens: number | null; last: string; benched: boolean; stale: boolean }>;
   /** W3: what waits for the operator right now (the /decisions sections). */
   /** null = that count could not be read (see errors) — never shown as 'nothing waiting' */
   needs_you: { approvals: number | null; requeue: number | null; labels: number | null; memory_review: number | null;
@@ -46,10 +57,23 @@ export interface CockpitSnapshot {
     join_requests: number | null; shell_requests: number | null;
     /** proposals listed in two sections (operator requeue + unlabelled pre-screen) — subtracted once from total */
     shared_subjects: number | null;
-    /** distinct things waiting: blocking counts (not approvals_expiring ⊂ approvals, not draft_prs) minus shared_subjects; null if any is unknown */
+    /**
+     * HUMAN_DECISION items only (needs-you-classes.ts): approvals + join + shell requests, requeue rows no system handles,
+     * memory reviews (not template duplicates), the audit batch, flagged loop PRs, Dependabot PRs the lane leaves to a human
+     * (when the lane is tracked) and proposals when no auto-review panel runs. Not: labels (optional_labelling), stalls and
+     * panel-reviewed proposals (system). null if any of its parts is unknown.
+     */
     total: number | null;
+    /** open_prs split: audit-sample PRs (one weekly batch) and the rest (flagged: the auto-merge lane did not take them) */
+    audit_batch: number | null; flagged_prs: number | null;
+    /** open Dependabot PRs the dependency lane leaves to a human; null + dependency_tracked false when the lane is off */
+    dependency_human: number | null; dependency_tracked: boolean;
+    /** ground-truth labelling (D5, CAR, E1, DI-001): optional, its own count, never in total */
+    optional_labelling: OptionalLabelling | null;
+    /** what the system handles (shown, not in total): auto-requeue rows, stalls, panel-reviewed proposals */
+    system: { requeue_will_handle: number | null; requeue_mode: string | null; proposals_auto_reviewed: boolean };
     /** requeue candidates that are system work, not decisions (counted, never hidden) */
-    system_requeue: Partial<Record<'budgeted_requeue' | 'attribution_unknown' | 'not_actionable', number>> | null };
+    system_requeue: Partial<Record<'budgeted_requeue' | 'infra_failed' | 'attribution_unknown' | 'not_actionable', number>> | null };
   /** UX-8: armed/off = intent; by_status + health = execution (Cockpit 3.0: armed_not_ticking / failing degrade the snapshot) */
   schedulers: { armed: number; off: number; by_status: Record<SchedulerStatus, number>; health: SchedulerHealth };
   /** stall detectors: an `error` detector means its subsystem is unwatched — an empty stall list is then not 'healthy' */
@@ -61,6 +85,14 @@ export interface CockpitSnapshot {
   maker_usage_7d: Array<{ role: string; runtime: string; model: string | null; leases: number; tokens: number }>;
   judgments_7d: Array<{ judgment: string; calls: number; errors: number; input_tokens: number }>;
   deploys: Array<{ at: string; event: string; sha: string; detail: string }>;
+  /** 'Restore Evolutionary Health': lineage funnel, 4-way regression split, survival-adjusted NEV (shadow, read-only) */
+  evolution: ReturnType<typeof evolutionLineage> | null;
+  /** Workstream B: capability chain per watched capability (state, broken link, observed facts, remediation) */
+  capabilities: CapabilityVerdict[];
+  /** SOUL.md subtraction KPI: lines/files/routes added vs removed per ISO week, last 8 (report-only; null weeks + reason without git) */
+  subtraction: SubtractionKpi;
+  /** G0.3/G0.4: € and operator minutes per verified / surviving change (30 d); null prices = unknown, never 0 */
+  unit_economics: UnitEconomics | null;
 }
 
 export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.ProcessEnv = process.env): CockpitSnapshot {
@@ -79,8 +111,12 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
     approvals_decided_7d: one("SELECT COUNT(*) FROM approvals WHERE status IN ('approved', 'denied') AND updated_at >= ?", d7),
     approvals_expired_7d: one("SELECT COUNT(*) FROM approvals WHERE status = 'expired' AND updated_at >= ?", d7),
     approvals_pending: one("SELECT COUNT(*) FROM approvals WHERE status = 'pending'"),
-    runs_failed_7d: one("SELECT COUNT(*) FROM loop_runs WHERE status IN ('failed', 'interrupted') AND created_at >= ?", d7),
-    panel_unparseable_7d: one("SELECT COUNT(*) FROM specialist_reviews WHERE findings_json LIKE '%could not be parsed%' AND created_at >= ?", d7),
+    // U3: synthetic PR-review bookkeeping runs and their leases are not loop work (synthetic-runs.ts)
+    runs_failed_7d: one(`SELECT COUNT(*) FROM loop_runs WHERE status IN ('failed', 'interrupted') AND created_at >= ? AND ${realRunSql()}`, d7),
+    // #784 quarantines invalid answers instead of storing a coerced 'could not be parsed' review: count both, so neither the
+    // pre-#784 rows nor the new attempts read as 0; an unreadable quarantine table is UNKNOWN (null), not 0
+    panel_unparseable_7d: one(`SELECT (SELECT COUNT(*) FROM specialist_reviews WHERE findings_json LIKE '%could not be parsed%' AND created_at >= ?)
+      + (SELECT COUNT(*) FROM specialist_review_quarantine WHERE created_at >= ?)`, d7, d7),
     // spend_per_verified_change_7d: tokens of every maker/checker/security lease CREATED in 7 d (all lanes, all outcomes)
     // over proposals VERIFIED (settled) in 7 d = what a verified change costs including the failures around it.
     // tokens_per_verified_change_7d is the same number under its old name (kept for older clients).
@@ -98,13 +134,13 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
     // Now: everything the maker + reviewer leases spent in the window over the proposals verified in it (prod ≈ 62.8 M / 26).
     tokens_per_verified_change_7d: one(`SELECT ROUND(COALESCE(SUM(json_extract(metadata, '$.runtime_usage.total_tokens')), 0) * 1.0
         / NULLIF((SELECT COUNT(*) FROM self_improvements WHERE status = 'verified' AND updated_at >= ?), 0))
-      FROM worker_leases WHERE role IN ('maker', 'checker', 'security_checker') AND created_at >= ?`, d7, d7),
+      FROM worker_leases WHERE role IN ('maker', 'checker', 'security_checker') AND created_at >= ? AND ${realRunIdSql('worker_leases.loop_run_id')}`, d7, d7),
   };
   scorecard.spend_per_verified_change_7d = scorecard.tokens_per_verified_change_7d;
   const v = scorecard.verified_7d;
   // funnel phase 3: each regressed proposal by its newest outcome attribution (on the proposal or any of its runs); none = unknown
   section = 'regression_split';
-  const split = { maker: 0, reviewer: 0, environment: 0, unknown: 0 };
+  const split = { maker: 0, reviewer: 0, environment: 0, unknown: 0, post_verification: null as number | null };
   const splitRows = all<{ cls: string | null; n: number }>(`SELECT ${ATTRIBUTION_OF_PROPOSAL} AS cls, COUNT(*) AS n
     FROM self_improvements s WHERE s.status = 'regressed' AND s.updated_at >= ? GROUP BY 1`, d7);
   for (const r of splitRows ?? []) {
@@ -112,7 +148,10 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
     else if (r.cls === 'maker_failure') split.maker += r.n; else split.unknown += r.n;
   }
   const attributed = outcomeAttributionEnabled(env);
-  const regressions = attributed ? (splitRows ? split.maker : null) : scorecard.regressed_7d;
+  // evolutionary regressions = maker (mutation) failures + verified-and-merged changes that did not survive; a reviewer
+  // rejection is the gate working, not a regression
+  split.post_verification = postVerificationRegressions(db, d7, now);
+  const regressions = attributed ? (splitRows && split.post_verification !== null ? split.maker + split.post_verification : null) : scorecard.regressed_7d;
   const state = (value: number | null, bad: boolean): HealthState => (value === null ? 'UNKNOWN' : bad ? 'BREACHED' : 'HEALTHY');
   const guard = (g: Omit<Guardrail, 'ok'>): Guardrail => ({ ...g, ok: g.state === 'HEALTHY' });
   // regressions: maker-failed (attribution on) or all regressed proposals updated in 7 d, vs verified proposals updated in 7 d.
@@ -121,11 +160,14 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
   if (attributed && regState === 'HEALTHY' && split.unknown > 0) regState = 'DEGRADED';
   const expiredBad = (scorecard.approvals_expired_7d ?? 0) > (scorecard.approvals_decided_7d ?? 0) / 5;
   // plan §3 guardrails
+  // E4: the same 7 d window split per attempt state (first pass / retry / parse / schema / generation / infra), legacy apart
+  const panelAttempts7d = panelAttemptMetrics(db, { days: 7, now });
   const guardrails: Guardrail[] = [
     guard({ name: 'regressions', value: regressions, state: regState, split,
-      limit: `<= verified/5 (${v === null ? '?' : (v / 5).toFixed(1)})${attributed ? `, maker failures only${split.unknown ? `; ${split.unknown} unattributed` : ''}` : ''}` }),
+      limit: `<= verified/5 (${v === null ? '?' : (v / 5).toFixed(1)})${attributed ? `, maker failures + post-verification regressions${split.unknown ? `; ${split.unknown} unattributed` : ''}` : ''}` }),
     // specialist reviews created in 7 d whose findings could not be parsed; any is a breach
-    guard({ name: 'panel unparseable (7 d)', value: scorecard.panel_unparseable_7d, limit: '0', state: state(scorecard.panel_unparseable_7d, (scorecard.panel_unparseable_7d ?? 0) > 0) }),
+    guard({ name: 'panel unparseable (7 d)', value: scorecard.panel_unparseable_7d, limit: '0', state: state(scorecard.panel_unparseable_7d, (scorecard.panel_unparseable_7d ?? 0) > 0),
+      attempts: { ...panelAttempts7d.seat_attempts.totals, legacy: panelAttempts7d.legacy } }),
     // reflection-sourced proposals created in the last 24 h
     // NOT_APPLICABLE when reflection proposals are capped at 0 (Y7): 0 inflow then says nothing about health
     guard({ name: 'reflection inflow (24 h)', value: scorecard.reflection_inflow_24h, limit: '<= 25',
@@ -135,7 +177,7 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
       state: scorecard.approvals_decided_7d === null ? 'UNKNOWN' : state(scorecard.approvals_expired_7d, expiredBad) }),
   ];
   section = 'gym';
-  const gym = (all<{ species: string; outcomes: number; successes: number; avg_seconds: number; avg_tokens: number; last: string }>(
+  const gym = (all<{ species: string; outcomes: number; successes: number; avg_seconds: number; avg_tokens: number | null; last: string }>(
     // per runtime@model (prod 2026-09-30: atomic@llama-router and atomic@qwen36-2060 were merged into one 'atomic' row)
     `SELECT replace(skill_id, 'loop-maker:gym:', '') || COALESCE('@' || model, '') AS species, COUNT(*) AS outcomes, SUM(success) AS successes,
        ROUND(AVG(duration_ms) / 1000) AS avg_seconds, ROUND(AVG(tokens_used)) AS avg_tokens, MAX(created_at) AS last
@@ -155,7 +197,7 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
   section = 'usage';
   const maker_usage_7d = all<{ role: string; runtime: string; model: string | null; leases: number; tokens: number }>(
     `SELECT role, runtime, json_extract(metadata, '$.model') AS model, COUNT(*) AS leases, COALESCE(SUM(json_extract(metadata, '$.runtime_usage.total_tokens')), 0) AS tokens
-       FROM worker_leases WHERE created_at >= ? AND runtime != 'manual' GROUP BY role, runtime, model ORDER BY tokens DESC`, d7) ?? [];
+       FROM worker_leases WHERE created_at >= ? AND runtime != 'manual' AND ${realRunIdSql('worker_leases.loop_run_id')} GROUP BY role, runtime, model ORDER BY tokens DESC`, d7) ?? []; // U3: by run — an LLM review checker is not 'manual'
   const judgments_7d = all<{ judgment: string; calls: number; errors: number; input_tokens: number }>(
     `SELECT judgment, COUNT(*) AS calls, SUM(decision = 'error') AS errors, COALESCE(SUM(input_tokens), 0) AS input_tokens FROM judgments WHERE created_at >= ? GROUP BY judgment ORDER BY calls DESC`, d7) ?? [];
   const d30 = new Date(now - 30 * 86_400_000).toISOString();
@@ -165,7 +207,7 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
     `SELECT substr(r.value, 8) AS genome, s.skill_id, COUNT(*) AS outcomes, SUM(s.success) AS wins
        FROM skill_outcomes s, json_each(s.evidence_refs_json) r
       WHERE r.value LIKE 'genome:%' AND s.created_at >= ? AND (s.skill_id LIKE 'loop-maker:gym:%') = ?
-        AND NOT (s.success = 0 AND ${nonMakerRunSql('s.task_id', env)}) GROUP BY 1, 2 ORDER BY outcomes DESC LIMIT 20`, d30, scope === 'gym' ? 1 : 0) ?? [])
+        AND NOT (s.success = 0 AND ${nonMakerRunSql('s.task_id', env)}) AND NOT ${supersededMergeOutcomeSql('s')} GROUP BY 1, 2 ORDER BY outcomes DESC LIMIT 20`, d30, scope === 'gym' ? 1 : 0) ?? [])
     .map((g) => ({ ...g, scope, win_pct: g.outcomes ? Math.round((100 * g.wins) / g.outcomes) : 0 }));
   const genomes = [...genomesIn('production'), ...genomesIn('gym')];
   const in60 = new Date(now + 3_600_000).toISOString();
@@ -180,26 +222,43 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
     approvals_expiring: one("SELECT COUNT(*) FROM approvals WHERE status = 'pending' AND expires_at IS NOT NULL AND expires_at <= ?", in60),
     join_requests: one("SELECT COUNT(*) FROM social_join_requests WHERE status = 'pending'"),
     shell_requests: one("SELECT COUNT(*) FROM fleet_commands WHERE status = 'pending_approval'"),
-    shared_subjects: null, total: null, system_requeue: null };
+    shared_subjects: null, total: null, system_requeue: null, ...openLoopPrSplit(db),
+    dependency_human: null, dependency_tracked: false, optional_labelling: null,
+    system: { requeue_will_handle: null, requeue_mode: null, proposals_auto_reviewed: env.SELF_IMPROVEMENT_AUTO_REVIEW_ENABLED === 'true' } };
+  const dep = dependencyHuman(db, env, now);
+  needs_you.dependency_human = dep.count; needs_you.dependency_tracked = dep.tracked;
+  let inbox: ReturnType<typeof decisionsInbox> | null = null;
   try {
-    const inbox = decisionsInbox(db, now, env);
+    inbox = decisionsInbox(db, now, env);
     const counts = openDecisionCounts(inbox);
     needs_you = { ...needs_you, ...counts };
+    const auto = inbox.totals.requeue_auto;
+    needs_you.system = { ...needs_you.system, requeue_mode: auto?.mode ?? null, requeue_will_handle: auto ? (auto.mode === 'on' ? auto.will_handle : 0) : null };
     const c = inbox.totals.requeue_classes;
-    needs_you.system_requeue = c ? { budgeted_requeue: c.budgeted_requeue ?? 0, attribution_unknown: c.attribution_unknown ?? 0, not_actionable: c.not_actionable ?? 0 } : null;
+    needs_you.system_requeue = c ? { budgeted_requeue: c.budgeted_requeue ?? 0, infra_failed: c.infra_failed ?? 0, attribution_unknown: c.attribution_unknown ?? 0, not_actionable: c.not_actionable ?? 0 } : null;
     if (Object.values(counts).some((c) => c === null)) fail('decisions', new Error('a decisions inbox count query failed'));
   } catch (e) { fail('decisions', e); }
+  needs_you.optional_labelling = optionalLabelling(db, inbox, now);
   let stalls: Stall[] = [];
   // an empty list from a failed detector is not 'no stalls': stalls stays [] but needs_you.stalls null + an error
   let detectors: DetectorHealth[] = [];
+  let capabilities: CapabilityVerdict[] = [];
   try {
-    const report = detectStallsWithHealth(db, now, env); stalls = report.stalls; detectors = report.detectors; needs_you.stalls = stalls.length;
+    const report = detectStallsWithHealth(db, now, env); stalls = report.stalls; detectors = report.detectors; capabilities = report.capabilities; needs_you.stalls = stalls.length;
     for (const d of detectors) if (d.status === 'error') fail(`detector:${d.name}`, new Error(d.error ?? 'detector query failed'));
   } catch (e) { fail('stalls', e); }
-  const blocking = [needs_you.approvals, needs_you.requeue, needs_you.labels, needs_you.memory_review, needs_you.open_prs, needs_you.proposals,
-    needs_you.stalls, needs_you.join_requests, needs_you.shell_requests];
-  needs_you.total = blocking.some((x) => x === null) || needs_you.shared_subjects === null ? null
-    : (blocking as number[]).reduce((a, b) => a + b, 0) - (needs_you.shared_subjects as number);
+  // human decisions only; labels are optional_labelling and stalls are system health, so shared_subjects (a requeue row that
+  // is also an unlabelled pre-screen rejection) no longer double-counts and is not subtracted
+  const human = [needs_you.approvals, needs_you.join_requests, needs_you.shell_requests, needs_you.requeue, needs_you.memory_review,
+    needs_you.audit_batch, needs_you.flagged_prs,
+    ...(needs_you.dependency_tracked ? [needs_you.dependency_human] : []),
+    ...(needs_you.system.proposals_auto_reviewed ? [] : [needs_you.proposals])];
+  needs_you.total = human.some((x) => x === null) ? null : (human as number[]).reduce((a, b) => a + b, 0);
+  section = 'evolution';
+  let evolution: CockpitSnapshot['evolution'] = null;
+  try { evolution = evolutionLineage(db, now, env); for (const m of evolution.errors) fail('evolution', new Error(m)); } catch (e) { fail('evolution', e); }
+  let unit_economics: UnitEconomics | null = null;
+  try { unit_economics = unitEconomics(db, now); for (const m of unit_economics.errors) fail('unit_economics', new Error(m)); } catch (e) { fail('unit_economics', e); }
   const { armed, off, by_status, health: schedulersHealth } = listSchedulers(now);
   const health = worstState([...guardrails.map((g) => g.state), errors.length || stalls.length ? 'DEGRADED' : 'HEALTHY',
     // a failed detector leaves its subsystem unwatched; a scheduler that stopped ticking or fails is work that silently stopped
@@ -207,7 +266,8 @@ export function operatorCockpit(db: Database, now = Date.now(), env: NodeJS.Proc
   return {
     at: new Date(now).toISOString(), snapshot_id: randomUUID(), health, errors,
     build: { commit: process.env.DJIMITFLO_BUILD_COMMIT ?? null, build_time: process.env.DJIMITFLO_BUILD_TIME ?? null },
-    scorecard, guardrails, stalls, gym, remote_workers, maker_usage_7d, judgments_7d, needs_you, schedulers: { armed, off, by_status, health: schedulersHealth }, detectors, genomes, deploys: recentDeploys(),
+    scorecard, guardrails, stalls, gym, remote_workers, maker_usage_7d, judgments_7d, needs_you, schedulers: { armed, off, by_status, health: schedulersHealth }, detectors, genomes, deploys: recentDeploys(), evolution, capabilities,
+    subtraction: subtractionKpi(env, now), unit_economics,
   };
 }
 

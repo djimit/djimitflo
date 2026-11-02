@@ -1,5 +1,5 @@
 import { recordAuthorityEvent } from './authority-ledger-service';
-import { enqueueEvent } from './event-outbox-service';
+import { enqueueRequiredEvent } from './event-outbox-service';
 import type { Database } from 'better-sqlite3';
 import { ApprovalRequest, ApprovalRequestType, ApprovalStatus, AuditEventType, RiskAssessment, Task, TaskStatus, WebSocketEventType } from '@djimitflo/shared';
 import { randomUUID } from 'crypto';
@@ -126,6 +126,7 @@ export class ApprovalService {
       );
 
       const approval = this.getApproval(id)!;
+      this.enqueueApprovalEvent(approval, 'djimitflo.approval.requested');
       this.auditService.record({
         event_type: AuditEventType.APPROVAL_REQUESTED,
         action: 'approval_requested',
@@ -150,18 +151,22 @@ export class ApprovalService {
       payload: { approval },
       timestamp: now,
     });
-    this.recordDecision(approval, 'EXECUTION_APPROVAL_REQUESTED', 'HOLD', input.requestedBy || 'system', 'djimitflo.approval.requested');
+    this.recordDecision(approval, 'EXECUTION_APPROVAL_REQUESTED', 'HOLD', input.requestedBy || 'system');
 
     return approval;
   }
 
-  /** Ledger + bus record of an approval lifecycle step; best-effort, never blocks the approval itself. */
-  private recordDecision(approval: ApprovalRequest, state: string, decision: 'ALLOW' | 'DENY' | 'HOLD', actor: string, eventType: string): void {
+  /** Authority-ledger record of an approval lifecycle step; best-effort, never blocks the approval itself. */
+  private recordDecision(approval: ApprovalRequest, state: string, decision: 'ALLOW' | 'DENY' | 'HOLD', actor: string): void {
     recordAuthorityEvent(this.db, {
       correlationId: approval.task_id, artifactId: approval.id, actorSubject: actor, actorType: this.actorType(actor),
       requestedState: state, decision, payload: { approval_id: approval.id, risk_level: approval.risk_level, policy_id: approval.policy_id, status: approval.status },
     });
-    enqueueEvent(this.db, { type: eventType, aggregateId: approval.id, correlationId: approval.task_id, payload: { approval_id: approval.id, task_id: approval.task_id, risk_level: approval.risk_level, status: approval.status, decided_by: approval.decided_by ?? null } });
+  }
+
+  /** CODE-003: required bus event, enqueued inside the transaction that changes the approval, so both commit or neither does. */
+  private enqueueApprovalEvent(approval: ApprovalRequest, eventType: string): void {
+    enqueueRequiredEvent(this.db, { type: eventType, aggregateId: approval.id, correlationId: approval.task_id, payload: { approval_id: approval.id, task_id: approval.task_id, risk_level: approval.risk_level, status: approval.status, decided_by: approval.decided_by ?? null } });
   }
 
   /**
@@ -231,6 +236,7 @@ export class ApprovalService {
       );
 
       const updated = this.getApproval(id)!;
+      this.enqueueApprovalEvent(updated, approved ? 'djimitflo.approval.approved' : 'djimitflo.approval.denied');
       this.auditService.record({
         event_type: approved ? AuditEventType.APPROVAL_GRANTED : AuditEventType.APPROVAL_DENIED,
         action: approved ? 'approval_granted' : 'approval_denied',
@@ -250,10 +256,10 @@ export class ApprovalService {
       timestamp: updated.updated_at,
     });
     if (expired) {
-      this.recordDecision(updated, 'EXECUTION_APPROVAL_EXPIRED', 'DENY', 'system', 'djimitflo.approval.expired');
+      this.recordDecision(updated, 'EXECUTION_APPROVAL_EXPIRED', 'DENY', 'system');
       throw new Error('APPROVAL_EXPIRED: Expired approvals cannot authorize execution.');
     }
-    this.recordDecision(updated, approved ? 'EXECUTION_APPROVED' : 'EXECUTION_DENIED', approved ? 'ALLOW' : 'DENY', decidedBy, approved ? 'djimitflo.approval.approved' : 'djimitflo.approval.denied');
+    this.recordDecision(updated, approved ? 'EXECUTION_APPROVED' : 'EXECUTION_DENIED', approved ? 'ALLOW' : 'DENY', decidedBy);
 
     return updated;
   }
@@ -266,7 +272,7 @@ export class ApprovalService {
       payload: { approval: expired },
       timestamp: expired.updated_at,
     });
-    this.recordDecision(expired, 'EXECUTION_APPROVAL_EXPIRED', 'DENY', 'system', 'djimitflo.approval.expired');
+    this.recordDecision(expired, 'EXECUTION_APPROVAL_EXPIRED', 'DENY', 'system');
   }
 
   private expireApprovalRecord(approval: ApprovalRequest): ApprovalRequest | null {
@@ -275,6 +281,7 @@ export class ApprovalService {
     if (!result.changes) return null;
 
     const expired = this.getApproval(approval.id)!;
+    this.enqueueApprovalEvent(expired, 'djimitflo.approval.expired');
     this.auditService.record({
       event_type: AuditEventType.APPROVAL_EXPIRED,
       action: 'approval_expired',
