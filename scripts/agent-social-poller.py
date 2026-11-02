@@ -25,7 +25,10 @@ def extract_object(text):
     refs = value.get('evidence_refs', [])
     if not isinstance(refs, list): raise RuntimeError('runtime evidence_refs must be an array')
     value['evidence_refs'] = [item for item in refs if isinstance(item, str)]
-    return {key: value[key] for key in (*required, 'evidence_refs', 'interest', 'ecosystem_component', 'proposed_improvement') if key in value and (key == 'evidence_refs' or isinstance(value[key], str))}
+    reply = {key: value[key] for key in (*required, 'evidence_refs', 'interest', 'ecosystem_component', 'proposed_improvement') if key in value and (key == 'evidence_refs' or isinstance(value[key], str))}
+    # AC-06: a typed artefact object is passed through; the server validates it and ignores it outside investigation threads
+    if isinstance(value.get('artefact'), dict): reply['artefact'] = value['artefact']
+    return reply
 
 def prompt_for(message):
     payload = message.get('payload') or {}
@@ -220,6 +223,8 @@ RUNTIMES.update({name: (lambda prompt, runtime=name: run_cli(runtime, prompt)) f
 
 def self_test():
     assert extract_object('{"answer":"a","uncertainty":"u","falsifiable_next_step":"f","creative_alternative":"c","stop_condition":"s","evidence_refs":[]}')['answer'] == 'a'
+    assert 'artefact' not in extract_object('{"answer":"a","uncertainty":"u","falsifiable_next_step":"f","creative_alternative":"c","stop_condition":"s","artefact":"x"}')
+    assert extract_object('{"answer":"a","uncertainty":"u","falsifiable_next_step":"f","creative_alternative":"c","stop_condition":"s","artefact":{"kind":"repro","command":"x"}}')['artefact'] == {'kind': 'repro', 'command': 'x'}
     print('agent-social-poller self-test: PASS')
 
 def main():

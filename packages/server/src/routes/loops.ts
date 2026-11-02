@@ -4,6 +4,7 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { createError } from '../middleware/error-handler';
 import { LoopService } from '../services/loop-service';
+import { LoopRunQueryService } from '../services/loop-run-query-service';
 import { listDraftPrs } from '../services/loop-draft-pr-service';
 import { dependencyLaneQueue, reenableDependencyLane } from '../services/dependency-lane';
 import { autoMergeEvidence, reEnableClass } from '../services/loop-auto-merge-state';
@@ -79,6 +80,7 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
   router.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false })); // per-router limiter CodeQL can see; /api also caps 300/min
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
   const loopService = new LoopService(db, evidenceRoot, executionEngine);
+  const queries = new LoopRunQueryService(db);
 
   router.get('/catalog', requirePermission('read:evidence'), (_req, res, next) => {
     try {
@@ -171,6 +173,19 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
   router.get('/runs/:id/review-bundle', requirePermission('read:evidence'), (req, res, next) => {
     try {
       res.json(loopService.getReviewBundle(req.params.id));
+    } catch (error) {
+      try {
+        mapLoopServiceError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  // Gym run panel (read-only): the skill outcome record() wrote for this run — duration and the counted verdict live only there
+  router.get('/runs/:id/gym-outcome', requirePermission('read:evidence'), (req, res, next) => {
+    try {
+      res.json(queries.getGymSkillOutcome(req.params.id));
     } catch (error) {
       try {
         mapLoopServiceError(error);

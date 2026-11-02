@@ -10,7 +10,7 @@ import { createError } from '../middleware/error-handler';
 import { SwarmTaskDecomposer } from '../services/swarm-task-decomposer';
 import { KnowledgeSharingService } from '../services/knowledge-sharing-service';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
-import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
+import { CapabilityLifecycleError, SwarmIntelligenceService } from '../services/swarm-intelligence-service';
 import { SpecialistPanelService } from '../services/specialist-panel-service';
 import { AgentInteractionLedgerService } from '../services/agent-interaction-ledger-service';
 import { OutcomeLearningService } from '../services/outcome-learning-service';
@@ -232,7 +232,11 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
 
   // ─── Capabilities ──────────────────────────────────────────────────
   router.get('/intelligence/capabilities', requirePermission('read:evidence'), (req, res) => {
-    res.json({ capabilities: intelligence.listCapabilities(boundedLimit(req.query.limit, 100, 500)) });
+    const limit = boundedLimit(req.query.limit, 100, 500);
+    const capabilities = intelligence.listCapabilities(limit);
+    // SW-02: the loaded slice next to the whole registry (latest `limit` by updated_at is not the registry)
+    const registry = intelligence.capabilityRegistryCounts();
+    res.json({ capabilities, registry_total: registry.total, registry_by_status: registry.by_status, loaded: capabilities.length, limit });
   });
 
   router.post('/intelligence/capabilities', requirePermission('write:capability'), (req, res, next) => {
@@ -249,7 +253,9 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
       const capability = intelligence.registerCapability(req.body);
       res.status(201).json(capability);
     } catch (err: any) {
-      if (err.message?.startsWith('SWARM_CAPABILITY_')) {
+      if (err instanceof CapabilityLifecycleError) {
+        next(createError(409, err.message, err.code));
+      } else if (err.message?.startsWith('SWARM_CAPABILITY_')) {
         next(createError(400, err.message, err.message));
       } else {
         next(err);

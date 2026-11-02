@@ -155,3 +155,58 @@ it('hosts: live boundary at 120 seconds and handles empty info_json', () => {
   const empty = hosts.find((h) => h.host === 'emptyinfo')!;
   expect(empty.info).toEqual({});
 });
+
+it('poll: never hands out a shell row without a future expiry and a recorded, sha-matching human approval', () => {
+  vi.useFakeTimers({ now: Date.parse('2026-10-30T00:00:00Z') });
+  const insert = (command: string, extra: { approved_by?: string | null; approved_at?: string | null; expires_at?: string | null }) => {
+    const id = `row-${command.replace(/\W/g, '')}`;
+    db.prepare(`INSERT INTO fleet_commands (id, host, kind, command, command_sha256, status, requested_by, approved_by, approved_at, expires_at, created_at)
+      VALUES (?, 'workstation', 'shell', ?, ?, 'queued', 'op', ?, ?, ?, ?)`)
+      .run(id, command, sha(command), extra.approved_by ?? null, extra.approved_at ?? null, extra.expires_at ?? null, '2026-10-29T23:59:00Z');
+    return id;
+  };
+  const noExpiry = insert('id one', { approved_by: 'dennis', approved_at: '2026-10-29T23:59:30Z', expires_at: null });
+  const noAudit = insert('id two', { approved_by: 'dennis', approved_at: '2026-10-29T23:59:30Z', expires_at: '2026-10-30T00:10:00Z' });
+  const unapproved = insert('id three', { expires_at: '2026-10-30T00:10:00Z' });
+  // approved through the service, then the text (and its sha) swapped: the recorded approval is for another sha
+  const swapped = fleet.request('workstation', 'uptime -p', 'op');
+  fleet.approve(swapped.id, 'dennis', sha('uptime -p'));
+  db.prepare('UPDATE fleet_commands SET command = ?, command_sha256 = ? WHERE id = ?').run('id four', sha('id four'), swapped.id);
+  // a real approval whose expiry was pushed past the approval window
+  const stretched = fleet.request('workstation', 'hostname', 'op');
+  fleet.approve(stretched.id, 'dennis', sha('hostname'));
+  db.prepare('UPDATE fleet_commands SET expires_at = ? WHERE id = ?').run('2099-01-01T00:00:00Z', stretched.id);
+  const legit = fleet.request('workstation', 'whoami', 'op');
+  fleet.approve(legit.id, 'dennis', sha('whoami'));
+  const ping = fleet.request('workstation', 'ping', 'op');
+
+  expect(fleet.poll('workstation').map((c) => c.id).sort()).toEqual([legit.id, ping.id].sort());
+  for (const id of [noExpiry, noAudit, unapproved, swapped.id, stretched.id]) {
+    const row = fleet.get(id)!;
+    expect(row.status, id).toBe('refused'); // marked with a reason, never deleted
+    expect(row.decided_reason, id).toMatch(/^shell_/);
+    expect(row.finished_at, id).toBeTruthy();
+  }
+  expect(fleet.get(noExpiry)!.decided_reason).toBe('shell_expiry_missing_or_invalid');
+  expect(fleet.get(stretched.id)!.decided_reason).toBe('shell_expiry_missing_or_invalid');
+  expect(fleet.get(noAudit)!.decided_reason).toBe('shell_approval_not_recorded');
+  expect(fleet.get(unapproved)!.decided_reason).toBe('shell_approval_not_recorded');
+  expect(fleet.get(swapped.id)!.decided_reason).toBe('shell_approval_not_recorded');
+  expect(fleet.poll('workstation')).toEqual([]); // refused rows stay refused
+});
+
+it('poll: a row whose text no longer matches its sha is refused, not left running', () => {
+  const c = fleet.request('workstation', 'whoami', 'op');
+  fleet.approve(c.id, 'dennis', sha('whoami'));
+  db.prepare('UPDATE fleet_commands SET command_sha256 = ? WHERE id = ?').run(sha('WRONG'), c.id);
+  expect(fleet.poll('workstation')).toEqual([]);
+  expect(fleet.get(c.id)).toMatchObject({ status: 'refused', decided_reason: 'command_sha_mismatch' });
+});
+
+it('approve: expiry is measured from the same instant as approved_at (a clock tick never refuses a fresh approval)', () => {
+  let t = Date.parse('2026-10-30T12:00:00.000Z');
+  vi.spyOn(Date, 'now').mockImplementation(() => t++); // every read advances 1 ms, like a busy CI runner
+  const c = fleet.request('workstation', 'reboot', 'op');
+  fleet.approve(c.id, 'dennis', sha('reboot'));
+  expect(fleet.poll('workstation').map((x) => x.id)).toEqual([c.id]);
+});

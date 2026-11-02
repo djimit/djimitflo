@@ -15,6 +15,8 @@
  */
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
+import { realRunSql } from '../services/synthetic-runs';
+import { rateLimit } from 'express-rate-limit';
 import { mountRoutes } from '../utils/route-inventory';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
@@ -45,6 +47,8 @@ import { createGovernanceRoutes } from './swarm-governance';
 import { createKnowledgeRoutes } from './swarm-knowledge';
 import { recordAbstentionGap } from '../services/knowledge-gaps';
 import { gapDemandByCapability } from '../services/evolution-feedback';
+import { learningCurveView, usageWindow } from '../services/swarm-learning-curve';
+import { missionDetail } from '../services/mission-detail';
 
 type RouteHandler = (req: Request, res: Response, next: NextFunction) => void | Promise<void>;
 
@@ -68,6 +72,13 @@ function boundedLimit(value: unknown, fallback = 100): number {
     throw createError(400, 'limit must be an integer between 1 and 500', 'VALIDATION_ERROR');
   }
   return limit;
+}
+
+function boundedDays(value: unknown, fallback = 7): number {
+  if (value === undefined) return fallback;
+  const days = Number(value);
+  if (!Number.isInteger(days) || days < 1 || days > 90) throw createError(400, 'days must be an integer between 1 and 90', 'VALIDATION_ERROR');
+  return days;
 }
 
 function boundedParallel(value: unknown, fallback = 3): number {
@@ -202,6 +213,17 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   router.get('/intelligence/missions', requirePermission('read:evidence'), (req, res) => { res.json({ missions: missionsSvc().listMissions(boundedLimit(req.query.limit)) }); });
   router.post('/intelligence/missions', requirePermission('write:swarm_action'), (req, res, next) => {
     try { res.status(201).json(missionsSvc().createMission(req.body)); } catch (error) {
+      try { mapSwarmIntelligenceError(error); } catch (mapped) { next(mapped); }
+    }
+  });
+  // SW-02: advisory planning status next to the linked goal/loop execution and outcome — a read-only join, never a transition
+  router.get('/intelligence/missions/execution', requirePermission('read:evidence'), route((req, res) => {
+    res.json(missionsSvc().missionExecutions(boundedLimit(req.query.limit, 50)));
+  }));
+  // mission detail page: the same join for one mission plus its runs, leases, tasks, decisions, tokens and provenance (read-only)
+  const missionDetailLimiter = rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: 'draft-8', legacyHeaders: false }); // per-route limiter CodeQL can see; /api also caps 300/min
+  router.get('/intelligence/missions/:id/execution', missionDetailLimiter, requirePermission('read:evidence'), (req, res, next) => {
+    try { res.json(missionDetail(db, req.params.id)); } catch (error) {
       try { mapSwarmIntelligenceError(error); } catch (mapped) { next(mapped); }
     }
   });
@@ -346,38 +368,22 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   router.post('/learning/cycle', requirePermission('write:swarm_action'), route(async (_req, res) => { res.json(await new ContinuousLearningLoop(db, { intervalMs: 999999999 }).runCycle()); }));
   router.get('/learning/history', requirePermission('read:evidence'), route((_req, res) => { res.json(new ContinuousLearningLoop(db, { intervalMs: 999999999 }).getHistory(20)); }));
   router.get('/learning/last', requirePermission('read:evidence'), route((_req, res) => { res.json(new ContinuousLearningLoop(db, { intervalMs: 999999999 }).getLastCycle()); }));
-  router.get('/learning-curve', requirePermission('read:evidence'), route((_req, res) => {
-    const loops = new LoopService(db);
-    const runs = loops.listLoopRuns().slice().reverse().map((run) => {
-      const metric = loops.computeEfficiencyMetric(run.id);
-      return {
-        run_id: run.id,
-        created_at: run.created_at,
-        success: run.status === 'completed',
-        retries: Number(run.metadata.retry_count) || 0,
-        dollars: metric.dollarsSpent,
-      };
-    });
-    const first = runs[0];
-    const last = runs[runs.length - 1];
-    res.json({
-      runs,
-      first_vs_last: {
-        first_success_rate: first ? Number(first.success) : 0,
-        last_success_rate: last ? Number(last.success) : 0,
-        first_cost: first?.dollars || 0,
-        last_cost: last?.dollars || 0,
-      },
-      trend: { retries_decreasing: runs.length > 1 && last.retries < first.retries },
-    });
+  // SW-01: per-cohort completion rates over equal windows with their denominators; unknown usage/cost stays null (read-only)
+  router.get('/learning-curve', requirePermission('read:evidence'), route((req, res) => {
+    res.json(learningCurveView(db, Date.now(), boundedDays(req.query.days)));
+  }));
+  // SW-01: recorded token usage for a stated window with its coverage (cost-ledger usage events), for /swarm
+  router.get('/usage-window', requirePermission('read:evidence'), route((req, res) => {
+    res.json(usageWindow(db, Date.now(), boundedDays(req.query.days)));
   }));
 
+  // CODE-007: a capability cost model is a runtime tariff × tokens (or a declared figure), never a dated model price, so its
+  // dollars are null with the reason; the figure stays as a labelled estimate (the allocation baseline).
+  const estimate = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null);
   const computeCapabilityEconomy = () => intelligence.listCapabilities(500)
     .filter((capability) => capability.status === 'validated' || capability.status === 'candidate')
     .map((capability) => {
       const competence = intelligence.measureCompetence(capability.id);
-      const p50Dollars = Number(capability.cost_model.p50_dollars) || 0;
-      const p95Dollars = Number(capability.cost_model.p95_dollars) || 0;
       return {
         capability_id: capability.id,
         capability_kind: capability.kind,
@@ -387,35 +393,55 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
         success_rate: competence.success_rate,
         p50_tokens: competence.p50_cost,
         p95_tokens: competence.p95_cost,
-        p50_dollars: p50Dollars,
-        p95_dollars: p95Dollars,
-        verified_artifacts_per_dollar: competence.n_completed > 0 && p50Dollars > 0
-          ? competence.n_completed / p50Dollars
-          : null,
+        p50_dollars: null,
+        p95_dollars: null,
+        verified_artifacts_per_dollar: null,
+        dollars_reason: 'no_dated_model_price' as const,
+        p50_dollars_estimate: estimate(capability.cost_model.p50_dollars),
+        p95_dollars_estimate: estimate(capability.cost_model.p95_dollars),
+        estimate_basis: 'runtime_tariff_or_declared' as const,
       };
     });
 
   router.get('/economy', requirePermission('read:evidence'), route((_req, res) => {
     const capabilities = computeCapabilityEconomy();
     const loops = new LoopService(db);
-    const recentRuns = loops.listLoopRuns().slice(0, 10).map((run) => {
+    const real = new Set((db.prepare(`SELECT id FROM loop_runs WHERE ${realRunSql()}`).all() as Array<{ id: string }>).map((r) => r.id));
+    const recentRuns = loops.listLoopRuns().filter((run) => real.has(run.id)).slice(0, 10).map((run) => {
       const metric = loops.computeEfficiencyMetric(run.id);
       return {
         run_id: run.id,
         loop_name: run.loop_name,
         status: run.status,
+        // verified = the run passed certification; unknown dollars/efficiency are null, never 0
         verified_artifacts: metric.verifiedArtifacts,
+        completed_unverified: metric.completedUnverified,
+        run_verified: metric.runVerified,
+        // CODE-007: dollars only from a dated model price (lease token_accounting + price_version), else null + reason
         dollars_spent: metric.dollarsSpent,
+        dollars_lower_bound: metric.dollarsLowerBound,
+        dollars_reason: metric.dollarsReason,
+        usage_coverage: metric.usageCoverage,
+        price_coverage: metric.priceCoverage,
+        price_basis: metric.priceBasis,
         efficiency: metric.efficiency,
+        efficiency_reason: metric.efficiencyReason,
+        // the old runtime-tariff figure, kept as a labelled estimate for comparison; never dollars_spent
+        runtime_tariff_estimate: metric.runtimeTariffEstimate,
       };
     });
+    const knownDollars = recentRuns.filter((run) => run.dollars_spent !== null);
     res.json({
       capabilities,
       recent_runs: recentRuns,
       summary: {
         total_capabilities: capabilities.length,
         total_verified_artifacts: recentRuns.reduce((sum, run) => sum + run.verified_artifacts, 0),
-        total_dollars_spent: recentRuns.reduce((sum, run) => sum + run.dollars_spent, 0),
+        total_completed_unverified: recentRuns.reduce((sum, run) => sum + run.completed_unverified, 0),
+        // sum over runs whose dollars are known; null when none are; a lower bound when any run is unknown or partial
+        total_dollars_spent: knownDollars.length > 0 ? knownDollars.reduce((sum, run) => sum + (run.dollars_spent ?? 0), 0) : null,
+        total_dollars_lower_bound: knownDollars.length > 0 && recentRuns.some((run) => run.dollars_spent === null || run.dollars_lower_bound),
+        runs_with_unknown_dollars: recentRuns.length - knownDollars.length,
       },
     });
   }));
@@ -430,13 +456,14 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     if (!Number.isFinite(budget) || budget < 0) {
       throw createError(400, 'budget query param must be a non-negative number', 'ECONOMY_ALLOCATE_BUDGET_INVALID');
     }
-    const capabilities = computeCapabilityEconomy().filter((capability) => capability.p50_dollars > 0);
+    // allocation plans on the labelled estimate (no dated capability price exists); the response says so
+    const capabilities = computeCapabilityEconomy().filter((capability) => (capability.p50_dollars_estimate ?? 0) > 0);
     const loops = new LoopService(db);
     const result = loops.allocateDollarBudget(
       capabilities.map((capability) => ({
         finding_id: capability.capability_id,
         capability_id: capability.capability_id,
-        p50_dollars: capability.p50_dollars,
+        p50_dollars: capability.p50_dollars_estimate as number,
         competence: capability.success_rate,
       })),
       budget
@@ -444,6 +471,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     const byId = new Map(capabilities.map((capability) => [capability.capability_id, capability]));
     res.json({
       budget,
+      cost_basis: 'estimate' as const,
       budget_insufficient: result.budgetInsufficient,
       allocated: result.allocated.map((id) => byId.get(id)),
       deferred: result.deferred.map((id) => byId.get(id)),

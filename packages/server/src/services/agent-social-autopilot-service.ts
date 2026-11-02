@@ -123,6 +123,8 @@ export function extractReply(text: string): SocialRuntimeReply {
     creative_alternative: String(value.creative_alternative), stop_condition: String(value.stop_condition),
     ...Object.fromEntries(['interest', 'ecosystem_component', 'proposed_improvement'].filter(key => typeof value[key] === 'string').map(key => [key, value[key]])),
     evidence_refs: Array.isArray(value.evidence_refs) ? value.evidence_refs.filter((item): item is string => typeof item === 'string') : [],
+    // AC-06: passed through untouched; respondSocial ignores it unless the thread is a Commons investigation (COMMONS_INVESTIGATION_MODE)
+    ...(value.artefact && typeof value.artefact === 'object' && !Array.isArray(value.artefact) ? { artefact: value.artefact } : {}),
   };
 }
 

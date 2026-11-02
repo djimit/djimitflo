@@ -22,8 +22,12 @@ const iso = (ms: number) => new Date(ms).toISOString();
 let db: Database.Database;
 let seq = 0;
 
-beforeEach(() => { db = new Database(':memory:'); db.pragma('foreign_keys = OFF'); db.exec(schema); runMigrations(db); ensureCreditTable(db); new SkillEvolutionEngine(db); seq = 0; });
-afterEach(() => { vi.unstubAllEnvs(); db.close(); });
+beforeEach(() => {
+  // HTTP aggregation uses the wall clock too; keep it aligned with the seeded reporting window.
+  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(NOW);
+  db = new Database(':memory:'); db.pragma('foreign_keys = OFF'); db.exec(schema); runMigrations(db); ensureCreditTable(db); new SkillEvolutionEngine(db); seq = 0;
+});
+afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); db.close(); });
 
 const call = (purpose: string, opts: { tin?: number | null; tout?: number | null; shadow?: number; consumer?: string; model?: string } = {}) =>
   db.prepare(`INSERT INTO llm_model_calls (consumer, model, ok, provider, shadow, tokens_in, tokens_out, purpose, created_at) VALUES (?, ?, 1, 'litellm', ?, ?, ?, ?, ?)`)
@@ -69,6 +73,12 @@ describe('value allocator: resources', () => {
     expect(maker.w7.tokens.cloud).toBeNull();
     expect(maker.w7.tokens.unknown_calls).toBe(2);
     expect(maker.w7.class).toBe('UNKNOWN_COST');
+  });
+
+  // E-assumptions A4/C13 (re-20261030): a one-sided report was summed as (tin ?? 0) + (tout ?? 0) at value-allocator.ts:192
+  it('a call reporting only one token side is unknown, never the known side + 0', () => {
+    call('one-sided', { tin: 100, tout: null }); call('one-sided', { tin: null, tout: 50 }); call('one-sided', { tin: 100, tout: 50 });
+    expect(row(buildValueAllocation(db, NOW, {}, []), 'llm:one-sided').w7.tokens).toMatchObject({ known_calls: 1, unknown_calls: 2 });
   });
 
   it('P0-7: a maker lease the engine ran on a fallback runtime is the effective runtime\'s consumer, not the requested one', () => {

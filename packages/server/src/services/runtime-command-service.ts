@@ -7,14 +7,14 @@
  */
 
 import { remoteMakerEnabled } from './remote-maker-queue';
-import { spawn, spawnSync } from 'child_process';
+import { spawnSync } from 'child_process';
 import { createHash } from 'crypto';
 import type { ChildProcess } from 'child_process';
 import type { Database } from 'better-sqlite3';
 import type { LoopService } from './loop-service';
 import type { RuntimeProcessHandle, RuntimeContract, RuntimeUsage, RuntimeExecutionResult, RuntimeStopResult } from './loop-types';
 import { runtimeConcurrencySemaphore } from './concurrency-semaphore';
-import { runtimeProcessClosed, stopRuntimeProcess } from '../execution/executors/runtime-process';
+import { runtimeProcessClosed, signalRuntimeProcess, spawnRuntime, stopRuntimeProcess } from '../execution/executors/runtime-process';
 import { RuntimeLeaseRegistry } from './loop-recovery-service';
 
 export class RuntimeCommandService {
@@ -270,7 +270,7 @@ export class RuntimeCommandService {
       let timeoutHandle: NodeJS.Timeout | undefined;
       let child: ChildProcess;
       try {
-        child = spawn(command, args, { cwd: options.cwd, env: options.env || this.loopService.buildRuntimeEnv(), stdio: ['ignore', 'pipe', 'pipe'] });
+        child = spawnRuntime(command, args, { cwd: options.cwd, env: options.env || this.loopService.buildRuntimeEnv(), stdio: ['ignore', 'pipe', 'pipe'] });
       } catch (error) {
         this.releaseRuntimePermit(leaseId);
         reject(error instanceof Error ? error : new Error(String(error)));
@@ -280,7 +280,7 @@ export class RuntimeCommandService {
         timeoutHandle = setTimeout(() => {
           if (!timedOutHandled) {
             timedOut = true; timedOutAt = new Date().toISOString(); timedOutHandled = true;
-            try { child.kill('SIGKILL'); } catch { /* best effort */ }
+            signalRuntimeProcess(child, 'SIGKILL');
           }
         }, timeoutMs);
       }
