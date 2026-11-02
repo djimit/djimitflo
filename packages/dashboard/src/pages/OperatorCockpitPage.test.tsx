@@ -6,8 +6,12 @@ import { CommandStrip, EfficiencySection, EvolutionFunnel, NeedsYou, OperatorCoc
 import { api } from '../lib/api';
 
 beforeEach(() => { vi.restoreAllMocks(); vi.spyOn(api, 'getServiceMap').mockResolvedValue({ services: [
-  { names: ['event bus'], endpoint: 'http://100.86.47.122:8083', status: 'up', http: 404, ms: 12, error: null },
-  { names: ['LiteLLM'], endpoint: 'http://192.168.1.28:4000', status: 'down', http: null, ms: null, error: 'timeout' },
+  { names: ['event bus'], endpoint: 'http://100.86.47.122:8083', status: 'reachable', http: 404, ms: 12, error: null, state: 'CONFIGURED',
+    state_evidence: 'probe HTTP 404; last business success 2026-09-28T19:00:00.000Z (event_outbox)', last_success_at: '2026-09-28T19:00:00.000Z', last_failure_at: null, evidence_source: 'event_outbox' },
+  { names: ['LiteLLM'], endpoint: 'http://192.168.1.28:4000', status: 'down', http: null, ms: null, error: 'timeout', state: 'FAILED',
+    state_evidence: 'probe failed (timeout); no business operation in 7 d (llm_model_calls)', last_success_at: null, last_failure_at: null, evidence_source: 'llm_model_calls' },
+  // a row from an older server carries no state: the reader says UNKNOWN, never a transport-derived health
+  { names: ['UAMS'], endpoint: 'http://u:8000', status: 'up', http: 200, ms: 3, error: null } as never,
 ] }); });
 
 it('shows breached guardrails, stalls and gym species from the cockpit endpoint', async () => {
@@ -24,10 +28,12 @@ it('shows breached guardrails, stalls and gym species from the cockpit endpoint'
   expect(await screen.findByText('breached · limit <= verified/5 (2.2)')).toBeTruthy();
   expect(screen.getByText('maker 2 · reviewer 3 · environment 0')).toBeTruthy(); // funnel phase 3: whose regressions
   expect(screen.getAllByText('gym:atomic@llama-router').length).toBeGreaterThan(0); // command strip + stalls section
+  expect(screen.queryByText(/since never/)).toBeNull(); // DF-05: a stall without a start time says nothing about elapsed time
   expect(screen.getByText('89%')).toBeTruthy();
   expect(screen.getByText('No remote host has claimed work.')).toBeTruthy();
   expect(screen.getByText('verdict ok')).toBeTruthy();
-  expect(await screen.findByText('down (timeout)')).toBeTruthy();
+  expect(await screen.findByText('probe failed (timeout); no business operation in 7 d (llm_model_calls)')).toBeTruthy();
+  expect(screen.getByText('— (timeout)')).toBeTruthy();
 });
 
 it('UX-2: shows real-maker outcomes per strategy genome with n, and an honest empty state', async () => {
@@ -50,8 +56,9 @@ it('shows the error when the endpoint fails', async () => {
 
 it('W3: shows what needs the operator with links into /decisions, and a calm line when nothing does', () => {
   const html = renderToStaticMarkup(<MemoryRouter><NeedsYou n={{ approvals: 2, requeue: 0, labels: 22, memory_review: 1 }} /></MemoryRouter>);
-  expect(html).toContain('Needs you (25)');
+  expect(html).toContain('Needs you (3)'); // the 22 labels are optional labelling, not decisions
   expect(html).toContain('href="/decisions#approvals"');
+  expect(html).toContain('Optional labelling (22)');
   expect(html).toContain('22 pre-screen labels');
   expect(html).not.toContain('requeue candidates');
   expect(renderToStaticMarkup(<MemoryRouter><NeedsYou n={{ approvals: 0, requeue: 0, labels: 0, memory_review: 0 }} /></MemoryRouter>)).toContain('Nothing needs you right now');
@@ -60,7 +67,7 @@ it('W3: shows what needs the operator with links into /decisions, and a calm lin
 it('UX-6: shows every blocking category with a deep link; /decisions links point at ids that exist on the Decisions page', async () => {
   const n = { approvals: 2, requeue: 1, labels: 0, memory_review: 1, proposals: 3, draft_prs: 4, stalls: 1, approvals_expiring: 1, join_requests: 1, shell_requests: 2 };
   const html = renderToStaticMarkup(<MemoryRouter><NeedsYou n={n} /></MemoryRouter>);
-  expect(html).toContain('Needs you (11)'); // 2+1+1+3+1+1+2 — expiring and unsettled PRs are not double-counted
+  expect(html).toContain('Needs you (10)'); // 2+1+1+3+1+2 — expiring and unsettled PRs are not double-counted; a stall is system health
   for (const t of ['3 proposals awaiting approval', '4 loop PRs unsettled', '1 silent stalls', '1 Commons join requests', '2 fleet shell requests', '1 approvals expiring within 1 h']) expect(html).toContain(t);
   const anchors = [...html.matchAll(/href="\/decisions#([a-z-]+)"/g)].map((m) => m[1]);
   expect(new Set(anchors)).toEqual(new Set(['approvals', 'requeue', 'memory', 'draft-prs']));
@@ -109,7 +116,14 @@ it('honest cockpit: tokens per verified change, stale gym species, gym vs produc
   const gym = screen.getByRole('table', { name: 'Gym-maker outcomes per strategy genome' });
   expect(production.textContent).toContain('g-prod'); expect(production.textContent).not.toContain('g-gym');
   expect(gym.textContent).toContain('g-gym'); expect(gym.textContent).not.toContain('g-prod');
-  expect(await screen.findByText('reachable (404)')).toBeTruthy();
+  // DF-07: the service map shows the state ladder with its evidence, never transport reachability as health
+  const servicesTable = await screen.findByRole('table', { name: 'Service endpoints and their integration state' });
+  expect(servicesTable.textContent).toContain('CONFIGURED');
+  expect(servicesTable.textContent).toContain('probe HTTP 404; last business success 2026-09-28T19:00:00.000Z (event_outbox)');
+  expect(servicesTable.textContent).toContain('FAILED');
+  expect(servicesTable.textContent).toContain('UNKNOWN');
+  expect(servicesTable.textContent).not.toContain('HEALTHY');
+  expect(servicesTable.textContent).not.toContain('reachable');
   expect(screen.queryByText('up')).toBeNull();
 });
 
@@ -254,4 +268,22 @@ it('SOUL subtraction: lines, ratio and route delta per ISO week; unknown with th
   const none = renderToStaticMarkup(<SubtractionSection kpi={{ status: 'unavailable', reason: 'git is not installed in this environment', repo: '/repo', head: null, weeks: null, note: '' }} />);
   expect(none).toContain('Unknown — git is not installed in this environment');
   expect(none).not.toContain('>0<');
+});
+
+it('human-only needs-you: labelling has its own count, system work is shown apart, and the audit batch links to its card', async () => {
+  const n = { approvals: 1, requeue: 0, labels: 3, memory_review: 1, open_prs: 4, audit_batch: 3, flagged_prs: 1, dependency_human: 2, dependency_tracked: true,
+    proposals: 5, stalls: 2, total: 8, optional_labelling: { d5: 3, car: 2, e1: 0, di001: null, total: null },
+    system: { requeue_will_handle: 40, requeue_mode: 'on', proposals_auto_reviewed: true } };
+  const html = renderToStaticMarkup(<MemoryRouter><NeedsYou n={n} /></MemoryRouter>);
+  expect(html).toContain('Needs you (8)');
+  for (const t of ['3 PRs in the weekly audit batch', '1 flagged loop PRs', '2 Dependabot PRs the lane leaves to you', '1 memory reviews']) expect(html).toContain(t);
+  expect(html).toContain('href="/decisions#audit-batch"');
+  // optional labelling: own count; an unknown part makes it unknown, never 0
+  expect(html).toContain('Optional labelling (unknown)'); expect(html).toContain('2 CAR audits'); expect(html).toContain('unknown DI-001 relevance labels');
+  // system handles: shown, never in the headline
+  expect(html).toContain('40 requeue rows the system will handle'); expect(html).toContain('5 proposals in panel review'); expect(html).toContain('2 silent stalls');
+  expect(html).not.toContain('proposals awaiting approval');
+  const fs = await import('node:fs'); const path = await import('node:path');
+  const src = fs.readFileSync(path.join(process.cwd(), 'src/pages', 'DecisionsInboxPage.tsx'), 'utf8');
+  for (const a of ['audit-batch', 'dependency-lane', 'attribution-audit']) expect(src).toContain(`id="${a}"`);
 });

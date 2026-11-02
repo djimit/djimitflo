@@ -228,3 +228,18 @@ it('SI-A gym (GRADED_FITNESS_MODE=shadow): write_test outcomes carry graded = ki
   svc.record('d1', 'workstation', { status: 'discarded', reason: 'infra: npm ci failed', graded: 1, graded_kind: 'binary' });
   expect(db.prepare("SELECT COUNT(*) AS n FROM skill_outcomes WHERE task_id = 'd1'").get()).toEqual({ n: 0 });
 });
+
+it('GET /kb/pending: the host token sees only its own pages without a safety verdict (bounded); no token, no list', async () => {
+  vi.stubEnv('CONTENT_SAFETY_MODE', 'shadow'); vi.stubEnv('NVIDIA_API_KEY', 'k');
+  const now = new Date().toISOString();
+  db.exec('CREATE TABLE IF NOT EXISTS kb_pages (path TEXT PRIMARY KEY, host TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL, sha TEXT NOT NULL, vector BLOB NOT NULL, updated_at TEXT NOT NULL)');
+  const page = db.prepare("INSERT INTO kb_pages (path, host, title, body, sha, vector, updated_at) VALUES (?, ?, ?, 'b', 's', x'00', ?)");
+  page.run('concepts/a.md', 'workstation', 'a', now); page.run('concepts/b.md', 'workstation', 'b', now); page.run('concepts/n.md', 'nas', 'n', now);
+  const app = express(); app.use(rateLimit({ windowMs: 60_000, limit: 600 })); app.use(express.json());
+  const pass = (_req: any, _res: any, next: any) => next();
+  app.use('/gym-worker', createRemoteGymRoutes(db, { requireAuth: pass, requirePermission: () => pass } as never));
+  await request(app).get('/gym-worker/kb/pending').set('X-Gym-Host', 'workstation').expect(401);
+  const token = mintSpawnToken(resolveSpawnTokenSecret(), 'workstation', REMOTE_GYM_SCOPE, 60_000);
+  const res = await request(app).get('/gym-worker/kb/pending?limit=1').set('X-Gym-Host', 'workstation').set('X-Gym-Worker-Token', token).expect(200);
+  expect(res.body).toEqual({ pending: ['concepts/a.md'], total: 2 });
+});

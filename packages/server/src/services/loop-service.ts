@@ -3,6 +3,7 @@ import { assertionStrengthCheck } from './test-assertion-strength';
 import { withoutHiddenChecks } from './fail-before-pass-after';
 import { deadCodeCheckEnv } from './dead-code-source-service';
 import { findingFixCheck, findingFixCheckEnv } from './finding-fix-source';
+import { ADVISORY_EXPOSURE_CHECK, advisoryExposureCheck, advisoryGoalRefs } from './advisory-exposure';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -17,7 +18,7 @@ import { AgentAssuranceService } from './agent-assurance-service';
 import { SwarmIntelligenceService, type SwarmCapabilityRecord } from './swarm-intelligence-service';
 import { mintSpawnToken, resolveSpawnTokenSecret } from './spawn-token';
 import { swarmEventBus } from './swarm-event-bus';
-import { LoopBudgetService } from './loop-budget-service';
+import { LoopBudgetService, type EfficiencyMetric } from './loop-budget-service';
 import { WorktreeManager } from './worktree-manager';
 import { GoalService } from './goal-service';
 import { LoopWorkerExecutorService } from './loop-worker-executor-service';
@@ -29,7 +30,7 @@ import type { ExecuteWorkerResult } from './loop-worker-executor-service';
 import { LoopEventService } from './loop-event-service';
 import { LoopRunQueryService } from './loop-run-query-service';
 import { WorkerLeaseRepo } from './loop-worker-lease-repo';
-import { LoopRecoveryService, RuntimeLeaseRegistry } from './loop-recovery-service';
+import { LoopRecoveryService, RuntimeLeaseRegistry, type ResumeInterruptedMode, type ResumeInterruptedSummary } from './loop-recovery-service';
 import { LoopPersistenceService } from './loop-persistence-service';
 import { ExperienceRetrievalService } from './experience-retrieval-service';
 import { SelfImprovementService } from './self-improvement-service';
@@ -58,6 +59,7 @@ import type {
   CheckerVerdictInput,
   VerdictActor,
 } from './loop-types';
+import { isSupersededMaker } from './loop-types';
 import type { LoopFinding } from './loop-discovery-service';
 import type { GoalRecord, GoalCreateInput, GoalUpdateInput, DecomposedLoopCandidate } from './goal-service';
 import { captureReadSet, freshnessMode, type ReadSet } from './evidence-freshness';
@@ -351,6 +353,9 @@ export function renderWorkAssignment(run: { id: string; loop_name: string }, fin
 export const objectiveScopeLine = (file: string): string => `Change only this file: ${file}. Do not edit README.md, CONTRIBUTING.md or any other file.`;
 
 /** The fixed instruction lines of every checker / security-checker assignment (exported for the STE prompt lint). */
+/** The checker prompt carries at most this many characters of the assignment packet (buildCheckerPrompt). */
+export const CHECKER_PACKET_MAX_CHARS = 20_000;
+
 export const CHECKER_INSTRUCTIONS = {
   common: [
     'You are an independent checker. Do not edit files, merge, push, deploy, modify secrets or change policy.',
@@ -476,18 +481,9 @@ export class LoopService {
     return { ...result, prunedWorktrees };
   }
 
-  resumeInterruptedRun(runId: string, maxResumeAttempts = 3): {
-    resumed: boolean;
-    boundedFail: boolean;
-    resumeAttempt: number;
-    requeuedFindings: string[];
-    skippedFindings: string[];
-  } {
-    return this.recovery.resumeInterruptedRun(runId, maxResumeAttempts);
-  }
-
-  resumeInterruptedRuns(): { resumed: number; boundedFailed: number; details: Array<{ runId: string; resumed: boolean }> } {
-    return this.recovery.resumeInterruptedRuns();
+  /** RIR (LOOP_RESUME_INTERRUPTED): re-queue this boot's interrupted runs with a fresh maker; see LoopRecoveryService. */
+  resumeInterruptedRuns(opts: { bootedAt?: string; mode?: ResumeInterruptedMode } = {}): ResumeInterruptedSummary {
+    return this.recovery.resumeInterruptedRuns((id) => this.retryLoopRun(id), opts);
   }
 
   /**
@@ -780,7 +776,7 @@ export class LoopService {
     return 'manual';
   }
 
-  computeDollarCost(runtime: string, totalTokens: number): number {
+  computeDollarCost(runtime: string, totalTokens: number): number | null {
     return this.budget.computeDollarCost(runtime, totalTokens);
   }
 
@@ -791,7 +787,7 @@ export class LoopService {
     return this.budget.allocateDollarBudget(findings, budget);
   }
 
-  computeEfficiencyMetric(runId: string): { verifiedArtifacts: number; dollarsSpent: number; efficiency: number } {
+  computeEfficiencyMetric(runId: string): EfficiencyMetric {
     return this.budget.computeEfficiencyMetric(runId);
   }
 
@@ -1204,6 +1200,13 @@ export class LoopService {
     } catch (err) {
       if (Object.keys(findingFixCheckEnv(this.db, run.goal_id)).length) checks.push({ name: 'test:finding-fix', status: 'fail', reason: `gate_error: ${err instanceof Error ? err.message : String(err)}`, exit_status: null });
     }
+    // Track A advisory exposure: the exposure check re-run on the worktree lockfile (must be not_affected) + package files only
+    try {
+      const advisory = advisoryExposureCheck(this.db, run.goal_id, makerLease.worktree_path!, outputDir, makerLease.metadata?.changed_files);
+      if (advisory) checks.push(advisory);
+    } catch (err) {
+      if (advisoryGoalRefs(this.db, run.goal_id)) checks.push({ name: ADVISORY_EXPOSURE_CHECK, status: 'fail', reason: `gate_error: ${err instanceof Error ? err.message : String(err)}`, exit_status: null });
+    }
     const failed = checks.some((check) => check.status === 'fail');
     // Batch-8 evidence freshness: fingerprint what the checks READ (configs, lockfile, imports) at the base commit.
     let evidenceReadSet: ReadSet | undefined;
@@ -1306,39 +1309,8 @@ export class LoopService {
       runtime_adapter: lease.runtime,
     });
 
-    this.assurance.createTraceSpan({
-      trace_id: traceId,
-      loop_run_id: run.id,
-      span_type: 'worker',
-      name: `${lease.role}:${lease.runtime}:spawn`,
-      status: 'running',
-      evidence_ref: `loop:${run.id}/worker:${lease.id}`,
-      metadata: {
-        worker_lease_id: lease.id,
-        role: lease.role,
-        runtime: lease.runtime,
-        checkpoint_before_id: checkpointBefore.id,
-      },
-    });
-
+    // OPS-004: the worker span (one per maker lease, closed at settlement) is owned by the shared executeMaker path
     const execution = await this.executeMaker(id, input);
-    const finalStatus = execution.lease.status === 'completed' ? 'ok' : 'error';
-    this.assurance.createTraceSpan({
-      trace_id: traceId,
-      loop_run_id: run.id,
-      span_type: 'worker',
-      name: `${lease.role}:${lease.runtime}:completion`,
-      status: finalStatus,
-      evidence_ref: execution.stdout_path,
-      metadata: {
-        worker_lease_id: lease.id,
-        role: lease.role,
-        runtime: lease.runtime,
-        stdout_path: execution.stdout_path,
-        stderr_path: execution.stderr_path,
-        gates: execution.gates,
-      },
-    });
 
     const checkpointAfter = this.assurance.createCheckpoint({
       loop_run_id: run.id,
@@ -1482,18 +1454,36 @@ export class LoopService {
     // metadata.improvement_id (see autonomous-goal-generator.ts).
     const improvementId = typeof goal.metadata.improvement_id === 'string' ? goal.metadata.improvement_id : null;
     const improvement = improvementId
-      ? this.db.prepare("SELECT description, rationale, type, json_extract(grounding_json, '$.artifactPath') AS artifact FROM self_improvements WHERE id = ?").get(improvementId) as
-          { description?: string; rationale?: string; type?: string; artifact?: string | null } | undefined
+      ? this.db.prepare("SELECT description, rationale, type, source, json_extract(grounding_json, '$.artifactPath') AS artifact FROM self_improvements WHERE id = ?").get(improvementId) as
+          { description?: string; rationale?: string; type?: string; source?: string | null; artifact?: string | null } | undefined
       : undefined;
 
     const severity: LoopFinding['severity'] =
       goal.risk_class === 'high' || goal.risk_class === 'critical' ? 'error'
       : goal.risk_class === 'medium' ? 'warning' : 'info';
 
+    // S4b: proposal text from an origin that is not the internal deterministic gap lane (test-gap, mutation, untested exports,
+    // dead code, finding-fix) — Commons replies via reflection, refinement, dream state, feedback, anything unknown — is data
+    // for the maker, not instructions: its title (the goal objective), description and rationale each reach the maker as a
+    // marked external-content block, JSON-encoded so the text cannot close it. The gap lane keeps its text byte for byte
+    // (running experiments compare its prompts).
+    const externalSource = improvement && improvement.source !== 'gap_analysis'
+      ? String(improvement.source ?? 'unknown').replace(/[^\w:-]/g, '_') : null;
+    const wrapExternal = (content: Record<string, string>) => [
+      `BEGIN_EXTERNAL_CONTENT source=self_improvement:${externalSource} trust=untrusted`, JSON.stringify(content), 'END_EXTERNAL_CONTENT',
+    ].join('\n');
+    const external = externalSource && (improvement?.description || improvement?.rationale)
+      ? wrapExternal({
+          ...(improvement?.description ? { original_proposal: improvement.description } : {}),
+          ...(improvement?.rationale ? { rationale: improvement.rationale } : {}),
+        })
+      : null;
+    const message = externalSource ? wrapExternal({ objective }) : objective;
     const evidence = [
       `Self-improvement goal ${goal.id} (source=${String(goal.metadata.source ?? 'unknown')}, risk_class=${goal.risk_class}).`,
-      improvement?.description ? `Original proposal: ${improvement.description}` : null,
-      improvement?.rationale ? `Rationale: ${improvement.rationale}` : null,
+      external,
+      !external && improvement?.description ? `Original proposal: ${improvement.description}` : null,
+      !external && improvement?.rationale ? `Rationale: ${improvement.rationale}` : null,
       goal.constraints.length ? `Constraints: ${goal.constraints.join('; ')}` : null,
     ].filter(Boolean).join('\n');
 
@@ -1504,11 +1494,11 @@ export class LoopService {
       // EV2 (prod 2026-10-03): every oracle goal said 'repository-wide objective' although its proposal names the file;
       // with a 'doc-drift' header that was enough for makers to edit README/CONTRIBUTING instead of the test
       file: improvement?.artifact || '(repository-wide objective; no single target file)',
-      message: objective,
+      message,
       evidence: evidence || 'No additional evidence beyond the goal objective was available.',
       suggested_fix: goal.acceptance_criteria.length
         ? `Satisfy: ${goal.acceptance_criteria.join('; ')}`
-        : objective,
+        : message,
       metadata: {
         objective_mode: true,
         goal_id: goal.id,
@@ -2348,7 +2338,7 @@ export class LoopService {
   }
 
   public isSupersededMakerLease(lease: WorkerLeaseRecord): boolean {
-    return lease.role === 'maker' && typeof lease.metadata.superseded_by_maker_lease_id === 'string';
+    return isSupersededMaker(lease);
   }
 
   public retryRootFor(maker: WorkerLeaseRecord): string {
@@ -2479,9 +2469,9 @@ export class LoopService {
     this.ensureControlDir(worktreePath);
     const advisoryContext = this.advisoryAssignmentContext(worktreePath, run, finding);
     const extra = assignmentContext(this.db, run, worktreePath, `loop-maker:${run.id}`);
-    if (extra.examples.length || extra.rules.length || extra.memory_holdout || extra.ace || extra.ste) {
+    if (extra.examples.length || extra.rules.length || extra.memory_holdout || extra.ace || extra.ste || extra.capabilities) {
       this.recordLoopEvent(run.id, 'assignment_context', 'info', `Maker assignment includes ${extra.examples.length} proven example(s) and ${extra.rules.length} rule(s)${extra.memory_holdout ? ' (memory holdout: rules withheld)' : ''}${extra.ace ? ` (ACE-001 arm ${extra.ace.arm})` : ''}${extra.ste ? ` (STE-001 arm ${extra.ste.arm})` : ''}.`,
-        { examples: extra.examples, rule_ids: extra.rules.map((r) => r.id), ...(extra.memory_holdout ? { memory_holdout: true } : {}), ...(extra.ace ? { ace_001: extra.ace } : {}), ...(extra.ste ? { ste_001: extra.ste } : {}) });
+        { examples: extra.examples, rule_ids: extra.rules.map((r) => r.id), ...(extra.memory_holdout ? { memory_holdout: true } : {}), ...(extra.ace ? { ace_001: extra.ace } : {}), ...(extra.ste ? { ste_001: extra.ste } : {}), ...(extra.capabilities ? { capabilities: extra.capabilities } : {}), ...(extra.capability_ids ? { capability_ids: extra.capability_ids } : {}) });
     }
     // multi-repo: an extra repo's maker is told that repo's check scripts (EXTRA_REPOS_ENABLED=on); djimitflo's text is unchanged
     const repo = extraRepoByPath(run.repository_path);
@@ -2559,7 +2549,7 @@ export class LoopService {
   public buildCheckerPrompt(run: LoopRunRecord, maker: WorkerLeaseRecord, checker: WorkerLeaseRecord): string {
     const worktreePath = maker.worktree_path || '';
     const diff = worktreePath ? this.workingTreeDiff(worktreePath) : '';
-    const assignmentPacket = this.checkerAssignmentPacket(run, maker, checker).slice(0, 20_000);
+    const assignmentPacket = this.checkerAssignmentPacket(run, maker, checker).slice(0, CHECKER_PACKET_MAX_CHARS);
     const stdoutPath = typeof maker.metadata.stdout_path === 'string' ? maker.metadata.stdout_path : '';
     const stderrPath = typeof maker.metadata.stderr_path === 'string' ? maker.metadata.stderr_path : '';
     const checks = this.checkResultsForReviewer(maker.metadata.deterministic_checks);

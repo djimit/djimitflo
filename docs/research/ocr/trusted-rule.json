@@ -1,0 +1,7 @@
+{
+  "include": ["**/*"],
+  "exclude": [],
+  "rules": [
+    { "path": "**/*", "rule": "", "merge_system_rule": true }
+  ]
+}

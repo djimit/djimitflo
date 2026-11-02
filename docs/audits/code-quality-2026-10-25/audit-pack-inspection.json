@@ -1,0 +1,44 @@
+[
+  {
+    "pr": 1004,
+    "head": "c2e952b2a9cd3d680ae72e5c24eb109fec82976a",
+    "validator": "docs/audits/swarm-evolution-2026-10-25/validate-pack.py",
+    "required_log_lines": [
+      "source=Path('/private/tmp/djimitflo-swarm-audit-src')",
+      "assert '75 passed | 2 skipped (77)' in (root/'focused-tests-initial.log').read_text()",
+      "assert '10 passed (10)' in (root/'resource-ledger-tests.log').read_text()",
+      "assert '1 passed (1)' in (root/'metric-replay.log').read_text()",
+      "if f.suffix in {'.md','.json','.mjs','.mts','.py','.log','.ts','.txt'}:"
+    ],
+    "distributed_log_paths": []
+  },
+  {
+    "pr": 991,
+    "head": "5a984aac10d2140c2e4b1c5ef9444a6b901c1d00",
+    "validator": "docs/audits/agent-commons/revalidation-2026-10-24/validate-pack.py",
+    "required_log_lines": [
+      "assert '3 passed (3)' in (root / 'policy-replay.log').read_text()",
+      "if file.suffix in {'.md', '.json', '.log', '.py', '.ts'}:"
+    ],
+    "distributed_log_paths": []
+  },
+  {
+    "pr": 991,
+    "head": "5a984aac10d2140c2e4b1c5ef9444a6b901c1d00",
+    "validator": "docs/audits/agent-commons/validate-pack.py",
+    "required_log_lines": [
+      "assert '49 passed (49)' in (ROOT / 'source-pinned-tests.log').read_text()",
+      "assert '11 passed (11)' in (ROOT / 'review-contract-tests.log').read_text()",
+      "assert '4 passed (4)' in (ROOT / 'offline-replay.log').read_text()",
+      "if path.suffix in {'.md', '.json', '.mjs', '.py', '.log', '.ts'}:"
+    ],
+    "distributed_log_paths": []
+  },
+  {
+    "pr": 986,
+    "head": "aceced2c8735777f4eab64788d8681fe5529eadf",
+    "validator": "docs/audits/djimitflo-l6/validate-pack.py",
+    "required_log_lines": [],
+    "distributed_log_paths": []
+  }
+]

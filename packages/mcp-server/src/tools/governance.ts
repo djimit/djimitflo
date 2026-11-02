@@ -160,6 +160,7 @@ function getRegisteredToolRows(server: McpServer) {
 }
 
 function classifyTool(name: string) {
+  if (name === 'djimitflo_scan_repository') return { permission: 'requires_approval', risk_level: 'medium' };
   if (/approve|spawn|handoff/i.test(name)) {
     return { permission: 'requires_approval', risk_level: 'high' };
   }

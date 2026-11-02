@@ -1,0 +1,28 @@
+{
+  "captured_at": "2026-10-24T19:07:17.983009+00:00",
+  "prior_source": "bf6f647c49b70a65ab795b113f512b9c84ca08a1",
+  "current_source": "936b93479920d5c251cf006bc42771c9142fa136",
+  "changed_files": [
+    "scripts/agent-social-poller.py",
+    "scripts/test_agent_social_poller.py"
+  ],
+  "source_diff": "diff --git a/scripts/agent-social-poller.py b/scripts/agent-social-poller.py\nindex 257a29f9..936b8c6e 100755\n--- a/scripts/agent-social-poller.py\n+++ b/scripts/agent-social-poller.py\n@@ -194,7 +194,7 @@ def run_cli(runtime, prompt):\n     return parse_cli_output(runtime, output)\n \n def run_hermes(prompt):\n-    output = bounded_process([os.environ.get('HERMES_BIN', 'hermes'), 'chat', '--query-file', '-', '--oneshot', '--quiet', '--toolsets', '', '--max-turns', '1', '--run-budget', '90', '--source', 'djimitflo-social'], prompt,\n+    output = bounded_process([os.environ.get('HERMES_BIN', 'hermes'), 'chat', '--query-file', '-', '--oneshot', '--quiet', '--toolsets', '', '--max-turns', '1', '--run-budget', '90', '--source', os.environ.get('HERMES_SOURCE', 'tool')], prompt,\n                              os.environ.get('HERMES_HOME', os.path.expanduser('~/.hermes')), runtime_env('hermes'))\n     sessions = re.findall(r'session_id:\\s*([^\\s]+)', output)\n     return output, sessions[-1] if sessions else '', {}\ndiff --git a/scripts/test_agent_social_poller.py b/scripts/test_agent_social_poller.py\nindex 35f9184e..d5424ddb 100644\n--- a/scripts/test_agent_social_poller.py\n+++ b/scripts/test_agent_social_poller.py\n@@ -60,6 +60,19 @@ class SocialRuntimeTests(unittest.TestCase):\n                 output, _, _ = poller.run_cli(runtime, 'quoted peer data')\n                 self.assertEqual(poller.extract_object(output), REPLY)\n \n+    def test_hermes_uses_a_session_source_hermes_accepts(self):\n+        # Hermes >= 2026.10 rejects unknown --source tags with invalid_params before sending; 'tool' is its tag for integrations\n+        seen = []\n+        def execute(command, prompt, cwd, env):\n+            seen.append(command)\n+            return 'pong\\nsession_id: s1\\n'\n+        with patch.dict(os.environ, {}, clear=True), patch.object(poller, 'bounded_process', side_effect=execute):\n+            poller.run_hermes('quoted peer data')\n+        self.assertEqual(seen[0][seen[0].index('--source') + 1], 'tool')\n+        with patch.dict(os.environ, {'HERMES_SOURCE': 'djimitflo'}, clear=True), patch.object(poller, 'bounded_process', side_effect=execute):\n+            poller.run_hermes('quoted peer data')\n+        self.assertEqual(seen[1][seen[1].index('--source') + 1], 'djimitflo')\n+\n     def test_opencode_custom_provider_is_explicit_isolated_and_secret_scoped(self):\n         config_path = None\n         def execute(command, prompt, cwd, env):\n",
+  "repository_poller": {
+    "sha256": "5f50a4ac3b60ba1970deb71141b6fa991cfbde56cc9e6f6d71059e7c1fa5eb13",
+    "lines": 243
+  },
+  "existing_test_run": {
+    "command": "python3 -m unittest discover -s scripts -p test_agent_social_poller.py -v",
+    "cwd": "/private/tmp/djimitflo-commons-revalidation-src",
+    "result": "PASS",
+    "tests": 13,
+    "exit_code": 0,
+    "mode": "mocked CLI/provider tests; local timeout/process fixtures; no actual model invocation"
+  },
+  "policy_replay": {
+    "result": "PASS",
+    "tests": 3,
+    "log": "policy-replay.log",
+    "mode": "in-memory SQLite; mocked runtime reply; no network/model/production access"
+  }
+}
