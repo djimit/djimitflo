@@ -218,7 +218,11 @@ describe('E1 blind query-level retrieval labels', () => {
   it('no prod decision path reads the E1 rows: only the E1 module and its routes name them; every other operator_label reader is narrowed', () => {
     const files = (dir: string): string[] => readdirSync(dir).flatMap((f) => { const p = join(dir, f); return statSync(p).isDirectory() ? (f === '__tests__' ? [] : files(p)) : p.endsWith('.ts') ? [p] : []; });
     const src = files(SRC).map((p) => ({ p: p.slice(SRC.length + 1), s: readFileSync(p, 'utf8') }));
-    expect(src.filter((f) => /e1_retrieval|e1-retrieval-labels/.test(f.s)).map((f) => f.p).sort()).toEqual(['routes/self-improvement.ts', 'services/e1-retrieval-labels.ts']);
+    // needs-you-classes only counts the open E1 tasks for the operator's optional-labelling line (display, never a decision);
+    // operator-push names the dashboard anchor `#e1-retrieval-labels` in the digest link
+    expect(src.filter((f) => /e1_retrieval|e1-retrieval-labels/.test(f.s)).map((f) => f.p).sort())
+      .toEqual(['routes/self-improvement.ts', 'services/e1-retrieval-labels.ts', 'services/needs-you-classes.ts', 'services/operator-push.ts']);
+    expect(src.find((f) => f.p === 'services/needs-you-classes.ts')!.s.match(/e1LabelQueue\(db\)\.progress/g)).toHaveLength(1); // progress counts only
     // a reader of operator_label rows must narrow by state_hash / subject_type / a proposal join (E1 labels match none of them);
     // evolution-lineage only counts operator decisions for display
     const loose: string[] = [];

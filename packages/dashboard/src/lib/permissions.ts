@@ -18,14 +18,19 @@ export const ACTION_PERMISSIONS = {
   memoryReview: 'approve:task', // POST /swarms/memory/candidates/:id/promote|reject
   telegramIdentity: 'manage:config', // PUT|DELETE /self-improve/telegram-identities/:id
   mcpCreateServer: 'manage:config', // POST /mcp/servers
+  mcpRefreshServers: 'manage:config', // POST /mcp/servers/refresh
   policyUpdate: 'manage:config', // PATCH /policies/:id
   runtimeConfig: 'manage:config', // GET /health/config
+  usageSnapshot: 'manage:config', // POST /usage/accounts/:account/snapshot
 } as const;
 
 /** Nav entries whose page's main endpoint needs more than a login + read:evidence. */
 export const NAV_PERMISSIONS: Record<string, string> = {
   '/configuration': ACTION_PERMISSIONS.runtimeConfig, // GET /health/config
   '/audit': 'read:audit', // GET /audit
+  '/evolution': 'manage:config', // GET /health/evolution-evidence (UXE-03)
+  '/observability': 'manage:config', // GET /observability/metrics (UXE-03)
+  '/usage': 'manage:config', // GET /usage/accounts (UXE-03)
 };
 
 export const needsText = (permission: string): string => `Needs ${permission}`;
@@ -33,7 +38,8 @@ export const needsText = (permission: string): string => `Needs ${permission}`;
 /** A server 403 as a sentence the operator can act on. */
 export function permissionError(error: unknown, permission: string, fallback: string): string {
   const message = error instanceof Error ? error.message : '';
-  return /403|forbidden|insufficient|permission|access denied/i.test(message)
+  const forbidden = (error as { status?: unknown } | null)?.status === 403; // ApiError (lib/api.ts) keeps the HTTP status
+  return forbidden || /403|forbidden|insufficient|permission|access denied/i.test(message)
     ? `Not allowed: this action ${needsText(permission).toLowerCase()} (${message}).`
     : message || fallback;
 }

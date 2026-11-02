@@ -4,7 +4,7 @@ import { exclusiveWh, gpuJobs, hostSamples, isLocalModel, leaseConsumer, valuePe
 import { supersededMergeOutcomeSql } from './merge-superseded';
 import { leaseRanOn } from './outcome-attribution';
 import { experimentDefs } from './experiment-registry';
-import { insertJudgmentRow } from './judgment-service';
+import { insertJudgmentRow, judgmentMode } from './judgment-service';
 import { listSchedulers, markRun } from './scheduler-registry';
 
 /**
@@ -124,12 +124,16 @@ export const GATE_READ_JUDGMENTS: Record<string, (row: JudgmentRow, env: NodeJS.
   decision_context: (r) => r.mode === 'enforce',
   // kb-corpus gatePassages: under enforce pages below 0.5 are dropped before the panel prompt
   kb_passage_relevance: (r) => r.mode === 'enforce',
-  // kb-corpus ingestKbPages deletes/skips a KB page on 'unsafe' in every mode; gateUntrustedForPrompt excludes text under enforce
+  // kb-corpus ingestKbPages quarantines a KB page on 'unsafe' in every mode; gateUntrustedForPrompt excludes text under enforce
   content_safety: (r) => r.subject_type === 'kb_page' || r.mode === 'enforce',
   // content-safety gateUntrustedForPrompt: an enforce row is an exclusion that happened
   content_safety_prompt_gate: (r) => r.mode === 'enforce',
-  // agent-social-autopilot threadGated: reads the last two verdicts of a thread (shadow rows) when the gate is on
-  commons_contribution: (_r, env) => env.COMMONS_THREAD_GATE_ENABLED === 'true',
+  // agent-social-autopilot threadGated: reads the last two verdicts of a thread (shadow rows) when the gate AND the judgment are on
+  commons_contribution: (_r, env) => env.COMMONS_THREAD_GATE_ENABLED === 'true' && judgmentMode('commons_contribution', env) !== 'off',
+  // AUTHZ-F2: expert-source-units ingestDiscovery/rejudgeOne create an expert unit (a promotion, DI-001 B) only on a jev 'yes' /
+  // open_problem|lane_technique verdict under FRONTIER_UNITS_REQUIRE_RELEVANCE — every row then decides unit creation, whatever
+  // its 'shadow' label. A promotion-bearing jev decision: the operator classifies it against the jev rule before any reopen.
+  discovery_relevance: (_r, env) => env.FRONTIER_UNITS_REQUIRE_RELEVANCE === 'true',
   // needs-grounding-triage-service: moves/archives proposals on the latest (shadow) verdict when enabled
   reflection_triage: (_r, env) => env.NEEDS_GROUNDING_TRIAGE_ENABLED === 'true',
 };
@@ -181,11 +185,12 @@ function collect(db: Database, since: string, until: string, schedulers: string[
 
   for (const r of safeAll<{ p: string; consumer: string; provider: string | null; model: string | null; shadow: number; tin: number | null; tout: number | null }>(db,
     `SELECT COALESCE(purpose, 'consumer:' || consumer) AS p, consumer, provider, model, shadow, tokens_in AS tin, tokens_out AS tout FROM llm_model_calls
-      WHERE created_at >= ? AND created_at < ? AND consumer != 'maker' AND NOT (consumer = 'jev' AND purpose IS NULL)`, since, until)) {
+      WHERE created_at >= ? AND created_at < ? AND consumer NOT IN ('maker', 'checker') AND NOT (consumer = 'jev' AND purpose IS NULL)`, since, until)) {
     const a = acc(`llm:${r.p}`, 'llm_purpose'); a.runs++;
     if (r.shadow) a.shadowRows++; else a.otherRows++;
     const tin = num(r.tin); const tout = num(r.tout);
-    tokens(a, tin === null && tout === null ? null : (tin ?? 0) + (tout ?? 0), isLocalModel(r.provider, r.model));
+    // a one-sided report is unknown (E-assumptions A4/C13), never the known side + 0
+    tokens(a, tin === null || tout === null ? null : tin + tout, isLocalModel(r.provider, r.model));
   }
 
   for (const r of safeAll<{ judgment: string; mode: string; subject_type: string; decision: string; model: string | null; tin: number | null; tout: number | null }>(db,

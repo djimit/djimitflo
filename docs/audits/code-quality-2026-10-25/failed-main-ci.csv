@@ -1,0 +1,9 @@
+run_id,url,sha,pr,created_at,latest_attempt
+37501184721,https://github.com/djimit/djimitflo/actions/runs/37501184721,77f7b8573c647b6d5f273c8758e49790710633c5,675,2026-10-06T17:08:13Z,1
+37397886380,https://github.com/djimit/djimitflo/actions/runs/37397886380,9e1cd85cee73ecaa8d47554a6837b4ee92505994,646,2026-10-06T01:11:21Z,1
+37818398184,https://github.com/djimit/djimitflo/actions/runs/37818398184,42db18215426768e46834a6b734de7e8bfec06e2,704,2026-10-08T17:40:34Z,1
+37922490233,https://github.com/djimit/djimitflo/actions/runs/37922490233,696aade0cf3fad8ae1a8a17d4c522fd4f88137db,712,2026-10-09T11:14:18Z,1
+38054327663,https://github.com/djimit/djimitflo/actions/runs/38054327663,4d4f8b2a8569a6180dea88816fbb1cd723ad3823,743,2026-10-10T13:04:29Z,1
+40033011194,https://github.com/djimit/djimitflo/actions/runs/40033011194,cf739513794b559025d0932b2b87807a0e32162b,980,2026-10-23T22:20:56Z,1
+40022030042,https://github.com/djimit/djimitflo/actions/runs/40022030042,cdbf0cd960ae818fd061ac4b471b93ad773ab681,976,2026-10-23T20:48:17Z,1
+40178084563,https://github.com/djimit/djimitflo/actions/runs/40178084563,6951dba16a32dc8e90971bfe6711033293129eab,1003,2026-10-25T08:48:25Z,1

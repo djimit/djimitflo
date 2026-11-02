@@ -1,4 +1,5 @@
 import type { Database } from 'better-sqlite3';
+import { realRunSql } from './synthetic-runs';
 import { wilson } from './evolution-estimators';
 
 /**
@@ -71,7 +72,7 @@ export function knowledgeFitness(db: Database, now = Date.now(), topN = 20): Kno
 
   // ---- runs in the window and their maker-attributable outcome ----
   const runs = new Map(all<{ id: string; pid: string | null; created_at: string; survived: number | null }>(`SELECT r.id, g.improvement_id AS pid, r.created_at,
-      json_extract(r.metadata, '$.pr_outcome.survived') AS survived FROM loop_runs r LEFT JOIN goals g ON g.id = r.goal_id WHERE r.created_at >= ?`, since).map((r) => [r.id, r]));
+      json_extract(r.metadata, '$.pr_outcome.survived') AS survived FROM loop_runs r LEFT JOIN goals g ON g.id = r.goal_id WHERE r.created_at >= ? AND ${realRunSql('r')}`, since).map((r) => [r.id, r]));
   const runsByProposal = new Map<string, string[]>();
   for (const r of runs.values()) if (r.pid) runsByProposal.set(r.pid, [...(runsByProposal.get(r.pid) ?? []), r.id]);
   // newest attribution wins: the run's own, or an operator annotation on its proposal made after the run started (outcome-attribution.ts)

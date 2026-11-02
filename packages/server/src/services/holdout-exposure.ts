@@ -7,6 +7,7 @@ import type { Database } from 'better-sqlite3';
  *
  * - frozen: every key in any holdout table, any epoch;
  * - tg: every TG-001 task key (tg_attempts + the frozen tg_experiments manifests) — diagnostic, prior exposure;
+ * - pl: every PL-001 task key (pl_attempts) — a paired experiment's tasks, exposed to both arms;
  * - trialAttempted: every task a genome trial ran on;
  * - dream exposure: what dreamInputs / failureClusters (dream-evolution) showed the dream, re-derived per dream genome
  *   (origin 'dream'): the gym failures and failed maker leases of the 24 h before its created_at. Their commits, source
@@ -14,6 +15,8 @@ import type { Database } from 'better-sqlite3';
  */
 export interface HoldoutExclusions {
   frozen: Set<string>; tg: Set<string>; trialAttempted: Set<string>;
+  /** PL-001 keys; optional so older callers that build the set by hand keep compiling (absent = none) */
+  pl?: Set<string>;
   exposedCommits: Set<string>; exposedSources: Set<string>; exposedRuns: Set<string>; dreamGenomes: number;
 }
 export const DREAM_EXPOSURE_WINDOW_MS = 86_400_000;
@@ -31,6 +34,7 @@ export function holdoutExclusions(db: Database, windowMs = DREAM_EXPOSURE_WINDOW
   for (const r of all<{ m: string }>('SELECT manifest_json AS m FROM tg_experiments')) {
     try { for (const t of (JSON.parse(r.m) as { tasks?: Array<{ key?: string }> }).tasks ?? []) if (t.key) tg.add(t.key); } catch { /* malformed manifest: tg_attempts still counts */ }
   }
+  const pl = keys('SELECT DISTINCT task_key AS k FROM pl_attempts');
   const trialAttempted = keys(`SELECT DISTINCT json_extract(metadata, '$.gym.commit') AS k FROM loop_runs
     WHERE loop_name = 'evolution-gym' AND json_extract(metadata, '$.gym.genome') IS NOT NULL`);
   const exposedCommits = new Set<string>(); const exposedSources = new Set<string>(); const exposedRuns = new Set<string>();
@@ -53,13 +57,14 @@ export function holdoutExclusions(db: Database, windowMs = DREAM_EXPOSURE_WINDOW
       for (const f of list(r.files)) exposedSources.add(f);
     }
   }
-  return { frozen, tg, trialAttempted, exposedCommits, exposedSources, exposedRuns, dreamGenomes: dreams.length };
+  return { frozen, tg, pl, trialAttempted, exposedCommits, exposedSources, exposedRuns, dreamGenomes: dreams.length };
 }
 
 /** Why a task may not be frozen (null = eligible). Derived tasks (mutant, write_test) are also checked on what they came from. */
 export function exclusionReason(ex: HoldoutExclusions, t: { commit: string; source?: string; base?: string; target?: string; run_id?: string }): string | null {
   if (ex.frozen.has(t.commit)) return 'already frozen in a holdout epoch';
   if (ex.tg.has(t.commit)) return 'TG-001 task key';
+  if (ex.pl?.has(t.commit)) return 'PL-001 task key';
   if (ex.trialAttempted.has(t.commit)) return 'attempted in a genome trial';
   if (ex.exposedCommits.has(t.commit)) return 'dream-exposed commit';
   for (const f of [t.source, t.target]) if (f && ex.exposedSources.has(f)) return `dream-exposed source file ${f}`;

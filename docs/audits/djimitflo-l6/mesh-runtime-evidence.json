@@ -1,0 +1,52 @@
+{
+  "captured_at": "2026-10-23T22:58:32.357237+00:00",
+  "mode": "read-only inspect, source hash and health GET",
+  "components": [
+    {
+      "name": "agent-router",
+      "image": "sha256:cf47bdbea7a56f492f850706f3ee7a52c30fad9be640ff7f63ce9b09115fa11d",
+      "state": "running",
+      "health": {
+        "status": "ok",
+        "ts": "2026-10-23T22:58:32.487222+00:00"
+      },
+      "source_hashes": [
+        "7b6af2d6fb11a9c6d233f9f51912dee6d7dafa961561376ff43ac9920e7c524c  /app/main.py",
+        "b050cd8af60ab715be88273c71f6c623c057b60becfe02f99ce21b85aeb64fbe  /app/routing_engine.py",
+        "f2e5b60a34d62a3a002ddd134ba77b56ebda7965d7d19c90ac6db283c522abe5  /app/fallback_chain.py"
+      ]
+    },
+    {
+      "name": "agent-registry",
+      "image": "sha256:23c8794a3a62937849049ffddd6851f7f9d4e81f32b06039104fa32864735f40",
+      "state": "running",
+      "health": {
+        "status": "ok",
+        "agents_count": 7,
+        "timestamp": "2026-10-23T22:58:32.641828Z",
+        "registry_generation": "2026-10-23T22:58:26.859757+00:00",
+        "registry_snapshot_hash": "sha256:5d230de1a1eaace8af8fd8302a16ed7ce5fca755c0fe304bf0bda6d9c36c91ae",
+        "registry_error": null,
+        "daps_mode": "shadow"
+      },
+      "source_hashes": [
+        "9f4dfb80327b1945a29f498f266b7fdc5999de7231ce414aaa78318b15616ef9  /app/main.py",
+        "55600c4e6ad1f4c2b8e8b57fd71139f7466e5871bdfbeb5388583e5069b708eb  /app/models.py",
+        "02933ba2666ce37f3519266463b3af97ee975f100a6643d986a7cb81d008da1f  /app/memory.py"
+      ]
+    },
+    {
+      "name": "event-bus",
+      "image": "sha256:85f2c6509ab0771112c90edb20ea7c260d1cb39104a0b46b4cc2807b156f6013",
+      "state": "running",
+      "health": {
+        "status": "ok",
+        "redis": "connected"
+      },
+      "source_hashes": [
+        "4b80393eda29c1875e023ded92ebd336b5d0a4d5b1b4a4104e899b4542a6f6b2  /app/main.py",
+        "96d3a6402463b20ea4612c48bbb18382c63e189921dda962d09db1e71a25e38a  /app/bus.py"
+      ]
+    }
+  ]
+}
