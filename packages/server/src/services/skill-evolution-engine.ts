@@ -193,6 +193,38 @@ export class SkillEvolutionEngine {
     this.updateTraits(skillId);
   }
 
+  /** Trusted, hash-bound late verification settles one execution; ambiguous retries remain unknown. */
+  settleTaskVerification(taskId: string, skillId: string, contentHash: string, packageHash: string): void {
+    if (process.env.SKILL_FIRST_MODE !== 'on') return;
+    const task = this.db.prepare('SELECT status FROM tasks WHERE id = ?').get(taskId) as { status: string } | undefined;
+    if (task?.status !== 'completed') return;
+    const rows = this.db.prepare(`SELECT id, evidence_refs_json FROM skill_outcomes
+      WHERE task_id = ? AND skill_id = ? AND skill_content_hash = ? AND ${DELIVERED_ATTRIBUTION_SQL}`)
+      .all(taskId, skillId, contentHash) as Array<{ id: string; evidence_refs_json: string }>;
+    if (rows.length !== 1 || !(JSON.parse(rows[0].evidence_refs_json) as string[]).includes(`skill_package_sha256:${packageHash}`)) return;
+    const receipt = this.db.prepare(`SELECT details FROM execution_evidence WHERE task_id = ? AND source = 'system'
+      AND json_extract(metadata, '$.reason') = 'skill_delivery_receipt' ORDER BY captured_at DESC, rowid DESC LIMIT 1`)
+      .get(taskId) as { details: string } | undefined;
+    const delivered = receipt ? JSON.parse(receipt.details) as Record<string, unknown> : null;
+    if (delivered?.delivery_state !== 'delivered' || delivered.skill_id !== skillId
+      || delivered.skill_content_hash !== contentHash || delivered.skill_package_hash !== packageHash) return;
+    const checks = this.db.prepare(`SELECT id, severity FROM execution_evidence WHERE task_id = ?
+      AND evidence_type = 'test_result' AND source = 'system' AND json_valid(details)
+      AND json_extract(details, '$.skill_package_id') = ? AND json_extract(details, '$.skill_content_hash') = ?
+      AND json_extract(details, '$.skill_package_hash') = ?`)
+      .all(taskId, skillId, contentHash, packageHash) as Array<{ id: string; severity: string }>;
+    if (!checks.length) return;
+    const failed = checks.some((check) => ['error', 'critical'].includes(check.severity));
+    const passed = !failed && checks.every((check) => check.severity === 'info');
+    const refs = (JSON.parse(rows[0].evidence_refs_json) as string[]).filter((ref) =>
+      ref !== COMPLETED_UNVERIFIED_REF && ref !== 'outcome_class:regressed' && !ref.startsWith('verification:test_result:'));
+    refs.push(...checks.map((check) => check.id), ...(passed ? ['verification:test_result:passed']
+      : failed ? ['verification:test_result:failed', 'outcome_class:regressed'] : [COMPLETED_UNVERIFIED_REF]));
+    this.db.prepare('UPDATE skill_outcomes SET success = ?, evidence_refs_json = ? WHERE id = ?')
+      .run(passed ? 1 : 0, JSON.stringify([...new Set(refs)]), rows[0].id);
+    this.updateTraits(skillId);
+  }
+
   /**
    * Get evolution statistics.
    */

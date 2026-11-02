@@ -1,5 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import { knowledgeFitness, type KnowledgeFitness } from './knowledge-fitness';
+import { kbQuarantine } from './kb-corpus';
 
 /**
  * W5 (plan Phase W): what the knowledge pipeline produced and whether it was worth it, per source. Discoveries
@@ -13,6 +14,8 @@ export interface KnowledgeOverview {
   relevance: { yes: number; uncertain: number; no: number };
   recent_relevant: Array<{ ref: string; title: string; source: string; at: string }>;
   kb_retrieval: { hits_30d: number; panels_30d: number; last: string | null };
+  /** KB pages judged 'unsafe': kept, not served, releasable (POST /api/gym-worker/kb/release); counts by safety category. */
+  kb_quarantine: ReturnType<typeof kbQuarantine>;
   interest_profile: { at: string; terms: string[] } | null;
   /** DI-001 C: DISCOVERY_RELEVANCE_PAUSED — discoveries stored unjudged and the jev calls (and tokens, estimated) not made. */
   relevance_pause: { paused: boolean; unjudged: { pending: number; rejected: number; unit: number }; calls_avoided: number;
@@ -117,6 +120,7 @@ export function knowledgeOverview(db: Database, now = Date.now(), env: NodeJS.Pr
   return {
     at: new Date(now).toISOString(), sources, relevance, recent_relevant, relevance_pause,
     kb_retrieval: { hits_30d: kb?.hits ?? 0, panels_30d: kb?.panels ?? 0, last: kb?.last ?? null },
+    kb_quarantine: kbQuarantine(db),
     interest_profile,
     fitness: knowledgeFitness(db, now),
   };

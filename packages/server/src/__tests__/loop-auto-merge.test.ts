@@ -6,7 +6,7 @@ import request from 'supertest';
 import { UserRole } from '@djimitflo/shared';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { runAutoMergeTick } from '../services/loop-auto-merge';
+import { ORACLE_TEST_FILES, runAutoMergeTick } from '../services/loop-auto-merge';
 import { EVOLUTION_FLAGS } from '../services/evolution-evidence';
 import { autoMergeValueGate, autoMergeValueGateLanes, autoMergeValueSignal, VALUE_KILL_SHARE_MIN, autoMergeEvidence, isAuditSample, isTransientReason, PERMANENT_INELIGIBLE_REASONS, readClassState, revokeClass, TRANSIENT_INELIGIBLE_REASONS } from '../services/loop-auto-merge-state';
 import { listDraftPrs } from '../services/loop-draft-pr-service';
@@ -880,4 +880,32 @@ it('U2 rollback: a PR rejected only by the value gate is eligible again once the
   await tick('', 4);
   expect(decision(704).decision).toBe('merged'); expect(decision(704).would_block_value).toBeUndefined();
   expect(writes().filter((c) => c.url.endsWith('/merge')).map((c) => c.url.split('/').slice(-2)[0])).toEqual(['702', '700', '704']);
+});
+
+// ── UXE-00a (R12): the UX oracle tests are never earned-auto-merged — a loop PR touching one is permanent ineligible ──
+it('UXE-00a: a loop PR touching an oracle test file (RouteSmoke.test.tsx) is ineligible oracle_test_file, never re-checked', async () => {
+  expect([...ORACLE_TEST_FILES]).toEqual(['packages/server/src/__tests__/ui-fitness.test.ts', 'packages/server/src/__tests__/ux-coverage.test.ts',
+    'packages/dashboard/src/RouteSmoke.test.tsx', 'packages/dashboard/src/UX25b.test.tsx', 'packages/dashboard/src/UX4.test.tsx', 'packages/dashboard/src/UxTasks.test.tsx']);
+  seedPr(720, { files: ['packages/dashboard/src/RouteSmoke.test.tsx'] });
+  seedPr(721, { files: ['packages/server/src/__tests__/x.test.ts', 'packages/server/src/__tests__/ux-coverage.test.ts'] });
+  seedPr(700); // an ordinary test-only PR: unchanged decision
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('shadow', { LOOP_AUTO_MERGE_RECHECK: 'on' }), NOW);
+  expect(decision(720)).toMatchObject({ decision: 'ineligible', reason: 'oracle_test_file: packages/dashboard/src/RouteSmoke.test.tsx' });
+  expect(decision(721)).toMatchObject({ decision: 'ineligible', reason: 'oracle_test_file: packages/server/src/__tests__/ux-coverage.test.ts' });
+  expect(decision(700)).toMatchObject({ decision: 'would_merge', mode: 'shadow' });
+  expect(isTransientReason(decision(720).reason)).toBe(false);
+  expect(writes()).toEqual([]);
+  // permanent: a later tick with re-check on reads nothing more for the oracle PRs
+  const before = calls.length;
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('shadow', { LOOP_AUTO_MERGE_RECHECK: 'on' }), at(48));
+  expect(calls.slice(before).filter((c) => /pulls\/72[01]/.test(c.url))).toEqual([]);
+});
+
+it('UXE-00a: an ordinary dashboard or server test file is not an oracle file — the decision is the one before the guard', async () => {
+  seedPr(722, { files: ['packages/dashboard/src/pages/Foo.test.tsx'] });
+  seedPr(723, { files: ['packages/server/src/__tests__/ui-fitness-helper.test.ts', 'packages/dashboard/src/components/RouteSmoke.test.tsx'] });
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('shadow'), NOW);
+  expect(isAuditSample(722) || isAuditSample(723)).toBe(false);
+  expect(decision(722)).toMatchObject({ decision: 'would_merge', mode: 'shadow' });
+  expect(decision(723)).toMatchObject({ decision: 'would_merge', mode: 'shadow' });
 });
