@@ -6,8 +6,9 @@ import request from 'supertest';
 import { UserRole } from '@djimitflo/shared';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { runAutoMergeTick } from '../services/loop-auto-merge';
-import { autoMergeEvidence, isAuditSample, isTransientReason, PERMANENT_INELIGIBLE_REASONS, readClassState, revokeClass, TRANSIENT_INELIGIBLE_REASONS } from '../services/loop-auto-merge-state';
+import { ORACLE_TEST_FILES, runAutoMergeTick } from '../services/loop-auto-merge';
+import { EVOLUTION_FLAGS } from '../services/evolution-evidence';
+import { autoMergeValueGate, autoMergeValueGateLanes, autoMergeValueSignal, VALUE_KILL_SHARE_MIN, autoMergeEvidence, isAuditSample, isTransientReason, PERMANENT_INELIGIBLE_REASONS, readClassState, revokeClass, TRANSIENT_INELIGIBLE_REASONS } from '../services/loop-auto-merge-state';
 import { listDraftPrs } from '../services/loop-draft-pr-service';
 import { buildDigest, setPushSender } from '../services/operator-push';
 import { createAuthMiddleware } from '../middleware/auth';
@@ -69,16 +70,18 @@ const fakeFetch = vi.fn(async (url: string, init?: { method?: string; body?: str
 });
 const writes = () => calls.filter((c) => c.method !== 'GET');
 
-function seedPr(number: number, opts: { files?: string[]; proposal?: string; title?: string; login?: string; reviews?: FakePr['reviews']; removed?: boolean; lines?: number; draft?: boolean; behind?: boolean; strength?: 'pass' | 'fail' | 'skipped' | 'none'; verified?: string | null } = {}) {
+function seedPr(number: number, opts: { files?: string[]; proposal?: string; title?: string; login?: string; reviews?: FakePr['reviews']; removed?: boolean; lines?: number; draft?: boolean; behind?: boolean; strength?: 'pass' | 'fail' | 'skipped' | 'none'; verified?: string | null;
+  fbpa?: 'pass' | 'fail' | 'skipped'; graded?: Record<string, unknown>; evidence?: string[] } = {}) {
   const id = `run-${number}`; const branch = `agent/loop/${id}`;
-  db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status) VALUES (?, 'test', ?, 'd', 'r', 'test-gap', ?)`).run(`si-${number}`, `t${number}`, opts.proposal ?? 'verified');
+  db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, evidence_refs_json) VALUES (?, 'test', ?, 'd', 'r', 'test-gap', ?, ?)`).run(`si-${number}`, `t${number}`, opts.proposal ?? 'verified', JSON.stringify(opts.evidence ?? []));
   db.prepare("INSERT INTO goals (id, objective, risk_class, status, metadata, improvement_id, created_at, updated_at) VALUES (?, 'o', 'low', 'completed', '{}', ?, datetime('now'), datetime('now'))").run(`g-${number}`, `si-${number}`);
   db.prepare(`INSERT INTO loop_runs (id, goal_id, loop_name, mode, status, gates_json, metadata, created_at, updated_at) VALUES (?, ?, 'test-gap', 'closed', 'completed', ?, ?, ?, ?)`)
     .run(id, `g-${number}`, JSON.stringify([{ name: 'diff_under_threshold', status: 'pass' }]), JSON.stringify({ pr_url: `https://github.com/o/r/pull/${number}`, ...(opts.verified === null ? {} : { verified_head_sha: opts.verified ?? `sha${number}` }) }), '2026-10-06T00:00:00Z', '2026-10-06T00:00:00Z');
   db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, branch_name, metadata, created_at, updated_at) VALUES (?, ?, 'maker', 'opencode', 'completed', ?, ?, ?, ?)`)
-    .run(`m-${number}`, id, branch, JSON.stringify({ diff_max_lines: 400,
+    .run(`m-${number}`, id, branch, JSON.stringify({ diff_max_lines: 400, ...(opts.graded ? { graded: opts.graded } : {}),
       // the prod shadow record: status 'skipped' by design, the measured verdict in shadow_status
-      ...(opts.strength === 'none' ? {} : { deterministic_checks: [{ name: 'test:assertion-strength', mode: 'shadow', status: 'skipped', shadow_status: opts.strength ?? 'pass', exit_status: null }] }) }),
+      ...(opts.strength === 'none' ? {} : { deterministic_checks: [{ name: 'test:assertion-strength', mode: 'shadow', status: 'skipped', shadow_status: opts.strength ?? 'pass', exit_status: null },
+        ...(opts.fbpa ? [{ name: 'test:fail-before-pass-after', mode: 'shadow', status: 'skipped', shadow_status: opts.fbpa, exit_status: null }] : [])] }) }),
       '2026-10-06T00:00:00Z', '2026-10-06T00:00:00Z');
   const files = (opts.files ?? ['packages/server/src/__tests__/x.test.ts']).map((f) => ({ filename: f, status: opts.removed ? 'removed' : 'added', additions: opts.lines ?? 40, deletions: 0 }));
   prs.set(number, { number, state: 'open', draft: opts.draft ?? true, title: opts.title ?? `loop: add tests ${number}`, node_id: `PR_${number}`, mergeable: true,
@@ -329,10 +332,120 @@ it('revocation: merge survival marking the lines removed, or red checks on the m
 
   db.prepare("DELETE FROM system_state WHERE key = 'loop_auto_merge_test_only'").run();
   await mergeOne(702);
-  checks.set('merge702', 'red');
+  checks.set('merge702', 'red'); // 'build' is the required check: red on two reads, one tick apart
   await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), new Date(NOW.getTime() + 3_600_000));
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), new Date(NOW.getTime() + 3_600_000 + 15 * 60_000));
   expect(readClassState(db)).toMatchObject({ state: 'revoked' });
   expect(readClassState(db).reason).toContain('checks failing on main at merge commit merge702');
+});
+
+// 2026-10-26: #931 (test-only, llm-fallback.test.ts) revoked the class because CodeQL `Analyze (javascript-typescript)`, not a
+// required check, failed on its merge commit d088425f; the next commit was green. Only a required check, red on two reads, revokes.
+const tickAfter = (min: number) => runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), new Date(NOW.getTime() + 3_600_000 + min * 60_000));
+const revokeEvents = (type: string) => (db.prepare('SELECT COUNT(*) AS n FROM loop_events WHERE event_type = ?').get(type) as { n: number }).n;
+it('revocation (#931 replay): a non-required check failing on the merge commit never revokes — it is an event only', async () => {
+  await mergeOne(931);
+  runsBySha.set('merge931', [run(1, 'build', 'success'), run(2, 'Analyze (javascript-typescript)', 'failure')]);
+  for (const min of [0, 15, 30]) expect(await tickAfter(min)).toMatchObject({ revoked: false });
+  expect(readClassState(db).state).toBe('active');
+  expect(decision(931).revoked).toBeUndefined();
+  expect(revokeEvents('auto_merge_non_required_check_failed')).toBe(1); // recorded once, not every tick
+  seedPr(932, { draft: false }); // the class keeps acting
+  await tickAfter(45);
+  expect(decision(932).decision).toBe('merged');
+});
+
+it('revocation: a required check failing on two consecutive reads revokes; one read only marks it pending', async () => {
+  await mergeOne(700);
+  runsBySha.set('merge700', [run(1, 'build', 'failure'), run(2, 'Analyze (javascript-typescript)', 'success')]);
+  expect(await tickAfter(0)).toMatchObject({ revoked: false });
+  expect(readClassState(db).state).toBe('active');
+  expect(decision(700).checks_red_pending).toMatchObject({ reason: 'build=failure' });
+  expect(revokeEvents('auto_merge_revoke_pending')).toBe(1);
+  expect(await tickAfter(15)).toMatchObject({ revoked: true });
+  expect(readClassState(db)).toMatchObject({ state: 'revoked', pr_url: 'https://github.com/o/r/pull/700' });
+  expect(readClassState(db).reason).toContain('required checks failing on main at merge commit merge700 (build=failure)');
+});
+
+it('revocation: a required check failing once, then passing on the rerun, never revokes', async () => {
+  await mergeOne(700);
+  runsBySha.set('merge700', [run(1, 'build', 'failure')]);
+  await tickAfter(0);
+  expect(decision(700).checks_red_pending).toBeDefined();
+  runsBySha.set('merge700', [run(1, 'build', 'failure'), run(2, 'build', 'success')]); // the newest run per name decides
+  await tickAfter(15);
+  expect(decision(700).checks_red_pending).toBeUndefined();
+  runsBySha.set('merge700', [run(1, 'build', 'failure'), run(2, 'build', 'success'), run(3, 'build', 'failure')]); // a new red starts over
+  await tickAfter(30);
+  expect(readClassState(db).state).toBe('active');
+  expect(decision(700).checks_red_pending).toBeDefined();
+});
+
+// Codex review of #1066: a confirmation first observed inside the 14-day window is still confirmed after it, and the window
+// does not close (settled survived) while it is unresolved.
+it('revocation: a required red first read just before the window edge is still confirmed after it', async () => {
+  await mergeOne(700);
+  db.prepare("UPDATE loop_runs SET metadata = json_set(metadata, '$.pr_outcome', json(?)) WHERE id = 'run-700'")
+    .run(JSON.stringify({ state: 'merged', merged_at: NOW.toISOString(), survived: true, settled_at: new Date(NOW.getTime() + 14 * 86_400_000).toISOString() }));
+  runsBySha.set('merge700', [run(1, 'build', 'failure')]);
+  const edge = NOW.getTime() + 14 * 86_400_000;
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), new Date(edge - 60_000));
+  expect(decision(700).checks_red_pending).toBeDefined();
+  expect(decision(700).window_closed).toBeUndefined();
+  expect(await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), new Date(edge + 14 * 60_000))).toMatchObject({ revoked: true });
+  expect(readClassState(db).reason).toContain('required checks failing on main at merge commit merge700');
+  expect(decision(700).window_closed).toBe(true);
+});
+
+it('revocation: an unresolved confirmation keeps the window open; green after the edge clears it and closes the window', async () => {
+  await mergeOne(700);
+  db.prepare("UPDATE loop_runs SET metadata = json_set(metadata, '$.pr_outcome', json(?)) WHERE id = 'run-700'")
+    .run(JSON.stringify({ state: 'merged', merged_at: NOW.toISOString(), survived: true, settled_at: new Date(NOW.getTime() + 14 * 86_400_000).toISOString() }));
+  runsBySha.set('merge700', [run(1, 'build', 'failure')]);
+  const edge = NOW.getTime() + 14 * 86_400_000;
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), new Date(edge - 60_000));
+  runsBySha.set('merge700', [run(1, 'build', 'failure'), run(2, 'build', null, 'in_progress')]); // rerun running: unresolved
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), new Date(edge + 14 * 60_000));
+  expect(decision(700).window_closed).toBeUndefined();
+  runsBySha.set('merge700', [run(1, 'build', 'failure'), run(2, 'build', 'success')]);
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), new Date(edge + 29 * 60_000));
+  expect(readClassState(db).state).toBe('active');
+  expect(decision(700).checks_red_pending).toBeUndefined();
+  expect(decision(700).window_closed).toBe(true);
+});
+
+it('revocation: a red read first seen after the window edge is not a revocation', async () => {
+  await mergeOne(700);
+  db.prepare("UPDATE loop_runs SET metadata = json_set(metadata, '$.pr_outcome', json(?)) WHERE id = 'run-700'")
+    .run(JSON.stringify({ state: 'merged', merged_at: NOW.toISOString(), survived: true, settled_at: new Date(NOW.getTime() + 14 * 86_400_000).toISOString() }));
+  runsBySha.set('merge700', [run(1, 'build', 'failure')]);
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), new Date(NOW.getTime() + 14 * 86_400_000 + 60_000));
+  expect(decision(700).checks_red_pending).toBeUndefined();
+  expect(decision(700).window_closed).toBe(true);
+  expect(readClassState(db).state).toBe('active');
+});
+
+// Codex review of #1066: an unparseable or future marker must not block confirmation for good — it is re-initialised.
+for (const [label, at] of [['an unparseable', 'not-a-date'], ['a future', '2027-10-07T12:00:00.000Z']] as const) {
+  it(`revocation: ${label} pending marker is re-initialised, and the next red read revokes`, async () => {
+    await mergeOne(700);
+    db.prepare("UPDATE loop_runs SET metadata = json_set(metadata, '$.auto_merge.checks_red_pending', json(?)) WHERE id = 'run-700'").run(JSON.stringify({ at, reason: 'build=failure' }));
+    runsBySha.set('merge700', [run(1, 'build', 'failure')]);
+    expect(await tickAfter(0)).toMatchObject({ revoked: false });
+    expect(decision(700).checks_red_pending.at).toBe(new Date(NOW.getTime() + 3_600_000).toISOString());
+    expect(await tickAfter(15)).toMatchObject({ revoked: true });
+    expect(readClassState(db).reason).toContain('required checks failing on main at merge commit merge700');
+  });
+}
+
+it('revocation: required checks still running, or not reported, are not red — nothing is marked or revoked', async () => {
+  await mergeOne(700);
+  runsBySha.set('merge700', [run(1, 'build', null, 'in_progress'), run(2, 'Analyze (javascript-typescript)', 'failure')]);
+  await tickAfter(0); await tickAfter(15);
+  runsBySha.set('merge700', [run(2, 'Analyze (javascript-typescript)', 'failure')]); // required 'build' missing
+  await tickAfter(30);
+  expect(readClassState(db).state).toBe('active');
+  expect(decision(700).checks_red_pending).toBeUndefined();
 });
 
 it('E1: an anomalous or pending survival outcome is neither a removal (no revocation) nor a settlement (window stays open)', async () => {
@@ -594,4 +707,205 @@ it('act: a skipped required Actions check is not replaced by a same-named succes
   await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act'), NOW);
   expect(decision(702)).toMatchObject({ decision: 'merged' });
   expect(writes().filter((c) => c.url.endsWith('/merge')).map((c) => c.url)).toEqual(['https://api.github.com/repos/o/r/pulls/702/merge']);
+});
+
+// ── U2 LOOP_AUTO_MERGE_VALUE_GATE: test-only eligibility also needs a value signal (FBPA pass or graded kill share >= 0.2) ──
+const KILL = (score: number) => ({ kind: 'mutant_kill', lane: 'exports', score, killed: Math.round(score * 3), total: 3, ms: 1 });
+const FBPA = (shadow: string) => ({ name: 'test:fail-before-pass-after', mode: 'shadow', status: 'skipped', shadow_status: shadow });
+
+it('U2 value signal: FBPA pass or a mutant kill share >= 0.2 is a signal; FBPA fail / a lower kill share is low; nothing (or unknown) is missing, never pass', () => {
+  expect(VALUE_KILL_SHARE_MIN).toBe(0.2);
+  expect(autoMergeValueSignal([FBPA('pass')], undefined)).toBe('pass');
+  expect(autoMergeValueSignal([], KILL(0.333))).toBe('pass');
+  expect(autoMergeValueSignal([FBPA('fail')], KILL(0.2))).toBe('pass'); // either signal suffices
+  expect(autoMergeValueSignal([FBPA('fail')], undefined)).toBe('low');
+  expect(autoMergeValueSignal([], KILL(0))).toBe('low');
+  expect(autoMergeValueSignal([FBPA('skipped')], KILL(0.1))).toBe('low');
+  expect(autoMergeValueSignal([], undefined)).toBe('missing');
+  expect(autoMergeValueSignal([FBPA('skipped')], { skipped: 'timeout', ms: 1 })).toBe('missing'); // unknown is no signal
+  expect(autoMergeValueSignal([], { kind: 'mutation_score', lane: 'mutation', score: 0.9 })).toBe('pass'); // the mutation lane's own signal (below)
+  expect(autoMergeValueSignal('garbage' as unknown as unknown[], undefined)).toBe('missing');
+});
+
+// re-20261030 B §2: 9/18 mutation-lane auto-merges read as `missing` (graded kind mutation_score = Stryker after/100 was not
+// read); and on test-only lanes FBPA's fail-before is the same seeded mutants as graded (fail-before-pass-after.ts:145-149:
+// `failBefore = graded.killed > 0`, no second run), so "FBPA pass OR kill >= 0.2" was "kills >= 1 seeded mutant"
+it('value signal: mutation_score >= 0.2 is the mutation lane signal; FBPA on seeded mutants is not an independent signal, FBPA against the parent source is', () => {
+  const MUT = (score: number) => ({ kind: 'mutation_score', lane: 'mutation', score, ms: 1 });
+  const FB = (shadow: string, before: 'seeded_mutant' | 'parent_source') => ({ ...FBPA(shadow), before });
+  expect(autoMergeValueSignal([], MUT(0.9))).toBe('pass');
+  expect(autoMergeValueSignal([], MUT(0.2))).toBe('pass');
+  expect(autoMergeValueSignal([], MUT(0.1))).toBe('low');
+  expect(autoMergeValueSignal([], { kind: 'mutation_score', lane: 'mutation', skipped: 'no score', ms: 1 })).toBe('missing');
+  // seeded-mutant FBPA reads the graded mutants: it neither passes nor fails the gate on its own
+  expect(autoMergeValueSignal([FB('pass', 'seeded_mutant')], undefined)).toBe('missing');
+  expect(autoMergeValueSignal([FB('fail', 'seeded_mutant')], undefined)).toBe('missing');
+  expect(autoMergeValueSignal([FB('pass', 'seeded_mutant')], KILL(0))).toBe('low');
+  expect(autoMergeValueSignal([FB('pass', 'seeded_mutant')], MUT(0.1))).toBe('low');
+  expect(autoMergeValueSignal([FB('fail', 'seeded_mutant')], KILL(0.333))).toBe('pass');
+  // FBPA against the parent source (source changed) is a separate run: still a signal either way
+  expect(autoMergeValueSignal([FB('pass', 'parent_source')], undefined)).toBe('pass');
+  expect(autoMergeValueSignal([FB('fail', 'parent_source')], undefined)).toBe('low');
+});
+
+it('U2 flag: LOOP_AUTO_MERGE_VALUE_GATE off (default) | shadow | on, registered as an acting evolution flag', () => {
+  expect(autoMergeValueGate({})).toBe('off');
+  expect(autoMergeValueGate({ LOOP_AUTO_MERGE_VALUE_GATE: 'SHADOW' })).toBe('shadow');
+  expect(autoMergeValueGate({ LOOP_AUTO_MERGE_VALUE_GATE: 'on' })).toBe('on');
+  expect(autoMergeValueGate({ LOOP_AUTO_MERGE_VALUE_GATE: 'yes' })).toBe('off');
+  expect(EVOLUTION_FLAGS).toContainEqual({ name: 'LOOP_AUTO_MERGE_VALUE_GATE', acting: true });
+});
+
+const VALUE_PRS = [700, 702, 703, 704] as const;
+const seedValuePrs = () => {
+  expect(VALUE_PRS.filter(isAuditSample)).toEqual([]);
+  seedPr(700, { draft: false }); // no signal at all
+  seedPr(702, { draft: false, fbpa: 'fail', graded: KILL(0) }); // low
+  seedPr(703, { draft: false, fbpa: 'pass' });
+  seedPr(704, { draft: false, graded: KILL(0.667) });
+};
+
+it('U2 off (default): the value signal is not read — no would_block_value, decisions as before', async () => {
+  seedValuePrs();
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('shadow'), NOW);
+  for (const n of VALUE_PRS) { expect(decision(n)).toMatchObject({ decision: 'would_merge' }); expect(decision(n).would_block_value).toBeUndefined(); }
+});
+
+it('U2 shadow: records would_block_value on the decision without changing it (shadow and act auto-merge)', async () => {
+  seedValuePrs();
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('shadow', { LOOP_AUTO_MERGE_VALUE_GATE: 'shadow' }), NOW);
+  expect(decision(700)).toMatchObject({ decision: 'would_merge', would_block_value: 'value_signal_missing' });
+  expect(decision(702)).toMatchObject({ decision: 'would_merge', would_block_value: 'value_signal_low' });
+  expect(decision(703).decision).toBe('would_merge'); expect(decision(703).would_block_value).toBeUndefined();
+  expect(decision(704).decision).toBe('would_merge'); expect(decision(704).would_block_value).toBeUndefined();
+  // act: still merges — shadow never blocks — and the merge record carries what the gate would have done
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act', { LOOP_AUTO_MERGE_VALUE_GATE: 'shadow' }), NOW);
+  expect(decision(700)).toMatchObject({ decision: 'merged', would_block_value: 'value_signal_missing' });
+  expect(decision(702)).toMatchObject({ decision: 'merged', would_block_value: 'value_signal_low' });
+  expect(decision(703)).toMatchObject({ decision: 'merged' });
+  expect(writes().filter((c) => c.url.endsWith('/merge'))).toHaveLength(4);
+});
+
+it('U2 on: a missing or low value signal is ineligible (never merged); FBPA pass or kill share >= 0.2 stays eligible', async () => {
+  seedValuePrs();
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act', { LOOP_AUTO_MERGE_VALUE_GATE: 'on' }), NOW);
+  expect(decision(700)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_missing' });
+  expect(decision(702)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_low' });
+  expect(decision(703)).toMatchObject({ decision: 'merged' });
+  expect(decision(704)).toMatchObject({ decision: 'merged' });
+  expect(writes().filter((c) => c.url.endsWith('/merge')).map((c) => c.url)).toEqual(['https://api.github.com/repos/o/r/pulls/703/merge', 'https://api.github.com/repos/o/r/pulls/704/merge']);
+  // a final reason: not re-checked (unknown codes are permanent), so a later tick never merges it
+  expect(isTransientReason('value_signal_missing')).toBe(false);
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act', { LOOP_AUTO_MERGE_VALUE_GATE: 'on', LOOP_AUTO_MERGE_RECHECK: 'on' }), new Date(NOW.getTime() + 7 * 3_600_000));
+  expect(decision(700)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_missing' });
+});
+
+// operator 30-10: the gate acts only on the lanes in LOOP_AUTO_MERGE_VALUE_GATE_LANES (exports first: 70 % of exports PRs kill
+// < 0.2 fresh mutants); other lanes are evaluated like shadow. Lane identity = settlement's runLanes (proposal evidence refs).
+const EXPORTS_EV = ['test-gap:packages/server/src/services/x.ts#exports']; const TEST_GAP_EV = ['test-gap:packages/server/src/services/y.ts'];
+const MUTATION_EV = ['mutation-gap:packages/server/src/services/z.ts'];
+const seedLanePrs = () => {
+  expect([700, 702, 703, 704].filter(isAuditSample)).toEqual([]);
+  seedPr(700, { draft: false, evidence: EXPORTS_EV, graded: KILL(0) }); // exports, low
+  seedPr(702, { draft: false, evidence: TEST_GAP_EV, graded: KILL(0) }); // test-gap, low
+  seedPr(703, { draft: false, evidence: MUTATION_EV }); // mutation, missing
+  seedPr(704, { draft: false, evidence: EXPORTS_EV, graded: KILL(0.667) }); // exports, pass
+};
+
+it('value gate lanes: LOOP_AUTO_MERGE_VALUE_GATE_LANES is a comma list of lane names (unset/empty = all lanes), registered as an acting flag', () => {
+  expect(autoMergeValueGateLanes({})).toBeNull();
+  expect(autoMergeValueGateLanes({ LOOP_AUTO_MERGE_VALUE_GATE_LANES: ' , ' })).toBeNull();
+  expect(autoMergeValueGateLanes({ LOOP_AUTO_MERGE_VALUE_GATE_LANES: 'exports' })).toEqual(['exports']);
+  expect(autoMergeValueGateLanes({ LOOP_AUTO_MERGE_VALUE_GATE_LANES: ' Exports, test-gap ' })).toEqual(['exports', 'test-gap']);
+  expect(EVOLUTION_FLAGS).toContainEqual({ name: 'LOOP_AUTO_MERGE_VALUE_GATE_LANES', acting: true });
+});
+
+it('value gate lanes: on + lanes=exports blocks a low-value exports PR; a low-value test-gap / mutation PR is only recorded (would_block_value) and merged', async () => {
+  seedLanePrs();
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act', { LOOP_AUTO_MERGE_VALUE_GATE: 'on', LOOP_AUTO_MERGE_VALUE_GATE_LANES: 'exports' }), NOW);
+  expect(decision(700)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_low' });
+  expect(decision(702)).toMatchObject({ decision: 'merged', would_block_value: 'value_signal_low' });
+  expect(decision(703)).toMatchObject({ decision: 'merged', would_block_value: 'value_signal_missing' });
+  expect(decision(704).decision).toBe('merged'); expect(decision(704).would_block_value).toBeUndefined();
+  expect(writes().filter((c) => c.url.endsWith('/merge')).map((c) => c.url.split('/').slice(-2)[0])).toEqual(['702', '703', '704']);
+});
+
+it('value gate lanes: on with the list unset blocks every lane (current behaviour)', async () => {
+  seedLanePrs();
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act', { LOOP_AUTO_MERGE_VALUE_GATE: 'on' }), NOW);
+  expect(decision(700)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_low' });
+  expect(decision(702)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_low' });
+  expect(decision(703)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_missing' });
+  expect(decision(704)).toMatchObject({ decision: 'merged' });
+});
+
+it('value gate lanes: shadow never blocks, also for a listed lane', async () => {
+  seedLanePrs();
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act', { LOOP_AUTO_MERGE_VALUE_GATE: 'shadow', LOOP_AUTO_MERGE_VALUE_GATE_LANES: 'exports' }), NOW);
+  expect(decision(700)).toMatchObject({ decision: 'merged', would_block_value: 'value_signal_low' });
+  expect(decision(702)).toMatchObject({ decision: 'merged', would_block_value: 'value_signal_low' });
+  expect(writes().filter((c) => c.url.endsWith('/merge'))).toHaveLength(4);
+});
+
+it('value gate lanes: a PR the all-lanes gate rejected is re-evaluated once its lane leaves the list; a listed lane stays final', async () => {
+  seedLanePrs();
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act', { LOOP_AUTO_MERGE_VALUE_GATE: 'on' }), NOW);
+  expect(decision(702)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_low' });
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act', { LOOP_AUTO_MERGE_VALUE_GATE: 'on', LOOP_AUTO_MERGE_VALUE_GATE_LANES: 'exports' }), new Date(NOW.getTime() + 60_000));
+  expect(decision(700)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_low' });
+  expect(decision(702)).toMatchObject({ decision: 'merged', would_block_value: 'value_signal_low' });
+  expect(decision(703)).toMatchObject({ decision: 'merged', would_block_value: 'value_signal_missing' });
+});
+
+it('U2 rollback: a PR rejected only by the value gate is eligible again once the gate is shadow or off (other final reasons stay final)', async () => {
+  const tick = (gate: string, min: number) => runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('act', gate ? { LOOP_AUTO_MERGE_VALUE_GATE: gate } : {}), new Date(NOW.getTime() + min * 60_000));
+  seedPr(702, { draft: false, fbpa: 'fail', graded: KILL(0) });
+  seedPr(700, { draft: false }); // missing signal
+  seedPr(710, { draft: false, lines: 401 }); // a non-value permanent reason
+  await tick('on', 0);
+  expect(decision(702)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_low' });
+  expect(decision(700)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_missing' });
+  expect(decision(710).reason).toMatch(/^diff_over_limit/);
+  await tick('on', 1); // still on: final
+  expect(decision(702)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_low' });
+  // on → shadow: re-evaluated through every gate and merged; the record carries what the gate would have done
+  await tick('shadow', 2);
+  expect(decision(702)).toMatchObject({ decision: 'merged', would_block_value: 'value_signal_low' });
+  expect(decision(700)).toMatchObject({ decision: 'merged', would_block_value: 'value_signal_missing' });
+  expect(decision(710).reason).toMatch(/^diff_over_limit/); // never re-evaluated
+  // on → off: the same, without a value read
+  seedPr(704, { draft: false, fbpa: 'fail' });
+  await tick('on', 3);
+  expect(decision(704)).toMatchObject({ decision: 'ineligible', reason: 'value_signal_low' });
+  await tick('', 4);
+  expect(decision(704).decision).toBe('merged'); expect(decision(704).would_block_value).toBeUndefined();
+  expect(writes().filter((c) => c.url.endsWith('/merge')).map((c) => c.url.split('/').slice(-2)[0])).toEqual(['702', '700', '704']);
+});
+
+// ── UXE-00a (R12): the UX oracle tests are never earned-auto-merged — a loop PR touching one is permanent ineligible ──
+it('UXE-00a: a loop PR touching an oracle test file (RouteSmoke.test.tsx) is ineligible oracle_test_file, never re-checked', async () => {
+  expect([...ORACLE_TEST_FILES]).toEqual(['packages/server/src/__tests__/ui-fitness.test.ts', 'packages/server/src/__tests__/ux-coverage.test.ts',
+    'packages/dashboard/src/RouteSmoke.test.tsx', 'packages/dashboard/src/UX25b.test.tsx', 'packages/dashboard/src/UX4.test.tsx', 'packages/dashboard/src/UxTasks.test.tsx']);
+  seedPr(720, { files: ['packages/dashboard/src/RouteSmoke.test.tsx'] });
+  seedPr(721, { files: ['packages/server/src/__tests__/x.test.ts', 'packages/server/src/__tests__/ux-coverage.test.ts'] });
+  seedPr(700); // an ordinary test-only PR: unchanged decision
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('shadow', { LOOP_AUTO_MERGE_RECHECK: 'on' }), NOW);
+  expect(decision(720)).toMatchObject({ decision: 'ineligible', reason: 'oracle_test_file: packages/dashboard/src/RouteSmoke.test.tsx' });
+  expect(decision(721)).toMatchObject({ decision: 'ineligible', reason: 'oracle_test_file: packages/server/src/__tests__/ux-coverage.test.ts' });
+  expect(decision(700)).toMatchObject({ decision: 'would_merge', mode: 'shadow' });
+  expect(isTransientReason(decision(720).reason)).toBe(false);
+  expect(writes()).toEqual([]);
+  // permanent: a later tick with re-check on reads nothing more for the oracle PRs
+  const before = calls.length;
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('shadow', { LOOP_AUTO_MERGE_RECHECK: 'on' }), at(48));
+  expect(calls.slice(before).filter((c) => /pulls\/72[01]/.test(c.url))).toEqual([]);
+});
+
+it('UXE-00a: an ordinary dashboard or server test file is not an oracle file — the decision is the one before the guard', async () => {
+  seedPr(722, { files: ['packages/dashboard/src/pages/Foo.test.tsx'] });
+  seedPr(723, { files: ['packages/server/src/__tests__/ui-fitness-helper.test.ts', 'packages/dashboard/src/components/RouteSmoke.test.tsx'] });
+  await runAutoMergeTick(db, fakeFetch as unknown as typeof fetch, env('shadow'), NOW);
+  expect(isAuditSample(722) || isAuditSample(723)).toBe(false);
+  expect(decision(722)).toMatchObject({ decision: 'would_merge', mode: 'shadow' });
+  expect(decision(723)).toMatchObject({ decision: 'would_merge', mode: 'shadow' });
 });

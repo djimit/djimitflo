@@ -6,7 +6,7 @@ import { rateLimit } from 'express-rate-limit';
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import { createError } from '../middleware/error-handler';
-import { TaskStatus, TaskPriority, ExecutionMode, RiskLevel, AuthTokenPayload, AuditEventType, WebSocketEventType } from '@djimitflo/shared';
+import { TaskStatus, TaskPriority, ExecutionMode, RiskLevel, AuthTokenPayload, WebSocketEventType } from '@djimitflo/shared';
 import { AuthorizationService } from '../services/authorization-service';
 import { ContextInjectionService } from '../services/context-injection-service';
 import { randomUUID } from 'crypto';
@@ -14,7 +14,7 @@ import type { ExecutionEngine } from '../execution/execution-engine';
 import type { ExecutorKind } from '../execution/types';
 import type { AuthMiddleware } from '../middleware/auth';
 import type { WebSocketService } from '../services/websocket-service';
-import { AuditService } from '../services/audit-service';
+import { createNativeTask, parseNativeTask, notifyNativeTaskCreated } from '../services/native-task-service';
 
 /**
  * List views need the shape of a task's metadata, not its bulk: production metadata averaged ~14 KB per
@@ -47,23 +47,13 @@ function loadTaskOr404(db: any, id: string, res: any): any | null {
   return task;
 }
 
-function parseTask(task: any): any {
-  return {
-    ...task,
-    tags: JSON.parse(task.tags || '[]'),
-    metadata: JSON.parse(task.metadata || '{}'),
-    created_by: task.created_by || null,
-    owner_user_id: task.owner_user_id || null,
-    updated_by: task.updated_by || null,
-  };
-}
+const parseTask = parseNativeTask;
 
 export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine, auth?: AuthMiddleware, wsService?: WebSocketService): Router {
   const router = Router();
   router.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false })); // per-router limiter CodeQL can see; /api also caps 300/min
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
   const contextInjector = new ContextInjectionService(db);
-  const audit = new AuditService(db);
 
   function getUser(req: any): AuthTokenPayload {
     return (req as any).user;
@@ -214,44 +204,13 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
         },
       };
       const taskDescription = contextSnapshot.text ? `${description}\n\n${contextSnapshot.text}` : description;
-      for (const name of Object.keys(enrichedMetadata).filter(name => name.startsWith('execution_recovery_'))) delete enrichedMetadata[name];
+      for (const name of Object.keys(enrichedMetadata).filter(name => name.startsWith('execution_recovery_') || name === 'djimitsecScanTrigger')) delete enrichedMetadata[name];
 
-      db.transaction(() => {
-      db.prepare(`
-        INSERT INTO tasks (
-          id, title, description, status, priority, risk_level, execution_mode,
-          agent_id, parent_task_id, repository_id, instruction_profile_id,
-          tags, metadata, created_at, updated_at, created_by, owner_user_id, updated_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        id,
-        title,
-        taskDescription,
-        (status || TaskStatus.PENDING),
-        priority,
-        risk_level || RiskLevel.LOW,
-        execution_mode,
-        agent_id,
-        parent_task_id,
-        repository_id,
-        instruction_profile_id,
-        JSON.stringify(tags),
-        JSON.stringify(enrichedMetadata),
-        now,
-        now,
-        actorId,
-        actorId,
-        actorId
-      );
-      audit.record({ event_type: AuditEventType.TASK_CREATED, action: 'task_created',
-        resource_type: 'task', resource_id: id, task_id: id, user_id: actorId,
-        risk_level: risk_level || RiskLevel.LOW });
-      })();
-
-      const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as any;
-      wsService?.broadcastTaskEvent(task, { type: WebSocketEventType.TASK_CREATED,
-        payload: { task: parseTask(task) }, timestamp: now });
-      res.status(201).json(parseTask(task));
+      const task = createNativeTask(db, { id, title, description: taskDescription, status: status || TaskStatus.PENDING,
+        priority, risk_level: risk_level || RiskLevel.LOW, execution_mode, agent_id, parent_task_id, repository_id,
+        instruction_profile_id, tags, metadata: enrichedMetadata }, actorId, now);
+      notifyNativeTaskCreated(task, wsService, now);
+      res.status(201).json(task);
     } catch (error) {
       next(error);
     }
@@ -294,7 +253,7 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
               throw createError(400, 'metadata must be an object', 'INVALID_INPUT');
             }
             const metadata = { ...(updates.metadata || {}) } as Record<string, unknown>;
-            const reserved = (name: string) => name === 'environment' || name.startsWith('deep_agent_assurance_') || name.startsWith('execution_recovery_');
+            const reserved = (name: string) => name === 'environment' || name === 'djimitsecScanTrigger' || (existingMetadata.djimitsecScan !== undefined && ['djimitsecScan', 'executor'].includes(name)) || name.startsWith('deep_agent_assurance_') || name.startsWith('execution_recovery_');
             for (const name of Object.keys(metadata).filter(reserved)) delete metadata[name];
             for (const [name, value] of Object.entries(existingMetadata).filter(([name]) => reserved(name))) metadata[name] = value;
             // A loop worker's execution-task pointer is server-owned. Preserve

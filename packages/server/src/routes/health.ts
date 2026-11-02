@@ -22,6 +22,7 @@ import { provenanceDag } from '../services/provenance-dag';
 import { attributionSummary } from '../services/outcome-attribution';
 import { runtimeConfigView } from '../services/runtime-config-view';
 import { buildProvenance } from '../utils/build-provenance';
+import { fleetDrift } from '../utils/fleet-drift';
 import { buildDigest } from '../services/operator-push';
 import { getDatabaseProvenance } from '../database/provenance';
 import { efficiencyWithCost } from '../services/cost-ledger';
@@ -29,6 +30,7 @@ import { shippedCodeView } from '../services/shipped-code-scan';
 import { memoryTemplateAnalysis } from '../services/memory-template-dedup';
 import { skillCardsView } from '../services/skill-distillation';
 import { evolutionFeedbackMode, latestEvolutionDigest } from '../services/evolution-feedback';
+import { advisoryExposureEvidence } from '../services/advisory-exposure';
 import { expertUnitDedupe } from '../services/expert-unit-dedupe';
 import { buildTrainingDataset, trainingDatasetMode, trainingDatasetSummary } from '../services/training-dataset';
 import { buildValueAllocation, latestValueAllocation, valueAllocatorMode } from '../services/value-allocator';
@@ -43,11 +45,15 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   router.get('/', (_req, res) => {
     res.json({
       status: 'healthy',
+      // Public, non-secret UI rollout only; never expose raw environment values.
+      ui: { navigation_discovery_mode: ['shadow', 'on'].includes(process.env.UX_NAVIGATION_DISCOVERY_MODE ?? '')
+        ? process.env.UX_NAVIGATION_DISCOVERY_MODE : 'off' },
       name: 'djimitflo',
       version: getAppVersion(),
       // Non-secret build identity makes public liveness checks attributable.
       commit: process.env.DJIMITFLO_COMMIT_SHA || null,
       build: buildProvenance(),
+      fleet_drift: fleetDrift(),
       timestamp: new Date().toISOString(),
     });
   });
@@ -189,6 +195,11 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   // K4 (shadow, SKILL_DISTILLATION_MODE): distilled skill / anti-pattern cards by lane and status + the latest cards (read-only, never injected)
   router.get('/skills', requireAuth, requirePermission('read:evidence'), (req, res) => {
     res.json(skillCardsView(db, process.env, Number(req.query.limit) || 20));
+  });
+
+  // Track A (ADVISORY_EXPOSURE_MODE): latest verdict per EVE-V advisory, affected list, pending ids, bump proposals (read-only)
+  router.get('/advisory-exposure', requireAuth, requirePermission('read:evidence'), (_req, res) => {
+    res.json(advisoryExposureEvidence(db));
   });
 
   // K5: the newest stored evolution digest (EVOLUTION_FEEDBACK_MODE=shadow|on writes one per day; null before the first)
