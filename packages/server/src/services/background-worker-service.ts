@@ -254,6 +254,10 @@ export class BackgroundWorkerService {
       const preparedThreshold = Number(process.env.DJIMFLO_STALE_PREPARED_THRESHOLD_HOURS ?? 24);
       const runningThreshold = Number(process.env.DJIMFLO_STALE_RUNNING_THRESHOLD_HOURS ?? 2);
 
+      // Lease timestamps are ISO (`…T…Z`); compared with datetime('now', …) text ('YYYY-MM-DD HH:MM:SS') they only matched
+      // rows from an earlier UTC date, so the 24 h cleanup acted at 24–48 h, always just after midnight (C-reliability 30-10 §1d).
+      const ago = (hours: number) => new Date(Date.now() - hours * 36e5).toISOString();
+
       // Cancel stale prepared leases
       const now = new Date().toISOString();
       const prepared = this.db.prepare(`
@@ -262,8 +266,8 @@ export class BackgroundWorkerService {
             ${CANCEL_LEASE_METADATA_SQL},
             updated_at = datetime('now')
         WHERE status = 'prepared'
-        AND created_at < datetime('now', '-' || ? || ' hours')
-      `).run(...cancelLeaseBind('stale_timeout', now), preparedThreshold);
+        AND created_at < ?
+      `).run(...cancelLeaseBind('stale_timeout', now), ago(preparedThreshold));
 
       // Mark hung running leases as failed (no exit was observed: the structured failure says so)
       const hung = (role: string) => JSON.stringify(buildLeaseFailure(role, 'failed', { failure_reason: 'stale_timeout' }));
@@ -274,8 +278,8 @@ export class BackgroundWorkerService {
               '$.failure', json(CASE WHEN role IN ('checker', 'security_checker') THEN ? ELSE ? END)),
             updated_at = datetime('now')
         WHERE status = 'running'
-        AND updated_at < datetime('now', '-' || ? || ' hours')
-      `).run(hung('checker'), hung('maker'), runningThreshold);
+        AND updated_at < ?
+      `).run(hung('checker'), hung('maker'), ago(runningThreshold));
 
       return `Cleaned: ${prepared.changes} stale prepared, ${running.changes} hung running leases`;
     } catch { return 'Orphan lease cleanup skipped (no worker_leases table)'; }

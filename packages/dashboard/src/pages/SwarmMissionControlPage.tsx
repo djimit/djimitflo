@@ -227,6 +227,8 @@ export function SwarmMissionControlPage() {
   }
 
   async function rollbackProofRun(id: string) {
+    if (!(await dialog.confirm(`Roll back proof run ${id}?`,
+      'Deletes every record this proof run created (goals, work items, loop runs, worker leases, claims and evidence). This cannot be undone.', 'Roll back'))) return;
     setActionId(`rollback-${id}`);
     setError(null);
     try {
@@ -287,7 +289,7 @@ export function SwarmMissionControlPage() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-status-error/20 bg-status-error/10 p-3 text-sm text-status-error">
+        <div role="alert" className="flex items-center gap-2 rounded-lg border border-status-error/20 bg-status-error/10 p-3 text-sm text-status-error">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           {error}
         </div>

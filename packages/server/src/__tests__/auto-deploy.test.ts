@@ -187,6 +187,27 @@ it('S1: writes deploy events as JSON lines into the data dir the container mount
   expect(events[0]).toMatchObject({ sha: NEW, detail: `was ${OLD}` });
 });
 
+// re-20261030 C6 (be57e146: main without CI waited ~16 h and the deploy log showed nothing): a sha auto-deploy holds back
+// for CI or settling is recorded once as a `waiting` event, which the stall watch reports as deploy:behind_main after 2 h.
+it('C6: a sha held back by CI or settling is recorded once as a waiting event; main moving on records the new sha', () => {
+  const root = fs.mkdtempSync(path.join(TMPDIR, 'ad-')); fs.mkdirSync(path.join(root, 'data'));
+  const events = () => fs.readFileSync(path.join(root, 'data', 'deploy-log.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as { event: string; sha: string; detail: string });
+  const red = { AD_CHECKS: `echo '{"check_runs":[]}'` };
+  for (let i = 0; i < 3; i++) expect(run(red, root)).toContain('CI not green');
+  expect(run({ AD_COMMIT: `echo '${minutesAgo(5)}'` }, root)).toContain('settling until 20');
+  expect(events()).toEqual([{ at: expect.any(String), event: 'waiting', sha: NEW, detail: expect.stringContaining('required_missing:build-and-test (22)') }]);
+  const NEXT = 'c'.repeat(40); const next = { AD_MAIN_SHA: `printf '${NEXT}\\trefs/heads/main\\n'` };
+  run({ ...next, AD_COMMIT: `echo '${minutesAgo(5)}'` }, root); run({ ...next, AD_COMMIT: `echo '${minutesAgo(6)}'` }, root);
+  expect(events().map((e) => [e.event, e.sha])).toEqual([['waiting', NEW], ['waiting', NEXT]]);
+  expect(events()[1].detail).toContain('settling until 20');
+  expect(run(next, root)).toContain('DEPLOYED');
+  expect(events().map((e) => e.event)).toEqual(['waiting', 'waiting', 'deploying', 'done']);
+  // held back for a running worker or up to date: no waiting event
+  const quiet = fs.mkdtempSync(path.join(TMPDIR, 'ad-')); fs.mkdirSync(path.join(quiet, 'data'));
+  run({ AD_LEASES: 'echo 1' }, quiet); run({ AD_CURRENT_SHA: `echo ${NEW}` }, quiet);
+  expect(fs.existsSync(path.join(quiet, 'data', 'deploy-log.jsonl'))).toBe(false);
+});
+
 // S2 (DEP-01): auto-deploy runs as root on the host. It runs the host-installed deploy script; the copy in the commit it
 // deploys is fetched only to compare, so merging a change to deploy-vps.sh never reaches root without an operator step.
 const RAN = 'echo "deploy-script-ran-from $0"\n';

@@ -210,8 +210,21 @@ describe('U1: settlement value label (report only) and survival informativeness 
     expect(lane('exports')).toMatchObject({ settled: 30, survived: 30, regressed: 0, informative: false });
     expect(lane('exports').informative_reason).toMatch(/0 regressions in 30 settled/);
     expect(lane('test-gap')).toMatchObject({ settled: 30, regressed: 1, informative: true, informative_reason: null });
-    expect(lane('mutation')).toMatchObject({ settled: 5, regressed: 0, informative: true });
+    expect(lane('mutation')).toMatchObject({ settled: 5, regressed: 0, informative: null }); // not enough settled to know (below)
     // the overall numbers (and so Gate B and fitness) are what they were
     expect(s).toMatchObject({ survived: 64, regressed: 1, settled: 65 });
+  });
+
+  // E-assumptions A16/C9 (re-20261030): mutation (16 settled) and test-gap (8) were labelled informative:true with 0
+  // regressions — an unproven status shown as true. Below the minimum with 0 regressions it is unknown (null).
+  it(`survival section: 0 regressions below ${SURVIVAL_INFORMATIVE_MIN_N} settled is informative:null ("not enough settled"); a regression is informative at any n`, () => {
+    for (let i = 0; i < 8; i++) seedPr(`g${i}`, 900 + i, { refs: GAP, survived: true });
+    for (let i = 0; i < SURVIVAL_INFORMATIVE_MIN_N - 1; i++) seedPr(`u${i}`, 1000 + i, { refs: MUT, survived: true });
+    seedPr('e-reg', 1100, { refs: EXPORTS, survived: false, status: 'regressed' }); seedPr('e-ok', 1101, { refs: EXPORTS, survived: true });
+    const lane = (l: string) => buildEvolutionEvidence(db, ENV, now).merge.settlement!.by_lane.find((x) => x.lane === l)!;
+    expect(lane('test-gap')).toMatchObject({ settled: 8, regressed: 0, informative: null });
+    expect(lane('test-gap').informative_reason).toMatch(/not enough settled: 0 regressions in 8 settled PRs \(< 30\)/);
+    expect(lane('mutation')).toMatchObject({ settled: 29, regressed: 0, informative: null });
+    expect(lane('exports')).toMatchObject({ settled: 2, regressed: 1, informative: true, informative_reason: null }); // it has failed: it can fail
   });
 });

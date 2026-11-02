@@ -7,7 +7,7 @@ import { SURVIVAL_DAYS, loopPrSettlements, survivalCounts, type LoopPrSettlement
 import { parsePrUrl } from './repo-registry';
 import { classifyReport, runChild } from './commons-falsifier';
 import { GRADED_KILL_BUDGET_MS, GRADED_TEST, gradedTarget, killShare, roundGraded, vitestRunner, type KillRunner } from './graded-fitness';
-import { WRITE_TEST_MUTANTS, laneOf, targetMutants } from './gym-failure-tasks';
+import { WRITE_TEST_MUTANTS, oracleLane, targetMutants } from './gym-failure-tasks';
 import { WorktreeManager } from './worktree-manager';
 import { guardTick, markRun, noteScheduler } from './scheduler-registry';
 import type { LoopService } from './loop-service';
@@ -361,7 +361,7 @@ export function runLanes(db: Database): Map<string, string> {
     rows = db.prepare(`SELECT r.id, s.evidence_refs_json AS ev FROM loop_runs r JOIN goals g ON g.id = r.goal_id JOIN self_improvements s ON s.id = g.improvement_id
       WHERE json_extract(r.metadata, '$.pr_url') IS NOT NULL`).all() as typeof rows;
   } catch { /* tables absent: every run is 'other' */ }
-  for (const r of rows) { const ev = r.ev ?? ''; out.set(r.id, /"mutation-gap:/.test(ev) ? 'mutation' : laneOf(ev) ?? 'other'); }
+  for (const r of rows) out.set(r.id, oracleLane(r.ev));
   return out;
 }
 
@@ -395,15 +395,21 @@ export function settlementValueEvidence(db: Database, ci: (k: number, n: number)
   };
 }
 
-/** Survival per lane over settled PRs only; informative:false when a lane has 0 regressions at ≥ SURVIVAL_INFORMATIVE_MIN_N settled. */
+/**
+ * Survival per lane over settled PRs only. informative: true once a lane has a regression (the label has failed, so it can);
+ * with 0 regressions false at ≥ SURVIVAL_INFORMATIVE_MIN_N settled (it cannot fail there) and null below — not enough settled
+ * to know (E-assumptions A16/C9: 8 and 16 settled PRs with 0 regressions were shown as true).
+ */
 export function survivalByLane(prs: LoopPrSettlement[], lanes: Map<string, string>) {
   const byLane = new Map<string, LoopPrSettlement['settlement']['state'][]>();
   for (const p of prs) { const lane = lanes.get(p.run_id) ?? 'other'; byLane.set(lane, [...(byLane.get(lane) ?? []), p.settlement.state]); }
   return [...byLane.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([lane, states]) => {
     const c = survivalCounts(states);
-    const vacuous = c.settled >= SURVIVAL_INFORMATIVE_MIN_N && c.regressed === 0;
-    return { lane, survived: c.survived, regressed: c.regressed, settled: c.settled, survival_rate: c.rate, informative: !vacuous,
-      informative_reason: vacuous ? `0 regressions in ${c.settled} settled PRs: line-retention survival cannot fail on this lane (test-only PRs); see settlement_value` : null };
+    const enough = c.settled >= SURVIVAL_INFORMATIVE_MIN_N;
+    const informative: boolean | null = c.regressed > 0 ? true : enough ? false : null;
+    return { lane, survived: c.survived, regressed: c.regressed, settled: c.settled, survival_rate: c.rate, informative,
+      informative_reason: informative === false ? `0 regressions in ${c.settled} settled PRs: line-retention survival cannot fail on this lane (test-only PRs); see settlement_value`
+        : informative === null ? `not enough settled: 0 regressions in ${c.settled} settled PRs (< ${SURVIVAL_INFORMATIVE_MIN_N}); whether survival can fail on this lane is unknown` : null };
   });
 }
 

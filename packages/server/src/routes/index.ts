@@ -60,6 +60,7 @@ import { createExplainerRoutes } from './explainer';
 import { createApexRoutes } from './apex';
 import { createAgentSocialRuntimeRoutes, createSwarmOrchestrationRoutes } from './swarm-orchestration';
 import { createSelfImprovementRoutes } from './self-improvement';
+import { createCapabilityRoutes } from './capabilities';
 import { createAgiRoutes } from './agi';
 import { createIntelligenceRoutes } from './intelligence';
 import { createMetaOrchestrationRoutes } from './meta-orchestration';
@@ -207,6 +208,7 @@ export function createRoutes(
     { prefix: '/swarm-v2', middleware: [requireAuth], router: createSwarmOrchestrationRoutes(db, auth) },
     { prefix: '/swarm', middleware: [requireAuth], router: createSwarmOrchestrationRoutes(db, auth) },
     { prefix: '/self-improve', middleware: [requireAuth], router: createSelfImprovementRoutes(db, auth) },
+    { prefix: '/capabilities', middleware: [requireAuth], router: createCapabilityRoutes(db, auth) },
     { prefix: '/agi', middleware: [requireAuth], router: createAgiRoutes(db, auth) },
     { prefix: '/intelligence', middleware: [requireAuth], router: createIntelligenceRoutes(db, auth) },
     { prefix: '/meta', middleware: [requireAuth], router: createMetaOrchestrationRoutes(db, auth, metaOrchestration) },

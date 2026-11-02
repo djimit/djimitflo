@@ -129,6 +129,13 @@ event() {
   printf '{"at":"%s","event":"%s","sha":"%s","detail":"%s"}\n' "$(date -u +%FT%TZ)" "$1" "${2:-}" "$(printf '%s' "${3:-}" | tr -d '"\\' | head -c 300)" \
     | data_write deploy-log.jsonl 999 || true
 }
+# re-20261030 C6 (be57e146 waited ~16 h for CI and the deploy log showed nothing): the first time a main sha is held back
+# (CI not green, required checks unreadable, settling) it is recorded as one `waiting` event; the stall watch reports a
+# sha still waiting after 2 h as deploy:behind_main. The marker of the last sha recorded is root's, in $ROOT.
+waiting() {
+  [ "$(cat "$ROOT/.deploy-waiting" 2>/dev/null || true)" = "$1" ] && return 0
+  echo "$1" > "$ROOT/.deploy-waiting"; event waiting "$1" "$2"
+}
 
 # Each probe runs $AD_<NAME> (eval) when set, the real command otherwise.
 probe() { local name="$1"; shift; local override="AD_$name"; if [ -n "${!override:-}" ]; then eval "${!override}"; else "$@"; fi; }
@@ -283,7 +290,7 @@ CHECKS="$(check_runs "$SHA")"
 # forensic 2026-10-26 rank 9: a required check that was skipped never ran, so it is not a pass (it used to be: any
 # success/skipped/neutral set deployed, even with a required check absent). Mirrors loop-auto-merge.ts / merge-train.sh.
 REQUIRED="$(required_checks 2>/dev/null || true)"
-[ -n "$REQUIRED" ] || { log "required checks unavailable for main — not deploying $SHA"; exit 0; }
+[ -n "$REQUIRED" ] || { log "required checks unavailable for main — not deploying $SHA"; waiting "$SHA" "required checks unavailable"; exit 0; }
 WHY="$(REQUIRED="$REQUIRED" node -e '
   // checks that gate no code (the scheduled OpenWiki `update` job runs on main HEAD daily; prod 10-10 it held the deploy
   // of #738-#744 for its whole run, and when it fails — as on 08-10 and 09-10 — it would block every deploy until main moved)
@@ -304,10 +311,10 @@ WHY="$(REQUIRED="$REQUIRED" node -e '
   const why = [notSuccess.length ? "required_not_success:" + notSuccess.map((q) => q.context + "=" + of(q).conclusion).join(",") : "",
     missing.length ? "required_missing:" + missing.join(",") : "", bad.length ? "not_green:" + bad.map((c) => c.name).join(",") : ""].filter(Boolean);
   console.log(why.join(" "));
-  process.exit(why.length ? 1 : 0);' <<<"$CHECKS")" || { log "CI not green (yet) for $SHA: $WHY"; exit 0; }
+  process.exit(why.length ? 1 : 0);' <<<"$CHECKS")" || { log "CI not green (yet) for $SHA: $WHY"; waiting "$SHA" "CI not green: $WHY"; exit 0; }
 
 AGE_MIN="$(commit_json "$SHA" | node -e 'const c=JSON.parse(require("fs").readFileSync(0,"utf8")); console.log(Math.floor((Date.now()-Date.parse(c.commit.committer.date))/60000))')"
-[ "$AGE_MIN" -ge "$SETTLE_MIN" ] || { log "main is ${AGE_MIN} min old, settling until ${SETTLE_MIN}"; exit 0; }
+[ "$AGE_MIN" -ge "$SETTLE_MIN" ] || { log "main is ${AGE_MIN} min old, settling until ${SETTLE_MIN}"; waiting "$SHA" "main is ${AGE_MIN} min old, settling until ${SETTLE_MIN}"; exit 0; }
 
 RUNNING="$(running_leases)"
 [ "$RUNNING" = "0" ] || { log "$RUNNING loop worker(s) running; not deploying mid-run"; exit 0; }
