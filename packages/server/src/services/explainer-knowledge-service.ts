@@ -18,6 +18,9 @@ const VECTOR_SIZE = Number(process.env.DJIMITFLO_EXPLAINER_VECTOR_SIZE) || 384;
 const OLLAMA_EMBED_URL = process.env.DJIMITFLO_EMBED_URL || process.env.OLLAMA_CLOUD_URL || "http://100.77.58.72:11434";
 const OLLAMA_EMBED_MODEL = process.env.DJIMITFLO_EMBED_MODEL || "snowflake-arctic-embed:s";
 const QDRANT_SEARCH_TIMEOUT_MS = Number(process.env.DJIMITFLO_QDRANT_SEARCH_TIMEOUT_MS) || 2_000;
+// CODE-004: deadlines for the write/embed legs (search keeps its own, shorter one)
+const QDRANT_WRITE_TIMEOUT_MS = 10_000;
+const EMBED_TIMEOUT_MS = 30_000;
 
 function qdrantHeaders(): Record<string, string> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -157,12 +160,13 @@ export class ExplainerKnowledgeService {
       return { embedded: 0, qdrant_available: false, semantic: false };
     }
     try {
-      const check = await fetch(`${QDRANT_URL}/collections/${COLLECTION}`, { headers: qdrantHeaders() });
+      const check = await fetch(`${QDRANT_URL}/collections/${COLLECTION}`, { headers: qdrantHeaders(), signal: AbortSignal.timeout(QDRANT_WRITE_TIMEOUT_MS) });
       if (check.status === 404) {
         await fetch(`${QDRANT_URL}/collections/${COLLECTION}`, {
           method: 'PUT',
           headers: qdrantHeaders(),
           body: JSON.stringify({ vectors: { size: VECTOR_SIZE, distance: 'Cosine' } }),
+          signal: AbortSignal.timeout(QDRANT_WRITE_TIMEOUT_MS),
         });
       }
       // Batch-embed all chunk texts via Ollama (single semantic check for the batch)
@@ -184,6 +188,7 @@ export class ExplainerKnowledgeService {
         method: 'PUT',
         headers: qdrantHeaders(),
         body: JSON.stringify({ points }),
+        signal: AbortSignal.timeout(QDRANT_WRITE_TIMEOUT_MS),
       });
       return { embedded: res.ok ? chunks.length : 0, qdrant_available: res.ok, semantic: vectors.semantic };
     } catch {
@@ -282,6 +287,7 @@ export class ExplainerKnowledgeService {
         method: "POST",
         headers: qdrantHeaders(),
         body: JSON.stringify({ filter: { must: [{ key: "bundle_version", match: { value: bundleId } }] } }),
+        signal: AbortSignal.timeout(QDRANT_WRITE_TIMEOUT_MS),
       });
       if (!res.ok) return false;
       // points/delete gives no count — confirm via scroll (0 remaining = purged)
@@ -289,6 +295,7 @@ export class ExplainerKnowledgeService {
         method: "POST",
         headers: qdrantHeaders(),
         body: JSON.stringify({ filter: { must: [{ key: "bundle_version", match: { value: bundleId } }] }, limit: 1, with_payload: false }),
+        signal: AbortSignal.timeout(QDRANT_WRITE_TIMEOUT_MS),
       });
       if (!countRes.ok) return false;
       const data = (await countRes.json()) as { result?: { points?: unknown[] } };
@@ -362,6 +369,7 @@ async function embedBatch(texts: string[]): Promise<{ vectors: number[][]; seman
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model: OLLAMA_EMBED_MODEL, input: texts.map((t) => t.slice(0, 2000)) }),
+      signal: AbortSignal.timeout(EMBED_TIMEOUT_MS),
     });
     if (res.ok) {
       const data = (await res.json()) as { embeddings?: number[][] };
@@ -401,6 +409,7 @@ async function embedVector(text: string): Promise<{ vector: number[]; semantic: 
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model: OLLAMA_EMBED_MODEL, input: text.slice(0, 2000) }),
+      signal: AbortSignal.timeout(EMBED_TIMEOUT_MS),
     });
     if (res.ok) {
       const data = (await res.json()) as { embeddings?: number[][] };

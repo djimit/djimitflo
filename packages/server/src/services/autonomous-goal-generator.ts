@@ -1,5 +1,5 @@
 import { recordAuthorityEvent } from './authority-ledger-service';
-import { enqueueEvent } from './event-outbox-service';
+import { enqueueRequiredEvent } from './event-outbox-service';
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { SelfImprovementService } from './self-improvement-service';
@@ -71,7 +71,8 @@ export class AutonomousGoalGenerator {
     this.db.prepare("UPDATE self_improvements SET status = 'executing' WHERE id = ?").run(id);
     // The panel authorised this goal: record it as the PLAN_APPROVED ALLOW the (optional) authority gate looks for.
     recordAuthorityEvent(this.db, { correlationId: goalId, artifactId: goalId, actorSubject: 'specialist-panel', actorType: 'agent', requestedState: 'PLAN_APPROVED', decision: 'ALLOW', payload: { improvement_id: id, title: improvement.title }, evidenceRefs: [`improvement:${id}`] });
-    enqueueEvent(this.db, { type: 'djimitflo.goal.created', aggregateId: goalId, payload: { goal_id: goalId, improvement_id: id, title: improvement.title, source: 'self-improvement' } });
+    // CODE-003: required event, inside generateImprovement's transaction: an outbox failure rolls the goal back.
+    enqueueRequiredEvent(this.db, { type: 'djimitflo.goal.created', aggregateId: goalId, payload: { goal_id: goalId, improvement_id: id, title: improvement.title, source: 'self-improvement' } });
     return 1;
   }
 

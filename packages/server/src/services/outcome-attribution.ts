@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'crypto';
+import { realRunIdSql } from './synthetic-runs';
 import { loopPrSettlements, survivalCounts, type SettlementState } from './merge-survival';
 import type { Database } from 'better-sqlite3';
 
@@ -7,7 +8,8 @@ import type { Database } from 'better-sqlite3';
  * Every learner read verified/regressed, but 30 of 45 regressions (30 d) were a missing reviewer verdict after a COMPLETED
  * maker — asymmetric label noise ρ ≈ 0.32–0.42 on the maker's reward. A settled run is now attributed to one class:
  *   maker_failure       — the maker's own work failed (checks, diff limit, scope) or a reviewer that ran said no
- *   reviewer_failure    — the maker completed but no reviewer verdict came back (timeout, token budget, unparsed, insufficient_evidence)
+ *   reviewer_failure    — the maker completed but no reviewer verdict came back (timeout, token budget, unparsed, insufficient_evidence);
+ *                         the cause is stored additively as answers_json.sub_reason (reviewerSubReason), counted in attributionSummary
  *   environment_failure — the maker never ran / crashed without a change / a check's tool was missing / worktree gone / no change
  *   verified            — every gate passed (`survived` comes later from merge survival)
  * OUTCOME_ATTRIBUTION_ENABLED (default off): record the class per settled run (an `outcome_attribution` judgment, mode
@@ -20,7 +22,7 @@ export const outcomeAttributionEnabled = (env: NodeJS.ProcessEnv = process.env):
 
 export interface MakerMeta {
   failure_reason?: string; timed_out?: boolean; runtime_timed_out?: boolean; exit_status?: number | null; completed_at?: string;
-  changed_files?: unknown; deterministic_checks?: Array<{ exit_status?: number | null }>;
+  changed_files?: unknown; deterministic_checks?: Array<{ exit_status?: number | null; reason?: string }>;
 }
 export interface AttributionLease { id?: string; role: string; status: string; metadata: MakerMeta & { verdict?: unknown; maker_lease_id?: unknown } }
 export interface AttributionRun {
@@ -32,23 +34,70 @@ export interface AttributionRun {
   /** existing outcome_attribution judgments for the run or its proposal (operator annotations win, newest first) */
   annotations?: Array<{ decision: string; created_at: string }>;
   pr_outcome?: { survived?: boolean } | null;
+  /** reviewer roles named by a `checker_dispatch_failed` loop event of the run (loop-daemon.ts dispatch catch) */
+  dispatch_failed_roles?: string[];
 }
-export interface Attribution { outcome: OutcomeClass; survived: boolean | null; reason: string }
+/**
+ * Why a reviewer_failure had no verdict, from the stored reviewer lease alone (additive; the class is unchanged).
+ * 'unrecorded' is never computed: it is how the summary reports rows written before sub_reason existed.
+ */
+export type ReviewerSubReason = 'dispatch_failed' | 'timeout' | 'token_budget' | 'runtime_exit' | 'unparsed_verdict' | 'read_only_violation'
+  | 'insufficient_evidence' | 'rejected' | 'unknown';
+export const REVIEWER_SUB_REASONS: readonly ReviewerSubReason[] = ['dispatch_failed', 'timeout', 'token_budget', 'runtime_exit', 'unparsed_verdict',
+  'read_only_violation', 'insufficient_evidence', 'rejected', 'unknown'];
+export interface Attribution { outcome: OutcomeClass; survived: boolean | null; reason: string; sub_reason?: ReviewerSubReason }
 
 /** A3/EV3 (moved from loop-daemon runOutcomeOnFailure, unchanged): why a maker lease's run failed, from its metadata alone. */
 export function makerFailureClass(meta: MakerMeta): 'regressed' | 'infra_failed' | 'no_change' {
-  if (meta.timed_out || meta.runtime_timed_out || /runtime_contract/.test(meta.failure_reason ?? '')) return 'infra_failed';
+  if (meta.timed_out || meta.runtime_timed_out || /runtime_contract|^infra: subscription_/.test(meta.failure_reason ?? '')) return 'infra_failed'; // subscription_: OLLAMA_OUTAGE_FALLBACK_RUNTIME
   if (/maker_runtime_exit_zero/.test(meta.failure_reason ?? '')) return Array.isArray(meta.changed_files) && meta.changed_files.length ? 'regressed' : 'infra_failed';
   if (meta.exit_status === undefined && !meta.completed_at) return 'infra_failed'; // the maker never ran
-  if ((meta.deterministic_checks ?? []).some((c) => c?.exit_status === 127)) return 'infra_failed'; // a check's tool was missing
+  if ((meta.deterministic_checks ?? []).some((c) => c?.exit_status === 127 || c?.reason === 'missing_script')) return 'infra_failed'; // a check's tool or script was missing
   if (Array.isArray(meta.changed_files) && meta.changed_files.length === 0) return 'no_change';
   return 'regressed';
 }
 
-const MAKER_GATES = new Set(['tests_lint_typecheck', 'diff_threshold_all_makers', 'auto_approved_scope']);
+const MAKER_GATES = new Set(['tests_lint_typecheck', 'diff_threshold_all_makers', 'auto_approved_scope', 'objective_scope']);
 const REVIEW_GATES: Record<string, string> = { checker_verdict: 'checker', security_checker_verdict: 'security_checker', maker_checker_separation: 'checker' };
 const ENV_GATES = new Set(['worktree_isolation', 'assignment_file_present', 'run_not_cancelled']);
 const REJECTING = new Set(['rejected', 'needs_revision']);
+const KNOWN_VERDICTS = new Set(['accepted', 'needs_revision', 'rejected', 'insufficient_evidence']); // loop-service.ts VALID_CHECKER_VERDICTS
+
+/**
+ * Pure: the sub-reason of one reviewer role's missing verdict, from the newest lease of that role for the maker. Sources:
+ * - failure_reason `<role>_runtime_failed:exit=N,timed_out=B: <stderr>` (loop-worker-executor-service.ts executeChecker, #687);
+ *   'token budget exceeded' / timed_out=true are the reviewerRetryable cases (loop-daemon.ts, #703/#716);
+ *   'stale_timeout' marks a hung running lease failed (background-worker-service.ts taskOrphanLeaseCleanup)
+ * - read_only_contract_passed, verdict (executeChecker; a failed runtime stores verdict insufficient_evidence)
+ * - 'rejected' only for a rejecting verdict on a lease that did not end 'completed' (a completed rejection is maker_failure)
+ * - no lease, or a prepared/running one with a `checker_dispatch_failed` event (loop-daemon.ts dispatch catch)
+ * Anything else is 'unknown' — never guessed.
+ */
+export function reviewerSubReason(lease: AttributionLease | undefined, dispatchFailed: boolean): ReviewerSubReason {
+  if (!lease) return 'dispatch_failed';
+  const m = lease.metadata as AttributionLease['metadata'] & { read_only_contract_passed?: unknown };
+  const fr = typeof m.failure_reason === 'string' ? m.failure_reason : '';
+  if (lease.status === 'failed') {
+    if (/token budget exceeded/i.test(fr)) return 'token_budget';
+    if (m.timed_out === true || m.runtime_timed_out === true || /timed_out=true/.test(fr) || fr === 'stale_timeout') return 'timeout';
+    if (m.read_only_contract_passed === false) return 'read_only_violation';
+    if (/_runtime_failed:exit=/.test(fr)) return 'runtime_exit';
+    return 'unknown';
+  }
+  if (lease.status === 'completed') {
+    if (m.read_only_contract_passed === false) return 'read_only_violation';
+    const verdict = typeof m.verdict === 'string' ? m.verdict : '';
+    if (!KNOWN_VERDICTS.has(verdict)) return 'unparsed_verdict';
+    // executeChecker stores insufficient_evidence when nothing parsed too; verdict_parsed (absent on older rows) tells them apart
+    if (verdict === 'insufficient_evidence') return (m as { verdict_parsed?: unknown }).verdict_parsed === false ? 'unparsed_verdict' : 'insufficient_evidence';
+    if (REJECTING.has(verdict)) return 'rejected'; // unreachable today: attributeOutcome classes this maker_failure first
+    return 'unknown';
+  }
+  // a rejecting verdict on a lease that did not end 'completed' (e.g. stopped by the runner after a submitted verdict)
+  if (REJECTING.has(String(m.verdict))) return 'rejected';
+  if ((lease.status === 'prepared' || lease.status === 'running') && dispatchFailed) return 'dispatch_failed';
+  return 'unknown';
+}
 
 /** Pure: the class of one settled run. */
 export function attributeOutcome(run: AttributionRun): Attribution {
@@ -74,7 +123,11 @@ export function attributeOutcome(run: AttributionRun): Attribution {
   if (rejected) return { outcome: 'maker_failure', survived, reason: `${rejected.role} verdict ${String(rejected.metadata.verdict)}` };
   const envGate = [...gates].find((g) => ENV_GATES.has(g));
   if (envGate) return { outcome: 'environment_failure', survived, reason: `gate ${envGate} failed` };
-  if (reviewGates.length) return { outcome: 'reviewer_failure', survived, reason: `maker completed; no ${reviewGates.join('/')} verdict (reviewer missing, failed or inconclusive)` };
+  if (reviewGates.length) {
+    const role = REVIEW_GATES[reviewGates[0]];
+    const sub_reason = reviewerSubReason(forMaker.filter((r) => r.role === role).pop(), (run.dispatch_failed_roles ?? []).includes(role));
+    return { outcome: 'reviewer_failure', survived, reason: `maker completed; no ${reviewGates.join('/')} verdict (reviewer missing, failed or inconclusive)`, sub_reason };
+  }
   return { outcome: 'maker_failure', survived, reason: `unclassified gate(s): ${[...gates].join(', ')}` };
 }
 
@@ -105,7 +158,13 @@ export function attributionInputForRun(db: Database, runId: string, makerLeaseId
     annotations = db.prepare(`SELECT decision, created_at FROM judgments WHERE judgment = 'outcome_attribution'
       AND ((subject_type = 'loop_run' AND subject_id = ?) OR (subject_type = 'self_improvement' AND subject_id = ? AND created_at >= ?))`).all(runId, run?.improvement_id ?? '', run?.created_at ?? '') as typeof annotations;
   } catch { /* judgments absent */ }
+  let dispatchFailedRoles: string[] = [];
+  try {
+    dispatchFailedRoles = (db.prepare("SELECT message FROM loop_events WHERE loop_run_id = ? AND event_type = 'checker_dispatch_failed'").all(runId) as Array<{ message: string }>)
+      .map((e) => /^Automated (checker|security_checker) dispatch failed/.exec(e.message)?.[1]).filter((r): r is string => !!r);
+  } catch { /* loop_events absent */ }
   return {
+    dispatch_failed_roles: dispatchFailedRoles,
     failed_gates: failedGates ?? (Array.isArray(meta.failed_gates) ? meta.failed_gates.map(String) : []),
     maker: leases.find((l) => l.id === makerLeaseId) ?? leases.filter((l) => l.role === 'maker').pop() ?? null,
     reviewers: leases.filter((l) => l.role === 'checker' || l.role === 'security_checker'),
@@ -126,13 +185,25 @@ export function recordOutcomeAttribution(db: Database, runId: string, makerLease
     const a = attributeOutcome(input);
     db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, answers_json, created_at)
       VALUES (?, 'outcome_attribution', 'loop_run', ?, ?, 'annotation', ?, ?, ?, ?)`)
-      .run(randomUUID(), runId, a.outcome, a.outcome, a.reason.slice(0, 300), JSON.stringify({ computed: true, failed_gates: input.failed_gates.map((g) => g.split(':')[0]) }), new Date().toISOString());
+      .run(randomUUID(), runId, a.outcome, a.outcome, a.reason.slice(0, 300), JSON.stringify({ computed: true, failed_gates: input.failed_gates.map((g) => g.split(':')[0]), ...(a.sub_reason ? { sub_reason: a.sub_reason } : {}) }), new Date().toISOString());
     if (a.outcome === 'verified') recordCredits(db, runId, input.maker?.id ?? makerLeaseId);
     return a;
   } catch { return null; } // learning bookkeeping must never break the daemon
 }
 
 // ---- contributor credit (E2, first version) ----
+
+/**
+ * P0-7: the runtime (and model) a lease actually ran on. The execution engine records `effective_runtime` when it starts a
+ * session; when that differs from the lease runtime (an engine fallback), it wins and its model is `effective_model`
+ * (null = unknown, never the requested runtime's model). Otherwise the lease runtime and model stand.
+ */
+export function leaseRanOn(runtime: string, meta: { model?: unknown; effective_runtime?: unknown; effective_model?: unknown }): { runtime: string; model: string | null } {
+  if (typeof meta.effective_runtime === 'string' && meta.effective_runtime && meta.effective_runtime !== runtime) {
+    return { runtime: meta.effective_runtime, model: typeof meta.effective_model === 'string' ? meta.effective_model : null };
+  }
+  return { runtime, model: typeof meta.model === 'string' ? meta.model : null };
+}
 
 export type CreditKind = 'maker' | 'reviewer' | 'model' | 'genome' | 'memory_rule' | 'example' | 'knowledge' | 'judgment';
 export function ensureCreditTable(db: Database): void {
@@ -148,9 +219,10 @@ export function creditedContributors(db: Database, runId: string, makerLeaseId: 
   const leases = db.prepare('SELECT id, role, runtime, status, metadata FROM worker_leases WHERE loop_run_id = ?').all(runId) as Array<{ id: string; role: string; runtime: string; status: string; metadata: string }>;
   const maker = leases.find((l) => l.id === makerLeaseId) ?? leases.filter((l) => l.role === 'maker').pop();
   if (maker) {
-    const m = parse(maker.metadata) as { model?: unknown; genome?: { id?: unknown }; genome_id?: unknown };
-    const model = typeof m.model === 'string' ? m.model : '';
-    out.push({ kind: 'maker', ref: model ? `${maker.runtime}@${model}` : maker.runtime });
+    const m = parse(maker.metadata) as { model?: unknown; effective_runtime?: unknown; effective_model?: unknown; genome?: { id?: unknown }; genome_id?: unknown };
+    const ran = leaseRanOn(maker.runtime, m); // P0-7: credit the runtime that ran, not the one requested
+    const model = ran.model ?? '';
+    out.push({ kind: 'maker', ref: model ? `${ran.runtime}@${model}` : ran.runtime });
     if (model) out.push({ kind: 'model', ref: model });
     if (typeof m.genome?.id === 'string') out.push({ kind: 'genome', ref: m.genome.id });
     if (typeof m.genome_id === 'string') out.push({ kind: 'genome', ref: `strategy:${m.genome_id}` });
@@ -158,7 +230,8 @@ export function creditedContributors(db: Database, runId: string, makerLeaseId: 
   for (const l of leases.filter((x) => (x.role === 'checker' || x.role === 'security_checker') && x.status === 'completed')) {
     const m = parse(l.metadata) as { verdict?: unknown; model?: unknown; maker_lease_id?: unknown };
     if (m.verdict !== 'accepted' || (maker && m.maker_lease_id !== undefined && m.maker_lease_id !== maker.id)) continue;
-    out.push({ kind: 'reviewer', ref: `${l.role}:${l.runtime}${typeof m.model === 'string' ? `@${m.model}` : ''}` });
+    const ranR = leaseRanOn(l.runtime, m as { model?: unknown; effective_runtime?: unknown; effective_model?: unknown });
+    out.push({ kind: 'reviewer', ref: `${l.role}:${ranR.runtime}${ranR.model ? `@${ranR.model}` : ''}` });
   }
   try {
     const ev = db.prepare("SELECT metadata FROM loop_events WHERE loop_run_id = ? AND event_type = 'assignment_context' ORDER BY created_at DESC LIMIT 1").get(runId) as { metadata: string } | undefined;
@@ -204,13 +277,44 @@ export function attributionSummary(db: Database, now = Date.now(), days = 30, en
   let settledStates: SettlementState[] = [];
   try { settledStates = loopPrSettlements(db, now).filter((p) => verifiedRuns.has(p.run_id)).map((p) => p.settlement.state); } catch { /* loop_runs absent */ }
   const sc = survivalCounts(settledStates);
+  // reviewer_failure split by sub_reason; rows written before it existed (and operator annotations) carry none → 'unrecorded'
+  const reviewerSubReasons: Record<string, number> = Object.fromEntries([...REVIEWER_SUB_REASONS, 'unrecorded'].map((k) => [k, 0]));
+  for (const r of all<{ sub: string | null; n: number }>(`SELECT json_extract(answers_json, '$.sub_reason') AS sub, COUNT(*) AS n FROM judgments
+    WHERE judgment = 'outcome_attribution' AND decision = 'reviewer_failure' AND created_at >= ? GROUP BY 1`, since)) {
+    const key = r.sub && (REVIEWER_SUB_REASONS as readonly string[]).includes(r.sub) ? r.sub : 'unrecorded';
+    reviewerSubReasons[key] += r.n;
+  }
   const top = all<{ kind: string; ref: string; credits: number }>(`SELECT kind, ref, COUNT(*) AS credits FROM outcome_credits WHERE created_at >= ?
     GROUP BY 1, 2 ORDER BY credits DESC, kind, ref LIMIT 30`, since);
+  // structured failure capture (lease-failure.ts, L3 v2 §5 #4): failed/cancelled leases by stage × stderr class; record-only,
+  // the classes above never read it. Leases that ended before the capture existed are counted apart, never as a class.
+  const ended = all<{ role: string; status: string; stage: string | null; cls: string | null; observed: number | null; signal: number; reason: number }>(`SELECT role, status,
+      json_extract(metadata, '$.failure.stage') AS stage, json_extract(metadata, '$.failure.stderr_class') AS cls,
+      json_extract(metadata, '$.failure.exit_observed') AS observed, json_extract(metadata, '$.failure.signal') IS NOT NULL AS signal,
+      json_extract(metadata, '$.cancellation_reason') IS NOT NULL AND json_extract(metadata, '$.cancellation_reason') NOT LIKE 'unspecified%' AS reason
+    FROM worker_leases WHERE status IN ('failed', 'cancelled') AND updated_at >= ? AND ${realRunIdSql('loop_run_id')}`, since);
+  const cells = new Map<string, { stage: string; stderr_class: string; n: number }>();
+  for (const r of ended) {
+    if (!r.stage) continue;
+    const key = `${r.stage}|${r.cls ?? 'unknown'}`;
+    const cell = cells.get(key) ?? { stage: r.stage, stderr_class: r.cls ?? 'unknown', n: 0 };
+    cell.n += 1; cells.set(key, cell);
+  }
+  const cancels = ended.filter((r) => r.status === 'cancelled');
+  const failure_capture = {
+    leases: ended.length,
+    without_failure: ended.filter((r) => !r.stage).length,
+    by_stage_stderr: [...cells.values()].sort((a, b) => b.n - a.n || a.stage.localeCompare(b.stage) || a.stderr_class.localeCompare(b.stderr_class)),
+    exit_observed: ended.filter((r) => r.stage && r.observed === 1).length,
+    with_signal: ended.filter((r) => r.signal === 1).length,
+    cancels: { total: cancels.length, with_reason: cancels.filter((r) => r.reason === 1).length, maker: cancels.filter((r) => r.role === 'maker').length,
+      maker_with_reason: cancels.filter((r) => r.role === 'maker' && r.reason === 1).length },
+  };
   return {
-    at: new Date(now).toISOString(), enabled: outcomeAttributionEnabled(env), since, classes, by_source: by,
+    at: new Date(now).toISOString(), enabled: outcomeAttributionEnabled(env), since, classes, reviewer_sub_reasons: reviewerSubReasons, by_source: by,
     survived: { yes: sc.survived, no: sc.regressed },
     credited_runs: all<{ n: number }>('SELECT COUNT(DISTINCT run_id) AS n FROM outcome_credits WHERE created_at >= ?', since)[0]?.n ?? 0,
-    top_contributors: top,
+    top_contributors: top, failure_capture,
     note: 'learners count only maker_failure as a failure when OUTCOME_ATTRIBUTION_ENABLED=true; reviewer/environment failures are neither success nor failure',
   };
 }

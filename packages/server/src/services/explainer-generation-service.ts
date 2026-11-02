@@ -227,7 +227,7 @@ export class ExplainerGenerationService {
           criticResult.overall_score,
           JSON.stringify(criticResult.dimensions.map((d) => ({ name: d.name, score: d.score }))),
           'judge-service-4factor',
-          JSON.stringify({ bundle_id: candidate.bundleId, passed: criticResult.passed, threshold: criticResult.threshold }),
+          JSON.stringify({ bundle_id: candidate.bundleId, passed: criticResult.passed, threshold: criticResult.threshold, benchmark: 'explainer-critic', scale: '0-100' }),
         );
       } catch {
         // eval-persistering is lineage, never a pipeline breaker

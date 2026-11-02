@@ -13,7 +13,8 @@
  * last (never skipped, so a total outage still surfaces the primary's own error message).
  */
 
-import { measured } from './model-selector';
+import { getLlmLedger, measured } from './model-selector';
+import { limitMarker, limitWatching, noteOllamaOutput } from './inference-failover';
 
 export interface LlmEndpoint { id: string; kind: 'ollama' | 'openai'; baseUrl: string; apiKey?: string; model?: string }
 
@@ -21,7 +22,8 @@ export interface LlmEndpoint { id: string; kind: 'ollama' | 'openai'; baseUrl: s
 export interface LlmUsage { tokensIn: number | null; tokensOut: number | null; provider: string; model: string }
 export interface GenerateOptions {
   prompt: string; model: string; temperature?: number; maxTokens?: number; timeoutMs: number;
-  /** B29: what the call is for and the experiment arm it runs in, recorded on the ledger row of every attempt */
+  /** B29: what the call is for (the caller's identity, e.g. 'self_improvement:refinement') and the experiment arm it runs
+   *  in, recorded on the ledger row of every attempt. A call without one is recorded as 'untagged:generateText'. */
   purpose?: string; experimentId?: string | null;
   /** B29: the caller records its own ledger row (e.g. the panel's selector row) and takes the tokens from here, so they
    *  are counted once — the transport row then carries no tokens */
@@ -61,7 +63,11 @@ async function callEndpoint(endpoint: LlmEndpoint, options: GenerateOptions, fet
       // think:false — reasoning models otherwise burn num_predict on a hidden trace and return no JSON.
       body: JSON.stringify({ model, prompt: options.prompt, stream: false, format: 'json', think: false, options: { temperature: options.temperature ?? 0.2, num_predict: options.maxTokens ?? 1024 } }),
     });
-    if (!response.ok) throw new Error(`Ollama request failed: ${response.status}`);
+    if (!response.ok) {
+      // OLLAMA_AUTO_FAILOVER / PANEL_FALLBACK_RUNTIME: the body says whether this is the Ollama Cloud usage limit (off: unread, unchanged)
+      const limit = limitWatching() ? noteOllamaOutput(getLlmLedger(), await response.text().catch(() => ''), `llm:${options.purpose ?? 'untagged'}`) : null;
+      throw new Error(`Ollama request failed: ${response.status}${limit ? ` ${limitMarker(limit)}` : ''}`);
+    }
     // Ollama reports prompt_eval_count / eval_count; absent = unknown (null), never 0
     const data = (await response.json()) as { response?: string; prompt_eval_count?: unknown; eval_count?: unknown };
     return { text: data.response || '', tokensIn: count(data.prompt_eval_count), tokensOut: count(data.eval_count) };
@@ -74,6 +80,16 @@ async function callEndpoint(endpoint: LlmEndpoint, options: GenerateOptions, fet
   if (!response.ok) throw new Error(`OpenAI-compatible request failed: HTTP ${response.status}`);
   const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: unknown; completion_tokens?: unknown } };
   return { text: data.choices?.[0]?.message?.content || '', tokensIn: count(data.usage?.prompt_tokens), tokensOut: count(data.usage?.completion_tokens) };
+}
+
+/**
+ * Ledger purpose of a transport row. A caller that records its own row (onUsage, e.g. the panel's selector row) keeps the
+ * 'transport:<purpose>' convention so the call is not counted twice by purpose; otherwise the transport row IS the call
+ * and carries the caller's purpose. No purpose = 'untagged:generateText', never NULL or the anonymous 'fallback:generate'.
+ */
+export function transportPurpose(options: Pick<GenerateOptions, 'purpose' | 'onUsage'>): string {
+  if (!options.purpose) return 'untagged:generateText';
+  return options.onUsage ? `transport:${options.purpose}` : options.purpose;
 }
 
 export async function generateText(
@@ -89,7 +105,7 @@ export async function generateText(
       // UX-18: every attempt is a ledger row (consumer 'fallback', provider = endpoint id); the call itself is unchanged
       const model = endpoint.model || options.model;
       const reply = await measured({ consumer: 'fallback', model, provider: endpoint.id, taskKind: 'generate',
-        purpose: options.purpose ? `transport:${options.purpose}` : null, experimentId: options.experimentId ?? null },
+        purpose: transportPurpose(options), experimentId: options.experimentId ?? null },
         () => callEndpoint(endpoint, options, fetchFn),
         (r) => (options.onUsage ? { outChars: r.text.length } : { outChars: r.text.length, tokensIn: r.tokensIn, tokensOut: r.tokensOut }));
       downUntil.delete(endpoint.id);

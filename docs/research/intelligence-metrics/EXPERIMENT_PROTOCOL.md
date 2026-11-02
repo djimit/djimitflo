@@ -71,6 +71,14 @@ evaluator_isolation_check: # how the candidate is prevented from touching evalua
 - **Falsifier.** Stage 1: arm B accepts defective ≥ arm A, or the McNemar p ≥ 0.05 → retain the single-family checker.
 - **Decision 10-10 (operator).** Stage 2 built as `CHECKER_FAMILY_RANDOMISE` (#734, default off, arm B `ollama/kimi-k3:cloud`) to this registration: ≥ 93/arm, primary = a checker-independent label (merge survival once settled, else the other failed gates), attributed-outcome kappa secondary and marked circular.
 - **Isolation.** The checker prompt, harness and defect generator are frozen at the F1 commit; the arm only swaps the model alias.
+- **Amendment 17-10 (operator) — F2 v2.** Arm B's model changes from `ollama/kimi-k3:cloud` to `ollama/gemma4:31b:cloud`
+  (gemma4:31b, Google family). Reason: Ollama usage. The text above is the frozen v1 registration and is not edited.
+  - v1 (cross = kimi-k3) is closed on 2026-10-17 as **interim**: its result is recorded as-is (`checker_family.versions.v1`,
+    labelled `interim (closed 2026-10-17, cross=kimi-k3)`) and gets no final verdict.
+  - v2 re-randomises fresh: `CHECKER_FAMILY_VERSION=v2` puts the version in the arm salt, sha256(`checker-family:v2:` + goal id).
+    v2 counts only its own rows (`checker_family_version = v2` on the checker lease); v1 and v2 are **never pooled**.
+  - Unchanged for v2: endpoints (primary = merge survival once settled, else the other failed gates; attributed-outcome kappa
+    secondary, circular), target 93 settled per arm, falsifier (Δkappa bootstrap 95 % CI includes 0), security checker untouched.
 
 ### EXP-2 — X1 evolve-sibling arm (running, operator-approved 08-10)
 
@@ -136,3 +144,33 @@ evaluator_isolation_check: # how the candidate is prevented from touching evalua
 | Routing vs fixed best model | OPE exists (SNIPS Δ −0.010, ESS 127); a fixed-model arm needs the bandit to be overridable per goal hash |
 | Gains on new tasks | a second repository in the gym and in the prod lanes |
 | Autonomy vs reference | approval → outcome link not stored |
+
+## Amendment 2026-10-19: stop conditions
+
+Stop conditions added for EXP-1 (F2 v2) and EXP-3 (memory holdout); verdict rules unchanged. Operator-approved 2026-10-19. The
+registrations above are frozen and are not edited. Rule: stop_by = min(start + 1.25 × target ÷ accrual rate of the slowest arm,
+start + 90 days). Accrual: prod, read-only (`experimentsReport` on `/data/djimitflo.sqlite`, `readonly: true`), 2026-10-18 22:33 UTC.
+
+- **EXP-1 F2 v2** (start 2026-10-17, target 93 settled per arm, unchanged). Settled: same = 1, cross = 1 in 1.9 days (0.52 per day;
+  merge survival settles late). The projection (225 days) passes the cap, so **stop_by: 2027-01-15** (start + 90 days).
+- **EXP-3 memory holdout** (start 2026-10-08). The registration names a power calculation (267 + 115) but no target n.
+  **Target n: 30 outcomes per arm** (operator-approved default, 2026-10-19). Settled: rules = 52, holdout = 22 in 10.9 days.
+  Slowest arm holdout: 2.01 per day. **stop_by: 2026-10-27** (2026-10-08 + 1.25 × 30 ÷ 2.01 = 18.6 days, rounded up; the cap is
+  2027-01-06). At 30 per arm the power for a 15-point effect is low: a null result is INSUFFICIENT_EVIDENCE, not "no effect".
+- **At stop_by:** if every arm has reached the target, the registered analysis runs once, as written. If not, the experiment
+  stops at the n reached and is recorded as INSUFFICIENT_EVIDENCE (never "no effect"); a new version needs a new registration.
+- **Unchanged:** arms, endpoints, safety/harm stops, analysis and decision rules. Only a stop condition is added.
+- **Recorded:** `experiment-registry.ts` (`stop_by`, `stop_source`); the stall watch `experiment_overdue` reports the experiment
+  after this date while it has no verdict.
+
+## Amendment 2026-10-27: period boundary (EXP-1 F2 v2)
+
+A period boundary is added to the EXP-1 F2 v2 analysis; verdict rules are unchanged. The registrations above are frozen and
+are not edited.
+
+- **Period boundary: 2026-10-27T05:52:42Z.** Memory rules were switched off in production at this instant
+  (`LOOP_MEMORY_RULES_ENABLED=false`, following the EXP-3 memory-holdout result). From then on no maker receives memory rules,
+  so the work the checkers judge changed for both checker arms at once. The F2 v2 analysis reports settled goals created
+  before and from this instant as two periods next to the registered whole-window analysis; the periods are never pooled
+  silently.
+- **Unchanged:** arms (`checker-family:v2:` salt), endpoints, target 93 settled per arm, falsifier, stop_by 2027-01-15.
