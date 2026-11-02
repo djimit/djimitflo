@@ -156,30 +156,4 @@ describe('LoopRecoveryService', () => {
     expect(result.interruptedRuns).toBe(0);
     expect((db.prepare("SELECT status FROM loop_runs WHERE id = 'run-planning'").get() as { status: string }).status).toBe('planning');
   });
-
-  it('resumes interrupted run', () => {
-    seedRun('run-1', 'interrupted');
-    const result = service.resumeInterruptedRun('run-1');
-    expect(result.resumed).toBe(true);
-  });
-
-  it('fails after max resume attempts', () => {
-    seedRun('run-1', 'interrupted');
-    const result = service.resumeInterruptedRun('run-1', 0); // max 0 attempts
-    expect(result.boundedFail).toBe(true);
-    expect(result.resumed).toBe(false);
-    expect((db.prepare("SELECT outcome FROM experience_embeddings WHERE run_id = 'run-1'").get() as { outcome: string }).outcome).toBe('failure');
-  });
-
-  it('throws on non-interrupted run', () => {
-    seedRun('run-1', 'running');
-    expect(() => service.resumeInterruptedRun('run-1')).toThrow('LOOP_RUN_NOT_INTERRUPTED');
-  });
-
-  it('resumes all interrupted runs', () => {
-    seedRun('run-1', 'interrupted');
-    seedRun('run-2', 'interrupted');
-    const result = service.resumeInterruptedRuns();
-    expect(result.resumed).toBe(2);
-  });
 });

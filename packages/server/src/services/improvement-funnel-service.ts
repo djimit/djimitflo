@@ -1,6 +1,7 @@
 import type { Database } from 'better-sqlite3';
 import { DreamStateService } from './dream-state-service';
 import { supersededMergeOutcomeSql } from './merge-superseded';
+import { realRunSql, syntheticRunSql } from './synthetic-runs';
 
 /** Read-only SQL aggregation of the whole improvement chain, so "where does it leak" is one call. */
 
@@ -212,9 +213,10 @@ export class ImprovementFunnelService {
       ...this.runCost(iso(7 * DAY), verified7 ?? 0),
     };
     const hygiene: ImprovementFunnel['hygiene'] = {
-      zombieGoals: one('zombieGoals', `SELECT COUNT(*) AS n FROM goals WHERE (status = 'running' AND updated_at < '${iso(DAY)}' AND NOT EXISTS (SELECT 1 FROM loop_runs r WHERE r.goal_id = goals.id AND r.status IN ('running', 'planning', 'verifying') AND r.updated_at >= '${iso(DAY)}'))
-        OR (status = 'blocked' AND updated_at < '${iso(7 * DAY)}' AND json_extract(COALESCE(NULLIF(metadata, ''), '{}'), '$.awaiting_approval') IS NULL)`),
-      staleRuns: one('staleRuns', `SELECT COUNT(*) AS n FROM loop_runs WHERE (status = 'interrupted' AND updated_at < '${iso(2 * DAY)}') OR (status = 'planning' AND updated_at < '${iso(DAY)}')`),
+      zombieGoals: one('zombieGoals', `SELECT COUNT(*) AS n FROM goals WHERE ((status = 'running' AND updated_at < '${iso(DAY)}' AND NOT EXISTS (SELECT 1 FROM loop_runs r WHERE r.goal_id = goals.id AND r.status IN ('running', 'planning', 'verifying') AND r.updated_at >= '${iso(DAY)}'))
+        OR (status = 'blocked' AND updated_at < '${iso(7 * DAY)}' AND json_extract(COALESCE(NULLIF(metadata, ''), '{}'), '$.awaiting_approval') IS NULL))
+        AND NOT EXISTS (SELECT 1 FROM loop_runs sr WHERE sr.goal_id = goals.id AND ${syntheticRunSql('sr')})`),
+      staleRuns: one('staleRuns', `SELECT COUNT(*) AS n FROM loop_runs WHERE (status = 'interrupted' AND updated_at < '${iso(2 * DAY)}' OR status = 'planning' AND updated_at < '${iso(DAY)}') AND ${realRunSql()}`),
       blockedBoardItems: one('blockedBoardItems', "SELECT COUNT(*) AS n FROM work_items WHERE source = 'agent_board' AND status = 'blocked'"),
     };
     return {

@@ -2,6 +2,7 @@
 import type { Database } from 'better-sqlite3';
 import { AuditEventType, RiskLevel, WebSocketEventType, type Task } from '@djimitflo/shared';
 import type { WebSocketService } from './websocket-service';
+import { skillAssignment } from './executable-skills';
 import { AuditService } from './audit-service';
 export interface NativeTaskCreate {
   id: string; title: string; description: string; status?: string; priority?: string; risk_level?: RiskLevel; execution_mode?: string;
@@ -12,6 +13,8 @@ export function parseNativeTask(row: Record<string, unknown>): Task {
   return { ...row, tags: JSON.parse(String(row.tags || '[]')), metadata: JSON.parse(String(row.metadata || '{}')), created_by: row.created_by || null, owner_user_id: row.owner_user_id || null, updated_by: row.updated_by || null } as unknown as Task;
 }
 export function createNativeTask(db: Database, input: NativeTaskCreate, actorId?: string, now = new Date().toISOString()): Task {
+  const selected = skillAssignment(db, input.description, input.metadata);
+  input = { ...input, ...selected };
   db.transaction(() => {
     db.prepare(`INSERT INTO tasks(id,title,description,status,priority,risk_level,execution_mode,agent_id,parent_task_id,repository_id,instruction_profile_id,tags,metadata,created_at,updated_at,created_by,owner_user_id,updated_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(input.id, input.title, input.description, input.status || 'pending', input.priority || 'medium', input.risk_level || RiskLevel.LOW, input.execution_mode || 'review_only', input.agent_id ?? null, input.parent_task_id ?? null, input.repository_id ?? null, input.instruction_profile_id ?? null, JSON.stringify(input.tags || []), JSON.stringify(input.metadata), now, now, actorId, actorId, actorId);
