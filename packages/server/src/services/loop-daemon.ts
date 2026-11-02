@@ -2,9 +2,12 @@ import type { Database } from 'better-sqlite3';
 import { recordAutoApproveShadow, testGapAutoApproveScope } from './autonomy-shadow-service';
 import { mutationCheckEnv } from './test-gap-source-service';
 import { deadCodeCheckEnv } from './dead-code-source-service';
+import { FINDING_FIX_DIFF_MAX, findingFixCheckEnv } from './finding-fix-source';
+import { ADVISORY_DIFF_MAX, advisoryGoalRefs } from './advisory-exposure';
 import { LoopService } from './loop-service';
 import { randomUUID } from 'node:crypto';
 import { WorkerLeaseRepo } from './loop-worker-lease-repo';
+import { CANCEL_LEASE_METADATA_SQL, cancelLeaseBind } from './lease-failure';
 import { swarmEventBus } from './swarm-event-bus';
 import { GoalDecomposer } from './goal-decomposer';
 import { ResourceScheduler } from './resource-scheduler';
@@ -16,8 +19,10 @@ import { inheritableApproval } from './approval-inheritance';
 import { CommonsProposalReviewService } from './commons-proposal-review-service';
 import { SelfImprovementService } from './self-improvement-service';
 import { LoopDraftPrService } from './loop-draft-pr-service';
+import { syncWorkItemOutcome } from './work-item-outcome-sync';
 import { evolveEligible, evolveSpecies, selectEvolveWinner } from './evolve-selection';
 import { leaseGradedRefs, recordMakerGraded } from './graded-fitness';
+import { recordFailBeforePassAfter } from './fail-before-pass-after';
 import { assignSiblingArm, recordEffortSibling, siblingRandomiseEnabled } from './effort-controller';
 import { assignCheckerFamily, checkerFamilyEnabled } from './checker-family';
 import { runAce001, runGenome, skillContentHash } from './maker-genome';
@@ -26,13 +31,16 @@ import { extraRepoChecks, goalExtraRepo, goalRepoSlug, primaryRepo, repoSkillPre
 import { recordMakerCall } from './model-call-ledger';
 import { strategyGenomeFor } from './genome-registry';
 import { banditSpecies, chooseSpecies, speciesKey } from './runtime-bandit';
+import { recordFactorySpecialist } from './capability-factory';
 import { recordFitnessShadow } from './fitness-view';
 import { buildProvenance, provenanceJson } from './judgment-provenance';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
+import { allGatesPassed, gatePassesStrict } from './loop-types';
 import { authorityGateForGoal } from './authority-gate';
 import { remoteMakerWaitMs } from '../execution/executors/remote-maker-executor';
 import { recordFailureGaps } from './knowledge-gaps';
-import { makerFailureClass, recordOutcomeAttribution, reviewerSubReason, type AttributionLease, type MakerMeta } from './outcome-attribution';
+import { F2_SUSPENDED_ARM, FALLBACK_REF, effectiveFallbackRuntime } from './ollama-outage-fallback';
+import { leaseRanOn, makerFailureClass, recordOutcomeAttribution, reviewerSubReason, type AttributionLease, type MakerMeta } from './outcome-attribution';
 /** Deterministic checks for daemon runs. The repo-wide `test` script cannot finish in 120 s, so hosts can scope it
  *  (LOOP_DAEMON_CHECK_SCRIPTS=test:changed,lint,type-check) and raise the per-script timeout (LOOP_DAEMON_CHECK_TIMEOUT_MS, max 600000). */
 export function daemonCheckOptions(env: NodeJS.ProcessEnv = process.env, repo: ExtraRepo | null = null): { scripts?: string[]; timeout_ms: number } {
@@ -72,6 +80,9 @@ export function runOutcomeOnFailure(db: Database, makerLeaseId: string): 'regres
  */
 export function verificationFailureOutcome(db: Database, makerLeaseId: string, gates: Array<{ status: string }>): 'regressed' | 'infra_failed' | 'no_change' {
   if (!gates.some((g) => g.status === 'fail') && gates.some((g) => g.status === 'unknown')) return 'infra_failed';
+  // OLLAMA_OUTAGE_FALLBACK_RUNTIME: a lease of the run refused or limited on the subscription (no token / usage limit) is infra
+  if (db.prepare(`SELECT 1 FROM worker_leases WHERE loop_run_id = (SELECT loop_run_id FROM worker_leases WHERE id = ?)
+    AND json_extract(metadata, '$.runtime_fallback') IS NOT NULL AND json_extract(metadata, '$.failure_reason') LIKE 'infra: subscription_%' LIMIT 1`).get(makerLeaseId)) return 'infra_failed';
   return runOutcomeOnFailure(db, makerLeaseId);
 }
 
@@ -100,6 +111,23 @@ export const reviewerStrategyBounded = (env: NodeJS.ProcessEnv = process.env): b
 const DECISIVE_VERDICTS = ['accepted', 'needs_revision', 'rejected'];
 
 /**
+ * A run the daemon set 'blocked' (failed gates) with its goal 'failed' is terminal; its still-prepared leases (manual
+ * reviewers nobody will run) are cancelled with the O2b cascade reason. Prod 2026-10-29: 10 such leases on 4 runs stayed
+ * 'prepared' for up to 48 h and counted as live (C-reliability 30-10 §1d). Running leases are never touched, and neither is
+ * a run any of whose leases still waits on a pending approval. Returns the number cancelled.
+ */
+export function cancelPreparedLeasesOfBlockedRun(db: Database, runId: string, now = new Date().toISOString()): number {
+  const meta = (col: string, key: string) => `json_extract(CASE WHEN json_valid(${col}) THEN ${col} ELSE '{}' END, '$.${key}')`;
+  return db.prepare(`UPDATE worker_leases SET status = 'cancelled', updated_at = ?, ${CANCEL_LEASE_METADATA_SQL}
+    WHERE loop_run_id = ? AND status = 'prepared'
+      AND EXISTS (SELECT 1 FROM loop_runs r JOIN goals g ON g.id = r.goal_id WHERE r.id = ? AND r.status = 'blocked' AND g.status = 'failed')
+      AND NOT EXISTS (SELECT 1 FROM worker_leases w JOIN approvals a ON a.status = 'pending'
+        AND (a.id = ${meta('w.metadata', 'approval_id')} OR a.task_id = ${meta('w.metadata', 'execution_task_id')})
+        WHERE w.loop_run_id = ?)`)
+    .run(now, ...cancelLeaseBind('cascade:run_blocked', now), runId, runId, runId).changes;
+}
+
+/**
  * G16+G19: ParallelLoopDaemon — continuous + parallel operation mode.
  *
  * Wraps LoopService to run an always-on goal queue. On each tick, loads pending goals,
@@ -114,7 +142,9 @@ const DECISIVE_VERDICTS = ['accepted', 'needs_revision', 'rejected'];
  * queue at GOAL_QUEUE_POLL_MS (default 5000ms).
  *
  * The daemon runs in-process, using the existing continueLoopRun machinery. It
- * starts on server boot (after recoverInterruptedRuns + resumeInterruptedRuns).
+ * starts on server boot, after recoverInterruptedRuns (bootstrap/recovery.ts, index.ts). With LOOP_RESUME_INTERRUPTED=on
+ * (default off) boot re-queues this boot's interrupted runs (resumeInterruptedRuns: fresh maker, goal 'decomposed' +
+ * resume_run_id), which this daemon then runs like an approval resume.
  */
 
 /**
@@ -439,6 +469,7 @@ export class LoopDaemon {
       }
       // denied | expired: the human gate said no (or nobody answered in time)
       this.db.prepare("UPDATE goals SET status = 'failed', metadata = json_remove(metadata, '$.awaiting_approval'), updated_at = ? WHERE id = ?").run(now, row.id);
+      syncWorkItemOutcome(this.db, row.id, 'failed', waiting.run_id); // PRC-3
       const reason = `approval ${approval.status}`;
       try { new LoopEventService(this.db).recordEvent(waiting.run_id, 'goal_failed', 'error', reason, { goal_id: row.id, approval_id: waiting.approval_id }); } catch { /* best-effort */ }
       try { new CommonsProposalReviewService(this.db).recordGoalOutcome(row.id, 'failed', reason); } catch { /* best-effort learning */ }
@@ -498,6 +529,8 @@ export class LoopDaemon {
       const currentStatus = this.db.prepare('SELECT status FROM goals WHERE id = ?').get(goal.id) as { status: string } | undefined;
       if (currentStatus?.status === 'created') {
         const canSchedule = this.scheduler.canSchedule(goal.metadata);
+        // RESOURCE_SCHEDULER_MODE=shadow: record what the observed capacity would decide; never changes canSchedule.
+        this.scheduler.recordShadow(this.db, goal.id, goal.metadata);
         if (!canSchedule.canSchedule) {
           swarmEventBus.emit('convergence', {
             daemon: 'goal_deferred',
@@ -618,13 +651,18 @@ export class LoopDaemon {
             `Genome ${strategy.id} would add ${strategy.lines.length} strategy line(s) to this maker`, { genome_id: strategy.id, lines: strategy.lines, maker_lease_id: makerLease.id });
         }
       } catch { /* attribution is best-effort */ }
+      // capability factory (CAPABILITY_FACTORY_MODE=on): the species chosen above is the run's `specialist` (no-op otherwise)
+      if (!makerAlreadyDone) try { recordFactorySpecialist(this.db, run.id, makerLease.id); } catch { /* attribution is best-effort */ }
 
       // 6. Execute the maker (runs the runtime — codex/opencode/pi).
       const mutationLane = Object.keys(mutationCheckEnv(this.db, goal.id)).length > 0;
       const makerTimeout = daemonMakerTimeoutMs(mutationLane);
       // strengthening a thin test to kill surviving mutants legitimately adds more lines (prod: 23-line test → 276 diff lines)
       // a dead-code removal is mostly deleted lines (units are <= 1 500); its gate checks adds <= 10 % of removed
-      const makerDiffMax = mutationLane ? 400 : Object.keys(deadCodeCheckEnv(this.db, goal.id)).length ? 2_000 : 200;
+      // a finding fix is one file, <= 30 changed lines (its gate); 60 leaves room for diff headers
+      // an advisory bump rewrites lockfile lines of the package and its dependencies (package files only, its check)
+      const makerDiffMax = mutationLane ? 400 : Object.keys(deadCodeCheckEnv(this.db, goal.id)).length ? 2_000
+        : Object.keys(findingFixCheckEnv(this.db, goal.id)).length ? FINDING_FIX_DIFF_MAX : advisoryGoalRefs(this.db, goal.id) ? ADVISORY_DIFF_MAX : 200;
       if (!makerAlreadyDone) await this.loops.executeWorker(run.id, {
         lease_id: makerLease.id,
         timeout_ms: makerTimeout,
@@ -664,7 +702,11 @@ export class LoopDaemon {
       } catch { /* best-effort: checks are not fatal for the daemon */ }
 
       // SI-A: graded executed fitness of a maker (shadow, idempotent, never throws; off = no-op)
-      const grade = (leaseId: string) => { try { recordMakerGraded(this.db, run.id, leaseId); } catch { /* evidence only */ } };
+      // R2 (FAIL_BEFORE_PASS_AFTER_MODE=shadow): then the fail-before/pass-after check, reusing the graded mutant kills
+      const grade = (leaseId: string) => {
+        try { recordMakerGraded(this.db, run.id, leaseId); } catch { /* evidence only */ }
+        try { recordFailBeforePassAfter(this.db, run.id, leaseId); } catch { /* evidence only */ }
+      };
       grade(activeMakerLease.id); // right after its checks, while the worktree is the maker's
 
       // 8a. Evolve (E13, LOOP_EVOLVE_ENABLED, test-gap goals only): sibling makers of other species on the same objective;
@@ -750,7 +792,9 @@ export class LoopDaemon {
       // checker, i.e. the failed first maker's, not the evolve winner's (run 4418f34d: the winner was never reviewed), and a remote winner made
       // the reviewer 'remote' too, a maker-only executor that needs a model (19 reviewers failed "remote maker needs model").
       const activeMakerStatus = (this.db.prepare('SELECT status FROM worker_leases WHERE id = ?').get(activeMakerLease.id) as { status: string } | undefined)?.status;
-      const reviewerRuntime = activeMakerLease.runtime === 'remote' ? process.env.LOOP_DAEMON_MAKER_RUNTIME : activeMakerLease.runtime;
+      // OLLAMA_OUTAGE_FALLBACK_RUNTIME: a fallback maker's reviewers are dispatched on its original runtime; executeChecker applies the fallback
+      const makerFallbackFrom = (this.db.prepare("SELECT json_extract(metadata, '$.runtime_fallback.from') AS f FROM worker_leases WHERE id = ?").get(activeMakerLease.id) as { f: string | null } | undefined)?.f;
+      const reviewerRuntime = activeMakerLease.runtime === 'remote' ? process.env.LOOP_DAEMON_MAKER_RUNTIME : makerFallbackFrom ?? activeMakerLease.runtime;
       const reviewerSkip = activeMakerStatus === 'failed' || activeMakerStatus === 'cancelled' ? `maker ${activeMakerLease.id} is ${activeMakerStatus}`
         : !reviewerRuntime || reviewerRuntime === 'remote' ? 'the maker ran remote and LOOP_DAEMON_MAKER_RUNTIME names no local reviewer runtime' : null;
       if (process.env.LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED === 'true' && reviewerSkip) {
@@ -806,8 +850,10 @@ export class LoopDaemon {
         const checkerLease = reviewerFor('checker');
         // F2 (CHECKER_FAMILY_RANDOMISE=on, acting): an oracle-lane goal's checker runs on the default (same) or on
         // CHECKER_CROSS_MODEL (cross) by sha256 of the goal id; opencode only (the model is an opencode provider/model)
+        // OLLAMA_OUTAGE_FALLBACK_RUNTIME on: assignment suspended — arm 'fallback_suspended' on the lease, never counted in F2
         if (checkerLease && !leaseDone('checker') && checkerFamilyEnabled() && runtime === 'opencode' && evolveEligible(this.db, goal.id)) {
-          try { assignCheckerFamily(this.db, run.id, goal.id, checkerLease, runtime); } catch { /* unassigned: the checker runs as today */ }
+          if (effectiveFallbackRuntime(this.db)) this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.checker_family_arm', ?) WHERE id = ?").run(F2_SUSPENDED_ARM, checkerLease);
+          else try { assignCheckerFamily(this.db, run.id, goal.id, checkerLease, runtime); } catch { /* unassigned: the checker runs as today */ }
         }
         if (!leaseDone('checker') && await dispatch('checker', checkerLease)) return;
         // The security reviewer is a separate, higher autonomy step (removes human security review): its own flag.
@@ -838,7 +884,11 @@ export class LoopDaemon {
 
       // 9. Verify the run (G3.4 convergence verification).
       const verification = this.loops.verifyLoopRun(run.id);
-      const allGatesPass = verification.gates.length > 0 && verification.gates.every(g => g.status === 'pass');
+      // Completion (goal/run status, draft PR, learning closure) keeps the strict every-gate-'pass' rule.
+      const allGatesPass = verification.gates.length > 0 && verification.gates.every(gatePassesStrict);
+      // P0-8: what learners record (cognitive episode, proposal outcome, skill_outcomes/bandit, model-call ledger, gaps) uses
+      // certification's rule — a skipped security review on a non-high-risk run passes — as outcome_credits already does.
+      const outcomeVerified = allGatesPassed(verification.gates);
 
       // 9a. Feed the cognitive layer: it only learns from 'loop_completed' bus events, which were
       // previously sent solely by the human-approval completeLoopRun() route — so it stayed at 0
@@ -848,7 +898,7 @@ export class LoopDaemon {
         goalId: goal.id,
         goalType: loopName,
         mode: 'closed',
-        status: allGatesPass ? 'completed' : 'failed',
+        status: outcomeVerified ? 'completed' : 'failed',
         durationMs: Date.now() - startedAtMs,
         strategy: executionMode,
         startedAt: new Date(startedAtMs).toISOString(),
@@ -858,7 +908,7 @@ export class LoopDaemon {
       // 9a'. What the run achieved is the proposal's outcome (feeds the source bandit + panel calibration).
       try {
         const linked = this.db.prepare('SELECT improvement_id FROM goals WHERE id = ?').get(goal.id) as { improvement_id: string | null } | undefined;
-        if (linked?.improvement_id) new SelfImprovementService(this.db).recordOutcome(linked.improvement_id, allGatesPass ? 'verified' : verificationFailureOutcome(this.db, activeMakerLease.id, verification.gates));
+        if (linked?.improvement_id) new SelfImprovementService(this.db).recordOutcome(linked.improvement_id, outcomeVerified ? 'verified' : verificationFailureOutcome(this.db, activeMakerLease.id, verification.gates));
       } catch { /* best-effort learning */ }
 
       // 9a'+. Attributable outcome (OUTCOME_ATTRIBUTION_ENABLED): maker / reviewer / environment failure or verified, recorded
@@ -870,10 +920,16 @@ export class LoopDaemon {
       // skill-evolution engine and a later runtime bandit select on. Before this, skill_outcomes only got manual API writes.
       try {
         const maker = this.db.prepare('SELECT id, runtime, metadata FROM worker_leases WHERE id = ?').get(activeMakerLease.id) as { id: string; runtime: string; metadata: string } | undefined;
-        const meta = maker ? JSON.parse(maker.metadata || '{}') as { model?: unknown; genome_id?: unknown; graded?: unknown; runtime_usage?: { total_tokens?: unknown } } : {};
+        const leaseMeta = maker ? JSON.parse(maker.metadata || '{}') as { model?: unknown; genome_id?: unknown; graded?: unknown; runtime_usage?: { total_tokens?: unknown }; runtime_fallback?: unknown; effective_runtime?: unknown; effective_model?: unknown } : {};
+        // OLLAMA_OUTAGE_FALLBACK_RUNTIME: a fallback maker is its own species (loop-maker:<lane>:claude), tagged for experiment exclusion
+        // P0-7: an engine fallback (effective_runtime on the lease) is attributed to the runtime that ran, with its model (unknown = none)
+        const leaseRuntime = leaseMeta.runtime_fallback && maker ? maker.runtime : activeMakerLease.runtime;
+        const ran = leaseRanOn(leaseRuntime, leaseMeta);
+        const makerRuntime = ran.runtime;
+        const meta = { ...leaseMeta, model: ran.model ?? undefined };
         const skills = new SkillEvolutionEngine(this.db); // ensures skill_outcomes exists
         // an extra repo's outcomes carry a `repo:<slug>:` prefix, so no primary-repo fitness / bandit view ever counts them
-        const skillId = `${repoSkillPrefix(goalRepo)}loop-maker:${loopName}:${activeMakerLease.runtime}`;
+        const skillId = `${repoSkillPrefix(goalRepo)}loop-maker:${loopName}:${makerRuntime}`;
         // Y2: the strategy genome this maker ran with (template + examples + sealed rules), on the lease and the outcome
         const genome = runGenome(this.db, run.id);
         this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.genome', json(?)) WHERE id = ?").run(JSON.stringify(genome), activeMakerLease.id);
@@ -883,12 +939,17 @@ export class LoopDaemon {
         // STE-001: the template arm of this maker's assignment, on the lease and as `ste-001-arm:<0|1>` on the outcome
         const ste = runSte001(this.db, run.id);
         if (ste) this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.ste_001', json(?)) WHERE id = ?").run(JSON.stringify(ste), activeMakerLease.id);
+        // OMEGA slice 1 (record-only, no gate reads it): the factory capabilities this maker was shown, as `capability:<id>@<version>`
+        // refs; exactly one also becomes the lease's capability_id (competence per capability, meta-evolution dormancy)
+        const capabilityIds = genome.capability_ids;
+        if (capabilityIds.length === 1) this.db.prepare('UPDATE worker_leases SET capability_id = ? WHERE id = ? AND capability_id IS NULL')
+          .run(capabilityIds[0].slice(0, capabilityIds[0].lastIndexOf('@')), activeMakerLease.id);
         // One outcome per run: two daemon passes can finish the same run.
         const firstPass = !this.db.prepare('SELECT 1 FROM skill_outcomes WHERE skill_id = ? AND task_id = ? AND agent_id = ? LIMIT 1').get(skillId, run.id, activeMakerLease.id);
         // B29: the maker's model call in the ledger, with the experiment arms it ran in (opencode/remote runtime_usage; missing = null)
-        if (firstPass) recordMakerCall(this.db, { runId: run.id, goalId: goal.id, loopName, runtime: activeMakerLease.runtime, meta, ace, ste, durationMs: Date.now() - startedAtMs, ok: allGatesPass });
+        if (firstPass) recordMakerCall(this.db, { runId: run.id, goalId: goal.id, loopName, runtime: makerRuntime, meta, ace, ste, durationMs: Date.now() - startedAtMs, ok: outcomeVerified });
         if (firstPass) skills.recordOutcome(skillId, {
-          success: allGatesPass,
+          success: outcomeVerified,
           tokensUsed: Number(meta.runtime_usage?.total_tokens) || 0,
           durationMs: Date.now() - startedAtMs,
           domain: loopName,
@@ -896,17 +957,19 @@ export class LoopDaemon {
           agentId: activeMakerLease.id,
           // §16 step 9: identity of the template + examples + sealed rules + strategy genome this maker ran with
           skillContentHash: skillContentHash(genome, typeof meta.genome_id === 'string' ? meta.genome_id : null),
+          ...(capabilityIds.length ? { skillVersion: capabilityIds.join(',') } : {}),
           ...(typeof meta.model === 'string' ? { model: meta.model } : {}),
           evidenceRefs: [`loop_run:${run.id}`, `genome:${genome.id}`, ...(typeof meta.genome_id === 'string' ? [`strategy_genome:${meta.genome_id}`] : []), ...verification.gates.filter(g => g.status !== 'pass').map(g => `gate:${g.name}:${g.status}`),
             // RX-3: why a failed run failed (infra / no change / regressed) — the bandit counts all three as 0 today
-            ...(allGatesPass ? [] : [`outcome_class:${verificationFailureOutcome(this.db, activeMakerLease.id, verification.gates)}`]),
+            ...(outcomeVerified ? [] : [`outcome_class:${verificationFailureOutcome(this.db, activeMakerLease.id, verification.gates)}`]),
             ...leaseGradedRefs(meta), // SI-A: graded:<score>, graded_kind, graded_lane when the maker was graded
-            ...(ace ? [`ace-001-arm:${ace.arm}`] : []), ...(ste ? [`ste-001-arm:${ste.arm}`] : [])],
+            ...(ace ? [`ace-001-arm:${ace.arm}`] : []), ...(ste ? [`ste-001-arm:${ste.arm}`] : []), ...(meta.runtime_fallback ? [FALLBACK_REF] : []),
+            ...(ran.runtime !== leaseRuntime ? [`requested_runtime:${leaseRuntime}`] : []), ...capabilityIds.map((c) => `capability:${c}`)],
         });
       } catch { /* best-effort learning */ }
 
       // 9a'''. K2 (KNOWLEDGE_GAP_MODE=shadow): a failure signature recurring >= 3x in 14 d becomes one knowledge gap (never throws)
-      if (!allGatesPass) recordFailureGaps(this.db);
+      if (!outcomeVerified) recordFailureGaps(this.db);
 
       // 9b. Close learning loop (reflection + memory + follow-up).
       if (allGatesPass) {
@@ -950,6 +1013,11 @@ export class LoopDaemon {
         .run(goalStatus, new Date().toISOString(), goal.id);
       this.db.prepare('UPDATE loop_runs SET status = ?, updated_at = ? WHERE id = ?')
         .run(runStatus, new Date().toISOString(), run.id);
+      // PRC-3 (WORK_ITEM_OUTCOME_SYNC): the source work item learns the outcome (done / blocked + pr_url, run_id); never throws
+      syncWorkItemOutcome(this.db, goal.id, allGatesPass ? 'completed' : 'failed', run.id);
+      if (runStatus === 'blocked') {
+        try { cancelPreparedLeasesOfBlockedRun(this.db, run.id); } catch { /* best-effort: the orphan cleanup still settles them */ }
+      }
 
       swarmEventBus.emit('convergence', {
         daemon: 'goal_completed',
@@ -967,6 +1035,9 @@ export class LoopDaemon {
       // Mark the goal as failed if execution fails.
       this.db.prepare('UPDATE goals SET status = ?, updated_at = ? WHERE id = ?')
         .run('failed', new Date().toISOString(), goal.id);
+      syncWorkItemOutcome(this.db, goal.id, 'failed', runId ?? null); // PRC-3
+      // a run already left 'blocked' (e.g. by its failed checks) is now terminal too
+      if (runId) { try { cancelPreparedLeasesOfBlockedRun(this.db, runId); } catch { /* best-effort */ } }
 
       const failureMessage = error instanceof Error ? error.message : String(error);
       console.error(`[loop-daemon] goal ${goal.id} failed (run ${runId ?? 'none'}): ${failureMessage}`);
@@ -1022,8 +1093,8 @@ export class LoopDaemon {
 
   /**
    * G19: Restore active goals from system_state on restart.
-   * The goals themselves are recovered by G10 resumeInterruptedRuns; this just
-   * restores the daemon's tracking set so it doesn't double-start them.
+   * The goals' runs are marked interrupted at boot (recoverInterruptedRuns) and, only with LOOP_RESUME_INTERRUPTED=on,
+   * re-queued (resumeInterruptedRuns); this just restores the daemon's tracking set so it doesn't double-start them.
    */
   private restoreActiveGoals(): void {
     try {

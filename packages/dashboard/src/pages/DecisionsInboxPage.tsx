@@ -6,6 +6,7 @@ import { api, type DecisionsInbox, type DependencyLane, type DraftPrs } from '..
 import { usePendingApprovals } from '../hooks/usePendingApprovals';
 import { ApprovalQueuePage } from './ApprovalQueuePage';
 import { DiscoveryRelevanceSection } from './DiscoveryRelevanceSection';
+import { E1RetrievalLabelSection } from './E1RetrievalLabelSection';
 import { ACTION_PERMISSIONS as P, useCan } from '../lib/permissions';
 import { Button, DataTable, Section } from '../components/ui';
 
@@ -14,10 +15,38 @@ const SETTLEMENT_LABEL: Record<LoopPrSettlementState, string> = {
   OPEN_BLOCKED: 'open/blocked', MERGED_SURVIVAL_PENDING: 'merged, survival pending', SETTLED_SURVIVED: 'survived', SETTLED_REGRESSED: 'regressed', PIPELINE_ANOMALY: 'pipeline anomaly',
 };
 
+type DraftRow = DraftPrs['rows'][number];
+/** waits for the human: open on GitHub, or never polled (same rule as the server's needs-you count) */
+const isOpen = (r: DraftRow) => (r.settlement === 'OPEN_BLOCKED' && !r.settlement_terminal) || r.outcome === null;
+
+/**
+ * The 10 % audit sample of the earned test-only auto-merge (the control on the automation; the rule is unchanged) as ONE
+ * weekly batch: a count and links, reviewed together, instead of one row per PR in the draft-PR table.
+ */
+export function AuditBatchCard({ rows }: { rows: DraftRow[] }) {
+  const open = rows.filter(isOpen);
+  return (
+    <section id="audit-batch" aria-labelledby="audit-batch-title" className="rounded-lg border border-border p-3 mb-3">
+      <h3 id="audit-batch-title" className="font-semibold">Weekly audit batch ({open.length})</h3>
+      <p className="text-xs text-foreground-tertiary mb-1">
+        Test-only PRs the loop could have merged but leaves to you: a deterministic 10 % sample that keeps the auto-merge class honest. Review them together once a week.
+        {rows.length > open.length ? ` ${rows.length - open.length} earlier sample(s) already settled.` : ''}
+      </p>
+      {open.length ? (
+        <ul className="flex flex-wrap gap-3 text-sm">{open.map((r) => (
+          <li key={r.run_id}><a className="underline" href={r.pr_url} target="_blank" rel="noreferrer">#{r.pr_number ?? '?'}</a> <span className="text-xs text-foreground-muted">{r.lane} · {r.age_days} d</span></li>
+        ))}</ul>
+      ) : <p className="text-sm text-foreground-secondary">No audit-sample PR waiting.</p>}
+    </section>
+  );
+}
+
 /** UX-7: the last step of the loop — its draft PRs, how old they are, and whether merge survival has settled them. */
 export function DraftPrsSection() {
   const [data, setData] = useState<DraftPrs | null>(null); const [error, setError] = useState<string | null>(null);
   useEffect(() => { api.getDraftPrs().then(setData, (err: unknown) => setError(err instanceof Error ? err.message : 'Failed to load draft PRs')); }, []);
+  const audit = data?.rows.filter((r) => r.auto_merge === 'audit_sample') ?? [];
+  const rows = data?.rows.filter((r) => r.auto_merge !== 'audit_sample') ?? [];
   return (
     <Section id="draft-prs" title="Loop draft PRs" headingClassName="text-lg font-semibold mb-1">
       {error && <p role="alert" className="text-status-error text-sm">{error}</p>}
@@ -30,15 +59,16 @@ export function DraftPrsSection() {
               {data.by_settlement && <> By settlement: {LOOP_PR_SETTLEMENT_STATES.map((s) => `${SETTLEMENT_LABEL[s]} ${data.by_settlement![s]}`).join(' · ')}{data.closed_unmerged ? ` (open/blocked includes ${data.closed_unmerged} closed unmerged)` : ''}.</>}
             </p>
           )}
-          <DataTable caption="Loop draft PRs and their settlement" rows={data.rows} rowKey={(r) => r.run_id} empty="The loop has opened no draft PR yet." columns={[
+          {audit.length > 0 && <AuditBatchCard rows={audit} />}
+          <DataTable caption="Loop draft PRs and their settlement" rows={rows} rowKey={(r) => r.run_id} empty={audit.length ? 'No loop PR outside the audit batch.' : 'The loop has opened no draft PR yet.'} columns={[
             { key: 'pr', label: 'PR', render: (r) => <a className="underline" href={r.pr_url} target="_blank" rel="noreferrer">#{r.pr_number ?? '?'}</a> },
             { key: 'lane', label: 'Lane', render: (r) => r.lane },
             { key: 'age', label: 'Age (days)', render: (r) => r.age_days },
             { key: 'github', label: 'GitHub state', render: (r) => r.outcome?.replace(/_/g, ' ') ?? 'not polled' },
             { key: 'settlement', label: 'Settlement', render: (r) => <span title={r.settlement_reason}>{SETTLEMENT_LABEL[r.settlement]}{r.settlement_terminal ? ' (closed)' : ''}{r.settlement_age_days === null ? '' : ` · ${r.settlement_age_days} d`}</span>,
               cellClassName: (r) => (r.settlement === 'PIPELINE_ANOMALY' || r.settlement === 'SETTLED_REGRESSED' ? 'text-status-error' : undefined) },
-            // earned auto-merge: an audit sample is a test-only PR the loop could have merged but deliberately leaves to you
-            { key: 'auto', label: 'Auto-merge', render: (r) => (r.auto_merge === 'audit_sample' ? <strong>audit sample — review it</strong> : r.auto_merge ? r.auto_merge.replace(/_/g, ' ') : '—') },
+            // earned auto-merge decision; audit-sample PRs are in the weekly audit batch above, not in this table
+            { key: 'auto', label: 'Auto-merge', render: (r) => (r.auto_merge ? r.auto_merge.replace(/_/g, ' ') : '—') },
           ]} />
         </>
       )}
@@ -70,6 +100,41 @@ export function DependencyLaneSection() {
         </>
       )}
     </Section>
+  );
+}
+
+type RequeueAuto = NonNullable<NonNullable<DecisionsInbox['totals']>['requeue_auto']>;
+type RowAuto = NonNullable<DecisionsInbox['requeue'][number]['auto']>;
+const AUTO_LABEL: Record<RowAuto['action'], string> = { requeue: 'system will requeue', dismiss: 'system will dismiss', wait: 'system will handle', hold: 'needs you' };
+
+/** REQUEUE_AUTO_MODE: with mode on the policy handles every row except the held ones; shadow only says what it would do. */
+export function RequeueAutoNote({ auto }: { auto: RequeueAuto | null | undefined }) {
+  if (auto === undefined) return null; // an older server without the policy
+  if (auto === null) return <p className="text-xs text-status-warning mb-2">Auto-requeue policy: unknown (the policy query failed).</p>;
+  if (auto.mode === 'off') return null;
+  return (
+    <p className="text-sm mb-2" data-testid="requeue-auto">
+      {auto.mode === 'on'
+        ? <><strong>System will handle {auto.will_handle}</strong> (auto-requeue on: retryable failures are requeued once, the rest dismissed after 14 days, audited); {auto.held} need{auto.held === 1 ? 's' : ''} you.</>
+        : <>Auto-requeue shadow: it would handle {auto.will_handle} and hold {auto.held}; nothing acts yet, every row still needs you.</>}
+    </p>
+  );
+}
+
+function AutoVerdict({ auto }: { auto: RowAuto }) {
+  const label = auto.mode === 'shadow' ? `shadow: ${AUTO_LABEL[auto.action].replace('system will', 'would')}` : AUTO_LABEL[auto.action];
+  return <div className={`text-xs ${auto.action === 'hold' ? 'text-status-warning' : 'text-foreground-muted'}`} title={auto.reason}>{label} · {auto.cls.replace(/_/g, ' ')}</div>;
+}
+
+/** D5, CAR, E1 and DI-001 are ground-truth labelling: optional, with its own count, never decisions. */
+export function OptionalLabellingHeader({ inbox }: { inbox: DecisionsInbox }) {
+  const d5 = typeof inbox.totals?.prescreen_unlabelled === 'number' ? inbox.totals.prescreen_unlabelled : inbox.prescreen.items.filter((i) => !i.label).length;
+  const car = inbox.attribution_audit.items.filter((i) => !i.verdict).length;
+  return (
+    <div className="border-t border-border pt-4" data-testid="optional-labelling-header">
+      <h2 className="text-xl font-semibold">Optional labelling</h2>
+      <p className="text-xs text-foreground-tertiary">Ground truth for the gates: {d5} D5 label(s) and {car} CAR audit(s) open; E1 and DI-001 show their own queue below. Not decisions: nothing waits on these, and they are not in the needs-you count.</p>
+    </div>
   );
 }
 
@@ -166,7 +231,7 @@ export function DecisionsInboxPage() {
             <DataTable caption="Memories waiting for review" rows={data.memory} rowKey={(m) => m.id} rowClassName={() => 'align-top'} empty="Nothing waiting for review." columns={[
               { key: 'memory', label: 'Memory', render: (m) => <><div className="font-medium">{m.title}</div><div className="text-xs text-foreground-secondary whitespace-pre-wrap">{m.content}</div></> },
               { key: 'type', label: 'Type', render: (m) => m.memory_type },
-              { key: 'status', label: 'Status', render: (m) => m.status.replace('_', ' ') },
+              { key: 'status', label: 'Status', render: (m) => <>{m.status.replace('_', ' ')}{m.template_duplicate ? <div className="text-xs text-foreground-muted">template duplicate — system dedup, not counted</div> : null}</> },
               { key: 'actions', label: 'Actions', cellClassName: () => 'whitespace-nowrap space-x-1', render: (m) => (
                 <>
                   <Button needs={canMemory ? undefined : P.memoryReview} disabled={busy !== null} onClick={() => void act(`p-${m.id}`, () => api.promoteMemoryCandidate(m.id), `Promoted '${m.title}'`)}>Promote</Button>
@@ -178,9 +243,10 @@ export function DecisionsInboxPage() {
 
           <Section id="requeue" title="Requeue failed proposals" headingClassName="text-lg font-semibold mb-1">
             <p className="text-xs text-foreground-tertiary mb-2">A requeue creates a new, linked attempt; the original and its outcome stay untouched. Counts against the lane budget. Dismiss records that no requeue is needed (audited) and removes the row; no change outcomes are listed but not counted as waiting for you.</p>
+            <RequeueAutoNote auto={data.totals?.requeue_auto} />
             <DataTable caption="Regressed or infra-failed proposals (30 d)" rows={data.requeue} rowKey={(r) => r.id} rowClassName={() => 'align-top'} empty="No regressed or infra-failed proposal in the last 30 days." columns={[
               { key: 'proposal', label: 'Proposal', render: (r) => <>{r.title}<div className="text-xs text-foreground-muted">{r.id.slice(0, 8)}</div></> },
-              { key: 'status', label: 'Status', render: (r) => r.status },
+              { key: 'status', label: 'Status', render: (r) => <>{r.status}{r.auto && <AutoVerdict auto={r.auto} />}</> },
               { key: 'reason', label: 'Reason', render: (r) => (r.requeued_as ? <span className="text-foreground-muted">requeued as {r.requeued_as.slice(0, 8)}</span> : (
                 <input aria-label={`Reason for requeueing ${r.id.slice(0, 8)}`} value={reasons[r.id] ?? ''} onChange={(e) => setReasons({ ...reasons, [r.id]: e.target.value })}
                   placeholder="why (required)" className="w-full rounded border border-border bg-background px-2 py-0.5" />
@@ -195,6 +261,8 @@ export function DecisionsInboxPage() {
               ) },
             ]} />
           </Section>
+
+          <OptionalLabellingHeader inbox={data} />
 
           <Section id="prescreen" title="Pre-screen rejections (D5)" headingClassName="text-lg font-semibold mb-1">
             {p && (
@@ -239,6 +307,8 @@ export function DecisionsInboxPage() {
           </Section>
 
           <DiscoveryRelevanceSection />
+
+          <E1RetrievalLabelSection />
 
           <Section id="telegram" title="Telegram allowlist (D3)" headingClassName="text-lg font-semibold mb-1">
             <p className="text-xs text-foreground-tertiary mb-2">Only listed Telegram user ids are recognised; the mapped user&apos;s role decides what they may do. Chat or group membership grants nothing. Needs manage:config.</p>

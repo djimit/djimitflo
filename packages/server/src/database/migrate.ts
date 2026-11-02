@@ -1368,6 +1368,12 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
     CREATE TABLE IF NOT EXISTS tg_experiments (id TEXT PRIMARY KEY, frozen_at TEXT NOT NULL, manifest_json TEXT NOT NULL, analysis_sha256 TEXT);
     CREATE TABLE IF NOT EXISTS tg_attempts (id TEXT PRIMARY KEY, experiment_id TEXT NOT NULL, task_key TEXT NOT NULL, arm TEXT NOT NULL, seq INTEGER NOT NULL,
       status TEXT NOT NULL, retries INTEGER NOT NULL DEFAULT 0, run_id TEXT, result_json TEXT, history_json TEXT, updated_at TEXT NOT NULL, UNIQUE(experiment_id, task_key, arm));
+    -- PL-001 (procedure loop): the frozen manifest (tasks, lines, contract, analysis) with its sha256, and one row per (task, arm)
+    -- in the frozen paired order; history_json keeps every physical attempt (re-served infra / VOID attempts included)
+    CREATE TABLE IF NOT EXISTS pl_experiments (id TEXT PRIMARY KEY, frozen_at TEXT NOT NULL, manifest_json TEXT NOT NULL, manifest_sha256 TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS pl_attempts (id TEXT PRIMARY KEY, experiment_id TEXT NOT NULL, task_key TEXT NOT NULL, arm TEXT NOT NULL, seq INTEGER NOT NULL,
+      status TEXT NOT NULL, retries INTEGER NOT NULL DEFAULT 0, run_id TEXT, result_json TEXT, history_json TEXT, first_claimed_at TEXT, updated_at TEXT NOT NULL,
+      UNIQUE(experiment_id, task_key, arm));
     CREATE INDEX IF NOT EXISTS idx_shipped_code_scans_package ON shipped_code_scans(package, id);
     -- MS-1: every model call of a consumer (incumbent and shadow candidates): did it parse, did it agree, how long, how long the answer
     CREATE TABLE IF NOT EXISTS llm_model_calls (id INTEGER PRIMARY KEY AUTOINCREMENT, consumer TEXT NOT NULL, model TEXT NOT NULL, ok INTEGER NOT NULL,
@@ -1447,6 +1453,16 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   for (const t of ['gym_holdout', 'gym_mutant_holdout', 'gym_write_test_holdout']) addMissingColumns(db, t, [{ name: 'role', definition: "TEXT NOT NULL DEFAULT 'deciding'" }]);
   db.exec(`CREATE TABLE IF NOT EXISTS gym_holdout_freezes (epoch INTEGER PRIMARY KEY, manifest_sha256 TEXT NOT NULL, frozen_at TEXT NOT NULL, origin_sha TEXT, version TEXT,
     holdout_size INTEGER NOT NULL, counts_json TEXT NOT NULL, operator TEXT, manifest_json TEXT NOT NULL)`);
+  // prod 25-10: a pending trial item no claim could be given a task for (remote-gym-service trialBlocked; stall 'gym:trial_blocked')
+  db.exec(`CREATE TABLE IF NOT EXISTS gym_trial_blocked (genome_id TEXT NOT NULL, task_key TEXT NOT NULL, reason TEXT NOT NULL, first_seen TEXT NOT NULL,
+    last_seen TEXT NOT NULL, PRIMARY KEY (genome_id, task_key))`);
+  // prod 27-10: per host × token scope, the last valid authentication, the expiry its token states and the current rejection
+  // streak (host-token-watch.ts; stall 'host_token'). Never the token.
+  db.exec(`CREATE TABLE IF NOT EXISTS host_token_auth (host TEXT NOT NULL, scope TEXT NOT NULL, last_ok_at TEXT NOT NULL, token_expires_at TEXT,
+    first_rejected_at TEXT, last_rejected_at TEXT, rejected_count INTEGER NOT NULL DEFAULT 0, last_reason TEXT, PRIMARY KEY (host, scope))`);
+  // A18 (re-20261029): a treatment-env change between boots, per experiment that declares it (experiment-registry.ts)
+  db.exec(`CREATE TABLE IF NOT EXISTS experiment_period_boundaries (experiment_id TEXT NOT NULL, env_name TEXT NOT NULL, previous TEXT, current TEXT,
+    at TEXT NOT NULL, PRIMARY KEY (experiment_id, env_name, at))`);
   // B8: the failure clusters a dream mutant cites (evidence-or-no-op, DREAM_EVIDENCE_MUTATIONS)
   addMissingColumns(db, 'maker_genomes', [{ name: 'evidence_clusters', definition: 'TEXT' }]);
   // KE-3: the knowledge units (expert_identities ids) whose titles the dream that wrote this mutant injected; null = none
@@ -1991,7 +2007,63 @@ export function runMigrations(db: BetterSqlite3Database) {
   createOutcomeLearningTables(db);
   createFrontierExpertTables(db);
   new FrontierExpertRegistryService(db).seedTaxonomy();
+  createAccountUsageSnapshotTables(db);
   createPerformanceIndexes(db);
+  ensureMakerSpanSettlement(db);
+}
+
+/**
+ * OPS-004: a worker lease's trace (run span + worker span) closes when the lease settles — on every path, not only the
+ * executor's finally: stop run, superseded evolve siblings, stale/zombie/hygiene sweeps and boot recovery settle prepared
+ * leases with their own UPDATEs. Maker traces are `loop-<run>-worker-<lease>` (executeMaker), reviewer traces (checker /
+ * security checker) `loop-<run>-checker-<lease>` (executeChecker). End time = the lease's updated_at (normalised to ISO),
+ * so the span ends at the settlement. Only still-open spans of that one lease are touched. It cannot fail a lease update
+ * on bad JSON or NULL timestamps: invalid span metadata is left as is (json_valid guard) and a NULL / unparsable
+ * updated_at falls back to now. Storage and schema errors still propagate into the lease UPDATE (disk full, locked, a
+ * missing table): while it exists, every worker_leases status UPDATE needs agent_trace_spans, so a migration that drops
+ * (or renames away) agent_trace_spans without also dropping worker_leases must DROP TRIGGER
+ * trg_worker_lease_settles_trace first (rebuildLoopTables drops worker_leases in the same exec, which drops the trigger).
+ * Created last: a worker_leases rebuild drops it. Replaced on every boot (DROP + CREATE in one transaction, so no other
+ * connection ever settles a lease without it) so a database that has the maker-only body gets the reviewer pattern too.
+ * Down: DROP TRIGGER IF EXISTS trg_worker_lease_settles_trace;
+ */
+export function ensureMakerSpanSettlement(db: BetterSqlite3Database): void {
+  if (!tableSql(db, 'worker_leases') || !tableSql(db, 'agent_trace_spans')) return;
+  db.transaction(() => {
+    db.exec('DROP TRIGGER IF EXISTS trg_worker_lease_settles_trace');
+    db.exec(`CREATE TRIGGER trg_worker_lease_settles_trace AFTER UPDATE OF status ON worker_leases
+    WHEN NEW.status IN ('completed', 'failed', 'cancelled')
+    BEGIN
+      UPDATE agent_trace_spans
+      SET status = CASE NEW.status WHEN 'completed' THEN 'ok' ELSE 'error' END,
+          ended_at = COALESCE(strftime('%Y-%m-%dT%H:%M:%fZ', NEW.updated_at), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+          metadata = CASE WHEN json_valid(metadata) THEN json_set(metadata,
+            '$.terminal_status', CASE NEW.status WHEN 'completed' THEN 'ok' WHEN 'cancelled' THEN 'cancelled' ELSE 'error' END,
+            '$.lease_status', NEW.status) ELSE metadata END
+      WHERE trace_id IN ('loop-' || NEW.loop_run_id || '-worker-' || NEW.id, 'loop-' || NEW.loop_run_id || '-checker-' || NEW.id) AND ended_at IS NULL;
+    END;`);
+  })();
+}
+
+/**
+ * Operator-reported usage snapshots (/usage): for accounts without an account-wide source (claude_max, chatgpt_pro) the
+ * operator copies session / weekly %, credits and spend limit from the vendor's own usage page. Append-only: the route only
+ * inserts, the latest row per account is shown. services/usage-snapshots.ts validates payload_json.
+ */
+export function createAccountUsageSnapshotTables(db: BetterSqlite3Database) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS account_usage_snapshots (
+      id TEXT PRIMARY KEY,
+      account TEXT NOT NULL,
+      reported_at TEXT NOT NULL,
+      reported_by TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'operator_snapshot' CHECK(source IN ('operator_snapshot')),
+      payload_json TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_account_usage_snapshots_account ON account_usage_snapshots(account, reported_at);
+  `);
 }
 
 /**

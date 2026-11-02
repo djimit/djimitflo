@@ -9,6 +9,7 @@
 import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
+import { skillAssignment } from './executable-skills';
 import { ExecutionEngine } from '../execution/execution-engine';
 import { createError } from '../middleware/error-handler';
 import type { ExecutionResult, ExecutorKind } from '../execution/types';
@@ -16,10 +17,21 @@ import type { LoopService } from './loop-service';
 import { judgmentMode, runJudgment } from './judgment-service';
 import { leaseIdentity } from './reviewer-independence-service';
 import { checkerSecondOpinion, checkerSecondOpinionState } from './judgments/checker-second-opinion';
+import { withoutHiddenChecks } from './fail-before-pass-after';
 import { remoteMakerCancelReason } from '../execution/executors/remote-maker-executor';
+import { SUBSCRIPTION_ENV_MARKER } from '../execution/executors/subscription-env';
 import { recordPolicyViolation } from './policy-violations';
 import { computeTokenAccounting, safeTokenAccounting } from './maker-token-accounting';
+import { captureMakerDiff } from './maker-diff-capture';
 import { assignMakerDepsArm, makerDeps001On, makerDepsEligible } from './maker-deps-001';
+import { applyOutageFallback, fallbackRefusal, isFallbackLease } from './ollama-outage-fallback';
+import { noteOllamaOutput } from './inference-failover';
+import { isSubscriptionLimit, LIMIT_HIT } from './subscription-gym';
+import { classifyStderr, STDERR_TAIL_CHARS, type FailureStage, type LeaseFailure } from './lease-failure';
+import { makerWarmDepsBlocked, warmDepsCacheRoot, warmDepsState } from './maker-warm-deps';
+import { asgAfterMaker, asgBeforeMaker, type AsgMakerOutcome } from './asg/oracle-lane';
+import { asgMode } from './asg/mode';
+import { recordWorkerCall } from './model-call-ledger';
 import type {
   LoopRunRecord,
   WorkerLeaseRecord,
@@ -42,6 +54,11 @@ export interface ExecuteCheckerInput {
   timeout_ms?: number;
   skip_permissions?: boolean;
 }
+
+/** A worker lease's open lifecycle span (OPS-004): the worker span and its run-span parent. */
+type LeaseSpan = { runSpanId: string; workerSpanId: string; leaseId: string };
+/** What executeChecker learns from runChecker: the reviewer's span and the lease this call set running. */
+type ReviewerDispatch = { current?: LeaseSpan | null; leaseId?: string };
 
 export interface ExecuteWorkerResult {
   run: LoopRunRecord;
@@ -69,6 +86,27 @@ export function shouldRecordSecondOpinion(runtime: string, reviewRole: string, m
   return runtime !== 'mock' && reviewRole === 'checker' && mode !== 'off';
 }
 
+/**
+ * What the runtime itself showed, as the hint for the lease's structured failure (lease-failure.ts); WorkerLeaseRepo fills the
+ * rest (a cancel's stage and reason, the reason-text class). The engine path reports the child's exit apart from the gate's
+ * 0/1; a direct runtime command's exitCode is the child's own.
+ */
+export function runtimeFailureHint(result: RuntimeExecutionResult, stage: FailureStage, tokenBudgetGateFailed = false): Partial<LeaseFailure> {
+  const stderr = (result.stderr || '').slice(-STDERR_TAIL_CHARS);
+  const message = result.runtimeMessage ?? '';
+  const observed = result.exitObserved ?? true;
+  return {
+    stage,
+    exit_observed: observed,
+    exit_code: !observed ? null : result.exitObserved === undefined ? result.exitCode : result.processExitCode ?? null,
+    signal: result.signal ?? null,
+    timed_out: result.timedOut === true,
+    token_budget_hit: result.tokenBudgetHit === true || tokenBudgetGateFailed,
+    stderr_class: classifyStderr(`${stderr}\n${message}`),
+    stderr_source: stderr.trim() ? 'stderr' : message.trim() ? 'reason' : 'none',
+  };
+}
+
 export class LoopWorkerExecutorService {
   constructor(
     private db: any,
@@ -84,14 +122,91 @@ export class LoopWorkerExecutorService {
    */
   async executeMaker(id: string, input: ExecuteMakerInput = {}): Promise<ExecuteWorkerResult> {
     const since = new Date().toISOString();
+    const span = this.openMakerSpan(id, input);
+    let execution: ExecuteWorkerResult | undefined;
+    let errorMessage: string | undefined;
     try {
-      return await this.runMaker(id, input);
+      execution = await this.runMaker(id, input);
+      return execution;
     } catch (err) {
       const stuck = this.db.prepare("SELECT id FROM worker_leases WHERE loop_run_id = ? AND role = 'maker' AND status = 'running' AND json_extract(metadata, '$.started_at') >= ?")
         .all(id, since) as Array<{ id: string }>;
-      for (const lease of stuck) this.loopService.updateWorkerLeaseStatus(lease.id, 'failed', { failure_reason: `maker_execution_error: ${(err instanceof Error ? err.message : String(err)).slice(0, 200)}`, failed_at: new Date().toISOString() });
+      const message = (err instanceof Error ? err.message : String(err)).slice(0, 200);
+      errorMessage = message;
+      for (const lease of stuck) this.loopService.updateWorkerLeaseStatus(lease.id, 'failed', { failure_reason: `maker_execution_error: ${message}`, failed_at: new Date().toISOString(),
+        failure: { stderr_class: classifyStderr(message), stderr_source: 'reason' } });
       throw err;
+    } finally {
+      if (span) this.closeLeaseSpan(span, execution, errorMessage);
     }
+  }
+
+  /**
+   * OPS-004: one lifecycle span per maker lease — a worker span, child of a run span, in `loop-<run>-worker-<lease>`.
+   * Opened at the first dispatch of a prepared lease; a resumed call (after an approval / in-progress exit, which leaves the
+   * lease 'prepared') reuses the lease's open span (found by its trace id) instead of opening a second one. Lease metadata
+   * is not touched. Never throws.
+   */
+  private openMakerSpan(runId: string, input: ExecuteMakerInput): LeaseSpan | null {
+    try {
+      const run = this.loopService.getLoopRun(runId);
+      const leases = this.loopService.listWorkerLeases(run.id);
+      const lease = input.lease_id ? leases.find((l) => l.id === input.lease_id) : leases.find((l) => l.role === 'maker' && l.status === 'prepared');
+      if (!lease) return null;
+      // nothing to dispatch when not prepared: runMaker refuses it, no span for a refusal
+      return this.openLeaseSpan(run, lease, `loop-${run.id}-worker-${lease.id}`, `loop:${run.id}/worker:${lease.id}`, lease.runtime, {}, lease.status === 'prepared');
+    } catch {
+      return null; // tracing never blocks a maker
+    }
+  }
+
+  /**
+   * One lifecycle span per worker lease (maker or reviewer): a worker span, child of a run span, in the lease's own trace.
+   * A resumed call reuses the lease's open span (found by trace id) instead of opening a second one; a new pair is opened
+   * only when `create`. Never throws. trg_worker_lease_settles_trace closes it on every settle path outside the caller.
+   */
+  private openLeaseSpan(run: LoopRunRecord, lease: WorkerLeaseRecord, traceId: string, evidenceRef: string, runtime: string,
+    metadata: Record<string, unknown>, create = true): LeaseSpan | null {
+    try {
+      const open = this.db.prepare(`SELECT id, parent_span_id FROM agent_trace_spans WHERE trace_id = ? AND span_type = 'worker'
+        AND ended_at IS NULL AND parent_span_id IS NOT NULL ORDER BY created_at DESC LIMIT 1`).get(traceId) as { id: string; parent_span_id: string } | undefined;
+      if (open) return { runSpanId: open.parent_span_id, workerSpanId: open.id, leaseId: lease.id };
+      if (!create) return null;
+      const assurance = this.loopService.assurance;
+      const runSpan = assurance.createTraceSpan({ trace_id: traceId, loop_run_id: run.id, span_type: 'loop', name: `loop_run:${run.id}`, status: 'running',
+        evidence_ref: `loop:${run.id}`, metadata: { loop_name: run.loop_name, scope: 'worker_trace', worker_lease_id: lease.id } });
+      const workerSpan = assurance.createTraceSpan({ trace_id: traceId, parent_span_id: runSpan.id, loop_run_id: run.id, span_type: 'worker',
+        name: `${lease.role}:${runtime}`, status: 'running', evidence_ref: evidenceRef,
+        metadata: { worker_lease_id: lease.id, role: lease.role, runtime, ...metadata } });
+      return { runSpanId: runSpan.id, workerSpanId: workerSpan.id, leaseId: lease.id };
+    } catch {
+      return null; // tracing never blocks a worker
+    }
+  }
+
+  /** Close the span only when the lease settled (completed / failed / cancelled); an approval / in-progress exit keeps it open. */
+  private closeLeaseSpan(span: LeaseSpan, execution: ExecuteWorkerResult | undefined, errorMessage: string | undefined): void {
+    const endedAt = new Date().toISOString(); // the settle time, before the caller's bookkeeping
+    try {
+      const leaseStatus = (this.db.prepare('SELECT status FROM worker_leases WHERE id = ?').get(span.leaseId) as { status: string } | undefined)?.status;
+      if (leaseStatus !== 'completed' && leaseStatus !== 'failed' && leaseStatus !== 'cancelled') return;
+      const terminal = leaseStatus === 'completed' && !errorMessage ? 'ok' : leaseStatus === 'cancelled' ? 'cancelled' : 'error';
+      const status = terminal === 'ok' ? 'ok' : 'error'; // the span schema has no 'cancelled': a cancel is a terminal failure
+      const assurance = this.loopService.assurance;
+      const closed = { terminal_status: terminal, lease_status: leaseStatus };
+      try {
+        assurance.finishTraceSpan(span.workerSpanId, { status, ended_at: endedAt, metadata: {
+          ...closed,
+          ...(errorMessage ? { error: errorMessage } : {}),
+          ...(execution ? { stdout_path: execution.stdout_path, stderr_path: execution.stderr_path, gates: execution.gates } : {}),
+          ...(typeof execution?.lease?.metadata?.verdict === 'string' ? { verdict: execution.lease.metadata.verdict } : {}),
+        } });
+      } catch {
+        // secret-like detail is refused; the span still closes
+        assurance.finishTraceSpan(span.workerSpanId, { status, ended_at: endedAt, metadata: { ...closed, detail_withheld: true } });
+      }
+      assurance.finishTraceSpan(span.runSpanId, { status, ended_at: endedAt, metadata: { terminal_status: terminal } });
+    } catch { /* tracing never masks the worker's outcome */ }
   }
 
   private async runMaker(id: string, input: ExecuteMakerInput = {}): Promise<ExecuteWorkerResult> {
@@ -114,6 +229,9 @@ export class LoopWorkerExecutorService {
       this.loopService.recordMakerFailure(run.id, makerLease.id, 'MANUAL_MAKER_REQUIRES_HUMAN', 'Manual runtime requires human intervention');
       throw new Error('MANUAL_MAKER_REQUIRES_HUMAN');
     }
+    // OLLAMA_OUTAGE_FALLBACK_RUNTIME: the effective runtime of this maker (an opencode lease → claude on the subscription)
+    applyOutageFallback(this.db, run, makerLease, makerLease.runtime);
+    this.refuseFallbackSpawn(run, makerLease);
 
     // Meta-orchestration: failure prediction before execution
     if (this.loopService.metaOrchestration) {
@@ -158,7 +276,7 @@ export class LoopWorkerExecutorService {
         gateRefs: ['runtime_contract'], blockedReasons: ['runtime_contract_drift'],
         metadata: { worker_role: makerLease.role, worker_runtime: makerLease.runtime, reason: 'runtime_contract_unavailable_or_drifted', started_from: 'executeMaker' },
       });
-      this.loopService.updateWorkerLeaseStatus(makerLease.id, 'failed', { runtime_adapter: makerLease.runtime, runtime_contract: runtimeContract, runtime_contract_failed_at: new Date().toISOString(), failure_reason: 'runtime_contract_unavailable_or_drifted' });
+      this.loopService.updateWorkerLeaseStatus(makerLease.id, 'failed', { runtime_adapter: makerLease.runtime, runtime_contract: runtimeContract, runtime_contract_failed_at: new Date().toISOString(), failure_reason: 'runtime_contract_unavailable_or_drifted', failure: { stage: 'prepare' } });
       throw new Error('RUNTIME_CONTRACT_DRIFTED');
     }
 
@@ -169,6 +287,9 @@ export class LoopWorkerExecutorService {
     }
     // MAKER-DEPS-001 (pre-registered, MAKER_DEPS_001_MODE): the arm is recorded before the maker starts; arm B gets the checks'
     // own install first. Local opencode makers of goal runs only (never TG-001, the gym or remote); caps and prompt are the same.
+    // MAKER_WARM_DEPS (default off) refuses to act while MAKER-DEPS-001 runs: both arms stay exactly as pre-registered
+    const warm = warmDepsState();
+    if (warm === 'blocked_by_experiment') makerWarmDepsBlocked();
     if (makerDeps001On() && run.goal_id && makerDepsEligible({ runtime: makerLease.runtime, role: makerLease.role, goal_id: run.goal_id, loop_name: run.loop_name })) {
       const assigned = assignMakerDepsArm(this.db, run.id, makerLease, run.goal_id);
       if (assigned.arm === 'B') {
@@ -177,10 +298,27 @@ export class LoopWorkerExecutorService {
           `MAKER-DEPS-001 arm B: dependencies prepared before the maker started (installed=${prep.installed}, shared_built=${prep.shared_built}${prep.install_failed || prep.shared_failed ? '; failed, the maker runs as in arm A' : ''}).`,
           { maker_lease_id: makerLease.id, arm: assigned.arm, experiment: assigned.experiment, version: assigned.version, ...prep });
       }
+    } else if (warm === 'on' && run.goal_id && makerDepsEligible({ runtime: makerLease.runtime, role: makerLease.role, goal_id: run.goal_id, loop_name: run.loop_name })) {
+      // arm B's preparation, with node_modules from a lockfile-keyed cache: the candidate default once MAKER-DEPS-001 reads out
+      const prep = this.loopService.prepareMakerWorktree(run.id, makerLease.id, makerLease.worktree_path!, { warmDepsRoot: warmDepsCacheRoot() });
+      if (prep.warm_deps) this.loopService.patchWorkerLeaseMetadata(makerLease.id, { deps_source: prep.warm_deps.deps_source, warm_deps: prep.warm_deps });
+      this.loopService.recordLoopEvent(run.id, 'maker_warm_deps', prep.install_failed || prep.shared_failed ? 'warning' : 'info',
+        `MAKER_WARM_DEPS: dependencies ${prep.warm_deps ? `from ${prep.warm_deps.deps_source}` : 'already present'} before the maker started (shared_built=${prep.shared_built}${prep.install_failed || prep.shared_failed ? '; failed, the maker runs without them' : ''}).`,
+        { maker_lease_id: makerLease.id, ...prep });
     }
     const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
     const prompt = fs.readFileSync(this.loopService.resolveWorkAssignmentPath(makerLease), 'utf8');
     const skipPermissions = this.loopService.resolveSkipPermissions(input.skip_permissions);
+    // ASG-001 (ASG_MODE, default off; docs/research/asg-001): oracle-lane makers only. off = this block never runs.
+    const asg = asgMode() === 'off' ? null : asgBeforeMaker(this.db, run, makerLease, (cwd, args) => this.loopService.git(cwd, args));
+    if (asg) {
+      this.loopService.patchWorkerLeaseMetadata(makerLease.id, { asg: { mode: asg.mode, requested: asg.requested, blocked_by: asg.blocked_by, attempt_id: asg.attempt_id, lane: asg.lane,
+        decision: asg.decision, route_executed: asg.route_executed, base: asg.base, spec: { targets: asg.spec.targets, declared_writes: asg.spec.declared_writes, capability: asg.spec.capability } } });
+      this.loopService.recordLoopEvent(run.id, 'asg_route', 'info',
+        `ASG ${asg.mode}: route ${asg.decision.route} (${asg.decision.reason_codes.join(',')}), executed ${asg.route_executed}; policy ${asg.decision.policy.hash}.`,
+        { maker_lease_id: makerLease.id, mode: asg.mode, blocked_by: asg.blocked_by, route: asg.decision.route, route_executed: asg.route_executed, reason_codes: asg.decision.reason_codes,
+          policy: asg.decision.policy, feature_schema_hash: asg.decision.feature_schema_hash, features: asg.decision.features, alternatives: asg.decision.alternatives });
+    }
     const makerStartedAt = Date.now();
     const result = makerLease.runtime === 'mock'
       ? await this.executeMockWorker(makerLease, prompt, timeoutMs, skipPermissions)
@@ -205,6 +343,8 @@ export class LoopWorkerExecutorService {
     const diffMaxLines = Math.max(1, Math.min(testOnlyChange(changedFiles) ? Math.max(input.diff_max_lines || 200, TEST_ONLY_DIFF_MAX) : (input.diff_max_lines || 200), 2_000));
     const exitStatus = result.exitCode;
     const timedOut = result.timedOut;
+    const fallbackLimited = this.fallbackLimitHit(makerLease, exitStatus, result);
+    this.noteOpencodeLimit(makerLease.runtime, 'maker', exitStatus, result);
     const runtimeUsage = this.loopService.extractRuntimeUsage(result.stdout || '');
     const runtimeWarnings = this.loopService.extractRuntimeWarnings(result.stdout || '', result.stderr || '');
     // §5 token accounting: what the runtime reported, never fabricated; a failure here is recorded, never changes the outcome
@@ -213,6 +353,8 @@ export class LoopWorkerExecutorService {
     const tokenBudget = this.loopService.evaluateTokenBudget(run, runtimeUsage, makerLease.id, diffLines);
     const efficiency = this.loopService.calculateWorkerEfficiency(runtimeUsage, diffLines);
 
+    // ASG-001: expected vs observed effects; in `on`, a bounded timeout/brake whose declared test passes is succeeded_with_incident
+    const asgOutcome: AsgMakerOutcome | null = asg ? asgAfterMaker(asg, { exitCode: result.exitCode, timedOut: result.timedOut, tokenBudgetHit: result.tokenBudgetHit }, changedFiles, makerLease.worktree_path!, skipPermissions) : null;
     const gates: LoopGate[] = [
       { name: 'maker_runtime_exit_zero', status: exitStatus === 0 && !timedOut ? 'pass' : 'fail', evidence: `runtime=${makerLease.runtime}, exit=${exitStatus ?? 'signal'}, timed_out=${timedOut}, skip_permissions=${skipPermissions}` },
       { name: 'diff_under_threshold', status: diffLines <= diffMaxLines ? 'pass' : 'fail', evidence: `${diffLines} changed diff line(s), threshold ${diffMaxLines}.` },
@@ -220,30 +362,45 @@ export class LoopWorkerExecutorService {
       { name: 'runtime_warning_gate', status: this.loopService.runtimeWarningsBlockCompletion(runtimeWarnings, run) ? 'fail' : 'pass', evidence: this.loopService.runtimeWarningsEvidence(runtimeWarnings, run) },
       { name: 'no_automatic_merge', status: 'pass', evidence: 'Maker execution did not merge, push, or deploy.' },
     ];
+    if (asgOutcome?.rescued) gates.push({ name: 'asg_end_state_verified', status: 'pass', evidence: `ASG on: runtime stopped (${asgOutcome.incident?.timed_out ? 'timeout' : 'token brake'}), effects ${asgOutcome.effects.observed.join(', ')} inside the declared write set, ${asgOutcome.verifier?.command} exit 0; incident recorded, maker_runtime_exit_zero kept as evidence.` });
 
     // §16 step 8 (shadow, POLICY_VIOLATION_LOG): the diff gate above already decided; this only counts the breach
     if (diffLines > diffMaxLines) recordPolicyViolation(this.db, { kind: 'diff_limit', actor: `maker:${makerLease.runtime}`, severity: 'medium', dedupe_key: makerLease.id,
       run_id: run.id, lease_id: makerLease.id, evidence_ref: `loop_run:${run.id}/lease:${makerLease.id}/gate:diff_under_threshold`,
       description: `${diffLines} changed diff line(s) over threshold ${diffMaxLines}` });
-    const failed = gates.some((gate) => gate.status === 'fail');
+    // ASG on: only the runtime-exit gate is answered by the verified end state; every other gate still decides
+    const failed = gates.some((gate) => gate.status === 'fail' && !(asgOutcome?.rescued && gate.name === 'maker_runtime_exit_zero'));
     const completionStatus = failed ? 'failed' : 'completed';
     const wasCancelled = this.loopService.isWorkerLeaseCancelled(makerLease.id);
     const remoteCancel = makerLease.runtime === 'remote' ? remoteMakerCancelReason(result.stderr) : null;
 
+    // §3d P0 #1: both risk inputs, recorded; the effective risk is their max (verifyLoopRun recomputes it from changed_files)
+    const leaseFinding = run.findings.find((candidate) => candidate.id === makerLease.finding_id);
+    const textRisk = this.loopService.highRiskReason(run, leaseFinding) ?? (this.loopService.isHighRiskRun(run) ? 'run_findings_text' : null);
+    const changedFilesRisk = this.loopService.changedFilesRiskReason(changedFiles);
     const metadataPatch: Record<string, unknown> = {
+      risk_inputs: { text_risk_reason: textRisk, changed_files_risk_reason: changedFilesRisk, effective_risk: textRisk || changedFilesRisk ? 'high' : 'low' },
       completed_at: new Date().toISOString(), stdout_path: stdoutPath, stderr_path: stderrPath,
       diff_lines: diffLines, diff_max_lines: diffMaxLines, changed_files: changedFiles, exit_status: exitStatus, timed_out: timedOut,
       runtime_adapter: makerLease.runtime, runtime_contract: runtimeContract, runtime_pid: result.runtimePid,
       runtime_signal: result.signal, runtime_timed_out: result.timedOut, runtime_timed_out_at: result.timedOutAt,
       runtime_warnings: runtimeWarnings, token_efficiency: efficiency,
       runtime_usage: runtimeUsage || { usage_source: 'unknown' }, token_accounting: tokenAccounting,
-      ...(failed ? { failure_reason: `maker_gate_failed:${gates.filter((gate) => gate.status === 'fail').map((gate) => gate.name).join(',')}${remoteCancel ? `;remote_maker_cancelled:${remoteCancel}` : ''}` } : {}),
+      // MAKER_DIFF_CAPTURE=on: the redacted, capped diff diff_lines was counted from (record-only; an error leaves only diff_capture_error)
+      ...captureMakerDiff(diff),
+      ...(fallbackLimited ? { failure_reason: LIMIT_HIT, subscription_limit_hit_at: new Date().toISOString() } : failed ? { failure_reason: `maker_gate_failed:${gates.filter((gate) => gate.status === 'fail').map((gate) => gate.name).join(',')}${remoteCancel ? `;remote_maker_cancelled:${remoteCancel}` : ''}` } : {}),
+      // structured failure capture (record-only; the gates above already decided)
+      ...(failed || wasCancelled ? { failure: runtimeFailureHint(result, 'maker', tokenBudget.gate.status === 'fail') } : {}),
+      // ASG-001: execution, verification and incident kept apart (the decision recorded before the runtime stays as written)
+      ...(asg && asgOutcome ? { asg: { ...(this.loopService.getWorkerLease(makerLease.id).metadata.asg as Record<string, unknown> ?? {}), outcome: asgOutcome,
+        ...(asgOutcome.rescued ? { incident_failure: runtimeFailureHint(result, 'maker', tokenBudget.gate.status === 'fail') } : {}) } } : {}),
     };
 
     if (wasCancelled) {
       this.loopService.patchWorkerLeaseMetadata(makerLease.id, { ...metadataPatch, runtime_was_cancelled: true });
     } else {
       this.loopService.updateWorkerLeaseStatus(makerLease.id, completionStatus, metadataPatch);
+      if (completionStatus === 'completed' && changedFilesRisk) this.loopService.ensureChangedFilesSecurityChecker(run, makerLease, changedFilesRisk);
     }
 
     const budgetRisk = tokenBudget.efficiencyExceeded
@@ -267,7 +424,32 @@ export class LoopWorkerExecutorService {
     return { run: this.loopService.getLoopRun(run.id), lease: completedLease, gates, stdout_path: stdoutPath, stderr_path: stderrPath };
   }
 
+  /**
+   * OPS-004: one lifecycle span per reviewer lease (checker / security checker), as for makers — opened at dispatch in
+   * `loop-<run>-checker-<lease>`, reused by a resumed call, closed when the lease settles (here, or by the settle trigger).
+   * An unexpected error after dispatch fails the still-running lease (as executeMaker does), so the span closes; an
+   * approval / in-progress continuation has put the lease back to 'prepared' and is left alone.
+   */
   async executeChecker(id: string, input: ExecuteCheckerInput = {}): Promise<ExecuteWorkerResult> {
+    const span: ReviewerDispatch = {};
+    let execution: ExecuteWorkerResult | undefined;
+    let errorMessage: string | undefined;
+    try {
+      execution = await this.runChecker(id, input, span);
+    } catch (err) {
+      errorMessage = (err instanceof Error ? err.message : String(err)).slice(0, 200);
+      const stuck = span.leaseId ? this.db.prepare('SELECT status FROM worker_leases WHERE id = ?').get(span.leaseId) as { status: string } | undefined : undefined;
+      if (stuck?.status === 'running') this.loopService.updateWorkerLeaseStatus(span.leaseId!, 'failed', { failure_reason: `checker_execution_error: ${errorMessage}`,
+        failed_at: new Date().toISOString(), failure: { stage: 'checker', stderr_class: classifyStderr(errorMessage), stderr_source: 'reason' } });
+      throw err;
+    } finally {
+      if (span.current) this.closeLeaseSpan(span.current, execution, errorMessage);
+    }
+    // the trace as closed, with the detail the close added
+    return execution.trace ? { ...execution, trace: this.loopService.assurance.getTrace(execution.trace.trace_id) } : execution;
+  }
+
+  private async runChecker(id: string, input: ExecuteCheckerInput, span: ReviewerDispatch): Promise<ExecuteWorkerResult> {
     const run = this.loopService.getLoopRun(id);
     this.loopService.assertOperatorNotPaused(run);
     const leases = this.loopService.listWorkerLeases(run.id);
@@ -286,11 +468,14 @@ export class LoopWorkerExecutorService {
     if (!maker || maker.role !== 'maker' || maker.status !== 'completed') throw new Error('CHECKER_MAKER_NOT_COMPLETED');
     if (!maker.worktree_path || !fs.existsSync(maker.worktree_path)) throw new Error('MAKER_WORKTREE_NOT_FOUND');
 
-    const runtime = input.runtime || (checker.runtime !== 'manual' ? checker.runtime : undefined);
+    const requested = input.runtime || (checker.runtime !== 'manual' ? checker.runtime : undefined);
+    // OLLAMA_OUTAGE_FALLBACK_RUNTIME: an opencode reviewer runs on claude (subscription); a continuation already carries it
+    const runtime = requested && requested !== 'manual' ? applyOutageFallback(this.db, run, checker, requested) : requested;
     if (!runtime || runtime === 'manual') throw createError(400, 'An explicit runtime is required to dispatch a manual reviewer; use verdict submission for manual review', 'CHECKER_RUNTIME_REQUIRED');
     if (checker.metadata.execution_task_id && runtime !== checker.runtime) {
       throw createError(409, 'Reviewer continuation must use the originally dispatched runtime', 'CHECKER_RUNTIME_MISMATCH');
     }
+    this.refuseFallbackSpawn(run, checker);
     const runtimeContract = this.loopService.getRuntimeContract(runtime);
 
     this.loopService.recordWorkerManifest({
@@ -311,7 +496,7 @@ export class LoopWorkerExecutorService {
         gateRefs: ['runtime_contract'], blockedReasons: ['runtime_contract_drift'],
         metadata: { worker_role: checker.role, worker_runtime: runtime, maker_lease_id: checker.metadata.maker_lease_id, reason: 'runtime_contract_unavailable_or_drifted', started_from: 'executeChecker' },
       });
-      this.loopService.updateWorkerLeaseStatus(checker.id, 'failed', { runtime_contract: runtimeContract, runtime_contract_failed_at: new Date().toISOString(), failure_reason: 'runtime_contract_unavailable_or_drifted' });
+      this.loopService.updateWorkerLeaseStatus(checker.id, 'failed', { runtime_contract: runtimeContract, runtime_contract_failed_at: new Date().toISOString(), failure_reason: 'runtime_contract_unavailable_or_drifted', failure: { stage: 'checker' } });
       throw new Error('RUNTIME_CONTRACT_DRIFTED');
     }
 
@@ -334,10 +519,13 @@ export class LoopWorkerExecutorService {
     const traceId = `loop-${run.id}-checker-${checker.id}`;
     const checkpointBefore = this.loopService.assurance.createCheckpoint({ loop_run_id: run.id, label: `before checker ${checker.id}`, metadata: { worker_lease_id: checker.id, maker_lease_id: maker.id, worker_role: checker.role, worker_runtime: runtime, phase: 'before_checker_execution' } });
     this.loopService.patchWorkerLeaseMetadata(checker.id, { checkpoint_before_id: checkpointBefore.id, trace_id: traceId, runtime_adapter: runtime });
-    this.loopService.assurance.createTraceSpan({ trace_id: traceId, loop_run_id: run.id, span_type: 'worker', name: `${checker.role}:${runtime}:spawn`, status: 'running', evidence_ref: `loop:${run.id}/checker:${checker.id}`, metadata: { worker_lease_id: checker.id, maker_lease_id: maker.id, role: checker.role, runtime, checkpoint_before_id: checkpointBefore.id } });
+    span.current = this.openLeaseSpan(run, checker, traceId, `loop:${run.id}/checker:${checker.id}`, runtime,
+      { maker_lease_id: maker.id, checkpoint_before_id: checkpointBefore.id });
+    span.leaseId = checker.id; // dispatched by this call: an unexpected error from here on fails it
     this.loopService.updateWorkerLeaseStatus(checker.id, 'running', { started_at: new Date().toISOString(), runtime_adapter: runtime });
 
     const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
+    const reviewerStartedAt = Date.now();
     const prompt = this.loopService.buildCheckerPrompt(run, maker, checker);
     const skipPermissions = this.loopService.resolveSkipPermissions(input.skip_permissions);
     const result = runtime === 'mock'
@@ -346,14 +534,23 @@ export class LoopWorkerExecutorService {
         this.riskAssessmentText(maker, prompt));
 
     const { stdoutPath, stderrPath } = this.writeOutput(run.id, checker.id, 'checker-output', result.stdout || '', result.stderr || '');
+    const runtimeUsage = this.loopService.extractRuntimeUsage(result.stdout || '');
+    // O2a: the reviewer's model call in the ledger (a mirror of this lease's runtime_usage; unknown tokens stay NULL)
+    const ledgerReviewer = (ok: boolean, status?: string) => recordWorkerCall(this.db, { consumer: 'checker', role: reviewRole, runId: run.id, goalId: run.goal_id,
+      loopName: run.loop_name, runtime, meta: { model: checker.metadata?.model, runtime_usage: runtimeUsage ? { input_tokens: runtimeUsage.prompt_tokens,
+        output_tokens: runtimeUsage.completion_tokens, total_tokens: runtimeUsage.total_tokens } : undefined }, durationMs: Date.now() - reviewerStartedAt, ok, status });
     if (this.loopService.isWorkerLeaseCancelled(checker.id)) {
-      this.loopService.patchWorkerLeaseMetadata(checker.id, { stdout_path: stdoutPath, stderr_path: stderrPath, runtime_was_cancelled: true });
+      // cancelled while it ran: the tokens it spent are still on the lease and in the ledger (once)
+      this.loopService.patchWorkerLeaseMetadata(checker.id, { stdout_path: stdoutPath, stderr_path: stderrPath, runtime_was_cancelled: true, failure: runtimeFailureHint(result, 'checker'),
+        runtime_usage: runtimeUsage || { usage_source: 'unknown' } });
+      ledgerReviewer(false, 'cancelled');
       return { run: this.loopService.getLoopRun(run.id), lease: this.loopService.getWorkerLease(checker.id), gates: [], stdout_path: stdoutPath, stderr_path: stderrPath };
     }
     const exitStatus = result.exitCode;
     const timedOut = result.timedOut;
-    const runtimeUsage = this.loopService.extractRuntimeUsage(result.stdout || '');
     const runtimeWarnings = this.loopService.extractRuntimeWarnings(result.stdout || '', result.stderr || '');
+    const fallbackLimited = this.fallbackLimitHit(checker, exitStatus, result);
+    this.noteOpencodeLimit(runtime, reviewRole, exitStatus, result);
     const verdict = exitStatus === 0 && !timedOut ? this.loopService.extractCheckerVerdict(result.stdout || '') : 'insufficient_evidence';
     if (shouldRecordSecondOpinion(runtime, reviewRole, judgmentMode(checkerSecondOpinion.id))) void this.recordSecondOpinion(run, maker, checker, verdict);
     const checkerChanged = this.loopService.git(checkerWorktree, ['diff', '--name-only', '--', '.']).split('\n').filter(Boolean);
@@ -379,8 +576,11 @@ export class LoopWorkerExecutorService {
       // separates "no verdict parsed" from an explicit insufficient_evidence (both are stored as that verdict); reviewerSubReason
       verdict_parsed: exitStatus === 0 && !timedOut && this.loopService.checkerVerdictParsed(result.stdout || ''),
       // without it the lease repo fell back to the reviewer's notes, so 'failed' leases carried prose (or a raw event line) as their reason
-      ...(exitStatus === 0 && !timedOut ? {} : { failure_reason: `${reviewRole}_runtime_failed:exit=${exitStatus ?? 'signal'},timed_out=${timedOut}: ${(result.stderr || '').split('\n').map((line) => line.trim()).filter((line) => line && !line.startsWith('at ')).pop()?.slice(0, 200) ?? ''}` }),
+      ...(fallbackLimited ? { failure_reason: LIMIT_HIT, subscription_limit_hit_at: new Date().toISOString() } : exitStatus === 0 && !timedOut ? {} : { failure_reason: `${reviewRole}_runtime_failed:exit=${exitStatus ?? 'signal'},timed_out=${timedOut}: ${(result.stderr || '').split('\n').map((line) => line.trim()).filter((line) => line && !line.startsWith('at ')).pop()?.slice(0, 200) ?? ''}` }),
+      ...(exitStatus === 0 && !timedOut ? {} : { failure: runtimeFailureHint(result, 'checker') }),
     });
+
+    ledgerReviewer(exitStatus === 0 && !timedOut);
 
     const gates: LoopGate[] = [
       { name: `${reviewRole}_runtime_exit_zero`, status: exitStatus === 0 && !timedOut ? 'pass' : 'fail', evidence: `runtime=${runtime}, exit=${exitStatus ?? 'signal'}, timed_out=${timedOut}` },
@@ -407,7 +607,6 @@ export class LoopWorkerExecutorService {
       metadata: { worker_role: checker.role, worker_runtime: runtime, maker_lease_id: maker.id, verdict, runtime_pid: result.runtimePid, runtime_signal: result.signal, runtime_timed_out: result.timedOut, runtime_timed_out_at: result.timedOutAt, exit_status: exitStatus, timed_out: timedOut, runtime_usage: runtimeUsage || { usage_source: 'unknown' }, runtime_warnings: runtimeWarnings, started_from: 'executeChecker' },
     });
 
-    this.loopService.assurance.createTraceSpan({ trace_id: traceId, loop_run_id: run.id, span_type: 'worker', name: `${checker.role}:${runtime}:completion`, status: failed ? 'error' : 'ok', evidence_ref: stdoutPath, metadata: { worker_lease_id: checker.id, maker_lease_id: maker.id, role: checker.role, runtime, stdout_path: stdoutPath, stderr_path: stderrPath, gates, verdict } });
     const checkpointAfter = this.loopService.assurance.createCheckpoint({ loop_run_id: run.id, label: `after checker ${checker.id}`, metadata: { worker_lease_id: checker.id, maker_lease_id: maker.id, worker_role: checker.role, worker_runtime: runtime, phase: 'after_checker_execution' } });
     this.loopService.patchWorkerLeaseMetadata(checker.id, { checkpoint_after_id: checkpointAfter.id });
 
@@ -421,6 +620,31 @@ export class LoopWorkerExecutorService {
   }
 
   // ─── Private ──────────────────────────────────────────────────────────
+
+  /**
+   * OLLAMA_OUTAGE_FALLBACK_RUNTIME: a fallback lease without the OAuth token, or while the subscription is benched after a
+   * usage limit, is never spawned — failed as infra (never a regression) and the dispatch throws.
+   */
+  private refuseFallbackSpawn(run: LoopRunRecord, lease: WorkerLeaseRecord): void {
+    if (!isFallbackLease(lease)) return;
+    const refusal = fallbackRefusal(this.db);
+    if (!refusal) return;
+    this.loopService.updateWorkerLeaseStatus(lease.id, 'failed', { failure_reason: refusal, failed_at: new Date().toISOString(), runtime_fallback_refused: true,
+      failure: { stage: lease.role === 'maker' ? 'prepare' : 'checker' } });
+    this.loopService.recordLoopEvent(run.id, 'runtime_fallback_refused', 'warning', `${lease.role} lease ${lease.id} not spawned on the outage fallback: ${refusal}.`, { lease_id: lease.id, role: lease.role, reason: refusal });
+    throw new Error(refusal === LIMIT_HIT ? 'SUBSCRIPTION_LIMIT_BACKOFF' : 'SUBSCRIPTION_AUTH_MISSING');
+  }
+
+  /** OLLAMA_AUTO_FAILOVER: a failed opencode run whose output carries the Ollama Cloud usage-limit error records the limited state. */
+  private noteOpencodeLimit(runtime: string | undefined, role: string, exitStatus: number | null | undefined, result: { stdout?: string; stderr?: string }): void {
+    if (runtime !== 'opencode' || exitStatus === 0) return;
+    noteOllamaOutput(this.db, `${result.stderr || ''}\n${(result.stdout || '').slice(-4_000)}`, `opencode:${role}`);
+  }
+
+  /** A failed fallback run whose CLI output says the subscription's usage window is exhausted (#881 detection). */
+  private fallbackLimitHit(lease: WorkerLeaseRecord, exitStatus: number | null | undefined, result: { stdout?: string; stderr?: string }): boolean {
+    return isFallbackLease(lease) && isSubscriptionLimit(exitStatus ?? null, result.stdout || '', result.stderr || '');
+  }
 
   private async executeMockWorker(
     lease: WorkerLeaseRecord,
@@ -487,9 +711,17 @@ export class LoopWorkerExecutorService {
     const now = new Date().toISOString();
     const environment = Object.fromEntries(Object.entries(this.loopService.buildNestedSpawnEnv(lease) || {})
       .filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
+    // SUBSCRIPTION_GYM_SPECIES: a gym maker on a flat subscription — the executor drops every billing key and adds the login at
+    // spawn time (only the marker is stored here, never the token); opencode = an opencode-free:<model> species (keys dropped, no login)
+    // OLLAMA_OUTAGE_FALLBACK_RUNTIME: every role of a fallback lease (maker, checker, security checker) runs the same way
+    if ((lease.role === 'maker' || isFallbackLease(lease)) && lease.metadata.subscription_auth === runtime && (runtime === 'claude' || runtime === 'codex' || runtime === 'opencode')) environment[SUBSCRIPTION_ENV_MARKER] = runtime;
+    const factoryGoal = run.goal_id ? this.db.prepare("SELECT owner_user_id FROM goals WHERE id = ? AND json_type(metadata, '$.skill_factory_key') = 'text'").get(run.goal_id) as { owner_user_id: string | null } | undefined : undefined;
+    const selected = skillAssignment(this.db, prompt, lease.role === 'maker' && lease.metadata.skill_execution ? { skill_execution: lease.metadata.skill_execution } : {});
+    prompt = selected.description;
+    riskAssessmentText += selected.metadata.skill_package_receipts ? `\n${prompt}` : '';
     this.db.prepare(`
-      INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, agent_id, tags, metadata, created_at, updated_at)
-      VALUES (?, ?, ?, 'pending', ?, ?, 'local', ?, ?, ?, ?, ?)
+      INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, agent_id, tags, metadata, created_at, updated_at, owner_user_id)
+      VALUES (?, ?, ?, 'pending', ?, ?, 'local', ?, ?, ?, ?, ?, ?)
     `).run(
       taskId,
       `${lease.role} worker for ${run.loop_name}`,
@@ -498,13 +730,14 @@ export class LoopWorkerExecutorService {
       this.loopService.isHighRiskRun(run) ? 'high' : 'low',
       agentId,
       JSON.stringify(['loop-worker', lease.role, runtime]),
-      JSON.stringify({ loop_run_id: run.id, lease_id: lease.id, workingDirectory: cwd, timeoutMs, skipPermissions, environment,
+      JSON.stringify({ ...selected.metadata, loop_run_id: run.id, lease_id: lease.id, workingDirectory: cwd, timeoutMs, skipPermissions, environment,
         ...(typeof lease.metadata.model === 'string' ? { model: lease.metadata.model } : {}),
         ...(runtime === 'codex' && typeof lease.metadata.reasoningEffort === 'string' ? { reasoningEffort: lease.metadata.reasoningEffort } : {}),
         ...(runtime === 'codex' ? { codexSandbox: lease.role === 'maker' ? 'workspace-write' : 'read-only' } : {}),
       }),
       now,
       now,
+      factoryGoal?.owner_user_id ?? null,
     );
     this.loopService.patchWorkerLeaseMetadata(lease.id, { execution_task_id: taskId,
       ...leaseIdentity(runtime, typeof lease.metadata.model === 'string' ? lease.metadata.model : undefined, prompt) });
@@ -517,7 +750,10 @@ export class LoopWorkerExecutorService {
       throw new Error('LOOP_WORKER_APPROVAL_REQUIRED');
     }
     if (execution.status === 'denied' || !execution.completion) {
-      this.loopService.updateWorkerLeaseStatus(lease.id, 'failed', { execution_task_id: taskId, execution_denied_reason: execution.reason });
+      // a denial without a stated reason fell through to 'unspecified: caller supplied no reason' (the repo reads execution_denied_reason)
+      const denied = execution.reason || (execution.status === 'denied' ? 'execution_denied_without_reason' : `execution_${execution.status}_without_completion`);
+      this.loopService.updateWorkerLeaseStatus(lease.id, 'failed', { execution_task_id: taskId, execution_denied_reason: denied,
+        failure: { stage: lease.role === 'maker' ? 'prepare' : 'checker', stderr_class: classifyStderr(denied), stderr_source: 'reason' } });
       throw new Error('LOOP_WORKER_EXECUTION_DENIED');
     }
 
@@ -566,10 +802,17 @@ export class LoopWorkerExecutorService {
   }
 
   private toRuntimeResult(completed: ExecutionResult): RuntimeExecutionResult {
-    const timedOut = /timed out/i.test(`${completed.message}\n${completed.error || ''}`);
+    const message = `${completed.message}\n${completed.error || ''}`;
+    const timedOut = /timed out/i.test(message);
+    // exitCode stays the status-derived 0/1 the gates have always read; the child's own exit and signal are recorded beside it
+    const exitObserved = completed.exitCode !== undefined || completed.signal !== undefined;
     return {
       exitCode: completed.status === 'completed' ? 0 : 1,
-      signal: null,
+      signal: completed.signal ?? null,
+      processExitCode: exitObserved ? completed.exitCode ?? null : null,
+      exitObserved,
+      tokenBudgetHit: /token budget exceeded/i.test(message),
+      runtimeMessage: completed.status === 'completed' ? '' : `${completed.message || ''}${completed.error ? `\n${completed.error.split('\n')[0]}` : ''}`.slice(0, 1_000),
       timedOut,
       ...(timedOut ? { timedOutAt: new Date().toISOString() } : {}),
       stdout: completed.stdout || '',
@@ -620,7 +863,7 @@ export class LoopWorkerExecutorService {
       let task = packetFile && fs.existsSync(packetFile) ? fs.readFileSync(packetFile, 'utf8') : '';
       try { const f = JSON.parse(task)?.finding; if (f?.message) task = [f.message, f.suggested_fix].filter(Boolean).join('\n'); } catch { /* raw packet text */ }
       const diff = maker.worktree_path ? this.loopService.workingTreeDiff(maker.worktree_path) : '';
-      const state = checkerSecondOpinionState(task, diff, maker.metadata.deterministic_checks || []);
+      const state = checkerSecondOpinionState(task, diff, withoutHiddenChecks(maker.metadata.deterministic_checks || []));
       await runJudgment(this.db, checkerSecondOpinion, { type: 'worker_lease', id: checker.id }, state, undefined, { checkerVerdict, loopRunId: run.id });
     } catch { /* shadow judgment must never affect the loop */ }
   }

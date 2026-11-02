@@ -95,7 +95,7 @@ it('Y3: with dream evolution on, the remote gym serves trial work with the genom
   ensureBaseline(db); mutant('g1', ['Read the failing test first.']);
   const first = svc.claim('workstation', ['atomic@llama-router']) as { runId: string; task: { commit: string }; genome?: { id: string; lines: string[] } };
   expect(first).toMatchObject({ task: { commit: 'c00' }, genome: { id: BASELINE_GENOME, lines: [] } });
-  svc.record(first.runId, 'workstation', { status: 'success', reason: 'tests green, source only' });
+  svc.record(first.runId, 'workstation', { status: 'success', changed_files: ['packages/server/src/services/fixed.ts'], diff: '+fixed', reason: 'tests green, source only' });
   const second = svc.claim('workstation', ['atomic@llama-router']) as { runId: string; genome?: { id: string; lines: string[] } };
   expect(second.genome).toEqual({ id: 'g1', lines: ['Read the failing test first.'] });
   svc.record(second.runId, 'workstation', { status: 'failure', reason: 'tests still red' });
