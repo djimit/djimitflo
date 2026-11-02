@@ -32,6 +32,7 @@ Operator-adopted 2026-11-01. Each item ships as a draft PR on `feat/ux-evo/<NN>-
 | UXE-02a | Ratchet v1a: `operator_routes_ui_called` / `unmatched_calls` (a2, wraps `ux-coverage.mjs`; `unavailable` without `typescript`, never 0), `contrast_pairs_below_4_5` (a4), `max_page_lines`, `dead_ws_subscriptions`; baseline = base measurement 155 / 0 / 10 / 1301 / 6 | draft PR (stacked on UXE-00) |
 | UXE-09 | Visible errors: load and action failures render as text on Policy Center, Federation, MCP Permissions, Tasks and Task detail (no `alert()`, `native_alert` 3 → 0); `useDialog` confirmation before proof-run rollback (Mission Control, proof-run detail) and worker drain / lease stop (Fleet Cockpit) | draft PR |
 | UXE-00a | Guard-test list (R12): a loop PR touching a UX oracle test (`ORACLE_TEST_FILES` in `loop-auto-merge.ts`) is permanent `ineligible: oracle_test_file`; refuses more PRs, never allows more | draft PR |
+| UXE-01 | Runbook default rows for `LOOP_DRAFT_PR_THROTTLE_MODE`, `LOOP_DRAFT_PR_MAX_OPEN`, `VECTOR_STRICT_DIM`, `RETRIEVAL_NORMALISE_SCORES`, `TELEGRAM_PUSH_DELAY_MS` (now in `RUNBOOK_DEFAULTS`); `LLM_JSON_REPAIR_ENABLED` row corrected (Frontier Experts only); the digest / triage tick reports as scheduler `operator_digest` with a guarded tick | draft PR |
 
 ## Coverage baseline (UX-0, origin/main 5a9d46d5, 2026-10-05)
 
