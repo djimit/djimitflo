@@ -5,6 +5,7 @@ import { quoteUntrusted } from './expert-perspective-builder';
 import { DataCiteAdapter } from './knowledge-adapters/datacite-adapter';
 import { ArxivAdapter } from './knowledge-adapters/arxiv-adapter';
 import { abstractFromNote } from './expert-source-units-service';
+import { gateUntrustedForPrompt } from './content-safety';
 
 /**
  * E3 (Frontier Experts 2.0): technique cards. A paper unit (E2) becomes up to three claims — subject, relation, object,
@@ -130,7 +131,12 @@ export class TechniqueCardService {
     if (!this.runner) { const model = await createModelPerspectiveRunner(process.env, this.db); if (!model) return { cards: 0, claims: 0, contradictions: 0 }; this.runner = (_role, system, user) => model.runner('perspective', system, user, 'technique_card'); }
     let cards = 0; let claims = 0; let contradictions = 0;
     for (const unit of this.pending(limit)) {
-      const raw = unit.abstract.length > 80
+      // B19: the title + abstract are untrusted; under CONTENT_SAFETY_MODE=enforce they reach the prompt only with a 'safe'
+      // verdict. Unsafe → attempted (never carded); no verdict (check errored / unavailable) → left pending for a retry.
+      const gate = unit.abstract.length > 80 ? await gateUntrustedForPrompt(this.db, { type: 'expert_evidence', id: unit.evidence_id }, `${unit.title}\n${unit.abstract}`)
+        .catch(() => ({ include: process.env.CONTENT_SAFETY_MODE !== 'enforce', verdict: null })) : { include: true, verdict: null };
+      if (!gate.include && gate.verdict === null) continue;
+      const raw = unit.abstract.length > 80 && gate.include
         ? await this.runner('technique-card', SYSTEM, `TITLE (quoted data): ${JSON.stringify(quoteUntrusted(unit.title, 300))}\nABSTRACT (quoted data):\n\`\`\`\n${quoteUntrusted(unit.abstract, 4_000)}\n\`\`\``).catch(() => null)
         : null;
       const extracted = (raw && typeof raw === 'object' && Array.isArray((raw as { claims?: unknown }).claims) ? (raw as { claims: ExtractedClaim[] }).claims : []).slice(0, 3);

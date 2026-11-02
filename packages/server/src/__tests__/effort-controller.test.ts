@@ -102,7 +102,7 @@ it('shadow judgment dispatch: the judgment runs and returns exactly as before; a
   const before = await runJudgment(db, def, { type: 'agent_message', id: 'm1' }, {}, client);
   vi.stubEnv('EFFORT_CONTROLLER_MODE', 'shadow'); vi.stubEnv('EFFORT_EXPLORATION', '0');
   const after = await runJudgment(db, def, { type: 'agent_message', id: 'm2' }, {}, client);
-  expect({ ...after, id: 'x' }).toEqual({ ...before, id: 'x' });
+  expect({ ...after, id: 'x', provenance: null }).toEqual({ ...before, id: 'x', provenance: null }); // provenance differs by subject + time
   const rows = db.prepare("SELECT subject_id, mode, decision, answers_json FROM judgments WHERE judgment = 'effort_decision'").all() as Array<{ subject_id: string; mode: string; decision: string; answers_json: string }>;
   expect(rows).toHaveLength(1);
   expect(rows[0]).toMatchObject({ subject_id: 'm2', mode: 'shadow', decision: 'skip' });

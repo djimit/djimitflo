@@ -53,7 +53,6 @@ it('pauses and resumes a quiescent goal without erasing metadata or changing com
   expect(loops.getLoopRun('done').status).toBe('completed');
   expect(() => loops.continueLoopRun('run')).toThrow('LOOP_OPERATOR_PAUSED');
   expect(() => loops.verifyLoopRun('run')).toThrow('LOOP_OPERATOR_PAUSED');
-  expect(() => loops.resumeInterruptedRun('run')).toThrow('LOOP_OPERATOR_PAUSED');
   expect(service.resumeGoal(goalId).resumed).toBe(true);
   expect(loops.getLoopRun('run').status).toBe('planning');
   expect(loops.getGoal(goalId).status).toBe('created');

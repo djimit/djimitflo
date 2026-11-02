@@ -1,0 +1,13 @@
+diff --git a/index.js b/index.js
+index 6da5ee2..7f89083 100644
+--- a/index.js
++++ b/index.js
+@@ -11,7 +11,7 @@ const convertWithOptions = (document, format, filter, options, callback) => {
+     const tmpOptions = (options || {}).tmpOptions || {};
+     const asyncOptions = (options || {}).asyncOptions || {};
+     const execOptions = (options || {}).execOptions || {};
+-    const fileName = path.basename((options || {}).fileName || 'source');
++    const fileName = (options || {}).fileName || 'source';
+     const sofficeAdditionalArgs = (options || {}).sofficeAdditionalArgs || [];
+     const tempDir = tmp.dirSync({prefix: 'libreofficeConvert_', unsafeCleanup: true, ...tmpOptions});
+     const installDir = tmp.dirSync({prefix: 'soffice', unsafeCleanup: true, ...tmpOptions});

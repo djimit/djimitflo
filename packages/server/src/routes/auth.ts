@@ -23,6 +23,12 @@ function cookieOptions(): CookieOptions {
   };
 }
 
+/** Who called, for the auth audit rows (0 of 980 auth.login rows carried either, D-security 30-10 §1a). */
+function client(req: Request): { ip_address: string; user_agent?: string } {
+  const ua = req.get('user-agent');
+  return { ip_address: req.ip || req.socket.remoteAddress || 'unknown', ...(ua ? { user_agent: ua.slice(0, 200) } : {}) };
+}
+
 function refreshCookie(req: Request): string | null {
   const matches = (req.headers.cookie ?? '').split(';').map(part => part.trim())
     .filter(part => part.startsWith(`${REFRESH_COOKIE}=`));
@@ -35,6 +41,18 @@ export function createAuthRoutes(authService: AuthService, auth: AuthMiddleware,
   const router = Router();
   router.use(rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false })); // per-router limiter CodeQL can see; /api also caps 300/min
   router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
+
+  // a failed login names no user and never the submitted email or password: only that it failed, how, and from where
+  function recordFailedLogin(req: Request, channel: 'browser' | 'token') {
+    auditService.record({
+      event_type: AuditEventType.AUTH_LOGIN_FAILED,
+      action: 'auth.login_failed',
+      resource_type: 'user',
+      risk_level: RiskLevel.MEDIUM,
+      metadata: { channel, reason: 'invalid_credentials' },
+      ...client(req),
+    });
+  }
 
   function setRefreshCookie(res: Response, token: string) {
     res.cookie(REFRESH_COOKIE, token, { ...cookieOptions(), maxAge: 30 * 24 * 60 * 60 * 1000 });
@@ -68,11 +86,13 @@ export function createAuthRoutes(authService: AuthService, auth: AuthMiddleware,
           resource_id: authenticated.user.id,
           risk_level: RiskLevel.LOW,
           metadata: { channel: 'browser' },
+          ...client(req),
         });
         return authenticated;
       });
       if (!result) {
         loginRateLimiter.recordFailure(ip);
+        recordFailedLogin(req, 'browser');
         res.status(401).json({ error: { message: 'Invalid credentials', code: 'AUTH_FAILED' } });
         return;
       }
@@ -85,6 +105,7 @@ export function createAuthRoutes(authService: AuthService, auth: AuthMiddleware,
     const result = authService.authenticate(email, password);
     if (!result) {
       loginRateLimiter.recordFailure(ip);
+      recordFailedLogin(req, 'token');
       res.status(401).json({ error: { message: 'Invalid credentials', code: 'AUTH_FAILED' } });
       return;
     }
@@ -98,6 +119,7 @@ export function createAuthRoutes(authService: AuthService, auth: AuthMiddleware,
       resource_type: 'user',
       resource_id: result.user.id,
       risk_level: RiskLevel.LOW,
+      ...client(req),
     });
 
     res.json({ token: result.token, user: result.user });
@@ -130,6 +152,7 @@ export function createAuthRoutes(authService: AuthService, auth: AuthMiddleware,
         resource_id: user.id,
         risk_level: RiskLevel.LOW,
         metadata: { channel: 'browser' },
+        ...client(req),
       });
       return { tokens, user };
     }) : null;

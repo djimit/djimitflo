@@ -1,0 +1,3714 @@
+{
+  "source_sha": "f957b552c9f02ffc5fb25c45d24431610e57f278",
+  "classification": "STATIC_WIRING_ONLY",
+  "limitations": [
+    "Dynamic URL expressions are source expressions, not executed requests.",
+    "WebSocket and shared bootstrap APIs are not duplicated per page.",
+    "Public routes are the additional Explore router linked by the UI; this is not an inventory of every backend endpoint."
+  ],
+  "routes": [
+    {
+      "route": "/login",
+      "element": "LoginPage",
+      "component_file": "packages/dashboard/src/pages/LoginPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 89,
+      "redirect": null,
+      "api": []
+    },
+    {
+      "route": "/",
+      "element": "ProtectedRoute",
+      "component_file": "packages/dashboard/src/components/ProtectedRoute.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 90,
+      "redirect": null,
+      "api": []
+    },
+    {
+      "route": "/",
+      "element": "OperatorCockpitPage",
+      "component_file": "packages/dashboard/src/pages/OperatorCockpitPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 99,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/OperatorCockpitPage.tsx",
+          "line": 21,
+          "method": "getOperatorDigest",
+          "args": [],
+          "endpoint": {
+            "line": 1890,
+            "endpoints": [
+              "'/health/digest'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/OperatorCockpitPage.tsx",
+          "line": 156,
+          "method": "getEfficiency",
+          "args": [],
+          "endpoint": {
+            "line": 1881,
+            "endpoints": [
+              "'/health/efficiency'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/OperatorCockpitPage.tsx",
+          "line": 221,
+          "method": "getServiceMap",
+          "args": [],
+          "endpoint": {
+            "line": 1958,
+            "endpoints": [
+              "'/health/services'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/OperatorCockpitPage.tsx",
+          "line": 223,
+          "method": "getOperatorCockpit",
+          "args": [],
+          "endpoint": {
+            "line": 1885,
+            "endpoints": [
+              "'/health/cockpit'"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/dashboard",
+      "element": "DashboardPage",
+      "component_file": "packages/dashboard/src/pages/DashboardPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 100,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/DashboardPage.tsx",
+          "line": 23,
+          "method": "getTasks",
+          "args": [],
+          "endpoint": {
+            "line": 1615,
+            "endpoints": [
+              "`/tasks?${query}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/DashboardPage.tsx",
+          "line": 23,
+          "method": "getAgents",
+          "args": [],
+          "endpoint": {
+            "line": 1658,
+            "endpoints": [
+              "'/agents'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/components/SpecComplianceWidget.tsx",
+          "line": 50,
+          "method": "request",
+          "args": [
+            "`/compliance/specs${refresh ? '?refresh=1' : ''}`"
+          ],
+          "endpoint": {
+            "line": 1594,
+            "endpoints": []
+          }
+        },
+        {
+          "file": "packages/dashboard/src/components/SpecComplianceWidget.tsx",
+          "line": 103,
+          "method": "exportCompliance",
+          "args": [
+            "'json'"
+          ],
+          "endpoint": {
+            "line": 2567,
+            "endpoints": []
+          }
+        },
+        {
+          "file": "packages/dashboard/src/components/SpecComplianceWidget.tsx",
+          "line": 104,
+          "method": "exportCompliance",
+          "args": [
+            "'csv'"
+          ],
+          "endpoint": {
+            "line": 2567,
+            "endpoints": []
+          }
+        }
+      ]
+    },
+    {
+      "route": "/tasks",
+      "element": "TasksPage",
+      "component_file": "packages/dashboard/src/pages/TasksPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 101,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/TasksPage.tsx",
+          "line": 194,
+          "method": "getRepositories",
+          "args": [],
+          "endpoint": {
+            "line": 2488,
+            "endpoints": [
+              "'/repositories'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/TasksPage.tsx",
+          "line": 204,
+          "method": "getRuntimeContracts",
+          "args": [],
+          "endpoint": {
+            "line": 2093,
+            "endpoints": [
+              "'/loops/runtime-contracts'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/TasksPage.tsx",
+          "line": 217,
+          "method": "createTask",
+          "args": [
+            "{\n        title,\n        description,\n        priority,\n        execution_mode: executionMode,\n        agent_id: agentId || undefined,\n        repository_id: repository?.id,\n      "
+          ],
+          "endpoint": {
+            "line": 1624,
+            "endpoints": [
+              "'/tasks', {\n      method: 'POST',\n      body: JSON.stringify(input),\n    }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/tasks/:taskId",
+      "element": "TaskDetailPage",
+      "component_file": "packages/dashboard/src/pages/TaskDetailPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 102,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/TaskDetailPage.tsx",
+          "line": 38,
+          "method": "getRuntimeContracts",
+          "args": [],
+          "endpoint": {
+            "line": 2093,
+            "endpoints": [
+              "'/loops/runtime-contracts'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/TaskDetailPage.tsx",
+          "line": 65,
+          "method": "getTask",
+          "args": [
+            "taskId!"
+          ],
+          "endpoint": {
+            "line": 1620,
+            "endpoints": [
+              "`/tasks/${id}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/TaskDetailPage.tsx",
+          "line": 66,
+          "method": "getExecutionEvents",
+          "args": [
+            "taskId!"
+          ],
+          "endpoint": {
+            "line": 1700,
+            "endpoints": [
+              "`/tasks/${taskId}/events`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/TaskDetailPage.tsx",
+          "line": 67,
+          "method": "getApprovals",
+          "args": [
+            "taskId!"
+          ],
+          "endpoint": {
+            "line": 1705,
+            "endpoints": [
+              "`/tasks/${taskId}/approvals`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/TaskDetailPage.tsx",
+          "line": 129,
+          "method": "executeTask",
+          "args": [
+            "taskId",
+            "selectedExecutor"
+          ],
+          "endpoint": {
+            "line": 1644,
+            "endpoints": [
+              "`/tasks/${id}/execute`, {\n      method: 'POST',\n      body: JSON.stringify({ executor }),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/TaskDetailPage.tsx",
+          "line": 152,
+          "method": "cancelTask",
+          "args": [
+            "taskId"
+          ],
+          "endpoint": {
+            "line": 1651,
+            "endpoints": [
+              "`/tasks/${id}/cancel`, {\n      method: 'POST',\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/TaskDetailPage.tsx",
+          "line": 305,
+          "method": "exportTask",
+          "args": [
+            "taskId!",
+            "format"
+          ],
+          "endpoint": {
+            "line": 2563,
+            "endpoints": []
+          }
+        },
+        {
+          "file": "packages/dashboard/src/components/ApprovalCard.tsx",
+          "line": 27,
+          "method": "approveRequestExplicit",
+          "args": [
+            "approval.id"
+          ],
+          "endpoint": {
+            "line": 1725,
+            "endpoints": [
+              "`/approvals/${approvalId}/approve`, {\n      method: 'POST',\n      body: JSON.stringify({ reason }),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/components/ApprovalCard.tsx",
+          "line": 52,
+          "method": "denyRequestExplicit",
+          "args": [
+            "approval.id",
+            "reason.trim()"
+          ],
+          "endpoint": {
+            "line": 1732,
+            "endpoints": [
+              "`/approvals/${approvalId}/deny`, {\n      method: 'POST',\n      body: JSON.stringify({ reason }),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/hooks/usePendingApprovals.ts",
+          "line": 19,
+          "method": "getAllApprovals",
+          "args": [
+            "'pending'"
+          ],
+          "endpoint": {
+            "line": 1709,
+            "endpoints": [
+              "`/approvals${query}`"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/agents",
+      "element": "AgentsPage",
+      "component_file": "packages/dashboard/src/pages/AgentsPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 103,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/AgentsPage.tsx",
+          "line": 22,
+          "method": "getAgents",
+          "args": [],
+          "endpoint": {
+            "line": 1658,
+            "endpoints": [
+              "'/agents'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/AgentsPage.tsx",
+          "line": 253,
+          "method": "getRuntimeGovernanceAgent",
+          "args": [
+            "agentId"
+          ],
+          "endpoint": {
+            "line": 1666,
+            "endpoints": [
+              "`/runtime-governance/agents/${encodeURIComponent(id)}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/AgentsPage.tsx",
+          "line": 268,
+          "method": "releaseRuntimeGovernanceAgent",
+          "args": [
+            "agentId",
+            "releaseReason"
+          ],
+          "endpoint": {
+            "line": 1670,
+            "endpoints": [
+              "`/runtime-governance/agents/${encodeURIComponent(id)}/release`, {\n      method: 'POST',\n      body: JSON.stringify({ reason }),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/AgentsPage.tsx",
+          "line": 273,
+          "method": "getRuntimeGovernanceAgent",
+          "args": [
+            "agentId"
+          ],
+          "endpoint": {
+            "line": 1666,
+            "endpoints": [
+              "`/runtime-governance/agents/${encodeURIComponent(id)}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/ScorecardsSection.tsx",
+          "line": 11,
+          "method": "getScorecards",
+          "args": [],
+          "endpoint": {
+            "line": 1867,
+            "endpoints": [
+              "'/health/scorecards'"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/agents/:agentId",
+      "element": "AgentsPage",
+      "component_file": "packages/dashboard/src/pages/AgentsPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 104,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/AgentsPage.tsx",
+          "line": 22,
+          "method": "getAgents",
+          "args": [],
+          "endpoint": {
+            "line": 1658,
+            "endpoints": [
+              "'/agents'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/AgentsPage.tsx",
+          "line": 253,
+          "method": "getRuntimeGovernanceAgent",
+          "args": [
+            "agentId"
+          ],
+          "endpoint": {
+            "line": 1666,
+            "endpoints": [
+              "`/runtime-governance/agents/${encodeURIComponent(id)}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/AgentsPage.tsx",
+          "line": 268,
+          "method": "releaseRuntimeGovernanceAgent",
+          "args": [
+            "agentId",
+            "releaseReason"
+          ],
+          "endpoint": {
+            "line": 1670,
+            "endpoints": [
+              "`/runtime-governance/agents/${encodeURIComponent(id)}/release`, {\n      method: 'POST',\n      body: JSON.stringify({ reason }),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/AgentsPage.tsx",
+          "line": 273,
+          "method": "getRuntimeGovernanceAgent",
+          "args": [
+            "agentId"
+          ],
+          "endpoint": {
+            "line": 1666,
+            "endpoints": [
+              "`/runtime-governance/agents/${encodeURIComponent(id)}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/ScorecardsSection.tsx",
+          "line": 11,
+          "method": "getScorecards",
+          "args": [],
+          "endpoint": {
+            "line": 1867,
+            "endpoints": [
+              "'/health/scorecards'"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/catalog",
+      "element": "AgentCatalogPage",
+      "component_file": "packages/dashboard/src/pages/AgentCatalogPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 105,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/hooks/useCatalog.ts",
+          "line": 40,
+          "method": "getCatalogCounts",
+          "args": [],
+          "endpoint": {
+            "line": 2589,
+            "endpoints": [
+              "`/catalog/counts`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/hooks/useCatalog.ts",
+          "line": 42,
+          "method": "searchCatalogAgents",
+          "args": [
+            "q"
+          ],
+          "endpoint": {
+            "line": 2601,
+            "endpoints": [
+              "`/catalog/search?${params}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/hooks/useCatalog.ts",
+          "line": 43,
+          "method": "getCatalogAgents",
+          "args": [
+            "division ? { division } : undefined"
+          ],
+          "endpoint": {
+            "line": 2593,
+            "endpoints": [
+              "`/catalog/agents${qs ? `?${qs}` : \"\"}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/hooks/useCatalog.ts",
+          "line": 83,
+          "method": "activateCatalogAgent",
+          "args": [
+            "id",
+            "target"
+          ],
+          "endpoint": {
+            "line": 2607,
+            "endpoints": [
+              "`/catalog/activate/${id}`, {\n      method: \"POST\",\n      body: JSON.stringify({ target: target || \"openclaw\" }),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/hooks/useCatalog.ts",
+          "line": 88,
+          "method": "deactivateCatalogAgent",
+          "args": [
+            "id"
+          ],
+          "endpoint": {
+            "line": 2614,
+            "endpoints": [
+              "`/catalog/deactivate/${id}`, {\n      method: \"POST\",\n    }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/swarm",
+      "element": "SwarmOverviewPage",
+      "component_file": "packages/dashboard/src/pages/SwarmOverviewPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 106,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/SwarmOverviewPage.tsx",
+          "line": 81,
+          "method": "getSwarmStatus",
+          "args": [],
+          "endpoint": {
+            "line": 2184,
+            "endpoints": [
+              "'/swarms/status'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmOverviewPage.tsx",
+          "line": 82,
+          "method": "getSwarmCapabilities",
+          "args": [],
+          "endpoint": {
+            "line": 2452,
+            "endpoints": [
+              "`/swarms/intelligence/capabilities${query}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmOverviewPage.tsx",
+          "line": 101,
+          "method": "getAgents",
+          "args": [],
+          "endpoint": {
+            "line": 1658,
+            "endpoints": [
+              "'/agents'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmOverviewPage.tsx",
+          "line": 102,
+          "method": "getTasks",
+          "args": [],
+          "endpoint": {
+            "line": 1615,
+            "endpoints": [
+              "`/tasks?${query}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmOverviewPage.tsx",
+          "line": 115,
+          "method": "request",
+          "args": [
+            "\"/discussions?limit=10\""
+          ],
+          "endpoint": {
+            "line": 1594,
+            "endpoints": []
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmOverviewPage.tsx",
+          "line": 125,
+          "method": "request",
+          "args": [
+            "\"/learning?limit=5\""
+          ],
+          "endpoint": {
+            "line": 1594,
+            "endpoints": []
+          }
+        }
+      ]
+    },
+    {
+      "route": "/approvals",
+      "element": "Navigate",
+      "component_file": null,
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 107,
+      "redirect": "{<Navigate to=\"/decisions#approvals\" replace />}",
+      "api": []
+    },
+    {
+      "route": "/policies",
+      "element": "PolicyCenterPage",
+      "component_file": "packages/dashboard/src/pages/PolicyCenterPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 108,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/PolicyCenterPage.tsx",
+          "line": 12,
+          "method": "getPolicies",
+          "args": [],
+          "endpoint": {
+            "line": 1739,
+            "endpoints": [
+              "'/policies'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/PolicyCenterPage.tsx",
+          "line": 22,
+          "method": "updatePolicy",
+          "args": [
+            "policy.id",
+            "{ enabled: !policy.enabled }"
+          ],
+          "endpoint": {
+            "line": 1750,
+            "endpoints": [
+              "`/policies/${id}`, {\n      method: 'PATCH',\n      body: JSON.stringify(input),\n    }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/governance",
+      "element": "GovernanceHubPage",
+      "component_file": "packages/dashboard/src/pages/GovernanceHubPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 109,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/GovernanceScorecardPage.tsx",
+          "line": 30,
+          "method": "getOpenMythosLeaderboard",
+          "args": [],
+          "endpoint": {
+            "line": 1827,
+            "endpoints": [
+              "'/openmythos/leaderboard'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/GovernanceScorecardPage.tsx",
+          "line": 31,
+          "method": "getOpenMythosRuns",
+          "args": [
+            "20"
+          ],
+          "endpoint": {
+            "line": 1831,
+            "endpoints": [
+              "`/openmythos/runs${query}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/GovernanceScorecardPage.tsx",
+          "line": 74,
+          "method": "post",
+          "args": [
+            "`/openmythos/eval/${encodeURIComponent(agentId.trim())}`",
+            "model.trim() ? { model: model.trim() } : {}"
+          ],
+          "endpoint": {
+            "line": 2691,
+            "endpoints": [
+              "endpoint, {\n      method: 'POST',\n      body: JSON.stringify(body ?? {}),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/components/SpecComplianceWidget.tsx",
+          "line": 50,
+          "method": "request",
+          "args": [
+            "`/compliance/specs${refresh ? '?refresh=1' : ''}`"
+          ],
+          "endpoint": {
+            "line": 1594,
+            "endpoints": []
+          }
+        },
+        {
+          "file": "packages/dashboard/src/components/SpecComplianceWidget.tsx",
+          "line": 103,
+          "method": "exportCompliance",
+          "args": [
+            "'json'"
+          ],
+          "endpoint": {
+            "line": 2567,
+            "endpoints": []
+          }
+        },
+        {
+          "file": "packages/dashboard/src/components/SpecComplianceWidget.tsx",
+          "line": 104,
+          "method": "exportCompliance",
+          "args": [
+            "'csv'"
+          ],
+          "endpoint": {
+            "line": 2567,
+            "endpoints": []
+          }
+        },
+        {
+          "file": "packages/dashboard/src/components/ImprovementInbox.tsx",
+          "line": 20,
+          "method": "getImprovementProposals",
+          "args": [
+            "tab"
+          ],
+          "endpoint": {
+            "line": 1840,
+            "endpoints": [
+              "`/self-improve/proposals${query}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/components/ImprovementInbox.tsx",
+          "line": 21,
+          "method": "getSpecialistPanels",
+          "args": [
+            "100"
+          ],
+          "endpoint": {
+            "line": 2297,
+            "endpoints": [
+              "`/swarms/specialist-panels${query}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/components/ImprovementInbox.tsx",
+          "line": 36,
+          "method": "approveImprovementProposal",
+          "args": [
+            "proposal.id"
+          ],
+          "endpoint": {
+            "line": 1845,
+            "endpoints": [
+              "`/self-improve/proposals/${id}/approve`, { method: 'POST' }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/components/ImprovementInbox.tsx",
+          "line": 37,
+          "method": "rejectImprovementProposal",
+          "args": [
+            "proposal.id"
+          ],
+          "endpoint": {
+            "line": 1849,
+            "endpoints": [
+              "`/self-improve/proposals/${id}/reject`, { method: 'POST' }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/compliance",
+      "element": "Navigate",
+      "component_file": null,
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 110,
+      "redirect": "{<Navigate to=\"/governance?tab=assurance\" replace />}",
+      "api": []
+    },
+    {
+      "route": "/mcp-permissions",
+      "element": "MCPPermissionsPage",
+      "component_file": "packages/dashboard/src/pages/MCPPermissionsPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 111,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/MCPPermissionsPage.tsx",
+          "line": 61,
+          "method": "getMCPServers",
+          "args": [],
+          "endpoint": {
+            "line": 1678,
+            "endpoints": [
+              "'/mcp/servers?refresh=true'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/MCPPermissionsPage.tsx",
+          "line": 75,
+          "method": "createMCPServer",
+          "args": [
+            "{ name: newServerName.trim(), description: newServerDescription.trim(), command: '', url: newServerUrl.trim() || undefined }"
+          ],
+          "endpoint": {
+            "line": 1682,
+            "endpoints": [
+              "'/mcp/servers', {\n      method: 'POST',\n      body: JSON.stringify(input),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/MCPPermissionsPage.tsx",
+          "line": 91,
+          "method": "getMCPPermissions",
+          "args": [
+            "{ serverId, decision, riskLevel, q: query.trim() }"
+          ],
+          "endpoint": {
+            "line": 1771,
+            "endpoints": [
+              "`/mcp/permissions${query}`"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/observability",
+      "element": "ObservabilityPage",
+      "component_file": "packages/dashboard/src/pages/ObservabilityPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 112,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/ObservabilityPage.tsx",
+          "line": 35,
+          "method": "authenticatedFetch",
+          "args": [
+            "'/observability/stream'",
+            "{\n          signal: controller.signal,\n        }"
+          ],
+          "endpoint": null
+        },
+        {
+          "file": "packages/dashboard/src/pages/ObservabilityPage.tsx",
+          "line": 68,
+          "method": "getObservabilityMetrics",
+          "args": [],
+          "endpoint": {
+            "line": 2002,
+            "endpoints": [
+              "'/observability/metrics'"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/tasks/:taskId/review",
+      "element": "ReviewPage",
+      "component_file": "packages/dashboard/src/pages/ReviewPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 113,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/ReviewPage.tsx",
+          "line": 22,
+          "method": "getExecutionReview",
+          "args": [
+            "taskId"
+          ],
+          "endpoint": {
+            "line": 1816,
+            "endpoints": [
+              "`/evidence/review/${taskId}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/ReviewPage.tsx",
+          "line": 97,
+          "method": "exportTask",
+          "args": [
+            "taskId!",
+            "format"
+          ],
+          "endpoint": {
+            "line": 2563,
+            "endpoints": []
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/ReviewPage.tsx",
+          "line": 301,
+          "method": "getTaskDiff",
+          "args": [
+            "taskId"
+          ],
+          "endpoint": {
+            "line": 2527,
+            "endpoints": [
+              "`/tasks/${taskId}/diff`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/ReviewPage.tsx",
+          "line": 302,
+          "method": "getTaskSnapshots",
+          "args": [
+            "taskId"
+          ],
+          "endpoint": {
+            "line": 2531,
+            "endpoints": [
+              "`/tasks/${taskId}/snapshots`"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/audit",
+      "element": "AuditHubPage",
+      "component_file": "packages/dashboard/src/pages/AuditHubPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 114,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/AuditPage.tsx",
+          "line": 20,
+          "method": "request",
+          "args": [
+            "'/audit?limit=50'"
+          ],
+          "endpoint": {
+            "line": 1594,
+            "endpoints": []
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/AuditLogViewer.tsx",
+          "line": 33,
+          "method": "authenticatedFetch",
+          "args": [
+            "`/audit-logs?${params.toString()}`"
+          ],
+          "endpoint": null
+        },
+        {
+          "file": "packages/dashboard/src/pages/AuditLogViewer.tsx",
+          "line": 51,
+          "method": "authenticatedFetch",
+          "args": [
+            "`/audit-logs/export?format=${format}`"
+          ],
+          "endpoint": null
+        }
+      ]
+    },
+    {
+      "route": "/audit/logs",
+      "element": "Navigate",
+      "component_file": null,
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 115,
+      "redirect": "{<Navigate to=\"/audit?tab=logs\" replace />}",
+      "api": []
+    },
+    {
+      "route": "/cockpit",
+      "element": "Navigate",
+      "component_file": null,
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 116,
+      "redirect": "{<Navigate to=\"/\" replace />}",
+      "api": []
+    },
+    {
+      "route": "/decisions",
+      "element": "DecisionsInboxPage",
+      "component_file": "packages/dashboard/src/pages/DecisionsInboxPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 117,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/DecisionsInboxPage.tsx",
+          "line": 21,
+          "method": "getDraftPrs",
+          "args": [],
+          "endpoint": {
+            "line": 1894,
+            "endpoints": [
+              "`/loops/draft-prs?limit=${limit}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/DecisionsInboxPage.tsx",
+          "line": 53,
+          "method": "getDependencyLane",
+          "args": [],
+          "endpoint": {
+            "line": 1898,
+            "endpoints": [
+              "'/loops/dependency-lane'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/DecisionsInboxPage.tsx",
+          "line": 107,
+          "method": "getDecisionsInbox",
+          "args": [],
+          "endpoint": {
+            "line": 1903,
+            "endpoints": [
+              "'/self-improve/decisions'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/DecisionsInboxPage.tsx",
+          "line": 127,
+          "method": "setTelegramIdentity",
+          "args": [
+            "tgId.trim()",
+            "tgUser.trim()"
+          ],
+          "endpoint": {
+            "line": 1944,
+            "endpoints": [
+              "`/self-improve/telegram-identities/${encodeURIComponent(telegramId)}`, { method: 'PUT', body: JSON.stringify({ user_id: userId, note }) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/DecisionsInboxPage.tsx",
+          "line": 173,
+          "method": "promoteMemoryCandidate",
+          "args": [
+            "m.id"
+          ],
+          "endpoint": {
+            "line": 2284,
+            "endpoints": [
+              "`/swarms/memory/candidates/${id}/promote`, {\n      method: 'POST',\n      // a human clicking Promote is the human approval; the server records the signed-in user as approver\n      // (the old body sent approved_by: 'dashboard', which the route ignores → review_required candidates got 409)\n      body: JSON.stringify({ sinks: ['okf'], human_approved: true }),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/DecisionsInboxPage.tsx",
+          "line": 174,
+          "method": "rejectMemoryCandidate",
+          "args": [
+            "m.id"
+          ],
+          "endpoint": {
+            "line": 2280,
+            "endpoints": [
+              "`/swarms/memory/candidates/${encodeURIComponent(id)}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/DecisionsInboxPage.tsx",
+          "line": 192,
+          "method": "requeueProposal",
+          "args": [
+            "r.id",
+            "reasons[r.id].trim()"
+          ],
+          "endpoint": {
+            "line": 1907,
+            "endpoints": [
+              "`/self-improve/proposals/${encodeURIComponent(id)}/requeue`, { method: 'POST', body: JSON.stringify({ reason }) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/DecisionsInboxPage.tsx",
+          "line": 194,
+          "method": "dismissRequeue",
+          "args": [
+            "r.id",
+            "(reasons[r.id] ?? '').trim() || undefined"
+          ],
+          "endpoint": {
+            "line": 1912,
+            "endpoints": [
+              "`/self-improve/proposals/${encodeURIComponent(id)}/requeue-dismiss`, { method: 'POST', body: JSON.stringify(reason ? { reason } : {}) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/DecisionsInboxPage.tsx",
+          "line": 214,
+          "method": "labelPrescreen",
+          "args": [
+            "i.id",
+            "label"
+          ],
+          "endpoint": {
+            "line": 1916,
+            "endpoints": [
+              "`/self-improve/proposals/${encodeURIComponent(id)}/prescreen-label`, { method: 'POST', body: JSON.stringify({ label }) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/DecisionsInboxPage.tsx",
+          "line": 219,
+          "method": "requeueProposal",
+          "args": [
+            "i.id",
+            "'pre-screen rejection overridden by the operator'"
+          ],
+          "endpoint": {
+            "line": 1907,
+            "endpoints": [
+              "`/self-improve/proposals/${encodeURIComponent(id)}/requeue`, { method: 'POST', body: JSON.stringify({ reason }) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/DecisionsInboxPage.tsx",
+          "line": 237,
+          "method": "adjudicateAttribution",
+          "args": [
+            "i.run_id",
+            "verdict"
+          ],
+          "endpoint": {
+            "line": 1921,
+            "endpoints": [
+              "`/self-improve/attribution-audit/${encodeURIComponent(runId)}`, { method: 'POST', body: JSON.stringify(note ? { verdict, note } : { verdict }) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/DecisionsInboxPage.tsx",
+          "line": 254,
+          "method": "removeTelegramIdentity",
+          "args": [
+            "t.telegram_user_id"
+          ],
+          "endpoint": {
+            "line": 1948,
+            "endpoints": [
+              "`/self-improve/telegram-identities/${encodeURIComponent(telegramId)}`, { method: 'DELETE' }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/hooks/usePendingApprovals.ts",
+          "line": 19,
+          "method": "getAllApprovals",
+          "args": [
+            "'pending'"
+          ],
+          "endpoint": {
+            "line": 1709,
+            "endpoints": [
+              "`/approvals${query}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/ApprovalQueuePage.tsx",
+          "line": 34,
+          "method": "getAllApprovals",
+          "args": [
+            "status === 'all' ? undefined : status"
+          ],
+          "endpoint": {
+            "line": 1709,
+            "endpoints": [
+              "`/approvals${query}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/components/ApprovalCard.tsx",
+          "line": 27,
+          "method": "approveRequestExplicit",
+          "args": [
+            "approval.id"
+          ],
+          "endpoint": {
+            "line": 1725,
+            "endpoints": [
+              "`/approvals/${approvalId}/approve`, {\n      method: 'POST',\n      body: JSON.stringify({ reason }),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/components/ApprovalCard.tsx",
+          "line": 52,
+          "method": "denyRequestExplicit",
+          "args": [
+            "approval.id",
+            "reason.trim()"
+          ],
+          "endpoint": {
+            "line": 1732,
+            "endpoints": [
+              "`/approvals/${approvalId}/deny`, {\n      method: 'POST',\n      body: JSON.stringify({ reason }),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/DiscoveryRelevanceSection.tsx",
+          "line": 21,
+          "method": "getRelevanceQueue",
+          "args": [
+            "1"
+          ],
+          "endpoint": {
+            "line": 1926,
+            "endpoints": [
+              "`/self-improve/discovery-labels/next?limit=${limit}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/DiscoveryRelevanceSection.tsx",
+          "line": 30,
+          "method": "labelDiscoveryRelevance",
+          "args": [
+            "card.ref",
+            "card.pass",
+            "label",
+            "Math.min(3600, (Date.now() - shownAt.current) / 1000)"
+          ],
+          "endpoint": {
+            "line": 1930,
+            "endpoints": [
+              "'/self-improve/discovery-labels', { method: 'POST', body: JSON.stringify({ ref, pass, label, seconds }) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/E1RetrievalLabelSection.tsx",
+          "line": 19,
+          "method": "getE1LabelQueue",
+          "args": [],
+          "endpoint": {
+            "line": 1935,
+            "endpoints": [
+              "'/self-improve/e1-labels/next'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/E1RetrievalLabelSection.tsx",
+          "line": 28,
+          "method": "labelE1Retrieval",
+          "args": [
+            "task.task_id",
+            "relevant",
+            "Math.min(3600, (Date.now() - shownAt.current) / 1000)"
+          ],
+          "endpoint": {
+            "line": 1940,
+            "endpoints": [
+              "'/self-improve/e1-labels', { method: 'POST', body: JSON.stringify({ task_id: taskId, relevant, none_relevant: relevant.length === 0, seconds }) }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/configuration",
+      "element": "ConfigurationPage",
+      "component_file": "packages/dashboard/src/pages/ConfigurationPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 118,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/ConfigurationPage.tsx",
+          "line": 12,
+          "method": "getRuntimeConfig",
+          "args": [],
+          "endpoint": {
+            "line": 1953,
+            "endpoints": [
+              "'/health/config'"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/fleet",
+      "element": "FleetHostsPage",
+      "component_file": "packages/dashboard/src/pages/FleetHostsPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 119,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/FleetHostsPage.tsx",
+          "line": 8,
+          "method": "getFleetHosts",
+          "args": [],
+          "endpoint": {
+            "line": 1963,
+            "endpoints": [
+              "'/fleet-hosts'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FleetHostsPage.tsx",
+          "line": 37,
+          "method": "requestFleetCommand",
+          "args": [
+            "host",
+            "shell.trim()"
+          ],
+          "endpoint": {
+            "line": 1967,
+            "endpoints": [
+              "'/fleet-hosts/commands', { method: 'POST', body: JSON.stringify({ host, command }) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FleetHostsPage.tsx",
+          "line": 92,
+          "method": "requestFleetCommand",
+          "args": [
+            "host",
+            "d"
+          ],
+          "endpoint": {
+            "line": 1967,
+            "endpoints": [
+              "'/fleet-hosts/commands', { method: 'POST', body: JSON.stringify({ host, command }) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FleetHostsPage.tsx",
+          "line": 116,
+          "method": "approveFleetCommand",
+          "args": [
+            "c.id",
+            "c.command_sha256"
+          ],
+          "endpoint": {
+            "line": 1971,
+            "endpoints": [
+              "`/fleet-hosts/commands/${encodeURIComponent(id)}/approve`, { method: 'POST', body: JSON.stringify({ sha256 }) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FleetHostsPage.tsx",
+          "line": 117,
+          "method": "denyFleetCommand",
+          "args": [
+            "c.id"
+          ],
+          "endpoint": {
+            "line": 1975,
+            "endpoints": [
+              "`/fleet-hosts/commands/${encodeURIComponent(id)}/deny`, { method: 'POST', body: JSON.stringify({ reason }) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/RuntimeHealthPage.tsx",
+          "line": 15,
+          "method": "getRuntimeHealth",
+          "args": [],
+          "endpoint": {
+            "line": 1862,
+            "endpoints": [
+              "'/health/runtimes'"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/improvement-funnel",
+      "element": "ImprovementFunnelPage",
+      "component_file": "packages/dashboard/src/pages/ImprovementFunnelPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 120,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/ImprovementFunnelPage.tsx",
+          "line": 6,
+          "method": "getImprovementFunnel",
+          "args": [],
+          "endpoint": {
+            "line": 1980,
+            "endpoints": [
+              "'/self-improve/funnel'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/ImprovementFunnelPage.tsx",
+          "line": 6,
+          "method": "getPanelCalibration",
+          "args": [],
+          "endpoint": {
+            "line": 1984,
+            "endpoints": [
+              "'/self-improve/calibration'"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/authority",
+      "element": "AuthorityTracePage",
+      "component_file": "packages/dashboard/src/pages/AuthorityTracePage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 121,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/AuthorityTracePage.tsx",
+          "line": 45,
+          "method": "getAuthorityStats",
+          "args": [],
+          "endpoint": {
+            "line": 1989,
+            "endpoints": [
+              "'/authority/stats'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/AuthorityTracePage.tsx",
+          "line": 46,
+          "method": "getAuthorityEvents",
+          "args": [
+            "decision === 'ALL' ? undefined : decision"
+          ],
+          "endpoint": {
+            "line": 1993,
+            "endpoints": [
+              "`/authority/events${q}`"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/usage",
+      "element": "UsagePage",
+      "component_file": "packages/dashboard/src/pages/UsagePage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 122,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/UsagePage.tsx",
+          "line": 148,
+          "method": "getUsageAccounts",
+          "args": [],
+          "endpoint": {
+            "line": 2028,
+            "endpoints": [
+              "'/usage/accounts'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/UsagePage.tsx",
+          "line": 149,
+          "method": "getUsageTokens",
+          "args": [
+            "{ group_by: 'day' }"
+          ],
+          "endpoint": {
+            "line": 2036,
+            "endpoints": [
+              "`/usage/tokens${suffix}`"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/repositories",
+      "element": "RepositoriesPage",
+      "component_file": "packages/dashboard/src/pages/RepositoriesPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 123,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/RepositoriesPage.tsx",
+          "line": 19,
+          "method": "getRepositories",
+          "args": [],
+          "endpoint": {
+            "line": 2488,
+            "endpoints": [
+              "'/repositories'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/RepositoriesPage.tsx",
+          "line": 31,
+          "method": "scanRepository",
+          "args": [
+            "path"
+          ],
+          "endpoint": {
+            "line": 2496,
+            "endpoints": [
+              "'/repositories/scan', {\n      method: 'POST',\n      body: JSON.stringify({ path }),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/RepositoriesPage.tsx",
+          "line": 33,
+          "method": "getRepositories",
+          "args": [],
+          "endpoint": {
+            "line": 2488,
+            "endpoints": [
+              "'/repositories'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/RepositoriesPage.tsx",
+          "line": 48,
+          "method": "rescanRepository",
+          "args": [
+            "id"
+          ],
+          "endpoint": {
+            "line": 2503,
+            "endpoints": [
+              "`/repositories/${id}/rescan`, {\n      method: 'POST',\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/RepositoriesPage.tsx",
+          "line": 50,
+          "method": "getRepositories",
+          "args": [],
+          "endpoint": {
+            "line": 2488,
+            "endpoints": [
+              "'/repositories'"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/repositories/:id",
+      "element": "RepositoryDetailPage",
+      "component_file": "packages/dashboard/src/pages/RepositoryDetailPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 124,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/RepositoryDetailPage.tsx",
+          "line": 22,
+          "method": "getRepository",
+          "args": [
+            "id"
+          ],
+          "endpoint": {
+            "line": 2492,
+            "endpoints": [
+              "`/repositories/${id}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/RepositoryDetailPage.tsx",
+          "line": 23,
+          "method": "getRepositoryHealth",
+          "args": [
+            "id"
+          ],
+          "endpoint": {
+            "line": 2509,
+            "endpoints": [
+              "`/repositories/${id}/health`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/RepositoryDetailPage.tsx",
+          "line": 24,
+          "method": "getRepositoryAgentsMd",
+          "args": [
+            "id"
+          ],
+          "endpoint": {
+            "line": 2513,
+            "endpoints": [
+              "`/repositories/${id}/agents-md`"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/goals-loops",
+      "element": "GoalsLoopsPage",
+      "component_file": "packages/dashboard/src/pages/GoalsLoopsPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 125,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/GoalsLoopsPage.tsx",
+          "line": 58,
+          "method": "getGoals",
+          "args": [],
+          "endpoint": {
+            "line": 2054,
+            "endpoints": [
+              "'/goals'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/GoalsLoopsPage.tsx",
+          "line": 59,
+          "method": "getLoopRuns",
+          "args": [],
+          "endpoint": {
+            "line": 2085,
+            "endpoints": [
+              "'/loops/runs'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/GoalsLoopsPage.tsx",
+          "line": 60,
+          "method": "getLoopCatalog",
+          "args": [],
+          "endpoint": {
+            "line": 2089,
+            "endpoints": [
+              "'/loops/catalog'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/GoalsLoopsPage.tsx",
+          "line": 79,
+          "method": "getLoopReviewBundle",
+          "args": [
+            "runId"
+          ],
+          "endpoint": {
+            "line": 2097,
+            "endpoints": [
+              "`/loops/runs/${runId}/review-bundle`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/GoalsLoopsPage.tsx",
+          "line": 115,
+          "method": "startLoop",
+          "args": [
+            "{ loop_name: selectedLoopName, repository_path: repository, goal_id: selectedGoalId || undefined }"
+          ],
+          "endpoint": {
+            "line": 2101,
+            "endpoints": [
+              "'/loops/start', {\n      method: 'POST',\n      body: JSON.stringify(input),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/GoalsLoopsPage.tsx",
+          "line": 123,
+          "method": "executeChecker",
+          "args": [
+            "selectedRun.id",
+            "lease.id",
+            "{ runtime, timeout_ms: 120_000 }"
+          ],
+          "endpoint": {
+            "line": 2126,
+            "endpoints": [
+              "`/loops/runs/${runId}/execute-checker`, {\n      method: 'POST',\n      body: JSON.stringify({ lease_id: leaseId, ...input }),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/GoalsLoopsPage.tsx",
+          "line": 130,
+          "method": "completeLoopRun",
+          "args": [
+            "selectedRun.id",
+            "true"
+          ],
+          "endpoint": {
+            "line": 2169,
+            "endpoints": [
+              "`/loops/runs/${runId}/complete`, {\n      method: 'POST',\n      // This marker conveys confirmation only; the server derives actor identity\n      // from authentication and independently enforces completion gates.\n      body: JSON.stringify({ human_approval_ref: 'dashboard:explicit-confirmation' }),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/GoalsLoopsPage.tsx",
+          "line": 140,
+          "method": "createGoal",
+          "args": [
+            "{\n      objective,\n      acceptance_criteria: acceptance.split('\\n').map((line) => line.trim()).filter(Boolean),\n      risk_class: goalRisk,\n      budget: {\n        max_maker_worke"
+          ],
+          "endpoint": {
+            "line": 2058,
+            "endpoints": [
+              "'/goals', {\n      method: 'POST',\n      body: JSON.stringify(input),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/GoalsLoopsPage.tsx",
+          "line": 158,
+          "method": "request",
+          "args": [
+            "`/intervention/${goalId}/pause`",
+            "{ method: 'POST' }"
+          ],
+          "endpoint": {
+            "line": 1594,
+            "endpoints": []
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/GoalsLoopsPage.tsx",
+          "line": 162,
+          "method": "request",
+          "args": [
+            "`/intervention/${goalId}/resume`",
+            "{ method: 'POST' }"
+          ],
+          "endpoint": {
+            "line": 1594,
+            "endpoints": []
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/GoalsLoopsPage.tsx",
+          "line": 170,
+          "method": "request",
+          "args": [
+            "`/intervention/${goalId}/inject`",
+            "{ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ predicate: 'recommends', subject_ref: `goal:${goalId}`, confidence: 0.9, evidence: evidenc"
+          ],
+          "endpoint": {
+            "line": 1594,
+            "endpoints": []
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/GoalsLoopsPage.tsx",
+          "line": 182,
+          "method": "request",
+          "args": [
+            "`/intervention/${goalId}/override`",
+            "{ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gate: gate.trim(), decision: decision.trim(), reason: reason.trim() }) }"
+          ],
+          "endpoint": {
+            "line": 1594,
+            "endpoints": []
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/GoalsLoopsPage.tsx",
+          "line": 195,
+          "method": "splitLoopFinding",
+          "args": [
+            "selectedRun.id",
+            "{\n      finding_id: findingId,\n      reason,\n      children: [\n        { message: first, suggested_fix: first },\n        { message: second, suggested_fix: second },\n      ],\n    }"
+          ],
+          "endpoint": {
+            "line": 2148,
+            "endpoints": [
+              "`/loops/runs/${runId}/split`, {\n      method: 'POST',\n      body: JSON.stringify(input),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/GoalsLoopsPage.tsx",
+          "line": 408,
+          "method": "stepLoopRun",
+          "args": [
+            "selectedRun.id"
+          ],
+          "endpoint": {
+            "line": 2137,
+            "endpoints": [
+              "`/loops/runs/${runId}/step`, { method: 'POST' }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/GoalsLoopsPage.tsx",
+          "line": 416,
+          "method": "continueLoopRun",
+          "args": [
+            "selectedRun.id",
+            "{ max_assignments: 1, runtime }"
+          ],
+          "endpoint": {
+            "line": 2112,
+            "endpoints": [
+              "`/loops/runs/${runId}/continue`, {\n      method: 'POST',\n      body: JSON.stringify(input),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/GoalsLoopsPage.tsx",
+          "line": 424,
+          "method": "verifyLoopRun",
+          "args": [
+            "selectedRun.id"
+          ],
+          "endpoint": {
+            "line": 2133,
+            "endpoints": [
+              "`/loops/runs/${runId}/verify`, { method: 'POST' }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/GoalsLoopsPage.tsx",
+          "line": 442,
+          "method": "stopLoopRun",
+          "args": [
+            "selectedRun.id"
+          ],
+          "endpoint": {
+            "line": 2179,
+            "endpoints": [
+              "`/loops/runs/${runId}/stop`, { method: 'POST' }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/GoalsLoopsPage.tsx",
+          "line": 471,
+          "method": "submitSecurityVerdict",
+          "args": [
+            "selectedRun.id",
+            "lease.id",
+            "'accepted'",
+            "'Accepted from dashboard'"
+          ],
+          "endpoint": {
+            "line": 2162,
+            "endpoints": [
+              "`/loops/runs/${runId}/security-verdict`, {\n      method: 'POST',\n      body: JSON.stringify({ lease_id: leaseId, verdict, notes: notes || '' }),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/GoalsLoopsPage.tsx",
+          "line": 472,
+          "method": "submitCheckerVerdict",
+          "args": [
+            "selectedRun.id",
+            "lease.id",
+            "'accepted'",
+            "'Accepted from dashboard'"
+          ],
+          "endpoint": {
+            "line": 2155,
+            "endpoints": [
+              "`/loops/runs/${runId}/checker-verdict`, {\n      method: 'POST',\n      body: JSON.stringify({ lease_id: leaseId, verdict, notes: notes || '' }),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/GoalsLoopsPage.tsx",
+          "line": 474,
+          "method": "submitSecurityVerdict",
+          "args": [
+            "selectedRun.id",
+            "lease.id",
+            "'needs_revision'",
+            "'Needs revision from dashboard'"
+          ],
+          "endpoint": {
+            "line": 2162,
+            "endpoints": [
+              "`/loops/runs/${runId}/security-verdict`, {\n      method: 'POST',\n      body: JSON.stringify({ lease_id: leaseId, verdict, notes: notes || '' }),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/GoalsLoopsPage.tsx",
+          "line": 475,
+          "method": "submitCheckerVerdict",
+          "args": [
+            "selectedRun.id",
+            "lease.id",
+            "'needs_revision'",
+            "'Needs revision from dashboard'"
+          ],
+          "endpoint": {
+            "line": 2155,
+            "endpoints": [
+              "`/loops/runs/${runId}/checker-verdict`, {\n      method: 'POST',\n      body: JSON.stringify({ lease_id: leaseId, verdict, notes: notes || '' }),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/GoalsLoopsPage.tsx",
+          "line": 476,
+          "method": "retryLoopRun",
+          "args": [
+            "selectedRun.id",
+            "lease.id",
+            "runtime"
+          ],
+          "endpoint": {
+            "line": 2141,
+            "endpoints": [
+              "`/loops/runs/${runId}/retry`, {\n      method: 'POST',\n      body: JSON.stringify({ maker_lease_id: makerLeaseId, runtime }),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/GoalsLoopsPage.tsx",
+          "line": 477,
+          "method": "executeWorker",
+          "args": [
+            "selectedRun.id",
+            "lease.id",
+            "{ timeout_ms: 120_000, diff_max_lines: 200 }"
+          ],
+          "endpoint": {
+            "line": 2119,
+            "endpoints": [
+              "`/loops/runs/${runId}/execute-worker`, {\n      method: 'POST',\n      body: JSON.stringify({ lease_id: leaseId, ...input }),\n    }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/fleet-cockpit",
+      "element": "FleetCockpitPage",
+      "component_file": "packages/dashboard/src/pages/FleetCockpitPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 126,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/FleetCockpitPage.tsx",
+          "line": 108,
+          "method": "getSwarmStatus",
+          "args": [],
+          "endpoint": {
+            "line": 2184,
+            "endpoints": [
+              "'/swarms/status'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FleetCockpitPage.tsx",
+          "line": 109,
+          "method": "planWorkerPool",
+          "args": [
+            "{\n          runtime,\n          checker_runtime: checkerRuntime,\n          max_workers: maxWorkers,\n          ignore_capacity: ignoreCapacity,\n        }"
+          ],
+          "endpoint": {
+            "line": 2231,
+            "endpoints": [
+              "'/swarms/worker-pool/plan', {\n      method: 'POST',\n      body: JSON.stringify(input),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FleetCockpitPage.tsx",
+          "line": 115,
+          "method": "getRuntimeContracts",
+          "args": [],
+          "endpoint": {
+            "line": 2093,
+            "endpoints": [
+              "'/loops/runtime-contracts'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FleetCockpitPage.tsx",
+          "line": 146,
+          "method": "runSchedulerTick",
+          "args": [
+            "{\n        ...input,\n        runtime,\n        repository_path: repositoryPath.trim() || undefined,\n        max_items: 50,\n        max_assignments_per_item: 1,\n        work_item_ids:"
+          ],
+          "endpoint": {
+            "line": 2199,
+            "endpoints": [
+              "'/swarms/scheduler/tick', {\n      method: 'POST',\n      body: JSON.stringify(input),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FleetCockpitPage.tsx",
+          "line": 283,
+          "method": "startNextWorker",
+          "args": [
+            "{ runtime, checker_runtime: checkerRuntime, ignore_capacity: ignoreCapacity }"
+          ],
+          "endpoint": {
+            "line": 2238,
+            "endpoints": [
+              "'/swarms/worker-pool/start-next', {\n      method: 'POST',\n      body: JSON.stringify(input),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FleetCockpitPage.tsx",
+          "line": 291,
+          "method": "drainWorkerPool",
+          "args": [
+            "{ runtime, checker_runtime: checkerRuntime, max_workers: maxWorkers, ignore_capacity: ignoreCapacity }"
+          ],
+          "endpoint": {
+            "line": 2245,
+            "endpoints": [
+              "'/swarms/worker-pool/drain', {\n      method: 'POST',\n      body: JSON.stringify(input),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FleetCockpitPage.tsx",
+          "line": 503,
+          "method": "stopWorkerLease",
+          "args": [
+            "decision.lease_id"
+          ],
+          "endpoint": {
+            "line": 2252,
+            "endpoints": [
+              "`/swarms/worker-pool/stop/${leaseId}`, { method: 'POST' }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/swarm-resources",
+      "element": "SwarmResourcesPage",
+      "component_file": "packages/dashboard/src/pages/SwarmResourcesPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 127,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/SwarmResourcesPage.tsx",
+          "line": 42,
+          "method": "getSwarmStatus",
+          "args": [],
+          "endpoint": {
+            "line": 2184,
+            "endpoints": [
+              "'/swarms/status'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmResourcesPage.tsx",
+          "line": 43,
+          "method": "getRsiSafetyStatus",
+          "args": [],
+          "endpoint": {
+            "line": 2188,
+            "endpoints": [
+              "'/swarms/rsi/safety'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmResourcesPage.tsx",
+          "line": 44,
+          "method": "getWorkItems",
+          "args": [
+            "{ limit: 50 }"
+          ],
+          "endpoint": {
+            "line": 2256,
+            "endpoints": [
+              "`/work-items${suffix}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmResourcesPage.tsx",
+          "line": 45,
+          "method": "getMemoryCandidates",
+          "args": [
+            "25"
+          ],
+          "endpoint": {
+            "line": 2275,
+            "endpoints": [
+              "`/swarms/memory/candidates${query}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmResourcesPage.tsx",
+          "line": 46,
+          "method": "getSpecialistCatalog",
+          "args": [],
+          "endpoint": {
+            "line": 2293,
+            "endpoints": [
+              "'/swarms/specialists/catalog'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmResourcesPage.tsx",
+          "line": 47,
+          "method": "getSpecialistPanels",
+          "args": [
+            "25"
+          ],
+          "endpoint": {
+            "line": 2297,
+            "endpoints": [
+              "`/swarms/specialist-panels${query}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmResourcesPage.tsx",
+          "line": 48,
+          "method": "getAssuranceSummary",
+          "args": [],
+          "endpoint": {
+            "line": 2334,
+            "endpoints": [
+              "'/swarms/assurance/summary'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmResourcesPage.tsx",
+          "line": 78,
+          "method": "runSchedulerTick",
+          "args": [
+            "{ max_items: 10, plan_triaged: true }"
+          ],
+          "endpoint": {
+            "line": 2199,
+            "endpoints": [
+              "'/swarms/scheduler/tick', {\n      method: 'POST',\n      body: JSON.stringify(input),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmResourcesPage.tsx",
+          "line": 83,
+          "method": "runAssuranceEval",
+          "args": [
+            "{\n      suite_name: 'memory-quality',\n      target_type: 'memory',\n      target_ref: 'dashboard',\n    }"
+          ],
+          "endpoint": {
+            "line": 2338,
+            "endpoints": [
+              "'/swarms/assurance/evals/run', {\n      method: 'POST',\n      body: JSON.stringify(input),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmResourcesPage.tsx",
+          "line": 117,
+          "method": "submitSpecialistReview",
+          "args": [
+            "panel.id",
+            "{\n      specialist_id: draft.specialist_id,\n      stance: draft.stance,\n      confidence: draft.confidence,\n      findings: draft.finding ? [draft.finding] : [],\n      recommendati"
+          ],
+          "endpoint": {
+            "line": 2315,
+            "endpoints": [
+              "`/swarms/specialist-panels/${panelId}/reviews`, {\n      method: 'POST',\n      body: JSON.stringify(input),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmResourcesPage.tsx",
+          "line": 189,
+          "method": "setRsiSafetyEnabled",
+          "args": [
+            "!rsiSafety.enabled"
+          ],
+          "endpoint": {
+            "line": 2192,
+            "endpoints": [
+              "'/swarms/rsi/safety/toggle', {\n      method: 'POST',\n      body: JSON.stringify({ enabled }),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmResourcesPage.tsx",
+          "line": 314,
+          "method": "updateWorkItem",
+          "args": [
+            "item.id",
+            "{ status: 'triaged' }"
+          ],
+          "endpoint": {
+            "line": 2264,
+            "endpoints": [
+              "`/work-items/${id}`, {\n      method: 'PATCH',\n      body: JSON.stringify(input),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmResourcesPage.tsx",
+          "line": 315,
+          "method": "convertWorkItemToGoal",
+          "args": [
+            "item.id"
+          ],
+          "endpoint": {
+            "line": 2271,
+            "endpoints": [
+              "`/work-items/${id}/convert-to-goal`, { method: 'POST' }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmResourcesPage.tsx",
+          "line": 316,
+          "method": "updateWorkItem",
+          "args": [
+            "item.id",
+            "{ status: 'discarded' }"
+          ],
+          "endpoint": {
+            "line": 2264,
+            "endpoints": [
+              "`/work-items/${id}`, {\n      method: 'PATCH',\n      body: JSON.stringify(input),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmResourcesPage.tsx",
+          "line": 349,
+          "method": "promoteMemoryCandidate",
+          "args": [
+            "candidate.id"
+          ],
+          "endpoint": {
+            "line": 2284,
+            "endpoints": [
+              "`/swarms/memory/candidates/${id}/promote`, {\n      method: 'POST',\n      // a human clicking Promote is the human approval; the server records the signed-in user as approver\n      // (the old body sent approved_by: 'dashboard', which the route ignores → review_required candidates got 409)\n      body: JSON.stringify({ sinks: ['okf'], human_approved: true }),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmResourcesPage.tsx",
+          "line": 385,
+          "method": "projectSpecialistPanelToBacklog",
+          "args": [
+            "panel.id"
+          ],
+          "endpoint": {
+            "line": 2330,
+            "endpoints": [
+              "`/swarms/specialist-panels/${panelId}/backlog`, { method: 'POST' }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/swarm-mission-control",
+      "element": "SwarmMissionControlPage",
+      "component_file": "packages/dashboard/src/pages/SwarmMissionControlPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 128,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/SwarmMissionControlPage.tsx",
+          "line": 86,
+          "method": "request",
+          "args": [
+            "'/knowledge/events?limit=20'"
+          ],
+          "endpoint": {
+            "line": 1594,
+            "endpoints": []
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmMissionControlPage.tsx",
+          "line": 91,
+          "method": "request",
+          "args": [
+            "'/swarms/learning-curve'"
+          ],
+          "endpoint": {
+            "line": 1594,
+            "endpoints": []
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmMissionControlPage.tsx",
+          "line": 104,
+          "method": "getSwarmMissionControl",
+          "args": [],
+          "endpoint": {
+            "line": 2349,
+            "endpoints": [
+              "'/swarms/intelligence/mission-control'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmMissionControlPage.tsx",
+          "line": 105,
+          "method": "getSwarmCapabilities",
+          "args": [
+            "50"
+          ],
+          "endpoint": {
+            "line": 2452,
+            "endpoints": [
+              "`/swarms/intelligence/capabilities${query}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmMissionControlPage.tsx",
+          "line": 106,
+          "method": "getSwarmClaims",
+          "args": [
+            "50"
+          ],
+          "endpoint": {
+            "line": 2457,
+            "endpoints": [
+              "`/swarms/intelligence/claims${query}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmMissionControlPage.tsx",
+          "line": 107,
+          "method": "getKnowledgeRuntime",
+          "args": [],
+          "endpoint": {
+            "line": 2213,
+            "endpoints": [
+              "'/swarms/knowledge/runtime'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmMissionControlPage.tsx",
+          "line": 131,
+          "method": "planCapacityV2",
+          "args": [
+            "{ checker_runtime: 'mock' }"
+          ],
+          "endpoint": {
+            "line": 2462,
+            "endpoints": [
+              "'/swarms/intelligence/capacity/plan', {\n      method: 'POST',\n      body: JSON.stringify(input),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmMissionControlPage.tsx",
+          "line": 143,
+          "method": "createProofRun",
+          "args": [
+            "proofRuntime"
+          ],
+          "endpoint": {
+            "line": 2433,
+            "endpoints": [
+              "'/swarms/proof-runs', {\n      method: 'POST',\n      body: JSON.stringify({ runtime }),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmMissionControlPage.tsx",
+          "line": 156,
+          "method": "syncKnowledgeRuntime",
+          "args": [
+            "apply ? { apply: true } : { dry_run: true }"
+          ],
+          "endpoint": {
+            "line": 2217,
+            "endpoints": [
+              "'/swarms/knowledge/sync', {\n      method: 'POST',\n      body: JSON.stringify(input),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmMissionControlPage.tsx",
+          "line": 169,
+          "method": "previewGoalBatch",
+          "args": [
+            "{ path: FLYWHEEL_BATCH_PATH }"
+          ],
+          "endpoint": {
+            "line": 2071,
+            "endpoints": [
+              "'/goals/batch/preview', {\n      method: 'POST',\n      body: JSON.stringify(input),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmMissionControlPage.tsx",
+          "line": 181,
+          "method": "applyGoalBatch",
+          "args": [
+            "{ path: FLYWHEEL_BATCH_PATH }"
+          ],
+          "endpoint": {
+            "line": 2078,
+            "endpoints": [
+              "'/goals/batch/apply', {\n      method: 'POST',\n      body: JSON.stringify(input),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmMissionControlPage.tsx",
+          "line": 195,
+          "method": "planWorkerPool",
+          "args": [
+            "{ runtime: 'mock', checker_runtime: 'mock', simulate_low_capacity: true }"
+          ],
+          "endpoint": {
+            "line": 2231,
+            "endpoints": [
+              "'/swarms/worker-pool/plan', {\n      method: 'POST',\n      body: JSON.stringify(input),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmMissionControlPage.tsx",
+          "line": 211,
+          "method": "closeLoopLearning",
+          "args": [
+            "{ loop_run_id: loopRunId, promote_memory: false }"
+          ],
+          "endpoint": {
+            "line": 2224,
+            "endpoints": [
+              "'/swarms/evolution/close-loop', {\n      method: 'POST',\n      body: JSON.stringify(input),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SwarmMissionControlPage.tsx",
+          "line": 224,
+          "method": "rollbackProofRun",
+          "args": [
+            "id"
+          ],
+          "endpoint": {
+            "line": 2448,
+            "endpoints": [
+              "`/swarms/proof-runs/${id}/rollback`, { method: 'POST' }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/interaction-board",
+      "element": "InteractionBoardPage",
+      "component_file": "packages/dashboard/src/pages/InteractionBoardPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 129,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/InteractionBoardPage.tsx",
+          "line": 130,
+          "method": "getAgentInteractions",
+          "args": [
+            "{ limit: 500 }"
+          ],
+          "endpoint": {
+            "line": 2353,
+            "endpoints": [
+              "`/swarms/intelligence/interactions${query.size ? `?${query}` : ''}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/InteractionBoardPage.tsx",
+          "line": 131,
+          "method": "getSwarmMissionControl",
+          "args": [],
+          "endpoint": {
+            "line": 2349,
+            "endpoints": [
+              "'/swarms/intelligence/mission-control'"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/agent-commons",
+      "element": "AgentCommonsPage",
+      "component_file": "packages/dashboard/src/pages/AgentCommonsPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 130,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/AgentCommonsPage.tsx",
+          "line": 106,
+          "method": "getSocialCommons",
+          "args": [
+            "20"
+          ],
+          "endpoint": {
+            "line": 2358,
+            "endpoints": [
+              "`/swarm-v2/social/commons?limit=${limit}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/AgentCommonsPage.tsx",
+          "line": 106,
+          "method": "getLures",
+          "args": [],
+          "endpoint": {
+            "line": 2366,
+            "endpoints": [
+              "'/swarm-v2/social/lures'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/AgentCommonsPage.tsx",
+          "line": 106,
+          "method": "getJoinRequests",
+          "args": [],
+          "endpoint": {
+            "line": 2412,
+            "endpoints": [
+              "'/swarm-v2/social/join-requests'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/AgentCommonsPage.tsx",
+          "line": 118,
+          "method": "castLure",
+          "args": [],
+          "endpoint": {
+            "line": 2370,
+            "endpoints": [
+              "'/swarm-v2/social/lures', { method: 'POST', body: '{}' }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/AgentCommonsPage.tsx",
+          "line": 134,
+          "method": "createJoinInvite",
+          "args": [
+            "{ label: `open-door-${new Date().toISOString().slice(0, 10)}`, max_uses: 3 }"
+          ],
+          "endpoint": {
+            "line": 2416,
+            "endpoints": [
+              "'/swarm-v2/social/join-invites', { method: 'POST', body: JSON.stringify(input) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/AgentCommonsPage.tsx",
+          "line": 145,
+          "method": "decideJoinRequest",
+          "args": [
+            "agentId",
+            "approve"
+          ],
+          "endpoint": {
+            "line": 2420,
+            "endpoints": [
+              "`/swarm-v2/social/join-requests/${encodeURIComponent(agentId)}/decide`, { method: 'POST', body: JSON.stringify({ approve }) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/AgentCommonsPage.tsx",
+          "line": 165,
+          "method": "startSocialRound",
+          "args": [],
+          "endpoint": {
+            "line": 2362,
+            "endpoints": [
+              "'/swarm-v2/socialize', { method: 'POST', body: JSON.stringify({ cooldown_ms: 0 }) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/AgentCommonsPage.tsx",
+          "line": 421,
+          "method": "getAgentReputation",
+          "args": [
+            "request.agent_id"
+          ],
+          "endpoint": {
+            "line": 2425,
+            "endpoints": [
+              "`/swarm-v2/social/reputation/${encodeURIComponent(agentId)}`"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/evolution",
+      "element": "EvolutionPage",
+      "component_file": "packages/dashboard/src/pages/EvolutionPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 131,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/EvolutionPage.tsx",
+          "line": 7,
+          "method": "getEvolutionEvidence",
+          "args": [],
+          "endpoint": {
+            "line": 1857,
+            "endpoints": [
+              "`/health/evolution-evidence?days=${days}`"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/knowledge",
+      "element": "KnowledgePage",
+      "component_file": "packages/dashboard/src/pages/KnowledgePage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 132,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/KnowledgePage.tsx",
+          "line": 5,
+          "method": "getKnowledgeOverview",
+          "args": [],
+          "endpoint": {
+            "line": 1871,
+            "endpoints": [
+              "'/health/knowledge'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/KnowledgePage.tsx",
+          "line": 6,
+          "method": "getSkillCards",
+          "args": [],
+          "endpoint": {
+            "line": 1876,
+            "endpoints": [
+              "'/health/skills'"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/frontier-experts",
+      "element": "FrontierExpertsPage",
+      "component_file": "packages/dashboard/src/pages/FrontierExpertsPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 133,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/FrontierExpertsPage.tsx",
+          "line": 100,
+          "method": "getExpertDedupe",
+          "args": [
+            "1"
+          ],
+          "endpoint": {
+            "line": 2375,
+            "endpoints": [
+              "`/health/expert-dedupe?limit=${limit}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FrontierExpertsPage.tsx",
+          "line": 131,
+          "method": "listExperts",
+          "args": [
+            "{ ...filter, limit: 200 }"
+          ],
+          "endpoint": {
+            "line": 2379,
+            "endpoints": [
+              "`/swarms/expert/experts${query.size ? `?${query}` : ''}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FrontierExpertsPage.tsx",
+          "line": 131,
+          "method": "getExpertSwarmRuns",
+          "args": [],
+          "endpoint": {
+            "line": 2404,
+            "endpoints": [
+              "'/swarms/expert/history'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FrontierExpertsPage.tsx",
+          "line": 139,
+          "method": "getExpert",
+          "args": [
+            "id"
+          ],
+          "endpoint": {
+            "line": 2384,
+            "endpoints": [
+              "`/swarms/expert/experts/${encodeURIComponent(id)}${asOf ? `?as_of=${encodeURIComponent(asOf)}` : ''}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FrontierExpertsPage.tsx",
+          "line": 155,
+          "method": "resolveExperts",
+          "args": [
+            "question.trim()",
+            "5"
+          ],
+          "endpoint": {
+            "line": 2388,
+            "endpoints": [
+              "'/swarms/expert/resolve', { method: 'POST', body: JSON.stringify({ question, max_experts: maxExperts }) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FrontierExpertsPage.tsx",
+          "line": 250,
+          "method": "reviewExpertCapability",
+          "args": [
+            "detail.expert.id",
+            "capability.capability_id",
+            "'checked'"
+          ],
+          "endpoint": {
+            "line": 2396,
+            "endpoints": [
+              "`/swarms/expert/experts/${encodeURIComponent(id)}/capabilities/${encodeURIComponent(capability)}/review`, { method: 'POST', body: JSON.stringify({ decision, reason }) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FrontierExpertsPage.tsx",
+          "line": 251,
+          "method": "reviewExpertCapability",
+          "args": [
+            "detail.expert.id",
+            "capability.capability_id",
+            "'approved'"
+          ],
+          "endpoint": {
+            "line": 2396,
+            "endpoints": [
+              "`/swarms/expert/experts/${encodeURIComponent(id)}/capabilities/${encodeURIComponent(capability)}/review`, { method: 'POST', body: JSON.stringify({ decision, reason }) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FrontierExpertsPage.tsx",
+          "line": 252,
+          "method": "reviewExpertCapability",
+          "args": [
+            "detail.expert.id",
+            "capability.capability_id",
+            "'revoked'"
+          ],
+          "endpoint": {
+            "line": 2396,
+            "endpoints": [
+              "`/swarms/expert/experts/${encodeURIComponent(id)}/capabilities/${encodeURIComponent(capability)}/review`, { method: 'POST', body: JSON.stringify({ decision, reason }) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FrontierExpertsPage.tsx",
+          "line": 283,
+          "method": "transitionExpert",
+          "args": [
+            "detail.expert.id",
+            "state"
+          ],
+          "endpoint": {
+            "line": 2392,
+            "endpoints": [
+              "`/swarms/expert/experts/${encodeURIComponent(id)}/transition`, { method: 'POST', body: JSON.stringify({ to, reason }) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FrontierExpertsPage.tsx",
+          "line": 285,
+          "method": "deprecateExpert",
+          "args": [
+            "detail.expert.id",
+            "reason"
+          ],
+          "endpoint": {
+            "line": 2400,
+            "endpoints": [
+              "`/swarms/expert/experts/${encodeURIComponent(id)}/deprecate`, { method: 'POST', body: JSON.stringify({ reason, note }) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FrontierExpertsPage.tsx",
+          "line": 299,
+          "method": "conveneExpertCouncil",
+          "args": [
+            "topic.trim()",
+            "5"
+          ],
+          "endpoint": {
+            "line": 2408,
+            "endpoints": [
+              "'/swarms/expert/council', { method: 'POST', body: JSON.stringify({ topic, max_experts: maxExperts }) }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/frontier-experts/:expertId",
+      "element": "FrontierExpertsPage",
+      "component_file": "packages/dashboard/src/pages/FrontierExpertsPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 134,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/FrontierExpertsPage.tsx",
+          "line": 100,
+          "method": "getExpertDedupe",
+          "args": [
+            "1"
+          ],
+          "endpoint": {
+            "line": 2375,
+            "endpoints": [
+              "`/health/expert-dedupe?limit=${limit}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FrontierExpertsPage.tsx",
+          "line": 131,
+          "method": "listExperts",
+          "args": [
+            "{ ...filter, limit: 200 }"
+          ],
+          "endpoint": {
+            "line": 2379,
+            "endpoints": [
+              "`/swarms/expert/experts${query.size ? `?${query}` : ''}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FrontierExpertsPage.tsx",
+          "line": 131,
+          "method": "getExpertSwarmRuns",
+          "args": [],
+          "endpoint": {
+            "line": 2404,
+            "endpoints": [
+              "'/swarms/expert/history'"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FrontierExpertsPage.tsx",
+          "line": 139,
+          "method": "getExpert",
+          "args": [
+            "id"
+          ],
+          "endpoint": {
+            "line": 2384,
+            "endpoints": [
+              "`/swarms/expert/experts/${encodeURIComponent(id)}${asOf ? `?as_of=${encodeURIComponent(asOf)}` : ''}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FrontierExpertsPage.tsx",
+          "line": 155,
+          "method": "resolveExperts",
+          "args": [
+            "question.trim()",
+            "5"
+          ],
+          "endpoint": {
+            "line": 2388,
+            "endpoints": [
+              "'/swarms/expert/resolve', { method: 'POST', body: JSON.stringify({ question, max_experts: maxExperts }) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FrontierExpertsPage.tsx",
+          "line": 250,
+          "method": "reviewExpertCapability",
+          "args": [
+            "detail.expert.id",
+            "capability.capability_id",
+            "'checked'"
+          ],
+          "endpoint": {
+            "line": 2396,
+            "endpoints": [
+              "`/swarms/expert/experts/${encodeURIComponent(id)}/capabilities/${encodeURIComponent(capability)}/review`, { method: 'POST', body: JSON.stringify({ decision, reason }) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FrontierExpertsPage.tsx",
+          "line": 251,
+          "method": "reviewExpertCapability",
+          "args": [
+            "detail.expert.id",
+            "capability.capability_id",
+            "'approved'"
+          ],
+          "endpoint": {
+            "line": 2396,
+            "endpoints": [
+              "`/swarms/expert/experts/${encodeURIComponent(id)}/capabilities/${encodeURIComponent(capability)}/review`, { method: 'POST', body: JSON.stringify({ decision, reason }) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FrontierExpertsPage.tsx",
+          "line": 252,
+          "method": "reviewExpertCapability",
+          "args": [
+            "detail.expert.id",
+            "capability.capability_id",
+            "'revoked'"
+          ],
+          "endpoint": {
+            "line": 2396,
+            "endpoints": [
+              "`/swarms/expert/experts/${encodeURIComponent(id)}/capabilities/${encodeURIComponent(capability)}/review`, { method: 'POST', body: JSON.stringify({ decision, reason }) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FrontierExpertsPage.tsx",
+          "line": 283,
+          "method": "transitionExpert",
+          "args": [
+            "detail.expert.id",
+            "state"
+          ],
+          "endpoint": {
+            "line": 2392,
+            "endpoints": [
+              "`/swarms/expert/experts/${encodeURIComponent(id)}/transition`, { method: 'POST', body: JSON.stringify({ to, reason }) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FrontierExpertsPage.tsx",
+          "line": 285,
+          "method": "deprecateExpert",
+          "args": [
+            "detail.expert.id",
+            "reason"
+          ],
+          "endpoint": {
+            "line": 2400,
+            "endpoints": [
+              "`/swarms/expert/experts/${encodeURIComponent(id)}/deprecate`, { method: 'POST', body: JSON.stringify({ reason, note }) }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FrontierExpertsPage.tsx",
+          "line": 299,
+          "method": "conveneExpertCouncil",
+          "args": [
+            "topic.trim()",
+            "5"
+          ],
+          "endpoint": {
+            "line": 2408,
+            "endpoints": [
+              "'/swarms/expert/council', { method: 'POST', body: JSON.stringify({ topic, max_experts: maxExperts }) }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/swarm-mission-control/proof-runs/:proofRunId",
+      "element": "ProofRunDetailPage",
+      "component_file": "packages/dashboard/src/pages/ProofRunDetailPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 135,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/ProofRunDetailPage.tsx",
+          "line": 19,
+          "method": "getProofRun",
+          "args": [
+            "id"
+          ],
+          "endpoint": {
+            "line": 2444,
+            "endpoints": [
+              "`/swarms/proof-runs/${id}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/ProofRunDetailPage.tsx",
+          "line": 52,
+          "method": "rollbackProofRun",
+          "args": [
+            "proofRunId"
+          ],
+          "endpoint": {
+            "line": 2448,
+            "endpoints": [
+              "`/swarms/proof-runs/${id}/rollback`, { method: 'POST' }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/economy",
+      "element": "EconomyPage",
+      "component_file": "packages/dashboard/src/pages/EconomyPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 136,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/EconomyPage.tsx",
+          "line": 57,
+          "method": "request",
+          "args": [
+            "'/swarms/economy'"
+          ],
+          "endpoint": {
+            "line": 1594,
+            "endpoints": []
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/EconomyPage.tsx",
+          "line": 70,
+          "method": "request",
+          "args": [
+            "`/swarms/economy/allocate?budget=${encodeURIComponent(budget)}`"
+          ],
+          "endpoint": {
+            "line": 1594,
+            "endpoints": []
+          }
+        }
+      ]
+    },
+    {
+      "route": "/pipeline-builder",
+      "element": "PipelineBuilderPage",
+      "component_file": "packages/dashboard/src/pages/PipelineBuilderPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 137,
+      "redirect": null,
+      "api": []
+    },
+    {
+      "route": "/federation",
+      "element": "FederationPage",
+      "component_file": "packages/dashboard/src/pages/FederationPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 138,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/FederationPage.tsx",
+          "line": 24,
+          "method": "request",
+          "args": [
+            "'/federation/peers'"
+          ],
+          "endpoint": {
+            "line": 1594,
+            "endpoints": []
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FederationPage.tsx",
+          "line": 25,
+          "method": "request",
+          "args": [
+            "'/federation/capabilities'"
+          ],
+          "endpoint": {
+            "line": 1594,
+            "endpoints": []
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/FederationPage.tsx",
+          "line": 36,
+          "method": "request",
+          "args": [
+            "'/federation/register'",
+            "{\n        method: 'POST',\n        headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify({ url: peerUrl, trust_level: trustLevel }),\n      }"
+          ],
+          "endpoint": {
+            "line": 1594,
+            "endpoints": []
+          }
+        }
+      ]
+    },
+    {
+      "route": "/agi-reasoning",
+      "element": "AgiReasoningPage",
+      "component_file": "packages/dashboard/src/pages/AgiReasoningPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 139,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/AgiReasoningPage.tsx",
+          "line": 25,
+          "method": "request",
+          "args": [
+            "'/agi/reason'",
+            "{ method: 'POST' }"
+          ],
+          "endpoint": {
+            "line": 1594,
+            "endpoints": []
+          }
+        }
+      ]
+    },
+    {
+      "route": "/consensus-debates",
+      "element": "ConsensusDebatePage",
+      "component_file": "packages/dashboard/src/pages/ConsensusDebatePage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 140,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/ConsensusDebatePage.tsx",
+          "line": 31,
+          "method": "get",
+          "args": [
+            "'/council/sessions'"
+          ],
+          "endpoint": {
+            "line": 2687,
+            "endpoints": [
+              "endpoint"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/ConsensusDebatePage.tsx",
+          "line": 38,
+          "method": "post",
+          "args": [
+            "'/council/sessions'",
+            "{\n      task_description: topic, mode: 'council', independent_judge: independentJudge,\n      ...(judgeModel.trim() ? { judge_model: judgeModel.trim() } : {}),\n    }"
+          ],
+          "endpoint": {
+            "line": 2691,
+            "endpoints": [
+              "endpoint, {\n      method: 'POST',\n      body: JSON.stringify(body ?? {}),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/ConsensusDebatePage.tsx",
+          "line": 48,
+          "method": "post",
+          "args": [
+            "`/council/sessions/${id}/execute`"
+          ],
+          "endpoint": {
+            "line": 2691,
+            "endpoints": [
+              "endpoint, {\n      method: 'POST',\n      body: JSON.stringify(body ?? {}),\n    }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/predictive-analytics",
+      "element": "PredictiveAnalyticsPage",
+      "component_file": "packages/dashboard/src/pages/PredictiveAnalyticsPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 141,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/PredictiveAnalyticsPage.tsx",
+          "line": 27,
+          "method": "request",
+          "args": [
+            "'/intelligence/predict'",
+            "{\n        method: 'POST',\n        body: JSON.stringify({ goalType: 'general', runtime: 'mock', mode: 'closed' }),\n      }"
+          ],
+          "endpoint": {
+            "line": 1594,
+            "endpoints": []
+          }
+        }
+      ]
+    },
+    {
+      "route": "/self-healing",
+      "element": "SelfHealingPage",
+      "component_file": "packages/dashboard/src/pages/SelfHealingPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 142,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/SelfHealingPage.tsx",
+          "line": 27,
+          "method": "request",
+          "args": [
+            "'/intelligence/health'"
+          ],
+          "endpoint": {
+            "line": 1594,
+            "endpoints": []
+          }
+        }
+      ]
+    },
+    {
+      "route": "/cognitive",
+      "element": "CognitiveRuntimePage",
+      "component_file": "packages/dashboard/src/pages/CognitiveRuntimePage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 143,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/CognitiveRuntimePage.tsx",
+          "line": 51,
+          "method": "getCognitiveStats",
+          "args": [],
+          "endpoint": {
+            "line": 2621,
+            "endpoints": [
+              "\"/cognitive/stats\""
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/CognitiveRuntimePage.tsx",
+          "line": 52,
+          "method": "getCognitiveMetaLearning",
+          "args": [],
+          "endpoint": {
+            "line": 2631,
+            "endpoints": [
+              "\"/cognitive/meta-learning\""
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/CognitiveRuntimePage.tsx",
+          "line": 60,
+          "method": "getBestStrategy",
+          "args": [
+            "s.bestGoalType"
+          ],
+          "endpoint": {
+            "line": 2642,
+            "endpoints": [
+              "`/cognitive/strategy/${encodeURIComponent(goalType)}`"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/self-driving",
+      "element": "SelfDrivingDashboard",
+      "component_file": "packages/dashboard/src/pages/SelfDrivingDashboard.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 144,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/SelfDrivingDashboard.tsx",
+          "line": 30,
+          "method": "getCognitiveStats",
+          "args": [],
+          "endpoint": {
+            "line": 2621,
+            "endpoints": [
+              "\"/cognitive/stats\""
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SelfDrivingDashboard.tsx",
+          "line": 31,
+          "method": "getMemoryStats",
+          "args": [],
+          "endpoint": {
+            "line": 2655,
+            "endpoints": [
+              "\"/memory/stats\""
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SelfDrivingDashboard.tsx",
+          "line": 32,
+          "method": "getMetaStats",
+          "args": [],
+          "endpoint": {
+            "line": 2669,
+            "endpoints": [
+              "\"/meta/stats\""
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SelfDrivingDashboard.tsx",
+          "line": 33,
+          "method": "getComplianceStatus",
+          "args": [],
+          "endpoint": {
+            "line": 2662,
+            "endpoints": [
+              "\"/compliance/status\""
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SelfDrivingDashboard.tsx",
+          "line": 41,
+          "method": "getMetaTuningHistory",
+          "args": [
+            "{ limit: 20 }"
+          ],
+          "endpoint": {
+            "line": 2676,
+            "endpoints": [
+              "`/meta/tuning-history${suffix}`"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/SelfDrivingDashboard.tsx",
+          "line": 85,
+          "method": "post",
+          "args": [
+            "'/meta/tuning/run'"
+          ],
+          "endpoint": {
+            "line": 2691,
+            "endpoints": [
+              "endpoint, {\n      method: 'POST',\n      body: JSON.stringify(body ?? {}),\n    }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "/explainers",
+      "element": "ExplainerFleetPage",
+      "component_file": "packages/dashboard/src/pages/explore/ExplainerFleetPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 145,
+      "redirect": null,
+      "api": [
+        {
+          "file": "packages/dashboard/src/pages/explore/ExplainerFleetPage.tsx",
+          "line": 104,
+          "method": "get",
+          "args": [
+            "'/explainer/fleet/status'"
+          ],
+          "endpoint": {
+            "line": 2687,
+            "endpoints": [
+              "endpoint"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/explore/ExplainerFleetPage.tsx",
+          "line": 105,
+          "method": "get",
+          "args": [
+            "'/explainer/fleet/overview'"
+          ],
+          "endpoint": {
+            "line": 2687,
+            "endpoints": [
+              "endpoint"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/explore/ExplainerFleetPage.tsx",
+          "line": 106,
+          "method": "get",
+          "args": [
+            "'/explainer/fleet/health-drift'"
+          ],
+          "endpoint": {
+            "line": 2687,
+            "endpoints": [
+              "endpoint"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/explore/ExplainerFleetPage.tsx",
+          "line": 107,
+          "method": "get",
+          "args": [
+            "'/explainer/review-queue'"
+          ],
+          "endpoint": {
+            "line": 2687,
+            "endpoints": [
+              "endpoint"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/explore/ExplainerFleetPage.tsx",
+          "line": 108,
+          "method": "get",
+          "args": [
+            "'/explainer/fleet/calibration-stats'"
+          ],
+          "endpoint": {
+            "line": 2687,
+            "endpoints": [
+              "endpoint"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/explore/ExplainerFleetPage.tsx",
+          "line": 134,
+          "method": "post",
+          "args": [
+            "`/explainer/fleet/${endpoint}`",
+            "body ?? {}"
+          ],
+          "endpoint": {
+            "line": 2691,
+            "endpoints": [
+              "endpoint, {\n      method: 'POST',\n      body: JSON.stringify(body ?? {}),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/explore/ExplainerFleetPage.tsx",
+          "line": 146,
+          "method": "post",
+          "args": [
+            "'/explainer/fleet/regenerate'",
+            "{ full_name: fullName }"
+          ],
+          "endpoint": {
+            "line": 2691,
+            "endpoints": [
+              "endpoint, {\n      method: 'POST',\n      body: JSON.stringify(body ?? {}),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/explore/ExplainerFleetPage.tsx",
+          "line": 158,
+          "method": "post",
+          "args": [
+            "`/explainer/review-queue/${id}/resolve`",
+            "{\n        resolution,\n        ...(calibrationRating !== undefined ? { calibration_rating: calibrationRating } : {}),\n      }"
+          ],
+          "endpoint": {
+            "line": 2691,
+            "endpoints": [
+              "endpoint, {\n      method: 'POST',\n      body: JSON.stringify(body ?? {}),\n    }"
+            ]
+          }
+        },
+        {
+          "file": "packages/dashboard/src/pages/explore/ExplainerFleetPage.tsx",
+          "line": 174,
+          "method": "post",
+          "args": [
+            "'/explainer/ask'",
+            "{ question: question.trim() }"
+          ],
+          "endpoint": {
+            "line": 2691,
+            "endpoints": [
+              "endpoint, {\n      method: 'POST',\n      body: JSON.stringify(body ?? {}),\n    }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "route": "*",
+      "element": "NotFoundPage",
+      "component_file": "packages/dashboard/src/pages/NotFoundPage.tsx",
+      "route_file": "packages/dashboard/src/App.tsx",
+      "route_line": 146,
+      "redirect": null,
+      "api": []
+    }
+  ],
+  "publicRoutes": [
+    {
+      "route": "/explore/:owner/:repo",
+      "method": "GET",
+      "file": "packages/server/src/routes/explore-public.ts",
+      "line": 33
+    },
+    {
+      "route": "/explore/:owner/:repo/llms.txt",
+      "method": "GET",
+      "file": "packages/server/src/routes/explore-public.ts",
+      "line": 51
+    },
+    {
+      "route": "/explore/:owner/:repo/opengraph.svg",
+      "method": "GET",
+      "file": "packages/server/src/routes/explore-public.ts",
+      "line": 67
+    },
+    {
+      "route": "/explore/sitemap.xml",
+      "method": "GET",
+      "file": "packages/server/src/routes/explore-public.ts",
+      "line": 85
+    },
+    {
+      "route": "/explore/robots.txt",
+      "method": "GET",
+      "file": "packages/server/src/routes/explore-public.ts",
+      "line": 94
+    },
+    {
+      "route": "/explore/:owner/:repo/badge.svg",
+      "method": "GET",
+      "file": "packages/server/src/routes/explore-public.ts",
+      "line": 99
+    },
+    {
+      "route": "/explore/leaderboard",
+      "method": "GET",
+      "file": "packages/server/src/routes/explore-public.ts",
+      "line": 125
+    }
+  ]
+}

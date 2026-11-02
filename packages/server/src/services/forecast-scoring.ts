@@ -74,11 +74,15 @@ export function forecastScores(db: Database, sinceDays = 60): ForecasterScore[] 
  *  - skill, AUC and the paired Brier gain (baseline − forecaster, same rows) each with a seeded cluster bootstrap CI
  *    (cluster = proposal, B = 2000);
  *  - decision_grade only with ≥ 10 positives, n ≥ 100 and a skill CI that excludes 0 — otherwise 'insufficient';
- *  - rows of proposals that never got a goal (no leakage filter possible) are scored but counted apart (null_goal_n).
+ *  - rows of proposals that never got a goal (no leakage filter possible) are scored but counted apart (null_goal_n);
+ *  - DI-001: a forecast whose context was assembled at/after the resolution (context_at ≥ resolved_at, or
+ *    outcome_known_at_context) is dropped; committee rows without context_at are scored but counted apart (context_unrecorded_n).
  * Read-only; nothing acts on V2.
  */
 export interface ForecasterScoreV2 {
-  forecaster: string; n: number; positives: number; null_goal_n: number; brier: number; baselineBrier: number;
+  forecaster: string; n: number; positives: number; null_goal_n: number;
+  /** DI-001: committee rows scored without a recorded context_at (written before the stamp; never backfilled). */
+  context_unrecorded_n: number; brier: number; baselineBrier: number;
   skill: number; skill_ci: [number, number]; auc: number | null; auc_ci: [number, number] | null; brier_gain: number; brier_gain_ci: [number, number];
   state: 'decision_grade' | 'insufficient';
 }
@@ -113,17 +117,21 @@ export function forecastScoresV2(db: Database, opts: { sinceDays?: number; seed?
       WHERE subject_type = 'self_improvement' AND decision <> 'error' AND (judgment = 'proposal_prescreen' OR judgment LIKE 'forecast:%') AND created_at >= ?
       ORDER BY created_at, id`).all(since) as typeof rows;
   } catch { return { forecasters: [], would_have_stopped: [] }; }
-  type Row = { p: number; o: number; base: number; subject: string; nullGoal: boolean };
+  type Row = { p: number; o: number; base: number; subject: string; nullGoal: boolean; contextUnrecorded: boolean };
   const pairs = new Map<string, Row[]>(); const seen = new Set<string>();
   for (const r of rows) {
     const prop = byId.get(r.subject_id); if (!prop) continue;
-    let answers: { as_of?: unknown } = {}; try { answers = JSON.parse(r.answers_json || '{}'); } catch { /* unparsable: skip */ }
+    let answers: { as_of?: unknown; context_at?: unknown; outcome_known_at_context?: unknown } = {}; try { answers = JSON.parse(r.answers_json || '{}'); } catch { /* unparsable: skip */ }
     const madeAt = typeof answers.as_of === 'string' ? answers.as_of : r.created_at;
     if (prop.goal_at && madeAt >= prop.goal_at) continue;
+    // DI-001: a committee member read its context at claim time; context assembled at/after the outcome could have seen it
+    const contextAt = typeof answers.context_at === 'string' ? answers.context_at : null;
+    if (answers.outcome_known_at_context === true || (contextAt !== null && contextAt >= prop.resolved_at)) continue;
     const key = `${r.judgment}|${r.subject_id}`; if (seen.has(key)) continue; seen.add(key);
     const p = forecastOf(r.judgment, answers as never); if (p === null) continue;
     const list = pairs.get(r.judgment) ?? [];
-    list.push({ p, o: outcome(prop.status), base: trailingRate(prop.source, madeAt), subject: r.subject_id, nullGoal: !prop.goal_at });
+    list.push({ p, o: outcome(prop.status), base: trailingRate(prop.source, madeAt), subject: r.subject_id, nullGoal: !prop.goal_at,
+      contextUnrecorded: r.judgment.startsWith('forecast:committee') && contextAt === null });
     pairs.set(r.judgment, list);
   }
   const stats = (list: Row[]) => {
@@ -145,7 +153,8 @@ export function forecastScoresV2(db: Database, opts: { sinceDays?: number; seed?
     const positives = list.filter((r) => r.o).length;
     const grade = positives >= 10 && list.length >= 100 && (skill_ci[0] > 0 || skill_ci[1] < 0);
     return {
-      forecaster: name, n: list.length, positives, null_goal_n: list.filter((r) => r.nullGoal).length, brier: s.b, baselineBrier: s.base,
+      forecaster: name, n: list.length, positives, null_goal_n: list.filter((r) => r.nullGoal).length,
+      context_unrecorded_n: list.filter((r) => r.contextUnrecorded).length, brier: s.b, baselineBrier: s.base,
       skill: s.skill, skill_ci, auc: s.auc, auc_ci: aucs.length ? [pct(aucs, 0.025), pct(aucs, 0.975)] : null,
       brier_gain: s.base - s.b, brier_gain_ci: [pct(gains, 0.025), pct(gains, 0.975)], state: grade ? 'decision_grade' : 'insufficient',
     };

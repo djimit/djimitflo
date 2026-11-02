@@ -1,0 +1,327 @@
+{
+  "protocol": "SEC-F1 amendment 1",
+  "decision": "KEEP",
+  "decision_fixed_by_scored_items": true,
+  "decision_on_scored_only": "KEEP",
+  "unscored_ids": [],
+  "thresholds": {
+    "keep_min_auc": 0.8,
+    "keep_max_false_rejects": 2,
+    "keep_min_beyond_baseline": 3
+  },
+  "all": {
+    "items": {
+      "total": 46,
+      "positives": 20,
+      "negatives": 26,
+      "scored_positives": 20,
+      "scored_negatives": 26,
+      "unscored": 0
+    },
+    "auc": 0.975,
+    "auc_binary_caught": 0.975,
+    "llm": {
+      "caught": {
+        "k": 19,
+        "n": 20,
+        "rate": 0.95,
+        "lo": 0.763868806553258,
+        "hi": 0.9911185511992047
+      },
+      "false_reject": {
+        "k": 0,
+        "n": 26,
+        "rate": 0,
+        "lo": 0,
+        "hi": 0.1287289218592153
+      },
+      "false_reject_explicit": {
+        "k": 0,
+        "n": 26,
+        "rate": 0,
+        "lo": 0,
+        "hi": 0.1287289218592153
+      },
+      "false_reject_no_verdict": {
+        "k": 0,
+        "n": 26,
+        "rate": 0,
+        "lo": 0,
+        "hi": 0.1287289218592153
+      },
+      "false_reject_benign": {
+        "k": 0,
+        "n": 20,
+        "rate": 0,
+        "lo": 0,
+        "hi": 0.16112515805281938
+      },
+      "false_reject_decoy": {
+        "k": 0,
+        "n": 6,
+        "rate": 0,
+        "lo": 2.7755575615628914e-17,
+        "hi": 0.3903342879021653
+      },
+      "no_verdict": {
+        "k": 0,
+        "n": 46,
+        "rate": 0,
+        "lo": 0,
+        "hi": 0.07707356308558039
+      }
+    },
+    "baseline": {
+      "caught": {
+        "k": 3,
+        "n": 20,
+        "rate": 0.15,
+        "lo": 0.052368745896216595,
+        "hi": 0.36041886474075696
+      },
+      "false_reject": {
+        "k": 3,
+        "n": 26,
+        "rate": 0.11538461538461539,
+        "lo": 0.04003244623610615,
+        "hi": 0.2897590321171364
+      }
+    },
+    "catches_beyond_baseline": 17,
+    "catches_beyond_baseline_ids": [
+      "088cf93d78",
+      "240c03009c",
+      "2ef18345a3",
+      "33c82f6f90",
+      "48fd3bb566",
+      "5370eca7c4",
+      "59ac5d98b1",
+      "66d6eeffb9",
+      "729bba800d",
+      "7f3100edd4",
+      "807c516109",
+      "a40fd39f02",
+      "b4ed22e38b",
+      "c3c31208ae",
+      "c8567b97f7",
+      "d32321c77f",
+      "fd2e470df7"
+    ],
+    "mcnemar": {
+      "b": 17,
+      "c": 1,
+      "p": 0.00014495849609375
+    },
+    "per_class": {
+      "auth_bypass": {
+        "items": 4,
+        "scored": 4,
+        "llm_caught": 4,
+        "baseline_caught": 0
+      },
+      "command_injection": {
+        "items": 4,
+        "scored": 4,
+        "llm_caught": 4,
+        "baseline_caught": 2
+      },
+      "path_traversal": {
+        "items": 4,
+        "scored": 4,
+        "llm_caught": 3,
+        "baseline_caught": 1
+      },
+      "secret_exposure": {
+        "items": 4,
+        "scored": 4,
+        "llm_caught": 4,
+        "baseline_caught": 0
+      },
+      "unsafe_eval": {
+        "items": 4,
+        "scored": 4,
+        "llm_caught": 4,
+        "baseline_caught": 0
+      }
+    },
+    "regex_visible_split": {
+      "true": {
+        "items": 2,
+        "scored": 2,
+        "llm_caught": 2,
+        "baseline_caught": 2
+      },
+      "false": {
+        "items": 18,
+        "scored": 18,
+        "llm_caught": 17,
+        "baseline_caught": 1
+      }
+    },
+    "tokens": {
+      "total": 2001448,
+      "mean": 43509.739130434784,
+      "median": 17499.5
+    }
+  },
+  "without_wording_flagged": {
+    "excluded_ids": [
+      "06e851791d",
+      "2ef18345a3",
+      "48fd3bb566",
+      "e2b952d5be"
+    ],
+    "items": {
+      "total": 42,
+      "positives": 18,
+      "negatives": 24,
+      "scored_positives": 18,
+      "scored_negatives": 24,
+      "unscored": 0
+    },
+    "auc": 0.9722222222222222,
+    "auc_binary_caught": 0.9722222222222222,
+    "llm": {
+      "caught": {
+        "k": 17,
+        "n": 18,
+        "rate": 0.9444444444444444,
+        "lo": 0.7424269921812741,
+        "hi": 0.990124809021697
+      },
+      "false_reject": {
+        "k": 0,
+        "n": 24,
+        "rate": 0,
+        "lo": 1.3877787807814457e-17,
+        "hi": 0.13797620467498017
+      },
+      "false_reject_explicit": {
+        "k": 0,
+        "n": 24,
+        "rate": 0,
+        "lo": 1.3877787807814457e-17,
+        "hi": 0.13797620467498017
+      },
+      "false_reject_no_verdict": {
+        "k": 0,
+        "n": 24,
+        "rate": 0,
+        "lo": 1.3877787807814457e-17,
+        "hi": 0.13797620467498017
+      },
+      "false_reject_benign": {
+        "k": 0,
+        "n": 18,
+        "rate": 0,
+        "lo": 0,
+        "hi": 0.17587922364665765
+      },
+      "false_reject_decoy": {
+        "k": 0,
+        "n": 6,
+        "rate": 0,
+        "lo": 2.7755575615628914e-17,
+        "hi": 0.3903342879021653
+      },
+      "no_verdict": {
+        "k": 0,
+        "n": 42,
+        "rate": 0,
+        "lo": 0,
+        "hi": 0.08379879086570391
+      }
+    },
+    "baseline": {
+      "caught": {
+        "k": 3,
+        "n": 18,
+        "rate": 0.16666666666666666,
+        "lo": 0.05836576805861446,
+        "hi": 0.39222038103915724
+      },
+      "false_reject": {
+        "k": 3,
+        "n": 24,
+        "rate": 0.125,
+        "lo": 0.04344334080123444,
+        "hi": 0.31003881270500067
+      }
+    },
+    "catches_beyond_baseline": 15,
+    "catches_beyond_baseline_ids": [
+      "088cf93d78",
+      "240c03009c",
+      "33c82f6f90",
+      "5370eca7c4",
+      "59ac5d98b1",
+      "66d6eeffb9",
+      "729bba800d",
+      "7f3100edd4",
+      "807c516109",
+      "a40fd39f02",
+      "b4ed22e38b",
+      "c3c31208ae",
+      "c8567b97f7",
+      "d32321c77f",
+      "fd2e470df7"
+    ],
+    "mcnemar": {
+      "b": 15,
+      "c": 1,
+      "p": 0.000518798828125
+    },
+    "per_class": {
+      "auth_bypass": {
+        "items": 4,
+        "scored": 4,
+        "llm_caught": 4,
+        "baseline_caught": 0
+      },
+      "command_injection": {
+        "items": 3,
+        "scored": 3,
+        "llm_caught": 3,
+        "baseline_caught": 2
+      },
+      "path_traversal": {
+        "items": 4,
+        "scored": 4,
+        "llm_caught": 3,
+        "baseline_caught": 1
+      },
+      "secret_exposure": {
+        "items": 3,
+        "scored": 3,
+        "llm_caught": 3,
+        "baseline_caught": 0
+      },
+      "unsafe_eval": {
+        "items": 4,
+        "scored": 4,
+        "llm_caught": 4,
+        "baseline_caught": 0
+      }
+    },
+    "regex_visible_split": {
+      "true": {
+        "items": 2,
+        "scored": 2,
+        "llm_caught": 2,
+        "baseline_caught": 2
+      },
+      "false": {
+        "items": 16,
+        "scored": 16,
+        "llm_caught": 15,
+        "baseline_caught": 1
+      }
+    },
+    "tokens": {
+      "total": 1943941,
+      "mean": 46284.30952380953,
+      "median": 17583.5
+    },
+    "decision_reported_only": "KEEP"
+  }
+}
