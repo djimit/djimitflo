@@ -184,11 +184,13 @@ export function sweepEvidenceRoom(db: Database, now = Date.now(), env: NodeJS.Pr
   return result;
 }
 
-export type EvidenceArtefact = { kind: 'test'; test_file: string; command: string } | { kind: 'repro'; command: string };
+/** `content` (optional): the test file's source, which the falsifier niche (commons-falsifier.ts, AR5) runs against main. */
+export type EvidenceArtefact = { kind: 'test'; test_file: string; command: string; content?: string } | { kind: 'repro'; command: string };
 export interface EvidenceReplyInput { text?: unknown; artefact?: unknown }
 
 const COMMAND = /^[^\n\r\0]{1,500}$/;
 const TEST_FILE = /^(?!\/)(?!.*\.\.)[A-Za-z0-9_.@/-]{1,300}\.(test|spec)\.[cm]?[jt]sx?$/;
+export const ARTEFACT_CONTENT_MAX = 20_000;
 
 /** The typed artefact of a reply, or null when it carries none (an invalid artefact throws). */
 export function parseArtefact(raw: unknown): EvidenceArtefact | null {
@@ -200,7 +202,11 @@ export function parseArtefact(raw: unknown): EvidenceArtefact | null {
   if (a.kind === 'test') {
     const testFile = typeof a.test_file === 'string' ? a.test_file.trim() : '';
     if (!TEST_FILE.test(testFile)) throw new Error('EVIDENCE_ARTEFACT_TEST_FILE_INVALID');
-    return { kind: 'test', test_file: testFile, command };
+    if (a.content === undefined || a.content === null) return { kind: 'test', test_file: testFile, command };
+    if (typeof a.content !== 'string' || !a.content.trim() || a.content.length > ARTEFACT_CONTENT_MAX || a.content.includes('\0')) throw new Error('EVIDENCE_ARTEFACT_CONTENT_INVALID');
+    // a redacted test is a different test: a secret in the content is refused, not silently rewritten
+    if (redactSecrets(a.content).redacted !== a.content) throw new Error('EVIDENCE_ARTEFACT_CONTENT_SECRET');
+    return { kind: 'test', test_file: testFile, command, content: a.content };
   }
   throw new Error('EVIDENCE_ARTEFACT_KIND_INVALID');
 }

@@ -20,6 +20,9 @@
  * touch them: changing a number is not changing behaviour. fitness = measured reliability (success share).
  * generality/complexity/adaptability have no measurement and stay null. Retirement is for the W8 operator review (14-10).
  * recordOutcome() and the skill_outcomes table are live (bandit, gym, attribution) and unchanged.
+ * tokens_used is nullable: null = the runtime reported no usage (unknown, never 0); efficiency averages known rows only.
+ * A stored 0 is read as unknown too (L-F05, forensic audit 2026-10-26): legacy rows and producers that coalesce a missing
+ * report to 0 would otherwise score maximal efficiency. efficiency_coverage reports known/total rows.
  */
 
 import { createHash, randomUUID } from 'crypto';
@@ -39,12 +42,35 @@ interface SkillGenome {
     generality: number | null;    // no measurement → null
     complexity: number | null;    // no measurement → null
     adaptability: number | null;  // no measurement → null
+    /** rows with known (> 0) tokens behind efficiency, of all measured outcomes */
+    efficiency_coverage?: { known: number; total: number };
   };
   /** = traits.reliability; null = INSUFFICIENT_EVIDENCE */
   fitness: number | null;
   mutations: string[];
   createdAt: string;
 }
+
+/**
+ * Evidence ref on a zero whose process completed but that no independent verification judged (execution engine). It is no
+ * observation of the skill — neither a success nor a failure — so reliability leaves it out, as UNFAIR_ZERO_SQL does for infra.
+ */
+export const COMPLETED_UNVERIFIED_REF = 'outcome_class:completed_unverified';
+
+/**
+ * INT-004 follow-up: a skill outcome is an observation of the skill only with positive delivery evidence — the engine's
+ * `skill_delivery:delivered` ref (a receipt that the skill text was in the assignment the runtime got). Assigned /
+ * unknown delivery (skill_attribution:unverified) and untagged legacy rows (written before receipts, or via the manual
+ * /evolution/outcome API) are a stored association, not a measurement: per-skill fitness and promotion leave them out.
+ */
+export const DELIVERED_ATTRIBUTION_SQL = `evidence_refs_json LIKE '%"skill_delivery:delivered"%'`;
+
+/**
+ * Outcome namespaces that are species, not delivered skills — makers (`[repo:<slug>:]loop-maker:<lane|gym|merge>:...`),
+ * fleet agents (`agent:`), falsifiers (`falsifier:`). They never carry a delivery receipt; their fitness reads every row.
+ */
+export const isSpeciesOutcome = (skillId: string): boolean =>
+  skillId.includes('loop-maker:') || skillId.startsWith('agent:') || skillId.startsWith('falsifier:');
 
 function seededRandom(seed?: string): () => number {
   if (!seed) return Math.random;
@@ -131,7 +157,8 @@ export class SkillEvolutionEngine {
    */
   recordOutcome(skillId: string, outcome: {
     success: boolean;
-    tokensUsed: number;
+    /** null = not reported by the runtime (unknown), stored as NULL, never as 0 */
+    tokensUsed: number | null;
     durationMs: number;
     domain: string;
     taskId?: string;
@@ -150,7 +177,7 @@ export class SkillEvolutionEngine {
       randomUUID(),
       skillId,
       outcome.success ? 1 : 0,
-      outcome.tokensUsed,
+      typeof outcome.tokensUsed === 'number' && Number.isFinite(outcome.tokensUsed) ? outcome.tokensUsed : null,
       outcome.durationMs,
       outcome.domain,
       outcome.taskId || null,
@@ -163,6 +190,38 @@ export class SkillEvolutionEngine {
     );
 
     // Update skill traits based on outcome
+    this.updateTraits(skillId);
+  }
+
+  /** Trusted, hash-bound late verification settles one execution; ambiguous retries remain unknown. */
+  settleTaskVerification(taskId: string, skillId: string, contentHash: string, packageHash: string): void {
+    if (process.env.SKILL_FIRST_MODE !== 'on') return;
+    const task = this.db.prepare('SELECT status FROM tasks WHERE id = ?').get(taskId) as { status: string } | undefined;
+    if (task?.status !== 'completed') return;
+    const rows = this.db.prepare(`SELECT id, evidence_refs_json FROM skill_outcomes
+      WHERE task_id = ? AND skill_id = ? AND skill_content_hash = ? AND ${DELIVERED_ATTRIBUTION_SQL}`)
+      .all(taskId, skillId, contentHash) as Array<{ id: string; evidence_refs_json: string }>;
+    if (rows.length !== 1 || !(JSON.parse(rows[0].evidence_refs_json) as string[]).includes(`skill_package_sha256:${packageHash}`)) return;
+    const receipt = this.db.prepare(`SELECT details FROM execution_evidence WHERE task_id = ? AND source = 'system'
+      AND json_extract(metadata, '$.reason') = 'skill_delivery_receipt' ORDER BY captured_at DESC, rowid DESC LIMIT 1`)
+      .get(taskId) as { details: string } | undefined;
+    const delivered = receipt ? JSON.parse(receipt.details) as Record<string, unknown> : null;
+    if (delivered?.delivery_state !== 'delivered' || delivered.skill_id !== skillId
+      || delivered.skill_content_hash !== contentHash || delivered.skill_package_hash !== packageHash) return;
+    const checks = this.db.prepare(`SELECT id, severity FROM execution_evidence WHERE task_id = ?
+      AND evidence_type = 'test_result' AND source = 'system' AND json_valid(details)
+      AND json_extract(details, '$.skill_package_id') = ? AND json_extract(details, '$.skill_content_hash') = ?
+      AND json_extract(details, '$.skill_package_hash') = ?`)
+      .all(taskId, skillId, contentHash, packageHash) as Array<{ id: string; severity: string }>;
+    if (!checks.length) return;
+    const failed = checks.some((check) => ['error', 'critical'].includes(check.severity));
+    const passed = !failed && checks.every((check) => check.severity === 'info');
+    const refs = (JSON.parse(rows[0].evidence_refs_json) as string[]).filter((ref) =>
+      ref !== COMPLETED_UNVERIFIED_REF && ref !== 'outcome_class:regressed' && !ref.startsWith('verification:test_result:'));
+    refs.push(...checks.map((check) => check.id), ...(passed ? ['verification:test_result:passed']
+      : failed ? ['verification:test_result:failed', 'outcome_class:regressed'] : [COMPLETED_UNVERIFIED_REF]));
+    this.db.prepare('UPDATE skill_outcomes SET success = ?, evidence_refs_json = ? WHERE id = ?')
+      .run(passed ? 1 : 0, JSON.stringify([...new Set(refs)]), rows[0].id);
     this.updateTraits(skillId);
   }
 
@@ -200,12 +259,15 @@ export class SkillEvolutionEngine {
 
   /** Phenotype measured from this skill's recorded outcomes only. */
   measuredTraits(skillId: string): SkillGenome['traits'] {
-    // E2: an infra / no-change zero is no observation of the skill (left out, never a 0)
+    // E2: an infra / no-change / completed-unverified zero is no observation of the skill (left out, never a 0).
+    // Unknown tokens (NULL, or a 0 that stands for a missing report) drop out of the efficiency AVG instead of scoring 1.
+    // A named skill counts only delivered attribution, on both sides (an undelivered success is no more the skill's than a failure).
     const r = this.db.prepare(`SELECT COUNT(*) AS n, AVG(success) AS rel,
-        AVG(MIN(1.0, 1000.0 / MAX(1, tokens_used))) AS eff FROM skill_outcomes WHERE skill_id = ?
-        AND NOT (success = 0 AND ${UNFAIR_ZERO_SQL})${skillId.includes('loop-maker:merge:') ? ` AND NOT ${supersededMergeOutcomeSql('skill_outcomes')}` : ''}`).get(skillId) as { n: number; rel: number | null; eff: number | null };
+        AVG(CASE WHEN tokens_used > 0 THEN MIN(1.0, 1000.0 / tokens_used) END) AS eff, COALESCE(SUM(tokens_used > 0), 0) AS eff_n FROM skill_outcomes WHERE skill_id = ?
+        ${isSpeciesOutcome(skillId) ? '' : `AND ${DELIVERED_ATTRIBUTION_SQL} `}AND NOT (success = 0 AND ${UNFAIR_ZERO_SQL}) AND NOT (success = 0 AND evidence_refs_json LIKE '%"${COMPLETED_UNVERIFIED_REF}"%')${skillId.includes('loop-maker:merge:') ? ` AND NOT ${supersededMergeOutcomeSql('skill_outcomes')}` : ''}`).get(skillId) as { n: number; rel: number | null; eff: number | null; eff_n: number };
     const has = r.n > 0;
-    return { efficiency: has ? r.eff : null, reliability: has ? r.rel : null, generality: null, complexity: null, adaptability: null };
+    return { efficiency: has ? r.eff : null, reliability: has ? r.rel : null, generality: null, complexity: null, adaptability: null,
+      efficiency_coverage: { known: r.eff_n, total: r.n } };
   }
 
   private persist(genome: SkillGenome): void {
@@ -272,7 +334,7 @@ export class SkillEvolutionEngine {
         id TEXT PRIMARY KEY,
         skill_id TEXT NOT NULL,
         success INTEGER NOT NULL DEFAULT 0,
-        tokens_used INTEGER NOT NULL DEFAULT 0,
+        tokens_used INTEGER DEFAULT 0,
         duration_ms INTEGER NOT NULL DEFAULT 0,
         domain TEXT NOT NULL DEFAULT '',
         task_id TEXT,
@@ -283,10 +345,6 @@ export class SkillEvolutionEngine {
         evidence_refs_json TEXT NOT NULL DEFAULT '[]',
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
-
-      CREATE INDEX IF NOT EXISTS idx_skill_genomes_skill_id ON skill_genomes(skill_id);
-      CREATE INDEX IF NOT EXISTS idx_skill_genomes_generation ON skill_genomes(generation);
-      CREATE INDEX IF NOT EXISTS idx_skill_outcomes_skill_id ON skill_outcomes(skill_id);
     `);
     for (const [name, ddl] of [
       ['task_id', 'TEXT'],
@@ -299,6 +357,42 @@ export class SkillEvolutionEngine {
       const exists = (this.db.prepare('PRAGMA table_info(skill_outcomes)').all() as Array<{ name: string }>)
         .some((column) => column.name === name);
       if (!exists) this.db.exec(`ALTER TABLE skill_outcomes ADD COLUMN ${name} ${ddl}`);
+    }
+    this.relaxTokensNotNull();
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_skill_genomes_skill_id ON skill_genomes(skill_id);
+      CREATE INDEX IF NOT EXISTS idx_skill_genomes_generation ON skill_genomes(generation);
+      CREATE INDEX IF NOT EXISTS idx_skill_outcomes_skill_id ON skill_outcomes(skill_id);
+    `);
+  }
+
+  /**
+   * One-time, idempotent widening of a skill_outcomes table created with `tokens_used INTEGER NOT NULL` so an unknown
+   * count can be NULL. SQLite cannot drop NOT NULL in place (same pattern as migrate.ts rebuildLoopTables): the stored DDL
+   * is copied with only that constraint removed (ALTER-added columns keep their order), every row is copied unchanged,
+   * and the copy is checked before the old table is dropped. The index is recreated by the caller. A table whose DDL does
+   * not match, or a failed rebuild (rolled back), is left as it was; existing writers that pass a number are unaffected.
+   */
+  private relaxTokensNotNull(): void {
+    const tokens = (this.db.prepare('PRAGMA table_info(skill_outcomes)').all() as Array<{ name: string; notnull: number }>)
+      .find((column) => column.name === 'tokens_used');
+    if (!tokens?.notnull) return;
+    const ddl = (this.db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'skill_outcomes'").get() as { sql: string } | undefined)?.sql ?? '';
+    const relaxed = ddl.replace(/\btokens_used\s+INTEGER\s+NOT\s+NULL\b/i, 'tokens_used INTEGER');
+    const copy = relaxed.replace(/^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["`]?skill_outcomes["`]?(?=\s*\()/i, 'CREATE TABLE skill_outcomes_nullable_tokens');
+    if (relaxed === ddl || copy === relaxed) return;
+    try {
+      this.db.transaction(() => {
+        this.db.exec('DROP TABLE IF EXISTS skill_outcomes_nullable_tokens');
+        this.db.exec(copy);
+        this.db.exec('INSERT INTO skill_outcomes_nullable_tokens SELECT * FROM skill_outcomes');
+        const count = (table: string) => (this.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
+        if (count('skill_outcomes_nullable_tokens') !== count('skill_outcomes')) throw new Error('skill_outcomes copy row count mismatch');
+        this.db.exec('DROP TABLE skill_outcomes');
+        this.db.exec('ALTER TABLE skill_outcomes_nullable_tokens RENAME TO skill_outcomes');
+      })();
+    } catch (err) {
+      console.warn('skill_outcomes: tokens_used NOT NULL not relaxed:', (err as Error)?.message || err);
     }
   }
 }

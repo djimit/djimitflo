@@ -1,0 +1,12 @@
+{
+  "status": "PASS",
+  "deliverables": 20,
+  "source_sha": "f957b552c9f02ffc5fb25c45d24431610e57f278",
+  "sqlite_queries": 38,
+  "existing_readers": 6,
+  "json_files": 14,
+  "local_markdown_links": 77,
+  "fresh_screenshots": 5,
+  "credential_pattern_check": "no known credential-value patterns found; not an exhaustive secret/PII guarantee",
+  "limits": "Offline artifact checks, not application regression/CI or independent outcome replication."
+}
