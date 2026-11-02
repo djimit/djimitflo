@@ -118,6 +118,17 @@ describe('GitHub pull_request review webhook', () => {
     db.close();
   });
 
+  it('U3: the review run is marked synthetic at write time (reason pr_review), so loop KPIs leave it out', async () => {
+    const db = await setup();
+    mockGh({ additions: 5, deletions: 2, changedFiles: 1, files: ['src/index.ts'] });
+    const response = await post(prBody(), 'delivery-pr-u3');
+    expect(response.status).toBe(202);
+    const { loop_run_id } = await response.json() as { loop_run_id: string };
+    expect(db.prepare("SELECT json_extract(metadata, '$.synthetic') AS synthetic, json_extract(metadata, '$.synthetic_reason') AS reason FROM loop_runs WHERE id = ?").get(loop_run_id))
+      .toEqual({ synthetic: 1, reason: 'pr_review' });
+    db.close();
+  });
+
   it('P0-5: the heuristic verdict is recorded as an automated heuristic reviewer, never as a human/manual review', async () => {
     const db = await setup();
     mockGh({ additions: 5, deletions: 2, changedFiles: 1, files: ['src/index.ts'] });

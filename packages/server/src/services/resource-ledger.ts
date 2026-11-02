@@ -141,7 +141,8 @@ export function gpuJobs(db: Database, since: string, until: string): Job[] {
 /**
  * Cloud and local tokens per (day, consumer) from leases and model calls created in [since, until).
  * Metric efficiency.cloud_tokens (cost-ledger METRIC_DEFINITIONS): v2 (default) leaves out llm_model_calls consumer 'maker' —
- * that row (B29, recordMakerCall, since 2026-10-12) mirrors the lease's runtime_usage, which the lease branch already counts.
+ * that row (B29, recordMakerCall, since 2026-10-12) mirrors the lease's runtime_usage, which the lease branch already counts;
+ * likewise consumer 'checker' (O2a, a reviewer lease's mirror, since 2026-10-29 — no earlier rows, so past values are unchanged).
  * v1 (the definition until this fix, kept so its historical values stay reproducible) counts both.
  */
 export function tokenLedger(db: Database, since: string, until: string, version: 1 | 2 = 2): Array<{ day: string; consumer: string; cloud: number; local: number }> {
@@ -153,7 +154,7 @@ export function tokenLedger(db: Database, since: string, until: string, version:
     out.push({ day: r.day, consumer: leaseConsumer(r.role, r.runtime, r.model), cloud: local ? 0 : r.tokens, local: local ? r.tokens : 0 });
   }
   for (const r of safeAll<{ day: string; consumer: string; model: string; provider: string | null; tokens: number }>(db, `SELECT substr(created_at, 1, 10) AS day, consumer, model, provider,
-      COALESCE(SUM(COALESCE(tokens_in, 0) + COALESCE(tokens_out, 0)), 0) AS tokens FROM llm_model_calls WHERE created_at >= ? AND created_at < ?${version === 1 ? '' : " AND consumer != 'maker'"} GROUP BY 1, 2, 3, 4`, since, until)) {
+      COALESCE(SUM(COALESCE(tokens_in, 0) + COALESCE(tokens_out, 0)), 0) AS tokens FROM llm_model_calls WHERE created_at >= ? AND created_at < ?${version === 1 ? '' : " AND consumer NOT IN ('maker', 'checker')"} GROUP BY 1, 2, 3, 4`, since, until)) {
     const local = isLocalModel(r.provider, r.model);
     out.push({ day: r.day, consumer: `llm:${r.consumer}`, cloud: local ? 0 : r.tokens, local: local ? r.tokens : 0 });
   }
