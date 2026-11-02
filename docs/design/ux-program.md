@@ -31,6 +31,7 @@ Operator-adopted 2026-11-01. Each item ships as a draft PR on `feat/ux-evo/<NN>-
 | UXE-00 | Value-gate decision card + settlement value by lane on `/evolution` (read-only); UI fitness ratchet v0 (`scripts/ui-fitness.mjs`, baseline `ui-fitness-baseline.json`) | draft PR |
 | UXE-02a | Ratchet v1a: `operator_routes_ui_called` / `unmatched_calls` (a2, wraps `ux-coverage.mjs`; `unavailable` without `typescript`, never 0), `contrast_pairs_below_4_5` (a4), `max_page_lines`, `dead_ws_subscriptions`; baseline = base measurement 155 / 0 / 10 / 1301 / 6 | draft PR (stacked on UXE-00) |
 | UXE-09 | Visible errors: load and action failures render as text on Policy Center, Federation, MCP Permissions, Tasks and Task detail (no `alert()`, `native_alert` 3 → 0); `useDialog` confirmation before proof-run rollback (Mission Control, proof-run detail) and worker drain / lease stop (Fleet Cockpit) | draft PR |
+| UXE-00a | Guard-test list (R12): a loop PR touching a UX oracle test (`ORACLE_TEST_FILES` in `loop-auto-merge.ts`) is permanent `ineligible: oracle_test_file`; refuses more PRs, never allows more | draft PR |
 
 ## Coverage baseline (UX-0, origin/main 5a9d46d5, 2026-10-05)
 
@@ -64,3 +65,4 @@ repositories 7 / 9. Full per-router table: `node scripts/ux-coverage.mjs`.
 | UXD-2 | English-only UI, no message catalog (UX-5 default) | proposed |
 | UXD-3 | Deleting orphan UI (e.g. `ComplianceDashboard`) or Lab pages | ask first, after telemetry. Telemetry is in (UX-30, 31-10): per-page KEEP / MOVE / MERGE-INTO / RETIRE-CANDIDATE in `ux-30-lab-pruning.md`; decision pending |
 | UXD-4 | Decision coverage (evidence keys a page reads and a test proves, `decision_keys_proven`) replaces route coverage as the primary UI target | proposed |
+| D-UXE-00a | Guard-test list: loop PRs touching the UX oracle tests are never earned-auto-merged (UXE-00a) | decided 2026-11-01 (yes) |

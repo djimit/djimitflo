@@ -56,6 +56,15 @@ import { newestRuns, requiredChecksOf, requiredRun, type CheckRun, type Protecti
  * and waits as 'rechecking_after_update' while the new CI runs; red again is 'checks_failed' again. Permanent reasons
  * and 'audit_sample' are never re-checked.
  */
+/**
+ * R12 guard-test list (UXE-00a, operator decision D-UXE-00a): the UX oracle tests. testOnlyChange makes every test file
+ * eligible for earned test-only auto-merge, so a loop PR could loosen the oracle that judges UI work; a loop PR touching one
+ * of these is ineligible 'oracle_test_file' (permanent: not in TRANSIENT_INELIGIBLE_REASONS, unknown codes fail closed).
+ * It only refuses more PRs, never allows more. Exact repo paths; a listed file that does not exist yet is guarded once it does.
+ */
+export const ORACLE_TEST_FILES = ['packages/server/src/__tests__/ui-fitness.test.ts', 'packages/server/src/__tests__/ux-coverage.test.ts',
+  'packages/dashboard/src/RouteSmoke.test.tsx', 'packages/dashboard/src/UX25b.test.tsx', 'packages/dashboard/src/UX4.test.tsx',
+  'packages/dashboard/src/UxTasks.test.tsx'] as const;
 type Decision = 'merged' | 'would_merge' | 'audit_sample' | 'ineligible' | 'waiting' | 'capped' | 'revoked_hold';
 export interface AutoMergeRecord {
   mode: 'shadow' | 'act'; decision: Decision; reason: string; at: string; pr_number: number;
@@ -262,6 +271,8 @@ export async function runAutoMergeTick(db: Database, fetchImpl: typeof fetch = f
     if (!files.length) { record('waiting', 'files_unavailable'); continue; }
     const names = files.map((f) => f.filename);
     if (!testOnlyChange(names)) { record('ineligible', `non_test_file: ${names.find((f) => !testOnlyChange([f]))}`); continue; }
+    const oracleFile = names.find((f) => (ORACLE_TEST_FILES as readonly string[]).includes(f));
+    if (oracleFile) { record('ineligible', `oracle_test_file: ${oracleFile}`); continue; }
     const removed = files.find((f) => f.status === 'removed');
     if (removed) { record('ineligible', `removes_test: ${removed.filename}`); continue; }
     const diff = files.reduce((a, f) => a + (Number(f.additions) || 0) + (Number(f.deletions) || 0), 0);
