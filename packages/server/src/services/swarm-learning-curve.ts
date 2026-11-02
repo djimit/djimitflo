@@ -1,4 +1,5 @@
 import type { Database } from 'better-sqlite3';
+import { realRunSql } from './synthetic-runs';
 import { wilson } from './evolution-estimators';
 import { metricRef, usageEvents, type UsageEvent } from './cost-ledger';
 import { experimentDefs } from './experiment-registry';
@@ -70,8 +71,8 @@ export function learningCurveView(db: Database, now = Date.now(), days = 7, runL
   const until = new Date(now).toISOString();
   const recentSince = new Date(now - days * DAY).toISOString();
   const priorSince = new Date(now - 2 * days * DAY).toISOString();
-  const latest = safeAll<RunRow>(db, 'SELECT id, loop_name, status, created_at, metadata FROM loop_runs ORDER BY created_at DESC LIMIT ?', runLimit).reverse();
-  const windowed = safeAll<RunRow>(db, 'SELECT id, loop_name, status, created_at, metadata FROM loop_runs WHERE created_at >= ? AND created_at < ? ORDER BY created_at ASC', priorSince, until);
+  const latest = safeAll<RunRow>(db, `SELECT id, loop_name, status, created_at, metadata FROM loop_runs WHERE ${realRunSql()} ORDER BY created_at DESC LIMIT ?`, runLimit).reverse();
+  const windowed = safeAll<RunRow>(db, `SELECT id, loop_name, status, created_at, metadata FROM loop_runs WHERE created_at >= ? AND created_at < ? AND ${realRunSql()} ORDER BY created_at ASC`, priorSince, until);
   const usageSince = [priorSince, latest[0]?.created_at].filter((s): s is string => Boolean(s)).sort()[0];
   const byRun = new Map<string, UsageEvent[]>();
   for (const e of usageEvents(db, usageSince, until, { now }).events) if (e.run_id) byRun.set(e.run_id, [...(byRun.get(e.run_id) ?? []), e]);

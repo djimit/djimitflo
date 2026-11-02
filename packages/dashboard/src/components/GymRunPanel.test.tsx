@@ -145,7 +145,21 @@ describe('GymRunPanel', () => {
     expect(screen.getByText('unknown (outcome lookup failed)')).toBeTruthy();
   });
 
-  it('applies to evolution-gym and tg-001 runs only', () => {
-    expect(['evolution-gym', 'tg-001', 'test-gap'].map((loop_name) => isGymRun({ loop_name }))).toEqual([true, true, false]);
+  it('applies to evolution-gym, tg-001 and pl-001 runs only', () => {
+    expect(['evolution-gym', 'tg-001', 'pl-001', 'test-gap'].map((loop_name) => isGymRun({ loop_name }))).toEqual([true, true, true, false]);
+  });
+
+  it('a PL-001 run names its arm, its procedure fire check and that it is an experiment record (no skill outcome)', () => {
+    const pl = { experiment: 'pl-001', arm: 'B', attempt_id: 'a1', delivered_lines: 5, delivered_lines_sha256: '6dddbba133cd'.padEnd(64, '0') };
+    const ok = gymRunView(gymRun('run-pl', { commit: 'mut:x', prod_gates: 1, pl }, { status: 'success', reason: 'tests green, source only', prod_gates: { lint: 'pass' }, hack_flags: [], diff_ref: `sha256:${sha('a')}`,
+      fire_check: { goal_sha256: sha('b'), genome_lines: 5, genome_lines_found: 5, lines_sha256: '6dddbba133cd'.padEnd(64, '0') } }, { loop_name: 'pl-001' }), none);
+    expect(ok.context.find((r) => r.label === 'Experiment')?.value).toBe('PL-001, arm B (procedure lines)');
+    expect(ok.proven.find((r) => r.label === 'Procedure fire check')?.value).toBe('5/5 lines in the prompt, received digest 6dddbba133cd…; delivered 6dddbba133cd…');
+    expect(ok.proven.some((r) => r.label === 'Genome fire check')).toBe(false);
+    expect(ok.next.label).toBe('experiment record');
+    const voided = gymRunView(gymRun('run-pl-void', { commit: 'mut:x', prod_gates: 1, pl: { ...pl, arm: 'A' } }, { status: 'failure', reason: 'tests still red', void: 'fire_check: arm A prompt carries 5 procedure lines' }, { loop_name: 'pl-001' }), none);
+    expect(voided.stop).toBe('void');
+    expect(voided.next.detail).toMatch(/re-served at most twice, then INFRA_CENSORED/);
+    expect(voided.proven.find((r) => r.label === 'Procedure fire check')?.value).toBe('VOID: fire_check: arm A prompt carries 5 procedure lines');
   });
 });

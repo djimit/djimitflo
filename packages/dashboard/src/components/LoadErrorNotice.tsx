@@ -3,7 +3,8 @@ import { AlertTriangle } from 'lucide-react';
 /** Records a failed optional section instead of swallowing it (W1: pages rendered empty on API errors). */
 export function softFail<T>(failed: string[], section: string, fallback: T) {
   return (err: unknown): T => {
-    failed.push(`${section}: ${err instanceof Error ? err.message : String(err)}`);
+    const requestId = (err as { request_id?: unknown } | null)?.request_id; // ApiError (lib/api.ts), from X-Request-ID
+    failed.push(`${section}: ${err instanceof Error ? err.message : String(err)}${typeof requestId === 'string' && requestId ? ` (request id ${requestId})` : ''}`);
     return fallback;
   };
 }

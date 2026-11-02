@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useStore } from "../lib/store";
 import { useWsSubscribe } from '../components/WebSocketProvider';
 import { WebSocketEventType } from "@djimitflo/shared";
@@ -111,7 +111,6 @@ export function SwarmOverviewPage() {
       setUsage(usageWindow && typeof usageWindow === 'object' ? usageWindow : null);
     });
   }, []);
-  const navigate = useNavigate();
   const { agents, tasks } = useStore();
   const [localAgents, setLocalAgents] = useState<Agent[]>([]);
   const [localTasks, setLocalTasks] = useState<Task[]>([]);
@@ -329,10 +328,11 @@ export function SwarmOverviewPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {localAgents.map(agent => (
-              <div
+              // UX-007: a native link — Enter, focus ring, middle-click/new tab — instead of a clickable div
+              <Link
                 key={agent.id}
-                className="bg-white rounded-lg border border-slate-200 p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => navigate(`/agents/${agent.id}`)}
+                to={`/agents/${agent.id}`}
+                className="block bg-white rounded-lg border border-slate-200 p-4 shadow-sm hover:shadow-md transition-shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
                 <div className="flex items-start justify-between mb-3">
                   <div>
@@ -358,7 +358,7 @@ export function SwarmOverviewPage() {
                     <div className="text-xs text-slate-500 uppercase tracking-wider">Time</div>
                   </div>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         )}

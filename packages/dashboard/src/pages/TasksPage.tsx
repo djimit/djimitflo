@@ -186,6 +186,7 @@ function CreateTaskModal({ agents, onClose }: CreateTaskModalProps) {
   const [repositoryId, setRepositoryId] = useState('');
   const [repositoriesLoading, setRepositoriesLoading] = useState(true);
   const [repositoryError, setRepositoryError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const loadRepositories = async () => {
     setRepositoriesLoading(true);
@@ -213,6 +214,7 @@ function CreateTaskModal({ agents, onClose }: CreateTaskModalProps) {
     if (repositoryId && !repository) return;
 
     setLoading(true);
+    setCreateError(null);
     try {
       const task = await api.createTask({
         title,
@@ -233,8 +235,7 @@ function CreateTaskModal({ agents, onClose }: CreateTaskModalProps) {
       addTask(task);
       onClose();
     } catch (error) {
-      console.error('Failed to create task:', error);
-      alert('Failed to create task. Please try again.');
+      setCreateError(`Could not create task: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setLoading(false);
     }
@@ -355,6 +356,8 @@ function CreateTaskModal({ agents, onClose }: CreateTaskModalProps) {
             {!repositoryId && <p className="mt-2 text-sm text-foreground-muted">Without a repository, execution uses the server/runtime default directory. Scan and select a repository to scope file work.</p>}
             {repositoryError && <div role="alert" className="mt-2 text-sm text-status-error">Repository discovery: {repositoryError} <button type="button" onClick={() => void loadRepositories()} disabled={repositoriesLoading} className="underline">Retry repositories</button></div>}
           </div>
+
+          {createError && <p role="alert" className="text-sm text-status-error">{createError}</p>}
 
           <div className="flex gap-3 pt-4">
             <button

@@ -93,8 +93,10 @@ it('UX-18: the evidence shows calls and tokens per consumer over 7 d; cost only 
   db.prepare("INSERT INTO llm_model_calls (consumer, model, ok, latency_ms, out_chars, shadow, tokens_in, tokens_out, created_at) VALUES ('jev', 'jev-1.13.0', 1, 900, 0, 0, 1000000, 0, ?)").run(new Date().toISOString());
   const ev = modelEvidence(db, {}, { LLM_PRICE_PER_MTOK: 'jev-1.13.0=0.042/0' } as NodeJS.ProcessEnv);
   expect(ev.usage_7d).toEqual(expect.arrayContaining([
-    { consumer: 'jev', calls: 1, ok: 1, tokens_in: 1000000, tokens_out: 0, est_cost_usd: 0.042 },
-    { consumer: 'fallback', calls: 1, ok: 1, tokens_in: 0, tokens_out: 0, est_cost_usd: null },
+    { consumer: 'jev', calls: 1, ok: 1, tokens_in: 1000000, tokens_out: 0, calls_tokens_in_unknown: 0, calls_tokens_out_unknown: 0,
+      est_cost_usd: 0.042, est_cost_lower_bound_usd: null, cost_completeness: 'complete' },
+    { consumer: 'fallback', calls: 1, ok: 1, tokens_in: 0, tokens_out: 0, calls_tokens_in_unknown: 1, calls_tokens_out_unknown: 1,
+      est_cost_usd: null, est_cost_lower_bound_usd: null, cost_completeness: null },
   ]));
   expect(modelPrice('unknown-model', {})).toBeNull();
 });

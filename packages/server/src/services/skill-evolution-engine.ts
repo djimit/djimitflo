@@ -21,6 +21,8 @@
  * generality/complexity/adaptability have no measurement and stay null. Retirement is for the W8 operator review (14-10).
  * recordOutcome() and the skill_outcomes table are live (bandit, gym, attribution) and unchanged.
  * tokens_used is nullable: null = the runtime reported no usage (unknown, never 0); efficiency averages known rows only.
+ * A stored 0 is read as unknown too (L-F05, forensic audit 2026-10-26): legacy rows and producers that coalesce a missing
+ * report to 0 would otherwise score maximal efficiency. efficiency_coverage reports known/total rows.
  */
 
 import { createHash, randomUUID } from 'crypto';
@@ -40,6 +42,8 @@ interface SkillGenome {
     generality: number | null;    // no measurement → null
     complexity: number | null;    // no measurement → null
     adaptability: number | null;  // no measurement → null
+    /** rows with known (> 0) tokens behind efficiency, of all measured outcomes */
+    efficiency_coverage?: { known: number; total: number };
   };
   /** = traits.reliability; null = INSUFFICIENT_EVIDENCE */
   fitness: number | null;
@@ -52,6 +56,21 @@ interface SkillGenome {
  * observation of the skill — neither a success nor a failure — so reliability leaves it out, as UNFAIR_ZERO_SQL does for infra.
  */
 export const COMPLETED_UNVERIFIED_REF = 'outcome_class:completed_unverified';
+
+/**
+ * INT-004 follow-up: a skill outcome is an observation of the skill only with positive delivery evidence — the engine's
+ * `skill_delivery:delivered` ref (a receipt that the skill text was in the assignment the runtime got). Assigned /
+ * unknown delivery (skill_attribution:unverified) and untagged legacy rows (written before receipts, or via the manual
+ * /evolution/outcome API) are a stored association, not a measurement: per-skill fitness and promotion leave them out.
+ */
+export const DELIVERED_ATTRIBUTION_SQL = `evidence_refs_json LIKE '%"skill_delivery:delivered"%'`;
+
+/**
+ * Outcome namespaces that are species, not delivered skills — makers (`[repo:<slug>:]loop-maker:<lane|gym|merge>:...`),
+ * fleet agents (`agent:`), falsifiers (`falsifier:`). They never carry a delivery receipt; their fitness reads every row.
+ */
+export const isSpeciesOutcome = (skillId: string): boolean =>
+  skillId.includes('loop-maker:') || skillId.startsWith('agent:') || skillId.startsWith('falsifier:');
 
 function seededRandom(seed?: string): () => number {
   if (!seed) return Math.random;
@@ -174,6 +193,38 @@ export class SkillEvolutionEngine {
     this.updateTraits(skillId);
   }
 
+  /** Trusted, hash-bound late verification settles one execution; ambiguous retries remain unknown. */
+  settleTaskVerification(taskId: string, skillId: string, contentHash: string, packageHash: string): void {
+    if (process.env.SKILL_FIRST_MODE !== 'on') return;
+    const task = this.db.prepare('SELECT status FROM tasks WHERE id = ?').get(taskId) as { status: string } | undefined;
+    if (task?.status !== 'completed') return;
+    const rows = this.db.prepare(`SELECT id, evidence_refs_json FROM skill_outcomes
+      WHERE task_id = ? AND skill_id = ? AND skill_content_hash = ? AND ${DELIVERED_ATTRIBUTION_SQL}`)
+      .all(taskId, skillId, contentHash) as Array<{ id: string; evidence_refs_json: string }>;
+    if (rows.length !== 1 || !(JSON.parse(rows[0].evidence_refs_json) as string[]).includes(`skill_package_sha256:${packageHash}`)) return;
+    const receipt = this.db.prepare(`SELECT details FROM execution_evidence WHERE task_id = ? AND source = 'system'
+      AND json_extract(metadata, '$.reason') = 'skill_delivery_receipt' ORDER BY captured_at DESC, rowid DESC LIMIT 1`)
+      .get(taskId) as { details: string } | undefined;
+    const delivered = receipt ? JSON.parse(receipt.details) as Record<string, unknown> : null;
+    if (delivered?.delivery_state !== 'delivered' || delivered.skill_id !== skillId
+      || delivered.skill_content_hash !== contentHash || delivered.skill_package_hash !== packageHash) return;
+    const checks = this.db.prepare(`SELECT id, severity FROM execution_evidence WHERE task_id = ?
+      AND evidence_type = 'test_result' AND source = 'system' AND json_valid(details)
+      AND json_extract(details, '$.skill_package_id') = ? AND json_extract(details, '$.skill_content_hash') = ?
+      AND json_extract(details, '$.skill_package_hash') = ?`)
+      .all(taskId, skillId, contentHash, packageHash) as Array<{ id: string; severity: string }>;
+    if (!checks.length) return;
+    const failed = checks.some((check) => ['error', 'critical'].includes(check.severity));
+    const passed = !failed && checks.every((check) => check.severity === 'info');
+    const refs = (JSON.parse(rows[0].evidence_refs_json) as string[]).filter((ref) =>
+      ref !== COMPLETED_UNVERIFIED_REF && ref !== 'outcome_class:regressed' && !ref.startsWith('verification:test_result:'));
+    refs.push(...checks.map((check) => check.id), ...(passed ? ['verification:test_result:passed']
+      : failed ? ['verification:test_result:failed', 'outcome_class:regressed'] : [COMPLETED_UNVERIFIED_REF]));
+    this.db.prepare('UPDATE skill_outcomes SET success = ?, evidence_refs_json = ? WHERE id = ?')
+      .run(passed ? 1 : 0, JSON.stringify([...new Set(refs)]), rows[0].id);
+    this.updateTraits(skillId);
+  }
+
   /**
    * Get evolution statistics.
    */
@@ -209,12 +260,14 @@ export class SkillEvolutionEngine {
   /** Phenotype measured from this skill's recorded outcomes only. */
   measuredTraits(skillId: string): SkillGenome['traits'] {
     // E2: an infra / no-change / completed-unverified zero is no observation of the skill (left out, never a 0).
-    // Unknown tokens: MAX(1, NULL) is NULL in SQLite, so the row drops out of the efficiency AVG instead of scoring 1.
+    // Unknown tokens (NULL, or a 0 that stands for a missing report) drop out of the efficiency AVG instead of scoring 1.
+    // A named skill counts only delivered attribution, on both sides (an undelivered success is no more the skill's than a failure).
     const r = this.db.prepare(`SELECT COUNT(*) AS n, AVG(success) AS rel,
-        AVG(MIN(1.0, 1000.0 / MAX(1, tokens_used))) AS eff FROM skill_outcomes WHERE skill_id = ?
-        AND NOT (success = 0 AND ${UNFAIR_ZERO_SQL}) AND NOT (success = 0 AND evidence_refs_json LIKE '%"${COMPLETED_UNVERIFIED_REF}"%')${skillId.includes('loop-maker:merge:') ? ` AND NOT ${supersededMergeOutcomeSql('skill_outcomes')}` : ''}`).get(skillId) as { n: number; rel: number | null; eff: number | null };
+        AVG(CASE WHEN tokens_used > 0 THEN MIN(1.0, 1000.0 / tokens_used) END) AS eff, COALESCE(SUM(tokens_used > 0), 0) AS eff_n FROM skill_outcomes WHERE skill_id = ?
+        ${isSpeciesOutcome(skillId) ? '' : `AND ${DELIVERED_ATTRIBUTION_SQL} `}AND NOT (success = 0 AND ${UNFAIR_ZERO_SQL}) AND NOT (success = 0 AND evidence_refs_json LIKE '%"${COMPLETED_UNVERIFIED_REF}"%')${skillId.includes('loop-maker:merge:') ? ` AND NOT ${supersededMergeOutcomeSql('skill_outcomes')}` : ''}`).get(skillId) as { n: number; rel: number | null; eff: number | null; eff_n: number };
     const has = r.n > 0;
-    return { efficiency: has ? r.eff : null, reliability: has ? r.rel : null, generality: null, complexity: null, adaptability: null };
+    return { efficiency: has ? r.eff : null, reliability: has ? r.rel : null, generality: null, complexity: null, adaptability: null,
+      efficiency_coverage: { known: r.eff_n, total: r.n } };
   }
 
   private persist(genome: SkillGenome): void {

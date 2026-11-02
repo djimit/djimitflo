@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'crypto';
+import { realRunIdSql } from './synthetic-runs';
 import { loopPrSettlements, survivalCounts, type SettlementState } from './merge-survival';
 import type { Database } from 'better-sqlite3';
 
@@ -291,7 +292,7 @@ export function attributionSummary(db: Database, now = Date.now(), days = 30, en
       json_extract(metadata, '$.failure.stage') AS stage, json_extract(metadata, '$.failure.stderr_class') AS cls,
       json_extract(metadata, '$.failure.exit_observed') AS observed, json_extract(metadata, '$.failure.signal') IS NOT NULL AS signal,
       json_extract(metadata, '$.cancellation_reason') IS NOT NULL AND json_extract(metadata, '$.cancellation_reason') NOT LIKE 'unspecified%' AS reason
-    FROM worker_leases WHERE status IN ('failed', 'cancelled') AND updated_at >= ?`, since);
+    FROM worker_leases WHERE status IN ('failed', 'cancelled') AND updated_at >= ? AND ${realRunIdSql('loop_run_id')}`, since);
   const cells = new Map<string, { stage: string; stderr_class: string; n: number }>();
   for (const r of ended) {
     if (!r.stage) continue;
