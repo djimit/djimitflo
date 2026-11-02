@@ -77,3 +77,15 @@ it('UXE-08: permissionError prefers status 403 over message matching', () => {
   expect(permissionError(forbidden, 'manage:config', 'fallback')).toBe('Not allowed: this action needs manage:config (Lease held by operator).');
   expect(permissionError(new ApiError('Lease held by operator', { status: 409 }), 'manage:config', 'fallback')).toBe('Lease held by operator');
 });
+
+it('reads public API health without the authenticated session path', async () => {
+  const request = vi.spyOn(api, 'request');
+  const fetch = respond(200, JSON.stringify({ status: 'healthy', ui: { navigation_discovery_mode: 'on' } }));
+  expect(await api.getHealth()).toMatchObject({ ui: { navigation_discovery_mode: 'on' } });
+  expect(fetch.mock.calls[0][0]).toBe(`${(await import('./api')).API_BASE}/health`);
+  expect(request).not.toHaveBeenCalled();
+});
+it('rejects failed health even if an error body claims discovery is on', async () => {
+  respond(503, JSON.stringify({ ui: { navigation_discovery_mode: 'on' } }));
+  await expect(api.getHealth()).rejects.toThrow('Health unavailable (503)');
+});

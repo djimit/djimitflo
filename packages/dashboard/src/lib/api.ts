@@ -2048,9 +2048,10 @@ class ApiClient {
   }
 
   // Health
-  async getHealth(): Promise<{ status: string; timestamp: string; uptime: number }> {
-    const url = API_BASE.replace('/api', '/health');
-    const response = await fetch(url);
+  async getHealth(): Promise<{ status: string; timestamp: string; ui?: { navigation_discovery_mode?: 'off' | 'shadow' | 'on' } }> {
+    // Basic health is public: a rollout lookup must not refresh or invalidate the user's session.
+    const response = await fetch(`${API_BASE}/health`);
+    if (!response.ok) throw new Error(`Health unavailable (${response.status})`);
     return response.json();
   }
 

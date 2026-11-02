@@ -142,8 +142,9 @@ export function cancelPreparedLeasesOfBlockedRun(db: Database, runId: string, no
  * queue at GOAL_QUEUE_POLL_MS (default 5000ms).
  *
  * The daemon runs in-process, using the existing continueLoopRun machinery. It
- * starts on server boot, after recoverInterruptedRuns (bootstrap/recovery.ts, index.ts). resumeInterruptedRuns
- * (loop-recovery-service.ts) has no caller outside tests: interrupted runs are not resumed at boot.
+ * starts on server boot, after recoverInterruptedRuns (bootstrap/recovery.ts, index.ts). With LOOP_RESUME_INTERRUPTED=on
+ * (default off) boot re-queues this boot's interrupted runs (resumeInterruptedRuns: fresh maker, goal 'decomposed' +
+ * resume_run_id), which this daemon then runs like an approval resume.
  */
 
 /**
@@ -1092,8 +1093,8 @@ export class LoopDaemon {
 
   /**
    * G19: Restore active goals from system_state on restart.
-   * The goals' runs are only marked interrupted at boot (recoverInterruptedRuns; G10 resumeInterruptedRuns has no caller
-   * outside tests); this just restores the daemon's tracking set so it doesn't double-start them.
+   * The goals' runs are marked interrupted at boot (recoverInterruptedRuns) and, only with LOOP_RESUME_INTERRUPTED=on,
+   * re-queued (resumeInterruptedRuns); this just restores the daemon's tracking set so it doesn't double-start them.
    */
   private restoreActiveGoals(): void {
     try {
